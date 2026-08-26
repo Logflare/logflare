@@ -400,12 +400,8 @@ fn append_log(
     encode_string(output, values.next("severity_text")?)?;
 
     let severity_alt = decode_u64(values.next("severity_number_alt")?)?;
-    let mapped_severity = values.next("severity_number")?;
-    let severity = if severity_alt > 0 {
-        severity_alt
-    } else {
-        decode_u64(mapped_severity)?
-    };
+    let mapped_severity = decode_u64(values.next("severity_number")?)?;
+    let severity = crate::derive::severity_number(severity_alt, mapped_severity);
     output.push(to_u8(severity, "severity_number")?)?;
 
     encode_string(output, values.next("service_name")?)?;
@@ -510,16 +506,10 @@ fn append_trace(
     encode_string(output, values.next("service_name")?)?;
     encode_string(output, values.next("event_message")?)?;
 
-    let mut duration = decode_u64(values.next("duration")?)?;
+    let duration = decode_u64(values.next("duration")?)?;
     let start_time = decode_i64(values.next("start_time")?);
     let end_time = decode_i64(values.next("end_time")?);
-    if duration == 0 {
-        if let (Ok(start_time), Ok(end_time)) = (start_time, end_time) {
-            if end_time > start_time {
-                duration = end_time.abs_diff(start_time);
-            }
-        }
-    }
+    let duration = crate::derive::duration(duration, start_time, end_time);
     output.extend_from_slice(&duration.to_le_bytes())?;
 
     encode_string(output, values.next("status_code")?)?;

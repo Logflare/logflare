@@ -5,13 +5,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
   import Logflare.Factory
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults
+  alias Logflare.ClickHouseMappedEvents
   alias Logflare.LogEvent
   alias Logflare.Mapper
   alias Logflare.Mapper.MappingConfig
   alias Logflare.Mapper.MappingConfig.FieldConfig, as: Field
   alias Logflare.Mapper.MappingConfig.OutputFormat
   alias Logflare.Mapper.Native
+  alias Logflare.Mapper.OtelDefaults
   alias Logflare.Mapper.OutputContext
 
   test "fused log output is byte-identical and applies explicit severity numbers" do
@@ -121,7 +122,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
     map_compiled =
       Mapper.compile!(MappingConfig.new([Field.string("message", path: "$.message")]))
 
-    output_compiled = Mapper.compile!(MappingDefaults.for_log())
+    output_compiled = Mapper.compile!(OtelDefaults.for_log())
     output_context = OutputContext.clickhouse_row_binary(event, encoded_config_id(:log))
 
     assert Mapper.map(%{"message" => "mapped"}, map_compiled, output_context: output_context) ==
@@ -142,7 +143,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
           })
         end)
 
-      output_compiled = Mapper.compile!(MappingDefaults.for_type(event_type))
+      output_compiled = Mapper.compile!(OtelDefaults.for_type(event_type))
       map_compiled = compile_map_output(event_type)
       config_id = encoded_config_id(event_type)
 
@@ -164,7 +165,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
   end
 
   property "fused log rows match the separate encoder for varied scalar and map values" do
-    output_compiled = Mapper.compile!(MappingDefaults.for_log())
+    output_compiled = Mapper.compile!(OtelDefaults.for_log())
     map_compiled = compile_map_output(:log)
     config_id = encoded_config_id(:log)
 
@@ -268,7 +269,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
   end
 
   test "native input and layout errors are returned without crashing the VM" do
-    compiled = Mapper.compile!(MappingDefaults.for_log())
+    compiled = Mapper.compile!(OtelDefaults.for_log())
     config_id = encoded_config_id(:log)
     event = raw_event(:log, %{"event_message" => "valid", "timestamp" => 1_700_000_000_000_301})
 
@@ -312,7 +313,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
                  fn -> Mapper.compile!(output_config) end
 
     incompatible_fields =
-      MappingDefaults.for_log().fields
+      OtelDefaults.for_log().fields
       |> Enum.map(fn
         %Field{name: "trace_flags"} -> Field.string("trace_flags", path: "$.trace_flags")
         field -> field
@@ -329,7 +330,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
   end
 
   test "row errors return an actionable reason" do
-    compiled = Mapper.compile!(MappingDefaults.for_log())
+    compiled = Mapper.compile!(OtelDefaults.for_log())
     config_id = encoded_config_id(:log)
     valid = raw_event(:log, %{"event_message" => "valid", "timestamp" => 1_700_000_000_000_401})
 
@@ -373,7 +374,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
     assert timestamp_reason =~ "mapped signed field is not an integer"
 
     assert {:error, ^timestamp_reason} =
-             Mapper.run(missing_timestamp.body, MappingDefaults.for_log(),
+             Mapper.run(missing_timestamp.body, OtelDefaults.for_log(),
                output_context: missing_timestamp_context
              )
 
@@ -402,7 +403,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
          map_compiled \\ nil,
          config_id \\ nil
        ) do
-    output_compiled = output_compiled || Mapper.compile!(MappingDefaults.for_type(event_type))
+    output_compiled = output_compiled || Mapper.compile!(OtelDefaults.for_type(event_type))
     map_compiled = map_compiled || compile_map_output(event_type)
     config_id = config_id || encoded_config_id(event_type)
     expected = separate_row(event, event_type, map_compiled, config_id) |> IO.iodata_to_binary()
@@ -412,7 +413,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
   end
 
   defp compile_map_output(event_type) do
-    config = MappingDefaults.for_type(event_type)
+    config = OtelDefaults.for_type(event_type)
     Mapper.compile!(%{config | output: nil})
   end
 
@@ -425,30 +426,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
     mapped_body =
       event.body
       |> Mapper.map(compiled)
-      |> maybe_compute_duration(event_type)
-      |> resolve_severity_number(event_type)
+      |> ClickHouseMappedEvents.apply_derived_fields(event_type)
 
     Ingester.encode_row(%{event | body: mapped_body}, event_type, config_id)
   end
 
   defp encoded_config_id(event_type) do
-    event_type |> MappingDefaults.config_id() |> Ingester.encode_mapping_config_id()
+    event_type |> OtelDefaults.config_id() |> Ingester.encode_mapping_config_id()
   end
-
-  defp maybe_compute_duration(
-         %{"start_time" => start_time, "end_time" => end_time, "duration" => 0} = body,
-         :trace
-       )
-       when is_integer(start_time) and is_integer(end_time) and end_time > start_time do
-    %{body | "duration" => end_time - start_time}
-  end
-
-  defp maybe_compute_duration(body, _event_type), do: body
-
-  defp resolve_severity_number(%{"severity_number_alt" => alt} = body, :log)
-       when is_integer(alt) and alt > 0 do
-    %{body | "severity_number" => alt}
-  end
-
-  defp resolve_severity_number(body, _event_type), do: body
 end

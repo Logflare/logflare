@@ -10,9 +10,9 @@ defmodule Logflare.ClickHouseMappedEvents do
   import Logflare.Factory
   import Logflare.Utils.Guards, only: [is_empty_map: 1]
 
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults
   alias Logflare.LogEvent.TypeDetection
   alias Logflare.Mapper
+  alias Logflare.Mapper.OtelDefaults
 
   @compiled_mapping_key {__MODULE__, :compiled_mapping}
 
@@ -54,7 +54,7 @@ defmodule Logflare.ClickHouseMappedEvents do
     mapped_body =
       mapped_body
       |> Map.put("mapping_config_id", config_id)
-      |> resolve_severity_number()
+      |> apply_derived_fields(:log)
 
     %{event | body: mapped_body}
   end
@@ -126,10 +126,36 @@ defmodule Logflare.ClickHouseMappedEvents do
       |> deep_merge_opts(opts[:body] || %{})
 
     {mapped_body, config_id} = map_body(input_body, :trace)
-    mapped_body = Map.put(mapped_body, "mapping_config_id", config_id)
+
+    mapped_body =
+      mapped_body
+      |> Map.put("mapping_config_id", config_id)
+      |> apply_derived_fields(:trace)
 
     %{event | body: mapped_body}
   end
+
+  @doc """
+  Reference implementation of the derived-field rules the mapper output
+  writers apply in Rust (`native/mapper_ex/src/derive.rs`): log
+  `severity_number` falls back to `severity_number_alt`, and a zero trace
+  `duration` is computed from `end_time - start_time`.
+  """
+  @spec apply_derived_fields(map(), TypeDetection.event_type()) :: map()
+  def apply_derived_fields(%{"severity_number_alt" => alt} = body, :log)
+      when is_integer(alt) and alt > 0 do
+    %{body | "severity_number" => alt}
+  end
+
+  def apply_derived_fields(
+        %{"start_time" => start_time, "end_time" => end_time, "duration" => 0} = body,
+        :trace
+      )
+      when is_integer(start_time) and is_integer(end_time) and end_time > start_time do
+    %{body | "duration" => end_time - start_time}
+  end
+
+  def apply_derived_fields(body, _event_type), do: body
 
   @spec map_body(map(), TypeDetection.event_type()) :: {map(), String.t()}
   defp map_body(input_body, event_type) do
@@ -143,8 +169,8 @@ defmodule Logflare.ClickHouseMappedEvents do
 
     case :persistent_term.get(key, nil) do
       nil ->
-        config = MappingDefaults.for_type(event_type)
-        cached = {Mapper.compile!(%{config | output: nil}), MappingDefaults.config_id(event_type)}
+        config = OtelDefaults.for_type(event_type)
+        cached = {Mapper.compile!(%{config | output: nil}), OtelDefaults.config_id(event_type)}
         :persistent_term.put(key, cached)
         cached
 
@@ -154,14 +180,6 @@ defmodule Logflare.ClickHouseMappedEvents do
   end
 
   @spec deep_merge_opts(map(), map()) :: map()
-  @spec resolve_severity_number(map()) :: map()
-  defp resolve_severity_number(%{"severity_number_alt" => alt} = body)
-       when is_integer(alt) and alt > 0 do
-    %{body | "severity_number" => alt}
-  end
-
-  defp resolve_severity_number(body), do: body
-
   defp deep_merge_opts(base, overrides) when is_empty_map(overrides), do: base
 
   defp deep_merge_opts(base, overrides) do

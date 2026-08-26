@@ -1,10 +1,12 @@
-defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
+defmodule Logflare.Mapper.OtelDefaults do
   @moduledoc """
-  Default OTEL-aligned mapping configurations for ClickHouse event types.
+  Default OTEL-aligned mapping configurations for each event type.
 
-  Defines how raw log event bodies are transformed into structured schemas
-  before RowBinary encoding. Each event type (log, metric, trace) has its own
-  field mapping with coalesced path resolution, defaults, and transforms.
+  Defines how raw log event bodies are transformed into the OTEL column
+  schema consumed by backends. Each event type (log, metric, trace) has its
+  own field mapping with coalesced path resolution, defaults, and transforms.
+  The configs default to ClickHouse RowBinary output; callers can swap the
+  `output` for another format over the same fields.
   """
 
   alias Logflare.LogEvent.TypeDetection

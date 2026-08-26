@@ -1,6 +1,6 @@
-defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingConfigStore do
+defmodule Logflare.Mapper.ConfigStore do
   @moduledoc """
-  Global singleton GenServer that compiles and caches ClickHouse mapping configs.
+  Global singleton GenServer that compiles and caches the default OTEL mapping configs.
 
   Compiled NIF references are stored in a dedicated ETS table for fast,
   concurrent reads from pipeline batchers. If the GenServer restarts,
@@ -15,11 +15,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingConfigStore do
 
   require Logger
 
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults
   alias Logflare.LogEvent.TypeDetection
   alias Logflare.Mapper
+  alias Logflare.Mapper.OtelDefaults
 
-  @table :mapping_config_store
+  @table :mapper_config_store
   @event_types [:log, :metric, :trace]
 
   @spec start_link(term()) :: GenServer.on_start()
@@ -39,9 +39,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingConfigStore do
         {:ok, compiled, config_id}
 
       [] ->
-        Logger.warning(
-          "ClickHouse mapping config cache miss for #{inspect(event_type)}, recompiling"
-        )
+        Logger.warning("Mapping config cache miss for #{inspect(event_type)}, recompiling")
 
         {compiled, config_id} = compile_and_store(event_type)
         {:ok, compiled, config_id}
@@ -54,14 +52,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingConfigStore do
 
     Enum.each(@event_types, &compile_and_store/1)
 
-    Logger.info("ClickHouse mapping configs compiled and cached", event_types: @event_types)
+    Logger.info("Mapping configs compiled and cached", event_types: @event_types)
     {:ok, %{}}
   end
 
   @spec compile_and_store(TypeDetection.event_type()) :: {reference(), String.t()}
   defp compile_and_store(event_type) do
-    compiled = event_type |> MappingDefaults.for_type() |> Mapper.compile!()
-    config_id = MappingDefaults.config_id(event_type)
+    compiled = event_type |> OtelDefaults.for_type() |> Mapper.compile!()
+    config_id = OtelDefaults.config_id(event_type)
     true = :ets.insert(@table, {event_type, compiled, config_id})
     {compiled, config_id}
   end
