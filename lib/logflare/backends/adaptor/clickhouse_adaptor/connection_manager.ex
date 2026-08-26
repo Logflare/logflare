@@ -30,8 +30,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   @recycle_interval :timer.minutes(10)
   @recycle_spread :timer.seconds(60)
   @ch_idle_interval :timer.seconds(3)
-  @read_pool_size 50
-  @labeled_read_pool_size 32
+  @default_read_pool_size 50
+  @default_labeled_read_pool_size 32
 
   typedstruct do
     field :backend_id, pos_integer(), enforce: true
@@ -529,8 +529,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   end
 
   @spec default_pool_size(atom()) :: pos_integer()
-  defp default_pool_size(:read_pool_size), do: @read_pool_size
-  defp default_pool_size(:labeled_read_pool_size), do: @labeled_read_pool_size
+  defp default_pool_size(:read_pool_size), do: @default_read_pool_size
+  defp default_pool_size(:labeled_read_pool_size), do: @default_labeled_read_pool_size
 
   @spec validate_pool_size(term()) :: pos_integer() | nil
   defp validate_pool_size(size) when is_pos_integer(size), do: size
