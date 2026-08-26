@@ -143,7 +143,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   def build_processor_context(backend_id) do
     mapper_configs =
       Map.new(@event_types, fn event_type ->
-        {:ok, compiled, config_id} = ConfigStore.get_compiled(event_type)
+        {:ok, compiled, config_id} = ConfigStore.get_compiled(event_type, :ch_row_binary)
 
         {event_type,
          %{
@@ -196,7 +196,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         %{compiled: compiled, mapping_config_id: mapping_config_id} =
           Map.fetch!(mapper_configs, event_type)
 
-        output_context = OutputContext.clickhouse_row_binary(event, mapping_config_id)
+        output_context = OutputContext.ch_row_binary(event, mapping_config_id)
 
         case Mapper.map_result(event.body, compiled, output_context: output_context) do
           {:ok, row} ->

@@ -3,6 +3,7 @@ mod coerce;
 mod derive;
 mod mapper;
 mod mapping;
+mod ndjson;
 mod path;
 mod query;
 mod string_filters;
@@ -16,7 +17,8 @@ mod atoms {
         ok,
         error,
         nil,
-        clickhouse_row_binary,
+        ch_row_binary,
+        ndjson,
     }
 }
 
@@ -75,7 +77,41 @@ fn map<'a>(
                 Err(reason) => (atoms::error(), reason).encode(env),
             }
         }
+        CompiledOutput::Ndjson(layout) => {
+            match map_ndjson_output(env, document, &compiled.mapping, layout, options) {
+                Ok(binary) => (atoms::ok(), binary.release(env)).encode(env),
+                Err(reason) => (atoms::error(), reason).encode(env),
+            }
+        }
     }
+}
+
+fn map_ndjson_output<'a>(
+    env: Env<'a>,
+    document: Term<'a>,
+    mapping: &CompiledMapping,
+    layout: &ndjson::CompiledLayout,
+    options: Term<'a>,
+) -> Result<rustler::OwnedBinary, String> {
+    const CONTEXT_ERROR: &str = "NDJSON output requires an ndjson output_context";
+    let (flat_keys, format, mapping_config_id, envelope) = decode_output_options(options)?;
+    if format != atoms::ndjson() {
+        return Err(CONTEXT_ERROR.to_string());
+    }
+    let mapping_config_id = mapping_config_id
+        .decode::<Binary>()
+        .map_err(|_| "mapping_config_id must be a UUID string".to_string())?;
+    let (id, source_uuid, source_name, ingested_at) = decode_envelope(envelope)?;
+    let envelope = ndjson::RowEnvelope {
+        id,
+        source_uuid,
+        source_name,
+        ingested_at,
+    };
+    let nil = atoms::nil().encode(env);
+    let mut scratch = mapper::MapScratch::new(mapping, nil);
+    mapper::map_values_into(env, document, mapping, flat_keys, nil, &mut scratch);
+    ndjson::encode_row(layout, scratch.values(), nil, envelope, mapping_config_id)
 }
 
 fn decode_flat_keys(options: Term) -> Result<bool, String> {
@@ -114,19 +150,12 @@ fn map_clickhouse_output<'a>(
 fn decode_clickhouse_options<'a>(
     options: Term<'a>,
 ) -> Result<(bool, Binary<'a>, Term<'a>), String> {
-    let (flat_keys, output_context): (bool, Term<'a>) = options
-        .decode()
-        .map_err(|_| "mapper options must contain flat_keys and output_context".to_string())?;
-    let (format, mapping_config_id, envelope): (rustler::types::atom::Atom, Term<'a>, Term<'a>) =
-        output_context.decode().map_err(|_| {
-            "ClickHouse RowBinary output requires a clickhouse_row_binary output_context"
-                .to_string()
-        })?;
-    if format != atoms::clickhouse_row_binary() {
-        return Err(
-            "ClickHouse RowBinary output requires a clickhouse_row_binary output_context"
-                .to_string(),
-        );
+    const CONTEXT_ERROR: &str =
+        "ClickHouse RowBinary output requires a ch_row_binary output_context";
+    let (flat_keys, format, mapping_config_id, envelope) =
+        decode_output_options(options).map_err(|_| CONTEXT_ERROR.to_string())?;
+    if format != atoms::ch_row_binary() {
+        return Err(CONTEXT_ERROR.to_string());
     }
     let mapping_config_id = mapping_config_id
         .decode::<Binary>()
@@ -134,9 +163,24 @@ fn decode_clickhouse_options<'a>(
     Ok((flat_keys, mapping_config_id, envelope))
 }
 
-fn decode_clickhouse_envelope<'a>(
-    envelope: Term<'a>,
-) -> Result<clickhouse_rowbinary::RowEnvelope<'a>, String> {
+/// Splits `{flat_keys, {format, mapping_config_id, envelope}}` without
+/// interpreting the format-specific parts.
+fn decode_output_options<'a>(
+    options: Term<'a>,
+) -> Result<(bool, rustler::types::atom::Atom, Term<'a>, Term<'a>), String> {
+    let (flat_keys, output_context): (bool, Term<'a>) = options
+        .decode()
+        .map_err(|_| "mapper options must contain flat_keys and output_context".to_string())?;
+    let (format, mapping_config_id, envelope): (rustler::types::atom::Atom, Term<'a>, Term<'a>) =
+        output_context.decode().map_err(|_| {
+            "output_context must be a {format, mapping_config_id, envelope} tuple".to_string()
+        })?;
+    Ok((flat_keys, format, mapping_config_id, envelope))
+}
+
+type Envelope<'a> = (Binary<'a>, Binary<'a>, Binary<'a>, Option<i64>);
+
+fn decode_envelope<'a>(envelope: Term<'a>) -> Result<Envelope<'a>, String> {
     let (id, source_uuid, source_name, ingested_at): (
         Binary<'a>,
         Binary<'a>,
@@ -147,8 +191,14 @@ fn decode_clickhouse_envelope<'a>(
     })?;
     let ingested_at = ingested_at
         .decode::<Option<i64>>()
-        .map_err(|_| "ingested_at must be nil or Unix microseconds".to_string())?;
+        .map_err(|_| "ingested_at must be nil or an integer Unix timestamp".to_string())?;
+    Ok((id, source_uuid, source_name, ingested_at))
+}
 
+fn decode_clickhouse_envelope<'a>(
+    envelope: Term<'a>,
+) -> Result<clickhouse_rowbinary::RowEnvelope<'a>, String> {
+    let (id, source_uuid, source_name, ingested_at) = decode_envelope(envelope)?;
     Ok(clickhouse_rowbinary::RowEnvelope {
         id,
         source_uuid,

@@ -718,8 +718,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         )
         |> Map.put(:ingested_at, nil)
 
-      map_config = OtelDefaults.for_log()
-      map_compiled = Mapper.compile!(%{map_config | output: nil})
+      map_compiled = Mapper.compile!(OtelDefaults.for_type(:log, :map))
       mapped_body = Mapper.map(event.body, map_compiled)
       gen_tid = setup_generation_events([event])
       messages = [batch_message(event, gen_tid, backend.id)]
@@ -839,8 +838,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         |> Map.put(:event_type, :metric)
         |> Map.put(:ingested_at, nil)
 
-      map_config = OtelDefaults.for_metric()
-      map_compiled = Mapper.compile!(%{map_config | output: nil})
+      map_compiled = Mapper.compile!(OtelDefaults.for_type(:metric, :map))
       mapped_body = Mapper.map(event.body, map_compiled)
       gen_tid = setup_generation_events([event])
       messages = [batch_message(event, gen_tid, backend.id)]
@@ -986,8 +984,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         |> Map.put(:event_type, :trace)
         |> Map.put(:ingested_at, nil)
 
-      map_config = OtelDefaults.for_trace()
-      map_compiled = Mapper.compile!(%{map_config | output: nil})
+      map_compiled = Mapper.compile!(OtelDefaults.for_type(:trace, :map))
       mapped_body = Mapper.map(event.body, map_compiled)
       gen_tid = setup_generation_events([event])
       messages = [batch_message(event, gen_tid, backend.id)]

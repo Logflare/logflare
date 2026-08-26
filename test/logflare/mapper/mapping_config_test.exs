@@ -214,7 +214,7 @@ defmodule Logflare.Mapper.MappingConfigTest do
     end
 
     test "stores a typed output format" do
-      output = OutputFormat.clickhouse_row_binary(:log)
+      output = OutputFormat.ch_row_binary(:log)
       config = MappingConfig.new([Field.string("project")], output: output)
 
       assert config.output == output
@@ -265,12 +265,12 @@ defmodule Logflare.Mapper.MappingConfigTest do
     test "round-trip preserves the output format" do
       config =
         MappingConfig.new([Field.string("project")],
-          output: OutputFormat.clickhouse_row_binary(:log)
+          output: OutputFormat.ch_row_binary(:log)
         )
 
       assert {:ok, json} = MappingConfig.to_json(config)
       assert {:ok, restored} = MappingConfig.from_json(json)
-      assert restored.output == OutputFormat.clickhouse_row_binary(:log)
+      assert restored.output == OutputFormat.ch_row_binary(:log)
     end
 
     test "round-trip preserves pick entries" do
@@ -386,7 +386,7 @@ defmodule Logflare.Mapper.MappingConfigTest do
       json =
         Jason.encode!(%{
           "fields" => [%{"name" => "project", "type" => "string"}],
-          "output" => %{"format" => "clickhouse_row_binary"}
+          "output" => %{"format" => "ch_row_binary"}
         })
 
       assert {:error, %Ecto.Changeset{}} = MappingConfig.from_json(json)
@@ -420,11 +420,11 @@ defmodule Logflare.Mapper.MappingConfigTest do
     test "serializes the output format" do
       config =
         MappingConfig.new([Field.string("project")],
-          output: OutputFormat.clickhouse_row_binary(:trace)
+          output: OutputFormat.ch_row_binary(:trace)
         )
 
       assert MappingConfig.to_nif_map(config)["output"] == %{
-               "format" => "clickhouse_row_binary",
+               "format" => "ch_row_binary",
                "row_type" => "trace"
              }
     end
