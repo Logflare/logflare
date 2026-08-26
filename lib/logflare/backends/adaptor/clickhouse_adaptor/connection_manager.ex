@@ -34,6 +34,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   @ch_queue_target :timer.seconds(5)
   @recycle_interval :timer.minutes(10)
   @recycle_spread :timer.seconds(60)
+  @ch_idle_interval :timer.seconds(3)
+  @default_read_pool_size 50
+  @default_labeled_read_pool_size 32
 
   typedstruct do
     field :backend_id, pos_integer(), enforce: true
@@ -215,6 +218,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   end
 
   def read_host(_backend, _label), do: nil
+
+  @doc """
+  Resolves the read connection pool size for a labeled read cluster.
+
+  The unlabeled pool and the pool for the cluster named by `default_read_cluster`
+  are sized by `read_pool_size`. Both act as the catch-all for callers that do not
+  resolve to a read cluster of their own, and the default cluster additionally
+  absorbs failover traffic, so they need more capacity than a single caller's
+  cluster. Every other labeled pool is sized by `labeled_read_pool_size`.
+
+  A backend-wide value wins over the application default.
+  """
+  @spec read_pool_size(map(), String.t() | nil) :: pos_integer()
+  def read_pool_size(config, label) when is_map(config) do
+    config
+    |> pool_size_key(label)
+    |> resolve_pool_size(config)
+  end
 
   @impl true
   def init({backend_id, label}) do
@@ -467,16 +488,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
 
   defp build_ch_opts(%Backend{} = backend, label) do
     config = backend.config
-
-    default_pool_size =
-      Application.fetch_env!(:logflare, :clickhouse_backend_adaptor)[:pool_size]
-
-    pool_size =
-      config
-      |> Map.get(:pool_size, default_pool_size)
-      |> div(2)
-      |> max(default_pool_size)
-
+    pool_size = read_pool_size(config, label)
     url = read_url(config, label)
 
     with {:ok, {scheme, hostname, url_port}} <- extract_url_components(url) do
@@ -495,12 +507,40 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
         pool_size: pool_size,
         settings: [],
         timeout: @ch_query_conn_timeout,
-        queue_target: @ch_queue_target
+        queue_target: @ch_queue_target,
+        idle_interval: @ch_idle_interval,
+        idle_limit: pool_size
       ]
 
       {:ok, ch_opts}
     end
   end
+
+  @spec pool_size_key(map(), String.t() | nil) :: :read_pool_size | :labeled_read_pool_size
+  defp pool_size_key(_config, label) when not is_non_empty_binary(label), do: :read_pool_size
+
+  defp pool_size_key(config, label) do
+    case Map.get(config, :default_read_cluster) do
+      ^label -> :read_pool_size
+      _ -> :labeled_read_pool_size
+    end
+  end
+
+  @spec resolve_pool_size(atom(), map()) :: pos_integer()
+  defp resolve_pool_size(key, config) do
+    case validate_pool_size(Map.get(config, key)) do
+      nil -> default_pool_size(key)
+      size -> size
+    end
+  end
+
+  @spec default_pool_size(atom()) :: pos_integer()
+  defp default_pool_size(:read_pool_size), do: @default_read_pool_size
+  defp default_pool_size(:labeled_read_pool_size), do: @default_labeled_read_pool_size
+
+  @spec validate_pool_size(term()) :: pos_integer() | nil
+  defp validate_pool_size(size) when is_pos_integer(size), do: size
+  defp validate_pool_size(_size), do: nil
 
   @spec read_url(map(), String.t() | nil) :: String.t() | nil
   defp read_url(config, label) do

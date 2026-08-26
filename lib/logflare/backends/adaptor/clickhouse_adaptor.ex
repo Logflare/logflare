@@ -238,7 +238,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        query_password: :string,
        database: :string,
        port: :integer,
-       pool_size: :integer,
+       read_pool_size: :integer,
+       labeled_read_pool_size: :integer,
        # read_only_url is depreciated and will be removed in the release after PR#3693 lands
        read_only_url: :string,
        read_only_urls: {:map, :string},
@@ -256,7 +257,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :query_password,
       :database,
       :port,
-      :pool_size,
+      :read_pool_size,
+      :labeled_read_pool_size,
       :read_only_url,
       :read_only_urls,
       :default_read_cluster,
@@ -322,7 +324,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> validate_default_read_cluster()
     |> validate_user_pass()
     |> validate_query_user_pass()
-    |> validate_number(:pool_size,
+    |> validate_number(:read_pool_size,
+      greater_than_or_equal_to: 1,
+      less_than_or_equal_to: @max_read_pool_size
+    )
+    |> validate_number(:labeled_read_pool_size,
       greater_than_or_equal_to: 1,
       less_than_or_equal_to: @max_read_pool_size
     )
@@ -464,9 +470,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         Logger.warning(
           "ClickHouse read cluster GRANT check failed for #{target}. Required: `SELECT`",
           backend_id: backend.id,
-          read_cluster: label,
-          read_cluster_url: url,
-          query_user: query_user
+          clickhouse_read_cluster: label,
+          clickhouse_read_cluster_url: url,
+          clickhouse_query_user: query_user
         )
 
         {:error, :read_permissions_missing}
@@ -475,9 +481,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         Logger.warning(
           "ClickHouse read cluster connection/GRANT check failed for #{target}. Unexpected error #{inspect(error_result)}",
           backend_id: backend.id,
-          read_cluster: label,
-          read_cluster_url: url,
-          query_user: query_user
+          clickhouse_read_cluster: label,
+          clickhouse_read_cluster_url: url,
+          clickhouse_query_user: query_user
         )
 
         {:error, :grant_check_unknown_failure}
@@ -637,7 +643,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       timeout = if Application.get_env(:logflare, :env) == :test, do: 1_000, else: 60_000
 
       backend_id = backend.id
-      log_fun = fn entry -> log_slow_checkout(entry, backend_id) end
+      log_fun = fn entry -> log_slow_checkout(entry, backend_id, label) end
 
       ch_opts = [decode: false, timeout: timeout, log: log_fun]
 
@@ -655,7 +661,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
              user_id: backend.user_id,
              backend_id: backend.id,
              backend_token: backend.token,
-             read_cluster: label,
+             clickhouse_read_cluster: label,
              host: ConnectionManager.read_host(backend, label)
            )}
       end
@@ -669,8 +675,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       "ClickHouse read cluster not configured, falling back to resolved read cluster",
       user_id: backend.user_id,
       backend_id: backend.id,
-      requested_read_cluster: requested,
-      resolved_read_cluster: label
+      clickhouse_requested_read_cluster: requested,
+      clickhouse_resolved_read_cluster: label
     )
 
     :ok
@@ -693,8 +699,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         "ClickHouse read cluster unhealthy, falling back to default read cluster",
         user_id: backend.user_id,
         backend_id: backend.id,
-        read_cluster: label,
-        default_read_cluster: default
+        clickhouse_read_cluster: label,
+        clickhouse_default_read_cluster: default
       )
 
       do_ch_query_on_label(backend, statement, params, default)
@@ -703,22 +709,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end
   end
 
-  @spec log_slow_checkout(DBConnection.LogEntry.t(), pos_integer()) :: :ok
-  defp log_slow_checkout(%DBConnection.LogEntry{pool_time: pool_time}, backend_id)
+  @spec log_slow_checkout(DBConnection.LogEntry.t(), pos_integer(), String.t() | nil) :: :ok
+  defp log_slow_checkout(%DBConnection.LogEntry{pool_time: pool_time}, backend_id, label)
        when is_integer(pool_time) do
     pool_ms = System.convert_time_unit(pool_time, :native, :millisecond)
+
+    :telemetry.execute(
+      [:logflare, :clickhouse, :read_pool, :checkout],
+      %{pool_time_ms: pool_ms},
+      %{backend_id: backend_id, read_cluster: label}
+    )
 
     if pool_ms >= slow_pool_checkout_ms() do
       Logger.warning(
         "ClickHouse slow connection checkout: waited #{pool_ms}ms for a pool connection",
-        backend_id: backend_id
+        backend_id: backend_id,
+        clickhouse_read_cluster: label
       )
     end
 
     :ok
   end
 
-  defp log_slow_checkout(_entry, _backend_id), do: :ok
+  defp log_slow_checkout(_entry, _backend_id, _label), do: :ok
 
   @spec slow_pool_checkout_ms() :: non_neg_integer()
   defp slow_pool_checkout_ms do
@@ -731,6 +744,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     error
     |> ch_query_error_kind()
     |> query_error(error)
+  end
+
+  defp to_query_error(%DBConnection.ConnectionError{reason: :queue_timeout} = error) do
+    query_error(:pool_exhausted, error)
   end
 
   defp to_query_error(%DBConnection.ConnectionError{} = error) do
@@ -1346,7 +1363,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       Logger.info(
         "Started query ConnectionManager for ClickHouse backend",
         backend_id: backend.id,
-        read_cluster: label
+        clickhouse_read_cluster: label
       )
 
       :ok
@@ -1358,7 +1375,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         Logger.warning(
           "Failed to start query ConnectionManager for backend",
           backend_id: backend_id,
-          read_cluster: label,
+          clickhouse_read_cluster: label,
           reason: reason
         )
 
