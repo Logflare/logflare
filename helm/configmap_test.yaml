@@ -66,3 +66,20 @@ tests:
           path: data.SPOOL_MODE
           value: "enabled"
         template: configmap.yaml
+
+  # A key set in both places was previously emitted twice, leaving the winner up to whatever
+  # parsed the manifest.
+  - it: should let extraConfig override a derived key rather than duplicating it
+    set:
+      logflare:
+        backend:
+          type: bigquery
+          bigquery:
+            datasetIdAppend: _prod
+        extraConfig:
+          GOOGLE_DATASET_ID_APPEND: _staging
+    asserts:
+      - equal:
+          path: data.GOOGLE_DATASET_ID_APPEND
+          value: _staging
+        template: configmap.yaml
