@@ -68,7 +68,7 @@ held =
               event =
               IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id)
 
-            output_context = OutputContext.clickhouse_row_binary(event, mapping_config_id)
+            output_context = OutputContext.ch_row_binary(event, mapping_config_id)
 
             encoded = %EncodedRow{
               pointer: pointer,

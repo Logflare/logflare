@@ -55,6 +55,8 @@ defmodule Logflare.Mapper.OtelDefaults do
   alias Logflare.Mapper.MappingConfig.InferRule
   alias Logflare.Mapper.MappingConfig.OutputFormat
 
+  @type output_format() :: :ch_row_binary | :ndjson | :map
+
   @log_config_id "00000000-0000-0000-0001-000000000005"
   @metric_config_id "00000000-0000-0000-0002-000000000005"
   @trace_config_id "00000000-0000-0000-0003-000000000006"
@@ -70,6 +72,20 @@ defmodule Logflare.Mapper.OtelDefaults do
   def for_type(:log), do: for_log()
   def for_type(:metric), do: for_metric()
   def for_type(:trace), do: for_trace()
+
+  @doc """
+  Returns the default config for `event_type` targeting `output_format`.
+
+  `:map` drops the output so the compiled mapping returns a plain map.
+  """
+  @spec for_type(TypeDetection.event_type(), output_format()) :: MappingConfig.t()
+  def for_type(event_type, :ch_row_binary), do: for_type(event_type)
+
+  def for_type(event_type, :ndjson) do
+    %{for_type(event_type) | output: OutputFormat.ndjson(event_type)}
+  end
+
+  def for_type(event_type, :map), do: %{for_type(event_type) | output: nil}
 
   @spec for_log() :: MappingConfig.t()
   def for_log do
@@ -181,7 +197,7 @@ defmodule Logflare.Mapper.OtelDefaults do
       Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
     ]
 
-    MappingConfig.new(fields, output: OutputFormat.clickhouse_row_binary(:log))
+    MappingConfig.new(fields, output: OutputFormat.ch_row_binary(:log))
   end
 
   @spec for_metric() :: MappingConfig.t()
@@ -406,7 +422,7 @@ defmodule Logflare.Mapper.OtelDefaults do
       Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
     ]
 
-    MappingConfig.new(fields, output: OutputFormat.clickhouse_row_binary(:metric))
+    MappingConfig.new(fields, output: OutputFormat.ch_row_binary(:metric))
   end
 
   @spec for_trace() :: MappingConfig.t()
@@ -548,7 +564,7 @@ defmodule Logflare.Mapper.OtelDefaults do
       Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
     ]
 
-    MappingConfig.new(fields, output: OutputFormat.clickhouse_row_binary(:trace))
+    MappingConfig.new(fields, output: OutputFormat.ch_row_binary(:trace))
   end
 
   @spec resource_attributes_field(TypeDetection.event_type()) :: Field.t()
