@@ -299,7 +299,7 @@ deploy.staging.main:
 
 	gcloud builds submit . \
 		--config=./cloudbuild/staging/deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_INSTANCE_GROUP=instance-group-staging-main-saturated,_INSTANCE_TYPE=c2d-highcpu-16 \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_INSTANCE_GROUP=instance-group-staging-main-saturated,_INSTANCE_TYPE=c2d-highcpu-16,_SPOOL_CLUSTER=main-saturated \
 		--region=us-central1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 
@@ -381,7 +381,7 @@ deploy.prod.versioned:
 	@echo "Creating prod instance templates..."
 	gcloud builds submit . \
 		--config=./cloudbuild/prod/pre-deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-a,_LOGFLARE_ALERTS_ENABLED=true \
+		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-a,_LOGFLARE_ALERTS_ENABLED=true,_SPOOL_MODE=disable \
 		--region=europe-west3 \
 		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
 	gcloud builds submit . \
