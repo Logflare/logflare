@@ -15,12 +15,6 @@ defmodule Logflare.Backends.DynamicPipelineTest do
     user = insert(:user)
     source = insert(:source, user: user)
 
-    # Keep the bigquery pipeline on the streaming-insert branch.
-    stub(Logflare.Utils, :flag, fn
-      "BigqueryStorageWriteApi", _identifier -> false
-      _feature, _identifier -> true
-    end)
-
     backend = insert(:backend, type: :bigquery)
 
     # create the startup queue

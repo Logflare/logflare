@@ -4,8 +4,8 @@
 # configurations. Compares the pre-parsed (cached) virtual against the
 # unparsed-fallback path to surface the benefit of the parsed-virtual caching.
 #
-# Run under MIX_ENV=test so the "key_values" feature flag returns true
-# unconditionally (see Logflare.Utils.flag/2) and the dev-env Phoenix asset
+# Run under MIX_ENV=test so the "key_values" feature flag is enabled via the
+# :feature_flag_override config in config/test.exs and the dev-env Phoenix asset
 # watcher doesn't contaminate the first scenario.
 
 import Logflare.Factory

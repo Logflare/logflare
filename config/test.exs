@@ -5,7 +5,15 @@ config :logflare,
   cache_stats: true,
   sql_sandbox: true,
   static_gzip: false,
-  encryption_key_default: "Q+IS7ogkzRxsj+zAIB1u6jNFquxkFzSrBZXItN27K/Q="
+  encryption_key_default: "Q+IS7ogkzRxsj+zAIB1u6jNFquxkFzSrBZXItN27K/Q=",
+  feature_flag_override: %{
+    "alerts" => "true",
+    "endpointBackendSelection" => "true",
+    "endpointsOpenBeta" => "true",
+    "key_values" => "true",
+    "multibackend" => "true",
+    "BigqueryStorageWriteApi" => "false"
+  }
 
 config :logflare, LogflareWeb.Endpoint,
   url: [host: "localhost", scheme: "http", port: 4001],

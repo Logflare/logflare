@@ -13,12 +13,6 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
   setup do
     start_supervised!(AllLogsLogged)
     insert(:plan)
-    # Default to the streaming-insert branch; storage-write tests opt in via the
-    # source's bq_storage_write_api column.
-    stub(Logflare.Utils, :flag, fn
-      "BigqueryStorageWriteApi", _identifier -> false
-      _feature, _identifier -> true
-    end)
 
     :ok
   end

@@ -21,18 +21,6 @@ defmodule Logflare.BigQuery.PipelineTest do
 
   @pipeline_name :test_pipeline
 
-  setup do
-    # Storage-write is gated behind the BigqueryStorageWriteApi flag; default all
-    # pipeline tests to the streaming-insert branch. Storage-write tests opt in via
-    # the source's bq_storage_write_api column or by re-stubbing this flag.
-    stub(Logflare.Utils, :flag, fn
-      "BigqueryStorageWriteApi", _identifier -> false
-      _feature, _identifier -> true
-    end)
-
-    :ok
-  end
-
   describe "pipeline" do
     setup do
       insert(:plan)
@@ -788,6 +776,104 @@ defmodule Logflare.BigQuery.PipelineTest do
       end)
 
       Pipeline.handle_batch(:bq, messages, batch_info, context)
+    end
+
+    test "uses storage write api when the column is nil and the flag is enabled", %{
+      source: source,
+      batch_info: batch_info
+    } do
+      source = insert(:source, user_id: source.user_id, bq_storage_write_api: nil)
+      context = handle_batch_context(source)
+
+      stub(Logflare.Utils, :flag, fn
+        "BigqueryStorageWriteApi", _identifier -> true
+        _feature, _identifier -> false
+      end)
+
+      le = build(:log_event, source: source)
+      {messages, _tid} = setup_queue(source, [le])
+
+      expect(BigQueryAdaptor, :insert_log_events_via_storage_write_api, 1, fn _log_events, _opts ->
+        :ok
+      end)
+
+      event = [:logflare, :backends, :pipeline, :handle_batch]
+      ref = :telemetry_test.attach_event_handlers(self(), [event])
+      on_exit(fn -> :telemetry.detach(ref) end)
+
+      Pipeline.handle_batch(:bq, messages, batch_info, context)
+
+      assert_received {^event, ^ref, _measurements,
+                       %{insert_method: :bq_storage_write, insert_method_source: :flag}}
+    end
+
+    test "a raising flag lookup falls back to streaming inserts", %{
+      source: source,
+      batch_info: batch_info
+    } do
+      source = insert(:source, user_id: source.user_id, bq_storage_write_api: nil)
+      context = handle_batch_context(source)
+
+      stub(Logflare.Utils, :flag, fn
+        "BigqueryStorageWriteApi", _identifier -> raise "configcat is down"
+        _feature, _identifier -> false
+      end)
+
+      le = build(:log_event, source: source)
+      {messages, _tid} = setup_queue(source, [le])
+
+      reject(&BigQueryAdaptor.insert_log_events_via_storage_write_api/2)
+
+      expect(Logflare.Google.BigQuery, :stream_batch!, 1, fn _ctx, _rows ->
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      log = capture_log(fn -> Pipeline.handle_batch(:bq, messages, batch_info, context) end)
+
+      assert log =~ "BigqueryStorageWriteApi flag lookup failed"
+    end
+
+    test "column set to false forces streaming inserts even when the flag is enabled", %{
+      source: source,
+      batch_info: batch_info
+    } do
+      source = insert(:source, user_id: source.user_id, bq_storage_write_api: false)
+      context = handle_batch_context(source)
+
+      stub(Logflare.Utils, :flag, fn
+        "BigqueryStorageWriteApi", _identifier -> true
+        _feature, _identifier -> false
+      end)
+
+      le = build(:log_event, source: source)
+      {messages, _tid} = setup_queue(source, [le])
+
+      reject(&BigQueryAdaptor.insert_log_events_via_storage_write_api/2)
+
+      expect(Logflare.Google.BigQuery, :stream_batch!, 1, fn _ctx, _rows ->
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      event = [:logflare, :backends, :pipeline, :handle_batch]
+      ref = :telemetry_test.attach_event_handlers(self(), [event])
+      on_exit(fn -> :telemetry.detach(ref) end)
+
+      Pipeline.handle_batch(:bq, messages, batch_info, context)
+
+      assert_received {^event, ^ref, _measurements,
+                       %{insert_method: :bq_streaming_insert, insert_method_source: :column}}
+    end
+
+    defp handle_batch_context(source) do
+      %{
+        source_id: source.id,
+        source_token: source.token,
+        backend_id: nil,
+        bigquery_project_id: nil,
+        bigquery_dataset_id: nil,
+        user_id: source.user_id,
+        system_source: false
+      }
     end
   end
 

@@ -15,40 +15,33 @@ defmodule Logflare.Utils do
 
   @doc """
   Checks if a feature flag is enabled.
-  If SDK key is not set, will always return false.
+
+  Resolution order: ConfigCat when an SDK key is set, otherwise the
+  `:feature_flag_override` map. Flags absent from both default to disabled.
 
   ### Example
     iex> flag("my-feature")
-    true
+    false
   """
+  @spec flag(String.t(), nil | String.t() | User.t()) :: boolean()
   def flag(feature, identifier \\ nil) when is_non_empty_binary(feature) do
     config_cat_key = Application.get_env(:logflare, :config_cat_sdk_key)
+    overrides = Application.get_env(:logflare, :feature_flag_override) || %{}
 
-    overrides =
-      Application.get_env(:logflare, :feature_flag_override) ||
-        %{}
+    if config_cat_key != nil do
+      case identifier do
+        nil ->
+          ConfigCat.get_value(feature, false)
 
-    test_env? = Application.get_env(:logflare, :env) == :test
+        identifier when is_binary(identifier) ->
+          cached_flag_value_pct_of_identifiers(feature, identifier)
 
-    cond do
-      test_env? ->
-        true
-
-      config_cat_key != nil ->
-        case identifier do
-          nil ->
-            ConfigCat.get_value(feature, false)
-
-          identifier when is_binary(identifier) ->
-            cached_flag_value_pct_of_identifiers(feature, identifier)
-
-          %User{} = user ->
-            user_obj = ConfigCat.User.new(user.email)
-            ConfigCat.get_value(feature, false, user_obj)
-        end
-
-      true ->
-        Map.get(overrides, feature, "false") in ["true", true]
+        %User{} = user ->
+          user_obj = ConfigCat.User.new(user.email)
+          ConfigCat.get_value(feature, false, user_obj)
+      end
+    else
+      Map.get(overrides, feature, "false") in ["true", true]
     end
   end
 

@@ -15,8 +15,6 @@ defmodule Logflare.Utils.FlagTest do
   alias Logflare.User
   alias Logflare.Utils
 
-  require TestUtils
-
   setup do
     start_supervised!(ConfigCatCache)
 
@@ -73,18 +71,15 @@ defmodule Logflare.Utils.FlagTest do
     end
   end
 
-  describe "flag/2 without ConfigCat SDK key (non-test env)" do
-    TestUtils.restore_feature_flag_overrides_on_exit(setup: true)
+  describe "flag/2 without ConfigCat SDK key" do
+    setup {TestUtils, :restore_feature_flag_overrides}
 
     setup do
-      prev_env = Application.get_env(:logflare, :env)
       prev_sdk_key = Application.get_env(:logflare, :config_cat_sdk_key)
-
-      Application.put_env(:logflare, :env, :prod)
       Application.delete_env(:logflare, :config_cat_sdk_key)
+      Application.delete_env(:logflare, :feature_flag_override)
 
       on_exit(fn ->
-        Application.put_env(:logflare, :env, prev_env)
         Application.put_env(:logflare, :config_cat_sdk_key, prev_sdk_key)
       end)
 
@@ -121,13 +116,15 @@ defmodule Logflare.Utils.FlagTest do
     end
   end
 
-  describe "flag/2 without ConfigCat SDK key (:test env)" do
+  describe "flag/2 env independence" do
+    setup {TestUtils, :restore_feature_flag_overrides}
+
     setup do
       prev_env = Application.get_env(:logflare, :env)
       prev_sdk_key = Application.get_env(:logflare, :config_cat_sdk_key)
 
-      Application.put_env(:logflare, :env, :test)
       Application.delete_env(:logflare, :config_cat_sdk_key)
+      Application.put_env(:logflare, :feature_flag_override, %{"any_feature" => "true"})
 
       on_exit(fn ->
         Application.put_env(:logflare, :env, prev_env)
@@ -137,13 +134,15 @@ defmodule Logflare.Utils.FlagTest do
       :ok
     end
 
-    test "enables arbitrary features without SDK or overrides" do
-      user = %User{email: "test@example.com"}
+    test "resolves from overrides regardless of :env" do
+      for env <- [:test, :dev, :prod] do
+        Application.put_env(:logflare, :env, env)
 
-      assert Utils.flag("any_feature") == true
-      assert Utils.flag("any_feature", "some-id") == true
-      assert Utils.flag("any_feature", user) == true
-      assert Utils.flag("BigqueryStorageWriteApi") == true
+        assert Utils.flag("any_feature") == true
+        assert Utils.flag("any_feature", "some-id") == true
+        assert Utils.flag("any_feature", %User{email: "test@example.com"}) == true
+        assert Utils.flag("BigqueryStorageWriteApi") == false
+      end
     end
   end
 

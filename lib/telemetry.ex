@@ -206,6 +206,14 @@ defmodule Logflare.Telemetry do
         tags: [:backend_type],
         description: "Sum of batch sizes for broadway pipeline by backend type"
       ),
+      counter("logflare.backends.bigquery.pipeline.handle_batch.batch_size",
+        event_name: [:logflare, :backends, :pipeline, :handle_batch],
+        measurement: :batch_size,
+        tags: [:insert_method, :insert_method_source],
+        keep: &bigquery_batch?/1,
+        description:
+          "Count of BigQuery batches by insert method and by what decided it (column or flag)"
+      ),
       distribution("logflare.backends.clickhouse.pipeline.handle_batch.batch_size",
         event_name: [:logflare, :backends, :pipeline, :handle_batch],
         measurement: :batch_size,
@@ -630,6 +638,9 @@ defmodule Logflare.Telemetry do
     |> inspect()
     |> String.replace(@number_suffix_regex, "")
   end
+
+  defp bigquery_batch?(%{backend_type: :bigquery, insert_method: _}), do: true
+  defp bigquery_batch?(_metadata), do: false
 
   defp clickhouse_batch?(%{backend_type: :clickhouse}), do: true
   defp clickhouse_batch?(_metadata), do: false
