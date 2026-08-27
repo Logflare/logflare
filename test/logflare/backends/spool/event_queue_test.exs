@@ -93,6 +93,44 @@ defmodule Logflare.Backends.Spool.EventQueueTest do
     assert chunk.byte_size == expected
   end
 
+  test "a chunk's event_count matches the number of events pushed" do
+    {:ok, _ref} = EventQueue.push([event(), event(), event()])
+    assert [chunk] = EventQueue.pop(1)
+    assert chunk.event_count == 3
+  end
+
+  describe "get_events/1 and delete_events/1" do
+    test "get_events/1 resolves the pushed events by the pointer's ref" do
+      one = event(%{"i" => 1})
+      two = event(%{"i" => 2})
+      {:ok, ref} = EventQueue.push([one, two])
+
+      assert EventQueue.get_events(ref) == [one, two]
+    end
+
+    test "get_events/1 returns [] for an unknown or already-deleted ref" do
+      assert EventQueue.get_events(make_ref()) == []
+    end
+
+    test "delete_events/1 removes the body; a later get_events/1 returns []" do
+      {:ok, ref} = EventQueue.push([event()])
+      assert EventQueue.get_events(ref) != []
+
+      :ok = EventQueue.delete_events(ref)
+
+      assert EventQueue.get_events(ref) == []
+    end
+
+    test "requeue/1 does not delete the body — it's still resolvable after a retry" do
+      {:ok, ref} = EventQueue.push([event()])
+      [chunk] = EventQueue.pop(1)
+
+      :ok = EventQueue.requeue(chunk)
+
+      assert EventQueue.get_events(ref) != []
+    end
+  end
+
   test "pop/1 claims chunks oldest-first and removes them from the queue" do
     {:ok, ref1} = EventQueue.push([event()])
     {:ok, ref2} = EventQueue.push([event()])
@@ -105,10 +143,11 @@ defmodule Logflare.Backends.Spool.EventQueueTest do
 
   test "pop/1 never splits a chunk's events across two pops" do
     events = for i <- 1..5, do: event(%{"i" => i})
-    {:ok, _ref} = EventQueue.push(events)
+    {:ok, ref} = EventQueue.push(events)
 
     assert [chunk] = EventQueue.pop(1)
-    assert length(chunk.events) == 5
+    assert chunk.event_count == 5
+    assert EventQueue.get_events(ref) == events
   end
 
   test "pop/1 returns fewer than requested when the queue is short" do

@@ -7,17 +7,22 @@ defmodule Logflare.Backends.Spool.EventQueue do
   fate (durably uploaded + queue-notified, or failed) always maps back to
   exactly one caller to reply to.
 
-  This intentionally does not reuse `Logflare.Backends.IngestEventQueue`:
-  spool doesn't need per-event dedup, round-robin distribution across
-  multiple producer instances, or fine-grained per-event claiming — a chunk
-  is claimed and acked as a whole, and there is exactly one spool producer
-  pipeline per node, so a single global table is enough.
+  Storage mirrors `Logflare.Backends.IngestEventQueue`'s pointer/generation-store
+  split, for the same reason: `pop/1` only ever hands out a lightweight `Chunk`
+  pointer (see its moduledoc), never the event bodies, so nothing gets copied
+  through Broadway's stage hops until `get_events/1` resolves it exactly once, in
+  `Spool.ProducerPipeline.handle_batch/4`. Unlike `IngestEventQueue`, spool doesn't
+  need per-event dedup, round-robin distribution across multiple producer
+  instances, or fine-grained per-event claiming — a chunk is claimed and acked as a
+  whole, and there is exactly one spool producer pipeline per node, so two plain
+  global tables (no generation rotation) are enough.
   """
 
   alias Logflare.Backends.Spool.EventQueue.Chunk
   alias Logflare.LogEvent
 
   @table __MODULE__
+  @bodies __MODULE__.Bodies
   @default_ack_timeout 15_000
 
   @spec init_table() :: :ok
@@ -27,6 +32,16 @@ defmodule Logflare.Backends.Spool.EventQueue do
         :named_table,
         :public,
         :ordered_set,
+        write_concurrency: true,
+        read_concurrency: true
+      ])
+    end
+
+    if :ets.whereis(@bodies) == :undefined do
+      :ets.new(@bodies, [
+        :named_table,
+        :public,
+        :set,
         write_concurrency: true,
         read_concurrency: true
       ])
@@ -80,16 +95,45 @@ defmodule Logflare.Backends.Spool.EventQueue do
   defp enqueue(events, caller_pid) do
     ref = make_ref()
 
-    chunk = %Chunk{
+    :ets.insert(@bodies, {ref, events})
+
+    pointer = %Chunk{
       ref: ref,
       caller_pid: caller_pid,
-      events: events,
       byte_size: chunk_byte_size(events),
+      event_count: length(events),
       retries: 0
     }
 
-    :ets.insert(@table, {:erlang.unique_integer([:monotonic]), chunk})
+    :ets.insert(@table, {:erlang.unique_integer([:monotonic]), pointer})
     {:ok, ref}
+  end
+
+  @doc """
+  Resolves a chunk pointer's event bodies — a single `:ets.lookup_element/4`,
+  same as `IngestEventQueue.lookup_event/2`. Called exactly once per chunk, by
+  `Spool.ProducerPipeline.handle_batch/4` right before encoding. Returns `[]` if
+  the chunk was already finalized (see `delete_events/1`) — shouldn't happen in
+  practice, since a chunk's body is only deleted after its pointer's terminal
+  ack, but treated as a miss rather than a crash for the same reason
+  `IngestEventQueue.lookup_event/2` is.
+  """
+  @spec get_events(reference()) :: [LogEvent.t()]
+  def get_events(ref) do
+    :ets.lookup_element(@bodies, ref, 2, [])
+  end
+
+  @doc """
+  Deletes a chunk's event bodies once its pointer has reached a terminal state
+  (acked successfully, or exhausted its retries) — see
+  `Spool.ProducerPipeline.reply/2`, the only caller. Must not be called for a
+  chunk that's only being requeued for retry (see `requeue/1`); the body has to
+  stay put for the next attempt's `get_events/1`.
+  """
+  @spec delete_events(reference()) :: :ok
+  def delete_events(ref) do
+    :ets.delete(@bodies, ref)
+    :ok
   end
 
   @doc """

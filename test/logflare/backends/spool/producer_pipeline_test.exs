@@ -29,7 +29,21 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
       end
     end)
 
+    EventQueue.init_table()
+    drain_event_queue()
+
     :ok
+  end
+
+  defp drain_event_queue do
+    case EventQueue.pop(1_000) do
+      [] ->
+        :ok
+
+      chunks ->
+        Enum.each(chunks, &EventQueue.delete_events(&1.ref))
+        drain_event_queue()
+    end
   end
 
   defp log_event(body \\ %{"message" => "hello"}, via_rule_id \\ nil) do
@@ -45,27 +59,39 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
     }
   end
 
-  # A synthetic message carrying a chunk of `event_count` dummy events and an
-  # explicit `byte_size` — used by the splitter tests below, which only care about
-  # the accounting numbers, not real event content or upload behavior.
+  # A synthetic message carrying a chunk pointer with an explicit `byte_size` and
+  # `event_count` — used by the splitter tests below, which only read those two
+  # fields directly off the pointer (see Chunk's moduledoc) and never resolve the
+  # body, so there's no need to push anything into EventQueue here.
   defp sized_message(byte_size, event_count \\ 1) do
     %{
       data: %Chunk{
         ref: make_ref(),
         caller_pid: nil,
-        events: List.duplicate(log_event(), event_count),
         byte_size: byte_size,
+        event_count: event_count,
         retries: 0
       }
     }
   end
 
+  # Pushes `events` into EventQueue for real, so handle_batch/4's
+  # EventQueue.get_events/1 resolves them exactly as it would for a real chunk —
+  # then wraps the returned ref in our own pointer struct so tests can still
+  # override caller_pid/retries/in_flight_ref for ack/retry scenarios. The push
+  # also inserts a pointer row into the pending table that we don't want (we're
+  # building our own pointer below, never popped from there) — immediately pop
+  # and discard it so EventQueue.count()/pop/1 assertions only ever see pointers
+  # tests or ack/3 explicitly put there (e.g. via requeue/1).
   defp chunk_message(events, opts \\ []) do
+    {:ok, ref} = EventQueue.push(events, Keyword.get(opts, :caller_pid))
+    EventQueue.pop(1)
+
     chunk = %Chunk{
-      ref: Keyword.get(opts, :ref, make_ref()),
+      ref: ref,
       caller_pid: Keyword.get(opts, :caller_pid),
-      events: events,
       byte_size: Keyword.get(opts, :byte_size, 0),
+      event_count: length(events),
       retries: Keyword.get(opts, :retries, 0)
     }
 

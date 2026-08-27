@@ -85,7 +85,7 @@ defmodule Logflare.Backends.Spool.ChunkProducer do
     total_demand = prev_demand + new_demand
     {chunks, capped?} = fetch(state, total_demand)
 
-    event_count = Enum.reduce(chunks, 0, fn chunk, acc -> acc + length(chunk.events) end)
+    event_count = Enum.reduce(chunks, 0, fn chunk, acc -> acc + chunk.event_count end)
     if event_count > 0, do: :atomics.add(state.in_flight_ref, 1, event_count)
 
     remaining_demand = max(total_demand - length(chunks), 0)

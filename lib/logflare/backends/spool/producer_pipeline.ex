@@ -107,16 +107,19 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
         :ok
 
       {ref, msgs} ->
-        event_count = Enum.reduce(msgs, 0, fn msg, acc -> acc + length(msg.data.events) end)
+        event_count = Enum.reduce(msgs, 0, fn msg, acc -> acc + msg.data.event_count end)
         :atomics.sub(ref, 1, event_count)
     end)
   end
 
+  # The only place a chunk's event bodies get deleted — see EventQueue.delete_events/1.
+  # Called for every terminal disposition (success here, exhausted-retries in
+  # maybe_requeue_failed/1) and nowhere else: a chunk still eligible for retry keeps
+  # its body around for the next attempt's handle_batch/4 lookup.
   @spec reply(Chunk.t(), :ok | {:error, term()}) :: :ok
-  defp reply(%Chunk{caller_pid: nil}, _result), do: :ok
-
-  defp reply(%Chunk{caller_pid: pid, ref: ref}, result) do
-    send(pid, {ref, result})
+  defp reply(%Chunk{ref: ref, caller_pid: caller_pid}, result) do
+    EventQueue.delete_events(ref)
+    if caller_pid, do: send(caller_pid, {ref, result})
     :ok
   end
 
@@ -184,9 +187,14 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     # EventQueue's moduledoc), not one event, so it undercounts whenever a chunk
     # holds more than one event. Every telemetry measurement below counts actual
     # events instead, matching what dashboard_live.ex and friends expect "batch_size"
-    # to mean.
-    events = Enum.flat_map(messages, fn %{data: %Chunk{events: events}} -> events end)
-    event_count = length(events)
+    # to mean. event_count comes straight off each pointer (no body lookup needed);
+    # the bodies themselves are resolved via EventQueue.get_events/1 immediately
+    # below, exactly once, right where they're needed for encoding — see Chunk's
+    # moduledoc for why the pointer doesn't carry them directly.
+    event_count = Enum.reduce(messages, 0, fn %{data: %Chunk{event_count: n}}, acc -> acc + n end)
+
+    events =
+      Enum.flat_map(messages, fn %{data: %Chunk{ref: ref}} -> EventQueue.get_events(ref) end)
 
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
@@ -265,7 +273,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
   end
 
   defp message_size(%{data: %Chunk{byte_size: byte_size}}), do: byte_size
-  defp message_event_count(%{data: %Chunk{events: events}}), do: length(events)
+  defp message_event_count(%{data: %Chunk{event_count: event_count}}), do: event_count
 
   @spec continue_or_emit(Message.t(), non_neg_integer(), non_neg_integer()) ::
           {:emit | :cont, {non_neg_integer(), non_neg_integer() | :pending}}

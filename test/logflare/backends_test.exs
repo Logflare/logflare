@@ -1992,7 +1992,7 @@ defmodule Logflare.BackendsTest do
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
 
       assert [chunk] = EventQueue.pop(1_000)
-      assert length(chunk.events) == 1
+      assert chunk.event_count == 1
     end
 
     test "does not block when blocking_ingest is unset, even with everything else gating true",
@@ -2023,7 +2023,7 @@ defmodule Logflare.BackendsTest do
       task = Task.async(fn -> Backends.ingest_logs(params, source, nil, true) end)
 
       assert [chunk] = wait_for_chunk()
-      assert length(chunk.events) == 1
+      assert chunk.event_count == 1
       send(chunk.caller_pid, {chunk.ref, :ok})
 
       assert {:ok, 1} = Task.await(task)
