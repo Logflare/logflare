@@ -165,7 +165,7 @@ The configuration follows the [Erlang Security Working Group recommendations](ht
 
 ## Read Replicas
 
-`LOGFLARE_READ_REPLICAS` is a comma-separated list of PostgreSQL read replicas to distribute some context cache queries across. If unset or empty, all queries go to the primary database.
+`LOGFLARE_READ_REPLICAS` is a comma-separated list of PostgreSQL read replicas to distribute some ingest-path data fetching queries across. If unset or empty, all queries go to the primary database.
 
 Each entry is either a **bare hostname** or a **connection URI** (`postgres://user:pass@host:port/database?ssl=true&pool_size=5`). In both cases, only the parts given override the primary's `DB_*` settings - anything omitted (port, database, credentials, SSL, ...) is inherited from the primary. Query params: `ssl` (`true`/`false`), `pool_size` (positive integer).
 
