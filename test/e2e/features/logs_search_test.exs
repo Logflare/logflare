@@ -76,7 +76,7 @@ defmodule E2e.Features.LogsSearchTest do
       |> visit(~p"/auth/login/single_tenant")
       |> assert_path(~p"/dashboard")
       |> visit(
-        ~p"/sources/#{source.id}/search?#{%{querystring: ~s|event_message:~\"^#{pagination_message}-\"|}}"
+        ~p"/sources/#{source.id}/search?#{%{querystring: ~s|event_message:~\"^#{pagination_message}-\"|, tailing?: false}}"
       )
       |> assert_has("#logs-list li[data-event-id]", count: 100)
       |> click("#load-more-events-top")
