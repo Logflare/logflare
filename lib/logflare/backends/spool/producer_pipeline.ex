@@ -23,13 +23,8 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
   @max_spool_file_size 32 * 1024 * 1024
   @early_flush_file_size 12 * 1024 * 1024
   @default_max_retries 0
-
   @processor_concurrency 6
   @producer_concurrency 1
-  # Generous safety valve (2x total batcher capacity), not a fine-grained flow-control
-  # knob — see ChunkProducer's in-flight cap. Should never engage during
-  # healthy operation; only caps genuinely runaway backlog.
-  @max_in_flight 2 * @max_batch_size * @batcher_concurrency
 
   @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
   def start_link(args) do
@@ -44,22 +39,24 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     {storage_mod, queue_mod} = resolve_mods(spool_config)
     queue_ref = resolve_queue_ref(spool_config, queue_mod)
 
-    batch_concurrency =
+    batcher_concurrency =
       Keyword.get(spool_config, :producer_concurrency, max(System.schedulers_online(), 4))
+
+    max_in_flight  = 2 * @max_batch_size * batcher_concurrency
 
     Broadway.start_link(__MODULE__,
       name: name,
       hibernate_after: 5_000,
       spawn_opt: [fullsweep_after: 10],
       producer: [
-        module: {ChunkProducer, [max_in_flight: @max_in_flight]},
+        module: {ChunkProducer, [max_in_flight: max_in_flight]},
         transformer: {__MODULE__, :transform, []},
         concurrency: @producer_concurrency
       ],
       processors: [default: [concurrency: @processor_concurrency, max_demand: 1_000]],
       batchers: [
         spool: [
-          concurrency: batch_concurrency,
+          concurrency: batcher_concurrency,
           batch_size: spool_batch_size_splitter(),
           batch_timeout: batch_timeout,
           max_demand: @max_batch_size
