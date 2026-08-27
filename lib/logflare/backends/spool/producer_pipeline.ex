@@ -42,7 +42,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     batcher_concurrency =
       Keyword.get(spool_config, :producer_concurrency, max(System.schedulers_online(), 4))
 
-    max_in_flight  = 2 * @max_batch_size * batcher_concurrency
+    max_in_flight = 2 * @max_batch_size * batcher_concurrency
 
     Broadway.start_link(__MODULE__,
       name: name,
