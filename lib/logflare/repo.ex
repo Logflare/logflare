@@ -32,17 +32,6 @@ defmodule Logflare.Repo do
   end
 
   @doc """
-  Applies the given MFA using a randomly selected repo (primary or read replica).
-  """
-  @spec apply_with_random_repo(module(), atom(), list()) :: term()
-  def apply_with_random_repo(m, f, a) do
-    [__MODULE__ | Application.fetch_env!(:logflare, :read_replicas)]
-    |> Enum.random()
-    |> resolve_repo()
-    |> with_dynamic_repo(fn -> apply(m, f, a) end)
-  end
-
-  @doc """
   Applies the given MFA on a randomly selected read replica when replicas are
   configured. Always uses a replica when any are set; falls back to the primary
   repo only when no replicas are configured.

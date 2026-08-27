@@ -16,8 +16,8 @@ defmodule Logflare.Repo.Replicas do
   Replica pools are identified by a key derived from the entry that never
   contains credentials, so it is safe to include in log or error messages.
   Callers can temporarily redirect Ecto queries to a replica for the duration of
-  a function call using `apply_with_replica/3` / `apply_with_random_repo/3` on
-  `Logflare.Repo`, which swap the dynamic repo and restore it afterwards.
+  a function call using `apply_with_replica/3` on `Logflare.Repo`, which swaps
+  the dynamic repo and restores it afterwards.
   """
 
   @registry __MODULE__.Registry
