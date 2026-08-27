@@ -1,0 +1,231 @@
+suite: test deployment kind
+templates:
+  - deployment.yaml
+  - configmap.yaml
+  - vm-args-configmap.yaml
+tests:
+  - it: should render the correct deployment Kind
+    asserts:
+      - equal:
+          path: kind
+          value: Deployment
+        template: deployment.yaml
+
+  - it: should reference the chart's ConfigMap via envFrom by default
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[0].configMapRef.name
+          value: RELEASE-NAME-logflare
+        template: deployment.yaml
+      - notExists:
+          path: spec.template.spec.containers[0].envFrom[1]
+        template: deployment.yaml
+
+  - it: should reference no Secrets via envFrom by default
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[0].configMapRef.name
+          value: RELEASE-NAME-logflare
+        template: deployment.yaml
+      - notExists:
+          path: spec.template.spec.containers[0].envFrom[1]
+        template: deployment.yaml
+
+  - it: should reference each Secret in logflare.secretRefs via envFrom
+    set:
+      logflare.secretRefs:
+        - logflare-secrets
+        - logflare-db-secret
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[0].configMapRef.name
+          value: RELEASE-NAME-logflare
+        template: deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[1].secretRef.name
+          value: logflare-secrets
+        template: deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[2].secretRef.name
+          value: logflare-db-secret
+        template: deployment.yaml
+
+  - it: should always render checksum/config annotation
+    asserts:
+      - isNotNull:
+          path: spec.template.metadata.annotations["checksum/config"]
+        template: deployment.yaml
+      - notExists:
+          path: spec.template.metadata.annotations["checksum/secret"]
+        template: deployment.yaml
+
+  - it: should inject LOGFLARE_NODE_HOST from the pod IP by default
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[0].name
+          value: LOGFLARE_NODE_HOST
+        template: deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[0].valueFrom.fieldRef.fieldPath
+          value: status.podIP
+        template: deployment.yaml
+
+  - it: should use an explicit LOGFLARE_NODE_HOST when set
+    set:
+      logflare.nodeHost: "my-host"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[0].name
+          value: LOGFLARE_NODE_HOST
+        template: deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[0].value
+          value: "my-host"
+        template: deployment.yaml
+
+  - it: should expose http and grpc container ports
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 4000
+        template: deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].ports[1].containerPort
+          value: 50051
+        template: deployment.yaml
+
+  - it: should not mount cert files or set cert paths by default
+    asserts:
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: cert-files
+          any: true
+        template: deployment.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: cert-files
+          any: true
+        template: deployment.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DB_SSL_CA_CERT_PATH
+            value: /etc/logflare/certs/db-server-ca.pem
+        template: deployment.yaml
+
+  - it: should mount the cert files Secret and point cert paths at it when set
+    set:
+      logflare.certFilesSecret: logflare-cert-files
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: cert-files
+            secret:
+              secretName: logflare-cert-files
+        template: deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: cert-files
+            mountPath: /etc/logflare/certs
+            readOnly: true
+        template: deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DB_SSL_CA_CERT_PATH
+            value: /etc/logflare/certs/db-server-ca.pem
+        template: deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: LOGFLARE_TLS_CERT_PATH
+            value: /etc/logflare/certs/cert.pem
+        template: deployment.yaml
+
+  - it: should set no Deployment annotations by default
+    asserts:
+      - notExists:
+          path: metadata.annotations
+        template: deployment.yaml
+
+  - it: should render deploymentAnnotations on the Deployment when set
+    set:
+      deploymentAnnotations:
+        reloader.stakater.com/auto: "true"
+    asserts:
+      - equal:
+          path: metadata.annotations["reloader.stakater.com/auto"]
+          value: "true"
+        template: deployment.yaml
+
+  - it: should not render initContainers by default
+    asserts:
+      - notExists:
+          path: spec.template.spec.initContainers
+        template: deployment.yaml
+
+  - it: should render initContainers when set
+    set:
+      initContainers:
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
+          args: ["--structured-logs", "my-project:my-region:my-instance"]
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers
+          content:
+            name: cloud-sql-proxy
+            image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
+            args: ["--structured-logs", "my-project:my-region:my-instance"]
+        template: deployment.yaml
+
+  - it: should not render topologySpreadConstraints by default
+    asserts:
+      - notExists:
+          path: spec.template.spec.topologySpreadConstraints
+        template: deployment.yaml
+
+  - it: should render topologySpreadConstraints when set
+    set:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: logflare
+    asserts:
+      - contains:
+          path: spec.template.spec.topologySpreadConstraints
+          content:
+            maxSkew: 1
+            topologyKey: topology.kubernetes.io/zone
+            whenUnsatisfiable: DoNotSchedule
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: logflare
+        template: deployment.yaml
+
+  - it: should append extraEnv after the env vars the chart sets
+    set:
+      extraEnv:
+        - name: POD_TEMPLATE_HASH
+          valueFrom:
+            fieldRef:
+              fieldPath: "metadata.labels['rollouts-pod-template-hash']"
+        - name: RELEASE_COOKIE
+          value: "mycluster-$(POD_TEMPLATE_HASH)"
+    asserts:
+      # Last two entries, so $(VAR) expansion can reference everything the chart sets.
+      - equal:
+          path: spec.template.spec.containers[0].env[-2].valueFrom.fieldRef.fieldPath
+          value: "metadata.labels['rollouts-pod-template-hash']"
+        template: deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[-1].value
+          value: "mycluster-$(POD_TEMPLATE_HASH)"
+        template: deployment.yaml
