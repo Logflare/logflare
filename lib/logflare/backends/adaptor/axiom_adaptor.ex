@@ -63,6 +63,11 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptor do
   end
 
   @impl Adaptor
+  def sanitize_config_for_display(config) do
+    Adaptor.mask_config_values(config, [:domain, :dataset_name])
+  end
+
+  @impl Adaptor
   def test_connection(%Backend{} = backend) do
     case HttpBased.Client.send_events(__MODULE__, [], backend) do
       {:ok, %Tesla.Env{status: 200}} -> :ok

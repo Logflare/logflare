@@ -14,6 +14,8 @@ defmodule Logflare.Backends.Adaptor do
   alias Logflare.LogEvent
   alias Logflare.Sources.Source
 
+  @config_display_mask "**********"
+
   @type t :: module()
   @type query :: EndpointQuery.t() | Ecto.Query.t() | String.t() | {String.t(), [term()]}
   @type source_backend :: {Source.t(), Backend.t()}
@@ -129,6 +131,39 @@ defmodule Logflare.Backends.Adaptor do
     end
 
     :ok
+  end
+
+  @doc """
+  Sanitizes a backend's configuration for display in the UI.
+
+  Delegates to the adaptor's optional `c:sanitize_config_for_display/1` callback.
+  Masks every config value when the adaptor does not implement the callback.
+  """
+  @spec sanitize_config_for_display(Backend.t()) :: map()
+  def sanitize_config_for_display(%Backend{config: config} = backend) when is_map(config) do
+    adaptor = get_adaptor(backend)
+
+    if function_exported?(adaptor, :sanitize_config_for_display, 1) do
+      adaptor.sanitize_config_for_display(config)
+    else
+      mask_config_values(config, [])
+    end
+  end
+
+  def sanitize_config_for_display(%Backend{}), do: %{}
+
+  @doc """
+  Masks all values in a config map except those under the given allowed keys.
+  """
+  @spec mask_config_values(map(), [atom()]) :: map()
+  def mask_config_values(config, allowed_keys) when is_map(config) and is_list(allowed_keys) do
+    Map.new(config, fn {key, value} ->
+      if key in allowed_keys do
+        {key, value}
+      else
+        {key, @config_display_mask}
+      end
+    end)
   end
 
   @doc """
@@ -289,6 +324,17 @@ defmodule Logflare.Backends.Adaptor do
   """
   @callback redact_config(config :: map()) :: map()
 
+  @doc """
+  Optional callback to sanitize a given adaptor's configuration for display in the UI.
+
+  Receives the backend config with atom keys and returns a map safe to render,
+  masking or transforming sensitive values. Use `mask_config_values/2` for the
+  common case of masking all values except an allowed set of keys.
+
+  When not implemented, every config value is masked for display.
+  """
+  @callback sanitize_config_for_display(config :: map()) :: map()
+
   @optional_callbacks ecto_to_sql: 2,
                       format_batch: 1,
                       format_batch: 2,
@@ -301,5 +347,6 @@ defmodule Logflare.Backends.Adaptor do
                       supports_default_ingest?: 0,
                       consolidated_ingest?: 0,
                       on_backend_config_changed: 1,
-                      on_backend_deleted: 1
+                      on_backend_deleted: 1,
+                      sanitize_config_for_display: 1
 end

@@ -98,6 +98,11 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
     |> redact_config_field(:cipher_key)
   end
 
+  @impl Logflare.Backends.Adaptor
+  def sanitize_config_for_display(config) do
+    Logflare.Backends.Adaptor.mask_config_values(config, [:tls, :host, :port, :max_message_bytes])
+  end
+
   defp redact_config_field(config, field) do
     if Map.has_key?(config, field) do
       Map.replace!(config, field, "REDACTED")

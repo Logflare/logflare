@@ -134,6 +134,11 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
+  def sanitize_config_for_display(config) do
+    Logflare.Backends.Adaptor.mask_config_values(config, [:url])
+  end
+
+  @impl Logflare.Backends.Adaptor
   @spec test_connection(Backend.t()) :: :ok | {:error, term()}
   def test_connection(%Backend{} = backend) do
     backend = %{backend | config: transform_config(backend)}

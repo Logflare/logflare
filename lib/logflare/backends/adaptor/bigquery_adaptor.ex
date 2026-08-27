@@ -273,6 +273,11 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @impl Logflare.Backends.Adaptor
   def redact_config(config), do: config
 
+  @impl Logflare.Backends.Adaptor
+  def sanitize_config_for_display(config) do
+    Logflare.Backends.Adaptor.mask_config_values(config, [:project_id, :dataset_id])
+  end
+
   @doc """
   Returns the email of a managed service account
 

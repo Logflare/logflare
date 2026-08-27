@@ -80,6 +80,11 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
     Map.update!(config, :headers, &redact_headers/1)
   end
 
+  @impl Adaptor
+  def sanitize_config_for_display(config) do
+    Adaptor.mask_config_values(config, [:endpoint, :protocol, :gzip, :flatten_to_attributes])
+  end
+
   defp redact_headers(headers) do
     for {k, v} <- headers, into: %{}, do: redact_header(k, v)
   end

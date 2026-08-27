@@ -182,6 +182,13 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     |> Map.update(:url, nil, &redact_url_userinfo/1)
   end
 
+  @impl Logflare.Backends.Adaptor
+  def sanitize_config_for_display(config) do
+    config
+    |> Logflare.Backends.Adaptor.mask_config_values([:url, :http, :gzip])
+    |> Map.update(:url, nil, &redact_url_userinfo/1)
+  end
+
   defp redact_headers(nil), do: %{}
 
   defp redact_headers(headers) do

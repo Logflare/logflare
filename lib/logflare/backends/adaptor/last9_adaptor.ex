@@ -64,6 +64,11 @@ defmodule Logflare.Backends.Adaptor.Last9Adaptor do
   end
 
   @impl Adaptor
+  def sanitize_config_for_display(config) do
+    Adaptor.mask_config_values(config, [:region])
+  end
+
+  @impl Adaptor
   def test_connection(args) do
     OtlpAdaptor.Common.test_connection(__MODULE__, args)
   end

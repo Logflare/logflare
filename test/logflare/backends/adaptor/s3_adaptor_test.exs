@@ -167,6 +167,26 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
     end
   end
 
+  describe "sanitize_config_for_display/1" do
+    test "masks access keys while preserving displayable keys" do
+      config = %{
+        access_key_id: "AKIA123",
+        secret_access_key: "secret-key-123",
+        s3_bucket: "my-bucket",
+        storage_region: "us-east-1",
+        batch_timeout: 5000
+      }
+
+      assert %{
+               access_key_id: "**********",
+               secret_access_key: "**********",
+               s3_bucket: "my-bucket",
+               storage_region: "us-east-1",
+               batch_timeout: 5000
+             } == S3Adaptor.sanitize_config_for_display(config)
+    end
+  end
+
   describe "redact_config/1" do
     test "redacts secret_access_key when present" do
       config = %{secret_access_key: "secret-key-123", bucket_name: "my-bucket"}

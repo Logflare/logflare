@@ -187,10 +187,19 @@ defmodule LogflareWeb.BackendsLiveTest do
       user: user,
       source: source
     } do
-      backend = insert(:backend, sources: [source], user: user)
+      backend =
+        insert(:backend,
+          type: :datadog,
+          sources: [source],
+          user: user,
+          config: %{api_key: "some-secret-key", region: "US1"}
+        )
+
       {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
       html = render(view)
-      assert html =~ "&quot;dataset_id&quot;: &quot;**********&quot;"
+      assert html =~ "&quot;api_key&quot;: &quot;**********&quot;"
+      assert html =~ "&quot;region&quot;: &quot;US1&quot;"
+      refute html =~ "some-secret-key"
     end
 
     test "render backend with metadata", %{conn: conn, source: source, user: user} do

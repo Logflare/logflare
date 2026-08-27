@@ -50,6 +50,11 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
+  def sanitize_config_for_display(config) do
+    Logflare.Backends.Adaptor.mask_config_values(config, [:url])
+  end
+
+  @impl Logflare.Backends.Adaptor
   def cast_config(params, existing_config \\ %{}) do
     {existing_config, %{url: :string, username: :string, password: :string}}
     |> Ecto.Changeset.cast(params, [:username, :password, :url])
