@@ -287,10 +287,15 @@ livenessProbe:
   httpGet:
     path: /health
     port: http
+# `/ready` runs the same checks as `/health`, and additionally fails as soon as SIGTERM starts
+# the shutdown grace period, so a draining pod leaves the Service endpoints instead of taking
+# new traffic. Logflare drains for 15 seconds, so detection has to land well inside that.
 readinessProbe:
   httpGet:
-    path: /health
+    path: /ready
     port: http
+  periodSeconds: 5
+  failureThreshold: 2
 # Guards against liveness/readiness killing the pod mid-migration on first boot.
 startupProbe:
   httpGet:
@@ -298,6 +303,11 @@ startupProbe:
     port: http
   failureThreshold: 30
   periodSeconds: 10
+
+# Budget for readiness detection, then the 15 second drain, then a BEAM shutdown that flushes
+# the ingest pipelines. The kubelet SIGKILLs anything still running when this expires, which
+# drops buffered events, so the Kubernetes default of 30 leaves too little headroom.
+terminationGracePeriodSeconds: 60
 
 # Argo Rollouts support. When enabled the chart renders a Rollout in place of the
 # Deployment, plus a `<fullname>-preview` Service for the incoming version. The existing

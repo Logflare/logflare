@@ -229,3 +229,54 @@ tests:
           path: spec.template.spec.containers[0].env[-1].value
           value: "mycluster-$(POD_TEMPLATE_HASH)"
         template: deployment.yaml
+
+  - it: should probe /ready for readiness and /health for liveness and startup
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /ready
+        template: deployment.yaml
+      # Liveness and startup stay on /health, so a draining pod is pulled from the Service
+      # instead of being restarted.
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /health
+        template: deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.httpGet.path
+          value: /health
+        template: deployment.yaml
+
+  - it: should detect readiness loss well inside the 15 second shutdown grace period
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.periodSeconds
+          value: 5
+        template: deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.failureThreshold
+          value: 2
+        template: deployment.yaml
+
+  - it: should omit a probe that is set to null
+    set:
+      readinessProbe: null
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].readinessProbe
+        template: deployment.yaml
+
+  - it: should give the pod a termination grace period covering drain and shutdown
+    asserts:
+      - equal:
+          path: spec.template.spec.terminationGracePeriodSeconds
+          value: 60
+        template: deployment.yaml
+
+  - it: should fall back to the Kubernetes default grace period when set to null
+    set:
+      terminationGracePeriodSeconds: null
+    asserts:
+      - notExists:
+          path: spec.template.spec.terminationGracePeriodSeconds
+        template: deployment.yaml

@@ -330,4 +330,16 @@ Or dry-run against a real cluster:
 helm install logflare ./helm -f my-values.yaml --dry-run
 ```
 
-The container's liveness and readiness probes hit `/health` on the service port (default `4000`).
+All three probes hit the service port (default `4000`).
+
+- `livenessProbe` and `startupProbe` use `/health`, which reports node health.
+- `readinessProbe` uses `/ready`, which runs the same checks and additionally
+  fails as soon as a `SIGTERM` starts Logflare's 15 second shutdown grace
+  period, so Kubernetes drops the pod from the Service while it drains.
+- Keep `readinessProbe.periodSeconds` x `readinessProbe.failureThreshold` well
+  under that grace period, and leave liveness on `/health` so a draining pod is
+  not restarted.
+- `terminationGracePeriodSeconds` covers readiness detection, the drain, and the
+  BEAM shutdown that flushes the ingest pipelines. The kubelet `SIGKILL`s
+  whatever is still running when it expires, dropping buffered events, so the
+  chart raises it to `60` from the Kubernetes default of `30`.
