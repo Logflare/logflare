@@ -91,20 +91,24 @@ defmodule LogflareWeb.QueryComponentsTest do
       assert html =~ "3.14"
     end
 
-    test "ensures table names surrounded by backticks" do
+    test "formats BigQuery table names with backticks" do
+      expected_table_name =
+        "`logflare-dev-464423.1_dev.9db56741_41ca_4fe8_8c05_051a76a4c5d6`"
+
       [
-        "SELECT t0.timestamp, t0.id FROM `logflare-dev-464423.1_dev.9db56741_41ca_4fe8_8c05_051a76a4c5d6` AS t0",
-        "SELECT t0.timestamp, t0.id FROM `logflare-dev-464423`.1_dev.9db56741_41ca_4fe8_8c05_051a76a4c5d6 AS t0"
+        "`logflare-dev-464423.1_dev.9db56741_41ca_4fe8_8c05_051a76a4c5d6`",
+        "`logflare-dev-464423`.1_dev.9db56741_41ca_4fe8_8c05_051a76a4c5d6",
+        "`logflare-dev-464423`.`1_dev`.`9db56741_41ca_4fe8_8c05_051a76a4c5d6`",
+        "`logflare-dev-464423`.1_dev.`9db56741_41ca_4fe8_8c05_051a76a4c5d6`"
       ]
-      |> Enum.each(fn sql_string ->
+      |> Enum.each(fn table_name ->
         html =
           render_component(&QueryComponents.formatted_sql/1, %{
-            sql_string: sql_string,
+            sql_string: "SELECT t0.timestamp, t0.id FROM #{table_name} AS t0",
             params: []
           })
 
-        assert html =~
-                 "`logflare-dev-464423.1_dev.9db56741_41ca_4fe8_8c05_051a76a4c5d6`"
+        assert html =~ expected_table_name
       end)
     end
   end

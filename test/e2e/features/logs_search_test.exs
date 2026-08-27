@@ -21,15 +21,28 @@ defmodule E2e.Features.LogsSearchTest do
       matching_message = "featuresearchmatch#{System.unique_integer([:positive])}"
       non_matching_message = "featuresearchmiss#{System.unique_integer([:positive])}"
 
-      bq_schema = TestUtils.build_bq_schema(%{"event_message" => matching_message})
+      bq_schema =
+        TestUtils.build_bq_schema(%{
+          "event_message" => matching_message,
+          "metadata" => %{"response" => %{"status_code" => 200}}
+        })
+
       insert(:source_schema, source: source, bigquery_schema: bq_schema)
 
       :ok = Backends.ensure_source_sup_started(source)
 
       {:ok, 2} =
         [
-          build(:log_event, source: source, message: matching_message),
-          build(:log_event, source: source, message: non_matching_message)
+          build(:log_event,
+            source: source,
+            message: matching_message,
+            metadata: %{"response" => %{"status_code" => 200}}
+          ),
+          build(:log_event,
+            source: source,
+            message: non_matching_message,
+            metadata: %{"response" => %{"status_code" => 200}}
+          )
         ]
         |> Backends.ingest_logs(source)
 
@@ -155,6 +168,57 @@ defmodule E2e.Features.LogsSearchTest do
         wait_for_editor_querystring(conn, "t::hour")
 
       assert querystring =~ "c:group_by(t::hour)"
+    end
+
+    test "clicking a rendered chart bar narrows the search datetime", %{
+      conn: conn,
+      source: source,
+      user: user,
+      matching_message: matching_message
+    } do
+      bar_selector = ~s|.recharts-bar-rectangle [height]:not([height="0"])|
+      chart_selector = ".recharts-wrapper"
+
+      assert :ok = TestUtils.wait_for_postgres_events(source, user, matching_message, 1)
+
+      conn =
+        conn
+        |> visit(~p"/auth/login/single_tenant")
+        |> assert_path(~p"/dashboard")
+        |> visit(~p"/sources/#{source.id}/search")
+        |> wait_for_selector(bar_selector)
+
+      conn
+      |> unwrap(fn %{frame_id: frame_id} ->
+        {:ok, %{"x" => x, "y" => y}} =
+          Frame.evaluate(frame_id,
+            expression: """
+            ({ barSelector, chartSelector }) => {
+              const bar = document.querySelector(barSelector).getBoundingClientRect()
+              const chart = document.querySelector(chartSelector).getBoundingClientRect()
+
+              return {
+                x: bar.left - chart.left + bar.width / 2,
+                y: bar.top - chart.top + bar.height / 2
+              }
+            }
+            """,
+            is_function: true,
+            arg: %{barSelector: bar_selector, chartSelector: chart_selector},
+            timeout: 5_000
+          )
+
+        {:ok, _} =
+          Frame.click(frame_id,
+            selector: chart_selector,
+            position: %{x: x, y: y},
+            timeout: 5_000
+          )
+      end)
+
+      querystring = wait_for_editor_querystring(conn, "..")
+
+      assert querystring =~ ~r/t:\S+\.\.\S+/
     end
   end
 
