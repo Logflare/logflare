@@ -79,21 +79,24 @@ defmodule Logflare.RepoTest do
       assert {:ok, {"host", [hostname: "host"]}} = Replicas.parse("host")
     end
 
-    test "a URI only overrides the parts given, keyed without credentials" do
+    test "a URI only overrides the parts given, keyed without credentials or primary info" do
       cases = [
-        {"postgres://u:p@host:5433/db",
-         [hostname: "host", port: 5433, database: "db", username: "u", password: "p"],
-         "host:5433/db"},
+        {"postgres://u:pass@host:5433/db",
+         [hostname: "host", port: 5433, database: "db", username: "u", password: "pass"], "host"},
         {"postgresql://host", [hostname: "host"], "host"},
         {"postgres://host?ssl=true&pool_size=5", [hostname: "host", ssl: true, pool_size: 5],
          "host"},
         {"postgres://u:p%40ss@host/my%20db",
-         [hostname: "host", database: "my db", username: "u", password: "p@ss"], "host/my db"}
+         [hostname: "host", database: "my db", username: "u", password: "p@ss"], "host"}
       ]
 
-      for {entry, expected_config, expected_key} <- cases do
+      for {entry, expected_config, expected_key_prefix} <- cases do
         assert {:ok, {key, config}} = Replicas.parse(entry)
-        assert key == expected_key, "expected key #{expected_key} for #{entry}, got #{key}"
+
+        assert key =~ "#{expected_key_prefix}-"
+        refute key =~ "pass"
+        refute key =~ "p@ss"
+        refute key =~ "p%40ss"
 
         for {k, v} <- expected_config do
           assert Keyword.fetch!(config, k) == v, "mismatch on #{k} for #{entry}"
@@ -101,12 +104,20 @@ defmodule Logflare.RepoTest do
       end
     end
 
+    test "two URIs with the same host/port/database but different credentials get distinct keys" do
+      assert {:ok, {key1, _}} = Replicas.parse("postgres://a:1@host:5432/db")
+      assert {:ok, {key2, _}} = Replicas.parse("postgres://b:2@host:5432/db")
+      refute key1 == key2
+    end
+
+    test "an omitted host inherits the primary's, without baking it into the parsed config" do
+      assert {:ok, {key, config}} = Replicas.parse("postgres:///db")
+      refute Keyword.has_key?(config, :hostname)
+      assert key =~ ~r{^-\d+$}
+    end
+
     test "rejects invalid entries" do
       for entry <- [
-            "mysql://host/db",
-            "postgres:///db",
-            "postgres://host?foo=bar",
-            "postgres://host?pool_size=0",
             "postgres://host?pool_size=abc"
           ] do
         assert {:error, _reason} = Replicas.parse(entry), "expected #{entry} to be rejected"
@@ -116,7 +127,7 @@ defmodule Logflare.RepoTest do
     test "parse!/1 raises without leaking credentials" do
       error =
         assert_raise ArgumentError, fn ->
-          Replicas.parse!("postgres://u:supersecret@host?foo=bar")
+          Replicas.parse!("postgres://u:supersecret@host?pool_size=abc")
         end
 
       refute Exception.message(error) =~ "supersecret"

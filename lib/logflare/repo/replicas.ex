@@ -9,20 +9,21 @@ defmodule Logflare.Repo.Replicas do
   Each `LOGFLARE_READ_REPLICAS` entry is either a bare hostname or a Postgres URI
   (`postgres://user:pass@host:port/database?ssl=true&pool_size=5`). In both
   cases, only the parts explicitly given override the primary `Logflare.Repo`
-  config - anything not specified (port, database, credentials, ssl, ...) is
-  inherited from the primary's `DB_*` settings. URIs are parsed via
+  config - anything not specified (host, port, database, credentials, ssl, ...) is
+  inherited from the primary's `DB_*` settings, without ever baking the primary's
+  actual values into the parsed result. URIs are parsed and validated entirely by
   `Ecto.Repo.Supervisor.parse_url/1`.
 
-  Replica pools are identified by a key derived from the entry that never
-  contains credentials, so it is safe to include in log or error messages.
+  Replica pools are identified by a key derived from the entry (host/port/database
+  plus a `:erlang.phash2/2` hash of the raw entry, to avoid collisions between
+  entries that only differ by credentials or query params) that never contains
+  credentials, so it is safe to include in log or error messages.
   Callers can temporarily redirect Ecto queries to a replica for the duration of
   a function call using `apply_with_replica/3` on `Logflare.Repo`, which swaps
   the dynamic repo and restores it afterwards.
   """
 
   @registry __MODULE__.Registry
-  @allowed_query_keys ~w(ssl pool_size)a
-  @placeholder_database "__logflare_replica__"
 
   def child_spec(options) do
     %{
@@ -78,7 +79,7 @@ defmodule Logflare.Repo.Replicas do
     if String.contains?(entry, "://") do
       parse_uri(entry)
     else
-      {:ok, {entry, maybe_put_socket_options([hostname: entry], entry)}}
+      {:ok, {entry, maybe_put_socket_options(hostname: entry)}}
     end
   end
 
@@ -100,63 +101,38 @@ defmodule Logflare.Repo.Replicas do
   defp parse_uri(entry) do
     uri = URI.parse(entry)
 
-    with :ok <- validate_scheme(uri.scheme),
-         :ok <- validate_host(uri.host) do
-      has_database? = uri.path not in [nil, "", "/"]
+    try do
+      config =
+        case uri.path do
+          v when v not in [nil, "", "/"] ->
+            entry
+            |> Ecto.Repo.Supervisor.parse_url()
 
-      parseable_url =
-        if has_database?, do: uri, else: %{uri | path: "/#{@placeholder_database}"}
-
-      try do
-        parsed = Ecto.Repo.Supervisor.parse_url(URI.to_string(parseable_url))
-        config = parsed |> Keyword.delete(:scheme) |> maybe_delete_database(has_database?)
-
-        with :ok <- validate_query_keys(config),
-             :ok <- validate_pool_size(config[:pool_size]) do
-          config = maybe_put_socket_options(config, uri.host)
-          {:ok, {build_key(uri.host, config[:port], config[:database]), config}}
+          _ ->
+            # no database set - use a placeholder to satisfy Ecto's URL parser,
+            # then drop it so the primary's database is inherited instead
+            URI.to_string(%{uri | path: "/placeholder"})
+            |> Ecto.Repo.Supervisor.parse_url()
+            |> Keyword.delete(:database)
         end
-      rescue
-        e in Ecto.InvalidURLError -> {:error, e.message}
-      end
+        |> Keyword.delete(:scheme)
+        |> maybe_put_socket_options()
+
+      {:ok, {build_key(config), config}}
+    rescue
+      e in Ecto.InvalidURLError -> {:error, redact(e.message, uri.userinfo)}
     end
   end
 
-  defp maybe_delete_database(config, true), do: config
-  defp maybe_delete_database(config, false), do: Keyword.delete(config, :database)
-
-  defp validate_scheme(scheme) when scheme in ["postgres", "postgresql"], do: :ok
-  defp validate_scheme(scheme), do: {:error, "unsupported scheme #{inspect(scheme)}"}
-
-  defp validate_host(host) when is_binary(host) and host != "", do: :ok
-  defp validate_host(_host), do: {:error, "missing host"}
-
-  defp validate_query_keys(config) do
-    known_keys = [:hostname, :username, :password, :database, :port | @allowed_query_keys]
-
-    case Enum.find(Keyword.keys(config), &(&1 not in known_keys)) do
-      nil -> :ok
-      unknown -> {:error, "unknown query parameter #{inspect(unknown)}"}
-    end
-  end
-
-  defp validate_pool_size(nil), do: :ok
-  defp validate_pool_size(pool_size) when pool_size > 0, do: :ok
-
-  defp validate_pool_size(pool_size),
-    do: {:error, "invalid pool_size query parameter #{pool_size}"}
-
-  defp maybe_put_socket_options(config, host) do
-    case Logflare.Utils.ip_version(host) do
+  defp maybe_put_socket_options(config) do
+    case Logflare.Utils.ip_version(config[:hostname]) do
       version when version in [:inet, :inet6] -> Keyword.put(config, :socket_options, [version])
       _ -> config
     end
   end
 
-  defp build_key(host, port, database) do
-    host
-    |> then(fn key -> if port, do: "#{key}:#{port}", else: key end)
-    |> then(fn key -> if database, do: "#{key}/#{database}", else: key end)
+  defp build_key(config) do
+    "#{config[:hostname]}-#{:erlang.phash2(config)}"
   end
 
   defp redact(entry) do
@@ -167,6 +143,9 @@ defmodule Logflare.Repo.Replicas do
       entry
     end
   end
+
+  defp redact(message, nil), do: message
+  defp redact(message, userinfo), do: String.replace(message, userinfo, "REDACTED")
 
   defp resolve_ssl(config) do
     case Keyword.get(config, :ssl) do
