@@ -327,6 +327,9 @@
         "readinessProbe": {
             "type": "object",
             "properties": {
+                "failureThreshold": {
+                    "type": "integer"
+                },
                 "httpGet": {
                     "type": "object",
                     "properties": {
@@ -337,6 +340,9 @@
                             "type": "string"
                         }
                     }
+                },
+                "periodSeconds": {
+                    "type": "integer"
                 }
             }
         },
@@ -415,6 +421,9 @@
                     "type": "integer"
                 }
             }
+        },
+        "terminationGracePeriodSeconds": {
+            "type": "integer"
         },
         "tolerations": {
             "type": "array"

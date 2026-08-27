@@ -200,3 +200,33 @@ tests:
           path: spec.template.spec.containers[0].env[-1].value
           value: "mycluster-$(POD_TEMPLATE_HASH)"
         template: rollout.yaml
+
+  - it: should carry the readiness probe onto the Rollout as well
+    set:
+      rollout:
+        enabled: true
+        strategy:
+          blueGreen:
+            activeService: RELEASE-NAME-logflare
+            previewService: RELEASE-NAME-logflare-preview
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /ready
+        template: rollout.yaml
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.periodSeconds
+          value: 5
+        template: rollout.yaml
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.failureThreshold
+          value: 2
+        template: rollout.yaml
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /health
+        template: rollout.yaml
+      - equal:
+          path: spec.template.spec.terminationGracePeriodSeconds
+          value: 60
+        template: rollout.yaml
