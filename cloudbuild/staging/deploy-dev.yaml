@@ -42,10 +42,12 @@ steps:
       - --maintenance-policy=TERMINATE
       - --service-account=compute-engine-2022@logflare-staging.iam.gserviceaccount.com
       - --scopes=https://www.googleapis.com/auth/cloud-platform
-      # deliberately not phoenix-http/https-server: this cluster is never
-      # attached to a backend-service and shouldn't inherit the public-facing
-      # ingress firewall rules that tag targets.
-      - --tags=logflare-spool-test
+      # phoenix-http required for the dev-1 backend-service's health checks
+      # and traffic to reach the instance at all (matches phoenix-allow-http
+      # firewall rule, same as instance-group-staging-main). logflare-spool-test
+      # kept alongside it purely so these instances stay identifiable/greppable
+      # as dev-spool test infra.
+      - --tags=logflare-spool-test,phoenix-http
       - --metadata-from-file=startup-script=./cloudbuild/gce-startup.sh,shutdown-script=./cloudbuild/shutdown.sh,logflare-container-env=./gce-container.env
       # needed for enabling node-problem-detector, explicitly enable logging
       - --metadata=google-monitoring-enabled=true,google-logging-enabled=true,logflare-container-image=${_CONTAINER_IMAGE}
