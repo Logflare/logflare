@@ -28,11 +28,12 @@ defmodule Logflare.Backends.Adaptor.SplunkAdaptor.HecFormatter do
       "event" => body,
       "time" => body["timestamp"] / 1_000_000,
       "sourcetype" => Map.get(config, :sourcetype) || @default_sourcetype,
-      "source" => Map.get(config, :source) || log_event.source_name,
-      "index" => Map.get(config, :index),
-      "host" => Map.get(config, :host)
+      "source" => Map.get(config, :source) || log_event.source_name
     }
-    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
-    |> Map.new()
+    |> maybe_put("index", Map.get(config, :index))
+    |> maybe_put("host", Map.get(config, :host))
   end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 end

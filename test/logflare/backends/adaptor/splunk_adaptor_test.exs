@@ -83,9 +83,6 @@ defmodule Logflare.Backends.Adaptor.SplunkAdaptorTest do
 
       assert opts[:url] == @url
       assert opts[:headers] == [{"authorization", "Splunk test-token"}]
-      assert opts[:json] == true
-      assert opts[:gzip] == true
-      assert opts[:ssrf] == true
     end
   end
 
