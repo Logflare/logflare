@@ -85,11 +85,12 @@ defmodule Logflare.Utils.SSRF do
   end
 
   defp resolve_hostname(charlist, family) do
-    with {:ok, addrs} <- :inet.getaddrs(charlist, family),
+    with {:ok, [addr | _] = addrs} <- :inet.getaddrs(charlist, family),
          {:private, false} <- {:private, Enum.any?(addrs, &private_ip?/1)} do
-      {:ok, List.first(addrs)}
+      {:ok, addr}
     else
       {:private, true} -> {:error, @private_ip_error}
+      {:ok, []} -> :unresolved
       {:error, _} -> :unresolved
     end
   end
