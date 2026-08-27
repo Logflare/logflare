@@ -1,7 +1,9 @@
 defmodule LogflareWeb.Backends.ReadClusterUrlsComponentTest do
   use ExUnit.Case, async: true
 
+  alias Logflare.Backends.Backend
   alias LogflareWeb.Backends.ReadClusterUrlsComponent
+  alias Phoenix.LiveView.Socket
 
   describe "assemble_read_only_urls/1" do
     test "assembles flat form params into the read_only_urls map" do
@@ -74,5 +76,61 @@ defmodule LogflareWeb.Backends.ReadClusterUrlsComponentTest do
                  "url" => "http://ingest.local:8123"
                })
     end
+  end
+
+  describe "handle_event/3 sync fallback" do
+    test "logs a warning with the backend id when the payload shape is unexpected" do
+      socket = %Socket{assigns: %{backend: %Backend{id: 123}, __changed__: %{}}}
+
+      event =
+        capture_log_event(fn ->
+          assert {:noreply, ^socket} =
+                   ReadClusterUrlsComponent.handle_event(
+                     "sync",
+                     %{"unexpected" => "shape"},
+                     socket
+                   )
+        end)
+
+      assert %{level: :warning, meta: %{backend_id: 123}} = event
+      assert {:string, message} = event.msg
+
+      assert IO.iodata_to_binary(message) =~
+               "Unexpected sync payload shape in ReadClusterUrlsComponent"
+    end
+
+    test "logs a nil backend id when the backend has not been created yet" do
+      socket = %Socket{assigns: %{backend: nil, __changed__: %{}}}
+
+      event =
+        capture_log_event(fn ->
+          assert {:noreply, _socket} = ReadClusterUrlsComponent.handle_event("sync", %{}, socket)
+        end)
+
+      assert %{meta: %{backend_id: nil}} = event
+    end
+  end
+
+  defmodule CaptureHandler do
+    def log(event, %{config: %{pid: pid}}), do: send(pid, {:log_event, event})
+  end
+
+  defp capture_log_event(fun) do
+    handler_id = :"read_cluster_urls_test_#{System.unique_integer([:positive])}"
+
+    :ok =
+      :logger.add_handler(handler_id, __MODULE__.CaptureHandler, %{
+        level: :all,
+        config: %{pid: self()}
+      })
+
+    try do
+      fun.()
+    after
+      :logger.remove_handler(handler_id)
+    end
+
+    assert_receive {:log_event, event}, 1_000
+    event
   end
 end
