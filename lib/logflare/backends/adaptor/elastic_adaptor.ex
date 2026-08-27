@@ -10,6 +10,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
 
   """
 
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Utils
 
@@ -51,7 +52,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def sanitize_config_for_display(config) do
-    Logflare.Backends.Adaptor.mask_config_values(config, [:url])
+    Adaptor.mask_config_values(config, [:url])
   end
 
   @impl Logflare.Backends.Adaptor

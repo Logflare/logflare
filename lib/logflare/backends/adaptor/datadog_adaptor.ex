@@ -4,6 +4,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   for DataDog logs ingestion endpoint.
   """
 
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Backend
   alias Logflare.Sources.Source
@@ -89,7 +90,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def sanitize_config_for_display(config) do
-    Logflare.Backends.Adaptor.mask_config_values(config, [:region])
+    Adaptor.mask_config_values(config, [:region])
   end
 
   @impl Logflare.Backends.Adaptor

@@ -24,6 +24,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias __MODULE__.QueryTemplates
   alias Ecto.Changeset
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor
   alias Logflare.Ecto.ClickHouse, as: EctoClickHouse
   alias Logflare.Backends.Backend
   alias Logflare.Backends.DynamicPipeline
@@ -96,7 +97,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def sanitize_config_for_display(config) do
-    Logflare.Backends.Adaptor.mask_config_values(config, [
+    Adaptor.mask_config_values(config, [
       :url,
       :database,
       :port,

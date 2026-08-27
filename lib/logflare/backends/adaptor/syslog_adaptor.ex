@@ -8,6 +8,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   import Ecto.Changeset
   import NimbleParsec
   import Logflare.Logs.SyslogParser.Helpers
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.SyslogAdaptor.{Pool, Socket, Pipeline}
   alias Logflare.Backends.Backend
   require Logger
@@ -100,7 +101,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def sanitize_config_for_display(config) do
-    Logflare.Backends.Adaptor.mask_config_values(config, [:tls, :host, :port, :max_message_bytes])
+    Adaptor.mask_config_values(config, [:tls, :host, :port, :max_message_bytes])
   end
 
   defp redact_config_field(config, field) do
