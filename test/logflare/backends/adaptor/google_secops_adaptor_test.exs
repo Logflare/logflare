@@ -56,19 +56,11 @@ defmodule Logflare.Backends.Adaptor.GoogleSecOpsAdaptorTest do
       end
     end
 
-    test "validates region" do
-      changeset =
-        Adaptor.cast_and_validate_config(@subject, %{
-          @valid_config_input
-          | "region" => "invalid-region"
-        })
-
-      refute changeset.valid?
-      assert errors_on(changeset).region == ["is invalid"]
-    end
-
     test "validates identifier formats" do
       for {field, value} <- [
+            {"region", "evil.com"},
+            {"region", "evil.com/x?"},
+            {"region", "us@evil.com/"},
             {"project_number", "123/evil"},
             {"instance_id", "not-a-uuid"},
             {"instance_id", "x/../../evil"},
@@ -174,10 +166,6 @@ defmodule Logflare.Backends.Adaptor.GoogleSecOpsAdaptorTest do
       assert redacted.api_key == "REDACTED"
       assert redacted.secret == "REDACTED"
       assert redacted.region == @valid_config.region
-    end
-
-    test "does not materialize absent keys" do
-      assert @subject.redact_config(%{secret: "s"}) == %{secret: "REDACTED"}
     end
   end
 

@@ -22,32 +22,13 @@ defmodule Logflare.Backends.Adaptor.GoogleSecOpsAdaptor do
   @behaviour Adaptor
   @behaviour HttpBased.Client
 
-  # https://docs.cloud.google.com/chronicle/docs/reference/rest#service-endpoint
-  @regions ~w(
-    us
-    europe
-    africa-south1
-    asia-northeast1
-    asia-south1
-    asia-southeast1
-    asia-southeast2
-    australia-southeast1
-    europe-central2
-    europe-west2
-    europe-west3
-    europe-west6
-    europe-west9
-    europe-west12
-    me-central1
-    me-central2
-    me-west1
-    northamerica-northeast2
-    southamerica-east1
-  )
+  # A single DNS label; anything that could break out of the
+  # `https://<region>-chronicle.googleapis.com` host (`/`, `?`, `#`, `@`, `.`, `:`)
+  # is rejected, keeping the request pinned under googleapis.com (SSRF guard).
+  # A non-existent region surfaces as a DNS error via test_connection/1.
+  @region_format ~r/^[a-z0-9-]+$/
 
   @uuid_format ~r/^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$/
-
-  def regions, do: @regions
 
   def child_spec(init_arg) do
     %{
@@ -87,7 +68,7 @@ defmodule Logflare.Backends.Adaptor.GoogleSecOpsAdaptor do
       :api_key,
       :secret
     ])
-    |> Changeset.validate_inclusion(:region, @regions)
+    |> Changeset.validate_format(:region, @region_format)
     |> Changeset.validate_format(:project_number, ~r/^\d+$/)
     |> Changeset.validate_format(:instance_id, @uuid_format)
     |> Changeset.validate_format(:feed_id, @uuid_format)
@@ -95,14 +76,9 @@ defmodule Logflare.Backends.Adaptor.GoogleSecOpsAdaptor do
 
   @impl Adaptor
   def redact_config(config) do
-    [:api_key, :secret]
-    |> Enum.reduce(config, fn key, config ->
-      if Map.get(config, key) do
-        Map.put(config, key, "REDACTED")
-      else
-        config
-      end
-    end)
+    config
+    |> Map.put(:api_key, "REDACTED")
+    |> Map.put(:secret, "REDACTED")
   end
 
   @impl Adaptor
