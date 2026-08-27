@@ -59,7 +59,7 @@ defmodule Logflare.Repo do
   defp pick_replica_repo(replicas), do: replicas |> Enum.random() |> resolve_repo()
 
   defp resolve_repo(repo) when is_atom(repo), do: repo
-  defp resolve_repo(hostname) when is_binary(hostname), do: Replicas.lookup!(hostname)
+  defp resolve_repo({key, _config}), do: Replicas.lookup!(key)
 
   defp with_dynamic_repo(new_repo, fun) do
     prev_repo = get_dynamic_repo()
