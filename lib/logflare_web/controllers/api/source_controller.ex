@@ -25,6 +25,7 @@ defmodule LogflareWeb.Api.SourceController do
 
   action_fallback(LogflareWeb.Api.FallbackController)
 
+  # Source IDs are signed PostgreSQL bigints; reject out-of-range scopes before querying.
   @max_source_id 9_223_372_036_854_775_807
 
   tags(["management"])
@@ -93,6 +94,7 @@ defmodule LogflareWeb.Api.SourceController do
   defp source_ids(:partner), do: nil
   defp source_ids({:ingest, source_ids}), do: source_ids
 
+  # Legacy API keys authenticate without an OAuth access-token struct.
   defp source_access_for_token(nil), do: {:ingest, nil}
 
   defp source_access_for_token(%{scopes: scopes}) do

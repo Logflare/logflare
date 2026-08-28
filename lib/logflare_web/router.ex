@@ -455,6 +455,7 @@ defmodule LogflareWeb.Router do
     get("/", HealthCheckController, :ready)
   end
 
+  # Source discovery accepts ingest-scoped credentials; mutations remain private below.
   scope "/api", LogflareWeb do
     pipe_through(:source_list_api)
 
