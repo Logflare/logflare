@@ -168,8 +168,9 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
   end
 
   describe "sanitize_config_for_display/1" do
-    test "masks access keys while preserving displayable keys" do
+    test "masks access keys and endpoint while preserving displayable keys" do
       config = %{
+        endpoint: "https://user:secret123@minio.example.com:9000/?token=abc456",
         access_key_id: "AKIA123",
         secret_access_key: "secret-key-123",
         s3_bucket: "my-bucket",
@@ -178,6 +179,7 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
       }
 
       assert %{
+               endpoint: "**********",
                access_key_id: "**********",
                secret_access_key: "**********",
                s3_bucket: "my-bucket",

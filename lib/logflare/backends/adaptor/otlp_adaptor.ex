@@ -82,7 +82,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
 
   @impl Adaptor
   def sanitize_config_for_display(config) do
-    Adaptor.mask_config_values(config, [:endpoint, :protocol, :gzip, :flatten_to_attributes])
+    Adaptor.mask_config_values(config, [:protocol, :gzip, :flatten_to_attributes])
   end
 
   defp redact_headers(headers) do

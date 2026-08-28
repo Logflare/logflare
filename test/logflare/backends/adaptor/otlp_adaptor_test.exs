@@ -376,15 +376,28 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
   end
 
   describe "sanitize_config_for_display/1" do
-    test "masks headers while preserving displayable keys" do
+    test "masks endpoint and headers while preserving displayable keys" do
       config = %{@valid_config | headers: %{"authorization" => "Bearer secret"}}
 
       assert %{
-               endpoint: "http://localhost:4318/v1/logs",
+               endpoint: "**********",
                protocol: "http/protobuf",
                gzip: false,
                headers: "**********"
              } == @subject.sanitize_config_for_display(config)
+    end
+
+    test "does not leak credentials embedded in the endpoint" do
+      config = %{
+        @valid_config
+        | endpoint: "https://user:secret123@collector.example.com/v1/logs?api-key=abc456"
+      }
+
+      sanitized = @subject.sanitize_config_for_display(config)
+
+      assert sanitized.endpoint == "**********"
+      refute inspect(sanitized) =~ "secret123"
+      refute inspect(sanitized) =~ "abc456"
     end
   end
 

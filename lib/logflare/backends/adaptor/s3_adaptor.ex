@@ -138,7 +138,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
 
   @impl Adaptor
   def sanitize_config_for_display(config) do
-    Adaptor.mask_config_values(config, [:endpoint, :s3_bucket, :storage_region, :batch_timeout])
+    Adaptor.mask_config_values(config, [:s3_bucket, :storage_region, :batch_timeout])
   end
 
   @doc """
