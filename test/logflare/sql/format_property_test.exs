@@ -53,6 +53,10 @@ defmodule Logflare.Sql.FormatPropertyTest do
           "SELECT #{values.column} FROM `#{values.project}.#{values.dataset}.#{values.table}`"
         ),
         query_case(
+          :separately_quoted_table,
+          "SELECT #{values.column} FROM `#{values.project}`.`#{values.dataset}`.`#{values.table}`"
+        ),
+        query_case(
           :struct,
           "SELECT struct(#{values.number} AS field_number, '#{values.text}' AS field_text) AS record_value"
         ),
