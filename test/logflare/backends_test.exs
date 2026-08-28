@@ -863,14 +863,14 @@ defmodule Logflare.BackendsTest do
                {second_backend_id, second_backend_pid}
              ] = backend_children.(prev_children)
 
-      # An unknwon backend ID must leave every existing child running with the same PID.
+      # An unknown backend ID must leave every existing child running with the same PID.
       unknown_backend_id = Enum.max(backend_ids) + 1
       assert {:error, :not_found} = SourceSup.stop_backend_child(source, unknown_backend_id)
       assert children.() == prev_children
       assert Process.alive?(first_backend_pid)
       assert Process.alive?(second_backend_pid)
 
-      # Stopping the second backend must not disturb the first or any unrelated child.
+      # Stopping the second backend must leave the first running with the same PID.
       assert :ok = SourceSup.stop_backend_child(source, second_backend_id)
       assert [{^first_backend_id, ^first_backend_pid}] = backend_children.(children.())
       assert Process.alive?(first_backend_pid)
