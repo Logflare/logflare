@@ -20,7 +20,8 @@ defmodule Logflare.Backends.Cache do
   end
 
   @spec list_enabled_backends(keyword()) :: [Logflare.Backends.Backend.t()]
-  def list_enabled_backends(arg), do: arg |> list_backends() |> Enum.filter(& &1.enabled)
+  def list_enabled_backends(arg),
+    do: arg |> list_backends() |> Enum.filter(&Map.get(&1, :enabled, true))
 
   def get_backend(arg), do: apply_repo_fun(__ENV__.function, [arg])
 
