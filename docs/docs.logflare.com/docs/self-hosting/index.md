@@ -38,7 +38,7 @@ All browser authentication will be disabled when in single-tenant mode.
 | `DB_POOL_SIZE`                                 | Integer, defaults to `10`                                               | Overrides the Ecto connection pool size for Logflare's internal PostgreSQL database connection.                                                                                                                                                                      |
 | `DB_SCHEMA`                                    | String, defaults to `nil`                                               | Allows configuration of the database schema to scope Logflare operations.                                                                                                                                                                                            |
 | `DB_SSL`                                       | Boolean, defaults to `false`                                            | Enables SSL/TLS connection to the internal Logflare database. Requires certificate files when enabled. See [Database SSL Configuration](#database-ssl-configuration).                                                                                                |
-| `LOGFLARE_READ_REPLICAS`                       | String, defaults to `nil`                                               | Comma-separated list of read replica hostnames. Each replica is assumed to use the same port, credentials, and database name as the primary. If unset, all queries go to the primary. Example: `replica1.example.com,replica2.example.com`                           |
+| `LOGFLARE_READ_REPLICAS`                       | String, defaults to `nil`                                               | Comma-separated list of PostgreSQL read replicas. If unset, all queries go to the primary. See [Read Replicas](#read-replicas).                                                                                                                                     |
 | `LOGFLARE_LOG_LEVEL`                           | String, defaults to `info`. <br/>Options: `error`,`warning`, `info`     | Allows runtime configuration of log level.                                                                                                                                                                                                                           |
 | `LOGFLARE_NODE_HOST`                           | string, defaults to `127.0.0.1`                                         | Sets node host on startup, which affects the node name `logflare@<host>`                                                                                                                                                                                             |
 | `LOGFLARE_METADATA_CLUSTER`                    | string, defaults to `nil`                                               | Sets global logging/tracing metadata for the cluster name and affects the release node name (e.g., `logflare-production@<host>`). Useful for filtering logs by cluster name and distinguishing nodes in multi-cluster setups. See the [metadata](#Metadata) section. |
@@ -162,6 +162,14 @@ The SSL connection is configured with:
 - **Wildcard support**: Enabled via `public_key.pkix_verify_hostname_match_fun(:https)`
 
 The configuration follows the [Erlang Security Working Group recommendations](https://erlef.github.io/security-wg/secure_coding_and_deployment_hardening/ssl).
+
+## Read Replicas
+
+`LOGFLARE_READ_REPLICAS` is a comma-separated list of PostgreSQL read replicas to distribute ingest-path data fetching queries across. If unset or empty, all queries go to the primary database.
+
+Each entry is either a **bare hostname** or a **connection URI** (`postgres://user:pass@host:port/database?ssl=true&pool_size=5`). In both cases, only the parts given override the primary's `DB_*` settings - anything omitted (port, database, credentials, SSL, ...) is inherited from the primary. Query params: `ssl` (`true`/`false`), `pool_size` (positive integer).
+
+Example: `LOGFLARE_READ_REPLICAS=replica1.example.com,postgres://user:pass@replica2.example.com:5432/logflare`
 
 ## Database Encryption
 
