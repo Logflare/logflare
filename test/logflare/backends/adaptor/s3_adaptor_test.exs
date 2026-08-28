@@ -288,6 +288,7 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
       assert opts[:access_key_id] == "AKID"
       assert opts[:secret_access_key] == "SECRET"
       assert opts[:region] == "us-east-1"
+      assert opts[:telemetry_options] == [backend_id: backend.id, bucket: "my-bucket"]
       refute Keyword.has_key?(opts, :scheme)
       refute Keyword.has_key?(opts, :host)
       refute Keyword.has_key?(opts, :port)
@@ -312,17 +313,52 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
       ref = make_ref()
 
       ExAws
-      |> expect(:request, fn _op, opts ->
-        send(this, {ref, opts})
+      |> expect(:request, fn op, opts ->
+        send(this, {ref, op, opts})
         {:ok, %{status_code: 200}}
       end)
 
       events = [build(:log_event, source: source)]
 
       assert :ok = S3Adaptor.push_log_events_to_s3({source.id, backend.id}, events)
-      assert_received {^ref, opts}
+      assert_received {^ref, op, opts}
+      assert op.bucket == "my-bucket"
       assert opts[:scheme] == "https://"
       assert opts[:host] == "account-id.r2.cloudflarestorage.com"
+      assert opts[:port] == 443
+    end
+
+    test "folds a path-bearing endpoint into the request bucket", %{source: source} do
+      backend =
+        insert(:backend,
+          type: :s3,
+          sources: [source],
+          config: %{
+            s3_bucket: "my-bucket",
+            storage_region: "us-east-1",
+            access_key_id: "AKID",
+            secret_access_key: "SECRET",
+            batch_timeout: 1_000,
+            endpoint: "https://project-ref.supabase.co/storage/v1/s3"
+          }
+        )
+
+      this = self()
+      ref = make_ref()
+
+      ExAws
+      |> expect(:request, fn op, opts ->
+        send(this, {ref, op, opts})
+        {:ok, %{status_code: 200}}
+      end)
+
+      events = [build(:log_event, source: source)]
+
+      assert :ok = S3Adaptor.push_log_events_to_s3({source.id, backend.id}, events)
+      assert_received {^ref, op, opts}
+      assert op.bucket == "storage/v1/s3/my-bucket"
+      assert opts[:scheme] == "https://"
+      assert opts[:host] == "project-ref.supabase.co"
       assert opts[:port] == 443
     end
 
@@ -362,7 +398,12 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
           S3Adaptor.handle_request_event(
             [:logflare, :backends, :s3, :request, :stop],
             %{},
-            %{attempt: 2, options: [bucket: "my-bucket"], result: :error, error: "timeout"},
+            %{
+              attempt: 2,
+              options: [backend_id: 123, bucket: "my-bucket"],
+              result: :error,
+              error: "timeout"
+            },
             nil
           )
         end)
@@ -376,7 +417,7 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
           S3Adaptor.handle_request_event(
             [:logflare, :backends, :s3, :request, :stop],
             %{},
-            %{attempt: 1, options: [bucket: "my-bucket"], result: :ok},
+            %{attempt: 1, options: [backend_id: 123, bucket: "my-bucket"], result: :ok},
             nil
           )
         end)

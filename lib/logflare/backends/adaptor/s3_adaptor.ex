@@ -159,7 +159,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     config = Adaptor.get_backend_config(backend)
     df = DataFrame.new([%{probe: "connection-test"}], dtypes: [{:probe, :string}])
 
-    case put_parquet(df, config, @connection_test_key) do
+    case put_parquet(df, config, @connection_test_key, backend.id) do
       :ok -> :ok
       {:error, reason} -> {:error, "S3 write failed: #{inspect(reason)}"}
     end
@@ -254,7 +254,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
         )
 
       try do
-        put_parquet(df, config, s3_key)
+        put_parquet(df, config, s3_key, backend_id)
       rescue
         error -> {:error, error}
       end
@@ -278,6 +278,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
       when attempt > 1 do
     Logger.warning(
       "S3 adaptor request retry: attempt #{attempt} result #{metadata[:result]}",
+      backend_id: metadata.options[:backend_id],
       s3_bucket: metadata.options[:bucket],
       error: metadata[:error]
     )
@@ -311,25 +312,42 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     |> String.replace("-", "_")
   end
 
-  @spec put_parquet(DataFrame.t(), map(), key :: String.t()) :: :ok | {:error, term()}
-  defp put_parquet(%DataFrame{} = df, config, key) when is_non_empty_binary(key) do
+  @spec put_parquet(DataFrame.t(), map(), key :: String.t(), backend_id :: pos_integer()) ::
+          :ok | {:error, term()}
+  defp put_parquet(%DataFrame{} = df, config, key, backend_id)
+       when is_non_empty_binary(key) and is_pos_integer(backend_id) do
     with {:ok, body} <- DataFrame.dump_parquet(df),
          {:ok, _resp} <-
-           config.s3_bucket
+           config
+           |> request_bucket()
            |> S3.put_object(key, body, content_type: @parquet_content_type)
-           |> ExAws.request(request_opts(config)) do
+           |> ExAws.request(request_opts(config, backend_id)) do
       :ok
     end
   end
 
-  @spec request_opts(map()) :: keyword()
-  defp request_opts(config) do
+  @spec request_bucket(map()) :: String.t()
+  defp request_bucket(config), do: prefix_bucket(config.s3_bucket, config[:endpoint])
+
+  @spec prefix_bucket(String.t(), String.t() | nil) :: String.t()
+  defp prefix_bucket(bucket, nil), do: bucket
+
+  defp prefix_bucket(bucket, endpoint) when is_non_empty_binary(endpoint) do
+    case URI.parse(endpoint).path do
+      nil -> bucket
+      "/" -> bucket
+      path -> String.trim(path, "/") <> "/" <> bucket
+    end
+  end
+
+  @spec request_opts(map(), backend_id :: pos_integer()) :: keyword()
+  defp request_opts(config, backend_id) do
     [
       access_key_id: config.access_key_id,
       secret_access_key: config.secret_access_key,
       region: config.storage_region,
       telemetry_event: @request_telemetry_event,
-      telemetry_options: [bucket: config.s3_bucket]
+      telemetry_options: [backend_id: backend_id, bucket: config.s3_bucket]
     ] ++ endpoint_opts(config[:endpoint])
   end
 
