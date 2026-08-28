@@ -230,6 +230,35 @@ defmodule LogflareWeb.BackendsLiveTest do
       refute html =~ "&quot;read_only_urls&quot;: &quot;**********&quot;"
     end
 
+    test "masks the clickhouse query credentials", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost:8123",
+            database: "test_db",
+            port: 8123,
+            username: "ingest_user",
+            password: "ingest_pa55",
+            query_user: "ch_reader",
+            query_password: "reader_pa55"
+          }
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
+      html = render(view)
+
+      assert html =~ "query_password"
+      refute html =~ "reader_pa55"
+      refute html =~ "ch_reader"
+    end
+
     test "add/delete a rule", %{
       conn: conn,
       user: user,
@@ -587,6 +616,71 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       assert html =~ "must match one of the defined read cluster labels"
     end
+
+    test "can create a clickhouse backend with a dedicated query user", %{conn: conn, user: user} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      view
+      |> element("select#type")
+      |> render_change(%{backend: %{type: "clickhouse"}})
+
+      html =
+        view
+        |> form("form", %{
+          backend: %{
+            name: "ch query user",
+            type: "clickhouse",
+            config: %{
+              url: "http://localhost",
+              database: "test_db",
+              port: 8123,
+              username: "ingest_user",
+              password: "ingest_pa55",
+              query_user: "ch_reader",
+              query_password: "reader_pa55"
+            }
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Successfully created backend"
+
+      backend =
+        user.id
+        |> Backends.list_backends_by_user_id()
+        |> Enum.find(&(&1.name == "ch query user"))
+
+      assert backend.config.query_user == "ch_reader"
+      assert backend.config.query_password == "reader_pa55"
+    end
+
+    test "rejects a clickhouse query user without a query password", %{conn: conn} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      view
+      |> element("select#type")
+      |> render_change(%{backend: %{type: "clickhouse"}})
+
+      html =
+        view
+        |> form("form", %{
+          backend: %{
+            name: "ch partial query user",
+            type: "clickhouse",
+            config: %{
+              url: "http://localhost",
+              database: "test_db",
+              port: 8123,
+              username: "ingest_user",
+              password: "ingest_pa55",
+              query_user: "ch_reader"
+            }
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Both query user and query password must be provided"
+    end
   end
 
   describe "edit" do
@@ -623,6 +717,118 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert render(view) =~ "URL"
 
       refute view |> element("select#type") |> has_element?()
+    end
+
+    test "requires a default read cluster once a read cluster is configured", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost:8123",
+            database: "test_db",
+            port: 8123,
+            read_only_urls: %{"reporting" => "http://reporting.local:8123"}
+          }
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+      html = render(view)
+
+      assert html =~ "callers that send no label read from the ingest cluster"
+
+      assert view
+             |> element("input[name='backend[config][default_read_cluster]'][required]")
+             |> has_element?()
+    end
+
+    test "does not require a default read cluster when none is configured", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://localhost:8123", database: "test_db", port: 8123}
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+      html = render(view)
+
+      refute html =~ "callers that send no label read from the ingest cluster"
+      assert html =~ "Default Read Cluster (Optional)"
+    end
+
+    test "does not render the existing query_password in the edit form", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost:8123",
+            database: "test_db",
+            port: 8123,
+            username: "ingest_user",
+            password: "ingest_pa55",
+            query_user: "ch_reader",
+            query_password: "reader_pa55"
+          }
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+      html = render(view)
+
+      assert html =~ "ch_reader"
+      refute html =~ "reader_pa55"
+    end
+
+    test "editing an unrelated field preserves the existing query_password", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost:8123",
+            database: "test_db",
+            port: 8123,
+            username: "ingest_user",
+            password: "ingest_pa55",
+            query_user: "ch_reader",
+            query_password: "reader_pa55"
+          }
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      html =
+        view
+        |> form("form", %{backend: %{description: "updated description"}})
+        |> render_submit()
+
+      assert html =~ "updated description"
+
+      updated = Backends.get_backend(backend.id)
+
+      assert updated.config.query_user == "ch_reader"
+      assert updated.config.query_password == "reader_pa55"
     end
 
     test "pre-populates read cluster rows when editing a clickhouse backend", %{
@@ -669,6 +875,84 @@ defmodule LogflareWeb.BackendsLiveTest do
              |> has_element?()
     end
 
+    test "row actions preserve unsaved read cluster inputs", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost:8123",
+            database: "test_db",
+            port: 8123,
+            read_only_urls: %{"reporting" => "http://reporting.local:8123"},
+            default_read_cluster: "reporting"
+          }
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      view
+      |> element("input[name='backend[config][read_cluster_label_0]']")
+      |> render_change(%{
+        "backend" => %{"config" => %{"read_cluster_label_0" => "reporting-edited"}}
+      })
+
+      view
+      |> element("input[name='backend[config][read_cluster_url_0]']")
+      |> render_change(%{
+        "backend" => %{
+          "config" => %{"read_cluster_url_0" => "http://reporting-edited.local:8123"}
+        }
+      })
+
+      view
+      |> element("input[name='backend[config][default_read_cluster]']")
+      |> render_change(%{
+        "backend" => %{"config" => %{"default_read_cluster" => "reporting-edited"}}
+      })
+
+      view
+      |> element("button[phx-click='add_row']")
+      |> render_click()
+
+      assert view
+             |> element("input[name='backend[config][read_cluster_label_0]']")
+             |> render() =~ ~s(value="reporting-edited")
+
+      assert view
+             |> element("input[name='backend[config][read_cluster_url_0]']")
+             |> render() =~ ~s(value="http://reporting-edited.local:8123")
+
+      assert view
+             |> element("input[name='backend[config][default_read_cluster]']")
+             |> render() =~ ~s(value="reporting-edited")
+
+      assert has_element?(view, "#read-cluster-row-1")
+
+      view
+      |> element("#read-cluster-row-1 button[phx-click='remove_row']")
+      |> render_click()
+
+      refute has_element?(view, "#read-cluster-row-1")
+
+      assert view
+             |> element("input[name='backend[config][read_cluster_label_0]']")
+             |> render() =~ ~s(value="reporting-edited")
+
+      assert view
+             |> element("input[name='backend[config][read_cluster_url_0]']")
+             |> render() =~ ~s(value="http://reporting-edited.local:8123")
+
+      assert view
+             |> element("input[name='backend[config][default_read_cluster]']")
+             |> render() =~ ~s(value="reporting-edited")
+    end
+
     test "removing a read cluster row drops that specific row's cluster on save", %{
       conn: conn,
       source: source,
@@ -695,12 +979,7 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
 
-      # rows render in the same order the component folds the map, so row 0 and the last
-      # row are known — removing row 0 must drop row 0's cluster, not the last one.
-      entries = Map.to_list(backend.config.read_only_urls)
-      {row0_label, _url} = hd(entries)
-      {last_label, _url} = List.last(entries)
-
+      # rows are sorted by label and each keeps a stable ref, so ref 0 is "alpha"
       view
       |> element("#read-cluster-row-0 button[phx-click='remove_row']")
       |> render_click()
@@ -709,9 +988,47 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       read_only_urls = Backends.get_backend(backend.id).config.read_only_urls
 
-      refute Map.has_key?(read_only_urls, row0_label)
-      assert Map.has_key?(read_only_urls, last_label)
-      assert map_size(read_only_urls) == 2
+      assert read_only_urls == %{
+               "beta" => "http://beta.local:8123",
+               "gamma" => "http://gamma.local:8123"
+             }
+    end
+
+    test "patching between clickhouse backends refreshes the read cluster rows", %{
+      conn: conn,
+      team: team,
+      user: user
+    } do
+      base_config = %{url: "http://localhost:8123", database: "test_db", port: 8123}
+
+      first =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: Map.put(base_config, :read_only_urls, %{"alpha" => "http://alpha.local:8123"})
+        )
+
+      second =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: Map.put(base_config, :read_only_urls, %{"zulu" => "http://zulu.local:8123"})
+        )
+
+      {:ok, view, _html} =
+        live_with_redirect(conn, ~p"/backends/#{first.id}/edit?#{[t: team.id]}")
+
+      assert view
+             |> element("input[name='backend[config][read_cluster_label_0]']")
+             |> render() =~ ~s(value="alpha")
+
+      html = render_patch(view, ~p"/backends/#{second.id}/edit?#{[t: team.id]}")
+
+      refute html =~ "alpha"
+
+      assert view
+             |> element("input[name='backend[config][read_cluster_label_0]']")
+             |> render() =~ ~s(value="zulu")
     end
 
     test "cancel will nav back to show", %{conn: conn, user: user} do

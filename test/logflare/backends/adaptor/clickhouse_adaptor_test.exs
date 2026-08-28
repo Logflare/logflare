@@ -213,6 +213,96 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       config = %{password: "secret123", database: "logs"}
       assert %{password: "REDACTED"} = ClickHouseAdaptor.redact_config(config)
     end
+
+    test "redacts query_password when populated" do
+      config = %{password: "secret123", query_password: "reader_pa55", query_user: "ch_reader"}
+
+      assert %{password: "REDACTED", query_password: "REDACTED", query_user: "ch_reader"} =
+               ClickHouseAdaptor.redact_config(config)
+    end
+
+    test "does not introduce a query_password key when it is not configured" do
+      redacted = ClickHouseAdaptor.redact_config(%{password: "secret123", database: "logs"})
+
+      refute Map.has_key?(redacted, :query_password)
+    end
+
+    test "leaves a blank query_password untouched" do
+      assert %{query_password: nil} =
+               ClickHouseAdaptor.redact_config(%{password: "secret123", query_password: nil})
+    end
+  end
+
+  describe "query_credentials/1" do
+    test "returns the dedicated query credentials when both are populated" do
+      config = %{
+        username: "ingest_user",
+        password: "ingest_pa55",
+        query_user: "ch_reader",
+        query_password: "reader_pa55"
+      }
+
+      assert ClickHouseAdaptor.query_credentials(config) == {"ch_reader", "reader_pa55"}
+    end
+
+    test "accepts a backend struct" do
+      backend =
+        build(:backend,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost",
+            username: "ingest_user",
+            password: "ingest_pa55",
+            query_user: "ch_reader",
+            query_password: "reader_pa55"
+          }
+        )
+
+      assert ClickHouseAdaptor.query_credentials(backend) == {"ch_reader", "reader_pa55"}
+    end
+
+    test "falls back to the default credentials when only query_user is populated" do
+      config = %{username: "ingest_user", password: "ingest_pa55", query_user: "ch_reader"}
+
+      assert ClickHouseAdaptor.query_credentials(config) == {"ingest_user", "ingest_pa55"}
+    end
+
+    test "falls back to the default credentials when only query_password is populated" do
+      config = %{username: "ingest_user", password: "ingest_pa55", query_password: "reader_pa55"}
+
+      assert ClickHouseAdaptor.query_credentials(config) == {"ingest_user", "ingest_pa55"}
+    end
+
+    test "falls back to the default credentials when the query values are blank" do
+      config = %{
+        username: "ingest_user",
+        password: "ingest_pa55",
+        query_user: "",
+        query_password: ""
+      }
+
+      assert ClickHouseAdaptor.query_credentials(config) == {"ingest_user", "ingest_pa55"}
+    end
+
+    test "falls back to the default credentials when no query values are set" do
+      config = %{username: "ingest_user", password: "ingest_pa55"}
+
+      assert ClickHouseAdaptor.query_credentials(config) == {"ingest_user", "ingest_pa55"}
+    end
+  end
+
+  describe "dedicated_query_user?/1" do
+    test "is true only when both query values are populated" do
+      assert ClickHouseAdaptor.dedicated_query_user?(%{
+               query_user: "ch_reader",
+               query_password: "reader_pa55"
+             })
+
+      refute ClickHouseAdaptor.dedicated_query_user?(%{query_user: "ch_reader"})
+      refute ClickHouseAdaptor.dedicated_query_user?(%{query_password: "reader_pa55"})
+      refute ClickHouseAdaptor.dedicated_query_user?(%{query_user: "", query_password: ""})
+      refute ClickHouseAdaptor.dedicated_query_user?(%{username: "ingest_user"})
+    end
   end
 
   describe "cast_and_validate_config" do
@@ -436,6 +526,116 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       refute changeset.valid?
       assert Keyword.has_key?(changeset.errors, :max_event_age_hours)
+    end
+
+    test "casts query_user and query_password when both are provided" do
+      changeset =
+        cast_and_validate_config(query_user: "ch_reader", query_password: "reader_pa55")
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :query_user) == "ch_reader"
+      assert Ecto.Changeset.get_field(changeset, :query_password) == "reader_pa55"
+    end
+
+    test "query_user and query_password default to nil when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :query_user) == nil
+      assert Ecto.Changeset.get_field(changeset, :query_password) == nil
+    end
+
+    test "rejects a query_user without a query_password" do
+      changeset = cast_and_validate_config(query_user: "ch_reader")
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :query_user)
+      assert Keyword.has_key?(changeset.errors, :query_password)
+    end
+
+    test "rejects a query_password without a query_user" do
+      changeset = cast_and_validate_config(query_password: "reader_pa55")
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :query_user)
+      assert Keyword.has_key?(changeset.errors, :query_password)
+    end
+
+    test "rejects a blank query_user paired with a query_password" do
+      changeset = cast_and_validate_config(query_user: "", query_password: "reader_pa55")
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :query_user)
+    end
+
+    test "preserves the existing query_password when submitted blank" do
+      existing_config = %{query_user: "ch_reader", query_password: "reader_pa55"}
+
+      params = %{
+        url: "http://localhost",
+        database: "test",
+        port: 8123,
+        query_user: "ch_reader",
+        query_password: ""
+      }
+
+      changeset = Adaptor.cast_and_validate_config(ClickHouseAdaptor, params, existing_config)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :query_password) == "reader_pa55"
+    end
+
+    test "overwrites the existing query_password when a new value is submitted" do
+      existing_config = %{query_user: "ch_reader", query_password: "reader_pa55"}
+
+      params = %{
+        url: "http://localhost",
+        database: "test",
+        port: 8123,
+        query_user: "ch_reader",
+        query_password: "new_pa55"
+      }
+
+      changeset = Adaptor.cast_and_validate_config(ClickHouseAdaptor, params, existing_config)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :query_password) == "new_pa55"
+    end
+
+    test "allows revoking the dedicated query user by clearing query_user, even though query_password is submitted blank" do
+      existing_config = %{query_user: "ch_reader", query_password: "reader_pa55"}
+
+      params = %{
+        url: "http://localhost",
+        database: "test",
+        port: 8123,
+        query_user: "",
+        query_password: ""
+      }
+
+      changeset = Adaptor.cast_and_validate_config(ClickHouseAdaptor, params, existing_config)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :query_user) == nil
+      assert Ecto.Changeset.get_field(changeset, :query_password) == nil
+    end
+
+    test "requires a new query_password when query_user changes and the password is submitted blank" do
+      existing_config = %{query_user: "reader_a", query_password: "reader_pa55"}
+
+      params = %{
+        url: "http://localhost",
+        database: "test",
+        port: 8123,
+        query_user: "reader_b",
+        query_password: ""
+      }
+
+      changeset = Adaptor.cast_and_validate_config(ClickHouseAdaptor, params, existing_config)
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :query_user)
+      assert Keyword.has_key?(changeset.errors, :query_password)
     end
   end
 
@@ -801,6 +1001,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert ConnectionManager.pool_active?(backend, "dashboard_logs")
     end
 
+    test "does not fall back when the requested cluster pool is exhausted" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_urls: %{
+              "api_free" => "http://localhost:8123",
+              "dashboard_logs" => "http://localhost:8123"
+            },
+            default_read_cluster: "dashboard_logs"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      stub_read_cluster_queue_timeout(backend, "api_free")
+
+      assert {:error, %QueryError{kind: :pool_exhausted}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                 read_cluster: "api_free"
+               )
+
+      refute ConnectionManager.pool_active?(backend, "dashboard_logs")
+    end
+
     test "does not fall back when the unhealthy cluster is already the default" do
       {_source, backend} =
         setup_clickhouse_test(
@@ -834,7 +1057,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       log =
         ExUnit.CaptureLog.capture_log(
-          [format: "$metadata$message", metadata: [:host, :read_cluster]],
+          [format: "$metadata$message", metadata: [:host, :clickhouse_read_cluster]],
           fn ->
             assert {:error, %QueryError{}} =
                      ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
@@ -844,7 +1067,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         )
 
       assert log =~ "host=adhoc-read.local"
-      assert log =~ "read_cluster=adhoc"
+      assert log =~ "clickhouse_read_cluster=adhoc"
       refute log =~ "legacy-read.local"
     end
   end
@@ -984,6 +1207,154 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       start_supervised!({ClickHouseAdaptor, backend})
       assert :ok = ClickHouseAdaptor.test_connection(backend)
+    end
+  end
+
+  describe "test_connection/1 with a dedicated query user" do
+    setup do
+      insert(:plan, name: "Free")
+      :ok
+    end
+
+    test "checks the ingest cluster with the default user and read clusters with the query user" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_url: "http://localhost:8123",
+            query_user: "ch_reader",
+            query_password: "reader_pa55"
+          },
+          cleanup?: false
+        )
+
+      test_pid = self()
+
+      stub(Ch, :start_link, fn opts ->
+        send(test_pid, {:ch_start_link, Keyword.take(opts, [:username, :password])})
+        Mimic.call_original(Ch, :start_link, [opts])
+      end)
+
+      ExUnit.CaptureLog.capture_log(fn -> ClickHouseAdaptor.test_connection(backend) end)
+
+      assert_received {:ch_start_link, [username: "logflare", password: "logflare"]}
+      assert_received {:ch_start_link, [username: "ch_reader", password: "reader_pa55"]}
+    end
+
+    test "validates the query credentials against the primary url when no read cluster is set" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{query_user: "logflare", query_password: "logflare"},
+          cleanup?: false
+        )
+
+      read_grant_statement = QueryTemplates.read_grant_check_statement()
+      test_pid = self()
+
+      stub(Ch, :query, fn pool, statement, params, opts ->
+        if statement == read_grant_statement, do: send(test_pid, :read_grant_checked)
+
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert :ok = ClickHouseAdaptor.test_connection(backend)
+      assert_received :read_grant_checked
+    end
+
+    test "skips the read grant check when neither a query user nor a read cluster is set" do
+      {_source, backend} = setup_clickhouse_test(cleanup?: false)
+
+      read_grant_statement = QueryTemplates.read_grant_check_statement()
+      test_pid = self()
+
+      stub(Ch, :query, fn pool, statement, params, opts ->
+        if statement == read_grant_statement, do: send(test_pid, :read_grant_checked)
+
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert :ok = ClickHouseAdaptor.test_connection(backend)
+      refute_received :read_grant_checked
+    end
+
+    test "fails when the dedicated query user cannot authenticate" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{query_user: "ch_reader", query_password: "reader_pa55"},
+          cleanup?: false
+        )
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, :grant_check_unknown_failure} =
+                   ClickHouseAdaptor.test_connection(backend)
+        end)
+
+      assert log =~ "read cluster"
+      assert log =~ "ch_reader: Authentication failed"
+    end
+
+    test "falls back to the default credentials when only query_user is set" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{read_only_url: "http://localhost:8123", query_user: "ch_reader"},
+          cleanup?: false
+        )
+
+      test_pid = self()
+
+      stub(Ch, :start_link, fn opts ->
+        send(test_pid, {:ch_start_link, Keyword.take(opts, [:username, :password])})
+        Mimic.call_original(Ch, :start_link, [opts])
+      end)
+
+      assert :ok = ClickHouseAdaptor.test_connection(backend)
+
+      refute_received {:ch_start_link, [username: "ch_reader", password: _]}
+    end
+  end
+
+  describe "test_ingest_connection/1" do
+    setup do
+      insert(:plan, name: "Free")
+      :ok
+    end
+
+    test "succeeds when only the read grant check fails" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{query_user: "ch_reader", query_password: "reader_pa55"},
+          cleanup?: false
+        )
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert :ok = ClickHouseAdaptor.test_ingest_connection(backend)
+        end)
+
+      assert log =~ "read cluster"
+      assert log =~ "ch_reader: Authentication failed"
+    end
+
+    test "fails when the ingest grant check fails" do
+      {_source, backend} = setup_clickhouse_test(cleanup?: false)
+
+      grant_check_statement = QueryTemplates.grant_check_statement()
+
+      stub(Ch, :query, fn
+        _pool, ^grant_check_statement, _params, _opts ->
+          {:error, %DBConnection.ConnectionError{message: "unreachable"}}
+
+        pool, statement, params, opts ->
+          Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, :grant_check_unknown_failure} =
+                   ClickHouseAdaptor.test_ingest_connection(backend)
+        end)
+
+      assert log =~ "ingest cluster"
     end
   end
 
@@ -1578,23 +1949,255 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert Enum.all?(rows, &(&1["total"] == 5))
     end
 
-    test "limits endpoint CTE and UNION results", %{backend: backend} do
+    test "wraps the completed endpoint UNION result before adding the limit", %{backend: backend} do
       query = """
-      WITH query_rows AS (SELECT number FROM numbers(20))
-      SELECT number FROM query_rows
+      WITH query_rows AS (SELECT number FROM numbers(10))
+      SELECT number * 2 AS number FROM query_rows
       UNION ALL
-      SELECT number + 20 AS number FROM query_rows
-      ORDER BY number
+      SELECT number * 2 + 1 AS number FROM query_rows
       """
 
-      assert {:ok, %QueryResult{rows: rows}} =
-               ClickHouseAdaptor.execute_query(
-                 backend,
-                 endpoint_query_args(query, 10),
-                 []
-               )
+      expected_sql =
+        "SELECT * FROM (WITH query_rows AS (SELECT number FROM numbers(10)) SELECT number * 2 AS number FROM query_rows UNION ALL SELECT number * 2 + 1 AS number FROM query_rows) LIMIT 10"
 
-      assert Enum.map(rows, & &1["number"]) == Enum.to_list(0..9)
+      rows = assert_endpoint_query(backend, query, 10, expected_sql, {:count, 10})
+
+      assert Enum.all?(rows, &(&1["number"] in 0..19))
+    end
+
+    test "wraps a parenthesized plain endpoint query before adding the limit", %{
+      backend: backend
+    } do
+      query = "(SELECT number FROM numbers(5))"
+      expected_sql = "SELECT * FROM ((SELECT number FROM numbers(5))) LIMIT 3"
+      rows = assert_endpoint_query(backend, query, 3, expected_sql, {:count, 3})
+
+      assert Enum.all?(rows, &(&1["number"] in 0..4))
+    end
+
+    test "wraps endpoint OFFSET ROWS before adding the limit", %{backend: backend} do
+      query = "SELECT number FROM numbers(10) ORDER BY number OFFSET 2 ROWS"
+      expected_sql = "SELECT * FROM (#{query}) LIMIT 3"
+      rows = assert_endpoint_query(backend, query, 3, expected_sql, {:count, 3})
+
+      assert Enum.all?(rows, &(&1["number"] in 2..9))
+    end
+
+    test "keeps final-branch ordering inside a parenthesized endpoint UNION subquery", %{
+      backend: backend
+    } do
+      query = "(SELECT 1 AS number UNION ALL SELECT 2 AS number ORDER BY number DESC)"
+
+      expected_sql =
+        "SELECT * FROM (SELECT 1 AS number UNION ALL SELECT 2 AS number ORDER BY number DESC) LIMIT 1"
+
+      rows = assert_endpoint_query(backend, query, 1, expected_sql, {:count, 1})
+
+      assert hd(rows)["number"] in [1, 2]
+    end
+
+    test "keeps parenthesized endpoint UNION settings outside the result cap", %{
+      backend: backend
+    } do
+      query =
+        "(SELECT 1 AS number UNION ALL SELECT 2 AS number UNION ALL SELECT 3 AS number UNION ALL SELECT 4 AS number UNION ALL SELECT 5 AS number ORDER BY number DESC) SETTINGS max_threads = 1"
+
+      expected_sql =
+        "SELECT * FROM (SELECT 1 AS number UNION ALL SELECT 2 AS number UNION ALL SELECT 3 AS number UNION ALL SELECT 4 AS number UNION ALL SELECT 5 AS number ORDER BY number DESC) LIMIT 2 SETTINGS max_threads = 1"
+
+      rows = assert_endpoint_query(backend, query, 2, expected_sql, {:count, 2})
+
+      assert Enum.all?(rows, &(&1["number"] in 1..5))
+    end
+
+    test "keeps endpoint UNION FETCH in the final branch under the exact cap", %{
+      backend: backend
+    } do
+      query =
+        "SELECT 1 AS number UNION ALL SELECT 1 AS number UNION ALL SELECT 2 AS number ORDER BY number FETCH FIRST 1 ROWS WITH TIES"
+
+      expected_sql = "SELECT * FROM (#{query}) LIMIT 1"
+
+      rows = assert_endpoint_query(backend, query, 1, expected_sql, {:count, 1})
+
+      assert hd(rows)["number"] in [1, 2]
+    end
+
+    test "keeps CTE-dependent endpoint UNION WITH FILL bounds in scope", %{backend: backend} do
+      query =
+        "WITH bounds AS (SELECT 5 AS max) SELECT 0 AS number UNION ALL SELECT 2 AS number ORDER BY number WITH FILL TO assumeNotNull((SELECT max FROM bounds)) STEP 1"
+
+      expected_sql = "SELECT * FROM (#{query}) LIMIT 2"
+
+      rows = assert_endpoint_query(backend, query, 2, expected_sql, {:count, 2})
+
+      assert Enum.all?(rows, &(&1["number"] in 0..4))
+    end
+
+    test "keeps constant endpoint UNION WITH FILL bounds in the final branch", %{
+      backend: backend
+    } do
+      query =
+        "SELECT 0 AS number UNION ALL SELECT 2 AS number ORDER BY number WITH FILL FROM 0 TO 5 STEP 1"
+
+      expected_sql = "SELECT * FROM (#{query}) LIMIT 2"
+
+      rows = assert_endpoint_query(backend, query, 2, expected_sql, {:count, 2})
+
+      assert Enum.all?(rows, &(&1["number"] in 0..4))
+    end
+
+    test "keeps final-branch ordering inside the endpoint UNION subquery", %{
+      backend: backend
+    } do
+      query = """
+      SELECT number FROM numbers(100)
+      UNION ALL
+      SELECT number + 100 AS number FROM numbers(100)
+      ORDER BY number DESC
+      """
+
+      expected_sql =
+        "SELECT * FROM (SELECT number FROM numbers(100) UNION ALL SELECT number + 100 AS number FROM numbers(100) ORDER BY number DESC) LIMIT 5"
+
+      rows = assert_endpoint_query(backend, query, 5, expected_sql, {:count, 5})
+
+      assert Enum.all?(rows, &(&1["number"] in 0..199))
+    end
+
+    test "preserves a final-branch limit before applying the endpoint cap", %{backend: backend} do
+      query =
+        "SELECT 100 AS number UNION ALL SELECT number AS number FROM numbers(2) ORDER BY number LIMIT 1"
+
+      expected_sql = "SELECT * FROM (#{query}) LIMIT 10"
+      rows = assert_endpoint_query(backend, query, 10, expected_sql, {:count, 2})
+
+      assert rows |> Enum.map(& &1["number"]) |> Enum.sort() == [0, 100]
+    end
+
+    test "supports explicit global ordering around an endpoint UNION", %{backend: backend} do
+      query =
+        "SELECT * FROM (SELECT number FROM numbers(5) UNION ALL SELECT number + 5 AS number FROM numbers(5)) ORDER BY number DESC"
+
+      expected_sql = "#{query} LIMIT 3"
+
+      assert_endpoint_query(backend, query, 3, expected_sql, [9, 8, 7])
+    end
+
+    test "preserves an endpoint UNION branch limit and offset", %{backend: backend} do
+      query = """
+      SELECT number FROM numbers(10)
+      UNION ALL
+      SELECT number + 10 AS number FROM numbers(10)
+      ORDER BY number
+      LIMIT 4 OFFSET 2
+      """
+
+      expected_sql =
+        "SELECT * FROM (SELECT number FROM numbers(10) UNION ALL SELECT number + 10 AS number FROM numbers(10) ORDER BY number LIMIT 4 OFFSET 2) LIMIT 3"
+
+      rows = assert_endpoint_query(backend, query, 3, expected_sql, {:count, 3})
+
+      assert Enum.all?(rows, &(&1["number"] in 0..19))
+    end
+
+    test "caps an endpoint UNION while preserving final-branch LIMIT BY", %{backend: backend} do
+      query =
+        "SELECT 1 AS number UNION ALL SELECT 2 AS number UNION ALL SELECT 3 AS number UNION ALL SELECT 4 AS number LIMIT 1 BY number"
+
+      expected_sql = "SELECT * FROM (#{query}) LIMIT 3"
+      rows = assert_endpoint_query(backend, query, 3, expected_sql, {:count, 3})
+
+      assert Enum.all?(rows, &(&1["number"] in 1..4))
+    end
+
+    test "preserves endpoint UNION modifiers when LIMIT BY is not exposed", %{backend: backend} do
+      query =
+        "SELECT number AS value FROM numbers(5) UNION ALL SELECT number AS value FROM numbers(5) ORDER BY value DESC LIMIT 1 BY number"
+
+      expected_sql = "SELECT * FROM (#{query}) LIMIT 2"
+      rows = assert_endpoint_query(backend, query, 2, expected_sql, {:count, 2})
+
+      assert Enum.all?(rows, &(&1["value"] in 0..4))
+    end
+
+    test "keeps CTE-dependent endpoint UNION modifiers in scope", %{backend: backend} do
+      queries = [
+        "WITH cap AS (SELECT 3 AS n) SELECT number FROM numbers(5) UNION ALL SELECT number FROM numbers(5) LIMIT (SELECT n FROM cap)",
+        "WITH offset_rows AS (SELECT 2 AS n) SELECT number FROM numbers(5) UNION ALL SELECT number FROM numbers(5) LIMIT 3 OFFSET (SELECT n FROM offset_rows)",
+        "WITH groups AS (SELECT 1 AS g) SELECT number FROM numbers(5) UNION ALL SELECT number FROM numbers(5) LIMIT 1 BY (SELECT g FROM groups)"
+      ]
+
+      for query <- queries do
+        rows =
+          assert_endpoint_query(
+            backend,
+            query,
+            2,
+            "SELECT * FROM (#{query}) LIMIT 2",
+            {:count, 2}
+          )
+
+        assert Enum.all?(rows, &(&1["number"] in 0..4))
+      end
+    end
+
+    test "keeps an endpoint UNION branch alias used by LIMIT in scope", %{backend: backend} do
+      query = "SELECT number FROM numbers(5) UNION ALL SELECT 3 AS cap FROM numbers(5) LIMIT cap"
+      expected_sql = "SELECT * FROM (#{query}) LIMIT 10"
+      rows = assert_endpoint_query(backend, query, 10, expected_sql, {:count, 8})
+
+      assert Enum.all?(rows, &(&1["number"] in 0..4))
+    end
+
+    test "keeps allowed endpoint UNION settings outside branch modifiers", %{backend: backend} do
+      query =
+        "SELECT number FROM numbers(5) UNION ALL SELECT number + 5 AS number FROM numbers(5) ORDER BY number LIMIT 100 SETTINGS max_threads = 1"
+
+      expected_sql =
+        "SELECT * FROM (SELECT number FROM numbers(5) UNION ALL SELECT number + 5 AS number FROM numbers(5) ORDER BY number LIMIT 100) LIMIT 3 SETTINGS max_threads = 1"
+
+      rows = assert_endpoint_query(backend, query, 3, expected_sql, {:count, 3})
+
+      assert Enum.all?(rows, &(&1["number"] in 0..9))
+    end
+
+    test "preserves an endpoint UNION ordered by an unexposed source column", %{backend: backend} do
+      query =
+        "SELECT number AS value FROM numbers(5) UNION ALL SELECT number AS value FROM numbers(5) ORDER BY number DESC LIMIT 3"
+
+      expected_sql =
+        "SELECT * FROM (SELECT number AS value FROM numbers(5) UNION ALL SELECT number AS value FROM numbers(5) ORDER BY number DESC LIMIT 3) LIMIT 2"
+
+      rows = assert_endpoint_query(backend, query, 2, expected_sql, {:count, 2})
+
+      assert Enum.all?(rows, &(&1["value"] in 0..4))
+    end
+
+    test "preserves endpoint UNION wildcard modifiers in branch scope", %{backend: backend} do
+      base_query =
+        "SELECT * FROM numbers(5) UNION ALL SELECT number AS value FROM numbers(5)"
+
+      for modifier <- ["ORDER BY value DESC LIMIT 3", "LIMIT 1 BY value"] do
+        query = "#{base_query} #{modifier}"
+        expected_sql = "SELECT * FROM (#{query}) LIMIT 2"
+        rows = assert_endpoint_query(backend, query, 2, expected_sql, {:count, 2})
+
+        assert Enum.all?(rows, &(&1["number"] in 0..4))
+      end
+    end
+
+    test "caps endpoint UNIONs while preserving complex branch limits", %{backend: backend} do
+      for existing_limit <- ["-5", "0.5"] do
+        query =
+          "SELECT number FROM numbers(10) UNION ALL SELECT number + 10 AS number FROM numbers(10) ORDER BY number LIMIT #{existing_limit}"
+
+        expected_sql = "SELECT * FROM (#{query}) LIMIT 3"
+
+        rows = assert_endpoint_query(backend, query, 3, expected_sql, {:count, 3})
+
+        assert Enum.all?(rows, &(&1["number"] in 0..19))
+      end
     end
 
     test "limits parameterized endpoint queries", %{backend: backend} do
@@ -2048,7 +2651,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
-  defp assert_endpoint_query(backend, query, max_limit, expected_sql, expected_numbers) do
+  defp assert_endpoint_query(backend, query, max_limit, expected_sql, expected_result) do
     parent = self()
 
     expect(Ch, :query, fn pool, statement, params, opts ->
@@ -2064,7 +2667,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
              )
 
     assert_received {:submitted_sql, ^expected_sql}
-    assert Enum.map(rows, & &1["number"]) == expected_numbers
+
+    case expected_result do
+      {:count, count} -> assert length(rows) == count
+      expected_numbers -> assert Enum.map(rows, & &1["number"]) == expected_numbers
+    end
+
+    rows
   end
 
   defp endpoint_query_args(query, max_limit, declared_params \\ [], input_params \\ %{}) do
@@ -2080,6 +2689,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       case pool do
         {:via, Registry, {_registry, {_mod, ^backend_id, ^label}}} ->
           {:error, %DBConnection.ConnectionError{message: "unreachable"}}
+
+        _ ->
+          Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end
+    end)
+  end
+
+  defp stub_read_cluster_queue_timeout(%Backend{id: backend_id}, label) do
+    stub(Ch, :query, fn pool, statement, params, opts ->
+      case pool do
+        {:via, Registry, {_registry, {_mod, ^backend_id, ^label}}} ->
+          {:error,
+           %DBConnection.ConnectionError{
+             message: "connection not available and request was dropped from queue",
+             reason: :queue_timeout
+           }}
 
         _ ->
           Mimic.call_original(Ch, :query, [pool, statement, params, opts])
