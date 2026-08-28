@@ -7,6 +7,7 @@ defmodule LogflareWeb.OpenApiTest do
   alias LogflareWeb.Api.TeamController
   alias LogflareWeb.OpenApiSchemas.AccessToken
   alias LogflareWeb.OpenApiSchemas.QueryResult
+  alias LogflareWeb.OpenApiSchemas.SourceIndexResponse
   alias OpenApiSpex.MediaType
   alias OpenApiSpex.Response
   alias OpenApiSpex.Schema
@@ -41,14 +42,17 @@ defmodule LogflareWeb.OpenApiTest do
              AccessToken.schema().properties.inserted_at
   end
 
-  test "source list format is documented as a CSV enum" do
-    assert [
-             %OpenApiSpex.Parameter{
-               name: :format,
-               in: :query,
-               schema: %Schema{type: :string, enum: ["csv"]}
+  test "source list documents negotiated JSON and CSV responses" do
+    operation = SourceController.open_api_operation(:index)
+
+    assert operation.parameters == []
+
+    assert %Response{
+             content: %{
+               "application/json" => %MediaType{schema: SourceIndexResponse},
+               "text/csv" => %MediaType{schema: %Schema{type: :string}}
              }
-           ] = SourceController.open_api_operation(:index).parameters
+           } = operation.responses[200]
   end
 
   test "Management API 400 errors are documented as JSON" do

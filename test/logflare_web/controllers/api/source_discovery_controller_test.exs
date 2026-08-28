@@ -125,11 +125,6 @@ defmodule LogflareWeb.Api.SourceDiscoveryControllerTest do
       conn |> get(path) |> response(401)
     end
 
-    conn
-    |> put_req_header("authorization", "Bearer #{query_token.token}")
-    |> get("/api/sources?format=xml")
-    |> response(401)
-
     malformed = insert(:access_token, resource_owner: user, scopes: "ingest:source:not-an-id")
 
     conn
@@ -150,7 +145,7 @@ defmodule LogflareWeb.Api.SourceDiscoveryControllerTest do
       conn
       |> put_req_header("accept", "text/csv")
       |> add_access_token(user, "private")
-      |> get("/api/sources?format=csv")
+      |> get("/api/sources")
 
     assert response(conn, 200) =~ "token,name\r\n"
     assert response(conn, 200) =~ "\"A, \"\"quoted\"\"\nsource\""
@@ -165,18 +160,26 @@ defmodule LogflareWeb.Api.SourceDiscoveryControllerTest do
   test "CSV for an authorized user with no sources contains only the header", %{conn: conn} do
     user = insert(:user)
 
-    conn = conn |> add_access_token(user, "ingest") |> get("/api/sources?format=csv")
+    conn =
+      conn
+      |> put_req_header("accept", "text/csv")
+      |> add_access_token(user, "ingest")
+      |> get("/api/sources")
 
     assert response(conn, 200) == "token,name\r\n"
     assert get_resp_header(conn, "content-type") == ["text/csv; charset=utf-8"]
   end
 
-  test "unsupported formats are JSON 400 and mutations remain private", %{conn: conn, user: user} do
-    assert %{"error" => "Unsupported format"} =
-             conn
-             |> add_access_token(user, "ingest")
-             |> get("/api/sources?format=xml")
-             |> json_response(400)
+  test "unsupported media types are rejected and mutations remain private", %{
+    conn: conn,
+    user: user
+  } do
+    assert_error_sent(406, fn ->
+      conn
+      |> put_req_header("accept", "application/xml")
+      |> add_access_token(user, "ingest")
+      |> get("/api/sources")
+    end)
 
     conn
     |> add_access_token(user, "ingest")

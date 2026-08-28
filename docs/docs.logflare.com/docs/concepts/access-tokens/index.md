@@ -56,7 +56,7 @@ Private access tokens should not be exposed to the client side, as private acces
 
 `GET /api/sources` can be used to discover sources available to an ingest credential. An account-wide `ingest` token, legacy API key, deprecated empty/public token, or source-scoped `ingest:source:<id>` (including deprecated `ingest:collection:<id>`) token returns an ordered JSON list containing only `token` and `name`. Source-scoped tokens return only owned, authorized sources.
 
-Private tokens retain the management response, which contains the complete source representation. Any credential authorized to list sources can request the minimal RFC 4180 CSV list with `GET /api/sources?format=csv`; its columns are `token,name`. Source lists are returned with `Cache-Control: no-store`.
+Private tokens retain the management response, which contains the complete source representation. Any credential authorized to list sources can request the minimal RFC 4180 CSV list by sending `Accept: text/csv` with `GET /api/sources`; its columns are `token,name`. Source lists are returned with `Cache-Control: no-store`.
 
 ## Rotation
 

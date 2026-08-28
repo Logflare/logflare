@@ -9,7 +9,6 @@ defmodule LogflareWeb.Api.SourceController do
   alias LogflareWeb.Api.FallbackController
   alias LogflareWeb.Api.SourceCsv
   alias LogflareWeb.OpenApi.Accepted
-  alias LogflareWeb.OpenApi.BadRequest
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.NotFound
@@ -33,14 +32,7 @@ defmodule LogflareWeb.Api.SourceController do
   operation(:index,
     summary: "List sources",
     description:
-      "Private tokens receive the full management source representation by default. Ingest-compatible credentials receive only token and name. Set format=csv for a token,name CSV list.",
-    parameters: [
-      format: [
-        in: :query,
-        description: "Response format (csv)",
-        schema: %Schema{type: :string, enum: ["csv"]}
-      ]
-    ],
+      "Private tokens receive the full management source representation as JSON. Ingest-compatible credentials receive only token and name. Request text/csv for a minimal token,name CSV list.",
     responses: %{
       200 => %Response{
         description: "Source list",
@@ -49,18 +41,14 @@ defmodule LogflareWeb.Api.SourceController do
           "text/csv" => %MediaType{schema: %Schema{type: :string}}
         }
       },
-      400 => BadRequest.response(),
       401 => Unauthorized.response()
     }
   )
 
-  def index(%{assigns: %{user: user}} = conn, params) do
-    case {params["format"], source_access_for_conn(conn)} do
+  def index(%{assigns: %{user: user}} = conn, _params) do
+    case {get_format(conn), source_access_for_conn(conn)} do
       {_format, :unauthorized} ->
         FallbackController.call(conn, {:error, :unauthorized})
-
-      {format, _access} when format not in [nil, "csv"] ->
-        FallbackController.call(conn, {:error, "Unsupported format"})
 
       {"csv", access} ->
         conn
@@ -71,13 +59,13 @@ defmodule LogflareWeb.Api.SourceController do
           SourceCsv.encode(Sources.list_source_tokens_by_user(user.id, source_ids(access)))
         )
 
-      {nil, :private} ->
+      {"json", :private} ->
         render_private_json(conn, user.id)
 
-      {nil, :partner} ->
+      {"json", :partner} ->
         render_private_json(conn, user.id)
 
-      {nil, {:ingest, source_ids}} ->
+      {"json", {:ingest, source_ids}} ->
         render_minimal_json(conn, user.id, source_ids)
     end
   end
