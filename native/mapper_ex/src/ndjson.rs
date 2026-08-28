@@ -157,6 +157,7 @@ fn write_row<'a>(
             )
         })?;
 
+        // Try derived value, then enum mapping, fallback to generic conversion
         match derived_value(layout, column.index, values)? {
             Some(number) => object.serialize_entry(&column.name, &number),
             None => match enum_label(column, value) {
