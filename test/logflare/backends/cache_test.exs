@@ -111,4 +111,17 @@ defmodule Logflare.Backends.CacheTest do
              {:list_enabled_backends, [[source_id: source.id]]}
            )
   end
+
+  test "list_enabled_backends/1 treats a legacy cached backend as enabled", %{
+    backend: backend,
+    source: source
+  } do
+    legacy_backend = Map.delete(backend, :enabled)
+    cache_key = {:list_backends, [[source_id: source.id]]}
+    Cachex.put!(Backends.Cache, cache_key, {:cached, [legacy_backend]})
+
+    assert [cached_backend] = Backends.Cache.list_enabled_backends(source_id: source.id)
+    assert cached_backend.id == backend.id
+    refute Map.has_key?(cached_backend, :enabled)
+  end
 end

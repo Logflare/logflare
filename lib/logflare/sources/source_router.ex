@@ -36,7 +36,8 @@ defmodule Logflare.Sources.SourceRouter do
     le = %{le | via_rule_id: rule.id}
 
     # route to an enabled backend
-    with %Backend{enabled: true} = backend <- Backends.Cache.get_backend(backend_id) do
+    with %Backend{} = backend <- Backends.Cache.get_backend(backend_id),
+         true <- Map.get(backend, :enabled, true) do
       if not SourceSup.rule_child_started?(rule), do: SourceSup.start_rule_child(rule)
 
       # ingest to a specific backend

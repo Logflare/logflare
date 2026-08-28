@@ -1137,6 +1137,30 @@ defmodule Logflare.BackendsTest do
       assert count == initial_count + 1
       assert {:ok, []} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
     end
+
+    test "routes events to a legacy cached drain destination without an enabled field", %{
+      source: source
+    } do
+      user = Repo.get(User, source.user_id)
+
+      backend =
+        insert(:backend,
+          type: :webhook,
+          config: %{url: "https://legacy.example.com"},
+          user: user
+        )
+
+      insert(:rule, lql_string: "testing", backend: backend, source_id: source.id)
+      Logflare.ContextCache.bust_keys([{Rules, [source_id: source.id]}])
+
+      legacy_backend = Map.delete(backend, :enabled)
+      cache_key = {:get_backend, [backend.id]}
+      Cachex.put!(Backends.Cache, cache_key, {:cached, legacy_backend})
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+
+      assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "testing"}], source)
+      assert {:ok, [_event]} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+    end
   end
 
   describe "ingest filters" do

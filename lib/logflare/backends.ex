@@ -1073,7 +1073,7 @@ defmodule Logflare.Backends do
         default_ingest_backend_enabled?: true
       }) do
     default_backend_ids =
-      __MODULE__.Cache.list_backends(source_id: source_id)
+      __MODULE__.Cache.list_enabled_backends(source_id: source_id)
       |> Enum.filter(& &1.default_ingest?)
       |> MapSet.new(& &1.id)
 
