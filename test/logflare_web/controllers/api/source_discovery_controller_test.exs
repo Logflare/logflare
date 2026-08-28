@@ -44,6 +44,15 @@ defmodule LogflareWeb.Api.SourceDiscoveryControllerTest do
     assert Map.has_key?(response_source, "metrics")
   end
 
+  test "partner credentials without an impersonation target are unauthorized", %{conn: conn} do
+    partner = insert(:partner, id: 2_000_000_000)
+
+    conn
+    |> add_partner_access_token(partner)
+    |> get("/api/sources")
+    |> response(401)
+  end
+
   test "ingest, legacy, empty, and public credentials receive ordered minimal sources", %{
     conn: conn,
     user: user,

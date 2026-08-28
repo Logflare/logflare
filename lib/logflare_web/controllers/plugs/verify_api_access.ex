@@ -94,6 +94,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
     else
       # don't preload for partners
       {:ok, _token, %Partner{} = partner} -> {:ok, partner}
+      {:ok, _token, _invalid_owner} -> {:error, :unauthorized}
       {:error, :no_token} = err -> err
       {:error, _} = err -> handle_legacy_api_key(extracted_token, err, is_private_route?)
     end
