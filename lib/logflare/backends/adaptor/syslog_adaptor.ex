@@ -101,7 +101,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def sanitize_config_for_display(config) do
-    Adaptor.mask_config_values(config, [:tls, :host, :port, :max_message_bytes])
+    Adaptor.mask_config_values(config, except: [:tls, :host, :port, :max_message_bytes])
   end
 
   defp redact_config_field(config, field) do

@@ -64,7 +64,7 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptor do
 
   @impl Adaptor
   def sanitize_config_for_display(config) do
-    Adaptor.mask_config_values(config, [:domain, :dataset_name])
+    Adaptor.mask_config_values(config, except: [:domain, :dataset_name])
   end
 
   @impl Adaptor

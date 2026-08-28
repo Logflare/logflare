@@ -35,13 +35,13 @@ defmodule Logflare.Backends.AdaptorTest do
       config = %{database: "logs", password: "secret123", port: 5432}
 
       assert %{database: "logs", password: "**********", port: 5432} ==
-               Adaptor.mask_config_values(config, [:database, :port])
+               Adaptor.mask_config_values(config, except: [:database, :port])
     end
 
     test "masks everything when no keys are allowed" do
       config = %{api_token: "secret"}
 
-      assert %{api_token: "**********"} == Adaptor.mask_config_values(config, [])
+      assert %{api_token: "**********"} == Adaptor.mask_config_values(config, except: [])
     end
   end
 end

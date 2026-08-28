@@ -65,7 +65,7 @@ defmodule Logflare.Backends.Adaptor.Last9Adaptor do
 
   @impl Adaptor
   def sanitize_config_for_display(config) do
-    Adaptor.mask_config_values(config, [:region])
+    Adaptor.mask_config_values(config, except: [:region])
   end
 
   @impl Adaptor

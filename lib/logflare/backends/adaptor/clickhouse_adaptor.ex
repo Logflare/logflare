@@ -99,20 +99,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def sanitize_config_for_display(config) do
-    Adaptor.mask_config_values(config, [
-      :url,
-      :database,
-      :port,
-      :read_pool_size,
-      :labeled_read_pool_size,
-      :read_only_url,
-      :read_only_urls,
-      :default_read_cluster,
-      :use_async_inserts_for_small_batches,
-      :async_insert_cluster_url,
-      :async_insert_max_rows,
-      :max_event_age_hours
-    ])
+    Adaptor.mask_config_values(config,
+      except: [
+        :url,
+        :database,
+        :port,
+        :read_pool_size,
+        :labeled_read_pool_size,
+        :read_only_url,
+        :read_only_urls,
+        :default_read_cluster,
+        :use_async_inserts_for_small_batches,
+        :async_insert_cluster_url,
+        :async_insert_max_rows,
+        :max_event_age_hours
+      ]
+    )
   end
 
   @doc false

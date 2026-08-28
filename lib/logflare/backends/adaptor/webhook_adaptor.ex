@@ -186,7 +186,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   @impl Logflare.Backends.Adaptor
   def sanitize_config_for_display(config) do
     config
-    |> Adaptor.mask_config_values([:url, :http, :gzip])
+    |> Adaptor.mask_config_values(except: [:url, :http, :gzip])
     |> Map.update(:url, nil, &redact_url_userinfo/1)
   end
 

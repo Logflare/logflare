@@ -147,17 +147,23 @@ defmodule Logflare.Backends.Adaptor do
          function_exported?(adaptor, :sanitize_config_for_display, 1) do
       adaptor.sanitize_config_for_display(config)
     else
-      mask_config_values(config, [])
+      mask_config_values(config, except: [])
     end
   end
 
   def sanitize_config_for_display(%Backend{}), do: %{}
 
   @doc """
-  Masks all values in a config map except those under the given allowed keys.
+  Masks all values in a config map except those under the keys given via `:except`.
+
+  ## Examples
+
+      iex> mask_config_values(%{region: "US1", api_key: "secret"}, except: [:region])
+      %{region: "US1", api_key: "**********"}
   """
-  @spec mask_config_values(map(), [atom()]) :: map()
-  def mask_config_values(config, allowed_keys) when is_map(config) and is_list(allowed_keys) do
+  @spec mask_config_values(map(), except: [atom()]) :: map()
+  def mask_config_values(config, except: allowed_keys)
+      when is_map(config) and is_list(allowed_keys) do
     Map.new(config, fn {key, value} ->
       if key in allowed_keys do
         {key, value}

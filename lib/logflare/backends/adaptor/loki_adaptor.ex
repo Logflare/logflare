@@ -136,7 +136,7 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def sanitize_config_for_display(config) do
-    Adaptor.mask_config_values(config, [:url])
+    Adaptor.mask_config_values(config, except: [:url])
   end
 
   @impl Logflare.Backends.Adaptor

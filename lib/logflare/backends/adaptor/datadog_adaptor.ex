@@ -90,7 +90,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def sanitize_config_for_display(config) do
-    Adaptor.mask_config_values(config, [:region])
+    Adaptor.mask_config_values(config, except: [:region])
   end
 
   @impl Logflare.Backends.Adaptor

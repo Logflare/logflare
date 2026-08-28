@@ -276,7 +276,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def sanitize_config_for_display(config) do
-    Adaptor.mask_config_values(config, [:project_id, :dataset_id])
+    Adaptor.mask_config_values(config, except: [:project_id, :dataset_id])
   end
 
   @doc """

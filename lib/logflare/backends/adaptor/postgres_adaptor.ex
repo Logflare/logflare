@@ -239,14 +239,16 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   @impl Logflare.Backends.Adaptor
   def sanitize_config_for_display(config) do
     config
-    |> Adaptor.mask_config_values([
-      :url,
-      :hostname,
-      :database,
-      :schema,
-      :port,
-      :pool_size
-    ])
+    |> Adaptor.mask_config_values(
+      except: [
+        :url,
+        :hostname,
+        :database,
+        :schema,
+        :port,
+        :pool_size
+      ]
+    )
     |> Map.replace_lazy(:url, &redact_url_string/1)
   end
 
