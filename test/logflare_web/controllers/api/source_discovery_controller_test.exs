@@ -19,12 +19,16 @@ defmodule LogflareWeb.Api.SourceDiscoveryControllerTest do
     user: user,
     alpha: alpha
   } do
+    system_source = insert(:source, user: user, name: "system.logs", system_source: true)
     conn = conn |> add_access_token(user, "private") |> get("/api/sources")
 
-    assert [source | _] = json_response(conn, 200)
+    sources = json_response(conn, 200)
+
+    assert [source | _] = sources
     assert source["token"] == Atom.to_string(alpha.token)
     assert Map.has_key?(source, "id")
     assert Map.has_key?(source, "metrics")
+    assert Enum.any?(sources, &(&1["token"] == Atom.to_string(system_source.token)))
     assert get_resp_header(conn, "cache-control") == ["no-store"]
   end
 
@@ -77,6 +81,33 @@ defmodule LogflareWeb.Api.SourceDiscoveryControllerTest do
              |> put_req_header("x-api-key", user.api_key)
              |> get("/api/sources")
              |> json_response(200)
+  end
+
+  test "minimal discovery excludes system sources from JSON and CSV", %{
+    conn: conn,
+    user: user
+  } do
+    source = insert(:source, user: user, name: "system.logs", system_source: true)
+    source_token = Atom.to_string(source.token)
+
+    for scopes <- ["ingest", "ingest:source:#{source.id}"] do
+      json_sources =
+        conn
+        |> add_access_token(user, scopes)
+        |> get("/api/sources")
+        |> json_response(200)
+
+      refute Enum.any?(json_sources, &(&1["token"] == source_token))
+
+      csv_sources =
+        conn
+        |> put_req_header("accept", "text/csv")
+        |> add_access_token(user, scopes)
+        |> get("/api/sources")
+        |> response(200)
+
+      refute csv_sources =~ source_token
+    end
   end
 
   test "source and collection scopes combine and exclude foreign sources", %{

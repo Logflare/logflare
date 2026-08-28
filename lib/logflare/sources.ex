@@ -51,7 +51,7 @@ defmodule Logflare.Sources do
   def list_source_tokens_by_user(user_id, source_ids \\ nil) when is_integer(user_id) do
     query =
       from(s in Source,
-        where: s.user_id == ^user_id,
+        where: s.user_id == ^user_id and s.system_source == false,
         order_by: [asc: s.name, asc: s.id],
         select: %{token: s.token, name: s.name}
       )
