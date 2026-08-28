@@ -7,11 +7,12 @@ defmodule Logflare.Repo.Replicas do
   `Registry`. If no replicas are configured, the supervisor is skipped entirely.
 
   Each `LOGFLARE_READ_REPLICAS` entry is either a bare hostname or a Postgres URI
-  (`postgres://user:pass@host:port/database?ssl=true&pool_size=5`). In both
-  cases, only the parts explicitly given override the primary `Logflare.Repo`
-  config - anything not specified (host, port, database, credentials, ssl, ...) is
-  inherited from the primary's `DB_*` settings, without ever baking the primary's
-  actual values into the parsed result. URIs are parsed and validated entirely by
+  (`postgres://user:pass@host:port/database?ssl=true&pool_size=5`). A URI entry
+  must always include a hostname; only the remaining parts explicitly given
+  (port, database, credentials, ssl, ...) override the primary `Logflare.Repo`
+  config, and anything not specified is inherited from the primary's `DB_*`
+  settings, without ever baking the primary's actual values into the parsed
+  result. URIs are parsed and validated entirely by
   `Ecto.Repo.Supervisor.parse_url/1`.
 
   Replica pools are identified by a key derived from the entry (host/port/database
@@ -101,6 +102,14 @@ defmodule Logflare.Repo.Replicas do
   defp parse_uri(entry) do
     uri = URI.parse(entry)
 
+    if uri.host in [nil, ""] do
+      {:error, "hostname is required"}
+    else
+      parse_uri_with_host(entry, uri)
+    end
+  end
+
+  defp parse_uri_with_host(entry, uri) do
     try do
       config =
         case uri.path do
