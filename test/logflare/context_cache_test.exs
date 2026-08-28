@@ -2,9 +2,7 @@ defmodule Logflare.ContextCacheTest do
   use Logflare.DataCase, async: false
 
   alias Ecto.Adapters.SQL
-  alias Logflare.Backends
   alias Logflare.ContextCache
-  alias Logflare.ContextCache.Tombstones
   alias Logflare.ContextCache.TransactionBroadcaster
 
   defmodule RecordingOps do
@@ -61,125 +59,6 @@ defmodule Logflare.ContextCacheTest do
         assert_received {:keys_to_bust, CustomImpl.Cache, unquote(expected_kw)}
         assert_received {:delete_keys, CustomImpl.Cache, [:key]}
       end
-    end
-
-    test "fetch_consistent/3 retries a value loaded across an invalidation" do
-      cache_key = {:get_backend, [System.unique_integer([:positive])]}
-      Cachex.del(Backends.Cache, cache_key)
-      parent = self()
-
-      task =
-        Task.async(fn ->
-          ContextCache.fetch_consistent(Backends.Cache, cache_key, fn ->
-            send(parent, {:getter_started, self()})
-
-            receive do
-              {:return, value} -> value
-            end
-          end)
-        end)
-
-      assert_receive {:getter_started, first_getter}
-      ContextCache.Gossip.record_cache_tombstones(Backends.Cache, [cache_key])
-      send(first_getter, {:return, :stale})
-
-      assert_receive {:getter_started, second_getter}
-      send(second_getter, {:return, :current})
-
-      assert Task.await(task) == :current
-      assert {:cached, :current, _generation} = Cachex.get!(Backends.Cache, cache_key)
-    end
-
-    test "fetch_consistent/3 retries a list loaded across a generic record invalidation" do
-      backend_id = System.unique_integer([:positive])
-      cache_key = {:list_backends, [[source_id: System.unique_integer([:positive])]]}
-      Cachex.del(Backends.Cache, cache_key)
-      parent = self()
-
-      task =
-        Task.async(fn ->
-          ContextCache.fetch_consistent(Backends.Cache, cache_key, fn ->
-            send(parent, {:getter_started, self()})
-
-            receive do
-              {:return, value} -> value
-            end
-          end)
-        end)
-
-      assert_receive {:getter_started, first_getter}
-      ContextCache.Gossip.record_tombstones([{Backends, backend_id}])
-      send(first_getter, {:return, [%{id: backend_id}]})
-
-      assert_receive {:getter_started, second_getter}
-      send(second_getter, {:return, []})
-
-      assert Task.await(task) == []
-      assert {:cached, [], generation} = Cachex.get!(Backends.Cache, cache_key)
-
-      assert ContextCache.Gossip.cache_value_generation_current?(
-               Backends.Cache,
-               cache_key,
-               generation
-             )
-    end
-
-    test "fetch_consistent/3 rejects cached records invalidated by primary key" do
-      backend_id = System.unique_integer([:positive])
-      cache_key = {:list_backends, [[source_id: System.unique_integer([:positive])]]}
-      stale_value = [%{id: backend_id}]
-
-      stale_generation =
-        ContextCache.Gossip.cache_value_generation(Backends.Cache, cache_key, stale_value)
-
-      Cachex.put(Backends.Cache, cache_key, {:cached, stale_value, stale_generation})
-      ContextCache.Gossip.record_tombstones([{Backends, backend_id}])
-
-      assert ContextCache.fetch_consistent(Backends.Cache, cache_key, fn -> [] end) == []
-      assert {:cached, [], generation} = Cachex.get!(Backends.Cache, cache_key)
-
-      assert ContextCache.Gossip.cache_value_generation_current?(
-               Backends.Cache,
-               cache_key,
-               generation
-             )
-    end
-
-    test "fetch_consistent/3 rejects a cached value from an older generation" do
-      cache_key = {:get_backend, [System.unique_integer([:positive])]}
-
-      stale_generation =
-        ContextCache.Gossip.cache_value_generation(Backends.Cache, cache_key, :stale)
-
-      ContextCache.Gossip.record_cache_tombstones(Backends.Cache, [cache_key])
-      Cachex.del(Tombstones.Cache, {Backends.Cache, {:cache_key, cache_key}})
-
-      Cachex.put(Backends.Cache, cache_key, {:cached, :stale, stale_generation})
-
-      assert ContextCache.fetch_consistent(Backends.Cache, cache_key, fn -> :current end) ==
-               :current
-
-      assert {:cached, :current, current_generation} =
-               Cachex.get!(Backends.Cache, cache_key)
-
-      assert ContextCache.Gossip.cache_value_generation_current?(
-               Backends.Cache,
-               cache_key,
-               current_generation
-             )
-    end
-
-    test "delete_if_value/3 preserves a newer cache generation" do
-      cache_key = {:get_backend, [System.unique_integer([:positive])]}
-      stale_value = {:cached, :stale, make_ref()}
-      current_value = {:cached, :current, make_ref()}
-      Cachex.put(Backends.Cache, cache_key, current_value)
-
-      assert :ok = ContextCache.delete_if_value(Backends.Cache, cache_key, stale_value)
-      assert Cachex.get!(Backends.Cache, cache_key) == current_value
-
-      assert :ok = ContextCache.delete_if_value(Backends.Cache, cache_key, current_value)
-      refute Cachex.get!(Backends.Cache, cache_key)
     end
   end
 

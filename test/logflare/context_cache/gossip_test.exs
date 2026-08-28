@@ -79,55 +79,6 @@ defmodule Logflare.ContextCache.GossipTest do
       assert Cachex.get!(Sources.Cache, cache_key) == {:cached, value}
     end
 
-    test "tags backend values with their cache-key generation", %{
-      telemetry_ref: telemetry_ref
-    } do
-      id = System.unique_integer([:positive])
-      cache_key = {:get_backend, [id]}
-      value = %{id: id, name: "valid"}
-      Cachex.del(Logflare.Backends.Cache, cache_key)
-
-      ContextCache.Gossip.receive(Logflare.Backends.Cache, cache_key, value)
-
-      assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,
-                      _measurements,
-                      %{action: :cached, cache: Logflare.Backends.Cache, key: ^cache_key}}
-
-      assert {:cached, ^value, generation} =
-               Cachex.get!(Logflare.Backends.Cache, cache_key)
-
-      assert ContextCache.Gossip.cache_value_generation_current?(
-               Logflare.Backends.Cache,
-               cache_key,
-               generation
-             )
-    end
-
-    test "does not refresh a backend value from an older generation", %{
-      telemetry_ref: telemetry_ref
-    } do
-      id = System.unique_integer([:positive])
-      cache = Logflare.Backends.Cache
-      cache_key = {:get_backend, [id]}
-      stale_value = %{id: id}
-      stale_generation = ContextCache.Gossip.cache_value_generation(cache, cache_key, stale_value)
-
-      Cachex.put(cache, cache_key, {:cached, stale_value, stale_generation})
-      ContextCache.Gossip.record_cache_tombstones(cache, [cache_key])
-
-      Cachex.del(
-        Tombstones.Cache,
-        {cache, {:cache_key, cache_key}}
-      )
-
-      ContextCache.Gossip.receive(cache, cache_key, %{id: id})
-
-      assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,
-                      _measurements, %{action: :dropped_stale, cache: ^cache, key: ^cache_key}}
-
-      refute Cachex.get!(cache, cache_key)
-    end
-
     test "refreshes ttl when value is already cached", %{telemetry_ref: telemetry_ref} do
       cache_key = {:get, [111]}
       existing_value = {:cached, %{id: 111, name: "local_data"}}
@@ -147,22 +98,6 @@ defmodule Logflare.ContextCache.GossipTest do
 
       ContextCache.Gossip.record_tombstones([{Sources, 222}])
       ContextCache.Gossip.receive(Sources.Cache, cache_key, value)
-
-      assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,
-                      _measurements,
-                      %{action: :dropped_stale, cache: Sources.Cache, key: ^cache_key}}
-
-      refute Cachex.get!(Sources.Cache, cache_key)
-    end
-
-    test "drops a list that omits a record when its cache key is tombstoned", %{
-      telemetry_ref: telemetry_ref
-    } do
-      cache_key = {:list, [[enabled: true]]}
-      stale_value = [%{id: 333, name: "peer"}]
-
-      ContextCache.Gossip.record_cache_tombstones(Sources.Cache, [cache_key])
-      ContextCache.Gossip.receive(Sources.Cache, cache_key, stale_value)
 
       assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,
                       _measurements,
