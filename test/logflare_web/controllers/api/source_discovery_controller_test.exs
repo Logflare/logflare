@@ -117,7 +117,8 @@ defmodule LogflareWeb.Api.SourceDiscoveryControllerTest do
     beta: beta,
     foreign: foreign
   } do
-    scopes = "ingest:source:#{beta.id} ingest:collection:#{alpha.id}"
+    scopes =
+      "ingest:source:#{beta.id} ingest:collection:#{alpha.id} ingest:source:#{foreign.id}"
 
     assert [
              %{"token" => alpha_token, "name" => "Alpha"},
@@ -131,11 +132,29 @@ defmodule LogflareWeb.Api.SourceDiscoveryControllerTest do
     assert alpha_token == Atom.to_string(alpha.token)
     assert beta_token == Atom.to_string(beta.token)
 
+    expected_csv = "token,name\r\n#{alpha_token},Alpha\r\n#{beta_token},Beta\r\n"
+
+    assert ^expected_csv =
+             conn
+             |> put_req_header("accept", "text/csv")
+             |> add_access_token(user, scopes)
+             |> get("/api/sources")
+             |> response(200)
+
+    foreign_scope = "ingest:source:#{foreign.id}"
+
     assert [] =
              conn
-             |> add_access_token(user, "ingest:source:#{foreign.id}")
+             |> add_access_token(user, foreign_scope)
              |> get("/api/sources")
              |> json_response(200)
+
+    assert "token,name\r\n" =
+             conn
+             |> put_req_header("accept", "text/csv")
+             |> add_access_token(user, foreign_scope)
+             |> get("/api/sources")
+             |> response(200)
   end
 
   test "missing, invalid, and query-only credentials are unauthorized over supported transports",

@@ -87,7 +87,7 @@ defmodule LogflareWeb.Api.SourceController do
   defp source_access_for_conn(%{assigns: %{access_token: access_token}}),
     do: source_access_for_token(access_token)
 
-  defp source_access_for_conn(_conn), do: {:ingest, nil}
+  defp source_access_for_conn(_conn), do: :unauthorized
 
   defp source_ids(:private), do: nil
   defp source_ids(:partner), do: nil
