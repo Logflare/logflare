@@ -42,30 +42,17 @@ defmodule Logflare.Backends.ConsolidatedSupWorker do
 
     for backend_id <- expected_backend_ids,
         backend_id not in running_backend_ids do
-      reconcile_backend(backend_id)
+      start_pipeline(backend_id)
     end
 
     for backend_id <- running_backend_ids,
         backend_id not in expected_backend_ids do
-      reconcile_backend(backend_id)
+      stop_pipeline(backend_id)
     end
   end
 
-  @spec reconcile_backend(pos_integer()) :: :ok
-  defp reconcile_backend(backend_id) do
-    Backends.reconcile_backend_local(backend_id)
-  catch
-    kind, reason ->
-      Logger.warning(
-        "Failed to reconcile consolidated backend: #{Exception.format(kind, reason, __STACKTRACE__)}",
-        backend_id: backend_id
-      )
-
-      :ok
-  end
-
   defp list_expected_backend_ids do
-    Backends.list_backends(has_sources_or_rules: true, enabled: true)
+    Backends.list_backends(has_sources_or_rules: true)
     |> Enum.filter(&Adaptor.consolidated_ingest?/1)
     |> Enum.map(& &1.id)
     |> MapSet.new()
@@ -75,5 +62,39 @@ defmodule Logflare.Backends.ConsolidatedSupWorker do
     ConsolidatedSup.list_pipelines()
     |> Enum.map(fn {backend_id, _pid} -> backend_id end)
     |> MapSet.new()
+  end
+
+  defp start_pipeline(backend_id) do
+    case Backends.Cache.get_backend(backend_id) do
+      nil ->
+        Logger.warning("Cannot start consolidated pipeline: backend not found",
+          backend_id: backend_id
+        )
+
+      backend ->
+        case ConsolidatedSup.start_pipeline(backend) do
+          {:ok, _pid} ->
+            Logger.info("Started consolidated pipeline", backend_id: backend_id)
+
+          {:error, {:already_started, _pid}} ->
+            :ok
+
+          {:error, reason} ->
+            Logger.warning("Failed to start consolidated pipeline",
+              backend_id: backend_id,
+              reason: inspect(reason)
+            )
+        end
+    end
+  end
+
+  defp stop_pipeline(backend_id) do
+    reason =
+      if Backends.Cache.get_backend(backend_id),
+        do: "no longer supports consolidated ingest",
+        else: "backend no longer exists"
+
+    Logger.info("Stopping consolidated pipeline: #{reason}", backend_id: backend_id)
+    ConsolidatedSup.stop_pipeline(backend_id)
   end
 end

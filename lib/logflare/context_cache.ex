@@ -57,26 +57,15 @@ defmodule Logflare.ContextCache do
   def apply_fun_primary(context, {fun, _arity}, args), do: apply_fun_primary(context, fun, args)
 
   def apply_fun_primary(context, fun, args) when is_atom(fun) do
-    apply_fun(context, fun, args, &Logflare.Repo.apply_with_primary/3, &fetch_consistent/3)
+    apply_fun(context, fun, args, &Logflare.Repo.apply_with_primary/3)
   end
 
   @spec apply_fun(module(), atom(), list(), (module(), atom(), list() -> term())) :: any()
   defp apply_fun(context, fun, args, repo_apply) do
-    apply_fun(context, fun, args, repo_apply, &fetch/3)
-  end
-
-  @spec apply_fun(
-          module(),
-          atom(),
-          list(),
-          (module(), atom(), list() -> term()),
-          (Cachex.t(), {atom(), list()}, fun() -> term())
-        ) :: any()
-  defp apply_fun(context, fun, args, repo_apply, fetch) do
     cache = cache_name(context)
     cache_key = {fun, args}
 
-    fetch.(cache, cache_key, fn ->
+    fetch(cache, cache_key, fn ->
       repo_apply.(context, fun, args)
     end)
   end
@@ -178,85 +167,11 @@ defmodule Logflare.ContextCache do
     end
   end
 
-  @doc """
-  Fetches through the cache without retaining a value loaded across an invalidation.
-  """
-  @spec fetch_consistent(Cachex.t(), {atom(), list()}, fun()) :: term()
-  def fetch_consistent(cache, cache_key, getter_fn) do
-    case Cachex.fetch(cache, cache_key, fn _cache_key ->
-           {value, generation} = load_consistent_value(cache, cache_key, getter_fn)
-           {:commit, {:cached, value, generation}}
-         end) do
-      {:commit, {:cached, value, generation}} ->
-        validate_cached_generation(cache, cache_key, value, generation, getter_fn, true)
-
-      {:ok, {:cached, value, generation}} ->
-        validate_cached_generation(cache, cache_key, value, generation, getter_fn, false)
-
-      {:ok, {:cached, _value} = cached_value} ->
-        delete_if_value(cache, cache_key, cached_value)
-        fetch_consistent(cache, cache_key, getter_fn)
-    end
-  end
-
-  @spec load_consistent_value(Cachex.t(), term(), fun()) :: {term(), term()}
-  defp load_consistent_value(cache, cache_key, getter_fn) do
-    cache_generation = Gossip.cache_invalidation_generation(cache)
-    value = getter_fn.()
-    value_generation = Gossip.cache_value_generation(cache, cache_key, value)
-
-    if cache_generation == Gossip.cache_invalidation_generation(cache) do
-      {value, value_generation}
-    else
-      load_consistent_value(cache, cache_key, getter_fn)
-    end
-  end
-
-  @spec validate_cached_generation(
-          Cachex.t(),
-          term(),
-          term(),
-          term(),
-          fun(),
-          boolean()
-        ) :: term()
-  defp validate_cached_generation(
-         cache,
-         cache_key,
-         value,
-         generation,
-         getter_fn,
-         multicast?
-       ) do
-    if Gossip.cache_value_generation_current?(cache, cache_key, generation) do
-      if multicast?, do: Gossip.multicast(cache, cache_key, value)
-      value
-    else
-      delete_if_value(cache, cache_key, {:cached, value, generation})
-      fetch_consistent(cache, cache_key, getter_fn)
-    end
-  end
-
-  @doc false
-  @spec delete_if_value(Cachex.t(), term(), term()) :: :ok
-  def delete_if_value(cache, key, value) do
-    Cachex.transaction(cache, [key], fn worker ->
-      if Cachex.get!(worker, key) == value do
-        Cachex.del(worker, key)
-      end
-    end)
-
-    :ok
-  end
-
   defp delete_matching_entries(entries, context_cache, pkey) do
     to_delete =
       entries
       |> Stream.filter(fn
         {_k, {:cached, v}} when is_list(v) ->
-          Enum.any?(v, &(&1.id == pkey))
-
-        {_k, {:cached, v, _generation}} when is_list(v) ->
           Enum.any?(v, &(&1.id == pkey))
 
         {_k, _v} ->

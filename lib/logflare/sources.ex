@@ -678,10 +678,10 @@ defmodule Logflare.Sources do
     user = Users.Cache.get(source.user_id)
     default_backend = Backends.get_default_backend(user)
 
-    ingest_backends = Backends.Cache.list_backends(source_id: source.id, enabled: true)
+    ingest_backends = Backends.Cache.list_backends(source_id: source.id)
 
     rules_backends =
-      Backends.Cache.list_backends(rules_source_id: source.id, enabled: true)
+      Backends.Cache.list_backends(rules_source_id: source.id)
       |> Enum.map(&%{&1 | register_for_ingest: false})
 
     all_backends = [default_backend | ingest_backends] ++ rules_backends

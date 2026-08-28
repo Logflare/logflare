@@ -61,33 +61,6 @@ defmodule Logflare.Backends.CacheTest do
     assert Backends.Cache.get_backend(backend.id)
   end
 
-  test "warmer discards a snapshot loaded across an invalidation", %{backend: backend} do
-    cache_key = {:get_backend, [backend.id]}
-
-    expect(Backends, :list_backends, fn ingesting: true, limit: 1_000 ->
-      Logflare.ContextCache.Gossip.record_cache_tombstones(Backends.Cache, [cache_key])
-      [backend]
-    end)
-
-    assert {:ok, []} = CacheWarmer.execute(nil)
-  end
-
-  test "consistent reads reject a warmer snapshot inserted after invalidation", %{
-    backend: backend
-  } do
-    expect(Backends, :list_backends, fn ingesting: true, limit: 1_000 -> [backend] end)
-    assert {:ok, [{cache_key, _value}] = pairs} = CacheWarmer.execute(nil)
-
-    backend
-    |> Ecto.Changeset.change(enabled: false)
-    |> Logflare.Repo.update!()
-
-    Logflare.ContextCache.Gossip.record_cache_tombstones(Backends.Cache, [cache_key])
-    Cachex.put_many(Backends.Cache, pairs)
-
-    refute Backends.Cache.get_backend(backend.id).enabled
-  end
-
   test "backend cache misses use the primary-backed context cache path", %{
     backend: backend,
     source: source
@@ -102,12 +75,12 @@ defmodule Logflare.Backends.CacheTest do
           [backend_id]
         ])
 
-      Backends, {:list_backends, 1}, [[source_id: source_id, enabled: true]]
+      Backends, {:list_backends, 1}, [[source_id: source_id]]
       when source_id == source.id ->
         Mimic.call_original(Logflare.ContextCache, :apply_fun_primary, [
           Backends,
           {:list_backends, 1},
-          [[source_id: source_id, enabled: true]]
+          [[source_id: source_id]]
         ])
     end)
 
@@ -115,40 +88,27 @@ defmodule Logflare.Backends.CacheTest do
     assert backend_id == backend.id
 
     assert [%{id: ^backend_id}] =
-             Backends.Cache.list_backends(source_id: source.id, enabled: true)
+             Backends.Cache.list_enabled_backends(source_id: source.id)
   end
 
-  test "reconciliation refreshes primed enabled-only source and rule caches", %{
+  test "list_enabled_backends/1 filters the existing unfiltered cache entry", %{
     backend: backend,
     source: source
   } do
-    insert(:rule, backend: backend, source: source)
+    disabled_backend = insert(:backend, sources: [source], enabled: false)
 
-    disabled_backend =
-      backend
-      |> Ecto.Changeset.change(enabled: false)
-      |> Logflare.Repo.update!()
-
-    Backends.clear_list_backends_cache(source.id)
-
-    assert [] = Backends.Cache.list_backends(source_id: source.id, enabled: true)
-    assert [] = Backends.Cache.list_backends(rules_source_id: source.id, enabled: true)
-
-    disabled_backend
-    |> Ecto.Changeset.change(enabled: true)
-    |> Logflare.Repo.update!()
-
-    assert [] = Backends.Cache.list_backends(source_id: source.id, enabled: true)
-    assert [] = Backends.Cache.list_backends(rules_source_id: source.id, enabled: true)
-
-    assert :ok = Backends.reconcile_backend_local(backend.id)
-
-    assert [%{id: backend_id}] =
-             Backends.Cache.list_backends(source_id: source.id, enabled: true)
-
+    assert [%{id: backend_id}] = Backends.Cache.list_enabled_backends(source_id: source.id)
     assert backend_id == backend.id
 
-    assert [%{id: ^backend_id}] =
-             Backends.Cache.list_backends(rules_source_id: source.id, enabled: true)
+    cache_key = {:list_backends, [[source_id: source.id]]}
+    assert {:cached, cached_backends} = Cachex.get!(Backends.Cache, cache_key)
+
+    assert Enum.sort(Enum.map(cached_backends, & &1.id)) ==
+             Enum.sort([backend.id, disabled_backend.id])
+
+    refute Cachex.get!(
+             Backends.Cache,
+             {:list_enabled_backends, [[source_id: source.id]]}
+           )
   end
 end

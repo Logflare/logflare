@@ -67,7 +67,6 @@ defmodule Logflare.ContextCache.Supervisor do
 
   def list_caches_with_metrics do
     [
-      {Tombstones.Cache, :context_cache_tombstones},
       {TeamUsers.Cache, :team_users},
       {Partners.Cache, :partners},
       {Users.Cache, :users},
@@ -80,6 +79,7 @@ defmodule Logflare.ContextCache.Supervisor do
       {Rules.Cache, :rules},
       {KeyValues.Cache, :key_values},
       {SavedSearches.Cache, :saved_searches},
+      {Tombstones.Cache, :context_cache_tombstones},
       {SystemCache, :system}
     ]
   end
