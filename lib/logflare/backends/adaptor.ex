@@ -143,7 +143,8 @@ defmodule Logflare.Backends.Adaptor do
   def sanitize_config_for_display(%Backend{config: config} = backend) when is_map(config) do
     adaptor = get_adaptor(backend)
 
-    if function_exported?(adaptor, :sanitize_config_for_display, 1) do
+    if Code.ensure_loaded?(adaptor) and
+         function_exported?(adaptor, :sanitize_config_for_display, 1) do
       adaptor.sanitize_config_for_display(config)
     else
       mask_config_values(config, [])
