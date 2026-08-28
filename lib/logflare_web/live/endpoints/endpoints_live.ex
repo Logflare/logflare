@@ -13,12 +13,21 @@ defmodule LogflareWeb.EndpointsLive do
   alias Logflare.Backends.Backend
   alias Logflare.Endpoints
   alias Logflare.Endpoints.EndpointQuery
-  alias Logflare.Endpoints.PiiRedactor
   alias Logflare.SingleTenant
   alias Logflare.Sql
+  alias LogflareWeb.Endpoints.Components
   alias LogflareWeb.QueryComponents
   alias LogflareWeb.QueryErrorHelpers
   alias Logflare.Utils
+
+  @test_form_defaults %{
+    "query" => "",
+    "params" => %{},
+    "reservation" => nil,
+    "query_mode" => "sql",
+    "consumer_query" => "",
+    "show_transformed" => false
+  }
 
   embed_templates("actions/*", suffix: "_action")
   embed_templates("components/*")
@@ -54,43 +63,20 @@ defmodule LogflareWeb.EndpointsLive do
       |> assign(:user_id, user.id)
       #  must be below user_id assign
       |> refresh_endpoints()
-      |> assign(:query_result_rows, nil)
-      |> assign(:total_bytes_processed, nil)
-      |> assign(:query_error_message, nil)
+      |> assign(:test_result, nil)
       |> assign(:show_endpoint, nil)
       |> assign(:endpoint_changeset, Endpoints.change_query(%Endpoints.EndpointQuery{}))
       |> assign(:selected_backend_id, nil)
       |> assign(:allow_access, allow_access)
-      |> assign(:base_url, LogflareWeb.Endpoint.url())
       |> assign(:parse_error_message, nil)
       |> assign(:query_string, nil)
-      |> assign(:prev_params, %{})
-      |> assign(:prev_reservation, nil)
-      |> assign(:params_form, to_form(%{"query" => "", "params" => %{}}, as: "run"))
-      |> assign(:declared_params, %{})
+      |> assign(:params_form, test_form())
+      |> assign(:declared_params, [])
       |> assign(:alerts, alerts)
       |> assign_sources()
       |> assign_backends()
       |> assign(:parsed_result, nil)
       |> assign(:redact_pii, false)
-      |> assign(:sandbox_query, nil)
-      |> assign(:sandbox_query_result_rows, nil)
-      |> assign(:sandbox_total_bytes_processed, nil)
-      |> assign(:sandbox_error, nil)
-      |> assign(:show_transformed_query, false)
-      |> assign(:transformed_sandbox_query, nil)
-      |> assign(
-        :sandbox_form,
-        to_form(
-          %{
-            "query_mode" => "sql",
-            "sandbox_query" => "",
-            "params" => %{},
-            "show_transformed" => false
-          },
-          as: "sandbox_form"
-        )
-      )
 
     {:ok, socket}
   end
@@ -117,32 +103,20 @@ defmodule LogflareWeb.EndpointsLive do
               socket.assigns.alerts
             )
 
-          socket =
-            socket
-            |> assign_updated_params_form(parsed_result.parameters, parsed_result.expanded_query)
-            # set changeset
-            |> assign(:endpoint_changeset, Endpoints.change_query(endpoint, %{}))
-            |> assign(:selected_backend_id, endpoint.backend_id)
-            |> assign(:parsed_result, parsed_result)
-            |> assign(:redact_pii, endpoint.redact_pii || false)
-
-          # Clear test results when navigating to edit page
-          if socket.assigns.live_action == :edit do
-            socket
-            |> assign(:query_result_rows, nil)
-            |> assign(:total_bytes_processed, nil)
-            |> assign(:query_error_message, nil)
-          else
-            socket
-          end
+          socket
+          |> assign_updated_params_form(parsed_result.parameters, parsed_result.expanded_query)
+          |> assign(:endpoint_changeset, Endpoints.change_query(endpoint, %{}))
+          |> assign(:selected_backend_id, endpoint.backend_id)
+          |> assign(:parsed_result, parsed_result)
+          |> assign(:redact_pii, endpoint.redact_pii || false)
+          |> assign(:test_result, nil)
 
         # index page
         %{assigns: %{live_action: :index}} = socket ->
           socket
           |> refresh_endpoints()
           |> assign(:endpoint_changeset, nil)
-          |> assign(:query_result_rows, nil)
-          |> assign(:query_error_message, nil)
+          |> assign(:test_result, nil)
 
         %{assigns: %{live_action: :new}} = socket ->
           params =
@@ -157,6 +131,9 @@ defmodule LogflareWeb.EndpointsLive do
 
           socket
           |> assign(:endpoint_changeset, changeset)
+          |> assign(:params_form, test_form())
+          |> assign(:declared_params, [])
+          |> assign(:test_result, nil)
 
         other ->
           other
@@ -166,10 +143,8 @@ defmodule LogflareWeb.EndpointsLive do
             Endpoints.change_query(%Endpoints.EndpointQuery{query: placeholder_sql()})
           )
           |> assign(:selected_backend_id, nil)
-          # reset test results
-          |> assign(:query_result_rows, nil)
           |> assign(:redact_pii, false)
-          |> assign(:query_error_message, nil)
+          |> assign(:test_result, nil)
       end)
 
     {:noreply, socket}
@@ -192,8 +167,7 @@ defmodule LogflareWeb.EndpointsLive do
        |> put_flash(:info, "Successfully #{verb} endpoint #{endpoint.name}")
        |> push_patch(to: LogflareWeb.Utils.with_team_param(~p"/endpoints/#{endpoint.id}", team))
        |> assign(:show_endpoint, endpoint)
-       |> assign(:query_result_rows, nil)
-       |> assign(:total_bytes_processed, nil)}
+       |> assign(:test_result, nil)}
     else
       {:error, %Ecto.Changeset{} = changeset} ->
         verb = if(show_endpoint, do: "update", else: "create")
@@ -238,119 +212,19 @@ defmodule LogflareWeb.EndpointsLive do
   def handle_event(
         "run-query",
         %{"run" => payload},
-        %{assigns: %{user: user}} = socket
+        socket
       ) do
-    query_string = Map.get(payload, "query")
-    query_params = Map.get(payload, "params", %{})
-    reservation = Map.get(payload, "reservation")
+    payload = Map.put_new(payload, "query", socket.assigns.query_string)
+    socket = assign(socket, :params_form, test_form(payload))
 
-    allowed_labels = Ecto.Changeset.get_field(socket.assigns.endpoint_changeset, :labels)
-
-    parsed_labels =
-      Endpoints.parse_labels(allowed_labels, "", query_params)
-      |> Map.merge(%{
-        "endpoint_id" => socket.assigns.endpoint_changeset.data.id
-      })
-
-    redact_pii = socket.assigns.redact_pii
-    backend_id = Ecto.Changeset.get_field(socket.assigns.endpoint_changeset, :backend_id)
-
-    endpoint_language = get_current_endpoint_language(socket)
-
-    case Endpoints.run_query_string(user, {endpoint_language, query_string},
-           params: query_params,
-           parsed_labels: parsed_labels,
-           use_query_cache: false,
-           redact_pii: redact_pii,
-           backend_id: backend_id,
-           reservation: reservation
-         ) do
-      {:ok, %{rows: rows} = result} ->
-        total_bytes_or_nil = Map.get(result, :total_bytes_processed)
-
-        {:noreply,
-         socket
-         |> put_flash(:info, "Ran query successfully")
-         |> assign(:prev_params, query_params)
-         |> assign(:prev_reservation, reservation)
-         |> assign(:query_result_rows, rows)
-         |> assign(:total_bytes_processed, total_bytes_or_nil)
-         |> assign(:query_error_message, nil)}
-
-      {:error, err} ->
-        message = if is_binary(err), do: err, else: QueryErrorHelpers.query_error_message(err)
-
-        {:noreply, socket |> assign(:query_error_message, message)}
-    end
-  end
-
-  def handle_event(
-        "run-sandbox-query",
-        %{"sandbox_form" => payload},
-        %{assigns: %{show_endpoint: endpoint}} = socket
-      ) do
-    show_transformed? = Map.get(payload, "show_transformed") == "true"
-    sandbox_query = Map.get(payload, "sandbox_query")
-    query_params = Map.get(payload, "params", %{})
-    query_mode = Map.get(payload, "query_mode", "sql")
-
-    sandbox_params =
-      case query_mode do
-        "sql" -> Map.put(query_params, "sql", sandbox_query)
-        "lql" -> Map.put(query_params, "lql", sandbox_query)
-        _ -> query_params
+    socket =
+      if consumer_query?(socket, payload) do
+        run_consumer_query(socket, payload)
+      else
+        run_endpoint_query(socket, payload)
       end
 
-    Logger.metadata(
-      endpoint_id: endpoint.id,
-      backend_id: endpoint.backend_id,
-      sandbox_params: sandbox_params,
-      user_id: endpoint.user_id
-    )
-
-    # Update the form to preserve query mode and other inputs
-    updated_form =
-      to_form(
-        %{
-          "query_mode" => query_mode,
-          "sandbox_query" => sandbox_query,
-          "params" => query_params,
-          "show_transformed" => show_transformed?
-        },
-        as: "sandbox_form"
-      )
-
-    case Endpoints.run_query(endpoint, sandbox_params) do
-      {:ok, %{rows: rows} = result} ->
-        total_bytes_processed = Map.get(result, :total_bytes_processed)
-
-        socket =
-          socket
-          |> put_flash(:info, "Ran sandbox query successfully")
-          |> assign(:sandbox_form, updated_form)
-          |> assign(:sandbox_query_result_rows, rows)
-          |> assign(:sandbox_total_bytes_processed, total_bytes_processed)
-          |> assign(:sandbox_error, nil)
-          |> assign(:show_transformed_query, show_transformed?)
-          |> assign(:sandbox_query, sandbox_query)
-          |> maybe_assign_transformed_query(show_transformed?, endpoint, sandbox_params)
-
-        {:noreply, socket}
-
-      {:error, error} ->
-        Logger.error(
-          "Sandbox query failed: '#{inspect(error)}', endpoint_id: #{endpoint.id}, backend_id: #{endpoint.backend_id}, sandbox_params: '#{inspect(sandbox_params)}'"
-        )
-
-        {:noreply,
-         socket
-         |> put_flash(:error, "Error occurred when running sandbox query")
-         |> assign(:sandbox_form, updated_form)
-         |> assign(:sandbox_error, "Please verify your query syntax.")
-         |> assign(:sandbox_query_result_rows, nil)
-         |> assign(:sandbox_total_bytes_processed, nil)
-         |> assign(:sandbox_query, sandbox_query)}
-    end
+    {:noreply, socket}
   end
 
   def handle_event("apply-beta", _params, %{assigns: %{user: user}} = socket) do
@@ -421,12 +295,117 @@ defmodule LogflareWeb.EndpointsLive do
 
   defp assign_updated_params_form(socket, parameters, query_string) do
     params = for(k <- parameters, do: {k, nil}, into: %{})
-    form = to_form(%{"query" => query_string, "params" => params}, as: "run")
 
     socket
     |> assign(:query_string, query_string)
     |> assign(:declared_params, parameters)
-    |> assign(:params_form, form)
+    |> assign(:params_form, test_form(%{"query" => query_string, "params" => params}))
+  end
+
+  defp run_endpoint_query(%{assigns: %{user: user}} = socket, payload) do
+    query_string = Map.get(payload, "query")
+    query_params = Map.get(payload, "params", %{})
+    reservation = Map.get(payload, "reservation")
+
+    allowed_labels = Ecto.Changeset.get_field(socket.assigns.endpoint_changeset, :labels)
+
+    parsed_labels =
+      Endpoints.parse_labels(allowed_labels, "", query_params)
+      |> Map.merge(%{
+        "endpoint_id" => socket.assigns.endpoint_changeset.data.id
+      })
+
+    redact_pii = socket.assigns.redact_pii
+    backend_id = Ecto.Changeset.get_field(socket.assigns.endpoint_changeset, :backend_id)
+
+    endpoint_language = get_current_endpoint_language(socket)
+
+    case Endpoints.run_query_string(user, {endpoint_language, query_string},
+           params: query_params,
+           parsed_labels: parsed_labels,
+           use_query_cache: false,
+           redact_pii: redact_pii,
+           backend_id: backend_id,
+           reservation: reservation
+         ) do
+      {:ok, result} ->
+        socket
+        |> put_flash(:info, "Ran query successfully")
+        |> assign(:test_result, successful_test_result(:endpoint, result))
+
+      {:error, err} ->
+        message = if is_binary(err), do: err, else: QueryErrorHelpers.query_error_message(err)
+        assign(socket, :test_result, %{kind: :endpoint, status: :error, error: message})
+    end
+  end
+
+  defp run_consumer_query(%{assigns: %{show_endpoint: endpoint}} = socket, payload) do
+    show_transformed? = Map.get(payload, "show_transformed") == "true"
+    consumer_query = Map.get(payload, "consumer_query")
+    query_params = Map.get(payload, "params", %{})
+    query_mode = Map.get(payload, "query_mode", "sql")
+    reservation = Map.get(payload, "reservation")
+
+    sandbox_params =
+      case query_mode do
+        "sql" -> Map.put(query_params, "sql", consumer_query)
+        "lql" -> Map.put(query_params, "lql", consumer_query)
+        _ -> query_params
+      end
+
+    Logger.metadata(
+      endpoint_id: endpoint.id,
+      backend_id: endpoint.backend_id,
+      sandbox_params: sandbox_params,
+      user_id: endpoint.user_id
+    )
+
+    case Endpoints.run_query(endpoint, sandbox_params, reservation: reservation) do
+      {:ok, result} ->
+        transformed_query = maybe_transformed_query(show_transformed?, endpoint, sandbox_params)
+
+        socket
+        |> put_flash(:info, "Ran consumer query successfully")
+        |> assign(:test_result, successful_test_result(:consumer, result, transformed_query))
+
+      {:error, error} ->
+        Logger.error(
+          "Sandbox query failed: '#{inspect(error)}', endpoint_id: #{endpoint.id}, backend_id: #{endpoint.backend_id}, sandbox_params: '#{inspect(sandbox_params)}'"
+        )
+
+        socket
+        |> put_flash(:error, "Error occurred when running consumer query")
+        |> assign(:test_result, %{
+          kind: :consumer,
+          status: :error,
+          error: "Please verify your query syntax."
+        })
+    end
+  end
+
+  defp consumer_query?(
+         %{assigns: %{show_endpoint: %{sandboxable: true}}},
+         %{"consumer_query" => consumer_query}
+       )
+       when is_binary(consumer_query),
+       do: String.trim(consumer_query) != ""
+
+  defp consumer_query?(_socket, _payload), do: false
+
+  defp test_form(overrides \\ %{}) do
+    @test_form_defaults
+    |> Map.merge(overrides)
+    |> to_form(as: "run")
+  end
+
+  defp successful_test_result(kind, %{rows: rows} = result, transformed_query \\ nil) do
+    %{
+      kind: kind,
+      status: :ok,
+      rows: rows,
+      total_bytes_processed: Map.get(result, :total_bytes_processed),
+      transformed_query: transformed_query
+    }
   end
 
   defp refresh_endpoints(%{assigns: assigns} = socket) do
@@ -493,12 +472,12 @@ defmodule LogflareWeb.EndpointsLive do
     |> assign(:determined_language, get_current_endpoint_language(socket))
   end
 
-  defp maybe_assign_transformed_query(socket, false, _endpoint, _params), do: socket
+  defp maybe_transformed_query(false, _endpoint, _params), do: nil
 
-  defp maybe_assign_transformed_query(socket, true, endpoint, params) do
+  defp maybe_transformed_query(true, endpoint, params) do
     case Endpoints.get_transformed_query(endpoint, params) do
-      {:ok, transformed} -> assign(socket, :transformed_sandbox_query, transformed)
-      _ -> assign(socket, :transformed_sandbox_query, nil)
+      {:ok, transformed} -> transformed
+      _ -> nil
     end
   end
 
@@ -518,14 +497,4 @@ defmodule LogflareWeb.EndpointsLive do
   defp format_query_language(:ch_sql), do: "ClickHouse SQL"
   defp format_query_language(:pg_sql), do: "Postgres SQL"
   defp format_query_language(language), do: language |> to_string() |> String.upcase()
-
-  defp maybe_redact_query(query, redact_pii) when is_binary(query) do
-    if redact_pii do
-      PiiRedactor.redact_pii_from_value(query)
-    else
-      query
-    end
-  end
-
-  defp maybe_redact_query(query, _redact_pii), do: query
 end

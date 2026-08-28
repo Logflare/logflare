@@ -78,7 +78,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       html =
         view
-        |> element("form", "Test query")
+        |> element("form[phx-submit='run-query']")
         |> render_submit(%{
           run: %{
             query: "SELECT 1 as testing",
@@ -134,10 +134,33 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
 
     test "show endpoint", %{conn: conn, endpoint: endpoint, team: team} do
-      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
+      {:ok, view, html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
       assert has_element?(view, "h1,h2,h3,h4,h5", endpoint.name)
       assert_query_displayed(view, endpoint.query)
-      assert has_element?(view, "p", endpoint.description)
+      assert has_element?(view, "#endpoint-details > p", endpoint.description)
+      assert html =~ "lg:tw-grid-cols-2"
+      assert has_element?(view, "#endpoint-show > #endpoint-details")
+      assert has_element?(view, "#endpoint-show > #endpoint-test")
+
+      assert has_element?(
+               view,
+               "#endpoint-query-link.nav-link.active[data-toggle='tab'][aria-selected='true']",
+               "Query"
+             )
+
+      assert has_element?(
+               view,
+               "#expanded-endpoint-query-link.nav-link[data-toggle='tab'][aria-selected='false']",
+               "Expanded query"
+             )
+
+      assert has_element?(view, "#endpoint-test > div > h3", "Test your endpoint")
+      assert has_element?(view, "#endpoint-test form[phx-submit='run-query']")
+
+      assert has_element?(
+               view,
+               "#endpoint-test #endpoint-call-examples button[title='Copy By UUID request']"
+             )
 
       # link to edit
       assert element(view, ".subhead a", "edit") |> render_click() =~ "/edit"
@@ -310,8 +333,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       assert view |> element(~s|input#run_query[value="#{valid_query}]"|)
 
-      assert view |> render =~
-               ~s|<input id="run_params_0_id" name="run[params][id]" type="text" value=""/>|
+      assert has_element?(view, "input[name='run[params][id]'][value='']")
 
       # saves the change
       assert view
@@ -424,7 +446,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       refute render(view) =~ "results-123"
 
       view
-      |> element("form", "Test query")
+      |> element("form[phx-submit='run-query']")
       |> render_submit(%{
         run: %{
           query: "select current_datetime() as new",
@@ -467,7 +489,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       refute render(view) =~ "results-123"
 
       view
-      |> element("form", "Test query")
+      |> element("form[phx-submit='run-query']")
       |> render_submit(%{}) =~ "results-123"
 
       assert view
@@ -503,7 +525,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       # test the query
       assert view
-             |> element("form", "Test query")
+             |> element("form[phx-submit='run-query']")
              |> render_submit(%{
                run: %{
                  query: endpoint.query,
@@ -531,7 +553,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       html =
         view
-        |> element("form", "Test query")
+        |> element("form[phx-submit='run-query']")
         |> render_submit(%{
           run: %{
             query: endpoint.query,
@@ -541,6 +563,33 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       assert html =~ LogflareWeb.QueryErrorHelpers.generic_query_error_message()
       refute html =~ "raw backend detail"
+    end
+
+    test "preserves parameter values after a backend error", %{conn: conn, user: user} do
+      endpoint = insert(:endpoint, user: user, query: "select @test_param as value")
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:error, TestUtils.gen_bq_error("invalid value", reason: "invalidQuery")}
+      end)
+
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
+
+      view
+      |> element("form[phx-submit='run-query']")
+      |> render_submit(%{
+        run: %{
+          query: endpoint.query,
+          params: %{"test_param" => "keep this value"}
+        }
+      })
+
+      assert has_element?(
+               view,
+               "input[name='run[params][test_param]'][value='keep this value']"
+             )
+
+      assert render(view) =~ LogflareWeb.QueryErrorHelpers.generic_query_error_message()
     end
   end
 
@@ -664,14 +713,12 @@ defmodule LogflareWeb.EndpointsLiveTest do
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
       assert render(view) =~ ~r/Redact PII:.*enabled/
-      visible_code = view |> element("pre code") |> render()
+      visible_code = view |> element("#endpoint-query pre code.sql") |> render()
       assert visible_code =~ "192.168.1.1"
       assert visible_code =~ "10.0.0.1"
 
-      if view |> has_element?("div.collapse code") do
-        expanded_code = view |> element("div.collapse code") |> render()
-        assert expanded_code =~ "REDACTED"
-      end
+      expanded_code = view |> element("#expanded-endpoint-query pre code.sql") |> render()
+      assert expanded_code =~ "REDACTED"
     end
 
     test "PII redaction in query results", %{conn: conn, user: user} do
@@ -691,7 +738,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       end)
 
       view
-      |> element("form", "Test query")
+      |> element("form[phx-submit='run-query']")
       |> render_submit(%{run: %{query: endpoint.query, params: %{}}})
 
       assert render(view) =~ "REDACTED"
@@ -709,7 +756,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end)
 
     view
-    |> element("form", "Test query")
+    |> element("form[phx-submit='run-query']")
     |> render_submit(%{run: %{query: endpoint.query, params: %{}}})
 
     # Verify test results are shown
@@ -732,7 +779,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end)
 
     view
-    |> element("form", "Test query")
+    |> element("form[phx-submit='run-query']")
     |> render_submit(%{run: %{query: endpoint.query, params: %{}}})
 
     assert render(view) =~ "results-123"
@@ -758,23 +805,34 @@ defmodule LogflareWeb.EndpointsLiveTest do
       {:ok, endpoint: endpoint}
     end
 
-    test "shows sandbox query form when sandboxable is true", %{conn: conn, endpoint: endpoint} do
+    test "includes consumer query controls in the endpoint test form when sandboxable", %{
+      conn: conn,
+      endpoint: endpoint
+    } do
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
-      assert has_element?(view, "h4", "Test Sandbox Query")
+      assert has_element?(view, "#endpoint-test h3", "Test your endpoint")
+      assert has_element?(view, "#endpoint-test legend", "Parameters")
+      assert has_element?(view, "#endpoint-test legend", "Consumer query (optional)")
       assert has_element?(view, "input[type=radio][value=sql]")
       assert has_element?(view, "input[type=radio][value=lql]")
-      assert has_element?(view, "textarea[name='sandbox_form[sandbox_query]']")
-      assert has_element?(view, "input[type=checkbox][name='sandbox_form[show_transformed]']")
-      assert has_element?(view, "button", "Test Sandbox Query")
+      assert has_element?(view, "textarea[name='run[consumer_query]']")
+      assert has_element?(view, "input[type=checkbox][name='run[show_transformed]']")
+      assert has_element?(view, "button", "Test endpoint")
+
+      form_html = view |> element("#endpoint-test form") |> render()
+      {parameters_position, _length} = :binary.match(form_html, "Parameters")
+      {consumer_query_position, _length} = :binary.match(form_html, "Consumer query")
+      assert parameters_position < consumer_query_position
     end
 
-    test "hides sandbox query form when sandboxable is false", %{conn: conn, user: user} do
+    test "hides consumer query controls when sandboxable is false", %{conn: conn, user: user} do
       endpoint = insert(:endpoint, user: user, sandboxable: false)
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
-      refute has_element?(view, "h4", "Test Sandbox Query")
-      refute has_element?(view, "textarea[name='sandbox_form[sandbox_query]']")
+      assert has_element?(view, "#endpoint-test h3", "Test your endpoint")
+      refute has_element?(view, "#endpoint-test legend", "Consumer query (optional)")
+      refute has_element?(view, "textarea[name='run[consumer_query]']")
     end
 
     test "executes SQL sandbox query successfully", %{conn: conn, endpoint: endpoint} do
@@ -786,18 +844,18 @@ defmodule LogflareWeb.EndpointsLiveTest do
       end)
 
       view
-      |> element("form", "Test Sandbox Query")
+      |> element("form[phx-submit='run-query']")
       |> render_submit(%{
-        sandbox_form: %{
+        run: %{
           query_mode: "sql",
-          sandbox_query: "SELECT err, code FROM errors",
+          consumer_query: "SELECT err, code FROM errors",
           params: %{},
           show_transformed: "false"
         }
       })
 
-      assert render(view) =~ "Ran sandbox query successfully"
-      assert has_element?(view, "h5", "Sandbox Query Results")
+      assert render(view) =~ "Ran consumer query successfully"
+      assert has_element?(view, "h5", "Consumer Query Results")
       assert render(view) =~ "test error"
       assert render(view) =~ "500"
     end
@@ -811,18 +869,18 @@ defmodule LogflareWeb.EndpointsLiveTest do
       end)
 
       view
-      |> element("form", "Test Sandbox Query")
+      |> element("form[phx-submit='run-query']")
       |> render_submit(%{
-        sandbox_form: %{
+        run: %{
           query_mode: "lql",
-          sandbox_query: "s:err",
+          consumer_query: "s:err",
           params: %{},
           show_transformed: "false"
         }
       })
 
-      assert render(view) =~ "Ran sandbox query successfully"
-      assert has_element?(view, "h5", "Sandbox Query Results")
+      assert render(view) =~ "Ran consumer query successfully"
+      assert has_element?(view, "h5", "Consumer Query Results")
       assert render(view) =~ "test error"
     end
 
@@ -833,11 +891,11 @@ defmodule LogflareWeb.EndpointsLiveTest do
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
       view
-      |> element("form", "Test Sandbox Query")
+      |> element("form[phx-submit='run-query']")
       |> render_submit(%{
-        sandbox_form: %{
+        run: %{
           query_mode: "sql",
-          sandbox_query: "SELECT * FROM unauthorized_table",
+          consumer_query: "SELECT * FROM unauthorized_table",
           params: %{},
           show_transformed: "false"
         }
@@ -845,7 +903,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       html = render(view)
 
-      assert html =~ "Error occurred when running sandbox query"
+      assert html =~ "Error occurred when running consumer query"
       assert has_element?(view, ".alert-danger")
     end
 
@@ -858,17 +916,17 @@ defmodule LogflareWeb.EndpointsLiveTest do
       end)
 
       view
-      |> element("form", "Test Sandbox Query")
+      |> element("form[phx-submit='run-query']")
       |> render_submit(%{
-        sandbox_form: %{
+        run: %{
           query_mode: "sql",
-          sandbox_query: "SELECT err FROM errors",
+          consumer_query: "SELECT err FROM errors",
           params: %{},
           show_transformed: "true"
         }
       })
 
-      assert render(view) =~ "Ran sandbox query successfully"
+      assert render(view) =~ "Ran consumer query successfully"
       assert has_element?(view, "summary", "Show Transformed Query")
       assert render(view) =~ "WITH errors AS"
     end
@@ -878,34 +936,50 @@ defmodule LogflareWeb.EndpointsLiveTest do
         insert(:endpoint,
           user: user,
           sandboxable: true,
+          enable_dynamic_reservation: true,
           query: """
           WITH filtered AS (
-            SELECT 'test' as value
+            SELECT @test_param as value
           )
           SELECT value FROM filtered
           """
         )
 
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
+      pid = self()
+      reservation = "projects/my-proj/locations/us/reservations/consumer-test"
 
       GoogleApi.BigQuery.V2.Api.Jobs
-      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        send(pid, {:reservation, opts[:body].reservation})
         {:ok, TestUtils.gen_bq_response([%{"value" => "test"}])}
       end)
 
       view
-      |> element("form", "Test Sandbox Query")
+      |> element("form[phx-submit='run-query']")
       |> render_submit(%{
-        sandbox_form: %{
-          query_mode: "sql",
-          sandbox_query: "SELECT value FROM filtered",
-          params: %{},
-          show_transformed: "false"
+        run: %{
+          query_mode: "lql",
+          consumer_query: "s:value",
+          params: %{"test_param" => "keep this value"},
+          reservation: reservation,
+          show_transformed: "true"
         }
       })
 
-      assert render(view) =~ "Ran sandbox query successfully"
+      assert_received {:reservation, ^reservation}
+      assert render(view) =~ "Ran consumer query successfully"
       assert render(view) =~ "test"
+
+      assert has_element?(
+               view,
+               "input[name='run[params][test_param]'][value='keep this value']"
+             )
+
+      assert has_element?(view, "input[name='run[reservation]'][value='#{reservation}']")
+      assert has_element?(view, "input[name='run[query_mode]'][value='lql'][checked]")
+      assert has_element?(view, "textarea[name='run[consumer_query]']", "s:value")
+      assert has_element?(view, "input[name='run[show_transformed]'][checked]")
     end
 
     test "sandbox query displays query cost for BigQuery", %{conn: conn, endpoint: endpoint} do
@@ -919,17 +993,17 @@ defmodule LogflareWeb.EndpointsLiveTest do
       end)
 
       view
-      |> element("form", "Test Sandbox Query")
+      |> element("form[phx-submit='run-query']")
       |> render_submit(%{
-        sandbox_form: %{
+        run: %{
           query_mode: "sql",
-          sandbox_query: "SELECT err FROM errors",
+          consumer_query: "SELECT err FROM errors",
           params: %{},
           show_transformed: "false"
         }
       })
 
-      assert render(view) =~ "Ran sandbox query successfully"
+      assert render(view) =~ "Ran consumer query successfully"
       assert render(view) =~ "processed"
     end
 
@@ -938,11 +1012,11 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       # Submit invalid LQL that will fail parsing
       assert view
-             |> element("form", "Test Sandbox Query")
+             |> element("form[phx-submit='run-query']")
              |> render_submit(%{
-               sandbox_form: %{
+               run: %{
                  query_mode: "lql",
-                 sandbox_query: "m.invalid:field:with:colons",
+                 consumer_query: "m.invalid:field:with:colons",
                  params: %{},
                  show_transformed: "false"
                }
@@ -950,37 +1024,56 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       html = render(view)
 
-      assert html =~ "Error occurred when running sandbox query" or
+      assert html =~ "Error occurred when running consumer query" or
                has_element?(view, "h5", "Sandbox Query Error")
     end
 
-    test "sandbox query section preserves query input on error", %{conn: conn, endpoint: endpoint} do
+    test "sandbox query section preserves inputs on error", %{conn: conn, user: user} do
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          sandboxable: true,
+          enable_dynamic_reservation: true,
+          query: """
+          WITH filtered AS (
+            SELECT @test_param as value
+          )
+          SELECT value FROM filtered
+          """
+        )
+
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
+      reservation = "projects/my-proj/locations/us/reservations/consumer-error"
 
       view
-      |> element("form", "Test Sandbox Query")
+      |> element("form[phx-submit='run-query']")
       |> render_submit(%{
-        sandbox_form: %{
+        run: %{
           query_mode: "sql",
-          sandbox_query: "SELECT * FROM invalid_table",
-          params: %{},
-          show_transformed: "false"
+          consumer_query: "SELECT * FROM invalid_table",
+          params: %{"test_param" => "keep this value"},
+          reservation: reservation,
+          show_transformed: "true"
         }
       })
 
-      assert render(view) =~ "Error occurred when running sandbox query"
-      assert render(view) =~ "SELECT * FROM invalid_table"
-    end
+      assert render(view) =~ "Error occurred when running consumer query"
 
-    test "sandbox query mode toggle shows SQL and LQL options", %{conn: conn, endpoint: endpoint} do
-      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
+      assert has_element?(
+               view,
+               "input[name='run[params][test_param]'][value='keep this value']"
+             )
 
-      html = render(view)
-      assert html =~ "Query Mode"
-      assert has_element?(view, "input[type=radio][value=sql]")
-      assert has_element?(view, "input[type=radio][value=lql]")
-      assert has_element?(view, "label", "SQL")
-      assert has_element?(view, "label", "LQL")
+      assert has_element?(view, "input[name='run[reservation]'][value='#{reservation}']")
+      assert has_element?(view, "input[name='run[query_mode]'][value='sql'][checked]")
+
+      assert has_element?(
+               view,
+               "textarea[name='run[consumer_query]']",
+               "SELECT * FROM invalid_table"
+             )
+
+      assert has_element?(view, "input[name='run[show_transformed]'][checked]")
     end
 
     test "sandbox query UI shows help text about CTE restrictions", %{
@@ -1012,11 +1105,11 @@ defmodule LogflareWeb.EndpointsLiveTest do
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
       view
-      |> element("form", "Test Sandbox Query")
+      |> element("form[phx-submit='run-query']")
       |> render_submit(%{
-        sandbox_form: %{
+        run: %{
           query_mode: "lql",
-          sandbox_query: "c:avg(timestamp)",
+          consumer_query: "c:avg(timestamp)",
           params: %{},
           show_transformed: "false"
         }
@@ -1157,11 +1250,11 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert initial_html =~ "ClickHouse SQL"
 
       view
-      |> element("form", "Test Sandbox Query")
+      |> element("form[phx-submit='run-query']")
       |> render_submit(%{
-        sandbox_form: %{
+        run: %{
           query_mode: "lql",
-          sandbox_query: "severity_text:ERROR",
+          consumer_query: "severity_text:ERROR",
           params: %{},
           show_transformed: "true"
         }
@@ -1169,11 +1262,11 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       html = render(view)
 
-      refute html =~ "Error occurred when running sandbox query",
+      refute html =~ "Error occurred when running consumer query",
              "Expected severity_text:ERROR LQL filter to succeed against live ClickHouse"
 
-      assert html =~ "Ran sandbox query successfully"
-      assert has_element?(view, "h5", "Sandbox Query Results")
+      assert html =~ "Ran consumer query successfully"
+      assert has_element?(view, "h5", "Consumer Query Results")
 
       assert html =~ table_name
       assert html =~ ~r/&quot;severity_text&quot;/
@@ -1203,11 +1296,11 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert initial_html =~ "ClickHouse SQL"
 
       view
-      |> element("form", "Test Sandbox Query")
+      |> element("form[phx-submit='run-query']")
       |> render_submit(%{
-        sandbox_form: %{
+        run: %{
           query_mode: "lql",
-          sandbox_query: "source_name:edge_function_logs",
+          consumer_query: "source_name:edge_function_logs",
           params: %{},
           show_transformed: "true"
         }
@@ -1215,11 +1308,11 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       html = render(view)
 
-      refute html =~ "Error occurred when running sandbox query",
+      refute html =~ "Error occurred when running consumer query",
              "Expected source_name:edge_function_logs LQL filter to succeed against live ClickHouse"
 
-      assert html =~ "Ran sandbox query successfully"
-      assert has_element?(view, "h5", "Sandbox Query Results")
+      assert html =~ "Ran consumer query successfully"
+      assert has_element?(view, "h5", "Consumer Query Results")
 
       assert html =~ table_name
       assert html =~ ~r/&quot;source_name&quot;/
@@ -1266,10 +1359,10 @@ defmodule LogflareWeb.EndpointsLiveTest do
       for {label, lql, expected, refuted} <- cases do
         html = submit_sandbox_lql(conn, endpoint, lql)
 
-        refute html =~ "Error occurred when running sandbox query",
+        refute html =~ "Error occurred when running consumer query",
                "[#{label}] expected `#{lql}` to succeed against live ClickHouse"
 
-        assert html =~ "Ran sandbox query successfully"
+        assert html =~ "Ran consumer query successfully"
 
         for msg <- expected do
           assert html =~ msg, "[#{label}] missing `#{msg}` for `#{lql}`"
@@ -1324,7 +1417,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
       view
-      |> element("form", "Test query")
+      |> element("form[phx-submit='run-query']")
       |> render_submit(%{run: %{query: endpoint.query, params: %{}, reservation: reservation}})
 
       assert_received {:reservation, ^reservation}
@@ -1451,11 +1544,11 @@ defmodule LogflareWeb.EndpointsLiveTest do
     assert initial_html =~ "ClickHouse SQL"
 
     view
-    |> element("form", "Test Sandbox Query")
+    |> element("form[phx-submit='run-query']")
     |> render_submit(%{
-      sandbox_form: %{
+      run: %{
         query_mode: "lql",
-        sandbox_query: "#{lql} s:event_message s:log_attributes",
+        consumer_query: "#{lql} s:event_message s:log_attributes",
         params: %{},
         show_transformed: "true"
       }
