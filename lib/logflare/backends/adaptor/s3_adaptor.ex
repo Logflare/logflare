@@ -3,12 +3,15 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   Backend adaptor that writes batches of logs to S3.
   """
 
+  use Supervisor
+
   import Logflare.Utils.Guards
 
-  use Supervisor
+  require Logger
 
   alias __MODULE__.Pipeline
   alias Ecto.Changeset
+  alias ExAws.S3
   alias Explorer.DataFrame
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
@@ -35,6 +38,9 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
 
   @min_batch_timeout 1_000
   @max_batch_timeout 5_000
+  @connection_test_key "_connection_test.parquet"
+  @parquet_content_type "application/vnd.apache.parquet"
+  @request_telemetry_event [:logflare, :backends, :s3, :request]
 
   @doc false
   def child_spec(arg) do
@@ -137,9 +143,12 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   end
 
   @doc """
-  Probes connectivity, credentials, region, and bucket access by writing a
-  tiny sentinel parquet file to a fixed key at the bucket root. Subsequent
-  probes overwrite the same key, so at most one ~1 KB artifact ever exists.
+  Probes write access by uploading a tiny sentinel parquet file to a fixed
+  key at the bucket root. Subsequent probes overwrite the same key, so at
+  most one ~1 KB artifact ever exists.
+
+  The probe only requires `s3:PutObject`, so it proves write access — not
+  read or list access, which the adaptor does not need.
 
   Note: on buckets with versioning enabled, each probe creates a new
   non-current version.
@@ -148,12 +157,9 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   @spec test_connection(Backend.t()) :: :ok | {:error, term()}
   def test_connection(%Backend{} = backend) do
     config = Adaptor.get_backend_config(backend)
-    path = "s3://#{config.s3_bucket}/_connection_test.parquet"
-
     df = DataFrame.new([%{probe: "connection-test"}], dtypes: [{:probe, :string}])
-    result = DataFrame.to_parquet(df, path, config: fss_s3_config(config))
 
-    case result do
+    case put_parquet(df, config, @connection_test_key) do
       :ok -> :ok
       {:error, reason} -> {:error, "S3 write failed: #{inspect(reason)}"}
     end
@@ -201,15 +207,14 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   def pipeline_alive?(args), do: !!pipeline_pid(args)
 
   @doc """
-  Generates the S3 path for a new parquet file based on a `Source` and bucket name.
+  Generates the S3 object key for a new parquet file based on a `Source`.
   """
-  @spec new_s3_filename(Source.t(), bucket_name :: String.t()) :: String.t()
-  def new_s3_filename(%Source{} = source, bucket_name)
-      when is_non_empty_binary(bucket_name) do
+  @spec new_s3_key(Source.t()) :: String.t()
+  def new_s3_key(%Source{} = source) do
     source_token = s3_source_token(source)
     now = DateTime.utc_now(:microsecond) |> DateTime.to_unix(:microsecond)
 
-    "s3://#{bucket_name}/#{source_token}/#{now}.parquet"
+    "#{source_token}/#{now}.parquet"
   end
 
   @doc """
@@ -222,7 +227,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     with %Source{} = source <- Sources.Cache.get_by_id(source_id),
          %Backend{} = backend <- Backends.Cache.get_backend(backend_id),
          config <- Adaptor.get_backend_config(backend),
-         s3_file_path <- new_s3_filename(source, config.s3_bucket) do
+         s3_key <- new_s3_key(source) do
       event_rows =
         Enum.map(events, fn %LogEvent{} = log_event ->
           flattened_body =
@@ -249,12 +254,36 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
         )
 
       try do
-        DataFrame.to_parquet(df, s3_file_path, streaming: true, config: fss_s3_config(config))
+        put_parquet(df, config, s3_key)
       rescue
         error -> {:error, error}
       end
     end
   end
+
+  @doc false
+  @spec attach_request_logger() :: :ok | {:error, :already_exists}
+  def attach_request_logger do
+    :telemetry.attach(
+      "s3-adaptor-request-logger",
+      @request_telemetry_event ++ [:stop],
+      &__MODULE__.handle_request_event/4,
+      nil
+    )
+  end
+
+  @doc false
+  @spec handle_request_event(list(atom()), map(), map(), term()) :: :ok
+  def handle_request_event(_event, _measurements, %{attempt: attempt} = metadata, _config)
+      when attempt > 1 do
+    Logger.warning(
+      "S3 adaptor request retry: attempt #{attempt} result #{metadata[:result]}",
+      s3_bucket: metadata.options[:bucket],
+      error: metadata[:error]
+    )
+  end
+
+  def handle_request_event(_event, _measurements, _metadata, _config), do: :ok
 
   @doc false
   @impl Supervisor
@@ -282,12 +311,33 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     |> String.replace("-", "_")
   end
 
-  defp fss_s3_config(backend_config) do
+  @spec put_parquet(DataFrame.t(), map(), key :: String.t()) :: :ok | {:error, term()}
+  defp put_parquet(%DataFrame{} = df, config, key) when is_non_empty_binary(key) do
+    with {:ok, body} <- DataFrame.dump_parquet(df),
+         {:ok, _resp} <-
+           config.s3_bucket
+           |> S3.put_object(key, body, content_type: @parquet_content_type)
+           |> ExAws.request(request_opts(config)) do
+      :ok
+    end
+  end
+
+  @spec request_opts(map()) :: keyword()
+  defp request_opts(config) do
     [
-      endpoint: backend_config[:endpoint],
-      access_key_id: backend_config.access_key_id,
-      secret_access_key: backend_config.secret_access_key,
-      region: backend_config.storage_region
-    ]
+      access_key_id: config.access_key_id,
+      secret_access_key: config.secret_access_key,
+      region: config.storage_region,
+      telemetry_event: @request_telemetry_event,
+      telemetry_options: [bucket: config.s3_bucket]
+    ] ++ endpoint_opts(config[:endpoint])
+  end
+
+  @spec endpoint_opts(String.t() | nil) :: keyword()
+  defp endpoint_opts(nil), do: []
+
+  defp endpoint_opts(endpoint) when is_non_empty_binary(endpoint) do
+    %URI{scheme: scheme, host: host, port: port} = URI.parse(endpoint)
+    [scheme: "#{scheme}://", host: host, port: port]
   end
 end

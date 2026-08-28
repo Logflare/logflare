@@ -7,6 +7,7 @@ defmodule Logflare.Application do
   alias Logflare.Alerting.AlertSchedulerWorker
   alias Logflare.Networking
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Adaptor.S3Adaptor
   alias Logflare.Backends.UserMonitoring
   alias Logflare.ContextCache
   alias Logflare.Logs
@@ -28,6 +29,7 @@ defmodule Logflare.Application do
     start_user_log_interceptor()
     add_logger_backends()
     warn_if_stripe_webhook_secret_unset()
+    S3Adaptor.attach_request_logger()
 
     env = Application.get_env(:logflare, :env)
     # TODO: Set node status in GCP when sigterm is received
