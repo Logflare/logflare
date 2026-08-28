@@ -141,6 +141,21 @@ defmodule LogflareWeb.UtilsTest do
                "SELECT * FROM t WHERE t.col = 'simple_value'"
     end
 
+    test "preserves question marks within substituted string parameters" do
+      sql = "SELECT * FROM t WHERE request.search = ? AND response.status_code = ?"
+
+      params = [
+        %{
+          parameterType: %{type: "STRING"},
+          parameterValue: %{value: "?grant_type=id_token"}
+        },
+        %{parameterType: %{type: "INTEGER"}, parameterValue: %{value: 400}}
+      ]
+
+      assert Utils.sql_params_to_sql(sql, params) ==
+               "SELECT * FROM t WHERE request.search = '?grant_type=id_token' AND response.status_code = 400"
+    end
+
     test "renders BOOL parameters as unquoted literals" do
       sql = "SELECT * FROM t WHERE t.col = ?"
 

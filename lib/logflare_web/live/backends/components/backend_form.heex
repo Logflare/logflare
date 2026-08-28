@@ -217,6 +217,15 @@
             </small>
           </div>
           <div class="form-group">
+            {label(f_config, :query_user, "ClickHouse Query Username (Optional)")}
+            {text_input(f_config, :query_user, class: "form-control")}
+            {label(f_config, :query_password, "ClickHouse Query Password (Optional)")}
+            {text_input(f_config, :query_password, class: "form-control", type: "password", value: "")}
+            <small class="form-text text-muted">
+              Dedicated credentials used for read queries. Both must be provided; when left empty, the username and password above are used for reads. Leave blank when editing to keep the existing password unchanged; changing the username requires re-entering the password.
+            </small>
+          </div>
+          <div class="form-group">
             {label(f_config, :use_async_inserts_for_small_batches, "Async Inserts for Small Batches")}
             {checkbox(f_config, :use_async_inserts_for_small_batches, id: "use_async_inserts_for_small_batches")}
             <small class="form-text text-muted">
@@ -258,8 +267,11 @@
             </small>
           </div>
           <div class="form-group">
-            {label(f_config, :pool_size, "HTTP Pool Size")}
-            {text_input(f_config, :pool_size, class: "form-control", value: input_value(f_config, "pool_size") || 20)}
+            {label(f_config, :read_pool_size, "Read Pool Size")}
+            {text_input(f_config, :read_pool_size, class: "form-control", value: input_value(f_config, "read_pool_size") || 50)}
+            <small class="form-text text-muted">
+              Connections per node for the primary read pool.
+            </small>
           </div>
           <div class="form-group">
             {label(f_config, :read_only_url, "Read-Only URL (Optional)")}

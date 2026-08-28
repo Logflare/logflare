@@ -281,7 +281,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
             password: "test_password",
             database: "default",
             port: 8123,
-            pool_size: 10
+            read_pool_size: 10
           },
           description: "some description",
           metadata: %{
@@ -300,7 +300,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
                  "password" => "REDACTED",
                  "database" => "default",
                  "port" => 8123,
-                 "pool_size" => 10
+                 "read_pool_size" => 10
                },
                "metadata" => %{
                  "some" => "data"
