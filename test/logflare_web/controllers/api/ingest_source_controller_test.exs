@@ -101,7 +101,7 @@ defmodule LogflareWeb.Api.IngestSourceControllerTest do
         build_conn()
         |> add_access_token(user, "ingest:source:#{system_source.id}")
         |> put_req_header("accept", "text/csv")
-        |> get("/api/ingest_sources?format=csv")
+        |> get("/api/ingest_sources")
 
       assert response(csv_conn, 200) == "token,name\r\n"
     end
@@ -152,7 +152,8 @@ defmodule LogflareWeb.Api.IngestSourceControllerTest do
       csv_conn =
         build_conn()
         |> add_access_token(user, "ingest")
-        |> get("/api/ingest_sources?format=csv")
+        |> put_req_header("accept", "text/csv")
+        |> get("/api/ingest_sources")
 
       assert response(csv_conn, 200) == "token,name\r\n"
       assert get_resp_header(csv_conn, "content-type") == ["text/csv; charset=utf-8"]
@@ -174,19 +175,11 @@ defmodule LogflareWeb.Api.IngestSourceControllerTest do
         conn
         |> add_access_token(user, "ingest")
         |> put_req_header("accept", "text/csv")
-        |> get("/api/ingest_sources?format=csv")
+        |> get("/api/ingest_sources")
 
       assert response(csv_conn, 200) =~ "\"comma, \"\"quote\"\"\nline\""
       assert get_resp_header(csv_conn, "content-type") == ["text/csv; charset=utf-8"]
       assert get_resp_header(csv_conn, "cache-control") == ["no-store"]
-    end
-
-    test "returns a documented bad request for an unsupported format", %{conn: conn, user: user} do
-      assert %{"error" => "Unsupported format. Supported formats: csv"} =
-               conn
-               |> add_access_token(user, "ingest")
-               |> get("/api/ingest_sources?format=xml")
-               |> json_response(400)
     end
   end
 end

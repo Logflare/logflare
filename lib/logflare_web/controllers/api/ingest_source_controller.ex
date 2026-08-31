@@ -4,7 +4,6 @@ defmodule LogflareWeb.Api.IngestSourceController do
 
   alias Logflare.Sources
   alias LogflareWeb.Api.FallbackController
-  alias LogflareWeb.OpenApi.BadRequest
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.Unauthorized
   alias LogflareWeb.OpenApiSchemas.IngestSource
@@ -18,13 +17,6 @@ defmodule LogflareWeb.Api.IngestSourceController do
 
   operation(:index,
     summary: "List sources available for ingestion",
-    parameters: [
-      format: [
-        in: :query,
-        description: "Response format",
-        schema: %Schema{type: :string, enum: ["csv"]}
-      ]
-    ],
     responses: %{
       200 => %Response{
         description: "Available ingest sources",
@@ -33,21 +25,19 @@ defmodule LogflareWeb.Api.IngestSourceController do
           "text/csv" => %MediaType{schema: %Schema{type: :string}}
         }
       },
-      400 => BadRequest.response(),
       401 => Unauthorized.response()
     }
   )
 
-  def index(%{assigns: %{user: user, access_token: access_token}} = conn, params) do
+  def index(%{assigns: %{user: user, access_token: access_token}} = conn, _params) do
     with {:ok, source_ids} <- authorized_source_ids(access_token) do
       sources = Sources.list_ingest_sources_by_user(user.id, source_ids)
 
       conn = put_resp_header(conn, "cache-control", "no-store")
 
-      case Map.get(params, "format") do
-        nil -> json(conn, sources)
+      case get_format(conn) do
+        "json" -> json(conn, sources)
         "csv" -> send_resp(conn |> put_resp_content_type("text/csv"), 200, csv(sources))
-        _ -> {:error, "Unsupported format. Supported formats: csv"}
       end
     end
   end
