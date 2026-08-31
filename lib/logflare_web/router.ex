@@ -510,7 +510,7 @@ defmodule LogflareWeb.Router do
   scope "/api", LogflareWeb do
     pipe_through([:ingest_source_discovery_auth])
 
-    get("/ingest_sources", Api.IngestSourceController, :index)
+    get("/ingest-sources", Api.IngestSourceController, :index)
   end
 
   scope "/api/partner", LogflareWeb do

@@ -20,7 +20,7 @@ Access tokens can be scoped to specific functionality.
 
 ## Discovering ingest sources
 
-Use `GET /api/ingest_sources` to discover the sources available to an ingest access token. The JSON response contains only each source's `token` and `name`; send `Accept: text/csv` for RFC 4180 CSV with a `token,name` header. The endpoint accepts account-wide `ingest` and private tokens, as well as source-scoped `ingest:source:<source-id>` tokens. Deprecated `ingest:collection:<source-id>` scopes remain supported. Responses are not cached.
+Use `GET /api/ingest-sources` to discover the sources available to an ingest access token. The JSON response contains only each source's `token` and `name`; send `Accept: text/csv` for RFC 4180 CSV with a `token,name` header. The endpoint accepts account-wide `ingest` and private tokens, as well as source-scoped `ingest:source:<source-id>` tokens. Deprecated `ingest:collection:<source-id>` scopes remain supported. Responses are not cached.
 
 ## Managing Access Tokens
 

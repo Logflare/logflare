@@ -25,7 +25,7 @@ defmodule LogflareWeb.Api.IngestSourceControllerTest do
       json_conn =
         conn
         |> add_access_token(user, "ingest")
-        |> get("/api/ingest_sources")
+        |> get("/api/ingest-sources")
 
       assert json_response(json_conn, 200) == [
                %{"token" => to_string(source_a.token), "name" => source_a.name},
@@ -46,7 +46,7 @@ defmodule LogflareWeb.Api.IngestSourceControllerTest do
         assert 2 ==
                  conn
                  |> credential.()
-                 |> get("/api/ingest_sources")
+                 |> get("/api/ingest-sources")
                  |> json_response(200)
                  |> length()
       end
@@ -65,7 +65,7 @@ defmodule LogflareWeb.Api.IngestSourceControllerTest do
           user,
           "ingest:source:#{source_a.id} ingest:collection:#{source_b.id} ingest:source:#{other_source.id}"
         )
-        |> get("/api/ingest_sources")
+        |> get("/api/ingest-sources")
         |> json_response(200)
 
       assert response == [
@@ -82,7 +82,7 @@ defmodule LogflareWeb.Api.IngestSourceControllerTest do
       assert [] =
                conn
                |> add_access_token(user, "ingest:source:#{other_source.id}")
-               |> get("/api/ingest_sources")
+               |> get("/api/ingest-sources")
                |> json_response(200)
     end
 
@@ -92,7 +92,7 @@ defmodule LogflareWeb.Api.IngestSourceControllerTest do
       response =
         conn
         |> add_access_token(user, "ingest")
-        |> get("/api/ingest_sources")
+        |> get("/api/ingest-sources")
         |> json_response(200)
 
       refute Enum.any?(response, &(&1["token"] == to_string(system_source.token)))
@@ -101,7 +101,7 @@ defmodule LogflareWeb.Api.IngestSourceControllerTest do
         build_conn()
         |> add_access_token(user, "ingest:source:#{system_source.id}")
         |> put_req_header("accept", "text/csv")
-        |> get("/api/ingest_sources")
+        |> get("/api/ingest-sources")
 
       assert response(csv_conn, 200) == "token,name\r\n"
     end
@@ -114,7 +114,7 @@ defmodule LogflareWeb.Api.IngestSourceControllerTest do
         assert 2 ==
                  conn
                  |> add_access_token(user, scopes)
-                 |> get("/api/ingest_sources")
+                 |> get("/api/ingest-sources")
                  |> json_response(200)
                  |> length()
       end
@@ -127,14 +127,14 @@ defmodule LogflareWeb.Api.IngestSourceControllerTest do
       query_token = Logflare.Auth.create_access_token(user, %{scopes: "query"}) |> elem(1)
 
       for request <- [
-            fn conn -> get(conn, "/api/ingest_sources") end,
+            fn conn -> get(conn, "/api/ingest-sources") end,
             fn conn ->
               conn
               |> put_req_header("authorization", "Bearer invalid")
-              |> get("/api/ingest_sources")
+              |> get("/api/ingest-sources")
             end,
-            fn conn -> conn |> add_access_token(user, "query") |> get("/api/ingest_sources") end,
-            fn conn -> get(conn, "/api/ingest_sources?api_key=#{query_token.token}") end
+            fn conn -> conn |> add_access_token(user, "query") |> get("/api/ingest-sources") end,
+            fn conn -> get(conn, "/api/ingest-sources?api_key=#{query_token.token}") end
           ] do
         assert %{"error" => "Unauthorized"} = conn |> request.() |> json_response(401)
       end
@@ -146,14 +146,14 @@ defmodule LogflareWeb.Api.IngestSourceControllerTest do
       assert [] =
                conn
                |> add_access_token(user, "ingest")
-               |> get("/api/ingest_sources")
+               |> get("/api/ingest-sources")
                |> json_response(200)
 
       csv_conn =
         build_conn()
         |> add_access_token(user, "ingest")
         |> put_req_header("accept", "text/csv")
-        |> get("/api/ingest_sources")
+        |> get("/api/ingest-sources")
 
       assert response(csv_conn, 200) == "token,name\r\n"
       assert get_resp_header(csv_conn, "content-type") == ["text/csv; charset=utf-8"]
@@ -175,7 +175,7 @@ defmodule LogflareWeb.Api.IngestSourceControllerTest do
         conn
         |> add_access_token(user, "ingest")
         |> put_req_header("accept", "text/csv")
-        |> get("/api/ingest_sources")
+        |> get("/api/ingest-sources")
 
       assert response(csv_conn, 200) =~ "\"comma, \"\"quote\"\"\nline\""
       assert get_resp_header(csv_conn, "content-type") == ["text/csv; charset=utf-8"]
