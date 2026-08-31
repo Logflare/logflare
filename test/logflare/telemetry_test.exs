@@ -17,6 +17,11 @@ defmodule Logflare.TelemetryTest do
     :batch_size
   ]
   @clickhouse_batch_metric_string "logflare.backends.clickhouse.pipeline.handle_batch.batch_size"
+  @broadway_processor_message_event [:broadway, :processor, :message, :stop]
+  @broadway_processor_message_exporter :logflare_broadway_processor_message_metrics_test
+  @broadway_processor_message_metric_name [:broadway, :processor, :message, :stop, :duration]
+  @broadway_processor_message_metric_string "broadway.processor.message.stop.duration"
+  @broadway_processor_message_sample_denominator 100
 
   @drop_stale_exporter :logflare_drop_stale_metrics_test
   @drop_stale_metric_name [:logflare, :logs, :ingest_logs, :drop_stale]
@@ -92,6 +97,71 @@ defmodule Logflare.TelemetryTest do
         assert metric.keep.(%{backend_type: :clickhouse})
         refute metric.keep.(%{backend_type: :bigquery})
       end
+    end
+
+    test "samples Broadway processor message durations deterministically at one percent" do
+      [metric] =
+        Enum.filter(Telemetry.metrics(), fn metric ->
+          metric.name == @broadway_processor_message_metric_name and
+            metric.event_name == @broadway_processor_message_event
+        end)
+
+      assert is_function(metric.measurement, 1)
+      assert metric.unit == :millisecond
+      assert is_function(metric.keep, 1)
+      refute metric.keep.(%{})
+
+      contexts = Enum.map(1..10_000, fn _ -> make_ref() end)
+
+      accepted_contexts =
+        Enum.filter(contexts, fn context ->
+          metadata = %{telemetry_span_context: context}
+          expected = :erlang.phash2(context, @broadway_processor_message_sample_denominator) == 0
+
+          assert metric.keep.(metadata) == expected
+          assert metric.keep.(metadata) == expected
+
+          expected
+        end)
+
+      assert length(accepted_contexts) in 25..250
+
+      start_supervised!(
+        {OtelMetricExporter,
+         name: @broadway_processor_message_exporter,
+         metrics: [metric],
+         export_period: :timer.minutes(5),
+         otlp_protocol: :http_protobuf,
+         otlp_endpoint: "http://localhost:4318",
+         otlp_headers: %{},
+         otlp_compression: nil}
+      )
+
+      :telemetry.execute(
+        @broadway_processor_message_event,
+        %{duration: System.convert_time_unit(1, :millisecond, :native)},
+        %{}
+      )
+
+      Enum.each(contexts, fn context ->
+        :telemetry.execute(
+          @broadway_processor_message_event,
+          %{duration: System.convert_time_unit(1, :millisecond, :native)},
+          %{telemetry_span_context: context}
+        )
+      end)
+
+      assert %{
+               {:distribution, @broadway_processor_message_metric_string} => distributions
+             } = MetricStore.get_metrics(@broadway_processor_message_exporter)
+
+      observed_count =
+        distributions
+        |> Map.fetch!(%{})
+        |> Map.values()
+        |> Enum.sum_by(fn {count, _sum} -> count end)
+
+      assert observed_count == length(accepted_contexts)
     end
 
     test "aggregates ClickHouse batches by backend, event type, and trigger" do

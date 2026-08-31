@@ -27,6 +27,7 @@ defmodule Logflare.Telemetry do
   }
 
   @metrics_interval 30_000
+  @broadway_processor_message_sample_denominator 100
 
   @impl true
   def init(_arg) do
@@ -85,6 +86,12 @@ defmodule Logflare.Telemetry do
   end
 
   defp maybe_put_commit(service, _commit_sha), do: service
+
+  defp sample_broadway_processor_message_duration?(%{telemetry_span_context: context}) do
+    :erlang.phash2(context, @broadway_processor_message_sample_denominator) == 0
+  end
+
+  defp sample_broadway_processor_message_duration?(_metadata), do: false
 
   # Public (not private) so the metric definitions can be validated directly
   # in tests — init/1 only calls this when OpenTelemetry is enabled, which
@@ -173,7 +180,10 @@ defmodule Logflare.Telemetry do
     broadway_metrics = [
       distribution("broadway.batcher.stop.duration", unit: {:native, :millisecond}),
       distribution("broadway.batch_processor.stop.duration", unit: {:native, :millisecond}),
-      distribution("broadway.processor.message.stop.duration", unit: {:native, :millisecond}),
+      distribution("broadway.processor.message.stop.duration",
+        unit: {:native, :millisecond},
+        keep: &sample_broadway_processor_message_duration?/1
+      ),
       distribution("broadway.processor.stop.duration", unit: {:native, :millisecond})
     ]
 
