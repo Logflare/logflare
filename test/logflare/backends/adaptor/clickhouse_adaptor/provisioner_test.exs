@@ -88,6 +88,44 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
                       {:shutdown, {:error, :grant_check_unknown_failure}}},
                      1_000
     end
+
+    @tag capture_log: true
+    test "provisions tables even when the read grant check fails" do
+      {_source, read_backend} =
+        setup_clickhouse_test(config: %{query_user: "ch_reader", query_password: "reader_pa55"})
+
+      {:ok, adaptor_pid} = ClickHouseAdaptor.start_link(read_backend)
+
+      on_exit(fn ->
+        if Process.alive?(adaptor_pid) do
+          Process.exit(adaptor_pid, :shutdown)
+        end
+      end)
+
+      {:ok, pid} = Provisioner.start_link(read_backend)
+      ref = Process.monitor(pid)
+
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5_000
+
+      {:ok, conn} =
+        Ch.start_link(
+          scheme: "http",
+          hostname: "localhost",
+          port: 8123,
+          database: read_backend.config.database,
+          username: read_backend.config.username,
+          password: read_backend.config.password,
+          pool_size: 1
+        )
+
+      for event_type <- [:log, :metric, :trace] do
+        table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(read_backend, event_type)
+
+        assert {:ok, %Ch.Result{rows: [[1]]}} = Ch.query(conn, "EXISTS TABLE #{table_name}")
+      end
+
+      GenServer.stop(conn)
+    end
   end
 
   describe "provisioning idempotency" do

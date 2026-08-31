@@ -389,7 +389,8 @@ defmodule LogflareWeb.BackendsLive do
       {"OTLP", :otlp},
       {"Last9", :last9},
       {"Syslog", :syslog},
-      {"Splunk", :splunk}
+      {"Splunk", :splunk},
+      {"Google SecOps", :google_secops}
     ])
   end
 

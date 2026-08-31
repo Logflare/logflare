@@ -136,6 +136,11 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     end
   end
 
+  @impl Adaptor
+  def sanitize_config_for_display(config) do
+    Adaptor.mask_config_values(config, except: [:s3_bucket, :storage_region, :batch_timeout])
+  end
+
   @doc """
   Probes connectivity, credentials, region, and bucket access by writing a
   tiny sentinel parquet file to a fixed key at the bucket root. Subsequent

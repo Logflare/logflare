@@ -258,6 +258,31 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
     end
   end
 
+  describe "query pool credentials" do
+    test "the pool authenticates with the dedicated query user when configured" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{query_user: "ch_reader", query_password: "reader_pa55"},
+          cleanup?: false
+        )
+
+      assert {"ch_reader", "reader_pa55"} = start_pool_credentials(backend)
+    end
+
+    test "the pool falls back to the default credentials when no query user is configured", %{
+      backend: backend
+    } do
+      assert {"logflare", "logflare"} = start_pool_credentials(backend)
+    end
+
+    test "the pool falls back to the default credentials when only query_user is configured" do
+      {_source, backend} =
+        setup_clickhouse_test(config: %{query_user: "ch_reader"}, cleanup?: false)
+
+      assert {"logflare", "logflare"} = start_pool_credentials(backend)
+    end
+  end
+
   describe "read_host/2" do
     test "resolves the hostname for a labeled read cluster" do
       {_source, backend} =
@@ -327,5 +352,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
 
       assert ConnectionManager.read_pool_size(%{labeled_read_pool_size: 0}, "api_free") == 32
     end
+  end
+
+  defp start_pool_credentials(backend) do
+    test_pid = self()
+
+    stub(Ch, :start_link, fn opts ->
+      send(test_pid, {:ch_opts, opts})
+      Agent.start_link(fn -> :ok end)
+    end)
+
+    {:ok, _manager_pid} = ConnectionManager.start_link(backend)
+    assert :ok == ConnectionManager.ensure_pool_started(backend)
+
+    assert_receive {:ch_opts, opts}
+
+    {Keyword.fetch!(opts, :username), Keyword.fetch!(opts, :password)}
   end
 end

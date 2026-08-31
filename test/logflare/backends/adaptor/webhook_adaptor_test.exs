@@ -422,6 +422,24 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
              })
   end
 
+  describe "sanitize_config_for_display/1" do
+    test "masks headers and strips url credentials" do
+      config = %{
+        url: "https://user:pass@example.com/hook",
+        headers: %{"authorization" => "Bearer secret"},
+        http: "http2",
+        gzip: true
+      }
+
+      assert %{
+               url: "https://REDACTED@example.com/hook",
+               headers: "**********",
+               http: "http2",
+               gzip: true
+             } == @subject.sanitize_config_for_display(config)
+    end
+  end
+
   describe "redact_config/1" do
     test "redacts every maintained sensitive header while preserving other headers" do
       sensitive_headers = Map.new(@sensitive_header_names, &{&1, "leaked-secret"})

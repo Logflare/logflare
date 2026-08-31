@@ -28,7 +28,8 @@ defmodule Logflare.Backends.Backend do
     otlp: Adaptor.OtlpAdaptor,
     last9: Adaptor.Last9Adaptor,
     syslog: Adaptor.SyslogAdaptor,
-    splunk: Adaptor.SplunkAdaptor
+    splunk: Adaptor.SplunkAdaptor,
+    google_secops: Adaptor.GoogleSecOpsAdaptor
   }
 
   typed_schema "backends" do
