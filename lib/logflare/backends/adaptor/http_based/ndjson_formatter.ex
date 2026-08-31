@@ -6,6 +6,8 @@ defmodule Logflare.Backends.Adaptor.HttpBased.NdjsonFormatter do
   `Logflare.Backends.Adaptor.HttpBased.Client.new/1` options.
   """
 
+  require Logger
+
   alias Logflare.LogEvent
 
   @behaviour Tesla.Middleware
@@ -39,11 +41,28 @@ defmodule Logflare.Backends.Adaptor.HttpBased.NdjsonFormatter do
   @doc """
   Encodes `Logflare.LogEvent`s as newline-delimited JSON iodata, one event body
   per line. Any other term passes through unchanged.
+
+  An event whose body cannot be JSON-encoded is dropped. The count of dropped
+  events is logged per batch.
   """
   @spec encode([LogEvent.t()] | term()) :: iodata() | term()
   def encode([%LogEvent{} | _] = events) do
-    events
-    |> Enum.map(fn %LogEvent{body: body} -> Jason.encode_to_iodata!(body) end)
+    {encoded, dropped_count} =
+      Enum.reduce(events, {[], 0}, fn %LogEvent{body: body}, {acc, dropped_count} ->
+        case Jason.encode_to_iodata(body) do
+          {:ok, iodata} -> {[iodata | acc], dropped_count}
+          {:error, _reason} -> {acc, dropped_count + 1}
+        end
+      end)
+
+    if dropped_count > 0 do
+      Logger.warning(
+        "Dropped #{dropped_count} log events from an NDJSON batch: JSON encoding failed"
+      )
+    end
+
+    encoded
+    |> Enum.reverse()
     |> Enum.intersperse("\n")
   end
 

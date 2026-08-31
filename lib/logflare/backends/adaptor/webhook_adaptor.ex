@@ -424,6 +424,9 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   defmodule Pipeline do
     @moduledoc false
     use Broadway
+
+    require Logger
+
     alias Broadway.Message
     alias Logflare.Backends.BufferProducer
     alias Logflare.Backends.Adaptor.WebhookAdaptor
@@ -493,7 +496,18 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       events = for %{data: le} <- messages, do: le
       payload = WebhookAdaptor.format_payload(config, events)
 
-      process_data(payload, config, backend_metadata, context)
+      case process_data(payload, config, backend_metadata, context) do
+        {:error, {Tesla.Middleware.JSON, :encode, _reason}} ->
+          Logger.warning(
+            "Dropped #{length(messages)} log events from webhook batch: JSON encoding failed",
+            source_id: context.source_id,
+            backend_id: context.backend_id
+          )
+
+        _ ->
+          :ok
+      end
+
       messages
     end
 

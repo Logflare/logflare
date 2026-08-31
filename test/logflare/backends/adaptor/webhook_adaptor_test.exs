@@ -71,6 +71,28 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       assert_receive ^ref, 2000
     end
 
+    test "logs the batch size when JSON encoding fails", %{source: source} do
+      this = self()
+      ref = make_ref()
+
+      @subject.Client
+      |> expect(:send, fn _req ->
+        send(this, ref)
+        {:error, {Tesla.Middleware.JSON, :encode, :invalid}}
+      end)
+
+      les = for _ <- 1..2, do: build(:log_event, source: source)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, _} = Backends.ingest_logs(les, source)
+          assert_receive ^ref, 2000
+          Process.sleep(100)
+        end)
+
+      assert log =~ "Dropped 2 log events from webhook batch: JSON encoding failed"
+    end
+
     test "uses cache for config fetching", %{source: source} do
       Logflare.Repo.update_all(Backend,
         set: [config_encrypted: %{http: "http1", url: "https://other-email.com"}]
