@@ -136,6 +136,13 @@ defmodule Logflare.Backends.Adaptor.Last9AdaptorTest do
     end
   end
 
+  describe "sanitize_config_for_display/1" do
+    test "masks credentials while preserving region" do
+      assert %{region: "US-WEST-1", username: "**********", password: "**********"} ==
+               @subject.sanitize_config_for_display(@valid_config)
+    end
+  end
+
   describe "redact_config/1" do
     test "redacts username and password" do
       redacted_config = @subject.redact_config(@valid_config)
