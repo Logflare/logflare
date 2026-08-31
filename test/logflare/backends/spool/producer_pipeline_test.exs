@@ -15,8 +15,8 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
 
   setup :set_mimic_global
 
-  @max_spool_file_size 32 * 1024 * 1024
-  @early_flush_file_size 12 * 1024 * 1024
+  @max_spool_file_size 7 * 1024 * 1024
+  @early_flush_file_size 3 * 1024 * 1024
 
   setup do
     prev_spool_config = Application.get_env(:logflare, :spool)
@@ -108,6 +108,7 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
       partitions: 1,
       compress: true,
       format: :ndjson,
+      compression_algorithm: :gzip,
       queue_ref: "projects/p/topics/t",
       storage_mod: StorageMod,
       queue_mod: QueueMod
@@ -137,20 +138,20 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
   end
 
   describe "spool_batch_size_splitter/0 when not throttled" do
-    test "continues accumulating under the normal 32MB budget" do
+    test "continues accumulating under the normal 7MB budget" do
       not_throttled!()
       {initial, reducer} = ProducerPipeline.spool_batch_size_splitter()
 
-      assert {:cont, {_count, remaining}} = reducer.(sized_message(10 * 1024 * 1024), initial)
-      assert remaining == @max_spool_file_size - 10 * 1024 * 1024
+      assert {:cont, {_count, remaining}} = reducer.(sized_message(2 * 1024 * 1024), initial)
+      assert remaining == @max_spool_file_size - 2 * 1024 * 1024
     end
 
-    test "emits once accumulated size would exceed the normal 32MB budget" do
+    test "emits once accumulated size would exceed the normal 7MB budget" do
       not_throttled!()
       {initial, reducer} = ProducerPipeline.spool_batch_size_splitter()
 
-      assert {:cont, acc} = reducer.(sized_message(20 * 1024 * 1024), initial)
-      assert {:emit, {_count, :pending}} = reducer.(sized_message(15 * 1024 * 1024), acc)
+      assert {:cont, acc} = reducer.(sized_message(4 * 1024 * 1024), initial)
+      assert {:emit, {_count, :pending}} = reducer.(sized_message(4 * 1024 * 1024), acc)
     end
 
     test "a single chunk larger than the whole budget is still admitted, and closes the batch" do
@@ -169,28 +170,28 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
   end
 
   describe "spool_batch_size_splitter/0 when throttled" do
-    test "emits at the smaller early-flush budget instead of the normal 32MB one" do
+    test "emits at the smaller early-flush budget instead of the normal 7MB one" do
       throttled!()
       {initial, reducer} = ProducerPipeline.spool_batch_size_splitter()
 
-      # 15MB alone wouldn't trip the normal 32MB budget, but does trip the 12MB one.
-      assert {:emit, {_count, :pending}} = reducer.(sized_message(15 * 1024 * 1024), initial)
+      # 5MB alone wouldn't trip the normal 7MB budget, but does trip the 3MB one.
+      assert {:emit, {_count, :pending}} = reducer.(sized_message(5 * 1024 * 1024), initial)
     end
 
     test "continuing under the early-flush budget still tracks the correct remaining bytes" do
       throttled!()
       {initial, reducer} = ProducerPipeline.spool_batch_size_splitter()
 
-      assert {:cont, {_count, remaining}} = reducer.(sized_message(5 * 1024 * 1024), initial)
-      assert remaining == @early_flush_file_size - 5 * 1024 * 1024
+      assert {:cont, {_count, remaining}} = reducer.(sized_message(1 * 1024 * 1024), initial)
+      assert remaining == @early_flush_file_size - 1 * 1024 * 1024
     end
 
     test "the budget decided for a batch stays locked in even if throttling clears mid-batch" do
       throttled!()
       {initial, reducer} = ProducerPipeline.spool_batch_size_splitter()
 
-      # First message decides the budget for this whole batch: 12MB (throttled).
-      assert {:cont, acc} = reducer.(sized_message(5 * 1024 * 1024), initial)
+      # First message decides the budget for this whole batch: 3MB (throttled).
+      assert {:cont, acc} = reducer.(sized_message(1 * 1024 * 1024), initial)
 
       # Flip to "not throttled" and wait for MemoryMonitor to genuinely refresh —
       # if the reducer re-checked per message, this would flip its behavior.
@@ -202,9 +203,10 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
       TestUtils.send_and_wait_for_handling(MemoryMonitor, :refresh)
       assert MemoryMonitor.throttled?() == false
 
-      # 5MB + 8MB = 13MB, over the locked-in 12MB budget (would NOT emit under
-      # a freshly-rechecked 32MB budget) — proves the decision wasn't re-evaluated.
-      assert {:emit, {_count, :pending}} = reducer.(sized_message(8 * 1024 * 1024), acc)
+      # 1MB + 2.5MB = 3.5MB, over the locked-in 3MB budget (would NOT emit under
+      # a freshly-rechecked 7MB budget) — proves the decision wasn't re-evaluated.
+      assert {:emit, {_count, :pending}} =
+               reducer.(sized_message(round(2.5 * 1024 * 1024)), acc)
     end
   end
 
@@ -340,13 +342,15 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
       assert result_message.status == {:failed, :unavailable}
     end
 
-    for {format, compress, expected_tag} <- [
-          {:ndjson, false, :ndjson},
-          {:ndjson, true, :ndjson_gz},
-          {:etf, false, :etf},
-          {:etf, true, :etf_gz}
+    for {format, compress, algorithm, expected_tag} <- [
+          {:ndjson, false, :gzip, :ndjson},
+          {:ndjson, true, :gzip, :ndjson_gz},
+          {:ndjson, true, :zstd, :ndjson_zstd},
+          {:etf, false, :gzip, :etf},
+          {:etf, true, :gzip, :etf_gz},
+          {:etf, true, :zstd, :etf_zstd}
         ] do
-      test "emits storage.put telemetry tagged #{expected_tag} for format=#{format} compress=#{compress}" do
+      test "emits storage.put telemetry tagged #{expected_tag} for format=#{format} compress=#{compress} algorithm=#{algorithm}" do
         TestUtils.attach_forwarder([:logflare, :backends, :spool, :storage, :put])
 
         stub(StorageMod, :put, fn _bucket, _key, _body, _opts -> {:ok, %{}} end)
@@ -354,13 +358,74 @@ defmodule Logflare.Backends.Spool.ProducerPipelineTest do
 
         messages = [chunk_message([log_event()])]
         batch_info = %{size: 1, trigger: :size}
-        context = handle_batch_context(format: unquote(format), compress: unquote(compress))
+
+        context =
+          handle_batch_context(
+            format: unquote(format),
+            compress: unquote(compress),
+            compression_algorithm: unquote(algorithm)
+          )
 
         ProducerPipeline.handle_batch(:spool, messages, batch_info, context)
 
         assert_receive {:telemetry_event, [:logflare, :backends, :spool, :storage, :put], _,
                         %{format: unquote(expected_tag), result: :ok}}
       end
+    end
+  end
+
+  describe "handle_batch/4 zstd compression" do
+    test "ndjson+zstd body round-trips to the original JSON lines" do
+      test_pid = self()
+
+      stub(StorageMod, :put, fn _bucket, _key, body, _opts ->
+        send(test_pid, {:put, body})
+        {:ok, %{}}
+      end)
+
+      stub(QueueMod, :publish, fn _ref, _body -> :ok end)
+
+      messages = [
+        chunk_message([log_event(%{"message" => "one"}), log_event(%{"message" => "two"})])
+      ]
+
+      batch_info = %{size: 1, trigger: :size}
+
+      context =
+        handle_batch_context(format: :ndjson, compress: true, compression_algorithm: :zstd)
+
+      ProducerPipeline.handle_batch(:spool, messages, batch_info, context)
+
+      assert_receive {:put, body}
+
+      lines =
+        body
+        |> :ezstd.decompress()
+        |> String.trim()
+        |> String.split("\n")
+        |> Enum.map(&Jason.decode!/1)
+
+      assert [%{"body" => %{"message" => "one"}}, %{"body" => %{"message" => "two"}}] = lines
+    end
+
+    test "etf+zstd body round-trips to the original records" do
+      test_pid = self()
+
+      stub(StorageMod, :put, fn _bucket, _key, body, _opts ->
+        send(test_pid, {:put, body})
+        {:ok, %{}}
+      end)
+
+      stub(QueueMod, :publish, fn _ref, _body -> :ok end)
+
+      messages = [chunk_message([log_event(%{"message" => "hello"}, 123)])]
+      batch_info = %{size: 1, trigger: :size}
+      context = handle_batch_context(format: :etf, compress: true, compression_algorithm: :zstd)
+
+      ProducerPipeline.handle_batch(:spool, messages, batch_info, context)
+
+      assert_receive {:put, body}
+      assert [%{via_rule_id: 123}] = body |> :ezstd.decompress() |> :erlang.binary_to_term()
     end
   end
 

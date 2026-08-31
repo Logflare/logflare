@@ -22,7 +22,7 @@ defmodule Logflare.Backends.Spool.ChunkProducer do
   alias Logflare.Backends.BufferProducer
   alias Logflare.Backends.Spool.EventQueue
 
-  @default_interval 1_000
+  @default_interval 100
   # See BufferProducer's identical constant: how soon to retry after a fetch
   # came back short specifically because the in-flight cap throttled it.
   @min_in_flight_retry_ms 100

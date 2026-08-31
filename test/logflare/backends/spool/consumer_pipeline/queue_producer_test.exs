@@ -176,6 +176,23 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{count: 1},
                       %{reason: :buffer_exhausted}}
     end
+
+    test "streams events from a zstd-compressed .ndjson.zst file" do
+      stub_ack_nack(self())
+      stub_queue([queue_message("h1", "0/a.ndjson.zst")])
+
+      body = ndjson_body([%{"id" => "e1"}, %{"id" => "e2"}])
+      stub_storage(%{"0/a.ndjson.zst" => :ezstd.compress(body, 3)})
+
+      pid = start_producer()
+
+      events =
+        GenStage.stream([{pid, max_demand: 10}])
+        |> Enum.take(2)
+
+      assert Enum.map(events, & &1["id"]) == ["e1", "e2"]
+      assert_receive {:acked, "h1"}, 2000
+    end
   end
 
   describe "throttling (memory pressure)" do
@@ -467,6 +484,22 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       stub_ack_nack(self())
       stub_queue([queue_message("h1", "0/corrupt.etf.gz")])
       stub_storage(%{"0/corrupt.etf.gz" => "not gzip data"})
+
+      pid = start_producer()
+      Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
+
+      assert_receive {:acked, "h1"}, 2000
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{count: 1},
+                      %{reason: :decode_error}}
+    end
+
+    test "acks with reason: :decode_error when the downloaded .zst content is not valid zstd" do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :ack])
+
+      stub_ack_nack(self())
+      stub_queue([queue_message("h1", "0/corrupt.etf.zst")])
+      stub_storage(%{"0/corrupt.etf.zst" => "not zstd data"})
 
       pid = start_producer()
       Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)

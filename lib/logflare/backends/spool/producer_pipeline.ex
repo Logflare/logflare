@@ -20,11 +20,16 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
   @behaviour Broadway.Acknowledger
 
   @max_batch_size 500_000
-  @default_batch_timeout 200
-  @max_spool_file_size 32 * 1024 * 1024
-  @early_flush_file_size 12 * 1024 * 1024
+  @default_batch_timeout 100
+  @max_spool_file_size 7 * 1024 * 1024
+  @early_flush_file_size 3 * 1024 * 1024
   @default_max_retries 0
   @producer_concurrency 1
+  @default_compression_algorithm :gzip
+  # Matches zstd's own CLI default — the best speed/ratio balance point per
+  # our own benchmark (level 1 is faster but noticeably worse ratio; level 9+
+  # trades meaningfully more latency for a few percent more compression).
+  @zstd_compression_level 3
 
   @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
   def start_link(args) do
@@ -36,6 +41,10 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     batch_timeout = Keyword.get(spool_config, :batch_timeout, @default_batch_timeout)
     compress = Keyword.get(spool_config, :compress, true)
     format = Keyword.get(spool_config, :format, :ndjson)
+
+    compression_algorithm =
+      Keyword.get(spool_config, :compression_algorithm, @default_compression_algorithm)
+
     {storage_mod, queue_mod} = resolve_mods(spool_config)
     queue_ref = resolve_queue_ref(spool_config, queue_mod)
 
@@ -67,6 +76,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
         partitions: partitions,
         compress: compress,
         format: format,
+        compression_algorithm: compression_algorithm,
         queue_ref: queue_ref,
         storage_mod: storage_mod,
         queue_mod: queue_mod
@@ -178,6 +188,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
         partitions: partitions,
         compress: compress,
         format: format,
+        compression_algorithm: compression_algorithm,
         queue_ref: queue_ref,
         storage_mod: storage_mod,
         queue_mod: queue_mod
@@ -205,10 +216,21 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     )
 
     partition = :rand.uniform(partitions) - 1
-    file_key = "#{partition}/#{generate_uuidv7()}.#{file_extension(format, compress)}"
+
+    file_key =
+      "#{partition}/#{generate_uuidv7()}.#{file_extension(format, compress, compression_algorithm)}"
 
     with {:upload, {:ok, _}} <-
-           {:upload, do_upload(format, compress, messages, bucket, file_key, storage_mod)},
+           {:upload,
+            do_upload(
+              format,
+              compress,
+              compression_algorithm,
+              messages,
+              bucket,
+              file_key,
+              storage_mod
+            )},
          {:notify, :ok} <-
            {:notify, notify_queue(queue_mod, queue_ref, file_key, event_count)} do
       emit_batch_result(:ok, nil, event_count)
@@ -299,31 +321,44 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     end
   end
 
-  defp file_extension(:ndjson, true), do: "ndjson.gz"
-  defp file_extension(:ndjson, false), do: "ndjson"
-  defp file_extension(:etf, true), do: "etf.gz"
-  defp file_extension(:etf, false), do: "etf"
+  defp file_extension(:ndjson, false, _algorithm), do: "ndjson"
+  defp file_extension(:etf, false, _algorithm), do: "etf"
+  defp file_extension(:ndjson, true, :gzip), do: "ndjson.gz"
+  defp file_extension(:ndjson, true, :zstd), do: "ndjson.zst"
+  defp file_extension(:etf, true, :gzip), do: "etf.gz"
+  defp file_extension(:etf, true, :zstd), do: "etf.zst"
 
-  defp do_upload(:ndjson, true, messages, bucket, file_key, storage_mod),
-    do: upload_compressed(messages, bucket, file_key, storage_mod)
+  defp do_upload(:ndjson, true, algorithm, messages, bucket, file_key, storage_mod),
+    do: upload_compressed(algorithm, messages, bucket, file_key, storage_mod)
 
-  defp do_upload(:ndjson, false, messages, bucket, file_key, storage_mod),
+  defp do_upload(:ndjson, false, _algorithm, messages, bucket, file_key, storage_mod),
     do: upload_plain(messages, bucket, file_key, storage_mod)
 
-  defp do_upload(:etf, compress, messages, bucket, file_key, storage_mod),
-    do: upload_etf(compress, messages, bucket, file_key, storage_mod)
+  defp do_upload(:etf, compress, algorithm, messages, bucket, file_key, storage_mod),
+    do: upload_etf(compress, algorithm, messages, bucket, file_key, storage_mod)
 
-  defp upload_compressed(messages, bucket, file_key, storage_mod) do
-    {encode_us, body} = :timer.tc(fn -> compress_messages_to_binary(messages) end)
+  defp upload_compressed(algorithm, messages, bucket, file_key, storage_mod) do
+    {encode_us, body} =
+      :timer.tc(fn -> compress_messages_to_binary(algorithm, messages) end)
 
     {upload_us, result} =
       :timer.tc(fn ->
         storage_mod.put(bucket, file_key, body,
-          headers: %{"content-type" => "application/x-ndjson", "content-encoding" => "gzip"}
+          headers: %{
+            "content-type" => "application/x-ndjson",
+            "content-encoding" => content_encoding(algorithm)
+          }
         )
       end)
 
-    emit_storage_put_telemetry(:ndjson_gz, byte_size(body), result, encode_us, upload_us)
+    emit_storage_put_telemetry(
+      ndjson_format_tag(algorithm),
+      byte_size(body),
+      result,
+      encode_us,
+      upload_us
+    )
+
     result
   end
 
@@ -347,7 +382,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     result
   end
 
-  defp upload_etf(compress, messages, bucket, file_key, storage_mod) do
+  defp upload_etf(compress, algorithm, messages, bucket, file_key, storage_mod) do
     {encode_us, body} =
       :timer.tc(fn ->
         records =
@@ -367,7 +402,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
           |> Enum.reverse()
 
         body = :erlang.term_to_binary(records)
-        if compress, do: gzip(body), else: body
+        if compress, do: compress_binary(algorithm, body), else: body
       end)
 
     {upload_us, result} =
@@ -378,7 +413,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
       end)
 
     emit_storage_put_telemetry(
-      if(compress, do: :etf_gz, else: :etf),
+      etf_format_tag(compress, algorithm),
       byte_size(body),
       result,
       encode_us,
@@ -387,6 +422,16 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
 
     result
   end
+
+  defp etf_format_tag(false, _algorithm), do: :etf
+  defp etf_format_tag(true, :gzip), do: :etf_gz
+  defp etf_format_tag(true, :zstd), do: :etf_zstd
+
+  defp ndjson_format_tag(:gzip), do: :ndjson_gz
+  defp ndjson_format_tag(:zstd), do: :ndjson_zstd
+
+  defp content_encoding(:gzip), do: "gzip"
+  defp content_encoding(:zstd), do: "zstd"
 
   # Folds every event across every chunk in the batch through `fun`, resolving
   # each chunk's events from EventQueue one chunk at a time rather than
@@ -419,7 +464,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
   # Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline.stream_compress/2, so
   # the only full-batch iodata flatten happens over the already-compressed
   # output, which is far smaller than the input.
-  defp compress_messages_to_binary(messages) do
+  defp compress_messages_to_binary(:gzip, messages) do
     z = :zlib.open()
 
     try do
@@ -443,7 +488,21 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     end
   end
 
-  defp gzip(data) do
+  # ezstd has no incremental/streaming API as simple as zlib's per-chunk
+  # deflate+:none, so unlike the gzip path this builds the whole batch's raw
+  # ndjson binary first (same memory profile as upload_plain's uncompressed
+  # path already has), then compresses it in one shot. Fine as a first cut —
+  # see the encode_duration telemetry this emits if that profile ever needs
+  # revisiting.
+  defp compress_messages_to_binary(:zstd, messages) do
+    messages
+    |> reduce_chunk_events([], fn log_event, acc -> [[encode_line(log_event), "\n"] | acc] end)
+    |> Enum.reverse()
+    |> IO.iodata_to_binary()
+    |> then(&:ezstd.compress(&1, @zstd_compression_level))
+  end
+
+  defp compress_binary(:gzip, data) do
     z = :zlib.open()
 
     try do
@@ -455,6 +514,8 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
       :zlib.close(z)
     end
   end
+
+  defp compress_binary(:zstd, data), do: :ezstd.compress(data, @zstd_compression_level)
 
   defp encode_line(log_event) do
     Jason.encode!(%{

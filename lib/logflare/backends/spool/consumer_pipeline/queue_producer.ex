@@ -614,12 +614,19 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   end
 
   # Decompression and parsing are both capable of raising on truncated or
-  # otherwise corrupt content (:zlib.gunzip/1 and :erlang.binary_to_term/2
-  # both crash rather than returning an error tuple) — caught here, close to
-  # the queue handle, so the caller can ack (drop) the poison message instead
-  # of losing the handle to safe_fetch_next's outer rescue and retrying forever.
+  # otherwise corrupt content (:zlib.gunzip/1, :ezstd.decompress/1, and
+  # :erlang.binary_to_term/2 all crash or return {:error, _} rather than a
+  # clean error tuple in every case) — caught here, close to the queue handle,
+  # so the caller can ack (drop) the poison message instead of losing the
+  # handle to safe_fetch_next's outer rescue and retrying forever.
   defp decode_content(file_key, raw) do
-    content = if String.ends_with?(file_key, ".gz"), do: :zlib.gunzip(raw), else: raw
+    content =
+      cond do
+        String.ends_with?(file_key, ".gz") -> :zlib.gunzip(raw)
+        String.ends_with?(file_key, ".zst") -> decompress_zstd!(raw)
+        true -> raw
+      end
+
     parse_content(file_key, content)
   rescue
     e -> {:error, {:decode_failed, e}}
@@ -627,8 +634,23 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     kind, reason -> {:error, {:decode_failed, %RuntimeError{message: inspect({kind, reason})}}}
   end
 
+  # :ezstd.decompress/1 returns {:error, reason} instead of raising on
+  # corrupt/truncated input (unlike :zlib.gunzip/1) — normalized here to a
+  # raise so it's caught by decode_content/2's rescue like every other
+  # decode failure, instead of silently flowing an error tuple into
+  # parse_content/2 as if it were content.
+  defp decompress_zstd!(raw) do
+    case :ezstd.decompress(raw) do
+      binary when is_binary(binary) -> binary
+      {:error, reason} -> raise "zstd decompression failed: #{inspect(reason)}"
+    end
+  end
+
   defp parse_content(file_key, content) do
-    base = String.replace_suffix(file_key, ".gz", "")
+    base =
+      file_key
+      |> String.replace_suffix(".gz", "")
+      |> String.replace_suffix(".zst", "")
 
     if String.ends_with?(base, ".etf") do
       {:ok, :erlang.binary_to_term(content)}

@@ -113,6 +113,7 @@ defmodule Logflare.Mixfile do
       {:postgrex, ">= 0.0.0"},
       {:gettext, "~> 0.11"},
       {:jason, "~> 1.0"},
+      {:ezstd, "~> 1.0"},
       {:deep_merge, "~> 1.0"},
       {:number, "~> 1.0.0"},
       {:timex, "~> 3.1"},

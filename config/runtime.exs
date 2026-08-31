@@ -580,10 +580,24 @@ spool_blocking_override =
     v -> [blocking_ingest: v == "true"]
   end
 
+spool_compression_algorithm_override =
+  case System.get_env("SPOOL_COMPRESSION_ALGORITHM") do
+    v when v in [nil, ""] ->
+      []
+
+    algorithm when algorithm in ["gzip", "zstd"] ->
+      [compression_algorithm: String.to_existing_atom(algorithm)]
+
+    other ->
+      raise ArgumentError,
+            "Invalid SPOOL_COMPRESSION_ALGORITHM=#{other}. Must be gzip or zstd."
+  end
+
 spool_overrides =
   spool_mode_override ++
     spool_provider_override ++
     spool_blocking_override ++
+    spool_compression_algorithm_override ++
     if((q = System.get_env("SPOOL_QUEUE_NAME")) && q != "", do: [queue_name: q], else: []) ++
     if((t = System.get_env("SPOOL_PUBSUB_TOPIC")) && t != "", do: [pubsub_topic: t], else: []) ++
     if (b = System.get_env("SPOOL_BUCKET")) && b != "", do: [bucket: b], else: []
