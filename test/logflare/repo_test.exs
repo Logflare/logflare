@@ -116,7 +116,7 @@ defmodule Logflare.RepoTest do
             "postgres:///db",
             "postgres://u:pass@/db"
           ] do
-        assert {:error, _reason} = Replicas.parse(entry), "expected #{entry} to be rejected"
+        assert {:error, _reason} = Replicas.parse(entry)
       end
     end
 
