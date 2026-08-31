@@ -29,7 +29,9 @@ defmodule LogflareWeb.Api.IngestSourceController do
     }
   )
 
-  def index(%{assigns: %{user: user, access_token: access_token}} = conn, _params) do
+  def index(%{assigns: %{user: user}} = conn, _params) do
+    access_token = Map.get(conn.assigns, :access_token)
+
     with {:ok, source_ids} <- authorized_source_ids(access_token) do
       sources = Sources.list_ingest_sources_by_user(user.id, source_ids)
 

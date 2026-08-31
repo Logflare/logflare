@@ -52,6 +52,23 @@ defmodule LogflareWeb.Api.IngestSourceControllerTest do
       end
     end
 
+    test "lists owned sources for partner impersonation", %{conn: conn} do
+      partner = insert(:partner)
+      user = insert(:user, partner: partner)
+      source = insert(:source, user: user, name: "Partner source")
+
+      response =
+        conn
+        |> put_req_header("x-lf-partner-user", user.token)
+        |> add_partner_access_token(partner)
+        |> get("/api/ingest-sources")
+        |> json_response(200)
+
+      assert response == [
+               %{"token" => to_string(source.token), "name" => source.name}
+             ]
+    end
+
     test "limits source and deprecated collection credentials to their owned sources", %{
       conn: conn,
       user: user,
