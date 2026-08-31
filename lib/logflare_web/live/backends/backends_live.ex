@@ -463,20 +463,25 @@ defmodule LogflareWeb.BackendsLive do
           ["header#{i}_key", "header#{i}_value"]
         end
 
-      {headers, config} = Map.split(config, List.flatten(headers_form_keys))
+      {header_params, config} = Map.split(config, List.flatten(headers_form_keys))
 
       headers =
         for [form_key, form_value] <- headers_form_keys,
-            key = headers[form_key],
+            key = header_params[form_key],
             key != "",
-            value = headers[form_value],
+            value = header_params[form_value],
             into: %{} do
           {key, value}
         end
 
-      config
-      |> Map.put("headers", headers)
-      |> transform_config_for_type(type)
+      config =
+        if map_size(header_params) == 0 do
+          config
+        else
+          Map.put(config, "headers", headers)
+        end
+
+      transform_config_for_type(config, type)
     end)
     |> assemble_read_clusters()
   end

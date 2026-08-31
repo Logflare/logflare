@@ -57,6 +57,23 @@
             <% end %>
             {text_input(f_config, :url, class: "form-control")}
           </div>
+          <% headers_number = 2
+
+          fields =
+            (input_value(f_config, :headers) || %{})
+            |> Stream.concat(Stream.repeatedly(fn -> {"", ""} end))
+            |> Enum.take(headers_number) %>
+          <%= for {{key, val}, i} <- Enum.with_index(fields, 1) do %>
+            <div class="form-group">
+              {label(f_config, "header#{i}_key", "Custom header #{i} - Key")}
+              {text_input(f_config, "header#{i}_key", value: key, class: "form-control")}
+              {label(f_config, "header#{i}_value", "Custom header #{i} - Value")}
+              {text_input(f_config, "header#{i}_value", value: val, class: "form-control")}
+            </div>
+          <% end %>
+          <small class="form-text text-muted">
+            Headers sent with each request. For a bearer token, set the key to <code>authorization</code> and the value to <code>Bearer &lt;token&gt;</code>.
+          </small>
           <div class="form-group">
             {label(f_config, :format, "Payload format")}
             {select(f_config, :format, Logflare.Backends.Adaptor.WebhookAdaptor.formats(),
@@ -65,6 +82,13 @@
             )}
             <small class="form-text text-muted">
               Encoding of each batch. <code>json</code> sends a JSON array. <code>ndjson</code> sends newline-delimited JSON, one event per line.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :gzip, "Gzip")}
+            {checkbox(f_config, :gzip, id: "webhook-gzip")}
+            <small class="form-text text-muted">
+              Enable "gzip" compression in sent requests. Disable this when the receiver does not decompress request bodies.
             </small>
           </div>
         <% "postgres" -> %>

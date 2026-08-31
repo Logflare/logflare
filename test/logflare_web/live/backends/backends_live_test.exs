@@ -748,6 +748,72 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert html =~ "some description"
     end
 
+    test "webhook edit renders stored headers and preserves them on submit", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :webhook,
+          config: %{
+            url: "https://example.com",
+            headers: %{"authorization" => "Bearer secret-token"}
+          }
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      assert view
+             |> element("input[name='backend[config][header1_key]']")
+             |> render() =~ "authorization"
+
+      view
+      |> form("form", %{
+        backend: %{
+          config: %{url: "https://example.org"}
+        }
+      })
+      |> render_submit()
+
+      updated = Backends.get_backend_by_user_access(user, backend.id)
+      assert updated.config.url == "https://example.org"
+      assert updated.config.headers == %{"authorization" => "Bearer secret-token"}
+    end
+
+    test "webhook edit can set a header through the form", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :webhook,
+          config: %{url: "https://example.com"}
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      view
+      |> form("form", %{
+        backend: %{
+          config: %{
+            url: "https://example.com",
+            header1_key: "authorization",
+            header1_value: "Bearer my-token"
+          }
+        }
+      })
+      |> render_submit()
+
+      updated = Backends.get_backend_by_user_access(user, backend.id)
+      assert updated.config.headers == %{"authorization" => "Bearer my-token"}
+    end
+
     test "will show correct config inputs", %{conn: conn, user: user} do
       backend = insert(:backend, type: :webhook, user: user)
       assert {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
