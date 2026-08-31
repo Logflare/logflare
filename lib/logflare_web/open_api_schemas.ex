@@ -115,6 +115,15 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: []
   end
 
+  defmodule IngestSource do
+    @properties %{
+      token: %Schema{type: :string},
+      name: %Schema{type: :string}
+    }
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:token, :name]
+  end
+
   defmodule Source do
     @properties %{
       name: %Schema{type: :string},
