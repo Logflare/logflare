@@ -256,6 +256,13 @@ defmodule Logflare.Telemetry do
         description:
           "Sum of events dropped by a backend (timestamp older than its configured max event age)"
       ),
+      distribution("logflare.clickhouse.read_pool.checkout",
+        event_name: [:logflare, :clickhouse, :read_pool, :checkout],
+        measurement: :pool_time_ms,
+        unit: :millisecond,
+        tags: [:backend_id, :read_cluster],
+        description: "Time spent waiting to check out a ClickHouse read pool connection"
+      ),
       sum("logflare.logs.ingest_logs.drop_future",
         event_name: [:logflare, :logs, :ingest_logs, :drop_future],
         measurement: :count,

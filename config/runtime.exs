@@ -541,15 +541,20 @@ config :logflare, :context_cache_gossip, %{
   max_nodes: cache_gossip_max_nodes
 }
 
-# LOGFLARE_READ_REPLICAS: Comma-separated list of PostgreSQL read replica hostnames to distribute
+# LOGFLARE_READ_REPLICAS: Comma-separated list of PostgreSQL read replicas to distribute
 # context cache queries across. If unset or empty, all queries go to the primary database.
-# Example: "replica1.example.com,replica2.example.com"
+# Each entry is either a bare hostname (inheriting the primary's port, credentials, database
+# and SSL settings) or a full URI, in which case only the parts present in the URI override
+# the primary's config: postgres://user:pass@host:port/database?ssl=true&pool_size=5
+# Example: "replica1.example.com,postgres://user:pass@replica2.example.com:5432/logflare"
 read_replicas =
   "LOGFLARE_READ_REPLICAS"
   |> System.get_env("")
   |> String.split(",", trim: true)
   |> Enum.map(&String.trim/1)
+  |> Enum.reject(&(&1 == ""))
   |> Enum.uniq()
+  |> Enum.map(&Logflare.Repo.Replicas.parse!/1)
 
 config :logflare, :read_replicas, read_replicas
 
