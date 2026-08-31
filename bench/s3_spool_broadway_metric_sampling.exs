@@ -90,6 +90,10 @@ defmodule Logflare.Bench.S3SpoolMetricSampling do
     handler_info = configure_broadway_handlers!(message_sample_denominator)
 
     S3SpoolSink.reset()
+
+    {:ok, _in_flight_registry} =
+      Registry.start_link(keys: :unique, name: BufferProducer.InFlightRegistry)
+
     {:ok, _queue_manager} = IngestEventQueue.start_link([])
     {:ok, _pipeline} = ProducerPipeline.start_link(name: @pipeline_name)
 
@@ -446,6 +450,9 @@ defmodule Logflare.Bench.S3SpoolMetricSampling do
       raise "benchmark requires an empty initial handler table: #{inspect(initial_handlers)}"
     end
 
+    configured_denominator = if denominator == :none, do: :disabled, else: denominator
+    Application.put_env(:logflare, :broadway_message_sample_denominator, configured_denominator)
+
     all_broadway_metrics =
       Logflare.Telemetry.metrics()
       |> Enum.filter(fn metric ->
@@ -454,17 +461,20 @@ defmodule Logflare.Bench.S3SpoolMetricSampling do
 
     all_broadway_events = all_broadway_metrics |> Enum.map(& &1.event_name) |> Enum.sort()
 
-    if all_broadway_events != @expected_broadway_events do
-      raise "expected four production Broadway metric events, found #{inspect(all_broadway_events)}"
+    expected_broadway_events =
+      if denominator == :none,
+        do: List.delete(@expected_broadway_events, @processor_message_event),
+        else: @expected_broadway_events
+
+    if all_broadway_events != expected_broadway_events do
+      raise "production Broadway metric events differ: #{inspect(all_broadway_events)}"
     end
 
     broadway_metrics =
-      Enum.flat_map(all_broadway_metrics, fn metric ->
+      Enum.map(all_broadway_metrics, fn metric ->
         case {metric.event_name, denominator} do
-          {@processor_message_event, :none} -> []
-          {@processor_message_event, 1} -> [unsampled_processor_message_metric(metric)]
-          {@processor_message_event, value} -> [sampled_processor_message_metric(metric, value)]
-          _ -> [metric]
+          {@processor_message_event, 1} -> unsampled_processor_message_metric(metric)
+          _ -> metric
         end
       end)
 
@@ -559,15 +569,6 @@ defmodule Logflare.Bench.S3SpoolMetricSampling do
   end
 
   defp unsampled_processor_message_metric(metric), do: %{metric | keep: nil}
-
-  defp sampled_processor_message_metric(metric, denominator) do
-    %{
-      metric
-      | keep: fn metadata ->
-          :erlang.phash2(Map.fetch!(metadata, :telemetry_span_context), denominator) == 0
-        end
-    }
-  end
 
   defp format_denominator(:none), do: "none"
   defp format_denominator(denominator), do: Integer.to_string(denominator)
