@@ -59,7 +59,7 @@ Additional environment variable configurations for the OpenTelemetry libraries u
 
 ### Upgrading
 
-#### v1.50.2 — 2026-08-14
+#### v1.51.0
 
 When upgrading an existing installation, Oban structures are created in the configured schema. Existing jobs and Oban objects in `public` are not copied or removed automatically. Stop all Logflare nodes before manually migrating jobs that must be preserved.
 
