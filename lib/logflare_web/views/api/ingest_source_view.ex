@@ -1,6 +1,8 @@
 defmodule LogflareWeb.Api.IngestSourceView do
   use LogflareWeb, :view
 
+  def render("index.json", %{sources: sources}), do: sources
+
   def render("index.csv", %{sources: sources}) do
     [
       "token,name\r\n"

@@ -35,12 +35,9 @@ defmodule LogflareWeb.Api.IngestSourceController do
     with {:ok, source_ids} <- authorized_source_ids(access_token) do
       sources = Sources.list_ingest_sources_by_user(user.id, source_ids)
 
-      conn = put_resp_header(conn, "cache-control", "no-store")
-
-      case get_format(conn) do
-        "json" -> json(conn, sources)
-        "csv" -> render(conn, :index, sources: sources)
-      end
+      conn
+      |> put_resp_header("cache-control", "no-store")
+      |> render(:index, sources: sources)
     end
   end
 
