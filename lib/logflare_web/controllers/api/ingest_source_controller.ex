@@ -39,7 +39,7 @@ defmodule LogflareWeb.Api.IngestSourceController do
 
       case get_format(conn) do
         "json" -> json(conn, sources)
-        "csv" -> send_resp(conn |> put_resp_content_type("text/csv"), 200, csv(sources))
+        "csv" -> render(conn, :index, sources: sources)
       end
     end
   end
@@ -58,25 +58,6 @@ defmodule LogflareWeb.Api.IngestSourceController do
             do: String.to_integer(id)
 
       if source_ids == [], do: {:error, :unauthorized}, else: {:ok, source_ids}
-    end
-  end
-
-  defp csv(sources) do
-    [
-      "token,name\r\n"
-      | Enum.map(sources, fn %{token: token, name: name} ->
-          [csv_field(token), ",", csv_field(name), "\r\n"]
-        end)
-    ]
-  end
-
-  defp csv_field(value) do
-    value = to_string(value)
-
-    if String.contains?(value, [",", "\"", "\r", "\n"]) do
-      ["\"", String.replace(value, "\"", "\"\""), "\""]
-    else
-      value
     end
   end
 end
