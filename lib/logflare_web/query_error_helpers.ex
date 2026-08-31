@@ -51,6 +51,43 @@ defmodule LogflareWeb.QueryErrorHelpers do
   def generic_query_error_message, do: @generic_query_error_message
 
   @doc """
+  Returns a user-facing message for a sandboxed-query validation error, as
+  returned by `Logflare.Endpoints.run_query/3` when the query fails validation
+  before ever reaching a backend.
+
+  Only the "unknown table" case is translated into a plain message; anything
+  else falls back to the generic message, since Logflare's internal CTE
+  splicing would otherwise leak into a user-facing error and confuse callers
+  who never wrote a CTE themselves.
+
+      iex> LogflareWeb.QueryErrorHelpers.sandbox_query_error_message("Table not found in CTE: (function_logs)")
+      ~s(Table "function_logs" does not exist.)
+
+      iex> LogflareWeb.QueryErrorHelpers.sandbox_query_error_message("Multiple CTEs available (first_cte, second_cte). You must specify which one to query using `f:name`")
+      "Backend error! Retry your query. Please contact support if this continues."
+
+      iex> LogflareWeb.QueryErrorHelpers.sandbox_query_error_message("sql parser error: Expected: SELECT, VALUES, or a subquery in the query body, found: EOF")
+      "Backend error! Retry your query. Please contact support if this continues."
+  """
+  @spec sandbox_query_error_message(String.t()) :: String.t()
+  def sandbox_query_error_message(message) when is_binary(message) do
+    classified_sandbox_error_message(message) || generic_query_error_message()
+  end
+
+  defp classified_sandbox_error_message("Table not found in CTE: (" <> rest) do
+    rest |> String.trim_trailing(")") |> unknown_table_message()
+  end
+
+  defp classified_sandbox_error_message(_message), do: nil
+
+  defp unknown_table_message(names) do
+    case String.split(names, ", ") do
+      [single] -> ~s(Table "#{single}" does not exist.)
+      multiple -> "Tables #{Enum.map_join(multiple, ", ", &~s("#{&1}"))} do not exist."
+    end
+  end
+
+  @doc """
   Whether a backend %QueryError{} was caused by a query timeout.
 
   Lets callers substitute timeout guidance that suits their surface.

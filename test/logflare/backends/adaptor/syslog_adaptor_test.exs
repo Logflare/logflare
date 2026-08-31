@@ -507,6 +507,30 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
     end
   end
 
+  describe "sanitize_config_for_display/1" do
+    test "masks certificates while preserving connection details" do
+      config = %{
+        tls: true,
+        host: "syslog.example.com",
+        port: 6514,
+        max_message_bytes: 50_000,
+        ca_cert: "ca-cert-pem",
+        client_cert: "client-cert-pem",
+        client_key: "client-key-pem"
+      }
+
+      assert %{
+               tls: true,
+               host: "syslog.example.com",
+               port: 6514,
+               max_message_bytes: 50_000,
+               ca_cert: "**********",
+               client_cert: "**********",
+               client_key: "**********"
+             } == SyslogAdaptor.sanitize_config_for_display(config)
+    end
+  end
+
   defp probably_closed_port do
     {:ok, socket} = :gen_tcp.listen(0, active: false)
     {:ok, {_address, port}} = :inet.sockname(socket)

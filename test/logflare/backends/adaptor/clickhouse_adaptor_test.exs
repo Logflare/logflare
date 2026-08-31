@@ -208,6 +208,28 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
+  describe "sanitize_config_for_display/1" do
+    test "masks credentials while preserving displayable keys" do
+      config = %{
+        url: "https://clickhouse.example.com:8443",
+        username: "user",
+        password: "secret123",
+        database: "logs",
+        port: 8443,
+        read_pool_size: 10
+      }
+
+      assert %{
+               url: "https://clickhouse.example.com:8443",
+               username: "**********",
+               password: "**********",
+               database: "logs",
+               port: 8443,
+               read_pool_size: 10
+             } == ClickHouseAdaptor.sanitize_config_for_display(config)
+    end
+  end
+
   describe "redact_config/1" do
     test "redacts password field" do
       config = %{password: "secret123", database: "logs"}
