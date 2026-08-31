@@ -468,7 +468,7 @@ defmodule LogflareWeb.OpenApiSchemas do
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:endpoint]
   end
-  
+
   defmodule GoogleSecOpsConfigSchema do
     @properties %{
       region: %Schema{type: :string},
