@@ -114,7 +114,10 @@ defmodule E2e.Features.BackendsTest do
       backend: backend,
       conn: conn
     } do
-      session = visit(conn, ~p"/backends/#{backend.id}/edit")
+      session =
+        conn
+        |> visit(~p"/backends/#{backend.id}/edit")
+        |> assert_has("[data-phx-main].phx-connected")
 
       unwrap(session, fn %{frame_id: frame_id} ->
         Frame.fill(frame_id,
@@ -180,7 +183,8 @@ defmodule E2e.Features.BackendsTest do
               "alpha" => "https://a.example.com:8443",
               "beta" => "https://b.example.com:8443",
               "gamma" => "https://c.example.com:8443"
-            }
+            },
+            default_read_cluster: "gamma"
           }
         )
 

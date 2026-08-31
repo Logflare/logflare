@@ -208,10 +208,122 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
+  describe "sanitize_config_for_display/1" do
+    test "masks credentials while preserving displayable keys" do
+      config = %{
+        url: "https://clickhouse.example.com:8443",
+        username: "user",
+        password: "secret123",
+        database: "logs",
+        port: 8443,
+        read_pool_size: 10
+      }
+
+      assert %{
+               url: "https://clickhouse.example.com:8443",
+               username: "**********",
+               password: "**********",
+               database: "logs",
+               port: 8443,
+               read_pool_size: 10
+             } == ClickHouseAdaptor.sanitize_config_for_display(config)
+    end
+  end
+
   describe "redact_config/1" do
     test "redacts password field" do
       config = %{password: "secret123", database: "logs"}
       assert %{password: "REDACTED"} = ClickHouseAdaptor.redact_config(config)
+    end
+
+    test "redacts query_password when populated" do
+      config = %{password: "secret123", query_password: "reader_pa55", query_user: "ch_reader"}
+
+      assert %{password: "REDACTED", query_password: "REDACTED", query_user: "ch_reader"} =
+               ClickHouseAdaptor.redact_config(config)
+    end
+
+    test "does not introduce a query_password key when it is not configured" do
+      redacted = ClickHouseAdaptor.redact_config(%{password: "secret123", database: "logs"})
+
+      refute Map.has_key?(redacted, :query_password)
+    end
+
+    test "leaves a blank query_password untouched" do
+      assert %{query_password: nil} =
+               ClickHouseAdaptor.redact_config(%{password: "secret123", query_password: nil})
+    end
+  end
+
+  describe "query_credentials/1" do
+    test "returns the dedicated query credentials when both are populated" do
+      config = %{
+        username: "ingest_user",
+        password: "ingest_pa55",
+        query_user: "ch_reader",
+        query_password: "reader_pa55"
+      }
+
+      assert ClickHouseAdaptor.query_credentials(config) == {"ch_reader", "reader_pa55"}
+    end
+
+    test "accepts a backend struct" do
+      backend =
+        build(:backend,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost",
+            username: "ingest_user",
+            password: "ingest_pa55",
+            query_user: "ch_reader",
+            query_password: "reader_pa55"
+          }
+        )
+
+      assert ClickHouseAdaptor.query_credentials(backend) == {"ch_reader", "reader_pa55"}
+    end
+
+    test "falls back to the default credentials when only query_user is populated" do
+      config = %{username: "ingest_user", password: "ingest_pa55", query_user: "ch_reader"}
+
+      assert ClickHouseAdaptor.query_credentials(config) == {"ingest_user", "ingest_pa55"}
+    end
+
+    test "falls back to the default credentials when only query_password is populated" do
+      config = %{username: "ingest_user", password: "ingest_pa55", query_password: "reader_pa55"}
+
+      assert ClickHouseAdaptor.query_credentials(config) == {"ingest_user", "ingest_pa55"}
+    end
+
+    test "falls back to the default credentials when the query values are blank" do
+      config = %{
+        username: "ingest_user",
+        password: "ingest_pa55",
+        query_user: "",
+        query_password: ""
+      }
+
+      assert ClickHouseAdaptor.query_credentials(config) == {"ingest_user", "ingest_pa55"}
+    end
+
+    test "falls back to the default credentials when no query values are set" do
+      config = %{username: "ingest_user", password: "ingest_pa55"}
+
+      assert ClickHouseAdaptor.query_credentials(config) == {"ingest_user", "ingest_pa55"}
+    end
+  end
+
+  describe "dedicated_query_user?/1" do
+    test "is true only when both query values are populated" do
+      assert ClickHouseAdaptor.dedicated_query_user?(%{
+               query_user: "ch_reader",
+               query_password: "reader_pa55"
+             })
+
+      refute ClickHouseAdaptor.dedicated_query_user?(%{query_user: "ch_reader"})
+      refute ClickHouseAdaptor.dedicated_query_user?(%{query_password: "reader_pa55"})
+      refute ClickHouseAdaptor.dedicated_query_user?(%{query_user: "", query_password: ""})
+      refute ClickHouseAdaptor.dedicated_query_user?(%{username: "ingest_user"})
     end
   end
 
@@ -436,6 +548,116 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       refute changeset.valid?
       assert Keyword.has_key?(changeset.errors, :max_event_age_hours)
+    end
+
+    test "casts query_user and query_password when both are provided" do
+      changeset =
+        cast_and_validate_config(query_user: "ch_reader", query_password: "reader_pa55")
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :query_user) == "ch_reader"
+      assert Ecto.Changeset.get_field(changeset, :query_password) == "reader_pa55"
+    end
+
+    test "query_user and query_password default to nil when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :query_user) == nil
+      assert Ecto.Changeset.get_field(changeset, :query_password) == nil
+    end
+
+    test "rejects a query_user without a query_password" do
+      changeset = cast_and_validate_config(query_user: "ch_reader")
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :query_user)
+      assert Keyword.has_key?(changeset.errors, :query_password)
+    end
+
+    test "rejects a query_password without a query_user" do
+      changeset = cast_and_validate_config(query_password: "reader_pa55")
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :query_user)
+      assert Keyword.has_key?(changeset.errors, :query_password)
+    end
+
+    test "rejects a blank query_user paired with a query_password" do
+      changeset = cast_and_validate_config(query_user: "", query_password: "reader_pa55")
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :query_user)
+    end
+
+    test "preserves the existing query_password when submitted blank" do
+      existing_config = %{query_user: "ch_reader", query_password: "reader_pa55"}
+
+      params = %{
+        url: "http://localhost",
+        database: "test",
+        port: 8123,
+        query_user: "ch_reader",
+        query_password: ""
+      }
+
+      changeset = Adaptor.cast_and_validate_config(ClickHouseAdaptor, params, existing_config)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :query_password) == "reader_pa55"
+    end
+
+    test "overwrites the existing query_password when a new value is submitted" do
+      existing_config = %{query_user: "ch_reader", query_password: "reader_pa55"}
+
+      params = %{
+        url: "http://localhost",
+        database: "test",
+        port: 8123,
+        query_user: "ch_reader",
+        query_password: "new_pa55"
+      }
+
+      changeset = Adaptor.cast_and_validate_config(ClickHouseAdaptor, params, existing_config)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :query_password) == "new_pa55"
+    end
+
+    test "allows revoking the dedicated query user by clearing query_user, even though query_password is submitted blank" do
+      existing_config = %{query_user: "ch_reader", query_password: "reader_pa55"}
+
+      params = %{
+        url: "http://localhost",
+        database: "test",
+        port: 8123,
+        query_user: "",
+        query_password: ""
+      }
+
+      changeset = Adaptor.cast_and_validate_config(ClickHouseAdaptor, params, existing_config)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :query_user) == nil
+      assert Ecto.Changeset.get_field(changeset, :query_password) == nil
+    end
+
+    test "requires a new query_password when query_user changes and the password is submitted blank" do
+      existing_config = %{query_user: "reader_a", query_password: "reader_pa55"}
+
+      params = %{
+        url: "http://localhost",
+        database: "test",
+        port: 8123,
+        query_user: "reader_b",
+        query_password: ""
+      }
+
+      changeset = Adaptor.cast_and_validate_config(ClickHouseAdaptor, params, existing_config)
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :query_user)
+      assert Keyword.has_key?(changeset.errors, :query_password)
     end
   end
 
@@ -801,6 +1023,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert ConnectionManager.pool_active?(backend, "dashboard_logs")
     end
 
+    test "does not fall back when the requested cluster pool is exhausted" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_urls: %{
+              "api_free" => "http://localhost:8123",
+              "dashboard_logs" => "http://localhost:8123"
+            },
+            default_read_cluster: "dashboard_logs"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      stub_read_cluster_queue_timeout(backend, "api_free")
+
+      assert {:error, %QueryError{kind: :pool_exhausted}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                 read_cluster: "api_free"
+               )
+
+      refute ConnectionManager.pool_active?(backend, "dashboard_logs")
+    end
+
     test "does not fall back when the unhealthy cluster is already the default" do
       {_source, backend} =
         setup_clickhouse_test(
@@ -834,7 +1079,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       log =
         ExUnit.CaptureLog.capture_log(
-          [format: "$metadata$message", metadata: [:host, :read_cluster]],
+          [format: "$metadata$message", metadata: [:host, :clickhouse_read_cluster]],
           fn ->
             assert {:error, %QueryError{}} =
                      ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
@@ -844,7 +1089,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         )
 
       assert log =~ "host=adhoc-read.local"
-      assert log =~ "read_cluster=adhoc"
+      assert log =~ "clickhouse_read_cluster=adhoc"
       refute log =~ "legacy-read.local"
     end
   end
@@ -984,6 +1229,154 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       start_supervised!({ClickHouseAdaptor, backend})
       assert :ok = ClickHouseAdaptor.test_connection(backend)
+    end
+  end
+
+  describe "test_connection/1 with a dedicated query user" do
+    setup do
+      insert(:plan, name: "Free")
+      :ok
+    end
+
+    test "checks the ingest cluster with the default user and read clusters with the query user" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_url: "http://localhost:8123",
+            query_user: "ch_reader",
+            query_password: "reader_pa55"
+          },
+          cleanup?: false
+        )
+
+      test_pid = self()
+
+      stub(Ch, :start_link, fn opts ->
+        send(test_pid, {:ch_start_link, Keyword.take(opts, [:username, :password])})
+        Mimic.call_original(Ch, :start_link, [opts])
+      end)
+
+      ExUnit.CaptureLog.capture_log(fn -> ClickHouseAdaptor.test_connection(backend) end)
+
+      assert_received {:ch_start_link, [username: "logflare", password: "logflare"]}
+      assert_received {:ch_start_link, [username: "ch_reader", password: "reader_pa55"]}
+    end
+
+    test "validates the query credentials against the primary url when no read cluster is set" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{query_user: "logflare", query_password: "logflare"},
+          cleanup?: false
+        )
+
+      read_grant_statement = QueryTemplates.read_grant_check_statement()
+      test_pid = self()
+
+      stub(Ch, :query, fn pool, statement, params, opts ->
+        if statement == read_grant_statement, do: send(test_pid, :read_grant_checked)
+
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert :ok = ClickHouseAdaptor.test_connection(backend)
+      assert_received :read_grant_checked
+    end
+
+    test "skips the read grant check when neither a query user nor a read cluster is set" do
+      {_source, backend} = setup_clickhouse_test(cleanup?: false)
+
+      read_grant_statement = QueryTemplates.read_grant_check_statement()
+      test_pid = self()
+
+      stub(Ch, :query, fn pool, statement, params, opts ->
+        if statement == read_grant_statement, do: send(test_pid, :read_grant_checked)
+
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert :ok = ClickHouseAdaptor.test_connection(backend)
+      refute_received :read_grant_checked
+    end
+
+    test "fails when the dedicated query user cannot authenticate" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{query_user: "ch_reader", query_password: "reader_pa55"},
+          cleanup?: false
+        )
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, :grant_check_unknown_failure} =
+                   ClickHouseAdaptor.test_connection(backend)
+        end)
+
+      assert log =~ "read cluster"
+      assert log =~ "ch_reader: Authentication failed"
+    end
+
+    test "falls back to the default credentials when only query_user is set" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{read_only_url: "http://localhost:8123", query_user: "ch_reader"},
+          cleanup?: false
+        )
+
+      test_pid = self()
+
+      stub(Ch, :start_link, fn opts ->
+        send(test_pid, {:ch_start_link, Keyword.take(opts, [:username, :password])})
+        Mimic.call_original(Ch, :start_link, [opts])
+      end)
+
+      assert :ok = ClickHouseAdaptor.test_connection(backend)
+
+      refute_received {:ch_start_link, [username: "ch_reader", password: _]}
+    end
+  end
+
+  describe "test_ingest_connection/1" do
+    setup do
+      insert(:plan, name: "Free")
+      :ok
+    end
+
+    test "succeeds when only the read grant check fails" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{query_user: "ch_reader", query_password: "reader_pa55"},
+          cleanup?: false
+        )
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert :ok = ClickHouseAdaptor.test_ingest_connection(backend)
+        end)
+
+      assert log =~ "read cluster"
+      assert log =~ "ch_reader: Authentication failed"
+    end
+
+    test "fails when the ingest grant check fails" do
+      {_source, backend} = setup_clickhouse_test(cleanup?: false)
+
+      grant_check_statement = QueryTemplates.grant_check_statement()
+
+      stub(Ch, :query, fn
+        _pool, ^grant_check_statement, _params, _opts ->
+          {:error, %DBConnection.ConnectionError{message: "unreachable"}}
+
+        pool, statement, params, opts ->
+          Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, :grant_check_unknown_failure} =
+                   ClickHouseAdaptor.test_ingest_connection(backend)
+        end)
+
+      assert log =~ "ingest cluster"
     end
   end
 
@@ -2318,6 +2711,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       case pool do
         {:via, Registry, {_registry, {_mod, ^backend_id, ^label}}} ->
           {:error, %DBConnection.ConnectionError{message: "unreachable"}}
+
+        _ ->
+          Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end
+    end)
+  end
+
+  defp stub_read_cluster_queue_timeout(%Backend{id: backend_id}, label) do
+    stub(Ch, :query, fn pool, statement, params, opts ->
+      case pool do
+        {:via, Registry, {_registry, {_mod, ^backend_id, ^label}}} ->
+          {:error,
+           %DBConnection.ConnectionError{
+             message: "connection not available and request was dropped from queue",
+             reason: :queue_timeout
+           }}
 
         _ ->
           Mimic.call_original(Ch, :query, [pool, statement, params, opts])

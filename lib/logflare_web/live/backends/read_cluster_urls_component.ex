@@ -76,6 +76,17 @@ defmodule LogflareWeb.Backends.ReadClusterUrlsComponent do
     ~H"""
     <div>
       <div class="form-group">
+        {label(@form, :labeled_read_pool_size, "Read Cluster Pool Size")}
+        {text_input(@form, :labeled_read_pool_size,
+          class: "form-control",
+          value: input_value(@form, "labeled_read_pool_size") || 32
+        )}
+        <small class="form-text text-muted">
+          Connections per node for each read cluster below. The default read cluster uses the primary read pool size instead, since it also absorbs unrecognized callers and failover traffic.
+        </small>
+      </div>
+
+      <div class="form-group">
         <label>Read-Only Cluster URLs (Optional)</label>
         <small class="form-text text-muted">
           Optionally add multiple read-only cluster URLs for the ability to route endpoint queries to a specific cluster.
@@ -111,17 +122,21 @@ defmodule LogflareWeb.Backends.ReadClusterUrlsComponent do
       </div>
 
       <div class="form-group">
-        {label(@form, :default_read_cluster, "Default Read Cluster (Optional)")}
+        {label(@form, :default_read_cluster, default_read_cluster_label(cluster_configured?(@rows)))}
         {text_input(@form, :default_read_cluster,
           value: @default_read_cluster,
           class: "form-control",
           placeholder: "caller label",
+          required: cluster_configured?(@rows),
           phx_change: "sync",
           phx_target: @myself,
           phx_debounce: "blur"
         )}
         <small class="form-text text-muted">
           The caller label whose cluster absorbs unrecognized or absent callers. Must match a label above.
+        </small>
+        <small :if={default_read_cluster_missing?(@rows, @default_read_cluster)} class="form-text tw-text-red-500">
+          Required once a read cluster is configured. Without it, callers that send no label read from the ingest cluster instead.
         </small>
       </div>
     </div>
@@ -175,6 +190,22 @@ defmodule LogflareWeb.Backends.ReadClusterUrlsComponent do
   end
 
   defp initial_rows(_backend), do: [{0, "", ""}]
+
+  @spec cluster_configured?([row()]) :: boolean()
+  defp cluster_configured?(rows) do
+    Enum.any?(rows, fn {_ref, label, url} ->
+      is_non_empty_binary(label) and is_non_empty_binary(url)
+    end)
+  end
+
+  @spec default_read_cluster_missing?([row()], String.t() | nil) :: boolean()
+  defp default_read_cluster_missing?(_rows, default) when is_non_empty_binary(default), do: false
+
+  defp default_read_cluster_missing?(rows, _default), do: cluster_configured?(rows)
+
+  @spec default_read_cluster_label(boolean()) :: String.t()
+  defp default_read_cluster_label(true), do: "Default Read Cluster"
+  defp default_read_cluster_label(false), do: "Default Read Cluster (Optional)"
 
   @spec read_cluster_form_key?(String.t()) :: boolean()
   defp read_cluster_form_key?(key) do

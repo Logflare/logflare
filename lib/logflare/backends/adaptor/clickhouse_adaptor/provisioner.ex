@@ -39,7 +39,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Provisioner do
   @doc false
   @impl GenServer
   def handle_continue(:test_connection, %Backend{} = backend) do
-    with :ok <- ClickHouseAdaptor.test_connection(backend) do
+    with :ok <- ClickHouseAdaptor.test_ingest_connection(backend) do
       {:noreply, backend, {:continue, :provision_tables}}
     else
       {:error, reason} = error ->
