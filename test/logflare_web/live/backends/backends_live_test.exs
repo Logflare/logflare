@@ -764,11 +764,17 @@ defmodule LogflareWeb.BackendsLiveTest do
           }
         )
 
-      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+      {:ok, view, html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      refute html =~ "secret-token"
 
       assert view
              |> element("input[name='backend[config][header1_key]']")
              |> render() =~ "authorization"
+
+      assert view
+             |> element("input[name='backend[config][header1_value]']")
+             |> render() =~ "REDACTED"
 
       view
       |> form("form", %{

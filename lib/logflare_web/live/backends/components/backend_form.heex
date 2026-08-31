@@ -68,11 +68,14 @@
               {label(f_config, "header#{i}_key", "Custom header #{i} - Key")}
               {text_input(f_config, "header#{i}_key", value: key, class: "form-control")}
               {label(f_config, "header#{i}_value", "Custom header #{i} - Value")}
-              {text_input(f_config, "header#{i}_value", value: val, class: "form-control")}
+              {text_input(f_config, "header#{i}_value",
+                value: if(val in [nil, ""], do: val, else: "REDACTED"),
+                class: "form-control"
+              )}
             </div>
           <% end %>
           <small class="form-text text-muted">
-            Headers sent with each request. For a bearer token, set the key to <code>authorization</code> and the value to <code>Bearer &lt;token&gt;</code>.
+            Headers sent with each request. For a bearer token, set the key to <code>authorization</code> and the value to <code>Bearer &lt;token&gt;</code>. Stored values show as <code>REDACTED</code>; leave them unchanged to keep them.
           </small>
           <div class="form-group">
             {label(f_config, :format, "Payload format")}
