@@ -25,7 +25,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
   @early_flush_file_size 3 * 1024 * 1024
   @default_max_retries 0
   @producer_concurrency 1
-  @default_compression_algorithm :gzip
+  @default_compression_algorithm :zstd
   # Matches zstd's own CLI default — the best speed/ratio balance point per
   # our own benchmark (level 1 is faster but noticeably worse ratio; level 9+
   # trades meaningfully more latency for a few percent more compression).
