@@ -24,7 +24,6 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
   @max_spool_file_size 32 * 1024 * 1024
   @early_flush_file_size 12 * 1024 * 1024
   @default_max_retries 0
-  @processor_concurrency 6
   @producer_concurrency 1
 
   @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
