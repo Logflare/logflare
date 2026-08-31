@@ -4,6 +4,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
   import Mimic
 
   alias Logflare.Backends.Spool.ConsumerPipeline.QueueProducer
+  alias Logflare.Backends.Spool.Framing
   alias Logflare.Backends.Spool.MemoryMonitor
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
@@ -57,6 +58,13 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
     |> Enum.join("\n")
     |> Kernel.<>("\n")
   end
+
+  # A spool file is one or more length+CRC32-framed segments (see
+  # Logflare.Backends.Spool.Framing) — this wraps a plain, uncompressed
+  # ndjson body as the single-segment file most tests below need. The one
+  # compressed-content test builds its frame explicitly instead, since
+  # compression has to happen before framing, not after.
+  defp framed_ndjson_body(records), do: Framing.encode_segment(ndjson_body(records))
 
   # Cross-process mutable queue: both the producer and its background
   # prefetch Task call queue_mod.receive concurrently.
@@ -154,7 +162,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       stub_ack_nack(self())
       stub_queue([queue_message("h1", "0/a.ndjson")])
-      stub_storage(%{"0/a.ndjson" => ndjson_body([%{"id" => "e1"}, %{"id" => "e2"}])})
+      stub_storage(%{"0/a.ndjson" => framed_ndjson_body([%{"id" => "e1"}, %{"id" => "e2"}])})
 
       pid = start_producer()
 
@@ -182,7 +190,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       stub_queue([queue_message("h1", "0/a.ndjson.zst")])
 
       body = ndjson_body([%{"id" => "e1"}, %{"id" => "e2"}])
-      stub_storage(%{"0/a.ndjson.zst" => :ezstd.compress(body, 3)})
+      stub_storage(%{"0/a.ndjson.zst" => Framing.encode_segment(:ezstd.compress(body, 3))})
 
       pid = start_producer()
 
@@ -215,7 +223,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       stub_ack_nack(self())
       stub_queue([queue_message("h1", "0/a.ndjson")])
-      stub_storage(%{"0/a.ndjson" => ndjson_body([%{"id" => "e1"}])})
+      stub_storage(%{"0/a.ndjson" => framed_ndjson_body([%{"id" => "e1"}])})
 
       pid = start_producer()
 
@@ -253,7 +261,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       stub_ack_nack(self())
       stub_queue([queue_message("h1", "0/a.ndjson")])
-      stub_storage(%{"0/a.ndjson" => ndjson_body([%{"id" => "e1"}])})
+      stub_storage(%{"0/a.ndjson" => framed_ndjson_body([%{"id" => "e1"}])})
 
       pid = start_producer()
 
@@ -281,7 +289,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       stub_storage(%{
         "0/a.ndjson" =>
-          ndjson_body([
+          framed_ndjson_body([
             %{"id" => "e1", "source_id" => 1},
             %{"id" => "e2", "source_id" => 2},
             %{"id" => "e3", "source_id" => 1}
@@ -310,8 +318,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       ])
 
       stub_storage(%{
-        "0/a.ndjson" => ndjson_body([%{"id" => "e1", "source_id" => 1}]),
-        "0/b.ndjson" => ndjson_body([%{"id" => "e2", "source_id" => 1}])
+        "0/a.ndjson" => framed_ndjson_body([%{"id" => "e1", "source_id" => 1}]),
+        "0/b.ndjson" => framed_ndjson_body([%{"id" => "e2", "source_id" => 1}])
       })
 
       pid = start_producer()
@@ -373,9 +381,9 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       ])
 
       stub_storage(%{
-        "0/a.ndjson" => ndjson_body([%{"id" => "e1"}]),
+        "0/a.ndjson" => framed_ndjson_body([%{"id" => "e1"}]),
         "0/b.ndjson" => :raise,
-        "0/c.ndjson" => ndjson_body([%{"id" => "e3"}])
+        "0/c.ndjson" => framed_ndjson_body([%{"id" => "e3"}])
       })
 
       pid = start_producer()
@@ -403,7 +411,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       stub_storage(%{
         "0/bad.ndjson" => :raise,
-        "0/good.ndjson" => ndjson_body([%{"id" => "e1"}])
+        "0/good.ndjson" => framed_ndjson_body([%{"id" => "e1"}])
       })
 
       pid = start_producer()
@@ -467,7 +475,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       # this is exactly the "invalid or unsafe external representation of a
       # term" ArgumentError that :erlang.binary_to_term/2 raises on corrupt or
       # incompatible spool content.
-      stub_storage(%{"0/corrupt.etf" => "this is not valid etf"})
+      stub_storage(%{"0/corrupt.etf" => Framing.encode_segment("this is not valid etf")})
 
       pid = start_producer()
       Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
@@ -483,7 +491,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       stub_ack_nack(self())
       stub_queue([queue_message("h1", "0/corrupt.etf.gz")])
-      stub_storage(%{"0/corrupt.etf.gz" => "not gzip data"})
+      stub_storage(%{"0/corrupt.etf.gz" => Framing.encode_segment("not gzip data")})
 
       pid = start_producer()
       Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
@@ -499,7 +507,29 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       stub_ack_nack(self())
       stub_queue([queue_message("h1", "0/corrupt.etf.zst")])
-      stub_storage(%{"0/corrupt.etf.zst" => "not zstd data"})
+      stub_storage(%{"0/corrupt.etf.zst" => Framing.encode_segment("not zstd data")})
+
+      pid = start_producer()
+      Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
+
+      assert_receive {:acked, "h1"}, 2000
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{count: 1},
+                      %{reason: :decode_error}}
+    end
+
+    test "acks with reason: :decode_error when the downloaded content isn't validly framed at all (corrupt CRC)" do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :ack])
+
+      stub_ack_nack(self())
+      stub_queue([queue_message("h1", "0/corrupt.ndjson")])
+      # Well-formed length+CRC header, but the payload bytes were tampered
+      # with after framing — Framing.decode_segments/1 catches this before
+      # decompression/parsing ever runs.
+      good_frame = Framing.encode_segment("hello\n")
+      <<len::32-big, crc::32-big, _payload::binary>> = good_frame
+      tampered = <<len::32-big, crc::32-big, "TAMPER"::binary>>
+      stub_storage(%{"0/corrupt.ndjson" => tampered})
 
       pid = start_producer()
       Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
@@ -565,7 +595,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       ])
 
       stub_storage(%{
-        "0/a.ndjson" => ndjson_body([%{"id" => "e1"}]),
+        "0/a.ndjson" => framed_ndjson_body([%{"id" => "e1"}]),
         "0/broken.ndjson" => {:error, :network_error}
       })
 
@@ -660,7 +690,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
         send(test_pid, {:storage_get_called, self()})
 
         receive do
-          :proceed -> {:ok, ndjson_body([%{"id" => "e1"}])}
+          :proceed -> {:ok, framed_ndjson_body([%{"id" => "e1"}])}
         end
       end)
 
@@ -709,7 +739,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
         send(test_pid, {:storage_get_called, self()})
 
         receive do
-          :proceed -> {:ok, ndjson_body([%{"id" => "e1"}])}
+          :proceed -> {:ok, framed_ndjson_body([%{"id" => "e1"}])}
         end
       end)
 

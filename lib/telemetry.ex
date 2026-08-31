@@ -342,12 +342,26 @@ defmodule Logflare.Telemetry do
         tags: [:format, :result],
         unit: {:microsecond, :millisecond},
         description:
-          "Time spent encoding/compressing a spool batch (term_to_binary + optional gzip) before the storage write, by format/result"
+          "Time spent concatenating a commit's already-compressed, already-framed segments before the storage write, by format/result. Encoding/compression itself happens per-chunk, in the ingest caller's own process — see logflare.backends.spool.chunk.compress"
       ),
       distribution("logflare.backends.spool.storage.put.upload_duration",
         tags: [:format, :result],
         unit: {:microsecond, :millisecond},
         description: "Time spent in the actual storage_mod.put network call, by format/result"
+      ),
+      sum("logflare.backends.spool.chunk.compress.count",
+        tags: [:format],
+        description: "Per-chunk spool encode+compress operations, by format"
+      ),
+      sum("logflare.backends.spool.chunk.compress.bytes",
+        tags: [:format],
+        description: "Per-chunk spool encode+compress output size, by format"
+      ),
+      distribution("logflare.backends.spool.chunk.compress.duration",
+        tags: [:format],
+        unit: {:microsecond, :millisecond},
+        description:
+          "Time spent encoding+compressing one chunk in the ingest caller's own process, before it's handed to a Partition, by format"
       ),
       sum("logflare.backends.spool.queue.publish.count",
         tags: [:result],

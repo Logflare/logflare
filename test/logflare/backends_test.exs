@@ -14,7 +14,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.RecentInsertsCacher
-  alias Logflare.Backends.Spool.EventQueue
+  alias Logflare.Backends.Spool.PartitionSupervisor
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.SourceSupWorker
   alias Logflare.LogEvent
@@ -1916,6 +1916,30 @@ defmodule Logflare.BackendsTest do
     end
   end
 
+  defmodule StubSpoolStorage do
+    @moduledoc false
+    @behaviour Logflare.Backends.Spool.Storage
+    @impl true
+    def put(_bucket, key, _body, _opts), do: {:ok, key}
+    @impl true
+    def get(_bucket, _key), do: {:error, :not_found}
+  end
+
+  defmodule StubSpoolQueue do
+    @moduledoc false
+    @behaviour Logflare.Backends.Spool.Queue
+    @impl true
+    def resolve(name), do: {:ok, name}
+    @impl true
+    def receive(_queue, _opts), do: {:ok, []}
+    @impl true
+    def ack(_queue, _handle), do: :ok
+    @impl true
+    def nack(_queue, _handle), do: :ok
+    @impl true
+    def publish(_ref, _body), do: :ok
+  end
+
   describe "ingest_logs/3 per-source spooling gate" do
     setup do
       insert(:plan)
@@ -1933,33 +1957,28 @@ defmodule Logflare.BackendsTest do
         end
       end)
 
-      EventQueue.init_table()
-      drain_event_queue()
+      # A real Partition+Committer pair, with stub storage/queue mods, backs
+      # every test below — dispatch_to_spool_producer/1 routes straight into
+      # it (no ETS/ChunkProducer poll loop to simulate anymore). A short
+      # batch_timeout keeps the blocking-ingest test fast.
+      Application.put_env(:logflare, :spool,
+        mode: :disable,
+        partitions: 1,
+        batch_timeout: 10,
+        bucket: "test-bucket",
+        provider: :gcp,
+        storage_mod: StubSpoolStorage,
+        queue_mod: StubSpoolQueue
+      )
+
+      start_supervised!(PartitionSupervisor)
 
       {:ok, source: source}
     end
 
-    # Chunks are claimed off the queue by whichever ChunkProducer poll runs
-    # next (see ChunkProducer), so leftovers from an earlier test could
-    # otherwise be mistaken for this test's own dispatch.
-    defp drain_event_queue do
-      case EventQueue.pop(1_000) do
-        [] -> :ok
-        _chunks -> drain_event_queue()
-      end
-    end
-
-    # ingest_logs/5's spool path pushes the chunk before it blocks on the ack, but
-    # from another process there's no signal for exactly when that push has landed.
-    defp wait_for_chunk(attempts \\ 50) do
-      case EventQueue.pop(1) do
-        [] when attempts > 0 ->
-          Process.sleep(10)
-          wait_for_chunk(attempts - 1)
-
-        chunks ->
-          chunks
-      end
+    defp pending_event_count do
+      [partition_pid] = PartitionSupervisor.partitions()
+      :sys.get_state(partition_pid).pending_count
     end
 
     test "does not dispatch to the spool producer when source.enable_spooling is false, even if the global mode is on and allow_spooling is true",
@@ -1969,7 +1988,7 @@ defmodule Logflare.BackendsTest do
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
 
-      assert EventQueue.count() == 0
+      assert pending_event_count() == 0
     end
 
     test "does not dispatch to the spool producer when the global mode is off, even if source.enable_spooling and allow_spooling are true",
@@ -1980,7 +1999,7 @@ defmodule Logflare.BackendsTest do
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
 
-      assert EventQueue.count() == 0
+      assert pending_event_count() == 0
     end
 
     test "dispatches to the spool producer only when the global mode, source.enable_spooling, and allow_spooling are all true",
@@ -1991,8 +2010,7 @@ defmodule Logflare.BackendsTest do
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
 
-      assert [chunk] = EventQueue.pop(1_000)
-      assert chunk.event_count == 1
+      assert pending_event_count() == 1
     end
 
     test "does not block when blocking_ingest is unset, even with everything else gating true",
@@ -2002,11 +2020,13 @@ defmodule Logflare.BackendsTest do
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
 
-      # Nothing acks this chunk. If ingest_logs blocked here (blocking_ingest: true),
-      # this test would hang for EventQueue's default ack timeout instead of returning
-      # immediately.
+      # append_async/4 (a cast) returns immediately regardless of whether
+      # anything ever commits it — if ingest_logs blocked here
+      # (blocking_ingest: true), the chunk would already be durable (and
+      # gone from pending) by the time this assertion runs instead of still
+      # sitting in the Partition's own accumulator.
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
-      assert EventQueue.count() == 1
+      assert pending_event_count() == 1
     end
 
     test "blocks until acked when blocking_ingest is true",
@@ -2016,17 +2036,10 @@ defmodule Logflare.BackendsTest do
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
 
-      # No spool pipeline is running in this test, so ingest_logs/4 would otherwise
-      # hang for EventQueue's default ack timeout. Simulate the pipeline: claim the
-      # chunk ourselves and ack it, same as ProducerPipeline.ack/3 would on a
-      # successful upload+notify.
-      task = Task.async(fn -> Backends.ingest_logs(params, source, nil, true) end)
-
-      assert [chunk] = wait_for_chunk()
-      assert chunk.event_count == 1
-      send(chunk.caller_pid, {chunk.ref, :ok})
-
-      assert {:ok, 1} = Task.await(task)
+      # The real Partition+Committer started in setup/0 genuinely commits
+      # this (stub storage/queue, 10ms batch_timeout) and replies — no
+      # manual ack simulation needed, unlike the old ChunkProducer-based design.
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
     end
 
     test "does not dispatch to the spool producer when allow_spooling is omitted, even if the global mode and source.enable_spooling are true",
@@ -2037,7 +2050,7 @@ defmodule Logflare.BackendsTest do
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source)
 
-      assert EventQueue.count() == 0
+      assert pending_event_count() == 0
     end
 
     test "does not dispatch to the spool producer when the event already has a via_rule_id, even if allow_spooling is true",
@@ -2050,7 +2063,7 @@ defmodule Logflare.BackendsTest do
 
       assert {:ok, 1} = Backends.ingest_logs([le], source, nil, true)
 
-      assert EventQueue.count() == 0
+      assert pending_event_count() == 0
     end
   end
 end

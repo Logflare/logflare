@@ -113,6 +113,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   require Logger
 
+  alias Logflare.Backends.Spool.Framing
   alias Logflare.Backends.Spool.MemoryMonitor
 
   @throttle_interval 100
@@ -613,6 +614,13 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     result
   end
 
+  # A spool file is one or more independently-encoded (and independently
+  # compressed) chunks concatenated as length+CRC32-framed segments — see
+  # Logflare.Backends.Spool.Framing's moduledoc for why concatenation alone
+  # isn't safe to decode (zstd in particular silently drops everything past
+  # the first member on raw concatenation). Each segment is decompressed and
+  # parsed on its own, then the resulting event lists are concatenated.
+  #
   # Decompression and parsing are both capable of raising on truncated or
   # otherwise corrupt content (:zlib.gunzip/1, :ezstd.decompress/1, and
   # :erlang.binary_to_term/2 all crash or return {:error, _} rather than a
@@ -620,18 +628,34 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   # so the caller can ack (drop) the poison message instead of losing the
   # handle to safe_fetch_next's outer rescue and retrying forever.
   defp decode_content(file_key, raw) do
-    content =
-      cond do
-        String.ends_with?(file_key, ".gz") -> :zlib.gunzip(raw)
-        String.ends_with?(file_key, ".zst") -> decompress_zstd!(raw)
-        true -> raw
-      end
-
-    parse_content(file_key, content)
+    case Framing.decode_segments(raw) do
+      {:ok, segments} -> decode_segments(file_key, segments)
+      {:error, :corrupt_frame} -> {:error, {:decode_failed, :corrupt_frame}}
+    end
   rescue
     e -> {:error, {:decode_failed, e}}
   catch
     kind, reason -> {:error, {:decode_failed, %RuntimeError{message: inspect({kind, reason})}}}
+  end
+
+  # parse_content/2 always succeeds or raises (never returns {:error, _}) —
+  # any decode failure propagates up to decode_content/2's rescue/catch, so
+  # this just flattens each segment's events across the whole file.
+  defp decode_segments(file_key, segments) do
+    events = Enum.flat_map(segments, &decode_segment_events(file_key, &1))
+    {:ok, events}
+  end
+
+  defp decode_segment_events(file_key, segment) do
+    content =
+      cond do
+        String.ends_with?(file_key, ".gz") -> :zlib.gunzip(segment)
+        String.ends_with?(file_key, ".zst") -> decompress_zstd!(segment)
+        true -> segment
+      end
+
+    {:ok, events} = parse_content(file_key, content)
+    events
   end
 
   # :ezstd.decompress/1 returns {:error, reason} instead of raising on

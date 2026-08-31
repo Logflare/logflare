@@ -15,7 +15,9 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourcesSup
   alias Logflare.Backends.SourceSup
-  alias Logflare.Backends.Spool.EventQueue
+  alias Logflare.Backends.Spool.Encoder, as: SpoolEncoder
+  alias Logflare.Backends.Spool.Partition, as: SpoolPartition
+  alias Logflare.Backends.Spool.PartitionSupervisor, as: SpoolPartitionSupervisor
   alias Logflare.ContextCache
   alias Logflare.Cluster
   alias Logflare.LogEvent
@@ -630,20 +632,58 @@ defmodule Logflare.Backends do
     end
   end
 
+  @default_spool_format :ndjson
+  @default_spool_compress true
+  @default_spool_compression_algorithm :zstd
+  @default_spool_append_timeout 15_000
+
   # Gated by :blocking_ingest so this can be rolled out independently of spool mode
   # itself: with it unset/false, ingest_logs/4 keeps its old fire-and-forget latency
   # even while spooling is on. When true, blocks the caller until the chunk this
-  # pushes is durable (uploaded + queue-notified) or fails — see
-  # Spool.ProducerPipeline.ack/3, which replies to `self()` here, and
-  # EventQueue.push_sync/2's moduledoc for why the wait timeout is a fixed internal
-  # constant rather than something threaded through from here.
+  # pushes is durable (uploaded + queue-notified) or fails.
+  #
+  # Encoding and compression happen right here, in the caller's own process,
+  # before the segment ever reaches a Partition — see Spool.Encoder's
+  # moduledoc for why this replaced doing it once per whole batch inside
+  # ProducerPipeline.handle_batch/4 (many small, parallel compressions
+  # instead of a few large serialized ones, and no ETS copies in between).
   @spec dispatch_to_spool_producer([LogEvent.t()]) :: :ok | {:error, term()}
   defp dispatch_to_spool_producer(log_events) do
-    if blocking_ingest?() do
-      EventQueue.push_sync(log_events)
-    else
-      EventQueue.push(log_events)
-      :ok
+    spool_config = Application.get_env(:logflare, :spool, [])
+    format = Keyword.get(spool_config, :format, @default_spool_format)
+    compress = Keyword.get(spool_config, :compress, @default_spool_compress)
+
+    algorithm =
+      Keyword.get(spool_config, :compression_algorithm, @default_spool_compression_algorithm)
+
+    {compress_us, {segment, byte_size, format_tag}} =
+      :timer.tc(fn -> SpoolEncoder.encode_chunk(log_events, format, compress, algorithm) end)
+
+    :telemetry.execute(
+      [:logflare, :backends, :spool, :chunk, :compress],
+      %{count: 1, bytes: byte_size, duration: compress_us},
+      %{format: format_tag}
+    )
+
+    event_count = length(log_events)
+
+    case SpoolPartitionSupervisor.random_partition() do
+      nil ->
+        {:error, :no_spool_partition_available}
+
+      partition ->
+        if blocking_ingest?() do
+          SpoolPartition.append(
+            partition,
+            segment,
+            byte_size,
+            event_count,
+            @default_spool_append_timeout
+          )
+        else
+          SpoolPartition.append_async(partition, segment, byte_size, event_count)
+          :ok
+        end
     end
   end
 
