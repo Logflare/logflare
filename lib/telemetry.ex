@@ -338,6 +338,17 @@ defmodule Logflare.Telemetry do
         tags: [:format, :result],
         description: "Spool storage writes: bytes by format/result"
       ),
+      distribution("logflare.backends.spool.storage.put.encode_duration",
+        tags: [:format, :result],
+        unit: {:microsecond, :millisecond},
+        description:
+          "Time spent encoding/compressing a spool batch (term_to_binary + optional gzip) before the storage write, by format/result"
+      ),
+      distribution("logflare.backends.spool.storage.put.upload_duration",
+        tags: [:format, :result],
+        unit: {:microsecond, :millisecond},
+        description: "Time spent in the actual storage_mod.put network call, by format/result"
+      ),
       sum("logflare.backends.spool.queue.publish.count",
         tags: [:result],
         description: "Spool queue publish (SQS send / PubSub publish) count"

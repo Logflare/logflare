@@ -20,6 +20,7 @@ steps:
           printf 'SPOOL_BUCKET=%s\n' "$$4"
           printf 'SPOOL_PUBSUB_TOPIC=%s\n' "$$5"
           printf 'SPOOL_QUEUE_NAME=%s\n' "$$6"
+          printf 'SPOOL_BLOCKING=%s\n' "$$7"
         } > gce-container.env
       - --
       - ${_COOKIE}
@@ -28,6 +29,7 @@ steps:
       - ${_SPOOL_BUCKET}
       - ${_SPOOL_PUBSUB_TOPIC}
       - ${_SPOOL_QUEUE_NAME}
+      - ${_SPOOL_BLOCKING}
   # create instance template - dedicated
   - name: gcr.io/cloud-builders/gcloud
     entrypoint: bash
@@ -126,6 +128,12 @@ substitutions:
   _SPOOL_BUCKET: dev-spool-${_DEV_NUMBER}
   _SPOOL_PUBSUB_TOPIC: projects/logflare-staging/topics/dev-spool-${_DEV_NUMBER}
   _SPOOL_QUEUE_NAME: projects/logflare-staging/subscriptions/dev-spool-${_DEV_NUMBER}-sub
+  # Blocks ingest_logs/4 callers until their chunk is durably uploaded +
+  # queue-notified (see Backends.dispatch_to_spool_producer/1), instead of the
+  # default fire-and-forget push — real backpressure instead of an unbounded
+  # EventQueue.Bodies ETS table, for testing whether this prevents the OOM
+  # reproduced under full-saturation load on this dev cluster.
+  _SPOOL_BLOCKING: "true"
   _COOKIE: default-dev-${_DEV_NUMBER}
   _NORMALIZED_IMAGE_TAG: ${_IMAGE_TAG}
   _INSTANCE_TYPE: c2d-highcpu-4

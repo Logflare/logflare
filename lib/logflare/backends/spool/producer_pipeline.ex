@@ -15,11 +15,12 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
   alias Logflare.Backends.Spool.MemoryMonitor
   alias Logflare.Backends.Spool.Storage
   alias Logflare.Backends.Spool.Queue
+  alias Logflare.LogEvent
 
   @behaviour Broadway.Acknowledger
 
   @max_batch_size 500_000
-  @default_batch_timeout 5_000
+  @default_batch_timeout 200
   @max_spool_file_size 32 * 1024 * 1024
   @early_flush_file_size 12 * 1024 * 1024
   @default_max_retries 0
@@ -47,13 +48,13 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     Broadway.start_link(__MODULE__,
       name: name,
       hibernate_after: 5_000,
-      spawn_opt: [fullsweep_after: 10],
+      spawn_opt: [fullsweep_after: 100],
       producer: [
         module: {ChunkProducer, [max_in_flight: max_in_flight]},
         transformer: {__MODULE__, :transform, []},
         concurrency: @producer_concurrency
       ],
-      processors: [default: [concurrency: @processor_concurrency, max_demand: 1_000]],
+      processors: [default: [concurrency: System.schedulers_online(), max_demand: 1_000]],
       batchers: [
         spool: [
           concurrency: batcher_concurrency,
@@ -186,14 +187,17 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     # EventQueue's moduledoc), not one event, so it undercounts whenever a chunk
     # holds more than one event. Every telemetry measurement below counts actual
     # events instead, matching what dashboard_live.ex and friends expect "batch_size"
-    # to mean. event_count comes straight off each pointer (no body lookup needed);
-    # the bodies themselves are resolved via EventQueue.get_events/1 immediately
-    # below, exactly once, right where they're needed for encoding — see Chunk's
-    # moduledoc for why the pointer doesn't carry them directly.
+    # to mean. event_count comes straight off each pointer (no body lookup needed).
+    #
+    # Event bodies are resolved one chunk at a time inside do_upload/6, right
+    # where they're folded into the encode/compress step — never flattened into
+    # one combined list for the whole batch up front. A batch can span hundreds
+    # of thousands of events across many chunks; holding them all resolved at
+    # once, alongside the encoded/compressed output being built from them, would
+    # double peak memory for no reason. Mirrors the streaming-zlib approach in
+    # Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline.stream_compress/2,
+    # just folding whole chunks instead of individual pre-encoded rows.
     event_count = Enum.reduce(messages, 0, fn %{data: %Chunk{event_count: n}}, acc -> acc + n end)
-
-    events =
-      Enum.flat_map(messages, fn %{data: %Chunk{ref: ref}} -> EventQueue.get_events(ref) end)
 
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
@@ -205,7 +209,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     file_key = "#{partition}/#{generate_uuidv7()}.#{file_extension(format, compress)}"
 
     with {:upload, {:ok, _}} <-
-           {:upload, do_upload(format, compress, events, bucket, file_key, storage_mod)},
+           {:upload, do_upload(format, compress, messages, bucket, file_key, storage_mod)},
          {:notify, :ok} <-
            {:notify, notify_queue(queue_mod, queue_ref, file_key, event_count)} do
       emit_batch_result(:ok, nil, event_count)
@@ -301,90 +305,136 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
   defp file_extension(:etf, true), do: "etf.gz"
   defp file_extension(:etf, false), do: "etf"
 
-  defp do_upload(:ndjson, true, events, bucket, file_key, storage_mod),
-    do: upload_compressed(events, bucket, file_key, storage_mod)
+  defp do_upload(:ndjson, true, messages, bucket, file_key, storage_mod),
+    do: upload_compressed(messages, bucket, file_key, storage_mod)
 
-  defp do_upload(:ndjson, false, events, bucket, file_key, storage_mod),
-    do: upload_plain(events, bucket, file_key, storage_mod)
+  defp do_upload(:ndjson, false, messages, bucket, file_key, storage_mod),
+    do: upload_plain(messages, bucket, file_key, storage_mod)
 
-  defp do_upload(:etf, compress, events, bucket, file_key, storage_mod),
-    do: upload_etf(compress, events, bucket, file_key, storage_mod)
+  defp do_upload(:etf, compress, messages, bucket, file_key, storage_mod),
+    do: upload_etf(compress, messages, bucket, file_key, storage_mod)
 
-  defp upload_compressed(events, bucket, file_key, storage_mod) do
-    body = compress_to_binary(events)
+  defp upload_compressed(messages, bucket, file_key, storage_mod) do
+    {encode_us, body} = :timer.tc(fn -> compress_messages_to_binary(messages) end)
 
-    result =
-      storage_mod.put(bucket, file_key, body,
-        headers: %{"content-type" => "application/x-ndjson", "content-encoding" => "gzip"}
-      )
-
-    emit_storage_put_telemetry(:ndjson_gz, byte_size(body), result)
-    result
-  end
-
-  defp upload_plain(events, bucket, file_key, storage_mod) do
-    body =
-      events
-      |> Enum.flat_map(fn log_event -> [encode_line(log_event), "\n"] end)
-      |> IO.iodata_to_binary()
-
-    result =
-      storage_mod.put(bucket, file_key, body,
-        headers: %{"content-type" => "application/x-ndjson"}
-      )
-
-    emit_storage_put_telemetry(:ndjson, byte_size(body), result)
-    result
-  end
-
-  defp upload_etf(compress, events, bucket, file_key, storage_mod) do
-    records =
-      Enum.map(events, fn log_event ->
-        %{
-          id: log_event.id,
-          source_id: log_event.source_id,
-          body: log_event.body,
-          event_type: log_event.event_type,
-          ingested_at: DateTime.to_unix(log_event.ingested_at, :microsecond),
-          via_rule_id: log_event.via_rule_id
-        }
+    {upload_us, result} =
+      :timer.tc(fn ->
+        storage_mod.put(bucket, file_key, body,
+          headers: %{"content-type" => "application/x-ndjson", "content-encoding" => "gzip"}
+        )
       end)
 
-    body = :erlang.term_to_binary(records)
-    body = if compress, do: gzip(body), else: body
-
-    result =
-      storage_mod.put(bucket, file_key, body,
-        headers: %{"content-type" => "application/octet-stream"}
-      )
-
-    emit_storage_put_telemetry(if(compress, do: :etf_gz, else: :etf), byte_size(body), result)
+    emit_storage_put_telemetry(:ndjson_gz, byte_size(body), result, encode_us, upload_us)
     result
   end
 
-  defp emit_storage_put_telemetry(format, bytes, result) do
+  defp upload_plain(messages, bucket, file_key, storage_mod) do
+    {encode_us, body} =
+      :timer.tc(fn ->
+        messages
+        |> reduce_chunk_events([], fn log_event, acc -> [[encode_line(log_event), "\n"] | acc] end)
+        |> Enum.reverse()
+        |> IO.iodata_to_binary()
+      end)
+
+    {upload_us, result} =
+      :timer.tc(fn ->
+        storage_mod.put(bucket, file_key, body,
+          headers: %{"content-type" => "application/x-ndjson"}
+        )
+      end)
+
+    emit_storage_put_telemetry(:ndjson, byte_size(body), result, encode_us, upload_us)
+    result
+  end
+
+  defp upload_etf(compress, messages, bucket, file_key, storage_mod) do
+    {encode_us, body} =
+      :timer.tc(fn ->
+        records =
+          reduce_chunk_events(messages, [], fn log_event, acc ->
+            [
+              %{
+                id: log_event.id,
+                source_id: log_event.source_id,
+                body: log_event.body,
+                event_type: log_event.event_type,
+                ingested_at: DateTime.to_unix(log_event.ingested_at, :microsecond),
+                via_rule_id: log_event.via_rule_id
+              }
+              | acc
+            ]
+          end)
+          |> Enum.reverse()
+
+        body = :erlang.term_to_binary(records)
+        if compress, do: gzip(body), else: body
+      end)
+
+    {upload_us, result} =
+      :timer.tc(fn ->
+        storage_mod.put(bucket, file_key, body,
+          headers: %{"content-type" => "application/octet-stream"}
+        )
+      end)
+
+    emit_storage_put_telemetry(
+      if(compress, do: :etf_gz, else: :etf),
+      byte_size(body),
+      result,
+      encode_us,
+      upload_us
+    )
+
+    result
+  end
+
+  # Folds every event across every chunk in the batch through `fun`, resolving
+  # each chunk's events from EventQueue one chunk at a time rather than
+  # flattening the whole batch into one combined event list up front — see
+  # handle_batch/4's moduledoc note on why. `acc` is threaded through in
+  # cons-then-reverse order (matches Enum.reduce's own convention) so callers
+  # building a list get it back in original chunk/event order after reversing.
+  @spec reduce_chunk_events([Message.t()], acc, (LogEvent.t(), acc -> acc)) :: acc
+        when acc: term()
+  defp reduce_chunk_events(messages, initial_acc, fun) do
+    Enum.reduce(messages, initial_acc, fn %{data: %Chunk{ref: ref}}, acc ->
+      ref
+      |> EventQueue.get_events()
+      |> Enum.reduce(acc, fun)
+    end)
+  end
+
+  defp emit_storage_put_telemetry(format, bytes, result, encode_us, upload_us) do
     :telemetry.execute(
       [:logflare, :backends, :spool, :storage, :put],
-      %{count: 1, bytes: bytes},
+      %{count: 1, bytes: bytes, encode_duration: encode_us, upload_duration: upload_us},
       %{format: format, result: if(match?({:ok, _}, result), do: :ok, else: :error)}
     )
   end
 
-  defp compress_to_binary(events) do
+  # One shared zlib port for the whole batch, fed one event at a time as each
+  # chunk is resolved from EventQueue — never a full concatenation of the
+  # batch's raw ndjson lines before compression starts. Chunks are consed onto
+  # `acc` (not concatenated) and reversed once at the end, same as
+  # Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline.stream_compress/2, so
+  # the only full-batch iodata flatten happens over the already-compressed
+  # output, which is far smaller than the input.
+  defp compress_messages_to_binary(messages) do
     z = :zlib.open()
 
     try do
       :ok = :zlib.deflateInit(z, :default, :deflated, 31, 8, :default)
 
-      chunks =
-        Enum.flat_map(events, fn log_event ->
-          :zlib.deflate(z, [encode_line(log_event), "\n"], :none)
+      deflated =
+        reduce_chunk_events(messages, [], fn log_event, acc ->
+          [:zlib.deflate(z, [encode_line(log_event), "\n"], :none) | acc]
         end)
 
       final = :zlib.deflate(z, [], :finish)
       :zlib.deflateEnd(z)
 
-      IO.iodata_to_binary([chunks, final])
+      IO.iodata_to_binary([Enum.reverse(deflated), final])
     after
       # Broadway rescues exceptions raised from handle_batch/4 without crashing
       # this process, so the port is never closed by BEAM's automatic
