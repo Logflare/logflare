@@ -12,7 +12,7 @@ defmodule Logflare.ObanSchemaMigrationTest do
                           __DIR__
                         )
   @upgrade_migration Path.expand(
-                       "../../priv/repo/migrations/20260814000000_add_oban_tables_to_configured_schema.exs",
+                       "../../priv/repo/migrations/20260831120000_add_oban_tables_to_configured_schema.exs",
                        __DIR__
                      )
 
