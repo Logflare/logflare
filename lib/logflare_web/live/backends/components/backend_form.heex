@@ -451,6 +451,38 @@
               Region of your cluster
             </small>
           </div>
+        <% "google_secops" -> %>
+          <div class="form-group">
+            {label(f_config, :region, "Region")}
+            {text_input(f_config, :region, class: "form-control")}
+            <small class="form-text text-muted">
+              Region of your Google SecOps instance, e.g. <code>us</code>, <code>europe</code> or <code>europe-west3</code>
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :project_number, "Project number")}
+            {text_input(f_config, :project_number, class: "form-control")}
+            {label(f_config, :instance_id, "Instance ID")}
+            {text_input(f_config, :instance_id, class: "form-control")}
+            {label(f_config, :feed_id, "Feed ID")}
+            {text_input(f_config, :feed_id, class: "form-control")}
+            <small class="form-text text-muted">
+              Identifiers of your <a href="https://cloud.google.com/chronicle/docs/ingestion/setup-siem-webhook">SIEM webhook feed</a>,
+              visible in the feed's details page. The feed must be created with the split delimiter set to <code>\n</code>.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :api_key, "API key")}
+            {text_input(f_config, :api_key, class: "form-control", type: "password")}
+            <small class="form-text text-muted">
+              Google Cloud API key restricted to the Chronicle API
+            </small>
+            {label(f_config, :secret, "Secret")}
+            {text_input(f_config, :secret, class: "form-control", type: "password")}
+            <small class="form-text text-muted">
+              Secret key generated for the webhook feed
+            </small>
+          </div>
         <% "sentry" -> %>
           <div class="form-group">
             {label(f_config, :dsn, "DSN (Required)")}
