@@ -16,6 +16,29 @@ defmodule Logflare.TelemetryConfigurationTest do
     :ok
   end
 
+  test "parses the runtime Broadway message sample denominator" do
+    for {value, expected} <- [
+          {nil, :default},
+          {"", :default},
+          {" \t\n", :default},
+          {"disabled", :disabled},
+          {" DISABLED ", :disabled},
+          {"1", 1},
+          {" 7 ", 7},
+          {"4294967296", 4_294_967_296}
+        ] do
+      assert Env.parse_broadway_message_sample_denominator(value) == expected
+    end
+  end
+
+  test "rejects invalid runtime Broadway message sample denominators" do
+    for value <- ["0", "-1", "4294967297", "1x", "invalid"] do
+      assert_raise ArgumentError,
+                   ~r/LOGFLARE_BROADWAY_MESSAGE_SAMPLE_DENOMINATOR must be 'disabled' or an integer between 1 and 4294967296/,
+                   fn -> Env.parse_broadway_message_sample_denominator(value) end
+    end
+  end
+
   test "uses a configured positive Broadway processor message sample denominator" do
     denominator = 7
     Application.put_env(:logflare, @config_key, denominator)
