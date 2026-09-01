@@ -36,11 +36,16 @@ defmodule Logflare.Backends.Adaptor.HttpBased.NdjsonFormatter do
     Tesla.put_header(%{env | headers: headers}, "content-type", @content_type)
   end
 
-  defp encode([%LogEvent{} | _] = events) do
+  @doc """
+  Encodes `Logflare.LogEvent`s as newline-delimited JSON iodata, one event body
+  per line. Any other term passes through unchanged.
+  """
+  @spec encode([LogEvent.t()] | term()) :: iodata() | term()
+  def encode([%LogEvent{} | _] = events) do
     events
     |> Enum.map(fn %LogEvent{body: body} -> Jason.encode_to_iodata!(body) end)
     |> Enum.intersperse("\n")
   end
 
-  defp encode(term), do: term
+  def encode(term), do: term
 end
