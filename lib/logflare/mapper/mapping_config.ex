@@ -69,7 +69,9 @@ defmodule Logflare.Mapper.MappingConfig do
   use TypedEctoSchema
 
   import Ecto.Changeset
-  import Logflare.Utils.Guards, only: [is_empty_map: 1, is_non_empty_binary: 1]
+
+  import Logflare.Utils.Guards,
+    only: [is_empty_map: 1, is_non_empty_binary: 1, is_non_negative_integer: 1]
 
   alias __MODULE__.FieldConfig
   alias __MODULE__.InferCondition
@@ -111,14 +113,39 @@ defmodule Logflare.Mapper.MappingConfig do
   end
 
   @spec to_nif_map(t()) :: map()
-  def to_nif_map(%__MODULE__{fields: fields, output: output}) do
-    config = %{"fields" => Enum.map(fields, &field_to_nif_map/1)}
+  def to_nif_map(%__MODULE__{} = config) do
+    %__MODULE__{fields: fields, output: output} = apply_timestamp_precision(config)
+    nif_config = %{"fields" => Enum.map(fields, &field_to_nif_map/1)}
 
     case output do
-      %OutputFormat{} -> Map.put(config, "output", OutputFormat.to_nif_map(output))
-      nil -> config
+      %OutputFormat{} -> Map.put(nif_config, "output", OutputFormat.to_nif_map(output))
+      nil -> nif_config
     end
   end
+
+  @doc """
+  Rewrites every `datetime64`/`array_datetime64` field to the output's
+  `timestamp_precision`, so the emitted timestamps are in the unit the output
+  format declares. A no-op without an output or when the output declares no
+  precision.
+  """
+  @spec apply_timestamp_precision(t()) :: t()
+  def apply_timestamp_precision(
+        %__MODULE__{output: %OutputFormat{timestamp_precision: precision}} = config
+      )
+      when is_non_negative_integer(precision) do
+    %{config | fields: Enum.map(config.fields, &put_timestamp_precision(&1, precision))}
+  end
+
+  def apply_timestamp_precision(%__MODULE__{} = config), do: config
+
+  @spec put_timestamp_precision(FieldConfig.t(), non_neg_integer()) :: FieldConfig.t()
+  defp put_timestamp_precision(%FieldConfig{type: type} = field, precision)
+       when type in ["datetime64", "array_datetime64"] do
+    %{field | precision: precision}
+  end
+
+  defp put_timestamp_precision(%FieldConfig{} = field, _precision), do: field
 
   @spec field_to_nif_map(FieldConfig.t()) :: map()
   defp field_to_nif_map(%FieldConfig{} = f) do
