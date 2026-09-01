@@ -265,7 +265,21 @@ defmodule Logflare.Mixfile do
       {:otel_metric_exporter,
        git: "https://github.com/supabase/elixir-otel-metric-exporter", ref: "2a6de91"},
       {:live_monaco_editor, "~> 0.2"}
-    ]
+    ] ++ phoenix_test_jsdom_dep()
+  end
+
+  defp phoenix_test_jsdom_dep do
+    if System.get_env("JSDOM") in ["true", "1"] do
+      [
+        {:phoenix_test_jsdom,
+         github: "msmithstubbs/phoenix_test_jsdom",
+         branch: "feat/cookie-sessions",
+         only: :test,
+         runtime: false}
+      ]
+    else
+      []
+    end
   end
 
   defp aliases do
