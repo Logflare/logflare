@@ -3,7 +3,7 @@ defmodule Logflare.Telemetry do
 
   import Telemetry.Metrics
   import Logflare.Utils, only: [ets_info: 1]
-  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1]
+  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1, is_pos_integer: 1]
 
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
@@ -101,8 +101,7 @@ defmodule Logflare.Telemetry do
       :disabled ->
         :disabled
 
-      denominator
-      when is_integer(denominator) and denominator > 0 and denominator <= @max_phash2_range ->
+      denominator when is_pos_integer(denominator) and denominator <= @max_phash2_range ->
         denominator
 
       value ->
