@@ -28,6 +28,57 @@ defmodule Logflare.Telemetry do
 
   @metrics_interval 30_000
 
+  @ch_read_pool_time_buckets_ms [
+    5,
+    10,
+    25,
+    50,
+    100,
+    250,
+    500,
+    1_000,
+    2_500,
+    5_000,
+    10_000,
+    30_000,
+    60_000
+  ]
+
+  @ch_read_pool_wait_buckets_us [
+    50,
+    100,
+    250,
+    500,
+    1_000,
+    5_000,
+    25_000,
+    100_000,
+    500_000,
+    1_000_000,
+    2_500_000,
+    5_000_000,
+    10_000_000,
+    30_000_000,
+    60_000_000
+  ]
+
+  @ch_read_pool_idle_buckets_ms [
+    100,
+    500,
+    1_000,
+    2_500,
+    5_000,
+    7_500,
+    9_000,
+    10_000,
+    11_000,
+    12_500,
+    15_000,
+    30_000,
+    60_000,
+    300_000
+  ]
+
   @impl true
   def init(_arg) do
     base = System.schedulers_online()
@@ -256,12 +307,44 @@ defmodule Logflare.Telemetry do
         description:
           "Sum of events dropped by a backend (timestamp older than its configured max event age)"
       ),
-      distribution("logflare.clickhouse.read_pool.checkout",
+      distribution("logflare.clickhouse.read_pool.checkout.pool_time",
         event_name: [:logflare, :clickhouse, :read_pool, :checkout],
-        measurement: :pool_time_ms,
-        unit: :millisecond,
+        measurement: :pool_time,
+        unit: {:native, :microsecond},
         tags: [:backend_id, :read_cluster],
-        description: "Time spent waiting to check out a ClickHouse read pool connection"
+        reporter_options: [buckets: @ch_read_pool_wait_buckets_us],
+        description: "Time spent waiting to check out a ClickHouse read pool connection (µs)"
+      ),
+      distribution("logflare.clickhouse.read_pool.checkout.idle_time",
+        event_name: [:logflare, :clickhouse, :read_pool, :checkout],
+        measurement: :idle_time,
+        unit: {:native, :millisecond},
+        tags: [:backend_id, :read_cluster],
+        reporter_options: [buckets: @ch_read_pool_idle_buckets_ms],
+        description: "Time a ClickHouse read pool connection sat idle before being checked out"
+      ),
+      distribution("logflare.clickhouse.read_pool.connection_time",
+        event_name: [:logflare, :clickhouse, :read_pool, :checkout],
+        measurement: :connection_time,
+        unit: {:native, :millisecond},
+        tags: [:backend_id, :read_cluster],
+        reporter_options: [buckets: @ch_read_pool_time_buckets_ms],
+        description:
+          "Time spent using a ClickHouse read pool connection for a query (query execution latency, not pool wait)"
+      ),
+      sum("logflare.clickhouse.read_pool.query_error",
+        event_name: [:logflare, :clickhouse, :read_pool, :query_error],
+        measurement: :count,
+        tags: [:backend_id, :read_cluster, :error_kind],
+        description:
+          "ClickHouse read queries that resolved to an error, excluding invalid-query (user SQL) errors, counted once per query after any failover retry and tagged with the read cluster that produced the final error"
+      ),
+      sum("logflare.clickhouse.read_pool.failover",
+        event_name: [:logflare, :clickhouse, :read_pool, :failover],
+        measurement: :count,
+        tags: [:backend_id, :read_cluster],
+        description:
+          "Read queries that failed over to the default read cluster, tagged with the unhealthy cluster failed over from"
       ),
       sum("logflare.logs.ingest_logs.drop_future",
         event_name: [:logflare, :logs, :ingest_logs, :drop_future],

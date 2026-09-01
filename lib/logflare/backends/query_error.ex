@@ -15,10 +15,13 @@ defmodule Logflare.Backends.QueryError do
           description: String.t() | nil
         }
 
+  defguard is_user_error(kind) when kind == :invalid_query
+
   @spec log(t(), Keyword.t()) :: t()
   def log(error, metadata \\ [])
 
-  def log(%__MODULE__{kind: :invalid_query} = error, metadata) when is_list(metadata) do
+  def log(%__MODULE__{kind: kind} = error, metadata)
+      when is_user_error(kind) and is_list(metadata) do
     error
   end
 
