@@ -235,6 +235,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
         @postgres_search_attrs
         |> Map.merge(%{source: source, type: :aggregates})
         |> SO.new()
+        |> Map.put(:chart_rules, [%ChartRule{}])
 
       [base_so: base_so]
     end
@@ -271,6 +272,22 @@ defmodule Logflare.Logs.SearchOperationsTest do
       so = SearchOperations.apply_numeric_aggs(so)
 
       assert length(so.query.wheres) == 1
+    end
+
+    test "uses postgres regex syntax for event message filters", %{base_so: base_so} do
+      regex_filter = %FilterRule{path: "event_message", operator: :"~", value: "(?i)error"}
+
+      so = %{
+        base_so
+        | lql_meta_and_msg_filters: [regex_filter],
+          query: from("test_table")
+      }
+
+      so = SearchOperations.apply_numeric_aggs(so)
+      {:ok, {sql, _params}} = PostgresAdaptor.ecto_to_sql(so.query, [])
+
+      assert sql =~ ~s|t0."event_message" ~ $1|
+      refute sql =~ "REGEXP_CONTAINS"
     end
 
     test "generates expected SQL for all aggregate types", %{base_so: base_so} do

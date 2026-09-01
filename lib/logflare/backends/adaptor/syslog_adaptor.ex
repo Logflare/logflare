@@ -8,6 +8,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   import Ecto.Changeset
   import NimbleParsec
   import Logflare.Logs.SyslogParser.Helpers
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.SyslogAdaptor.{Pool, Socket, Pipeline}
   alias Logflare.Backends.Backend
   require Logger
@@ -96,6 +97,11 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
     |> redact_config_field(:client_cert)
     |> redact_config_field(:client_key)
     |> redact_config_field(:cipher_key)
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def sanitize_config_for_display(config) do
+    Adaptor.mask_config_values(config, except: [:tls, :host, :port, :max_message_bytes])
   end
 
   defp redact_config_field(config, field) do

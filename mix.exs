@@ -209,7 +209,7 @@ defmodule Logflare.Mixfile do
 
       # Frontend
       {:phoenix_live_react, "~> 0.6"},
-      {:sql_fmt, "~> 0.4.0"},
+      {:sql_fmt, "~> 0.5.0"},
 
       # Dev
       {:dialyxir, "~> 1.1", only: [:dev, :test], runtime: false},

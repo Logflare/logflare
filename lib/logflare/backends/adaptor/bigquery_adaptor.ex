@@ -15,6 +15,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias GoogleApi.IAM.V1.Model.CreateServiceAccountRequest
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
   alias Logflare.Backends.Backend
   alias Logflare.Backends.DynamicPipeline
@@ -272,6 +273,11 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def redact_config(config), do: config
+
+  @impl Logflare.Backends.Adaptor
+  def sanitize_config_for_display(config) do
+    Adaptor.mask_config_values(config, except: [:project_id, :dataset_id])
+  end
 
   @doc """
   Returns the email of a managed service account

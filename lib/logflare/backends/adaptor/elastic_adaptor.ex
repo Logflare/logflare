@@ -10,6 +10,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
 
   """
 
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Utils
 
@@ -47,6 +48,11 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
   @impl Logflare.Backends.Adaptor
   def redact_config(config) do
     Map.replace_lazy(config, :password, fn _ -> "REDACTED" end)
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def sanitize_config_for_display(config) do
+    Adaptor.mask_config_values(config, except: [:url])
   end
 
   @impl Logflare.Backends.Adaptor

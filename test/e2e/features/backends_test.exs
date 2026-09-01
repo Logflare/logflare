@@ -114,7 +114,10 @@ defmodule E2e.Features.BackendsTest do
       backend: backend,
       conn: conn
     } do
-      session = visit(conn, ~p"/backends/#{backend.id}/edit")
+      session =
+        conn
+        |> visit(~p"/backends/#{backend.id}/edit")
+        |> assert_has("[data-phx-main].phx-connected")
 
       unwrap(session, fn %{frame_id: frame_id} ->
         Frame.fill(frame_id,

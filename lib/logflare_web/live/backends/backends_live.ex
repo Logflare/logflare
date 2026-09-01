@@ -388,7 +388,9 @@ defmodule LogflareWeb.BackendsLive do
       {"Axiom", :axiom},
       {"OTLP", :otlp},
       {"Last9", :last9},
-      {"Syslog", :syslog}
+      {"SigNoz", :signoz},
+      {"Syslog", :syslog},
+      {"Google SecOps", :google_secops}
     ])
   end
 

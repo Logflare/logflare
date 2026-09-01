@@ -20,6 +20,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   use GenServer
 
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Adaptor.HttpBased.Headers
   alias Logflare.Utils
@@ -179,6 +180,13 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   def redact_config(config) do
     config
     |> Map.update(:headers, %{}, &redact_headers/1)
+    |> Map.update(:url, nil, &redact_url_userinfo/1)
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def sanitize_config_for_display(config) do
+    config
+    |> Adaptor.mask_config_values(except: [:url, :http, :gzip])
     |> Map.update(:url, nil, &redact_url_userinfo/1)
   end
 
