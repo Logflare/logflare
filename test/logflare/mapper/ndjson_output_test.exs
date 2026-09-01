@@ -47,11 +47,19 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
   }
 
   setup_all do
-    compile = fn format ->
-      Map.new([:log, :metric, :trace], &{&1, Mapper.compile!(OtelDefaults.for_type(&1, format))})
-    end
-
-    {:ok, ndjson: compile.(:ndjson), map: compile.(:map)}
+    # the :map comparison configs reuse the :ndjson fields (microsecond
+    # timestamps) so both sides of the comparison share the same precision
+    {:ok,
+     ndjson:
+       Map.new(
+         [:log, :metric, :trace],
+         &{&1, Mapper.compile!(OtelDefaults.for_type(&1, :ndjson))}
+       ),
+     map:
+       Map.new(
+         [:log, :metric, :trace],
+         &{&1, Mapper.compile!(%{OtelDefaults.for_type(&1, :ndjson) | output: nil})}
+       )}
   end
 
   describe "default OTEL configs" do
@@ -76,7 +84,7 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
                "source_uuid" => ^source_uuid,
                "source_name" => ^source_name,
                "mapping_config_id" => ^config_id,
-               "ingested_at" => 1_704_164_645_123_456_000
+               "ingested_at" => 1_704_164_645_123_456
              } = decode(event, ndjson.log, config_id)
     end
 
@@ -97,7 +105,7 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
 
     test "trace with explicit, derived, and non-positive duration", %{ndjson: ndjson} do
       for {overrides, expected} <- [
-            {%{}, 1500},
+            {%{}, 1},
             {%{"duration" => 42}, 42},
             {%{"end_time" => 1}, 0}
           ] do

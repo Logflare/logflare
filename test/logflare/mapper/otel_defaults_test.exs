@@ -42,11 +42,18 @@ defmodule Logflare.Mapper.OtelDefaultsTest do
                } = OtelDefaults.for_type(event_type, :ch_row_binary)
 
         assert %Mapper.MappingConfig{
-                 fields: fields,
+                 fields: ndjson_fields,
                  output: %OutputFormat{format: :ndjson, row_type: ^event_type}
                } = OtelDefaults.for_type(event_type, :ndjson)
 
-        assert fields == base.fields
+        for {ndjson_field, base_field} <- Enum.zip(ndjson_fields, base.fields) do
+          if base_field.type in ["datetime64", "array_datetime64"] do
+            assert ndjson_field == %{base_field | precision: 6}
+          else
+            assert ndjson_field == base_field
+          end
+        end
+
         assert %Mapper.MappingConfig{output: nil} = OtelDefaults.for_type(event_type, :map)
       end
     end
