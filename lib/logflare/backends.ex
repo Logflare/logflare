@@ -416,18 +416,9 @@ defmodule Logflare.Backends do
     case result do
       {:ok, {backend, updated, enabled_only?}} ->
         updated = preload_sources(updated)
-        enabled_changed? = backend.enabled != updated.enabled
 
         if backend.default_ingest? != updated.default_ingest? do
           default_ingest_flag_changed(updated)
-        end
-
-        if enabled_changed? do
-          ContextCache.bust_keys([{__MODULE__, updated.id}])
-        end
-
-        if default_ingest_modified? and not enabled_changed? do
-          sync_backend_across_cluster(updated.id)
         end
 
         if Keyword.get(opts, :query_policy_only, false) do
@@ -437,7 +428,7 @@ defmodule Logflare.Backends do
           Logflare.ContextCache.bust_keys(keys)
           Cluster.Utils.rpc_multicast(Logflare.ContextCache, :bust_keys, [keys])
         else
-          unless enabled_only? do
+          if not enabled_only? do
             Enum.each(updated.sources, &restart_source_sup(&1))
             apply_consolidated_pipeline_change(backend, updated, default_ingest_modified?)
           end
@@ -527,7 +518,7 @@ defmodule Logflare.Backends do
       ContextCache.bust_keys(cache_keys)
       clear_list_backends_cache(source.id)
 
-      if source_sup_started?(source) do
+      if source_sup_registered?(source) do
         sync_backend_children(source, source_with_backends.backends, backends)
       else
         :ok

@@ -21,8 +21,9 @@ defmodule Logflare.Backends.Cache do
 
   @spec list_enabled_backends(keyword()) :: [Logflare.Backends.Backend.t()]
   def list_enabled_backends(arg) do
-    # Filter here instead of passing `enabled: true` to `list_backends/1`. Otherwise a disabled
-    # backend disappears from the cached list, so re-enabling it cannot clear that list by ID.
+    # We filter the existing cached list instead of creating a
+    # `{:list_backends, [..., enabled: true]}` key. That entry would omit disabled backends, so
+    # re-enabling one could not clear it by backend ID.
     arg
     |> list_backends()
     |> Enum.filter(& &1.enabled)
