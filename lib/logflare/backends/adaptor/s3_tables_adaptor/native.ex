@@ -42,8 +42,9 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.Native do
     end
   end
 
-  # integer values in timestamptz columns are interpreted as unix nanoseconds
-  # (the unit the mapper emits); RFC3339 strings are accepted in any precision
+  # integer values in timestamptz columns are interpreted as unix microseconds
+  # (the unit the mapper emits for NDJSON output); RFC3339 strings are accepted
+  # in any precision
   @spec append_batch(reference(), String.t(), binary()) ::
           {:ok, %{row_count: non_neg_integer(), data_files: non_neg_integer()}}
           | {:error, :commit_conflict | :timeout | String.t()}

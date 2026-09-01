@@ -102,14 +102,14 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptor.PipelineTest do
       assert [row1, row2] = rows
       assert row1["id"] == event1.id
       assert row1["source_uuid"] == Atom.to_string(event1.source_uuid)
-      assert row1["ingested_at"] == DateTime.to_unix(event1.ingested_at, :nanosecond)
+      assert row1["ingested_at"] == DateTime.to_unix(event1.ingested_at, :microsecond)
       assert row1["event_message"] == "Test message 1"
       assert row1["mapping_config_id"] == OtelDefaults.config_id(:log)
       assert is_map(row1["log_attributes"])
       assert row2["event_message"] == "Test message 2"
 
-      # mapper scales body timestamps (µs) to ns; the NIF scales them back down
-      assert row1["timestamp"] == event1.body["timestamp"] * 1000
+      # body timestamps are already µs, the unit NDJSON mapper output emits
+      assert row1["timestamp"] == event1.body["timestamp"]
     end
 
     test "metric and trace batches routing" do
