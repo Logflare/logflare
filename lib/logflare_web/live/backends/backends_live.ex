@@ -449,12 +449,7 @@ defmodule LogflareWeb.BackendsLive do
 
   defp toggle_backend(socket, backend, enabled?) do
     # Use the state shown in the user's UI instead of toggling the latest database value.
-    result =
-      if backend.enabled == enabled?,
-        do: {:ok, backend},
-        else: Backends.update_backend(backend, %{enabled: enabled?})
-
-    case result do
+    case Backends.update_backend(backend, %{enabled: enabled?}) do
       {:ok, updated} ->
         socket
         |> refresh_backends()

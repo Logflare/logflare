@@ -33,7 +33,8 @@ defmodule Logflare.Backends.Cache do
   def list_backends(arg), do: apply_repo_fun(__ENV__.function, [arg])
 
   def list_enabled_backends(arg) do
-    # Cache the full list so the same entry can be cleared when a backend is enabled or disabled.
+    # Filter here instead of passing `enabled: true` to `list_backends/1`. Otherwise a disabled
+    # backend disappears from the cached list, so re-enabling it cannot clear that list by ID.
     arg
     |> list_backends()
     |> Enum.filter(& &1.enabled)
