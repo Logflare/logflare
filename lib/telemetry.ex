@@ -3,7 +3,7 @@ defmodule Logflare.Telemetry do
 
   import Telemetry.Metrics
   import Logflare.Utils, only: [ets_info: 1]
-  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1]
+  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1, is_pos_integer: 1]
 
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
@@ -27,6 +27,7 @@ defmodule Logflare.Telemetry do
   }
 
   @metrics_interval 30_000
+  @max_phash2_range 4_294_967_296
 
   @impl true
   def init(_arg) do
@@ -85,6 +86,29 @@ defmodule Logflare.Telemetry do
   end
 
   defp maybe_put_commit(service, _commit_sha), do: service
+
+  defp sample_broadway_processor_message_duration?(
+         %{telemetry_span_context: context},
+         denominator
+       ) do
+    :erlang.phash2(context, denominator) == 0
+  end
+
+  defp sample_broadway_processor_message_duration?(_metadata, _denominator), do: false
+
+  defp broadway_processor_message_sample_denominator! do
+    case Application.fetch_env!(:logflare, :broadway_message_sample_denominator) do
+      :disabled ->
+        :disabled
+
+      denominator when is_pos_integer(denominator) and denominator <= @max_phash2_range ->
+        denominator
+
+      value ->
+        raise ArgumentError,
+              "LOGFLARE_BROADWAY_MESSAGE_SAMPLE_DENOMINATOR must be 'disabled' or an integer between 1 and #{@max_phash2_range}, got: #{inspect(value)}"
+    end
+  end
 
   # Public (not private) so the metric definitions can be validated directly
   # in tests — init/1 only calls this when OpenTelemetry is enabled, which
@@ -170,12 +194,34 @@ defmodule Logflare.Telemetry do
       last_value("logflare.system.scheduler.utilization", tags: [:name, :type])
     ]
 
-    broadway_metrics = [
-      distribution("broadway.batcher.stop.duration", unit: {:native, :millisecond}),
-      distribution("broadway.batch_processor.stop.duration", unit: {:native, :millisecond}),
-      distribution("broadway.processor.message.stop.duration", unit: {:native, :millisecond}),
-      distribution("broadway.processor.stop.duration", unit: {:native, :millisecond})
-    ]
+    broadway_processor_message_metrics =
+      case broadway_processor_message_sample_denominator!() do
+        :disabled ->
+          []
+
+        1 ->
+          [
+            distribution("broadway.processor.message.stop.duration",
+              unit: {:native, :millisecond}
+            )
+          ]
+
+        denominator ->
+          [
+            distribution("broadway.processor.message.stop.duration",
+              unit: {:native, :millisecond},
+              keep: &sample_broadway_processor_message_duration?(&1, denominator)
+            )
+          ]
+      end
+
+    broadway_metrics =
+      [
+        distribution("broadway.batcher.stop.duration", unit: {:native, :millisecond}),
+        distribution("broadway.batch_processor.stop.duration", unit: {:native, :millisecond})
+      ] ++
+        broadway_processor_message_metrics ++
+        [distribution("broadway.processor.stop.duration", unit: {:native, :millisecond})]
 
     application_metrics = [
       distribution("logflare.goth.fetch.stop.duration",
