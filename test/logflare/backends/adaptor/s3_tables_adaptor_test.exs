@@ -109,14 +109,14 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptorTest do
       {:ok, snapshot_before} = S3TablesAdaptor.Native.snapshot_info(catalog, table_name)
       snapshots_before = if snapshot_before, do: snapshot_before.snapshot_count, else: 0
 
-      now_ns = System.os_time(:nanosecond)
+      now_us = System.os_time(:microsecond)
 
       ndjson =
         for n <- 1..3, into: "" do
           row = %{
             "id" => Ecto.UUID.generate(),
             "event_message" => "integration test event #{n}",
-            "timestamp" => now_ns,
+            "timestamp" => now_us,
             "log_attributes" => %{"n" => "#{n}"}
           }
 
@@ -146,7 +146,7 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptorTest do
                  IcebergSchema.table_properties(:log)
                )
 
-      now_ns = System.os_time(:nanosecond)
+      now_us = System.os_time(:microsecond)
 
       results =
         1..2
@@ -155,7 +155,7 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptorTest do
             row = %{
               "id" => Ecto.UUID.generate(),
               "event_message" => "concurrent append #{n}",
-              "timestamp" => now_ns
+              "timestamp" => now_us
             }
 
             S3TablesAdaptor.Native.append_batch(catalog, table_name, Jason.encode!(row) <> "\n")

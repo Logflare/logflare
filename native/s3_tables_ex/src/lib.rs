@@ -2,10 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use arrow_array::RecordBatch;
-use arrow_cast::cast;
 use arrow_json::ReaderBuilder;
-use arrow_schema::{DataType, Field, Schema as ArrowSchema, TimeUnit};
 use iceberg::arrow::{schema_to_arrow_schema, RecordBatchPartitionSplitter};
 use iceberg::spec::{DataFileFormat, Transform, UnboundPartitionSpec};
 use iceberg::transaction::{ApplyTransactionAction, Transaction};
@@ -47,9 +44,9 @@ mod atoms {
 /// of a leaked late message.
 const APPEND_TIMEOUT: Duration = Duration::from_secs(55);
 
-/// Rows buffered per decoded `RecordBatch`; above the pipeline's max batch
-/// size so a single flush normally yields one batch per NIF call.
-const DECODER_BATCH_SIZE: usize = 1 << 16;
+/// Rows buffered per decoded `RecordBatch` before it is streamed into the
+/// parquet writer; bounds decoder memory independently of payload size.
+const DECODER_BATCH_SIZE: usize = 8192;
 
 const TIMESTAMP_PARTITION_NAME: &str = "timestamp_day";
 
@@ -300,15 +297,16 @@ impl Encoder for AppendError {
     }
 }
 
-/// Decodes newline-delimited JSON rows into Arrow record batches, writes them
-/// as Iceberg parquet data files (fanned out per day partition), and commits a
-/// fast-append transaction. Commit conflicts are retried by the iceberg crate
-/// itself (bounded by the `commit.retry.*` table properties); exhaustion
-/// surfaces as `{:error, :commit_conflict}`.
+/// Decodes newline-delimited JSON rows into Arrow record batches and streams
+/// them into one Iceberg parquet data file per day partition (callers batch
+/// per day, so normally exactly one), then commits a fast-append
+/// transaction. Commit conflicts are retried by the iceberg crate itself
+/// (bounded by the `commit.retry.*` table properties); exhaustion surfaces
+/// as `{:error, :commit_conflict}`.
 ///
-/// Contract: integer values in `timestamptz` columns are interpreted as unix
-/// **nanoseconds** (the unit the mapper emits) and are scaled down to the
-/// microseconds Iceberg stores; RFC3339 strings are accepted in any unit.
+/// Contract: integer values in `timestamptz` columns are unix
+/// **microseconds** (the unit the mapper emits for NDJSON output and that
+/// Iceberg stores); RFC3339 strings are accepted in any unit.
 #[rustler::nif]
 fn append_batch<'a>(
     env: Env<'a>,
@@ -339,45 +337,6 @@ async fn do_append(
 
     let iceberg_schema = table.metadata().current_schema().clone();
     let arrow_schema = Arc::new(schema_to_arrow_schema(&iceberg_schema)?);
-    // arrow-json takes raw JSON integers in a timestamp column as already
-    // being in the column's unit, but callers send mapper-produced
-    // nanoseconds -- so decode against a nanosecond variant of the schema
-    // and cast down to the table's microsecond columns afterwards
-    let decode_schema = Arc::new(to_nanosecond_schema(&arrow_schema));
-
-    let mut decoder = ReaderBuilder::new(decode_schema)
-        .with_batch_size(DECODER_BATCH_SIZE)
-        .build_decoder()?;
-
-    let mut batches = Vec::new();
-    let mut pos = 0;
-
-    while pos < ndjson.len() {
-        let read = decoder.decode(&ndjson[pos..])?;
-
-        if read == 0 {
-            break;
-        }
-
-        pos += read;
-
-        if let Some(batch) = decoder.flush()? {
-            batches.push(cast_batch(&batch, &arrow_schema)?);
-        }
-    }
-
-    while let Some(batch) = decoder.flush()? {
-        batches.push(cast_batch(&batch, &arrow_schema)?);
-    }
-
-    let row_count: u64 = batches.iter().map(|batch| batch.num_rows() as u64).sum();
-
-    if row_count == 0 {
-        return Ok(AppendOk {
-            row_count: 0,
-            data_files: 0,
-        });
-    }
 
     let splitter = RecordBatchPartitionSplitter::try_new_with_computed_values(
         iceberg_schema.clone(),
@@ -398,12 +357,46 @@ async fn do_append(
         file_name_generator,
     );
 
+    // the fanout writer keeps one data file writer open per partition key,
+    // so successive batches of the same partition stream into the same file
     let mut writer = FanoutWriter::new(DataFileWriterBuilder::new(rolling_builder));
 
-    for batch in &batches {
-        for (partition_key, partition_batch) in splitter.split(batch)? {
-            writer.write(partition_key, partition_batch).await?;
+    let mut decoder = ReaderBuilder::new(arrow_schema)
+        .with_batch_size(DECODER_BATCH_SIZE)
+        .build_decoder()?;
+
+    let mut row_count: u64 = 0;
+    let mut pos = 0;
+
+    loop {
+        // decode stops once a full batch is buffered, so drain before
+        // decoding further
+        while let Some(batch) = decoder.flush()? {
+            row_count += batch.num_rows() as u64;
+
+            for (partition_key, partition_batch) in splitter.split(&batch)? {
+                writer.write(partition_key, partition_batch).await?;
+            }
         }
+
+        if pos >= ndjson.len() {
+            break;
+        }
+
+        let read = decoder.decode(&ndjson[pos..])?;
+
+        if read == 0 {
+            break;
+        }
+
+        pos += read;
+    }
+
+    if row_count == 0 {
+        return Ok(AppendOk {
+            row_count: 0,
+            data_files: 0,
+        });
     }
 
     let data_files = writer.close().await?;
@@ -422,61 +415,6 @@ async fn do_append(
         }
         Err(err) => Err(err.into()),
     }
-}
-
-/// Returns a copy of `schema` with every microsecond timestamp column
-/// (including inside lists) widened to nanoseconds, for JSON decoding.
-fn to_nanosecond_schema(schema: &ArrowSchema) -> ArrowSchema {
-    let fields: Vec<Arc<Field>> = schema
-        .fields()
-        .iter()
-        .map(|field| Arc::new(to_nanosecond_field(field)))
-        .collect();
-
-    ArrowSchema::new(fields)
-}
-
-fn to_nanosecond_field(field: &Field) -> Field {
-    Field::new(
-        field.name(),
-        to_nanosecond_type(field.data_type()),
-        field.is_nullable(),
-    )
-    .with_metadata(field.metadata().clone())
-}
-
-fn to_nanosecond_type(data_type: &DataType) -> DataType {
-    match data_type {
-        DataType::Timestamp(TimeUnit::Microsecond, tz) => {
-            DataType::Timestamp(TimeUnit::Nanosecond, tz.clone())
-        }
-        DataType::List(child) => DataType::List(Arc::new(to_nanosecond_field(child))),
-        DataType::LargeList(child) => DataType::LargeList(Arc::new(to_nanosecond_field(child))),
-        other => other.clone(),
-    }
-}
-
-/// Casts a batch decoded with the nanosecond schema back to the table's
-/// arrow schema, scaling timestamp columns down to microseconds and
-/// restoring the Iceberg field-id metadata the writers rely on.
-fn cast_batch(
-    batch: &RecordBatch,
-    target_schema: &Arc<ArrowSchema>,
-) -> Result<RecordBatch, AppendError> {
-    let columns = batch
-        .columns()
-        .iter()
-        .zip(target_schema.fields())
-        .map(|(column, field)| {
-            if column.data_type() == field.data_type() {
-                Ok(column.clone())
-            } else {
-                cast(column, field.data_type()).map_err(AppendError::from)
-            }
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    RecordBatch::try_new(target_schema.clone(), columns).map_err(AppendError::from)
 }
 
 #[derive(NifMap)]
