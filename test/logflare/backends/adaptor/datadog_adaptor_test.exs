@@ -40,6 +40,15 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
     end
   end
 
+  describe "sanitize_config_for_display/1" do
+    test "masks api_key while preserving region" do
+      config = %{api_key: "secret-api-key-123", region: "US1"}
+
+      assert %{api_key: "**********", region: "US1"} ==
+               @subject.sanitize_config_for_display(config)
+    end
+  end
+
   describe "redact_config/1" do
     test "redacts api_key field" do
       config = %{api_key: "secret-api-key-123", region: "US1"}
