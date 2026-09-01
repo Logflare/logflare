@@ -439,13 +439,9 @@ defmodule LogflareWeb.BackendsLive do
     end
   end
 
-  defp maybe_refresh_current_backend(socket, id) do
-    if socket.assigns.backend && socket.assigns.backend.id == id do
-      refresh_backend(socket, id)
-    else
-      socket
-    end
-  end
+  defp maybe_refresh_backend(socket, :show, id), do: refresh_backend(socket, id)
+
+  defp maybe_refresh_backend(socket, :index, _id), do: socket
 
   defp toggle_backend(socket, backend, enabled?) do
     # Use the state shown in the user's UI instead of toggling the latest database value.
@@ -453,7 +449,7 @@ defmodule LogflareWeb.BackendsLive do
       {:ok, updated} ->
         socket
         |> refresh_backends()
-        |> maybe_refresh_current_backend(updated.id)
+        |> maybe_refresh_backend(socket.assigns.live_action, updated.id)
         |> put_flash(
           :info,
           "Destination #{if(updated.enabled, do: "enabled", else: "disabled")}"

@@ -310,7 +310,7 @@ defmodule Logflare.Backends do
 
     enabled_only? =
       enabled_changed? and map_size(changeset.changes) == 1 and
-        not default_ingest_modified? and not alerts_modified
+        not default_ingest_modified?
 
     case Repo.update(changeset) do
       {:ok, updated} ->
@@ -329,11 +329,9 @@ defmodule Logflare.Backends do
             updated
           end
 
-        if enabled_changed? do
-          ContextCache.bust_keys([{__MODULE__, updated.id}])
-        end
-
-        unless enabled_only? do
+        # Since an enabled-only update changes routing, not process configuration, we keep the
+        # processes running so queued events can drain without restarting unrelated source backends.
+        if not enabled_only? do
           Enum.each(updated.sources, &restart_source_sup(&1))
           maybe_restart_consolidated_pipeline(updated)
         end
