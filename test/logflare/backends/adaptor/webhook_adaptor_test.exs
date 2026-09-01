@@ -169,6 +169,41 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
     end
   end
 
+  describe "transform_config/1" do
+    test "collapses a case-variant content-type header for the ndjson format" do
+      backend =
+        build(:backend,
+          type: :webhook,
+          config: %{
+            url: "https://example.com",
+            format: "ndjson",
+            headers: %{"Content-Type" => "text/plain"}
+          }
+        )
+
+      assert %{headers: headers} = @subject.transform_config(backend)
+      assert headers == %{"content-type" => "text/plain"}
+    end
+
+    test "adds the ndjson content-type when the config has no headers" do
+      backend =
+        build(:backend,
+          type: :webhook,
+          config: %{url: "https://example.com", format: "ndjson"}
+        )
+
+      assert %{headers: headers} = @subject.transform_config(backend)
+      assert headers == %{"content-type" => "application/x-ndjson"}
+    end
+
+    test "leaves a json format config untouched" do
+      config = %{url: "https://example.com", format: "json", headers: %{"X-Api" => "abc"}}
+      backend = build(:backend, type: :webhook, config: config)
+
+      assert @subject.transform_config(backend) == config
+    end
+  end
+
   describe "test_connection/1" do
     setup do
       user = insert(:user)

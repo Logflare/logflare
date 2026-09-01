@@ -34,6 +34,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Adaptor.HttpBased.Headers
+  alias Logflare.Backends.Adaptor.HttpBased.NdjsonFormatter
   alias Logflare.LogEvent
   alias Logflare.Utils
   alias Logflare.Utils.SSRF
@@ -201,25 +202,43 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   @impl Logflare.Backends.Adaptor
   @spec transform_config(Backend.t()) :: map()
-  def transform_config(%Backend{config: config}) do
-    if Map.get(config, :format) == "ndjson" do
-      headers =
-        (Map.get(config, :headers) || %{})
-        |> Map.put_new("content-type", "application/x-ndjson")
+  def transform_config(%Backend{config: %{format: "ndjson"} = config}) do
+    config
+    |> Map.put(:format_batch, &encode_ndjson/1)
+    |> Map.put(:headers, ndjson_headers(config))
+  end
 
-      config
-      |> Map.put(:format_batch, &encode_ndjson/1)
-      |> Map.put(:headers, headers)
-    else
-      config
+  def transform_config(%Backend{config: config}), do: config
+
+  # Normalizes the stored header names before adding the content type. Header names
+  # are case-insensitive, and config written before Headers.normalize_keys/1 (or
+  # through a partial update that never casts :headers) can still hold "Content-Type".
+  # Without the normalization both keys ship as separate headers.
+  @spec ndjson_headers(map()) :: map()
+  defp ndjson_headers(config) do
+    (Map.get(config, :headers) || %{})
+    |> Headers.normalize_keys()
+    |> Map.put_new("content-type", "application/x-ndjson")
+  end
+
+  @doc """
+  Builds the request body for a batch of log events.
+
+  Uses the config's `:format_batch` function when one is set, and otherwise falls
+  back to the list of event bodies.
+  """
+  @spec format_payload(map(), [LogEvent.t()]) :: term()
+  def format_payload(config, events) do
+    case Map.get(config, :format_batch) do
+      nil -> Enum.map(events, & &1.body)
+      format_batch -> format_batch.(events)
     end
   end
 
   @spec encode_ndjson([LogEvent.t()]) :: binary()
   defp encode_ndjson(events) do
     events
-    |> Enum.map(fn %LogEvent{body: body} -> Jason.encode_to_iodata!(body) end)
-    |> Enum.intersperse("\n")
+    |> NdjsonFormatter.encode()
     |> IO.iodata_to_binary()
   end
 
@@ -265,13 +284,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   def test_connection(%Backend{} = backend) do
     config = transform_config(backend)
 
-    body =
-      case Map.get(config, :format_batch) do
-        nil -> []
-        format_batch -> format_batch.([])
-      end
-
-    test_connection(%{backend | config: config}, body)
+    test_connection(%{backend | config: config}, format_payload(config, []))
   end
 
   @doc """
@@ -413,6 +426,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     use Broadway
     alias Broadway.Message
     alias Logflare.Backends.BufferProducer
+    alias Logflare.Backends.Adaptor.WebhookAdaptor
     alias Logflare.Backends.Adaptor.WebhookAdaptor.Client
 
     @batch_timeout if Application.compile_env(:logflare, :env) == :test, do: 10, else: 1_000
@@ -476,14 +490,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       %{metadata: backend_metadata} = backend = Backends.Cache.get_backend(context.backend_id)
       config = Backends.Adaptor.get_backend_config(backend)
 
-      # convert this to a custom format if needed
-      payload =
-        if format_batch = Map.get(config, :format_batch) do
-          events = for %{data: le} <- messages, do: le
-          format_batch.(events)
-        else
-          for %{data: le} <- messages, do: le.body
-        end
+      events = for %{data: le} <- messages, do: le
+      payload = WebhookAdaptor.format_payload(config, events)
 
       process_data(payload, config, backend_metadata, context)
       messages
