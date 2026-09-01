@@ -9,11 +9,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-if [[ -x "$ROOT/../bin/x" ]]; then
-  mix_command=("$ROOT/../bin/x" mix)
-elif command -v mix >/dev/null 2>&1; then
-  mix_command=(mix)
-else
+if ! command -v mix >/dev/null 2>&1; then
   echo "error: mix is not available on PATH" >&2
   exit 127
 fi
@@ -55,7 +51,7 @@ run_block() {
     TRIALS="$TRIALS" \
     PAYLOAD_BYTES="$PAYLOAD_BYTES" \
     BATCH_TIMEOUT_MS="$BATCH_TIMEOUT_MS" \
-    "${mix_command[@]}" run --no-start "$BENCH_FILE" > "$output" 2>&1
+    mix run --no-start "$BENCH_FILE" > "$output" 2>&1
 
   grep -E '^(config|handlers|sample|summary|metric_store) ' "$output"
   order_index=$((order_index + 1))
