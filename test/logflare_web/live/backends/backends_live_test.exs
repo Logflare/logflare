@@ -58,7 +58,10 @@ defmodule LogflareWeb.BackendsLiveTest do
         |> login_user(attacker)
         |> live_with_redirect(~p"/backends")
 
-      render_hook(view, "toggle_backend", %{"backend_id" => to_string(backend.id)})
+      render_hook(view, "toggle_backend", %{
+        "backend_id" => to_string(backend.id),
+        "enabled" => "false"
+      })
 
       assert Backends.get_backend(backend.id).enabled
     end
@@ -80,7 +83,10 @@ defmodule LogflareWeb.BackendsLiveTest do
         |> login_user(selected_team_owner, acting_team_user)
         |> live(~p"/backends?t=#{selected_team.id}")
 
-      render_hook(view, "toggle_backend", %{"backend_id" => to_string(backend.id)})
+      render_hook(view, "toggle_backend", %{
+        "backend_id" => to_string(backend.id),
+        "enabled" => "false"
+      })
 
       assert Backends.get_backend(backend.id).enabled
     end
@@ -191,6 +197,20 @@ defmodule LogflareWeb.BackendsLiveTest do
       |> render_click()
 
       assert Backends.get_backend(backend.id).enabled
+    end
+
+    test "applies the state shown by a stale toggle", %{conn: conn, source: source, user: user} do
+      backend = insert(:backend, sources: [source], user: user)
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends")
+
+      assert view |> element("#toggle-backend-#{backend.id}") |> render() =~ "Disable"
+      assert {:ok, _backend} = Backends.update_backend(backend, %{enabled: false})
+
+      view
+      |> element("#toggle-backend-#{backend.id}")
+      |> render_click()
+
+      refute Backends.get_backend(backend.id).enabled
     end
 
     test "render backends with metadata", %{conn: conn, source: source, user: user} do

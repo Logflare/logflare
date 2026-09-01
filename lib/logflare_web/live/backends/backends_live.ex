@@ -171,12 +171,17 @@ defmodule LogflareWeb.BackendsLive do
      )}
   end
 
-  def handle_event("toggle_backend", %{"backend_id" => backend_id}, socket) do
+  def handle_event(
+        "toggle_backend",
+        %{"backend_id" => backend_id, "enabled" => enabled},
+        socket
+      ) do
     effective_user = socket.assigns[:team_user] || socket.assigns.user
+    enabled? = enabled == "true"
 
     socket =
       if backend = Backends.get_backend_by_user_access(effective_user, backend_id) do
-        toggle_backend(socket, backend)
+        toggle_backend(socket, backend, enabled?)
       else
         put_flash(socket, :error, "You do not have access to that backend.")
       end
@@ -442,8 +447,14 @@ defmodule LogflareWeb.BackendsLive do
     end
   end
 
-  defp toggle_backend(socket, backend) do
-    case Backends.update_backend(backend, %{enabled: !backend.enabled}) do
+  defp toggle_backend(socket, backend, enabled?) do
+    # Use the state shown in the user's UI instead of toggling the latest database value.
+    result =
+      if backend.enabled == enabled?,
+        do: {:ok, backend},
+        else: Backends.update_backend(backend, %{enabled: enabled?})
+
+    case result do
       {:ok, updated} ->
         socket
         |> refresh_backends()

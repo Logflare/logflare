@@ -614,8 +614,7 @@ defmodule Logflare.Backends do
           {:ok, count :: non_neg_integer()} | {:error, [term()]}
   def ingest_logs(event_params, source, backend \\ nil, allow_spooling \\ false)
 
-  def ingest_logs(_event_params, _source, %Backend{enabled: false}, _allow_spooling),
-    do: {:ok, 0}
+  def ingest_logs(_params, _source, %Backend{enabled: false}, _spooling), do: {:ok, 0}
 
   def ingest_logs(event_params, source, backend, allow_spooling) do
     ensure_source_sup_started(source)
@@ -810,7 +809,7 @@ defmodule Logflare.Backends do
   end
 
   defp dispatch_to_backends(source, nil, log_events) do
-    backends = __MODULE__.Cache.list_enabled_backends(source_id: source.id)
+    backends = __MODULE__.Cache.list_backends(source_id: source.id)
 
     for backend <- [nil | backends] do
       dispatch_to_default_backend(source, backend, log_events)
