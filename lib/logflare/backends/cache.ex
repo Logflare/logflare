@@ -32,13 +32,17 @@ defmodule Logflare.Backends.Cache do
 
   def list_backends(arg), do: apply_repo_fun(__ENV__.function, [arg])
 
-  @spec list_enabled_backends(keyword()) :: [Logflare.Backends.Backend.t()]
-  def list_enabled_backends(arg),
-    do: arg |> list_backends() |> Enum.filter(&Map.get(&1, :enabled, true))
+  def list_enabled_backends(arg) do
+    # Filter the unfiltered cached list so ID-based invalidation works in both states
+    # without a separate enabled-only cache key.
+    arg
+    |> list_backends()
+    |> Enum.filter(& &1.enabled)
+  end
 
   def get_backend(arg), do: apply_repo_fun(__ENV__.function, [arg])
 
   defp apply_repo_fun(arg1, arg2) do
-    Logflare.ContextCache.apply_fun_primary(Backends, arg1, arg2)
+    Logflare.ContextCache.apply_fun(Backends, arg1, arg2)
   end
 end

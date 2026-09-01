@@ -61,36 +61,6 @@ defmodule Logflare.Backends.CacheTest do
     assert Backends.Cache.get_backend(backend.id)
   end
 
-  test "backend cache misses use the primary-backed context cache path", %{
-    backend: backend,
-    source: source
-  } do
-    reject(Logflare.ContextCache, :apply_fun, 3)
-
-    expect(Logflare.ContextCache, :apply_fun_primary, 2, fn
-      Backends, {:get_backend, 1}, [backend_id] when backend_id == backend.id ->
-        Mimic.call_original(Logflare.ContextCache, :apply_fun_primary, [
-          Backends,
-          {:get_backend, 1},
-          [backend_id]
-        ])
-
-      Backends, {:list_backends, 1}, [[source_id: source_id]]
-      when source_id == source.id ->
-        Mimic.call_original(Logflare.ContextCache, :apply_fun_primary, [
-          Backends,
-          {:list_backends, 1},
-          [[source_id: source_id]]
-        ])
-    end)
-
-    assert %{id: backend_id} = Backends.Cache.get_backend(backend.id)
-    assert backend_id == backend.id
-
-    assert [%{id: ^backend_id}] =
-             Backends.Cache.list_enabled_backends(source_id: source.id)
-  end
-
   test "list_enabled_backends/1 filters the existing unfiltered cache entry", %{
     backend: backend,
     source: source
@@ -110,18 +80,5 @@ defmodule Logflare.Backends.CacheTest do
              Backends.Cache,
              {:list_enabled_backends, [[source_id: source.id]]}
            )
-  end
-
-  test "list_enabled_backends/1 treats a legacy cached backend as enabled", %{
-    backend: backend,
-    source: source
-  } do
-    legacy_backend = Map.delete(backend, :enabled)
-    cache_key = {:list_backends, [[source_id: source.id]]}
-    Cachex.put!(Backends.Cache, cache_key, {:cached, [legacy_backend]})
-
-    assert [cached_backend] = Backends.Cache.list_enabled_backends(source_id: source.id)
-    assert cached_backend.id == backend.id
-    refute Map.has_key?(cached_backend, :enabled)
   end
 end

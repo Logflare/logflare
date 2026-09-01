@@ -32,14 +32,6 @@ defmodule Logflare.Repo do
   end
 
   @doc """
-  Applies the given MFA using the primary repo.
-  """
-  @spec apply_with_primary(module(), atom(), list()) :: term()
-  def apply_with_primary(m, f, a) do
-    with_dynamic_repo(__MODULE__, fn -> apply(m, f, a) end)
-  end
-
-  @doc """
   Applies the given MFA on a randomly selected read replica when replicas are
   configured. Always uses a replica when any are set; falls back to the primary
   repo only when no replicas are configured.

@@ -36,21 +36,6 @@ defmodule Logflare.RepoTest do
     start_result
   end
 
-  describe "apply_with_primary/3" do
-    test "uses the primary repo during execution and restores the previous repo" do
-      previous_repo = Repo.get_dynamic_repo()
-      fake_replica = Module.concat(__MODULE__, FakeReplica)
-      Repo.put_dynamic_repo(fake_replica)
-
-      try do
-        assert Repo.apply_with_primary(Repo, :get_dynamic_repo, []) == Repo
-        assert Repo.get_dynamic_repo() == fake_replica
-      after
-        Repo.put_dynamic_repo(previous_repo)
-      end
-    end
-  end
-
   describe "apply_with_replica/3" do
     test "uses default repo when replicas list is empty" do
       start_read_replicas(_no_replicas = [])

@@ -15,7 +15,6 @@ defmodule Logflare.Alerting do
   alias Logflare.Backends.Adaptor.SlackAdaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
-  alias Logflare.Backends.Backend
   alias Logflare.Cluster
   alias Logflare.Endpoints
   alias Logflare.Google.BigQuery.GCPConfig
@@ -325,10 +324,18 @@ defmodule Logflare.Alerting do
           send_slack_notification!(alert_query, results)
         end
 
-        Enum.each(
-          alert_query.backends,
-          &send_backend_alert(&1, alert_query, results)
-        )
+        for %{enabled: true} = backend <- alert_query.backends do
+          adaptor_mod = Adaptor.get_adaptor(backend)
+          adaptor_mod.send_alert(backend, alert_query, results)
+
+          OpenTelemetry.Tracer.add_event(
+            "alerting.run_alert.#{backend.type}.notification_sent",
+            %{
+              "alert.backend.id" => backend.id,
+              "alert.backend.type" => backend.type
+            }
+          )
+        end
 
         {:ok, result |> Map.from_struct() |> Map.put(:fired, true)}
 
@@ -337,26 +344,6 @@ defmodule Logflare.Alerting do
 
       other ->
         other
-    end
-  end
-
-  @spec send_backend_alert(Backend.t(), AlertQuery.t(), [term()]) :: :ok
-  defp send_backend_alert(%Backend{id: backend_id}, alert_query, results) do
-    case Repo.apply_with_primary(Backends, :get_backend, [backend_id]) do
-      %{enabled: true} = backend ->
-        adaptor_mod = Adaptor.get_adaptor(backend)
-        adaptor_mod.send_alert(backend, alert_query, results)
-
-        OpenTelemetry.Tracer.add_event(
-          "alerting.run_alert.#{backend.type}.notification_sent",
-          %{
-            "alert.backend.id" => backend.id,
-            "alert.backend.type" => backend.type
-          }
-        )
-
-      _disabled_or_deleted_backend ->
-        :ok
     end
   end
 

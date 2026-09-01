@@ -47,26 +47,11 @@ defmodule Logflare.ContextCache do
   def apply_fun(context, {fun, _arity}, args), do: apply_fun(context, fun, args)
 
   def apply_fun(context, fun, args) when is_atom(fun) do
-    apply_fun(context, fun, args, &Logflare.Repo.apply_with_replica/3)
-  end
-
-  @doc """
-  Applies a cached context function using the primary repo on cache misses.
-  """
-  @spec apply_fun_primary(module(), tuple() | atom(), list()) :: any()
-  def apply_fun_primary(context, {fun, _arity}, args), do: apply_fun_primary(context, fun, args)
-
-  def apply_fun_primary(context, fun, args) when is_atom(fun) do
-    apply_fun(context, fun, args, &Logflare.Repo.apply_with_primary/3)
-  end
-
-  @spec apply_fun(module(), atom(), list(), (module(), atom(), list() -> term())) :: any()
-  defp apply_fun(context, fun, args, repo_apply) do
     cache = cache_name(context)
     cache_key = {fun, args}
 
     fetch(cache, cache_key, fn ->
-      repo_apply.(context, fun, args)
+      Logflare.Repo.apply_with_replica(context, fun, args)
     end)
   end
 

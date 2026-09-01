@@ -242,7 +242,7 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
       assert {:ok, %{fired: true}} = Alerting.run_alert(alert_query)
     end
 
-    test "destinations disabled while an alert query runs do not receive its results", %{
+    test "alert runs use the destination state loaded before query execution", %{
       user: user,
       backend: backend
     } do
@@ -264,9 +264,10 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
       end)
 
       @client
-      |> reject(:send, 1)
+      |> expect(:send, fn _req -> %Tesla.Env{status: 202, body: ""} end)
 
       assert {:ok, %{fired: true}} = Alerting.run_alert(alert_query)
+      refute Logflare.Repo.reload!(backend).enabled
     end
   end
 end
