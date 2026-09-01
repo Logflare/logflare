@@ -57,12 +57,13 @@
             <% end %>
             {text_input(f_config, :url, class: "form-control")}
           </div>
-          <% headers_number = 2
+          <% stored_headers = input_value(f_config, :headers) || %{}
 
           fields =
-            (input_value(f_config, :headers) || %{})
+            stored_headers
+            |> Enum.sort_by(fn {key, _value} -> key end)
             |> Stream.concat(Stream.repeatedly(fn -> {"", ""} end))
-            |> Enum.take(headers_number) %>
+            |> Enum.take(max(map_size(stored_headers) + 1, 2)) %>
           <%= for {{key, val}, i} <- Enum.with_index(fields, 1) do %>
             <div class="form-group">
               {label(f_config, "header#{i}_key", "Custom header #{i} - Key")}
@@ -75,7 +76,7 @@
             </div>
           <% end %>
           <small class="form-text text-muted">
-            Headers sent with each request. For a bearer token, set the key to <code>authorization</code> and the value to <code>Bearer &lt;token&gt;</code>. Stored values show as <code>REDACTED</code>; leave them unchanged to keep them.
+            Headers sent with each request. For a bearer token, set the key to <code>authorization</code> and the value to <code>Bearer &lt;token&gt;</code>. Stored values show as <code>REDACTED</code>; leave them unchanged to keep them. Clear a key to remove the header.
           </small>
           <div class="form-group">
             {label(f_config, :format, "Payload format")}

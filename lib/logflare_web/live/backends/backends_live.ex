@@ -14,6 +14,8 @@ defmodule LogflareWeb.BackendsLive do
 
   require Logger
 
+  @header_form_key_regex ~r/^header(\d+)_(key|value)$/
+
   embed_templates("actions/*", suffix: "_action")
   embed_templates("components/*")
 
@@ -458,32 +460,45 @@ defmodule LogflareWeb.BackendsLive do
 
     params
     |> Map.update("config", nil, fn config ->
-      headers_form_keys =
-        for i <- 1..2 do
-          ["header#{i}_key", "header#{i}_value"]
-        end
-
-      {header_params, config} = Map.split(config, List.flatten(headers_form_keys))
-
-      headers =
-        for [form_key, form_value] <- headers_form_keys,
-            key = header_params[form_key],
-            key != "",
-            value = header_params[form_value],
-            into: %{} do
-          {key, value}
-        end
+      {header_params, config} = Map.split(config, header_form_keys(config))
 
       config =
         if map_size(header_params) == 0 do
           config
         else
-          Map.put(config, "headers", headers)
+          Map.put(config, "headers", build_headers(header_params))
         end
 
       transform_config_for_type(config, type)
     end)
     |> assemble_read_clusters()
+  end
+
+  @spec header_form_keys(map()) :: [String.t()]
+  defp header_form_keys(config) when is_map(config) do
+    for key <- Map.keys(config), Regex.match?(@header_form_key_regex, key), do: key
+  end
+
+  defp header_form_keys(_config), do: []
+
+  @spec build_headers(map()) :: map()
+  defp build_headers(header_params) do
+    for index <- header_form_indexes(header_params),
+        key = header_params["header#{index}_key"],
+        is_binary(key),
+        key != "",
+        into: %{} do
+      {key, header_params["header#{index}_value"]}
+    end
+  end
+
+  @spec header_form_indexes(map()) :: [String.t()]
+  defp header_form_indexes(header_params) do
+    header_params
+    |> Map.keys()
+    |> Enum.map(&Regex.run(@header_form_key_regex, &1, capture: :all_but_first))
+    |> Enum.map(fn [index, _field] -> index end)
+    |> Enum.uniq()
   end
 
   @spec assemble_read_clusters(map()) :: {:ok, map()} | {:error, String.t()}
