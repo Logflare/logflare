@@ -32,7 +32,7 @@ config :logflare_logger_backend,
 config :logflare, :spool,
   mode: :disable,
   bucket: "logflare-spool",
-  partitions: 4,
+  partitions: 1,
   compress: true,
   # Serialization format for spool files. Options: :ndjson | :etf
   # :etf encodes the whole batch as a single Erlang term — ~10x faster decode,

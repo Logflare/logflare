@@ -614,6 +614,12 @@ spool_disable_commit_io_override =
     v -> [disable_commit_io: v == "true"]
   end
 
+spool_skip_event_validation_override =
+  case System.get_env("SPOOL_SKIP_EVENT_VALIDATION") do
+    v when v in [nil, ""] -> []
+    v -> [skip_event_validation: v == "true"]
+  end
+
 spool_overrides =
   spool_mode_override ++
     spool_provider_override ++
@@ -621,6 +627,7 @@ spool_overrides =
     spool_compression_algorithm_override ++
     spool_disable_partition_append_override ++
     spool_disable_commit_io_override ++
+    spool_skip_event_validation_override ++
     if((q = System.get_env("SPOOL_QUEUE_NAME")) && q != "", do: [queue_name: q], else: []) ++
     if((t = System.get_env("SPOOL_PUBSUB_TOPIC")) && t != "", do: [pubsub_topic: t], else: []) ++
     if (b = System.get_env("SPOOL_BUCKET")) && b != "", do: [bucket: b], else: []

@@ -613,21 +613,72 @@ defmodule Logflare.Backends do
           {:ok, count :: pos_integer()} | {:error, term()}
   def ingest_logs(event_params, source, backend \\ nil, allow_spooling \\ false) do
     ensure_source_sup_started(source)
-    {log_events, errors} = split_valid_events(source, event_params)
-    count = Enum.count(log_events)
+
+    if skip_event_validation?() and allow_spooling and spool_producer_mode?() and
+         source.enable_spooling do
+      dispatch_unvalidated_to_spool_producer(event_params, source)
+    else
+      {log_events, errors} = split_valid_events(source, event_params)
+      count = Enum.count(log_events)
+      increment_counters(source, count)
+
+      result =
+        if spoolable?(log_events, source, allow_spooling) do
+          dispatch_to_spool_producer(log_events)
+        else
+          maybe_broadcast_and_route(source, log_events)
+          dispatch_to_backends(source, backend, log_events)
+          :ok
+        end
+
+      case result do
+        :ok -> if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
+        {:error, _reason} = error -> error
+      end
+    end
+  end
+
+  # EXPERIMENTAL: perf isolation switch for the CPU regression investigation
+  # on feat/spool_block_till_write. When true, the genuine spoolable path
+  # (allow_spooling, spool producer mode, source.enable_spooling) bypasses
+  # split_valid_events/2 entirely — no LogEvent.make/2 (no TypeDetection, no
+  # IngestTransformers BigQuery-column-spec cleaning, no timestamp parsing),
+  # no LQL drop-check, no future-timestamp filter, no custom event message —
+  # and hands raw event_params straight to the spool producer as minimal
+  # synthetic events: just the 6 fields Spool.Encoder.encode_raw/2 actually
+  # reads via dot-notation, which works identically on a plain map as on a
+  # real %LogEvent{}. Still compresses and writes to GCS/Pub-Sub for real.
+  # NOT consumer-compatible: `body` is the raw unnormalized param, not the
+  # BigQuery-column-spec-cleaned shape the consumer expects. Non-spooled
+  # sources and SourceRouter's re-entrant calls are unaffected. Defaults to
+  # true for this test — set SPOOL_SKIP_EVENT_VALIDATION=false (or
+  # Application.put_env) to fall back to full validation without a redeploy.
+  # Remove once the bottleneck is identified.
+  @spec skip_event_validation?() :: boolean()
+  defp skip_event_validation? do
+    :logflare |> Application.get_env(:spool, []) |> Keyword.get(:skip_event_validation, true)
+  end
+
+  @spec dispatch_unvalidated_to_spool_producer([log_param()], Source.t()) ::
+          {:ok, count :: pos_integer()} | {:error, term()}
+  defp dispatch_unvalidated_to_spool_producer(event_params, source) do
+    count = length(event_params)
     increment_counters(source, count)
 
-    result =
-      if spoolable?(log_events, source, allow_spooling) do
-        dispatch_to_spool_producer(log_events)
-      else
-        maybe_broadcast_and_route(source, log_events)
-        dispatch_to_backends(source, backend, log_events)
-        :ok
-      end
+    fake_events =
+      Enum.map(event_params, fn param ->
+        %{
+          id: Ecto.UUID.generate(),
+          source_id: source.id,
+          body: param,
+          event_type: :log,
+          ingested_at: DateTime.utc_now(),
+          via_rule_id: nil
+        }
+      end)
 
-    case result do
-      :ok -> if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
+    case dispatch_to_spool_producer(fake_events) do
+      :ok -> {:ok, count}
       {:error, _reason} = error -> error
     end
   end
