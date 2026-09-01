@@ -21,8 +21,7 @@ defmodule Logflare.Backends.Cache do
 
   @spec list_enabled_backends(keyword()) :: [Logflare.Backends.Backend.t()]
   def list_enabled_backends(arg) do
-    # Filter the unfiltered cached list so ID-based invalidation works in both states
-    # without a separate enabled-only cache key.
+    # Cache the full list so the same entry can be cleared when a backend is enabled or disabled.
     arg
     |> list_backends()
     |> Enum.filter(& &1.enabled)

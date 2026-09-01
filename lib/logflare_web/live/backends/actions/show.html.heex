@@ -23,12 +23,12 @@
           id="toggle-backend"
           phx-click="toggle_backend"
           phx-value-backend_id={@backend.id}
+          phx-value-enabled={to_string(!@backend.enabled)}
           variant={if @backend.enabled, do: "warning", else: "success"}
           class="btn-sm"
           data-confirm={
             if @backend.enabled,
-              do: "Disable this destination? New events will not be sent to it.",
-              else: nil
+              do: "Disable this destination? New events will stop being routed after the change propagates. Queued or in-flight events may still be delivered."
           }
         >
           {if @backend.enabled, do: "Disable", else: "Enable"}

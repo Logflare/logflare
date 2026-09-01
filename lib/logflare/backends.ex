@@ -711,8 +711,7 @@ defmodule Logflare.Backends do
           {:ok, count :: non_neg_integer()} | {:error, term()}
   def ingest_logs(event_params, source, backend \\ nil, allow_spooling \\ false)
 
-  def ingest_logs(_event_params, _source, %Backend{enabled: false}, _allow_spooling),
-    do: {:ok, 0}
+  def ingest_logs(_params, _source, %Backend{enabled: false}, _spooling), do: {:ok, 0}
 
   def ingest_logs(event_params, source, backend, allow_spooling) do
     with :ok <- start_for_ingest(source) do
