@@ -1,0 +1,1570 @@
+{
+  "version": 2,
+  "tool": "reach",
+  "findings": [
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:b3025f24cb933e321186afb31047f13bb61d1e2004504c304f7faec7db85f6d3",
+      "message": "guard compares parameter to literal with ==; use pattern matching in the function head",
+      "file": "lib/logflare/alerting.ex",
+      "line": 343
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:3bbc620b4baf0fa473572432c053bc720789808d8fba8901d68f56118310bca5",
+      "message": "case on boolean with true/false clauses; use if/else",
+      "file": "lib/logflare/auth.ex",
+      "line": 235
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:3bbc620b4baf0fa473572432c053bc720789808d8fba8901d68f56118310bca5",
+      "message": "case on boolean with true/false clauses; use if/else",
+      "file": "lib/logflare/auth.ex",
+      "line": 247
+    },
+    {
+      "source": "smells",
+      "kind": "manual_flat_map",
+      "fingerprint": "sha256:09a2593a1a6acbf06c903f1d0661aff796a9d05c2e49de048ceb1526cbdea86b",
+      "message": "Enum.map followed by List.flatten/1 may be Enum.flat_map/2 when the mapper returns a flat list; preserve List.flatten/1 if recursive flattening is required",
+      "file": "lib/logflare/backends.ex",
+      "line": 1166
+    },
+    {
+      "source": "smells",
+      "kind": "eager_pattern",
+      "fingerprint": "sha256:1abf27d7b6acbd67ab837c4eb9ff04c31ca81d160eb43dd04ef2438d90c89a8e",
+      "message": "Enum.map → Enum.sum allocates an intermediate list; fuse only when the callback is pure and all mapped values are summable so mapping-versus-addition failure order cannot differ",
+      "file": "lib/logflare/backends.ex",
+      "line": 1242
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:c292f23cce7ea2b0bc7b0dde2bb11d4992edd1791322268db82abae6bfd42edb",
+      "message": "`lens_no_startup_values` traversed 2 times (Enum.any?, Enum.all?); combine into a single Enum.reduce/3",
+      "file": "lib/logflare/backends.ex",
+      "line": 1247
+    },
+    {
+      "source": "smells",
+      "kind": "unsafe_atom_creation",
+      "fingerprint": "sha256:93f956466d2104ebb0755dd02906db8ea451deaf37b91fe965e0d3d4c60f3b37",
+      "message": "String.to_atom/1 on dynamic input can exhaust the atom table; use explicit mapping or String.to_existing_atom/1",
+      "file": "lib/logflare/backends/adaptor/bigquery_adaptor.ex",
+      "line": 486
+    },
+    {
+      "source": "smells",
+      "kind": "eager_pattern",
+      "fingerprint": "sha256:1abf27d7b6acbd67ab837c4eb9ff04c31ca81d160eb43dd04ef2438d90c89a8e",
+      "message": "Enum.map → Enum.sum allocates an intermediate list; fuse only when the callback is pure and all mapped values are summable so mapping-versus-addition failure order cannot differ",
+      "file": "lib/logflare/backends/adaptor/clickhouse_adaptor.ex",
+      "line": 1063
+    },
+    {
+      "source": "smells",
+      "kind": "fixed_shape_map",
+      "fingerprint": "sha256:b20f7160f0fc4a8ebfe156de6f6e26f13603a597d26200d47b8e75644cb53cef",
+      "message": "map shape [:id, :restart, :start] appears 5 times; consider a struct or explicit contract if it is domain data",
+      "file": "lib/logflare/backends/adaptor/clickhouse_adaptor/provisioner.ex",
+      "line": 18
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:71ef5333d71b54e14411344ee0a0444160375cde808acc65dfe976b8ffb424a7",
+      "message": "Keyword.get/3 with nil default is redundant; nil is already the default for Keyword.get/2",
+      "file": "lib/logflare/backends/adaptor/clickhouse_adaptor/query_templates.ex",
+      "line": 76
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:71ef5333d71b54e14411344ee0a0444160375cde808acc65dfe976b8ffb424a7",
+      "message": "Keyword.get/3 with nil default is redundant; nil is already the default for Keyword.get/2",
+      "file": "lib/logflare/backends/adaptor/clickhouse_adaptor/query_templates.ex",
+      "line": 100
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:71ef5333d71b54e14411344ee0a0444160375cde808acc65dfe976b8ffb424a7",
+      "message": "Keyword.get/3 with nil default is redundant; nil is already the default for Keyword.get/2",
+      "file": "lib/logflare/backends/adaptor/clickhouse_adaptor/query_templates.ex",
+      "line": 126
+    },
+    {
+      "source": "smells",
+      "kind": "string_building",
+      "fingerprint": "sha256:6bfed84fd4dead77e2031c1dd4c0b46f7db4c3eba805fefafeb0bb482b54d84b",
+      "message": "String concatenation around Enum.join: wrap in a list instead",
+      "file": "lib/logflare/backends/adaptor/clickhouse_adaptor/query_templates.ex",
+      "line": 364
+    },
+    {
+      "source": "smells",
+      "kind": "behaviour_candidate",
+      "fingerprint": "sha256:d8760deccf1c1818a02d87fd380e1fbfce0677ccd82d5df4ee98ccfd1f8e26f3",
+      "message": "3 modules expose the same 6 public callbacks; consider extracting a behaviour if these modules are interchangeable implementations",
+      "file": "lib/logflare/backends/adaptor/postgres_adaptor/pipeline.ex",
+      "line": 1
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare/backends/adaptor/s3_adaptor.ex",
+      "line": 259
+    },
+    {
+      "source": "smells",
+      "kind": "key_normalization_collision",
+      "fingerprint": "sha256:5b1bc7c96a48df7e83dedd211dffffad81b2172322ce38d4c2b40a5aeab68277",
+      "message": "map key normalization converts string keys to atom keys while preserving existing atom keys; equivalent keys can silently overwrite each other",
+      "file": "lib/logflare/backends/backend.ex",
+      "line": 163
+    },
+    {
+      "source": "smells",
+      "kind": "behaviour_candidate",
+      "fingerprint": "sha256:8d6888bc6361faf24b79b93c3e304eb9fa33bd17cbb7fa8287310236a8375589",
+      "message": "8 modules expose the same 3 public callbacks; consider extracting a behaviour if these modules are interchangeable implementations",
+      "file": "lib/logflare/backends/consolidated_sup_worker.ex",
+      "line": 1
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare/backends/dynamic_pipeline.ex",
+      "line": 87
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:b3025f24cb933e321186afb31047f13bb61d1e2004504c304f7faec7db85f6d3",
+      "message": "guard compares parameter to literal with ==; use pattern matching in the function head",
+      "file": "lib/logflare/backends/dynamic_pipeline.ex",
+      "line": 182
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare/backends/dynamic_pipeline.ex",
+      "line": 198
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:88ee2b0ee032f8494ca0105ea0c5e0731eceddb21e052ee9cda2cd0b91131b92",
+      "message": "Enum.filter → length: use Enum.count/2 instead",
+      "file": "lib/logflare/backends/dynamic_pipeline.ex",
+      "line": 240
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare/backends/ecto/sql_utils.ex",
+      "line": 21
+    },
+    {
+      "source": "smells",
+      "kind": "redundant_computation",
+      "fingerprint": "sha256:6467478c834f4ad6bb294a5b2f0170770d4941b4a873cb9a1619996ef15fae23",
+      "message": "length called twice with same args (line 146 and 149)",
+      "file": "lib/logflare/backends/spool/consumer_pipeline.ex",
+      "line": 149
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare/backends/spool/consumer_pipeline/queue_producer.ex",
+      "line": 524
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare/backends/spool/consumer_pipeline/queue_producer.ex",
+      "line": 625
+    },
+    {
+      "source": "smells",
+      "kind": "unsafe_binary_to_term",
+      "fingerprint": "sha256:86df172457e2f8da55b7068f7cd0ae878a1412c258ebfd9bb3ad94fa1f64a74f",
+      "message": ":erlang.binary_to_term without [:safe] can deserialize dangerous terms; pass [:safe] for untrusted input",
+      "file": "lib/logflare/backends/spool/consumer_pipeline/queue_producer.ex",
+      "line": 634
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare/backends/spool/queue/sqs.ex",
+      "line": 70
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare/backends/spool/storage/s3.ex",
+      "line": 15
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare/backends/spool/storage/s3.ex",
+      "line": 26
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare/backends/user_monitoring.ex",
+      "line": 110
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:3ec88d8491db5c5cd14e8f867dc2832ab88cad33d7d3f81af5bb218be8accf95",
+      "message": "`response` assigned then immediately returned; the assignment is unnecessary",
+      "file": "lib/logflare/billing/stripe.ex",
+      "line": 193
+    },
+    {
+      "source": "smells",
+      "kind": "unsafe_atom_creation",
+      "fingerprint": "sha256:93f956466d2104ebb0755dd02906db8ea451deaf37b91fe965e0d3d4c60f3b37",
+      "message": "String.to_atom/1 on dynamic input can exhaust the atom table; use explicit mapping or String.to_existing_atom/1",
+      "file": "lib/logflare/cluster/postgres_strategy.ex",
+      "line": 87
+    },
+    {
+      "source": "smells",
+      "kind": "unsafe_atom_creation",
+      "fingerprint": "sha256:93f956466d2104ebb0755dd02906db8ea451deaf37b91fe965e0d3d4c60f3b37",
+      "message": "String.to_atom/1 on dynamic input can exhaust the atom table; use explicit mapping or String.to_existing_atom/1",
+      "file": "lib/logflare/ecto/bigquery/bq_repo.ex",
+      "line": 85
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:8d8aae56b96ba323530010c4aea47c0822720d553da846635016a4071a7a630e",
+      "message": "++ growing accumulator inside reduce is O(n²); prepend with [item | acc] and Enum.reverse/1 after",
+      "file": "lib/logflare/ecto/bigquery/bq_repo.ex",
+      "line": 100
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare/ecto/clickhouse.ex",
+      "line": 97
+    },
+    {
+      "source": "smells",
+      "kind": "redundant_computation",
+      "fingerprint": "sha256:620d65ee0bd0c3ef927c09c8c7471ee14aa4190e518f91c88b96710a1f60ed0f",
+      "message": "Exception.message called twice with same args (line 101 and 104)",
+      "file": "lib/logflare/ecto/clickhouse.ex",
+      "line": 104
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:b3025f24cb933e321186afb31047f13bb61d1e2004504c304f7faec7db85f6d3",
+      "message": "guard compares parameter to literal with ==; use pattern matching in the function head",
+      "file": "lib/logflare/ecto/clickhouse.ex",
+      "line": 222
+    },
+    {
+      "source": "smells",
+      "kind": "eager_pattern",
+      "fingerprint": "sha256:552d9ac00485849d3723ffae64b3e5681656a00159be3a24a82626df562db455",
+      "message": "Enum.with_index/1 before Enum.reduce/3 builds index pairs eagerly; use Stream.with_index/1 only when the reducer is total and pure so interleaving cannot be observed",
+      "file": "lib/logflare/ecto/clickhouse.ex",
+      "line": 254
+    },
+    {
+      "source": "smells",
+      "kind": "eager_pattern",
+      "fingerprint": "sha256:552d9ac00485849d3723ffae64b3e5681656a00159be3a24a82626df562db455",
+      "message": "Enum.with_index/1 before Enum.reduce/3 builds index pairs eagerly; use Stream.with_index/1 only when the reducer is total and pure so interleaving cannot be observed",
+      "file": "lib/logflare/ecto/clickhouse.ex",
+      "line": 272
+    },
+    {
+      "source": "smells",
+      "kind": "eager_pattern",
+      "fingerprint": "sha256:552d9ac00485849d3723ffae64b3e5681656a00159be3a24a82626df562db455",
+      "message": "Enum.with_index/1 before Enum.reduce/3 builds index pairs eagerly; use Stream.with_index/1 only when the reducer is total and pure so interleaving cannot be observed",
+      "file": "lib/logflare/ecto/clickhouse.ex",
+      "line": 320
+    },
+    {
+      "source": "smells",
+      "kind": "string_building",
+      "fingerprint": "sha256:6bfed84fd4dead77e2031c1dd4c0b46f7db4c3eba805fefafeb0bb482b54d84b",
+      "message": "String concatenation around Enum.join: wrap in a list instead",
+      "file": "lib/logflare/ecto/clickhouse.ex",
+      "line": 521
+    },
+    {
+      "source": "smells",
+      "kind": "eager_pattern",
+      "fingerprint": "sha256:5070cafc7f66bc08e030ac210fa4309edde6cb3e5c6037c0ac94629f6aaaac0e",
+      "message": "Enum.map → Enum.join allocates an intermediate list; fuse with Enum.map_join/3 only when callbacks are pure and every mapped value converts successfully, because fusion changes callback/conversion failure order",
+      "file": "lib/logflare/ecto/clickhouse.ex",
+      "line": 529
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:687446d7c44e44970933a3aef386709b785acbf3f5ea0837a4931f719f9a768b",
+      "message": "Enum.at/2 inside loop is O(n) per call; use pattern matching, Enum.with_index/1, or convert to tuple",
+      "file": "lib/logflare/ecto/clickhouse.ex",
+      "line": 735
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:687446d7c44e44970933a3aef386709b785acbf3f5ea0837a4931f719f9a768b",
+      "message": "Enum.at/2 inside loop is O(n) per call; use pattern matching, Enum.with_index/1, or convert to tuple",
+      "file": "lib/logflare/ecto/clickhouse.ex",
+      "line": 900
+    },
+    {
+      "source": "smells",
+      "kind": "eager_pattern",
+      "fingerprint": "sha256:552d9ac00485849d3723ffae64b3e5681656a00159be3a24a82626df562db455",
+      "message": "Enum.with_index/1 before Enum.reduce/3 builds index pairs eagerly; use Stream.with_index/1 only when the reducer is total and pure so interleaving cannot be observed",
+      "file": "lib/logflare/ecto/clickhouse.ex",
+      "line": 1081
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:8d8aae56b96ba323530010c4aea47c0822720d553da846635016a4071a7a630e",
+      "message": "++ growing accumulator inside reduce is O(n²); prepend with [item | acc] and Enum.reverse/1 after",
+      "file": "lib/logflare/ecto/clickhouse/naming.ex",
+      "line": 153
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:687446d7c44e44970933a3aef386709b785acbf3f5ea0837a4931f719f9a768b",
+      "message": "Enum.at/2 inside loop is O(n) per call; use pattern matching, Enum.with_index/1, or convert to tuple",
+      "file": "lib/logflare/ecto/clickhouse/params.ex",
+      "line": 25
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:687446d7c44e44970933a3aef386709b785acbf3f5ea0837a4931f719f9a768b",
+      "message": "Enum.at/2 inside loop is O(n) per call; use pattern matching, Enum.with_index/1, or convert to tuple",
+      "file": "lib/logflare/ecto/clickhouse/params.ex",
+      "line": 28
+    },
+    {
+      "source": "smells",
+      "kind": "unsafe_binary_to_term",
+      "fingerprint": "sha256:86df172457e2f8da55b7068f7cd0ae878a1412c258ebfd9bb3ad94fa1f64a74f",
+      "message": ":erlang.binary_to_term without [:safe] can deserialize dangerous terms; pass [:safe] for untrusted input",
+      "file": "lib/logflare/ecto/ecto_lql_rules_t.ex",
+      "line": 29
+    },
+    {
+      "source": "smells",
+      "kind": "unsafe_binary_to_term",
+      "fingerprint": "sha256:86df172457e2f8da55b7068f7cd0ae878a1412c258ebfd9bb3ad94fa1f64a74f",
+      "message": ":erlang.binary_to_term without [:safe] can deserialize dangerous terms; pass [:safe] for untrusted input",
+      "file": "lib/logflare/ecto/ecto_regex_t.ex",
+      "line": 53
+    },
+    {
+      "source": "smells",
+      "kind": "unsafe_binary_to_term",
+      "fingerprint": "sha256:86df172457e2f8da55b7068f7cd0ae878a1412c258ebfd9bb3ad94fa1f64a74f",
+      "message": ":erlang.binary_to_term without [:safe] can deserialize dangerous terms; pass [:safe] for untrusted input",
+      "file": "lib/logflare/ecto/ecto_term_t.ex",
+      "line": 22
+    },
+    {
+      "source": "smells",
+      "kind": "unsafe_atom_creation",
+      "fingerprint": "sha256:93f956466d2104ebb0755dd02906db8ea451deaf37b91fe965e0d3d4c60f3b37",
+      "message": "String.to_atom/1 on dynamic input can exhaust the atom table; use explicit mapping or String.to_existing_atom/1",
+      "file": "lib/logflare/ecto/ecto_uuid_atom_t.ex",
+      "line": 13
+    },
+    {
+      "source": "smells",
+      "kind": "unsafe_atom_creation",
+      "fingerprint": "sha256:93f956466d2104ebb0755dd02906db8ea451deaf37b91fe965e0d3d4c60f3b37",
+      "message": "String.to_atom/1 on dynamic input can exhaust the atom table; use explicit mapping or String.to_existing_atom/1",
+      "file": "lib/logflare/ecto/ecto_uuid_atom_t.ex",
+      "line": 16
+    },
+    {
+      "source": "smells",
+      "kind": "unsafe_atom_creation",
+      "fingerprint": "sha256:93f956466d2104ebb0755dd02906db8ea451deaf37b91fe965e0d3d4c60f3b37",
+      "message": "String.to_atom/1 on dynamic input can exhaust the atom table; use explicit mapping or String.to_existing_atom/1",
+      "file": "lib/logflare/ecto/ecto_uuid_atom_t.ex",
+      "line": 20
+    },
+    {
+      "source": "smells",
+      "kind": "missing_external_resource",
+      "fingerprint": "sha256:bdfa5dd5d10c4aa73b9e2af9ae81c5e40f0f823e3f37b34c3835d4dac6d482e8",
+      "message": "compile-time File read of \"priv/generators/predicates.txt\" should declare matching @external_resource",
+      "file": "lib/logflare/generators.ex",
+      "line": 3
+    },
+    {
+      "source": "smells",
+      "kind": "missing_external_resource",
+      "fingerprint": "sha256:0401728c3d7a7b48a733b54d9769b16b9c7bb820190b9c5a0303197d1ba018e0",
+      "message": "compile-time File read of \"priv/generators/objects.txt\" should declare matching @external_resource",
+      "file": "lib/logflare/generators.ex",
+      "line": 4
+    },
+    {
+      "source": "smells",
+      "kind": "missing_external_resource",
+      "fingerprint": "sha256:fc1ebd7c0fa7e69e942d608dac425df3d096da33dd37368c67675bb55b2ac85b",
+      "message": "compile-time File read of \"priv/generators/teams.txt\" should declare matching @external_resource",
+      "file": "lib/logflare/generators.ex",
+      "line": 5
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:06078b37a8971ecdee5d5198c7bdadab26a57941258b7bdadade7002e7816855",
+      "message": "Enum.map/2 |> Enum.into(%{}) allocates an intermediate list; use Map.new/2 only when the mapper is pure and always returns a {key, value} pair, because fusion changes failure timing",
+      "file": "lib/logflare/google/bigquery/event_utils.ex",
+      "line": 52
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:3042b649c03bf500d8a185b2e3ae2ce1c9af66a162091daf9bf4b0415620e290",
+      "message": "Enum.into(enum, %{}): use Map.new/1",
+      "file": "lib/logflare/google/bigquery/event_utils.ex",
+      "line": 52
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:06078b37a8971ecdee5d5198c7bdadab26a57941258b7bdadade7002e7816855",
+      "message": "Enum.map/2 |> Enum.into(%{}) allocates an intermediate list; use Map.new/2 only when the mapper is pure and always returns a {key, value} pair, because fusion changes failure timing",
+      "file": "lib/logflare/google/bigquery/event_utils.ex",
+      "line": 59
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:3042b649c03bf500d8a185b2e3ae2ce1c9af66a162091daf9bf4b0415620e290",
+      "message": "Enum.into(enum, %{}): use Map.new/1",
+      "file": "lib/logflare/google/bigquery/event_utils.ex",
+      "line": 59
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:b3025f24cb933e321186afb31047f13bb61d1e2004504c304f7faec7db85f6d3",
+      "message": "guard compares parameter to literal with ==; use pattern matching in the function head",
+      "file": "lib/logflare/google/bigquery/gen_utils.ex",
+      "line": 96
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:b3025f24cb933e321186afb31047f13bb61d1e2004504c304f7faec7db85f6d3",
+      "message": "guard compares parameter to literal with ==; use pattern matching in the function head",
+      "file": "lib/logflare/google/bigquery/gen_utils.ex",
+      "line": 100
+    },
+    {
+      "source": "smells",
+      "kind": "eager_pattern",
+      "fingerprint": "sha256:5070cafc7f66bc08e030ac210fa4309edde6cb3e5c6037c0ac94629f6aaaac0e",
+      "message": "Enum.map → Enum.join allocates an intermediate list; fuse with Enum.map_join/3 only when callbacks are pure and every mapped value converts successfully, because fusion changes callback/conversion failure order",
+      "file": "lib/logflare/google/bigquery/schema_utils/schema_utils.ex",
+      "line": 160
+    },
+    {
+      "source": "smells",
+      "kind": "eager_pattern",
+      "fingerprint": "sha256:5070cafc7f66bc08e030ac210fa4309edde6cb3e5c6037c0ac94629f6aaaac0e",
+      "message": "Enum.map → Enum.join allocates an intermediate list; fuse with Enum.map_join/3 only when callbacks are pure and every mapped value converts successfully, because fusion changes callback/conversion failure order",
+      "file": "lib/logflare/google/bigquery/schema_utils/schema_utils.ex",
+      "line": 163
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:f0471d9034611fa8bffc7475e025e197f50e524a352d8756292a8b627025ccf7",
+      "message": "case returns true/false; review match?/2 only when unmatched inputs should return false rather than preserve CaseClauseError",
+      "file": "lib/logflare/google/bigquery/schema_utils/schema_utils.ex",
+      "line": 176
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare/key_values/cache_warmer.ex",
+      "line": 24
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:b3025f24cb933e321186afb31047f13bb61d1e2004504c304f7faec7db85f6d3",
+      "message": "guard compares parameter to literal with ==; use pattern matching in the function head",
+      "file": "lib/logflare/logs/ingest_transformers.ex",
+      "line": 172
+    },
+    {
+      "source": "smells",
+      "kind": "fixed_shape_map",
+      "fingerprint": "sha256:546f67f6f8958d0eaa4d15f01cfab203f95e142bc1b64077062a45fdbf57f8b7",
+      "message": "map shape [:max, :message, :min] appears 4 times; consider a struct or explicit contract if it is domain data",
+      "file": "lib/logflare/logs/search_operations/helpers.ex",
+      "line": 15
+    },
+    {
+      "source": "smells",
+      "kind": "manual_path_extension",
+      "fingerprint": "sha256:71cc5497a4010df8395a37c46627ffea482ef1d80e3bcd762c0f07c6cf8efb99",
+      "message": "manual path extension extraction; use Path.extname/1 and normalize the leading dot when needed",
+      "file": "lib/logflare/logs/search_queries.ex",
+      "line": 329
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare/logs/validators/bq_schema_change_validator.ex",
+      "line": 58
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare/logs/vercel.ex",
+      "line": 27
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare/logs/vercel/nimble_vercel_parser.ex",
+      "line": 22
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:683a36ae81f85f0846f9942f01cc2a34f7a477d6b1d3bb5a3726e5727e38d149",
+      "message": "Enum.join/1 defaults to empty separator; remove the \"\" argument",
+      "file": "lib/logflare/logs/vercel/nimble_vercel_parser.ex",
+      "line": 188
+    },
+    {
+      "source": "smells",
+      "kind": "eager_pattern",
+      "fingerprint": "sha256:5070cafc7f66bc08e030ac210fa4309edde6cb3e5c6037c0ac94629f6aaaac0e",
+      "message": "Enum.map → Enum.join allocates an intermediate list; fuse with Enum.map_join/3 only when callbacks are pure and every mapped value converts successfully, because fusion changes callback/conversion failure order",
+      "file": "lib/logflare/lql/backend_transformer/postgres.ex",
+      "line": 696
+    },
+    {
+      "source": "smells",
+      "kind": "string_building",
+      "fingerprint": "sha256:8b4d142939d125693c79bd6236dca30473b7cf2811cc359a44f21fbd53e5ea32",
+      "message": "Enum.map with interpolation piped to Enum.join: return iolists instead",
+      "file": "lib/logflare/lql/backend_transformer/postgres.ex",
+      "line": 698
+    },
+    {
+      "source": "smells",
+      "kind": "string_building",
+      "fingerprint": "sha256:867099e22c32dccb9dc352e57cbda2ceb8df7536877be40e04a40ed621f21641",
+      "message": "Enum.reduce building string with <>: O(n²) copying; use iolists or Enum.map_join",
+      "file": "lib/logflare/lql/encoder.ex",
+      "line": 36
+    },
+    {
+      "source": "smells",
+      "kind": "string_building",
+      "fingerprint": "sha256:9d66c91464fdc7189931071bdecba8cf397705843f68a5305416d72df18501c9",
+      "message": "<> inside reduce is O(n²); use iolists or Enum.map_join",
+      "file": "lib/logflare/lql/encoder.ex",
+      "line": 64
+    },
+    {
+      "source": "smells",
+      "kind": "string_building",
+      "fingerprint": "sha256:9d66c91464fdc7189931071bdecba8cf397705843f68a5305416d72df18501c9",
+      "message": "<> inside reduce is O(n²); use iolists or Enum.map_join",
+      "file": "lib/logflare/lql/encoder.ex",
+      "line": 64
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:f0489f36b5478ac70d87fabb0930d5978edf858281ef754b88786319da47f779",
+      "message": "length/1 in guard is O(n); use list pattern matching instead",
+      "file": "lib/logflare/lql/parser.ex",
+      "line": 204
+    },
+    {
+      "source": "smells",
+      "kind": "redundant_computation",
+      "fingerprint": "sha256:0ced04135aa2db79b8c963b89ac7743569d378f9d3da6ce6f1d4e66957e855a8",
+      "message": "length called twice with same args (line 204 and 206)",
+      "file": "lib/logflare/lql/parser.ex",
+      "line": 206
+    },
+    {
+      "source": "smells",
+      "kind": "redundant_computation",
+      "fingerprint": "sha256:572d5860a31804e4f3f9db802760eeacf6f960b9562bfa3e00e5d1a5fae43592",
+      "message": "NimbleParsec.string called twice with same args (line 467 and 472)",
+      "file": "lib/logflare/lql/parser/combinators.ex",
+      "line": 472
+    },
+    {
+      "source": "smells",
+      "kind": "redundant_computation",
+      "fingerprint": "sha256:94b31d1fd8656b77b2aa288c6605f80d2c9ae2328a4c801a66cecb515eedda98",
+      "message": "integer_with_range called twice with same args (line 469 and 474)",
+      "file": "lib/logflare/lql/parser/combinators.ex",
+      "line": 474
+    },
+    {
+      "source": "smells",
+      "kind": "redundant_computation",
+      "fingerprint": "sha256:4215eefa30f737836e5c63ac65833b92dab78550c5ab4ca3c483ceaf42107d83",
+      "message": "integer_with_range called twice with same args (line 487 and 492)",
+      "file": "lib/logflare/lql/parser/combinators.ex",
+      "line": 492
+    },
+    {
+      "source": "smells",
+      "kind": "redundant_computation",
+      "fingerprint": "sha256:79b3f122394f6e7ea069d7bce9ba5d7e589445df4abec4fe3143b7266f60ae17",
+      "message": "NimbleParsec.string called twice with same args (line 490 and 495)",
+      "file": "lib/logflare/lql/parser/combinators.ex",
+      "line": 495
+    },
+    {
+      "source": "smells",
+      "kind": "redundant_computation",
+      "fingerprint": "sha256:6a3ecdb7580f4f266612094d88707962286413fff29972c3030c8d0a408a7bbf",
+      "message": "integer_with_range called twice with same args (line 492 and 497)",
+      "file": "lib/logflare/lql/parser/combinators.ex",
+      "line": 497
+    },
+    {
+      "source": "smells",
+      "kind": "manual_flat_map",
+      "fingerprint": "sha256:09a2593a1a6acbf06c903f1d0661aff796a9d05c2e49de048ceb1526cbdea86b",
+      "message": "Enum.map followed by List.flatten/1 may be Enum.flat_map/2 when the mapper returns a flat list; preserve List.flatten/1 if recursive flattening is required",
+      "file": "lib/logflare/lql/rules/filter_rule.ex",
+      "line": 162
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:4d1eeccc6957858da1fa2e7fc163dbcede06f1a075cc09be9a1369b99fc2656b",
+      "message": "`timestamps` traversed 2 times (Enum.min, Enum.max); combine into a single Enum.reduce/3",
+      "file": "lib/logflare/lql/rules/filter_rule.ex",
+      "line": 172
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:13005415f07750e1014554c0aef23c94a82840490ad7041000c71bb0b549d373",
+      "message": "`select_rules` traversed 2 times (Enum.any?, Enum.find); combine into a single Enum.reduce/3",
+      "file": "lib/logflare/lql/rules/select_rule.ex",
+      "line": 93
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:b3025f24cb933e321186afb31047f13bb61d1e2004504c304f7faec7db85f6d3",
+      "message": "guard compares parameter to literal with ==; use pattern matching in the function head",
+      "file": "lib/logflare/mapper/mapping_config.ex",
+      "line": 169
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:a2270be4a6c1e7de4836d4276eb03894319da023b96f60ce7c69e467f8fbb70e",
+      "message": "redundant negated guard; the preceding clause already handles the complementary case",
+      "file": "lib/logflare/partners.ex",
+      "line": 93
+    },
+    {
+      "source": "smells",
+      "kind": "fixed_shape_map",
+      "fingerprint": "sha256:669c018d8fe6c282915456c265aeb80afd5e3340004e5e7ae74a578e50b9c918",
+      "message": "map shape [:average_rate, :last_rate, :limiter_metrics, :max_rate] appears 7 times; consider a struct or explicit contract if it is domain data",
+      "file": "lib/logflare/pubsub_rates/cache.ex",
+      "line": 126
+    },
+    {
+      "source": "smells",
+      "kind": "fixed_shape_map",
+      "fingerprint": "sha256:fd454a9eae02f403307ae52ccb0974d6ee142fa4997d73297357fd35a585b656",
+      "message": "map shape [:average, :duration, :sum] appears 6 times; consider a struct or explicit contract if it is domain data",
+      "file": "lib/logflare/pubsub_rates/cache.ex",
+      "line": 130
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:06078b37a8971ecdee5d5198c7bdadab26a57941258b7bdadade7002e7816855",
+      "message": "Enum.map/2 |> Enum.into(%{}) allocates an intermediate list; use Map.new/2 only when the mapper is pure and always returns a {key, value} pair, because fusion changes failure timing",
+      "file": "lib/logflare/pubsub_rates/cache.ex",
+      "line": 205
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:3042b649c03bf500d8a185b2e3ae2ce1c9af66a162091daf9bf4b0415620e290",
+      "message": "Enum.into(enum, %{}): use Map.new/1",
+      "file": "lib/logflare/pubsub_rates/cache.ex",
+      "line": 205
+    },
+    {
+      "source": "smells",
+      "kind": "eager_pattern",
+      "fingerprint": "sha256:1abf27d7b6acbd67ab837c4eb9ff04c31ca81d160eb43dd04ef2438d90c89a8e",
+      "message": "Enum.map → Enum.sum allocates an intermediate list; fuse only when the callback is pure and all mapped values are summable so mapping-versus-addition failure order cannot differ",
+      "file": "lib/logflare/pubsub_rates/cache.ex",
+      "line": 236
+    },
+    {
+      "source": "smells",
+      "kind": "eager_pattern",
+      "fingerprint": "sha256:1abf27d7b6acbd67ab837c4eb9ff04c31ca81d160eb43dd04ef2438d90c89a8e",
+      "message": "Enum.map → Enum.sum allocates an intermediate list; fuse only when the callback is pure and all mapped values are summable so mapping-versus-addition failure order cannot differ",
+      "file": "lib/logflare/pubsub_rates/cache.ex",
+      "line": 245
+    },
+    {
+      "source": "smells",
+      "kind": "redundant_computation",
+      "fingerprint": "sha256:c11a818553aa555ded1547fd77cc839db246a2b0fd33218a890f793d4056839f",
+      "message": "Logflare.Auth.list_valid_access_tokens called twice with same args (line 139 and 169)",
+      "file": "lib/logflare/single_tenant.ex",
+      "line": 169
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:3bbc620b4baf0fa473572432c053bc720789808d8fba8901d68f56118310bca5",
+      "message": "case on boolean with true/false clauses; use if/else",
+      "file": "lib/logflare/sources.ex",
+      "line": 297
+    },
+    {
+      "source": "smells",
+      "kind": "eager_pattern",
+      "fingerprint": "sha256:1abf27d7b6acbd67ab837c4eb9ff04c31ca81d160eb43dd04ef2438d90c89a8e",
+      "message": "Enum.map → Enum.sum allocates an intermediate list; fuse only when the callback is pure and all mapped values are summable so mapping-versus-addition failure order cannot differ",
+      "file": "lib/logflare/sources.ex",
+      "line": 725
+    },
+    {
+      "source": "smells",
+      "kind": "unsafe_atom_creation",
+      "fingerprint": "sha256:93f956466d2104ebb0755dd02906db8ea451deaf37b91fe965e0d3d4c60f3b37",
+      "message": "String.to_atom/1 on dynamic input can exhaust the atom table; use explicit mapping or String.to_existing_atom/1",
+      "file": "lib/logflare/sources/source/bigquery/pipeline.ex",
+      "line": 116
+    },
+    {
+      "source": "smells",
+      "kind": "unsafe_atom_creation",
+      "fingerprint": "sha256:93f956466d2104ebb0755dd02906db8ea451deaf37b91fe965e0d3d4c60f3b37",
+      "message": "String.to_atom/1 on dynamic input can exhaust the atom table; use explicit mapping or String.to_existing_atom/1",
+      "file": "lib/logflare/sources/source/bigquery/pipeline.ex",
+      "line": 519
+    },
+    {
+      "source": "smells",
+      "kind": "redundant_computation",
+      "fingerprint": "sha256:8e88c131c2ee9c0c6f240b8c7f242ec72f3ce5b38df6d1ce9b125c236e89ec0b",
+      "message": "length called twice with same args (line 599 and 609)",
+      "file": "lib/logflare/sources/source/bigquery/pipeline.ex",
+      "line": 609
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare/sources/source/bigquery/schema.ex",
+      "line": 223
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:6380c7de6cf80d1c8ac49287a05eac7c7db865c86a35c7a9203549ab49762a13",
+      "message": "Map.new/0 returns an empty map; use the %{} literal",
+      "file": "lib/logflare/sources/source/rate_counter_server.ex",
+      "line": 137
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:b3025f24cb933e321186afb31047f13bb61d1e2004504c304f7faec7db85f6d3",
+      "message": "guard compares parameter to literal with ==; use pattern matching in the function head",
+      "file": "lib/logflare/sources/source/rate_counter_server.ex",
+      "line": 191
+    },
+    {
+      "source": "smells",
+      "kind": "unsafe_atom_creation",
+      "fingerprint": "sha256:93f956466d2104ebb0755dd02906db8ea451deaf37b91fe965e0d3d4c60f3b37",
+      "message": "String.to_atom/1 on dynamic input can exhaust the atom table; use explicit mapping or String.to_existing_atom/1",
+      "file": "lib/logflare/sources/source/rate_counter_server.ex",
+      "line": 244
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:b3025f24cb933e321186afb31047f13bb61d1e2004504c304f7faec7db85f6d3",
+      "message": "guard compares parameter to literal with ==; use pattern matching in the function head",
+      "file": "lib/logflare/sources/source/slack_hook_server/slack_hook_server.ex",
+      "line": 86
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:b3025f24cb933e321186afb31047f13bb61d1e2004504c304f7faec7db85f6d3",
+      "message": "guard compares parameter to literal with ==; use pattern matching in the function head",
+      "file": "lib/logflare/sources/source/slack_hook_server/slack_hook_server.ex",
+      "line": 89
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:3bbc620b4baf0fa473572432c053bc720789808d8fba8901d68f56118310bca5",
+      "message": "case on boolean with true/false clauses; use if/else",
+      "file": "lib/logflare/sources/source/webhook_notification_server/webhook_notification_server.ex",
+      "line": 43
+    },
+    {
+      "source": "smells",
+      "kind": "manual_flat_map",
+      "fingerprint": "sha256:09a2593a1a6acbf06c903f1d0661aff796a9d05c2e49de048ceb1526cbdea86b",
+      "message": "Enum.map followed by List.flatten/1 may be Enum.flat_map/2 when the mapper returns a flat list; preserve List.flatten/1 if recursive flattening is required",
+      "file": "lib/logflare/sources/source_router/sequential.ex",
+      "line": 81
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:3042b649c03bf500d8a185b2e3ae2ce1c9af66a162091daf9bf4b0415620e290",
+      "message": "Enum.into(enum, %{}): use Map.new/1",
+      "file": "lib/logflare/sources/user_metrics_poller.ex",
+      "line": 128
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:6846c4ec997e476259e7e13edbf2842cc0551fa6be07faa40ea941f6260eea0c",
+      "message": "case returns false/true; review not match?/2 only when unmatched inputs should return true rather than preserve CaseClauseError",
+      "file": "lib/logflare/sql/dialect_transformer/clickhouse.ex",
+      "line": 137
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:b3025f24cb933e321186afb31047f13bb61d1e2004504c304f7faec7db85f6d3",
+      "message": "guard compares parameter to literal with ==; use pattern matching in the function head",
+      "file": "lib/logflare/sql/dialect_translation.ex",
+      "line": 663
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:687446d7c44e44970933a3aef386709b785acbf3f5ea0837a4931f719f9a768b",
+      "message": "Enum.at/2 inside loop is O(n) per call; use pattern matching, Enum.with_index/1, or convert to tuple",
+      "file": "lib/logflare/sql/dialect_translation.ex",
+      "line": 1081
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare/system_cache/warmer.ex",
+      "line": 12
+    },
+    {
+      "source": "smells",
+      "kind": "eager_pattern",
+      "fingerprint": "sha256:1abf27d7b6acbd67ab837c4eb9ff04c31ca81d160eb43dd04ef2438d90c89a8e",
+      "message": "Enum.map → Enum.sum allocates an intermediate list; fuse only when the callback is pure and all mapped values are summable so mapping-versus-addition failure order cannot differ",
+      "file": "lib/logflare/system_metrics/all_logs_logged/poller.ex",
+      "line": 33
+    },
+    {
+      "source": "smells",
+      "kind": "redundant_computation",
+      "fingerprint": "sha256:6f6e90d0b464c6112042d681ad8a927d50b3ddc3ba782b78d267332a3f3f2db2",
+      "message": ":timer.seconds called twice with same args (line 27 and 28)",
+      "file": "lib/logflare/system_metrics/system_metrics_sup.ex",
+      "line": 28
+    },
+    {
+      "source": "smells",
+      "kind": "unsafe_atom_creation",
+      "fingerprint": "sha256:93f956466d2104ebb0755dd02906db8ea451deaf37b91fe965e0d3d4c60f3b37",
+      "message": "String.to_atom/1 on dynamic input can exhaust the atom table; use explicit mapping or String.to_existing_atom/1",
+      "file": "lib/logflare/system_metrics/wobserver/helper.ex",
+      "line": 66
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:71ef5333d71b54e14411344ee0a0444160375cde808acc65dfe976b8ffb424a7",
+      "message": "Keyword.get/3 with nil default is redundant; nil is already the default for Keyword.get/2",
+      "file": "lib/logflare/system_metrics/wobserver/processes.ex",
+      "line": 228
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:71ef5333d71b54e14411344ee0a0444160375cde808acc65dfe976b8ffb424a7",
+      "message": "Keyword.get/3 with nil default is redundant; nil is already the default for Keyword.get/2",
+      "file": "lib/logflare/system_metrics/wobserver/processes.ex",
+      "line": 234
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:71ef5333d71b54e14411344ee0a0444160375cde808acc65dfe976b8ffb424a7",
+      "message": "Keyword.get/3 with nil default is redundant; nil is already the default for Keyword.get/2",
+      "file": "lib/logflare/system_metrics/wobserver/processes.ex",
+      "line": 254
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:71ef5333d71b54e14411344ee0a0444160375cde808acc65dfe976b8ffb424a7",
+      "message": "Keyword.get/3 with nil default is redundant; nil is already the default for Keyword.get/2",
+      "file": "lib/logflare/system_metrics/wobserver/processes.ex",
+      "line": 267
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:71ef5333d71b54e14411344ee0a0444160375cde808acc65dfe976b8ffb424a7",
+      "message": "Keyword.get/3 with nil default is redundant; nil is already the default for Keyword.get/2",
+      "file": "lib/logflare/system_metrics/wobserver/processes.ex",
+      "line": 273
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:71ef5333d71b54e14411344ee0a0444160375cde808acc65dfe976b8ffb424a7",
+      "message": "Keyword.get/3 with nil default is redundant; nil is already the default for Keyword.get/2",
+      "file": "lib/logflare/system_metrics/wobserver/processes.ex",
+      "line": 275
+    },
+    {
+      "source": "smells",
+      "kind": "eager_pattern",
+      "fingerprint": "sha256:1abf27d7b6acbd67ab837c4eb9ff04c31ca81d160eb43dd04ef2438d90c89a8e",
+      "message": "Enum.map → Enum.sum allocates an intermediate list; fuse only when the callback is pure and all mapped values are summable so mapping-versus-addition failure order cannot differ",
+      "file": "lib/logflare/users/api.ex",
+      "line": 85
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare/utils.ex",
+      "line": 492
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:f0471d9034611fa8bffc7475e025e197f50e524a352d8756292a8b627025ccf7",
+      "message": "case returns true/false; review match?/2 only when unmatched inputs should return false rather than preserve CaseClauseError",
+      "file": "lib/logflare/vercel/client.ex",
+      "line": 112
+    },
+    {
+      "source": "smells",
+      "kind": "fixed_shape_map",
+      "fingerprint": "sha256:35e092e19635ec8942dc9727aac3d8b81a8f61f03eb8ab8cd2fbfdd9552b9e45",
+      "message": "map shape [:key, :path, :value] appears 3 times; consider a struct or explicit contract if it is domain data",
+      "file": "lib/logflare_web/components/json_viewer_component.ex",
+      "line": 118
+    },
+    {
+      "source": "smells",
+      "kind": "behaviour_candidate",
+      "fingerprint": "sha256:43d5d7cea65a0acc84a9477a203efbc0e5a491f977a6216ac04e0a22525f95c5",
+      "message": "4 modules expose the same 5 public callbacks; consider extracting a behaviour if these modules are interchangeable implementations",
+      "file": "lib/logflare_web/controllers/api/alert_controller.ex",
+      "line": 1
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:7f7b30a7a46723a326121ca145740d0ba197e65b8f479b02a21aaf2bfcd2e488",
+      "message": "Map.values/1 → Enum.all?: iterate the map directly as {key, value} pairs",
+      "file": "lib/logflare_web/controllers/health_check_controller.ex",
+      "line": 34
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare_web/controllers/log_controller.ex",
+      "line": 269
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare_web/controllers/log_controller.ex",
+      "line": 284
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare_web/controllers/log_controller.ex",
+      "line": 299
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare_web/controllers/plugs/bert_parser.ex",
+      "line": 31
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:b3025f24cb933e321186afb31047f13bb61d1e2004504c304f7faec7db85f6d3",
+      "message": "guard compares parameter to literal with ==; use pattern matching in the function head",
+      "file": "lib/logflare_web/controllers/plugs/fetch_resource.ex",
+      "line": 78
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:f0471d9034611fa8bffc7475e025e197f50e524a352d8756292a8b627025ccf7",
+      "message": "case returns true/false; review match?/2 only when unmatched inputs should return false rather than preserve CaseClauseError",
+      "file": "lib/logflare_web/controllers/plugs/fetch_resource.ex",
+      "line": 101
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare_web/controllers/plugs/json_parser.ex",
+      "line": 36
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare_web/controllers/plugs/ndjson_parser.ex",
+      "line": 52
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare_web/controllers/plugs/protobuf_parser.ex",
+      "line": 40
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare_web/controllers/plugs/protobuf_parser.ex",
+      "line": 49
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare_web/controllers/plugs/syslog_parser.ex",
+      "line": 59
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:3042b649c03bf500d8a185b2e3ae2ce1c9af66a162091daf9bf4b0415620e290",
+      "message": "Enum.into(enum, %{}): use Map.new/1",
+      "file": "lib/logflare_web/controllers/plugs/verify_api_access.ex",
+      "line": 20
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:b3025f24cb933e321186afb31047f13bb61d1e2004504c304f7faec7db85f6d3",
+      "message": "guard compares parameter to literal with ==; use pattern matching in the function head",
+      "file": "lib/logflare_web/controllers/plugs/verify_api_access.ex",
+      "line": 42
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:b3025f24cb933e321186afb31047f13bb61d1e2004504c304f7faec7db85f6d3",
+      "message": "guard compares parameter to literal with ==; use pattern matching in the function head",
+      "file": "lib/logflare_web/controllers/plugs/verify_api_access.ex",
+      "line": 104
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:b3025f24cb933e321186afb31047f13bb61d1e2004504c304f7faec7db85f6d3",
+      "message": "guard compares parameter to literal with ==; use pattern matching in the function head",
+      "file": "lib/logflare_web/controllers/plugs/verify_api_access.ex",
+      "line": 105
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:b3025f24cb933e321186afb31047f13bb61d1e2004504c304f7faec7db85f6d3",
+      "message": "guard compares parameter to literal with ==; use pattern matching in the function head",
+      "file": "lib/logflare_web/controllers/plugs/verify_api_access.ex",
+      "line": 106
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:687446d7c44e44970933a3aef386709b785acbf3f5ea0837a4931f719f9a768b",
+      "message": "Enum.at/2 inside loop is O(n) per call; use pattern matching, Enum.with_index/1, or convert to tuple",
+      "file": "lib/logflare_web/live/access_tokens_live.ex",
+      "line": 59
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:687446d7c44e44970933a3aef386709b785acbf3f5ea0837a4931f719f9a768b",
+      "message": "Enum.at/2 inside loop is O(n) per call; use pattern matching, Enum.with_index/1, or convert to tuple",
+      "file": "lib/logflare_web/live/access_tokens_live.ex",
+      "line": 63
+    },
+    {
+      "source": "smells",
+      "kind": "unsafe_atom_creation",
+      "fingerprint": "sha256:93f956466d2104ebb0755dd02906db8ea451deaf37b91fe965e0d3d4c60f3b37",
+      "message": "String.to_atom/1 on dynamic input can exhaust the atom table; use explicit mapping or String.to_existing_atom/1",
+      "file": "lib/logflare_web/live/alert_component.ex",
+      "line": 25
+    },
+    {
+      "source": "smells",
+      "kind": "redundant_computation",
+      "fingerprint": "sha256:c5bb1743feebe3fa101154b38c6a8bb8fdc3f3980a881ed05b2cff59a7589eb2",
+      "message": "Map.new called twice with same args (line 1 and 7)",
+      "file": "lib/logflare_web/live/alerts/actions/edit.html.heex",
+      "line": 7
+    },
+    {
+      "source": "smells",
+      "kind": "redundant_computation",
+      "fingerprint": "sha256:595f9ed5db7dc29d69ab1efd6a1db81b79b4edf0680bfa9b38d1dee5d20b8afc",
+      "message": "Map.new called twice with same args (line 7 and 11)",
+      "file": "lib/logflare_web/live/alerts/actions/edit.html.heex",
+      "line": 11
+    },
+    {
+      "source": "smells",
+      "kind": "behaviour_candidate",
+      "fingerprint": "sha256:43d5d7cea65a0acc84a9477a203efbc0e5a491f977a6216ac04e0a22525f95c5",
+      "message": "4 modules expose the same 5 public callbacks; consider extracting a behaviour if these modules are interchangeable implementations",
+      "file": "lib/logflare_web/live/alerts/alerts_live.ex",
+      "line": 1
+    },
+    {
+      "source": "smells",
+      "kind": "redundant_computation",
+      "fingerprint": "sha256:5c83cacf88e8d0ee6c01ffcddeed9fd455fab1ef5d8e595ff480c7ffa4981ed1",
+      "message": "Map.new called twice with same args (line 1 and 11)",
+      "file": "lib/logflare_web/live/backends/actions/edit.html.heex",
+      "line": 11
+    },
+    {
+      "source": "smells",
+      "kind": "string_building",
+      "fingerprint": "sha256:8b4d142939d125693c79bd6236dca30473b7cf2811cc359a44f21fbd53e5ea32",
+      "message": "Enum.map with interpolation piped to Enum.join: return iolists instead",
+      "file": "lib/logflare_web/live/backends/components/backend_form.heex",
+      "line": 316
+    },
+    {
+      "source": "smells",
+      "kind": "unsafe_atom_creation",
+      "fingerprint": "sha256:93f956466d2104ebb0755dd02906db8ea451deaf37b91fe965e0d3d4c60f3b37",
+      "message": "String.to_atom/1 on dynamic input can exhaust the atom table; use explicit mapping or String.to_existing_atom/1",
+      "file": "lib/logflare_web/live/billingaccount_live/edit.html.heex",
+      "line": 198
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "lib/logflare_web/live/dev/dashboard_live.ex",
+      "line": 169
+    },
+    {
+      "source": "smells",
+      "kind": "identity_float_coercion",
+      "fingerprint": "sha256:4d5720161b9464302d6fe6bb8ec05e403a3da05998ad104cfa74409c91e9ec03",
+      "message": "identity float arithmetic with * is unnecessary; remove the neutral float operand or use :erlang.float/1 for explicit coercion",
+      "file": "lib/logflare_web/live/dev/dashboard_live.ex",
+      "line": 321
+    },
+    {
+      "source": "smells",
+      "kind": "redundant_computation",
+      "fingerprint": "sha256:5c83cacf88e8d0ee6c01ffcddeed9fd455fab1ef5d8e595ff480c7ffa4981ed1",
+      "message": "Map.new called twice with same args (line 1 and 11)",
+      "file": "lib/logflare_web/live/endpoints/actions/edit.html.heex",
+      "line": 11
+    },
+    {
+      "source": "smells",
+      "kind": "redundant_computation",
+      "fingerprint": "sha256:da05b45eacd464e0795b2d76ef2b3c5844495ef5c177c60b17ebfb8fd3e18dac",
+      "message": "Map.new called twice with same args (line 5 and 6)",
+      "file": "lib/logflare_web/live/endpoints/actions/index.html.heex",
+      "line": 6
+    },
+    {
+      "source": "smells",
+      "kind": "redundant_computation",
+      "fingerprint": "sha256:a3d5d251cdf00a30a19038504cd4ce2c111e73ec1ca6e0268e9c209bc12d95fc",
+      "message": "Map.new called twice with same args (line 45 and 46)",
+      "file": "lib/logflare_web/live/endpoints/actions/show.html.heex",
+      "line": 46
+    },
+    {
+      "source": "smells",
+      "kind": "string_building",
+      "fingerprint": "sha256:8b4d142939d125693c79bd6236dca30473b7cf2811cc359a44f21fbd53e5ea32",
+      "message": "Enum.map with interpolation piped to Enum.join: return iolists instead",
+      "file": "lib/logflare_web/live/endpoints/actions/show.html.heex",
+      "line": 60
+    },
+    {
+      "source": "smells",
+      "kind": "string_building",
+      "fingerprint": "sha256:8b4d142939d125693c79bd6236dca30473b7cf2811cc359a44f21fbd53e5ea32",
+      "message": "Enum.map with interpolation piped to Enum.join: return iolists instead",
+      "file": "lib/logflare_web/live/endpoints/actions/show.html.heex",
+      "line": 68
+    },
+    {
+      "source": "smells",
+      "kind": "string_building",
+      "fingerprint": "sha256:8b4d142939d125693c79bd6236dca30473b7cf2811cc359a44f21fbd53e5ea32",
+      "message": "Enum.map with interpolation piped to Enum.join: return iolists instead",
+      "file": "lib/logflare_web/live/endpoints/actions/show.html.heex",
+      "line": 77
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:c0fd6fc0b3a415995ac037e7c4bcc7c13ddaec5da78941d4be2d865df12dd401",
+      "message": "Map.keys/1 → Enum.join: iterate the map directly or map_join key/value pairs",
+      "file": "lib/logflare_web/live/endpoints/components.ex",
+      "line": 126
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:683a36ae81f85f0846f9942f01cc2a34f7a477d6b1d3bb5a3726e5727e38d149",
+      "message": "Enum.join/1 defaults to empty separator; remove the \"\" argument",
+      "file": "lib/logflare_web/live/endpoints/components.ex",
+      "line": 126
+    },
+    {
+      "source": "smells",
+      "kind": "redundant_computation",
+      "fingerprint": "sha256:59317a7c61c3c8e31a283a23f1d2410dd562c7334f8becbb054e7839d4f57641",
+      "message": "Map.new called twice with same args (line 185 and 186)",
+      "file": "lib/logflare_web/live/endpoints/components/endpoint_form.html.heex",
+      "line": 186
+    },
+    {
+      "source": "smells",
+      "kind": "redundant_computation",
+      "fingerprint": "sha256:c32d6bd8eb891e6e47820d09dfa14a48bfde24ff7f2fd48eddad1b246007e73c",
+      "message": "version_number called twice with same args (line 105 and 106)",
+      "file": "lib/logflare_web/live/endpoints/endpoints_versions_live.ex",
+      "line": 106
+    },
+    {
+      "source": "smells",
+      "kind": "behaviour_candidate",
+      "fingerprint": "sha256:dede03010724511e668ea7c252af024eab4a8f7af257e2ccdac65e4b3ea99313",
+      "message": "3 modules expose the same 3 public callbacks; consider extracting a behaviour if these modules are interchangeable implementations",
+      "file": "lib/logflare_web/live/global_log_metrics_lv.ex",
+      "line": 1
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:b3025f24cb933e321186afb31047f13bb61d1e2004504c304f7faec7db85f6d3",
+      "message": "guard compares parameter to literal with ==; use pattern matching in the function head",
+      "file": "lib/logflare_web/live/modal_component.ex",
+      "line": 71
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:b3025f24cb933e321186afb31047f13bb61d1e2004504c304f7faec7db85f6d3",
+      "message": "guard compares parameter to literal with ==; use pattern matching in the function head",
+      "file": "lib/logflare_web/live/monaco_editor_component.ex",
+      "line": 39
+    },
+    {
+      "source": "smells",
+      "kind": "eager_pattern",
+      "fingerprint": "sha256:5070cafc7f66bc08e030ac210fa4309edde6cb3e5c6037c0ac94629f6aaaac0e",
+      "message": "Enum.map → Enum.join allocates an intermediate list; fuse with Enum.map_join/3 only when callbacks are pure and every mapped value converts successfully, because fusion changes callback/conversion failure order",
+      "file": "lib/logflare_web/live/search_live/log_event_components.ex",
+      "line": 162
+    },
+    {
+      "source": "smells",
+      "kind": "manual_path_extension",
+      "fingerprint": "sha256:71cc5497a4010df8395a37c46627ffea482ef1d80e3bcd762c0f07c6cf8efb99",
+      "message": "manual path extension extraction; use Path.extname/1 and normalize the leading dot when needed",
+      "file": "lib/logflare_web/live/search_live/log_event_components.ex",
+      "line": 284
+    },
+    {
+      "source": "smells",
+      "kind": "unsafe_atom_creation",
+      "fingerprint": "sha256:93f956466d2104ebb0755dd02906db8ea451deaf37b91fe965e0d3d4c60f3b37",
+      "message": "String.to_atom/1 on dynamic input can exhaust the atom table; use explicit mapping or String.to_existing_atom/1",
+      "file": "lib/logflare_web/live/search_live/logs_search_lv.ex",
+      "line": 453
+    },
+    {
+      "source": "smells",
+      "kind": "eager_pattern",
+      "fingerprint": "sha256:552d9ac00485849d3723ffae64b3e5681656a00159be3a24a82626df562db455",
+      "message": "Enum.with_index/1 before Enum.reduce/3 builds index pairs eagerly; use Stream.with_index/1 only when the reducer is total and pure so interleaving cannot be observed",
+      "file": "lib/logflare_web/live/search_live/logs_search_lv.ex",
+      "line": 798
+    },
+    {
+      "source": "smells",
+      "kind": "eager_pattern",
+      "fingerprint": "sha256:5070cafc7f66bc08e030ac210fa4309edde6cb3e5c6037c0ac94629f6aaaac0e",
+      "message": "Enum.map → Enum.join allocates an intermediate list; fuse with Enum.map_join/3 only when callbacks are pure and every mapped value converts successfully, because fusion changes callback/conversion failure order",
+      "file": "lib/logflare_web/live/search_live/logs_search_lv.ex",
+      "line": 1281
+    },
+    {
+      "source": "smells",
+      "kind": "eager_pattern",
+      "fingerprint": "sha256:5070cafc7f66bc08e030ac210fa4309edde6cb3e5c6037c0ac94629f6aaaac0e",
+      "message": "Enum.map → Enum.join allocates an intermediate list; fuse with Enum.map_join/3 only when callbacks are pure and every mapped value converts successfully, because fusion changes callback/conversion failure order",
+      "file": "lib/logflare_web/live/search_live/logs_search_lv.ex",
+      "line": 1309
+    },
+    {
+      "source": "smells",
+      "kind": "unsafe_atom_creation",
+      "fingerprint": "sha256:93f956466d2104ebb0755dd02906db8ea451deaf37b91fe965e0d3d4c60f3b37",
+      "message": "String.to_atom/1 on dynamic input can exhaust the atom table; use explicit mapping or String.to_existing_atom/1",
+      "file": "lib/logflare_web/live/search_live/subhead_components.ex",
+      "line": 136
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:687446d7c44e44970933a3aef386709b785acbf3f5ea0837a4931f719f9a768b",
+      "message": "Enum.at/2 inside loop is O(n) per call; use pattern matching, Enum.with_index/1, or convert to tuple",
+      "file": "lib/logflare_web/live/vercellogdrains_live/index.ex",
+      "line": 228
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:687446d7c44e44970933a3aef386709b785acbf3f5ea0837a4931f719f9a768b",
+      "message": "Enum.at/2 inside loop is O(n) per call; use pattern matching, Enum.with_index/1, or convert to tuple",
+      "file": "lib/logflare_web/live/vercellogdrains_live/index.ex",
+      "line": 229
+    },
+    {
+      "source": "smells",
+      "kind": "unsafe_atom_creation",
+      "fingerprint": "sha256:93f956466d2104ebb0755dd02906db8ea451deaf37b91fe965e0d3d4c60f3b37",
+      "message": "String.to_atom/1 on dynamic input can exhaust the atom table; use explicit mapping or String.to_existing_atom/1",
+      "file": "lib/logflare_web/open_telemetry_sampler.ex",
+      "line": 87
+    },
+    {
+      "source": "smells",
+      "kind": "eager_pattern",
+      "fingerprint": "sha256:5070cafc7f66bc08e030ac210fa4309edde6cb3e5c6037c0ac94629f6aaaac0e",
+      "message": "Enum.map → Enum.join allocates an intermediate list; fuse with Enum.map_join/3 only when callbacks are pure and every mapped value converts successfully, because fusion changes callback/conversion failure order",
+      "file": "lib/logflare_web/utils.ex",
+      "line": 64
+    },
+    {
+      "source": "smells",
+      "kind": "string_building",
+      "fingerprint": "sha256:8b4d142939d125693c79bd6236dca30473b7cf2811cc359a44f21fbd53e5ea32",
+      "message": "Enum.map with interpolation piped to Enum.join: return iolists instead",
+      "file": "lib/logflare_web/utils.ex",
+      "line": 67
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:b3025f24cb933e321186afb31047f13bb61d1e2004504c304f7faec7db85f6d3",
+      "message": "guard compares parameter to literal with ==; use pattern matching in the function head",
+      "file": "lib/logflare_web/utils.ex",
+      "line": 117
+    },
+    {
+      "source": "smells",
+      "kind": "string_building",
+      "fingerprint": "sha256:9d66c91464fdc7189931071bdecba8cf397705843f68a5305416d72df18501c9",
+      "message": "<> inside reduce is O(n²); use iolists or Enum.map_join",
+      "file": "lib/logflare_web/utils.ex",
+      "line": 161
+    },
+    {
+      "source": "smells",
+      "kind": "string_building",
+      "fingerprint": "sha256:9d66c91464fdc7189931071bdecba8cf397705843f68a5305416d72df18501c9",
+      "message": "<> inside reduce is O(n²); use iolists or Enum.map_join",
+      "file": "lib/logflare_web/utils.ex",
+      "line": 161
+    },
+    {
+      "source": "smells",
+      "kind": "bare_rescue",
+      "fingerprint": "sha256:266788b507c29d5a23bfba2a24604f1271a037512430bb4d6c8647a37c2c536b",
+      "message": "bare rescue catches every exception type; rescue specific exception modules or use `exception in [...]`",
+      "file": "test/support/data_case.ex",
+      "line": 229
+    },
+    {
+      "source": "smells",
+      "kind": "string_building",
+      "fingerprint": "sha256:9d66c91464fdc7189931071bdecba8cf397705843f68a5305416d72df18501c9",
+      "message": "<> inside reduce is O(n²); use iolists or Enum.map_join",
+      "file": "test/support/profiling.ex",
+      "line": 106
+    },
+    {
+      "source": "smells",
+      "kind": "unsafe_atom_creation",
+      "fingerprint": "sha256:93f956466d2104ebb0755dd02906db8ea451deaf37b91fe965e0d3d4c60f3b37",
+      "message": "String.to_atom/1 on dynamic input can exhaust the atom table; use explicit mapping or String.to_existing_atom/1",
+      "file": "test/support/test_utils.ex",
+      "line": 143
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:ffe9fb4f1e223c0d45aa28b292019bd95d02725ce00a55038de633c3ce19f09e",
+      "message": "`scope_spans` assigned then immediately returned; the assignment is unnecessary",
+      "file": "test/support/test_utils_grpc.ex",
+      "line": 72
+    },
+    {
+      "source": "smells",
+      "kind": "redundant_computation",
+      "fingerprint": "sha256:ca531c196afa41108ba065327b8daa7f6d7a5ff8239d2f664cea81092e4b2359",
+      "message": ":crypto.strong_rand_bytes called twice with same args (line 84 and 85)",
+      "file": "test/support/test_utils_grpc.ex",
+      "line": 85
+    },
+    {
+      "source": "smells",
+      "kind": "redundant_computation",
+      "fingerprint": "sha256:1f154600b99d1763dd3752d05653fdc40645725b06d041812f978bcf53c27923",
+      "message": ":crypto.strong_rand_bytes called twice with same args (line 110 and 111)",
+      "file": "test/support/test_utils_grpc.ex",
+      "line": 111
+    },
+    {
+      "source": "smells",
+      "kind": "identity_float_coercion",
+      "fingerprint": "sha256:4d5720161b9464302d6fe6bb8ec05e403a3da05998ad104cfa74409c91e9ec03",
+      "message": "identity float arithmetic with * is unnecessary; remove the neutral float operand or use :erlang.float/1 for explicit coercion",
+      "file": "test/support/test_utils_grpc.ex",
+      "line": 382
+    },
+    {
+      "source": "smells",
+      "kind": "suboptimal",
+      "fingerprint": "sha256:f44d59f377fcb4b155c70cdef0218f52fd3f37bbc3e291d3b8517af61a17cfe2",
+      "message": "list destructured into [head, replace, tail] then reassembled; bind as a whole with `= name`",
+      "file": "unknown",
+      "line": null
+    }
+  ],
+  "scopes": {
+    "smells": {
+      "mix_env": "test",
+      "source": "mix",
+      "source_roots": [
+        "lib",
+        "src",
+        "test/support"
+      ],
+      "file_count": 579
+    }
+  }
+}

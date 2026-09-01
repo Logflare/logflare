@@ -226,6 +226,10 @@ defmodule Logflare.Mixfile do
       # Code quality
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
       {:sobelow, "~> 0.14.1", only: [:dev, :test], runtime: false},
+      {:ex_slop, "~> 0.4", only: [:dev, :test], runtime: false},
+      {:ex_dna, "~> 1.5", only: [:dev, :test], runtime: false},
+      {:reach, "~> 2.8", only: [:dev, :test], runtime: false},
+      {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.10", only: :test},
 
       # Charting
@@ -278,6 +282,11 @@ defmodule Logflare.Mixfile do
       "test.compile": ["compile --warnings-as-errors"],
       "test.format": ["format --check-formatted"],
       "test.security": ["sobelow --threshold high --ignore Config.HTTPS"],
+      "test.slop": ["ex_dna --max-clones 29"],
+      "test.structure": [
+        "reach.check --smells --strict --baseline .reach.baseline.json"
+      ],
+      "test.deps": ["hex.audit", "deps.audit"],
       "test.typings": ["cmd mkdir -p dialyzer", "dialyzer"],
       "test.coverage": ["coveralls"],
       "test.coverage.ci": ["coveralls.lcov"],
@@ -285,6 +294,14 @@ defmodule Logflare.Mixfile do
       lint: ["credo"],
       "lint.diff": ["credo diff main"],
       "lint.all": ["credo --strict"],
+      ci: [
+        "test.compile",
+        "test.format",
+        "lint.all",
+        "test.security",
+        "test.slop",
+        "test.structure"
+      ],
       "ecto.seed": ["run priv/repo/seeds.exs"],
       "ecto.setup": ["ecto.create", "ecto.migrate"],
       "ecto.reset": ["ecto.drop", "ecto.setup"]
