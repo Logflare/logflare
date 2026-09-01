@@ -34,9 +34,8 @@ defmodule Logflare.Mapper.OutputContext do
   Builds the per-row context required by NDJSON output.
 
   `mapping_config_id` is emitted as the UUID string. `ingested_at` is emitted
-  as Unix **nanoseconds** (or `null`), which is the wire contract for
-  consumers parsing the JSON; note that the RowBinary context uses
-  microseconds to match ClickHouse's `DateTime64(6)` column.
+  as Unix **microseconds** (or `null`), matching the microsecond precision of
+  the mapped timestamp fields in NDJSON output.
   """
   @spec ndjson(LogEvent.t(), String.t()) :: t()
   def ndjson(
@@ -49,7 +48,7 @@ defmodule Logflare.Mapper.OutputContext do
         mapping_config_id
       )
       when is_binary(mapping_config_id) do
-    ingested_at = if ingested_at, do: DateTime.to_unix(ingested_at, :nanosecond)
+    ingested_at = if ingested_at, do: DateTime.to_unix(ingested_at, :microsecond)
     source_uuid = if is_atom(source_uuid), do: Atom.to_string(source_uuid), else: source_uuid
 
     {:ndjson, mapping_config_id, {id, source_uuid, source_name || "", ingested_at}}

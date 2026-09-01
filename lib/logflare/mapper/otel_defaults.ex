@@ -35,13 +35,27 @@ defmodule Logflare.Mapper.OtelDefaults do
   @doc """
   Returns the default config for `event_type` targeting `output_format`.
 
+  `:ndjson` narrows timestamp fields to microsecond precision (the unit its
+  consumers store, e.g. Iceberg `timestamptz` columns), so emitted integers —
+  including derived spans such as trace `duration` — are in microseconds.
   `:map` drops the output so the compiled mapping returns a plain map.
   """
   @spec for_type(TypeDetection.event_type(), output_format()) :: MappingConfig.t()
   def for_type(event_type, :ch_row_binary), do: for_type(event_type)
 
   def for_type(event_type, :ndjson) do
-    %{for_type(event_type) | output: OutputFormat.ndjson(event_type)}
+    config = for_type(event_type)
+
+    fields =
+      Enum.map(config.fields, fn
+        %Field{type: type} = field when type in ["datetime64", "array_datetime64"] ->
+          %{field | precision: 6}
+
+        field ->
+          field
+      end)
+
+    %{config | fields: fields, output: OutputFormat.ndjson(event_type)}
   end
 
   def for_type(event_type, :map), do: %{for_type(event_type) | output: nil}
