@@ -1,5 +1,5 @@
 defmodule Logflare.TelemetryTest do
-  use Logflare.DataCase, async: true
+  use Logflare.DataCase, async: false
 
   alias Logflare.SystemMetrics.Observer
   alias Logflare.SystemMetrics.Schedulers
