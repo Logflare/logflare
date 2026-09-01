@@ -71,11 +71,15 @@ defmodule Logflare.Backends.Spool.Committer do
 
     {io_us, result} =
       :timer.tc(fn ->
-        with {:upload, {:ok, _}} <-
-               {:upload, state.storage_mod.put(state.bucket, file_key, body, headers(state))},
-             {:notify, :ok} <-
-               {:notify, notify_queue(state, file_key, total_count)} do
+        if disable_commit_io?() do
           {:ok, file_key}
+        else
+          with {:upload, {:ok, _}} <-
+                 {:upload, state.storage_mod.put(state.bucket, file_key, body, headers(state))},
+               {:notify, :ok} <-
+                 {:notify, notify_queue(state, file_key, total_count)} do
+            {:ok, file_key}
+          end
         end
       end)
 
@@ -179,6 +183,18 @@ defmodule Logflare.Backends.Spool.Committer do
   defp spool_max_retries do
     Application.get_env(:logflare, :spool, [])
     |> Keyword.get(:max_retries, @default_max_retries)
+  end
+
+  # TEMP: perf isolation switch for the CPU regression investigation on
+  # feat/spool_block_till_write. When true, skips the actual
+  # storage_mod.put/4 (GCS/S3) upload and queue_mod.publish/2 (Pub-Sub/SQS)
+  # call, and just replies :ok to every blocking caller as if the commit
+  # succeeded — the concat/framing work above still runs. Lets us measure
+  # committer overhead with the network I/O out of the picture. Remove once
+  # the bottleneck is identified.
+  @spec disable_commit_io?() :: boolean()
+  defp disable_commit_io? do
+    Application.get_env(:logflare, :spool, []) |> Keyword.get(:disable_commit_io, false)
   end
 
   defp emit_storage_put_telemetry(format, bytes, result, encode_us, upload_us) do

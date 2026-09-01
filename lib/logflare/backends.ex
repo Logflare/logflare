@@ -667,29 +667,46 @@ defmodule Logflare.Backends do
 
     event_count = length(log_events)
 
-    case SpoolPartitionSupervisor.random_partition() do
-      nil ->
-        {:error, :no_spool_partition_available}
+    # TEMP: perf isolation switch — see disable_partition_append?/0.
+    if disable_partition_append?() do
+      :ok
+    else
+      case SpoolPartitionSupervisor.random_partition() do
+        nil ->
+          {:error, :no_spool_partition_available}
 
-      partition ->
-        if blocking_ingest?() do
-          SpoolPartition.append(
-            partition,
-            segment,
-            byte_size,
-            event_count,
-            @default_spool_append_timeout
-          )
-        else
-          SpoolPartition.append_async(partition, segment, byte_size, event_count)
-          :ok
-        end
+        partition ->
+          if blocking_ingest?() do
+            SpoolPartition.append(
+              partition,
+              segment,
+              byte_size,
+              event_count,
+              @default_spool_append_timeout
+            )
+          else
+            SpoolPartition.append_async(partition, segment, byte_size, event_count)
+            :ok
+          end
+      end
     end
   end
 
   @spec blocking_ingest?() :: boolean()
   defp blocking_ingest? do
     :logflare |> Application.get_env(:spool, []) |> Keyword.get(:blocking_ingest, false)
+  end
+
+  # TEMP: perf isolation switch for the CPU regression investigation on
+  # feat/spool_block_till_write. When true, skips the SpoolPartition
+  # append/append_async case entirely right after encoding — the chunk is
+  # encoded (and optionally compressed) but never handed to a Partition, so
+  # it's silently dropped. Lets us measure encode-only CPU cost with the
+  # Partition/Committer/GCS/PubSub path fully out of the picture. Remove once
+  # the bottleneck is identified.
+  @spec disable_partition_append?() :: boolean()
+  defp disable_partition_append? do
+    :logflare |> Application.get_env(:spool, []) |> Keyword.get(:disable_partition_append, false)
   end
 
   # Requires an explicit opt-in (allow_spooling), not just global mode +
