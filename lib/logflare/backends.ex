@@ -618,23 +618,29 @@ defmodule Logflare.Backends do
          source.enable_spooling do
       dispatch_unvalidated_to_spool_producer(event_params, source)
     else
-      {log_events, errors} = split_valid_events(source, event_params)
-      count = Enum.count(log_events)
-      increment_counters(source, count)
+      dispatch_validated_logs(event_params, source, backend, allow_spooling)
+    end
+  end
 
-      result =
-        if spoolable?(log_events, source, allow_spooling) do
-          dispatch_to_spool_producer(log_events)
-        else
-          maybe_broadcast_and_route(source, log_events)
-          dispatch_to_backends(source, backend, log_events)
-          :ok
-        end
+  @spec dispatch_validated_logs([log_param()], Source.t(), Backend.t() | nil, boolean()) ::
+          {:ok, count :: pos_integer()} | {:error, term()}
+  defp dispatch_validated_logs(event_params, source, backend, allow_spooling) do
+    {log_events, errors} = split_valid_events(source, event_params)
+    count = Enum.count(log_events)
+    increment_counters(source, count)
 
-      case result do
-        :ok -> if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
-        {:error, _reason} = error -> error
+    result =
+      if spoolable?(log_events, source, allow_spooling) do
+        dispatch_to_spool_producer(log_events)
+      else
+        maybe_broadcast_and_route(source, log_events)
+        dispatch_to_backends(source, backend, log_events)
+        :ok
       end
+
+    case result do
+      :ok -> if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
+      {:error, _reason} = error -> error
     end
   end
 
@@ -722,24 +728,30 @@ defmodule Logflare.Backends do
     if disable_partition_append?() do
       :ok
     else
-      case SpoolPartitionSupervisor.random_partition() do
-        nil ->
-          {:error, :no_spool_partition_available}
+      send_to_partition(segment, byte_size, event_count)
+    end
+  end
 
-        partition ->
-          if blocking_ingest?() do
-            SpoolPartition.append(
-              partition,
-              segment,
-              byte_size,
-              event_count,
-              @default_spool_append_timeout
-            )
-          else
-            SpoolPartition.append_async(partition, segment, byte_size, event_count)
-            :ok
-          end
-      end
+  @spec send_to_partition(binary(), non_neg_integer(), non_neg_integer()) ::
+          :ok | {:error, term()}
+  defp send_to_partition(segment, byte_size, event_count) do
+    case SpoolPartitionSupervisor.random_partition() do
+      nil ->
+        {:error, :no_spool_partition_available}
+
+      partition ->
+        if blocking_ingest?() do
+          SpoolPartition.append(
+            partition,
+            segment,
+            byte_size,
+            event_count,
+            @default_spool_append_timeout
+          )
+        else
+          SpoolPartition.append_async(partition, segment, byte_size, event_count)
+          :ok
+        end
     end
   end
 

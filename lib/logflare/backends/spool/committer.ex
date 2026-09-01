@@ -69,19 +69,7 @@ defmodule Logflare.Backends.Spool.Committer do
     {concat_us, body} =
       :timer.tc(fn -> entries |> Enum.map(&elem(&1, 1)) |> IO.iodata_to_binary() end)
 
-    {io_us, result} =
-      :timer.tc(fn ->
-        if disable_commit_io?() do
-          {:ok, file_key}
-        else
-          with {:upload, {:ok, _}} <-
-                 {:upload, state.storage_mod.put(state.bucket, file_key, body, headers(state))},
-               {:notify, :ok} <-
-                 {:notify, notify_queue(state, file_key, total_count)} do
-            {:ok, file_key}
-          end
-        end
-      end)
+    {io_us, result} = :timer.tc(fn -> commit_io(state, file_key, body, total_count) end)
 
     format_tag = Encoder.format_tag(state.format, state.compress, state.compression_algorithm)
     emit_storage_put_telemetry(format_tag, byte_size(body), result, concat_us, io_us)
@@ -107,6 +95,21 @@ defmodule Logflare.Backends.Spool.Committer do
   defp file_key(state) do
     ext = Encoder.file_extension(state.format, state.compress, state.compression_algorithm)
     "#{state.index}/#{generate_uuidv7()}.#{ext}"
+  end
+
+  @spec commit_io(map(), String.t(), binary(), non_neg_integer()) ::
+          {:ok, String.t()} | {:upload | :notify, {:error, term()}}
+  defp commit_io(state, file_key, body, total_count) do
+    if disable_commit_io?() do
+      {:ok, file_key}
+    else
+      with {:upload, {:ok, _}} <-
+             {:upload, state.storage_mod.put(state.bucket, file_key, body, headers(state))},
+           {:notify, :ok} <-
+             {:notify, notify_queue(state, file_key, total_count)} do
+        {:ok, file_key}
+      end
+    end
   end
 
   defp headers(state) do
