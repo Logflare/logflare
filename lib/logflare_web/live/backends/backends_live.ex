@@ -440,7 +440,6 @@ defmodule LogflareWeb.BackendsLive do
   end
 
   defp maybe_refresh_backend(socket, :show, id), do: refresh_backend(socket, id)
-
   defp maybe_refresh_backend(socket, :index, _id), do: socket
 
   defp toggle_backend(socket, backend, enabled?) do

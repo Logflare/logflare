@@ -306,10 +306,8 @@ defmodule Logflare.Backends do
         end
       end)
 
-    enabled_changed? = Map.has_key?(changeset.changes, :enabled)
-
     enabled_only? =
-      enabled_changed? and map_size(changeset.changes) == 1 and
+      Map.has_key?(changeset.changes, :enabled) and map_size(changeset.changes) == 1 and
         not default_ingest_modified?
 
     case Repo.update(changeset) do
