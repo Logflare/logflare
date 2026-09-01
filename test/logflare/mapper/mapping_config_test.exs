@@ -393,6 +393,35 @@ defmodule Logflare.Mapper.MappingConfigTest do
     end
   end
 
+  describe "MappingConfig.apply_timestamp_precision/1" do
+    test "output with and without a timestamp_precision" do
+      fields = [
+        Field.datetime64("timestamp", path: "$.timestamp", precision: 9),
+        Field.array_datetime64("times", path: "$.times", precision: 9),
+        Field.string("event_message", path: "$.event_message")
+      ]
+
+      config = MappingConfig.new(fields, output: OutputFormat.ndjson(:log))
+
+      assert %MappingConfig{
+               fields: [
+                 %FieldConfig{name: "timestamp", precision: 6},
+                 %FieldConfig{name: "times", precision: 6},
+                 %FieldConfig{name: "event_message", precision: nil}
+               ]
+             } = MappingConfig.apply_timestamp_precision(config)
+
+      for unchanged <- [
+            MappingConfig.new(fields),
+            MappingConfig.new(fields,
+              output: %{OutputFormat.ndjson(:log) | timestamp_precision: nil}
+            )
+          ] do
+        assert MappingConfig.apply_timestamp_precision(unchanged).fields == fields
+      end
+    end
+  end
+
   describe "MappingConfig.to_nif_map/1" do
     test "serializes basic config" do
       config =
