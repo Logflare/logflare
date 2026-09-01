@@ -702,14 +702,7 @@ defmodule Logflare.Bench.BroadwayMetricSampling do
       raise "production Broadway metric events differ: #{inspect(all_broadway_events)}"
     end
 
-    broadway_metrics =
-      Enum.map(all_broadway_metrics, fn metric ->
-        case {metric.event_name, denominator} do
-          {@processor_message_event, 1} -> %{metric | keep: nil}
-          _ -> metric
-        end
-      end)
-
+    broadway_metrics = all_broadway_metrics
     broadway_events = broadway_metrics |> Enum.map(& &1.event_name) |> Enum.sort()
 
     {:ok, _exporter} =

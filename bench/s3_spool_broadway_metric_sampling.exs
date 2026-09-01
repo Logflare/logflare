@@ -470,14 +470,7 @@ defmodule Logflare.Bench.S3SpoolMetricSampling do
       raise "production Broadway metric events differ: #{inspect(all_broadway_events)}"
     end
 
-    broadway_metrics =
-      Enum.map(all_broadway_metrics, fn metric ->
-        case {metric.event_name, denominator} do
-          {@processor_message_event, 1} -> unsampled_processor_message_metric(metric)
-          _ -> metric
-        end
-      end)
-
+    broadway_metrics = all_broadway_metrics
     broadway_events = broadway_metrics |> Enum.map(& &1.event_name) |> Enum.sort()
 
     {:ok, _exporter} =
@@ -567,8 +560,6 @@ defmodule Logflare.Bench.S3SpoolMetricSampling do
         "counts=#{counts}"
     )
   end
-
-  defp unsampled_processor_message_metric(metric), do: %{metric | keep: nil}
 
   defp format_denominator(:none), do: "none"
   defp format_denominator(denominator), do: Integer.to_string(denominator)

@@ -21,7 +21,6 @@ defmodule Logflare.TelemetryTest do
   @broadway_processor_message_exporter :logflare_broadway_processor_message_metrics_test
   @broadway_processor_message_metric_name [:broadway, :processor, :message, :stop, :duration]
   @broadway_processor_message_metric_string "broadway.processor.message.stop.duration"
-  @broadway_processor_message_sample_denominator 100
 
   @drop_stale_exporter :logflare_drop_stale_metrics_test
   @drop_stale_metric_name [:logflare, :logs, :ingest_logs, :drop_stale]
@@ -99,69 +98,86 @@ defmodule Logflare.TelemetryTest do
       end
     end
 
-    test "samples Broadway processor message durations deterministically at one percent" do
-      [metric] =
-        Enum.filter(Telemetry.metrics(), fn metric ->
+    test "honors configured Broadway processor message duration sampling" do
+      denominator = Application.fetch_env!(:logflare, :broadway_message_sample_denominator)
+
+      metric =
+        Enum.find(Telemetry.metrics(), fn metric ->
           metric.name == @broadway_processor_message_metric_name and
             metric.event_name == @broadway_processor_message_event
         end)
 
-      assert is_function(metric.measurement, 1)
-      assert metric.unit == :millisecond
-      assert is_function(metric.keep, 1)
-      refute metric.keep.(%{})
+      if denominator == :disabled do
+        assert metric == nil
+      else
+        assert is_function(metric.measurement, 1)
+        assert metric.unit == :millisecond
 
-      contexts = Enum.map(1..10_000, fn _ -> make_ref() end)
+        contexts = Enum.map(1..10_000, fn _ -> make_ref() end)
 
-      accepted_contexts =
-        Enum.filter(contexts, fn context ->
-          metadata = %{telemetry_span_context: context}
-          expected = :erlang.phash2(context, @broadway_processor_message_sample_denominator) == 0
+        accepted_contexts =
+          case denominator do
+            1 ->
+              assert metric.keep == nil
+              contexts
 
-          assert metric.keep.(metadata) == expected
-          assert metric.keep.(metadata) == expected
+            denominator ->
+              assert is_function(metric.keep, 1)
+              refute metric.keep.(%{})
 
-          expected
-        end)
+              Enum.filter(contexts, fn context ->
+                metadata = %{telemetry_span_context: context}
+                expected = :erlang.phash2(context, denominator) == 0
 
-      assert length(accepted_contexts) in 25..250
+                assert metric.keep.(metadata) == expected
+                assert metric.keep.(metadata) == expected
 
-      start_supervised!(
-        {OtelMetricExporter,
-         name: @broadway_processor_message_exporter,
-         metrics: [metric],
-         export_period: :timer.minutes(5),
-         otlp_protocol: :http_protobuf,
-         otlp_endpoint: "http://localhost:4318",
-         otlp_headers: %{},
-         otlp_compression: nil}
-      )
+                expected
+              end)
+          end
 
-      :telemetry.execute(
-        @broadway_processor_message_event,
-        %{duration: System.convert_time_unit(1, :millisecond, :native)},
-        %{}
-      )
+        start_supervised!(
+          {OtelMetricExporter,
+           name: @broadway_processor_message_exporter,
+           metrics: [metric],
+           export_period: :timer.minutes(5),
+           otlp_protocol: :http_protobuf,
+           otlp_endpoint: "http://localhost:4318",
+           otlp_headers: %{},
+           otlp_compression: nil}
+        )
 
-      Enum.each(contexts, fn context ->
         :telemetry.execute(
           @broadway_processor_message_event,
           %{duration: System.convert_time_unit(1, :millisecond, :native)},
-          %{telemetry_span_context: context}
+          %{}
         )
-      end)
 
-      assert %{
-               {:distribution, @broadway_processor_message_metric_string} => distributions
-             } = MetricStore.get_metrics(@broadway_processor_message_exporter)
+        Enum.each(contexts, fn context ->
+          :telemetry.execute(
+            @broadway_processor_message_event,
+            %{duration: System.convert_time_unit(1, :millisecond, :native)},
+            %{telemetry_span_context: context}
+          )
+        end)
 
-      observed_count =
-        distributions
-        |> Map.fetch!(%{})
-        |> Map.values()
-        |> Enum.sum_by(fn {count, _sum} -> count end)
+        observed_count =
+          case MetricStore.get_metrics(@broadway_processor_message_exporter)[
+                 {:distribution, @broadway_processor_message_metric_string}
+               ] do
+            nil ->
+              0
 
-      assert observed_count == length(accepted_contexts)
+            distributions ->
+              distributions
+              |> Map.fetch!(%{})
+              |> Map.values()
+              |> Enum.sum_by(fn {count, _sum} -> count end)
+          end
+
+        malformed_metadata_count = if denominator == 1, do: 1, else: 0
+        assert observed_count == length(accepted_contexts) + malformed_metadata_count
+      end
     end
 
     test "aggregates ClickHouse batches by backend, event type, and trigger" do

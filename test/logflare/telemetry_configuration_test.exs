@@ -27,6 +27,14 @@ defmodule Logflare.TelemetryConfigurationTest do
              (:erlang.phash2(context, denominator) == 0)
   end
 
+  test "keeps every Broadway processor message duration when denominator is one" do
+    Application.put_env(:logflare, @config_key, 1)
+
+    metric = processor_message_metric!()
+
+    assert metric.keep == nil
+  end
+
   test "omits the Broadway processor message metric when sampling is disabled" do
     Application.put_env(:logflare, @config_key, :disabled)
 

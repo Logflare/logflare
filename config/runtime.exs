@@ -77,17 +77,23 @@ case System.get_env("LOGFLARE_BROADWAY_MESSAGE_SAMPLE_DENOMINATOR") do
   nil ->
     :ok
 
-  "disabled" ->
-    config :logflare, broadway_message_sample_denominator: :disabled
-
   value ->
-    case Integer.parse(value) do
-      {denominator, ""} when denominator > 0 and denominator <= 4_294_967_296 ->
-        config :logflare, broadway_message_sample_denominator: denominator
+    case value |> String.trim() |> String.downcase() do
+      "" ->
+        :ok
 
-      _ ->
-        raise ArgumentError,
-              "LOGFLARE_BROADWAY_MESSAGE_SAMPLE_DENOMINATOR must be 'disabled' or an integer between 1 and 4294967296, got: #{inspect(value)}"
+      "disabled" ->
+        config :logflare, broadway_message_sample_denominator: :disabled
+
+      normalized_value ->
+        case Integer.parse(normalized_value) do
+          {denominator, ""} when denominator > 0 and denominator <= 4_294_967_296 ->
+            config :logflare, broadway_message_sample_denominator: denominator
+
+          _ ->
+            raise ArgumentError,
+                  "LOGFLARE_BROADWAY_MESSAGE_SAMPLE_DENOMINATOR must be 'disabled' or an integer between 1 and 4294967296, got: #{inspect(value)}"
+        end
     end
 end
 

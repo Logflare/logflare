@@ -200,6 +200,13 @@ defmodule Logflare.Telemetry do
         :disabled ->
           []
 
+        1 ->
+          [
+            distribution("broadway.processor.message.stop.duration",
+              unit: {:native, :millisecond}
+            )
+          ]
+
         denominator ->
           [
             distribution("broadway.processor.message.stop.duration",
