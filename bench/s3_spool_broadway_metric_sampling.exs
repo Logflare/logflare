@@ -199,6 +199,12 @@ defmodule Logflare.Bench.S3SpoolMetricSampling do
     :ok = :sys.suspend(producer_pid)
 
     after_sink = S3SpoolSink.snapshot()
+    output_events = after_sink.events - before_sink.events
+
+    if output_events != event_count do
+      raise "S3 spool benchmark produced #{output_events} events, expected exactly #{event_count}"
+    end
+
     bytes = after_sink.bytes - before_sink.bytes
     files = after_sink.files - before_sink.files
     reductions = reductions_after - reductions_before
@@ -207,9 +213,10 @@ defmodule Logflare.Bench.S3SpoolMetricSampling do
     events_per_active_scheduler_second = event_count * 1_000_000 / scheduler.active_us
 
     IO.puts(
-      "sample kind=#{kind} run=#{index} events=#{event_count} elapsed_us=#{elapsed_us} " <>
-        "events_per_second=#{round2(events_per_second)} reductions=#{reductions} " <>
-        "reductions_per_event=#{round2(reductions_per_event)} bytes=#{bytes} files=#{files} " <>
+      "sample kind=#{kind} run=#{index} events=#{event_count} output_events=#{output_events} " <>
+        "elapsed_us=#{elapsed_us} events_per_second=#{round2(events_per_second)} " <>
+        "reductions=#{reductions} reductions_per_event=#{round2(reductions_per_event)} " <>
+        "bytes=#{bytes} files=#{files} " <>
         "scheduler_active_us=#{scheduler.active_us} scheduler_total_us=#{scheduler.total_us} " <>
         "scheduler_utilization_percent=#{round2(scheduler.utilization_percent)} " <>
         "average_active_schedulers=#{round2(scheduler.average_active_schedulers)} " <>
@@ -234,7 +241,10 @@ defmodule Logflare.Bench.S3SpoolMetricSampling do
       |> Enum.sum()
 
     cond do
-      sink_events >= target_events and in_flight == 0 and queue_size == 0 and
+      sink_events > target_events ->
+        raise "S3 spool benchmark overproduced events: sink_events=#{sink_events} target=#{target_events}"
+
+      sink_events == target_events and in_flight == 0 and queue_size == 0 and
           generation_size == 0 ->
         :ok
 

@@ -214,6 +214,7 @@ def parse(
         required_sample = (
             "run",
             "events",
+            "output_events",
             "elapsed_us",
             "events_per_second",
             "reductions_per_event",
@@ -232,8 +233,14 @@ def parse(
         if run in seen:
             raise ValueError(f"{path}: duplicate measurement run")
         seen.add(run)
-        if int(sample["events"]) != int(config["events"]):
+        sample_events = int(sample["events"])
+        output_events = int(sample["output_events"])
+        if sample_events != int(config["events"]):
             raise ValueError(f"{path}: sample event count differs from config")
+        if output_events != sample_events:
+            raise ValueError(
+                f"{path}: fixed-work output events={output_events}, expected={sample_events}"
+            )
         active, total = int(sample["scheduler_active_us"]), int(sample["scheduler_total_us"])
         utilization, schedulers, efficiency = (
             float(sample[key])
@@ -252,6 +259,7 @@ def parse(
                 "events_per_second": float(sample["events_per_second"]),
                 "reductions_per_event": float(sample["reductions_per_event"]),
                 "elapsed_us": int(sample["elapsed_us"]),
+                "output_events": output_events,
                 "output_bytes": int(sample["output_bytes"]),
                 "output_batches": int(sample["output_batches"]),
                 "scheduler_utilization_percent": utilization,

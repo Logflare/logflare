@@ -465,6 +465,9 @@ defmodule Logflare.Bench.BroadwayMetricSampling do
     :ok = NoopProducer.release(state.producer)
     await_noop_complete!(trial_ref, event_count)
 
+    output_events = :atomics.get(counters, 1)
+    assert_exact_output_events!("no-op", event_count, output_events)
+
     finish_trial(
       kind,
       index,
@@ -472,6 +475,7 @@ defmodule Logflare.Bench.BroadwayMetricSampling do
       started_at,
       reductions_before,
       scheduler_before,
+      output_events,
       0,
       :atomics.get(counters, 2)
     )
@@ -503,6 +507,8 @@ defmodule Logflare.Bench.BroadwayMetricSampling do
     :ok = :sys.suspend(state.producer_pid)
 
     after_sink = ClickHouseSink.snapshot(state.sink)
+    output_events = after_sink.events - before_sink.events
+    assert_exact_output_events!("ClickHouse", event_count, output_events)
 
     finish_trial(
       kind,
@@ -511,6 +517,7 @@ defmodule Logflare.Bench.BroadwayMetricSampling do
       started_at,
       reductions_before,
       scheduler_before,
+      output_events,
       after_sink.bytes - before_sink.bytes,
       after_sink.batches - before_sink.batches
     )
@@ -523,6 +530,7 @@ defmodule Logflare.Bench.BroadwayMetricSampling do
          started_at,
          reductions_before,
          scheduler_before,
+         output_events,
          output_bytes,
          output_batches
        ) do
@@ -536,9 +544,9 @@ defmodule Logflare.Bench.BroadwayMetricSampling do
     events_per_active_scheduler_second = event_count * 1_000_000 / scheduler.active_us
 
     IO.puts(
-      "sample kind=#{kind} run=#{index} events=#{event_count} elapsed_us=#{elapsed_us} " <>
-        "events_per_second=#{round2(events_per_second)} reductions=#{reductions} " <>
-        "reductions_per_event=#{round2(reductions_per_event)} " <>
+      "sample kind=#{kind} run=#{index} events=#{event_count} output_events=#{output_events} " <>
+        "elapsed_us=#{elapsed_us} events_per_second=#{round2(events_per_second)} " <>
+        "reductions=#{reductions} reductions_per_event=#{round2(reductions_per_event)} " <>
         "output_bytes=#{output_bytes} output_batches=#{output_batches} " <>
         "scheduler_active_us=#{scheduler.active_us} scheduler_total_us=#{scheduler.total_us} " <>
         "scheduler_utilization_percent=#{round2(scheduler.utilization_percent)} " <>
@@ -596,7 +604,11 @@ defmodule Logflare.Bench.BroadwayMetricSampling do
       |> Enum.sum()
 
     cond do
-      sink.events >= target_events and in_flight == 0 and queue_size == 0 and generation_size == 0 ->
+      sink.events > target_events ->
+        raise "ClickHouse benchmark overproduced events: sink_events=#{sink.events} target=#{target_events}"
+
+      sink.events == target_events and in_flight == 0 and queue_size == 0 and
+          generation_size == 0 ->
         :ok
 
       System.monotonic_time(:millisecond) >= deadline ->
@@ -609,6 +621,14 @@ defmodule Logflare.Bench.BroadwayMetricSampling do
           1 -> await_clickhouse_complete!(target_events, state, deadline)
         end
     end
+  end
+
+  defp assert_exact_output_events!(scenario, expected, actual) do
+    if actual != expected do
+      raise "#{scenario} benchmark produced #{actual} events, expected exactly #{expected}"
+    end
+
+    :ok
   end
 
   defp await_value!(producer) do
