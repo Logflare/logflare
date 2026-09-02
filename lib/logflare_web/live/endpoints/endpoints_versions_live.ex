@@ -197,10 +197,12 @@ defmodule LogflareWeb.EndpointsVersionsLive do
     socket =
       with {version_number, ""} <- Integer.parse(version_number),
            selected_version when is_struct(selected_version) <-
-             Endpoints.get_endpoint_query_version(endpoint.id, version_number) do
+             Endpoints.get_endpoint_query_version(endpoint.id, version_number),
+           {:ok, endpoint_snapshot} <-
+             Endpoints.get_endpoint_query_at_version(endpoint, version_number) do
         socket
         |> assign(:selected_version, selected_version)
-        |> assign(:endpoint_snapshot, version_endpoint_snapshot(selected_version))
+        |> assign(:endpoint_snapshot, endpoint_snapshot)
       else
         _ ->
           socket
@@ -416,13 +418,6 @@ defmodule LogflareWeb.EndpointsVersionsLive do
 
   defp version_number(%Version{meta: %{"version_number" => version_number}}), do: version_number
   defp version_number(_version), do: nil
-
-  @spec version_endpoint_snapshot(Version.t()) :: EndpointQuery.t()
-  defp version_endpoint_snapshot(%Version{meta: meta}) when is_map(meta) do
-    meta
-    |> Map.get("endpoint_snapshot", %{})
-    |> EndpointQuery.from_version_snapshot()
-  end
 
   defp maybe_assign_team_context(socket, %{"t" => _team_id}, _endpoint), do: socket
 
