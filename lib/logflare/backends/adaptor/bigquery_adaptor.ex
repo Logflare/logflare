@@ -11,16 +11,16 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   require OpenTelemetry.Tracer
 
   alias Ecto.Changeset
-  alias GoogleApi.BigQuery.V2.Model
   alias GoogleApi.IAM.V1.Api.Projects, as: IAMProjects
   alias GoogleApi.IAM.V1.Model.CreateServiceAccountRequest
+  alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
-  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.Backend
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
   alias Logflare.BigQuery.SchemaTypes
   alias Logflare.Billing
