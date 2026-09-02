@@ -67,7 +67,7 @@ defmodule Logflare.BanditTelemetryLogger do
         end)
 
       _event ->
-        :ok
+        :ignore
     end
   end
 
