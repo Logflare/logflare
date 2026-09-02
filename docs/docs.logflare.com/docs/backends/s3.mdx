@@ -44,7 +44,7 @@ The account tied to the `access_key_id` only needs `s3:PutObject` on the target 
 
 For buckets encrypted with SSE-KMS, the credential additionally needs `kms:GenerateDataKey` on the KMS key.
 
-Objects are written to keys of the form `<source_token>/<unix_microseconds>.parquet`, where `source_token` is the source UUID with dashes replaced by underscores. The backend connection test also writes a small sentinel file to `_connection_test.parquet` at the bucket root, so a policy scoped to a key prefix must still allow writing that root key.
+Objects are written to keys of the form `<source uuid>/<unix_microseconds>.parquet`, where the source UUID has dashes replaced by underscores. The backend connection test also writes a small sentinel file to `_connection_test.parquet` at the bucket root, so a policy scoped to a key prefix must still allow writing that root key.
 
 
 ## Implementation Details
