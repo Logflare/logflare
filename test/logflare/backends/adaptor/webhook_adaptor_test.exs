@@ -95,6 +95,115 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
     end
   end
 
+  describe "ndjson ingestion" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      [source: source]
+    end
+
+    test "sends a newline-delimited binary body with the ndjson content-type", %{source: source} do
+      insert(:backend,
+        type: :webhook,
+        sources: [source],
+        config: %{http: "http1", url: "https://example.com", format: "ndjson"}
+      )
+
+      start_supervised!({SourceSup, source})
+
+      this = self()
+      ref = make_ref()
+
+      @subject.Client
+      |> expect(:send, fn req ->
+        send(this, {ref, req[:body], req[:headers]})
+        %Tesla.Env{}
+      end)
+
+      les = for _ <- 1..2, do: build(:log_event, source: source)
+
+      assert {:ok, _} = Backends.ingest_logs(les, source)
+      assert_receive {^ref, body, headers}, 2000
+
+      assert is_binary(body)
+
+      decoded =
+        body
+        |> String.split("\n")
+        |> Enum.map(&Jason.decode!/1)
+
+      assert length(decoded) == 2
+      assert Enum.all?(decoded, &is_map/1)
+      assert headers["content-type"] == "application/x-ndjson"
+    end
+
+    test "keeps a user-configured content-type", %{source: source} do
+      insert(:backend,
+        type: :webhook,
+        sources: [source],
+        config: %{
+          http: "http1",
+          url: "https://example.com",
+          format: "ndjson",
+          headers: %{"content-type" => "text/plain"}
+        }
+      )
+
+      start_supervised!({SourceSup, source})
+
+      this = self()
+      ref = make_ref()
+
+      @subject.Client
+      |> expect(:send, fn req ->
+        send(this, {ref, req[:headers]})
+        %Tesla.Env{}
+      end)
+
+      le = build(:log_event, source: source)
+
+      assert {:ok, _} = Backends.ingest_logs([le], source)
+      assert_receive {^ref, headers}, 2000
+
+      assert headers["content-type"] == "text/plain"
+    end
+  end
+
+  describe "transform_config/1" do
+    test "collapses a case-variant content-type header for the ndjson format" do
+      backend =
+        build(:backend,
+          type: :webhook,
+          config: %{
+            url: "https://example.com",
+            format: "ndjson",
+            headers: %{"Content-Type" => "text/plain"}
+          }
+        )
+
+      assert %{headers: headers} = @subject.transform_config(backend)
+      assert headers == %{"content-type" => "text/plain"}
+    end
+
+    test "adds the ndjson content-type when the config has no headers" do
+      backend =
+        build(:backend,
+          type: :webhook,
+          config: %{url: "https://example.com", format: "ndjson"}
+        )
+
+      assert %{headers: headers} = @subject.transform_config(backend)
+      assert headers == %{"content-type" => "application/x-ndjson"}
+    end
+
+    test "leaves a json format config untouched" do
+      config = %{url: "https://example.com", format: "json", headers: %{"X-Api" => "abc"}}
+      backend = build(:backend, type: :webhook, config: config)
+
+      assert @subject.transform_config(backend) == config
+    end
+  end
+
   describe "test_connection/1" do
     setup do
       user = insert(:user)
@@ -116,6 +225,26 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
         assert req[:url] == "https://example.com"
         assert req[:body] == []
         assert req[:headers] == %{"x-key" => "v"}
+        {:ok, %Tesla.Env{status: 200, body: ""}}
+      end)
+
+      assert :ok = @subject.test_connection(backend)
+    end
+
+    test "sends an ndjson probe for an ndjson backend" do
+      user = insert(:user)
+
+      backend =
+        insert(:backend,
+          type: :webhook,
+          user: user,
+          config: %{http: "http1", url: "https://example.com", format: "ndjson"}
+        )
+
+      @subject.Client
+      |> expect(:send, fn req ->
+        assert req[:body] == ""
+        assert req[:headers]["content-type"] == "application/x-ndjson"
         {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
@@ -419,6 +548,32 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
              Adaptor.cast_and_validate_config(@subject, %{
                url: "http://example.com",
                http: "http2"
+             })
+  end
+
+  test "cast_and_validate_config/1 for format" do
+    assert %Ecto.Changeset{
+             valid?: true,
+             changes: %{
+               format: "json"
+             }
+           } = Adaptor.cast_and_validate_config(@subject, %{url: "http://example.com"})
+
+    assert %Ecto.Changeset{
+             valid?: true,
+             changes: %{
+               format: "ndjson"
+             }
+           } =
+             Adaptor.cast_and_validate_config(@subject, %{
+               url: "http://example.com",
+               format: "ndjson"
+             })
+
+    assert %Ecto.Changeset{valid?: false} =
+             Adaptor.cast_and_validate_config(@subject, %{
+               url: "http://example.com",
+               format: "xml"
              })
   end
 
