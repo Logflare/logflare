@@ -1,9 +1,9 @@
-defmodule Logflare.ThousandIslandTelemetryLoggerTest do
+defmodule Logflare.Bandit.DelegatingHandlerLoggerTest do
   use ExUnit.Case, async: false
 
   import ExUnit.CaptureLog
 
-  alias Logflare.ThousandIslandTelemetryLogger
+  alias Logflare.Bandit.DelegatingHandlerLogger
 
   test "logs abnormal connections with their peer and measurements" do
     {port, server_id} =
@@ -41,19 +41,47 @@ defmodule Logflare.ThousandIslandTelemetryLoggerTest do
     assert log == ""
   end
 
+  test "logs connection exception events introduced after Thousand Island 1.4" do
+    duration = System.convert_time_unit(125, :millisecond, :native)
+
+    log =
+      capture_log([level: :error, format: "$message\n"], fn ->
+        :telemetry.execute(
+          [:thousand_island, :connection, :exception],
+          %{monotonic_time: System.monotonic_time(), duration: duration},
+          %{
+            handler: Bandit.DelegatingHandler,
+            telemetry_span_context: make_ref(),
+            remote_address: {192, 0, 2, 8},
+            remote_port: 12_345,
+            kind: :error,
+            reason: %RuntimeError{message: "exception-secret"},
+            stacktrace: []
+          }
+        )
+      end)
+
+    assert log ==
+             "Bandit connection peer_ip=192.0.2.8 peer_port=12345 duration_ms=125 " <>
+               "received_bytes=unknown sent_bytes=unknown crashed: " <>
+               "kind=error reason=RuntimeError\n"
+
+    refute log =~ "exception-secret"
+  end
+
   test "detaches the telemetry handler" do
-    on_exit(&ThousandIslandTelemetryLogger.attach/0)
+    on_exit(&DelegatingHandlerLogger.attach/0)
 
     assert Enum.any?(
              :telemetry.list_handlers([:thousand_island, :connection, :stop]),
-             &(&1.id == ThousandIslandTelemetryLogger)
+             &(&1.id == DelegatingHandlerLogger)
            )
 
-    assert :ok = ThousandIslandTelemetryLogger.detach()
+    assert :ok = DelegatingHandlerLogger.detach()
 
     refute Enum.any?(
              :telemetry.list_handlers([:thousand_island, :connection, :stop]),
-             &(&1.id == ThousandIslandTelemetryLogger)
+             &(&1.id == DelegatingHandlerLogger)
            )
   end
 

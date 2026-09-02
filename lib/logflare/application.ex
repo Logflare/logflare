@@ -10,7 +10,7 @@ defmodule Logflare.Application do
   alias Logflare.Backends.Spool.Health, as: SpoolHealth
   alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.Backends.UserMonitoring
-  alias Logflare.ThousandIslandTelemetryLogger
+  alias Logflare.Bandit.DelegatingHandlerLogger
   alias Logflare.ContextCache
   alias Logflare.Logs
   alias Logflare.NaturalLanguageLql.AnthropicClient
@@ -31,7 +31,7 @@ defmodule Logflare.Application do
     Inspect.Opts.default_inspect_fun(&Utils.inspect_fun(prev, &1, &2))
 
     set_global_logger_metadata()
-    ThousandIslandTelemetryLogger.attach()
+    DelegatingHandlerLogger.attach()
     start_user_log_interceptor()
     add_logger_backends()
     warn_if_stripe_webhook_secret_unset()

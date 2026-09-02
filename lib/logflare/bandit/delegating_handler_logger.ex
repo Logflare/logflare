@@ -1,18 +1,24 @@
-defmodule Logflare.ThousandIslandTelemetryLogger do
+defmodule Logflare.Bandit.DelegatingHandlerLogger do
   @moduledoc """
-  Logs abnormal Thousand Island connection terminations with extra metadata.
+  Logs abnormal Bandit DelegatingHandler connection terminations with extra metadata.
   """
 
   require Logger
 
   @doc """
-  Attaches the telemetry handler that logs Thousand Island connection failures.
+  Attaches the telemetry handler that logs Bandit DelegatingHandler connection failures.
   """
   def attach do
-    # Thousand Island 1.4 reports connection exceptions through `:stop` metadata.
-    :telemetry.attach(
-      __MODULE__,
+    # Thousand Island 1.4 reports callback crashes through `:stop`. PR #222 moves them to
+    # `:exception`, so subscribe to both across dependency versions.
+    events = [
       [:thousand_island, :connection, :stop],
+      [:thousand_island, :connection, :exception]
+    ]
+
+    :telemetry.attach_many(
+      __MODULE__,
+      events,
       &__MODULE__.handle_event/4,
       _no_config = []
     )
@@ -35,6 +41,13 @@ defmodule Logflare.ThousandIslandTelemetryLogger do
         Logger.warning(fn ->
           "Bandit connection #{format_connection(measurements, metadata)} stopped: " <>
             format_error(error)
+        end)
+
+      {[:thousand_island, :connection, :exception],
+       %{handler: Bandit.DelegatingHandler, reason: reason} = metadata} ->
+        Logger.error(fn ->
+          "Bandit connection #{format_connection(measurements, metadata)} crashed: " <>
+            "kind=#{format_atom(metadata[:kind])} reason=#{format_error(reason)}"
         end)
 
       _event ->
@@ -74,4 +87,7 @@ defmodule Logflare.ThousandIslandTelemetryLogger do
 
   defp format_integer(value) when is_integer(value), do: value
   defp format_integer(_value), do: "unknown"
+
+  defp format_atom(value) when is_atom(value), do: Atom.to_string(value)
+  defp format_atom(_value), do: "unknown"
 end
