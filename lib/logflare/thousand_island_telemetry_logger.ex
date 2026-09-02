@@ -43,8 +43,7 @@ defmodule Logflare.ThousandIslandTelemetryLogger do
   end
 
   defp format_connection(measurements, metadata) do
-    "connection_id=#{format_id(metadata[:telemetry_span_context])} " <>
-      "peer_ip=#{format_ip(metadata[:remote_address])} " <>
+    "peer_ip=#{format_ip(metadata[:remote_address])} " <>
       "peer_port=#{format_integer(metadata[:remote_port])} " <>
       "duration_ms=#{format_duration(measurements)} " <>
       "received_bytes=#{format_integer(measurements[:recv_oct])} " <>
@@ -72,9 +71,6 @@ defmodule Logflare.ThousandIslandTelemetryLogger do
   end
 
   defp format_duration(_measurements), do: "unknown"
-
-  defp format_id(id) when is_reference(id), do: inspect(id)
-  defp format_id(_id), do: "unknown"
 
   defp format_integer(value) when is_integer(value), do: value
   defp format_integer(_value), do: "unknown"

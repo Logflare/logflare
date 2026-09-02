@@ -20,7 +20,7 @@ defmodule Logflare.ThousandIslandTelemetryLoggerTest do
       end)
 
     assert log =~
-             ~r|Bandit connection connection_id=#Reference<[^>]+> peer_ip=127\.0\.0\.1 peer_port=\d+ duration_ms=\d+ received_bytes=unknown sent_bytes=unknown stopped: tls_alert|
+             ~r|Bandit connection peer_ip=127\.0\.0\.1 peer_port=\d+ duration_ms=\d+ received_bytes=unknown sent_bytes=unknown stopped: tls_alert|
 
     refute log =~ "tls-path-secret"
   end
