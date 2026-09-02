@@ -10,7 +10,7 @@ defmodule Logflare.Application do
   alias Logflare.Backends.Spool.Health, as: SpoolHealth
   alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.Backends.UserMonitoring
-  alias Logflare.Bandit.DelegatingHandlerLogger
+  alias Logflare.DelegatingHandlerLogger
   alias Logflare.ContextCache
   alias Logflare.Logs
   alias Logflare.NaturalLanguageLql.AnthropicClient

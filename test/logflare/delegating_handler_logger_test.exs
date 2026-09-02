@@ -1,9 +1,9 @@
-defmodule Logflare.Bandit.DelegatingHandlerLoggerTest do
+defmodule Logflare.DelegatingHandlerLoggerTest do
   use ExUnit.Case, async: false
 
   import ExUnit.CaptureLog
 
-  alias Logflare.Bandit.DelegatingHandlerLogger
+  alias Logflare.DelegatingHandlerLogger
 
   test "logs abnormal connections with their peer and measurements" do
     {port, server_id} =

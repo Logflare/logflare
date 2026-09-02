@@ -1,4 +1,4 @@
-defmodule Logflare.Bandit.DelegatingHandlerLogger do
+defmodule Logflare.DelegatingHandlerLogger do
   @moduledoc """
   Logs abnormal Bandit DelegatingHandler connection terminations with extra metadata.
   """
