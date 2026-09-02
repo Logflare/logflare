@@ -110,27 +110,25 @@ defmodule Logflare.Repo.Replicas do
   end
 
   defp parse_uri_with_host(entry, uri) do
-    try do
-      config =
-        case uri.path do
-          v when v not in [nil, "", "/"] ->
-            entry
-            |> Ecto.Repo.Supervisor.parse_url()
+    config =
+      case uri.path do
+        v when v not in [nil, "", "/"] ->
+          entry
+          |> Ecto.Repo.Supervisor.parse_url()
 
-          _ ->
-            # no database set - use a placeholder to satisfy Ecto's URL parser,
-            # then drop it so the primary's database is inherited instead
-            URI.to_string(%{uri | path: "/placeholder"})
-            |> Ecto.Repo.Supervisor.parse_url()
-            |> Keyword.delete(:database)
-        end
-        |> Keyword.delete(:scheme)
-        |> maybe_put_socket_options()
+        _ ->
+          # no database set - use a placeholder to satisfy Ecto's URL parser,
+          # then drop it so the primary's database is inherited instead
+          URI.to_string(%{uri | path: "/placeholder"})
+          |> Ecto.Repo.Supervisor.parse_url()
+          |> Keyword.delete(:database)
+      end
+      |> Keyword.delete(:scheme)
+      |> maybe_put_socket_options()
 
-      {:ok, {build_key(config), config}}
-    rescue
-      e in Ecto.InvalidURLError -> {:error, redact(e.message, uri.userinfo)}
-    end
+    {:ok, {build_key(config), config}}
+  rescue
+    e in Ecto.InvalidURLError -> {:error, redact(e.message, uri.userinfo)}
   end
 
   defp maybe_put_socket_options(config) do
@@ -145,12 +143,7 @@ defmodule Logflare.Repo.Replicas do
   end
 
   defp redact(entry) do
-    if String.contains?(entry, "://") do
-      uri = URI.parse(entry)
-      URI.to_string(%{uri | userinfo: if(uri.userinfo, do: "REDACTED")})
-    else
-      entry
-    end
+    Regex.replace(~r{^([a-z][a-z0-9+.-]*://)[^/@]*@}i, entry, "\\1")
   end
 
   defp redact(message, nil), do: message
