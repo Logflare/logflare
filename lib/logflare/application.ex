@@ -8,7 +8,7 @@ defmodule Logflare.Application do
   alias Logflare.Networking
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.UserMonitoring
-  alias Logflare.Bandit.DelegatingHandlerLogger
+  alias Logflare.DelegatingHandlerLogger
   alias Logflare.ContextCache
   alias Logflare.Logs
   alias Logflare.SingleTenant
