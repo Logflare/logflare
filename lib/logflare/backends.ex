@@ -596,12 +596,16 @@ defmodule Logflare.Backends do
   """
   @type log_param :: map()
   @spec ingest_logs([log_param()], Source.t()) ::
-          {:ok, count :: pos_integer()} | {:error, [term()]}
+          {:ok, count :: non_neg_integer()} | {:error, [term()]}
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) ::
-          {:ok, count :: pos_integer()} | {:error, [term()]}
+          {:ok, count :: non_neg_integer()} | {:error, [term()]}
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil, boolean()) ::
-          {:ok, count :: pos_integer()} | {:error, [term()]}
-  def ingest_logs(event_params, source, backend \\ nil, allow_spooling \\ false) do
+          {:ok, count :: non_neg_integer()} | {:error, [term()]}
+  def ingest_logs(event_params, source, backend \\ nil, allow_spooling \\ false)
+
+  def ingest_logs(_params, _source, %Backend{enabled: false}, _spooling), do: {:ok, 0}
+
+  def ingest_logs(event_params, source, backend, allow_spooling) do
     ensure_source_sup_started(source)
     {log_events, errors} = split_valid_events(source, event_params)
     count = Enum.count(log_events)
@@ -751,6 +755,8 @@ defmodule Logflare.Backends do
   end
 
   # send to a specific backend
+  defp dispatch_to_backends(_source, %Backend{enabled: false}, _log_events), do: :ok
+
   defp dispatch_to_backends(source, %Backend{consolidated_ingest?: true} = backend, log_events) do
     telemetry_metadata = %{backend_type: backend.type}
 
@@ -804,6 +810,8 @@ defmodule Logflare.Backends do
           backend :: Backend.t() | nil,
           log_events :: [LogEvent.t()]
         ) :: any()
+  defp dispatch_to_default_backend(_source, %Backend{enabled: false}, _log_events), do: :ok
+
   defp dispatch_to_default_backend(source, backend, log_events) do
     {queue_key, backend_type} =
       case backend do
@@ -1053,7 +1061,7 @@ defmodule Logflare.Backends do
         default_ingest_backend_enabled?: true
       }) do
     default_backend_ids =
-      __MODULE__.Cache.list_backends(source_id: source_id)
+      __MODULE__.Cache.list_enabled_backends(source_id: source_id)
       |> Enum.filter(& &1.default_ingest?)
       |> MapSet.new(& &1.id)
 

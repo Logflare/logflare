@@ -1044,6 +1044,70 @@ defmodule Logflare.BackendsTest do
       assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch],
                       %{count: ^log_count}, %{backend_type: :bigquery}}
     end
+
+    test "does not ingest or increment counters for an explicitly disabled backend", %{
+      source: source
+    } do
+      user = Repo.get(User, source.user_id)
+
+      backend =
+        insert(:backend,
+          enabled: false,
+          type: :webhook,
+          config: %{url: "https://disabled.example.com"},
+          user: user
+        )
+
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+      {:ok, initial_count} = Counters.get_inserts(source.token)
+
+      assert {:ok, 0} =
+               Backends.ingest_logs([%{"event_message" => "do not send"}], source, backend)
+
+      assert {:ok, ^initial_count} = Counters.get_inserts(source.token)
+      assert {:ok, []} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+    end
+
+    test "does not fan out source ingestion to an attached disabled backend", %{source: source} do
+      user = Repo.get(User, source.user_id)
+
+      backend =
+        insert(:backend,
+          enabled: false,
+          sources: [source],
+          type: :webhook,
+          config: %{url: "https://disabled.example.com"},
+          user: user
+        )
+
+      Backends.clear_list_backends_cache(source.id)
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+
+      assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "keep local"}], source)
+      assert {:ok, []} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+    end
+
+    test "does not route or bill events for a disabled drain destination", %{source: source} do
+      user = Repo.get(User, source.user_id)
+
+      backend =
+        insert(:backend,
+          enabled: false,
+          type: :webhook,
+          config: %{url: "https://disabled.example.com"},
+          user: user
+        )
+
+      insert(:rule, lql_string: "testing", backend: backend, source_id: source.id)
+      Logflare.ContextCache.bust_keys([{Rules, [source_id: source.id]}])
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+      {:ok, initial_count} = Counters.get_inserts(source.token)
+
+      assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "testing"}], source)
+      assert {:ok, count} = Counters.get_inserts(source.token)
+      assert count == initial_count + 1
+      assert {:ok, []} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+    end
   end
 
   describe "ingest filters" do
