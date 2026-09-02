@@ -8,11 +8,11 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
   alias GoogleApi.BigQuery.V2.Api.Tabledata, as: BqTabledata
   alias GoogleApi.BigQuery.V2.Api.Tables, as: BqTables
   alias GoogleApi.BigQuery.V2.Model
+  alias Logflare.Backends.Backend
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
   alias Logflare.Backends.Adaptor.QueryResult
-  alias Logflare.Backends.Backend
   alias Logflare.Backends.QueryError
   alias Logflare.Google
 
