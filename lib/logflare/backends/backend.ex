@@ -29,6 +29,7 @@ defmodule Logflare.Backends.Backend do
     last9: Adaptor.Last9Adaptor,
     signoz: Adaptor.SigNozAdaptor,
     syslog: Adaptor.SyslogAdaptor,
+    splunk: Adaptor.SplunkAdaptor,
     google_secops: Adaptor.GoogleSecOpsAdaptor
   }
 

@@ -390,6 +390,7 @@ defmodule LogflareWeb.BackendsLive do
       {"Last9", :last9},
       {"SigNoz", :signoz},
       {"Syslog", :syslog},
+      {"Splunk", :splunk},
       {"Google SecOps", :google_secops}
     ])
   end
