@@ -19,7 +19,7 @@ defmodule Logflare.Backends.Cache do
     end)
   end
 
-  @spec list_enabled_backends(keyword()) :: [Logflare.Backends.Backend.t()]
+  @spec list_enabled_backends(keyword()) :: [Backends.Backend.t()]
   def list_enabled_backends(arg) do
     # We filter the existing cached list instead of creating a
     # `{:list_backends, [..., enabled: true]}` key. That entry would omit disabled backends, so
