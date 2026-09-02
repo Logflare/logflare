@@ -22,18 +22,13 @@ defmodule Logflare.Repo.Replicas do
   a function call using `apply_with_replica/3` on `Logflare.Repo`, which swaps
   the dynamic repo and restores it afterwards.
 
-  Every replica connection opens its session read-only, so a write that reaches a
-  replica fails immediately instead of diverging from the primary.
+  Every replica connection opens its session read-only.
   """
 
   @registry __MODULE__.Registry
 
-  # Replicas serve reads only: `Logflare.Repo.apply_with_replica/3` and
-  # `apply_with_random_repo/3` are the only ways to reach one, and both are read
-  # paths. Marking the session read-only turns a write that slips through into an
-  # immediate error rather than a silent divergence. That matters most when the
-  # replica is a logical subscriber, which - unlike a physical standby - has a
-  # server that will happily accept the write.
+  # A physical standby rejects a stray write on its own; a logical subscriber accepts it, and
+  # the divergence only surfaces later as a conflict that stalls replication.
   @read_only_statement "SET default_transaction_read_only = on"
 
   def child_spec(options) do
@@ -85,13 +80,11 @@ defmodule Logflare.Repo.Replicas do
   end
 
   @doc """
-  Runs on every replica connection: the primary's own `:after_connect`, if it has
-  one, then the read-only session setting.
+  Runs the primary's own `:after_connect`, then marks the session read-only.
 
-  A replica's config is the primary's with the entry's overrides applied, so
-  setting `:after_connect` on a replica would otherwise drop the primary's -
-  which is what sets `search_path` when `DB_SCHEMA` is configured. The primary's
-  hook runs first so that this stays compatible with one that needs to write.
+  A replica's config is the primary's with the entry's overrides applied, so setting
+  `:after_connect` here would otherwise drop the primary's - the one that sets `search_path`
+  from `DB_SCHEMA`. It runs first, so a hook that needs to write still can.
   """
   @spec after_connect(pid(), {module(), atom(), [term()]} | (pid() -> any()) | nil) ::
           Postgrex.Result.t()
