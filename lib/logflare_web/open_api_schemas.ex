@@ -469,6 +469,15 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: [:region, :username, :password]
   end
 
+  defmodule SigNozConfigSchema do
+    @properties %{
+      endpoint: %Schema{type: :string},
+      ingestion_key: %Schema{type: :string, nullable: true}
+    }
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:endpoint]
+  end
+
   defmodule GoogleSecOpsConfigSchema do
     @properties %{
       region: %Schema{type: :string},
@@ -521,6 +530,7 @@ defmodule LogflareWeb.OpenApiSchemas do
           LogflareWeb.OpenApiSchemas.AxiomConfigSchema,
           LogflareWeb.OpenApiSchemas.OtlpConfigSchema,
           LogflareWeb.OpenApiSchemas.Last9ConfigSchema,
+          LogflareWeb.OpenApiSchemas.SigNozConfigSchema,
           LogflareWeb.OpenApiSchemas.SyslogConfigSchema,
           LogflareWeb.OpenApiSchemas.GoogleSecOpsConfigSchema
         ]

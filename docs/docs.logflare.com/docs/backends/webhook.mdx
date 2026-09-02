@@ -12,8 +12,19 @@ The following values are required when creating a webhook backend:
 
 - `url`: (`string`, required) a valid HTTP(S) endpoint.
 
+Optional values:
+
+- `format`: (`string`, optional) the payload encoding, either `json` (default) or `ndjson`.
+- `gzip`: (`boolean`, optional, default `true`) compress the request body with gzip. The request sets the `content-encoding: gzip` header. Disable this when the receiver does not decompress request bodies.
+
 ### Request 
 The request made will be a `POST`.
+
+### Payload format
+
+With `format` set to `json`, each batch is sent as a JSON array of events.
+
+With `format` set to `ndjson`, each batch is sent as newline-delimited JSON, one event per line. The request uses the `application/x-ndjson` content type. A user-configured `content-type` header takes precedence.
 
 ### Batching
 

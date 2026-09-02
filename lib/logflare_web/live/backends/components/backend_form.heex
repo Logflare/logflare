@@ -57,6 +57,16 @@
             <% end %>
             {text_input(f_config, :url, class: "form-control")}
           </div>
+          <div class="form-group">
+            {label(f_config, :format, "Payload format")}
+            {select(f_config, :format, Logflare.Backends.Adaptor.WebhookAdaptor.formats(),
+              class: "form-control form-control-margin",
+              id: "webhook-format"
+            )}
+            <small class="form-text text-muted">
+              Encoding of each batch. <code>json</code> sends a JSON array. <code>ndjson</code> sends newline-delimited JSON, one event per line.
+            </small>
+          </div>
         <% "postgres" -> %>
           <div class="form-group">
             <%= label f_config, :url do %>
@@ -449,6 +459,21 @@
             )}
             <small class="form-text text-muted">
               Region of your cluster
+            </small>
+          </div>
+        <% "signoz" -> %>
+          <div class="form-group">
+            {label(f_config, :endpoint, "Ingestion URL (Required)")}
+            {text_input(f_config, :endpoint, class: "form-control")}
+            <small class="form-text text-muted">
+              Ingestion URL from <a href="https://signoz.io/docs/ingestion/signoz-cloud/overview/">Settings &gt; Ingestion</a>, e.g. <code>https://ingest.us.signoz.cloud:443</code>, or the address of a self-managed collector. The <code>/v1/logs</code> path is appended automatically
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :ingestion_key, "Ingestion Key")}
+            {text_input(f_config, :ingestion_key, class: "form-control", type: "password")}
+            <small class="form-text text-muted">
+              Required by SigNoz Cloud, and typically unset for self-managed deployments
             </small>
           </div>
         <% "google_secops" -> %>
