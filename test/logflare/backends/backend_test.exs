@@ -30,6 +30,7 @@ defmodule Logflare.Backends.BackendTest do
       assert changeset.valid?
       assert get_change(changeset, :enabled) == false
 
+      # Reject explicit nil so the persisted routing state is always boolean.
       changeset = Backend.changeset(backend, %{enabled: nil})
       refute changeset.valid?
       assert errors_on(changeset).enabled == ["can't be blank"]

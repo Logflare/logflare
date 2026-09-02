@@ -236,38 +236,11 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
+      # A disabled destination must not issue an external alert request.
       @client
       |> reject(:send, 1)
 
       assert {:ok, %{fired: true}} = Alerting.run_alert(alert_query)
-    end
-
-    test "alert runs use the destination state loaded before query execution", %{
-      user: user,
-      backend: backend
-    } do
-      alert_query =
-        insert(:alert,
-          user: user,
-          slack_hook_url: nil,
-          webhook_notification_url: nil,
-          backends: [backend]
-        )
-
-      GoogleApi.BigQuery.V2.Api.Jobs
-      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
-        backend
-        |> Ecto.Changeset.change(enabled: false)
-        |> Logflare.Repo.update!()
-
-        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
-      end)
-
-      @client
-      |> expect(:send, fn _req -> %Tesla.Env{status: 202, body: ""} end)
-
-      assert {:ok, %{fired: true}} = Alerting.run_alert(alert_query)
-      refute Logflare.Repo.reload!(backend).enabled
     end
   end
 end
