@@ -1,9 +1,9 @@
-defmodule Logflare.BanditTelemetryLoggerTest do
+defmodule Logflare.ThousandIslandTelemetryLoggerTest do
   use ExUnit.Case, async: false
 
   import ExUnit.CaptureLog
 
-  alias Logflare.BanditTelemetryLogger
+  alias Logflare.ThousandIslandTelemetryLogger
 
   test "logs abnormal connections with their peer and measurements" do
     {port, server_id} =
@@ -42,18 +42,18 @@ defmodule Logflare.BanditTelemetryLoggerTest do
   end
 
   test "detaches the telemetry handler" do
-    on_exit(&BanditTelemetryLogger.attach/0)
+    on_exit(&ThousandIslandTelemetryLogger.attach/0)
 
     assert Enum.any?(
              :telemetry.list_handlers([:thousand_island, :connection, :stop]),
-             &(&1.id == BanditTelemetryLogger)
+             &(&1.id == ThousandIslandTelemetryLogger)
            )
 
-    assert :ok = BanditTelemetryLogger.detach()
+    assert :ok = ThousandIslandTelemetryLogger.detach()
 
     refute Enum.any?(
              :telemetry.list_handlers([:thousand_island, :connection, :stop]),
-             &(&1.id == BanditTelemetryLogger)
+             &(&1.id == ThousandIslandTelemetryLogger)
            )
   end
 
