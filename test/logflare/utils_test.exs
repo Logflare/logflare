@@ -4,6 +4,33 @@ defmodule Logflare.UtilsTest do
   doctest Logflare.EnumDeepUpdate, import: true
   doctest Logflare.Utils, import: true
   doctest Logflare.Utils.Map, import: true
+
+  describe "parse_float!/1" do
+    test "parses a decimal string" do
+      assert Logflare.Utils.parse_float!("1.5") == 1.5
+    end
+
+    test "parses an integer-like string without a decimal point" do
+      assert Logflare.Utils.parse_float!("1") == 1.0
+    end
+
+    test "parses an integer" do
+      assert Logflare.Utils.parse_float!(2) == 2.0
+    end
+
+    test "parses a float" do
+      assert Logflare.Utils.parse_float!(3.14) == 3.14
+    end
+
+    test "raises on an unparseable binary" do
+      assert_raise ArgumentError, fn -> Logflare.Utils.parse_float!("not-a-number") end
+    end
+
+    test "raises on unsupported types" do
+      assert_raise RuntimeError, fn -> Logflare.Utils.parse_float!(%{}) end
+      assert_raise RuntimeError, fn -> Logflare.Utils.parse_float!(nil) end
+    end
+  end
 end
 
 defmodule Logflare.Utils.FlagTest do
