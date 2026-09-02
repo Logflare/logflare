@@ -31,4 +31,30 @@ defmodule Logflare.Backends.Adaptor.HttpBased.NdjsonFormatterTest do
 
     assert log =~ "Dropped 2 log events from an NDJSON batch"
   end
+
+  test "attaches the given metadata to the dropped count log" do
+    events = [%LogEvent{body: %{"bad" => <<0xFF>>}}]
+
+    log =
+      capture_log([format: "$metadata$message", metadata: [:backend_id]], fn ->
+        NdjsonFormatter.encode(events, backend_id: 123)
+      end)
+
+    assert log =~ "backend_id=123"
+  end
+
+  test "returns an error instead of an empty body when every event is dropped" do
+    events = [%LogEvent{body: %{"bad" => <<0xFF>>}}, %LogEvent{body: %{"bad2" => <<0xFE>>}}]
+    env = %Tesla.Env{body: events, headers: []}
+
+    capture_log(fn ->
+      assert NdjsonFormatter.call(env, [], []) == {:error, :all_events_dropped}
+    end)
+  end
+
+  test "sends an empty batch through unchanged" do
+    env = %Tesla.Env{body: [], headers: []}
+
+    assert {:ok, %Tesla.Env{body: []}} = NdjsonFormatter.call(env, [], [])
+  end
 end

@@ -15,11 +15,19 @@ defmodule Logflare.Backends.Adaptor.HttpBased.NdjsonFormatter do
   @content_type "application/json"
 
   @impl Tesla.Middleware
-  def call(env, next, _opts) do
-    env
-    |> put_content_type_header()
-    |> Tesla.put_body(encode(env.body))
-    |> Tesla.run(next)
+  def call(env, next, opts) do
+    metadata = Keyword.get(opts || [], :metadata, [])
+
+    case encode(env.body, metadata) do
+      [] when env.body != [] ->
+        {:error, :all_events_dropped}
+
+      body ->
+        env
+        |> put_content_type_header()
+        |> Tesla.put_body(body)
+        |> Tesla.run(next)
+    end
   end
 
   @doc """
@@ -43,10 +51,12 @@ defmodule Logflare.Backends.Adaptor.HttpBased.NdjsonFormatter do
   per line. Any other term passes through unchanged.
 
   An event whose body cannot be JSON-encoded is dropped. The count of dropped
-  events is logged per batch.
+  events is logged per batch, with `metadata` attached to the log entry.
   """
-  @spec encode([LogEvent.t()] | term()) :: iodata() | term()
-  def encode([%LogEvent{} | _] = events) do
+  @spec encode([LogEvent.t()] | term(), keyword()) :: iodata() | term()
+  def encode(events, metadata \\ [])
+
+  def encode([%LogEvent{} | _] = events, metadata) do
     {encoded, dropped_count} =
       Enum.reduce(events, {[], 0}, fn %LogEvent{body: body}, {acc, dropped_count} ->
         case Jason.encode_to_iodata(body) do
@@ -57,7 +67,8 @@ defmodule Logflare.Backends.Adaptor.HttpBased.NdjsonFormatter do
 
     if dropped_count > 0 do
       Logger.warning(
-        "Dropped #{dropped_count} log events from an NDJSON batch: JSON encoding failed"
+        "Dropped #{dropped_count} log events from an NDJSON batch: JSON encoding failed",
+        metadata
       )
     end
 
@@ -66,5 +77,5 @@ defmodule Logflare.Backends.Adaptor.HttpBased.NdjsonFormatter do
     |> Enum.intersperse("\n")
   end
 
-  def encode(term), do: term
+  def encode(term, _metadata), do: term
 end

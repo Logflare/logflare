@@ -200,11 +200,19 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   @spec formats() :: [String.t()]
   def formats, do: @formats
 
+  @doc """
+  Sentinel rendered in place of a stored header value, so a decrypted secret never
+  reaches the browser. `unredact_headers/2` restores the stored value when the
+  sentinel is submitted back under an unchanged key.
+  """
+  @spec redacted_value() :: String.t()
+  def redacted_value, do: @redacted_value
+
   @impl Logflare.Backends.Adaptor
   @spec transform_config(Backend.t()) :: map()
-  def transform_config(%Backend{config: %{format: "ndjson"} = config}) do
+  def transform_config(%Backend{config: %{format: "ndjson"} = config} = backend) do
     config
-    |> Map.put(:format_batch, &encode_ndjson/1)
+    |> Map.put(:format_batch, &encode_ndjson(&1, backend_id: backend.id))
     |> Map.put(:headers, ndjson_headers(config))
   end
 
@@ -235,10 +243,10 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     end
   end
 
-  @spec encode_ndjson([LogEvent.t()]) :: binary()
-  defp encode_ndjson(events) do
+  @spec encode_ndjson([LogEvent.t()], keyword()) :: binary()
+  defp encode_ndjson(events, metadata) do
     events
-    |> NdjsonFormatter.encode()
+    |> NdjsonFormatter.encode(metadata)
     |> IO.iodata_to_binary()
   end
 
@@ -496,20 +504,32 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       events = for %{data: le} <- messages, do: le
       payload = WebhookAdaptor.format_payload(config, events)
 
-      case process_data(payload, config, backend_metadata, context) do
-        {:error, {Tesla.Middleware.JSON, :encode, _reason}} ->
-          Logger.warning(
-            "Dropped #{length(messages)} log events from webhook batch: JSON encoding failed",
-            source_id: context.source_id,
-            backend_id: context.backend_id
-          )
+      if empty_payload?(payload) do
+        Logger.warning(
+          "Skipped webhook batch: all #{length(messages)} log events were dropped",
+          source_id: context.source_id,
+          backend_id: context.backend_id
+        )
+      else
+        case process_data(payload, config, backend_metadata, context) do
+          {:error, {Tesla.Middleware.JSON, :encode, _reason}} ->
+            Logger.warning(
+              "Dropped #{length(messages)} log events from webhook batch: JSON encoding failed",
+              source_id: context.source_id,
+              backend_id: context.backend_id
+            )
 
-        _ ->
-          :ok
+          _ ->
+            :ok
+        end
       end
 
       messages
     end
+
+    @spec empty_payload?(term()) :: boolean()
+    defp empty_payload?(payload) when payload in ["", []], do: true
+    defp empty_payload?(_payload), do: false
 
     defp process_data(payload, config, backend_metadata, context) do
       backend_meta =

@@ -159,6 +159,32 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       assert headers["content-type"] == "application/x-ndjson"
     end
 
+    test "skips the request when every event is dropped", %{source: source} do
+      insert(:backend,
+        type: :webhook,
+        sources: [source],
+        config: %{http: "http1", url: "https://example.com", format: "ndjson"}
+      )
+
+      start_supervised!({SourceSup, source})
+
+      @subject.Client
+      |> reject(:send, 1)
+
+      les =
+        for _ <- 1..2 do
+          build(:log_event, source: source, unencodable: <<0xFF>>)
+        end
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, _} = Backends.ingest_logs(les, source)
+          Process.sleep(500)
+        end)
+
+      assert log =~ "Skipped webhook batch: all 2 log events were dropped"
+    end
+
     test "keeps a user-configured content-type", %{source: source} do
       insert(:backend,
         type: :webhook,
