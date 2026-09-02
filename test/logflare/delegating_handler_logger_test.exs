@@ -5,7 +5,23 @@ defmodule Logflare.DelegatingHandlerLoggerTest do
 
   alias Logflare.DelegatingHandlerLogger
 
-  test "logs abnormal connections with their peer and measurements" do
+  @logger_handler :delegating_handler_logger_test
+
+  setup do
+    :logger.remove_handler(@logger_handler)
+
+    :ok =
+      :logger.add_handler(@logger_handler, __MODULE__, %{
+        level: :all,
+        config: %{pid: self()}
+      })
+
+    on_exit(fn -> :logger.remove_handler(@logger_handler) end)
+
+    :ok
+  end
+
+  test "logs abnormal TLS connection stop events with their peer and measurements" do
     {port, server_id} =
       start_bandit(
         scheme: :https,
@@ -14,38 +30,90 @@ defmodule Logflare.DelegatingHandlerLoggerTest do
       )
 
     log =
-      capture_log([level: :warning, format: "$message\n"], fn ->
+      capture_log([level: :error], fn ->
         _response = raw_request(port, "GET /tls-path-secret HTTP/1.1\r\nHost: localhost\r\n\r\n")
         :ok = stop_supervised(server_id)
       end)
 
-    assert log =~
-             ~r|Bandit connection peer_ip=127\.0\.0\.1 peer_port=\d+ duration_ms=\d+ received_bytes=unknown sent_bytes=unknown stopped: tls_alert|
+    assert length(Regex.scan(~r/Bandit DelegatingHandler connection failure/, log)) == 2
 
-    refute log =~ "tls-path-secret"
+    for _event_number <- 1..2 do
+      assert_receive {:log_event,
+                      %{
+                        level: :error,
+                        meta: %{
+                          bandit_connection: %{
+                            duration_ms: duration_ms,
+                            error: "tls_alert",
+                            event: "stop",
+                            peer_ip: "127.0.0.1",
+                            peer_port: peer_port
+                          }
+                        }
+                      } = event}
+
+      assert is_integer(duration_ms)
+      assert duration_ms >= 0
+      assert is_integer(peer_port)
+      refute inspect(event) =~ "tls-path-secret"
+    end
+  end
+
+  test "logs available socket measurements as structured metadata" do
+    duration = System.convert_time_unit(125, :millisecond, :native)
+
+    capture_log([level: :error], fn ->
+      :telemetry.execute(
+        [:thousand_island, :connection, :stop],
+        %{duration: duration, recv_oct: 2_048, send_oct: 1_024},
+        %{
+          error: {%Bandit.TransportError{message: "transport-secret", error: :econnreset}, []},
+          handler: Bandit.DelegatingHandler,
+          remote_address: {192, 0, 2, 8},
+          remote_port: 12_345
+        }
+      )
+    end)
+
+    assert_receive {:log_event,
+                    %{
+                      level: :error,
+                      meta: %{bandit_connection: connection}
+                    } = event}
+
+    assert connection == %{
+             duration_ms: 125,
+             error: "econnreset",
+             event: "stop",
+             peer_ip: "192.0.2.8",
+             peer_port: 12_345,
+             received_bytes: 2_048,
+             sent_bytes: 1_024
+           }
+
+    refute inspect(event) =~ "transport-secret"
   end
 
   test "ignores normal connection closes" do
     {port, server_id} = start_bandit()
 
-    log =
-      capture_log([level: :warning, format: "$message\n"], fn ->
-        assert raw_request(
-                 port,
-                 "GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
-               ) =~ "HTTP/1.1 200 OK"
+    capture_log([level: :error], fn ->
+      assert raw_request(
+               port,
+               "GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+             ) =~ "HTTP/1.1 200 OK"
 
-        :ok = stop_supervised(server_id)
-      end)
+      :ok = stop_supervised(server_id)
+    end)
 
-    assert log == ""
+    refute_receive {:log_event, %{meta: %{bandit_connection: _connection}}}, 100
   end
 
   test "logs connection exception events introduced after Thousand Island 1.4" do
     duration = System.convert_time_unit(125, :millisecond, :native)
 
     log =
-      capture_log([level: :error, format: "$message\n"], fn ->
+      capture_log([level: :error], fn ->
         :telemetry.execute(
           [:thousand_island, :connection, :exception],
           %{monotonic_time: System.monotonic_time(), duration: duration},
@@ -61,12 +129,26 @@ defmodule Logflare.DelegatingHandlerLoggerTest do
         )
       end)
 
-    assert log ==
-             "Bandit connection peer_ip=192.0.2.8 peer_port=12345 duration_ms=125 " <>
-               "received_bytes=unknown sent_bytes=unknown crashed: " <>
-               "kind=error reason=RuntimeError\n"
+    assert_receive {:log_event,
+                    %{
+                      level: :error,
+                      meta: %{
+                        bandit_connection:
+                          %{
+                            duration_ms: 125,
+                            error: "RuntimeError",
+                            event: "exception",
+                            kind: "error",
+                            peer_ip: "192.0.2.8",
+                            peer_port: 12_345
+                          } = connection
+                      }
+                    } = event}
 
-    refute log =~ "exception-secret"
+    assert log =~ "Bandit DelegatingHandler connection failure"
+    refute Map.has_key?(connection, :received_bytes)
+    refute Map.has_key?(connection, :sent_bytes)
+    refute inspect(event) =~ "exception-secret"
   end
 
   test "detaches the telemetry handler" do
@@ -83,6 +165,10 @@ defmodule Logflare.DelegatingHandlerLoggerTest do
              :telemetry.list_handlers([:thousand_island, :connection, :stop]),
              &(&1.id == DelegatingHandlerLogger)
            )
+  end
+
+  def log(event, %{config: %{pid: pid}}) do
+    send(pid, {:log_event, event})
   end
 
   defp start_bandit(extra_options \\ []) do
