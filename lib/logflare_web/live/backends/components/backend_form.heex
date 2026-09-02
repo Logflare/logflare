@@ -57,6 +57,16 @@
             <% end %>
             {text_input(f_config, :url, class: "form-control")}
           </div>
+          <div class="form-group">
+            {label(f_config, :format, "Payload format")}
+            {select(f_config, :format, Logflare.Backends.Adaptor.WebhookAdaptor.formats(),
+              class: "form-control form-control-margin",
+              id: "webhook-format"
+            )}
+            <small class="form-text text-muted">
+              Encoding of each batch. <code>json</code> sends a JSON array. <code>ndjson</code> sends newline-delimited JSON, one event per line.
+            </small>
+          </div>
         <% "postgres" -> %>
           <div class="form-group">
             <%= label f_config, :url do %>
