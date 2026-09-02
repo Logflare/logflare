@@ -3,60 +3,116 @@ defmodule Logflare.BanditTelemetryLoggerTest do
 
   import ExUnit.CaptureLog
 
-  test "logs failed requests and connections with a shared connection id" do
-    connection_id = make_ref()
-    duration = System.convert_time_unit(125, :millisecond, :native)
+  alias Logflare.BanditTelemetryLogger
 
-    conn =
-      Plug.Test.conn(
-        :post,
-        "https://api.logflare.app/api/endpoints/query/path-secret?token=query-secret",
-        "body-secret"
-      )
+  describe "Bandit requests" do
+    setup do
+      %{port: start_bandit()}
+    end
 
-    log =
-      capture_log(fn ->
-        :telemetry.execute(
-          [:bandit, :request, :stop],
-          %{},
-          %{
-            connection_telemetry_span_context: connection_id,
-            conn: conn,
-            error: "Unrecoverable error: econnreset"
-          }
-        )
+    test "logs malformed requests with their route and connection", %{port: port} do
+      forwarder = attach_forwarder([:bandit, :request, :stop])
 
-        :telemetry.execute(
-          [:thousand_island, :connection, :stop],
-          %{duration: duration, send_oct: 1_024, recv_oct: 2_048},
-          %{
-            telemetry_span_context: connection_id,
-            handler: Bandit.DelegatingHandler,
-            remote_address: {127, 0, 0, 1},
-            remote_port: 54_321,
-            error: :econnreset
-          }
-        )
-      end)
+      request =
+        "POST /api/endpoints/query/path-secret?token=query-secret HTTP/1.1\r\n" <>
+          "Host: localhost\r\n" <>
+          "Transfer-Encoding: header-secret\r\n" <>
+          "Connection: close\r\n\r\n" <>
+          "body-secret"
 
-    id = inspect(connection_id)
+      {metadata, log} =
+        with_log([level: :warning, format: "$message\n"], fn ->
+          assert raw_request(port, request) =~ "HTTP/1.1 400 Bad Request"
 
-    assert log =~
-             "Bandit request method=POST route=/api/endpoints/query/:token_or_name " <>
-               "connection_id=#{id} peer_ip=127.0.0.1 stopped: econnreset"
+          {_measurements, metadata, connection_pid} =
+            receive_event(forwarder, [:bandit, :request, :stop])
 
-    assert log =~
-             "Bandit connection connection_id=#{id} peer_ip=127.0.0.1 peer_port=54321 " <>
-               "duration_ms=125 received_bytes=2048 sent_bytes=1024 stopped: econnreset"
+          await_termination(connection_pid)
+          Logger.flush()
+          metadata
+        end)
 
-    refute log =~ "path-secret"
-    refute log =~ "query-secret"
-    refute log =~ "body-secret"
+      assert %Plug.Conn{} = metadata.conn
+
+      assert log =~
+               "Bandit request method=POST route=/api/endpoints/query/:token_or_name " <>
+                 "connection_id=#{inspect(metadata.connection_telemetry_span_context)} " <>
+                 "peer_ip=127.0.0.1 stopped: request_error"
+
+      refute log =~ "path-secret"
+      refute log =~ "query-secret"
+      refute log =~ "header-secret"
+      refute log =~ "body-secret"
+    end
+
+    test "logs routed request exceptions without exposing their messages", %{port: port} do
+      forwarder = attach_forwarder([:bandit, :request, :exception])
+
+      request =
+        "GET /sources/public/path-secret?token=query-secret HTTP/1.1\r\n" <>
+          "Host: localhost\r\nConnection: close\r\n\r\n"
+
+      {metadata, log} =
+        with_log([level: :error, format: "$message\n"], fn ->
+          assert raw_request(port, request) =~ "HTTP/1.1 500 Internal Server Error"
+
+          {_measurements, metadata, connection_pid} =
+            receive_event(forwarder, [:bandit, :request, :exception])
+
+          await_termination(connection_pid)
+          Logger.flush()
+          metadata
+        end)
+
+      assert log =~
+               "Bandit request method=GET route=/sources/public/:public_token " <>
+                 "connection_id=#{inspect(metadata.connection_telemetry_span_context)} " <>
+                 "peer_ip=127.0.0.1 crashed: kind=exit type=RuntimeError http_status=500"
+
+      refute log =~ "path-secret"
+      refute log =~ "query-secret"
+      refute log =~ "exception-secret"
+    end
   end
 
-  test "logs request exceptions without exposing exception messages" do
+  test "logs failed TLS connections with their peer and measurements" do
+    port =
+      start_bandit(
+        scheme: :https,
+        certfile: Application.app_dir(:logflare, "priv/keys/localhost.cert"),
+        keyfile: Application.app_dir(:logflare, "priv/keys/localhost.key")
+      )
+
+    forwarder = attach_forwarder([:thousand_island, :connection, :stop])
+
+    {event, log} =
+      with_log([level: :warning, format: "$message\n"], fn ->
+        _response = raw_request(port, "GET /tls-path-secret HTTP/1.1\r\nHost: localhost\r\n\r\n")
+
+        {measurements, metadata, connection_pid} =
+          receive_event(forwarder, [:thousand_island, :connection, :stop])
+
+        await_termination(connection_pid)
+        Logger.flush()
+        {measurements, metadata}
+      end)
+
+    {measurements, metadata} = event
+    duration_ms = System.convert_time_unit(measurements.duration, :native, :millisecond)
+
+    assert metadata.error |> elem(0) == :tls_alert
+
+    assert log =~
+             "Bandit connection connection_id=#{inspect(metadata.telemetry_span_context)} " <>
+               "peer_ip=127.0.0.1 peer_port=#{metadata.remote_port} " <>
+               "duration_ms=#{duration_ms} received_bytes=unknown sent_bytes=unknown " <>
+               "stopped: tls_alert"
+
+    refute log =~ "tls-path-secret"
+  end
+
+  test "does not expose malformed exception metadata" do
     connection_id = make_ref()
-    conn = Plug.Test.conn(:get, "/sources/public/path-secret?token=query-secret")
 
     log =
       capture_log(fn ->
@@ -65,71 +121,29 @@ defmodule Logflare.BanditTelemetryLoggerTest do
           %{},
           %{
             connection_telemetry_span_context: connection_id,
-            conn: conn,
-            kind: :exit,
-            exception: RuntimeError.exception("exception-secret")
+            exception: %{__exception__: true, __struct__: "status-secret"},
+            kind: :throw
           }
         )
-      end)
 
-    assert log =~
-             "Bandit request method=GET route=/sources/public/:public_token " <>
-               "connection_id=#{inspect(connection_id)} peer_ip=127.0.0.1 crashed: " <>
-               "kind=exit type=RuntimeError http_status=500"
-
-    refute log =~ "path-secret"
-    refute log =~ "query-secret"
-    refute log =~ "exception-secret"
-  end
-
-  test "logs request errors before a conn exists without exposing wire data" do
-    connection_id = make_ref()
-
-    log =
-      capture_log(fn ->
-        :telemetry.execute(
-          [:bandit, :request, :stop],
-          %{},
-          %{
-            connection_telemetry_span_context: connection_id,
-            error: ~s(Header read HTTP error: "authorization: Bearer header-secret")
-          }
-        )
-      end)
-
-    assert log =~
-             "Bandit request method=unknown route=unknown " <>
-               "connection_id=#{inspect(connection_id)} peer_ip=unknown stopped: request_error"
-
-    refute log =~ "header-secret"
-  end
-
-  test "logs connection exceptions without exposing exception messages" do
-    connection_id = make_ref()
-    duration = System.convert_time_unit(125, :millisecond, :native)
-
-    log =
-      capture_log(fn ->
         :telemetry.execute(
           [:thousand_island, :connection, :exception],
-          %{duration: duration},
+          %{},
           %{
             telemetry_span_context: connection_id,
             handler: Bandit.DelegatingHandler,
-            remote_address: {192, 0, 2, 8},
-            remote_port: 12_345,
-            kind: :error,
-            reason: RuntimeError.exception("exception-secret")
+            reason: %{__struct__: "reason-secret"},
+            kind: :throw
           }
         )
       end)
 
-    assert log =~
-             "Bandit connection connection_id=#{inspect(connection_id)} " <>
-               "peer_ip=192.0.2.8 peer_port=12345 duration_ms=125 " <>
-               "received_bytes=unknown sent_bytes=unknown crashed: kind=error reason=RuntimeError"
-
-    refute log =~ "exception-secret"
+    assert log =~ "Bandit request method=unknown route=unknown"
+    assert log =~ "type=unknown_error http_status=500"
+    assert log =~ "Bandit connection connection_id=#{inspect(connection_id)}"
+    assert log =~ "kind=throw reason=unknown_error"
+    refute log =~ "status-secret"
+    refute log =~ "reason-secret"
   end
 
   test "ignores routine request and connection events" do
@@ -171,5 +185,110 @@ defmodule Logflare.BanditTelemetryLoggerTest do
       end)
 
     assert log == ""
+  end
+
+  test "detaches the telemetry handler" do
+    on_exit(&BanditTelemetryLogger.attach/0)
+
+    assert Enum.any?(
+             :telemetry.list_handlers([:bandit, :request, :stop]),
+             &(&1.id == BanditTelemetryLogger)
+           )
+
+    assert :ok = BanditTelemetryLogger.detach()
+
+    refute Enum.any?(
+             :telemetry.list_handlers([:bandit, :request, :stop]),
+             &(&1.id == BanditTelemetryLogger)
+           )
+  end
+
+  defp start_bandit(extra_options \\ []) do
+    options =
+      [
+        plug: &serve_request/2,
+        port: 0,
+        ip: {127, 0, 0, 1},
+        startup_log: false,
+        http_options: [
+          log_protocol_errors: false,
+          log_client_closures: false,
+          log_exceptions_with_status_codes: []
+        ],
+        http_2_options: [enabled: false],
+        thousand_island_options: [num_acceptors: 1, read_timeout: 1_000]
+      ]
+      |> Keyword.merge(extra_options)
+
+    server = start_supervised!({Bandit, options})
+    {:ok, {_address, port}} = ThousandIsland.listener_info(server)
+    port
+  end
+
+  defp serve_request(%Plug.Conn{request_path: "/sources/public/" <> _token}, _opts) do
+    raise RuntimeError, "exception-secret"
+  end
+
+  defp serve_request(conn, _opts) do
+    {:ok, _body, conn} = Plug.Conn.read_body(conn)
+    Plug.Conn.send_resp(conn, 200, "ok")
+  end
+
+  defp raw_request(port, request) do
+    {:ok, socket} =
+      :gen_tcp.connect(
+        {127, 0, 0, 1},
+        port,
+        [active: false, linger: {true, 0}, mode: :binary, nodelay: true],
+        1_000
+      )
+
+    try do
+      :ok = :gen_tcp.send(socket, request)
+      receive_response(socket, [])
+    after
+      :gen_tcp.close(socket)
+    end
+  end
+
+  defp receive_response(socket, chunks) do
+    case :gen_tcp.recv(socket, 0, 2_000) do
+      {:ok, chunk} ->
+        receive_response(socket, [chunk | chunks])
+
+      {:error, reason} when reason in [:closed, :econnreset] ->
+        chunks |> Enum.reverse() |> IO.iodata_to_binary()
+
+      {:error, reason} ->
+        flunk("failed to receive Bandit response: #{inspect(reason)}")
+    end
+  end
+
+  defp attach_forwarder(event) do
+    handler_id = {__MODULE__, make_ref()}
+    test_pid = self()
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        event,
+        fn event, measurements, metadata, {test_pid, handler_id} ->
+          send(test_pid, {handler_id, event, measurements, metadata, self()})
+        end,
+        {test_pid, handler_id}
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+    handler_id
+  end
+
+  defp receive_event(handler_id, event) do
+    assert_receive {^handler_id, ^event, measurements, metadata, emitter_pid}, 2_000
+    {measurements, metadata, emitter_pid}
+  end
+
+  defp await_termination(pid) do
+    monitor = Process.monitor(pid)
+    assert_receive {:DOWN, ^monitor, :process, ^pid, _reason}, 2_000
   end
 end
