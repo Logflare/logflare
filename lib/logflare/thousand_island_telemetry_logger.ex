@@ -1,4 +1,4 @@
-defmodule Logflare.BanditTelemetryLogger do
+defmodule Logflare.ThousandIslandTelemetryLogger do
   @moduledoc """
   Logs abnormal Thousand Island connection terminations with extra metadata.
   """
@@ -6,9 +6,10 @@ defmodule Logflare.BanditTelemetryLogger do
   require Logger
 
   @doc """
-  Attaches the telemetry handler that logs Bandit connection failures.
+  Attaches the telemetry handler that logs Thousand Island connection failures.
   """
   def attach do
+    # Thousand Island 1.4 reports connection exceptions through `:stop` metadata.
     :telemetry.attach(
       __MODULE__,
       [:thousand_island, :connection, :stop],
