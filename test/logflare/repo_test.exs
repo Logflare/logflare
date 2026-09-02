@@ -31,6 +31,9 @@ defmodule Logflare.RepoTest do
       for {k, v} <- config, k != :ssl do
         assert Keyword.fetch!(opts, k) == v
       end
+
+      assert {Replicas, :after_connect, [_primary_after_connect]} =
+               Keyword.fetch!(opts, :after_connect)
     end
 
     start_result
@@ -71,6 +74,51 @@ defmodule Logflare.RepoTest do
 
       repos = for _ <- 1..30, do: Repo.apply_with_replica(Repo, :get_dynamic_repo, [])
       assert Enum.all?(repos, &(&1 != Repo))
+    end
+  end
+
+  describe "Replicas.after_connect/2" do
+    setup do
+      opts = Keyword.take(Repo.config(), [:hostname, :port, :username, :password, :database])
+
+      %{conn: start_supervised!({Postgrex, opts})}
+    end
+
+    test "opens the session read-only", %{conn: conn} do
+      Replicas.after_connect(conn, _no_primary_hook = nil)
+
+      assert %Postgrex.Result{rows: [["on"]]} =
+               Postgrex.query!(conn, "SHOW default_transaction_read_only", [])
+    end
+
+    test "rejects writes on the session", %{conn: conn} do
+      Replicas.after_connect(conn, _no_primary_hook = nil)
+
+      assert_raise Postgrex.Error, ~r/read-only transaction/, fn ->
+        Postgrex.query!(conn, "CREATE TEMP TABLE read_only_probe (id integer)", [])
+      end
+    end
+
+    test "still runs the primary's after_connect, given as an MFA", %{conn: conn} do
+      Replicas.after_connect(conn, {Postgrex, :query!, ["SET application_name = 'mfa'", []]})
+
+      assert %Postgrex.Result{rows: [["mfa"]]} =
+               Postgrex.query!(conn, "SHOW application_name", [])
+
+      assert %Postgrex.Result{rows: [["on"]]} =
+               Postgrex.query!(conn, "SHOW default_transaction_read_only", [])
+    end
+
+    test "still runs the primary's after_connect, given as a function", %{conn: conn} do
+      hook = fn conn -> Postgrex.query!(conn, "SET application_name = 'fun'", []) end
+
+      Replicas.after_connect(conn, hook)
+
+      assert %Postgrex.Result{rows: [["fun"]]} =
+               Postgrex.query!(conn, "SHOW application_name", [])
+
+      assert %Postgrex.Result{rows: [["on"]]} =
+               Postgrex.query!(conn, "SHOW default_transaction_read_only", [])
     end
   end
 

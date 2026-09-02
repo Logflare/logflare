@@ -21,9 +21,20 @@ defmodule Logflare.Repo.Replicas do
   Callers can temporarily redirect Ecto queries to a replica for the duration of
   a function call using `apply_with_replica/3` on `Logflare.Repo`, which swaps
   the dynamic repo and restores it afterwards.
+
+  Every replica connection opens its session read-only, so a write that reaches a
+  replica fails immediately instead of diverging from the primary.
   """
 
   @registry __MODULE__.Registry
+
+  # Replicas serve reads only: `Logflare.Repo.apply_with_replica/3` and
+  # `apply_with_random_repo/3` are the only ways to reach one, and both are read
+  # paths. Marking the session read-only turns a write that slips through into an
+  # immediate error rather than a silent divergence. That matters most when the
+  # replica is a logical subscriber, which - unlike a physical standby - has a
+  # server that will happily accept the write.
+  @read_only_statement "SET default_transaction_read_only = on"
 
   def child_spec(options) do
     %{
@@ -40,9 +51,16 @@ defmodule Logflare.Repo.Replicas do
     if entries == [] do
       :ignore
     else
+      primary_after_connect = Logflare.Repo.config()[:after_connect]
+
       replicas =
         Enum.map(entries, fn {key, config} ->
-          config = [name: {:via, Registry, {@registry, key}}] ++ resolve_ssl(config)
+          config =
+            [
+              name: {:via, Registry, {@registry, key}},
+              after_connect: {__MODULE__, :after_connect, [primary_after_connect]}
+            ] ++ resolve_ssl(config)
+
           Supervisor.child_spec({Logflare.Repo, config}, id: key)
         end)
 
@@ -65,6 +83,29 @@ defmodule Logflare.Repo.Replicas do
       [] -> raise "unknown replica: #{inspect(key)}"
     end
   end
+
+  @doc """
+  Runs on every replica connection: the primary's own `:after_connect`, if it has
+  one, then the read-only session setting.
+
+  A replica's config is the primary's with the entry's overrides applied, so
+  setting `:after_connect` on a replica would otherwise drop the primary's -
+  which is what sets `search_path` when `DB_SCHEMA` is configured. The primary's
+  hook runs first so that this stays compatible with one that needs to write.
+  """
+  @spec after_connect(pid(), {module(), atom(), [term()]} | (pid() -> any()) | nil) ::
+          Postgrex.Result.t()
+  def after_connect(conn, primary_after_connect) do
+    run_after_connect(conn, primary_after_connect)
+    Postgrex.query!(conn, @read_only_statement, [])
+  end
+
+  defp run_after_connect(_conn, nil), do: :ok
+
+  defp run_after_connect(conn, {module, function, args}),
+    do: apply(module, function, [conn | args])
+
+  defp run_after_connect(conn, fun) when is_function(fun, 1), do: fun.(conn)
 
   @doc """
   Parses a single `LOGFLARE_READ_REPLICAS` entry into a `{key, config}` pair.

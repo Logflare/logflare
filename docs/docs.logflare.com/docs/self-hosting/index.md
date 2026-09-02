@@ -172,6 +172,8 @@ Each entry is either a **bare hostname** or a **connection URI** (`postgres://us
 
 Example: `LOGFLARE_READ_REPLICAS=replica1.example.com,postgres://user:pass@replica2.example.com:5432/logflare`
 
+Replica connections open their sessions read-only (`SET default_transaction_read_only = on`), so a write that reaches a replica fails immediately rather than diverging from the primary. This matters for a logical replica, whose server would otherwise accept the write; on a physical standby it is redundant with the server's own read-only state.
+
 ## Database Encryption
 
 Certain database columns that store sensitive data are encrypted with the `LOGFLARE_DB_ENCRYPTION_KEY` key.
