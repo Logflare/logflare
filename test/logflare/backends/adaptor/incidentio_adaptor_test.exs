@@ -141,15 +141,19 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
       assert_receive payload, 2000
 
       assert %{
-               "title" => _,
+               "title" => title,
                "status" => "firing",
                "description" => _,
                "metadata" => %{"data" => [%{"event_message" => ^message}]},
-               "source_url" => alert_source_url
+               "source_url" => alert_source_url,
+               "deduplication_key" => deduplication_key
              } = payload
 
       # link to the backend
       assert alert_source_url =~ "/backends/"
+      assert title =~ "events detected"
+      # no alert query is configured for raw log ingestion, so dedup key falls back to "unknown"
+      assert deduplication_key =~ ~r/^unknown-\d+$/
     end
   end
 
@@ -208,13 +212,16 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
                "metadata" => %{
                  "data" => [%{"testing" => "123"}]
                },
-               "source_url" => alert_source_url
+               "source_url" => alert_source_url,
+               "deduplication_key" => deduplication_key
              } = payload
 
       # link to the alert
       assert alert_source_url =~ "/alerts/"
       assert title =~ alert_query.name
       assert description =~ alert_query.description
+
+      assert deduplication_key =~ ~r/^#{alert_query.id}-\d+$/
     end
   end
 end
