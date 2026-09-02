@@ -1,10 +1,7 @@
 defmodule Logflare.BanditTelemetryLogger do
   @moduledoc """
-  Logs failed Bandit requests and abnormal Thousand Island connection terminations.
-
-  Request logs use Phoenix route templates instead of raw paths. Request and connection
-  logs include the shared connection identifier so they can be correlated without assigning
-  a single request to a keep-alive or multiplexed connection.
+  Logs failed Bandit requests and abnormal Thousand Island connection terminations with extra
+  metadata.
   """
 
   require Logger
@@ -28,6 +25,13 @@ defmodule Logflare.BanditTelemetryLogger do
       &__MODULE__.handle_event/4,
       _no_config = []
     )
+  end
+
+  @doc """
+  Detaches the telemetry handler.
+  """
+  def detach do
+    :telemetry.detach(__MODULE__)
   end
 
   @doc false
@@ -110,11 +114,11 @@ defmodule Logflare.BanditTelemetryLogger do
   defp format_error(error) when is_tuple(error) and tuple_size(error) > 0,
     do: error |> elem(0) |> format_error()
 
-  defp format_error(%{__struct__: module}), do: inspect(module)
+  defp format_error(%{__struct__: module}) when is_atom(module), do: inspect(module)
   defp format_error(error) when is_atom(error), do: Atom.to_string(error)
   defp format_error(_error), do: "unknown_error"
 
-  defp exception_status(%{exception: %{__exception__: true} = exception}) do
+  defp exception_status(%{exception: exception}) when is_exception(exception) do
     exception
     |> Plug.Exception.status()
     |> Status.code()
