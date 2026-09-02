@@ -28,7 +28,7 @@ defmodule Logflare.RepoTest do
     for {_key, config} <- entries do
       assert_receive {[:ecto, :repo, :init], ^telemetry_ref, _, %{repo: Repo, opts: opts}}
 
-      for {k, v} <- config, k != :ssl do
+      for {k, v} <- config, k not in [:ssl, :auth] do
         assert Keyword.fetch!(opts, k) == v
       end
 
@@ -122,6 +122,106 @@ defmodule Logflare.RepoTest do
     end
   end
 
+  describe "IAM authentication" do
+    setup do
+      # ExAws resolves credentials from app env; a real signature needs some, not valid ones.
+      previous_access_key_id = Application.fetch_env(:ex_aws, :access_key_id)
+      previous_secret_access_key = Application.fetch_env(:ex_aws, :secret_access_key)
+      Application.put_env(:ex_aws, :access_key_id, "AKIAIOSFODNN7EXAMPLE")
+      Application.put_env(:ex_aws, :secret_access_key, "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+
+      on_exit(fn ->
+        restore_application_env(:ex_aws, :access_key_id, previous_access_key_id)
+        restore_application_env(:ex_aws, :secret_access_key, previous_secret_access_key)
+      end)
+
+      %{host: "logflare-proxy.proxy-abc123.eu-west-1.rds.amazonaws.com"}
+    end
+
+    test "parse/1 accepts auth=iam and carries no password", %{host: host} do
+      assert {:ok, {_key, config}} =
+               Replicas.parse("postgres://logflare@#{host}:5432/logflare?auth=iam&ssl=true")
+
+      assert config[:auth] == :iam
+      assert config[:username] == "logflare"
+      refute Keyword.has_key?(config, :password)
+    end
+
+    test "parse/1 rejects an unknown auth scheme", %{host: host} do
+      assert {:error, reason} =
+               Replicas.parse("postgres://logflare@#{host}:5432/logflare?auth=kerberos")
+
+      assert reason =~ "unsupported auth=kerberos"
+    end
+
+    test "the pool is configured to mint a token per connection rather than carry a password" do
+      host = "logflare-proxy.proxy-abc123.eu-west-1.rds.amazonaws.com"
+      entries = [Replicas.parse!("postgres://logflare@#{host}:5432/logflare?auth=iam&ssl=true")]
+
+      telemetry_ref = :telemetry_test.attach_event_handlers(self(), [[:ecto, :repo, :init]])
+      on_exit(fn -> :telemetry.detach(telemetry_ref) end)
+
+      start_supervised!({Replicas, entries: entries})
+
+      assert_receive {[:ecto, :repo, :init], ^telemetry_ref, _, %{repo: Repo, opts: opts}}
+
+      assert {Replicas, :iam_configure, [_primary_configure]} =
+               Keyword.fetch!(opts, :configure)
+
+      # :auth is translated, not forwarded -- Postgrex has no such option.
+      refute Keyword.has_key?(opts, :auth)
+    end
+
+    test "rds_auth_token/3 signs for the region in the hostname", %{host: host} do
+      token = Replicas.rds_auth_token(host, 5432, "logflare")
+
+      assert String.starts_with?(token, "#{host}:5432/?")
+      assert token =~ "Action=connect"
+      assert token =~ "DBUser=logflare"
+      assert token =~ "X-Amz-Signature="
+      assert token =~ "X-Amz-Expires=900"
+      assert token =~ "eu-west-1%2Frds-db"
+    end
+
+    test "iam_configure/1 replaces the password with a fresh token", %{host: host} do
+      opts = [hostname: host, port: 5432, username: "logflare", password: "stale"]
+
+      configured = Replicas.iam_configure(opts)
+
+      refute configured[:password] == "stale"
+      assert configured[:password] =~ "X-Amz-Signature="
+      assert configured[:hostname] == host
+    end
+
+    test "iam_configure/2 preserves both inherited configure callback shapes", %{host: host} do
+      opts = [hostname: host, port: 5432, username: "original", password: "stale"]
+
+      callbacks = [
+        {fn opts -> Keyword.put(opts, :username, "from_fun") end, "from_fun"},
+        {{__MODULE__, :configure_username, ["from_mfa"]}, "from_mfa"}
+      ]
+
+      for {callback, expected_username} <- callbacks do
+        configured = Replicas.iam_configure(opts, callback)
+
+        assert configured[:username] == expected_username
+        assert configured[:password] =~ "DBUser=#{expected_username}"
+      end
+    end
+
+    test "rds_auth_token/3 rejects a non-RDS host even when AWS_REGION is set" do
+      previous_region = System.get_env("AWS_REGION")
+      System.put_env("AWS_REGION", "eu-west-1")
+      on_exit(fn -> restore_system_env("AWS_REGION", previous_region) end)
+
+      assert_raise RuntimeError,
+                   ~r/IAM authentication requires an .*rds\.amazonaws\.com host/,
+                   fn ->
+                     Replicas.rds_auth_token("127.0.0.1", 5432, "logflare")
+                   end
+    end
+  end
+
   describe "Replicas.parse/1" do
     test "a bare hostname only overrides the hostname, keyed by hostname" do
       assert {:ok, {"host", [hostname: "host"]}} = Replicas.parse("host")
@@ -181,4 +281,12 @@ defmodule Logflare.RepoTest do
       refute Exception.message(error) =~ "supersecret"
     end
   end
+
+  def configure_username(opts, username), do: Keyword.put(opts, :username, username)
+
+  defp restore_application_env(app, key, {:ok, value}), do: Application.put_env(app, key, value)
+  defp restore_application_env(app, key, :error), do: Application.delete_env(app, key)
+
+  defp restore_system_env(key, nil), do: System.delete_env(key)
+  defp restore_system_env(key, value), do: System.put_env(key, value)
 end

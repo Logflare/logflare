@@ -22,7 +22,9 @@ defmodule Logflare.Repo.Replicas do
   a function call using `apply_with_replica/3` on `Logflare.Repo`, which swaps
   the dynamic repo and restores it afterwards.
 
-  Every replica connection opens its session read-only.
+  Every replica connection opens its session read-only. An entry may also carry
+  `auth=iam` in place of a password, authenticating with a freshly minted RDS IAM
+  token instead; AWS requires TLS for that, so pair it with `ssl=true`.
   """
 
   @registry __MODULE__.Registry
@@ -30,6 +32,14 @@ defmodule Logflare.Repo.Replicas do
   # A physical standby rejects a stray write on its own; a logical subscriber accepts it, and
   # the divergence only surfaces later as a conflict that stalls replication.
   @read_only_statement "SET default_transaction_read_only = on"
+
+  # RDS caps IAM authentication tokens at 15 minutes. The exact value matters less than the
+  # fact that it expires at all: that is why the token is minted per connection, below,
+  # rather than once when the pool starts.
+  @iam_token_expiry_seconds 900
+
+  # `<name>.<region>.rds.amazonaws.com`, covering both cluster and proxy endpoints.
+  @rds_hostname ~r/\.([a-z]{2}(?:-[a-z]+)+-\d+)\.rds\.amazonaws\.com$/
 
   def child_spec(options) do
     %{
@@ -47,6 +57,7 @@ defmodule Logflare.Repo.Replicas do
       :ignore
     else
       primary_after_connect = Logflare.Repo.config()[:after_connect]
+      primary_configure = Logflare.Repo.config()[:configure]
 
       replicas =
         Enum.map(entries, fn {key, config} ->
@@ -54,7 +65,7 @@ defmodule Logflare.Repo.Replicas do
             [
               name: {:via, Registry, {@registry, key}},
               after_connect: {__MODULE__, :after_connect, [primary_after_connect]}
-            ] ++ resolve_ssl(config)
+            ] ++ resolve_auth(resolve_ssl(config), primary_configure)
 
           Supervisor.child_spec({Logflare.Repo, config}, id: key)
         end)
@@ -99,6 +110,88 @@ defmodule Logflare.Repo.Replicas do
     do: apply(module, function, [conn | args])
 
   defp run_after_connect(conn, fun) when is_function(fun, 1), do: fun.(conn)
+
+  @doc """
+  Replaces the password with a freshly minted RDS IAM authentication token.
+
+  Wired in as `:configure`, which DBConnection runs before *every* connect attempt. That is
+  the point rather than an implementation detail: a token lasts 15 minutes, so one minted
+  when the pool started would leave it unable to reconnect after that window.
+  """
+  @spec iam_configure(keyword()) :: keyword()
+  def iam_configure(opts), do: iam_configure(opts, nil)
+
+  @doc false
+  @spec iam_configure(
+          keyword(),
+          {module(), atom(), [term()]} | (keyword() -> keyword()) | nil
+        ) :: keyword()
+  def iam_configure(opts, primary_configure) do
+    opts = run_configure(opts, primary_configure)
+    hostname = Keyword.fetch!(opts, :hostname)
+    username = Keyword.fetch!(opts, :username)
+    port = Keyword.get(opts, :port) || 5432
+
+    Keyword.put(opts, :password, rds_auth_token(hostname, port, username))
+  end
+
+  defp run_configure(opts, nil), do: opts
+
+  defp run_configure(opts, {module, function, args}),
+    do: apply(module, function, [opts | args])
+
+  defp run_configure(opts, fun) when is_function(fun, 1), do: fun.(opts)
+
+  @doc """
+  Builds an RDS IAM authentication token: a SigV4-presigned URL with its scheme stripped,
+  used in place of a password.
+  """
+  @spec rds_auth_token(String.t(), non_neg_integer(), String.t()) :: String.t()
+  def rds_auth_token(hostname, port, username) do
+    # `:rds` only selects credential/region defaults; ExAws has no `:rds-db` service and
+    # raises building a host for one. The SigV4 *signing* service is passed separately below,
+    # and that is the one that has to read `rds-db`.
+    config = ExAws.Config.new(:rds, region: aws_region!(hostname))
+
+    {:ok, url} =
+      ExAws.Auth.presigned_url(
+        :get,
+        "https://#{hostname}:#{port}/",
+        :"rds-db",
+        NaiveDateTime.to_erl(NaiveDateTime.utc_now()),
+        config,
+        @iam_token_expiry_seconds,
+        [{"Action", "connect"}, {"DBUser", username}]
+      )
+
+    String.replace_prefix(url, "https://", "")
+  end
+
+  # The token is signed for the region its endpoint lives in, which the hostname encodes.
+  # AWS validates that signed host, so aliases and tunnel endpoints cannot be substituted.
+  defp aws_region!(hostname) do
+    case Regex.run(@rds_hostname, hostname || "") do
+      [_, region] ->
+        region
+
+      nil ->
+        raise "cannot determine the AWS region for read replica #{inspect(hostname)}: " <>
+                "IAM authentication requires an *.<region>.rds.amazonaws.com host"
+    end
+  end
+
+  # `auth=iam` carries no password, so one is minted per connection instead. The key is
+  # dropped rather than passed through: Postgrex has no `:auth` option. The primary's
+  # configure hook runs first so unrelated dynamic connection options remain inherited.
+  defp resolve_auth(config, primary_configure) do
+    case Keyword.pop(config, :auth) do
+      {:iam, rest} ->
+        Keyword.put(rest, :configure, {__MODULE__, :iam_configure, [primary_configure]})
+
+      {nil, rest} ->
+        rest
+    end
+  end
 
   @doc """
   Parses a single `LOGFLARE_READ_REPLICAS` entry into a `{key, config}` pair.
@@ -152,9 +245,19 @@ defmodule Logflare.Repo.Replicas do
         |> Keyword.delete(:scheme)
         |> maybe_put_socket_options()
 
-      {:ok, {build_key(config), config}}
+      with {:ok, config} <- normalize_auth(config) do
+        {:ok, {build_key(config), config}}
+      end
     rescue
       e in Ecto.InvalidURLError -> {:error, redact(e.message, uri.userinfo)}
+    end
+  end
+
+  defp normalize_auth(config) do
+    case Keyword.fetch(config, :auth) do
+      :error -> {:ok, config}
+      {:ok, "iam"} -> {:ok, Keyword.put(config, :auth, :iam)}
+      {:ok, other} -> {:error, ~s(unsupported auth=#{other}, expected "iam")}
     end
   end
 

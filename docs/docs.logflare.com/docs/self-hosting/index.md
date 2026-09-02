@@ -168,7 +168,15 @@ The configuration follows the [Erlang Security Working Group recommendations](ht
 
 `LOGFLARE_READ_REPLICAS` is a comma-separated list of PostgreSQL read replicas to distribute ingest-path data fetching queries across. If unset or empty, all queries go to the primary database.
 
-Each entry is either a **bare hostname** or a **connection URI** (`postgres://user:pass@host:port/database?ssl=true&pool_size=5`). In both cases, only the parts given override the primary's `DB_*` settings - anything omitted (port, database, credentials, SSL, ...) is inherited from the primary. Query params: `ssl` (`true`/`false`), `pool_size` (positive integer).
+Each entry is either a **bare hostname** or a **connection URI** (`postgres://user:pass@host:port/database?ssl=true&pool_size=5`). In both cases, only the parts given override the primary's `DB_*` settings - anything omitted (port, database, credentials, SSL, ...) is inherited from the primary. Query params: `ssl` (`true`/`false`), `pool_size` (positive integer), `auth` (`iam`).
+
+`auth=iam` replaces the password with an AWS RDS IAM authentication token, minted fresh for every connection because a token expires after 15 minutes. Use it for an AWS endpoint whose database role holds `rds_iam`, which disables password authentication for that role. The entry then carries a username but no password:
+
+```
+LOGFLARE_READ_REPLICAS=postgres://logflare@my-proxy.proxy-abc.eu-west-1.rds.amazonaws.com:5432/logflare?auth=iam&ssl=true
+```
+
+AWS requires TLS for IAM authentication, so pair it with `ssl=true`. Use the AWS-issued `*.<region>.rds.amazonaws.com` database, cluster, reader, or proxy endpoint as the hostname; AWS includes that exact host in the signature, so a DNS alias or tunnel endpoint cannot be substituted. Credentials come from the standard AWS chain, so the runtime needs an identity with `rds-db:connect` for that database user - on EKS, typically an EKS Pod Identity association.
 
 Example: `LOGFLARE_READ_REPLICAS=replica1.example.com,postgres://user:pass@replica2.example.com:5432/logflare`
 
