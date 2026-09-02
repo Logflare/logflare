@@ -7,8 +7,6 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
 
   import Logflare.Utils.Guards
 
-  require Logger
-
   alias __MODULE__.Pipeline
   alias Ecto.Changeset
   alias ExAws.S3
@@ -40,7 +38,6 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   @max_batch_timeout 5_000
   @connection_test_key "_connection_test.parquet"
   @parquet_content_type "application/vnd.apache.parquet"
-  @request_telemetry_event [:logflare, :backends, :s3, :request]
 
   @doc false
   def child_spec(arg) do
@@ -164,7 +161,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     config = Adaptor.get_backend_config(backend)
     df = DataFrame.new([%{probe: "connection-test"}], dtypes: [{:probe, :string}])
 
-    case put_parquet(df, config, @connection_test_key, backend.id) do
+    case put_parquet(df, config, @connection_test_key) do
       :ok -> :ok
       {:error, reason} -> {:error, "S3 write failed: #{inspect(reason)}"}
     end
@@ -259,37 +256,12 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
         )
 
       try do
-        put_parquet(df, config, s3_key, backend_id)
+        put_parquet(df, config, s3_key)
       rescue
         error -> {:error, error}
       end
     end
   end
-
-  @doc false
-  @spec attach_request_logger() :: :ok | {:error, :already_exists}
-  def attach_request_logger do
-    :telemetry.attach(
-      "s3-adaptor-request-logger",
-      @request_telemetry_event ++ [:stop],
-      &__MODULE__.handle_request_event/4,
-      nil
-    )
-  end
-
-  @doc false
-  @spec handle_request_event(list(atom()), map(), map(), term()) :: :ok
-  def handle_request_event(_event, _measurements, %{attempt: attempt} = metadata, _config)
-      when attempt > 1 do
-    Logger.warning(
-      "S3 adaptor request retry: attempt #{attempt} result #{metadata[:result]}",
-      backend_id: metadata.options[:backend_id],
-      s3_bucket: metadata.options[:bucket],
-      error: metadata[:error]
-    )
-  end
-
-  def handle_request_event(_event, _measurements, _metadata, _config), do: :ok
 
   @doc false
   @impl Supervisor
@@ -317,16 +289,14 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     |> String.replace("-", "_")
   end
 
-  @spec put_parquet(DataFrame.t(), map(), key :: String.t(), backend_id :: pos_integer()) ::
-          :ok | {:error, term()}
-  defp put_parquet(%DataFrame{} = df, config, key, backend_id)
-       when is_non_empty_binary(key) and is_pos_integer(backend_id) do
+  @spec put_parquet(DataFrame.t(), map(), key :: String.t()) :: :ok | {:error, term()}
+  defp put_parquet(%DataFrame{} = df, config, key) when is_non_empty_binary(key) do
     with {:ok, body} <- DataFrame.dump_parquet(df),
          {:ok, _resp} <-
            config
            |> request_bucket()
            |> S3.put_object(key, body, content_type: @parquet_content_type)
-           |> ExAws.request(request_opts(config, backend_id)) do
+           |> ExAws.request(request_opts(config)) do
       :ok
     end
   end
@@ -345,14 +315,12 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     end
   end
 
-  @spec request_opts(map(), backend_id :: pos_integer()) :: keyword()
-  defp request_opts(config, backend_id) do
+  @spec request_opts(map()) :: keyword()
+  defp request_opts(config) do
     [
       access_key_id: config.access_key_id,
       secret_access_key: config.secret_access_key,
-      region: config.storage_region,
-      telemetry_event: @request_telemetry_event,
-      telemetry_options: [backend_id: backend_id, bucket: config.s3_bucket]
+      region: config.storage_region
     ] ++ endpoint_opts(config[:endpoint])
   end
 

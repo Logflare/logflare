@@ -1,8 +1,6 @@
 defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
   use Logflare.DataCase, async: false
 
-  import ExUnit.CaptureLog
-
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.S3Adaptor
 
@@ -310,7 +308,6 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
       assert opts[:access_key_id] == "AKID"
       assert opts[:secret_access_key] == "SECRET"
       assert opts[:region] == "us-east-1"
-      assert opts[:telemetry_options] == [backend_id: backend.id, bucket: "my-bucket"]
       refute Keyword.has_key?(opts, :scheme)
       refute Keyword.has_key?(opts, :host)
       refute Keyword.has_key?(opts, :port)
@@ -410,41 +407,6 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
 
       assert {:error, _reason} =
                S3Adaptor.push_log_events_to_s3({source.id, backend.id}, events)
-    end
-  end
-
-  describe "handle_request_event/4" do
-    test "logs a warning when a request was retried" do
-      log =
-        capture_log(fn ->
-          S3Adaptor.handle_request_event(
-            [:logflare, :backends, :s3, :request, :stop],
-            %{},
-            %{
-              attempt: 2,
-              options: [backend_id: 123, bucket: "my-bucket"],
-              result: :error,
-              error: "timeout"
-            },
-            nil
-          )
-        end)
-
-      assert log =~ "S3 adaptor request retry: attempt 2"
-    end
-
-    test "does not log on the first attempt" do
-      log =
-        capture_log(fn ->
-          S3Adaptor.handle_request_event(
-            [:logflare, :backends, :s3, :request, :stop],
-            %{},
-            %{attempt: 1, options: [backend_id: 123, bucket: "my-bucket"], result: :ok},
-            nil
-          )
-        end)
-
-      assert log == ""
     end
   end
 end
