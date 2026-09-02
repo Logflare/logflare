@@ -1485,10 +1485,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   defp maybe_start_query_connection_manager(_pid, _backend_id, _label), do: :ok
 
-  @spec ensure_pool_and_notify(Backend.t(), String.t() | nil) :: :ok
+  @spec ensure_pool_and_notify(Backend.t(), String.t() | nil) :: :ok | {:error, term()}
   defp ensure_pool_and_notify(%Backend{} = backend, label) do
-    ConnectionManager.ensure_pool_started(backend, label)
-    ConnectionManager.notify_activity(backend, label)
-    :ok
+    with :ok <- ConnectionManager.ensure_pool_started(backend, label) do
+      ConnectionManager.notify_activity(backend, label)
+    end
   end
 end

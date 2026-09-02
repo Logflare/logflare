@@ -1200,6 +1200,69 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                )
     end
 
+    test "falls back to the default cluster when the requested cluster pool cannot start" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_urls: %{
+              "api" => "http://localhost:8123",
+              "dashboard_logs" => "http://localhost:8123"
+            },
+            default_read_cluster: "dashboard_logs"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      stub_read_cluster_pool_start_error(backend, "api")
+      TestUtils.attach_forwarder([:logflare, :clickhouse, :read_pool, :query_error])
+      TestUtils.attach_forwarder([:logflare, :clickhouse, :read_pool, :failover])
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, {[%{"test" => 1}], _bytes}} =
+                   ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                     read_cluster: "api"
+                   )
+        end)
+
+      assert log =~ "read cluster unhealthy"
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :read_pool, :failover],
+                      %{count: 1}, %{read_cluster: "api"}}
+
+      refute_received {:telemetry_event, [:logflare, :clickhouse, :read_pool, :query_error], _, _}
+      assert ConnectionManager.pool_active?(backend, "dashboard_logs")
+    end
+
+    test "returns a connection error when the default cluster pool cannot start" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            read_only_urls: %{"dashboard_logs" => "http://localhost:8123"},
+            default_read_cluster: "dashboard_logs"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      stub_read_cluster_pool_start_error(backend, "dashboard_logs")
+      TestUtils.attach_forwarder([:logflare, :clickhouse, :read_pool, :query_error])
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert {:error, %QueryError{kind: :connection_error}} =
+                 ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test", [],
+                   read_cluster: "dashboard_logs"
+                 )
+      end)
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :read_pool, :query_error],
+                      %{count: 1}, metadata}
+
+      assert metadata.read_cluster == "dashboard_logs"
+      assert metadata.error_kind == :connection_error
+      refute_received {:telemetry_event, [:logflare, :clickhouse, :read_pool, :query_error], _, _}
+      refute ConnectionManager.pool_active?(backend, "dashboard_logs")
+    end
+
     test "attributes the query error to the read cluster that was actually queried" do
       {_source, backend} =
         setup_clickhouse_test(
@@ -2867,6 +2930,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
   defp stubbed_read_cluster_response(false, pool, statement, params, opts) do
     Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+  end
+
+  defp stub_read_cluster_pool_start_error(%Backend{id: backend_id}, label) do
+    stub(ConnectionManager, :ensure_pool_started, fn
+      %Backend{id: ^backend_id}, ^label ->
+        {:error, :pool_start_failed}
+
+      backend, other_label ->
+        Mimic.call_original(ConnectionManager, :ensure_pool_started, [backend, other_label])
+    end)
   end
 
   defp stub_read_cluster_queue_timeout(%Backend{id: backend_id}, label) do
