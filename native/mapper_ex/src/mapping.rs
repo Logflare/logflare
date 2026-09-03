@@ -15,6 +15,7 @@ const ROOT_CACHE_MIN_REFERENCES: usize = 8;
 pub enum CompiledOutput {
     Map,
     ClickHouseRowBinary(crate::clickhouse_rowbinary::CompiledLayout),
+    Ndjson(crate::ndjson::CompiledLayout),
 }
 
 #[derive(Debug)]
@@ -191,7 +192,7 @@ fn decode_output<'a>(
         .ok_or_else(|| "output format is required".to_string())?;
 
     match format.as_str() {
-        "clickhouse_row_binary" => {
+        "ch_row_binary" => {
             let row_type = get_string_key(env, output, "row_type")?
                 .ok_or_else(|| "ClickHouse RowBinary output row_type is required".to_string())?;
             let fields_by_name = fields
@@ -201,6 +202,12 @@ fn decode_output<'a>(
                 .collect();
             let layout = crate::clickhouse_rowbinary::compile_layout(&row_type, &fields_by_name)?;
             Ok(CompiledOutput::ClickHouseRowBinary(layout))
+        }
+        "ndjson" => {
+            let row_type = get_string_key(env, output, "row_type")?
+                .ok_or_else(|| "NDJSON output row_type is required".to_string())?;
+            let layout = crate::ndjson::compile_layout(&row_type, fields)?;
+            Ok(CompiledOutput::Ndjson(layout))
         }
         _ => Err(format!("unsupported mapping output format '{format}'")),
     }

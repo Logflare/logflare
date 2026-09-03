@@ -1,8 +1,8 @@
 import Logflare.Factory
 
-alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults
 alias Logflare.LogEvent
 alias Logflare.Mapper
+alias Logflare.Mapper.OtelDefaults
 
 user = insert(:user)
 source = insert(:source, user: user)
@@ -282,8 +282,7 @@ log_params = %{
 log_event = LogEvent.make(log_params, %{source: source})
 
 # ── Compile mapping config ───────────────────────────────────────────────
-log_config = MappingDefaults.for_log()
-log_compiled = Mapper.compile!(%{log_config | output: nil})
+log_compiled = Mapper.compile!(OtelDefaults.for_type(:log, :map))
 
 # ── Verify output ────────────────────────────────────────────────────────
 body_result = Mapper.map(log_event.body, log_compiled)
@@ -308,7 +307,7 @@ Benchee.run(
   reduction_time: 3
 )
 
-# Baseline results — Mapper.map(event.body) with MappingDefaults.for_log()
+# Baseline results — Mapper.map(event.body) with OtelDefaults.for_log()
 # Apple M4 / 32 GB / macOS / Elixir 1.19.5 / Erlang 27.3.4.6
 #
 # Name                             ips        average  deviation         median         99th %
