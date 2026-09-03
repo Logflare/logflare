@@ -185,6 +185,7 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
       assert modal_html =~ "select"
       assert modal_html =~ "2 as version_number"
       assert modal_html =~ "snapshot description"
+      refute modal_html =~ "ID:"
       assert_query_displayed(view, "select 2 as version_number")
 
       view
