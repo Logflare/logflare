@@ -590,12 +590,12 @@ spool_compression_algorithm_override =
     v when v in [nil, ""] ->
       []
 
-    algorithm when algorithm in ["gzip", "zstd"] ->
+    algorithm when algorithm in ["gzip", "zstd", "lz4"] ->
       [compression_algorithm: String.to_existing_atom(algorithm)]
 
     other ->
       raise ArgumentError,
-            "Invalid SPOOL_COMPRESSION_ALGORITHM=#{other}. Must be gzip or zstd."
+            "Invalid SPOOL_COMPRESSION_ALGORITHM=#{other}. Must be gzip, zstd, or lz4."
   end
 
 # TEMP: perf isolation switches for the CPU regression investigation on
@@ -620,6 +620,12 @@ spool_skip_event_validation_override =
     v -> [skip_event_validation: v == "true"]
   end
 
+spool_direct_to_pubsub_override =
+  case System.get_env("SPOOL_DIRECT_TO_PUBSUB") do
+    v when v in [nil, ""] -> []
+    v -> [direct_to_pubsub: v == "true"]
+  end
+
 spool_overrides =
   spool_mode_override ++
     spool_provider_override ++
@@ -628,6 +634,7 @@ spool_overrides =
     spool_disable_partition_append_override ++
     spool_disable_commit_io_override ++
     spool_skip_event_validation_override ++
+    spool_direct_to_pubsub_override ++
     if((q = System.get_env("SPOOL_QUEUE_NAME")) && q != "", do: [queue_name: q], else: []) ++
     if((t = System.get_env("SPOOL_PUBSUB_TOPIC")) && t != "", do: [pubsub_topic: t], else: []) ++
     if (b = System.get_env("SPOOL_BUCKET")) && b != "", do: [bucket: b], else: []

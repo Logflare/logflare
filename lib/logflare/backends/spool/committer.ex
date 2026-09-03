@@ -69,10 +69,10 @@ defmodule Logflare.Backends.Spool.Committer do
     {concat_us, body} =
       :timer.tc(fn -> entries |> Enum.map(&elem(&1, 1)) |> IO.iodata_to_binary() end)
 
-    {io_us, result} = :timer.tc(fn -> commit_io(state, file_key, body, total_count) end)
+    {result, upload_us} = commit_io(state, file_key, body, total_count)
 
     format_tag = Encoder.format_tag(state.format, state.compress, state.compression_algorithm)
-    emit_storage_put_telemetry(format_tag, byte_size(body), result, concat_us, io_us)
+    emit_storage_put_telemetry(format_tag, byte_size(body), result, concat_us, upload_us)
 
     case result do
       {:ok, _file_key} ->
@@ -97,18 +97,26 @@ defmodule Logflare.Backends.Spool.Committer do
     "#{state.index}/#{generate_uuidv7()}.#{ext}"
   end
 
+  # Returns the commit result alongside the GCS/S3 upload's own duration in
+  # microseconds — separate from notify_queue/3's own duration measurement —
+  # so logflare.backends.spool.storage.put.upload_duration reflects only the
+  # storage_mod.put call, not the queue publish that follows it.
   @spec commit_io(map(), String.t(), binary(), non_neg_integer()) ::
-          {:ok, String.t()} | {:upload | :notify, {:error, term()}}
+          {{:ok, String.t()} | {:upload | :notify, {:error, term()}}, non_neg_integer()}
   defp commit_io(state, file_key, body, total_count) do
     if disable_commit_io?() do
-      {:ok, file_key}
+      {{:ok, file_key}, 0}
     else
-      with {:upload, {:ok, _}} <-
-             {:upload, state.storage_mod.put(state.bucket, file_key, body, headers(state))},
-           {:notify, :ok} <-
-             {:notify, notify_queue(state, file_key, total_count)} do
-        {:ok, file_key}
-      end
+      {upload_us, upload_result} =
+        :timer.tc(fn -> state.storage_mod.put(state.bucket, file_key, body, headers(state)) end)
+
+      result =
+        with {:upload, {:ok, _}} <- {:upload, upload_result},
+             {:notify, :ok} <- {:notify, notify_queue(state, file_key, total_count)} do
+          {:ok, file_key}
+        end
+
+      {result, upload_us}
     end
   end
 
@@ -128,12 +136,12 @@ defmodule Logflare.Backends.Spool.Committer do
 
   defp notify_queue(state, file_key, count) do
     body = Jason.encode!(%{file_key: file_key, event_count: count})
-    result = state.queue_mod.publish(state.queue_ref, body)
+    {publish_us, result} = :timer.tc(fn -> state.queue_mod.publish(state.queue_ref, body) end)
 
     :telemetry.execute(
       [:logflare, :backends, :spool, :queue, :publish],
-      %{count: 1},
-      %{result: if(result == :ok, do: :ok, else: :error)}
+      %{count: 1, duration: publish_us},
+      %{result: if(result == :ok, do: :ok, else: :error), mode: :notify}
     )
 
     case result do

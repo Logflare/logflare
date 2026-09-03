@@ -1937,7 +1937,10 @@ defmodule Logflare.BackendsTest do
     @impl true
     def nack(_queue, _handle), do: :ok
     @impl true
-    def publish(_ref, _body), do: :ok
+    def publish(ref, body) do
+      send(self(), {:stub_spool_queue_publish, ref, body})
+      :ok
+    end
   end
 
   describe "ingest_logs/3 per-source spooling gate" do
@@ -2064,6 +2067,48 @@ defmodule Logflare.BackendsTest do
       assert {:ok, 1} = Backends.ingest_logs([le], source, nil, true)
 
       assert pending_event_count() == 0
+    end
+
+    test "direct_to_pubsub publishes the compressed segment directly and never touches a partition",
+         %{source: source} do
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        partitions: 1,
+        storage_mod: StubSpoolStorage,
+        queue_mod: StubSpoolQueue,
+        queue_name: "projects/test/topics/test-topic",
+        direct_to_pubsub: true
+      )
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+      assert pending_event_count() == 0
+
+      assert_receive {:stub_spool_queue_publish, "projects/test/topics/test-topic", segment}
+
+      assert {:ok, [_body]} = Logflare.Backends.Spool.Framing.decode_segments(segment)
+    end
+
+    test "direct_to_pubsub falls back to normal partition dispatch when disabled",
+         %{source: source} do
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        partitions: 1,
+        storage_mod: StubSpoolStorage,
+        queue_mod: StubSpoolQueue,
+        queue_name: "projects/test/topics/test-topic",
+        direct_to_pubsub: false
+      )
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+      assert pending_event_count() == 1
+
+      refute_receive {:stub_spool_queue_publish, _ref, _body}
     end
   end
 end

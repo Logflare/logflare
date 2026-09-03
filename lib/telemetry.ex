@@ -364,8 +364,15 @@ defmodule Logflare.Telemetry do
           "Time spent encoding+compressing one chunk in the ingest caller's own process, before it's handed to a Partition, by format"
       ),
       sum("logflare.backends.spool.queue.publish.count",
-        tags: [:result],
-        description: "Spool queue publish (SQS send / PubSub publish) count"
+        tags: [:result, :mode],
+        description:
+          "Spool queue publish (SQS send / PubSub publish) count, by result and mode (:notify — small JSON pointer to a GCS object; :direct — the compressed segment published as the message body, bypassing GCS)"
+      ),
+      distribution("logflare.backends.spool.queue.publish.duration",
+        tags: [:result, :mode],
+        unit: {:microsecond, :millisecond},
+        description:
+          "Time spent in the actual queue_mod.publish network call (SQS send / PubSub publish), separate from the GCS storage.put call, by result and mode"
       ),
       sum("logflare.backends.spool.producer.batch.count",
         tags: [:result, :stage],

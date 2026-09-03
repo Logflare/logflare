@@ -615,7 +615,7 @@ defmodule Logflare.Backends do
     ensure_source_sup_started(source)
 
     if skip_event_validation?() and allow_spooling and spool_producer_mode?() and
-         source.enable_spooling do
+         source.enable_spooling and Enum.all?(event_params, &(not match?(%LogEvent{}, &1))) do
       dispatch_unvalidated_to_spool_producer(event_params, source)
     else
       dispatch_validated_logs(event_params, source, backend, allow_spooling)
@@ -656,13 +656,18 @@ defmodule Logflare.Backends do
   # real %LogEvent{}. Still compresses and writes to GCS/Pub-Sub for real.
   # NOT consumer-compatible: `body` is the raw unnormalized param, not the
   # BigQuery-column-spec-cleaned shape the consumer expects. Non-spooled
-  # sources and SourceRouter's re-entrant calls are unaffected. Defaults to
-  # true for this test — set SPOOL_SKIP_EVENT_VALIDATION=false (or
-  # Application.put_env) to fall back to full validation without a redeploy.
-  # Remove once the bottleneck is identified.
+  # sources are unaffected, since they never reach this branch. Also only
+  # fires when every item in event_params is a raw param map, never a
+  # %LogEvent{} — a caller can legitimately pass already-built LogEvent
+  # structs here (see param_to_log_event/2's own %LogEvent{} clauses), and
+  # wrapping one as this branch's `body` would both silently drop its
+  # via_rule_id (defeating spoolable?/3's re-entrancy guard) and crash
+  # ndjson-format Jason encoding on a non-map body. Defaults to false (normal
+  # operation) — set SPOOL_SKIP_EVENT_VALIDATION=true (or Application.put_env)
+  # to enable without a redeploy. Remove once the bottleneck is identified.
   @spec skip_event_validation?() :: boolean()
   defp skip_event_validation? do
-    :logflare |> Application.get_env(:spool, []) |> Keyword.get(:skip_event_validation, true)
+    :logflare |> Application.get_env(:spool, []) |> Keyword.get(:skip_event_validation, false)
   end
 
   @spec dispatch_unvalidated_to_spool_producer([log_param()], Source.t()) ::
@@ -735,6 +740,16 @@ defmodule Logflare.Backends do
   @spec send_to_partition(binary(), non_neg_integer(), non_neg_integer()) ::
           :ok | {:error, term()}
   defp send_to_partition(segment, byte_size, event_count) do
+    if direct_to_pubsub?() do
+      publish_directly_to_pubsub(segment, byte_size, event_count)
+    else
+      dispatch_to_partition(segment, byte_size, event_count)
+    end
+  end
+
+  @spec dispatch_to_partition(binary(), non_neg_integer(), non_neg_integer()) ::
+          :ok | {:error, term()}
+  defp dispatch_to_partition(segment, byte_size, event_count) do
     case SpoolPartitionSupervisor.random_partition() do
       nil ->
         {:error, :no_spool_partition_available}
@@ -758,6 +773,57 @@ defmodule Logflare.Backends do
   @spec blocking_ingest?() :: boolean()
   defp blocking_ingest? do
     :logflare |> Application.get_env(:spool, []) |> Keyword.get(:blocking_ingest, false)
+  end
+
+  # EXPERIMENTAL: perf isolation switch for the CPU regression investigation
+  # on feat/spool_block_till_write. When true, bypasses the Partition/Committer/
+  # GCS path entirely and publishes the already-compressed, already-framed
+  # segment as the Pub/Sub message body directly from the ingest caller's own
+  # process. No GCS object is ever written. Consumer support is intentionally
+  # not implemented yet — this is for producer-side timing experiments only;
+  # anything published in this mode is never picked up downstream. Pub/Sub
+  # caps message size at ~10MB, and a segment can in principle exceed that for
+  # a very large chunk — not guarded here, it'll just surface as a publish
+  # error same as any other queue_mod.publish/2 failure. Defaults to false;
+  # toggle live with Application.put_env, no redeploy needed. Remove once the
+  # bottleneck is identified.
+  @spec direct_to_pubsub?() :: boolean()
+  defp direct_to_pubsub? do
+    :logflare |> Application.get_env(:spool, []) |> Keyword.get(:direct_to_pubsub, false)
+  end
+
+  @default_direct_publish_queue_mod Logflare.Backends.Spool.Queue.PubSub
+
+  @spec publish_directly_to_pubsub(binary(), non_neg_integer(), non_neg_integer()) ::
+          :ok | {:error, term()}
+  defp publish_directly_to_pubsub(segment, byte_size, event_count) do
+    spool_config = Application.get_env(:logflare, :spool, [])
+    queue_mod = Keyword.get(spool_config, :queue_mod, @default_direct_publish_queue_mod)
+
+    topic_name =
+      Keyword.get(spool_config, :pubsub_topic) || Keyword.get(spool_config, :queue_name)
+
+    with topic_name when not is_nil(topic_name) <- topic_name,
+         {:ok, topic} <- queue_mod.resolve(topic_name) do
+      publish_segment(queue_mod, topic, segment, byte_size, event_count)
+    else
+      nil -> {:error, :no_pubsub_topic_configured}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @spec publish_segment(module(), term(), binary(), non_neg_integer(), non_neg_integer()) ::
+          :ok | {:error, term()}
+  defp publish_segment(queue_mod, topic, segment, byte_size, event_count) do
+    {publish_us, result} = :timer.tc(fn -> queue_mod.publish(topic, segment) end)
+
+    :telemetry.execute(
+      [:logflare, :backends, :spool, :queue, :publish],
+      %{count: 1, duration: publish_us, bytes: byte_size, event_count: event_count},
+      %{result: if(result == :ok, do: :ok, else: :error), mode: :direct}
+    )
+
+    result
   end
 
   # TEMP: perf isolation switch for the CPU regression investigation on

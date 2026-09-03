@@ -18,7 +18,7 @@ defmodule Logflare.Backends.Spool.Encoder do
 
   @zstd_compression_level 3
 
-  @spec encode_chunk([LogEvent.t()], :ndjson | :etf, boolean(), :gzip | :zstd) ::
+  @spec encode_chunk([LogEvent.t()], :ndjson | :etf, boolean(), :gzip | :zstd | :lz4) ::
           {segment :: binary(), compressed_byte_size :: non_neg_integer(), format_tag :: atom()}
   def encode_chunk(log_events, format, compress, algorithm) do
     raw = encode_raw(log_events, format)
@@ -27,30 +27,35 @@ defmodule Logflare.Backends.Spool.Encoder do
     {segment, byte_size(body), format_tag(format, compress, algorithm)}
   end
 
-  @spec file_extension(:ndjson | :etf, boolean(), :gzip | :zstd) :: String.t()
+  @spec file_extension(:ndjson | :etf, boolean(), :gzip | :zstd | :lz4) :: String.t()
   def file_extension(:ndjson, false, _algorithm), do: "ndjson"
   def file_extension(:etf, false, _algorithm), do: "etf"
   def file_extension(:ndjson, true, :gzip), do: "ndjson.gz"
   def file_extension(:ndjson, true, :zstd), do: "ndjson.zst"
+  def file_extension(:ndjson, true, :lz4), do: "ndjson.lz4"
   def file_extension(:etf, true, :gzip), do: "etf.gz"
   def file_extension(:etf, true, :zstd), do: "etf.zst"
+  def file_extension(:etf, true, :lz4), do: "etf.lz4"
 
   @spec content_type(:ndjson | :etf) :: String.t()
   def content_type(:ndjson), do: "application/x-ndjson"
   def content_type(:etf), do: "application/octet-stream"
 
-  @spec content_encoding(boolean(), :gzip | :zstd) :: String.t() | nil
+  @spec content_encoding(boolean(), :gzip | :zstd | :lz4) :: String.t() | nil
   def content_encoding(false, _algorithm), do: nil
   def content_encoding(true, :gzip), do: "gzip"
   def content_encoding(true, :zstd), do: "zstd"
+  def content_encoding(true, :lz4), do: "lz4"
 
-  @spec format_tag(:ndjson | :etf, boolean(), :gzip | :zstd) :: atom()
+  @spec format_tag(:ndjson | :etf, boolean(), :gzip | :zstd | :lz4) :: atom()
   def format_tag(:ndjson, false, _algorithm), do: :ndjson
   def format_tag(:etf, false, _algorithm), do: :etf
   def format_tag(:ndjson, true, :gzip), do: :ndjson_gz
   def format_tag(:ndjson, true, :zstd), do: :ndjson_zstd
+  def format_tag(:ndjson, true, :lz4), do: :ndjson_lz4
   def format_tag(:etf, true, :gzip), do: :etf_gz
   def format_tag(:etf, true, :zstd), do: :etf_zstd
+  def format_tag(:etf, true, :lz4), do: :etf_lz4
 
   defp encode_raw(log_events, :ndjson) do
     log_events
@@ -98,4 +103,5 @@ defmodule Logflare.Backends.Spool.Encoder do
   end
 
   defp compress_binary(:zstd, data), do: :ezstd.compress(data, @zstd_compression_level)
+  defp compress_binary(:lz4, data), do: NimbleLZ4.compress_frame(data)
 end

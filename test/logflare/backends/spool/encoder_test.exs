@@ -5,6 +5,14 @@ defmodule Logflare.Backends.Spool.EncoderTest do
   alias Logflare.Backends.Spool.Framing
   alias Logflare.LogEvent
 
+  defp decompress(binary, :gzip), do: :zlib.gunzip(binary)
+  defp decompress(binary, :zstd), do: :ezstd.decompress(binary)
+
+  defp decompress(binary, :lz4) do
+    {:ok, decompressed} = NimbleLZ4.decompress_frame(binary)
+    decompressed
+  end
+
   defp log_event(body, via_rule_id \\ nil) do
     %LogEvent{
       id: Ecto.UUID.generate(),
@@ -32,20 +40,17 @@ defmodule Logflare.Backends.Spool.EncoderTest do
       assert [%{"body" => %{"message" => "one"}}, %{"body" => %{"message" => "two"}}] = lines
     end
 
-    for {algorithm, decompress} <- [
-          {:gzip, &:zlib.gunzip/1},
-          {:zstd, &:ezstd.decompress/1}
-        ] do
+    for {algorithm, tag_suffix} <- [{:gzip, "gz"}, {:zstd, "zstd"}, {:lz4, "lz4"}] do
       test "ndjson+#{algorithm} round-trips through decompression" do
         events = [log_event(%{"message" => "hello"}, 123)]
 
         {segment, _byte_size, format_tag} =
           Encoder.encode_chunk(events, :ndjson, true, unquote(algorithm))
 
-        assert format_tag == unquote(:"ndjson_#{if algorithm == :gzip, do: "gz", else: "zstd"}")
+        assert format_tag == unquote(:"ndjson_#{tag_suffix}")
         assert {:ok, [body]} = Framing.decode_segments(segment)
 
-        line = body |> unquote(decompress).() |> String.trim() |> Jason.decode!()
+        line = body |> decompress(unquote(algorithm)) |> String.trim() |> Jason.decode!()
         assert %{"via_rule_id" => 123} = line
       end
 
@@ -55,10 +60,11 @@ defmodule Logflare.Backends.Spool.EncoderTest do
         {segment, _byte_size, format_tag} =
           Encoder.encode_chunk(events, :etf, true, unquote(algorithm))
 
-        assert format_tag == unquote(:"etf_#{if algorithm == :gzip, do: "gz", else: "zstd"}")
+        assert format_tag == unquote(:"etf_#{tag_suffix}")
         assert {:ok, [body]} = Framing.decode_segments(segment)
 
-        assert [%{via_rule_id: 123}] = body |> unquote(decompress).() |> :erlang.binary_to_term()
+        assert [%{via_rule_id: 123}] =
+                 body |> decompress(unquote(algorithm)) |> :erlang.binary_to_term()
       end
     end
 
@@ -79,8 +85,10 @@ defmodule Logflare.Backends.Spool.EncoderTest do
       assert Encoder.file_extension(:etf, false, :zstd) == "etf"
       assert Encoder.file_extension(:ndjson, true, :gzip) == "ndjson.gz"
       assert Encoder.file_extension(:ndjson, true, :zstd) == "ndjson.zst"
+      assert Encoder.file_extension(:ndjson, true, :lz4) == "ndjson.lz4"
       assert Encoder.file_extension(:etf, true, :gzip) == "etf.gz"
       assert Encoder.file_extension(:etf, true, :zstd) == "etf.zst"
+      assert Encoder.file_extension(:etf, true, :lz4) == "etf.lz4"
     end
   end
 
@@ -89,6 +97,7 @@ defmodule Logflare.Backends.Spool.EncoderTest do
       assert Encoder.content_encoding(false, :gzip) == nil
       assert Encoder.content_encoding(true, :gzip) == "gzip"
       assert Encoder.content_encoding(true, :zstd) == "zstd"
+      assert Encoder.content_encoding(true, :lz4) == "lz4"
     end
   end
 end

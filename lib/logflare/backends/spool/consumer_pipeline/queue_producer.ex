@@ -651,6 +651,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       cond do
         String.ends_with?(file_key, ".gz") -> :zlib.gunzip(segment)
         String.ends_with?(file_key, ".zst") -> decompress_zstd!(segment)
+        String.ends_with?(file_key, ".lz4") -> decompress_lz4!(segment)
         true -> segment
       end
 
@@ -668,6 +669,16 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       binary when is_binary(binary) -> binary
       {:error, reason} -> raise "zstd decompression failed: #{inspect(reason)}"
     end
+  end
+
+  # Unlike :zlib.gunzip/1 and :ezstd.decompress/1, NimbleLZ4.decompress_frame/1
+  # doesn't error on corrupt/truncated input — it silently returns {:ok, ""}.
+  # There's no clean way to distinguish that from a genuinely empty segment
+  # here, so a corrupt lz4 segment surfaces downstream as an empty event list
+  # rather than a decode_failed error like the other two algorithms.
+  defp decompress_lz4!(raw) do
+    {:ok, binary} = NimbleLZ4.decompress_frame(raw)
+    binary
   end
 
   defp parse_content(file_key, content) do

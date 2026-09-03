@@ -114,6 +114,7 @@ defmodule Logflare.Mixfile do
       {:gettext, "~> 0.11"},
       {:jason, "~> 1.0"},
       {:ezstd, "~> 1.0"},
+      {:nimble_lz4, "~> 1.2"},
       {:deep_merge, "~> 1.0"},
       {:number, "~> 1.0.0"},
       {:timex, "~> 3.1"},
