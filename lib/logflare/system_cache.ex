@@ -19,7 +19,7 @@ defmodule Logflare.SystemCache do
       else
         [
           warmer(
-            required: true,
+            required: false,
             module: __MODULE__.Warmer,
             name: __MODULE__.Warmer,
             interval: :timer.seconds(3)
