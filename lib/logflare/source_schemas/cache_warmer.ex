@@ -20,7 +20,7 @@ defmodule Logflare.SourceSchemas.CacheWarmer do
 
     get_kv =
       for ss <- source_schemas do
-        {:cached, {{:get_source_schema_by, [source_id: ss.source_id]}, ss}}
+        {{:get_source_schema_by, [source_id: ss.source_id]}, {:cached, ss}}
       end
 
     {:ok, get_kv}
