@@ -763,11 +763,17 @@ defmodule Logflare.BackendsTest do
       assert :ok = Backends.ensure_source_sup_started(source)
     end
 
-    test "prefetch/1 warms the caches that init/1 reads", %{source: source} do
+    test "prefetch/1 warms the cache keys read during initial startup", %{source: source} do
+      source = Sources.get(source.id)
+      source_schema = insert(:source_schema, source: source)
+
       caches = [
         Logflare.Backends.Cache,
-        Logflare.Users.Cache,
-        Logflare.Billing.Cache
+        Logflare.Billing.Cache,
+        Logflare.Rules.Cache,
+        Logflare.SourceSchemas.Cache,
+        Logflare.Sources.Cache,
+        Logflare.Users.Cache
       ]
 
       for cache <- caches, do: Cachex.clear(cache)
@@ -775,23 +781,58 @@ defmodule Logflare.BackendsTest do
 
       assert :ok = SourceSup.prefetch(source)
 
-      for cache <- caches do
-        assert {:ok, size} = Cachex.size(cache)
-        assert size > 0
-      end
+      source_id = source.id
+      source_schema_id = source_schema.id
+      user_id = source.user_id
+
+      assert {:ok, {:cached, []}} =
+               Cachex.get(Logflare.Rules.Cache, {:list_by_source_id, [source_id]})
+
+      assert {:ok, {:cached, []}} =
+               Cachex.get(Logflare.Backends.Cache, {:list_backends, [[source_id: source_id]]})
+
+      assert {:ok, {:cached, []}} =
+               Cachex.get(Logflare.Backends.Cache, {
+                 :list_backends,
+                 [[rules_source_id: source_id]]
+               })
+
+      assert {:ok, {:cached, %Source{id: ^source_id}}} =
+               Cachex.get(Logflare.Sources.Cache, {:get_by, [[id: source_id]]})
+
+      assert {:ok, {:cached, %User{id: ^user_id} = cached_user}} =
+               Cachex.get(Logflare.Users.Cache, {:get, [user_id]})
+
+      assert {:ok, {:cached, %{}}} =
+               Cachex.get(Logflare.Billing.Cache, {:get_plan_by_user, [cached_user]})
+
+      assert {:ok, {:cached, %{id: ^source_schema_id}}} =
+               Cachex.get(Logflare.SourceSchemas.Cache, {
+                 :get_source_schema_by,
+                 [[source_id: source_id]]
+               })
     end
 
-    test "start_source_sup/1 warms the caches before starting", %{source: source} do
-      for cache <- [Logflare.Backends.Cache, Logflare.Users.Cache, Logflare.Billing.Cache] do
-        Cachex.clear(cache)
-      end
+    test "prefetch/1 skips schemas when no BigQuery backend starts", %{source: source} do
+      stub(Logflare.SingleTenant, :single_tenant?, fn -> true end)
+      stub(Logflare.SingleTenant, :postgres_backend?, fn -> true end)
+      stub(Logflare.SingleTenant, :postgres_backend_adapter_opts, fn -> [url: "ecto://"] end)
+      Cachex.clear(Logflare.SourceSchemas.Cache)
 
-      assert :ok = Backends.start_source_sup(source)
+      assert :ok = SourceSup.prefetch(source)
 
-      for cache <- [Logflare.Backends.Cache, Logflare.Users.Cache, Logflare.Billing.Cache] do
-        assert {:ok, size} = Cachex.size(cache)
-        assert size > 0
-      end
+      assert {:ok, nil} =
+               Cachex.get(Logflare.SourceSchemas.Cache, {
+                 :get_source_schema_by,
+                 [[source_id: source.id]]
+               })
+    end
+
+    test "start_source_sup/1 skips prefetch when already started", %{source: source} do
+      start_supervised!({SourceSup, source})
+      reject(&Logflare.Users.Cache.get/1)
+
+      assert {:error, :already_started} = Backends.start_source_sup(source)
     end
 
     test "on attach to source, update SourceSup", %{source: source} do
