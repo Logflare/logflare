@@ -20,8 +20,8 @@ defmodule Logflare.Sources.CacheWarmer do
         value = {:cached, s}
 
         [
-          {{:get_by, [id: s.id]}, value},
-          {{:get_by, [token: s.token]}, value}
+          {{:get_by, [[id: s.id]]}, value},
+          {{:get_by, [[token: s.token]]}, value}
         ]
       end
 
