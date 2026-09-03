@@ -660,13 +660,6 @@ defmodule LogflareWeb.LogControllerTest do
     insert(:plan, name: "Free")
     user = insert(:user)
     source = insert(:source, user: user)
-    # Keep ingestion on the streaming-insert branch (global Mimic mode makes this
-    # apply to the pipeline process).
-    stub(Logflare.Utils, :flag, fn
-      "BigqueryStorageWriteApi", _identifier -> false
-      _feature, _identifier -> true
-    end)
-
     start_supervised!({SourceSup, source})
 
     {:ok, source: source, user: user, conn: conn}

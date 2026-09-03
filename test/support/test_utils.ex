@@ -18,8 +18,8 @@ defmodule Logflare.TestUtils do
   @doc """
   Restores the `:feature_flag_override` env to its previous value on test exit.
 
-  Call from a test or `setup` block, e.g. `setup :restore_feature_flag_overrides`
-  after importing it.
+  Call from a test or `setup` block, e.g.
+  `setup {TestUtils, :restore_feature_flag_overrides}`.
   """
   @spec restore_feature_flag_overrides(map()) :: :ok
   def restore_feature_flag_overrides(_context \\ %{}) do

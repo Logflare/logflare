@@ -34,7 +34,6 @@ defmodule Logflare.BackendsTest do
 
   setup do
     start_supervised!(AllLogsLogged)
-
     :ok
   end
 

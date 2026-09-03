@@ -13,7 +13,6 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
   setup do
     start_supervised!(AllLogsLogged)
     insert(:plan)
-
     :ok
   end
 
