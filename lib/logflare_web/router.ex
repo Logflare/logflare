@@ -527,7 +527,6 @@ defmodule LogflareWeb.Router do
     put("/users/:user_token/downgrade", Api.Partner.UserController, :downgrade)
 
     get("/users/:user_token", Api.Partner.UserController, :get_user)
-    get("/users/:user_token/usage", Api.Partner.UserController, :get_user_usage)
 
     delete("/users/:user_token", Api.Partner.UserController, :delete_user)
   end

@@ -6,7 +6,6 @@ defmodule Logflare.Factory do
 
   alias Logflare.Backends.Backend
   alias Logflare.Billing.BillingAccount
-  alias Logflare.Billing.BillingCount
   alias Logflare.Billing.PaymentMethod
   alias Logflare.Billing.Plan
   alias Logflare.Endpoints.EndpointQuery
@@ -407,18 +406,6 @@ defmodule Logflare.Factory do
         ),
       team: insert(:team)
     )
-  end
-
-  def billing_counts_factory do
-    user = insert(:user)
-    source = build(:source, user: user)
-
-    %BillingCount{
-      count: TestUtils.random_pos_integer(),
-      node: TestUtils.random_string(8),
-      user: user,
-      source: source
-    }
   end
 
   def partner_factory do
