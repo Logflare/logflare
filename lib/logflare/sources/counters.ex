@@ -7,6 +7,14 @@ defmodule Logflare.Sources.Counters do
   require Logger
 
   @ets_table_name :table_counters
+  @inserts 1
+  @deletes 2
+  @bq_inserts 3
+  @inserts_since_boot 4
+  @total_cluster_inserts 5
+  @source_changed_at 6
+  @counter_count 6
+
   @type success_tuple :: {:ok, atom}
 
   def start_link(args \\ []) do
@@ -16,7 +24,7 @@ defmodule Logflare.Sources.Counters do
   def init(state) do
     Process.flag(:trap_exit, true)
 
-    :ets.new(@ets_table_name, [:public, :named_table])
+    :ets.new(@ets_table_name, [:public, :named_table, read_concurrency: true])
     {:ok, state}
   end
 
@@ -27,144 +35,126 @@ defmodule Logflare.Sources.Counters do
 
   @spec create(atom) :: success_tuple()
   def create(table) do
-    default = make_default(table)
-    :ets.update_counter(@ets_table_name, table, {2, 0}, default)
-    :ets.update_counter(@ets_table_name, table, {3, 0}, default)
-    :ets.update_counter(@ets_table_name, table, {4, 0}, default)
-    :ets.update_counter(@ets_table_name, table, {5, 0}, default)
-    :ets.update_counter(@ets_table_name, table, {6, 0}, default)
+    _ref = counter_ref(table)
     {:ok, table}
   end
 
   @spec increment(atom) :: success_tuple()
   @spec increment(atom, non_neg_integer()) :: success_tuple()
   def increment(table, n \\ 1) do
-    :ets.update_counter(@ets_table_name, table, {2, n}, make_default(table))
-    {:ok, table}
+    add(table, @inserts, n)
   end
 
   @spec increment_bq_count(atom, non_neg_integer) :: success_tuple()
   def increment_bq_count(table, count) do
-    :ets.update_counter(@ets_table_name, table, {4, count}, make_default(table))
-    {:ok, table}
+    add(table, @bq_inserts, count)
   end
 
-  @spec increment_inserts_since_boot_count(atom, non_neg_integer) :: success_tuple
+  @spec increment_inserts_since_boot_count(atom, non_neg_integer) :: success_tuple()
   def increment_inserts_since_boot_count(table, count) do
-    :ets.update_counter(@ets_table_name, table, {5, count}, make_default(table))
-    {:ok, table}
+    add(table, @inserts_since_boot, count)
   end
 
-  @spec increment_total_cluster_inserts_count(atom, non_neg_integer) :: success_tuple
+  @spec increment_total_cluster_inserts_count(atom, non_neg_integer) :: success_tuple()
   def increment_total_cluster_inserts_count(table, count) do
-    :ets.update_counter(@ets_table_name, table, {6, count}, make_default(table))
-    {:ok, table}
+    add(table, @total_cluster_inserts, count)
   end
 
-  @spec increment_source_changed_at_unix_ts(atom, non_neg_integer) :: success_tuple
+  @spec increment_source_changed_at_unix_ts(atom, non_neg_integer) :: success_tuple()
   def increment_source_changed_at_unix_ts(table, count) do
-    :ets.update_counter(@ets_table_name, table, {7, count}, make_default(table))
-    {:ok, table}
+    add(table, @source_changed_at, count)
   end
 
-  @spec decrement(atom) :: success_tuple
+  @spec decrement(atom) :: success_tuple()
   def decrement(table) when is_atom(table) do
-    :ets.update_counter(@ets_table_name, table, {3, 1}, make_default(table))
-    {:ok, table}
+    add(table, @deletes, 1)
   end
 
-  @spec delete(atom) :: success_tuple
+  @spec delete(atom) :: success_tuple()
   def delete(table) when is_atom(table) do
     :ets.delete(@ets_table_name, table)
     {:ok, table}
   end
 
-  @spec get_inserts(atom) :: {:ok, non_neg_integer}
+  @spec get_inserts(atom) :: {:ok, non_neg_integer()}
   def get_inserts(table) do
-    case :ets.lookup(@ets_table_name, table) do
-      [
-        {_table, inserts, _deletes, _total_inserts_in_bq, _inserts_since_boot,
-         _total_cluster_inserts, _changed_at}
-      ] ->
-        {:ok, inserts}
-
-      _ ->
-        {:ok, 0}
-    end
+    {:ok, counter_value(table, @inserts)}
   end
 
-  @spec get_bq_inserts(atom) :: {:ok, non_neg_integer}
+  @spec get_bq_inserts(atom) :: {:ok, non_neg_integer()}
   def get_bq_inserts(table) do
-    case :ets.lookup(@ets_table_name, table) do
-      [
-        {_table, _inserts, _deletes, total_inserts_in_bq, _inserts_since_boot,
-         _total_cluster_inserts, _changed_at}
-      ] ->
-        {:ok, total_inserts_in_bq}
-
-      _ ->
-        {:ok, 0}
-    end
+    {:ok, counter_value(table, @bq_inserts)}
   end
 
   # Deprecated:
-  @spec log_count(Source.t() | atom) :: non_neg_integer
+  @spec log_count(Source.t() | atom) :: non_neg_integer()
   def log_count(%Source{token: token}) do
     log_count(token)
   end
 
   def log_count(table) when is_atom(table) do
-    case :ets.lookup(@ets_table_name, table) do
-      [
-        {_table, inserts, deletes, _total_inserts_in_bq, _inserts_since_boot,
-         _total_cluster_inserts, _changed_at}
-      ] ->
-        count = inserts - deletes
-        count
-
-      _ ->
-        0
+    case lookup_counter_ref(table) do
+      nil -> 0
+      ref -> :counters.get(ref, @inserts) - :counters.get(ref, @deletes)
     end
   end
 
+  @spec get_inserts_since_boot(atom()) :: non_neg_integer()
   def get_inserts_since_boot(table) when is_atom(table) do
-    case :ets.lookup(@ets_table_name, table) do
-      [
-        {_table, _inserts, _deletes, _total_inserts_in_bq, inserts_since_boot,
-         _total_cluster_inserts, _changed_at}
-      ] ->
-        inserts_since_boot
-
-      _ ->
-        0
-    end
+    counter_value(table, @inserts_since_boot)
   end
 
+  @spec get_total_cluster_inserts(atom()) :: non_neg_integer()
   def get_total_cluster_inserts(table) when is_atom(table) do
-    case :ets.lookup(@ets_table_name, table) do
-      [
-        {_table, _inserts, _deletes, _total_inserts_in_bq, _inserts_since_boot,
-         total_cluster_inserts, _changed_at}
-      ] ->
-        total_cluster_inserts
-
-      _ ->
-        0
-    end
+    counter_value(table, @total_cluster_inserts)
   end
 
+  @spec get_source_changed_at_unix_ms(atom()) :: non_neg_integer()
   def get_source_changed_at_unix_ms(table) when is_atom(table) do
-    case :ets.lookup(@ets_table_name, table) do
-      [
-        {_table, _inserts, _deletes, _total_inserts_in_bq, _inserts_since_boot,
-         _total_cluster_inserts, changed_at}
-      ] ->
-        changed_at
+    counter_value(table, @source_changed_at)
+  end
 
-      _ ->
-        0
+  @spec add(atom(), pos_integer(), integer()) :: success_tuple()
+  defp add(table, index, count) do
+    table
+    |> counter_ref()
+    |> :counters.add(index, count)
+
+    {:ok, table}
+  end
+
+  @spec counter_value(atom(), pos_integer()) :: integer()
+  defp counter_value(table, index) do
+    case lookup_counter_ref(table) do
+      nil -> 0
+      ref -> :counters.get(ref, index)
     end
   end
 
-  defp make_default(table), do: {table, 0, 0, 0, 0, 0, 0}
+  @spec counter_ref(atom()) :: :counters.counters_ref()
+  defp counter_ref(table) do
+    case lookup_counter_ref(table) do
+      nil -> insert_counter_ref(table)
+      ref -> ref
+    end
+  end
+
+  @spec insert_counter_ref(atom()) :: :counters.counters_ref()
+  defp insert_counter_ref(table) do
+    ref = :counters.new(@counter_count, [:write_concurrency])
+
+    if :ets.insert_new(@ets_table_name, {table, ref}) do
+      ref
+    else
+      counter_ref(table)
+    end
+  end
+
+  @spec lookup_counter_ref(atom()) :: :counters.counters_ref() | nil
+  defp lookup_counter_ref(table) do
+    case :ets.lookup(@ets_table_name, table) do
+      [{^table, ref}] -> ref
+      [] -> nil
+    end
+  end
 end
