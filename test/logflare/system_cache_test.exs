@@ -23,6 +23,20 @@ defmodule Logflare.SystemCacheTest do
       assert SystemCache.memory_utilization() == 0.42
       assert SystemCache.memory_utilization() == 0.42
     end
+
+    test "caches a safe value when the monitor exits during a cache miss" do
+      Logflare.System
+      |> expect(:memory_utilization, 1, fn -> exit(:monitor_unavailable) end)
+
+      log =
+        capture_log([level: :warning], fn ->
+          assert SystemCache.memory_utilization() == 0.0
+          assert SystemCache.memory_utilization() == 0.0
+        end)
+
+      assert log =~ "SystemCache.memory_utilization read failed"
+      assert log =~ "monitor_unavailable"
+    end
   end
 
   test "does not require the warmer to finish during cache startup" do
