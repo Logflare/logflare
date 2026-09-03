@@ -17,24 +17,26 @@ defmodule Logflare.Sources.Source.BillingWriterTest do
 
     pid = start_supervised!({BillingWriter, source: source})
 
-    # Stripe mocks
+    test_pid = self()
+
     Stripe.UsageRecord
     |> expect(:create, fn sub_item_id, _params ->
       if is_nil(sub_item_id) do
         raise "subscription item id should not be nil"
       end
 
+      send(test_pid, :usage_recorded)
       {:ok, %{}}
     end)
 
     {:ok, pid: pid, source: source}
   end
 
-  test ":write_count", %{pid: pid, source: source} do
-    # increase log count
+  test ":write_count records usage with Stripe only", %{pid: pid, source: source} do
     Counters.increment(source.token)
     send(pid, :write_count)
-    :timer.sleep(200)
-    assert Repo.aggregate(BillingCount, :count) == 1
+
+    assert_receive :usage_recorded, 2_000
+    assert Repo.aggregate(BillingCount, :count) == 0
   end
 end

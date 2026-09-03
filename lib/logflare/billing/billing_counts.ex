@@ -48,20 +48,11 @@ defmodule Logflare.Billing.BillingCounts do
     |> Repo.one()
   end
 
-  def insert(user, source, params) do
-    assoc = params |> assoc(user) |> assoc(source)
-    Repo.insert(assoc)
-  end
-
   defp billing_counts_for_period(user_id, start_date, end_date) do
     from(c in BillingCount,
       where: c.user_id == ^user_id,
       where: c.inserted_at >= ^start_date and c.inserted_at <= ^end_date
     )
-  end
-
-  defp assoc(params, user_or_source) do
-    Ecto.build_assoc(user_or_source, :billing_counts, params)
   end
 
   @doc """
