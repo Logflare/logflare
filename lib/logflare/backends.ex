@@ -87,7 +87,7 @@ defmodule Logflare.Backends do
           on: s.log_events_updated_at >= ago(1, "day")
         )
         |> group_by([b], b.id)
-        |> order_by([..., s], desc: max(s.log_events_updated_at))
+        |> order_by([b, ..., s], desc: max(s.log_events_updated_at), asc: b.id)
 
       {:limit, limit}, q when is_integer(limit) and limit > 0 ->
         limit(q, ^limit)
