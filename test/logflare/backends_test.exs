@@ -828,9 +828,24 @@ defmodule Logflare.BackendsTest do
                })
     end
 
-    test "start_source_sup/1 skips prefetch when already started", %{source: source} do
+    test "start_source_sup/1 prefetches before starting", %{source: source} do
+      expect(SourceSup, :prefetch, fn received_source ->
+        assert received_source.id == source.id
+        :ok
+      end)
+
+      assert :ok = Backends.start_source_sup(source)
+    end
+
+    test "start_source_sup/1 skips prefetch but still delegates when already started", %{
+      source: source
+    } do
       start_supervised!({SourceSup, source})
-      reject(&Logflare.Users.Cache.get/1)
+      reject(&SourceSup.prefetch/1)
+
+      expect(SourceSup, :child_spec, fn received_source ->
+        call_original(SourceSup, :child_spec, [received_source])
+      end)
 
       assert {:error, :already_started} = Backends.start_source_sup(source)
     end

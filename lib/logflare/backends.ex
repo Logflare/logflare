@@ -926,12 +926,8 @@ defmodule Logflare.Backends do
   """
   @spec start_source_sup(Source.t()) :: :ok | {:error, :already_started}
   def start_source_sup(%Source{} = source) do
-    if source_sup_started?(source) do
-      {:error, :already_started}
-    else
-      SourceSup.prefetch(source)
-      do_start_source_sup(source)
-    end
+    unless source_sup_started?(source), do: SourceSup.prefetch(source)
+    do_start_source_sup(source)
   end
 
   defp do_start_source_sup(source) do
