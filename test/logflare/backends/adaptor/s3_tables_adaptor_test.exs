@@ -1,9 +1,17 @@
 defmodule Logflare.Backends.Adaptor.S3TablesAdaptorTest do
-  use Logflare.DataCase, async: true
+  use Logflare.DataCase, async: false
 
+  import ExUnit.CaptureLog
+
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.S3TablesAdaptor
+  alias Logflare.Backends.Adaptor.S3TablesAdaptor.CatalogManager
   alias Logflare.Backends.Adaptor.S3TablesAdaptor.IcebergSchema
+  alias Logflare.Backends.Adaptor.S3TablesAdaptor.Native
+  alias Logflare.Backends.Adaptor.S3TablesAdaptor.Pipeline
+  alias Logflare.Mapper.OtelDefaults
+  alias Logflare.SystemMetrics.AllLogsLogged
 
   doctest S3TablesAdaptor
 
@@ -38,6 +46,167 @@ defmodule Logflare.Backends.Adaptor.S3TablesAdaptorTest do
   test "redact_config/1" do
     config = %{secret_access_key: "secret-key-123", table_bucket_arn: "arn:aws:..."}
     assert %{secret_access_key: "REDACTED"} = S3TablesAdaptor.redact_config(config)
+  end
+
+  describe "ingestion through the adaptor supervision tree" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :s3_tables,
+          sources: [source],
+          user: user,
+          config: Map.put(@valid_config, :batch_timeout, 100)
+        )
+
+      catalog = make_ref()
+      Mimic.stub(Native, :init_catalog, fn _config -> {:ok, catalog} end)
+
+      Mimic.stub(Native, :ensure_table, fn _catalog, _table, _fields, _props ->
+        {:ok, :created}
+      end)
+
+      start_supervised!(AllLogsLogged)
+      start_supervised!({S3TablesAdaptor, backend})
+
+      [source: source, backend: backend, catalog: catalog]
+    end
+
+    test "log event", %{source: source, backend: backend, catalog: catalog} do
+      start_supervised!({CatalogManager, backend})
+      test_pid = self()
+      backend_id = backend.id
+
+      Mimic.expect(Native, :append_batch, fn ^catalog, table_name, ndjson ->
+        send(test_pid, {:appended, table_name, ndjson})
+        {:ok, %{row_count: 1, data_files: 1}}
+      end)
+
+      :telemetry_test.attach_event_handlers(self(), [
+        [:logflare, :backends, :pipeline, :handle_batch],
+        [:logflare, :backends, :s3_tables, :append]
+      ])
+
+      assert {:ok, _} =
+               Backends.ingest_logs(
+                 [%{"event_message" => "adaptor level test", "metadata" => %{"level" => "info"}}],
+                 source
+               )
+
+      assert_receive {:appended, "otel_logs", ndjson}, 5_000
+
+      assert [row] = decode_ndjson(ndjson)
+      assert row["event_message"] == "adaptor level test"
+      assert row["mapping_config_id"] == OtelDefaults.config_id(:log)
+      assert row["source_uuid"] == to_string(source.token)
+      assert is_binary(row["id"])
+      assert is_integer(row["ingested_at"])
+      assert is_map(row["log_attributes"])
+
+      assert_receive {[:logflare, :backends, :pipeline, :handle_batch], _ref, %{batch_size: 1},
+                      %{
+                        backend_type: :s3_tables,
+                        backend_id: ^backend_id,
+                        event_type: :log,
+                        day_bucket: _
+                      }},
+                     5_000
+
+      assert_receive {[:logflare, :backends, :s3_tables, :append], _ref,
+                      %{duration_us: _, row_count: 1, data_files: 1},
+                      %{status: :ok, backend_id: ^backend_id, event_type: :log}},
+                     5_000
+    end
+
+    test "metric and trace events", %{source: source, backend: backend} do
+      start_supervised!({CatalogManager, backend})
+      test_pid = self()
+
+      Mimic.expect(Native, :append_batch, 2, fn _catalog, table_name, ndjson ->
+        send(test_pid, {:appended, table_name, ndjson})
+        {:ok, %{row_count: 1, data_files: 1}}
+      end)
+
+      for {type, table_name} <- [{"metric", "otel_metrics"}, {"span", "otel_traces"}] do
+        assert {:ok, _} =
+                 Backends.ingest_logs(
+                   [%{"event_message" => "typed event", "metadata" => %{"type" => type}}],
+                   source
+                 )
+
+        assert_receive {:appended, ^table_name, ndjson}, 5_000
+        assert [%{"event_message" => "typed event"}] = decode_ndjson(ndjson)
+      end
+    end
+
+    test "append failure", %{source: source, backend: backend} do
+      start_supervised!({CatalogManager, backend})
+      test_pid = self()
+      backend_id = backend.id
+      attempts = Pipeline.max_retries() + 1
+
+      Mimic.expect(Native, :append_batch, attempts, fn _catalog, _table_name, _ndjson ->
+        send(test_pid, :append_attempt)
+        {:error, :commit_conflict}
+      end)
+
+      :telemetry_test.attach_event_handlers(self(), [
+        [:logflare, :backends, :s3_tables, :append]
+      ])
+
+      log =
+        capture_log(fn ->
+          assert {:ok, _} = Backends.ingest_logs([%{"event_message" => "doomed"}], source)
+
+          for _ <- 1..attempts, do: assert_receive(:append_attempt, 5_000)
+          refute_receive :append_attempt, 1_000
+        end)
+
+      assert log =~ "S3 Tables append failed"
+      assert log =~ "exhausted #{Pipeline.max_retries()} retries"
+
+      assert_receive {[:logflare, :backends, :s3_tables, :append], _ref, %{duration_us: _},
+                      %{status: :error, reason: :commit_conflict, backend_id: ^backend_id}},
+                     5_000
+    end
+
+    test "catalog not provisioned", %{source: source, backend: backend} do
+      Mimic.reject(&Native.append_batch/3)
+      backend_id = backend.id
+
+      :telemetry_test.attach_event_handlers(self(), [
+        [:logflare, :backends, :pipeline, :handle_batch]
+      ])
+
+      log =
+        capture_log(fn ->
+          assert {:ok, _} = Backends.ingest_logs([%{"event_message" => "no catalog"}], source)
+
+          # the failed batch is retried once, then dropped
+          assert_receive {[:logflare, :backends, :pipeline, :handle_batch], _ref, _,
+                          %{backend_type: :s3_tables, backend_id: ^backend_id}},
+                         5_000
+
+          assert_receive {[:logflare, :backends, :pipeline, :handle_batch], _ref, _,
+                          %{backend_type: :s3_tables, backend_id: ^backend_id}},
+                         5_000
+
+          refute_receive {[:logflare, :backends, :pipeline, :handle_batch], _ref, _,
+                          %{backend_type: :s3_tables, backend_id: ^backend_id}},
+                         1_000
+        end)
+
+      assert log =~ "S3 Tables append failed"
+    end
+  end
+
+  defp decode_ndjson(ndjson) do
+    ndjson
+    |> String.split("\n", trim: true)
+    |> Enum.map(&Jason.decode!/1)
   end
 
   describe "Native module (integration)" do
