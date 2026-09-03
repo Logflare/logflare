@@ -612,9 +612,62 @@ spool_provider_override =
       raise ArgumentError, "Invalid SPOOL_PROVIDER=#{other}. Must be aws or gcp."
   end
 
+spool_blocking_override =
+  case System.get_env("SPOOL_BLOCKING") do
+    v when v in [nil, ""] -> []
+    v -> [blocking_ingest: v == "true"]
+  end
+
+spool_compression_algorithm_override =
+  case System.get_env("SPOOL_COMPRESSION_ALGORITHM") do
+    v when v in [nil, ""] ->
+      []
+
+    algorithm when algorithm in ["gzip", "zstd", "lz4"] ->
+      [compression_algorithm: String.to_existing_atom(algorithm)]
+
+    other ->
+      raise ArgumentError,
+            "Invalid SPOOL_COMPRESSION_ALGORITHM=#{other}. Must be gzip, zstd, or lz4."
+  end
+
+# TEMP: perf isolation switches for the CPU regression investigation on
+# feat/spool_block_till_write — see disable_partition_append?/0 in
+# Logflare.Backends and disable_commit_io?/0 in
+# Logflare.Backends.Spool.Committer. Remove once the bottleneck is identified.
+spool_disable_partition_append_override =
+  case System.get_env("SPOOL_DISABLE_PARTITION_APPEND") do
+    v when v in [nil, ""] -> []
+    v -> [disable_partition_append: v == "true"]
+  end
+
+spool_disable_commit_io_override =
+  case System.get_env("SPOOL_DISABLE_COMMIT_IO") do
+    v when v in [nil, ""] -> []
+    v -> [disable_commit_io: v == "true"]
+  end
+
+spool_skip_event_validation_override =
+  case System.get_env("SPOOL_SKIP_EVENT_VALIDATION") do
+    v when v in [nil, ""] -> []
+    v -> [skip_event_validation: v == "true"]
+  end
+
+spool_direct_to_pubsub_override =
+  case System.get_env("SPOOL_DIRECT_TO_PUBSUB") do
+    v when v in [nil, ""] -> []
+    v -> [direct_to_pubsub: v == "true"]
+  end
+
 spool_overrides =
   spool_mode_override ++
     spool_provider_override ++
+    spool_blocking_override ++
+    spool_compression_algorithm_override ++
+    spool_disable_partition_append_override ++
+    spool_disable_commit_io_override ++
+    spool_skip_event_validation_override ++
+    spool_direct_to_pubsub_override ++
     if((q = System.get_env("SPOOL_QUEUE_NAME")) && q != "", do: [queue_name: q], else: []) ++
     if((t = System.get_env("SPOOL_PUBSUB_TOPIC")) && t != "", do: [pubsub_topic: t], else: []) ++
     if (b = System.get_env("SPOOL_BUCKET")) && b != "", do: [bucket: b], else: []

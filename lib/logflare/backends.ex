@@ -15,6 +15,9 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourcesSup
   alias Logflare.Backends.SourceSup
+  alias Logflare.Backends.Spool.Encoder, as: SpoolEncoder
+  alias Logflare.Backends.Spool.Partition, as: SpoolPartition
+  alias Logflare.Backends.Spool.PartitionSupervisor, as: SpoolPartitionSupervisor
   alias Logflare.ContextCache
   alias Logflare.Cluster
   alias Logflare.LogEvent
@@ -592,7 +595,14 @@ defmodule Logflare.Backends do
 
   Events are conditionally dispatched to backends based on whether they are registered. If they register for ingestion dispatching, events will get sent to the registered backend.
 
-  Once this function returns `:ok`, the events get dispatched to respective backend adaptor portions of the pipeline to be further processed.
+  For a spoolable event (gated by `allow_spooling`, the global spool mode, and
+  `source.enable_spooling` — see `spoolable?/3`) where `:blocking_ingest` is also
+  enabled in `:logflare, :spool` config, this blocks the caller until the event is
+  durably uploaded to the spool bucket *and* the consumer queue has been notified,
+  so `{:ok, count}` means durable, not just queued. With `:blocking_ingest` unset
+  (the default) or false, a spoolable event is queued fire-and-forget instead — same
+  latency as a non-spooled event. Non-spooled events are always dispatched to their
+  backend and this returns immediately.
   """
   @type log_param :: map()
   @spec ingest_logs([log_param()], Source.t()) ::
@@ -600,21 +610,232 @@ defmodule Logflare.Backends do
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) ::
           {:ok, count :: pos_integer()} | {:error, [term()]}
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil, boolean()) ::
-          {:ok, count :: pos_integer()} | {:error, [term()]}
+          {:ok, count :: pos_integer()} | {:error, term()}
   def ingest_logs(event_params, source, backend \\ nil, allow_spooling \\ false) do
     ensure_source_sup_started(source)
+
+    if skip_event_validation?() and allow_spooling and spool_producer_mode?() and
+         source.enable_spooling and Enum.all?(event_params, &(not match?(%LogEvent{}, &1))) do
+      dispatch_unvalidated_to_spool_producer(event_params, source)
+    else
+      dispatch_validated_logs(event_params, source, backend, allow_spooling)
+    end
+  end
+
+  @spec dispatch_validated_logs([log_param()], Source.t(), Backend.t() | nil, boolean()) ::
+          {:ok, count :: pos_integer()} | {:error, term()}
+  defp dispatch_validated_logs(event_params, source, backend, allow_spooling) do
     {log_events, errors} = split_valid_events(source, event_params)
     count = Enum.count(log_events)
     increment_counters(source, count)
 
-    if spoolable?(log_events, source, allow_spooling) do
-      dispatch_to_spool_producer(log_events)
-    else
-      maybe_broadcast_and_route(source, log_events)
-      dispatch_to_backends(source, backend, log_events)
-    end
+    result =
+      if spoolable?(log_events, source, allow_spooling) do
+        dispatch_to_spool_producer(log_events)
+      else
+        maybe_broadcast_and_route(source, log_events)
+        dispatch_to_backends(source, backend, log_events)
+        :ok
+      end
 
-    if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
+    case result do
+      :ok -> if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  # EXPERIMENTAL: perf isolation switch for the CPU regression investigation
+  # on feat/spool_block_till_write. When true, the genuine spoolable path
+  # (allow_spooling, spool producer mode, source.enable_spooling) bypasses
+  # split_valid_events/2 entirely — no LogEvent.make/2 (no TypeDetection, no
+  # IngestTransformers BigQuery-column-spec cleaning, no timestamp parsing),
+  # no LQL drop-check, no future-timestamp filter, no custom event message —
+  # and hands raw event_params straight to the spool producer as minimal
+  # synthetic events: just the 6 fields Spool.Encoder.encode_raw/2 actually
+  # reads via dot-notation, which works identically on a plain map as on a
+  # real %LogEvent{}. Still compresses and writes to GCS/Pub-Sub for real.
+  # NOT consumer-compatible: `body` is the raw unnormalized param, not the
+  # BigQuery-column-spec-cleaned shape the consumer expects. Non-spooled
+  # sources are unaffected, since they never reach this branch. Also only
+  # fires when every item in event_params is a raw param map, never a
+  # %LogEvent{} — a caller can legitimately pass already-built LogEvent
+  # structs here (see param_to_log_event/2's own %LogEvent{} clauses), and
+  # wrapping one as this branch's `body` would both silently drop its
+  # via_rule_id (defeating spoolable?/3's re-entrancy guard) and crash
+  # ndjson-format Jason encoding on a non-map body. Defaults to false (normal
+  # operation) — set SPOOL_SKIP_EVENT_VALIDATION=true (or Application.put_env)
+  # to enable without a redeploy. Remove once the bottleneck is identified.
+  @spec skip_event_validation?() :: boolean()
+  defp skip_event_validation? do
+    :logflare |> Application.get_env(:spool, []) |> Keyword.get(:skip_event_validation, false)
+  end
+
+  @spec dispatch_unvalidated_to_spool_producer([log_param()], Source.t()) ::
+          {:ok, count :: pos_integer()} | {:error, term()}
+  defp dispatch_unvalidated_to_spool_producer(event_params, source) do
+    count = length(event_params)
+    increment_counters(source, count)
+
+    fake_events =
+      Enum.map(event_params, fn param ->
+        %{
+          id: Ecto.UUID.generate(),
+          source_id: source.id,
+          body: param,
+          event_type: :log,
+          ingested_at: DateTime.utc_now(),
+          via_rule_id: nil
+        }
+      end)
+
+    case dispatch_to_spool_producer(fake_events) do
+      :ok -> {:ok, count}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @default_spool_format :ndjson
+  @default_spool_compress true
+  @default_spool_compression_algorithm :zstd
+  @default_spool_append_timeout 15_000
+
+  # Gated by :blocking_ingest so this can be rolled out independently of spool mode
+  # itself: with it unset/false, ingest_logs/4 keeps its old fire-and-forget latency
+  # even while spooling is on. When true, blocks the caller until the chunk this
+  # pushes is durable (uploaded + queue-notified) or fails.
+  #
+  # Encoding and compression happen right here, in the caller's own process,
+  # before the segment ever reaches a Partition — see Spool.Encoder's
+  # moduledoc for why this replaced doing it once per whole batch inside
+  # ProducerPipeline.handle_batch/4 (many small, parallel compressions
+  # instead of a few large serialized ones, and no ETS copies in between).
+  @spec dispatch_to_spool_producer([LogEvent.t()]) :: :ok | {:error, term()}
+  defp dispatch_to_spool_producer(log_events) do
+    spool_config = Application.get_env(:logflare, :spool, [])
+    format = Keyword.get(spool_config, :format, @default_spool_format)
+    compress = Keyword.get(spool_config, :compress, @default_spool_compress)
+
+    algorithm =
+      Keyword.get(spool_config, :compression_algorithm, @default_spool_compression_algorithm)
+
+    {compress_us, {segment, byte_size, format_tag}} =
+      :timer.tc(fn -> SpoolEncoder.encode_chunk(log_events, format, compress, algorithm) end)
+
+    :telemetry.execute(
+      [:logflare, :backends, :spool, :chunk, :compress],
+      %{count: 1, bytes: byte_size, duration: compress_us},
+      %{format: format_tag}
+    )
+
+    event_count = length(log_events)
+
+    # TEMP: perf isolation switch — see disable_partition_append?/0.
+    if disable_partition_append?() do
+      :ok
+    else
+      send_to_partition(segment, byte_size, event_count)
+    end
+  end
+
+  @spec send_to_partition(binary(), non_neg_integer(), non_neg_integer()) ::
+          :ok | {:error, term()}
+  defp send_to_partition(segment, byte_size, event_count) do
+    if direct_to_pubsub?() do
+      publish_directly_to_pubsub(segment, byte_size, event_count)
+    else
+      dispatch_to_partition(segment, byte_size, event_count)
+    end
+  end
+
+  @spec dispatch_to_partition(binary(), non_neg_integer(), non_neg_integer()) ::
+          :ok | {:error, term()}
+  defp dispatch_to_partition(segment, byte_size, event_count) do
+    case SpoolPartitionSupervisor.random_partition() do
+      nil ->
+        {:error, :no_spool_partition_available}
+
+      partition ->
+        if blocking_ingest?() do
+          SpoolPartition.append(
+            partition,
+            segment,
+            byte_size,
+            event_count,
+            @default_spool_append_timeout
+          )
+        else
+          SpoolPartition.append_async(partition, segment, byte_size, event_count)
+          :ok
+        end
+    end
+  end
+
+  @spec blocking_ingest?() :: boolean()
+  defp blocking_ingest? do
+    :logflare |> Application.get_env(:spool, []) |> Keyword.get(:blocking_ingest, false)
+  end
+
+  # EXPERIMENTAL: perf isolation switch for the CPU regression investigation
+  # on feat/spool_block_till_write. When true, bypasses the Partition/Committer/
+  # GCS path entirely and publishes the already-compressed, already-framed
+  # segment as the Pub/Sub message body directly from the ingest caller's own
+  # process. No GCS object is ever written. Consumer support is intentionally
+  # not implemented yet — this is for producer-side timing experiments only;
+  # anything published in this mode is never picked up downstream. Pub/Sub
+  # caps message size at ~10MB, and a segment can in principle exceed that for
+  # a very large chunk — not guarded here, it'll just surface as a publish
+  # error same as any other queue_mod.publish/2 failure. Defaults to false;
+  # toggle live with Application.put_env, no redeploy needed. Remove once the
+  # bottleneck is identified.
+  @spec direct_to_pubsub?() :: boolean()
+  defp direct_to_pubsub? do
+    :logflare |> Application.get_env(:spool, []) |> Keyword.get(:direct_to_pubsub, false)
+  end
+
+  @default_direct_publish_queue_mod Logflare.Backends.Spool.Queue.PubSub
+
+  @spec publish_directly_to_pubsub(binary(), non_neg_integer(), non_neg_integer()) ::
+          :ok | {:error, term()}
+  defp publish_directly_to_pubsub(segment, byte_size, event_count) do
+    spool_config = Application.get_env(:logflare, :spool, [])
+    queue_mod = Keyword.get(spool_config, :queue_mod, @default_direct_publish_queue_mod)
+
+    topic_name =
+      Keyword.get(spool_config, :pubsub_topic) || Keyword.get(spool_config, :queue_name)
+
+    with topic_name when not is_nil(topic_name) <- topic_name,
+         {:ok, topic} <- queue_mod.resolve(topic_name) do
+      publish_segment(queue_mod, topic, segment, byte_size, event_count)
+    else
+      nil -> {:error, :no_pubsub_topic_configured}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @spec publish_segment(module(), term(), binary(), non_neg_integer(), non_neg_integer()) ::
+          :ok | {:error, term()}
+  defp publish_segment(queue_mod, topic, segment, byte_size, event_count) do
+    {publish_us, result} = :timer.tc(fn -> queue_mod.publish(topic, segment) end)
+
+    :telemetry.execute(
+      [:logflare, :backends, :spool, :queue, :publish],
+      %{count: 1, duration: publish_us, bytes: byte_size, event_count: event_count},
+      %{result: if(result == :ok, do: :ok, else: :error), mode: :direct}
+    )
+
+    result
+  end
+
+  # TEMP: perf isolation switch for the CPU regression investigation on
+  # feat/spool_block_till_write. When true, skips the SpoolPartition
+  # append/append_async case entirely right after encoding — the chunk is
+  # encoded (and optionally compressed) but never handed to a Partition, so
+  # it's silently dropped. Lets us measure encode-only CPU cost with the
+  # Partition/Committer/GCS/PubSub path fully out of the picture. Remove once
+  # the bottleneck is identified.
+  @spec disable_partition_append?() :: boolean()
+  defp disable_partition_append? do
+    :logflare |> Application.get_env(:spool, []) |> Keyword.get(:disable_partition_append, false)
   end
 
   # Requires an explicit opt-in (allow_spooling), not just global mode +
@@ -733,10 +954,6 @@ defmodule Logflare.Backends do
 
   defp spool_mode,
     do: :logflare |> Application.get_env(:spool, []) |> Keyword.get(:mode, :disable)
-
-  defp dispatch_to_spool_producer(log_events) do
-    IngestEventQueue.add_to_table({:spool_producer, nil}, log_events)
-  end
 
   defp maybe_broadcast_and_route(source, log_events) do
     case source.metrics do

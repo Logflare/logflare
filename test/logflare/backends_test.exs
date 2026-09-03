@@ -14,6 +14,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.RecentInsertsCacher
+  alias Logflare.Backends.Spool.PartitionSupervisor
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.SourceSupWorker
   alias Logflare.LogEvent
@@ -1915,6 +1916,33 @@ defmodule Logflare.BackendsTest do
     end
   end
 
+  defmodule StubSpoolStorage do
+    @moduledoc false
+    @behaviour Logflare.Backends.Spool.Storage
+    @impl true
+    def put(_bucket, key, _body, _opts), do: {:ok, key}
+    @impl true
+    def get(_bucket, _key), do: {:error, :not_found}
+  end
+
+  defmodule StubSpoolQueue do
+    @moduledoc false
+    @behaviour Logflare.Backends.Spool.Queue
+    @impl true
+    def resolve(name), do: {:ok, name}
+    @impl true
+    def receive(_queue, _opts), do: {:ok, []}
+    @impl true
+    def ack(_queue, _handle), do: :ok
+    @impl true
+    def nack(_queue, _handle), do: :ok
+    @impl true
+    def publish(ref, body) do
+      send(self(), {:stub_spool_queue_publish, ref, body})
+      :ok
+    end
+  end
+
   describe "ingest_logs/3 per-source spooling gate" do
     setup do
       insert(:plan)
@@ -1932,67 +1960,105 @@ defmodule Logflare.BackendsTest do
         end
       end)
 
+      # A real Partition+Committer pair, with stub storage/queue mods, backs
+      # every test below — dispatch_to_spool_producer/1 routes straight into
+      # it (no ETS/ChunkProducer poll loop to simulate anymore). A short
+      # batch_timeout keeps the blocking-ingest test fast.
+      Application.put_env(:logflare, :spool,
+        mode: :disable,
+        partitions: 1,
+        batch_timeout: 10,
+        bucket: "test-bucket",
+        provider: :gcp,
+        storage_mod: StubSpoolStorage,
+        queue_mod: StubSpoolQueue
+      )
+
+      start_supervised!(PartitionSupervisor)
+
       {:ok, source: source}
     end
 
-    defp stub_add_to_table_observer(test_pid) do
-      stub(IngestEventQueue, :add_to_table, fn key, _batch ->
-        send(test_pid, {:add_to_table, key})
-        :ok
-      end)
+    defp pending_event_count do
+      [partition_pid] = PartitionSupervisor.partitions()
+      :sys.get_state(partition_pid).pending_count
     end
 
     test "does not dispatch to the spool producer when source.enable_spooling is false, even if the global mode is on and allow_spooling is true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :producer)
-      stub_add_to_table_observer(self())
 
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
 
-      refute_receive {:add_to_table, {:spool_producer, nil}}
+      assert pending_event_count() == 0
     end
 
     test "does not dispatch to the spool producer when the global mode is off, even if source.enable_spooling and allow_spooling are true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :disable)
-      stub_add_to_table_observer(self())
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
 
-      refute_receive {:add_to_table, {:spool_producer, nil}}
+      assert pending_event_count() == 0
     end
 
     test "dispatches to the spool producer only when the global mode, source.enable_spooling, and allow_spooling are all true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :producer)
-      stub_add_to_table_observer(self())
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
 
-      assert_receive {:add_to_table, {:spool_producer, nil}}
+      assert pending_event_count() == 1
+    end
+
+    test "does not block when blocking_ingest is unset, even with everything else gating true",
+         %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :producer)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      # append_async/4 (a cast) returns immediately regardless of whether
+      # anything ever commits it — if ingest_logs blocked here
+      # (blocking_ingest: true), the chunk would already be durable (and
+      # gone from pending) by the time this assertion runs instead of still
+      # sitting in the Partition's own accumulator.
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+      assert pending_event_count() == 1
+    end
+
+    test "blocks until acked when blocking_ingest is true",
+         %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :producer, blocking_ingest: true)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      # The real Partition+Committer started in setup/0 genuinely commits
+      # this (stub storage/queue, 10ms batch_timeout) and replies — no
+      # manual ack simulation needed, unlike the old ChunkProducer-based design.
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
     end
 
     test "does not dispatch to the spool producer when allow_spooling is omitted, even if the global mode and source.enable_spooling are true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :producer)
-      stub_add_to_table_observer(self())
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source)
 
-      refute_receive {:add_to_table, {:spool_producer, nil}}
+      assert pending_event_count() == 0
     end
 
     test "does not dispatch to the spool producer when the event already has a via_rule_id, even if allow_spooling is true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :producer)
-      stub_add_to_table_observer(self())
 
       source = %{source | enable_spooling: true}
       le = build(:log_event, source: source)
@@ -2000,7 +2066,49 @@ defmodule Logflare.BackendsTest do
 
       assert {:ok, 1} = Backends.ingest_logs([le], source, nil, true)
 
-      refute_receive {:add_to_table, {:spool_producer, nil}}
+      assert pending_event_count() == 0
+    end
+
+    test "direct_to_pubsub publishes the compressed segment directly and never touches a partition",
+         %{source: source} do
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        partitions: 1,
+        storage_mod: StubSpoolStorage,
+        queue_mod: StubSpoolQueue,
+        queue_name: "projects/test/topics/test-topic",
+        direct_to_pubsub: true
+      )
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+      assert pending_event_count() == 0
+
+      assert_receive {:stub_spool_queue_publish, "projects/test/topics/test-topic", segment}
+
+      assert {:ok, [_body]} = Logflare.Backends.Spool.Framing.decode_segments(segment)
+    end
+
+    test "direct_to_pubsub falls back to normal partition dispatch when disabled",
+         %{source: source} do
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        partitions: 1,
+        storage_mod: StubSpoolStorage,
+        queue_mod: StubSpoolQueue,
+        queue_name: "projects/test/topics/test-topic",
+        direct_to_pubsub: false
+      )
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+      assert pending_event_count() == 1
+
+      refute_receive {:stub_spool_queue_publish, _ref, _body}
     end
   end
 end
