@@ -763,6 +763,37 @@ defmodule Logflare.BackendsTest do
       assert :ok = Backends.ensure_source_sup_started(source)
     end
 
+    test "prefetch/1 warms the caches that init/1 reads", %{source: source} do
+      caches = [
+        Logflare.Backends.Cache,
+        Logflare.Users.Cache,
+        Logflare.Billing.Cache
+      ]
+
+      for cache <- caches, do: Cachex.clear(cache)
+      for cache <- caches, do: assert({:ok, 0} = Cachex.size(cache))
+
+      assert :ok = SourceSup.prefetch(source)
+
+      for cache <- caches do
+        assert {:ok, size} = Cachex.size(cache)
+        assert size > 0
+      end
+    end
+
+    test "start_source_sup/1 warms the caches before starting", %{source: source} do
+      for cache <- [Logflare.Backends.Cache, Logflare.Users.Cache, Logflare.Billing.Cache] do
+        Cachex.clear(cache)
+      end
+
+      assert :ok = Backends.start_source_sup(source)
+
+      for cache <- [Logflare.Backends.Cache, Logflare.Users.Cache, Logflare.Billing.Cache] do
+        assert {:ok, size} = Cachex.size(cache)
+        assert size > 0
+      end
+    end
+
     test "on attach to source, update SourceSup", %{source: source} do
       [backend1, backend2] = insert_pair(:backend)
       start_supervised!({SourceSup, source})

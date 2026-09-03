@@ -31,6 +31,35 @@ defmodule Logflare.Backends.SourceSup do
     Supervisor.start_link(__MODULE__, source, name: Backends.via_source(source, __MODULE__))
   end
 
+  @doc """
+  Resolves everything `init/1` reads, so the supervisor's critical section does no database work.
+
+  `DynamicSupervisor.start_child/2` runs `init/1` inside the `SourcesSup` partition process, and
+  every lookup there is cache-fronted with a Postgres fallback. On a node with a cold cache that
+  makes each source start several database round trips, serialized through one partition, which
+  blocks every other source hashing to it.
+
+  Calling this first moves that latency to the caller, where it parallelizes across callers.
+  `init/1` is left unchanged, so a crash-restart still re-resolves and picks up configuration
+  changes.
+
+  This does not replace the cache warmers. They run once at cache start, are capped, and are
+  registered `required: false`, so a source outside their set or a node still warming has nothing
+  cached. This guarantees the partition never pays the miss.
+  """
+  @spec prefetch(Source.t()) :: :ok
+  def prefetch(%Source{} = source) do
+    Sources.Cache.preload_rules(source)
+    Backends.Cache.list_backends(source_id: source.id)
+    Backends.Cache.list_backends(rules_source_id: source.id)
+
+    source.user_id
+    |> Users.Cache.get()
+    |> Billing.Cache.get_plan_by_user()
+
+    :ok
+  end
+
   def init(source) do
     source = Sources.Cache.preload_rules(source)
 
