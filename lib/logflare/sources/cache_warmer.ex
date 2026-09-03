@@ -3,6 +3,8 @@ defmodule Logflare.Sources.CacheWarmer do
 
   import Ecto.Query
 
+  require Logger
+
   alias Logflare.Billing
   alias Logflare.Repo
   alias Logflare.Sources
@@ -47,9 +49,23 @@ defmodule Logflare.Sources.CacheWarmer do
 
     plans_by_user_id = Billing.get_plans_by_users(users)
 
-    Enum.map(sources, fn source ->
-      plan = Map.fetch!(plans_by_user_id, source.user_id)
-      Sources.put_retention_days(source, plan)
-    end)
+    {hydrated_sources, skipped_count} =
+      Enum.reduce(sources, {[], 0}, fn source, {hydrated_sources, skipped_count} ->
+        case Map.fetch(plans_by_user_id, source.user_id) do
+          {:ok, plan} ->
+            {[Sources.put_retention_days(source, plan) | hydrated_sources], skipped_count}
+
+          :error ->
+            {hydrated_sources, skipped_count + 1}
+        end
+      end)
+
+    if skipped_count > 0 do
+      Logger.warning(
+        "Sources cache warmer skipped #{skipped_count} sources whose users could not be resolved"
+      )
+    end
+
+    Enum.reverse(hydrated_sources)
   end
 end
