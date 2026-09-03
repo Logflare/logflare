@@ -748,6 +748,284 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert html =~ "some description"
     end
 
+    test "webhook edit renders stored headers and preserves them on submit", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :webhook,
+          config: %{
+            url: "https://example.com",
+            headers: %{"authorization" => "Bearer secret-token"}
+          }
+        )
+
+      {:ok, view, html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      refute html =~ "secret-token"
+
+      assert view
+             |> element("input[name='backend[config][header1_key]']")
+             |> render() =~ "authorization"
+
+      assert view
+             |> element("input[name='backend[config][header1_value]']")
+             |> render() =~ "REDACTED"
+
+      view
+      |> form("form", %{
+        backend: %{
+          config: %{url: "https://example.org"}
+        }
+      })
+      |> render_submit()
+
+      updated = Backends.get_backend_by_user_access(user, backend.id)
+      assert updated.config.url == "https://example.org"
+      assert updated.config.headers == %{"authorization" => "Bearer secret-token"}
+    end
+
+    test "webhook edit renders a row per stored header and keeps them all", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      headers = %{
+        "authorization" => "Bearer secret-token",
+        "x-one" => "1",
+        "x-two" => "2",
+        "x-three" => "3"
+      }
+
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :webhook,
+          config: %{url: "https://example.com", headers: headers}
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      assert view
+             |> element("input[name='backend[config][header4_key]']")
+             |> render() =~ "x-two"
+
+      view
+      |> form("form", %{backend: %{config: %{url: "https://example.org"}}})
+      |> render_submit()
+
+      updated = Backends.get_backend_by_user_access(user, backend.id)
+      assert updated.config.url == "https://example.org"
+      assert updated.config.headers == headers
+    end
+
+    test "webhook edit can add a header beyond the stored ones", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :webhook,
+          config: %{
+            url: "https://example.com",
+            headers: %{"x-one" => "1", "x-two" => "2"}
+          }
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      view
+      |> form("form", %{
+        backend: %{config: %{header3_key: "x-three", header3_value: "3"}}
+      })
+      |> render_submit()
+
+      updated = Backends.get_backend_by_user_access(user, backend.id)
+      assert updated.config.headers == %{"x-one" => "1", "x-two" => "2", "x-three" => "3"}
+    end
+
+    test "webhook edit removes a header when its key is cleared", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :webhook,
+          config: %{
+            url: "https://example.com",
+            headers: %{"x-one" => "1", "x-two" => "2"}
+          }
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      view
+      |> form("form", %{backend: %{config: %{header1_key: "", header1_value: ""}}})
+      |> render_submit()
+
+      updated = Backends.get_backend_by_user_access(user, backend.id)
+      assert updated.config.headers == %{"x-two" => "2"}
+    end
+
+    test "webhook create defaults gzip to true", %{conn: conn, user: user} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      view |> element("select#type") |> render_change(%{backend: %{type: "webhook"}})
+
+      view
+      |> form("form", %{
+        backend: %{
+          name: "gzip default backend",
+          type: "webhook",
+          config: %{url: "https://example.com"}
+        }
+      })
+      |> render_submit()
+
+      backend =
+        Backends.list_backends_by_user_id(user.id)
+        |> Enum.find(&(&1.name == "gzip default backend"))
+
+      assert backend.config.gzip == true
+    end
+
+    test "webhook create can disable gzip", %{conn: conn, user: user} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      view |> element("select#type") |> render_change(%{backend: %{type: "webhook"}})
+
+      view
+      |> form("form", %{
+        backend: %{
+          name: "gzip off backend",
+          type: "webhook",
+          config: %{url: "https://example.com", gzip: "false"}
+        }
+      })
+      |> render_submit()
+
+      backend =
+        Backends.list_backends_by_user_id(user.id)
+        |> Enum.find(&(&1.name == "gzip off backend"))
+
+      assert backend.config.gzip == false
+    end
+
+    test "webhook edit keeps gzip disabled", %{conn: conn, source: source, user: user} do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :webhook,
+          config: %{url: "https://example.com", gzip: false}
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      view
+      |> form("form", %{backend: %{config: %{url: "https://example.org"}}})
+      |> render_submit()
+
+      updated = Backends.get_backend_by_user_access(user, backend.id)
+      assert updated.config.gzip == false
+    end
+
+    test "webhook edit carries a stored header value to a renamed key", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :webhook,
+          config: %{
+            url: "https://example.com",
+            headers: %{"authorization" => "Bearer secret-token"}
+          }
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      view
+      |> form("form", %{backend: %{config: %{header1_key: "x-api-key"}}})
+      |> render_submit()
+
+      updated = Backends.get_backend_by_user_access(user, backend.id)
+      assert updated.config.headers == %{"x-api-key" => "Bearer secret-token"}
+    end
+
+    test "webhook edit writes a header value the user actually changed", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :webhook,
+          config: %{
+            url: "https://example.com",
+            headers: %{"authorization" => "Bearer old-token"}
+          }
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      view
+      |> form("form", %{
+        backend: %{config: %{header1_key: "authorization", header1_value: "Bearer new-token"}}
+      })
+      |> render_submit()
+
+      updated = Backends.get_backend_by_user_access(user, backend.id)
+      assert updated.config.headers == %{"authorization" => "Bearer new-token"}
+    end
+
+    test "webhook edit can set a header through the form", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :webhook,
+          config: %{url: "https://example.com"}
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      view
+      |> form("form", %{
+        backend: %{
+          config: %{
+            url: "https://example.com",
+            header1_key: "authorization",
+            header1_value: "Bearer my-token"
+          }
+        }
+      })
+      |> render_submit()
+
+      updated = Backends.get_backend_by_user_access(user, backend.id)
+      assert updated.config.headers == %{"authorization" => "Bearer my-token"}
+    end
+
     test "will show correct config inputs", %{conn: conn, user: user} do
       backend = insert(:backend, type: :webhook, user: user)
       assert {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")

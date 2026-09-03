@@ -22,8 +22,29 @@ The following values are required when creating a S3 backend:
 - `batch_timeout`: (`integer`, required) the maximum time in milliseconds to wait before flushing the batch. Values between 2000 and 5000 are recommended.
 
 :::note
-Ensure the account tied to the `access_key_id` has the necessary permissions to write to the specified `s3_bucket`.
+For non-AWS S3-compatible providers, set `storage_region` to the value the provider expects — for example `auto` for Cloudflare R2, or the region string shown in your provider's dashboard for Backblaze B2 and DigitalOcean Spaces.
 :::
+
+### Required Permissions
+
+The account tied to the `access_key_id` only needs `s3:PutObject` on the target bucket:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::YOUR_BUCKET/*"
+    }
+  ]
+}
+```
+
+For buckets encrypted with SSE-KMS, the credential additionally needs `kms:GenerateDataKey` on the KMS key.
+
+Objects are written to keys of the form `<source uuid>/<unix_microseconds>.parquet`, where the source UUID has dashes replaced by underscores. The backend connection test also writes a small sentinel file to `_connection_test.parquet` at the bucket root, so a policy scoped to a key prefix must still allow writing that root key.
 
 
 ## Implementation Details

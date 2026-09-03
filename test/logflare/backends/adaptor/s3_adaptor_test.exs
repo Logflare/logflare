@@ -218,27 +218,38 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
       [backend: backend]
     end
 
-    test "writes a sentinel parquet to the fixed probe key", %{backend: backend} do
+    test "uploads a sentinel parquet to the fixed probe key via PutObject", %{backend: backend} do
       this = self()
       ref = make_ref()
 
-      Explorer.DataFrame
-      |> expect(:to_parquet, fn _df, path, opts ->
-        send(this, {ref, path, opts[:config]})
-        :ok
+      ExAws
+      |> expect(:request, fn op, opts ->
+        send(this, {ref, op, opts})
+        {:ok, %{status_code: 200}}
       end)
 
       assert :ok = S3Adaptor.test_connection(backend)
-      assert_received {^ref, "s3://my-bucket/_connection_test.parquet", config}
-      assert config[:access_key_id] == "AKID"
-      assert config[:secret_access_key] == "SECRET"
-      assert config[:region] == "us-east-1"
+      assert_received {^ref, op, opts}
+
+      assert %ExAws.Operation.S3{
+               http_method: :put,
+               bucket: "my-bucket",
+               path: "_connection_test.parquet",
+               body: body,
+               headers: %{"content-type" => "application/vnd.apache.parquet"}
+             } = op
+
+      assert is_binary(body)
+      assert String.starts_with?(body, "PAR1")
+      assert opts[:access_key_id] == "AKID"
+      assert opts[:secret_access_key] == "SECRET"
+      assert opts[:region] == "us-east-1"
     end
 
-    test "returns error when the write fails", %{backend: backend} do
-      Explorer.DataFrame
-      |> expect(:to_parquet, fn _df, _path, _opts ->
-        {:error, %RuntimeError{message: "Generic S3 error: AccessDenied"}}
+    test "returns error when the upload fails", %{backend: backend} do
+      ExAws
+      |> expect(:request, fn _op, _opts ->
+        {:error, {:http_error, 403, %{body: "AccessDenied"}}}
       end)
 
       assert {:error, reason} = S3Adaptor.test_connection(backend)
@@ -270,13 +281,127 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
       [source: source, backend: backend, events: events]
     end
 
-    test "returns {:error, reason} instead of crashing when the underlying write panics", %{
+    test "uploads a parquet file keyed by normalized source token and timestamp", %{
+      source: source,
+      backend: backend,
+      events: events
+    } do
+      this = self()
+      ref = make_ref()
+
+      ExAws
+      |> expect(:request, fn op, opts ->
+        send(this, {ref, op, opts})
+        {:ok, %{status_code: 200}}
+      end)
+
+      assert :ok = S3Adaptor.push_log_events_to_s3({source.id, backend.id}, events)
+      assert_received {^ref, op, opts}
+
+      expected_token = source.token |> Atom.to_string() |> String.replace("-", "_")
+
+      assert %ExAws.Operation.S3{http_method: :put, bucket: "my-bucket", path: path, body: body} =
+               op
+
+      assert path =~ ~r|^#{expected_token}/\d+\.parquet$|
+      assert String.starts_with?(body, "PAR1")
+      assert opts[:access_key_id] == "AKID"
+      assert opts[:secret_access_key] == "SECRET"
+      assert opts[:region] == "us-east-1"
+      refute Keyword.has_key?(opts, :scheme)
+      refute Keyword.has_key?(opts, :host)
+      refute Keyword.has_key?(opts, :port)
+    end
+
+    test "passes endpoint overrides parsed from the configured endpoint", %{source: source} do
+      backend =
+        insert(:backend,
+          type: :s3,
+          sources: [source],
+          config: %{
+            s3_bucket: "my-bucket",
+            storage_region: "auto",
+            access_key_id: "AKID",
+            secret_access_key: "SECRET",
+            batch_timeout: 1_000,
+            endpoint: "https://account-id.r2.cloudflarestorage.com"
+          }
+        )
+
+      this = self()
+      ref = make_ref()
+
+      ExAws
+      |> expect(:request, fn op, opts ->
+        send(this, {ref, op, opts})
+        {:ok, %{status_code: 200}}
+      end)
+
+      events = [build(:log_event, source: source)]
+
+      assert :ok = S3Adaptor.push_log_events_to_s3({source.id, backend.id}, events)
+      assert_received {^ref, op, opts}
+      assert op.bucket == "my-bucket"
+      assert opts[:scheme] == "https://"
+      assert opts[:host] == "account-id.r2.cloudflarestorage.com"
+      assert opts[:port] == 443
+    end
+
+    test "folds a path-bearing endpoint into the request bucket", %{source: source} do
+      backend =
+        insert(:backend,
+          type: :s3,
+          sources: [source],
+          config: %{
+            s3_bucket: "my-bucket",
+            storage_region: "us-east-1",
+            access_key_id: "AKID",
+            secret_access_key: "SECRET",
+            batch_timeout: 1_000,
+            endpoint: "https://project-ref.supabase.co/storage/v1/s3"
+          }
+        )
+
+      this = self()
+      ref = make_ref()
+
+      ExAws
+      |> expect(:request, fn op, opts ->
+        send(this, {ref, op, opts})
+        {:ok, %{status_code: 200}}
+      end)
+
+      events = [build(:log_event, source: source)]
+
+      assert :ok = S3Adaptor.push_log_events_to_s3({source.id, backend.id}, events)
+      assert_received {^ref, op, opts}
+      assert op.bucket == "storage/v1/s3/my-bucket"
+      assert opts[:scheme] == "https://"
+      assert opts[:host] == "project-ref.supabase.co"
+      assert opts[:port] == 443
+    end
+
+    test "returns the ExAws error when the upload fails", %{
+      source: source,
+      backend: backend,
+      events: events
+    } do
+      ExAws
+      |> expect(:request, fn _op, _opts ->
+        {:error, {:http_error, 403, %{body: "AccessDenied"}}}
+      end)
+
+      assert {:error, {:http_error, 403, _body}} =
+               S3Adaptor.push_log_events_to_s3({source.id, backend.id}, events)
+    end
+
+    test "returns {:error, reason} instead of crashing when parquet serialization panics", %{
       source: source,
       backend: backend,
       events: events
     } do
       Explorer.DataFrame
-      |> expect(:to_parquet, fn _df, _path, _opts ->
+      |> expect(:dump_parquet, fn _df ->
         raise ErlangError, original: :nif_panicked
       end)
 

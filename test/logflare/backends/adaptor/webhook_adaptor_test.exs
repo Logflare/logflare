@@ -71,6 +71,28 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       assert_receive ^ref, 2000
     end
 
+    test "logs the batch size when JSON encoding fails", %{source: source} do
+      this = self()
+      ref = make_ref()
+
+      @subject.Client
+      |> expect(:send, fn _req ->
+        send(this, ref)
+        {:error, {Tesla.Middleware.JSON, :encode, :invalid}}
+      end)
+
+      les = for _ <- 1..2, do: build(:log_event, source: source)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, _} = Backends.ingest_logs(les, source)
+          assert_receive ^ref, 2000
+          Process.sleep(100)
+        end)
+
+      assert log =~ "Dropped 2 log events from webhook batch: JSON encoding failed"
+    end
+
     test "uses cache for config fetching", %{source: source} do
       Logflare.Repo.update_all(Backend,
         set: [config_encrypted: %{http: "http1", url: "https://other-email.com"}]
@@ -135,6 +157,32 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       assert length(decoded) == 2
       assert Enum.all?(decoded, &is_map/1)
       assert headers["content-type"] == "application/x-ndjson"
+    end
+
+    test "skips the request when every event is dropped", %{source: source} do
+      insert(:backend,
+        type: :webhook,
+        sources: [source],
+        config: %{http: "http1", url: "https://example.com", format: "ndjson"}
+      )
+
+      start_supervised!({SourceSup, source})
+
+      @subject.Client
+      |> reject(:send, 1)
+
+      les =
+        for _ <- 1..2 do
+          build(:log_event, source: source, unencodable: <<0xFF>>)
+        end
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, _} = Backends.ingest_logs(les, source)
+          Process.sleep(500)
+        end)
+
+      assert log =~ "Skipped webhook batch: all 2 log events were dropped"
     end
 
     test "keeps a user-configured content-type", %{source: source} do
