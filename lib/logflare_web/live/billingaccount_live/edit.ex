@@ -39,7 +39,6 @@ defmodule LogflareWeb.BillingAccountLive.Edit do
           |> assign(:period, "month")
           |> assign(:plans, Billing.list_plans())
           |> assign(:plan, plan)
-          |> assign(:usage_form, to_form(%{}, as: :usage))
           |> assign(:user, user)
           |> assign(:payment_methods, [])
 
@@ -53,39 +52,6 @@ defmodule LogflareWeb.BillingAccountLive.Edit do
   end
 
   @impl true
-  def handle_event("usage_picker", %{"usage" => %{"days" => days}}, socket)
-      when is_binary(days) do
-    user = socket.assigns.user
-
-    send_update(LogflareWeb.BillingAccountLive.ChartComponent,
-      id: "chart",
-      user: user,
-      days: String.to_integer(days)
-    )
-
-    {:noreply, socket}
-  end
-
-  def handle_info({_ref, {:ok, data}}, socket) do
-    send_update(LogflareWeb.BillingAccountLive.ChartComponent,
-      id: "chart",
-      chart_data: data
-    )
-
-    {:noreply, socket}
-  end
-
-  def handle_info({:DOWN, _ref, _type, _pid, :normal}, socket) do
-    # Handle down messages from chart query Task
-    {:noreply, socket}
-  end
-
-  def handle_info({:chart_tick, counter}, socket) do
-    send_update(LogflareWeb.BillingAccountLive.ChartComponent, id: "chart", counter: counter)
-
-    {:noreply, socket}
-  end
-
   def handle_info({:update_payment_methods, callback, method}, socket) do
     send_update(
       LogflareWeb.BillingAccountLive.PaymentMethodComponent,

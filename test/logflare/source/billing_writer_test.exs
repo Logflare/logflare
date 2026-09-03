@@ -1,7 +1,7 @@
 defmodule Logflare.Sources.Source.BillingWriterTest do
   @moduledoc false
   use Logflare.DataCase
-  alias Logflare.Billing.BillingCount
+  alias Ecto.Adapters.SQL
   alias Logflare.Repo
   alias Logflare.Sources.Source.BillingWriter
   alias Logflare.Sources.Counters
@@ -37,6 +37,11 @@ defmodule Logflare.Sources.Source.BillingWriterTest do
     send(pid, :write_count)
 
     assert_receive :usage_recorded, 2_000
-    assert Repo.aggregate(BillingCount, :count) == 0
+    assert billing_counts_rows() == 0
+  end
+
+  defp billing_counts_rows do
+    %{rows: [[count]]} = SQL.query!(Repo, "select count(*) from billing_counts")
+    count
   end
 end
