@@ -3,8 +3,10 @@ defmodule Logflare.Backends.Pipeline.BatchSplitter do
   Shared Broadway `:batch_size` splitter for backend pipelines.
 
   Emits a batch once either a maximum message count or a maximum cumulative
-  byte length is reached, whichever comes first. Byte length is measured with
-  `:erlang.external_size/1` over each message's event body.
+  byte length is reached, whichever comes first. A message carrying a plain
+  event is measured with `:erlang.external_size/1` over its body; a message
+  whose data is an `{event, encoded_row}` tuple (e.g. the S3 Tables pipeline)
+  is measured by the encoded row's byte size.
 
   See https://hexdocs.pm/broadway/Broadway.html#start_link/2 for the
   custom `:batch_size` contract.
@@ -42,7 +44,7 @@ defmodule Logflare.Backends.Pipeline.BatchSplitter do
 
         # check content length
         message, {count, len} ->
-          length = :erlang.external_size(message.data.body)
+          length = data_size(message.data)
 
           if len - length <= 0 do
             # below max batch count, but reached max batch length
@@ -54,4 +56,8 @@ defmodule Logflare.Backends.Pipeline.BatchSplitter do
       end
     }
   end
+
+  @spec data_size({term(), binary()} | %{body: term()}) :: non_neg_integer()
+  defp data_size({_event, row}) when is_binary(row), do: byte_size(row)
+  defp data_size(%{body: body}), do: :erlang.external_size(body)
 end
