@@ -11,6 +11,7 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
 
   setup do
     :persistent_term.erase(@pt_key)
+    Cachex.clear!(Cache)
     user = insert(:user)
     [user: user]
   end
@@ -26,12 +27,22 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
       assert {:cached, kv2.value} == Cachex.get!(Cache, {:lookup, [user.id, "k2", nil]})
     end
 
-    test "marks itself as initialized after first run" do
+    test "marks itself as initialized for the current cache process" do
       refute :persistent_term.get(@pt_key, false)
 
       CacheWarmer.execute(nil)
 
-      assert :persistent_term.get(@pt_key, false)
+      assert :persistent_term.get(@pt_key) == Process.whereis(Cache)
+    end
+
+    test "performs a full warm when the marker belongs to an older cache process" do
+      :persistent_term.put(@pt_key, self())
+
+      expect(CacheWarmer, :warm_full, fn -> :ok end)
+      reject(CacheWarmer, :warm_recent, 0)
+
+      assert :ignore = CacheWarmer.execute(nil)
+      assert :persistent_term.get(@pt_key) == Process.whereis(Cache)
     end
 
     test "if cache warmer fails, does not mark itself as initialized" do
@@ -61,7 +72,7 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
 
   describe "subsequent warm (recent records only)" do
     test "caches only recently inserted records", %{user: user} do
-      old_time = DateTime.add(DateTime.utc_now(), -2, :hour)
+      old_time = DateTime.add(DateTime.utc_now(), -3, :hour)
 
       Repo.insert!(%Logflare.KeyValues.KeyValue{
         user_id: user.id,
@@ -73,8 +84,7 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
 
       insert(:key_value, user: user, key: "new_key", value: %{"v" => "new"})
 
-      # Mark as initialized to simulate subsequent warm
-      :persistent_term.put(@pt_key, true)
+      :persistent_term.put(@pt_key, Process.whereis(Cache))
 
       CacheWarmer.execute(nil)
 
@@ -85,9 +95,56 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
     end
 
     test "no-ops when no recent records exist" do
-      :persistent_term.put(@pt_key, true)
+      :persistent_term.put(@pt_key, Process.whereis(Cache))
 
       assert :ignore = CacheWarmer.execute(nil)
+    end
+
+    test "handles a transient recent-warm failure without crashing" do
+      :persistent_term.put(@pt_key, Process.whereis(Cache))
+
+      stub(CacheWarmer, :warm_recent, fn ->
+        raise RuntimeError, "test"
+      end)
+
+      log =
+        capture_log([level: :error], fn ->
+          assert :ignore = CacheWarmer.execute(nil)
+        end)
+
+      assert log =~ "Error performing recent KeyValues.Cache warming"
+      assert log =~ "RuntimeError"
+      assert :persistent_term.get(@pt_key) == Process.whereis(Cache)
+    end
+
+    test "handles an exit from a recent warm without crashing" do
+      :persistent_term.put(@pt_key, Process.whereis(Cache))
+
+      stub(CacheWarmer, :warm_recent, fn -> exit(:database_unavailable) end)
+
+      log =
+        capture_log([level: :error], fn ->
+          assert :ignore = CacheWarmer.execute(nil)
+        end)
+
+      assert log =~ "Error performing recent KeyValues.Cache warming"
+      assert log =~ "database_unavailable"
+    end
+
+    test "drops a warm batch when an invalidation crosses its generation fence", %{user: user} do
+      cache_key = {:lookup, [user.id, "stale", nil]}
+      entries = [{cache_key, {:cached, %{"version" => "stale"}}}]
+      generation = CacheWarmer.invalidation_generation()
+
+      assert :ok = CacheWarmer.mark_invalidation()
+      assert :invalidated = CacheWarmer.put_if_unchanged(entries, generation)
+      assert {:ok, nil} = Cachex.get(Cache, cache_key)
+    end
+
+    test "propagates cache write failures" do
+      generation = CacheWarmer.invalidation_generation()
+
+      assert {:error, :invalid_pairs} = CacheWarmer.put_if_unchanged([:invalid], generation)
     end
   end
 end

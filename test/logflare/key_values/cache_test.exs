@@ -3,6 +3,7 @@ defmodule Logflare.KeyValues.CacheTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.KeyValues
+  alias Logflare.KeyValues.CacheWarmer
 
   setup do
     user = insert(:user)
@@ -49,6 +50,13 @@ defmodule Logflare.KeyValues.CacheTest do
 
   test "bust_by/1 returns 0 when key not cached", %{user: user} do
     assert {:ok, 0} = KeyValues.Cache.bust_by(user_id: user.id, key: "nonexistent")
+  end
+
+  test "bust_by/1 advances the cache warmer invalidation generation", %{user: user} do
+    generation = CacheWarmer.invalidation_generation()
+
+    assert {:ok, 0} = KeyValues.Cache.bust_by(user_id: user.id, key: "nonexistent")
+    assert CacheWarmer.invalidation_generation() == generation + 1
   end
 
   describe "count/1" do

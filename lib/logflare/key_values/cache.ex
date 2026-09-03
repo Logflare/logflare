@@ -3,6 +3,7 @@ defmodule Logflare.KeyValues.Cache do
 
   alias Logflare.ContextCache
   alias Logflare.KeyValues
+  alias Logflare.KeyValues.CacheWarmer
   alias Logflare.Repo
   alias Logflare.Utils
 
@@ -77,6 +78,7 @@ defmodule Logflare.KeyValues.Cache do
 
   @impl ContextCache
   def bust_by(kw) do
+    CacheWarmer.mark_invalidation()
     entries = bust_entries(kw)
 
     Cachex.execute(__MODULE__, fn worker ->
