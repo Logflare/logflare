@@ -292,10 +292,14 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   @spec put_parquet(DataFrame.t(), map(), key :: String.t()) :: :ok | {:error, term()}
   defp put_parquet(%DataFrame{} = df, config, key) when is_non_empty_binary(key) do
     with {:ok, body} <- DataFrame.dump_parquet(df),
+         content_md5 <- Base.encode64(:crypto.hash(:md5, body)),
          {:ok, _resp} <-
            config
            |> request_bucket()
-           |> S3.put_object(key, body, content_type: @parquet_content_type)
+           |> S3.put_object(key, body,
+             content_type: @parquet_content_type,
+             content_md5: content_md5
+           )
            |> ExAws.request(request_opts(config)) do
       :ok
     end

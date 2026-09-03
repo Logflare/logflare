@@ -236,11 +236,15 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
                bucket: "my-bucket",
                path: "_connection_test.parquet",
                body: body,
-               headers: %{"content-type" => "application/vnd.apache.parquet"}
+               headers: %{
+                 "content-md5" => content_md5,
+                 "content-type" => "application/vnd.apache.parquet"
+               }
              } = op
 
       assert is_binary(body)
       assert String.starts_with?(body, "PAR1")
+      assert content_md5 == Base.encode64(:crypto.hash(:md5, body))
       assert opts[:access_key_id] == "AKID"
       assert opts[:secret_access_key] == "SECRET"
       assert opts[:region] == "us-east-1"
@@ -300,11 +304,17 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
 
       expected_token = source.token |> Atom.to_string() |> String.replace("-", "_")
 
-      assert %ExAws.Operation.S3{http_method: :put, bucket: "my-bucket", path: path, body: body} =
-               op
+      assert %ExAws.Operation.S3{
+               http_method: :put,
+               bucket: "my-bucket",
+               path: path,
+               body: body,
+               headers: headers
+             } = op
 
       assert path =~ ~r|^#{expected_token}/\d+\.parquet$|
       assert String.starts_with?(body, "PAR1")
+      assert headers["content-md5"] == Base.encode64(:crypto.hash(:md5, body))
       assert opts[:access_key_id] == "AKID"
       assert opts[:secret_access_key] == "SECRET"
       assert opts[:region] == "us-east-1"
