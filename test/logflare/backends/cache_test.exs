@@ -41,6 +41,32 @@ defmodule Logflare.Backends.CacheTest do
     assert [] = Backends.Cache.list_backends(source_id: source.id)
   end
 
+  test "limits unique ingesting backends", %{user: user} do
+    now = NaiveDateTime.utc_now()
+    newest_source = insert(:source, user: user, log_events_updated_at: now)
+
+    second_source =
+      insert(:source,
+        user: user,
+        log_events_updated_at: NaiveDateTime.shift(now, second: -1)
+      )
+
+    older_source =
+      insert(:source,
+        user: user,
+        log_events_updated_at: NaiveDateTime.shift(now, hour: -1)
+      )
+
+    newest_backend = insert(:backend, sources: [newest_source, second_source])
+    older_backend = insert(:backend, sources: [older_source])
+
+    assert [%{id: newest_backend_id}] = Backends.list_backends(ingesting: true, limit: 1)
+    assert newest_backend_id == newest_backend.id
+
+    assert [first, second] = Backends.list_backends(ingesting: true)
+    assert MapSet.new([first.id, second.id]) == MapSet.new([newest_backend.id, older_backend.id])
+  end
+
   test "warmer", %{user: user} do
     assert {:ok, []} = CacheWarmer.execute(nil)
 
