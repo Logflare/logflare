@@ -813,6 +813,24 @@ defmodule Logflare.BackendsTest do
                })
     end
 
+    test "prefetch/1 includes the default backend before filtering consolidated backends", %{
+      source: source
+    } do
+      stub(Backends, :get_default_backend, fn _user ->
+        %Backend{type: :bigquery, consolidated_ingest?: true}
+      end)
+
+      Cachex.clear(Logflare.SourceSchemas.Cache)
+
+      assert :ok = SourceSup.prefetch(source)
+
+      assert {:ok, {:cached, nil}} =
+               Cachex.get(Logflare.SourceSchemas.Cache, {
+                 :get_source_schema_by,
+                 [[source_id: source.id]]
+               })
+    end
+
     test "prefetch/1 skips schemas when no BigQuery backend starts", %{source: source} do
       stub(Logflare.SingleTenant, :single_tenant?, fn -> true end)
       stub(Logflare.SingleTenant, :postgres_backend?, fn -> true end)

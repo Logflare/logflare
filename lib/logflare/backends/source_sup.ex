@@ -50,15 +50,21 @@ defmodule Logflare.Backends.SourceSup do
   def prefetch(%Source{} = source) do
     Sources.Cache.preload_rules(source)
     Sources.Cache.get_by_id(source.id)
-    source_backends = Backends.Cache.list_backends(source_id: source.id)
-    rules_backends = Backends.Cache.list_backends(rules_source_id: source.id)
+
+    source_backends =
+      Backends.Cache.list_backends(source_id: source.id)
+      |> Enum.reject(& &1.consolidated_ingest?)
+
+    rules_backends =
+      Backends.Cache.list_backends(rules_source_id: source.id)
+      |> Enum.reject(& &1.consolidated_ingest?)
+
     user = Users.Cache.get(source.user_id)
     Billing.Cache.get_plan_by_user(user)
 
     started_backends =
       [Backends.get_default_backend(user) | source_backends]
       |> Enum.concat(rules_backends)
-      |> Enum.reject(& &1.consolidated_ingest?)
 
     if Enum.any?(started_backends, &(&1.type == :bigquery)) do
       SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
