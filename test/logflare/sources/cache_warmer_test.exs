@@ -1,6 +1,8 @@
 defmodule Logflare.Sources.CacheWarmerTest do
   use Logflare.DataCase, async: false
 
+  import ExUnit.CaptureLog
+
   alias Logflare.Billing
   alias Logflare.Sources
   alias Logflare.Sources.Cache
@@ -101,6 +103,17 @@ defmodule Logflare.Sources.CacheWarmerTest do
     |> reject(:get_plans_by_users, 1)
 
     assert {:ok, []} = CacheWarmer.execute(nil)
+  end
+
+  test "skips sources whose users cannot be resolved" do
+    stub(Billing, :get_plans_by_users, fn _users -> %{} end)
+
+    log =
+      capture_log(fn ->
+        assert {:ok, []} = CacheWarmer.execute(nil)
+      end)
+
+    assert log =~ "skipped 1 sources whose users could not be resolved"
   end
 
   test "uses a bounded number of queries as the number of source users grows" do
