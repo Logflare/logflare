@@ -793,7 +793,8 @@ defmodule Logflare.BigQuery.PipelineTest do
       le = build(:log_event, source: source)
       {messages, _tid} = setup_queue(source, [le])
 
-      expect(BigQueryAdaptor, :insert_log_events_via_storage_write_api, 1, fn _log_events, _opts ->
+      expect(BigQueryAdaptor, :insert_log_events_via_storage_write_api, 1, fn _log_events,
+                                                                              _opts ->
         :ok
       end)
 
