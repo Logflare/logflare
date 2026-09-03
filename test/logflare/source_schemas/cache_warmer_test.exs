@@ -13,7 +13,7 @@ defmodule Logflare.SourceSchemas.CacheWarmerTest do
     user = insert(:user)
     source = insert(:source, user: user, log_events_updated_at: NaiveDateTime.utc_now())
     source_schema = insert(:source_schema, source: source)
-    cache_key = {:get_source_schema_by, [source_id: source.id]}
+    cache_key = {:get_source_schema_by, [[source_id: source.id]]}
 
     assert {:ok, pairs} = CacheWarmer.execute(nil)
     assert {^cache_key, {:cached, %{id: source_schema_id}}} = List.keyfind(pairs, cache_key, 0)
@@ -22,7 +22,9 @@ defmodule Logflare.SourceSchemas.CacheWarmerTest do
 
     # Check Cachex directly so read-through fallback cannot hide malformed warmer output.
     assert {:ok, {:cached, %{id: ^source_schema_id}}} = Cachex.get(Cache, cache_key)
+    assert {:ok, size_before_read} = Cachex.size(Cache)
 
     assert %{id: ^source_schema_id} = Cache.get_source_schema_by(source_id: source.id)
+    assert {:ok, ^size_before_read} = Cachex.size(Cache)
   end
 end
