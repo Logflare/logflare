@@ -16,6 +16,7 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Sources.Source.BillingWriter
   alias Logflare.Backends.RecentInsertsCacher
   alias Logflare.Rules.Rule
+  alias Logflare.SourceSchemas
   alias Logflare.Sources
   alias Logflare.Backends.AdaptorSupervisor
 
@@ -32,30 +33,42 @@ defmodule Logflare.Backends.SourceSup do
   end
 
   @doc """
-  Resolves everything `init/1` reads, so the supervisor's critical section does no database work.
+  Warms cache-backed reads performed while a SourceSup and its initial children start.
 
-  `DynamicSupervisor.start_child/2` runs `init/1` inside the `SourcesSup` partition process, and
-  every lookup there is cache-fronted with a Postgres fallback. On a node with a cold cache that
-  makes each source start several database round trips, serialized through one partition, which
-  blocks every other source hashing to it.
+  `DynamicSupervisor.start_child/2` runs the child initialization in the new SourceSup process,
+  but the `SourcesSup` partition waits synchronously for the initial supervision tree to start.
+  On a cold cache, a Postgres fallback therefore prevents that partition from starting any other
+  source until the lookup returns.
 
-  Calling this first moves that latency to the caller, where it parallelizes across callers.
-  `init/1` is left unchanged, so a crash-restart still re-resolves and picks up configuration
-  changes.
+  Calling this first moves those misses to the caller. `init/1` remains unchanged so automatic
+  crash restarts still resolve configuration through the caches and pick up changes.
 
-  This does not replace the cache warmers. They run once at cache start, are capped, and are
-  registered `required: false`, so a source outside their set or a node still warming has nothing
-  cached. This guarantees the partition never pays the miss.
+  Cache warmers do not make this redundant: they are capped, run asynchronously, and are
+  registered `required: false`.
   """
   @spec prefetch(Source.t()) :: :ok
   def prefetch(%Source{} = source) do
     Sources.Cache.preload_rules(source)
-    Backends.Cache.list_backends(source_id: source.id)
-    Backends.Cache.list_backends(rules_source_id: source.id)
+    Sources.Cache.get_by_id(source.id)
 
-    source.user_id
-    |> Users.Cache.get()
-    |> Billing.Cache.get_plan_by_user()
+    source_backends =
+      Backends.Cache.list_backends(source_id: source.id)
+      |> Enum.reject(& &1.consolidated_ingest?)
+
+    rules_backends =
+      Backends.Cache.list_backends(rules_source_id: source.id)
+      |> Enum.reject(& &1.consolidated_ingest?)
+
+    user = Users.Cache.get(source.user_id)
+    Billing.Cache.get_plan_by_user(user)
+
+    started_backends =
+      [Backends.get_default_backend(user) | source_backends]
+      |> Enum.concat(rules_backends)
+
+    if Enum.any?(started_backends, &(&1.type == :bigquery)) do
+      SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
+    end
 
     :ok
   end
