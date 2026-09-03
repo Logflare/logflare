@@ -21,6 +21,8 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.Lql.Rules
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.NaturalLanguageLql
+  alias Logflare.NaturalLanguageLql.AnthropicClient
   alias Logflare.SavedSearches
   alias Logflare.SourceSchemas
   alias Logflare.Sources
@@ -30,6 +32,7 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.QueryErrorHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
+  alias LogflareWeb.SearchLive.AiAssist
   alias LogflareWeb.SearchLive.EventPagination
   alias LogflareWeb.SearchLive.FormComponents
   alias LogflareWeb.SearchLive.SubheadComponents
@@ -40,8 +43,10 @@ defmodule LogflareWeb.Source.SearchLV do
   require Logger
 
   @log_event_stream_limit 5_000
+  @max_ai_assist_request_characters 500
   @tail_search_interval 1000
   @user_idle_interval :timer.minutes(2)
+  @ai_assist_request_too_long_message "Natural-language queries must be #{@max_ai_assist_request_characters} characters or fewer."
   @timeout_search_error_message "Query timed out: Try restricting the timestamp range or adding more filtering to your query."
 
   on_mount LogflareWeb.AuthLive
@@ -105,6 +110,7 @@ defmodule LogflareWeb.Source.SearchLV do
       search_op_log_aggregates: nil,
       user_idle_interval: @user_idle_interval,
       show_modal: nil,
+      ai_assist: AiAssist.new(nil, AnthropicClient.configured?()),
       last_query_completed_at: nil,
       uri_params: nil,
       uri: nil,
@@ -120,9 +126,13 @@ defmodule LogflareWeb.Source.SearchLV do
 
   defp maybe_assign_user_timezone(socket, team_user, user) do
     if connected?(socket) do
-      user_tz = Map.get(get_connect_params(socket), "user_timezone")
+      connect_params = get_connect_params(socket)
+      user_tz = Map.get(connect_params, "user_timezone")
+      user_agent = get_connect_info(socket, :user_agent)
+      %AiAssist{enabled?: ai_assist_enabled?} = socket.assigns.ai_assist
 
       socket
+      |> assign(:ai_assist, AiAssist.new(user_agent, ai_assist_enabled?))
       |> assign(:user_timezone_from_connect_params, user_tz)
       |> assign_new_user_timezone(team_user, user)
     else
@@ -326,6 +336,7 @@ defmodule LogflareWeb.Source.SearchLV do
         source={@source}
         last_query_completed_at={@last_query_completed_at}
         lql_schema_flat_map={lql_schema_flat_map(@source)}
+        ai_assist={@ai_assist}
       />
       <div id="user-idle" phx-click="user_idle" class="d-none" data-user-idle-interval={@user_idle_interval}></div>
     </div>
@@ -385,24 +396,78 @@ defmodule LogflareWeb.Source.SearchLV do
   def handle_event(
         "start_search",
         %{"querystring" => qs} = params,
-        %{assigns: prev_assigns} = socket
+        socket
       ) do
-    schema_flatmap = SourceSchemas.source_schema_flatmap_or_default(socket.assigns.source)
-
-    maybe_cancel_tailing_timer(socket)
-    SearchQueryExecutor.cancel_query(socket.assigns.executor_pid)
-
-    qs = append_fields_rules(qs, Map.get(params, "fields", %{}), schema_flatmap)
+    %AiAssist{enabled?: ai_assist_enabled?, macintosh?: macintosh?} = socket.assigns.ai_assist
 
     socket =
       socket
-      |> assign_new_search_with_qs(
-        %{querystring: qs, tailing?: prev_assigns.tailing?},
-        schema_flatmap
+      |> cancel_async(:generate_natural_language_lql)
+      |> assign(
+        :ai_assist,
+        %AiAssist{enabled?: ai_assist_enabled?, macintosh?: macintosh?}
       )
 
+    {_result, socket} = start_search(socket, qs, Map.get(params, "fields", %{}))
     {:noreply, socket}
   end
+
+  def handle_event(
+        "start_ai_search",
+        %{"querystring" => qs} = params,
+        %{assigns: %{ai_assist: %AiAssist{enabled?: true, loading?: false} = ai_assist}} =
+          socket
+      ) do
+    %{source: source, search_timezone: timezone} = socket.assigns
+    fields = Map.get(params, "fields", %{})
+    request = String.trim(qs)
+
+    if String.length(request) > @max_ai_assist_request_characters do
+      {:noreply,
+       socket
+       |> clear_flash()
+       |> put_flash(:error, @ai_assist_request_too_long_message)}
+    else
+      ai_assist = %AiAssist{
+        ai_assist
+        | fields: fields,
+          loading?: true,
+          request: request,
+          feedback: nil,
+          pending_feedback: nil
+      }
+
+      {:noreply,
+       socket
+       |> assign(:ai_assist, ai_assist)
+       |> clear_flash()
+       |> start_async(:generate_natural_language_lql, fn ->
+         NaturalLanguageLql.generate(source, request, timezone: timezone)
+       end)}
+    end
+  end
+
+  def handle_event("start_ai_search", _params, socket), do: {:noreply, socket}
+
+  def handle_event(
+        "submit_ai_feedback",
+        _params,
+        %{assigns: %{ai_assist: %AiAssist{feedback: %{submitted?: false} = feedback} = ai_assist}} =
+          socket
+      ) do
+    Logger.info(
+      "AI Assist feedback: feedback=\"poor\" " <>
+        "prompt=#{inspect(feedback.natural_language_request)} " <>
+        "anthropic_request_id=#{inspect(feedback.anthropic_request_id)}",
+      source_id: socket.assigns.source.id,
+      user_id: socket.assigns.user.id
+    )
+
+    ai_assist = %AiAssist{ai_assist | feedback: %{feedback | submitted?: true}}
+    {:noreply, assign(socket, :ai_assist, ai_assist)}
+  end
+
+  def handle_event("submit_ai_feedback", _params, socket), do: {:noreply, socket}
 
   def handle_event(
         "load_events",
@@ -959,6 +1024,77 @@ defmodule LogflareWeb.Source.SearchLV do
     |> DateTime.to_naive()
   end
 
+  def handle_async(
+        :generate_natural_language_lql,
+        {:ok, {:ok, %{lql: lql, provider_request_id: provider_request_id}}},
+        socket
+      ) do
+    %AiAssist{fields: fields, request: request} = ai_assist = socket.assigns.ai_assist
+
+    feedback = %{
+      natural_language_request: request,
+      anthropic_request_id: provider_request_id,
+      submitted?: false
+    }
+
+    ai_assist = %AiAssist{ai_assist | fields: %{}, request: nil}
+    socket = assign(socket, ai_assist: ai_assist, tailing?: false)
+
+    case start_search(socket, lql, fields) do
+      {:ok, socket} ->
+        ai_assist = %AiAssist{ai_assist | pending_feedback: feedback}
+        {:noreply, assign(socket, :ai_assist, ai_assist)}
+
+      {:error, socket} ->
+        ai_assist = %AiAssist{ai_assist | loading?: false, feedback: feedback}
+        {:noreply, assign(socket, :ai_assist, ai_assist)}
+    end
+  end
+
+  def handle_async(
+        :generate_natural_language_lql,
+        {:ok, {:error, _code, message}},
+        socket
+      ) do
+    %AiAssist{} = ai_assist = socket.assigns.ai_assist
+
+    ai_assist = %AiAssist{
+      ai_assist
+      | fields: %{},
+        loading?: false,
+        request: nil
+    }
+
+    {:noreply,
+     socket
+     |> assign(:ai_assist, ai_assist)
+     |> put_flash(:error, message)}
+  end
+
+  def handle_async(
+        :generate_natural_language_lql,
+        {:exit, {:shutdown, :cancel}},
+        socket
+      ) do
+    {:noreply, socket}
+  end
+
+  def handle_async(:generate_natural_language_lql, {:exit, _reason}, socket) do
+    %AiAssist{} = ai_assist = socket.assigns.ai_assist
+
+    ai_assist = %AiAssist{
+      ai_assist
+      | fields: %{},
+        loading?: false,
+        request: nil
+    }
+
+    {:noreply,
+     socket
+     |> assign(:ai_assist, ai_assist)
+     |> put_flash(:error, "Natural-language query generation is currently unavailable.")}
+  end
+
   def handle_info(:soft_pause = ev, socket) do
     soft_pause(ev, socket)
   end
@@ -1001,7 +1137,27 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_info({:search_result, %{event_page: %EventPage{} = event_page}}, socket) do
-    {:noreply, apply_event_page_result(socket, event_page)}
+    %AiAssist{pending_feedback: pending_feedback} = ai_assist = socket.assigns.ai_assist
+
+    socket =
+      case {event_page.request.intent, pending_feedback} do
+        {:initial, feedback} when is_map(feedback) ->
+          ai_assist = %AiAssist{
+            ai_assist
+            | loading?: false,
+              feedback: feedback,
+              pending_feedback: nil
+          }
+
+          assign(socket, :ai_assist, ai_assist)
+
+        _other ->
+          assign(socket, :ai_assist, %AiAssist{ai_assist | loading?: false})
+      end
+
+    {:noreply,
+     socket
+     |> apply_event_page_result(event_page)}
   end
 
   def handle_info(
@@ -1013,6 +1169,10 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_info({:search_error, search_op}, socket) do
+    %AiAssist{feedback: feedback, pending_feedback: pending_feedback} =
+      ai_assist =
+      socket.assigns.ai_assist
+
     socket =
       case search_op.error do
         :halted ->
@@ -1032,7 +1192,14 @@ defmodule LogflareWeb.Source.SearchLV do
           |> put_flash_query_error(err)
       end
 
-    {:noreply, socket}
+    ai_assist = %AiAssist{
+      ai_assist
+      | loading?: false,
+        feedback: pending_feedback || feedback,
+        pending_feedback: nil
+    }
+
+    {:noreply, assign(socket, :ai_assist, ai_assist)}
   end
 
   def handle_info(:schedule_tail_search, %{assigns: assigns} = socket) do
@@ -1088,6 +1255,29 @@ defmodule LogflareWeb.Source.SearchLV do
       {:error, :field_not_found = type, suggested_querystring, error} ->
         error_socket(socket, type, suggested_querystring, error)
     end
+  end
+
+  @spec start_search(Phoenix.LiveView.Socket.t(), String.t(), map()) ::
+          {:ok | :error, Phoenix.LiveView.Socket.t()}
+  defp start_search(socket, querystring, fields) do
+    schema_flatmap = SourceSchemas.source_schema_flatmap_or_default(socket.assigns.source)
+
+    maybe_cancel_tailing_timer(socket)
+    SearchQueryExecutor.cancel_query(socket.assigns.executor_pid)
+
+    querystring = append_fields_rules(querystring, fields, schema_flatmap)
+
+    result =
+      if match?({:ok, _rules}, Lql.decode(querystring, schema_flatmap)), do: :ok, else: :error
+
+    socket =
+      assign_new_search_with_qs(
+        socket,
+        %{querystring: querystring, tailing?: socket.assigns.tailing?},
+        schema_flatmap
+      )
+
+    {result, socket}
   end
 
   defp assign_new_user_timezone(socket, team_user, %User{} = user) do

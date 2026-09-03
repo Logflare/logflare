@@ -153,6 +153,20 @@ defmodule Logflare.SourceSchemasTest do
       refute Map.get(params, "test")
     end
 
+    test "dot notation with a flat schema map" do
+      assert SourceSchemas.format_schema(
+               %{
+                 "metadata" => :map,
+                 "metadata.tags" => {:list, :string},
+                 "metadata.user_id" => :integer
+               },
+               :dot
+             ) == %{
+               "metadata.tags" => "string[]",
+               "metadata.user_id" => "integer"
+             }
+    end
+
     test "json schema ", %{
       source: source
     } do
