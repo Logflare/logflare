@@ -19,6 +19,10 @@ defmodule Logflare.SourceSchemas.CacheWarmerTest do
     assert {^cache_key, {:cached, %{id: source_schema_id}}} = List.keyfind(pairs, cache_key, 0)
     assert source_schema_id == source_schema.id
     assert {:ok, true} = Cachex.put_many(Cache, pairs)
+
+    # Check Cachex directly so read-through fallback cannot hide malformed warmer output.
     assert {:ok, {:cached, %{id: ^source_schema_id}}} = Cachex.get(Cache, cache_key)
+
+    assert %{id: ^source_schema_id} = Cache.get_source_schema_by(source_id: source.id)
   end
 end
