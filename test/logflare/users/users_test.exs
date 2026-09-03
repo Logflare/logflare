@@ -25,6 +25,28 @@ defmodule Logflare.UsersTest do
       insert(:source, user: user, log_events_updated_at: NaiveDateTime.utc_now())
       assert [_] = Users.list_ingesting_users(limit: 500)
     end
+
+    test "deduplicates users before applying the limit" do
+      now = NaiveDateTime.utc_now()
+      newest_user = insert(:user)
+      older_user = insert(:user)
+
+      insert(:source, user: newest_user, log_events_updated_at: now)
+
+      insert(:source,
+        user: newest_user,
+        log_events_updated_at: NaiveDateTime.shift(now, second: -1)
+      )
+
+      insert(:source,
+        user: older_user,
+        log_events_updated_at: NaiveDateTime.shift(now, hour: -1)
+      )
+
+      assert [first, second] = Users.list_ingesting_users(limit: 2)
+      assert first.id == newest_user.id
+      assert second.id == older_user.id
+    end
   end
 
   describe "Users.list_users/1" do

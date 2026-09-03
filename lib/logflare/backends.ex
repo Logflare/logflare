@@ -80,13 +80,17 @@ defmodule Logflare.Backends do
         join(q, :inner, [b], r in assoc(b, :rules), on: r.source_id == ^source_id)
 
       # filter down to backends with sources that have recently ingested.
-      # orders by the last active.
+      # orders unique backends by the last active source.
       {:ingesting, true}, q ->
         q
         |> join(:inner, [b], s in assoc(b, :sources),
           on: s.log_events_updated_at >= ago(1, "day")
         )
-        |> order_by([..., s], {:desc, s.log_events_updated_at})
+        |> group_by([b], b.id)
+        |> order_by([..., s], desc: max(s.log_events_updated_at))
+
+      {:limit, limit}, q when is_integer(limit) and limit > 0 ->
+        limit(q, ^limit)
 
       {:user_id, id}, q ->
         where(q, [b], b.user_id == ^id)
