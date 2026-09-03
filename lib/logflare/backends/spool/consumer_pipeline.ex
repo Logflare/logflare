@@ -141,7 +141,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
   end
 
   defp dispatch_group(source_id, lines) do
-    case Sources.get(source_id) do
+    case Sources.Cache.get_by(id: source_id) do
       nil ->
         emit_skipped_telemetry(:unknown_source_id, length(lines))
 
