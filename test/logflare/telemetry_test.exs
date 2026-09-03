@@ -33,6 +33,56 @@ defmodule Logflare.TelemetryTest do
     :count
   ]
 
+  @ch_read_pool_checkout_event [:logflare, :clickhouse, :read_pool, :checkout]
+  @ch_read_pool_wait_buckets_us [
+    50,
+    100,
+    250,
+    500,
+    1_000,
+    5_000,
+    25_000,
+    100_000,
+    500_000,
+    1_000_000,
+    2_500_000,
+    5_000_000,
+    10_000_000,
+    30_000_000,
+    60_000_000
+  ]
+  @ch_read_pool_idle_buckets_ms [
+    100,
+    500,
+    1_000,
+    2_500,
+    5_000,
+    7_500,
+    9_000,
+    10_000,
+    11_000,
+    12_500,
+    15_000,
+    30_000,
+    60_000,
+    300_000
+  ]
+  @ch_read_pool_time_buckets_ms [
+    5,
+    10,
+    25,
+    50,
+    100,
+    250,
+    500,
+    1_000,
+    2_500,
+    5_000,
+    10_000,
+    30_000,
+    60_000
+  ]
+
   describe "metrics/0" do
     test "returns only well-formed Telemetry.Metrics definitions" do
       metrics = Telemetry.metrics()
@@ -96,6 +146,58 @@ defmodule Logflare.TelemetryTest do
         assert metric.keep.(%{backend_type: :clickhouse})
         refute metric.keep.(%{backend_type: :bigquery})
       end
+    end
+
+    test "defines ClickHouse read pool checkout distributions with per-measurement units" do
+      pool_time = read_pool_metric([:logflare, :clickhouse, :read_pool, :checkout, :pool_time])
+      idle_time = read_pool_metric([:logflare, :clickhouse, :read_pool, :checkout, :idle_time])
+      connection_time = read_pool_metric([:logflare, :clickhouse, :read_pool, :connection_time])
+
+      for metric <- [pool_time, idle_time, connection_time] do
+        assert to_string(metric.__struct__) == "Elixir.Telemetry.Metrics.Distribution"
+        assert metric.event_name == @ch_read_pool_checkout_event
+        assert metric.tags == [:backend_id, :read_cluster]
+      end
+
+      one_second_native = System.convert_time_unit(1, :second, :native)
+
+      measurements = %{
+        pool_time: one_second_native,
+        idle_time: one_second_native,
+        connection_time: one_second_native
+      }
+
+      assert pool_time.unit == :microsecond
+      assert_in_delta pool_time.measurement.(measurements), 1_000_000, 1
+      assert pool_time.reporter_options[:buckets] == @ch_read_pool_wait_buckets_us
+
+      assert idle_time.unit == :millisecond
+      assert_in_delta idle_time.measurement.(measurements), 1_000, 1
+      assert idle_time.reporter_options[:buckets] == @ch_read_pool_idle_buckets_ms
+
+      assert connection_time.unit == :millisecond
+      assert_in_delta connection_time.measurement.(measurements), 1_000, 1
+      assert connection_time.reporter_options[:buckets] == @ch_read_pool_time_buckets_ms
+
+      assert pool_time.measurement.(%{idle_time: one_second_native}) == nil
+      assert idle_time.measurement.(%{pool_time: one_second_native}) == nil
+      assert connection_time.measurement.(%{pool_time: one_second_native}) == nil
+    end
+
+    test "defines ClickHouse read pool query error and failover counts" do
+      query_error = read_pool_metric([:logflare, :clickhouse, :read_pool, :query_error])
+      failover = read_pool_metric([:logflare, :clickhouse, :read_pool, :failover])
+
+      for metric <- [query_error, failover] do
+        assert to_string(metric.__struct__) == "Elixir.Telemetry.Metrics.Sum"
+        assert metric.measurement == :count
+      end
+
+      assert query_error.event_name == [:logflare, :clickhouse, :read_pool, :query_error]
+      assert query_error.tags == [:backend_id, :read_cluster, :error_kind]
+
+      assert failover.event_name == [:logflare, :clickhouse, :read_pool, :failover]
+      assert failover.tags == [:backend_id, :read_cluster]
     end
 
     test "honors configured Broadway processor message duration sampling" do
@@ -527,5 +629,10 @@ defmodule Logflare.TelemetryTest do
 
   defp requeue_deduplicated_metrics do
     Enum.filter(Telemetry.metrics(), &(&1.name == @requeue_deduplicated_metric_name))
+  end
+
+  defp read_pool_metric(name) do
+    [metric] = Enum.filter(Telemetry.metrics(), &(&1.name == name))
+    metric
   end
 end
