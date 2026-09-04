@@ -129,6 +129,8 @@ jobs:
             run: mix lint.all
           - name: Code Quality - Formatting
             run: mix test.format
+          - name: Dependency Audit
+            run: mix hex.audit
     env:
       MIX_ENV: test
       SHELL: /bin/bash
