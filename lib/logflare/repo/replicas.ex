@@ -7,17 +7,16 @@ defmodule Logflare.Repo.Replicas do
   `Registry`. If no replicas are configured, the supervisor is skipped entirely.
 
   Each `LOGFLARE_READ_REPLICAS` entry is either a bare hostname or a Postgres URI
-  (`postgres://user:pass@host:port/database?ssl=true&pool_size=5`). In both
-  cases, only the parts explicitly given override the primary `Logflare.Repo`
-  config - anything not specified (host, port, database, credentials, ssl, ...) is
-  inherited from the primary's `DB_*` settings, without ever baking the primary's
-  actual values into the parsed result. URIs are parsed and validated entirely by
-  `Ecto.Repo.Supervisor.parse_url/1`.
+  (`postgres://user:pass@host:port/database?ssl=true&pool_size=5`). Supplied
+  connection settings override the primary `Logflare.Repo` configuration; omitted
+  settings inherit the primary's `DB_*` values without copying them into the parsed
+  result. IP literal hosts also derive the matching socket address family. URIs are
+  parsed and validated by `Ecto.Repo.Supervisor.parse_url/1`.
 
-  Replica pools are identified by a key derived from the entry (host/port/database
-  plus a `:erlang.phash2/2` hash of the raw entry, to avoid collisions between
-  entries that only differ by credentials or query params) that never contains
-  credentials, so it is safe to include in log or error messages.
+  Replica pools are identified by the parsed hostname plus an `:erlang.phash2/2`
+  hash of the parsed configuration. The key never contains credentials, so it is
+  safe to include in log or error messages.
+
   Callers can temporarily redirect Ecto queries to a replica for the duration of
   a function call using `apply_with_replica/3` on `Logflare.Repo`, which swaps
   the dynamic repo and restores it afterwards.
@@ -29,8 +28,8 @@ defmodule Logflare.Repo.Replicas do
 
   @registry __MODULE__.Registry
 
-  # A physical standby rejects a stray write on its own; a logical subscriber accepts it, and
-  # the divergence only surfaces later as a conflict that stalls replication.
+  # Physical standbys already reject writes. Logical subscribers do not, so a
+  # read-only default turns accidental writes into immediate errors.
   @read_only_statement "SET default_transaction_read_only = on"
 
   # RDS caps IAM authentication tokens at 15 minutes. The exact value matters less than the
@@ -91,14 +90,17 @@ defmodule Logflare.Repo.Replicas do
   end
 
   @doc """
-  Runs the primary's own `:after_connect`, then marks the session read-only.
+  Runs the primary repository's `:after_connect` hook, then makes the replica session
+  read-only.
 
-  A replica's config is the primary's with the entry's overrides applied, so setting
-  `:after_connect` here would otherwise drop the primary's - the one that sets `search_path`
-  from `DB_SCHEMA`. It runs first, so a hook that needs to write still can.
+  Replica pools inherit the primary configuration. Replacing `:after_connect` without
+  composition would discard settings such as the `search_path` configured by `DB_SCHEMA`.
+  The inherited hook runs first so it can perform any required writes.
   """
-  @spec after_connect(pid(), {module(), atom(), [term()]} | (pid() -> any()) | nil) ::
-          Postgrex.Result.t()
+  @spec after_connect(
+          DBConnection.conn(),
+          {module(), atom(), [term()]} | (DBConnection.t() -> any()) | nil
+        ) :: Postgrex.Result.t()
   def after_connect(conn, primary_after_connect) do
     run_after_connect(conn, primary_after_connect)
     Postgrex.query!(conn, @read_only_statement, [])
