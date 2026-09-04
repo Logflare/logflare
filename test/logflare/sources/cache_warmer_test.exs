@@ -18,11 +18,12 @@ defmodule Logflare.Sources.CacheWarmerTest do
     {:ok, expected_retention_days: Sources.source_ttl_to_days(source, plan), source: source}
   end
 
-  test "warms id and token entries under the keys the read path uses", %{
+  test "warms ID and internal and external token entries under the read-path keys", %{
     expected_retention_days: expected_retention_days,
     source: source
   } do
     source_id = source.id
+    external_token = Atom.to_string(source.token)
 
     assert %{id: ^source_id, retention_days: ^expected_retention_days} =
              Cache.get_by(id: source.id)
@@ -30,8 +31,11 @@ defmodule Logflare.Sources.CacheWarmerTest do
     assert %{id: ^source_id, retention_days: ^expected_retention_days} =
              Cache.get_by(token: source.token)
 
+    assert %{id: ^source_id, retention_days: ^expected_retention_days} =
+             Cache.get_by(token: external_token)
+
     assert {:ok, read_keys} = Cachex.keys(Cache)
-    assert length(read_keys) == 2
+    assert length(read_keys) == 3
 
     assert {:ok, pairs} = CacheWarmer.execute(nil)
     Cachex.clear!(Cache)
@@ -43,11 +47,12 @@ defmodule Logflare.Sources.CacheWarmerTest do
     end
   end
 
-  test "serves warmed id and token entries without falling back to the database", %{
+  test "serves warmed ID and token entries without falling back to the database", %{
     expected_retention_days: expected_retention_days,
     source: source
   } do
     source_id = source.id
+    external_token = Atom.to_string(source.token)
 
     assert {:ok, pairs} = CacheWarmer.execute(nil)
     assert {:ok, true} = Cachex.put_many(Cache, pairs)
@@ -60,6 +65,9 @@ defmodule Logflare.Sources.CacheWarmerTest do
 
     assert %{id: ^source_id, retention_days: ^expected_retention_days} =
              Cache.get_by(token: source.token)
+
+    assert %{id: ^source_id, retention_days: ^expected_retention_days} =
+             Cache.get_by(token: external_token)
   end
 
   test "hydrates retention values for sources from different user plans", %{
