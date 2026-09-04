@@ -18,7 +18,7 @@ defmodule Logflare.ContextCache.WriteFence do
   @active_table Module.concat(__MODULE__, ActiveContexts)
 
   @type snapshot :: reference()
-  @type cache_entry :: {Cachex.key(), any()}
+  @type cache_entry :: {any(), any()}
   @type dependency :: any() | {:any, [any()]}
   @type entry_group :: {dependency(), [cache_entry()]}
   @type commit_result :: %{written: non_neg_integer(), skipped: non_neg_integer()}
