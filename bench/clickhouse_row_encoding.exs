@@ -7,10 +7,11 @@
 #      old String.replace |> Base.decode16! approach.
 
 alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester
+alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults
 alias Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder
 alias Logflare.LogEvent
 
-mapping_config_id = "00000000-0000-0000-0001-000000000003"
+mapping_config_id = MappingDefaults.config_id(:log)
 source_uuid = "550e8400-e29b-41d4-a716-446655440000"
 
 # Old uuid/1 implementation, replicated locally as the #2 baseline.

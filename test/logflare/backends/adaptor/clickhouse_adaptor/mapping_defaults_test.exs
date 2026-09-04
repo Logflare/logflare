@@ -110,6 +110,341 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
       result2 = Mapper.map(%{"severityText" => "debug"}, compiled)
       assert result2["severity_text"] == "DEBUG"
     end
+
+    test "resolves host from a resource-scoped key", %{log: compiled} do
+      payload = %{"resource" => %{"host" => "ip-10-0-1-129.internal"}}
+
+      assert Mapper.map(payload, compiled)["resource_attributes"]["host"] ==
+               "ip-10-0-1-129.internal"
+    end
+
+    test "prefers metadata host over a resource-scoped host", %{log: compiled} do
+      payload = %{
+        "metadata" => %{"host" => "from-metadata"},
+        "resource" => %{"host" => "from-resource"}
+      }
+
+      assert Mapper.map(payload, compiled)["resource_attributes"]["host"] == "from-metadata"
+    end
+  end
+
+  describe "attribute maps elevate both metadata and attributes" do
+    test "children of attributes land unprefixed", %{log: log, metric: metric, trace: trace} do
+      payload = %{
+        "attributes" => %{"_flow_name" => "branch-creation", "busy_ns" => 705_777_024_470},
+        "metadata" => %{"type" => "span"},
+        "timestamp" => 1_775_591_051_937_363
+      }
+
+      for {compiled, field} <- [
+            {log, "log_attributes"},
+            {metric, "attributes"},
+            {trace, "span_attributes"}
+          ] do
+        attrs = Mapper.map(payload, compiled)[field]
+
+        assert attrs["_flow_name"] == "branch-creation"
+        assert attrs["busy_ns"] == "705777024470"
+        assert attrs["type"] == "span"
+        refute Map.has_key?(attrs, "attributes._flow_name")
+        refute Map.has_key?(attrs, "attributes")
+      end
+    end
+
+    test "metadata wins over attributes on a duplicate child key", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{
+        "attributes" => %{"shared" => "from-attributes", "only_attrs" => "a"},
+        "metadata" => %{"shared" => "from-metadata", "only_meta" => "m"},
+        "timestamp" => 1_775_591_051_937_363
+      }
+
+      for {compiled, field} <- [
+            {log, "log_attributes"},
+            {metric, "attributes"},
+            {trace, "span_attributes"}
+          ] do
+        attrs = Mapper.map(payload, compiled)[field]
+
+        assert attrs["shared"] == "from-metadata"
+        assert attrs["only_attrs"] == "a"
+        assert attrs["only_meta"] == "m"
+      end
+    end
+
+    test "a non-map attributes value is preserved as a literal key", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{
+        "attributes" => "not-a-map",
+        "metadata" => %{"type" => "span"},
+        "timestamp" => 1_775_591_051_937_363
+      }
+
+      for {compiled, field} <- [
+            {log, "log_attributes"},
+            {metric, "attributes"},
+            {trace, "span_attributes"}
+          ] do
+        attrs = Mapper.map(payload, compiled)[field]
+
+        assert attrs["attributes"] == "not-a-map"
+        assert attrs["type"] == "span"
+      end
+    end
+  end
+
+  describe "service_name resolution across all event types" do
+    test "resolves an underscore-namespaced resource key", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{"resource" => %{"_service_name" => "supadev", "environment" => "staging"}}
+
+      for compiled <- [log, metric, trace] do
+        result = Mapper.map(payload, compiled)
+
+        assert result["service_name"] == "supadev"
+        assert result["resource_attributes"]["service_name"] == "supadev"
+      end
+    end
+
+    test "prefers the OTEL-standard path over the underscore form", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{
+        "resource" => %{"service" => %{"name" => "standard"}, "_service_name" => "underscore"}
+      }
+
+      for compiled <- [log, metric, trace] do
+        result = Mapper.map(payload, compiled)
+
+        assert result["service_name"] == "standard"
+        assert result["resource_attributes"]["service_name"] == "standard"
+      end
+    end
+
+    test "environment resolves from a resource-scoped key", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{"resource" => %{"environment" => "staging"}}
+
+      for compiled <- [log, metric, trace] do
+        assert Mapper.map(payload, compiled)["resource_attributes"]["environment"] == "staging"
+      end
+    end
+
+    test "environment prefers metadata over a resource-scoped key", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{
+        "metadata" => %{"environment" => "prod"},
+        "resource" => %{"environment" => "staging"}
+      }
+
+      for compiled <- [log, metric, trace] do
+        assert Mapper.map(payload, compiled)["resource_attributes"]["environment"] == "prod"
+      end
+    end
+
+    test "cluster and node resolve from top-level and resource-scoped keys", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      top_level = %{"cluster" => "clus-top", "node" => "node-top"}
+      resource_scoped = %{"resource" => %{"cluster" => "clus-res", "node" => "node-res"}}
+      metadata_context = %{"metadata" => %{"context" => %{"cluster" => "clus-ctx"}}}
+
+      for compiled <- [log, metric, trace] do
+        top = Mapper.map(top_level, compiled)["resource_attributes"]
+        assert top["cluster"] == "clus-top"
+        assert top["node"] == "node-top"
+
+        res = Mapper.map(resource_scoped, compiled)["resource_attributes"]
+        assert res["cluster"] == "clus-res"
+        assert res["node"] == "node-res"
+
+        ctx = Mapper.map(metadata_context, compiled)["resource_attributes"]
+        assert ctx["cluster"] == "clus-ctx"
+      end
+    end
+
+    test "cluster and node prefer metadata over top-level and resource keys", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{
+        "cluster" => "clus-top",
+        "node" => "node-top",
+        "metadata" => %{
+          "cluster" => "clus-meta",
+          "node" => "node-meta",
+          "context" => %{"vm" => %{"node" => "node-vm"}}
+        },
+        "resource" => %{"cluster" => "clus-res", "node" => "node-res"}
+      }
+
+      for compiled <- [log, metric, trace] do
+        res_attrs = Mapper.map(payload, compiled)["resource_attributes"]
+
+        assert res_attrs["cluster"] == "clus-meta"
+        assert res_attrs["node"] == "node-meta"
+      end
+    end
+
+    test "region resolves a resource-scoped key", %{log: log, metric: metric, trace: trace} do
+      payload = %{"resource" => %{"region" => "ap-southeast-2"}}
+
+      for compiled <- [log, metric, trace] do
+        assert Mapper.map(payload, compiled)["resource_attributes"]["region"] == "ap-southeast-2"
+      end
+    end
+
+    test "region prefers the generic resource key over the underscore-namespaced form", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{
+        "resource" => %{"region" => "ap-southeast-2", "_project_region" => "eu-central-1"}
+      }
+
+      for compiled <- [log, metric, trace] do
+        assert Mapper.map(payload, compiled)["resource_attributes"]["region"] == "ap-southeast-2"
+      end
+    end
+
+    test "region resolves an underscore-namespaced resource key", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{"resource" => %{"_project_region" => "eu-central-1"}}
+
+      for compiled <- [log, metric, trace] do
+        assert Mapper.map(payload, compiled)["resource_attributes"]["region"] == "eu-central-1"
+      end
+    end
+
+    test "region prefers metadata over the underscore-namespaced resource key", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{
+        "metadata" => %{"region" => "us-east-1"},
+        "resource" => %{"_project_region" => "eu-central-1"}
+      }
+
+      for compiled <- [log, metric, trace] do
+        assert Mapper.map(payload, compiled)["resource_attributes"]["region"] == "us-east-1"
+      end
+    end
+
+    test "falls back to journald identifiers", %{log: log, metric: metric, trace: trace} do
+      for compiled <- [log, metric, trace] do
+        assert Mapper.map(%{"SYSLOG_IDENTIFIER" => "postgres"}, compiled)["service_name"] ==
+                 "postgres"
+
+        assert Mapper.map(%{"_SYSTEMD_UNIT" => "pgbouncer.service"}, compiled)["service_name"] ==
+                 "pgbouncer.service"
+      end
+    end
+  end
+
+  describe "resource_attributes pick entries are consistent across event types" do
+    test "every type resolves the shared curated keys", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{
+        "app_id" => "app-1",
+        "machine_id" => "mach-1",
+        "organization_id" => "org-1",
+        "organization_slug" => "acme",
+        "project" => "proj-1",
+        "metadata" => %{
+          "cluster" => "clus-1",
+          "context" => %{"host" => "host-1", "vm" => %{"node" => "node-1"}},
+          "environment" => "staging",
+          "instance_id" => "inst-1",
+          "region" => "us-east-1",
+          "vector_file" => "/var/log/app.log",
+          "vector_host" => "collector-1"
+        }
+      }
+
+      shared_keys = ~w(
+        application_id cluster environment host instance_id machine_id node
+        organization_id organization_slug project region vector_file vector_host
+      )
+
+      for compiled <- [log, metric, trace] do
+        res_attrs = Mapper.map(payload, compiled)["resource_attributes"]
+
+        for key <- shared_keys do
+          assert Map.has_key?(res_attrs, key), "missing #{key} in #{inspect(res_attrs)}"
+        end
+
+        assert res_attrs["application_id"] == "app-1"
+        assert res_attrs["cluster"] == "clus-1"
+        assert res_attrs["environment"] == "staging"
+        assert res_attrs["host"] == "host-1"
+        assert res_attrs["instance_id"] == "inst-1"
+        assert res_attrs["machine_id"] == "mach-1"
+        assert res_attrs["node"] == "node-1"
+        assert res_attrs["organization_id"] == "org-1"
+        assert res_attrs["organization_slug"] == "acme"
+        assert res_attrs["project"] == "proj-1"
+        assert res_attrs["region"] == "us-east-1"
+        assert res_attrs["vector_file"] == "/var/log/app.log"
+        assert res_attrs["vector_host"] == "collector-1"
+      end
+    end
+
+    test "log uses application_name while metric and trace use application", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{"app_name" => "supadev"}
+
+      assert Mapper.map(payload, log)["resource_attributes"]["application_name"] == "supadev"
+
+      for compiled <- [metric, trace] do
+        assert Mapper.map(payload, compiled)["resource_attributes"]["application"] == "supadev"
+      end
+    end
+
+    test "project resolves from metadata.tenantId in every type", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{"metadata" => %{"tenantId" => "tenant-1"}}
+
+      for compiled <- [log, metric, trace] do
+        result = Mapper.map(payload, compiled)
+
+        assert result["project"] == "tenant-1"
+        assert result["resource_attributes"]["project"] == "tenant-1"
+      end
+    end
   end
 
   describe "metrics mapping" do

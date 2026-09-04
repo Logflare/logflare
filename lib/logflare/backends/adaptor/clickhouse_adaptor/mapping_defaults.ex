@@ -14,9 +14,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
   alias Logflare.Mapper.MappingConfig.InferRule
   alias Logflare.Mapper.MappingConfig.OutputFormat
 
-  @log_config_id "00000000-0000-0000-0001-000000000003"
-  @metric_config_id "00000000-0000-0000-0002-000000000003"
-  @trace_config_id "00000000-0000-0000-0003-000000000004"
+  @log_config_id "00000000-0000-0000-0001-000000000004"
+  @metric_config_id "00000000-0000-0000-0002-000000000004"
+  @trace_config_id "00000000-0000-0000-0003-000000000005"
 
   @spec config_id(TypeDetection.event_type()) :: String.t()
   def config_id(:log), do: @log_config_id
@@ -90,6 +90,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       Field.string("service_name",
         paths: [
           "$.resource.service.name",
+          "$.resource._service_name",
           "$.service_name",
           "$.resource.name",
           "$.metadata.context.application",
@@ -135,11 +136,30 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
              "$.metadata.app_name",
              "$.metadata.parsed.application_name"
            ]},
-          {"cluster", ["$.metadata.cluster", "$.cluster", "$.resource.cluster"]},
-          {"host", ["$.metadata.host", "$.metadata.context.host", "$.host"]},
+          {"cluster",
+           [
+             "$.metadata.cluster",
+             "$.metadata.context.cluster",
+             "$.cluster",
+             "$.resource.cluster"
+           ]},
+          {"environment",
+           [
+             "$.metadata.environment",
+             "$.metadata.context.environment",
+             "$.environment",
+             "$.resource.environment"
+           ]},
+          {"host", ["$.metadata.host", "$.metadata.context.host", "$.host", "$.resource.host"]},
           {"instance_id", ["$.metadata.instance_id"]},
           {"machine_id", ["$.machine_id"]},
-          {"node", ["$.metadata.context.vm.node", "$.resource.node"]},
+          {"node",
+           [
+             "$.metadata.node",
+             "$.metadata.context.vm.node",
+             "$.node",
+             "$.resource.node"
+           ]},
           {"organization_id", ["$.organization_id", "$.org_id"]},
           {"organization_slug", ["$.organization_slug"]},
           {"project",
@@ -151,8 +171,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
              "$.metadata.tenant",
              "$.metadata.tenantId"
            ]},
-          {"region", ["$.metadata.region", "$.region"]},
-          {"service_name", ["$.resource.service.name", "$.service_name"]},
+          {"region",
+           [
+             "$.metadata.region",
+             "$.region",
+             "$.resource.region",
+             "$.resource._project_region"
+           ]},
+          {"service_name",
+           ["$.resource.service.name", "$.resource._service_name", "$.service_name"]},
           {"vector_file", ["$.metadata.vector_file"]},
           {"vector_host", ["$.metadata.vector_host"]}
         ],
@@ -165,7 +192,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       Field.flat_map("log_attributes",
         path: "$",
         exclude_keys: ["id", "event_message", "timestamp"],
-        elevate_keys: ["metadata"]
+        elevate_keys: ["metadata", "attributes"]
       ),
       Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
     ]
@@ -233,9 +260,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       Field.string("service_name",
         paths: [
           "$.resource.service.name",
+          "$.resource._service_name",
           "$.service_name",
           "$.resource.name",
-          "$.metadata.context.application"
+          "$.metadata.context.application",
+          "$.metadata.context.service",
+          "$.SYSLOG_IDENTIFIER",
+          "$._SYSTEMD_UNIT"
         ]
       ),
       Field.string("event_message",
@@ -265,19 +296,61 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       Field.flat_map("resource_attributes",
         paths: ["$.resource"],
         pick: [
-          {"application", ["$.metadata.context.application"]},
-          {"cluster", ["$.metadata.cluster", "$.cluster", "$.resource.cluster"]},
-          {"node", ["$.metadata.context.vm.node", "$.resource.node"]},
+          {"application_id", ["$.app_id", "$.application_id", "$.metadata.app_id"]},
+          {"application",
+           [
+             "$.metadata.context.application",
+             "$.app_name",
+             "$.application_name",
+             "$.metadata.app_name",
+             "$.metadata.parsed.application_name"
+           ]},
+          {"cluster",
+           [
+             "$.metadata.cluster",
+             "$.metadata.context.cluster",
+             "$.cluster",
+             "$.resource.cluster"
+           ]},
+          {"environment",
+           [
+             "$.metadata.environment",
+             "$.metadata.context.environment",
+             "$.environment",
+             "$.resource.environment"
+           ]},
+          {"host", ["$.metadata.host", "$.metadata.context.host", "$.host", "$.resource.host"]},
+          {"instance_id", ["$.metadata.instance_id"]},
+          {"machine_id", ["$.machine_id"]},
+          {"node",
+           [
+             "$.metadata.node",
+             "$.metadata.context.vm.node",
+             "$.node",
+             "$.resource.node"
+           ]},
+          {"organization_id", ["$.organization_id", "$.org_id"]},
+          {"organization_slug", ["$.organization_slug"]},
           {"project",
            [
              "$.project",
              "$.project_ref",
              "$.project_id",
              "$.metadata.project",
-             "$.metadata.tenant"
+             "$.metadata.tenant",
+             "$.metadata.tenantId"
            ]},
-          {"region", ["$.metadata.region", "$.region"]},
-          {"service_name", ["$.resource.service.name", "$.service_name"]}
+          {"region",
+           [
+             "$.metadata.region",
+             "$.region",
+             "$.resource.region",
+             "$.resource._project_region"
+           ]},
+          {"service_name",
+           ["$.resource.service.name", "$.resource._service_name", "$.service_name"]},
+          {"vector_file", ["$.metadata.vector_file"]},
+          {"vector_host", ["$.metadata.vector_host"]}
         ],
         default: %{}
       ),
@@ -288,7 +361,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       Field.flat_map("attributes",
         path: "$",
         exclude_keys: ["id", "event_message", "timestamp"],
-        elevate_keys: ["metadata"]
+        elevate_keys: ["metadata", "attributes"]
       ),
       Field.string("aggregation_temporality",
         paths: ["$.aggregation_temporality", "$.aggregationTemporality"]
@@ -461,9 +534,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       Field.string("service_name",
         paths: [
           "$.resource.service.name",
+          "$.resource._service_name",
           "$.service_name",
           "$.resource.name",
-          "$.metadata.context.application"
+          "$.metadata.context.application",
+          "$.metadata.context.service",
+          "$.SYSLOG_IDENTIFIER",
+          "$._SYSTEMD_UNIT"
         ]
       ),
       Field.string("event_message",
@@ -515,26 +592,68 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       Field.flat_map("resource_attributes",
         paths: ["$.resource"],
         pick: [
-          {"application", ["$.metadata.context.application"]},
-          {"cluster", ["$.metadata.cluster", "$.cluster", "$.resource.cluster"]},
-          {"node", ["$.metadata.context.vm.node", "$.resource.node"]},
+          {"application_id", ["$.app_id", "$.application_id", "$.metadata.app_id"]},
+          {"application",
+           [
+             "$.metadata.context.application",
+             "$.app_name",
+             "$.application_name",
+             "$.metadata.app_name",
+             "$.metadata.parsed.application_name"
+           ]},
+          {"cluster",
+           [
+             "$.metadata.cluster",
+             "$.metadata.context.cluster",
+             "$.cluster",
+             "$.resource.cluster"
+           ]},
+          {"environment",
+           [
+             "$.metadata.environment",
+             "$.metadata.context.environment",
+             "$.environment",
+             "$.resource.environment"
+           ]},
+          {"host", ["$.metadata.host", "$.metadata.context.host", "$.host", "$.resource.host"]},
+          {"instance_id", ["$.metadata.instance_id"]},
+          {"machine_id", ["$.machine_id"]},
+          {"node",
+           [
+             "$.metadata.node",
+             "$.metadata.context.vm.node",
+             "$.node",
+             "$.resource.node"
+           ]},
+          {"organization_id", ["$.organization_id", "$.org_id"]},
+          {"organization_slug", ["$.organization_slug"]},
           {"project",
            [
              "$.project",
              "$.project_ref",
              "$.project_id",
              "$.metadata.project",
-             "$.metadata.tenant"
+             "$.metadata.tenant",
+             "$.metadata.tenantId"
            ]},
-          {"region", ["$.metadata.region", "$.region"]},
-          {"service_name", ["$.resource.service.name", "$.service_name"]}
+          {"region",
+           [
+             "$.metadata.region",
+             "$.region",
+             "$.resource.region",
+             "$.resource._project_region"
+           ]},
+          {"service_name",
+           ["$.resource.service.name", "$.resource._service_name", "$.service_name"]},
+          {"vector_file", ["$.metadata.vector_file"]},
+          {"vector_host", ["$.metadata.vector_host"]}
         ],
         default: %{}
       ),
       Field.flat_map("span_attributes",
         path: "$",
         exclude_keys: ["id", "event_message", "timestamp"],
-        elevate_keys: ["metadata"]
+        elevate_keys: ["metadata", "attributes"]
       ),
       Field.array_datetime64("events.timestamp",
         path: "$.events[*].time_unix_nano",

@@ -310,16 +310,17 @@ Benchee.run(
 
 # Baseline results — Mapper.map(event.body) with MappingDefaults.for_log()
 # Apple M4 / 32 GB / macOS / Elixir 1.19.5 / Erlang 27.3.4.6
+# Recorded at a53e24086.
 #
 # Name                             ips        average  deviation         median         99th %
-# [log] Mapper.map(body)       17.09 K       58.53 μs    ±32.69%          49 μs      132.46 μs
+# [log] Mapper.map(body)       55.62 K       17.98 μs    ±44.38%       18.46 μs       34.54 μs
 #
 # Memory usage statistics:
 #
 # Name                      Memory usage
-# [log] Mapper.map(body)         5.90 KB
+# [log] Mapper.map(body)         2.52 KB
 #
 # Reduction count statistics:
 #
 # Name                   Reduction count
-# [log] Mapper.map(body)             637
+# [log] Mapper.map(body)             130
