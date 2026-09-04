@@ -33,9 +33,6 @@ defmodule Logflare.Backends.Spool.PartitionSupervisor do
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts), do: Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
 
-  @spec registry() :: atom()
-  def registry, do: @registry
-
   @spec partitions() :: [pid()]
   def partitions do
     Registry.select(@registry, [{{:_, :"$1", :_}, [], [:"$1"]}])
@@ -51,14 +48,6 @@ defmodule Logflare.Backends.Spool.PartitionSupervisor do
     case partitions() do
       [] -> nil
       pids -> Enum.random(pids)
-    end
-  end
-
-  @spec partition_pid(non_neg_integer()) :: pid() | nil
-  def partition_pid(index) do
-    case Registry.lookup(@registry, index) do
-      [{pid, _}] -> pid
-      [] -> nil
     end
   end
 

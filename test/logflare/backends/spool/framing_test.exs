@@ -58,4 +58,35 @@ defmodule Logflare.Backends.Spool.FramingTest do
       assert {:error, :not_framed} = Framing.decode_segments(valid <> <<1, 2, 3>>)
     end
   end
+
+  describe "recover!/1" do
+    test "returns 0 for a missing file" do
+      path = Path.join(System.tmp_dir!(), "missing_#{System.unique_integer([:positive])}.wal")
+
+      assert Framing.recover!(path) == 0
+    end
+
+    test "truncates a torn tail and returns the valid byte offset" do
+      path = Path.join(System.tmp_dir!(), "torn_#{System.unique_integer([:positive])}.wal")
+      whole = Framing.encode_segment("whole\n")
+      torn = binary_part(Framing.encode_segment("torn\n"), 0, 5)
+      File.write!(path, whole <> torn)
+      on_exit(fn -> File.rm(path) end)
+
+      assert Framing.recover!(path) == byte_size(whole)
+      assert {:ok, contents} = File.read(path)
+      assert contents == whole
+    end
+
+    test "handles a read error other than :enoent (e.g. the path is a directory) without crashing" do
+      # A directory read fails at the OS level (:eisdir) regardless of
+      # permissions/user — unlike a chmod-based simulation, this is reliable
+      # even when tests run as root (as some CI containers do).
+      dir = Path.join(System.tmp_dir!(), "not_a_file_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(dir)
+      on_exit(fn -> File.rm_rf!(dir) end)
+
+      assert Framing.recover!(dir) == 0
+    end
+  end
 end

@@ -19,6 +19,7 @@ defmodule Logflare.Application do
 
   def start(_type, _args) do
     Logflare.Readiness.initialize()
+    Logflare.Backends.Spool.WriteHealth.initialize()
 
     # set inspect function to redact sensitive information
     prev = Inspect.Opts.default_inspect_fun()

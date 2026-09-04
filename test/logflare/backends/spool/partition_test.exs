@@ -7,6 +7,7 @@ defmodule Logflare.Backends.Spool.PartitionTest do
   alias Logflare.Backends.Spool.Partition
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
+  alias Logflare.Backends.Spool.WriteHealth
   alias Logflare.TestUtils
 
   setup :set_mimic_global
@@ -44,6 +45,18 @@ defmodule Logflare.Backends.Spool.PartitionTest do
 
   defp segment(payload \\ "line\n"), do: Framing.encode_segment(payload)
 
+  # Forces the next local WAL write to fail by closing the fd out from
+  # under the partition. Writing to a closed file descriptor fails at the
+  # OS level (:einval) regardless of permissions or user — unlike a
+  # chmod-based simulation, which root-run CI would bypass — so this is a
+  # reliable, portable way to exercise the disk-write-failure fallback.
+  defp break_local_disk!(pid) do
+    :sys.replace_state(pid, fn state ->
+      :file.close(state.fd)
+      state
+    end)
+  end
+
   defp assert_recovered_put(expected_payload, timeout) do
     receive do
       {:put, body} ->
@@ -73,29 +86,13 @@ defmodule Logflare.Backends.Spool.PartitionTest do
   defp assert_eventually_gone(path, _timeout_ms), do: refute(File.exists?(path))
 
   describe "flush thresholds" do
-    test "does not commit while under the byte/count budget" do
+    test "does not commit while under the byte budget" do
       stub(StorageMod, :put, fn _b, _k, _body, _opts -> {:ok, %{}} end)
 
       {pid, _name} = start_partition(batch_timeout: 60_000)
 
       assert :ok = Partition.append(pid, segment(), 10, 1)
       assert %{pending_count: 1, pending_bytes: 10} = :sys.get_state(pid)
-    end
-
-    test "commits immediately once the event-count budget is hit" do
-      test_pid = self()
-
-      stub(StorageMod, :put, fn _b, _k, body, _opts ->
-        send(test_pid, {:put, body})
-        {:ok, %{}}
-      end)
-
-      {pid, _name} = start_partition(batch_timeout: 60_000)
-
-      # 500_000 is the hardcoded max_batch_count.
-      assert :ok = Partition.append(pid, segment(), 10, 500_000)
-      assert_receive {:put, _body}, 1000
-      assert %{pending_count: 0, pending_bytes: 0} = :sys.get_state(pid)
     end
 
     test "commits immediately once the raw (uncompressed) byte budget is hit" do
@@ -227,7 +224,13 @@ defmodule Logflare.Backends.Spool.PartitionTest do
 
       assert :ok = Partition.append(pid, segment("big\n"), 32 * 1024 * 1024, 1)
       assert_receive {:put, body}, 1000
-      assert %{timer_ref: nil, pending_count: 0} = :sys.get_state(pid)
+
+      # The flush loop never stops — a fresh timer is armed immediately
+      # after the roll, not left nil, and it must be a genuinely new one
+      # (the old tick was cancelled), not the same ref surviving.
+      assert %{timer_ref: new_ref, pending_count: 0} = :sys.get_state(pid)
+      refute is_nil(new_ref)
+      assert new_ref != ref
 
       {:ok, payloads} = Framing.decode_segments(body)
       assert payloads == ["small\n", "big\n"]
@@ -470,6 +473,91 @@ defmodule Logflare.Backends.Spool.PartitionTest do
       # it in the same active file.
       assert :ok = Partition.append(pid, segment("new\n"), 10, 1)
       assert_receive {:put, _body}, 1000
+    end
+  end
+
+  describe "local WAL write failure fallback" do
+    setup do
+      on_exit(fn -> WriteHealth.report_recovery!() end)
+      :ok
+    end
+
+    test "append/5 falls back to a direct GCS write when the local disk write fails, and still returns :ok" do
+      test_pid = self()
+
+      stub(StorageMod, :put, fn _b, _k, body, _opts ->
+        send(test_pid, {:put, body})
+        {:ok, %{}}
+      end)
+
+      {pid, _name} = start_partition(batch_timeout: 60_000)
+      break_local_disk!(pid)
+
+      assert :ok = Partition.append(pid, segment("fallback\n"), 10, 1)
+      assert_receive {:put, body}, 1000
+      assert {:ok, ["fallback\n"]} = Framing.decode_segments(body)
+      assert WriteHealth.healthy?() == true
+    end
+
+    test "append_async/4 falls back to a direct GCS write in the background when the local disk write fails" do
+      test_pid = self()
+
+      stub(StorageMod, :put, fn _b, _k, body, _opts ->
+        send(test_pid, {:put, body})
+        {:ok, %{}}
+      end)
+
+      {pid, _name} = start_partition(batch_timeout: 60_000)
+      break_local_disk!(pid)
+
+      assert :ok = Partition.append_async(pid, segment("async-fallback\n"), 10, 1)
+      assert_receive {:put, body}, 1000
+      assert {:ok, ["async-fallback\n"]} = Framing.decode_segments(body)
+    end
+
+    test "append/5 returns an error, and marks the node unhealthy, if the GCS fallback also fails" do
+      Application.put_env(:logflare, :spool, max_commit_attempts: 1)
+      stub(StorageMod, :put, fn _b, _k, _body, _opts -> {:error, :timeout} end)
+
+      {pid, _name} = start_partition(batch_timeout: 60_000)
+      break_local_disk!(pid)
+
+      assert {:error, {:disk_and_gcs_unavailable, _disk_reason, _gcs_reason}} =
+               Partition.append(pid, segment("boom\n"), 10, 1)
+
+      assert WriteHealth.healthy?() == false
+    end
+
+    test "a subsequent successful write clears the unhealthy state" do
+      Application.put_env(:logflare, :spool, max_commit_attempts: 1)
+      stub(StorageMod, :put, fn _b, _k, _body, _opts -> {:error, :timeout} end)
+
+      {pid, _name} = start_partition(batch_timeout: 60_000)
+      break_local_disk!(pid)
+
+      assert {:error, _} = Partition.append(pid, segment(), 10, 1)
+      assert WriteHealth.healthy?() == false
+
+      # A fresh partition (healthy fd) succeeding should clear the flag —
+      # WriteHealth is node-wide, not scoped to whichever partition tripped it.
+      stub(StorageMod, :put, fn _b, _k, _body, _opts -> {:ok, %{}} end)
+      {pid2, _name2} = start_partition(batch_timeout: 60_000)
+      assert :ok = Partition.append(pid2, segment(), 10, 1)
+
+      assert WriteHealth.healthy?() == true
+    end
+
+    test "emits telemetry when the local WAL write fails" do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :wal, :write_error])
+      stub(StorageMod, :put, fn _b, _k, _body, _opts -> {:ok, %{}} end)
+
+      {pid, _name} = start_partition(batch_timeout: 60_000)
+      break_local_disk!(pid)
+
+      assert :ok = Partition.append(pid, segment(), 10, 1)
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :wal, :write_error],
+                      %{count: 1}, %{index: 0}}
     end
   end
 end

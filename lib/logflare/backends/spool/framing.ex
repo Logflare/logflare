@@ -16,6 +16,8 @@ defmodule Logflare.Backends.Spool.Framing do
   Frame layout: `<<byte_size(payload)::32-big, crc32(payload)::32-big, payload::binary>>`.
   """
 
+  require Logger
+
   @spec encode_segment(binary()) :: binary()
   def encode_segment(payload) when is_binary(payload) do
     <<byte_size(payload)::32-big, :erlang.crc32(payload)::32-big, payload::binary>>
@@ -99,6 +101,19 @@ defmodule Logflare.Backends.Spool.Framing do
         valid
 
       {:error, :enoent} ->
+        0
+
+      {:error, reason} ->
+        # A genuinely failing/corrupted disk (:eio, :eacces, ...), not just a
+        # missing file — there's no better recovery than starting from
+        # offset 0: whatever was in the file can't be read regardless of how
+        # many times this is retried, so treating it as a crash victim (like
+        # :enoent) is the only actionable choice. Logged loudly since this is
+        # a real disk problem, not routine startup.
+        Logger.warning(
+          "spool_framing: failed to read #{path} during recovery, starting from offset 0: #{inspect(reason)}"
+        )
+
         0
     end
   end

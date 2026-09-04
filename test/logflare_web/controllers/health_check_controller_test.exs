@@ -4,6 +4,7 @@ defmodule LogflareWeb.HealthCheckControllerTest do
   """
   use LogflareWeb.ConnCase
 
+  alias Logflare.Backends.Spool.WriteHealth
   alias Logflare.Readiness
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source
@@ -11,6 +12,7 @@ defmodule LogflareWeb.HealthCheckControllerTest do
   setup do
     reset_readiness()
     on_exit(&reset_readiness/0)
+    on_exit(fn -> WriteHealth.report_recovery!() end)
 
     Logflare.Google.BigQuery
     |> stub(:init_table!, fn _, _, _, _, _, _ -> :ok end)
@@ -59,6 +61,24 @@ defmodule LogflareWeb.HealthCheckControllerTest do
       |> get("/health")
 
     assert %{"memory_utilization" => "ok"} = json_response(conn, 200)
+  end
+
+  test "spool write health check", %{conn: conn} do
+    insert(:user)
+    insert(:plan)
+    start_supervised!(Source.Supervisor)
+
+    assert %{"spool_write_healthy" => true} = conn |> get("/health") |> json_response(200)
+
+    WriteHealth.report_failure!()
+
+    assert %{"status" => "coming_up", "spool_write_healthy" => false} =
+             conn |> get("/health") |> json_response(503)
+
+    WriteHealth.report_recovery!()
+
+    assert %{"status" => "ok", "spool_write_healthy" => true} =
+             conn |> get("/health") |> json_response(200)
   end
 
   describe "Supabase mode - without seed" do
