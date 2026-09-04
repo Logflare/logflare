@@ -235,9 +235,18 @@ defmodule Logflare.Backends.Spool.PartitionTest do
   end
 
   describe "max_inflight_commits" do
-    test "bounds concurrent commit tasks; a rotation over the cap waits for the flush loop to retry once a slot frees" do
-      Application.put_env(:logflare, :spool, max_inflight_commits: 1)
+    test "a rotation over the cap still rolls immediately; only starting its upload is deferred" do
+      # recovery_retry_delay_ms controls the deferred second commit's own
+      # retry (see Partition's moduledoc — it's decoupled from
+      # batch_timeout), set well above the refute_receive window below so
+      # it can't have already fired by the time that assertion runs.
+      Application.put_env(:logflare, :spool,
+        max_inflight_commits: 1,
+        recovery_retry_delay_ms: 300
+      )
+
       test_pid = self()
+      dir = wal_dir!()
 
       stub(StorageMod, :put, fn _b, _k, body, _opts ->
         send(test_pid, {:put_started, self(), body})
@@ -247,22 +256,22 @@ defmodule Logflare.Backends.Spool.PartitionTest do
         end
       end)
 
-      # Short — the capacity-blocked second rotation isn't retried the
-      # instant its slot frees (see Partition's moduledoc), only on the
-      # flush loop's next tick, so this needs to actually fire within the
-      # test's own assertion windows below.
-      {pid, _name} = start_partition(batch_timeout: 50)
+      {pid, _name} = start_partition(wal_dir: dir)
 
       assert :ok = Partition.append(pid, segment("first\n"), 32 * 1024 * 1024, 1)
       assert_receive {:put_started, first_task, first_body}, 1000
       assert %{task_in_flight: 1} = :sys.get_state(pid)
 
-      # Also over budget, but the cap (1) is already saturated — must not
-      # spawn a second concurrent upload yet, even across several of the
-      # flush loop's own retry ticks (batch_timeout: 50, refuted for 100ms).
+      # Also over budget, but the cap (1) is already saturated. The active
+      # file still rolls right away (pending resets to 0) — leaving it
+      # un-rolled until a slot freed would let it keep absorbing appends
+      # past the 32MB budget for as long as capacity stayed tight, which is
+      # exactly the bug this fixes. Only *starting* this segment's upload is
+      # deferred, to the same recovery-style retry a crash-recovered file
+      # would use.
       assert :ok = Partition.append(pid, segment("second\n"), 32 * 1024 * 1024, 1)
       refute_receive {:put_started, _task, _body}, 100
-      assert %{task_in_flight: 1, pending_count: 1} = :sys.get_state(pid)
+      assert %{task_in_flight: 1, pending_count: 0} = :sys.get_state(pid)
 
       send(first_task, :proceed)
 
@@ -272,6 +281,43 @@ defmodule Logflare.Backends.Spool.PartitionTest do
       {:ok, [second_payload]} = Framing.decode_segments(second_body)
       assert first_payload == "first\n"
       assert second_payload == "second\n"
+    end
+
+    test "the active file never grows past one segment's worth even while capacity stays fully saturated" do
+      # recovery_retry_delay_ms doesn't matter for what this test checks —
+      # nothing releases the one busy slot, so a deferred rotation's own
+      # retry never finds room to spawn regardless of how soon it fires.
+      Application.put_env(:logflare, :spool, max_inflight_commits: 1)
+      test_pid = self()
+      dir = wal_dir!()
+
+      stub(StorageMod, :put, fn _b, _k, _body, _opts ->
+        send(test_pid, :put_started)
+
+        receive do
+          :proceed -> {:ok, %{}}
+        end
+      end)
+
+      {pid, _name} = start_partition(wal_dir: dir)
+
+      assert :ok = Partition.append(pid, segment("one\n"), 32 * 1024 * 1024, 1)
+      assert_receive :put_started, 1000
+
+      # Two more oversized appends while the only commit slot stays busy —
+      # each must still roll into its own sealed file. Before this fix, a
+      # saturated cap left the active file un-rolled, so it would just keep
+      # absorbing these past the 32MB budget instead.
+      assert :ok = Partition.append(pid, segment("two\n"), 32 * 1024 * 1024, 1)
+      assert :ok = Partition.append(pid, segment("three\n"), 32 * 1024 * 1024, 1)
+
+      assert %{pending_bytes: 0, pending_count: 0, active_path: active_path} =
+               :sys.get_state(pid)
+
+      assert {:ok, %{size: 0}} = File.stat(active_path)
+
+      # "one" (uploading) + "two" and "three" (deferred, awaiting a slot).
+      assert length(Path.wildcard(Path.join(dir, "p0-*.sealed"))) == 3
     end
   end
 
@@ -348,6 +394,56 @@ defmodule Logflare.Backends.Spool.PartitionTest do
       # regardless of that.
       assert_recovered_put("recovered\n", 1000)
       assert_eventually_gone(leftover, 500)
+    end
+
+    test "many leftover sealed segments are drained without blocking init, never exceeding max_inflight_commits" do
+      Application.put_env(:logflare, :spool, max_inflight_commits: 2)
+      test_pid = self()
+      dir = wal_dir!()
+
+      leftovers =
+        for n <- 1..5 do
+          path = Path.join(dir, "p0-#{n}.sealed")
+          File.write!(path, segment("recovered-#{n}\n"))
+          path
+        end
+
+      stub(StorageMod, :put, fn _b, _k, body, _opts ->
+        send(test_pid, {:put_started, self(), body})
+
+        receive do
+          :proceed -> {:ok, %{}}
+        end
+      end)
+
+      # start_supervised!/init/1 must return promptly regardless of how many
+      # leftover files exist — recovery is bounded and drains in the
+      # background, never blocking startup (see Partition's moduledoc). The
+      # recovery loop's own retry for whatever's left over runs on
+      # recovery_retry_delay_ms (default 100ms, decoupled from
+      # batch_timeout — see handle_info({:recover_sealed, ...})), not
+      # immediately the instant a slot frees.
+      {pid, _name} = start_partition(wal_dir: dir)
+
+      # Exactly the cap (2) start immediately, not all 5.
+      assert_receive {:put_started, task_a, _}, 1000
+      assert_receive {:put_started, task_b, _}, 1000
+      refute_receive {:put_started, _task, _body}, 30
+      assert %{task_in_flight: 2} = :sys.get_state(pid)
+
+      send(task_a, :proceed)
+      assert_receive {:put_started, task_c, _}, 1000
+
+      send(task_b, :proceed)
+      assert_receive {:put_started, task_d, _}, 1000
+
+      send(task_c, :proceed)
+      assert_receive {:put_started, task_e, _}, 1000
+
+      send(task_d, :proceed)
+      send(task_e, :proceed)
+
+      for leftover <- leftovers, do: assert_eventually_gone(leftover, 500)
     end
 
     test "a torn tail in the active WAL file is truncated on recovery, not treated as corruption" do

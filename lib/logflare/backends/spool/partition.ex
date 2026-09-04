@@ -27,10 +27,15 @@ defmodule Logflare.Backends.Spool.Partition do
   (see `Logflare.Backends.Spool.Encoder`).
 
   Rotation, upload, and deletion: `roll/1` seals the active segment (rename)
-  and opens a fresh active file. The sealed file is then handed to a `Task`
-  (see `Logflare.Backends.Spool.Committer`) that this module spawns directly
-  and monitors — not a persistent GenServer, so a slow or stuck GCS commit
-  for one segment never blocks the next segment's commit from starting.
+  and opens a fresh active file — *unconditionally*, regardless of whether a
+  commit slot happens to be free right now. Deferring the roll itself until
+  capacity frees would let the active file keep absorbing new appends past
+  the size/count budget for as long as every slot stayed busy, defeating the
+  budget entirely; the active file's size has to stay bounded no matter how
+  backed up uploads are. The sealed file is then handed to a `Task` (see
+  `Logflare.Backends.Spool.Committer`) that this module spawns directly and
+  monitors — not a persistent GenServer, so a slow or stuck GCS commit for
+  one segment never blocks the next segment's commit from starting.
   Partition owns the sealed file's entire lifecycle: it creates it (roll)
   and deletes it once the task reports success — `Committer` itself never
   touches the file except to read it. Concurrent commits are bounded by
@@ -38,9 +43,32 @@ defmodule Logflare.Backends.Spool.Partition do
   segments' worth of bytes can be held in memory at once across a
   partition's outstanding uploads during a sustained backend slowdown; the
   local WAL backlog itself is cheap and already durable on disk regardless
-  of how many uploads are in flight. A roll that's ready but finds no free
-  slot doesn't get dropped — it just falls back to the same flush-loop timer,
-  which retries the same check on its next tick.
+  of how many uploads are in flight. Only *starting* a just-rolled segment's
+  upload is capacity-gated (see `start_commit_or_defer/3`) — if there's no
+  free slot for it, the already-sealed file is handed to the same bounded,
+  self-rescheduling recovery loop used for crash-recovered segments below,
+  rather than left waiting on the flush loop itself.
+
+  `init/1` (see `schedule_sealed_recovery/1`) must never block waiting for
+  recovered segments to finish uploading, even though a crash can leave many
+  of them behind. On a supervisor-driven restart of just this partition —
+  the only realistic time recovery runs with the rest of the app already
+  serving traffic — Erlang/OTP registers this process's `:via` name *before*
+  `init/1` runs, so `PartitionSupervisor.random_partition/0` can already
+  select and route to it while recovery is still in progress; a blocking
+  recovery would make any `append/5` call routed there queue behind it and
+  risk that caller's timeout. (On a cold full-node boot this can't happen at
+  all — nothing accepts ingest traffic until every partition's `init/1`,
+  this one included, has already returned — but the restart case is real
+  and this module can't tell the two apart.) So instead `init/1` just sends
+  itself one `{:recover_sealed, sealed_paths}` message and returns
+  immediately; `handle_info/2` starts as many as `max_inflight_commits`
+  allows and, if any are left over, reschedules itself with the remainder
+  after `recovery_retry_delay_ms/0` (config, default 100ms — deliberately
+  short and independent of `batch_timeout`, since this is "check again for
+  a free slot soon", not "wait for a batch window") — a bounded,
+  self-contained loop that never touches the live append/commit-completion
+  path above at all.
   """
 
   use GenServer
@@ -53,6 +81,10 @@ defmodule Logflare.Backends.Spool.Partition do
   @max_batch_bytes 32 * 1024 * 1024
   @max_batch_count 500_000
   @default_max_inflight_commits 10
+  # Deliberately decoupled from batch_timeout — recovery retrying is "check
+  # again for a free slot", not "wait for a batch window", so it shouldn't
+  # inherit batch_timeout's (config, up to a few seconds) cadence.
+  @default_recovery_retry_delay_ms 100
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
@@ -107,7 +139,8 @@ defmodule Logflare.Backends.Spool.Partition do
       committer_config: committer_config
     }
 
-    {:ok, recover_sealed_segments(state)}
+    schedule_sealed_recovery(state)
+    {:ok, state}
   end
 
   @impl GenServer
@@ -146,13 +179,16 @@ defmodule Logflare.Backends.Spool.Partition do
   @impl GenServer
   def handle_info(:flush, state) do
     state = %{state | timer_ref: nil}
-    state = if state.pending_count > 0, do: attempt_handoff(state, :timeout), else: state
+    state = if state.pending_count > 0, do: handoff(state, :timeout), else: state
     {:noreply, state}
   end
 
-  # No re-check here on purpose — see the moduledoc. Whatever's pending
-  # (under budget or capacity-blocked) is already covered by an already-
-  # running flush-loop timer; freeing a slot doesn't need its own trigger.
+  # No re-check on purpose — see the moduledoc. Whatever's pending is already
+  # covered by an already-running flush-loop timer; freeing a slot doesn't
+  # need its own trigger. Sealed-segment recovery is a separate, self-
+  # contained loop (see handle_info({:recover_sealed, ...})) — it doesn't
+  # hook into commit completion at all, so a live commit finishing never has
+  # to know or care whether recovery is still draining in the background.
   def handle_info({:commit_result, sealed_path, :ok}, state) do
     File.rm(sealed_path)
 
@@ -173,14 +209,38 @@ defmodule Logflare.Backends.Spool.Partition do
             "for the next recovery scan: #{inspect(reason)}"
         )
 
-        state = %{
-          state
-          | tasks: Map.delete(state.tasks, sealed_path),
-            task_in_flight: state.task_in_flight - 1
-        }
-
-        {:noreply, state}
+        {:noreply,
+         %{
+           state
+           | tasks: Map.delete(state.tasks, sealed_path),
+             task_in_flight: state.task_in_flight - 1
+         }}
     end
+  end
+
+  # Bounded, self-rescheduling recovery loop, entirely decoupled from the
+  # live append/commit flow above — see schedule_sealed_recovery/1 (started
+  # once, from init/1) and Partition's moduledoc for why this can never
+  # block startup. Starts as many of `sealed_paths` as the current capacity
+  # allows, then — if any are left over — reschedules itself with the
+  # remainder after recovery_retry_delay_ms/0, a short, fixed cadence
+  # ("check again for a free slot soon") independent of batch_timeout
+  # (which can be several seconds and means something different: "wait for
+  # a batch window").
+  def handle_info({:recover_sealed, sealed_paths}, state) do
+    available = max(max_inflight_commits() - state.task_in_flight, 0)
+    {to_start_now, remaining} = Enum.split(sealed_paths, available)
+
+    state =
+      Enum.reduce(to_start_now, state, fn sealed_path, state ->
+        spawn_commit_task(state, sealed_path, recovered_event_count(sealed_path), :recovered)
+      end)
+
+    if remaining != [] do
+      Process.send_after(self(), {:recover_sealed, remaining}, recovery_retry_delay_ms())
+    end
+
+    {:noreply, state}
   end
 
   def handle_info(_message, state), do: {:noreply, state}
@@ -201,7 +261,7 @@ defmodule Logflare.Backends.Spool.Partition do
 
   defp maybe_roll_now_or_ensure_timer(state) do
     if over_budget?(state) do
-      state |> cancel_timer() |> attempt_handoff(:size)
+      state |> cancel_timer() |> handoff(:size)
     else
       ensure_timer(state)
     end
@@ -209,17 +269,6 @@ defmodule Logflare.Backends.Spool.Partition do
 
   defp over_budget?(state) do
     state.pending_bytes >= @max_batch_bytes or state.pending_count >= @max_batch_count
-  end
-
-  defp attempt_handoff(state, trigger) do
-    if state.task_in_flight < max_inflight_commits() do
-      handoff(state, trigger)
-    else
-      # No free slot — fall back to the flush loop, which retries this same
-      # check on its next tick. No separate "a slot just freed" signal is
-      # needed: the next tick or the next oversized append always finds it.
-      ensure_timer(state)
-    end
   end
 
   defp cancel_timer(%{timer_ref: nil} = state), do: state
@@ -241,16 +290,28 @@ defmodule Logflare.Backends.Spool.Partition do
     |> Keyword.get(:max_inflight_commits, @default_max_inflight_commits)
   end
 
-  # Seals the active segment and hands it to a spawned commit Task, rather
-  # than handing off in-memory bytes — the sealed file itself is what makes
-  # the commit crash-recoverable, and what makes drain-and-delete race-free
-  # against concurrent appends (those land in the fresh active file `roll/1`
+  defp recovery_retry_delay_ms do
+    Application.get_env(:logflare, :spool, [])
+    |> Keyword.get(:recovery_retry_delay_ms, @default_recovery_retry_delay_ms)
+  end
+
+  # Seals the active segment and hands it off, rather than handing off
+  # in-memory bytes — the sealed file itself is what makes the commit
+  # crash-recoverable, and what makes drain-and-delete race-free against
+  # concurrent appends (those land in the fresh active file `roll/1`
   # opens). Every caller already guarantees timer_ref is nil by this point
   # (see maybe_roll_now_or_ensure_timer/1 and handle_info(:flush, ...)).
+  #
+  # Rolling itself always happens, regardless of whether a commit slot is
+  # currently free — deferring the roll until capacity frees (as an earlier
+  # version of this did) would let the active file keep absorbing new
+  # appends past the size/count budget for as long as every slot stayed
+  # busy, defeating the budget entirely. Only *starting the upload* is
+  # capacity-gated; see start_commit_or_defer/3.
   defp handoff(state, trigger) do
     case roll(state) do
       {:ok, sealed_path, state} ->
-        state = spawn_commit_task(state, sealed_path, state.pending_count, trigger)
+        state = start_commit_or_defer(state, sealed_path, trigger)
         %{state | pending_bytes: 0, pending_count: 0}
 
       {:error, reason} ->
@@ -259,6 +320,26 @@ defmodule Logflare.Backends.Spool.Partition do
         # loop's own retry (ensure_timer/1 below) re-triggers a roll attempt
         # on its next tick.
         ensure_timer(state)
+    end
+  end
+
+  # A just-rolled, already-sealed file is no different from one found on
+  # disk at boot once there's no free commit slot for it — hand it to the
+  # same bounded, self-rescheduling recovery loop (handle_info({:recover_sealed,
+  # ...})) instead of spawning immediately. That loop re-derives the event
+  # count from the file itself rather than using the precise state.pending_count
+  # already on hand here, so a deferred live rotation's telemetry ends up
+  # reported as an approximate count under trigger :recovered rather than
+  # its real trigger/count — an accepted, cosmetic-only loss (nothing
+  # downstream is correctness-sensitive to either value — see
+  # recovered_event_count/1) in exchange for one shared, simple mechanism
+  # instead of two.
+  defp start_commit_or_defer(state, sealed_path, trigger) do
+    if state.task_in_flight < max_inflight_commits() do
+      spawn_commit_task(state, sealed_path, state.pending_count, trigger)
+    else
+      Process.send_after(self(), {:recover_sealed, [sealed_path]}, recovery_retry_delay_ms())
+      state
     end
   end
 
@@ -294,17 +375,21 @@ defmodule Logflare.Backends.Spool.Partition do
 
   # Leftover sealed segments from a crash between roll/1 and a commit task
   # deleting them — nothing tracks their original event counts across a
-  # restart, so they're re-derived from the file itself. Runs once at boot,
-  # never on the steady-state append path; spawned unconditionally
-  # (bypassing max_inflight_commits) since this is a one-time, bounded burst,
-  # not steady-state throughput.
-  defp recover_sealed_segments(state) do
+  # restart, so they're re-derived from the file itself (recovered_event_count/1).
+  # Runs once at boot (or on a supervisor-driven restart of just this
+  # partition — see the moduledoc's note on why init/1 must never block
+  # here). Only kicks off the self-rescheduling handle_info({:recover_sealed,
+  # ...}) loop above — actually spawning tasks happens entirely there,
+  # bounded by max_inflight_commits, so a crash that left behind arbitrarily
+  # many sealed files can never spike memory with one concurrent upload per
+  # leftover file.
+  defp schedule_sealed_recovery(state) do
     pattern = Path.join(state.wal_dir, "p#{state.index}-*.sealed")
-    sealed_paths = Path.wildcard(pattern)
 
-    Enum.reduce(sealed_paths, state, fn sealed_path, state ->
-      spawn_commit_task(state, sealed_path, recovered_event_count(sealed_path), :recovered)
-    end)
+    case Path.wildcard(pattern) do
+      [] -> :ok
+      sealed_paths -> send(self(), {:recover_sealed, sealed_paths})
+    end
   end
 
   # An approximation, not a true event count: it's the number of framed
