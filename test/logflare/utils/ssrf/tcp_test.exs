@@ -5,6 +5,7 @@ defmodule Logflare.Utils.SSRF.TCPTest do
 
   alias Logflare.Utils.SSRF
   alias Logflare.Utils.SSRF.TCP
+  alias Logflare.Utils.SSRF.TCP.Resolver
 
   @ipv4_loopback {127, 0, 0, 1}
   @public_ipv4 {1, 1, 1, 1}
@@ -50,12 +51,147 @@ defmodule Logflare.Utils.SSRF.TCPTest do
       assert {:ok, [@public_ipv6]} = TCP.getaddrs(ipv6_host)
     end
 
+    test "returns IPv4 without waiting for a stalled IPv6 lookup" do
+      test_pid = self()
+      timer = :inet.start_timer(1_000)
+
+      on_exit(fn -> :inet.stop_timer(timer) end)
+
+      stub(Resolver, :getaddrs, fn
+        _address, :inet, _timer ->
+          {:ok, [@public_ipv4]}
+
+        _address, :inet6, _timer ->
+          send(test_pid, {:resolver_started, self()})
+          Process.sleep(:infinity)
+      end)
+
+      resolution = Task.async(fn -> TCP.getaddrs("safe-tcp-stalled-ipv6.test", timer) end)
+
+      assert {:ok, [@public_ipv4]} = Task.await(resolution, 500)
+      assert :inet.timeout(timer) > 0
+      assert_receive {:resolver_started, resolver}
+      refute Process.alive?(resolver)
+    end
+
+    test "returns IPv6 without waiting for a stalled IPv4 lookup" do
+      test_pid = self()
+
+      stub(Resolver, :getaddrs, fn
+        _address, :inet, _timer ->
+          send(test_pid, {:resolver_started, self()})
+          Process.sleep(:infinity)
+
+        _address, :inet6, _timer ->
+          {:ok, [@public_ipv6]}
+      end)
+
+      resolution = Task.async(fn -> TCP.getaddrs("safe-tcp-stalled-ipv4.test") end)
+
+      assert {:ok, [@public_ipv6]} = Task.await(resolution, 500)
+      assert_receive {:resolver_started, resolver}
+      refute Process.alive?(resolver)
+    end
+
+    test "collects ready answers after the resolution grace period" do
+      test_pid = self()
+
+      stub(Resolver, :getaddrs, fn _address, family, _timer ->
+        send(test_pid, {:resolver_waiting, family, self()})
+
+        receive do
+          :resolve ->
+            case family do
+              :inet -> {:ok, [@public_ipv4]}
+              :inet6 -> {:ok, [@public_ipv6]}
+            end
+        end
+      end)
+
+      resolution = Task.async(fn -> TCP.getaddrs("safe-tcp-ready-after-grace.test") end)
+
+      assert_receive {:resolver_waiting, :inet, ipv4_resolver}
+      assert_receive {:resolver_waiting, :inet6, ipv6_resolver}
+
+      :erlang.suspend_process(resolution.pid)
+
+      try do
+        Process.sleep(50)
+        resolve_and_wait(ipv6_resolver)
+        resolve_and_wait(ipv4_resolver)
+      after
+        if Process.alive?(resolution.pid), do: :erlang.resume_process(resolution.pid)
+      end
+
+      assert {:ok, [@public_ipv4, @public_ipv6]} = Task.await(resolution, 500)
+    end
+
+    test "waits for a public answer after the other family only returns private addresses" do
+      test_pid = self()
+
+      stub(Resolver, :getaddrs, fn
+        _address, :inet, _timer ->
+          {:ok, [@ipv4_loopback]}
+
+        _address, :inet6, _timer ->
+          send(test_pid, {:resolver_waiting, self()})
+
+          receive do
+            :resolve -> {:ok, [@public_ipv6]}
+          end
+      end)
+
+      resolution = Task.async(fn -> TCP.getaddrs("safe-tcp-private-first.test") end)
+
+      assert_receive {:resolver_waiting, resolver}
+      assert nil == Task.yield(resolution, 50)
+
+      send(resolver, :resolve)
+      assert {:ok, [@public_ipv6]} = Task.await(resolution, 500)
+    end
+
+    test "honors the connection timer while both lookups are stalled" do
+      stub(Resolver, :getaddrs, fn _address, _family, _timer ->
+        Process.sleep(:infinity)
+      end)
+
+      timer = :inet.start_timer(50)
+      on_exit(fn -> :inet.stop_timer(timer) end)
+
+      assert {:error, :timeout} = TCP.getaddrs("safe-tcp-stalled.test", timer)
+    end
+
     test "returns access denied when every answer is blocked" do
       host = "safe-tcp-private.test"
       put_host_addresses(host, [@ipv4_loopback, {0, 0, 0, 0, 0, 0, 0, 1}])
 
       assert {:error, :eacces} = TCP.getaddrs(host)
       assert {:error, :eacces} = TCP.getaddr(host)
+    end
+
+    test "distinguishes empty resolver answers from blocked addresses and resolver errors" do
+      answers = %{
+        ~c"empty.test" => %{inet: {:ok, []}, inet6: {:ok, []}},
+        ~c"empty-public.test" => %{inet: {:ok, []}, inet6: {:ok, [@public_ipv6]}},
+        ~c"empty-private.test" => %{inet: {:ok, []}, inet6: {:ok, [@ipv4_loopback]}},
+        ~c"empty-error.test" => %{inet: {:ok, []}, inet6: {:error, :timeout}},
+        ~c"error-empty.test" => %{inet: {:error, :nxdomain}, inet6: {:ok, []}},
+        ~c"error-private.test" => %{
+          inet: {:error, :nxdomain},
+          inet6: {:ok, [@ipv4_loopback]}
+        }
+      }
+
+      stub(Resolver, :getaddrs, fn address, family, _timer ->
+        answers |> Map.fetch!(address) |> Map.fetch!(family)
+      end)
+
+      assert {:error, :nxdomain} = TCP.getaddrs("empty.test")
+      assert {:ok, [@public_ipv6]} = TCP.getaddrs("empty-public.test")
+      assert {:error, :eacces} = TCP.getaddrs("empty-private.test")
+      assert {:error, :timeout} = TCP.getaddrs("empty-error.test")
+      assert {:error, :nxdomain} = TCP.getaddrs("error-empty.test")
+      assert {:error, :eacces} = TCP.getaddrs("error-private.test")
     end
 
     test "propagates the resolver error when neither family resolves" do
@@ -163,7 +299,7 @@ defmodule Logflare.Utils.SSRF.TCPTest do
         {:tcp_module, TCP},
         {:active, false},
         {:verify, :verify_peer},
-        {:cacertfile, String.to_charlist(Path.expand("priv/telegraf/ca.crt"))},
+        {:cacertfile, String.to_charlist(Application.app_dir(:logflare, "priv/telegraf/ca.crt"))},
         {:customize_hostname_check,
          [match_fun: :public_key.pkix_verify_hostname_match_fun(:https)]}
       ]
@@ -187,6 +323,12 @@ defmodule Logflare.Utils.SSRF.TCPTest do
     {:ok, listener, port}
   end
 
+  defp resolve_and_wait(resolver) do
+    monitor = Process.monitor(resolver)
+    send(resolver, :resolve)
+    assert_receive {:DOWN, ^monitor, :process, ^resolver, :normal}
+  end
+
   defp allow_all_addresses do
     stub(SSRF, :private_ip?, fn _address -> false end)
     stub(SSRF, :public_addresses, fn addresses -> addresses end)
@@ -208,8 +350,8 @@ defmodule Logflare.Utils.SSRF.TCPTest do
 
     opts = [
       active: false,
-      certfile: String.to_charlist(Path.expand("priv/telegraf/server.crt")),
-      keyfile: String.to_charlist(Path.expand("priv/telegraf/server.key")),
+      certfile: String.to_charlist(Application.app_dir(:logflare, "priv/telegraf/server.crt")),
+      keyfile: String.to_charlist(Application.app_dir(:logflare, "priv/telegraf/server.key")),
       ip: @ipv4_loopback,
       reuseaddr: true,
       sni_fun: fn hostname ->
