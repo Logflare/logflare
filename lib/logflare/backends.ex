@@ -1458,13 +1458,13 @@ defmodule Logflare.Backends do
   is full on this node. A buffer is full when every one of its queues is over its limit.
 
   For sources with `default_ingest_backend_enabled? = true`, returns true if the system
-  default backend buffer is full or the buffer of any `default_ingest?` backend among
+  default backend buffer is full or the buffer of any enabled `default_ingest?` backend among
   `list_dispatch_backends/1` is full. That covers both explicitly linked backends flagged
   `default_ingest?` and the account default ingest backends the source receives without a
   link. A consolidated backend is checked against its shared `{:consolidated, backend_id}`
   buffer and `IngestEventQueue.max_consolidated_queue_size/0`; any other backend against
-  its per-source buffer and `max_buffer_queue_len/0`. Backends not flagged
-  `default_ingest?` are ignored.
+  its per-source buffer and `max_buffer_queue_len/0`. Disabled backends and backends not
+  flagged `default_ingest?` are ignored.
 
   For other sources, only the system default backend buffer is checked.
   """
@@ -1507,7 +1507,7 @@ defmodule Logflare.Backends do
 
   @doc """
   Returns true if ANY of a source's ingest queues on this node currently exceeds its limit:
-  the system default queue plus every backend in `list_dispatch_backends/1`, regardless of
+  the system default queue plus every enabled backend in `list_dispatch_backends/1`, regardless of
   `default_ingest?` flags. A consolidated backend is checked through its shared
   `{:consolidated, backend_id}` queues against
   `IngestEventQueue.max_consolidated_queue_size/0`; any other backend through its
@@ -1516,7 +1516,8 @@ defmodule Logflare.Backends do
   backends for the HTTP 429 gate), this reads live `IngestEventQueue` sizes directly rather
   than a separately-cadenced cache, matching `QueueJanitor`'s own `get_table_size/1`-based
   overflow check. When the source is not cached, only its explicitly linked backends are
-  checked.
+  checked. Disabled backend pipelines may keep draining queued work; the spool memory
+  monitor independently protects node memory.
   """
   @spec any_ingest_queue_over_limit?(pos_integer()) :: boolean()
   def any_ingest_queue_over_limit?(source_id) when is_pos_integer(source_id) do
