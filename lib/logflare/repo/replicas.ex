@@ -7,23 +7,28 @@ defmodule Logflare.Repo.Replicas do
   `Registry`. If no replicas are configured, the supervisor is skipped entirely.
 
   Each `LOGFLARE_READ_REPLICAS` entry is either a bare hostname or a Postgres URI
-  (`postgres://user:pass@host:port/database?ssl=true&pool_size=5`). In both
-  cases, only the parts explicitly given override the primary `Logflare.Repo`
-  config - anything not specified (host, port, database, credentials, ssl, ...) is
-  inherited from the primary's `DB_*` settings, without ever baking the primary's
-  actual values into the parsed result. URIs are parsed and validated entirely by
-  `Ecto.Repo.Supervisor.parse_url/1`.
+  (`postgres://user:pass@host:port/database?ssl=true&pool_size=5`). Supplied
+  connection settings override the primary `Logflare.Repo` configuration; omitted
+  settings inherit the primary's `DB_*` values without copying them into the parsed
+  result. IP literal hosts also derive the matching socket address family. URIs are
+  parsed and validated by `Ecto.Repo.Supervisor.parse_url/1`.
 
-  Replica pools are identified by a key derived from the entry (host/port/database
-  plus a `:erlang.phash2/2` hash of the raw entry, to avoid collisions between
-  entries that only differ by credentials or query params) that never contains
-  credentials, so it is safe to include in log or error messages.
+  Replica pools are identified by the parsed hostname plus an `:erlang.phash2/2`
+  hash of the parsed configuration. The key never contains credentials, so it is
+  safe to include in log or error messages.
+
   Callers can temporarily redirect Ecto queries to a replica for the duration of
   a function call using `apply_with_replica/3` on `Logflare.Repo`, which swaps
   the dynamic repo and restores it afterwards.
+
+  Every replica connection opens its session read-only.
   """
 
   @registry __MODULE__.Registry
+
+  # Physical standbys already reject writes. Logical subscribers do not, so a
+  # read-only default turns accidental writes into immediate errors.
+  @read_only_statement "SET default_transaction_read_only = on"
 
   def child_spec(options) do
     %{
@@ -40,9 +45,16 @@ defmodule Logflare.Repo.Replicas do
     if entries == [] do
       :ignore
     else
+      primary_after_connect = Logflare.Repo.config()[:after_connect]
+
       replicas =
         Enum.map(entries, fn {key, config} ->
-          config = [name: {:via, Registry, {@registry, key}}] ++ resolve_ssl(config)
+          config =
+            [
+              name: {:via, Registry, {@registry, key}},
+              after_connect: {__MODULE__, :after_connect, [primary_after_connect]}
+            ] ++ resolve_ssl(config)
+
           Supervisor.child_spec({Logflare.Repo, config}, id: key)
         end)
 
@@ -65,6 +77,30 @@ defmodule Logflare.Repo.Replicas do
       [] -> raise "unknown replica: #{inspect(key)}"
     end
   end
+
+  @doc """
+  Runs the primary repository's `:after_connect` hook, then makes the replica session
+  read-only.
+
+  Replica pools inherit the primary configuration. Replacing `:after_connect` without
+  composition would discard settings such as the `search_path` configured by `DB_SCHEMA`.
+  The inherited hook runs first so it can perform any required writes.
+  """
+  @spec after_connect(
+          DBConnection.conn(),
+          {module(), atom(), [term()]} | (DBConnection.t() -> any()) | nil
+        ) :: Postgrex.Result.t()
+  def after_connect(conn, primary_after_connect) do
+    run_after_connect(conn, primary_after_connect)
+    Postgrex.query!(conn, @read_only_statement, [])
+  end
+
+  defp run_after_connect(_conn, nil), do: :ok
+
+  defp run_after_connect(conn, {module, function, args}),
+    do: apply(module, function, [conn | args])
+
+  defp run_after_connect(conn, fun) when is_function(fun, 1), do: fun.(conn)
 
   @doc """
   Parses a single `LOGFLARE_READ_REPLICAS` entry into a `{key, config}` pair.
@@ -156,14 +192,17 @@ defmodule Logflare.Repo.Replicas do
 
   defp primary_ssl_opts(hostname) do
     case Keyword.get(Logflare.Repo.config(), :ssl) do
-      opts when is_list(opts) ->
-        case :inet.parse_address(String.to_charlist(hostname || "")) do
-          {:ok, _ip} -> Keyword.put(opts, :server_name_indication, :disable)
-          {:error, _} -> opts
-        end
+      opts when is_list(opts) -> replica_ssl_opts(opts, hostname)
+      _ -> true
+    end
+  end
 
-      _ ->
-        true
+  defp replica_ssl_opts(opts, hostname) do
+    opts = Keyword.delete(opts, :server_name_indication)
+
+    case :inet.parse_address(String.to_charlist(hostname || "")) do
+      {:ok, _ip} -> Keyword.put(opts, :server_name_indication, :disable)
+      {:error, _} -> opts
     end
   end
 

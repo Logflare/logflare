@@ -4,22 +4,26 @@ defmodule Logflare.RepoTest do
   alias Logflare.Repo
   alias Logflare.Repo.Replicas
 
-  defp start_read_replicas(raw_entries) do
+  defp start_read_replicas(raw_entries, entry_overrides \\ []) do
     primary_hostname = Keyword.fetch!(Repo.config(), :hostname)
-    entries = Enum.map(raw_entries, &Replicas.parse!/1)
 
-    # sanity check that our test replicas are not the same as the primary
+    entries =
+      Enum.map(raw_entries, fn entry ->
+        {key, config} = Replicas.parse!(entry)
+        {key, Keyword.merge(config, entry_overrides)}
+      end)
+
     for {_key, config} <- entries do
       refute config[:hostname] == primary_hostname,
              "replica hostname #{config[:hostname]} should be different from primary hostname"
     end
 
-    # we read the replicas from env in `apply_with_replica/3`, so we need to set it there for the test
+    # apply_with_replica/3 reads the configured entries from the application environment.
     prev_read_replicas = Application.get_env(:logflare, :read_replicas)
     Application.put_env(:logflare, :read_replicas, entries)
     on_exit(fn -> Application.put_env(:logflare, :read_replicas, prev_read_replicas) end)
 
-    # attach repo init handler to ensure we start the replicas with the expected config
+    # Observe the effective Ecto configuration for each replica pool.
     telemetry_ref = :telemetry_test.attach_event_handlers(self(), [[:ecto, :repo, :init]])
     on_exit(fn -> :telemetry.detach(telemetry_ref) end)
 
@@ -31,6 +35,9 @@ defmodule Logflare.RepoTest do
       for {k, v} <- config, k != :ssl do
         assert Keyword.fetch!(opts, k) == v
       end
+
+      assert {Replicas, :after_connect, [_primary_after_connect]} =
+               Keyword.fetch!(opts, :after_connect)
     end
 
     start_result
@@ -52,8 +59,29 @@ defmodule Logflare.RepoTest do
       refute Enum.any?(repos, fn repo -> repo == Repo end),
              "expected every call to use a replica, never the primary"
 
-      # verify that after the call, we're back to the default repo
       assert Repo.get_dynamic_repo() == Repo
+    end
+
+    test "makes replica pool connections read-only" do
+      start_read_replicas(["127.0.0.1"],
+        pool: DBConnection.ConnectionPool,
+        pool_size: 1
+      )
+
+      assert %Postgrex.Result{rows: [["on"]]} =
+               Repo.apply_with_replica(
+                 Repo,
+                 :query!,
+                 ["SHOW default_transaction_read_only", []]
+               )
+
+      assert_raise Postgrex.Error, ~r/read-only transaction/, fn ->
+        Repo.apply_with_replica(
+          Repo,
+          :query!,
+          ["CREATE TEMP TABLE read_only_replica_probe (id integer)", []]
+        )
+      end
     end
 
     test "reverts repo if function raises" do
@@ -71,6 +99,79 @@ defmodule Logflare.RepoTest do
 
       repos = for _ <- 1..30, do: Repo.apply_with_replica(Repo, :get_dynamic_repo, [])
       assert Enum.all?(repos, &(&1 != Repo))
+    end
+  end
+
+  describe "Replicas.after_connect/2" do
+    setup do
+      opts = Keyword.take(Repo.config(), [:hostname, :port, :username, :password, :database])
+
+      %{conn: start_supervised!({Postgrex, opts})}
+    end
+
+    test "opens the session read-only", %{conn: conn} do
+      Replicas.after_connect(conn, _no_primary_hook = nil)
+
+      assert %Postgrex.Result{rows: [["on"]]} =
+               Postgrex.query!(conn, "SHOW default_transaction_read_only", [])
+    end
+
+    test "rejects writes on the session", %{conn: conn} do
+      Replicas.after_connect(conn, _no_primary_hook = nil)
+
+      assert_raise Postgrex.Error, ~r/read-only transaction/, fn ->
+        Postgrex.query!(conn, "CREATE TEMP TABLE read_only_probe (id integer)", [])
+      end
+    end
+
+    test "still runs the primary's after_connect, given as an MFA", %{conn: conn} do
+      Replicas.after_connect(conn, {Postgrex, :query!, ["SET application_name = 'mfa'", []]})
+
+      assert %Postgrex.Result{rows: [["mfa"]]} =
+               Postgrex.query!(conn, "SHOW application_name", [])
+
+      assert %Postgrex.Result{rows: [["on"]]} =
+               Postgrex.query!(conn, "SHOW default_transaction_read_only", [])
+    end
+
+    test "still runs the primary's after_connect, given as a function", %{conn: conn} do
+      hook = fn conn -> Postgrex.query!(conn, "SET application_name = 'fun'", []) end
+
+      Replicas.after_connect(conn, hook)
+
+      assert %Postgrex.Result{rows: [["fun"]]} =
+               Postgrex.query!(conn, "SHOW application_name", [])
+
+      assert %Postgrex.Result{rows: [["on"]]} =
+               Postgrex.query!(conn, "SHOW default_transaction_read_only", [])
+    end
+  end
+
+  describe "replica SSL configuration" do
+    test "a DNS replica removes primary-specific SNI" do
+      put_repo_config(ssl: [server_name_indication: :disable])
+
+      entries = [Replicas.parse!("postgres://replica.example.com/logflare?ssl=true")]
+      telemetry_ref = :telemetry_test.attach_event_handlers(self(), [[:ecto, :repo, :init]])
+      on_exit(fn -> :telemetry.detach(telemetry_ref) end)
+
+      start_supervised!({Replicas, entries: entries})
+
+      assert_receive {[:ecto, :repo, :init], ^telemetry_ref, _, %{repo: Repo, opts: opts}}
+      refute Keyword.has_key?(Keyword.fetch!(opts, :ssl), :server_name_indication)
+    end
+
+    test "an IP replica disables SNI without forwarding the primary value" do
+      put_repo_config(ssl: [server_name_indication: "primary"])
+
+      entries = [Replicas.parse!("postgres://127.0.0.2/logflare?ssl=true")]
+      telemetry_ref = :telemetry_test.attach_event_handlers(self(), [[:ecto, :repo, :init]])
+      on_exit(fn -> :telemetry.detach(telemetry_ref) end)
+
+      start_supervised!({Replicas, entries: entries})
+
+      assert_receive {[:ecto, :repo, :init], ^telemetry_ref, _, %{repo: Repo, opts: opts}}
+      assert Keyword.fetch!(Keyword.fetch!(opts, :ssl), :server_name_indication) == :disable
     end
   end
 
@@ -133,4 +234,14 @@ defmodule Logflare.RepoTest do
       refute Exception.message(error) =~ "supersecret"
     end
   end
+
+  defp put_repo_config(overrides) do
+    previous_config = Application.fetch_env(:logflare, Repo)
+    config = Application.get_env(:logflare, Repo, [])
+    Application.put_env(:logflare, Repo, Keyword.merge(config, overrides))
+    on_exit(fn -> restore_application_env(:logflare, Repo, previous_config) end)
+  end
+
+  defp restore_application_env(app, key, {:ok, value}), do: Application.put_env(app, key, value)
+  defp restore_application_env(app, key, :error), do: Application.delete_env(app, key)
 end

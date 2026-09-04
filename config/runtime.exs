@@ -407,10 +407,8 @@ if(
     ]
   ]
 
-  # RFC 6066 §3 forbids IP literals in SNI. For IP hosts, suppress the SNI
-  # extension but still verify the host against iPAddress SANs via the :https
-  # match_fun. For hostnames, let OTP default SNI to `host` so dNSName SANs
-  # are checked.
+  # RFC 6066 §3 forbids IP literals in SNI. OTP does not perform hostname
+  # verification when SNI is disabled for an IP literal.
   db_ssl_opts =
     case :inet.parse_address(String.to_charlist(System.get_env("DB_HOSTNAME", ""))) do
       {:ok, _ip} -> Keyword.put(base_db_ssl_opts, :server_name_indication, :disable)
