@@ -370,6 +370,75 @@ defmodule Logflare.Mapper.OptimizedMapperTest do
              }
     end
 
+    test "multiple elevate keys flatten nested children without a prefix" do
+      compiled =
+        compile([
+          Field.flat_map("attrs", path: "$", elevate_keys: ["first", "second"]),
+          Field.json("json", path: "$", elevate_keys: ["first", "second"])
+        ])
+
+      document = %{
+        "first" => %{"a" => 1, "nested" => %{"deep" => true}},
+        "second" => %{"b" => 2},
+        "top" => "kept"
+      }
+
+      assert Mapper.map(document, compiled) == %{
+               "attrs" => %{
+                 "a" => "1",
+                 "nested.deep" => "true",
+                 "b" => "2",
+                 "top" => "kept"
+               },
+               "json" => %{
+                 "a" => 1,
+                 "nested" => %{"deep" => true},
+                 "b" => 2,
+                 "top" => "kept"
+               }
+             }
+    end
+
+    test "multiple elevate keys combine with exclude_keys" do
+      compiled =
+        compile([
+          Field.flat_map("attrs",
+            path: "$",
+            exclude_keys: ["drop_me"],
+            elevate_keys: ["first", "second"]
+          )
+        ])
+
+      document = %{
+        "first" => %{"a" => 1},
+        "second" => %{"b" => 2},
+        "drop_me" => "gone",
+        "top" => "kept"
+      }
+
+      assert Mapper.map(document, compiled) == %{
+               "attrs" => %{"a" => "1", "b" => "2", "top" => "kept"}
+             }
+    end
+
+    test "a top-level key wins over an elevated child of any elevate key" do
+      compiled =
+        compile([
+          Field.flat_map("attrs", path: "$", elevate_keys: ["first", "second"])
+        ])
+
+      document = %{
+        "first" => %{"from_first" => "child"},
+        "second" => %{"from_second" => "child"},
+        "from_first" => "top",
+        "from_second" => "top"
+      }
+
+      assert Mapper.map(document, compiled) == %{
+               "attrs" => %{"from_first" => "top", "from_second" => "top"}
+             }
+    end
+
     test "multiple elevate keys preserve non-map parents and remove empty map parents" do
       compiled =
         compile([
