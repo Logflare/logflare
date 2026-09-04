@@ -760,12 +760,17 @@ defmodule Logflare.Sources.SourceRouterTest do
   end
 
   describe "RulesTree with an unresolvable rule id" do
-    test "does not raise when a matched rule no longer exists", %{user: user, backend: backend} do
+    test "does not raise when a matched id is missing from the snapshot", %{
+      user: user,
+      backend: backend
+    } do
       rule = build(:rule, backend: backend, lql_string: "testing")
       source = insert(:source, user: user, rules: [rule])
       le = build(:log_event, source: source, message: "testing123")
 
-      expect(Rules, :get_rule, fn _id -> nil end)
+      {tree, _rules_by_id} = Rules.rules_tree_by_source_id(source.id)
+
+      expect(Rules, :rules_tree_by_source_id, fn _id -> {tree, %{}} end)
 
       assert SourceRouter.route_to_sinks_and_ingest(le, source, SourceRouter.RulesTree) == le
     end
