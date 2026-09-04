@@ -429,6 +429,61 @@ defmodule Logflare.Telemetry do
         description: "Top processes by memory usage",
         unit: {:byte, :megabyte}
       ),
+      sum("logflare.bigquery.schema.samples.selected",
+        event_name: [:logflare, :bigquery, :schema, :report],
+        measurement: :samples_selected
+      ),
+      sum("logflare.bigquery.schema.samples.selected_zero_rate",
+        event_name: [:logflare, :bigquery, :schema, :report],
+        measurement: :samples_selected_zero_rate
+      ),
+      sum("logflare.bigquery.schema.samples.selected_floor",
+        event_name: [:logflare, :bigquery, :schema, :report],
+        measurement: :samples_selected_floor
+      ),
+      sum("logflare.bigquery.schema.samples.admitted",
+        event_name: [:logflare, :bigquery, :schema, :report],
+        measurement: :samples_admitted
+      ),
+      sum("logflare.bigquery.schema.samples.rejected",
+        event_name: [:logflare, :bigquery, :schema, :report],
+        measurement: :samples_rejected
+      ),
+      sum("logflare.bigquery.schema.samples.handled",
+        event_name: [:logflare, :bigquery, :schema, :report],
+        measurement: :samples_handled
+      ),
+      last_value("logflare.bigquery.schema.queues.observed_process_count",
+        event_name: [:logflare, :bigquery, :schema, :queues],
+        measurement: :observed_process_count
+      ),
+      last_value("logflare.bigquery.schema.queues.queue_length_max",
+        event_name: [:logflare, :bigquery, :schema, :queues],
+        measurement: :queue_length_max
+      ),
+      last_value("logflare.bigquery.schema.queues.queue_length_sum",
+        event_name: [:logflare, :bigquery, :schema, :queues],
+        measurement: :queue_length_sum
+      ),
+      last_value("logflare.bigquery.schema.queues.above_32",
+        event_name: [:logflare, :bigquery, :schema, :queues],
+        measurement: :queues_above_32
+      ),
+      last_value("logflare.bigquery.schema.queues.above_100",
+        event_name: [:logflare, :bigquery, :schema, :queues],
+        measurement: :queues_above_100
+      ),
+      last_value("logflare.bigquery.schema.queues.above_1000",
+        event_name: [:logflare, :bigquery, :schema, :queues],
+        measurement: :queues_above_1000
+      ),
+      distribution("logflare.bigquery.schema.operation.stop.duration",
+        tags: [:phase, :result],
+        unit: {:native, :millisecond}
+      ),
+      counter("logflare.bigquery.schema.operation.exception.count",
+        tags: [:phase]
+      ),
       last_value("logflare.system.top_ets_tables.individual.memory",
         tags: [:name],
         description: "Top ETS individual tables by memory usage"
@@ -625,7 +680,8 @@ defmodule Logflare.Telemetry do
       [
         {__MODULE__, :process_message_queue_metrics, []},
         {__MODULE__, :process_memory_metrics, []},
-        {__MODULE__, :ets_table_metrics, []}
+        {__MODULE__, :ets_table_metrics, []},
+        {Logflare.Sources.Source.BigQuery.SchemaMetrics, :report, []}
       ]
 
     cachex_metrics ++ process_metrics
@@ -657,17 +713,20 @@ defmodule Logflare.Telemetry do
     end)
   end
 
-  def process_message_queue_metrics,
-    do: process_attribute_metrics(:message_queue)
+  def process_message_queue_metrics do
+    :message_queue
+    |> process_attribute_metrics()
+    |> emit_schema_queue_metrics()
+  end
 
   def process_memory_metrics,
     do: process_attribute_metrics(:memory)
 
   defp process_attribute_metrics(type) do
     metric_params = @process_metrics[type]
+    processes = :recon.proc_count(metric_params.process_attribute, 10)
 
-    :recon.proc_count(metric_params.process_attribute, 10)
-    |> Enum.each(fn {pid, val, call_info} ->
+    Enum.each(processes, fn {pid, val, call_info} ->
       [current_function, initial_call] = get_current_and_initial_call(call_info)
       name = get_display_flag(call_info, initial_call, pid)
 
@@ -676,13 +735,46 @@ defmodule Logflare.Telemetry do
       metadata = %{
         pid: inspect(pid),
         name: name,
-        current_fuction: mfa_to_string(current_function),
+        current_function: mfa_to_string(current_function),
         initial_call: mfa_to_string(initial_call)
       }
 
       :telemetry.execute([:logflare, :system, :top_processes, type], metrics, metadata)
     end)
+
+    processes
   end
+
+  defp emit_schema_queue_metrics(processes) do
+    queue_lengths =
+      for {pid, queue_length, call_info} <- processes,
+          [_, initial_call] = get_current_and_initial_call(call_info),
+          schema_process?(pid, initial_call),
+          do: queue_length
+
+    :telemetry.execute(
+      [:logflare, :bigquery, :schema, :queues],
+      %{
+        observed_process_count: length(queue_lengths),
+        queue_length_max: Enum.max(queue_lengths, fn -> 0 end),
+        queue_length_sum: Enum.sum(queue_lengths),
+        queues_above_32: Enum.count(queue_lengths, &(&1 >= 32)),
+        queues_above_100: Enum.count(queue_lengths, &(&1 >= 100)),
+        queues_above_1000: Enum.count(queue_lengths, &(&1 >= 1_000))
+      },
+      %{}
+    )
+  end
+
+  defp schema_process?(pid, {:proc_lib, :init_p, 5}) do
+    :proc_lib.translate_initial_call(pid) ==
+      {Logflare.Sources.Source.BigQuery.Schema, :init, 1}
+  catch
+    :exit, _reason -> false
+  end
+
+  defp schema_process?(_pid, initial_call),
+    do: initial_call == {Logflare.Sources.Source.BigQuery.Schema, :init, 1}
 
   defp get_current_and_initial_call(call_info) do
     [:current_function, :initial_call]
