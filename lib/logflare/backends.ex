@@ -1096,20 +1096,20 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Returns true if ANY of a source's ingest queues — the system default plus
-  every backend actually configured on it, regardless of default-ingest
-  flags — currently exceeds `max_buffer_queue_len/0`. Unlike
+  Returns true if a source's system-default ingest queue or any of its per-source
+  ingest queues for an enabled, directly attached backend exceeds
+  `max_buffer_queue_len/0`. Unlike
   `cached_local_pending_buffer_full?/1` (scoped to just the "default ingest"
-  backend(s), for the HTTP 429 gate's specific question), this checks every
-  backend a source can dispatch to and reads live `IngestEventQueue` sizes
-  directly rather than a separately-cadenced cache — matching
-  `QueueJanitor`'s own `get_table_size/1`-based overflow check exactly, so it
-  can't miss a backend that isn't part of the "default ingest" set.
+  backend(s), for the HTTP 429 gate's specific question), this checks all enabled
+  directly attached backends and reads live `IngestEventQueue` sizes rather than a
+  separately-cadenced cache. Disabled backend queues receive no new spool work,
+  but their existing pipelines can keep draining old work while the spool memory
+  monitor independently protects node memory.
   """
   @spec any_ingest_queue_over_limit?(pos_integer()) :: boolean()
   def any_ingest_queue_over_limit?(source_id) do
     backend_ids =
-      [nil | __MODULE__.Cache.list_backends(source_id: source_id) |> Enum.map(& &1.id)]
+      [nil | __MODULE__.Cache.list_enabled_backends(source_id: source_id) |> Enum.map(& &1.id)]
 
     Enum.any?(backend_ids, &any_queue_over_limit_for_backend?(source_id, &1))
   end
