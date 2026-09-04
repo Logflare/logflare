@@ -26,6 +26,16 @@ fn encode_string<'a>(env: Env<'a>, value: &str) -> Term<'a> {
     binary.into()
 }
 
+/// Encode raw bytes as a binary term. Unlike `encode_string` this does not
+/// require valid UTF-8, so map keys keep their exact bytes and two distinct
+/// keys can never collapse into one.
+#[inline]
+fn encode_binary<'a>(env: Env<'a>, value: &[u8]) -> Term<'a> {
+    let mut binary = NewBinary::new(env, value.len());
+    binary.as_mut_slice().copy_from_slice(value);
+    binary.into()
+}
+
 #[inline]
 fn encode_integer<'a>(env: Env<'a>, value: i64) -> Term<'a> {
     let mut buffer = itoa::Buffer::new();
