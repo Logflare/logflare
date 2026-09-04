@@ -499,6 +499,24 @@ defmodule Logflare.Mapper.OptimizedMapperTest do
                "attrs" => %{"kept" => "true"}
              }
     end
+
+    test "flat elevate suffixes that are not valid utf-8 keep their own keys" do
+      compiled = compile([Field.flat_map("attrs", path: "$", elevate_keys: ["metadata"])])
+
+      document = %{
+        "metadata." => "empty suffix",
+        <<"metadata.", 0xFF>> => "invalid utf8 suffix",
+        "metadata.level" => "info"
+      }
+
+      assert Mapper.map(document, compiled, flat_keys: true) == %{
+               "attrs" => %{
+                 "" => "empty suffix",
+                 <<0xFF>> => "invalid utf8 suffix",
+                 "level" => "info"
+               }
+             }
+    end
   end
 
   describe "precompiled flat-key paths" do
