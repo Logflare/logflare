@@ -192,14 +192,17 @@ defmodule Logflare.Repo.Replicas do
 
   defp primary_ssl_opts(hostname) do
     case Keyword.get(Logflare.Repo.config(), :ssl) do
-      opts when is_list(opts) ->
-        case :inet.parse_address(String.to_charlist(hostname || "")) do
-          {:ok, _ip} -> Keyword.put(opts, :server_name_indication, :disable)
-          {:error, _} -> opts
-        end
+      opts when is_list(opts) -> replica_ssl_opts(opts, hostname)
+      _ -> true
+    end
+  end
 
-      _ ->
-        true
+  defp replica_ssl_opts(opts, hostname) do
+    opts = Keyword.delete(opts, :server_name_indication)
+
+    case :inet.parse_address(String.to_charlist(hostname || "")) do
+      {:ok, _ip} -> Keyword.put(opts, :server_name_indication, :disable)
+      {:error, _} -> opts
     end
   end
 
