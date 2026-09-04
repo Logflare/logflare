@@ -144,16 +144,18 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
   end
 
   defp fail_dispatched(messages, failed_source_ids) do
-    if MapSet.size(failed_source_ids) == 0 do
+    if Enum.empty?(failed_source_ids) do
       messages
     else
-      Enum.map(messages, fn message ->
-        if MapSet.member?(failed_source_ids, record_source_id(message.data)) do
-          Message.failed(message, :dispatch_error)
-        else
-          message
-        end
-      end)
+      Enum.map(messages, &fail_message(&1, failed_source_ids))
+    end
+  end
+
+  defp fail_message(message, failed_source_ids) do
+    if MapSet.member?(failed_source_ids, record_source_id(message.data)) do
+      Message.failed(message, :dispatch_error)
+    else
+      message
     end
   end
 
