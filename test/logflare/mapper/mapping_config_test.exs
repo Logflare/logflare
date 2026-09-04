@@ -1,8 +1,8 @@
 defmodule Logflare.Mapper.MappingConfigTest do
   use ExUnit.Case, async: true
 
+  alias Logflare.Mapper
   alias Logflare.Mapper.MappingConfig
-  alias Logflare.Mapper.MappingConfig.FieldConfig
   alias Logflare.Mapper.MappingConfig.FieldConfig, as: Field
   alias Logflare.Mapper.MappingConfig.InferCondition
   alias Logflare.Mapper.MappingConfig.InferRule
@@ -13,7 +13,7 @@ defmodule Logflare.Mapper.MappingConfigTest do
     test "string/2 creates correct struct" do
       field = Field.string("trace_id", paths: ["$.trace_id", "$.traceId"], default: "")
 
-      assert %FieldConfig{} = field
+      assert %MappingConfig.FieldConfig{} = field
       assert field.name == "trace_id"
       assert field.type == "string"
       assert field.paths == ["$.trace_id", "$.traceId"]
@@ -139,6 +139,20 @@ defmodule Logflare.Mapper.MappingConfigTest do
 
       assert field.from_output == "severity_text"
       assert field.value_map == %{"INFO" => 9, "ERROR" => 17}
+    end
+
+    test "pick_mode option accepts the atom or string form" do
+      for mode <- [:merge, "merge"] do
+        assert Field.flat_map("attrs", pick_mode: mode).pick_mode == "merge"
+        assert Field.json("attrs", pick_mode: mode).pick_mode == "merge"
+      end
+    end
+
+    test "pick_mode defaults to nil, and :replace is stored as nil" do
+      assert Field.flat_map("attrs", paths: ["$.resource"]).pick_mode == nil
+      assert Field.json("attrs", paths: ["$.resource"]).pick_mode == nil
+      assert Field.flat_map("attrs", pick_mode: :replace).pick_mode == nil
+      assert Field.json("attrs", pick_mode: "replace").pick_mode == nil
     end
 
     test "flat_map/2 with exclude and elevate keys" do
@@ -294,6 +308,30 @@ defmodule Logflare.Mapper.MappingConfigTest do
       [region, cluster] = field.pick
       assert %PickEntry{key: "region", paths: ["$.metadata.region", "$.region"]} = region
       assert %PickEntry{key: "cluster", paths: ["$.metadata.cluster"]} = cluster
+    end
+
+    test "round-trip preserves pick_mode" do
+      config =
+        MappingConfig.new([
+          Field.flat_map("attrs",
+            paths: ["$.resource"],
+            pick: [{"project", ["$.project"]}],
+            pick_mode: :merge,
+            default: %{}
+          )
+        ])
+
+      assert {:ok, json} = MappingConfig.to_json(config)
+      assert {:ok, restored} = MappingConfig.from_json(json)
+
+      [field] = restored.fields
+      assert field.pick_mode == "merge"
+
+      document = %{"project" => "p", "resource" => %{"a" => 1}}
+      expected = %{"attrs" => %{"project" => "p", "a" => "1"}}
+
+      assert Mapper.map(document, Mapper.compile!(config)) == expected
+      assert Mapper.map(document, Mapper.compile!(restored)) == expected
     end
 
     test "round-trip preserves infer rules" do
