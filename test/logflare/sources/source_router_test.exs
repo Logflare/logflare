@@ -765,7 +765,7 @@ defmodule Logflare.Sources.SourceRouterTest do
       source = insert(:source, user: user, rules: [rule])
       le = build(:log_event, source: source, message: "testing123")
 
-      stub(Rules, :get_rule, fn _id -> nil end)
+      expect(Rules, :get_rule, fn _id -> nil end)
 
       assert SourceRouter.route_to_sinks_and_ingest(le, source, SourceRouter.RulesTree) == le
     end
