@@ -734,8 +734,17 @@ fn apply_multiple_elevate_keys_flat<'a>(
         return map;
     };
 
-    let mut elevated_entries = vec![Vec::new(); elevate.len()];
-    let mut top_entries = Vec::new();
+    let capacity = map.map_size().unwrap_or(0);
+    let mut elevated_keys: Vec<Term<'a>> = Vec::with_capacity(capacity);
+    let mut elevated_values: Vec<Term<'a>> = Vec::with_capacity(capacity);
+    let mut elevated_groups: Vec<usize> = Vec::with_capacity(capacity);
+    let mut top_entries: Vec<(Term<'a>, Term<'a>)> = Vec::with_capacity(capacity);
+
+    // A suffix can only repeat when two elevate keys both contribute, so track
+    // whether more than one group matched. One group means the suffixes are
+    // unique and the base map can be built in a single call.
+    let mut first_group: Option<usize> = None;
+    let mut multiple_groups = false;
 
     for (key, value) in entries {
         let Ok(binary) = key.decode::<Binary>() else {
@@ -755,8 +764,19 @@ fn apply_multiple_elevate_keys_flat<'a>(
                 && key_bytes[elevate_key.len()] == b'.'
             {
                 let suffix = &key_bytes[elevate_key.len() + 1..];
-                let suffix = crate::encode_string(env, std::str::from_utf8(suffix).unwrap_or(""));
-                elevated_entries[index].push((suffix, value));
+                elevated_keys.push(crate::encode_string(
+                    env,
+                    std::str::from_utf8(suffix).unwrap_or(""),
+                ));
+                elevated_values.push(value);
+                elevated_groups.push(index);
+
+                match first_group {
+                    None => first_group = Some(index),
+                    Some(group) if group != index => multiple_groups = true,
+                    Some(_) => {}
+                }
+
                 matched = true;
                 break;
             }
@@ -767,12 +787,29 @@ fn apply_multiple_elevate_keys_flat<'a>(
         }
     }
 
-    let mut result = Term::map_new(env);
-    for entries in elevated_entries.into_iter().rev() {
-        for (key, value) in entries {
-            result = result.map_put(key, value).unwrap_or(result);
+    let mut result = if elevated_keys.is_empty() {
+        Term::map_new(env)
+    } else if multiple_groups {
+        // Insert in reverse configured order so the earlier elevate key wins a
+        // suffix collision. Group counts are tiny, so the repeated scan is cheap.
+        let mut acc = Term::map_new(env);
+
+        for group in (0..elevate.len()).rev() {
+            for index in 0..elevated_keys.len() {
+                if elevated_groups[index] == group {
+                    acc = acc
+                        .map_put(elevated_keys[index], elevated_values[index])
+                        .unwrap_or(acc);
+                }
+            }
         }
-    }
+
+        acc
+    } else {
+        Term::map_from_term_arrays(env, &elevated_keys, &elevated_values)
+            .unwrap_or_else(|_| Term::map_new(env))
+    };
+
     for (key, value) in top_entries {
         result = result.map_put(key, value).unwrap_or(result);
     }
