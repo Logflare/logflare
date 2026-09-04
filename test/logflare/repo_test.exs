@@ -4,22 +4,26 @@ defmodule Logflare.RepoTest do
   alias Logflare.Repo
   alias Logflare.Repo.Replicas
 
-  defp start_read_replicas(raw_entries) do
+  defp start_read_replicas(raw_entries, entry_overrides \\ []) do
     primary_hostname = Keyword.fetch!(Repo.config(), :hostname)
-    entries = Enum.map(raw_entries, &Replicas.parse!/1)
 
-    # sanity check that our test replicas are not the same as the primary
+    entries =
+      Enum.map(raw_entries, fn entry ->
+        {key, config} = Replicas.parse!(entry)
+        {key, Keyword.merge(config, entry_overrides)}
+      end)
+
     for {_key, config} <- entries do
       refute config[:hostname] == primary_hostname,
              "replica hostname #{config[:hostname]} should be different from primary hostname"
     end
 
-    # we read the replicas from env in `apply_with_replica/3`, so we need to set it there for the test
+    # apply_with_replica/3 reads the configured entries from the application environment.
     prev_read_replicas = Application.get_env(:logflare, :read_replicas)
     Application.put_env(:logflare, :read_replicas, entries)
     on_exit(fn -> Application.put_env(:logflare, :read_replicas, prev_read_replicas) end)
 
-    # attach repo init handler to ensure we start the replicas with the expected config
+    # Observe the effective Ecto configuration for each replica pool.
     telemetry_ref = :telemetry_test.attach_event_handlers(self(), [[:ecto, :repo, :init]])
     on_exit(fn -> :telemetry.detach(telemetry_ref) end)
 
@@ -55,8 +59,29 @@ defmodule Logflare.RepoTest do
       refute Enum.any?(repos, fn repo -> repo == Repo end),
              "expected every call to use a replica, never the primary"
 
-      # verify that after the call, we're back to the default repo
       assert Repo.get_dynamic_repo() == Repo
+    end
+
+    test "makes replica pool connections read-only" do
+      start_read_replicas(["127.0.0.1"],
+        pool: DBConnection.ConnectionPool,
+        pool_size: 1
+      )
+
+      assert %Postgrex.Result{rows: [["on"]]} =
+               Repo.apply_with_replica(
+                 Repo,
+                 :query!,
+                 ["SHOW default_transaction_read_only", []]
+               )
+
+      assert_raise Postgrex.Error, ~r/read-only transaction/, fn ->
+        Repo.apply_with_replica(
+          Repo,
+          :query!,
+          ["CREATE TEMP TABLE read_only_replica_probe (id integer)", []]
+        )
+      end
     end
 
     test "reverts repo if function raises" do

@@ -166,13 +166,15 @@ The configuration follows the [Erlang Security Working Group recommendations](ht
 
 ## Read Replicas
 
-`LOGFLARE_READ_REPLICAS` is a comma-separated list of PostgreSQL read replicas to distribute ingest-path data fetching queries across. If unset or empty, all queries go to the primary database.
+`LOGFLARE_READ_REPLICAS` is a comma-separated list of PostgreSQL read replicas for selected context-cache and key-value-cache reads. If unset or empty, those reads use the primary database.
 
 Each entry is either a **bare hostname** or a **connection URI** (`postgres://user:pass@host:port/database?ssl=true&pool_size=5`). In both cases, only the parts given override the primary's `DB_*` settings - anything omitted (port, database, credentials, SSL, ...) is inherited from the primary. Query params: `ssl` (`true`/`false`), `pool_size` (positive integer).
 
 Example: `LOGFLARE_READ_REPLICAS=replica1.example.com,postgres://user:pass@replica2.example.com:5432/logflare`
 
-Replica connections open their sessions read-only (`SET default_transaction_read_only = on`), so a write that reaches a replica fails immediately rather than diverging from the primary. This matters for a logical replica, whose server would otherwise accept the write; on a physical standby it is redundant with the server's own read-only state.
+Logflare marks each replica session read-only with `SET default_transaction_read_only = on`. This makes accidental writes fail immediately on logical replicas; physical standbys already enforce read-only operation.
+
+PostgreSQL RDS Proxy [pins sessions that issue `SET`](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy-pinning.html), so each Logflare replica connection keeps one database connection for its lifetime. Size the proxy and database connection limits for that behavior.
 
 ## Database Encryption
 
