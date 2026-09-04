@@ -44,6 +44,7 @@ defmodule Logflare.Backends.Backend do
     field :consolidated_ingest?, :boolean, virtual: true, default: false
     field :metadata, :map
     field :default_ingest?, :boolean, source: :default_ingest, default: false
+    field :single_tenant_default?, :boolean, virtual: true, default: false
 
     belongs_to :user, User
 

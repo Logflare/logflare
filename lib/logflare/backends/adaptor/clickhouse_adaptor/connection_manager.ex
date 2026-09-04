@@ -39,7 +39,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   @default_labeled_read_pool_size 32
 
   typedstruct do
-    field :backend_id, pos_integer(), enforce: true
+    field :backend_id, non_neg_integer(), enforce: true
     field :label, String.t() | nil, default: nil
     field :pool_pid, pid() | nil, default: nil
     field :last_activity, integer() | nil, default: nil
@@ -566,7 +566,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
     if is_non_empty_binary(read_only_url), do: read_only_url, else: Map.get(config, :url)
   end
 
-  @spec connection_host(pos_integer(), String.t() | nil) :: String.t() | nil
+  @spec connection_host(non_neg_integer(), String.t() | nil) :: String.t() | nil
   defp connection_host(backend_id, label) do
     backend_id
     |> Backends.Cache.get_backend()
