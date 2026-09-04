@@ -113,3 +113,15 @@ Benchee.run(
 # Both multi-prefix cases are unchanged — the reverse-group scan costs the same as
 # the per-group vectors it replaced. Compare reductions rather than wall time;
 # reductions are deterministic and this bench swings ±16-30% on time.
+#
+# Re-run after switching elevated suffix keys from `encode_string` (which ran
+# `from_utf8(...).unwrap_or("")` and silently renamed any non-UTF-8 suffix to "")
+# to `encode_binary`, which copies the suffix bytes verbatim:
+#
+#   single_group   229 -> 229 reductions   2.34 KB -> 2.34 KB
+#   multi_group    426 -> 426 reductions   2.32 KB -> 2.32 KB
+#   collide        390 -> 390 reductions   4.85 KB -> 4.85 KB
+#
+# No penalty — identical on both deterministic measures. The UTF-8 validation
+# pass over each suffix is gone, replaced by a straight byte copy, so if anything
+# there is marginally less work per elevated key.

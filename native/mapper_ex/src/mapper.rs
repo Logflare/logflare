@@ -540,8 +540,7 @@ fn apply_elevate_keys<'a>(env: Env<'a>, map: Term<'a>, elevate: &[Vec<u8>]) -> T
     let mut result = if elevated_keys.is_empty() {
         Term::map_new(env)
     } else {
-        Term::map_from_term_arrays(env, &elevated_keys, &elevated_values)
-            .unwrap_or_else(|_| Term::map_new(env))
+        map_from_pairs(env, &elevated_keys, &elevated_values)
     };
 
     // Top-level keys overwrite elevated children via map_put
@@ -693,9 +692,7 @@ fn apply_elevate_keys_flat<'a>(env: Env<'a>, map: Term<'a>, elevate: &[Vec<u8>])
                 {
                     // Strip prefix: "metadata.level" -> "level"
                     let suffix = &key_bytes[ek.len() + 1..];
-                    let suffix_term =
-                        crate::encode_string(env, std::str::from_utf8(suffix).unwrap_or(""));
-                    elevated_keys.push(suffix_term);
+                    elevated_keys.push(crate::encode_binary(env, suffix));
                     elevated_values.push(v);
                     matched = true;
                     break;
@@ -713,8 +710,7 @@ fn apply_elevate_keys_flat<'a>(env: Env<'a>, map: Term<'a>, elevate: &[Vec<u8>])
     let mut result = if elevated_keys.is_empty() {
         Term::map_new(env)
     } else {
-        Term::map_from_term_arrays(env, &elevated_keys, &elevated_values)
-            .unwrap_or_else(|_| Term::map_new(env))
+        map_from_pairs(env, &elevated_keys, &elevated_values)
     };
 
     // Top-level keys overwrite elevated children
@@ -723,6 +719,21 @@ fn apply_elevate_keys_flat<'a>(env: Env<'a>, map: Term<'a>, elevate: &[Vec<u8>])
     }
 
     result
+}
+
+/// Build a map from parallel key/value arrays. `map_from_term_arrays` rejects
+/// duplicate keys outright, so fall back to sequential inserts (last writer
+/// wins) rather than discarding every entry.
+fn map_from_pairs<'a>(env: Env<'a>, keys: &[Term<'a>], values: &[Term<'a>]) -> Term<'a> {
+    Term::map_from_term_arrays(env, keys, values).unwrap_or_else(|_| {
+        let mut acc = Term::map_new(env);
+
+        for (key, value) in keys.iter().zip(values.iter()) {
+            acc = acc.map_put(*key, *value).unwrap_or(acc);
+        }
+
+        acc
+    })
 }
 
 fn apply_multiple_elevate_keys_flat<'a>(
@@ -764,10 +775,7 @@ fn apply_multiple_elevate_keys_flat<'a>(
                 && key_bytes[elevate_key.len()] == b'.'
             {
                 let suffix = &key_bytes[elevate_key.len() + 1..];
-                elevated_keys.push(crate::encode_string(
-                    env,
-                    std::str::from_utf8(suffix).unwrap_or(""),
-                ));
+                elevated_keys.push(crate::encode_binary(env, suffix));
                 elevated_values.push(value);
                 elevated_groups.push(index);
 
