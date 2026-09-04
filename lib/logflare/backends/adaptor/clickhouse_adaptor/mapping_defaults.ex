@@ -192,7 +192,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       Field.flat_map("log_attributes",
         path: "$",
         exclude_keys: ["id", "event_message", "timestamp"],
-        elevate_keys: ["metadata"]
+        elevate_keys: ["metadata", "attributes"]
       ),
       Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
     ]
@@ -361,7 +361,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       Field.flat_map("attributes",
         path: "$",
         exclude_keys: ["id", "event_message", "timestamp"],
-        elevate_keys: ["metadata"]
+        elevate_keys: ["metadata", "attributes"]
       ),
       Field.string("aggregation_temporality",
         paths: ["$.aggregation_temporality", "$.aggregationTemporality"]
@@ -653,7 +653,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       Field.flat_map("span_attributes",
         path: "$",
         exclude_keys: ["id", "event_message", "timestamp"],
-        elevate_keys: ["metadata"]
+        elevate_keys: ["metadata", "attributes"]
       ),
       Field.array_datetime64("events.timestamp",
         path: "$.events[*].time_unix_nano",

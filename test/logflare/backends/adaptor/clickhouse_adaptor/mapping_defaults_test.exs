@@ -128,6 +128,77 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
     end
   end
 
+  describe "attribute maps elevate both metadata and attributes" do
+    test "children of attributes land unprefixed", %{log: log, metric: metric, trace: trace} do
+      payload = %{
+        "attributes" => %{"_flow_name" => "branch-creation", "busy_ns" => 705_777_024_470},
+        "metadata" => %{"type" => "span"},
+        "timestamp" => 1_775_591_051_937_363
+      }
+
+      for {compiled, field} <- [
+            {log, "log_attributes"},
+            {metric, "attributes"},
+            {trace, "span_attributes"}
+          ] do
+        attrs = Mapper.map(payload, compiled)[field]
+
+        assert attrs["_flow_name"] == "branch-creation"
+        assert attrs["busy_ns"] == "705777024470"
+        assert attrs["type"] == "span"
+        refute Map.has_key?(attrs, "attributes._flow_name")
+        refute Map.has_key?(attrs, "attributes")
+      end
+    end
+
+    test "metadata wins over attributes on a duplicate child key", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{
+        "attributes" => %{"shared" => "from-attributes", "only_attrs" => "a"},
+        "metadata" => %{"shared" => "from-metadata", "only_meta" => "m"},
+        "timestamp" => 1_775_591_051_937_363
+      }
+
+      for {compiled, field} <- [
+            {log, "log_attributes"},
+            {metric, "attributes"},
+            {trace, "span_attributes"}
+          ] do
+        attrs = Mapper.map(payload, compiled)[field]
+
+        assert attrs["shared"] == "from-metadata"
+        assert attrs["only_attrs"] == "a"
+        assert attrs["only_meta"] == "m"
+      end
+    end
+
+    test "a non-map attributes value is preserved as a literal key", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{
+        "attributes" => "not-a-map",
+        "metadata" => %{"type" => "span"},
+        "timestamp" => 1_775_591_051_937_363
+      }
+
+      for {compiled, field} <- [
+            {log, "log_attributes"},
+            {metric, "attributes"},
+            {trace, "span_attributes"}
+          ] do
+        attrs = Mapper.map(payload, compiled)[field]
+
+        assert attrs["attributes"] == "not-a-map"
+        assert attrs["type"] == "span"
+      end
+    end
+  end
+
   describe "service_name resolution across all event types" do
     test "resolves an underscore-namespaced resource key", %{
       log: log,
