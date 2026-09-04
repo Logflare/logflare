@@ -35,6 +35,28 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
     assert_fused_matches_separate(event, :log)
   end
 
+  test "a severity_number outside the OTEL range falls back to the severity_text mapping" do
+    event = raw_event(:log, %{})
+
+    assert encoded_severity_number(event, severity_body(300)) == 9
+    assert encoded_severity_number(event, severity_body(25)) == 9
+  end
+
+  test "a severity_number within the OTEL range wins over the severity_text mapping" do
+    event = raw_event(:log, %{})
+
+    assert encoded_severity_number(event, severity_body(1)) == 1
+    assert encoded_severity_number(event, severity_body(13)) == 13
+    assert encoded_severity_number(event, severity_body(24)) == 24
+  end
+
+  test "an unspecified severity_number falls back to the severity_text mapping" do
+    event = raw_event(:log, %{})
+
+    assert encoded_severity_number(event, severity_body()) == 9
+    assert encoded_severity_number(event, severity_body(0)) == 9
+  end
+
   test "fused metric output is byte-identical for arrays, maps, and nullable times" do
     event =
       raw_event(:metric, %{
@@ -411,6 +433,33 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
     assert Mapper.map(event.body, output_compiled, output_context: output_context) == expected
   end
 
+  defp severity_body(severity_number \\ nil) do
+    body = %{
+      "event_message" => "request failed",
+      "severity_text" => "info",
+      "timestamp" => 1_700_000_000_000_001
+    }
+
+    if severity_number, do: Map.put(body, "severity_number", severity_number), else: body
+  end
+
+  defp encoded_severity_number(event, body) do
+    [_prefix, <<severity::unsigned-8, _rest::binary>>] =
+      event
+      |> fused_log_row(body)
+      |> :binary.split(<<4, "INFO">>)
+
+    severity
+  end
+
+  defp fused_log_row(event, body) do
+    compiled = Mapper.compile!(MappingDefaults.for_log())
+    config_id = encoded_config_id(:log)
+    output_context = OutputContext.clickhouse_row_binary(%{event | body: body}, config_id)
+
+    Mapper.map(body, compiled, output_context: output_context)
+  end
+
   defp compile_map_output(event_type) do
     config = MappingDefaults.for_type(event_type)
     Mapper.compile!(%{config | output: nil})
@@ -446,7 +495,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
   defp maybe_compute_duration(body, _event_type), do: body
 
   defp resolve_severity_number(%{"severity_number_alt" => alt} = body, :log)
-       when is_integer(alt) and alt > 0 do
+       when is_integer(alt) and alt in 1..24 do
     %{body | "severity_number" => alt}
   end
 
