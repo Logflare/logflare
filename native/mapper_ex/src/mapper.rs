@@ -985,9 +985,6 @@ fn try_flatten_with_operations<'a>(
     if value == nil || !value.is_map() {
         return Some(Term::map_new(env));
     }
-    if elevate.len() > 1 {
-        return None;
-    }
 
     let capacity = value.map_size().unwrap_or(0);
     let mut keys = Vec::with_capacity(capacity);

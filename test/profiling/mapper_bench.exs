@@ -310,10 +310,10 @@ Benchee.run(
 
 # Baseline results — Mapper.map(event.body) with MappingDefaults.for_log()
 # Apple M4 / 32 GB / macOS / Elixir 1.19.5 / Erlang 27.3.4.6
-# Recorded at a53e24086.
+# Recorded after the multi-key elevate fused-path fix.
 #
 # Name                             ips        average  deviation         median         99th %
-# [log] Mapper.map(body)       55.62 K       17.98 μs    ±44.38%       18.46 μs       34.54 μs
+# [log] Mapper.map(body)       54.57 K       18.33 μs    ±35.74%       18.54 μs       39.54 μs
 #
 # Memory usage statistics:
 #
