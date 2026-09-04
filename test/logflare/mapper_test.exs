@@ -634,6 +634,210 @@ defmodule Logflare.MapperTest do
     end
   end
 
+  describe "pick_mode" do
+    test "defaults to :replace, so a resolved pick replaces the coalesced source" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              paths: ["$.resource"],
+              pick: [{"project", ["$.project"]}],
+              default: %{}
+            )
+          ],
+          %{"project" => "p", "resource" => %{"a" => 1, "b" => 2}}
+        )
+
+      assert result["attrs"] == %{"project" => "p"}
+    end
+
+    test ":merge unions a resolved pick over the coalesced source" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              paths: ["$.resource"],
+              pick: [{"project", ["$.project"]}],
+              pick_mode: :merge,
+              default: %{}
+            )
+          ],
+          %{"project" => "p", "resource" => %{"a" => 1, "b" => 2}}
+        )
+
+      assert result["attrs"] == %{"project" => "p", "a" => "1", "b" => "2"}
+    end
+
+    test ":merge lets pick entries win on key collision" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              paths: ["$.resource"],
+              pick: [{"shared", ["$.top_shared"]}],
+              pick_mode: :merge,
+              default: %{}
+            )
+          ],
+          %{
+            "top_shared" => "from-pick",
+            "resource" => %{"shared" => "from-resource", "only_resource" => "r"}
+          }
+        )
+
+      assert result["attrs"] == %{"shared" => "from-pick", "only_resource" => "r"}
+    end
+
+    test ":merge yields just the source when no pick entry resolves" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              paths: ["$.resource"],
+              pick: [{"project", ["$.absent"]}],
+              pick_mode: :merge,
+              default: %{}
+            )
+          ],
+          %{"resource" => %{"a" => 1}}
+        )
+
+      assert result["attrs"] == %{"a" => "1"}
+    end
+
+    test ":merge yields just the pick map when the source is absent" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              paths: ["$.resource"],
+              pick: [{"project", ["$.project"]}],
+              pick_mode: :merge,
+              default: %{}
+            )
+          ],
+          %{"project" => "p"}
+        )
+
+      assert result["attrs"] == %{"project" => "p"}
+    end
+
+    test ":merge falls back to the default when neither pick nor source resolves" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              paths: ["$.resource"],
+              pick: [{"project", ["$.absent"]}],
+              pick_mode: :merge,
+              default: %{}
+            )
+          ],
+          %{"other" => 1}
+        )
+
+      assert result["attrs"] == %{}
+    end
+
+    test ":merge flattens nested source values and stringifies them" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              paths: ["$.resource"],
+              pick: [{"project", ["$.project"]}],
+              pick_mode: :merge,
+              default: %{}
+            )
+          ],
+          %{"project" => "p", "resource" => %{"nested" => %{"deep" => true}, "port" => 8080}}
+        )
+
+      assert result["attrs"] == %{
+               "project" => "p",
+               "nested.deep" => "true",
+               "port" => "8080"
+             }
+    end
+
+    test ":merge works on json fields without stringifying" do
+      result =
+        compile_and_map(
+          [
+            Field.json("attrs",
+              paths: ["$.resource"],
+              pick: [{"project", ["$.project"]}],
+              pick_mode: :merge,
+              default: %{}
+            )
+          ],
+          %{"project" => "p", "resource" => %{"a" => 1, "nested" => %{"deep" => true}}}
+        )
+
+      assert result["attrs"] == %{
+               "project" => "p",
+               "a" => 1,
+               "nested" => %{"deep" => true}
+             }
+    end
+
+    test ":merge applies exclude_keys and elevate_keys after the merge" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              paths: ["$.resource"],
+              pick: [{"project", ["$.project"]}],
+              pick_mode: :merge,
+              exclude_keys: ["drop_me"],
+              elevate_keys: ["nested"],
+              default: %{}
+            )
+          ],
+          %{
+            "project" => "p",
+            "resource" => %{"drop_me" => 1, "keep" => "k", "nested" => %{"inner" => "n"}}
+          }
+        )
+
+      assert result["attrs"] == %{"project" => "p", "keep" => "k", "inner" => "n"}
+    end
+
+    test ":merge only reads the first resolving path, since paths is a coalesce" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              paths: ["$.resource", "$.resource_extra"],
+              pick: [{"project", ["$.project"]}],
+              pick_mode: :merge,
+              default: %{}
+            )
+          ],
+          %{"project" => "p", "resource" => %{"a" => 1}, "resource_extra" => %{"b" => 2}}
+        )
+
+      assert result["attrs"] == %{"project" => "p", "a" => "1"}
+    end
+
+    test ":merge tolerates a non-map source value by keeping only the pick map" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              paths: ["$.resource"],
+              pick: [{"project", ["$.project"]}],
+              pick_mode: :merge,
+              default: %{}
+            )
+          ],
+          %{"project" => "p", "resource" => "not-a-map"}
+        )
+
+      assert result["attrs"] == %{"project" => "p"}
+    end
+  end
+
   # ── Enum8 ─────────────────────────────────────────────────────────────
 
   describe "enum8" do
@@ -1460,6 +1664,94 @@ defmodule Logflare.MapperTest do
 
         Mapper.compile!(config)
       end
+    end
+  end
+
+  describe "numeric config validation" do
+    test "rejects a datetime64 precision outside 0..9" do
+      for precision <- [-1, 10, 300, 256] do
+        config = MappingConfig.new([Field.datetime64("ts", path: "$.ts", precision: precision)])
+
+        assert {:error, reason} = Mapper.compile(config), "precision #{precision} was accepted"
+        assert reason =~ "precision must be between 0 and 9"
+      end
+    end
+
+    test "rejects an array_datetime64 precision outside 0..9" do
+      config =
+        MappingConfig.new([Field.array_datetime64("ts", path: "$.ts[*]", precision: 300)])
+
+      assert {:error, reason} = Mapper.compile(config)
+      assert reason =~ "precision must be between 0 and 9"
+    end
+
+    test "accepts every valid datetime64 precision" do
+      for precision <- 0..9 do
+        config = MappingConfig.new([Field.datetime64("ts", path: "$.ts", precision: precision)])
+
+        assert {:ok, _} = Mapper.compile(config)
+      end
+    end
+
+    test "rejects enum_values outside the Enum8 range" do
+      for value <- [-129, 128, 200, 1000] do
+        config =
+          MappingConfig.new([
+            Field.enum8("kind", paths: ["$.kind"], values: %{"big" => value}, default: 0)
+          ])
+
+        assert {:error, reason} = Mapper.compile(config), "enum value #{value} was accepted"
+        assert reason =~ "enum_values values must be between -128 and 127"
+      end
+    end
+
+    test "accepts enum_values at the Enum8 boundaries" do
+      result =
+        compile_and_map(
+          [
+            Field.enum8("kind",
+              paths: ["$.kind"],
+              values: %{"low" => -128, "high" => 127},
+              default: 0
+            )
+          ],
+          %{"kind" => "low"}
+        )
+
+      assert result["kind"] == -128
+    end
+
+    test "clamps an out-of-range enum8 value at map time rather than wrapping it" do
+      fields = [
+        Field.enum8("kind", paths: ["$.kind"], values: %{"a" => 1, "b" => 2}, default: 0)
+      ]
+
+      # Wrapping would turn 200 into -56 and -200 into 56 — both valid-looking
+      # but wrong variants. Saturating keeps the value at the boundary.
+      assert compile_and_map(fields, %{"kind" => 200})["kind"] == 127
+      assert compile_and_map(fields, %{"kind" => -200})["kind"] == -128
+      assert compile_and_map(fields, %{"kind" => 127})["kind"] == 127
+      assert compile_and_map(fields, %{"kind" => -128})["kind"] == -128
+    end
+
+    test "rejects a negative string filter length" do
+      for key <- [:len_eq, :len_gt, :len_gte, :len_lt, :len_lte] do
+        config =
+          MappingConfig.new([Field.string("s", path: "$.s", filters: %{key => -1})])
+
+        assert {:error, reason} = Mapper.compile(config), "#{key} was accepted"
+        assert reason =~ "must not be negative"
+      end
+    end
+
+    test "accepts a zero string filter length" do
+      result =
+        compile_and_map(
+          [Field.string("s", path: "$.s", filters: %{len_gt: 0})],
+          %{"s" => "hello"}
+        )
+
+      assert result["s"] == "hello"
     end
   end
 
