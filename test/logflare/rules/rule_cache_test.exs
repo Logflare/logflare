@@ -18,24 +18,29 @@ defmodule Logflare.Rules.CacheTest do
   end
 
   describe "rules cache" do
-    test "get rules", %{rule_ids: rule_ids} do
-      assert rules = @subject.get_rules(rule_ids)
+    test "get rule", %{rule_ids: [rid1, _rid2]} do
+      assert %Rule{id: ^rid1} = @subject.get_rule(rid1)
 
-      for %Rule{id: id} <- rules do
-        assert id in rule_ids
-      end
-
-      assert Cachex.size!(@subject) == 2
-      assert %{hits: 0, writes: 2} = Cachex.stats!(@subject)
+      assert Cachex.size!(@subject) == 1
+      assert %{hits: 0, writes: 1} = Cachex.stats!(@subject)
 
       Mimic.reject(Rules, :get_rule, 1)
 
-      assert [_r1, _r2] = @subject.get_rules(rule_ids)
-      assert %{hits: 2, writes: 2} = Cachex.stats!(@subject)
-
-      [rid1, _rid2] = rule_ids
       assert %Rule{id: ^rid1} = @subject.get_rule(rid1)
-      assert %{hits: 3, writes: 2} = Cachex.stats!(@subject)
+      assert %{hits: 1, writes: 1} = Cachex.stats!(@subject)
+    end
+
+    test "rules tree by source id caches the tree with its rules", %{
+      source: source,
+      rule_ids: rule_ids
+    } do
+      assert {_tree, rules_by_id} = @subject.rules_tree_by_source_id(source.id)
+
+      assert Enum.sort(Map.keys(rules_by_id)) == Enum.sort(rule_ids)
+
+      for {id, %Rule{id: rule_id}} <- rules_by_id do
+        assert id == rule_id
+      end
     end
 
     test "list by source", %{source: source, rule_ids: expected_rule_ids} do
