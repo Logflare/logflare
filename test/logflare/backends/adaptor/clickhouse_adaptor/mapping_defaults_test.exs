@@ -188,6 +188,75 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
       end
     end
 
+    test "cluster and node resolve from top-level and resource-scoped keys", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      top_level = %{"cluster" => "clus-top", "node" => "node-top"}
+      resource_scoped = %{"resource" => %{"cluster" => "clus-res", "node" => "node-res"}}
+      metadata_context = %{"metadata" => %{"context" => %{"cluster" => "clus-ctx"}}}
+
+      for compiled <- [log, metric, trace] do
+        top = Mapper.map(top_level, compiled)["resource_attributes"]
+        assert top["cluster"] == "clus-top"
+        assert top["node"] == "node-top"
+
+        res = Mapper.map(resource_scoped, compiled)["resource_attributes"]
+        assert res["cluster"] == "clus-res"
+        assert res["node"] == "node-res"
+
+        ctx = Mapper.map(metadata_context, compiled)["resource_attributes"]
+        assert ctx["cluster"] == "clus-ctx"
+      end
+    end
+
+    test "cluster and node prefer metadata over top-level and resource keys", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{
+        "cluster" => "clus-top",
+        "node" => "node-top",
+        "metadata" => %{
+          "cluster" => "clus-meta",
+          "node" => "node-meta",
+          "context" => %{"vm" => %{"node" => "node-vm"}}
+        },
+        "resource" => %{"cluster" => "clus-res", "node" => "node-res"}
+      }
+
+      for compiled <- [log, metric, trace] do
+        res_attrs = Mapper.map(payload, compiled)["resource_attributes"]
+
+        assert res_attrs["cluster"] == "clus-meta"
+        assert res_attrs["node"] == "node-meta"
+      end
+    end
+
+    test "region resolves a resource-scoped key", %{log: log, metric: metric, trace: trace} do
+      payload = %{"resource" => %{"region" => "ap-southeast-2"}}
+
+      for compiled <- [log, metric, trace] do
+        assert Mapper.map(payload, compiled)["resource_attributes"]["region"] == "ap-southeast-2"
+      end
+    end
+
+    test "region prefers the generic resource key over the underscore-namespaced form", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{
+        "resource" => %{"region" => "ap-southeast-2", "_project_region" => "eu-central-1"}
+      }
+
+      for compiled <- [log, metric, trace] do
+        assert Mapper.map(payload, compiled)["resource_attributes"]["region"] == "ap-southeast-2"
+      end
+    end
+
     test "region resolves an underscore-namespaced resource key", %{
       log: log,
       metric: metric,

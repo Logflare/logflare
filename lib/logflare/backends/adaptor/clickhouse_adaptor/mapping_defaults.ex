@@ -136,7 +136,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
              "$.metadata.app_name",
              "$.metadata.parsed.application_name"
            ]},
-          {"cluster", ["$.metadata.cluster", "$.cluster", "$.resource.cluster"]},
+          {"cluster",
+           [
+             "$.metadata.cluster",
+             "$.metadata.context.cluster",
+             "$.cluster",
+             "$.resource.cluster"
+           ]},
           {"environment",
            [
              "$.metadata.environment",
@@ -147,7 +153,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
           {"host", ["$.metadata.host", "$.metadata.context.host", "$.host", "$.resource.host"]},
           {"instance_id", ["$.metadata.instance_id"]},
           {"machine_id", ["$.machine_id"]},
-          {"node", ["$.metadata.context.vm.node", "$.resource.node"]},
+          {"node",
+           [
+             "$.metadata.node",
+             "$.metadata.context.vm.node",
+             "$.node",
+             "$.resource.node"
+           ]},
           {"organization_id", ["$.organization_id", "$.org_id"]},
           {"organization_slug", ["$.organization_slug"]},
           {"project",
@@ -159,7 +171,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
              "$.metadata.tenant",
              "$.metadata.tenantId"
            ]},
-          {"region", ["$.metadata.region", "$.region", "$.resource._project_region"]},
+          {"region",
+           [
+             "$.metadata.region",
+             "$.region",
+             "$.resource.region",
+             "$.resource._project_region"
+           ]},
           {"service_name",
            ["$.resource.service.name", "$.resource._service_name", "$.service_name"]},
           {"vector_file", ["$.metadata.vector_file"]},
@@ -287,7 +305,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
              "$.metadata.app_name",
              "$.metadata.parsed.application_name"
            ]},
-          {"cluster", ["$.metadata.cluster", "$.cluster", "$.resource.cluster"]},
+          {"cluster",
+           [
+             "$.metadata.cluster",
+             "$.metadata.context.cluster",
+             "$.cluster",
+             "$.resource.cluster"
+           ]},
           {"environment",
            [
              "$.metadata.environment",
@@ -298,7 +322,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
           {"host", ["$.metadata.host", "$.metadata.context.host", "$.host", "$.resource.host"]},
           {"instance_id", ["$.metadata.instance_id"]},
           {"machine_id", ["$.machine_id"]},
-          {"node", ["$.metadata.context.vm.node", "$.resource.node"]},
+          {"node",
+           [
+             "$.metadata.node",
+             "$.metadata.context.vm.node",
+             "$.node",
+             "$.resource.node"
+           ]},
           {"organization_id", ["$.organization_id", "$.org_id"]},
           {"organization_slug", ["$.organization_slug"]},
           {"project",
@@ -310,7 +340,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
              "$.metadata.tenant",
              "$.metadata.tenantId"
            ]},
-          {"region", ["$.metadata.region", "$.region", "$.resource._project_region"]},
+          {"region",
+           [
+             "$.metadata.region",
+             "$.region",
+             "$.resource.region",
+             "$.resource._project_region"
+           ]},
           {"service_name",
            ["$.resource.service.name", "$.resource._service_name", "$.service_name"]},
           {"vector_file", ["$.metadata.vector_file"]},
@@ -565,7 +601,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
              "$.metadata.app_name",
              "$.metadata.parsed.application_name"
            ]},
-          {"cluster", ["$.metadata.cluster", "$.cluster", "$.resource.cluster"]},
+          {"cluster",
+           [
+             "$.metadata.cluster",
+             "$.metadata.context.cluster",
+             "$.cluster",
+             "$.resource.cluster"
+           ]},
           {"environment",
            [
              "$.metadata.environment",
@@ -576,7 +618,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
           {"host", ["$.metadata.host", "$.metadata.context.host", "$.host", "$.resource.host"]},
           {"instance_id", ["$.metadata.instance_id"]},
           {"machine_id", ["$.machine_id"]},
-          {"node", ["$.metadata.context.vm.node", "$.resource.node"]},
+          {"node",
+           [
+             "$.metadata.node",
+             "$.metadata.context.vm.node",
+             "$.node",
+             "$.resource.node"
+           ]},
           {"organization_id", ["$.organization_id", "$.org_id"]},
           {"organization_slug", ["$.organization_slug"]},
           {"project",
@@ -588,7 +636,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
              "$.metadata.tenant",
              "$.metadata.tenantId"
            ]},
-          {"region", ["$.metadata.region", "$.region", "$.resource._project_region"]},
+          {"region",
+           [
+             "$.metadata.region",
+             "$.region",
+             "$.resource.region",
+             "$.resource._project_region"
+           ]},
           {"service_name",
            ["$.resource.service.name", "$.resource._service_name", "$.service_name"]},
           {"vector_file", ["$.metadata.vector_file"]},
