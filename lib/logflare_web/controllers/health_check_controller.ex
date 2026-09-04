@@ -1,6 +1,7 @@
 defmodule LogflareWeb.HealthCheckController do
   use LogflareWeb, :controller
 
+  alias Logflare.Backends.Spool.WriteHealth
   alias Logflare.JSON
   alias Logflare.Cluster
   alias Logflare.Readiness
@@ -32,7 +33,13 @@ defmodule LogflareWeb.HealthCheckController do
         # checks that db can execute query and that repo is connected and up
         repo_uptime > 0,
         Enum.all?(Map.values(caches), &(&1 == :ok)),
-        memory_utilization < max_memory_ratio
+        memory_utilization < max_memory_ratio,
+        # fails once a spool partition has exhausted every way it knows to
+        # persist a request (local disk AND the direct-to-GCS fallback) —
+        # see Logflare.Backends.Spool.WriteHealth. Self-healing: clears the
+        # moment a write succeeds again, so this node comes back into
+        # rotation on its own once the underlying problem does.
+        WriteHealth.healthy?()
       ]
       |> Enum.all?()
 
@@ -60,7 +67,8 @@ defmodule LogflareWeb.HealthCheckController do
       |> build_payload(
         repo_uptime: repo_uptime,
         caches: caches,
-        memory_utilization: if(memory_utilization < max_memory_ratio, do: :ok, else: :critical)
+        memory_utilization: if(memory_utilization < max_memory_ratio, do: :ok, else: :critical),
+        spool_write_healthy: WriteHealth.healthy?()
       )
       |> JSON.encode!()
 
@@ -72,7 +80,8 @@ defmodule LogflareWeb.HealthCheckController do
   defp build_payload(status,
          repo_uptime: repo_uptime,
          caches: caches,
-         memory_utilization: memory_utilization
+         memory_utilization: memory_utilization,
+         spool_write_healthy: spool_write_healthy
        )
        when status in [:ok, :coming_up] do
     nodes = Cluster.Utils.node_list_all()
@@ -84,6 +93,7 @@ defmodule LogflareWeb.HealthCheckController do
       this_node: Node.self(),
       nodes: nodes,
       nodes_count: Enum.count(nodes),
+      spool_write_healthy: spool_write_healthy,
       repo_uptime: repo_uptime,
       caches: caches,
       memory_utilization: memory_utilization

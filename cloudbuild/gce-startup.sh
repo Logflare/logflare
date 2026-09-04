@@ -6,6 +6,18 @@ readonly METADATA_URL="http://metadata.google.internal/computeMetadata/v1/instan
 readonly CONTAINER_NAME="logflare"
 readonly CONTAINER_ENV_FILE="${LOGFLARE_CONTAINER_ENV_FILE:-/run/logflare-container.env}"
 readonly DOCKER_HOME="${LOGFLARE_DOCKER_HOME:-/home/logflare}"
+# Local WAL directory for the durable spool producer (see
+# Logflare.Backends.Spool.Partition). Lives on the boot disk's writable
+# /mnt/stateful_partition rather than a separate disk — durability-wise
+# they're equivalent (both are wiped on instance replacement, both survive
+# an OOM/container restart on the same instance; a real "survives
+# replacement" WAL would need MIG stateful-disk config, which neither
+# approach has), so the separate disk was only buying I/O/space isolation
+# that isn't needed at this WAL's size. The consumer role never reads this
+# path, but creating it costs nothing, so this script stays identical for
+# both roles.
+readonly WAL_HOST_MOUNT="/mnt/stateful_partition/logflare-wal"
+readonly WAL_CONTAINER_DIR="/var/lib/logflare/spool_wal"
 
 # Tracks the current step so an unexpected failure reports where it happened.
 # Every phase is logged with elapsed seconds, which is what distinguishes a
@@ -64,6 +76,15 @@ wait_for_docker() {
   return 1
 }
 
+prepare_wal_dir() {
+  mkdir -p "${WAL_HOST_MOUNT}"
+
+  # World-writable: the container runs as whatever user the image defaults
+  # to, and this is dev/test infra, not a security boundary.
+  chmod 0777 "${WAL_HOST_MOUNT}"
+  log "WAL dir ready at ${WAL_HOST_MOUNT}"
+}
+
 configure_firewall() {
   local chain
   local protocol
@@ -113,6 +134,9 @@ main() {
   phase "wait for docker"
   wait_for_docker
 
+  phase "prepare WAL dir"
+  prepare_wal_dir
+
   # Keep the existing container available if the registry is temporarily
   # unavailable during a manual startup-script rerun.
   phase "pull container image"
@@ -131,6 +155,7 @@ main() {
     --log-opt max-size=500m \
     --log-opt max-file=3 \
     --env-file "${CONTAINER_ENV_FILE}" \
+    -v "${WAL_HOST_MOUNT}:${WAL_CONTAINER_DIR}" \
     "${image}"
 
   phase "done"

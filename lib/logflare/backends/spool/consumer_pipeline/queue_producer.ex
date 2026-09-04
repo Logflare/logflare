@@ -113,6 +113,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   require Logger
 
+  alias Logflare.Backends.Spool.Framing
   alias Logflare.Backends.Spool.MemoryMonitor
 
   @throttle_interval 100
@@ -613,22 +614,90 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     result
   end
 
+  # A ".v2." spool file (see Committer.file_key/1) is one or more
+  # independently-encoded (and independently compressed) chunks concatenated
+  # as length+CRC32-framed segments — see Logflare.Backends.Spool.Framing's
+  # moduledoc for why concatenation alone isn't safe to decode (zstd in
+  # particular silently drops everything past the first member on raw
+  # concatenation). Each segment is decompressed and parsed on its own, then
+  # the resulting event lists are concatenated. A file without ".v2." was
+  # written by the pre-framing main-branch producer: one whole
+  # compressed-or-not blob, no wrapper. Dispatching on the key itself, rather
+  # than sniffing the content, is exact — there's no ambiguity to fall back
+  # on — and lets old and new producers' output coexist in the same
+  # queue/bucket across a rollout.
+  #
   # Decompression and parsing are both capable of raising on truncated or
-  # otherwise corrupt content (:zlib.gunzip/1 and :erlang.binary_to_term/2
-  # both crash rather than returning an error tuple) — caught here, close to
-  # the queue handle, so the caller can ack (drop) the poison message instead
-  # of losing the handle to safe_fetch_next's outer rescue and retrying forever.
+  # otherwise corrupt content (:zlib.gunzip/1, :ezstd.decompress/1, and
+  # :erlang.binary_to_term/2 all crash or return {:error, _} rather than a
+  # clean error tuple in every case) — caught here, close to the queue handle,
+  # so the caller can ack (drop) the poison message instead of losing the
+  # handle to safe_fetch_next's outer rescue and retrying forever.
   defp decode_content(file_key, raw) do
-    content = if String.ends_with?(file_key, ".gz"), do: :zlib.gunzip(raw), else: raw
-    parse_content(file_key, content)
+    if versioned_v2?(file_key) do
+      case Framing.decode_segments(raw) do
+        {:ok, segments} -> decode_segments(file_key, segments)
+        {:error, reason} -> {:error, {:decode_failed, reason}}
+      end
+    else
+      decode_legacy_content(file_key, raw)
+    end
   rescue
     e -> {:error, {:decode_failed, e}}
   catch
     kind, reason -> {:error, {:decode_failed, %RuntimeError{message: inspect({kind, reason})}}}
   end
 
+  defp versioned_v2?(file_key), do: String.contains?(file_key, ".v2.")
+
+  defp decode_legacy_content(file_key, raw) do
+    content =
+      cond do
+        String.ends_with?(file_key, ".gz") -> :zlib.gunzip(raw)
+        String.ends_with?(file_key, ".zst") -> decompress_zstd!(raw)
+        true -> raw
+      end
+
+    parse_content(file_key, content)
+  end
+
+  # parse_content/2 always succeeds or raises (never returns {:error, _}) —
+  # any decode failure propagates up to decode_content/2's rescue/catch, so
+  # this just flattens each segment's events across the whole file.
+  defp decode_segments(file_key, segments) do
+    events = Enum.flat_map(segments, &decode_segment_events(file_key, &1))
+    {:ok, events}
+  end
+
+  defp decode_segment_events(file_key, segment) do
+    content =
+      cond do
+        String.ends_with?(file_key, ".gz") -> :zlib.gunzip(segment)
+        String.ends_with?(file_key, ".zst") -> decompress_zstd!(segment)
+        true -> segment
+      end
+
+    {:ok, events} = parse_content(file_key, content)
+    events
+  end
+
+  # :ezstd.decompress/1 returns {:error, reason} instead of raising on
+  # corrupt/truncated input (unlike :zlib.gunzip/1) — normalized here to a
+  # raise so it's caught by decode_content/2's rescue like every other
+  # decode failure, instead of silently flowing an error tuple into
+  # parse_content/2 as if it were content.
+  defp decompress_zstd!(raw) do
+    case :ezstd.decompress(raw) do
+      binary when is_binary(binary) -> binary
+      {:error, reason} -> raise "zstd decompression failed: #{inspect(reason)}"
+    end
+  end
+
   defp parse_content(file_key, content) do
-    base = String.replace_suffix(file_key, ".gz", "")
+    base =
+      file_key
+      |> String.replace_suffix(".gz", "")
+      |> String.replace_suffix(".zst", "")
 
     if String.ends_with?(base, ".etf") do
       {:ok, :erlang.binary_to_term(content)}

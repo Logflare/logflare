@@ -148,6 +148,18 @@ config :tesla,
   disable_deprecated_builder_warning: true,
   adapter: {Tesla.Adapter.Finch, name: Logflare.FinchDefault, receive_timeout: 60_000}
 
+# Per-module adapter overrides for the spool producer/consumer's GCS + Pub/Sub
+# clients — a global `config :tesla, :adapter` change does NOT affect these,
+# since GoogleApi.Gax.Connection's `use Tesla` resolves its adapter per-module,
+# not from the process-wide default. Points both at the dedicated
+# Logflare.FinchSpool pool (see Logflare.Networking.pools/0) instead of sharing
+# FinchDefault's small, unconfigured :default bucket with everything else.
+config :tesla, GoogleApi.Storage.V1.Connection,
+  adapter: {Tesla.Adapter.Finch, name: Logflare.FinchSpool, receive_timeout: 60_000}
+
+config :tesla, GoogleApi.PubSub.V1.Connection,
+  adapter: {Tesla.Adapter.Finch, name: Logflare.FinchSpool, receive_timeout: 60_000}
+
 config :number,
   delimit: [
     precision: 0,

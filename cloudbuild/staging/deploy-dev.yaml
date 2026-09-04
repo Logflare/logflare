@@ -20,6 +20,8 @@ steps:
           printf 'SPOOL_BUCKET=%s\n' "$$4"
           printf 'SPOOL_PUBSUB_TOPIC=%s\n' "$$5"
           printf 'SPOOL_QUEUE_NAME=%s\n' "$$6"
+          printf 'SPOOL_BLOCKING=%s\n' "$$7"
+          printf 'SPOOL_WAL_DIR=%s\n' "$$8"
         } > gce-container.env
       - --
       - ${_COOKIE}
@@ -28,32 +30,34 @@ steps:
       - ${_SPOOL_BUCKET}
       - ${_SPOOL_PUBSUB_TOPIC}
       - ${_SPOOL_QUEUE_NAME}
+      - ${_SPOOL_BLOCKING}
+      - ${_SPOOL_WAL_DIR}
   # create instance template - dedicated
   - name: gcr.io/cloud-builders/gcloud
     entrypoint: bash
     args:
-      - ./cloudbuild/create-instance-template.sh
-      - logflare-staging
-      - $_TEMPLATE_NAME
-      - --boot-disk-size=10GB
-      - --boot-disk-type=pd-balanced
-      - --machine-type=${_INSTANCE_TYPE}
-      - --network-interface=network=default,network-tier=PREMIUM,no-address
-      - --maintenance-policy=TERMINATE
-      - --service-account=compute-engine-2022@logflare-staging.iam.gserviceaccount.com
-      - --scopes=https://www.googleapis.com/auth/cloud-platform
-      # deliberately not phoenix-http/https-server: this cluster is never
-      # attached to a backend-service and shouldn't inherit the public-facing
-      # ingress firewall rules that tag targets.
-      - --tags=logflare-spool-test
-      - --metadata-from-file=startup-script=./cloudbuild/gce-startup.sh,shutdown-script=./cloudbuild/shutdown.sh,logflare-container-env=./gce-container.env
-      # needed for enabling node-problem-detector, explicitly enable logging
-      - --metadata=google-monitoring-enabled=true,google-logging-enabled=true,logflare-container-image=${_CONTAINER_IMAGE}
-      - --no-shielded-secure-boot
-      - --shielded-vtpm
-      - --shielded-integrity-monitoring
-      - --image=cos-stable-109-17800-147-54
-      - --image-project=cos-cloud
+      - -ceu
+      - |
+        ./cloudbuild/create-instance-template.sh logflare-staging "$$1" \
+          --boot-disk-size=10GB \
+          --boot-disk-type=pd-balanced \
+          --machine-type="$$2" \
+          --network-interface=network=default,network-tier=PREMIUM,no-address \
+          --maintenance-policy=TERMINATE \
+          --service-account=compute-engine-2022@logflare-staging.iam.gserviceaccount.com \
+          --scopes=https://www.googleapis.com/auth/cloud-platform \
+          --tags=logflare-spool-test,phoenix-http \
+          --metadata-from-file=startup-script=./cloudbuild/gce-startup.sh,shutdown-script=./cloudbuild/shutdown.sh,logflare-container-env=./gce-container.env \
+          --metadata=google-monitoring-enabled=true,google-logging-enabled=true,logflare-container-image="$$3" \
+          --no-shielded-secure-boot \
+          --shielded-vtpm \
+          --shielded-integrity-monitoring \
+          --image=cos-stable-109-17800-147-54 \
+          --image-project=cos-cloud
+      - --
+      - ${_TEMPLATE_NAME}
+      - ${_INSTANCE_TYPE}
+      - ${_CONTAINER_IMAGE}
   # create instance group if it doesn't exist yet — one-time bootstrap for a
   # new dev number, seeded on the template just created above. On every run
   # after that this is a no-op (the group already exists), and the next step
@@ -105,10 +109,16 @@ substitutions:
   # becomes SPOOL_MODE directly.
   _DEV_NUMBER: "1"
   _ROLE: producer
-  # Each cluster name gets its own release cookie, so producer and consumer
-  # replicas never join the same Erlang distribution cluster (nor the
-  # main/versioned staging fleet) — they only talk to each other via the
-  # shared Pub/Sub topic/subscription below.
+  # LOGFLARE_METADATA_CLUSTER (_CLUSTER) is observability tagging only — it
+  # has no effect on which nodes cluster together (see
+  # Logflare.Cluster.PostgresStrategy). Distributed-Erlang peer discovery is
+  # keyed entirely on the release cookie (used as a Postgres LISTEN/NOTIFY
+  # channel name), so _COOKIE is derived from _DEV_NUMBER only, NOT _ROLE —
+  # producer and consumer for the same dev pair must share a cookie to join
+  # the same cluster and receive cache-invalidation/config-change broadcasts
+  # (Logflare.ContextCache) from each other. Different dev numbers (and the
+  # main/versioned/prod fleets, which use their own cookie scheme) still get
+  # distinct cookies and stay isolated.
   _CLUSTER: dev-${_DEV_NUMBER}-${_ROLE}
   _SPOOL_MODE: ${_ROLE}
   # Dedicated dev-N bucket/topic/subscription, provisioned via
@@ -118,7 +128,19 @@ substitutions:
   _SPOOL_BUCKET: dev-spool-${_DEV_NUMBER}
   _SPOOL_PUBSUB_TOPIC: projects/logflare-staging/topics/dev-spool-${_DEV_NUMBER}
   _SPOOL_QUEUE_NAME: projects/logflare-staging/subscriptions/dev-spool-${_DEV_NUMBER}-sub
-  _COOKIE: default-${_CLUSTER}
+  # Where the producer's durable spool WAL lives inside the container — must
+  # match the host path cloudbuild/gce-startup.sh bind-mounts into it (a
+  # directory on the boot disk's writable /mnt/stateful_partition, not a
+  # separate disk — see gce-startup.sh for why). Set unconditionally
+  # (consumer just never reads it).
+  _SPOOL_WAL_DIR: /var/lib/logflare/spool_wal
+  # Blocks ingest_logs/4 callers until their chunk is durably uploaded +
+  # queue-notified (see Backends.dispatch_to_spool_producer/1), instead of the
+  # default fire-and-forget push — real backpressure instead of an unbounded
+  # EventQueue.Bodies ETS table, for testing whether this prevents the OOM
+  # reproduced under full-saturation load on this dev cluster.
+  _SPOOL_BLOCKING: "true"
+  _COOKIE: default-dev-${_DEV_NUMBER}
   _NORMALIZED_IMAGE_TAG: ${_IMAGE_TAG}
   _INSTANCE_TYPE: c2d-highcpu-4
   _INSTANCE_GROUP: instance-group-staging-${_CLUSTER}
