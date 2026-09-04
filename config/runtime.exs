@@ -572,8 +572,9 @@ config :logflare, :context_cache_gossip, %{
   max_nodes: cache_gossip_max_nodes
 }
 
-# Read replicas serve selected cache queries; an empty list uses the primary database.
-# Entries are bare host names, IP literals, or URIs whose omitted options inherit the primary.
+# LOGFLARE_READ_REPLICAS: PostgreSQL read replicas for selected cache queries.
+# An empty list uses the primary database. Entries are bare host names, IP literals, or URIs
+# whose omitted options inherit the primary.
 # `auth=iam` replaces the password with an RDS IAM token and enforces verified TLS.
 read_replicas =
   "LOGFLARE_READ_REPLICAS"
