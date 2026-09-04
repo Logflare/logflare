@@ -324,7 +324,7 @@ Benchee.run(
 # NOT comparable to any baseline recorded before that change.
 #
 # Name                             ips        average  deviation         median         99th %
-# [log] Mapper.map(body)       49.32 K       20.28 μs    ±14.97%       21.46 μs       28.54 μs
+# [log] Mapper.map(body)       50.98 K       19.61 μs        high       20.50 μs       30.83 μs
 #
 # Memory usage statistics:
 #
@@ -334,7 +334,10 @@ Benchee.run(
 # Reduction count statistics:
 #
 # Name                   Reduction count
-# [log] Mapper.map(body)             141
+# [log] Mapper.map(body)             135
+#
+# Excluding the `resource` and `scope` envelopes from log_attributes (they have
+# their own columns) took it from 141 -> 135 reductions and 106 -> 98 keys.
 #
 # Same-payload A/B for `pick_mode: :merge` on resource_attributes, mapping the raw
 # payload rather than a LogEvent body (so absolute figures sit higher than above; the
