@@ -391,9 +391,13 @@ fn coerce_bool<'a>(env: Env<'a>, value: Term<'a>) -> Term<'a> {
 }
 
 fn coerce_enum8<'a>(env: Env<'a>, value: Term<'a>) -> Term<'a> {
-    // Enum8 values should already be resolved to integers by the mapper
+    // Enum8 values should already be resolved to integers by the mapper, and
+    // `enum_values` is range-checked at compile time. Clamp rather than cast so
+    // an unexpected out-of-range value saturates instead of wrapping to the
+    // wrong variant.
     if let Ok(i) = value.decode::<i64>() {
-        return (i as i8).encode(env);
+        let clamped = i.clamp(i64::from(i8::MIN), i64::from(i8::MAX));
+        return (clamped as i8).encode(env);
     }
 
     0i8.encode(env)
