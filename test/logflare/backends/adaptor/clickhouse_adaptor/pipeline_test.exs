@@ -8,12 +8,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.EncodedRow
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.Mapper
+  alias Logflare.Mapper.OtelDefaults
   alias Logflare.TestUtils
 
   # Arbitrary day bucket value — pipeline only passes it through telemetry/OTEL
@@ -718,8 +718,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         )
         |> Map.put(:ingested_at, nil)
 
-      map_config = MappingDefaults.for_log()
-      map_compiled = Mapper.compile!(%{map_config | output: nil})
+      map_compiled = Mapper.compile!(OtelDefaults.for_type(:log, :map))
       mapped_body = Mapper.map(event.body, map_compiled)
       gen_tid = setup_generation_events([event])
       messages = [batch_message(event, gen_tid, backend.id)]
@@ -770,7 +769,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         assert row["resource_attributes"] == mapped_body["resource_attributes"]
         assert row["scope_attributes"] == mapped_body["scope_attributes"]
         assert row["log_attributes"] == mapped_body["log_attributes"]
-        assert row["mapping_config_id"] == MappingDefaults.config_id(:log)
+        assert row["mapping_config_id"] == OtelDefaults.config_id(:log)
         assert row["ingested_at"] == nil
         assert row["timestamp_nano"] == timestamp * 1_000
       end)
@@ -839,8 +838,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         |> Map.put(:event_type, :metric)
         |> Map.put(:ingested_at, nil)
 
-      map_config = MappingDefaults.for_metric()
-      map_compiled = Mapper.compile!(%{map_config | output: nil})
+      map_compiled = Mapper.compile!(OtelDefaults.for_type(:metric, :map))
       mapped_body = Mapper.map(event.body, map_compiled)
       gen_tid = setup_generation_events([event])
       messages = [batch_message(event, gen_tid, backend.id)]
@@ -930,7 +928,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         assert row["exemplars.value"] == mapped_body["exemplars.value"]
         assert row["exemplars.span_id"] == mapped_body["exemplars.span_id"]
         assert row["exemplars.trace_id"] == mapped_body["exemplars.trace_id"]
-        assert row["mapping_config_id"] == MappingDefaults.config_id(:metric)
+        assert row["mapping_config_id"] == OtelDefaults.config_id(:metric)
         assert row["ingested_at"] == nil
         assert row["timestamp_nano"] == timestamp * 1_000
       end)
@@ -986,8 +984,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         |> Map.put(:event_type, :trace)
         |> Map.put(:ingested_at, nil)
 
-      map_config = MappingDefaults.for_trace()
-      map_compiled = Mapper.compile!(%{map_config | output: nil})
+      map_compiled = Mapper.compile!(OtelDefaults.for_type(:trace, :map))
       mapped_body = Mapper.map(event.body, map_compiled)
       gen_tid = setup_generation_events([event])
       messages = [batch_message(event, gen_tid, backend.id)]
@@ -1049,7 +1046,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         assert row["links.span_id"] == mapped_body["links.span_id"]
         assert row["links.trace_state"] == mapped_body["links.trace_state"]
         assert row["links.attributes"] == mapped_body["links.attributes"]
-        assert row["mapping_config_id"] == MappingDefaults.config_id(:trace)
+        assert row["mapping_config_id"] == OtelDefaults.config_id(:trace)
         assert row["ingested_at"] == nil
         assert row["timestamp_nano"] == timestamp * 1_000
       end)
