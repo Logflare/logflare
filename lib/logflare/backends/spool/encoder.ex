@@ -19,12 +19,13 @@ defmodule Logflare.Backends.Spool.Encoder do
   @zstd_compression_level 3
 
   @spec encode_chunk([LogEvent.t()], :ndjson | :etf, boolean(), :gzip | :zstd) ::
-          {segment :: binary(), compressed_byte_size :: non_neg_integer(), format_tag :: atom()}
+          {segment :: binary(), compressed_byte_size :: non_neg_integer(),
+           raw_byte_size :: non_neg_integer(), format_tag :: atom()}
   def encode_chunk(log_events, format, compress, algorithm) do
     raw = encode_raw(log_events, format)
     body = if compress, do: compress_binary(algorithm, raw), else: raw
     segment = Framing.encode_segment(body)
-    {segment, byte_size(body), format_tag(format, compress, algorithm)}
+    {segment, byte_size(body), byte_size(raw), format_tag(format, compress, algorithm)}
   end
 
   @spec file_extension(:ndjson | :etf, boolean(), :gzip | :zstd) :: String.t()

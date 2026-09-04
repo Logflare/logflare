@@ -45,17 +45,17 @@ defmodule Logflare.Backends.Spool.FramingTest do
       assert {:error, :corrupt_frame} = Framing.decode_segments(corrupted)
     end
 
-    test "detects a truncated frame (declared length longer than remaining data)" do
+    test "reports :not_framed for a truncated frame (declared length longer than remaining data)" do
       segment = Framing.encode_segment("hello world")
       truncated = binary_part(segment, 0, byte_size(segment) - 3)
 
-      assert {:error, :corrupt_frame} = Framing.decode_segments(truncated)
+      assert {:error, :not_framed} = Framing.decode_segments(truncated)
     end
 
-    test "detects trailing garbage too short to be a valid frame header" do
+    test "reports :not_framed for trailing garbage too short to be a valid frame header" do
       valid = Framing.encode_segment("hello")
 
-      assert {:error, :corrupt_frame} = Framing.decode_segments(valid <> <<1, 2, 3>>)
+      assert {:error, :not_framed} = Framing.decode_segments(valid <> <<1, 2, 3>>)
     end
   end
 end

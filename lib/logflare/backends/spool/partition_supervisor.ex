@@ -1,10 +1,12 @@
 defmodule Logflare.Backends.Spool.PartitionSupervisor do
   @moduledoc """
-  Starts `partitions` (config) `Logflare.Backends.Spool.Partition`+`Committer`
-  pairs, each registered under its own index in `PartitionRegistry` so
-  callers can route to one (`random_partition/0`) and the dev dashboard can
-  enumerate all of them (`partitions/0`) without depending on Broadway —
-  replaces `ProducerPipeline`'s Broadway topology entirely.
+  Starts `partitions` (config) `Logflare.Backends.Spool.Partition` processes,
+  each registered under its own index in `PartitionRegistry` so callers can
+  route to one (`random_partition/0`) and the dev dashboard can enumerate all
+  of them (`partitions/0`) without depending on Broadway — replaces
+  `ProducerPipeline`'s Broadway topology entirely. Each `Partition` spawns
+  its own `Committer`-backed commit tasks directly (see `Partition`'s
+  moduledoc); `Committer` is not itself a separately supervised process.
 
   Each partition's own index doubles as its GCS/S3 key prefix (see
   `Committer.file_key/1`) — previously a separate random `:rand.uniform/1`
@@ -21,7 +23,11 @@ defmodule Logflare.Backends.Spool.PartitionSupervisor do
   require Logger
 
   @registry __MODULE__.Registry
-  @default_batch_timeout 100
+  # 1s — the max amount of time raw data sits buffered before being
+  # committed, even if it never reaches the 32MB size threshold (see
+  # Partition's moduledoc). config/dev.exs already sets this explicitly;
+  # this is the fallback for any environment that doesn't.
+  @default_batch_timeout 1_000
   @default_compression_algorithm :zstd
 
   @spec start_link(keyword()) :: Supervisor.on_start()
@@ -68,6 +74,7 @@ defmodule Logflare.Backends.Spool.PartitionSupervisor do
     batch_timeout = Keyword.get(spool_config, :batch_timeout, @default_batch_timeout)
     compress = Keyword.get(spool_config, :compress, true)
     format = Keyword.get(spool_config, :format, :ndjson)
+    wal_dir = Keyword.fetch!(spool_config, :wal_dir)
 
     compression_algorithm =
       Keyword.get(spool_config, :compression_algorithm, @default_compression_algorithm)
@@ -87,7 +94,8 @@ defmodule Logflare.Backends.Spool.PartitionSupervisor do
           compression_algorithm: compression_algorithm,
           storage_mod: storage_mod,
           queue_mod: queue_mod,
-          queue_ref: queue_ref
+          queue_ref: queue_ref,
+          wal_dir: wal_dir
         ]
 
         Supervisor.child_spec({Partition, opts}, id: {Partition, index})

@@ -6,6 +6,14 @@ readonly METADATA_URL="http://metadata.google.internal/computeMetadata/v1/instan
 readonly CONTAINER_NAME="logflare"
 readonly CONTAINER_ENV_FILE="${LOGFLARE_CONTAINER_ENV_FILE:-/run/logflare-container.env}"
 readonly DOCKER_HOME="${LOGFLARE_DOCKER_HOME:-/home/logflare}"
+# Local WAL disk for the durable spool producer (see cloudbuild/staging/
+# deploy-dev.yaml's --create-disk=...,device-name=logflare-wal,...). Producer
+# instances get this disk attached; consumer instances don't — mount_wal_disk
+# is a no-op when the device isn't present, so this script stays identical
+# for both roles.
+readonly WAL_DEVICE="/dev/disk/by-id/google-logflare-wal"
+readonly WAL_HOST_MOUNT="/mnt/logflare-wal"
+readonly WAL_CONTAINER_DIR="/var/lib/logflare/spool_wal"
 
 # Tracks the current step so an unexpected failure reports where it happened.
 # Every phase is logged with elapsed seconds, which is what distinguishes a
@@ -64,6 +72,31 @@ wait_for_docker() {
   return 1
 }
 
+mount_wal_disk() {
+  if [[ ! -e "${WAL_DEVICE}" ]]; then
+    log "no WAL disk at ${WAL_DEVICE}, skipping (consumer role or not yet attached)"
+    return 0
+  fi
+
+  mkdir -p "${WAL_HOST_MOUNT}"
+
+  # Startup scripts can rerun (manual re-trigger, instance repair) — only
+  # format an unformatted disk, never a real one with data already on it.
+  if ! blkid "${WAL_DEVICE}" >/dev/null 2>&1; then
+    log "formatting WAL disk ${WAL_DEVICE}"
+    mkfs.ext4 -F "${WAL_DEVICE}"
+  fi
+
+  if ! mountpoint -q "${WAL_HOST_MOUNT}"; then
+    mount -o discard,defaults "${WAL_DEVICE}" "${WAL_HOST_MOUNT}"
+  fi
+
+  # World-writable: the container runs as whatever user the image defaults
+  # to, and this is dev/test infra, not a security boundary.
+  chmod 0777 "${WAL_HOST_MOUNT}"
+  log "WAL disk mounted at ${WAL_HOST_MOUNT}"
+}
+
 configure_firewall() {
   local chain
   local protocol
@@ -113,6 +146,9 @@ main() {
   phase "wait for docker"
   wait_for_docker
 
+  phase "mount WAL disk"
+  mount_wal_disk
+
   # Keep the existing container available if the registry is temporarily
   # unavailable during a manual startup-script rerun.
   phase "pull container image"
@@ -131,6 +167,7 @@ main() {
     --log-opt max-size=500m \
     --log-opt max-file=3 \
     --env-file "${CONTAINER_ENV_FILE}" \
+    -v "${WAL_HOST_MOUNT}:${WAL_CONTAINER_DIR}" \
     "${image}"
 
   phase "done"

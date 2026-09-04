@@ -23,12 +23,24 @@ defmodule Logflare.Backends.Spool.Framing do
 
   @doc """
   Splits a concatenated sequence of frames back into their payloads,
-  verifying each frame's CRC32. Returns `{:error, :corrupt_frame}` on the
-  first checksum mismatch or truncated/malformed frame, rather than
-  returning partial results — a caller can't tell a genuinely-empty file
-  from a silently-truncated one otherwise.
+  verifying each frame's CRC32, rather than returning partial results — a
+  caller can't tell a genuinely-empty file from a silently-truncated one
+  otherwise. Two distinct failure reasons, not collapsed into one, because
+  callers need to tell them apart (see `Logflare.Backends.Spool
+  .ConsumerPipeline.QueueProducer`'s legacy-format fallback):
+
+    * `:not_framed` — the bytes never looked like a frame at all (missing
+      header, or a declared length longer than the remaining data). This is
+      what a file written before this frame format existed looks like —
+      real content's leading bytes essentially never happen to form a
+      plausible length prefix.
+    * `:corrupt_frame` — the bytes *did* form a structurally valid frame
+      (header present, exactly the declared number of payload bytes
+      present) but the CRC didn't match — genuine corruption of an
+      already-framed file, not a format mismatch.
   """
-  @spec decode_segments(binary()) :: {:ok, [binary()]} | {:error, :corrupt_frame}
+  @spec decode_segments(binary()) ::
+          {:ok, [binary()]} | {:error, :corrupt_frame} | {:error, :not_framed}
   def decode_segments(binary) when is_binary(binary) do
     decode_segments(binary, [])
   end
@@ -46,5 +58,55 @@ defmodule Logflare.Backends.Spool.Framing do
     end
   end
 
-  defp decode_segments(_truncated, _acc), do: {:error, :corrupt_frame}
+  defp decode_segments(_truncated, _acc), do: {:error, :not_framed}
+
+  @doc """
+  Decodes as many complete, CRC-valid frames as possible from the front of
+  the binary, unlike `decode_segments/1` this never errors on a truncated or
+  corrupt tail — it returns everything decodable plus the undecodable
+  remainder, which is what recovering a WAL file after a crash needs (a
+  torn last write is expected, not corruption).
+  """
+  @spec decode_all(binary()) ::
+          {[binary()], valid_byte_size :: non_neg_integer(), rest :: binary()}
+  def decode_all(binary) when is_binary(binary), do: decode_all(binary, [], 0)
+
+  defp decode_all(
+         <<len::32-big, crc::32-big, payload::binary-size(len), rest::binary>> = bin,
+         acc,
+         valid
+       ) do
+    if :erlang.crc32(payload) == crc do
+      decode_all(rest, [payload | acc], valid + 8 + len)
+    else
+      {Enum.reverse(acc), valid, bin}
+    end
+  end
+
+  defp decode_all(rest, acc, valid), do: {Enum.reverse(acc), valid, rest}
+
+  @doc """
+  Reads a WAL file, truncating any torn tail in place (a write that never
+  finished before a crash). Returns the byte offset at which the next frame
+  should be appended. A missing file is treated as an empty log.
+  """
+  @spec recover!(Path.t()) :: non_neg_integer()
+  def recover!(path) do
+    case File.read(path) do
+      {:ok, contents} ->
+        {_payloads, valid, rest} = decode_all(contents)
+        if rest != "", do: truncate!(path, valid)
+        valid
+
+      {:error, :enoent} ->
+        0
+    end
+  end
+
+  defp truncate!(path, valid) do
+    {:ok, fd} = :file.open(path, [:read, :write, :raw, :binary])
+    {:ok, _} = :file.position(fd, valid)
+    :ok = :file.truncate(fd)
+    :ok = :file.close(fd)
+  end
 end

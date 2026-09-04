@@ -1,115 +1,108 @@
 defmodule Logflare.Backends.Spool.Committer do
   @moduledoc """
-  Performs the actual GCS/S3 PUT and Pub-Sub/SQS publish for a batch handed
-  off by its paired `Partition`, then replies directly to every blocking
-  caller in that batch — no `Broadway.Acknowledger` indirection (compare
-  `ProducerPipeline.ack/3`). Segments arrive already compressed and framed
-  (see `Logflare.Backends.Spool.Encoder`/`Framing`) — a commit is just
-  concatenation plus I/O.
+  Uploads one sealed WAL segment to GCS/S3 and notifies Pub-Sub/SQS.
 
-  Retries are scoped narrowly: only a `storage_mod.put/4` or
-  `queue_mod.publish/2` failure is retriable (up to `max_retries`,
-  mirroring `ProducerPipeline.maybe_requeue_failed/1`) — encoding/compression
-  already succeeded, in the caller's own process, before an entry ever
-  reached the Partition, so there's nothing else here that can fail.
+  Run inside a `Task` spawned directly by `Logflare.Backends.Spool.Partition`
+  (see its moduledoc) rather than owned by a persistent GenServer — every
+  rotated segment gets its own concurrent upload, bounded only by
+  Partition's `max_inflight_commits`, so one slow commit never blocks the
+  next segment's upload from starting. Partition owns the sealed file's
+  entire lifecycle (create, seal, delete); this module never touches the
+  file except to read it.
+
+  A failed attempt (storage PUT or queue publish) is retried forever with a
+  fixed delay between attempts, logging each failure — there is
+  deliberately no give-up-and-discard path. The sealed file is durable on
+  local disk for as long as it takes; permanently dropping events just
+  because GCS/Pub-Sub was unavailable for a while would contradict the
+  whole point of this design. A sustained, extended outage accumulates
+  un-uploaded sealed files on disk instead — an operational signal to page
+  on, not a reason to lose data.
   """
-
-  use GenServer
 
   import Bitwise
 
   require Logger
 
   alias Logflare.Backends.Spool.Encoder
-  alias Logflare.Backends.Spool.Partition
 
-  @default_max_retries 0
+  @default_retry_delay_ms 1_000
 
-  @spec start_link(keyword()) :: GenServer.on_start()
-  def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
+  @type config :: %{
+          bucket: String.t(),
+          storage_mod: module(),
+          queue_mod: module(),
+          queue_ref: String.t() | nil,
+          format: :ndjson | :etf,
+          compress: boolean(),
+          compression_algorithm: :gzip | :zstd,
+          index: non_neg_integer()
+        }
 
-  @spec commit(
-          GenServer.server(),
-          [Partition.entry()],
-          non_neg_integer(),
-          non_neg_integer(),
-          atom()
-        ) ::
-          :ok
-  def commit(committer, entries, total_bytes, total_count, trigger) do
-    GenServer.cast(committer, {:commit, entries, total_bytes, total_count, trigger})
+  @doc """
+  Uploads `sealed_path`'s contents and notifies the queue, retrying forever
+  on failure. Blocks the calling process until it succeeds, then sends
+  `{:commit_result, sealed_path, :ok}` to `partition`.
+  """
+  @spec commit(pid(), Path.t(), non_neg_integer(), atom(), config()) :: :ok
+  def commit(partition, sealed_path, total_count, trigger, config) do
+    :ok = do_commit(sealed_path, total_count, trigger, config, 0)
+    send(partition, {:commit_result, sealed_path, :ok})
+    :ok
   end
 
-  @impl GenServer
-  def init(opts) do
-    {:ok,
-     %{
-       partition: Keyword.fetch!(opts, :partition),
-       index: Keyword.fetch!(opts, :index),
-       bucket: Keyword.fetch!(opts, :bucket),
-       storage_mod: Keyword.fetch!(opts, :storage_mod),
-       queue_mod: Keyword.fetch!(opts, :queue_mod),
-       queue_ref: Keyword.fetch!(opts, :queue_ref),
-       format: Keyword.fetch!(opts, :format),
-       compress: Keyword.fetch!(opts, :compress),
-       compression_algorithm: Keyword.fetch!(opts, :compression_algorithm)
-     }}
-  end
-
-  @impl GenServer
-  def handle_cast({:commit, entries, _total_bytes, total_count, trigger}, state) do
+  defp do_commit(sealed_path, total_count, trigger, config, attempt) do
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
       %{batch_size: total_count, batch_trigger: trigger},
       %{backend_type: :spool_producer, batch_trigger: trigger}
     )
 
-    file_key = file_key(state)
-
-    {concat_us, body} =
-      :timer.tc(fn -> entries |> Enum.map(&elem(&1, 1)) |> IO.iodata_to_binary() end)
+    file_key = file_key(config)
+    {read_us, body} = :timer.tc(fn -> File.read!(sealed_path) end)
 
     {io_us, result} =
       :timer.tc(fn ->
         with {:upload, {:ok, _}} <-
-               {:upload, state.storage_mod.put(state.bucket, file_key, body, headers(state))},
+               {:upload, config.storage_mod.put(config.bucket, file_key, body, headers(config))},
              {:notify, :ok} <-
-               {:notify, notify_queue(state, file_key, total_count)} do
+               {:notify, notify_queue(config, file_key, total_count)} do
           {:ok, file_key}
         end
       end)
 
-    format_tag = Encoder.format_tag(state.format, state.compress, state.compression_algorithm)
-    emit_storage_put_telemetry(format_tag, byte_size(body), result, concat_us, io_us)
+    format_tag = Encoder.format_tag(config.format, config.compress, config.compression_algorithm)
+    emit_storage_put_telemetry(format_tag, byte_size(body), result, read_us, io_us)
 
     case result do
       {:ok, _file_key} ->
         emit_batch_result(:ok, nil, total_count)
         Logger.debug("spool_committer: wrote #{total_count} events to spool", key: file_key)
-        Enum.each(entries, fn {from, _seg, _bs, _ec, _r} -> reply(from, :ok) end)
+        :ok
 
       {stage, {:error, reason}} ->
         emit_batch_result(:error, stage, total_count)
 
-        Logger.error("spool_committer: #{stage} failed key=#{file_key} error=#{inspect(reason)}")
+        Logger.error(
+          "spool_committer: #{stage} failed key=#{file_key} attempt=#{attempt + 1} " <>
+            "error=#{inspect(reason)}"
+        )
 
-        maybe_requeue_failed(state, entries, reason)
+        Process.sleep(retry_delay_ms())
+        do_commit(sealed_path, total_count, trigger, config, attempt + 1)
     end
-
-    send(state.partition, :commit_done)
-    {:noreply, state}
   end
 
-  defp file_key(state) do
-    ext = Encoder.file_extension(state.format, state.compress, state.compression_algorithm)
-    "#{state.index}/#{generate_uuidv7()}.#{ext}"
+  defp file_key(config) do
+    ext = Encoder.file_extension(config.format, config.compress, config.compression_algorithm)
+    "#{config.index}/#{generate_uuidv7()}.v2.#{ext}"
   end
 
-  defp headers(state) do
-    base = %{"content-type" => Encoder.content_type(state.format)}
+  defp headers(config) do
+    base = %{"content-type" => Encoder.content_type(config.format)}
 
     headers =
-      case Encoder.content_encoding(state.compress, state.compression_algorithm) do
+      case Encoder.content_encoding(config.compress, config.compression_algorithm) do
         nil -> base
         encoding -> Map.put(base, "content-encoding", encoding)
       end
@@ -119,9 +112,9 @@ defmodule Logflare.Backends.Spool.Committer do
 
   defp notify_queue(%{queue_ref: nil}, _file_key, _count), do: :ok
 
-  defp notify_queue(state, file_key, count) do
+  defp notify_queue(config, file_key, count) do
     body = Jason.encode!(%{file_key: file_key, event_count: count})
-    result = state.queue_mod.publish(state.queue_ref, body)
+    result = config.queue_mod.publish(config.queue_ref, body)
 
     :telemetry.execute(
       [:logflare, :backends, :spool, :queue, :publish],
@@ -140,45 +133,9 @@ defmodule Logflare.Backends.Spool.Committer do
     end
   end
 
-  # Every entry in a failed commit is retried or given up on as a whole,
-  # same as ProducerPipeline.maybe_requeue_failed/1 — a chunk was already
-  # atomically admitted as one unit, so it's never split into "some retry,
-  # some don't". A :notify failure hits this same path even though the file
-  # is already durably written: re-uploading under a fresh key on retry is
-  # simpler than tracking "durably written but never notified" as a distinct
-  # state, and the orphaned file is cleaned up by the bucket's lifecycle policy.
-  defp maybe_requeue_failed(state, entries, reason) do
-    max_retries = spool_max_retries()
-
-    {retriable, exhausted} =
-      Enum.split_with(entries, fn {_from, _seg, _bs, _ec, retries} -> retries < max_retries end)
-
-    if exhausted != [] do
-      Logger.warning(
-        "spool_committer: dropping #{length(exhausted)} chunks: exhausted #{max_retries} retries"
-      )
-
-      Enum.each(exhausted, fn {from, _seg, _bs, _ec, _r} -> reply(from, {:error, reason}) end)
-    end
-
-    if retriable != [] do
-      Logger.warning("spool_committer: requeuing #{length(retriable)} failed chunks for retry")
-
-      bumped =
-        Enum.map(retriable, fn {from, seg, bs, ec, retries} ->
-          {from, seg, bs, ec, retries + 1}
-        end)
-
-      Partition.requeue(state.partition, bumped)
-    end
-  end
-
-  defp reply(nil, _result), do: :ok
-  defp reply(from, result), do: GenServer.reply(from, result)
-
-  defp spool_max_retries do
+  defp retry_delay_ms do
     Application.get_env(:logflare, :spool, [])
-    |> Keyword.get(:max_retries, @default_max_retries)
+    |> Keyword.get(:retry_delay_ms, @default_retry_delay_ms)
   end
 
   defp emit_storage_put_telemetry(format, bytes, result, encode_us, upload_us) do

@@ -22,11 +22,13 @@ defmodule Logflare.Backends.Spool.EncoderTest do
     test "ndjson uncompressed round-trips to one JSON line per event, framed" do
       events = [log_event(%{"message" => "one"}), log_event(%{"message" => "two"})]
 
-      {segment, byte_size, format_tag} = Encoder.encode_chunk(events, :ndjson, false, :gzip)
+      {segment, compressed_byte_size, raw_byte_size, format_tag} =
+        Encoder.encode_chunk(events, :ndjson, false, :gzip)
 
       assert format_tag == :ndjson
       assert {:ok, [body]} = Framing.decode_segments(segment)
-      assert byte_size(body) == byte_size
+      assert byte_size(body) == compressed_byte_size
+      assert compressed_byte_size == raw_byte_size
 
       lines = body |> String.trim() |> String.split("\n") |> Enum.map(&Jason.decode!/1)
       assert [%{"body" => %{"message" => "one"}}, %{"body" => %{"message" => "two"}}] = lines
@@ -39,9 +41,10 @@ defmodule Logflare.Backends.Spool.EncoderTest do
       test "ndjson+#{algorithm} round-trips through decompression" do
         events = [log_event(%{"message" => "hello"}, 123)]
 
-        {segment, _byte_size, format_tag} =
+        {segment, _compressed_byte_size, raw_byte_size, format_tag} =
           Encoder.encode_chunk(events, :ndjson, true, unquote(algorithm))
 
+        assert raw_byte_size > 0
         assert format_tag == unquote(:"ndjson_#{if algorithm == :gzip, do: "gz", else: "zstd"}")
         assert {:ok, [body]} = Framing.decode_segments(segment)
 
@@ -52,9 +55,10 @@ defmodule Logflare.Backends.Spool.EncoderTest do
       test "etf+#{algorithm} round-trips through decompression and binary_to_term" do
         events = [log_event(%{"message" => "hello"}, 123)]
 
-        {segment, _byte_size, format_tag} =
+        {segment, _compressed_byte_size, raw_byte_size, format_tag} =
           Encoder.encode_chunk(events, :etf, true, unquote(algorithm))
 
+        assert raw_byte_size > 0
         assert format_tag == unquote(:"etf_#{if algorithm == :gzip, do: "gz", else: "zstd"}")
         assert {:ok, [body]} = Framing.decode_segments(segment)
 
@@ -65,8 +69,10 @@ defmodule Logflare.Backends.Spool.EncoderTest do
     test "etf uncompressed round-trips to a single term of records, framed" do
       events = [log_event(%{"message" => "hello"}, 123)]
 
-      {segment, _byte_size, format_tag} = Encoder.encode_chunk(events, :etf, false, :gzip)
+      {segment, compressed_byte_size, raw_byte_size, format_tag} =
+        Encoder.encode_chunk(events, :etf, false, :gzip)
 
+      assert compressed_byte_size == raw_byte_size
       assert format_tag == :etf
       assert {:ok, [body]} = Framing.decode_segments(segment)
       assert [%{via_rule_id: 123}] = :erlang.binary_to_term(body)

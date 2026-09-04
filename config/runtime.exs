@@ -593,6 +593,12 @@ spool_compression_algorithm_override =
             "Invalid SPOOL_COMPRESSION_ALGORITHM=#{other}. Must be gzip or zstd."
   end
 
+# Local disk directory for the producer's durable WAL segments (see
+# Logflare.Backends.Spool.Partition). Falls back to a tmp dir so a plain
+# `mix phx.server` still boots with spool mode on, but that fallback is
+# not durable across a real restart — set this explicitly wherever the
+# WAL is meant to survive one (see cloudbuild/gce-startup.sh's
+# mount_wal_disk for how the dev/staging producer instances provide it).
 spool_overrides =
   spool_mode_override ++
     spool_provider_override ++
@@ -600,7 +606,8 @@ spool_overrides =
     spool_compression_algorithm_override ++
     if((q = System.get_env("SPOOL_QUEUE_NAME")) && q != "", do: [queue_name: q], else: []) ++
     if((t = System.get_env("SPOOL_PUBSUB_TOPIC")) && t != "", do: [pubsub_topic: t], else: []) ++
-    if (b = System.get_env("SPOOL_BUCKET")) && b != "", do: [bucket: b], else: []
+    if((b = System.get_env("SPOOL_BUCKET")) && b != "", do: [bucket: b], else: []) ++
+    if (w = System.get_env("SPOOL_WAL_DIR")) && w != "", do: [wal_dir: w], else: []
 
 if spool_overrides != [] do
   config :logflare,

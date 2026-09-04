@@ -656,12 +656,12 @@ defmodule Logflare.Backends do
     algorithm =
       Keyword.get(spool_config, :compression_algorithm, @default_spool_compression_algorithm)
 
-    {compress_us, {segment, byte_size, format_tag}} =
+    {compress_us, {segment, compressed_bytes, raw_bytes, format_tag}} =
       :timer.tc(fn -> SpoolEncoder.encode_chunk(log_events, format, compress, algorithm) end)
 
     :telemetry.execute(
       [:logflare, :backends, :spool, :chunk, :compress],
-      %{count: 1, bytes: byte_size, duration: compress_us},
+      %{count: 1, bytes: compressed_bytes, duration: compress_us},
       %{format: format_tag}
     )
 
@@ -672,16 +672,20 @@ defmodule Logflare.Backends do
         {:error, :no_spool_partition_available}
 
       partition ->
+        # Partition's rotation threshold is sized off raw_bytes (uncompressed),
+        # not the compressed segment written to disk — see its moduledoc —
+        # so a file's actual log volume stays predictable regardless of how
+        # well any given chunk happened to compress.
         if blocking_ingest?() do
           SpoolPartition.append(
             partition,
             segment,
-            byte_size,
+            raw_bytes,
             event_count,
             @default_spool_append_timeout
           )
         else
-          SpoolPartition.append_async(partition, segment, byte_size, event_count)
+          SpoolPartition.append_async(partition, segment, raw_bytes, event_count)
           :ok
         end
     end

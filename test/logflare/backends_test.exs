@@ -1961,6 +1961,15 @@ defmodule Logflare.BackendsTest do
       # every test below — dispatch_to_spool_producer/1 routes straight into
       # it (no ETS/ChunkProducer poll loop to simulate anymore). A short
       # batch_timeout keeps the blocking-ingest test fast.
+      wal_dir =
+        Path.join(
+          System.tmp_dir!(),
+          "backends_test_spool_wal_#{System.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(wal_dir)
+      on_exit(fn -> File.rm_rf!(wal_dir) end)
+
       Application.put_env(:logflare, :spool,
         mode: :disable,
         partitions: 1,
@@ -1968,7 +1977,8 @@ defmodule Logflare.BackendsTest do
         bucket: "test-bucket",
         provider: :gcp,
         storage_mod: StubSpoolStorage,
-        queue_mod: StubSpoolQueue
+        queue_mod: StubSpoolQueue,
+        wal_dir: wal_dir
       )
 
       start_supervised!(PartitionSupervisor)

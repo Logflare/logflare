@@ -614,12 +614,18 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     result
   end
 
-  # A spool file is one or more independently-encoded (and independently
-  # compressed) chunks concatenated as length+CRC32-framed segments — see
-  # Logflare.Backends.Spool.Framing's moduledoc for why concatenation alone
-  # isn't safe to decode (zstd in particular silently drops everything past
-  # the first member on raw concatenation). Each segment is decompressed and
-  # parsed on its own, then the resulting event lists are concatenated.
+  # A ".v2." spool file (see Committer.file_key/1) is one or more
+  # independently-encoded (and independently compressed) chunks concatenated
+  # as length+CRC32-framed segments — see Logflare.Backends.Spool.Framing's
+  # moduledoc for why concatenation alone isn't safe to decode (zstd in
+  # particular silently drops everything past the first member on raw
+  # concatenation). Each segment is decompressed and parsed on its own, then
+  # the resulting event lists are concatenated. A file without ".v2." was
+  # written by the pre-framing main-branch producer: one whole
+  # compressed-or-not blob, no wrapper. Dispatching on the key itself, rather
+  # than sniffing the content, is exact — there's no ambiguity to fall back
+  # on — and lets old and new producers' output coexist in the same
+  # queue/bucket across a rollout.
   #
   # Decompression and parsing are both capable of raising on truncated or
   # otherwise corrupt content (:zlib.gunzip/1, :ezstd.decompress/1, and
@@ -628,14 +634,31 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   # so the caller can ack (drop) the poison message instead of losing the
   # handle to safe_fetch_next's outer rescue and retrying forever.
   defp decode_content(file_key, raw) do
-    case Framing.decode_segments(raw) do
-      {:ok, segments} -> decode_segments(file_key, segments)
-      {:error, :corrupt_frame} -> {:error, {:decode_failed, :corrupt_frame}}
+    if versioned_v2?(file_key) do
+      case Framing.decode_segments(raw) do
+        {:ok, segments} -> decode_segments(file_key, segments)
+        {:error, reason} -> {:error, {:decode_failed, reason}}
+      end
+    else
+      decode_legacy_content(file_key, raw)
     end
   rescue
     e -> {:error, {:decode_failed, e}}
   catch
     kind, reason -> {:error, {:decode_failed, %RuntimeError{message: inspect({kind, reason})}}}
+  end
+
+  defp versioned_v2?(file_key), do: String.contains?(file_key, ".v2.")
+
+  defp decode_legacy_content(file_key, raw) do
+    content =
+      cond do
+        String.ends_with?(file_key, ".gz") -> :zlib.gunzip(raw)
+        String.ends_with?(file_key, ".zst") -> decompress_zstd!(raw)
+        true -> raw
+      end
+
+    parse_content(file_key, content)
   end
 
   # parse_content/2 always succeeds or raises (never returns {:error, _}) —
