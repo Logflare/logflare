@@ -126,6 +126,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       ),
       Field.flat_map("resource_attributes",
         paths: ["$.resource"],
+        exclude_keys: ["_project_region", "_service_name"],
+        pick_mode: :merge,
         pick: [
           {"application_id", ["$.app_id", "$.application_id", "$.metadata.app_id"]},
           {"application_name",
@@ -295,6 +297,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       ),
       Field.flat_map("resource_attributes",
         paths: ["$.resource"],
+        exclude_keys: ["_project_region", "_service_name"],
+        pick_mode: :merge,
         pick: [
           {"application_id", ["$.app_id", "$.application_id", "$.metadata.app_id"]},
           {"application",
@@ -591,6 +595,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       ),
       Field.flat_map("resource_attributes",
         paths: ["$.resource"],
+        exclude_keys: ["_project_region", "_service_name"],
+        pick_mode: :merge,
         pick: [
           {"application_id", ["$.app_id", "$.application_id", "$.metadata.app_id"]},
           {"application",

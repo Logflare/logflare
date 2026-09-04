@@ -405,10 +405,34 @@ fn select_json_value<'a>(
 
     let picked = build_pick_map(env, body, field, nil, flat_keys, cache);
     if picked == nil {
-        value
-    } else {
-        picked
+        return value;
     }
+
+    if !field.pick_merge {
+        return picked;
+    }
+
+    merge_pick_over_source(value, picked, nil)
+}
+
+/// Union a resolved pick map over the path/paths value, pick winning on key
+/// collision. Falls back to the pick map alone when the source did not resolve
+/// to a map, which is the same shape `:replace` would have produced.
+fn merge_pick_over_source<'a>(source: Term<'a>, picked: Term<'a>, nil: Term<'a>) -> Term<'a> {
+    if source == nil || !source.is_map() {
+        return picked;
+    }
+
+    let Some(entries) = MapIterator::new(picked) else {
+        return source;
+    };
+
+    let mut result = source;
+    for (key, value) in entries {
+        result = result.map_put(key, value).unwrap_or(result);
+    }
+
+    result
 }
 
 /// Build a sparse map from pick entries.

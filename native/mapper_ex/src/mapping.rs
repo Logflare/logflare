@@ -40,6 +40,9 @@ pub struct CompiledField {
     pub exclude_keys: Vec<Vec<u8>>,
     pub elevate_keys: Vec<Vec<u8>>,
     pub pick: Vec<PickEntry>,
+    /// When true, a resolved pick map is unioned over the path/paths value
+    /// (pick winning on collision) instead of replacing it.
+    pub pick_merge: bool,
     pub enum8_data: Option<Enum8Data>,
     pub filter_nil: bool,
     pub flat_map_value_type: FlatMapValueType,
@@ -390,6 +393,7 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
     let exclude_keys = decode_string_list_bytes(env, field, "exclude_keys");
     let elevate_keys = decode_string_list_bytes(env, field, "elevate_keys");
     let pick = decode_pick(env, field)?;
+    let pick_merge = decode_pick_merge(env, field)?;
 
     let enum8_data = if matches!(field_type, FieldType::Enum8 { .. }) {
         Some(decode_enum8_data(env, field)?)
@@ -413,6 +417,7 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
         exclude_keys,
         elevate_keys,
         pick,
+        pick_merge,
         enum8_data,
         filter_nil,
         flat_map_value_type,
@@ -617,6 +622,17 @@ fn decode_value_map_str<'a>(
         result.insert(key.to_lowercase(), val);
     }
     Ok(result)
+}
+
+fn decode_pick_merge<'a>(env: Env<'a>, field: Term<'a>) -> Result<bool, String> {
+    match get_string_key(env, field, "pick_mode")?.as_deref() {
+        None | Some("replace") => Ok(false),
+        Some("merge") => Ok(true),
+        Some(other) => Err(format!(
+            "pick_mode must be \"replace\" or \"merge\", got {:?}",
+            other
+        )),
+    }
 }
 
 fn decode_pick<'a>(env: Env<'a>, field: Term<'a>) -> Result<Vec<PickEntry>, String> {
