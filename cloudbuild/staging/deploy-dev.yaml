@@ -38,37 +38,23 @@ steps:
     args:
       - -ceu
       - |
-        # Extra local disk for the producer's durable spool WAL (see
-        # cloudbuild/gce-startup.sh's mount_wal_disk and
-        # Logflare.Backends.Spool.Partition). Not yet a MIG stateful disk —
-        # auto-delete=yes means it's recreated fresh on every template roll,
-        # so it survives an OOM/container restart on the same instance but
-        # not an instance replacement. The consumer role has no local WAL,
-        # so it gets no extra disk.
-        disk_args=()
-        if [[ "$$1" == "producer" ]]; then
-          disk_args=(--create-disk=auto-delete=yes,device-name=logflare-wal,size=20GB,type=pd-balanced)
-        fi
-
-        ./cloudbuild/create-instance-template.sh logflare-staging "$$2" \
+        ./cloudbuild/create-instance-template.sh logflare-staging "$$1" \
           --boot-disk-size=10GB \
           --boot-disk-type=pd-balanced \
-          --machine-type="$$3" \
+          --machine-type="$$2" \
           --network-interface=network=default,network-tier=PREMIUM,no-address \
           --maintenance-policy=TERMINATE \
           --service-account=compute-engine-2022@logflare-staging.iam.gserviceaccount.com \
           --scopes=https://www.googleapis.com/auth/cloud-platform \
           --tags=logflare-spool-test,phoenix-http \
           --metadata-from-file=startup-script=./cloudbuild/gce-startup.sh,shutdown-script=./cloudbuild/shutdown.sh,logflare-container-env=./gce-container.env \
-          --metadata=google-monitoring-enabled=true,google-logging-enabled=true,logflare-container-image="$$4" \
+          --metadata=google-monitoring-enabled=true,google-logging-enabled=true,logflare-container-image="$$3" \
           --no-shielded-secure-boot \
           --shielded-vtpm \
           --shielded-integrity-monitoring \
           --image=cos-stable-109-17800-147-54 \
-          --image-project=cos-cloud \
-          "$${disk_args[@]}"
+          --image-project=cos-cloud
       - --
-      - ${_ROLE}
       - ${_TEMPLATE_NAME}
       - ${_INSTANCE_TYPE}
       - ${_CONTAINER_IMAGE}
@@ -143,8 +129,10 @@ substitutions:
   _SPOOL_PUBSUB_TOPIC: projects/logflare-staging/topics/dev-spool-${_DEV_NUMBER}
   _SPOOL_QUEUE_NAME: projects/logflare-staging/subscriptions/dev-spool-${_DEV_NUMBER}-sub
   # Where the producer's durable spool WAL lives inside the container — must
-  # match the host mount point cloudbuild/gce-startup.sh's mount_wal_disk
-  # bind-mounts into it. Set unconditionally (consumer just never reads it).
+  # match the host path cloudbuild/gce-startup.sh bind-mounts into it (a
+  # directory on the boot disk's writable /mnt/stateful_partition, not a
+  # separate disk — see gce-startup.sh for why). Set unconditionally
+  # (consumer just never reads it).
   _SPOOL_WAL_DIR: /var/lib/logflare/spool_wal
   # Blocks ingest_logs/4 callers until their chunk is durably uploaded +
   # queue-notified (see Backends.dispatch_to_spool_producer/1), instead of the
