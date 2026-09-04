@@ -7,7 +7,6 @@ defmodule Logflare.Bench.ClickHousePipelineData do
   alias Logflare.LogEvent
   alias Logflare.Mapper
 
-  @mapping_config_id "00000000-0000-0000-0001-000000000003"
   @source_uuid String.to_atom("550e8400-e29b-41d4-a716-446655440000")
 
   @type event_type :: :log | :metric | :trace
@@ -673,7 +672,7 @@ defmodule Logflare.Bench.ClickHousePipelineData do
       event_type: type,
       day_bucket: div(1_700_000_000 + i, 86_400),
       ingested_at: DateTime.from_unix!(1_700_000_000_000_000 + i, :microsecond),
-      body: Map.put(body, "mapping_config_id", @mapping_config_id)
+      body: Map.put(body, "mapping_config_id", MappingDefaults.config_id(type))
     }
   end
 
