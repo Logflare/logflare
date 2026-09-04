@@ -10,8 +10,7 @@ defmodule Logflare.ContextCache do
 
   The cache implementation directly queries the relevant context cache to be busted and performs
   primary key checking within the matchspec. This approach queries across a narrower set of records,
-  providing better performance compared to a reverse index approach. Cache misses read from the
-  primary database so a completed WAL invalidation cannot be followed by a stale replica fill.
+  providing better performance compared to a reverse index approach.
 
   If customization of busting is needed, cache module may implement `c:bust_by/1` callback expecting
   a keyword list instead of primary key for entry.
@@ -33,8 +32,8 @@ defmodule Logflare.ContextCache do
   ## Gossip
 
   Cache misses are optionally multicast to peer nodes via `:erpc` to warm the cluster.
-  WAL invalidations are ordered against local cache population, while short-lived
-  tombstones filter stale incoming messages.
+  Cache population that overlaps a WAL invalidation is ordered against that invalidation,
+  while short-lived tombstones filter stale incoming messages.
   """
 
   import Cachex.Spec, only: [cache: 1]
@@ -55,7 +54,7 @@ defmodule Logflare.ContextCache do
     cache_key = {fun, args}
 
     fetch(cache, cache_key, fn ->
-      apply(context, fun, args)
+      Logflare.Repo.apply_with_replica(context, fun, args)
     end)
   end
 
