@@ -8,6 +8,34 @@ defmodule Logflare.Backends.BackendTest do
       {:ok, user: user}
     end
 
+    test "defaults `enabled` to true and casts updates", %{user: user} do
+      attrs = %{
+        name: "Test Webhook Backend",
+        type: :webhook,
+        config: %{url: "https://example.com/webhook"}
+      }
+
+      changeset = Backend.changeset(Ecto.build_assoc(user, :backends), attrs)
+      assert changeset.valid?
+      assert get_field(changeset, :enabled) == true
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "https://example.com/webhook"}
+        )
+
+      changeset = Backend.changeset(backend, %{enabled: false})
+      assert changeset.valid?
+      assert get_change(changeset, :enabled) == false
+
+      # Reject explicit nil so the persisted routing state is always boolean.
+      changeset = Backend.changeset(backend, %{enabled: nil})
+      refute changeset.valid?
+      assert errors_on(changeset).enabled == ["can't be blank"]
+    end
+
     test "validates `default_ingest?` for BigQuery backend", %{user: user} do
       attrs = %{
         name: "Test BigQuery Backend",
