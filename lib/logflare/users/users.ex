@@ -39,7 +39,8 @@ defmodule Logflare.Users do
     from(u in User,
       join: s in assoc(u, :sources),
       where: s.log_events_updated_at >= ago(1, "day"),
-      order_by: {:desc, s.log_events_updated_at},
+      group_by: u.id,
+      order_by: [desc: max(s.log_events_updated_at), asc: u.id],
       limit: ^limit,
       select: u
     )
