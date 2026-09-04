@@ -5,4 +5,5 @@ defmodule LogflareGrpc.Endpoint do
   run(LogflareGrpc.Trace.Server)
   run(LogflareGrpc.Metrics.Server)
   run(LogflareGrpc.Logs.Server)
+  run(LogflareGrpc.Vector.Server)
 end
