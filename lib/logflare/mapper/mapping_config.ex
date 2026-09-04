@@ -137,6 +137,7 @@ defmodule Logflare.Mapper.MappingConfig do
     |> maybe_add("exclude_keys", f.exclude_keys)
     |> maybe_add("elevate_keys", f.elevate_keys)
     |> maybe_add("value_type", f.value_type)
+    |> maybe_add("pick_mode", f.pick_mode)
     |> maybe_add_filters(f.filters)
     |> maybe_add_filter_nil(f.filter_nil)
     |> maybe_add_pick(f.pick)

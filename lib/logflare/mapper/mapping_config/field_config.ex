@@ -79,6 +79,12 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
       coalesce paths; resolved entries are included in the output, unresolved are omitted.
       If pick produces a non-empty map, it becomes the field value. If empty, falls back
       to `:path`/`:paths`.
+    * `:pick_mode` — `:replace` (default) or `:merge`. Controls what a non-empty pick map
+      does to the `:path`/`:paths` value. `:replace` discards the source, so `:pick` and
+      `:paths` are effectively either/or. `:merge` unions the two, pick entries winning on
+      key collision, so curated keys and the raw source map both reach the output.
+      `:exclude_keys` and `:elevate_keys` apply to the merged result. Note `:paths` remains
+      a coalesce in both modes — only the first resolving path contributes.
 
   ### `flat_map/2`
 
@@ -93,7 +99,8 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
     * Lists: JSON-encoded as strings (e.g. `[1, 2]` → `"[1,2]"`)
     * Scalars: coerced to string (`42` → `"42"`, `true` → `"true"`)
     * nil values: omitted from the output map
-    * Accepts the same options as `json/2`: `:exclude_keys`, `:elevate_keys`, `:pick`
+    * Accepts the same options as `json/2`: `:exclude_keys`, `:elevate_keys`, `:pick`,
+      `:pick_mode`
 
   ## Array Types
 
@@ -215,6 +222,7 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
     field(:filters, :map)
     field(:filter_nil, :boolean, default: false)
     field(:value_type, :string)
+    field(:pick_mode, :string)
     embeds_many(:pick, PickEntry)
     embeds_many(:infer, InferRule)
   end
@@ -240,7 +248,8 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
         :elevate_keys,
         :filters,
         :filter_nil,
-        :value_type
+        :value_type,
+        :pick_mode
       ],
       empty_values: []
     )
@@ -308,6 +317,7 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
 
     base
     |> maybe_put_pick(opts[:pick])
+    |> maybe_put_pick_mode(opts[:pick_mode])
   end
 
   @spec array_string(String.t(), keyword()) :: t()
@@ -345,7 +355,10 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
   def flat_map(name, opts \\ []) do
     opts = Keyword.put_new(opts, :value_type, "string")
     base = build(name, "flat_map", opts, [:exclude_keys, :elevate_keys, :value_type])
-    maybe_put_pick(base, opts[:pick])
+
+    base
+    |> maybe_put_pick(opts[:pick])
+    |> maybe_put_pick_mode(opts[:pick_mode])
   end
 
   @spec array_flat_map(String.t(), keyword()) :: t()
@@ -381,6 +394,12 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
 
   defp maybe_put(struct, _key, nil), do: struct
   defp maybe_put(struct, key, value), do: Map.put(struct, key, value)
+
+  defp maybe_put_pick_mode(struct, nil), do: struct
+  defp maybe_put_pick_mode(struct, :replace), do: struct
+  defp maybe_put_pick_mode(struct, "replace"), do: struct
+  defp maybe_put_pick_mode(struct, :merge), do: %{struct | pick_mode: "merge"}
+  defp maybe_put_pick_mode(struct, "merge"), do: %{struct | pick_mode: "merge"}
 
   defp maybe_put_pick(struct, nil), do: struct
 

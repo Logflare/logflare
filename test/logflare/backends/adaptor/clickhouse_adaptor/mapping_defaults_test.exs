@@ -199,6 +199,150 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
     end
   end
 
+  describe "resource_attributes merges the raw resource map with pick entries" do
+    test "keeps uncurated resource keys alongside curated ones", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{
+        "project" => "supadev",
+        "resource" => %{
+          "_flow_name" => "branch-creation",
+          "_instance_color" => "green",
+          "_project_region" => "eu-central-1",
+          "_service_name" => "supadev",
+          "_supadev_nix_hash" => "9f9ab3c7408383251aae7378698b31e6",
+          "_telemetry_sdk_language" => "rust",
+          "_telemetry_sdk_name" => "opentelemetry",
+          "_telemetry_sdk_version" => "0.31.0",
+          "environment" => "staging",
+          "host" => "ip-10-0-1-129.eu-central-1.compute.internal"
+        },
+        "timestamp" => 1_775_591_051_937_363
+      }
+
+      for compiled <- [log, metric, trace] do
+        res_attrs = Mapper.map(payload, compiled)["resource_attributes"]
+
+        assert map_size(res_attrs) == 11
+
+        for key <- ~w(
+              _flow_name _instance_color _supadev_nix_hash
+              _telemetry_sdk_language _telemetry_sdk_name _telemetry_sdk_version
+            ) do
+          assert Map.has_key?(res_attrs, key), "missing uncurated key #{key}"
+        end
+
+        refute Map.has_key?(res_attrs, "_project_region")
+        refute Map.has_key?(res_attrs, "_service_name")
+
+        assert res_attrs["project"] == "supadev"
+        assert res_attrs["region"] == "eu-central-1"
+        assert res_attrs["service_name"] == "supadev"
+        assert res_attrs["environment"] == "staging"
+        assert res_attrs["host"] == "ip-10-0-1-129.eu-central-1.compute.internal"
+      end
+    end
+
+    test "pick entries win over a colliding raw resource key", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{
+        "metadata" => %{"environment" => "from-metadata"},
+        "resource" => %{"environment" => "from-resource", "uncurated" => "kept"},
+        "timestamp" => 1_775_591_051_937_363
+      }
+
+      for compiled <- [log, metric, trace] do
+        res_attrs = Mapper.map(payload, compiled)["resource_attributes"]
+
+        assert res_attrs["environment"] == "from-metadata"
+        assert res_attrs["uncurated"] == "kept"
+      end
+    end
+
+    test "still yields the pick map alone when resource is absent", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{"project" => "proj", "timestamp" => 1_775_591_051_937_363}
+
+      for compiled <- [log, metric, trace] do
+        assert Mapper.map(payload, compiled)["resource_attributes"] == %{"project" => "proj"}
+      end
+    end
+
+    test "still yields the raw resource map alone when no pick entry resolves", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{
+        "resource" => %{"only_uncurated" => "v"},
+        "timestamp" => 1_775_591_051_937_363
+      }
+
+      for compiled <- [log, metric, trace] do
+        assert Mapper.map(payload, compiled)["resource_attributes"] == %{"only_uncurated" => "v"}
+      end
+    end
+
+    test "drops the underscore-namespaced duplicates that have a curated alias", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{
+        "resource" => %{"_project_region" => "eu-central-1", "_service_name" => "supadev"},
+        "timestamp" => 1_775_591_051_937_363
+      }
+
+      for compiled <- [log, metric, trace] do
+        res_attrs = Mapper.map(payload, compiled)["resource_attributes"]
+
+        assert res_attrs == %{"region" => "eu-central-1", "service_name" => "supadev"}
+      end
+    end
+
+    test "a resource-scoped value is dropped when metadata wins its curated alias", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{
+        "metadata" => %{"region" => "us-east-1"},
+        "resource" => %{"_project_region" => "eu-central-1"},
+        "timestamp" => 1_775_591_051_937_363
+      }
+
+      for compiled <- [log, metric, trace] do
+        res_attrs = Mapper.map(payload, compiled)["resource_attributes"]
+
+        assert res_attrs == %{"region" => "us-east-1"}
+      end
+    end
+
+    test "flattens nested resource values to dot keys", %{log: log, metric: metric, trace: trace} do
+      payload = %{
+        "project" => "proj",
+        "resource" => %{"nested" => %{"deep" => true}, "port" => 8080},
+        "timestamp" => 1_775_591_051_937_363
+      }
+
+      for compiled <- [log, metric, trace] do
+        res_attrs = Mapper.map(payload, compiled)["resource_attributes"]
+
+        assert res_attrs["nested.deep"] == "true"
+        assert res_attrs["port"] == "8080"
+        assert res_attrs["project"] == "proj"
+      end
+    end
+  end
+
   describe "service_name resolution across all event types" do
     test "resolves an underscore-namespaced resource key", %{
       log: log,
