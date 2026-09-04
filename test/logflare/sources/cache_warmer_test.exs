@@ -37,9 +37,8 @@ defmodule Logflare.Sources.CacheWarmerTest do
     assert {:ok, read_keys} = Cachex.keys(Cache)
     assert length(read_keys) == 3
 
-    assert {:ok, pairs} = CacheWarmer.execute(nil)
     Cachex.clear!(Cache)
-    assert {:ok, true} = Cachex.put_many(Cache, pairs)
+    assert :ignore = CacheWarmer.execute(nil)
 
     for read_key <- read_keys do
       assert {:ok, {:cached, %{id: ^source_id, retention_days: ^expected_retention_days}}} =
@@ -54,8 +53,7 @@ defmodule Logflare.Sources.CacheWarmerTest do
     source_id = source.id
     external_token = Atom.to_string(source.token)
 
-    assert {:ok, pairs} = CacheWarmer.execute(nil)
-    assert {:ok, true} = Cachex.put_many(Cache, pairs)
+    assert :ignore = CacheWarmer.execute(nil)
 
     Sources
     |> reject(:get_by, 1)
@@ -90,18 +88,15 @@ defmodule Logflare.Sources.CacheWarmerTest do
         log_events_updated_at: NaiveDateTime.utc_now()
       )
 
-    assert {:ok, pairs} = CacheWarmer.execute(nil)
+    assert :ignore = CacheWarmer.execute(nil)
 
-    warmed_sources =
-      pairs
-      |> Enum.map(fn {_key, {:cached, warmed_source}} -> warmed_source end)
-      |> Map.new(&{&1.id, &1})
-
-    assert %{retention_days: ^expected_retention_days} = warmed_sources[source.id]
+    assert {:cached, %{retention_days: ^expected_retention_days}} =
+             Cachex.get!(Cache, {:get_by, [[id: source.id]]})
 
     expected_custom_retention_days = Sources.source_ttl_to_days(custom_source, custom_plan)
 
-    assert %{retention_days: ^expected_custom_retention_days} = warmed_sources[custom_source.id]
+    assert {:cached, %{retention_days: ^expected_custom_retention_days}} =
+             Cachex.get!(Cache, {:get_by, [[id: custom_source.id]]})
   end
 
   test "skips plan hydration when there are no active sources" do
@@ -110,7 +105,8 @@ defmodule Logflare.Sources.CacheWarmerTest do
     Billing
     |> reject(:get_plans_by_users, 1)
 
-    assert {:ok, []} = CacheWarmer.execute(nil)
+    assert :ignore = CacheWarmer.execute(nil)
+    assert Cachex.size!(Cache) == 0
   end
 
   test "skips sources whose users cannot be resolved" do
@@ -118,14 +114,15 @@ defmodule Logflare.Sources.CacheWarmerTest do
 
     log =
       capture_log(fn ->
-        assert {:ok, []} = CacheWarmer.execute(nil)
+        assert :ignore = CacheWarmer.execute(nil)
       end)
 
     assert log =~ "skipped 1 sources whose users could not be resolved"
+    assert Cachex.size!(Cache) == 0
   end
 
   test "uses a bounded number of queries as the number of source users grows" do
-    {single_user_query_count, {:ok, _pairs}} =
+    {single_user_query_count, :ignore} =
       count_repo_queries(fn -> CacheWarmer.execute(nil) end)
 
     for _ <- 1..5 do
@@ -133,7 +130,7 @@ defmodule Logflare.Sources.CacheWarmerTest do
       insert(:source, user: user, log_events_updated_at: NaiveDateTime.utc_now())
     end
 
-    {multiple_user_query_count, {:ok, _pairs}} =
+    {multiple_user_query_count, :ignore} =
       count_repo_queries(fn -> CacheWarmer.execute(nil) end)
 
     assert single_user_query_count > 0

@@ -5,6 +5,7 @@ defmodule Logflare.ContextCache.CacheBuster do
   use GenServer
 
   alias Logflare.ContextCache.CacheBusterWorker
+  alias Logflare.ContextCache.WriteFence
   alias Cainophile.Changes.DeletedRecord
   alias Cainophile.Changes.NewRecord
   alias Cainophile.Changes.Transaction
@@ -21,7 +22,6 @@ defmodule Logflare.ContextCache.CacheBuster do
   alias Logflare.Sources
   alias Logflare.TeamUsers
   alias Logflare.Users
-  alias Logflare.ContextCache.CacheBusterWorker
 
   require Logger
 
@@ -30,7 +30,8 @@ defmodule Logflare.ContextCache.CacheBuster do
   end
 
   def init(_state) do
-    subscribe_to_transactions()
+    :ok = subscribe_to_transactions()
+    :ok = WriteFence.mark_ready()
     {:ok, %{}}
   end
 

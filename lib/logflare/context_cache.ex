@@ -10,7 +10,8 @@ defmodule Logflare.ContextCache do
 
   The cache implementation directly queries the relevant context cache to be busted and performs
   primary key checking within the matchspec. This approach queries across a narrower set of records,
-  providing better performance compared to a reverse index approach.
+  providing better performance compared to a reverse index approach. Cache misses read from the
+  primary database so a completed WAL invalidation cannot be followed by a stale replica fill.
 
   If customization of busting is needed, cache module may implement `c:bust_by/1` callback expecting
   a keyword list instead of primary key for entry.
@@ -32,11 +33,14 @@ defmodule Logflare.ContextCache do
   ## Gossip
 
   Cache misses are optionally multicast to peer nodes via `:erpc` to warm the cluster.
-  To prevent race conditions, WAL invalidations write short-lived tombstones that
-  filter out stale incoming messages.
+  WAL invalidations are ordered against local cache population, while short-lived
+  tombstones filter stale incoming messages.
   """
 
+  import Cachex.Spec, only: [cache: 1]
+
   alias Logflare.ContextCache.Gossip
+  alias Logflare.ContextCache.WriteFence
 
   @doc """
   Optional callback implementing custom cache key busting by a keyword of values
@@ -51,7 +55,7 @@ defmodule Logflare.ContextCache do
     cache_key = {fun, args}
 
     fetch(cache, cache_key, fn ->
-      Logflare.Repo.apply_with_replica(context, fun, args)
+      apply(context, fun, args)
     end)
   end
 
@@ -82,6 +86,8 @@ defmodule Logflare.ContextCache do
   """
   @spec bust_keys(list()) :: {:ok, non_neg_integer()}
   def bust_keys(values) when is_list(values) do
+    :ok = WriteFence.invalidate(values)
+
     busted =
       for {context, primary_key} <- values, reduce: 0 do
         acc ->
@@ -90,6 +96,16 @@ defmodule Logflare.ContextCache do
       end
 
     {:ok, busted}
+  end
+
+  defp bust_key({context, :not_found}) do
+    context_cache = cache_name(context)
+    query = Cachex.Query.build(output: {:key, :value})
+
+    context_cache
+    |> Cachex.stream!(query)
+    |> Stream.filter(fn {_key, value} -> value in [{:cached, nil}, {:cached, []}] end)
+    |> delete_entries(context_cache)
   end
 
   defp bust_key({context, kw}) when is_list(kw) do
@@ -132,25 +148,56 @@ defmodule Logflare.ContextCache do
     Module.concat(context, Cache)
   end
 
+  @doc false
+  @spec context_name(Cachex.t()) :: atom()
+  def context_name(cache(name: name)), do: context_name(name)
+
+  def context_name(cache) when is_atom(cache) do
+    cache
+    |> Module.split()
+    |> Enum.drop(-1)
+    |> Module.concat()
+  end
+
   @doc """
   Low level API for fetching from cache. Allows wrapping calls with
   `Cachex.execute/2` and accessing arbitrary key or calling any getter function.
   """
   @spec fetch(Cachex.t(), {atom(), list()}, fun()) :: term()
   def fetch(cache, cache_key, getter_fn) do
+    caller = self()
+    cache_name = cache_identifier(cache)
+    context = context_name(cache_name)
+
     case Cachex.fetch(cache, cache_key, fn _cache_key ->
-           # Use a `:cached` tuple here otherwise when an fn returns nil Cachex will miss
-           # the cache because it thinks ETS returned nil
-           {:commit, {:cached, getter_fn.()}}
+           {:ok, snapshot} = WriteFence.begin_snapshot(context)
+           value = getter_fn.()
+           cached_value = {:cached, value}
+
+           published? =
+             match?(
+               {:ok, %{written: 1}},
+               WriteFence.commit(snapshot, cache_name, [
+                 {{:any, WriteFence.primary_keys(value)}, [{cache_key, cached_value}]}
+               ])
+             )
+
+           {:ignore, {:fenced, caller, published?, cached_value}}
          end) do
-      {:commit, {:cached, value}} ->
-        Gossip.multicast(cache, cache_key, value)
+      {:ignore, {:fenced, owner, published?, {:cached, value}}} ->
+        if owner == caller and published? do
+          Gossip.multicast(cache_name, cache_key, value)
+        end
+
         value
 
       {:ok, {:cached, value}} ->
         value
     end
   end
+
+  defp cache_identifier(cache(name: name)), do: name
+  defp cache_identifier(cache) when is_atom(cache), do: cache
 
   defp delete_matching_entries(entries, context_cache, pkey) do
     to_delete =
@@ -163,9 +210,13 @@ defmodule Logflare.ContextCache do
           true
       end)
 
+    delete_entries(to_delete, context_cache)
+  end
+
+  defp delete_entries(entries, context_cache) do
     Cachex.execute(context_cache, fn worker ->
-      Enum.reduce(to_delete, 0, fn {k, _v}, acc ->
-        Cachex.del(worker, k)
+      Enum.reduce(entries, 0, fn {key, _value}, acc ->
+        Cachex.del(worker, key)
         acc + 1
       end)
     end)

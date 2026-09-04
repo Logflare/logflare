@@ -98,7 +98,7 @@ defmodule Logflare.Backends.CacheTest do
   end
 
   test "warmer", %{user: user} do
-    assert {:ok, []} = CacheWarmer.execute(nil)
+    assert :ignore = CacheWarmer.execute(nil)
 
     source =
       insert(:source,
@@ -108,8 +108,7 @@ defmodule Logflare.Backends.CacheTest do
 
     backend = insert(:backend, sources: [source])
 
-    assert {:ok, [_ | _] = pairs} = CacheWarmer.execute(nil)
-    assert {:ok, true} = Cachex.put_many(Backends.Cache, pairs)
+    assert :ignore = CacheWarmer.execute(nil)
 
     Backends
     |> reject(:get_backend, 1)

@@ -23,9 +23,8 @@ defmodule Logflare.SourceSchemas.CacheWarmerTest do
     assert %{id: ^schema_id} = Cache.get_source_schema_by(source_id: source.id)
     assert {:ok, [read_key]} = Cachex.keys(Cache)
 
-    assert {:ok, pairs} = CacheWarmer.execute(nil)
     Cachex.clear!(Cache)
-    assert {:ok, true} = Cachex.put_many(Cache, pairs)
+    assert :ignore = CacheWarmer.execute(nil)
 
     assert {:ok, {:cached, %{id: ^schema_id}}} = Cachex.get(Cache, read_key)
   end
@@ -36,8 +35,7 @@ defmodule Logflare.SourceSchemas.CacheWarmerTest do
   } do
     schema_id = source_schema.id
 
-    assert {:ok, pairs} = CacheWarmer.execute(nil)
-    assert {:ok, true} = Cachex.put_many(Cache, pairs)
+    assert :ignore = CacheWarmer.execute(nil)
     assert %{} = Repo.delete!(source_schema)
 
     assert %{id: ^schema_id} = Cache.get_source_schema_by(source_id: source.id)

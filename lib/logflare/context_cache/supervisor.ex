@@ -10,6 +10,7 @@ defmodule Logflare.ContextCache.Supervisor do
   alias Logflare.ContextCache.CacheBuster
   alias Logflare.ContextCache.CacheBusterWorker
   alias Logflare.ContextCache.Tombstones
+  alias Logflare.ContextCache.WriteFence
   alias Logflare.Endpoints
   alias Logflare.GenSingleton
   alias Logflare.KeyValues
@@ -52,7 +53,8 @@ defmodule Logflare.ContextCache.Supervisor do
         buster_specs()
       end
 
-    caches ++
+    [{WriteFence, ready?: env == :test}] ++
+      caches ++
       List.wrap(maybe_transaction_broadcaster) ++
       List.wrap(maybe_cainophile) ++
       List.wrap(maybe_busters)

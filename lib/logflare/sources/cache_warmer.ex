@@ -6,12 +6,15 @@ defmodule Logflare.Sources.CacheWarmer do
   require Logger
 
   alias Logflare.Billing
+  alias Logflare.ContextCache.WriteFence
   alias Logflare.Repo
   alias Logflare.Sources
   alias Logflare.Sources.Source
   alias Logflare.User
   @impl true
   def execute(_state) do
+    {:ok, snapshot} = WriteFence.begin_snapshot(Sources)
+
     # Get sources that have been active in the last day, similar to ingesting users pattern
     sources =
       from(s in Source,
@@ -22,18 +25,29 @@ defmodule Logflare.Sources.CacheWarmer do
       |> Repo.all()
       |> put_retention_days()
 
-    get_kv =
-      for s <- sources do
-        value = {:cached, s}
+    entry_groups =
+      for source <- sources do
+        value = {:cached, source}
 
-        [
-          {{:get_by, [[id: s.id]]}, value},
-          {{:get_by, [[token: s.token]]}, value},
-          {{:get_by, [[token: Atom.to_string(s.token)]]}, value}
-        ]
+        {source.id,
+         [
+           {{:get_by, [[id: source.id]]}, value},
+           {{:get_by, [[token: source.token]]}, value},
+           {{:get_by, [[token: Atom.to_string(source.token)]]}, value}
+         ]}
       end
 
-    {:ok, List.flatten(get_kv)}
+    case WriteFence.commit(snapshot, Sources.Cache, entry_groups) do
+      {:ok, %{skipped: skipped}} ->
+        if skipped > 0 do
+          Logger.warning("Sources cache warmer skipped #{skipped} invalidated sources")
+        end
+
+      {:error, reason} ->
+        Logger.warning("Sources cache warmer could not commit: #{inspect(reason)}")
+    end
+
+    :ignore
   end
 
   defp put_retention_days([]), do: []

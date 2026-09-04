@@ -19,6 +19,7 @@ defmodule Logflare.ContextCache.Gossip do
   alias Logflare.Cluster.Utils, as: ClusterUtils
   alias Logflare.ContextCache
   alias Logflare.ContextCache.Tombstones
+  alias Logflare.ContextCache.WriteFence
 
   @telemetry_handler_id "context-cache-gossip-logger"
 
@@ -161,21 +162,32 @@ defmodule Logflare.ContextCache.Gossip do
       :refreshed
     else
       pkeys = pkeys_from_cached_value(value)
+      {:ok, snapshot} = WriteFence.begin_snapshot(ContextCache.context_name(cache))
 
       cond do
         # if we can't extract any primary keys from the cache key/value,
         # we have no way to detect staleness, so we drop it to be safe
         pkeys == [] ->
+          WriteFence.commit(snapshot, cache, [])
           :dropped_no_pkey
 
         # do nothing if the WAL recently busted this specific record
         Enum.any?(pkeys, fn pkey -> Tombstones.Cache.tombstoned?(cache, pkey) end) ->
+          WriteFence.commit(snapshot, cache, [])
           :dropped_stale
 
         true ->
-          Cachex.put(cache, key, {:cached, value})
-          :cached
+          commit_received(snapshot, cache, key, value, pkeys)
       end
+    end
+  end
+
+  defp commit_received(snapshot, cache, key, value, pkeys) do
+    case WriteFence.commit(snapshot, cache, [
+           {{:any, pkeys}, [{key, {:cached, value}}]}
+         ]) do
+      {:ok, %{written: 1}} -> :cached
+      _not_written -> :dropped_stale
     end
   end
 

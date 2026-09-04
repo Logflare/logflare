@@ -52,6 +52,57 @@ defmodule Logflare.ContextCacheTest do
       assert {:ok, 1} = ContextCache.bust_keys([{Backends, backend.id}])
       assert is_nil(Cachex.get!(Backends.Cache, cache_key))
     end
+
+    test "fetch/3 does not retain a value read across an invalidation", %{source: source} do
+      cache_key = {:race_probe, [source.id]}
+      stale_value = %{id: source.id, name: "stale"}
+      test_pid = self()
+
+      task =
+        Task.async(fn ->
+          ContextCache.fetch(Sources.Cache, cache_key, fn ->
+            send(test_pid, {:getter_started, self()})
+            receive do: (:continue -> stale_value)
+          end)
+        end)
+
+      assert_receive {:getter_started, getter}
+      assert {:ok, 0} = ContextCache.bust_keys([{Sources, source.id}])
+      send(getter, :continue)
+
+      assert Task.await(task) == stale_value
+      assert Cachex.get!(Sources.Cache, cache_key) == nil
+    end
+
+    test "bust_keys/1 removes cached negative lookups" do
+      cache_key = {:race_probe, [:missing]}
+
+      assert ContextCache.fetch(Sources.Cache, cache_key, fn -> nil end) == nil
+      assert Cachex.get!(Sources.Cache, cache_key) == {:cached, nil}
+
+      assert {:ok, 1} = ContextCache.bust_keys([{Sources, :not_found}])
+      assert Cachex.get!(Sources.Cache, cache_key) == nil
+    end
+
+    test "fetch/3 does not retain a negative lookup read across a new-record invalidation" do
+      cache_key = {:race_probe, [:created_during_fetch]}
+      test_pid = self()
+
+      task =
+        Task.async(fn ->
+          ContextCache.fetch(Sources.Cache, cache_key, fn ->
+            send(test_pid, {:getter_started, self()})
+            receive do: (:continue -> nil)
+          end)
+        end)
+
+      assert_receive {:getter_started, getter}
+      assert {:ok, 0} = ContextCache.bust_keys([{Sources, :not_found}])
+      send(getter, :continue)
+
+      assert Task.await(task) == nil
+      assert Cachex.get!(Sources.Cache, cache_key) == nil
+    end
   end
 
   describe "unboxed transaction" do

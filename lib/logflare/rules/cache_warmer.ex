@@ -1,5 +1,9 @@
 defmodule Logflare.Rules.CacheWarmer do
+  require Logger
+
+  alias Logflare.ContextCache.WriteFence
   alias Logflare.Repo
+  alias Logflare.Rules
   alias Logflare.Sources.Source
 
   import Ecto.Query
@@ -8,6 +12,8 @@ defmodule Logflare.Rules.CacheWarmer do
 
   @impl true
   def execute(_state) do
+    {:ok, snapshot} = WriteFence.begin_snapshot(Rules)
+
     sources =
       from(s in Source,
         where: s.log_events_updated_at >= ago(2, "hour"),
@@ -17,11 +23,21 @@ defmodule Logflare.Rules.CacheWarmer do
       )
       |> Repo.all()
 
-    entries =
-      for s <- sources do
-        {{:list_by_source_id, [s.id]}, {:cached, s.rules}}
+    entry_groups =
+      for source <- sources do
+        {:unknown, [{{:list_by_source_id, [source.id]}, {:cached, source.rules}}]}
       end
 
-    {:ok, entries}
+    case WriteFence.commit(snapshot, Rules.Cache, entry_groups) do
+      {:ok, %{skipped: skipped}} ->
+        if skipped > 0 do
+          Logger.warning("Rules cache warmer skipped #{skipped} entries after invalidation")
+        end
+
+      {:error, reason} ->
+        Logger.warning("Rules cache warmer could not commit: #{inspect(reason)}")
+    end
+
+    :ignore
   end
 end
