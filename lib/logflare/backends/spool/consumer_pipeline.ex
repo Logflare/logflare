@@ -126,18 +126,35 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
       %{backend_type: :spool_consumer, batch_trigger: batch_trigger}
     )
 
-    messages
-    |> Enum.group_by(&record_source_id(&1.data), & &1.data)
-    |> Enum.each(fn
-      {nil, lines} ->
-        emit_skipped_telemetry(:missing_source_id, length(lines))
-        Logger.debug("spool_consumer: #{length(lines)} events missing source_id, skipping")
+    failed_source_ids =
+      messages
+      |> Enum.group_by(&record_source_id(&1.data), & &1.data)
+      |> Enum.flat_map(fn
+        {nil, lines} ->
+          emit_skipped_telemetry(:missing_source_id, length(lines))
+          Logger.debug("spool_consumer: #{length(lines)} events missing source_id, skipping")
+          []
 
-      {source_id, lines} ->
-        dispatch_group(source_id, lines)
-    end)
+        {source_id, lines} ->
+          dispatch_group(source_id, lines)
+      end)
+      |> MapSet.new()
 
-    messages
+    fail_dispatched(messages, failed_source_ids)
+  end
+
+  defp fail_dispatched(messages, failed_source_ids) do
+    if MapSet.size(failed_source_ids) == 0 do
+      messages
+    else
+      Enum.map(messages, fn message ->
+        if MapSet.member?(failed_source_ids, record_source_id(message.data)) do
+          Message.failed(message, :dispatch_error)
+        else
+          message
+        end
+      end)
+    end
   end
 
   defp dispatch_group(source_id, lines) do
@@ -149,10 +166,23 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
           "spool_consumer: unknown source_id=#{source_id}, skipping #{length(lines)} events"
         )
 
+        []
+
       source ->
         {:ok, _} = Backends.dispatch_from_spool(lines, source)
-        :ok
+        []
     end
+  rescue
+    exception ->
+      emit_skipped_telemetry(:dispatch_error, length(lines))
+
+      Logger.error(
+        "spool_consumer: dispatch failed for source_id=#{source_id}, " <>
+          "failing #{length(lines)} events: " <>
+          Exception.format(:error, exception, __STACKTRACE__)
+      )
+
+      [source_id]
   end
 
   defp emit_skipped_telemetry(reason, count) do
