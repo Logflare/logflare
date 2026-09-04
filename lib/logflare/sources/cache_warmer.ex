@@ -28,7 +28,8 @@ defmodule Logflare.Sources.CacheWarmer do
 
         [
           {{:get_by, [[id: s.id]]}, value},
-          {{:get_by, [[token: s.token]]}, value}
+          {{:get_by, [[token: s.token]]}, value},
+          {{:get_by, [[token: Atom.to_string(s.token)]]}, value}
         ]
       end
 
