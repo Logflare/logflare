@@ -3082,5 +3082,19 @@ defmodule Logflare.MapperTest do
       # Non-binary values are not filtered, they pass through to coercion
       assert result["val"] == "12345"
     end
+
+    test "filters still apply after a to_json/from_json round trip" do
+      config =
+        MappingConfig.new([
+          Field.string("val", path: "$.val", default: "fallback", filters: %{len_gt: 3})
+        ])
+
+      {:ok, json} = MappingConfig.to_json(config)
+      {:ok, restored} = MappingConfig.from_json(json)
+
+      result = Mapper.map(%{"val" => "ab"}, Mapper.compile!(restored))
+
+      assert result["val"] == "fallback"
+    end
   end
 end

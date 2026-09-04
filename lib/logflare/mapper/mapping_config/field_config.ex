@@ -56,6 +56,11 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
       Example: `filters: %{len_eq: 20, char_class: "alpha"}` ensures the resolved
       value is exactly 20 ASCII alphabetic characters.
 
+      Filter keys may be atoms or strings and are stored in canonical string form, so a
+      config survives a `MappingConfig.to_json/1` / `from_json/1` round trip unchanged. An
+      unrecognized key, a non-integer length, or an unsupported character class is rejected
+      when the config is built rather than dropped.
+
   ### `datetime64/2`
 
     * `:precision` — target precision 0-9 (default `9` for nanoseconds). Integer inputs are
@@ -194,6 +199,8 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
   @valid_types ~w(string uint8 uint32 uint64 int32 float64 bool enum8 datetime64 json flat_map array_string array_uint64 array_float64 array_datetime64 array_json array_map array_flat_map)
   @valid_transforms ~w(upcase downcase)
   @valid_value_types ~w(string)
+  @length_filters ~w(len_eq len_gt len_gte len_lt len_lte)
+  @char_classes ~w(alpha numeric alphanumeric)
 
   @type common_opts :: [
           path: String.t(),
@@ -257,6 +264,7 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
     |> validate_inclusion(:type, @valid_types)
     |> validate_inclusion(:transform, @valid_transforms)
     |> validate_inclusion(:value_type, @valid_value_types)
+    |> normalize_filters()
     |> cast_embed(:pick, with: &PickEntry.changeset/2)
     |> cast_embed(:infer, with: &InferRule.changeset/2)
   end
@@ -393,7 +401,63 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
   defp encode_default(val) when is_list(val), do: "[]"
 
   defp maybe_put(struct, _key, nil), do: struct
+
+  defp maybe_put(struct, :filters, filters) do
+    case canonicalize_filters(filters) do
+      {:ok, canonical} -> Map.put(struct, :filters, canonical)
+      {:error, reason} -> raise ArgumentError, reason
+    end
+  end
+
   defp maybe_put(struct, key, value), do: Map.put(struct, key, value)
+
+  defp normalize_filters(changeset) do
+    case fetch_change(changeset, :filters) do
+      {:ok, nil} ->
+        changeset
+
+      {:ok, filters} ->
+        case canonicalize_filters(filters) do
+          {:ok, canonical} -> put_change(changeset, :filters, canonical)
+          {:error, reason} -> add_error(changeset, :filters, reason)
+        end
+
+      :error ->
+        changeset
+    end
+  end
+
+  @spec canonicalize_filters(map()) :: {:ok, map()} | {:error, String.t()}
+  defp canonicalize_filters(filters) when is_map(filters) do
+    Enum.reduce_while(filters, {:ok, %{}}, fn {key, value}, {:ok, acc} ->
+      case canonicalize_filter(to_string(key), value) do
+        {:ok, canonical_key} -> {:cont, {:ok, Map.put(acc, canonical_key, value)}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp canonicalize_filters(filters),
+    do: {:error, "filters must be a map, got #{inspect(filters)}"}
+
+  @spec canonicalize_filter(String.t(), term()) :: {:ok, String.t()} | {:error, String.t()}
+  defp canonicalize_filter(key, value) when key in @length_filters and is_integer(value),
+    do: {:ok, key}
+
+  defp canonicalize_filter(key, value) when key in @length_filters,
+    do: {:error, "string filter \"#{key}\" must be an integer, got #{inspect(value)}"}
+
+  defp canonicalize_filter("char_class", value) when value in @char_classes,
+    do: {:ok, "char_class"}
+
+  defp canonicalize_filter("char_class", value) do
+    {:error,
+     "string filter \"char_class\" must be one of #{Enum.join(@char_classes, ", ")}, " <>
+       "got #{inspect(value)}"}
+  end
+
+  defp canonicalize_filter(key, _value),
+    do: {:error, "unknown string filter \"#{key}\""}
 
   defp maybe_put_pick_mode(struct, nil), do: struct
   defp maybe_put_pick_mode(struct, :replace), do: struct

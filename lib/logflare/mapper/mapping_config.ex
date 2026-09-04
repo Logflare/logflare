@@ -184,33 +184,7 @@ defmodule Logflare.Mapper.MappingConfig do
   defp maybe_add_filters(map, nil), do: map
   defp maybe_add_filters(map, filters) when is_empty_map(filters), do: map
 
-  defp maybe_add_filters(map, filters) do
-    nif_filters =
-      Enum.reduce(filters, %{}, fn
-        {:len_eq, v}, acc when is_integer(v) ->
-          Map.put(acc, "len_eq", v)
-
-        {:len_gt, v}, acc when is_integer(v) ->
-          Map.put(acc, "len_gt", v)
-
-        {:len_gte, v}, acc when is_integer(v) ->
-          Map.put(acc, "len_gte", v)
-
-        {:len_lt, v}, acc when is_integer(v) ->
-          Map.put(acc, "len_lt", v)
-
-        {:len_lte, v}, acc when is_integer(v) ->
-          Map.put(acc, "len_lte", v)
-
-        {:char_class, v}, acc when v in ~w(alpha numeric alphanumeric) ->
-          Map.put(acc, "char_class", v)
-
-        _, acc ->
-          acc
-      end)
-
-    if nif_filters == %{}, do: map, else: Map.put(map, "filters", nif_filters)
-  end
+  defp maybe_add_filters(map, filters), do: Map.put(map, "filters", filters)
 
   @spec maybe_add_filter_nil(map(), boolean()) :: map()
   defp maybe_add_filter_nil(map, false), do: map
