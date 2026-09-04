@@ -32,6 +32,7 @@ defmodule Logflare.Backends.Cache do
 
   def list_backends(arg), do: apply_repo_fun(__ENV__.function, [arg])
 
+  @spec list_enabled_backends(keyword()) :: [Backends.Backend.t()]
   def list_enabled_backends(arg) do
     # We filter the existing cached list instead of creating a
     # `{:list_backends, [..., enabled: true]}` key. That entry would omit disabled backends, so

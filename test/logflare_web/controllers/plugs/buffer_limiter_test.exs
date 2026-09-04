@@ -367,6 +367,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
 
       assert limited_conn.halted
       assert {:ok, %{enabled: false}} = Backends.update_backend(backend, %{enabled: false})
+      Backends.clear_list_backends_cache(source.id)
 
       conn =
         conn
