@@ -407,10 +407,8 @@ if(
     ]
   ]
 
-  # RFC 6066 §3 forbids IP literals in SNI. For IP hosts, suppress the SNI
-  # extension but still verify the host against iPAddress SANs via the :https
-  # match_fun. For hostnames, let OTP default SNI to `host` so dNSName SANs
-  # are checked.
+  # RFC 6066 §3 forbids IP literals in SNI. OTP does not perform hostname
+  # verification when SNI is disabled for an IP literal.
   db_ssl_opts =
     case :inet.parse_address(String.to_charlist(System.get_env("DB_HOSTNAME", ""))) do
       {:ok, _ip} -> Keyword.put(base_db_ssl_opts, :server_name_indication, :disable)
@@ -419,6 +417,10 @@ if(
 
   config :logflare, Logflare.Repo, ssl: db_ssl_opts
 end
+
+config :logflare,
+       :rds_ca_cert_path,
+       System.get_env("RDS_CA_CERT_PATH", "/etc/ssl/certs/aws-rds-global-bundle.pem")
 
 case System.get_env("LOGFLARE_FEATURE_FLAG_OVERRIDE") do
   nil ->
@@ -570,12 +572,9 @@ config :logflare, :context_cache_gossip, %{
   max_nodes: cache_gossip_max_nodes
 }
 
-# LOGFLARE_READ_REPLICAS: Comma-separated list of PostgreSQL read replicas to distribute
-# context cache queries across. If unset or empty, all queries go to the primary database.
-# Each entry is either a bare hostname (inheriting the primary's port, credentials, database
-# and SSL settings) or a full URI, in which case only the parts present in the URI override
-# the primary's config: postgres://user:pass@host:port/database?ssl=true&pool_size=5
-# Example: "replica1.example.com,postgres://user:pass@replica2.example.com:5432/logflare"
+# Read replicas serve selected cache queries; an empty list uses the primary database.
+# Entries are bare host names, IP literals, or URIs whose omitted options inherit the primary.
+# `auth=iam` replaces the password with an RDS IAM token and enforces verified TLS.
 read_replicas =
   "LOGFLARE_READ_REPLICAS"
   |> System.get_env("")
