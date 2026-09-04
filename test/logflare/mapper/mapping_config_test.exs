@@ -535,4 +535,58 @@ defmodule Logflare.Mapper.MappingConfigTest do
       assert field["default"] == 0.0
     end
   end
+
+  describe "string filter keys" do
+    test "constructor canonicalizes atom filter keys" do
+      field = Field.string("s", path: "$.s", filters: %{len_gt: 3})
+
+      assert field.filters == %{"len_gt" => 3}
+    end
+
+    test "constructor accepts string filter keys" do
+      field = Field.string("s", path: "$.s", filters: %{"len_gt" => 3})
+
+      assert field.filters == %{"len_gt" => 3}
+    end
+
+    test "constructor rejects an unknown filter key" do
+      assert_raise ArgumentError, ~r/len_gtt/, fn ->
+        Field.string("s", path: "$.s", filters: %{len_gtt: 3})
+      end
+    end
+
+    test "constructor rejects a non-integer length filter" do
+      assert_raise ArgumentError, ~r/len_gt/, fn ->
+        Field.string("s", path: "$.s", filters: %{len_gt: "3"})
+      end
+    end
+
+    test "constructor rejects an unsupported char_class" do
+      assert_raise ArgumentError, ~r/char_class/, fn ->
+        Field.string("s", path: "$.s", filters: %{char_class: "hex"})
+      end
+    end
+
+    test "filters reach the nif map after a to_json/from_json round trip" do
+      config =
+        MappingConfig.new([
+          Field.string("s", path: "$.s", filters: %{len_gt: 3}, default: "D")
+        ])
+
+      {:ok, json} = MappingConfig.to_json(config)
+      {:ok, restored} = MappingConfig.from_json(json)
+
+      assert hd(restored.fields).filters == %{"len_gt" => 3}
+
+      nif_field = restored |> MappingConfig.to_nif_map() |> Map.fetch!("fields") |> hd()
+
+      assert nif_field["filters"] == %{"len_gt" => 3}
+    end
+
+    test "from_json/1 rejects an unknown filter key" do
+      json = ~s({"fields":[{"name":"s","type":"string","path":"$.s","filters":{"len_gtt":3}}]})
+
+      assert {:error, %Ecto.Changeset{valid?: false}} = MappingConfig.from_json(json)
+    end
+  end
 end
