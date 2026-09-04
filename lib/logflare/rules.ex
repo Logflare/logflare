@@ -48,9 +48,17 @@ defmodule Logflare.Rules do
     where(query, [r], r.backend_id == ^backend_id)
   end
 
+  @doc """
+  Returns the routing snapshot for a source: the rules tree, and a lookup of the
+  rules it was built from keyed by rule id.
+
+  Both halves come from one `list_by_source_id/1` read, so every rule id in the
+  tree resolves to a rule in the lookup.
+  """
+  @spec rules_tree_by_source_id(integer()) :: {RulesTree.t(), %{Rule.id() => Rule.t()}}
   def rules_tree_by_source_id(id) do
     rules = list_by_source_id(id)
-    RulesTree.build(rules)
+    {RulesTree.build(rules), Map.new(rules, &{&1.id, &1})}
   end
 
   @doc """

@@ -408,10 +408,25 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
       assert [%Rule{}] = @subject.matching_rules(le, source)
     end
 
-    test "drops matched ids whose rule no longer exists", %{source: source, log_event: le} do
-      stub(Rules, :get_rule, fn _id -> nil end)
+    test "drops matched ids missing from the snapshot", %{source: source, log_event: le} do
+      {tree, _rules_by_id} = Rules.rules_tree_by_source_id(source.id)
+
+      expect(Rules, :rules_tree_by_source_id, fn _id -> {tree, %{}} end)
 
       assert @subject.matching_rules(le, source) == []
+    end
+
+    test "the snapshot resolves every rule id its tree can match", %{
+      source: source,
+      log_event: le
+    } do
+      {tree, rules_by_id} = Rules.rules_tree_by_source_id(source.id)
+
+      assert [_ | _] = ids = @subject.matching_rule_ids(le, tree)
+
+      for id <- ids do
+        assert Map.has_key?(rules_by_id, id)
+      end
     end
   end
 
