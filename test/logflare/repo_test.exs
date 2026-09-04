@@ -110,18 +110,23 @@ defmodule Logflare.RepoTest do
       refute key1 == key2
     end
 
-    test "an omitted host inherits the primary's, without baking it into the parsed config" do
-      assert {:ok, {key, config}} = Replicas.parse("postgres:///db")
-      refute Keyword.has_key?(config, :hostname)
-      assert key =~ ~r{^-\d+$}
-    end
-
     test "rejects invalid entries" do
       for entry <- [
-            "postgres://host?pool_size=abc"
+            "postgres://host?pool_size=abc",
+            "postgres:///db",
+            "postgres://u:pass@/db"
           ] do
-        assert {:error, _reason} = Replicas.parse(entry), "expected #{entry} to be rejected"
+        assert {:error, _reason} = Replicas.parse(entry)
       end
+    end
+
+    test "does not leak credentials when a hostless URI is rejected" do
+      error =
+        assert_raise ArgumentError, fn ->
+          Replicas.parse!("postgres://u:supersecret@/db")
+        end
+
+      refute Exception.message(error) =~ "supersecret"
     end
 
     test "parse!/1 raises without leaking credentials" do
