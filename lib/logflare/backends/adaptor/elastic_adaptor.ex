@@ -5,11 +5,15 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
   Supported transports:
   - `"filebeat"` (default) — Filebeat HTTP input
     https://www.elastic.co/guide/en/beats/filebeat/current/filebeat-input-http_endpoint.html
+  - `"logstash"` — Logstash `http` input plugin, receiving ECS-flavoured JSON
+    https://www.elastic.co/guide/en/logstash/current/plugins-inputs-http.html
   - `"otlp"` — OpenTelemetry Protocol HTTP/protobuf (same delivery as `OtlpAdaptor`)
 
-  Future transports (e.g. `"logstash"`) can be added here and will use the HTTP-based pipeline
-  rather than OTLP, since Logstash does not accept OTLP natively.
+  `"filebeat"` and `"logstash"` share the `WebhookAdaptor` HTTP pipeline; Logstash does not accept
+  OTLP natively, so it reshapes each event into an ECS-flavoured document instead.
   """
+
+  import Logflare.Utils.Guards, only: [is_pos_integer: 1]
 
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.HttpBased
@@ -17,12 +21,14 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
   alias Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Backend
+  alias Logflare.LogEvent
   alias Logflare.Utils
 
   @behaviour Adaptor
   @behaviour HttpBased.Client
 
-  @transports ["filebeat", "otlp"]
+  @transports ["filebeat", "logstash", "otlp"]
+  @webhook_transports ["filebeat", "logstash"]
   @sensitive_headers ["authorization", "x-api-key", "x-auth-token"]
 
   @doc """
@@ -52,7 +58,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
       "otlp" ->
         HttpBased.Pipeline.start_link(source, backend, __MODULE__)
 
-      "filebeat" ->
+      transport when transport in @webhook_transports ->
         backend = %{backend | config: transform_config(backend)}
         WebhookAdaptor.start_link({source, backend})
     end
@@ -63,6 +69,15 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
     case transport(config) do
       "otlp" ->
         config
+
+      "logstash" ->
+        %{
+          url: config.url,
+          http: "http1",
+          gzip: Map.get(config, :gzip, true),
+          headers: headers_with_basic_auth(config),
+          format_batch: &format_batch/1
+        }
 
       "filebeat" ->
         basic_auth = Utils.encode_basic_auth(config)
@@ -80,6 +95,19 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
     end
   end
 
+  @doc """
+  Reshapes a batch into ECS-flavoured documents for the Logstash `http` input.
+
+  `timestamp` and `event_message` are lifted to the ECS `@timestamp` and `message` fields so that a
+  receiving Logstash pipeline needs no `date` filter. Remaining body fields stay at the top level;
+  Logflare-specific metadata is namespaced under `logflare`.
+  """
+  @impl Adaptor
+  @spec format_batch([LogEvent.t()]) :: [map()]
+  def format_batch(log_events) do
+    Enum.map(log_events, &format_event/1)
+  end
+
   @impl Adaptor
   def redact_config(config) do
     Map.replace_lazy(config, :password, fn _ -> "REDACTED" end)
@@ -94,15 +122,16 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
   def cast_config(params, existing_config \\ %{}) do
     types = %{
       transport: :string,
-      # filebeat
+      # filebeat, logstash
       url: :string,
       username: :string,
       password: :string,
+      # logstash, otlp
+      gzip: :boolean,
+      headers: {:map, :string},
       # otlp
       endpoint: :string,
-      protocol: :string,
-      gzip: :boolean,
-      headers: {:map, :string}
+      protocol: :string
     }
 
     {existing_config, types}
@@ -130,8 +159,16 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
           |> validate_format(:endpoint, ~r/https?\:\/\/.+/)
           |> validate_inclusion(:protocol, OtlpAdaptor.protocols())
 
+        "logstash" ->
+          cs
+          |> validate_required([:url])
+          |> validate_format(:url, ~r/https?\:\/\/.+/)
+
         "filebeat" ->
           validate_required(cs, [:url])
+
+        _unsupported ->
+          cs
       end
     end)
   end
@@ -158,9 +195,15 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
         _ -> %{}
       end
 
-    case transport(config) do
-      "otlp" -> OtlpAdaptor.Common.test_connection(__MODULE__, args)
-      "filebeat" -> {:error, :not_implemented}
+    case {transport(config), args} do
+      {"otlp", _args} ->
+        OtlpAdaptor.Common.test_connection(__MODULE__, args)
+
+      {"logstash", %Backend{} = backend} ->
+        WebhookAdaptor.test_connection(%{backend | config: transform_config(backend)}, [])
+
+      {_transport, _args} ->
+        {:error, :not_implemented}
     end
   end
 
@@ -173,6 +216,49 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
       json: false,
       headers: config.headers || %{}
     ]
+  end
+
+  defp format_event(%LogEvent{body: body} = log_event) do
+    {timestamp, body} = Map.pop(body, "timestamp")
+    {message, body} = Map.pop(body, "event_message")
+
+    body
+    |> Map.put("logflare", %{
+      "id" => log_event.id,
+      "source" => log_event.source_name,
+      "source_uuid" => log_event.source_uuid && to_string(log_event.source_uuid),
+      "event_type" => log_event.event_type && to_string(log_event.event_type)
+    })
+    |> put_timestamp(timestamp, log_event.ingested_at)
+    |> put_message(message)
+  end
+
+  defp put_timestamp(payload, timestamp, _ingested_at) when is_pos_integer(timestamp) do
+    Map.put(
+      payload,
+      "@timestamp",
+      timestamp |> DateTime.from_unix!(:microsecond) |> DateTime.to_iso8601()
+    )
+  end
+
+  defp put_timestamp(payload, _timestamp, %DateTime{} = ingested_at) do
+    Map.put(payload, "@timestamp", DateTime.to_iso8601(ingested_at))
+  end
+
+  defp put_timestamp(payload, _timestamp, _ingested_at), do: payload
+
+  defp put_message(payload, message) when is_binary(message),
+    do: Map.put(payload, "message", message)
+
+  defp put_message(payload, _message), do: payload
+
+  defp headers_with_basic_auth(config) do
+    headers = Map.get(config, :headers) || %{}
+
+    case Utils.encode_basic_auth(config) do
+      nil -> headers
+      basic_auth -> Map.put(headers, "Authorization", "Basic #{basic_auth}")
+    end
   end
 
   defp validate_user_pass(changeset) do
