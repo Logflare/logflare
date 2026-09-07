@@ -32,6 +32,13 @@ defmodule Logflare.Backends.Adaptor.HttpBased.SSRFProtectionTest do
       assert env.url == "http://1.2.3.4/path"
       assert {"host", "1.2.3.4"} in env.headers
     end
+
+    test "rewrites public IPv6 without double brackets and preserves bracketed Host header" do
+      {:ok, env} = call("http://[2001:4860:4860::8888]:8088/path")
+
+      assert env.url == "http://[2001:4860:4860::8888]:8088/path"
+      assert {"host", "[2001:4860:4860::8888]:8088"} in env.headers
+    end
   end
 
   describe "call/3 with HTTPS URLs" do
