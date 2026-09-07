@@ -11,7 +11,7 @@ defmodule Logflare.Google.BigQuery.EventUtilsTest do
       "event_message" => "test"
     }
 
-    test "converts start_time from nanoseconds to a DateTime when otel_timestamps is set" do
+    test "converts start_time from nanoseconds to int64 unix microseconds when otel_timestamps is set" do
       le = %Logflare.LogEvent{
         body: Map.put(@base_body, "start_time", 1_779_436_330_890_427_000),
         otel_timestamps: true
@@ -19,10 +19,10 @@ defmodule Logflare.Google.BigQuery.EventUtilsTest do
 
       result = EventUtils.log_event_to_df_struct(le)
 
-      assert result["start_time"] == DateTime.from_unix!(1_779_436_330_890_427_000, :nanosecond)
+      assert result["start_time"] == 1_779_436_330_890_427
     end
 
-    test "converts both start_time and end_time from nanoseconds to a DateTime" do
+    test "converts both start_time and end_time from nanoseconds to int64 unix microseconds" do
       le = %Logflare.LogEvent{
         body:
           @base_body
@@ -33,11 +33,11 @@ defmodule Logflare.Google.BigQuery.EventUtilsTest do
 
       result = EventUtils.log_event_to_df_struct(le)
 
-      assert result["start_time"] == DateTime.from_unix!(1_779_436_330_890_427_000, :nanosecond)
-      assert result["end_time"] == DateTime.from_unix!(1_779_436_901_362_775_000, :nanosecond)
+      assert result["start_time"] == 1_779_436_330_890_427
+      assert result["end_time"] == 1_779_436_901_362_775
     end
 
-    test "converts only end_time from nanoseconds to a DateTime" do
+    test "converts only end_time from nanoseconds to int64 unix microseconds" do
       le = %Logflare.LogEvent{
         body: Map.put(@base_body, "end_time", 1_779_436_901_362_775_000),
         otel_timestamps: true
@@ -45,7 +45,7 @@ defmodule Logflare.Google.BigQuery.EventUtilsTest do
 
       result = EventUtils.log_event_to_df_struct(le)
 
-      assert result["end_time"] == DateTime.from_unix!(1_779_436_901_362_775_000, :nanosecond)
+      assert result["end_time"] == 1_779_436_901_362_775
     end
 
     test "leaves start_time unchanged when otel_timestamps is not set" do
@@ -58,43 +58,43 @@ defmodule Logflare.Google.BigQuery.EventUtilsTest do
       assert result["start_time"] == 1_779_436_330_890_427_000
     end
 
-    test "converts timestamp to a DateTime" do
+    test "leaves timestamp unchanged as int64 unix microseconds" do
       le = %Logflare.LogEvent{body: @base_body}
 
       result = EventUtils.log_event_to_df_struct(le)
 
-      assert result["timestamp"] == DateTime.from_unix!(1_779_436_901_362_775, :microsecond)
+      assert result["timestamp"] == 1_779_436_901_362_775
     end
   end
 
-  describe "convert_to_datetime/2" do
+  describe "convert_to_microseconds/2" do
     @ns 1_779_436_330_890_427_000
     @us 1_779_436_901_362_775
 
-    test "converts nanosecond start_time and end_time to a DateTime for OTel events" do
+    test "converts nanosecond start_time and end_time to int64 unix microseconds for OTel events" do
       body = %{"start_time" => @ns, "end_time" => 1_779_436_901_362_775_000}
 
-      result = EventUtils.convert_to_datetime(body, true)
+      result = EventUtils.convert_to_microseconds(body, true)
 
-      assert result["start_time"] == DateTime.from_unix!(@ns, :nanosecond)
-      assert result["end_time"] == DateTime.from_unix!(1_779_436_901_362_775_000, :nanosecond)
+      assert result["start_time"] == 1_779_436_330_890_427
+      assert result["end_time"] == 1_779_436_901_362_775
     end
 
-    test "converts microsecond timestamp to a DateTime" do
-      assert EventUtils.convert_to_datetime(%{"timestamp" => @us}, false) ==
-               %{"timestamp" => DateTime.from_unix!(@us, :microsecond)}
+    test "does not touch timestamp, which is already unix microseconds" do
+      assert EventUtils.convert_to_microseconds(%{"timestamp" => @us}, false) ==
+               %{"timestamp" => @us}
     end
 
     test "leaves start_time unchanged when not nanoseconds" do
       body = %{"start_time" => 1_234_567_890}
 
-      assert EventUtils.convert_to_datetime(body, true) == body
+      assert EventUtils.convert_to_microseconds(body, true) == body
     end
 
     test "leaves non-OTel start_time and end_time unchanged even in the nanosecond range" do
       body = %{"start_time" => @ns, "end_time" => 1_779_436_901_362_775_000}
 
-      assert EventUtils.convert_to_datetime(body, false) == body
+      assert EventUtils.convert_to_microseconds(body, false) == body
     end
   end
 

@@ -39,6 +39,7 @@ fn get_ipc_bytes(
     env: Env,
     dataframe_json: String,
     compression: Atom,
+    is_otel: bool,
 ) -> NifResult<(Binary, Vec<Binary>)> {
     let compression_type = atom_to_compression(compression)?;
     let byte_data = dataframe_json.as_bytes();
@@ -50,10 +51,17 @@ fn get_ipc_bytes(
             .fields()
             .iter()
             .map(|field| {
-                if field.name() == "timestamp" {
-                    // this is a hardcoded field and the only one that we know is timestamp
+                // "timestamp" is a hardcoded field that we know is always a timestamp.
+                // "start_time"/"end_time" are OTel span start/end times (already
+                // converted to unix microseconds on the Elixir side) and are only
+                // timestamps when the batch is known to carry OTel-shaped events -
+                // plain logs may use these field names for unrelated, non-timestamp data.
+                let is_timestamp_field = field.name() == "timestamp"
+                    || (is_otel && (field.name() == "start_time" || field.name() == "end_time"));
+
+                if is_timestamp_field {
                     Field::new(
-                        "timestamp",
+                        field.name(),
                         DataType::Timestamp(TimeUnit::Microsecond, Some("+00".into())),
                         false,
                     )

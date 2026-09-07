@@ -11,11 +11,11 @@ defmodule Logflare.Google.BigQuery.EventUtils do
   @doc """
   Converts LogEvent's body into a valid dataframe struct for Explorer.
 
-  Timestamps are converted to `DateTime` structs rather than fractional unix
-  seconds: this feeds the Storage Write API's Arrow encoder, which infers
-  Arrow column types from the JSON value shape rather than from the BQ table
-  schema, and only recognizes a datetime-formatted value as `Timestamp` (the
-  type the underlying BQ column actually is).
+  OTel `start_time`/`end_time` are converted from unix nanoseconds to int64
+  unix microseconds, matching `timestamp` (already in unix microseconds).
+  The Storage Write API's Arrow encoder (native/arrowipc_ex) forces these
+  three field names to the Arrow `Timestamp(Microsecond)` type regardless of
+  the inferred JSON value type, so the values must already be in that unit.
   """
   def log_event_to_df_struct(%Logflare.LogEvent{body: body, otel_timestamps: otel_timestamps?}) do
     for {k, v} <- body, into: %{} do
@@ -26,37 +26,30 @@ defmodule Logflare.Google.BigQuery.EventUtils do
       end
     end
     |> Map.put("event_message", body["event_message"])
-    |> convert_to_datetime(otel_timestamps?)
+    |> convert_to_microseconds(otel_timestamps?)
   end
 
   @doc """
-  Converts nanosecond/microsecond unix timestamps to `DateTime` structs.
+  Converts OTel nanosecond `start_time`/`end_time` to int64 unix microseconds.
   """
-  @spec convert_to_datetime(map(), boolean()) :: map()
-  def convert_to_datetime(data, false), do: timestamp_to_datetime(data)
+  @spec convert_to_microseconds(map(), boolean()) :: map()
+  def convert_to_microseconds(data, false), do: data
 
-  def convert_to_datetime(data, true) do
+  def convert_to_microseconds(data, true) do
     data
-    |> timestamp_to_datetime()
-    |> ns_to_datetime("start_time")
-    |> ns_to_datetime("end_time")
+    |> ns_to_us("start_time")
+    |> ns_to_us("end_time")
   end
 
-  defp ns_to_datetime(data, field) do
+  defp ns_to_us(data, field) do
     case data do
       %{^field => ts} when is_integer(ts) and ts > @ns_threshold ->
-        %{data | field => DateTime.from_unix!(ts, :nanosecond)}
+        %{data | field => div(ts, 1_000)}
 
       _ ->
         data
     end
   end
-
-  defp timestamp_to_datetime(%{"timestamp" => ts} = data) when is_integer(ts) do
-    %{data | "timestamp" => DateTime.from_unix!(ts, :microsecond)}
-  end
-
-  defp timestamp_to_datetime(data), do: data
 
   @doc """
   Converts nanosecond/microsecond timestamps to seconds.
