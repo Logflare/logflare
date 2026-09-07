@@ -32,6 +32,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
         backend_id: backend.id,
         backend_token: backend.token,
         user_id: source.user_id,
+        system_source: source.system_source,
         pool: pool
       }
     )
@@ -67,7 +68,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
         "source_uuid" => context.source_token,
         "backend_id" => context.backend_id,
         "backend_uuid" => context.backend_token,
-        "user_id" => context.user_id
+        "user_id" => context.user_id,
+        "system_source" => context.system_source
       })
     )
 
