@@ -20,7 +20,6 @@ defmodule LogflareWeb.HealthCheckControllerTest do
 
   test "normal node health check", %{conn: conn} do
     start_supervised!(Source.Supervisor)
-    :timer.sleep(1000)
 
     conn = get(conn, "/health")
 

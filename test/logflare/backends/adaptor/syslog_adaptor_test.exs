@@ -372,11 +372,19 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
   end
 
   describe "config validation" do
-    test "rejects invalid port" do
-      changeset = syslog_changeset(%{host: "localhost", port: 65_536})
+    test "allows valid ports" do
+      for port <- [1, 65_535] do
+        assert syslog_changeset(%{host: "localhost", port: port}).valid?
+      end
+    end
 
-      refute changeset.valid?
-      assert %{port: ["is invalid"]} = errors_on(changeset)
+    test "rejects invalid ports" do
+      for port <- [-1, 0, 65_536, 1.5] do
+        changeset = syslog_changeset(%{host: "localhost", port: port})
+
+        refute changeset.valid?
+        assert %{port: ["is invalid"]} = errors_on(changeset)
+      end
     end
 
     test "rejects invalid structured data" do
@@ -496,6 +504,30 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
     test "for unreachable port" do
       {_, backend} = start_syslog(%{host: "localhost", port: probably_closed_port()})
       assert {:error, :unknown_error} = SyslogAdaptor.test_connection(backend)
+    end
+  end
+
+  describe "sanitize_config_for_display/1" do
+    test "masks certificates while preserving connection details" do
+      config = %{
+        tls: true,
+        host: "syslog.example.com",
+        port: 6514,
+        max_message_bytes: 50_000,
+        ca_cert: "ca-cert-pem",
+        client_cert: "client-cert-pem",
+        client_key: "client-key-pem"
+      }
+
+      assert %{
+               tls: true,
+               host: "syslog.example.com",
+               port: 6514,
+               max_message_bytes: 50_000,
+               ca_cert: "**********",
+               client_cert: "**********",
+               client_key: "**********"
+             } == SyslogAdaptor.sanitize_config_for_display(config)
     end
   end
 

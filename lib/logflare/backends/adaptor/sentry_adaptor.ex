@@ -66,6 +66,13 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
   end
 
   @impl Adaptor
+  def sanitize_config_for_display(config) do
+    config
+    |> Adaptor.mask_config_values(except: [:dsn])
+    |> redact_config()
+  end
+
+  @impl Adaptor
   @spec test_connection(Backend.t()) ::
           :ok
           | {:error,
