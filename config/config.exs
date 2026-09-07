@@ -16,6 +16,7 @@ config :logflare,
   # normal instances can be more than 90 seconds
   sigterm_shutdown_grace_period_ms: 15_000,
   cache_stats: false,
+  broadway_message_sample_denominator: 100,
   encryption_key_fallback: hardcoded_encryption_key,
   encryption_key_default: hardcoded_encryption_key
 
@@ -34,10 +35,7 @@ config :logflare, :bigquery_backend_adaptor, managed_service_account_pool_size: 
 
 config :logflare, :bigquery_pipeline, max_retries: 0
 
-config :logflare, :clickhouse_backend_adaptor,
-  engine: "MergeTree",
-  pool_size: 3,
-  native_pool_size: 10
+config :logflare, :clickhouse_backend_adaptor, engine: "MergeTree"
 
 config :logflare, Logflare.Sources.Source.BigQuery.Schema, updates_per_minute: 6
 
@@ -46,7 +44,7 @@ config :logflare, LogflareWeb.Endpoint,
   adapter: Bandit.PhoenixAdapter,
   http: [
     http_options: [log_protocol_errors: :short, log_client_closures: false],
-    http_1_options: [gc_every_n_keepalive_requests: 3],
+    http_1_options: [gc_every_n_keepalive_requests: 1],
     thousand_island_options: [
       num_acceptors: 1250,
       # default backend keepalive timeout is fixed at 600 seconds

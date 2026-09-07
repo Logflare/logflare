@@ -10,6 +10,7 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
 
   """
 
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Backend
   alias Logflare.Sources
@@ -131,6 +132,11 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
     else
       config
     end
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def sanitize_config_for_display(config) do
+    Adaptor.mask_config_values(config, except: [:url])
   end
 
   @impl Logflare.Backends.Adaptor

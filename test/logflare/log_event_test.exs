@@ -22,7 +22,6 @@ defmodule Logflare.LogEventTest do
              drop: false,
              id: id,
              ingested_at: _,
-             is_from_stale_query: nil,
              source_id: source_id,
              valid: true,
              pipeline_error: nil,
@@ -655,7 +654,6 @@ defmodule Logflare.LogEventTest do
              drop: false,
              id: id,
              ingested_at: _,
-             is_from_stale_query: nil,
              valid: true,
              pipeline_error: nil,
              via_rule_id: nil
@@ -947,6 +945,56 @@ defmodule Logflare.LogEventTest do
       }
 
       event_with_message(pattern, le)
+    end
+  end
+
+  describe "make_from_spool/2" do
+    test "preserves via_rule_id from an etf-decoded (atom-key) spool record", %{source: source} do
+      record = %{
+        id: Ecto.UUID.generate(),
+        body: %{"message" => "hello"},
+        event_type: :log,
+        ingested_at: System.system_time(:microsecond),
+        via_rule_id: 123
+      }
+
+      assert %LogEvent{via_rule_id: 123} = LogEvent.make_from_spool(record, source)
+    end
+
+    test "preserves via_rule_id from a json-decoded (string-key) spool record", %{source: source} do
+      record = %{
+        "id" => Ecto.UUID.generate(),
+        "body" => %{"message" => "hello"},
+        "event_type" => "log",
+        "ingested_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
+        "via_rule_id" => 123
+      }
+
+      assert %LogEvent{via_rule_id: 123} = LogEvent.make_from_spool(record, source)
+    end
+
+    test "defaults via_rule_id to nil for an etf-decoded record without the key (backward compat with older spool files)",
+         %{source: source} do
+      record = %{
+        id: Ecto.UUID.generate(),
+        body: %{"message" => "hello"},
+        event_type: :log,
+        ingested_at: System.system_time(:microsecond)
+      }
+
+      assert %LogEvent{via_rule_id: nil} = LogEvent.make_from_spool(record, source)
+    end
+
+    test "defaults via_rule_id to nil for a json-decoded record without the key (backward compat with older spool files)",
+         %{source: source} do
+      record = %{
+        "id" => Ecto.UUID.generate(),
+        "body" => %{"message" => "hello"},
+        "event_type" => "log",
+        "ingested_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+      }
+
+      assert %LogEvent{via_rule_id: nil} = LogEvent.make_from_spool(record, source)
     end
   end
 end

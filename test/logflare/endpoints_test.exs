@@ -3,6 +3,7 @@ defmodule Logflare.EndpointsTest do
 
   import Logflare.ClickHouseMappedEvents, only: [build_mapped_log_event: 1]
 
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
@@ -122,7 +123,7 @@ defmodule Logflare.EndpointsTest do
       assert_endpoint_version(endpoint, 1, "API: Acme")
     end
 
-    test "update_query/3 increments the version number and stores the updated snapshot", %{
+    test "update_query/4 increments the version number and stores the updated snapshot", %{
       user: user
     } do
       insert(:source, user: user, name: "my_table")
@@ -131,22 +132,39 @@ defmodule Logflare.EndpointsTest do
                Endpoints.create_query(user, @endpoint_query_attrs, user)
 
       assert {:ok, updated} =
-               Endpoints.update_query(endpoint, %{query: "select a from my_table"}, user)
+               Endpoints.update_query(user, endpoint, %{query: "select a from my_table"}, user)
 
       assert_endpoint_version(endpoint, 1, user.email)
-      assert_endpoint_version(updated, 2, user.email, endpoint.token)
+      assert_endpoint_version(updated, 2, user.email)
     end
 
-    test "update_query/3 does not create a version row when the update fails", %{user: user} do
+    test "update_query/4 does not create a version row when the update fails", %{user: user} do
       assert {:ok, endpoint} =
                Endpoints.create_query(user, @endpoint_query_attrs, user)
 
       assert_endpoint_version(endpoint, 1, user.email)
 
       assert {:error, %Ecto.Changeset{}} =
-               Endpoints.update_query(endpoint, %{query: "select b from unknown"}, user)
+               Endpoints.update_query(user, endpoint, %{query: "select b from unknown"}, user)
 
       assert nil == Endpoints.get_endpoint_query_version(endpoint.id, 2)
+    end
+
+    test "update_query/4 verifies user access to backend", %{user: user} do
+      endpoint = insert(:endpoint, user: user)
+      inaccessible_backend = insert(:backend)
+
+      assert {:error, changeset} =
+               Endpoints.update_query(
+                 user,
+                 endpoint,
+                 %{backend_id: inaccessible_backend.id},
+                 user
+               )
+
+      assert "Backend not found" in errors_on(changeset).base
+      assert Endpoints.get_endpoint_query(endpoint.id).backend_id == endpoint.backend_id
+      assert nil == Endpoints.get_endpoint_query_version(endpoint.id, 1)
     end
 
     test "delete_query/2 stores the next version after prior history", %{user: user} do
@@ -155,7 +173,7 @@ defmodule Logflare.EndpointsTest do
 
       assert {:ok, deleted_endpoint} = Endpoints.delete_query(endpoint, user)
       assert_endpoint_version(endpoint, 1, user.email)
-      assert_endpoint_version(deleted_endpoint, 2, user.email, endpoint.token)
+      assert_endpoint_version(deleted_endpoint, 2, user.email)
     end
 
     test "get_endpoint_query_version/2 returns the requested version", %{
@@ -181,9 +199,94 @@ defmodule Logflare.EndpointsTest do
 
       assert nil == Endpoints.get_endpoint_query_version(endpoint.id, 99)
     end
+
+    test "restore_query_version/4 restores a historical version by requested version number", %{
+      user: user
+    } do
+      endpoint = insert(:endpoint, user: user, description: "second description")
+
+      insert(:endpoint_version,
+        endpoint: endpoint,
+        version_number: 1,
+        origin: user.email,
+        snapshot_overrides: %{"description" => "first description"}
+      )
+
+      insert(:endpoint_version,
+        endpoint: endpoint,
+        version_number: 2,
+        origin: user.email
+      )
+
+      assert {:ok, restored_endpoint, 1} =
+               Endpoints.restore_query_version(user, endpoint, 1, user)
+
+      assert restored_endpoint.description == "first description"
+      assert restored_endpoint.token == endpoint.token
+      assert_endpoint_version(restored_endpoint, 3, user.email)
+    end
+
+    test "restore_query_version/4 rejects a backend inaccessible to the actor", %{user: user} do
+      team = insert(:team, user: user)
+      team_user = insert(:team_user, team: team)
+      current_backend = insert(:backend, user: user)
+      inaccessible_backend = insert(:backend)
+      endpoint = insert(:endpoint, user: user, backend: current_backend)
+
+      insert(:endpoint_version,
+        endpoint: endpoint,
+        version_number: 1,
+        origin: user.email,
+        snapshot_overrides: %{"backend_id" => inaccessible_backend.id}
+      )
+
+      insert(:endpoint_version,
+        endpoint: endpoint,
+        version_number: 2,
+        origin: user.email
+      )
+
+      assert %EndpointQuery{} =
+               Endpoints.get_endpoint_query_by_user_access(team_user, endpoint.id)
+
+      assert nil == Backends.get_backend_by_user_access(team_user, inaccessible_backend.id)
+
+      assert {:error, changeset} =
+               Endpoints.restore_query_version(team_user, endpoint, 1, team_user)
+
+      assert "Backend not found" in errors_on(changeset).base
+      assert Endpoints.get_endpoint_query(endpoint.id).backend_id == current_backend.id
+      assert nil == Endpoints.get_endpoint_query_version(endpoint.id, 3)
+    end
+
+    test "restore_query_version/4 rejects current and missing version numbers", %{
+      user: user
+    } do
+      endpoint = insert(:endpoint, user: user)
+
+      insert(:endpoint_version,
+        endpoint: endpoint,
+        version_number: 1,
+        origin: user.email
+      )
+
+      insert(:endpoint_version,
+        endpoint: endpoint,
+        version_number: 2,
+        origin: user.email
+      )
+
+      assert {:error, changeset} = Endpoints.restore_query_version(user, endpoint, 2, user)
+      assert "Version is already current" in errors_on(changeset).base
+
+      assert {:error, changeset} = Endpoints.restore_query_version(user, endpoint, 99, user)
+      assert "Version not found" in errors_on(changeset).base
+
+      assert nil == Endpoints.get_endpoint_query_version(endpoint.id, 3)
+    end
   end
 
-  test "update_query/3 " do
+  test "update_query/4" do
     user = insert(:user)
     source = insert(:source, user: user, name: "my_table")
     endpoint = insert(:endpoint, user: user, query: "select current_datetime() as date")
@@ -191,11 +294,11 @@ defmodule Logflare.EndpointsTest do
     allow_context_cache_sandbox()
     warm_endpoint_query_validation_caches(source)
 
-    assert {:ok, %{query: ^sql}} = Endpoints.update_query(endpoint, %{query: sql}, user)
+    assert {:ok, %{query: ^sql}} = Endpoints.update_query(user, endpoint, %{query: sql}, user)
 
     # does not allow updating of query with unknown sources
     assert {:error, %Ecto.Changeset{}} =
-             Endpoints.update_query(endpoint, %{query: "select b from unknown"}, user)
+             Endpoints.update_query(user, endpoint, %{query: "select b from unknown"}, user)
   end
 
   describe "endpoint query history" do
@@ -218,8 +321,7 @@ defmodule Logflare.EndpointsTest do
                }
              ] = versions_for_endpoint(endpoint)
 
-      assert version_meta["endpoint_snapshot"] ==
-               expected_endpoint_snapshot(endpoint, %{"token" => nil})
+      assert version_meta["endpoint_snapshot"] == expected_endpoint_snapshot(endpoint)
     end
 
     test "create_query/3 writes version 1 with TeamUser origin", %{
@@ -239,8 +341,7 @@ defmodule Logflare.EndpointsTest do
                }
              ] = versions_for_endpoint(endpoint)
 
-      assert version_meta["endpoint_snapshot"] ==
-               expected_endpoint_snapshot(endpoint, %{"token" => nil})
+      assert version_meta["endpoint_snapshot"] == expected_endpoint_snapshot(endpoint)
     end
 
     test "create_query/3 writes version 1 with the expected API token description origin", %{
@@ -259,11 +360,10 @@ defmodule Logflare.EndpointsTest do
                }
              ] = versions_for_endpoint(endpoint)
 
-      assert version_meta["endpoint_snapshot"] ==
-               expected_endpoint_snapshot(endpoint, %{"token" => nil})
+      assert version_meta["endpoint_snapshot"] == expected_endpoint_snapshot(endpoint)
     end
 
-    test "update_query/3 increments the version number and preserves the snapshot contract", %{
+    test "update_query/4 increments the version number and preserves the snapshot contract", %{
       user: user,
       endpoint_params: endpoint_params
     } do
@@ -283,7 +383,7 @@ defmodule Logflare.EndpointsTest do
         labels: "environment"
       }
 
-      assert {:ok, updated_endpoint} = Endpoints.update_query(endpoint, params, user)
+      assert {:ok, updated_endpoint} = Endpoints.update_query(user, endpoint, params, user)
       origin = user.email
 
       assert [
@@ -299,7 +399,7 @@ defmodule Logflare.EndpointsTest do
                expected_endpoint_snapshot(updated_endpoint)
     end
 
-    test "update_query/3 rollback path leaves history unchanged when the update fails", %{
+    test "update_query/4 rollback path leaves history unchanged when the update fails", %{
       user: user,
       endpoint_params: endpoint_params
     } do
@@ -308,7 +408,7 @@ defmodule Logflare.EndpointsTest do
       assert [%Version{id: create_version_id}] = versions_for_endpoint(endpoint)
 
       assert {:error, %Ecto.Changeset{}} =
-               Endpoints.update_query(endpoint, %{query: "select b from unknown"}, user)
+               Endpoints.update_query(user, endpoint, %{query: "select b from unknown"}, user)
 
       assert [
                %Version{
@@ -325,7 +425,7 @@ defmodule Logflare.EndpointsTest do
       assert {:ok, endpoint} = Endpoints.create_query(user, endpoint_params, user)
 
       assert {:ok, updated_endpoint} =
-               Endpoints.update_query(endpoint, %{labels: "environment"}, user)
+               Endpoints.update_query(user, endpoint, %{labels: "environment"}, user)
 
       assert {:ok, deleted_endpoint} = Endpoints.delete_query(updated_endpoint, user)
       origin = user.email
@@ -351,7 +451,7 @@ defmodule Logflare.EndpointsTest do
       assert {:ok, endpoint} = Endpoints.create_query(user, endpoint_params, user)
 
       assert {:ok, _updated_endpoint} =
-               Endpoints.update_query(endpoint, %{labels: "environment"}, user)
+               Endpoints.update_query(user, endpoint, %{labels: "environment"}, user)
 
       assert %Version{id: version_1_id} =
                Endpoints.get_endpoint_query_version(endpoint.id, 1)
@@ -523,6 +623,41 @@ defmodule Logflare.EndpointsTest do
       assert_received %{
         "endpoint_id" => ^endpoint_id_label_value
       }
+    end
+
+    test "run_query/3 uses a 60s timeout when a custom reservation is provided" do
+      pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        send(pid, {:timeouts, opts[:body].jobTimeoutMs, opts[:body].timeoutMs})
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      user = insert(:user)
+      endpoint = insert(:endpoint, user: user, query: "select current_datetime() as testing")
+
+      assert {:ok, %{rows: [%{"testing" => _}]}} =
+               Endpoints.run_query(endpoint, %{},
+                 reservation: "projects/p/locations/l/reservations/endpoint"
+               )
+
+      assert_received {:timeouts, 60_000, 60_000}
+    end
+
+    test "run_query/3 keeps the default timeout when no reservation is provided" do
+      pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        send(pid, {:timeouts, opts[:body].jobTimeoutMs, opts[:body].timeoutMs})
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      user = insert(:user)
+      endpoint = insert(:endpoint, user: user, query: "select current_datetime() as testing")
+
+      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
+
+      assert_received {:timeouts, 25_000, 25_000}
     end
 
     test "run an endpoint query with query composition" do
@@ -800,7 +935,7 @@ defmodule Logflare.EndpointsTest do
           :enable_auth,
           :labels
         ] do
-      test "update_query/3 will kill all existing caches on field change (#{field_changed})" do
+      test "update_query/4 will kill all existing caches on field change (#{field_changed})" do
         expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 2, fn _, _, _ ->
           {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
         end)
@@ -820,7 +955,7 @@ defmodule Logflare.EndpointsTest do
             key -> Map.new([{key, 123}])
           end
 
-        assert {:ok, updated} = Endpoints.update_query(endpoint, params, user)
+        assert {:ok, updated} = Endpoints.update_query(user, endpoint, params, user)
         # should kill the cache process
         :timer.sleep(500)
         refute Process.alive?(cache_pid)
@@ -1036,13 +1171,12 @@ defmodule Logflare.EndpointsTest do
       "query" => endpoint.query,
       "redact_pii" => endpoint.redact_pii,
       "sandboxable" => endpoint.sandboxable,
-      "source_mapping" => endpoint.source_mapping,
-      "token" => endpoint.token
+      "source_mapping" => endpoint.source_mapping
     }
     |> Map.merge(overrides)
   end
 
-  defp assert_endpoint_version(endpoint, version_number, expected_origin, expected_token \\ nil) do
+  defp assert_endpoint_version(endpoint, version_number, expected_origin) do
     assert version =
              Endpoints.get_endpoint_query_version(endpoint.id, version_number)
 
@@ -1050,7 +1184,7 @@ defmodule Logflare.EndpointsTest do
     assert version.meta["version_number"] == version_number
 
     assert version.meta["endpoint_snapshot"] ==
-             expected_endpoint_snapshot(endpoint, %{"token" => expected_token})
+             expected_endpoint_snapshot(endpoint)
 
     version
   end

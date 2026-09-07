@@ -6,7 +6,8 @@ defmodule Logflare.Backends.QueryError do
   @enforce_keys [:kind, :raw_error, :backend]
   defstruct [:kind, :raw_error, :backend, :description]
 
-  @type kind :: :invalid_query | :connection_error | :backend_error
+  @type kind ::
+          :invalid_query | :connection_error | :pool_exhausted | :backend_error | :timeout
   @type t :: %__MODULE__{
           kind: kind(),
           raw_error: term(),
@@ -14,10 +15,13 @@ defmodule Logflare.Backends.QueryError do
           description: String.t() | nil
         }
 
+  defguard is_user_error(kind) when kind == :invalid_query
+
   @spec log(t(), Keyword.t()) :: t()
   def log(error, metadata \\ [])
 
-  def log(%__MODULE__{kind: :invalid_query} = error, metadata) when is_list(metadata) do
+  def log(%__MODULE__{kind: kind} = error, metadata)
+      when is_user_error(kind) and is_list(metadata) do
     error
   end
 

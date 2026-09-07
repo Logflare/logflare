@@ -16,7 +16,8 @@ defmodule Logflare.Rules.Rule do
              :id,
              :source_id,
              :lql_string,
-             :backend_id
+             :backend_id,
+             :sink
            ]}
 
   typed_schema "rules" do

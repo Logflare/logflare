@@ -1,0 +1,23 @@
+{
+  "event_message": "cron job 2 completed: 1 row",
+  "id": "00000000-0000-0000-0000-000000000000",
+  "identifier": "test-project",
+  "metadata": {
+    "host": "db-test-project",
+    "parsed": {
+      "backend_type": "pg_cron launcher",
+      "error_severity": "LOG",
+      "process_id": 169902,
+      "query_id": -6400286027763998979,
+      "session_id": "a895f0b7.28fde",
+      "session_line_num": 374869,
+      "session_start_time": "2025-08-08 11:34:15 UTC",
+      "sql_state_code": "00000",
+      "timestamp": "2025-12-16 19:27:00.059 UTC",
+      "transaction_id": 0,
+      "virtual_transaction_id": "66/0"
+    }
+  },
+  "project": "test-project",
+  "timestamp": 0
+}

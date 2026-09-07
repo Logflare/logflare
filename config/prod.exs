@@ -28,3 +28,15 @@ config :logger,
 config :logflare_logger_backend,
   flush_interval: 2_000,
   max_batch_size: 250
+
+config :logflare, :spool,
+  mode: :disable,
+  bucket: "logflare-spool",
+  partitions: 4,
+  batch_timeout: 5_000,
+  compress: true,
+  # Serialization format for spool files. Options: :ndjson | :etf
+  # :etf encodes the whole batch as a single Erlang term — ~10x faster decode,
+  # but files are binary (use IEx to inspect, not cat/jq).
+  format: :etf,
+  queue_name: "logflare-spool"

@@ -150,7 +150,7 @@ defmodule Logflare.Mixfile do
       {:tesla, "~> 1.6"},
 
       # Concurrency and pipelines
-      {:broadway, github: "Logflare/broadway", branch: "fix/batcher-fullsweep-after"},
+      {:broadway, "~> 1.3"},
       {:syn, github: "Logflare/syn"},
 
       # Test
@@ -169,6 +169,8 @@ defmodule Logflare.Mixfile do
       {:google_api_cloud_resource_manager, "~> 0.34.0"},
       {:google_api_big_query, "~> 0.88.0"},
       {:google_api_iam, "~> 0.45.0"},
+      {:google_api_storage, "~> 0.46"},
+      {:google_api_pub_sub, "~> 0.42"},
       {:goth, github: "Logflare/goth", branch: "feat/service-account-impersonation"},
       {:google_gax, github: "Logflare/elixir-google-gax", ref: "6772193", override: true},
 
@@ -183,6 +185,12 @@ defmodule Logflare.Mixfile do
 
       # DataFrames
       {:explorer, "~> 0.11.1"},
+
+      # S3
+      {:ex_aws, "~> 2.5"},
+      {:ex_aws_s3, "~> 2.5"},
+      {:ex_aws_sqs, "~> 3.4"},
+      {:sweet_xml, "~> 0.7"},
 
       # Telemetry & logging
       {:telemetry, "~> 1.0"},
@@ -200,7 +208,7 @@ defmodule Logflare.Mixfile do
 
       # Frontend
       {:phoenix_live_react, "~> 0.6"},
-      {:sql_fmt, "~> 0.4.0"},
+      {:sql_fmt, "~> 0.5.0"},
 
       # Dev
       {:dialyxir, "~> 1.1", only: [:dev, :test], runtime: false},
@@ -220,12 +228,9 @@ defmodule Logflare.Mixfile do
       {:sobelow, "~> 0.14.1", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.10", only: :test},
 
-      # Charting
-      {:contex, "~> 0.3.0"},
-
       # Postgres Subscribe
       {:cainophile, github: "Logflare/cainophile", ref: "f92a552"},
-      {:open_api_spex, "~> 3.16"},
+      {:open_api_spex, "~> 3.22"},
       # required for yaml open api generation
       {:ymlr, "~> 2.0"},
       {:grpc, "~> 0.11.0"},
@@ -272,7 +277,7 @@ defmodule Logflare.Mixfile do
       "test.security": ["sobelow --threshold high --ignore Config.HTTPS"],
       "test.typings": ["cmd mkdir -p dialyzer", "dialyzer"],
       "test.coverage": ["coveralls"],
-      "test.coverage.ci": ["coveralls.github"],
+      "test.coverage.ci": ["coveralls.lcov"],
       "test.e2e": ["ecto.create --quiet", "ecto.migrate --quiet", "test --only feature"],
       lint: ["credo"],
       "lint.diff": ["credo diff main"],

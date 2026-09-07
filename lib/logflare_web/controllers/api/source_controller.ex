@@ -9,9 +9,11 @@ defmodule LogflareWeb.Api.SourceController do
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.NotFound
+  alias LogflareWeb.OpenApi.UnprocessableEntity
   alias LogflareWeb.OpenApiSchemas.Event
 
   alias LogflareWeb.OpenApiSchemas.Source
+  alias LogflareWeb.OpenApiSchemas.SourceParams
   alias LogflareWeb.OpenApiSchemas
 
   action_fallback(LogflareWeb.Api.FallbackController)
@@ -46,10 +48,11 @@ defmodule LogflareWeb.Api.SourceController do
 
   operation(:create,
     summary: "Create source",
-    request_body: Source.params(),
+    request_body: {"Source Parameters", "application/json", SourceParams.schema()},
     responses: %{
       201 => Created.response(Source),
-      404 => NotFound.response()
+      404 => NotFound.response(),
+      422 => UnprocessableEntity.response()
     }
   )
 
@@ -66,11 +69,12 @@ defmodule LogflareWeb.Api.SourceController do
   operation(:update,
     summary: "Update source",
     parameters: [token: [in: :path, description: "Source Token", type: :string]],
-    request_body: Source.params(),
+    request_body: {"Source Parameters", "application/json", SourceParams.schema()},
     responses: %{
       204 => Accepted.response(),
-      200 => Accepted.response(),
-      404 => NotFound.response()
+      200 => Source.response(),
+      404 => NotFound.response(),
+      422 => UnprocessableEntity.response()
     }
   )
 

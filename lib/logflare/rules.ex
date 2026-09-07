@@ -30,9 +30,35 @@ defmodule Logflare.Rules do
     |> Repo.all()
   end
 
+  @doc "Lists rules owned by a user through their source."
+  @spec list_rules_by_user_id(pos_integer(), non_neg_integer() | nil) :: [Rule.t()]
+  def list_rules_by_user_id(user_id, backend_id \\ nil) do
+    from(r in Rule,
+      join: s in Source,
+      on: r.source_id == s.id,
+      where: s.user_id == ^user_id
+    )
+    |> maybe_filter_by_backend_id(backend_id)
+    |> Repo.all()
+  end
+
+  defp maybe_filter_by_backend_id(query, nil), do: query
+
+  defp maybe_filter_by_backend_id(query, backend_id) do
+    where(query, [r], r.backend_id == ^backend_id)
+  end
+
+  @doc """
+  Returns the routing snapshot for a source: the rules tree, and a lookup of the
+  rules it was built from keyed by rule id.
+
+  Both halves come from one `list_by_source_id/1` read, so every rule id in the
+  tree resolves to a rule in the lookup.
+  """
+  @spec rules_tree_by_source_id(integer()) :: {RulesTree.t(), %{Rule.id() => Rule.t()}}
   def rules_tree_by_source_id(id) do
     rules = list_by_source_id(id)
-    RulesTree.build(rules)
+    {RulesTree.build(rules), Map.new(rules, &{&1.id, &1})}
   end
 
   @doc """

@@ -6,6 +6,7 @@ defmodule LogflareWeb.LogControllerTest do
   alias Logflare.SingleTenant
   alias Logflare.Users
   alias Logflare.Sources
+  alias Logflare.Backends
   alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
 
@@ -137,7 +138,10 @@ defmodule LogflareWeb.LogControllerTest do
         source: source,
         user: user
       } do
-        Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch, _source ->
+        Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch,
+                                                       _source,
+                                                       _backend,
+                                                       _allow_spooling ->
           {:error, ["Type error! Field `value` has an unexpected type."]}
         end)
 
@@ -630,7 +634,6 @@ defmodule LogflareWeb.LogControllerTest do
 
       # ingestion setup
       start_supervised!({SourceSup, source})
-      :timer.sleep(500)
 
       conn =
         conn
@@ -646,7 +649,10 @@ defmodule LogflareWeb.LogControllerTest do
 
       assert_logged_successfully(conn)
 
-      :timer.sleep(3000)
+      TestUtils.retry_assert(fn ->
+        assert [_event] = Backends.list_recent_logs_local(source)
+        assert {:ok, %{len: 0}} = Backends.cache_local_buffer_lens(source.id)
+      end)
     end
   end
 
@@ -655,7 +661,6 @@ defmodule LogflareWeb.LogControllerTest do
     user = insert(:user)
     source = insert(:source, user: user)
     start_supervised!({SourceSup, source})
-    :timer.sleep(500)
 
     {:ok, source: source, user: user, conn: conn}
   end

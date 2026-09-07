@@ -3,10 +3,15 @@ defmodule LogflareWeb.HealthCheckControllerTest do
   For node-level health check only.
   """
   use LogflareWeb.ConnCase
+
+  alias Logflare.Readiness
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source
 
   setup do
+    reset_readiness()
+    on_exit(&reset_readiness/0)
+
     Logflare.Google.BigQuery
     |> stub(:init_table!, fn _, _, _, _, _, _ -> :ok end)
 
@@ -15,7 +20,6 @@ defmodule LogflareWeb.HealthCheckControllerTest do
 
   test "normal node health check", %{conn: conn} do
     start_supervised!(Source.Supervisor)
-    :timer.sleep(1000)
 
     conn = get(conn, "/health")
 
@@ -27,6 +31,22 @@ defmodule LogflareWeb.HealthCheckControllerTest do
                "Elixir.Logflare.Auth.Cache" => "ok"
              }
            } = json_response(conn, 200)
+  end
+
+  test "readiness check", %{conn: conn} do
+    start_supervised!(Source.Supervisor)
+    :timer.sleep(1000)
+
+    assert %{"status" => "ok"} = conn |> get("/ready") |> json_response(200)
+  end
+
+  test "readiness check while draining", %{conn: conn} do
+    start_supervised!(Source.Supervisor)
+    :timer.sleep(1000)
+    Readiness.begin_draining()
+
+    assert %{"status" => "not_ready"} = conn |> get("/ready") |> json_response(503)
+    assert %{"status" => "ok"} = conn |> get("/health") |> json_response(200)
   end
 
   test "memory check", %{conn: conn} do
@@ -56,6 +76,17 @@ defmodule LogflareWeb.HealthCheckControllerTest do
     test "not ok", %{conn: conn} do
       assert %{"status" => "coming_up"} = conn |> get("/health") |> json_response(503)
     end
+
+    test "not ready even when the application is accepting traffic", %{conn: conn} do
+      Readiness.mark_ready()
+
+      assert %{"status" => "coming_up"} = conn |> get("/ready") |> json_response(503)
+    end
+  end
+
+  defp reset_readiness do
+    Readiness.initialize()
+    Readiness.mark_ready()
   end
 
   describe "Supabase mode - with seed" do

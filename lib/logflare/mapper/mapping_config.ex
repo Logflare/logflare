@@ -5,6 +5,8 @@ defmodule Logflare.Mapper.MappingConfig do
   A mapping config is a list of `FieldConfig` structs, each describing how to
   extract and coerce a single output field from an input document. Build configs
   using the `FieldConfig` constructor functions, then compile via `Mapper.compile!/1`.
+  Configurations produce maps by default; an optional `OutputFormat` selects a
+  serialized, schema-specific output such as ClickHouse RowBinary.
 
   Supports 11 scalar types (`string`, `uint8`, `uint32`, `uint64`, `int32`,
   `float64`, `bool`, `enum8`, `datetime64`, `json`, `flat_map`) and 7 array
@@ -72,6 +74,7 @@ defmodule Logflare.Mapper.MappingConfig do
   alias __MODULE__.FieldConfig
   alias __MODULE__.InferCondition
   alias __MODULE__.InferRule
+  alias __MODULE__.OutputFormat
   alias __MODULE__.PickEntry
 
   @derive Jason.Encoder
@@ -79,6 +82,7 @@ defmodule Logflare.Mapper.MappingConfig do
   @primary_key false
   typed_embedded_schema do
     embeds_many(:fields, FieldConfig)
+    embeds_one(:output, OutputFormat)
   end
 
   @spec changeset(t() | Ecto.Changeset.t(), map()) :: Ecto.Changeset.t()
@@ -86,11 +90,12 @@ defmodule Logflare.Mapper.MappingConfig do
     struct_or_changeset
     |> cast(attrs, [])
     |> cast_embed(:fields, with: &FieldConfig.changeset/2)
+    |> cast_embed(:output, with: &OutputFormat.changeset/2)
   end
 
-  @spec new([FieldConfig.t()]) :: t()
-  def new(fields) when is_list(fields) do
-    %__MODULE__{fields: fields}
+  @spec new([FieldConfig.t()], keyword()) :: t()
+  def new(fields, opts \\ []) when is_list(fields) and is_list(opts) do
+    %__MODULE__{fields: fields, output: Keyword.get(opts, :output)}
   end
 
   @spec to_json(t()) :: {:ok, String.t()} | {:error, Jason.EncodeError.t()}
@@ -106,8 +111,13 @@ defmodule Logflare.Mapper.MappingConfig do
   end
 
   @spec to_nif_map(t()) :: map()
-  def to_nif_map(%__MODULE__{fields: fields}) do
-    %{"fields" => Enum.map(fields, &field_to_nif_map/1)}
+  def to_nif_map(%__MODULE__{fields: fields, output: output}) do
+    config = %{"fields" => Enum.map(fields, &field_to_nif_map/1)}
+
+    case output do
+      %OutputFormat{} -> Map.put(config, "output", OutputFormat.to_nif_map(output))
+      nil -> config
+    end
   end
 
   @spec field_to_nif_map(FieldConfig.t()) :: map()

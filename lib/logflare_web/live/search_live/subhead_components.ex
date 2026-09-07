@@ -8,6 +8,7 @@ defmodule LogflareWeb.SearchLive.SubheadComponents do
 
   import LogflareWeb.LqlHelpers
   import LogflareWeb.ModalLiveHelpers, only: [modal_link: 1]
+  import Logflare.Utils.Guards
   alias Logflare.DateTimeUtils
   alias Phoenix.LiveView.JS
 
@@ -114,7 +115,7 @@ defmodule LogflareWeb.SearchLive.SubheadComponents do
     search_timezone != user_timezone(preferences)
   end
 
-  defp disabled_if_no_events(%{rows: rows}) when is_list(rows) and rows != [], do: nil
+  defp disabled_if_no_events(%{rows: rows}) when is_non_empty_list(rows), do: nil
   defp disabled_if_no_events(_), do: "tw-opacity-50 tw-pointer-events-none"
 
   defp user_timezone(preferences), do: preferences && Map.get(preferences, :timezone)

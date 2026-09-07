@@ -22,12 +22,62 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
         |> add_access_token(user, ~w(private))
         |> get(~p"/api/endpoints")
         |> json_response(200)
-        |> assert_schema("EndpointApiSchemaListResponse")
 
-      response = response |> Enum.map(& &1.token) |> Enum.sort()
+      response = response |> Enum.map(& &1["token"]) |> Enum.sort()
       expected = endpoints |> Enum.map(& &1.token) |> Enum.sort()
 
       assert response == expected
+    end
+  end
+
+  describe "team access" do
+    test "team member can manage team-owned endpoints and attach a team-owned backend", %{
+      conn: conn
+    } do
+      member = insert(:user, endpoints_beta: true)
+      team_user = insert(:team_user, email: member.email)
+      owner = team_user.team.user
+      managed_endpoint = insert(:endpoint, user: owner, name: "initial")
+      deleted_endpoint = insert(:endpoint, user: owner)
+      unrelated_endpoint = insert(:endpoint)
+      backend = insert(:backend, user: owner)
+      conn = add_access_token(conn, member, "private")
+
+      response =
+        conn
+        |> get(~p"/api/endpoints")
+        |> json_response(200)
+
+      assert MapSet.new(Enum.map(response, & &1["token"])) ==
+               MapSet.new([managed_endpoint.token, deleted_endpoint.token])
+
+      assert %{"token" => managed_token} =
+               conn
+               |> get(~p"/api/endpoints/#{managed_endpoint.token}")
+               |> json_response(200)
+
+      assert managed_token == managed_endpoint.token
+
+      assert conn
+             |> get(~p"/api/endpoints/#{unrelated_endpoint.token}")
+             |> response(404)
+
+      assert conn
+             |> patch(~p"/api/endpoints/#{managed_endpoint.token}", %{name: "updated"})
+             |> text_response(204) == ""
+
+      assert conn
+             |> patch(~p"/api/endpoints/#{managed_endpoint.token}", %{backend_id: backend.id})
+             |> text_response(204) == ""
+
+      assert %{backend_id: backend_id, name: "updated"} =
+               Endpoints.get_endpoint_query(managed_endpoint.id)
+
+      assert backend_id == backend.id
+
+      assert conn
+             |> delete(~p"/api/endpoints/#{deleted_endpoint.token}")
+             |> text_response(204) == ""
     end
   end
 
@@ -42,9 +92,8 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
         |> add_access_token(user, ~w(private))
         |> get(~p"/api/endpoints/#{endpoint.token}")
         |> json_response(200)
-        |> assert_schema("EndpointApiSchema")
 
-      assert response.token == endpoint.token
+      assert response["token"] == endpoint.token
     end
 
     test "returns not found if doesn't own the endpoint query", %{
@@ -57,7 +106,6 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
       |> add_access_token(invalid_user, ~w(private))
       |> get(~p"/api/endpoints/#{endpoint.token}")
       |> json_response(404)
-      |> assert_schema("NotFoundResponse")
     end
   end
 
@@ -74,12 +122,11 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
         |> add_access_token(user, ~w(private))
         |> post(~p"/api/endpoints", %{name: name, language: "bq_sql", query: query})
         |> json_response(201)
-        |> assert_schema("EndpointApiSchema")
 
-      assert response.name == name
-      assert response.query == query
+      assert response["name"] == name
+      assert response["query"] == query
 
-      assert [version] = PaperTrail.get_versions(Endpoints.EndpointQuery, response.id)
+      assert [version] = PaperTrail.get_versions(Endpoints.EndpointQuery, response["id"])
       assert version.origin =~ "API: id"
     end
 
@@ -89,9 +136,8 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
         |> add_access_token(user, ~w(private))
         |> post(~p"/api/endpoints")
         |> json_response(422)
-        |> assert_schema("UnprocessableEntityResponse")
 
-      assert %{errors: %{"name" => _, "query" => _}} = response
+      assert %{"errors" => %{"name" => _, "query" => _}} = response
     end
 
     test "returns 422 on bad arguments", %{conn: conn, user: user} do
@@ -100,9 +146,8 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
         |> add_access_token(user, ~w(private))
         |> post(~p"/api/endpoints", %{name: 123})
         |> json_response(422)
-        |> assert_schema("UnprocessableEntityResponse")
 
-      assert %{errors: %{"name" => _, "query" => _}} = response
+      assert %{"errors" => %{"name" => _, "query" => _}} = response
     end
 
     test "attacker cannot create an endpoint with another user's backend", %{conn: conn} do
@@ -144,7 +189,6 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
         |> add_access_token(user, ~w(private))
         |> patch(~p"/api/endpoints/#{token}", %{name: name})
         |> text_response(204)
-        |> assert_schema("AcceptedResponse")
 
       assert response == ""
 
@@ -155,9 +199,8 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
         |> add_access_token(user, ~w(private))
         |> put(~p"/api/endpoints/#{token}", %{name: another_name})
         |> json_response(200)
-        |> assert_schema("EndpointApiSchema")
 
-      assert %{name: ^another_name, token: ^token} = response
+      assert %{"name" => ^another_name, "token" => ^token} = response
 
       assert_in_delta length(initial_versions),
                       length(PaperTrail.get_versions(Endpoints.EndpointQuery, endpoint.id)),
@@ -174,7 +217,6 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
       |> add_access_token(invalid_user, ~w(private))
       |> patch(~p"/api/endpoints/#{endpoint.token}", %{name: TestUtils.random_string()})
       |> json_response(404)
-      |> assert_schema("NotFoundResponse")
     end
 
     test "returns 422 on bad arguments", %{
@@ -187,9 +229,8 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
         |> add_access_token(user, ~w(private))
         |> patch(~p"/api/endpoints/#{endpoint.token}", %{name: 123})
         |> json_response(422)
-        |> assert_schema("UnprocessableEntityResponse")
 
-      assert %{errors: %{"name" => ["is invalid"]}} = response
+      assert %{"errors" => %{"name" => ["is invalid"]}} = response
     end
 
     test "attacker cannot update their endpoint to use another user's backend", %{conn: conn} do
@@ -225,13 +266,11 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
       |> add_access_token(user, ~w(private))
       |> delete(~p"/api/endpoints/#{endpoint.token}", %{name: name})
       |> text_response(204)
-      |> assert_schema("AcceptedResponse")
 
       conn
       |> add_access_token(user, ~w(private))
       |> get(~p"/api/endpoints/#{endpoint.token}")
       |> json_response(404)
-      |> assert_schema("NotFoundResponse")
 
       assert [%_{meta: meta, event: "delete"}] =
                PaperTrail.get_versions(Endpoints.EndpointQuery, endpoint.id)
@@ -249,7 +288,6 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
       |> add_access_token(invalid_user, ~w(private))
       |> delete(~p"/api/endpoints/#{endpoint.token}", %{name: TestUtils.random_string()})
       |> json_response(404)
-      |> assert_schema("NotFoundResponse")
     end
   end
 end

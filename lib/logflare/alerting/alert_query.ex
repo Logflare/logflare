@@ -19,7 +19,8 @@ defmodule Logflare.Alerting.AlertQuery do
              :query,
              :webhook_notification_url,
              :slack_hook_url,
-             :enabled
+             :enabled,
+             :backends
            ]}
   typed_schema "alert_queries" do
     field :name, :string

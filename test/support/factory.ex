@@ -6,7 +6,6 @@ defmodule Logflare.Factory do
 
   alias Logflare.Backends.Backend
   alias Logflare.Billing.BillingAccount
-  alias Logflare.Billing.BillingCount
   alias Logflare.Billing.PaymentMethod
   alias Logflare.Billing.Plan
   alias Logflare.Endpoints.EndpointQuery
@@ -139,7 +138,7 @@ defmodule Logflare.Factory do
   end
 
   def log_event_factory(attrs) do
-    {source, attrs} = Map.pop(attrs, :source, build(:source))
+    {source, attrs} = Map.pop_lazy(attrs, :source, fn -> build(:source) end)
     {ingested_at, params} = Map.pop(attrs, :ingested_at)
 
     params =
@@ -168,6 +167,18 @@ defmodule Logflare.Factory do
     |> Map.update!(:ingested_at, fn v ->
       if ingested_at, do: ingested_at, else: v
     end)
+  end
+
+  @doc """
+  Builds queue saturation events without rerunning the full log-event factory for every item.
+
+  Queue saturation tests only require unique queue keys, so this builds one event and clones it
+  with unique IDs.
+  """
+  @spec build_queue_saturation_events(pos_integer(), keyword()) :: [LogEvent.t()]
+  def build_queue_saturation_events(count, attrs \\ []) do
+    event = build(:log_event, attrs)
+    for id <- 1..count, do: %{event | id: {event.id, id}}
   end
 
   def plan_factory do
@@ -395,18 +406,6 @@ defmodule Logflare.Factory do
         ),
       team: insert(:team)
     )
-  end
-
-  def billing_counts_factory do
-    user = insert(:user)
-    source = build(:source, user: user)
-
-    %BillingCount{
-      count: TestUtils.random_pos_integer(),
-      node: TestUtils.random_string(8),
-      user: user,
-      source: source
-    }
   end
 
   def partner_factory do

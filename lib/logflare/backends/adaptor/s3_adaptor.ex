@@ -3,12 +3,13 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   Backend adaptor that writes batches of logs to S3.
   """
 
-  import Logflare.Utils.Guards
-
   use Supervisor
+
+  import Logflare.Utils.Guards
 
   alias __MODULE__.Pipeline
   alias Ecto.Changeset
+  alias ExAws.S3
   alias Explorer.DataFrame
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
@@ -35,6 +36,8 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
 
   @min_batch_timeout 1_000
   @max_batch_timeout 5_000
+  @connection_test_key "_connection_test.parquet"
+  @parquet_content_type "application/vnd.apache.parquet"
 
   @doc false
   def child_spec(arg) do
@@ -85,6 +88,18 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     host = URI.parse(endpoint).host
 
     cond do
+      String.trim(endpoint) != endpoint ->
+        [
+          {field,
+           {"Endpoint must not have leading or trailing whitespace",
+            validation: :endpoint_malformed}}
+        ]
+
+      malformed_host?(host) ->
+        [
+          {field, {"Endpoint host is malformed", validation: :endpoint_malformed}}
+        ]
+
       ssrf_check_disabled?() ->
         []
 
@@ -99,6 +114,9 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
         ]
     end
   end
+
+  defp malformed_host?(nil), do: false
+  defp malformed_host?(host), do: String.match?(host, ~r/\s/)
 
   defp ssrf_check_disabled? do
     !!Application.get_env(:logflare, :unsafe_disable_ssrf_s3_endpoint_check)
@@ -121,10 +139,18 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     end
   end
 
+  @impl Adaptor
+  def sanitize_config_for_display(config) do
+    Adaptor.mask_config_values(config, except: [:s3_bucket, :storage_region, :batch_timeout])
+  end
+
   @doc """
-  Probes connectivity, credentials, region, and bucket access by writing a
-  tiny sentinel parquet file to a fixed key at the bucket root. Subsequent
-  probes overwrite the same key, so at most one ~1 KB artifact ever exists.
+  Probes write access by uploading a tiny sentinel parquet file to a fixed
+  key at the bucket root. Subsequent probes overwrite the same key, so at
+  most one ~1 KB artifact ever exists.
+
+  The probe only requires `s3:PutObject`, so it proves write access — not
+  read or list access, which the adaptor does not need.
 
   Note: on buckets with versioning enabled, each probe creates a new
   non-current version.
@@ -133,12 +159,9 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   @spec test_connection(Backend.t()) :: :ok | {:error, term()}
   def test_connection(%Backend{} = backend) do
     config = Adaptor.get_backend_config(backend)
-    path = "s3://#{config.s3_bucket}/_connection_test.parquet"
-
     df = DataFrame.new([%{probe: "connection-test"}], dtypes: [{:probe, :string}])
-    result = DataFrame.to_parquet(df, path, config: fss_s3_config(config))
 
-    case result do
+    case put_parquet(df, config, @connection_test_key) do
       :ok -> :ok
       {:error, reason} -> {:error, "S3 write failed: #{inspect(reason)}"}
     end
@@ -186,15 +209,14 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   def pipeline_alive?(args), do: !!pipeline_pid(args)
 
   @doc """
-  Generates the S3 path for a new parquet file based on a `Source` and bucket name.
+  Generates the S3 object key for a new parquet file based on a `Source`.
   """
-  @spec new_s3_filename(Source.t(), bucket_name :: String.t()) :: String.t()
-  def new_s3_filename(%Source{} = source, bucket_name)
-      when is_non_empty_binary(bucket_name) do
+  @spec new_s3_key(Source.t()) :: String.t()
+  def new_s3_key(%Source{} = source) do
     source_token = s3_source_token(source)
     now = DateTime.utc_now(:microsecond) |> DateTime.to_unix(:microsecond)
 
-    "s3://#{bucket_name}/#{source_token}/#{now}.parquet"
+    "#{source_token}/#{now}.parquet"
   end
 
   @doc """
@@ -207,7 +229,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     with %Source{} = source <- Sources.Cache.get_by_id(source_id),
          %Backend{} = backend <- Backends.Cache.get_backend(backend_id),
          config <- Adaptor.get_backend_config(backend),
-         s3_file_path <- new_s3_filename(source, config.s3_bucket) do
+         s3_key <- new_s3_key(source) do
       event_rows =
         Enum.map(events, fn %LogEvent{} = log_event ->
           flattened_body =
@@ -223,19 +245,21 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
           }
         end)
 
-      event_rows
-      |> DataFrame.new(
-        dtypes: [
-          {:id, :string},
-          {:event_message, :string},
-          {:body, :string},
-          {:timestamp, {:datetime, :microsecond, "Etc/UTC"}}
-        ]
-      )
-      |> DataFrame.to_parquet(s3_file_path,
-        streaming: true,
-        config: fss_s3_config(config)
-      )
+      df =
+        DataFrame.new(event_rows,
+          dtypes: [
+            {:id, :string},
+            {:event_message, :string},
+            {:body, :string},
+            {:timestamp, {:datetime, :microsecond, "Etc/UTC"}}
+          ]
+        )
+
+      try do
+        put_parquet(df, config, s3_key)
+      rescue
+        error -> {:error, error}
+      end
     end
   end
 
@@ -265,12 +289,50 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     |> String.replace("-", "_")
   end
 
-  defp fss_s3_config(backend_config) do
+  @spec put_parquet(DataFrame.t(), map(), key :: String.t()) :: :ok | {:error, term()}
+  defp put_parquet(%DataFrame{} = df, config, key) when is_non_empty_binary(key) do
+    with {:ok, body} <- DataFrame.dump_parquet(df),
+         content_md5 <- Base.encode64(:crypto.hash(:md5, body)),
+         {:ok, _resp} <-
+           config
+           |> request_bucket()
+           |> S3.put_object(key, body,
+             content_type: @parquet_content_type,
+             content_md5: content_md5
+           )
+           |> ExAws.request(request_opts(config)) do
+      :ok
+    end
+  end
+
+  @spec request_bucket(map()) :: String.t()
+  defp request_bucket(config), do: prefix_bucket(config.s3_bucket, config[:endpoint])
+
+  @spec prefix_bucket(String.t(), String.t() | nil) :: String.t()
+  defp prefix_bucket(bucket, nil), do: bucket
+
+  defp prefix_bucket(bucket, endpoint) when is_non_empty_binary(endpoint) do
+    case URI.parse(endpoint).path do
+      nil -> bucket
+      "/" -> bucket
+      path -> String.trim(path, "/") <> "/" <> bucket
+    end
+  end
+
+  @spec request_opts(map()) :: keyword()
+  defp request_opts(config) do
     [
-      endpoint: backend_config[:endpoint],
-      access_key_id: backend_config.access_key_id,
-      secret_access_key: backend_config.secret_access_key,
-      region: backend_config.storage_region
-    ]
+      access_key_id: config.access_key_id,
+      secret_access_key: config.secret_access_key,
+      region: config.storage_region
+    ] ++ endpoint_opts(config[:endpoint])
+  end
+
+  @spec endpoint_opts(String.t() | nil) :: keyword()
+  defp endpoint_opts(nil), do: []
+
+  defp endpoint_opts(endpoint) when is_non_empty_binary(endpoint) do
+    %URI{scheme: scheme, host: host, port: port} = URI.parse(endpoint)
+    [scheme: "#{scheme}://", host: host, port: port]
   end
 end

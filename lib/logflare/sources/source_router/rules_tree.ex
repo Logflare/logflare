@@ -24,10 +24,12 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
 
   @impl true
   def matching_rules(event, source) do
-    rule_set = Rules.Cache.rules_tree_by_source_id(source.id)
+    {rule_set, rules_by_id} = Rules.Cache.rules_tree_by_source_id(source.id)
 
-    matching_rule_ids(event, rule_set)
-    |> Rules.Cache.get_rules()
+    for id <- matching_rule_ids(event, rule_set),
+        rule = Map.get(rules_by_id, id) do
+      rule
+    end
   end
 
   @doc """
@@ -124,8 +126,17 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
       :"~" ->
         stringify(le_value) =~ expected
 
-      op when op in [:<=, :<, :>=, :>] ->
-        apply(Kernel, operator, [le_value, expected])
+      :< ->
+        le_value < expected
+
+      :<= ->
+        le_value <= expected
+
+      :> ->
+        le_value > expected
+
+      :>= ->
+        le_value >= expected
     end
   end
 

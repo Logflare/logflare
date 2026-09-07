@@ -110,6 +110,32 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
   end
 
   @doc """
+  Generates a `CHECK GRANT` statement for the dedicated async insert endpoint
+  (`INSERT` and `SELECT` only).
+
+  The async cluster only receives inserts against tables that already exist in the shared
+  warehouse — provisioning happens on the primary — so it needs no DDL grants.
+
+  ## Options
+
+  - `:database` - (Optional) Will produce a fully qualified `<database>.*` string when provided with a value. Defaults to `nil`.
+
+  """
+  @spec async_insert_grant_check_statement(opts :: Keyword.t()) :: String.t()
+  def async_insert_grant_check_statement(opts \\ []) when is_list(opts) do
+    database = Keyword.get(opts, :database, nil)
+
+    grant_target_string =
+      if is_non_empty_binary(database) do
+        "#{database}.*"
+      else
+        "*"
+      end
+
+    "CHECK GRANT INSERT, SELECT ON #{grant_target_string}"
+  end
+
+  @doc """
   Dispatches to the correct type-specific DDL function based on `event_type`.
   """
   @spec create_table_statement(

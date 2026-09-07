@@ -3,9 +3,35 @@ import Config
 alias Logflare.Utils
 
 defmodule Env do
+  @max_phash2_range 4_294_967_296
+
   def get_boolean(env, default \\ false) when is_boolean(default) do
     value = System.get_env(env)
     if value, do: value |> String.downcase() |> String.to_existing_atom(), else: default
+  end
+
+  @spec parse_broadway_message_sample_denominator(String.t() | nil) ::
+          :default | :disabled | pos_integer()
+  def parse_broadway_message_sample_denominator(nil), do: :default
+
+  def parse_broadway_message_sample_denominator(value) when is_binary(value) do
+    case value |> String.trim() |> String.downcase() do
+      "" ->
+        :default
+
+      "disabled" ->
+        :disabled
+
+      normalized_value ->
+        case Integer.parse(normalized_value) do
+          {denominator, ""} when denominator > 0 and denominator <= @max_phash2_range ->
+            denominator
+
+          _ ->
+            raise ArgumentError,
+                  "LOGFLARE_BROADWAY_MESSAGE_SAMPLE_DENOMINATOR must be 'disabled' or an integer between 1 and #{@max_phash2_range}, got: #{inspect(value)}"
+        end
+    end
   end
 end
 
@@ -72,6 +98,13 @@ cache_stats =
     nil -> nil
     val -> val |> String.downcase() |> String.to_existing_atom()
   end
+
+case Env.parse_broadway_message_sample_denominator(
+       System.get_env("LOGFLARE_BROADWAY_MESSAGE_SAMPLE_DENOMINATOR")
+     ) do
+  :default -> :ok
+  denominator -> config :logflare, broadway_message_sample_denominator: denominator
+end
 
 config :logflare,
        [
@@ -234,6 +267,7 @@ config :logflare,
          service_account: System.get_env("GOOGLE_SERVICE_ACCOUNT"),
          compute_engine_sa: System.get_env("GOOGLE_COMPUTE_ENGINE_SA"),
          grafana_sa: System.get_env("GOOGLE_GRAFANA_SA"),
+         cloud_sql_client_sa: System.get_env("GOOGLE_CLOUD_SQL_CLIENT_SA"),
          api_sa: System.get_env("GOOGLE_API_SA"),
          cloud_build_sa: System.get_env("GOOGLE_CLOUD_BUILD_SA"),
          cloud_build_trigger_sa: System.get_env("GOOGLE_CLOUD_BUILD_TRIGGER_SA"),
@@ -317,8 +351,18 @@ cond do
            )
 
   config_env() != :test ->
-    if File.exists?("gcloud.json") do
-      config :goth, json: File.read!("gcloud.json")
+    google_credentials =
+      case System.get_env("GOOGLE_APPLICATION_CREDENTIALS_JSON") do
+        json when is_binary(json) and json != "" ->
+          json
+
+        _ ->
+          credentials_path = System.get_env("GOOGLE_APPLICATION_CREDENTIALS", "gcloud.json")
+          if File.exists?(credentials_path), do: File.read!(credentials_path)
+      end
+
+    if google_credentials do
+      config :goth, json: google_credentials
     end
 
   config_env() == :test ->
@@ -328,27 +372,34 @@ cond do
     raise "Missing Google or Backend credentials"
 end
 
+tls_cert_path = System.get_env("LOGFLARE_TLS_CERT_PATH", "cert.pem")
+tls_key_path = System.get_env("LOGFLARE_TLS_KEY_PATH", "cert.key")
+
 if(
   Env.get_boolean("LOGFLARE_ENABLE_GRPC_SSL") &&
-    File.exists?("cert.pem") && File.exists?("cert.key")
+    File.exists?(tls_cert_path) && File.exists?(tls_key_path)
 ) do
   config :logflare,
     ssl: [
-      certfile: "cert.pem",
-      keyfile: "cert.key"
+      certfile: tls_cert_path,
+      keyfile: tls_key_path
     ]
 end
 
+db_ssl_ca_cert_path = System.get_env("DB_SSL_CA_CERT_PATH", "db-server-ca.pem")
+db_ssl_client_cert_path = System.get_env("DB_SSL_CLIENT_CERT_PATH", "db-client-cert.pem")
+db_ssl_client_key_path = System.get_env("DB_SSL_CLIENT_KEY_PATH", "db-client-key.pem")
+
 if(
-  Env.get_boolean("DB_SSL") && File.exists?("db-server-ca.pem") &&
-    File.exists?("db-client-cert.pem") && File.exists?("db-client-key.pem")
+  Env.get_boolean("DB_SSL") && File.exists?(db_ssl_ca_cert_path) &&
+    File.exists?(db_ssl_client_cert_path) && File.exists?(db_ssl_client_key_path)
 ) do
   base_db_ssl_opts = [
     # ssl opts follow recs here: https://erlef.github.io/security-wg/secure_coding_and_deployment_hardening/ssl
     verify: :verify_peer,
-    cacertfile: Path.absname("db-server-ca.pem"),
-    certfile: Path.absname("db-client-cert.pem"),
-    keyfile: Path.absname("db-client-key.pem"),
+    cacertfile: Path.absname(db_ssl_ca_cert_path),
+    certfile: Path.absname(db_ssl_client_cert_path),
+    keyfile: Path.absname(db_ssl_client_key_path),
     depth: 3,
     versions: [:"tlsv1.2", :"tlsv1.3"],
     customize_hostname_check: [
@@ -519,14 +570,57 @@ config :logflare, :context_cache_gossip, %{
   max_nodes: cache_gossip_max_nodes
 }
 
-# LOGFLARE_READ_REPLICAS: Comma-separated list of PostgreSQL read replica hostnames to distribute
+# LOGFLARE_READ_REPLICAS: Comma-separated list of PostgreSQL read replicas to distribute
 # context cache queries across. If unset or empty, all queries go to the primary database.
-# Example: "replica1.example.com,replica2.example.com"
+# Each entry is either a bare hostname (inheriting the primary's port, credentials, database
+# and SSL settings) or a full URI, in which case only the parts present in the URI override
+# the primary's config: postgres://user:pass@host:port/database?ssl=true&pool_size=5
+# Example: "replica1.example.com,postgres://user:pass@replica2.example.com:5432/logflare"
 read_replicas =
   "LOGFLARE_READ_REPLICAS"
   |> System.get_env("")
   |> String.split(",", trim: true)
   |> Enum.map(&String.trim/1)
+  |> Enum.reject(&(&1 == ""))
   |> Enum.uniq()
+  |> Enum.map(&Logflare.Repo.Replicas.parse!/1)
 
 config :logflare, :read_replicas, read_replicas
+
+spool_mode_override =
+  case System.get_env("SPOOL_MODE") do
+    p when p in [nil, ""] ->
+      []
+
+    mode when mode in ["producer", "consumer", "both", "disable"] ->
+      [mode: String.to_atom(mode)]
+
+    other ->
+      raise ArgumentError,
+            "Invalid SPOOL_MODE=#{other}. Must be producer, consumer, both, or disable."
+  end
+
+spool_provider_override =
+  case System.get_env("SPOOL_PROVIDER") do
+    p when p in [nil, ""] ->
+      []
+
+    provider when provider in ["aws", "gcp"] ->
+      [provider: String.to_atom(provider)]
+
+    other ->
+      raise ArgumentError, "Invalid SPOOL_PROVIDER=#{other}. Must be aws or gcp."
+  end
+
+spool_overrides =
+  spool_mode_override ++
+    spool_provider_override ++
+    if((q = System.get_env("SPOOL_QUEUE_NAME")) && q != "", do: [queue_name: q], else: []) ++
+    if((t = System.get_env("SPOOL_PUBSUB_TOPIC")) && t != "", do: [pubsub_topic: t], else: []) ++
+    if (b = System.get_env("SPOOL_BUCKET")) && b != "", do: [bucket: b], else: []
+
+if spool_overrides != [] do
+  config :logflare,
+         :spool,
+         Keyword.merge(Application.get_env(:logflare, :spool, []), spool_overrides)
+end
