@@ -432,6 +432,67 @@ defmodule LogflareWeb.BackendsLiveTest do
       refute render(view) =~ "Username"
     end
 
+    test "elastic transport switch will change the inputs", %{conn: conn} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      html =
+        view
+        |> element("select#type")
+        |> render_change(%{backend: %{type: "elastic"}})
+
+      assert html =~ "Filebeat URL"
+      refute html =~ "Logstash URL"
+
+      html =
+        view
+        |> element("select#elastic-transport")
+        |> render_change(%{backend: %{config: %{transport: "logstash"}}})
+
+      assert html =~ "Logstash URL"
+      refute html =~ "Filebeat URL"
+      refute html =~ "Elastic Supabase Endpoint"
+
+      html =
+        view
+        |> element("select#elastic-transport")
+        |> render_change(%{backend: %{config: %{transport: "otlp"}}})
+
+      assert html =~ "Elastic Supabase Endpoint"
+      refute html =~ "Logstash URL"
+    end
+
+    test "can create an elastic backend with the logstash transport", %{conn: conn} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      view
+      |> element("select#type")
+      |> render_change(%{backend: %{type: "elastic"}})
+
+      view
+      |> element("select#elastic-transport")
+      |> render_change(%{backend: %{config: %{transport: "logstash"}}})
+
+      view
+      |> form("form", %{
+        backend: %{
+          name: "my logstash",
+          type: "elastic",
+          config: %{
+            transport: "logstash",
+            url: "http://localhost:8080"
+          }
+        }
+      })
+      |> render_submit()
+
+      assert render(view) =~ "Successfully created backend"
+
+      assert {:ok, backend} = Logflare.Backends.fetch_backend_by(name: "my logstash")
+      assert backend.type == :elastic
+      assert backend.config.transport == "logstash"
+      assert backend.config.url == "http://localhost:8080"
+    end
+
     test "cancel will nav back to index", %{conn: conn} do
       assert {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
 

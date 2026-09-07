@@ -70,6 +70,15 @@ services:
     # - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-changeme}
     # disable strict permission checks
     command: ["--strict.perms=false"]
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.13.3
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./test/logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+    environment:
+      - xpack.monitoring.enabled=false
+      - LS_JAVA_OPTS=-Xms256m -Xmx256m
   loki:
     image: grafana/loki:3.1.0
     ports:

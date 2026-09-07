@@ -34,6 +34,62 @@ Exports logs via [OTLP](https://opentelemetry.io/docs/specs/otel/protocol/) HTTP
 - `gzip`: (`boolean`) enables gzip compression; defaults to `true`
 - `headers`: (`map`) additional HTTP headers (auth, content-type, etc.)
 
+### `logstash`
 
+Sends events to a [Logstash `http` input](https://www.elastic.co/guide/en/logstash/current/plugins-inputs-http.html) as a JSON array. Use this to route Logflare events through an existing Logstash pipeline — for filtering, enrichment, or fan-out to Elasticsearch and beyond.
 
+**Configuration**
+
+- `transport`: (`string`, required) `"logstash"`
+- `url`: (`string`, required) the Logstash HTTP(S) input endpoint, e.g. `http://logstash.internal:8080`
+- `username`: (`string`, optional) used for basic auth; maps to the input's `user` option
+- `password`: (`string`, optional) used for basic auth
+- `gzip`: (`boolean`) enables gzip compression; defaults to `true`
+- `headers`: (`map`) additional HTTP headers
+
+**Payload**
+
+Unlike the `filebeat` transport, which forwards event bodies as-is, this transport reshapes each event into an ECS-flavoured document. `timestamp` becomes the ECS `@timestamp` (ISO8601) and `event_message` becomes `message`, so **no `date` filter is required** on the Logstash side. Remaining fields stay at the top level and Logflare metadata is namespaced under `logflare`:
+
+```json
+[
+  {
+    "@timestamp": "2026-09-07T10:00:00.000000Z",
+    "message": "hello logstash",
+    "my_field": "abc",
+    "logflare": {
+      "id": "9b0b1d3e-...",
+      "source": "my-source",
+      "source_uuid": "3d2f...",
+      "event_type": "log"
+    }
+  }
+]
+```
+
+If an event has no `timestamp`, its Logflare ingest time is used instead.
+
+**Logstash pipeline**
+
+The input must use the `json` codec so that the JSON array is split into one event per element:
+
+```ruby
+input {
+  http {
+    port => 8080
+    codec => json
+    # user => "logflare"
+    # password => "changeme"
+  }
+}
+
+output {
+  elasticsearch {
+    hosts => ["https://elasticsearch:9200"]
+    index => "logflare-%{+YYYY.MM.dd}"
+  }
+}
+```
+
+Implementation is based on the [webhook backend](/backends/webhook).
 
