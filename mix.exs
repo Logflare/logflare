@@ -228,9 +228,6 @@ defmodule Logflare.Mixfile do
       {:sobelow, "~> 0.14.1", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.10", only: :test},
 
-      # Charting
-      {:contex, "~> 0.3.0"},
-
       # Postgres Subscribe
       {:cainophile, github: "Logflare/cainophile", ref: "f92a552"},
       {:open_api_spex, "~> 3.22"},
