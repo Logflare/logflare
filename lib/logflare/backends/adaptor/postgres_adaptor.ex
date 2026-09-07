@@ -17,6 +17,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   import Logflare.Utils.Guards
 
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
   alias Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline
   alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
@@ -229,10 +230,36 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def redact_config(config) do
-    url = Map.get(config, :url) || Map.get(config, "url")
-    updated = String.replace(url, ~r/(.+):.+\@/, "\\g{1}:REDACTED@")
-    Map.put(config, :url, updated)
+    config
+    |> redact_url()
+    |> Map.replace(:password, "REDACTED")
+    |> Map.replace("password", "REDACTED")
   end
+
+  @impl Logflare.Backends.Adaptor
+  def sanitize_config_for_display(config) do
+    config
+    |> Adaptor.mask_config_values(
+      except: [
+        :url,
+        :hostname,
+        :database,
+        :schema,
+        :port,
+        :pool_size
+      ]
+    )
+    |> Map.replace_lazy(:url, &redact_url_string/1)
+  end
+
+  defp redact_url(config) do
+    config
+    |> Map.replace_lazy(:url, &redact_url_string/1)
+    |> Map.replace_lazy("url", &redact_url_string/1)
+  end
+
+  defp redact_url_string(nil), do: nil
+  defp redact_url_string(url), do: String.replace(url, ~r/(.+):.+\@/, "\\g{1}:REDACTED@")
 
   @spec to_query_error(
           :cannot_connect

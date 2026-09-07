@@ -24,6 +24,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.SingleTenant
   alias Logflare.Sql
   alias Logflare.Teams
+  alias Logflare.TeamUsers
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
   alias Logflare.Users
@@ -74,16 +75,22 @@ defmodule Logflare.Endpoints do
   end
 
   @doc """
-  Gets an endpoint query by id that the user has access to.
+  Gets an endpoint query that the user has access to.
   Returns the endpoint query if the user owns it or is a team member, otherwise returns nil.
   """
-  @spec get_endpoint_query_by_user_access(User.t() | TeamUser.t(), integer() | String.t()) ::
-          EndpointQuery.t() | nil
+  @spec get_endpoint_query_by_user_access(
+          User.t() | TeamUser.t(),
+          integer() | String.t() | keyword()
+        ) :: EndpointQuery.t() | nil
   def get_endpoint_query_by_user_access(user_or_team_user, id)
       when is_integer(id) or is_binary(id) do
+    get_endpoint_query_by_user_access(user_or_team_user, id: id)
+  end
+
+  def get_endpoint_query_by_user_access(user_or_team_user, filters) when is_list(filters) do
     EndpointQuery
     |> Teams.filter_by_user_access(user_or_team_user)
-    |> where([query], query.id == ^id)
+    |> where([query], ^filters)
     |> Repo.one()
   end
 
@@ -141,25 +148,64 @@ defmodule Logflare.Endpoints do
     |> EndpointQuery.update_by_user_changeset(attrs)
   end
 
-  @spec update_query(EndpointQuery.t(), map(), origin()) ::
+  @spec update_query(User.t() | TeamUser.t(), EndpointQuery.t(), map(), origin()) ::
           {:ok, EndpointQuery.t()} | {:error, Ecto.Changeset.t()}
-  def update_query(%EndpointQuery{} = query, params, origin) when is_map(params) do
+  def update_query(user_or_team_user, %EndpointQuery{} = query, params, origin)
+      when is_map(params) do
     Repo.transact(fn ->
-      query = lock_endpoint_query(query)
-      version_number = next_endpoint_version_number(query.id)
-      changeset = EndpointQuery.update_by_user_changeset(query, params)
-      opts = paper_trail_opts(changeset, origin, version_number)
+      with {:ok, query} <- authorize_update(user_or_team_user, query, params) do
+        query = lock_endpoint_query(query)
+        version_number = next_endpoint_version_number(query.id)
+        changeset = EndpointQuery.update_by_user_changeset(query, params)
+        opts = paper_trail_opts(changeset, origin, version_number)
 
-      PaperTrail.update(changeset, opts)
+        PaperTrail.update(changeset, opts)
+      end
     end)
     |> case do
       {:ok, %{model: updated_query}} ->
-        changeset = query |> Repo.preload(:user) |> EndpointQuery.update_by_user_changeset(params)
+        changeset =
+          query |> Repo.preload(:user) |> EndpointQuery.update_by_user_changeset(params)
+
         maybe_kill_endpoint_caches(updated_query, changeset.changes)
         {:ok, updated_query}
 
       {:error, changeset} ->
         {:error, changeset}
+    end
+  end
+
+  @spec restore_query_version(User.t() | TeamUser.t(), EndpointQuery.t(), integer(), origin()) ::
+          {:ok, EndpointQuery.t(), integer()}
+          | {:error, Ecto.Changeset.t()}
+  def restore_query_version(
+        user_or_team_user,
+        %EndpointQuery{id: endpoint_id} = query,
+        version_number,
+        origin
+      )
+      when is_integer(version_number) do
+    with {:version, %Version{id: version_id, meta: meta}} <-
+           {:version, get_endpoint_query_version(endpoint_id, version_number)},
+         {:restorable, true} <-
+           {:restorable, version_id != current_endpoint_version_id(endpoint_id)},
+         {:snapshot, snapshot} when is_map(snapshot) and map_size(snapshot) > 0 <-
+           {:snapshot, endpoint_snapshot(meta)},
+         attrs = EndpointQuery.version_snapshot_attrs(snapshot),
+         {:ok, endpoint} <- update_query(user_or_team_user, query, attrs, origin) do
+      {:ok, endpoint, version_number}
+    else
+      {:error, %Ecto.Changeset{}} = error ->
+        error
+
+      {:restorable, false} ->
+        {:error, invalid_query_changeset(query, "Version is already current")}
+
+      {:snapshot, _} ->
+        {:error, invalid_query_changeset(query, "Version snapshot is missing")}
+
+      {:version, nil} ->
+        {:error, invalid_query_changeset(query, "Version not found")}
     end
   end
 
@@ -247,6 +293,59 @@ defmodule Logflare.Endpoints do
 
   defp version_origin(%OauthAccessToken{id: id}), do: "API: id #{id}"
 
+  @spec endpoint_snapshot(term()) :: term()
+  defp endpoint_snapshot(%{"endpoint_snapshot" => snapshot}), do: snapshot
+  defp endpoint_snapshot(_meta), do: nil
+
+  @spec backend_id(map()) :: integer() | String.t() | nil
+  defp backend_id(%{backend_id: backend_id}), do: backend_id
+  defp backend_id(%{"backend_id" => backend_id}), do: backend_id
+  defp backend_id(_attrs), do: nil
+
+  @spec authorize_update(User.t() | TeamUser.t(), EndpointQuery.t(), map()) ::
+          {:ok, EndpointQuery.t()} | {:error, Ecto.Changeset.t()}
+  defp authorize_update(user_or_team_user, query, params) do
+    user_or_team_user =
+      case user_or_team_user do
+        # Reload in case access changed
+        %TeamUser{id: team_user_id} -> TeamUsers.get_team_user_by(id: team_user_id)
+        %User{} = user -> user
+      end
+
+    with %_{} = user_or_team_user <- user_or_team_user,
+         %EndpointQuery{} = authorized_query <-
+           get_endpoint_query_by_user_access(user_or_team_user, query.id) do
+      authorize_backend(user_or_team_user, query, backend_id(params), authorized_query)
+    else
+      nil -> {:error, invalid_query_changeset(query, "Endpoint not found")}
+    end
+  end
+
+  @spec authorize_backend(
+          User.t() | TeamUser.t(),
+          EndpointQuery.t(),
+          integer() | String.t() | nil,
+          EndpointQuery.t()
+        ) :: {:ok, EndpointQuery.t()} | {:error, Ecto.Changeset.t()}
+  defp authorize_backend(_user_or_team_user, _query, backend_id, authorized_query)
+       when backend_id in [nil, ""],
+       do: {:ok, authorized_query}
+
+  defp authorize_backend(user_or_team_user, query, backend_id, authorized_query) do
+    if Backends.get_backend_by_user_access(user_or_team_user, backend_id) do
+      {:ok, authorized_query}
+    else
+      {:error, invalid_query_changeset(query, "Backend not found")}
+    end
+  end
+
+  @spec invalid_query_changeset(EndpointQuery.t(), String.t()) :: Ecto.Changeset.t()
+  defp invalid_query_changeset(%EndpointQuery{} = query, message) do
+    query
+    |> change_query(%{})
+    |> Ecto.Changeset.add_error(:base, message)
+  end
+
   @spec lock_endpoint_query(EndpointQuery.t()) :: EndpointQuery.t()
   defp lock_endpoint_query(%EndpointQuery{id: query_id}) do
     from(query in EndpointQuery,
@@ -265,6 +364,17 @@ defmodule Logflare.Endpoints do
     )
     |> Repo.one()
     |> Kernel.+(1)
+  end
+
+  @spec current_endpoint_version_id(integer()) :: integer() | nil
+  defp current_endpoint_version_id(endpoint_id) do
+    from(version in Version,
+      where: version.item_type == "EndpointQuery" and version.item_id == ^endpoint_id,
+      order_by: [desc: version.id],
+      limit: 1,
+      select: version.id
+    )
+    |> Repo.one()
   end
 
   @spec should_kill_caches?(map()) :: boolean()
@@ -286,15 +396,18 @@ defmodule Logflare.Endpoints do
   @spec maybe_kill_endpoint_caches(EndpointQuery.t(), map()) :: :ok
   defp maybe_kill_endpoint_caches(endpoint, changes) do
     if should_kill_caches?(changes) do
-      for pid <- Resolver.list_caches(endpoint) do
-        Utils.Tasks.async(fn ->
-          ResultsCache.invalidate(pid)
-        end)
-      end
+      endpoint
+      |> Resolver.list_caches()
+      |> Enum.map(&invalidate_cache_async/1)
       |> Task.await_many(30_000)
     end
 
     :ok
+  end
+
+  @spec invalidate_cache_async(pid()) :: Task.t()
+  defp invalidate_cache_async(pid) do
+    Utils.Tasks.async(fn -> ResultsCache.invalidate(pid) end)
   end
 
   @spec get_endpoint_query_version(integer(), integer()) :: Version.t() | nil
@@ -731,8 +844,9 @@ defmodule Logflare.Endpoints do
         end
 
       redact_pii = Keyword.get(opts, :redact_pii, endpoint_query.redact_pii)
+      query_opts = Keyword.put(opts, :query_type, :endpoint)
 
-      case adaptor.execute_query(backend, query_args, opts) do
+      case adaptor.execute_query(backend, query_args, query_opts) do
         {:ok, %QueryResult{rows: rows} = result} ->
           redacted_rows = PiiRedactor.redact_query_result(rows, redact_pii)
           {:ok, result |> Map.put(:rows, redacted_rows) |> Map.from_struct()}

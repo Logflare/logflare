@@ -12,38 +12,82 @@ jobs:
     name: Build & Deploy GCP Image
     strategy:
       matrix:
-        env: [prod, staging]
+        # Push callers deploy staging only; manual release callers deploy both.
+        env: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["prod","staging"]' || '["staging"]') }}
+    concurrency:
+      # Main and versioned staging deploy different clusters; serialize each target independently.
+      group: cloudbuild-deploy-${{ matrix.env }}-${{ github.event_name == 'push' && 'main' || 'versioned' }}
+      # Keep every explicit release deployment instead of replacing an older pending job.
+      # Stale main-push jobs self-skip after acquiring the group.
+      queue: max
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
       # setup deps and env vars
       - uses: actions/checkout@v3
+      - name: Check whether this deployment is current
+        id: deployment
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" != "push" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          current_sha="$(git ls-remote --exit-code origin refs/heads/main | cut -f1)"
+
+          if [[ "$current_sha" == "$DEPLOY_SHA" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Stale deployment skipped::$DEPLOY_SHA is no longer the main branch tip ($current_sha)"
+          fi
       - uses: actions/setup-python@v4
+        if: steps.deployment.outputs.run == 'true'
       - name: Set ${{ matrix.env }} env vars
-        if: matrix.env == 'prod'
+        if: steps.deployment.outputs.run == 'true' && matrix.env == 'prod'
         run: |
           echo "project_id=logflare-232118" >> "$GITHUB_ENV"
           echo "region=europe-west3" >> "$GITHUB_ENV"
       - name: Set ${{ matrix.env }} env vars
-        if: matrix.env == 'staging'
+        if: steps.deployment.outputs.run == 'true' && matrix.env == 'staging'
         run: |
           echo "project_id=logflare-staging" >> "$GITHUB_ENV"
           echo "region=us-central1" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v4
+        if: steps.deployment.outputs.run == 'true'
         with:
           python-version: "3.10"
       - uses: "google-github-actions/auth@v1"
+        if: steps.deployment.outputs.run == 'true'
         with:
           credentials_json: ${{ matrix.env == 'prod' && secrets.GCP_PROD_CREDENTIALS || secrets.GCP_STAGING_CREDENTIALS }}
           create_credentials_file: true
           export_environment_variables: true
-          cleanup_credentials: false
       - uses: "google-github-actions/setup-gcloud@v1"
+        if: steps.deployment.outputs.run == 'true'
         with:
           version: "449.0.0"
           project_id: ${{ env.project_id }}
 
       # run scripts
-      - if: github.event_name == 'push' && matrix.env == 'staging'
-        run: make deploy.staging.main
-      - if: github.event_name == 'workflow_dispatch'
+      - name: Deploy current main image to staging
+        if: steps.deployment.outputs.run == 'true' && github.event_name == 'push' && matrix.env == 'staging'
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          current_sha="$(git ls-remote --exit-code origin refs/heads/main | cut -f1)"
+
+          if [[ "$current_sha" != "$DEPLOY_SHA" ]]; then
+            echo "::notice title=Stale deployment skipped::$DEPLOY_SHA is no longer the main branch tip ($current_sha)"
+            exit 0
+          fi
+
+          make deploy.staging.main
+      - if: steps.deployment.outputs.run == 'true' && github.event_name == 'workflow_dispatch'
         run: make deploy.${{ matrix.env }}.versioned

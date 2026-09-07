@@ -33,7 +33,6 @@ defmodule Logflare.Backends do
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
-  @max_event_age_us 72 * 3_600 * 1_000_000
   @max_future_event_us 1 * 3_600 * 1_000_000
   @max_pending_buffer_len_per_queue IngestEventQueue.max_queue_size()
 
@@ -46,12 +45,29 @@ defmodule Logflare.Backends do
   def max_buffer_queue_len, do: @max_pending_buffer_len_per_queue
 
   @doc """
+  Returns the maximum time, in microseconds, that an event's timestamp may be in
+  the future and still be accepted at ingestion. Events further ahead than this
+  are dropped.
+
+  There is no equivalent global lower bound. Dropping events for being too old is
+  now a backend-specific concern (_see `Logflare.Backends.Adaptor.ClickHouseAdaptor.pre_ingest/3`_)
+  """
+  @spec max_future_event_us() :: non_neg_integer()
+  def max_future_event_us, do: @max_future_event_us
+
+  @doc """
   Lists `Backend`s for a given source.
   """
   @spec list_backends(keyword()) :: [Backend.t()]
   def list_backends(filters) when is_list(filters) do
-    filters
-    |> Enum.reduce(from(b in Backend), fn
+    Backend
+    |> filter_backends(filters)
+    |> Repo.all()
+    |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
+  end
+
+  defp filter_backends(query, filters) do
+    Enum.reduce(filters, query, fn
       {:types, types}, q when is_list(types) ->
         where(q, [b], b.type in ^types)
 
@@ -94,15 +110,16 @@ defmodule Logflare.Backends do
         q
         |> join(:left, [b], sb in "sources_backends", on: sb.backend_id == b.id)
         |> join(:left, [b], r in Rule, on: r.backend_id == b.id)
-        |> where([b, sb, r], not is_nil(sb.backend_id) or not is_nil(r.backend_id))
-        |> distinct([b], b.id)
+        |> where([b, ..., sb, r], not is_nil(sb.backend_id) or not is_nil(r.backend_id))
+        |> distinct_backends()
 
       _, q ->
         q
     end)
-    |> Repo.all()
-    |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
   end
+
+  defp distinct_backends(%Ecto.Query{distinct: nil} = query), do: distinct(query, [b], b.id)
+  defp distinct_backends(query), do: query
 
   @doc """
   Lists `Backend`s by user
@@ -117,24 +134,29 @@ defmodule Logflare.Backends do
   @doc """
   Lists all backends a user has access to, including where the user is a team member.
   """
-  @spec list_backends_by_user_access(User.t()) :: [Backend.t()]
-  def list_backends_by_user_access(%User{} = user) do
+  @spec list_backends_by_user_access(User.t(), keyword()) :: [Backend.t()]
+  def list_backends_by_user_access(%User{} = user, filters \\ []) when is_list(filters) do
     Backend
     |> Teams.filter_by_user_access(user)
+    |> filter_backends(filters)
     |> Repo.all()
     |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
   end
 
   @doc """
-  Gets a backend by id that the user has access to.
+  Gets a backend that the user has access to.
   Returns the backend if the user owns it or is a team member, otherwise returns nil.
   """
-  @spec get_backend_by_user_access(User.t() | TeamUser.t(), integer() | String.t()) ::
+  @spec get_backend_by_user_access(User.t() | TeamUser.t(), integer() | String.t() | keyword()) ::
           Backend.t() | nil
   def get_backend_by_user_access(user_or_team_user, id) when is_integer(id) or is_binary(id) do
+    get_backend_by_user_access(user_or_team_user, id: id)
+  end
+
+  def get_backend_by_user_access(user_or_team_user, filters) when is_list(filters) do
     Backend
     |> Teams.filter_by_user_access(user_or_team_user)
-    |> where([backend], backend.id == ^id)
+    |> where([backend], ^filters)
     |> Repo.one()
     |> typecast_config_string_map_to_atom_map()
   end
@@ -197,14 +219,8 @@ defmodule Logflare.Backends do
         name: "Default PostgreSQL backend"
       }
     else
-      {project_id, dataset_id} =
-        if user.bigquery_project_id do
-          {user.bigquery_project_id, user.bigquery_dataset_id}
-        else
-          project_id = User.bq_project_id()
-          dataset_id = User.generate_bq_dataset_id(user.id)
-          {project_id, dataset_id}
-        end
+      project_id = user.bigquery_project_id || User.bq_project_id()
+      dataset_id = user.bigquery_dataset_id || User.generate_bq_dataset_id(user.id)
 
       %Backend{
         type: :bigquery,
@@ -459,7 +475,6 @@ defmodule Logflare.Backends do
   @spec clear_list_backends_cache(source_id :: integer()) :: :ok
   def clear_list_backends_cache(source_id) when is_integer(source_id) do
     Cachex.del(__MODULE__.Cache, {:list_backends, [[source_id: source_id]]})
-    Cachex.del(__MODULE__.Cache, {:list_backends, [source_id: source_id]})
     :ok
   end
 
@@ -584,20 +599,60 @@ defmodule Logflare.Backends do
           {:ok, count :: pos_integer()} | {:error, [term()]}
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) ::
           {:ok, count :: pos_integer()} | {:error, [term()]}
-  def ingest_logs(event_params, source, backend \\ nil) do
+  @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil, boolean()) ::
+          {:ok, count :: pos_integer()} | {:error, [term()]}
+  def ingest_logs(event_params, source, backend \\ nil, allow_spooling \\ false) do
     ensure_source_sup_started(source)
     {log_events, errors} = split_valid_events(source, event_params)
     count = Enum.count(log_events)
     increment_counters(source, count)
-    maybe_broadcast_and_route(source, log_events)
-    dispatch_to_backends(source, backend, log_events)
+
+    if spoolable?(log_events, source, allow_spooling) do
+      dispatch_to_spool_producer(log_events)
+    else
+      maybe_broadcast_and_route(source, log_events)
+      dispatch_to_backends(source, backend, log_events)
+    end
+
     if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
   end
 
+  # Requires an explicit opt-in (allow_spooling), not just global mode +
+  # source.enable_spooling: SourceRouter's re-entrant calls (routing an
+  # already-matched rule to its backend/sink) never pass allow_spooling, so
+  # they always land here as false regardless of source config. The
+  # via_rule_id check is defense-in-depth on top of that — even a caller that
+  # does pass allow_spooling: true should never spool an event that's
+  # already been routed once
+  @spec spoolable?([LogEvent.t()], Source.t(), boolean()) :: boolean()
+  defp spoolable?(log_events, source, allow_spooling) do
+    allow_spooling and spool_producer_mode?() and source.enable_spooling and
+      Enum.all?(log_events, &(&1.via_rule_id == nil))
+  end
+
+  @doc """
+  Dispatches events from the spool consumer directly to backends, bypassing the spool producer path.
+  Use this in the consumer pipeline to avoid re-routing events back to the spool in `:both` mode.
+  """
+  @spec dispatch_from_spool([map()], Source.t()) :: {:ok, non_neg_integer()}
+  def dispatch_from_spool(spool_records, source) do
+    ensure_source_sup_started(source)
+    log_events = Enum.map(spool_records, &LogEvent.make_from_spool(&1, source))
+    count = length(log_events)
+
+    :telemetry.execute(
+      [:logflare, :backends, :spool_consumer, :dispatch],
+      %{count: count},
+      %{}
+    )
+
+    maybe_broadcast_and_route(source, log_events)
+    dispatch_to_backends(source, nil, log_events)
+    {:ok, count}
+  end
+
   defp split_valid_events(source, event_params) do
-    now_us = System.system_time(:microsecond)
-    min_allowed = now_us - @max_event_age_us
-    max_allowed = now_us + @max_future_event_us
+    max_allowed = System.system_time(:microsecond) + @max_future_event_us
 
     {events, errors, total, tally} =
       for param <- event_params, reduce: {[], [], 0, %{}} do
@@ -609,9 +664,6 @@ defmodule Logflare.Backends do
             %{pipeline_error: %_{message: message}, valid: false} ->
               {events, [message | errors], total + 1, bump(tally, :rejected)}
 
-            %{body: %{"timestamp" => timestamp}} when timestamp < min_allowed ->
-              {events, errors, total + 1, bump(tally, :drop_stale)}
-
             %{body: %{"timestamp" => timestamp}} when timestamp > max_allowed ->
               {events, errors, total + 1, bump(tally, :drop_future)}
 
@@ -622,15 +674,12 @@ defmodule Logflare.Backends do
 
     emit_ingest_telemetry(tally, source)
 
-    dropped_old = Map.get(tally, :drop_stale, 0)
     dropped_future = Map.get(tally, :drop_future, 0)
-    dropped_total = dropped_old + dropped_future
 
-    if dropped_total > 0 do
+    if dropped_future > 0 do
       Logger.warning(
-        "Dropping #{dropped_total} of #{total} event(s): timestamps outside [-72h, +1h] window",
+        "Dropping #{dropped_future} of #{total} event(s): timestamps more than 1h in the future",
         source_id: source.token,
-        old_events_dropped: dropped_old,
         future_events_dropped: dropped_future,
         total_event_count: total
       )
@@ -674,6 +723,19 @@ defmodule Logflare.Backends do
     Sources.Counters.increment(source.token, count)
     SystemMetrics.AllLogsLogged.increment(:total_logs_logged, count)
     :ok
+  end
+
+  @spec spool_producer_mode?() :: boolean()
+  def spool_producer_mode?, do: spool_mode() in [:producer, :both]
+
+  @spec spool_consumer_mode?() :: boolean()
+  def spool_consumer_mode?, do: spool_mode() in [:consumer, :both]
+
+  defp spool_mode,
+    do: :logflare |> Application.get_env(:spool, []) |> Keyword.get(:mode, :disable)
+
+  defp dispatch_to_spool_producer(log_events) do
+    IngestEventQueue.add_to_table({:spool_producer, nil}, log_events)
   end
 
   defp maybe_broadcast_and_route(source, log_events) do
@@ -819,6 +881,20 @@ defmodule Logflare.Backends do
   end
 
   @doc """
+  Like `via_backend/2` but adds a `label` dimension to the registry key. `nil` reuses the
+  `via_backend/2` key, so legacy/unlabeled callers are unchanged.
+  """
+  @spec via_backend(Backend.t() | non_neg_integer(), module(), String.t() | nil) ::
+          {:via, module(), term()}
+  def via_backend(%Backend{id: id}, mod, label), do: via_backend(id, mod, label)
+
+  def via_backend(backend_id, mod, nil), do: via_backend(backend_id, mod)
+
+  def via_backend(backend_id, mod, label) when is_pos_integer(backend_id) do
+    {:via, Registry, {BackendRegistry, {mod, backend_id, label}}}
+  end
+
+  @doc """
   drop in replacement for Source.Supervisor.lookup
   """
   def lookup(module, source_token) when is_atom(source_token) do
@@ -850,6 +926,11 @@ defmodule Logflare.Backends do
   """
   @spec start_source_sup(Source.t()) :: :ok | {:error, :already_started}
   def start_source_sup(%Source{} = source) do
+    if not source_sup_started?(source), do: SourceSup.prefetch(source)
+    do_start_source_sup(source)
+  end
+
+  defp do_start_source_sup(source) do
     case DynamicSupervisor.start_child(
            {:via, PartitionSupervisor, {SourcesSup, source.id}},
            SourceSup.child_spec(source)
@@ -1008,6 +1089,38 @@ defmodule Logflare.Backends do
 
       _ ->
         false
+    end
+  end
+
+  @doc """
+  Returns true if ANY of a source's ingest queues — the system default plus
+  every backend actually configured on it, regardless of default-ingest
+  flags — currently exceeds `max_buffer_queue_len/0`. Unlike
+  `cached_local_pending_buffer_full?/1` (scoped to just the "default ingest"
+  backend(s), for the HTTP 429 gate's specific question), this checks every
+  backend a source can dispatch to and reads live `IngestEventQueue` sizes
+  directly rather than a separately-cadenced cache — matching
+  `QueueJanitor`'s own `get_table_size/1`-based overflow check exactly, so it
+  can't miss a backend that isn't part of the "default ingest" set.
+  """
+  @spec any_ingest_queue_over_limit?(pos_integer()) :: boolean()
+  def any_ingest_queue_over_limit?(source_id) do
+    backend_ids =
+      [nil | __MODULE__.Cache.list_backends(source_id: source_id) |> Enum.map(& &1.id)]
+
+    Enum.any?(backend_ids, &any_queue_over_limit_for_backend?(source_id, &1))
+  end
+
+  defp any_queue_over_limit_for_backend?(source_id, backend_id) do
+    {source_id, backend_id}
+    |> IngestEventQueue.list_queues()
+    |> Enum.any?(&queue_over_limit?/1)
+  end
+
+  defp queue_over_limit?(table_key) do
+    case IngestEventQueue.get_table_size(table_key) do
+      size when is_integer(size) -> size > max_buffer_queue_len()
+      _ -> false
     end
   end
 

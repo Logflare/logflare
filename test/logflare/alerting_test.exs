@@ -138,6 +138,37 @@ defmodule Logflare.AlertingTest do
       assert alert_query.token
     end
 
+    test "create and update alert backends with atom and string keys", %{user: user} do
+      first_backend = insert(:backend, user: user)
+      second_backend = insert(:backend, user: user)
+      first_backend_id = first_backend.id
+      second_backend_id = second_backend.id
+
+      assert {:ok, created} =
+               Alerting.create_alert_query(
+                 user,
+                 Map.put(@valid_attrs, :backends, [first_backend])
+               )
+
+      assert [^first_backend_id] =
+               created
+               |> Alerting.preload_alert_query()
+               |> Map.fetch!(:backends)
+               |> Enum.map(& &1.id)
+
+      assert {:ok, updated} =
+               Alerting.update_alert_query(created, %{"backends" => [second_backend]})
+
+      assert [^second_backend_id] =
+               updated
+               |> Alerting.preload_alert_query()
+               |> Map.fetch!(:backends)
+               |> Enum.map(& &1.id)
+
+      assert {:ok, cleared} = Alerting.update_alert_query(updated, %{backends: []})
+      assert Alerting.preload_alert_query(cleared).backends == []
+    end
+
     test "bug: create_alert_query/1 with very long query", %{user: user} do
       assert {:ok, %AlertQuery{}} =
                Alerting.create_alert_query(user, %{

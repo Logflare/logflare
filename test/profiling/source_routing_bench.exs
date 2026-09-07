@@ -115,9 +115,8 @@ all_matching = fn rules_num ->
 end
 
 warmup = fn source ->
-  rules = Rules.Cache.list_rules(source)
-  for rule <- rules, do: Rules.Cache.get_rule(rule.id)
-  _rule_set = Rules.Cache.rules_tree_by_source_id(source.id)
+  Rules.Cache.list_rules(source)
+  Rules.Cache.rules_tree_by_source_id(source.id)
 end
 
 Benchee.run(

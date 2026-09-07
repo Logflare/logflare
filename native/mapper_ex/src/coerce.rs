@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use chrono::DateTime as ChronoDateTime;
 use rustler::types::list::ListIterator;
-use rustler::{Binary, Encoder, Env, Term};
+use rustler::{Binary, Encoder, Env, NewBinary, Term};
 
 use crate::mapping::{DefaultValue, FieldTransform, FieldType};
 
@@ -30,6 +30,7 @@ pub fn case_insensitive_get<'b, V>(map: &'b HashMap<String, V>, term: Term<'_>) 
 }
 
 /// Coerce a BEAM term to the target field type.
+#[inline]
 pub fn coerce<'a>(
     env: Env<'a>,
     value: Term<'a>,
@@ -42,7 +43,7 @@ pub fn coerce<'a>(
         // Elixir side can substitute the event's real timestamp instead of
         // silently inserting epoch time (1970-01-01).
         return match field_type {
-            FieldType::String => "".encode(env),
+            FieldType::String => crate::encode_string(env, ""),
             FieldType::UInt8 | FieldType::UInt32 | FieldType::UInt64 => 0u64.encode(env),
             FieldType::Int32 => 0i32.encode(env),
             FieldType::Float64 => 0.0f64.encode(env),
@@ -75,6 +76,7 @@ pub fn coerce<'a>(
 }
 
 /// Apply a transform to a resolved string value.
+#[inline]
 pub fn apply_transform<'a>(
     env: Env<'a>,
     value: Term<'a>,
@@ -85,10 +87,32 @@ pub fn apply_transform<'a>(
         return nil;
     }
 
+    if let Ok(binary) = value.decode::<Binary>() {
+        let bytes = binary.as_slice();
+        if bytes.is_ascii() {
+            let unchanged = match transform {
+                FieldTransform::Upcase => !bytes.iter().any(u8::is_ascii_lowercase),
+                FieldTransform::Downcase => !bytes.iter().any(u8::is_ascii_uppercase),
+            };
+            if unchanged {
+                return value;
+            }
+
+            let mut transformed = NewBinary::new(env, bytes.len());
+            for (output, input) in transformed.as_mut_slice().iter_mut().zip(bytes) {
+                *output = match transform {
+                    FieldTransform::Upcase => input.to_ascii_uppercase(),
+                    FieldTransform::Downcase => input.to_ascii_lowercase(),
+                };
+            }
+            return transformed.into();
+        }
+    }
+
     if let Ok(s) = value.decode::<String>() {
         match transform {
-            FieldTransform::Upcase => s.to_uppercase().encode(env),
-            FieldTransform::Downcase => s.to_lowercase().encode(env),
+            FieldTransform::Upcase => crate::encode_string(env, &s.to_uppercase()),
+            FieldTransform::Downcase => crate::encode_string(env, &s.to_lowercase()),
         }
     } else {
         value
@@ -96,10 +120,11 @@ pub fn apply_transform<'a>(
 }
 
 /// Encode a default value to a BEAM term.
+#[inline]
 pub fn encode_default<'a>(env: Env<'a>, default: &DefaultValue, nil: Term<'a>) -> Term<'a> {
     match default {
         DefaultValue::Nil => nil,
-        DefaultValue::Str(s) => s.encode(env),
+        DefaultValue::Str(s) => crate::encode_string(env, s),
         DefaultValue::Int(i) => i.encode(env),
         DefaultValue::Uint(u) => u.encode(env),
         DefaultValue::Flt(f) => f.encode(env),
@@ -144,7 +169,7 @@ pub fn apply_value_map_str<'a>(
 
     // Keys are pre-lowercased at compile time
     if let Some(val) = case_insensitive_get(map, value) {
-        return val.encode(env);
+        return crate::encode_string(env, val);
     }
 
     nil
@@ -177,50 +202,49 @@ pub fn coerce_array<'a>(
     let mut result: Vec<Term<'a>> = Vec::new();
 
     for elem in iter {
-        if elem == nil {
-            if filter_nil {
-                continue;
-            }
-            // Coerce nil to inner type zero value
-            result.push(array_nil_value(env, field_type));
-            continue;
-        }
-
-        match field_type {
-            FieldType::ArrayFlatMap => {
-                // ArrayFlatMap: flatten each map element, skip non-maps
-                if elem.is_map() {
-                    result.push(crate::mapper::flatten_and_stringify(env, elem, nil));
-                }
-                // Non-map elements are always filtered out
-            }
-            FieldType::ArrayMap => {
-                // ArrayMap: only include elements that are maps, skip non-maps
-                if elem.is_map() {
-                    result.push(elem);
-                }
-                // Non-map elements are always filtered out
-            }
-            FieldType::ArrayJson => {
-                // ArrayJson: pass-through, no per-element coercion
-                result.push(elem);
-            }
-            _ => {
-                // Use scalar coercion for the inner type
-                if let Some(ref inner) = inner_type {
-                    result.push(coerce(env, elem, inner, nil));
-                } else {
-                    result.push(elem);
-                }
-            }
+        if let Some(elem) =
+            coerce_array_element(env, elem, field_type, inner_type.as_ref(), filter_nil, nil)
+        {
+            result.push(elem);
         }
     }
 
     result.encode(env)
 }
 
+#[inline]
+pub fn coerce_array_element<'a>(
+    env: Env<'a>,
+    elem: Term<'a>,
+    field_type: &FieldType,
+    inner_type: Option<&FieldType>,
+    filter_nil: bool,
+    nil: Term<'a>,
+) -> Option<Term<'a>> {
+    if elem == nil {
+        return if filter_nil {
+            None
+        } else {
+            Some(array_nil_value(env, field_type))
+        };
+    }
+
+    match field_type {
+        FieldType::ArrayFlatMap => elem
+            .is_map()
+            .then(|| crate::mapper::flatten_and_stringify(env, elem, nil)),
+        FieldType::ArrayMap => elem.is_map().then_some(elem),
+        FieldType::ArrayJson => Some(elem),
+        _ => Some(match inner_type {
+            Some(inner) => coerce(env, elem, inner, nil),
+            None => elem,
+        }),
+    }
+}
+
 /// Map array field types to their corresponding scalar inner type for coercion.
-fn array_inner_type(field_type: &FieldType) -> Option<FieldType> {
+#[inline]
+pub fn array_inner_type(field_type: &FieldType) -> Option<FieldType> {
     match field_type {
         FieldType::ArrayString => Some(FieldType::String),
         FieldType::ArrayUInt64 => Some(FieldType::UInt64),
@@ -235,7 +259,7 @@ fn array_inner_type(field_type: &FieldType) -> Option<FieldType> {
 /// Return the zero/nil coercion value for an array element based on the array type.
 fn array_nil_value<'a>(env: Env<'a>, field_type: &FieldType) -> Term<'a> {
     match field_type {
-        FieldType::ArrayString => "".encode(env),
+        FieldType::ArrayString => crate::encode_string(env, ""),
         FieldType::ArrayUInt64 => 0u64.encode(env),
         FieldType::ArrayFloat64 => 0.0f64.encode(env),
         FieldType::ArrayDateTime64 { .. } => 0i64.encode(env),
@@ -254,25 +278,25 @@ fn coerce_string<'a>(env: Env<'a>, value: Term<'a>) -> Term<'a> {
     }
 
     if let Ok(i) = value.decode::<i64>() {
-        return i.to_string().encode(env);
+        return crate::encode_integer(env, i);
     }
 
     if let Ok(f) = value.decode::<f64>() {
-        return f.to_string().encode(env);
+        return crate::encode_string(env, &f.to_string());
     }
 
     if let Ok(b) = value.decode::<bool>() {
-        return if b { "true" } else { "false" }.encode(env);
+        return crate::encode_string(env, if b { "true" } else { "false" });
     }
 
     // For atoms (non-bool), try to get string representation
     if value.is_atom() {
         if let Ok(s) = value.atom_to_string() {
-            return s.encode(env);
+            return crate::encode_string(env, &s);
         }
     }
 
-    "".encode(env)
+    crate::encode_string(env, "")
 }
 
 fn coerce_uint<'a>(env: Env<'a>, value: Term<'a>, max: u64) -> Term<'a> {
@@ -292,9 +316,11 @@ fn coerce_uint<'a>(env: Env<'a>, value: Term<'a>, max: u64) -> Term<'a> {
         return u.min(max).encode(env);
     }
 
-    if let Ok(s) = value.decode::<String>() {
-        if let Ok(u) = s.parse::<u64>() {
-            return u.min(max).encode(env);
+    if let Ok(binary) = value.decode::<Binary>() {
+        if let Ok(s) = std::str::from_utf8(binary.as_slice()) {
+            if let Ok(u) = s.parse::<u64>() {
+                return u.min(max).encode(env);
+            }
         }
     }
 
@@ -316,9 +342,11 @@ fn coerce_int32<'a>(env: Env<'a>, value: Term<'a>) -> Term<'a> {
         return (clamped as i32).encode(env);
     }
 
-    if let Ok(s) = value.decode::<String>() {
-        if let Ok(i) = s.parse::<i32>() {
-            return i.encode(env);
+    if let Ok(binary) = value.decode::<Binary>() {
+        if let Ok(s) = std::str::from_utf8(binary.as_slice()) {
+            if let Ok(i) = s.parse::<i32>() {
+                return i.encode(env);
+            }
         }
     }
 
@@ -334,9 +362,11 @@ fn coerce_float64<'a>(env: Env<'a>, value: Term<'a>) -> Term<'a> {
         return (i as f64).encode(env);
     }
 
-    if let Ok(s) = value.decode::<String>() {
-        if let Ok(f) = s.parse::<f64>() {
-            return f.encode(env);
+    if let Ok(binary) = value.decode::<Binary>() {
+        if let Ok(s) = std::str::from_utf8(binary.as_slice()) {
+            if let Ok(f) = s.parse::<f64>() {
+                return f.encode(env);
+            }
         }
     }
 
@@ -348,9 +378,9 @@ fn coerce_bool<'a>(env: Env<'a>, value: Term<'a>) -> Term<'a> {
         return b.encode(env);
     }
 
-    if let Ok(s) = value.decode::<String>() {
-        let lower = s.to_lowercase();
-        return (lower == "true" || lower == "1").encode(env);
+    if let Ok(binary) = value.decode::<Binary>() {
+        let bytes = binary.as_slice();
+        return (bytes.eq_ignore_ascii_case(b"true") || bytes == b"1").encode(env);
     }
 
     if let Ok(i) = value.decode::<i64>() {
@@ -375,17 +405,21 @@ fn coerce_datetime64<'a>(env: Env<'a>, value: Term<'a>, precision: u8) -> Term<'
         return scale(i, source_precision, precision).encode(env);
     }
 
-    if let Ok(s) = value.decode::<String>() {
-        if let Ok(dt) = ChronoDateTime::parse_from_rfc3339(&s) {
-            if let Some(nanos) = dt.timestamp_nanos_opt() {
-                return scale(nanos, 9, precision).encode(env);
+    if let Ok(binary) = value.decode::<Binary>() {
+        if let Ok(s) = std::str::from_utf8(binary.as_slice()) {
+            if let Ok(dt) = ChronoDateTime::parse_from_rfc3339(s) {
+                if let Some(nanos) = dt.timestamp_nanos_opt() {
+                    return scale(nanos, 9, precision).encode(env);
+                }
             }
-        }
-        // Try ISO8601 with space separator (e.g., "2026-01-21 17:54:48.144506Z")
-        let rfc3339_attempt = s.replace(' ', "T");
-        if let Ok(dt) = ChronoDateTime::parse_from_rfc3339(&rfc3339_attempt) {
-            if let Some(nanos) = dt.timestamp_nanos_opt() {
-                return scale(nanos, 9, precision).encode(env);
+            // Try ISO8601 with space separator (e.g., "2026-01-21 17:54:48.144506Z")
+            if s.contains(' ') {
+                let rfc3339_attempt = s.replace(' ', "T");
+                if let Ok(dt) = ChronoDateTime::parse_from_rfc3339(&rfc3339_attempt) {
+                    if let Some(nanos) = dt.timestamp_nanos_opt() {
+                        return scale(nanos, 9, precision).encode(env);
+                    }
+                }
             }
         }
     }
@@ -396,12 +430,11 @@ fn coerce_datetime64<'a>(env: Env<'a>, value: Term<'a>, precision: u8) -> Term<'
 
 /// Detect the precision of a unix timestamp by its digit count.
 fn detect_precision(value: i64) -> u8 {
-    let digits = count_digits(value.unsigned_abs());
-    match digits {
-        0..=10 => 0,  // seconds
-        11..=13 => 3, // milliseconds
-        14..=16 => 6, // microseconds
-        _ => 9,       // nanoseconds
+    match value.unsigned_abs() {
+        0..=9_999_999_999 => 0,
+        10_000_000_000..=9_999_999_999_999 => 3,
+        10_000_000_000_000..=9_999_999_999_999_999 => 6,
+        _ => 9,
     }
 }
 
@@ -409,12 +442,24 @@ fn detect_precision(value: i64) -> u8 {
 fn scale(value: i64, from: u8, to: u8) -> i64 {
     match from.cmp(&to) {
         std::cmp::Ordering::Equal => value,
-        std::cmp::Ordering::Less => value.saturating_mul(10_i64.pow((to - from) as u32)),
-        std::cmp::Ordering::Greater => value / 10_i64.pow((from - to) as u32),
+        std::cmp::Ordering::Less => value.saturating_mul(decimal_scale(to - from)),
+        std::cmp::Ordering::Greater => value / decimal_scale(from - to),
+    }
+}
+
+#[inline]
+fn decimal_scale(precision: u8) -> i64 {
+    match precision {
+        0 => 1,
+        3 => 1_000,
+        6 => 1_000_000,
+        9 => 1_000_000_000,
+        other => 10_i64.pow(other as u32),
     }
 }
 
 /// Count the number of decimal digits in a u64.
+#[cfg(test)]
 fn count_digits(mut n: u64) -> u32 {
     if n == 0 {
         return 1;
@@ -452,7 +497,14 @@ mod tests {
         assert_eq!(detect_precision(1769018088144506), 6); // microseconds
         assert_eq!(detect_precision(1769018088144506000), 9); // nanoseconds
         assert_eq!(detect_precision(0), 0);
+        assert_eq!(detect_precision(9_999_999_999), 0);
+        assert_eq!(detect_precision(10_000_000_000), 3);
+        assert_eq!(detect_precision(9_999_999_999_999), 3);
+        assert_eq!(detect_precision(10_000_000_000_000), 6);
+        assert_eq!(detect_precision(9_999_999_999_999_999), 6);
+        assert_eq!(detect_precision(10_000_000_000_000_000), 9);
         assert_eq!(detect_precision(-1769018088144506), 6); // negative microseconds
+        assert_eq!(detect_precision(i64::MIN), 9);
     }
 
     #[test]

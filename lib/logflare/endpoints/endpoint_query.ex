@@ -18,7 +18,6 @@ defmodule Logflare.Endpoints.EndpointQuery do
   alias Logflare.User
 
   @version_snapshot_fields [
-    :token,
     :name,
     :query,
     :description,
@@ -42,6 +41,7 @@ defmodule Logflare.Endpoints.EndpointQuery do
              :description,
              :name,
              :query,
+             :language,
              :source_mapping,
              :sandboxable,
              :cache_duration_seconds,
@@ -50,7 +50,8 @@ defmodule Logflare.Endpoints.EndpointQuery do
              :enable_auth,
              :labels,
              :redact_pii,
-             :enable_dynamic_reservation
+             :enable_dynamic_reservation,
+             :backend_id
            ]}
   typed_schema "endpoint_queries" do
     field(:token, Ecto.UUID, autogenerate: true)
@@ -93,6 +94,29 @@ defmodule Logflare.Endpoints.EndpointQuery do
     changeset
     |> Changeset.apply_changes()
     |> Map.take(@version_snapshot_fields)
+  end
+
+  def version_snapshot(%__MODULE__{} = query) do
+    Map.take(query, @version_snapshot_fields)
+  end
+
+  @spec version_snapshot_attrs(map()) :: map()
+  def version_snapshot_attrs(snapshot) when is_map(snapshot) do
+    fields =
+      Enum.filter(@version_snapshot_fields, fn field ->
+        Map.has_key?(snapshot, Atom.to_string(field))
+      end)
+
+    snapshot
+    |> from_version_snapshot()
+    |> Map.take(fields)
+  end
+
+  @spec from_version_snapshot(map()) :: t()
+  def from_version_snapshot(snapshot) when is_map(snapshot) do
+    %__MODULE__{}
+    |> Changeset.cast(snapshot, @version_snapshot_fields)
+    |> Changeset.apply_changes()
   end
 
   @doc false

@@ -91,20 +91,24 @@ defmodule LogflareWeb.QueryComponentsTest do
       assert html =~ "3.14"
     end
 
-    test "ensures table names surrounded by backticks" do
+    test "formats BigQuery table names with backticks" do
+      expected_table_name =
+        "`logflare-dev-464423.1_dev.9db56741_41ca_4fe8_8c05_051a76a4c5d6`"
+
       [
-        "SELECT t0.timestamp, t0.id FROM `logflare-dev-464423.1_dev.9db56741_41ca_4fe8_8c05_051a76a4c5d6` AS t0",
-        "SELECT t0.timestamp, t0.id FROM `logflare-dev-464423`.1_dev.9db56741_41ca_4fe8_8c05_051a76a4c5d6 AS t0"
+        "`logflare-dev-464423.1_dev.9db56741_41ca_4fe8_8c05_051a76a4c5d6`",
+        "`logflare-dev-464423`.1_dev.9db56741_41ca_4fe8_8c05_051a76a4c5d6",
+        "`logflare-dev-464423`.`1_dev`.`9db56741_41ca_4fe8_8c05_051a76a4c5d6`",
+        "`logflare-dev-464423`.1_dev.`9db56741_41ca_4fe8_8c05_051a76a4c5d6`"
       ]
-      |> Enum.each(fn sql_string ->
+      |> Enum.each(fn table_name ->
         html =
           render_component(&QueryComponents.formatted_sql/1, %{
-            sql_string: sql_string,
+            sql_string: "SELECT t0.timestamp, t0.id FROM #{table_name} AS t0",
             params: []
           })
 
-        assert html =~
-                 "`logflare-dev-464423.1_dev.9db56741_41ca_4fe8_8c05_051a76a4c5d6`"
+        assert html =~ expected_table_name
       end)
     end
   end
@@ -236,6 +240,57 @@ defmodule LogflareWeb.QueryComponentsTest do
 
       assert %{"querystring" => ~s|-m.status:"error"|, "tailing?" => "false"} =
                URI.decode_query(query)
+    end
+
+    test "appends a filter when path is already filtered", %{
+      source: source,
+      schema: schema,
+      source_schema_flat_map: flat_map
+    } do
+      html =
+        render_component(&QueryComponents.quick_filter/1, %{
+          lql: ~s|m.status:~"o"|,
+          node: %{key: "status", path: ["metadata", "status"], value: "ok"},
+          source: source,
+          source_schema_flat_map: flat_map,
+          lql_schema: schema
+        })
+
+      %URI{query: query} = html |> quick_filter_href("Append to query") |> URI.parse()
+      %{"querystring" => querystring} = URI.decode_query(query)
+
+      assert [
+               %FilterRule{path: "metadata.status", operator: :"~", value: "o"},
+               %FilterRule{path: "metadata.status", operator: :=, value: "ok"}
+             ] = Lql.decode!(querystring, schema)
+    end
+
+    test "appends an exclude filter when the path is already filtered", %{
+      source: source,
+      schema: schema,
+      source_schema_flat_map: flat_map
+    } do
+      html =
+        render_component(&QueryComponents.quick_filter/1, %{
+          lql: ~s|m.user_id:~"12"|,
+          node: %{key: "user_id", path: ["metadata", "user_id"], value: "123"},
+          source: source,
+          source_schema_flat_map: flat_map,
+          lql_schema: schema
+        })
+
+      %URI{query: query} = html |> quick_filter_href("Exclude from query") |> URI.parse()
+      %{"querystring" => querystring} = URI.decode_query(query)
+
+      assert [
+               %FilterRule{path: "metadata.user_id", operator: :"~", value: "12"},
+               %FilterRule{
+                 path: "metadata.user_id",
+                 operator: :=,
+                 value: "123",
+                 modifiers: %{negate: true}
+               }
+             ] = Lql.decode!(querystring, schema)
     end
 
     test "renders a metadata array quick filter link", %{

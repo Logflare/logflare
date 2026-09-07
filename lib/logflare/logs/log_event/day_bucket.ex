@@ -59,18 +59,6 @@ defmodule Logflare.LogEvent.DayBucket do
     div(ts, @microseconds_per_day)
   end
 
-  @doc """
-  Classifies a day bucket against the current UTC day bucket.
-
-  Returns `:fresh` when the bucket is within one day of the current day
-  bucket (a ±1-day window absorbs clock skew and timezone-edge events),
-  and `:stale` otherwise.
-  """
-  @spec classify_freshness(integer()) :: :fresh | :stale
-  def classify_freshness(bucket) when is_integer(bucket) do
-    if abs(bucket - current()) <= 1, do: :fresh, else: :stale
-  end
-
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)

@@ -23,8 +23,11 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Repo
   alias Logflare.Rules
   alias Logflare.Sources
+  alias Logflare.Sources.Counters
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.Pipeline
+  alias Logflare.Sources.Source.Data
+  alias Logflare.Sources.Source.RateCounterServer
   alias Logflare.Sources.SourceRouter
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.User
@@ -244,6 +247,42 @@ defmodule Logflare.BackendsTest do
     end
   end
 
+  describe "get_default_backend/1" do
+    test "defaults dataset_id even when bigquery_project_id is set but bigquery_dataset_id is nil" do
+      user = insert(:user, bigquery_project_id: "some-project", bigquery_dataset_id: nil)
+
+      assert %Backend{
+               type: :bigquery,
+               config: %{project_id: "some-project", dataset_id: dataset_id}
+             } = Backends.get_default_backend(user)
+
+      refute is_nil(dataset_id)
+      assert dataset_id == User.generate_bq_dataset_id(user.id)
+    end
+
+    test "defaults project_id even when bigquery_dataset_id is set but bigquery_project_id is nil" do
+      user = insert(:user, bigquery_project_id: nil, bigquery_dataset_id: "some_dataset")
+
+      assert %Backend{
+               type: :bigquery,
+               config: %{project_id: project_id, dataset_id: "some_dataset"}
+             } = Backends.get_default_backend(user)
+
+      refute is_nil(project_id)
+      assert project_id == User.bq_project_id()
+    end
+
+    test "uses user-configured project_id and dataset_id when both are set" do
+      user =
+        insert(:user, bigquery_project_id: "some-project", bigquery_dataset_id: "some_dataset")
+
+      assert %Backend{
+               type: :bigquery,
+               config: %{project_id: "some-project", dataset_id: "some_dataset"}
+             } = Backends.get_default_backend(user)
+    end
+  end
+
   describe "backend management" do
     setup do
       # Stub SSRF resolution so tests aren't sensitive to whether a fixture
@@ -447,6 +486,31 @@ defmodule Logflare.BackendsTest do
       refute forbidden_backend_id in backend_ids
     end
 
+    test "list_backends_by_user_access/2 filters team backends with sources or rules", %{
+      user: user
+    } do
+      team_user = insert(:team_user, email: user.email)
+      owner = team_user.team.user
+      source = insert(:source, user: owner)
+
+      backend_with_source = insert(:backend, user: owner, sources: [source])
+      backend_with_rule = insert(:backend, user: owner)
+      backend_with_both = insert(:backend, user: owner, sources: [source])
+      backend_without_sources_or_rules = insert(:backend, user: owner)
+      insert(:rule, source: source, backend: backend_with_rule, lql_string: "testing")
+      insert(:rule, source: source, backend: backend_with_both, lql_string: "testing")
+
+      backend_ids =
+        Backends.list_backends_by_user_access(user, has_sources_or_rules: true)
+        |> Enum.map(& &1.id)
+
+      assert backend_with_source.id in backend_ids
+      assert backend_with_rule.id in backend_ids
+      assert backend_with_both.id in backend_ids
+      assert Enum.count(backend_ids, &(&1 == backend_with_both.id)) == 1
+      refute backend_without_sources_or_rules.id in backend_ids
+    end
+
     test "get_backend_by_user_access/2" do
       owner = insert(:user)
       team_user = insert(:team_user, email: owner.email)
@@ -559,8 +623,6 @@ defmodule Logflare.BackendsTest do
 
       # unchanged
       assert %Backend{config: %{url: "http" <> _}} = Backends.get_backend(backend.id)
-
-      :timer.sleep(1000)
     end
 
     test "partial config update preserves existing fields", %{user: user} do
@@ -701,6 +763,111 @@ defmodule Logflare.BackendsTest do
       assert :ok = Backends.ensure_source_sup_started(source)
     end
 
+    test "prefetch/1 warms the cache keys read during initial startup", %{source: source} do
+      source = Sources.get(source.id)
+      source_schema = insert(:source_schema, source: source)
+
+      caches = [
+        Logflare.Backends.Cache,
+        Logflare.Billing.Cache,
+        Logflare.Rules.Cache,
+        Logflare.SourceSchemas.Cache,
+        Logflare.Sources.Cache,
+        Logflare.Users.Cache
+      ]
+
+      for cache <- caches, do: Cachex.clear(cache)
+      for cache <- caches, do: assert({:ok, 0} = Cachex.size(cache))
+
+      assert :ok = SourceSup.prefetch(source)
+
+      source_id = source.id
+      source_schema_id = source_schema.id
+      user_id = source.user_id
+
+      assert {:ok, {:cached, []}} =
+               Cachex.get(Logflare.Rules.Cache, {:list_by_source_id, [source_id]})
+
+      assert {:ok, {:cached, []}} =
+               Cachex.get(Logflare.Backends.Cache, {:list_backends, [[source_id: source_id]]})
+
+      assert {:ok, {:cached, []}} =
+               Cachex.get(Logflare.Backends.Cache, {
+                 :list_backends,
+                 [[rules_source_id: source_id]]
+               })
+
+      assert {:ok, {:cached, %Source{id: ^source_id}}} =
+               Cachex.get(Logflare.Sources.Cache, {:get_by, [[id: source_id]]})
+
+      assert {:ok, {:cached, %User{id: ^user_id} = cached_user}} =
+               Cachex.get(Logflare.Users.Cache, {:get, [user_id]})
+
+      assert {:ok, {:cached, %{}}} =
+               Cachex.get(Logflare.Billing.Cache, {:get_plan_by_user, [cached_user]})
+
+      assert {:ok, {:cached, %{id: ^source_schema_id}}} =
+               Cachex.get(Logflare.SourceSchemas.Cache, {
+                 :get_source_schema_by,
+                 [[source_id: source_id]]
+               })
+    end
+
+    test "prefetch/1 includes the default backend before filtering consolidated backends", %{
+      source: source
+    } do
+      stub(Backends, :get_default_backend, fn _user ->
+        %Backend{type: :bigquery, consolidated_ingest?: true}
+      end)
+
+      Cachex.clear(Logflare.SourceSchemas.Cache)
+
+      assert :ok = SourceSup.prefetch(source)
+
+      assert {:ok, {:cached, nil}} =
+               Cachex.get(Logflare.SourceSchemas.Cache, {
+                 :get_source_schema_by,
+                 [[source_id: source.id]]
+               })
+    end
+
+    test "prefetch/1 skips schemas when no BigQuery backend starts", %{source: source} do
+      stub(Logflare.SingleTenant, :single_tenant?, fn -> true end)
+      stub(Logflare.SingleTenant, :postgres_backend?, fn -> true end)
+      stub(Logflare.SingleTenant, :postgres_backend_adapter_opts, fn -> [url: "ecto://"] end)
+      Cachex.clear(Logflare.SourceSchemas.Cache)
+
+      assert :ok = SourceSup.prefetch(source)
+
+      assert {:ok, nil} =
+               Cachex.get(Logflare.SourceSchemas.Cache, {
+                 :get_source_schema_by,
+                 [[source_id: source.id]]
+               })
+    end
+
+    test "start_source_sup/1 prefetches before starting", %{source: source} do
+      expect(SourceSup, :prefetch, fn received_source ->
+        assert received_source.id == source.id
+        :ok
+      end)
+
+      assert :ok = Backends.start_source_sup(source)
+    end
+
+    test "start_source_sup/1 skips prefetch but still delegates when already started", %{
+      source: source
+    } do
+      start_supervised!({SourceSup, source})
+      reject(&SourceSup.prefetch/1)
+
+      expect(SourceSup, :child_spec, fn received_source ->
+        call_original(SourceSup, :child_spec, [received_source])
+      end)
+
+      assert {:error, :already_started} = Backends.start_source_sup(source)
+    end
+
     test "on attach to source, update SourceSup", %{source: source} do
       [backend1, backend2] = insert_pair(:backend)
       start_supervised!({SourceSup, source})
@@ -728,25 +895,25 @@ defmodule Logflare.BackendsTest do
 
       # start an out-of-tree SourceSupWorker
       start_supervised({SourceSupWorker, [source: source, interval: 100]})
-      :timer.sleep(200)
-      new_length = Supervisor.which_children(via) |> length()
-      assert new_length > prev_length
-      assert new_length - prev_length == 3
+
+      TestUtils.retry_assert(fn ->
+        new_length = Supervisor.which_children(via) |> length()
+        assert new_length - prev_length == 3
+      end)
 
       Logflare.Repo.delete_all(Logflare.Rules.Rule)
       Logflare.Repo.delete_all(Logflare.Backends.SourcesBackend)
       Logflare.Repo.delete_all(Logflare.Backends.Backend)
 
-      :timer.sleep(200)
       # removal
-      new_length = Supervisor.which_children(via) |> length()
-      assert new_length == prev_length
+      TestUtils.retry_assert(fn ->
+        assert Supervisor.which_children(via) |> length() == prev_length
+      end)
     end
 
     test "source_sup_started?/1, lookup/2", %{source: source} do
       assert false == Backends.source_sup_started?(source)
       start_supervised!({SourceSup, source})
-      :timer.sleep(1000)
       assert true == Backends.source_sup_started?(source)
     end
 
@@ -798,7 +965,6 @@ defmodule Logflare.BackendsTest do
       Backends.clear_list_backends_cache(source.id)
 
       start_supervised!({SourceSup, source})
-      :timer.sleep(500)
 
       via = Backends.via_source(source, SourceSup)
 
@@ -832,7 +998,6 @@ defmodule Logflare.BackendsTest do
       assert backend.consolidated_ingest? == true
 
       start_supervised!({SourceSup, source})
-      :timer.sleep(500)
 
       assert :noop = SourceSup.start_backend_child(source, backend)
     end
@@ -844,7 +1009,10 @@ defmodule Logflare.BackendsTest do
       user = insert(:user)
       source = insert(:source, user_id: user.id)
       start_supervised!({SourceSup, source})
-      :timer.sleep(500)
+
+      rate_counter = GenServer.whereis(Backends.via_source(source, RateCounterServer))
+      assert source.token == :sys.get_state(rate_counter)
+
       {:ok, source: source}
     end
 
@@ -879,16 +1047,66 @@ defmodule Logflare.BackendsTest do
       assert Backends.fetch_latest_timestamp(source) == 0
       le = build(:log_event, source: source, some: "event")
       assert {:ok, _} = Backends.ingest_logs([le], source)
+      assert {:ok, 1} = Counters.get_inserts(source.token)
 
       # RecentInsertsCacher bridges Counters.increment/2 (called by ingest_logs)
       # → Counters.increment_source_changed_at_unix_ts/2 (read by
-      # fetch_latest_timestamp/1). Trigger it explicitly and use :sys.get_state/1
-      # as a sync fence so the test doesn't depend on the cacher's timer.
+      # fetch_latest_timestamp/1). Trigger it synchronously so the test doesn't
+      # depend on the cacher's timer.
       cacher = GenServer.whereis(Backends.via_source(source, RecentInsertsCacher))
-      send(cacher, :do_cache)
-      :sys.get_state(cacher)
+      TestUtils.send_and_wait_for_handling(cacher, :do_cache)
 
+      assert Counters.get_inserts_since_boot(source.token) == 1
       assert Backends.fetch_latest_timestamp(source) != 0
+    end
+
+    defp fill_queue_over_limit(table_key) do
+      events = build_queue_saturation_events(Backends.max_buffer_queue_len() + 500)
+      IngestEventQueue.add_to_table(table_key, events)
+    end
+
+    test "any_ingest_queue_over_limit?/1 is false when no queues exist for the source", %{
+      source: source
+    } do
+      refute Backends.any_ingest_queue_over_limit?(source.id)
+    end
+
+    test "any_ingest_queue_over_limit?/1 is true when the system default (nil) queue is over the limit",
+         %{source: source} do
+      table_key = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(table_key)
+
+      fill_queue_over_limit(table_key)
+
+      assert Backends.any_ingest_queue_over_limit?(source.id)
+    end
+
+    test "any_ingest_queue_over_limit?/1 is true for a backend that is not flagged default_ingest?",
+         %{source: source} do
+      user = Repo.get(User, source.user_id)
+      backend = insert(:backend, user: user, type: :clickhouse, default_ingest?: false)
+      {:ok, _} = Backends.update_source_backends(source, [backend])
+
+      table_key = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(table_key)
+
+      fill_queue_over_limit(table_key)
+
+      assert Backends.any_ingest_queue_over_limit?(source.id)
+    end
+
+    test "any_ingest_queue_over_limit?/1 is false when queues exist but are under the limit", %{
+      source: source
+    } do
+      table_key = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(table_key)
+
+      for _ <- 1..100 do
+        le = build(:log_event)
+        IngestEventQueue.add_to_table(table_key, [le])
+      end
+
+      refute Backends.any_ingest_queue_over_limit?(source.id)
     end
 
     test "cache_estimated_buffer_lens/1 will cache all queue information", %{
@@ -946,7 +1164,6 @@ defmodule Logflare.BackendsTest do
         insert(:source, user: user, drop_lql_string: "testing", drop_lql_filters: lql_filters)
 
       start_supervised!({SourceSup, source})
-      :timer.sleep(1000)
 
       TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_lql])
 
@@ -960,8 +1177,6 @@ defmodule Logflare.BackendsTest do
 
       assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_lql], %{count: 1},
                       %{source_id: ^source_id, source_token: ^source_token}}
-
-      :timer.sleep(1000)
     end
 
     test "emits rejected telemetry for events with pipeline_error", %{user: user} do
@@ -997,7 +1212,6 @@ defmodule Logflare.BackendsTest do
         insert(:source, user: user, drop_lql_string: "testing", drop_lql_filters: lql_filters)
 
       start_supervised!({SourceSup, source})
-      :timer.sleep(1000)
 
       TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_lql])
 
@@ -1013,8 +1227,6 @@ defmodule Logflare.BackendsTest do
                       %{source_id: ^source_id, source_token: ^source_token}}
 
       refute_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_lql], _, _}
-
-      :timer.sleep(1000)
     end
 
     test "route to source with lql", %{user: user} do
@@ -1023,7 +1235,6 @@ defmodule Logflare.BackendsTest do
       source = Logflare.Repo.preload(source, :rules, force: true)
       start_supervised!({SourceSup, source}, id: :source)
       start_supervised!({SourceSup, target}, id: :target)
-      :timer.sleep(500)
 
       assert {:ok, 2} =
                Backends.ingest_logs(
@@ -1051,7 +1262,6 @@ defmodule Logflare.BackendsTest do
       start_supervised!({SourceSup, source}, id: :source)
       start_supervised!({SourceSup, target}, id: :target)
       start_supervised!({SourceSup, other_target}, id: :other_target)
-      :timer.sleep(500)
 
       assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "testing 123"}], source)
 
@@ -1071,7 +1281,6 @@ defmodule Logflare.BackendsTest do
       start_supervised!({SourceSup, source}, id: :source)
       start_supervised!({SourceSup, target}, id: :target)
       start_supervised!({SourceSup, other_target}, id: :other_target)
-      :timer.sleep(500)
 
       assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "testing 123"}], source)
 
@@ -1221,8 +1430,6 @@ defmodule Logflare.BackendsTest do
       TestUtils.retry_assert(fn ->
         assert_received ^ref
       end)
-
-      :timer.sleep(1000)
     end
 
     test "cascade delete for rules on backend deletion", %{user: user} do
@@ -1406,7 +1613,6 @@ defmodule Logflare.BackendsTest do
       )
 
       start_supervised!({SourceSup, source})
-      :timer.sleep(500)
       {:ok, source: source}
     end
 
@@ -1426,8 +1632,6 @@ defmodule Logflare.BackendsTest do
       TestUtils.retry_assert(fn ->
         assert_received {^ref, %{"event_message" => "some event"}}
       end)
-
-      :timer.sleep(1000)
     end
   end
 
@@ -1581,7 +1785,6 @@ defmodule Logflare.BackendsTest do
     } do
       # Start actual SourceSup process
       start_supervised!({SourceSup, source})
-      :timer.sleep(500)
 
       via = Backends.via_source(source, SourceSup)
 
@@ -1650,32 +1853,45 @@ defmodule Logflare.BackendsTest do
     end
   end
 
-  describe "ingest_logs/2 event age filtering" do
+  describe "ingest_logs/2 event timestamp filtering" do
     setup do
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user: user)
       start_supervised!({SourceSup, source})
-      :timer.sleep(500)
+
+      rate_counter = GenServer.whereis(Backends.via_source(source, RateCounterServer))
+      assert source.token == :sys.get_state(rate_counter)
 
       {:ok, source: source}
     end
 
-    test "drops events older than 72 hours", %{source: source} do
+    test "accepts events older than 24 hours", %{source: source} do
       TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_stale])
 
       now_us = System.system_time(:microsecond)
-      old_timestamp = now_us - 73 * 3_600 * 1_000_000
 
-      params = [%{"message" => "old event", "timestamp" => old_timestamp}]
+      params = [
+        %{"message" => "old event", "timestamp" => now_us - 25 * 3_600 * 1_000_000},
+        %{"message" => "very old event", "timestamp" => now_us - 500 * 3_600 * 1_000_000}
+      ]
 
-      assert {:ok, 0} = Backends.ingest_logs(params, source)
+      assert {:ok, 2} = Backends.ingest_logs(params, source)
 
-      source_id = source.id
-      source_token = source.token
+      refute_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_stale], _, _}
+    end
 
-      assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_stale],
-                      %{count: 1}, %{source_id: ^source_id, source_token: ^source_token}}
+    test "counts events older than 24 hours toward the source insert count", %{source: source} do
+      old_timestamp = System.system_time(:microsecond) - 25 * 3_600 * 1_000_000
+      before_count = Data.get_node_inserts(source.token)
+
+      params = [
+        %{"message" => "old event 1", "timestamp" => old_timestamp},
+        %{"message" => "old event 2", "timestamp" => old_timestamp}
+      ]
+
+      assert {:ok, 2} = Backends.ingest_logs(params, source)
+      assert Data.get_node_inserts(source.token) == before_count + 2
     end
 
     test "drops events more than 1 hour in the future", %{source: source} do
@@ -1707,56 +1923,43 @@ defmodule Logflare.BackendsTest do
       assert {:ok, 3} = Backends.ingest_logs(params, source)
     end
 
-    test "filters mixed batch of valid and invalid timestamps", %{source: source} do
+    test "drops only future timestamps from a mixed batch", %{source: source} do
       now_us = System.system_time(:microsecond)
 
       params = [
         %{"message" => "valid now", "timestamp" => now_us},
-        %{"message" => "too old", "timestamp" => now_us - 73 * 3_600 * 1_000_000},
+        %{"message" => "old", "timestamp" => now_us - 25 * 3_600 * 1_000_000},
         %{"message" => "too future", "timestamp" => now_us + 2 * 3_600 * 1_000_000},
-        %{"message" => "valid past", "timestamp" => now_us - 24 * 3_600 * 1_000_000}
+        %{"message" => "valid past", "timestamp" => now_us - 15 * 3_600 * 1_000_000}
       ]
 
-      assert {:ok, 2} = Backends.ingest_logs(params, source)
+      assert {:ok, 3} = Backends.ingest_logs(params, source)
     end
 
-    test "tallies each drop reason separately within a single batch", %{source: source} do
+    test "tallies future drops within a single batch", %{source: source} do
       TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_stale])
       TestUtils.attach_forwarder([:logflare, :logs, :ingest_logs, :drop_future])
 
       now_us = System.system_time(:microsecond)
-      old_timestamp = now_us - 73 * 3_600 * 1_000_000
       future_timestamp = now_us + 2 * 3_600 * 1_000_000
 
       params = [
         %{"message" => "valid now", "timestamp" => now_us},
-        %{"message" => "too old 1", "timestamp" => old_timestamp},
-        %{"message" => "too old 2", "timestamp" => old_timestamp},
-        %{"message" => "too future", "timestamp" => future_timestamp}
+        %{"message" => "old", "timestamp" => now_us - 73 * 3_600 * 1_000_000},
+        %{"message" => "too future 1", "timestamp" => future_timestamp},
+        %{"message" => "too future 2", "timestamp" => future_timestamp}
       ]
 
-      assert {:ok, 1} = Backends.ingest_logs(params, source)
+      assert {:ok, 2} = Backends.ingest_logs(params, source)
 
       source_id = source.id
       source_token = source.token
 
-      assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_stale],
+      assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_future],
                       %{count: 2}, %{source_id: ^source_id, source_token: ^source_token}}
 
-      assert_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_future],
-                      %{count: 1}, %{source_id: ^source_id, source_token: ^source_token}}
-
-      refute_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_stale], _, _}
       refute_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_future], _, _}
-    end
-
-    test "accepts events at exact boundary (72 hours ago)", %{source: source} do
-      now_us = System.system_time(:microsecond)
-      boundary_timestamp = now_us - (71 * 3_600 + 59 * 60) * 1_000_000
-
-      params = [%{"message" => "boundary event", "timestamp" => boundary_timestamp}]
-
-      assert {:ok, 1} = Backends.ingest_logs(params, source)
+      refute_receive {:telemetry_event, [:logflare, :logs, :ingest_logs, :drop_stale], _, _}
     end
 
     test "accepts events at exact boundary (1 hour in future)", %{source: source} do
@@ -1772,9 +1975,8 @@ defmodule Logflare.BackendsTest do
       now_us = System.system_time(:microsecond)
 
       params = [
-        %{"message" => "old event 1", "timestamp" => now_us - 73 * 3_600 * 1_000_000},
-        %{"message" => "old event 2", "timestamp" => now_us - 100 * 3_600 * 1_000_000},
-        %{"message" => "future event", "timestamp" => now_us + 2 * 3_600 * 1_000_000}
+        %{"message" => "future event 1", "timestamp" => now_us + 2 * 3_600 * 1_000_000},
+        %{"message" => "future event 2", "timestamp" => now_us + 100 * 3_600 * 1_000_000}
       ]
 
       assert {:ok, 0} = Backends.ingest_logs(params, source)
@@ -1787,9 +1989,8 @@ defmodule Logflare.BackendsTest do
 
       params = [
         %{"message" => "valid event", "timestamp" => now_us},
-        %{"message" => "old event 1", "timestamp" => now_us - 73 * 3_600 * 1_000_000},
-        %{"message" => "old event 2", "timestamp" => now_us - 100 * 3_600 * 1_000_000},
-        %{"message" => "future event", "timestamp" => now_us + 2 * 3_600 * 1_000_000}
+        %{"message" => "future event 1", "timestamp" => now_us + 2 * 3_600 * 1_000_000},
+        %{"message" => "future event 2", "timestamp" => now_us + 100 * 3_600 * 1_000_000}
       ]
 
       log =
@@ -1797,7 +1998,7 @@ defmodule Logflare.BackendsTest do
           assert {:ok, 1} = Backends.ingest_logs(params, source)
         end)
 
-      assert log =~ "Dropping 3 of 4 event(s): timestamps outside [-72h, +1h] window"
+      assert log =~ "Dropping 2 of 3 event(s): timestamps more than 1h in the future"
     end
 
     test "does not log when no events are filtered", %{source: source} do
@@ -1805,16 +2006,106 @@ defmodule Logflare.BackendsTest do
 
       params = [
         %{"message" => "valid event 1", "timestamp" => now_us},
-        %{"message" => "valid event 2", "timestamp" => now_us - 1 * 3_600 * 1_000_000}
+        %{"message" => "valid event 2", "timestamp" => now_us - 1 * 3_600 * 1_000_000},
+        %{"message" => "old event", "timestamp" => now_us - 500 * 3_600 * 1_000_000}
       ]
 
       log =
         capture_log(fn ->
-          assert {:ok, 2} = Backends.ingest_logs(params, source)
+          assert {:ok, 3} = Backends.ingest_logs(params, source)
         end)
 
       refute log =~ "Dropping"
-      refute log =~ "timestamps outside"
+      refute log =~ "timestamps more than"
+    end
+  end
+
+  describe "ingest_logs/3 per-source spooling gate" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user, enable_spooling: false)
+      start_supervised!({SourceSup, source})
+
+      prev_spool_config = Application.get_env(:logflare, :spool)
+
+      on_exit(fn ->
+        if prev_spool_config do
+          Application.put_env(:logflare, :spool, prev_spool_config)
+        else
+          Application.delete_env(:logflare, :spool)
+        end
+      end)
+
+      {:ok, source: source}
+    end
+
+    defp stub_add_to_table_observer(test_pid) do
+      stub(IngestEventQueue, :add_to_table, fn key, _batch ->
+        send(test_pid, {:add_to_table, key})
+        :ok
+      end)
+    end
+
+    test "does not dispatch to the spool producer when source.enable_spooling is false, even if the global mode is on and allow_spooling is true",
+         %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :producer)
+      stub_add_to_table_observer(self())
+
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      refute_receive {:add_to_table, {:spool_producer, nil}}
+    end
+
+    test "does not dispatch to the spool producer when the global mode is off, even if source.enable_spooling and allow_spooling are true",
+         %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :disable)
+      stub_add_to_table_observer(self())
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      refute_receive {:add_to_table, {:spool_producer, nil}}
+    end
+
+    test "dispatches to the spool producer only when the global mode, source.enable_spooling, and allow_spooling are all true",
+         %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :producer)
+      stub_add_to_table_observer(self())
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      assert_receive {:add_to_table, {:spool_producer, nil}}
+    end
+
+    test "does not dispatch to the spool producer when allow_spooling is omitted, even if the global mode and source.enable_spooling are true",
+         %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :producer)
+      stub_add_to_table_observer(self())
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source)
+
+      refute_receive {:add_to_table, {:spool_producer, nil}}
+    end
+
+    test "does not dispatch to the spool producer when the event already has a via_rule_id, even if allow_spooling is true",
+         %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :producer)
+      stub_add_to_table_observer(self())
+
+      source = %{source | enable_spooling: true}
+      le = build(:log_event, source: source)
+      le = %{le | via_rule_id: 123}
+
+      assert {:ok, 1} = Backends.ingest_logs([le], source, nil, true)
+
+      refute_receive {:add_to_table, {:spool_producer, nil}}
     end
   end
 end

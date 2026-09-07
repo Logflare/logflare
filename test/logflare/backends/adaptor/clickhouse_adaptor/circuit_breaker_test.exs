@@ -72,6 +72,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreakerTest do
     end
   end
 
+  describe "trip/1" do
+    test "opens immediately regardless of failure count", %{backend: backend} do
+      start_supervised!({CircuitBreaker, backend})
+
+      assert :ok = CircuitBreaker.check(backend)
+
+      assert :ok = CircuitBreaker.trip(backend)
+
+      assert {:error, :circuit_open, blocked_until} = CircuitBreaker.check(backend)
+      assert is_integer(blocked_until)
+    end
+
+    test "is a no-op when no breaker is running (fail-safe)", %{backend: backend} do
+      assert :ok = CircuitBreaker.trip(backend)
+      assert :ok = CircuitBreaker.check(backend)
+    end
+  end
+
   describe "fail-safe on process death" do
     test "reads as closed after the breaker process crashes", %{backend: backend} do
       pid = start_supervised!({CircuitBreaker, backend})

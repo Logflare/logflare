@@ -2,6 +2,8 @@ defmodule LogflareWeb.EndpointsController do
   use LogflareWeb, :controller
   use OpenApiSpex.ControllerSpecs
 
+  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1]
+
   require Logger
 
   alias Logflare.Backends.QueryError
@@ -80,11 +82,15 @@ defmodule LogflareWeb.EndpointsController do
         get_req_header(conn, "lf-endpoint-bigquery-reservation") |> List.first()
       end
 
+    read_cluster =
+      get_req_header(conn, "lf-endpoint-clickhouse-read-cluster-label") |> List.first()
+
     case Endpoints.run_cached_query(
            %{endpoint_query | parsed_labels: parsed_labels},
            params,
            redact_pii: redact_pii,
-           reservation: reservation
+           reservation: reservation,
+           read_cluster: read_cluster
          ) do
       {:ok, result} ->
         Logger.debug("Endpoint cache result, #{inspect(result, pretty: true)}")
@@ -92,6 +98,9 @@ defmodule LogflareWeb.EndpointsController do
 
       {:error, error = %QueryError{}} ->
         render(conn, "query.json", error: QueryErrorHelpers.query_error_message(error))
+
+      {:error, message} when is_non_empty_binary(message) ->
+        render(conn, "query.json", error: QueryErrorHelpers.sandbox_query_error_message(message))
 
       {:error, _errors} ->
         render(conn, "query.json", error: QueryErrorHelpers.generic_query_error_message())

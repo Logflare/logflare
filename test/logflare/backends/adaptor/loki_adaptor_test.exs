@@ -1,9 +1,9 @@
 defmodule Logflare.Backends.Adaptor.LokiAdaptorTest do
   use Logflare.DataCase, async: false
 
-  alias Logflare.Backends.Adaptor
   alias Logflare.Backends
-  alias Logflare.Backends.AdaptorSupervisor
+  alias Logflare.Backends.Adaptor
+  alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
 
   @subject Logflare.Backends.Adaptor.LokiAdaptor
@@ -94,6 +94,24 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptorTest do
     end
   end
 
+  describe "sanitize_config_for_display/1" do
+    test "masks credentials and headers while preserving url" do
+      config = %{
+        url: "https://loki.example.com",
+        username: "user",
+        password: "secret123",
+        headers: %{"authorization" => "Bearer secret"}
+      }
+
+      assert %{
+               url: "https://loki.example.com",
+               username: "**********",
+               password: "**********",
+               headers: "**********"
+             } == @subject.sanitize_config_for_display(config)
+    end
+  end
+
   describe "redact_config/1" do
     test "redacts password field when present" do
       config = %{password: "secret123", url: "https://loki.example.com"}
@@ -119,8 +137,7 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptorTest do
           config: %{url: "http://localhost:1234"}
         )
 
-      start_supervised!({AdaptorSupervisor, {source, backend}})
-      :timer.sleep(500)
+      start_supervised!({SourceSup, source})
       [backend: backend, source: source]
     end
 

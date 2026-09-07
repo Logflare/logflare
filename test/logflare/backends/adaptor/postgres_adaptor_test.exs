@@ -37,6 +37,37 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
     %{backend: backend, source: source, postgres_url: url}
   end
 
+  describe "sanitize_config_for_display/1" do
+    test "masks credentials embedded in the connection url" do
+      config = %{url: "postgresql://user:secret123@localhost:5432/dbname"}
+
+      assert %{url: "postgresql://user:REDACTED@localhost:5432/dbname"} =
+               PostgresAdaptor.sanitize_config_for_display(config)
+    end
+
+    test "masks credential fields while preserving connection details" do
+      config = %{
+        hostname: "localhost",
+        username: "user",
+        password: "secret123",
+        database: "db",
+        schema: "public",
+        port: 5432,
+        pool_size: 5
+      }
+
+      assert %{
+               hostname: "localhost",
+               username: "**********",
+               password: "**********",
+               database: "db",
+               schema: "public",
+               port: 5432,
+               pool_size: 5
+             } == PostgresAdaptor.sanitize_config_for_display(config)
+    end
+  end
+
   describe "redact_config/1" do
     test "redacts password in URL" do
       config = %{url: "postgresql://user:secret123@localhost:5432/dbname"}
@@ -48,6 +79,52 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
     test "handles URL without password" do
       config = %{url: "postgresql://localhost:5432/dbname"}
       assert ^config = PostgresAdaptor.redact_config(config)
+    end
+
+    test "redacts standalone password field when configured via individual fields" do
+      config = %{hostname: "localhost", username: "user", password: "secret123", database: "db"}
+
+      assert %{password: "REDACTED"} = PostgresAdaptor.redact_config(config)
+    end
+
+    test "does not crash when config has no url" do
+      config = %{hostname: "localhost", username: "user", password: "secret123"}
+
+      assert %{hostname: "localhost"} = PostgresAdaptor.redact_config(config)
+    end
+
+    test "redacts both url-embedded and standalone passwords when both are present" do
+      config = %{
+        url: "postgresql://user:secret123@localhost:5432/dbname",
+        password: "secret123"
+      }
+
+      assert %{
+               url: "postgresql://user:REDACTED@localhost:5432/dbname",
+               password: "REDACTED"
+             } = PostgresAdaptor.redact_config(config)
+    end
+
+    test "redacts a string-keyed url in place, without leaving the atom key unredacted" do
+      config = %{"url" => "postgresql://user:secret123@localhost:5432/dbname"}
+
+      assert %{"url" => "postgresql://user:REDACTED@localhost:5432/dbname"} =
+               redacted =
+               PostgresAdaptor.redact_config(config)
+
+      refute Map.has_key?(redacted, :url)
+    end
+
+    test "redacts both key variants if a config has both :url and \"url\"" do
+      config = %{
+        "url" => "postgresql://user:othersecret@localhost:5432/otherdb",
+        url: "postgresql://user:secret123@localhost:5432/dbname"
+      }
+
+      assert %{
+               "url" => "postgresql://user:REDACTED@localhost:5432/otherdb",
+               url: "postgresql://user:REDACTED@localhost:5432/dbname"
+             } = PostgresAdaptor.redact_config(config)
     end
   end
 

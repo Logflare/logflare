@@ -58,6 +58,29 @@ defmodule LogflareWeb.QueryErrorHelpersTest do
                "Query timed out. Retry your query or reduce the time range."
     end
 
+    test "returns timeout message for timeout query errors" do
+      error =
+        query_error(
+          kind: :timeout,
+          backend: BigQueryAdaptor,
+          raw_error: %{
+            "code" => 499,
+            "errors" => [
+              %{
+                "domain" => "global",
+                "message" => "Job execution was cancelled: Job timed out",
+                "reason" => "stopped"
+              }
+            ],
+            "message" => "Job execution was cancelled: Job timed out",
+            "status" => "CANCELLED"
+          }
+        )
+
+      assert QueryErrorHelpers.query_error_message(error) ==
+               "Query timed out. Retry your query or reduce the time range."
+    end
+
     test "returns missing field message for classified query errors" do
       error =
         query_error(
@@ -121,6 +144,42 @@ defmodule LogflareWeb.QueryErrorHelpersTest do
 
       assert QueryErrorHelpers.query_error_message(error) ==
                QueryErrorHelpers.generic_query_error_message()
+    end
+  end
+
+  describe "timeout_query_error?/1" do
+    test "is true for timeout query errors" do
+      assert QueryErrorHelpers.timeout_query_error?(
+               query_error(
+                 kind: :timeout,
+                 backend: BigQueryAdaptor,
+                 raw_error: %{"message" => "Job execution was cancelled: Job timed out"}
+               )
+             )
+    end
+
+    test "is true for connection timeouts" do
+      assert QueryErrorHelpers.timeout_query_error?(
+               query_error(kind: :connection_error, backend: BigQueryAdaptor, raw_error: :timeout)
+             )
+    end
+
+    test "is false for other query errors" do
+      refute QueryErrorHelpers.timeout_query_error?(
+               query_error(
+                 kind: :connection_error,
+                 backend: BigQueryAdaptor,
+                 raw_error: :closed
+               )
+             )
+
+      refute QueryErrorHelpers.timeout_query_error?(
+               query_error(
+                 kind: :backend_error,
+                 backend: BigQueryAdaptor,
+                 raw_error: %{"message" => "backend unavailable"}
+               )
+             )
     end
   end
 

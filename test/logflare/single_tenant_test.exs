@@ -1,6 +1,7 @@
 defmodule Logflare.SingleTenantTest do
   @moduledoc false
   use Logflare.DataCase
+  import Logflare.Utils.Guards
   alias Logflare.SingleTenant
   alias Logflare.Billing
   alias Logflare.Users
@@ -166,8 +167,8 @@ defmodule Logflare.SingleTenantTest do
       user = SingleTenant.get_default_user()
       sources = Sources.list_sources_by_user(user)
 
-      assert length(sources) > 0
-      assert Endpoints.list_endpoints_by(user_id: user.id) |> length() > 0
+      assert is_non_empty_list(sources)
+      assert Endpoints.list_endpoints_by(user_id: user.id) != []
     end
 
     test "supabase_mode_status/0" do
@@ -263,8 +264,8 @@ defmodule Logflare.SingleTenantTest do
       user = SingleTenant.get_default_user()
       sources = Sources.list_sources_by_user(user)
 
-      assert length(sources) > 0
-      assert Endpoints.list_endpoints_by(user_id: user.id) |> length() > 0
+      assert is_non_empty_list(sources)
+      assert Endpoints.list_endpoints_by(user_id: user.id) != []
     end
 
     test "supabase_mode_status/0" do

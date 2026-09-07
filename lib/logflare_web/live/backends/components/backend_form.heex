@@ -57,6 +57,53 @@
             <% end %>
             {text_input(f_config, :url, class: "form-control")}
           </div>
+          <% stored_headers = input_value(f_config, :headers) || %{}
+
+          fields =
+            stored_headers
+            |> Enum.sort_by(fn {key, _value} -> key end)
+            |> Stream.concat(Stream.repeatedly(fn -> {"", ""} end))
+            |> Enum.take(max(map_size(stored_headers) + 1, 2)) %>
+          <%= for {{key, val}, i} <- Enum.with_index(fields, 1) do %>
+            <div class="form-group">
+              {label(f_config, "header#{i}_key", "Custom header #{i} - Key")}
+              {text_input(f_config, "header#{i}_key", value: key, class: "form-control")}
+              {label(f_config, "header#{i}_value", "Custom header #{i} - Value")}
+              {text_input(f_config, "header#{i}_value",
+                value:
+                  if(val in [nil, ""],
+                    do: val,
+                    else: Logflare.Backends.Adaptor.WebhookAdaptor.redacted_value()
+                  ),
+                class: "form-control"
+              )}
+              {hidden_input(f_config, "header#{i}_stored_key", value: key)}
+            </div>
+          <% end %>
+          <small class="form-text text-muted">
+            Headers sent with each request. For a bearer token, set the key to <code>authorization</code>
+            and the value to <code>Bearer &lt;token&gt;</code>. Stored values show as <code>REDACTED</code>; leave them unchanged to keep them. You can rename a key without retyping its value. Clear a key to remove the header.
+          </small>
+          <div class="form-group">
+            {label(f_config, :format, "Payload format")}
+            {select(f_config, :format, Logflare.Backends.Adaptor.WebhookAdaptor.formats(),
+              class: "form-control form-control-margin",
+              id: "webhook-format"
+            )}
+            <small class="form-text text-muted">
+              Encoding of each batch. <code>json</code> sends a JSON array. <code>ndjson</code> sends newline-delimited JSON, one event per line.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :gzip, "Gzip")}
+            {checkbox(f_config, :gzip,
+              id: "webhook-gzip",
+              checked: input_value(f_config, :gzip) not in [false, "false"]
+            )}
+            <small class="form-text text-muted">
+              Enable "gzip" compression in sent requests. Disable this when the receiver does not decompress request bodies.
+            </small>
+          </div>
         <% "postgres" -> %>
           <div class="form-group">
             <%= label f_config, :url do %>
@@ -217,13 +264,46 @@
             </small>
           </div>
           <div class="form-group">
-            {label(f_config, :insert_protocol, "Insert Protocol")}
-            {select(f_config, :insert_protocol, [{"HTTP", "http"}, {"Native (TCP)", "native"}],
-              class: "form-control form-control-margin",
-              id: "insert_protocol"
+            {label(f_config, :query_user, "ClickHouse Query Username (Optional)")}
+            {text_input(f_config, :query_user, class: "form-control")}
+            {label(f_config, :query_password, "ClickHouse Query Password (Optional)")}
+            {text_input(f_config, :query_password, class: "form-control", type: "password", value: "")}
+            <small class="form-text text-muted">
+              Dedicated credentials used for read queries. Both must be provided; when left empty, the username and password above are used for reads. Leave blank when editing to keep the existing password unchanged; changing the username requires re-entering the password.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :use_async_inserts_for_small_batches, "Async Inserts for Small Batches")}
+            {checkbox(f_config, :use_async_inserts_for_small_batches, id: "use_async_inserts_for_small_batches")}
+            <small class="form-text text-muted">
+              When enabled, small batches are sent to ClickHouse as async inserts.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :async_insert_cluster_url, "Async Insert Cluster URL (Optional)")}
+            {text_input(f_config, :async_insert_cluster_url, class: "form-control")}
+            <small class="form-text text-muted">
+              Optional dedicated cluster endpoint to handle async inserts. When empty, async inserts go to the primary URL.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :async_insert_max_rows, "Async Insert Max Rows")}
+            {text_input(f_config, :async_insert_max_rows,
+              class: "form-control",
+              value: input_value(f_config, "async_insert_max_rows") || 1000
             )}
             <small class="form-text text-muted">
-              Protocol used for inserting data into ClickHouse.
+              Batches with fewer than this many rows are sent as async inserts (when enabled above).
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :max_event_age_hours, "Max Event Age (Hours)")}
+            {text_input(f_config, :max_event_age_hours,
+              class: "form-control",
+              value: input_value(f_config, "max_event_age_hours") || 24
+            )}
+            <small class="form-text text-muted">
+              Events with a timestamp older than this are not sent to ClickHouse. Set to <code>0</code> to disable the check.
             </small>
           </div>
           <div class="form-group">
@@ -234,16 +314,11 @@
             </small>
           </div>
           <div class="form-group">
-            {label(f_config, :native_port, "Native Port")}
-            {text_input(f_config, :native_port, class: "form-control", value: input_value(f_config, "native_port") || 9440)}
-          </div>
-          <div class="form-group">
-            {label(f_config, :pool_size, "HTTP Pool Size")}
-            {text_input(f_config, :pool_size, class: "form-control", value: input_value(f_config, "pool_size") || 20)}
-          </div>
-          <div class="form-group">
-            {label(f_config, :native_pool_size, "Native Pool Size")}
-            {text_input(f_config, :native_pool_size, class: "form-control", value: input_value(f_config, "native_pool_size") || 20)}
+            {label(f_config, :read_pool_size, "Read Pool Size")}
+            {text_input(f_config, :read_pool_size, class: "form-control", value: input_value(f_config, "read_pool_size") || 50)}
+            <small class="form-text text-muted">
+              Connections per node for the primary read pool.
+            </small>
           </div>
           <div class="form-group">
             {label(f_config, :read_only_url, "Read-Only URL (Optional)")}
@@ -252,6 +327,7 @@
               Separate endpoint for read queries, for example: <code>https://read-warehouse.clickhouse.cloud:8443</code>
             </small>
           </div>
+          <.live_component module={LogflareWeb.Backends.ReadClusterUrlsComponent} id={read_cluster_component_id(@backend)} form={f_config} backend={@backend} />
         <% "incidentio" -> %>
           <div class="form-group">
             {label(f_config, :api_token, "API Token")}
@@ -356,7 +432,10 @@
         <% "otlp" -> %>
           <div class="form-group">
             {label(f_config, :endpoint, "Endpoint")}
-            {text_input(f_config, :endpoint, class: "form-control", value: "https://otlp-endpoint.com/v1/logs")}
+            {text_input(f_config, :endpoint,
+              class: "form-control",
+              placeholder: "https://otlp-endpoint.com/v1/logs"
+            )}
             <small class="form-text text-muted">
               Address of the OTLP Endpoint
             </small>
@@ -392,6 +471,13 @@
               Transport protocol used for OTLP
             </small>
           </div>
+          <div class="form-group">
+            {label(f_config, :flatten_to_attributes, "Flatten to attributes")}
+            {checkbox(f_config, :flatten_to_attributes, id: "flatten-attributes")}
+            <small class="form-text text-muted">
+              Sends the log event_message as a text string in the body field and flattens other fields into individual attributes, instead of the default nested body. Defaults to false.
+            </small>
+          </div>
         <% "last9" -> %>
           <div class="form-group">
             {label(f_config, :username, "Otel integration Username")}
@@ -412,6 +498,53 @@
               Region of your cluster
             </small>
           </div>
+        <% "signoz" -> %>
+          <div class="form-group">
+            {label(f_config, :endpoint, "Ingestion URL (Required)")}
+            {text_input(f_config, :endpoint, class: "form-control")}
+            <small class="form-text text-muted">
+              Ingestion URL from <a href="https://signoz.io/docs/ingestion/signoz-cloud/overview/">Settings &gt; Ingestion</a>, e.g. <code>https://ingest.us.signoz.cloud:443</code>, or the address of a self-managed collector. The <code>/v1/logs</code> path is appended automatically
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :ingestion_key, "Ingestion Key")}
+            {text_input(f_config, :ingestion_key, class: "form-control", type: "password")}
+            <small class="form-text text-muted">
+              Required by SigNoz Cloud, and typically unset for self-managed deployments
+            </small>
+          </div>
+        <% "google_secops" -> %>
+          <div class="form-group">
+            {label(f_config, :region, "Region")}
+            {text_input(f_config, :region, class: "form-control")}
+            <small class="form-text text-muted">
+              Region of your Google SecOps instance, e.g. <code>us</code>, <code>europe</code> or <code>europe-west3</code>
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :project_number, "Project number")}
+            {text_input(f_config, :project_number, class: "form-control")}
+            {label(f_config, :instance_id, "Instance ID")}
+            {text_input(f_config, :instance_id, class: "form-control")}
+            {label(f_config, :feed_id, "Feed ID")}
+            {text_input(f_config, :feed_id, class: "form-control")}
+            <small class="form-text text-muted">
+              Identifiers of your <a href="https://cloud.google.com/chronicle/docs/ingestion/setup-siem-webhook">SIEM webhook feed</a>,
+              visible in the feed's details page. The feed must be created with the split delimiter set to <code>\n</code>.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :api_key, "API key")}
+            {text_input(f_config, :api_key, class: "form-control", type: "password")}
+            <small class="form-text text-muted">
+              Google Cloud API key restricted to the Chronicle API
+            </small>
+            {label(f_config, :secret, "Secret")}
+            {text_input(f_config, :secret, class: "form-control", type: "password")}
+            <small class="form-text text-muted">
+              Secret key generated for the webhook feed
+            </small>
+          </div>
         <% "sentry" -> %>
           <div class="form-group">
             {label(f_config, :dsn, "DSN (Required)")}
@@ -430,7 +563,7 @@
           </div>
           <div class="form-group">
             {label(f_config, :port, "Port (Required)")}
-            {number_input(f_config, :port, class: "form-control")}
+            {number_input(f_config, :port, class: "form-control", min: 1, max: 65_535)}
             <small class="text-muted">
               It's usually 6514, but may vary based on your syslog server configuration.
             </small>

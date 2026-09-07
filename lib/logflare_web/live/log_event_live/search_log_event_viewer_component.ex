@@ -37,7 +37,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     params =
       event_params(assigns)
       |> Map.merge(%{log_event_id: id, timestamp: d})
-      |> Map.put(:lql, assigns.params["lql"] || "")
+      |> Map.put(:lql, assigns.lql)
 
     socket =
       socket
@@ -94,11 +94,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
 
   @impl true
   def render(%{source: source, log_event: %LE{body: body} = le} = assigns) do
-    tz =
-      if assigns.team_user,
-        do: Map.get(assigns.team_user.preferences || %{}, :timezone, "Etc/UTC"),
-        else: Map.get(assigns.user.preferences || %{}, :timezone, "Etc/UTC")
-
+    tz = assigns.search_timezone
     timestamp = Timex.from_unix(body["timestamp"], :microsecond)
 
     local_timestamp =
@@ -110,7 +106,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     LogView.render("log_event_body.html",
       source: source,
       source_schema_flat_map: assigns.source_schema_flat_map,
-      search_params: assigns.search_params,
+      search_params: %{"tz" => tz},
       team: assigns.team,
       body: body,
       fmt_body: BqSchema.encode_metadata(body),
@@ -119,8 +115,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
       lql: assigns.lql,
       lql_schema: get_lql_schema(source),
       timestamp: timestamp,
-      local_timezone: tz,
-      search_timezone: assigns.search_params["tz"] || tz,
+      local_timezone: assigns.search_timezone,
       local_timestamp: local_timestamp
     )
   end
@@ -136,13 +131,12 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     team = socket.assigns[:team] || assigns[:team]
     source = socket.assigns[:source] || assigns[:source]
     timestamp = socket.assigns[:timestamp] || assigns[:timestamp]
-    lql = socket.assigns[:lql] || assigns[:lql] || assigns.params["lql"] || ""
+    lql = assigns[:lql] || socket.assigns[:lql] || ""
 
     source_schema_flat_map =
       socket.assigns[:source_schema_flat_map] || assigns[:source_schema_flat_map]
 
-    search_params =
-      socket.assigns[:search_params] || extract_search_params(assigns)
+    search_timezone = assigns[:search_timezone] || socket.assigns[:search_timezone] || "Etc/UTC"
 
     socket
     |> assign(:user, user)
@@ -152,7 +146,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     |> assign(:timestamp, timestamp)
     |> assign(:lql, lql)
     |> assign(:source_schema_flat_map, source_schema_flat_map)
-    |> assign(:search_params, search_params)
+    |> assign(:search_timezone, search_timezone)
     |> assign(:error, nil)
   end
 
@@ -172,9 +166,4 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
       _ -> SchemaBuilder.initial_table_schema()
     end
   end
-
-  defp extract_search_params(%{params: params}) when is_map(params),
-    do: Map.take(params, ["tz"])
-
-  defp extract_search_params(_assigns), do: %{}
 end

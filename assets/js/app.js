@@ -14,6 +14,7 @@ import LiveModalHooks from "./live_modal";
 import { LogEventsChart } from "./LogEventsChart.jsx";
 import Chart from "./admin_dashboard_charts.jsx";
 import Loader from "./loader.jsx";
+import DevDashboard from "./DevDashboard.jsx";
 import { LiveSocket } from "phoenix_live_view";
 import LiveReact, { initLiveReact } from "phoenix_live_react";
 
@@ -38,7 +39,7 @@ let csrfToken = document
 
 const liveReactHooks = { LiveReact };
 
-window.Components = { LogEventsChart, Loader, AdminChart: Chart };
+window.Components = { LogEventsChart, Loader, AdminChart: Chart, DevDashboard };
 window.Dashboard = Dashboard;
 window.Logs = Logs;
 window.User = User;

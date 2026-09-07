@@ -6,6 +6,8 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor.Pipeline do
   source backend and inserting them into the configured S3 bucket.
   """
 
+  require Logger
+
   alias Broadway.Message
   alias Logflare.Backends.Adaptor.S3Adaptor
   alias Logflare.Backends.BufferProducer
@@ -73,7 +75,17 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor.Pipeline do
 
   def handle_batch(:s3, messages, _batch_info, %{source_id: source_id, backend_id: backend_id}) do
     events = for %{data: le} <- messages, do: le
-    S3Adaptor.push_log_events_to_s3({source_id, backend_id}, events)
+
+    case S3Adaptor.push_log_events_to_s3({source_id, backend_id}, events) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning(
+          "S3Adaptor.Pipeline failed to push #{length(events)} events for source_id=#{source_id} backend_id=#{backend_id}: #{inspect(reason)}"
+        )
+    end
+
     messages
   end
 

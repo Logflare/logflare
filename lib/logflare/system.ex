@@ -13,15 +13,22 @@ defmodule Logflare.System do
   """
   @spec memory_utilization() :: float()
   def memory_utilization do
-    data = :memsup.get_system_memory_data()
-    total = data[:system_total_memory]
     used = :erlang.memory(:total)
 
-    if is_nil(total) do
-      # memsup not available
-      0.0
-    else
-      Float.round(used / total, 8)
+    case total_memory_bytes() do
+      nil -> 0.0
+      total -> Float.round(used / total, 8)
     end
+  end
+
+  @doc """
+  Total system memory in bytes, from :memsup. Returns `nil` if memsup is unavailable.
+
+  iex> is_integer(total_memory_bytes()) or is_nil(total_memory_bytes())
+  true
+  """
+  @spec total_memory_bytes() :: non_neg_integer() | nil
+  def total_memory_bytes do
+    :memsup.get_system_memory_data()[:system_total_memory]
   end
 end
