@@ -27,6 +27,15 @@ defmodule Logflare.LogEvent.TypeDetection do
     end
   end
 
+  @doc """
+  Whether the event's `start_time`/`end_time` fields hold OpenTelemetry
+  unix-nanosecond timestamps. Accepts raw params or an already-detected
+  event type.
+  """
+  @spec otel_timestamps?(map() | event_type()) :: boolean()
+  def otel_timestamps?(event_type) when is_atom(event_type), do: event_type in [:metric, :trace]
+  def otel_timestamps?(params) when is_map(params), do: otel_timestamps?(detect(params))
+
   defp trace?(params) do
     has_trace_id?(params) and has_span_id?(params) and has_span_field?(params)
   end
