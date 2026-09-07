@@ -52,7 +52,16 @@ defmodule Logflare.Rules.Cache do
   def list_by_source_id(id), do: apply_repo_fun(__ENV__.function, [id])
   def list_by_backend_id(id), do: apply_repo_fun(__ENV__.function, [id])
 
-  def rules_tree_by_source_id(id), do: apply_repo_fun(__ENV__.function, [id])
+  @spec rules_tree_by_source_id(integer()) ::
+          {Logflare.Sources.SourceRouter.RulesTree.t(), Rules.RoutingSnapshot.t()}
+  def rules_tree_by_source_id(id) do
+    ContextCache.fetch(__MODULE__, {:rules_tree_by_source_id, [id]}, fn ->
+      {tree, rules_by_id} =
+        Logflare.Repo.apply_with_replica(Rules, :rules_tree_by_source_id, [id])
+
+      {tree, Rules.RoutingSnapshot.new(id, rules_by_id)}
+    end)
+  end
 
   @impl ContextCache
   def bust_by(kw) do
@@ -82,8 +91,19 @@ defmodule Logflare.Rules.Cache do
 
   defp delete_and_count(cache, key) do
     case Cachex.take(cache, key) do
-      {:ok, nil} -> 0
-      {:ok, _value} -> 1
+      {:ok, nil} ->
+        0
+
+      {:ok, {:cached, {_tree, %Rules.RoutingSnapshot{} = snapshot}}} ->
+        Rules.RoutingSnapshotStore.delete(
+          Rules.RoutingSnapshotStore,
+          snapshot.key
+        )
+
+        1
+
+      {:ok, _value} ->
+        1
     end
   end
 

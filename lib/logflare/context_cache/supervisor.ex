@@ -52,7 +52,8 @@ defmodule Logflare.ContextCache.Supervisor do
         buster_specs()
       end
 
-    caches ++
+    [Rules.RoutingSnapshotStore] ++
+      caches ++
       List.wrap(maybe_transaction_broadcaster) ++
       List.wrap(maybe_cainophile) ++
       List.wrap(maybe_busters)

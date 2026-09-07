@@ -24,11 +24,8 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
 
   @impl true
   def matching_rules(event, source) do
-    rule_set = Rules.Cache.rules_tree_by_source_id(source.id)
-
-    matching_rule_ids(event, rule_set)
-    |> Rules.Cache.get_rules()
-    |> Enum.reject(&is_nil/1)
+    {rule_set, snapshot} = Rules.Cache.rules_tree_by_source_id(source.id)
+    Rules.RoutingSnapshot.resolve(snapshot, matching_rule_ids(event, rule_set))
   end
 
   @doc """

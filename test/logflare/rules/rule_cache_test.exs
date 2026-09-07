@@ -3,6 +3,7 @@ defmodule Logflare.Rules.CacheTest do
   use Logflare.DataCase
 
   alias Logflare.Rules
+  alias Logflare.Rules.RoutingSnapshot
   alias Logflare.Sources
 
   @subject Rules.Cache
@@ -14,10 +15,24 @@ defmodule Logflare.Rules.CacheTest do
     source = insert(:source, user: user, log_events_updated_at: DateTime.utc_now())
     [r1, r2] = insert_list(2, :rule, source: source, backend: backend)
 
+    on_exit(fn -> @subject.bust_by(source_id: source.id) end)
+
     [source: source, backend: backend, rule_ids: [r1.id, r2.id]]
   end
 
   describe "rules cache" do
+    test "get rule", %{rule_ids: [rid1, _rid2]} do
+      assert %Rule{id: ^rid1} = @subject.get_rule(rid1)
+
+      assert Cachex.size!(@subject) == 1
+      assert %{hits: 0, writes: 1} = Cachex.stats!(@subject)
+
+      Mimic.reject(Rules, :get_rule, 1)
+
+      assert %Rule{id: ^rid1} = @subject.get_rule(rid1)
+      assert %{hits: 1, writes: 1} = Cachex.stats!(@subject)
+    end
+
     test "get rules", %{rule_ids: rule_ids} do
       assert rules = @subject.get_rules(rule_ids)
 
@@ -27,15 +42,70 @@ defmodule Logflare.Rules.CacheTest do
 
       assert Cachex.size!(@subject) == 2
       assert %{hits: 0, writes: 2} = Cachex.stats!(@subject)
-
       Mimic.reject(Rules, :get_rule, 1)
-
       assert [_r1, _r2] = @subject.get_rules(rule_ids)
       assert %{hits: 2, writes: 2} = Cachex.stats!(@subject)
-
       [rid1, _rid2] = rule_ids
       assert %Rule{id: ^rid1} = @subject.get_rule(rid1)
       assert %{hits: 3, writes: 2} = Cachex.stats!(@subject)
+    end
+
+    test "rules tree by source id caches the tree with its rules", %{
+      source: source,
+      rule_ids: rule_ids
+    } do
+      assert {tree, %RoutingSnapshot{} = snapshot} = @subject.rules_tree_by_source_id(source.id)
+      assert snapshot.count == length(rule_ids)
+      assert Enum.map(RoutingSnapshot.resolve(snapshot, rule_ids), & &1.id) == rule_ids
+
+      Mimic.reject(Rules, :rules_tree_by_source_id, 1)
+      assert @subject.rules_tree_by_source_id(source.id) == {tree, snapshot}
+    end
+
+    for invalidation <- [:bust, :expire, :clear] do
+      @invalidation invalidation
+      test "#{invalidation} and rebuild preserve a paused reader's snapshot", %{
+        source: source,
+        rule_ids: rule_ids
+      } do
+        {tree, old} = @subject.rules_tree_by_source_id(source.id)
+        old_rules = RoutingSnapshot.resolve(old, rule_ids)
+        parent = self()
+
+        reader =
+          Task.async(fn ->
+            send(parent, :snapshot_acquired)
+            receive do: (:resume -> RoutingSnapshot.resolve(old, rule_ids))
+          end)
+
+        assert_receive :snapshot_acquired
+
+        case @invalidation do
+          :bust ->
+            assert {:ok, 1} = @subject.bust_by(source_id: source.id)
+
+          :expire ->
+            assert {:ok, true} =
+                     Cachex.expire(@subject, {:rules_tree_by_source_id, [source.id]}, -1)
+
+          :clear ->
+            assert {:ok, 1} = Cachex.clear(@subject)
+        end
+
+        new_rules = Map.new(old_rules, &{&1.id, %{&1 | lql_string: "replacement"}})
+
+        expect(Rules, :rules_tree_by_source_id, fn id ->
+          assert id == source.id
+          {tree, new_rules}
+        end)
+
+        {^tree, current} = @subject.rules_tree_by_source_id(source.id)
+        assert current.key != old.key
+        assert RoutingSnapshot.resolve(current, rule_ids) == Enum.map(rule_ids, &new_rules[&1])
+        refute :ets.member(old.table, old.key)
+        send(reader.pid, :resume)
+        assert Task.await(reader) == old_rules
+      end
     end
 
     test "list by source", %{source: source, rule_ids: expected_rule_ids} do
