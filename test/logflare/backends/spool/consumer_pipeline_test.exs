@@ -141,6 +141,39 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :consumer, :skipped],
                       %{count: 1}, %{reason: :missing_source_id}}
     end
+
+    test "a raising dispatch fails only that source's messages", %{source: source} do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :consumer, :skipped])
+
+      user = insert(:user)
+      other_source = insert(:source, user: user)
+
+      poison = line_message(source.id, Ecto.UUID.generate())
+      healthy = line_message(other_source.id, Ecto.UUID.generate())
+
+      pid = self()
+
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, dispatched_source ->
+        if dispatched_source.id == source.id do
+          raise FunctionClauseError
+        end
+
+        send(pid, {:dispatched, dispatched_source.id})
+        {:ok, length(event_params)}
+      end)
+
+      assert [returned_poison, returned_healthy] =
+               ConsumerPipeline.handle_batch(:default, [poison, healthy], %{}, %{})
+
+      assert returned_poison.status == {:failed, :dispatch_error}
+      assert returned_healthy.status == :ok
+
+      assert_receive {:dispatched, dispatched_id}
+      assert dispatched_id == other_source.id
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :consumer, :skipped],
+                      %{count: 1}, %{reason: :dispatch_error}}
+    end
   end
 
   describe "ack/3" do
