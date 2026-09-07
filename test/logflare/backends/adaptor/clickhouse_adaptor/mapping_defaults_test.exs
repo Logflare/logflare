@@ -2,20 +2,27 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
   use ExUnit.Case, async: true
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults
+  alias Logflare.LogEvent.TypeDetection
   alias Logflare.Mapper
+  alias Logflare.Mapper.MappingConfig.OutputFormat
 
   setup_all do
     {:ok,
-     log: Mapper.compile!(MappingDefaults.for_log()),
-     metric: Mapper.compile!(MappingDefaults.for_metric()),
-     trace: Mapper.compile!(MappingDefaults.for_trace())}
+     log: compile_map_output(:log),
+     metric: compile_map_output(:metric),
+     trace: compile_map_output(:trace)}
   end
 
   describe "for_type/1" do
-    test "returns a MappingConfig for each log type" do
-      assert %Mapper.MappingConfig{} = MappingDefaults.for_type(:log)
-      assert %Mapper.MappingConfig{} = MappingDefaults.for_type(:metric)
-      assert %Mapper.MappingConfig{} = MappingDefaults.for_type(:trace)
+    test "returns a MappingConfig with the matching RowBinary output" do
+      for event_type <- [:log, :metric, :trace] do
+        assert %Mapper.MappingConfig{
+                 output: %OutputFormat{
+                   format: :clickhouse_row_binary,
+                   row_type: ^event_type
+                 }
+               } = MappingDefaults.for_type(event_type)
+      end
     end
 
     test "raises for unknown log type" do
@@ -572,5 +579,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
       assert is_map(link_attrs)
       assert link_attrs["link.type"] == "parent"
     end
+  end
+
+  @spec compile_map_output(TypeDetection.event_type()) :: reference()
+  defp compile_map_output(event_type) do
+    config = MappingDefaults.for_type(event_type)
+    Mapper.compile!(%{config | output: nil})
   end
 end

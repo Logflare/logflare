@@ -5,6 +5,7 @@ defmodule Logflare.Sources.SourceRouterTest do
   alias Logflare.LogEvent
   alias Logflare.Lql.Parser
   alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Rules
   alias Logflare.Rules.Rule
   alias Logflare.Sources.SourceRouter
   alias Logflare.SystemMetrics.AllLogsLogged
@@ -755,6 +756,23 @@ defmodule Logflare.Sources.SourceRouterTest do
         {le, source} = build_data.(metadata, "value")
         assert unquote(router).matching_rules(le, source) == source.rules
       end
+    end
+  end
+
+  describe "RulesTree with an unresolvable rule id" do
+    test "does not raise when a matched id is missing from the snapshot", %{
+      user: user,
+      backend: backend
+    } do
+      rule = build(:rule, backend: backend, lql_string: "testing")
+      source = insert(:source, user: user, rules: [rule])
+      le = build(:log_event, source: source, message: "testing123")
+
+      {tree, _rules_by_id} = Rules.rules_tree_by_source_id(source.id)
+
+      expect(Rules, :rules_tree_by_source_id, fn _id -> {tree, %{}} end)
+
+      assert SourceRouter.route_to_sinks_and_ingest(le, source, SourceRouter.RulesTree) == le
     end
   end
 end

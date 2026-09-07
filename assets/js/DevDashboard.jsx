@@ -77,6 +77,49 @@ function StatCard({ label, value, color, unit = "" }) {
   );
 }
 
+// Deliberately more visually loud than the Producer status badge — a
+// change in background/border, not just the dot — since throttling is an
+// alert condition (something is actively holding the pipeline back), not a
+// routine toggle like pause/resume.
+function ThrottleBadge({ throttled, consumerThrottled }) {
+  const active = throttled || consumerThrottled;
+
+  const reason = !active
+    ? null
+    : throttled && consumerThrottled
+      ? "memory + consumer"
+      : throttled
+        ? "memory"
+        : "consumer";
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        background: active ? "#3a1f28" : "#1e1e2e",
+        border: active ? "1px solid #f38ba8" : "1px solid #313244",
+        borderRadius: "8px",
+        padding: "8px 16px",
+      }}
+    >
+      <div
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          background: active ? "#f38ba8" : "#a6e3a1",
+          boxShadow: active ? "0 0 8px #f38ba8" : "0 0 6px #a6e3a1",
+        }}
+      />
+      <span style={{ color: active ? "#f38ba8" : "#cdd6f4", fontSize: 13, fontWeight: active ? 700 : 400 }}>
+        {active ? `⚠ THROTTLED (${reason})` : "Throttled: No"}
+      </span>
+    </div>
+  );
+}
+
 function ToolbarButton({ onClick, children, active = false, disabled = false, color = "#89b4fa" }) {
   return (
     <button
@@ -308,6 +351,54 @@ function GcChart({ data, xKey, snapshot }) {
   );
 }
 
+const PIPELINE_LINES = [
+  { key: "write_rate", name: "Spool Producer", color: "#89b4fa" },
+  { key: "read_rate", name: "Spool Consumer", color: "#f9e2af" },
+  { key: "ch_batch_rate", name: "ClickHouse", color: "#a6e3a1" },
+  { key: "bq_batch_rate", name: "BigQuery", color: "#cba6f7" },
+];
+
+function PipelineThroughputChart({ data, xKey, snapshot }) {
+  const [hidden, setHidden] = useState({});
+  const toggle = (e) => {
+    const key = PIPELINE_LINES.find((l) => l.name === e.value)?.key;
+    if (key) setHidden((h) => ({ ...h, [key]: !h[key] }));
+  };
+  return (
+    <Panel title="Pipeline Throughput (events/s)">
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
+          <XAxis dataKey={xKey} tick={AXIS} interval="preserveStartEnd" />
+          <YAxis tick={AXIS} width={65} unit="/s" />
+          <Tooltip contentStyle={TOOLTIP} />
+          <Legend wrapperStyle={{ fontSize: 11, color: "#6c7086", cursor: "pointer" }} onClick={toggle} />
+          {PIPELINE_LINES.map(({ key, name, color }) => (
+            <Line key={key} type="monotone" dataKey={key} stroke={color} strokeWidth={2}
+              dot={false} name={name} hide={!!hidden[key]} isAnimationActive={false} />
+          ))}
+          {snapshot &&
+            PIPELINE_LINES.map(({ key, name, color }) => (
+              <Line
+                key={`snap_${key}`}
+                type="monotone"
+                dataKey={`snap_${key}`}
+                stroke={color}
+                strokeWidth={1.5}
+                strokeDasharray={SNAP_DASH}
+                strokeOpacity={0.6}
+                dot={false}
+                name={`${name} (snapshot)`}
+                hide={!!hidden[key]}
+                isAnimationActive={false}
+              />
+            ))}
+        </LineChart>
+      </ResponsiveContainer>
+    </Panel>
+  );
+}
+
 const DEFAULT_VIEW_POINTS = 60; // ~1 minute at the 1s tick cadence
 
 export default function DevDashboard({ data = [], current = {}, producer_paused = false, mode = "none" }) {
@@ -447,29 +538,35 @@ export default function DevDashboard({ data = [], current = {}, producer_paused 
             Real-time producer · consumer · queue metrics
           </div>
         </div>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            background: "#1e1e2e",
-            border: "1px solid #313244",
-            borderRadius: "8px",
-            padding: "8px 16px",
-          }}
-        >
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <ThrottleBadge
+            throttled={current.throttled ?? false}
+            consumerThrottled={current.consumer_throttled ?? false}
+          />
           <div
             style={{
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              background: producer_paused ? "#f38ba8" : "#a6e3a1",
-              boxShadow: producer_paused ? "0 0 6px #f38ba8" : "0 0 6px #a6e3a1",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              background: "#1e1e2e",
+              border: "1px solid #313244",
+              borderRadius: "8px",
+              padding: "8px 16px",
             }}
-          />
-          <span style={{ color: "#cdd6f4", fontSize: 13 }}>
-            Producer: {producer_paused ? "Paused" : "Running"}
-          </span>
+          >
+            <div
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: producer_paused ? "#f38ba8" : "#a6e3a1",
+                boxShadow: producer_paused ? "0 0 6px #f38ba8" : "0 0 6px #a6e3a1",
+              }}
+            />
+            <span style={{ color: "#cdd6f4", fontSize: 13 }}>
+              Producer: {producer_paused ? "Paused" : "Running"}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -811,25 +908,7 @@ export default function DevDashboard({ data = [], current = {}, producer_paused 
             <StatCard label="CH events/s" value={chBatchRate} color="#a6e3a1" unit="/s" />
             <StatCard label="BQ events/s" value={bqBatchRate} color="#cba6f7" unit="/s" />
           </div>
-          <Panel title="Pipeline Throughput (events/s)">
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={visibleChartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
-                <XAxis dataKey={xKey} tick={AXIS} interval="preserveStartEnd" />
-                <YAxis tick={AXIS} width={65} unit="/s" />
-                <Tooltip contentStyle={TOOLTIP} />
-                <Legend wrapperStyle={{ fontSize: 11, color: "#6c7086" }} />
-                <Line type="monotone" dataKey="ch_batch_rate" stroke="#a6e3a1" strokeWidth={2} dot={false} name="ClickHouse" isAnimationActive={false} />
-                <Line type="monotone" dataKey="bq_batch_rate" stroke="#cba6f7" strokeWidth={2} dot={false} name="BigQuery" isAnimationActive={false} />
-                {hasSnapshot && (
-                  <>
-                    <Line type="monotone" dataKey="snap_ch_batch_rate" stroke="#a6e3a1" strokeDasharray={SNAP_DASH} strokeOpacity={0.6} dot={false} name="ClickHouse (snapshot)" isAnimationActive={false} />
-                    <Line type="monotone" dataKey="snap_bq_batch_rate" stroke="#cba6f7" strokeDasharray={SNAP_DASH} strokeOpacity={0.6} dot={false} name="BigQuery (snapshot)" isAnimationActive={false} />
-                  </>
-                )}
-              </LineChart>
-            </ResponsiveContainer>
-          </Panel>
+          <PipelineThroughputChart data={visibleChartData} xKey={xKey} snapshot={hasSnapshot} />
         </div>
       </div>
     </div>

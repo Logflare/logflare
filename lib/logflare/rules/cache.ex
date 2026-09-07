@@ -43,12 +43,6 @@ defmodule Logflare.Rules.Cache do
 
   def get_rule(id), do: apply_repo_fun(__ENV__.function, [id])
 
-  def get_rules(ids) do
-    Cachex.execute!(__MODULE__, fn cache ->
-      Enum.map(ids, &fetch_rule(cache, &1))
-    end)
-  end
-
   def list_by_source_id(id), do: apply_repo_fun(__ENV__.function, [id])
   def list_by_backend_id(id), do: apply_repo_fun(__ENV__.function, [id])
 
@@ -74,10 +68,6 @@ defmodule Logflare.Rules.Cache do
         acc + delete_and_count(worker, k)
       end)
     end)
-  end
-
-  defp fetch_rule(cache, id) do
-    ContextCache.fetch(cache, {:get_rule, [id]}, fn -> Rules.get_rule(id) end)
   end
 
   defp delete_and_count(cache, key) do
