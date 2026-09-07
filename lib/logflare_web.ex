@@ -19,7 +19,7 @@ defmodule LogflareWeb do
 
   def controller do
     quote do
-      use Phoenix.Controller, formats: [html: "View", json: "View"]
+      use Phoenix.Controller, formats: [html: "View", json: "View", csv: "View"]
       use Gettext, backend: LogflareWeb.Gettext
 
       import Plug.Conn
