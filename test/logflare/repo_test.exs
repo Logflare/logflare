@@ -129,6 +129,16 @@ defmodule Logflare.RepoTest do
       refute Exception.message(error) =~ "supersecret"
     end
 
+    test "does not leak credentials when a hostless URI has an unescaped @ in the password" do
+      error =
+        assert_raise ArgumentError, fn ->
+          Replicas.parse!("postgres://u:super@secret@/db")
+        end
+
+      refute Exception.message(error) =~ "super"
+      refute Exception.message(error) =~ "secret"
+    end
+
     test "parse!/1 raises without leaking credentials" do
       error =
         assert_raise ArgumentError, fn ->

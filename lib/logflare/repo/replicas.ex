@@ -143,7 +143,7 @@ defmodule Logflare.Repo.Replicas do
   end
 
   defp redact(entry) do
-    Regex.replace(~r{^([a-z][a-z0-9+.-]*://)[^/@]*@}i, entry, "\\1")
+    Regex.replace(~r{^([a-z][a-z0-9+.-]*://)[^/]*@}i, entry, "\\1")
   end
 
   defp redact(message, nil), do: message
