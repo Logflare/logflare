@@ -148,6 +148,44 @@ defmodule Logflare.RepoTest do
   end
 
   describe "replica SSL configuration" do
+    for {entry, primary_sni, expected_sni} <- [
+          {"replica.invalid", :disable, nil},
+          {"replica.invalid", ~c"primary.invalid", nil},
+          {"postgres://replica.invalid/logflare", :disable, nil},
+          {"postgres://replica.invalid/logflare", ~c"primary.invalid", nil},
+          {"127.0.0.2", ~c"primary.invalid", :disable},
+          {"postgres://127.0.0.2/logflare", ~c"primary.invalid", :disable},
+          {"postgres://replica.invalid/logflare?ssl=false", :disable, false}
+        ] do
+      test "#{entry} normalizes inherited SSL with primary SNI #{inspect(primary_sni)}" do
+        primary_ssl = [
+          verify: :verify_peer,
+          depth: 4,
+          server_name_indication: unquote(primary_sni)
+        ]
+
+        put_repo_config(ssl: primary_ssl)
+        entries = [Replicas.parse!(unquote(entry))]
+        telemetry_ref = :telemetry_test.attach_event_handlers(self(), [[:ecto, :repo, :init]])
+        on_exit(fn -> :telemetry.detach(telemetry_ref) end)
+
+        start_supervised!({Replicas, entries: entries})
+
+        assert_receive {[:ecto, :repo, :init], ^telemetry_ref, _, %{repo: Repo, opts: opts}}
+
+        case unquote(expected_sni) do
+          false ->
+            assert opts[:ssl] == false
+
+          nil ->
+            assert opts[:ssl] == Keyword.delete(primary_ssl, :server_name_indication)
+
+          :disable ->
+            assert opts[:ssl] == Keyword.put(primary_ssl, :server_name_indication, :disable)
+        end
+      end
+    end
+
     test "a DNS replica removes primary-specific SNI" do
       put_repo_config(ssl: [server_name_indication: :disable])
 

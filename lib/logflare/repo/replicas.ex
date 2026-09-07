@@ -184,9 +184,19 @@ defmodule Logflare.Repo.Replicas do
   defp redact(message, userinfo), do: String.replace(message, userinfo, "REDACTED")
 
   defp resolve_ssl(config) do
-    case Keyword.get(config, :ssl) do
-      true -> Keyword.put(config, :ssl, primary_ssl_opts(config[:hostname]))
-      _ -> config
+    primary_ssl = Keyword.get(Logflare.Repo.config(), :ssl)
+    effective_ssl = Keyword.get(config, :ssl, primary_ssl)
+    hostname = config[:hostname]
+
+    case effective_ssl do
+      true ->
+        Keyword.put(config, :ssl, primary_ssl_opts(hostname))
+
+      opts when is_list(opts) ->
+        Keyword.put(config, :ssl, replica_ssl_opts(opts, hostname))
+
+      _ ->
+        config
     end
   end
 
