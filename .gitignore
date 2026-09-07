@@ -43,6 +43,7 @@ npm-debug.log
 gcloud.json
 gcloud_staging.json
 gcloud_prod.json
+gha-creds-*.json
 
 # IDEs
 /.elixir_ls/
@@ -108,3 +109,5 @@ flake.nix
 flake.lock
 
 /tmp
+
+.plans/
