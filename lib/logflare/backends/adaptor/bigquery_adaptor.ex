@@ -15,16 +15,18 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias GoogleApi.IAM.V1.Model.CreateServiceAccountRequest
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
   alias Logflare.Backends.Backend
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
   alias Logflare.BigQuery.SchemaTypes
   alias Logflare.Billing
   alias Logflare.BqRepo
-  alias Logflare.Endpoints.Query
+  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Google
   alias Logflare.Google.BigQuery.EventUtils
   alias Logflare.Google.BigQuery.GCPConfig
@@ -41,6 +43,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   @managed_service_account_partition_count 5
   @service_account_prefix "logflare-managed"
+  @timeout_error_regex ~r/timed out/i
+  @search_query_timeout_ms 60_000
+  @endpoint_query_timeout_ms 60_000
 
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend} = source_backend) do
@@ -158,6 +163,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
+  def test_connection(_), do: {:error, :not_implemented}
+
+  @impl Logflare.Backends.Adaptor
   def ecto_to_sql(%Ecto.Query{} = query, _opts) do
     with {:ok, {pg_sql, pg_params}} <- SqlUtils.ecto_to_pg_sql(query) do
       bq_sql = pg_sql_to_bq_sql(pg_sql)
@@ -261,6 +269,14 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     |> Changeset.validate_format(:project_id, @gcp_project_id_pattern,
       message: "must be a valid GCP project ID"
     )
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def redact_config(config), do: config
+
+  @impl Logflare.Backends.Adaptor
+  def sanitize_config_for_display(config) do
+    Adaptor.mask_config_values(config, except: [:project_id, :dataset_id])
   end
 
   @doc """
@@ -569,31 +585,56 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   @spec build_base_query_opts(user :: User.t(), opts :: Keyword.t()) :: Keyword.t()
   defp build_base_query_opts(%User{} = user, opts) do
+    query_type = Keyword.get(opts, :query_type)
+    reservation = resolve_reservation(user, query_type, Keyword.get(opts, :reservation))
+
     [
       location: user.bigquery_dataset_location,
       use_query_cache: Keyword.get(opts, :use_query_cache, true),
       dryRun: Keyword.get(opts, :dry_run, false),
-      reservation:
-        case Keyword.get(opts, :reservation) do
-          nil ->
-            case Keyword.get(opts, :query_type) do
-              :search -> user.bigquery_reservation_search
-              :alerts -> user.bigquery_reservation_alerts
-              _ -> nil
-            end
+      query_type: query_type,
+      reservation: reservation
+    ] ++ query_timeout_opts(query_type, reservation)
+  end
 
-          value ->
-            value
-        end
+  @spec resolve_reservation(
+          user :: User.t(),
+          query_type :: atom() | nil,
+          override :: String.t() | nil
+        ) :: String.t() | nil
+  defp resolve_reservation(%User{bigquery_reservation_search: reservation}, :search, nil),
+    do: reservation
+
+  defp resolve_reservation(%User{bigquery_reservation_alerts: reservation}, :alerts, nil),
+    do: reservation
+
+  defp resolve_reservation(%User{}, _query_type, nil), do: nil
+  defp resolve_reservation(%User{}, _query_type, override), do: override
+
+  @spec query_timeout_opts(query_type :: atom() | nil, reservation :: String.t() | nil) ::
+          Keyword.t()
+  defp query_timeout_opts(:search, _reservation) do
+    [
+      jobTimeoutMs: @search_query_timeout_ms,
+      timeoutMs: @search_query_timeout_ms
     ]
   end
+
+  defp query_timeout_opts(:endpoint, reservation) when is_non_empty_binary(reservation) do
+    [
+      jobTimeoutMs: @endpoint_query_timeout_ms,
+      timeoutMs: @endpoint_query_timeout_ms
+    ]
+  end
+
+  defp query_timeout_opts(_query_type, _reservation), do: []
 
   @spec execute_query_with_context(
           user_id :: integer(),
           query_string :: String.t(),
           declared_params :: [String.t()],
           input_params :: map(),
-          nil | Query.t(),
+          nil | EndpointQuery.t(),
           opts :: Keyword.t()
         ) :: {:ok, QueryResult.t()} | {:error, any()}
   defp execute_query_with_context(user_id, query_string, declared_params, input_params, nil, opts) do
@@ -609,7 +650,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           query_string :: String.t(),
           declared_params :: [String.t()],
           input_params :: map(),
-          endpoint_query :: Query.t(),
+          endpoint_query :: EndpointQuery.t(),
           opts :: Keyword.t()
         ) :: {:ok, QueryResult.t()} | {:error, any()}
   defp execute_query_with_context(
@@ -617,7 +658,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
          query_string,
          declared_params,
          input_params,
-         %Query{} = endpoint_query,
+         %EndpointQuery{} = endpoint_query,
          opts
        ) do
     user = Users.Cache.get(user_id)
@@ -665,7 +706,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           query_opts :: Keyword.t()
         ) ::
           {:ok, QueryResult.t()}
-          | {:error, any()}
+          | {:error, QueryError.t()}
   defp execute_user_query(%User{} = user, project_id, query_string, bq_params, query_opts)
        when is_non_empty_binary(query_string) and is_list(bq_params) and is_list(query_opts) do
     case BqRepo.query_with_sql_and_params(
@@ -684,16 +725,107 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
            bq_params: bq_params
          })}
 
-      {:error, %{body: body}} ->
-        error = Jason.decode!(body)["error"] |> GenUtils.process_bq_errors(user.id)
-        {:error, error}
+      {:error, error} ->
+        query_type = Keyword.get(query_opts, :query_type)
 
-      {:error, err} when is_atom(err) ->
-        {:error, GenUtils.process_bq_errors(err, user.id)}
+        query_error =
+          error
+          |> to_query_error(user.id, query_type)
+          |> QueryError.log(
+            user_id: user.id,
+            bigquery_project_id: project_id
+          )
 
-      {:error, err} ->
-        {:error, err}
+        {:error, query_error}
     end
+  end
+
+  @spec to_query_error(
+          Tesla.Env.t() | GenUtils.transport_error(),
+          pos_integer(),
+          query_type :: atom() | nil
+        ) :: QueryError.t()
+  defp to_query_error(error, _user_id, _query_type) when error in [:timeout, :closed, :emfile] do
+    %QueryError{
+      kind: :connection_error,
+      raw_error: error,
+      backend: __MODULE__
+    }
+  end
+
+  defp to_query_error(%{body: body}, user_id, query_type) when is_non_empty_binary(body) do
+    with {:ok, %{"error" => raw_error}} <- Jason.decode(body),
+         %{"message" => _message} = processed_error <-
+           GenUtils.process_bq_errors(raw_error, user_id) do
+      processed_error
+      |> query_error_kind(query_type)
+      |> query_error(processed_error)
+    else
+      _error -> query_error(:backend_error, body)
+    end
+  end
+
+  defp to_query_error(%{body: body}, _user_id, _query_type) do
+    query_error(:backend_error, body)
+  end
+
+  @spec query_error_kind(map(), query_type :: atom() | nil) :: QueryError.kind()
+  defp query_error_kind(%{"reason" => "billingTierLimitExceeded"}, _query_type),
+    do: :backend_error
+
+  defp query_error_kind(%{"reason" => "invalidQuery"}, _query_type), do: :invalid_query
+
+  defp query_error_kind(%{"errors" => errors} = processed_error, query_type)
+       when is_list(errors) do
+    cond do
+      Enum.any?(errors, &match?(%{"reason" => "invalidQuery"}, &1)) -> :invalid_query
+      timeout_error?(processed_error, query_type) -> :timeout
+      true -> :backend_error
+    end
+  end
+
+  defp query_error_kind(processed_error, query_type) do
+    cond do
+      invalid_query_error?(processed_error) -> :invalid_query
+      timeout_error?(processed_error, query_type) -> :timeout
+      true -> :backend_error
+    end
+  end
+
+  @spec invalid_query_error?(map()) :: boolean()
+  defp invalid_query_error?(%{"message" => message}) when is_non_empty_binary(message) do
+    String.starts_with?(message, ["Unrecognized name:", "Field name"])
+  end
+
+  defp invalid_query_error?(_processed_error), do: false
+
+  @spec timeout_error?(map(), query_type :: atom() | nil) :: boolean()
+  defp timeout_error?(processed_error, :search), do: timeout_error?(processed_error)
+  defp timeout_error?(_processed_error, _query_type), do: false
+
+  @spec timeout_error?(map()) :: boolean()
+  defp timeout_error?(%{"reason" => "timeout"}), do: true
+
+  defp timeout_error?(%{"errors" => errors} = processed_error) when is_list(errors) do
+    timeout_message?(processed_error["message"]) or Enum.any?(errors, &timeout_error?/1)
+  end
+
+  defp timeout_error?(%{"message" => message}), do: timeout_message?(message)
+  defp timeout_error?(_processed_error), do: false
+
+  @spec timeout_message?(term()) :: boolean()
+  defp timeout_message?(message) when is_non_empty_binary(message),
+    do: Regex.match?(@timeout_error_regex, message)
+
+  defp timeout_message?(_message), do: false
+
+  @spec query_error(QueryError.kind(), term()) :: QueryError.t()
+  defp query_error(kind, raw_error) do
+    %QueryError{
+      kind: kind,
+      raw_error: raw_error,
+      backend: __MODULE__
+    }
   end
 
   @spec pg_sql_to_bq_sql(sql :: String.t()) :: String.t()

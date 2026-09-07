@@ -18,10 +18,13 @@ defmodule Logflare.Application do
   alias Logflare.Utils
 
   def start(_type, _args) do
+    Logflare.Readiness.initialize()
+
     # set inspect function to redact sensitive information
     prev = Inspect.Opts.default_inspect_fun()
     Inspect.Opts.default_inspect_fun(&Utils.inspect_fun(prev, &1, &2))
 
+    set_global_logger_metadata()
     start_user_log_interceptor()
     add_logger_backends()
     warn_if_stripe_webhook_secret_unset()
@@ -47,7 +50,11 @@ defmodule Logflare.Application do
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Logflare.Supervisor]
-    Supervisor.start_link(children, opts)
+
+    with {:ok, supervisor} <- Supervisor.start_link(children, opts) do
+      Logflare.Readiness.mark_ready()
+      {:ok, supervisor}
+    end
   end
 
   defp get_children(:test) do
@@ -56,6 +63,7 @@ defmodule Logflare.Application do
         Logflare.Repo,
         Logflare.Vault,
         ContextCache.Supervisor,
+        Logflare.LogEvent.DayBucket,
         Counters,
         RateCounters,
         Logs.LogEvents.Cache,
@@ -90,11 +98,12 @@ defmodule Logflare.Application do
         {PartitionSupervisor, child_spec: Task.Supervisor, name: Logflare.TaskSupervisors},
         {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
         Logflare.Repo,
-        {Logflare.Repo.Replicas, hostnames: read_replicas},
+        {Logflare.Repo.Replicas, entries: read_replicas},
         Logflare.Vault,
         {Oban, Application.fetch_env!(:logflare, Oban)},
         {Phoenix.PubSub, name: Logflare.PubSub, pool_size: pool_size},
         ContextCache.Supervisor,
+        Logflare.LogEvent.DayBucket,
         Logs.LogEvents.Cache,
         PubSubRates,
         Logs.RejectedLogEvents,
@@ -110,7 +119,8 @@ defmodule Logflare.Application do
          endpoint: LogflareGrpc.Endpoint,
          port: grpc_port,
          start_server: true,
-         adapter_opts: [cred: grpc_creds]},
+         adapter_opts: [cred: grpc_creds],
+         exception_log_filter: {LogflareGrpc.ExceptionLogFilter, :emit_log?}},
         # Monitor system level metrics
         SystemMetricsSup,
         Logflare.Telemetry,
@@ -132,6 +142,24 @@ defmodule Logflare.Application do
         "STRIPE_WEBHOOK_SECRET is not set — all Stripe webhook requests will be rejected"
       )
     end
+  end
+
+  @doc """
+  Global metadata attached to every log event (and the single source for it).
+
+  Combines the Logflare version with the configured `:logflare, :metadata`
+  (e.g. `cluster`). The same `:logflare, :metadata` env feeds OTel resource
+  attributes (see `Logflare.Telemetry`).
+  """
+  @spec global_logger_metadata() :: map()
+  def global_logger_metadata do
+    [logflare_version: Application.spec(:logflare, :vsn) |> to_string()]
+    |> Keyword.merge(Application.get_env(:logflare, :metadata, []))
+    |> Map.new()
+  end
+
+  defp set_global_logger_metadata do
+    :logger.update_primary_config(%{metadata: global_logger_metadata()})
   end
 
   defp start_user_log_interceptor do
@@ -175,6 +203,11 @@ defmodule Logflare.Application do
       end
 
     goth ++ config_cat
+  end
+
+  def prep_stop(state) do
+    Logflare.Readiness.begin_draining()
+    state
   end
 
   def config_change(changed, _new, removed) do

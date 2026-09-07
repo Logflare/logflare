@@ -81,6 +81,7 @@ defmodule Logflare.Lql.Parser.Combinators do
       ignore(string("\""))
       |> repeat_while(
         choice([
+          string(~S(\\)),
           string(~S(\")),
           utf8_char([])
         ]),

@@ -1,0 +1,131 @@
+steps:
+  # generate the per-role container environment metadata
+  - name: gcr.io/cloud-builders/gcloud
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        umask 077
+        {
+          printf '%s\n' 'LOGFLARE_GRPC_PORT=50051'
+          printf 'RELEASE_COOKIE=%s\n' "$$1"
+          printf 'LOGFLARE_METADATA_CLUSTER=%s\n' "$$2"
+          printf 'SPOOL_MODE=%s\n' "$$3"
+          printf '%s\n' 'SPOOL_PROVIDER=gcp'
+          # SPOOL_BUCKET/SPOOL_PUBSUB_TOPIC/SPOOL_QUEUE_NAME default to the
+          # dedicated dev-N bucket/topic/subscription (provisioned via
+          # o11y-team-tools/logflare-gcp/scripts/provision-dev-spool.sh),
+          # kept separate from the real staging spool (gs://logflare-spool)
+          # so this never mixes with real staging ingest data.
+          printf 'SPOOL_BUCKET=%s\n' "$$4"
+          printf 'SPOOL_PUBSUB_TOPIC=%s\n' "$$5"
+          printf 'SPOOL_QUEUE_NAME=%s\n' "$$6"
+        } > gce-container.env
+      - --
+      - ${_COOKIE}
+      - ${_CLUSTER}
+      - ${_SPOOL_MODE}
+      - ${_SPOOL_BUCKET}
+      - ${_SPOOL_PUBSUB_TOPIC}
+      - ${_SPOOL_QUEUE_NAME}
+  # create instance template - dedicated
+  - name: gcr.io/cloud-builders/gcloud
+    entrypoint: bash
+    args:
+      - ./cloudbuild/create-instance-template.sh
+      - logflare-staging
+      - $_TEMPLATE_NAME
+      - --boot-disk-size=10GB
+      - --boot-disk-type=pd-balanced
+      - --machine-type=${_INSTANCE_TYPE}
+      - --network-interface=network=default,network-tier=PREMIUM,no-address
+      - --maintenance-policy=TERMINATE
+      - --service-account=compute-engine-2022@logflare-staging.iam.gserviceaccount.com
+      - --scopes=https://www.googleapis.com/auth/cloud-platform
+      # deliberately not phoenix-http/https-server: this cluster is never
+      # attached to a backend-service and shouldn't inherit the public-facing
+      # ingress firewall rules that tag targets.
+      - --tags=logflare-spool-test
+      - --metadata-from-file=startup-script=./cloudbuild/gce-startup.sh,shutdown-script=./cloudbuild/shutdown.sh,logflare-container-env=./gce-container.env
+      # needed for enabling node-problem-detector, explicitly enable logging
+      - --metadata=google-monitoring-enabled=true,google-logging-enabled=true,logflare-container-image=${_CONTAINER_IMAGE}
+      - --no-shielded-secure-boot
+      - --shielded-vtpm
+      - --shielded-integrity-monitoring
+      - --image=cos-stable-109-17800-147-54
+      - --image-project=cos-cloud
+  # create instance group if it doesn't exist yet — one-time bootstrap for a
+  # new dev number, seeded on the template just created above. On every run
+  # after that this is a no-op (the group already exists), and the next step
+  # (rolling-action start-update, unconditional) is what rolls it onto
+  # whatever new template each subsequent PR/build produces.
+  - name: gcr.io/cloud-builders/gcloud
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        if gcloud compute instance-groups managed describe "$$1" \
+          --project=logflare-staging --zone=us-central1-a >/dev/null 2>&1; then
+          echo "Instance group $$1 already exists — skipping create"
+        else
+          gcloud compute instance-groups managed create "$$1" \
+            --project=logflare-staging --zone=us-central1-a \
+            --template="$$2" --size=1
+        fi
+      - --
+      - ${_INSTANCE_GROUP}
+      - ${_TEMPLATE_NAME}
+  # update instance group to the new template
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - beta
+      - compute
+      - instance-groups
+      - managed
+      - rolling-action
+      - start-update
+      - ${_INSTANCE_GROUP}
+      - --project=logflare-staging
+      - --zone=us-central1-a
+      - --type=proactive
+      - --max-surge=1
+      - --max-unavailable=0
+      - --min-ready=180
+      - --minimal-action=replace
+      - --most-disruptive-allowed-action=replace
+      - --replacement-method=substitute
+      - --version=template=projects/logflare-staging/global/instanceTemplates/${_TEMPLATE_NAME}
+
+substitutions:
+  # Single source of truth for which dev pair this targets — override just
+  # these two and _CLUSTER/_SPOOL_BUCKET/_SPOOL_PUBSUB_TOPIC/_SPOOL_QUEUE_NAME
+  # all derive consistently below, so the instance group and its spool queue
+  # can't drift onto different dev numbers (e.g. dev-2-producer accidentally
+  # talking to dev-spool-1). _ROLE must be "producer" or "consumer" — it also
+  # becomes SPOOL_MODE directly.
+  _DEV_NUMBER: "1"
+  _ROLE: producer
+  # Each cluster name gets its own release cookie, so producer and consumer
+  # replicas never join the same Erlang distribution cluster (nor the
+  # main/versioned staging fleet) — they only talk to each other via the
+  # shared Pub/Sub topic/subscription below.
+  _CLUSTER: dev-${_DEV_NUMBER}-${_ROLE}
+  _SPOOL_MODE: ${_ROLE}
+  # Dedicated dev-N bucket/topic/subscription, provisioned via
+  # o11y-team-tools/logflare-gcp/scripts/provision-dev-spool.sh
+  # (DEV_NUMBER=${_DEV_NUMBER}), kept separate from the real staging spool
+  # (gs://logflare-spool / logflare-spool-sub).
+  _SPOOL_BUCKET: dev-spool-${_DEV_NUMBER}
+  _SPOOL_PUBSUB_TOPIC: projects/logflare-staging/topics/dev-spool-${_DEV_NUMBER}
+  _SPOOL_QUEUE_NAME: projects/logflare-staging/subscriptions/dev-spool-${_DEV_NUMBER}-sub
+  _COOKIE: default-${_CLUSTER}
+  _NORMALIZED_IMAGE_TAG: ${_IMAGE_TAG}
+  _INSTANCE_TYPE: c2d-highcpu-4
+  _INSTANCE_GROUP: instance-group-staging-${_CLUSTER}
+  _IMAGE_TAG: $SHORT_SHA
+  _TEMPLATE_NAME: logflare-staging-${_CLUSTER}-cluster-${_NORMALIZED_IMAGE_TAG}
+  _CONTAINER_IMAGE: gcr.io/logflare-staging/logflare_app:${_IMAGE_TAG}
+timeout: 1800s
+options:
+  dynamicSubstitutions: true
+  substitutionOption: "ALLOW_LOOSE"

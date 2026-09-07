@@ -5,7 +5,7 @@ defmodule Logflare.SingleTenant do
   alias Logflare.Users
   alias Logflare.Billing
   alias Logflare.Billing.Plan
-  alias Logflare.Endpoints.Query
+  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Sources.Source
   alias Logflare.Sources
   alias Logflare.Endpoints
@@ -200,19 +200,17 @@ defmodule Logflare.SingleTenant do
 
         if to_keep do
           # delete all except the correct one
-          for plan <- plans, plan.id != to_keep.id do
-            Billing.delete_plan(plan)
-          end
+          plans
+          |> Enum.filter(fn plan -> plan.id != to_keep.id end)
+          |> Enum.each(&Billing.delete_plan/1)
 
           {:ok, to_keep}
         else
           # take the first one and update it, delete the rest
-          to_keep_and_update = List.first(plans)
+          [to_keep_and_update | other_plans] = plans
           {:ok, updated} = Billing.update_plan(to_keep_and_update, @plan_attrs)
 
-          for plan <- plans, plan.id != to_keep_and_update.id do
-            Billing.delete_plan(plan)
-          end
+          Enum.each(other_plans, &Billing.delete_plan/1)
 
           {:ok, updated}
         end
@@ -255,23 +253,27 @@ defmodule Logflare.SingleTenant do
     user = get_default_user()
 
     if user do
-      for source <- Sources.list_sources_by_user(user) do
-        if postgres_backend?() do
-          Backends.start_source_sup(source)
-        else
-          Supervisor.ensure_started(source)
-        end
-      end
+      user
+      |> Sources.list_sources_by_user()
+      |> Enum.each(&start_supabase_source/1)
     end
 
     :ok
+  end
+
+  defp start_supabase_source(source) do
+    if postgres_backend?() do
+      Backends.start_source_sup(source)
+    else
+      Supervisor.ensure_started(source)
+    end
   end
 
   @doc """
   Inserts supabase endpoints via SQL files under priv/supabase.any()
   These SQL scripts are directly exported from logflare prod.
   """
-  @spec create_supabase_endpoints() :: {:ok, [Query.t()]}
+  @spec create_supabase_endpoints() :: {:ok, [EndpointQuery.t()]}
   def create_supabase_endpoints do
     user = get_default_user()
     count = Endpoints.count_endpoints_by_user(user)
@@ -279,7 +281,7 @@ defmodule Logflare.SingleTenant do
     if count == 0 do
       endpoints =
         for params <- endpoint_params() do
-          {:ok, endpoint} = Endpoints.create_query(user, params)
+          {:ok, endpoint} = Endpoints.create_query(user, params, user)
           endpoint
         end
 
@@ -311,28 +313,29 @@ defmodule Logflare.SingleTenant do
   @spec update_supabase_source_schemas :: nil
   def update_supabase_source_schemas do
     if supabase_mode?() do
-      user = get_default_user()
-
-      sources =
-        user
+      tasks =
+        get_default_user()
         |> Sources.list_sources_by_user()
         |> Repo.preload(:rules)
-
-      tasks =
-        for source <- sources do
-          Task.async(fn ->
-            source = Sources.refresh_source_metrics_for_ingest(source)
-            Logger.info("Updating schemas for for #{source.name}")
-            event = read_ingest_sample_json(source.name)
-            log_event = LogEvent.make(event, %{source: source})
-
-            Backends.via_source(source, Schema)
-            |> Schema.update(log_event, source)
-          end)
-        end
+        |> Enum.map(&async_update_source_schema/1)
 
       Task.await_many(tasks)
     end
+  end
+
+  defp async_update_source_schema(source) do
+    Task.async(fn -> update_source_schema(source) end)
+  end
+
+  defp update_source_schema(source) do
+    source = Sources.refresh_source_metrics_for_ingest(source)
+    Logger.info("Updating schemas for #{source.name}")
+    event = read_ingest_sample_json(source.name)
+    log_event = LogEvent.make(event, %{source: source})
+
+    source
+    |> Backends.via_source(Schema)
+    |> Schema.update(log_event, source)
   end
 
   @doc """

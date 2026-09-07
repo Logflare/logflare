@@ -10,12 +10,14 @@ defmodule Logflare.Backends.Adaptor do
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Adaptor.QueryResult
-  alias Logflare.Endpoints.Query
+  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.LogEvent
   alias Logflare.Sources.Source
 
+  @config_display_mask "**********"
+
   @type t :: module()
-  @type query :: Query.t() | Ecto.Query.t() | String.t() | {String.t(), [term()]}
+  @type query :: EndpointQuery.t() | Ecto.Query.t() | String.t() | {String.t(), [term()]}
   @type source_backend :: {Source.t(), Backend.t()}
   @type start_link_arg :: source_backend() | Backend.t()
   @type query_identifier :: identifier() | Backend.t() | tuple()
@@ -97,6 +99,78 @@ defmodule Logflare.Backends.Adaptor do
     else
       false
     end
+  end
+
+  @doc """
+  Notifies a backend's adaptor that the backend's configuration has changed.
+
+  No-op for adaptors that do not implement the optional callback.
+  """
+  @spec on_backend_config_changed(Backend.t()) :: :ok
+  def on_backend_config_changed(%Backend{} = backend) do
+    adaptor = get_adaptor(backend)
+
+    if function_exported?(adaptor, :on_backend_config_changed, 1) do
+      adaptor.on_backend_config_changed(backend)
+    end
+
+    :ok
+  end
+
+  @doc """
+  Notifies a backend's adaptor that the backend has been deleted.
+
+  No-op for adaptors that do not implement the optional callback.
+  """
+  @spec on_backend_deleted(Backend.t()) :: :ok
+  def on_backend_deleted(%Backend{} = backend) do
+    adaptor = get_adaptor(backend)
+
+    if function_exported?(adaptor, :on_backend_deleted, 1) do
+      adaptor.on_backend_deleted(backend)
+    end
+
+    :ok
+  end
+
+  @doc """
+  Sanitizes a backend's configuration for display in the UI.
+
+  Delegates to the adaptor's optional `c:sanitize_config_for_display/1` callback.
+  Masks every config value when the adaptor does not implement the callback.
+  """
+  @spec sanitize_config_for_display(Backend.t()) :: map()
+  def sanitize_config_for_display(%Backend{config: config} = backend) when is_map(config) do
+    adaptor = get_adaptor(backend)
+
+    if Code.ensure_loaded?(adaptor) and
+         function_exported?(adaptor, :sanitize_config_for_display, 1) do
+      adaptor.sanitize_config_for_display(config)
+    else
+      mask_config_values(config, except: [])
+    end
+  end
+
+  def sanitize_config_for_display(%Backend{}), do: %{}
+
+  @doc """
+  Masks all values in a config map except those under the keys given via `:except`.
+
+  ## Examples
+
+      iex> mask_config_values(%{region: "US1", api_key: "secret"}, except: [:region])
+      %{region: "US1", api_key: "**********"}
+  """
+  @spec mask_config_values(map(), except: [atom()]) :: map()
+  def mask_config_values(config, except: allowed_keys)
+      when is_map(config) and is_list(allowed_keys) do
+    Map.new(config, fn {key, value} ->
+      if key in allowed_keys do
+        {key, value}
+      else
+        {key, @config_display_mask}
+      end
+    end)
   end
 
   @doc """
@@ -190,7 +264,7 @@ defmodule Logflare.Backends.Adaptor do
   @doc """
   Optional callback to test the underlying connection for an adaptor. May not be applicable for some adaptors.
   """
-  @callback test_connection(Backend.t()) :: :ok | {:error, term()}
+  @callback test_connection(Backend.t()) :: :ok | {:error, :not_implemented} | {:error, atom()}
 
   @doc """
   Optional callback to transform a stored backend config before usage.
@@ -232,15 +306,41 @@ defmodule Logflare.Backends.Adaptor do
   @callback consolidated_ingest?() :: boolean()
 
   @doc """
+  Optional callback invoked after a backend's configuration has changed.
+
+  Allows an adaptor to react to the new configuration, e.g. restarting
+  connection pools that captured the previous config when they started.
+  """
+  @callback on_backend_config_changed(Backend.t()) :: :ok
+
+  @doc """
+  Optional callback invoked after a backend has been deleted.
+
+  Allows an adaptor to clean up any backend-related processes it manages.
+  """
+  @callback on_backend_deleted(Backend.t()) :: :ok
+
+  @doc """
   Validates a given adaptor's configuration, using Ecto.Changeset functions. Accepts a chaangeset
   """
   @callback validate_config(changeset :: Ecto.Changeset.t()) :: Ecto.Changeset.t()
 
   @doc """
   Redacts a given adaptor's configuration. Return the config unchanged if there is no redaction needed.
-  Always works on atom keys.
+  Always works on atom keys - the caller is responsible for normalizing config keys before calling this.
   """
   @callback redact_config(config :: map()) :: map()
+
+  @doc """
+  Optional callback to sanitize a given adaptor's configuration for display in the UI.
+
+  Receives the backend config with atom keys and returns a map safe to render,
+  masking or transforming sensitive values. Use `mask_config_values/2` for the
+  common case of masking all values except an allowed set of keys.
+
+  When not implemented, every config value is masked for display.
+  """
+  @callback sanitize_config_for_display(config :: map()) :: map()
 
   @optional_callbacks ecto_to_sql: 2,
                       format_batch: 1,
@@ -248,11 +348,12 @@ defmodule Logflare.Backends.Adaptor do
                       execute_query: 3,
                       map_query_parameters: 4,
                       pre_ingest: 3,
-                      test_connection: 1,
                       transform_config: 1,
                       transform_query: 3,
                       send_alert: 3,
                       supports_default_ingest?: 0,
                       consolidated_ingest?: 0,
-                      redact_config: 1
+                      on_backend_config_changed: 1,
+                      on_backend_deleted: 1,
+                      sanitize_config_for_display: 1
 end

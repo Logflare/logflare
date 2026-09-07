@@ -21,14 +21,12 @@ defmodule Logflare.Logs.OtelLog do
   @behaviour Logflare.Logs.Processor
 
   def handle_batch(resource_logs, _source) when is_list(resource_logs) do
-    resource_logs
-    |> Enum.map(&handle_resource_logs/1)
-    |> List.flatten()
+    Enum.flat_map(resource_logs, &handle_resource_logs/1)
   end
 
   defp handle_resource_logs(%ResourceLogs{resource: resource, scope_logs: scope_logs}) do
     resource = Otel.handle_resource(resource)
-    Enum.map(scope_logs, &handle_scope_logs(&1, resource))
+    Enum.flat_map(scope_logs, &handle_scope_logs(&1, resource))
   end
 
   defp handle_scope_logs(%ScopeLogs{scope: scope, log_records: log_records}, resource) do

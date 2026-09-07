@@ -6,6 +6,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.BigQuery.SchemaTypes
   alias Model.TableFieldSchema, as: TFS
+  alias Model.TableSchema, as: TS
 
   @doc """
   Builds table schema from event metadata and prev schema.
@@ -110,6 +111,19 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
     iex> TestUtils.get_bq_field_schema(schema, "a.b")
     %TFS{fields: [], mode: "REPEATED", name: "b", type: "RECORD"}
 
+  ### Nested arrays
+
+  BigQuery has no array-of-arrays type, so a populated nested array cannot be
+  represented as a column. Such a field is dropped from the schema (only that
+  field — sibling fields are still built) rather than producing an invalid
+  field schema:
+
+    iex> schema = SchemaBuilder.build_table_schema(%{"a"=> %{"b"=> [["x"], ["y"]], "c"=> 1}}, @default_schema)
+    iex> TestUtils.get_bq_field_schema(schema, "a.b")
+    nil
+    iex> TestUtils.get_bq_field_schema(schema, "a.c")
+    %TFS{ name: "c", mode: "NULLABLE", type: "INTEGER" }
+
   ### Exceptions
   There are certain cases where the inner field types are ambiguous and an error is raised.
   - Single nested arrays `[]`
@@ -123,7 +137,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
 
 
   """
-  @spec build_table_schema([map()] | map(), TFS.t()) :: TFS.t()
+  @spec build_table_schema([map()] | map(), TS.t()) :: TS.t()
 
   def build_table_schema(params, %{fields: old_fields}) do
     protected_keys = Enum.map(initial_table_schema().fields, & &1.name)
@@ -134,11 +148,13 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
           param_key not in protected_keys do
         prev_field_schema = Enum.find(old_fields, &(&1.name == param_key)) || %{}
         param_value = Map.get(params, param_key)
-        new_field_schema = build_fields_schemas({param_key, param_value}, is_otel)
 
-        prev_field_schema
-        |> DeepMerge.deep_merge(new_field_schema)
+        case build_fields_schemas({param_key, param_value}, is_otel) do
+          nil -> nil
+          new_field_schema -> DeepMerge.deep_merge(prev_field_schema, new_field_schema)
+        end
       end
+      |> Enum.reject(&is_nil/1)
 
     # reject old fields that are now included in the params
     unrejected_fields = old_fields |> Enum.reject(&(&1.name in Map.keys(params)))
@@ -186,7 +202,10 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
       mode: "REPEATED",
       name: params_key,
       type: "RECORD",
-      fields: Enum.map(params_val, &build_fields_schemas(&1, false))
+      fields:
+        params_val
+        |> Enum.map(&build_fields_schemas(&1, false))
+        |> Enum.reject(&is_nil/1)
     }
   end
 
@@ -198,6 +217,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
       _ -> false
     end)
     |> Enum.map(&build_fields_schemas(&1, false))
+    |> Enum.reject(&is_nil/1)
   end
 
   defp build_fields_schemas({params_key, params_value}, is_otel) do
@@ -211,6 +231,12 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
           mode: "REPEATED",
           fields: build_fields_schemas(params_value, false)
         }
+
+      # BigQuery has no array-of-arrays type. A nested array yields a tuple
+      # inner type here (e.g. {"ARRAY", {"ARRAY", "STRING"}}); drop the field
+      # rather than emit an unrepresentable field schema.
+      {"ARRAY", inner_type} when is_tuple(inner_type) ->
+        nil
 
       {"ARRAY", inner_type} ->
         %TFS{

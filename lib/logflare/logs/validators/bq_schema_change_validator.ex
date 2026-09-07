@@ -26,14 +26,21 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   def validate(%LE{body: _body}, %Source{validate_schema: false}), do: :ok
 
   def validate(%LE{body: body}, %Source{} = source) do
-    schema_flat_map =
-      case source.id && SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
-        %_{schema_flat_map: flat_map} when is_map(flat_map) -> flat_map
-        _ -> %{}
-      end
+    if enabled?() do
+      schema_flat_map =
+        case source.id && SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
+          %_{schema_flat_map: flat_map} when is_map(flat_map) -> flat_map
+          _ -> %{}
+        end
 
-    check_body(body, schema_flat_map)
+      check_body(body, schema_flat_map)
+    else
+      :ok
+    end
   end
+
+  @spec enabled?() :: boolean()
+  defp enabled?, do: Application.get_env(:logflare, __MODULE__, [])[:enabled] == true
 
   @spec valid?(map, map) :: boolean
   def valid?(body, schema) do
@@ -106,16 +113,22 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
 
   defp enforce_type(incoming, key, schema_flat_map) do
     case Map.fetch(schema_flat_map, key) do
-      {:ok, ^incoming} ->
-        :ok
-
-      {:ok, _existing} ->
-        raise("Type error! Field `#{key}` has an unexpected type.")
-
-      :error ->
-        :ok
+      {:ok, expected} -> check_type(incoming, expected, key)
+      :error -> :ok
     end
   end
+
+  defp check_type(same, same, _key), do: :ok
+
+  # BigQuery implicitly coerces INT64 -> FLOAT64 on insert, so integer values
+  # against a FLOAT column are valid even though :integer != :float as Erlang
+  # terms. Mirrors that coercion at validation time. Same for REPEATED FLOAT
+  # columns receiving a list of integers.
+  defp check_type(:integer, :float, _key), do: :ok
+  defp check_type({:list, :integer}, {:list, :float}, _key), do: :ok
+
+  defp check_type(_incoming, _expected, key),
+    do: raise("Type error! Field `#{key}` has an unexpected type.")
 
   defp join_key("", key), do: to_string(key)
   defp join_key(prefix, key), do: prefix <> "." <> to_string(key)

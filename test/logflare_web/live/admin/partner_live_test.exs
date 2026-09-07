@@ -40,7 +40,8 @@ defmodule LogflareWeb.Admin.PartnerLiveTest do
   end
 
   test "deletes partner on delete button click", %{conn: conn} do
-    [%{token: token, name: name} | _others] = insert_list(5, :partner)
+    [%{token: token, name: name} = partner | _others] = insert_list(5, :partner)
+    user = insert(:user, partner: partner)
 
     {:ok, view, html} = live(conn, "/admin/partner")
 
@@ -52,6 +53,7 @@ defmodule LogflareWeb.Admin.PartnerLiveTest do
       |> render_click()
 
     refute html =~ name
+    refute Logflare.Repo.get(Logflare.User, user.id)
   end
 
   test "creates token on create token button click", %{conn: conn} do

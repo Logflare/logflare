@@ -27,7 +27,7 @@ All browser authentication will be disabled when in single-tenant mode.
 | `LOGFLARE_API_KEY`                             | string, defaults to `nil`                                               | **Deprecated**. Use `LOGFLARE_PUBLIC_ACCESS_TOKEN` instead. Alias for `LOGFLARE_PUBLIC_ACCESS_TOKEN`.                                                                                                                                                                |
 | `LOGFLARE_PUBLIC_ACCESS_TOKEN`                 | string, defaults to `nil`                                               | If set, creates a public access token for the provisioned user, for ingestion or querying usage. Single-tenant mode only.                                                                                                                                            |
 | `LOGFLARE_PRIVATE_ACCESS_TOKEN`                | string, defaults to `nil`                                               | If set, creates a private access token for the provisioned user, for management API usage. Single-tenant mode only.                                                                                                                                                  |
-| `LOGFLARE_SUPABASE_MODE`                       | Boolean, defaults to `false`                                            | A special mode for Logflare, where Supabase-specific resources will be seeded. Intended for Suapbase self-hosted usage.                                                                                                                                              |
+| `LOGFLARE_SUPABASE_MODE`                       | Boolean, defaults to `false`                                            | A special mode for Logflare, where Supabase-specific resources will be seeded. Intended for Supabase self-hosted usage.                                                                                                                                              |
 | `PHX_HTTP_IP`                                  | String, defaults to `nil`                                               | Allows configuration of the HTTP server IP to bind to. Specifying an IPv6 like `::` will enable IPv6.                                                                                                                                                                |
 | `PHX_HTTP_PORT`                                | Integer, defaults to `4000`                                             | Allows configuration of the HTTP server port.                                                                                                                                                                                                                        |
 | `DB_DATABASE`                                  | String, defaults to `nil`                                               | Database name for Logflare's internal PostgreSQL database connection.                                                                                                                                                                                                |
@@ -38,7 +38,7 @@ All browser authentication will be disabled when in single-tenant mode.
 | `DB_POOL_SIZE`                                 | Integer, defaults to `10`                                               | Overrides the Ecto connection pool size for Logflare's internal PostgreSQL database connection.                                                                                                                                                                      |
 | `DB_SCHEMA`                                    | String, defaults to `nil`                                               | Allows configuration of the database schema to scope Logflare operations.                                                                                                                                                                                            |
 | `DB_SSL`                                       | Boolean, defaults to `false`                                            | Enables SSL/TLS connection to the internal Logflare database. Requires certificate files when enabled. See [Database SSL Configuration](#database-ssl-configuration).                                                                                                |
-| `LOGFLARE_READ_REPLICAS`                       | String, defaults to `nil`                                               | Comma-separated list of read replica hostnames. Each replica is assumed to use the same port, credentials, and database name as the primary. If unset, all queries go to the primary. Example: `replica1.example.com,replica2.example.com`                           |
+| `LOGFLARE_READ_REPLICAS`                       | String, defaults to `nil`                                               | Comma-separated list of PostgreSQL read replicas. If unset, all queries go to the primary. See [Read Replicas](#read-replicas).                                                                                                                                     |
 | `LOGFLARE_LOG_LEVEL`                           | String, defaults to `info`. <br/>Options: `error`,`warning`, `info`     | Allows runtime configuration of log level.                                                                                                                                                                                                                           |
 | `LOGFLARE_NODE_HOST`                           | string, defaults to `127.0.0.1`                                         | Sets node host on startup, which affects the node name `logflare@<host>`                                                                                                                                                                                             |
 | `LOGFLARE_METADATA_CLUSTER`                    | string, defaults to `nil`                                               | Sets global logging/tracing metadata for the cluster name and affects the release node name (e.g., `logflare-production@<host>`). Useful for filtering logs by cluster name and distinguishing nodes in multi-cluster setups. See the [metadata](#Metadata) section. |
@@ -49,16 +49,20 @@ All browser authentication will be disabled when in single-tenant mode.
 | `LOGFLARE_OTEL_SOURCE_UUID`                    | String, defaults to `nil`, optionally required for OpenTelemetry.       | Sets the appropriate header for ingesting OpenTelemetry events into a Logflare source.                                                                                                                                                                               |
 | `LOGFLARE_OTEL_ACCESS_TOKEN`                   | String, defaults to `nil`, optionally required for OpenTelemetry.       | Sets the appropriate authentication header for ingesting OpenTelemetry events into a Logflare source.                                                                                                                                                                |
 | `LOGFLARE_OTEL_SAMPLE_RATIO`                   | Float, defaults to `1.0`.                                               | Sets the sample ratio for server traces.                                                                                                                                                                                                                             |
+| `LOGFLARE_BROADWAY_MESSAGE_SAMPLE_DENOMINATOR` | Integer from `1` to `4294967296`, or `disabled`; defaults to `100`.      | Samples the Broadway per-message duration metric at approximately one event per denominator. `disabled` omits the metric and its handler. Histogram counts represent sampled observations. Use the same value on every node contributing to an aggregate histogram. |
 | `LOGFLARE_OTEL_INGEST_SAMPLE_RATIO`            | Float, defaults to the value of `LOGFLARE_OTEL_SAMPLE_RATIO`, optional. | Sets the sample ratio for ingestion-related server traces.                                                                                                                                                                                                           |
 | `LOGFLARE_OTEL_ENDPOINT_SAMPLE_RATIO`          | Float, defaults to the value of `LOGFLARE_OTEL_SAMPLE_RATIO`, optional. | Sets the sample ratio for endpoint-related server traces.                                                                                                                                                                                                            |
 | `LOGFLARE_HEALTH_MAX_MEMORY_UTILIZATION_RATIO` | Float, defaults to `0.80`                                               | Sets the maximum allowable memory utilization ratio for health checks. If exceeded, the health check will fail.                                                                                                                                                      |
 | `LOGFLARE_HTTP_CONNECTION_POOLS`               | String, defaults to `nil`, optionally used for performance tuning.      | Controls which HTTP connection pools are created for backend adaptors. Accepts comma-separated list of providers: `all`, `datadog`. Use `all` for all pools, `datadog` for DataDog only, or omit to use default behavior.                                            |
+| `LOGFLARE_UNSAFE_DISABLE_SSRF_S3_ENDPOINT_CHECK` | Boolean, defaults to `false`                                        | **Unsafe.** When `true`, disables the SSRF hostname allowlist for S3 backend custom endpoints, allowing arbitrary endpoints including internal addresses. Intended only for trusted self-hosted deployments using non-public S3-compatible storage (e.g. an internal MinIO instance). **Do not enable in multi-tenant or public-facing deployments — doing so exposes the server to SSRF attacks.** |
 
 Additional environment variable configurations for the OpenTelemetry libraries used can be found [here](https://hexdocs.pm/opentelemetry_exporter/readme.html).perf/bq-pipeline-sharding
 
 #### Health Checks
 
 Logflare has a health check endpoint `/health`, which is used to ensure that the system is functioning correctly with sufficient resources for normal functions.
+
+Use `/ready` for readiness probes. It performs the health checks and returns `503` as soon as graceful shutdown begins so load balancers can stop routing new traffic to the instance.
 
 Environment variables that influence the logic are prefixed with `LOGFLARE_HEALTH_*`. Refer to above table for customizing the values.
 
@@ -103,7 +107,7 @@ The `LOGFLARE_METADATA_CLUSTER` environment variable is also set in the Erlang n
 | `GOOGLE_DATASET_ID_APPEND`          | string, defaults to `_prod` | This allows customization of the dataset created in BigQuery.                                                                                                                                                   |
 | `GOOGLE_DATASET_LOCATION`           | string, defaults to `US`    | Allows customization of region, where dataset is created in BigQuery. Defaults to the "US" multi-region. See [BigQuery docs](https://docs.cloud.google.com/bigquery/docs/locations) for a full list of options. |
 | `GOOGLE_PROJECT_VIEWER`             | string, optional            | Email of a Google user account to grant Viewer role on the GCP project.                                                                                                                                         |
-| `LOGFLARE_BIGQUERY_MANAGED_SA_POOL` | Integer, defaults to `0`    | Sets the number of managed service accounts to create for BigQuery API operations. When set to 0, managed service accounts are disabled, and all queries will run throguh the main service account.             |
+| `LOGFLARE_BIGQUERY_MANAGED_SA_POOL` | Integer, defaults to `0`    | Sets the number of managed service accounts to create for BigQuery API operations. When set to 0, managed service accounts are disabled, and all queries will run through the main service account.             |
 
 #### Managed Service Accounts
 
@@ -123,7 +127,7 @@ Without these two additional permissions, the managed service accounts feature w
 
 | Env Var                   | Type                                   | Description                                                                                                              |
 | ------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `POSTGRES_BACKEND_URL`    | string, required                       | PostgreSQL connection string, for connecting to the database. User must have sufficient permssions to manage the schema. |
+| `POSTGRES_BACKEND_URL`    | string, required                       | PostgreSQL connection string, for connecting to the database. User must have sufficient permissions to manage the schema. |
 | `POSTGRES_BACKEND_SCHEMA` | string, optional, defaults to `public` | Specifies the database schema to scope all operations.                                                                   |
 
 ## Database SSL Configuration
@@ -142,6 +146,14 @@ To enable SSL for the internal Logflare database:
 
 All three files must be present for SSL to be enabled.
 
+The default filenames above are resolved relative to the working directory. To
+load them from another location (for example a mounted secret volume), override
+the paths with environment variables:
+
+- `DB_SSL_CA_CERT_PATH` - defaults to `db-server-ca.pem`
+- `DB_SSL_CLIENT_CERT_PATH` - defaults to `db-client-cert.pem`
+- `DB_SSL_CLIENT_KEY_PATH` - defaults to `db-client-key.pem`
+
 ### Configuration Details
 
 The SSL connection is configured with:
@@ -152,6 +164,14 @@ The SSL connection is configured with:
 
 The configuration follows the [Erlang Security Working Group recommendations](https://erlef.github.io/security-wg/secure_coding_and_deployment_hardening/ssl).
 
+## Read Replicas
+
+`LOGFLARE_READ_REPLICAS` is a comma-separated list of PostgreSQL read replicas to distribute ingest-path data fetching queries across. If unset or empty, all queries go to the primary database.
+
+Each entry is either a **bare hostname** or a **connection URI** (`postgres://user:pass@host:port/database?ssl=true&pool_size=5`). In both cases, only the parts given override the primary's `DB_*` settings - anything omitted (port, database, credentials, SSL, ...) is inherited from the primary. Query params: `ssl` (`true`/`false`), `pool_size` (positive integer).
+
+Example: `LOGFLARE_READ_REPLICAS=replica1.example.com,postgres://user:pass@replica2.example.com:5432/logflare`
+
 ## Database Encryption
 
 Certain database columns that store sensitive data are encrypted with the `LOGFLARE_DB_ENCRYPTION_KEY` key.
@@ -159,7 +179,7 @@ Encryption keys must be Base64 encoded.
 
 Cipher used is AES with a 256-bit key in GCM mode.
 
-If `LOGFLARE_DB_ENCRYPTION_KEY` environement variable is not provided, a default hardcoded encryption key will be used.
+If `LOGFLARE_DB_ENCRYPTION_KEY` environment variable is not provided, a default hardcoded encryption key will be used.
 
 ### Rolling Encryption Keys
 
@@ -209,7 +229,21 @@ Thereafter, click on "Add Key" to create a new key. The key will be in a JSON fo
 
 ![Add Key Button](add-key.png)
 
-You can also obtain the key via the `gcloud` cli by following the [official documentation](https://cloud.google.com/iam/docs/keys-create-delete).
+You can also obtain the key via the `gcloud` CLI by following the [official documentation](https://cloud.google.com/iam/docs/keys-create-delete).
+
+#### Providing the Service Account Key
+
+By default Logflare reads the service account key from a `gcloud.json` file in
+the working directory on server startup. You can supply the key in two other
+ways instead:
+
+- `GOOGLE_APPLICATION_CREDENTIALS` - path to the service account key file.
+  Defaults to `gcloud.json`. Use this to load the key from a different location,
+  such as a mounted secret volume.
+- `GOOGLE_APPLICATION_CREDENTIALS_JSON` - the service account key JSON provided
+  inline as an environment variable. When set (and non-empty), it takes
+  precedence over the file, so no file needs to be mounted. Useful for
+  environments where secrets are injected as environment variables.
 
 ## Deployment with Docker Compose
 
@@ -293,7 +327,7 @@ The directory structure should be as follows:
 
 ### Using an `.env` file
 
-You can optionally use a `.env` file to manage your environemnts. You can base the file contents on this [reference file](https://github.com/Logflare/logflare/blob/master/.docker.env)
+You can optionally use a `.env` file to manage your environments. You can base the file contents on this [reference file](https://github.com/Logflare/logflare/blob/master/.docker.env)
 
 :::note
 You cannot have comments in the env file as we load it at startup via `xargs`.
@@ -349,7 +383,7 @@ To deploy OpenTelemetry to Cloudflare + GCP successfully, the following need to 
    upstream connect error or disconnect/reset before headers. reset reason: remote connection failure, transport failure reason: TLS_error:|268435703:SSL routines:OPENSSL_internal:WRONG_VERSION_NUMBER:TLS_error_end
    ```
 
-   It is due fauly or non-existent self-signed certificate on the instance. Regenerate the self-signed certificate.
+   It is due to a faulty or non-existent self-signed certificate on the instance. Regenerate the self-signed certificate.
 
 2. I'm getting gRPC status 14 with a timeout error. Initial request works but streaming errors out.
 

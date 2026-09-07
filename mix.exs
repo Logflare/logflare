@@ -127,6 +127,7 @@ defmodule Logflare.Mixfile do
       {:map_keys, "~> 0.1.0"},
       {:observer_cli, "~> 1.5"},
       {:cloak_ecto, github: "logflare/cloak_ecto"},
+      {:paper_trail, "~> 1.1.0"},
 
       # Parsing
       {:bertex, ">= 0.0.0"},
@@ -138,6 +139,7 @@ defmodule Logflare.Mixfile do
       {:earmark, "~> 1.4.33"},
 
       # Outbound Requests
+      {:inet_cidr, "~> 1.0"},
       {:castore, "~> 1.0"},
       {:finch, "~> 0.20.0"},
       {:mint, "~> 1.0"},
@@ -148,7 +150,7 @@ defmodule Logflare.Mixfile do
       {:tesla, "~> 1.6"},
 
       # Concurrency and pipelines
-      {:broadway, github: "Logflare/broadway", branch: "fix/batcher-fullsweep-after"},
+      {:broadway, "~> 1.3"},
       {:syn, github: "Logflare/syn"},
 
       # Test
@@ -167,6 +169,8 @@ defmodule Logflare.Mixfile do
       {:google_api_cloud_resource_manager, "~> 0.34.0"},
       {:google_api_big_query, "~> 0.88.0"},
       {:google_api_iam, "~> 0.45.0"},
+      {:google_api_storage, "~> 0.46"},
+      {:google_api_pub_sub, "~> 0.42"},
       {:goth, github: "Logflare/goth", branch: "feat/service-account-impersonation"},
       {:google_gax, github: "Logflare/elixir-google-gax", ref: "6772193", override: true},
 
@@ -181,6 +185,12 @@ defmodule Logflare.Mixfile do
 
       # DataFrames
       {:explorer, "~> 0.11.1"},
+
+      # S3
+      {:ex_aws, "~> 2.5"},
+      {:ex_aws_s3, "~> 2.5"},
+      {:ex_aws_sqs, "~> 3.4"},
+      {:sweet_xml, "~> 0.7"},
 
       # Telemetry & logging
       {:telemetry, "~> 1.0"},
@@ -198,7 +208,7 @@ defmodule Logflare.Mixfile do
 
       # Frontend
       {:phoenix_live_react, "~> 0.6"},
-      {:sql_fmt, "~> 0.4.0"},
+      {:sql_fmt, "~> 0.5.0"},
 
       # Dev
       {:dialyxir, "~> 1.1", only: [:dev, :test], runtime: false},
@@ -218,16 +228,12 @@ defmodule Logflare.Mixfile do
       {:sobelow, "~> 0.14.1", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.10", only: :test},
 
-      # Charting
-      {:contex, "~> 0.3.0"},
-
       # Postgres Subscribe
       {:cainophile, github: "Logflare/cainophile", ref: "f92a552"},
-      {:open_api_spex, "~> 3.16"},
+      {:open_api_spex, "~> 3.22"},
       # required for yaml open api generation
       {:ymlr, "~> 2.0"},
       {:grpc, "~> 0.11.0"},
-      # otel_metric_exporter requires an update https://github.com/electric-sql/elixir-otel-metric-exporter/pull/13
       {:protobuf, "~> 0.15.0", override: true},
       {:gun, "~> 2.0", override: true},
       {:cowlib, ">=2.12.0", override: true},
@@ -254,7 +260,7 @@ defmodule Logflare.Mixfile do
       {:opentelemetry_phoenix, "~> 2.0.0-rc.2"},
       {:opentelemetry_bandit, "~> 0.2.0-rc.1"},
       {:otel_metric_exporter,
-       git: "https://github.com/supabase/elixir-otel-metric-exporter", branch: "release/20260519"},
+       git: "https://github.com/supabase/elixir-otel-metric-exporter", ref: "2a6de91"},
       {:live_monaco_editor, "~> 0.2"}
     ]
   end
@@ -271,7 +277,7 @@ defmodule Logflare.Mixfile do
       "test.security": ["sobelow --threshold high --ignore Config.HTTPS"],
       "test.typings": ["cmd mkdir -p dialyzer", "dialyzer"],
       "test.coverage": ["coveralls"],
-      "test.coverage.ci": ["coveralls.github"],
+      "test.coverage.ci": ["coveralls.lcov"],
       "test.e2e": ["ecto.create --quiet", "ecto.migrate --quiet", "test --only feature"],
       lint: ["credo"],
       "lint.diff": ["credo diff main"],

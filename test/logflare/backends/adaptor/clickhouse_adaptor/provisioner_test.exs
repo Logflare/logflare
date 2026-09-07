@@ -3,6 +3,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Provisioner
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
 
   import Logflare.ClickHouseMappedEvents
 
@@ -42,13 +43,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
       for event_type <- [:log, :metric, :trace] do
         table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, event_type)
 
-        {:ok, result} =
-          ClickHouseAdaptor.execute_ch_query(
-            backend,
-            "EXISTS TABLE #{table_name}"
-          )
-
-        assert [%{"result" => 1}] = result
+        assert {:ok, {[%{"result" => 1}], _bytes}} =
+                 ClickHouseAdaptor.execute_ch_query(
+                   backend,
+                   "EXISTS TABLE #{table_name}"
+                 )
       end
     end
 
@@ -61,35 +60,71 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
       for event_type <- [:log, :metric, :trace] do
         table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, event_type)
 
-        {:ok, exists} =
-          ClickHouseAdaptor.execute_ch_query(backend, "EXISTS TABLE #{table_name}")
-
-        assert [%{"result" => 1}] = exists
+        assert {:ok, {[%{"result" => 1}], _bytes}} =
+                 ClickHouseAdaptor.execute_ch_query(backend, "EXISTS TABLE #{table_name}")
       end
     end
   end
 
   describe "connection test failure handling" do
     @tag capture_log: true
-    test "fails initialization when ClickHouse is unavailable" do
-      {_source, invalid_backend} =
-        setup_clickhouse_test(
-          config: %{
-            url: "http://localhost",
-            username: "invalid_user",
-            password: "invalid_pass",
-            port: 19_999
-          }
-        )
+    test "stops when the ingest grant check encounters a connection error", %{
+      backend: backend
+    } do
+      grant_check_statement = QueryTemplates.grant_check_statement()
 
-      pid = start_supervised!({Provisioner, invalid_backend}, restart: :transient)
+      stub(Ch, :query, fn
+        _pool, ^grant_check_statement, _params, _opts ->
+          {:error, %DBConnection.ConnectionError{message: "unreachable"}}
+
+        pool, statement, params, opts ->
+          Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      pid = start_supervised!({Provisioner, backend}, restart: :transient)
       ref = Process.monitor(pid)
 
-      TestUtils.retry_assert(fn ->
-        assert_receive {:DOWN, ^ref, :process, ^pid,
-                        {:shutdown, {:error, "Error executing ClickHouse query"}}},
-                       5_000
+      assert_receive {:DOWN, ^ref, :process, ^pid,
+                      {:shutdown, {:error, :grant_check_unknown_failure}}},
+                     1_000
+    end
+
+    @tag capture_log: true
+    test "provisions tables even when the read grant check fails" do
+      {_source, read_backend} =
+        setup_clickhouse_test(config: %{query_user: "ch_reader", query_password: "reader_pa55"})
+
+      {:ok, adaptor_pid} = ClickHouseAdaptor.start_link(read_backend)
+
+      on_exit(fn ->
+        if Process.alive?(adaptor_pid) do
+          Process.exit(adaptor_pid, :shutdown)
+        end
       end)
+
+      {:ok, pid} = Provisioner.start_link(read_backend)
+      ref = Process.monitor(pid)
+
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5_000
+
+      {:ok, conn} =
+        Ch.start_link(
+          scheme: "http",
+          hostname: "localhost",
+          port: 8123,
+          database: read_backend.config.database,
+          username: read_backend.config.username,
+          password: read_backend.config.password,
+          pool_size: 1
+        )
+
+      for event_type <- [:log, :metric, :trace] do
+        table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(read_backend, event_type)
+
+        assert {:ok, %Ch.Result{rows: [[1]]}} = Ch.query(conn, "EXISTS TABLE #{table_name}")
+      end
+
+      GenServer.stop(conn)
     end
   end
 
@@ -106,13 +141,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
       for event_type <- [:log, :metric, :trace] do
         table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, event_type)
 
-        {:ok, result} =
-          ClickHouseAdaptor.execute_ch_query(
-            backend,
-            "SELECT count(*) as count FROM #{table_name}"
-          )
-
-        assert [%{"count" => 0}] = result
+        assert {:ok, {[%{"count" => 0}], _bytes}} =
+                 ClickHouseAdaptor.execute_ch_query(
+                   backend,
+                   "SELECT count(*) as count FROM #{table_name}"
+                 )
       end
     end
   end
@@ -137,13 +170,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
-      {:ok, result} =
-        ClickHouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
-
-      assert [%{"count" => 1}] = result
+      assert {:ok, {[%{"count" => 1}], _bytes}} =
+               ClickHouseAdaptor.execute_ch_query(
+                 backend,
+                 "SELECT count(*) as count FROM #{table_name}"
+               )
     end
   end
 
@@ -155,7 +186,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
-      {:ok, columns} =
+      {:ok, {columns, _bytes}} =
         ClickHouseAdaptor.execute_ch_query(backend, "DESCRIBE TABLE #{table_name}")
 
       column_names = Enum.map(columns, & &1["name"])
@@ -187,7 +218,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :metric)
 
-      {:ok, columns} =
+      {:ok, {columns, _bytes}} =
         ClickHouseAdaptor.execute_ch_query(backend, "DESCRIBE TABLE #{table_name}")
 
       column_names = Enum.map(columns, & &1["name"])
@@ -219,7 +250,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
 
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace)
 
-      {:ok, columns} =
+      {:ok, {columns, _bytes}} =
         ClickHouseAdaptor.execute_ch_query(backend, "DESCRIBE TABLE #{table_name}")
 
       column_names = Enum.map(columns, & &1["name"])

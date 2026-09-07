@@ -10,27 +10,17 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
   defp env_stripe_publishable_key, do: Application.get_env(:stripity_stripe, :publishable_key)
 
   def mount(socket) do
-    socket = assign(socket, :stripe_key, env_stripe_publishable_key())
-
-    {:ok, socket}
+    {:ok, assign(socket, :stripe_key, env_stripe_publishable_key())}
   end
 
   def update(%{user: user}, socket) do
     payment_methods =
       Billing.list_payment_methods_by(customer_id: user.billing_account.stripe_customer)
 
-    socket =
-      case connected?(socket) do
-        true ->
-          assign(socket, :loading, false)
-
-        false ->
-          assign(socket, :loading, true)
-      end
-      |> assign(:user, user)
-      |> assign(:payment_methods, payment_methods)
-
-    {:ok, socket}
+    {:ok,
+     socket
+     |> assign(:user, user)
+     |> assign(:payment_methods, payment_methods)}
   end
 
   def update(%{payment_methods: pm, callback: type}, socket) do
@@ -45,26 +35,17 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
           Enum.reject(payment_methods, fn x -> x.stripe_id == pm.stripe_id end)
       end
 
-    socket =
-      socket
-      |> assign(:payment_methods, methods)
-
-    {:ok, socket}
+    {:ok, assign(socket, :payment_methods, methods)}
   end
 
   def update(%{billing_account: ba}, socket) do
     user = Map.put(socket.assigns.user, :billing_account, ba)
 
-    socket =
-      socket
-      |> assign(:user, user)
-
-    {:ok, socket}
+    {:ok, assign(socket, :user, user)}
   end
 
   def handle_event("submit", _params, socket) do
-    socket = socket |> push_event("submit", %{})
-    {:noreply, socket}
+    {:noreply, push_event(socket, "submit", %{})}
   end
 
   def handle_event("save", params, socket) do
@@ -124,15 +105,20 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
 
     with {:ok, payment_methods} <- Billing.sync_payment_methods(customer),
          {:ok, billing_account} <- Billing.sync_billing_account(billing_account) do
-      socket =
-        socket
-        |> assign(:user, Map.put(user, :billing_account, billing_account))
-        |> assign(:payment_methods, payment_methods)
-        |> clear_flash()
-        |> put_flash(:info, "Payment methods successfully synced!")
-        |> push_patch(to: ~p"/billing/edit")
-
-      {:noreply, socket}
+      {:noreply,
+       socket
+       |> assign(:user, Map.put(user, :billing_account, billing_account))
+       |> assign(:payment_methods, payment_methods)
+       |> clear_flash()
+       |> put_flash(:info, "Payment methods successfully synced!")
+       |> push_patch(to: ~p"/billing/edit")}
+    else
+      error ->
+        {:noreply,
+         socket
+         |> clear_flash()
+         |> put_flash(:error, error_message(error, "Failed to sync payment methods."))
+         |> push_patch(to: ~p"/billing/edit")}
     end
   end
 
@@ -140,15 +126,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
     billing_account = socket.assigns.user.billing_account
     stripe_customer = billing_account.stripe_customer
 
-    user = socket.assigns.user
-
-    invoice_settings = %{
-      invoice_settings: %{
-        custom_fields: nil,
-        default_payment_method: id,
-        footer: nil
-      }
-    }
+    invoice_settings = %{invoice_settings: %{default_payment_method: id}}
 
     with {:ok, _response} <-
            Billing.Stripe.update_customer(stripe_customer, invoice_settings),
@@ -158,14 +136,19 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
            }),
          {:ok, billing_account} <-
            Billing.update_billing_account(billing_account, %{default_payment_method: id}) do
-      socket =
-        socket
-        |> assign(:user, Map.put(user, :billing_account, billing_account))
-        |> clear_flash()
-        |> put_flash(:info, message)
-        |> push_patch(to: ~p"/billing/edit")
-
-      {:noreply, socket}
+      {:noreply,
+       socket
+       |> assign(:user, Map.put(socket.assigns.user, :billing_account, billing_account))
+       |> clear_flash()
+       |> put_flash(:info, message)
+       |> push_patch(to: ~p"/billing/edit")}
+    else
+      error ->
+        {:noreply,
+         socket
+         |> clear_flash()
+         |> put_flash(:error, error_message(error, "Failed to set default payment method."))
+         |> push_patch(to: ~p"/billing/edit")}
     end
   end
 
@@ -173,16 +156,11 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
     ~H"""
     <div>
       <ul class="list-unstyled">
-        <%= for p <- @payment_methods do %>
-          <li>
-            {String.upcase(p.brand)} ending in {p.last_four} expires {p.exp_month}/{p.exp_year} {delete_link(
-              p,
-              @myself
-            )} {if p.stripe_id == @user.billing_account.default_payment_method,
-              do: nil,
-              else: make_default(p, @myself)}
-          </li>
-        <% end %>
+        <li :for={p <- @payment_methods}>
+          {String.upcase(p.brand)} ending in {p.last_four} expires {p.exp_month}/{p.exp_year}
+          <.delete_button payment_method={p} myself={@myself} />
+          <.make_default_button :if={p.stripe_id != @user.billing_account.default_payment_method} payment_method={p} myself={@myself} />
+        </li>
       </ul>
       <div id="stripe-elements-form" class="mt-4">
         <form id="payment-form" action="#" phx-submit="submit" phx-hook="PaymentMethodForm" data-stripe-key={@stripe_key} data-stripe-customer={@user.billing_account.stripe_customer} phx-target={@myself}>
@@ -191,7 +169,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
           </div>
           <!-- We'll put the error messages in this element -->
           <div id="card-element-errors" role="alert"></div>
-          <button type="submit" phx-disable-with="Saving..." class="btn btn-primary form-button mt-4">
+          <button type="submit" phx-disable-with="Saving..." class="mt-4 btn btn-primary form-button">
             Add payment method
           </button>
         </form>
@@ -203,27 +181,23 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
     """
   end
 
-  defp delete_link(p, myself) do
-    assigns = %{
-      stripe_id: p.id,
-      myself: myself
-    }
+  attr :payment_method, :map, required: true
+  attr :myself, :any, required: true
 
+  defp delete_button(assigns) do
     ~H"""
-    <button phx-click="delete" phx-disable-with="Deleting..." phx-value-id={@stripe_id} phx-target={@myself} class="btn btn-danger btn-sm m-3">
+    <button phx-click="delete" phx-disable-with="Deleting..." phx-value-id={@payment_method.id} phx-target={@myself} class="m-3 btn btn-danger btn-sm">
       Delete
     </button>
     """
   end
 
-  defp make_default(p, myself) do
-    assigns = %{
-      stripe_id: p.stripe_id,
-      myself: myself
-    }
+  attr :payment_method, :map, required: true
+  attr :myself, :any, required: true
 
+  defp make_default_button(assigns) do
     ~H"""
-    <button phx-click="make-default" phx-disable-with="Updating..." phx-value-stripe-id={@stripe_id} phx-target={@myself} class="btn btn-dark btn-sm">
+    <button phx-click="make-default" phx-disable-with="Updating..." phx-value-stripe-id={@payment_method.stripe_id} phx-target={@myself} class="btn btn-dark btn-sm">
       Make default
     </button>
     """
@@ -242,4 +216,10 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
 
     {:ok, message}
   end
+
+  defp error_message({:error, %Stripe.Error{message: message}}, _fallback)
+       when is_binary(message),
+       do: message
+
+  defp error_message(_error, fallback), do: fallback
 end

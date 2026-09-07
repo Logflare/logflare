@@ -1,19 +1,19 @@
 defmodule LogflareWeb.SourceBqSchemaComponent do
   @moduledoc false
   use LogflareWeb, :live_component
-  alias LogflareWeb.Helpers.BqSchema
   alias Logflare.SourceSchemas
-  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
+  alias LogflareWeb.Helpers.BqSchema
 
   @impl true
-  def render(%{source: source}) do
-    bq_schema =
-      SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
-      |> case do
-        nil -> SchemaBuilder.initial_table_schema()
-        %_{bigquery_schema: schema} -> schema
-      end
+  def render(%{source: source} = assigns) do
+    schema_flatmap = SourceSchemas.source_schema_flatmap_or_default(source)
 
-    BqSchema.format_bq_schema(bq_schema)
+    assigns = assign(assigns, :schema, BqSchema.format_schema(schema_flatmap))
+
+    ~H"""
+    <div>
+      {@schema}
+    </div>
+    """
   end
 end

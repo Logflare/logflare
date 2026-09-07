@@ -144,4 +144,43 @@ defmodule LogflareWeb.MonacoEditorComponentTest do
       assert_received {:query_changed, "select 2"}
     end
   end
+
+  describe "formatting the query" do
+    test "format-query preserves identifier case and does not uppercase a CTE named logs", %{
+      conn: conn
+    } do
+      defmodule FormatEditorLive do
+        use Phoenix.LiveView
+
+        def mount(_params, _session, socket) do
+          {:ok, assign(socket, form: %{"query" => ""} |> to_form())}
+        end
+
+        def render(assigns) do
+          ~H"""
+          <.live_component
+            module={LogflareWeb.MonacoEditorComponent}
+            id="test-editor"
+            field={@form[:query]}
+            endpoints={[]}
+            sources={[]}
+            alerts={[]}
+          />
+          """
+        end
+      end
+
+      {:ok, view, _html} = live_isolated(conn, FormatEditorLive)
+
+      query = "with logs as (select id from otel_logs) select id from logs"
+
+      view
+      |> with_target("#test-editor")
+      |> render_hook("format-query", %{"value" => query})
+
+      assert_push_event(view, "lme:set_value:query_string", %{"value" => formatted})
+      assert formatted =~ "logs"
+      refute formatted =~ "LOGS"
+    end
+  end
 end

@@ -12,10 +12,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
   alias Logflare.Mapper.MappingConfig.FieldConfig, as: Field
   alias Logflare.Mapper.MappingConfig.InferCondition
   alias Logflare.Mapper.MappingConfig.InferRule
+  alias Logflare.Mapper.MappingConfig.OutputFormat
 
   @log_config_id "00000000-0000-0000-0001-000000000003"
   @metric_config_id "00000000-0000-0000-0002-000000000003"
-  @trace_config_id "00000000-0000-0000-0003-000000000003"
+  @trace_config_id "00000000-0000-0000-0003-000000000004"
 
   @spec config_id(TypeDetection.event_type()) :: String.t()
   def config_id(:log), do: @log_config_id
@@ -29,7 +30,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
 
   @spec for_log() :: MappingConfig.t()
   def for_log do
-    MappingConfig.new([
+    fields = [
       Field.string("project",
         paths: [
           "$.project",
@@ -167,12 +168,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
         elevate_keys: ["metadata"]
       ),
       Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
-    ])
+    ]
+
+    MappingConfig.new(fields, output: OutputFormat.clickhouse_row_binary(:log))
   end
 
   @spec for_metric() :: MappingConfig.t()
   def for_metric do
-    MappingConfig.new([
+    fields = [
       Field.string("project",
         paths: [
           "$.project",
@@ -404,12 +407,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
         precision: 9
       ),
       Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
-    ])
+    ]
+
+    MappingConfig.new(fields, output: OutputFormat.clickhouse_row_binary(:metric))
   end
 
   @spec for_trace() :: MappingConfig.t()
   def for_trace do
-    MappingConfig.new([
+    fields = [
       Field.string("project",
         paths: [
           "$.project",
@@ -436,7 +441,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
         paths: ["$.span_name", "$.name", "$.operationName", "$.event_message"]
       ),
       Field.string("span_kind",
-        paths: ["$.span_kind", "$.kind", "$.spanKind"]
+        paths: ["$.span_kind", "$.kind", "$.spanKind"],
+        default: "Unspecified",
+        value_map: %{
+          "Unspecified" => "Unspecified",
+          "Internal" => "Internal",
+          "Server" => "Server",
+          "Client" => "Client",
+          "Producer" => "Producer",
+          "Consumer" => "Consumer",
+          "SPAN_KIND_UNSPECIFIED" => "Unspecified",
+          "SPAN_KIND_INTERNAL" => "Internal",
+          "SPAN_KIND_SERVER" => "Server",
+          "SPAN_KIND_CLIENT" => "Client",
+          "SPAN_KIND_PRODUCER" => "Producer",
+          "SPAN_KIND_CONSUMER" => "Consumer"
+        }
       ),
       Field.string("service_name",
         paths: [
@@ -539,6 +559,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
         path: "$.links[*].attributes"
       ),
       Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
-    ])
+    ]
+
+    MappingConfig.new(fields, output: OutputFormat.clickhouse_row_binary(:trace))
   end
 end

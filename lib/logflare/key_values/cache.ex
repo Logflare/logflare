@@ -3,6 +3,7 @@ defmodule Logflare.KeyValues.Cache do
 
   alias Logflare.ContextCache
   alias Logflare.KeyValues
+  alias Logflare.Repo
   alias Logflare.Utils
 
   import Cachex.Spec
@@ -47,7 +48,7 @@ defmodule Logflare.KeyValues.Cache do
     cache_key = {:count, user_id}
 
     Cachex.fetch(__MODULE__, cache_key, fn _key ->
-      {:commit, {:cached, KeyValues.count_key_values(user_id)}}
+      {:commit, {:cached, Repo.apply_with_replica(KeyValues, :count_key_values, [user_id])}}
     end)
     |> case do
       {:commit, {:cached, v}} -> v
@@ -65,7 +66,8 @@ defmodule Logflare.KeyValues.Cache do
     cache_key = {:lookup, [user_id, key, accessor_path]}
 
     Cachex.fetch(__MODULE__, cache_key, fn _key ->
-      {:commit, {:cached, KeyValues.lookup(user_id, key, accessor_path)}}
+      {:commit,
+       {:cached, Repo.apply_with_replica(KeyValues, :lookup, [user_id, key, accessor_path])}}
     end)
     |> case do
       {:commit, {:cached, v}} -> v

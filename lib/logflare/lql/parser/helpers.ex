@@ -42,13 +42,13 @@ defmodule Logflare.Lql.Parser.Helpers do
 
   @spec to_rule(Keyword.t(), atom()) :: FilterRule.t() | {:quoted, String.t()}
   def to_rule(args, :quoted_field_value) do
-    {:quoted, args[@isolated_string]}
+    {:quoted, unescape_quoted_string(args[@isolated_string])}
   end
 
   def to_rule(args, :quoted_event_message) do
     FilterRule.build(
       path: "event_message",
-      value: args[@isolated_string],
+      value: unescape_quoted_string(args[@isolated_string]),
       operator: args[:operator] || :string_contains,
       modifiers: %{quoted_string: true}
     )
@@ -157,6 +157,13 @@ defmodule Logflare.Lql.Parser.Helpers do
   end
 
   def maybe_apply_negation_modifier(rule), do: rule
+
+  @spec unescape_quoted_string(String.t()) :: String.t()
+  defp unescape_quoted_string(value) do
+    value
+    |> String.replace("\\\"", "\"")
+    |> String.replace("\\\\", "\\")
+  end
 
   @spec get_level_order(String.t()) :: non_neg_integer() | nil
   def get_level_order(level) do

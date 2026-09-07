@@ -8,7 +8,7 @@ defmodule Logflare.Backends.Backend do
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
-  alias Logflare.Endpoints.Query
+  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Rules.Rule
   alias Logflare.Sources.Source
   alias Logflare.User
@@ -27,7 +27,9 @@ defmodule Logflare.Backends.Backend do
     axiom: Adaptor.AxiomAdaptor,
     otlp: Adaptor.OtlpAdaptor,
     last9: Adaptor.Last9Adaptor,
-    syslog: Adaptor.SyslogAdaptor
+    signoz: Adaptor.SigNozAdaptor,
+    syslog: Adaptor.SyslogAdaptor,
+    google_secops: Adaptor.GoogleSecOpsAdaptor
   }
 
   typed_schema "backends" do
@@ -46,7 +48,7 @@ defmodule Logflare.Backends.Backend do
     belongs_to :user, User
 
     has_many :rules, Rule
-    has_many :endpoint_queries, Query
+    has_many :endpoint_queries, EndpointQuery
 
     many_to_many :sources, Source, join_through: "sources_backends"
 
@@ -144,14 +146,23 @@ defmodule Logflare.Backends.Backend do
           :updated_at
         ])
         |> Map.update(:config, %{}, fn config ->
-          if function_exported?(adaptor, :redact_config, 1) do
-            adaptor.redact_config(config)
-          else
-            config
-          end
+          config
+          |> atomize_keys()
+          |> adaptor.redact_config()
         end)
 
       Jason.Encode.map(values, opts)
+    end
+
+    # `config_encrypted` round-trips through JSON encryption/decryption, so
+    # decrypted config maps come back with string keys instead of the atom
+    # keys used when the config was cast/validated. Adaptors' `redact_config/1`
+    # callbacks always operate on atom keys, so normalize here first.
+    defp atomize_keys(config) when is_map(config) do
+      Map.new(config, fn
+        {key, value} when is_binary(key) -> {String.to_existing_atom(key), value}
+        {key, value} -> {key, value}
+      end)
     end
   end
 end

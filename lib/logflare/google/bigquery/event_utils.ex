@@ -69,4 +69,10 @@ defmodule Logflare.Google.BigQuery.EventUtils do
   end
 
   defp wrap_fields({k, v}), do: {k, v}
+
+  defp wrap_fields(value) when is_list(value) do
+    Enum.map(value, &wrap_fields/1)
+  end
+
+  defp wrap_fields(value), do: value
 end

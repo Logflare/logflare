@@ -282,23 +282,17 @@ log_params = %{
 log_event = LogEvent.make(log_params, %{source: source})
 
 # ── Compile mapping config ───────────────────────────────────────────────
-log_compiled = Mapper.compile!(MappingDefaults.for_log())
+log_config = MappingDefaults.for_log()
+log_compiled = Mapper.compile!(%{log_config | output: nil})
 
 # ── Verify output ────────────────────────────────────────────────────────
 body_result = Mapper.map(log_event.body, log_compiled)
-flat_result = Mapper.map(log_event.flattened_body, log_compiled, flat_keys: true)
 
-# credo:disable-for-lines:12
+# credo:disable-for-lines:6
 IO.puts("\n--- Log mapping (nested body) ---")
 IO.puts("Output keys: #{inspect(Map.keys(body_result) |> Enum.sort())}")
 IO.puts("resource_attributes: #{inspect(body_result["resource_attributes"])}")
 IO.puts("log_attributes key count: #{map_size(body_result["log_attributes"])}")
-IO.puts("")
-
-IO.puts("--- Log mapping (flattened_body, flat_keys: true) ---")
-IO.puts("Output keys: #{inspect(Map.keys(flat_result) |> Enum.sort())}")
-IO.puts("resource_attributes: #{inspect(flat_result["resource_attributes"])}")
-IO.puts("log_attributes key count: #{map_size(flat_result["log_attributes"])}")
 IO.puts("")
 
 # ── Benchmark ────────────────────────────────────────────────────────────
@@ -306,9 +300,6 @@ Benchee.run(
   %{
     "[log] Mapper.map(body)" => fn ->
       Mapper.map(log_event.body, log_compiled)
-    end,
-    "[log] Mapper.map(flattened_body, flat_keys)" => fn ->
-      Mapper.map(log_event.flattened_body, log_compiled, flat_keys: true)
     end
   },
   time: 5,

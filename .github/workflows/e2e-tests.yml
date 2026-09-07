@@ -3,31 +3,40 @@ name: E2E Tests (with Playwright)
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 0 * * SUN'
+    - cron: "0 0 * * SUN"
   pull_request:
     branches: ["**"]
     paths:
+      - ".tool-versions"
+      - "Cargo.toml"
+      - "assets/**"
       - "lib/**"
       - "config/**"
       - "*.exs"
       - "*.lock"
       - "native/**"
       - "priv/**"
-      - "test/**"
+      - "test/e2e/features/**"
+      - "test/support/**"
+      - "test/test_helper.exs"
       # Run suite when this file is changed
       - ".github/workflows/e2e-tests.yml"
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   versions:
     name: Get versions
     runs-on: ubuntu-latest
     outputs:
-      elixir:  ${{ steps.v.outputs.elixir }}
-      erlang:  ${{ steps.v.outputs.erlang }}
-      rust:    ${{ steps.v.outputs.rust }}
+      elixir: ${{ steps.v.outputs.elixir }}
+      erlang: ${{ steps.v.outputs.erlang }}
+      rust: ${{ steps.v.outputs.rust }}
     steps:
       - uses: actions/checkout@v6
       - name: Read versions from .tool-versions
@@ -40,6 +49,7 @@ jobs:
   test:
     name: Tests with Playwright
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     needs: versions
 
     services:
@@ -59,7 +69,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
       clickhouse:
-        image: clickhouse/clickhouse-server:25.12
+        image: clickhouse/clickhouse-server:26.2
         ports:
           - 8123:8123
           - 9000:9000
@@ -114,10 +124,11 @@ jobs:
         with:
           path: |
             ~/.cargo
-          key: cargo-${{ runner.os }}-${{ needs.versions.outputs.rust }}-${{ hashFiles('**/Cargo.lock') }}
+            target
+          key: cargo-v2-${{ runner.os }}-${{ needs.versions.outputs.rust }}-elixir-e2e-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('Cargo.toml', 'native/**') }}
           restore-keys: |
-            cargo-${{ runner.os }}-${{ needs.versions.outputs.rust }}-
-            cargo-${{ runner.os }}-
+            cargo-v2-${{ runner.os }}-${{ needs.versions.outputs.rust }}-elixir-e2e-${{ hashFiles('**/Cargo.lock') }}-
+            cargo-v2-${{ runner.os }}-${{ needs.versions.outputs.rust }}-elixir-e2e-
 
       - name: Restore Mix cache
         uses: actions/cache@v5
@@ -125,10 +136,16 @@ jobs:
           path: |
             deps
             _build
-          key: mix-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-${{ hashFiles('mix.lock') }}
+            priv/native
+          key: mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-e2e-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-${{ hashFiles('mix.exs', 'Cargo.toml', 'config/**', 'lib/**', 'native/**', 'priv/**', 'test/support/**') }}
           restore-keys: |
-            mix-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-
-            mix-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-
+            mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-e2e-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-
+            mix-v5-${{ runner.os }}-${{ needs.versions.outputs.erlang }}-${{ needs.versions.outputs.elixir }}-e2e-
+
+      - name: Prepare in-app docs
+        run: |
+          rm -rf priv/docs
+          cp -R docs/docs.logflare.com/docs priv/docs
 
       - name: Install dependencies
         run: mix do deps.get + deps.compile

@@ -171,7 +171,7 @@ defmodule Logflare.Lql.IntegrationTest do
       assert %FilterRule{
                path: "event_message",
                operator: :"~",
-               value: ~S(user \"admin\" login),
+               value: ~s(user "admin" login),
                modifiers: %{quoted_string: true}
              } = rule
     end

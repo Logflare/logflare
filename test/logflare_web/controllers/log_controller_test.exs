@@ -6,6 +6,7 @@ defmodule LogflareWeb.LogControllerTest do
   alias Logflare.SingleTenant
   alias Logflare.Users
   alias Logflare.Sources
+  alias Logflare.Backends
   alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
 
@@ -125,6 +126,48 @@ defmodule LogflareWeb.LogControllerTest do
       Enum.each(data_points, fn data_point ->
         assert %{"metadata" => _, "event_message" => _, "metric_type" => _} = data_point
       end)
+    end
+
+    for {path, request_module, response_module} <- [
+          {:otel_metrics, ExportMetricsServiceRequest, ExportMetricsServiceResponse},
+          {:otel_traces, ExportTraceServiceRequest, ExportTraceServiceResponse},
+          {:otel_logs, ExportLogsServiceRequest, ExportLogsServiceResponse}
+        ] do
+      test "#{path} returns 200 (not 500) when validation rejects events", %{
+        conn: conn,
+        source: source,
+        user: user
+      } do
+        Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch,
+                                                       _source,
+                                                       _backend,
+                                                       _allow_spooling ->
+          {:error, ["Type error! Field `value` has an unexpected type."]}
+        end)
+
+        body =
+          case unquote(path) do
+            :otel_metrics -> TestUtilsGrpc.random_otel_metrics_request()
+            :otel_traces -> TestUtilsGrpc.random_export_service_request()
+            :otel_logs -> TestUtilsGrpc.random_otel_logs_request()
+          end
+          |> unquote(request_module).encode()
+
+        log =
+          capture_log(fn ->
+            conn =
+              conn
+              |> put_req_header("x-api-key", user.api_key)
+              |> put_req_header("x-source", Atom.to_string(source.token))
+              |> put_req_header("content-type", "application/x-protobuf")
+              |> post(Routes.log_path(conn, unquote(path)), body)
+
+            assert protobuf_response(conn, 200, unquote(response_module)) ==
+                     struct!(unquote(response_module), partial_success: nil)
+          end)
+
+        assert log =~ "OTLP ingest rejected"
+      end
     end
 
     test ":otel_logs ingestion", %{conn: conn, source: source, user: user} do
@@ -591,7 +634,6 @@ defmodule LogflareWeb.LogControllerTest do
 
       # ingestion setup
       start_supervised!({SourceSup, source})
-      :timer.sleep(500)
 
       conn =
         conn
@@ -607,7 +649,10 @@ defmodule LogflareWeb.LogControllerTest do
 
       assert_logged_successfully(conn)
 
-      :timer.sleep(3000)
+      TestUtils.retry_assert(fn ->
+        assert [_event] = Backends.list_recent_logs_local(source)
+        assert {:ok, %{len: 0}} = Backends.cache_local_buffer_lens(source.id)
+      end)
     end
   end
 
@@ -616,7 +661,6 @@ defmodule LogflareWeb.LogControllerTest do
     user = insert(:user)
     source = insert(:source, user: user)
     start_supervised!({SourceSup, source})
-    :timer.sleep(500)
 
     {:ok, source: source, user: user, conn: conn}
   end

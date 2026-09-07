@@ -4,7 +4,7 @@ The [Logflare Foreign Data Wrapper (FDW)](https://github.com/supabase/wrappers/t
 
 Currently, only read-only operations are supported.
 
-Full official documentation is availabe [here](https://supabase.github.io/wrappers/logflare/)
+Full official documentation is available [here](https://supabase.github.io/wrappers/logflare/)
 
 ## Example Usage
 

@@ -4,14 +4,27 @@ use std::collections::HashSet;
 use rustler::types::map::MapIterator;
 use rustler::{Encoder, Env, Term};
 
-use crate::path::{self, PathSegment};
+use crate::path::{self, CompiledPath, PathSegment};
 use crate::string_filters::{CharClass, StringFilters};
 
 // ── Data structures ────────────────────────────────────────────────────────
 
+const ROOT_CACHE_MIN_REFERENCES: usize = 8;
+
+#[derive(Debug)]
+pub enum CompiledOutput {
+    Map,
+    ClickHouseRowBinary(crate::clickhouse_rowbinary::CompiledLayout),
+}
+
 #[derive(Debug)]
 pub struct CompiledMapping {
     pub fields: Vec<CompiledField>,
+    pub path_cache_size: usize,
+    pub root_cache_size: usize,
+    pub root_cache_scan_limit: usize,
+    pub root_cache_keys: HashMap<Vec<u8>, usize>,
+    pub output: CompiledOutput,
 }
 
 #[derive(Debug)]
@@ -23,6 +36,7 @@ pub struct CompiledField {
     pub transform: Option<FieldTransform>,
     pub allowed_values: HashSet<Vec<u8>>,
     pub value_map: HashMap<String, i64>,
+    pub value_map_str: HashMap<String, String>,
     pub exclude_keys: Vec<Vec<u8>>,
     pub elevate_keys: Vec<Vec<u8>>,
     pub pick: Vec<PickEntry>,
@@ -35,8 +49,8 @@ pub struct CompiledField {
 #[derive(Debug)]
 pub enum PathSource {
     Root,
-    Single(Vec<PathSegment>),
-    Coalesce(Vec<Vec<PathSegment>>),
+    Single(CompiledPath),
+    Coalesce(Vec<CompiledPath>),
     /// Index into the output values vector (resolved at compile time from field name).
     FromOutput(usize),
     /// Temporary: unresolved field name, converted to FromOutput(usize) during compilation.
@@ -97,7 +111,7 @@ pub enum FieldTransform {
 #[derive(Debug)]
 pub struct PickEntry {
     pub key: String,
-    pub paths: Vec<Vec<PathSegment>>,
+    pub paths: Vec<CompiledPath>,
 }
 
 /// Inference rule for Enum8 structural inference.
@@ -110,7 +124,7 @@ pub struct InferRule {
 
 #[derive(Debug)]
 pub struct InferCondition {
-    pub path: Vec<PathSegment>,
+    pub path: CompiledPath,
     pub predicate: Predicate,
 }
 
@@ -151,8 +165,172 @@ pub struct Enum8Data {
 // ── Config decoder ─────────────────────────────────────────────────────────
 
 pub fn decode_mapping<'a>(env: Env<'a>, config: Term<'a>) -> Result<CompiledMapping, String> {
-    let fields = decode_fields(env, config)?;
-    Ok(CompiledMapping { fields })
+    let mut fields = decode_fields(env, config)?;
+    let output = decode_output(env, config, &fields)?;
+    let (path_cache_size, root_cache_size, root_cache_keys) =
+        assign_path_cache_indices(&mut fields);
+    Ok(CompiledMapping {
+        fields,
+        path_cache_size,
+        root_cache_size,
+        root_cache_scan_limit: root_cache_keys.len().max(ROOT_CACHE_MIN_REFERENCES),
+        root_cache_keys,
+        output,
+    })
+}
+
+fn decode_output<'a>(
+    env: Env<'a>,
+    config: Term<'a>,
+    fields: &[CompiledField],
+) -> Result<CompiledOutput, String> {
+    let Some(output) = get_term_key(env, config, "output") else {
+        return Ok(CompiledOutput::Map);
+    };
+    let format = get_string_key(env, output, "format")?
+        .ok_or_else(|| "output format is required".to_string())?;
+
+    match format.as_str() {
+        "clickhouse_row_binary" => {
+            let row_type = get_string_key(env, output, "row_type")?
+                .ok_or_else(|| "ClickHouse RowBinary output row_type is required".to_string())?;
+            let fields_by_name = fields
+                .iter()
+                .enumerate()
+                .map(|(index, field)| (field.name.as_str(), (index, field.field_type)))
+                .collect();
+            let layout = crate::clickhouse_rowbinary::compile_layout(&row_type, &fields_by_name)?;
+            Ok(CompiledOutput::ClickHouseRowBinary(layout))
+        }
+        _ => Err(format!("unsupported mapping output format '{format}'")),
+    }
+}
+
+fn assign_path_cache_indices(
+    fields: &mut [CompiledField],
+) -> (usize, usize, HashMap<Vec<u8>, usize>) {
+    let mut counts = HashMap::new();
+    visit_paths(fields, |path| collect_cached_prefixes(path, &mut counts));
+    let root_reference_count: usize = counts
+        .iter()
+        .filter(|(prefix, _)| prefix.len() == 1 && matches!(prefix[0], PathSegment::Key(_)))
+        .map(|(_, count)| count)
+        .sum();
+    let preload_root = root_reference_count >= ROOT_CACHE_MIN_REFERENCES;
+
+    let mut indices = HashMap::new();
+    if preload_root {
+        for prefix in counts.keys().filter(|prefix| {
+            prefix.len() == 1 && matches!(prefix.first(), Some(PathSegment::Key(_)))
+        }) {
+            let index = indices.len();
+            indices.insert(prefix.clone(), index);
+        }
+    }
+    let root_cache_size = indices.len();
+
+    visit_paths_mut(fields, |path| {
+        assign_cached_prefixes(path, &counts, &mut indices, preload_root)
+    });
+
+    let root_cache_keys = if preload_root {
+        indices
+            .iter()
+            .filter_map(|(prefix, index)| match prefix.as_slice() {
+                [PathSegment::Key(key)] => Some((key.as_bytes().to_vec(), *index)),
+                _ => None,
+            })
+            .collect()
+    } else {
+        HashMap::new()
+    };
+
+    (indices.len(), root_cache_size, root_cache_keys)
+}
+
+fn visit_paths(fields: &[CompiledField], mut visitor: impl FnMut(&CompiledPath)) {
+    for field in fields {
+        match &field.path_source {
+            PathSource::Single(path) => visitor(path),
+            PathSource::Coalesce(paths) => paths.iter().for_each(&mut visitor),
+            PathSource::Root | PathSource::FromOutput(_) | PathSource::FromOutputName(_) => {}
+        }
+        for entry in &field.pick {
+            entry.paths.iter().for_each(&mut visitor);
+        }
+        if let Some(enum8) = &field.enum8_data {
+            for rule in &enum8.infer_rules {
+                rule.any
+                    .iter()
+                    .for_each(|condition| visitor(&condition.path));
+                rule.all
+                    .iter()
+                    .for_each(|condition| visitor(&condition.path));
+            }
+        }
+    }
+}
+
+fn visit_paths_mut(fields: &mut [CompiledField], mut visitor: impl FnMut(&mut CompiledPath)) {
+    for field in fields {
+        match &mut field.path_source {
+            PathSource::Single(path) => visitor(path),
+            PathSource::Coalesce(paths) => paths.iter_mut().for_each(&mut visitor),
+            PathSource::Root | PathSource::FromOutput(_) | PathSource::FromOutputName(_) => {}
+        }
+        for entry in &mut field.pick {
+            entry.paths.iter_mut().for_each(&mut visitor);
+        }
+        if let Some(enum8) = &mut field.enum8_data {
+            for rule in &mut enum8.infer_rules {
+                rule.any
+                    .iter_mut()
+                    .for_each(|condition| visitor(&mut condition.path));
+                rule.all
+                    .iter_mut()
+                    .for_each(|condition| visitor(&mut condition.path));
+            }
+        }
+    }
+}
+
+fn collect_cached_prefixes(path: &CompiledPath, counts: &mut HashMap<Vec<PathSegment>, usize>) {
+    let mut prefix = Vec::new();
+    for segment in &path.segments {
+        if matches!(segment, PathSegment::Wildcard) {
+            break;
+        }
+        prefix.push(segment.clone());
+        *counts.entry(prefix.clone()).or_default() += 1;
+    }
+}
+
+fn assign_cached_prefixes(
+    path: &mut CompiledPath,
+    counts: &HashMap<Vec<PathSegment>, usize>,
+    indices: &mut HashMap<Vec<PathSegment>, usize>,
+    preload_root: bool,
+) {
+    let mut prefix = Vec::new();
+    for (offset, segment) in path.segments.iter().enumerate() {
+        if matches!(segment, PathSegment::Wildcard) {
+            break;
+        }
+        prefix.push(segment.clone());
+        let repeated = counts.get(&prefix).copied().unwrap_or(0) > 1;
+        let preloaded = preload_root
+            && prefix.len() == 1
+            && matches!(prefix.first(), Some(PathSegment::Key(_)));
+        if repeated || preloaded {
+            let next_index = indices.len();
+            let index = *indices.entry(prefix.clone()).or_insert(next_index);
+            path.cache_indices[offset] = Some(index);
+        }
+    }
+    path.cached = path.cache_indices.iter().any(Option::is_some);
+    if path.flat_key.is_some() {
+        path.flat_cache_index = path.cache_indices.last().copied().flatten();
+    }
 }
 
 fn decode_fields<'a>(env: Env<'a>, config: Term<'a>) -> Result<Vec<CompiledField>, String> {
@@ -200,7 +378,15 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
     let path_source = decode_path_source(env, field)?;
     let transform = decode_transform(env, field)?;
     let allowed_values = decode_allowed_values(env, field);
-    let value_map = decode_value_map(env, field)?;
+    // Resolve which value_map variant this field uses once, here at compile
+    // time: string fields get a string->string remap, all non-string fields get
+    // a string->integer lookup. The unused variant stays empty so the per-event
+    // path in `map_single` only has to check which map is populated.
+    let (value_map, value_map_str) = if matches!(field_type, FieldType::String) {
+        (HashMap::new(), decode_value_map_str(env, field)?)
+    } else {
+        (decode_value_map(env, field)?, HashMap::new())
+    };
     let exclude_keys = decode_string_list_bytes(env, field, "exclude_keys");
     let elevate_keys = decode_string_list_bytes(env, field, "elevate_keys");
     let pick = decode_pick(env, field)?;
@@ -223,6 +409,7 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
         transform,
         allowed_values,
         value_map,
+        value_map_str,
         exclude_keys,
         elevate_keys,
         pick,
@@ -352,9 +539,9 @@ fn decode_path_source<'a>(env: Env<'a>, field: Term<'a>) -> Result<PathSource, S
             if !paths_list.is_empty() {
                 let mut compiled_paths = Vec::with_capacity(paths_list.len());
                 for p in &paths_list {
-                    let segments = path::parse(p)
+                    let path = path::compile(p)
                         .map_err(|e| format!("failed to compile path '{}': {}", p, e))?;
-                    compiled_paths.push(segments);
+                    compiled_paths.push(path);
                 }
                 return Ok(PathSource::Coalesce(compiled_paths));
             }
@@ -366,9 +553,9 @@ fn decode_path_source<'a>(env: Env<'a>, field: Term<'a>) -> Result<PathSource, S
         if path_str == "$" {
             return Ok(PathSource::Root);
         }
-        let segments = path::parse(&path_str)
+        let path = path::compile(&path_str)
             .map_err(|e| format!("failed to compile path '{}': {}", path_str, e))?;
-        return Ok(PathSource::Single(segments));
+        return Ok(PathSource::Single(path));
     }
 
     // Default to root
@@ -407,6 +594,31 @@ fn decode_value_map<'a>(env: Env<'a>, field: Term<'a>) -> Result<HashMap<String,
     decode_string_int_map(env, term)
 }
 
+fn decode_value_map_str<'a>(
+    env: Env<'a>,
+    field: Term<'a>,
+) -> Result<HashMap<String, String>, String> {
+    let term = match get_term_key(env, field, "value_map") {
+        Some(t) if t.is_map() => t,
+        _ => return Ok(HashMap::new()),
+    };
+
+    let iter = MapIterator::new(term).ok_or_else(|| "value_map must be a map".to_string())?;
+
+    let mut result = HashMap::new();
+    for (k, v) in iter {
+        let key = k
+            .decode::<String>()
+            .map_err(|_| "value_map keys must be strings".to_string())?;
+        let val = v
+            .decode::<String>()
+            .map_err(|_| "value_map values must be strings".to_string())?;
+        // Pre-normalize keys to lowercase for case-insensitive lookups at map time
+        result.insert(key.to_lowercase(), val);
+    }
+    Ok(result)
+}
+
 fn decode_pick<'a>(env: Env<'a>, field: Term<'a>) -> Result<Vec<PickEntry>, String> {
     let pick_term = match get_term_key(env, field, "pick") {
         Some(t) => t,
@@ -431,9 +643,9 @@ fn decode_pick<'a>(env: Env<'a>, field: Term<'a>) -> Result<Vec<PickEntry>, Stri
 
         let mut compiled_paths = Vec::with_capacity(paths_list.len());
         for p in &paths_list {
-            let segments = path::parse(p)
+            let path = path::compile(p)
                 .map_err(|e| format!("failed to compile pick path '{}': {}", p, e))?;
-            compiled_paths.push(segments);
+            compiled_paths.push(path);
         }
 
         entries.push(PickEntry {
@@ -608,7 +820,7 @@ fn decode_condition<'a>(env: Env<'a>, cond: Term<'a>) -> Result<InferCondition, 
     let path_str =
         get_string_key(env, cond, "path")?.ok_or_else(|| "condition missing 'path'".to_string())?;
 
-    let path = path::parse(&path_str)
+    let path = path::compile(&path_str)
         .map_err(|e| format!("failed to compile condition path '{}': {}", path_str, e))?;
 
     let pred_str = get_string_key(env, cond, "predicate")?

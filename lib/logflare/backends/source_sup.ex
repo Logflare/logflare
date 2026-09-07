@@ -16,6 +16,7 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Sources.Source.BillingWriter
   alias Logflare.Backends.RecentInsertsCacher
   alias Logflare.Rules.Rule
+  alias Logflare.SourceSchemas
   alias Logflare.Sources
   alias Logflare.Backends.AdaptorSupervisor
 
@@ -29,6 +30,47 @@ defmodule Logflare.Backends.SourceSup do
 
   def start_link(%Source{} = source) do
     Supervisor.start_link(__MODULE__, source, name: Backends.via_source(source, __MODULE__))
+  end
+
+  @doc """
+  Warms cache-backed reads performed while a SourceSup and its initial children start.
+
+  `DynamicSupervisor.start_child/2` runs the child initialization in the new SourceSup process,
+  but the `SourcesSup` partition waits synchronously for the initial supervision tree to start.
+  On a cold cache, a Postgres fallback therefore prevents that partition from starting any other
+  source until the lookup returns.
+
+  Calling this first moves those misses to the caller. `init/1` remains unchanged so automatic
+  crash restarts still resolve configuration through the caches and pick up changes.
+
+  Cache warmers do not make this redundant: they are capped, run asynchronously, and are
+  registered `required: false`.
+  """
+  @spec prefetch(Source.t()) :: :ok
+  def prefetch(%Source{} = source) do
+    Sources.Cache.preload_rules(source)
+    Sources.Cache.get_by_id(source.id)
+
+    source_backends =
+      Backends.Cache.list_backends(source_id: source.id)
+      |> Enum.reject(& &1.consolidated_ingest?)
+
+    rules_backends =
+      Backends.Cache.list_backends(rules_source_id: source.id)
+      |> Enum.reject(& &1.consolidated_ingest?)
+
+    user = Users.Cache.get(source.user_id)
+    Billing.Cache.get_plan_by_user(user)
+
+    started_backends =
+      [Backends.get_default_backend(user) | source_backends]
+      |> Enum.concat(rules_backends)
+
+    if Enum.any?(started_backends, &(&1.type == :bigquery)) do
+      SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
+    end
+
+    :ok
   end
 
   def init(source) do

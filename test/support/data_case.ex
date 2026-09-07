@@ -48,6 +48,25 @@ defmodule Logflare.DataCase do
         Enum.each(caches, &Cachex.reset(&1, hooks: [Cachex.Stats]))
 
         on_exit(fn ->
+          # Deterministic, not timer-based: IngestEventQueue's generation-store
+          # tables are owned by its own long-lived GenServer, not by this (ephemeral)
+          # test process, so nothing but an explicit :ets.delete ever reclaims them —
+          # unlike delete_all_mappings/0 below, which only clears the mapper's rows.
+          # Without this, that data is a global, never-restarted-between-tests
+          # singleton that only GenerationJanitor's production-tuned timer ever
+          # sweeps, letting residue from every prior test accumulate for the rest of
+          # the suite run. Pruning here, keyed off the same liveness check
+          # GenerationJanitor's own pruning uses, converges that to near-zero
+          # regardless of how that timer happens to be tuned. Order matters: this
+          # must run before delete_all_mappings/0 wipes the mapper, so "live" is
+          # judged against genuinely-still-live state — including other concurrently
+          # running tests' own queues_keys — not a mapper this same callback is about
+          # to clear out from under them.
+          for queues_key <- IngestEventQueue.list_generation_queues_keys(),
+              IngestEventQueue.list_queues(queues_key) == [] do
+            IngestEventQueue.prune_generations(queues_key)
+          end
+
           IngestEventQueue.delete_all_mappings()
           PubSubRates.Cache.clear()
           ClickHouseAdaptor.QueryConnectionSup.terminate_all()
@@ -93,8 +112,8 @@ defmodule Logflare.DataCase do
   """
   def errors_on(changeset) do
     Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->
-      Enum.reduce(opts, message, fn {key, value}, acc ->
-        String.replace(acc, "%{#{key}}", to_string(value))
+      Regex.replace(~r"%{(\w+)}", message, fn _, key ->
+        opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
       end)
     end)
   end
@@ -109,6 +128,7 @@ defmodule Logflare.DataCase do
   - `:user` - Existing user to use (creates one if not provided)
   - `:source` - Existing source to use (creates one if not provided)
   - `:default_ingest_backend?` - Whether to set the backend as the default ingest backend (requires a source to be provided with the default ingest backend option set to true)
+  - `:cleanup?` - Whether to drop the backend's ClickHouse tables on exit (defaults to true)
   """
   def setup_clickhouse_test(opts \\ []) do
     config = Keyword.get(opts, :config, %{})
@@ -144,7 +164,9 @@ defmodule Logflare.DataCase do
         sources: [source]
       )
 
-    on_exit(fn -> cleanup_clickhouse_tables(backend) end)
+    if Keyword.get(opts, :cleanup?, true) do
+      on_exit(fn -> cleanup_clickhouse_tables(backend) end)
+    end
 
     {source, backend}
   end
@@ -207,6 +229,20 @@ defmodule Logflare.DataCase do
       _ -> :ok
     catch
       :exit, _ -> :ok
+    end
+  end
+
+  def allow_context_cache_sandbox do
+    Logflare.ContextCache.Supervisor.list_caches()
+    |> Enum.each(fn cache ->
+      allow_sandbox(cache)
+      allow_sandbox(:"#{cache}_courier")
+    end)
+  end
+
+  defp allow_sandbox(process_name) do
+    if pid = Process.whereis(process_name) do
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), pid)
     end
   end
 end

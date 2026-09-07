@@ -66,6 +66,13 @@ defmodule Logflare.Google.CloudResourceManagerTest do
 
       assert viewer_binding
       assert ("user:" <> google_configs.project_viewer) in viewer_binding.members
+
+      cloud_sql_client_binding =
+        Enum.find(bindings, fn %Binding{role: role} -> role == "roles/cloudsql.client" end)
+
+      assert cloud_sql_client_binding
+
+      assert ("serviceAccount:" <> google_configs.cloud_sql_client_sa) in cloud_sql_client_binding.members
     end
 
     test "uses group: prefix as-is for project viewer binding", %{
@@ -98,6 +105,33 @@ defmodule Logflare.Google.CloudResourceManagerTest do
       assert viewer_binding
       assert "group:support@mile.cloud" in viewer_binding.members
       refute "user:support@mile.cloud" in viewer_binding.members
+    end
+
+    test "omits cloudsql.client binding when cloud_sql_client_sa is not configured", %{
+      google_configs: google_configs
+    } do
+      Application.put_env(
+        :logflare,
+        Logflare.Google,
+        Map.to_list(%{google_configs | cloud_sql_client_sa: nil})
+      )
+
+      pid = self()
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_number, [body: body] ->
+          send(pid, body.policy.bindings)
+          {:ok, ""}
+        end
+      )
+
+      CloudResourceManager.set_iam_policy(async: false)
+
+      assert_received [_ | _] = bindings
+
+      refute Enum.any?(bindings, fn %Binding{role: role} -> role == "roles/cloudsql.client" end)
     end
 
     test "sets user as invalid google account if user does not exist" do

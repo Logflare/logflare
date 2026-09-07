@@ -112,14 +112,19 @@ defmodule LogflareWeb.JSONViewerComponent do
     """
   end
 
-  defp tree_node_value(%{value: "http" <> _url} = assigns) do
-    assigns =
-      assigns
-      |> assign(class: "tw-text-json-tree-string")
-
+  defp tree_node_value(%{href: _, formatted_value: _, class: _class} = assigns) do
     ~H"""
-    <span class={@class}>"</span><.link href={@value} target="_blank" class={@class}>{@value}</.link><span class={@class}>"</span>
+    <span class={@class}>"</span><.link href={@href} target="_blank" class={@class}>{@formatted_value}</.link><span class={@class}>"</span>
     {render_slot(@action, %{key: @key, value: @value, path: @key_path})}
+    """
+  end
+
+  defp tree_node_value(%{formatted_value: _, class: "tw-text-json-tree-string"} = assigns) do
+    ~H"""
+    <span class={@class}>
+      <span class="tw-whitespace-pre-wrap">{@formatted_value}</span>
+      {render_slot(@action, %{key: @key, value: @value, path: @key_path})}
+    </span>
     """
   end
 
@@ -161,11 +166,19 @@ defmodule LogflareWeb.JSONViewerComponent do
 
   defp tree_node_value(%{value: value, path: _path} = assigns) when is_binary(value) do
     assigns
-    |> assign(
-      formatted_value: ["\"", value, "\""],
-      class: "tw-text-json-tree-string"
-    )
-    |> tree_node_value()
+    |> assign(:class, "tw-text-json-tree-string")
+    |> then(fn assigns ->
+      if linkable_https_string?(value) do
+        assigns
+        |> assign(:formatted_value, value)
+        |> assign(:href, value)
+        |> tree_node_value()
+      else
+        assigns
+        |> assign(:formatted_value, ["\"", render_whitespace(value), "\""])
+        |> tree_node_value()
+      end
+    end)
   end
 
   defp tree_node_value(%{children: children, path: _path, key_path: _key_path} = assigns)
@@ -180,6 +193,19 @@ defmodule LogflareWeb.JSONViewerComponent do
     ~H"""
     <.tree_node :for={{k, v} <- @children} value={v} key={k} label={k} path={@path} key_path={@key_path} id={@id} action={@action} />
     """
+  end
+
+  defp render_whitespace(value) do
+    value
+    |> String.replace("\\r\\n", "\n")
+    |> String.replace("\\n", "\n")
+    |> String.replace("\\t", "\t")
+    |> String.replace("\\r", "\r")
+  end
+
+  defp linkable_https_string?(value) do
+    String.starts_with?(value, "https://") and
+      not String.contains?(value, [" ", "\t", "\n", "\r"])
   end
 
   defp append_path(path, nil), do: path

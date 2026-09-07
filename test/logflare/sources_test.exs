@@ -125,7 +125,9 @@ defmodule Logflare.SourcesTest do
     test "retention days exceeds", %{user: user} do
       insert(:plan, name: "Free", limit_source_ttl: :timer.hours(24))
       source = insert(:source, user: user)
-      assert {:error, %Ecto.Changeset{}} = Sources.update_source(source, %{retention_days: 12})
+
+      assert {:error, changeset} = Sources.update_source(source, %{retention_days: 12})
+      assert {"ttl is over your plan limit", []} = changeset.errors[:retention_days]
     end
   end
 
@@ -262,6 +264,10 @@ defmodule Logflare.SourcesTest do
       [user: insert(:user)]
     end
 
+    test "returns an empty list for empty input" do
+      assert Sources.preload_for_dashboard([]) == []
+    end
+
     test "preloads only the required fields", %{user: user} do
       sources = insert_list(3, :source, %{user_id: user.id})
       assocs = Sources.Source.__schema__(:associations)
@@ -269,6 +275,9 @@ defmodule Logflare.SourcesTest do
       sources = Sources.preload_for_dashboard(sources)
 
       assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.user))
+      assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.backends))
+      assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.user.team))
+      assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.source_schema))
 
       refute Enum.any?(sources, &Ecto.assoc_loaded?(&1.rules))
     end
@@ -280,6 +289,44 @@ defmodule Logflare.SourcesTest do
       sources = Sources.preload_for_dashboard([source_1, source_2, source_3])
 
       assert Enum.map(sources, & &1.name) == Enum.map([source_2, source_3, source_1], & &1.name)
+    end
+
+    test "association query count does not scale with source count", %{user: user} do
+      assocs = Sources.Source.__schema__(:associations)
+
+      count_queries = fn sources ->
+        sources = Enum.map(sources, &Ecto.reset_fields(&1, assocs))
+
+        {:ok, counter} = Agent.start_link(fn -> 0 end)
+
+        handler_id = {:preload_for_dashboard_query_count, make_ref()}
+
+        :telemetry.attach(
+          handler_id,
+          [:logflare, :repo, :query],
+          fn _event, _measurements, metadata, _config ->
+            if metadata.source in ["users", "teams", "backends", "source_schemas"] do
+              Agent.update(counter, &(&1 + 1))
+            end
+          end,
+          nil
+        )
+
+        Sources.preload_for_dashboard(sources)
+
+        count = Agent.get(counter, & &1)
+        :telemetry.detach(handler_id)
+        Agent.stop(counter)
+        count
+      end
+
+      one_source = insert_list(1, :source, %{user_id: user.id})
+      many_sources = insert_list(20, :source, %{user_id: user.id})
+
+      one_source_query_count = count_queries.(one_source)
+      many_sources_query_count = count_queries.(many_sources)
+
+      assert one_source_query_count == many_sources_query_count
     end
   end
 
@@ -308,12 +355,12 @@ defmodule Logflare.SourcesTest do
       start_supervised!(Source.Supervisor)
       # TODO: cast should return :ok
       assert {:ok, ^token} = Source.Supervisor.start_source(token)
-      :timer.sleep(500)
-      assert {:ok, _pid} = Backends.lookup(SourceSup, token)
-      :timer.sleep(1_000)
+      TestUtils.retry_assert(fn -> assert {:ok, _pid} = Backends.lookup(SourceSup, token) end)
       assert {:ok, ^token} = Source.Supervisor.delete_source(token)
-      :timer.sleep(1000)
-      assert {:error, :not_started} = Backends.lookup(SourceSup, token)
+
+      TestUtils.retry_assert(fn ->
+        assert {:error, :not_started} = Backends.lookup(SourceSup, token)
+      end)
     end
 
     test "reset_source/1", %{user: user} do
@@ -321,12 +368,19 @@ defmodule Logflare.SourcesTest do
       start_supervised!(Source.Supervisor)
       # TODO: cast should return :ok
       assert {:ok, ^token} = Source.Supervisor.start_source(token)
-      :timer.sleep(500)
-      assert {:ok, pid} = Backends.lookup(SourceSup, token)
+
+      pid =
+        TestUtils.retry_assert(fn ->
+          assert {:ok, pid} = Backends.lookup(SourceSup, token)
+          pid
+        end)
+
       assert {:ok, ^token} = Source.Supervisor.reset_source(token)
-      :timer.sleep(1500)
-      assert {:ok, new_pid} = Backends.lookup(SourceSup, token)
-      assert new_pid != pid
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, new_pid} = Backends.lookup(SourceSup, token)
+        assert new_pid != pid
+      end)
     end
 
     test "able to start supervision tree", %{user: user} do
@@ -334,9 +388,11 @@ defmodule Logflare.SourcesTest do
 
       start_supervised!(Source.Supervisor)
       assert :ok = Source.Supervisor.ensure_started(source)
-      :timer.sleep(1000)
-      assert {:ok, _pid} = Backends.lookup(SourceSup, source.token)
-      assert Backends.cached_pending_buffer_len(source) == 0
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, _pid} = Backends.lookup(SourceSup, source.token)
+        assert Backends.cached_pending_buffer_len(source) == 0
+      end)
     end
 
     test "able to reset supervision tree", %{user: user} do
@@ -344,14 +400,21 @@ defmodule Logflare.SourcesTest do
 
       start_supervised!(Source.Supervisor)
       assert :ok = Source.Supervisor.ensure_started(source)
-      :timer.sleep(3000)
-      assert {:ok, pid} = Backends.lookup(SourceSup, source.token)
+
+      pid =
+        TestUtils.retry_assert(fn ->
+          assert {:ok, pid} = Backends.lookup(SourceSup, source.token)
+          pid
+        end)
+
       assert {:ok, _} = Source.Supervisor.reset_source(source.token)
       assert {:ok, _} = Source.Supervisor.reset_source(source.token)
-      :timer.sleep(3000)
-      assert {:ok, new_pid} = Backends.lookup(SourceSup, source.token)
-      assert pid != new_pid
-      assert Backends.cached_pending_buffer_len(source) == 0
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, new_pid} = Backends.lookup(SourceSup, source.token)
+        assert pid != new_pid
+        assert Backends.cached_pending_buffer_len(source) == 0
+      end)
     end
 
     test "concurrent start attempts", %{user: user} do
@@ -363,31 +426,49 @@ defmodule Logflare.SourcesTest do
       assert :ok = Source.Supervisor.ensure_started(source)
       assert :ok = Source.Supervisor.ensure_started(source)
       assert :ok = Source.Supervisor.ensure_started(source)
-      :timer.sleep(3000)
-      assert {:ok, _pid} = Backends.lookup(SourceSup, source.token)
-      assert Backends.cached_pending_buffer_len(source) == 0
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, _pid} = Backends.lookup(SourceSup, source.token)
+        assert Backends.cached_pending_buffer_len(source) == 0
+      end)
     end
 
     test "terminating Source.Supervisor does not bring everything down", %{user: user} do
       source = insert(:source, user_id: user.id)
       pid = start_supervised!(Source.Supervisor)
       assert :ok = Source.Supervisor.ensure_started(source)
-      :timer.sleep(3000)
-      assert {:ok, prev_pid} = Backends.lookup(SourceSup, source.token)
+
+      prev_pid =
+        TestUtils.retry_assert(fn ->
+          assert {:ok, prev_pid} = Backends.lookup(SourceSup, source.token)
+          prev_pid
+        end)
+
       Process.exit(pid, :kill)
-      assert {:ok, pid} = Backends.lookup(SourceSup, source.token)
-      assert prev_pid == pid
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, pid} = Backends.lookup(SourceSup, source.token)
+        assert prev_pid == pid
+      end)
     end
 
     test "should start broadcasting metrics on ingest", %{user: user} do
       source = insert(:source, user_id: user.id)
       pid = start_supervised!(Source.Supervisor)
       assert :ok = Source.Supervisor.ensure_started(source)
-      :timer.sleep(3000)
-      assert {:ok, prev_pid} = Backends.lookup(SourceSup, source.token)
+
+      prev_pid =
+        TestUtils.retry_assert(fn ->
+          assert {:ok, prev_pid} = Backends.lookup(SourceSup, source.token)
+          prev_pid
+        end)
+
       Process.exit(pid, :kill)
-      assert {:ok, pid} = Backends.lookup(SourceSup, source.token)
-      assert prev_pid == pid
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, pid} = Backends.lookup(SourceSup, source.token)
+        assert prev_pid == pid
+      end)
     end
   end
 
@@ -410,7 +491,12 @@ defmodule Logflare.SourcesTest do
       ten_minutes_ago = DateTime.utc_now() |> DateTime.add(-10 * 60, :second)
       old_event = build(:log_event, source: source, ingested_at: ten_minutes_ago)
       Backends.IngestEventQueue.add_to_table({source.id, nil, nil}, [old_event])
-      Backends.IngestEventQueue.mark_ingested({source.id, nil, nil}, [old_event])
+
+      {:ok, [pointer], _tid} =
+        Backends.IngestEventQueue.pop_pending_pointers({source.id, nil, nil}, 1)
+
+      Backends.IngestEventQueue.record_recent_event({source.id, nil}, old_event)
+      Backends.IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
 
       TestUtils.retry_assert(fn ->
         assert Backends.source_sup_started?(source)
@@ -446,7 +532,12 @@ defmodule Logflare.SourcesTest do
     test "does NOT shut down sources with recent logs within 5 minutes", %{source: source} do
       event = build(:log_event, source: source, ingested_at: DateTime.utc_now())
       Backends.IngestEventQueue.add_to_table({source.id, nil, nil}, [event])
-      Backends.IngestEventQueue.mark_ingested({source.id, nil, nil}, [event])
+
+      {:ok, [pointer], _tid} =
+        Backends.IngestEventQueue.pop_pending_pointers({source.id, nil, nil}, 1)
+
+      Backends.IngestEventQueue.record_recent_event({source.id, nil}, event)
+      Backends.IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
 
       TestUtils.retry_assert(fn ->
         assert [_event] = Backends.list_recent_logs_local(source, 1)
@@ -546,6 +637,23 @@ defmodule Logflare.SourcesTest do
       result_ids = Enum.map(results, & &1.id) |> Enum.sort()
       expected_ids = [source1.id, source2.id] |> Enum.sort()
       assert result_ids == expected_ids
+    end
+
+    test "list_sources/1 does not hydrate retention_days by default", %{user: user} do
+      insert(:source, user: user)
+      insert(:source, user: user)
+
+      results = Sources.list_sources(user_id: user.id)
+      assert Enum.all?(results, &(&1.retention_days == nil))
+    end
+
+    test "list_sources/1 hydrates retention_days when hydrate_retention_days?: true", %{
+      user: user
+    } do
+      insert(:source, user: user)
+
+      [result] = Sources.list_sources(user_id: user.id, hydrate_retention_days?: true)
+      refute is_nil(result.retention_days)
     end
   end
 
@@ -664,7 +772,6 @@ defmodule Logflare.SourcesTest do
       source = insert(:source, user_id: user.id, log_events_updated_at: timestamp)
       Sources.Cache.get_by_id(source.id)
       start_supervised!({SourceSup, source})
-      :timer.sleep(800)
       timestamp = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
       assert {:ok, 1} = Sources.recent_events_touch(timestamp)
       updated = Sources.get_by(id: source.id)
@@ -672,8 +779,7 @@ defmodule Logflare.SourcesTest do
 
       # does not update again if recently updated
       Sources.Cache.get_by_id(source.id)
-      :timer.sleep(1_000)
-      timestamp = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+      timestamp = NaiveDateTime.add(timestamp, 1, :second)
       assert {:ok, 0} = Sources.recent_events_touch(timestamp)
 
       updated = Sources.get_by(id: source.id)

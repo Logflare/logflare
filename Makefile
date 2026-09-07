@@ -124,9 +124,9 @@ setup.node:
 	@echo ""
 
 reset:
-	docker compose down
 	MIX_ENV=dev mix ecto.reset
 	MIX_ENV=test mix ecto.reset
+	docker compose down
 	rm -rf _build .elixir_ls deps assets/node_modules
 
 .PHONY: setup setup.node reset check-version-manager check-tools
@@ -157,19 +157,25 @@ start.green: __start__
 start.sb.bq: LOGFLARE_SUPABASE_MODE = true
 start.sb.bq: start.st.bq
 
-start.st.bq: ERL_NAME = st_
+# SPOOL_MODE (producer|consumer|both), SPOOL_PROVIDER (aws|gcp), and related
+# SPOOL_* vars pass straight through to the app via __start__ (see config/runtime.exs).
+# To run a producer + consumer pair side by side, override PORT/ERL_NAME/LOGFLARE_GRPC_PORT
+# so the two nodes don't collide, e.g.:
+#   SPOOL_MODE=producer make start.st.bq
+#   SPOOL_MODE=consumer PORT=4001 ERL_NAME=consumer LOGFLARE_GRPC_PORT=50052 make start.st.bq
+start.st.bq: ERL_NAME ?= st_
 start.st.bq: PORT ?= 4000
 start.st.bq: ENV_FILE = .single_tenant_bq.env
-start.st.bq: LOGFLARE_GRPC_PORT = 50051
+start.st.bq: LOGFLARE_GRPC_PORT ?= 50051
 start.st.bq: __start__
 
 start.sb.pg: LOGFLARE_SUPABASE_MODE = true
 start.sb.pg: start.st.pg
 
-start.st.pg: ERL_NAME = st_pg
+start.st.pg: ERL_NAME ?= st_pg
 start.st.pg: PORT ?= 4000
 start.st.pg: ENV_FILE = .single_tenant_pg.env
-start.st.pg: LOGFLARE_GRPC_PORT = 50051
+start.st.pg: LOGFLARE_GRPC_PORT ?= 50051
 start.st.pg: __start__
 
 observer:
@@ -179,7 +185,7 @@ __start__:
 	@if [ ! -f ${ENV_FILE} ]; then \
 		touch ${ENV_FILE}; \
 	fi
-	@env $$(cat ${ENV_FILE} .dev.env | xargs) PORT=${PORT} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} LOGFLARE_SUPABASE_MODE=${LOGFLARE_SUPABASE_MODE} iex --sname ${ERL_NAME}-${ERL_COOKIE} --cookie ${ERL_COOKIE} -S mix phx.server
+	@env $$(cat ${ENV_FILE} .dev.env | grep -v '^PHX_HTTP_PORT=' | xargs) PHX_HTTP_PORT=${PORT} SPOOL_MODE=${SPOOL_MODE} SPOOL_PROVIDER=${SPOOL_PROVIDER} SPOOL_QUEUE_NAME=${SPOOL_QUEUE_NAME} SPOOL_PUBSUB_TOPIC=${SPOOL_PUBSUB_TOPIC} SPOOL_BUCKET=${SPOOL_BUCKET} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} LOGFLARE_SUPABASE_MODE=${LOGFLARE_SUPABASE_MODE} iex --sname ${ERL_NAME}-${ERL_COOKIE} --cookie ${ERL_COOKIE} -S mix phx.server
 
 
 migrate:
@@ -281,7 +287,7 @@ deploy.staging.main:
 	@gcloud config set project logflare-staging
 	gcloud builds submit . \
 		--config=cloudbuild/staging/build-image.yaml \
-		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG) \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_TAG_LATEST=true \
 		--region=europe-west1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 
@@ -293,7 +299,7 @@ deploy.staging.main:
 
 	gcloud builds submit . \
 		--config=./cloudbuild/staging/deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_INSTANCE_GROUP=instance-group-staging-main-saturated,_INSTANCE_TYPE=c2d-highcpu-16 \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_INSTANCE_GROUP=instance-group-staging-main-saturated,_INSTANCE_TYPE=c2d-highcpu-16,_SPOOL_CLUSTER=main-saturated \
 		--region=us-central1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 
@@ -301,7 +307,7 @@ deploy.staging.versioned:
 	@gcloud config set project logflare-staging
 	gcloud builds submit . \
 		--config=cloudbuild/staging/build-image.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION) \
+		--substitutions=_IMAGE_TAG=$(VERSION),_TAG_LATEST=true \
 		--region=europe-west1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 
@@ -311,6 +317,42 @@ deploy.staging.versioned:
 		--region=us-west1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 
+# Deploys the currently checked-out branch's HEAD to two dedicated staging
+# instance groups (instance-group-staging-dev-<DEV_NUMBER>-producer/-consumer)
+# for testing the spool feature, reusing the staging DB/secrets already baked
+# into the staging image. See cloudbuild/staging/deploy-dev.yaml and
+# .github/workflows/deploy-pr-to-dev.yml (manual GitHub Actions trigger).
+# Requires the two instance groups to already exist (one-time bootstrap, not
+# automated here since nothing in this pipeline creates a MIG). Override
+# DEV_NUMBER to target a different dev-N pair, e.g.
+# `make deploy.staging.dev DEV_NUMBER=2`.
+DEV_NUMBER ?= 1
+
+deploy.staging.dev: deploy.staging.dev-image deploy.staging.dev-producer deploy.staging.dev-consumer
+
+deploy.staging.dev-image:
+	@gcloud config set project logflare-staging
+	gcloud builds submit . \
+		--config=cloudbuild/staging/build-image.yaml \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG) \
+		--region=europe-west1 \
+		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
+
+deploy.staging.dev-producer:
+	gcloud builds submit . \
+		--config=./cloudbuild/staging/deploy-dev.yaml \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_DEV_NUMBER=$(DEV_NUMBER),_ROLE=producer \
+		--region=us-central1 \
+		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
+
+deploy.staging.dev-consumer:
+	gcloud builds submit . \
+		--config=./cloudbuild/staging/deploy-dev.yaml \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_DEV_NUMBER=$(DEV_NUMBER),_ROLE=consumer \
+		--region=us-central1 \
+		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
+
+.PHONY: deploy.staging.dev deploy.staging.dev-image deploy.staging.dev-producer deploy.staging.dev-consumer
 
 deploy.prod.versioned:
 	@gcloud config set project logflare-232118
@@ -339,7 +381,7 @@ deploy.prod.versioned:
 	@echo "Creating prod instance templates..."
 	gcloud builds submit . \
 		--config=./cloudbuild/prod/pre-deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-a,_LOGFLARE_ALERTS_ENABLED=true \
+		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-a,_LOGFLARE_ALERTS_ENABLED=true,_SPOOL_MODE=disable \
 		--region=europe-west3 \
 		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
 	gcloud builds submit . \
@@ -381,8 +423,11 @@ deploy.prod.versioned:
 tag-versioned:
 
 	@echo "Checking dockerhub registry for dev image supabase/logflare:$(SHA_IMAGE_TAG) ..."
-	@echo "Dev image must be built on CI: https://github.com/Logflare/logflare/actions" \
-		docker manifest inspect supabase/logflare:$(SHA_IMAGE_TAG) >/dev/null
+	@if ! docker manifest inspect supabase/logflare:$(SHA_IMAGE_TAG) >/dev/null 2>&1; then \
+		echo "Dev image does not exist: supabase/logflare:$(SHA_IMAGE_TAG)"; \
+		echo "Build it through https://github.com/Logflare/logflare/actions"; \
+		exit 1; \
+	fi
 	@echo "OK"
 
 	@echo "Retagging dev image to supabase/logflare:$(VERSION) ..."

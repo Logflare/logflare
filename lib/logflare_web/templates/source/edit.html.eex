@@ -423,6 +423,18 @@
 
   <% end %>
 
+  <%= section_header("Spooling") %>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn f -> %>
+    <div class="form-group">
+      <%= label f, :enable_spooling do %>
+        Toggle spool-based ingestion for this source
+      <% end %>
+      <%= checkbox f, :enable_spooling, checked: @source.enable_spooling, value: @source.enable_spooling %>
+      <%= error_tag f, :enable_spooling %>
+    </div>
+    <%= submit "Save", class: "btn btn-primary form-button" %>
+  <% end %>
+
   <%= section_header("Delete Source") %>
   <%= form_for @changeset, Routes.source_path(@conn, :delete, @source), [method: :delete], fn _f -> %>
     <%= submit class: "btn btn-outline-danger form-button", data: [confirm: "Are you sure? This cannot be undone"] do %>

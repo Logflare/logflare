@@ -167,7 +167,7 @@ defmodule Logflare.Lql.ParserTest do
         %FilterRule{
           operator: :"~",
           path: "event_message",
-          value: ~S(user \"sign\" up),
+          value: ~s(user "sign" up),
           modifiers: %{quoted_string: true}
         },
         %FilterRule{
@@ -288,7 +288,7 @@ defmodule Logflare.Lql.ParserTest do
                %{}
              ]
 
-      assert Enum.map(rules, & &1.value) == [~S(\\d\\d\\d ST), "some module.ex", 100]
+      assert Enum.map(rules, & &1.value) == [~S(\d\d\d ST), "some module.ex", 100]
 
       assert Lql.encode!(result) ==
                String.split(qs, "\n")

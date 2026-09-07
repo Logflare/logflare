@@ -3,9 +3,22 @@ defmodule LogflareWeb.HealthCheckController do
 
   alias Logflare.JSON
   alias Logflare.Cluster
+  alias Logflare.Readiness
   alias Logflare.SingleTenant
   alias Logflare.Sources
   alias Logflare.System
+
+  def ready(conn, params) do
+    if Readiness.ready?() do
+      check(conn, params)
+    else
+      response = JSON.encode!(%{status: :not_ready})
+
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(503, response)
+    end
+  end
 
   def check(conn, _params) do
     repo_uptime = Logflare.Repo.get_uptime()

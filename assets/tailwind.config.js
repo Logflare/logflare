@@ -14,6 +14,7 @@ module.exports = {
         "json-tree-boolean": "#fff86c",
         "json-tree-null": "#eec97d",
         "json-tree-label": "#9ca3af",
+        "dashboard-grey": "#1d1d1d",
       },
     },
   },

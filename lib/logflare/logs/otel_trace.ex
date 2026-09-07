@@ -14,19 +14,17 @@ defmodule Logflare.Logs.OtelTrace do
   @behaviour Logflare.Logs.Processor
 
   def handle_batch(resource_spans, _source) when is_list(resource_spans) do
-    resource_spans
-    |> Enum.map(&handle_resource_span/1)
-    |> List.flatten()
+    Enum.flat_map(resource_spans, &handle_resource_span/1)
   end
 
   defp handle_resource_span(%ResourceSpans{resource: resource, scope_spans: scope_spans}) do
     resource = Otel.handle_resource(resource)
-    Enum.map(scope_spans, &handle_scope_span(&1, resource))
+    Enum.flat_map(scope_spans, &handle_scope_span(&1, resource))
   end
 
   defp handle_scope_span(%{scope: scope, spans: spans}, resource) do
     scope = Otel.handle_scope(scope)
-    Enum.map(spans, &handle_span(&1, resource, scope))
+    Enum.flat_map(spans, &handle_span(&1, resource, scope))
   end
 
   defp handle_span(span, resource, scope) do
@@ -42,6 +40,7 @@ defmodule Logflare.Logs.OtelTrace do
         "span_id" => Base.encode16(span.span_id, case: :lower),
         "parent_span_id" => Base.encode16(span.parent_span_id, case: :lower),
         "trace_id" => Base.encode16(span.trace_id, case: :lower),
+        "kind" => span_kind(span.kind),
         "start_time" => span.start_time_unix_nano,
         "end_time" => span.end_time_unix_nano,
         "attributes" => Otel.handle_attributes(span.attributes),
@@ -66,4 +65,12 @@ defmodule Logflare.Logs.OtelTrace do
       "project" => Otel.resource_project(resource)
     }
   end
+
+  @spec span_kind(Opentelemetry.Proto.Trace.V1.Span.SpanKind.t()) :: String.t()
+  defp span_kind(:SPAN_KIND_INTERNAL), do: "Internal"
+  defp span_kind(:SPAN_KIND_SERVER), do: "Server"
+  defp span_kind(:SPAN_KIND_CLIENT), do: "Client"
+  defp span_kind(:SPAN_KIND_PRODUCER), do: "Producer"
+  defp span_kind(:SPAN_KIND_CONSUMER), do: "Consumer"
+  defp span_kind(_kind), do: "Unspecified"
 end

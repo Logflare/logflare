@@ -10,6 +10,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
 
   """
 
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Utils
 
@@ -50,6 +51,11 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
+  def sanitize_config_for_display(config) do
+    Adaptor.mask_config_values(config, except: [:url])
+  end
+
+  @impl Logflare.Backends.Adaptor
   def cast_config(params, existing_config \\ %{}) do
     {existing_config, %{url: :string, username: :string, password: :string}}
     |> Ecto.Changeset.cast(params, [:username, :password, :url])
@@ -79,4 +85,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
     changeset
     |> validate_required([:url])
   end
+
+  @impl Logflare.Backends.Adaptor
+  def test_connection(_), do: {:error, :not_implemented}
 end

@@ -1,11 +1,11 @@
 defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
   use Logflare.DataCase, async: false
 
-  alias Logflare.Backends.Adaptor
   alias Logflare.Backends
-  alias Logflare.Backends.AdaptorSupervisor
-  alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.DatadogAdaptor
+  alias Logflare.Backends.SourceSup
+  alias Logflare.SystemMetrics.AllLogsLogged
 
   @subject DatadogAdaptor
   @client Logflare.Backends.Adaptor.WebhookAdaptor.Client
@@ -37,6 +37,15 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
                "api_key" => "foobarbaz",
                "region" => "US0"
              }).valid?
+    end
+  end
+
+  describe "sanitize_config_for_display/1" do
+    test "masks api_key while preserving region" do
+      config = %{api_key: "secret-api-key-123", region: "US1"}
+
+      assert %{api_key: "**********", region: "US1"} ==
+               @subject.sanitize_config_for_display(config)
     end
   end
 
@@ -80,16 +89,14 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
         {:ok, %Tesla.Env{status: 403, body: %{"errors" => ["Forbidden"]}}}
       end)
 
-      assert {:error, reason} = @subject.test_connection(backend)
-      assert reason =~ "403"
+      assert {:error, :http_client_error} = @subject.test_connection(backend)
     end
 
     test "returns error on transport failure", %{backend: backend} do
       @client
       |> expect(:send, fn _req -> {:error, :nxdomain} end)
 
-      assert {:error, reason} = @subject.test_connection(backend)
-      assert reason =~ "nxdomain"
+      assert {:error, :unknown_error} = @subject.test_connection(backend)
     end
   end
 
@@ -106,9 +113,8 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
           config: %{api_key: "foo-bar", region: "US1"}
         )
 
-      start_supervised!({AdaptorSupervisor, {source, backend}}, id: :source1)
-      start_supervised!({AdaptorSupervisor, {source_with_service_name, backend}}, id: :source2)
-      :timer.sleep(500)
+      start_supervised!({SourceSup, source}, id: :source1)
+      start_supervised!({SourceSup, source_with_service_name}, id: :source2)
 
       [
         backend: backend,

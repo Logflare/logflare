@@ -53,8 +53,9 @@ defmodule Logflare.Profiling do
       stats = s.run_time_data.statistics
       mem = s.memory_usage_data.statistics
       reds = s.reductions_data.statistics
+      name = result_name(s)
 
-      {s.name,
+      {name,
        %{
          ips: round(stats.ips),
          wall_avg_us: Float.round(stats.average / 1_000, 2),
@@ -65,6 +66,9 @@ defmodule Logflare.Profiling do
        }}
     end
   end
+
+  defp result_name(%{name: name, input_name: :__no_input}), do: name
+  defp result_name(%{name: name, input_name: input_name}), do: "#{name} / #{input_name}"
 
   @spec load_history(Path.t()) :: [entry]
   def load_history(path) do

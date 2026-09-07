@@ -72,7 +72,17 @@ defmodule Logflare.Sources.Source.Data do
 
   @spec get_schema_field_count(struct()) :: non_neg_integer
   def get_schema_field_count(source) do
-    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
+    source_schema =
+      case source do
+        %{source_schema: %Ecto.Association.NotLoaded{}} ->
+          SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
+
+        %{source_schema: source_schema} ->
+          source_schema
+
+        _ ->
+          SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
+      end
 
     if source_schema do
       source_schema.bigquery_schema

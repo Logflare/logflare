@@ -20,7 +20,7 @@ defmodule LogflareWeb.LogSocketTest do
       {:ok, _, socket} = subscribe_and_join(socket, LogChannel, "logs:#{source.token}")
 
       Backends
-      |> expect(:ingest_logs, fn batch, ingest_source ->
+      |> expect(:ingest_logs, fn batch, ingest_source, _backend, _allow_spooling ->
         assert [%{"message" => "access-token-log"}] = batch
         assert ingest_source.id == source.id
         {:ok, 1}
@@ -47,7 +47,7 @@ defmodule LogflareWeb.LogSocketTest do
       {:ok, socket} = Phoenix.ChannelTest.connect(LogSocket, %{"access_token" => token.token})
 
       Backends
-      |> reject(:ingest_logs, 2)
+      |> reject(:ingest_logs, 4)
 
       assert {:error, %{reason: "Not authorized!"}} =
                subscribe_and_join(socket, LogChannel, "logs:#{victim_source.token}")
@@ -63,7 +63,7 @@ defmodule LogflareWeb.LogSocketTest do
       {:ok, _, socket} = subscribe_and_join(socket, LogChannel, "logs:#{source.token}")
 
       Backends
-      |> expect(:ingest_logs, fn batch, ingest_source ->
+      |> expect(:ingest_logs, fn batch, ingest_source, _backend, _allow_spooling ->
         assert [%{"message" => "owned-log"}] = batch
         assert ingest_source.id == source.id
         {:ok, 1}
@@ -84,7 +84,7 @@ defmodule LogflareWeb.LogSocketTest do
         Phoenix.ChannelTest.connect(LogSocket, %{"api_key" => attacker.api_key})
 
       Backends
-      |> reject(:ingest_logs, 2)
+      |> reject(:ingest_logs, 4)
 
       assert {:error, %{reason: "Not authorized!"}} =
                subscribe_and_join(socket, LogChannel, "logs:#{victim_source.token}")
@@ -98,7 +98,7 @@ defmodule LogflareWeb.LogSocketTest do
       {:ok, socket} = Phoenix.ChannelTest.connect(LogSocket, %{"api_key" => admin.api_key})
 
       Backends
-      |> reject(:ingest_logs, 2)
+      |> reject(:ingest_logs, 4)
 
       assert {:error, %{reason: "Not authorized!"}} =
                subscribe_and_join(socket, LogChannel, "logs:#{other_source.token}")

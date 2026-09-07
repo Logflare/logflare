@@ -15,8 +15,19 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
       input document (e.g. `from_output: "severity_text"`). Fields are resolved in order, so
       the source field must be defined earlier in the config.
     * `:default` — fallback value when no path resolves
-    * `:value_map` — `%{String.t() => integer()}` lookup applied to the resolved value.
-      Useful for derived fields (e.g. mapping `"ERROR"` to `17` for severity numbers).
+    * `:value_map` — case-insensitive lookup applied to the resolved value. The map's
+      value type is dictated by the field's output type and is resolved once at compile
+      time (in the NIF), not per document — so there is no per-event type inference cost:
+
+      * For `string/2` fields it is a `%{String.t() => String.t()}` remap that rewrites
+        one string to another (e.g. mapping `"SPAN_KIND_CLIENT"` to `"Client"`).
+      * For all non-string fields it is a `%{String.t() => integer()}` lookup that
+        derives an integer from a string (e.g. mapping `"ERROR"` to `17` for severity
+        numbers).
+
+      Mixing the two — string values on a non-string field, or integer values on a
+      string field — is rejected at compile time rather than silently mishandled. In
+      both cases, values absent from the map fall back to the field's `:default`.
 
   ## Type-Specific Options
 
@@ -62,7 +73,8 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
 
     * `:exclude_keys` — top-level keys to remove from the output map
     * `:elevate_keys` — keys whose children are merged into the parent map (the key itself
-      is removed). Existing top-level keys win over elevated children.
+      is removed). Existing top-level keys win over elevated children. When multiple
+      elevated maps contain the same child key, the earlier configured elevate key wins.
     * `:pick` — list of `{key, paths}` tuples for sparse map assembly. Each entry tries its
       coalesce paths; resolved entries are included in the output, unresolved are omitted.
       If pick produces a non-empty map, it becomes the field value. If empty, falls back

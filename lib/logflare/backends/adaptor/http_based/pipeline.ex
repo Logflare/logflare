@@ -13,6 +13,9 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Pipeline do
   alias Logflare.Sources.Source
   alias Logflare.Utils
 
+  @batch_timeout if Application.compile_env(:logflare, :env) == :test, do: 10, else: 1_000
+  @producer_interval if Application.compile_env(:logflare, :env) == :test, do: 10, else: 1_000
+
   @spec start_link(Source.t(), Backend.t(), module()) :: Broadway.on_start()
   def start_link(source, backend, client) do
     Broadway.start_link(__MODULE__,
@@ -26,7 +29,8 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Pipeline do
           {BufferProducer,
            [
              backend_id: backend.id,
-             source_id: source.id
+             source_id: source.id,
+             interval: @producer_interval
            ]},
         transformer: {__MODULE__, :transform, []},
         concurrency: 1
@@ -35,7 +39,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Pipeline do
         default: [concurrency: 3, min_demand: 1]
       ],
       batchers: [
-        http: [concurrency: 6, batch_size: 250]
+        http: [concurrency: 6, batch_size: 250, batch_timeout: @batch_timeout]
       ],
       context: %{
         source_id: source.id,

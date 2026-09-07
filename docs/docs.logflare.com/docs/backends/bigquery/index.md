@@ -139,7 +139,7 @@ The steps for setting up self-hosted Logflare requires different BigQuery config
 
 When query volume for your instance is high, you may experience BigQuery rate limiting for their REST API. This occurs when BigQuery receives over 100 requests per second per user. This adversely affects the Logflare Endpoints functionality as well as Logflare Search functionality.
 
-By default, all BYOB users have managed service accounts disabled. In order to enable routing requests through mangaged service accounts, go to **Accounts > BigQuery Backend > Managed Service Accounts** and enable the setting by ticking the checkbox.
+By default, all BYOB users have managed service accounts disabled. In order to enable routing requests through managed service accounts, go to **Accounts > BigQuery Backend > Managed Service Accounts** and enable the setting by ticking the checkbox.
 
 Ensure that the Logflare service account has the following roles:
 
@@ -171,7 +171,7 @@ When referencing Logflare-managed BigQuery tables, you will need to reference th
 
 ### Unnesting Repeated Records
 
-Nested columns are represeted as repeated `RECORD`s in BigQuery. To query inside a nested record you must UNNEST it like so:
+Nested columns are represented as repeated `RECORD`s in BigQuery. To query inside a nested record you must UNNEST it like so:
 
 ```sql
 SELECT timestamp, req.url, h.cf_cache_status
@@ -232,7 +232,7 @@ It may take up to 15 minutes for ingested data to flow into Data Studio immediat
 
 #### Step 5: Connect to the Data
 
-![Connect to the da ta](./connect-data-studio.png)
+![Connect to the data](./connect-data-studio.png)
 
 #### Step 6: Set Timestamp Type to Date Hour (Optional)
 
@@ -244,7 +244,7 @@ You can also mix hourly and daily data in your reports using `duplicate` on a fi
 
 #### Step 7: Create the Report and Configure Settings
 
-Click on "Create Report" to finialize your initial report.
+Click on "Create Report" to finalize your initial report.
 ![Create the Data Studio Report](./data-studio-create-report.png)
 
 You can also configure the report further by navigating to Report Settings

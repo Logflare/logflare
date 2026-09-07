@@ -39,12 +39,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Provisioner do
   @doc false
   @impl GenServer
   def handle_continue(:test_connection, %Backend{} = backend) do
-    with :ok <- ClickHouseAdaptor.test_connection(backend) do
+    with :ok <- ClickHouseAdaptor.test_ingest_connection(backend) do
       {:noreply, backend, {:continue, :provision_tables}}
     else
       {:error, reason} = error ->
         Logger.warning("ClickHouse test connection failed",
           backend_id: backend.id,
+          host: config_host(backend),
           error_string: inspect(reason)
         )
 
@@ -60,6 +61,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Provisioner do
       {:error, reason} = error ->
         Logger.warning("ClickHouse provisioning failed",
           backend_id: backend.id,
+          host: config_host(backend),
           error_string: inspect(reason)
         )
 
@@ -68,6 +70,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Provisioner do
   end
 
   def handle_continue(:close_process, state), do: {:stop, :normal, state}
+
+  @spec config_host(Backend.t()) :: String.t() | nil
+  defp config_host(%Backend{config: %{url: url}}) when is_binary(url), do: URI.parse(url).host
+  defp config_host(_backend), do: nil
 
   @doc false
   @impl GenServer

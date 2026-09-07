@@ -8,13 +8,17 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   import Ecto.Changeset
   import NimbleParsec
   import Logflare.Logs.SyslogParser.Helpers
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.SyslogAdaptor.{Pool, Socket, Pipeline}
+  alias Logflare.Backends.Backend
+  require Logger
+
   @behaviour Logflare.Backends.Adaptor
 
   typedstruct enforce: true do
     field(:tls, boolean())
     field(:host, String.t())
-    field(:port, non_neg_integer())
+    field(:port, pos_integer())
     field(:cipher_key, binary())
     field(:ca_cert, String.t())
     field(:client_cert, String.t())
@@ -77,7 +81,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   def validate_config(changeset) do
     changeset
     |> validate_required([:host, :port])
-    |> validate_inclusion(:port, 0..65_535)
+    |> validate_inclusion(:port, 1..65_535)
     |> validate_cipher()
     |> validate_certificate(:ca_cert)
     |> validate_certificate(:client_cert)
@@ -93,6 +97,11 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
     |> redact_config_field(:client_cert)
     |> redact_config_field(:client_key)
     |> redact_config_field(:cipher_key)
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def sanitize_config_for_display(config) do
+    Adaptor.mask_config_values(config, except: [:tls, :host, :port, :max_message_bytes])
   end
 
   defp redact_config_field(config, field) do
@@ -174,6 +183,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
+  @spec test_connection(Backend.t()) :: :ok | {:error, :socket_closed | :timeout | :unknown_error}
   def test_connection(backend) do
     result =
       with {:ok, socket} <- Socket.connect(backend.config, to_timeout(second: 3)) do
@@ -182,13 +192,24 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
       end
 
     with {:error, reason} <- result do
-      {:error, format_connection_error(reason)}
+      formatted_error = format_connection_error(reason)
+
+      Logger.warning("Unexpected error when testing Syslog backend connection: #{reason}",
+        backend_id: backend.id,
+        user_id: backend.user_id
+      )
+
+      if is_binary(formatted_error) do
+        {:error, :unknown_error}
+      else
+        {:error, formatted_error}
+      end
     end
   end
 
   # copied from mint: https://github.com/elixir-mint/mint/blob/0bfcc869b53b83989c24ba681d66d0a447b5a1c3/lib/mint/transport_error.ex#L86-L101
-  defp format_connection_error(:closed), do: "socket closed"
-  defp format_connection_error(:timeout), do: "timeout"
+  defp format_connection_error(:closed), do: :socket_closed
+  defp format_connection_error(:timeout), do: :timeout
 
   defp format_connection_error(reason) do
     case :ssl.format_error(reason) do

@@ -478,6 +478,46 @@ defmodule Logflare.MapperTest do
 
       assert result["attrs"] == %{"region" => "us-east"}
     end
+
+    test "elevate_keys: non-map value is preserved as a literal key" do
+      doc = %{
+        "level" => "info",
+        "metadata" => "{\"reason\":\"abuse\",\"actor\":\"admin\"}"
+      }
+
+      result =
+        compile_and_map(
+          [Field.json("attrs", path: "$", elevate_keys: ["metadata"])],
+          doc
+        )
+
+      assert result["attrs"]["level"] == "info"
+      assert result["attrs"]["metadata"] == "{\"reason\":\"abuse\",\"actor\":\"admin\"}"
+    end
+
+    test "elevate_keys: preserves stringified metadata alongside excluded keys" do
+      doc = %{
+        "id" => "uuid",
+        "event_message" => "hello",
+        "timestamp" => 123,
+        "region" => "us-east",
+        "metadata" => "serialized-string"
+      }
+
+      result =
+        compile_and_map(
+          [
+            Field.json("attrs",
+              path: "$",
+              exclude_keys: ["id", "event_message", "timestamp"],
+              elevate_keys: ["metadata"]
+            )
+          ],
+          doc
+        )
+
+      assert result["attrs"] == %{"region" => "us-east", "metadata" => "serialized-string"}
+    end
   end
 
   # ── Pick ──────────────────────────────────────────────────────────────
@@ -1113,6 +1153,102 @@ defmodule Logflare.MapperTest do
     end
   end
 
+  # ── String value_map ────────────────────────────────────────────────
+
+  describe "string value_map" do
+    test "remaps a matched value to its string replacement" do
+      result =
+        compile_and_map(
+          [
+            Field.string("span_kind",
+              path: "$.kind",
+              value_map: %{"SPAN_KIND_CLIENT" => "Client", "SPAN_KIND_SERVER" => "Server"}
+            )
+          ],
+          %{"kind" => "SPAN_KIND_CLIENT"}
+        )
+
+      assert result["span_kind"] == "Client"
+    end
+
+    test "lookup is case-insensitive" do
+      result =
+        compile_and_map(
+          [
+            Field.string("span_kind",
+              path: "$.kind",
+              value_map: %{"SPAN_KIND_SERVER" => "Server"}
+            )
+          ],
+          %{"kind" => "span_kind_server"}
+        )
+
+      assert result["span_kind"] == "Server"
+    end
+
+    test "unmapped values fall back to the default" do
+      result =
+        compile_and_map(
+          [
+            Field.string("span_kind",
+              path: "$.kind",
+              default: "Unspecified",
+              value_map: %{"SPAN_KIND_CLIENT" => "Client"}
+            )
+          ],
+          %{"kind" => "something_else"}
+        )
+
+      assert result["span_kind"] == "Unspecified"
+    end
+
+    test "unmapped values with no explicit default fall back to empty string" do
+      result =
+        compile_and_map(
+          [
+            Field.string("span_kind",
+              path: "$.kind",
+              value_map: %{"SPAN_KIND_CLIENT" => "Client"}
+            )
+          ],
+          %{"kind" => "something_else"}
+        )
+
+      assert result["span_kind"] == ""
+    end
+
+    test "missing path falls back to default, not remapped" do
+      result =
+        compile_and_map(
+          [
+            Field.string("span_kind",
+              path: "$.kind",
+              default: "Unspecified",
+              value_map: %{"SPAN_KIND_CLIENT" => "Client"}
+            )
+          ],
+          %{}
+        )
+
+      assert result["span_kind"] == "Unspecified"
+    end
+
+    test "empty value_map passes the resolved value through unchanged" do
+      result =
+        compile_and_map(
+          [
+            Field.string("span_kind",
+              path: "$.kind",
+              value_map: %{}
+            )
+          ],
+          %{"kind" => "anything"}
+        )
+
+      assert result["span_kind"] == "anything"
+    end
+  end
+
   # ── Allowed values ──────────────────────────────────────────────────
 
   describe "allowed_values" do
@@ -1280,6 +1416,26 @@ defmodule Logflare.MapperTest do
 
       assert {:error, reason} = Mapper.compile(config)
       assert reason =~ "duplicate field name: 'name'"
+    end
+
+    test "returns {:error, reason} on a string field whose value_map has non-string values" do
+      config =
+        MappingConfig.new([
+          Field.string("span_kind", path: "$.kind", value_map: %{"SPAN_KIND_CLIENT" => 3})
+        ])
+
+      assert {:error, reason} = Mapper.compile(config)
+      assert reason =~ "value_map values must be strings"
+    end
+
+    test "returns {:error, reason} on a string field whose value_map has non-string keys" do
+      config =
+        MappingConfig.new([
+          Field.string("span_kind", path: "$.kind", value_map: %{1 => "Client"})
+        ])
+
+      assert {:error, reason} = Mapper.compile(config)
+      assert reason =~ "value_map keys must be strings"
     end
   end
 
@@ -1988,6 +2144,44 @@ defmodule Logflare.MapperTest do
       assert attrs["extra"] == "val"
     end
 
+    test "top-level and literal dotted keys win over elevated values" do
+      result =
+        compile_and_map(
+          [Field.flat_map("attrs", path: "$", elevate_keys: ["metadata"])],
+          %{
+            "metadata" => %{"level" => "nested", "a" => %{"b" => 1}},
+            "level" => "top",
+            "a.b" => 2
+          }
+        )
+
+      assert result["attrs"] == %{"level" => "top", "a.b" => "2"}
+    end
+
+    test "elevate_keys: non-map metadata is preserved as a literal string key" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              path: "$",
+              exclude_keys: ["id"],
+              elevate_keys: ["metadata"]
+            )
+          ],
+          %{
+            "id" => "123",
+            "metadata" => ~s({"reason":"abuse","actor":"admin"}),
+            "extra" => "val"
+          }
+        )
+
+      attrs = result["attrs"]
+      refute Map.has_key?(attrs, "id")
+      assert attrs["extra"] == "val"
+      # stringified metadata survives elevate and stringify: attrs["metadata"] == raw string
+      assert attrs["metadata"] == ~s({"reason":"abuse","actor":"admin"})
+    end
+
     test "JSON-encodes list of mixed types" do
       result =
         compile_and_map(
@@ -2115,6 +2309,29 @@ defmodule Logflare.MapperTest do
         )
 
       assert result["body"] == doc
+    end
+
+    test "elevate_keys strips prefixes but preserves a non-map leaf at the elevate key" do
+      result =
+        compile_and_map_flat(
+          [
+            Field.json("attrs",
+              path: "$",
+              elevate_keys: ["metadata"]
+            )
+          ],
+          %{
+            "level" => "info",
+            "metadata" => "serialized-string",
+            "metadata.region" => "us-east"
+          }
+        )
+
+      # dotted child is elevated (prefix stripped)
+      assert result["attrs"]["region"] == "us-east"
+      # bare `metadata` leaf survives instead of being dropped
+      assert result["attrs"]["metadata"] == "serialized-string"
+      assert result["attrs"]["level"] == "info"
     end
   end
 

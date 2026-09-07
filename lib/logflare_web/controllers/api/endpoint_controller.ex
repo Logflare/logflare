@@ -3,7 +3,6 @@ defmodule LogflareWeb.Api.EndpointController do
   use OpenApiSpex.ControllerSpecs
 
   alias Logflare.Backends
-  alias Logflare.Users
   alias Logflare.Endpoints
 
   alias LogflareWeb.OpenApi.Accepted
@@ -12,6 +11,7 @@ defmodule LogflareWeb.Api.EndpointController do
   alias LogflareWeb.OpenApi.NotFound
   alias LogflareWeb.OpenApi.UnprocessableEntity
 
+  alias LogflareWeb.OpenApiSchemas.EndpointApiParams
   alias LogflareWeb.OpenApiSchemas.EndpointApiSchema
 
   action_fallback(LogflareWeb.Api.FallbackController)
@@ -24,8 +24,7 @@ defmodule LogflareWeb.Api.EndpointController do
   )
 
   def index(%{assigns: %{user: user}} = conn, _) do
-    user = Users.preload_endpoints(user)
-    json(conn, user.endpoint_queries)
+    json(conn, Endpoints.list_endpoints_by_user_access(user))
   end
 
   operation(:show,
@@ -38,7 +37,8 @@ defmodule LogflareWeb.Api.EndpointController do
   )
 
   def show(%{assigns: %{user: user}} = conn, %{"token" => token}) do
-    with query when not is_nil(query) <- Endpoints.get_by(token: token, user_id: user.id) do
+    with query when not is_nil(query) <-
+           Endpoints.get_endpoint_query_by_user_access(user, token: token) do
       json(conn, query)
     else
       nil -> {:error, :not_found}
@@ -47,7 +47,7 @@ defmodule LogflareWeb.Api.EndpointController do
 
   operation(:create,
     summary: "Create endpoint",
-    request_body: EndpointApiSchema.params(),
+    request_body: EndpointApiParams.params(),
     responses: %{
       201 => Created.response(EndpointApiSchema),
       404 => NotFound.response(),
@@ -57,7 +57,8 @@ defmodule LogflareWeb.Api.EndpointController do
 
   def create(%{assigns: %{user: user}} = conn, params) do
     with :ok <- authorize_backend_id(user, params),
-         {:ok, query} <- Endpoints.create_query(user, params) do
+         origin <- conn.assigns[:access_token] || user,
+         {:ok, query} <- Endpoints.create_query(user, params, origin) do
       conn
       |> put_status(201)
       |> json(query)
@@ -70,7 +71,7 @@ defmodule LogflareWeb.Api.EndpointController do
   operation(:update,
     summary: "Update endpoint",
     parameters: [token: [in: :path, description: "Endpoint UUID Token", type: :string]],
-    request_body: EndpointApiSchema.params(),
+    request_body: EndpointApiParams.params(),
     responses: %{
       200 => Accepted.response(EndpointApiSchema),
       204 => Accepted.response(),
@@ -81,8 +82,10 @@ defmodule LogflareWeb.Api.EndpointController do
 
   def update(%{assigns: %{user: user}} = conn, %{"token" => token} = params) do
     with :ok <- authorize_backend_id(user, params),
-         query when not is_nil(query) <- Endpoints.get_by(token: token, user_id: user.id),
-         {:ok, query} <- Endpoints.update_query(query, params) do
+         origin <- conn.assigns[:access_token] || user,
+         query when not is_nil(query) <-
+           Endpoints.get_endpoint_query_by_user_access(user, token: token),
+         {:ok, query} <- Endpoints.update_query(user, query, params, origin) do
       conn
       |> case do
         %{method: "PUT"} ->
@@ -113,8 +116,11 @@ defmodule LogflareWeb.Api.EndpointController do
   )
 
   def delete(%{assigns: %{user: user}} = conn, %{"token" => token}) do
-    with query when not is_nil(query) <- Endpoints.get_by(token: token, user_id: user.id),
-         {:ok, _} <- Endpoints.delete_query(query) do
+    origin = conn.assigns[:access_token] || user
+
+    with query when not is_nil(query) <-
+           Endpoints.get_endpoint_query_by_user_access(user, token: token),
+         {:ok, _} <- Endpoints.delete_query(query, origin) do
       conn
       |> put_status(204)
       |> text("")

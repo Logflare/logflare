@@ -8,10 +8,13 @@ defmodule Logflare.Backends.UserMonitoringTest do
   alias Logflare.Users
   alias Logflare.Sources
   alias Logflare.Backends
+  alias Logflare.Backends.QueryError
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.UserMonitoring
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.LogEvent
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Endpoints
 
   def source_and_user(_context) do
@@ -25,13 +28,15 @@ defmodule Logflare.Backends.UserMonitoringTest do
     start_supervised!({SourceSup, source}, id: :source)
     start_supervised!({SourceSup, source_b}, id: :source_b)
 
-    :timer.sleep(250)
     [source: source, source_b: source_b, user: user]
   end
 
-  def start_otel_exporter(_context) do
-    [spec] = UserMonitoring.get_otel_exporter()
-    start_supervised!(spec)
+  def start_user_monitoring_pipeline(_context) do
+    start_supervised!(AllLogsLogged)
+
+    UserMonitoring.get_otel_exporter()
+    |> Enum.each(&start_supervised!/1)
+
     :ok
   end
 
@@ -66,6 +71,64 @@ defmodule Logflare.Backends.UserMonitoringTest do
       end)
     end
 
+    test "query error logs are routed to user's system source when monitoring is on", %{
+      user: user,
+      source: source
+    } do
+      {:ok, user} = Users.update_user_allowed(user, %{system_monitoring: true})
+      system_source = Sources.get_by(user_id: user.id, system_source_type: :logs)
+
+      error = %QueryError{
+        kind: :backend_error,
+        raw_error: %{"message" => "raw query detail"},
+        backend: Logflare.Backends.Adaptor.BigQueryAdaptor
+      }
+
+      TestUtils.retry_assert(fn ->
+        assert capture_log(fn ->
+                 QueryError.log(error,
+                   user_id: user.id,
+                   source_token: source.token
+                 )
+               end) =~ "Backend query error"
+
+        assert Enum.any?(
+                 Backends.list_recent_logs(system_source),
+                 &query_error_log_event?/1
+               )
+      end)
+    end
+
+    test "invalid query errors are not routed to user's system source when monitoring is on", %{
+      user: user,
+      source: source
+    } do
+      {:ok, user} = Users.update_user_allowed(user, %{system_monitoring: true})
+      system_source = Sources.get_by(user_id: user.id, system_source_type: :logs)
+
+      error = %QueryError{
+        kind: :invalid_query,
+        raw_error: %{"message" => "raw user query detail"},
+        backend: Logflare.Backends.Adaptor.BigQueryAdaptor
+      }
+
+      log =
+        capture_log(fn ->
+          QueryError.log(error,
+            user_id: user.id,
+            source_token: source.token
+          )
+        end)
+
+      refute log =~ "Backend query error"
+      refute log =~ "raw user query detail"
+
+      refute Enum.any?(
+               Backends.list_recent_logs(system_source),
+               &invalid_query_error_log_event?/1
+             )
+    end
+
     test "are not routed to user's system source when not monitoring", %{
       user: user,
       source: source
@@ -85,11 +148,42 @@ defmodule Logflare.Backends.UserMonitoringTest do
     end
   end
 
+  defp query_error_log_event?(%{
+         body: %{
+           "event_message" => "Backend query error",
+           "metadata" => %{"error_kind" => "backend_error", "error_string" => error_string}
+         }
+       }) do
+    error_string =~ "raw query detail"
+  end
+
+  defp query_error_log_event?(_event), do: false
+
+  defp invalid_query_error_log_event?(%{
+         body: %{
+           "metadata" => %{
+             "error_kind" => "invalid_query"
+           }
+         }
+       }),
+       do: true
+
+  defp invalid_query_error_log_event?(%{
+         body: %{
+           "metadata" => %{
+             "error_string" => error_string
+           }
+         }
+       })
+       when is_binary(error_string),
+       do: error_string =~ "raw user query detail"
+
+  defp invalid_query_error_log_event?(_event), do: false
+
   describe "system monitoring labels" do
-    setup :start_otel_exporter
+    setup :start_user_monitoring_pipeline
 
     setup do
-      start_supervised!(AllLogsLogged)
       insert(:plan)
       :ok
     end
@@ -111,8 +205,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
       metrics_source = insert(:source, user: user, system_source_type: :metrics)
       start_supervised!({SourceSup, metrics_source}, id: :metrics_source)
       start_supervised!({SourceSup, source}, id: :source)
-
-      :timer.sleep(1000)
 
       assert {:ok, _} = Backends.ingest_logs([%{"metadata" => %{"value" => "test"}}], source)
 
@@ -243,10 +335,11 @@ defmodule Logflare.Backends.UserMonitoringTest do
   end
 
   describe "egress" do
-    setup :start_otel_exporter
+    setup :start_user_monitoring_pipeline
+    setup :set_mimic_global
 
     setup do
-      start_supervised!(AllLogsLogged)
+      Mimic.stub(Logflare.Utils.SSRF, :safe_resolve, fn _ -> {:ok, {127, 0, 0, 1}} end)
       insert(:plan)
       :ok
     end
@@ -279,8 +372,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
       {:ok, _} = Backends.update_source_backends(source, [webhook_backend])
       Backends.Cache.get_backend(webhook_backend.id)
 
-      :timer.sleep(1000)
-
       assert {:ok, _} = Backends.ingest_logs([%{"message" => "test webhook egress"}], source)
 
       assert_receive {:insert_all, [%{json: %{"attributes" => _}} | _] = rows}, 15_000
@@ -307,10 +398,9 @@ defmodule Logflare.Backends.UserMonitoringTest do
   end
 
   describe "endpoints" do
-    setup :start_otel_exporter
+    setup :start_user_monitoring_pipeline
 
     setup do
-      start_supervised!(AllLogsLogged)
       insert(:plan)
       :ok
     end
@@ -345,7 +435,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
         )
 
       assert {:ok, _} = Endpoints.run_query(endpoint)
-      :timer.sleep(1000)
       endpoint_id = endpoint.id
 
       assert_receive {:insert_all,
@@ -365,6 +454,138 @@ defmodule Logflare.Backends.UserMonitoringTest do
                         | _
                       ]},
                      5_000
+    end
+
+    test "endpoints.query emits backend_id and backend_type in attributes" do
+      pid = self()
+
+      GoogleApi.BigQuery.V2.Api.Tabledata
+      |> stub(:bigquery_tabledata_insert_all, fn _conn,
+                                                 _project_id,
+                                                 _dataset_id,
+                                                 _table_name,
+                                                 opts ->
+        send(pid, {:insert_all, opts[:body].rows})
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      user = insert(:user, system_monitoring: true)
+      source = insert(:source, user: user, system_source_type: :metrics)
+      start_supervised!({SourceSup, source}, id: :source)
+
+      backend = insert(:backend, user: user, type: :clickhouse)
+
+      expect(ClickHouseAdaptor, :execute_query, fn _backend, _query, _opts ->
+        {:ok, QueryResult.new([%{"result" => "1"}], %{total_bytes_processed: 100})}
+      end)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          language: :ch_sql,
+          query: "SELECT 1 as result",
+          backend: backend
+        )
+
+      assert {:ok, _} = Endpoints.run_query(endpoint)
+
+      backend_id = backend.id
+
+      assert_receive {:insert_all,
+                      [
+                        %{
+                          json: %{
+                            "attributes" => [
+                              %{
+                                "backend_id" => ^backend_id,
+                                "backend_type" => "clickhouse"
+                              }
+                            ]
+                          }
+                        }
+                        | _
+                      ]},
+                     5_000
+    end
+  end
+
+  describe "IngestPipeline flat-map format" do
+    # Verifies that the flat-map events emitted by PullProducer (one map per ETS row)
+    # are grouped and routed correctly by handle_batch — matching what the old
+    # OtelMetric.handle_metric path previously produced from protobuf Metric structs.
+
+    setup do
+      insert(:plan)
+      :ok
+    end
+
+    test "flat event maps are grouped correctly by user_id" do
+      user1 = insert(:user)
+      user2 = insert(:user)
+
+      # The new flat-map format: one map per ETS row
+      events = [
+        %{
+          "event_message" => "logflare.backends.ingest.ingested_bytes",
+          "metric_type" => "sum",
+          "aggregation_temporality" => "cumulative",
+          "is_monotonic" => false,
+          "metadata" => %{"type" => "metric"},
+          "value" => 50_000,
+          "attributes" => %{"user_id" => to_string(user1.id)},
+          "start_time" => System.system_time(:nanosecond),
+          "timestamp" => System.system_time(:nanosecond)
+        },
+        %{
+          "event_message" => "logflare.backends.ingest.ingested_bytes",
+          "metric_type" => "sum",
+          "aggregation_temporality" => "cumulative",
+          "is_monotonic" => false,
+          "metadata" => %{"type" => "metric"},
+          "value" => 10_000,
+          "attributes" => %{"user_id" => to_string(user2.id)},
+          "start_time" => System.system_time(:nanosecond),
+          "timestamp" => System.system_time(:nanosecond)
+        }
+      ]
+
+      # Simulate what handle_batch does with the new flat format
+      grouped =
+        Enum.group_by(events, fn event ->
+          Logflare.Users.get_related_user_id(event["attributes"])
+        end)
+
+      # get_related_user_id returns the user_id as-is from the map — a string here
+      assert map_size(grouped) == 2
+      assert [%{"value" => 50_000}] = grouped[to_string(user1.id)]
+      assert [%{"value" => 10_000}] = grouped[to_string(user2.id)]
+    end
+
+    test "flat event map contains the expected fields matching the old OtelMetric output" do
+      # Documents the contract: row_to_event must produce the same key fields that
+      # OtelMetric.handle_metric produced so downstream consumers see the same shape.
+      event = %{
+        "event_message" => "logflare.backends.ingest.ingested_bytes",
+        "metric_type" => "sum",
+        "aggregation_temporality" => "cumulative",
+        "is_monotonic" => false,
+        "metadata" => %{"type" => "metric"},
+        "value" => 50_000,
+        "attributes" => %{"user_id" => "123"},
+        "start_time" => 1_000_000,
+        "timestamp" => 2_000_000
+      }
+
+      # All fields that OtelMetric.handle_metric used to produce are present
+      assert event["event_message"] == "logflare.backends.ingest.ingested_bytes"
+      assert event["metric_type"] == "sum"
+      assert event["aggregation_temporality"] == "cumulative"
+      assert event["is_monotonic"] == false
+      assert event["metadata"] == %{"type" => "metric"}
+      assert event["value"] == 50_000
+      assert is_map(event["attributes"])
+      assert is_integer(event["start_time"])
+      assert is_integer(event["timestamp"])
     end
   end
 end

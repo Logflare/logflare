@@ -1095,6 +1095,46 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoderTest do
       # string("a") = 2 bytes, string("1") = 2 bytes
       assert byte_size(rest) == 4
     end
+
+    test "encodes a single binary pair from map input exactly" do
+      encoded = RowBinaryEncoder.map_string_string(%{"name" => "alice"})
+
+      assert IO.iodata_to_binary(encoded) == <<1, 4, "name", 5, "alice">>
+    end
+
+    test "map input stays byte-identical to the generic map/3 string encoder" do
+      # The specialized is_map fast path must match delegating to map/3 with
+      # &string/1 for any map (both traverse via :maps.fold, so key order and
+      # therefore the bytes are identical).
+      for input <- [
+            %{"name" => "alice"},
+            %{"name" => "alice", "city" => "boston", "role" => "admin"},
+            %{"" => "", "k" => "v"}
+          ] do
+        specialized = IO.iodata_to_binary(RowBinaryEncoder.map_string_string(input))
+
+        generic =
+          IO.iodata_to_binary(
+            RowBinaryEncoder.map(input, &RowBinaryEncoder.string/1, &RowBinaryEncoder.string/1)
+          )
+
+        assert specialized == generic
+      end
+    end
+
+    test "falls back to string/1 for iodata-list values" do
+      # The guarded fallback preserves string/1's iodata handling: an
+      # iodata-list value encodes identically to its flattened binary.
+      encoded = RowBinaryEncoder.map_string_string(%{"name" => ["al", ?i, "ce"]})
+
+      assert IO.iodata_to_binary(encoded) == <<1, 4, "name", 5, "alice">>
+    end
+
+    test "falls back to string/1 for iodata-list keys" do
+      encoded = RowBinaryEncoder.map_string_string(%{["na", "me"] => "alice"})
+
+      assert IO.iodata_to_binary(encoded) == <<1, 4, "name", 5, "alice">>
+    end
   end
 
   describe "map_string_uint64/1" do

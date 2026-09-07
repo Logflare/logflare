@@ -7,13 +7,13 @@ defmodule LogflareWeb.Plugs.VerifyResourceAccess do
   If no resource is set, performs a passthrough.
   """
   alias Logflare.Sources.Source
-  alias Logflare.Endpoints.Query
+  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.User
   alias Logflare.Auth
   alias LogflareWeb.Api.FallbackController
   def init(_opts), do: nil
 
-  def call(%{assigns: %{endpoint: %Query{enable_auth: false}}} = conn, _opts) do
+  def call(%{assigns: %{endpoint: %EndpointQuery{enable_auth: false}}} = conn, _opts) do
     conn
   end
 
@@ -42,7 +42,7 @@ defmodule LogflareWeb.Plugs.VerifyResourceAccess do
           assigns:
             %{
               user: %User{id: id},
-              endpoint: %Query{id: endpoint_id, user_id: user_id}
+              endpoint: %EndpointQuery{id: endpoint_id, user_id: user_id}
             } = assigns
         } = conn,
         _opts

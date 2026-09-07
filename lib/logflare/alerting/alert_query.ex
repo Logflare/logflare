@@ -6,7 +6,7 @@ defmodule Logflare.Alerting.AlertQuery do
 
   alias Crontab.CronExpression.Parser, as: CronParser
   alias Crontab.Scheduler
-  alias Logflare.Endpoints.Query
+  alias Logflare.Endpoints.EndpointQuery
 
   @derive {Jason.Encoder,
            only: [
@@ -19,7 +19,8 @@ defmodule Logflare.Alerting.AlertQuery do
              :query,
              :webhook_notification_url,
              :slack_hook_url,
-             :enabled
+             :enabled,
+             :backends
            ]}
   typed_schema "alert_queries" do
     field :name, :string
@@ -71,6 +72,6 @@ defmodule Logflare.Alerting.AlertQuery do
     # this source mapping logic is for any generic changeset
     # we implement the same columns for now,
     # can consider migrating to separate table in future.
-    |> Query.update_source_mapping()
+    |> EndpointQuery.update_source_mapping()
   end
 end

@@ -84,10 +84,41 @@ defmodule Logflare.TestUtilsGrpc do
         span_id: :crypto.strong_rand_bytes(8),
         parent_span_id: :crypto.strong_rand_bytes(8),
         trace_id: :crypto.strong_rand_bytes(16),
+        kind: :SPAN_KIND_SERVER,
         start_time_unix_nano: System.os_time(:nanosecond),
         end_time_unix_nano: System.os_time(:nanosecond),
         events: random_event(),
         attributes: random_attributes()
+      }
+    ]
+  end
+
+  @doc """
+  Builds a ResourceSpans containing a single Span with the given `kind`.
+  """
+  @spec resource_span_with_kind(Span.SpanKind.t()) :: [ResourceSpans.t()]
+  def resource_span_with_kind(kind) do
+    [
+      %ResourceSpans{
+        resource: %Resource{attributes: random_attributes()},
+        scope_spans: [
+          %ScopeSpans{
+            scope: random_scope(),
+            spans: [
+              %Span{
+                name: TestUtils.random_string(),
+                span_id: :crypto.strong_rand_bytes(8),
+                parent_span_id: :crypto.strong_rand_bytes(8),
+                trace_id: :crypto.strong_rand_bytes(16),
+                kind: kind,
+                start_time_unix_nano: System.os_time(:nanosecond),
+                end_time_unix_nano: System.os_time(:nanosecond),
+                events: [],
+                attributes: random_attributes()
+              }
+            ]
+          }
+        ]
       }
     ]
   end

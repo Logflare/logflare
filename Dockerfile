@@ -2,7 +2,7 @@ ARG ELIXIR_VERSION=1.19.5
 ARG OTP_VERSION=27.3.4.6
 ARG DEBIAN_VERSION=trixie-20260112-slim
 
-ARG RUST_VERSION=1.94.1
+ARG RUST_VERSION=1.96.0
 ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
 ARG RUNNER_IMAGE="debian:${DEBIAN_VERSION}"
 
@@ -32,18 +32,33 @@ RUN mix do local.rebar --force + local.hex --force + deps.get + deps.compile
 COPY assets/package.json assets/package-lock.json assets/
 RUN npm --prefix assets ci
 
-COPY . ./
-
-# rust bin path and release optimizations
+# Compile native extensions before copying application source so ordinary Elixir
+# changes can reuse the expensive architecture-specific Rust build.
 ENV PATH="/root/.cargo/bin:${PATH}"
 ENV CARGO_PROFILE_RELEASE_LTO="thin"
 ENV CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+COPY Cargo.toml Cargo.lock ./
+COPY native native/
+# Keep Cargo freshness checks independent of checkout mtimes so a cached target
+# remains reusable after the full source tree is copied. Rustler invokes `cargo
+# rustc --package` during `mix release`; using plain `cargo build` here creates
+# different final-crate units and makes Rustler compile every NIF again. Keep
+# this command mode aligned with Rustler, and derive the package list so future
+# workspace crates cannot silently miss the prebuild layer.
+RUN set -eu; \
+    find native Cargo.toml Cargo.lock -exec touch -h -d @1 {} +; \
+    crates="$(cargo metadata --format-version=1 --no-deps --locked | \
+      node -e 'let input=""; process.stdin.on("data", chunk => input += chunk).on("end", () => { const metadata = JSON.parse(input); const members = new Set(metadata.workspace_members); process.stdout.write(metadata.packages.filter(pkg => members.has(pkg.id)).map(pkg => pkg.name).join(" ")); });')"; \
+    test -n "$crates"; \
+    for crate in $crates; do \
+      cargo rustc --package "$crate" --release --locked; \
+    done
 
-# check installed correctly
-RUN cargo version
+COPY . ./
 
 # release
-RUN mix release  && \
+RUN find native Cargo.toml Cargo.lock -exec touch -h -d @1 {} + && \
+    mix release && \
     npm run --prefix assets deploy && \
     mix phx.digest
 
@@ -59,6 +74,11 @@ RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
 ENV LANG en_US.UTF-8
 ENV LANGUAGE en_US:en
 ENV LC_ALL en_US.UTF-8
+
+# Git commit SHA of the build, surfaced as an OTel resource attribute at runtime
+# (see Logflare.Telemetry). Passed in by CI; empty in local/ad-hoc builds.
+ARG COMMIT_SHA
+ENV LOGFLARE_COMMIT_SHA=${COMMIT_SHA}
 
 # Copy required files from builder step
 COPY --from=builder app/_build/prod /opt/app

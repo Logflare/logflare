@@ -5,6 +5,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
 
   import Logflare.Utils.Guards
 
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.EndpointUtils
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder
   alias Logflare.Backends.Backend
@@ -12,32 +13,37 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   alias Logflare.LogEvent.TypeDetection
 
   @finch_pool Logflare.FinchClickHouseIngest
+  @async_finch_pool Logflare.FinchClickHouseAsyncIngest
   @max_retries 1
   @initial_delay 2_500
   @max_delay 5_000
   @pool_timeout 8_000
-  @receive_timeout 20_000
+  @receive_timeout 15_000
+  @too_many_parts_marker "Code: 252."
 
   @doc """
   Inserts a list of `LogEvent` structs into ClickHouse.
 
   This function expects that all LogEvents share the same `event_type`.
 
-  Not intended for direct use. Use `Logflare.Backends.Adaptor.ClickHouseAdaptor.insert_log_events/3` instead.
+  Not intended for direct use. Use `Logflare.Backends.Adaptor.ClickHouseAdaptor.insert_log_events/4` instead.
   """
   @spec insert(
           Backend.t() | Keyword.t(),
           table :: String.t(),
           log_events :: [LogEvent.t()],
-          TypeDetection.event_type()
+          TypeDetection.event_type(),
+          opts :: keyword()
         ) ::
           :ok | {:error, String.t()}
-  def insert(_backend_or_conn_opts, _table, [], _event_type), do: :ok
+  def insert(backend_or_conn_opts, table, log_events, event_type, opts \\ [])
 
-  def insert(%Backend{} = backend, table, log_events, event_type)
+  def insert(_backend_or_conn_opts, _table, [], _event_type, _opts), do: :ok
+
+  def insert(%Backend{} = backend, table, log_events, event_type, opts)
       when is_list(log_events) and is_event_type(event_type) do
     with {:ok, connection_opts} <- build_connection_opts(backend) do
-      insert(connection_opts, table, log_events, event_type)
+      insert(connection_opts, table, log_events, event_type, opts)
     end
   end
 
@@ -45,18 +51,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
         connection_opts,
         table,
         [%LogEvent{event_type: event_type} | _] = log_events,
-        event_type
+        event_type,
+        opts
       )
-      when is_list(connection_opts) and is_non_empty_binary(table) and is_event_type(event_type) do
+      when is_list(connection_opts) and is_non_empty_binary(table) and is_event_type(event_type) and
+             is_list(opts) do
     request_body = log_events |> encode_batch(event_type) |> :zlib.gzip()
-    do_insert(connection_opts, table, event_type, request_body)
+    do_insert(connection_opts, table, event_type, request_body, opts)
   end
 
-  @spec do_insert(Keyword.t(), String.t(), TypeDetection.event_type(), iodata()) ::
+  @spec do_insert(Keyword.t(), String.t(), TypeDetection.event_type(), iodata(), keyword()) ::
           :ok | {:error, String.t()}
-  defp do_insert(connection_opts, table, event_type, request_body) do
-    client = build_client(connection_opts)
-    url = build_request_url(connection_opts, table, event_type)
+  defp do_insert(connection_opts, table, event_type, request_body, opts) do
+    async? = Keyword.get(opts, :async, false)
+    settings = Keyword.delete(opts, :async)
+    client = build_client(connection_opts, async?)
+    url = build_request_url(connection_opts, table, event_type, settings, async?)
 
     case Tesla.post(client, url, request_body) do
       {:ok, %Tesla.Env{status: 200}} ->
@@ -70,8 +80,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     end
   end
 
-  @spec build_client(Keyword.t()) :: Tesla.Client.t()
-  defp build_client(connection_opts) do
+  @doc false
+  @spec too_many_parts?(term()) :: boolean()
+  def too_many_parts?(reason) when is_binary(reason),
+    do: String.contains?(reason, @too_many_parts_marker)
+
+  def too_many_parts?(_reason), do: false
+
+  @spec build_client(Keyword.t(), boolean()) :: Tesla.Client.t()
+  defp build_client(connection_opts, async?) do
     middleware = [
       {Tesla.Middleware.Headers,
        [{"content-type", "application/octet-stream"}, {"content-encoding", "gzip"}]},
@@ -89,12 +106,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
 
     adapter =
       {Tesla.Adapter.Finch,
-       name: @finch_pool, pool_timeout: @pool_timeout, receive_timeout: @receive_timeout}
+       name: finch_pool(async?), pool_timeout: @pool_timeout, receive_timeout: @receive_timeout}
 
     Tesla.client(middleware, adapter)
   end
 
+  @spec finch_pool(boolean()) :: module()
+  defp finch_pool(false), do: @finch_pool
+  defp finch_pool(true), do: @async_finch_pool
+
   @spec retriable?({:ok, Tesla.Env.t()} | {:error, term()}) :: boolean()
+  defp retriable?({:ok, %Tesla.Env{status: status, body: body}})
+       when status >= 500 and is_binary(body),
+       do: not too_many_parts?(body)
+
   defp retriable?({:ok, %Tesla.Env{status: status}}) when status >= 500, do: true
   defp retriable?({:ok, %Tesla.Env{status: 429}}), do: true
   defp retriable?({:ok, _env}), do: false
@@ -105,29 +130,80 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
 
   defp retriable?({:error, _reason}), do: false
 
+  @doc """
+  Inserts a pre-gzipped RowBinary payload directly into ClickHouse.
+
+  Skips encoding and compression — callers must supply a valid gzip-compressed RowBinary binary.
+  Intended for use with streaming-zlib pipelines that build the compressed body incrementally.
+  """
+  @spec insert_compressed(
+          Backend.t() | Keyword.t(),
+          table :: String.t(),
+          TypeDetection.event_type(),
+          compressed :: binary(),
+          opts :: keyword()
+        ) :: :ok | {:error, String.t()}
+  def insert_compressed(backend_or_conn_opts, table, event_type, compressed, opts \\ [])
+
+  def insert_compressed(%Backend{} = backend, table, event_type, compressed, opts)
+      when is_event_type(event_type) and is_binary(compressed) do
+    with {:ok, connection_opts} <- build_connection_opts(backend) do
+      insert_compressed(connection_opts, table, event_type, compressed, opts)
+    end
+  end
+
+  def insert_compressed(connection_opts, table, event_type, compressed, opts)
+      when is_list(connection_opts) and is_non_empty_binary(table) and is_event_type(event_type) and
+             is_binary(compressed) do
+    do_insert(connection_opts, table, event_type, compressed, opts)
+  end
+
+  @doc false
+  @spec encode_mapping_config_id(String.t()) :: binary()
+  def encode_mapping_config_id(config_id), do: RowBinaryEncoder.uuid(config_id)
+
   @doc false
   @spec encode_row(LogEvent.t(), TypeDetection.event_type()) :: iodata()
-  def encode_row(%LogEvent{} = event, :log), do: encode_log_row(event)
-  def encode_row(%LogEvent{} = event, :metric), do: encode_metric_row(event)
-  def encode_row(%LogEvent{} = event, :trace), do: encode_trace_row(event)
+  def encode_row(%LogEvent{body: body} = event, event_type) when is_event_type(event_type) do
+    encode_row(event, event_type, encode_mapping_config_id(body["mapping_config_id"]))
+  end
+
+  @doc false
+  @spec encode_row(LogEvent.t(), TypeDetection.event_type(), iodata()) :: iodata()
+  def encode_row(%LogEvent{} = event, :log, mapping_config_id),
+    do: encode_log_row(event, mapping_config_id)
+
+  def encode_row(%LogEvent{} = event, :metric, mapping_config_id),
+    do: encode_metric_row(event, mapping_config_id)
+
+  def encode_row(%LogEvent{} = event, :trace, mapping_config_id),
+    do: encode_trace_row(event, mapping_config_id)
 
   @doc false
   @spec encode_batch([LogEvent.t()], TypeDetection.event_type()) :: iodata()
-  def encode_batch([%LogEvent{} | _] = rows, event_type) when is_event_type(event_type) do
-    Enum.map(rows, &encode_row(&1, event_type))
+  def encode_batch([%LogEvent{body: body} | _] = rows, event_type)
+      when is_event_type(event_type) do
+    # mapping_config_id is uniform across the batch (set from the event-type's
+    # config_id), so encode it once. Do NOT hoist source_uuid/source_name the
+    # same way -- a batch can mix sources (see pipeline.ex), so those vary per row.
+    mapping_config_id = RowBinaryEncoder.uuid(body["mapping_config_id"])
+    Enum.map(rows, &encode_row(&1, event_type, mapping_config_id))
   end
 
   @doc false
   defdelegate columns_for_type(event_type), to: QueryTemplates
 
-  @spec encode_log_row(LogEvent.t()) :: iodata()
-  defp encode_log_row(%LogEvent{
-         id: id,
-         body: body,
-         source_uuid: source_uuid,
-         source_name: source_name,
-         ingested_at: ingested_at
-       }) do
+  @spec encode_log_row(LogEvent.t(), iodata()) :: iodata()
+  defp encode_log_row(
+         %LogEvent{
+           id: id,
+           body: body,
+           source_uuid: source_uuid,
+           source_name: source_name,
+           ingested_at: ingested_at
+         },
+         mapping_config_id
+       ) do
     source_uuid_str = Atom.to_string(source_uuid)
 
     [
@@ -149,20 +225,23 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
       RowBinaryEncoder.map_string_string(body["resource_attributes"] || %{}),
       RowBinaryEncoder.map_string_string(body["scope_attributes"] || %{}),
       RowBinaryEncoder.map_string_string(body["log_attributes"] || %{}),
-      RowBinaryEncoder.uuid(body["mapping_config_id"]),
+      mapping_config_id,
       RowBinaryEncoder.nullable(ingested_at, &RowBinaryEncoder.datetime64(&1, 6)),
       RowBinaryEncoder.int64(body["timestamp"])
     ]
   end
 
-  @spec encode_metric_row(LogEvent.t()) :: iodata()
-  defp encode_metric_row(%LogEvent{
-         id: id,
-         body: body,
-         source_uuid: source_uuid,
-         source_name: source_name,
-         ingested_at: ingested_at
-       }) do
+  @spec encode_metric_row(LogEvent.t(), iodata()) :: iodata()
+  defp encode_metric_row(
+         %LogEvent{
+           id: id,
+           body: body,
+           source_uuid: source_uuid,
+           source_name: source_name,
+           ingested_at: ingested_at
+         },
+         mapping_config_id
+       ) do
     source_uuid_str = Atom.to_string(source_uuid)
 
     [
@@ -211,20 +290,23 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
       RowBinaryEncoder.array_float64(body["exemplars.value"] || []),
       RowBinaryEncoder.array_string(body["exemplars.span_id"] || []),
       RowBinaryEncoder.array_string(body["exemplars.trace_id"] || []),
-      RowBinaryEncoder.uuid(body["mapping_config_id"]),
+      mapping_config_id,
       RowBinaryEncoder.nullable(ingested_at, &RowBinaryEncoder.datetime64(&1, 6)),
       RowBinaryEncoder.int64(body["timestamp"])
     ]
   end
 
-  @spec encode_trace_row(LogEvent.t()) :: iodata()
-  defp encode_trace_row(%LogEvent{
-         id: id,
-         body: body,
-         source_uuid: source_uuid,
-         source_name: source_name,
-         ingested_at: ingested_at
-       }) do
+  @spec encode_trace_row(LogEvent.t(), iodata()) :: iodata()
+  defp encode_trace_row(
+         %LogEvent{
+           id: id,
+           body: body,
+           source_uuid: source_uuid,
+           source_name: source_name,
+           ingested_at: ingested_at
+         },
+         mapping_config_id
+       ) do
     source_uuid_str = Atom.to_string(source_uuid)
 
     [
@@ -260,7 +342,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
         body["links.attributes"] || [],
         &RowBinaryEncoder.map_string_string/1
       ),
-      RowBinaryEncoder.uuid(body["mapping_config_id"]),
+      mapping_config_id,
       RowBinaryEncoder.nullable(ingested_at, &RowBinaryEncoder.datetime64(&1, 6)),
       RowBinaryEncoder.int64(body["timestamp"])
     ]
@@ -283,7 +365,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
        database: database,
        username: username,
        password: password,
-       async_insert: Map.get(config, :async_insert, false)
+       async_insert_cluster_url: Map.get(config, :async_insert_cluster_url)
      ]}
   end
 
@@ -291,20 +373,35 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     {:error, "Unable to build connection options"}
   end
 
+  @spec insert_origin(Keyword.t(), boolean()) ::
+          {String.t(), String.t() | nil, pos_integer() | nil}
+  defp insert_origin(connection_opts, async?) do
+    # async inserts with a configured dedicated cluster URL target it; everything else
+    # (sync, or async with no dedicated URL) targets the primary URL.
+    url = dedicated_async_url(connection_opts, async?) || Keyword.get(connection_opts, :url)
+    EndpointUtils.origin(url, Keyword.get(connection_opts, :port))
+  end
+
+  @spec dedicated_async_url(Keyword.t(), boolean()) :: String.t() | nil
+  defp dedicated_async_url(connection_opts, true) do
+    case Keyword.get(connection_opts, :async_insert_cluster_url) do
+      url when is_non_empty_binary(url) -> url
+      _ -> nil
+    end
+  end
+
+  defp dedicated_async_url(_connection_opts, false), do: nil
+
   @spec build_request_url(
           connection_opts :: Keyword.t(),
           table :: String.t(),
-          TypeDetection.event_type()
+          TypeDetection.event_type(),
+          opts :: keyword(),
+          async? :: boolean()
         ) :: String.t()
-  defp build_request_url(connection_opts, table, event_type) do
-    base_url = Keyword.get(connection_opts, :url)
+  defp build_request_url(connection_opts, table, event_type, opts, async?) do
+    {scheme, host, port} = insert_origin(connection_opts, async?)
     database = Keyword.get(connection_opts, :database)
-    async_insert = Keyword.get(connection_opts, :async_insert, false)
-
-    uri = URI.parse(base_url)
-    scheme = uri.scheme || "http"
-    host = uri.host
-    port = Keyword.get(connection_opts, :port, default_port(scheme))
 
     columns = columns_for_type(event_type) |> Enum.join(", ")
     query = "INSERT INTO #{database}.#{table} (#{columns}) FORMAT RowBinary"
@@ -317,21 +414,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
         "query" => query,
         "low_cardinality_allow_in_native_format" => "0"
       }
-      |> maybe_add_async_insert(async_insert)
+      |> merge_settings(opts)
       |> URI.encode_query()
 
     "#{scheme}://#{host}:#{port}/?#{params}"
   end
 
-  @spec maybe_add_async_insert(map(), boolean()) :: map()
-  defp maybe_add_async_insert(params, true) do
-    params
-    |> Map.put("async_insert", "1")
-    |> Map.put("wait_for_async_insert", "1")
+  @spec merge_settings(map(), keyword()) :: map()
+  defp merge_settings(params, opts) do
+    Enum.reduce(opts, params, fn {key, value}, acc ->
+      Map.put(acc, to_string(key), to_string(value))
+    end)
   end
-
-  defp maybe_add_async_insert(params, _), do: params
-
-  defp default_port("https"), do: 8443
-  defp default_port(_), do: 8123
 end

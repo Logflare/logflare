@@ -11,6 +11,12 @@ defmodule LogflareWeb.ConnCase do
   it cannot be async. For this reason, every test runs
   inside a transaction which is reset at the beginning
   of the test unless the test case is marked as async.
+
+  The HTTP request helpers imported from this module (`get/3`, `post/3`, and
+  the other verbs) dispatch through `dispatch_and_assert_open_api_response/5`.
+  Responses from documented `/api` routes are therefore checked against their
+  OpenAPI operation and documented status. Tests that intentionally need to
+  bypass this validation can call `Phoenix.ConnTest.dispatch/5` directly.
   """
 
   @session Plug.Session.init(
@@ -22,7 +28,15 @@ defmodule LogflareWeb.ConnCase do
 
   use ExUnit.CaseTemplate
 
+  import ExUnit.Assertions
+
   alias Logflare.Partners.Partner
+  alias LogflareWeb.Router
+  alias OpenApiSpex.Plug.PutApiSpec
+
+  @http_methods [:get, :post, :put, :patch, :delete, :options, :connect, :trace, :head]
+  @conn_test_request_macros for method <- @http_methods, arity <- [2, 3], do: {method, arity}
+  @open_api_methods Map.new(@http_methods, &{&1 |> Atom.to_string() |> String.upcase(), &1})
 
   using _opts do
     quote do
@@ -32,7 +46,7 @@ defmodule LogflareWeb.ConnCase do
 
       import Logflare.Factory
       import LogflareWeb.Router.Helpers
-      import Phoenix.ConnTest
+      import Phoenix.ConnTest, except: unquote(@conn_test_request_macros)
       import Phoenix.LiveViewTest
       import Phoenix.VerifiedRoutes
       import PhoenixTest
@@ -90,14 +104,20 @@ defmodule LogflareWeb.ConnCase do
   def login_user(conn, user, team_user) do
     conn
     |> login_user(user)
+    |> Plug.Conn.put_private(:logflare_test_team_id, team_user.team_id)
     |> Plug.Conn.assign(:team_user, team_user)
     |> Plug.Conn.put_session(:current_email, team_user.email)
   end
 
   def login_user(conn, user) do
     conn
+    |> Plug.Conn.put_private(:logflare_test_team_id, loaded_team_id(user))
+    |> Plug.Conn.put_private(:logflare_test_user_id, user.id)
     |> Plug.Test.init_test_session(%{current_email: user.email})
   end
+
+  defp loaded_team_id(%{team: %Logflare.Teams.Team{id: id}}), do: id
+  defp loaded_team_id(_user), do: nil
 
   # for api use
   def add_partner_access_token(conn, partner) do
@@ -120,17 +140,87 @@ defmodule LogflareWeb.ConnCase do
     Plug.Conn.put_req_header(conn, "authorization", "Bearer #{access_token.token}")
   end
 
-  def assert_schema(data, schema_name) do
-    OpenApiSpex.TestAssertions.assert_schema(data, schema_name, LogflareWeb.ApiSpec.spec())
+  # Preserve Phoenix.ConnTest's request helpers while adding OpenAPI response validation.
+  for method <- @http_methods do
+    defmacro unquote(method)(conn, path_or_action, params_or_body \\ nil) do
+      method = unquote(method)
+
+      quote do
+        LogflareWeb.ConnCase.dispatch_and_assert_open_api_response(
+          unquote(conn),
+          @endpoint,
+          unquote(method),
+          unquote(path_or_action),
+          unquote(params_or_body)
+        )
+      end
+    end
+  end
+
+  @spec dispatch_and_assert_open_api_response(
+          Plug.Conn.t(),
+          module(),
+          atom(),
+          String.t() | atom(),
+          term()
+        ) :: Plug.Conn.t()
+  def dispatch_and_assert_open_api_response(
+        conn,
+        endpoint,
+        method,
+        path_or_action,
+        params_or_body
+      ) do
+    conn = Phoenix.ConnTest.dispatch(conn, endpoint, method, path_or_action, params_or_body)
+
+    if String.starts_with?(conn.request_path, "/api") do
+      assert_open_api_response(conn)
+    else
+      conn
+    end
+  end
+
+  @spec assert_open_api_response(Plug.Conn.t()) :: Plug.Conn.t()
+  def assert_open_api_response(conn) do
+    with %{route: route} <-
+           Phoenix.Router.route_info(Router, conn.method, conn.request_path, conn.host),
+         {spec, _operation_lookup} <- PutApiSpec.get_spec_and_operation_lookup(conn),
+         path_item when not is_nil(path_item) <- Map.get(spec.paths, open_api_path(route)),
+         operation when not is_nil(operation) <-
+           Map.get(path_item, Map.fetch!(@open_api_methods, conn.method)) do
+      assert_documented_response!(operation, conn)
+      OpenApiSpex.TestAssertions.assert_operation_response(conn, operation.operationId)
+    end
+
+    conn
+  end
+
+  defp assert_documented_response!(operation, conn) do
+    if Map.has_key?(operation.responses, conn.status) ||
+         Map.has_key?(operation.responses, :default) do
+      :ok
+    else
+      flunk(
+        "No OpenAPI response is documented for #{conn.method} #{conn.request_path} with status #{conn.status}"
+      )
+    end
+  end
+
+  defp open_api_path(path) do
+    Regex.replace(~r|:([^/]+)|, path, fn _, parameter -> "{#{parameter}}" end)
   end
 
   @doc """
-  Call live/3 and automatically follow the first live redirect.
+  Calls `live/3` with the signed-in user's selected team and follows the first
+  application redirect when the resource belongs to another team.
 
-  Useful for the common case of a live view redirecting to add the `t=` param.
+  Supplying the common `t=` parameter up front avoids mounting the LiveView
+  twice solely to discover the default team. Set `bypass_team_param: true` when
+  the first mount must exercise team selection or authorization without it.
   """
   defmacro live_with_redirect(conn, path \\ nil, opts \\ []) do
     quote bind_quoted: [conn: conn, path: path, opts: opts] do
+      {path, opts} = LogflareWeb.ConnCase.prepare_live_with_redirect(conn, path, opts)
       result = Phoenix.LiveViewTest.live(conn, path, opts)
 
       case result do
@@ -138,7 +228,11 @@ defmodule LogflareWeb.ConnCase do
           result
 
         {:error, {:live_redirect, %{to: to}}} ->
-          Phoenix.LiveViewTest.live(conn, to, opts)
+          if LogflareWeb.ConnCase.redirected_to_different_team?(path, to) do
+            Phoenix.LiveViewTest.live(conn, to, opts)
+          else
+            result
+          end
 
         {:error, {:redirect, %{to: to}}} ->
           {:ok, Phoenix.ConnTest.get(conn, to)}
@@ -146,6 +240,71 @@ defmodule LogflareWeb.ConnCase do
         _ ->
           result
       end
+    end
+  end
+
+  @doc false
+  def prepare_live_with_redirect(conn, path, opts) do
+    {bypass_team_param?, opts} = Keyword.pop(opts, :bypass_team_param, false)
+    path = if bypass_team_param?, do: path, else: put_default_team_param(conn, path)
+
+    {path, opts}
+  end
+
+  @doc false
+  def redirected_to_different_team?(from, to) when is_binary(from) and is_binary(to) do
+    from_team = from |> URI.parse() |> then(&URI.decode_query(&1.query || "")) |> Map.get("t")
+    to_team = to |> URI.parse() |> then(&URI.decode_query(&1.query || "")) |> Map.get("t")
+
+    not is_nil(to_team) and to_team != from_team
+  end
+
+  def redirected_to_different_team?(_from, _to), do: false
+
+  @doc false
+  def put_default_team_param(_conn, nil), do: nil
+
+  def put_default_team_param(conn, path) when is_binary(path) do
+    uri = URI.parse(path)
+    query = URI.decode_query(uri.query || "")
+
+    if Map.has_key?(query, "t") do
+      path
+    else
+      case default_team_id(conn) do
+        nil -> path
+        team_id -> %{uri | query: URI.encode_query(Map.put(query, "t", team_id))} |> to_string()
+      end
+    end
+  end
+
+  defp default_team_id(conn) do
+    conn.private[:logflare_test_team_id] || default_user_team_id(conn)
+  end
+
+  defp default_user_team_id(conn) do
+    case conn.private[:logflare_test_user_id] do
+      nil ->
+        nil
+
+      user_id ->
+        case Logflare.Teams.get_team_by(user_id: user_id) do
+          nil -> create_default_team(user_id)
+          team -> team.id
+        end
+    end
+  end
+
+  defp create_default_team(user_id) do
+    case Logflare.Users.get(user_id) do
+      nil ->
+        nil
+
+      user ->
+        {:ok, team} =
+          Logflare.Teams.create_team(user, %{name: Logflare.Generators.team_name()})
+
+        team.id
     end
   end
 end

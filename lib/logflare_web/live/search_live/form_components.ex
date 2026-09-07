@@ -135,7 +135,6 @@ defmodule LogflareWeb.SearchLive.FormComponents do
   attr :uri_params, :map, required: true
   attr :lql_rules, :list, required: true
   attr :user, Logflare.User, required: true
-  attr :search_op_log_events, :any, default: nil
   attr :search_op_log_aggregates, :any, default: nil
   attr :has_results?, :boolean
   attr :source, Logflare.Sources.Source, required: true
@@ -320,7 +319,7 @@ defmodule LogflareWeb.SearchLive.FormComponents do
 
   def create_menu(assigns) do
     ~H"""
-    <.button_dropdown id="create-menu" disabled={@disabled}>
+    <.button_dropdown id="create-menu" disabled={@disabled} placement="above">
       <i class="fas fa-plus"></i>
       Create new...
       <:menu_item :if={Utils.flag("endpointsOpenBeta", @user)} heading="Endpoint">
@@ -357,7 +356,9 @@ defmodule LogflareWeb.SearchLive.FormComponents do
       end)
 
     ~H"""
-    <a phx-click="create_new" phx-value-resource={@resource} phx-value-kind={@kind} class="tw-block tw-text-gray-500 tw-no-underline" href="#">{@label}</a>
+    <.button_dropdown_menu_link phx-click="create_new" phx-value-resource={@resource} phx-value-kind={@kind}>
+      {@label}
+    </.button_dropdown_menu_link>
     """
   end
 end

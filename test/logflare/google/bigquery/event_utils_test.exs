@@ -22,5 +22,40 @@ defmodule Logflare.Google.BigQuery.EventUtilsTest do
 
       assert result == [event]
     end
+
+    test "handles nested list-of-lists (e.g. a serialized stacktrace)" do
+      event = %{
+        "stacktrace" => [
+          ["Elixir.ProjectThree.TmAmTicket", "ingest", 2],
+          ["Elixir.ProjectThree.TmHost", "dispatch", 1]
+        ]
+      }
+
+      assert EventUtils.prepare_for_ingest(event) == [event]
+    end
+
+    test "handles a list whose head is a map but tail contains lists and scalars" do
+      event = %{
+        "mixed" => [
+          %{"a" => %{"b" => 1}},
+          ["nested", "list"],
+          "scalar"
+        ]
+      }
+
+      result = EventUtils.prepare_for_ingest(event)
+
+      expected = [
+        %{
+          "mixed" => [
+            %{"a" => [%{"b" => 1}]},
+            ["nested", "list"],
+            "scalar"
+          ]
+        }
+      ]
+
+      assert result == expected
+    end
   end
 end

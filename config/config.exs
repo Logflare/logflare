@@ -16,10 +16,16 @@ config :logflare,
   # normal instances can be more than 90 seconds
   sigterm_shutdown_grace_period_ms: 15_000,
   cache_stats: false,
+  broadway_message_sample_denominator: 100,
   encryption_key_fallback: hardcoded_encryption_key,
   encryption_key_default: hardcoded_encryption_key
 
 config :logflare, Logflare.Alerting, enabled: true
+
+# Schema type verification on the ingest path. The verification logic was
+# silently broken for years (see #3489) and is being re-enabled gradually:
+# disabled by default until validated in production.
+config :logflare, Logflare.Logs.Validators.BigQuerySchemaChange, enabled: false
 
 config :logflare, Logflare.Google, dataset_id_append: "_default"
 
@@ -29,10 +35,7 @@ config :logflare, :bigquery_backend_adaptor, managed_service_account_pool_size: 
 
 config :logflare, :bigquery_pipeline, max_retries: 0
 
-config :logflare, :clickhouse_backend_adaptor,
-  engine: "MergeTree",
-  pool_size: 3,
-  native_pool_size: 10
+config :logflare, :clickhouse_backend_adaptor, engine: "MergeTree"
 
 config :logflare, Logflare.Sources.Source.BigQuery.Schema, updates_per_minute: 6
 
@@ -41,7 +44,7 @@ config :logflare, LogflareWeb.Endpoint,
   adapter: Bandit.PhoenixAdapter,
   http: [
     http_options: [log_protocol_errors: :short, log_client_closures: false],
-    http_1_options: [gc_every_n_keepalive_requests: 3],
+    http_1_options: [gc_every_n_keepalive_requests: 1],
     thousand_island_options: [
       num_acceptors: 1250,
       # default backend keepalive timeout is fixed at 600 seconds
@@ -179,5 +182,7 @@ config :mime, :types, %{
 
 # use legacy artifacts for users on older CPUs or virtualized environments without advanced CPU features
 config :explorer, use_legacy_artifacts: true
+
+config :paper_trail, repo: Logflare.Repo
 
 import_config "#{Mix.env()}.exs"

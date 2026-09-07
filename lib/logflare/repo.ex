@@ -32,24 +32,32 @@ defmodule Logflare.Repo do
   end
 
   @doc """
-  Applies the given MFA using a randomly selected repo (primary or read replica).
+  Applies the given MFA on a randomly selected read replica when replicas are
+  configured. Always uses a replica when any are set; falls back to the primary
+  repo only when no replicas are configured.
   """
-  def apply_with_random_repo(m, f, a) do
-    choices = [__MODULE__ | Application.fetch_env!(:logflare, :read_replicas)]
+  @spec apply_with_replica(module(), atom(), list()) :: term()
+  def apply_with_replica(m, f, a) do
+    :logflare
+    |> Application.fetch_env!(:read_replicas)
+    |> pick_replica_repo()
+    |> with_dynamic_repo(fn -> apply(m, f, a) end)
+  end
 
-    new_repo =
-      case Enum.random(choices) do
-        repo when is_atom(repo) -> repo
-        hostname when is_binary(hostname) -> Replicas.lookup!(hostname)
-      end
+  defp pick_replica_repo([]), do: __MODULE__
+  defp pick_replica_repo(replicas), do: replicas |> Enum.random() |> resolve_repo()
 
-    prev_repo = Logflare.Repo.get_dynamic_repo()
-    Logflare.Repo.put_dynamic_repo(new_repo)
+  defp resolve_repo(repo) when is_atom(repo), do: repo
+  defp resolve_repo({key, _config}), do: Replicas.lookup!(key)
+
+  defp with_dynamic_repo(new_repo, fun) do
+    prev_repo = get_dynamic_repo()
+    put_dynamic_repo(new_repo)
 
     try do
-      apply(m, f, a)
+      fun.()
     after
-      Logflare.Repo.put_dynamic_repo(prev_repo)
+      put_dynamic_repo(prev_repo)
     end
   end
 end

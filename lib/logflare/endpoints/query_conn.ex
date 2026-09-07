@@ -1,14 +1,14 @@
 defmodule Logflare.Endpoints.QueryConn do
   @moduledoc """
-  The Query connection. To be piped through functions like a Plug.Conn.
+  The EndpointQuery connection. To be piped through functions like a Plug.Conn.
   """
-  alias Logflare.Endpoints.Query
+  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.User
   use TypedStruct
 
   typedstruct enforce: true do
-    @typedoc "A Query connection"
-    field :endpoint_query, Query.t()
+    @typedoc "An EndpointQuery connection"
+    field :endpoint_query, EndpointQuery.t()
     field :user, User.t(), default: nil
     # SQL string
     field :query_input, String.t()

@@ -147,6 +147,14 @@ defmodule LogflareWeb.Router do
     plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(private))
   end
 
+  pipeline :ingest_source_discovery_auth do
+    plug(Plug.RequestId)
+    plug(OpenApiSpex.Plug.PutApiSpec, module: LogflareWeb.ApiSpec)
+    plug(LogflareWeb.Plugs.VerifyApiAccess, require_token: true)
+    plug(:accepts, ["json", "csv"])
+    plug(LogflareWeb.Plugs.SetHeaders)
+  end
+
   pipeline :require_auth do
     plug(LogflareWeb.Plugs.RequireAuth)
   end
@@ -236,10 +244,6 @@ defmodule LogflareWeb.Router do
 
     live_session :dashboard, on_mount: @common_on_mount_hooks ++ @team_param_live_hooks do
       live("/dashboard", DashboardLive, :index)
-      live("/backends", BackendsLive, :index)
-      live("/backends/new", BackendsLive, :new)
-      live("/backends/:id", BackendsLive, :show)
-      live("/backends/:id/edit", BackendsLive, :edit)
       live("/key-values", KeyValuesLive, :index)
 
       scope "/alerts" do
@@ -249,17 +253,26 @@ defmodule LogflareWeb.Router do
         live "/:id/edit", AlertsLive, :edit
       end
 
+      scope "/backends" do
+        live "/", BackendsLive, :index
+        live "/new", BackendsLive, :new
+        live "/:id", BackendsLive, :show
+        live "/:id/edit", BackendsLive, :edit
+      end
+
       scope "/endpoints" do
         live "/", EndpointsLive, :index
         live "/new", EndpointsLive, :new
+        live "/:id/versions", EndpointsVersionsLive, :index
         live "/:id", EndpointsLive, :show
         live "/:id/edit", EndpointsLive, :edit
       end
+
+      live("/query", QueryLive, :index)
     end
 
     live_session :without_team_param, on_mount: @common_on_mount_hooks ++ @auth_live_hooks do
       live("/access-tokens", AccessTokensLive, :index)
-      live("/query", QueryLive, :index)
 
       scope "/integrations" do
         live("/vercel/edit", VercelLogDrainsLive, :edit)
@@ -437,6 +450,11 @@ defmodule LogflareWeb.Router do
     get("/", HealthCheckController, :check)
   end
 
+  scope "/ready", LogflareWeb do
+    pipe_through(:api)
+    get("/", HealthCheckController, :ready)
+  end
+
   # Account management API.
   scope "/api", LogflareWeb do
     pipe_through([:api, :require_mgmt_api_auth])
@@ -465,6 +483,11 @@ defmodule LogflareWeb.Router do
       only: [:index, :show, :create, :update, :delete]
     )
 
+    resources("/alerts", Api.AlertController,
+      param: "token",
+      only: [:index, :show, :create, :update, :delete]
+    )
+
     resources("/endpoints", Api.EndpointController,
       param: "token",
       only: [:index, :show, :create, :update, :delete]
@@ -489,6 +512,12 @@ defmodule LogflareWeb.Router do
     delete "/key-values", Api.KeyValueController, :delete
   end
 
+  scope "/api", LogflareWeb do
+    pipe_through([:ingest_source_discovery_auth])
+
+    get("/ingest-sources", Api.IngestSourceController, :index)
+  end
+
   scope "/api/partner", LogflareWeb do
     pipe_through([:api, :partner_api])
 
@@ -498,7 +527,6 @@ defmodule LogflareWeb.Router do
     put("/users/:user_token/downgrade", Api.Partner.UserController, :downgrade)
 
     get("/users/:user_token", Api.Partner.UserController, :get_user)
-    get("/users/:user_token/usage", Api.Partner.UserController, :get_user_usage)
 
     delete("/users/:user_token", Api.Partner.UserController, :delete_user)
   end
@@ -594,6 +622,7 @@ defmodule LogflareWeb.Router do
       pipe_through([:browser])
 
       forward("/mailbox", Plug.Swoosh.MailboxPreview, base_path: "/dev/mailbox")
+      live("/dashboard", LogflareWeb.Live.Dev.DashboardLive)
     end
   end
 

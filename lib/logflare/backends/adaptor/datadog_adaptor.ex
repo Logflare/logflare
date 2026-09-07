@@ -4,6 +4,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   for DataDog logs ingestion endpoint.
   """
 
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Backend
   alias Logflare.Sources.Source
@@ -15,11 +16,29 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
     "EU" => "https://http-intake.logs.datadoghq.eu/api/v2/logs",
     "AP1" => "https://http-intake.logs.ap1.datadoghq.com/api/v2/logs",
     "AP2" => "https://http-intake.logs.ap2.datadoghq.com/api/v2/logs",
-    "US1-FED" => "https://http-intake.logs.ddog-gov.com/api/v2/logs"
+    "UK1" => "https://http-intake.logs.uk1.datadoghq.com/api/v2/logs",
+    "US1-FED" => "https://http-intake.logs.ddog-gov.com/api/v2/logs",
+    "US2-FED" => "https://http-intake.logs.us2.ddog-gov.com/api/v2/logs"
   }
   @regions Map.keys(@api_url_mapping)
 
+  @intake_origins @api_url_mapping
+                  |> Map.values()
+                  |> Enum.map(fn url ->
+                    uri = URI.parse(url)
+                    URI.to_string(%URI{scheme: uri.scheme, host: uri.host})
+                  end)
+                  |> Enum.uniq()
+                  |> Enum.sort()
+
   def regions, do: @regions
+
+  @doc """
+  Scheme-and-host origins of every regional logs intake, in the form used as a
+  `Finch` pool key.
+  """
+  @spec intake_origins() :: [String.t()]
+  def intake_origins, do: @intake_origins
 
   @behaviour Logflare.Backends.Adaptor
 
@@ -67,6 +86,11 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   @impl Logflare.Backends.Adaptor
   def redact_config(config) do
     Map.put(config, :api_key, "REDACTED")
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def sanitize_config_for_display(config) do
+    Adaptor.mask_config_values(config, except: [:region])
   end
 
   @impl Logflare.Backends.Adaptor

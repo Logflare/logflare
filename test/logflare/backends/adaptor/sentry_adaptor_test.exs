@@ -3,9 +3,9 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
-  alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.Adaptor.SentryAdaptor
+  alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Tesla.MockAdapter
 
@@ -61,20 +61,19 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
 
     test "returns error on failure", ctx do
       error_responses = [
-        {:ok,
-         %Tesla.Env{status: 401, body: %{"detail" => "invalid auth"}}
-         |> Tesla.put_header("content-type", "application/json")},
-        {:ok,
-         %Tesla.Env{status: 403, body: %{"detail" => "project not found"}}
-         |> Tesla.put_header("content-type", "application/json")},
-        {:error, :nxdomain}
+        {{:ok,
+          %Tesla.Env{status: 401, body: %{"detail" => "invalid auth"}}
+          |> Tesla.put_header("content-type", "application/json")}, :http_client_error},
+        {{:ok,
+          %Tesla.Env{status: 403, body: %{"detail" => "project not found"}}
+          |> Tesla.put_header("content-type", "application/json")}, :http_client_error},
+        {{:error, :nxdomain}, :unknown_error}
       ]
 
-      for response <- error_responses do
+      for {response, expected_reason} <- error_responses do
         mock_adapter(fn _env -> response end)
 
-        assert {:error, reason} = @subject.test_connection(ctx.backend)
-        assert is_binary(reason)
+        assert {:error, ^expected_reason} = @subject.test_connection(ctx.backend)
       end
     end
   end
@@ -91,8 +90,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
           config: %{dsn: "https://abc123@o123456.ingest.sentry.io/123456"}
         )
 
-      start_supervised!({AdaptorSupervisor, {source, backend}})
-      :timer.sleep(500)
+      start_supervised!({SourceSup, source})
       [backend: backend, source: source]
     end
 
@@ -390,6 +388,15 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       item = Enum.at(items, 0)
 
       assert item["level"] == "error"
+    end
+  end
+
+  describe "sanitize_config_for_display/1" do
+    test "shows the dsn with its secret redacted" do
+      config = %{dsn: "https://public_key:secret_key@o123456.ingest.sentry.io/123456"}
+
+      assert %{dsn: "https://public_key:REDACTED@o123456.ingest.sentry.io/123456"} ==
+               @subject.sanitize_config_for_display(config)
     end
   end
 

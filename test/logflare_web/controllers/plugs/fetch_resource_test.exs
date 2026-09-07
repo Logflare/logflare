@@ -4,7 +4,7 @@ defmodule LogflareWeb.Plugs.FetchResourceTest do
 
   alias LogflareWeb.Plugs.FetchResource
   alias Logflare.Sources.Source
-  alias Logflare.Endpoints.Query
+  alias Logflare.Endpoints.EndpointQuery
 
   setup do
     insert(:plan)
@@ -106,7 +106,7 @@ defmodule LogflareWeb.Plugs.FetchResourceTest do
       {:ok, endpoint: endpoint}
     end
 
-    test "fetches an endpoint by name or token", %{endpoint: %Query{id: id, token: token}} do
+    test "fetches an endpoint by name or token", %{endpoint: %EndpointQuery{id: id, token: token}} do
       conn =
         build_conn(:get, "/endpoints/query/#{token}", %{
           "token_or_name" => token
@@ -163,7 +163,7 @@ defmodule LogflareWeb.Plugs.FetchResourceTest do
         |> assign(:resource_type, :endpoint)
         |> FetchResource.call(%{})
 
-      assert %Query{id: ^endpoint_id} = Map.get(conn.assigns, :endpoint)
+      assert %EndpointQuery{id: ^endpoint_id} = Map.get(conn.assigns, :endpoint)
       refute conn.halted
     end
   end

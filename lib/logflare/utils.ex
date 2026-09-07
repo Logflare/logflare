@@ -298,7 +298,7 @@ defmodule Logflare.Utils do
   """
   def to_microseconds(raw) when is_integer(raw) do
     case Integer.digits(raw) |> Enum.count() do
-      19 -> Kernel.round(raw / 1_000)
+      19 -> div(raw, 1_000)
       16 -> raw
       13 -> raw * 1_000
       10 -> raw * 1_000_000
@@ -316,13 +316,13 @@ defmodule Logflare.Utils do
   iex> ip_version("127.0.0.1:8222")
   :nxdomain
 
-  iex> ip_version("1467:f4e1:7a77:756a:896c:dff5:ca48:cf3c")
-  :inet6
-
-  iex> ip_version("supabase.com")
+  iex> ip_version("localhost")
   :inet
 
-  iex> ip_version("ipv6.google.com")
+  iex> ip_version("::1")
+  :inet6
+
+  iex> ip_version("1467:f4e1:7a77:756a:896c:dff5:ca48:cf3c")
   :inet6
 
   iex> ip_version("not_an_address")
