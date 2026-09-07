@@ -596,12 +596,16 @@ defmodule Logflare.Backends do
   """
   @type log_param :: map()
   @spec ingest_logs([log_param()], Source.t()) ::
-          {:ok, count :: pos_integer()} | {:error, [term()]}
+          {:ok, count :: non_neg_integer()} | {:error, [term()]}
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) ::
-          {:ok, count :: pos_integer()} | {:error, [term()]}
+          {:ok, count :: non_neg_integer()} | {:error, [term()]}
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil, boolean()) ::
-          {:ok, count :: pos_integer()} | {:error, [term()]}
-  def ingest_logs(event_params, source, backend \\ nil, allow_spooling \\ false) do
+          {:ok, count :: non_neg_integer()} | {:error, [term()]}
+  def ingest_logs(event_params, source, backend \\ nil, allow_spooling \\ false)
+
+  def ingest_logs(_params, _source, %Backend{enabled: false}, _spooling), do: {:ok, 0}
+
+  def ingest_logs(event_params, source, backend, allow_spooling) do
     ensure_source_sup_started(source)
     {log_events, errors} = split_valid_events(source, event_params)
     count = Enum.count(log_events)
@@ -751,6 +755,8 @@ defmodule Logflare.Backends do
   end
 
   # send to a specific backend
+  defp dispatch_to_backends(_source, %Backend{enabled: false}, _log_events), do: :ok
+
   defp dispatch_to_backends(source, %Backend{consolidated_ingest?: true} = backend, log_events) do
     telemetry_metadata = %{backend_type: backend.type}
 
@@ -804,6 +810,8 @@ defmodule Logflare.Backends do
           backend :: Backend.t() | nil,
           log_events :: [LogEvent.t()]
         ) :: any()
+  defp dispatch_to_default_backend(_source, %Backend{enabled: false}, _log_events), do: :ok
+
   defp dispatch_to_default_backend(source, backend, log_events) do
     {queue_key, backend_type} =
       case backend do
@@ -1058,7 +1066,7 @@ defmodule Logflare.Backends do
         default_ingest_backend_enabled?: true
       }) do
     default_backend_ids =
-      __MODULE__.Cache.list_backends(source_id: source_id)
+      __MODULE__.Cache.list_enabled_backends(source_id: source_id)
       |> Enum.filter(& &1.default_ingest?)
       |> MapSet.new(& &1.id)
 
@@ -1093,20 +1101,20 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Returns true if ANY of a source's ingest queues — the system default plus
-  every backend actually configured on it, regardless of default-ingest
-  flags — currently exceeds `max_buffer_queue_len/0`. Unlike
+  Returns true if a source's system-default ingest queue or any of its per-source
+  ingest queues for an enabled, directly attached backend exceeds
+  `max_buffer_queue_len/0`. Unlike
   `cached_local_pending_buffer_full?/1` (scoped to just the "default ingest"
-  backend(s), for the HTTP 429 gate's specific question), this checks every
-  backend a source can dispatch to and reads live `IngestEventQueue` sizes
-  directly rather than a separately-cadenced cache — matching
-  `QueueJanitor`'s own `get_table_size/1`-based overflow check exactly, so it
-  can't miss a backend that isn't part of the "default ingest" set.
+  backend(s), for the HTTP 429 gate's specific question), this checks all enabled
+  directly attached backends and reads live `IngestEventQueue` sizes rather than a
+  separately-cadenced cache. Disabled backend queues receive no new spool work,
+  but their existing pipelines can keep draining old work while the spool memory
+  monitor independently protects node memory.
   """
   @spec any_ingest_queue_over_limit?(pos_integer()) :: boolean()
   def any_ingest_queue_over_limit?(source_id) do
     backend_ids =
-      [nil | __MODULE__.Cache.list_backends(source_id: source_id) |> Enum.map(& &1.id)]
+      [nil | __MODULE__.Cache.list_enabled_backends(source_id: source_id) |> Enum.map(& &1.id)]
 
     Enum.any?(backend_ids, &any_queue_over_limit_for_backend?(source_id, &1))
   end

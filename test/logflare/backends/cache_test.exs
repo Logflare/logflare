@@ -60,4 +60,31 @@ defmodule Logflare.Backends.CacheTest do
 
     assert Backends.Cache.get_backend(backend.id)
   end
+
+  test "list_enabled_backends/1 filters the existing unfiltered cache entry", %{
+    backend: backend,
+    source: source
+  } do
+    disabled_backend = insert(:backend, sources: [source], enabled: false)
+
+    assert [%{id: backend_id}] = Backends.Cache.list_enabled_backends(source_id: source.id)
+    assert backend_id == backend.id
+
+    # list_enabled_backends/1 reuses the unfiltered list_backends/1 cache entry.
+    cache_key = {:list_backends, [[source_id: source.id]]}
+    assert {:cached, cached_backends} = Cachex.get!(Backends.Cache, cache_key)
+
+    cached_backend_ids =
+      cached_backends
+      |> Enum.map(& &1.id)
+      |> Enum.sort()
+
+    assert cached_backend_ids == Enum.sort([backend.id, disabled_backend.id])
+
+    # Filtering in memory does not pollute the cache with an enabled-specific key.
+    refute Cachex.get!(
+             Backends.Cache,
+             {:list_enabled_backends, [[source_id: source.id]]}
+           )
+  end
 end
