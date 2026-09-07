@@ -249,6 +249,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
              "backend_id" => backend.id,
              "backend_uuid" => backend.token,
              "user_id" => source.user_id,
+             "system_source" => source.system_source,
              "backend.environment" => "test",
              "backend.region" => "us-west"
            } == metadata
