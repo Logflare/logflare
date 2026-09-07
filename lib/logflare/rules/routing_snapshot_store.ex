@@ -1,23 +1,29 @@
 defmodule Logflare.Rules.RoutingSnapshotStore do
   @moduledoc """
-  Bounded, disposable ETS acceleration for routing snapshots.
+  Byte-aware, disposable ETS acceleration for routing snapshots.
 
-  There is at most one complete rule tuple per source, published with one ETS
-  insert. Reads bind both source and generation, and copy only selected elements.
-  Replacing a source never mixes generations: older readers use the immutable
-  binary in their header. Store restart, age-based expiry and capacity eviction
-  likewise affect performance only, not snapshot correctness.
+  There is at most one complete target tuple per source. Replacing a source never
+  mixes generations: older readers use the immutable binary in their header.
+  Store restart, age-based expiry and capacity eviction affect correctness only
+  through a slower fallback, and the still-current header is rehydrated after
+  that first fallback.
 
-  Publication/retirement is serialized, but routing reads never call the server.
-  The source and expiry indexes each have exactly one entry per source; neither
-  repeated rebuilds nor suspended readers accumulate retired generations here.
+  Publication and retirement are serialized, but routing reads never call the
+  server. Capacity is bounded by both source count and estimated bytes. Byte
+  estimates include the tree, compact target tuple and compressed fallback;
+  the bound is soft for one individually oversized snapshot so it remains usable.
   """
 
   use GenServer
 
+  alias Logflare.Rules.Cache
+  alias Logflare.Utils.Tasks
+
   @default_limit 100_000
+  @default_max_bytes 512 * 1024 * 1024
   @default_ttl :timer.hours(1)
   @default_interval :timer.minutes(5)
+  @telemetry_event [:logflare, :rules, :routing_snapshot_store]
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
@@ -29,10 +35,10 @@ defmodule Logflare.Rules.RoutingSnapshotStore do
     super(Keyword.put_new(opts, :name, __MODULE__))
   end
 
-  @spec put(GenServer.server(), integer(), [{integer(), term()}]) ::
+  @spec put(GenServer.server(), integer(), tuple(), non_neg_integer()) ::
           {:ets.tid(), {integer(), reference()}}
-  def put(server, source_id, entries) do
-    GenServer.call(server, {:put, source_id, entries})
+  def put(server, source_id, targets, estimated_bytes) do
+    GenServer.call(server, {:put, source_id, targets, estimated_bytes})
   end
 
   @spec delete(GenServer.server(), {integer(), reference()}) :: :ok
@@ -49,6 +55,8 @@ defmodule Logflare.Rules.RoutingSnapshotStore do
       sources: :ets.new(__MODULE__, [:set, :private]),
       expiry: :ets.new(__MODULE__, [:ordered_set, :private]),
       limit: Keyword.get(opts, :limit, @default_limit),
+      max_bytes: Keyword.get(opts, :max_bytes, @default_max_bytes),
+      estimated_bytes: 0,
       ttl: Keyword.get(opts, :ttl, @default_ttl),
       interval: Keyword.get(opts, :interval, @default_interval)
     }
@@ -58,61 +66,116 @@ defmodule Logflare.Rules.RoutingSnapshotStore do
   end
 
   @impl true
-  def handle_call({:put, source_id, entries}, _from, state) do
-    remove_source(state, source_id)
+  def handle_call({:put, source_id, targets, estimated_bytes}, _from, state) do
+    state = remove_source(state, source_id, :replace)
     key = {source_id, make_ref()}
     expires_at = System.monotonic_time(:millisecond) + state.ttl
-    :ets.insert(state.table, List.to_tuple([key | entries]))
-    :ets.insert(state.sources, {source_id, key, expires_at})
+    estimated_bytes = max(estimated_bytes, 0)
+
+    :ets.insert(state.table, Tuple.insert_at(targets, 0, key))
+    :ets.insert(state.sources, {source_id, key, expires_at, estimated_bytes})
     :ets.insert(state.expiry, {{expires_at, key}})
-    trim(state, System.monotonic_time(:millisecond))
+
+    state =
+      state
+      |> Map.update!(:estimated_bytes, &(&1 + estimated_bytes))
+      |> trim(System.monotonic_time(:millisecond))
+
+    emit(state, :put)
     {:reply, {state.table, key}, state}
   end
 
   def handle_call(:prune, _from, state) do
-    trim(state, System.monotonic_time(:millisecond))
+    state = trim(state, System.monotonic_time(:millisecond))
     {:reply, :ok, state}
   end
 
   @impl true
   def handle_cast({:delete, {source_id, _generation} = key}, state) do
-    case :ets.lookup(state.sources, source_id) do
-      [{^source_id, ^key, _expires_at}] -> remove_source(state, source_id)
-      _ -> :ok
-    end
+    state =
+      case :ets.lookup(state.sources, source_id) do
+        [{^source_id, ^key, _expires_at, _estimated_bytes}] ->
+          state = remove_source(state, source_id, :delete)
+          emit(state, :delete)
+          state
+
+        _ ->
+          state
+      end
 
     {:noreply, state}
   end
 
   @impl true
   def handle_info(:prune, state) do
-    trim(state, System.monotonic_time(:millisecond))
+    state = trim(state, System.monotonic_time(:millisecond))
     schedule_prune(state)
     {:noreply, state}
   end
 
-  defp remove_source(state, source_id) do
+  defp remove_source(state, source_id, reason) do
     case :ets.take(state.sources, source_id) do
-      [{^source_id, key, expires_at}] ->
+      [{^source_id, key, expires_at, estimated_bytes}] ->
         :ets.delete(state.table, key)
         :ets.delete(state.expiry, {expires_at, key})
 
+        state = Map.update!(state, :estimated_bytes, &max(&1 - estimated_bytes, 0))
+        maybe_delete_header(reason, key)
+        state
+
       [] ->
-        :ok
+        state
     end
   end
 
   defp trim(state, now) do
     case :ets.first(state.expiry) do
       {expires_at, {source_id, _generation}} ->
-        if expires_at <= now or :ets.info(state.table, :size) > state.limit do
-          remove_source(state, source_id)
+        size = :ets.info(state.table, :size)
+
+        reason =
+          cond do
+            expires_at <= now -> :expire
+            size > state.limit -> :evict
+            over_byte_limit?(state, size) -> :evict
+            true -> nil
+          end
+
+        if reason do
+          state = remove_source(state, source_id, reason)
+          emit(state, reason)
           trim(state, now)
+        else
+          state
         end
 
       :"$end_of_table" ->
-        :ok
+        state
     end
+  end
+
+  defp over_byte_limit?(%{max_bytes: :infinity}, _size), do: false
+
+  defp over_byte_limit?(state, size) do
+    state.estimated_bytes > state.max_bytes and size > 1
+  end
+
+  defp maybe_delete_header(reason, key) when reason in [:expire, :evict] do
+    Tasks.start_child(fn -> Cache.delete_routing_snapshot(key) end)
+    :ok
+  end
+
+  defp maybe_delete_header(_reason, _key), do: :ok
+
+  defp emit(state, action) do
+    :telemetry.execute(
+      @telemetry_event,
+      %{
+        sources: :ets.info(state.table, :size),
+        estimated_bytes: state.estimated_bytes
+      },
+      %{action: action}
+    )
   end
 
   defp schedule_prune(state), do: Process.send_after(self(), :prune, state.interval)

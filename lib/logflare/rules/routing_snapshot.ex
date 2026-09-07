@@ -1,68 +1,107 @@
 defmodule Logflare.Rules.RoutingSnapshot do
   @moduledoc """
-  Immutable rule storage for one routing-tree generation.
+  Immutable compact routing targets for one rules-tree generation.
 
-  The hot cache header contains binary/table references rather than the full
-  rule map. A sorted binary index maps rule IDs to ETS tuple positions. Sparse
-  reads copy only the matched tuple elements; dense reads copy the whole tuple.
-  Every lookup uses the exact generation in the header.
+  The tree emits database rule IDs. A sorted binary index maps those IDs to ETS
+  tuple positions, so sparse reads copy only matched compact targets. Dense reads
+  copy the tuple once and reconstruct the compact lookup map.
 
-  The compressed map is a reader-owned fallback, not the normal lookup path. If
-  the backing store replaces, evicts or loses a generation, the reader decodes
-  its own immutable snapshot instead. The VM keeps this reference-counted binary
-  alive across cache invalidation and releases it on GC/process exit. Thus even
-  a suspended reader needs no lease, cleanup timer or retained ETS generation.
-
-  The tree and map must be constructed from the same database read before this
-  header is published. Encodings are internal, never user-supplied binaries.
+  The compressed target map is a reader-owned fallback. If the backing store
+  replaces, evicts or loses a generation, the caller resolves from that exact
+  immutable map and can conditionally rehydrate the still-current cache entry.
   """
 
   alias Logflare.Rules.Rule
   alias Logflare.Rules.RoutingSnapshotStore
+  alias Logflare.Sources.SourceRouter.Target
 
   @entry_bytes 8
 
-  @enforce_keys [:key, :table, :index, :encoded, :count]
-  defstruct [:key, :table, :index, :encoded, :count]
+  @enforce_keys [:key, :table, :index, :encoded, :count, :estimated_bytes]
+  defstruct [:key, :table, :index, :encoded, :count, :estimated_bytes, decoded: nil]
 
   @type t() :: %__MODULE__{
           key: {integer(), reference()},
           table: :ets.tid(),
           index: binary(),
           encoded: binary(),
-          count: non_neg_integer()
+          count: non_neg_integer(),
+          estimated_bytes: non_neg_integer(),
+          decoded: %{Rule.id() => Target.t()} | nil
         }
 
-  @spec new(integer(), %{Rule.id() => Rule.t()}, GenServer.server()) :: t()
-  def new(source_id, rules_by_id, store \\ RoutingSnapshotStore) do
-    entries = Enum.sort_by(rules_by_id, &elem(&1, 0))
-    index = for {id, _rule} <- entries, into: <<>>, do: <<id::unsigned-64>>
+  @type resolve_status() ::
+          {:ok, [Target.t()]} | {:fallback, [Target.t()], %{Rule.id() => Target.t()}}
+
+  @spec new(integer(), [{Rule.id(), Target.t()}], keyword()) :: t()
+  def new(source_id, entries, opts \\ []) when is_list(entries) do
+    entries = Enum.sort_by(entries, &elem(&1, 0))
+    rules_by_id = Map.new(entries)
+    entry_tuple = List.to_tuple(entries)
+    index = for {id, _target} <- entries, into: <<>>, do: <<id::unsigned-64>>
     encoded = :erlang.term_to_binary(rules_by_id, compressed: 1)
-    {table, key} = RoutingSnapshotStore.put(store, source_id, entries)
+
+    estimated_bytes =
+      :erlang.external_size(entry_tuple) + byte_size(index) + byte_size(encoded) +
+        Keyword.get(opts, :extra_estimated_bytes, 0)
+
+    store = Keyword.get(opts, :store, RoutingSnapshotStore)
+    {table, key} = RoutingSnapshotStore.put(store, source_id, entry_tuple, estimated_bytes)
 
     %__MODULE__{
       key: key,
       table: table,
       index: index,
       encoded: encoded,
-      count: map_size(rules_by_id)
+      count: length(entries),
+      estimated_bytes: estimated_bytes
     }
   end
 
-  @spec resolve(t(), [Rule.id()]) :: [Rule.t()]
-  def resolve(_snapshot, []), do: []
+  @doc false
+  @spec rehydrate(t(), integer(), %{Rule.id() => Target.t()}, GenServer.server()) :: t()
+  def rehydrate(
+        %__MODULE__{} = snapshot,
+        source_id,
+        rules_by_id,
+        store \\ RoutingSnapshotStore
+      )
+      when is_map(rules_by_id) do
+    entries = rules_by_id |> Enum.sort_by(&elem(&1, 0)) |> List.to_tuple()
 
-  def resolve(%__MODULE__{count: count} = snapshot, ids) when length(ids) * 2 >= count do
-    case read_all(snapshot) do
-      [entries] -> entries |> Tuple.to_list() |> tl() |> Map.new() |> from_map(ids)
-      [] -> snapshot.encoded |> :erlang.binary_to_term() |> from_map(ids)
+    {table, key} =
+      RoutingSnapshotStore.put(store, source_id, entries, snapshot.estimated_bytes)
+
+    %{snapshot | table: table, key: key, decoded: nil}
+  end
+
+  @spec resolve(t(), [Rule.id()]) :: [Target.t()]
+  def resolve(snapshot, ids) do
+    case resolve_with_status(snapshot, ids) do
+      {:ok, targets} -> targets
+      {:fallback, targets, _rules_by_id} -> targets
     end
   end
 
-  def resolve(%__MODULE__{} = snapshot, ids) do
+  @doc false
+  @spec resolve_with_status(t(), [Rule.id()]) :: resolve_status()
+  def resolve_with_status(_snapshot, []), do: {:ok, []}
+
+  def resolve_with_status(%__MODULE__{decoded: rules_by_id}, ids) when is_map(rules_by_id),
+    do: {:ok, from_map(rules_by_id, ids)}
+
+  def resolve_with_status(%__MODULE__{count: count} = snapshot, ids)
+      when length(ids) * 2 >= count do
+    case read_all(snapshot) do
+      [entries] -> {:ok, entries |> Tuple.to_list() |> tl() |> Map.new() |> from_map(ids)}
+      [] -> from_fallback(snapshot, ids)
+    end
+  end
+
+  def resolve_with_status(%__MODULE__{} = snapshot, ids) do
     case read_sparse(snapshot, ids, []) do
-      {:ok, rules} -> rules
-      :missing -> snapshot.encoded |> :erlang.binary_to_term() |> from_map(ids)
+      {:ok, targets} -> {:ok, targets}
+      :missing -> from_fallback(snapshot, ids)
     end
   end
 
@@ -76,7 +115,7 @@ defmodule Logflare.Rules.RoutingSnapshot do
       position ->
         case read_element(snapshot, position + 2) do
           {_id, nil} -> read_sparse(snapshot, rest, acc)
-          {_id, rule} -> read_sparse(snapshot, rest, [rule | acc])
+          {_id, target} -> read_sparse(snapshot, rest, [target | acc])
           :missing -> :missing
         end
     end
@@ -107,7 +146,17 @@ defmodule Logflare.Rules.RoutingSnapshot do
     end
   end
 
+  defp from_fallback(snapshot, ids) do
+    rules_by_id = :erlang.binary_to_term(snapshot.encoded)
+    {:fallback, from_map(rules_by_id, ids), rules_by_id}
+  end
+
+  @doc false
+  @spec with_decoded(t(), %{Rule.id() => Target.t()}) :: t()
+  def with_decoded(%__MODULE__{} = snapshot, rules_by_id) when is_map(rules_by_id),
+    do: %{snapshot | decoded: rules_by_id}
+
   defp from_map(rules_by_id, ids) do
-    for id <- ids, rule = Map.get(rules_by_id, id), do: rule
+    for id <- ids, target = Map.get(rules_by_id, id), do: target
   end
 end

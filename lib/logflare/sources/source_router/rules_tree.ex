@@ -15,7 +15,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
           | {operator(), route()}
           | {:eq_index, eq_index()}
   @type route() :: {:route, target() | [target()]}
-  @type target() :: Rule.id() | {Rule.id(), filter_set()}
+  @type target() :: non_neg_integer() | {non_neg_integer(), filter_set()}
   @type key() :: binary()
   @type operator() :: {atom(), any()}
   @type eq_index() :: %{term() => target() | [target()]}
@@ -23,9 +23,34 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   @type filter_set() :: non_neg_integer()
 
   @impl true
-  def matching_rules(event, source) do
-    {rule_set, snapshot} = Rules.Cache.rules_tree_by_source_id(source.id)
-    Rules.RoutingSnapshot.resolve(snapshot, matching_rule_ids(event, rule_set))
+  def prepare(source), do: Rules.Cache.rules_tree_by_source_id(source.id)
+
+  @impl true
+  def matching_rules(event, source), do: matching_rules(event, source, prepare(source))
+
+  @impl true
+  def matching_rules(event, source, prepared) do
+    {targets, _prepared} = matching_rules_with_state(event, source, prepared)
+    targets
+  end
+
+  @impl true
+  def matching_rules_with_state(event, source, {rule_set, snapshot}) do
+    rule_ids = matching_rule_ids(event, rule_set)
+
+    case Rules.RoutingSnapshot.resolve_with_status(snapshot, rule_ids) do
+      {:ok, targets} ->
+        {targets, {rule_set, snapshot}}
+
+      {:fallback, targets, encoded_targets} ->
+        snapshot =
+          case Rules.Cache.repair_routing_snapshot(source.id, snapshot, encoded_targets) do
+            {:repaired, repaired} -> repaired
+            _ -> Rules.RoutingSnapshot.with_decoded(snapshot, encoded_targets)
+          end
+
+        {targets, {rule_set, snapshot}}
+    end
   end
 
   @doc """

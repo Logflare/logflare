@@ -5,6 +5,7 @@ defmodule Logflare.Rules.CacheTest do
   alias Logflare.Rules
   alias Logflare.Rules.RoutingSnapshot
   alias Logflare.Sources
+  alias Logflare.Sources.SourceRouter.Target
 
   @subject Rules.Cache
 
@@ -50,13 +51,13 @@ defmodule Logflare.Rules.CacheTest do
       assert %{hits: 3, writes: 2} = Cachex.stats!(@subject)
     end
 
-    test "rules tree by source id caches the tree with its rules", %{
+    test "rules tree by source id caches the tree with compact targets", %{
       source: source,
       rule_ids: rule_ids
     } do
       assert {tree, %RoutingSnapshot{} = snapshot} = @subject.rules_tree_by_source_id(source.id)
       assert snapshot.count == length(rule_ids)
-      assert Enum.map(RoutingSnapshot.resolve(snapshot, rule_ids), & &1.id) == rule_ids
+      assert Enum.map(RoutingSnapshot.resolve(snapshot, rule_ids), &Target.id/1) == rule_ids
 
       Mimic.reject(Rules, :rules_tree_by_source_id, 1)
       assert @subject.rules_tree_by_source_id(source.id) == {tree, snapshot}
@@ -69,7 +70,7 @@ defmodule Logflare.Rules.CacheTest do
         rule_ids: rule_ids
       } do
         {tree, old} = @subject.rules_tree_by_source_id(source.id)
-        old_rules = RoutingSnapshot.resolve(old, rule_ids)
+        old_targets = RoutingSnapshot.resolve(old, rule_ids)
         parent = self()
 
         reader =
@@ -92,20 +93,46 @@ defmodule Logflare.Rules.CacheTest do
             assert {:ok, 1} = Cachex.clear(@subject)
         end
 
-        new_rules = Map.new(old_rules, &{&1.id, %{&1 | lql_string: "replacement"}})
+        new_entries =
+          Enum.map(old_targets, fn {id, backend_id, sink} ->
+            {id, {id, backend_id + 1_000_000, sink}}
+          end)
 
         expect(Rules, :rules_tree_by_source_id, fn id ->
           assert id == source.id
-          {tree, new_rules}
+          {tree, new_entries}
         end)
 
         {^tree, current} = @subject.rules_tree_by_source_id(source.id)
         assert current.key != old.key
-        assert RoutingSnapshot.resolve(current, rule_ids) == Enum.map(rule_ids, &new_rules[&1])
+        assert RoutingSnapshot.resolve(current, rule_ids) == Enum.map(new_entries, &elem(&1, 1))
         refute :ets.member(old.table, old.key)
         send(reader.pid, :resume)
-        assert Task.await(reader) == old_rules
+        assert Task.await(reader) == old_targets
       end
+    end
+
+    test "repairs the still-current header after its ETS generation is lost", %{source: source} do
+      {_tree, snapshot} = @subject.rules_tree_by_source_id(source.id)
+      rule_ids = snapshot.encoded |> :erlang.binary_to_term() |> Map.keys()
+      expected = RoutingSnapshot.resolve(snapshot, rule_ids)
+
+      _replacement =
+        RoutingSnapshot.rehydrate(
+          snapshot,
+          source.id,
+          :erlang.binary_to_term(snapshot.encoded)
+        )
+
+      assert {:fallback, ^expected, encoded_targets} =
+               RoutingSnapshot.resolve_with_status(snapshot, rule_ids)
+
+      assert {:repaired, repaired} =
+               @subject.repair_routing_snapshot(source.id, snapshot, encoded_targets)
+
+      {_tree, ^repaired} = @subject.rules_tree_by_source_id(source.id)
+      assert repaired.key != snapshot.key
+      assert {:ok, ^expected} = RoutingSnapshot.resolve_with_status(repaired, rule_ids)
     end
 
     test "list by source", %{source: source, rule_ids: expected_rule_ids} do

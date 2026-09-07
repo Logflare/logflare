@@ -6,7 +6,7 @@ defmodule Logflare.Rules do
   alias Logflare.Repo
   alias Logflare.Rules.Rule
   alias Logflare.Sources.Source
-  alias Logflare.Sources.SourceRouter.RulesTree
+  alias Logflare.Sources.SourceRouter.{RulesTree, Target}
   alias Logflare.SourceSchemas
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceSup
@@ -49,16 +49,22 @@ defmodule Logflare.Rules do
   end
 
   @doc """
-  Returns the routing snapshot for a source: the rules tree, and a lookup of the
-  rules it was built from keyed by rule id.
+  Returns a routing tree and its ordered compact routing targets.
 
-  Both halves come from one `list_by_source_id/1` read, so every rule id in the
-  tree resolves to a rule in the lookup.
+  Both halves come from one `list_by_source_id/1` read, so every rule ID in the
+  tree resolves to a target in the same immutable snapshot.
   """
-  @spec rules_tree_by_source_id(integer()) :: {RulesTree.t(), %{Rule.id() => Rule.t()}}
+  @spec rules_tree_by_source_id(integer()) ::
+          {RulesTree.t(), [{Rule.id(), Target.t()}]}
   def rules_tree_by_source_id(id) do
     rules = list_by_source_id(id)
-    {RulesTree.build(rules), Map.new(rules, &{&1.id, &1})}
+
+    targets =
+      rules
+      |> Enum.sort_by(& &1.id)
+      |> Enum.map(&{&1.id, Target.from_rule(&1)})
+
+    {RulesTree.build(rules), targets}
   end
 
   @doc """
