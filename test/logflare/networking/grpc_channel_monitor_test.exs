@@ -33,10 +33,15 @@ defmodule Logflare.Networking.GrpcChannelMonitorTest do
 
     if Keyword.get(opts, :connect?, true) do
       assert_receive {:send_after, 0}
-      send(pid, :connect)
+      send_and_sync(pid, :connect)
     end
 
     pid
+  end
+
+  defp send_and_sync(pid, message) do
+    send(pid, message)
+    :sys.get_state(pid)
   end
 
   test "successful connect", %{
@@ -61,7 +66,7 @@ defmodule Logflare.Networking.GrpcChannelMonitorTest do
         {:error, :econnrefused}
       end)
 
-      send(pid, :connect)
+      send_and_sync(pid, :connect)
 
       assert_receive :connect_attempt
       expected_timeout = timeout * 1000
@@ -76,8 +81,8 @@ defmodule Logflare.Networking.GrpcChannelMonitorTest do
     pid = start_monitor(registry)
     assert_receive {:register, ^registry, 0, _partition, ^channel}
 
-    send(pid, :connect)
-    refute_receive {:register, ^registry, 0, _partition, _channel}
+    send_and_sync(pid, :connect)
+    refute_received {:register, ^registry, 0, _partition, _channel}
 
     assert [{^pid, ^channel}] = Registry.lookup(registry, 0)
   end
@@ -92,10 +97,9 @@ defmodule Logflare.Networking.GrpcChannelMonitorTest do
 
       pid = start_monitor(registry)
       allow(GRPC.Stub, self(), pid)
-      send(pid, :connect)
       assert_receive {:register, ^registry, 0, _partition, ^channel}
 
-      send(pid, {:elixir_grpc, :connection_down, channel.ref})
+      send_and_sync(pid, {:elixir_grpc, :connection_down, channel.ref})
 
       assert_receive {:unregister, ^registry, 0, _partition}
       assert_receive {:send_after, 0}
@@ -110,10 +114,9 @@ defmodule Logflare.Networking.GrpcChannelMonitorTest do
 
       pid = start_monitor(registry)
       allow(GRPC.Stub, self(), pid)
-      send(pid, :connect)
       assert_receive {:register, ^registry, 0, _partition, ^channel}
 
-      send(pid, {:elixir_grpc, :connection_down, channel.ref})
+      send_and_sync(pid, {:EXIT, self(), :closed})
 
       assert_receive {:unregister, ^registry, 0, _partition}
       assert_receive {:send_after, 0}

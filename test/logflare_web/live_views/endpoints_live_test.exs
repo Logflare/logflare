@@ -260,6 +260,33 @@ defmodule LogflareWeb.EndpointsLiveTest do
     assert render(view) =~ "some description"
   end
 
+  test "new endpoint displays validation messages", %{conn: conn} do
+    {:ok, view, _html} = live_with_redirect(conn, "/endpoints/new")
+
+    params = %{
+      name: "",
+      query: "",
+      max_limit: 0,
+      language: "bq_sql"
+    }
+
+    html =
+      view
+      |> element("form#endpoint")
+      |> render_submit(%{endpoint: params})
+
+    assert has_element?(view, "#endpoint_name + .help-block", "can't be blank")
+    assert has_element?(view, "#endpoint_query_editor > .help-block", "can't be blank")
+    assert html =~ "must be greater than 0"
+
+    html =
+      view
+      |> element("form#endpoint")
+      |> render_submit(%{endpoint: %{params | max_limit: 10_001}})
+
+    assert html =~ "must be less than 10001"
+  end
+
   test "new endpoint with redact_pii enabled", %{conn: conn} do
     {:ok, view, _html} = live_with_redirect(conn, "/endpoints/new")
     assert view |> has_element?("form#endpoint")
@@ -1351,7 +1378,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       {:ok, _view, html} =
         conn
         |> login_user(user, team_user)
-        |> live_with_redirect(~p"/endpoints")
+        |> live_with_redirect(~p"/endpoints", bypass_team_param: true)
 
       assert html =~ endpoint.name
     end
@@ -1365,7 +1392,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       {:ok, _view, html} =
         conn
         |> login_user(user, team_user)
-        |> live_with_redirect(~p"/endpoints/#{endpoint.id}")
+        |> live_with_redirect(~p"/endpoints/#{endpoint.id}", bypass_team_param: true)
 
       assert html =~ endpoint.name
     end
@@ -1379,7 +1406,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       {:ok, view, html} =
         conn
         |> login_user(user, team_user)
-        |> live_with_redirect(~p"/endpoints/#{endpoint.id}")
+        |> live_with_redirect(~p"/endpoints/#{endpoint.id}", bypass_team_param: true)
 
       assert html =~ endpoint.name
       assert view |> has_element?(~s|a[href="/access-tokens?t=#{team_user.team.id}"]|)
@@ -1395,7 +1422,9 @@ defmodule LogflareWeb.EndpointsLiveTest do
       insert(:endpoint, user: user, backend: backend)
 
       {:ok, view, _html} =
-        conn |> login_user(user, team_user) |> live_with_redirect(~p"/endpoints")
+        conn
+        |> login_user(user, team_user)
+        |> live_with_redirect(~p"/endpoints", bypass_team_param: true)
 
       html = render(view)
 
@@ -1413,7 +1442,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       {:ok, _view, html} =
         conn
         |> login_user(user, team_user)
-        |> live_with_redirect(~p"/endpoints/#{endpoint}")
+        |> live_with_redirect(~p"/endpoints/#{endpoint}", bypass_team_param: true)
 
       for path <- ["endpoints/#{endpoint.id}/edit", "access-tokens"] do
         assert html =~ ~r/#{path}[^"<]*t=#{team_user.team_id}/

@@ -147,6 +147,14 @@ defmodule LogflareWeb.Router do
     plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(private))
   end
 
+  pipeline :ingest_source_discovery_auth do
+    plug(Plug.RequestId)
+    plug(OpenApiSpex.Plug.PutApiSpec, module: LogflareWeb.ApiSpec)
+    plug(LogflareWeb.Plugs.VerifyApiAccess, require_token: true)
+    plug(:accepts, ["json", "csv"])
+    plug(LogflareWeb.Plugs.SetHeaders)
+  end
+
   pipeline :require_auth do
     plug(LogflareWeb.Plugs.RequireAuth)
   end
@@ -442,6 +450,11 @@ defmodule LogflareWeb.Router do
     get("/", HealthCheckController, :check)
   end
 
+  scope "/ready", LogflareWeb do
+    pipe_through(:api)
+    get("/", HealthCheckController, :ready)
+  end
+
   # Account management API.
   scope "/api", LogflareWeb do
     pipe_through([:api, :require_mgmt_api_auth])
@@ -497,6 +510,12 @@ defmodule LogflareWeb.Router do
     get "/key-values", Api.KeyValueController, :index
     post "/key-values", Api.KeyValueController, :create
     delete "/key-values", Api.KeyValueController, :delete
+  end
+
+  scope "/api", LogflareWeb do
+    pipe_through([:ingest_source_discovery_auth])
+
+    get("/ingest-sources", Api.IngestSourceController, :index)
   end
 
   scope "/api/partner", LogflareWeb do

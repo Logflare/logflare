@@ -208,7 +208,7 @@ defmodule Logflare.Mixfile do
 
       # Frontend
       {:phoenix_live_react, "~> 0.6"},
-      {:sql_fmt, "~> 0.4.0"},
+      {:sql_fmt, "~> 0.5.0"},
 
       # Dev
       {:dialyxir, "~> 1.1", only: [:dev, :test], runtime: false},
@@ -233,7 +233,7 @@ defmodule Logflare.Mixfile do
 
       # Postgres Subscribe
       {:cainophile, github: "Logflare/cainophile", ref: "f92a552"},
-      {:open_api_spex, "~> 3.16"},
+      {:open_api_spex, "~> 3.22"},
       # required for yaml open api generation
       {:ymlr, "~> 2.0"},
       {:grpc, "~> 0.11.0"},

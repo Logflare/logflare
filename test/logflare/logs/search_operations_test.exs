@@ -86,6 +86,47 @@ defmodule Logflare.Logs.SearchOperationsTest do
     end
   end
 
+  describe "new_event_page/3" do
+    setup do
+      [
+        so: %SO{
+          chart_data_shape_id: nil,
+          querystring: "",
+          partition_by: :timestamp,
+          chart_rules: [%ChartRule{period: :minute}],
+          tailing?: true
+        }
+      ]
+    end
+
+    test "creates an initial page request for a tailing search", %{so: so} do
+      assert {:ok, %{event_page_request: request}} =
+               SearchOperations.new_event_page(so, :initial, nil)
+
+      assert request == %{intent: :initial, cursor: nil}
+    end
+
+    test "creates a page request from its cursor", %{so: so} do
+      cursor = %{id: "event-id", timestamp: 1_769_904_600_000_000}
+
+      assert {:ok, %{event_page_request: request}} =
+               %{so | tailing?: false} |> SearchOperations.new_event_page(:next, cursor)
+
+      assert request == %{intent: :next, cursor: cursor}
+    end
+
+    test "returns an invalid request error when a page cursor is missing", %{so: so} do
+      for intent <- [:previous, :next] do
+        assert {:error, :invalid_request} =
+                 %{so | tailing?: false} |> SearchOperations.new_event_page(intent, nil)
+      end
+    end
+
+    test "returns a tailing error for tailing searches", %{so: so} do
+      assert {:error, :tailing} = SearchOperations.new_event_page(so, :previous, nil)
+    end
+  end
+
   describe "chart aggregation query generation" do
     setup %{user: user} do
       source = insert(:source, user: user, bq_table_id: "test_table")
@@ -194,6 +235,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
         @postgres_search_attrs
         |> Map.merge(%{source: source, type: :aggregates})
         |> SO.new()
+        |> Map.put(:chart_rules, [%ChartRule{}])
 
       [base_so: base_so]
     end
@@ -230,6 +272,22 @@ defmodule Logflare.Logs.SearchOperationsTest do
       so = SearchOperations.apply_numeric_aggs(so)
 
       assert length(so.query.wheres) == 1
+    end
+
+    test "uses postgres regex syntax for event message filters", %{base_so: base_so} do
+      regex_filter = %FilterRule{path: "event_message", operator: :"~", value: "(?i)error"}
+
+      so = %{
+        base_so
+        | lql_meta_and_msg_filters: [regex_filter],
+          query: from("test_table")
+      }
+
+      so = SearchOperations.apply_numeric_aggs(so)
+      {:ok, {sql, _params}} = PostgresAdaptor.ecto_to_sql(so.query, [])
+
+      assert sql =~ ~s|t0."event_message" ~ $1|
+      refute sql =~ "REGEXP_CONTAINS"
     end
 
     test "generates expected SQL for all aggregate types", %{base_so: base_so} do
@@ -282,11 +340,12 @@ defmodule Logflare.Logs.SearchOperationsTest do
     test "apply_query_defaults/1 uses the postgres table name", %{so: so} do
       so = SearchOperations.apply_query_defaults(so)
 
-      {:ok, {sql, _params}} = PostgresAdaptor.ecto_to_sql(so.query, [])
+      {:ok, {sql, params}} = PostgresAdaptor.ecto_to_sql(so.query, [])
 
       assert sql =~ ~s|FROM "#{PostgresAdaptor.table_name(so.source)}"|
       assert sql =~ ~s|ORDER BY l0."timestamp" DESC|
-      assert sql =~ ~s|LIMIT 100|
+      assert sql =~ ~s|LIMIT $1|
+      assert params == [SearchOperations.default_limit()]
     end
 
     test "apply_select_rules/1 uses postgres dialect defaults", %{so: so} do
@@ -316,7 +375,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
       {:ok, {sql, params}} = PostgresAdaptor.ecto_to_sql(so.query, [])
 
       assert sql =~ ~s|l0."event_message"|
-      assert params == ["error"]
+      assert params == ["error", SearchOperations.default_limit()]
     end
   end
 
@@ -877,7 +936,9 @@ defmodule Logflare.Logs.SearchOperationsTest do
       [base_so: base_so]
     end
 
-    test "do_query/1 uses BigQuery backend adaptor", %{base_so: base_so} do
+    test "do_query/1 fetches the sentinel row but stores canonical page SQL", %{base_so: base_so} do
+      base_so = SearchOperations.apply_query_defaults(base_so)
+
       Mimic.stub(BigQueryAdaptor, :execute_query, fn identifier, query, opts ->
         Process.put(:captured_identifier, identifier)
         Process.put(:captured_query, query)
@@ -886,8 +947,8 @@ defmodule Logflare.Logs.SearchOperationsTest do
         {:ok,
          QueryResult.new([%{"test" => "data"}], %{
            total_rows: 1,
-           query_string: "",
-           bq_params: []
+           query_string: "SELECT * FROM test_table LIMIT ?",
+           bq_params: [SearchOperations.fetch_limit()]
          })}
       end)
 
@@ -904,6 +965,18 @@ defmodule Logflare.Logs.SearchOperationsTest do
       assert user_id == base_so.source.user.id
       assert %Ecto.Query{} = captured_query
       assert captured_opts == [query_type: :search]
+
+      assert {:ok, {executed_sql, executed_params}} =
+               BigQueryAdaptor.ecto_to_sql(captured_query, [])
+
+      assert executed_sql =~ "LIMIT ?"
+      assert List.last(executed_params).parameterValue.value == SearchOperations.fetch_limit()
+
+      assert result_so.sql_string =~ "LIMIT ?"
+
+      assert List.last(result_so.sql_params).parameterValue.value ==
+               SearchOperations.default_limit()
+
       assert result_so.rows == [%{"test" => "data"}]
       refute result_so.error
     end

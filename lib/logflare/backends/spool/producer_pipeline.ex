@@ -179,7 +179,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
       %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
-      %{backend_type: :spool_producer}
+      %{backend_type: :spool_producer, batch_trigger: batch_info.trigger}
     )
 
     partition = :rand.uniform(partitions) - 1
@@ -225,7 +225,7 @@ defmodule Logflare.Backends.Spool.ProducerPipeline do
   # Throttle state is sampled once per batch (on the first message after a
   # reset), not once per message — the :pending sentinel marks "not yet
   # decided for this batch". Logflare.Backends.Spool.MemoryMonitor.throttled?/0
-  # is a cheap :persistent_term read, but even that isn't worth paying on
+  # is a cheap ETS tuple-element lookup, but even that isn't worth paying on
   # every single message when a batch can be up to @max_batch_size messages.
   #
   # Public (not private) so the returned {initial_acc, reducer_fn} tuple can
