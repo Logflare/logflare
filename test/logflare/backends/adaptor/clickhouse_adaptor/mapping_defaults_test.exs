@@ -232,6 +232,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
       end
     end
 
+    test "prefers the underscore-namespaced resource key over a top-level service_name", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{
+        "service_name" => "top-level",
+        "resource" => %{"_service_name" => "underscore"}
+      }
+
+      for compiled <- [log, metric, trace] do
+        result = Mapper.map(payload, compiled)
+
+        assert result["service_name"] == "underscore"
+        assert result["resource_attributes"]["service_name"] == "underscore"
+      end
+    end
+
     test "environment resolves from a resource-scoped key", %{
       log: log,
       metric: metric,
