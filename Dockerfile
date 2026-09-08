@@ -69,6 +69,8 @@ RUN apt-get update -y && apt-get install -y ca-certificates curl libstdc++6 open
     && curl --fail --show-error --location --retry 3 \
       --output /tmp/aws-rds-global-bundle.pem \
       https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
+    && echo "e5bb2084ccf45087bda1c9bffdea0eb15ee67f0b91646106e466714f9de3c7e3  /tmp/aws-rds-global-bundle.pem" \
+      | sha256sum --check - \
     && openssl crl2pkcs7 -nocrl -certfile /tmp/aws-rds-global-bundle.pem \
       | openssl pkcs7 -print_certs -noout | grep --quiet "Amazon RDS" \
     && install -m 0644 /tmp/aws-rds-global-bundle.pem /etc/ssl/certs/aws-rds-global-bundle.pem \
