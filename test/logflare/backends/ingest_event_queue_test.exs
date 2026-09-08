@@ -1632,7 +1632,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
   end
 
-  test "BufferCacheWorker caches buffer lengths every n seconds" do
+  test "BufferCacheWorker caches source and consolidated buffer lengths every n seconds" do
     user = insert(:user)
     source = insert(:source, user: user)
     backend = insert(:backend, user: user)
@@ -1640,19 +1640,27 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
     table = {source.id, backend.id, pid}
     other_table = {source.id, nil, pid}
+    consolidated_table = {:consolidated, backend.id, pid}
 
     IngestEventQueue.upsert_tid(table)
     IngestEventQueue.upsert_tid(other_table)
+    IngestEventQueue.upsert_tid(consolidated_table)
     start_supervised!({BufferCacheWorker, interval: 100})
 
     le = build(:log_event, source: source)
     IngestEventQueue.add_to_table(table, [le])
     IngestEventQueue.add_to_table(other_table, [le])
+    IngestEventQueue.add_to_table(consolidated_table, [le])
+    node = Node.self()
 
     # Verify worker cached the values automatically (without manual cache calls)
     TestUtils.retry_assert(fn ->
       assert PubSubRates.Cache.get_cluster_buffers(source.id, backend.id) == 1
       assert PubSubRates.Cache.get_cluster_buffers(source.id, nil) == 1
+      assert PubSubRates.Cache.get_cluster_buffers(:consolidated, backend.id) == 1
+
+      assert {:ok, %{^node => %{len: 1}}} =
+               Cachex.get(PubSubRates.Cache, {:consolidated, backend.id, "buffers"})
     end)
   end
 

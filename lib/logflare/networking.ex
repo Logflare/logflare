@@ -3,17 +3,17 @@ defmodule Logflare.Networking do
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
   alias Logflare.Backends.Adaptor.DatadogAdaptor
-  alias Logflare.SingleTenant
+  alias Logflare.Backends
 
   def pools do
-    if SingleTenant.postgres_backend?() do
-      finch_pools(true)
+    if Backends.bigquery_default_backend?() do
+      bigquery_finch_pools() ++ grpc_pools()
     else
-      finch_pools(false) ++ grpc_pools()
+      base_finch_pools_with_default()
     end
   end
 
-  defp finch_pools(true = _postgres_backend?) do
+  defp base_finch_pools_with_default do
     [
       {Finch,
        name: Logflare.FinchDefault,
@@ -27,15 +27,13 @@ defmodule Logflare.Networking do
     ]
   end
 
-  defp finch_pools(false = _postgres_backend?) do
+  defp bigquery_finch_pools do
     base = System.schedulers_online()
     http1_count = max(div(base, 4), 1)
 
     [
       # Finch connection pools, using http2
       {Finch, name: Logflare.FinchGoth, pools: %{default: [protocols: [:http2], count: 1]}},
-      {Finch,
-       name: Logflare.FinchDefaultHttp1, pools: %{default: [protocols: [:http1], size: 50]}},
       {Finch,
        name: Logflare.FinchIngest,
        pools: %{
@@ -79,6 +77,8 @@ defmodule Logflare.Networking do
     base = System.schedulers_online()
 
     [
+      {Finch,
+       name: Logflare.FinchDefaultHttp1, pools: %{default: [protocols: [:http1], size: 50]}},
       {Finch,
        name: Logflare.FinchClickHouseIngest,
        pools: %{

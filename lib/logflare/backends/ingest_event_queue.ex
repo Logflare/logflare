@@ -45,8 +45,8 @@ defmodule Logflare.Backends.IngestEventQueue do
   @type table_key :: {pos_integer(), pos_integer() | nil, pid() | nil}
   @type table_obj :: {table_key(), :ets.tid()}
   @type queues_key :: {pos_integer(), pos_integer() | nil}
-  @type consolidated_queues_key :: {:consolidated, pos_integer()}
-  @type consolidated_table_key :: {:consolidated, pos_integer(), pid() | nil}
+  @type consolidated_queues_key :: {:consolidated, non_neg_integer()}
+  @type consolidated_table_key :: {:consolidated, non_neg_integer(), pid() | nil}
   @type spool_producer_queues_key :: {:spool_producer, nil}
   @type spool_producer_table_key :: {:spool_producer, nil, pid() | nil}
   @type pointer_batch_key ::
