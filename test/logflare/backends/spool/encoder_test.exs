@@ -97,4 +97,23 @@ defmodule Logflare.Backends.Spool.EncoderTest do
       assert Encoder.content_encoding(true, :zstd) == "zstd"
     end
   end
+
+  describe "file_key_with_version/2 and file_key_version/1" do
+    test "tags a key with the current version, and it round-trips back out" do
+      key = Encoder.file_key_with_version("0/some-uuid", "ndjson")
+
+      assert key == "0/some-uuid.v#{Encoder.current_version()}.ndjson"
+      assert Encoder.file_key_version(key) == Encoder.current_version()
+    end
+
+    test "a key with no version tag at all is :legacy" do
+      assert Encoder.file_key_version("0/some-uuid.ndjson") == :legacy
+      assert Encoder.file_key_version("0/some-uuid.ndjson.gz") == :legacy
+    end
+
+    test "a key tagged with some other version number extracts that number, not :legacy" do
+      assert Encoder.file_key_version("0/some-uuid.v3.ndjson") == 3
+      assert Encoder.file_key_version("0/some-uuid.v1.ndjson") == 1
+    end
+  end
 end

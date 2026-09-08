@@ -2015,6 +2015,32 @@ defmodule Logflare.BackendsTest do
       assert pending_event_count() == 0
     end
 
+    test "falls back to normal dispatch when no spool partition is registered (e.g. the subtree crashed and is mid-restart)",
+         %{source: source} do
+      # Simulates the only window this can actually happen in — see
+      # dispatch_to_spool_producer/1's caller — by starting a fresh
+      # PartitionSupervisor with zero partitions instead of the describe
+      # setup's usual one.
+      stop_supervised!(PartitionSupervisor)
+
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        partitions: 0,
+        bucket: "test-bucket",
+        provider: :gcp,
+        storage_mod: StubSpoolStorage,
+        queue_mod: StubSpoolQueue,
+        wal_dir: System.tmp_dir!()
+      )
+
+      start_supervised!(PartitionSupervisor)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+    end
+
     test "does not dispatch to the spool producer when the global mode is off, even if source.enable_spooling and allow_spooling are true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :disable)

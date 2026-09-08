@@ -601,7 +601,13 @@ defmodule Logflare.Backends do
   the event's segment has been written and `fsync`ed to the local WAL — so
   `{:ok, count}` means locally durable, not yet necessarily uploaded to the
   spool bucket, which happens separately and asynchronously (see
-  `Logflare.Backends.Spool.Partition`'s moduledoc). Non-spooled events are
+  `Logflare.Backends.Spool.Partition`'s moduledoc). If no spool partition is
+  actually registered right now (the spool supervision subtree crashed and is
+  mid-restart — never happens on a cold boot, since that subtree finishes
+  starting before the endpoint accepts any traffic), this falls back to
+  normal (non-spool) dispatch for that event instead of failing it — a local
+  WAL write failure itself is not recoverable this way and still fails the
+  request (see `Logflare.Backends.Spool.WriteHealth`). Non-spooled events are
   always dispatched to their backend and this returns immediately.
   """
   @type log_param :: map()
@@ -619,17 +625,31 @@ defmodule Logflare.Backends do
 
     result =
       if spoolable?(log_events, source, allow_spooling) do
-        dispatch_to_spool_producer(log_events)
+        case dispatch_to_spool_producer(log_events) do
+          {:error, :no_spool_partition_available} ->
+            Logger.warning(
+              "backends: no spool partition registered, falling back to normal dispatch for source #{source.token}"
+            )
+
+            dispatch_to_backend_path(source, backend, log_events)
+
+          other ->
+            other
+        end
       else
-        maybe_broadcast_and_route(source, log_events)
-        dispatch_to_backends(source, backend, log_events)
-        :ok
+        dispatch_to_backend_path(source, backend, log_events)
       end
 
     case result do
       :ok -> if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
       {:error, _reason} = error -> error
     end
+  end
+
+  defp dispatch_to_backend_path(source, backend, log_events) do
+    maybe_broadcast_and_route(source, log_events)
+    dispatch_to_backends(source, backend, log_events)
+    :ok
   end
 
   @default_spool_format :ndjson

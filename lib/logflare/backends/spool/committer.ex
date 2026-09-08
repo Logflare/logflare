@@ -131,7 +131,7 @@ defmodule Logflare.Backends.Spool.Committer do
 
   defp file_key(config) do
     ext = Encoder.file_extension(config.format, config.compress, config.compression_algorithm)
-    "#{config.index}/#{generate_uuidv7()}.v2.#{ext}"
+    Encoder.file_key_with_version("#{config.index}/#{generate_uuidv7()}", ext)
   end
 
   defp headers(config) do

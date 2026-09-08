@@ -113,6 +113,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   require Logger
 
+  alias Logflare.Backends.Spool.Encoder
   alias Logflare.Backends.Spool.Framing
   alias Logflare.Backends.Spool.MemoryMonitor
 
@@ -580,6 +581,22 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
             ack_and_notify(queue_mod, queue_url, handle, :decode_error)
             :empty
 
+          {:error, {:unsupported_version, version}} ->
+            # Unlike malformed content, this file is presumably fine — it's
+            # just a future wire format version this build hasn't been
+            # upgraded to decode yet (see Encoder.current_version/0). Nack
+            # (redeliver) rather than ack-drop, so a node that does
+            # understand it — this one, once upgraded, or another already
+            # ahead of it during a rollout — gets a chance to process it
+            # instead of the events being destroyed over a version mismatch.
+            Logger.warning(
+              "spool_consumer: #{file_key} is format version #{inspect(version)}, which " <>
+                "this node doesn't understand yet — leaving it for a node that does"
+            )
+
+            nack_and_notify(queue_mod, queue_url, handle, :unsupported_version)
+            :empty
+
           {:error, reason} ->
             {:error, handle, reason}
         end
@@ -614,18 +631,24 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     result
   end
 
-  # A ".v2." spool file (see Committer.file_key/1) is one or more
-  # independently-encoded (and independently compressed) chunks concatenated
-  # as length+CRC32-framed segments — see Logflare.Backends.Spool.Framing's
-  # moduledoc for why concatenation alone isn't safe to decode (zstd in
-  # particular silently drops everything past the first member on raw
-  # concatenation). Each segment is decompressed and parsed on its own, then
-  # the resulting event lists are concatenated. A file without ".v2." was
-  # written by the pre-framing main-branch producer: one whole
-  # compressed-or-not blob, no wrapper. Dispatching on the key itself, rather
-  # than sniffing the content, is exact — there's no ambiguity to fall back
-  # on — and lets old and new producers' output coexist in the same
-  # queue/bucket across a rollout.
+  # A versioned spool file (see Committer.file_key/1, Encoder.current_version/0)
+  # is one or more independently-encoded (and independently compressed)
+  # chunks concatenated as length+CRC32-framed segments — see
+  # Logflare.Backends.Spool.Framing's moduledoc for why concatenation alone
+  # isn't safe to decode (zstd in particular silently drops everything past
+  # the first member on raw concatenation). Each segment is decompressed and
+  # parsed on its own, then the resulting event lists are concatenated. A
+  # file with no version tag at all was written by the pre-framing
+  # main-branch producer: one whole compressed-or-not blob, no wrapper.
+  # Dispatching on the key itself, rather than sniffing the content, is
+  # exact — there's no ambiguity to fall back on — and lets producers on
+  # different versions (or the pre-versioning main branch) coexist in the
+  # same queue/bucket across a rollout. A version this build doesn't
+  # recognize (newer than Encoder.current_version/0 — some future rollout
+  # where not every consumer is upgraded yet) is reported back as
+  # {:unsupported_version, _} rather than attempted, so the caller can leave
+  # it for a node that does understand it instead of destroying it as if it
+  # were corrupt.
   #
   # Decompression and parsing are both capable of raising on truncated or
   # otherwise corrupt content (:zlib.gunzip/1, :ezstd.decompress/1, and
@@ -634,21 +657,26 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   # so the caller can ack (drop) the poison message instead of losing the
   # handle to safe_fetch_next's outer rescue and retrying forever.
   defp decode_content(file_key, raw) do
-    if versioned_v2?(file_key) do
-      case Framing.decode_segments(raw) do
-        {:ok, segments} -> decode_segments(file_key, segments)
-        {:error, reason} -> {:error, {:decode_failed, reason}}
-      end
-    else
-      decode_legacy_content(file_key, raw)
+    current = Encoder.current_version()
+
+    case Encoder.file_key_version(file_key) do
+      :legacy ->
+        decode_legacy_content(file_key, raw)
+
+      ^current ->
+        case Framing.decode_segments(raw) do
+          {:ok, segments} -> decode_versioned_segments(file_key, segments)
+          {:error, reason} -> {:error, {:decode_failed, reason}}
+        end
+
+      version ->
+        {:error, {:unsupported_version, version}}
     end
   rescue
     e -> {:error, {:decode_failed, e}}
   catch
     kind, reason -> {:error, {:decode_failed, %RuntimeError{message: inspect({kind, reason})}}}
   end
-
-  defp versioned_v2?(file_key), do: String.contains?(file_key, ".v2.")
 
   defp decode_legacy_content(file_key, raw) do
     content =
@@ -664,7 +692,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   # parse_content/2 always succeeds or raises (never returns {:error, _}) —
   # any decode failure propagates up to decode_content/2's rescue/catch, so
   # this just flattens each segment's events across the whole file.
-  defp decode_segments(file_key, segments) do
+  defp decode_versioned_segments(file_key, segments) do
     events = Enum.flat_map(segments, &decode_segment_events(file_key, &1))
     {:ok, events}
   end

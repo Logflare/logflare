@@ -69,7 +69,7 @@ defmodule Logflare.Backends.Spool.PartitionSupervisor do
     queue_ref = resolve_queue_ref(spool_config, queue_mod)
 
     partition_specs =
-      for index <- 0..(partition_count() - 1) do
+      for index <- 0..(partition_count() - 1)//1 do
         opts = [
           name: {:via, Registry, {@registry, index}},
           index: index,

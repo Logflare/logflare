@@ -4,6 +4,7 @@ defmodule Logflare.Backends.Spool.CommitterTest do
   import Mimic
 
   alias Logflare.Backends.Spool.Committer
+  alias Logflare.Backends.Spool.Encoder
   alias Logflare.Backends.Spool.Framing
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
@@ -67,6 +68,7 @@ defmodule Logflare.Backends.Spool.CommitterTest do
       assert_receive {:put, "0/" <> _rest = key, body, opts}
       assert [headers: %{"content-type" => "application/x-ndjson"}] = opts
       assert {:ok, ["one\n"]} = Framing.decode_segments(body)
+      assert Encoder.file_key_version(key) == Encoder.current_version()
 
       assert_receive {:publish, "projects/p/topics/t", notify_body}
       assert %{"file_key" => ^key, "event_count" => 1} = Jason.decode!(notify_body)

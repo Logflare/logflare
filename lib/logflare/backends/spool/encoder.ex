@@ -13,6 +13,35 @@ defmodule Logflare.Backends.Spool.Encoder do
 
   @zstd_compression_level 3
 
+  # The wire format version this build writes (see Committer.file_key/1) —
+  # bump this, and add a matching decode path in
+  # ConsumerPipeline.QueueProducer, whenever the frame layout or encoding
+  # scheme changes in a way older code can't already read. Never remove an
+  # old version's decode path once files tagged with it might still be
+  # in-flight or sitting in a bucket.
+  @current_version 2
+
+  @spec current_version() :: pos_integer()
+  def current_version, do: @current_version
+
+  @doc """
+  Extracts the version embedded in a spool file_key by `file_key_with_version/2`
+  (e.g. `"0/uuid.v2.ndjson"` -> `2`), or `:legacy` if none is present — the
+  pre-versioning main-branch producer wrote plain `"0/uuid.ndjson"` keys with
+  no version tag at all.
+  """
+  @spec file_key_version(String.t()) :: pos_integer() | :legacy
+  def file_key_version(file_key) do
+    case Regex.run(~r/\.v(\d+)\./, file_key) do
+      [_match, digits] -> String.to_integer(digits)
+      nil -> :legacy
+    end
+  end
+
+  @doc "Tags `key` with the current wire format version — see `current_version/0`."
+  @spec file_key_with_version(String.t(), String.t()) :: String.t()
+  def file_key_with_version(key, ext), do: "#{key}.v#{@current_version}.#{ext}"
+
   @spec encode_chunk([LogEvent.t()], :ndjson | :etf, boolean(), :gzip | :zstd) ::
           {segment :: binary(), compressed_byte_size :: non_neg_integer(),
            raw_byte_size :: non_neg_integer(), format_tag :: atom()}

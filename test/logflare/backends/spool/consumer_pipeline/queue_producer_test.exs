@@ -594,6 +594,25 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{count: 1},
                       %{reason: :decode_error}}
     end
+
+    test "nacks (not acks) a file tagged with a version newer than this build understands" do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :nack])
+
+      stub_ack_nack(self())
+      stub_queue([queue_message("h1", "0/future.v99.ndjson")])
+      stub_storage(%{"0/future.v99.ndjson" => framed_ndjson_body([%{"id" => "e1"}])})
+
+      pid = start_producer()
+      Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
+
+      # Not corruption — this build just doesn't know how to read it yet, so
+      # it's left for a node that does instead of being destroyed.
+      assert_receive {:nacked, "h1"}, 2000
+      refute_receive {:acked, "h1"}
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :nack],
+                      %{count: 1}, %{reason: :unsupported_version}}
+    end
   end
 
   describe "ack/nack result telemetry" do
