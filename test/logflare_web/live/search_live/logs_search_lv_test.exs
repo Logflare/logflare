@@ -780,34 +780,32 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert_receive {:agg_query, _query}
 
       TestUtils.retry_assert(fn ->
-        assert view |> element("#logs-list-container") |> render() =~ "Extend search"
+        html = view |> element("#logs-list-container") |> render()
+
+        assert html =~ "No events matching your query"
+
+        {:ok, document} = Floki.parse_document(html)
+
+        assert [link] =
+                 document
+                 |> Floki.find("a")
+                 |> Enum.filter(fn link -> Floki.text(link) =~ "Extend search" end)
+
+        assert Floki.text(document) =~ "t:>=#{expected_hits_ts}"
+        refute Floki.text(document) =~ "t:>=#{expected_zero_ts}"
+
+        href =
+          link
+          |> Floki.attribute("href")
+          |> hd()
+
+        uri = URI.parse(href)
+        assert uri.path == "/sources/#{source.id}/search"
+
+        query_params = URI.decode_query(uri.query)
+        assert query_params["tailing?"] == "false"
+        assert query_params["querystring"] =~ "t:>=#{expected_hits_ts}"
       end)
-
-      html = view |> element("#logs-list-container") |> render()
-
-      assert html =~ "No events matching your query"
-
-      {:ok, document} = Floki.parse_document(html)
-
-      assert [link] =
-               document
-               |> Floki.find("a")
-               |> Enum.filter(fn link -> Floki.text(link) =~ "Extend search" end)
-
-      assert Floki.text(document) =~ "t:>=#{expected_hits_ts}"
-      refute Floki.text(document) =~ "t:>=#{expected_zero_ts}"
-
-      href =
-        link
-        |> Floki.attribute("href")
-        |> hd()
-
-      uri = URI.parse(href)
-      assert uri.path == "/sources/#{source.id}/search"
-
-      query_params = URI.decode_query(uri.query)
-      assert query_params["tailing?"] == "false"
-      assert query_params["querystring"] =~ "t:>=#{expected_hits_ts}"
     end
 
     test "page title includes source name", %{conn: conn, source: source} do
@@ -839,8 +837,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
         {:ok, TestUtils.gen_bq_response(%{"event_message" => "some error message"})}
       end)
 
-      render_change(view, :querystring_changed, %{
-        "querystring" => "c:count(*) c:group_by(t::minute) error crasher"
+      render_change(view, :update_search_form, %{
+        "search" => %{"querystring" => "c:count(*) c:group_by(t::minute) error crasher"}
       })
 
       view
@@ -2490,8 +2488,12 @@ defmodule LogflareWeb.Source.SearchLVTest do
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       allow_sandbox(search_executor_pid)
 
-      render_change(view, :start_search, %{
-        "querystring" => "event_message:timeout c:count(*) c:group_by(t::minute)",
+      view
+      |> element("#source-logs-search-form")
+      |> render_submit(%{
+        "search" => %{
+          "querystring" => "event_message:timeout c:count(*) c:group_by(t::minute)"
+        },
         "fields" => %{
           "event_message" => "api-timeout",
           "metadata.request_id" => ""
@@ -2973,8 +2975,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
     {:ok, document} = Floki.parse_document(html)
 
     document
-    |> Floki.find("#lql-editor-hook")
-    |> Floki.attribute("data-querystring")
+    |> Floki.find("#lql-editor-hook [data-editor-input]")
+    |> Floki.attribute("value")
     |> hd()
   end
 end
