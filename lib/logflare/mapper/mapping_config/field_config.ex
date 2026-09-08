@@ -61,6 +61,23 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
       unrecognized key, a non-integer length, or an unsupported character class is rejected
       when the config is built rather than dropped.
 
+  ### `uint8/2`, `uint32/2`, `uint64/2`
+
+    * `:coercion` — `:lenient` (default) or `:strict`. Lenient coercion converts whatever
+      it is given: floats truncate (`13.9` → `13`), booleans become `1`/`0`, numeric
+      strings are parsed, and anything else becomes `0`. Strict coercion only accepts an
+      integer term or a string that parses as an integer; any other type is treated as
+      unresolved, so coalesce moves on to the next path and the field's `:default` applies
+      when nothing resolves. Range handling is the same in both modes: negative values
+      clamp to `0` and values above the type's maximum saturate, at any magnitude, so a
+      BEAM bignum or an overflowing numeric string lands on the maximum rather than `0`.
+      The check applies to every source: `:path`, `:paths`, `:from_output`, and the root
+      document. Strict cannot be combined with `:value_map`, since the
+      map's string keys would never pass the integer check; the compiler rejects it.
+
+      Use `:strict` when a truncated or converted value would be misread downstream, e.g.
+      an OTEL `severity_number` where `true` must not silently become `TRACE` (`1`).
+
   ### `datetime64/2`
 
     * `:precision` — target precision 0-9 (default `9` for nanoseconds). Integer inputs are
@@ -215,6 +232,7 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
   @valid_types ~w(string uint8 uint32 uint64 int32 float64 bool enum8 datetime64 json flat_map array_string array_uint64 array_float64 array_datetime64 array_json array_map array_flat_map)
   @valid_transforms ~w(upcase downcase)
   @valid_value_types ~w(string)
+  @valid_coercions ~w(lenient strict)
   @length_filters ~w(len_eq len_gt len_gte len_lt len_lte)
   @char_classes ~w(alpha numeric alphanumeric)
 
@@ -246,6 +264,7 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
     field(:filter_nil, :boolean, default: false)
     field(:value_type, :string)
     field(:pick_mode, :string)
+    field(:coercion, :string)
     embeds_many(:pick, PickEntry)
     embeds_many(:infer, InferRule)
   end
@@ -272,7 +291,8 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
         :filters,
         :filter_nil,
         :value_type,
-        :pick_mode
+        :pick_mode,
+        :coercion
       ],
       empty_values: []
     )
@@ -280,6 +300,7 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
     |> validate_inclusion(:type, @valid_types)
     |> validate_inclusion(:transform, @valid_transforms)
     |> validate_inclusion(:value_type, @valid_value_types)
+    |> validate_inclusion(:coercion, @valid_coercions)
     |> normalize_filters()
     |> cast_embed(:pick, with: &PickEntry.changeset/2)
     |> cast_embed(:infer, with: &InferRule.changeset/2)
@@ -292,17 +313,17 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
 
   @spec uint8(String.t(), keyword()) :: t()
   def uint8(name, opts \\ []) do
-    build(name, "uint8", opts)
+    build(name, "uint8", opts, [:coercion])
   end
 
   @spec uint32(String.t(), keyword()) :: t()
   def uint32(name, opts \\ []) do
-    build(name, "uint32", opts)
+    build(name, "uint32", opts, [:coercion])
   end
 
   @spec uint64(String.t(), keyword()) :: t()
   def uint64(name, opts \\ []) do
-    build(name, "uint64", opts)
+    build(name, "uint64", opts, [:coercion])
   end
 
   @spec int32(String.t(), keyword()) :: t()
@@ -424,6 +445,14 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
       {:error, reason} -> raise ArgumentError, reason
     end
   end
+
+  defp maybe_put(struct, :coercion, mode) when mode in [:lenient, "lenient"], do: struct
+
+  defp maybe_put(struct, :coercion, mode) when mode in [:strict, "strict"],
+    do: %{struct | coercion: "strict"}
+
+  defp maybe_put(_struct, :coercion, mode),
+    do: raise(ArgumentError, "coercion must be :lenient or :strict, got #{inspect(mode)}")
 
   defp maybe_put(struct, key, value), do: Map.put(struct, key, value)
 

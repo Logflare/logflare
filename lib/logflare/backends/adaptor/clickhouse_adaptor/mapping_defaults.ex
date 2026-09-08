@@ -23,6 +23,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
 
   This trade-off is deliberate: downstream queries get a stable, predictable key set
   rather than having to reconcile aliases and duplicate keys per row.
+
+  ## `severity_number` contract
+
+  A supplied `severity_number` is stored only when it is an integer (or a string holding
+  one) inside the OTEL 1-24 range. `severity_number_alt` uses `coercion: :strict`, so a
+  float or boolean resolves to `0` instead of being truncated to a plausible severity, and
+  the RowBinary encoder rejects anything outside 1-24. Both cases fall back to the
+  `severity_number` derived from `severity_text`.
   """
 
   alias Logflare.LogEvent.TypeDetection
@@ -84,6 +92,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       ),
       Field.uint8("severity_number_alt",
         paths: ["$.severity_number", "$.severityNumber"],
+        coercion: :strict,
         default: 0
       ),
       Field.uint8("severity_number",

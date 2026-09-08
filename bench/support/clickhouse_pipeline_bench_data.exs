@@ -553,7 +553,7 @@ defmodule Logflare.Bench.ClickHousePipelineData do
   defp maybe_compute_duration(body, _type), do: body
 
   defp resolve_severity_number(%{"severity_number_alt" => alt} = body, :log)
-       when is_integer(alt) and alt > 0 do
+       when is_integer(alt) and alt in 1..24 do
     %{body | "severity_number" => alt}
   end
 

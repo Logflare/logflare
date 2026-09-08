@@ -155,6 +155,20 @@ defmodule Logflare.Mapper.MappingConfigTest do
       assert Field.json("attrs", pick_mode: "replace").pick_mode == nil
     end
 
+    test "coercion option accepts the atom or string form on unsigned integer fields" do
+      for mode <- [:strict, "strict"] do
+        assert Field.uint8("val", coercion: mode).coercion == "strict"
+        assert Field.uint32("val", coercion: mode).coercion == "strict"
+        assert Field.uint64("val", coercion: mode).coercion == "strict"
+      end
+    end
+
+    test "coercion defaults to nil, and :lenient is stored as nil" do
+      assert Field.uint8("val", path: "$.val").coercion == nil
+      assert Field.uint8("val", coercion: :lenient).coercion == nil
+      assert Field.uint8("val", coercion: "lenient").coercion == nil
+    end
+
     test "flat_map/2 with exclude and elevate keys" do
       field =
         Field.flat_map("log_attributes",
@@ -334,6 +348,25 @@ defmodule Logflare.Mapper.MappingConfigTest do
       assert Mapper.map(document, Mapper.compile!(restored)) == expected
     end
 
+    test "round-trip preserves coercion" do
+      config =
+        MappingConfig.new([
+          Field.uint8("val", path: "$.val", coercion: :strict, default: 99)
+        ])
+
+      assert {:ok, json} = MappingConfig.to_json(config)
+      assert {:ok, restored} = MappingConfig.from_json(json)
+
+      [field] = restored.fields
+      assert field.coercion == "strict"
+
+      document = %{"val" => true}
+      expected = %{"val" => 99}
+
+      assert Mapper.map(document, Mapper.compile!(config)) == expected
+      assert Mapper.map(document, Mapper.compile!(restored)) == expected
+    end
+
     test "round-trip preserves infer rules" do
       config =
         MappingConfig.new([
@@ -418,6 +451,20 @@ defmodule Logflare.Mapper.MappingConfigTest do
       json = Jason.encode!(%{"fields" => [%{"type" => "string"}]})
 
       assert {:error, %Ecto.Changeset{}} = MappingConfig.from_json(json)
+    end
+
+    test "from_json/1 rejects an unknown coercion value" do
+      json =
+        Jason.encode!(%{
+          "fields" => [
+            %{"name" => "val", "type" => "uint8", "path" => "$.val", "coercion" => "bogus"}
+          ]
+        })
+
+      assert {:error, %Ecto.Changeset{} = changeset} = MappingConfig.from_json(json)
+
+      assert [%Ecto.Changeset{errors: [coercion: {"is invalid", _}]}] =
+               Ecto.Changeset.get_change(changeset, :fields)
     end
 
     test "from_json/1 validates the output format" do
