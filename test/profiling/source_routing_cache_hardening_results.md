@@ -15,7 +15,8 @@ The commit:
 
 The environment and corrected six-case fixtures are the same as
 [`source_routing_snapshot_results.md`](source_routing_snapshot_results.md):
-Linux, Elixir 1.18.4, OTP 27, JIT enabled, Benchee with one second warmup, three
+Linux, Elixir 1.19.5, OTP 27.3.4.6, JIT enabled, Benchee with one second warmup,
+three
 seconds measurement, one second memory measurement, and outlier exclusion
 disabled. Results are microbenchmarks rather than production throughput claims.
 
