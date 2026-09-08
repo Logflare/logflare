@@ -184,35 +184,22 @@ defmodule Logflare.Repo.Replicas do
   defp redact(message, userinfo), do: String.replace(message, userinfo, "REDACTED")
 
   defp resolve_ssl(config) do
-    primary_ssl = Keyword.get(Logflare.Repo.config(), :ssl)
-    effective_ssl = Keyword.get(config, :ssl, primary_ssl)
-    hostname = config[:hostname]
-
-    case effective_ssl do
-      true ->
-        Keyword.put(config, :ssl, primary_ssl_opts(hostname))
-
-      opts when is_list(opts) ->
-        Keyword.put(config, :ssl, replica_ssl_opts(opts, hostname))
-
-      _ ->
-        config
+    case Keyword.get(config, :ssl) do
+      true -> Keyword.put(config, :ssl, primary_ssl_opts(config[:hostname]))
+      _ -> config
     end
   end
 
   defp primary_ssl_opts(hostname) do
     case Keyword.get(Logflare.Repo.config(), :ssl) do
-      opts when is_list(opts) -> replica_ssl_opts(opts, hostname)
-      _ -> true
-    end
-  end
+      opts when is_list(opts) ->
+        case :inet.parse_address(String.to_charlist(hostname || "")) do
+          {:ok, _ip} -> Keyword.put(opts, :server_name_indication, :disable)
+          {:error, _} -> opts
+        end
 
-  defp replica_ssl_opts(opts, hostname) do
-    opts = Keyword.delete(opts, :server_name_indication)
-
-    case :inet.parse_address(String.to_charlist(hostname || "")) do
-      {:ok, _ip} -> Keyword.put(opts, :server_name_indication, :disable)
-      {:error, _} -> opts
+      _ ->
+        true
     end
   end
 
