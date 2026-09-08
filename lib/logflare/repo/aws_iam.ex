@@ -148,9 +148,14 @@ defmodule Logflare.Repo.AwsIam do
         Keyword.put(opts, :security_token, token)
 
       _ ->
-        if static_env_credentials?(),
-          do: Keyword.put(opts, :security_token, {:system, "AWS_SESSION_TOKEN"}),
-          else: opts
+        if static_env_credentials?(), do: put_static_security_token(opts), else: opts
+    end
+  end
+
+  defp put_static_security_token(opts) do
+    case System.get_env("AWS_SESSION_TOKEN") do
+      token when is_binary(token) and token != "" -> Keyword.put(opts, :security_token, token)
+      _ -> Keyword.put(opts, :security_token, nil)
     end
   end
 

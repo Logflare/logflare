@@ -424,7 +424,7 @@ defmodule Logflare.RepoTest do
       assert token =~ "#{region}%2Frds-db"
     end
 
-    test "auth_token/4 signs temporary environment credentials and normalizes hostnames", %{
+    test "auth_token/4 handles static environment session tokens and normalizes hostnames", %{
       host: host,
       region: region
     } do
@@ -447,6 +447,12 @@ defmodule Logflare.RepoTest do
 
       assert String.starts_with?(token, "#{host}:5432/?")
       assert token =~ "X-Amz-Security-Token=session-token"
+
+      for empty_token <- [nil, ""] do
+        restore_system_env("AWS_SESSION_TOKEN", empty_token)
+        token = AwsIam.auth_token(host, 5432, "logflare", region)
+        refute token =~ "X-Amz-Security-Token"
+      end
     end
 
     test "auth_token/4 preserves a session token resolved by the credential provider", %{
