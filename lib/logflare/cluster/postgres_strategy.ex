@@ -114,7 +114,7 @@ defmodule Logflare.Cluster.PostgresStrategy do
 
   @spec get_db_options() :: keyword()
   def get_db_options do
-    Application.fetch_env!(:logflare, Repo)
+    Repo.config()
     |> ConnectionOptions.prepare_postgrex()
   end
 

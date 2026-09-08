@@ -99,7 +99,7 @@ defmodule Logflare.ContextCache.Supervisor do
 
   defp cainophile_child_spec do
     epgsql =
-      Application.fetch_env!(:logflare, Repo)
+      Repo.config()
       |> ConnectionOptions.prepare_epgsql()
 
     slot = Application.get_env(:logflare, CacheBuster)[:replication_slot]
