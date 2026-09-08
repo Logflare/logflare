@@ -3,14 +3,9 @@ defmodule Logflare.Backends.Spool.Encoder do
   Encodes one caller's chunk of `LogEvent`s into a single framed (and
   optionally compressed) segment, ready to hand to a `Partition`.
 
-  Compression now happens here, in the ingest caller's own process, at the
-  scale of one request's chunk — not batched together with other callers'
-  chunks the way `ProducerPipeline.handle_batch/4` used to. A chunk this
-  size doesn't need the old incremental per-event zlib streaming (that
-  existed specifically to avoid materializing a whole multi-thousand-event
-  batch's raw bytes before compressing); building the full raw payload then
-  compressing it in one shot is simpler and, per the benchmark that
-  motivated this design, faster in practice at this scale.
+  Runs in the ingest caller's own process, at the scale of one request's
+  chunk, so compression here builds the full raw payload and compresses it
+  in one shot rather than streaming it incrementally.
   """
 
   alias Logflare.Backends.Spool.Framing

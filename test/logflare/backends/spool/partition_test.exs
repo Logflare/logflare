@@ -49,11 +49,36 @@ defmodule Logflare.Backends.Spool.PartitionTest do
   # under the partition. Writing to a closed file descriptor fails at the
   # OS level (:einval) regardless of permissions or user — unlike a
   # chmod-based simulation, which root-run CI would bypass — so this is a
-  # reliable, portable way to exercise the disk-write-failure fallback.
+  # reliable, portable way to exercise the disk-write-failure path. Since
+  # active_path itself is untouched, this is a *recoverable* break — the
+  # one-shot reopen in write_with_recovery/2 succeeds against it.
   defp break_local_disk!(pid) do
     :sys.replace_state(pid, fn state ->
       :file.close(state.fd)
       state
+    end)
+  end
+
+  # Same as break_local_disk!/1, but also redirects active_path to a file
+  # inside a nonexistent directory, so the reopen-and-retry attempt fails
+  # too (:enoent, parent directory missing — reliable and root-safe,
+  # unlike a chmod-based simulation). Simulates a failure that isn't
+  # self-healing.
+  defp break_local_disk_unrecoverably!(pid) do
+    :sys.replace_state(pid, fn state ->
+      :file.close(state.fd)
+      bad_path = Path.join(state.wal_dir, "does-not-exist/p0.wal")
+      %{state | active_path: bad_path}
+    end)
+  end
+
+  # Redirects wal_dir (used only to compute the next sealed_path) to a
+  # nonexistent directory, so roll/1's File.rename fails while
+  # active_path itself stays valid — isolates a roll failure from a write
+  # failure.
+  defp break_roll!(pid) do
+    :sys.replace_state(pid, fn state ->
+      %{state | wal_dir: Path.join(state.wal_dir, "does-not-exist")}
     end)
   end
 
@@ -126,8 +151,8 @@ defmodule Logflare.Backends.Spool.PartitionTest do
     end
   end
 
-  describe "append/5 vs append_async/4" do
-    test "append/5 blocks until the segment is durable on local disk (not until GCS/Pub-Sub commit)" do
+  describe "append/5" do
+    test "blocks until the segment is durable on local disk (not until GCS/Pub-Sub commit)" do
       test_pid = self()
       # A commit that never resolves during the test — proves append/5's
       # reply doesn't wait on it, which is the whole point of the redesign:
@@ -144,20 +169,6 @@ defmodule Logflare.Backends.Spool.PartitionTest do
 
       assert :ok = Partition.append(pid, segment(), 10, 1)
       refute_receive :put_called, 50
-    end
-
-    test "append_async/4 returns immediately and still gets committed" do
-      test_pid = self()
-
-      stub(StorageMod, :put, fn _b, _k, body, _opts ->
-        send(test_pid, {:put, body})
-        {:ok, %{}}
-      end)
-
-      {pid, _name} = start_partition(batch_timeout: 10)
-
-      assert :ok = Partition.append_async(pid, segment(), 10, 1)
-      assert_receive {:put, _body}, 500
     end
   end
 
@@ -476,71 +487,51 @@ defmodule Logflare.Backends.Spool.PartitionTest do
     end
   end
 
-  describe "local WAL write failure fallback" do
+  describe "local WAL write failure" do
     setup do
-      on_exit(fn -> WriteHealth.report_recovery!() end)
+      # Isolates each test's single simulated failure from
+      # WriteHealth's multi-failure tolerance (see write_health_test.exs) —
+      # here we only care about "a failure reports to WriteHealth at all".
+      prev_spool_config = Application.get_env(:logflare, :spool)
+      Application.put_env(:logflare, :spool, max_write_health_failures: 1)
+
+      on_exit(fn ->
+        WriteHealth.report_recovery!()
+
+        if prev_spool_config do
+          Application.put_env(:logflare, :spool, prev_spool_config)
+        else
+          Application.delete_env(:logflare, :spool)
+        end
+      end)
+
       :ok
     end
 
-    test "append/5 falls back to a direct GCS write when the local disk write fails, and still returns :ok" do
+    test "append/5 returns an error and marks the node unhealthy — no GCS fallback attempt" do
       test_pid = self()
-
-      stub(StorageMod, :put, fn _b, _k, body, _opts ->
-        send(test_pid, {:put, body})
-        {:ok, %{}}
-      end)
+      stub(StorageMod, :put, fn _b, _k, body, _opts -> send(test_pid, {:put, body}) end)
 
       {pid, _name} = start_partition(batch_timeout: 60_000)
-      break_local_disk!(pid)
+      break_local_disk_unrecoverably!(pid)
 
-      assert :ok = Partition.append(pid, segment("fallback\n"), 10, 1)
-      assert_receive {:put, body}, 1000
-      assert {:ok, ["fallback\n"]} = Framing.decode_segments(body)
-      assert WriteHealth.healthy?() == true
-    end
+      assert {:error, :einval} = Partition.append(pid, segment("boom\n"), 10, 1)
 
-    test "append_async/4 falls back to a direct GCS write in the background when the local disk write fails" do
-      test_pid = self()
-
-      stub(StorageMod, :put, fn _b, _k, body, _opts ->
-        send(test_pid, {:put, body})
-        {:ok, %{}}
-      end)
-
-      {pid, _name} = start_partition(batch_timeout: 60_000)
-      break_local_disk!(pid)
-
-      assert :ok = Partition.append_async(pid, segment("async-fallback\n"), 10, 1)
-      assert_receive {:put, body}, 1000
-      assert {:ok, ["async-fallback\n"]} = Framing.decode_segments(body)
-    end
-
-    test "append/5 returns an error, and marks the node unhealthy, if the GCS fallback also fails" do
-      Application.put_env(:logflare, :spool, max_commit_attempts: 1)
-      stub(StorageMod, :put, fn _b, _k, _body, _opts -> {:error, :timeout} end)
-
-      {pid, _name} = start_partition(batch_timeout: 60_000)
-      break_local_disk!(pid)
-
-      assert {:error, {:disk_and_gcs_unavailable, _disk_reason, _gcs_reason}} =
-               Partition.append(pid, segment("boom\n"), 10, 1)
-
+      refute_receive {:put, _body}, 100
       assert WriteHealth.healthy?() == false
     end
 
     test "a subsequent successful write clears the unhealthy state" do
-      Application.put_env(:logflare, :spool, max_commit_attempts: 1)
-      stub(StorageMod, :put, fn _b, _k, _body, _opts -> {:error, :timeout} end)
+      stub(StorageMod, :put, fn _b, _k, _body, _opts -> {:ok, %{}} end)
 
       {pid, _name} = start_partition(batch_timeout: 60_000)
-      break_local_disk!(pid)
+      break_local_disk_unrecoverably!(pid)
 
       assert {:error, _} = Partition.append(pid, segment(), 10, 1)
       assert WriteHealth.healthy?() == false
 
       # A fresh partition (healthy fd) succeeding should clear the flag —
       # WriteHealth is node-wide, not scoped to whichever partition tripped it.
-      stub(StorageMod, :put, fn _b, _k, _body, _opts -> {:ok, %{}} end)
       {pid2, _name2} = start_partition(batch_timeout: 60_000)
       assert :ok = Partition.append(pid2, segment(), 10, 1)
 
@@ -549,15 +540,45 @@ defmodule Logflare.Backends.Spool.PartitionTest do
 
     test "emits telemetry when the local WAL write fails" do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :wal, :write_error])
-      stub(StorageMod, :put, fn _b, _k, _body, _opts -> {:ok, %{}} end)
 
       {pid, _name} = start_partition(batch_timeout: 60_000)
-      break_local_disk!(pid)
+      break_local_disk_unrecoverably!(pid)
 
-      assert :ok = Partition.append(pid, segment(), 10, 1)
+      assert {:error, _} = Partition.append(pid, segment(), 10, 1)
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :wal, :write_error],
                       %{count: 1}, %{index: 0}}
+    end
+
+    test "a write against a merely-closed fd self-heals via one reopen, without ever going unhealthy" do
+      {pid, _name} = start_partition(batch_timeout: 60_000)
+      break_local_disk!(pid)
+
+      assert :ok = Partition.append(pid, segment("boom\n"), 10, 1)
+      assert WriteHealth.healthy?() == true
+    end
+
+    test "a failed roll marks the node unhealthy but still reopens the active file, rather than leaving a stale fd" do
+      test_pid = self()
+      stub(StorageMod, :put, fn _b, _k, body, _opts -> send(test_pid, {:put, body}) end)
+
+      {pid, _name} = start_partition(batch_timeout: 60_000)
+      assert :ok = Partition.append(pid, segment(), 10, 1)
+
+      break_roll!(pid)
+      send(pid, :flush)
+
+      TestUtils.retry_assert(fn -> assert WriteHealth.healthy?() == false end)
+      refute_receive {:put, _body}, 100
+
+      state = :sys.get_state(pid)
+      assert state.fd != nil
+
+      # Proven through the public API rather than writing to state.fd
+      # directly — a :raw fd is bound to its opening process, so only the
+      # partition itself can use it.
+      assert :ok = Partition.append(pid, segment(), 10, 1)
+      assert WriteHealth.healthy?() == true
     end
   end
 end

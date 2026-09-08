@@ -34,9 +34,8 @@ defmodule LogflareWeb.HealthCheckController do
         repo_uptime > 0,
         Enum.all?(Map.values(caches), &(&1 == :ok)),
         memory_utilization < max_memory_ratio,
-        # fails once a spool partition has exhausted every way it knows to
-        # persist a request (local disk AND the direct-to-GCS fallback) —
-        # see Logflare.Backends.Spool.WriteHealth. Self-healing: clears the
+        # fails once a spool partition's local WAL disk is unwritable — see
+        # Logflare.Backends.Spool.WriteHealth. Self-healing: clears the
         # moment a write succeeds again, so this node comes back into
         # rotation on its own once the underlying problem does.
         WriteHealth.healthy?()

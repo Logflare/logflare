@@ -1,85 +1,53 @@
 defmodule Logflare.Backends.Spool.Partition do
   @moduledoc """
   Accumulates pre-compressed, pre-framed segments pushed directly by ingest
-  callers via `append/5`/`append_async/4` — no ETS, no poll interval (compare
-  the old Broadway-based `ProducerPipeline`, which this replaces).
+  callers via `append/5` — no ETS, no poll interval.
 
-  Every append is written and `datasync`ed to a local WAL file *before*
-  replying — durability is local-disk-durable, not GCS/Pub-Sub-durable, which
-  is what makes this fast: a local `fsync` instead of a network round trip.
+  Every append is written and `datasync`ed to the active local WAL file
+  before replying: durability here means local-disk-durable, not
+  GCS/Pub-Sub-durable, which is what keeps this fast (an `fsync` instead of
+  a network round trip).
 
-  Segments accumulate in the *active* WAL file under one continuous flush
-  loop, started once in `init/1` and never stopped: a `batch_timeout` timer
-  (config, default 1s) always fires and always re-arms itself (see
-  `handle_info(:flush, ...)`), rolling whatever has accumulated so far,
-  however little — the goal is to maximize how close each rolled segment
-  gets to the 32MB budget without ever buffering more than one
-  `batch_timeout` window's worth of data. Because the loop is always
-  running, nothing else needs to think about arming or re-arming a timer;
-  the only thing that ever touches it again is `maybe_roll/1`, which cancels
-  the current tick and restarts a fresh one the moment an append pushes the
-  raw (uncompressed) byte total over that budget — rolling right now instead
-  of waiting for the next tick. The threshold is sized off uncompressed
-  bytes, not the compressed segment actually written to disk, so a rolled
-  file's real log volume stays predictable regardless of how well any given
-  chunk happened to compress (see `Logflare.Backends.Spool.Encoder`).
+  A `batch_timeout` timer (config, default 1s), started once in `init/1`,
+  runs forever: every tick rolls whatever has accumulated, however little,
+  then re-arms itself (`handle_info(:flush, ...)`). `maybe_roll/1` is the
+  only other thing that touches the timer — it cancels and restarts it to
+  roll early once an append's raw (uncompressed) byte total crosses the
+  32MB budget, so a rolled segment's real log volume stays predictable
+  regardless of how well it happened to compress (see
+  `Logflare.Backends.Spool.Encoder`).
 
-  Rotation, upload, and deletion: `roll/1` seals the active segment (rename)
-  and opens a fresh active file — *unconditionally*, regardless of whether a
-  commit slot happens to be free right now. Deferring the roll itself until
-  capacity frees would let the active file keep absorbing new appends past
-  the size budget for as long as every slot stayed busy, defeating the
-  budget entirely; the active file's size has to stay bounded no matter how
-  backed up uploads are. The sealed file is then handed to
-  `Logflare.Backends.Spool.Committer.commit_async/5`, which spawns its own
-  `Task` — not a persistent GenServer, so a slow or stuck GCS commit for one
-  segment never blocks the next segment's commit from starting. Partition
-  owns the sealed file's entire lifecycle: it creates it (roll) and deletes
-  it once the task reports success — `Committer` itself only reads it.
-  Concurrent commits are bounded by `max_inflight_commits` (config, default
-  10) purely to cap how many segments' worth of bytes can be held in memory
-  at once across a partition's outstanding uploads during a sustained
-  backend slowdown; the local WAL backlog itself is cheap and already
-  durable on disk regardless of how many uploads are in flight. Only
-  *starting* a commit is capacity-gated (`start_commit_or_defer/4`) — with no
-  free slot, it's deferred one at a time via a self-rescheduling
-  `{:retry_commit, ...}` message instead of blocking anything.
+  `roll/1` seals the active file (rename) and opens a fresh one
+  *unconditionally*, even with no commit slot free — deferring the roll
+  itself would let the active file grow past budget for as long as uploads
+  stayed backed up. Only *starting* the upload is capacity-gated
+  (`start_commit_or_defer/4`, bounded by `max_inflight_commits`, config
+  default 10); with no free slot it's deferred via a self-rescheduling
+  `{:retry_commit, ...}` message. `Partition` owns a sealed file's entire
+  lifecycle (creates it, deletes it once its commit succeeds); `Committer`
+  only ever reads it.
 
-  `init/1` (see `schedule_sealed_recovery/1`) must never block waiting for
-  recovered segments to finish uploading, even though a crash can leave many
-  of them behind. On a supervisor-driven restart of just this partition —
-  the only realistic time recovery runs with the rest of the app already
-  serving traffic — Erlang/OTP registers this process's `:via` name *before*
-  `init/1` runs, so `PartitionSupervisor.random_partition/0` can already
-  select and route to it while recovery is still in progress; a blocking
-  recovery would make any `append/5` call routed there queue behind it and
-  risk that caller's timeout. (On a cold full-node boot this can't happen at
-  all — nothing accepts ingest traffic until every partition's `init/1`,
-  this one included, has already returned — but the restart case is real
-  and this module can't tell the two apart.) So instead `init/1` just sends
-  itself one `{:recover_sealed, paths}` message and returns immediately;
-  `handle_info/2` starts as many as capacity allows and, if any are left
-  over, reschedules itself with the remainder after `recovery_retry_delay_ms`
-  (config, default 100ms — deliberately short and independent of
-  `batch_timeout`, since this is "check again for a free slot soon", not
-  "wait for a batch window").
+  `init/1` must never block on `schedule_sealed_recovery/1` finishing — OTP
+  registers this process's `:via` name before `init/1` runs, so a
+  supervisor-driven restart can already have callers routed to it while
+  recovery is still draining leftover sealed files from a crash. So
+  `init/1` just sends itself one `{:recover_sealed, paths}` message and
+  returns; `handle_info/2` starts as many as capacity allows and
+  reschedules itself for the rest after `recovery_retry_delay_ms` (config,
+  default 100ms).
 
-  A local WAL write failing (disk full, I/O error) is handled differently
-  from every other failure here: there's no local copy to fall back on, so
-  instead of erroring out this falls back to committing just that one
-  segment directly — a `{:body, segment}` source instead of a `{:file, _}`
-  one, going through the exact same `spawn_commit/4` /
-  `start_commit_or_defer/4` machinery as a normal rotation, just bypassing
-  the WAL and its 32MB batching (this one segment becomes its own small
-  object). `append/5` uses `Committer.commit/4` directly and blocks on it,
-  since it's already blocking a caller with its own timeout; `append_async/4`
-  has no caller waiting, so it goes through `spawn_commit/4` like everything
-  else. Either way, `Logflare.Backends.Spool.WriteHealth` is told about it:
-  every settled commit reports success or failure, and a real double
-  failure (local disk down and the synchronous GCS fallback also
-  exhausting its attempts) marks the node unhealthy so its health check
-  stops routing new traffic there — self-healing the moment any subsequent
-  commit succeeds.
+  A local WAL write failure has no GCS fallback — a synchronous per-request
+  GCS PUT on this hot path doesn't scale (a `Partition` is one GenServer;
+  blocking every append on its own GCS PUT while disk is down backs up its
+  mailbox almost immediately). Instead, a failed write or roll gets exactly
+  one reopen-and-retry attempt (`reopen_active_file/1`,
+  `write_with_recovery/2`) before reporting failure to
+  `Logflare.Backends.Spool.WriteHealth` — this covers failures where the fd
+  itself got invalidated, not just ones like `:enospc` where the same fd
+  recovers on its own. `Logflare.Backends.spool_producer_mode?/0` checks
+  `WriteHealth.healthy?/0`, so once that happens this node stops routing
+  new ingest through spool and fails its own health check at the same
+  moment, until a later successful write clears it again.
   """
 
   use GenServer
@@ -107,12 +75,6 @@ defmodule Logflare.Backends.Spool.Partition do
           :ok | {:error, term()}
   def append(partition, segment, raw_byte_size, event_count, timeout \\ 15_000) do
     GenServer.call(partition, {:append, segment, raw_byte_size, event_count}, timeout)
-  end
-
-  @doc "Enqueues a segment fire-and-forget."
-  @spec append_async(GenServer.server(), binary(), non_neg_integer(), non_neg_integer()) :: :ok
-  def append_async(partition, segment, raw_byte_size, event_count) do
-    GenServer.cast(partition, {:append_async, segment, raw_byte_size, event_count})
   end
 
   @impl GenServer
@@ -164,61 +126,18 @@ defmodule Logflare.Backends.Spool.Partition do
   @impl GenServer
   def handle_call({:append, segment, raw_byte_size, event_count}, _from, state) do
     case write_segment(state, segment) do
-      :ok ->
+      {:ok, state} ->
         WriteHealth.report_recovery!()
         {:reply, :ok, state |> track_pending(raw_byte_size, event_count) |> maybe_roll()}
 
-      {:error, reason} ->
+      {:error, reason, state} ->
         emit_wal_write_error_telemetry(state, reason)
+        WriteHealth.report_failure!()
 
-        Logger.error(
-          "spool_partition: local WAL write failed, falling back to a direct GCS write: " <>
-            "#{inspect(reason)}"
-        )
+        Logger.error("spool_partition: local WAL write failed: #{inspect(reason)}")
 
-        case Committer.commit(
-               {:body, segment},
-               event_count,
-               :disk_fallback,
-               state.committer_config
-             ) do
-          {:ok, _file_key} ->
-            WriteHealth.report_recovery!()
-            {:reply, :ok, state}
-
-          {:error, fallback_reason} ->
-            WriteHealth.report_failure!()
-
-            Logger.error(
-              "spool_partition: direct GCS fallback also failed — disk and GCS both " <>
-                "unavailable: #{inspect(fallback_reason)}"
-            )
-
-            {:reply, {:error, {:disk_and_gcs_unavailable, reason, fallback_reason}}, state}
-        end
+        {:reply, {:error, reason}, state}
     end
-  end
-
-  @impl GenServer
-  def handle_cast({:append_async, segment, raw_byte_size, event_count}, state) do
-    state =
-      case write_segment(state, segment) do
-        :ok ->
-          WriteHealth.report_recovery!()
-          state |> track_pending(raw_byte_size, event_count) |> maybe_roll()
-
-        {:error, reason} ->
-          emit_wal_write_error_telemetry(state, reason)
-
-          Logger.error(
-            "spool_partition: local WAL write failed, falling back to a direct GCS write: " <>
-              "#{inspect(reason)}"
-          )
-
-          spawn_commit(state, {:body, segment}, event_count, :disk_fallback)
-      end
-
-    {:noreply, state}
   end
 
   @impl GenServer
@@ -227,36 +146,36 @@ defmodule Logflare.Backends.Spool.Partition do
     {:noreply, start_flush_loop(state)}
   end
 
-  def handle_info({:commit_result, source, result}, state) do
+  def handle_info({:commit_result, sealed_path, result}, state) do
     case result do
       {:ok, _file_key} ->
-        if match?({:file, _}, source), do: delete_source_file(source)
+        File.rm(sealed_path)
         WriteHealth.report_recovery!()
 
       {:error, reason} ->
         Logger.error(
-          "spool_partition: commit exhausted its attempts for #{inspect(source)}, giving up: " <>
-            "#{inspect(reason)}"
+          "spool_partition: commit exhausted its attempts for #{sealed_path}, leaving it on " <>
+            "disk for the next recovery scan: #{inspect(reason)}"
         )
 
         WriteHealth.report_failure!()
     end
 
-    {:noreply, forget_task(state, source)}
+    {:noreply, forget_task(state, sealed_path)}
   end
 
   def handle_info({:DOWN, ref, :process, _pid, reason}, state) do
-    case Enum.find(state.tasks, fn {_source, task_ref} -> task_ref == ref end) do
+    case Enum.find(state.tasks, fn {_sealed_path, task_ref} -> task_ref == ref end) do
       nil ->
         {:noreply, state}
 
-      {source, _ref} ->
+      {sealed_path, _ref} ->
         Logger.error(
-          "spool_partition: commit task crashed for #{inspect(source)}, leaving any file on " <>
-            "disk for the next recovery scan: #{inspect(reason)}"
+          "spool_partition: commit task crashed for #{sealed_path}, leaving it on disk for " <>
+            "the next recovery scan: #{inspect(reason)}"
         )
 
-        {:noreply, forget_task(state, source)}
+        {:noreply, forget_task(state, sealed_path)}
     end
   end
 
@@ -272,7 +191,7 @@ defmodule Logflare.Backends.Spool.Partition do
 
     state =
       Enum.reduce(to_start_now, state, fn path, state ->
-        spawn_commit(state, {:file, path}, recovered_event_count(path), :recovered)
+        spawn_commit(state, path, recovered_event_count(path), :recovered)
       end)
 
     if remaining != [] do
@@ -284,15 +203,73 @@ defmodule Logflare.Backends.Spool.Partition do
 
   # A single commit deferred by start_commit_or_defer/4 because no slot was
   # free at the time — retried here, one at a time, the moment this fires.
-  def handle_info({:retry_commit, source, total_count, trigger}, state) do
-    {:noreply, start_commit_or_defer(state, source, total_count, trigger)}
+  def handle_info({:retry_commit, sealed_path, total_count, trigger}, state) do
+    {:noreply, start_commit_or_defer(state, sealed_path, total_count, trigger)}
   end
 
   def handle_info(_message, state), do: {:noreply, state}
 
+  # One bounded reopen-and-retry attempt on failure — see this module's doc
+  # for why. `state.fd` can also already be `nil` here (a previous roll's
+  # reopen failed), in which case there's nothing to retry a write against
+  # until ensure_fd/1 gets a fresh one.
   defp write_segment(state, segment) do
-    with :ok <- :file.write(state.fd, segment) do
-      :file.datasync(state.fd)
+    case ensure_fd(state) do
+      {:ok, state} -> write_with_recovery(state, segment)
+      {:error, reason, state} -> {:error, reason, state}
+    end
+  end
+
+  defp ensure_fd(%{fd: nil} = state), do: open_active_file(state)
+  defp ensure_fd(state), do: {:ok, state}
+
+  defp write_with_recovery(state, segment) do
+    case try_write(state.fd, segment) do
+      :ok ->
+        {:ok, state}
+
+      {:error, reason} ->
+        case reopen_active_file(state) do
+          {:ok, state} ->
+            case try_write(state.fd, segment) do
+              :ok -> {:ok, state}
+              {:error, reason} -> {:error, reason, state}
+            end
+
+          {:error, _reopen_reason, state} ->
+            {:error, reason, state}
+        end
+    end
+  end
+
+  defp try_write(fd, segment) do
+    with :ok <- :file.write(fd, segment) do
+      :file.datasync(fd)
+    end
+  end
+
+  # Closes whatever fd is currently held (tolerating a failure there — it's
+  # already being discarded either way) and opens a fresh one at
+  # active_path. Used both to recover from a write failure and by roll/1,
+  # which always needs a new fd regardless of how the rename went.
+  defp reopen_active_file(state) do
+    case :file.close(state.fd) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning(
+          "spool_partition: closing active WAL fd before reopen failed: #{inspect(reason)}"
+        )
+    end
+
+    open_active_file(state)
+  end
+
+  defp open_active_file(state) do
+    case :file.open(state.active_path, [:append, :raw, :binary]) do
+      {:ok, fd} -> {:ok, %{state | fd: fd}}
+      {:error, reason} -> {:error, reason, %{state | fd: nil}}
     end
   end
 
@@ -336,35 +313,60 @@ defmodule Logflare.Backends.Spool.Partition do
   defp handoff(state, trigger) do
     case roll(state) do
       {:ok, sealed_path, state} ->
-        state = start_commit_or_defer(state, {:file, sealed_path}, state.pending_count, trigger)
+        state = start_commit_or_defer(state, sealed_path, state.pending_count, trigger)
         %{state | pending_bytes: 0, pending_count: 0}
 
-      {:error, reason} ->
+      {:error, reason, state} ->
+        WriteHealth.report_failure!()
         Logger.error("spool_partition: failed to roll WAL segment: #{inspect(reason)}")
         # Pending counters are left as-is (still over budget) — the flush
         # loop's next tick retries the roll on its own, no special-cased
-        # retry needed here.
+        # retry needed here. state.fd has already been reopened by roll/1
+        # (or, if that also failed, is nil and will be reopened lazily by
+        # the next write_segment/2 call) — it's never left stale/closed.
         state
     end
   end
 
+  # Always reopens the active file afterward, regardless of whether the
+  # rename actually succeeded — see this module's doc. If the rename
+  # failed, active_path still holds the not-yet-sealed segment, so
+  # reopening it just resumes appending where the caller left off; if the
+  # rename succeeded, active_path is gone and reopening (in :append mode)
+  # creates the next segment's fresh file.
   defp roll(state) do
-    :ok = :file.close(state.fd)
-    sealed_path = sealed_path(state.wal_dir, state.index)
+    case :file.close(state.fd) do
+      :ok ->
+        :ok
 
-    with :ok <- File.rename(state.active_path, sealed_path),
-         {:ok, fd} <- :file.open(state.active_path, [:append, :raw, :binary]) do
-      {:ok, sealed_path, %{state | fd: fd}}
+      {:error, reason} ->
+        Logger.warning(
+          "spool_partition: closing active WAL fd before roll failed: #{inspect(reason)}"
+        )
+    end
+
+    sealed_path = sealed_path(state.wal_dir, state.index)
+    rename_result = File.rename(state.active_path, sealed_path)
+
+    case open_active_file(state) do
+      {:ok, state} ->
+        case rename_result do
+          :ok -> {:ok, sealed_path, state}
+          {:error, reason} -> {:error, reason, state}
+        end
+
+      {:error, open_reason, state} ->
+        {:error, open_reason, state}
     end
   end
 
-  defp start_commit_or_defer(state, source, total_count, trigger) do
+  defp start_commit_or_defer(state, sealed_path, total_count, trigger) do
     if state.task_in_flight < state.max_inflight_commits do
-      spawn_commit(state, source, total_count, trigger)
+      spawn_commit(state, sealed_path, total_count, trigger)
     else
       Process.send_after(
         self(),
-        {:retry_commit, source, total_count, trigger},
+        {:retry_commit, sealed_path, total_count, trigger},
         state.recovery_retry_delay_ms
       )
 
@@ -372,32 +374,29 @@ defmodule Logflare.Backends.Spool.Partition do
     end
   end
 
-  # The one place every kind of commit — a normal rotation, a recovered
-  # file, or the async disk-fallback — actually starts. Unlinked
-  # (Committer.commit_async/5 uses Task.start/1) so a crashing commit never
-  # takes this partition down with it; monitored here instead, so a crash
-  # still surfaces as a message (handled above) rather than silently
-  # stranding task_in_flight.
-  defp spawn_commit(state, source, total_count, trigger) do
+  # The one place every commit — a normal rotation or a recovered file —
+  # actually starts. Unlinked (Committer.commit_async/5 uses Task.start/1)
+  # so a crashing commit never takes this partition down with it; monitored
+  # here instead, so a crash still surfaces as a message (handled above)
+  # rather than silently stranding task_in_flight.
+  defp spawn_commit(state, sealed_path, total_count, trigger) do
     {:ok, pid} =
-      Committer.commit_async(self(), source, total_count, trigger, state.committer_config)
+      Committer.commit_async(self(), sealed_path, total_count, trigger, state.committer_config)
 
     ref = Process.monitor(pid)
 
     %{
       state
-      | tasks: Map.put(state.tasks, source, ref),
+      | tasks: Map.put(state.tasks, sealed_path, ref),
         task_in_flight: state.task_in_flight + 1
     }
   end
 
-  defp forget_task(state, source) do
-    {ref, tasks} = Map.pop(state.tasks, source)
+  defp forget_task(state, sealed_path) do
+    {ref, tasks} = Map.pop(state.tasks, sealed_path)
     if ref, do: Process.demonitor(ref, [:flush])
     %{state | tasks: tasks, task_in_flight: state.task_in_flight - 1}
   end
-
-  defp delete_source_file({:file, path}), do: File.rm(path)
 
   # Leftover sealed segments from a crash between roll/1 and a commit task
   # deleting them — nothing tracks their original event counts across a

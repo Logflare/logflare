@@ -3,15 +3,12 @@ defmodule Logflare.Backends.Spool.PartitionSupervisor do
   Starts `partitions` (config) `Logflare.Backends.Spool.Partition` processes,
   each registered under its own index in `PartitionRegistry` so callers can
   route to one (`random_partition/0`) and the dev dashboard can enumerate all
-  of them (`partitions/0`) without depending on Broadway — replaces
-  `ProducerPipeline`'s Broadway topology entirely. Each `Partition` spawns
-  its own `Committer`-backed commit tasks directly (see `Partition`'s
-  moduledoc); `Committer` is not itself a separately supervised process.
+  of them (`partitions/0`). Each `Partition` spawns its own
+  `Committer`-backed commit tasks directly (see `Partition`'s moduledoc);
+  `Committer` is not itself a separately supervised process.
 
   Each partition's own index doubles as its GCS/S3 key prefix (see
-  `Committer.file_key/1`) — previously a separate random `:rand.uniform/1`
-  roll independent of batcher concurrency; collapsing the two removes a
-  redundant config axis.
+  `Committer`'s `file_key/1`).
   """
 
   use Supervisor

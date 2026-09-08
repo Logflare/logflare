@@ -55,7 +55,6 @@ defmodule Logflare.TelemetryTest do
 
       for expected <- [
             [:logflare, :backends, :spool, :throttled, :throttled],
-            [:logflare, :backends, :spool, :storage, :put, :count],
             [:logflare, :backends, :spool, :storage, :get, :count],
             [:logflare, :backends, :spool, :queue, :publish, :count],
             [:logflare, :backends, :spool, :queue, :receive, :count],

@@ -1,28 +1,30 @@
 defmodule Logflare.Backends.Spool.Committer do
   @moduledoc """
-  Uploads spool segments to GCS/S3 and notifies Pub-Sub/SQS — source-
-  agnostic: a `source()` is either an already-sealed WAL file on disk
-  (`{:file, path}`) or an already-framed segment still only in memory
-  (`{:body, bytes}`, used by `Logflare.Backends.Spool.Partition`'s
-  disk-write-failure fallback — see its moduledoc). Both are read down to
-  the same bytes and go through the exact same upload+notify step; nothing
-  past `read/1` needs to know or care which kind a commit started as.
+  Uploads one sealed WAL segment to GCS/S3 and notifies Pub-Sub/SQS.
 
-  `commit/4` is the blocking primitive: up to `max_commit_attempts/0`
-  (config, default 5) attempts, logging each failure, then gives up —
-  retrying forever isn't worth the liability of an unbounded loop, and a
-  file is never lost by giving up on it here: `Partition` only ever
-  deletes a `{:file, _}` source on success, so an exhausted one is still
-  on disk for the next restart's crash-recovery scan to find and retry
-  again. A `{:body, _}` source has no such backup — losing it after
-  exhausted retries is the already-accepted risk of the disk-write-failure
-  fallback that produced it in the first place, not a new one introduced
-  here.
+  Run inside a `Task` spawned directly by `Logflare.Backends.Spool.Partition`
+  (see its moduledoc) rather than owned by a persistent GenServer — every
+  rotated segment gets its own concurrent upload, bounded only by
+  Partition's `max_inflight_commits`, so one slow commit never blocks the
+  next segment's upload from starting. Partition owns the sealed file's
+  entire lifecycle (create, seal, delete); this module never touches the
+  file except to read it.
 
-  `commit_async/5` spawns an unlinked `Task` around `commit/4` and reports
-  the result back to `partition` as `{:commit_result, source, result}` —
-  used for every commit that shouldn't block a caller (a normal rotation,
-  a recovered file, or the async disk-fallback).
+  A failed upload/notify attempt is retried up to `max_commit_attempts/0`
+  times (config, default 5), logging each failure, then gives up — retrying
+  forever isn't worth the liability of an unbounded loop, and giving up
+  doesn't lose the file: Partition only ever deletes it on success, so it's
+  still on disk for the next restart's crash-recovery scan to find and
+  retry again.
+
+  A sealed file that can't even be *read*, or whose frames fail CRC
+  validation (see `Logflare.Backends.Spool.Framing`), is a different
+  failure class, though: unlike an upload failing, retrying either can
+  never succeed — the bytes on disk aren't going to change — so both log
+  loudly, emit telemetry, and give up on that one segment immediately
+  rather than spending any retry attempts on it. Checking frames here,
+  before ever uploading, catches disk corruption at the source instead of
+  only downstream when a consumer eventually fails to decode the file.
   """
 
   import Bitwise
@@ -30,11 +32,10 @@ defmodule Logflare.Backends.Spool.Committer do
   require Logger
 
   alias Logflare.Backends.Spool.Encoder
+  alias Logflare.Backends.Spool.Framing
 
   @default_retry_delay_ms 1_000
   @default_max_commit_attempts 5
-
-  @type source :: {:file, Path.t()} | {:body, binary()}
 
   @type config :: %{
           bucket: String.t(),
@@ -48,56 +49,26 @@ defmodule Logflare.Backends.Spool.Committer do
         }
 
   @doc """
-  Uploads `source` and notifies the queue, retrying up to
-  `max_commit_attempts/0` times on an upload/notify failure. Blocks the
-  calling process until it settles. A read failure (a `{:file, _}` source
-  that's unreadable) is never retried — logged, telemetered, and given up
-  on immediately, since retrying a read that will never succeed can't help.
+  Spawns an unlinked `Task` that uploads `sealed_path`'s contents and
+  notifies the queue, retrying up to `max_commit_attempts/0` times on an
+  upload/notify failure, then reports the result back to `partition` as
+  `{:commit_result, sealed_path, result}`. Returns the task's pid so the
+  caller can monitor it — a crashing commit is `partition`'s concern (see
+  its `:DOWN` handling), not this module's.
   """
-  @spec commit(source(), non_neg_integer(), atom(), config()) ::
-          {:ok, file_key :: String.t()} | {:error, term()}
-  def commit(source, total_count, trigger, config) do
-    do_commit(source, total_count, trigger, config, 0)
-  end
-
-  @doc """
-  Spawns an unlinked `Task` running `commit/4` and reports its result back
-  to `partition` as `{:commit_result, source, result}`. Returns the task's
-  pid so the caller can monitor it — a crashing commit is `partition`'s
-  concern (see its `:DOWN` handling), not this module's.
-  """
-  @spec commit_async(pid(), source(), non_neg_integer(), atom(), config()) :: {:ok, pid()}
-  def commit_async(partition, source, total_count, trigger, config) do
+  @spec commit_async(pid(), Path.t(), non_neg_integer(), atom(), config()) :: {:ok, pid()}
+  def commit_async(partition, sealed_path, total_count, trigger, config) do
     Task.start(fn ->
-      result = commit(source, total_count, trigger, config)
-      send(partition, {:commit_result, source, result})
+      result = do_commit(sealed_path, total_count, trigger, config, 0)
+      send(partition, {:commit_result, sealed_path, result})
     end)
   end
 
-  defp do_commit(source, total_count, trigger, config, attempt) do
-    case read(source) do
-      {:ok, body} ->
-        case upload_and_notify(body, config, total_count, trigger) do
-          {:ok, file_key} ->
-            Logger.debug("spool_committer: wrote #{total_count} events to spool", key: file_key)
-            {:ok, file_key}
-
-          {:error, {stage, reason}} ->
-            max_attempts = max_commit_attempts()
-
-            Logger.error(
-              "spool_committer: #{stage} failed source=#{inspect(source)} " <>
-                "attempt=#{attempt + 1}/#{max_attempts} error=#{inspect(reason)}"
-            )
-
-            if attempt + 1 < max_attempts do
-              Process.sleep(retry_delay_ms())
-              do_commit(source, total_count, trigger, config, attempt + 1)
-            else
-              {:error, reason}
-            end
-        end
-
+  defp do_commit(sealed_path, total_count, trigger, config, attempt) do
+    with {:ok, body} <- File.read(sealed_path),
+         {:ok, _segments} <- Framing.decode_segments(body) do
+      commit_body(sealed_path, body, total_count, trigger, config, attempt)
+    else
       {:error, reason} ->
         :telemetry.execute(
           [:logflare, :backends, :spool, :committer, :read_error],
@@ -106,16 +77,36 @@ defmodule Logflare.Backends.Spool.Committer do
         )
 
         Logger.error(
-          "spool_committer: source unreadable, dropping #{total_count} events: " <>
-            "#{inspect(source)}: #{inspect(reason)}"
+          "spool_committer: sealed file unreadable, dropping #{total_count} events at " <>
+            "#{sealed_path}: #{inspect(reason)}"
         )
 
         {:error, reason}
     end
   end
 
-  defp read({:file, path}), do: File.read(path)
-  defp read({:body, body}), do: {:ok, body}
+  defp commit_body(sealed_path, body, total_count, trigger, config, attempt) do
+    case upload_and_notify(body, config, total_count, trigger) do
+      {:ok, file_key} ->
+        Logger.debug("spool_committer: wrote #{total_count} events to spool", key: file_key)
+        {:ok, file_key}
+
+      {:error, {stage, reason}} ->
+        max_attempts = max_commit_attempts()
+
+        Logger.error(
+          "spool_committer: #{stage} failed path=#{sealed_path} " <>
+            "attempt=#{attempt + 1}/#{max_attempts} error=#{inspect(reason)}"
+        )
+
+        if attempt + 1 < max_attempts do
+          Process.sleep(retry_delay_ms())
+          do_commit(sealed_path, total_count, trigger, config, attempt + 1)
+        else
+          {:error, reason}
+        end
+    end
+  end
 
   defp upload_and_notify(body, config, total_count, trigger) do
     :telemetry.execute(
@@ -126,24 +117,12 @@ defmodule Logflare.Backends.Spool.Committer do
 
     file_key = file_key(config)
 
-    {upload_us, result} =
-      :timer.tc(fn ->
-        with {:upload, {:ok, _}} <-
-               {:upload, config.storage_mod.put(config.bucket, file_key, body, headers(config))},
-             {:notify, :ok} <-
-               {:notify, notify_queue(config, file_key, total_count)} do
-          {:ok, file_key}
-        end
-      end)
-
-    format_tag = Encoder.format_tag(config.format, config.compress, config.compression_algorithm)
-    emit_storage_put_telemetry(format_tag, byte_size(body), result, upload_us)
-
-    case result do
-      {:ok, file_key} ->
-        emit_batch_result(:ok, nil, total_count)
-        {:ok, file_key}
-
+    with {:upload, {:ok, _}} <-
+           {:upload, config.storage_mod.put(config.bucket, file_key, body, headers(config))},
+         {:notify, :ok} <- {:notify, notify_queue(config, file_key, total_count)} do
+      emit_batch_result(:ok, nil, total_count)
+      {:ok, file_key}
+    else
       {stage, {:error, reason}} ->
         emit_batch_result(:error, stage, total_count)
         {:error, {stage, reason}}
@@ -198,14 +177,6 @@ defmodule Logflare.Backends.Spool.Committer do
   defp retry_delay_ms do
     Application.get_env(:logflare, :spool, [])
     |> Keyword.get(:retry_delay_ms, @default_retry_delay_ms)
-  end
-
-  defp emit_storage_put_telemetry(format, bytes, result, upload_us) do
-    :telemetry.execute(
-      [:logflare, :backends, :spool, :storage, :put],
-      %{count: 1, bytes: bytes, upload_duration: upload_us},
-      %{format: format, result: if(match?({:ok, _}, result), do: :ok, else: :error)}
-    )
   end
 
   defp emit_batch_result(result, stage, batch_size) do

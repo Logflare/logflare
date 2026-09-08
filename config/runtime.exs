@@ -574,12 +574,6 @@ spool_provider_override =
       raise ArgumentError, "Invalid SPOOL_PROVIDER=#{other}. Must be aws or gcp."
   end
 
-spool_blocking_override =
-  case System.get_env("SPOOL_BLOCKING") do
-    v when v in [nil, ""] -> []
-    v -> [blocking_ingest: v == "true"]
-  end
-
 spool_compression_algorithm_override =
   case System.get_env("SPOOL_COMPRESSION_ALGORITHM") do
     v when v in [nil, ""] ->
@@ -602,7 +596,6 @@ spool_compression_algorithm_override =
 spool_overrides =
   spool_mode_override ++
     spool_provider_override ++
-    spool_blocking_override ++
     spool_compression_algorithm_override ++
     if((q = System.get_env("SPOOL_QUEUE_NAME")) && q != "", do: [queue_name: q], else: []) ++
     if((t = System.get_env("SPOOL_PUBSUB_TOPIC")) && t != "", do: [pubsub_topic: t], else: []) ++

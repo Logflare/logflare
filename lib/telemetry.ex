@@ -330,39 +330,6 @@ defmodule Logflare.Telemetry do
         description:
           "Spool consumer backpressure state: 1 if any recently-seen source's destination ingest buffer is backed up, 0 otherwise"
       ),
-      sum("logflare.backends.spool.storage.put.count",
-        tags: [:format, :result],
-        description: "Spool storage writes (S3/GCS put) count by format/result"
-      ),
-      sum("logflare.backends.spool.storage.put.bytes",
-        tags: [:format, :result],
-        description: "Spool storage writes: bytes by format/result"
-      ),
-      distribution("logflare.backends.spool.storage.put.encode_duration",
-        tags: [:format, :result],
-        unit: {:microsecond, :millisecond},
-        description:
-          "Time spent concatenating a commit's already-compressed, already-framed segments before the storage write, by format/result. Encoding/compression itself happens per-chunk, in the ingest caller's own process — see logflare.backends.spool.chunk.compress"
-      ),
-      distribution("logflare.backends.spool.storage.put.upload_duration",
-        tags: [:format, :result],
-        unit: {:microsecond, :millisecond},
-        description: "Time spent in the actual storage_mod.put network call, by format/result"
-      ),
-      sum("logflare.backends.spool.chunk.compress.count",
-        tags: [:format],
-        description: "Per-chunk spool encode+compress operations, by format"
-      ),
-      sum("logflare.backends.spool.chunk.compress.bytes",
-        tags: [:format],
-        description: "Per-chunk spool encode+compress output size, by format"
-      ),
-      distribution("logflare.backends.spool.chunk.compress.duration",
-        tags: [:format],
-        unit: {:microsecond, :millisecond},
-        description:
-          "Time spent encoding+compressing one chunk in the ingest caller's own process, before it's handed to a Partition, by format"
-      ),
       sum("logflare.backends.spool.queue.publish.count",
         tags: [:result],
         description: "Spool queue publish (SQS send / PubSub publish) count"

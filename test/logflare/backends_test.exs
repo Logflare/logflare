@@ -15,6 +15,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.RecentInsertsCacher
   alias Logflare.Backends.Spool.PartitionSupervisor
+  alias Logflare.Backends.Spool.WriteHealth
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.SourceSupWorker
   alias Logflare.LogEvent
@@ -1960,7 +1961,7 @@ defmodule Logflare.BackendsTest do
       # A real Partition+Committer pair, with stub storage/queue mods, backs
       # every test below — dispatch_to_spool_producer/1 routes straight into
       # it (no ETS/ChunkProducer poll loop to simulate anymore). A short
-      # batch_timeout keeps the blocking-ingest test fast.
+      # batch_timeout keeps the blocking-append test fast.
       wal_dir =
         Path.join(
           System.tmp_dir!(),
@@ -2001,6 +2002,19 @@ defmodule Logflare.BackendsTest do
       assert pending_event_count() == 0
     end
 
+    test "does not dispatch to the spool producer once WriteHealth is unhealthy, even if everything else is enabled",
+         %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :producer, max_write_health_failures: 1)
+      WriteHealth.report_failure!()
+      on_exit(fn -> WriteHealth.report_recovery!() end)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      assert pending_event_count() == 0
+    end
+
     test "does not dispatch to the spool producer when the global mode is off, even if source.enable_spooling and allow_spooling are true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :disable)
@@ -2023,32 +2037,17 @@ defmodule Logflare.BackendsTest do
       assert pending_event_count() == 1
     end
 
-    test "does not block when blocking_ingest is unset, even with everything else gating true",
+    test "blocks until the segment is durably written to the local WAL",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :producer)
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
 
-      # append_async/4 (a cast) returns immediately regardless of whether
-      # anything ever commits it — if ingest_logs blocked here
-      # (blocking_ingest: true), the chunk would already be durable (and
-      # gone from pending) by the time this assertion runs instead of still
-      # sitting in the Partition's own accumulator.
-      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
-      assert pending_event_count() == 1
-    end
-
-    test "blocks until acked when blocking_ingest is true",
-         %{source: source} do
-      Application.put_env(:logflare, :spool, mode: :producer, blocking_ingest: true)
-
-      source = %{source | enable_spooling: true}
-      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
-
-      # The real Partition+Committer started in setup/0 genuinely commits
-      # this (stub storage/queue, 10ms batch_timeout) and replies — no
-      # manual ack simulation needed, unlike the old ChunkProducer-based design.
+      # ingest_logs/4 blocks on Partition.append/5, which only replies once
+      # the segment has been written and fsynced to the local WAL — so this
+      # succeeding at all proves that happened, without needing a manual ack
+      # simulation like the old ChunkProducer-based design.
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
     end
 

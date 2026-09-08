@@ -28,7 +28,7 @@ defmodule Logflare.Backends.Spool.CommitterTest do
   end
 
   # A sealed segment on disk — what Partition.roll/1 actually hands to
-  # Committer as a {:file, path} source, not an in-memory list.
+  # Committer.commit_async/5, not an in-memory list.
   defp sealed_file!(payload \\ "line\n") do
     path =
       Path.join(
@@ -42,7 +42,7 @@ defmodule Logflare.Backends.Spool.CommitterTest do
   end
 
   describe "successful commit" do
-    test "uploads, notifies, and returns the file key — without touching the file" do
+    test "uploads, notifies, and reports :ok to the caller — without touching the file" do
       test_pid = self()
 
       stub(StorageMod, :put, fn "test-bucket", key, body, opts ->
@@ -56,30 +56,27 @@ defmodule Logflare.Backends.Spool.CommitterTest do
       end)
 
       TestUtils.attach_forwarder([:logflare, :backends, :pipeline, :handle_batch])
-      TestUtils.attach_forwarder([:logflare, :backends, :spool, :storage, :put])
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :publish])
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :producer, :batch])
 
       path = sealed_file!("one\n")
       config = config(%{queue_ref: "projects/p/topics/t"})
 
-      assert {:ok, key} = Committer.commit({:file, path}, 1, :size, config)
+      assert {:ok, _pid} = Committer.commit_async(test_pid, path, 1, :size, config)
 
-      assert_receive {:put, ^key, body, opts}
+      assert_receive {:put, "0/" <> _rest = key, body, opts}
       assert [headers: %{"content-type" => "application/x-ndjson"}] = opts
       assert {:ok, ["one\n"]} = Framing.decode_segments(body)
 
       assert_receive {:publish, "projects/p/topics/t", notify_body}
       assert %{"file_key" => ^key, "event_count" => 1} = Jason.decode!(notify_body)
 
-      # Committer never touches the file — that's Partition's job.
+      assert_receive {:commit_result, ^path, {:ok, ^key}}
+      # Committer never deletes the file — that's Partition's job.
       assert File.exists?(path)
 
       assert_receive {:telemetry_event, [:logflare, :backends, :pipeline, :handle_batch],
                       %{batch_size: 1, batch_trigger: :size}, %{backend_type: :spool_producer}}
-
-      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :storage, :put], _,
-                      %{format: :ndjson, result: :ok}}
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :publish],
                       %{count: 1}, %{result: :ok}}
@@ -99,24 +96,9 @@ defmodule Logflare.Backends.Spool.CommitterTest do
       path = sealed_file!()
       config = config(%{compress: true, compression_algorithm: :gzip})
 
-      assert {:ok, _key} = Committer.commit({:file, path}, 1, :size, config)
+      assert {:ok, _pid} = Committer.commit_async(test_pid, path, 1, :size, config)
 
       assert_receive {:opts, [headers: %{"content-encoding" => "gzip"}]}
-    end
-
-    test "commits an in-memory body just as well as a file — same shape, different source" do
-      test_pid = self()
-
-      stub(StorageMod, :put, fn _b, _k, body, _opts ->
-        send(test_pid, {:put, body})
-        {:ok, %{}}
-      end)
-
-      body = Framing.encode_segment("in memory\n")
-
-      assert {:ok, _key} = Committer.commit({:body, body}, 1, :disk_fallback, config())
-
-      assert_receive {:put, ^body}
     end
   end
 
@@ -134,12 +116,14 @@ defmodule Logflare.Backends.Spool.CommitterTest do
 
       path = sealed_file!()
 
-      assert {:error, :timeout} = Committer.commit({:file, path}, 1, :size, config())
+      assert {:ok, _pid} = Committer.commit_async(test_pid, path, 1, :size, config())
 
       assert_receive {:put_attempt, 0}
       assert_receive {:put_attempt, 1}
       assert_receive {:put_attempt, 2}
       refute_receive {:put_attempt, 3}
+
+      assert_receive {:commit_result, ^path, {:error, :timeout}}
 
       # Never deleted by Committer regardless of outcome — Partition's job,
       # and giving up here doesn't lose it: it's still on disk.
@@ -159,11 +143,12 @@ defmodule Logflare.Backends.Spool.CommitterTest do
 
       path = sealed_file!()
 
-      assert {:ok, _key} = Committer.commit({:file, path}, 1, :size, config())
+      assert {:ok, _pid} = Committer.commit_async(test_pid, path, 1, :size, config())
 
       assert_receive {:put_attempt, 0}
       assert_receive {:put_attempt, 1}
       assert_receive {:put_attempt, 2}
+      assert_receive {:commit_result, ^path, {:ok, _file_key}}
     end
 
     test "a notify failure retries the same way, even though the upload succeeded" do
@@ -181,10 +166,11 @@ defmodule Logflare.Backends.Spool.CommitterTest do
       path = sealed_file!()
       config = config(%{queue_ref: "projects/p/topics/t"})
 
-      assert {:ok, _key} = Committer.commit({:file, path}, 1, :size, config)
+      assert {:ok, _pid} = Committer.commit_async(test_pid, path, 1, :size, config)
 
       assert_receive {:publish_attempt, 0}
       assert_receive {:publish_attempt, 1}
+      assert_receive {:commit_result, ^path, {:ok, _file_key}}
     end
 
     test "logs and emits error telemetry on every failed attempt, not just the last" do
@@ -199,7 +185,7 @@ defmodule Logflare.Backends.Spool.CommitterTest do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :producer, :batch])
 
       path = sealed_file!()
-      assert {:ok, _key} = Committer.commit({:file, path}, 1, :size, config())
+      assert {:ok, _pid} = Committer.commit_async(self(), path, 1, :size, config())
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :producer, :batch],
                       %{count: 1}, %{result: :error, stage: :upload}}
@@ -212,8 +198,8 @@ defmodule Logflare.Backends.Spool.CommitterTest do
     end
   end
 
-  describe "unreadable file" do
-    test "a sealed 'file' that can't be read (e.g. it's a directory) is dropped immediately, not retried" do
+  describe "unreadable sealed file" do
+    test "a sealed 'file' that can't be read (e.g. it's a directory) is dropped, not retried" do
       # A directory read fails at the OS level (:eisdir) regardless of
       # permissions/user — reliable even when tests run as root.
       dir =
@@ -227,25 +213,45 @@ defmodule Logflare.Backends.Spool.CommitterTest do
 
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :committer, :read_error])
 
-      assert {:error, :eisdir} = Committer.commit({:file, dir}, 1, :size, config())
+      assert {:ok, _pid} = Committer.commit_async(self(), dir, 1, :size, config())
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :committer, :read_error],
                       %{count: 1}, %{reason: :eisdir}}
+
+      assert_receive {:commit_result, ^dir, {:error, :eisdir}}
     end
   end
 
-  describe "commit_async/5" do
-    test "spawns a task and reports the result back to the given pid" do
+  describe "corrupt sealed file" do
+    test "a sealed file that fails CRC validation is dropped without ever being uploaded, not retried" do
       test_pid = self()
-      stub(StorageMod, :put, fn _b, _k, _body, _opts -> {:ok, %{}} end)
+      stub(StorageMod, :put, fn _b, _k, body, _opts -> send(test_pid, {:put, body}) end)
 
-      path = sealed_file!()
-      source = {:file, path}
+      good_frame = Framing.encode_segment("one\n")
+      <<len::32-big, crc::32-big, _payload::binary>> = good_frame
+      corrupted = <<len::32-big, crc::32-big, "TAMPERED"::binary>>
 
-      assert {:ok, pid} = Committer.commit_async(test_pid, source, 1, :size, config())
-      assert is_pid(pid)
+      path =
+        Path.join(
+          System.tmp_dir!(),
+          "spool_committer_corrupt_#{System.unique_integer([:positive])}.sealed"
+        )
 
-      assert_receive {:commit_result, ^source, {:ok, _file_key}}, 1000
+      File.write!(path, corrupted)
+      on_exit(fn -> File.rm(path) end)
+
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :committer, :read_error])
+
+      assert {:ok, _pid} = Committer.commit_async(test_pid, path, 1, :size, config())
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :committer, :read_error],
+                      %{count: 1}, %{reason: :corrupt_frame}}
+
+      assert_receive {:commit_result, ^path, {:error, :corrupt_frame}}
+      refute_receive {:put, _body}, 100
+
+      # Never deleted by Committer regardless of outcome — Partition's job.
+      assert File.exists?(path)
     end
   end
 end

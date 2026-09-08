@@ -68,6 +68,17 @@ defmodule LogflareWeb.HealthCheckControllerTest do
     insert(:plan)
     start_supervised!(Source.Supervisor)
 
+    prev_spool_config = Application.get_env(:logflare, :spool)
+    Application.put_env(:logflare, :spool, max_write_health_failures: 1)
+
+    on_exit(fn ->
+      if prev_spool_config do
+        Application.put_env(:logflare, :spool, prev_spool_config)
+      else
+        Application.delete_env(:logflare, :spool)
+      end
+    end)
+
     assert %{"spool_write_healthy" => true} = conn |> get("/health") |> json_response(200)
 
     WriteHealth.report_failure!()
