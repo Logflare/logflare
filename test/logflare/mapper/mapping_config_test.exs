@@ -96,6 +96,11 @@ defmodule Logflare.Mapper.MappingConfigTest do
       assert field.precision == 9
     end
 
+    test "datetime64 constructors preserve an explicitly supplied invalid precision" do
+      assert Field.datetime64("ts", path: "$.ts", precision: false).precision == false
+      assert Field.array_datetime64("ts", path: "$.ts[*]", precision: false).precision == false
+    end
+
     test "datetime64/2 with custom precision" do
       field = Field.datetime64("timestamp", path: "$.timestamp", precision: 6)
 

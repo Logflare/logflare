@@ -1894,6 +1894,18 @@ defmodule Logflare.MapperTest do
       assert reason =~ "precision must be between 0 and 9"
     end
 
+    test "rejects an explicit precision of false on both datetime64 constructors" do
+      for field <- [
+            Field.datetime64("ts", path: "$.ts", precision: false),
+            Field.array_datetime64("ts", path: "$.ts[*]", precision: false)
+          ] do
+        assert {:error, reason} = Mapper.compile(MappingConfig.new([field])),
+               "#{field.type} accepted precision: false"
+
+        assert reason =~ "'precision' must be an integer"
+      end
+    end
+
     test "rejects a datetime64 precision that is not a 64-bit integer" do
       for precision <- [Integer.pow(2, 100), 3.0, "3"] do
         config = MappingConfig.new([Field.datetime64("ts", path: "$.ts", precision: precision)])
