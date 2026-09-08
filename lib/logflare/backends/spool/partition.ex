@@ -225,20 +225,21 @@ defmodule Logflare.Backends.Spool.Partition do
 
   defp write_with_recovery(state, segment) do
     case try_write(state.fd, segment) do
-      :ok ->
-        {:ok, state}
+      :ok -> {:ok, state}
+      {:error, reason} -> retry_write_after_reopen(state, segment, reason)
+    end
+  end
 
-      {:error, reason} ->
-        case reopen_active_file(state) do
-          {:ok, state} ->
-            case try_write(state.fd, segment) do
-              :ok -> {:ok, state}
-              {:error, reason} -> {:error, reason, state}
-            end
-
-          {:error, _reopen_reason, state} ->
-            {:error, reason, state}
+  defp retry_write_after_reopen(state, segment, original_reason) do
+    case reopen_active_file(state) do
+      {:ok, state} ->
+        case try_write(state.fd, segment) do
+          :ok -> {:ok, state}
+          {:error, reason} -> {:error, reason, state}
         end
+
+      {:error, _reopen_reason, state} ->
+        {:error, original_reason, state}
     end
   end
 
