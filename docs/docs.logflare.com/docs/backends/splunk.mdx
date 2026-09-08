@@ -1,0 +1,35 @@
+---
+sidebar_position: 13
+---
+
+# Splunk
+
+The Splunk backend is **ingest-only**, and sends logs to [Splunk](https://www.splunk.com) via the [HTTP Event Collector](https://docs.splunk.com/Documentation/Splunk/latest/Data/UsetheHTTPEventCollector) (HEC) API.
+
+## Behaviour and configurations
+
+### Configuration
+
+The backend can be configured with the following options:
+
+- `:url` (string, required) - The full HEC endpoint URL.
+- `:token` (string, required) - The token authorizing the ingest.
+- `:index` (string, optional) - The target index. It must be in the list of indexes allowed by the HEC token, otherwise Splunk rejects the events. Defaults to the token's index.
+- `:source` (string, optional) - The event `source`. Defaults to the Logflare source name.
+- `:sourcetype` (string, optional) - The event `sourcetype`. Defaults to `_json`, so that Splunk extracts the fields of the log event.
+- `:host` (string, optional) - The event `host`. Defaults to the HEC input setting.
+
+### Obtaining the configuration values
+
+1. In Splunk Web, go to **Settings → Data inputs → HTTP Event Collector** and select **New Token**.
+2. Name the token, optionally select the allowed indexes, and save it. Copy the generated token value into `:token`.
+3. Make sure the HEC is enabled under **Global Settings**, and note the listening port (`8088` by default).
+4. The endpoint URL is `https://<your-splunk-host>:8088/services/collector/event` for Splunk Enterprise, and `https://http-inputs-<stack>.splunkcloud.com/services/collector/event` for Splunk Cloud Platform, where `<stack>` is the name in your Splunk Cloud URL.
+
+### Implementation Details
+
+- Log events are sent as a JSON array of HEC event objects, with the log event body under the `event` key and the log event timestamp under the `time` key.
+- Requests are gzip compressed.
+- Authentication uses the `Authorization: Splunk <token>` header.
+- Testing the connection sends an empty payload, which Splunk answers with a `No data` error. This verifies both reachability and the token.
+- URLs pointing at private or reserved IP addresses are rejected.
