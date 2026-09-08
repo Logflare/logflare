@@ -198,6 +198,47 @@ defmodule Logflare.RepoTest do
       assert config[:password] == "secret"
     end
 
+    test "a password replica with ssl=true inherits the primary TLS options", %{
+      certificate: certificate
+    } do
+      previous_repo_config = Application.fetch_env(:logflare, Repo)
+
+      ssl = [
+        verify: :verify_peer,
+        cacerts: [certificate],
+        certfile: "/client.pem",
+        keyfile: "/client.key",
+        versions: [:"tlsv1.3"],
+        server_name_indication: "primary.example.com"
+      ]
+
+      primary_config = Application.get_env(:logflare, Repo, [])
+      Application.put_env(:logflare, Repo, Keyword.put(primary_config, :ssl, ssl))
+      on_exit(fn -> restore_application_env(:logflare, Repo, previous_repo_config) end)
+
+      entries =
+        for hostname <- ["replica.invalid", "127.0.0.2"] do
+          Replicas.parse!("postgres://logflare:secret@#{hostname}:1/logflare?ssl=true")
+        end
+
+      telemetry_ref = :telemetry_test.attach_event_handlers(self(), [[:ecto, :repo, :init]])
+      on_exit(fn -> :telemetry.detach(telemetry_ref) end)
+
+      start_supervised!({Replicas, entries: entries})
+
+      options_by_host =
+        for _entry <- entries, into: %{} do
+          assert_receive {[:ecto, :repo, :init], ^telemetry_ref, _, %{repo: Repo, opts: opts}}
+          {opts[:hostname], opts}
+        end
+
+      inherited_ssl = Keyword.delete(ssl, :server_name_indication)
+      assert options_by_host["replica.invalid"][:ssl] == inherited_ssl
+
+      expected_ip_ssl = Keyword.put(inherited_ssl, :server_name_indication, :disable)
+      assert options_by_host["127.0.0.2"][:ssl] == expected_ip_ssl
+    end
+
     test "replica URIs reject invalid authentication options", %{host: host} do
       assert {:error, reason} =
                Replicas.parse("postgres://logflare@#{host}/logflare?auth=kerberos")

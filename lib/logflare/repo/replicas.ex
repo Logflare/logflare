@@ -46,13 +46,15 @@ defmodule Logflare.Repo.Replicas do
     if entries == [] do
       :ignore
     else
+      primary_ssl = Logflare.Repo.config()[:ssl]
+
       replicas =
         Enum.map(entries, fn {key, config} ->
           config =
             [
               name: {:via, Registry, {@registry, key}},
               logflare_connection_role: :replica
-            ] ++ config
+            ] ++ resolve_ssl(config, primary_ssl)
 
           Supervisor.child_spec({Logflare.Repo, config}, id: key)
         end)
@@ -215,6 +217,30 @@ defmodule Logflare.Repo.Replicas do
 
   defp redact(message, nil), do: message
   defp redact(message, userinfo), do: String.replace(message, userinfo, "REDACTED")
+
+  defp resolve_ssl(config, primary_ssl) do
+    case {Keyword.get(config, :ssl), primary_ssl} do
+      {true, opts} when is_list(opts) ->
+        opts =
+          opts
+          |> Keyword.delete(:server_name_indication)
+          |> maybe_disable_sni(config[:hostname])
+
+        Keyword.put(config, :ssl, opts)
+
+      _ ->
+        config
+    end
+  end
+
+  defp maybe_disable_sni(opts, hostname) when is_binary(hostname) do
+    case :inet.parse_address(String.to_charlist(hostname)) do
+      {:ok, _address} -> Keyword.put(opts, :server_name_indication, :disable)
+      {:error, _reason} -> opts
+    end
+  end
+
+  defp maybe_disable_sni(opts, _hostname), do: opts
 
   defp ensure_unique_keys!(entries) do
     duplicate =
