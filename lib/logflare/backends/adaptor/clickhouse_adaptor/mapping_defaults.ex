@@ -5,6 +5,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
   Defines how raw log event bodies are transformed into structured schemas
   before RowBinary encoding. Each event type (log, metric, trace) has its own
   field mapping with coalesced path resolution, defaults, and transforms.
+
+  ## `resource_attributes` contract
+
+  All three event types build `resource_attributes` with `pick_mode: :merge`, so the
+  column receives the curated `:pick` entries unioned with every remaining key under
+  `$.resource`. Uncurated resource keys pass through untouched, but the column is
+  intentionally *not* a lossless copy of the input when values disagree:
+
+    * **One canonical value per key.** On a key collision the curated pick wins over the
+      raw resource value. For example, when `metadata.environment` and
+      `resource.environment` are both present, `environment` holds the `metadata` value
+      and the raw `resource.environment` value is dropped.
+    * **Aliases are normalized, not preserved.** `_project_region` and `_service_name`
+      are read as fallbacks for the `region` and `service_name` picks and then removed via
+      `:exclude_keys`, so only the normalized key reaches the column.
+
+  This trade-off is deliberate: downstream queries get a stable, predictable key set
+  rather than having to reconcile aliases and duplicate keys per row.
   """
 
   alias Logflare.LogEvent.TypeDetection

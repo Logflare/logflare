@@ -29,6 +29,25 @@ defmodule Logflare.Mapper.MappingConfig do
   The only cross-field mechanism is `from_output:`, which reads a previously
   resolved field's value.
 
+  ## Pick and merge semantics
+
+  `json` and `flat_map` fields accept a `:pick` list that assembles a curated map from
+  coalesce paths, plus a `:pick_mode` that decides how that map relates to the raw value
+  at `:path`/`:paths`:
+
+    * `:replace` (default) — a non-empty pick map *is* the field value; the raw source map
+      is discarded. Pick and source are either/or.
+    * `:merge` — the pick map is unioned with the raw source map. On a key collision the
+      pick entry wins and the source value for that key is dropped.
+
+  In `:merge` mode the output is deliberately **not a lossless copy** of the source map.
+  Each output key holds exactly one canonical value, chosen by the pick's coalesce order,
+  even when the source map carries a different value under the same key. `:exclude_keys`
+  and `:elevate_keys` are applied *after* the merge, which is how alias keys are folded
+  into a canonical key: list the alias as a fallback path on the pick entry, then drop it
+  via `:exclude_keys` so only the normalized key survives. See
+  `FieldConfig.json/2` for option details.
+
   ## Examples
 
   Log mapping with scalar types:

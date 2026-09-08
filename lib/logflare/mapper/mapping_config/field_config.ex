@@ -86,6 +86,22 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
       `:exclude_keys` and `:elevate_keys` apply to the merged result. Note `:paths` remains
       a coalesce in both modes — only the first resolving path contributes.
 
+      `:merge` is lossy by design when the pick and the source disagree: the source value
+      under a colliding key is dropped, not preserved under another name. Because
+      `:exclude_keys` runs after the merge, an alias key can be consumed as a pick fallback
+      and then removed so only the canonical key remains:
+
+          Field.flat_map("resource_attributes",
+            paths: ["$.resource"],
+            pick_mode: :merge,
+            pick: [{"region", ["$.metadata.region", "$.resource._project_region"]}],
+            exclude_keys: ["_project_region"]
+          )
+
+      Given `%{"resource" => %{"_project_region" => "us-east-1", "zone" => "a"}}` this
+      yields `%{"region" => "us-east-1", "zone" => "a"}`; `_project_region` does not
+      reach the output.
+
   ### `flat_map/2`
 
   Like `json/2` but flattens nested maps to dot-notation keys with values
