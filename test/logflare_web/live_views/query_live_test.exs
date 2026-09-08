@@ -68,10 +68,10 @@ defmodule LogflareWeb.QueryLiveTest do
         |> element("form")
         |> render_submit(%{
           "action" => "format",
-          "value" => "select current_timestamp() as ts"
+          "value" => "select count(*) as count"
         })
 
-      assert html =~ "select\n  current_timestamp() as ts"
+      assert html =~ "select\n  count(*) as count"
     end
 
     test "renders source, endpoint, and alert completions for the editor", %{
