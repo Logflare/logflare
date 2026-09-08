@@ -1239,6 +1239,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         status: {:failed, "connection error"}
       }
 
+      dropped_event = [:logflare, :ingest_event_queue, :retry_dropped]
+      ref = :telemetry_test.attach_event_handlers(self(), [dropped_event])
+      on_exit(fn -> :telemetry.detach(ref) end)
+
       log =
         capture_log(fn ->
           Pipeline.ack(:ack_ref, [], [failed_message])
@@ -1246,6 +1250,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       assert log =~ "Dropping 1 ClickHouse events: exhausted #{max_retries} retries"
       assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
+
+      assert_receive {^dropped_event, ^ref, %{count: 1}, metadata}
+      assert metadata.reason == :retries_exhausted
+      assert metadata.backend_id == backend.id
+      assert metadata.backend_type == :clickhouse
     end
   end
 
@@ -1884,10 +1893,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         status: {:failed, "boom"}
       }
 
+      dropped_event = [:logflare, :ingest_event_queue, :retry_dropped]
+      ref = :telemetry_test.attach_event_handlers(self(), [dropped_event])
+      on_exit(fn -> :telemetry.detach(ref) end)
+
       log = capture_log(fn -> Pipeline.ack(:ack_ref, [], [failed_message]) end)
 
       assert log =~ "circuit breaker open"
       assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
+
+      assert_receive {^dropped_event, ^ref, %{count: 1}, metadata}
+      assert metadata.reason == :circuit_breaker_open
+      assert metadata.backend_id == backend.id
     end
 
     test "requeues encoded rows when the breaker is closed", %{

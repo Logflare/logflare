@@ -583,6 +583,13 @@ defmodule Logflare.Telemetry do
         description:
           "Count of retriable events whose generation-store row was already gone by requeue lookup time"
       ),
+      sum("logflare.ingest_event_queue.retry_dropped.count",
+        event_name: [:logflare, :ingest_event_queue, :retry_dropped],
+        measurement: :count,
+        tags: [:backend_id, :reason],
+        description:
+          "Count of ClickHouse events dropped outright after an insert failure, tagged `:retries_exhausted` when the payload ran out of retries or `:circuit_breaker_open` when the breaker shed the retry. This is realized ingest data loss"
+      ),
       sum("logflare.ingest_event_queue.requeue_queue_unavailable.count",
         event_name: [:logflare, :ingest_event_queue, :requeue_queue_unavailable],
         measurement: :count,

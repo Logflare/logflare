@@ -168,6 +168,14 @@ defmodule Logflare.TelemetryTest do
       assert not_initialized.tags == [:backend_type]
     end
 
+    test "defines realized retry drops as a reason-tagged loss counter" do
+      metric = ch_metric([:logflare, :ingest_event_queue, :retry_dropped, :count])
+
+      assert metric.event_name == [:logflare, :ingest_event_queue, :retry_dropped]
+      assert metric.measurement == :count
+      assert metric.tags == [:backend_id, :reason]
+    end
+
     test "defines ClickHouse batch distribution and throughput metrics" do
       metrics = clickhouse_batch_metrics()
 
