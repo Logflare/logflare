@@ -233,6 +233,7 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
   @valid_transforms ~w(upcase downcase)
   @valid_value_types ~w(string)
   @valid_coercions ~w(lenient strict)
+  @default_datetime_precision 9
   @length_filters ~w(len_eq len_gt len_gte len_lt len_lte)
   @char_classes ~w(alpha numeric alphanumeric)
 
@@ -353,7 +354,7 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
   @spec datetime64(String.t(), keyword()) :: t()
   def datetime64(name, opts \\ []) do
     base = build(name, "datetime64", opts)
-    %{base | precision: opts[:precision] || 9}
+    %{base | precision: Keyword.get(opts, :precision, @default_datetime_precision)}
   end
 
   @spec json(String.t(), keyword()) :: t()
@@ -383,7 +384,7 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
   @spec array_datetime64(String.t(), keyword()) :: t()
   def array_datetime64(name, opts \\ []) do
     base = build(name, "array_datetime64", opts, [:filter_nil])
-    %{base | precision: opts[:precision] || 9}
+    %{base | precision: Keyword.get(opts, :precision, @default_datetime_precision)}
   end
 
   @spec array_json(String.t(), keyword()) :: t()

@@ -674,6 +674,27 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
       end
     end
 
+    test "the field config is shared across types, differing only by the application key" do
+      [log, metric, trace] =
+        for event_type <- [:log, :metric, :trace] do
+          Enum.find(
+            MappingDefaults.for_type(event_type).fields,
+            &(&1.name == "resource_attributes")
+          )
+        end
+
+      assert metric == trace
+      assert %{log | pick: nil} == %{metric | pick: nil}
+
+      renamed =
+        Enum.map(log.pick, fn
+          %{key: "application_name"} = entry -> %{entry | key: "application"}
+          entry -> entry
+        end)
+
+      assert renamed == metric.pick
+    end
+
     test "project resolves from metadata.tenantId in every type", %{
       log: log,
       metric: metric,
