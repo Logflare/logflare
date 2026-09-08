@@ -211,7 +211,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       ),
       Field.flat_map("log_attributes",
         path: "$",
-        exclude_keys: ["id", "event_message", "timestamp"],
+        exclude_keys: ["id", "event_message", "timestamp", "resource", "scope"],
         elevate_keys: ["metadata", "attributes"]
       ),
       Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
@@ -382,7 +382,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       ),
       Field.flat_map("attributes",
         path: "$",
-        exclude_keys: ["id", "event_message", "timestamp"],
+        exclude_keys: ["id", "event_message", "timestamp", "resource", "scope"],
         elevate_keys: ["metadata", "attributes"]
       ),
       Field.string("aggregation_temporality",
@@ -674,9 +674,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
         ],
         default: %{}
       ),
+      # `scope` is deliberately not excluded here and must stay that way.
+      # otel_traces has no scope_attributes column and will not be getting one,
+      # so span_attributes is the permanent home for scope.schema_url and
+      # scope.attributes.*. Adding "scope" here would drop them entirely.
       Field.flat_map("span_attributes",
         path: "$",
-        exclude_keys: ["id", "event_message", "timestamp"],
+        exclude_keys: ["id", "event_message", "timestamp", "resource"],
         elevate_keys: ["metadata", "attributes"]
       ),
       Field.array_datetime64("events.timestamp",

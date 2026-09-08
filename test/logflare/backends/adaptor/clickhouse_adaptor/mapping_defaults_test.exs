@@ -199,6 +199,87 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
     end
   end
 
+  describe "attribute maps exclude envelopes that have their own columns" do
+    setup do
+      payload = %{
+        "level" => "info",
+        "resource" => %{"host" => "h1", "schema_url" => "https://otel.io/schemas/1.21.0"},
+        "scope" => %{
+          "name" => "svc",
+          "version" => "1.2.3",
+          "schema_url" => "https://otel.io/schemas/1.21.0",
+          "attributes" => %{"library.language" => "rust"}
+        },
+        "timestamp" => 1_775_591_051_937_363
+      }
+
+      {:ok, payload: payload}
+    end
+
+    test "no attribute map carries resource.* keys", %{
+      log: log,
+      metric: metric,
+      trace: trace,
+      payload: payload
+    } do
+      for {compiled, field} <- [
+            {log, "log_attributes"},
+            {metric, "attributes"},
+            {trace, "span_attributes"}
+          ] do
+        attrs = Mapper.map(payload, compiled)[field]
+
+        assert Enum.filter(Map.keys(attrs), &String.starts_with?(&1, "resource")) == [],
+               "#{field} still carries resource.* keys"
+      end
+    end
+
+    test "resource data still reaches resource_attributes in full", %{
+      log: log,
+      metric: metric,
+      trace: trace,
+      payload: payload
+    } do
+      for compiled <- [log, metric, trace] do
+        res_attrs = Mapper.map(payload, compiled)["resource_attributes"]
+
+        assert res_attrs["host"] == "h1"
+        assert res_attrs["schema_url"] == "https://otel.io/schemas/1.21.0"
+      end
+    end
+
+    test "log and metric attribute maps drop scope.* since they have scope_attributes", %{
+      log: log,
+      metric: metric,
+      payload: payload
+    } do
+      for {compiled, field} <- [{log, "log_attributes"}, {metric, "attributes"}] do
+        result = Mapper.map(payload, compiled)
+
+        assert Enum.filter(Map.keys(result[field]), &String.starts_with?(&1, "scope")) == [],
+               "#{field} still carries scope.* keys"
+
+        assert result["scope_attributes"] == %{"library.language" => "rust"}
+        assert result["scope_schema_url"] == "https://otel.io/schemas/1.21.0"
+        assert result["scope_name"] == "svc"
+      end
+    end
+
+    test "trace span_attributes keeps scope.* because traces have no scope_attributes column",
+         %{trace: compiled, payload: payload} do
+      result = Mapper.map(payload, compiled)
+
+      refute Map.has_key?(result, "scope_attributes")
+      refute Map.has_key?(result, "scope_schema_url")
+
+      # These would be lost entirely if `scope` were excluded here.
+      assert result["span_attributes"]["scope.schema_url"] ==
+               "https://otel.io/schemas/1.21.0"
+
+      assert result["span_attributes"]["scope.attributes.library.language"] == "rust"
+    end
+  end
+
   describe "resource_attributes merges the raw resource map with pick entries" do
     test "keeps uncurated resource keys alongside curated ones", %{
       log: log,
