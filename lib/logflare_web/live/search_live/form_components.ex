@@ -150,9 +150,9 @@ defmodule LogflareWeb.SearchLive.FormComponents do
       <div class="form-group">
         <.form id="source-logs-search-form" for={@search_form} phx-change="update_search_form" phx-submit="start_search" class="form-group">
           <div class="form-group form-text">
-            <div class="tw-flex tw-flex-wrap tw-items-end tw-gap-2">
+            <div class="tw-flex tw-flex-wrap tw-items-start tw-gap-2">
               <.recommended_field_inputs fields={Source.recommended_query_fields(@source)} id_prefix="search-field" />
-              <div class="tw-order-2 tw-basis-full tw-px-2 tw-min-w-0 sm:tw-min-w-[20rem] sm:tw-basis-0 sm:tw-flex-1">
+              <div class="tw-order-2 tw-basis-full tw-px-2 tw-min-w-0 sm:tw-min-w-[20rem] sm:tw-basis-0 sm:tw-flex-1 sm:tw-pt-4">
                 <MonacoEditorComponentNew.code_editor
                   id="lql-editor-hook"
                   field={@search_form[:querystring]}
@@ -161,7 +161,7 @@ defmodule LogflareWeb.SearchLive.FormComponents do
                   schema_fields={@lql_schema_fields}
                   suggested_searches={@saved_searches}
                   class="lql-editor-wrapper tw-mt-0 tw-mb-0"
-                  editor_class="tw-w-full tw-h-8"
+                  editor_class="tw-w-full"
                   emit_focus_events
                 />
               </div>
