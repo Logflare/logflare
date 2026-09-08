@@ -10,7 +10,7 @@
   <Components.authentication_warning endpoint={@show_endpoint} />
 
   <div id="endpoint-show" class="tw-grid tw-grid-cols-1 tw-gap-8 lg:tw-grid-cols-2">
-    <Components.endpoint_details endpoint={@show_endpoint} parsed_result={@parsed_result} redact_pii={@redact_pii} />
-    <Components.endpoint_test endpoint={@show_endpoint} form={@params_form} declared_params={@declared_params} result={@test_result} />
+    <Components.endpoint_details endpoint={@show_endpoint} parsed_result={@parsed_result} />
+    <RunQuery.endpoint_test endpoint={@show_endpoint} form={@params_form} declared_params={@declared_params} result={@test_result} />
   </div>
 </section>
