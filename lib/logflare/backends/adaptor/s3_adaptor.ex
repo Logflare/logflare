@@ -7,6 +7,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
 
   import Logflare.Utils.Guards
 
+  alias __MODULE__.HttpClient
   alias __MODULE__.Pipeline
   alias Ecto.Changeset
   alias ExAws.S3
@@ -34,6 +35,16 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   @type source_id_backend_id_tuple :: {source_id :: pos_integer(), backend_id :: pos_integer()}
   @type via_tuple :: {:via, Registry, {module(), {pos_integer(), {module(), pos_integer()}}}}
 
+  @http_opts [
+    pool_timeout: :timer.seconds(5),
+    receive_timeout: :timer.seconds(30),
+    request_timeout: :timer.minutes(1)
+  ]
+  @request_retries [
+    max_attempts: 3,
+    base_backoff_in_ms: 10,
+    max_backoff_in_ms: 1_000
+  ]
   @min_batch_timeout 1_000
   @max_batch_timeout 5_000
   @connection_test_key "_connection_test.parquet"
@@ -324,7 +335,10 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     [
       access_key_id: config.access_key_id,
       secret_access_key: config.secret_access_key,
-      region: config.storage_region
+      region: config.storage_region,
+      http_client: HttpClient,
+      http_opts: @http_opts,
+      retries: @request_retries
     ] ++ endpoint_opts(config[:endpoint])
   end
 

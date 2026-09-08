@@ -3,6 +3,7 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
 
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.S3Adaptor
+  alias Logflare.Backends.Adaptor.S3Adaptor.HttpClient
 
   doctest S3Adaptor
 
@@ -248,6 +249,19 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
       assert opts[:access_key_id] == "AKID"
       assert opts[:secret_access_key] == "SECRET"
       assert opts[:region] == "us-east-1"
+      assert opts[:http_client] == HttpClient
+
+      assert opts[:http_opts] == [
+               pool_timeout: 5_000,
+               receive_timeout: 30_000,
+               request_timeout: 60_000
+             ]
+
+      assert opts[:retries] == [
+               max_attempts: 3,
+               base_backoff_in_ms: 10,
+               max_backoff_in_ms: 1_000
+             ]
     end
 
     test "returns error when the upload fails", %{backend: backend} do
