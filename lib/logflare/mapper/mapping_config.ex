@@ -24,6 +24,11 @@ defmodule Logflare.Mapper.MappingConfig do
   filters, it is skipped and the next coalesce path is tried. See
   `FieldConfig` for the full list of filter keys.
 
+  Unsigned integer fields accept a `:coercion` option. The default `:lenient` mode
+  converts floats, booleans, and numeric strings; `:strict` only accepts integer
+  terms (or strings holding one) and treats anything else as unresolved, so the
+  field's `:default` applies. See `FieldConfig` for details.
+
   Every field reads from the **original input document** — operations like
   `exclude_keys` and `elevate_keys` only transform that field's own output value.
   The only cross-field mechanism is `from_output:`, which reads a previously
@@ -157,6 +162,7 @@ defmodule Logflare.Mapper.MappingConfig do
     |> maybe_add("elevate_keys", f.elevate_keys)
     |> maybe_add("value_type", f.value_type)
     |> maybe_add("pick_mode", f.pick_mode)
+    |> maybe_add("coercion", f.coercion)
     |> maybe_add_filters(f.filters)
     |> maybe_add_filter_nil(f.filter_nil)
     |> maybe_add_pick(f.pick)

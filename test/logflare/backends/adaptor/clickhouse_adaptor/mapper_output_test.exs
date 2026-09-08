@@ -57,6 +57,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
     assert encoded_severity_number(event, severity_body(0)) == 9
   end
 
+  test "a non-integer severity_number falls back to the severity_text mapping" do
+    event = raw_event(:log, %{})
+
+    assert encoded_severity_number(event, severity_body(true)) == 9
+    assert encoded_severity_number(event, severity_body(13.9)) == 9
+    assert encoded_severity_number(event, severity_body("ERROR")) == 9
+  end
+
+  test "a string severity_number holding an OTEL integer is accepted" do
+    event = raw_event(:log, %{})
+
+    assert encoded_severity_number(event, severity_body("13")) == 13
+  end
+
   test "fused metric output is byte-identical for arrays, maps, and nullable times" do
     event =
       raw_event(:metric, %{

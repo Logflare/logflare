@@ -225,6 +225,116 @@ defmodule Logflare.MapperTest do
     end
   end
 
+  describe "type coercion: strict unsigned integers" do
+    test "accepts an integer term" do
+      result =
+        compile_and_map(
+          [Field.uint8("val", path: "$.val", coercion: :strict, default: 99)],
+          %{"val" => 17}
+        )
+
+      assert result["val"] == 17
+    end
+
+    test "accepts a string holding an unsigned integer" do
+      result =
+        compile_and_map(
+          [Field.uint8("val", path: "$.val", coercion: :strict, default: 99)],
+          %{"val" => "17"}
+        )
+
+      assert result["val"] == 17
+    end
+
+    test "still clamps out-of-range integers in either form" do
+      fields = [Field.uint8("val", path: "$.val", coercion: :strict, default: 99)]
+
+      assert compile_and_map(fields, %{"val" => 300}) == %{"val" => 255}
+      assert compile_and_map(fields, %{"val" => -5}) == %{"val" => 0}
+      assert compile_and_map(fields, %{"val" => "-5"}) == %{"val" => 0}
+    end
+
+    test "treats a float as unresolved and uses the default" do
+      result =
+        compile_and_map(
+          [Field.uint8("val", path: "$.val", coercion: :strict, default: 99)],
+          %{"val" => 13.9}
+        )
+
+      assert result["val"] == 99
+    end
+
+    test "treats a boolean as unresolved and uses the default" do
+      for bool <- [true, false] do
+        result =
+          compile_and_map(
+            [Field.uint8("val", path: "$.val", coercion: :strict, default: 99)],
+            %{"val" => bool}
+          )
+
+        assert result["val"] == 99
+      end
+    end
+
+    test "treats a non-numeric string as unresolved and uses the default" do
+      for str <- ["ERROR", "13.9", ""] do
+        result =
+          compile_and_map(
+            [Field.uint8("val", path: "$.val", coercion: :strict, default: 99)],
+            %{"val" => str}
+          )
+
+        assert result["val"] == 99, "expected #{inspect(str)} to be unresolved"
+      end
+    end
+
+    test "coalesce skips a non-integer term and continues to the next path" do
+      result =
+        compile_and_map(
+          [Field.uint8("val", paths: ["$.a", "$.b"], coercion: :strict, default: 99)],
+          %{"a" => true, "b" => 7}
+        )
+
+      assert result["val"] == 7
+    end
+
+    test "applies to uint32 and uint64 as well" do
+      fields = [
+        Field.uint32("u32", path: "$.val", coercion: :strict, default: 1),
+        Field.uint64("u64", path: "$.val", coercion: :strict, default: 2)
+      ]
+
+      assert compile_and_map(fields, %{"val" => 4.2}) == %{"u32" => 1, "u64" => 2}
+      assert compile_and_map(fields, %{"val" => 42}) == %{"u32" => 42, "u64" => 42}
+    end
+
+    test "lenient coercion remains the default and keeps truncating floats and booleans" do
+      fields = [Field.uint8("val", path: "$.val", default: 99)]
+
+      assert compile_and_map(fields, %{"val" => 13.9}) == %{"val" => 13}
+      assert compile_and_map(fields, %{"val" => true}) == %{"val" => 1}
+      assert compile_and_map(fields, %{"val" => "ERROR"}) == %{"val" => 0}
+    end
+
+    test "compile rejects strict coercion on a non-unsigned-integer field" do
+      for field <- [
+            %Field{name: "s", type: "string", path: "$.s", coercion: "strict"},
+            %Field{name: "f", type: "float64", path: "$.f", coercion: "strict"},
+            %Field{name: "i", type: "int32", path: "$.i", coercion: "strict"}
+          ] do
+        assert {:error, reason} = Mapper.compile(MappingConfig.new([field]))
+        assert reason =~ "coercion \"strict\" is only supported on uint8, uint32, and uint64"
+      end
+    end
+
+    test "compile rejects an unknown coercion value" do
+      field = %Field{name: "val", type: "uint8", path: "$.val", coercion: "bogus"}
+
+      assert {:error, reason} = Mapper.compile(MappingConfig.new([field]))
+      assert reason =~ "coercion must be \"lenient\" or \"strict\""
+    end
+  end
+
   describe "type coercion: float64" do
     test "float pass-through" do
       result =

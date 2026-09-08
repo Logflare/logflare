@@ -29,6 +29,22 @@ pub fn case_insensitive_get<'b, V>(map: &'b HashMap<String, V>, term: Term<'_>) 
     }
 }
 
+/// True when `value` is an integer term or a binary that parses as an integer —
+/// the only inputs `coerce_uint` can convert without changing the producer's
+/// meaning. Floats and booleans are rejected. Backs `coercion: :strict`.
+#[inline]
+pub fn is_integer_term(value: Term<'_>) -> bool {
+    if value.is_integer() {
+        return true;
+    }
+    match value.decode::<Binary>() {
+        Ok(binary) => std::str::from_utf8(binary.as_slice())
+            .map(|s| s.parse::<i64>().is_ok())
+            .unwrap_or(false),
+        Err(_) => false,
+    }
+}
+
 /// Coerce a BEAM term to the target field type.
 #[inline]
 pub fn coerce<'a>(

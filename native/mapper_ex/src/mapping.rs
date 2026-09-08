@@ -43,6 +43,9 @@ pub struct CompiledField {
     /// When true, a resolved pick map is unioned over the path/paths value
     /// (pick winning on collision) instead of replacing it.
     pub pick_merge: bool,
+    /// When true (`coercion: :strict` on a uint field), only integer terms and
+    /// binaries holding an integer resolve; floats and booleans are unresolved.
+    pub strict_uint: bool,
     pub enum8_data: Option<Enum8Data>,
     pub filter_nil: bool,
     pub flat_map_value_type: FlatMapValueType,
@@ -394,6 +397,7 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
     let elevate_keys = decode_string_list_bytes(env, field, "elevate_keys");
     let pick = decode_pick(env, field)?;
     let pick_merge = decode_pick_merge(env, field)?;
+    let strict_uint = decode_coercion(env, field, &field_type)?;
 
     let enum8_data = if matches!(field_type, FieldType::Enum8 { .. }) {
         Some(decode_enum8_data(env, field)?)
@@ -418,6 +422,7 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
         elevate_keys,
         pick,
         pick_merge,
+        strict_uint,
         enum8_data,
         filter_nil,
         flat_map_value_type,
@@ -630,6 +635,27 @@ fn decode_pick_merge<'a>(env: Env<'a>, field: Term<'a>) -> Result<bool, String> 
         Some("merge") => Ok(true),
         Some(other) => Err(format!(
             "pick_mode must be \"replace\" or \"merge\", got {:?}",
+            other
+        )),
+    }
+}
+
+fn decode_coercion<'a>(
+    env: Env<'a>,
+    field: Term<'a>,
+    field_type: &FieldType,
+) -> Result<bool, String> {
+    match get_string_key(env, field, "coercion")?.as_deref() {
+        None | Some("lenient") => Ok(false),
+        Some("strict") => match field_type {
+            FieldType::UInt8 | FieldType::UInt32 | FieldType::UInt64 => Ok(true),
+            _ => Err(
+                "coercion \"strict\" is only supported on uint8, uint32, and uint64 fields"
+                    .to_string(),
+            ),
+        },
+        Some(other) => Err(format!(
+            "coercion must be \"lenient\" or \"strict\", got {:?}",
             other
         )),
     }

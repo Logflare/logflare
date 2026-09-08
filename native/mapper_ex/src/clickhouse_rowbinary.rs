@@ -98,7 +98,9 @@ fn field_type_name(field_type: FieldType) -> &'static str {
 
 /// OTEL `SeverityNumber` defines 1-24; 0 is UNSPECIFIED. `uint8` coercion saturates
 /// anything larger to 255, so a supplied value outside this range is not a severity
-/// and the `severity_text` mapping is used instead.
+/// and the `severity_text` mapping is used instead. Non-integer inputs (floats,
+/// booleans) never reach this check: `severity_number_alt` is configured with
+/// `coercion: :strict`, which resolves them to the field default of 0.
 const OTEL_SEVERITY_MIN: u64 = 1;
 const OTEL_SEVERITY_MAX: u64 = 24;
 

@@ -7,7 +7,6 @@ use crate::mapping::{
     CompiledField, CompiledMapping, Enum8Data, FieldType, PathSource, Predicate, PredicateValue,
 };
 use crate::query;
-use crate::string_filters;
 
 use serde::ser::{SerializeMap, SerializeSeq};
 use serde::{Serialize, Serializer};
@@ -238,9 +237,15 @@ fn resolve_value_raw<'a>(
     match &field.path_source {
         PathSource::Root => body,
         PathSource::Single(path) => query::evaluate(env, body, path, nil, flat_keys, cache),
-        PathSource::Coalesce(paths) => {
-            query::evaluate_first(env, body, paths, (false, None), nil, flat_keys, cache)
-        }
+        PathSource::Coalesce(paths) => query::evaluate_first(
+            env,
+            body,
+            paths,
+            query::ResolveOptions::NONE,
+            nil,
+            flat_keys,
+            cache,
+        ),
         PathSource::FromOutput(idx) => {
             let v = output_values[*idx];
             if v != nil {
@@ -263,46 +268,24 @@ fn resolve_value<'a>(
     flat_keys: bool,
     cache: &mut query::QueryCache<'a>,
 ) -> Term<'a> {
-    let skip_empty = field.field_type == FieldType::String;
+    let options = query::ResolveOptions {
+        skip_empty_strings: field.field_type == FieldType::String,
+        string_filters: field.filters.as_ref(),
+        strict_uint: field.strict_uint,
+    };
 
     match &field.path_source {
         PathSource::Root => body,
         PathSource::Single(path) => {
             let v = query::evaluate(env, body, path, nil, flat_keys, cache);
-            if v == nil {
+            if v == nil || !options.accepts(v) {
                 coerce::encode_default(env, &field.default, nil)
-            } else if skip_empty {
-                // Check binary length without allocating a String
-                if let Ok(b) = v.decode::<Binary>() {
-                    if b.is_empty() {
-                        coerce::encode_default(env, &field.default, nil)
-                    } else if let Some(ref f) = field.filters {
-                        if !string_filters::passes_filters(b.as_slice(), f) {
-                            coerce::encode_default(env, &field.default, nil)
-                        } else {
-                            v
-                        }
-                    } else {
-                        v
-                    }
-                } else {
-                    v
-                }
             } else {
                 v
             }
         }
         PathSource::Coalesce(paths) => {
-            let string_filters = field.filters.as_ref();
-            let result = query::evaluate_first(
-                env,
-                body,
-                paths,
-                (skip_empty, string_filters),
-                nil,
-                flat_keys,
-                cache,
-            );
+            let result = query::evaluate_first(env, body, paths, options, nil, flat_keys, cache);
             if result == nil {
                 coerce::encode_default(env, &field.default, nil)
             } else {
@@ -452,7 +435,7 @@ fn build_pick_map<'a>(
             env,
             body,
             &entry.paths,
-            (false, None),
+            query::ResolveOptions::NONE,
             nil,
             flat_keys,
             cache,
