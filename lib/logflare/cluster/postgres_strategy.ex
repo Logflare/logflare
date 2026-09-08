@@ -27,8 +27,6 @@ defmodule Logflare.Cluster.PostgresStrategy do
   def start_link(args), do: GenServer.start_link(__MODULE__, args)
 
   def init([state]) do
-    url = get_db_url()
-
     opts =
       get_db_options()
       |> Keyword.put_new(:parameters, application_name: "cluster_node_#{node()}")
@@ -38,7 +36,6 @@ defmodule Logflare.Cluster.PostgresStrategy do
       state.config
       |> Keyword.put_new(:heartbeat_interval, 5_000)
       |> Keyword.put(:channel_name, clean_cookie(Node.get_cookie()))
-      |> Keyword.put(:url, url)
 
     meta = %{
       opts: fn -> opts end,
@@ -118,17 +115,7 @@ defmodule Logflare.Cluster.PostgresStrategy do
   @spec get_db_options() :: keyword()
   def get_db_options do
     Application.fetch_env!(:logflare, Repo)
-    |> ConnectionOptions.prepare(:primary)
-  end
-
-  @spec get_db_url() :: String.t()
-  def get_db_url do
-    username = Application.get_env(:logflare, Repo)[:username]
-    password = Application.get_env(:logflare, Repo)[:password]
-    port = Application.get_env(:logflare, Repo)[:port]
-    hostname = Application.get_env(:logflare, Repo)[:hostname]
-    database = Application.get_env(:logflare, Repo)[:database]
-    ~s|postgresql://#{username}:#{password}@#{hostname}:#{port}/#{database}|
+    |> ConnectionOptions.prepare_postgrex()
   end
 
   defp clean_cookie(cookie) when is_atom(cookie), do: cookie |> Atom.to_string() |> clean_cookie()

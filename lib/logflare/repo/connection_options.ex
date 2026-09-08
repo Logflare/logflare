@@ -7,6 +7,19 @@ defmodule Logflare.Repo.ConnectionOptions do
   alias Logflare.Repo.Replicas
 
   @epgsql_connection_keys [:hostname, :port, :username, :database, :socket_options, :ssl]
+  @ecto_repo_only_options [
+    :log,
+    :migration_repo,
+    :name,
+    :otp_app,
+    :pool,
+    :pool_count,
+    :pool_size,
+    :queue_interval,
+    :queue_target,
+    :start_apps_before_migration,
+    :telemetry_prefix
+  ]
 
   @type role :: :primary | :replica
 
@@ -18,6 +31,19 @@ defmodule Logflare.Repo.ConnectionOptions do
     config
     |> prepare_auth(auth, aws_region)
     |> prepare_role(role)
+  end
+
+  @doc """
+  Prepares a single direct Postgrex connection from the primary repository config.
+
+  Ecto repository and pool options are removed so clients such as the cluster
+  strategy cannot inherit the primary repository's pool size or registration.
+  """
+  @spec prepare_postgrex(keyword()) :: keyword()
+  def prepare_postgrex(config) do
+    config
+    |> prepare(:primary)
+    |> Keyword.drop(@ecto_repo_only_options)
   end
 
   @doc """
