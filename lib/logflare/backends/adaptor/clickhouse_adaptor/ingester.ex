@@ -20,6 +20,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @pool_timeout 8_000
   @receive_timeout 15_000
   @too_many_parts_marker "Code: 252."
+  @retriable_error_classes [
+    :pool_timeout,
+    :timeout,
+    :connection_refused,
+    :connection_reset,
+    :connection_closed,
+    :tls_alert
+  ]
 
   @type error_class ::
           :too_many_parts
@@ -175,11 +183,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   defp retriable?({:ok, %Tesla.Env{status: 429}}), do: true
   defp retriable?({:ok, _env}), do: false
 
-  defp retriable?({:error, reason})
-       when reason in [:timeout, :econnrefused, :econnreset, :closed],
-       do: true
-
-  defp retriable?({:error, _reason}), do: false
+  defp retriable?({:error, reason}), do: error_class(reason) in @retriable_error_classes
 
   @doc """
   Inserts a pre-gzipped RowBinary payload directly into ClickHouse.

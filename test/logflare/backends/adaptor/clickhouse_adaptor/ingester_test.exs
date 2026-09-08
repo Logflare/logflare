@@ -410,6 +410,47 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
                Ingester.insert_compressed(backend, table_name, :log, :zlib.gzip(""))
     end
 
+    test "retries a Finch pool checkout timeout", %{
+      backend: backend,
+      table_name: table_name
+    } do
+      Finch
+      |> expect(:request, 2, fn _request, _pool, _opts ->
+        {:error, %Finch.Error{reason: :pool_timeout}}
+      end)
+
+      assert {:error, %Finch.Error{reason: :pool_timeout}} =
+               Ingester.insert_compressed(backend, table_name, :log, :zlib.gzip(""))
+    end
+
+    test "retries a TLS alert transport error", %{
+      backend: backend,
+      table_name: table_name
+    } do
+      tls_alert = {:tls_alert, {:bad_record_mac, "decryption failed"}}
+
+      Finch
+      |> expect(:request, 2, fn _request, _pool, _opts ->
+        {:error, tls_alert}
+      end)
+
+      assert {:error, ^tls_alert} =
+               Ingester.insert_compressed(backend, table_name, :log, :zlib.gzip(""))
+    end
+
+    test "does not retry an unrecognized transport error", %{
+      backend: backend,
+      table_name: table_name
+    } do
+      Finch
+      |> expect(:request, fn _request, _pool, _opts ->
+        {:error, :ehostunreach}
+      end)
+
+      assert {:error, :ehostunreach} =
+               Ingester.insert_compressed(backend, table_name, :log, :zlib.gzip(""))
+    end
+
     test "includes column list in INSERT query", %{
       backend: backend,
       table_name: table_name,
