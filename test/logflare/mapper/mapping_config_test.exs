@@ -214,7 +214,7 @@ defmodule Logflare.Mapper.MappingConfigTest do
     end
 
     test "stores a typed output format" do
-      output = OutputFormat.clickhouse_row_binary(:log)
+      output = OutputFormat.ch_row_binary(:log)
       config = MappingConfig.new([Field.string("project")], output: output)
 
       assert config.output == output
@@ -265,12 +265,12 @@ defmodule Logflare.Mapper.MappingConfigTest do
     test "round-trip preserves the output format" do
       config =
         MappingConfig.new([Field.string("project")],
-          output: OutputFormat.clickhouse_row_binary(:log)
+          output: OutputFormat.ch_row_binary(:log)
         )
 
       assert {:ok, json} = MappingConfig.to_json(config)
       assert {:ok, restored} = MappingConfig.from_json(json)
-      assert restored.output == OutputFormat.clickhouse_row_binary(:log)
+      assert restored.output == OutputFormat.ch_row_binary(:log)
     end
 
     test "round-trip preserves pick entries" do
@@ -386,10 +386,39 @@ defmodule Logflare.Mapper.MappingConfigTest do
       json =
         Jason.encode!(%{
           "fields" => [%{"name" => "project", "type" => "string"}],
-          "output" => %{"format" => "clickhouse_row_binary"}
+          "output" => %{"format" => "ch_row_binary"}
         })
 
       assert {:error, %Ecto.Changeset{}} = MappingConfig.from_json(json)
+    end
+  end
+
+  describe "MappingConfig.apply_timestamp_precision/1" do
+    test "output with and without a timestamp_precision" do
+      fields = [
+        Field.datetime64("timestamp", path: "$.timestamp", precision: 9),
+        Field.array_datetime64("times", path: "$.times", precision: 9),
+        Field.string("event_message", path: "$.event_message")
+      ]
+
+      config = MappingConfig.new(fields, output: OutputFormat.ndjson(:log))
+
+      assert %MappingConfig{
+               fields: [
+                 %FieldConfig{name: "timestamp", precision: 6},
+                 %FieldConfig{name: "times", precision: 6},
+                 %FieldConfig{name: "event_message", precision: nil}
+               ]
+             } = MappingConfig.apply_timestamp_precision(config)
+
+      for unchanged <- [
+            MappingConfig.new(fields),
+            MappingConfig.new(fields,
+              output: %{OutputFormat.ndjson(:log) | timestamp_precision: nil}
+            )
+          ] do
+        assert MappingConfig.apply_timestamp_precision(unchanged).fields == fields
+      end
     end
   end
 
@@ -420,11 +449,11 @@ defmodule Logflare.Mapper.MappingConfigTest do
     test "serializes the output format" do
       config =
         MappingConfig.new([Field.string("project")],
-          output: OutputFormat.clickhouse_row_binary(:trace)
+          output: OutputFormat.ch_row_binary(:trace)
         )
 
       assert MappingConfig.to_nif_map(config)["output"] == %{
-               "format" => "clickhouse_row_binary",
+               "format" => "ch_row_binary",
                "row_type" => "trace"
              }
     end

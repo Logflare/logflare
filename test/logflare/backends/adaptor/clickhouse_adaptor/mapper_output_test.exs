@@ -5,13 +5,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
   import Logflare.Factory
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults
+  alias Logflare.ClickHouseMappedEvents
   alias Logflare.LogEvent
   alias Logflare.Mapper
   alias Logflare.Mapper.MappingConfig
   alias Logflare.Mapper.MappingConfig.FieldConfig, as: Field
   alias Logflare.Mapper.MappingConfig.OutputFormat
   alias Logflare.Mapper.Native
+  alias Logflare.Mapper.OtelDefaults
   alias Logflare.Mapper.OutputContext
 
   test "fused log output is byte-identical and applies explicit severity numbers" do
@@ -121,13 +122,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
     map_compiled =
       Mapper.compile!(MappingConfig.new([Field.string("message", path: "$.message")]))
 
-    output_compiled = Mapper.compile!(MappingDefaults.for_log())
-    output_context = OutputContext.clickhouse_row_binary(event, encoded_config_id(:log))
+    output_compiled = Mapper.compile!(OtelDefaults.for_log())
+    output_context = OutputContext.ch_row_binary(event, encoded_config_id(:log))
 
     assert Mapper.map(%{"message" => "mapped"}, map_compiled, output_context: output_context) ==
              %{"message" => "mapped"}
 
-    assert_raise ArgumentError, ~r/requires a clickhouse_row_binary output_context/, fn ->
+    assert_raise ArgumentError, ~r/requires a ch_row_binary output_context/, fn ->
       Mapper.map(event.body, output_compiled)
     end
   end
@@ -142,7 +143,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
           })
         end)
 
-      output_compiled = Mapper.compile!(MappingDefaults.for_type(event_type))
+      output_compiled = Mapper.compile!(OtelDefaults.for_type(event_type))
       map_compiled = compile_map_output(event_type)
       config_id = encoded_config_id(event_type)
 
@@ -154,7 +155,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
       actual =
         events
         |> Enum.map(fn event ->
-          output_context = OutputContext.clickhouse_row_binary(event, config_id)
+          output_context = OutputContext.ch_row_binary(event, config_id)
           Mapper.map(event.body, output_compiled, output_context: output_context)
         end)
         |> IO.iodata_to_binary()
@@ -164,7 +165,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
   end
 
   property "fused log rows match the separate encoder for varied scalar and map values" do
-    output_compiled = Mapper.compile!(MappingDefaults.for_log())
+    output_compiled = Mapper.compile!(OtelDefaults.for_log())
     map_compiled = compile_map_output(:log)
     config_id = encoded_config_id(:log)
 
@@ -268,30 +269,30 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
   end
 
   test "native input and layout errors are returned without crashing the VM" do
-    compiled = Mapper.compile!(MappingDefaults.for_log())
+    compiled = Mapper.compile!(OtelDefaults.for_log())
     config_id = encoded_config_id(:log)
     event = raw_event(:log, %{"event_message" => "valid", "timestamp" => 1_700_000_000_000_301})
 
-    assert {:error, "ClickHouse RowBinary output requires a clickhouse_row_binary output_context"} =
+    assert {:error, "ClickHouse RowBinary output requires a ch_row_binary output_context"} =
              Native.map(event.body, compiled, {false, nil})
 
     assert {:error, "row envelope must contain ID, source UUID, source name, and ingested_at"} =
              Native.map(
                event.body,
                compiled,
-               {false, {:clickhouse_row_binary, config_id, :invalid_envelope}}
+               {false, {:ch_row_binary, config_id, :invalid_envelope}}
              )
 
     assert {:error, "mapping_config_id must be a pre-encoded 16-byte UUID binary"} =
              Native.map(
                event.body,
                compiled,
-               {false, {:clickhouse_row_binary, nil, native_envelope(event)}}
+               {false, {:ch_row_binary, nil, native_envelope(event)}}
              )
 
     invalid_output = %{
       "fields" => [%{"name" => "project", "type" => "string"}],
-      "output" => %{"format" => "clickhouse_row_binary", "row_type" => "unsupported"}
+      "output" => %{"format" => "ch_row_binary", "row_type" => "unsupported"}
     }
 
     assert {:error, "unsupported ClickHouse row type 'unsupported'"} =
@@ -304,7 +305,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
 
     output_config =
       MappingConfig.new(map_config.fields,
-        output: OutputFormat.clickhouse_row_binary(:log)
+        output: OutputFormat.ch_row_binary(:log)
       )
 
     assert_raise ArgumentError,
@@ -312,7 +313,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
                  fn -> Mapper.compile!(output_config) end
 
     incompatible_fields =
-      MappingDefaults.for_log().fields
+      OtelDefaults.for_log().fields
       |> Enum.map(fn
         %Field{name: "trace_flags"} -> Field.string("trace_flags", path: "$.trace_flags")
         field -> field
@@ -320,7 +321,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
 
     incompatible_output_config =
       MappingConfig.new(incompatible_fields,
-        output: OutputFormat.clickhouse_row_binary(:log)
+        output: OutputFormat.ch_row_binary(:log)
       )
 
     assert_raise ArgumentError,
@@ -329,22 +330,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
   end
 
   test "row errors return an actionable reason" do
-    compiled = Mapper.compile!(MappingDefaults.for_log())
+    compiled = Mapper.compile!(OtelDefaults.for_log())
     config_id = encoded_config_id(:log)
     valid = raw_event(:log, %{"event_message" => "valid", "timestamp" => 1_700_000_000_000_401})
 
-    assert_raise ArgumentError, ~r/requires a clickhouse_row_binary output_context/, fn ->
+    assert_raise ArgumentError, ~r/requires a ch_row_binary output_context/, fn ->
       Mapper.map(valid.body, compiled)
     end
 
-    invalid_config_context = OutputContext.clickhouse_row_binary(valid, <<0::120>>)
+    invalid_config_context = OutputContext.ch_row_binary(valid, <<0::120>>)
 
     assert_raise ArgumentError, ~r/mapping config ID must be a 16-byte encoded UUID/, fn ->
       Mapper.map(valid.body, compiled, output_context: invalid_config_context)
     end
 
     invalid_uuid = %{valid | id: "not-a-uuid"}
-    invalid_uuid_context = OutputContext.clickhouse_row_binary(invalid_uuid, config_id)
+    invalid_uuid_context = OutputContext.ch_row_binary(invalid_uuid, config_id)
 
     assert {:error, invalid_uuid_reason} =
              Mapper.map_result(invalid_uuid.body, compiled, output_context: invalid_uuid_context)
@@ -358,12 +359,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
     malformed_canonical_uuid = %{valid | id: "0011223--4455-6677-8899-aabbccddeeff"}
 
     assert_raise ArgumentError, ~r/invalid event UUID/, fn ->
-      context = OutputContext.clickhouse_row_binary(malformed_canonical_uuid, config_id)
+      context = OutputContext.ch_row_binary(malformed_canonical_uuid, config_id)
       Mapper.map(malformed_canonical_uuid.body, compiled, output_context: context)
     end
 
     missing_timestamp = %{valid | body: %{"event_message" => "missing timestamp"}}
-    missing_timestamp_context = OutputContext.clickhouse_row_binary(missing_timestamp, config_id)
+    missing_timestamp_context = OutputContext.ch_row_binary(missing_timestamp, config_id)
 
     assert {:error, timestamp_reason} =
              Mapper.map_result(missing_timestamp.body, compiled,
@@ -373,7 +374,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
     assert timestamp_reason =~ "mapped signed field is not an integer"
 
     assert {:error, ^timestamp_reason} =
-             Mapper.run(missing_timestamp.body, MappingDefaults.for_log(),
+             Mapper.run(missing_timestamp.body, OtelDefaults.for_log(),
                output_context: missing_timestamp_context
              )
 
@@ -402,18 +403,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
          map_compiled \\ nil,
          config_id \\ nil
        ) do
-    output_compiled = output_compiled || Mapper.compile!(MappingDefaults.for_type(event_type))
+    output_compiled = output_compiled || Mapper.compile!(OtelDefaults.for_type(event_type))
     map_compiled = map_compiled || compile_map_output(event_type)
     config_id = config_id || encoded_config_id(event_type)
     expected = separate_row(event, event_type, map_compiled, config_id) |> IO.iodata_to_binary()
 
-    output_context = OutputContext.clickhouse_row_binary(event, config_id)
+    output_context = OutputContext.ch_row_binary(event, config_id)
     assert Mapper.map(event.body, output_compiled, output_context: output_context) == expected
   end
 
   defp compile_map_output(event_type) do
-    config = MappingDefaults.for_type(event_type)
-    Mapper.compile!(%{config | output: nil})
+    Mapper.compile!(OtelDefaults.for_type(event_type, :map))
   end
 
   defp native_envelope(event) do
@@ -425,30 +425,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
     mapped_body =
       event.body
       |> Mapper.map(compiled)
-      |> maybe_compute_duration(event_type)
-      |> resolve_severity_number(event_type)
+      |> ClickHouseMappedEvents.apply_derived_fields(event_type)
 
     Ingester.encode_row(%{event | body: mapped_body}, event_type, config_id)
   end
 
   defp encoded_config_id(event_type) do
-    event_type |> MappingDefaults.config_id() |> Ingester.encode_mapping_config_id()
+    event_type |> OtelDefaults.config_id() |> Ingester.encode_mapping_config_id()
   end
-
-  defp maybe_compute_duration(
-         %{"start_time" => start_time, "end_time" => end_time, "duration" => 0} = body,
-         :trace
-       )
-       when is_integer(start_time) and is_integer(end_time) and end_time > start_time do
-    %{body | "duration" => end_time - start_time}
-  end
-
-  defp maybe_compute_duration(body, _event_type), do: body
-
-  defp resolve_severity_number(%{"severity_number_alt" => alt} = body, :log)
-       when is_integer(alt) and alt > 0 do
-    %{body | "severity_number" => alt}
-  end
-
-  defp resolve_severity_number(body, _event_type), do: body
 end
