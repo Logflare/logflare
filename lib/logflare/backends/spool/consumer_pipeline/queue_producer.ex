@@ -581,7 +581,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
             ack_and_notify(queue_mod, queue_url, handle, :decode_error)
             :empty
 
-          {:error, {:unsupported_version, version}} ->
+          {:error, {:unsupported_version, _version}} ->
             # Unlike malformed content, this file is presumably fine — it's
             # just a future wire format version this build hasn't been
             # upgraded to decode yet (see Encoder.current_version/0). Nack
@@ -589,10 +589,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
             # understand it — this one, once upgraded, or another already
             # ahead of it during a rollout — gets a chance to process it
             # instead of the events being destroyed over a version mismatch.
-            Logger.warning(
-              "spool_consumer: #{file_key} is format version #{inspect(version)}, which " <>
-                "this node doesn't understand yet — leaving it for a node that does"
-            )
 
             nack_and_notify(queue_mod, queue_url, handle, :unsupported_version)
             :empty
@@ -679,34 +675,31 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   end
 
   defp decode_legacy_content(file_key, raw) do
-    content =
-      cond do
-        String.ends_with?(file_key, ".gz") -> :zlib.gunzip(raw)
-        String.ends_with?(file_key, ".zst") -> decompress_zstd!(raw)
-        true -> raw
-      end
+    {:ok, decode_and_parse(file_key, raw)}
+  end
 
-    parse_content(file_key, content)
+  # Each segment of a versioned file is decompressed and parsed on its own,
+  # then the resulting event lists are flattened across the whole file — a
+  # legacy file is really just this same operation with a single implicit
+  # segment (the whole raw body).
+  defp decode_versioned_segments(file_key, segments) do
+    {:ok, Enum.flat_map(segments, &decode_and_parse(file_key, &1))}
   end
 
   # parse_content/2 always succeeds or raises (never returns {:error, _}) —
-  # any decode failure propagates up to decode_content/2's rescue/catch, so
-  # this just flattens each segment's events across the whole file.
-  defp decode_versioned_segments(file_key, segments) do
-    events = Enum.flat_map(segments, &decode_segment_events(file_key, &1))
-    {:ok, events}
-  end
-
-  defp decode_segment_events(file_key, segment) do
-    content =
-      cond do
-        String.ends_with?(file_key, ".gz") -> :zlib.gunzip(segment)
-        String.ends_with?(file_key, ".zst") -> decompress_zstd!(segment)
-        true -> segment
-      end
-
+  # any decode failure propagates up to decode_content/2's rescue/catch.
+  defp decode_and_parse(file_key, content) do
+    content = decompress_by_extension(content, file_key)
     {:ok, events} = parse_content(file_key, content)
     events
+  end
+
+  defp decompress_by_extension(content, file_key) do
+    cond do
+      String.ends_with?(file_key, ".gz") -> :zlib.gunzip(content)
+      String.ends_with?(file_key, ".zst") -> decompress_zstd!(content)
+      true -> content
+    end
   end
 
   # :ezstd.decompress/1 returns {:error, reason} instead of raising on

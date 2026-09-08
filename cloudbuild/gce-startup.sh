@@ -8,14 +8,7 @@ readonly CONTAINER_ENV_FILE="${LOGFLARE_CONTAINER_ENV_FILE:-/run/logflare-contai
 readonly DOCKER_HOME="${LOGFLARE_DOCKER_HOME:-/home/logflare}"
 # Local WAL directory for the durable spool producer (see
 # Logflare.Backends.Spool.Partition). Lives on the boot disk's writable
-# /mnt/stateful_partition rather than a separate disk — durability-wise
-# they're equivalent (both are wiped on instance replacement, both survive
-# an OOM/container restart on the same instance; a real "survives
-# replacement" WAL would need MIG stateful-disk config, which neither
-# approach has), so the separate disk was only buying I/O/space isolation
-# that isn't needed at this WAL's size. The consumer role never reads this
-# path, but creating it costs nothing, so this script stays identical for
-# both roles.
+# /mnt/stateful_partition
 readonly WAL_HOST_MOUNT="/mnt/stateful_partition/logflare-wal"
 readonly WAL_CONTAINER_DIR="/var/lib/logflare/spool_wal"
 
@@ -78,9 +71,6 @@ wait_for_docker() {
 
 prepare_wal_dir() {
   mkdir -p "${WAL_HOST_MOUNT}"
-
-  # World-writable: the container runs as whatever user the image defaults
-  # to, and this is dev/test infra, not a security boundary.
   chmod 0777 "${WAL_HOST_MOUNT}"
   log "WAL dir ready at ${WAL_HOST_MOUNT}"
 }
