@@ -414,7 +414,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
       assert Target.id(target) == hd(source.rules).id
     end
 
-    test "drops matched rule IDs missing from the snapshot", %{source: source, log_event: le} do
+    test "drops matched positions missing from the snapshot", %{source: source, log_event: le} do
       {tree, _targets} = Rules.rules_tree_by_source_id(source.id)
 
       expect(Rules, :rules_tree_by_source_id, fn _id -> {tree, []} end)
@@ -422,17 +422,17 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
       assert @subject.matching_rules(le, source) == []
     end
 
-    test "the snapshot resolves every rule ID its tree can match", %{
+    test "the snapshot resolves every position its tree can match", %{
       source: source,
       log_event: le
     } do
-      {tree, entries} = Rules.rules_tree_by_source_id(source.id)
+      {tree, targets} = Rules.rules_tree_by_source_id(source.id)
 
-      assert [_ | _] = rule_ids = @subject.matching_rule_ids(le, tree)
-      targets_by_id = Map.new(entries)
+      assert [_ | _] = positions = @subject.matching_positions(le, tree)
 
-      for rule_id <- rule_ids do
-        assert Map.has_key?(targets_by_id, rule_id)
+      for position <- positions do
+        assert position >= 0
+        assert position < length(targets)
       end
     end
 
@@ -449,9 +449,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
 
       {^tree, repaired} = Rules.Cache.rules_tree_by_source_id(source.id)
       assert repaired.key != snapshot.key
-
-      assert {:ok, [^target]} =
-               RoutingSnapshot.resolve_with_status(repaired, [hd(source.rules).id])
+      assert {:ok, [^target]} = RoutingSnapshot.resolve_with_status(repaired, [0])
     end
   end
 
