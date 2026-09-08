@@ -209,7 +209,7 @@ defmodule Logflare.Mixfile do
 
       # Frontend
       {:phoenix_live_react, "~> 0.6"},
-      {:sql_fmt, "~> 0.4.0"},
+      {:sql_fmt, "~> 0.5.0"},
 
       # Dev
       {:dialyxir, "~> 1.1", only: [:dev, :test], runtime: false},
@@ -228,9 +228,6 @@ defmodule Logflare.Mixfile do
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
       {:sobelow, "~> 0.14.1", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.10", only: :test},
-
-      # Charting
-      {:contex, "~> 0.3.0"},
 
       # Postgres Subscribe
       {:cainophile, github: "Logflare/cainophile", ref: "f92a552"},

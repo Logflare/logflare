@@ -109,3 +109,5 @@ flake.nix
 flake.lock
 
 /tmp
+
+.plans/

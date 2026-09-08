@@ -147,6 +147,14 @@ defmodule LogflareWeb.Router do
     plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(private))
   end
 
+  pipeline :ingest_source_discovery_auth do
+    plug(Plug.RequestId)
+    plug(OpenApiSpex.Plug.PutApiSpec, module: LogflareWeb.ApiSpec)
+    plug(LogflareWeb.Plugs.VerifyApiAccess, require_token: true)
+    plug(:accepts, ["json", "csv"])
+    plug(LogflareWeb.Plugs.SetHeaders)
+  end
+
   pipeline :require_auth do
     plug(LogflareWeb.Plugs.RequireAuth)
   end
@@ -504,6 +512,12 @@ defmodule LogflareWeb.Router do
     delete "/key-values", Api.KeyValueController, :delete
   end
 
+  scope "/api", LogflareWeb do
+    pipe_through([:ingest_source_discovery_auth])
+
+    get("/ingest-sources", Api.IngestSourceController, :index)
+  end
+
   scope "/api/partner", LogflareWeb do
     pipe_through([:api, :partner_api])
 
@@ -513,7 +527,6 @@ defmodule LogflareWeb.Router do
     put("/users/:user_token/downgrade", Api.Partner.UserController, :downgrade)
 
     get("/users/:user_token", Api.Partner.UserController, :get_user)
-    get("/users/:user_token/usage", Api.Partner.UserController, :get_user_usage)
 
     delete("/users/:user_token", Api.Partner.UserController, :delete_user)
   end

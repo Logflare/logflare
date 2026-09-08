@@ -11,6 +11,17 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   If you want to manually select a specific Finch pool, you can use the `:pool_name` option and provide the module name.
 
 
+  ### Payload format
+
+  The `:format` option selects the batch payload encoding:
+
+  - `"json"` (default) - the batch is sent as a JSON array of event bodies.
+  - `"ndjson"` - the batch is sent as newline-delimited JSON, one event body per
+    line, with the `application/x-ndjson` content type. A user-configured
+    `content-type` header takes precedence.
+
+  Adaptors that set `:format_batch` bypass this option.
+
   ### Dynamic URL handling with URL Override
 
   This adaptor performs a merge on config that will prevent you from leveraging a dynamically generated URL configuration at runtime.
@@ -20,8 +31,11 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   use GenServer
 
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Adaptor.HttpBased.Headers
+  alias Logflare.Backends.Adaptor.HttpBased.NdjsonFormatter
+  alias Logflare.LogEvent
   alias Logflare.Utils
   alias Logflare.Utils.SSRF
 
@@ -31,6 +45,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   # Sentinel value substituted for credentials by redact_config/1.
   @redacted_value "REDACTED"
+
+  @formats ["json", "ndjson"]
 
   # Header names are case-insensitive. Keep this list intentionally explicit so
   # adding another credential-bearing header is a reviewed policy change.
@@ -75,13 +91,15 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def cast_config(params, existing_config \\ %{}) do
-    {existing_config, %{url: :string, headers: :map, http: :string, gzip: :boolean}}
-    |> Ecto.Changeset.cast(params, [:url, :headers, :http, :gzip])
+    {existing_config,
+     %{url: :string, headers: :map, http: :string, gzip: :boolean, format: :string}}
+    |> Ecto.Changeset.cast(params, [:url, :headers, :http, :gzip, :format])
     |> unredact_headers(existing_config)
     |> unredact_url(existing_config)
     |> normalize_header_keys()
     |> Logflare.Utils.default_field_value(:http, "http2")
     |> Logflare.Utils.default_field_value(:gzip, true)
+    |> Logflare.Utils.default_field_value(:format, "json")
   end
 
   # Canonicalizes submitted header names to lower case so the stored config cannot
@@ -156,6 +174,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     |> Ecto.Changeset.validate_required([:url])
     |> Ecto.Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
     |> Ecto.Changeset.validate_inclusion(:http, ["http1", "http2"])
+    |> Ecto.Changeset.validate_inclusion(:format, @formats)
     |> validate_no_ssrf()
   end
 
@@ -175,10 +194,73 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     end
   end
 
+  @doc """
+  Payload formats this adaptor supports.
+  """
+  @spec formats() :: [String.t()]
+  def formats, do: @formats
+
+  @doc """
+  Sentinel rendered in place of a stored header value, so a decrypted secret never
+  reaches the browser. `unredact_headers/2` restores the stored value when the
+  sentinel is submitted back under an unchanged key.
+  """
+  @spec redacted_value() :: String.t()
+  def redacted_value, do: @redacted_value
+
+  @impl Logflare.Backends.Adaptor
+  @spec transform_config(Backend.t()) :: map()
+  def transform_config(%Backend{config: %{format: "ndjson"} = config} = backend) do
+    config
+    |> Map.put(:format_batch, &encode_ndjson(&1, backend_id: backend.id))
+    |> Map.put(:headers, ndjson_headers(config))
+  end
+
+  def transform_config(%Backend{config: config}), do: config
+
+  # Normalizes the stored header names before adding the content type. Header names
+  # are case-insensitive, and config written before Headers.normalize_keys/1 (or
+  # through a partial update that never casts :headers) can still hold "Content-Type".
+  # Without the normalization both keys ship as separate headers.
+  @spec ndjson_headers(map()) :: map()
+  defp ndjson_headers(config) do
+    (Map.get(config, :headers) || %{})
+    |> Headers.normalize_keys()
+    |> Map.put_new("content-type", "application/x-ndjson")
+  end
+
+  @doc """
+  Builds the request body for a batch of log events.
+
+  Uses the config's `:format_batch` function when one is set, and otherwise falls
+  back to the list of event bodies.
+  """
+  @spec format_payload(map(), [LogEvent.t()]) :: term()
+  def format_payload(config, events) do
+    case Map.get(config, :format_batch) do
+      nil -> Enum.map(events, & &1.body)
+      format_batch -> format_batch.(events)
+    end
+  end
+
+  @spec encode_ndjson([LogEvent.t()], keyword()) :: binary()
+  defp encode_ndjson(events, metadata) do
+    events
+    |> NdjsonFormatter.encode(metadata)
+    |> IO.iodata_to_binary()
+  end
+
   @impl Logflare.Backends.Adaptor
   def redact_config(config) do
     config
     |> Map.update(:headers, %{}, &redact_headers/1)
+    |> Map.update(:url, nil, &redact_url_userinfo/1)
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def sanitize_config_for_display(config) do
+    config
+    |> Adaptor.mask_config_values(except: [:url, :http, :gzip, :format])
     |> Map.update(:url, nil, &redact_url_userinfo/1)
   end
 
@@ -208,7 +290,9 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   @impl Logflare.Backends.Adaptor
   @spec test_connection(Backend.t()) :: :ok | {:error, term()}
   def test_connection(%Backend{} = backend) do
-    test_connection(backend, [])
+    config = transform_config(backend)
+
+    test_connection(%{backend | config: config}, format_payload(config, []))
   end
 
   @doc """
@@ -348,8 +432,12 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   defmodule Pipeline do
     @moduledoc false
     use Broadway
+
+    require Logger
+
     alias Broadway.Message
     alias Logflare.Backends.BufferProducer
+    alias Logflare.Backends.Adaptor.WebhookAdaptor
     alias Logflare.Backends.Adaptor.WebhookAdaptor.Client
 
     @batch_timeout if Application.compile_env(:logflare, :env) == :test, do: 10, else: 1_000
@@ -413,18 +501,35 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       %{metadata: backend_metadata} = backend = Backends.Cache.get_backend(context.backend_id)
       config = Backends.Adaptor.get_backend_config(backend)
 
-      # convert this to a custom format if needed
-      payload =
-        if format_batch = Map.get(config, :format_batch) do
-          events = for %{data: le} <- messages, do: le
-          format_batch.(events)
-        else
-          for %{data: le} <- messages, do: le.body
-        end
+      events = for %{data: le} <- messages, do: le
+      payload = WebhookAdaptor.format_payload(config, events)
 
-      process_data(payload, config, backend_metadata, context)
+      if empty_payload?(payload) do
+        Logger.warning(
+          "Skipped webhook batch: all #{length(messages)} log events were dropped",
+          source_id: context.source_id,
+          backend_id: context.backend_id
+        )
+      else
+        case process_data(payload, config, backend_metadata, context) do
+          {:error, {Tesla.Middleware.JSON, :encode, _reason}} ->
+            Logger.warning(
+              "Dropped #{length(messages)} log events from webhook batch: JSON encoding failed",
+              source_id: context.source_id,
+              backend_id: context.backend_id
+            )
+
+          _ ->
+            :ok
+        end
+      end
+
       messages
     end
+
+    @spec empty_payload?(term()) :: boolean()
+    defp empty_payload?(payload) when payload in ["", []], do: true
+    defp empty_payload?(_payload), do: false
 
     defp process_data(payload, config, backend_metadata, context) do
       backend_meta =

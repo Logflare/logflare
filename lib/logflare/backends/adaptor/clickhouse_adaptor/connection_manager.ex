@@ -11,6 +11,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
 
   Pools capture backend configuration when they start. `refresh_pool/1` stops an
   active pool so that the next query restarts it with freshly loaded configuration.
+
+  Pools authenticate with the credentials resolved by
+  `ClickHouseAdaptor.query_credentials/1`, which prefers a
+  dedicated query user when one is configured.
   """
 
   use GenServer
@@ -21,6 +25,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   require Logger
 
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Backend
 
   @inactivity_timeout :timer.minutes(5)
@@ -489,6 +494,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
     with {:ok, {scheme, hostname, url_port}} <- extract_url_components(url) do
       pool_via = connection_pool_via(backend, label)
       port = get_read_port(config, url_port)
+      {username, password} = ClickHouseAdaptor.query_credentials(config)
 
       ch_opts = [
         name: pool_via,
@@ -496,8 +502,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
         hostname: hostname,
         port: port,
         database: config.database,
-        username: config.username,
-        password: config.password,
+        username: username,
+        password: password,
         pool_size: pool_size,
         settings: [],
         timeout: @ch_query_conn_timeout,

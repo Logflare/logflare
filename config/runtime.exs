@@ -3,9 +3,35 @@ import Config
 alias Logflare.Utils
 
 defmodule Env do
+  @max_phash2_range 4_294_967_296
+
   def get_boolean(env, default \\ false) when is_boolean(default) do
     value = System.get_env(env)
     if value, do: value |> String.downcase() |> String.to_existing_atom(), else: default
+  end
+
+  @spec parse_broadway_message_sample_denominator(String.t() | nil) ::
+          :default | :disabled | pos_integer()
+  def parse_broadway_message_sample_denominator(nil), do: :default
+
+  def parse_broadway_message_sample_denominator(value) when is_binary(value) do
+    case value |> String.trim() |> String.downcase() do
+      "" ->
+        :default
+
+      "disabled" ->
+        :disabled
+
+      normalized_value ->
+        case Integer.parse(normalized_value) do
+          {denominator, ""} when denominator > 0 and denominator <= @max_phash2_range ->
+            denominator
+
+          _ ->
+            raise ArgumentError,
+                  "LOGFLARE_BROADWAY_MESSAGE_SAMPLE_DENOMINATOR must be 'disabled' or an integer between 1 and #{@max_phash2_range}, got: #{inspect(value)}"
+        end
+    end
   end
 end
 
@@ -72,6 +98,13 @@ cache_stats =
     nil -> nil
     val -> val |> String.downcase() |> String.to_existing_atom()
   end
+
+case Env.parse_broadway_message_sample_denominator(
+       System.get_env("LOGFLARE_BROADWAY_MESSAGE_SAMPLE_DENOMINATOR")
+     ) do
+  :default -> :ok
+  denominator -> config :logflare, broadway_message_sample_denominator: denominator
+end
 
 config :logflare,
        [
@@ -537,15 +570,20 @@ config :logflare, :context_cache_gossip, %{
   max_nodes: cache_gossip_max_nodes
 }
 
-# LOGFLARE_READ_REPLICAS: Comma-separated list of PostgreSQL read replica hostnames to distribute
+# LOGFLARE_READ_REPLICAS: Comma-separated list of PostgreSQL read replicas to distribute
 # context cache queries across. If unset or empty, all queries go to the primary database.
-# Example: "replica1.example.com,replica2.example.com"
+# Each entry is either a bare hostname (inheriting the primary's port, credentials, database
+# and SSL settings) or a full URI, in which case only the parts present in the URI override
+# the primary's config: postgres://user:pass@host:port/database?ssl=true&pool_size=5
+# Example: "replica1.example.com,postgres://user:pass@replica2.example.com:5432/logflare"
 read_replicas =
   "LOGFLARE_READ_REPLICAS"
   |> System.get_env("")
   |> String.split(",", trim: true)
   |> Enum.map(&String.trim/1)
+  |> Enum.reject(&(&1 == ""))
   |> Enum.uniq()
+  |> Enum.map(&Logflare.Repo.Replicas.parse!/1)
 
 config :logflare, :read_replicas, read_replicas
 

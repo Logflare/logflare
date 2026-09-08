@@ -16,6 +16,7 @@ config :logflare,
   # normal instances can be more than 90 seconds
   sigterm_shutdown_grace_period_ms: 15_000,
   cache_stats: false,
+  broadway_message_sample_denominator: 100,
   encryption_key_fallback: hardcoded_encryption_key,
   encryption_key_default: hardcoded_encryption_key
 
