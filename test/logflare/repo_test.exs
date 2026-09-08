@@ -497,6 +497,27 @@ defmodule Logflare.RepoTest do
         assert configured[:username] == expected_username
         refute configured[:password] == "stale"
         assert configured[:password] =~ "DBUser=#{expected_username}"
+        assert configured[:ssl][:verify] == :verify_peer
+      end
+    end
+
+    test "configure/3 rejects callbacks that weaken IAM TLS", %{
+      certificate: certificate,
+      host: host,
+      region: region
+    } do
+      opts = [
+        hostname: host,
+        username: "logflare",
+        ssl: [verify: :verify_peer, cacerts: [certificate]]
+      ]
+
+      for insecure_ssl <- [false, [verify: :verify_none]] do
+        callback = fn opts -> Keyword.put(opts, :ssl, insecure_ssl) end
+
+        assert_raise ArgumentError, ~r/AWS IAM authentication requires/, fn ->
+          AwsIam.configure(opts, region, callback)
+        end
       end
     end
   end

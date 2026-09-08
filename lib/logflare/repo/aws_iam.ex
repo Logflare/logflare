@@ -31,7 +31,7 @@ defmodule Logflare.Repo.AwsIam do
   """
   @spec configure(keyword(), String.t(), callback()) :: keyword()
   def configure(opts, region, previous_configure) do
-    opts = run_configure(opts, previous_configure)
+    opts = opts |> run_configure(previous_configure) |> put_verified_ssl!()
     hostname = Keyword.fetch!(opts, :hostname)
     username = Keyword.fetch!(opts, :username)
     port = Keyword.get(opts, :port) || 5432
@@ -71,7 +71,7 @@ defmodule Logflare.Repo.AwsIam do
         raise ArgumentError, "AWS IAM authentication requires TLS; remove ssl=false"
 
       ssl in [nil, true] ->
-        Keyword.put(config, :ssl, cacerts: trusted_cacerts())
+        Keyword.put(config, :ssl, verify: :verify_peer, cacerts: trusted_cacerts())
 
       is_list(ssl) ->
         validate_ssl_options!(ssl)
@@ -79,6 +79,7 @@ defmodule Logflare.Repo.AwsIam do
         ssl =
           ssl
           |> Keyword.drop([:server_name_indication, :customize_hostname_check, :verify_fun])
+          |> Keyword.put_new(:verify, :verify_peer)
           |> maybe_put_cacerts()
 
         Keyword.put(config, :ssl, ssl)
