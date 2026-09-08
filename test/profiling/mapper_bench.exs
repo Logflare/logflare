@@ -260,6 +260,16 @@ log_params = %{
     "url" => "https://zzzenjkohrkaatgpywnz.supabase.co/rest/v1/rpc/set_active_session"
   },
   "request_id" => "9f8bc2a6-57c0-7460-d3ad-9cebebcde78e",
+  "resource" => %{
+    "_instance_color" => "green",
+    "_project_region" => "ap-south-1",
+    "_service_name" => "supabase-edge-runtime",
+    "_telemetry_sdk_language" => "rust",
+    "_telemetry_sdk_name" => "opentelemetry",
+    "_telemetry_sdk_version" => "0.31.0",
+    "environment" => "prod",
+    "host" => "ip-10-0-42-17.ap-south-1.compute.internal"
+  },
   "response" => %{
     "headers" => %{
       "cf_cache_status" => "DYNAMIC",
@@ -310,17 +320,31 @@ Benchee.run(
 
 # Baseline results — Mapper.map(event.body) with MappingDefaults.for_log()
 # Apple M4 / 32 GB / macOS / Elixir 1.19.5 / Erlang 27.3.4.6
-# Recorded at d1b0bfa2b.
+# Recorded after adding a `resource` block to the payload, so the numbers below are
+# NOT comparable to any baseline recorded before that change.
 #
 # Name                             ips        average  deviation         median         99th %
-# [log] Mapper.map(body)       54.57 K       18.33 μs    ±35.74%       18.54 μs       39.54 μs
+# [log] Mapper.map(body)       49.32 K       20.28 μs    ±14.97%       21.46 μs       28.54 μs
 #
 # Memory usage statistics:
 #
 # Name                      Memory usage
-# [log] Mapper.map(body)         2.52 KB
+# [log] Mapper.map(body)         2.34 KB
 #
 # Reduction count statistics:
 #
 # Name                   Reduction count
-# [log] Mapper.map(body)             130
+# [log] Mapper.map(body)             141
+#
+# Same-payload A/B for `pick_mode: :merge` on resource_attributes, mapping the raw
+# payload rather than a LogEvent body (so absolute figures sit higher than above; the
+# comparison between rows is the point):
+#
+#   :replace              5 keys   49.74 K ips   20.11 μs   3.98 KB   204 reductions
+#   :merge               11 keys   48.39 K ips   20.67 μs   3.98 KB   208 reductions
+#   :merge + exclude      9 keys   47.92 K ips   20.87 μs   3.97 KB   207 reductions
+#
+# The merge costs +4 reductions for 6 extra keys of resource data. Excluding the two
+# underscore duplicates that already have a curated alias (`_project_region` ->
+# `region`, `_service_name` -> `service_name`) is free — one reduction cheaper than
+# plain merge, since the keys drop before the flatten pass.
