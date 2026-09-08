@@ -1657,6 +1657,98 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
+  describe "insert outcome telemetry" do
+    setup do
+      insert(:plan, name: "Free")
+      {_source, backend} = setup_clickhouse_test()
+
+      TestUtils.attach_forwarder([:logflare, :clickhouse, :insert, :result])
+
+      [backend: backend]
+    end
+
+    test "emits an :ok result for a successful insert", %{backend: backend} do
+      Mimic.expect(Finch, :request, fn _request, _pool, _opts ->
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
+
+      assert :ok = ClickHouseAdaptor.insert_log_events_compressed(backend, :log, :zlib.gzip(""))
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :insert, :result], %{count: 1},
+                      metadata}
+
+      assert metadata.backend_id == backend.id
+      assert metadata.event_type == :log
+      assert metadata.async == false
+      assert metadata.result == :ok
+      assert metadata.error_class == :none
+    end
+
+    test "tags the error class for a failed insert", %{backend: backend} do
+      Mimic.expect(Finch, :request, fn _request, _pool, _opts ->
+        {:ok, %Finch.Response{status: 400, body: "boom"}}
+      end)
+
+      assert {:error, _reason} =
+               ClickHouseAdaptor.insert_log_events_compressed(backend, :log, :zlib.gzip(""))
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :insert, :result], %{count: 1},
+                      metadata}
+
+      assert metadata.result == :error
+      assert metadata.error_class == :http_client_error
+    end
+
+    test "distinguishes too-many-parts rejections", %{backend: backend} do
+      Mimic.stub(Finch, :request, fn _request, _pool, _opts ->
+        {:ok, %Finch.Response{status: 500, body: "Code: 252. DB::Exception: Too many parts"}}
+      end)
+
+      assert {:error, _reason} =
+               ClickHouseAdaptor.insert_log_events_compressed(backend, :log, :zlib.gzip(""))
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :insert, :result], %{count: 1},
+                      metadata}
+
+      assert metadata.error_class == :too_many_parts
+    end
+
+    test "counts a retried insert once", %{backend: backend} do
+      Mimic.stub(Finch, :request, fn _request, _pool, _opts ->
+        {:ok, %Finch.Response{status: 503, body: "unavailable"}}
+      end)
+
+      assert {:error, _reason} =
+               ClickHouseAdaptor.insert_log_events_compressed(backend, :log, :zlib.gzip(""))
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :insert, :result], %{count: 1},
+                      metadata}
+
+      assert metadata.error_class == :http_server_error
+
+      refute_received {:telemetry_event, [:logflare, :clickhouse, :insert, :result], _, _}
+    end
+
+    test "flags async inserts", %{backend: backend} do
+      Mimic.expect(Finch, :request, fn _request, _pool, _opts ->
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
+
+      assert :ok =
+               ClickHouseAdaptor.insert_log_events_compressed(
+                 backend,
+                 :log,
+                 :zlib.gzip(""),
+                 async: true
+               )
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :insert, :result], %{count: 1},
+                      metadata}
+
+      assert metadata.async == true
+    end
+  end
+
   describe "log event insertion and retrieval" do
     setup do
       insert(:plan, name: "Free")

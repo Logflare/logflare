@@ -21,6 +21,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @receive_timeout 15_000
   @too_many_parts_marker "Code: 252."
 
+  @type error_class ::
+          :too_many_parts
+          | :http_too_many_requests
+          | :http_client_error
+          | :http_server_error
+          | :http_error
+          | :pool_timeout
+          | :timeout
+          | :connection_refused
+          | :connection_reset
+          | :connection_closed
+          | :dns_error
+          | :tls_alert
+          | :unknown
+
   @doc """
   Inserts a list of `LogEvent` structs into ClickHouse.
 
@@ -86,6 +101,42 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     do: String.contains?(reason, @too_many_parts_marker)
 
   def too_many_parts?(_reason), do: false
+
+  @doc """
+  Classifies an insert failure reason into a low-cardinality class suitable for metric tags.
+  """
+  @spec error_class(term()) :: error_class()
+  def error_class(reason) when is_binary(reason),
+    do: response_body_error_class(too_many_parts?(reason), reason)
+
+  def error_class(%Finch.Error{reason: reason}), do: transport_error_class(reason)
+  def error_class(%Mint.TransportError{reason: reason}), do: transport_error_class(reason)
+  def error_class(reason), do: transport_error_class(reason)
+
+  @spec response_body_error_class(boolean(), String.t()) :: error_class()
+  defp response_body_error_class(true, _reason), do: :too_many_parts
+  defp response_body_error_class(false, reason), do: http_error_class(reason)
+
+  @spec http_error_class(String.t()) :: error_class()
+  defp http_error_class("HTTP " <> rest), do: http_status_class(Integer.parse(rest))
+  defp http_error_class(_reason), do: :unknown
+
+  @spec http_status_class({integer(), String.t()} | :error) :: error_class()
+  defp http_status_class({429, _rest}), do: :http_too_many_requests
+  defp http_status_class({status, _rest}) when status >= 500, do: :http_server_error
+  defp http_status_class({status, _rest}) when status >= 400, do: :http_client_error
+  defp http_status_class({_status, _rest}), do: :http_error
+  defp http_status_class(:error), do: :unknown
+
+  @spec transport_error_class(term()) :: error_class()
+  defp transport_error_class(:pool_timeout), do: :pool_timeout
+  defp transport_error_class(:timeout), do: :timeout
+  defp transport_error_class(:econnrefused), do: :connection_refused
+  defp transport_error_class(:econnreset), do: :connection_reset
+  defp transport_error_class(:closed), do: :connection_closed
+  defp transport_error_class(:nxdomain), do: :dns_error
+  defp transport_error_class({:tls_alert, _alert}), do: :tls_alert
+  defp transport_error_class(_reason), do: :unknown
 
   @spec build_client(Keyword.t(), boolean()) :: Tesla.Client.t()
   defp build_client(connection_opts, async?) do

@@ -950,18 +950,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     async? = Keyword.get(opts, :async, false)
     insert_opts = [{:async, async?} | build_insert_opts(opts)]
 
-    case Ingester.insert(backend, table_name, events, event_type, insert_opts) do
-      :ok ->
-        :ok
-
-      {:error, reason} ->
-        Logger.warning("ClickHouse http insert error.",
-          host: insert_host(backend.config, async?),
-          error_string: inspect(reason)
-        )
-
-        {:error, reason}
-    end
+    backend
+    |> Ingester.insert(table_name, events, event_type, insert_opts)
+    |> handle_insert_result(backend, event_type, async?)
   end
 
   @doc """
@@ -982,18 +973,52 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     async? = Keyword.get(opts, :async, false)
     insert_opts = [{:async, async?} | build_insert_opts(opts)]
 
-    case Ingester.insert_compressed(backend, table_name, event_type, compressed, insert_opts) do
-      :ok ->
-        :ok
+    backend
+    |> Ingester.insert_compressed(table_name, event_type, compressed, insert_opts)
+    |> handle_insert_result(backend, event_type, async?)
+  end
 
-      {:error, reason} ->
-        Logger.warning("ClickHouse http insert error.",
-          host: insert_host(backend.config, async?),
-          error_string: inspect(reason)
-        )
+  @spec handle_insert_result(
+          :ok | {:error, term()},
+          Backend.t(),
+          TypeDetection.event_type(),
+          boolean()
+        ) :: :ok | {:error, term()}
+  defp handle_insert_result(:ok, backend, event_type, async?) do
+    emit_insert_telemetry(backend, event_type, async?, :ok, :none)
+    :ok
+  end
 
-        {:error, reason}
-    end
+  defp handle_insert_result({:error, reason}, backend, event_type, async?) do
+    Logger.warning("ClickHouse http insert error.",
+      host: insert_host(backend.config, async?),
+      error_string: inspect(reason)
+    )
+
+    emit_insert_telemetry(backend, event_type, async?, :error, Ingester.error_class(reason))
+
+    {:error, reason}
+  end
+
+  @spec emit_insert_telemetry(
+          Backend.t(),
+          TypeDetection.event_type(),
+          boolean(),
+          :ok | :error,
+          Ingester.error_class() | :none
+        ) :: :ok
+  defp emit_insert_telemetry(backend, event_type, async?, result, error_class) do
+    :telemetry.execute(
+      [:logflare, :clickhouse, :insert, :result],
+      %{count: 1},
+      %{
+        backend_id: backend.id,
+        event_type: event_type,
+        async: async?,
+        result: result,
+        error_class: error_class
+      }
+    )
   end
 
   @spec build_insert_opts(keyword()) :: keyword()

@@ -392,6 +392,13 @@ defmodule Logflare.Telemetry do
         description:
           "Read queries that failed over to the default read cluster, tagged with the unhealthy cluster failed over from"
       ),
+      sum("logflare.clickhouse.insert.result.count",
+        event_name: [:logflare, :clickhouse, :insert, :result],
+        measurement: :count,
+        tags: [:backend_id, :event_type, :async, :result, :error_class],
+        description:
+          "ClickHouse inserts by outcome, counted once per batch after any HTTP retry. `result` provides the insert error rate numerator and denominator, and `error_class` is `:none` on success"
+      ),
       sum("logflare.logs.ingest_logs.drop_future",
         event_name: [:logflare, :logs, :ingest_logs, :drop_future],
         measurement: :count,

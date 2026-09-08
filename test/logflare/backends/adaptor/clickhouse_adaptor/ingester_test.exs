@@ -322,6 +322,42 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
     end
   end
 
+  describe "error_class/1" do
+    test "classifies a too-many-parts response body ahead of its HTTP status" do
+      assert Ingester.error_class("HTTP 500: Code: 252. DB::Exception: Too many parts") ==
+               :too_many_parts
+    end
+
+    test "classifies HTTP status ranges" do
+      assert Ingester.error_class("HTTP 429: slow down") == :http_too_many_requests
+      assert Ingester.error_class("HTTP 503: unavailable") == :http_server_error
+      assert Ingester.error_class("HTTP 400: bad request") == :http_client_error
+      assert Ingester.error_class("HTTP 302: moved") == :http_error
+    end
+
+    test "classifies wrapped Finch and Mint transport errors" do
+      assert Ingester.error_class(%Finch.Error{reason: :pool_timeout}) == :pool_timeout
+      assert Ingester.error_class(%Mint.TransportError{reason: :closed}) == :connection_closed
+
+      assert Ingester.error_class(%Mint.TransportError{
+               reason: {:tls_alert, {:bad_record_mac, "handshake failure"}}
+             }) == :tls_alert
+    end
+
+    test "classifies bare transport atoms" do
+      assert Ingester.error_class(:timeout) == :timeout
+      assert Ingester.error_class(:econnrefused) == :connection_refused
+      assert Ingester.error_class(:econnreset) == :connection_reset
+      assert Ingester.error_class(:nxdomain) == :dns_error
+    end
+
+    test "falls back to :unknown for unrecognized shapes" do
+      assert Ingester.error_class("something unstructured") == :unknown
+      assert Ingester.error_class({:weird, :shape}) == :unknown
+      assert Ingester.error_class(:some_unmapped_atom) == :unknown
+    end
+  end
+
   describe "insert/4" do
     setup do
       insert(:plan, name: "Free")
