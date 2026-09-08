@@ -18,8 +18,13 @@ defmodule Logflare.Repo.ConnectionOptions do
     |> prepare_role(role)
   end
 
-  defp prepare_auth(config, :aws_iam, aws_region),
-    do: AwsIam.put_connection_options(config, aws_region)
+  defp prepare_auth(config, :aws_iam, aws_region) do
+    config
+    |> Keyword.update(:start_apps_before_migration, [:ex_aws], fn apps ->
+      Enum.uniq([:ex_aws | apps])
+    end)
+    |> AwsIam.put_connection_options(aws_region)
+  end
 
   defp prepare_auth(config, auth, _aws_region) when auth in [nil, :password], do: config
 

@@ -224,6 +224,7 @@ defmodule Logflare.RepoTest do
         hostname: host,
         username: "logflare",
         after_connect: after_connect,
+        start_apps_before_migration: [:ssl],
         logflare_auth: :aws_iam,
         logflare_aws_region: region
       ]
@@ -233,6 +234,7 @@ defmodule Logflare.RepoTest do
         assert {:ok, prepared} = Repo.init(:supervisor, config)
 
         assert {AwsIam, :configure, [^region, nil]} = prepared[:configure]
+        assert prepared[:start_apps_before_migration] == [:ex_aws, :ssl]
         assert certificate in prepared[:ssl][:cacerts]
         refute Keyword.has_key?(prepared[:ssl], :server_name_indication)
         refute Keyword.has_key?(prepared, :logflare_connection_role)
