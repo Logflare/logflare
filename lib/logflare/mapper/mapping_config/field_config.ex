@@ -69,7 +69,9 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
       integer term or a string that parses as an integer; any other type is treated as
       unresolved, so coalesce moves on to the next path and the field's `:default` applies
       when nothing resolves. Range handling is the same in both modes: negative values
-      clamp to `0` and values above the type's maximum saturate.
+      clamp to `0` and values above the type's maximum saturate. The check also applies
+      to `:from_output` sources. Strict cannot be combined with `:value_map`, since the
+      map's string keys would never pass the integer check; the compiler rejects it.
 
       Use `:strict` when a truncated or converted value would be misread downstream, e.g.
       an OTEL `severity_number` where `true` must not silently become `TRACE` (`1`).

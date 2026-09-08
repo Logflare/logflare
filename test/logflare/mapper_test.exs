@@ -308,6 +308,22 @@ defmodule Logflare.MapperTest do
       assert compile_and_map(fields, %{"val" => 42}) == %{"u32" => 42, "u64" => 42}
     end
 
+    test "applies to from_output sources as well" do
+      fields = [
+        Field.bool("flag", path: "$.flag"),
+        Field.string("text", path: "$.text"),
+        Field.uint8("from_flag", from_output: "flag", coercion: :strict, default: 99),
+        Field.uint8("from_text", from_output: "text", coercion: :strict, default: 99)
+      ]
+
+      result = compile_and_map(fields, %{"flag" => true, "text" => "17"})
+      assert result["from_flag"] == 99
+      assert result["from_text"] == 17
+
+      result = compile_and_map(fields, %{"flag" => true, "text" => "ERROR"})
+      assert result["from_text"] == 99
+    end
+
     test "lenient coercion remains the default and keeps truncating floats and booleans" do
       fields = [Field.uint8("val", path: "$.val", default: 99)]
 
@@ -325,6 +341,22 @@ defmodule Logflare.MapperTest do
         assert {:error, reason} = Mapper.compile(MappingConfig.new([field]))
         assert reason =~ "coercion \"strict\" is only supported on uint8, uint32, and uint64"
       end
+    end
+
+    test "compile rejects strict coercion combined with value_map" do
+      config =
+        MappingConfig.new([
+          Field.string("severity_text", path: "$.level"),
+          Field.uint8("severity_number",
+            from_output: "severity_text",
+            coercion: :strict,
+            value_map: %{"ERROR" => 17},
+            default: 0
+          )
+        ])
+
+      assert {:error, reason} = Mapper.compile(config)
+      assert reason =~ "coercion \"strict\" cannot be combined with value_map"
     end
 
     test "compile rejects an unknown coercion value" do

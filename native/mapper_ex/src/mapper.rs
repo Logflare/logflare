@@ -294,7 +294,7 @@ fn resolve_value<'a>(
         }
         PathSource::FromOutput(idx) => {
             let v = output_values[*idx];
-            if v != nil {
+            if v != nil && options.accepts(v) {
                 v
             } else {
                 coerce::encode_default(env, &field.default, nil)

@@ -398,6 +398,14 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
     let pick = decode_pick(env, field)?;
     let pick_merge = decode_pick_merge(env, field)?;
     let strict_uint = decode_coercion(env, field, &field_type)?;
+    if strict_uint && !value_map.is_empty() {
+        return Err(
+            "coercion \"strict\" cannot be combined with value_map: the map's string keys \
+             would never pass the integer check, so the field would always resolve to its \
+             default"
+                .to_string(),
+        );
+    }
 
     let enum8_data = if matches!(field_type, FieldType::Enum8 { .. }) {
         Some(decode_enum8_data(env, field)?)
