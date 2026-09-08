@@ -411,6 +411,26 @@ defmodule Logflare.Repo.AwsIamTest do
       end
     end
 
+    test "IAM authentication rejects custom certificate verification callbacks", %{
+      host: host,
+      region: region
+    } do
+      verify_fun = {fn _certificate, _event, state -> {:valid, state} end, nil}
+
+      assert_raise ArgumentError, ~r/does not support custom :verify_fun callbacks/, fn ->
+        ConnectionOptions.prepare(
+          [
+            hostname: host,
+            username: "logflare",
+            ssl: [verify: :verify_peer, verify_fun: verify_fun],
+            logflare_auth: :aws_iam,
+            logflare_aws_region: region
+          ],
+          :primary
+        )
+      end
+    end
+
     test "IAM authentication preserves verified custom trust and resets inherited SNI", %{
       host: host,
       region: region

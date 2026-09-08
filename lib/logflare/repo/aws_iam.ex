@@ -86,7 +86,7 @@ defmodule Logflare.Repo.AwsIam do
 
         ssl =
           ssl
-          |> Keyword.drop([:server_name_indication, :customize_hostname_check, :verify_fun])
+          |> Keyword.drop([:server_name_indication, :customize_hostname_check])
           |> Keyword.put_new(:verify, :verify_peer)
           |> maybe_put_cacerts()
 
@@ -99,8 +99,16 @@ defmodule Logflare.Repo.AwsIam do
   end
 
   defp validate_ssl_options!(opts) do
-    if Keyword.get(opts, :verify, :verify_peer) != :verify_peer do
-      raise ArgumentError, "AWS IAM authentication requires verify: :verify_peer"
+    cond do
+      Keyword.get(opts, :verify, :verify_peer) != :verify_peer ->
+        raise ArgumentError, "AWS IAM authentication requires verify: :verify_peer"
+
+      Keyword.has_key?(opts, :verify_fun) ->
+        raise ArgumentError,
+              "AWS IAM authentication does not support custom :verify_fun callbacks"
+
+      true ->
+        :ok
     end
   end
 
