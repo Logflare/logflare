@@ -214,6 +214,48 @@ defmodule Logflare.MapperTest do
       assert result["val"] == 2_147_483_647
     end
 
+    test "uint64 accepts integers above i64 max" do
+      fields = [Field.uint64("val", path: "$.val")]
+      above_i64 = Integer.pow(2, 63) + 1
+      u64_max = Integer.pow(2, 64) - 1
+
+      assert compile_and_map(fields, %{"val" => above_i64}) == %{"val" => above_i64}
+      assert compile_and_map(fields, %{"val" => u64_max}) == %{"val" => u64_max}
+    end
+
+    test "integers beyond u64 saturate by sign instead of collapsing to zero" do
+      huge = Integer.pow(2, 70)
+      u64_max = Integer.pow(2, 64) - 1
+
+      assert compile_and_map([Field.uint64("val", path: "$.val")], %{"val" => huge}) ==
+               %{"val" => u64_max}
+
+      assert compile_and_map([Field.uint8("val", path: "$.val")], %{"val" => huge}) ==
+               %{"val" => 255}
+
+      assert compile_and_map([Field.uint64("val", path: "$.val")], %{"val" => -huge}) ==
+               %{"val" => 0}
+    end
+
+    test "numeric strings above i64 max parse and overflowing strings saturate" do
+      u64_max = Integer.pow(2, 64) - 1
+
+      assert compile_and_map(
+               [Field.uint64("val", path: "$.val")],
+               %{"val" => Integer.to_string(u64_max)}
+             ) == %{"val" => u64_max}
+
+      assert compile_and_map(
+               [Field.uint64("val", path: "$.val")],
+               %{"val" => "99999999999999999999"}
+             ) == %{"val" => u64_max}
+
+      assert compile_and_map(
+               [Field.uint8("val", path: "$.val")],
+               %{"val" => "99999999999999999999"}
+             ) == %{"val" => 255}
+    end
+
     test "float truncation to uint" do
       result =
         compile_and_map(
@@ -306,6 +348,31 @@ defmodule Logflare.MapperTest do
 
       assert compile_and_map(fields, %{"val" => 4.2}) == %{"u32" => 1, "u64" => 2}
       assert compile_and_map(fields, %{"val" => 42}) == %{"u32" => 42, "u64" => 42}
+    end
+
+    test "accepts integers of any magnitude and saturates them" do
+      fields = [Field.uint64("val", path: "$.val", coercion: :strict, default: 7)]
+      above_i64 = Integer.pow(2, 63) + 1
+      u64_max = Integer.pow(2, 64) - 1
+
+      assert compile_and_map(fields, %{"val" => above_i64}) == %{"val" => above_i64}
+      assert compile_and_map(fields, %{"val" => Integer.pow(2, 70)}) == %{"val" => u64_max}
+
+      assert compile_and_map(fields, %{"val" => Integer.to_string(u64_max)}) == %{
+               "val" => u64_max
+             }
+
+      assert compile_and_map(fields, %{"val" => "99999999999999999999"}) == %{"val" => u64_max}
+    end
+
+    test "applies to the root path as well" do
+      result =
+        compile_and_map(
+          [Field.uint8("val", path: "$", coercion: :strict, default: 7)],
+          %{"x" => 1}
+        )
+
+      assert result["val"] == 7
     end
 
     test "applies to from_output sources as well" do

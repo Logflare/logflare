@@ -275,7 +275,13 @@ fn resolve_value<'a>(
     };
 
     match &field.path_source {
-        PathSource::Root => body,
+        PathSource::Root => {
+            if options.accepts(body) {
+                body
+            } else {
+                coerce::encode_default(env, &field.default, nil)
+            }
+        }
         PathSource::Single(path) => {
             let v = query::evaluate(env, body, path, nil, flat_keys, cache);
             if v == nil || !options.accepts(v) {
