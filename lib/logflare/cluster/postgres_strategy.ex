@@ -19,6 +19,8 @@ defmodule Logflare.Cluster.PostgresStrategy do
 
   alias Cluster.Strategy
   alias Cluster.Logger
+  alias Logflare.Repo
+  alias Logflare.Repo.ConnectionOptions
   alias Postgrex, as: P
   @channel_prefix "cluster_"
 
@@ -28,7 +30,7 @@ defmodule Logflare.Cluster.PostgresStrategy do
     url = get_db_url()
 
     opts =
-      Ecto.Repo.Supervisor.parse_url(url)
+      get_db_options()
       |> Keyword.put_new(:parameters, application_name: "cluster_node_#{node()}")
       |> Keyword.put_new(:auto_reconnect, true)
 
@@ -113,13 +115,19 @@ defmodule Logflare.Cluster.PostgresStrategy do
     Process.send_after(self(), :heartbeat, interval)
   end
 
+  @spec get_db_options() :: keyword()
+  def get_db_options do
+    Application.fetch_env!(:logflare, Repo)
+    |> ConnectionOptions.prepare(:primary)
+  end
+
   @spec get_db_url() :: String.t()
   def get_db_url do
-    username = Application.get_env(:logflare, Logflare.Repo)[:username]
-    password = Application.get_env(:logflare, Logflare.Repo)[:password]
-    port = Application.get_env(:logflare, Logflare.Repo)[:port]
-    hostname = Application.get_env(:logflare, Logflare.Repo)[:hostname]
-    database = Application.get_env(:logflare, Logflare.Repo)[:database]
+    username = Application.get_env(:logflare, Repo)[:username]
+    password = Application.get_env(:logflare, Repo)[:password]
+    port = Application.get_env(:logflare, Repo)[:port]
+    hostname = Application.get_env(:logflare, Repo)[:hostname]
+    database = Application.get_env(:logflare, Repo)[:database]
     ~s|postgresql://#{username}:#{password}@#{hostname}:#{port}/#{database}|
   end
 

@@ -15,6 +15,7 @@ defmodule Logflare.ContextCache.Supervisor do
   alias Logflare.KeyValues
   alias Logflare.Partners
   alias Logflare.Repo
+  alias Logflare.Repo.ConnectionOptions
   alias Logflare.Rules
   alias Logflare.SavedSearches
   alias Logflare.Sources
@@ -97,12 +98,9 @@ defmodule Logflare.ContextCache.Supervisor do
   end
 
   defp cainophile_child_spec do
-    hostname = ~c"#{Application.get_env(:logflare, Repo)[:hostname]}"
-    username = Application.get_env(:logflare, Repo)[:username]
-    password = Application.get_env(:logflare, Repo)[:password]
-    database = Application.get_env(:logflare, Repo)[:database]
-    port = Application.get_env(:logflare, Repo)[:port]
-    socket_options = Application.get_env(:logflare, Repo)[:socket_options]
+    epgsql =
+      Application.fetch_env!(:logflare, Repo)
+      |> ConnectionOptions.prepare_epgsql()
 
     slot = Application.get_env(:logflare, CacheBuster)[:replication_slot]
     publications = Application.get_env(:logflare, CacheBuster)[:publications]
@@ -116,14 +114,7 @@ defmodule Logflare.ContextCache.Supervisor do
          [
            [
              register: publisher_name(),
-             epgsql: %{
-               host: hostname,
-               port: port,
-               username: username,
-               database: database,
-               password: password,
-               tcp_opts: socket_options
-             },
+             epgsql: epgsql,
              slot: slot,
              wal_position: {"0", "0"},
              publications: publications

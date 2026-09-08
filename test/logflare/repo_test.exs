@@ -3,6 +3,9 @@ defmodule Logflare.RepoTest do
 
   import ExUnit.CaptureLog
 
+  alias Logflare.Cluster.PostgresStrategy
+  alias Logflare.ContextCache.Supervisor, as: ContextCacheSupervisor
+  alias Logflare.GenSingleton
   alias Logflare.Repo
   alias Logflare.Repo.AwsIam
   alias Logflare.Repo.ConnectionOptions
@@ -313,6 +316,80 @@ defmodule Logflare.RepoTest do
       assert {Replicas, :after_connect, [_primary_after_connect]} = opts[:after_connect]
       refute Keyword.has_key?(opts, :logflare_auth)
       refute Keyword.has_key?(opts, :logflare_aws_region)
+    end
+
+    test "direct database clients use lazy primary IAM options", context do
+      %{certificate: certificate, host: host, region: region} = context
+      previous_repo_config = Application.fetch_env(:logflare, Repo)
+      previous_enable_cainophile = Application.fetch_env(:logflare, :enable_cainophile)
+      previous_security_token = Application.fetch_env(:ex_aws, :security_token)
+
+      repo_config =
+        Application.fetch_env!(:logflare, Repo)
+        |> Keyword.drop([:configure, :ssl])
+        |> Keyword.merge(
+          hostname: host,
+          port: 5432,
+          username: "logflare",
+          database: "logflare",
+          socket_options: [keepalive: true],
+          logflare_auth: :aws_iam,
+          logflare_aws_region: region
+        )
+
+      Application.put_env(:logflare, Repo, repo_config)
+      Application.put_env(:logflare, :enable_cainophile, true)
+
+      on_exit(fn ->
+        restore_application_env(:logflare, Repo, previous_repo_config)
+
+        restore_application_env(
+          :logflare,
+          :enable_cainophile,
+          previous_enable_cainophile
+        )
+
+        restore_application_env(:ex_aws, :security_token, previous_security_token)
+      end)
+
+      postgres_options = PostgresStrategy.get_db_options()
+      assert {AwsIam, :configure, [^region, nil]} = postgres_options[:configure]
+      assert certificate in postgres_options[:ssl][:cacerts]
+      refute Keyword.has_key?(postgres_options, :logflare_auth)
+      refute Keyword.has_key?(postgres_options, :logflare_aws_region)
+
+      assert {:ok, {_flags, children}} = ContextCacheSupervisor.init([])
+
+      singleton =
+        Enum.find(children, fn child ->
+          match?(%{start: {GenSingleton, :start_link, _args}}, child)
+        end)
+
+      assert %{start: {GenSingleton, :start_link, [[child_spec: cainophile_spec]]}} = singleton
+
+      assert {Cainophile.Adapters.Postgres, :start_link, [cainophile_options]} =
+               cainophile_spec.start
+
+      epgsql = Keyword.fetch!(cainophile_options, :epgsql)
+      assert epgsql.host == String.to_charlist(host)
+      assert epgsql.port == 5432
+      assert epgsql.username == "logflare"
+      assert epgsql.database == "logflare"
+      assert epgsql.tcp_opts == [keepalive: true]
+      assert epgsql.ssl == :required
+      assert epgsql.ssl_opts[:verify] == :verify_peer
+      assert certificate in epgsql.ssl_opts[:cacerts]
+      assert epgsql.ssl_opts[:server_name_indication] == String.to_charlist(host)
+      assert is_function(epgsql.password, 0)
+
+      Application.put_env(:ex_aws, :security_token, "first-session-token")
+      first_token = epgsql.password.()
+      assert first_token =~ "X-Amz-Security-Token=first-session-token"
+
+      Application.put_env(:ex_aws, :security_token, "second-session-token")
+      second_token = epgsql.password.()
+      assert second_token =~ "X-Amz-Security-Token=second-session-token"
+      refute second_token == first_token
     end
 
     test "password authentication leaves inherited callbacks unchanged" do
