@@ -56,6 +56,31 @@ defmodule Logflare.Networking do
            start_pool_metrics?: true
          ]
        }},
+      # Dedicated pool for the spool producer/consumer's GCS + Pub/Sub calls
+      # (Logflare.Backends.Spool.Storage.GCS / Queue.PubSub) — these otherwise
+      # fall into FinchDefault's small, unconfigured :default bucket shared
+      # with every other unrelated Tesla call in the app, capping concurrent
+      # spool uploads at Finch's library default pool size regardless of
+      # batcher concurrency. Wired up via the per-module `config :tesla,
+      # GoogleApi.Storage.V1.Connection, adapter: ...` / `GoogleApi.PubSub.V1.Connection`
+      # overrides in config.exs.
+      {Finch,
+       name: Logflare.FinchSpool,
+       pools: %{
+         :default => [protocols: [:http1]],
+         "https://storage.googleapis.com" => [
+           protocols: [:http1],
+           size: max(base * 150, 150),
+           count: http1_count,
+           start_pool_metrics?: true
+         ],
+         "https://pubsub.googleapis.com" => [
+           protocols: [:http1],
+           size: max(base * 150, 150),
+           count: http1_count,
+           start_pool_metrics?: true
+         ]
+       }},
       {Finch,
        name: Logflare.FinchDefault,
        pools:

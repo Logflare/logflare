@@ -341,7 +341,7 @@ deploy.staging.dev-image:
 deploy.staging.dev-producer:
 	gcloud builds submit . \
 		--config=./cloudbuild/staging/deploy-dev.yaml \
-		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_DEV_NUMBER=$(DEV_NUMBER),_ROLE=producer \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_DEV_NUMBER=$(DEV_NUMBER),_ROLE=producer,_INSTANCE_TYPE=c2d-standard-16 \
 		--region=us-central1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 

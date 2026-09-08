@@ -87,7 +87,7 @@ config :logflare, :spool,
   provider: :gcp,
   bucket: "logflare-spool",
   partitions: 4,
-  batch_timeout: 5_000,
+  batch_timeout: 200,
   compress: true,
   # Serialization format for spool files. Options: :ndjson | :etf
   # :etf encodes the whole batch as a single Erlang term — ~10x faster decode,
