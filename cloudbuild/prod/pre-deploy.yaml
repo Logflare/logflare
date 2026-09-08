@@ -9,6 +9,10 @@ steps:
         {
           printf '%s\n' 'LOGFLARE_GRPC_PORT=50051'
           printf '%s\n' 'LOGFLARE_MIN_CLUSTER_SIZE=2'
+          # Tied to how gce-startup.sh mounts the WAL disk (WAL_CONTAINER_DIR)
+          # — deployment-topology-specific, not a secret, so it belongs here
+          # rather than in the baked-in prod secrets.
+          printf '%s\n' 'SPOOL_WAL_DIR=/var/lib/logflare/spool_wal'
           printf 'RELEASE_COOKIE=%s\n' "$$1"
           printf '%s\n' 'LOGFLARE_PUBSUB_POOL_SIZE=32'
           printf 'LOGFLARE_METADATA_CLUSTER=%s\n' "$$2"
