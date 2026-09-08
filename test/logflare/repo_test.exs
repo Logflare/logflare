@@ -1,7 +1,11 @@
 defmodule Logflare.RepoTest do
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   alias Logflare.Repo
+  alias Logflare.Repo.AwsIam
+  alias Logflare.Repo.ConnectionOptions
   alias Logflare.Repo.Replicas
 
   defp start_read_replicas(raw_entries, entry_overrides \\ []) do
@@ -32,9 +36,14 @@ defmodule Logflare.RepoTest do
     for {_key, config} <- entries do
       assert_receive {[:ecto, :repo, :init], ^telemetry_ref, _, %{repo: Repo, opts: opts}}
 
-      for {k, v} <- config, k not in [:ssl, :auth] do
+      for {k, v} <- config,
+          k not in [:ssl, :logflare_auth, :logflare_aws_region] do
         assert Keyword.fetch!(opts, k) == v
       end
+
+      refute Keyword.has_key?(opts, :logflare_connection_role)
+      refute Keyword.has_key?(opts, :logflare_auth)
+      refute Keyword.has_key?(opts, :logflare_aws_region)
 
       assert {Replicas, :after_connect, [_primary_after_connect]} =
                Keyword.fetch!(opts, :after_connect)
@@ -62,28 +71,11 @@ defmodule Logflare.RepoTest do
       assert Repo.get_dynamic_repo() == Repo
     end
 
-    test "runs the primary hook before making replica pool connections read-only" do
-      previous_repo_config = Application.fetch_env!(:logflare, Repo)
-
-      Application.put_env(
-        :logflare,
-        Repo,
-        Keyword.put(
-          previous_repo_config,
-          :after_connect,
-          {Postgrex, :query!, ["SET application_name = 'replica_after_connect'", []]}
-        )
-      )
-
-      on_exit(fn -> Application.put_env(:logflare, Repo, previous_repo_config) end)
-
+    test "makes replica pool connections read-only" do
       start_read_replicas(["127.0.0.1"],
         pool: DBConnection.ConnectionPool,
         pool_size: 1
       )
-
-      assert %Postgrex.Result{rows: [["replica_after_connect"]]} =
-               Repo.apply_with_replica(Repo, :query!, ["SHOW application_name", []])
 
       assert %Postgrex.Result{rows: [["on"]]} =
                Repo.apply_with_replica(
@@ -126,6 +118,13 @@ defmodule Logflare.RepoTest do
       %{conn: start_supervised!({Postgrex, opts})}
     end
 
+    test "opens the session read-only", %{conn: conn} do
+      Replicas.after_connect(conn, _no_primary_hook = nil)
+
+      assert %Postgrex.Result{rows: [["on"]]} =
+               Postgrex.query!(conn, "SHOW default_transaction_read_only", [])
+    end
+
     test "rejects writes on the session", %{conn: conn} do
       Replicas.after_connect(conn, _no_primary_hook = nil)
 
@@ -144,159 +143,116 @@ defmodule Logflare.RepoTest do
                Postgrex.query!(conn, "SHOW default_transaction_read_only", [])
     end
 
-    test "runs a function after_connect before making the session read-only", %{conn: conn} do
-      test_pid = self()
-
-      hook = fn conn ->
-        %Postgrex.Result{rows: [[setting]]} =
-          Postgrex.query!(conn, "SHOW default_transaction_read_only", [])
-
-        send(test_pid, {:read_only_setting_in_primary_hook, setting})
-      end
+    test "still runs the primary's after_connect, given as a function", %{conn: conn} do
+      hook = fn conn -> Postgrex.query!(conn, "SET application_name = 'fun'", []) end
 
       Replicas.after_connect(conn, hook)
 
-      assert_receive {:read_only_setting_in_primary_hook, "off"}
+      assert %Postgrex.Result{rows: [["fun"]]} =
+               Postgrex.query!(conn, "SHOW application_name", [])
 
       assert %Postgrex.Result{rows: [["on"]]} =
                Postgrex.query!(conn, "SHOW default_transaction_read_only", [])
     end
   end
 
-  describe "replica SSL configuration" do
-    test "a DNS replica removes primary-specific SNI" do
-      put_repo_config(ssl: [server_name_indication: :disable])
-
-      entries = [Replicas.parse!("postgres://replica.example.com/logflare?ssl=true")]
-      telemetry_ref = :telemetry_test.attach_event_handlers(self(), [[:ecto, :repo, :init]])
-      on_exit(fn -> :telemetry.detach(telemetry_ref) end)
-
-      start_supervised!({Replicas, entries: entries})
-
-      assert_receive {[:ecto, :repo, :init], ^telemetry_ref, _, %{repo: Repo, opts: opts}}
-      refute Keyword.has_key?(Keyword.fetch!(opts, :ssl), :server_name_indication)
-    end
-
-    test "an IP replica disables SNI without forwarding the primary value" do
-      put_repo_config(ssl: [server_name_indication: "primary"])
-
-      entries = [Replicas.parse!("postgres://127.0.0.2/logflare?ssl=true")]
-      telemetry_ref = :telemetry_test.attach_event_handlers(self(), [[:ecto, :repo, :init]])
-      on_exit(fn -> :telemetry.detach(telemetry_ref) end)
-
-      start_supervised!({Replicas, entries: entries})
-
-      assert_receive {[:ecto, :repo, :init], ^telemetry_ref, _, %{repo: Repo, opts: opts}}
-      assert Keyword.fetch!(Keyword.fetch!(opts, :ssl), :server_name_indication) == :disable
-    end
-  end
-
-  describe "IAM authentication" do
+  describe "AWS IAM authentication" do
     setup do
-      # Signing requires credentials but does not contact AWS.
       previous_access_key_id = Application.fetch_env(:ex_aws, :access_key_id)
       previous_secret_access_key = Application.fetch_env(:ex_aws, :secret_access_key)
+      previous_path = Application.fetch_env(:logflare, :rds_ca_cert_path)
+      {path, certificate} = write_ca_bundle!()
+
       Application.put_env(:ex_aws, :access_key_id, "AKIAIOSFODNN7EXAMPLE")
       Application.put_env(:ex_aws, :secret_access_key, "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+      Application.put_env(:logflare, :rds_ca_cert_path, path)
 
       on_exit(fn ->
         restore_application_env(:ex_aws, :access_key_id, previous_access_key_id)
         restore_application_env(:ex_aws, :secret_access_key, previous_secret_access_key)
+        restore_application_env(:logflare, :rds_ca_cert_path, previous_path)
       end)
 
-      %{host: "logflare-proxy.proxy-abc123.eu-west-1.rds.amazonaws.com"}
+      %{certificate: certificate, host: "database.example.com", region: "eu-west-1"}
     end
 
-    test "parse/1 accepts auth=iam and carries no password", %{host: host} do
+    test "replica URIs normalize Logflare-specific IAM options", %{host: host, region: region} do
       assert {:ok, {_key, config}} =
-               Replicas.parse("postgres://logflare@#{host}:5432/logflare?auth=iam&ssl=true")
+               Replicas.parse(
+                 "postgres://logflare@#{host}:5432/logflare?auth=aws_iam&aws_region=#{region}&ssl=true"
+               )
 
-      assert config[:auth] == :iam
+      assert config[:logflare_auth] == :aws_iam
+      assert config[:logflare_aws_region] == region
       assert config[:username] == "logflare"
+      refute Keyword.has_key?(config, :auth)
+      refute Keyword.has_key?(config, :aws_region)
       refute Keyword.has_key?(config, :password)
     end
 
-    test "parse/1 rejects an unknown auth scheme", %{host: host} do
+    test "a replica password explicitly overrides inherited IAM", %{host: host} do
+      assert {:ok, {_key, config}} =
+               Replicas.parse("postgres://logflare:secret@#{host}/logflare")
+
+      assert config[:logflare_auth] == :password
+      assert config[:password] == "secret"
+    end
+
+    test "replica URIs reject invalid authentication options", %{host: host} do
       assert {:error, reason} =
-               Replicas.parse("postgres://logflare@#{host}:5432/logflare?auth=kerberos")
+               Replicas.parse("postgres://logflare@#{host}/logflare?auth=kerberos")
 
       assert reason =~ "unsupported auth=kerberos"
+      assert reason =~ ~s(expected "aws_iam")
+
+      assert {:error, reason} =
+               Replicas.parse(
+                 "postgres://logflare:secret@#{host}/logflare?auth=aws_iam&aws_region=eu-west-1"
+               )
+
+      assert reason =~ "cannot be combined with a password"
+
+      assert {:error, "aws_region cannot be empty"} =
+               Replicas.parse("postgres://logflare@#{host}/logflare?auth=aws_iam&aws_region=")
     end
 
-    test "parse/1 rejects IAM aliases and missing hosts" do
-      assert {:error, "IAM authentication requires an RDS hostname"} =
-               Replicas.parse("postgres://logflare@database.example.com/logflare?auth=iam")
+    test "primary and replica connections use the same IAM configuration path", context do
+      %{certificate: certificate, host: host, region: region} = context
+      after_connect = {Postgrex, :query!, ["SET application_name = 'configured'", []]}
 
-      assert {:error, "IAM authentication requires an explicit RDS hostname"} =
-               Replicas.parse("postgres:///logflare?auth=iam")
-    end
+      base_config = [
+        hostname: host,
+        username: "logflare",
+        after_connect: after_connect,
+        logflare_auth: :aws_iam,
+        logflare_aws_region: region
+      ]
 
-    test "the pool enables verified TLS and installs the per-connect IAM callback" do
-      host = "logflare-proxy.proxy-abc123.eu-west-1.rds.amazonaws.com"
-      entries = [Replicas.parse!("postgres://logflare@#{host}:5432/logflare?auth=iam")]
+      for role <- [:primary, :replica] do
+        config = Keyword.put(base_config, :logflare_connection_role, role)
+        assert {:ok, prepared} = Repo.init(:supervisor, config)
 
-      telemetry_ref = :telemetry_test.attach_event_handlers(self(), [[:ecto, :repo, :init]])
-      on_exit(fn -> :telemetry.detach(telemetry_ref) end)
+        assert {AwsIam, :configure, [^region, nil]} = prepared[:configure]
+        assert certificate in prepared[:ssl][:cacerts]
+        refute Keyword.has_key?(prepared[:ssl], :server_name_indication)
+        refute Keyword.has_key?(prepared, :logflare_connection_role)
+        refute Keyword.has_key?(prepared, :logflare_auth)
+        refute Keyword.has_key?(prepared, :logflare_aws_region)
 
-      start_supervised!({Replicas, entries: entries})
+        case role do
+          :primary ->
+            assert prepared[:after_connect] == after_connect
 
-      assert_receive {[:ecto, :repo, :init], ^telemetry_ref, _, %{repo: Repo, opts: opts}}
-      ssl = Keyword.fetch!(opts, :ssl)
-      assert ssl[:verify] == :verify_peer
-      assert ssl[:cacerts] == :public_key.cacerts_get()
-
-      assert {Replicas, :iam_configure, [_primary_configure]} =
-               Keyword.fetch!(opts, :configure)
-
-      refute Keyword.has_key?(opts, :auth)
-    end
-
-    test "IAM authentication rejects disabled and invalid TLS" do
-      host = "logflare-proxy.proxy-abc123.eu-west-1.rds.amazonaws.com"
-
-      for uri <- [
-            "postgres://logflare@#{host}/logflare?auth=iam&ssl=false",
-            "postgres://logflare@#{host}/logflare?auth=iam&ssl=invalid"
-          ] do
-        entries = [Replicas.parse!(uri)]
-
-        assert_raise ArgumentError, ~r/IAM authentication requires/, fn ->
-          Replicas.start_link(entries: entries)
+          :replica ->
+            assert {Replicas, :after_connect, [^after_connect]} = prepared[:after_connect]
         end
       end
     end
 
-    test "direct RDS IAM authentication uses the configured RDS CA bundle" do
-      host = "logflare.abc123.eu-west-1.rds.amazonaws.com"
-      {path, certificate} = write_ca_bundle!()
-      previous_path = Application.fetch_env(:logflare, :rds_ca_cert_path)
-      Application.put_env(:logflare, :rds_ca_cert_path, path)
-      on_exit(fn -> restore_application_env(:logflare, :rds_ca_cert_path, previous_path) end)
-
-      entries = [Replicas.parse!("postgres://logflare@#{host}/logflare?auth=iam")]
-      telemetry_ref = :telemetry_test.attach_event_handlers(self(), [[:ecto, :repo, :init]])
-      on_exit(fn -> :telemetry.detach(telemetry_ref) end)
-
-      start_supervised!({Replicas, entries: entries})
-
-      assert_receive {[:ecto, :repo, :init], ^telemetry_ref, _, %{repo: Repo, opts: opts}}
-      ssl = Keyword.fetch!(opts, :ssl)
-      system_cacerts = :public_key.cacerts_get()
-      assert ssl[:verify] == :verify_peer
-      assert length(ssl[:cacerts]) == length(system_cacerts) + 1
-
-      assert Enum.count(ssl[:cacerts], &(&1 == certificate)) ==
-               Enum.count(system_cacerts, &(&1 == certificate)) + 1
-
-      refute Keyword.has_key?(opts, :rds_ca_cert_path)
-    end
-
-    test "an IAM proxy uses system roots instead of primary SSL options" do
-      put_repo_config(ssl: [cacertfile: "/primary.pem"])
-
+    test "a replica pool installs IAM and read-only callbacks", %{host: host, region: region} do
       entries = [
         Replicas.parse!(
-          "postgres://logflare@logflare.proxy-abc123.eu-west-1.rds.amazonaws.com/logflare?auth=iam"
+          "postgres://logflare@#{host}:5432/logflare?auth=aws_iam&aws_region=#{region}"
         )
       ]
 
@@ -306,25 +262,128 @@ defmodule Logflare.RepoTest do
       start_supervised!({Replicas, entries: entries})
 
       assert_receive {[:ecto, :repo, :init], ^telemetry_ref, _, %{repo: Repo, opts: opts}}
-      ssl = Keyword.fetch!(opts, :ssl)
-      assert ssl[:verify] == :verify_peer
-      assert ssl[:cacerts] == :public_key.cacerts_get()
-      refute Keyword.has_key?(ssl, :cacertfile)
+      assert {AwsIam, :configure, [^region, _previous_configure]} = opts[:configure]
+      assert {Replicas, :after_connect, [_primary_after_connect]} = opts[:after_connect]
+      refute Keyword.has_key?(opts, :logflare_auth)
+      refute Keyword.has_key?(opts, :logflare_aws_region)
     end
 
-    test "rds_auth_token/3 signs for the region in the hostname", %{host: host} do
-      token = Replicas.rds_auth_token(host, 5432, "logflare")
+    test "password authentication leaves inherited callbacks unchanged" do
+      configure = {__MODULE__, :configure_username, ["configured"]}
+
+      prepared =
+        ConnectionOptions.prepare(
+          [
+            configure: configure,
+            logflare_auth: :password,
+            logflare_aws_region: "ignored"
+          ],
+          :primary
+        )
+
+      assert prepared[:configure] == configure
+      refute Keyword.has_key?(prepared, :logflare_auth)
+      refute Keyword.has_key?(prepared, :logflare_aws_region)
+    end
+
+    test "IAM authentication rejects missing settings and insecure TLS", %{
+      host: host,
+      region: region
+    } do
+      base = [hostname: host, username: "logflare", logflare_auth: :aws_iam]
+
+      assert_raise ArgumentError, ~r/requires an AWS region/, fn ->
+        ConnectionOptions.prepare(base, :primary)
+      end
+
+      for ssl <- [false, "invalid", [verify: :verify_none]] do
+        assert_raise ArgumentError, ~r/AWS IAM authentication requires/, fn ->
+          base
+          |> Keyword.put(:logflare_aws_region, region)
+          |> Keyword.put(:ssl, ssl)
+          |> ConnectionOptions.prepare(:primary)
+        end
+      end
+
+      assert_raise ArgumentError, ~r/requires a DNS hostname/, fn ->
+        base
+        |> Keyword.put(:hostname, "127.0.0.1")
+        |> Keyword.put(:logflare_aws_region, region)
+        |> ConnectionOptions.prepare(:primary)
+      end
+    end
+
+    test "IAM authentication preserves verified custom trust and resets inherited SNI", %{
+      host: host,
+      region: region
+    } do
+      ssl = [
+        verify: :verify_peer,
+        cacertfile: "/custom/ca.pem",
+        server_name_indication: :disable
+      ]
+
+      prepared =
+        ConnectionOptions.prepare(
+          [
+            hostname: host,
+            username: "logflare",
+            ssl: ssl,
+            logflare_auth: :aws_iam,
+            logflare_aws_region: region
+          ],
+          :primary
+        )
+
+      assert prepared[:ssl][:verify] == :verify_peer
+      assert prepared[:ssl][:cacertfile] == "/custom/ca.pem"
+      refute Keyword.has_key?(prepared[:ssl], :cacerts)
+      refute Keyword.has_key?(prepared[:ssl], :server_name_indication)
+    end
+
+    test "an unavailable RDS bundle warns and falls back to system roots", %{
+      host: host,
+      region: region
+    } do
+      Application.put_env(:logflare, :rds_ca_cert_path, "/missing/rds-ca.pem")
+
+      log =
+        capture_log(fn ->
+          prepared =
+            ConnectionOptions.prepare(
+              [
+                hostname: host,
+                username: "logflare",
+                logflare_auth: :aws_iam,
+                logflare_aws_region: region
+              ],
+              :primary
+            )
+
+          assert prepared[:ssl][:cacerts] == :public_key.cacerts_get()
+        end)
+
+      assert log =~ "AWS RDS CA bundle"
+      assert log =~ "using system CA certificates"
+    end
+
+    test "auth_token/4 signs the configured region for a DNS endpoint", %{
+      host: host,
+      region: region
+    } do
+      token = AwsIam.auth_token(host, 5432, "logflare", region)
 
       assert String.starts_with?(token, "#{host}:5432/?")
       assert token =~ "Action=connect"
       assert token =~ "DBUser=logflare"
       assert token =~ "X-Amz-Signature="
       assert token =~ "X-Amz-Expires=900"
-      assert token =~ "eu-west-1%2Frds-db"
+      assert token =~ "#{region}%2Frds-db"
     end
 
-    test "rds_auth_token/3 signs temporary environment credentials and normalizes hostnames", %{
-      host: host
+    test "auth_token/4 signs temporary environment credentials and normalizes hostnames", %{
+      host: host,
+      region: region
     } do
       previous_security_token = Application.fetch_env(:ex_aws, :security_token)
       previous_env = take_aws_credential_env()
@@ -341,13 +400,16 @@ defmodule Logflare.RepoTest do
         restore_application_env(:ex_aws, :security_token, previous_security_token)
       end)
 
-      token = Replicas.rds_auth_token(String.upcase(host), 5432, "logflare")
+      token = AwsIam.auth_token(String.upcase(host), 5432, "logflare", region)
 
       assert String.starts_with?(token, "#{host}:5432/?")
       assert token =~ "X-Amz-Security-Token=session-token"
     end
 
-    test "rds_auth_token/3 preserves a session token resolved by ExAws", %{host: host} do
+    test "auth_token/4 preserves a session token resolved by the credential provider", %{
+      host: host,
+      region: region
+    } do
       previous_env = take_aws_credential_env()
       previous_security_token = Application.fetch_env(:ex_aws, :security_token)
       System.delete_env("AWS_ACCESS_KEY_ID")
@@ -360,75 +422,15 @@ defmodule Logflare.RepoTest do
         restore_application_env(:ex_aws, :security_token, previous_security_token)
       end)
 
-      token = Replicas.rds_auth_token(host, 5432, "logflare")
+      token = AwsIam.auth_token(host, 5432, "logflare", region)
       assert token =~ "X-Amz-Security-Token=provider-session-token"
       refute token =~ "unrelated-session-token"
     end
 
-    test "rds_auth_token/3 accepts China RDS hostnames" do
-      token =
-        Replicas.rds_auth_token(
-          "logflare.abc123.cn-north-1.rds.amazonaws.com.cn",
-          5432,
-          "logflare"
-        )
-
-      assert token =~ "cn-north-1%2Frds-db"
-    end
-
-    test "direct RDS IAM authentication requires the matching partition CA bundle" do
-      previous_path = Application.fetch_env(:logflare, :rds_ca_cert_path)
-      Application.delete_env(:logflare, :rds_ca_cert_path)
-      on_exit(fn -> restore_application_env(:logflare, :rds_ca_cert_path, previous_path) end)
-
-      for host <- [
-            "logflare.abc123.cn-north-1.rds.amazonaws.com.cn",
-            "logflare.abc123.us-gov-west-1.rds.amazonaws.com"
-          ] do
-        entries = [Replicas.parse!("postgres://logflare@#{host}/logflare?auth=iam")]
-
-        assert_raise ArgumentError, ~r/requires RDS_CA_CERT_PATH/, fn ->
-          Replicas.start_link(entries: entries)
-        end
-      end
-    end
-
-    test "direct RDS IAM authentication rejects an empty CA bundle" do
-      path =
-        Path.join(
-          System.tmp_dir!(),
-          "logflare-empty-rds-ca-#{System.unique_integer([:positive])}.pem"
-        )
-
-      File.write!(path, "")
-      on_exit(fn -> File.rm(path) end)
-
-      previous_path = Application.fetch_env(:logflare, :rds_ca_cert_path)
-      Application.put_env(:logflare, :rds_ca_cert_path, path)
-      on_exit(fn -> restore_application_env(:logflare, :rds_ca_cert_path, previous_path) end)
-
-      entries = [
-        Replicas.parse!(
-          "postgres://logflare@logflare.abc123.eu-west-1.rds.amazonaws.com/logflare?auth=iam"
-        )
-      ]
-
-      assert_raise ArgumentError, ~r/contains no certificates/, fn ->
-        Replicas.start_link(entries: entries)
-      end
-    end
-
-    test "iam_configure/1 replaces the password with a fresh token", %{host: host} do
-      opts = [hostname: host, port: 5432, username: "logflare", password: "stale"]
-
-      configured = Replicas.iam_configure(opts)
-
-      refute configured[:password] == "stale"
-      assert configured[:password] =~ "X-Amz-Signature="
-      assert configured[:hostname] == host
-    end
-
-    test "iam_configure/2 preserves both inherited configure callback shapes", %{host: host} do
+    test "configure/3 replaces the password after inherited callbacks run", %{
+      host: host,
+      region: region
+    } do
       opts = [hostname: host, port: 5432, username: "original", password: "stale"]
 
       callbacks = [
@@ -437,23 +439,12 @@ defmodule Logflare.RepoTest do
       ]
 
       for {callback, expected_username} <- callbacks do
-        configured = Replicas.iam_configure(opts, callback)
+        configured = AwsIam.configure(opts, region, callback)
 
         assert configured[:username] == expected_username
+        refute configured[:password] == "stale"
         assert configured[:password] =~ "DBUser=#{expected_username}"
       end
-    end
-
-    test "rds_auth_token/3 rejects a non-RDS host even when AWS_REGION is set" do
-      previous_region = System.get_env("AWS_REGION")
-      System.put_env("AWS_REGION", "eu-west-1")
-      on_exit(fn -> restore_system_env("AWS_REGION", previous_region) end)
-
-      assert_raise RuntimeError,
-                   ~r/IAM authentication requires an RDS hostname/,
-                   fn ->
-                     Replicas.rds_auth_token("127.0.0.1", 5432, "logflare")
-                   end
     end
   end
 
@@ -525,14 +516,8 @@ defmodule Logflare.RepoTest do
       refute Exception.message(error) =~ "supersecret"
     end
   end
-  def configure_username(opts, username), do: Keyword.put(opts, :username, username)
 
-  defp put_repo_config(overrides) do
-    previous_config = Application.fetch_env(:logflare, Repo)
-    config = Application.get_env(:logflare, Repo, [])
-    Application.put_env(:logflare, Repo, Keyword.merge(config, overrides))
-    on_exit(fn -> restore_application_env(:logflare, Repo, previous_config) end)
-  end
+  def configure_username(opts, username), do: Keyword.put(opts, :username, username)
 
   defp write_ca_bundle! do
     certificate = hd(:public_key.cacerts_get())

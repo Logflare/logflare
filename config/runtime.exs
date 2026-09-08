@@ -174,34 +174,52 @@ config :logflare,
          live_dashboard: Env.get_boolean("LOGFLARE_ENABLE_LIVE_DASHBOARD")
        )
 
+db_auth_options =
+  case System.get_env("DB_AUTH") do
+    auth when auth in [nil, "", "password"] ->
+      []
+
+    "aws_iam" ->
+      [
+        logflare_auth: :aws_iam,
+        logflare_aws_region: System.get_env("DB_AWS_REGION")
+      ]
+
+    auth ->
+      raise "Unsupported DB_AUTH=#{inspect(auth)}, expected password or aws_iam"
+  end
+
 config :logflare,
        Logflare.Repo,
-       filter_nil_kv_pairs.(
-         pool_size:
-           if(System.get_env("DB_POOL_SIZE") != nil,
-             do: String.to_integer(System.get_env("DB_POOL_SIZE")),
-             else: nil
-           ),
-         database: System.get_env("DB_DATABASE"),
-         hostname: System.get_env("DB_HOSTNAME"),
-         password: System.get_env("DB_PASSWORD"),
-         username: System.get_env("DB_USERNAME"),
-         socket_options:
-           case Utils.ip_version(System.get_env("DB_HOSTNAME", "")) do
-             nil -> []
-             version when version in [:inet, :inet6] -> [version]
-             error -> raise "Failed to detect IP version for DB_HOSTNAME: #{error}"
-           end,
-         after_connect:
-           if(System.get_env("DB_SCHEMA"),
-             do: {Postgrex, :query!, ["set search_path=#{System.get_env("DB_SCHEMA")}", []]},
-             else: nil
-           ),
-         port:
-           if(System.get_env("DB_PORT") != nil,
-             do: String.to_integer(System.get_env("DB_PORT")),
-             else: nil
-           )
+       Keyword.merge(
+         filter_nil_kv_pairs.(
+           pool_size:
+             if(System.get_env("DB_POOL_SIZE") != nil,
+               do: String.to_integer(System.get_env("DB_POOL_SIZE")),
+               else: nil
+             ),
+           database: System.get_env("DB_DATABASE"),
+           hostname: System.get_env("DB_HOSTNAME"),
+           password: System.get_env("DB_PASSWORD"),
+           username: System.get_env("DB_USERNAME"),
+           socket_options:
+             case Utils.ip_version(System.get_env("DB_HOSTNAME", "")) do
+               nil -> []
+               version when version in [:inet, :inet6] -> [version]
+               error -> raise "Failed to detect IP version for DB_HOSTNAME: #{error}"
+             end,
+           after_connect:
+             if(System.get_env("DB_SCHEMA"),
+               do: {Postgrex, :query!, ["set search_path=#{System.get_env("DB_SCHEMA")}", []]},
+               else: nil
+             ),
+           port:
+             if(System.get_env("DB_PORT") != nil,
+               do: String.to_integer(System.get_env("DB_PORT")),
+               else: nil
+             )
+         ),
+         filter_nil_kv_pairs.(db_auth_options)
        )
 
 if System.get_env("LOGFLARE_MIN_CLUSTER_SIZE") do
@@ -577,7 +595,7 @@ config :logflare, :context_cache_gossip, %{
 # LOGFLARE_READ_REPLICAS: PostgreSQL read replicas for selected cache queries.
 # An empty list uses the primary database. Entries are bare host names, IP literals, or URIs
 # whose omitted options inherit the primary.
-# `auth=iam` replaces the password with an RDS IAM token and enforces verified TLS.
+# `auth=aws_iam&aws_region=REGION` enables AWS IAM authentication.
 read_replicas =
   "LOGFLARE_READ_REPLICAS"
   |> System.get_env("")
