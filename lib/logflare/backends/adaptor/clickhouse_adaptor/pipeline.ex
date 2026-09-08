@@ -645,7 +645,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     )
 
     :telemetry.execute(
-      [:logflare, :ingest_event_queue, :not_initialized, :dropped],
+      [:logflare, :ingest_event_queue, :requeue_queue_unavailable],
       %{count: dropped_count},
       %{backend_type: :clickhouse, backend_id: backend_id}
     )

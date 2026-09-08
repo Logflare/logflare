@@ -583,6 +583,13 @@ defmodule Logflare.Telemetry do
         description:
           "Count of retriable events whose generation-store row was already gone by requeue lookup time"
       ),
+      sum("logflare.ingest_event_queue.requeue_queue_unavailable.count",
+        event_name: [:logflare, :ingest_event_queue, :requeue_queue_unavailable],
+        measurement: :count,
+        tags: [:backend_id],
+        description:
+          "Count of retriable ClickHouse events dropped because no retry queue remained available to requeue them into"
+      ),
       sum("logflare.ingest_event_queue.requeue_deduplicated.count",
         event_name: [:logflare, :ingest_event_queue, :requeue_deduplicated],
         measurement: :count,

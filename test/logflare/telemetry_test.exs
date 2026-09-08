@@ -145,6 +145,29 @@ defmodule Logflare.TelemetryTest do
       assert circuit_breaker.tags == [:backend_id, :reason]
     end
 
+    test "defines queue-unavailable retry drops separately from not-initialized drops" do
+      queue_unavailable =
+        ch_metric([:logflare, :ingest_event_queue, :requeue_queue_unavailable, :count])
+
+      assert queue_unavailable.event_name ==
+               [:logflare, :ingest_event_queue, :requeue_queue_unavailable]
+
+      assert queue_unavailable.measurement == :count
+      assert queue_unavailable.tags == [:backend_id]
+
+      not_initialized =
+        ch_metric([:logflare, :ingest_event_queue, :not_initialized, :dropped, :count])
+
+      assert not_initialized.event_name == [
+               :logflare,
+               :ingest_event_queue,
+               :not_initialized,
+               :dropped
+             ]
+
+      assert not_initialized.tags == [:backend_type]
+    end
+
     test "defines ClickHouse batch distribution and throughput metrics" do
       metrics = clickhouse_batch_metrics()
 
