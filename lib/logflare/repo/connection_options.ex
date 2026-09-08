@@ -6,6 +6,8 @@ defmodule Logflare.Repo.ConnectionOptions do
   alias Logflare.Repo.AwsIam
   alias Logflare.Repo.Replicas
 
+  @epgsql_connection_keys [:hostname, :port, :username, :database, :socket_options, :ssl]
+
   @type role :: :primary | :replica
 
   @spec prepare(keyword(), role()) :: keyword()
@@ -21,12 +23,13 @@ defmodule Logflare.Repo.ConnectionOptions do
   @doc """
   Prepares primary connection options for epgsql-based clients.
 
-  epgsql invokes a zero-arity password function while authenticating, so dynamic
-  Postgrex configuration callbacks remain lazy and are rerun after reconnects.
+  Connection callbacks resolve epgsql's fixed connection options once, then run
+  again during authentication to refresh the password. A callback cannot change
+  those fixed options after initialization.
   """
   @spec prepare_epgsql(keyword()) :: map()
   def prepare_epgsql(config) do
-    config = prepare(config, :primary)
+    {config, password} = config |> prepare(:primary) |> prepare_epgsql_config()
     hostname = Keyword.fetch!(config, :hostname)
 
     %{}
@@ -34,22 +37,51 @@ defmodule Logflare.Repo.ConnectionOptions do
     |> put_present(:port, config[:port])
     |> put_present(:username, config[:username])
     |> put_present(:database, config[:database])
-    |> put_present(:password, epgsql_password(config))
+    |> put_present(:password, password)
     |> put_present(:tcp_opts, config[:socket_options])
     |> put_epgsql_ssl(config[:ssl], hostname)
   end
 
-  defp epgsql_password(config) do
+  defp prepare_epgsql_config(config) do
     case config[:configure] do
       nil ->
-        config[:password]
+        {config, config[:password]}
 
-      configure ->
-        fn ->
-          config
-          |> run_configure(configure)
+      {AwsIam, :configure, [region, previous_configure]} ->
+        prepared = AwsIam.configure_options(config, previous_configure)
+
+        password = fn ->
+          configured = AwsIam.configure_options(config, previous_configure)
+          ensure_epgsql_connection_unchanged!(prepared, configured)
+
+          configured
+          |> AwsIam.configure(region, nil)
           |> Keyword.fetch!(:password)
         end
+
+        {prepared, password}
+
+      configure ->
+        prepared = run_configure(config, configure)
+
+        password = fn ->
+          configured = run_configure(config, configure)
+          ensure_epgsql_connection_unchanged!(prepared, configured)
+          Keyword.fetch!(configured, :password)
+        end
+
+        {prepared, password}
+    end
+  end
+
+  defp ensure_epgsql_connection_unchanged!(prepared, configured) do
+    case Enum.find(@epgsql_connection_keys, &(prepared[&1] != configured[&1])) do
+      nil ->
+        :ok
+
+      key ->
+        raise ArgumentError,
+              "epgsql configure callback changed #{inspect(key)} after connection initialization"
     end
   end
 

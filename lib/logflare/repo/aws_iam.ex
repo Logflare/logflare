@@ -31,12 +31,20 @@ defmodule Logflare.Repo.AwsIam do
   """
   @spec configure(keyword(), String.t(), callback()) :: keyword()
   def configure(opts, region, previous_configure) do
-    opts = opts |> run_configure(previous_configure) |> put_verified_ssl!()
+    opts = configure_options(opts, previous_configure)
     hostname = Keyword.fetch!(opts, :hostname)
     username = Keyword.fetch!(opts, :username)
     port = Keyword.get(opts, :port) || 5432
 
     Keyword.put(opts, :password, auth_token(hostname, port, username, region))
+  end
+
+  @doc false
+  @spec configure_options(keyword(), callback()) :: keyword()
+  def configure_options(opts, previous_configure) do
+    opts
+    |> run_configure(previous_configure)
+    |> put_verified_ssl!()
   end
 
   @doc """

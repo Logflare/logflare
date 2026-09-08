@@ -392,6 +392,56 @@ defmodule Logflare.RepoTest do
       refute second_token == first_token
     end
 
+    test "epgsql applies stable configure callbacks to its connection identity", context do
+      %{host: host, region: region} = context
+
+      epgsql =
+        ConnectionOptions.prepare_epgsql(
+          hostname: host,
+          port: 5432,
+          username: "original",
+          database: "logflare",
+          configure: {__MODULE__, :configure_username, ["configured"]},
+          logflare_auth: :aws_iam,
+          logflare_aws_region: region
+        )
+
+      assert epgsql.username == "configured"
+      assert epgsql.password.() =~ "DBUser=configured"
+    end
+
+    test "epgsql rejects connection identity changes after initialization", context do
+      %{host: host, region: region} = context
+      counter = start_supervised!({Agent, fn -> 0 end})
+
+      configure = fn options ->
+        username =
+          Agent.get_and_update(counter, fn count ->
+            next = count + 1
+            {"configured_#{next}", next}
+          end)
+
+        Keyword.put(options, :username, username)
+      end
+
+      epgsql =
+        ConnectionOptions.prepare_epgsql(
+          hostname: host,
+          port: 5432,
+          username: "original",
+          database: "logflare",
+          configure: configure,
+          logflare_auth: :aws_iam,
+          logflare_aws_region: region
+        )
+
+      assert epgsql.username == "configured_1"
+
+      assert_raise ArgumentError, ~r/changed :username after connection initialization/, fn ->
+        epgsql.password.()
+      end
+    end
+
     test "password authentication leaves inherited callbacks unchanged" do
       configure = {__MODULE__, :configure_username, ["configured"]}
 
