@@ -212,18 +212,25 @@ defmodule Logflare.RepoTest do
         certfile: "/client.pem",
         keyfile: "/client.key",
         versions: [:"tlsv1.3"],
-        server_name_indication: "primary.example.com"
+        server_name_indication: :disable
       ]
 
-      primary_config = Application.get_env(:logflare, Repo, [])
-      Application.put_env(:logflare, Repo, Keyword.put(primary_config, :ssl, ssl))
+      primary_config =
+        :logflare
+        |> Application.get_env(Repo, [])
+        |> Keyword.put(:hostname, "127.0.0.1")
+        |> Keyword.put(:socket_options, [:inet])
+        |> Keyword.put(:ssl, ssl)
+
+      Application.put_env(:logflare, Repo, primary_config)
       on_exit(fn -> restore_application_env(:logflare, Repo, previous_repo_config) end)
 
       entries = [
         Replicas.parse!("postgres://logflare:secret@replica.invalid:1/logflare"),
         Replicas.parse!("postgres://logflare:secret@127.0.0.2:1/logflare"),
         Replicas.parse!("postgres://logflare:secret@explicit.invalid:1/logflare?ssl=true"),
-        Replicas.parse!("postgres://logflare:secret@plaintext.invalid:1/logflare?ssl=false")
+        Replicas.parse!("postgres://logflare:secret@plaintext.invalid:1/logflare?ssl=false"),
+        Replicas.parse!("postgres:///inherited_database")
       ]
 
       telemetry_ref = :telemetry_test.attach_event_handlers(self(), [[:ecto, :repo, :init]])
@@ -241,6 +248,7 @@ defmodule Logflare.RepoTest do
       assert options_by_host["replica.invalid"][:ssl] == inherited_ssl
       assert options_by_host["explicit.invalid"][:ssl] == inherited_ssl
       assert options_by_host["plaintext.invalid"][:ssl] == false
+      assert options_by_host["127.0.0.1"][:ssl] == ssl
 
       expected_ip_ssl = Keyword.put(inherited_ssl, :server_name_indication, :disable)
       assert options_by_host["127.0.0.2"][:ssl] == expected_ip_ssl

@@ -230,9 +230,15 @@ defmodule Logflare.Repo.Replicas do
 
   defp inherit_ssl(config, primary_ssl) do
     ssl =
-      primary_ssl
-      |> Keyword.delete(:server_name_indication)
-      |> maybe_disable_sni(config[:hostname])
+      case config[:hostname] do
+        nil ->
+          primary_ssl
+
+        hostname ->
+          primary_ssl
+          |> Keyword.delete(:server_name_indication)
+          |> maybe_disable_sni(hostname)
+      end
 
     Keyword.put(config, :ssl, ssl)
   end
