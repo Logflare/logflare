@@ -198,7 +198,7 @@ defmodule Logflare.RepoTest do
       assert config[:password] == "secret"
     end
 
-    test "a password replica with ssl=true inherits the primary TLS options", %{
+    test "password replicas securely inherit TLS unless they explicitly disable it", %{
       certificate: certificate
     } do
       previous_repo_config = Application.fetch_env(:logflare, Repo)
@@ -216,10 +216,12 @@ defmodule Logflare.RepoTest do
       Application.put_env(:logflare, Repo, Keyword.put(primary_config, :ssl, ssl))
       on_exit(fn -> restore_application_env(:logflare, Repo, previous_repo_config) end)
 
-      entries =
-        for hostname <- ["replica.invalid", "127.0.0.2"] do
-          Replicas.parse!("postgres://logflare:secret@#{hostname}:1/logflare?ssl=true")
-        end
+      entries = [
+        Replicas.parse!("postgres://logflare:secret@replica.invalid:1/logflare"),
+        Replicas.parse!("postgres://logflare:secret@127.0.0.2:1/logflare"),
+        Replicas.parse!("postgres://logflare:secret@explicit.invalid:1/logflare?ssl=true"),
+        Replicas.parse!("postgres://logflare:secret@plaintext.invalid:1/logflare?ssl=false")
+      ]
 
       telemetry_ref = :telemetry_test.attach_event_handlers(self(), [[:ecto, :repo, :init]])
       on_exit(fn -> :telemetry.detach(telemetry_ref) end)
@@ -234,6 +236,8 @@ defmodule Logflare.RepoTest do
 
       inherited_ssl = Keyword.delete(ssl, :server_name_indication)
       assert options_by_host["replica.invalid"][:ssl] == inherited_ssl
+      assert options_by_host["explicit.invalid"][:ssl] == inherited_ssl
+      assert options_by_host["plaintext.invalid"][:ssl] == false
 
       expected_ip_ssl = Keyword.put(inherited_ssl, :server_name_indication, :disable)
       assert options_by_host["127.0.0.2"][:ssl] == expected_ip_ssl

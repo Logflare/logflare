@@ -218,19 +218,23 @@ defmodule Logflare.Repo.Replicas do
   defp redact(message, nil), do: message
   defp redact(message, userinfo), do: String.replace(message, userinfo, "REDACTED")
 
-  defp resolve_ssl(config, primary_ssl) do
-    case {Keyword.get(config, :ssl), primary_ssl} do
-      {true, opts} when is_list(opts) ->
-        opts =
-          opts
-          |> Keyword.delete(:server_name_indication)
-          |> maybe_disable_sni(config[:hostname])
-
-        Keyword.put(config, :ssl, opts)
-
-      _ ->
-        config
+  defp resolve_ssl(config, primary_ssl) when is_list(primary_ssl) do
+    case Keyword.fetch(config, :ssl) do
+      :error -> inherit_ssl(config, primary_ssl)
+      {:ok, true} -> inherit_ssl(config, primary_ssl)
+      {:ok, _ssl} -> config
     end
+  end
+
+  defp resolve_ssl(config, _primary_ssl), do: config
+
+  defp inherit_ssl(config, primary_ssl) do
+    ssl =
+      primary_ssl
+      |> Keyword.delete(:server_name_indication)
+      |> maybe_disable_sni(config[:hostname])
+
+    Keyword.put(config, :ssl, ssl)
   end
 
   defp maybe_disable_sni(opts, hostname) when is_binary(hostname) do
