@@ -1685,6 +1685,17 @@ defmodule Logflare.MapperTest do
       assert reason =~ "precision must be between 0 and 9"
     end
 
+    test "rejects a datetime64 precision that is not a 64-bit integer" do
+      for precision <- [Integer.pow(2, 100), 3.0, "3"] do
+        config = MappingConfig.new([Field.datetime64("ts", path: "$.ts", precision: precision)])
+
+        assert {:error, reason} = Mapper.compile(config),
+               "precision #{inspect(precision)} was accepted"
+
+        assert reason =~ "'precision' must be an integer"
+      end
+    end
+
     test "accepts every valid datetime64 precision" do
       for precision <- 0..9 do
         config = MappingConfig.new([Field.datetime64("ts", path: "$.ts", precision: precision)])
@@ -1742,6 +1753,16 @@ defmodule Logflare.MapperTest do
         assert {:error, reason} = Mapper.compile(config), "#{key} was accepted"
         assert reason =~ "must not be negative"
       end
+    end
+
+    test "rejects a string filter length that is not a 64-bit integer" do
+      config =
+        MappingConfig.new([
+          Field.string("s", path: "$.s", filters: %{len_eq: Integer.pow(2, 100)})
+        ])
+
+      assert {:error, reason} = Mapper.compile(config)
+      assert reason =~ "'len_eq' must be an integer"
     end
 
     test "accepts a zero string filter length" do

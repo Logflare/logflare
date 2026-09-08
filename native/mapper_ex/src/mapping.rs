@@ -715,7 +715,7 @@ fn decode_filter_len<'a>(
     filters: Term<'a>,
     key: &str,
 ) -> Result<Option<usize>, String> {
-    match get_int_key(env, filters, key) {
+    match get_int_key(env, filters, key)? {
         None => Ok(None),
         Some(v) => usize::try_from(v)
             .map(Some)
@@ -780,7 +780,7 @@ pub fn decode_enum8_data<'a>(env: Env<'a>, field: Term<'a>) -> Result<Enum8Data,
 /// truncate or wrap when narrowed to `u8` and silently produce a column with
 /// the wrong scale.
 fn decode_precision<'a>(env: Env<'a>, field: Term<'a>) -> Result<u8, String> {
-    match get_int_key(env, field, "precision") {
+    match get_int_key(env, field, "precision")? {
         None => Ok(9),
         Some(v) if (0..=9).contains(&v) => Ok(v as u8),
         Some(v) => Err(format!("precision must be between 0 and 9, got {}", v)),
@@ -1052,6 +1052,18 @@ pub fn get_string_key<'a>(
     }
 }
 
-pub fn get_int_key<'a>(env: Env<'a>, map: Term<'a>, key: &str) -> Option<i64> {
-    get_term_key(env, map, key).and_then(|t| t.decode::<i64>().ok())
+/// Read an optional integer key. An absent key is `Ok(None)`. A key that is
+/// present but does not decode as `i64` (wrong type, or an integer too large to
+/// fit) is an error, so a misconfigured value can never be mistaken for "not
+/// set" and silently replaced by a default.
+pub fn get_int_key<'a>(env: Env<'a>, map: Term<'a>, key: &str) -> Result<Option<i64>, String> {
+    match get_term_key(env, map, key) {
+        None => Ok(None),
+        Some(t) => t.decode::<i64>().map(Some).map_err(|_| {
+            format!(
+                "'{}' must be an integer that fits in 64 bits, got {:?}",
+                key, t
+            )
+        }),
+    }
 }
