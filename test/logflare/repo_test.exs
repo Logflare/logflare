@@ -109,13 +109,6 @@ defmodule Logflare.RepoTest do
       %{conn: start_supervised!({Postgrex, opts})}
     end
 
-    test "opens the session read-only", %{conn: conn} do
-      Replicas.after_connect(conn, _no_primary_hook = nil)
-
-      assert %Postgrex.Result{rows: [["on"]]} =
-               Postgrex.query!(conn, "SHOW default_transaction_read_only", [])
-    end
-
     test "rejects writes on the session", %{conn: conn} do
       Replicas.after_connect(conn, _no_primary_hook = nil)
 
@@ -134,13 +127,19 @@ defmodule Logflare.RepoTest do
                Postgrex.query!(conn, "SHOW default_transaction_read_only", [])
     end
 
-    test "still runs the primary's after_connect, given as a function", %{conn: conn} do
-      hook = fn conn -> Postgrex.query!(conn, "SET application_name = 'fun'", []) end
+    test "runs a function after_connect before making the session read-only", %{conn: conn} do
+      test_pid = self()
+
+      hook = fn conn ->
+        %Postgrex.Result{rows: [[setting]]} =
+          Postgrex.query!(conn, "SHOW default_transaction_read_only", [])
+
+        send(test_pid, {:read_only_setting_in_primary_hook, setting})
+      end
 
       Replicas.after_connect(conn, hook)
 
-      assert %Postgrex.Result{rows: [["fun"]]} =
-               Postgrex.query!(conn, "SHOW application_name", [])
+      assert_receive {:read_only_setting_in_primary_hook, "off"}
 
       assert %Postgrex.Result{rows: [["on"]]} =
                Postgrex.query!(conn, "SHOW default_transaction_read_only", [])
