@@ -7,6 +7,13 @@ import {
 
 import { theme } from "./monaco_editor_theme";
 
+// Monaco integration for LiveView.
+// The hidden form input bridges Monaco and LiveView. Monaco integrates with the
+// form in the DOM rather than communicating with the LiveView process directly.
+//
+// * Changes in the Monaco editor update the form's <input> field, and trigger a 'change' event for phx-change
+// * LiveView patches update the same form <input> field, and the the hook passes them to the Monaco editor instance.
+
 const minEditorHeight = 100;
 
 const MonacoHook = {
@@ -60,6 +67,8 @@ const MonacoHook = {
     );
   },
 
+  // Pass LiveView patches on to the Monaco instance. When the the editor has focus its local
+  // value wins so a stale server value cannot overwrite it.
   updated() {
     if (!this.editor || !this.formField) return;
 
@@ -97,6 +106,7 @@ const MonacoHook = {
     this.minEditorHeight = this.options.minHeight || minEditorHeight;
   },
 
+  // Update the Monaco editor value; temporarily ignores editor change events to avoid an update loop.
   setValue(value) {
     const model = this.editor.getModel();
 
@@ -143,31 +153,32 @@ const MonacoHook = {
     if (this.completions.length === 0) return;
 
     const suggestions = this.completions;
+    const provideCompletionItems = (model, position) => {
+      if (model !== editor.getModel()) {
+        return { suggestions: [] };
+      }
+
+      const word = model.getWordUntilPosition(position);
+      const range = {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: word.startColumn,
+        endColumn: word.endColumn,
+      };
+
+      return {
+        suggestions: suggestions.map((name) => ({
+          label: name,
+          kind: monaco.languages.CompletionItemKind.Module,
+          insertText: name,
+          range,
+        })),
+      };
+    };
 
     this.disposables.push(
       monaco.languages.registerCompletionItemProvider(this.language, {
-        provideCompletionItems(model, position) {
-          if (model !== editor.getModel()) {
-            return { suggestions: [] };
-          }
-
-          const word = model.getWordUntilPosition(position);
-          const range = {
-            startLineNumber: position.lineNumber,
-            endLineNumber: position.lineNumber,
-            startColumn: word.startColumn,
-            endColumn: word.endColumn,
-          };
-
-          return {
-            suggestions: suggestions.map((name) => ({
-              label: name,
-              kind: monaco.languages.CompletionItemKind.Module,
-              insertText: name,
-              range,
-            })),
-          };
-        },
+        provideCompletionItems,
       }),
     );
   },
@@ -183,6 +194,7 @@ const MonacoHook = {
     );
   },
 
+  // Updates the form field value and dispatches an input event to trigger phx-change
   syncFormField(value) {
     this.formField.value = value;
     this.formField.dispatchEvent(new Event("input", { bubbles: true }));
