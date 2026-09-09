@@ -192,7 +192,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert is_integer(measurements.connection_time)
       assert measurements.connection_time > System.convert_time_unit(10, :microsecond, :native)
       assert metadata.backend_id == backend.id
-      assert metadata.read_cluster == nil
+      assert metadata.read_cluster == "default"
     end
 
     test "emits a plausible idle_time on a checked-in connection", %{backend: backend} do
@@ -228,7 +228,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                       %{count: 1}, metadata}
 
       assert metadata.backend_id == backend.id
-      assert metadata.read_cluster == nil
+      assert metadata.read_cluster == "default"
       assert metadata.error_kind == :connection_error
     end
 
@@ -937,6 +937,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       backend = %Backend{config: config}
 
       assert ClickHouseAdaptor.resolve_read_cluster_label(backend, "api") == "api"
+    end
+  end
+
+  describe "read_cluster_tag/1" do
+    test "returns a configured label unchanged" do
+      assert ClickHouseAdaptor.read_cluster_tag("api") == "api"
+    end
+
+    test "returns a stable tag for the legacy pool" do
+      assert ClickHouseAdaptor.read_cluster_tag(nil) == "default"
+      assert ClickHouseAdaptor.read_cluster_tag("") == "default"
     end
   end
 

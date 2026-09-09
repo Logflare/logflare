@@ -247,6 +247,35 @@ defmodule Logflare.TelemetryTest do
       assert failover.tags == [:backend_id, :read_cluster]
     end
 
+    test "defines ClickHouse read pool connection lifecycle counts" do
+      connected = read_pool_metric([:logflare, :clickhouse, :read_pool, :connected, :count])
+      disconnected = read_pool_metric([:logflare, :clickhouse, :read_pool, :disconnected, :count])
+
+      assert connected.event_name == [:db_connection, :connected]
+      assert disconnected.event_name == [:db_connection, :disconnected]
+
+      for metric <- [connected, disconnected] do
+        assert to_string(metric.__struct__) == "Elixir.Telemetry.Metrics.Sum"
+        assert metric.measurement == :count
+        assert metric.tags == [:backend_id, :read_cluster]
+
+        assert metric.keep.(%{tag: {123, "api_free"}})
+        assert metric.keep.(%{tag: {123, nil}})
+        refute metric.keep.(%{tag: Logflare.Repo})
+        refute metric.keep.(%{})
+
+        assert metric.tag_values.(%{tag: {123, "api_free"}}) == %{
+                 backend_id: 123,
+                 read_cluster: "api_free"
+               }
+
+        assert metric.tag_values.(%{tag: {123, nil}}) == %{
+                 backend_id: 123,
+                 read_cluster: "default"
+               }
+      end
+    end
+
     test "honors configured Broadway processor message duration sampling" do
       denominator = Application.fetch_env!(:logflare, :broadway_message_sample_denominator)
 

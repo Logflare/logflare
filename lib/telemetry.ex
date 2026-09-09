@@ -5,6 +5,8 @@ defmodule Logflare.Telemetry do
   import Logflare.Utils, only: [ets_info: 1]
   import Logflare.Utils.Guards, only: [is_non_empty_binary: 1, is_pos_integer: 1]
 
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
   context_caches_with_metrics = Logflare.ContextCache.Supervisor.list_caches_with_metrics()
@@ -391,6 +393,24 @@ defmodule Logflare.Telemetry do
         tags: [:backend_id, :read_cluster],
         description:
           "Read queries that failed over to the default read cluster, tagged with the unhealthy cluster failed over from"
+      ),
+      sum("logflare.clickhouse.read_pool.connected.count",
+        event_name: [:db_connection, :connected],
+        measurement: :count,
+        tags: [:backend_id, :read_cluster],
+        tag_values: &ch_read_pool_connection_tags/1,
+        keep: &ch_read_pool_connection_event?/1,
+        description:
+          "ClickHouse read pool connections established, per backend and read cluster. Only pools started after deploy are counted"
+      ),
+      sum("logflare.clickhouse.read_pool.disconnected.count",
+        event_name: [:db_connection, :disconnected],
+        measurement: :count,
+        tags: [:backend_id, :read_cluster],
+        tag_values: &ch_read_pool_connection_tags/1,
+        keep: &ch_read_pool_connection_event?/1,
+        description:
+          "ClickHouse read pool connections lost or recycled, per backend and read cluster. Paired with `connected`, this is the pool's connection churn rate"
       ),
       sum("logflare.clickhouse.insert.result.count",
         event_name: [:logflare, :clickhouse, :insert, :result],
@@ -805,6 +825,16 @@ defmodule Logflare.Telemetry do
 
   defp backend_scoped_drop?(%{backend_id: _, backend_type: _}), do: true
   defp backend_scoped_drop?(_metadata), do: false
+
+  defp ch_read_pool_connection_event?(%{tag: {backend_id, label}})
+       when is_pos_integer(backend_id) and (is_binary(label) or is_nil(label)),
+       do: true
+
+  defp ch_read_pool_connection_event?(_metadata), do: false
+
+  defp ch_read_pool_connection_tags(%{tag: {backend_id, label}}) do
+    %{backend_id: backend_id, read_cluster: ClickHouseAdaptor.read_cluster_tag(label)}
+  end
 
   defp batch_size_reporter_opts do
     [buckets: [0, 1, 50, 100, 250, 500, 1_000, 5_000, 10_000, 20_000, 50_000]]

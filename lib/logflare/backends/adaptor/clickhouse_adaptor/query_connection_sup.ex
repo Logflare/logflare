@@ -10,6 +10,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   ```
   Logflare.Backends.Supervisor
   └── QueryConnectionSup (this module)
+      ├── DBConnection.TelemetryListener (read pool connect/disconnect events)
       └── DynamicSupervisor
           └── ConnectionManager (one per backend, lazily started)
   ```
@@ -67,6 +68,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   @impl true
   def init(_args) do
     children = [
+      {DBConnection.TelemetryListener, name: ConnectionManager.telemetry_listener_name()},
       {DynamicSupervisor, strategy: :one_for_one, name: @dynamic_sup_name}
     ]
 
