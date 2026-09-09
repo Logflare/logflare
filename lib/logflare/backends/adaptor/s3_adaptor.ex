@@ -42,8 +42,8 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   ]
   @request_retries [
     max_attempts: 3,
-    base_backoff_in_ms: 10,
-    max_backoff_in_ms: 1_000
+    base_backoff_in_ms: 2_000,
+    max_backoff_in_ms: 10_000
   ]
   @min_batch_timeout 1_000
   @max_batch_timeout 5_000

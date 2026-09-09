@@ -129,6 +129,13 @@ jobs:
             run: mix lint.all
           - name: Code Quality - Formatting
             run: mix test.format
+          - name: Code Quality - Duplication
+            run: mix test.slop
+          - name: Code Quality - Structure
+            run: mix test.structure
+          - name: Code Quality - Dependency advisories
+            run: mix test.deps
+            soft: true
     env:
       MIX_ENV: test
       SHELL: /bin/bash
@@ -163,6 +170,7 @@ jobs:
 
       - name: Run ${{ matrix.commands.name }}
         run: ${{ matrix.commands.run }}
+        continue-on-error: ${{ matrix.commands.soft || false }}
 
   compile:
     name: Checks (Compilation Warnings, mix test.compile)

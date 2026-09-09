@@ -156,7 +156,7 @@ defmodule Logflare.ClickHouseMappedEvents do
   @spec deep_merge_opts(map(), map()) :: map()
   @spec resolve_severity_number(map()) :: map()
   defp resolve_severity_number(%{"severity_number_alt" => alt} = body)
-       when is_integer(alt) and alt > 0 do
+       when is_integer(alt) and alt in 1..24 do
     %{body | "severity_number" => alt}
   end
 

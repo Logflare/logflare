@@ -4,6 +4,24 @@
 # If you find anything wrong or unclear in this file, please report an
 # issue on GitHub: https://github.com/rrrene/credo/issues
 #
+ex_slop_backlog = [
+  ExSlop.Check.Readability.NarratorDoc,
+  ExSlop.Check.Refactor.IdentityPassthrough,
+  ExSlop.Check.Refactor.LengthComparison,
+  ExSlop.Check.Refactor.MapIntoLiteral,
+  ExSlop.Check.Refactor.RedundantBooleanIf,
+  ExSlop.Check.Refactor.RedundantEnumJoinSeparator,
+  ExSlop.Check.Refactor.ReduceMapPut,
+  ExSlop.Check.Refactor.WithIdentityElse,
+  ExSlop.Check.Warning.DualKeyAccess,
+  ExSlop.Check.Warning.RescueWithoutReraise
+]
+
+ex_slop_checks =
+  ExSlop.recommended_checks()
+  |> Enum.reject(&(&1 in ex_slop_backlog))
+  |> Enum.map(&{&1, []})
+
 %{
   #
   # You can have as many configs as you like in the `configs:` field.
@@ -36,7 +54,7 @@
       #
       # Load and configure plugins here:
       #
-      plugins: [],
+      plugins: [{ExSlop, []}],
       #
       # If you create your own checks, you must specify the source files for
       # them here, so they can be loaded by Credo before running the analysis.
@@ -65,88 +83,89 @@
       #     {Credo.Check.Design.DuplicatedCode, false}
       #
       checks: %{
-        enabled: [
-          #
-          ## Consistency Checks
-          #
-          {Credo.Check.Consistency.ExceptionNames, []},
-          {Credo.Check.Consistency.LineEndings, []},
-          {Credo.Check.Consistency.ParameterPatternMatching, []},
-          {Credo.Check.Consistency.SpaceAroundOperators, []},
-          {Credo.Check.Consistency.SpaceInParentheses, []},
-          {Credo.Check.Consistency.TabsOrSpaces, []},
+        enabled:
+          [
+            #
+            ## Consistency Checks
+            #
+            {Credo.Check.Consistency.ExceptionNames, []},
+            {Credo.Check.Consistency.LineEndings, []},
+            {Credo.Check.Consistency.ParameterPatternMatching, []},
+            {Credo.Check.Consistency.SpaceAroundOperators, []},
+            {Credo.Check.Consistency.SpaceInParentheses, []},
+            {Credo.Check.Consistency.TabsOrSpaces, []},
 
-          #
-          ## Design Checks
-          #
-          # You can customize the priority of any check
-          # Priority values are: `low, normal, high, higher`
-          #
-          {Credo.Check.Design.AliasUsage,
-           [priority: :low, if_nested_deeper_than: 2, if_called_more_often_than: 0]},
-          # You can also customize the exit_status of each check.
-          # If you don't want TODO comments to cause `mix credo` to fail, just
-          # set this value to 0 (zero).
-          #
-          {Credo.Check.Design.TagTODO, [exit_status: 0]},
-          {Credo.Check.Design.TagFIXME, []},
+            #
+            ## Design Checks
+            #
+            # You can customize the priority of any check
+            # Priority values are: `low, normal, high, higher`
+            #
+            {Credo.Check.Design.AliasUsage,
+             [priority: :low, if_nested_deeper_than: 2, if_called_more_often_than: 0]},
+            # You can also customize the exit_status of each check.
+            # If you don't want TODO comments to cause `mix credo` to fail, just
+            # set this value to 0 (zero).
+            #
+            {Credo.Check.Design.TagTODO, [exit_status: 0]},
+            {Credo.Check.Design.TagFIXME, []},
 
-          #
-          ## Readability Checks
-          #
-          {Credo.Check.Readability.FunctionNames, []},
-          {Credo.Check.Readability.LargeNumbers, []},
-          {Credo.Check.Readability.MaxLineLength, [max_length: 120]},
-          {Credo.Check.Readability.ModuleAttributeNames, []},
-          {Credo.Check.Readability.ModuleNames, []},
-          {Credo.Check.Readability.ParenthesesInCondition, []},
-          {Credo.Check.Readability.ParenthesesOnZeroArityDefs, [parens: false]},
-          {Credo.Check.Readability.PredicateFunctionNames, []},
-          {Credo.Check.Readability.PreferImplicitTry, []},
-          {Credo.Check.Readability.RedundantBlankLines, []},
-          {Credo.Check.Readability.Semicolons, []},
-          {Credo.Check.Readability.SpaceAfterCommas, []},
-          {Credo.Check.Readability.StringSigils, []},
-          {Credo.Check.Readability.TrailingBlankLine, []},
-          {Credo.Check.Readability.TrailingWhiteSpace, []},
-          {Credo.Check.Readability.UnnecessaryAliasExpansion, []},
-          {Credo.Check.Readability.VariableNames, []},
+            #
+            ## Readability Checks
+            #
+            {Credo.Check.Readability.FunctionNames, []},
+            {Credo.Check.Readability.LargeNumbers, []},
+            {Credo.Check.Readability.MaxLineLength, [max_length: 120]},
+            {Credo.Check.Readability.ModuleAttributeNames, []},
+            {Credo.Check.Readability.ModuleNames, []},
+            {Credo.Check.Readability.ParenthesesInCondition, []},
+            {Credo.Check.Readability.ParenthesesOnZeroArityDefs, [parens: false]},
+            {Credo.Check.Readability.PredicateFunctionNames, []},
+            {Credo.Check.Readability.PreferImplicitTry, []},
+            {Credo.Check.Readability.RedundantBlankLines, []},
+            {Credo.Check.Readability.Semicolons, []},
+            {Credo.Check.Readability.SpaceAfterCommas, []},
+            {Credo.Check.Readability.StringSigils, []},
+            {Credo.Check.Readability.TrailingBlankLine, []},
+            {Credo.Check.Readability.TrailingWhiteSpace, []},
+            {Credo.Check.Readability.UnnecessaryAliasExpansion, []},
+            {Credo.Check.Readability.VariableNames, []},
 
-          #
-          ## Refactoring Opportunities
-          #
-          {Credo.Check.Refactor.CondStatements, []},
-          {Credo.Check.Refactor.FunctionArity, []},
-          {Credo.Check.Refactor.IoPuts, []},
-          {Credo.Check.Refactor.LongQuoteBlocks, []},
-          {Credo.Check.Refactor.MatchInCondition, []},
-          {Credo.Check.Refactor.NegatedConditionsInUnless, []},
-          {Credo.Check.Refactor.NegatedConditionsWithElse, []},
-          {Credo.Check.Refactor.Nesting, []},
-          {Credo.Check.Refactor.UnlessWithElse, []},
-          {Credo.Check.Refactor.WithClauses, []},
+            #
+            ## Refactoring Opportunities
+            #
+            {Credo.Check.Refactor.CondStatements, []},
+            {Credo.Check.Refactor.FunctionArity, []},
+            {Credo.Check.Refactor.IoPuts, []},
+            {Credo.Check.Refactor.LongQuoteBlocks, []},
+            {Credo.Check.Refactor.MatchInCondition, []},
+            {Credo.Check.Refactor.NegatedConditionsInUnless, []},
+            {Credo.Check.Refactor.NegatedConditionsWithElse, []},
+            {Credo.Check.Refactor.Nesting, []},
+            {Credo.Check.Refactor.UnlessWithElse, []},
+            {Credo.Check.Refactor.WithClauses, []},
 
-          #
-          ## Warnings
-          #
-          {Credo.Check.Warning.BoolOperationOnSameValues, []},
-          {Credo.Check.Warning.Dbg, []},
-          {Credo.Check.Warning.ExpensiveEmptyEnumCheck, []},
-          {Credo.Check.Warning.IExPry, []},
-          {Credo.Check.Warning.IoInspect, []},
-          {Credo.Check.Warning.OperationOnSameValues, []},
-          {Credo.Check.Warning.OperationWithConstantResult, []},
-          {Credo.Check.Warning.RaiseInsideRescue, []},
-          {Credo.Check.Warning.UnsafeExec, []},
-          {Credo.Check.Warning.UnusedEnumOperation, []},
-          {Credo.Check.Warning.UnusedFileOperation, []},
-          {Credo.Check.Warning.UnusedKeywordOperation, []},
-          {Credo.Check.Warning.UnusedListOperation, []},
-          {Credo.Check.Warning.UnusedPathOperation, []},
-          {Credo.Check.Warning.UnusedRegexOperation, []},
-          {Credo.Check.Warning.UnusedStringOperation, []},
-          {Credo.Check.Warning.UnusedTupleOperation, []}
-        ],
+            #
+            ## Warnings
+            #
+            {Credo.Check.Warning.BoolOperationOnSameValues, []},
+            {Credo.Check.Warning.Dbg, []},
+            {Credo.Check.Warning.ExpensiveEmptyEnumCheck, []},
+            {Credo.Check.Warning.IExPry, []},
+            {Credo.Check.Warning.IoInspect, []},
+            {Credo.Check.Warning.OperationOnSameValues, []},
+            {Credo.Check.Warning.OperationWithConstantResult, []},
+            {Credo.Check.Warning.RaiseInsideRescue, []},
+            {Credo.Check.Warning.UnsafeExec, []},
+            {Credo.Check.Warning.UnusedEnumOperation, []},
+            {Credo.Check.Warning.UnusedFileOperation, []},
+            {Credo.Check.Warning.UnusedKeywordOperation, []},
+            {Credo.Check.Warning.UnusedListOperation, []},
+            {Credo.Check.Warning.UnusedPathOperation, []},
+            {Credo.Check.Warning.UnusedRegexOperation, []},
+            {Credo.Check.Warning.UnusedStringOperation, []},
+            {Credo.Check.Warning.UnusedTupleOperation, []}
+          ] ++ ex_slop_checks,
         disabled: [
           #
           # Checks scheduled for next check update (opt-in for now, just replace `false` with `[]`)

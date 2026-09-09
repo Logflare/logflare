@@ -1239,6 +1239,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         status: {:failed, "connection error"}
       }
 
+      dropped_event = [:logflare, :ingest_event_queue, :retry_dropped]
+      ref = :telemetry_test.attach_event_handlers(self(), [dropped_event])
+      on_exit(fn -> :telemetry.detach(ref) end)
+
       log =
         capture_log(fn ->
           Pipeline.ack(:ack_ref, [], [failed_message])
@@ -1246,6 +1250,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       assert log =~ "Dropping 1 ClickHouse events: exhausted #{max_retries} retries"
       assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
+
+      assert_receive {^dropped_event, ^ref, %{count: 1}, metadata}
+      assert metadata.reason == :retries_exhausted
+      assert metadata.backend_id == backend.id
+      assert metadata.backend_type == :clickhouse
     end
   end
 
@@ -1491,9 +1500,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
                  IngestEventQueue.lookup_event(retry_pointer.tid, retry_pointer.gen_event_id)
       end
 
-      test "reports a queue-unavailable drop separately from a generation lookup miss", %{
-        source: source
-      } do
+      test "reports a queue-unavailable drop under its own event, separately from a generation lookup miss",
+           %{source: source} do
         retry_backend_id = System.unique_integer([:positive])
         stale_queue_tid = :ets.new(:test_pipeline_stale_retry_queue, [:set, :public])
         :ets.delete(stale_queue_tid)
@@ -1510,11 +1518,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
           status: {:failed, "connection error"}
         }
 
-        dropped_event = [:logflare, :ingest_event_queue, :not_initialized, :dropped]
+        dropped_event = [:logflare, :ingest_event_queue, :requeue_queue_unavailable]
+        not_initialized_event = [:logflare, :ingest_event_queue, :not_initialized, :dropped]
         lookup_miss_event = [:logflare, :ingest_event_queue, :requeue_lookup_miss]
 
         ref =
-          :telemetry_test.attach_event_handlers(self(), [dropped_event, lookup_miss_event])
+          :telemetry_test.attach_event_handlers(self(), [
+            dropped_event,
+            not_initialized_event,
+            lookup_miss_event
+          ])
 
         on_exit(fn -> :telemetry.detach(ref) end)
         Mimic.stub(CircuitBreaker, :check, fn ^retry_backend_id -> :ok end)
@@ -1525,6 +1538,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         assert metadata.backend_type == :clickhouse
         assert metadata.backend_id == retry_backend_id
         refute_receive {^lookup_miss_event, ^ref, _, _}
+        refute_receive {^not_initialized_event, ^ref, _, _}
         assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
       end
 
@@ -1790,7 +1804,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       expected_backend_id = backend.id
 
       too_many_parts_error =
-        "HTTP 500: Code: 252. DB::Exception: Too many parts (600 with average size of 1.00 MiB) in table."
+        {:http, 500,
+         "Code: 252. DB::Exception: Too many parts (600 with average size of 1.00 MiB) in table."}
 
       Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
                                                                         _event_type,
@@ -1831,7 +1846,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       source: source,
       backend: backend
     } do
-      too_many_parts_error = "HTTP 500: Code: 252. DB::Exception: Too many parts in table."
+      too_many_parts_error = {:http, 500, "Code: 252. DB::Exception: Too many parts in table."}
 
       Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
                                                                         _event_type,
@@ -1879,10 +1894,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         status: {:failed, "boom"}
       }
 
+      dropped_event = [:logflare, :ingest_event_queue, :retry_dropped]
+      ref = :telemetry_test.attach_event_handlers(self(), [dropped_event])
+      on_exit(fn -> :telemetry.detach(ref) end)
+
       log = capture_log(fn -> Pipeline.ack(:ack_ref, [], [failed_message]) end)
 
       assert log =~ "circuit breaker open"
       assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
+
+      assert_receive {^dropped_event, ^ref, %{count: 1}, metadata}
+      assert metadata.reason == :circuit_breaker_open
+      assert metadata.backend_id == backend.id
     end
 
     test "requeues encoded rows when the breaker is closed", %{

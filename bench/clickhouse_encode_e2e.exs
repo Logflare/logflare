@@ -9,6 +9,7 @@
 # (before/after) and saves Benchee results for cross-SHA comparison.
 
 alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester
+alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults
 alias Logflare.LogEvent
 
 tag = System.get_env("TAG", "untagged")
@@ -17,7 +18,6 @@ File.mkdir_p!(save_dir)
 
 batch_size = String.to_integer(System.get_env("BATCH_SIZE", "500"))
 
-mapping_config_id = "00000000-0000-0000-0001-000000000003"
 source_uuid = String.to_atom("550e8400-e29b-41d4-a716-446655440000")
 
 # Realistic, *varied* resource attributes: ~12 keys spanning the typical OTEL
@@ -84,7 +84,7 @@ base_event = fn type, body ->
     source_name: "bench source",
     event_type: type,
     ingested_at: DateTime.utc_now(),
-    body: Map.merge(body, %{"mapping_config_id" => mapping_config_id})
+    body: Map.merge(body, %{"mapping_config_id" => MappingDefaults.config_id(type)})
   }
 end
 

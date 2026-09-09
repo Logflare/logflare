@@ -5,6 +5,32 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
   Defines how raw log event bodies are transformed into structured schemas
   before RowBinary encoding. Each event type (log, metric, trace) has its own
   field mapping with coalesced path resolution, defaults, and transforms.
+
+  ## `resource_attributes` contract
+
+  All three event types build `resource_attributes` with `pick_mode: :merge`, so the
+  column receives the curated `:pick` entries unioned with every remaining key under
+  `$.resource`. Uncurated resource keys pass through untouched, but the column is
+  intentionally *not* a lossless copy of the input when values disagree:
+
+    * **One canonical value per key.** On a key collision the curated pick wins over the
+      raw resource value. For example, when `metadata.environment` and
+      `resource.environment` are both present, `environment` holds the `metadata` value
+      and the raw `resource.environment` value is dropped.
+    * **Aliases are normalized, not preserved.** `_project_region` and `_service_name`
+      are read as fallbacks for the `region` and `service_name` picks and then removed via
+      `:exclude_keys`, so only the normalized key reaches the column.
+
+  This trade-off is deliberate: downstream queries get a stable, predictable key set
+  rather than having to reconcile aliases and duplicate keys per row.
+
+  ## `severity_number` contract
+
+  A supplied `severity_number` is stored only when it is an integer (or a string holding
+  one) inside the OTEL 1-24 range. `severity_number_alt` uses `coercion: :strict`, so a
+  float or boolean resolves to `0` instead of being truncated to a plausible severity, and
+  the RowBinary encoder rejects anything outside 1-24. Both cases fall back to the
+  `severity_number` derived from `severity_text`.
   """
 
   alias Logflare.LogEvent.TypeDetection
@@ -14,9 +40,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
   alias Logflare.Mapper.MappingConfig.InferRule
   alias Logflare.Mapper.MappingConfig.OutputFormat
 
-  @log_config_id "00000000-0000-0000-0001-000000000003"
-  @metric_config_id "00000000-0000-0000-0002-000000000003"
-  @trace_config_id "00000000-0000-0000-0003-000000000004"
+  @log_config_id "00000000-0000-0000-0001-000000000004"
+  @metric_config_id "00000000-0000-0000-0002-000000000004"
+  @trace_config_id "00000000-0000-0000-0003-000000000005"
 
   @spec config_id(TypeDetection.event_type()) :: String.t()
   def config_id(:log), do: @log_config_id
@@ -66,6 +92,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       ),
       Field.uint8("severity_number_alt",
         paths: ["$.severity_number", "$.severityNumber"],
+        coercion: :strict,
         default: 0
       ),
       Field.uint8("severity_number",
@@ -90,6 +117,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       Field.string("service_name",
         paths: [
           "$.resource.service.name",
+          "$.resource._service_name",
           "$.service_name",
           "$.resource.name",
           "$.metadata.context.application",
@@ -123,49 +151,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       Field.string("resource_schema_url",
         paths: ["$.resource.schema_url"]
       ),
-      Field.flat_map("resource_attributes",
-        paths: ["$.resource"],
-        pick: [
-          {"application_id", ["$.app_id", "$.application_id", "$.metadata.app_id"]},
-          {"application_name",
-           [
-             "$.metadata.context.application",
-             "$.app_name",
-             "$.application_name",
-             "$.metadata.app_name",
-             "$.metadata.parsed.application_name"
-           ]},
-          {"cluster", ["$.metadata.cluster", "$.cluster", "$.resource.cluster"]},
-          {"host", ["$.metadata.host", "$.metadata.context.host", "$.host"]},
-          {"instance_id", ["$.metadata.instance_id"]},
-          {"machine_id", ["$.machine_id"]},
-          {"node", ["$.metadata.context.vm.node", "$.resource.node"]},
-          {"organization_id", ["$.organization_id", "$.org_id"]},
-          {"organization_slug", ["$.organization_slug"]},
-          {"project",
-           [
-             "$.project",
-             "$.project_ref",
-             "$.project_id",
-             "$.metadata.project",
-             "$.metadata.tenant",
-             "$.metadata.tenantId"
-           ]},
-          {"region", ["$.metadata.region", "$.region"]},
-          {"service_name", ["$.resource.service.name", "$.service_name"]},
-          {"vector_file", ["$.metadata.vector_file"]},
-          {"vector_host", ["$.metadata.vector_host"]}
-        ],
-        default: %{}
-      ),
+      resource_attributes_field(:log),
       Field.flat_map("scope_attributes",
         paths: ["$.scope.attributes", "$.scope"],
         default: %{}
       ),
       Field.flat_map("log_attributes",
         path: "$",
-        exclude_keys: ["id", "event_message", "timestamp"],
-        elevate_keys: ["metadata"]
+        exclude_keys: ["id", "event_message", "timestamp", "resource", "scope"],
+        elevate_keys: ["metadata", "attributes"]
       ),
       Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
     ]
@@ -233,9 +227,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       Field.string("service_name",
         paths: [
           "$.resource.service.name",
+          "$.resource._service_name",
           "$.service_name",
           "$.resource.name",
-          "$.metadata.context.application"
+          "$.metadata.context.application",
+          "$.metadata.context.service",
+          "$.SYSLOG_IDENTIFIER",
+          "$._SYSTEMD_UNIT"
         ]
       ),
       Field.string("event_message",
@@ -262,33 +260,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       Field.string("resource_schema_url",
         paths: ["$.resource.schema_url"]
       ),
-      Field.flat_map("resource_attributes",
-        paths: ["$.resource"],
-        pick: [
-          {"application", ["$.metadata.context.application"]},
-          {"cluster", ["$.metadata.cluster", "$.cluster", "$.resource.cluster"]},
-          {"node", ["$.metadata.context.vm.node", "$.resource.node"]},
-          {"project",
-           [
-             "$.project",
-             "$.project_ref",
-             "$.project_id",
-             "$.metadata.project",
-             "$.metadata.tenant"
-           ]},
-          {"region", ["$.metadata.region", "$.region"]},
-          {"service_name", ["$.resource.service.name", "$.service_name"]}
-        ],
-        default: %{}
-      ),
+      resource_attributes_field(:metric),
       Field.flat_map("scope_attributes",
         paths: ["$.scope.attributes", "$.scope"],
         default: %{}
       ),
       Field.flat_map("attributes",
         path: "$",
-        exclude_keys: ["id", "event_message", "timestamp"],
-        elevate_keys: ["metadata"]
+        exclude_keys: ["id", "event_message", "timestamp", "resource", "scope"],
+        elevate_keys: ["metadata", "attributes"]
       ),
       Field.string("aggregation_temporality",
         paths: ["$.aggregation_temporality", "$.aggregationTemporality"]
@@ -461,9 +441,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       Field.string("service_name",
         paths: [
           "$.resource.service.name",
+          "$.resource._service_name",
           "$.service_name",
           "$.resource.name",
-          "$.metadata.context.application"
+          "$.metadata.context.application",
+          "$.metadata.context.service",
+          "$.SYSLOG_IDENTIFIER",
+          "$._SYSTEMD_UNIT"
         ]
       ),
       Field.string("event_message",
@@ -512,29 +496,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
           "$.instrumentation_library.version"
         ]
       ),
-      Field.flat_map("resource_attributes",
-        paths: ["$.resource"],
-        pick: [
-          {"application", ["$.metadata.context.application"]},
-          {"cluster", ["$.metadata.cluster", "$.cluster", "$.resource.cluster"]},
-          {"node", ["$.metadata.context.vm.node", "$.resource.node"]},
-          {"project",
-           [
-             "$.project",
-             "$.project_ref",
-             "$.project_id",
-             "$.metadata.project",
-             "$.metadata.tenant"
-           ]},
-          {"region", ["$.metadata.region", "$.region"]},
-          {"service_name", ["$.resource.service.name", "$.service_name"]}
-        ],
-        default: %{}
-      ),
+      resource_attributes_field(:trace),
+      # `scope` is deliberately not excluded here and must stay that way.
+      # otel_traces has no scope_attributes column and will not be getting one,
+      # so span_attributes is the permanent home for scope.schema_url and
+      # scope.attributes.*. Adding "scope" here would drop them entirely.
       Field.flat_map("span_attributes",
         path: "$",
-        exclude_keys: ["id", "event_message", "timestamp"],
-        elevate_keys: ["metadata"]
+        exclude_keys: ["id", "event_message", "timestamp", "resource"],
+        elevate_keys: ["metadata", "attributes"]
       ),
       Field.array_datetime64("events.timestamp",
         path: "$.events[*].time_unix_nano",
@@ -563,4 +533,79 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
 
     MappingConfig.new(fields, output: OutputFormat.clickhouse_row_binary(:trace))
   end
+
+  @spec resource_attributes_field(TypeDetection.event_type()) :: Field.t()
+  defp resource_attributes_field(event_type) do
+    Field.flat_map("resource_attributes",
+      paths: ["$.resource"],
+      exclude_keys: ["_project_region", "_service_name"],
+      pick_mode: :merge,
+      pick: resource_attributes_pick(event_type),
+      default: %{}
+    )
+  end
+
+  @spec resource_attributes_pick(TypeDetection.event_type()) :: [{String.t(), [String.t()]}]
+  defp resource_attributes_pick(event_type) do
+    [
+      {"application_id", ["$.app_id", "$.application_id", "$.metadata.app_id"]},
+      {application_key(event_type),
+       [
+         "$.metadata.context.application",
+         "$.app_name",
+         "$.application_name",
+         "$.metadata.app_name",
+         "$.metadata.parsed.application_name"
+       ]},
+      {"cluster",
+       [
+         "$.metadata.cluster",
+         "$.metadata.context.cluster",
+         "$.cluster",
+         "$.resource.cluster"
+       ]},
+      {"environment",
+       [
+         "$.metadata.environment",
+         "$.metadata.context.environment",
+         "$.environment",
+         "$.resource.environment"
+       ]},
+      {"host", ["$.metadata.host", "$.metadata.context.host", "$.host", "$.resource.host"]},
+      {"instance_id", ["$.metadata.instance_id"]},
+      {"machine_id", ["$.machine_id"]},
+      {"node",
+       [
+         "$.metadata.node",
+         "$.metadata.context.vm.node",
+         "$.node",
+         "$.resource.node"
+       ]},
+      {"organization_id", ["$.organization_id", "$.org_id"]},
+      {"organization_slug", ["$.organization_slug"]},
+      {"project",
+       [
+         "$.project",
+         "$.project_ref",
+         "$.project_id",
+         "$.metadata.project",
+         "$.metadata.tenant",
+         "$.metadata.tenantId"
+       ]},
+      {"region",
+       [
+         "$.metadata.region",
+         "$.region",
+         "$.resource.region",
+         "$.resource._project_region"
+       ]},
+      {"service_name", ["$.resource.service.name", "$.resource._service_name", "$.service_name"]},
+      {"vector_file", ["$.metadata.vector_file"]},
+      {"vector_host", ["$.metadata.vector_host"]}
+    ]
+  end
+
+  @spec application_key(TypeDetection.event_type()) :: String.t()
+  defp application_key(:log), do: "application_name"
+  defp application_key(_event_type), do: "application"
 end

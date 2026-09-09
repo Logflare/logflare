@@ -129,6 +129,53 @@ defmodule Logflare.TelemetryTest do
       assert metric.tags == [:backend_type]
     end
 
+    test "defines the ClickHouse insert outcome and circuit breaker metrics" do
+      insert_result = ch_metric([:logflare, :clickhouse, :insert, :result, :count])
+
+      assert to_string(insert_result.__struct__) == "Elixir.Telemetry.Metrics.Sum"
+      assert insert_result.event_name == [:logflare, :clickhouse, :insert, :result]
+      assert insert_result.measurement == :count
+      assert insert_result.tags == [:backend_id, :event_type, :async, :result, :error_class]
+
+      circuit_breaker = ch_metric([:logflare, :clickhouse, :circuit_breaker, :open, :count])
+
+      assert to_string(circuit_breaker.__struct__) == "Elixir.Telemetry.Metrics.Counter"
+      assert circuit_breaker.event_name == [:logflare, :clickhouse, :circuit_breaker, :open]
+      assert circuit_breaker.measurement == :failures
+      assert circuit_breaker.tags == [:backend_id, :reason]
+    end
+
+    test "defines queue-unavailable retry drops separately from not-initialized drops" do
+      queue_unavailable =
+        ch_metric([:logflare, :ingest_event_queue, :requeue_queue_unavailable, :count])
+
+      assert queue_unavailable.event_name ==
+               [:logflare, :ingest_event_queue, :requeue_queue_unavailable]
+
+      assert queue_unavailable.measurement == :count
+      assert queue_unavailable.tags == [:backend_id]
+
+      not_initialized =
+        ch_metric([:logflare, :ingest_event_queue, :not_initialized, :dropped, :count])
+
+      assert not_initialized.event_name == [
+               :logflare,
+               :ingest_event_queue,
+               :not_initialized,
+               :dropped
+             ]
+
+      assert not_initialized.tags == [:backend_type]
+    end
+
+    test "defines realized retry drops as a reason-tagged loss counter" do
+      metric = ch_metric([:logflare, :ingest_event_queue, :retry_dropped, :count])
+
+      assert metric.event_name == [:logflare, :ingest_event_queue, :retry_dropped]
+      assert metric.measurement == :count
+      assert metric.tags == [:backend_id, :reason]
+    end
+
     test "defines ClickHouse batch distribution and throughput metrics" do
       metrics = clickhouse_batch_metrics()
 
@@ -629,6 +676,11 @@ defmodule Logflare.TelemetryTest do
 
   defp requeue_deduplicated_metrics do
     Enum.filter(Telemetry.metrics(), &(&1.name == @requeue_deduplicated_metric_name))
+  end
+
+  defp ch_metric(name) do
+    [metric] = Enum.filter(Telemetry.metrics(), &(&1.name == name))
+    metric
   end
 
   defp read_pool_metric(name) do

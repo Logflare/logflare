@@ -62,7 +62,13 @@ defmodule Logflare.NetworkingTest do
                 pools: %{
                   :default => [
                     protocols: [:http1],
-                    conn_opts: [transport_opts: [timeout: 5_000]]
+                    conn_opts: [
+                      transport_opts: [
+                        timeout: 5_000,
+                        send_timeout: 30_000,
+                        send_timeout_close: true
+                      ]
+                    ]
                   ]
                 }}
              ] = Networking.pools()

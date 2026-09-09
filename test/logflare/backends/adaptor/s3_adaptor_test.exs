@@ -259,8 +259,8 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
 
       assert opts[:retries] == [
                max_attempts: 3,
-               base_backoff_in_ms: 10,
-               max_backoff_in_ms: 1_000
+               base_backoff_in_ms: 2_000,
+               max_backoff_in_ms: 10_000
              ]
     end
 
