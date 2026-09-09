@@ -77,12 +77,9 @@ defmodule Logflare.Repo.ConnectionOptions do
         prepared = AwsIam.configure_options(config, previous_configure)
 
         password = fn ->
-          configured = AwsIam.configure_options(config, previous_configure)
+          configured = AwsIam.configure(config, region, previous_configure)
           ensure_epgsql_connection_unchanged!(prepared, configured)
-
-          configured
-          |> AwsIam.configure(region, nil)
-          |> Keyword.fetch!(:password)
+          Keyword.fetch!(configured, :password)
         end
 
         {prepared, password}

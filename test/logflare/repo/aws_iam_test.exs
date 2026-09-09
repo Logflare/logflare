@@ -609,6 +609,30 @@ defmodule Logflare.Repo.AwsIamTest do
       refute token =~ "unrelated-session-token"
     end
 
+    test "configure/3 allows an inherited callback to provide the hostname", %{
+      host: host,
+      region: region
+    } do
+      provide_hostname = fn opts -> Keyword.put(opts, :hostname, host) end
+
+      prepared =
+        ConnectionOptions.prepare(
+          [
+            username: "logflare",
+            configure: provide_hostname,
+            logflare_auth: :aws_iam,
+            logflare_aws_region: region
+          ],
+          :primary
+        )
+
+      assert {AwsIam, :configure, [^region, ^provide_hostname]} = prepared[:configure]
+
+      configured = AwsIam.configure(prepared, region, provide_hostname)
+      assert configured[:hostname] == host
+      assert configured[:password] =~ "DBUser=logflare"
+    end
+
     test "configure/3 replaces the password after inherited callbacks run", %{
       host: host,
       region: region

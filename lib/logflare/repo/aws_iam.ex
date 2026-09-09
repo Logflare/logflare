@@ -16,8 +16,9 @@ defmodule Logflare.Repo.AwsIam do
   @spec put_connection_options(keyword(), String.t() | nil) :: keyword()
   def put_connection_options(config, region) do
     region = validate_region!(region)
-    validate_hostname!(config[:hostname])
     {configure, config} = Keyword.pop(config, :configure)
+
+    if is_nil(configure), do: validate_hostname!(config[:hostname])
 
     config
     |> put_verified_ssl!()
