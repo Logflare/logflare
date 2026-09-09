@@ -147,20 +147,22 @@ defmodule Logflare.Repo.Replicas do
   defp parse_uri(entry) do
     uri = URI.parse(entry)
 
+    {url, inherit_database?} =
+      case uri.path do
+        v when v not in [nil, "", "/"] ->
+          {entry, false}
+
+        _ ->
+          # no database set - use a placeholder to satisfy Ecto's URL parser,
+          # then drop it so the primary's database is inherited instead
+          {URI.to_string(%{uri | path: "/placeholder"}), true}
+      end
+
     try do
       config =
-        case uri.path do
-          v when v not in [nil, "", "/"] ->
-            entry
-            |> Ecto.Repo.Supervisor.parse_url()
-
-          _ ->
-            # no database set - use a placeholder to satisfy Ecto's URL parser,
-            # then drop it so the primary's database is inherited instead
-            URI.to_string(%{uri | path: "/placeholder"})
-            |> Ecto.Repo.Supervisor.parse_url()
-            |> Keyword.delete(:database)
-        end
+        url
+        |> Ecto.Repo.Supervisor.parse_url()
+        |> then(&if(inherit_database?, do: Keyword.delete(&1, :database), else: &1))
         |> Keyword.delete(:scheme)
         |> maybe_put_socket_options()
 
@@ -168,7 +170,7 @@ defmodule Logflare.Repo.Replicas do
         {:ok, {build_key(config), config}}
       end
     rescue
-      e in Ecto.InvalidURLError -> {:error, redact(e.message, uri.userinfo)}
+      e in Ecto.InvalidURLError -> {:error, ConnectionOptions.redact_url_error(e.message, url)}
     end
   end
 
@@ -184,16 +186,8 @@ defmodule Logflare.Repo.Replicas do
   end
 
   defp redact(entry) do
-    if String.contains?(entry, "://") do
-      uri = URI.parse(entry)
-      URI.to_string(%{uri | userinfo: if(uri.userinfo, do: "REDACTED")})
-    else
-      entry
-    end
+    if String.contains?(entry, "://"), do: ConnectionOptions.redact_url(entry), else: entry
   end
-
-  defp redact(message, nil), do: message
-  defp redact(message, userinfo), do: String.replace(message, userinfo, "REDACTED")
 
   defp resolve_ssl(config, primary_ssl) when is_list(primary_ssl) do
     case Keyword.fetch(config, :ssl) do

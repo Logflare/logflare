@@ -65,6 +65,35 @@ defmodule Logflare.Repo.ConnectionOptionsTest do
     assert log =~ "ignoring `ssl=true` parameter in URL"
   end
 
+  test "primary URL rebinds host-derived SNI when it replaces the configured hostname" do
+    ssl = [
+      verify: :verify_peer,
+      cacertfile: "/custom/ca.pem",
+      server_name_indication: :disable
+    ]
+
+    domain =
+      ConnectionOptions.prepare(
+        [
+          url: "postgres://logflare@database.example.com/logflare?ssl=true",
+          hostname: "127.0.0.1",
+          ssl: ssl
+        ],
+        :primary
+      )
+
+    refute Keyword.has_key?(domain[:ssl], :server_name_indication)
+
+    ip =
+      ConnectionOptions.prepare(
+        [url: "postgres://logflare@127.0.0.1/logflare?ssl=true"],
+        :primary
+      )
+
+    assert ip[:ssl][:cacerts] == :public_key.cacerts_get()
+    assert ip[:ssl][:server_name_indication] == :disable
+  end
+
   test "primary URL password authentication can reuse the configured password" do
     prepared =
       ConnectionOptions.prepare(
@@ -80,6 +109,32 @@ defmodule Logflare.Repo.ConnectionOptionsTest do
     assert prepared[:username] == "url_user"
     assert prepared[:password] == "configured_secret"
     refute Keyword.has_key?(prepared, :configure)
+  end
+
+  test "primary and replica URLs reject nested URL query parameters" do
+    nested_url =
+      "postgres://nested_user:nested_secret@nested.example/nested_database?auth=aws_iam"
+
+    url =
+      "postgres://outer_user:outer_secret@outer.example/outer_database?url=#{URI.encode_www_form(nested_url)}"
+
+    error =
+      assert_raise ArgumentError, ~r/`url` query parameter is not supported/, fn ->
+        ConnectionOptions.prepare([url: url], :primary)
+      end
+
+    refute Exception.message(error) =~ "outer_secret"
+    refute Exception.message(error) =~ "nested_secret"
+
+    assert {:error, "`url` query parameter is not supported"} = Replicas.parse(url)
+
+    replica_error =
+      assert_raise ArgumentError, ~r/`url` query parameter is not supported/, fn ->
+        Replicas.parse!(url)
+      end
+
+    refute Exception.message(replica_error) =~ "outer_secret"
+    refute Exception.message(replica_error) =~ "nested_secret"
   end
 
   test "primary URL errors redact credentials" do
@@ -105,6 +160,45 @@ defmodule Logflare.Repo.ConnectionOptionsTest do
 
     assert Exception.message(auth_error) =~ "auth=aws_iam cannot be combined with a password"
     refute Exception.message(auth_error) =~ "supersecret"
+
+    query_password_error =
+      assert_raise Ecto.InvalidURLError, fn ->
+        ConnectionOptions.prepare(
+          [
+            url:
+              "postgres://url_user@database.example.com/logflare?password=query_secret&pool_size=invalid"
+          ],
+          :primary
+        )
+      end
+
+    refute Exception.message(query_password_error) =~ "query_secret"
+    refute query_password_error.url =~ "query_secret"
+    assert query_password_error.url =~ "password=REDACTED"
+
+    replica_query_error =
+      assert_raise ArgumentError, fn ->
+        Replicas.parse!(
+          "postgres://url_user@database.example.com/logflare?password=query_secret&pool_size=invalid"
+        )
+      end
+
+    refute Exception.message(replica_query_error) =~ "query_secret"
+    assert Exception.message(replica_query_error) =~ "password=REDACTED"
+
+    query_auth_error =
+      assert_raise ArgumentError, fn ->
+        ConnectionOptions.prepare(
+          [
+            url:
+              "postgres://url_user@database.example.com/logflare?password=query_secret&auth=aws_iam"
+          ],
+          :primary
+        )
+      end
+
+    refute Exception.message(query_auth_error) =~ "query_secret"
+    assert Exception.message(query_auth_error) =~ "password=REDACTED"
   end
 
   test "password clients preserve connection options without inheriting Ecto pools" do
