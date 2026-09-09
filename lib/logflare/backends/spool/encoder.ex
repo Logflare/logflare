@@ -8,8 +8,6 @@ defmodule Logflare.Backends.Spool.Encoder do
   in one shot rather than streaming it incrementally.
   """
 
-  import Bitwise
-
   alias Logflare.Backends.Spool.Framing
   alias Logflare.LogEvent
 
@@ -57,25 +55,7 @@ defmodule Logflare.Backends.Spool.Encoder do
   end
 
   @spec generate_uuidv7() :: String.t()
-  def generate_uuidv7 do
-    ms = System.system_time(:millisecond)
-
-    <<rand_a::12, _::4>> = :crypto.strong_rand_bytes(2)
-    <<_::2, rand_b::62>> = :crypto.strong_rand_bytes(8)
-    <<time_high::32, time_mid::16>> = <<ms::48>>
-
-    ver_rand_a = 0x7000 ||| rand_a
-    var_rand_b = 0x8000_0000_0000_0000 ||| rand_b
-
-    hex = fn n, len ->
-      n |> Integer.to_string(16) |> String.downcase() |> String.pad_leading(len, "0")
-    end
-
-    node = var_rand_b |> Integer.to_string(16) |> String.downcase() |> String.pad_leading(16, "0")
-    {clock_seq, node_str} = String.split_at(node, 4)
-
-    "#{hex.(time_high, 8)}-#{hex.(time_mid, 4)}-#{hex.(ver_rand_a, 4)}-#{clock_seq}-#{node_str}"
-  end
+  def generate_uuidv7, do: UUIDv7.generate()
 
   @spec encode_chunk([LogEvent.t()], :ndjson | :etf, boolean(), :gzip | :zstd) ::
           {segment :: binary(), compressed_byte_size :: non_neg_integer(),
