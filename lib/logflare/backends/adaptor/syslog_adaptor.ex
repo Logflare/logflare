@@ -1,6 +1,10 @@
 defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   @moduledoc """
   TCP backend adaptor that sends out Syslog-formatted messages.
+
+  Connection telemetry is emitted under `[:logflare, :syslog_pool]`.
+  Call `attach_logger/0` to enable diagnostic logging and `detach_logger/0` to disable it.
+  Connection reuse is logged at debug level; successful connections and disconnections use notice.
   """
 
   use Supervisor
@@ -222,4 +226,80 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   def execute_query(_id, _query, _opts) do
     {:error, :not_implemented}
   end
+
+  @logger_handler "logflare-syslog-logger"
+
+  @doc "Enables diagnostic logging for Syslog connection telemetry."
+  @spec attach_logger() :: :ok | {:error, :already_exists}
+  def attach_logger do
+    :telemetry.attach_many(
+      @logger_handler,
+      [
+        [:logflare, :syslog_pool, :connect, :stop],
+        [:logflare, :syslog_pool, :connect, :exception],
+        [:logflare, :syslog_pool, :reused_connection],
+        [:logflare, :syslog_pool, :disconnect]
+      ],
+      &__MODULE__.handle_syslog_event/4,
+      _no_config = []
+    )
+  end
+
+  @doc "Disables diagnostic logging for Syslog connection telemetry."
+  @spec detach_logger() :: :ok | {:error, :not_found}
+  def detach_logger do
+    :telemetry.detach(@logger_handler)
+  end
+
+  @doc false
+  @spec handle_syslog_event(
+          :telemetry.event_name(),
+          :telemetry.event_measurements(),
+          :telemetry.event_metadata(),
+          term()
+        ) :: :ok
+  def handle_syslog_event([:logflare | event], measurements, metadata, _config) do
+    case {event, metadata} do
+      {[:syslog_pool, :connect, stop_or_exception], %{kind: _, reason: _}} ->
+        %{backend_id: backend_id, config: %{host: host, port: port}} = metadata
+
+        log_warning_or_error(stop_or_exception, fn ->
+          "[Syslog] Backend #{backend_id} failed to connect to #{host}:#{port}: #{format_exception(metadata)}"
+        end)
+
+      {[:syslog_pool, :connect, :stop], _} ->
+        %{backend_id: backend_id, config: %{host: host, port: port}} = metadata
+
+        Logger.notice(fn ->
+          duration = System.convert_time_unit(measurements.duration, :native, :millisecond)
+          "[Syslog] Backend #{backend_id} connected to #{host}:#{port} in #{duration}ms"
+        end)
+
+      {[:syslog_pool, :reused_connection], _} ->
+        %{backend_id: backend_id} = metadata
+        Logger.debug(fn -> "[Syslog] Backend #{backend_id} reused connection" end)
+
+      {[:syslog_pool, :disconnect], _} ->
+        %{backend_id: backend_id, config: %{host: host, port: port}, reason: reason} = metadata
+
+        Logger.notice(fn ->
+          "[Syslog] Backend #{backend_id} disconnected from #{host}:#{port}. Reason: #{format_connection_error(reason)}"
+        end)
+    end
+  end
+
+  defp format_exception(%{kind: kind, reason: reason, stacktrace: stacktrace}) do
+    Exception.format(kind, reason, stacktrace)
+  end
+
+  defp format_exception(%{kind: :error, reason: reason}) do
+    format_connection_error(reason)
+  end
+
+  defp format_exception(%{kind: kind, reason: reason}) do
+    Exception.format(kind, reason)
+  end
+
+  defp log_warning_or_error(:exception, message_or_fun), do: Logger.error(message_or_fun)
+  defp log_warning_or_error(:stop, message_or_fun), do: Logger.warning(message_or_fun)
 end

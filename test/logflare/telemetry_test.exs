@@ -26,6 +26,8 @@ defmodule Logflare.TelemetryTest do
   @drop_stale_metric_name [:logflare, :logs, :ingest_logs, :drop_stale]
   @drop_stale_metric_string "logflare.logs.ingest_logs.drop_stale"
 
+  @syslog_exporter :logflare_syslog_metrics_test
+
   @requeue_deduplicated_metric_name [
     :logflare,
     :ingest_event_queue,
@@ -347,6 +349,105 @@ defmodule Logflare.TelemetryTest do
       assert [{_bucket, {1, 125}}] = distributions |> Map.fetch!(trace_tags) |> Map.to_list()
     end
 
+    test "aggregates Syslog connection errors and exceptions without counting successful connections" do
+      start_supervised!(
+        {OtelMetricExporter,
+         name: @syslog_exporter,
+         metrics: syslog_metrics(),
+         export_period: :timer.minutes(5),
+         otlp_protocol: :http_protobuf,
+         otlp_endpoint: "http://localhost:4318",
+         otlp_headers: %{},
+         otlp_compression: nil}
+      )
+
+      stop_event = [:logflare, :syslog_pool, :connect, :stop]
+      exception_event = [:logflare, :syslog_pool, :connect, :exception]
+      measurements = %{duration: System.convert_time_unit(1, :millisecond, :native)}
+
+      :telemetry.execute(stop_event, measurements, %{backend_id: 1})
+
+      refute Map.has_key?(
+               MetricStore.get_metrics(@syslog_exporter),
+               {:counter, "logflare.syslog_pool.connect.error"}
+             )
+
+      for reason <- [:econnrefused, :timeout, :nxdomain, {:tls_alert, :unknown_ca}] do
+        :telemetry.execute(stop_event, measurements, %{
+          backend_id: 1,
+          kind: :error,
+          reason: reason
+        })
+      end
+
+      for kind <- [:error, :exit, :throw] do
+        :telemetry.execute(exception_event, measurements, %{
+          backend_id: 2,
+          kind: kind,
+          reason: %RuntimeError{message: "connection failed"},
+          stacktrace: []
+        })
+      end
+
+      :telemetry.execute(exception_event, measurements, %{kind: :exit, reason: :timeout})
+
+      assert %{
+               {:counter, "logflare.syslog_pool.connect.error"} => %{
+                 %{reason: "econnrefused"} => 1,
+                 %{reason: "timeout"} => 2,
+                 %{reason: "nxdomain"} => 1,
+                 %{reason: "other"} => 4
+               }
+             } = MetricStore.get_metrics(@syslog_exporter)
+    end
+
+    test "aggregates Syslog disconnections by bounded reason and counts reused connections" do
+      start_supervised!(
+        {OtelMetricExporter,
+         name: @syslog_exporter,
+         metrics: syslog_metrics(),
+         export_period: :timer.minutes(5),
+         otlp_protocol: :http_protobuf,
+         otlp_endpoint: "http://localhost:4318",
+         otlp_headers: %{},
+         otlp_compression: nil}
+      )
+
+      measurements = %{system_time: System.system_time()}
+
+      for reason <- [:closed, :idle_timeout, :stale_config, {:shutdown, "connection details"}] do
+        :telemetry.execute(
+          [:logflare, :syslog_pool, :disconnect],
+          measurements,
+          %{backend_id: 1, reason: reason}
+        )
+      end
+
+      :telemetry.execute(
+        [:logflare, :syslog_pool, :disconnect],
+        measurements,
+        %{backend_id: 2, reason: :idle_timeout}
+      )
+
+      for backend_id <- [1, 2, 2] do
+        :telemetry.execute(
+          [:logflare, :syslog_pool, :reused_connection],
+          measurements,
+          %{backend_id: backend_id}
+        )
+      end
+
+      assert MetricStore.get_metrics(@syslog_exporter) == %{
+               {:counter, "logflare.syslog_pool.disconnect"} => %{
+                 %{reason: "closed"} => 1,
+                 %{reason: "idle_timeout"} => 2,
+                 %{reason: "stale_config"} => 1,
+                 %{reason: "other"} => 1
+               },
+               {:counter, "logflare.syslog_pool.reused_connection"} => %{%{} => 3}
+             }
+    end
+
     test "tags stale event drops by backend" do
       [metric] = drop_stale_metrics()
 
@@ -621,6 +722,11 @@ defmodule Logflare.TelemetryTest do
 
   defp clickhouse_batch_metrics do
     Enum.filter(Telemetry.metrics(), &(&1.name == @clickhouse_batch_metric_name))
+  end
+
+  @spec syslog_metrics() :: [Elixir.Telemetry.Metrics.t()]
+  defp syslog_metrics do
+    Enum.filter(Telemetry.metrics(), &match?([:logflare, :syslog_pool | _], &1.name))
   end
 
   defp drop_stale_metrics do
