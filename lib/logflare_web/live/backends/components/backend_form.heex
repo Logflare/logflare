@@ -35,7 +35,8 @@
     {select(f, :type, ["Select a backend type..." | @backend_types],
       phx_change: :change_form_type,
       class: "form-control form-control-margin",
-      id: "type"
+      id: "type",
+      value: @form_type
     )}
   </div>
 
