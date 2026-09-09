@@ -219,14 +219,8 @@ defmodule Logflare.Backends do
         name: "Default PostgreSQL backend"
       }
     else
-      {project_id, dataset_id} =
-        if user.bigquery_project_id do
-          {user.bigquery_project_id, user.bigquery_dataset_id}
-        else
-          project_id = User.bq_project_id()
-          dataset_id = User.generate_bq_dataset_id(user.id)
-          {project_id, dataset_id}
-        end
+      project_id = user.bigquery_project_id || User.bq_project_id()
+      dataset_id = user.bigquery_dataset_id || User.generate_bq_dataset_id(user.id)
 
       %Backend{
         type: :bigquery,
@@ -481,7 +475,6 @@ defmodule Logflare.Backends do
   @spec clear_list_backends_cache(source_id :: integer()) :: :ok
   def clear_list_backends_cache(source_id) when is_integer(source_id) do
     Cachex.del(__MODULE__.Cache, {:list_backends, [[source_id: source_id]]})
-    Cachex.del(__MODULE__.Cache, {:list_backends, [source_id: source_id]})
     :ok
   end
 
@@ -933,6 +926,11 @@ defmodule Logflare.Backends do
   """
   @spec start_source_sup(Source.t()) :: :ok | {:error, :already_started}
   def start_source_sup(%Source{} = source) do
+    if not source_sup_started?(source), do: SourceSup.prefetch(source)
+    do_start_source_sup(source)
+  end
+
+  defp do_start_source_sup(source) do
     case DynamicSupervisor.start_child(
            {:via, PartitionSupervisor, {SourcesSup, source.id}},
            SourceSup.child_spec(source)

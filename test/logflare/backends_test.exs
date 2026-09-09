@@ -247,6 +247,42 @@ defmodule Logflare.BackendsTest do
     end
   end
 
+  describe "get_default_backend/1" do
+    test "defaults dataset_id even when bigquery_project_id is set but bigquery_dataset_id is nil" do
+      user = insert(:user, bigquery_project_id: "some-project", bigquery_dataset_id: nil)
+
+      assert %Backend{
+               type: :bigquery,
+               config: %{project_id: "some-project", dataset_id: dataset_id}
+             } = Backends.get_default_backend(user)
+
+      refute is_nil(dataset_id)
+      assert dataset_id == User.generate_bq_dataset_id(user.id)
+    end
+
+    test "defaults project_id even when bigquery_dataset_id is set but bigquery_project_id is nil" do
+      user = insert(:user, bigquery_project_id: nil, bigquery_dataset_id: "some_dataset")
+
+      assert %Backend{
+               type: :bigquery,
+               config: %{project_id: project_id, dataset_id: "some_dataset"}
+             } = Backends.get_default_backend(user)
+
+      refute is_nil(project_id)
+      assert project_id == User.bq_project_id()
+    end
+
+    test "uses user-configured project_id and dataset_id when both are set" do
+      user =
+        insert(:user, bigquery_project_id: "some-project", bigquery_dataset_id: "some_dataset")
+
+      assert %Backend{
+               type: :bigquery,
+               config: %{project_id: "some-project", dataset_id: "some_dataset"}
+             } = Backends.get_default_backend(user)
+    end
+  end
+
   describe "backend management" do
     setup do
       # Stub SSRF resolution so tests aren't sensitive to whether a fixture
@@ -725,6 +761,111 @@ defmodule Logflare.BackendsTest do
 
     test "ensure_source_sup_started/1", %{source: source} do
       assert :ok = Backends.ensure_source_sup_started(source)
+    end
+
+    test "prefetch/1 warms the cache keys read during initial startup", %{source: source} do
+      source = Sources.get(source.id)
+      source_schema = insert(:source_schema, source: source)
+
+      caches = [
+        Logflare.Backends.Cache,
+        Logflare.Billing.Cache,
+        Logflare.Rules.Cache,
+        Logflare.SourceSchemas.Cache,
+        Logflare.Sources.Cache,
+        Logflare.Users.Cache
+      ]
+
+      for cache <- caches, do: Cachex.clear(cache)
+      for cache <- caches, do: assert({:ok, 0} = Cachex.size(cache))
+
+      assert :ok = SourceSup.prefetch(source)
+
+      source_id = source.id
+      source_schema_id = source_schema.id
+      user_id = source.user_id
+
+      assert {:ok, {:cached, []}} =
+               Cachex.get(Logflare.Rules.Cache, {:list_by_source_id, [source_id]})
+
+      assert {:ok, {:cached, []}} =
+               Cachex.get(Logflare.Backends.Cache, {:list_backends, [[source_id: source_id]]})
+
+      assert {:ok, {:cached, []}} =
+               Cachex.get(Logflare.Backends.Cache, {
+                 :list_backends,
+                 [[rules_source_id: source_id]]
+               })
+
+      assert {:ok, {:cached, %Source{id: ^source_id}}} =
+               Cachex.get(Logflare.Sources.Cache, {:get_by, [[id: source_id]]})
+
+      assert {:ok, {:cached, %User{id: ^user_id} = cached_user}} =
+               Cachex.get(Logflare.Users.Cache, {:get, [user_id]})
+
+      assert {:ok, {:cached, %{}}} =
+               Cachex.get(Logflare.Billing.Cache, {:get_plan_by_user, [cached_user]})
+
+      assert {:ok, {:cached, %{id: ^source_schema_id}}} =
+               Cachex.get(Logflare.SourceSchemas.Cache, {
+                 :get_source_schema_by,
+                 [[source_id: source_id]]
+               })
+    end
+
+    test "prefetch/1 includes the default backend before filtering consolidated backends", %{
+      source: source
+    } do
+      stub(Backends, :get_default_backend, fn _user ->
+        %Backend{type: :bigquery, consolidated_ingest?: true}
+      end)
+
+      Cachex.clear(Logflare.SourceSchemas.Cache)
+
+      assert :ok = SourceSup.prefetch(source)
+
+      assert {:ok, {:cached, nil}} =
+               Cachex.get(Logflare.SourceSchemas.Cache, {
+                 :get_source_schema_by,
+                 [[source_id: source.id]]
+               })
+    end
+
+    test "prefetch/1 skips schemas when no BigQuery backend starts", %{source: source} do
+      stub(Logflare.SingleTenant, :single_tenant?, fn -> true end)
+      stub(Logflare.SingleTenant, :postgres_backend?, fn -> true end)
+      stub(Logflare.SingleTenant, :postgres_backend_adapter_opts, fn -> [url: "ecto://"] end)
+      Cachex.clear(Logflare.SourceSchemas.Cache)
+
+      assert :ok = SourceSup.prefetch(source)
+
+      assert {:ok, nil} =
+               Cachex.get(Logflare.SourceSchemas.Cache, {
+                 :get_source_schema_by,
+                 [[source_id: source.id]]
+               })
+    end
+
+    test "start_source_sup/1 prefetches before starting", %{source: source} do
+      expect(SourceSup, :prefetch, fn received_source ->
+        assert received_source.id == source.id
+        :ok
+      end)
+
+      assert :ok = Backends.start_source_sup(source)
+    end
+
+    test "start_source_sup/1 skips prefetch but still delegates when already started", %{
+      source: source
+    } do
+      start_supervised!({SourceSup, source})
+      reject(&SourceSup.prefetch/1)
+
+      expect(SourceSup, :child_spec, fn received_source ->
+        call_original(SourceSup, :child_spec, [received_source])
+      end)
+
+      assert {:error, :already_started} = Backends.start_source_sup(source)
     end
 
     test "on attach to source, update SourceSup", %{source: source} do

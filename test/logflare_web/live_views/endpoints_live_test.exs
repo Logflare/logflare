@@ -260,6 +260,33 @@ defmodule LogflareWeb.EndpointsLiveTest do
     assert render(view) =~ "some description"
   end
 
+  test "new endpoint displays validation messages", %{conn: conn} do
+    {:ok, view, _html} = live_with_redirect(conn, "/endpoints/new")
+
+    params = %{
+      name: "",
+      query: "",
+      max_limit: 0,
+      language: "bq_sql"
+    }
+
+    html =
+      view
+      |> element("form#endpoint")
+      |> render_submit(%{endpoint: params})
+
+    assert has_element?(view, "#endpoint_name + .help-block", "can't be blank")
+    assert has_element?(view, "#endpoint_query_editor > .help-block", "can't be blank")
+    assert html =~ "must be greater than 0"
+
+    html =
+      view
+      |> element("form#endpoint")
+      |> render_submit(%{endpoint: %{params | max_limit: 10_001}})
+
+    assert html =~ "must be less than 10001"
+  end
+
   test "new endpoint with redact_pii enabled", %{conn: conn} do
     {:ok, view, _html} = live_with_redirect(conn, "/endpoints/new")
     assert view |> has_element?("form#endpoint")

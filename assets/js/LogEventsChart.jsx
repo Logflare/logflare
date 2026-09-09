@@ -259,7 +259,6 @@ const LogEventsChart = ({
   const [dragRange, setDragRange] = React.useState(null);
   const dragStartRef = React.useRef(null);
   const dragEndRef = React.useRef(null);
-  const didDragRef = React.useRef(false);
   const suppressClickRef = React.useRef(false);
 
   const triggerTimeSearch = (utcDatetime) => {
@@ -299,7 +298,11 @@ const LogEventsChart = ({
     pushEvent("datetime_update", { querystring });
   };
 
-  const shouldSuppressClick = () => didDragRef.current || suppressClickRef.current;
+  const consumeSuppressedClick = () => {
+    const suppressClick = suppressClickRef.current;
+    suppressClickRef.current = false;
+    return suppressClick;
+  };
   const pointForMouseEvent = (state, event) =>
     chartPointAtX(
       event?.clientX,
@@ -308,7 +311,7 @@ const LogEventsChart = ({
     ) || activeChartPoint(state, chartData);
 
   const handleChartClick = (state, event) => {
-    if (shouldSuppressClick()) return;
+    if (consumeSuppressedClick()) return;
     triggerTimeSearch(pointForMouseEvent(state, event)?.datetime);
   };
 
@@ -318,7 +321,6 @@ const LogEventsChart = ({
 
     dragStartRef.current = point;
     dragEndRef.current = point;
-    didDragRef.current = false;
     suppressClickRef.current = false;
     setDragRange({ start: point.label, end: point.label });
   };
@@ -330,7 +332,6 @@ const LogEventsChart = ({
     if (!point) return;
 
     dragEndRef.current = point;
-    didDragRef.current = point.label !== dragStartRef.current.label;
     setDragRange({ start: dragStartRef.current.label, end: point.label });
   };
 
@@ -346,14 +347,8 @@ const LogEventsChart = ({
     const didDrag = Boolean(start && end && start.label !== end.label);
 
     if (didDrag) {
-      didDragRef.current = true;
       suppressClickRef.current = true;
       triggerTimeRangeSearch(start.datetime, end.datetime);
-
-      requestAnimationFrame(() => {
-        didDragRef.current = false;
-        suppressClickRef.current = false;
-      });
     }
 
     resetDrag();
@@ -362,7 +357,6 @@ const LogEventsChart = ({
   const handleMouseLeave = () => {
     if (!dragStartRef.current) return;
 
-    didDragRef.current = false;
     suppressClickRef.current = false;
     resetDrag();
   };
@@ -490,6 +484,7 @@ const LogEventsChart = ({
                 fill={settings.colors[key]}
                 isAnimationActive={false}
                 minPointSize={minPointSizeForDataKey(chartData, key)}
+                pointerEvents="none"
                 shape={key === topStackKey ? renderBarWithHighlight : undefined}
               />
             ))}

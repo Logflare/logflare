@@ -12,7 +12,10 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   `maybe_start_prefetch/1`, so a slow or long-polling `queue_mod.receive/2`
   call (especially under long-polling) can never block `handle_demand/2`,
   `handle_info/2`, or `:sys` introspection. The result lands back via a
-  `{:prefetch_result, result}` message.
+  `{:prefetch_result, result}` message — unless the producer has already
+  been killed by the time the fetch resolves (see `deliver_or_settle/5`),
+  in which case the Task settles the handle itself instead of sending into
+  the void.
 
   A periodic `:poll` message (`handle_info(:poll, state)`) drives the fetch
   → transfer-into-buffer → emit pipeline forward on a fixed cadence
@@ -67,6 +70,34 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   Broadway always runs `ConsumerPipeline.transform/2` in the producer's own
   process.
 
+  ## Draining
+
+  Implements `Broadway.Producer.prepare_for_draining/1`, which Broadway's
+  Terminator calls as soon as this topology starts shutting down (e.g. node
+  rotation/deploy) — moments before it cancels consumer subscriptions via a
+  separate, independent async cast. Because that cancellation can land
+  before or after anything still in flight here resolves, draining is
+  treated as a hard freeze rather than "let whatever's already going
+  finish": once `draining: true`, `handle_demand/2` and
+  `handle_info(:poll, state)` both become no-ops, so nothing is ever emitted
+  again after `prepare_for_draining/1` runs. Emitting afterwards would risk
+  handing events to a dispatcher with no live consumer — silently discarded
+  once the topology actually exits — while the queue message backing them
+  had already been acked, which is a real, worse-than-doing-nothing data
+  loss bug this exact design used to have.
+
+  Instead, `prepare_for_draining/1` immediately acks `current` if it was
+  already fully exhausted (safe — everything in it was handed to GenStage
+  while consumers were still live), or nacks it otherwise so the file is
+  redelivered and reprocessed in full — tolerating duplicate delivery of
+  any lines already emitted, in exchange for never silently losing the
+  rest. Any prefetch that had already landed (`{:ready, _}`) is nacked the
+  same way. A prefetch still `:running` can't be touched directly (no
+  handle yet, still inside the Task) — `handle_info({:prefetch_result,
+  result}, %{draining: true} = state)` handles it whenever it eventually
+  lands, nacking any handle in the result instead of loading it into
+  `current` and emitting it.
+
   ## Queue acking
 
   SQS/Pub/Sub acking is entirely decoupled from Broadway's per-message ack
@@ -75,6 +106,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   buffer and drained (`maybe_ack_exhausted/1`), regardless of whether
   Broadway has actually finished processing them yet.
   """
+
+  @behaviour Broadway.Producer
 
   use GenStage
 
@@ -132,7 +165,11 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       # slow destination backend can't let this producer keep draining the
       # queue into an unbounded batcher backlog.
       in_flight_ref: in_flight_ref,
-      max_in_flight: Keyword.get(opts, :max_in_flight, :infinity)
+      max_in_flight: Keyword.get(opts, :max_in_flight, :infinity),
+      # Set by prepare_for_draining/1 when Broadway begins shutting this
+      # topology down — stops new fetches from starting while still letting
+      # anything already buffered/in flight drain out and ack normally.
+      draining: false
     }
 
     Process.put(@in_flight_key, in_flight_ref)
@@ -140,13 +177,47 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     {:producer, schedule_poll(state, 0)}
   end
 
+  # Invoked by Broadway's Terminator once this topology starts shutting down
+  # (e.g. on node rotation/deploy), moments before it separately cancels
+  # consumer subscriptions. Settles whatever's already held right now — ack
+  # if fully exhausted (already safely handed off), nack otherwise so it's
+  # redelivered rather than risking emission with no live consumer on the
+  # other end — then freezes: draining: true makes handle_demand/2 and
+  # handle_info(:poll, state) no-ops, so nothing is ever emitted again.
+  @impl Broadway.Producer
+  def prepare_for_draining(state) do
+    state = maybe_ack_exhausted(state)
+
+    if handle = current_handle(state.current) do
+      nack_and_notify(state.queue_mod, state.queue_url, handle, :draining)
+    end
+
+    if handle = prefetch_handle(state.prefetch) do
+      nack_and_notify(state.queue_mod, state.queue_url, handle, :draining)
+    end
+
+    {:noreply, [], %{state | draining: true, demand: 0, current: nil, prefetch: nil}}
+  end
+
+  defp current_handle(%{handle: handle}), do: handle
+  defp current_handle(nil), do: nil
+
+  defp prefetch_handle({:ready, {:ok, handle, _lines}}), do: handle
+  defp prefetch_handle({:ready, {:error, handle, _reason}}), do: handle
+  defp prefetch_handle(_), do: nil
+
   # Only forces an immediate poll when something already resolved is sitting
   # in memory and just needs acting on: buffered lines (emit them now), or a
   # completed prefetch not yet transferred into current (transfer-and-emit).
   # Otherwise there's nothing new to do — :running means the prefetch-result
   # handler will kick a poll when it lands, and nil means the fetch/backoff
   # loop is already driving itself forward on its own schedule.
+  # Once draining, prepare_for_draining/1 has already settled everything held
+  # and frozen demand at 0 — further demand is moot, since Broadway cancels
+  # this producer's consumer subscriptions around the same time anyway.
   @impl GenStage
+  def handle_demand(_demand, %{draining: true} = state), do: {:noreply, [], state}
+
   def handle_demand(demand, state) do
     new_state = %{state | demand: state.demand + demand}
 
@@ -176,7 +247,13 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   # periodic side of the poll loop: always reschedules itself at the end, on
   # every branch, so the loop can never permanently stop even if neither
   # handle_demand/2 nor :prefetch_result ever kicks it early.
+  # Once draining, there's nothing left to load/emit — prepare_for_draining/1
+  # already settled current/prefetch and nothing here should ever touch them
+  # again (see moduledoc's "Draining" section for why emitting post-drain is
+  # unsafe). Also stops rescheduling: no need to keep waking up once frozen.
   @impl GenStage
+  def handle_info(:poll, %{draining: true} = state), do: {:noreply, [], state}
+
   def handle_info(:poll, state) do
     idle? = state.demand <= 0 or over_limit?()
 
@@ -203,7 +280,26 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   # genuinely idle queue is polled less aggressively over time without ever
   # blocking this process — the fetch itself always runs in the Task started
   # by maybe_start_prefetch/1, never inline here.
+  # A prefetch already :running when prepare_for_draining/1 froze this
+  # producer has no handle yet to nack there — it only appears once the
+  # background Task finishes and lands here. Nack it now rather than loading
+  # it into current and emitting with (likely) no live consumer left.
   @impl GenStage
+  def handle_info({:prefetch_result, result}, %{draining: true} = state) do
+    case result do
+      {:ok, handle, _lines} ->
+        nack_and_notify(state.queue_mod, state.queue_url, handle, :draining)
+
+      {:error, handle, _reason} when not is_nil(handle) ->
+        nack_and_notify(state.queue_mod, state.queue_url, handle, :draining)
+
+      _ ->
+        :ok
+    end
+
+    {:noreply, [], state}
+  end
+
   def handle_info({:prefetch_result, result}, state) do
     {poll_backoff_ms, delay} =
       case result do
@@ -338,8 +434,9 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
         # A crash here must still deliver a {:prefetch_result, _} message —
         # otherwise state.prefetch is stuck at :running forever (maybe_start_prefetch
         # refuses to start a new one, and nothing else will ever unstick it).
+        parent_ref = Process.monitor(parent)
         result = safe_fetch_next(queue_url, bucket, queue_mod, storage_mod)
-        send(parent, {:prefetch_result, result})
+        deliver_or_settle(result, parent, parent_ref, queue_mod, queue_url)
       end)
 
       %{state | prefetch: :running}
@@ -347,6 +444,37 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   end
 
   defp maybe_start_prefetch(state), do: state
+
+  # The producer can be killed mid-fetch (e.g. Broadway's shutdown budget
+  # runs out before a slow/long-polling queue_mod.receive call returns,
+  # despite prepare_for_draining/1 and handle_info({:prefetch_result, _},
+  # %{draining: true}) settling everything they get a chance to). Since
+  # Task.start/1 is deliberately unlinked (a crash here must never take down
+  # the producer), send/2 to an already-dead parent is a silent no-op — the
+  # handle would otherwise sit invisible until the queue's own visibility
+  # timeout expires (minutes, not seconds) before it's redelivered. Checking
+  # the monitor right before sending closes that window down to a
+  # vanishingly small race instead: if the parent is already gone, settle
+  # the handle directly here rather than leaving it stranded.
+  defp deliver_or_settle(result, parent, parent_ref, queue_mod, queue_url) do
+    receive do
+      {:DOWN, ^parent_ref, :process, ^parent, _reason} ->
+        settle_orphaned_result(result, queue_mod, queue_url)
+    after
+      0 ->
+        send(parent, {:prefetch_result, result})
+        Process.demonitor(parent_ref, [:flush])
+    end
+  end
+
+  defp settle_orphaned_result({:ok, handle, _lines}, queue_mod, queue_url),
+    do: nack_and_notify(queue_mod, queue_url, handle, :producer_gone)
+
+  defp settle_orphaned_result({:error, handle, _reason}, queue_mod, queue_url)
+       when not is_nil(handle),
+       do: nack_and_notify(queue_mod, queue_url, handle, :producer_gone)
+
+  defp settle_orphaned_result(_result, _queue_mod, _queue_url), do: :ok
 
   defp emit_from_buffer(%{current: nil} = state), do: {[], state}
   defp emit_from_buffer(%{current: %{lines: []}} = state), do: {[], state}

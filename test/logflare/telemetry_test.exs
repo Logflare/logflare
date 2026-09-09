@@ -1,5 +1,5 @@
 defmodule Logflare.TelemetryTest do
-  use Logflare.DataCase, async: true
+  use Logflare.DataCase, async: false
 
   alias Logflare.SystemMetrics.Observer
   alias Logflare.SystemMetrics.Schedulers
@@ -17,10 +17,71 @@ defmodule Logflare.TelemetryTest do
     :batch_size
   ]
   @clickhouse_batch_metric_string "logflare.backends.clickhouse.pipeline.handle_batch.batch_size"
+  @broadway_processor_message_event [:broadway, :processor, :message, :stop]
+  @broadway_processor_message_exporter :logflare_broadway_processor_message_metrics_test
+  @broadway_processor_message_metric_name [:broadway, :processor, :message, :stop, :duration]
+  @broadway_processor_message_metric_string "broadway.processor.message.stop.duration"
 
   @drop_stale_exporter :logflare_drop_stale_metrics_test
   @drop_stale_metric_name [:logflare, :logs, :ingest_logs, :drop_stale]
   @drop_stale_metric_string "logflare.logs.ingest_logs.drop_stale"
+
+  @requeue_deduplicated_metric_name [
+    :logflare,
+    :ingest_event_queue,
+    :requeue_deduplicated,
+    :count
+  ]
+
+  @ch_read_pool_checkout_event [:logflare, :clickhouse, :read_pool, :checkout]
+  @ch_read_pool_wait_buckets_us [
+    50,
+    100,
+    250,
+    500,
+    1_000,
+    5_000,
+    25_000,
+    100_000,
+    500_000,
+    1_000_000,
+    2_500_000,
+    5_000_000,
+    10_000_000,
+    30_000_000,
+    60_000_000
+  ]
+  @ch_read_pool_idle_buckets_ms [
+    100,
+    500,
+    1_000,
+    2_500,
+    5_000,
+    7_500,
+    9_000,
+    10_000,
+    11_000,
+    12_500,
+    15_000,
+    30_000,
+    60_000,
+    300_000
+  ]
+  @ch_read_pool_time_buckets_ms [
+    5,
+    10,
+    25,
+    50,
+    100,
+    250,
+    500,
+    1_000,
+    2_500,
+    5_000,
+    10_000,
+    30_000,
+    60_000
+  ]
 
   describe "metrics/0" do
     test "returns only well-formed Telemetry.Metrics definitions" do
@@ -60,6 +121,14 @@ defmodule Logflare.TelemetryTest do
       end
     end
 
+    test "defines retry deduplication as a low-cardinality event count" do
+      [metric] = requeue_deduplicated_metrics()
+
+      assert metric.event_name == [:logflare, :ingest_event_queue, :requeue_deduplicated]
+      assert metric.measurement == :count
+      assert metric.tags == [:backend_type]
+    end
+
     test "defines ClickHouse batch distribution and throughput metrics" do
       metrics = clickhouse_batch_metrics()
 
@@ -76,6 +145,140 @@ defmodule Logflare.TelemetryTest do
         assert metric.tags == [:backend_id, :event_type, :batch_trigger]
         assert metric.keep.(%{backend_type: :clickhouse})
         refute metric.keep.(%{backend_type: :bigquery})
+      end
+    end
+
+    test "defines ClickHouse read pool checkout distributions with per-measurement units" do
+      pool_time = read_pool_metric([:logflare, :clickhouse, :read_pool, :checkout, :pool_time])
+      idle_time = read_pool_metric([:logflare, :clickhouse, :read_pool, :checkout, :idle_time])
+      connection_time = read_pool_metric([:logflare, :clickhouse, :read_pool, :connection_time])
+
+      for metric <- [pool_time, idle_time, connection_time] do
+        assert to_string(metric.__struct__) == "Elixir.Telemetry.Metrics.Distribution"
+        assert metric.event_name == @ch_read_pool_checkout_event
+        assert metric.tags == [:backend_id, :read_cluster]
+      end
+
+      one_second_native = System.convert_time_unit(1, :second, :native)
+
+      measurements = %{
+        pool_time: one_second_native,
+        idle_time: one_second_native,
+        connection_time: one_second_native
+      }
+
+      assert pool_time.unit == :microsecond
+      assert_in_delta pool_time.measurement.(measurements), 1_000_000, 1
+      assert pool_time.reporter_options[:buckets] == @ch_read_pool_wait_buckets_us
+
+      assert idle_time.unit == :millisecond
+      assert_in_delta idle_time.measurement.(measurements), 1_000, 1
+      assert idle_time.reporter_options[:buckets] == @ch_read_pool_idle_buckets_ms
+
+      assert connection_time.unit == :millisecond
+      assert_in_delta connection_time.measurement.(measurements), 1_000, 1
+      assert connection_time.reporter_options[:buckets] == @ch_read_pool_time_buckets_ms
+
+      assert pool_time.measurement.(%{idle_time: one_second_native}) == nil
+      assert idle_time.measurement.(%{pool_time: one_second_native}) == nil
+      assert connection_time.measurement.(%{pool_time: one_second_native}) == nil
+    end
+
+    test "defines ClickHouse read pool query error and failover counts" do
+      query_error = read_pool_metric([:logflare, :clickhouse, :read_pool, :query_error])
+      failover = read_pool_metric([:logflare, :clickhouse, :read_pool, :failover])
+
+      for metric <- [query_error, failover] do
+        assert to_string(metric.__struct__) == "Elixir.Telemetry.Metrics.Sum"
+        assert metric.measurement == :count
+      end
+
+      assert query_error.event_name == [:logflare, :clickhouse, :read_pool, :query_error]
+      assert query_error.tags == [:backend_id, :read_cluster, :error_kind]
+
+      assert failover.event_name == [:logflare, :clickhouse, :read_pool, :failover]
+      assert failover.tags == [:backend_id, :read_cluster]
+    end
+
+    test "honors configured Broadway processor message duration sampling" do
+      denominator = Application.fetch_env!(:logflare, :broadway_message_sample_denominator)
+
+      metric =
+        Enum.find(Telemetry.metrics(), fn metric ->
+          metric.name == @broadway_processor_message_metric_name and
+            metric.event_name == @broadway_processor_message_event
+        end)
+
+      if denominator == :disabled do
+        assert metric == nil
+      else
+        assert is_function(metric.measurement, 1)
+        assert metric.unit == :millisecond
+
+        contexts = Enum.map(1..10_000, fn _ -> make_ref() end)
+
+        accepted_contexts =
+          case denominator do
+            1 ->
+              assert metric.keep == nil
+              contexts
+
+            denominator ->
+              assert is_function(metric.keep, 1)
+              refute metric.keep.(%{})
+
+              Enum.filter(contexts, fn context ->
+                metadata = %{telemetry_span_context: context}
+                expected = :erlang.phash2(context, denominator) == 0
+
+                assert metric.keep.(metadata) == expected
+                assert metric.keep.(metadata) == expected
+
+                expected
+              end)
+          end
+
+        start_supervised!(
+          {OtelMetricExporter,
+           name: @broadway_processor_message_exporter,
+           metrics: [metric],
+           export_period: :timer.minutes(5),
+           otlp_protocol: :http_protobuf,
+           otlp_endpoint: "http://localhost:4318",
+           otlp_headers: %{},
+           otlp_compression: nil}
+        )
+
+        :telemetry.execute(
+          @broadway_processor_message_event,
+          %{duration: System.convert_time_unit(1, :millisecond, :native)},
+          %{}
+        )
+
+        Enum.each(contexts, fn context ->
+          :telemetry.execute(
+            @broadway_processor_message_event,
+            %{duration: System.convert_time_unit(1, :millisecond, :native)},
+            %{telemetry_span_context: context}
+          )
+        end)
+
+        observed_count =
+          case MetricStore.get_metrics(@broadway_processor_message_exporter)[
+                 {:distribution, @broadway_processor_message_metric_string}
+               ] do
+            nil ->
+              0
+
+            distributions ->
+              distributions
+              |> Map.fetch!(%{})
+              |> Map.values()
+              |> Enum.sum_by(fn {count, _sum} -> count end)
+          end
+
+        malformed_metadata_count = if denominator == 1, do: 1, else: 0
+        assert observed_count == length(accepted_contexts) + malformed_metadata_count
       end
     end
 
@@ -422,5 +625,14 @@ defmodule Logflare.TelemetryTest do
 
   defp drop_stale_metrics do
     Enum.filter(Telemetry.metrics(), &(&1.name == @drop_stale_metric_name))
+  end
+
+  defp requeue_deduplicated_metrics do
+    Enum.filter(Telemetry.metrics(), &(&1.name == @requeue_deduplicated_metric_name))
+  end
+
+  defp read_pool_metric(name) do
+    [metric] = Enum.filter(Telemetry.metrics(), &(&1.name == name))
+    metric
   end
 end

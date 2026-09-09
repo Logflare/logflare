@@ -552,4 +552,157 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
                       %{count: 1}, %{reason: :prefetch_failed}}
     end
   end
+
+  describe "draining" do
+    defp draining_state(overrides) do
+      Map.merge(
+        %{
+          queue_url: "q",
+          queue_mod: QueueMod,
+          current: nil,
+          prefetch: nil,
+          demand: 5,
+          draining: false
+        },
+        overrides
+      )
+    end
+
+    test "acks an already-exhausted current file (everything in it was already handed off safely)" do
+      stub_ack_nack(self())
+
+      state = draining_state(%{current: %{handle: "h1", lines: []}})
+
+      assert {:noreply, [], new_state} = QueueProducer.prepare_for_draining(state)
+
+      assert_receive {:acked, "h1"}
+      refute_receive {:nacked, "h1"}
+      assert new_state.draining == true
+      assert new_state.demand == 0
+      assert new_state.current == nil
+    end
+
+    test "nacks a not-yet-exhausted current file instead of risking emission with no live consumer" do
+      stub_ack_nack(self())
+
+      state = draining_state(%{current: %{handle: "h1", lines: [%{"id" => "e1"}]}})
+
+      assert {:noreply, [], new_state} = QueueProducer.prepare_for_draining(state)
+
+      assert_receive {:nacked, "h1"}
+      refute_receive {:acked, "h1"}
+      assert new_state.current == nil
+    end
+
+    test "nacks an already-landed prefetch result rather than letting it be loaded and emitted" do
+      stub_ack_nack(self())
+
+      state = draining_state(%{prefetch: {:ready, {:ok, "h2", [%{"id" => "e2"}]}}})
+
+      assert {:noreply, [], new_state} = QueueProducer.prepare_for_draining(state)
+
+      assert_receive {:nacked, "h2"}
+      assert new_state.prefetch == nil
+    end
+
+    test "handle_demand/2 and handle_info(:poll, _) are frozen no-ops once draining" do
+      state = draining_state(%{draining: true, demand: 0})
+
+      assert QueueProducer.handle_demand(10, state) == {:noreply, [], state}
+      assert QueueProducer.handle_info(:poll, state) == {:noreply, [], state}
+    end
+
+    test "a prefetch already :running when draining begins is nacked once it lands, not emitted, even with a live subscriber already registered" do
+      test_pid = self()
+
+      stub_ack_nack(self())
+      stub_queue([queue_message("h1", "0/a.ndjson")])
+
+      # Blocks until released, so the background prefetch Task started by
+      # maybe_start_prefetch/1 is still genuinely :running when
+      # prepare_for_draining/1 fires below — this is production ordering
+      # (subscribe with real demand first, drain later), the reverse of what
+      # the original version of this test exercised.
+      stub(StorageMod, :get, fn _bucket, _key ->
+        send(test_pid, {:storage_get_called, self()})
+
+        receive do
+          :proceed -> {:ok, ndjson_body([%{"id" => "e1"}])}
+        end
+      end)
+
+      pid = start_producer()
+
+      task = Task.async(fn -> GenStage.stream([{pid, max_demand: 10}]) |> Enum.take(1) end)
+
+      assert_receive {:storage_get_called, prefetch_task_pid}, 2000
+
+      TestUtils.retry_assert(fn ->
+        assert :sys.get_state(pid).state.prefetch == :running
+      end)
+
+      :sys.replace_state(pid, fn gen_stage_state ->
+        {:noreply, [], new_module_state} =
+          QueueProducer.prepare_for_draining(gen_stage_state.state)
+
+        %{gen_stage_state | state: new_module_state}
+      end)
+
+      assert :sys.get_state(pid).state.draining == true
+
+      # Only now does the prefetch's download actually complete, landing
+      # {:prefetch_result, {:ok, "h1", _}} after draining has already begun.
+      send(prefetch_task_pid, :proceed)
+
+      assert_receive {:nacked, "h1"}, 2000
+      refute_received {:acked, "h1"}
+      refute Task.yield(task, 300)
+
+      Task.shutdown(task, :brutal_kill)
+    end
+
+    test "a prefetch whose producer is already dead by the time it lands settles (nacks) the handle directly, instead of leaving it stuck until the queue's own visibility timeout" do
+      test_pid = self()
+
+      stub_ack_nack(self())
+      stub_queue([queue_message("h1", "0/a.ndjson")])
+
+      # Blocks until released, so the producer can be killed while this
+      # fetch is still genuinely in flight — the scenario djwhitt flagged as
+      # non-blocking on the PR: Task.start/1 is unlinked, so without the
+      # parent-monitor in maybe_start_prefetch/1, this result would be sent
+      # to a dead pid and silently dropped.
+      stub(StorageMod, :get, fn _bucket, _key ->
+        send(test_pid, {:storage_get_called, self()})
+
+        receive do
+          :proceed -> {:ok, ndjson_body([%{"id" => "e1"}])}
+        end
+      end)
+
+      pid = start_producer()
+
+      # Seed demand directly rather than subscribing a real consumer — this
+      # test is about the producer-death race in the prefetch Task, not
+      # about consumer-side subscription behavior.
+      :sys.replace_state(pid, fn gen_stage_state ->
+        put_in(gen_stage_state.state.demand, 1)
+      end)
+
+      send(pid, :poll)
+
+      assert_receive {:storage_get_called, prefetch_task_pid}, 2000
+
+      ref = Process.monitor(pid)
+      Process.exit(pid, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :killed}, 2000
+
+      # Only now does the prefetch's download actually complete — well
+      # after its parent producer is fully, verifiably dead.
+      send(prefetch_task_pid, :proceed)
+
+      assert_receive {:nacked, "h1"}, 2000
+      refute_received {:acked, "h1"}
+    end
+  end
 end

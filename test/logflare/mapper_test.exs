@@ -214,6 +214,48 @@ defmodule Logflare.MapperTest do
       assert result["val"] == 2_147_483_647
     end
 
+    test "uint64 accepts integers above i64 max" do
+      fields = [Field.uint64("val", path: "$.val")]
+      above_i64 = Integer.pow(2, 63) + 1
+      u64_max = Integer.pow(2, 64) - 1
+
+      assert compile_and_map(fields, %{"val" => above_i64}) == %{"val" => above_i64}
+      assert compile_and_map(fields, %{"val" => u64_max}) == %{"val" => u64_max}
+    end
+
+    test "integers beyond u64 saturate by sign instead of collapsing to zero" do
+      huge = Integer.pow(2, 70)
+      u64_max = Integer.pow(2, 64) - 1
+
+      assert compile_and_map([Field.uint64("val", path: "$.val")], %{"val" => huge}) ==
+               %{"val" => u64_max}
+
+      assert compile_and_map([Field.uint8("val", path: "$.val")], %{"val" => huge}) ==
+               %{"val" => 255}
+
+      assert compile_and_map([Field.uint64("val", path: "$.val")], %{"val" => -huge}) ==
+               %{"val" => 0}
+    end
+
+    test "numeric strings above i64 max parse and overflowing strings saturate" do
+      u64_max = Integer.pow(2, 64) - 1
+
+      assert compile_and_map(
+               [Field.uint64("val", path: "$.val")],
+               %{"val" => Integer.to_string(u64_max)}
+             ) == %{"val" => u64_max}
+
+      assert compile_and_map(
+               [Field.uint64("val", path: "$.val")],
+               %{"val" => "99999999999999999999"}
+             ) == %{"val" => u64_max}
+
+      assert compile_and_map(
+               [Field.uint8("val", path: "$.val")],
+               %{"val" => "99999999999999999999"}
+             ) == %{"val" => 255}
+    end
+
     test "float truncation to uint" do
       result =
         compile_and_map(
@@ -222,6 +264,173 @@ defmodule Logflare.MapperTest do
         )
 
       assert result["val"] == 42
+    end
+  end
+
+  describe "type coercion: strict unsigned integers" do
+    test "accepts an integer term" do
+      result =
+        compile_and_map(
+          [Field.uint8("val", path: "$.val", coercion: :strict, default: 99)],
+          %{"val" => 17}
+        )
+
+      assert result["val"] == 17
+    end
+
+    test "accepts a string holding an unsigned integer" do
+      result =
+        compile_and_map(
+          [Field.uint8("val", path: "$.val", coercion: :strict, default: 99)],
+          %{"val" => "17"}
+        )
+
+      assert result["val"] == 17
+    end
+
+    test "still clamps out-of-range integers in either form" do
+      fields = [Field.uint8("val", path: "$.val", coercion: :strict, default: 99)]
+
+      assert compile_and_map(fields, %{"val" => 300}) == %{"val" => 255}
+      assert compile_and_map(fields, %{"val" => -5}) == %{"val" => 0}
+      assert compile_and_map(fields, %{"val" => "-5"}) == %{"val" => 0}
+    end
+
+    test "treats a float as unresolved and uses the default" do
+      result =
+        compile_and_map(
+          [Field.uint8("val", path: "$.val", coercion: :strict, default: 99)],
+          %{"val" => 13.9}
+        )
+
+      assert result["val"] == 99
+    end
+
+    test "treats a boolean as unresolved and uses the default" do
+      for bool <- [true, false] do
+        result =
+          compile_and_map(
+            [Field.uint8("val", path: "$.val", coercion: :strict, default: 99)],
+            %{"val" => bool}
+          )
+
+        assert result["val"] == 99
+      end
+    end
+
+    test "treats a non-numeric string as unresolved and uses the default" do
+      for str <- ["ERROR", "13.9", ""] do
+        result =
+          compile_and_map(
+            [Field.uint8("val", path: "$.val", coercion: :strict, default: 99)],
+            %{"val" => str}
+          )
+
+        assert result["val"] == 99, "expected #{inspect(str)} to be unresolved"
+      end
+    end
+
+    test "coalesce skips a non-integer term and continues to the next path" do
+      result =
+        compile_and_map(
+          [Field.uint8("val", paths: ["$.a", "$.b"], coercion: :strict, default: 99)],
+          %{"a" => true, "b" => 7}
+        )
+
+      assert result["val"] == 7
+    end
+
+    test "applies to uint32 and uint64 as well" do
+      fields = [
+        Field.uint32("u32", path: "$.val", coercion: :strict, default: 1),
+        Field.uint64("u64", path: "$.val", coercion: :strict, default: 2)
+      ]
+
+      assert compile_and_map(fields, %{"val" => 4.2}) == %{"u32" => 1, "u64" => 2}
+      assert compile_and_map(fields, %{"val" => 42}) == %{"u32" => 42, "u64" => 42}
+    end
+
+    test "accepts integers of any magnitude and saturates them" do
+      fields = [Field.uint64("val", path: "$.val", coercion: :strict, default: 7)]
+      above_i64 = Integer.pow(2, 63) + 1
+      u64_max = Integer.pow(2, 64) - 1
+
+      assert compile_and_map(fields, %{"val" => above_i64}) == %{"val" => above_i64}
+      assert compile_and_map(fields, %{"val" => Integer.pow(2, 70)}) == %{"val" => u64_max}
+
+      assert compile_and_map(fields, %{"val" => Integer.to_string(u64_max)}) == %{
+               "val" => u64_max
+             }
+
+      assert compile_and_map(fields, %{"val" => "99999999999999999999"}) == %{"val" => u64_max}
+    end
+
+    test "applies to the root path as well" do
+      result =
+        compile_and_map(
+          [Field.uint8("val", path: "$", coercion: :strict, default: 7)],
+          %{"x" => 1}
+        )
+
+      assert result["val"] == 7
+    end
+
+    test "applies to from_output sources as well" do
+      fields = [
+        Field.bool("flag", path: "$.flag"),
+        Field.string("text", path: "$.text"),
+        Field.uint8("from_flag", from_output: "flag", coercion: :strict, default: 99),
+        Field.uint8("from_text", from_output: "text", coercion: :strict, default: 99)
+      ]
+
+      result = compile_and_map(fields, %{"flag" => true, "text" => "17"})
+      assert result["from_flag"] == 99
+      assert result["from_text"] == 17
+
+      result = compile_and_map(fields, %{"flag" => true, "text" => "ERROR"})
+      assert result["from_text"] == 99
+    end
+
+    test "lenient coercion remains the default and keeps truncating floats and booleans" do
+      fields = [Field.uint8("val", path: "$.val", default: 99)]
+
+      assert compile_and_map(fields, %{"val" => 13.9}) == %{"val" => 13}
+      assert compile_and_map(fields, %{"val" => true}) == %{"val" => 1}
+      assert compile_and_map(fields, %{"val" => "ERROR"}) == %{"val" => 0}
+    end
+
+    test "compile rejects strict coercion on a non-unsigned-integer field" do
+      for field <- [
+            %Field{name: "s", type: "string", path: "$.s", coercion: "strict"},
+            %Field{name: "f", type: "float64", path: "$.f", coercion: "strict"},
+            %Field{name: "i", type: "int32", path: "$.i", coercion: "strict"}
+          ] do
+        assert {:error, reason} = Mapper.compile(MappingConfig.new([field]))
+        assert reason =~ "coercion \"strict\" is only supported on uint8, uint32, and uint64"
+      end
+    end
+
+    test "compile rejects strict coercion combined with value_map" do
+      config =
+        MappingConfig.new([
+          Field.string("severity_text", path: "$.level"),
+          Field.uint8("severity_number",
+            from_output: "severity_text",
+            coercion: :strict,
+            value_map: %{"ERROR" => 17},
+            default: 0
+          )
+        ])
+
+      assert {:error, reason} = Mapper.compile(config)
+      assert reason =~ "coercion \"strict\" cannot be combined with value_map"
+    end
+
+    test "compile rejects an unknown coercion value" do
+      field = %Field{name: "val", type: "uint8", path: "$.val", coercion: "bogus"}
+
+      assert {:error, reason} = Mapper.compile(MappingConfig.new([field]))
+      assert reason =~ "coercion must be \"lenient\" or \"strict\""
     end
   end
 
@@ -631,6 +840,210 @@ defmodule Logflare.MapperTest do
         )
 
       assert result["attrs"] == %{"service_name" => "web"}
+    end
+  end
+
+  describe "pick_mode" do
+    test "defaults to :replace, so a resolved pick replaces the coalesced source" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              paths: ["$.resource"],
+              pick: [{"project", ["$.project"]}],
+              default: %{}
+            )
+          ],
+          %{"project" => "p", "resource" => %{"a" => 1, "b" => 2}}
+        )
+
+      assert result["attrs"] == %{"project" => "p"}
+    end
+
+    test ":merge unions a resolved pick over the coalesced source" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              paths: ["$.resource"],
+              pick: [{"project", ["$.project"]}],
+              pick_mode: :merge,
+              default: %{}
+            )
+          ],
+          %{"project" => "p", "resource" => %{"a" => 1, "b" => 2}}
+        )
+
+      assert result["attrs"] == %{"project" => "p", "a" => "1", "b" => "2"}
+    end
+
+    test ":merge lets pick entries win on key collision" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              paths: ["$.resource"],
+              pick: [{"shared", ["$.top_shared"]}],
+              pick_mode: :merge,
+              default: %{}
+            )
+          ],
+          %{
+            "top_shared" => "from-pick",
+            "resource" => %{"shared" => "from-resource", "only_resource" => "r"}
+          }
+        )
+
+      assert result["attrs"] == %{"shared" => "from-pick", "only_resource" => "r"}
+    end
+
+    test ":merge yields just the source when no pick entry resolves" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              paths: ["$.resource"],
+              pick: [{"project", ["$.absent"]}],
+              pick_mode: :merge,
+              default: %{}
+            )
+          ],
+          %{"resource" => %{"a" => 1}}
+        )
+
+      assert result["attrs"] == %{"a" => "1"}
+    end
+
+    test ":merge yields just the pick map when the source is absent" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              paths: ["$.resource"],
+              pick: [{"project", ["$.project"]}],
+              pick_mode: :merge,
+              default: %{}
+            )
+          ],
+          %{"project" => "p"}
+        )
+
+      assert result["attrs"] == %{"project" => "p"}
+    end
+
+    test ":merge falls back to the default when neither pick nor source resolves" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              paths: ["$.resource"],
+              pick: [{"project", ["$.absent"]}],
+              pick_mode: :merge,
+              default: %{}
+            )
+          ],
+          %{"other" => 1}
+        )
+
+      assert result["attrs"] == %{}
+    end
+
+    test ":merge flattens nested source values and stringifies them" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              paths: ["$.resource"],
+              pick: [{"project", ["$.project"]}],
+              pick_mode: :merge,
+              default: %{}
+            )
+          ],
+          %{"project" => "p", "resource" => %{"nested" => %{"deep" => true}, "port" => 8080}}
+        )
+
+      assert result["attrs"] == %{
+               "project" => "p",
+               "nested.deep" => "true",
+               "port" => "8080"
+             }
+    end
+
+    test ":merge works on json fields without stringifying" do
+      result =
+        compile_and_map(
+          [
+            Field.json("attrs",
+              paths: ["$.resource"],
+              pick: [{"project", ["$.project"]}],
+              pick_mode: :merge,
+              default: %{}
+            )
+          ],
+          %{"project" => "p", "resource" => %{"a" => 1, "nested" => %{"deep" => true}}}
+        )
+
+      assert result["attrs"] == %{
+               "project" => "p",
+               "a" => 1,
+               "nested" => %{"deep" => true}
+             }
+    end
+
+    test ":merge applies exclude_keys and elevate_keys after the merge" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              paths: ["$.resource"],
+              pick: [{"project", ["$.project"]}],
+              pick_mode: :merge,
+              exclude_keys: ["drop_me"],
+              elevate_keys: ["nested"],
+              default: %{}
+            )
+          ],
+          %{
+            "project" => "p",
+            "resource" => %{"drop_me" => 1, "keep" => "k", "nested" => %{"inner" => "n"}}
+          }
+        )
+
+      assert result["attrs"] == %{"project" => "p", "keep" => "k", "inner" => "n"}
+    end
+
+    test ":merge only reads the first resolving path, since paths is a coalesce" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              paths: ["$.resource", "$.resource_extra"],
+              pick: [{"project", ["$.project"]}],
+              pick_mode: :merge,
+              default: %{}
+            )
+          ],
+          %{"project" => "p", "resource" => %{"a" => 1}, "resource_extra" => %{"b" => 2}}
+        )
+
+      assert result["attrs"] == %{"project" => "p", "a" => "1"}
+    end
+
+    test ":merge tolerates a non-map source value by keeping only the pick map" do
+      result =
+        compile_and_map(
+          [
+            Field.flat_map("attrs",
+              paths: ["$.resource"],
+              pick: [{"project", ["$.project"]}],
+              pick_mode: :merge,
+              default: %{}
+            )
+          ],
+          %{"project" => "p", "resource" => "not-a-map"}
+        )
+
+      assert result["attrs"] == %{"project" => "p"}
     end
   end
 
@@ -1460,6 +1873,127 @@ defmodule Logflare.MapperTest do
 
         Mapper.compile!(config)
       end
+    end
+  end
+
+  describe "numeric config validation" do
+    test "rejects a datetime64 precision outside 0..9" do
+      for precision <- [-1, 10, 300, 256] do
+        config = MappingConfig.new([Field.datetime64("ts", path: "$.ts", precision: precision)])
+
+        assert {:error, reason} = Mapper.compile(config), "precision #{precision} was accepted"
+        assert reason =~ "precision must be between 0 and 9"
+      end
+    end
+
+    test "rejects an array_datetime64 precision outside 0..9" do
+      config =
+        MappingConfig.new([Field.array_datetime64("ts", path: "$.ts[*]", precision: 300)])
+
+      assert {:error, reason} = Mapper.compile(config)
+      assert reason =~ "precision must be between 0 and 9"
+    end
+
+    test "rejects an explicit precision of false on both datetime64 constructors" do
+      for field <- [
+            Field.datetime64("ts", path: "$.ts", precision: false),
+            Field.array_datetime64("ts", path: "$.ts[*]", precision: false)
+          ] do
+        assert {:error, reason} = Mapper.compile(MappingConfig.new([field])),
+               "#{field.type} accepted precision: false"
+
+        assert reason =~ "'precision' must be an integer"
+      end
+    end
+
+    test "rejects a datetime64 precision that is not a 64-bit integer" do
+      for precision <- [Integer.pow(2, 100), 3.0, "3"] do
+        config = MappingConfig.new([Field.datetime64("ts", path: "$.ts", precision: precision)])
+
+        assert {:error, reason} = Mapper.compile(config),
+               "precision #{inspect(precision)} was accepted"
+
+        assert reason =~ "'precision' must be an integer"
+      end
+    end
+
+    test "accepts every valid datetime64 precision" do
+      for precision <- 0..9 do
+        config = MappingConfig.new([Field.datetime64("ts", path: "$.ts", precision: precision)])
+
+        assert {:ok, _} = Mapper.compile(config)
+      end
+    end
+
+    test "rejects enum_values outside the Enum8 range" do
+      for value <- [-129, 128, 200, 1000] do
+        config =
+          MappingConfig.new([
+            Field.enum8("kind", paths: ["$.kind"], values: %{"big" => value}, default: 0)
+          ])
+
+        assert {:error, reason} = Mapper.compile(config), "enum value #{value} was accepted"
+        assert reason =~ "enum_values values must be between -128 and 127"
+      end
+    end
+
+    test "accepts enum_values at the Enum8 boundaries" do
+      result =
+        compile_and_map(
+          [
+            Field.enum8("kind",
+              paths: ["$.kind"],
+              values: %{"low" => -128, "high" => 127},
+              default: 0
+            )
+          ],
+          %{"kind" => "low"}
+        )
+
+      assert result["kind"] == -128
+    end
+
+    test "clamps an out-of-range enum8 value at map time rather than wrapping it" do
+      fields = [
+        Field.enum8("kind", paths: ["$.kind"], values: %{"a" => 1, "b" => 2}, default: 0)
+      ]
+
+      # Wrapping would turn 200 into -56 and -200 into 56 — both valid-looking
+      # but wrong variants. Saturating keeps the value at the boundary.
+      assert compile_and_map(fields, %{"kind" => 200})["kind"] == 127
+      assert compile_and_map(fields, %{"kind" => -200})["kind"] == -128
+      assert compile_and_map(fields, %{"kind" => 127})["kind"] == 127
+      assert compile_and_map(fields, %{"kind" => -128})["kind"] == -128
+    end
+
+    test "rejects a negative string filter length" do
+      for key <- [:len_eq, :len_gt, :len_gte, :len_lt, :len_lte] do
+        config =
+          MappingConfig.new([Field.string("s", path: "$.s", filters: %{key => -1})])
+
+        assert {:error, reason} = Mapper.compile(config), "#{key} was accepted"
+        assert reason =~ "must not be negative"
+      end
+    end
+
+    test "rejects a string filter length that is not a 64-bit integer" do
+      config =
+        MappingConfig.new([
+          Field.string("s", path: "$.s", filters: %{len_eq: Integer.pow(2, 100)})
+        ])
+
+      assert {:error, reason} = Mapper.compile(config)
+      assert reason =~ "'len_eq' must be an integer"
+    end
+
+    test "accepts a zero string filter length" do
+      result =
+        compile_and_map(
+          [Field.string("s", path: "$.s", filters: %{len_gt: 0})],
+          %{"s" => "hello"}
+        )
+
+      assert result["s"] == "hello"
     end
   end
 
@@ -2789,6 +3323,20 @@ defmodule Logflare.MapperTest do
 
       # Non-binary values are not filtered, they pass through to coercion
       assert result["val"] == "12345"
+    end
+
+    test "filters still apply after a to_json/from_json round trip" do
+      config =
+        MappingConfig.new([
+          Field.string("val", path: "$.val", default: "fallback", filters: %{len_gt: 3})
+        ])
+
+      {:ok, json} = MappingConfig.to_json(config)
+      {:ok, restored} = MappingConfig.from_json(json)
+
+      result = Mapper.map(%{"val" => "ab"}, Mapper.compile!(restored))
+
+      assert result["val"] == "fallback"
     end
   end
 end

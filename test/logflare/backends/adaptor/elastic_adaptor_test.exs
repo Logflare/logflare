@@ -40,6 +40,15 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
     end
   end
 
+  describe "sanitize_config_for_display/1" do
+    test "masks credentials while preserving url" do
+      config = %{username: "user", password: "secret123", url: "https://example.com"}
+
+      assert %{username: "**********", password: "**********", url: "https://example.com"} ==
+               @subject.sanitize_config_for_display(config)
+    end
+  end
+
   describe "redact_config/1" do
     test "redacts password field when present" do
       config = %{password: "secret123", url: "https://example.com"}

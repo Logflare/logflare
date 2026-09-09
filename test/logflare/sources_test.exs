@@ -638,6 +638,23 @@ defmodule Logflare.SourcesTest do
       expected_ids = [source1.id, source2.id] |> Enum.sort()
       assert result_ids == expected_ids
     end
+
+    test "list_sources/1 does not hydrate retention_days by default", %{user: user} do
+      insert(:source, user: user)
+      insert(:source, user: user)
+
+      results = Sources.list_sources(user_id: user.id)
+      assert Enum.all?(results, &(&1.retention_days == nil))
+    end
+
+    test "list_sources/1 hydrates retention_days when hydrate_retention_days?: true", %{
+      user: user
+    } do
+      insert(:source, user: user)
+
+      [result] = Sources.list_sources(user_id: user.id, hydrate_retention_days?: true)
+      refute is_nil(result.retention_days)
+    end
   end
 
   describe "stop_source_local/1" do
