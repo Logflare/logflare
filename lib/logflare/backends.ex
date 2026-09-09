@@ -18,7 +18,7 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.Spool.Encoder, as: SpoolEncoder
   alias Logflare.Backends.Spool.Partition, as: SpoolPartition
   alias Logflare.Backends.Spool.PartitionSupervisor, as: SpoolPartitionSupervisor
-  alias Logflare.Backends.Spool.WriteHealth
+  alias Logflare.Backends.Spool.Health, as: SpoolHealth
   alias Logflare.ContextCache
   alias Logflare.Cluster
   alias Logflare.LogEvent
@@ -615,9 +615,11 @@ defmodule Logflare.Backends do
   normal (non-spool) dispatch for that event instead of failing the
   request — logging an error for a genuine dispatch failure, as opposed to
   a warning for the merely-not-registered-yet case (see
-  `Logflare.Backends.Spool.WriteHealth` for the local-disk-health signal a
-  WAL write failure still reports separately). Non-spooled events are
-  always dispatched to their backend and this returns immediately.
+  `Logflare.Backends.Spool.Health`, which both kinds of failure report to,
+  and which independently stops routing new events to the spool at all —
+  see `spool_producer_mode?/0` — once it's been unhealthy for long enough).
+  Non-spooled events are always dispatched to their backend and this
+  returns immediately.
   """
   @type log_param :: map()
   @spec ingest_logs([log_param()], Source.t()) ::
@@ -818,18 +820,20 @@ defmodule Logflare.Backends do
     :ok
   end
 
-  # A local WAL write failure marks WriteHealth unhealthy (see
-  # Logflare.Backends.Spool.Buffer.WAL/WriteHealth) — once that happens, this
-  # node stops routing ingest through the spool path at all (falls through
-  # to the normal, non-spool dispatch below) rather than continuing to fail
-  # or degrade writes on a disk that's already known to be broken. The
-  # node's own health check fails the same moment (WriteHealth is shared),
-  # so it stops receiving new traffic and gets replaced. Doesn't apply when
-  # the buffer is :mem (see spool_buffer/0) — there's no local disk to be
-  # unhealthy about there.
+  # A local WAL write failure, or a commit that can't reach GCS/S3 or
+  # Pub-Sub/SQS, marks Logflare.Backends.Spool.Health unhealthy (see
+  # Buffer.WAL, and Partition.settle_commit/3 — the latter reports uniformly
+  # for both buffers, since a commit fails the same way regardless of which
+  # buffer sealed it) — once that happens, this node stops routing ingest
+  # through the spool path at all (falls through to the normal, non-spool
+  # dispatch below) rather than continuing to fail or degrade writes on a
+  # path that's already known to be broken. This is independent of
+  # LogflareWeb.HealthCheckController's own use of Health.healthy?/0 (which,
+  # as of this writing, doesn't gate the node's own health check — see that
+  # module).
   @spec spool_producer_mode?() :: boolean()
   def spool_producer_mode? do
-    spool_mode() in [:producer, :both] and (spool_buffer() == :mem or WriteHealth.healthy?())
+    spool_mode() in [:producer, :both] and SpoolHealth.healthy?()
   end
 
   @spec spool_consumer_mode?() :: boolean()

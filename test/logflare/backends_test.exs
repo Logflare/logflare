@@ -16,7 +16,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.RecentInsertsCacher
   alias Logflare.Backends.Spool.PartitionSupervisor
   alias Logflare.Backends.Spool.Storage.GCS, as: SpoolStorageMod
-  alias Logflare.Backends.Spool.WriteHealth
+  alias Logflare.Backends.Spool.Health
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.SourceSupWorker
   alias Logflare.LogEvent
@@ -2114,19 +2114,16 @@ defmodule Logflare.BackendsTest do
       assert pending_event_count() == 0
     end
 
-    test "does not dispatch to the spool producer once WriteHealth is unhealthy, even if everything else is enabled",
+    test "does not dispatch to the spool producer once Health is unhealthy, even if everything else is enabled",
          %{source: source} do
-      # buffer: :wal — WriteHealth only gates WAL-buffered spooling (it's
-      # about local disk health, which :mem never touches at all, see
-      # Backends.spool_producer_mode?/0).
       Application.put_env(:logflare, :spool,
         mode: :producer,
         buffer: :wal,
-        max_write_health_failures: 1
+        max_spool_health_failures: 1
       )
 
-      WriteHealth.report_failure!()
-      on_exit(fn -> WriteHealth.report_recovery!() end)
+      Health.report_failure!()
+      on_exit(fn -> Health.report_recovery!() end)
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]

@@ -51,6 +51,7 @@ defmodule Logflare.Backends.Spool.Partition do
   require Logger
 
   alias Logflare.Backends.Spool.Committer
+  alias Logflare.Backends.Spool.Health
 
   @default_max_inflight_commits 10
   # Deliberately decoupled from batch_timeout — recovery retrying is "check
@@ -295,10 +296,20 @@ defmodule Logflare.Backends.Spool.Partition do
 
   defp settle_commit(state, tag, result) do
     {{_ref, context, froms}, state} = forget_task(state, tag)
+    report_commit_health(result)
     buffer_state = state.buffer_mod.on_commit_result(state.buffer_state, context, result)
     Enum.each(froms, &GenServer.reply(&1, result))
     maybe_roll(%{state | buffer_state: buffer_state}, :pipeline)
   end
+
+  # The one place a commit's outcome reports to Health, uniformly for every
+  # buffer — a WAL-sealed file and a Mem in-memory batch fail to commit in
+  # exactly the same way (GCS/S3 unreachable, Pub-Sub/SQS unreachable,
+  # etc.), regardless of which buffer sealed it, so this doesn't belong to
+  # either buffer_mod individually (see Buffer.WAL/.Mem's on_commit_result/3,
+  # which only handle their own buffer-specific bookkeeping now).
+  defp report_commit_health(:ok), do: Health.report_recovery!()
+  defp report_commit_health({:error, _reason}), do: Health.report_failure!()
 
   defp forget_task(state, tag) do
     {entry, tasks} = Map.pop(state.tasks, tag)

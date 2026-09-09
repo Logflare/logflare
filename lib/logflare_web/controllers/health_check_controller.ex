@@ -1,7 +1,7 @@
 defmodule LogflareWeb.HealthCheckController do
   use LogflareWeb, :controller
 
-  alias Logflare.Backends.Spool.WriteHealth
+  alias Logflare.Backends.Spool.Health, as: SpoolHealth
   alias Logflare.JSON
   alias Logflare.Cluster
   alias Logflare.Readiness
@@ -35,13 +35,13 @@ defmodule LogflareWeb.HealthCheckController do
         Enum.all?(Map.values(caches), &(&1 == :ok)),
         memory_utilization < max_memory_ratio
         # Temporarily not gating the health check on this — see
-        # Logflare.Backends.Spool.WriteHealth. An unhealthy WAL already
+        # Logflare.Backends.Spool.Health. An unhealthy spool already
         # disables spool routing on its own (Backends.spool_producer_mode?/0),
         # so this only controlled whether the whole node got pulled out of
-        # rotation on top of that; left out until WriteHealth's signal has
+        # rotation on top of that; left out until Health's signal has
         # been observed in production for a while (see its telemetry,
         # spool.write_health.healthy, on Grafana).
-        # WriteHealth.healthy?()
+        # SpoolHealth.healthy?()
       ]
       |> Enum.all?()
 
@@ -70,7 +70,7 @@ defmodule LogflareWeb.HealthCheckController do
         repo_uptime: repo_uptime,
         caches: caches,
         memory_utilization: if(memory_utilization < max_memory_ratio, do: :ok, else: :critical),
-        spool_write_healthy: WriteHealth.healthy?()
+        spool_write_healthy: SpoolHealth.healthy?()
       )
       |> JSON.encode!()
 

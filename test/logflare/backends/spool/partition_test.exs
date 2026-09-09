@@ -25,6 +25,7 @@ defmodule Logflare.Backends.Spool.PartitionTest do
 
   alias Logflare.Backends.Spool.Buffer
   alias Logflare.Backends.Spool.Framing
+  alias Logflare.Backends.Spool.Health
   alias Logflare.Backends.Spool.Partition
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
@@ -407,6 +408,39 @@ defmodule Logflare.Backends.Spool.PartitionTest do
       assert_receive {:put_attempt, 0}, 1000
       assert_receive {:put_attempt, 1}, 1000
       assert_receive {:put_attempt, 2}, 1000
+    end
+  end
+
+  describe "settle_commit/3 reports Health, for every buffer alike" do
+    setup do
+      on_exit(fn -> Health.report_recovery!() end)
+      :ok
+    end
+
+    test "a successful commit reports recovery" do
+      Application.put_env(:logflare, :spool, max_spool_health_failures: 1)
+      on_exit(fn -> Application.delete_env(:logflare, :spool) end)
+      Health.report_failure!()
+      assert Health.healthy?() == false
+
+      stub(StorageMod, :put, fn _b, _k, _body, _opts -> {:ok, %{}} end)
+
+      {pid, _name} = start_partition(batch_timeout: 10)
+      assert :ok = Partition.append(pid, segment(), 10, 1)
+
+      TestUtils.retry_assert(fn -> assert Health.healthy?() == true end)
+    end
+
+    test "a commit that exhausts its retries reports failure" do
+      Application.put_env(:logflare, :spool, max_spool_health_failures: 1, max_commit_attempts: 1)
+      on_exit(fn -> Application.delete_env(:logflare, :spool) end)
+
+      stub(StorageMod, :put, fn _b, _k, _body, _opts -> {:error, :timeout} end)
+
+      {pid, _name} = start_partition(batch_timeout: 10)
+      assert :ok = Partition.append(pid, segment(), 10, 1)
+
+      TestUtils.retry_assert(fn -> assert Health.healthy?() == false end)
     end
   end
 

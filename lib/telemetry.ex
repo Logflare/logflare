@@ -461,10 +461,19 @@ defmodule Logflare.Telemetry do
       ),
       last_value("logflare.backends.spool.write_health.healthy",
         description:
-          "Spool local WAL write health (1=healthy, 0=unhealthy — spool routing disabled on this node, see Logflare.Backends.Spool.WriteHealth)"
+          "Spool health (1=healthy, 0=unhealthy — spool routing disabled on this node, see Logflare.Backends.Spool.Health) — local WAL writes/rolls and commits to GCS/S3 or Pub-Sub/SQS all report here"
       ),
       last_value("logflare.backends.spool.write_health.failure_count",
-        description: "Spool local WAL consecutive write/roll/commit failure count"
+        description: "Spool consecutive write/roll/commit failure count"
+      ),
+      counter("logflare.backends.spool.wal.write_error.count",
+        tags: [:reason, :index],
+        description: "Spool local WAL write/reopen failure count by reason and partition index"
+      ),
+      counter("logflare.backends.spool.committer.read_error.count",
+        tags: [:reason],
+        description:
+          "Spool commit body reads that failed permanently (unreadable file or corrupt frame), by reason — never retried, see Logflare.Backends.Spool.Committer"
       ),
       counter("logflare.backends.spool.queue.publish.count",
         tags: [:result],

@@ -249,7 +249,7 @@ defmodule Logflare.Backends.Spool.CommitterTest do
                Committer.commit_async(self(), file_thunk(dir), 1, :size, dir, config())
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :committer, :read_error],
-                      %{count: 1}, %{reason: :eisdir}}
+                      %{}, %{reason: :eisdir}}
 
       assert_receive {:commit_failed, ^dir, :eisdir}
     end
@@ -261,7 +261,7 @@ defmodule Logflare.Backends.Spool.CommitterTest do
                Committer.commit_async(self(), fn -> {:error, :boom} end, 1, :size, :ctx, config())
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :committer, :read_error],
-                      %{count: 1}, %{reason: :boom}}
+                      %{}, %{reason: :boom}}
 
       assert_receive {:commit_failed, :ctx, :boom}
     end
@@ -291,7 +291,7 @@ defmodule Logflare.Backends.Spool.CommitterTest do
                Committer.commit_async(test_pid, file_thunk(path), 1, :size, path, config())
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :committer, :read_error],
-                      %{count: 1}, %{reason: :corrupt_frame}}
+                      %{}, %{reason: :corrupt_frame}}
 
       assert_receive {:commit_failed, ^path, :corrupt_frame}
       refute_receive {:put, _body}, 100

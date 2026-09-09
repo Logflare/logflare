@@ -4,9 +4,11 @@ defmodule Logflare.Backends.Spool.Buffer do
   buffers appended segments and turns an accumulated batch into one
   commit — local-disk WAL (`Buffer.WAL`) or an in-memory batch
   (`Buffer.Mem`). A buffer owns *how* appends land and *how* rolling
-  works, including reporting its own write/roll failures (e.g.
-  `Logflare.Backends.Spool.WriteHealth` for the WAL buffer; a no-op for
-  Mem, since there's no local disk to report on).
+  works, including reporting its own local write/roll failures (e.g.
+  `Logflare.Backends.Spool.Health` for the WAL buffer; a no-op for Mem,
+  since there's no local disk to report on) — commit-result health
+  reporting itself is handled uniformly for every buffer by `Partition`,
+  not here (see `on_commit_result/3` below).
 
   `Partition` owns everything else: when to reply to a caller
   (immediately, by default, vs deferred until the eventual commit settles,
@@ -48,8 +50,8 @@ defmodule Logflare.Backends.Spool.Buffer do
 
   @doc """
   Called once a roll's commit settles, successfully or not, so the buffer
-  can do its own bookkeeping (e.g. delete a sealed WAL file on success, or
-  report write health either way).
+  can do its own bookkeeping (e.g. delete a sealed WAL file on success) —
+  a no-op for a buffer with nothing of its own to do here (e.g. Mem).
   """
   @callback on_commit_result(state(), context :: term(), :ok | {:error, term()}) :: state()
 

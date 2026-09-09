@@ -88,7 +88,7 @@ defmodule Logflare.Backends.Spool.Committer do
       {:error, reason} ->
         :telemetry.execute(
           [:logflare, :backends, :spool, :committer, :read_error],
-          %{count: 1},
+          %{},
           %{reason: reason}
         )
 

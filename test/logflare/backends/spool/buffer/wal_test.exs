@@ -3,11 +3,11 @@ defmodule Logflare.Backends.Spool.Buffer.WALTest do
 
   alias Logflare.Backends.Spool.Buffer.WAL
   alias Logflare.Backends.Spool.Framing
-  alias Logflare.Backends.Spool.WriteHealth
+  alias Logflare.Backends.Spool.Health
   alias Logflare.TestUtils
 
   setup do
-    on_exit(fn -> WriteHealth.report_recovery!() end)
+    on_exit(fn -> Health.report_recovery!() end)
     :ok
   end
 
@@ -46,16 +46,6 @@ defmodule Logflare.Backends.Spool.Buffer.WALTest do
       assert state.fd != nil
     end
 
-    test "reads max_recovery_attempts from config, defaulting to 3" do
-      state = init!()
-      assert state.max_recovery_attempts == 3
-
-      Application.put_env(:logflare, :spool, max_recovery_attempts: 7)
-      on_exit(fn -> Application.delete_env(:logflare, :spool) end)
-
-      assert init!().max_recovery_attempts == 7
-    end
-
     test "truncates a torn tail left in the active file, rather than treating it as corruption" do
       dir = wal_dir!()
       active_path = Path.join(dir, "p0.wal")
@@ -87,16 +77,16 @@ defmodule Logflare.Backends.Spool.Buffer.WALTest do
       assert {:ok, ["line\n", "line\n"]} = Framing.decode_segments(body)
     end
 
-    test "reports WriteHealth recovery on every successful write" do
-      Application.put_env(:logflare, :spool, max_write_health_failures: 1)
+    test "reports Health recovery on every successful write" do
+      Application.put_env(:logflare, :spool, max_spool_health_failures: 1)
       on_exit(fn -> Application.delete_env(:logflare, :spool) end)
-      WriteHealth.report_failure!()
-      assert WriteHealth.healthy?() == false
+      Health.report_failure!()
+      assert Health.healthy?() == false
 
       state = init!()
       assert {:ok, _state} = WAL.append(state, segment(), 10, 1)
 
-      assert WriteHealth.healthy?() == true
+      assert Health.healthy?() == true
     end
 
     test "a write against a merely-closed fd self-heals via one reopen, without ever going unhealthy" do
@@ -105,20 +95,24 @@ defmodule Logflare.Backends.Spool.Buffer.WALTest do
 
       assert {:ok, state} = WAL.append(state, segment(), 10, 1)
       assert state.fd != nil
-      assert WriteHealth.healthy?() == true
+      assert Health.healthy?() == true
     end
 
     test "an unrecoverable write failure returns an error, leaves fd nil, and marks the node unhealthy" do
-      Application.put_env(:logflare, :spool, max_write_health_failures: 1)
+      Application.put_env(:logflare, :spool, max_spool_health_failures: 1)
       on_exit(fn -> Application.delete_env(:logflare, :spool) end)
 
       state = init!()
       :file.close(state.fd)
       state = %{state | active_path: Path.join(state.wal_dir, "does-not-exist/p0.wal")}
 
-      assert {:error, :einval, state} = WAL.append(state, segment(), 10, 1)
+      # The first write fails against the closed fd (:einval); the one-shot
+      # retry's own reopen then fails too (:enoent, no such directory) — the
+      # reason reported is whichever failure is actually terminal (the
+      # retry's), not the original one that triggered the retry.
+      assert {:error, :enoent, state} = WAL.append(state, segment(), 10, 1)
       assert state.fd == nil
-      assert WriteHealth.healthy?() == false
+      assert Health.healthy?() == false
     end
 
     test "emits telemetry when the write fails" do
@@ -130,8 +124,8 @@ defmodule Logflare.Backends.Spool.Buffer.WALTest do
 
       assert {:error, _reason, _state} = WAL.append(state, segment(), 10, 1)
 
-      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :wal, :write_error],
-                      %{count: 1}, %{index: 0}}
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :wal, :write_error], %{},
+                      %{index: 0}}
     end
   end
 
@@ -178,7 +172,7 @@ defmodule Logflare.Backends.Spool.Buffer.WALTest do
       assert {:ok, _thunk, _sealed_path, 1, _new_state} = WAL.roll(state, false)
     end
 
-    test "a roll whose rename fails still reopens the active file, leaving pending counters untouched" do
+    test "a roll whose rename fails leaves pending counters untouched and the fd nil, to be reopened lazily" do
       state = init!()
       {:ok, state} = WAL.append(state, segment(), 10, 1)
       state = %{state | wal_dir: Path.join(state.wal_dir, "does-not-exist")}
@@ -186,11 +180,14 @@ defmodule Logflare.Backends.Spool.Buffer.WALTest do
       assert {:error, :enoent, new_state} = WAL.roll(state, true)
       assert new_state.pending_bytes == 10
       assert new_state.pending_count == 1
-      assert new_state.fd != nil
+      # Not reopened here — the next append (or the next roll attempt, via
+      # the recurring flush timer) reopens it fresh through the ordinary
+      # `fd: nil` path, so nothing is lost by not doing it eagerly.
+      assert new_state.fd == nil
     end
 
-    test "a roll whose rename fails reports WriteHealth failure" do
-      Application.put_env(:logflare, :spool, max_write_health_failures: 1)
+    test "a roll whose rename fails reports Health failure" do
+      Application.put_env(:logflare, :spool, max_spool_health_failures: 1)
       on_exit(fn -> Application.delete_env(:logflare, :spool) end)
 
       state = init!()
@@ -198,17 +195,16 @@ defmodule Logflare.Backends.Spool.Buffer.WALTest do
       state = %{state | wal_dir: Path.join(state.wal_dir, "does-not-exist")}
 
       assert {:error, :enoent, _state} = WAL.roll(state, true)
-      assert WriteHealth.healthy?() == false
+      assert Health.healthy?() == false
     end
   end
 
+  # Commit-result Health reporting is no longer this buffer's job — see
+  # Partition.settle_commit/3, tested at that (buffer-agnostic) level
+  # instead. Only WAL's own bookkeeping (deleting/leaving the sealed file)
+  # is tested here.
   describe "on_commit_result/3" do
-    test ":ok deletes the sealed file and reports WriteHealth recovery" do
-      Application.put_env(:logflare, :spool, max_write_health_failures: 1)
-      on_exit(fn -> Application.delete_env(:logflare, :spool) end)
-      WriteHealth.report_failure!()
-      assert WriteHealth.healthy?() == false
-
+    test ":ok deletes the sealed file" do
       state = init!()
       {:ok, state} = WAL.append(state, segment(), 10, 1)
       {:ok, _thunk, sealed_path, _count, state} = WAL.roll(state, true)
@@ -216,45 +212,19 @@ defmodule Logflare.Backends.Spool.Buffer.WALTest do
       _state = WAL.on_commit_result(state, sealed_path, :ok)
 
       refute File.exists?(sealed_path)
-      assert WriteHealth.healthy?() == true
     end
 
-    test "a fresh failure marks the file with an attempt count instead of leaving it unmarked" do
-      state = init!()
-      {:ok, state} = WAL.append(state, segment(), 10, 1)
-      {:ok, _thunk, sealed_path, _count, state} = WAL.roll(state, true)
-      dir = state.wal_dir
-
-      _state = WAL.on_commit_result(state, sealed_path, {:error, :timeout})
-
-      refute File.exists?(sealed_path)
-      assert [marked] = Path.wildcard(Path.join(dir, "p0-*.sealed"))
-      assert String.ends_with?(marked, ".attempt1.sealed")
-    end
-
-    test "a failure reports WriteHealth failure" do
-      Application.put_env(:logflare, :spool, max_write_health_failures: 1)
-      on_exit(fn -> Application.delete_env(:logflare, :spool) end)
-
+    test "a failure leaves the sealed file on disk untouched, for recover/1 to find again next restart" do
       state = init!()
       {:ok, state} = WAL.append(state, segment(), 10, 1)
       {:ok, _thunk, sealed_path, _count, state} = WAL.roll(state, true)
 
       _state = WAL.on_commit_result(state, sealed_path, {:error, :timeout})
 
-      assert WriteHealth.healthy?() == false
-    end
-
-    test "a failure that would exceed max_recovery_attempts quarantines the file instead of marking it again" do
-      dir = wal_dir!()
-      exhausted = Path.join(dir, "p0-1.attempt2.sealed")
-      File.write!(exhausted, segment("stuck\n"))
-      state = init!(wal_dir: dir)
-
-      _state = WAL.on_commit_result(state, exhausted, {:error, :timeout})
-
-      refute File.exists?(exhausted)
-      assert File.exists?(exhausted <> ".quarantined")
+      # No renaming, no attempt marker, no quarantine — recovery only ever
+      # happens once, at the next restart's init/1, so there's nothing to
+      # gain from tracking attempts in between (see this module's doc).
+      assert File.exists?(sealed_path)
     end
   end
 
@@ -282,17 +252,6 @@ defmodule Logflare.Backends.Spool.Buffer.WALTest do
       state = init!(wal_dir: dir, index: 0)
 
       assert {[], _state} = WAL.recover(state)
-    end
-
-    test "quarantines a file already at max_recovery_attempts instead of returning it for another retry" do
-      dir = wal_dir!()
-      exhausted = Path.join(dir, "p0-1.attempt3.sealed")
-      File.write!(exhausted, segment("stuck\n"))
-      state = init!(wal_dir: dir)
-
-      assert {[], _state} = WAL.recover(state)
-      refute File.exists?(exhausted)
-      assert File.exists?(exhausted <> ".quarantined")
     end
   end
 end

@@ -4,7 +4,7 @@ defmodule LogflareWeb.HealthCheckControllerTest do
   """
   use LogflareWeb.ConnCase
 
-  alias Logflare.Backends.Spool.WriteHealth
+  alias Logflare.Backends.Spool.Health
   alias Logflare.Readiness
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source
@@ -12,7 +12,7 @@ defmodule LogflareWeb.HealthCheckControllerTest do
   setup do
     reset_readiness()
     on_exit(&reset_readiness/0)
-    on_exit(fn -> WriteHealth.report_recovery!() end)
+    on_exit(fn -> Health.report_recovery!() end)
 
     Logflare.Google.BigQuery
     |> stub(:init_table!, fn _, _, _, _, _, _ -> :ok end)
@@ -72,7 +72,7 @@ defmodule LogflareWeb.HealthCheckControllerTest do
     start_supervised!(Source.Supervisor)
 
     prev_spool_config = Application.get_env(:logflare, :spool)
-    Application.put_env(:logflare, :spool, max_write_health_failures: 1)
+    Application.put_env(:logflare, :spool, max_spool_health_failures: 1)
 
     on_exit(fn ->
       if prev_spool_config do
@@ -85,16 +85,16 @@ defmodule LogflareWeb.HealthCheckControllerTest do
     assert %{"status" => "ok", "spool_write_healthy" => true} =
              conn |> get("/health") |> json_response(200)
 
-    WriteHealth.report_failure!()
+    Health.report_failure!()
 
-    # An unhealthy WAL disables spool routing on its own
+    # An unhealthy spool disables spool routing on its own
     # (Backends.spool_producer_mode?/0) — this node's own /health check is
     # deliberately not also gated on it right now, see
     # HealthCheckController.check/2.
     assert %{"status" => "ok", "spool_write_healthy" => false} =
              conn |> get("/health") |> json_response(200)
 
-    WriteHealth.report_recovery!()
+    Health.report_recovery!()
 
     assert %{"status" => "ok", "spool_write_healthy" => true} =
              conn |> get("/health") |> json_response(200)
