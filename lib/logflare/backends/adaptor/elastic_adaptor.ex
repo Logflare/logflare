@@ -221,10 +221,11 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
   defp format_event(%LogEvent{body: body} = log_event) do
     {timestamp, body} = Map.pop(body, "timestamp")
     {message, body} = Map.pop(body, "event_message")
+    {id, body} = Map.pop(body, "id")
 
     body
     |> Map.put("logflare", %{
-      "id" => log_event.id,
+      "id" => id || log_event.id,
       "source" => log_event.source_name,
       "source_uuid" => log_event.source_uuid && to_string(log_event.source_uuid),
       "event_type" => log_event.event_type && to_string(log_event.event_type)

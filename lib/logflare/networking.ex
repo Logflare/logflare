@@ -19,6 +19,8 @@ defmodule Logflare.Networking do
   defp finch_pools(true = _postgres_backend?) do
     [
       {Finch,
+       name: Logflare.FinchDefaultHttp1, pools: %{default: [protocols: [:http1], size: 50]}},
+      {Finch,
        name: Logflare.FinchDefault,
        pools:
          %{
