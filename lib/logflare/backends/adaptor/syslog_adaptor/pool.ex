@@ -29,6 +29,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   @spec send(NimblePool.pool(), iodata, map) :: :ok | {:error, reason}
         when reason: :closed | :timeout | :inet.posix() | :ssl.reason()
   def send(pool, message, meta \\ %{}) do
+    meta = Map.take(meta, [:source_id])
+
     NimblePool.checkout!(pool, :checkout, fn from, conn ->
       with {:ok, socket} <- ensure_connected(conn, from, meta),
            :ok <- Socket.send(socket, message) do
@@ -39,11 +41,11 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
     end)
   end
 
-  defp ensure_connected({:connected, socket}, _from, meta) do
+  defp ensure_connected({:connected, socket, backend_id}, _from, meta) do
     :telemetry.execute(
       [:logflare, :syslog_pool, :reused_connection],
       %{system_time: System.system_time()},
-      meta
+      Map.put(meta, :backend_id, backend_id)
     )
 
     {:ok, socket}
@@ -51,7 +53,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
 
   defp ensure_connected({:idle, backend_id}, from, meta) do
     config = current_backend_config(backend_id)
-    meta = Map.put(meta, :config, config)
+    meta = Map.merge(meta, connection_metadata(backend_id, config))
 
     :telemetry.span([:logflare, :syslog_pool, :connect], meta, fn ->
       result = connect_and_transfer(config, from)
@@ -64,6 +66,11 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
 
       {result, meta}
     end)
+  end
+
+  @spec connection_metadata(pos_integer(), map()) :: map()
+  defp connection_metadata(backend_id, config) do
+    %{backend_id: backend_id, config: Map.take(config, [:host, :port, :tls])}
   end
 
   defp current_backend_config(backend_id) do
@@ -110,7 +117,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
         # if current backend config is the same as what it was when conn was opened,
         # return conn, otherwise remove it and try another one
         if config == current_backend_config(backend_id) do
-          {:ok, {:connected, socket}, conn, backend_id}
+          {:ok, {:connected, socket, backend_id}, conn, backend_id}
         else
           {:remove, :stale_config, backend_id}
         end
@@ -162,7 +169,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
       :telemetry.execute(
         [:logflare, :syslog_pool, :disconnect],
         %{system_time: System.system_time()},
-        %{backend_id: backend_id, config: config, reason: reason}
+        Map.put(connection_metadata(backend_id, config), :reason, reason)
       )
 
       Socket.close(socket)

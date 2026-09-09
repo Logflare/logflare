@@ -563,7 +563,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
                ~r"\[notice\] \[Syslog\] Backend #{backend.id} connected to localhost:6514 in \d+ms"
     end
 
-    test "logs reused connection" do
+    test "logs reused connection at debug level" do
+      Logger.configure(level: :debug)
       {source, backend} = start_syslog(%{host: "localhost", port: 6514})
 
       log =
@@ -572,10 +573,10 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
           ingest_syslog([build(:log_event, message: "second message")], source)
         end)
 
-      assert log =~ "[notice] [Syslog] Backend #{backend.id} reused connection"
+      assert log =~ "[debug] [Syslog] Backend #{backend.id} reused connection"
     end
 
-    test "logs connection errror" do
+    test "logs connection error" do
       {source, backend} = start_syslog(%{host: "invalid-host", port: 6514})
 
       telemetry_ref =

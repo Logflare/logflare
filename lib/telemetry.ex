@@ -608,17 +608,29 @@ defmodule Logflare.Telemetry do
       ),
       counter("logflare.syslog_pool.connect.error",
         event_name: "logflare.syslog_pool.connect.stop",
+        measurement: fn _measurements -> 1 end,
         keep: &error_kind?/1,
         tags: [:reason],
         tag_values: &low_cardinality_syslog_reason/1,
         description: "Syslog pool initial connection errors during checkout"
       ),
+      counter("logflare.syslog_pool.connect.error",
+        event_name: "logflare.syslog_pool.connect.exception",
+        measurement: fn _measurements -> 1 end,
+        tags: [:reason],
+        tag_values: &low_cardinality_syslog_reason/1,
+        description: "Syslog pool initial connection errors during checkout"
+      ),
       counter("logflare.syslog_pool.disconnect",
+        event_name: "logflare.syslog_pool.disconnect",
+        measurement: fn _measurements -> 1 end,
         tags: [:reason],
         tag_values: &low_cardinality_syslog_reason/1,
         description: "Syslog pool disconnections for established connections"
       ),
       counter("logflare.syslog_pool.reused_connection",
+        event_name: "logflare.syslog_pool.reused_connection",
+        measurement: fn _measurements -> 1 end,
         description: "Syslog pool reused connections"
       )
     ]
@@ -816,6 +828,8 @@ defmodule Logflare.Telemetry do
         :closed -> "closed"
         :econnrefused -> "econnrefused"
         :nxdomain -> "nxdomain"
+        :idle_timeout -> "idle_timeout"
+        :stale_config -> "stale_config"
         _ -> "other"
       end
 
