@@ -180,14 +180,12 @@ db_auth_options =
       []
 
     "aws_iam" ->
-      [
-        logflare_auth: :aws_iam,
-        logflare_aws_region: System.get_env("DB_AWS_REGION")
-      ]
+      [logflare_auth: :aws_iam]
 
     auth ->
       raise "Unsupported DB_AUTH=#{inspect(auth)}, expected password or aws_iam"
   end
+  |> Keyword.put(:logflare_aws_region, System.get_env("DB_AWS_REGION"))
 
 config :logflare,
        Logflare.Repo,
@@ -199,6 +197,7 @@ config :logflare,
                else: nil
              ),
            database: System.get_env("DB_DATABASE"),
+           url: System.get_env("DB_URL"),
            hostname: System.get_env("DB_HOSTNAME"),
            password: System.get_env("DB_PASSWORD"),
            username: System.get_env("DB_USERNAME"),
