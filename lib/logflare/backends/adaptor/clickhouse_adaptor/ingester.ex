@@ -6,6 +6,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   import Logflare.Utils.Guards
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.EndpointUtils
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.FinchPoolTimeoutNormalizer
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder
   alias Logflare.Backends.Backend
@@ -117,6 +118,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   def error_class(reason) when is_binary(reason),
     do: response_body_error_class(too_many_parts?(reason), reason)
 
+  # %Finch.Error{} only ever comes from an HTTP/2 pool. Both ClickHouse ingest pools are
+  # HTTP/1, where a pool checkout timeout arrives as :pool_timeout via FinchPoolTimeoutNormalizer.
   def error_class(%Finch.Error{reason: reason}), do: transport_error_class(reason)
   def error_class(%Mint.TransportError{reason: reason}), do: transport_error_class(reason)
   def error_class(reason), do: transport_error_class(reason)
@@ -160,7 +163,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
        delay: @initial_delay,
        max_retries: @max_retries,
        max_delay: @max_delay,
-       should_retry: &retriable?/1}
+       should_retry: &retriable?/1},
+      FinchPoolTimeoutNormalizer
     ]
 
     adapter =

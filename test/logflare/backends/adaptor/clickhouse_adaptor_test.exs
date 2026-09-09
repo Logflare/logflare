@@ -1699,6 +1699,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert metadata.error_class == :http_client_error
     end
 
+    test "counts a pool checkout timeout as :pool_timeout", %{backend: backend} do
+      # Raised, not returned — the real HTTP/1 pool behaviour. Before FinchPoolTimeoutNormalizer
+      # normalized it, this exception escaped handle_insert_result/4 entirely and the
+      # insert never appeared in this metric at all.
+      Mimic.stub(Finch, :request, fn _request, _pool, _opts ->
+        raise """
+        Finch was unable to provide a connection within the timeout due to excess queuing         for connections. Consider adjusting the pool size, count, timeout or reducing the         rate of requests if it is possible that the downstream service is unable to keep up         with the current rate.
+        """
+      end)
+
+      assert {:error, :pool_timeout} =
+               ClickHouseAdaptor.insert_log_events_compressed(backend, :log, :zlib.gzip(""))
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :insert, :result], %{count: 1},
+                      metadata}
+
+      assert metadata.result == :error
+      assert metadata.error_class == :pool_timeout
+    end
+
     test "distinguishes too-many-parts rejections", %{backend: backend} do
       Mimic.stub(Finch, :request, fn _request, _pool, _opts ->
         {:ok, %Finch.Response{status: 500, body: "Code: 252. DB::Exception: Too many parts"}}
