@@ -324,15 +324,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
 
   describe "error_class/1" do
     test "classifies a too-many-parts response body ahead of its HTTP status" do
-      assert Ingester.error_class("HTTP 500: Code: 252. DB::Exception: Too many parts") ==
+      assert Ingester.error_class({:http, 500, "Code: 252. DB::Exception: Too many parts"}) ==
                :too_many_parts
     end
 
     test "classifies HTTP status ranges" do
-      assert Ingester.error_class("HTTP 429: slow down") == :http_too_many_requests
-      assert Ingester.error_class("HTTP 503: unavailable") == :http_server_error
-      assert Ingester.error_class("HTTP 400: bad request") == :http_client_error
-      assert Ingester.error_class("HTTP 302: moved") == :http_error
+      assert Ingester.error_class({:http, 429, "slow down"}) == :http_too_many_requests
+      assert Ingester.error_class({:http, 503, "unavailable"}) == :http_server_error
+      assert Ingester.error_class({:http, 400, "bad request"}) == :http_client_error
+      assert Ingester.error_class({:http, 302, "moved"}) == :http_error
     end
 
     test "classifies wrapped Finch and Mint transport errors" do
@@ -355,6 +355,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       assert Ingester.error_class("something unstructured") == :unknown
       assert Ingester.error_class({:weird, :shape}) == :unknown
       assert Ingester.error_class(:some_unmapped_atom) == :unknown
+    end
+  end
+
+  describe "error_message/1" do
+    test "renders a structured HTTP error the way it reads in logs" do
+      assert Ingester.error_message({:http, 400, "boom"}) == "HTTP 400: boom"
+    end
+
+    test "inspects any other reason" do
+      assert Ingester.error_message(%Finch.Error{reason: :pool_timeout}) ==
+               inspect(%Finch.Error{reason: :pool_timeout})
+
+      assert Ingester.error_message(:closed) == ":closed"
     end
   end
 
@@ -406,7 +419,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
         {:ok, %Finch.Response{status: 500, body: response_body}}
       end)
 
-      assert {:error, "HTTP 500: " <> ^response_body} =
+      assert {:error, {:http, 500, ^response_body}} =
                Ingester.insert_compressed(backend, table_name, :log, :zlib.gzip(""))
     end
 

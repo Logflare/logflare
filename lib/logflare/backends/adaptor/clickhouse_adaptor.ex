@@ -938,7 +938,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   #{@insert_max_execution_time_seconds} seconds.
   """
   @spec insert_log_events(Backend.t(), [LogEvent.t()], TypeDetection.event_type(), keyword()) ::
-          :ok | {:error, String.t()}
+          :ok | {:error, term()}
   def insert_log_events(backend, events, event_type, opts \\ [])
 
   def insert_log_events(%Backend{}, [], _event_type, _opts), do: :ok
@@ -992,7 +992,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   defp handle_insert_result({:error, reason}, backend, event_type, async?) do
     Logger.warning("ClickHouse http insert error.",
       host: insert_host(backend.config, async?),
-      error_string: inspect(reason)
+      error_string: Ingester.error_message(reason)
     )
 
     emit_insert_telemetry(backend, event_type, async?, :error, Ingester.error_class(reason))
