@@ -1,11 +1,111 @@
 defmodule Logflare.Repo.ConnectionOptionsTest do
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   alias Logflare.Cluster.PostgresStrategy
   alias Logflare.ContextCache.Supervisor, as: ContextCacheSupervisor
   alias Logflare.GenSingleton
   alias Logflare.Repo
   alias Logflare.Repo.ConnectionOptions
+  alias Logflare.Repo.Replicas
+
+  test "primary URL values override individual connection options" do
+    prepared =
+      ConnectionOptions.prepare(
+        [
+          url:
+            "postgres://url_user:url%20secret@[::1]:5433/url_database?auth=password&pool_size=7&ssl=false",
+          hostname: "configured.example.com",
+          port: 5432,
+          username: "configured_user",
+          password: "configured_secret",
+          database: "configured_database",
+          pool_size: 3,
+          socket_options: [:inet],
+          logflare_auth: :aws_iam,
+          logflare_aws_region: "us-east-1"
+        ],
+        :primary
+      )
+
+    assert prepared[:hostname] == "::1"
+    assert prepared[:port] == 5433
+    assert prepared[:username] == "url_user"
+    assert prepared[:password] == "url secret"
+    assert prepared[:database] == "url_database"
+    assert prepared[:pool_size] == 7
+    assert prepared[:socket_options] == [:inet6]
+    assert prepared[:ssl] == false
+    refute Keyword.has_key?(prepared, :url)
+    refute Keyword.has_key?(prepared, :auth)
+    refute Keyword.has_key?(prepared, :aws_region)
+    refute Keyword.has_key?(prepared, :logflare_auth)
+    refute Keyword.has_key?(prepared, :logflare_aws_region)
+    refute Keyword.has_key?(prepared, :configure)
+  end
+
+  test "primary URL preserves configured SSL options when ssl=true" do
+    ssl = [verify: :verify_peer, cacertfile: "/custom/ca.pem"]
+
+    log =
+      capture_log(fn ->
+        prepared =
+          ConnectionOptions.prepare(
+            [
+              url: "postgres://logflare@database.example.com/logflare?ssl=true",
+              ssl: ssl
+            ],
+            :primary
+          )
+
+        assert prepared[:ssl] == ssl
+      end)
+
+    assert log =~ "ignoring `ssl=true` parameter in URL"
+  end
+
+  test "primary URL password authentication can reuse the configured password" do
+    prepared =
+      ConnectionOptions.prepare(
+        [
+          url: "postgres://url_user@database.example.com/url_database?auth=password",
+          password: "configured_secret",
+          logflare_auth: :aws_iam,
+          logflare_aws_region: "us-east-1"
+        ],
+        :primary
+      )
+
+    assert prepared[:username] == "url_user"
+    assert prepared[:password] == "configured_secret"
+    refute Keyword.has_key?(prepared, :configure)
+  end
+
+  test "primary URL errors redact credentials" do
+    invalid_url = "postgres://url_user:supersecret@database.example.com"
+
+    invalid_url_error =
+      assert_raise Ecto.InvalidURLError, fn ->
+        ConnectionOptions.prepare([url: invalid_url], :primary)
+      end
+
+    refute Exception.message(invalid_url_error) =~ "supersecret"
+    refute invalid_url_error.url =~ "supersecret"
+
+    auth_error =
+      assert_raise ArgumentError, fn ->
+        ConnectionOptions.prepare(
+          [
+            url: "postgres://url_user:supersecret@database.example.com/logflare?auth=aws_iam"
+          ],
+          :primary
+        )
+      end
+
+    assert Exception.message(auth_error) =~ "auth=aws_iam cannot be combined with a password"
+    refute Exception.message(auth_error) =~ "supersecret"
+  end
 
   test "password clients preserve connection options without inheriting Ecto pools" do
     ssl = [
@@ -111,6 +211,35 @@ defmodule Logflare.Repo.ConnectionOptionsTest do
     on_exit(fn -> if Process.alive?(epgsql_conn), do: :epgsql.close(epgsql_conn) end)
 
     assert {:ok, _columns, [{"1"}]} = :epgsql.squery(epgsql_conn, "SELECT 1")
+  end
+
+  test "replicas inherit primary URL options without inheriting its host" do
+    previous_repo_config = Application.fetch_env(:logflare, Repo)
+
+    Application.put_env(
+      :logflare,
+      Repo,
+      url: "postgres://postgres:postgres@localhost:5432/logflare_test?auth=password",
+      pool: DBConnection.ConnectionPool,
+      pool_size: 1
+    )
+
+    on_exit(fn -> restore_application_env(:logflare, Repo, previous_repo_config) end)
+
+    telemetry_ref = :telemetry_test.attach_event_handlers(self(), [[:ecto, :repo, :init]])
+    on_exit(fn -> :telemetry.detach(telemetry_ref) end)
+
+    entry = Replicas.parse!("127.0.0.1")
+    start_supervised!({Replicas, entries: [entry]})
+
+    assert_receive {[:ecto, :repo, :init], ^telemetry_ref, _, %{repo: Repo, opts: opts}}
+    assert opts[:hostname] == "127.0.0.1"
+    assert opts[:username] == "postgres"
+    assert opts[:password] == "postgres"
+    assert opts[:database] == "logflare_test"
+    assert opts[:socket_options] == [:inet]
+    refute Keyword.has_key?(opts, :url)
+    refute Keyword.has_key?(opts, :auth)
   end
 
   defp cainophile_epgsql_options do

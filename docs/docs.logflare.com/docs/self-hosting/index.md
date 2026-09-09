@@ -31,6 +31,7 @@ All browser authentication will be disabled when in single-tenant mode.
 | `PHX_HTTP_IP`                                  | String, defaults to `nil`                                               | Allows configuration of the HTTP server IP to bind to. Specifying an IPv6 like `::` will enable IPv6.                                                                                                                                                                |
 | `PHX_HTTP_PORT`                                | Integer, defaults to `4000`                                             | Allows configuration of the HTTP server port.                                                                                                                                                                                                                        |
 | `DB_DATABASE`                                  | String, defaults to `nil`                                               | Database name for Logflare's internal PostgreSQL database connection.                                                                                                                                                                                                |
+| `DB_URL`                                       | PostgreSQL connection URI, defaults to `nil`                            | Primary database connection URI. Values in the URI override the corresponding individual `DB_*` settings. See [Primary Database URL](#primary-database-url).                                                                                                        |
 | `DB_HOSTNAME`                                  | String, defaults to `nil`                                               | Hostname for Logflare's internal PostgreSQL database connection. IPv4 and IPv6 hosts are detected automatically for socket configuration.                                                                                                                            |
 | `DB_PORT`                                      | Integer, defaults to `5432`                                             | Port for Logflare's internal PostgreSQL database connection.                                                                                                                                                                                                         |
 | `DB_USERNAME`                                  | String, defaults to `nil`                                               | Username for Logflare's internal PostgreSQL database connection.                                                                                                                                                                                                     |
@@ -133,6 +134,24 @@ Without these two additional permissions, the managed service accounts feature w
 | `POSTGRES_BACKEND_URL`    | string, required                       | PostgreSQL connection string, for connecting to the database. User must have sufficient permissions to manage the schema. |
 | `POSTGRES_BACKEND_SCHEMA` | string, optional, defaults to `public` | Specifies the database schema to scope all operations.                                                                   |
 
+## Primary Database URL
+
+`DB_URL` configures the primary database with a PostgreSQL connection URI. URI values override corresponding individual settings such as `DB_HOSTNAME`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE`, and `DB_POOL_SIZE`. Individual settings that are absent from the URI remain in effect.
+
+```text
+DB_URL=postgres://logflare:password@database.example.com:5432/logflare?ssl=true&pool_size=10
+```
+
+Primary and replica URIs use the same Logflare-specific query parameters: `auth` (`password` or `aws_iam`) and `aws_region`. These parameters are removed before the connection options reach Postgrex. A password in the URI implies password authentication, while an explicit `auth` value can override `DB_AUTH`. `DB_AUTH` and `DB_AWS_REGION` remain defaults when the URI omits those parameters.
+
+An IAM-authenticated primary URL carries a username but no password:
+
+```text
+DB_URL=postgres://logflare@my-database.cluster-abc.eu-west-1.rds.amazonaws.com:5432/logflare?auth=aws_iam&aws_region=eu-west-1
+```
+
+`auth=aws_iam` cannot be combined with a password in the same URI. `auth=password` can use a password in the URI or inherit `DB_PASSWORD`.
+
 ## Database SSL Configuration
 
 Logflare supports secure SSL/TLS connections to its internal database (not the PostgreSQL backend). This is configured using the `DB_SSL` environment variable and certificate files.
@@ -171,7 +190,7 @@ The configuration follows the [Erlang Security Working Group recommendations](ht
 
 `LOGFLARE_READ_REPLICAS` is a comma-separated list of PostgreSQL read replicas for selected context-cache and key-value-cache reads. If unset or empty, those reads use the primary database.
 
-Each entry is either a **bare host name or IP literal** or a **connection URI** (`postgres://user:pass@host:port/database?ssl=true&pool_size=5`). In both cases, only the parts given override the primary's `DB_*` settings - anything omitted (port, database, credentials, SSL, authentication, ...) is inherited from the primary. Query params: `ssl` (`true`/`false`), `pool_size` (positive integer), `auth` (`aws_iam`), and `aws_region`.
+Each entry is either a **bare host name or IP literal** or a **connection URI** (`postgres://user:pass@host:port/database?ssl=true&pool_size=5`). In both cases, only the parts given override the primary's `DB_*` settings - anything omitted (port, database, credentials, SSL, authentication, ...) is inherited from the primary. Query params: `ssl` (`true`/`false`), `pool_size` (positive integer), `auth` (`password` or `aws_iam`), and `aws_region`.
 
 The `auth` and `aws_region` query parameters are Logflare configuration and are removed before the connection options reach Postgrex. A replica URI containing a password uses password authentication even when the primary uses IAM.
 

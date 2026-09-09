@@ -31,12 +31,31 @@ defmodule Logflare.Repo.AwsIamTest do
       %{certificate: certificate, host: "database.example.com", region: "eu-west-1"}
     end
 
-    test "replica URIs normalize Logflare-specific IAM options", %{host: host, region: region} do
-      assert {:ok, {_key, config}} =
-               Replicas.parse(
-                 "postgres://logflare@#{host}:5432/logflare?auth=aws_iam&aws_region=#{region}&ssl=true"
+    test "primary and replica URLs normalize Logflare-specific IAM options", context do
+      %{certificate: certificate, host: host, region: region} = context
+
+      url =
+        "postgres://logflare@#{host}:5432/logflare?auth=aws_iam&aws_region=#{region}&ssl=true"
+
+      assert {:ok, prepared} =
+               Repo.init(:supervisor,
+                 url: url,
+                 logflare_auth: :password,
+                 logflare_aws_region: "us-east-1"
                )
 
+      assert prepared[:hostname] == host
+      assert prepared[:username] == "logflare"
+      assert {AwsIam, :configure, [^region, nil]} = prepared[:configure]
+      assert certificate in prepared[:ssl][:cacerts]
+      refute Keyword.has_key?(prepared, :url)
+      refute Keyword.has_key?(prepared, :auth)
+      refute Keyword.has_key?(prepared, :aws_region)
+      refute Keyword.has_key?(prepared, :logflare_auth)
+      refute Keyword.has_key?(prepared, :logflare_aws_region)
+      refute Keyword.has_key?(prepared, :password)
+
+      assert {:ok, {_key, config}} = Replicas.parse(url)
       assert config[:logflare_auth] == :aws_iam
       assert config[:logflare_aws_region] == region
       assert config[:username] == "logflare"
@@ -45,12 +64,41 @@ defmodule Logflare.Repo.AwsIamTest do
       refute Keyword.has_key?(config, :password)
     end
 
+    test "a primary URL can inherit authentication and region defaults", %{
+      host: host,
+      region: region
+    } do
+      cases = [
+        {"postgres://logflare@#{host}/logflare", :aws_iam},
+        {"postgres://logflare@#{host}/logflare?auth=aws_iam", :password}
+      ]
+
+      for {url, default_auth} <- cases do
+        assert {:ok, prepared} =
+                 Repo.init(:supervisor,
+                   url: url,
+                   logflare_auth: default_auth,
+                   logflare_aws_region: region
+                 )
+
+        assert prepared[:hostname] == host
+        assert {AwsIam, :configure, [^region, nil]} = prepared[:configure]
+        refute Keyword.has_key?(prepared, :url)
+      end
+    end
+
     test "a replica password explicitly overrides inherited IAM", %{host: host} do
       assert {:ok, {_key, config}} =
                Replicas.parse("postgres://logflare:secret@#{host}/logflare")
 
       assert config[:logflare_auth] == :password
       assert config[:password] == "secret"
+
+      assert {:ok, {_key, config}} =
+               Replicas.parse("postgres://logflare@#{host}/logflare?auth=password")
+
+      assert config[:logflare_auth] == :password
+      refute Keyword.has_key?(config, :password)
     end
 
     test "password replicas securely inherit TLS unless they explicitly disable it", %{
@@ -111,7 +159,7 @@ defmodule Logflare.Repo.AwsIamTest do
                Replicas.parse("postgres://logflare@#{host}/logflare?auth=kerberos")
 
       assert reason =~ "unsupported auth=kerberos"
-      assert reason =~ ~s(expected "aws_iam")
+      assert reason =~ ~s(expected "password" or "aws_iam")
 
       assert {:error, reason} =
                Replicas.parse(
@@ -238,18 +286,13 @@ defmodule Logflare.Repo.AwsIamTest do
         Application.fetch_env!(:logflare, Repo)
         |> Keyword.drop([:configure, :ssl])
         |> Keyword.merge(
-          hostname: host,
-          port: 5432,
-          username: "logflare",
-          database: "logflare",
+          url: "postgres://logflare@#{host}:5432/logflare?auth=aws_iam&aws_region=#{region}",
           socket_options: [keepalive: true],
           name: Repo,
           pool: Ecto.Adapters.SQL.Sandbox,
           pool_size: 27,
           queue_interval: 1_234,
-          queue_target: 5_678,
-          logflare_auth: :aws_iam,
-          logflare_aws_region: region
+          queue_target: 5_678
         )
 
       Application.put_env(:logflare, Repo, repo_config)
@@ -276,6 +319,7 @@ defmodule Logflare.Repo.AwsIamTest do
       for option <- [
             :name,
             :pool,
+            :url,
             :pool_size,
             :queue_interval,
             :queue_target,
