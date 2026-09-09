@@ -516,7 +516,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     {retriable, exhausted} =
       Enum.split_with(payloads, &(message_pointer(&1).retries < @max_retries))
 
-    drop_failed(exhausted, backend_id, "exhausted #{@max_retries} retries")
+    drop_failed(exhausted, backend_id, :retries_exhausted)
 
     requeue_or_shed(backend_id, retriable)
   end
@@ -533,11 +533,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         requeue_retriable(backend_id, retriable)
 
       {:error, :circuit_open, _blocked_until} ->
-        drop_failed(retriable, backend_id, "circuit breaker open")
+        drop_failed(retriable, backend_id, :circuit_breaker_open)
     end
   end
 
   @typep requeue_result :: :requeued | :deduplicated | :lookup_miss | :queue_unavailable
+
+  @typep drop_reason :: :retries_exhausted | :circuit_breaker_open
 
   @spec requeue_retriable(
           backend_id :: pos_integer(),
@@ -645,7 +647,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     )
 
     :telemetry.execute(
-      [:logflare, :ingest_event_queue, :not_initialized, :dropped],
+      [:logflare, :ingest_event_queue, :requeue_queue_unavailable],
       %{count: dropped_count},
       %{backend_type: :clickhouse, backend_id: backend_id}
     )
@@ -654,14 +656,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   @spec drop_failed(
           payloads :: [EncodedRow.t() | LogEventPointer.t()],
           backend_id :: pos_integer(),
-          reason :: String.t()
+          reason :: drop_reason()
         ) :: :ok
   defp drop_failed([], _backend_id, _reason), do: :ok
 
   defp drop_failed(payloads, backend_id, reason) do
+    dropped_count = length(payloads)
+
     Logger.warning(
-      "Dropping #{length(payloads)} ClickHouse events: #{reason}",
+      "Dropping #{dropped_count} ClickHouse events: #{drop_reason_message(reason)}",
       backend_id: backend_id
+    )
+
+    :telemetry.execute(
+      [:logflare, :ingest_event_queue, :retry_dropped],
+      %{count: dropped_count},
+      %{backend_type: :clickhouse, backend_id: backend_id, reason: reason}
     )
 
     Enum.each(payloads, fn payload ->
@@ -669,6 +679,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
     end)
   end
+
+  @spec drop_reason_message(drop_reason()) :: String.t()
+  defp drop_reason_message(:retries_exhausted), do: "exhausted #{@max_retries} retries"
+  defp drop_reason_message(:circuit_breaker_open), do: "circuit breaker open"
 
   @spec message_pointer(Message.t() | EncodedRow.t() | LogEventPointer.t()) :: LogEventPointer.t()
   defp message_pointer(%Message{data: data}), do: message_pointer(data)
