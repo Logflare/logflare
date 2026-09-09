@@ -22,7 +22,7 @@ defmodule Logflare.Rules.RoutingSnapshot do
 
   @type t() :: %__MODULE__{
           key: {integer(), reference()},
-          table: :ets.tid(),
+          table: :ets.tid() | nil,
           index: binary(),
           encoded: binary(),
           count: non_neg_integer(),
@@ -46,7 +46,7 @@ defmodule Logflare.Rules.RoutingSnapshot do
         Keyword.get(opts, :extra_estimated_bytes, 0)
 
     store = Keyword.get(opts, :store, RoutingSnapshotStore)
-    {table, key} = RoutingSnapshotStore.put(store, source_id, entry_tuple, estimated_bytes)
+    {table, key} = put_or_fallback(store, source_id, entry_tuple, estimated_bytes)
 
     %__MODULE__{
       key: key,
@@ -56,6 +56,12 @@ defmodule Logflare.Rules.RoutingSnapshot do
       count: length(entries),
       estimated_bytes: estimated_bytes
     }
+  end
+
+  defp put_or_fallback(store, source_id, entries, estimated_bytes) do
+    RoutingSnapshotStore.put(store, source_id, entries, estimated_bytes)
+  catch
+    :exit, _reason -> {nil, {source_id, make_ref()}}
   end
 
   @doc false

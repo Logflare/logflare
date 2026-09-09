@@ -2,8 +2,10 @@ defmodule Logflare.Rules.CacheTest do
   alias Logflare.Rules.Rule
   use Logflare.DataCase
 
+  alias Logflare.ContextCache.Supervisor, as: ContextCacheSupervisor
   alias Logflare.Rules
   alias Logflare.Rules.RoutingSnapshot
+  alias Logflare.Rules.RoutingSnapshotStore
   alias Logflare.Sources
   alias Logflare.Sources.SourceRouter.Target
 
@@ -61,6 +63,36 @@ defmodule Logflare.Rules.CacheTest do
 
       Mimic.reject(Rules, :rules_tree_by_source_id, 1)
       assert @subject.rules_tree_by_source_id(source.id) == {tree, snapshot}
+    end
+
+    test "rules tree cache misses recover through fallback while the store is unavailable", %{
+      source: source,
+      rule_ids: rule_ids
+    } do
+      on_exit(fn ->
+        if Process.whereis(RoutingSnapshotStore) == nil do
+          Supervisor.restart_child(ContextCacheSupervisor, RoutingSnapshotStore)
+        end
+      end)
+
+      assert :ok = Supervisor.terminate_child(ContextCacheSupervisor, RoutingSnapshotStore)
+
+      assert {tree, %RoutingSnapshot{table: nil} = snapshot} =
+               @subject.rules_tree_by_source_id(source.id)
+
+      expected = RoutingSnapshot.resolve(snapshot, rule_ids)
+      assert Enum.map(expected, &Target.id/1) == rule_ids
+      assert @subject.rules_tree_by_source_id(source.id) == {tree, snapshot}
+
+      assert {:ok, _pid} = Supervisor.restart_child(ContextCacheSupervisor, RoutingSnapshotStore)
+
+      assert {:fallback, ^expected, rules_by_id} =
+               RoutingSnapshot.resolve_with_status(snapshot, rule_ids)
+
+      assert {:repaired, repaired} =
+               @subject.repair_routing_snapshot(source.id, snapshot, rules_by_id)
+
+      assert {^tree, ^repaired} = @subject.rules_tree_by_source_id(source.id)
     end
 
     for invalidation <- [:bust, :expire, :clear] do
@@ -133,6 +165,50 @@ defmodule Logflare.Rules.CacheTest do
       {_tree, ^repaired} = @subject.rules_tree_by_source_id(source.id)
       assert repaired.key != snapshot.key
       assert {:ok, ^expected} = RoutingSnapshot.resolve_with_status(repaired, rule_ids)
+    end
+
+    test "store failures do not strand repair transaction locks", %{source: source} do
+      {tree, snapshot} = @subject.rules_tree_by_source_id(source.id)
+      rules_by_id = :erlang.binary_to_term(snapshot.encoded)
+
+      on_exit(fn ->
+        if Process.whereis(RoutingSnapshotStore) == nil do
+          Supervisor.restart_child(ContextCacheSupervisor, RoutingSnapshotStore)
+        end
+      end)
+
+      assert :ok = Supervisor.terminate_child(ContextCacheSupervisor, RoutingSnapshotStore)
+
+      assert {:error, _reason} =
+               @subject.repair_routing_snapshot(source.id, snapshot, rules_by_id)
+
+      assert {:ok, _pid} = Supervisor.restart_child(ContextCacheSupervisor, RoutingSnapshotStore)
+
+      assert {:repaired, repaired} =
+               @subject.repair_routing_snapshot(source.id, snapshot, rules_by_id)
+
+      assert {^tree, ^repaired} = @subject.rules_tree_by_source_id(source.id)
+    end
+
+    test "stale repair cannot overwrite a newer cached generation", %{source: source} do
+      {tree, old} = @subject.rules_tree_by_source_id(source.id)
+      old_rules_by_id = :erlang.binary_to_term(old.encoded)
+
+      new_entries =
+        Enum.map(old_rules_by_id, fn {id, {target_id, backend_id, sink}} when target_id == id ->
+          {id, {id, backend_id + 1_000_000, sink}}
+        end)
+
+      current = RoutingSnapshot.new(source.id, new_entries)
+      cache_key = {:rules_tree_by_source_id, [source.id]}
+      assert {:ok, true} = Cachex.put(@subject, cache_key, {:cached, {tree, current}})
+
+      assert {:fallback, _targets, ^old_rules_by_id} =
+               RoutingSnapshot.resolve_with_status(old, Map.keys(old_rules_by_id))
+
+      assert :stale = @subject.repair_routing_snapshot(source.id, old, old_rules_by_id)
+      assert {^tree, ^current} = @subject.rules_tree_by_source_id(source.id)
+      assert :ets.member(current.table, current.key)
     end
 
     test "list by source", %{source: source, rule_ids: expected_rule_ids} do
