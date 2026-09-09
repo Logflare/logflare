@@ -32,7 +32,7 @@ defmodule Logflare.Networking.GrpcChannelMonitorTest do
     allow(GRPC.Stub, self(), pid)
 
     if Keyword.get(opts, :connect?, true) do
-      assert_receive {:send_after, 0}
+      assert_receive {:send_after, 0}, 1000
       send_and_sync(pid, :connect)
     end
 
@@ -52,7 +52,7 @@ defmodule Logflare.Networking.GrpcChannelMonitorTest do
 
     _pid = start_monitor(registry)
 
-    assert_receive {:register, ^registry, 0, _partition, ^channel}
+    assert_receive {:register, ^registry, 0, _partition, ^channel}, 1000
   end
 
   test "failed connect", %{registry: registry} do
@@ -68,9 +68,9 @@ defmodule Logflare.Networking.GrpcChannelMonitorTest do
 
       send_and_sync(pid, :connect)
 
-      assert_receive :connect_attempt
+      assert_receive :connect_attempt, 1000
       expected_timeout = timeout * 1000
-      assert_receive {:send_after, ^expected_timeout}
+      assert_receive {:send_after, ^expected_timeout}, 1000
       refute_received {:register, ^registry, 0, _partition, _channel}
     end
   end
@@ -79,7 +79,7 @@ defmodule Logflare.Networking.GrpcChannelMonitorTest do
     expect(GRPC.Stub, :connect, 1, fn _url, _opts -> {:ok, channel} end)
 
     pid = start_monitor(registry)
-    assert_receive {:register, ^registry, 0, _partition, ^channel}
+    assert_receive {:register, ^registry, 0, _partition, ^channel}, 1000
 
     send_and_sync(pid, :connect)
     refute_received {:register, ^registry, 0, _partition, _channel}
@@ -97,12 +97,12 @@ defmodule Logflare.Networking.GrpcChannelMonitorTest do
 
       pid = start_monitor(registry)
       allow(GRPC.Stub, self(), pid)
-      assert_receive {:register, ^registry, 0, _partition, ^channel}
+      assert_receive {:register, ^registry, 0, _partition, ^channel}, 1000
 
       send_and_sync(pid, {:elixir_grpc, :connection_down, channel.ref})
 
-      assert_receive {:unregister, ^registry, 0, _partition}
-      assert_receive {:send_after, 0}
+      assert_receive {:unregister, ^registry, 0, _partition}, 1000
+      assert_receive {:send_after, 0}, 1000
     end
 
     test "{:EXIT, pid, reason}", %{
@@ -114,12 +114,12 @@ defmodule Logflare.Networking.GrpcChannelMonitorTest do
 
       pid = start_monitor(registry)
       allow(GRPC.Stub, self(), pid)
-      assert_receive {:register, ^registry, 0, _partition, ^channel}
+      assert_receive {:register, ^registry, 0, _partition, ^channel}, 1000
 
       send_and_sync(pid, {:EXIT, self(), :closed})
 
-      assert_receive {:unregister, ^registry, 0, _partition}
-      assert_receive {:send_after, 0}
+      assert_receive {:unregister, ^registry, 0, _partition}, 1000
+      assert_receive {:send_after, 0}, 1000
     end
   end
 end
