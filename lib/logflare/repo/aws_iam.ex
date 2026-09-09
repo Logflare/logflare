@@ -55,7 +55,7 @@ defmodule Logflare.Repo.AwsIam do
     hostname = hostname |> validate_hostname!() |> String.downcase()
     region = validate_region!(region)
 
-    config = ExAws.Config.new(:rds, aws_config_options(region))
+    config = aws_config(region)
 
     {:ok, url} =
       ExAws.Auth.presigned_url(
@@ -157,35 +157,36 @@ defmodule Logflare.Repo.AwsIam do
     end)
   end
 
-  defp aws_config_options(region) do
-    opts = [region: region]
+  defp aws_config(region) do
+    :rds
+    |> ExAws.Config.new(region: region)
+    |> maybe_put_environment_session_token()
+    |> drop_empty_session_token()
+  end
 
-    case Application.get_env(:ex_aws, :security_token) do
-      token when is_binary(token) and token != "" ->
-        Keyword.put(opts, :security_token, token)
+  defp maybe_put_environment_session_token(%{security_token: token} = config)
+       when is_binary(token) and token != "",
+       do: config
 
-      _ ->
-        if static_env_credentials?(), do: put_static_security_token(opts), else: opts
+  defp maybe_put_environment_session_token(config) do
+    with access_key_id when is_binary(access_key_id) and access_key_id != "" <-
+           System.get_env("AWS_ACCESS_KEY_ID"),
+         secret_access_key when is_binary(secret_access_key) and secret_access_key != "" <-
+           System.get_env("AWS_SECRET_ACCESS_KEY"),
+         session_token when is_binary(session_token) and session_token != "" <-
+           System.get_env("AWS_SESSION_TOKEN"),
+         true <- config[:access_key_id] == access_key_id,
+         true <- config[:secret_access_key] == secret_access_key do
+      Map.put(config, :security_token, session_token)
+    else
+      _ -> config
     end
   end
 
-  defp put_static_security_token(opts) do
-    case System.get_env("AWS_SESSION_TOKEN") do
-      token when is_binary(token) and token != "" -> Keyword.put(opts, :security_token, token)
-      _ -> Keyword.put(opts, :security_token, nil)
-    end
-  end
+  defp drop_empty_session_token(%{security_token: token} = config) when token in [nil, ""],
+    do: Map.delete(config, :security_token)
 
-  defp static_env_credentials? do
-    is_nil(Application.get_env(:ex_aws, :access_key_id)) and
-      is_nil(Application.get_env(:ex_aws, :secret_access_key)) and
-      Enum.all?(["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"], fn key ->
-        case System.get_env(key) do
-          value when is_binary(value) and value != "" -> true
-          _ -> false
-        end
-      end)
-  end
+  defp drop_empty_session_token(config), do: config
 
   defp run_configure(opts, nil), do: opts
 

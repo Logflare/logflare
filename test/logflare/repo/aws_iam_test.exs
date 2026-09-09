@@ -530,6 +530,64 @@ defmodule Logflare.Repo.AwsIamTest do
       end
     end
 
+    test "auth_token/4 includes temporary environment credentials resolved from provider chains",
+         %{
+           host: host,
+           region: region
+         } do
+      previous_security_token = Application.fetch_env(:ex_aws, :security_token)
+      previous_env = take_aws_credential_env()
+
+      Application.put_env(
+        :ex_aws,
+        :access_key_id,
+        [{:system, "AWS_ACCESS_KEY_ID"}, :instance_role]
+      )
+
+      Application.put_env(
+        :ex_aws,
+        :secret_access_key,
+        [{:system, "AWS_SECRET_ACCESS_KEY"}, :instance_role]
+      )
+
+      Application.delete_env(:ex_aws, :security_token)
+      System.put_env("AWS_ACCESS_KEY_ID", "ASIAPROVIDERCHAIN")
+      System.put_env("AWS_SECRET_ACCESS_KEY", "provider-chain-secret")
+      System.put_env("AWS_SESSION_TOKEN", "provider-chain-session-token")
+
+      on_exit(fn ->
+        restore_aws_credential_env(previous_env)
+        restore_application_env(:ex_aws, :security_token, previous_security_token)
+      end)
+
+      token = AwsIam.auth_token(host, 5432, "logflare", region)
+      assert token =~ "X-Amz-Security-Token=provider-chain-session-token"
+    end
+
+    test "auth_token/4 drops empty configured session tokens", %{host: host, region: region} do
+      previous_security_token = Application.fetch_env(:ex_aws, :security_token)
+      previous_env = take_aws_credential_env()
+
+      System.put_env("AWS_ACCESS_KEY_ID", "UNRELATED")
+      System.put_env("AWS_SECRET_ACCESS_KEY", "unrelated-secret")
+
+      on_exit(fn ->
+        restore_aws_credential_env(previous_env)
+        restore_application_env(:ex_aws, :security_token, previous_security_token)
+      end)
+
+      for {configured_token, environment_token} <- [
+            {"", "unrelated-session-token"},
+            {{:system, "AWS_SESSION_TOKEN"}, ""}
+          ] do
+        Application.put_env(:ex_aws, :security_token, configured_token)
+        System.put_env("AWS_SESSION_TOKEN", environment_token)
+
+        token = AwsIam.auth_token(host, 5432, "logflare", region)
+        refute token =~ "X-Amz-Security-Token"
+      end
+    end
+
     test "auth_token/4 prefers the configured ExAws session token", %{
       host: host,
       region: region
