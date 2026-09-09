@@ -1,3 +1,25 @@
+defmodule Logflare.Sources.SourceRouterTest.StateOnlyRouter do
+  @behaviour Logflare.Sources.SourceRouter
+
+  @impl true
+  def matching_rules(_event, _source) do
+    send(self(), :legacy_matching_rules_called)
+    []
+  end
+
+  @impl true
+  def prepare(_source) do
+    send(self(), :router_prepared)
+    0
+  end
+
+  @impl true
+  def matching_rules_with_state(_event, _source, state) do
+    send(self(), {:stateful_matching_rules_called, state})
+    {[], state + 1}
+  end
+end
+
 defmodule Logflare.Sources.SourceRouterTest do
   use Logflare.DataCase
 
@@ -12,6 +34,7 @@ defmodule Logflare.Sources.SourceRouterTest do
   alias Logflare.SystemMetrics.AllLogsLogged
 
   @routers [SourceRouter.Sequential, SourceRouter.RulesTree]
+  @state_only_router __MODULE__.StateOnlyRouter
 
   setup do
     start_supervised!(AllLogsLogged)
@@ -26,6 +49,21 @@ defmodule Logflare.Sources.SourceRouterTest do
 
     assert SourceRouter.route_to_sinks_and_ingest(events, source) == events
     assert %{misses: 1, hits: 0, writes: 1} = Cachex.stats!(Rules.Cache)
+  end
+
+  test "prepares and threads state for a state-only router", %{user: user} do
+    source = build(:source, user: user)
+    event = %LogEvent{body: %{}, via_rule_id: nil}
+
+    assert SourceRouter.route_to_sinks_and_ingest([event, event], source, @state_only_router) == [
+             event,
+             event
+           ]
+
+    assert_received :router_prepared
+    assert_received {:stateful_matching_rules_called, 0}
+    assert_received {:stateful_matching_rules_called, 1}
+    refute_received :legacy_matching_rules_called
   end
 
   for router <- @routers do

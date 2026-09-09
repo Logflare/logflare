@@ -53,12 +53,16 @@ defmodule Logflare.Sources.SourceRouter do
 
   defp prepare(router, source, events) do
     if Enum.any?(events, &match?(%LE{via_rule_id: nil}, &1)) and Code.ensure_loaded?(router) and
-         function_exported?(router, :prepare, 1) and
-         function_exported?(router, :matching_rules, 3) do
+         function_exported?(router, :prepare, 1) and prepared_matching?(router) do
       router.prepare(source)
     else
       :unprepared
     end
+  end
+
+  defp prepared_matching?(router) do
+    function_exported?(router, :matching_rules, 3) or
+      function_exported?(router, :matching_rules_with_state, 3)
   end
 
   defp matching_targets(router, event, source, :unprepared),
