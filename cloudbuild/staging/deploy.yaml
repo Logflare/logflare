@@ -12,6 +12,12 @@ steps:
           # — deployment-topology-specific, not a secret, so it belongs here
           # rather than in the baked-in staging secrets.
           printf '%s\n' 'SPOOL_WAL_DIR=/var/lib/logflare/spool_wal'
+          # Local-disk WAL buffer + block ingest callers until each batch is
+          # actually committed (see Logflare.Backends.spool_buffer/0 and
+          # .spool_blocking_mode?/0, both otherwise defaulting to in-memory
+          # /fire-and-forget) — same as prod and the dev cluster.
+          printf '%s\n' 'SPOOL_BUFFER=wal'
+          printf '%s\n' 'SPOOL_BLOCKING=true'
           printf 'RELEASE_COOKIE=%s\n' "$$1"
           printf 'LOGFLARE_METADATA_CLUSTER=%s\n' "$$2"
           # SPOOL_PUBSUB_TOPIC/SPOOL_QUEUE_NAME point at this cluster's own

@@ -84,4 +84,28 @@ defmodule Logflare.Backends.Spool.WriteHealthTest do
     WriteHealth.report_failure!()
     assert WriteHealth.healthy?() == false
   end
+
+  test "emits telemetry reflecting the current healthy/failure_count state on every report" do
+    Application.put_env(:logflare, :spool, max_write_health_failures: 2)
+    test_pid = self()
+    ref = make_ref()
+
+    :telemetry.attach(
+      {__MODULE__, ref},
+      [:logflare, :backends, :spool, :write_health],
+      fn _event, measurements, _metadata, _ -> send(test_pid, {ref, measurements}) end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach({__MODULE__, ref}) end)
+
+    WriteHealth.report_failure!()
+    assert_receive {^ref, %{healthy: 1, failure_count: 1}}
+
+    WriteHealth.report_failure!()
+    assert_receive {^ref, %{healthy: 0, failure_count: 2}}
+
+    WriteHealth.report_recovery!()
+    assert_receive {^ref, %{healthy: 1, failure_count: 0}}
+  end
 end

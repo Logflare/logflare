@@ -459,9 +459,29 @@ defmodule Logflare.Telemetry do
         description:
           "Spool consumer backpressure state: 1 if any recently-seen source's destination ingest buffer is backed up, 0 otherwise"
       ),
+      last_value("logflare.backends.spool.write_health.healthy",
+        description:
+          "Spool local WAL write health (1=healthy, 0=unhealthy — spool routing disabled on this node, see Logflare.Backends.Spool.WriteHealth)"
+      ),
+      last_value("logflare.backends.spool.write_health.failure_count",
+        description: "Spool local WAL consecutive write/roll/commit failure count"
+      ),
       sum("logflare.backends.spool.queue.publish.count",
         tags: [:result],
         description: "Spool queue publish (SQS send / PubSub publish) count"
+      ),
+      sum("logflare.backends.spool.storage.put.count",
+        tags: [:format, :result],
+        description: "Spool storage writes (S3/GCS put) count by format/result"
+      ),
+      sum("logflare.backends.spool.storage.put.bytes",
+        tags: [:format, :result],
+        description: "Spool storage writes: bytes by format/result"
+      ),
+      distribution("logflare.backends.spool.storage.put.upload_duration",
+        tags: [:format, :result],
+        unit: {:microsecond, :millisecond},
+        description: "Time spent in the actual storage_mod.put network call, by format/result"
       ),
       sum("logflare.backends.spool.producer.batch.count",
         tags: [:result, :stage],

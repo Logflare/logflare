@@ -11,11 +11,13 @@ defmodule Logflare.Backends.Spool.WriteHealth do
   this is one more layer of tolerance against killing the node over
   something that turns out to be transient. `report_recovery!/0` resets
   the counter and clears the unhealthy state the moment anything succeeds.
-  `LogflareWeb.HealthCheckController` folds `healthy?/0` into its existing
-  readiness checks, so a node whose disk stays broken past the threshold
-  fails its health check and stops receiving new traffic, rather than
-  failing requests one at a time forever while still advertising itself
-  as healthy.
+  Every state change emits `[:logflare, :backends, :spool, :write_health]`
+  telemetry (`healthy`: 1/0, `failure_count`) — see `Logflare.Telemetry` for
+  the Grafana-visible gauges built from it. `Backends.spool_producer_mode?/0`
+  already stops routing new events to the spool the moment this goes
+  unhealthy (for the WAL buffer only — `:mem` has no local disk to be
+  unhealthy about), independent of whatever
+  `LogflareWeb.HealthCheckController` does with `healthy?/0` itself.
   """
 
   @key {__MODULE__, :state}
@@ -52,6 +54,7 @@ defmodule Logflare.Backends.Spool.WriteHealth do
           :atomics.put(state, @healthy_index, @unhealthy)
         end
 
+        emit_telemetry(state)
         :ok
     end
   end
@@ -65,11 +68,24 @@ defmodule Logflare.Backends.Spool.WriteHealth do
       state ->
         :atomics.put(state, @failure_count_index, 0)
         :atomics.put(state, @healthy_index, @healthy)
+        emit_telemetry(state)
+        :ok
     end
   end
 
   defp max_write_health_failures do
     Application.get_env(:logflare, :spool, [])
     |> Keyword.get(:max_write_health_failures, @default_max_write_health_failures)
+  end
+
+  defp emit_telemetry(state) do
+    :telemetry.execute(
+      [:logflare, :backends, :spool, :write_health],
+      %{
+        healthy: :atomics.get(state, @healthy_index),
+        failure_count: :atomics.get(state, @failure_count_index)
+      },
+      %{}
+    )
   end
 end

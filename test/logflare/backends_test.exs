@@ -15,6 +15,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.RecentInsertsCacher
   alias Logflare.Backends.Spool.PartitionSupervisor
+  alias Logflare.Backends.Spool.Storage.GCS, as: SpoolStorageMod
   alias Logflare.Backends.Spool.WriteHealth
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.SourceSupWorker
@@ -2047,6 +2048,11 @@ defmodule Logflare.BackendsTest do
   end
 
   describe "ingest_logs/3 per-source spooling gate" do
+    # Needed for the one test in this block that stubs SpoolStorageMod — its
+    # Committer commit runs inside a separate spawned Task, not this test's
+    # own process, so a private-mode stub wouldn't be visible to it.
+    setup :set_mimic_global
+
     setup do
       insert(:plan)
       user = insert(:user)
@@ -2078,6 +2084,7 @@ defmodule Logflare.BackendsTest do
 
       Application.put_env(:logflare, :spool,
         mode: :disable,
+        buffer: :wal,
         partitions: 1,
         batch_timeout: 10,
         bucket: "test-bucket",
@@ -2094,7 +2101,7 @@ defmodule Logflare.BackendsTest do
 
     defp pending_event_count do
       [partition_pid] = PartitionSupervisor.partitions()
-      :sys.get_state(partition_pid).pending_count
+      :sys.get_state(partition_pid).buffer_state.pending_count
     end
 
     test "does not dispatch to the spool producer when source.enable_spooling is false, even if the global mode is on and allow_spooling is true",
@@ -2109,7 +2116,15 @@ defmodule Logflare.BackendsTest do
 
     test "does not dispatch to the spool producer once WriteHealth is unhealthy, even if everything else is enabled",
          %{source: source} do
-      Application.put_env(:logflare, :spool, mode: :producer, max_write_health_failures: 1)
+      # buffer: :wal — WriteHealth only gates WAL-buffered spooling (it's
+      # about local disk health, which :mem never touches at all, see
+      # Backends.spool_producer_mode?/0).
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        buffer: :wal,
+        max_write_health_failures: 1
+      )
+
       WriteHealth.report_failure!()
       on_exit(fn -> WriteHealth.report_recovery!() end)
 
@@ -2144,6 +2159,51 @@ defmodule Logflare.BackendsTest do
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
 
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+    end
+
+    test "falls back to normal dispatch and logs an error when the spool commit itself fails (e.g. GCS unavailable)",
+         %{source: source} do
+      # blocking: true so the commit failure — not just a WAL write — is
+      # what dispatch_to_spool_producer/1 sees, exercising the same
+      # {:error, reason} path append_committed/5 returns.
+      stop_supervised!(PartitionSupervisor)
+
+      wal_dir =
+        Path.join(
+          System.tmp_dir!(),
+          "backends_test_spool_wal_fail_#{System.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(wal_dir)
+      on_exit(fn -> File.rm_rf!(wal_dir) end)
+
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        blocking: true,
+        partitions: 1,
+        batch_timeout: 10,
+        max_commit_attempts: 1,
+        retry_delay_ms: 1,
+        bucket: "test-bucket",
+        provider: :gcp,
+        storage_mod: SpoolStorageMod,
+        queue_mod: StubSpoolQueue,
+        wal_dir: wal_dir
+      )
+
+      stub(SpoolStorageMod, :put, fn _b, _k, _body, _opts -> {:error, :timeout} end)
+
+      start_supervised!(PartitionSupervisor)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      log =
+        capture_log(fn ->
+          assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+        end)
+
+      assert log =~ "spool dispatch failed"
     end
 
     test "does not dispatch to the spool producer when the global mode is off, even if source.enable_spooling and allow_spooling are true",

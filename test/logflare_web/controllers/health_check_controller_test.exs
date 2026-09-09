@@ -63,7 +63,10 @@ defmodule LogflareWeb.HealthCheckControllerTest do
     assert %{"memory_utilization" => "ok"} = json_response(conn, 200)
   end
 
-  test "spool write health check", %{conn: conn} do
+  test "spool write health is reported but does not (currently) gate the node's own health check",
+       %{
+         conn: conn
+       } do
     insert(:user)
     insert(:plan)
     start_supervised!(Source.Supervisor)
@@ -79,12 +82,17 @@ defmodule LogflareWeb.HealthCheckControllerTest do
       end
     end)
 
-    assert %{"spool_write_healthy" => true} = conn |> get("/health") |> json_response(200)
+    assert %{"status" => "ok", "spool_write_healthy" => true} =
+             conn |> get("/health") |> json_response(200)
 
     WriteHealth.report_failure!()
 
-    assert %{"status" => "coming_up", "spool_write_healthy" => false} =
-             conn |> get("/health") |> json_response(503)
+    # An unhealthy WAL disables spool routing on its own
+    # (Backends.spool_producer_mode?/0) — this node's own /health check is
+    # deliberately not also gated on it right now, see
+    # HealthCheckController.check/2.
+    assert %{"status" => "ok", "spool_write_healthy" => false} =
+             conn |> get("/health") |> json_response(200)
 
     WriteHealth.report_recovery!()
 

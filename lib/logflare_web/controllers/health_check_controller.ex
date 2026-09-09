@@ -33,12 +33,15 @@ defmodule LogflareWeb.HealthCheckController do
         # checks that db can execute query and that repo is connected and up
         repo_uptime > 0,
         Enum.all?(Map.values(caches), &(&1 == :ok)),
-        memory_utilization < max_memory_ratio,
-        # fails once a spool partition's local WAL disk is unwritable — see
-        # Logflare.Backends.Spool.WriteHealth. Self-healing: clears the
-        # moment a write succeeds again, so this node comes back into
-        # rotation on its own once the underlying problem does.
-        WriteHealth.healthy?()
+        memory_utilization < max_memory_ratio
+        # Temporarily not gating the health check on this — see
+        # Logflare.Backends.Spool.WriteHealth. An unhealthy WAL already
+        # disables spool routing on its own (Backends.spool_producer_mode?/0),
+        # so this only controlled whether the whole node got pulled out of
+        # rotation on top of that; left out until WriteHealth's signal has
+        # been observed in production for a while (see its telemetry,
+        # spool.write_health.healthy, on Grafana).
+        # WriteHealth.healthy?()
       ]
       |> Enum.all?()
 

@@ -22,6 +22,7 @@ steps:
           printf 'SPOOL_QUEUE_NAME=%s\n' "$$6"
           printf 'SPOOL_BLOCKING=%s\n' "$$7"
           printf 'SPOOL_WAL_DIR=%s\n' "$$8"
+          printf 'SPOOL_BUFFER=%s\n' "$$9"
         } > gce-container.env
       - --
       - ${_COOKIE}
@@ -32,6 +33,7 @@ steps:
       - ${_SPOOL_QUEUE_NAME}
       - ${_SPOOL_BLOCKING}
       - ${_SPOOL_WAL_DIR}
+      - ${_SPOOL_BUFFER}
   # create instance template - dedicated
   - name: gcr.io/cloud-builders/gcloud
     entrypoint: bash
@@ -140,6 +142,9 @@ substitutions:
   # EventQueue.Bodies ETS table, for testing whether this prevents the OOM
   # reproduced under full-saturation load on this dev cluster.
   _SPOOL_BLOCKING: "true"
+  # Local-disk WAL buffer, matching prod/staging — see
+  # Logflare.Backends.spool_buffer/0 (otherwise defaults to in-memory).
+  _SPOOL_BUFFER: wal
   _COOKIE: default-dev-${_DEV_NUMBER}
   _NORMALIZED_IMAGE_TAG: ${_IMAGE_TAG}
   _INSTANCE_TYPE: c2d-highcpu-4

@@ -7,17 +7,22 @@ defmodule Logflare.Backends.Spool.PartitionSupervisor do
   `Committer`-backed commit tasks directly (see `Partition`'s moduledoc);
   `Committer` is not itself a separately supervised process.
 
+  Every partition in this supervisor is buffered the same way — local-disk
+  WAL or in-memory (`:logflare, :spool, :buffer`, default `:mem` — see
+  `Logflare.Backends.spool_buffer/0`, the single source of truth this
+  mirrors, and `Logflare.Backends.Spool.Buffer`) is a node-wide choice, not
+  a per-caller one. `wal_dir` is only actually required when the buffer is
+  `:wal`.
+
   Each partition's own index doubles as its GCS/S3 key prefix (see
   `Committer`'s `file_key/1`).
   """
 
   use Supervisor
 
+  alias Logflare.Backends.Spool.Buffer
   alias Logflare.Backends.Spool.Partition
-  alias Logflare.Backends.Spool.Queue
-  alias Logflare.Backends.Spool.Storage
-
-  require Logger
+  alias Logflare.Backends.Spool.ProviderConfig
 
   @registry __MODULE__.Registry
   # 1s — the max amount of time raw data sits buffered before being
@@ -60,18 +65,20 @@ defmodule Logflare.Backends.Spool.PartitionSupervisor do
     batch_timeout = Keyword.get(spool_config, :batch_timeout, @default_batch_timeout)
     compress = Keyword.get(spool_config, :compress, true)
     format = Keyword.get(spool_config, :format, :ndjson)
-    wal_dir = Keyword.fetch!(spool_config, :wal_dir)
+    wal_dir = Keyword.get(spool_config, :wal_dir)
+    buffer_mod = buffer_mod(spool_config)
 
     compression_algorithm =
       Keyword.get(spool_config, :compression_algorithm, @default_compression_algorithm)
 
-    {storage_mod, queue_mod} = resolve_mods(spool_config)
-    queue_ref = resolve_queue_ref(spool_config, queue_mod)
+    {storage_mod, queue_mod} = ProviderConfig.resolve_mods(spool_config)
+    queue_ref = ProviderConfig.resolve_queue_ref(spool_config, queue_mod)
 
     partition_specs =
       for index <- 0..(partition_count() - 1)//1 do
         opts = [
           name: {:via, Registry, {@registry, index}},
+          buffer_mod: buffer_mod,
           index: index,
           bucket: bucket,
           batch_timeout: batch_timeout,
@@ -92,38 +99,10 @@ defmodule Logflare.Backends.Spool.PartitionSupervisor do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  defp resolve_queue_ref(spool_config, queue_mod) do
-    name = Keyword.get(spool_config, :pubsub_topic) || Keyword.get(spool_config, :queue_name)
-
-    case name do
-      nil ->
-        nil
-
-      queue_name ->
-        case queue_mod.resolve(queue_name) do
-          {:ok, ref} ->
-            ref
-
-          {:error, reason} ->
-            Logger.warning(
-              "spool_partition_supervisor: could not resolve queue ref for #{queue_name}: #{inspect(reason)}"
-            )
-
-            nil
-        end
+  defp buffer_mod(spool_config) do
+    case Keyword.get(spool_config, :buffer, :mem) do
+      :wal -> Buffer.WAL
+      :mem -> Buffer.Mem
     end
   end
-
-  defp resolve_mods(spool_config) do
-    provider = Keyword.get(spool_config, :provider, :aws)
-    storage_mod = Keyword.get(spool_config, :storage_mod, default_storage_mod(provider))
-    queue_mod = Keyword.get(spool_config, :queue_mod, default_queue_mod(provider))
-    {storage_mod, queue_mod}
-  end
-
-  defp default_storage_mod(:gcp), do: Storage.GCS
-  defp default_storage_mod(_), do: Storage.S3
-
-  defp default_queue_mod(:gcp), do: Queue.PubSub
-  defp default_queue_mod(_), do: Queue.SQS
 end
