@@ -992,7 +992,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   defp handle_insert_result({:error, reason}, backend, event_type, async?) do
     Logger.warning("ClickHouse http insert error.",
       host: insert_host(backend.config, async?),
-      error_string: Ingester.error_message(reason)
+      error_string: Ingester.error_string(reason)
     )
 
     emit_insert_telemetry(backend, event_type, async?, :error, Ingester.error_class(reason))

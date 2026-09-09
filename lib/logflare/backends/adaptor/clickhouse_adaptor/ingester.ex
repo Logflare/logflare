@@ -136,13 +136,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   defp http_error_class(false, _status, _body), do: :http_error
 
   @doc """
-  Renders an insert failure reason as a log-friendly string.
+  Renders an insert failure reason for the `error_string` log metadata. The `inspect/1`
+  keeps a multiline or oversized response body from breaking the log entry.
   """
-  @spec error_message(term()) :: String.t()
-  def error_message({:http, status, body}) when is_pos_integer(status),
-    do: "HTTP #{status}: #{body}"
+  @spec error_string(term()) :: String.t()
+  def error_string({:http, status, body}) when is_pos_integer(status),
+    do: inspect("HTTP #{status}: #{body}")
 
-  def error_message(reason), do: inspect(reason)
+  def error_string(reason), do: inspect(reason)
 
   @spec transport_error_class(term()) :: error_class()
   defp transport_error_class(:pool_timeout), do: :pool_timeout

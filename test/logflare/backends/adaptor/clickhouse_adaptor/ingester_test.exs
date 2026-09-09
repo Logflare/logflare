@@ -358,16 +358,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
     end
   end
 
-  describe "error_message/1" do
-    test "renders a structured HTTP error the way it reads in logs" do
-      assert Ingester.error_message({:http, 400, "boom"}) == "HTTP 400: boom"
+  describe "error_string/1" do
+    test "renders a structured HTTP error exactly as the call site logged it before" do
+      assert Ingester.error_string({:http, 400, "boom"}) == inspect("HTTP 400: boom")
+    end
+
+    test "escapes a multiline response body so the log entry stays on one line" do
+      rendered = Ingester.error_string({:http, 500, "line one\nline two"})
+
+      assert rendered == inspect("HTTP 500: line one\nline two")
+      refute rendered =~ "\n"
+    end
+
+    test "bounds an oversized response body" do
+      body = String.duplicate("x", 9_000)
+
+      assert String.length(Ingester.error_string({:http, 500, body})) < String.length(body)
     end
 
     test "inspects any other reason" do
-      assert Ingester.error_message(%Finch.Error{reason: :pool_timeout}) ==
+      assert Ingester.error_string(%Finch.Error{reason: :pool_timeout}) ==
                inspect(%Finch.Error{reason: :pool_timeout})
 
-      assert Ingester.error_message(:closed) == ":closed"
+      assert Ingester.error_string(:closed) == ":closed"
     end
   end
 
