@@ -29,6 +29,7 @@ defmodule LogflareWeb.PlansLive do
                     <i class="fas fa-info-circle"></i>
                   </.link>
                 </li>
+                <li class="p-2">Natural language queries</li>
                 <hr />
                 <li class="p-2">
                   Backend
@@ -74,6 +75,7 @@ defmodule LogflareWeb.PlansLive do
                 <hr />
                 <li class="p-2">4 hours</li>
                 <li class="p-2">None</li>
+                <li class="p-2">None</li>
                 <hr />
                 <li class="p-2">Logflare</li>
                 <li class="p-2">Up to 50</li>
@@ -106,6 +108,7 @@ defmodule LogflareWeb.PlansLive do
                 <hr />
                 <li class="p-2">1 minute</li>
                 <li class="p-2">Google Data Studio</li>
+                <li class="p-2">Included</li>
                 <hr />
                 <li class="p-2">Logflare<sup>1</sup></li>
                 <li class="p-2">Up to 500</li>
@@ -151,6 +154,7 @@ defmodule LogflareWeb.PlansLive do
                 <hr />
                 <li class="p-2">1 minute</li>
                 <li class="p-2">Google Data Studio</li>
+                <li class="p-2">Included</li>
                 <hr />
                 <li class="p-2">BYOB BigQuery<sup>1</sup></li>
                 <li class="p-2">Up to 500</li>
