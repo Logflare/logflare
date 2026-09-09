@@ -1,5 +1,5 @@
 defmodule LogflareWeb.Api.FallbackController do
-  use Phoenix.Controller
+  use Phoenix.Controller, formats: []
 
   alias Ecto.Changeset
   alias Logflare.Backends.QueryError
