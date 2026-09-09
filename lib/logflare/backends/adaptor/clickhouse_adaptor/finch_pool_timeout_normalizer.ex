@@ -33,13 +33,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.FinchPoolTimeoutNormalizer
       normalize(pool_timeout?(error), error, __STACKTRACE__)
   end
 
-  @spec pool_timeout?(RuntimeError.t()) :: boolean()
+  @spec pool_timeout?(%RuntimeError{}) :: boolean()
   defp pool_timeout?(%RuntimeError{message: message}) when is_non_empty_binary(message),
     do: String.contains?(message, @pool_timeout_marker)
 
   defp pool_timeout?(_error), do: false
 
-  @spec normalize(boolean(), RuntimeError.t(), Exception.stacktrace()) ::
+  @spec normalize(boolean(), %RuntimeError{}, Exception.stacktrace()) ::
           {:error, :pool_timeout} | no_return()
   defp normalize(true, _error, _stacktrace), do: {:error, :pool_timeout}
   defp normalize(false, error, stacktrace), do: reraise(error, stacktrace)
