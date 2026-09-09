@@ -286,8 +286,9 @@ defmodule Logflare.Backends do
   """
   @spec update_backend(Backend.t(), map()) :: {:ok, Backend.t()} | {:error, Changeset.t()}
   def update_backend(%Backend{} = backend, attrs) do
+    alerts_modified = Map.has_key?(attrs, :alert_queries)
+    alert_queries = Map.get(attrs, :alert_queries)
     attrs = Utils.Map.stringify_top_level_keys(attrs)
-    alerts_modified = Map.has_key?(attrs, "alert_queries")
     default_ingest_modified? = Map.has_key?(attrs, "default_ingest?")
     config_modified? = Map.has_key?(attrs, "config")
     source_id = attrs["source_id"]
@@ -298,7 +299,7 @@ defmodule Logflare.Backends do
       |> validate_default_ingest_source(source_id)
       |> then(fn changeset ->
         if alerts_modified do
-          Changeset.put_assoc(changeset, :alert_queries, attrs["alert_queries"])
+          Changeset.put_assoc(changeset, :alert_queries, alert_queries)
         else
           changeset
         end

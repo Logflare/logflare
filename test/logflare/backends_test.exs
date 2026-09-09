@@ -597,6 +597,19 @@ defmodule Logflare.BackendsTest do
       assert %Backend{alert_queries: [_]} = Backends.preload_alerts(backend)
     end
 
+    test "does not touch alerts for a string alert_queries key", %{user: user} do
+      alert = insert(:alert, user: user)
+      backend = insert(:backend, user: user)
+
+      assert {:ok, %Backend{} = backend} =
+               Backends.update_backend(backend, %{alert_queries: [alert]})
+
+      assert {:ok, %Backend{} = backend} =
+               Backends.update_backend(backend, %{"alert_queries" => []})
+
+      assert %Backend{alert_queries: [_]} = Backends.preload_alerts(backend)
+    end
+
     test "update backend config correctly", %{user: user} do
       assert {:ok, backend} =
                Backends.create_backend(user, %{
