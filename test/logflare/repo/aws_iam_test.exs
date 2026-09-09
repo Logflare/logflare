@@ -179,7 +179,7 @@ defmodule Logflare.Repo.AwsIamTest do
     end
 
     test "replica pools inherit primary IAM unless a URI supplies a password", context do
-      %{host: primary_host, region: region} = context
+      %{certificate: certificate, host: primary_host, region: region} = context
       previous_repo_config = Application.fetch_env(:logflare, Repo)
 
       primary_config =
@@ -224,6 +224,8 @@ defmodule Logflare.Repo.AwsIamTest do
       assert {Replicas, :after_connect, [_primary_after_connect]} = password[:after_connect]
       assert password[:username] == "password_user"
       assert password[:password] == "secret"
+      assert password[:ssl][:verify] == :verify_peer
+      assert certificate in password[:ssl][:cacerts]
     end
 
     test "direct database clients use lazy primary IAM options", context do
