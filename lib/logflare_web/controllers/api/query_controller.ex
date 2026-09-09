@@ -7,6 +7,7 @@ defmodule LogflareWeb.Api.QueryController do
   alias Logflare.Backends.Backend
   alias Logflare.Endpoints
   alias Logflare.Endpoints.EndpointQuery
+  alias Logflare.SingleTenant
   alias Logflare.Sql
   alias Logflare.User
   alias LogflareWeb.OpenApi.BadRequest
@@ -24,24 +25,39 @@ defmodule LogflareWeb.Api.QueryController do
     parameters: [
       sql: [
         in: :query,
-        description: "BigQuery SQL string, alias for bq_sql",
+        description:
+          "SQL string. Preferred parameter; backend_id can select backend-specific SQL language for parsing.",
         type: :string,
         allowEmptyValue: true,
         required: false
       ],
       bq_sql: [
         in: :query,
-        description: "BigQuery SQL string",
+        description: "Deprecated BigQuery SQL parameter. Prefer sql with backend_id.",
         type: :string,
         required: false,
         example: "select current_timestamp() as 'test'"
       ],
       ch_sql: [
         in: :query,
-        description: "ClickHouse SQL string",
+        description: "Deprecated ClickHouse SQL parameter. Prefer sql with backend_id.",
         type: :string,
         required: false,
         example: "select now() as 'test'"
+      ],
+      pg_sql: [
+        in: :query,
+        description: "Deprecated PostgreSQL SQL parameter. Prefer sql with backend_id.",
+        type: :string,
+        required: false,
+        example: "select current_date() as 'test'"
+      ],
+      backend_id: [
+        in: :query,
+        description:
+          "Optional backend ID used to infer SQL language for parsing. If omitted, BigQuery SQL is used.",
+        type: :integer,
+        required: false
       ]
     ],
     responses: %{
@@ -51,26 +67,16 @@ defmodule LogflareWeb.Api.QueryController do
     }
   )
 
-  def parse(conn, %{"sql" => sql}), do: parse(conn, %{"bq_sql" => sql})
-
-  def parse(%{assigns: %{user: user}} = conn, %{"bq_sql" => sql}) do
+  def parse(%{assigns: %{user: user}} = conn, params) do
     endpoints = Endpoints.list_endpoints_by(user_id: user.id)
 
     alerts = Alerting.list_alert_queries_by_user_id(user.id)
 
-    with {:ok, result} <- Endpoints.parse_query_string(:bq_sql, sql, endpoints, alerts),
-         {:ok, _transformed_query} <- Sql.transform(:bq_sql, sql, user.id) do
-      json(conn, %{result: result})
-    end
-  end
-
-  def parse(%{assigns: %{user: user}} = conn, %{"ch_sql" => sql}) do
-    endpoints = Endpoints.list_endpoints_by(user_id: user.id)
-
-    alerts = Alerting.list_alert_queries_by_user_id(user.id)
-
-    with {:ok, result} <- Endpoints.parse_query_string(:ch_sql, sql, endpoints, alerts),
-         {:ok, _transformed_query} <- Sql.transform(:ch_sql, sql, user.id) do
+    with {:ok, requested_language, sql} <- extract_query(params),
+         {:ok, backend} <- fetch_backend(user, params),
+         language = resolve_language(requested_language, backend),
+         {:ok, result} <- Endpoints.parse_query_string(language, sql, endpoints, alerts),
+         {:ok, _transformed_query} <- Sql.transform(language, sql, user.id) do
       json(conn, %{result: result})
     end
   end
@@ -80,27 +86,28 @@ defmodule LogflareWeb.Api.QueryController do
     parameters: [
       sql: [
         in: :query,
-        description: "SQL string",
+        description:
+          "SQL string. Preferred parameter; backend_id selects the backend to execute against and its SQL language.",
         type: :string,
         required: false
       ],
       bq_sql: [
         in: :query,
-        description: "BigQuery SQL string",
+        description: "Deprecated BigQuery SQL parameter. Prefer sql with backend_id.",
         type: :string,
         required: false,
         example: "select current_timestamp() as 'test'"
       ],
       ch_sql: [
         in: :query,
-        description: "ClickHouse SQL string",
+        description: "Deprecated ClickHouse SQL parameter. Prefer sql with backend_id.",
         type: :string,
         required: false,
         example: "select now() as 'test'"
       ],
       pg_sql: [
         in: :query,
-        description: "PostgresSQL string",
+        description: "Deprecated PostgreSQL SQL parameter. Prefer sql with backend_id.",
         type: :string,
         required: false,
         example: "select current_date() as 'test'"
@@ -108,7 +115,7 @@ defmodule LogflareWeb.Api.QueryController do
       backend_id: [
         in: :query,
         description:
-          "Backend ID to execute the query against. When provided with sql=, the language is inferred from the backend type.",
+          "Backend ID to execute the query against. The backend type determines the SQL language.",
         type: :integer,
         required: false
       ]
@@ -121,16 +128,17 @@ defmodule LogflareWeb.Api.QueryController do
   )
 
   def query(%{assigns: %{user: user}} = conn, params) do
-    with {:ok, language, sql} <- extract_query(params),
+    with {:ok, requested_language, sql} <- extract_query(params),
          {:ok, backend} <- fetch_backend(user, params),
-         language = resolve_language(language, backend),
+         language = resolve_language(requested_language, backend),
          opts = build_query_opts(backend),
          {:ok, %{rows: rows}} <- Endpoints.run_query_string(user, {language, sql}, opts) do
       json(conn, %{result: rows})
     end
   end
 
-  @spec extract_query(map()) :: {:ok, atom(), String.t()} | {:error, String.t()}
+  @spec extract_query(map()) ::
+          {:ok, :infer | :bq_sql | :ch_sql | :pg_sql, String.t()} | {:error, String.t()}
   defp extract_query(%{"sql" => sql}), do: {:ok, :infer, sql}
   defp extract_query(%{"bq_sql" => sql}), do: {:ok, :bq_sql, sql}
   defp extract_query(%{"ch_sql" => sql}), do: {:ok, :ch_sql, sql}
@@ -141,9 +149,10 @@ defmodule LogflareWeb.Api.QueryController do
      "No query params provided. Supported query params are sql=, bq_sql=, ch_sql=, and pg_sql="}
   end
 
-  @spec resolve_language(atom(), Backend.t() | nil) :: atom()
+  @spec resolve_language(:infer | :bq_sql | :ch_sql | :pg_sql, Backend.t() | nil) ::
+          :bq_sql | :ch_sql | :pg_sql
   defp resolve_language(:infer, backend),
-    do: EndpointQuery.map_backend_to_language(backend, false)
+    do: EndpointQuery.map_backend_to_language(backend, SingleTenant.supabase_mode?())
 
   defp resolve_language(language, _backend), do: language
 
