@@ -84,7 +84,7 @@ defmodule Logflare.Backends.Backend do
   defp validate_config(%{valid?: true} = changeset) do
     type = Changeset.get_field(changeset, :type)
     mod = adaptor_mapping()[type]
-    existing_config = changeset.data.config_encrypted || %{}
+    existing_config = atomize_config_keys(changeset.data.config_encrypted || %{})
 
     with %{} = config <- Changeset.get_change(changeset, :config),
          %{valid?: true} = merged_cs <-
@@ -123,6 +123,22 @@ defmodule Logflare.Backends.Backend do
   @spec child_spec(Source.t(), Backend.t()) :: map()
   defdelegate child_spec(source, backend), to: Adaptor
 
+  @doc """
+  Normalizes a stored config map to atom keys.
+
+  `config_encrypted` round-trips through JSON encryption/decryption, so
+  decrypted config maps come back with string keys instead of the atom keys used
+  when the config was cast/validated. Adaptor callbacks always operate on atom
+  keys.
+  """
+  @spec atomize_config_keys(map()) :: map()
+  def atomize_config_keys(config) when is_map(config) do
+    Map.new(config, fn
+      {key, value} when is_binary(key) -> {String.to_existing_atom(key), value}
+      {key, value} -> {key, value}
+    end)
+  end
+
   # secrets redacting for json encoding
   defimpl Jason.Encoder, for: __MODULE__ do
     def encode(value, opts) do
@@ -147,22 +163,11 @@ defmodule Logflare.Backends.Backend do
         ])
         |> Map.update(:config, %{}, fn config ->
           config
-          |> atomize_keys()
+          |> Backend.atomize_config_keys()
           |> adaptor.redact_config()
         end)
 
       Jason.Encode.map(values, opts)
-    end
-
-    # `config_encrypted` round-trips through JSON encryption/decryption, so
-    # decrypted config maps come back with string keys instead of the atom
-    # keys used when the config was cast/validated. Adaptors' `redact_config/1`
-    # callbacks always operate on atom keys, so normalize here first.
-    defp atomize_keys(config) when is_map(config) do
-      Map.new(config, fn
-        {key, value} when is_binary(key) -> {String.to_existing_atom(key), value}
-        {key, value} -> {key, value}
-      end)
     end
   end
 end

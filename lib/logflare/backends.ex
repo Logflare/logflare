@@ -30,6 +30,7 @@ defmodule Logflare.Backends do
   alias Logflare.Teams
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
+  alias Logflare.Utils
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
@@ -285,14 +286,11 @@ defmodule Logflare.Backends do
   """
   @spec update_backend(Backend.t(), map()) :: {:ok, Backend.t()} | {:error, Changeset.t()}
   def update_backend(%Backend{} = backend, attrs) do
-    alerts_modified = Map.has_key?(attrs, :alert_queries)
-
-    default_ingest_modified? =
-      Map.has_key?(attrs, "default_ingest?") or Map.has_key?(attrs, :default_ingest?)
-
-    config_modified? = Map.has_key?(attrs, "config") or Map.has_key?(attrs, :config)
-
-    source_id = Map.get(attrs, "source_id") || Map.get(attrs, :source_id)
+    attrs = Utils.Map.stringify_top_level_keys(attrs)
+    alerts_modified = Map.has_key?(attrs, "alert_queries")
+    default_ingest_modified? = Map.has_key?(attrs, "default_ingest?")
+    config_modified? = Map.has_key?(attrs, "config")
+    source_id = attrs["source_id"]
 
     changeset =
       backend
@@ -300,7 +298,7 @@ defmodule Logflare.Backends do
       |> validate_default_ingest_source(source_id)
       |> then(fn changeset ->
         if alerts_modified do
-          Changeset.put_assoc(changeset, :alert_queries, Map.get(attrs, :alert_queries))
+          Changeset.put_assoc(changeset, :alert_queries, attrs["alert_queries"])
         else
           changeset
         end

@@ -16,6 +16,22 @@ defmodule Logflare.Utils.Map do
   end
 
   @doc """
+  Stringifies the top level keys of a map. Values stay untouched.
+
+  ## Examples
+
+    iex> stringify_top_level_keys(%{test: 123})
+    %{"test" => 123}
+
+    iex> stringify_top_level_keys(%{"test" => %{nested: 123}})
+    %{"test" => %{nested: 123}}
+  """
+  @spec stringify_top_level_keys(map()) :: map()
+  def stringify_top_level_keys(map) when is_map(map) do
+    Map.new(map, fn {key, value} -> {to_string(key), value} end)
+  end
+
+  @doc """
   Checks if a map does not contain nested maps.
 
   ## Examples
