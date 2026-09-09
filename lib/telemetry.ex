@@ -466,11 +466,11 @@ defmodule Logflare.Telemetry do
       last_value("logflare.backends.spool.write_health.failure_count",
         description: "Spool local WAL consecutive write/roll/commit failure count"
       ),
-      sum("logflare.backends.spool.queue.publish.count",
+      counter("logflare.backends.spool.queue.publish.count",
         tags: [:result],
         description: "Spool queue publish (SQS send / PubSub publish) count"
       ),
-      sum("logflare.backends.spool.storage.put.count",
+      counter("logflare.backends.spool.storage.put.count",
         tags: [:format, :result],
         description: "Spool storage writes (S3/GCS put) count by format/result"
       ),
@@ -484,6 +484,8 @@ defmodule Logflare.Telemetry do
         description: "Time spent in the actual storage_mod.put network call, by format/result"
       ),
       sum("logflare.backends.spool.producer.batch.count",
+        event_name: [:logflare, :backends, :spool, :producer, :batch],
+        measurement: :batch_size,
         tags: [:result, :stage],
         description:
           "Spool producer batches by end-to-end outcome (:ok, or :error tagged with which stage — :upload or :notify — failed)"
@@ -492,7 +494,7 @@ defmodule Logflare.Telemetry do
         tags: [:result],
         description: "Spool queue receive (SQS/PubSub) message count"
       ),
-      sum("logflare.backends.spool.storage.get.count",
+      counter("logflare.backends.spool.storage.get.count",
         tags: [:result],
         description: "Spool storage downloads (S3/GCS get) count by result"
       ),
@@ -504,12 +506,12 @@ defmodule Logflare.Telemetry do
         tags: [:result],
         description: "Spool events parsed per downloaded file"
       ),
-      sum("logflare.backends.spool.queue.ack.count",
+      counter("logflare.backends.spool.queue.ack.count",
         tags: [:reason, :result],
         description:
           "Spool queue ack (delete) count by reason, and whether the underlying SQS/PubSub call itself succeeded"
       ),
-      sum("logflare.backends.spool.queue.nack.count",
+      counter("logflare.backends.spool.queue.nack.count",
         tags: [:reason, :result],
         description:
           "Spool queue nack (requeue) count by reason, and whether the underlying SQS/PubSub call itself succeeded"

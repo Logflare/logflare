@@ -27,15 +27,15 @@ defmodule Logflare.Backends.Spool.Framing do
   Splits a concatenated sequence of frames back into their payloads,
   verifying each frame's CRC32, rather than returning partial results — a
   caller can't tell a genuinely-empty file from a silently-truncated one
-  otherwise. Two distinct failure reasons, not collapsed into one, because
-  callers need to tell them apart (see `Logflare.Backends.Spool
-  .ConsumerPipeline.QueueProducer`'s legacy-format fallback):
+  otherwise. Two distinct failure reasons, not collapsed into one, so a
+  caller (e.g. `Logflare.Backends.Spool.ConsumerPipeline.QueueProducer`) can
+  log or report them differently:
 
     * `:not_framed` — the bytes never looked like a frame at all (missing
-      header, or a declared length longer than the remaining data). This is
-      what a file written before this frame format existed looks like —
-      real content's leading bytes essentially never happen to form a
-      plausible length prefix.
+      header, or a declared length longer than the remaining data) — real
+      content's leading bytes essentially never happen to form a plausible
+      length prefix by chance, so this means the bytes were never framed
+      to begin with.
     * `:corrupt_frame` — the bytes *did* form a structurally valid frame
       (header present, exactly the declared number of payload bytes
       present) but the CRC didn't match — genuine corruption of an

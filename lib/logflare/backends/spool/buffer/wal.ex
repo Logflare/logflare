@@ -139,32 +139,28 @@ defmodule Logflare.Backends.Spool.Buffer.WAL do
   # reopen failed), in which case there's nothing to retry a write against
   # until ensure_fd/1 gets a fresh one.
   defp write_segment(state, segment) do
-    case ensure_fd(state) do
-      {:ok, state} -> write_with_recovery(state, segment)
-      {:error, reason, state} -> {:error, reason, state}
+    with {:ok, state} <- ensure_fd(state),
+         :ok <- try_write(state.fd, segment) do
+      {:ok, state}
+    else
+      {:error, _reason, _state} = error -> error
+      {:error, reason} -> retry_after_reopen(state, segment, reason)
     end
   end
 
   defp ensure_fd(%{fd: nil} = state), do: open_active_file(state)
   defp ensure_fd(state), do: {:ok, state}
 
-  defp write_with_recovery(state, segment) do
-    case try_write(state.fd, segment) do
-      :ok -> {:ok, state}
-      {:error, reason} -> retry_write_after_reopen(state, segment, reason)
-    end
-  end
+  defp retry_after_reopen(state, segment, original_reason) do
+    with {:ok, state} <- reopen_active_file(state),
+         :ok <- try_write(state.fd, segment) do
+      {:ok, state}
+    else
+      {:error, _reopen_reason, reopen_failed_state} ->
+        {:error, original_reason, reopen_failed_state}
 
-  defp retry_write_after_reopen(state, segment, original_reason) do
-    case reopen_active_file(state) do
-      {:ok, state} ->
-        case try_write(state.fd, segment) do
-          :ok -> {:ok, state}
-          {:error, reason} -> {:error, reason, state}
-        end
-
-      {:error, _reopen_reason, state} ->
-        {:error, original_reason, state}
+      {:error, reason} ->
+        {:error, reason, state}
     end
   end
 

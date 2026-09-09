@@ -196,7 +196,7 @@ defmodule Logflare.Backends.Spool.Committer do
 
     :telemetry.execute(
       [:logflare, :backends, :spool, :queue, :publish],
-      %{count: 1},
+      %{},
       %{result: if(result == :ok, do: :ok, else: :error)}
     )
 
@@ -224,7 +224,7 @@ defmodule Logflare.Backends.Spool.Committer do
   defp emit_storage_put_telemetry(format, bytes, result, upload_us) do
     :telemetry.execute(
       [:logflare, :backends, :spool, :storage, :put],
-      %{count: 1, bytes: bytes, upload_duration: upload_us},
+      %{bytes: bytes, upload_duration: upload_us},
       %{format: format, result: if(match?({:ok, _}, result), do: :ok, else: :error)}
     )
   end
@@ -232,7 +232,7 @@ defmodule Logflare.Backends.Spool.Committer do
   defp emit_batch_result(result, stage, batch_size) do
     :telemetry.execute(
       [:logflare, :backends, :spool, :producer, :batch],
-      %{count: batch_size},
+      %{batch_size: batch_size},
       %{result: result, stage: stage}
     )
   end

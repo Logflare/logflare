@@ -105,6 +105,30 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   acked once all of its file's lines have been transferred into the emit
   buffer and drained (`maybe_ack_exhausted/1`), regardless of whether
   Broadway has actually finished processing them yet.
+
+  ## Spool file format
+
+  A spool file (see `Committer.file_key/1`, `Encoder.current_version/0`) is
+  one or more independently-encoded (and independently compressed) chunks
+  concatenated as length+CRC32-framed segments — see
+  `Logflare.Backends.Spool.Framing`'s moduledoc for why concatenation alone
+  isn't safe to decode (zstd in particular silently drops everything past
+  the first member on raw concatenation). Each segment is decompressed and
+  parsed on its own (`decode_content/2`), then the resulting event lists
+  are concatenated. Dispatching on the file_key's version tag itself,
+  rather than sniffing the content, is exact — there's no ambiguity to
+  fall back on. A version this build doesn't recognize (newer than
+  `Encoder.current_version/0` — some future rollout where not every
+  consumer is upgraded yet) is reported back as `{:unsupported_version, _}`
+  rather than attempted, so the caller can leave it for a node that does
+  understand it instead of destroying it as if it were corrupt.
+
+  Decompression and parsing are both capable of raising on truncated or
+  otherwise corrupt content (`:zlib.gunzip/1`, `:ezstd.decompress/1`, and
+  `:erlang.binary_to_term/2` all crash or return `{:error, _}` rather than
+  a clean error tuple in every case) — caught close to the queue handle, so
+  the caller can ack (drop) the poison message instead of losing the
+  handle to `safe_fetch_next/4`'s outer rescue and retrying forever.
   """
 
   @behaviour Broadway.Producer
@@ -616,7 +640,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     :telemetry.execute(
       [:logflare, :backends, :spool, :storage, :get],
       %{
-        count: 1,
         bytes:
           if(match?({:ok, _}, download_result), do: byte_size(elem(download_result, 1)), else: 0),
         line_count: if(match?({:ok, _}, result), do: length(elem(result, 1)), else: 0)
@@ -627,38 +650,13 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     result
   end
 
-  # A versioned spool file (see Committer.file_key/1, Encoder.current_version/0)
-  # is one or more independently-encoded (and independently compressed)
-  # chunks concatenated as length+CRC32-framed segments — see
-  # Logflare.Backends.Spool.Framing's moduledoc for why concatenation alone
-  # isn't safe to decode (zstd in particular silently drops everything past
-  # the first member on raw concatenation). Each segment is decompressed and
-  # parsed on its own, then the resulting event lists are concatenated. A
-  # file with no version tag at all was written by the pre-framing
-  # main-branch producer: one whole compressed-or-not blob, no wrapper.
-  # Dispatching on the key itself, rather than sniffing the content, is
-  # exact — there's no ambiguity to fall back on — and lets producers on
-  # different versions (or the pre-versioning main branch) coexist in the
-  # same queue/bucket across a rollout. A version this build doesn't
-  # recognize (newer than Encoder.current_version/0 — some future rollout
-  # where not every consumer is upgraded yet) is reported back as
-  # {:unsupported_version, _} rather than attempted, so the caller can leave
-  # it for a node that does understand it instead of destroying it as if it
-  # were corrupt.
-  #
-  # Decompression and parsing are both capable of raising on truncated or
-  # otherwise corrupt content (:zlib.gunzip/1, :ezstd.decompress/1, and
-  # :erlang.binary_to_term/2 all crash or return {:error, _} rather than a
-  # clean error tuple in every case) — caught here, close to the queue handle,
-  # so the caller can ack (drop) the poison message instead of losing the
-  # handle to safe_fetch_next's outer rescue and retrying forever.
+  # See this module's "Spool file format" moduledoc section for the
+  # versioned/segmented format this decodes, and why a version this build
+  # doesn't recognize is left for another node rather than attempted.
   defp decode_content(file_key, raw) do
     current = Encoder.current_version()
 
     case Encoder.file_key_version(file_key) do
-      :legacy ->
-        decode_legacy_content(file_key, raw)
-
       ^current ->
         case Framing.decode_segments(raw) do
           {:ok, segments} -> decode_versioned_segments(file_key, segments)
@@ -674,14 +672,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     kind, reason -> {:error, {:decode_failed, %RuntimeError{message: inspect({kind, reason})}}}
   end
 
-  defp decode_legacy_content(file_key, raw) do
-    {:ok, decode_and_parse(file_key, raw)}
-  end
-
-  # Each segment of a versioned file is decompressed and parsed on its own,
-  # then the resulting event lists are flattened across the whole file — a
-  # legacy file is really just this same operation with a single implicit
-  # segment (the whole raw body).
+  # Each segment is decompressed and parsed on its own, then the resulting
+  # event lists are flattened across the whole file.
   defp decode_versioned_segments(file_key, segments) do
     {:ok, Enum.flat_map(segments, &decode_and_parse(file_key, &1))}
   end
@@ -759,14 +751,14 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   # result is the raw return of the queue_mod.ack/nack call
   defp emit_ack_telemetry(reason, result) do
-    :telemetry.execute([:logflare, :backends, :spool, :queue, :ack], %{count: 1}, %{
+    :telemetry.execute([:logflare, :backends, :spool, :queue, :ack], %{}, %{
       reason: reason,
       result: normalize_result(result)
     })
   end
 
   defp emit_nack_telemetry(reason, result) do
-    :telemetry.execute([:logflare, :backends, :spool, :queue, :nack], %{count: 1}, %{
+    :telemetry.execute([:logflare, :backends, :spool, :queue, :nack], %{}, %{
       reason: reason,
       result: normalize_result(result)
     })

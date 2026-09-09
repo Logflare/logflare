@@ -84,14 +84,14 @@ defmodule Logflare.Backends.Spool.CommitterTest do
       assert_receive {:telemetry_event, [:logflare, :backends, :pipeline, :handle_batch],
                       %{batch_size: 1, batch_trigger: :size}, %{backend_type: :spool_producer}}
 
-      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :publish],
-                      %{count: 1}, %{result: :ok}}
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :publish], %{},
+                      %{result: :ok}}
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :storage, :put], _,
                       %{format: :ndjson, result: :ok}}
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :producer, :batch],
-                      %{count: 1}, %{result: :ok, stage: nil}}
+                      %{batch_size: 1}, %{result: :ok, stage: nil}}
     end
 
     test "gzip+compress sets the content-encoding header" do
@@ -220,13 +220,13 @@ defmodule Logflare.Backends.Spool.CommitterTest do
                Committer.commit_async(self(), file_thunk(path), 1, :size, path, config())
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :producer, :batch],
-                      %{count: 1}, %{result: :error, stage: :upload}}
+                      %{batch_size: 1}, %{result: :error, stage: :upload}}
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :producer, :batch],
-                      %{count: 1}, %{result: :error, stage: :upload}}
+                      %{batch_size: 1}, %{result: :error, stage: :upload}}
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :producer, :batch],
-                      %{count: 1}, %{result: :ok, stage: nil}}
+                      %{batch_size: 1}, %{result: :ok, stage: nil}}
     end
   end
 

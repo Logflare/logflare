@@ -177,11 +177,11 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
                       %{count: 1}, %{result: :ok}}
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :storage, :get],
-                      %{count: 1, bytes: bytes, line_count: 2}, %{result: :ok}}
+                      %{bytes: bytes, line_count: 2}, %{result: :ok}}
 
       assert bytes > 0
 
-      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{count: 1},
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{},
                       %{reason: :buffer_exhausted}}
     end
 
@@ -262,58 +262,26 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
     end
   end
 
-  describe "legacy (pre-versioning) file compatibility" do
-    # A file without ".v2." in its key was written by the main-branch
-    # producer, before per-chunk framing existed: one whole compressed-or-not
-    # blob, no length+CRC32 wrapper — see QueueProducer.decode_content/2 and
-    # Committer.file_key/1. These confirm the consumer still reads that
-    # format correctly, so old and new producers' output can coexist in the
-    # same bucket/queue across a rollout.
-    test "decodes an unversioned, uncompressed .ndjson file" do
+  describe "legacy (pre-versioning) file handling" do
+    # Legacy decoding (a file with no ".vN." tag at all, from the
+    # pre-framing main-branch producer) has been removed — no code path
+    # attempts to decode one anymore. This confirms a legacy-tagged key now
+    # takes the same route as a not-yet-understood future version: nacked
+    # (redelivered) rather than decoded or dropped.
+    test "a legacy (unversioned) file_key is nacked as unsupported, not decoded" do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :nack])
       stub_ack_nack(self())
       stub_queue([queue_message("h1", "0/legacy.ndjson")])
-      stub_storage(%{"0/legacy.ndjson" => ndjson_body([%{"id" => "e1"}, %{"id" => "e2"}])})
+      stub_storage(%{"0/legacy.ndjson" => ndjson_body([%{"id" => "e1"}])})
 
       pid = start_producer()
+      Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
 
-      events =
-        GenStage.stream([{pid, max_demand: 10}])
-        |> Enum.take(2)
+      assert_receive {:nacked, "h1"}, 2000
+      refute_receive {:acked, "h1"}
 
-      assert Enum.map(events, & &1["id"]) == ["e1", "e2"]
-      assert_receive {:acked, "h1"}, 2000
-    end
-
-    test "decodes an unversioned, gzip-compressed .ndjson.gz file" do
-      stub_ack_nack(self())
-      stub_queue([queue_message("h1", "0/legacy.ndjson.gz")])
-      stub_storage(%{"0/legacy.ndjson.gz" => :zlib.gzip(ndjson_body([%{"id" => "e1"}]))})
-
-      pid = start_producer()
-
-      [event] =
-        GenStage.stream([{pid, max_demand: 10}])
-        |> Enum.take(1)
-
-      assert event["id"] == "e1"
-      assert_receive {:acked, "h1"}, 2000
-    end
-
-    test "decodes an unversioned, gzip-compressed .etf.gz file" do
-      stub_ack_nack(self())
-      stub_queue([queue_message("h1", "0/legacy.etf.gz")])
-
-      body = :erlang.term_to_binary([%{id: "e1"}])
-      stub_storage(%{"0/legacy.etf.gz" => :zlib.gzip(body)})
-
-      pid = start_producer()
-
-      [event] =
-        GenStage.stream([{pid, max_demand: 10}])
-        |> Enum.take(1)
-
-      assert event.id == "e1"
-      assert_receive {:acked, "h1"}, 2000
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :nack], %{},
+                      %{reason: :unsupported_version}}
     end
   end
 
@@ -558,11 +526,11 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       assert_receive {:acked, "h1"}, 2000
 
-      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{count: 1},
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{},
                       %{reason: :stale_file}}
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :storage, :get],
-                      %{count: 1, bytes: 0, line_count: 0}, %{result: :error}}
+                      %{bytes: 0, line_count: 0}, %{result: :error}}
     end
 
     test "acks with reason: :no_file_key when the queue message body has no file_key" do
@@ -576,7 +544,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       assert_receive {:acked, "h1"}, 2000
 
-      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{count: 1},
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{},
                       %{reason: :no_file_key}}
     end
 
@@ -596,7 +564,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       assert_receive {:acked, "h1"}, 2000
 
-      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{count: 1},
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{},
                       %{reason: :decode_error}}
     end
 
@@ -612,7 +580,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       assert_receive {:acked, "h1"}, 2000
 
-      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{count: 1},
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{},
                       %{reason: :decode_error}}
     end
 
@@ -628,7 +596,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       assert_receive {:acked, "h1"}, 2000
 
-      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{count: 1},
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{},
                       %{reason: :decode_error}}
     end
 
@@ -650,7 +618,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       assert_receive {:acked, "h1"}, 2000
 
-      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{count: 1},
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{},
                       %{reason: :decode_error}}
     end
 
@@ -669,8 +637,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       assert_receive {:nacked, "h1"}, 2000
       refute_receive {:acked, "h1"}
 
-      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :nack],
-                      %{count: 1}, %{reason: :unsupported_version}}
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :nack], %{},
+                      %{reason: :unsupported_version}}
     end
   end
 
@@ -685,7 +653,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       pid = start_producer()
       Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
 
-      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{count: 1},
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{},
                       %{reason: :stale_file, result: :error}},
                      2000
     end
@@ -700,8 +668,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       pid = start_producer()
       Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
 
-      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :nack],
-                      %{count: 1}, %{reason: :prefetch_failed, result: :error}},
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :nack], %{},
+                      %{reason: :prefetch_failed, result: :error}},
                      2000
     end
   end
@@ -744,8 +712,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       assert_receive {:nacked, "h2"}, 2000
 
-      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :nack],
-                      %{count: 1}, %{reason: :prefetch_failed}}
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :nack], %{},
+                      %{reason: :prefetch_failed}}
     end
   end
 

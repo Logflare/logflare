@@ -96,7 +96,6 @@ defmodule Logflare.Backends.Spool.Partition do
   @impl GenServer
   def init(opts) do
     buffer_mod = Keyword.fetch!(opts, :buffer_mod)
-    buffer_state = buffer_mod.init(opts)
 
     committer_config = %{
       bucket: Keyword.fetch!(opts, :bucket),
@@ -113,7 +112,7 @@ defmodule Logflare.Backends.Spool.Partition do
 
     state = %{
       buffer_mod: buffer_mod,
-      buffer_state: buffer_state,
+      buffer_state: nil,
       batch_timeout: Keyword.fetch!(opts, :batch_timeout),
       max_inflight_commits:
         Keyword.get(spool_config, :max_inflight_commits, @default_max_inflight_commits),
@@ -125,9 +124,23 @@ defmodule Logflare.Backends.Spool.Partition do
       committer_config: committer_config
     }
 
-    state = start_flush_loop(state)
-    state = schedule_recovery(state)
-    {:ok, state}
+    {:ok, state, {:continue, {:init_buffer, opts}}}
+  end
+
+  # Deferred out of init/1 so this process's :via name is registered (and
+  # `:sys`-inspectable) before the buffer's own init/1 runs — for the WAL
+  # buffer that's a few local syscalls (mkdir_p!, recover!, file.open), not
+  # network I/O, but OTP guarantees this runs before any other message
+  # (including a caller's GenServer.call right after start_link returns),
+  # so nothing that depends on buffer_state being set can ever race it.
+  @impl GenServer
+  def handle_continue({:init_buffer, opts}, state) do
+    state =
+      %{state | buffer_state: state.buffer_mod.init(opts)}
+      |> start_flush_loop()
+      |> schedule_recovery()
+
+    {:noreply, state}
   end
 
   @impl GenServer
