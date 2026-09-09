@@ -855,10 +855,9 @@ defmodule Logflare.Backends do
   committed (`Partition.append/5` with `wait_until_committed: true` —
   uploaded to GCS/S3, published to Pub-Sub/SQS) rather than just until it's
   durable in whichever buffer is active (`wait_until_committed: false`, the
-  default). Set via
-  `SPOOL_BLOCKING`/`:logflare, :spool, :blocking` — off by default; prod,
-  staging, and the dev cluster all set this to `true` explicitly (see
-  `cloudbuild/`). This can add real latency to the calling request — see
+  default). Set via `SPOOL_BLOCKING`/`:logflare, :spool, :blocking` — off by
+  default, including on prod/staging/the dev cluster (see `cloudbuild/`).
+  This can add real latency to the calling request — see
   `Logflare.Backends.Spool.Committer`'s retry budget
   (`max_commit_attempts`/`retry_delay_ms`), which every blocked caller in a
   failed batch waits through before getting an error.

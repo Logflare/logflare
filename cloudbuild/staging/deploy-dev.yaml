@@ -136,12 +136,12 @@ substitutions:
   # separate disk — see gce-startup.sh for why). Set unconditionally
   # (consumer just never reads it).
   _SPOOL_WAL_DIR: /var/lib/logflare/spool_wal
-  # Blocks ingest_logs/4 callers until their chunk is durably uploaded +
-  # queue-notified (see Backends.dispatch_to_spool_producer/1), instead of the
-  # default fire-and-forget push — real backpressure instead of an unbounded
-  # EventQueue.Bodies ETS table, for testing whether this prevents the OOM
-  # reproduced under full-saturation load on this dev cluster.
-  _SPOOL_BLOCKING: "true"
+  # Blocking (see Backends.spool_blocking_mode?/0) was enabled here to test
+  # whether waiting for the actual GCS/Pub-Sub commit prevents the OOM
+  # reproduced under full-saturation load — off by default for now while
+  # a separate consumer-side slowness is investigated. Toggle explicitly
+  # via the console to retest.
+  _SPOOL_BLOCKING: "false"
   # Local-disk WAL buffer, matching prod/staging — see
   # Logflare.Backends.spool_buffer/0 (otherwise defaults to in-memory).
   _SPOOL_BUFFER: wal

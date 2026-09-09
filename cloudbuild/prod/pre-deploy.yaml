@@ -13,12 +13,13 @@ steps:
           # — deployment-topology-specific, not a secret, so it belongs here
           # rather than in the baked-in prod secrets.
           printf '%s\n' 'SPOOL_WAL_DIR=/var/lib/logflare/spool_wal'
-          # Local-disk WAL buffer + block ingest callers until each batch is
-          # actually committed (see Logflare.Backends.spool_buffer/0 and
-          # .spool_blocking_mode?/0, both otherwise defaulting to in-memory
-          # /fire-and-forget) — same as staging and the dev cluster.
+          # Local-disk WAL buffer (see Logflare.Backends.spool_buffer/0,
+          # otherwise defaulting to in-memory) — same as staging and the dev
+          # cluster. Blocking (spool_blocking_mode?/0) stays off here —
+          # ingest callers don't wait for the GCS/Pub-Sub commit, only for
+          # local WAL durability.
           printf '%s\n' 'SPOOL_BUFFER=wal'
-          printf '%s\n' 'SPOOL_BLOCKING=true'
+          printf '%s\n' 'SPOOL_BLOCKING=false'
           printf 'RELEASE_COOKIE=%s\n' "$$1"
           printf '%s\n' 'LOGFLARE_PUBSUB_POOL_SIZE=32'
           printf 'LOGFLARE_METADATA_CLUSTER=%s\n' "$$2"
