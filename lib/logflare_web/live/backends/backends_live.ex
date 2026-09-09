@@ -397,25 +397,7 @@ defmodule LogflareWeb.BackendsLive do
   end
 
   defp assign_backend_types(socket) do
-    socket
-    |> assign(:backend_types, [
-      {"Webhook", :webhook},
-      {"Postgres", :postgres},
-      {"BigQuery", :bigquery},
-      {"Datadog", :datadog},
-      {"Elastic", :elastic},
-      {"Loki", :loki},
-      {"ClickHouse", :clickhouse},
-      {"Incident.io", :incidentio},
-      {"S3", :s3},
-      {"Sentry", :sentry},
-      {"Axiom", :axiom},
-      {"OTLP", :otlp},
-      {"Last9", :last9},
-      {"SigNoz", :signoz},
-      {"Syslog", :syslog},
-      {"Google SecOps", :google_secops}
-    ])
+    assign(socket, :backend_types, Backend.types_with_labels())
   end
 
   defp refresh_backends(socket) do

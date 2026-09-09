@@ -32,6 +32,31 @@ defmodule Logflare.Backends.Backend do
     google_secops: Adaptor.GoogleSecOpsAdaptor
   }
 
+  @type_labels %{
+    axiom: "Axiom",
+    bigquery: "BigQuery",
+    clickhouse: "ClickHouse",
+    datadog: "Datadog",
+    elastic: "Elastic",
+    google_secops: "Google SecOps",
+    incidentio: "Incident.io",
+    last9: "Last9",
+    loki: "Loki",
+    otlp: "OTLP",
+    postgres: "Postgres",
+    s3: "S3",
+    sentry: "Sentry",
+    signoz: "SigNoz",
+    syslog: "Syslog",
+    webhook: "Webhook"
+  }
+
+  @missing_type_labels Map.keys(@adaptor_mapping) -- Map.keys(@type_labels)
+
+  if @missing_type_labels != [] do
+    raise "missing @type_labels entries for backend types: #{inspect(@missing_type_labels)}"
+  end
+
   typed_schema "backends" do
     field :name, :string
     field :description, :string
@@ -60,6 +85,22 @@ defmodule Logflare.Backends.Backend do
   end
 
   def adaptor_mapping, do: @adaptor_mapping
+
+  @doc """
+  Human-readable label for a backend type.
+  """
+  @spec type_label(atom()) :: String.t()
+  def type_label(type) when is_atom(type), do: Map.fetch!(@type_labels, type)
+
+  @doc """
+  All backend types with their labels, sorted by label. Suitable for form selects.
+  """
+  @spec types_with_labels() :: [{String.t(), atom()}]
+  def types_with_labels do
+    @type_labels
+    |> Enum.map(fn {type, label} -> {label, type} end)
+    |> Enum.sort()
+  end
 
   def changeset(backend, attrs) do
     backend

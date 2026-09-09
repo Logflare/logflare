@@ -226,6 +226,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
         body: %{
           "timestamp" => 1_757_239_200_000_000,
           "event_message" => "hello logstash",
+          "id" => "0286d5cf-0e6a-4f4a-9ae0-3a0f8b6c0001",
           "my_field" => "abc"
         },
         source_name: "my-source",
@@ -246,6 +247,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
 
       refute Map.has_key?(event, "timestamp")
       refute Map.has_key?(event, "event_message")
+      refute Map.has_key?(event, "id")
     end
 
     test "falls back to ingest time when the event has no timestamp" do
@@ -309,8 +311,10 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
       assert event["message"] == "hello logstash"
       assert event["some"] == "key"
       assert event["logflare"]["source"] == source.name
+      assert event["logflare"]["id"] == le.id
       refute Map.has_key?(event, "timestamp")
       refute Map.has_key?(event, "event_message")
+      refute Map.has_key?(event, "id")
     end
 
     test "test_connection/1 probes the input with an empty batch", %{backend: backend} do
