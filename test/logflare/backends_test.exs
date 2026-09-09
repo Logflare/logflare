@@ -2165,7 +2165,7 @@ defmodule Logflare.BackendsTest do
          %{source: source} do
       # blocking: true so the commit failure — not just a WAL write — is
       # what dispatch_to_spool_producer/1 sees, exercising the same
-      # {:error, reason} path append_committed/5 returns.
+      # {:error, reason} path append/5's wait_until_committed: true returns.
       stop_supervised!(PartitionSupervisor)
 
       wal_dir =

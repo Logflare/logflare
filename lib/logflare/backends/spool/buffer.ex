@@ -9,8 +9,8 @@ defmodule Logflare.Backends.Spool.Buffer do
   Mem, since there's no local disk to report on).
 
   `Partition` owns everything else: when to reply to a caller
-  (immediately, for `append/5`, vs deferred until the eventual commit
-  settles, for `append_committed/5`), when to attempt a roll (after every
+  (immediately, by default, vs deferred until the eventual commit settles,
+  for `append/5` with `wait_until_committed: true`), when to attempt a roll (after every
   append, and on a recurring timer), and the commit `Task`'s lifecycle
   (concurrency, retries — via `Logflare.Backends.Spool.Committer` — and
   crash handling). A buffer never sees `Committer` or any caller's `from`

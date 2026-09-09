@@ -1,4 +1,24 @@
 defmodule Logflare.Backends.Spool.PartitionTest do
+  @moduledoc """
+  Tests generic `Partition` mechanics — reply timing, flush-loop/timer
+  behavior, `max_inflight_commits` capacity gating, retry-on-failure, crash
+  resilience, group commit — none of which branch on which `Buffer` is
+  plugged in, so these run against `Buffer.Mem` (no real disk I/O, and its
+  byte threshold is trivially configurable via `mem_max_batch_bytes`).
+
+  Buffer-specific behavior (WAL's disk writes/rolls/recovery-attempt
+  limits, Mem's in-memory accumulation/threshold specifics) belongs in
+  `Logflare.Backends.Spool.Buffer.WALTest` / `Buffer.MemTest` instead — unit
+  tests of the buffer modules directly, with no `Partition` involved.
+
+  The one exception is "crash recovery" below, backed by `Buffer.WAL`
+  instead — `Buffer.Mem.recover/1` always returns `{[], state}` (nothing
+  durable to find), so the only way to exercise `Partition`'s recovery
+  *orchestration* (bounded draining via `max_inflight_commits`, never
+  blocking `init/1`) end-to-end is through a buffer that actually has
+  leftover work to recover.
+  """
+
   use ExUnit.Case, async: false
 
   import Mimic
@@ -8,13 +28,33 @@ defmodule Logflare.Backends.Spool.PartitionTest do
   alias Logflare.Backends.Spool.Partition
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
-  alias Logflare.Backends.Spool.WriteHealth
   alias Logflare.TestUtils
 
   setup :set_mimic_global
 
+  defp start_partition(opts \\ []) do
+    defaults = [
+      name: :"partition_#{System.unique_integer([:positive])}",
+      buffer_mod: Buffer.Mem,
+      index: 0,
+      bucket: "test-bucket",
+      batch_timeout: 60_000,
+      compress: false,
+      format: :ndjson,
+      compression_algorithm: :gzip,
+      storage_mod: StorageMod,
+      queue_mod: QueueMod,
+      queue_ref: nil
+    ]
+
+    opts = Keyword.merge(defaults, opts)
+    pid = start_supervised!({Partition, opts}, id: opts[:name])
+    {pid, opts[:name]}
+  end
+
   # Fresh dir per test — the WAL buffer recovers/scans wal_dir on init, so
-  # tests can't share one without racing each other's leftover files.
+  # tests can't share one without racing each other's leftover files. Only
+  # used by the "crash recovery" describe block below.
   defp wal_dir! do
     dir =
       Path.join(System.tmp_dir!(), "spool_partition_test_#{System.unique_integer([:positive])}")
@@ -24,67 +64,9 @@ defmodule Logflare.Backends.Spool.PartitionTest do
     dir
   end
 
-  defp start_partition(opts) do
-    defaults = [
-      name: :"partition_#{System.unique_integer([:positive])}",
-      buffer_mod: Buffer.WAL,
-      index: 0,
-      bucket: "test-bucket",
-      batch_timeout: 60_000,
-      compress: false,
-      format: :ndjson,
-      compression_algorithm: :gzip,
-      storage_mod: StorageMod,
-      queue_mod: QueueMod,
-      queue_ref: nil,
-      wal_dir: wal_dir!()
-    ]
-
-    opts = Keyword.merge(defaults, opts)
-    pid = start_supervised!({Partition, opts}, id: opts[:name])
-    {pid, opts[:name]}
-  end
-
   defp segment(payload \\ "line\n"), do: Framing.encode_segment(payload)
 
   defp buffer_state(pid), do: :sys.get_state(pid).buffer_state
-
-  # Forces the next local WAL write to fail by closing the fd out from
-  # under the partition. Writing to a closed file descriptor fails at the
-  # OS level (:einval) regardless of permissions or user — unlike a
-  # chmod-based simulation, which root-run CI would bypass — so this is a
-  # reliable, portable way to exercise the disk-write-failure path. Since
-  # active_path itself is untouched, this is a *recoverable* break — the
-  # one-shot reopen in Buffer.WAL's write_with_recovery/2 succeeds against it.
-  defp break_local_disk!(pid) do
-    :sys.replace_state(pid, fn state ->
-      :file.close(state.buffer_state.fd)
-      state
-    end)
-  end
-
-  # Same as break_local_disk!/1, but also redirects active_path to a file
-  # inside a nonexistent directory, so the reopen-and-retry attempt fails
-  # too (:enoent, parent directory missing — reliable and root-safe,
-  # unlike a chmod-based simulation). Simulates a failure that isn't
-  # self-healing.
-  defp break_local_disk_unrecoverably!(pid) do
-    :sys.replace_state(pid, fn state ->
-      :file.close(state.buffer_state.fd)
-      bad_path = Path.join(state.buffer_state.wal_dir, "does-not-exist/p0.wal")
-      put_in(state.buffer_state.active_path, bad_path)
-    end)
-  end
-
-  # Redirects wal_dir (used only to compute the next sealed_path) to a
-  # nonexistent directory, so roll/2's File.rename fails while
-  # active_path itself stays valid — isolates a roll failure from a write
-  # failure.
-  defp break_roll!(pid) do
-    :sys.replace_state(pid, fn state ->
-      put_in(state.buffer_state.wal_dir, Path.join(state.buffer_state.wal_dir, "does-not-exist"))
-    end)
-  end
 
   defp assert_recovered_put(expected_payload, timeout) do
     receive do
@@ -132,11 +114,12 @@ defmodule Logflare.Backends.Spool.PartitionTest do
         {:ok, %{}}
       end)
 
+      Application.put_env(:logflare, :spool, mem_max_batch_bytes: 10)
+      on_exit(fn -> Application.delete_env(:logflare, :spool) end)
+
       {pid, _name} = start_partition(batch_timeout: 60_000)
 
-      # 32MB is the WAL buffer's hardcoded max_batch_bytes, tracked as
-      # raw/uncompressed bytes — see Backends.dispatch_to_spool_producer/1.
-      assert :ok = Partition.append(pid, segment(), 32 * 1024 * 1024, 1)
+      assert :ok = Partition.append(pid, segment(), 10, 1)
       assert_receive {:put, _body}, 1000
     end
 
@@ -156,12 +139,12 @@ defmodule Logflare.Backends.Spool.PartitionTest do
   end
 
   describe "append/5" do
-    test "blocks until the segment is durable on local disk (not until GCS/Pub-Sub commit)" do
+    test "blocks until the segment is durable in the buffer (not until GCS/Pub-Sub commit)" do
       test_pid = self()
       # A commit that never resolves during the test — proves append/5's
       # reply doesn't wait on it, which is the whole point of the redesign:
-      # durability is local-WAL-durable, not GCS-durable. batch_timeout is
-      # long so the flush timer itself can't fire put during the assertion
+      # durability is buffer-durable, not GCS-durable. batch_timeout is long
+      # so the flush timer itself can't fire put during the assertion
       # window below — this is testing append/5's own blocking behavior,
       # not racing the batch flush.
       stub(StorageMod, :put, fn _b, _k, _body, _opts ->
@@ -176,8 +159,8 @@ defmodule Logflare.Backends.Spool.PartitionTest do
     end
   end
 
-  describe "append_committed/5" do
-    test "blocks until the batch is actually committed, unlike append/5" do
+  describe "append/5 with wait_until_committed: true" do
+    test "blocks until the batch is actually committed, unlike the default" do
       test_pid = self()
 
       stub(StorageMod, :put, fn _b, _k, body, _opts ->
@@ -187,23 +170,61 @@ defmodule Logflare.Backends.Spool.PartitionTest do
 
       {pid, _name} = start_partition(batch_timeout: 20)
 
-      assert :ok = Partition.append_committed(pid, segment(), 10, 1)
+      assert :ok = Partition.append(pid, segment(), 10, 1, wait_until_committed: true)
       assert_receive {:put, _body}, 500
     end
 
-    test "fails if the eventual commit fails, unlike append/5" do
+    test "fails if the eventual commit fails, unlike the default" do
       stub(StorageMod, :put, fn _b, _k, _body, _opts -> {:error, :timeout} end)
       Application.put_env(:logflare, :spool, max_commit_attempts: 1)
       on_exit(fn -> Application.delete_env(:logflare, :spool) end)
 
       {pid, _name} = start_partition(batch_timeout: 20)
 
-      assert {:error, :timeout} = Partition.append_committed(pid, segment(), 10, 1)
+      assert {:error, :timeout} =
+               Partition.append(pid, segment(), 10, 1, wait_until_committed: true)
+    end
+
+    test "multiple concurrent callers landing in the same rolled batch all get replied to individually, in one upload" do
+      test_pid = self()
+
+      stub(StorageMod, :put, fn _b, _k, body, _opts ->
+        send(test_pid, {:put, body})
+        {:ok, %{}}
+      end)
+
+      # A short real batch_timeout, rather than manually sending :flush —
+      # racing a manual :flush against Task.async's own scheduling could
+      # arrive before the append's message even reaches the partition's
+      # mailbox. 100ms is comfortably enough for two local GenServer.call
+      # sends to land first.
+      {pid, _name} = start_partition(batch_timeout: 100)
+
+      task_a =
+        Task.async(fn ->
+          Partition.append(pid, segment("one\n"), 4, 1, wait_until_committed: true)
+        end)
+
+      task_b =
+        Task.async(fn ->
+          Partition.append(pid, segment("two\n"), 4, 1, wait_until_committed: true)
+        end)
+
+      assert Task.await(task_a) == :ok
+      assert Task.await(task_b) == :ok
+
+      assert_receive {:put, body}, 1000
+      # Order between two concurrently-racing callers isn't guaranteed.
+      assert {:ok, segments} = Framing.decode_segments(body)
+      assert Enum.sort(segments) == ["one\n", "two\n"]
+      refute_receive {:put, _body}, 100
     end
   end
 
   describe "flush loop" do
     test "a straggler left pending after a big rotation waits for the flush timer, not for its commit slot to free" do
+      Application.put_env(:logflare, :spool, mem_max_batch_bytes: 10)
+      on_exit(fn -> Application.delete_env(:logflare, :spool) end)
       test_pid = self()
 
       stub(StorageMod, :put, fn _b, _k, body, _opts ->
@@ -222,12 +243,12 @@ defmodule Logflare.Backends.Spool.PartitionTest do
       # Byte-threshold-triggering: hands off immediately, moving straight to
       # task_in_flight, so the second append below genuinely lands while the
       # first commit is still running.
-      assert :ok = Partition.append(pid, segment("first\n"), 32 * 1024 * 1024, 1)
+      assert :ok = Partition.append(pid, segment("first\n"), 10, 1)
       TestUtils.send_and_wait_for_handling(pid, :noop_sync)
       assert %{task_in_flight: 1} = :sys.get_state(pid)
       assert %{pending_count: 0} = buffer_state(pid)
 
-      assert :ok = Partition.append(pid, segment("second\n"), 10, 1)
+      assert :ok = Partition.append(pid, segment("second\n"), 5, 1)
       assert %{pending_count: 1} = buffer_state(pid)
 
       assert_receive {:put, first_body}, 1000
@@ -249,6 +270,8 @@ defmodule Logflare.Backends.Spool.PartitionTest do
     end
 
     test "an oversized append rolls immediately instead of waiting for the timer" do
+      Application.put_env(:logflare, :spool, mem_max_batch_bytes: 15)
+      on_exit(fn -> Application.delete_env(:logflare, :spool) end)
       test_pid = self()
 
       stub(StorageMod, :put, fn _b, _k, body, _opts ->
@@ -260,8 +283,8 @@ defmodule Logflare.Backends.Spool.PartitionTest do
       # the test would time out instead of passing.
       {pid, _name} = start_partition(batch_timeout: 60_000)
 
-      assert :ok = Partition.append(pid, segment("small\n"), 10, 1)
-      assert :ok = Partition.append(pid, segment("big\n"), 32 * 1024 * 1024, 1)
+      assert :ok = Partition.append(pid, segment("small\n"), 5, 1)
+      assert :ok = Partition.append(pid, segment("big\n"), 10, 1)
       assert_receive {:put, body}, 1000
 
       assert %{pending_count: 0} = buffer_state(pid)
@@ -278,12 +301,13 @@ defmodule Logflare.Backends.Spool.PartitionTest do
       # batch_timeout), set well above the refute_receive window below so
       # it can't have already fired by the time that assertion runs.
       Application.put_env(:logflare, :spool,
+        mem_max_batch_bytes: 4,
         max_inflight_commits: 1,
         recovery_retry_delay_ms: 300
       )
 
+      on_exit(fn -> Application.delete_env(:logflare, :spool) end)
       test_pid = self()
-      dir = wal_dir!()
 
       stub(StorageMod, :put, fn _b, _k, body, _opts ->
         send(test_pid, {:put_started, self(), body})
@@ -293,20 +317,20 @@ defmodule Logflare.Backends.Spool.PartitionTest do
         end
       end)
 
-      {pid, _name} = start_partition(wal_dir: dir)
+      {pid, _name} = start_partition()
 
-      assert :ok = Partition.append(pid, segment("first\n"), 32 * 1024 * 1024, 1)
+      assert :ok = Partition.append(pid, segment("first\n"), 4, 1)
       assert_receive {:put_started, first_task, first_body}, 1000
       assert %{task_in_flight: 1} = :sys.get_state(pid)
 
-      # Also over budget, but the cap (1) is already saturated. The active
-      # file still rolls right away (pending resets to 0) — leaving it
+      # Also over budget, but the cap (1) is already saturated. The batch
+      # still rolls right away (pending resets to empty) — leaving it
       # un-rolled until a slot freed would let it keep absorbing appends
-      # past the 32MB budget for as long as capacity stayed tight, which is
-      # exactly the bug this fixes. Only *starting* this segment's upload is
+      # past the byte budget for as long as capacity stayed tight, which is
+      # exactly the bug this fixes. Only *starting* this batch's upload is
       # deferred, to the same recovery-style retry a crash-recovered file
       # would use.
-      assert :ok = Partition.append(pid, segment("second\n"), 32 * 1024 * 1024, 1)
+      assert :ok = Partition.append(pid, segment("second\n"), 4, 1)
       refute_receive {:put_started, _task, _body}, 100
       assert %{task_in_flight: 1} = :sys.get_state(pid)
       assert %{pending_count: 0} = buffer_state(pid)
@@ -321,40 +345,45 @@ defmodule Logflare.Backends.Spool.PartitionTest do
       assert second_payload == "second\n"
     end
 
-    test "the active file never grows past one segment's worth even while capacity stays fully saturated" do
+    test "the buffer never grows past one batch's worth even while capacity stays fully saturated" do
       # recovery_retry_delay_ms doesn't matter for what this test checks —
       # nothing releases the one busy slot, so a deferred rotation's own
       # retry never finds room to spawn regardless of how soon it fires.
-      Application.put_env(:logflare, :spool, max_inflight_commits: 1)
+      Application.put_env(:logflare, :spool, mem_max_batch_bytes: 4, max_inflight_commits: 1)
+      on_exit(fn -> Application.delete_env(:logflare, :spool) end)
       test_pid = self()
-      dir = wal_dir!()
 
-      stub(StorageMod, :put, fn _b, _k, _body, _opts ->
-        send(test_pid, :put_started)
+      stub(StorageMod, :put, fn _b, _k, body, _opts ->
+        send(test_pid, {:put_started, self(), body})
 
         receive do
           :proceed -> {:ok, %{}}
         end
       end)
 
-      {pid, _name} = start_partition(wal_dir: dir)
+      {pid, _name} = start_partition()
 
-      assert :ok = Partition.append(pid, segment("one\n"), 32 * 1024 * 1024, 1)
-      assert_receive :put_started, 1000
+      assert :ok = Partition.append(pid, segment("one\n"), 4, 1)
+      assert_receive {:put_started, task_a, body_a}, 1000
 
       # Two more oversized appends while the only commit slot stays busy —
-      # each must still roll into its own sealed file. Before this fix, a
-      # saturated cap left the active file un-rolled, so it would just keep
-      # absorbing these past the 32MB budget instead.
-      assert :ok = Partition.append(pid, segment("two\n"), 32 * 1024 * 1024, 1)
-      assert :ok = Partition.append(pid, segment("three\n"), 32 * 1024 * 1024, 1)
+      # each must still roll into its own batch. Before this fix, a
+      # saturated cap left the buffer un-rolled, so it would just keep
+      # absorbing these past the byte budget instead.
+      assert :ok = Partition.append(pid, segment("two\n"), 4, 1)
+      assert :ok = Partition.append(pid, segment("three\n"), 4, 1)
 
-      assert %{pending_bytes: 0, pending_count: 0, active_path: active_path} = buffer_state(pid)
+      assert %{pending: [], pending_bytes: 0, pending_count: 0} = buffer_state(pid)
 
-      assert {:ok, %{size: 0}} = File.stat(active_path)
+      send(task_a, :proceed)
+      assert_receive {:put_started, task_b, body_b}, 1000
+      send(task_b, :proceed)
+      assert_receive {:put_started, task_c, body_c}, 1000
+      send(task_c, :proceed)
 
-      # "one" (uploading) + "two" and "three" (deferred, awaiting a slot).
-      assert length(Path.wildcard(Path.join(dir, "p0-*.sealed"))) == 3
+      assert {:ok, ["one\n"]} = Framing.decode_segments(body_a)
+      assert {:ok, ["two\n"]} = Framing.decode_segments(body_b)
+      assert {:ok, ["three\n"]} = Framing.decode_segments(body_c)
     end
   end
 
@@ -382,29 +411,30 @@ defmodule Logflare.Backends.Spool.PartitionTest do
   end
 
   describe "commit task crash resilience" do
-    test "a commit task that crashes leaves the sealed file on disk and does not crash the partition" do
+    test "a commit task that crashes does not crash the partition" do
+      Application.put_env(:logflare, :spool, mem_max_batch_bytes: 10)
+      on_exit(fn -> Application.delete_env(:logflare, :spool) end)
       test_pid = self()
-      dir = wal_dir!()
 
       stub(StorageMod, :put, fn _b, _k, _body, _opts ->
         send(test_pid, :put_called)
         raise "boom"
       end)
 
-      {pid, _name} = start_partition(wal_dir: dir, batch_timeout: 60_000)
+      {pid, _name} = start_partition(batch_timeout: 60_000)
       ref = Process.monitor(pid)
 
-      assert :ok = Partition.append(pid, segment(), 32 * 1024 * 1024, 1)
+      assert :ok = Partition.append(pid, segment(), 10, 1)
       assert_receive :put_called, 1000
 
       refute_receive {:DOWN, ^ref, :process, ^pid, _reason}, 200
 
       TestUtils.retry_assert(fn -> assert %{task_in_flight: 0} = :sys.get_state(pid) end)
-
-      assert [_leftover] = Path.wildcard(Path.join(dir, "p0-*.sealed"))
     end
   end
 
+  # Backed by Buffer.WAL, not the rest of this file's Buffer.Mem — see this
+  # module's doc for why.
   describe "crash recovery" do
     test "leftover sealed segments from a prior crash are uploaded on the next init" do
       test_pid = self()
@@ -422,7 +452,8 @@ defmodule Logflare.Backends.Spool.PartitionTest do
       leftover = Path.join(dir, "p0-999.sealed")
       File.write!(leftover, segment("recovered\n"))
 
-      {_pid, _name} = start_partition(wal_dir: dir, batch_timeout: 60_000)
+      {_pid, _name} =
+        start_partition(buffer_mod: Buffer.WAL, wal_dir: dir, batch_timeout: 60_000)
 
       # Filters for the specific recovered payload rather than accepting the
       # first {:put, _} that arrives — Mimic's global stub means an
@@ -460,7 +491,7 @@ defmodule Logflare.Backends.Spool.PartitionTest do
       # recovery_retry_delay_ms (default 100ms, decoupled from
       # batch_timeout — see handle_info({:recover, ...})), not immediately
       # the instant a slot frees.
-      {pid, _name} = start_partition(wal_dir: dir)
+      {pid, _name} = start_partition(buffer_mod: Buffer.WAL, wal_dir: dir)
 
       # Exactly the cap (2) start immediately, not all 5.
       assert_receive {:put_started, task_a, _}, 1000
@@ -481,190 +512,6 @@ defmodule Logflare.Backends.Spool.PartitionTest do
       send(task_e, :proceed)
 
       for leftover <- leftovers, do: assert_eventually_gone(leftover, 500)
-    end
-
-    test "a torn tail in the active WAL file is truncated on recovery, not treated as corruption" do
-      dir = wal_dir!()
-      active_path = Path.join(dir, "p0.wal")
-
-      whole = segment("whole\n")
-      torn = binary_part(segment("torn\n"), 0, 5)
-      File.write!(active_path, whole <> torn)
-
-      test_pid = self()
-
-      stub(StorageMod, :put, fn _b, _k, body, _opts ->
-        send(test_pid, {:put, body})
-        {:ok, %{}}
-      end)
-
-      {pid, _name} = start_partition(wal_dir: dir, batch_timeout: 10)
-
-      # The recovered "whole" entry isn't tracked in pending_count/bytes (no
-      # in-memory metadata survives a crash), so a fresh append is what
-      # actually triggers a flush here; the torn tail must have been
-      # truncated for this append to land cleanly after it in the same
-      # active file.
-      assert :ok = Partition.append(pid, segment("new\n"), 10, 1)
-      assert_receive {:put, _body}, 1000
-    end
-  end
-
-  describe "recovery attempt limit" do
-    setup do
-      prev_spool_config = Application.get_env(:logflare, :spool)
-
-      on_exit(fn ->
-        if prev_spool_config do
-          Application.put_env(:logflare, :spool, prev_spool_config)
-        else
-          Application.delete_env(:logflare, :spool)
-        end
-      end)
-
-      :ok
-    end
-
-    test "a recovered commit that fails again is marked with an incrementing attempt count instead of being retried forever unmarked" do
-      Application.put_env(:logflare, :spool,
-        max_commit_attempts: 1,
-        retry_delay_ms: 1,
-        max_recovery_attempts: 3
-      )
-
-      dir = wal_dir!()
-      leftover = Path.join(dir, "p0-1.sealed")
-      File.write!(leftover, segment("recovered\n"))
-
-      stub(StorageMod, :put, fn _b, _k, _body, _opts -> {:error, :timeout} end)
-
-      {_pid, _name} = start_partition(wal_dir: dir, batch_timeout: 60_000)
-
-      TestUtils.retry_assert(fn ->
-        assert [marked] = Path.wildcard(Path.join(dir, "p0-*.sealed"))
-        assert String.ends_with?(marked, "p0-1.attempt1.sealed")
-      end)
-
-      refute File.exists?(leftover)
-    end
-
-    test "a file that already reached max_recovery_attempts is quarantined at recovery instead of retried again" do
-      Application.put_env(:logflare, :spool, max_recovery_attempts: 3)
-      test_pid = self()
-
-      dir = wal_dir!()
-      exhausted = Path.join(dir, "p0-1.attempt3.sealed")
-      File.write!(exhausted, segment("stuck\n"))
-
-      stub(StorageMod, :put, fn _b, _k, body, _opts ->
-        send(test_pid, {:put, body})
-        {:ok, %{}}
-      end)
-
-      {_pid, _name} = start_partition(wal_dir: dir, batch_timeout: 60_000)
-
-      TestUtils.retry_assert(fn ->
-        assert File.exists?(exhausted <> ".quarantined")
-      end)
-
-      refute File.exists?(exhausted)
-      assert Path.wildcard(Path.join(dir, "p0-*.sealed")) == []
-      refute_receive {:put, _body}, 200
-    end
-  end
-
-  describe "local WAL write failure" do
-    setup do
-      # Isolates each test's single simulated failure from
-      # WriteHealth's multi-failure tolerance (see write_health_test.exs) —
-      # here we only care about "a failure reports to WriteHealth at all".
-      prev_spool_config = Application.get_env(:logflare, :spool)
-      Application.put_env(:logflare, :spool, max_write_health_failures: 1)
-
-      on_exit(fn ->
-        WriteHealth.report_recovery!()
-
-        if prev_spool_config do
-          Application.put_env(:logflare, :spool, prev_spool_config)
-        else
-          Application.delete_env(:logflare, :spool)
-        end
-      end)
-
-      :ok
-    end
-
-    test "append/5 returns an error and marks the node unhealthy — no GCS fallback attempt" do
-      test_pid = self()
-      stub(StorageMod, :put, fn _b, _k, body, _opts -> send(test_pid, {:put, body}) end)
-
-      {pid, _name} = start_partition(batch_timeout: 60_000)
-      break_local_disk_unrecoverably!(pid)
-
-      assert {:error, :einval} = Partition.append(pid, segment("boom\n"), 10, 1)
-
-      refute_receive {:put, _body}, 100
-      assert WriteHealth.healthy?() == false
-    end
-
-    test "a subsequent successful write clears the unhealthy state" do
-      stub(StorageMod, :put, fn _b, _k, _body, _opts -> {:ok, %{}} end)
-
-      {pid, _name} = start_partition(batch_timeout: 60_000)
-      break_local_disk_unrecoverably!(pid)
-
-      assert {:error, _} = Partition.append(pid, segment(), 10, 1)
-      assert WriteHealth.healthy?() == false
-
-      # A fresh partition (healthy fd) succeeding should clear the flag —
-      # WriteHealth is node-wide, not scoped to whichever partition tripped it.
-      {pid2, _name2} = start_partition(batch_timeout: 60_000)
-      assert :ok = Partition.append(pid2, segment(), 10, 1)
-
-      assert WriteHealth.healthy?() == true
-    end
-
-    test "emits telemetry when the local WAL write fails" do
-      TestUtils.attach_forwarder([:logflare, :backends, :spool, :wal, :write_error])
-
-      {pid, _name} = start_partition(batch_timeout: 60_000)
-      break_local_disk_unrecoverably!(pid)
-
-      assert {:error, _} = Partition.append(pid, segment(), 10, 1)
-
-      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :wal, :write_error],
-                      %{count: 1}, %{index: 0}}
-    end
-
-    test "a write against a merely-closed fd self-heals via one reopen, without ever going unhealthy" do
-      {pid, _name} = start_partition(batch_timeout: 60_000)
-      break_local_disk!(pid)
-
-      assert :ok = Partition.append(pid, segment("boom\n"), 10, 1)
-      assert WriteHealth.healthy?() == true
-    end
-
-    test "a failed roll marks the node unhealthy but still reopens the active file, rather than leaving a stale fd" do
-      test_pid = self()
-      stub(StorageMod, :put, fn _b, _k, body, _opts -> send(test_pid, {:put, body}) end)
-
-      {pid, _name} = start_partition(batch_timeout: 60_000)
-      assert :ok = Partition.append(pid, segment(), 10, 1)
-
-      break_roll!(pid)
-      send(pid, :flush)
-
-      TestUtils.retry_assert(fn -> assert WriteHealth.healthy?() == false end)
-      refute_receive {:put, _body}, 100
-
-      assert %{fd: fd} = buffer_state(pid)
-      assert fd != nil
-
-      # Proven through the public API rather than writing to the fd
-      # directly — a :raw fd is bound to its opening process, so only the
-      # partition itself can use it.
-      assert :ok = Partition.append(pid, segment(), 10, 1)
-      assert WriteHealth.healthy?() == true
     end
   end
 end

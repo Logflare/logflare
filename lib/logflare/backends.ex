@@ -603,8 +603,9 @@ defmodule Logflare.Backends do
   spool bucket, which happens separately and asynchronously — unless
   `spool_blocking_mode?/0` is true, in which case this instead blocks until
   the event's batch is actually committed: uploaded to GCS/S3 and published
-  to Pub-Sub/SQS (`Partition.append_committed/5`). Either way, whether the
-  buffer itself is a local WAL or an in-memory batch is a separate,
+  to Pub-Sub/SQS (`Partition.append/5` with `wait_until_committed: true`).
+  Either way, whether the buffer itself is a local WAL or an in-memory batch
+  is a separate,
   orthogonal choice — see `spool_buffer/0`. If no spool partition is
   registered (e.g. the spool supervision subtree crashed and is
   mid-restart — never happens on a cold boot, since that subtree finishes
@@ -670,7 +671,7 @@ defmodule Logflare.Backends do
 
   # Blocks the caller until the chunk this pushes is durable in the
   # buffer, or — in blocking mode (see spool_blocking_mode?/0) — until it's
-  # actually committed. See Partition.append/5 and .append_committed/5.
+  # actually committed. See Partition.append/5's wait_until_committed opt.
   #
   # Encoding and compression happen right here, in the caller's own
   # process, before the segment ever reaches a Partition — see
@@ -698,23 +699,14 @@ defmodule Logflare.Backends do
         # not the compressed segment written to disk — see its moduledoc —
         # so a file's actual log volume stays predictable regardless of how
         # well any given chunk happened to compress.
-        if spool_blocking_mode?() do
-          SpoolPartition.append_committed(
-            partition,
-            segment,
-            raw_bytes,
-            event_count,
-            @default_spool_append_timeout
-          )
-        else
-          SpoolPartition.append(
-            partition,
-            segment,
-            raw_bytes,
-            event_count,
-            @default_spool_append_timeout
-          )
-        end
+        SpoolPartition.append(
+          partition,
+          segment,
+          raw_bytes,
+          event_count,
+          timeout: @default_spool_append_timeout,
+          wait_until_committed: spool_blocking_mode?()
+        )
     end
   end
 
@@ -860,9 +852,10 @@ defmodule Logflare.Backends do
 
   @doc """
   Whether a spoolable event should block until its batch is actually
-  committed (`Partition.append_committed/5` — uploaded to GCS/S3,
-  published to Pub-Sub/SQS) rather than just until it's durable in
-  whichever buffer is active (`Partition.append/5`, the default). Set via
+  committed (`Partition.append/5` with `wait_until_committed: true` —
+  uploaded to GCS/S3, published to Pub-Sub/SQS) rather than just until it's
+  durable in whichever buffer is active (`wait_until_committed: false`, the
+  default). Set via
   `SPOOL_BLOCKING`/`:logflare, :spool, :blocking` — off by default; prod,
   staging, and the dev cluster all set this to `true` explicitly (see
   `cloudbuild/`). This can add real latency to the calling request — see

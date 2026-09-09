@@ -48,7 +48,10 @@ defmodule Logflare.Backends.Spool.Buffer.Mem do
 
   def roll(state, force) do
     if force or over_threshold?(state) do
-      body = state.pending |> Enum.map(&elem(&1, 0)) |> IO.iodata_to_binary()
+      # pending accumulates newest-first (append/4 prepends, O(1) rather than
+      # appending to the list's tail on every call) — reversed here, once per
+      # roll, so the concatenated body preserves the actual append order.
+      body = state.pending |> Enum.reverse() |> Enum.map(&elem(&1, 0)) |> IO.iodata_to_binary()
       total_count = state.pending_count
       new_state = %{state | pending: [], pending_bytes: 0, pending_count: 0}
       {:ok, fn -> {:ok, body} end, nil, total_count, new_state}

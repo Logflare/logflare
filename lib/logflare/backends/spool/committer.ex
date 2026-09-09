@@ -21,8 +21,8 @@ defmodule Logflare.Backends.Spool.Committer do
   costs depends entirely on the buffer: a WAL commit's sealed file is never
   deleted except on success, so it's still on disk for the next restart's
   recovery scan; the in-memory buffer has no such backup, so its blocked
-  callers (if any — see `Partition.append_committed/5`) just get
-  `{:error, reason}`.
+  callers (if any — see `Partition.append/5`'s `wait_until_committed` opt)
+  just get `{:error, reason}`.
 
   A body that can't even be *produced* (the thunk itself fails — an
   unreadable file, say), or whose frames fail CRC validation (see

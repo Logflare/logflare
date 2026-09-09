@@ -1,19 +1,19 @@
 defmodule Logflare.Backends.Spool.Partition do
   @moduledoc """
   Accumulates pre-compressed, pre-framed segments pushed directly by
-  ingest callers via `append/5`/`append_committed/5`, buffered however
-  `buffer_mod` (a `Logflare.Backends.Spool.Buffer` — local-disk WAL or an
-  in-memory batch, see `Logflare.Backends.spool_buffer/0`) decides — this
-  module doesn't know or care which, and never touches a file or an
-  in-memory list directly.
+  ingest callers via `append/5`, buffered however `buffer_mod` (a
+  `Logflare.Backends.Spool.Buffer` — local-disk WAL or an in-memory batch,
+  see `Logflare.Backends.spool_buffer/0`) decides — this module doesn't
+  know or care which, and never touches a file or an in-memory list
+  directly.
 
   What this module *does* own, uniformly regardless of buffer:
 
     * **Reply timing.** `append/5` replies the moment the buffer itself
       accepts the segment (`buffer_mod.append/4` succeeds) — for the WAL
       buffer that's a local `fsync`; for the Mem buffer, just landing in a
-      list. `append_committed/5` instead defers the reply until the batch
-      this segment ends up part of is actually committed (uploaded to
+      list. `wait_until_committed: true` instead defers the reply until the
+      batch this segment ends up part of is actually committed (uploaded to
       GCS/S3, published to Pub-Sub/SQS) — its `from` is stashed in
       `commit_ack_froms` and carried along with whatever roll eventually
       seals it in.
@@ -34,8 +34,8 @@ defmodule Logflare.Backends.Spool.Partition do
   the last roll) is tracked by a locally-generated `tag`, not the context
   itself — two different in-flight commits could otherwise share an
   identical context (e.g. the Mem buffer's context is always `nil`, and
-  two batches with no `append_committed/5` callers at all would have
-  identical `commit_ack_froms`, too: `[]`).
+  two batches with no `wait_until_committed: true` callers at all would
+  have identical `commit_ack_froms`, too: `[]`).
 
   `init/1` must never block on `buffer_mod.recover/1`'s findings actually
   finishing — OTP registers this process's `:via` name before `init/1`
@@ -63,27 +63,34 @@ defmodule Logflare.Backends.Spool.Partition do
     GenServer.start_link(__MODULE__, opts, name: Keyword.fetch!(opts, :name))
   end
 
-  @doc "Blocks the caller until the chunk this appends is durable in the buffer, or fails."
-  @spec append(GenServer.server(), binary(), non_neg_integer(), non_neg_integer(), timeout()) ::
-          :ok | {:error, term()}
-  def append(partition, segment, raw_byte_size, event_count, timeout \\ 15_000) do
-    GenServer.call(partition, {:append, segment, raw_byte_size, event_count}, timeout)
-  end
-
   @doc """
-  Blocks the caller until the batch this segment lands in has actually
-  been committed (uploaded to GCS/S3, published to Pub-Sub/SQS), or fails
-  — see this module's doc.
+  Appends `segment` and blocks the caller until either:
+
+    * it's durable in the buffer (the default, `wait_until_committed: false`)
+      — for the WAL buffer that's a local `fsync`; for the Mem buffer, just
+      landing in a list — or
+    * `wait_until_committed: true` — the batch this segment ends up part of
+      has actually been committed: uploaded to GCS/S3 and published to
+      Pub-Sub/SQS (see this module's doc). This can add real latency to the
+      caller — see `Logflare.Backends.Spool.Committer`'s retry budget.
+
+  `timeout` (default 15s) bounds the underlying `GenServer.call` itself, not
+  how long the commit is allowed to take — see `max_commit_attempts`/
+  `retry_delay_ms` for that.
   """
-  @spec append_committed(
+  @spec append(
           GenServer.server(),
           binary(),
           non_neg_integer(),
           non_neg_integer(),
-          timeout()
+          timeout: timeout(),
+          wait_until_committed: boolean()
         ) :: :ok | {:error, term()}
-  def append_committed(partition, segment, raw_byte_size, event_count, timeout \\ 15_000) do
-    GenServer.call(partition, {:append_committed, segment, raw_byte_size, event_count}, timeout)
+  def append(partition, segment, raw_byte_size, event_count, opts \\ []) do
+    timeout = Keyword.get(opts, :timeout, 15_000)
+
+    tag = if Keyword.get(opts, :wait_until_committed, false), do: :append_committed, else: :append
+    GenServer.call(partition, {tag, segment, raw_byte_size, event_count}, timeout)
   end
 
   @impl GenServer
