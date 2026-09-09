@@ -23,6 +23,7 @@ defmodule Logflare.Repo.ConnectionOptions do
     :start_apps_before_migration,
     :telemetry_prefix
   ]
+  @sensitive_url_query_params ~w(password url)
 
   @type role :: :primary | :replica
 
@@ -43,7 +44,8 @@ defmodule Logflare.Repo.ConnectionOptions do
     {auth, config} = Keyword.pop(config, :auth)
     {aws_region, config} = Keyword.pop(config, :aws_region)
 
-    with {:ok, config} <- put_auth(config, auth),
+    with {:ok, config} <- reject_nested_url(config),
+         {:ok, config} <- put_auth(config, auth),
          {:ok, config} <- put_aws_region(config, aws_region) do
       {:ok, config}
     end
@@ -174,8 +176,6 @@ defmodule Logflare.Repo.ConnectionOptions do
         config
 
       {url, config} when is_binary(url) ->
-        uri = URI.parse(url)
-
         try do
           url_options = Ecto.Repo.Supervisor.parse_url(url)
 
@@ -190,11 +190,7 @@ defmodule Logflare.Repo.ConnectionOptions do
         rescue
           error in Ecto.InvalidURLError ->
             redacted_url = redact_url(url)
-
-            message =
-              error.message
-              |> String.replace(url, redacted_url)
-              |> redact_userinfo(uri.userinfo)
+            message = redact_url_error(error.message, url)
 
             reraise %{error | message: message, url: redacted_url}, __STACKTRACE__
         end
@@ -219,7 +215,34 @@ defmodule Logflare.Repo.ConnectionOptions do
     config
     |> Keyword.delete(:socket_options)
     |> Keyword.merge(url_options)
+    |> maybe_rebind_sni(url_options[:hostname])
   end
+
+  defp maybe_rebind_sni(config, hostname) when is_binary(hostname) do
+    case {:inet.parse_address(String.to_charlist(hostname)), config[:ssl]} do
+      {{:ok, _address}, true} ->
+        Keyword.put(config, :ssl,
+          cacerts: :public_key.cacerts_get(),
+          server_name_indication: :disable
+        )
+
+      {{:ok, _address}, ssl} when is_list(ssl) ->
+        Keyword.put(config, :ssl, Keyword.put_new(ssl, :server_name_indication, :disable))
+
+      {{:error, _reason}, ssl} when is_list(ssl) ->
+        ssl =
+          if ssl[:server_name_indication] == :disable,
+            do: Keyword.delete(ssl, :server_name_indication),
+            else: ssl
+
+        Keyword.put(config, :ssl, ssl)
+
+      _other ->
+        config
+    end
+  end
+
+  defp maybe_rebind_sni(config, _hostname), do: config
 
   defp preserve_configured_ssl(config, url_options) do
     if is_list(config[:ssl]) and url_options[:ssl] == true do
@@ -246,13 +269,46 @@ defmodule Logflare.Repo.ConnectionOptions do
     end
   end
 
-  defp redact_url(url) do
+  @doc false
+  @spec redact_url(String.t()) :: String.t()
+  def redact_url(url), do: url |> URI.parse() |> redact_uri() |> URI.to_string()
+
+  @doc false
+  @spec redact_url_error(String.t(), String.t()) :: String.t()
+  def redact_url_error(message, url) do
     uri = URI.parse(url)
-    URI.to_string(%{uri | userinfo: if(uri.userinfo, do: "REDACTED")})
+    redacted_uri = redact_uri(uri)
+
+    message
+    |> String.replace(url, URI.to_string(redacted_uri))
+    |> String.replace(inspect(uri), inspect(redacted_uri))
   end
 
-  defp redact_userinfo(message, nil), do: message
-  defp redact_userinfo(message, userinfo), do: String.replace(message, userinfo, "REDACTED")
+  defp redact_uri(uri) do
+    uri
+    |> Map.put(:userinfo, if(uri.userinfo, do: "REDACTED"))
+    |> Map.put(:query, redact_query(uri.query))
+    |> URI.to_string()
+    |> URI.parse()
+  end
+
+  defp redact_query(nil), do: nil
+
+  defp redact_query(query) do
+    query
+    |> URI.query_decoder()
+    |> Enum.map(fn
+      {key, _value} when key in @sensitive_url_query_params -> {key, "REDACTED"}
+      pair -> pair
+    end)
+    |> URI.encode_query()
+  end
+
+  defp reject_nested_url(config) do
+    if Keyword.has_key?(config, :url),
+      do: {:error, "`url` query parameter is not supported"},
+      else: {:ok, config}
+  end
 
   defp put_auth(config, nil) do
     if Keyword.has_key?(config, :password),
