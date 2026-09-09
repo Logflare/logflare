@@ -62,11 +62,28 @@ defmodule Logflare.RepoTest do
       assert Repo.get_dynamic_repo() == Repo
     end
 
-    test "makes replica pool connections read-only" do
+    test "runs the primary hook before making replica pool connections read-only" do
+      previous_repo_config = Application.fetch_env!(:logflare, Repo)
+
+      Application.put_env(
+        :logflare,
+        Repo,
+        Keyword.put(
+          previous_repo_config,
+          :after_connect,
+          {Postgrex, :query!, ["SET application_name = 'replica_after_connect'", []]}
+        )
+      )
+
+      on_exit(fn -> Application.put_env(:logflare, Repo, previous_repo_config) end)
+
       start_read_replicas(["127.0.0.1"],
         pool: DBConnection.ConnectionPool,
         pool_size: 1
       )
+
+      assert %Postgrex.Result{rows: [["replica_after_connect"]]} =
+               Repo.apply_with_replica(Repo, :query!, ["SHOW application_name", []])
 
       assert %Postgrex.Result{rows: [["on"]]} =
                Repo.apply_with_replica(
