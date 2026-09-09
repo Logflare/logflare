@@ -201,6 +201,65 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       assert Enum.map(events, & &1["id"]) == ["e1", "e2"]
       assert_receive {:acked, "h1"}, 2000
     end
+
+    test "streams every event from a file with multiple independently-compressed zstd segments (group commit)" do
+      stub_ack_nack(self())
+      stub_queue([queue_message("h1", "0/a.v2.ndjson.zst")])
+
+      segment_1 = ndjson_body([%{"id" => "e1"}, %{"id" => "e2"}])
+      segment_2 = ndjson_body([%{"id" => "e3"}])
+      segment_3 = ndjson_body([%{"id" => "e4"}, %{"id" => "e5"}, %{"id" => "e6"}])
+
+      # Each segment independently compressed and framed on its own — this is
+      # exactly how group commit concatenates multiple ingest requests' own
+      # chunks into one spool file (see Buffer.WAL/.Mem's roll/2, and
+      # Encoder.encode_chunk/4, which frames each chunk individually before a
+      # buffer ever concatenates them). Naive concatenation of independently
+      # -compressed zstd streams is NOT safely decodable as a single combined
+      # stream — silently dropping every member but the first — which is
+      # exactly the failure mode Framing exists to prevent (see its
+      # moduledoc). This proves the consumer decodes every segment, not just
+      # the first, and preserves their original order.
+      body =
+        [segment_1, segment_2, segment_3]
+        |> Enum.map(&Framing.encode_segment(:ezstd.compress(&1, 3)))
+        |> IO.iodata_to_binary()
+
+      stub_storage(%{"0/a.v2.ndjson.zst" => body})
+
+      pid = start_producer()
+
+      events =
+        GenStage.stream([{pid, max_demand: 10}])
+        |> Enum.take(6)
+
+      assert Enum.map(events, & &1["id"]) == ["e1", "e2", "e3", "e4", "e5", "e6"]
+      assert_receive {:acked, "h1"}, 2000
+    end
+
+    test "streams every event from a file with multiple uncompressed segments (group commit)" do
+      stub_ack_nack(self())
+      stub_queue([queue_message("h1", "0/a.v2.ndjson")])
+
+      body =
+        [
+          ndjson_body([%{"id" => "e1"}]),
+          ndjson_body([%{"id" => "e2"}, %{"id" => "e3"}])
+        ]
+        |> Enum.map(&Framing.encode_segment/1)
+        |> IO.iodata_to_binary()
+
+      stub_storage(%{"0/a.v2.ndjson" => body})
+
+      pid = start_producer()
+
+      events =
+        GenStage.stream([{pid, max_demand: 10}])
+        |> Enum.take(3)
+
+      assert Enum.map(events, & &1["id"]) == ["e1", "e2", "e3"]
+      assert_receive {:acked, "h1"}, 2000
+    end
   end
 
   describe "legacy (pre-versioning) file compatibility" do
