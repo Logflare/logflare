@@ -1804,7 +1804,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       expected_backend_id = backend.id
 
       too_many_parts_error =
-        "HTTP 500: Code: 252. DB::Exception: Too many parts (600 with average size of 1.00 MiB) in table."
+        {:http, 500,
+         "Code: 252. DB::Exception: Too many parts (600 with average size of 1.00 MiB) in table."}
 
       Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
                                                                         _event_type,
@@ -1845,7 +1846,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       source: source,
       backend: backend
     } do
-      too_many_parts_error = "HTTP 500: Code: 252. DB::Exception: Too many parts in table."
+      too_many_parts_error = {:http, 500, "Code: 252. DB::Exception: Too many parts in table."}
 
       Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
                                                                         _event_type,

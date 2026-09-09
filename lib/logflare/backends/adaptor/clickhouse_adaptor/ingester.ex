@@ -30,6 +30,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     :tls_alert
   ]
 
+  @type http_error :: {:http, status :: pos_integer(), body :: binary()}
+
   @type error_class ::
           :too_many_parts
           | :http_too_many_requests
@@ -59,7 +61,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
           TypeDetection.event_type(),
           opts :: keyword()
         ) ::
-          :ok | {:error, String.t()}
+          :ok | {:error, http_error() | term()}
   def insert(backend_or_conn_opts, table, log_events, event_type, opts \\ [])
 
   def insert(_backend_or_conn_opts, _table, [], _event_type, _opts), do: :ok
@@ -85,7 +87,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   end
 
   @spec do_insert(Keyword.t(), String.t(), TypeDetection.event_type(), iodata(), keyword()) ::
-          :ok | {:error, String.t()}
+          :ok | {:error, http_error() | term()}
   defp do_insert(connection_opts, table, event_type, request_body, opts) do
     async? = Keyword.get(opts, :async, false)
     settings = Keyword.delete(opts, :async)
@@ -97,7 +99,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
         :ok
 
       {:ok, %Tesla.Env{status: status, body: response_body}} ->
-        {:error, "HTTP #{status}: #{response_body}"}
+        {:error, {:http, status, response_body}}
 
       {:error, reason} ->
         {:error, reason}
@@ -106,6 +108,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
 
   @doc false
   @spec too_many_parts?(term()) :: boolean()
+  def too_many_parts?({:http, _status, body}), do: too_many_parts?(body)
+
   def too_many_parts?(reason) when is_binary(reason),
     do: String.contains?(reason, @too_many_parts_marker)
 
@@ -115,8 +119,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   Classifies an insert failure reason into a low-cardinality class suitable for metric tags.
   """
   @spec error_class(term()) :: error_class()
-  def error_class(reason) when is_binary(reason),
-    do: response_body_error_class(too_many_parts?(reason), reason)
+  def error_class({:http, status, body} = reason) when is_pos_integer(status),
+    do: http_error_class(too_many_parts?(reason), status, body)
 
   # %Finch.Error{} only ever comes from an HTTP/2 pool. Both ClickHouse ingest pools are
   # HTTP/1, where a pool checkout timeout arrives as :pool_timeout via FinchPoolTimeoutNormalizer.
@@ -124,20 +128,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   def error_class(%Mint.TransportError{reason: reason}), do: transport_error_class(reason)
   def error_class(reason), do: transport_error_class(reason)
 
-  @spec response_body_error_class(boolean(), String.t()) :: error_class()
-  defp response_body_error_class(true, _reason), do: :too_many_parts
-  defp response_body_error_class(false, reason), do: http_error_class(reason)
+  @spec http_error_class(boolean(), pos_integer(), term()) :: error_class()
+  defp http_error_class(true, _status, _body), do: :too_many_parts
+  defp http_error_class(false, 429, _body), do: :http_too_many_requests
+  defp http_error_class(false, status, _body) when status >= 500, do: :http_server_error
+  defp http_error_class(false, status, _body) when status >= 400, do: :http_client_error
+  defp http_error_class(false, _status, _body), do: :http_error
 
-  @spec http_error_class(String.t()) :: error_class()
-  defp http_error_class("HTTP " <> rest), do: http_status_class(Integer.parse(rest))
-  defp http_error_class(_reason), do: :unknown
+  @doc """
+  Renders an insert failure reason for the `error_string` log metadata. The `inspect/1`
+  keeps a multiline or oversized response body from breaking the log entry.
+  """
+  @spec error_string(term()) :: String.t()
+  def error_string({:http, status, body}) when is_pos_integer(status),
+    do: inspect("HTTP #{status}: #{body}")
 
-  @spec http_status_class({integer(), String.t()} | :error) :: error_class()
-  defp http_status_class({429, _rest}), do: :http_too_many_requests
-  defp http_status_class({status, _rest}) when status >= 500, do: :http_server_error
-  defp http_status_class({status, _rest}) when status >= 400, do: :http_client_error
-  defp http_status_class({_status, _rest}), do: :http_error
-  defp http_status_class(:error), do: :unknown
+  def error_string(reason), do: inspect(reason)
 
   @spec transport_error_class(term()) :: error_class()
   defp transport_error_class(:pool_timeout), do: :pool_timeout
@@ -201,7 +207,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
           TypeDetection.event_type(),
           compressed :: binary(),
           opts :: keyword()
-        ) :: :ok | {:error, String.t()}
+        ) :: :ok | {:error, http_error() | term()}
   def insert_compressed(backend_or_conn_opts, table, event_type, compressed, opts \\ [])
 
   def insert_compressed(%Backend{} = backend, table, event_type, compressed, opts)
