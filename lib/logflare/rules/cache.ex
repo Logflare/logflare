@@ -73,24 +73,37 @@ defmodule Logflare.Rules.Cache do
     cache_key = {:rules_tree_by_source_id, [source_id]}
 
     try do
-      {:ok, result} =
-        Cachex.transaction(__MODULE__, [cache_key], fn cache ->
-          case Cachex.get(cache, cache_key) do
-            {:ok, {:cached, {tree, %Rules.RoutingSnapshot{key: key}}}}
-            when key == snapshot.key ->
-              replacement = Rules.RoutingSnapshot.rehydrate(snapshot, source_id, targets)
-              {:ok, true} = Cachex.put(cache, cache_key, {:cached, {tree, replacement}})
-              {:repaired, replacement}
-
-            _ ->
-              :stale
-          end
-        end)
-
-      result
+      case Cachex.transaction(__MODULE__, [cache_key], fn cache ->
+             repair_routing_snapshot(cache, source_id, snapshot, targets)
+           end) do
+        {:ok, result} -> result
+        {:error, reason} -> {:error, reason}
+      end
     catch
       :exit, reason -> {:error, reason}
     end
+  end
+
+  defp repair_routing_snapshot(cache, source_id, snapshot, targets) do
+    case Cachex.get(cache, {:rules_tree_by_source_id, [source_id]}) do
+      {:ok, {:cached, {tree, %Rules.RoutingSnapshot{key: key}}}}
+      when key == snapshot.key ->
+        replacement = Rules.RoutingSnapshot.rehydrate(snapshot, source_id, targets)
+
+        {:ok, true} =
+          Cachex.put(
+            cache,
+            {:rules_tree_by_source_id, [source_id]},
+            {:cached, {tree, replacement}}
+          )
+
+        {:repaired, replacement}
+
+      _ ->
+        :stale
+    end
+  catch
+    :exit, reason -> {:error, reason}
   end
 
   @doc false

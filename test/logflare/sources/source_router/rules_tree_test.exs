@@ -20,6 +20,30 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
       assert @subject.build([]) == []
     end
 
+    test "positional routing keeps unsorted, non-contiguous IDs aligned with targets" do
+      rules = [
+        %Rule{id: 91, backend_id: 910, lql_filters: [filter("project", :=, "late")]},
+        %Rule{id: 5, backend_id: 50, lql_filters: [filter("project", :=, "early")]},
+        %Rule{id: 42, backend_id: 420, lql_filters: [filter("project", :=, "middle")]}
+      ]
+
+      {tree, targets} = @subject.build_routing(rules)
+      assert Enum.map(targets, &Target.id/1) == [5, 42, 91]
+
+      for {value, expected_position, expected_id} <- [
+            {"early", 0, 5},
+            {"middle", 1, 42},
+            {"late", 2, 91}
+          ] do
+        positions = @subject.matching_positions(%LogEvent{body: %{"project" => value}}, tree)
+        assert positions == [expected_position]
+
+        assert positions |> Enum.map(&Enum.at(targets, &1)) |> Enum.map(&Target.id/1) == [
+                 expected_id
+               ]
+      end
+    end
+
     test "Two simple rules" do
       rules = [
         %Rule{

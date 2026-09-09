@@ -140,16 +140,36 @@ defmodule Logflare.Rules.RoutingSnapshotTest do
     assert_sizes(store, 1)
   end
 
-  test "store restart cannot invalidate a reader's snapshot", %{store: store} do
+  test "store outage preserves acquired readers and cold snapshots", %{store: store} do
     targets = targets(20)
     snapshot = RoutingSnapshot.new(1, targets, store: store)
     stop_supervised!(RoutingSnapshotStore)
-    new_store = start_supervised!({RoutingSnapshotStore, name: nil})
-    RoutingSnapshot.new(1, targets(20, 2), store: new_store)
+
+    cold_targets = targets(20, 2)
+    cold = RoutingSnapshot.new(2, cold_targets, store: store)
+
+    assert cold.table == nil
+    expected_cold_target = expected(cold_targets, [0])
+
+    assert {:fallback, ^expected_cold_target, _target_tuple} =
+             RoutingSnapshot.resolve_with_status(cold, [0])
 
     assert :ets.info(snapshot.table) == :undefined
     assert RoutingSnapshot.resolve(snapshot, [0]) == expected(targets, [0])
     assert RoutingSnapshot.resolve(snapshot, Enum.to_list(0..19)) == expected(targets, 0..19)
+
+    new_store = start_supervised!({RoutingSnapshotStore, name: nil})
+
+    repaired =
+      RoutingSnapshot.rehydrate(
+        cold,
+        2,
+        :erlang.binary_to_term(cold.encoded),
+        new_store
+      )
+
+    assert {:ok, expected(cold_targets, [0])} ==
+             RoutingSnapshot.resolve_with_status(repaired, [0])
   end
 
   test "capacity eviction bounds all indexes and preserves acquired snapshots" do

@@ -2,8 +2,10 @@ defmodule Logflare.Rules.CacheTest do
   alias Logflare.Rules.Rule
   use Logflare.DataCase
 
+  alias Logflare.ContextCache.Supervisor, as: ContextCacheSupervisor
   alias Logflare.Rules
   alias Logflare.Rules.RoutingSnapshot
+  alias Logflare.Rules.RoutingSnapshotStore
   alias Logflare.Sources
   alias Logflare.Sources.SourceRouter.Target
 
@@ -62,6 +64,37 @@ defmodule Logflare.Rules.CacheTest do
 
       Mimic.reject(Rules, :rules_tree_by_source_id, 1)
       assert @subject.rules_tree_by_source_id(source.id) == {tree, snapshot}
+    end
+
+    test "rules tree cache misses recover through fallback while the store is unavailable", %{
+      source: source,
+      rule_ids: rule_ids
+    } do
+      on_exit(fn ->
+        if Process.whereis(RoutingSnapshotStore) == nil do
+          Supervisor.restart_child(ContextCacheSupervisor, RoutingSnapshotStore)
+        end
+      end)
+
+      assert :ok = Supervisor.terminate_child(ContextCacheSupervisor, RoutingSnapshotStore)
+
+      assert {tree, %RoutingSnapshot{table: nil} = snapshot} =
+               @subject.rules_tree_by_source_id(source.id)
+
+      positions = Enum.to_list(0..(snapshot.count - 1))
+      expected = RoutingSnapshot.resolve(snapshot, positions)
+      assert Enum.map(expected, &Target.id/1) == rule_ids
+      assert @subject.rules_tree_by_source_id(source.id) == {tree, snapshot}
+
+      assert {:ok, _pid} = Supervisor.restart_child(ContextCacheSupervisor, RoutingSnapshotStore)
+
+      assert {:fallback, ^expected, encoded_targets} =
+               RoutingSnapshot.resolve_with_status(snapshot, positions)
+
+      assert {:repaired, repaired} =
+               @subject.repair_routing_snapshot(source.id, snapshot, encoded_targets)
+
+      assert {^tree, ^repaired} = @subject.rules_tree_by_source_id(source.id)
     end
 
     for invalidation <- [:bust, :expire, :clear] do
@@ -134,6 +167,51 @@ defmodule Logflare.Rules.CacheTest do
       {_tree, ^repaired} = @subject.rules_tree_by_source_id(source.id)
       assert repaired.key != snapshot.key
       assert {:ok, ^expected} = RoutingSnapshot.resolve_with_status(repaired, positions)
+    end
+
+    test "store failures do not strand repair transaction locks", %{source: source} do
+      {tree, snapshot} = @subject.rules_tree_by_source_id(source.id)
+      encoded_targets = :erlang.binary_to_term(snapshot.encoded)
+
+      on_exit(fn ->
+        if Process.whereis(RoutingSnapshotStore) == nil do
+          Supervisor.restart_child(ContextCacheSupervisor, RoutingSnapshotStore)
+        end
+      end)
+
+      assert :ok = Supervisor.terminate_child(ContextCacheSupervisor, RoutingSnapshotStore)
+
+      assert {:error, _reason} =
+               @subject.repair_routing_snapshot(source.id, snapshot, encoded_targets)
+
+      assert {:ok, _pid} = Supervisor.restart_child(ContextCacheSupervisor, RoutingSnapshotStore)
+
+      assert {:repaired, repaired} =
+               @subject.repair_routing_snapshot(source.id, snapshot, encoded_targets)
+
+      assert {^tree, ^repaired} = @subject.rules_tree_by_source_id(source.id)
+    end
+
+    test "stale repair cannot overwrite a newer cached generation", %{source: source} do
+      {tree, old} = @subject.rules_tree_by_source_id(source.id)
+      old_targets = :erlang.binary_to_term(old.encoded)
+
+      new_targets =
+        old_targets
+        |> Tuple.to_list()
+        |> Enum.map(fn {id, backend_id, sink} -> {id, backend_id + 1_000_000, sink} end)
+
+      current = RoutingSnapshot.new(source.id, new_targets)
+      cache_key = {:rules_tree_by_source_id, [source.id]}
+      assert {:ok, true} = Cachex.put(@subject, cache_key, {:cached, {tree, current}})
+      positions = Enum.to_list(0..(old.count - 1))
+
+      assert {:fallback, _targets, ^old_targets} =
+               RoutingSnapshot.resolve_with_status(old, positions)
+
+      assert :stale = @subject.repair_routing_snapshot(source.id, old, old_targets)
+      assert {^tree, ^current} = @subject.rules_tree_by_source_id(source.id)
+      assert :ets.member(current.table, current.key)
     end
 
     test "list by source", %{source: source, rule_ids: expected_rule_ids} do
