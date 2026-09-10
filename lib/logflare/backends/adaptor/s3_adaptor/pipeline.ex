@@ -19,6 +19,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor.Pipeline do
   # batch events based on a maximum message count or byte length
   @max_batch_size 10_000
   @max_batch_length 8_000_000
+  @batcher_max_demand 100
 
   @doc false
   def child_spec(arg) do
@@ -54,7 +55,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor.Pipeline do
           s3: [
             concurrency: 1,
             batch_size: batch_size_splitter(),
-            max_demand: @max_batch_size,
+            max_demand: @batcher_max_demand,
             batch_timeout: batch_timeout
           ]
         ],
