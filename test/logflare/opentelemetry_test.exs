@@ -60,8 +60,14 @@ defmodule Logflare.OpenTelemetryTest do
       end
     end
 
-    test "handle_batch (storage write api)", %{source: source} do
-      source = insert(:source, user_id: source.user_id, bq_storage_write_api: true)
+    test "handle_batch (storage write api via flag)", %{source: source} do
+      # Storage-write branch is taken via the feature flag alone, not the source column.
+      source = insert(:source, user_id: source.user_id, bq_storage_write_api: nil)
+
+      stub(Logflare.Utils, :flag, fn
+        "BigqueryStorageWriteApi", _identifier -> true
+        _feature, _identifier -> false
+      end)
 
       stub(
         Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient,

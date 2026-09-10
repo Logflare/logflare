@@ -20,6 +20,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.Sources.Source.Supervisor
   alias Logflare.Sources
+  alias Logflare.Sources.Source
   alias Logflare.Users
   alias Logflare.PubSubRates
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
@@ -256,11 +257,16 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
   @impl Broadway
   def handle_batch(:bq, messages, batch_info, context) do
+    source = Sources.Cache.get_by_id(context.source_id)
+    {insert_method, insert_method_source} = resolve_insert_method(source)
+
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
       %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
       %{
-        backend_type: :bigquery
+        backend_type: :bigquery,
+        insert_method: insert_method,
+        insert_method_source: insert_method_source
       }
     )
 
@@ -278,8 +284,6 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     OpenTelemetry.Tracer.with_span "ingest.bigquery_batch", %{
       attributes: Map.new(attributes)
     } do
-      source = Sources.Cache.get_by_id(context.source_id)
-
       # Fetch full LogEvents from ETS. Sizes were computed in the producer and are
       # carried on each message — no recomputation needed here. The batch is already
       # byte-bounded by bq_batch_size_splitter/0 in the batcher config.
@@ -295,8 +299,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
       {log_events, batch_count, batch_size} = collect_batch_events(triples)
 
-      if source && source.bq_storage_write_api do
-        batch_attrs = compute_batch_attrs(batch_count, batch_size, :bq_storage_write)
+      if insert_method == :bq_storage_write do
+        batch_attrs =
+          compute_batch_attrs(batch_count, batch_size, insert_method, insert_method_source)
 
         OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
           BigQueryAdaptor.insert_log_events_via_storage_write_api(log_events,
@@ -308,7 +313,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
           )
         end
       else
-        batch_attrs = compute_batch_attrs(batch_count, batch_size, :bq_streaming_insert)
+        batch_attrs =
+          compute_batch_attrs(batch_count, batch_size, insert_method, insert_method_source)
 
         OpenTelemetry.Tracer.with_span "ingest.bq_insert", %{attributes: batch_attrs} do
           stream_batch(context, log_events)
@@ -519,13 +525,50 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     String.to_atom("#{source_id}" <> "-pipeline")
   end
 
-  @spec compute_batch_attrs(non_neg_integer(), non_neg_integer(), atom()) :: map()
-  defp compute_batch_attrs(batch_count, batch_size, bq_api_tag) do
+  @spec compute_batch_attrs(non_neg_integer(), non_neg_integer(), atom(), atom()) :: map()
+  defp compute_batch_attrs(batch_count, batch_size, insert_method, insert_method_source) do
     %{
-      insert_method: bq_api_tag,
+      insert_method: insert_method,
+      insert_method_source: insert_method_source,
       batch_event_count: batch_count,
       batch_bytes: batch_size
     }
+  end
+
+  # `bq_storage_write_api` is tri-state: `true` forces the storage write API,
+  # `false` forces streaming inserts, `nil` defers to the ConfigCat rollout. The
+  # second element records which of the two decided, so rollout progress is chartable.
+  @spec resolve_insert_method(Source.t() | nil) ::
+          {:bq_storage_write | :bq_streaming_insert, :column | :flag | :default}
+  defp resolve_insert_method(%Source{bq_storage_write_api: true}),
+    do: {:bq_storage_write, :column}
+
+  defp resolve_insert_method(%Source{bq_storage_write_api: false}),
+    do: {:bq_streaming_insert, :column}
+
+  defp resolve_insert_method(%Source{bq_storage_write_api: nil, id: source_id}) do
+    if flag_enabled?(source_id) do
+      {:bq_storage_write, :flag}
+    else
+      {:bq_streaming_insert, :flag}
+    end
+  end
+
+  defp resolve_insert_method(_source), do: {:bq_streaming_insert, :default}
+
+  # A flag lookup must never fail a batch — any failure falls back to streaming inserts.
+  @spec flag_enabled?(integer()) :: boolean()
+  defp flag_enabled?(source_id) do
+    Utils.flag("BigqueryStorageWriteApi", to_string(source_id)) == true
+  catch
+    kind, reason ->
+      Logger.warning(
+        "BigqueryStorageWriteApi flag lookup failed, falling back to streaming inserts: " <>
+          Exception.format(kind, reason, __STACKTRACE__),
+        source_id: source_id
+      )
+
+      false
   end
 
   defp disconnect_backend_and_email(source_id, message) when is_atom(source_id) do
