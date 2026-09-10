@@ -218,6 +218,9 @@ defmodule Logflare.Backends.Adaptor do
 
   @doc """
   Typecasts config params.
+
+  `existing_config` always has atom keys. `Backend` normalizes the stored config
+  through `cast_config/1` before this callback runs.
   """
   @callback cast_config(param :: map()) :: Ecto.Changeset.t()
   @callback cast_config(param :: map(), existing_config :: map()) :: Ecto.Changeset.t()

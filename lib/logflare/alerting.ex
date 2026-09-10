@@ -22,6 +22,7 @@ defmodule Logflare.Alerting do
   alias Logflare.Teams
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
+  alias Logflare.Utils
   alias Logflare.Utils.LoggerMetadata
 
   require Logger
@@ -140,7 +141,8 @@ defmodule Logflare.Alerting do
 
   """
   def create_alert_query(%User{} = user, attrs \\ %{}) do
-    backends = Map.get(attrs, :backends) || Map.get(attrs, "backends")
+    attrs = Utils.Map.stringify_top_level_keys(attrs)
+    backends = attrs["backends"]
 
     user
     |> Ecto.build_assoc(:alert_queries)
@@ -163,7 +165,8 @@ defmodule Logflare.Alerting do
 
   """
   def update_alert_query(%AlertQuery{} = alert_query, attrs) do
-    backends = Map.get(attrs, :backends) || Map.get(attrs, "backends")
+    attrs = Utils.Map.stringify_top_level_keys(attrs)
+    backends = attrs["backends"]
 
     alert_query
     |> preload_alert_query()

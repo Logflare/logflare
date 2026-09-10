@@ -84,7 +84,7 @@ defmodule Logflare.Backends.Backend do
   defp validate_config(%{valid?: true} = changeset) do
     type = Changeset.get_field(changeset, :type)
     mod = adaptor_mapping()[type]
-    existing_config = changeset.data.config_encrypted || %{}
+    existing_config = normalize_existing_config(mod, changeset.data.config_encrypted)
 
     with %{} = config <- Changeset.get_change(changeset, :config),
          %{valid?: true} = merged_cs <-
@@ -102,6 +102,16 @@ defmodule Logflare.Backends.Backend do
   end
 
   defp validate_config(changeset), do: changeset
+
+  # `config_encrypted` round-trips through JSON encryption/decryption, so stored
+  # configs come back with string keys. Adaptors always cast against atom keys.
+  defp normalize_existing_config(_mod, nil), do: %{}
+
+  defp normalize_existing_config(mod, config) when is_map(config) do
+    config
+    |> mod.cast_config()
+    |> Changeset.apply_changes()
+  end
 
   defp validate_default_ingest(%Changeset{changes: %{default_ingest?: true}} = changeset) do
     type = get_field(changeset, :type)

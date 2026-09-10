@@ -123,8 +123,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   # there is nothing to restore). Headers the user actually changed pass through.
   defp unredact_headers(changeset, existing_config) do
     with headers when not is_nil(headers) <- Ecto.Changeset.get_change(changeset, :headers),
-         existing_headers <-
-           Map.get(existing_config, :headers) || Map.get(existing_config, "headers") || %{} do
+         existing_headers <- Map.get(existing_config, :headers) || %{} do
       # Look up existing values by normalized key: header names are case-insensitive,
       # and stored config predating normalize_keys/1 may use casing that differs from
       # the (possibly already normalized) submitted key. An exact match would drop the
@@ -159,7 +158,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   # copied to a different destination when the user intentionally changes it.
   defp unredact_url(changeset, existing_config) do
     submitted_url = Ecto.Changeset.get_change(changeset, :url)
-    existing_url = Map.get(existing_config, :url) || Map.get(existing_config, "url")
+    existing_url = Map.get(existing_config, :url)
 
     if is_binary(existing_url) and submitted_url == redact_url_userinfo(existing_url) do
       Ecto.Changeset.put_change(changeset, :url, existing_url)
