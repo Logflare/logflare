@@ -34,28 +34,18 @@ defmodule Logflare.ContextCache.Supervisor do
     |> Supervisor.init(strategy: :one_for_one)
   end
 
-  defp get_children(env) do
-    caches = list_caches()
+  defp get_children(:test) do
+    list_caches() ++ cainophile_spec()
+  end
 
-    maybe_transaction_broadcaster =
-      if env != :test do
-        ContextCache.TransactionBroadcaster
-      end
-
-    maybe_cainophile =
-      if Application.get_env(:logflare, :enable_cainophile, true) do
-        {GenSingleton, child_spec: cainophile_child_spec()}
-      end
-
-    maybe_busters =
-      if env != :test do
-        buster_specs()
-      end
-
-    caches ++
-      List.wrap(maybe_transaction_broadcaster) ++
-      List.wrap(maybe_cainophile) ++
-      List.wrap(maybe_busters)
+  defp get_children(_env) do
+    [
+      list_caches(),
+      ContextCache.TransactionBroadcaster,
+      cainophile_spec(),
+      buster_specs()
+    ]
+    |> List.flatten()
   end
 
   def buster_specs do
@@ -94,6 +84,14 @@ defmodule Logflare.ContextCache.Supervisor do
   def publisher_name do
     {:via, :syn, {:core, Logflare.PgPublisher}}
     # {:global, Logflare.PgPublisher}
+  end
+
+  defp cainophile_spec do
+    if Application.get_env(:logflare, :enable_cainophile, true) do
+      [{GenSingleton, child_spec: cainophile_child_spec()}]
+    else
+      []
+    end
   end
 
   defp cainophile_child_spec do
