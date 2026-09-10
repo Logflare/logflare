@@ -23,18 +23,39 @@ defmodule LogflareWeb.Plugs.BufferLimiter do
   Checks buffer capacity and applies rate limiting based on source configuration.
   """
   @spec call(Plug.Conn.t(), opts()) :: Plug.Conn.t()
+  def call(%{assigns: %{declared_sources: declared}} = conn, _opts)
+      when map_size(declared) > 0 do
+    if SystemCache.memory_utilization() >= @memory_limit do
+      handle_buffer_full(conn, nil)
+    else
+      Enum.reduce_while(declared, conn, &reduce_declared_source/2)
+    end
+  end
+
+  defp reduce_declared_source({_token, source}, conn) do
+    if Backends.cached_local_pending_buffer_full?(source) do
+      {:halt, handle_buffer_full(conn, source)}
+    else
+      {:cont, conn}
+    end
+  end
+
   def call(%{assigns: %{source: %Source{} = source}} = conn, _opts) do
     if SystemCache.memory_utilization() >= @memory_limit or
          Backends.cached_local_pending_buffer_full?(source) do
-      :telemetry.execute(
-        [:logflare, :ingest, :requests, :buffer_full],
-        %{count: 1},
-        %{source_id: source.id, source_token: source.token}
-      )
-
-      FallbackController.call(conn, {:error, :buffer_full})
+      handle_buffer_full(conn, source)
     else
       conn
     end
+  end
+
+  defp handle_buffer_full(conn, source) do
+    :telemetry.execute(
+      [:logflare, :ingest, :requests, :buffer_full],
+      %{count: 1},
+      %{source_id: source && source.id, source_token: source && source.token}
+    )
+
+    FallbackController.call(conn, {:error, :buffer_full})
   end
 end
