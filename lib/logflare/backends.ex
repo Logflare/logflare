@@ -667,28 +667,20 @@ defmodule Logflare.Backends do
   end
 
   @default_spool_format :ndjson
-  @default_spool_compress true
-  @default_spool_compression_algorithm :zstd
   @default_spool_append_timeout 15_000
 
   # Blocks the caller until the chunk this pushes is durable in the
   # buffer, or — in blocking mode (see spool_blocking_mode?/0) — until it's
   # actually committed. See Partition.append/5's wait_until_committed opt.
   #
-  # Encoding and compression happen right here, in the caller's own
-  # process, before the segment ever reaches a Partition — see
+  # Encoding happens right here, in the caller's own process — see
   # Spool.Encoder's moduledoc.
   @spec dispatch_to_spool_producer([LogEvent.t()]) :: :ok | {:error, term()}
   defp dispatch_to_spool_producer(log_events) do
     spool_config = Application.get_env(:logflare, :spool, [])
     format = Keyword.get(spool_config, :format, @default_spool_format)
-    compress = Keyword.get(spool_config, :compress, @default_spool_compress)
 
-    algorithm =
-      Keyword.get(spool_config, :compression_algorithm, @default_spool_compression_algorithm)
-
-    {segment, _compressed_bytes, raw_bytes, _format_tag} =
-      SpoolEncoder.encode_chunk(log_events, format, compress, algorithm)
+    {segment, raw_bytes} = SpoolEncoder.encode_chunk(log_events, format)
 
     event_count = length(log_events)
 
@@ -697,10 +689,6 @@ defmodule Logflare.Backends do
         {:error, :no_spool_partition_available}
 
       partition ->
-        # Partition's rotation threshold is sized off raw_bytes (uncompressed),
-        # not the compressed segment written to disk — see its moduledoc —
-        # so a file's actual log volume stays predictable regardless of how
-        # well any given chunk happened to compress.
         SpoolPartition.append(
           partition,
           segment,

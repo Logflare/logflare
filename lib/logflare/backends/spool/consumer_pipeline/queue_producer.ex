@@ -109,19 +109,18 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   ## Spool file format
 
   A spool file (see `Committer.file_key/1`, `Encoder.current_version/0`) is
-  one or more independently-encoded (and independently compressed) chunks
-  concatenated as length+CRC32-framed segments — see
-  `Logflare.Backends.Spool.Framing`'s moduledoc for why concatenation alone
-  isn't safe to decode (zstd in particular silently drops everything past
-  the first member on raw concatenation). Each segment is decompressed and
-  parsed on its own (`decode_content/2`), then the resulting event lists
-  are concatenated. Dispatching on the file_key's version tag itself,
+  one or more raw, length+CRC32-framed chunks, one per ingest request,
+  compressed once as a whole by `Committer` at commit time.
+  `decode_content/2` reverses that: decompress the whole file, split it
+  into segments (`Logflare.Backends.Spool.Framing.decode_segments/1`),
+  then parse each one. Dispatching on the file_key's version tag itself,
   rather than sniffing the content, is exact — there's no ambiguity to
-  fall back on. A version this build doesn't recognize (newer than
-  `Encoder.current_version/0` — some future rollout where not every
-  consumer is upgraded yet) is reported back as `{:unsupported_version, _}`
-  rather than attempted, so the caller can leave it for a node that does
-  understand it instead of destroying it as if it were corrupt.
+  fall back on. A version
+  this build doesn't recognize (newer than `Encoder.current_version/0` —
+  some future rollout where not every consumer is upgraded yet) is
+  reported back as `{:unsupported_version, _}` rather than attempted, so
+  the caller can leave it for a node that does understand it instead of
+  destroying it as if it were corrupt.
 
   Decompression and parsing are both capable of raising on truncated or
   otherwise corrupt content (`:zlib.gunzip/1`, `:ezstd.decompress/1`, and
@@ -553,11 +552,15 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   end
 
   defp do_fetch_next(queue_url, bucket, queue_mod, storage_mod) do
-    result = queue_mod.receive(queue_url, max_number_of_messages: 1)
+    {duration, result} =
+      :timer.tc(fn -> queue_mod.receive(queue_url, max_number_of_messages: 1) end)
 
     :telemetry.execute(
       [:logflare, :backends, :spool, :queue, :receive],
-      %{count: if(match?({:ok, _}, result), do: length(elem(result, 1)), else: 0)},
+      %{
+        count: if(match?({:ok, _}, result), do: length(elem(result, 1)), else: 0),
+        duration: duration
+      },
       %{result: if(match?({:ok, _}, result), do: :ok, else: :error)}
     )
 
@@ -629,7 +632,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   end
 
   defp download_and_parse(bucket, file_key, storage_mod) do
-    download_result = storage_mod.get(bucket, file_key)
+    {duration, download_result} = :timer.tc(fn -> storage_mod.get(bucket, file_key) end)
 
     result =
       case download_result do
@@ -642,7 +645,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       %{
         bytes:
           if(match?({:ok, _}, download_result), do: byte_size(elem(download_result, 1)), else: 0),
-        line_count: if(match?({:ok, _}, result), do: length(elem(result, 1)), else: 0)
+        line_count: if(match?({:ok, _}, result), do: length(elem(result, 1)), else: 0),
+        duration: duration
       },
       %{result: if(match?({:ok, _}, result), do: :ok, else: :error)}
     )
@@ -650,17 +654,24 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     result
   end
 
-  # See this module's "Spool file format" moduledoc section for the
-  # versioned/segmented format this decodes, and why a version this build
-  # doesn't recognize is left for another node rather than attempted.
+  # See this module's "Spool file format" moduledoc section.
   defp decode_content(file_key, raw) do
     current = Encoder.current_version()
 
     case Encoder.file_key_version(file_key) do
       ^current ->
-        case Framing.decode_segments(raw) do
+        {duration, decompressed} = :timer.tc(fn -> decompress_by_extension(raw, file_key) end)
+
+        :telemetry.execute(
+          [:logflare, :backends, :spool, :consumer, :decompress],
+          %{duration: duration, bytes: byte_size(raw)},
+          %{}
+        )
+
+        case Framing.decode_segments(decompressed) do
           {:ok, segments} -> decode_versioned_segments(file_key, segments)
-          {:error, reason} -> {:error, {:decode_failed, reason}}
+          {:error, :corrupt, decoded} -> decode_versioned_segments(file_key, decoded)
+          {:error, :not_framed} -> {:error, {:decode_failed, :not_framed}}
         end
 
       version ->
@@ -672,16 +683,14 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     kind, reason -> {:error, {:decode_failed, %RuntimeError{message: inspect({kind, reason})}}}
   end
 
-  # Each segment is decompressed and parsed on its own, then the resulting
-  # event lists are flattened across the whole file.
+  # Segments are already decompressed by decode_content/2.
   defp decode_versioned_segments(file_key, segments) do
-    {:ok, Enum.flat_map(segments, &decode_and_parse(file_key, &1))}
+    {:ok, Enum.flat_map(segments, &parse_segment!(file_key, &1))}
   end
 
   # parse_content/2 always succeeds or raises (never returns {:error, _}) —
   # any decode failure propagates up to decode_content/2's rescue/catch.
-  defp decode_and_parse(file_key, content) do
-    content = decompress_by_extension(content, file_key)
+  defp parse_segment!(file_key, content) do
     {:ok, events} = parse_content(file_key, content)
     events
   end

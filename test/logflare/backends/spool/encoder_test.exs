@@ -18,64 +18,39 @@ defmodule Logflare.Backends.Spool.EncoderTest do
     }
   end
 
-  describe "encode_chunk/4" do
-    test "ndjson uncompressed round-trips to one JSON line per event, framed" do
+  describe "encode_chunk/2" do
+    test "ndjson round-trips to one JSON line per event, framed, uncompressed" do
       events = [log_event(%{"message" => "one"}), log_event(%{"message" => "two"})]
 
-      {segment, compressed_byte_size, raw_byte_size, format_tag} =
-        Encoder.encode_chunk(events, :ndjson, false, :gzip)
+      {segment, raw_byte_size} = Encoder.encode_chunk(events, :ndjson)
 
-      assert format_tag == :ndjson
       assert {:ok, [body]} = Framing.decode_segments(segment)
-      assert byte_size(body) == compressed_byte_size
-      assert compressed_byte_size == raw_byte_size
+      assert byte_size(body) == raw_byte_size
 
       lines = body |> String.trim() |> String.split("\n") |> Enum.map(&Jason.decode!/1)
       assert [%{"body" => %{"message" => "one"}}, %{"body" => %{"message" => "two"}}] = lines
     end
 
-    for {algorithm, decompress} <- [
-          {:gzip, &:zlib.gunzip/1},
-          {:zstd, &:ezstd.decompress/1}
-        ] do
-      test "ndjson+#{algorithm} round-trips through decompression" do
-        events = [log_event(%{"message" => "hello"}, 123)]
-
-        {segment, _compressed_byte_size, raw_byte_size, format_tag} =
-          Encoder.encode_chunk(events, :ndjson, true, unquote(algorithm))
-
-        assert raw_byte_size > 0
-        assert format_tag == unquote(:"ndjson_#{if algorithm == :gzip, do: "gz", else: "zstd"}")
-        assert {:ok, [body]} = Framing.decode_segments(segment)
-
-        line = body |> unquote(decompress).() |> String.trim() |> Jason.decode!()
-        assert %{"via_rule_id" => 123} = line
-      end
-
-      test "etf+#{algorithm} round-trips through decompression and binary_to_term" do
-        events = [log_event(%{"message" => "hello"}, 123)]
-
-        {segment, _compressed_byte_size, raw_byte_size, format_tag} =
-          Encoder.encode_chunk(events, :etf, true, unquote(algorithm))
-
-        assert raw_byte_size > 0
-        assert format_tag == unquote(:"etf_#{if algorithm == :gzip, do: "gz", else: "zstd"}")
-        assert {:ok, [body]} = Framing.decode_segments(segment)
-
-        assert [%{via_rule_id: 123}] = body |> unquote(decompress).() |> :erlang.binary_to_term()
-      end
-    end
-
-    test "etf uncompressed round-trips to a single term of records, framed" do
+    test "etf round-trips to a single term of records, framed, uncompressed" do
       events = [log_event(%{"message" => "hello"}, 123)]
 
-      {segment, compressed_byte_size, raw_byte_size, format_tag} =
-        Encoder.encode_chunk(events, :etf, false, :gzip)
+      {segment, raw_byte_size} = Encoder.encode_chunk(events, :etf)
 
-      assert compressed_byte_size == raw_byte_size
-      assert format_tag == :etf
       assert {:ok, [body]} = Framing.decode_segments(segment)
+      assert byte_size(body) == raw_byte_size
       assert [%{via_rule_id: 123}] = :erlang.binary_to_term(body)
+    end
+  end
+
+  describe "compress_binary/2" do
+    test "gzip compresses and round-trips" do
+      compressed = Encoder.compress_binary(:gzip, "hello world")
+      assert :zlib.gunzip(compressed) == "hello world"
+    end
+
+    test "zstd compresses and round-trips" do
+      compressed = Encoder.compress_binary(:zstd, "hello world")
+      assert :ezstd.decompress(compressed) == "hello world"
     end
   end
 
@@ -87,6 +62,17 @@ defmodule Logflare.Backends.Spool.EncoderTest do
       assert Encoder.file_extension(:ndjson, true, :zstd) == "ndjson.zst"
       assert Encoder.file_extension(:etf, true, :gzip) == "etf.gz"
       assert Encoder.file_extension(:etf, true, :zstd) == "etf.zst"
+    end
+  end
+
+  describe "format_tag/3" do
+    test "reflects format/compress/algorithm" do
+      assert Encoder.format_tag(:ndjson, false, :gzip) == :ndjson
+      assert Encoder.format_tag(:etf, false, :zstd) == :etf
+      assert Encoder.format_tag(:ndjson, true, :gzip) == :ndjson_gz
+      assert Encoder.format_tag(:ndjson, true, :zstd) == :ndjson_zstd
+      assert Encoder.format_tag(:etf, true, :gzip) == :etf_gz
+      assert Encoder.format_tag(:etf, true, :zstd) == :etf_zstd
     end
   end
 

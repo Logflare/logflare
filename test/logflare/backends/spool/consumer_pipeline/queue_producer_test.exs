@@ -4,6 +4,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
   import Mimic
 
   alias Logflare.Backends.Spool.ConsumerPipeline.QueueProducer
+  alias Logflare.Backends.Spool.Encoder
   alias Logflare.Backends.Spool.Framing
   alias Logflare.Backends.Spool.MemoryMonitor
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
@@ -65,6 +66,19 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
   # compressed-content test builds its frame explicitly instead, since
   # compression has to happen before framing, not after.
   defp framed_ndjson_body(records), do: Framing.encode_segment(ndjson_body(records))
+
+  # Frames each segment, concatenates them, then compresses the whole thing once.
+  defp compressed_file_body(segment_bodies, algorithm \\ :zstd) do
+    segment_bodies
+    |> Enum.map(&Framing.encode_segment/1)
+    |> IO.iodata_to_binary()
+    |> then(&Encoder.compress_binary(algorithm, &1))
+  end
+
+  # Flips a bit in a frame's CRC so it fails validation without changing its length.
+  defp corrupt_crc(<<len::32-big, crc::32-big, payload::binary>>) do
+    <<len::32-big, Bitwise.bxor(crc, 1)::32-big, payload::binary>>
+  end
 
   # Cross-process mutable queue: both the producer and its background
   # prefetch Task call queue_mod.receive concurrently.
@@ -189,8 +203,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       stub_ack_nack(self())
       stub_queue([queue_message("h1", "0/a.v2.ndjson.zst")])
 
-      body = ndjson_body([%{"id" => "e1"}, %{"id" => "e2"}])
-      stub_storage(%{"0/a.v2.ndjson.zst" => Framing.encode_segment(:ezstd.compress(body, 3))})
+      body = compressed_file_body([ndjson_body([%{"id" => "e1"}, %{"id" => "e2"}])])
+      stub_storage(%{"0/a.v2.ndjson.zst" => body})
 
       pid = start_producer()
 
@@ -202,7 +216,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       assert_receive {:acked, "h1"}, 2000
     end
 
-    test "streams every event from a file with multiple independently-compressed zstd segments (group commit)" do
+    test "streams every event from a file with multiple raw segments compressed once as a whole (group commit)" do
       stub_ack_nack(self())
       stub_queue([queue_message("h1", "0/a.v2.ndjson.zst")])
 
@@ -210,20 +224,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       segment_2 = ndjson_body([%{"id" => "e3"}])
       segment_3 = ndjson_body([%{"id" => "e4"}, %{"id" => "e5"}, %{"id" => "e6"}])
 
-      # Each segment independently compressed and framed on its own — this is
-      # exactly how group commit concatenates multiple ingest requests' own
-      # chunks into one spool file (see Buffer.WAL/.Mem's roll/2, and
-      # Encoder.encode_chunk/4, which frames each chunk individually before a
-      # buffer ever concatenates them). Naive concatenation of independently
-      # -compressed zstd streams is NOT safely decodable as a single combined
-      # stream — silently dropping every member but the first — which is
-      # exactly the failure mode Framing exists to prevent (see its
-      # moduledoc). This proves the consumer decodes every segment, not just
-      # the first, and preserves their original order.
-      body =
-        [segment_1, segment_2, segment_3]
-        |> Enum.map(&Framing.encode_segment(:ezstd.compress(&1, 3)))
-        |> IO.iodata_to_binary()
+      body = compressed_file_body([segment_1, segment_2, segment_3])
 
       stub_storage(%{"0/a.v2.ndjson.zst" => body})
 
@@ -600,14 +601,11 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
                       %{reason: :decode_error}}
     end
 
-    test "acks with reason: :decode_error when the downloaded content isn't validly framed at all (corrupt CRC)" do
+    test "a file whose only segment has a corrupt CRC is acked as exhausted with zero events, not decode_error" do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :ack])
 
       stub_ack_nack(self())
       stub_queue([queue_message("h1", "0/corrupt.v2.ndjson")])
-      # Well-formed length+CRC header, but the payload bytes were tampered
-      # with after framing — Framing.decode_segments/1 catches this before
-      # decompression/parsing ever runs.
       good_frame = Framing.encode_segment("hello\n")
       <<len::32-big, crc::32-big, _payload::binary>> = good_frame
       tampered = <<len::32-big, crc::32-big, "TAMPER"::binary>>
@@ -619,7 +617,43 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       assert_receive {:acked, "h1"}, 2000
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{},
-                      %{reason: :decode_error}}
+                      %{reason: :buffer_exhausted}}
+    end
+
+    test "segment isolation: a corrupt segment among intact ones doesn't cost the intact ones" do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :ack])
+
+      stub_ack_nack(self())
+      stub_queue([queue_message("h1", "0/mixed.v2.ndjson.zst")])
+
+      good_segment_1 = ndjson_body([%{"id" => "e1"}])
+      good_segment_2 = ndjson_body([%{"id" => "e2"}])
+
+      corrupt_frame =
+        "not the right length or crc for anything" |> Framing.encode_segment() |> corrupt_crc()
+
+      raw =
+        [
+          Framing.encode_segment(good_segment_1),
+          corrupt_frame,
+          Framing.encode_segment(good_segment_2)
+        ]
+        |> IO.iodata_to_binary()
+
+      body = :ezstd.compress(raw, 3)
+      stub_storage(%{"0/mixed.v2.ndjson.zst" => body})
+
+      pid = start_producer()
+
+      events =
+        GenStage.stream([{pid, max_demand: 10}])
+        |> Enum.take(2)
+
+      assert Enum.map(events, & &1["id"]) == ["e1", "e2"]
+      assert_receive {:acked, "h1"}, 2000
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{},
+                      %{reason: :buffer_exhausted}}
     end
 
     test "nacks (not acks) a file tagged with a version newer than this build understands" do

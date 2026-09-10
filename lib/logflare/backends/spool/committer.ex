@@ -82,7 +82,7 @@ defmodule Logflare.Backends.Spool.Committer do
 
   defp do_commit(body_thunk, total_count, trigger, config, attempt) do
     with {:ok, body} <- body_thunk.(),
-         {:ok, _segments} <- Framing.decode_segments(body) do
+         :ok <- validate_body(body) do
       commit_body(body_thunk, body, total_count, trigger, config, attempt)
     else
       {:error, reason} ->
@@ -98,6 +98,28 @@ defmodule Logflare.Backends.Spool.Committer do
         )
 
         {:error, reason}
+    end
+  end
+
+  # Refuses only if nothing in the body is salvageable at all.
+  defp validate_body(body) do
+    case Framing.decode_segments(body) do
+      {:ok, _segments} ->
+        :ok
+
+      {:error, :corrupt, []} ->
+        {:error, :corrupt}
+
+      {:error, :corrupt, _decoded} ->
+        Logger.warning(
+          "spool_committer: body has at least one corrupt segment, committing the " <>
+            "salvageable segments anyway"
+        )
+
+        :ok
+
+      {:error, :not_framed} ->
+        {:error, :not_framed}
     end
   end
 
@@ -125,11 +147,13 @@ defmodule Logflare.Backends.Spool.Committer do
   end
 
   @doc """
-  Uploads `body` and notifies the queue for one commit's worth of work,
-  emitting the shared `handle_batch`/`storage.put`/`producer.batch`
-  telemetry — every commit's upload goes through here, whether `body` came
-  from one sealed WAL file or a concatenated group-commit batch, so this is
-  the one place that telemetry needs to be emitted at all.
+  Compresses (if configured) and uploads `body`, then notifies the queue for
+  one commit's worth of work, emitting the shared
+  `handle_batch`/`storage.put`/`producer.batch` telemetry — every commit's
+  upload goes through here, whether `body` came from one sealed WAL file or
+  a concatenated group-commit batch, so this is the one place that
+  telemetry needs to be emitted at all. `body` arrives raw and is
+  compressed here, once, as a whole, right before upload.
   """
   @spec upload_and_notify(binary(), config(), non_neg_integer(), atom()) ::
           {:ok, file_key :: String.t()} | {:error, {atom(), term()}}
@@ -141,9 +165,12 @@ defmodule Logflare.Backends.Spool.Committer do
     )
 
     file_key = file_key(config)
+    compressed_body = maybe_compress(body, config)
 
     {upload_us, upload_result} =
-      :timer.tc(fn -> config.storage_mod.put(config.bucket, file_key, body, headers(config)) end)
+      :timer.tc(fn ->
+        config.storage_mod.put(config.bucket, file_key, compressed_body, headers(config))
+      end)
 
     result =
       with {:upload, {:ok, _}} <- {:upload, upload_result},
@@ -154,7 +181,7 @@ defmodule Logflare.Backends.Spool.Committer do
       end
 
     format_tag = Encoder.format_tag(config.format, config.compress, config.compression_algorithm)
-    emit_storage_put_telemetry(format_tag, byte_size(body), result, upload_us)
+    emit_storage_put_telemetry(format_tag, byte_size(compressed_body), result, upload_us)
 
     case result do
       {:ok, file_key} ->
@@ -166,6 +193,11 @@ defmodule Logflare.Backends.Spool.Committer do
         {:error, {stage, reason}}
     end
   end
+
+  defp maybe_compress(body, %{compress: true, compression_algorithm: algorithm}),
+    do: Encoder.compress_binary(algorithm, body)
+
+  defp maybe_compress(body, %{compress: false}), do: body
 
   defp file_key(config) do
     Encoder.build_file_key(

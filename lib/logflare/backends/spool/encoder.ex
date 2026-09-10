@@ -1,11 +1,9 @@
 defmodule Logflare.Backends.Spool.Encoder do
   @moduledoc """
-  Encodes one caller's chunk of `LogEvent`s into a single framed (and
-  optionally compressed) segment, ready to hand to a `Partition`.
-
-  Runs in the ingest caller's own process, at the scale of one request's
-  chunk, so compression here builds the full raw payload and compresses it
-  in one shot rather than streaming it incrementally.
+  Encodes one caller's chunk of `LogEvent`s into a single framed (raw,
+  uncompressed) segment, ready to hand to a `Partition`. Runs in the
+  ingest caller's own process. Compression happens separately, once for
+  the whole accumulated file, at commit time (`Committer`).
   """
 
   alias Logflare.Backends.Spool.Framing
@@ -57,14 +55,12 @@ defmodule Logflare.Backends.Spool.Encoder do
   @spec generate_uuidv7() :: String.t()
   def generate_uuidv7, do: UUIDv7.generate()
 
-  @spec encode_chunk([LogEvent.t()], :ndjson | :etf, boolean(), :gzip | :zstd) ::
-          {segment :: binary(), compressed_byte_size :: non_neg_integer(),
-           raw_byte_size :: non_neg_integer(), format_tag :: atom()}
-  def encode_chunk(log_events, format, compress, algorithm) do
+  @spec encode_chunk([LogEvent.t()], :ndjson | :etf) ::
+          {segment :: binary(), raw_byte_size :: non_neg_integer()}
+  def encode_chunk(log_events, format) do
     raw = encode_raw(log_events, format)
-    body = if compress, do: compress_binary(algorithm, raw), else: raw
-    segment = Framing.encode_segment(body)
-    {segment, byte_size(body), byte_size(raw), format_tag(format, compress, algorithm)}
+    segment = Framing.encode_segment(raw)
+    {segment, byte_size(raw)}
   end
 
   @spec file_extension(:ndjson | :etf, boolean(), :gzip | :zstd) :: String.t()
@@ -124,7 +120,9 @@ defmodule Logflare.Backends.Spool.Encoder do
     })
   end
 
-  defp compress_binary(:gzip, data) do
+  @doc "Compresses `data` with `algorithm`."
+  @spec compress_binary(:gzip | :zstd, binary()) :: binary()
+  def compress_binary(:gzip, data) do
     z = :zlib.open()
 
     try do
@@ -137,5 +135,5 @@ defmodule Logflare.Backends.Spool.Encoder do
     end
   end
 
-  defp compress_binary(:zstd, data), do: :ezstd.compress(data, @zstd_compression_level)
+  def compress_binary(:zstd, data), do: :ezstd.compress(data, @zstd_compression_level)
 end

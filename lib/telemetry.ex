@@ -503,6 +503,11 @@ defmodule Logflare.Telemetry do
         tags: [:result],
         description: "Spool queue receive (SQS/PubSub) message count"
       ),
+      distribution("logflare.backends.spool.queue.receive.duration",
+        tags: [:result],
+        unit: {:microsecond, :millisecond},
+        description: "Time spent in the actual queue_mod.receive network call, by result"
+      ),
       counter("logflare.backends.spool.storage.get.count",
         tags: [:result],
         description: "Spool storage downloads (S3/GCS get) count by result"
@@ -514,6 +519,15 @@ defmodule Logflare.Telemetry do
       sum("logflare.backends.spool.storage.get.line_count",
         tags: [:result],
         description: "Spool events parsed per downloaded file"
+      ),
+      distribution("logflare.backends.spool.storage.get.duration",
+        tags: [:result],
+        unit: {:microsecond, :millisecond},
+        description: "Time spent in the actual storage_mod.get network call, by result"
+      ),
+      distribution("logflare.backends.spool.consumer.decompress.duration",
+        unit: {:microsecond, :millisecond},
+        description: "Time spent decompressing one downloaded spool file"
       ),
       counter("logflare.backends.spool.queue.ack.count",
         tags: [:reason, :result],

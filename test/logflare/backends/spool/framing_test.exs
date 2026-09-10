@@ -36,13 +36,20 @@ defmodule Logflare.Backends.Spool.FramingTest do
       assert {:ok, [^payload]} = Framing.decode_segments(segment)
     end
 
-    test "detects a corrupted payload (CRC mismatch)" do
+    test "a corrupted payload (CRC mismatch) with nothing else to recover reports :corrupt with an empty list" do
       segment = Framing.encode_segment("hello world")
-      # Flip a bit inside the payload without touching the length/crc header.
       <<len::32-big, crc::32-big, "hello world">> = segment
       corrupted = <<len::32-big, crc::32-big, "HELLO world">>
 
-      assert {:error, :corrupt_frame} = Framing.decode_segments(corrupted)
+      assert {:error, :corrupt, []} = Framing.decode_segments(corrupted)
+    end
+
+    test "a corrupted segment among intact ones still returns the intact ones" do
+      good = Framing.encode_segment("one")
+      <<len::32-big, crc::32-big, "two">> = Framing.encode_segment("two")
+      bad = <<len::32-big, crc::32-big, "TWO">>
+
+      assert {:error, :corrupt, ["one"]} = Framing.decode_segments(good <> bad)
     end
 
     test "reports :not_framed for a truncated frame (declared length longer than remaining data)" do
@@ -52,10 +59,10 @@ defmodule Logflare.Backends.Spool.FramingTest do
       assert {:error, :not_framed} = Framing.decode_segments(truncated)
     end
 
-    test "reports :not_framed for trailing garbage too short to be a valid frame header" do
+    test "trailing garbage after a valid segment reports :corrupt with the valid segment recovered" do
       valid = Framing.encode_segment("hello")
 
-      assert {:error, :not_framed} = Framing.decode_segments(valid <> <<1, 2, 3>>)
+      assert {:error, :corrupt, ["hello"]} = Framing.decode_segments(valid <> <<1, 2, 3>>)
     end
   end
 

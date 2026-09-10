@@ -268,7 +268,7 @@ defmodule Logflare.Backends.Spool.CommitterTest do
   end
 
   describe "corrupt body" do
-    test "a body that fails CRC validation is dropped without ever being uploaded, not retried" do
+    test "a body with nothing salvageable is dropped without ever being uploaded, not retried" do
       test_pid = self()
       stub(StorageMod, :put, fn _b, _k, body, _opts -> send(test_pid, {:put, body}) end)
 
@@ -291,13 +291,42 @@ defmodule Logflare.Backends.Spool.CommitterTest do
                Committer.commit_async(test_pid, file_thunk(path), 1, :size, path, config())
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :committer, :read_error],
-                      %{}, %{reason: :corrupt_frame}}
+                      %{}, %{reason: :corrupt}}
 
-      assert_receive {:commit_failed, ^path, :corrupt_frame}
+      assert_receive {:commit_failed, ^path, :corrupt}
       refute_receive {:put, _body}, 100
 
       # Never deleted by Committer regardless of outcome — the caller's job.
       assert File.exists?(path)
+    end
+
+    test "a corrupt segment among salvageable ones is still uploaded" do
+      test_pid = self()
+
+      stub(StorageMod, :put, fn _b, _k, body, _opts ->
+        send(test_pid, {:put, body})
+        {:ok, %{}}
+      end)
+
+      good = Framing.encode_segment("one\n")
+      <<len::32-big, crc::32-big, "two\n">> = Framing.encode_segment("two\n")
+      bad = <<len::32-big, crc::32-big, "TWO!"::binary>>
+      body = good <> bad
+
+      path =
+        Path.join(
+          System.tmp_dir!(),
+          "spool_committer_partial_#{System.unique_integer([:positive])}.sealed"
+        )
+
+      File.write!(path, body)
+      on_exit(fn -> File.rm(path) end)
+
+      assert {:ok, _pid} =
+               Committer.commit_async(test_pid, file_thunk(path), 1, :size, path, config())
+
+      assert_receive {:put, ^body}
+      assert_receive {:commit_success, ^path}
     end
   end
 end

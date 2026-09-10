@@ -25,42 +25,52 @@ defmodule Logflare.Backends.Spool.Framing do
 
   @doc """
   Splits a concatenated sequence of frames back into their payloads,
-  verifying each frame's CRC32, rather than returning partial results — a
-  caller can't tell a genuinely-empty file from a silently-truncated one
-  otherwise. Two distinct failure reasons, not collapsed into one, so a
-  caller (e.g. `Logflare.Backends.Spool.ConsumerPipeline.QueueProducer`) can
-  log or report them differently:
+  verifying each frame's CRC32. Decodes as many valid segments as
+  possible; a corrupt or unparseable segment is skipped (logged) rather
+  than aborting the rest.
 
-    * `:not_framed` — the bytes never looked like a frame at all (missing
-      header, or a declared length longer than the remaining data) — real
-      content's leading bytes essentially never happen to form a plausible
-      length prefix by chance, so this means the bytes were never framed
-      to begin with.
-    * `:corrupt_frame` — the bytes *did* form a structurally valid frame
-      (header present, exactly the declared number of payload bytes
-      present) but the CRC didn't match — genuine corruption of an
-      already-framed file, not a format mismatch.
+    * `{:ok, segments}` — every segment decoded cleanly.
+    * `{:error, :corrupt, decoded}` — at least one segment was corrupt or
+      unparseable; `decoded` has whatever was recovered (possibly empty).
+    * `{:error, :not_framed}` — nothing recoverable at all.
   """
   @spec decode_segments(binary()) ::
-          {:ok, [binary()]} | {:error, :corrupt_frame} | {:error, :not_framed}
+          {:ok, [binary()]}
+          | {:error, :corrupt, decoded :: [binary()]}
+          | {:error, :not_framed}
   def decode_segments(binary) when is_binary(binary) do
-    decode_segments(binary, [])
+    decode_segments(binary, [], false)
   end
 
-  defp decode_segments(<<>>, acc), do: {:ok, Enum.reverse(acc)}
+  defp decode_segments(<<>>, acc, false), do: {:ok, Enum.reverse(acc)}
+  defp decode_segments(<<>>, acc, true), do: {:error, :corrupt, Enum.reverse(acc)}
 
-  defp decode_segments(<<len::32-big, crc::32-big, rest::binary>>, acc)
+  defp decode_segments(<<len::32-big, crc::32-big, rest::binary>>, acc, corrupt?)
        when byte_size(rest) >= len do
     <<payload::binary-size(len), remaining::binary>> = rest
 
     if :erlang.crc32(payload) == crc do
-      decode_segments(remaining, [payload | acc])
+      decode_segments(remaining, [payload | acc], corrupt?)
     else
-      {:error, :corrupt_frame}
+      Logger.warning(
+        "spool_framing: skipping corrupt segment (#{len} bytes, CRC mismatch), " <>
+          "#{length(acc)} valid segment(s) so far"
+      )
+
+      decode_segments(remaining, acc, true)
     end
   end
 
-  defp decode_segments(_truncated, _acc), do: {:error, :not_framed}
+  defp decode_segments(_torn, [], false), do: {:error, :not_framed}
+
+  defp decode_segments(torn, acc, _corrupt?) do
+    Logger.warning(
+      "spool_framing: torn/unparseable frame after #{length(acc)} valid segment(s) " <>
+        "(#{byte_size(torn)} byte(s) left over) — salvaging what was recoverable"
+    )
+
+    {:error, :corrupt, Enum.reverse(acc)}
+  end
 
   @doc """
   Decodes as many complete, CRC-valid frames as possible from the front of
