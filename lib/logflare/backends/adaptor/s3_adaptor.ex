@@ -5,6 +5,8 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
 
   use Supervisor
 
+  require Logger
+
   import Logflare.Utils.Guards
 
   alias __MODULE__.HttpClient
@@ -38,13 +40,19 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   @http_opts [
     pool_timeout: :timer.seconds(5),
     receive_timeout: :timer.seconds(30),
-    request_timeout: :timer.minutes(1)
+    request_timeout: :timer.seconds(30)
   ]
   @request_retries [
     max_attempts: 3,
     base_backoff_in_ms: 2_000,
     max_backoff_in_ms: 10_000
   ]
+  @connection_test_http_opts [
+    pool_timeout: :timer.seconds(5),
+    receive_timeout: :timer.seconds(15),
+    request_timeout: :timer.seconds(15)
+  ]
+  @connection_test_retries [max_attempts: 1]
   @min_batch_timeout 1_000
   @max_batch_timeout 5_000
   @connection_test_key "_connection_test.parquet"
@@ -167,14 +175,26 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   non-current version.
   """
   @impl Adaptor
-  @spec test_connection(Backend.t()) :: :ok | {:error, term()}
+  @spec test_connection(Backend.t()) :: :ok | {:error, :s3_write_failed}
   def test_connection(%Backend{} = backend) do
     config = Adaptor.get_backend_config(backend)
     df = DataFrame.new([%{probe: "connection-test"}], dtypes: [{:probe, :string}])
 
-    case put_parquet(df, config, @connection_test_key) do
-      :ok -> :ok
-      {:error, reason} -> {:error, "S3 write failed: #{inspect(reason)}"}
+    case put_parquet(df, config, @connection_test_key,
+           http_opts: @connection_test_http_opts,
+           retries: @connection_test_retries
+         ) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("S3 backend connection test failed",
+          backend_id: backend.id,
+          user_id: backend.user_id,
+          error_string: inspect(reason)
+        )
+
+        {:error, :s3_write_failed}
     end
   end
 
@@ -300,8 +320,9 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     |> String.replace("-", "_")
   end
 
-  @spec put_parquet(DataFrame.t(), map(), key :: String.t()) :: :ok | {:error, term()}
-  defp put_parquet(%DataFrame{} = df, config, key) when is_non_empty_binary(key) do
+  @spec put_parquet(DataFrame.t(), map(), key :: String.t(), keyword()) ::
+          :ok | {:error, term()}
+  defp put_parquet(%DataFrame{} = df, config, key, opts \\ []) when is_non_empty_binary(key) do
     with {:ok, body} <- DataFrame.dump_parquet(df),
          content_md5 <- Base.encode64(:crypto.hash(:md5, body)),
          {:ok, _resp} <-
@@ -311,7 +332,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
              content_type: @parquet_content_type,
              content_md5: content_md5
            )
-           |> ExAws.request(request_opts(config)) do
+           |> ExAws.request(request_opts(config, opts)) do
       :ok
     end
   end
@@ -330,15 +351,18 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     end
   end
 
-  @spec request_opts(map()) :: keyword()
-  defp request_opts(config) do
+  @spec request_opts(map(), keyword()) :: keyword()
+  defp request_opts(config, opts) do
+    http_opts = Keyword.get(opts, :http_opts, @http_opts)
+    retries = Keyword.get(opts, :retries, @request_retries)
+
     [
       access_key_id: config.access_key_id,
       secret_access_key: config.secret_access_key,
       region: config.storage_region,
       http_client: HttpClient,
-      http_opts: @http_opts,
-      retries: @request_retries
+      http_opts: http_opts,
+      retries: retries
     ] ++ endpoint_opts(config[:endpoint])
   end
 

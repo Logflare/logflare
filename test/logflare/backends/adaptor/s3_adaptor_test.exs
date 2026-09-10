@@ -1,6 +1,8 @@
 defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
   use Logflare.DataCase, async: false
 
+  import ExUnit.CaptureLog
+
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.S3Adaptor
   alias Logflare.Backends.Adaptor.S3Adaptor.HttpClient
@@ -253,15 +255,11 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
 
       assert opts[:http_opts] == [
                pool_timeout: 5_000,
-               receive_timeout: 30_000,
-               request_timeout: 60_000
+               receive_timeout: 15_000,
+               request_timeout: 15_000
              ]
 
-      assert opts[:retries] == [
-               max_attempts: 3,
-               base_backoff_in_ms: 2_000,
-               max_backoff_in_ms: 10_000
-             ]
+      assert opts[:retries] == [max_attempts: 1]
     end
 
     test "returns error when the upload fails", %{backend: backend} do
@@ -270,8 +268,13 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
         {:error, {:http_error, 403, %{body: "AccessDenied"}}}
       end)
 
-      assert {:error, reason} = S3Adaptor.test_connection(backend)
-      assert reason =~ "AccessDenied"
+      log =
+        capture_log([format: "$metadata$message", metadata: [:error_string]], fn ->
+          assert {:error, :s3_write_failed} = S3Adaptor.test_connection(backend)
+        end)
+
+      assert log =~ "S3 backend connection test failed"
+      assert log =~ "AccessDenied"
     end
   end
 
@@ -332,6 +335,19 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
       assert opts[:access_key_id] == "AKID"
       assert opts[:secret_access_key] == "SECRET"
       assert opts[:region] == "us-east-1"
+
+      assert opts[:http_opts] == [
+               pool_timeout: 5_000,
+               receive_timeout: 30_000,
+               request_timeout: 30_000
+             ]
+
+      assert opts[:retries] == [
+               max_attempts: 3,
+               base_backoff_in_ms: 2_000,
+               max_backoff_in_ms: 10_000
+             ]
+
       refute Keyword.has_key?(opts, :scheme)
       refute Keyword.has_key?(opts, :host)
       refute Keyword.has_key?(opts, :port)
