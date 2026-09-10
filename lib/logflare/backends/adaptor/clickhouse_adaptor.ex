@@ -47,6 +47,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @ch_slow_pool_checkout_ms 1_000
   @us_per_hour 3_600 * 1_000_000
   @default_max_event_age_hours 24
+  @unlabeled_read_cluster_tag "(unlabeled)"
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
   defdelegate connection_pool_via(arg, label), to: ConnectionManager
@@ -553,6 +554,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end
   end
 
+  @doc """
+  Normalizes a read cluster label into a telemetry tag, mapping the legacy
+  unlabeled pool to `#{@unlabeled_read_cluster_tag}`.
+
+  The value is reserved: `read_only_urls` rejects it as a cluster label, so a
+  labeled pool can never share a tag with the unlabeled one.
+  """
+  @spec read_cluster_tag(String.t() | nil) :: String.t()
+  def read_cluster_tag(label) when is_non_empty_binary(label), do: label
+  def read_cluster_tag(_label), do: @unlabeled_read_cluster_tag
+
   @spec default_read_cluster_label(Backend.t()) :: String.t() | nil
   defp default_read_cluster_label(%Backend{config: config}) do
     urls = Map.get(config, :read_only_urls) || %{}
@@ -676,7 +688,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           {result, label}
       end
 
-    emit_query_error_telemetry(result, %{backend_id: backend.id, read_cluster: queried_label})
+    emit_query_error_telemetry(result, %{
+      backend_id: backend.id,
+      read_cluster: read_cluster_tag(queried_label)
+    })
 
     result
   end
@@ -760,7 +775,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :telemetry.execute(
         [:logflare, :clickhouse, :read_pool, :failover],
         %{count: 1},
-        %{backend_id: backend.id, read_cluster: label}
+        %{backend_id: backend.id, read_cluster: read_cluster_tag(label)}
       )
 
       {do_ch_query_on_label(backend, statement, params, default), default}
@@ -771,7 +786,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @spec handle_read_pool_log(DBConnection.LogEntry.t(), pos_integer(), String.t() | nil) :: :ok
   defp handle_read_pool_log(%DBConnection.LogEntry{} = entry, backend_id, label) do
-    metadata = %{backend_id: backend_id, read_cluster: label}
+    metadata = %{backend_id: backend_id, read_cluster: read_cluster_tag(label)}
 
     measurements =
       entry
@@ -1256,6 +1271,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @spec validate_read_only_url_entry({String.t(), term()}, Changeset.t()) :: Changeset.t()
+  defp validate_read_only_url_entry({@unlabeled_read_cluster_tag = label, _url}, changeset) do
+    Changeset.add_error(
+      changeset,
+      :read_only_urls,
+      "read cluster label \"#{label}\" is reserved for the unlabeled read pool"
+    )
+  end
+
   defp validate_read_only_url_entry({label, url}, changeset) do
     if is_non_empty_binary(url) and Regex.match?(~r/https?\:\/\/.+/, url) do
       changeset
