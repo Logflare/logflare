@@ -227,10 +227,31 @@ ingress:
       paths:
         - path: /
           pathType: ImplementationSpecific
+          # Backend for this path. Both empty routes it to the release's own Service on
+          # `service.port`. `serviceName` names another Service in the release's namespace,
+          # `servicePortName` a port on it by name. See README.md#ingress.
+          serviceName: ""
+          servicePortName: ""
   tls: []
     # - secretName: chart-example-tls
     #   hosts:
     #     - chart-example.local
+
+# Further Ingress objects, each taking the same shape as `ingress` above plus a required
+# `nameSuffix` that keeps its name distinct from `<fullname>`. For routes that cannot share one
+# Ingress, because they belong on different ingress classes or because an annotation applies per
+# Ingress rather than per rule. `ingress.enabled` does not gate these. See README.md#ingress.
+extraIngresses: []
+  # - nameSuffix: grpc
+  #   className: alb
+  #   annotations:
+  #     alb.ingress.kubernetes.io/backend-protocol-version: GRPC
+  #   hosts:
+  #     - host: otel.chart-example.local
+  #       paths:
+  #         - path: /
+  #           pathType: Prefix
+  #           servicePortName: grpc
 
 # -- Expose the service via gateway-api HTTPRoute
 # Requires Gateway API resources and suitable controller installed within the cluster

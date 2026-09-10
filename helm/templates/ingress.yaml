@@ -1,21 +1,27 @@
-{{- if .Values.ingress.enabled -}}
+{{/*
+One Ingress object, rendered once for `ingress` and once per `extraIngresses` entry. Both take
+the same shape, so a release needing several Ingresses describes each of them identically.
+*/}}
+{{- define "logflare.ingressObject" -}}
+{{- $root := .root -}}
+{{- $ingress := .ingress -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "logflare.fullname" . }}
+  name: {{ include "logflare.fullname" $root }}{{ with $ingress.nameSuffix }}-{{ . }}{{ end }}
   labels:
-    {{- include "logflare.labels" . | nindent 4 }}
-  {{- with .Values.ingress.annotations }}
+    {{- include "logflare.labels" $root | nindent 4 }}
+  {{- with $ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  {{- with .Values.ingress.className }}
+  {{- with $ingress.className }}
   ingressClassName: {{ . }}
   {{- end }}
-  {{- if .Values.ingress.tls }}
+  {{- if $ingress.tls }}
   tls:
-    {{- range .Values.ingress.tls }}
+    {{- range $ingress.tls }}
     - hosts:
         {{- range .hosts }}
         - {{ . | quote }}
@@ -24,7 +30,7 @@ spec:
     {{- end }}
   {{- end }}
   rules:
-    {{- range .Values.ingress.hosts }}
+    {{- range $ingress.hosts }}
     - host: {{ .host | quote }}
       http:
         paths:
@@ -35,9 +41,23 @@ spec:
             {{- end }}
             backend:
               service:
-                name: {{ include "logflare.fullname" $ }}
+                name: {{ .serviceName | default (include "logflare.fullname" $root) }}
                 port:
-                  number: {{ $.Values.service.port }}
+                  {{- if .servicePortName }}
+                  name: {{ .servicePortName }}
+                  {{- else }}
+                  number: {{ $root.Values.service.port }}
+                  {{- end }}
           {{- end }}
     {{- end }}
+{{- end }}
+{{- if .Values.ingress.enabled }}
+{{ include "logflare.ingressObject" (dict "root" $ "ingress" .Values.ingress) }}
+{{- end }}
+{{- range $index, $extra := .Values.extraIngresses }}
+{{- if not $extra.nameSuffix }}
+{{- fail (printf "extraIngresses[%d] has no nameSuffix: each extra Ingress needs one so its name stays distinct from the chart's own Ingress" $index) }}
+{{- end }}
+---
+{{ include "logflare.ingressObject" (dict "root" $ "ingress" $extra) }}
 {{- end }}
