@@ -24,6 +24,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
   This trade-off is deliberate: downstream queries get a stable, predictable key set
   rather than having to reconcile aliases and duplicate keys per row.
 
+  ## Root-level `source` contract
+
+  Every attribute map (`log_attributes`, `attributes`, `span_attributes`) excludes the
+  root-level `source` key. Ingest resolves the target source from `params["source"]`, and
+  `Plug.Parsers` merges the parsed request body into `conn.params`, so a caller may pass
+  the source token in the JSON body rather than the query string. The ingest controller
+  drops only `timestamp` and `id` from that body, so a body-supplied token survives into
+  the event body as a source UUID under `$.source`.
+
+  Because `:exclude_keys` is applied before `:elevate_keys`, dropping the key lets a
+  caller-supplied `metadata.source` elevate into `source` instead of being overwritten by
+  the UUID.
+
   ## `severity_number` contract
 
   A supplied `severity_number` is stored only when it is an integer (or a string holding
@@ -40,9 +53,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
   alias Logflare.Mapper.MappingConfig.InferRule
   alias Logflare.Mapper.MappingConfig.OutputFormat
 
-  @log_config_id "00000000-0000-0000-0001-000000000004"
-  @metric_config_id "00000000-0000-0000-0002-000000000004"
-  @trace_config_id "00000000-0000-0000-0003-000000000005"
+  @log_config_id "00000000-0000-0000-0001-000000000005"
+  @metric_config_id "00000000-0000-0000-0002-000000000005"
+  @trace_config_id "00000000-0000-0000-0003-000000000006"
+
+  @attributes_exclude_keys ["id", "event_message", "source", "timestamp"]
 
   @spec config_id(TypeDetection.event_type()) :: String.t()
   def config_id(:log), do: @log_config_id
@@ -158,7 +173,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       ),
       Field.flat_map("log_attributes",
         path: "$",
-        exclude_keys: ["id", "event_message", "timestamp", "resource", "scope"],
+        exclude_keys: @attributes_exclude_keys ++ ["resource", "scope"],
         elevate_keys: ["metadata", "attributes"]
       ),
       Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
@@ -267,7 +282,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       ),
       Field.flat_map("attributes",
         path: "$",
-        exclude_keys: ["id", "event_message", "timestamp", "resource", "scope"],
+        exclude_keys: @attributes_exclude_keys ++ ["resource", "scope"],
         elevate_keys: ["metadata", "attributes"]
       ),
       Field.string("aggregation_temporality",
@@ -503,7 +518,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       # scope.attributes.*. Adding "scope" here would drop them entirely.
       Field.flat_map("span_attributes",
         path: "$",
-        exclude_keys: ["id", "event_message", "timestamp", "resource"],
+        exclude_keys: @attributes_exclude_keys ++ ["resource"],
         elevate_keys: ["metadata", "attributes"]
       ),
       Field.array_datetime64("events.timestamp",
