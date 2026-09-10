@@ -47,7 +47,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @ch_slow_pool_checkout_ms 1_000
   @us_per_hour 3_600 * 1_000_000
   @default_max_event_age_hours 24
-  @default_read_cluster_tag "default"
+  @unlabeled_read_cluster_tag "(unlabeled)"
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
   defdelegate connection_pool_via(arg, label), to: ConnectionManager
@@ -556,11 +556,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @doc """
   Normalizes a read cluster label into a telemetry tag, mapping the legacy
-  unlabeled pool to a stable string.
+  unlabeled pool to `#{@unlabeled_read_cluster_tag}`.
+
+  The value is reserved: `read_only_urls` rejects it as a cluster label, so a
+  labeled pool can never share a tag with the unlabeled one.
   """
   @spec read_cluster_tag(String.t() | nil) :: String.t()
   def read_cluster_tag(label) when is_non_empty_binary(label), do: label
-  def read_cluster_tag(_label), do: @default_read_cluster_tag
+  def read_cluster_tag(_label), do: @unlabeled_read_cluster_tag
 
   @spec default_read_cluster_label(Backend.t()) :: String.t() | nil
   defp default_read_cluster_label(%Backend{config: config}) do
@@ -1268,6 +1271,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @spec validate_read_only_url_entry({String.t(), term()}, Changeset.t()) :: Changeset.t()
+  defp validate_read_only_url_entry({@unlabeled_read_cluster_tag = label, _url}, changeset) do
+    Changeset.add_error(
+      changeset,
+      :read_only_urls,
+      "read cluster label \"#{label}\" is reserved for the unlabeled read pool"
+    )
+  end
+
   defp validate_read_only_url_entry({label, url}, changeset) do
     if is_non_empty_binary(url) and Regex.match?(~r/https?\:\/\/.+/, url) do
       changeset

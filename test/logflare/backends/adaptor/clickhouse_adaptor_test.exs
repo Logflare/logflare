@@ -192,7 +192,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert is_integer(measurements.connection_time)
       assert measurements.connection_time > System.convert_time_unit(10, :microsecond, :native)
       assert metadata.backend_id == backend.id
-      assert metadata.read_cluster == "default"
+      assert metadata.read_cluster == "(unlabeled)"
     end
 
     test "emits a plausible idle_time on a checked-in connection", %{backend: backend} do
@@ -228,7 +228,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                       %{count: 1}, metadata}
 
       assert metadata.backend_id == backend.id
-      assert metadata.read_cluster == "default"
+      assert metadata.read_cluster == "(unlabeled)"
       assert metadata.error_kind == :connection_error
     end
 
@@ -460,6 +460,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       refute changeset.valid?
       assert Keyword.has_key?(changeset.errors, :read_only_urls)
+    end
+
+    test "rejects the read cluster label reserved for the unlabeled pool" do
+      changeset =
+        cast_and_validate_config(
+          read_only_urls: %{"(unlabeled)" => "http://logs-read.local:8123"}
+        )
+
+      refute changeset.valid?
+      assert {message, _opts} = changeset.errors[:read_only_urls]
+      assert message =~ "reserved"
+    end
+
+    test "accepts a read cluster labeled \"default\"" do
+      urls = %{"default" => "http://logs-read.local:8123"}
+
+      changeset = cast_and_validate_config(read_only_urls: urls)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :read_only_urls) == urls
     end
 
     test "strips basic auth credentials from every URL config field" do
@@ -946,8 +966,25 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
 
     test "returns a stable tag for the legacy pool" do
-      assert ClickHouseAdaptor.read_cluster_tag(nil) == "default"
-      assert ClickHouseAdaptor.read_cluster_tag("") == "default"
+      assert ClickHouseAdaptor.read_cluster_tag(nil) == "(unlabeled)"
+      assert ClickHouseAdaptor.read_cluster_tag("") == "(unlabeled)"
+    end
+
+    test "keeps the legacy pool distinct from a cluster labeled \"default\"" do
+      config = %{
+        url: "http://ingest.local:8123",
+        read_only_url: "http://legacy-read.local:8123",
+        read_only_urls: %{"default" => "http://named-default-read.local:8123"}
+      }
+
+      legacy_label = ClickHouseAdaptor.resolve_read_cluster_label(config, nil)
+      named_label = ClickHouseAdaptor.resolve_read_cluster_label(config, "default")
+
+      assert legacy_label == nil
+      assert named_label == "default"
+
+      refute ClickHouseAdaptor.read_cluster_tag(legacy_label) ==
+               ClickHouseAdaptor.read_cluster_tag(named_label)
     end
   end
 

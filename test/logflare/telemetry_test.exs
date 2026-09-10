@@ -271,8 +271,11 @@ defmodule Logflare.TelemetryTest do
 
         assert metric.tag_values.(%{tag: {123, nil}}) == %{
                  backend_id: 123,
-                 read_cluster: "default"
+                 read_cluster: "(unlabeled)"
                }
+
+        refute metric.tag_values.(%{tag: {123, "default"}}) ==
+                 metric.tag_values.(%{tag: {123, nil}})
       end
     end
 
