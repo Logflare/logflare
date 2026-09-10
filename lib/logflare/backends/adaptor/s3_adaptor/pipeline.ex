@@ -6,11 +6,15 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor.Pipeline do
   source backend and inserting them into the configured S3 bucket.
   """
 
+  @behaviour Broadway.Acknowledger
+
   require Logger
 
   alias Broadway.Message
   alias Logflare.Backends.Adaptor.S3Adaptor
   alias Logflare.Backends.BufferProducer
+  alias Logflare.Backends.IngestEventQueue
+  alias Logflare.LogEvent
   alias Logflare.Utils
 
   @producer_concurrency 1
@@ -20,6 +24,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor.Pipeline do
   @max_batch_size 10_000
   @max_batch_length 8_000_000
   @batcher_max_demand 100
+  @max_retries 1
 
   @doc false
   def child_spec(arg) do
@@ -45,7 +50,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor.Pipeline do
         ],
         producer: [
           module: {BufferProducer, [source_id: source_id, backend_id: backend_id]},
-          transformer: {__MODULE__, :transform, []},
+          transformer: {__MODULE__, :transform, [source_id: source_id, backend_id: backend_id]},
           concurrency: @producer_concurrency
         ],
         processors: [
@@ -79,26 +84,70 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor.Pipeline do
 
     case S3Adaptor.push_log_events_to_s3({source_id, backend_id}, events) do
       :ok ->
-        :ok
+        messages
 
       {:error, reason} ->
         Logger.warning(
           "S3Adaptor.Pipeline failed to push #{length(events)} events for source_id=#{source_id} backend_id=#{backend_id}: #{inspect(reason)}"
         )
-    end
 
-    messages
+        Enum.map(messages, &Message.failed(&1, reason))
+    end
   end
 
-  def transform(event, _opts) do
+  def transform(event, opts) do
+    source_id = Keyword.fetch!(opts, :source_id)
+    backend_id = Keyword.fetch!(opts, :backend_id)
+
     %Message{
       data: event,
-      acknowledger: {__MODULE__, :ack_id, :ack_data}
+      acknowledger: {__MODULE__, {source_id, backend_id}, nil}
     }
   end
 
-  def ack(_ack_ref, _successful, _failed) do
-    # TODO: re-queue failed
+  @impl Broadway.Acknowledger
+  @spec ack(
+          {source_id :: pos_integer(), backend_id :: pos_integer()},
+          successful :: [Message.t()],
+          failed :: [Message.t()]
+        ) :: :ok
+  def ack(_source_backend, _successful, []), do: :ok
+
+  def ack({source_id, backend_id}, _successful, failed) do
+    {retriable, exhausted} =
+      failed
+      |> Enum.map(fn %Message{data: %LogEvent{} = event} -> event end)
+      |> Enum.split_with(&((&1.retries || 0) < @max_retries))
+
+    if exhausted != [] do
+      Logger.warning(
+        "S3Adaptor.Pipeline dropped #{length(exhausted)} events after #{@max_retries} retry",
+        source_id: source_id,
+        backend_id: backend_id
+      )
+    end
+
+    requeue_failed({source_id, backend_id}, retriable)
+  end
+
+  @spec requeue_failed(
+          {source_id :: pos_integer(), backend_id :: pos_integer()},
+          events :: [LogEvent.t()]
+        ) :: :ok
+  defp requeue_failed(_source_backend, []), do: :ok
+
+  defp requeue_failed({source_id, backend_id}, events) do
+    events =
+      Enum.map(events, fn event ->
+        %{event | retries: (event.retries || 0) + 1, is_popped: false}
+      end)
+
+    Logger.info("S3Adaptor.Pipeline requeuing #{length(events)} failed events",
+      source_id: source_id,
+      backend_id: backend_id
+    )
+
+    IngestEventQueue.add_to_table({source_id, backend_id}, events)
   end
 
   # splits batch sizes based on message body size OR message count, whichever limit is reached first
