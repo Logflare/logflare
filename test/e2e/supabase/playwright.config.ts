@@ -1,12 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Read environment variables from file.
- * https://github.com/motdotla/dotenv
+ * Reads environment variables from supabase/docker/.env and normalises the
+ * public URL to an IPv4 loopback address.
  */
-import dotenv from 'dotenv';
-import path from 'path';
-dotenv.config({ path: path.resolve(__dirname, 'supabase/docker/.env') });
+import { supabasePublicUrl } from './lib/env';
 
 /**
  * See https://playwright.dev/docs/test-configuration.
@@ -36,9 +34,14 @@ export default defineConfig({
   /* Default timeout for expect() assertions. Bumped from the 5s default so
    * `toContainText` can ride out brief UI/ingestion latency. */
   expect: { timeout: 15_000 },
+  /* Per-test timeout. Playwright charges beforeEach hooks to the test's own
+   * budget, so specs that seed a log event (an 8s settle in schema_modal.spec)
+   * and then poll for it via searchLogs can spend >20s before the first
+   * assertion. The 30s default left no headroom and timed out in CI. */
+  timeout: 90_000,
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
-    baseURL: process.env.SUPABASE_PUBLIC_URL,
+    baseURL: supabasePublicUrl,
 
     httpCredentials: {
       username: process.env.DASHBOARD_USERNAME!,

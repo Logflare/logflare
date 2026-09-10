@@ -3,6 +3,12 @@ name: Integration Tests with Supabase
 # Temporarily manual-only while the BigQuery CI service account IAM is repaired.
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/integration-supabase.yml
+  pull_request:
+    paths:
+      - .github/workflows/integration-supabase.yml
 
 # Cancel old builds on new commit for same workflow + branch/PR
 concurrency:
