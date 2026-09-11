@@ -612,12 +612,62 @@ spool_provider_override =
       raise ArgumentError, "Invalid SPOOL_PROVIDER=#{other}. Must be aws or gcp."
   end
 
+spool_compression_algorithm_override =
+  case System.get_env("SPOOL_COMPRESSION_ALGORITHM") do
+    v when v in [nil, ""] ->
+      []
+
+    algorithm when algorithm in ["gzip", "zstd"] ->
+      [compression_algorithm: String.to_existing_atom(algorithm)]
+
+    other ->
+      raise ArgumentError,
+            "Invalid SPOOL_COMPRESSION_ALGORITHM=#{other}. Must be gzip or zstd."
+  end
+
+# Which Logflare.Backends.Spool.Buffer every Partition uses — :wal (local
+# disk, the default) or :mem (in-memory, never durable locally at all).
+# Orthogonal to SPOOL_BLOCKING below: this picks where the buffer lives,
+# not how long an ingest caller waits (see Logflare.Backends.spool_buffer/0).
+spool_buffer_override =
+  case System.get_env("SPOOL_BUFFER") do
+    v when v in [nil, ""] ->
+      []
+
+    buffer when buffer in ["wal", "mem"] ->
+      [buffer: String.to_existing_atom(buffer)]
+
+    other ->
+      raise ArgumentError, "Invalid SPOOL_BUFFER=#{other}. Must be wal or mem."
+  end
+
+# Blocks every ingest caller until its batch is actually committed
+# (uploaded to GCS/S3, published to Pub-Sub/SQS) rather than just until
+# it's durable in whichever buffer is active — see
+# Logflare.Backends.spool_blocking_mode?/0. Off by default.
+spool_blocking_override =
+  case System.get_env("SPOOL_BLOCKING") do
+    v when v in [nil, ""] -> []
+    v -> [blocking: v == "true"]
+  end
+
+# Local disk directory for the producer's durable WAL segments (see
+# Logflare.Backends.Spool.Buffer.WAL) — only used when SPOOL_BUFFER is
+# :wal. Falls back to a tmp dir so a plain `mix phx.server` still boots
+# with spool mode on, but that fallback is not durable across a real
+# restart — set this explicitly wherever the WAL is meant to survive one
+# (see cloudbuild/gce-startup.sh's mount_wal_disk for how the dev/staging
+# producer instances provide it).
 spool_overrides =
   spool_mode_override ++
     spool_provider_override ++
+    spool_compression_algorithm_override ++
+    spool_buffer_override ++
+    spool_blocking_override ++
     if((q = System.get_env("SPOOL_QUEUE_NAME")) && q != "", do: [queue_name: q], else: []) ++
     if((t = System.get_env("SPOOL_PUBSUB_TOPIC")) && t != "", do: [pubsub_topic: t], else: []) ++
-    if (b = System.get_env("SPOOL_BUCKET")) && b != "", do: [bucket: b], else: []
+    if((b = System.get_env("SPOOL_BUCKET")) && b != "", do: [bucket: b], else: []) ++
+    if (w = System.get_env("SPOOL_WAL_DIR")) && w != "", do: [wal_dir: w], else: []
 
 if spool_overrides != [] do
   config :logflare,

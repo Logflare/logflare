@@ -7,6 +7,7 @@ defmodule Logflare.Application do
   alias Logflare.Alerting.AlertSchedulerWorker
   alias Logflare.Networking
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Spool.Health, as: SpoolHealth
   alias Logflare.Backends.UserMonitoring
   alias Logflare.ContextCache
   alias Logflare.Logs
@@ -19,6 +20,7 @@ defmodule Logflare.Application do
 
   def start(_type, _args) do
     Logflare.Readiness.initialize()
+    SpoolHealth.initialize()
 
     # set inspect function to redact sensitive information
     prev = Inspect.Opts.default_inspect_fun()

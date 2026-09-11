@@ -4,6 +4,7 @@ defmodule LogflareWeb.HealthCheckControllerTest do
   """
   use LogflareWeb.ConnCase
 
+  alias Logflare.Backends.Spool.Health
   alias Logflare.Readiness
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source
@@ -11,6 +12,7 @@ defmodule LogflareWeb.HealthCheckControllerTest do
   setup do
     reset_readiness()
     on_exit(&reset_readiness/0)
+    on_exit(fn -> Health.report_recovery!() end)
 
     Logflare.Google.BigQuery
     |> stub(:init_table!, fn _, _, _, _, _, _ -> :ok end)
@@ -59,6 +61,43 @@ defmodule LogflareWeb.HealthCheckControllerTest do
       |> get("/health")
 
     assert %{"memory_utilization" => "ok"} = json_response(conn, 200)
+  end
+
+  test "spool write health is reported but does not (currently) gate the node's own health check",
+       %{
+         conn: conn
+       } do
+    insert(:user)
+    insert(:plan)
+    start_supervised!(Source.Supervisor)
+
+    prev_spool_config = Application.get_env(:logflare, :spool)
+    Application.put_env(:logflare, :spool, max_spool_health_failures: 1)
+
+    on_exit(fn ->
+      if prev_spool_config do
+        Application.put_env(:logflare, :spool, prev_spool_config)
+      else
+        Application.delete_env(:logflare, :spool)
+      end
+    end)
+
+    assert %{"status" => "ok", "spool_write_healthy" => true} =
+             conn |> get("/health") |> json_response(200)
+
+    Health.report_failure!()
+
+    # An unhealthy spool disables spool routing on its own
+    # (Backends.spool_producer_mode?/0) — this node's own /health check is
+    # deliberately not also gated on it right now, see
+    # HealthCheckController.check/2.
+    assert %{"status" => "ok", "spool_write_healthy" => false} =
+             conn |> get("/health") |> json_response(200)
+
+    Health.report_recovery!()
+
+    assert %{"status" => "ok", "spool_write_healthy" => true} =
+             conn |> get("/health") |> json_response(200)
   end
 
   describe "Supabase mode - without seed" do

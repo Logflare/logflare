@@ -14,6 +14,9 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.RecentInsertsCacher
+  alias Logflare.Backends.Spool.PartitionSupervisor
+  alias Logflare.Backends.Spool.Storage.GCS, as: SpoolStorageMod
+  alias Logflare.Backends.Spool.Health
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.SourceSupWorker
   alias Logflare.LogEvent
@@ -2079,7 +2082,36 @@ defmodule Logflare.BackendsTest do
     end
   end
 
+  defmodule StubSpoolStorage do
+    @moduledoc false
+    @behaviour Logflare.Backends.Spool.Storage
+    @impl true
+    def put(_bucket, key, _body, _opts), do: {:ok, key}
+    @impl true
+    def get(_bucket, _key), do: {:error, :not_found}
+  end
+
+  defmodule StubSpoolQueue do
+    @moduledoc false
+    @behaviour Logflare.Backends.Spool.Queue
+    @impl true
+    def resolve(name), do: {:ok, name}
+    @impl true
+    def receive(_queue, _opts), do: {:ok, []}
+    @impl true
+    def ack(_queue, _handle), do: :ok
+    @impl true
+    def nack(_queue, _handle), do: :ok
+    @impl true
+    def publish(_ref, _body), do: :ok
+  end
+
   describe "ingest_logs/3 per-source spooling gate" do
+    # Needed for the one test in this block that stubs SpoolStorageMod — its
+    # Committer commit runs inside a separate spawned Task, not this test's
+    # own process, so a private-mode stub wouldn't be visible to it.
+    setup :set_mimic_global
+
     setup do
       insert(:plan)
       user = insert(:user)
@@ -2096,67 +2128,190 @@ defmodule Logflare.BackendsTest do
         end
       end)
 
+      # A real Partition+Committer pair, with stub storage/queue mods, backs
+      # every test below — dispatch_to_spool_producer/1 routes straight into
+      # it (no ETS/ChunkProducer poll loop to simulate anymore). A short
+      # batch_timeout keeps the blocking-append test fast.
+      wal_dir =
+        Path.join(
+          System.tmp_dir!(),
+          "backends_test_spool_wal_#{System.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(wal_dir)
+      on_exit(fn -> File.rm_rf!(wal_dir) end)
+
+      Application.put_env(:logflare, :spool,
+        mode: :disable,
+        buffer: :wal,
+        partitions: 1,
+        batch_timeout: 10,
+        bucket: "test-bucket",
+        provider: :gcp,
+        storage_mod: StubSpoolStorage,
+        queue_mod: StubSpoolQueue,
+        wal_dir: wal_dir
+      )
+
+      start_supervised!(PartitionSupervisor)
+
       {:ok, source: source}
     end
 
-    defp stub_add_to_table_observer(test_pid) do
-      stub(IngestEventQueue, :add_to_table, fn key, _batch ->
-        send(test_pid, {:add_to_table, key})
-        :ok
-      end)
+    defp pending_event_count do
+      [partition_pid] = PartitionSupervisor.partitions()
+      :sys.get_state(partition_pid).buffer_state.pending_count
     end
 
     test "does not dispatch to the spool producer when source.enable_spooling is false, even if the global mode is on and allow_spooling is true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :producer)
-      stub_add_to_table_observer(self())
 
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
 
-      refute_receive {:add_to_table, {:spool_producer, nil}}
+      assert pending_event_count() == 0
+    end
+
+    test "does not dispatch to the spool producer once Health is unhealthy, even if everything else is enabled",
+         %{source: source} do
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        buffer: :wal,
+        max_spool_health_failures: 1
+      )
+
+      Health.report_failure!()
+      on_exit(fn -> Health.report_recovery!() end)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      assert pending_event_count() == 0
+    end
+
+    test "falls back to normal dispatch when no spool partition is registered (e.g. the subtree crashed and is mid-restart)",
+         %{source: source} do
+      # Simulates the only window this can actually happen in — see
+      # dispatch_to_spool_producer/1's caller — by starting a fresh
+      # PartitionSupervisor with zero partitions instead of the describe
+      # setup's usual one.
+      stop_supervised!(PartitionSupervisor)
+
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        partitions: 0,
+        bucket: "test-bucket",
+        provider: :gcp,
+        storage_mod: StubSpoolStorage,
+        queue_mod: StubSpoolQueue,
+        wal_dir: System.tmp_dir!()
+      )
+
+      start_supervised!(PartitionSupervisor)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+    end
+
+    test "falls back to normal dispatch and logs an error when the spool commit itself fails (e.g. GCS unavailable)",
+         %{source: source} do
+      # blocking: true so the commit failure — not just a WAL write — is
+      # what dispatch_to_spool_producer/1 sees, exercising the same
+      # {:error, reason} path append/5's wait_until_committed: true returns.
+      stop_supervised!(PartitionSupervisor)
+
+      wal_dir =
+        Path.join(
+          System.tmp_dir!(),
+          "backends_test_spool_wal_fail_#{System.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(wal_dir)
+      on_exit(fn -> File.rm_rf!(wal_dir) end)
+
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        blocking: true,
+        partitions: 1,
+        batch_timeout: 10,
+        max_commit_attempts: 1,
+        retry_delay_ms: 1,
+        bucket: "test-bucket",
+        provider: :gcp,
+        storage_mod: SpoolStorageMod,
+        queue_mod: StubSpoolQueue,
+        wal_dir: wal_dir
+      )
+
+      stub(SpoolStorageMod, :put, fn _b, _k, _body, _opts -> {:error, :timeout} end)
+
+      start_supervised!(PartitionSupervisor)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      log =
+        capture_log(fn ->
+          assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+        end)
+
+      assert log =~ "spool dispatch failed"
     end
 
     test "does not dispatch to the spool producer when the global mode is off, even if source.enable_spooling and allow_spooling are true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :disable)
-      stub_add_to_table_observer(self())
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
 
-      refute_receive {:add_to_table, {:spool_producer, nil}}
+      assert pending_event_count() == 0
     end
 
     test "dispatches to the spool producer only when the global mode, source.enable_spooling, and allow_spooling are all true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :producer)
-      stub_add_to_table_observer(self())
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
 
-      assert_receive {:add_to_table, {:spool_producer, nil}}
+      assert pending_event_count() == 1
+    end
+
+    test "blocks until the segment is durably written to the local WAL",
+         %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :producer)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      # ingest_logs/4 blocks on Partition.append/5, which only replies once
+      # the segment has been written and fsynced to the local WAL — so this
+      # succeeding at all proves that happened, without needing a manual ack
+      # simulation like the old ChunkProducer-based design.
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
     end
 
     test "does not dispatch to the spool producer when allow_spooling is omitted, even if the global mode and source.enable_spooling are true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :producer)
-      stub_add_to_table_observer(self())
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source)
 
-      refute_receive {:add_to_table, {:spool_producer, nil}}
+      assert pending_event_count() == 0
     end
 
     test "does not dispatch to the spool producer when the event already has a via_rule_id, even if allow_spooling is true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :producer)
-      stub_add_to_table_observer(self())
 
       source = %{source | enable_spooling: true}
       le = build(:log_event, source: source)
@@ -2164,7 +2319,7 @@ defmodule Logflare.BackendsTest do
 
       assert {:ok, 1} = Backends.ingest_logs([le], source, nil, true)
 
-      refute_receive {:add_to_table, {:spool_producer, nil}}
+      assert pending_event_count() == 0
     end
   end
 end

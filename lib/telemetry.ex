@@ -493,7 +493,27 @@ defmodule Logflare.Telemetry do
         description:
           "Spool consumer backpressure state: 1 if any recently-seen source's destination ingest buffer is backed up, 0 otherwise"
       ),
-      sum("logflare.backends.spool.storage.put.count",
+      last_value("logflare.backends.spool.write_health.healthy",
+        description:
+          "Spool health (1=healthy, 0=unhealthy — spool routing disabled on this node, see Logflare.Backends.Spool.Health) — local WAL writes/rolls and commits to GCS/S3 or Pub-Sub/SQS all report here"
+      ),
+      last_value("logflare.backends.spool.write_health.failure_count",
+        description: "Spool consecutive write/roll/commit failure count"
+      ),
+      counter("logflare.backends.spool.wal.write_error.count",
+        tags: [:reason, :index],
+        description: "Spool local WAL write/reopen failure count by reason and partition index"
+      ),
+      counter("logflare.backends.spool.committer.read_error.count",
+        tags: [:reason],
+        description:
+          "Spool commit body reads that failed permanently (unreadable file or corrupt frame), by reason — never retried, see Logflare.Backends.Spool.Committer"
+      ),
+      counter("logflare.backends.spool.queue.publish.count",
+        tags: [:result],
+        description: "Spool queue publish (SQS send / PubSub publish) count"
+      ),
+      counter("logflare.backends.spool.storage.put.count",
         tags: [:format, :result],
         description: "Spool storage writes (S3/GCS put) count by format/result"
       ),
@@ -501,11 +521,14 @@ defmodule Logflare.Telemetry do
         tags: [:format, :result],
         description: "Spool storage writes: bytes by format/result"
       ),
-      sum("logflare.backends.spool.queue.publish.count",
-        tags: [:result],
-        description: "Spool queue publish (SQS send / PubSub publish) count"
+      distribution("logflare.backends.spool.storage.put.upload_duration",
+        tags: [:format, :result],
+        unit: {:microsecond, :millisecond},
+        description: "Time spent in the actual storage_mod.put network call, by format/result"
       ),
       sum("logflare.backends.spool.producer.batch.count",
+        event_name: [:logflare, :backends, :spool, :producer, :batch],
+        measurement: :batch_size,
         tags: [:result, :stage],
         description:
           "Spool producer batches by end-to-end outcome (:ok, or :error tagged with which stage — :upload or :notify — failed)"
@@ -514,7 +537,12 @@ defmodule Logflare.Telemetry do
         tags: [:result],
         description: "Spool queue receive (SQS/PubSub) message count"
       ),
-      sum("logflare.backends.spool.storage.get.count",
+      distribution("logflare.backends.spool.queue.receive.duration",
+        tags: [:result],
+        unit: {:microsecond, :millisecond},
+        description: "Time spent in the actual queue_mod.receive network call, by result"
+      ),
+      counter("logflare.backends.spool.storage.get.count",
         tags: [:result],
         description: "Spool storage downloads (S3/GCS get) count by result"
       ),
@@ -526,12 +554,43 @@ defmodule Logflare.Telemetry do
         tags: [:result],
         description: "Spool events parsed per downloaded file"
       ),
-      sum("logflare.backends.spool.queue.ack.count",
+      distribution("logflare.backends.spool.storage.get.duration",
+        tags: [:result],
+        unit: {:microsecond, :millisecond},
+        description: "Time spent in the actual storage_mod.get network call, by result"
+      ),
+      distribution("logflare.backends.spool.consumer.decompress.duration",
+        unit: {:microsecond, :millisecond},
+        description: "Time spent decompressing one downloaded spool file"
+      ),
+      distribution("logflare.backends.spool.consumer.parse.duration",
+        unit: {:microsecond, :millisecond},
+        description: "Time spent parsing one downloaded spool file's segments into events"
+      ),
+      sum("logflare.backends.spool.consumer.parse.segment_count",
+        description: "Segments parsed per downloaded spool file"
+      ),
+      sum("logflare.backends.spool.consumer.parse.event_count",
+        description: "Events parsed per downloaded spool file"
+      ),
+      distribution("logflare.backends.spool.consumer.prefetch.duration",
+        tags: [:result, :started_while_buffered],
+        unit: {:microsecond, :millisecond},
+        description:
+          "Time spent in the full background prefetch Task (queue receive + download + decode), by result and whether a file was already buffered when this prefetch started"
+      ),
+      distribution("logflare.backends.spool.consumer.poll.duration",
+        tags: [:idle],
+        unit: {:microsecond, :millisecond},
+        description:
+          "Time spent in the producer's own :poll handling (excludes the background prefetch Task)"
+      ),
+      counter("logflare.backends.spool.queue.ack.count",
         tags: [:reason, :result],
         description:
           "Spool queue ack (delete) count by reason, and whether the underlying SQS/PubSub call itself succeeded"
       ),
-      sum("logflare.backends.spool.queue.nack.count",
+      counter("logflare.backends.spool.queue.nack.count",
         tags: [:reason, :result],
         description:
           "Spool queue nack (requeue) count by reason, and whether the underlying SQS/PubSub call itself succeeded"

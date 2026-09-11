@@ -6,10 +6,10 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
   alias Logflare.Backends
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.Spool.MemoryMonitor
+  alias Logflare.Backends.Spool.PartitionSupervisor
 
   @max_points 1_800
   @tick_ms 1_000
-  @pipeline Logflare.Backends.Spool.ProducerPipeline
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -156,12 +156,12 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
 
     result =
       try do
-        producers = Broadway.producer_names(@pipeline)
+        partitions = PartitionSupervisor.partitions()
 
         if paused do
-          Enum.each(producers, &:sys.resume/1)
+          Enum.each(partitions, &:sys.resume/1)
         else
-          Enum.each(producers, &:sys.suspend/1)
+          Enum.each(partitions, &:sys.suspend/1)
         end
 
         {:ok, !paused}
@@ -205,7 +205,7 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
         </button>
 
         <div style="color: #6c7086; font-size: 12px; align-self: center; font-family: monospace;">
-          Pausing the producer suspends spool writes — ETS queue will grow.
+          Pausing the producer suspends spool commits — pending in-memory batches will grow.
         </div>
       </div>
     </div>

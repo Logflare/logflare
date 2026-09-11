@@ -1,0 +1,108 @@
+defmodule Logflare.Backends.Spool.PartitionSupervisor do
+  @moduledoc """
+  Starts `partitions` (config) `Logflare.Backends.Spool.Partition` processes,
+  each registered under its own index in `PartitionRegistry` so callers can
+  route to one (`random_partition/0`) and the dev dashboard can enumerate all
+  of them (`partitions/0`). Each `Partition` spawns its own
+  `Committer`-backed commit tasks directly (see `Partition`'s moduledoc);
+  `Committer` is not itself a separately supervised process.
+
+  Every partition in this supervisor is buffered the same way — local-disk
+  WAL or in-memory (`:logflare, :spool, :buffer`, default `:mem` — see
+  `Logflare.Backends.spool_buffer/0`, the single source of truth this
+  mirrors, and `Logflare.Backends.Spool.Buffer`) is a node-wide choice, not
+  a per-caller one. `wal_dir` is only actually required when the buffer is
+  `:wal`.
+
+  Each partition's own index doubles as its GCS/S3 key prefix (see
+  `Committer`'s `file_key/1`).
+  """
+
+  use Supervisor
+
+  alias Logflare.Backends.Spool.Buffer
+  alias Logflare.Backends.Spool.Partition
+  alias Logflare.Backends.Spool.ProviderConfig
+
+  @registry __MODULE__.Registry
+  # 1s — the max amount of time raw data sits buffered before being
+  # committed, even if it never reaches the 32MB size threshold (see
+  # Partition's moduledoc). config/dev.exs already sets this explicitly;
+  # this is the fallback for any environment that doesn't.
+  @default_batch_timeout 1_000
+  @default_compression_algorithm :zstd
+
+  @spec start_link(keyword()) :: Supervisor.on_start()
+  def start_link(opts), do: Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
+
+  @spec partitions() :: [pid()]
+  def partitions do
+    Registry.select(@registry, [{{:_, :"$1", :_}, [], [:"$1"]}])
+  end
+
+  # Picks from whichever partitions are actually registered right now, rather
+  # than re-deriving an expected count from config — config can change (e.g.
+  # in tests) without every already-running Partition's index membership
+  # changing to match, and this way random_partition/0 can never pick an
+  # index nothing is listening on.
+  @spec random_partition() :: pid() | nil
+  def random_partition do
+    case partitions() do
+      [] -> nil
+      pids -> Enum.random(pids)
+    end
+  end
+
+  @spec partition_count() :: pos_integer()
+  def partition_count do
+    Application.get_env(:logflare, :spool, []) |> Keyword.get(:partitions, 4)
+  end
+
+  @impl Supervisor
+  def init(_opts) do
+    spool_config = Application.get_env(:logflare, :spool, [])
+    bucket = Keyword.fetch!(spool_config, :bucket)
+    batch_timeout = Keyword.get(spool_config, :batch_timeout, @default_batch_timeout)
+    compress = Keyword.get(spool_config, :compress, true)
+    format = Keyword.get(spool_config, :format, :ndjson)
+    wal_dir = Keyword.get(spool_config, :wal_dir)
+    buffer_mod = buffer_mod(spool_config)
+
+    compression_algorithm =
+      Keyword.get(spool_config, :compression_algorithm, @default_compression_algorithm)
+
+    {storage_mod, queue_mod} = ProviderConfig.resolve_mods(spool_config)
+    queue_ref = ProviderConfig.resolve_queue_ref(spool_config, queue_mod)
+
+    partition_specs =
+      for index <- 0..(partition_count() - 1)//1 do
+        opts = [
+          name: {:via, Registry, {@registry, index}},
+          buffer_mod: buffer_mod,
+          index: index,
+          bucket: bucket,
+          batch_timeout: batch_timeout,
+          compress: compress,
+          format: format,
+          compression_algorithm: compression_algorithm,
+          storage_mod: storage_mod,
+          queue_mod: queue_mod,
+          queue_ref: queue_ref,
+          wal_dir: wal_dir
+        ]
+
+        Supervisor.child_spec({Partition, opts}, id: {Partition, index})
+      end
+
+    children = [{Registry, keys: :unique, name: @registry} | partition_specs]
+
+    Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  defp buffer_mod(spool_config) do
+    case Keyword.get(spool_config, :buffer, :mem) do
+      :wal -> Buffer.WAL
+      :mem -> Buffer.Mem
+    end
+  end
+end
