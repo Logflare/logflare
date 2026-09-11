@@ -14,6 +14,9 @@ defmodule Logflare.Networking do
     send_timeout_close: true
   ]
 
+  @s3_connect_timeout :timer.seconds(5)
+  @s3_send_timeout :timer.seconds(30)
+
   def pools do
     if SingleTenant.postgres_backend?() do
       finch_pools(true)
@@ -117,6 +120,20 @@ defmodule Logflare.Networking do
            start_pool_metrics?: true,
            conn_opts: [
              transport_opts: @clickhouse_transport_opts
+           ]
+         ]
+       }},
+      {Finch,
+       name: Logflare.FinchS3,
+       pools: %{
+         default: [
+           protocols: [:http1],
+           conn_opts: [
+             transport_opts: [
+               timeout: @s3_connect_timeout,
+               send_timeout: @s3_send_timeout,
+               send_timeout_close: true
+             ]
            ]
          ]
        }}

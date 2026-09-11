@@ -67,7 +67,11 @@ defmodule Logflare.Backends do
   end
 
   defp filter_backends(query, filters) do
-    Enum.reduce(filters, query, fn
+    {ingesting?, filters} = Keyword.pop(filters, :ingesting, false)
+    {limit, filters} = Keyword.pop(filters, :limit)
+
+    filters
+    |> Enum.reduce(query, fn
       {:types, types}, q when is_list(types) ->
         where(q, [b], b.type in ^types)
 
@@ -78,15 +82,6 @@ defmodule Logflare.Backends do
       # filter down to backends with rules destinations
       {:rules_source_id, source_id}, q ->
         join(q, :inner, [b], r in assoc(b, :rules), on: r.source_id == ^source_id)
-
-      # filter down to backends with sources that have recently ingested.
-      # orders by the last active.
-      {:ingesting, true}, q ->
-        q
-        |> join(:inner, [b], s in assoc(b, :sources),
-          on: s.log_events_updated_at >= ago(1, "day")
-        )
-        |> order_by([..., s], {:desc, s.log_events_updated_at})
 
       {:user_id, id}, q ->
         where(q, [b], b.user_id == ^id)
@@ -116,7 +111,41 @@ defmodule Logflare.Backends do
       _, q ->
         q
     end)
+    |> maybe_filter_ingesting(ingesting?)
+    |> maybe_limit(limit)
   end
+
+  defp maybe_filter_ingesting(query, true) do
+    backend_ids =
+      query
+      |> exclude(:distinct)
+      |> select([b], b.id)
+      |> distinct(true)
+
+    activity =
+      from(s in Source,
+        join: sb in "sources_backends",
+        on: sb.source_id == s.id,
+        where: s.log_events_updated_at >= ago(1, "day"),
+        group_by: sb.backend_id,
+        select: %{
+          backend_id: sb.backend_id,
+          last_active_at: max(s.log_events_updated_at)
+        }
+      )
+
+    from(b in Backend,
+      join: a in subquery(activity),
+      on: a.backend_id == b.id,
+      where: b.id in subquery(backend_ids),
+      order_by: [desc: a.last_active_at, asc: b.id]
+    )
+  end
+
+  defp maybe_filter_ingesting(query, _ingesting?), do: query
+
+  defp maybe_limit(query, limit) when is_pos_integer(limit), do: limit(query, ^limit)
+  defp maybe_limit(query, _limit), do: query
 
   defp distinct_backends(%Ecto.Query{distinct: nil} = query), do: distinct(query, [b], b.id)
   defp distinct_backends(query), do: query

@@ -175,6 +175,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
       end
     end
 
+    test "a metadata.source child is not shadowed by the root-level source token", %{
+      log: log,
+      metric: metric,
+      trace: trace
+    } do
+      payload = %{
+        "source" => "9a1c7e40-3b62-4f18-8d5a-1c0b4e7f2a96",
+        "event_message" => "worker ingress request",
+        "metadata" => %{"source" => "worker_ingress_logs", "level" => "info"},
+        "timestamp" => 1_775_591_051_937_363
+      }
+
+      for {compiled, field} <- [
+            {log, "log_attributes"},
+            {metric, "attributes"},
+            {trace, "span_attributes"}
+          ] do
+        attrs = Mapper.map(payload, compiled)[field]
+
+        assert attrs["source"] == "worker_ingress_logs", "#{field} lost metadata.source"
+      end
+    end
+
     test "a non-map attributes value is preserved as a literal key", %{
       log: log,
       metric: metric,

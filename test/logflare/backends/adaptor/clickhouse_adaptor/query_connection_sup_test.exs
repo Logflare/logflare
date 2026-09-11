@@ -42,6 +42,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSupTest do
     end
   end
 
+  describe "telemetry listener" do
+    test "supervises a named DBConnection telemetry listener" do
+      listener_pid = Process.whereis(ConnectionManager.telemetry_listener_name())
+
+      assert is_pid(listener_pid)
+      assert Process.alive?(listener_pid)
+
+      assert Enum.any?(Supervisor.which_children(QueryConnectionSup), fn
+               {DBConnection.TelemetryListener, ^listener_pid, _type, _modules} -> true
+               _child -> false
+             end)
+    end
+  end
+
   describe "recycle_backend_local/1" do
     test "returns an error when no manager is running for the backend", %{backend: backend} do
       assert {:error, :no_manager} == QueryConnectionSup.recycle_backend_local(backend.id)
