@@ -70,49 +70,47 @@ defmodule Logflare.Backends do
     {ingesting?, filters} = Keyword.pop(filters, :ingesting, false)
     {limit, filters} = Keyword.pop(filters, :limit)
 
-    query =
-      Enum.reduce(filters, query, fn
-        {:types, types}, q when is_list(types) ->
-          where(q, [b], b.type in ^types)
+    filters
+    |> Enum.reduce(query, fn
+      {:types, types}, q when is_list(types) ->
+        where(q, [b], b.type in ^types)
 
-        # filter down to backends of this source
-        {:source_id, id}, q ->
-          join(q, :inner, [b], s in assoc(b, :sources), on: s.id == ^id)
+      # filter down to backends of this source
+      {:source_id, id}, q ->
+        join(q, :inner, [b], s in assoc(b, :sources), on: s.id == ^id)
 
-        # filter down to backends with rules destinations
-        {:rules_source_id, source_id}, q ->
-          join(q, :inner, [b], r in assoc(b, :rules), on: r.source_id == ^source_id)
+      # filter down to backends with rules destinations
+      {:rules_source_id, source_id}, q ->
+        join(q, :inner, [b], r in assoc(b, :rules), on: r.source_id == ^source_id)
 
-        {:user_id, id}, q ->
-          where(q, [b], b.user_id == ^id)
+      {:user_id, id}, q ->
+        where(q, [b], b.user_id == ^id)
 
-        {:type, type}, q when is_atom(type) ->
-          where(q, [b], b.type == ^type)
+      {:type, type}, q when is_atom(type) ->
+        where(q, [b], b.type == ^type)
 
-        {:metadata, %{} = metadata}, q ->
-          normalized =
-            Enum.into(metadata, %{}, fn {k, v} ->
-              {k, if(v in ["true", "false"], do: String.to_existing_atom(v), else: v)}
-            end)
+      {:metadata, %{} = metadata}, q ->
+        normalized =
+          Enum.into(metadata, %{}, fn {k, v} ->
+            {k, if(v in ["true", "false"], do: String.to_existing_atom(v), else: v)}
+          end)
 
-          where(q, [b], b.metadata == ^normalized)
+        where(q, [b], b.metadata == ^normalized)
 
-        # filter by `default_ingest?` flag
-        {:default_ingest?, true}, q ->
-          where(q, [b], b.default_ingest? == true)
+      # filter by `default_ingest?` flag
+      {:default_ingest?, true}, q ->
+        where(q, [b], b.default_ingest? == true)
 
-        {:has_sources_or_rules, true}, q ->
-          q
-          |> join(:left, [b], sb in "sources_backends", on: sb.backend_id == b.id)
-          |> join(:left, [b], r in Rule, on: r.backend_id == b.id)
-          |> where([b, ..., sb, r], not is_nil(sb.backend_id) or not is_nil(r.backend_id))
-          |> distinct_backends()
+      {:has_sources_or_rules, true}, q ->
+        q
+        |> join(:left, [b], sb in "sources_backends", on: sb.backend_id == b.id)
+        |> join(:left, [b], r in Rule, on: r.backend_id == b.id)
+        |> where([b, ..., sb, r], not is_nil(sb.backend_id) or not is_nil(r.backend_id))
+        |> distinct_backends()
 
-        _, q ->
-          q
-      end)
-
-    query
+      _, q ->
+        q
+    end)
     |> maybe_filter_ingesting(ingesting?)
     |> maybe_limit(limit)
   end
