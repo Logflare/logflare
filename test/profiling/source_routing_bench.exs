@@ -59,7 +59,7 @@ one_matching = fn rules_num ->
     for i <- 1..rules_num do
       backend = insert(:backend, user: user)
 
-      lql_string = "metadata.rule_id:rule-#{i} severity_number:>8"
+      lql_string = ~s(metadata.rule_id:"rule-#{i}" severity_number:>8)
       {:ok, filters} = Parser.parse(lql_string)
 
       %Rule{
@@ -96,7 +96,7 @@ end
 
 all_matching = fn rules_num ->
   rules =
-    for i <- 1..rules_num do
+    for _i <- 1..rules_num do
       backend = insert(:backend, user: user)
 
       lql_string = "m.type:otel_log severity_number:>8"
@@ -116,34 +116,80 @@ end
 
 warmup = fn source ->
   rules = Rules.Cache.list_rules(source)
-  for rule <- rules, do: Rules.Cache.get_rule(rule.id)
-  _rule_set = Rules.Cache.rules_tree_by_source_id(source.id)
+  entries = for rule <- rules, do: {{:get_rule, [rule.id]}, {:cached, rule}}
+  Cachex.put_many!(Rules.Cache, entries)
+  Rules.Cache.rules_tree_by_source_id(source.id)
 end
 
+# ROUTING_BENCH_STAGES=1 isolates cache copying from matching/resolution.
+# ROUTING_BENCH_PARALLEL=6 measures concurrent readers without changing fixtures.
+# The stage harness supports both the #3937 map and #3942 per-rule cache baselines.
+stages? = System.get_env("ROUTING_BENCH_STAGES") == "1"
+parallel = System.get_env("ROUTING_BENCH_PARALLEL", "1") |> String.to_integer()
+
+scenarios =
+  if stages? do
+    %{
+      "Cache fetch" => fn {_event, source, _tree, _lookup, _ids} ->
+        Rules.Cache.rules_tree_by_source_id(source.id)
+      end,
+      "Match IDs (resident tree)" => fn {event, _source, tree, _lookup, _ids} ->
+        SourceRouter.RulesTree.matching_rule_ids(event, tree)
+      end,
+      "Resolve IDs (resident header)" => fn {_event, _source, _tree, lookup, ids} ->
+        case lookup do
+          :individual_rule_cache -> apply(Rules.Cache, :get_rules, [ids])
+          %{__struct__: _} -> apply(Rules.RoutingSnapshot, :resolve, [lookup, ids])
+          rules_by_id -> for id <- ids, rule = Map.get(rules_by_id, id), do: rule
+        end
+      end
+    }
+  else
+    %{
+      "Reference" => fn {event, source} ->
+        SourceRouter.Sequential.matching_rules(event, source) |> MapSet.new()
+      end,
+      "RulesTree" => fn {event, source} ->
+        SourceRouter.RulesTree.matching_rules(event, source) |> MapSet.new()
+      end
+    }
+  end
+
 Benchee.run(
-  %{
-    "Reference" => fn {event, source} ->
-      SourceRouter.Sequential.matching_rules(event, source) |> MapSet.new()
-    end,
-    "RulesTree" => fn {event, source} ->
-      SourceRouter.RulesTree.matching_rules(event, source) |> MapSet.new()
-    end
-  },
-  before_scenario: fn {event, source} ->
+  scenarios,
+  before_scenario: fn {event, source, expected_count} ->
     Cachex.clear!(Rules.Cache)
     warmup.(source)
-    {event, source}
+
+    {tree, lookup} =
+      case Rules.Cache.rules_tree_by_source_id(source.id) do
+        {tree, lookup} -> {tree, lookup}
+        tree when is_list(tree) -> {tree, :individual_rule_cache}
+      end
+
+    ids = SourceRouter.RulesTree.matching_rule_ids(event, tree)
+
+    if length(ids) != expected_count do
+      raise "expected #{expected_count} matching rules, got #{length(ids)}"
+    end
+
+    if stages? do
+      {event, source, tree, lookup, ids}
+    else
+      {event, source}
+    end
   end,
   inputs: %{
-    "source with 100 rules and few matching" => few_matching.(100),
-    "source with 100 rules and one matching" => one_matching.(100),
-    "source with 100 rules and all matching" => all_matching.(100),
-    "source with 1000 rules and few matching" => few_matching.(1000),
-    "source with 1000 rules and one matching" => one_matching.(1000),
-    "source with 1000 rules and all matching" => all_matching.(1000)
+    "source with 100 rules and few matching" => Tuple.insert_at(few_matching.(100), 2, 8),
+    "source with 100 rules and one matching" => Tuple.insert_at(one_matching.(100), 2, 1),
+    "source with 100 rules and all matching" => Tuple.insert_at(all_matching.(100), 2, 100),
+    "source with 1000 rules and few matching" => Tuple.insert_at(few_matching.(1000), 2, 8),
+    "source with 1000 rules and one matching" => Tuple.insert_at(one_matching.(1000), 2, 1),
+    "source with 1000 rules and all matching" => Tuple.insert_at(all_matching.(1000), 2, 1000)
   },
   # save: [path: Path.join(__DIR__, "source_routing.benchee")],
-  pre_check: :all_same,
+  pre_check: if(stages?, do: false, else: :all_same),
+  parallel: parallel,
   # profile_after: :tprof,
   time: 5,
   memory_time: 2
