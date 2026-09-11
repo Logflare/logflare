@@ -5,6 +5,15 @@ defmodule Logflare.Networking do
   alias Logflare.Backends.Adaptor.DatadogAdaptor
   alias Logflare.SingleTenant
 
+  # Finch bounds only connect and receive. Without `send_timeout` a peer that accepts
+  # the connection and then stops reading blocks the insert inside `:gen_tcp.send`
+  # forever, wedging a batcher and leaking the connection out of the pool.
+  @clickhouse_transport_opts [
+    timeout: :timer.seconds(10),
+    send_timeout: :timer.seconds(15),
+    send_timeout_close: true
+  ]
+
   @s3_connect_timeout :timer.seconds(5)
   @s3_send_timeout :timer.seconds(30)
 
@@ -92,7 +101,7 @@ defmodule Logflare.Networking do
            conn_max_idle_time: 5_000,
            start_pool_metrics?: true,
            conn_opts: [
-             transport_opts: [timeout: 10_000]
+             transport_opts: @clickhouse_transport_opts
            ]
          ]
        }},
@@ -110,7 +119,7 @@ defmodule Logflare.Networking do
            conn_max_idle_time: 5_000,
            start_pool_metrics?: true,
            conn_opts: [
-             transport_opts: [timeout: 10_000]
+             transport_opts: @clickhouse_transport_opts
            ]
          ]
        }},
