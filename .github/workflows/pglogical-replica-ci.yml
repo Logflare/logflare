@@ -1,0 +1,107 @@
+name: pglogical Replica CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches: ["**"]
+    paths:
+      - ".tool-versions"
+      - "lib/logflare/repo/*"
+      - "lib/logflare/ecto/adapters/pglogical_postgres/**"
+      - "config/runtime.exs"
+      - "config/test.exs"
+      - "docker-compose.pglogical.yml"
+      - "docker/Dockerfile.pglogical"
+      - "test/integration/pglogical_*"
+      - "test/support/pglogical_*"
+      - "test/support/pglogical/**"
+      - ".github/workflows/pglogical-replica-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pglogical-replica:
+    name: pglogical DDL replication integration tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: bitnamilegacy/postgresql:15
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: logflare_test
+          POSTGRESQL_WAL_LEVEL: logical
+        options: >-
+          --health-cmd "pg_isready -d logflare_test -U postgres -p 5432"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      MIX_ENV: test
+      SHELL: /bin/bash
+      PGLOGICAL_PRIMARY_URL: postgresql://postgres:postgres@localhost:5433/logflare_test
+      PGLOGICAL_REPLICA_URL: postgresql://postgres:postgres@localhost:5434/logflare_test
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Read versions from .tool-versions
+        id: v
+        run: |
+          echo "elixir=$(grep '^elixir '  .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+          echo "erlang=$(grep '^erlang '  .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+
+      - name: Restore Mix cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            deps
+            _build
+            priv/native
+          key: mix-v5-${{ runner.os }}-${{ steps.v.outputs.erlang }}-${{ steps.v.outputs.elixir }}-${{ github.job }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-${{ hashFiles('mix.exs', 'Cargo.toml', 'config/**', 'lib/**', 'native/**', 'priv/**', 'test/support/**') }}
+          restore-keys: |
+            mix-v5-${{ runner.os }}-${{ steps.v.outputs.erlang }}-${{ steps.v.outputs.elixir }}-${{ github.job }}-${{ hashFiles('mix.lock', '**/Cargo.lock') }}-
+            mix-v5-${{ runner.os }}-${{ steps.v.outputs.erlang }}-${{ steps.v.outputs.elixir }}-${{ github.job }}-
+
+      - name: Install dependencies
+        run: mix do deps.get + deps.compile
+
+      - name: Build and start pglogical primary/replica containers
+        run: docker compose -f docker-compose.pglogical.yml up -d --build
+
+      - name: Wait for pglogical containers to be healthy
+        run: |
+          for port in 5433 5434; do
+            until docker run --rm --network host postgres:15 pg_isready -h localhost -p "$port" -U postgres; do
+              echo "Waiting for Postgres on port $port..."
+              sleep 2
+            done
+          done
+
+      - name: Bootstrap pglogical extension, nodes, replication set, subscription
+        run: mix run test/support/pglogical/bootstrap.exs
+
+      - name: Create and migrate the primary application database
+        run: epmd -daemon; mix do ecto.create --quiet + ecto.migrate --quiet
+
+      - name: Run pglogical DDL replication integration tests
+        run: mix test --only pglogical_replica
+
+      - name: Tear down pglogical containers
+        if: always()
+        run: docker compose -f docker-compose.pglogical.yml down -v

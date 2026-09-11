@@ -273,7 +273,7 @@ defmodule Logflare.Mixfile do
     [
       setup: ["deps.get", "ecto.setup", "ecto.seed"],
       # coveralls will trigger unit tests as well
-      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test --no-start"],
+      test: ["ecto.create --quiet", &migrate_quiet/1, "test --no-start"],
       "test.only": ["test --no-start"],
       "test.watch": ["test.watch --no-start"],
       "test.compile": ["compile --warnings-as-errors"],
@@ -287,7 +287,7 @@ defmodule Logflare.Mixfile do
       "test.typings": ["cmd mkdir -p dialyzer", "dialyzer"],
       "test.coverage": ["coveralls"],
       "test.coverage.ci": ["coveralls.lcov"],
-      "test.e2e": ["ecto.create --quiet", "ecto.migrate --quiet", "test --only feature"],
+      "test.e2e": ["ecto.create --quiet", &migrate_quiet/1, "test --only feature"],
       lint: ["credo"],
       "lint.diff": ["credo diff main"],
       "lint.all": ["credo --strict"],
@@ -300,10 +300,19 @@ defmodule Logflare.Mixfile do
         "test.structure"
       ],
       "ecto.seed": ["run priv/repo/seeds.exs"],
-      "ecto.setup": ["ecto.create", "ecto.migrate"],
+      "ecto.setup": ["ecto.create", &migrate/1],
       "ecto.reset": ["ecto.drop", "ecto.setup"]
     ]
   end
+
+  # Routes `mix ecto.migrate` through `Logflare.Repo.Migrator`, so migrations
+  # honor LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS in dev/test too.
+  defp migrate(args) do
+    repo = Logflare.Repo.Migrator.migration_repo_for(Logflare.Repo) |> inspect()
+    Mix.Task.run("ecto.migrate", ["-r", repo | args])
+  end
+
+  defp migrate_quiet(args), do: migrate(["--quiet" | args])
 
   defp version,
     do: File.read!(Path.join(__DIR__, "VERSION")) |> String.replace("\n", "") |> String.trim()

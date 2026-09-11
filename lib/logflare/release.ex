@@ -7,7 +7,10 @@ defmodule Logflare.Release do
     Application.ensure_all_started(:ssl)
 
     for repo <- repos() do
-      {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :up, all: true))
+      migration_repo = Logflare.Repo.Migrator.migration_repo_for(repo)
+
+      {:ok, _, _} =
+        Ecto.Migrator.with_repo(migration_repo, &Ecto.Migrator.run(&1, :up, all: true))
     end
 
     Logger.info("Migration finished")

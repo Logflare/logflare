@@ -103,7 +103,8 @@ ExUnit.configure(
     feature: true,
     integration: true,
     failing: true,
-    benchmark: true
+    benchmark: true,
+    pglogical_replica: true
   ]
 )
 
