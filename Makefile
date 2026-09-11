@@ -328,7 +328,9 @@ deploy.staging.versioned:
 # `make deploy.staging.dev DEV_NUMBER=2`.
 DEV_NUMBER ?= 1
 
-deploy.staging.dev: deploy.staging.dev-image deploy.staging.dev-producer deploy.staging.dev-consumer
+# deploy.staging.dev-consumer is intentionally not a dependency here — see
+# deploy.staging.dev-producer's _SPOOL_MODE.
+deploy.staging.dev: deploy.staging.dev-image deploy.staging.dev-producer
 
 deploy.staging.dev-image:
 	@gcloud config set project logflare-staging
@@ -341,7 +343,7 @@ deploy.staging.dev-image:
 deploy.staging.dev-producer:
 	gcloud builds submit . \
 		--config=./cloudbuild/staging/deploy-dev.yaml \
-		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_DEV_NUMBER=$(DEV_NUMBER),_ROLE=producer,_INSTANCE_TYPE=c2d-standard-16 \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_DEV_NUMBER=$(DEV_NUMBER),_ROLE=producer,_SPOOL_MODE=both,_INSTANCE_TYPE=c2d-standard-16 \
 		--region=us-central1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 

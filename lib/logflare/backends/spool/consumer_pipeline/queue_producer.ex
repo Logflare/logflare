@@ -282,16 +282,24 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   def handle_info(:poll, state) do
     idle? = state.demand <= 0 or over_limit?()
 
-    {events, new_state} =
-      if idle? do
-        {[], state}
-      else
-        state
-        |> maybe_ack_exhausted()
-        |> maybe_load_next()
-        |> maybe_start_prefetch()
-        |> emit_from_buffer()
-      end
+    {duration, {events, new_state}} =
+      :timer.tc(fn ->
+        if idle? do
+          {[], state}
+        else
+          state
+          |> maybe_ack_exhausted()
+          |> maybe_load_next()
+          |> maybe_start_prefetch()
+          |> emit_from_buffer()
+        end
+      end)
+
+    :telemetry.execute(
+      [:logflare, :backends, :spool, :consumer, :poll],
+      %{duration: duration},
+      %{idle: idle?}
+    )
 
     {:noreply, events, schedule_poll(new_state, @max_backoff)}
   end
@@ -454,13 +462,23 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       bucket = state.bucket
       queue_mod = state.queue_mod
       storage_mod = state.storage_mod
+      started_while_buffered? = buffered?(state)
 
       Task.start(fn ->
         # A crash here must still deliver a {:prefetch_result, _} message —
         # otherwise state.prefetch is stuck at :running forever (maybe_start_prefetch
         # refuses to start a new one, and nothing else will ever unstick it).
         parent_ref = Process.monitor(parent)
-        result = safe_fetch_next(queue_url, bucket, queue_mod, storage_mod)
+
+        {duration, result} =
+          :timer.tc(fn -> safe_fetch_next(queue_url, bucket, queue_mod, storage_mod) end)
+
+        :telemetry.execute(
+          [:logflare, :backends, :spool, :consumer, :prefetch],
+          %{duration: duration},
+          %{result: prefetch_result_tag(result), started_while_buffered: started_while_buffered?}
+        )
+
         deliver_or_settle(result, parent, parent_ref, queue_mod, queue_url)
       end)
 
@@ -469,6 +487,10 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   end
 
   defp maybe_start_prefetch(state), do: state
+
+  defp prefetch_result_tag({:ok, _handle, _lines}), do: :ok
+  defp prefetch_result_tag(:empty), do: :empty
+  defp prefetch_result_tag({:error, _handle, _reason}), do: :error
 
   # The producer can be killed mid-fetch (e.g. Broadway's shutdown budget
   # runs out before a slow/long-polling queue_mod.receive call returns,
@@ -685,7 +707,16 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   # Segments are already decompressed by decode_content/2.
   defp decode_versioned_segments(file_key, segments) do
-    {:ok, Enum.flat_map(segments, &parse_segment!(file_key, &1))}
+    {duration, events} =
+      :timer.tc(fn -> Enum.flat_map(segments, &parse_segment!(file_key, &1)) end)
+
+    :telemetry.execute(
+      [:logflare, :backends, :spool, :consumer, :parse],
+      %{duration: duration, segment_count: length(segments), event_count: length(events)},
+      %{}
+    )
+
+    {:ok, events}
   end
 
   # parse_content/2 always succeeds or raises (never returns {:error, _}) —

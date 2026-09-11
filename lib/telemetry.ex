@@ -529,6 +529,28 @@ defmodule Logflare.Telemetry do
         unit: {:microsecond, :millisecond},
         description: "Time spent decompressing one downloaded spool file"
       ),
+      distribution("logflare.backends.spool.consumer.parse.duration",
+        unit: {:microsecond, :millisecond},
+        description: "Time spent parsing one downloaded spool file's segments into events"
+      ),
+      sum("logflare.backends.spool.consumer.parse.segment_count",
+        description: "Segments parsed per downloaded spool file"
+      ),
+      sum("logflare.backends.spool.consumer.parse.event_count",
+        description: "Events parsed per downloaded spool file"
+      ),
+      distribution("logflare.backends.spool.consumer.prefetch.duration",
+        tags: [:result, :started_while_buffered],
+        unit: {:microsecond, :millisecond},
+        description:
+          "Time spent in the full background prefetch Task (queue receive + download + decode), by result and whether a file was already buffered when this prefetch started"
+      ),
+      distribution("logflare.backends.spool.consumer.poll.duration",
+        tags: [:idle],
+        unit: {:microsecond, :millisecond},
+        description:
+          "Time spent in the producer's own :poll handling (excludes the background prefetch Task)"
+      ),
       counter("logflare.backends.spool.queue.ack.count",
         tags: [:reason, :result],
         description:
