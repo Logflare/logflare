@@ -67,7 +67,7 @@ defmodule Logflare.Rules.Cache do
   end
 
   @doc false
-  @spec repair_routing_snapshot(integer(), Rules.RoutingSnapshot.t(), map()) ::
+  @spec repair_routing_snapshot(integer(), Rules.RoutingSnapshot.t(), tuple()) ::
           {:repaired, Rules.RoutingSnapshot.t()} | :stale | {:error, term()}
   def repair_routing_snapshot(source_id, %Rules.RoutingSnapshot{} = snapshot, targets) do
     cache_key = {:rules_tree_by_source_id, [source_id]}
