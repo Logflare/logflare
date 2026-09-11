@@ -1,0 +1,26 @@
+services:
+  pglogical_primary:
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile.pglogical
+      tags:
+        - "supabase/logflare:pglogical"
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: logflare_test
+    ports:
+      - "5433:5432"
+
+  pglogical_replica:
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile.pglogical
+      tags:
+        - "supabase/logflare:pglogical"
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: logflare_test
+    ports:
+      - "5434:5432"
