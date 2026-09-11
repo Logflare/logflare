@@ -108,10 +108,11 @@ defmodule Logflare.Integration.PglogicalDdlReplicationTest do
   end
 
   defp run_migration!(migration_module, direction) do
-    repo =  case Migrator.migration_repo_for(Logflare.Repo) do
-      Logflare.Repo -> PglogicalPrimaryRepo
-      pglogical_repo -> pglogical_repo
-    end
+    repo =
+      case Migrator.migration_repo_for(Logflare.Repo) do
+        Logflare.Repo -> PglogicalPrimaryRepo
+        pglogical_repo -> pglogical_repo
+      end
 
     unless Process.whereis(repo) do
       {:ok, _} = repo.start_link(url: @primary_url, pool_size: 2)
@@ -123,7 +124,6 @@ defmodule Logflare.Integration.PglogicalDdlReplicationTest do
     version = Map.fetch!(@migration_versions, migration_module)
     Ecto.Migrator.run(repo, [{version, migration_module}], direction, all: true)
   end
-
 
   defp stop_repo(repo) do
     case Process.whereis(repo) do
