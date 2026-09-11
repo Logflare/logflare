@@ -465,21 +465,14 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       started_while_buffered? = buffered?(state)
 
       Task.start(fn ->
-        # A crash here must still deliver a {:prefetch_result, _} message —
-        # otherwise state.prefetch is stuck at :running forever (maybe_start_prefetch
-        # refuses to start a new one, and nothing else will ever unstick it).
-        parent_ref = Process.monitor(parent)
-
-        {duration, result} =
-          :timer.tc(fn -> safe_fetch_next(queue_url, bucket, queue_mod, storage_mod) end)
-
-        :telemetry.execute(
-          [:logflare, :backends, :spool, :consumer, :prefetch],
-          %{duration: duration},
-          %{result: prefetch_result_tag(result), started_while_buffered: started_while_buffered?}
+        run_prefetch(
+          parent,
+          queue_url,
+          bucket,
+          queue_mod,
+          storage_mod,
+          started_while_buffered?
         )
-
-        deliver_or_settle(result, parent, parent_ref, queue_mod, queue_url)
       end)
 
       %{state | prefetch: :running}
@@ -487,6 +480,24 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   end
 
   defp maybe_start_prefetch(state), do: state
+
+  # A crash here must still deliver a {:prefetch_result, _} message —
+  # otherwise state.prefetch is stuck at :running forever (maybe_start_prefetch
+  # refuses to start a new one, and nothing else will ever unstick it).
+  defp run_prefetch(parent, queue_url, bucket, queue_mod, storage_mod, started_while_buffered?) do
+    parent_ref = Process.monitor(parent)
+
+    {duration, result} =
+      :timer.tc(fn -> safe_fetch_next(queue_url, bucket, queue_mod, storage_mod) end)
+
+    :telemetry.execute(
+      [:logflare, :backends, :spool, :consumer, :prefetch],
+      %{duration: duration},
+      %{result: prefetch_result_tag(result), started_while_buffered: started_while_buffered?}
+    )
+
+    deliver_or_settle(result, parent, parent_ref, queue_mod, queue_url)
+  end
 
   defp prefetch_result_tag({:ok, _handle, _lines}), do: :ok
   defp prefetch_result_tag(:empty), do: :empty
