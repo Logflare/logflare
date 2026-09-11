@@ -705,7 +705,7 @@ defmodule Logflare.Backends.IngestEventQueue do
       gen_event_id = make_ref()
 
       row =
-        {id, gen_tid, gen_event_id, :erlang.external_size(event.body), event.retries || 0,
+        {id, gen_tid, gen_event_id, LogEvent.body_byte_size(event.body), event.retries || 0,
          event.event_type, event.day_bucket}
 
       :ets.insert(gen_tid, {gen_event_id, event})

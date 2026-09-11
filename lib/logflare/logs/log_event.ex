@@ -415,6 +415,20 @@ defmodule Logflare.LogEvent do
     log_event.body["message"] || log_event.body["event_message"]
   end
 
+  @doc """
+  Size in bytes of an event body's values, excluding map keys.
+  """
+  @spec body_byte_size(term()) :: non_neg_integer()
+  def body_byte_size(value) when is_map(value) and not is_struct(value) do
+    Enum.reduce(value, 0, fn {_k, v}, acc -> acc + body_byte_size(v) end)
+  end
+
+  def body_byte_size(value) when is_list(value) do
+    Enum.reduce(value, 0, fn v, acc -> acc + body_byte_size(v) end)
+  end
+
+  def body_byte_size(value), do: :erlang.external_size(value)
+
   @spec query_json(map(), String.t()) :: String.t()
   defp query_json(metadata, query) do
     case Warpath.query(metadata, query) do

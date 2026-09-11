@@ -79,7 +79,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       tid: gen_tid,
       gen_event_id: event.id,
       queue_tid: queue_tid || :ets.new(:test_pipeline_queue, [:set, :public]),
-      size: :erlang.external_size(event.body),
+      size: Logflare.LogEvent.body_byte_size(event.body),
       retries: event.retries || 0,
       event_type: event.event_type,
       day_bucket: event.day_bucket

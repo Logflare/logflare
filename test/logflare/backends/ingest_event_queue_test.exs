@@ -670,7 +670,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       log_pointer = Map.fetch!(by_id, log_ev.id)
       assert log_pointer.event_type == :log
       assert log_pointer.day_bucket == 12_345
-      assert log_pointer.size == :erlang.external_size(log_ev.body)
+      assert log_pointer.size == Logflare.LogEvent.body_byte_size(log_ev.body)
 
       assert IngestEventQueue.lookup_event(log_pointer.tid, log_pointer.gen_event_id).id ==
                log_ev.id
@@ -802,7 +802,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert {:ok, [pointer], tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
       assert tid != nil
       assert pointer.id == event.id
-      assert pointer.size == :erlang.external_size(event.body)
+      assert pointer.size == Logflare.LogEvent.body_byte_size(event.body)
       assert pointer.event_type == nil
       assert pointer.day_bucket == nil
       assert IngestEventQueue.total_pending(sbp) == 0
