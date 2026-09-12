@@ -103,20 +103,16 @@ defmodule Logflare.DataCase do
   end
 
   @doc """
-  A helper that transform changeset errors to a map of messages.
+  A helper that transforms changeset errors to a map of messages.
+
+  Delegates to `LogflareWeb.Utils.changeset_errors/1`.
 
       assert {:error, changeset} = Accounts.create_user(%{password: "short"})
       assert "password is too short" in errors_on(changeset).password
       assert %{password: ["password is too short"]} = errors_on(changeset)
 
   """
-  def errors_on(changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->
-      Regex.replace(~r"%{(\w+)}", message, fn _, key ->
-        opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
-      end)
-    end)
-  end
+  defdelegate errors_on(changeset), to: LogflareWeb.Utils, as: :changeset_errors
 
   @doc """
   Sets up a ClickHouse test environment with automatic cleanup.
