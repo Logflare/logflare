@@ -127,12 +127,14 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       } do
         OpenTelemetry.Tracer.set_attribute(:input_bytes, :erlang.external_size(log_events))
 
+        is_otel = Enum.any?(log_events, & &1.otel_timestamps)
+
         arrow_data =
           log_events
           |> Enum.map(&log_event_to_df_struct(&1))
           |> normalize_df_struct_fields()
           |> GoogleApiClient.encode_ndjson()
-          |> GoogleApiClient.encode_arrow_data()
+          |> GoogleApiClient.encode_arrow_data(is_otel)
 
         OpenTelemetry.Tracer.set_attribute(
           :serialized_bytes,
