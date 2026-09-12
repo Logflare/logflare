@@ -2,6 +2,7 @@ defmodule LogflareWeb.DashboardLiveTest do
   @moduledoc false
   use LogflareWeb.ConnCase
 
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Repo
   alias Logflare.Sources.UserMetricsPoller
 
@@ -230,6 +231,8 @@ defmodule LogflareWeb.DashboardLiveTest do
 
     test "clicking 'Create your home team' creates a User + Team and redirects to /dashboard",
          %{conn: conn, other_team: other_team, team_user: team_user} do
+      stub(BigQueryAdaptor, :update_iam_policy, fn _user -> :ok end)
+
       {:ok, view, _html} = live(conn, ~p"/dashboard?t=#{other_team.id}")
 
       assert {:error, {:redirect, %{to: "/dashboard"}}} =
