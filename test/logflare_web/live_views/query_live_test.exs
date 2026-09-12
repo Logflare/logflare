@@ -92,6 +92,7 @@ defmodule LogflareWeb.QueryLiveTest do
       assert render(view) =~ "some-data"
     end
 
+    @tag capture_log: true
     test "backend errors display a generic message", %{conn: conn} do
       GoogleApi.BigQuery.V2.Api.Jobs
       |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->

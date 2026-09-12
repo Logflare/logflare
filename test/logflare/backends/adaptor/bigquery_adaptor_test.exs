@@ -246,6 +246,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
                )
     end
 
+    @tag capture_log: true
     test "execute_query normalizes bytes billed limit errors", %{user: user} do
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
         {:error,
@@ -273,6 +274,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
                )
     end
 
+    @tag capture_log: true
     test "execute_query normalizes transport timeout errors", %{user: user} do
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
         {:error, :timeout}
@@ -292,6 +294,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
                )
     end
 
+    @tag capture_log: true
     test "execute_query normalizes job timeout errors", %{user: user} do
       message = "Job execution was cancelled: Job timed out"
 
@@ -318,6 +321,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
                )
     end
 
+    @tag capture_log: true
     test "execute_query only treats job timeouts as timeouts for searches", %{user: user} do
       message = "Job execution was cancelled: Job timed out"
 
@@ -341,6 +345,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
       end
     end
 
+    @tag capture_log: true
     test "execute_query normalizes timeout reason errors", %{user: user} do
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
         {:error, TestUtils.gen_bq_error("Operation timeout exceeded", reason: "timeout")}
@@ -354,6 +359,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
                )
     end
 
+    @tag capture_log: true
     test "execute_query does not treat cancelled jobs as timeouts", %{user: user} do
       message = "Job execution was cancelled: User requested cancellation"
 
@@ -374,6 +380,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
                )
     end
 
+    @tag capture_log: true
     test "execute_query maps non-invalid BigQuery reasons as backend errors", %{user: user} do
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
         {:error, TestUtils.gen_bq_error("backend unavailable", reason: "backendError")}

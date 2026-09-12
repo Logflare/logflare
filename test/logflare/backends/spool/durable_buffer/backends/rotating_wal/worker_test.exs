@@ -30,6 +30,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal.WorkerTest 
     refute File.exists?(path)
   end
 
+  @tag capture_log: true
   test "failed commit leaves the sealed file on disk for the next recovery scan" do
     test_pid = self()
 

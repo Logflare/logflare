@@ -61,6 +61,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
                ConsumerPipeline.handle_message(:default, message, %{})
     end
 
+    @tag capture_log: true
     test "fails only this message when a segment's content cannot be parsed at all" do
       # Well-formed bytes that passed framing/CRC upstream, but not a valid
       # Erlang external term — exactly the ArgumentError :erlang.binary_to_term/1
@@ -254,6 +255,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
                       %{count: 1}, %{reason: :missing_source_id}}
     end
 
+    @tag capture_log: true
     test "a raising dispatch fails only that source's messages", %{source: source} do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :consumer, :skipped])
 
@@ -289,6 +291,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
   end
 
   describe "ack/3" do
+    @tag capture_log: true
     test "emits messages_failed telemetry when Broadway marks messages as failed" do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :consumer, :messages_failed])
 
@@ -316,6 +319,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
                       [:logflare, :backends, :spool, :consumer, :messages_failed], _, _}
     end
 
+    @tag capture_log: true
     test "returns each message's bytes (not its count) to the producer's in-flight budget" do
       ref = :atomics.new(1, signed: true)
       :atomics.add(ref, 1, 300)

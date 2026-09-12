@@ -2226,6 +2226,7 @@ defmodule Logflare.BackendsTest do
       assert pending_entry_count() == 0
     end
 
+    @tag capture_log: true
     test "falls back to normal dispatch when no spool partition is registered (e.g. the subtree crashed and is mid-restart)",
          %{source: source} do
       # Simulates the only window this can actually happen in — see

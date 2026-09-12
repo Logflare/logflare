@@ -2140,6 +2140,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       refute view |> element("#logs-list-container") |> render() =~ non_matching_message
     end
 
+    @tag capture_log: true
     test "offers AI feedback when a generated search fails", %{
       conn: conn,
       source: source
