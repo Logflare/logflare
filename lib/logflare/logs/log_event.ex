@@ -469,12 +469,9 @@ defmodule Logflare.LogEvent do
     do: {default_timestamp(), true}
 
   defp determine_timestamp(%{"timestamp" => x}) when is_non_empty_binary(x) do
-    case DateTime.from_iso8601(x) do
-      {:ok, udt, _} ->
-        {DateTime.to_unix(udt, :microsecond), false}
-
-      {:error, _} ->
-        {default_timestamp(), true}
+    case iso8601_to_microseconds(x) do
+      {:ok, timestamp} -> {timestamp, false}
+      {:error, _} -> {default_timestamp(), true}
     end
   end
 
@@ -516,6 +513,75 @@ defmodule Logflare.LogEvent do
     do: timestamp_to_microseconds(n)
 
   defp extract_trace_start_time(_params), do: nil
+
+  defp iso8601_to_microseconds(
+         <<y1, y2, y3, y4, ?-, mo1, mo2, ?-, d1, d2, ?T, h1, h2, ?:, mi1, mi2, ?:, s1, s2, ?., u1,
+           u2, u3, u4, u5, u6, ?Z>> = timestamp
+       )
+       when y1 in ?0..?9 and y2 in ?0..?9 and y3 in ?0..?9 and y4 in ?0..?9 and
+              mo1 in ?0..?9 and mo2 in ?0..?9 and d1 in ?0..?9 and d2 in ?0..?9 and
+              h1 in ?0..?9 and h2 in ?0..?9 and mi1 in ?0..?9 and mi2 in ?0..?9 and
+              s1 in ?0..?9 and s2 in ?0..?9 and u1 in ?0..?9 and u2 in ?0..?9 and
+              u3 in ?0..?9 and u4 in ?0..?9 and u5 in ?0..?9 and u6 in ?0..?9 do
+    year = decimal4(y1, y2, y3, y4)
+    month = decimal2(mo1, mo2)
+    day = decimal2(d1, d2)
+    hour = decimal2(h1, h2)
+    minute = decimal2(mi1, mi2)
+    second = decimal2(s1, s2)
+
+    days_before_month =
+      if year in 1970..2099 do
+        days_before_month(year, month, day)
+      end
+
+    if is_integer(days_before_month) and hour < 24 and minute < 60 and second < 60 do
+      microsecond = decimal6(u1, u2, u3, u4, u5, u6)
+
+      days =
+        (year - 1970) * 365 + div(year - 1969, 4) + days_before_month + day - 1
+
+      {:ok, (((days * 24 + hour) * 60 + minute) * 60 + second) * 1_000_000 + microsecond}
+    else
+      parse_iso8601(timestamp)
+    end
+  end
+
+  defp iso8601_to_microseconds(timestamp), do: parse_iso8601(timestamp)
+
+  defp parse_iso8601(timestamp) do
+    case DateTime.from_iso8601(timestamp) do
+      {:ok, datetime, _offset} -> {:ok, DateTime.to_unix(datetime, :microsecond)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp days_before_month(_year, 1, day) when day in 1..31, do: 0
+  defp days_before_month(_year, 2, day) when day in 1..28, do: 31
+  defp days_before_month(year, 2, 29) when rem(year, 4) == 0, do: 31
+  defp days_before_month(year, 3, day) when day in 1..31, do: 59 + leap_day(year)
+  defp days_before_month(year, 4, day) when day in 1..30, do: 90 + leap_day(year)
+  defp days_before_month(year, 5, day) when day in 1..31, do: 120 + leap_day(year)
+  defp days_before_month(year, 6, day) when day in 1..30, do: 151 + leap_day(year)
+  defp days_before_month(year, 7, day) when day in 1..31, do: 181 + leap_day(year)
+  defp days_before_month(year, 8, day) when day in 1..31, do: 212 + leap_day(year)
+  defp days_before_month(year, 9, day) when day in 1..30, do: 243 + leap_day(year)
+  defp days_before_month(year, 10, day) when day in 1..31, do: 273 + leap_day(year)
+  defp days_before_month(year, 11, day) when day in 1..30, do: 304 + leap_day(year)
+  defp days_before_month(year, 12, day) when day in 1..31, do: 334 + leap_day(year)
+  defp days_before_month(_year, _month, _day), do: nil
+
+  defp leap_day(year) when rem(year, 4) == 0, do: 1
+  defp leap_day(_year), do: 0
+
+  @compile {:inline, decimal2: 2, decimal4: 4, decimal6: 6}
+  defp decimal2(a, b), do: (a - ?0) * 10 + b - ?0
+  defp decimal4(a, b, c, d), do: (a - ?0) * 1_000 + (b - ?0) * 100 + decimal2(c, d)
+
+  defp decimal6(a, b, c, d, e, f),
+    do:
+      (a - ?0) * 100_000 + (b - ?0) * 10_000 + (c - ?0) * 1_000 + (d - ?0) * 100 +
+        (e - ?0) * 10 + f - ?0
 
   defp timestamp_to_microseconds(raw)
        when raw >= 1_000_000_000_000_000_000 and
