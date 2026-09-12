@@ -92,6 +92,11 @@ hooks.SourceLogsSearchList = {
     this.handleEvent("scroll-to-bottom", () => {
       requestAnimationFrame(scrollToPageBottom)
     })
+    this.handleEvent("scroll-to-event", ({ id }) => {
+      requestAnimationFrame(() => {
+        document.getElementById(id)?.scrollIntoView({ block: "start" })
+      })
+    })
     this.scrollToLatest()
   },
   destroyed() {

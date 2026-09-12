@@ -43,6 +43,25 @@ describe("SourceLogsSearchList", () => {
     expect(scrollToPageBottom).toHaveBeenCalledTimes(1);
   });
 
+  it("scrolls the given event into view when the LiveView pushes scroll-to-event", () => {
+    const { handlers } = mountSearchList("false");
+    const scrollIntoView = vi.fn();
+    document.body.innerHTML = '<ul id="logs-list"><li id="log-events-a-1"></li></ul>';
+    document.getElementById("log-events-a-1").scrollIntoView = scrollIntoView;
+
+    handlers["scroll-to-event"]({ id: "log-events-a-1" });
+
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "start" });
+    expect(scrollToPageBottom).not.toHaveBeenCalled();
+  });
+
+  it("ignores scroll-to-event for an element that is not in the DOM", () => {
+    const { handlers } = mountSearchList("false");
+    document.body.innerHTML = "";
+
+    expect(() => handlers["scroll-to-event"]({ id: "missing" })).not.toThrow();
+  });
+
   it("scrolls to the bottom on mount only while tailing", () => {
     mountSearchList("true");
     expect(scrollToPageBottom).toHaveBeenCalledTimes(1);
