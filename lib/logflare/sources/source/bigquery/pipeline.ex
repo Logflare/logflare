@@ -18,6 +18,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.Backends.BufferProducer
   alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.BigQuery.SchemaMetrics
   alias Logflare.Sources.Source.Supervisor
   alias Logflare.Sources
   alias Logflare.Users
@@ -494,25 +495,31 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     # random sample if local ingest rate is above a certain level
     # dynamic calculation maintains ~1 schema update per second across all rate levels
     if source && not source.lock_schema do
-      probability =
-        case PubSubRates.Cache.get_local_rates(source.token) do
-          %{average_rate: avg} when avg > 0 ->
-            # probability = 1.0 / avg with safety bounds
-            # supports rates up to 100K+/sec: at 100K/sec -> 0.00001 (samples ~1/sec)
-            min(1.0, max(0.00001, 1.0 / avg))
-
-          _ ->
-            1.0
-        end
+      rates = PubSubRates.Cache.get_local_rates(source.token)
+      {probability, rate_mode} = schema_sampling_probability(rates)
 
       if :rand.uniform() <= probability do
-        :ok =
-          Backends.via_source(source, {Schema, Map.get(context, :backend_id)})
-          |> Schema.update(log_event, source)
+        SchemaMetrics.record_sample(rate_mode)
+
+        schema_server = Backends.via_source(source, {Schema, Map.get(context, :backend_id)})
+        Schema.update(schema_server, log_event, source)
       end
     end
 
     log_event
+  end
+
+  @doc false
+  def schema_sampling_probability(rates) when is_map(rates) do
+    average_rate = Map.get(rates, :average_rate, 0)
+    last_rate = Map.get(rates, :last_rate, 0)
+    rate = max(average_rate, last_rate)
+
+    cond do
+      rate <= 0 -> {1.0, :zero_rate}
+      rate > 100_000 -> {0.00001, :floor}
+      true -> {1.0 / rate, :normal}
+    end
   end
 
   def name(source_id) when is_atom(source_id) do
