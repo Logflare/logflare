@@ -140,6 +140,8 @@ defmodule Logflare.LogEvent do
     } = mapper_for_ingest(params, event_type)
 
     day_bucket = DayBucket.from_microseconds(timestamp)
+    ingested_at = DateTime.utc_now()
+    body = transform_body(body, source)
 
     %__MODULE__{
       body: body,
@@ -147,13 +149,12 @@ defmodule Logflare.LogEvent do
       source_uuid: source_uuid,
       source_name: source_name,
       valid: true,
-      ingested_at: DateTime.utc_now(),
+      ingested_at: ingested_at,
       id: id,
       event_type: event_type,
       timestamp_inferred: timestamp_inferred,
       day_bucket: day_bucket
     }
-    |> transform(source)
     |> validate(source)
   end
 
@@ -231,61 +232,71 @@ defmodule Logflare.LogEvent do
   defp clean_ingest_body(params),
     do: IngestTransformers.transform(params, :clean_to_bigquery_column_spec)
 
-  @spec transform(LE.t(), Source.t()) :: LE.t()
-  defp transform(%LE{} = le, %Source{} = source) do
-    with {:ok, le} <- copy_fields(le, source),
-         {:ok, le} <- kv_enrich(le, source),
-         {:ok, le} <- drop_fields(le, source) do
-      le
-    end
+  @spec transform_body(map(), Source.t()) :: map()
+  defp transform_body(body, %Source{
+         transform_copy_fields: copy_config,
+         transform_copy_fields_parsed: copy_parsed,
+         transform_key_values: kv_config,
+         transform_key_values_parsed: kv_parsed,
+         transform_drop_fields: drop_config,
+         transform_drop_fields_parsed: drop_parsed
+       })
+       when (copy_parsed == [] or (is_nil(copy_parsed) and copy_config in [nil, ""])) and
+              (kv_parsed == [] or (is_nil(kv_parsed) and kv_config in [nil, ""])) and
+              (drop_parsed == [] or (is_nil(drop_parsed) and drop_config in [nil, ""])),
+       do: body
+
+  defp transform_body(body, %Source{} = source) do
+    body
+    |> copy_fields(source)
+    |> kv_enrich(source)
+    |> drop_fields(source)
   end
 
-  @spec copy_fields(LE.t(), Source.t()) :: {:ok, LE.t()}
-  defp copy_fields(%LE{} = le, %Source{
+  @spec copy_fields(map(), Source.t()) :: map()
+  defp copy_fields(body, %Source{
          transform_copy_fields_parsed: nil,
          transform_copy_fields: blank
        })
        when blank in [nil, ""],
-       do: {:ok, le}
+       do: body
 
-  defp copy_fields(%LE{} = le, %Source{transform_copy_fields_parsed: []}), do: {:ok, le}
+  defp copy_fields(body, %Source{transform_copy_fields_parsed: []}), do: body
 
-  defp copy_fields(%LE{} = le, %Source{transform_copy_fields_parsed: parsed})
+  defp copy_fields(body, %Source{transform_copy_fields_parsed: parsed})
        when is_list(parsed) do
-    new_body =
-      Enum.reduce(parsed, le.body, fn %{from_path: from_path, to_path: to_path}, acc ->
-        case get_in(acc, from_path) do
-          nil -> acc
-          value -> put_at_path(acc, to_path, value)
-        end
-      end)
-
-    {:ok, %{le | body: new_body}}
+    Enum.reduce(parsed, body, fn %{from_path: from_path, to_path: to_path}, acc ->
+      case get_at_path(acc, from_path) do
+        nil -> acc
+        value -> put_at_path(acc, to_path, value)
+      end
+    end)
   end
 
-  defp copy_fields(%LE{} = le, %Source{} = source) do
-    copy_fields(le, Source.parse_copy_fields_config(source))
+  defp copy_fields(body, %Source{} = source) do
+    copy_fields(body, Source.parse_copy_fields_config(source))
   end
 
-  @spec kv_enrich(LE.t(), Source.t()) :: {:ok, LE.t()}
-  defp kv_enrich(%LE{} = le, %Source{transform_key_values: nil, transform_key_values_parsed: nil}),
-       do: {:ok, le}
+  @spec kv_enrich(map(), Source.t()) :: map()
+  defp kv_enrich(body, %Source{
+         transform_key_values: blank,
+         transform_key_values_parsed: nil
+       })
+       when blank in [nil, ""],
+       do: body
 
-  defp kv_enrich(%LE{} = le, %Source{transform_key_values_parsed: []}), do: {:ok, le}
+  defp kv_enrich(body, %Source{transform_key_values_parsed: []}), do: body
 
-  defp kv_enrich(%LE{} = le, %Source{transform_key_values_parsed: parsed, user_id: user_id})
+  defp kv_enrich(body, %Source{transform_key_values_parsed: parsed, user_id: user_id})
        when is_list(parsed) do
-    new_body =
-      Enum.reduce(parsed, le.body, fn instruction, acc ->
-        apply_kv_instruction(acc, instruction, user_id)
-      end)
-
-    {:ok, %{le | body: new_body}}
+    Enum.reduce(parsed, body, fn instruction, acc ->
+      apply_kv_instruction(acc, instruction, user_id)
+    end)
   end
 
   # Fallback: parse at ingestion time when parsed field is not populated
-  defp kv_enrich(%LE{} = le, %Source{} = source) do
-    kv_enrich(le, Source.parse_key_values_config(source))
+  defp kv_enrich(body, %Source{} = source) do
+    kv_enrich(body, Source.parse_key_values_config(source))
   end
 
   @spec apply_kv_instruction(map(), map(), integer()) :: map()
@@ -296,7 +307,7 @@ defmodule Logflare.LogEvent do
        ) do
     accessor_path = Map.get(instruction, :accessor_path)
 
-    with raw when not is_nil(raw) <- get_in(body, from_path),
+    with raw when not is_nil(raw) <- get_at_path(body, from_path),
          raw_string <- to_string(raw),
          true <- Utils.flag("key_values", raw_string),
          value when not is_nil(value) <-
@@ -307,6 +318,16 @@ defmodule Logflare.LogEvent do
     end
   end
 
+  defp get_at_path(nil, _path), do: nil
+
+  defp get_at_path(map, [key]) when is_map(map) and is_binary(key),
+    do: Map.get(map, key)
+
+  defp get_at_path(map, [head | tail]) when is_map(map) and is_binary(head),
+    do: get_at_path(Map.get(map, head), tail)
+
+  defp get_at_path(data, path), do: get_in(data, path)
+
   @spec put_at_path(map(), [String.t()], term()) :: map()
   defp put_at_path(map, [leaf], value) when is_map(map), do: Map.put(map, leaf, value)
 
@@ -315,24 +336,23 @@ defmodule Logflare.LogEvent do
     Map.put(map, head, put_at_path(child, rest, value))
   end
 
-  @spec drop_fields(LE.t(), Source.t()) :: {:ok, LE.t()}
-  defp drop_fields(%LE{} = le, %Source{
+  @spec drop_fields(map(), Source.t()) :: map()
+  defp drop_fields(body, %Source{
          transform_drop_fields_parsed: nil,
          transform_drop_fields: blank
        })
        when blank in [nil, ""],
-       do: {:ok, le}
+       do: body
 
-  defp drop_fields(%LE{} = le, %Source{transform_drop_fields_parsed: []}), do: {:ok, le}
+  defp drop_fields(body, %Source{transform_drop_fields_parsed: []}), do: body
 
-  defp drop_fields(%LE{} = le, %Source{transform_drop_fields_parsed: parsed})
+  defp drop_fields(body, %Source{transform_drop_fields_parsed: parsed})
        when is_list(parsed) do
-    new_body = Enum.reduce(parsed, le.body, fn keys, acc -> drop_field_at(acc, keys) end)
-    {:ok, %{le | body: new_body}}
+    Enum.reduce(parsed, body, fn keys, acc -> drop_field_at(acc, keys) end)
   end
 
-  defp drop_fields(%LE{} = le, %Source{} = source) do
-    drop_fields(le, Source.parse_drop_fields_config(source))
+  defp drop_fields(body, %Source{} = source) do
+    drop_fields(body, Source.parse_drop_fields_config(source))
   end
 
   @spec drop_field_at(term(), [String.t()]) :: term()
@@ -340,8 +360,14 @@ defmodule Logflare.LogEvent do
 
   defp drop_field_at(body, [head | rest]) when is_map(body) do
     case Map.fetch(body, head) do
-      {:ok, child} when is_map(child) -> Map.put(body, head, drop_field_at(child, rest))
-      _ -> body
+      {:ok, child} when is_map(child) ->
+        case drop_field_at(child, rest) do
+          ^child -> body
+          updated_child -> Map.put(body, head, updated_child)
+        end
+
+      _ ->
+        body
     end
   end
 
