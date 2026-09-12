@@ -1256,6 +1256,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "emits a single query error when the failover retry also fails" do
       {_source, backend} =
         setup_clickhouse_test(
+          cleanup?: false,
           config: %{
             read_only_urls: %{
               "api" => "http://localhost:8123",
@@ -1345,6 +1346,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "does not fall back when the unhealthy cluster is already the default" do
       {_source, backend} =
         setup_clickhouse_test(
+          cleanup?: false,
           config: %{
             read_only_urls: %{"dashboard_logs" => "http://localhost:8123"},
             default_read_cluster: "dashboard_logs"
@@ -1397,6 +1399,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "returns a connection error when the default cluster pool cannot start" do
       {_source, backend} =
         setup_clickhouse_test(
+          cleanup?: false,
           config: %{
             read_only_urls: %{"dashboard_logs" => "http://localhost:8123"},
             default_read_cluster: "dashboard_logs"
@@ -1426,6 +1429,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "attributes the query error to the read cluster that was actually queried" do
       {_source, backend} =
         setup_clickhouse_test(
+          cleanup?: false,
           config: %{
             read_only_urls: %{"adhoc" => "http://adhoc-read.local:8123"},
             default_read_cluster: "adhoc"

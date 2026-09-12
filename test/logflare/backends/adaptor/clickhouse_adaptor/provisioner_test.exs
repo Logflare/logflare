@@ -124,6 +124,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
         assert {:ok, %Ch.Result{rows: [[1]]}} = Ch.query(conn, "EXISTS TABLE #{table_name}")
       end
 
+      cleanup_clickhouse_tables(read_backend)
+
+      for event_type <- [:log, :metric, :trace] do
+        table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(read_backend, event_type)
+
+        assert {:ok, %Ch.Result{rows: [[0]]}} = Ch.query(conn, "EXISTS TABLE #{table_name}")
+      end
+
       GenServer.stop(conn)
     end
   end

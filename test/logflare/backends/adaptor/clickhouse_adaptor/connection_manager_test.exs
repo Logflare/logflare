@@ -258,6 +258,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
     setup do
       {_source, invalid_backend} =
         setup_clickhouse_test(
+          cleanup?: false,
           config: %{
             url: "http://localhost",
             username: "invalid_user",
