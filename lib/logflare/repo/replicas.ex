@@ -6,7 +6,7 @@ defmodule Logflare.Repo.Replicas do
   `Logflare.Repo` connection pool for each replica, registered under a local
   `Registry`. If no replicas are configured, the supervisor is skipped entirely.
 
-  Each `LOGFLARE_READ_REPLICAS` entry is either a bare hostname or a Postgres URI
+  Each `LOGFLARE_READ_REPLICAS` entry is either a bare host name or IP literal, or a Postgres URI
   (`postgres://user:pass@host:port/database?ssl=true&pool_size=5`). Supplied
   connection settings override the primary `Logflare.Repo` configuration; omitted
   settings inherit the primary's `DB_*` values without copying them into the parsed
@@ -21,7 +21,8 @@ defmodule Logflare.Repo.Replicas do
   a function call using `apply_with_replica/3` on `Logflare.Repo`, which swaps
   the dynamic repo and restores it afterwards.
 
-  Every replica connection opens its session read-only.
+  Every replica connection opens its session read-only. URI query parameters
+  `auth=aws_iam` and `aws_region` configure AWS IAM database authentication.
   """
 
   @registry __MODULE__.Registry
@@ -45,15 +46,15 @@ defmodule Logflare.Repo.Replicas do
     if entries == [] do
       :ignore
     else
-      primary_after_connect = Logflare.Repo.config()[:after_connect]
+      primary_ssl = Logflare.Repo.config()[:ssl]
 
       replicas =
         Enum.map(entries, fn {key, config} ->
           config =
             [
               name: {:via, Registry, {@registry, key}},
-              after_connect: {__MODULE__, :after_connect, [primary_after_connect]}
-            ] ++ resolve_ssl(config)
+              logflare_connection_role: :replica
+            ] ++ resolve_ssl(config, primary_ssl)
 
           Supervisor.child_spec({Logflare.Repo, config}, id: key)
         end)
@@ -154,11 +155,45 @@ defmodule Logflare.Repo.Replicas do
         |> Keyword.delete(:scheme)
         |> maybe_put_socket_options()
 
-      {:ok, {build_key(config), config}}
+      with {:ok, config} <- normalize_auth(config) do
+        {:ok, {build_key(config), config}}
+      end
     rescue
       e in Ecto.InvalidURLError -> {:error, redact(e.message, uri.userinfo)}
     end
   end
+
+  defp normalize_auth(config) do
+    {auth, config} = Keyword.pop(config, :auth)
+    {aws_region, config} = Keyword.pop(config, :aws_region)
+
+    with {:ok, config} <- put_auth(config, auth),
+         {:ok, config} <- put_aws_region(config, aws_region) do
+      {:ok, config}
+    end
+  end
+
+  defp put_auth(config, nil) do
+    if Keyword.has_key?(config, :password),
+      do: {:ok, Keyword.put(config, :logflare_auth, :password)},
+      else: {:ok, config}
+  end
+
+  defp put_auth(config, "aws_iam") do
+    if Keyword.has_key?(config, :password),
+      do: {:error, "auth=aws_iam cannot be combined with a password"},
+      else: {:ok, Keyword.put(config, :logflare_auth, :aws_iam)}
+  end
+
+  defp put_auth(_config, other),
+    do: {:error, ~s(unsupported auth=#{other}, expected "aws_iam")}
+
+  defp put_aws_region(config, nil), do: {:ok, config}
+
+  defp put_aws_region(config, region) when is_binary(region) and region != "",
+    do: {:ok, Keyword.put(config, :logflare_aws_region, region)}
+
+  defp put_aws_region(_config, _region), do: {:error, "aws_region cannot be empty"}
 
   defp maybe_put_socket_options(config) do
     case Logflare.Utils.ip_version(config[:hostname]) do
@@ -183,25 +218,39 @@ defmodule Logflare.Repo.Replicas do
   defp redact(message, nil), do: message
   defp redact(message, userinfo), do: String.replace(message, userinfo, "REDACTED")
 
-  defp resolve_ssl(config) do
-    case Keyword.get(config, :ssl) do
-      true -> Keyword.put(config, :ssl, primary_ssl_opts(config[:hostname]))
-      _ -> config
+  defp resolve_ssl(config, primary_ssl) when is_list(primary_ssl) do
+    case Keyword.fetch(config, :ssl) do
+      :error -> inherit_ssl(config, primary_ssl)
+      {:ok, true} -> inherit_ssl(config, primary_ssl)
+      {:ok, _ssl} -> config
     end
   end
 
-  defp primary_ssl_opts(hostname) do
-    case Keyword.get(Logflare.Repo.config(), :ssl) do
-      opts when is_list(opts) ->
-        case :inet.parse_address(String.to_charlist(hostname || "")) do
-          {:ok, _ip} -> Keyword.put(opts, :server_name_indication, :disable)
-          {:error, _} -> opts
-        end
+  defp resolve_ssl(config, _primary_ssl), do: config
 
-      _ ->
-        true
+  defp inherit_ssl(config, primary_ssl) do
+    ssl =
+      case config[:hostname] do
+        nil ->
+          primary_ssl
+
+        hostname ->
+          primary_ssl
+          |> Keyword.delete(:server_name_indication)
+          |> maybe_disable_sni(hostname)
+      end
+
+    Keyword.put(config, :ssl, ssl)
+  end
+
+  defp maybe_disable_sni(opts, hostname) when is_binary(hostname) do
+    case :inet.parse_address(String.to_charlist(hostname)) do
+      {:ok, _address} -> Keyword.put(opts, :server_name_indication, :disable)
+      {:error, _reason} -> opts
     end
   end
+
+  defp maybe_disable_sni(opts, _hostname), do: opts
 
   defp ensure_unique_keys!(entries) do
     duplicate =
