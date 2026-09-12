@@ -1,6 +1,7 @@
 import {
   activateClipboardForSelector,
-  activateDelegatedTooltips
+  activateDelegatedTooltips,
+  scrollToPageBottom
 } from "./utils"
 import $ from "jquery"
 import _ from "lodash"
@@ -53,7 +54,7 @@ hooks.SourceLogsSearchList = {
   },
   scrollToLatest() {
     if (this.el.dataset.tailing === "true") {
-      window.scrollTo(0, document.body.scrollHeight)
+      scrollToPageBottom()
     }
   },
   beforeUpdate() {
@@ -88,6 +89,9 @@ hooks.SourceLogsSearchList = {
   },
   mounted() {
     activateDelegatedTooltips(this.el, '[data-toggle="tooltip"]')
+    this.handleEvent("scroll-to-bottom", () => {
+      requestAnimationFrame(scrollToPageBottom)
+    })
     this.scrollToLatest()
   },
   destroyed() {
