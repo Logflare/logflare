@@ -2187,6 +2187,30 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert has_element?(view, "div.tw-hidden > #load-more-events-top[disabled]")
     end
 
+    test "the bottom button shows for a single-page range that ends in the past and loads newer events",
+         %{conn: conn, events: events, message_prefix: message_prefix, source: source} do
+      range_start = div(Enum.at(events, 1).body["timestamp"], 1_000_000) - 1
+      range_end = div(Enum.at(events, 99).body["timestamp"], 1_000_000) + 1
+      querystring = "#{message_prefix} t:#{range_start}..#{range_end}"
+
+      view = open_pagination_search(conn, source, querystring, Enum.at(events, 99))
+
+      assert visible_log_event_ids(view) == events |> Enum.slice(1, 99) |> log_event_dom_ids()
+      assert has_element?(view, "#load-more-events-bottom:not([disabled])")
+
+      view
+      |> element("#load-more-events-bottom")
+      |> render_click()
+
+      assert_timestamp_range_patch(view, source, querystring, :next, List.last(events))
+
+      view
+      |> TestUtils.wait_for_render(log_event_selector(List.last(events)))
+
+      assert visible_log_event_ids(view) == events |> Enum.drop(1) |> log_event_dom_ids()
+      assert has_element?(view, "div.tw-hidden > #load-more-events-bottom[disabled]")
+    end
+
     test "the previous button is hidden after its page is exhausted", %{
       conn: conn,
       events: events,
