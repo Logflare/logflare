@@ -32,11 +32,18 @@ defmodule Logflare.Tasks.ReleaseTasks do
 
   defp start_connection() do
     {:ok, _} = @repo.start_link(pool_size: 1)
+
+    migration_repo = Logflare.Repo.Migrator.migration_repo_for(@repo)
+
+    if migration_repo != @repo do
+      {:ok, _} = migration_repo.start_link(pool_size: 2)
+    end
   end
 
   defp run_migrations() do
     IO.puts("Running migrations...")
-    Ecto.Migrator.run(@repo, migrations_path(), :up, all: true)
+    migration_repo = Logflare.Repo.Migrator.migration_repo_for(@repo)
+    Ecto.Migrator.run(migration_repo, migrations_path(), :up, all: true)
   end
 
   defp migrations_path(), do: Path.join([priv_dir(), "repo", "migrations"])
