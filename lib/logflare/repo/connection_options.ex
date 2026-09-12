@@ -3,8 +3,11 @@ defmodule Logflare.Repo.ConnectionOptions do
   Resolves connection options shared by the primary repository and read replicas.
   """
 
+  require Logger
+
   alias Logflare.Repo.AwsIam
   alias Logflare.Repo.Replicas
+  alias Logflare.Utils
 
   @epgsql_connection_keys [:hostname, :port, :username, :database, :socket_options, :ssl]
   @ecto_repo_only_options [
@@ -20,17 +23,32 @@ defmodule Logflare.Repo.ConnectionOptions do
     :start_apps_before_migration,
     :telemetry_prefix
   ]
+  @sensitive_url_query_params ~w(password url)
 
   @type role :: :primary | :replica
 
   @spec prepare(keyword(), role()) :: keyword()
   def prepare(config, role) when role in [:primary, :replica] do
+    config = resolve_url!(config)
     {auth, config} = Keyword.pop(config, :logflare_auth)
     {aws_region, config} = Keyword.pop(config, :logflare_aws_region)
 
     config
     |> prepare_auth(auth, aws_region)
     |> prepare_role(role)
+  end
+
+  @doc false
+  @spec normalize_url_options(keyword()) :: {:ok, keyword()} | {:error, String.t()}
+  def normalize_url_options(config) do
+    {auth, config} = Keyword.pop(config, :auth)
+    {aws_region, config} = Keyword.pop(config, :aws_region)
+
+    with {:ok, config} <- reject_nested_url(config),
+         {:ok, config} <- put_auth(config, auth),
+         {:ok, config} <- put_aws_region(config, aws_region) do
+      {:ok, config}
+    end
   end
 
   @doc """
@@ -149,6 +167,173 @@ defmodule Logflare.Repo.ConnectionOptions do
 
   defp put_present(options, _key, nil), do: options
   defp put_present(options, key, value), do: Map.put(options, key, value)
+
+  @doc false
+  @spec resolve_url!(keyword()) :: keyword()
+  def resolve_url!(config) do
+    case Keyword.pop(config, :url) do
+      {url, config} when url in [nil, ""] ->
+        config
+
+      {url, config} when is_binary(url) ->
+        try do
+          url_options = Ecto.Repo.Supervisor.parse_url(url)
+
+          case normalize_url_options(url_options) do
+            {:ok, url_options} ->
+              merge_url_options(config, url_options)
+
+            {:error, reason} ->
+              raise ArgumentError,
+                    "invalid database URL #{inspect(redact_url(url))}: #{reason}"
+          end
+        rescue
+          error in Ecto.InvalidURLError ->
+            redacted_url = redact_url(url)
+            message = redact_url_error(error.message, url)
+
+            reraise %{error | message: message, url: redacted_url}, __STACKTRACE__
+        end
+
+      {url, _config} ->
+        raise ArgumentError, "database URL must be a string, got: #{inspect(url)}"
+    end
+  end
+
+  defp merge_url_options(config, url_options) do
+    socket_options =
+      config
+      |> Keyword.get(:socket_options)
+      |> then(&(&1 || []))
+      |> Enum.reject(&(&1 in [:inet, :inet6]))
+
+    url_options =
+      config
+      |> preserve_configured_ssl(url_options)
+      |> maybe_put_socket_options(socket_options)
+
+    config
+    |> Keyword.delete(:socket_options)
+    |> Keyword.merge(url_options)
+    |> maybe_rebind_sni(url_options[:hostname])
+  end
+
+  defp maybe_rebind_sni(config, hostname) when is_binary(hostname) do
+    case {:inet.parse_address(String.to_charlist(hostname)), config[:ssl]} do
+      {{:ok, _address}, true} ->
+        Keyword.put(config, :ssl,
+          cacerts: :public_key.cacerts_get(),
+          server_name_indication: :disable
+        )
+
+      {{:ok, _address}, ssl} when is_list(ssl) ->
+        Keyword.put(config, :ssl, Keyword.put_new(ssl, :server_name_indication, :disable))
+
+      {{:error, _reason}, ssl} when is_list(ssl) ->
+        ssl =
+          if ssl[:server_name_indication] == :disable,
+            do: Keyword.delete(ssl, :server_name_indication),
+            else: ssl
+
+        Keyword.put(config, :ssl, ssl)
+
+      _other ->
+        config
+    end
+  end
+
+  defp maybe_rebind_sni(config, _hostname), do: config
+
+  defp preserve_configured_ssl(config, url_options) do
+    if is_list(config[:ssl]) and url_options[:ssl] == true do
+      Logger.warning(
+        "ignoring `ssl=true` parameter in URL because `ssl` is already set in the configuration: #{inspect(config[:ssl])}"
+      )
+
+      Keyword.delete(url_options, :ssl)
+    else
+      url_options
+    end
+  end
+
+  defp maybe_put_socket_options(config, socket_options) do
+    case Utils.ip_version(config[:hostname]) do
+      version when version in [:inet, :inet6] ->
+        Keyword.put(config, :socket_options, [version | socket_options])
+
+      _other when socket_options == [] ->
+        config
+
+      _other ->
+        Keyword.put(config, :socket_options, socket_options)
+    end
+  end
+
+  @doc false
+  @spec redact_url(String.t()) :: String.t()
+  def redact_url(url), do: url |> URI.parse() |> redact_uri() |> URI.to_string()
+
+  @doc false
+  @spec redact_url_error(String.t(), String.t()) :: String.t()
+  def redact_url_error(message, url) do
+    uri = URI.parse(url)
+    redacted_uri = redact_uri(uri)
+
+    message
+    |> String.replace(url, URI.to_string(redacted_uri))
+    |> String.replace(inspect(uri), inspect(redacted_uri))
+  end
+
+  defp redact_uri(uri) do
+    uri
+    |> Map.put(:userinfo, if(uri.userinfo, do: "REDACTED"))
+    |> Map.put(:query, redact_query(uri.query))
+    |> URI.to_string()
+    |> URI.parse()
+  end
+
+  defp redact_query(nil), do: nil
+
+  defp redact_query(query) do
+    query
+    |> URI.query_decoder()
+    |> Enum.map(fn
+      {key, _value} when key in @sensitive_url_query_params -> {key, "REDACTED"}
+      pair -> pair
+    end)
+    |> URI.encode_query()
+  end
+
+  defp reject_nested_url(config) do
+    if Keyword.has_key?(config, :url),
+      do: {:error, "`url` query parameter is not supported"},
+      else: {:ok, config}
+  end
+
+  defp put_auth(config, nil) do
+    if Keyword.has_key?(config, :password),
+      do: {:ok, Keyword.put(config, :logflare_auth, :password)},
+      else: {:ok, config}
+  end
+
+  defp put_auth(config, "password"),
+    do: {:ok, Keyword.put(config, :logflare_auth, :password)}
+
+  defp put_auth(config, "aws_iam") do
+    if Keyword.has_key?(config, :password),
+      do: {:error, "auth=aws_iam cannot be combined with a password"},
+      else: {:ok, Keyword.put(config, :logflare_auth, :aws_iam)}
+  end
+
+  defp put_auth(_config, other),
+    do: {:error, ~s(unsupported auth=#{other}, expected "password" or "aws_iam")}
+
+  defp put_aws_region(config, nil), do: {:ok, config}
+
+  defp put_aws_region(config, region) when is_binary(region) and region != "",
+    do: {:ok, Keyword.put(config, :logflare_aws_region, region)}
+
+  defp put_aws_region(_config, _region), do: {:error, "aws_region cannot be empty"}
 
   defp prepare_auth(config, :aws_iam, aws_region) do
     config
