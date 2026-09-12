@@ -1,0 +1,120 @@
+suite: test ingress
+templates:
+  - ingress.yaml
+tests:
+  - it: should render nothing by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should back every path with the release's own Service and port by default
+    set:
+      ingress.enabled: true
+    asserts:
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-logflare
+      - equal:
+          path: spec.rules[0].http.paths[0].backend.service.name
+          value: RELEASE-NAME-logflare
+      - equal:
+          path: spec.rules[0].http.paths[0].backend.service.port.number
+          value: 4000
+      - notExists:
+          path: spec.rules[0].http.paths[0].backend.service.port.name
+
+  - it: should route a path to another Service when serviceName is set
+    set:
+      ingress.enabled: true
+      ingress.hosts:
+        - host: chart-example.local
+          paths:
+            - path: /
+              pathType: Prefix
+              serviceName: RELEASE-NAME-logflare-preview
+    asserts:
+      - equal:
+          path: spec.rules[0].http.paths[0].backend.service.name
+          value: RELEASE-NAME-logflare-preview
+      - equal:
+          path: spec.rules[0].http.paths[0].backend.service.port.number
+          value: 4000
+
+  - it: should reference the port by name when servicePortName is set
+    set:
+      ingress.enabled: true
+      ingress.hosts:
+        - host: chart-example.local
+          paths:
+            - path: /
+              pathType: Prefix
+              servicePortName: use-annotation
+    asserts:
+      - equal:
+          path: spec.rules[0].http.paths[0].backend.service.port.name
+          value: use-annotation
+      - notExists:
+          path: spec.rules[0].http.paths[0].backend.service.port.number
+
+  - it: should render one document per extraIngresses entry, suffixing each name
+    set:
+      ingress.enabled: true
+      extraIngresses:
+        - nameSuffix: grpc
+          className: alb
+          annotations:
+            alb.ingress.kubernetes.io/backend-protocol-version: GRPC
+          hosts:
+            - host: otel.chart-example.local
+              paths:
+                - path: /
+                  pathType: Prefix
+                  servicePortName: grpc
+    asserts:
+      - hasDocuments:
+          count: 2
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-logflare
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-logflare-grpc
+        documentIndex: 1
+      - equal:
+          path: metadata.annotations["alb.ingress.kubernetes.io/backend-protocol-version"]
+          value: GRPC
+        documentIndex: 1
+      - equal:
+          path: spec.rules[0].http.paths[0].backend.service.port.name
+          value: grpc
+        documentIndex: 1
+
+  - it: should render extraIngresses even when ingress.enabled is false
+    set:
+      ingress.enabled: false
+      extraIngresses:
+        - nameSuffix: internal
+          hosts:
+            - host: chart-example.internal
+              paths:
+                - path: /
+                  pathType: Prefix
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-logflare-internal
+
+  - it: should fail when an extraIngresses entry has no nameSuffix
+    set:
+      extraIngresses:
+        - hosts:
+            - host: chart-example.internal
+              paths:
+                - path: /
+                  pathType: Prefix
+    asserts:
+      - failedTemplate:
+          errorMessage: "extraIngresses[0] has no nameSuffix: each extra Ingress needs one so its name stays distinct from the chart's own Ingress"
