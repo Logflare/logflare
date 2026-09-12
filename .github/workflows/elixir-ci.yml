@@ -390,8 +390,17 @@ jobs:
       - name: Install dependencies
         run: mix do deps.get + deps.compile
 
+      - name: Compile application
+        run: mix compile
+
+      - name: Set up test database
+        run: mix do ecto.create --no-compile + ecto.migrate --no-compile
+
+      - name: Start Erlang port mapper
+        run: epmd -daemon
+
       - name: Run tests
-        run: epmd -daemon; mix do ecto.create + ecto.migrate + test.coverage.ci
+        run: mix test.coverage.ci
 
       - name: Upload coverage
         uses: coverallsapp/github-action@v2
