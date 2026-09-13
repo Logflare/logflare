@@ -7,6 +7,7 @@ defmodule Logflare.Backends.Supervisor do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Sources.Source.BigQuery.SchemaMetrics
 
   def start_link(_) do
     Supervisor.start_link(__MODULE__, [])
@@ -39,6 +40,7 @@ defmodule Logflare.Backends.Supervisor do
 
     children =
       [
+        SchemaMetrics,
         Backends.IngestEventQueue,
         Backends.IngestEventQueue.BufferCacheWorker,
         Backends.IngestEventQueue.MapperJanitor,
