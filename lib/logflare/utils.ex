@@ -156,6 +156,36 @@ defmodule Logflare.Utils do
   def stringify(v), do: inspect(v)
 
   @doc """
+  Parses a value into a float.
+
+  Accepts binaries, integers, and floats. Raises on unsupported types or
+  unparseable binaries.
+
+  ## Examples
+
+    iex> Logflare.Utils.parse_float!("1.5")
+    1.5
+    iex> Logflare.Utils.parse_float!("1")
+    1.0
+    iex> Logflare.Utils.parse_float!(2)
+    2.0
+    iex> Logflare.Utils.parse_float!(3.14)
+    3.14
+  """
+  @spec parse_float!(binary() | integer() | float()) :: float()
+  def parse_float!(v) when is_binary(v) do
+    if String.contains?(v, ".") do
+      String.to_float(v)
+    else
+      String.to_integer(v) / 1
+    end
+  end
+
+  def parse_float!(v) when is_integer(v), do: v / 1
+  def parse_float!(v) when is_float(v), do: v
+  def parse_float!(v), do: raise("Could not parse to float: #{inspect(v)}")
+
+  @doc """
   Appends a value to the end of a tuple.
 
   ## Examples
