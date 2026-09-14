@@ -774,8 +774,20 @@ defmodule LogflareWeb.Source.SearchLV do
       cursors: cursors,
       tailing?: tailing?,
       loading?: loading?,
+      window_seconds: page_window_seconds(lql_rules),
       next_available?: next_page_available?(pagination, cursors.next, lql_rules, search_timezone)
     )
+  end
+
+  # How far one page request travels: the width of the range currently in view. The page
+  # query scans exactly this much and the range grows by the same amount, so the button can
+  # name it.
+  @spec page_window_seconds([term()]) :: pos_integer()
+  defp page_window_seconds(lql_rules) do
+    case Rules.effective_timestamp_range(lql_rules) do
+      %{min: min, max: max} -> SearchOperations.event_page_window_seconds(min, max)
+      _ -> 60
+    end
   end
 
   defp next_page_available?(
@@ -861,12 +873,62 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   defp apply_event_page_result(socket, event_page, intent) when intent in [:previous, :next] do
-    socket = update_event_pagination(socket, &EventPagination.clear_loading/1)
+    socket
+    |> update_event_pagination(&EventPagination.clear_loading/1)
+    |> advance_page(event_page, intent)
+  end
 
-    if event_page.rows != [] do
-      extend_timestamp_range(socket, event_page)
-    else
-      put_event_page_result(socket, event_page, intent)
+  # A page request scans a fixed window and widens the query's range by that same window,
+  # whether or not the window held any events. Extending only as far as the rows that came
+  # back would stall the moment a page landed on a quiet stretch.
+  defp advance_page(socket, event_page, intent) do
+    window = page_window_seconds(socket.assigns.lql_rules)
+    previous_cursor = Map.get(socket.assigns.pagination_cursors, intent)
+
+    socket
+    |> put_event_page_result(event_page, intent)
+    |> keep_cursor_moving(event_page, intent, previous_cursor, window)
+    |> extend_timestamp_range_by(intent, window)
+  end
+
+  defp keep_cursor_moving(socket, %EventPage{rows: []}, intent, previous_cursor, window) do
+    update(
+      socket,
+      :pagination_cursors,
+      &Map.put(&1, intent, shift_cursor(previous_cursor, intent, window))
+    )
+  end
+
+  defp keep_cursor_moving(socket, _event_page, _intent, _previous_cursor, _window), do: socket
+
+  defp shift_cursor(nil, _intent, _window), do: nil
+
+  defp shift_cursor(%{timestamp: timestamp} = cursor, :previous, window),
+    do: %{cursor | timestamp: timestamp - window * 1_000_000}
+
+  defp shift_cursor(%{timestamp: timestamp} = cursor, :next, window),
+    do: %{cursor | timestamp: timestamp + window * 1_000_000}
+
+  defp extend_timestamp_range_by(socket, intent, window) do
+    lql_rules = adjust_timestamp_rules(socket.assigns.lql_rules, socket.assigns.search_timezone)
+
+    case Rules.effective_timestamp_range(lql_rules) do
+      %{min: min, max: max} ->
+        edge =
+          case intent do
+            :previous -> NaiveDateTime.add(min, -window, :second)
+            :next -> NaiveDateTime.add(max, window, :second)
+          end
+
+        lql_rules =
+          lql_rules
+          |> Rules.extend_timestamp_range(intent, edge)
+          |> maybe_adjust_chart_period()
+
+        push_timestamp_range_extension(socket, lql_rules)
+
+      _ ->
+        socket
     end
   end
 
@@ -918,63 +980,6 @@ defmodule LogflareWeb.Source.SearchLV do
 
   defp maybe_push_scroll_to_bottom(socket), do: socket
 
-  defp extend_timestamp_range(
-         socket,
-         %EventPage{request: %{intent: :previous}} = event_page
-       ) do
-    event = List.last(event_page.rows)
-    timezone = socket.assigns.search_timezone
-    event_timestamp = event_timestamp(event, timezone)
-
-    lql_rules =
-      socket.assigns.lql_rules
-      |> adjust_timestamp_rules(timezone)
-
-    case Rules.effective_timestamp_range(lql_rules) do
-      %{min: range_start} ->
-        if NaiveDateTime.compare(event_timestamp, range_start) == :lt do
-          lql_rules =
-            lql_rules
-            |> Rules.extend_timestamp_range(:previous, event_timestamp)
-            |> maybe_adjust_chart_period()
-
-          push_timestamp_range_extension(socket, event_page, lql_rules)
-        else
-          put_event_page_result(socket, event_page, :previous)
-        end
-
-      _ ->
-        put_event_page_result(socket, event_page, :previous)
-    end
-  end
-
-  defp extend_timestamp_range(socket, %EventPage{request: %{intent: :next}} = event_page) do
-    event = List.first(event_page.rows)
-    timezone = socket.assigns.search_timezone
-    event_timestamp = event_timestamp(event, timezone)
-
-    lql_rules =
-      socket.assigns.lql_rules
-      |> adjust_timestamp_rules(timezone)
-
-    case Rules.effective_timestamp_range(lql_rules) do
-      %{max: range_end} ->
-        if NaiveDateTime.compare(event_timestamp, range_end) == :gt do
-          lql_rules =
-            lql_rules
-            |> Rules.extend_timestamp_range(:next, event_timestamp)
-            |> maybe_adjust_chart_period()
-
-          push_timestamp_range_extension(socket, event_page, lql_rules)
-        else
-          put_event_page_result(socket, event_page, :next)
-        end
-
-      _ ->
-        put_event_page_result(socket, event_page, :next)
-    end
-  end
-
   defp put_event_page_result(socket, event_page, intent) when intent in [:previous, :next] do
     socket
     |> put_event_page(event_page.rows, intent)
@@ -982,7 +987,7 @@ defmodule LogflareWeb.Source.SearchLV do
     |> put_pagination_cursors(event_page, intent)
   end
 
-  defp push_timestamp_range_extension(socket, event_page, lql_rules) do
+  defp push_timestamp_range_extension(socket, lql_rules) do
     querystring = Lql.encode!(lql_rules)
 
     socket =
@@ -990,19 +995,11 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:lql_rules, lql_rules)
       |> assign(:querystring, querystring)
       |> assign(:chart_loading, true)
-      |> put_event_page_result(event_page, event_page.request.intent)
       |> update_event_pagination(&EventPagination.mark_range_extension(&1, querystring))
 
     SearchQueryExecutor.query_agg(socket.assigns.executor_pid, socket.assigns)
 
     push_patch_with_params(socket, %{querystring: querystring, tailing?: false})
-  end
-
-  defp event_timestamp(event, timezone) do
-    event.body["timestamp"]
-    |> DateTime.from_unix!(:microsecond)
-    |> DateTime.shift_zone!(timezone)
-    |> DateTime.to_naive()
   end
 
   def handle_info(:soft_pause = ev, socket) do

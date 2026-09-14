@@ -2096,6 +2096,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       drain_bq_queries()
 
+      _before_range = current_timestamp_range(view)
+
       view
       |> element("#load-more-events-top")
       |> render_click()
@@ -2187,11 +2189,13 @@ defmodule LogflareWeb.Source.SearchLVTest do
       backend = Backends.get_default_backend(user)
       assert {:ok, 1} = PostgresAdaptor.insert_log_events(source, backend, [late_event])
 
+      before_range = current_timestamp_range(view)
+
       view
       |> element("#load-more-events-bottom")
       |> render_click()
 
-      assert_timestamp_range_patch(view, source, querystring, :next, List.last(events))
+      assert_timestamp_range_patch(view, source, querystring, :next, before_range)
 
       view
       |> TestUtils.wait_for_render(log_event_selector(List.last(events)))
@@ -2217,11 +2221,13 @@ defmodule LogflareWeb.Source.SearchLVTest do
       initial_ids = events |> Enum.slice(2, 100) |> log_event_dom_ids()
       assert visible_log_event_ids(view) == initial_ids
 
+      before_range = current_timestamp_range(view)
+
       view
       |> element("#load-more-events-top")
       |> render_click()
 
-      assert_timestamp_range_patch(view, source, querystring, :previous, List.first(events))
+      assert_timestamp_range_patch(view, source, querystring, :previous, before_range)
 
       view
       |> TestUtils.wait_for_render(log_event_selector(List.first(events)))
@@ -2245,11 +2251,13 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert visible_log_event_ids(view) == events |> Enum.slice(3, 99) |> log_event_dom_ids()
       assert has_element?(view, "#load-more-events-top:not([disabled])")
 
+      before_range = current_timestamp_range(view)
+
       view
       |> element("#load-more-events-top")
       |> render_click()
 
-      assert_timestamp_range_patch(view, source, querystring, :previous, List.first(events))
+      assert_timestamp_range_patch(view, source, querystring, :previous, before_range)
 
       view
       |> TestUtils.wait_for_render(log_event_selector(List.first(events)))
@@ -2269,11 +2277,13 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert visible_log_event_ids(view) == events |> Enum.slice(1, 99) |> log_event_dom_ids()
       assert has_element?(view, "#load-more-events-bottom:not([disabled])")
 
+      before_range = current_timestamp_range(view)
+
       view
       |> element("#load-more-events-bottom")
       |> render_click()
 
-      assert_timestamp_range_patch(view, source, querystring, :next, List.last(events))
+      assert_timestamp_range_patch(view, source, querystring, :next, before_range)
 
       view
       |> TestUtils.wait_for_render(log_event_selector(List.last(events)))
@@ -2291,6 +2301,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       view = open_pagination_search(conn, source, querystring, Enum.at(events, 101))
 
       assert has_element?(view, "#load-more-events-top:not([disabled])")
+
+      _before_range = current_timestamp_range(view)
 
       view
       |> element("#load-more-events-top")
@@ -3038,7 +3050,13 @@ defmodule LogflareWeb.Source.SearchLVTest do
     TestUtils.wait_for_render(view, log_event_selector(expected_event))
   end
 
-  defp assert_timestamp_range_patch(view, source, original_querystring, direction, event) do
+  defp current_timestamp_range(view) do
+    view |> get_view_assigns() |> Map.fetch!(:lql_rules) |> Rules.effective_timestamp_range()
+  end
+
+  # A page request widens the range by the window it scanned, so the edge it moves must end
+  # up past where it started. The exact amount is covered by the SearchOperations tests.
+  defp assert_timestamp_range_patch(view, source, original_querystring, direction, before_range) do
     %URI{path: path, query: query} =
       assert_patch(view)
       |> URI.parse()
@@ -3050,17 +3068,20 @@ defmodule LogflareWeb.Source.SearchLVTest do
     assert params["tailing?"] == "false"
     refute patched_querystring == original_querystring
 
-    expected_timestamp =
-      event.body["timestamp"]
-      |> DateTime.from_unix!(:microsecond)
-      |> DateTime.to_naive()
+    edge_before = Map.fetch!(before_range, range_edge(direction))
+
+    expected_order = if direction == :previous, do: :lt, else: :gt
 
     TestUtils.retry_assert(fn ->
       assigns = get_view_assigns(view)
       assert assigns.querystring == patched_querystring
 
-      timestamp_range = Rules.effective_timestamp_range(assigns.lql_rules)
-      assert Map.fetch!(timestamp_range, range_edge(direction)) == expected_timestamp
+      edge_after =
+        assigns.lql_rules
+        |> Rules.effective_timestamp_range()
+        |> Map.fetch!(range_edge(direction))
+
+      assert NaiveDateTime.compare(edge_after, edge_before) == expected_order
     end)
   end
 
