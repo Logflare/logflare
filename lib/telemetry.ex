@@ -5,6 +5,8 @@ defmodule Logflare.Telemetry do
   import Logflare.Utils, only: [ets_info: 1]
   import Logflare.Utils.Guards, only: [is_non_empty_binary: 1, is_pos_integer: 1]
 
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
   context_caches_with_metrics = Logflare.ContextCache.Supervisor.list_caches_with_metrics()
@@ -392,6 +394,38 @@ defmodule Logflare.Telemetry do
         description:
           "Read queries that failed over to the default read cluster, tagged with the unhealthy cluster failed over from"
       ),
+      sum("logflare.clickhouse.read_pool.connected.count",
+        event_name: [:db_connection, :connected],
+        measurement: :count,
+        tags: [:backend_id, :read_cluster],
+        tag_values: &ch_read_pool_connection_tags/1,
+        keep: &ch_read_pool_connection_event?/1,
+        description:
+          "ClickHouse read pool connections established, per backend and read cluster. Only pools started after deploy are counted"
+      ),
+      sum("logflare.clickhouse.read_pool.disconnected.count",
+        event_name: [:db_connection, :disconnected],
+        measurement: :count,
+        tags: [:backend_id, :read_cluster],
+        tag_values: &ch_read_pool_connection_tags/1,
+        keep: &ch_read_pool_connection_event?/1,
+        description:
+          "ClickHouse read pool connections lost or recycled, per backend and read cluster. Paired with `connected`, this is the pool's connection churn rate"
+      ),
+      sum("logflare.clickhouse.insert.result.count",
+        event_name: [:logflare, :clickhouse, :insert, :result],
+        measurement: :count,
+        tags: [:backend_id, :event_type, :async, :result, :error_class],
+        description:
+          "ClickHouse inserts by outcome, counted once per batch after any HTTP retry. `result` provides the insert error rate numerator and denominator, and `error_class` is `:none` on success"
+      ),
+      counter("logflare.clickhouse.circuit_breaker.open.count",
+        event_name: [:logflare, :clickhouse, :circuit_breaker, :open],
+        measurement: :failures,
+        tags: [:backend_id, :reason],
+        description:
+          "Times a backend's ClickHouse insert circuit breaker opened, tagged `:threshold` when the failure count in the window was reached or `:forced` when opened immediately by a TOO_MANY_PARTS response"
+      ),
       sum("logflare.logs.ingest_logs.drop_future",
         event_name: [:logflare, :logs, :ingest_logs, :drop_future],
         measurement: :count,
@@ -632,6 +666,20 @@ defmodule Logflare.Telemetry do
         description:
           "Count of retriable events whose generation-store row was already gone by requeue lookup time"
       ),
+      sum("logflare.ingest_event_queue.retry_dropped.count",
+        event_name: [:logflare, :ingest_event_queue, :retry_dropped],
+        measurement: :count,
+        tags: [:backend_id, :reason],
+        description:
+          "Count of ClickHouse events dropped outright after an insert failure, tagged `:retries_exhausted` when the payload ran out of retries or `:circuit_breaker_open` when the breaker shed the retry. This is realized ingest data loss"
+      ),
+      sum("logflare.ingest_event_queue.requeue_queue_unavailable.count",
+        event_name: [:logflare, :ingest_event_queue, :requeue_queue_unavailable],
+        measurement: :count,
+        tags: [:backend_id],
+        description:
+          "Count of retriable ClickHouse events dropped because no retry queue remained available to requeue them into"
+      ),
       sum("logflare.ingest_event_queue.requeue_deduplicated.count",
         event_name: [:logflare, :ingest_event_queue, :requeue_deduplicated],
         measurement: :count,
@@ -840,6 +888,16 @@ defmodule Logflare.Telemetry do
 
   defp backend_scoped_drop?(%{backend_id: _, backend_type: _}), do: true
   defp backend_scoped_drop?(_metadata), do: false
+
+  defp ch_read_pool_connection_event?(%{tag: {backend_id, label}})
+       when is_pos_integer(backend_id) and (is_binary(label) or is_nil(label)),
+       do: true
+
+  defp ch_read_pool_connection_event?(_metadata), do: false
+
+  defp ch_read_pool_connection_tags(%{tag: {backend_id, label}}) do
+    %{backend_id: backend_id, read_cluster: ClickHouseAdaptor.read_cluster_tag(label)}
+  end
 
   defp batch_size_reporter_opts do
     [buckets: [0, 1, 50, 100, 250, 500, 1_000, 5_000, 10_000, 20_000, 50_000]]

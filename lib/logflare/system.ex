@@ -30,5 +30,7 @@ defmodule Logflare.System do
   @spec total_memory_bytes() :: non_neg_integer() | nil
   def total_memory_bytes do
     :memsup.get_system_memory_data()[:system_total_memory]
+  catch
+    :exit, _reason -> nil
   end
 end

@@ -41,6 +41,62 @@ defmodule Logflare.Backends.CacheTest do
     assert [] = Backends.Cache.list_backends(source_id: source.id)
   end
 
+  test "limits unique ingesting backends by latest source activity", %{user: user} do
+    now = NaiveDateTime.utc_now()
+
+    newest_source = insert(:source, user: user, log_events_updated_at: now)
+
+    oldest_source =
+      insert(:source,
+        user: user,
+        log_events_updated_at: NaiveDateTime.shift(now, hour: -2)
+      )
+
+    older_source =
+      insert(:source,
+        user: user,
+        log_events_updated_at: NaiveDateTime.shift(now, hour: -1)
+      )
+
+    older_backend = insert(:backend, user: user, sources: [older_source])
+    newest_backend = insert(:backend, user: user, sources: [newest_source, oldest_source])
+    newest_backend_id = newest_backend.id
+    older_backend_id = older_backend.id
+
+    assert [%{id: ^newest_backend_id}] = Backends.list_backends(ingesting: true, limit: 1)
+
+    assert [%{id: ^newest_backend_id}, %{id: ^older_backend_id}] =
+             Backends.list_backends(ingesting: true)
+
+    assert [%{id: ^newest_backend_id}] =
+             Backends.list_backends(
+               ingesting: true,
+               has_sources_or_rules: true,
+               limit: 1
+             )
+
+    assert [%{id: ^newest_backend_id}] =
+             Backends.list_backends(
+               has_sources_or_rules: true,
+               ingesting: true,
+               limit: 1
+             )
+
+    assert [%{id: ^newest_backend_id}] =
+             Backends.list_backends_by_user_access(user, ingesting: true, limit: 1)
+  end
+
+  test "breaks ingesting backend activity ties by id", %{user: user} do
+    active_at = NaiveDateTime.utc_now()
+    first_source = insert(:source, user: user, log_events_updated_at: active_at)
+    second_source = insert(:source, user: user, log_events_updated_at: active_at)
+    first_backend = insert(:backend, sources: [first_source])
+    _second_backend = insert(:backend, sources: [second_source])
+    first_backend_id = first_backend.id
+
+    assert [%{id: ^first_backend_id}] = Backends.list_backends(ingesting: true, limit: 1)
+  end
+
   test "warmer", %{user: user} do
     assert {:ok, []} = CacheWarmer.execute(nil)
 

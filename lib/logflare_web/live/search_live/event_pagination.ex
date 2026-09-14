@@ -21,8 +21,8 @@ defmodule LogflareWeb.SearchLive.EventPagination do
   def new, do: %__MODULE__{}
 
   @spec complete_initial(t(), EventPage.t()) :: t()
-  def complete_initial(pagination, event_page) do
-    %{pagination | next_exhausted?: not event_page.has_more?}
+  def complete_initial(pagination, _event_page) do
+    %{pagination | next_exhausted?: false}
   end
 
   @spec complete_page(t(), EventPage.t(), EventPage.direction()) :: t()

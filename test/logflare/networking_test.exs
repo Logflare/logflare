@@ -25,7 +25,8 @@ defmodule Logflare.NetworkingTest do
                Logflare.FinchSpool,
                Logflare.FinchDefault,
                Logflare.FinchClickHouseIngest,
-               Logflare.FinchClickHouseAsyncIngest
+               Logflare.FinchClickHouseAsyncIngest,
+               Logflare.FinchS3
              ]
     end
   end
@@ -56,6 +57,20 @@ defmodule Logflare.NetworkingTest do
                 name: Logflare.FinchClickHouseAsyncIngest,
                 pools: %{
                   :default => _async_config
+                }},
+               {Finch,
+                name: Logflare.FinchS3,
+                pools: %{
+                  :default => [
+                    protocols: [:http1],
+                    conn_opts: [
+                      transport_opts: [
+                        timeout: 5_000,
+                        send_timeout: 30_000,
+                        send_timeout_close: true
+                      ]
+                    ]
+                  ]
                 }}
              ] = Networking.pools()
 

@@ -31,10 +31,10 @@ defmodule LogflareWeb.SearchLive.SubheadComponents do
           </.link>
         </li>
         <li>
-          <a href="javascript:Source.scrollOverflowBottom();">
+          <.link href="#" phx-click={JS.dispatch("logflare:scroll-to-bottom")}>
             <span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span>
             <span class="hide-on-mobile">scroll down</span>
-          </a>
+          </.link>
         </li>
         <li>
           <.modal_link component={LogflareWeb.SearchLive.SavedSearchesModalComponent} modal_id={:saved_searches_link} title="Saved Searches" phx-value-source-id={@source.id}>
