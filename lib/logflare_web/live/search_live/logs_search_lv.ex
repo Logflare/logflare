@@ -104,7 +104,6 @@ defmodule LogflareWeb.Source.SearchLV do
       tailing_timer: nil,
       tailing?: tailing?,
       resume_tailing_after_modal?: false,
-      scroll_to_bottom_on_result?: false,
       # search states
       search_op_error: nil,
       search_op_log_events: nil,
@@ -408,7 +407,6 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       socket
-      |> assign(:scroll_to_bottom_on_result?, true)
       |> cancel_async(:generate_natural_language_lql)
       |> assign(
         :ai_assist,
@@ -638,7 +636,6 @@ defmodule LogflareWeb.Source.SearchLV do
     socket =
       socket
       |> assign(:tailing?, false)
-      |> assign(:scroll_to_bottom_on_result?, true)
       |> assign(:lql_rules, lql_list)
       |> assign(:querystring, qs)
       |> push_patch_with_params(%{querystring: qs, tailing?: false})
@@ -1019,7 +1016,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:tailing_timer, tailing_timer)
       |> assign(:loading, false)
       |> assign(:tailing_initial?, false)
-      |> maybe_push_scroll_to_bottom()
+      |> push_event("scroll-to-bottom", %{})
 
     if match?({:warning, _}, events_op.status) do
       {:warning, message} = events_op.status
@@ -1041,15 +1038,16 @@ defmodule LogflareWeb.Source.SearchLV do
     |> put_pagination_cursors(event_page, :tail)
     |> assign(:tailing_timer, tailing_timer)
     |> assign(:loading, false)
+    |> maybe_push_tail_scroll()
   end
 
-  defp maybe_push_scroll_to_bottom(%{assigns: %{scroll_to_bottom_on_result?: true}} = socket) do
-    socket
-    |> assign(:scroll_to_bottom_on_result?, false)
-    |> push_event("scroll-to-bottom", %{})
-  end
+  # While tailing, every batch of new events belongs at the bottom of the list. The server
+  # knows when it appended one, so it says so rather than leaving the hook to infer it from
+  # a `data-tailing` attribute on each update.
+  defp maybe_push_tail_scroll(%{assigns: %{tailing?: true}} = socket),
+    do: push_event(socket, "scroll-to-bottom", %{})
 
-  defp maybe_push_scroll_to_bottom(socket), do: socket
+  defp maybe_push_tail_scroll(socket), do: socket
 
   defp put_event_page_result(socket, event_page, intent) when intent in [:previous, :next] do
     socket

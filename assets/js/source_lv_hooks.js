@@ -50,10 +50,18 @@ hooks.SourceLogsSearchList = {
       }
     })
   },
-  scrollToLatest() {
-    if (this.el.dataset.tailing === "true") {
+  // The server asks for a scroll to the bottom in the same message as the rows it wants
+  // shown. More diffs follow it (chart aggregates, pagination buttons), and each one runs
+  // updated() -> restoreScrollAnchor(), which would put the viewport back where it was.
+  // Hold the intent until a frame actually scrolls, and let updated() skip the restore
+  // while it is pending.
+  flushScrollToBottom() {
+    requestAnimationFrame(() => {
+      if (!this.pendingScrollToBottom) return
+
+      this.pendingScrollToBottom = false
       scrollToPageBottom()
-    }
+    })
   },
   beforeUpdate() {
     this.captureScrollAnchor()
@@ -62,8 +70,8 @@ hooks.SourceLogsSearchList = {
     const hook = this
     activateDelegatedTooltips(this.el, '[data-toggle="tooltip"]')
 
-    if (this.el.dataset.tailing === "true") {
-      this.scrollToLatest()
+    if (this.pendingScrollToBottom) {
+      this.flushScrollToBottom()
     } else {
       this.restoreScrollAnchor()
     }
@@ -87,15 +95,16 @@ hooks.SourceLogsSearchList = {
   },
   mounted() {
     activateDelegatedTooltips(this.el, '[data-toggle="tooltip"]')
+    this.pendingScrollToBottom = false
     this.handleEvent("scroll-to-bottom", () => {
-      requestAnimationFrame(scrollToPageBottom)
+      this.pendingScrollToBottom = true
+      this.flushScrollToBottom()
     })
     this.handleEvent("scroll-to-event", ({ id }) => {
       requestAnimationFrame(() => {
         document.getElementById(id)?.scrollIntoView({ block: "start" })
       })
     })
-    this.scrollToLatest()
   },
   destroyed() {
     $(this.el).tooltip("dispose")
