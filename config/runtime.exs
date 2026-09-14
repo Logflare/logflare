@@ -81,6 +81,8 @@ http_connection_pools =
       |> Enum.map(&String.downcase/1)
   end
 
+db_schema = System.get_env("DB_SCHEMA")
+
 config :logflare,
        Logflare.PubSub,
        [
@@ -192,9 +194,10 @@ config :logflare,
              version when version in [:inet, :inet6] -> [version]
              error -> raise "Failed to detect IP version for DB_HOSTNAME: #{error}"
            end,
+         schema: db_schema,
          after_connect:
-           if(System.get_env("DB_SCHEMA"),
-             do: {Postgrex, :query!, ["set search_path=#{System.get_env("DB_SCHEMA")}", []]},
+           if(db_schema,
+             do: {Postgrex, :query!, ["set search_path=#{db_schema}", []]},
              else: nil
            ),
          port:
@@ -521,6 +524,7 @@ config :syn,
 enable_alerting? = Env.get_boolean("LOGFLARE_ALERTS_ENABLED", true)
 
 config :logflare, Oban,
+  prefix: db_schema || "public",
   queues: [default: 10] ++ if(enable_alerting?, do: [alerts: 5], else: []),
   plugins: [
     {Oban.Plugins.Pruner, max_age: 86_400},
