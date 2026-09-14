@@ -2278,6 +2278,34 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert_push_event(view, "scroll-to-event", %{id: ^oldest_loaded_id})
     end
 
+    test "paging from an implied range writes an explicit one into the query", %{
+      conn: conn,
+      events: events,
+      message_prefix: message_prefix,
+      source: source
+    } do
+      querystring = "#{message_prefix} c:count(*) c:group_by(t::minute)"
+
+      view = open_pagination_search(conn, source, querystring, Enum.at(events, 102))
+
+      refute Rules.effective_timestamp_range(get_view_assigns(view).lql_rules)
+      assert has_element?(view, "#load-more-events-top:not([disabled])")
+
+      assert_push_event(view, "scroll-to-bottom", %{}, 5_000)
+
+      view
+      |> element("#load-more-events-top")
+      |> render_click()
+
+      assert_patch(view)
+
+      TestUtils.retry_assert(fn ->
+        assigns = get_view_assigns(view)
+        assert %{min: _, max: _} = Rules.effective_timestamp_range(assigns.lql_rules)
+        assert assigns.querystring =~ "t:20"
+      end)
+    end
+
     test "the top button shows for a single-page range and loads older events from outside it",
          %{conn: conn, events: events, message_prefix: message_prefix, source: source} do
       range_start = div(Enum.at(events, 3).body["timestamp"], 1_000_000) - 1

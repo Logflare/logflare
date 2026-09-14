@@ -475,6 +475,38 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   @doc """
+  The range a query covers when it carries no `t:` filter.
+
+  With no filter the aggregate query charts the last `default_period_tick_count/1` periods
+  (`apply_bq_aggregate_timestamp_filters/4`), so that span is what the user is looking at
+  and what a page request should write into the query when it makes the range explicit.
+  """
+  @spec implied_timestamp_range(atom(), DateTime.t()) :: %{
+          min: NaiveDateTime.t(),
+          max: NaiveDateTime.t()
+        }
+  def implied_timestamp_range(chart_period, now \\ DateTime.utc_now())
+
+  def implied_timestamp_range(chart_period, now)
+      when chart_period in [:second, :minute, :hour, :day] do
+    seconds =
+      SearchOperationHelpers.default_period_tick_count(chart_period) *
+        period_seconds(chart_period)
+
+    max = now |> DateTime.to_naive() |> NaiveDateTime.truncate(:second)
+
+    %{min: NaiveDateTime.add(max, -seconds, :second), max: max}
+  end
+
+  def implied_timestamp_range(_chart_period, now),
+    do: implied_timestamp_range(:minute, now)
+
+  defp period_seconds(:second), do: 1
+  defp period_seconds(:minute), do: 60
+  defp period_seconds(:hour), do: 3_600
+  defp period_seconds(:day), do: 86_400
+
+  @doc """
   Seconds a single page request may scan.
 
   A page request drops the query's own timestamp range so it can page past it. Without a
