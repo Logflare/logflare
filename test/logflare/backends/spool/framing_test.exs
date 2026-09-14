@@ -44,7 +44,7 @@ defmodule Logflare.Backends.Spool.FramingTest do
       assert {:error, :corrupt, []} = Framing.decode_segments(corrupted)
     end
 
-    test "a corrupted segment among intact ones still returns the intact ones" do
+    test "a corrupted segment still returns whatever decoded cleanly before it" do
       good = Framing.encode_segment("one")
       <<len::32-big, crc::32-big, "two">> = Framing.encode_segment("two")
       bad = <<len::32-big, crc::32-big, "TWO">>
@@ -52,11 +52,20 @@ defmodule Logflare.Backends.Spool.FramingTest do
       assert {:error, :corrupt, ["one"]} = Framing.decode_segments(good <> bad)
     end
 
-    test "reports :not_framed for a truncated frame (declared length longer than remaining data)" do
+    test "a valid segment after a corrupted one is not recovered — a corrupt frame's own length can't be trusted to find the next boundary" do
+      good_1 = Framing.encode_segment("one")
+      <<len::32-big, crc::32-big, "two">> = Framing.encode_segment("two")
+      bad = <<len::32-big, crc::32-big, "TWO">>
+      good_2 = Framing.encode_segment("three")
+
+      assert {:error, :corrupt, ["one"]} = Framing.decode_segments(good_1 <> bad <> good_2)
+    end
+
+    test "reports :corrupt with an empty list for a truncated frame (declared length longer than remaining data)" do
       segment = Framing.encode_segment("hello world")
       truncated = binary_part(segment, 0, byte_size(segment) - 3)
 
-      assert {:error, :not_framed} = Framing.decode_segments(truncated)
+      assert {:error, :corrupt, []} = Framing.decode_segments(truncated)
     end
 
     test "trailing garbage after a valid segment reports :corrupt with the valid segment recovered" do
@@ -83,6 +92,16 @@ defmodule Logflare.Backends.Spool.FramingTest do
       assert Framing.recover!(path) == byte_size(whole)
       assert {:ok, contents} = File.read(path)
       assert contents == whole
+    end
+
+    test "a fully valid file is left untouched, returning its exact byte size" do
+      path = Path.join(System.tmp_dir!(), "clean_#{System.unique_integer([:positive])}.wal")
+      whole = Framing.encode_segment("one\n") <> Framing.encode_segment("two\n")
+      File.write!(path, whole)
+      on_exit(fn -> File.rm(path) end)
+
+      assert Framing.recover!(path) == byte_size(whole)
+      assert {:ok, ^whole} = File.read(path)
     end
 
     test "handles a read error other than :enoent (e.g. the path is a directory) without crashing" do

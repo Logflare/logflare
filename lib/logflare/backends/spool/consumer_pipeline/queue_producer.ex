@@ -546,8 +546,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
         case Framing.decode_segments(decompressed) do
           {:ok, segments} -> {:ok, segments}
+          {:error, :corrupt, []} -> {:error, {:decode_failed, :not_framed}}
           {:error, :corrupt, decoded} -> {:ok, decoded}
-          {:error, :not_framed} -> {:error, {:decode_failed, :not_framed}}
         end
 
       version ->

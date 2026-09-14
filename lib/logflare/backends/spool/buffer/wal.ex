@@ -201,8 +201,10 @@ defmodule Logflare.Backends.Spool.Buffer.WAL do
   defp recovered_event_count(path) do
     case File.read(path) do
       {:ok, binary} ->
-        {payloads, _valid_bytes, _rest} = Framing.decode_all(binary)
-        length(payloads)
+        case Framing.decode_segments(binary) do
+          {:ok, segments} -> length(segments)
+          {:error, :corrupt, segments} -> length(segments)
+        end
 
       {:error, _reason} ->
         0

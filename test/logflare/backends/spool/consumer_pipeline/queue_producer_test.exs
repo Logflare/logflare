@@ -671,7 +671,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
                       %{reason: :decode_error}}
     end
 
-    test "a file whose only segment has a corrupt CRC is acked as exhausted with zero events, not decode_error" do
+    test "a file whose only segment has a corrupt CRC acks as decode_error, nothing recovered" do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :ack])
 
       stub_ack_nack(self())
@@ -687,10 +687,10 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       assert_receive {:acked, "h1"}, 2000
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{},
-                      %{reason: :buffer_exhausted}}
+                      %{reason: :decode_error}}
     end
 
-    test "segment isolation: a corrupt segment among intact ones doesn't cost the intact ones" do
+    test "a corrupt segment recovers everything before it, but nothing after" do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :ack])
 
       stub_ack_nack(self())
@@ -715,11 +715,15 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       pid = start_producer()
 
+      # Once a frame's own length can't be trusted (CRC mismatch), there's no
+      # reliable way to know where the next frame starts — so decoding stops
+      # there rather than guessing. Only the segment before the corruption is
+      # recovered.
       events =
         GenStage.stream([{pid, max_demand: 10}])
-        |> Enum.take(2)
+        |> Enum.take(1)
 
-      assert emitted_ids(events) == ["e1", "e2"]
+      assert emitted_ids(events) == ["e1"]
       assert_receive {:acked, "h1"}, 2000
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{},

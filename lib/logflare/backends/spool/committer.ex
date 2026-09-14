@@ -84,9 +84,6 @@ defmodule Logflare.Backends.Spool.Committer do
         )
 
         :ok
-
-      {:error, :not_framed} ->
-        {:error, :not_framed}
     end
   end
 
