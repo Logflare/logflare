@@ -9,8 +9,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
   alias Logflare.Backends
   alias Logflare.Backends.Spool.ConsumerPipeline.QueueProducer
   alias Logflare.Backends.Spool.MemoryMonitor
-  alias Logflare.Backends.Spool.Queue
-  alias Logflare.Backends.Spool.Storage
+  alias Logflare.Backends.Spool.ProviderConfig
   alias Logflare.Sources
 
   @behaviour Broadway.Acknowledger
@@ -33,9 +32,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     # distribution in production.
     batch_size = Keyword.get(spool_config, :consumer_batch_size, 20)
     queue_name = Keyword.fetch!(spool_config, :queue_name)
-    provider = Keyword.get(spool_config, :provider, :aws)
-    storage_mod = Keyword.get(spool_config, :storage_mod, default_storage_mod(provider))
-    queue_mod = Keyword.get(spool_config, :queue_mod, default_queue_mod(provider))
+    {storage_mod, queue_mod} = ProviderConfig.resolve_mods(spool_config)
     queue_url = resolve_queue_url!(queue_name, queue_mod)
 
     max_in_flight =
@@ -271,10 +268,4 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
   defp record_source_id(%{source_id: id}), do: id
   defp record_source_id(%{"source_id" => id}), do: id
   defp record_source_id(_), do: nil
-
-  defp default_storage_mod(:gcp), do: Storage.GCS
-  defp default_storage_mod(_), do: Storage.S3
-
-  defp default_queue_mod(:gcp), do: Queue.PubSub
-  defp default_queue_mod(_), do: Queue.SQS
 end

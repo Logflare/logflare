@@ -582,7 +582,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   defp requeue_retriable(_sid_bid, []), do: :ok
 
   defp requeue_retriable(sid_bid, retriable) do
-    Logger.info("Requeuing #{length(retriable)} BigQuery events for retry")
+    retriable_count = length(retriable)
+    Logger.info("Requeuing #{retriable_count} BigQuery events for retry")
 
     events =
       for pointer <- retriable,
@@ -592,7 +593,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         %{event | retries: pointer.retries + 1}
       end
 
-    emit_requeue_lookup_miss_telemetry(sid_bid, length(retriable) - length(events))
+    emit_requeue_lookup_miss_telemetry(sid_bid, retriable_count - length(events))
 
     if events != [], do: IngestEventQueue.add_to_table(sid_bid, events)
 
