@@ -460,8 +460,7 @@ defmodule Logflare.Telemetry do
           "Spool consumer backpressure state: 1 if any recently-seen source's destination ingest buffer is backed up, 0 otherwise"
       ),
       last_value("logflare.backends.spool.write_health.healthy",
-        description:
-          "Spool health (1=healthy, 0=unhealthy — spool routing disabled on this node, see Logflare.Backends.Spool.Health) — local WAL writes/rolls and commits to GCS/S3 or Pub-Sub/SQS all report here"
+        description: "Spool health (1=healthy, 0=unhealthy — spool routing disabled on this node)"
       ),
       last_value("logflare.backends.spool.write_health.failure_count",
         description: "Spool consecutive write/roll/commit failure count"
@@ -472,8 +471,7 @@ defmodule Logflare.Telemetry do
       ),
       counter("logflare.backends.spool.committer.read_error.count",
         tags: [:reason],
-        description:
-          "Spool commit body reads that failed permanently (unreadable file or corrupt frame), by reason — never retried, see Logflare.Backends.Spool.Committer"
+        description: "Spool commit body reads that failed permanently, by reason"
       ),
       counter("logflare.backends.spool.queue.publish.count",
         tags: [:result],
@@ -542,19 +540,16 @@ defmodule Logflare.Telemetry do
       distribution("logflare.backends.spool.consumer.prefetch.duration",
         tags: [:result, :started_while_buffered],
         unit: {:microsecond, :millisecond},
-        description:
-          "Time spent in the full background prefetch Task (queue receive + download + decode), by result and whether a file was already buffered when this prefetch started"
+        description: "Time spent in the background prefetch Task, by result"
       ),
       counter("logflare.backends.spool.consumer.prefetch.count",
         tags: [:result, :started_while_buffered],
-        description:
-          "Prefetch Task invocations, by result and whether a file was already buffered when it started"
+        description: "Prefetch Task invocations, by result"
       ),
       distribution("logflare.backends.spool.consumer.poll.duration",
         tags: [:idle],
         unit: {:microsecond, :millisecond},
-        description:
-          "Time spent in the producer's own :poll handling (excludes the background prefetch Task)"
+        description: "Time spent in the producer's own :poll handling"
       ),
       counter("logflare.backends.spool.consumer.poll.count",
         tags: [:idle],

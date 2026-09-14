@@ -1,16 +1,7 @@
 defmodule Logflare.Sources.Source.BigQuery.SchemaUpdateSampler do
   @moduledoc """
   Decides whether to sample a schema-update check for a source's event,
-  based on this node's own recent local throughput for that source —
-  deliberately independent of `Logflare.Sources.Counters`/`PubSubRates`
-  (billing, dashboard rate, and quota-enforcement all read those, and
-  double-counting there would corrupt all three). This has its own,
-  dedicated ETS table so it can never be confused with or accidentally
-  feed any of them.
-
-  Mirrors `Logflare.Sources.RateCounters`'s pattern of a `GenServer` that
-  only exists to own a `:public` ETS table, initialized once, then never
-  called via message-passing again.
+  based on this node's own recent local throughput for that source.
   """
 
   use GenServer
@@ -35,11 +26,8 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaUpdateSampler do
     :rand.uniform() <= probability(source_token)
   end
 
-  # probability = 1.0 / rate, with safety bounds — supports rates up to
-  # 100K+/sec: at 100K/sec -> 0.00001 (samples ~1/sec). A never-seen or
-  # currently-idle source has no rate yet, so it samples every event until
-  # enough local calls land to compute one — same intent as the original
-  # cluster-rate-based version, just fed by this node's real throughput.
+  # probability = 1.0 / rate, with safety bounds. A never-seen or idle
+  # source has no rate yet, so it samples every event until one is computed.
   defp probability(source_token) do
     case bump_and_get_rate(source_token) do
       rate when rate > 0 -> min(1.0, max(0.00001, 1.0 / rate))
@@ -48,13 +36,8 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaUpdateSampler do
   end
 
   # A rolling per-source rate: every call bumps a count; once @window_ms
-  # elapses, the completed window's rate becomes the value returned (and
-  # used) until the next window completes. Deliberately race-tolerant, not
-  # race-free — concurrent calls can occasionally lose an increment or
-  # reset a window slightly early, which only ever shifts the sampled rate
-  # slightly for one window. It can never regress to always-sample, since
-  # a cold source still resolves to `rate = 0` -> `probability = 1.0` for
-  # its first window only, then converges down as real calls accumulate.
+  # elapses, the completed window's rate becomes the value returned until
+  # the next window completes.
   defp bump_and_get_rate(source_token) do
     now = System.monotonic_time(:millisecond)
 

@@ -1,20 +1,9 @@
 defmodule Logflare.Backends.Spool.Buffer.Mem do
   @moduledoc """
-  In-memory batch buffer for `Logflare.Backends.Spool.Partition` — appends
-  accumulate as plain segments in memory, never written to local disk at
-  all. This trades away local durability entirely: a node crash loses
-  every not-yet-committed entry, which the WAL buffer exists specifically
-  to avoid — an explicit choice (see `Logflare.Backends.spool_buffer/0`),
-  not the default. Never touches local disk, so `on_commit_result/3` here
-  is a no-op — there's no local write/roll failure of its own to report to
-  `Logflare.Backends.Spool.Health`, and nothing to recover after a crash
-  (`recover/1` is always `[]`, there's nothing durable here to find). A
-  commit failure still reports to `Health`, same as the WAL buffer — that
-  reporting happens uniformly in `Partition.settle_commit/3`, not here.
-
-  Rolls once the accumulated raw byte count crosses a threshold
-  (`mem_max_batch_bytes`, config), or the recurring flush timer fires,
-  whichever comes first.
+  In-memory batch buffer for `Partition` — appends accumulate as plain
+  segments in memory, never written to local disk. Rolls once the
+  accumulated byte count crosses `mem_max_batch_bytes` (config), or the
+  recurring flush timer fires, whichever comes first.
   """
 
   @behaviour Logflare.Backends.Spool.Buffer
@@ -50,13 +39,8 @@ defmodule Logflare.Backends.Spool.Buffer.Mem do
 
   def roll(state, force) do
     if force or over_threshold?(state) do
-      # pending accumulates newest-first (append/4 prepends, O(1) rather than
-      # appending to the list's tail on every call) — reversed in the thunk,
-      # once per roll, so the concatenated body preserves the actual append
-      # order. The concat itself is deferred into the thunk (run in the
-      # commit Task, off this GenServer) rather than done eagerly here,
-      # matching Buffer.WAL's roll/2 — a multi-MB concat has no business
-      # blocking Partition's own process.
+      # pending accumulates newest-first (O(1) prepend); reversed and
+      # concatenated inside the thunk, deferred off this process.
       pending = state.pending
       total_count = state.pending_count
       new_state = %{state | pending: [], pending_bytes: 0, pending_count: 0}

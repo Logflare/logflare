@@ -34,14 +34,8 @@ defmodule LogflareWeb.HealthCheckController do
         repo_uptime > 0,
         Enum.all?(Map.values(caches), &(&1 == :ok)),
         memory_utilization < max_memory_ratio
-        # Temporarily not gating the health check on this — see
-        # Logflare.Backends.Spool.Health. An unhealthy spool already
-        # disables spool routing on its own (Backends.spool_producer_mode?/0),
-        # so this only controlled whether the whole node got pulled out of
-        # rotation on top of that; left out until Health's signal has
-        # been observed in production for a while (see its telemetry,
-        # spool.write_health.healthy, on Grafana).
-        # SpoolHealth.healthy?()
+        # Temporarily not gating the health check on SpoolHealth.healthy?()
+        # until it's been observed in production for a while.
       ]
       |> Enum.all?()
 

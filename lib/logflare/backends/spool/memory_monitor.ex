@@ -1,20 +1,8 @@
 defmodule Logflare.Backends.Spool.MemoryMonitor do
   @moduledoc """
-  Periodically samples system memory pressure and publishes cheap-to-read
-  stats for both the spool producer's batch splitter and the spool
-  consumer's queue producer. Also tracks the set of sources the spool
-  consumer has ever seen and reports whether any of their destination ingest
-  buffers are backed up, so the consumer can pause (`consumer_throttled?/0`)
-  instead of piling more events into an already-overflowing queue. Sources
-  stay watched permanently once registered — no TTL/expiry — until they no
-  longer resolve to a real source.
-
-  A GenServer refreshes a read-optimized ETS cache on a timer, so hot-path
-  readers avoid repeating the underlying `:erlang.memory/1` + `:memsup`
-  computation themselves. ETS avoids repeatedly replacing a non-immediate
-  `:persistent_term` value, which can trigger VM-wide literal-area scans.
-
-  Started once, shared by both sides — see `Logflare.Backends.Supervisor`.
+  Tracks system memory pressure and destination-backlog status for the
+  spool producer and consumer. A GenServer refreshes a read-optimized ETS
+  cache on a timer; hot-path readers just read the cache.
   """
 
   use GenServer
@@ -40,12 +28,7 @@ defmodule Logflare.Backends.Spool.MemoryMonitor do
           consumer_throttled?: boolean()
         }
 
-  @doc """
-  Returns whether the spool should be treated as under memory pressure
-  right now. Reads a cached value refreshed roughly every second; falls
-  back to a live computation if the cache hasn't been seeded yet (e.g. a
-  read racing this GenServer's own boot).
-  """
+  @doc "Whether the spool should be treated as under memory pressure right now."
   @spec throttled?() :: boolean()
   def throttled? do
     :ets.lookup_element(@table, @cache_key, @throttled_position)
@@ -53,11 +36,7 @@ defmodule Logflare.Backends.Spool.MemoryMonitor do
     ArgumentError -> compute_stats(MapSet.new()).throttled?
   end
 
-  @doc """
-  Returns whether any registered spool consumer source has a backed-up
-  destination ingest buffer right now. Same caching/fallback behavior as
-  `throttled?/0`.
-  """
+  @doc "Whether any registered spool consumer source has a backed-up destination ingest buffer right now."
   @spec consumer_throttled?() :: boolean()
   def consumer_throttled? do
     :ets.lookup_element(@table, @cache_key, @consumer_throttled_position)
@@ -65,11 +44,7 @@ defmodule Logflare.Backends.Spool.MemoryMonitor do
     ArgumentError -> compute_stats(MapSet.new()).consumer_throttled?
   end
 
-  @doc """
-  Returns the full stats map behind `throttled?/0` and `consumer_throttled?/0`
-  — the raw ratios and configured limits, for diagnostic logging. Same
-  caching/fallback behavior as `throttled?/0`.
-  """
+  @doc "The full stats map behind `throttled?/0` and `consumer_throttled?/0`."
   @spec stats() :: stats()
   def stats do
     :ets.lookup_element(@table, @cache_key, @stats_position)
@@ -78,26 +53,17 @@ defmodule Logflare.Backends.Spool.MemoryMonitor do
   end
 
   @doc """
-  Registers a source as currently active in the spool consumer, so the next
-  refresh cycle checks its destination buffer for backlog. Stays watched
-  permanently (no expiry) until it no longer resolves to a real source.
-
-  A plain write into a `:public` ETS table (`insert_new/2` is atomic) —
-  no GenServer call/cast involved, so this is safe to call unconditionally,
-  once per record, from many concurrent callers (e.g. `ConsumerPipeline`'s
-  Broadway processors) without funneling anything through a single
-  process's mailbox. `refresh/1` reads this same table directly on its own
-  schedule instead of this GenServer maintaining its own duplicate copy of
-  the set via cast messages.
+  Registers a source as currently active in the spool consumer, so the
+  next refresh cycle checks its destination buffer for backlog. Safe to
+  call unconditionally and concurrently — a plain atomic ETS write, no
+  GenServer call/cast involved.
   """
   @spec register_source(pos_integer()) :: :ok
   def register_source(source_id) do
     :ets.insert_new(@seen_sources_table, {source_id})
     :ok
   rescue
-    # Table doesn't exist yet — MemoryMonitor isn't started (e.g. a unit
-    # test calling a consumer directly). Same fallback intent as
-    # throttled?/0 / consumer_throttled?/0: never crash the caller over this.
+    # Table doesn't exist yet — MemoryMonitor isn't started.
     ArgumentError -> :ok
   end
 

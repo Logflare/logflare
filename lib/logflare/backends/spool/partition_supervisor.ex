@@ -1,21 +1,10 @@
 defmodule Logflare.Backends.Spool.PartitionSupervisor do
   @moduledoc """
-  Starts `partitions` (config) `Logflare.Backends.Spool.Partition` processes,
-  each registered under its own index in `PartitionRegistry` so callers can
-  route to one (`random_partition/0`) and the dev dashboard can enumerate all
-  of them (`partitions/0`). Each `Partition` spawns its own
-  `Committer`-backed commit tasks directly (see `Partition`'s moduledoc);
-  `Committer` is not itself a separately supervised process.
-
-  Every partition in this supervisor is buffered the same way — local-disk
-  WAL or in-memory (`:logflare, :spool, :buffer`, default `:mem` — see
-  `Logflare.Backends.spool_buffer/0`, the single source of truth this
-  mirrors, and `Logflare.Backends.Spool.Buffer`) is a node-wide choice, not
-  a per-caller one. `wal_dir` is only actually required when the buffer is
-  `:wal`.
-
-  Each partition's own index doubles as its GCS/S3 key prefix (see
-  `Committer`'s `file_key/1`).
+  Starts `partitions` (config) `Partition` processes, each registered under
+  its own index so callers can route to one (`random_partition/0`) and the
+  dev dashboard can enumerate all of them (`partitions/0`). Every partition
+  shares the same buffer type — local-disk WAL or in-memory (config
+  `:buffer`, default `:mem`) — a node-wide choice, not a per-caller one.
   """
 
   use Supervisor
@@ -25,10 +14,6 @@ defmodule Logflare.Backends.Spool.PartitionSupervisor do
   alias Logflare.Backends.Spool.ProviderConfig
 
   @registry __MODULE__.Registry
-  # 1s — the max amount of time raw data sits buffered before being
-  # committed, even if it never reaches the 32MB size threshold (see
-  # Partition's moduledoc). config/dev.exs already sets this explicitly;
-  # this is the fallback for any environment that doesn't.
   @default_batch_timeout 1_000
   @default_compression_algorithm :zstd
 
@@ -40,11 +25,6 @@ defmodule Logflare.Backends.Spool.PartitionSupervisor do
     Registry.select(@registry, [{{:_, :"$1", :_}, [], [:"$1"]}])
   end
 
-  # Picks from whichever partitions are actually registered right now, rather
-  # than re-deriving an expected count from config — config can change (e.g.
-  # in tests) without every already-running Partition's index membership
-  # changing to match, and this way random_partition/0 can never pick an
-  # index nothing is listening on.
   @spec random_partition() :: pid() | nil
   def random_partition do
     case partitions() do

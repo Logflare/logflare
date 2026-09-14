@@ -1,54 +1,22 @@
 defmodule Logflare.Backends.Spool.Partition do
   @moduledoc """
-  Accumulates pre-compressed, pre-framed segments pushed directly by
-  ingest callers via `append/5`, buffered however `buffer_mod` (a
-  `Logflare.Backends.Spool.Buffer` — local-disk WAL or an in-memory batch,
-  see `Logflare.Backends.spool_buffer/0`) decides — this module doesn't
-  know or care which, and never touches a file or an in-memory list
-  directly.
+  Accumulates pre-compressed, pre-framed segments pushed by ingest callers
+  via `append/5`, buffered however `buffer_mod` (`Logflare.Backends.Spool.Buffer`
+  — local-disk WAL or an in-memory batch) decides.
 
-  What this module *does* own, uniformly regardless of buffer:
+  Owns, uniformly regardless of buffer:
 
-    * **Reply timing.** `append/5` replies once the buffer says the segment
-      is durable — for the Mem buffer that's immediate (just landing in a
-      list); for the WAL buffer, `buffer_mod.append/4` can come back
-      `:pending` (written, not yet `fsync`'d — see `Buffer.WAL`'s group
-      commit), in which case `from` is stashed in `sync_ack_froms` until a
-      later append's `:ok` or the next roll (always fsyncs unconditionally
-      before sealing) releases every caller accumulated since the last
-      release. `wait_until_committed: true`
-      instead defers the reply until the batch this segment ends up part of
-      is actually committed (uploaded to GCS/S3, published to Pub-Sub/SQS) —
-      its `from` is stashed in `commit_ack_froms` and carried along with
-      whatever roll eventually seals it in, regardless of WAL-sync timing
-      (a stronger guarantee that already subsumes it).
-    * **When to attempt a roll.** After every append (an early roll if the
-      buffer's own threshold is crossed) and on a recurring
-      `batch_timeout` timer (`force: true` — rolls however little has
-      accumulated, so nothing waits on a threshold that may never come).
-    * **The commit `Task`'s lifecycle** — via
-      `Logflare.Backends.Spool.Committer`, bounded by `max_inflight_commits`
-      (config, default 10; only *starting* a commit is capacity-gated —
-      rolling itself always happens, deferring only backs up the queue of
-      not-yet-started commits, never lets a buffer grow unbounded past its
-      own threshold) — and crash recovery (`{:DOWN, ...}`, always treated
-      the same as the commit itself failing).
+    * **Reply timing** — `append/5` replies once the buffer says the
+      segment is durable, or (`wait_until_committed: true`) once the batch
+      it ends up part of is actually committed.
+    * **When to attempt a roll** — after every append, and on a recurring
+      `batch_timeout` timer that forces a roll of whatever's accumulated.
+    * **The commit task's lifecycle** — via `Committer`, bounded by
+      `max_inflight_commits` (config, default 10), and crash recovery.
 
-  A commit's `context` (whatever `buffer_mod.roll/2` returned, opaque to
-  this module too, plus whichever `commit_ack_froms` had accumulated since
-  the last roll) is tracked by a locally-generated `tag`, not the context
-  itself — two different in-flight commits could otherwise share an
-  identical context (e.g. the Mem buffer's context is always `nil`, and
-  two batches with no `wait_until_committed: true` callers at all would
-  have identical `commit_ack_froms`, too: `[]`).
-
-  `init/1` must never block on `buffer_mod.recover/1`'s findings actually
-  finishing — OTP registers this process's `:via` name before `init/1`
-  runs, so a supervisor-driven restart can already have callers routed to
-  it while recovery is still draining leftover work from a crash. So
-  `init/1` just sends itself one `{:recover, items}` message and returns;
-  `handle_info/2` starts as many as capacity allows and reschedules itself
-  for the rest after `recovery_retry_delay_ms` (config, default 100ms).
+  Recovery of leftover work from a crash runs asynchronously after
+  `init/1` returns, bounded by `recovery_retry_delay_ms` (config, default
+  100ms) between batches.
   """
 
   use GenServer
@@ -59,9 +27,6 @@ defmodule Logflare.Backends.Spool.Partition do
   alias Logflare.Backends.Spool.Health
 
   @default_max_inflight_commits 10
-  # Deliberately decoupled from batch_timeout — recovery retrying is "check
-  # again for a free slot", not "wait for a batch window", so it shouldn't
-  # inherit batch_timeout's (config, up to a few seconds) cadence.
   @default_recovery_retry_delay_ms 100
 
   @spec start_link(keyword()) :: GenServer.on_start()
@@ -70,19 +35,10 @@ defmodule Logflare.Backends.Spool.Partition do
   end
 
   @doc """
-  Appends `segment` and blocks the caller until either:
-
-    * it's durable in the buffer (the default, `wait_until_committed: false`)
-      — for the WAL buffer that's a local `fsync`; for the Mem buffer, just
-      landing in a list — or
-    * `wait_until_committed: true` — the batch this segment ends up part of
-      has actually been committed: uploaded to GCS/S3 and published to
-      Pub-Sub/SQS (see this module's doc). This can add real latency to the
-      caller — see `Logflare.Backends.Spool.Committer`'s retry budget.
-
-  `timeout` (default 15s) bounds the underlying `GenServer.call` itself, not
-  how long the commit is allowed to take — see `max_commit_attempts`/
-  `retry_delay_ms` for that.
+  Appends `segment` and blocks the caller until it's durable in the buffer
+  (the default), or — with `wait_until_committed: true` — until the batch
+  it ends up part of has actually been committed. `timeout` (default 15s)
+  bounds the `GenServer.call` itself, not how long the commit may take.
   """
   @spec append(
           GenServer.server(),
@@ -134,12 +90,8 @@ defmodule Logflare.Backends.Spool.Partition do
     {:ok, state, {:continue, {:init_buffer, opts}}}
   end
 
-  # Deferred out of init/1 so this process's :via name is registered (and
-  # `:sys`-inspectable) before the buffer's own init/1 runs — for the WAL
-  # buffer that's a few local syscalls (mkdir_p!, recover!, file.open), not
-  # network I/O, but OTP guarantees this runs before any other message
-  # (including a caller's GenServer.call right after start_link returns),
-  # so nothing that depends on buffer_state being set can ever race it.
+  # Deferred out of init/1 so this process's name is registered before the
+  # buffer's own init/1 runs.
   @impl GenServer
   def handle_continue({:init_buffer, opts}, state) do
     state =
@@ -201,12 +153,8 @@ defmodule Logflare.Backends.Spool.Partition do
     end
   end
 
-  # Bounded, self-rescheduling recovery loop, entirely decoupled from the
-  # live append/commit flow above — see schedule_recovery/1 (started once,
-  # from init/1) and this module's doc for why it can never block startup.
-  # Starts as many of `items` as the current capacity allows, then — if any
-  # are left over — reschedules itself with the remainder after
-  # recovery_retry_delay_ms.
+  # Starts as many of `items` as capacity allows, rescheduling itself with
+  # any remainder after recovery_retry_delay_ms.
   def handle_info({:recover, items}, state) do
     available = max(state.max_inflight_commits - state.task_in_flight, 0)
     {to_start_now, remaining} = Enum.split(items, available)
@@ -223,8 +171,7 @@ defmodule Logflare.Backends.Spool.Partition do
     {:noreply, state}
   end
 
-  # A single commit deferred by start_commit_or_defer/6 because no slot was
-  # free at the time — retried here, one at a time, the moment this fires.
+  # A commit deferred by start_commit_or_defer/6 for lack of a free slot.
   def handle_info({:retry_commit, body_thunk, context, froms, total_count, trigger}, state) do
     {:noreply, start_commit_or_defer(state, body_thunk, context, froms, total_count, trigger)}
   end
@@ -244,19 +191,14 @@ defmodule Logflare.Backends.Spool.Partition do
     state
   end
 
-  # Rolling itself always happens, regardless of whether a commit slot is
-  # currently free — see this module's doc for why. Only *starting* the
-  # upload is capacity-gated; see start_commit_or_defer/6.
+  # Rolling always happens regardless of commit-slot capacity; only
+  # starting the upload is capacity-gated (see start_commit_or_defer/6).
   defp maybe_roll(state, trigger, force \\ false) do
     case state.buffer_mod.roll(state.buffer_state, force) do
       {:no_roll, buffer_state} ->
         %{state | buffer_state: buffer_state}
 
       {:ok, body_thunk, context, total_count, buffer_state} ->
-        # A successful roll always fully fsyncs before sealing (see
-        # Buffer.WAL.roll/2) — safe to release every :pending caller
-        # accumulated so far regardless of where the sync-batching window
-        # happened to be.
         Enum.each(state.sync_ack_froms, &GenServer.reply(&1, :ok))
         froms = state.commit_ack_froms
 
@@ -270,9 +212,6 @@ defmodule Logflare.Backends.Spool.Partition do
         start_commit_or_defer(state, body_thunk, context, froms, total_count, trigger)
 
       {:error, _reason, buffer_state} ->
-        # The buffer already logged/reported this itself — pending work is
-        # left as-is inside buffer_state, retried on the next append/tick,
-        # no special-cased retry needed here.
         %{state | buffer_state: buffer_state}
     end
   end
@@ -291,13 +230,8 @@ defmodule Logflare.Backends.Spool.Partition do
     end
   end
 
-  # The one place every commit — a normal roll or a recovered item —
-  # actually starts. Unlinked (Committer.commit_async/6 uses Task.start/1)
-  # so a crashing commit never takes this partition down with it; monitored
-  # here instead, so a crash still surfaces as a message (handled above)
-  # rather than silently stranding task_in_flight. `tag` (not `context`) is
-  # what Committer hands back — see this module's doc for why context
-  # itself can't safely double as the map key.
+  # Unlinked (a crashing commit must not take this partition down); monitored
+  # instead, so a crash surfaces as a {:DOWN, ...} message.
   defp spawn_commit(state, body_thunk, context, froms, total_count, trigger) do
     tag = make_ref()
 
@@ -328,12 +262,6 @@ defmodule Logflare.Backends.Spool.Partition do
     maybe_roll(%{state | buffer_state: buffer_state}, :pipeline)
   end
 
-  # The one place a commit's outcome reports to Health, uniformly for every
-  # buffer — a WAL-sealed file and a Mem in-memory batch fail to commit in
-  # exactly the same way (GCS/S3 unreachable, Pub-Sub/SQS unreachable,
-  # etc.), regardless of which buffer sealed it, so this doesn't belong to
-  # either buffer_mod individually (see Buffer.WAL/.Mem's on_commit_result/3,
-  # which only handle their own buffer-specific bookkeeping now).
   defp report_commit_health(:ok), do: Health.report_recovery!()
   defp report_commit_health({:error, _reason}), do: Health.report_failure!()
 
@@ -343,13 +271,7 @@ defmodule Logflare.Backends.Spool.Partition do
     {entry, %{state | tasks: tasks, task_in_flight: state.task_in_flight - 1}}
   end
 
-  # Leftover, already-rolled work from a crash — see schedule_recovery/1
-  # (started once at boot, or on a supervisor-driven restart of just this
-  # partition — see this module's doc for why init/1 must never block
-  # here). Only kicks off the self-rescheduling handle_info({:recover, ...})
-  # loop above — actually spawning commits happens entirely there, bounded
-  # by capacity, so a crash that left behind arbitrarily many items can
-  # never spike memory with one concurrent upload per leftover item.
+  # Kicks off the self-rescheduling handle_info({:recover, ...}) loop above.
   defp schedule_recovery(state) do
     {items, buffer_state} = state.buffer_mod.recover(state.buffer_state)
     if items != [], do: send(self(), {:recover, items})

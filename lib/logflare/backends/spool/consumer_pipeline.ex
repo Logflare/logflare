@@ -15,11 +15,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
 
   @behaviour Broadway.Acknowledger
 
-  # Flat byte budget, not derived from batch_size/concurrency — max_in_flight
-  # is a byte budget (see QueueProducer), and a single segment can already be
-  # tens of KB, so a formula scaled off segment *count* (e.g. batch_size)
-  # undershoots by orders of magnitude. 2GB is a temporary, deliberately
-  # generous placeholder pending a properly-tuned default.
+  # Byte budget for QueueProducer's max_in_flight — a temporary, generous
+  # placeholder pending a properly-tuned default.
   @default_max_in_flight_bytes 2 * 1024 * 1024 * 1024
 
   @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
@@ -32,9 +29,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     concurrency =
       Keyword.get(spool_config, :consumer_concurrency, max(System.schedulers_online(), 4))
 
-    # Now counts segments, not events (each Broadway item is one segment —
-    # parsing happens in handle_message/3), so the default is far smaller
-    # than the old event-based 500 — needs tuning against real segment-size
+    # Counts segments, not events — needs tuning against real segment-size
     # distribution in production.
     batch_size = Keyword.get(spool_config, :consumer_batch_size, 20)
     queue_name = Keyword.fetch!(spool_config, :queue_name)
@@ -84,9 +79,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     }
   end
 
-  # Queue acking (SQS/PubSub) is managed by the producer — individual message
-  # ack is a no-op there. This still has to decrement the producer's
-  # max_in_flight counter, the other half of QueueProducer's emit-side cap.
+  # Queue acking is managed by the producer; this only decrements its
+  # max_in_flight counter.
   @impl Broadway.Acknowledger
   def ack(_ack_ref, successful, failed) do
     decrement_in_flight(successful ++ failed)
@@ -124,12 +118,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
   defp bytes_of(%{acknowledger: {_, _, %{} = ack_data}}), do: Map.get(ack_data, :bytes, 0)
   defp bytes_of(_), do: 0
 
-  # Parses one segment (deferred by QueueProducer so this runs with real
-  # processor concurrency instead of serialized in the producer — see
-  # QueueProducer's "Spool file format" moduledoc section). A segment that
-  # fails to parse (passes CRC but isn't valid content) fails just this one
-  # message; Broadway routes it straight to ack/3's `failed` list without
-  # ever reaching handle_batch/4.
+  # A segment that fails to parse fails just this one message.
   @impl Broadway
   def handle_message(
         _processor,
@@ -178,12 +167,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     end
   end
 
-  # Lets MemoryMonitor know this source is currently flowing through the
-  # spool consumer, so its refresh cycle checks its destination ingest buffer
-  # for backlog. register_source/1's cast handler is idempotent (MapSet.put),
-  # so no dedup bookkeeping is needed here — unlike when this lived in
-  # QueueProducer, one process's worth of state can't be shared across
-  # concurrent processors anyway.
   defp maybe_register_source(record) do
     case record_source_id(record) do
       nil -> :ok
@@ -231,10 +214,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     end
   end
 
-  # A message is one segment's worth of records — a segment is always a
-  # single original ingest request's chunk, so in practice every record in
-  # it shares one source_id, but this checks all of them rather than
-  # assuming that.
   defp fail_message(message, failed_source_ids) do
     if Enum.any?(message.data, &MapSet.member?(failed_source_ids, record_source_id(&1))) do
       Message.failed(message, :dispatch_error)

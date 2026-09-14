@@ -1,31 +1,10 @@
 defmodule Logflare.Backends.Spool.Health do
   @moduledoc """
-  Tracks whether this node's spool producer can currently get data where it
-  needs to go — both local WAL disk writes/rolls (see
-  `Logflare.Backends.Spool.Buffer.WAL`) and the commit itself (uploaded to
-  GCS/S3, published to Pub-Sub/SQS — see `Logflare.Backends.Spool.Partition`
-  `.settle_commit/3`, which reports every commit's outcome here uniformly,
-  regardless of which buffer sealed it). A node running the Mem buffer has
-  no local disk to fail, but its commits can still fail the exact same way
-  a WAL-buffered node's can — this is the one signal both share.
-
-  Unlike `Logflare.Readiness` (a one-way, terminal drain state for
-  shutdown), this is a self-healing signal, and it tolerates a run of
-  `max_spool_health_failures` (config, default 3) consecutive failures
-  before flipping unhealthy — most individual write/roll/commit failures
-  already get their own bounded retry inside `Partition`/`Committer`, so
-  this is one more layer of tolerance against reacting to something that
-  turns out to be transient. `report_recovery!/0` resets the counter and
-  clears the unhealthy state the moment anything succeeds.
-
-  Every state change emits `[:logflare, :backends, :spool, :write_health]`
-  telemetry (`healthy`: 1/0, `failure_count`) — see `Logflare.Telemetry` for
-  the Grafana-visible gauges built from it (kept under its original event
-  name/metric names for dashboard continuity, even though this module's
-  scope is now broader than just local writes). `Backends.spool_producer_mode?/0`
-  stops routing new events to the spool the moment this goes unhealthy,
-  independent of whatever `LogflareWeb.HealthCheckController` does with
-  `healthy?/0` itself.
+  Tracks whether this node's spool can currently write and commit data.
+  Self-healing: flips unhealthy after a run of consecutive failures
+  (config `max_spool_health_failures`, default 3), and any success resets
+  the counter and clears the unhealthy state. Emits
+  `[:logflare, :backends, :spool, :write_health]` telemetry on every change.
   """
 
   @key {__MODULE__, :state}

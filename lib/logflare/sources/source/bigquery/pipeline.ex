@@ -491,10 +491,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     # Send those events through the pipeline again, but run them through our schema process this time. Do all
     # these things a max of like 5 times and after that send them to the rejected pile.
 
-    # Random sample if local ingest rate is above a certain level — see
-    # SchemaUpdateSampler's moduledoc for why this is a dedicated, local-only
-    # signal rather than PubSubRates (which only reflects direct-HTTP-ingest
-    # volume, not events arriving via the spool consumer relay).
+    # Random sample if local ingest rate is above a certain level.
     if source && not source.lock_schema && SchemaUpdateSampler.sample?(source.token) do
       :ok =
         Backends.via_source(source, {Schema, Map.get(context, :backend_id)})

@@ -1,38 +1,11 @@
 defmodule Logflare.Backends.Spool.Committer do
   @moduledoc """
   Uploads one commit's body to GCS/S3 and notifies Pub-Sub/SQS, retrying on
-  failure, then reports the outcome back to `acknowledger` (always a
-  `Logflare.Backends.Spool.Partition`) as `{:commit_success, context}` or
-  `{:commit_failed, context, reason}` — `context` is opaque here, never
-  inspected, just handed back unchanged (in practice, a `Partition`-local
-  tag it uses to look up what it actually needs to react — see its
-  moduledoc).
-
-  Doesn't know what a "file" or a "batch" is, either: `body_thunk` is
-  whatever the caller needs to produce the bytes — read a sealed WAL file,
-  concatenate already-in-memory segments, anything (see
-  `Logflare.Backends.Spool.Buffer`) — called once per attempt inside this
-  module's own spawned `Task`, so however slow that is never blocks the
-  caller's own process.
-
-  A failed upload/notify attempt is retried up to `max_commit_attempts/0`
-  times (config, default 5), logging each failure, then gives up — retrying
-  forever isn't worth the liability of an unbounded loop. What "giving up"
-  costs depends entirely on the buffer: a WAL commit's sealed file is never
-  deleted except on success, so it's still on disk for the next restart's
-  recovery scan; the in-memory buffer has no such backup, so its blocked
-  callers (if any — see `Partition.append/5`'s `wait_until_committed` opt)
-  just get `{:error, reason}`.
-
-  A body that can't even be *produced* (the thunk itself fails — an
-  unreadable file, say), or whose frames fail CRC validation (see
-  `Logflare.Backends.Spool.Framing`), is a different failure class, though:
-  unlike an upload failing, retrying either can never succeed — so both log
-  loudly, emit telemetry, and give up immediately rather than spending any
-  retry attempts on it. Checking frames here, before ever uploading, catches
-  disk corruption (or, for a group-commit batch, a bug in how it was
-  assembled) at the source instead of only downstream when a consumer
-  eventually fails to decode the file.
+  failure up to `max_commit_attempts/0` times (config, default 5), then
+  reports the outcome back to `acknowledger` as `{:commit_success, context}`
+  or `{:commit_failed, context, reason}`. A body that can't be produced, or
+  whose frames fail CRC validation, is never retried — it logs, emits
+  telemetry, and gives up immediately instead.
   """
 
   require Logger
@@ -56,12 +29,8 @@ defmodule Logflare.Backends.Spool.Committer do
 
   @doc """
   Spawns an unlinked `Task` that calls `body_thunk` to produce the bytes to
-  commit, retrying up to `max_commit_attempts/0` times on an upload/notify
-  failure (re-invoking `body_thunk` each attempt), then reports the result
-  back to `acknowledger` as `{:commit_success, context}` or
-  `{:commit_failed, context, reason}`. Returns the task's pid so the caller
-  can monitor it — a crashing commit is the caller's concern, not this
-  module's.
+  commit and reports the result back to `acknowledger`. Returns the task's
+  pid so the caller can monitor it.
   """
   @spec commit_async(
           pid(),
@@ -146,15 +115,7 @@ defmodule Logflare.Backends.Spool.Committer do
     end
   end
 
-  @doc """
-  Compresses (if configured) and uploads `body`, then notifies the queue for
-  one commit's worth of work, emitting the shared
-  `handle_batch`/`storage.put`/`producer.batch` telemetry — every commit's
-  upload goes through here, whether `body` came from one sealed WAL file or
-  a concatenated group-commit batch, so this is the one place that
-  telemetry needs to be emitted at all. `body` arrives raw and is
-  compressed here, once, as a whole, right before upload.
-  """
+  @doc "Compresses (if configured) and uploads `body`, then notifies the queue."
   @spec upload_and_notify(binary(), config(), non_neg_integer(), atom()) ::
           {:ok, file_key :: String.t()} | {:error, {atom(), term()}}
   def upload_and_notify(body, config, total_count, trigger) do

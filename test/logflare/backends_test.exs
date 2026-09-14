@@ -2218,11 +2218,22 @@ defmodule Logflare.BackendsTest do
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :producer)
 
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :storage, :put])
+
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
 
-      assert pending_event_count() == 1
+      # Proves the segment actually reached the spool partition and got
+      # committed — with group commit, a solitary append below the sync
+      # threshold is only released once a roll (here, the batch_timeout
+      # tick) commits it, so pending_count is already back to 0 by the
+      # time ingest_logs/4 returns.
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :storage, :put], _,
+                      %{result: :ok}},
+                     1000
+
+      assert pending_event_count() == 0
     end
 
     test "blocks until the segment is durably written to the local WAL",

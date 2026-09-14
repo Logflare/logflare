@@ -596,30 +596,13 @@ defmodule Logflare.Backends do
 
   Events are conditionally dispatched to backends based on whether they are registered. If they register for ingestion dispatching, events will get sent to the registered backend.
 
-  For a spoolable event (gated by `allow_spooling`, the global spool mode, and
-  `source.enable_spooling` — see `spoolable?/3`), this blocks the caller until
-  the event's segment is durable in the buffer (`Partition.append/5`) — so
-  `{:ok, count}` means buffer-durable, not yet necessarily uploaded to the
-  spool bucket, which happens separately and asynchronously — unless
-  `spool_blocking_mode?/0` is true, in which case this instead blocks until
-  the event's batch is actually committed: uploaded to GCS/S3 and published
-  to Pub-Sub/SQS (`Partition.append/5` with `wait_until_committed: true`).
-  Either way, whether the buffer itself is a local WAL or an in-memory batch
-  is a separate,
-  orthogonal choice — see `spool_buffer/0`. If no spool partition is
-  registered (e.g. the spool supervision subtree crashed and is
-  mid-restart — never happens on a cold boot, since that subtree finishes
-  starting before the endpoint accepts any traffic), or the spool dispatch
-  itself fails (a local WAL write that exhausted its own retry, or — in
-  blocking mode — a commit that failed to reach GCS/S3), this falls back to
-  normal (non-spool) dispatch for that event instead of failing the
-  request — logging an error for a genuine dispatch failure, as opposed to
-  a warning for the merely-not-registered-yet case (see
-  `Logflare.Backends.Spool.Health`, which both kinds of failure report to,
-  and which independently stops routing new events to the spool at all —
-  see `spool_producer_mode?/0` — once it's been unhealthy for long enough).
-  Non-spooled events are always dispatched to their backend and this
-  returns immediately.
+  For a spoolable event (gated by `allow_spooling`, the global spool mode,
+  and `source.enable_spooling` — see `spoolable?/3`), this blocks the
+  caller until the event's segment is durable in the buffer, or — in
+  blocking mode (`spool_blocking_mode?/0`) — until its batch is actually
+  committed. If no spool partition is available, or spool dispatch fails,
+  this falls back to normal (non-spool) dispatch instead of failing the
+  request.
   """
   @type log_param :: map()
   @spec ingest_logs([log_param()], Source.t()) ::
@@ -669,12 +652,6 @@ defmodule Logflare.Backends do
   @default_spool_format :ndjson
   @default_spool_append_timeout 15_000
 
-  # Blocks the caller until the chunk this pushes is durable in the
-  # buffer, or — in blocking mode (see spool_blocking_mode?/0) — until it's
-  # actually committed. See Partition.append/5's wait_until_committed opt.
-  #
-  # Encoding happens right here, in the caller's own process — see
-  # Spool.Encoder's moduledoc.
   @spec dispatch_to_spool_producer([LogEvent.t()]) :: :ok | {:error, term()}
   defp dispatch_to_spool_producer(log_events) do
     spool_config = Application.get_env(:logflare, :spool, [])
@@ -808,17 +785,8 @@ defmodule Logflare.Backends do
     :ok
   end
 
-  # A local WAL write failure, or a commit that can't reach GCS/S3 or
-  # Pub-Sub/SQS, marks Logflare.Backends.Spool.Health unhealthy (see
-  # Buffer.WAL, and Partition.settle_commit/3 — the latter reports uniformly
-  # for both buffers, since a commit fails the same way regardless of which
-  # buffer sealed it) — once that happens, this node stops routing ingest
-  # through the spool path at all (falls through to the normal, non-spool
-  # dispatch below) rather than continuing to fail or degrade writes on a
-  # path that's already known to be broken. This is independent of
-  # LogflareWeb.HealthCheckController's own use of Health.healthy?/0 (which,
-  # as of this writing, doesn't gate the node's own health check — see that
-  # module).
+  # Stops routing ingest through the spool path once Health goes unhealthy,
+  # falling through to normal dispatch instead.
   @spec spool_producer_mode?() :: boolean()
   def spool_producer_mode? do
     spool_mode() in [:producer, :both] and SpoolHealth.healthy?()
@@ -829,14 +797,8 @@ defmodule Logflare.Backends do
 
   @doc """
   Which `Logflare.Backends.Spool.Buffer` every `Partition` on this node
-  uses — `:mem` (the default, in-memory, never written to local disk at
-  all — a node crash mid-batch loses every not-yet-committed entry) or
-  `:wal` (local-disk-durable, the WAL buffer existing specifically to avoid
-  that loss). Set via `SPOOL_BUFFER`/`:logflare, :spool, :buffer` — prod,
-  staging, and the dev cluster all set this to `:wal` explicitly (see
-  `cloudbuild/`). Orthogonal to `spool_blocking_mode?/0` — that's about how
-  long an ingest caller waits, not where the buffer lives; either buffer
-  can be used with either calling mode.
+  uses — `:mem` (in-memory, default) or `:wal` (local-disk-durable). Set
+  via `SPOOL_BUFFER`/`:logflare, :spool, :buffer`.
   """
   @spec spool_buffer() :: :wal | :mem
   def spool_buffer,
@@ -844,15 +806,8 @@ defmodule Logflare.Backends do
 
   @doc """
   Whether a spoolable event should block until its batch is actually
-  committed (`Partition.append/5` with `wait_until_committed: true` —
-  uploaded to GCS/S3, published to Pub-Sub/SQS) rather than just until it's
-  durable in whichever buffer is active (`wait_until_committed: false`, the
-  default). Set via `SPOOL_BLOCKING`/`:logflare, :spool, :blocking` — off by
-  default, including on prod/staging/the dev cluster (see `cloudbuild/`).
-  This can add real latency to the calling request — see
-  `Logflare.Backends.Spool.Committer`'s retry budget
-  (`max_commit_attempts`/`retry_delay_ms`), which every blocked caller in a
-  failed batch waits through before getting an error.
+  committed, rather than just until it's durable in the buffer. Set via
+  `SPOOL_BLOCKING`/`:logflare, :spool, :blocking` (default off).
   """
   @spec spool_blocking_mode?() :: boolean()
   def spool_blocking_mode?,

@@ -1,17 +1,8 @@
 defmodule Logflare.Backends.Spool.Framing do
   @moduledoc """
-  Length+CRC32-prefixed framing for spool segments.
-
-  A committed spool file is one or more independently-encoded (and
-  optionally independently-compressed) chunk payloads concatenated
-  together. Concatenation alone isn't safe to decode: `:zlib.gunzip/1`
-  happens to walk concatenated gzip members transparently, but
-  `:ezstd.decompress/1` does not (it silently returns only the first
-  member on `decompress_streaming/2`, or errors outright on `decompress/1`)
-  — and plain `:erlang.term_to_binary/1` output can't be concatenated and
-  read back as one term at all. Framing removes the dependency on any of
-  that: every payload (compressed or not, any format) is wrapped the same
-  way, and decoding never needs to know how many chunks went into a file.
+  Length+CRC32-prefixed framing for spool segments — lets independently
+  encoded chunk payloads be concatenated into one file and split back
+  apart safely.
 
   Frame layout: `<<byte_size(payload)::32-big, crc32(payload)::32-big, payload::binary>>`.
   """
@@ -74,10 +65,8 @@ defmodule Logflare.Backends.Spool.Framing do
 
   @doc """
   Decodes as many complete, CRC-valid frames as possible from the front of
-  the binary, unlike `decode_segments/1` this never errors on a truncated or
-  corrupt tail — it returns everything decodable plus the undecodable
-  remainder, which is what recovering a WAL file after a crash needs (a
-  torn last write is expected, not corruption).
+  the binary. Unlike `decode_segments/1`, never errors on a truncated tail
+  — returns everything decodable plus the undecodable remainder.
   """
   @spec decode_all(binary()) ::
           {[binary()], valid_byte_size :: non_neg_integer(), rest :: binary()}
@@ -114,12 +103,6 @@ defmodule Logflare.Backends.Spool.Framing do
         0
 
       {:error, reason} ->
-        # A genuinely failing/corrupted disk (:eio, :eacces, ...), not just a
-        # missing file — there's no better recovery than starting from
-        # offset 0: whatever was in the file can't be read regardless of how
-        # many times this is retried, so treating it as a crash victim (like
-        # :enoent) is the only actionable choice. Logged loudly since this is
-        # a real disk problem, not routine startup.
         Logger.warning(
           "spool_framing: failed to read #{path} during recovery, starting from offset 0: #{inspect(reason)}"
         )

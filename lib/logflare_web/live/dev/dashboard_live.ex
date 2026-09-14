@@ -64,10 +64,7 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
         {read_rate_atomic, read_total_atomic}
       )
 
-      # Events actually parsed by ConsumerPipeline.handle_message/3, per
-      # segment — compared against read_rate (events dispatched), this
-      # shows whether a gap is upstream of parsing (segments not arriving
-      # fast enough) or downstream of it (dispatch/batch handling).
+      # Events parsed by ConsumerPipeline.handle_message/3.
       :telemetry.attach(
         "dev-dashboard-parse-#{pid}",
         [:logflare, :backends, :spool, :consumer, :parse],
