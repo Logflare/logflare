@@ -13,6 +13,8 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
   alias Logflare.Mapper.OutputContext
 
   @envelope_keys ~w(id source_uuid source_name mapping_config_id ingested_at)
+  # enum8 fields: the :map output emits the integer, NDJSON the label
+  @label_only_keys ~w(metric_type)
   @fixtures %{
     log: %{
       "event_message" => "Something happened",
@@ -76,7 +78,9 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
 
         assert String.ends_with?(row, "\n")
         assert [_, ""] = String.split(row, "\n")
-        assert Map.drop(Jason.decode!(row), @envelope_keys) == expected(event_type, body, map)
+
+        assert Map.drop(Jason.decode!(row), @envelope_keys ++ @label_only_keys) ==
+                 expected(event_type, body, map)
       end
     end
 
@@ -92,7 +96,7 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
                "source_name" => ^source_name,
                "mapping_config_id" => ^config_id,
                "ingested_at" => 1_704_164_645_123_456
-             } = decoded = decode(event, ndjson.log, config_id)
+             } = decoded = map_and_decode(event, ndjson.log, config_id)
 
       refute Map.has_key?(decoded, "severity_number_alt")
     end
@@ -100,8 +104,10 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
     test "log with and without explicit severity_number", %{ndjson: ndjson} do
       body = Map.put(@fixtures.log, "metadata", %{"level" => "info"})
 
-      assert %{"severity_number" => 17} = decode(:log, body, ndjson)
-      assert %{"severity_number" => 9} = decode(:log, Map.delete(body, "severity_number"), ndjson)
+      assert %{"severity_number" => 17} = map_and_decode(:log, body, ndjson)
+
+      assert %{"severity_number" => 9} =
+               map_and_decode(:log, Map.delete(body, "severity_number"), ndjson)
     end
 
     test "trace with explicit, derived, and non-positive duration", %{ndjson: ndjson} do
@@ -111,14 +117,14 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
             {%{"end_time" => 1}, 0}
           ] do
         assert %{"duration" => ^expected} =
-                 decode(:trace, Map.merge(@fixtures.trace, overrides), ndjson)
+                 map_and_decode(:trace, Map.merge(@fixtures.trace, overrides), ndjson)
       end
     end
 
     test "metric_type labels", %{ndjson: ndjson} do
       for label <- ~w(gauge histogram summary) do
         body = Map.put(@fixtures.metric, "metric_type", label)
-        assert %{"metric_type" => ^label} = decode(:metric, body, ndjson)
+        assert %{"metric_type" => ^label} = map_and_decode(:metric, body, ndjson)
       end
     end
 
@@ -133,7 +139,7 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
     test "non-UTF-8 string field", %{ndjson: ndjson} do
       body = Map.put(@fixtures.log, "event_message", <<0xFF, 0xFE>>)
 
-      assert %{"event_message" => nil} = decode(:log, body, ndjson)
+      assert %{"event_message" => nil} = map_and_decode(:log, body, ndjson)
     end
   end
 
@@ -169,13 +175,13 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
           [
             Field.string("b", path: "$.b"),
             Field.uint64("a", path: "$.a"),
-            Field.enum8("kind", paths: ["$.kind"], values: %{"One" => 1})
+            Field.enum8("kind", paths: ["$.kind"], values: %{"one" => 1})
           ],
           output: OutputFormat.ndjson(:metric)
         )
 
       event = raw_event(:metric, %{"b" => "x", "a" => 1, "kind" => "one"})
-      decoded = decode(event, Mapper.compile!(config))
+      decoded = map_and_decode(event, Mapper.compile!(config), "cfg")
 
       assert Map.drop(decoded, @envelope_keys) == %{"b" => "x", "a" => 1, "kind" => "one"}
     end
@@ -187,11 +193,11 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
     Mapper.map(event.body, ndjson[event_type], output_context: context)
   end
 
-  defp decode(event_type, body, ndjson) when is_atom(event_type) do
+  defp map_and_decode(event_type, body, ndjson) when is_atom(event_type) do
     event_type |> encode(body, ndjson) |> Jason.decode!()
   end
 
-  defp decode(%LogEvent{} = event, compiled, config_id \\ "cfg") do
+  defp map_and_decode(%LogEvent{} = event, compiled, config_id) do
     context = OutputContext.ndjson(event, config_id)
     event.body |> Mapper.map(compiled, output_context: context) |> Jason.decode!()
   end
@@ -200,22 +206,13 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
     body
     |> Mapper.map(map[event_type])
     |> ClickHouseMappedEvents.apply_derived_fields(event_type)
-    |> Map.drop(["severity_number_alt"])
+    |> Map.drop(["severity_number_alt" | @label_only_keys])
     |> Jason.encode!()
     |> Jason.decode!()
-    |> label_enums(event_type)
   end
 
   defp raw_event(event_type, body, overrides \\ []) do
     %LogEvent{} = event = build(:log_event)
     struct!(%LogEvent{event | body: body, event_type: event_type}, overrides)
   end
-
-  defp label_enums(map, :metric) do
-    field = Enum.find(OtelDefaults.for_metric().fields, &(&1.name == "metric_type"))
-    labels = Map.new(field.enum_values, fn {label, value} -> {value, label} end)
-    Map.update!(map, "metric_type", &Map.fetch!(labels, &1))
-  end
-
-  defp label_enums(map, _event_type), do: map
 end

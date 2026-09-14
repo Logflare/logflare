@@ -4,15 +4,6 @@ defmodule Logflare.Mapper.ConfigStoreTest do
   alias Logflare.Mapper.ConfigStore
   alias Logflare.Mapper.OtelDefaults
 
-  setup_all do
-    case ConfigStore.start_link([]) do
-      {:ok, _pid} -> :ok
-      {:error, {:already_started, _pid}} -> :ok
-    end
-
-    :ok
-  end
-
   describe "get_compiled/2" do
     test "returns the eagerly compiled RowBinary mapping for each event type" do
       for event_type <- [:log, :metric, :trace] do
