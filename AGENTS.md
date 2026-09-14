@@ -80,7 +80,7 @@ gate to go green - fix the code.
 
 - `mix lint.all` runs `credo --strict` with the **ex_slop** plugin, which adds
   checks for LLM patterns (blanket rescues, narrator comments, anti-idiomatic
-  `Enum`). The `ex_slop_backlog` list in `config/.credo.exs` holds the 10 checks
+  `Enum`). The `ex_slop_backlog` list in `config/.credo.exs` holds the 9 checks
   that have pre-existing findings. They are off so the gate is green on existing
   code. Fixing a backlog check's findings and removing it from that list is a
   welcome change on its own. Never add a check to the list to go green.

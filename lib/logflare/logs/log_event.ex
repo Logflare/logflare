@@ -428,7 +428,7 @@ defmodule Logflare.LogEvent do
 
   @spec id(map()) :: String.t()
   defp id(params) do
-    params["id"] || params[:id] || Ecto.UUID.generate()
+    params["id"] || Ecto.UUID.generate()
   end
 
   @spec determine_timestamp(map(), TypeDetection.event_type()) :: {integer(), boolean()}
