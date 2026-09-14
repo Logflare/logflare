@@ -251,7 +251,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
         </.alert>
       </div>
 
-      <div :if={@result.kind == :sandbox and @result.status == :error} class="tw-mt-5">
+      <div :if={@result.kind == :sandboxed_endpoint and @result.status == :error} class="tw-mt-5">
         <.alert variant="danger">
           {@result.error}
         </.alert>
@@ -260,7 +260,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
       <div :if={@result.status == :ok} class="tw-mt-5">
         <div class="tw-mb-2 tw-flex tw-justify-between">
           <h5 class="tw-text-white">
-            {if @result.kind == :sandbox, do: "Sandbox Query Results", else: "Results"}
+            {if @result.kind == :sandboxed_endpoint, do: "Sandbox Query Results", else: "Results"}
           </h5>
           <QueryComponents.query_cost :if={is_integer(@result.total_bytes_processed)} bytes={@result.total_bytes_processed} />
         </div>
