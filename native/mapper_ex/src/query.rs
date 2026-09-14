@@ -4,8 +4,53 @@ use rustler::types::map::MapIterator;
 use rustler::types::ListIterator;
 use rustler::{Binary, Encoder, Env, Term};
 
+use crate::coerce;
 use crate::path::{CompiledPath, PathSegment};
 use crate::string_filters::{self, StringFilters};
+
+/// Per-field acceptance rules applied to each candidate value while resolving a
+/// field. A candidate that fails is skipped as if its path had not resolved, so
+/// coalesce continues to the next path and the field default applies at the end.
+#[derive(Clone, Copy)]
+pub struct ResolveOptions<'f> {
+    /// String fields skip empty binaries.
+    pub skip_empty_strings: bool,
+    /// String fields may additionally require the value to pass length/char-class filters.
+    pub string_filters: Option<&'f StringFilters>,
+    /// Unsigned integer fields with `coercion: :strict` only accept integer terms
+    /// (or binaries holding one); floats and booleans are treated as unresolved.
+    pub strict_uint: bool,
+}
+
+impl ResolveOptions<'static> {
+    pub const NONE: Self = ResolveOptions {
+        skip_empty_strings: false,
+        string_filters: None,
+        strict_uint: false,
+    };
+}
+
+impl ResolveOptions<'_> {
+    #[inline]
+    pub fn accepts(&self, value: Term<'_>) -> bool {
+        if self.skip_empty_strings {
+            if let Ok(binary) = value.decode::<Binary>() {
+                if binary.is_empty() {
+                    return false;
+                }
+                if let Some(filters) = self.string_filters {
+                    if !string_filters::passes_filters(binary.as_slice(), filters) {
+                        return false;
+                    }
+                }
+            }
+        }
+        if self.strict_uint && !coerce::is_integer_term(value) {
+            return false;
+        }
+        true
+    }
+}
 
 pub struct QueryCache<'a> {
     values: Vec<Option<Term<'a>>>,
@@ -268,36 +313,22 @@ fn evaluate_wildcard<'a>(
     results.encode(env)
 }
 
-/// Evaluates multiple paths against a document, returning the first
-/// non-nil result. For String field types, also skips empty strings.
-/// When filters are provided, resolved strings must pass all filters.
+/// Evaluates multiple paths against a document, returning the first non-nil
+/// result that passes `options` (see `ResolveOptions`).
 #[inline]
 pub fn evaluate_first<'a>(
     env: Env<'a>,
     document: Term<'a>,
     paths: &[CompiledPath],
-    string_options: (bool, Option<&StringFilters>),
+    options: ResolveOptions<'_>,
     nil: Term<'a>,
     flat_keys: bool,
     cache: &mut QueryCache<'a>,
 ) -> Term<'a> {
-    let (skip_empty_strings, filters) = string_options;
     for path in paths {
         let result = evaluate(env, document, path, nil, flat_keys, cache);
-        if result == nil {
+        if result == nil || !options.accepts(result) {
             continue;
-        }
-        if skip_empty_strings {
-            if let Ok(binary) = result.decode::<Binary>() {
-                if binary.is_empty() {
-                    continue;
-                }
-                if let Some(filters) = filters {
-                    if !string_filters::passes_filters(binary.as_slice(), filters) {
-                        continue;
-                    }
-                }
-            }
         }
         return result;
     }

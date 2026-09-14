@@ -175,17 +175,10 @@ function resetScrollTracker() {
     observer.observe(target)
 }
 
-export function scrollOverflowBottom() {
-  const $lastLog = $("#logs-list li:nth(0)")[0]
-  if ($lastLog) {
-    $lastLog.scrollIntoView()
-  }
-}
 window.Source = {
   main,
   initLogsUiFunctions,
   trackScroll,
   scrollBottom,
-  scrollOverflowBottom,
   switchDateFormat
 }

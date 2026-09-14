@@ -322,6 +322,68 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
     end
   end
 
+  describe "error_class/1" do
+    test "classifies a too-many-parts response body ahead of its HTTP status" do
+      assert Ingester.error_class({:http, 500, "Code: 252. DB::Exception: Too many parts"}) ==
+               :too_many_parts
+    end
+
+    test "classifies HTTP status ranges" do
+      assert Ingester.error_class({:http, 429, "slow down"}) == :http_too_many_requests
+      assert Ingester.error_class({:http, 503, "unavailable"}) == :http_server_error
+      assert Ingester.error_class({:http, 400, "bad request"}) == :http_client_error
+      assert Ingester.error_class({:http, 302, "moved"}) == :http_error
+    end
+
+    test "classifies wrapped Finch and Mint transport errors" do
+      assert Ingester.error_class(%Finch.Error{reason: :pool_timeout}) == :pool_timeout
+      assert Ingester.error_class(%Mint.TransportError{reason: :closed}) == :connection_closed
+
+      assert Ingester.error_class(%Mint.TransportError{
+               reason: {:tls_alert, {:bad_record_mac, "handshake failure"}}
+             }) == :tls_alert
+    end
+
+    test "classifies bare transport atoms" do
+      assert Ingester.error_class(:timeout) == :timeout
+      assert Ingester.error_class(:econnrefused) == :connection_refused
+      assert Ingester.error_class(:econnreset) == :connection_reset
+      assert Ingester.error_class(:nxdomain) == :dns_error
+    end
+
+    test "falls back to :unknown for unrecognized shapes" do
+      assert Ingester.error_class("something unstructured") == :unknown
+      assert Ingester.error_class({:weird, :shape}) == :unknown
+      assert Ingester.error_class(:some_unmapped_atom) == :unknown
+    end
+  end
+
+  describe "error_string/1" do
+    test "renders a structured HTTP error exactly as the call site logged it before" do
+      assert Ingester.error_string({:http, 400, "boom"}) == inspect("HTTP 400: boom")
+    end
+
+    test "escapes a multiline response body so the log entry stays on one line" do
+      rendered = Ingester.error_string({:http, 500, "line one\nline two"})
+
+      assert rendered == inspect("HTTP 500: line one\nline two")
+      refute rendered =~ "\n"
+    end
+
+    test "bounds an oversized response body" do
+      body = String.duplicate("x", 9_000)
+
+      assert String.length(Ingester.error_string({:http, 500, body})) < String.length(body)
+    end
+
+    test "inspects any other reason" do
+      assert Ingester.error_string(%Finch.Error{reason: :pool_timeout}) ==
+               inspect(%Finch.Error{reason: :pool_timeout})
+
+      assert Ingester.error_string(:closed) == ":closed"
+    end
+  end
+
   describe "insert/4" do
     setup do
       insert(:plan, name: "Free")
@@ -370,7 +432,65 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
         {:ok, %Finch.Response{status: 500, body: response_body}}
       end)
 
-      assert {:error, "HTTP 500: " <> ^response_body} =
+      assert {:error, {:http, 500, ^response_body}} =
+               Ingester.insert_compressed(backend, table_name, :log, :zlib.gzip(""))
+    end
+
+    test "normalizes and retries a Finch pool checkout timeout", %{
+      backend: backend,
+      table_name: table_name
+    } do
+      # The real failure shape for an HTTP/1 pool: Finch.HTTP1.Pool catches NimblePool's
+      # checkout exit and re-raises it, so this arrives as an exception rather than an
+      # {:error, _} tuple. Two calls asserts the retry still happens after normalizing.
+      Finch
+      |> expect(:request, 2, fn _request, _pool, _opts ->
+        raise """
+        Finch was unable to provide a connection within the timeout due to excess queuing         for connections. Consider adjusting the pool size, count, timeout or reducing the         rate of requests if it is possible that the downstream service is unable to keep up         with the current rate.
+        """
+      end)
+
+      assert {:error, :pool_timeout} =
+               Ingester.insert_compressed(backend, table_name, :log, :zlib.gzip(""))
+    end
+
+    test "does not swallow an unrelated exception from the adapter", %{
+      backend: backend,
+      table_name: table_name
+    } do
+      Finch
+      |> expect(:request, fn _request, _pool, _opts -> raise "unrelated boom" end)
+
+      assert_raise RuntimeError, "unrelated boom", fn ->
+        Ingester.insert_compressed(backend, table_name, :log, :zlib.gzip(""))
+      end
+    end
+
+    test "retries a TLS alert transport error", %{
+      backend: backend,
+      table_name: table_name
+    } do
+      tls_alert = {:tls_alert, {:bad_record_mac, "decryption failed"}}
+
+      Finch
+      |> expect(:request, 2, fn _request, _pool, _opts ->
+        {:error, tls_alert}
+      end)
+
+      assert {:error, ^tls_alert} =
+               Ingester.insert_compressed(backend, table_name, :log, :zlib.gzip(""))
+    end
+
+    test "does not retry an unrecognized transport error", %{
+      backend: backend,
+      table_name: table_name
+    } do
+      Finch
+      |> expect(:request, fn _request, _pool, _opts ->
+        {:error, :ehostunreach}
+      end)
+
+      assert {:error, :ehostunreach} =
                Ingester.insert_compressed(backend, table_name, :log, :zlib.gzip(""))
     end
 
