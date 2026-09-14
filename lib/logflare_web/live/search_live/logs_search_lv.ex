@@ -422,7 +422,7 @@ defmodule LogflareWeb.Source.SearchLV do
              intent,
              cursor
            ) do
-      {:noreply, socket}
+      {:noreply, update_event_pagination(socket, &EventPagination.mark_loading(&1, intent))}
     else
       _ -> {:noreply, socket}
     end
@@ -835,6 +835,8 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   defp apply_event_page_result(socket, event_page, intent) when intent in [:previous, :next] do
+    socket = update_event_pagination(socket, &EventPagination.clear_loading/1)
+
     if event_page.rows != [] do
       extend_timestamp_range(socket, event_page)
     else
@@ -1027,6 +1029,7 @@ defmodule LogflareWeb.Source.SearchLV do
         socket
       )
       when intent in [:previous, :next] do
+    socket = update_event_pagination(socket, &EventPagination.clear_loading/1)
     {:noreply, put_flash_query_error(socket, search_op.error)}
   end
 
