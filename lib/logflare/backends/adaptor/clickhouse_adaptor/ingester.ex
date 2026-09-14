@@ -6,6 +6,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   import Logflare.Utils.Guards
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.EndpointUtils
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.FinchPoolTimeoutNormalizer
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder
   alias Logflare.Backends.Backend
@@ -20,6 +21,31 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @pool_timeout 8_000
   @receive_timeout 15_000
   @too_many_parts_marker "Code: 252."
+  @retriable_error_classes [
+    :pool_timeout,
+    :timeout,
+    :connection_refused,
+    :connection_reset,
+    :connection_closed,
+    :tls_alert
+  ]
+
+  @type http_error :: {:http, status :: pos_integer(), body :: binary()}
+
+  @type error_class ::
+          :too_many_parts
+          | :http_too_many_requests
+          | :http_client_error
+          | :http_server_error
+          | :http_error
+          | :pool_timeout
+          | :timeout
+          | :connection_refused
+          | :connection_reset
+          | :connection_closed
+          | :dns_error
+          | :tls_alert
+          | :unknown
 
   @doc """
   Inserts a list of `LogEvent` structs into ClickHouse.
@@ -35,7 +61,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
           TypeDetection.event_type(),
           opts :: keyword()
         ) ::
-          :ok | {:error, String.t()}
+          :ok | {:error, http_error() | term()}
   def insert(backend_or_conn_opts, table, log_events, event_type, opts \\ [])
 
   def insert(_backend_or_conn_opts, _table, [], _event_type, _opts), do: :ok
@@ -61,7 +87,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   end
 
   @spec do_insert(Keyword.t(), String.t(), TypeDetection.event_type(), iodata(), keyword()) ::
-          :ok | {:error, String.t()}
+          :ok | {:error, http_error() | term()}
   defp do_insert(connection_opts, table, event_type, request_body, opts) do
     async? = Keyword.get(opts, :async, false)
     settings = Keyword.delete(opts, :async)
@@ -73,7 +99,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
         :ok
 
       {:ok, %Tesla.Env{status: status, body: response_body}} ->
-        {:error, "HTTP #{status}: #{response_body}"}
+        {:error, {:http, status, response_body}}
 
       {:error, reason} ->
         {:error, reason}
@@ -82,10 +108,52 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
 
   @doc false
   @spec too_many_parts?(term()) :: boolean()
+  def too_many_parts?({:http, _status, body}), do: too_many_parts?(body)
+
   def too_many_parts?(reason) when is_binary(reason),
     do: String.contains?(reason, @too_many_parts_marker)
 
   def too_many_parts?(_reason), do: false
+
+  @doc """
+  Classifies an insert failure reason into a low-cardinality class suitable for metric tags.
+  """
+  @spec error_class(term()) :: error_class()
+  def error_class({:http, status, body} = reason) when is_pos_integer(status),
+    do: http_error_class(too_many_parts?(reason), status, body)
+
+  # %Finch.Error{} only ever comes from an HTTP/2 pool. Both ClickHouse ingest pools are
+  # HTTP/1, where a pool checkout timeout arrives as :pool_timeout via FinchPoolTimeoutNormalizer.
+  def error_class(%Finch.Error{reason: reason}), do: transport_error_class(reason)
+  def error_class(%Mint.TransportError{reason: reason}), do: transport_error_class(reason)
+  def error_class(reason), do: transport_error_class(reason)
+
+  @spec http_error_class(boolean(), pos_integer(), term()) :: error_class()
+  defp http_error_class(true, _status, _body), do: :too_many_parts
+  defp http_error_class(false, 429, _body), do: :http_too_many_requests
+  defp http_error_class(false, status, _body) when status >= 500, do: :http_server_error
+  defp http_error_class(false, status, _body) when status >= 400, do: :http_client_error
+  defp http_error_class(false, _status, _body), do: :http_error
+
+  @doc """
+  Renders an insert failure reason for the `error_string` log metadata. The `inspect/1`
+  keeps a multiline or oversized response body from breaking the log entry.
+  """
+  @spec error_string(term()) :: String.t()
+  def error_string({:http, status, body}) when is_pos_integer(status),
+    do: inspect("HTTP #{status}: #{body}")
+
+  def error_string(reason), do: inspect(reason)
+
+  @spec transport_error_class(term()) :: error_class()
+  defp transport_error_class(:pool_timeout), do: :pool_timeout
+  defp transport_error_class(:timeout), do: :timeout
+  defp transport_error_class(:econnrefused), do: :connection_refused
+  defp transport_error_class(:econnreset), do: :connection_reset
+  defp transport_error_class(:closed), do: :connection_closed
+  defp transport_error_class(:nxdomain), do: :dns_error
+  defp transport_error_class({:tls_alert, _alert}), do: :tls_alert
+  defp transport_error_class(_reason), do: :unknown
 
   @spec build_client(Keyword.t(), boolean()) :: Tesla.Client.t()
   defp build_client(connection_opts, async?) do
@@ -101,7 +169,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
        delay: @initial_delay,
        max_retries: @max_retries,
        max_delay: @max_delay,
-       should_retry: &retriable?/1}
+       should_retry: &retriable?/1},
+      FinchPoolTimeoutNormalizer
     ]
 
     adapter =
@@ -124,11 +193,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   defp retriable?({:ok, %Tesla.Env{status: 429}}), do: true
   defp retriable?({:ok, _env}), do: false
 
-  defp retriable?({:error, reason})
-       when reason in [:timeout, :econnrefused, :econnreset, :closed],
-       do: true
-
-  defp retriable?({:error, _reason}), do: false
+  defp retriable?({:error, reason}), do: error_class(reason) in @retriable_error_classes
 
   @doc """
   Inserts a pre-gzipped RowBinary payload directly into ClickHouse.
@@ -142,7 +207,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
           TypeDetection.event_type(),
           compressed :: binary(),
           opts :: keyword()
-        ) :: :ok | {:error, String.t()}
+        ) :: :ok | {:error, http_error() | term()}
   def insert_compressed(backend_or_conn_opts, table, event_type, compressed, opts \\ [])
 
   def insert_compressed(%Backend{} = backend, table, event_type, compressed, opts)

@@ -354,7 +354,65 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
     end
   end
 
+  describe "connection listeners" do
+    test "tags the legacy pool with the backend id and a nil label", %{backend: backend} do
+      opts = capture_ch_opts(backend, nil)
+
+      assert {[listener], {backend_id, nil}} = Keyword.fetch!(opts, :connection_listeners)
+      assert listener == ConnectionManager.telemetry_listener_name()
+      assert backend_id == backend.id
+    end
+
+    test "tags a labeled pool with its read cluster", %{backend: backend} do
+      opts = capture_ch_opts(backend, "api_free")
+
+      assert {[_listener], {_backend_id, "api_free"}} =
+               Keyword.fetch!(opts, :connection_listeners)
+    end
+
+    test "a started pool emits tagged connect telemetry", %{backend: backend} do
+      TestUtils.attach_forwarder([:db_connection, :connected])
+
+      {:ok, _manager_pid} = ConnectionManager.start_link(backend)
+      assert :ok == ConnectionManager.ensure_pool_started(backend)
+
+      assert_receive {:telemetry_event, [:db_connection, :connected], %{count: 1},
+                      %{tag: {backend_id, nil}}},
+                     @timeout_interval
+
+      assert backend_id == backend.id
+    end
+
+    test "a recycled pool emits tagged disconnect telemetry", %{backend: backend} do
+      config = Application.get_env(:logflare, ConnectionManager)
+      on_exit(fn -> Application.put_env(:logflare, ConnectionManager, config) end)
+      Application.put_env(:logflare, ConnectionManager, recycle_spread: 1)
+
+      {:ok, _manager_pid} = ConnectionManager.start_link(backend)
+      assert :ok == ConnectionManager.ensure_pool_started(backend)
+      assert {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+
+      TestUtils.attach_forwarder([:db_connection, :disconnected])
+
+      assert :ok == ConnectionManager.recycle_pool(backend)
+
+      assert {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 2 as test")
+
+      assert_receive {:telemetry_event, [:db_connection, :disconnected], %{count: 1},
+                      %{tag: {backend_id, nil}}},
+                     @timeout_interval
+
+      assert backend_id == backend.id
+    end
+  end
+
   defp start_pool_credentials(backend) do
+    opts = capture_ch_opts(backend, nil)
+
+    {Keyword.fetch!(opts, :username), Keyword.fetch!(opts, :password)}
+  end
+
+  defp capture_ch_opts(backend, label) do
     test_pid = self()
 
     stub(Ch, :start_link, fn opts ->
@@ -362,11 +420,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
       Agent.start_link(fn -> :ok end)
     end)
 
-    {:ok, _manager_pid} = ConnectionManager.start_link(backend)
-    assert :ok == ConnectionManager.ensure_pool_started(backend)
+    {:ok, _manager_pid} = ConnectionManager.start_link(backend, label)
+    assert :ok == ConnectionManager.ensure_pool_started(backend, label)
 
     assert_receive {:ch_opts, opts}
 
-    {Keyword.fetch!(opts, :username), Keyword.fetch!(opts, :password)}
+    opts
   end
 end

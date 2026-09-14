@@ -37,6 +37,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   @ch_idle_interval :timer.seconds(3)
   @default_read_pool_size 50
   @default_labeled_read_pool_size 32
+  @telemetry_listener __MODULE__.TelemetryListener
 
   typedstruct do
     field :backend_id, pos_integer(), enforce: true
@@ -68,6 +69,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
       start: {__MODULE__, :start_link, [backend, label]}
     }
   end
+
+  @doc """
+  Registered name of the `DBConnection.TelemetryListener` that read pools report
+  connect and disconnect events to.
+
+  The listener is supervised by `QueryConnectionSup` so that it outlives the pools,
+  which are stopped and restarted on config refresh, inactivity, and recycle.
+  """
+  @spec telemetry_listener_name() :: atom()
+  def telemetry_listener_name, do: @telemetry_listener
 
   @doc """
   Generates a unique ClickHouse connection pool via tuple based on a `Backend` and
@@ -509,7 +520,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
         timeout: @ch_query_conn_timeout,
         queue_target: @ch_queue_target,
         idle_interval: @ch_idle_interval,
-        idle_limit: pool_size
+        idle_limit: pool_size,
+        connection_listeners: {[@telemetry_listener], {backend.id, label}}
       ]
 
       {:ok, ch_opts}

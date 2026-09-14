@@ -192,7 +192,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert is_integer(measurements.connection_time)
       assert measurements.connection_time > System.convert_time_unit(10, :microsecond, :native)
       assert metadata.backend_id == backend.id
-      assert metadata.read_cluster == nil
+      assert metadata.read_cluster == "(unlabeled)"
     end
 
     test "emits a plausible idle_time on a checked-in connection", %{backend: backend} do
@@ -228,7 +228,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                       %{count: 1}, metadata}
 
       assert metadata.backend_id == backend.id
-      assert metadata.read_cluster == nil
+      assert metadata.read_cluster == "(unlabeled)"
       assert metadata.error_kind == :connection_error
     end
 
@@ -460,6 +460,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       refute changeset.valid?
       assert Keyword.has_key?(changeset.errors, :read_only_urls)
+    end
+
+    test "rejects the read cluster label reserved for the unlabeled pool" do
+      changeset =
+        cast_and_validate_config(
+          read_only_urls: %{"(unlabeled)" => "http://logs-read.local:8123"}
+        )
+
+      refute changeset.valid?
+      assert {message, _opts} = changeset.errors[:read_only_urls]
+      assert message =~ "reserved"
+    end
+
+    test "accepts a read cluster labeled \"default\"" do
+      urls = %{"default" => "http://logs-read.local:8123"}
+
+      changeset = cast_and_validate_config(read_only_urls: urls)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :read_only_urls) == urls
     end
 
     test "strips basic auth credentials from every URL config field" do
@@ -937,6 +957,34 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       backend = %Backend{config: config}
 
       assert ClickHouseAdaptor.resolve_read_cluster_label(backend, "api") == "api"
+    end
+  end
+
+  describe "read_cluster_tag/1" do
+    test "returns a configured label unchanged" do
+      assert ClickHouseAdaptor.read_cluster_tag("api") == "api"
+    end
+
+    test "returns a stable tag for the legacy pool" do
+      assert ClickHouseAdaptor.read_cluster_tag(nil) == "(unlabeled)"
+      assert ClickHouseAdaptor.read_cluster_tag("") == "(unlabeled)"
+    end
+
+    test "keeps the legacy pool distinct from a cluster labeled \"default\"" do
+      config = %{
+        url: "http://ingest.local:8123",
+        read_only_url: "http://legacy-read.local:8123",
+        read_only_urls: %{"default" => "http://named-default-read.local:8123"}
+      }
+
+      legacy_label = ClickHouseAdaptor.resolve_read_cluster_label(config, nil)
+      named_label = ClickHouseAdaptor.resolve_read_cluster_label(config, "default")
+
+      assert legacy_label == nil
+      assert named_label == "default"
+
+      refute ClickHouseAdaptor.read_cluster_tag(legacy_label) ==
+               ClickHouseAdaptor.read_cluster_tag(named_label)
     end
   end
 
@@ -1654,6 +1702,118 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       assert log =~ "host=async-cluster.local"
       refute log =~ "localhost"
+    end
+  end
+
+  describe "insert outcome telemetry" do
+    setup do
+      insert(:plan, name: "Free")
+      {_source, backend} = setup_clickhouse_test()
+
+      TestUtils.attach_forwarder([:logflare, :clickhouse, :insert, :result])
+
+      [backend: backend]
+    end
+
+    test "emits an :ok result for a successful insert", %{backend: backend} do
+      Mimic.expect(Finch, :request, fn _request, _pool, _opts ->
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
+
+      assert :ok = ClickHouseAdaptor.insert_log_events_compressed(backend, :log, :zlib.gzip(""))
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :insert, :result], %{count: 1},
+                      metadata}
+
+      assert metadata.backend_id == backend.id
+      assert metadata.event_type == :log
+      assert metadata.async == false
+      assert metadata.result == :ok
+      assert metadata.error_class == :none
+    end
+
+    test "tags the error class for a failed insert", %{backend: backend} do
+      Mimic.expect(Finch, :request, fn _request, _pool, _opts ->
+        {:ok, %Finch.Response{status: 400, body: "boom"}}
+      end)
+
+      assert {:error, _reason} =
+               ClickHouseAdaptor.insert_log_events_compressed(backend, :log, :zlib.gzip(""))
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :insert, :result], %{count: 1},
+                      metadata}
+
+      assert metadata.result == :error
+      assert metadata.error_class == :http_client_error
+    end
+
+    test "counts a pool checkout timeout as :pool_timeout", %{backend: backend} do
+      # Raised, not returned — the real HTTP/1 pool behaviour. Before FinchPoolTimeoutNormalizer
+      # normalized it, this exception escaped handle_insert_result/4 entirely and the
+      # insert never appeared in this metric at all.
+      Mimic.stub(Finch, :request, fn _request, _pool, _opts ->
+        raise """
+        Finch was unable to provide a connection within the timeout due to excess queuing         for connections. Consider adjusting the pool size, count, timeout or reducing the         rate of requests if it is possible that the downstream service is unable to keep up         with the current rate.
+        """
+      end)
+
+      assert {:error, :pool_timeout} =
+               ClickHouseAdaptor.insert_log_events_compressed(backend, :log, :zlib.gzip(""))
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :insert, :result], %{count: 1},
+                      metadata}
+
+      assert metadata.result == :error
+      assert metadata.error_class == :pool_timeout
+    end
+
+    test "distinguishes too-many-parts rejections", %{backend: backend} do
+      Mimic.stub(Finch, :request, fn _request, _pool, _opts ->
+        {:ok, %Finch.Response{status: 500, body: "Code: 252. DB::Exception: Too many parts"}}
+      end)
+
+      assert {:error, _reason} =
+               ClickHouseAdaptor.insert_log_events_compressed(backend, :log, :zlib.gzip(""))
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :insert, :result], %{count: 1},
+                      metadata}
+
+      assert metadata.error_class == :too_many_parts
+    end
+
+    test "counts a retried insert once", %{backend: backend} do
+      Mimic.stub(Finch, :request, fn _request, _pool, _opts ->
+        {:ok, %Finch.Response{status: 503, body: "unavailable"}}
+      end)
+
+      assert {:error, _reason} =
+               ClickHouseAdaptor.insert_log_events_compressed(backend, :log, :zlib.gzip(""))
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :insert, :result], %{count: 1},
+                      metadata}
+
+      assert metadata.error_class == :http_server_error
+
+      refute_received {:telemetry_event, [:logflare, :clickhouse, :insert, :result], _, _}
+    end
+
+    test "flags async inserts", %{backend: backend} do
+      Mimic.expect(Finch, :request, fn _request, _pool, _opts ->
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
+
+      assert :ok =
+               ClickHouseAdaptor.insert_log_events_compressed(
+                 backend,
+                 :log,
+                 :zlib.gzip(""),
+                 async: true
+               )
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :insert, :result], %{count: 1},
+                      metadata}
+
+      assert metadata.async == true
     end
   end
 
