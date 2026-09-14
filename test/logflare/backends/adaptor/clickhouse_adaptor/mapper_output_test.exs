@@ -141,7 +141,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
     event =
       :log
       |> raw_event(%{"event_message" => "message", "timestamp" => 1_700_000_000_000_004})
-      |> Map.put(:ingested_at, nil)
 
     event_mapping =
       [Field.json("event", path: "$")]
@@ -280,7 +279,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
         "quantiles" => [0.25, 0.75],
         "timestamp" => 1_700_000_000_000_202
       })
-      |> struct(id: "00112233-4455-6677-8899-AABBCCDDEEFF", ingested_at: nil)
+      |> struct(
+        id: "00112233-4455-6677-8899-AABBCCDDEEFF",
+        ingested_at: DateTime.from_unix!(0, :microsecond)
+      )
 
     trace_event =
       raw_event(:trace, %{
@@ -480,7 +482,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
   end
 
   defp native_envelope(event) do
-    ingested_at = if event.ingested_at, do: DateTime.to_unix(event.ingested_at, :microsecond)
+    ingested_at = DateTime.to_unix(event.ingested_at, :microsecond)
     {event.id, Atom.to_string(event.source_uuid), event.source_name || "", ingested_at}
   end
 

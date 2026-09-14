@@ -9,48 +9,36 @@ defmodule Logflare.Mapper.OutputContext do
 
   alias Logflare.LogEvent
 
-  @opaque t() ::
-            {:ch_row_binary | :ndjson, binary(), {binary(), binary(), binary(), integer() | nil}}
+  @opaque t() :: {:ch_row_binary | :ndjson, binary(), envelope()}
+
+  @typep envelope() :: {binary(), binary(), binary(), integer()}
 
   @doc "Builds the per-row context required by ClickHouse RowBinary output."
   @spec ch_row_binary(LogEvent.t(), binary()) :: t()
-  def ch_row_binary(
-        %LogEvent{
-          id: id,
-          source_uuid: source_uuid,
-          source_name: source_name,
-          ingested_at: ingested_at
-        },
-        mapping_config_id
-      )
-      when is_binary(mapping_config_id) do
-    ingested_at = if ingested_at, do: DateTime.to_unix(ingested_at, :microsecond)
-    source_uuid = if is_atom(source_uuid), do: Atom.to_string(source_uuid), else: source_uuid
-
-    {:ch_row_binary, mapping_config_id, {id, source_uuid, source_name || "", ingested_at}}
+  def ch_row_binary(%LogEvent{} = event, mapping_config_id) when is_binary(mapping_config_id) do
+    {:ch_row_binary, mapping_config_id, envelope(event)}
   end
 
   @doc """
   Builds the per-row context required by NDJSON output.
 
   `mapping_config_id` is emitted as the UUID string. `ingested_at` is emitted
-  as Unix **microseconds** (or `null`), matching the microsecond precision of
-  the mapped timestamp fields in NDJSON output.
+  as Unix **microseconds**, matching the microsecond precision of the mapped
+  timestamp fields in NDJSON output.
   """
   @spec ndjson(LogEvent.t(), String.t()) :: t()
-  def ndjson(
-        %LogEvent{
-          id: id,
-          source_uuid: source_uuid,
-          source_name: source_name,
-          ingested_at: ingested_at
-        },
-        mapping_config_id
-      )
-      when is_binary(mapping_config_id) do
-    ingested_at = if ingested_at, do: DateTime.to_unix(ingested_at, :microsecond)
-    source_uuid = if is_atom(source_uuid), do: Atom.to_string(source_uuid), else: source_uuid
+  def ndjson(%LogEvent{} = event, mapping_config_id) when is_binary(mapping_config_id) do
+    {:ndjson, mapping_config_id, envelope(event)}
+  end
 
-    {:ndjson, mapping_config_id, {id, source_uuid, source_name || "", ingested_at}}
+  @spec envelope(LogEvent.t()) :: envelope()
+  defp envelope(%LogEvent{
+         id: id,
+         source_uuid: source_uuid,
+         source_name: source_name,
+         ingested_at: %DateTime{} = ingested_at
+       }) do
+    source_uuid = if is_atom(source_uuid), do: Atom.to_string(source_uuid), else: source_uuid
+    {id, source_uuid, source_name || "", DateTime.to_unix(ingested_at, :microsecond)}
   end
 end

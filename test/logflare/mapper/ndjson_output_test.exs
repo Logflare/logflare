@@ -92,14 +92,8 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
                "source_name" => ^source_name,
                "mapping_config_id" => ^config_id,
                "ingested_at" => 1_704_164_645_123_456
-             } = decode(event, ndjson.log, config_id)
-    end
+             } = decoded = decode(event, ndjson.log, config_id)
 
-    test "event without ingested_at", %{ndjson: ndjson} do
-      event = raw_event(:log, @fixtures.log, ingested_at: nil)
-      decoded = decode(event, ndjson.log)
-
-      assert %{"ingested_at" => nil} = decoded
       refute Map.has_key?(decoded, "severity_number_alt")
     end
 
@@ -180,7 +174,7 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
           output: OutputFormat.ndjson(:metric)
         )
 
-      event = raw_event(:metric, %{"b" => "x", "a" => 1, "kind" => "one"}, ingested_at: nil)
+      event = raw_event(:metric, %{"b" => "x", "a" => 1, "kind" => "one"})
       decoded = decode(event, Mapper.compile!(config))
 
       assert Map.drop(decoded, @envelope_keys) == %{"b" => "x", "a" => 1, "kind" => "one"}

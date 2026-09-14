@@ -242,7 +242,7 @@ pub struct RowEnvelope<'a> {
     pub id: Binary<'a>,
     pub source_uuid: Binary<'a>,
     pub source_name: Binary<'a>,
-    pub ingested_at: Option<i64>,
+    pub ingested_at: i64,
 }
 
 pub struct BinaryBuilder {
@@ -549,20 +549,15 @@ fn encode_envelope(
 fn encode_suffix(
     output: &mut BinaryBuilder,
     mapping_config_id: Binary,
-    ingested_at: Option<i64>,
+    ingested_at: i64,
     timestamp: Term,
 ) -> EncodeResult<()> {
     if mapping_config_id.len() != 16 {
         return Err("mapping config ID must be a 16-byte encoded UUID".to_string());
     }
     output.extend_from_slice(mapping_config_id.as_slice())?;
-    match ingested_at {
-        Some(value) => {
-            output.push(0)?;
-            output.extend_from_slice(&value.to_le_bytes())?;
-        }
-        None => output.push(1)?,
-    }
+    output.push(0)?;
+    output.extend_from_slice(&ingested_at.to_le_bytes())?;
     encode_int64(output, timestamp)
 }
 

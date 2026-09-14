@@ -49,7 +49,7 @@ pub struct RowEnvelope<'a> {
     pub id: Binary<'a>,
     pub source_uuid: Binary<'a>,
     pub source_name: Binary<'a>,
-    pub ingested_at: Option<i64>,
+    pub ingested_at: i64,
 }
 
 pub fn compile_layout(row_type: &str, fields: &[CompiledField]) -> EncodeResult<CompiledLayout> {

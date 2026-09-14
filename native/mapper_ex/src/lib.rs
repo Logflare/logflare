@@ -188,7 +188,7 @@ fn decode_output_options<'a>(
     Ok((flat_keys, format, mapping_config_id, envelope))
 }
 
-type Envelope<'a> = (Binary<'a>, Binary<'a>, Binary<'a>, Option<i64>);
+type Envelope<'a> = (Binary<'a>, Binary<'a>, Binary<'a>, i64);
 
 fn decode_envelope<'a>(envelope: Term<'a>) -> Result<Envelope<'a>, String> {
     let (id, source_uuid, source_name, ingested_at): (
@@ -200,8 +200,8 @@ fn decode_envelope<'a>(envelope: Term<'a>) -> Result<Envelope<'a>, String> {
         "row envelope must contain ID, source UUID, source name, and ingested_at".to_string()
     })?;
     let ingested_at = ingested_at
-        .decode::<Option<i64>>()
-        .map_err(|_| "ingested_at must be nil or an integer Unix timestamp".to_string())?;
+        .decode::<i64>()
+        .map_err(|_| "ingested_at must be an integer Unix timestamp".to_string())?;
     Ok((id, source_uuid, source_name, ingested_at))
 }
 
