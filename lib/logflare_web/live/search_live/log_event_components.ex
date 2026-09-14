@@ -46,7 +46,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
       |> assign(:earlier_result_dt, first_date_with_results(assigns.search_op_log_aggregates))
 
     ~H"""
-    <div :if={@search_op_log_events} id="source-logs-search-list" data-tailing={if(@tailing?, do: "true", else: "false")} phx-hook="SourceLogsSearchList" class="mt-4 tw-relative">
+    <div :if={@search_op_log_events} id="source-logs-search-list" phx-hook="SourceLogsSearchList" class="mt-4 tw-relative">
       <.load_more_button id="load-more-events-top" intent="previous" state={@pagination_buttons.previous.state} cursor={@pagination_buttons.previous.cursor} label={@pagination_buttons.previous[:label] || "Load more"} />
       <ul id="logs-list" phx-update="stream" class={["list-unstyled console-text-list", if(@loading, do: "blurred", else: nil)]}>
         <.empty_result_list search_op_log_events={@search_op_log_events} earlier_result_dt={@earlier_result_dt} loading={@loading} />

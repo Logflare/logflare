@@ -17,10 +17,15 @@ const mountSearchList = (tailing) => {
   const hook = Object.create(hooks.SourceLogsSearchList);
   const handlers = {};
 
-  hook.el = { dataset: { tailing } };
+  hook.el = {
+    dataset: { tailing },
+    querySelectorAll: () => [],
+  };
   hook.handleEvent = vi.fn((name, callback) => {
     handlers[name] = callback;
   });
+  hook.pushEvent = vi.fn();
+  hook.restoreScrollAnchor = vi.fn();
 
   hook.mounted();
 
@@ -62,13 +67,31 @@ describe("SourceLogsSearchList", () => {
     expect(() => handlers["scroll-to-event"]({ id: "missing" })).not.toThrow();
   });
 
-  it("scrolls to the bottom on mount only while tailing", () => {
-    mountSearchList("true");
+  it("keeps the pending scroll instead of restoring the anchor on a later update", () => {
+    const { hook, handlers } = mountSearchList("false");
+    const rafQueue = [];
+    vi.stubGlobal("requestAnimationFrame", (callback) => rafQueue.push(callback));
+    vi.stubGlobal("IntersectionObserver", class {
+      observe() {}
+    });
+    document.body.innerHTML = '<div id="observer-target"></div>';
+
+    handlers["scroll-to-bottom"]();
+
+    // a follow-up diff lands before the frame runs
+    hook.updated();
+
+    expect(hook.restoreScrollAnchor).not.toHaveBeenCalled();
+
+    rafQueue.forEach((callback) => callback());
+
     expect(scrollToPageBottom).toHaveBeenCalledTimes(1);
+    expect(hook.pendingScrollToBottom).toBe(false);
+  });
 
-    scrollToPageBottom.mockClear();
-
+  it("does not scroll on its own; the LiveView drives every scroll", () => {
     mountSearchList("false");
+
     expect(scrollToPageBottom).not.toHaveBeenCalled();
   });
 });

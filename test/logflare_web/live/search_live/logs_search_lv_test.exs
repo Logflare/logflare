@@ -1684,6 +1684,22 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert get_view_assigns(view).querystring =~ "t:2020-04-20T00:{01..02}:00"
     end
 
+    test "a fresh load with a querystring scrolls to the bottom once the results render", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} =
+        live_with_redirect(
+          conn,
+          Routes.live_path(conn, SearchLV, source, querystring: "error", tailing?: false)
+        )
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      assert_push_event(view, "scroll-to-bottom", %{}, 5_000)
+    end
+
     test "start_search scrolls to the bottom once the results render", %{
       conn: conn,
       source: source
@@ -1700,7 +1716,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
       render_change(view, "start_search", %{"querystring" => "error again"})
 
       assert_push_event(view, "scroll-to-bottom", %{}, 5_000)
-      refute get_view_assigns(view).scroll_to_bottom_on_result?
     end
 
     test "datetime_update scrolls to the bottom once the results render", %{
@@ -1716,12 +1731,12 @@ defmodule LogflareWeb.Source.SearchLVTest do
       view
       |> TestUtils.wait_for_render("#logs-list-container")
 
-      refute_push_event(view, "scroll-to-bottom", %{})
+      # the initial search scrolls to the bottom too; consume that push first
+      assert_push_event(view, "scroll-to-bottom", %{}, 5_000)
 
       render_change(view, "datetime_update", %{"querystring" => "t:last@2h"})
 
       assert_push_event(view, "scroll-to-bottom", %{}, 5_000)
-      refute get_view_assigns(view).scroll_to_bottom_on_result?
     end
   end
 
@@ -2240,11 +2255,16 @@ defmodule LogflareWeb.Source.SearchLVTest do
       initial_ids = events |> Enum.slice(2, 100) |> log_event_dom_ids()
       assert visible_log_event_ids(view) == initial_ids
 
+      # the initial search scrolls to the bottom; a page request must not
+      assert_push_event(view, "scroll-to-bottom", %{}, 5_000)
+
       before_range = current_timestamp_range(view)
 
       view
       |> element("#load-more-events-top")
       |> render_click()
+
+      refute_push_event(view, "scroll-to-bottom", %{})
 
       assert_timestamp_range_patch(view, source, querystring, :previous, before_range)
 
@@ -2256,7 +2276,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       [oldest_loaded_id | _] = expected_ids
       assert_push_event(view, "scroll-to-event", %{id: ^oldest_loaded_id})
-      refute_push_event(view, "scroll-to-bottom", %{})
     end
 
     test "the top button shows for a single-page range and loads older events from outside it",
