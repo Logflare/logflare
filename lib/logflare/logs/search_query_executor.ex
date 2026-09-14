@@ -271,15 +271,17 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     %{timestamp: event.body["timestamp"], id: event_id(event)}
   end
 
-  defp page_cursors(%{intent: :initial}, rows, sentinel_row) do
+  defp page_cursors(%{intent: :initial}, rows, _sentinel_row) do
     %{
-      cursor: log_event_cursor(sentinel_row),
+      cursor: rows |> List.last() |> log_event_cursor(),
       next_cursor: rows |> List.first() |> log_event_cursor()
     }
   end
 
-  defp page_cursors(%{intent: :previous}, _rows, sentinel_row) do
-    %{cursor: log_event_cursor(sentinel_row), next_cursor: nil}
+  defp page_cursors(%{intent: :previous}, _rows, nil), do: %{cursor: nil, next_cursor: nil}
+
+  defp page_cursors(%{intent: :previous}, rows, _sentinel_row) do
+    %{cursor: rows |> List.last() |> log_event_cursor(), next_cursor: nil}
   end
 
   defp page_cursors(%{intent: :next}, rows, _sentinel_row) do
