@@ -60,22 +60,25 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
         {"backend.#{k}", v}
       end
 
-    :telemetry.execute(
-      [:logflare, :backends, :ingest, :egress],
-      %{request_bytes: request_bytes},
-      Map.merge(backend_meta, %{
-        "source_id" => context.source_id,
-        "source_uuid" => context.source_token,
-        "backend_id" => context.backend_id,
-        "backend_uuid" => context.backend_token,
-        "user_id" => context.user_id,
-        "system_source" => context.system_source
-      })
-    )
-
     case Pool.send(pool, content) do
-      :ok -> messages
-      {:error, reason} -> fail_batch(messages, reason)
+      :ok ->
+        :telemetry.execute(
+          [:logflare, :backends, :ingest, :egress],
+          %{request_bytes: request_bytes},
+          Map.merge(backend_meta, %{
+            "source_id" => context.source_id,
+            "source_uuid" => context.source_token,
+            "backend_id" => context.backend_id,
+            "backend_uuid" => context.backend_token,
+            "user_id" => context.user_id,
+            "system_source" => context.system_source
+          })
+        )
+
+        messages
+
+      {:error, reason} ->
+        fail_batch(messages, reason)
     end
   end
 

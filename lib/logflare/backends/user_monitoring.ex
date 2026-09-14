@@ -29,8 +29,7 @@ defmodule Logflare.Backends.UserMonitoring do
       ),
       sum("logflare.backends.ingest.egress.request_bytes",
         keep: &keep_metric_function/1,
-        description:
-          "Amount of bytes egressed by backend for a source, currently only supports HTTP"
+        description: "Amount of bytes egressed by backend for a source"
       )
     ]
   end

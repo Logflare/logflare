@@ -45,7 +45,7 @@ Contains application logs related to your sources, backends, and endpoints.
 | `logflare.backends.ingest.ingested_bytes`        | Total bytes ingested per source. Tracks storage consumption.                 | `source_id`, `backend_id`, custom labels |
 | `logflare.backends.ingest.ingested_count`        | Count of events ingested per source. Tracks ingestion volume.                | `source_id`, `backend_id`, custom labels |
 | `logflare.endpoints.query.total_bytes_processed` | Bytes processed when executing endpoint queries. Tracks query costs.         | `endpoint_id`, custom labels             |
-| `logflare.backends.ingest.egress.request_bytes`  | Bytes sent to external HTTP endpoints and webhooks. Tracks egress bandwidth. | Backend-specific metadata                |
+| `logflare.backends.ingest.egress.request_bytes`  | Bytes sent to external backend destinations (HTTP endpoints, webhooks, syslog, etc). Tracks egress bandwidth. | Backend-specific metadata                |
 
 ## Custom Labels
 

@@ -207,22 +207,10 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
   end
 
   test "emits egress telemetry for every batch sent" do
-    start_supervised!(Logflare.SystemMetrics.AllLogsLogged)
-    insert(:plan)
-
-    user = insert(:user)
-    source = insert(:source, user: user)
-
-    backend =
-      insert(:backend,
-        type: :syslog,
-        sources: [source],
-        config: %{host: "localhost", port: 6514},
-        user: user,
+    {source, backend} =
+      start_syslog(%{host: "localhost", port: 6514},
         metadata: %{"environment" => "test", "region" => "us-west"}
       )
-
-    start_supervised!({Logflare.Backends.AdaptorSupervisor, {source, backend}})
 
     test_ref = make_ref()
     pid = self()
@@ -352,15 +340,20 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
     collect_telegraf_logs(log_events, deadline)
   end
 
-  defp start_syslog(backend_config) do
+  defp start_syslog(backend_config, backend_attrs \\ []) do
     start_supervised!(Logflare.SystemMetrics.AllLogsLogged)
     insert(:plan)
 
     user = insert(:user)
     source = insert(:source, user: user)
 
-    backend =
-      insert(:backend, type: :syslog, sources: [source], config: backend_config, user: user)
+    backend_attrs =
+      Keyword.merge(
+        [type: :syslog, sources: [source], config: backend_config, user: user],
+        backend_attrs
+      )
+
+    backend = insert(:backend, backend_attrs)
 
     start_supervised!({Logflare.Backends.AdaptorSupervisor, {source, backend}})
 
