@@ -852,9 +852,22 @@ defmodule LogflareWeb.Source.SearchLV do
   # name it.
   @spec page_window_seconds([term()]) :: pos_integer()
   defp page_window_seconds(lql_rules) do
+    %{min: min, max: max} = effective_or_implied_range(lql_rules)
+    SearchOperations.event_page_window_seconds(min, max)
+  end
+
+  # A query without a `t:` filter still covers a window: the one the chart is drawing, which
+  # the aggregate query derives from the chart period. That is what the user is looking at,
+  # so that is what a page request measures itself against.
+  defp effective_or_implied_range(lql_rules) do
     case Rules.effective_timestamp_range(lql_rules) do
-      %{min: min, max: max} -> SearchOperations.event_page_window_seconds(min, max)
-      _ -> 60
+      %{min: _, max: _} = range ->
+        range
+
+      _ ->
+        lql_rules
+        |> Rules.get_chart_period(:minute)
+        |> SearchOperations.implied_timestamp_range()
     end
   end
 
@@ -950,12 +963,14 @@ defmodule LogflareWeb.Source.SearchLV do
   # whether or not the window held any events. Extending only as far as the rows that came
   # back would stall the moment a page landed on a quiet stretch.
   defp advance_page(socket, event_page, intent) do
+    # The window, and the range it is written into, both describe what was on screen when
+    # the button was clicked, which is what its label promised.
+    cursors = socket.assigns.pagination_cursors
     window = page_window_seconds(socket.assigns.lql_rules)
-    previous_cursor = Map.get(socket.assigns.pagination_cursors, intent)
 
     socket
     |> put_event_page_result(event_page, intent)
-    |> keep_cursor_moving(event_page, intent, previous_cursor, window)
+    |> keep_cursor_moving(event_page, intent, Map.get(cursors, intent), window)
     |> extend_timestamp_range_by(intent, window)
   end
 
@@ -969,6 +984,20 @@ defmodule LogflareWeb.Source.SearchLV do
 
   defp keep_cursor_moving(socket, _event_page, _intent, _previous_cursor, _window), do: socket
 
+  # Paging from a query with no `t:` filter writes the chart's own window into the query, so
+  # the range in the URL always describes what is on screen.
+  defp make_timestamp_range_explicit(lql_rules) do
+    case Rules.effective_timestamp_range(lql_rules) do
+      %{min: _, max: _} ->
+        lql_rules
+
+      _ ->
+        %{min: min, max: max} = effective_or_implied_range(lql_rules)
+        rule = FilterRule.build(path: "timestamp", operator: :range, values: [min, max])
+        Rules.update_timestamp_rules(lql_rules, [rule])
+    end
+  end
+
   defp shift_cursor(nil, _intent, _window), do: nil
 
   defp shift_cursor(%{timestamp: timestamp} = cursor, :previous, window),
@@ -978,7 +1007,10 @@ defmodule LogflareWeb.Source.SearchLV do
     do: %{cursor | timestamp: timestamp + window * 1_000_000}
 
   defp extend_timestamp_range_by(socket, intent, window) do
-    lql_rules = adjust_timestamp_rules(socket.assigns.lql_rules, socket.assigns.search_timezone)
+    lql_rules =
+      socket.assigns.lql_rules
+      |> adjust_timestamp_rules(socket.assigns.search_timezone)
+      |> make_timestamp_range_explicit()
 
     case Rules.effective_timestamp_range(lql_rules) do
       %{min: min, max: max} ->
