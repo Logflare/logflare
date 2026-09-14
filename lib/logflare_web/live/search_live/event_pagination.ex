@@ -5,16 +5,17 @@ defmodule LogflareWeb.SearchLive.EventPagination do
 
   @type cursor :: EventPage.cursor()
   @type range_extension :: String.t()
-  @type button_state :: :hidden | :ready | :disabled
+  @type button_state :: :hidden | :ready | :disabled | :loading
   @type button :: %{state: button_state(), cursor: cursor() | nil}
   @type buttons :: %{previous: button(), next: button()}
 
   @enforce_keys []
-  defstruct next_exhausted?: false, range_extension: nil
+  defstruct next_exhausted?: false, range_extension: nil, loading_intent: nil
 
   @type t :: %__MODULE__{
           next_exhausted?: boolean(),
-          range_extension: range_extension() | nil
+          range_extension: range_extension() | nil,
+          loading_intent: EventPage.direction() | nil
         }
 
   @spec new() :: t()
@@ -45,6 +46,20 @@ defmodule LogflareWeb.SearchLive.EventPagination do
   @spec clear_range_extension(t()) :: t()
   def clear_range_extension(pagination), do: %{pagination | range_extension: nil}
 
+  @doc """
+  Marks a page request as in flight so its button keeps spinning.
+
+  `phx-click-loading` only covers the event round trip, which ends as soon as
+  `load_events` hands the query to the executor. The query itself finishes much
+  later, so the button state has to come from the server.
+  """
+  @spec mark_loading(t(), EventPage.direction()) :: t()
+  def mark_loading(pagination, intent) when intent in [:previous, :next],
+    do: %{pagination | loading_intent: intent}
+
+  @spec clear_loading(t()) :: t()
+  def clear_loading(pagination), do: %{pagination | loading_intent: nil}
+
   @spec buttons(t(), keyword()) :: buttons()
   def buttons(pagination, options) do
     tailing? = Keyword.fetch!(options, :tailing?)
@@ -54,15 +69,25 @@ defmodule LogflareWeb.SearchLive.EventPagination do
 
     %{
       previous: %{
-        state: previous_button(cursors.previous, tailing?, loading?),
+        state:
+          cursors.previous
+          |> previous_button(tailing?, loading?)
+          |> apply_loading(pagination.loading_intent == :previous),
         cursor: cursors.previous
       },
       next: %{
-        state: next_button(pagination, tailing?, loading?, next_available?),
+        state:
+          pagination
+          |> next_button(tailing?, loading?, next_available?)
+          |> apply_loading(pagination.loading_intent == :next),
         cursor: cursors.next
       }
     }
   end
+
+  defp apply_loading(:hidden, _loading?), do: :hidden
+  defp apply_loading(_state, true), do: :loading
+  defp apply_loading(state, _loading?), do: state
 
   defp previous_button(_cursor, true, _loading?), do: :hidden
   defp previous_button(nil, _tailing?, _loading?), do: :hidden
