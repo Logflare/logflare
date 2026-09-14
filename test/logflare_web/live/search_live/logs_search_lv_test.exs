@@ -2040,6 +2040,77 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
   end
 
+  describe "event pagination with bigquery backend" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      plan = insert(:plan)
+      insert(:source_schema, source: source)
+
+      [user: user, source: source, plan: plan]
+    end
+
+    setup [:setup_user_session]
+
+    test "the top button loads an older page", %{conn: conn, source: source} do
+      test_pid = self()
+      now = DateTime.utc_now()
+
+      row = fn label, seconds_ago ->
+        %{
+          "event_message" => label,
+          "timestamp" => TestUtils.gen_bq_timestamp(DateTime.add(now, -seconds_ago, :second)),
+          "id" => Ecto.UUID.generate()
+        }
+      end
+
+      newer = for i <- 1..101, do: row.("newer-#{i}", i)
+      older = for i <- 1..100, do: row.("older-#{i}", 300 + i)
+
+      Mimic.stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj, opts ->
+        query = opts[:body].query
+        send(test_pid, {:bq_query, query})
+
+        rows = if query =~ "TIMESTAMP_MICROS", do: older, else: newer
+
+        {:ok, TestUtils.gen_bq_response(rows)}
+      end)
+
+      range_start = DateTime.add(now, -200, :second) |> DateTime.to_unix()
+      range_end = DateTime.add(now, 10, :second) |> DateTime.to_unix()
+      querystring = "t:#{range_start}..#{range_end} c:count(*) c:group_by(t::second)"
+
+      {:ok, view, _html} =
+        live_with_redirect(
+          conn,
+          Routes.live_path(conn, SearchLV, source.id, querystring: querystring, tailing?: false)
+        )
+
+      %{executor_pid: executor_pid} = get_view_assigns(view)
+      allow_sandbox(executor_pid)
+
+      TestUtils.wait_for_render(view, "#logs-list > li[data-event-id]")
+
+      assert length(log_event_ids(view)) == 100
+      assert has_element?(view, "#load-more-events-top:not([disabled])")
+
+      drain_bq_queries()
+
+      view
+      |> element("#load-more-events-top")
+      |> render_click()
+
+      queries = collect_bq_queries()
+
+      assert Enum.any?(queries, &(&1 =~ "TIMESTAMP_MICROS")),
+             "the previous page query never ran, saw: #{inspect(queries)}"
+
+      TestUtils.retry_assert(fn ->
+        assert length(log_event_ids(view)) == 200
+      end)
+    end
+  end
+
   describe "event pagination with postgres backend" do
     TestUtils.setup_single_tenant(seed_user: true, backend_type: :postgres)
 
@@ -2998,6 +3069,22 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
   defp log_event_selector(event) do
     "#log-events-#{event.id}-#{event.body["timestamp"]}"
+  end
+
+  defp drain_bq_queries do
+    receive do
+      {:bq_query, _} -> drain_bq_queries()
+    after
+      0 -> :ok
+    end
+  end
+
+  defp collect_bq_queries(acc \\ []) do
+    receive do
+      {:bq_query, query} -> collect_bq_queries([query | acc])
+    after
+      2_000 -> Enum.reverse(acc)
+    end
   end
 
   defp log_event_dom_ids(events) do
