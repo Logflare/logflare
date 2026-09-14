@@ -278,8 +278,6 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     }
   end
 
-  defp page_cursors(%{intent: :previous}, _rows, nil), do: %{cursor: nil, next_cursor: nil}
-
   defp page_cursors(%{intent: :previous}, rows, _sentinel_row) do
     %{cursor: rows |> List.last() |> log_event_cursor(), next_cursor: nil}
   end
