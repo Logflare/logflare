@@ -24,10 +24,34 @@ defmodule Logflare.Mapper.MappingConfig do
   filters, it is skipped and the next coalesce path is tried. See
   `FieldConfig` for the full list of filter keys.
 
+  Unsigned integer fields accept a `:coercion` option. The default `:lenient` mode
+  converts floats, booleans, and numeric strings; `:strict` only accepts integer
+  terms (or strings holding one) and treats anything else as unresolved, so the
+  field's `:default` applies. See `FieldConfig` for details.
+
   Every field reads from the **original input document** — operations like
   `exclude_keys` and `elevate_keys` only transform that field's own output value.
   The only cross-field mechanism is `from_output:`, which reads a previously
   resolved field's value.
+
+  ## Pick and merge semantics
+
+  `json` and `flat_map` fields accept a `:pick` list that assembles a curated map from
+  coalesce paths, plus a `:pick_mode` that decides how that map relates to the raw value
+  at `:path`/`:paths`:
+
+    * `:replace` (default) — a non-empty pick map *is* the field value; the raw source map
+      is discarded. Pick and source are either/or.
+    * `:merge` — the pick map is unioned with the raw source map. On a key collision the
+      pick entry wins and the source value for that key is dropped.
+
+  In `:merge` mode the output is deliberately **not a lossless copy** of the source map.
+  Each output key holds exactly one canonical value, chosen by the pick's coalesce order,
+  even when the source map carries a different value under the same key. `:exclude_keys`
+  and `:elevate_keys` are applied *after* the merge, which is how alias keys are folded
+  into a canonical key: list the alias as a fallback path on the pick entry, then drop it
+  via `:exclude_keys` so only the normalized key survives. See
+  `FieldConfig.json/2` for option details.
 
   ## Examples
 
@@ -137,6 +161,8 @@ defmodule Logflare.Mapper.MappingConfig do
     |> maybe_add("exclude_keys", f.exclude_keys)
     |> maybe_add("elevate_keys", f.elevate_keys)
     |> maybe_add("value_type", f.value_type)
+    |> maybe_add("pick_mode", f.pick_mode)
+    |> maybe_add("coercion", f.coercion)
     |> maybe_add_filters(f.filters)
     |> maybe_add_filter_nil(f.filter_nil)
     |> maybe_add_pick(f.pick)
@@ -183,33 +209,7 @@ defmodule Logflare.Mapper.MappingConfig do
   defp maybe_add_filters(map, nil), do: map
   defp maybe_add_filters(map, filters) when is_empty_map(filters), do: map
 
-  defp maybe_add_filters(map, filters) do
-    nif_filters =
-      Enum.reduce(filters, %{}, fn
-        {:len_eq, v}, acc when is_integer(v) ->
-          Map.put(acc, "len_eq", v)
-
-        {:len_gt, v}, acc when is_integer(v) ->
-          Map.put(acc, "len_gt", v)
-
-        {:len_gte, v}, acc when is_integer(v) ->
-          Map.put(acc, "len_gte", v)
-
-        {:len_lt, v}, acc when is_integer(v) ->
-          Map.put(acc, "len_lt", v)
-
-        {:len_lte, v}, acc when is_integer(v) ->
-          Map.put(acc, "len_lte", v)
-
-        {:char_class, v}, acc when v in ~w(alpha numeric alphanumeric) ->
-          Map.put(acc, "char_class", v)
-
-        _, acc ->
-          acc
-      end)
-
-    if nif_filters == %{}, do: map, else: Map.put(map, "filters", nif_filters)
-  end
+  defp maybe_add_filters(map, filters), do: Map.put(map, "filters", filters)
 
   @spec maybe_add_filter_nil(map(), boolean()) :: map()
   defp maybe_add_filter_nil(map, false), do: map

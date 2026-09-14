@@ -13,11 +13,33 @@ steps:
           printf '%s\n' 'LOGFLARE_PUBSUB_POOL_SIZE=32'
           printf 'LOGFLARE_METADATA_CLUSTER=%s\n' "$$2"
           printf 'LOGFLARE_ALERTS_ENABLED=%s\n' "$$3"
+          # SPOOL_PUBSUB_TOPIC/SPOOL_QUEUE_NAME point at this cluster's own
+          # Pub/Sub topic + subscription (provisioned via
+          # o11y-team-tools/logflare-gcp/scripts/provision-prod-spool.sh), so
+          # draining a cluster during a blue/green traffic switchover only
+          # drains its own queue instead of one shared across every prod
+          # cluster. Producer/consumer aren't split apart yet (SPOOL_MODE
+          # still comes from the baked-in prod secrets, same for every
+          # cluster, unless overridden below) — this only isolates the
+          # queues.
+          printf 'SPOOL_PUBSUB_TOPIC=%s\n' "$$4"
+          printf 'SPOOL_QUEUE_NAME=%s\n' "$$5"
+          # Per-cluster SPOOL_MODE override — empty (the default) means
+          # inherit whatever's baked into the prod secrets (.prod.env's
+          # SPOOL_MODE, "both" today). Used to turn the spool off for
+          # clusters that don't serve ingest traffic (e.g. prod-a, see
+          # deploy/config/clusters.yaml in o11y-team-tools/logflare-gcp).
+          if [ -n "$$6" ]; then
+            printf 'SPOOL_MODE=%s\n' "$$6"
+          fi
         } > gce-container.env
       - --
       - ${_COOKIE}
       - ${_CLUSTER}
       - ${_LOGFLARE_ALERTS_ENABLED}
+      - ${_SPOOL_PUBSUB_TOPIC}
+      - ${_SPOOL_QUEUE_NAME}
+      - ${_SPOOL_MODE}
   # create instance template
   - name: gcr.io/cloud-builders/gcloud
     entrypoint: bash
@@ -50,6 +72,15 @@ substitutions:
   _TEMPLATE_NAME: logflare-prod-${_NORMALIZED_IMAGE_TAG}-${_CLUSTER}
   _CONTAINER_IMAGE: gcr.io/logflare-232118/logflare_app:${_IMAGE_TAG}
   _LOGFLARE_ALERTS_ENABLED: "false"
+  # This cluster's dedicated spool topic/subscription (see
+  # o11y-team-tools/logflare-gcp/scripts/provision-prod-spool.sh). Overriding
+  # _CLUSTER — as the Makefile does per prod-a..g / canary build — re-derives
+  # both automatically.
+  _SPOOL_PUBSUB_TOPIC: projects/logflare-232118/topics/logflare-spool-${_CLUSTER}
+  _SPOOL_QUEUE_NAME: projects/logflare-232118/subscriptions/logflare-spool-${_CLUSTER}-sub
+  # Empty by default (inherit SPOOL_MODE from the baked-in prod secrets).
+  # Set to producer/consumer/both/disable to override for this cluster.
+  _SPOOL_MODE: ""
 timeout: 1800s
 options:
   dynamicSubstitutions: true

@@ -391,6 +391,15 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
     end
   end
 
+  describe "sanitize_config_for_display/1" do
+    test "shows the dsn with its secret redacted" do
+      config = %{dsn: "https://public_key:secret_key@o123456.ingest.sentry.io/123456"}
+
+      assert %{dsn: "https://public_key:REDACTED@o123456.ingest.sentry.io/123456"} ==
+               @subject.sanitize_config_for_display(config)
+    end
+  end
+
   describe "redact_config/1" do
     test "redacts DSN secret key" do
       config = %{dsn: "https://public_key:secret_key@o123456.ingest.sentry.io/123456"}

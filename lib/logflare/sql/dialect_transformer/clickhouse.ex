@@ -10,6 +10,8 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
   alias Logflare.Sql.Parser
   alias Logflare.User
 
+  @terminal_modifiers ~w(format_clause settings)
+
   @impl true
   def quote_style, do: nil
 
@@ -36,14 +38,14 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
          _query,
          max_rows
        ) do
-    if requires_outer_limit?(query_ast) do
-      wrap_with_limit(statement, max_rows)
-    else
-      with {:ok, limit} <- build_limit(query_ast["limit"], max_rows) do
+    case set_operation_query(query_ast) do
+      nil ->
+        apply_limit_to_query(statement, max_rows)
+
+      query_ast ->
         statement
-        |> put_in(["Query", "limit"], limit)
-        |> Parser.to_string()
-      end
+        |> put_in(["Query"], query_ast)
+        |> wrap_with_limit(max_rows)
     end
   end
 
@@ -55,9 +57,77 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
   defp apply_limit_to_statements(_statements, _query, _max_rows),
     do: {:error, "Expected one ClickHouse query"}
 
-  # LIMIT BY is per group, while negative, fractional, and arbitrary expressions
+  defp apply_limit_to_query(%{"Query" => query_ast} = statement, max_rows) do
+    if requires_outer_limit?(query_ast) do
+      wrap_with_limit(statement, max_rows)
+    else
+      with {:ok, limit} <- build_limit(query_ast["limit"], max_rows) do
+        statement
+        |> put_in(["Query", "limit"], limit)
+        |> Parser.to_string()
+      end
+    end
+  end
+
+  # ClickHouse binds trailing result modifiers to the final branch of an
+  # unparenthesized set operation. Preserve those modifiers in place and add the
+  # endpoint cap around the completed result. Only SETTINGS and FORMAT move to
+  # the generated outer query because they must remain terminal.
+  defp set_operation_query(%{"body" => %{"SetOperation" => _operation}} = query_ast),
+    do: query_ast
+
+  defp set_operation_query(%{"body" => %{"Query" => nested_query}} = query_ast) do
+    case set_operation_query(nested_query) do
+      nil ->
+        query_ast
+
+      nested_query ->
+        if collapsible_query_wrapper?(query_ast) do
+          move_terminal_modifiers(query_ast, nested_query)
+        else
+          query_ast
+        end
+    end
+  end
+
+  defp set_operation_query(_query_ast), do: nil
+
+  defp collapsible_query_wrapper?(query_ast) do
+    query_ast
+    |> Map.drop(["body" | @terminal_modifiers])
+    |> Enum.all?(fn {_key, value} -> is_nil(value) or value == [] end)
+  end
+
+  defp move_terminal_modifiers(query_ast, nested_query) do
+    Enum.reduce(@terminal_modifiers, nested_query, fn key, nested_query ->
+      value = merge_terminal_modifier(key, nested_query[key], query_ast[key])
+
+      if is_nil(value) or value == [],
+        do: nested_query,
+        else: Map.put(nested_query, key, value)
+    end)
+  end
+
+  # Wrapping necessarily flattens nested SETTINGS scope. Keeping nested entries
+  # first preserves ClickHouse's effective outer-setting precedence.
+  defp merge_terminal_modifier("settings", nested, outer)
+       when is_list(nested) and is_list(outer),
+       do: nested ++ outer
+
+  defp merge_terminal_modifier(_key, nested, outer) when is_nil(outer) or outer == [],
+    do: nested
+
+  defp merge_terminal_modifier(_key, _nested, outer), do: outer
+
+  # LIMIT BY, FETCH, OFFSET ROWS, negative, fractional, and arbitrary expressions
   # do not have ordinary row-count semantics. Cap their completed result from an
   # outer query instead of comparing the original expression numerically.
+  defp requires_outer_limit?(%{"fetch" => fetch}) when not is_nil(fetch), do: true
+
+  defp requires_outer_limit?(%{"offset" => %{"rows" => rows}})
+       when rows in ["Rows", "Row"],
+       do: true
+
   defp requires_outer_limit?(%{"limit_by" => [_ | _]}), do: true
   defp requires_outer_limit?(%{"limit" => nil}), do: false
 
@@ -73,14 +143,18 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
   defp requires_outer_limit?(_query_ast), do: true
 
   defp wrap_with_limit(%{"Query" => query_ast} = statement, max_rows) do
-    format_clause = query_ast["format_clause"]
-    statement = put_in(statement, ["Query", "format_clause"], nil)
+    terminal_modifiers = Map.take(query_ast, @terminal_modifiers)
+
+    statement =
+      Enum.reduce(@terminal_modifiers, statement, fn key, statement ->
+        put_in(statement, ["Query", key], nil)
+      end)
 
     with {:ok, inner_query} <- Parser.to_string(statement),
          {:ok, [%{"Query" => outer_query} = outer_statement]} <-
            Parser.parse(dialect(), "SELECT * FROM (#{inner_query}) LIMIT #{max_rows}") do
       outer_statement
-      |> put_in(["Query", "format_clause"], format_clause || outer_query["format_clause"])
+      |> put_in(["Query"], Map.merge(outer_query, terminal_modifiers))
       |> Parser.to_string()
     end
   end

@@ -10,10 +10,20 @@ steps:
           printf '%s\n' 'LOGFLARE_GRPC_PORT=50051'
           printf 'RELEASE_COOKIE=%s\n' "$$1"
           printf 'LOGFLARE_METADATA_CLUSTER=%s\n' "$$2"
+          # SPOOL_PUBSUB_TOPIC/SPOOL_QUEUE_NAME point at this cluster's own
+          # Pub/Sub topic + subscription (provisioned via
+          # o11y-team-tools/logflare-gcp/scripts/provision-staging-spool.sh),
+          # keyed on _SPOOL_CLUSTER rather than _CLUSTER so main and
+          # main-saturated — which intentionally share _CLUSTER/_COOKIE to
+          # join the same BEAM cluster — still get separate spool queues.
+          printf 'SPOOL_PUBSUB_TOPIC=%s\n' "$$3"
+          printf 'SPOOL_QUEUE_NAME=%s\n' "$$4"
         } > gce-container.env
       - --
       - ${_COOKIE}
       - ${_CLUSTER}
+      - ${_SPOOL_PUBSUB_TOPIC}
+      - ${_SPOOL_QUEUE_NAME}
   # create instance template - dedicated
   - name: gcr.io/cloud-builders/gcloud
     entrypoint: bash
@@ -62,9 +72,17 @@ substitutions:
   _CLUSTER: main
   _COOKIE: default-${_CLUSTER}
   _NORMALIZED_IMAGE_TAG: ${_IMAGE_TAG}
-  # test clusters (main) override instance type in makefile 
+  # test clusters (main) override instance type in makefile
   _INSTANCE_TYPE: c2d-highcpu-4
   _INSTANCE_GROUP: instance-group-staging-${_CLUSTER}
+  # This deploy's own spool identity. Defaults to _CLUSTER (covers main and
+  # versioned automatically) — the main-saturated build in the Makefile
+  # overrides this explicitly to "main-saturated" without touching _CLUSTER,
+  # since main/main-saturated must keep sharing _CLUSTER/_COOKIE to join the
+  # same BEAM cluster.
+  _SPOOL_CLUSTER: ${_CLUSTER}
+  _SPOOL_PUBSUB_TOPIC: projects/logflare-staging/topics/logflare-spool-staging-${_SPOOL_CLUSTER}
+  _SPOOL_QUEUE_NAME: projects/logflare-staging/subscriptions/logflare-spool-staging-${_SPOOL_CLUSTER}-sub
   _IMAGE_TAG: $SHORT_SHA
   _TEMPLATE_NAME: logflare-staging-${_CLUSTER}-cluster-${_NORMALIZED_IMAGE_TAG}
   _TEMPLATE_NAME_SPOT: ${_TEMPLATE_NAME}-spot

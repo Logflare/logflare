@@ -99,6 +99,7 @@ defmodule LogflareWeb.Source.SearchLV do
       tailing_timer: nil,
       tailing?: tailing?,
       resume_tailing_after_modal?: false,
+      scroll_to_bottom_on_result?: false,
       # search states
       search_op_error: nil,
       search_op_log_events: nil,
@@ -550,6 +551,7 @@ defmodule LogflareWeb.Source.SearchLV do
     socket =
       socket
       |> assign(:tailing?, false)
+      |> assign(:scroll_to_bottom_on_result?, true)
       |> assign(:lql_rules, lql_list)
       |> assign(:querystring, qs)
       |> push_patch_with_params(%{querystring: qs, tailing?: false})
@@ -786,11 +788,18 @@ defmodule LogflareWeb.Source.SearchLV do
   defp put_event_page(socket, rows, :previous) do
     socket
     |> stream(:log_events, rows, at: -1)
+    |> push_scroll_to_oldest(rows)
   end
 
   defp put_event_page(socket, rows, :next) do
     socket
     |> stream(:log_events, Enum.reverse(rows), at: 0)
+  end
+
+  defp push_scroll_to_oldest(socket, []), do: socket
+
+  defp push_scroll_to_oldest(socket, rows) do
+    push_event(socket, "scroll-to-event", %{id: log_event_dom_id(List.last(rows))})
   end
 
   defp put_search_events(socket, rows)
@@ -849,6 +858,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:tailing_timer, tailing_timer)
       |> assign(:loading, false)
       |> assign(:tailing_initial?, false)
+      |> maybe_push_scroll_to_bottom()
 
     if match?({:warning, _}, events_op.status) do
       {:warning, message} = events_op.status
@@ -871,6 +881,14 @@ defmodule LogflareWeb.Source.SearchLV do
     |> assign(:tailing_timer, tailing_timer)
     |> assign(:loading, false)
   end
+
+  defp maybe_push_scroll_to_bottom(%{assigns: %{scroll_to_bottom_on_result?: true}} = socket) do
+    socket
+    |> assign(:scroll_to_bottom_on_result?, false)
+    |> push_event("scroll-to-bottom", %{})
+  end
+
+  defp maybe_push_scroll_to_bottom(socket), do: socket
 
   defp extend_timestamp_range(
          socket,

@@ -287,7 +287,7 @@ deploy.staging.main:
 	@gcloud config set project logflare-staging
 	gcloud builds submit . \
 		--config=cloudbuild/staging/build-image.yaml \
-		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG) \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_TAG_LATEST=true \
 		--region=europe-west1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 
@@ -299,7 +299,7 @@ deploy.staging.main:
 
 	gcloud builds submit . \
 		--config=./cloudbuild/staging/deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_INSTANCE_GROUP=instance-group-staging-main-saturated,_INSTANCE_TYPE=c2d-highcpu-16 \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_INSTANCE_GROUP=instance-group-staging-main-saturated,_INSTANCE_TYPE=c2d-highcpu-16,_SPOOL_CLUSTER=main-saturated \
 		--region=us-central1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 
@@ -307,7 +307,7 @@ deploy.staging.versioned:
 	@gcloud config set project logflare-staging
 	gcloud builds submit . \
 		--config=cloudbuild/staging/build-image.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION) \
+		--substitutions=_IMAGE_TAG=$(VERSION),_TAG_LATEST=true \
 		--region=europe-west1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 
@@ -316,6 +316,43 @@ deploy.staging.versioned:
 		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=versioned \
 		--region=us-west1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
+
+# Deploys the currently checked-out branch's HEAD to two dedicated staging
+# instance groups (instance-group-staging-dev-<DEV_NUMBER>-producer/-consumer)
+# for testing the spool feature, reusing the staging DB/secrets already baked
+# into the staging image. See cloudbuild/staging/deploy-dev.yaml and
+# .github/workflows/deploy-pr-to-dev.yml (manual GitHub Actions trigger).
+# Requires the two instance groups to already exist (one-time bootstrap, not
+# automated here since nothing in this pipeline creates a MIG). Override
+# DEV_NUMBER to target a different dev-N pair, e.g.
+# `make deploy.staging.dev DEV_NUMBER=2`.
+DEV_NUMBER ?= 1
+
+deploy.staging.dev: deploy.staging.dev-image deploy.staging.dev-producer deploy.staging.dev-consumer
+
+deploy.staging.dev-image:
+	@gcloud config set project logflare-staging
+	gcloud builds submit . \
+		--config=cloudbuild/staging/build-image.yaml \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG) \
+		--region=europe-west1 \
+		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
+
+deploy.staging.dev-producer:
+	gcloud builds submit . \
+		--config=./cloudbuild/staging/deploy-dev.yaml \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_DEV_NUMBER=$(DEV_NUMBER),_ROLE=producer \
+		--region=us-central1 \
+		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
+
+deploy.staging.dev-consumer:
+	gcloud builds submit . \
+		--config=./cloudbuild/staging/deploy-dev.yaml \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_DEV_NUMBER=$(DEV_NUMBER),_ROLE=consumer \
+		--region=us-central1 \
+		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
+
+.PHONY: deploy.staging.dev deploy.staging.dev-image deploy.staging.dev-producer deploy.staging.dev-consumer
 
 deploy.prod.versioned:
 	@gcloud config set project logflare-232118
@@ -344,7 +381,7 @@ deploy.prod.versioned:
 	@echo "Creating prod instance templates..."
 	gcloud builds submit . \
 		--config=./cloudbuild/prod/pre-deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-a,_LOGFLARE_ALERTS_ENABLED=true \
+		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-a,_LOGFLARE_ALERTS_ENABLED=true,_SPOOL_MODE=disable \
 		--region=europe-west3 \
 		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
 	gcloud builds submit . \
