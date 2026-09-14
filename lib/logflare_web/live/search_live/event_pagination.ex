@@ -6,7 +6,7 @@ defmodule LogflareWeb.SearchLive.EventPagination do
   @type cursor :: EventPage.cursor()
   @type range_extension :: String.t()
   @type button_state :: :hidden | :ready | :disabled | :loading
-  @type button :: %{state: button_state(), cursor: cursor() | nil}
+  @type button :: %{state: button_state(), cursor: cursor() | nil, label: String.t()}
   @type buttons :: %{previous: button(), next: button()}
 
   @enforce_keys []
@@ -67,23 +67,61 @@ defmodule LogflareWeb.SearchLive.EventPagination do
     next_available? = Keyword.fetch!(options, :next_available?)
     cursors = Keyword.fetch!(options, :cursors)
 
+    window_seconds = Keyword.get(options, :window_seconds)
+
     %{
       previous: %{
         state:
           cursors.previous
           |> previous_button(tailing?, loading?)
           |> apply_loading(pagination.loading_intent == :previous),
-        cursor: cursors.previous
+        cursor: cursors.previous,
+        label: label(window_seconds, "-")
       },
       next: %{
         state:
           pagination
           |> next_button(tailing?, loading?, next_available?)
           |> apply_loading(pagination.loading_intent == :next),
-        cursor: cursors.next
+        cursor: cursors.next,
+        label: label(window_seconds, "+")
       }
     }
   end
+
+  @doc """
+  Label for a pagination button, naming the window one click moves by.
+
+  A page request scans that window and widens the query's timestamp range by it, so the
+  button says exactly how far the next click travels.
+  """
+  @spec label(pos_integer() | nil, String.t()) :: String.t()
+  def label(nil, _sign), do: "Load more"
+
+  def label(window_seconds, sign) when is_integer(window_seconds) and window_seconds > 0 do
+    {amount, unit} = humanize(window_seconds)
+    "Load more (#{sign}#{amount} #{unit})"
+  end
+
+  defp humanize(seconds) when seconds < 60, do: {seconds, pluralize(seconds, "second")}
+
+  defp humanize(seconds) when seconds < 3_600 do
+    amount = div(seconds, 60)
+    {amount, pluralize(amount, "minute")}
+  end
+
+  defp humanize(seconds) when seconds < 86_400 do
+    amount = div(seconds, 3_600)
+    {amount, pluralize(amount, "hour")}
+  end
+
+  defp humanize(seconds) do
+    amount = div(seconds, 86_400)
+    {amount, pluralize(amount, "day")}
+  end
+
+  defp pluralize(1, unit), do: unit
+  defp pluralize(_amount, unit), do: unit <> "s"
 
   defp apply_loading(:hidden, _loading?), do: :hidden
   defp apply_loading(_state, true), do: :loading

@@ -917,6 +917,77 @@ defmodule Logflare.Logs.SearchOperationsTest do
     end
   end
 
+  describe "event page window" do
+    setup %{user: user} do
+      source = insert(:source, user: user, bq_table_id: "test_table")
+      [source: source]
+    end
+
+    defp page_sql(source, intent, ts_filters) do
+      cursor = %{id: "cursor-uuid", timestamp: 1_789_490_000_000_000}
+
+      so =
+        %SO{
+          source: source,
+          querystring: "",
+          query: from("test_table"),
+          chart_data_shape_id: nil,
+          tailing?: false,
+          partition_by: :timestamp,
+          type: :events,
+          lql_ts_filters: ts_filters,
+          lql_meta_and_msg_filters: []
+        }
+        |> SearchOperations.apply_query_defaults()
+
+      {:ok, so} = SearchOperations.new_event_page(so, intent, cursor)
+
+      so =
+        so
+        |> SearchOperations.apply_timestamp_filter_rules()
+        |> SearchOperations.apply_cursor()
+
+      {:ok, {sql, params}} = BigQueryAdaptor.ecto_to_sql(so.query, [])
+      {sql, Enum.map(params, & &1.parameterValue.value)}
+    end
+
+    defp range_filter(min, max) do
+      [FilterRule.build(path: "timestamp", operator: :range, values: [min, max])]
+    end
+
+    test "a previous page scans one window back from the cursor", %{source: source} do
+      ts_filters = range_filter(~N[2026-09-15 10:00:00], ~N[2026-09-15 10:10:00])
+
+      {sql, params} = page_sql(source, :previous, ts_filters)
+
+      assert sql =~ "t0.timestamp >= TIMESTAMP_MICROS(?)"
+      assert sql =~ "t0.timestamp <= TIMESTAMP_MICROS(?)"
+      assert sql =~ "EXTRACT(DATE FROM t0.timestamp) >= ?"
+      assert sql =~ "EXTRACT(DATE FROM t0.timestamp) <= ?"
+
+      assert [min_us, max_us | _] = params
+      assert max_us == 1_789_490_000_000_000
+      assert max_us - min_us == 600 * 1_000_000
+    end
+
+    test "a next page scans one window forward from the cursor", %{source: source} do
+      ts_filters = range_filter(~N[2026-09-15 10:00:00], ~N[2026-09-15 10:10:00])
+
+      {_sql, params} = page_sql(source, :next, ts_filters)
+
+      assert [min_us, max_us | _] = params
+      assert min_us == 1_789_490_000_000_000
+      assert max_us - min_us == 600 * 1_000_000
+    end
+
+    test "a query with no timestamp filter still gets a bounded window", %{source: source} do
+      {_sql, params} = page_sql(source, :previous, [])
+
+      assert [min_us, max_us | _] = params
+      assert max_us - min_us == 60 * 1_000_000
+    end
+  end
+
   describe "backend adaptor integration" do
     setup %{user: user} do
       source = insert(:source, user: user, bq_table_id: "test_table")
