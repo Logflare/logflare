@@ -42,6 +42,13 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Headers do
   """
   @spec normalize_keys(map()) :: map()
   def normalize_keys(headers) when is_map(headers) do
-    Map.new(headers, fn {key, value} -> {String.downcase(to_string(key)), value} end)
+    Map.new(headers, fn {key, value} -> {normalize_key(key), value} end)
   end
+
+  @doc """
+  Canonicalizes a single header name to lower case, so a lookup matches a map
+  built by `normalize_keys/1`.
+  """
+  @spec normalize_key(term()) :: String.t()
+  def normalize_key(key), do: key |> to_string() |> String.downcase()
 end

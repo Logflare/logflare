@@ -3,9 +3,35 @@ import Config
 alias Logflare.Utils
 
 defmodule Env do
+  @max_phash2_range 4_294_967_296
+
   def get_boolean(env, default \\ false) when is_boolean(default) do
     value = System.get_env(env)
     if value, do: value |> String.downcase() |> String.to_existing_atom(), else: default
+  end
+
+  @spec parse_broadway_message_sample_denominator(String.t() | nil) ::
+          :default | :disabled | pos_integer()
+  def parse_broadway_message_sample_denominator(nil), do: :default
+
+  def parse_broadway_message_sample_denominator(value) when is_binary(value) do
+    case value |> String.trim() |> String.downcase() do
+      "" ->
+        :default
+
+      "disabled" ->
+        :disabled
+
+      normalized_value ->
+        case Integer.parse(normalized_value) do
+          {denominator, ""} when denominator > 0 and denominator <= @max_phash2_range ->
+            denominator
+
+          _ ->
+            raise ArgumentError,
+                  "LOGFLARE_BROADWAY_MESSAGE_SAMPLE_DENOMINATOR must be 'disabled' or an integer between 1 and #{@max_phash2_range}, got: #{inspect(value)}"
+        end
+    end
   end
 end
 
@@ -72,6 +98,13 @@ cache_stats =
     nil -> nil
     val -> val |> String.downcase() |> String.to_existing_atom()
   end
+
+case Env.parse_broadway_message_sample_denominator(
+       System.get_env("LOGFLARE_BROADWAY_MESSAGE_SAMPLE_DENOMINATOR")
+     ) do
+  :default -> :ok
+  denominator -> config :logflare, broadway_message_sample_denominator: denominator
+end
 
 config :logflare,
        [

@@ -221,7 +221,7 @@ defmodule Logflare.Logs.SearchOperations do
     dynamic(
       [t],
       t.timestamp < fragment("TIMESTAMP_MICROS(?)", ^timestamp) or
-        (t.timestamp == fragment("TIMESTAMP_MICROS(?)", ^timestamp) and t.id <= ^id)
+        (t.timestamp == fragment("TIMESTAMP_MICROS(?)", ^timestamp) and t.id < ^id)
     )
   end
 
@@ -234,7 +234,7 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   defp cursor_condition(:previous, timestamp, id) do
-    dynamic([t], t.timestamp < ^timestamp or (t.timestamp == ^timestamp and t.id <= ^id))
+    dynamic([t], t.timestamp < ^timestamp or (t.timestamp == ^timestamp and t.id < ^id))
   end
 
   defp cursor_condition(:next, timestamp, id) do
@@ -670,7 +670,7 @@ defmodule Logflare.Logs.SearchOperations do
       :postgres ->
         query =
           query
-          |> Lql.apply_filter_rules(non_chart_filters)
+          |> Lql.apply_filter_rules(non_chart_filters, dialect: so.backend_type)
           |> PostgresTransformer.transform_chart_rule(
             chart_rule.aggregate,
             chart_rule.path,

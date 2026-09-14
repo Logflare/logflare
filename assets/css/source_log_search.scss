@@ -1,5 +1,9 @@
 @import "named_variables";
 
+#log-events-chart-container .recharts-surface {
+  outline: none;
+}
+
 #logs-list-container {
   min-height: 47.75vh;
 }

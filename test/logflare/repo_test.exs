@@ -4,22 +4,26 @@ defmodule Logflare.RepoTest do
   alias Logflare.Repo
   alias Logflare.Repo.Replicas
 
-  defp start_read_replicas(raw_entries) do
+  defp start_read_replicas(raw_entries, entry_overrides \\ []) do
     primary_hostname = Keyword.fetch!(Repo.config(), :hostname)
-    entries = Enum.map(raw_entries, &Replicas.parse!/1)
 
-    # sanity check that our test replicas are not the same as the primary
+    entries =
+      Enum.map(raw_entries, fn entry ->
+        {key, config} = Replicas.parse!(entry)
+        {key, Keyword.merge(config, entry_overrides)}
+      end)
+
     for {_key, config} <- entries do
       refute config[:hostname] == primary_hostname,
              "replica hostname #{config[:hostname]} should be different from primary hostname"
     end
 
-    # we read the replicas from env in `apply_with_replica/3`, so we need to set it there for the test
+    # apply_with_replica/3 reads the configured entries from the application environment.
     prev_read_replicas = Application.get_env(:logflare, :read_replicas)
     Application.put_env(:logflare, :read_replicas, entries)
     on_exit(fn -> Application.put_env(:logflare, :read_replicas, prev_read_replicas) end)
 
-    # attach repo init handler to ensure we start the replicas with the expected config
+    # Observe the effective Ecto configuration for each replica pool.
     telemetry_ref = :telemetry_test.attach_event_handlers(self(), [[:ecto, :repo, :init]])
     on_exit(fn -> :telemetry.detach(telemetry_ref) end)
 
@@ -31,6 +35,9 @@ defmodule Logflare.RepoTest do
       for {k, v} <- config, k != :ssl do
         assert Keyword.fetch!(opts, k) == v
       end
+
+      assert {Replicas, :after_connect, [_primary_after_connect]} =
+               Keyword.fetch!(opts, :after_connect)
     end
 
     start_result
@@ -52,8 +59,46 @@ defmodule Logflare.RepoTest do
       refute Enum.any?(repos, fn repo -> repo == Repo end),
              "expected every call to use a replica, never the primary"
 
-      # verify that after the call, we're back to the default repo
       assert Repo.get_dynamic_repo() == Repo
+    end
+
+    test "runs the primary hook before making replica pool connections read-only" do
+      previous_repo_config = Application.fetch_env!(:logflare, Repo)
+
+      Application.put_env(
+        :logflare,
+        Repo,
+        Keyword.put(
+          previous_repo_config,
+          :after_connect,
+          {Postgrex, :query!, ["SET application_name = 'replica_after_connect'", []]}
+        )
+      )
+
+      on_exit(fn -> Application.put_env(:logflare, Repo, previous_repo_config) end)
+
+      start_read_replicas(["127.0.0.1"],
+        pool: DBConnection.ConnectionPool,
+        pool_size: 1
+      )
+
+      assert %Postgrex.Result{rows: [["replica_after_connect"]]} =
+               Repo.apply_with_replica(Repo, :query!, ["SHOW application_name", []])
+
+      assert %Postgrex.Result{rows: [["on"]]} =
+               Repo.apply_with_replica(
+                 Repo,
+                 :query!,
+                 ["SHOW default_transaction_read_only", []]
+               )
+
+      assert_raise Postgrex.Error, ~r/read-only transaction/, fn ->
+        Repo.apply_with_replica(
+          Repo,
+          :query!,
+          ["CREATE TEMP TABLE read_only_replica_probe (id integer)", []]
+        )
+      end
     end
 
     test "reverts repo if function raises" do
@@ -71,6 +116,50 @@ defmodule Logflare.RepoTest do
 
       repos = for _ <- 1..30, do: Repo.apply_with_replica(Repo, :get_dynamic_repo, [])
       assert Enum.all?(repos, &(&1 != Repo))
+    end
+  end
+
+  describe "Replicas.after_connect/2" do
+    setup do
+      opts = Keyword.take(Repo.config(), [:hostname, :port, :username, :password, :database])
+
+      %{conn: start_supervised!({Postgrex, opts})}
+    end
+
+    test "rejects writes on the session", %{conn: conn} do
+      Replicas.after_connect(conn, _no_primary_hook = nil)
+
+      assert_raise Postgrex.Error, ~r/read-only transaction/, fn ->
+        Postgrex.query!(conn, "CREATE TEMP TABLE read_only_probe (id integer)", [])
+      end
+    end
+
+    test "still runs the primary's after_connect, given as an MFA", %{conn: conn} do
+      Replicas.after_connect(conn, {Postgrex, :query!, ["SET application_name = 'mfa'", []]})
+
+      assert %Postgrex.Result{rows: [["mfa"]]} =
+               Postgrex.query!(conn, "SHOW application_name", [])
+
+      assert %Postgrex.Result{rows: [["on"]]} =
+               Postgrex.query!(conn, "SHOW default_transaction_read_only", [])
+    end
+
+    test "runs a function after_connect before making the session read-only", %{conn: conn} do
+      test_pid = self()
+
+      hook = fn conn ->
+        %Postgrex.Result{rows: [[setting]]} =
+          Postgrex.query!(conn, "SHOW default_transaction_read_only", [])
+
+        send(test_pid, {:read_only_setting_in_primary_hook, setting})
+      end
+
+      Replicas.after_connect(conn, hook)
+
+      assert_receive {:read_only_setting_in_primary_hook, "off"}
+
+      assert %Postgrex.Result{rows: [["on"]]} =
+               Postgrex.query!(conn, "SHOW default_transaction_read_only", [])
     end
   end
 

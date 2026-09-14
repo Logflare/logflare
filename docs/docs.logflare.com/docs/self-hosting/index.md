@@ -49,6 +49,7 @@ All browser authentication will be disabled when in single-tenant mode.
 | `LOGFLARE_OTEL_SOURCE_UUID`                    | String, defaults to `nil`, optionally required for OpenTelemetry.       | Sets the appropriate header for ingesting OpenTelemetry events into a Logflare source.                                                                                                                                                                               |
 | `LOGFLARE_OTEL_ACCESS_TOKEN`                   | String, defaults to `nil`, optionally required for OpenTelemetry.       | Sets the appropriate authentication header for ingesting OpenTelemetry events into a Logflare source.                                                                                                                                                                |
 | `LOGFLARE_OTEL_SAMPLE_RATIO`                   | Float, defaults to `1.0`.                                               | Sets the sample ratio for server traces.                                                                                                                                                                                                                             |
+| `LOGFLARE_BROADWAY_MESSAGE_SAMPLE_DENOMINATOR` | Integer from `1` to `4294967296`, or `disabled`; defaults to `100`.      | Samples the Broadway per-message duration metric at approximately one event per denominator. `disabled` omits the metric and its handler. Histogram counts represent sampled observations. Use the same value on every node contributing to an aggregate histogram. |
 | `LOGFLARE_OTEL_INGEST_SAMPLE_RATIO`            | Float, defaults to the value of `LOGFLARE_OTEL_SAMPLE_RATIO`, optional. | Sets the sample ratio for ingestion-related server traces.                                                                                                                                                                                                           |
 | `LOGFLARE_OTEL_ENDPOINT_SAMPLE_RATIO`          | Float, defaults to the value of `LOGFLARE_OTEL_SAMPLE_RATIO`, optional. | Sets the sample ratio for endpoint-related server traces.                                                                                                                                                                                                            |
 | `LOGFLARE_HEALTH_MAX_MEMORY_UTILIZATION_RATIO` | Float, defaults to `0.80`                                               | Sets the maximum allowable memory utilization ratio for health checks. If exceeded, the health check will fail.                                                                                                                                                      |
@@ -165,11 +166,15 @@ The configuration follows the [Erlang Security Working Group recommendations](ht
 
 ## Read Replicas
 
-`LOGFLARE_READ_REPLICAS` is a comma-separated list of PostgreSQL read replicas to distribute ingest-path data fetching queries across. If unset or empty, all queries go to the primary database.
+`LOGFLARE_READ_REPLICAS` is a comma-separated list of PostgreSQL read replicas for selected context-cache and key-value-cache reads. If unset or empty, those reads use the primary database.
 
 Each entry is either a **bare hostname** or a **connection URI** (`postgres://user:pass@host:port/database?ssl=true&pool_size=5`). In both cases, only the parts given override the primary's `DB_*` settings - anything omitted (port, database, credentials, SSL, ...) is inherited from the primary. Query params: `ssl` (`true`/`false`), `pool_size` (positive integer).
 
 Example: `LOGFLARE_READ_REPLICAS=replica1.example.com,postgres://user:pass@replica2.example.com:5432/logflare`
+
+Logflare marks each replica session read-only with `SET default_transaction_read_only = on`. This makes accidental writes fail immediately on logical replicas; physical standbys already enforce read-only operation.
+
+PostgreSQL RDS Proxy [pins sessions that issue `SET`](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy-pinning.html), so each Logflare replica connection keeps one database connection for its lifetime. Size the proxy and database connection limits for that behavior.
 
 ## Database Encryption
 

@@ -2,8 +2,8 @@
   <:path>
     ~/<.subheader_path_link live_patch to={~p"/endpoints"} team={@team}>endpoints</.subheader_path_link>
   </:path>
-  <.render_docs_link {assigns} />
-  <.render_access_tokens_link {assigns} />
+  <Components.docs_link />
+  <Components.access_tokens_link team={@team} />
 </.subheader>
 
 <div class="tw-p-4 lg:tw-max-w-[50%] tw-mx-auto">

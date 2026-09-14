@@ -257,8 +257,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
         conn
         |> json_response(200)
 
-      assert response["error"] =~
-               LogflareWeb.QueryErrorHelpers.generic_query_error_message()
+      assert response["error"] == LogflareWeb.QueryErrorHelpers.generic_query_error_message()
 
       refute response["result"]
     end
@@ -376,8 +375,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
         conn
         |> json_response(200)
 
-      assert response["error"] =~
-               LogflareWeb.QueryErrorHelpers.generic_query_error_message()
+      assert response["error"] == LogflareWeb.QueryErrorHelpers.generic_query_error_message()
 
       refute response["result"]
     end
@@ -501,6 +499,33 @@ defmodule LogflareWeb.EndpointsControllerTest do
       assert conn.halted == false
       assert_received {:sql, sql}
       assert String.downcase(sql) =~ "select 2"
+    end
+
+    test "sql referencing a table not in the endpoint's CTE returns a specific error", %{
+      conn: conn,
+      user: user
+    } do
+      reject(&BigQueryJobs.bigquery_jobs_query/3)
+
+      backend = insert(:backend, type: :clickhouse, user: user)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :ch_sql,
+          enable_auth: true,
+          sandboxable: true,
+          query: "with a as (select 1 as b) select b from a"
+        )
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get(~p"/api/endpoints/query/#{endpoint.name}", %{sql: "select b from function_logs"})
+
+      assert json_response(conn, 200)["error"] == ~s(Table "function_logs" does not exist.)
+      refute json_response(conn, 200)["result"]
     end
 
     test "LQL params in GET query string", %{conn: conn, user: user} do
