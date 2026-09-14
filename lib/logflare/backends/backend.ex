@@ -29,6 +29,7 @@ defmodule Logflare.Backends.Backend do
     last9: Adaptor.Last9Adaptor,
     signoz: Adaptor.SigNozAdaptor,
     syslog: Adaptor.SyslogAdaptor,
+    splunk: Adaptor.SplunkAdaptor,
     google_secops: Adaptor.GoogleSecOpsAdaptor
   }
 
@@ -44,6 +45,7 @@ defmodule Logflare.Backends.Backend do
     field :consolidated_ingest?, :boolean, virtual: true, default: false
     field :metadata, :map
     field :default_ingest?, :boolean, source: :default_ingest, default: false
+    field :enabled, :boolean, default: true
 
     belongs_to :user, User
 

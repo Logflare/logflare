@@ -5,6 +5,9 @@ defmodule Logflare.Networking do
   alias Logflare.Backends.Adaptor.DatadogAdaptor
   alias Logflare.SingleTenant
 
+  @s3_connect_timeout :timer.seconds(5)
+  @s3_send_timeout :timer.seconds(30)
+
   def pools do
     if SingleTenant.postgres_backend?() do
       finch_pools(true)
@@ -108,6 +111,20 @@ defmodule Logflare.Networking do
            start_pool_metrics?: true,
            conn_opts: [
              transport_opts: [timeout: 10_000]
+           ]
+         ]
+       }},
+      {Finch,
+       name: Logflare.FinchS3,
+       pools: %{
+         default: [
+           protocols: [:http1],
+           conn_opts: [
+             transport_opts: [
+               timeout: @s3_connect_timeout,
+               send_timeout: @s3_send_timeout,
+               send_timeout_close: true
+             ]
            ]
          ]
        }}

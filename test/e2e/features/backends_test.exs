@@ -195,7 +195,10 @@ defmodule E2e.Features.BackendsTest do
       backend: backend,
       conn: conn
     } do
-      session = visit(conn, ~p"/backends/#{backend.id}/edit")
+      session =
+        conn
+        |> visit(~p"/backends/#{backend.id}/edit")
+        |> assert_has("[data-phx-main].phx-connected")
 
       unwrap(session, fn %{frame_id: frame_id} ->
         for ref <- 0..2, do: assert({:ok, _} = input_value(frame_id, ref))
@@ -217,6 +220,7 @@ defmodule E2e.Features.BackendsTest do
     test "removing a row saves the remaining clusters", %{backend: backend, conn: conn} do
       conn
       |> visit(~p"/backends/#{backend.id}/edit")
+      |> assert_has("[data-phx-main].phx-connected")
       |> click("#read-cluster-row-0 button[phx-click='remove_row']")
       |> click_button("Save changes")
       |> assert_has("*", text: "Successfully updated backend")
@@ -231,7 +235,10 @@ defmodule E2e.Features.BackendsTest do
       backend: backend,
       conn: conn
     } do
-      session = visit(conn, ~p"/backends/#{backend.id}/edit")
+      session =
+        conn
+        |> visit(~p"/backends/#{backend.id}/edit")
+        |> assert_has("[data-phx-main].phx-connected")
 
       unwrap(session, fn %{frame_id: frame_id} ->
         Frame.fill(frame_id, selector: label_selector(2), value: "gamma-edited", timeout: 5_000)

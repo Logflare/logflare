@@ -498,7 +498,8 @@ defmodule Logflare.Endpoints do
              query_string,
              endpoint_queries ++ alerts
            ),
-         {:ok, declared_params} <- Sql.parameters(expanded_query) do
+         {:ok, declared_params} <-
+           Sql.parameters(expanded_query, dialect: Sql.to_dialect(language)) do
       {:ok, %{parameters: declared_params, expanded_query: expanded_query}}
     end
   end
@@ -604,7 +605,8 @@ defmodule Logflare.Endpoints do
 
     alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
 
-    with {:ok, declared_params} <- Sql.parameters(query_string),
+    with {:ok, declared_params} <-
+           Sql.parameters(query_string, dialect: Sql.to_dialect(query_language)),
          {:ok, expanded_query} <-
            Sql.expand_subqueries(
              query_language,
@@ -700,7 +702,7 @@ defmodule Logflare.Endpoints do
       user
       |> Users.preload_sources()
       |> then(fn %{sources: sources} -> sources end)
-      |> Enum.map(&{&1.name, &1.token})
+      |> Map.new(&{&1.name, &1.token})
 
     query = %EndpointQuery{
       query: query_string,
