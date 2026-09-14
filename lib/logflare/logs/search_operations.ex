@@ -18,6 +18,7 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.Logs.SearchUtils
   alias Logflare.Lql
   alias Logflare.Lql.BackendTransformer.BigQuery, as: BigQueryTransformer
+  alias Logflare.Lql.Rules, as: LqlRules
   alias Logflare.Lql.BackendTransformer.Postgres, as: PostgresTransformer
   alias Logflare.Lql.Rules
   alias Logflare.Lql.Rules.ChartRule
@@ -36,6 +37,7 @@ defmodule Logflare.Logs.SearchOperations do
 
   @default_limit 100
   @default_max_n_chart_ticks 1_000
+  @min_event_page_window_seconds 60
   @tailing_timestamp_filter_minutes 10
   # Note that this is only a timeout for the request, not the query.
   # If the query takes longer to run than the timeout value, the call returns without any results and with the
@@ -467,43 +469,81 @@ defmodule Logflare.Logs.SearchOperations do
          } = so
        ) do
     direction = EventPage.direction(intent)
-    timestamp = normalize_event_timestamp(so.backend_type, timestamp)
+    {min_us, max_us} = event_page_bounds(so, direction, timestamp)
 
-    %{so | query: apply_event_page_partition_filter(so.query, so, direction, timestamp)}
+    %{so | query: apply_event_page_window(so.query, so, min_us, max_us)}
   end
 
-  defp apply_event_page_partition_filter(query, %SO{backend_type: :postgres}, _, _), do: query
+  @doc """
+  Seconds a single page request may scan.
 
-  defp apply_event_page_partition_filter(
-         query,
-         %SO{partition_by: :timestamp},
-         direction,
-         timestamp
-       ) do
-    date = timestamp |> event_timestamp_datetime() |> DateTime.to_date()
+  A page request drops the query's own timestamp range so it can page past it. Without a
+  replacement bound the scan runs to the end of the table, which on a partitioned BigQuery
+  table means reading every partition that has ever existed. One page therefore moves by
+  the width of the range currently in view, and the button says so.
+  """
+  @spec event_page_window_seconds(NaiveDateTime.t(), NaiveDateTime.t()) :: pos_integer()
+  def event_page_window_seconds(min, max) do
+    max(NaiveDateTime.diff(max, min, :second), @min_event_page_window_seconds)
+  end
 
-    case direction do
-      :previous -> where(query, [t], fragment("EXTRACT(DATE FROM ?)", t.timestamp) <= ^date)
-      :next -> where(query, [t], fragment("EXTRACT(DATE FROM ?)", t.timestamp) >= ^date)
+  @spec event_page_window_seconds(SO.t()) :: pos_integer()
+  def event_page_window_seconds(%SO{lql_ts_filters: filters}) do
+    case LqlRules.effective_timestamp_range(filters) do
+      %{min: min, max: max} -> event_page_window_seconds(min, max)
+      _ -> @min_event_page_window_seconds
     end
   end
 
-  defp apply_event_page_partition_filter(query, %SO{partition_by: :pseudo}, direction, timestamp) do
-    date = timestamp |> event_timestamp_datetime() |> DateTime.to_date()
+  @spec event_page_bounds(SO.t(), EventPage.direction(), integer()) :: {integer(), integer()}
+  defp event_page_bounds(%SO{} = so, direction, timestamp) do
+    window = event_page_window_seconds(so) * 1_000_000
 
     case direction do
-      :previous -> where(query, partition_date() <= ^date or in_streaming_buffer())
-      :next -> where(query, partition_date() >= ^date or in_streaming_buffer())
+      :previous -> {timestamp - window, timestamp}
+      :next -> {timestamp, timestamp + window}
     end
   end
 
-  defp event_timestamp_datetime(timestamp) when is_integer(timestamp),
-    do: DateTime.from_unix!(timestamp, :microsecond)
+  defp apply_event_page_window(query, %SO{backend_type: :postgres}, min_us, max_us) do
+    where(
+      query,
+      [t],
+      t.timestamp >= ^DateTime.from_unix!(min_us, :microsecond) and
+        t.timestamp <= ^DateTime.from_unix!(max_us, :microsecond)
+    )
+  end
 
-  defp event_timestamp_datetime(%DateTime{} = timestamp), do: timestamp
+  defp apply_event_page_window(query, %SO{partition_by: :timestamp}, min_us, max_us) do
+    query
+    |> where(
+      [t],
+      t.timestamp >= fragment("TIMESTAMP_MICROS(?)", ^min_us) and
+        t.timestamp <= fragment("TIMESTAMP_MICROS(?)", ^max_us)
+    )
+    |> where(
+      [t],
+      fragment("EXTRACT(DATE FROM ?)", t.timestamp) >= ^event_page_date(min_us) and
+        fragment("EXTRACT(DATE FROM ?)", t.timestamp) <= ^event_page_date(max_us)
+    )
+  end
 
-  defp event_timestamp_datetime(%NaiveDateTime{} = timestamp),
-    do: DateTime.from_naive!(timestamp, "Etc/UTC")
+  defp apply_event_page_window(query, %SO{partition_by: :pseudo}, min_us, max_us) do
+    query
+    |> where(
+      [t],
+      t.timestamp >= fragment("TIMESTAMP_MICROS(?)", ^min_us) and
+        t.timestamp <= fragment("TIMESTAMP_MICROS(?)", ^max_us)
+    )
+    |> where(
+      (partition_date() >= ^event_page_date(min_us) and
+         partition_date() <= ^event_page_date(max_us)) or in_streaming_buffer()
+    )
+  end
+
+  defp event_page_date(microseconds) do
+    microseconds |> DateTime.from_unix!(:microsecond) |> DateTime.to_date()
+  end
 
   defp apply_bq_aggregate_timestamp_filters(query, so, filters, chart_period) do
     period = to_bq_interval_token(chart_period)
