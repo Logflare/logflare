@@ -762,8 +762,6 @@ defmodule Logflare.Backends do
   end
 
   # send to a specific backend
-  defp dispatch_to_backends(_source, %Backend{enabled: false}, _log_events), do: :ok
-
   defp dispatch_to_backends(source, %Backend{consolidated_ingest?: true} = backend, log_events) do
     telemetry_metadata = %{backend_type: backend.type}
 
