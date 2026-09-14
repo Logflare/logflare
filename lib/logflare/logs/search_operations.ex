@@ -542,16 +542,8 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   defp event_page_date(microseconds) do
-    microseconds |> event_timestamp_datetime() |> DateTime.to_date()
+    microseconds |> DateTime.from_unix!(:microsecond) |> DateTime.to_date()
   end
-
-  defp event_timestamp_datetime(timestamp) when is_integer(timestamp),
-    do: DateTime.from_unix!(timestamp, :microsecond)
-
-  defp event_timestamp_datetime(%DateTime{} = timestamp), do: timestamp
-
-  defp event_timestamp_datetime(%NaiveDateTime{} = timestamp),
-    do: DateTime.from_naive!(timestamp, "Etc/UTC")
 
   defp apply_bq_aggregate_timestamp_filters(query, so, filters, chart_period) do
     period = to_bq_interval_token(chart_period)
