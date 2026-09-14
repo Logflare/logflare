@@ -132,32 +132,35 @@ defmodule LogflareWeb.Utils do
   end
 
   @spec sql_params_to_sql(String.t(), list()) :: String.t()
-  def sql_params_to_sql(sql, params) when is_binary(sql) and is_list(params) do
-    Enum.reduce(params, sql, fn param, acc_sql ->
-      type = Map.get(param.parameterType, :type)
-      value = Map.get(param.parameterValue, :value)
+  def sql_params_to_sql(sql, []) when is_binary(sql), do: sql
 
-      replacement =
-        case type do
-          "STRING" ->
-            escaped = value |> String.replace("\\", "\\\\") |> String.replace("'", "''")
-            "'#{escaped}'"
+  def sql_params_to_sql(sql, [param | params]) when is_binary(sql) do
+    type = Map.get(param.parameterType, :type)
+    value = Map.get(param.parameterValue, :value)
 
-          num when num in ["INTEGER", "FLOAT"] ->
-            inspect(value)
+    replacement =
+      case type do
+        "STRING" ->
+          escaped = value |> String.replace("\\", "\\\\") |> String.replace("'", "''")
+          "'#{escaped}'"
 
-          "BOOL" ->
-            to_string(value)
+        num when num in ["INTEGER", "FLOAT"] ->
+          inspect(value)
 
-          _ ->
-            escaped =
-              value |> to_string() |> String.replace("\\", "\\\\") |> String.replace("'", "''")
+        "BOOL" ->
+          to_string(value)
 
-            "'#{escaped}'"
-        end
+        _ ->
+          escaped =
+            value |> to_string() |> String.replace("\\", "\\\\") |> String.replace("'", "''")
 
-      String.replace(acc_sql, "?", replacement, global: false)
-    end)
+          "'#{escaped}'"
+      end
+
+    case String.split(sql, "?", parts: 2) do
+      [before, after_sql] -> before <> replacement <> sql_params_to_sql(after_sql, params)
+      [_] -> sql
+    end
   end
 
   @spec replace_table_with_source_name(String.t(), %{

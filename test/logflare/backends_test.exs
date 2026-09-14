@@ -763,6 +763,111 @@ defmodule Logflare.BackendsTest do
       assert :ok = Backends.ensure_source_sup_started(source)
     end
 
+    test "prefetch/1 warms the cache keys read during initial startup", %{source: source} do
+      source = Sources.get(source.id)
+      source_schema = insert(:source_schema, source: source)
+
+      caches = [
+        Logflare.Backends.Cache,
+        Logflare.Billing.Cache,
+        Logflare.Rules.Cache,
+        Logflare.SourceSchemas.Cache,
+        Logflare.Sources.Cache,
+        Logflare.Users.Cache
+      ]
+
+      for cache <- caches, do: Cachex.clear(cache)
+      for cache <- caches, do: assert({:ok, 0} = Cachex.size(cache))
+
+      assert :ok = SourceSup.prefetch(source)
+
+      source_id = source.id
+      source_schema_id = source_schema.id
+      user_id = source.user_id
+
+      assert {:ok, {:cached, []}} =
+               Cachex.get(Logflare.Rules.Cache, {:list_by_source_id, [source_id]})
+
+      assert {:ok, {:cached, []}} =
+               Cachex.get(Logflare.Backends.Cache, {:list_backends, [[source_id: source_id]]})
+
+      assert {:ok, {:cached, []}} =
+               Cachex.get(Logflare.Backends.Cache, {
+                 :list_backends,
+                 [[rules_source_id: source_id]]
+               })
+
+      assert {:ok, {:cached, %Source{id: ^source_id}}} =
+               Cachex.get(Logflare.Sources.Cache, {:get_by, [[id: source_id]]})
+
+      assert {:ok, {:cached, %User{id: ^user_id} = cached_user}} =
+               Cachex.get(Logflare.Users.Cache, {:get, [user_id]})
+
+      assert {:ok, {:cached, %{}}} =
+               Cachex.get(Logflare.Billing.Cache, {:get_plan_by_user, [cached_user]})
+
+      assert {:ok, {:cached, %{id: ^source_schema_id}}} =
+               Cachex.get(Logflare.SourceSchemas.Cache, {
+                 :get_source_schema_by,
+                 [[source_id: source_id]]
+               })
+    end
+
+    test "prefetch/1 includes the default backend before filtering consolidated backends", %{
+      source: source
+    } do
+      stub(Backends, :get_default_backend, fn _user ->
+        %Backend{type: :bigquery, consolidated_ingest?: true}
+      end)
+
+      Cachex.clear(Logflare.SourceSchemas.Cache)
+
+      assert :ok = SourceSup.prefetch(source)
+
+      assert {:ok, {:cached, nil}} =
+               Cachex.get(Logflare.SourceSchemas.Cache, {
+                 :get_source_schema_by,
+                 [[source_id: source.id]]
+               })
+    end
+
+    test "prefetch/1 skips schemas when no BigQuery backend starts", %{source: source} do
+      stub(Logflare.SingleTenant, :single_tenant?, fn -> true end)
+      stub(Logflare.SingleTenant, :postgres_backend?, fn -> true end)
+      stub(Logflare.SingleTenant, :postgres_backend_adapter_opts, fn -> [url: "ecto://"] end)
+      Cachex.clear(Logflare.SourceSchemas.Cache)
+
+      assert :ok = SourceSup.prefetch(source)
+
+      assert {:ok, nil} =
+               Cachex.get(Logflare.SourceSchemas.Cache, {
+                 :get_source_schema_by,
+                 [[source_id: source.id]]
+               })
+    end
+
+    test "start_source_sup/1 prefetches before starting", %{source: source} do
+      expect(SourceSup, :prefetch, fn received_source ->
+        assert received_source.id == source.id
+        :ok
+      end)
+
+      assert :ok = Backends.start_source_sup(source)
+    end
+
+    test "start_source_sup/1 skips prefetch but still delegates when already started", %{
+      source: source
+    } do
+      start_supervised!({SourceSup, source})
+      reject(&SourceSup.prefetch/1)
+
+      expect(SourceSup, :child_spec, fn received_source ->
+        call_original(SourceSup, :child_spec, [received_source])
+      end)
+
+      assert {:error, :already_started} = Backends.start_source_sup(source)
+    end
+
     test "on attach to source, update SourceSup", %{source: source} do
       [backend1, backend2] = insert_pair(:backend)
       start_supervised!({SourceSup, source})
@@ -822,6 +927,65 @@ defmodule Logflare.BackendsTest do
       assert {:error, :not_started} = Backends.restart_source_sup(source)
       assert :ok = Backends.start_source_sup(source)
       assert :ok = Backends.restart_source_sup(source)
+    end
+
+    test "stop_backend_child/2 stops only requested backend children", %{
+      source: source,
+      user: user
+    } do
+      # Start two distinct backend children so each lifecycle can be tracked independently.
+      backend_ids =
+        for backend_name <- ["first", "second"] do
+          insert(:backend,
+            name: "#{backend_name} webhook",
+            user: user,
+            sources: [source],
+            type: :webhook,
+            config: %{url: "https://#{backend_name}.example.com"}
+          ).id
+        end
+
+      Backends.clear_list_backends_cache(source.id)
+      start_supervised!({SourceSup, source})
+
+      children = fn ->
+        source
+        |> Backends.via_source(SourceSup)
+        |> Supervisor.which_children()
+        |> Enum.map(fn {child_id, pid, _type, _modules} when is_pid(pid) -> {child_id, pid} end)
+      end
+
+      backend_children = fn children ->
+        for {{_mod, _source_id, backend_id}, pid} <- children, backend_id in backend_ids do
+          {backend_id, pid}
+        end
+      end
+
+      prev_children = children.()
+
+      assert [
+               {first_backend_id, first_backend_pid},
+               {second_backend_id, second_backend_pid}
+             ] = backend_children.(prev_children)
+
+      # An unknown backend ID must leave every existing child running with the same PID.
+      unknown_backend_id = Enum.max(backend_ids) + 1
+      assert {:error, :not_found} = SourceSup.stop_backend_child(source, unknown_backend_id)
+      assert children.() == prev_children
+      assert Process.alive?(first_backend_pid)
+      assert Process.alive?(second_backend_pid)
+
+      # Stopping the second backend must leave the first running with the same PID.
+      assert :ok = SourceSup.stop_backend_child(source, second_backend_id)
+      assert [{^first_backend_id, ^first_backend_pid}] = backend_children.(children.())
+      assert Process.alive?(first_backend_pid)
+      refute Process.alive?(second_backend_pid)
+
+      # The first backend remains independently stoppable after the second is removed.
+      assert :ok = SourceSup.stop_backend_child(source, first_backend_id)
+      assert [] = backend_children.(children.())
+      refute Process.alive?(first_backend_pid)
+      refute Process.alive?(second_backend_pid)
     end
 
     test "rules_child_started? when SourceSup already started", %{source: source} do

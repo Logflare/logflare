@@ -159,45 +159,6 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
     end
   end
 
-  describe "GET user usage" do
-    test "returns 200 and the usage for a given user", %{
-      conn: conn,
-      partner: partner
-    } do
-      {:ok, user} = Partners.create_user(partner, %{"email" => TestUtils.gen_email()})
-
-      %{count: count} = insert(:billing_counts, user: user)
-
-      assert conn
-             |> add_partner_access_token(partner)
-             |> get(~p"/api/partner/users/#{user.token}/usage")
-             |> json_response(200) == %{"usage" => count}
-    end
-
-    test "return 401 with the wrong auth token", %{conn: conn, partner: partner} do
-      params = %{"email" => TestUtils.gen_email()}
-      {:ok, user} = Partners.create_user(partner, params)
-
-      assert conn
-             |> put_req_header("authorization", "Bearer potato")
-             |> get(~p"/api/partner/users/#{user.token}/usage")
-             |> json_response(401) == %{"error" => "Unauthorized"}
-    end
-
-    test "return 404 when accessing a user from another partner", %{
-      conn: conn,
-      partner: partner
-    } do
-      params = %{"email" => TestUtils.gen_email()}
-      {:ok, user} = Partners.create_user(insert(:partner), params)
-
-      assert conn
-             |> add_partner_access_token(partner)
-             |> get(~p"/api/partner/users/#{user.token}/usage")
-             |> response(404)
-    end
-  end
-
   describe "DELETE user" do
     test "returns 204 and deletes the user", %{conn: conn, partner: partner} do
       {:ok, user} = Partners.create_user(partner, %{"email" => TestUtils.gen_email()})

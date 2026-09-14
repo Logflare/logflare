@@ -23,7 +23,7 @@ defmodule Logflare.Sources.SourceRouter do
     do: le
 
   def route_to_sinks_and_ingest(%LE{via_rule_id: nil} = le, source, router) do
-    for rule <- router.matching_rules(le, source) do
+    for %Rule{} = rule <- router.matching_rules(le, source) do
       do_routing(rule, le, source)
     end
 

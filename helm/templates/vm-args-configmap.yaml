@@ -1,0 +1,11 @@
+{{- if .Values.vmArgs }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "logflare.fullname" . }}-vm-args
+  labels:
+    {{- include "logflare.labels" . | nindent 4 }}
+data:
+  vm.args: |
+    {{- .Values.vmArgs | nindent 4 }}
+{{- end }}

@@ -281,7 +281,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
             password: "test_password",
             database: "default",
             port: 8123,
-            pool_size: 10
+            read_pool_size: 10
           },
           description: "some description",
           metadata: %{
@@ -300,7 +300,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
                  "password" => "REDACTED",
                  "database" => "default",
                  "port" => 8123,
-                 "pool_size" => 10
+                 "read_pool_size" => 10
                },
                "metadata" => %{
                  "some" => "data"
@@ -696,6 +696,36 @@ defmodule LogflareWeb.Api.BackendControllerTest do
         |> json_response(200)
 
       assert response == %{"connected?" => false, "reason" => "some_reason"}
+    end
+
+    test "returns a documented error when an S3 connection test fails", %{
+      conn: conn,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          user: user,
+          type: :s3,
+          config: %{
+            s3_bucket: "my-bucket",
+            storage_region: "us-east-1",
+            access_key_id: "AKID",
+            secret_access_key: "SECRET",
+            batch_timeout: 1_000
+          }
+        )
+
+      Mimic.expect(ExAws, :request, fn _operation, _opts ->
+        {:error, {:http_error, 403, %{body: "AccessDenied"}}}
+      end)
+
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> post("/api/backends/#{backend.token}/test")
+        |> json_response(200)
+
+      assert response == %{"connected?" => false, "reason" => "s3_write_failed"}
     end
 
     test "returns 404 if backend doesn't exist or doesn't belong to user", %{

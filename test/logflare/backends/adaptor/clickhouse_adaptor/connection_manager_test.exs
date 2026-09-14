@@ -258,6 +258,31 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
     end
   end
 
+  describe "query pool credentials" do
+    test "the pool authenticates with the dedicated query user when configured" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{query_user: "ch_reader", query_password: "reader_pa55"},
+          cleanup?: false
+        )
+
+      assert {"ch_reader", "reader_pa55"} = start_pool_credentials(backend)
+    end
+
+    test "the pool falls back to the default credentials when no query user is configured", %{
+      backend: backend
+    } do
+      assert {"logflare", "logflare"} = start_pool_credentials(backend)
+    end
+
+    test "the pool falls back to the default credentials when only query_user is configured" do
+      {_source, backend} =
+        setup_clickhouse_test(config: %{query_user: "ch_reader"}, cleanup?: false)
+
+      assert {"logflare", "logflare"} = start_pool_credentials(backend)
+    end
+  end
+
   describe "read_host/2" do
     test "resolves the hostname for a labeled read cluster" do
       {_source, backend} =
@@ -278,5 +303,128 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
     test "returns nil when no backend is given" do
       assert ConnectionManager.read_host(nil, "api") == nil
     end
+  end
+
+  describe "read_pool_size/2" do
+    test "uses the backend-wide size for the unlabeled pool" do
+      assert ConnectionManager.read_pool_size(%{read_pool_size: 25}, nil) == 25
+    end
+
+    test "uses the backend-wide size for the default read cluster" do
+      config = %{
+        read_pool_size: 25,
+        labeled_read_pool_size: 9,
+        default_read_cluster: "dashboard_logs"
+      }
+
+      assert ConnectionManager.read_pool_size(config, "dashboard_logs") == 25
+    end
+
+    test "uses the labeled size for a non-default read cluster" do
+      config = %{
+        read_pool_size: 25,
+        labeled_read_pool_size: 9,
+        default_read_cluster: "dashboard_logs"
+      }
+
+      assert ConnectionManager.read_pool_size(config, "api_free") == 9
+    end
+
+    test "uses the labeled size for every cluster when no default is set" do
+      config = %{read_pool_size: 25, labeled_read_pool_size: 9}
+
+      assert ConnectionManager.read_pool_size(config, "api_free") == 9
+      assert ConnectionManager.read_pool_size(config, nil) == 25
+    end
+
+    test "falls back to the module defaults when nothing is configured" do
+      assert ConnectionManager.read_pool_size(%{}, nil) == 50
+      assert ConnectionManager.read_pool_size(%{}, "api_free") == 32
+    end
+
+    test "ignores the legacy pool_size field" do
+      assert ConnectionManager.read_pool_size(%{pool_size: 100}, nil) == 50
+    end
+
+    test "ignores non positive integer values" do
+      assert ConnectionManager.read_pool_size(%{read_pool_size: 0}, nil) == 50
+      assert ConnectionManager.read_pool_size(%{read_pool_size: nil}, nil) == 50
+
+      assert ConnectionManager.read_pool_size(%{labeled_read_pool_size: 0}, "api_free") == 32
+    end
+  end
+
+  describe "connection listeners" do
+    test "tags the legacy pool with the backend id and a nil label", %{backend: backend} do
+      opts = capture_ch_opts(backend, nil)
+
+      assert {[listener], {backend_id, nil}} = Keyword.fetch!(opts, :connection_listeners)
+      assert listener == ConnectionManager.telemetry_listener_name()
+      assert backend_id == backend.id
+    end
+
+    test "tags a labeled pool with its read cluster", %{backend: backend} do
+      opts = capture_ch_opts(backend, "api_free")
+
+      assert {[_listener], {_backend_id, "api_free"}} =
+               Keyword.fetch!(opts, :connection_listeners)
+    end
+
+    test "a started pool emits tagged connect telemetry", %{backend: backend} do
+      TestUtils.attach_forwarder([:db_connection, :connected])
+
+      {:ok, _manager_pid} = ConnectionManager.start_link(backend)
+      assert :ok == ConnectionManager.ensure_pool_started(backend)
+
+      assert_receive {:telemetry_event, [:db_connection, :connected], %{count: 1},
+                      %{tag: {backend_id, nil}}},
+                     @timeout_interval
+
+      assert backend_id == backend.id
+    end
+
+    test "a recycled pool emits tagged disconnect telemetry", %{backend: backend} do
+      config = Application.get_env(:logflare, ConnectionManager)
+      on_exit(fn -> Application.put_env(:logflare, ConnectionManager, config) end)
+      Application.put_env(:logflare, ConnectionManager, recycle_spread: 1)
+
+      {:ok, _manager_pid} = ConnectionManager.start_link(backend)
+      assert :ok == ConnectionManager.ensure_pool_started(backend)
+      assert {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+
+      TestUtils.attach_forwarder([:db_connection, :disconnected])
+
+      assert :ok == ConnectionManager.recycle_pool(backend)
+
+      assert {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 2 as test")
+
+      assert_receive {:telemetry_event, [:db_connection, :disconnected], %{count: 1},
+                      %{tag: {backend_id, nil}}},
+                     @timeout_interval
+
+      assert backend_id == backend.id
+    end
+  end
+
+  defp start_pool_credentials(backend) do
+    opts = capture_ch_opts(backend, nil)
+
+    {Keyword.fetch!(opts, :username), Keyword.fetch!(opts, :password)}
+  end
+
+  defp capture_ch_opts(backend, label) do
+    test_pid = self()
+
+    stub(Ch, :start_link, fn opts ->
+      send(test_pid, {:ch_opts, opts})
+      Agent.start_link(fn -> :ok end)
+    end)
+
+    {:ok, _manager_pid} = ConnectionManager.start_link(backend, label)
+    assert :ok == ConnectionManager.ensure_pool_started(backend, label)
+
+    assert_receive {:ch_opts, opts}
+
+    opts
   end
 end

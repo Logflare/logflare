@@ -178,7 +178,6 @@ defmodule Logflare.Sources.Source do
       on_replace: :delete
 
     has_many :saved_searches, Logflare.SavedSearch
-    has_many :billing_counts, Logflare.Billing.BillingCount, on_delete: :nothing
 
     embeds_one :notifications, Notifications, on_replace: :update
 

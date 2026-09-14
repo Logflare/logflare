@@ -670,7 +670,7 @@ defmodule Logflare.Logs.SearchOperations do
       :postgres ->
         query =
           query
-          |> Lql.apply_filter_rules(non_chart_filters)
+          |> Lql.apply_filter_rules(non_chart_filters, dialect: so.backend_type)
           |> PostgresTransformer.transform_chart_rule(
             chart_rule.aggregate,
             chart_rule.path,

@@ -152,10 +152,10 @@ defmodule LogflareWeb.QueryComponents do
 
   defp prepare_table_name(sql) do
     Regex.replace(
-      ~r/`([^`]+)`\.([^\s]+)/,
+      ~r/`([^`]+)`\.`?([^`.\s]+)`?\.`?([^`\s]+)`?/,
       sql,
-      fn _, project, rest ->
-        "`#{project}.#{rest}`"
+      fn _, project, dataset, table ->
+        "`#{project}.#{dataset}.#{table}`"
       end
     )
   end

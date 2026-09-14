@@ -171,6 +171,15 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
     end
   end
 
+  describe "sanitize_config_for_display/1" do
+    test "masks api_token while preserving displayable keys" do
+      config = %{api_token: "AN_API_TOKEN", domain: "api.axiom.co", dataset_name: "logflare"}
+
+      assert %{api_token: "**********", domain: "api.axiom.co", dataset_name: "logflare"} ==
+               @subject.sanitize_config_for_display(config)
+    end
+  end
+
   describe "redact_config/1" do
     test "redacts API Token" do
       token = "AN_API_TOKEN"
