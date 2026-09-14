@@ -494,11 +494,27 @@ defmodule LogflareWeb.Source.SearchLV do
            ) do
       {:noreply, update_event_pagination(socket, &EventPagination.mark_loading(&1, intent))}
     else
-      _ -> {:noreply, socket}
+      reason ->
+        log_dropped_page_request(socket, %{
+          intent: intent,
+          cursor_id: cursor_id,
+          cursor_timestamp: cursor_timestamp,
+          reason: reason
+        })
+
+        {:noreply, socket}
     end
   end
 
-  def handle_event("load_events", _params, socket), do: {:noreply, socket}
+  def handle_event("load_events", params, socket) do
+    log_dropped_page_request(socket, %{
+      params: Map.take(params, ["intent", "cursor-id", "cursor-timestamp"]),
+      loading: socket.assigns.loading,
+      tailing?: socket.assigns.tailing?
+    })
+
+    {:noreply, socket}
+  end
 
   def handle_event(direction, _, socket) when direction in ["backwards", "forwards"] do
     rules = socket.assigns.lql_rules
@@ -754,6 +770,16 @@ defmodule LogflareWeb.Source.SearchLV do
     else
       socket
     end
+  end
+
+  # A page request that never reaches the executor used to be indistinguishable from one
+  # that returned no rows: both leave the list untouched and the SQL in the debug modal
+  # unchanged, because that modal only ever shows the initial query.
+  defp log_dropped_page_request(socket, context) do
+    Logger.warning("Search: dropped a load_events request | #{inspect(context)}",
+      source_id: socket.assigns.source.token,
+      source_token: socket.assigns.source.token
+    )
   end
 
   defp update_event_pagination(socket, update) do
