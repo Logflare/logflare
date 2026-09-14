@@ -18,7 +18,6 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.Logs.SearchUtils
   alias Logflare.Lql
   alias Logflare.Lql.BackendTransformer.BigQuery, as: BigQueryTransformer
-  alias Logflare.Lql.Rules, as: LqlRules
   alias Logflare.Lql.BackendTransformer.Postgres, as: PostgresTransformer
   alias Logflare.Lql.Rules
   alias Logflare.Lql.Rules.ChartRule
@@ -68,26 +67,32 @@ defmodule Logflare.Logs.SearchOperations do
   The first page does not need a cursor. Other pages require tailing to be false
   and a valid cursor to page from.
   """
-  @spec new_event_page(map() | SO.t(), EventPage.intent(), EventPage.cursor() | nil) ::
+  @spec new_event_page(
+          map() | SO.t(),
+          EventPage.intent(),
+          EventPage.cursor() | nil,
+          pos_integer() | nil
+        ) ::
           {:ok, SO.t()} | {:error, :invalid_request | :tailing}
-  def new_event_page(%SO{} = so, :initial, nil) do
+  def new_event_page(%SO{} = so, :initial, nil, nil) do
     {:ok, %{so | event_page_request: %{intent: :initial, cursor: nil}}}
   end
 
-  def new_event_page(%SO{tailing?: false} = so, intent, cursor) do
-    if EventPage.valid_request?(intent, cursor) do
-      {:ok, %{so | event_page_request: %{intent: intent, cursor: cursor}}}
+  def new_event_page(%SO{tailing?: false} = so, intent, cursor, window_seconds) do
+    if EventPage.valid_request?(intent, cursor, window_seconds) do
+      request = %{intent: intent, cursor: cursor, window_seconds: window_seconds}
+      {:ok, %{so | event_page_request: request}}
     else
       {:error, :invalid_request}
     end
   end
 
-  def new_event_page(%SO{}, _intent, _cursor), do: {:error, :tailing}
+  def new_event_page(%SO{}, _intent, _cursor, _window_seconds), do: {:error, :tailing}
 
-  def new_event_page(params, intent, cursor) when is_map(params) do
+  def new_event_page(params, intent, cursor, window_seconds) when is_map(params) do
     params
     |> SO.new()
-    |> new_event_page(intent, cursor)
+    |> new_event_page(intent, cursor, window_seconds)
   end
 
   @spec do_query(SO.t()) :: SO.t()
@@ -475,31 +480,35 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   @doc """
-  The range a query covers when it carries no `t:` filter.
+  The timestamp range the chart draws for a set of LQL rules.
 
-  With no filter the aggregate query charts the last `default_period_tick_count/1` periods
-  (`apply_bq_aggregate_timestamp_filters/4`), so that span is what the user is looking at
-  and what a page request should write into the query when it makes the range explicit.
+  A closed range stays as is. An open bound keeps its value and reaches the open interval
+  length away from it, never past `now`. Without a `t:` filter the chart covers
+  `default_period_tick_count/1` periods back from `now`. Every value shares the wall clock
+  of `now`.
   """
-  @spec implied_timestamp_range(atom(), DateTime.t()) :: %{
-          min: NaiveDateTime.t(),
-          max: NaiveDateTime.t()
-        }
-  def implied_timestamp_range(chart_period, now \\ DateTime.utc_now())
+  @spec chart_timestamp_range(Rules.lql_rules(), chart_period(), NaiveDateTime.t()) ::
+          Rules.timestamp_range()
+  def chart_timestamp_range(lql_rules, chart_period, %NaiveDateTime{} = now) do
+    period = period_seconds(chart_period)
+    open_interval = SearchOperationHelpers.default_open_interval_length() * period
 
-  def implied_timestamp_range(chart_period, now)
-      when chart_period in [:second, :minute, :hour, :day] do
-    seconds =
-      SearchOperationHelpers.default_period_tick_count(chart_period) *
-        period_seconds(chart_period)
+    case Rules.timestamp_filter_bounds(lql_rules) do
+      %{min: nil, max: nil} ->
+        ticks = SearchOperationHelpers.default_period_tick_count(chart_period)
+        %{min: NaiveDateTime.add(now, -ticks * period, :second), max: now}
 
-    max = now |> DateTime.to_naive() |> NaiveDateTime.truncate(:second)
+      %{min: min, max: nil} ->
+        max = Enum.min([NaiveDateTime.add(min, open_interval, :second), now], NaiveDateTime)
+        %{min: min, max: Enum.max([min, max], NaiveDateTime)}
 
-    %{min: NaiveDateTime.add(max, -seconds, :second), max: max}
+      %{min: nil, max: max} ->
+        %{min: NaiveDateTime.add(max, -open_interval, :second), max: max}
+
+      range ->
+        range
+    end
   end
-
-  def implied_timestamp_range(_chart_period, now),
-    do: implied_timestamp_range(:minute, now)
 
   defp period_seconds(:second), do: 1
   defp period_seconds(:minute), do: 60
@@ -519,17 +528,9 @@ defmodule Logflare.Logs.SearchOperations do
     max(NaiveDateTime.diff(max, min, :second), @min_event_page_window_seconds)
   end
 
-  @spec event_page_window_seconds(SO.t()) :: pos_integer()
-  def event_page_window_seconds(%SO{lql_ts_filters: filters}) do
-    case LqlRules.effective_timestamp_range(filters) do
-      %{min: min, max: max} -> event_page_window_seconds(min, max)
-      _ -> @min_event_page_window_seconds
-    end
-  end
-
   @spec event_page_bounds(SO.t(), EventPage.direction(), integer()) :: {integer(), integer()}
-  defp event_page_bounds(%SO{} = so, direction, timestamp) do
-    window = event_page_window_seconds(so) * 1_000_000
+  defp event_page_bounds(%SO{event_page_request: request}, direction, timestamp) do
+    window = request.window_seconds * 1_000_000
 
     case direction do
       :previous -> {timestamp - window, timestamp}

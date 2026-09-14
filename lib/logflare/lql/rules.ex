@@ -283,6 +283,23 @@ defmodule Logflare.Lql.Rules do
   """
   @spec effective_timestamp_range(lql_rules()) :: timestamp_range() | nil
   def effective_timestamp_range(lql_rules) when is_list(lql_rules) do
+    case timestamp_filter_bounds(lql_rules) do
+      %{min: nil} -> nil
+      %{max: nil} -> nil
+      range -> range
+    end
+  end
+
+  @doc """
+  Returns the tightest lower and upper bound across all timestamp filters.
+
+  A side that no filter bounds is `nil`.
+  """
+  @spec timestamp_filter_bounds(lql_rules()) :: %{
+          min: NaiveDateTime.t() | nil,
+          max: NaiveDateTime.t() | nil
+        }
+  def timestamp_filter_bounds(lql_rules) when is_list(lql_rules) do
     {lower_bounds, upper_bounds} =
       lql_rules
       |> get_timestamp_filters()
@@ -295,16 +312,7 @@ defmodule Logflare.Lql.Rules do
         }
       end)
 
-    case {lower_bounds, upper_bounds} do
-      {[], _} ->
-        nil
-
-      {_, []} ->
-        nil
-
-      _ ->
-        %{min: Enum.max(lower_bounds, NaiveDateTime), max: Enum.min(upper_bounds, NaiveDateTime)}
-    end
+    %{min: tightest_bound(lower_bounds, :max), max: tightest_bound(upper_bounds, :min)}
   end
 
   @doc """
@@ -376,6 +384,10 @@ defmodule Logflare.Lql.Rules do
     do: {[normalize_timestamp(value)], [normalize_timestamp(value)]}
 
   defp timestamp_bounds(%FilterRule{}), do: {[], []}
+
+  defp tightest_bound([], _pick), do: nil
+  defp tightest_bound(bounds, :max), do: Enum.max(bounds, NaiveDateTime)
+  defp tightest_bound(bounds, :min), do: Enum.min(bounds, NaiveDateTime)
 
   defp normalize_timestamp(%DateTime{} = timestamp) do
     timestamp
