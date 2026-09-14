@@ -16,6 +16,7 @@
 ## PGLOGICAL_TEST_REPLICATION_SET, PGLOGICAL_DEMO_INTERVAL_MS,
 ## PGLOGICAL_DEMO_TIMEOUT_MS.
 
+# credo:disable-for-this-file Credo.Check.Refactor.IoPuts
 Application.ensure_all_started(:postgrex)
 Application.ensure_all_started(:ecto_sql)
 

@@ -1,3 +1,4 @@
+# credo:disable-for-this-file Credo.Check.Refactor.IoPuts
 Application.ensure_all_started(:postgrex)
 
 primary_url =
