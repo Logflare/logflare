@@ -201,6 +201,11 @@ defmodule LogflareWeb.EndpointsLive do
     {:noreply, socket}
   end
 
+  def handle_event("validate", %{"run" => payload}, socket) do
+    values = Map.merge(socket.assigns.params_form.params, payload)
+    {:noreply, assign(socket, :params_form, test_form(values))}
+  end
+
   def handle_event("validate", %{"endpoint" => endpoint_params}, socket) do
     origin = socket.assigns[:team_user] || socket.assigns.user
 

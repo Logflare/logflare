@@ -77,7 +77,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
         </section>
       </div>
 
-      <.endpoint_call_examples endpoint={@endpoint} declared_params={@declared_params} />
+      <.endpoint_call_examples endpoint={@endpoint} form={@form} declared_params={@declared_params} />
     </aside>
     """
   end
@@ -88,7 +88,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
 
   def endpoint_test_form(assigns) do
     ~H"""
-    <.form :let={f} for={@form} phx-submit="run-query" aria-label="Test endpoint">
+    <.form :let={f} for={@form} id="endpoint-test-form" phx-change="validate" phx-submit="run-query" aria-label="Test endpoint">
       {hidden_input(f, :query)}
 
       <.parameter_fields form={f} declared_params={@declared_params} dynamic_reservation?={@endpoint.enable_dynamic_reservation} />
@@ -166,6 +166,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
       {label(@form, :reservation, "BigQuery Reservation")}
       {text_input(@form, :reservation,
         class: "form-control",
+        phx_debounce: "300",
         placeholder: "projects/{project}/locations/{location}/reservations/{reservation}"
       )}
     </div>
@@ -173,16 +174,22 @@ defmodule LogflareWeb.Endpoints.RunQuery do
   end
 
   attr :endpoint, :map, required: true
+  attr :form, :map, required: true
   attr :declared_params, :list, default: []
 
   defp endpoint_call_examples(assigns) do
+    reservation =
+      case assigns.form[:reservation].value do
+        value when is_binary(value) and value != "" -> value
+        _ -> "projects/PROJECT/locations/LOCATION/reservations/RESERVATION"
+      end
+
     headers =
       [
         "-H 'X-API-KEY: YOUR-ACCESS-TOKEN'",
         if(assigns.endpoint.redact_pii, do: "-H 'LF-ENDPOINT-REDACT-PII: true'"),
         if(assigns.endpoint.enable_dynamic_reservation,
-          do:
-            "-H 'LF-ENDPOINT-BIGQUERY-RESERVATION: projects/PROJECT/locations/LOCATION/reservations/RESERVATION'"
+          do: "-H 'LF-ENDPOINT-BIGQUERY-RESERVATION: #{reservation}'"
         ),
         "-H 'Content-Type: application/json; charset=utf-8'"
       ]

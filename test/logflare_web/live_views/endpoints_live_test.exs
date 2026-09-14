@@ -174,6 +174,17 @@ defmodule LogflareWeb.EndpointsLiveTest do
                command =~ "LF-ENDPOINT-REDACT-PII: true" and
                  command =~ "LF-ENDPOINT-BIGQUERY-RESERVATION: projects/PROJECT"
              end)
+
+      reservation = "projects/1234/locations/au/reservations/5678"
+
+      assert view
+             |> element("#endpoint-test-form")
+             |> render_change(%{run: %{reservation: reservation}})
+             |> Floki.parse_fragment!()
+             |> Floki.find("#endpoint-call-examples pre code")
+             |> Enum.count(fn command ->
+               Floki.text(command) =~ "LF-ENDPOINT-BIGQUERY-RESERVATION: #{reservation}'"
+             end) == 2
     end
 
     test "hides expanded query when it matches the endpoint query", %{conn: conn, user: user} do
@@ -1391,7 +1402,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
     test "shows reservation input when enabled", %{conn: conn, endpoint: endpoint} do
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
-      assert has_element?(view, "input[name='run[reservation]']")
+      assert has_element?(view, "input[name='run[reservation]'][phx-debounce='300']")
     end
 
     test "does not show reservation input when disabled", %{conn: conn, user: user} do
