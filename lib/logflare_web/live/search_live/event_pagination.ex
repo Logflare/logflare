@@ -10,11 +10,13 @@ defmodule LogflareWeb.SearchLive.EventPagination do
   @type buttons :: %{previous: button(), next: button()}
 
   @enforce_keys []
-  defstruct range_extension: nil, loading_intent: nil
+  defstruct range_extension: nil, loading_intent: nil, requested_at: nil, window_seconds: nil
 
   @type t :: %__MODULE__{
           range_extension: range_extension() | nil,
-          loading_intent: EventPage.direction() | nil
+          loading_intent: EventPage.direction() | nil,
+          requested_at: integer() | nil,
+          window_seconds: pos_integer() | nil
         }
 
   @spec new() :: t()
@@ -29,44 +31,53 @@ defmodule LogflareWeb.SearchLive.EventPagination do
   def clear_range_extension(pagination), do: %{pagination | range_extension: nil}
 
   @doc """
+  Sets the window that every page request of this search moves by.
+
+  The button label, the page query, the cursor shift and the range extension all read this
+  one value, so a click moves exactly as far as its button says.
+  """
+  @spec put_window(t(), pos_integer()) :: t()
+  def put_window(pagination, window_seconds)
+      when is_integer(window_seconds) and window_seconds > 0,
+      do: %{pagination | window_seconds: window_seconds}
+
+  @doc """
   Marks a page request as in flight so its button keeps spinning.
 
   `phx-click-loading` only covers the event round trip, which ends as soon as
   `load_events` hands the query to the executor. The query itself finishes much
   later, so the button state has to come from the server.
+
+  `requested_at` is the request time in microseconds. An empty "next" page never moves
+  its cursor past it.
   """
-  @spec mark_loading(t(), EventPage.direction()) :: t()
-  def mark_loading(pagination, intent) when intent in [:previous, :next],
-    do: %{pagination | loading_intent: intent}
+  @spec mark_loading(t(), EventPage.direction(), integer()) :: t()
+  def mark_loading(pagination, intent, requested_at)
+      when intent in [:previous, :next] and is_integer(requested_at),
+      do: %{pagination | loading_intent: intent, requested_at: requested_at}
 
   @spec clear_loading(t()) :: t()
-  def clear_loading(pagination), do: %{pagination | loading_intent: nil}
+  def clear_loading(pagination), do: %{pagination | loading_intent: nil, requested_at: nil}
+
+  @doc """
+  Returns whether a page request with this intent is in flight.
+
+  A page result or page error with any other intent belongs to a request that a new search
+  already replaced.
+  """
+  @spec loading?(t(), EventPage.direction()) :: boolean()
+  def loading?(%__MODULE__{loading_intent: intent}, intent) when not is_nil(intent), do: true
+  def loading?(%__MODULE__{}, _intent), do: false
 
   @spec buttons(t(), keyword()) :: buttons()
   def buttons(pagination, options) do
     tailing? = Keyword.fetch!(options, :tailing?)
-    loading? = Keyword.fetch!(options, :loading?)
     cursors = Keyword.fetch!(options, :cursors)
-
-    window_seconds = Keyword.get(options, :window_seconds)
+    busy? = Keyword.fetch!(options, :loading?) or not is_nil(pagination.loading_intent)
 
     %{
-      previous: %{
-        state:
-          cursors.previous
-          |> previous_button(tailing?, loading?)
-          |> apply_loading(pagination.loading_intent == :previous),
-        cursor: cursors.previous,
-        label: label(window_seconds, "-")
-      },
-      next: %{
-        state:
-          cursors.next
-          |> next_button(tailing?, loading?)
-          |> apply_loading(pagination.loading_intent == :next),
-        cursor: cursors.next,
-        label: label(window_seconds, "+")
-      }
+      previous: button(pagination, :previous, cursors.previous, tailing?, busy?),
+      next: button(pagination, :next, cursors.next, tailing?, busy?)
     }
   end
 
@@ -104,21 +115,24 @@ defmodule LogflareWeb.SearchLive.EventPagination do
   defp pluralize(1, unit), do: unit
   defp pluralize(_amount, unit), do: unit <> "s"
 
+  defp button(pagination, intent, cursor, tailing?, busy?) do
+    state =
+      cursor
+      |> button_state(tailing?, busy?)
+      |> apply_loading(pagination.loading_intent == intent)
+
+    %{state: state, cursor: cursor, label: label(pagination.window_seconds, sign(intent))}
+  end
+
+  defp sign(:previous), do: "-"
+  defp sign(:next), do: "+"
+
   defp apply_loading(:hidden, _loading?), do: :hidden
   defp apply_loading(_state, true), do: :loading
   defp apply_loading(state, _loading?), do: state
 
-  defp previous_button(_cursor, true, _loading?), do: :hidden
-  defp previous_button(nil, _tailing?, _loading?), do: :hidden
-  defp previous_button(_cursor, _tailing?, true), do: :disabled
-
-  defp previous_button(_cursor, _tailing?, _loading?), do: :ready
-
-  # Both buttons move by a fixed window rather than to the next event that happens to exist,
-  # so "this window was empty" says nothing about the next one. Neither button hides on a
-  # short page; only tailing takes them away, because then new events arrive on their own.
-  defp next_button(_cursor, true, _loading?), do: :hidden
-  defp next_button(nil, _tailing?, _loading?), do: :hidden
-  defp next_button(_cursor, _tailing?, true), do: :disabled
-  defp next_button(_cursor, _tailing?, _loading?), do: :ready
+  defp button_state(_cursor, true, _busy?), do: :hidden
+  defp button_state(nil, _tailing?, _busy?), do: :hidden
+  defp button_state(_cursor, _tailing?, true), do: :disabled
+  defp button_state(_cursor, _tailing?, _busy?), do: :ready
 end
