@@ -16,6 +16,21 @@ defmodule Logflare.TestUtils do
   alias Logflare.User
 
   @doc """
+  Restores the `:feature_flag_override` env to its previous value on test exit.
+
+  Call from a test or `setup` block, e.g.
+  `setup {TestUtils, :restore_feature_flag_overrides}`.
+  """
+  @spec restore_feature_flag_overrides(map()) :: :ok
+  def restore_feature_flag_overrides(_context \\ %{}) do
+    prev = Application.get_env(:logflare, :feature_flag_override)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:logflare, :feature_flag_override, prev)
+    end)
+  end
+
+  @doc """
   Configures the following `:logflare` env keys:
   - :single_tenant gets set to true
   - :api_key is randomly set, simulating user setting api key through env var

@@ -11,6 +11,7 @@ defmodule Logflare.Utils.FlagTest do
   use Mimic
 
   alias Logflare.ConfigCatCache
+  alias Logflare.TestUtils
   alias Logflare.User
   alias Logflare.Utils
 
@@ -70,17 +71,78 @@ defmodule Logflare.Utils.FlagTest do
     end
   end
 
-  describe "flag/2 in test env" do
+  describe "flag/2 without ConfigCat SDK key" do
+    setup {TestUtils, :restore_feature_flag_overrides}
+
     setup do
-      prev_env = Application.get_env(:logflare, :env)
-      Application.put_env(:logflare, :env, :test)
-      on_exit(fn -> Application.put_env(:logflare, :env, prev_env) end)
+      prev_sdk_key = Application.get_env(:logflare, :config_cat_sdk_key)
+      Application.delete_env(:logflare, :config_cat_sdk_key)
+      Application.delete_env(:logflare, :feature_flag_override)
+
+      on_exit(fn ->
+        Application.put_env(:logflare, :config_cat_sdk_key, prev_sdk_key)
+      end)
+
       :ok
     end
 
-    test "always returns true regardless of identifier" do
-      assert Utils.flag("any_feature") == true
-      assert Utils.flag("any_feature", "some-id") == true
+    test "defaults flags to false when no override is set" do
+      user = %User{email: "test@example.com"}
+
+      assert Utils.flag("any_feature") == false
+      assert Utils.flag("any_feature", "some-id") == false
+      assert Utils.flag("any_feature", user) == false
+      assert Utils.flag("BigqueryStorageWriteApi") == false
+      assert Utils.flag("BigqueryStorageWriteApi", "some-id") == false
+    end
+
+    test "respects feature_flag_override" do
+      Application.put_env(:logflare, :feature_flag_override, %{
+        "BigqueryStorageWriteApi" => "false",
+        "other" => "true"
+      })
+
+      assert Utils.flag("BigqueryStorageWriteApi", "some-id") == false
+      assert Utils.flag("other") == true
+      assert Utils.flag("unset_feature") == false
+    end
+
+    test "BigqueryStorageWriteApi can be enabled via feature_flag_override" do
+      Application.put_env(:logflare, :feature_flag_override, %{
+        "BigqueryStorageWriteApi" => "true"
+      })
+
+      assert Utils.flag("BigqueryStorageWriteApi", "some-id") == true
+    end
+  end
+
+  describe "flag/2 env independence" do
+    setup {TestUtils, :restore_feature_flag_overrides}
+
+    setup do
+      prev_env = Application.get_env(:logflare, :env)
+      prev_sdk_key = Application.get_env(:logflare, :config_cat_sdk_key)
+
+      Application.delete_env(:logflare, :config_cat_sdk_key)
+      Application.put_env(:logflare, :feature_flag_override, %{"any_feature" => "true"})
+
+      on_exit(fn ->
+        Application.put_env(:logflare, :env, prev_env)
+        Application.put_env(:logflare, :config_cat_sdk_key, prev_sdk_key)
+      end)
+
+      :ok
+    end
+
+    test "resolves from overrides regardless of :env" do
+      for env <- [:test, :dev, :prod] do
+        Application.put_env(:logflare, :env, env)
+
+        assert Utils.flag("any_feature") == true
+        assert Utils.flag("any_feature", "some-id") == true
+        assert Utils.flag("any_feature", %User{email: "test@example.com"}) == true
+        assert Utils.flag("BigqueryStorageWriteApi") == false
+      end
     end
   end
 
