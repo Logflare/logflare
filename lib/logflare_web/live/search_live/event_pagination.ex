@@ -10,33 +10,15 @@ defmodule LogflareWeb.SearchLive.EventPagination do
   @type buttons :: %{previous: button(), next: button()}
 
   @enforce_keys []
-  defstruct next_exhausted?: false, range_extension: nil, loading_intent: nil
+  defstruct range_extension: nil, loading_intent: nil
 
   @type t :: %__MODULE__{
-          next_exhausted?: boolean(),
           range_extension: range_extension() | nil,
           loading_intent: EventPage.direction() | nil
         }
 
   @spec new() :: t()
   def new, do: %__MODULE__{}
-
-  @spec complete_initial(t(), EventPage.t()) :: t()
-  def complete_initial(pagination, _event_page) do
-    %{pagination | next_exhausted?: false}
-  end
-
-  @spec complete_page(t(), EventPage.t(), EventPage.direction()) :: t()
-  def complete_page(pagination, _event_page, :previous), do: pagination
-
-  def complete_page(pagination, event_page, :next) do
-    %{pagination | next_exhausted?: not event_page.has_more?}
-  end
-
-  @spec complete_tail(t(), EventPage.t()) :: t()
-  def complete_tail(pagination, %EventPage{next_cursor: nil}), do: pagination
-
-  def complete_tail(pagination, %EventPage{}), do: %{pagination | next_exhausted?: false}
 
   @spec mark_range_extension(t(), String.t()) :: t()
   def mark_range_extension(pagination, querystring) do
@@ -64,7 +46,6 @@ defmodule LogflareWeb.SearchLive.EventPagination do
   def buttons(pagination, options) do
     tailing? = Keyword.fetch!(options, :tailing?)
     loading? = Keyword.fetch!(options, :loading?)
-    next_available? = Keyword.fetch!(options, :next_available?)
     cursors = Keyword.fetch!(options, :cursors)
 
     window_seconds = Keyword.get(options, :window_seconds)
@@ -80,8 +61,8 @@ defmodule LogflareWeb.SearchLive.EventPagination do
       },
       next: %{
         state:
-          pagination
-          |> next_button(tailing?, loading?, next_available?)
+          cursors.next
+          |> next_button(tailing?, loading?)
           |> apply_loading(pagination.loading_intent == :next),
         cursor: cursors.next,
         label: label(window_seconds, "+")
@@ -133,13 +114,11 @@ defmodule LogflareWeb.SearchLive.EventPagination do
 
   defp previous_button(_cursor, _tailing?, _loading?), do: :ready
 
-  defp next_button(_pagination, true, _loading?, _next_available?), do: :hidden
-  defp next_button(_pagination, _tailing?, _loading?, false), do: :hidden
-
-  defp next_button(%__MODULE__{next_exhausted?: true}, _tailing?, _loading?, _next_available?),
-    do: :hidden
-
-  defp next_button(_pagination, _tailing?, true, _next_available?), do: :disabled
-
-  defp next_button(_pagination, _tailing?, _loading?, _next_available?), do: :ready
+  # Both buttons move by a fixed window rather than to the next event that happens to exist,
+  # so "this window was empty" says nothing about the next one. Neither button hides on a
+  # short page; only tailing takes them away, because then new events arrive on their own.
+  defp next_button(_cursor, true, _loading?), do: :hidden
+  defp next_button(nil, _tailing?, _loading?), do: :hidden
+  defp next_button(_cursor, _tailing?, true), do: :disabled
+  defp next_button(_cursor, _tailing?, _loading?), do: :ready
 end

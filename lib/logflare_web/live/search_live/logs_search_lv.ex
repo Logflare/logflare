@@ -12,10 +12,8 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.Backends.QueryError
   alias Logflare.Billing
   alias Logflare.Logs.EventPage
-  alias Logflare.Logs.SearchOperation
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.Logs.SearchOperations
-  alias Logflare.Logs.SearchOperations.Helpers, as: SearchOperationHelpers
   alias Logflare.Logs.SearchUtils
   alias Logflare.Lql
   alias Logflare.Lql.Rules
@@ -308,7 +306,7 @@ defmodule LogflareWeb.Source.SearchLV do
           search_timezone={@search_timezone}
           loading={@loading}
           tailing?={@tailing?}
-          pagination_buttons={event_pagination_buttons(@event_pagination, @pagination_cursors, @tailing?, @loading, @lql_rules, @search_timezone)}
+          pagination_buttons={event_pagination_buttons(@event_pagination, @pagination_cursors, @tailing?, @loading, @lql_rules)}
           source_schema_flat_map={@source_schema_flat_map}
         />
       </div>
@@ -830,20 +828,12 @@ defmodule LogflareWeb.Source.SearchLV do
 
   defp build_event_page_request(_intent, _cursor_id, _cursor_timestamp), do: :error
 
-  defp event_pagination_buttons(
-         pagination,
-         cursors,
-         tailing?,
-         loading?,
-         lql_rules,
-         search_timezone
-       ) do
+  defp event_pagination_buttons(pagination, cursors, tailing?, loading?, lql_rules) do
     EventPagination.buttons(pagination,
       cursors: cursors,
       tailing?: tailing?,
       loading?: loading?,
-      window_seconds: page_window_seconds(lql_rules),
-      next_available?: next_page_available?(pagination, cursors.next, lql_rules, search_timezone)
+      window_seconds: page_window_seconds(lql_rules)
     )
   end
 
@@ -870,39 +860,6 @@ defmodule LogflareWeb.Source.SearchLV do
         |> SearchOperations.implied_timestamp_range()
     end
   end
-
-  defp next_page_available?(
-         %EventPagination{next_exhausted?: false},
-         cursor,
-         lql_rules,
-         search_timezone
-       )
-       when not is_nil(cursor) do
-    timestamp_filters =
-      %SearchOperation{
-        chart_data_shape_id: nil,
-        lql_ts_filters: Rules.get_timestamp_filters(lql_rules),
-        partition_by: :timestamp,
-        querystring: "",
-        search_timezone: search_timezone,
-        tailing?: false
-      }
-      |> SearchOperations.apply_local_timestamp_correction()
-      |> Map.fetch!(:lql_ts_filters)
-
-    %{max: range_end} =
-      SearchOperationHelpers.get_min_max_filter_timestamps(timestamp_filters, :second)
-
-    range_end =
-      case range_end do
-        %DateTime{} = datetime -> datetime
-        %NaiveDateTime{} = datetime -> DateTime.from_naive!(datetime, "Etc/UTC")
-      end
-
-    DateTime.compare(range_end, DateTime.utc_now()) in [:lt, :eq]
-  end
-
-  defp next_page_available?(_pagination, _cursor, _lql_rules, _search_timezone), do: false
 
   defp put_event_page(socket, rows, :previous) do
     socket
@@ -1042,7 +999,6 @@ defmodule LogflareWeb.Source.SearchLV do
       socket
       |> reset_event_pagination()
       |> put_search_events(event_page.rows)
-      |> update_event_pagination(&EventPagination.complete_initial(&1, event_page))
       |> put_pagination_cursors(event_page, :initial)
       |> assign(:search_op_log_events, events_op)
       |> assign(:tailing_timer, tailing_timer)
@@ -1066,7 +1022,6 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket
     |> put_search_events(event_page.rows)
-    |> update_event_pagination(&EventPagination.complete_tail(&1, event_page))
     |> put_pagination_cursors(event_page, :tail)
     |> assign(:tailing_timer, tailing_timer)
     |> assign(:loading, false)
@@ -1084,7 +1039,6 @@ defmodule LogflareWeb.Source.SearchLV do
   defp put_event_page_result(socket, event_page, intent) when intent in [:previous, :next] do
     socket
     |> put_event_page(event_page.rows, intent)
-    |> update_event_pagination(&EventPagination.complete_page(&1, event_page, intent))
     |> put_pagination_cursors(event_page, intent)
   end
 
