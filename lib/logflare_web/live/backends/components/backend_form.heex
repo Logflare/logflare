@@ -230,28 +230,6 @@
                   Elastic managed OTLP endpoint for Supabase log ingestion (ends with /supabase/v1/logs)
                 </small>
               </div>
-              <% headers_number = 2
-
-              fields =
-                (input_value(f_config, :headers) || %{})
-                |> Stream.concat(Stream.repeatedly(fn -> {"", ""} end))
-                |> Enum.take(headers_number) %>
-              <%= for {{key, val}, i} <- Enum.with_index(fields, 1) do %>
-                <div class="form-group">
-                  {label(f_config, "header#{i}_key", "Custom header #{i} - Key")}
-                  {text_input(f_config, "header#{i}_key", value: key, class: "form-control")}
-                  {label(f_config, "header#{i}_value", "Custom header #{i} - Value")}
-                  {text_input(f_config, "header#{i}_value", value: val, class: "form-control")}
-                </div>
-              <% end %>
-              <div class="form-group">
-                {label(f_config, :gzip, "Gzip")}
-                {checkbox(f_config, :gzip, id: "elastic-gzip")}
-                <small class="form-text text-muted">
-                  Enable "gzip" compression in sent requests
-                </small>
-              </div>
-              {hidden_input(f_config, :protocol, value: "http/protobuf")}
             <% "logstash" -> %>
               <div class="form-group">
                 {label(f_config, :url, "Logstash URL")}
@@ -267,27 +245,6 @@
                 {text_input(f_config, :password, class: "form-control", type: "password")}
                 <small class="form-text text-muted">
                   For basic auth, both username and password must be provided. Matches the "user" and "password" options of the Logstash http input.
-                </small>
-              </div>
-              <% headers_number = 2
-
-              fields =
-                (input_value(f_config, :headers) || %{})
-                |> Stream.concat(Stream.repeatedly(fn -> {"", ""} end))
-                |> Enum.take(headers_number) %>
-              <%= for {{key, val}, i} <- Enum.with_index(fields, 1) do %>
-                <div class="form-group">
-                  {label(f_config, "header#{i}_key", "Custom header #{i} - Key")}
-                  {text_input(f_config, "header#{i}_key", value: key, class: "form-control")}
-                  {label(f_config, "header#{i}_value", "Custom header #{i} - Value")}
-                  {text_input(f_config, "header#{i}_value", value: val, class: "form-control")}
-                </div>
-              <% end %>
-              <div class="form-group">
-                {label(f_config, :gzip, "Gzip")}
-                {checkbox(f_config, :gzip, id: "elastic-logstash-gzip")}
-                <small class="form-text text-muted">
-                  Enable "gzip" compression in sent requests
                 </small>
               </div>
             <% _filebeat -> %>
@@ -307,6 +264,20 @@
                   For basic auth, both username and password must be provided.
                 </small>
               </div>
+          <% end %>
+          <% headers_number = 2
+
+          fields =
+            (input_value(f_config, :headers) || %{})
+            |> Stream.concat(Stream.repeatedly(fn -> {"", ""} end))
+            |> Enum.take(headers_number) %>
+          <%= for {{key, val}, i} <- Enum.with_index(fields, 1) do %>
+            <div class="form-group">
+              {label(f_config, "header#{i}_key", "Custom header #{i} - Key")}
+              {text_input(f_config, "header#{i}_key", value: key, class: "form-control")}
+              {label(f_config, "header#{i}_value", "Custom header #{i} - Value")}
+              {text_input(f_config, "header#{i}_value", value: val, class: "form-control")}
+            </div>
           <% end %>
         <% "loki" -> %>
           <div class="form-group">
@@ -545,14 +516,7 @@
               {text_input(f_config, "header#{i}_value", value: val, class: "form-control")}
             </div>
           <% end %>
-          <div class="form-group">
-            {label(f_config, :gzip, "Gzip")}
-            {checkbox(f_config, :gzip, id: "gzip")}
-            <small class="form-text text-muted">
-              Enable "gzip" compression in sent requests
-            </small>
-          </div>
-          <%= if type == "otlp" do %>
+          <%= if @form_type == "otlp" do %>
             <div class="form-group">
               {label(f_config, :protocol, "Protocol")}
               {select(f_config, :protocol, Logflare.Backends.Adaptor.OtlpAdaptor.protocols(),

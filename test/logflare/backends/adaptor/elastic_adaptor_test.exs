@@ -5,7 +5,6 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
-  alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.LogEvent
 
   @subject Logflare.Backends.Adaptor.ElasticAdaptor
@@ -286,8 +285,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
           }
         )
 
-      start_supervised!({AdaptorSupervisor, {source, backend}})
-      :timer.sleep(500)
+      start_supervised!({SourceSup, source})
       [backend: backend, source: source]
     end
 
