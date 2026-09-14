@@ -13,6 +13,7 @@ defmodule LogflareWeb.LogController do
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceRequest
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceResponse
 
+  alias LogflareWeb.OpenApi.BadRequest
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.ServerError
   alias LogflareWeb.OpenApiSchemas.LogsCreated
@@ -64,6 +65,7 @@ defmodule LogflareWeb.LogController do
     ],
     responses: %{
       200 => Created.response(LogsCreated),
+      400 => BadRequest.response(),
       500 => ServerError.response()
     }
   )
@@ -310,7 +312,7 @@ defmodule LogflareWeb.LogController do
 
   defp handle({:error, errors}, conn) do
     conn
-    |> put_status(406)
+    |> put_status(400)
     |> put_view(LogflareWeb.LogView)
     |> render("index.json", message: errors)
   end

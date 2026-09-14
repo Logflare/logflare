@@ -32,20 +32,20 @@ defmodule LogflareWeb.Plugs.BufferLimiter do
     end
   end
 
-  defp reduce_declared_source({_token, source}, conn) do
-    if Backends.cached_local_pending_buffer_full?(source) do
-      {:halt, handle_buffer_full(conn, source)}
-    else
-      {:cont, conn}
-    end
-  end
-
   def call(%{assigns: %{source: %Source{} = source}} = conn, _opts) do
     if SystemCache.memory_utilization() >= @memory_limit or
          Backends.cached_local_pending_buffer_full?(source) do
       handle_buffer_full(conn, source)
     else
       conn
+    end
+  end
+
+  defp reduce_declared_source({_token, source}, conn) do
+    if Backends.cached_local_pending_buffer_full?(source) do
+      {:halt, handle_buffer_full(conn, source)}
+    else
+      {:cont, conn}
     end
   end
 

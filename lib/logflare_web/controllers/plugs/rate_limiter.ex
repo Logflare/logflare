@@ -10,6 +10,8 @@ defmodule LogflareWeb.Plugs.RateLimiter do
 
   def init(_opts), do: nil
 
+  def call(conn, opts \\ [])
+
   def call(
         %{assigns: %{user: user, plan: plan, declared_sources: declared}} = conn,
         _opts
@@ -40,7 +42,7 @@ defmodule LogflareWeb.Plugs.RateLimiter do
     end)
   end
 
-  def call(%{assigns: %{user: user, source: source, plan: plan}} = conn, _opts \\ []) do
+  def call(%{assigns: %{user: user, source: source, plan: plan}} = conn, _opts) do
     %{
       user: user,
       source: source,
