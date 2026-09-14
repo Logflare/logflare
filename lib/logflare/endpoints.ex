@@ -643,7 +643,7 @@ defmodule Logflare.Endpoints do
       user
       |> Users.preload_sources()
       |> then(fn %{sources: sources} -> sources end)
-      |> Enum.map(&{&1.name, &1.token})
+      |> Map.new(&{&1.name, &1.token})
 
     query = %EndpointQuery{
       query: query_string,
