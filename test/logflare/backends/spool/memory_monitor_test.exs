@@ -233,5 +233,36 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
 
       assert MemoryMonitor.consumer_throttled?() == true
     end
+
+    test "applies backlog pressure only while a backend is enabled", %{
+      user: user,
+      source: source,
+      pid: pid
+    } do
+      backend = insert(:backend, user: user)
+      {:ok, _source} = Backends.update_source_backends(source, [backend])
+      backend_table_key = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(backend_table_key)
+
+      fill_queue(backend_table_key)
+
+      MemoryMonitor.register_source(source.id)
+      force_refresh(pid)
+      assert MemoryMonitor.consumer_throttled?() == true
+
+      backend = backend |> Ecto.Changeset.change(enabled: false) |> Logflare.Repo.update!()
+
+      Backends.clear_list_backends_cache(source.id)
+      force_refresh(pid)
+
+      assert MemoryMonitor.consumer_throttled?() == false
+      assert IngestEventQueue.get_table_size(backend_table_key) > Backends.max_buffer_queue_len()
+
+      backend |> Ecto.Changeset.change(enabled: true) |> Logflare.Repo.update!()
+      Backends.clear_list_backends_cache(source.id)
+      force_refresh(pid)
+
+      assert MemoryMonitor.consumer_throttled?() == true
+    end
   end
 end

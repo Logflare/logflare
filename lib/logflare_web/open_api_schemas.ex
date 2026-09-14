@@ -551,6 +551,7 @@ defmodule LogflareWeb.OpenApiSchemas do
       },
       metadata: %Schema{type: :object, nullable: true},
       default_ingest?: %Schema{type: :boolean},
+      enabled: %Schema{type: :boolean, default: true},
       inserted_at: %Schema{type: :string},
       updated_at: %Schema{type: :string}
     }
@@ -565,7 +566,8 @@ defmodule LogflareWeb.OpenApiSchemas do
       description: %Schema{type: :string, nullable: true},
       config: BackendApiSchema.schema().properties.config,
       metadata: %Schema{type: :object, nullable: true},
-      default_ingest?: %Schema{type: :boolean}
+      default_ingest?: %Schema{type: :boolean},
+      enabled: %Schema{type: :boolean}
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:name, :type, :config]
