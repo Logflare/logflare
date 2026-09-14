@@ -30,24 +30,17 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
     segment_message([record(source_id, event_id, extra_body)])
   end
 
-  defp ndjson_segment(records) do
-    records
-    |> Enum.map(&Jason.encode!/1)
-    |> Enum.join("\n")
-    |> Kernel.<>("\n")
-  end
-
-  defp unparsed_message(segment, format) do
+  defp unparsed_message(segment) do
     %Message{
-      data: %{segment: segment, format: format},
+      data: %{segment: segment},
       acknowledger: {ConsumerPipeline, :noop, %{in_flight_ref: nil, bytes: byte_size(segment)}}
     }
   end
 
   describe "transform/2" do
     test "wraps the producer's raw segment and stashes its byte size for the in-flight counter" do
-      segment = ndjson_segment([%{"id" => "e1"}, %{"id" => "e2"}])
-      unparsed = %{segment: segment, format: :ndjson}
+      segment = :erlang.term_to_binary([%{"id" => "e1"}, %{"id" => "e2"}])
+      unparsed = %{segment: segment}
 
       assert %Message{data: ^unparsed, acknowledger: {ConsumerPipeline, :noop, ack_data}} =
                ConsumerPipeline.transform(unparsed, [])
@@ -60,32 +53,12 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
   end
 
   describe "handle_message/3" do
-    test "parses an ndjson segment into its records" do
-      records = [%{"id" => "e1", "source_id" => 1}, %{"id" => "e2", "source_id" => 1}]
-      message = unparsed_message(ndjson_segment(records), :ndjson)
-
-      assert %Message{status: :ok, data: parsed} =
-               ConsumerPipeline.handle_message(:default, message, %{})
-
-      assert parsed == records
-    end
-
     test "parses an etf segment into its records" do
       records = [%{"id" => "e1", "source_id" => 1}, %{"id" => "e2", "source_id" => 2}]
-      message = unparsed_message(:erlang.term_to_binary(records), :etf)
+      message = unparsed_message(:erlang.term_to_binary(records))
 
       assert %Message{status: :ok, data: ^records} =
                ConsumerPipeline.handle_message(:default, message, %{})
-    end
-
-    test "skips unparseable lines within an otherwise-valid ndjson segment" do
-      segment = ~s({"id":"e1"}\nnot json at all\n{"id":"e2"}\n)
-      message = unparsed_message(segment, :ndjson)
-
-      assert %Message{status: :ok, data: parsed} =
-               ConsumerPipeline.handle_message(:default, message, %{})
-
-      assert Enum.map(parsed, & &1["id"]) == ["e1", "e2"]
     end
 
     test "fails only this message when a segment's content cannot be parsed at all" do
@@ -93,7 +66,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
       # Erlang external term — exactly the ArgumentError :erlang.binary_to_term/1
       # raises on corrupt or format-mismatched spool content. Broadway routes a
       # failed message straight to ack/3 without it ever reaching handle_batch/4.
-      message = unparsed_message("this is not valid etf", :etf)
+      message = unparsed_message("this is not valid etf")
 
       assert %Message{status: {:failed, _reason}} =
                ConsumerPipeline.handle_message(:default, message, %{})
@@ -103,7 +76,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :consumer, :parse])
 
       records = [%{"id" => "e1"}, %{"id" => "e2"}, %{"id" => "e3"}]
-      message = unparsed_message(ndjson_segment(records), :ndjson)
+      message = unparsed_message(:erlang.term_to_binary(records))
 
       ConsumerPipeline.handle_message(:default, message, %{})
 
@@ -120,7 +93,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
         %{"id" => "e2", "source_id" => 2}
       ]
 
-      message = unparsed_message(ndjson_segment(records), :ndjson)
+      message = unparsed_message(:erlang.term_to_binary(records))
 
       ConsumerPipeline.handle_message(:default, message, %{})
 
@@ -132,7 +105,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
       test_pid = self()
       stub(MemoryMonitor, :register_source, fn sid -> send(test_pid, {:registered, sid}) end)
 
-      message = unparsed_message(ndjson_segment([%{"id" => "e1"}]), :ndjson)
+      message = unparsed_message(:erlang.term_to_binary([%{"id" => "e1"}]))
 
       ConsumerPipeline.handle_message(:default, message, %{})
 

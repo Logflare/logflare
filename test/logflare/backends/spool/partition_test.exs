@@ -41,8 +41,6 @@ defmodule Logflare.Backends.Spool.PartitionTest do
       bucket: "test-bucket",
       batch_timeout: 60_000,
       compress: false,
-      format: :ndjson,
-      compression_algorithm: :gzip,
       storage_mod: StorageMod,
       queue_mod: QueueMod,
       queue_ref: nil

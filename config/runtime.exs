@@ -612,19 +612,6 @@ spool_provider_override =
       raise ArgumentError, "Invalid SPOOL_PROVIDER=#{other}. Must be aws or gcp."
   end
 
-spool_compression_algorithm_override =
-  case System.get_env("SPOOL_COMPRESSION_ALGORITHM") do
-    v when v in [nil, ""] ->
-      []
-
-    algorithm when algorithm in ["gzip", "zstd"] ->
-      [compression_algorithm: String.to_existing_atom(algorithm)]
-
-    other ->
-      raise ArgumentError,
-            "Invalid SPOOL_COMPRESSION_ALGORITHM=#{other}. Must be gzip or zstd."
-  end
-
 # Which Logflare.Backends.Spool.Buffer every Partition uses — :wal (local
 # disk, the default) or :mem (in-memory, never durable locally at all).
 # Orthogonal to SPOOL_BLOCKING below: this picks where the buffer lives,
@@ -661,7 +648,6 @@ spool_blocking_override =
 spool_overrides =
   spool_mode_override ++
     spool_provider_override ++
-    spool_compression_algorithm_override ++
     spool_buffer_override ++
     spool_blocking_override ++
     if((q = System.get_env("SPOOL_QUEUE_NAME")) && q != "", do: [queue_name: q], else: []) ++

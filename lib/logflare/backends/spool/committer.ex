@@ -21,9 +21,7 @@ defmodule Logflare.Backends.Spool.Committer do
           storage_mod: module(),
           queue_mod: module(),
           queue_ref: String.t() | nil,
-          format: :ndjson | :etf,
           compress: boolean(),
-          compression_algorithm: :gzip | :zstd,
           index: non_neg_integer()
         }
 
@@ -141,7 +139,7 @@ defmodule Logflare.Backends.Spool.Committer do
         {stage, {:error, reason}} -> {:error, {stage, reason}}
       end
 
-    format_tag = Encoder.format_tag(config.format, config.compress, config.compression_algorithm)
+    format_tag = Encoder.format_tag(config.compress)
     emit_storage_put_telemetry(format_tag, byte_size(compressed_body), result, upload_us)
 
     case result do
@@ -155,25 +153,16 @@ defmodule Logflare.Backends.Spool.Committer do
     end
   end
 
-  defp maybe_compress(body, %{compress: true, compression_algorithm: algorithm}),
-    do: Encoder.compress_binary(algorithm, body)
-
+  defp maybe_compress(body, %{compress: true}), do: Encoder.compress_binary(body)
   defp maybe_compress(body, %{compress: false}), do: body
 
-  defp file_key(config) do
-    Encoder.build_file_key(
-      config.index,
-      config.format,
-      config.compress,
-      config.compression_algorithm
-    )
-  end
+  defp file_key(config), do: Encoder.build_file_key(config.index, config.compress)
 
   defp headers(config) do
-    base = %{"content-type" => Encoder.content_type(config.format)}
+    base = %{"content-type" => Encoder.content_type()}
 
     headers =
-      case Encoder.content_encoding(config.compress, config.compression_algorithm) do
+      case Encoder.content_encoding(config.compress) do
         nil -> base
         encoding -> Map.put(base, "content-encoding", encoding)
       end

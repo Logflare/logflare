@@ -19,9 +19,7 @@ defmodule Logflare.Backends.Spool.CommitterTest do
         storage_mod: StorageMod,
         queue_mod: QueueMod,
         queue_ref: nil,
-        format: :ndjson,
         compress: false,
-        compression_algorithm: :gzip,
         index: 0
       },
       overrides
@@ -70,7 +68,7 @@ defmodule Logflare.Backends.Spool.CommitterTest do
                Committer.commit_async(test_pid, file_thunk(path), 1, :size, path, config)
 
       assert_receive {:put, "0/" <> _rest = key, body, opts}
-      assert [headers: %{"content-type" => "application/x-ndjson"}] = opts
+      assert [headers: %{"content-type" => "application/octet-stream"}] = opts
       assert {:ok, ["one\n"]} = Framing.decode_segments(body)
       assert Encoder.file_key_version(key) == Encoder.current_version()
 
@@ -88,13 +86,13 @@ defmodule Logflare.Backends.Spool.CommitterTest do
                       %{result: :ok}}
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :storage, :put], _,
-                      %{format: :ndjson, result: :ok}}
+                      %{format: :etf, result: :ok}}
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :producer, :batch],
                       %{batch_size: 1}, %{result: :ok, stage: nil}}
     end
 
-    test "gzip+compress sets the content-encoding header" do
+    test "compress sets the content-encoding header" do
       test_pid = self()
 
       stub(StorageMod, :put, fn _b, _k, _body, opts ->
@@ -103,12 +101,12 @@ defmodule Logflare.Backends.Spool.CommitterTest do
       end)
 
       path = sealed_file!()
-      config = config(%{compress: true, compression_algorithm: :gzip})
+      config = config(%{compress: true})
 
       assert {:ok, _pid} =
                Committer.commit_async(test_pid, file_thunk(path), 1, :size, path, config)
 
-      assert_receive {:opts, [headers: %{"content-encoding" => "gzip"}]}
+      assert_receive {:opts, [headers: %{"content-encoding" => "zstd"}]}
     end
 
     test "context doesn't need to be a file path at all — an in-memory body_thunk works identically" do

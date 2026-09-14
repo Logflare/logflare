@@ -5,7 +5,7 @@ defmodule Logflare.Backends.Spool.EncoderTest do
   alias Logflare.Backends.Spool.Framing
   alias Logflare.LogEvent
 
-  defp log_event(body, via_rule_id \\ nil) do
+  defp log_event(body, via_rule_id) do
     %LogEvent{
       id: Ecto.UUID.generate(),
       source_id: 1,
@@ -18,23 +18,11 @@ defmodule Logflare.Backends.Spool.EncoderTest do
     }
   end
 
-  describe "encode_chunk/2" do
-    test "ndjson round-trips to one JSON line per event, framed, uncompressed" do
-      events = [log_event(%{"message" => "one"}), log_event(%{"message" => "two"})]
-
-      {segment, raw_byte_size} = Encoder.encode_chunk(events, :ndjson)
-
-      assert {:ok, [body]} = Framing.decode_segments(segment)
-      assert byte_size(body) == raw_byte_size
-
-      lines = body |> String.trim() |> String.split("\n") |> Enum.map(&Jason.decode!/1)
-      assert [%{"body" => %{"message" => "one"}}, %{"body" => %{"message" => "two"}}] = lines
-    end
-
-    test "etf round-trips to a single term of records, framed, uncompressed" do
+  describe "encode_chunk/1" do
+    test "round-trips to a single term of records, framed, uncompressed" do
       events = [log_event(%{"message" => "hello"}, 123)]
 
-      {segment, raw_byte_size} = Encoder.encode_chunk(events, :etf)
+      {segment, raw_byte_size} = Encoder.encode_chunk(events)
 
       assert {:ok, [body]} = Framing.decode_segments(segment)
       assert byte_size(body) == raw_byte_size
@@ -42,64 +30,50 @@ defmodule Logflare.Backends.Spool.EncoderTest do
     end
   end
 
-  describe "compress_binary/2" do
-    test "gzip compresses and round-trips" do
-      compressed = Encoder.compress_binary(:gzip, "hello world")
-      assert :zlib.gunzip(compressed) == "hello world"
-    end
-
+  describe "compress_binary/1" do
     test "zstd compresses and round-trips" do
-      compressed = Encoder.compress_binary(:zstd, "hello world")
+      compressed = Encoder.compress_binary("hello world")
       assert :ezstd.decompress(compressed) == "hello world"
     end
   end
 
-  describe "file_extension/3" do
-    test "reflects format/compress/algorithm" do
-      assert Encoder.file_extension(:ndjson, false, :gzip) == "ndjson"
-      assert Encoder.file_extension(:etf, false, :zstd) == "etf"
-      assert Encoder.file_extension(:ndjson, true, :gzip) == "ndjson.gz"
-      assert Encoder.file_extension(:ndjson, true, :zstd) == "ndjson.zst"
-      assert Encoder.file_extension(:etf, true, :gzip) == "etf.gz"
-      assert Encoder.file_extension(:etf, true, :zstd) == "etf.zst"
+  describe "file_extension/1" do
+    test "reflects compress" do
+      assert Encoder.file_extension(false) == "etf"
+      assert Encoder.file_extension(true) == "etf.zst"
     end
   end
 
-  describe "format_tag/3" do
-    test "reflects format/compress/algorithm" do
-      assert Encoder.format_tag(:ndjson, false, :gzip) == :ndjson
-      assert Encoder.format_tag(:etf, false, :zstd) == :etf
-      assert Encoder.format_tag(:ndjson, true, :gzip) == :ndjson_gz
-      assert Encoder.format_tag(:ndjson, true, :zstd) == :ndjson_zstd
-      assert Encoder.format_tag(:etf, true, :gzip) == :etf_gz
-      assert Encoder.format_tag(:etf, true, :zstd) == :etf_zstd
+  describe "format_tag/1" do
+    test "reflects compress" do
+      assert Encoder.format_tag(false) == :etf
+      assert Encoder.format_tag(true) == :etf_zstd
     end
   end
 
-  describe "content_encoding/2" do
-    test "nil when not compressing, algorithm name otherwise" do
-      assert Encoder.content_encoding(false, :gzip) == nil
-      assert Encoder.content_encoding(true, :gzip) == "gzip"
-      assert Encoder.content_encoding(true, :zstd) == "zstd"
+  describe "content_encoding/1" do
+    test "nil when not compressing, zstd otherwise" do
+      assert Encoder.content_encoding(false) == nil
+      assert Encoder.content_encoding(true) == "zstd"
     end
   end
 
   describe "file_key_with_version/2 and file_key_version/1" do
     test "tags a key with the current version, and it round-trips back out" do
-      key = Encoder.file_key_with_version("0/some-uuid", "ndjson")
+      key = Encoder.file_key_with_version("0/some-uuid", "etf")
 
-      assert key == "0/some-uuid.v#{Encoder.current_version()}.ndjson"
+      assert key == "0/some-uuid.v#{Encoder.current_version()}.etf"
       assert Encoder.file_key_version(key) == Encoder.current_version()
     end
 
     test "a key with no version tag at all is :legacy" do
-      assert Encoder.file_key_version("0/some-uuid.ndjson") == :legacy
-      assert Encoder.file_key_version("0/some-uuid.ndjson.gz") == :legacy
+      assert Encoder.file_key_version("0/some-uuid.etf") == :legacy
+      assert Encoder.file_key_version("0/some-uuid.etf.zst") == :legacy
     end
 
     test "a key tagged with some other version number extracts that number, not :legacy" do
-      assert Encoder.file_key_version("0/some-uuid.v3.ndjson") == 3
-      assert Encoder.file_key_version("0/some-uuid.v1.ndjson") == 1
+      assert Encoder.file_key_version("0/some-uuid.v3.etf") == 3
+      assert Encoder.file_key_version("0/some-uuid.v1.etf") == 1
     end
   end
 end

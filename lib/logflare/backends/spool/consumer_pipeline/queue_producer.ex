@@ -100,7 +100,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       demand: 0,
       current: nil,
       # nil | :running | {:ready, fetch_result}
-      # fetch_result = {:ok, handle, segments, format} | :empty | {:error, handle, reason}
+      # fetch_result = {:ok, handle, segments} | :empty | {:error, handle, reason}
       prefetch: nil,
       poll_timer: nil,
       poll_backoff_ms: @min_backoff,
@@ -135,7 +135,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   defp current_handle(%{handle: handle}), do: handle
   defp current_handle(nil), do: nil
 
-  defp prefetch_handle({:ready, {:ok, handle, _segments, _format}}), do: handle
+  defp prefetch_handle({:ready, {:ok, handle, _segments}}), do: handle
   defp prefetch_handle({:ready, {:error, handle, _reason}}), do: handle
   defp prefetch_handle(_), do: nil
 
@@ -200,7 +200,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   @impl GenStage
   def handle_info({:prefetch_result, result}, %{draining: true} = state) do
     case result do
-      {:ok, handle, _segments, _format} ->
+      {:ok, handle, _segments} ->
         nack_and_notify(state.queue_mod, state.queue_url, handle, :draining)
 
       {:error, handle, _reason} when not is_nil(handle) ->
@@ -261,10 +261,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   defp maybe_ack_exhausted(state), do: state
 
-  defp maybe_load_next(
-         %{current: nil, prefetch: {:ready, {:ok, handle, segments, format}}} = state
-       ) do
-    %{state | current: %{handle: handle, segments: segments, format: format}, prefetch: nil}
+  defp maybe_load_next(%{current: nil, prefetch: {:ready, {:ok, handle, segments}}} = state) do
+    %{state | current: %{handle: handle, segments: segments}, prefetch: nil}
   end
 
   defp maybe_load_next(%{current: nil, prefetch: {:ready, :empty}} = state) do
@@ -336,7 +334,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     deliver_or_settle(result, parent, parent_ref, queue_mod, queue_url)
   end
 
-  defp prefetch_result_tag({:ok, _handle, _segments, _format}), do: :ok
+  defp prefetch_result_tag({:ok, _handle, _segments}), do: :ok
   defp prefetch_result_tag(:empty), do: :empty
   defp prefetch_result_tag({:error, _handle, _reason}), do: :error
 
@@ -355,7 +353,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     end
   end
 
-  defp settle_orphaned_result({:ok, handle, _segments, _format}, queue_mod, queue_url),
+  defp settle_orphaned_result({:ok, handle, _segments}, queue_mod, queue_url),
     do: nack_and_notify(queue_mod, queue_url, handle, :producer_gone)
 
   defp settle_orphaned_result({:error, handle, _reason}, queue_mod, queue_url)
@@ -384,8 +382,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
     if to_emit != [], do: :atomics.add(state.in_flight_ref, 1, bytes_emitted)
 
-    format = state.current.format
-    events = Enum.map(to_emit, &%{segment: &1, format: format})
+    events = Enum.map(to_emit, &%{segment: &1})
 
     new_state = %{
       state
@@ -477,8 +474,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     case Jason.decode(body) do
       {:ok, %{"file_key" => file_key}} when is_binary(file_key) ->
         case download_and_parse(bucket, file_key, storage_mod) do
-          {:ok, segments, format} ->
-            {:ok, handle, segments, format}
+          {:ok, segments} ->
+            {:ok, handle, segments}
 
           {:error, :not_found} ->
             Logger.debug(
@@ -525,10 +522,10 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       %{
         bytes:
           if(match?({:ok, _}, download_result), do: byte_size(elem(download_result, 1)), else: 0),
-        segment_count: if(match?({:ok, _, _}, result), do: length(elem(result, 1)), else: 0),
+        segment_count: if(match?({:ok, _}, result), do: length(elem(result, 1)), else: 0),
         duration: duration
       },
-      %{result: if(match?({:ok, _, _}, result), do: :ok, else: :error)}
+      %{result: if(match?({:ok, _}, result), do: :ok, else: :error)}
     )
 
     result
@@ -547,11 +544,9 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
           %{}
         )
 
-        format = file_format(file_key)
-
         case Framing.decode_segments(decompressed) do
-          {:ok, segments} -> {:ok, segments, format}
-          {:error, :corrupt, decoded} -> {:ok, decoded, format}
+          {:ok, segments} -> {:ok, segments}
+          {:error, :corrupt, decoded} -> {:ok, decoded}
           {:error, :not_framed} -> {:error, {:decode_failed, :not_framed}}
         end
 
@@ -564,21 +559,11 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     kind, reason -> {:error, {:decode_failed, %RuntimeError{message: inspect({kind, reason})}}}
   end
 
-  @spec file_format(String.t()) :: :etf | :ndjson
-  defp file_format(file_key) do
-    base =
-      file_key
-      |> String.replace_suffix(".gz", "")
-      |> String.replace_suffix(".zst", "")
-
-    if String.ends_with?(base, ".etf"), do: :etf, else: :ndjson
-  end
-
   defp decompress_by_extension(content, file_key) do
-    cond do
-      String.ends_with?(file_key, ".gz") -> :zlib.gunzip(content)
-      String.ends_with?(file_key, ".zst") -> decompress_zstd!(content)
-      true -> content
+    if String.ends_with?(file_key, ".zst") do
+      decompress_zstd!(content)
+    else
+      content
     end
   end
 

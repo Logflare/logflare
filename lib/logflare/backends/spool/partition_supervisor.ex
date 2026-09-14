@@ -15,7 +15,6 @@ defmodule Logflare.Backends.Spool.PartitionSupervisor do
 
   @registry __MODULE__.Registry
   @default_batch_timeout 1_000
-  @default_compression_algorithm :zstd
 
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts), do: Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
@@ -44,12 +43,8 @@ defmodule Logflare.Backends.Spool.PartitionSupervisor do
     bucket = Keyword.fetch!(spool_config, :bucket)
     batch_timeout = Keyword.get(spool_config, :batch_timeout, @default_batch_timeout)
     compress = Keyword.get(spool_config, :compress, true)
-    format = Keyword.get(spool_config, :format, :ndjson)
     wal_dir = Keyword.get(spool_config, :wal_dir)
     buffer_mod = buffer_mod(spool_config)
-
-    compression_algorithm =
-      Keyword.get(spool_config, :compression_algorithm, @default_compression_algorithm)
 
     {storage_mod, queue_mod} = ProviderConfig.resolve_mods(spool_config)
     queue_ref = ProviderConfig.resolve_queue_ref(spool_config, queue_mod)
@@ -63,8 +58,6 @@ defmodule Logflare.Backends.Spool.PartitionSupervisor do
           bucket: bucket,
           batch_timeout: batch_timeout,
           compress: compress,
-          format: format,
-          compression_algorithm: compression_algorithm,
           storage_mod: storage_mod,
           queue_mod: queue_mod,
           queue_ref: queue_ref,

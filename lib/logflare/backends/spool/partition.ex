@@ -64,9 +64,7 @@ defmodule Logflare.Backends.Spool.Partition do
       storage_mod: Keyword.fetch!(opts, :storage_mod),
       queue_mod: Keyword.fetch!(opts, :queue_mod),
       queue_ref: Keyword.fetch!(opts, :queue_ref),
-      format: Keyword.fetch!(opts, :format),
       compress: Keyword.fetch!(opts, :compress),
-      compression_algorithm: Keyword.fetch!(opts, :compression_algorithm),
       index: Keyword.fetch!(opts, :index)
     }
 

@@ -19,7 +19,7 @@ defmodule Logflare.Backends.Spool.Encoder do
   def current_version, do: @current_version
 
   @doc """
-  Extracts the version embedded in a file_key (e.g. `"0/uuid.v2.ndjson"` -> `2`),
+  Extracts the version embedded in a file_key (e.g. `"0/uuid.v2.etf"` -> `2`),
   or `:legacy` if none is present.
   """
   @spec file_key_version(String.t()) :: pos_integer() | :legacy
@@ -35,55 +35,37 @@ defmodule Logflare.Backends.Spool.Encoder do
   def file_key_with_version(key, ext), do: "#{key}.v#{@current_version}.#{ext}"
 
   @doc "Builds a full, versioned spool file key for `index`."
-  @spec build_file_key(non_neg_integer(), :ndjson | :etf, boolean(), :gzip | :zstd) :: String.t()
-  def build_file_key(index, format, compress, algorithm) do
-    ext = file_extension(format, compress, algorithm)
-    file_key_with_version("#{index}/#{generate_uuidv7()}", ext)
+  @spec build_file_key(non_neg_integer(), boolean()) :: String.t()
+  def build_file_key(index, compress) do
+    file_key_with_version("#{index}/#{generate_uuidv7()}", file_extension(compress))
   end
 
   @spec generate_uuidv7() :: String.t()
   def generate_uuidv7, do: UUIDv7.generate()
 
-  @spec encode_chunk([LogEvent.t()], :ndjson | :etf) ::
-          {segment :: binary(), raw_byte_size :: non_neg_integer()}
-  def encode_chunk(log_events, format) do
-    raw = encode_raw(log_events, format)
+  @spec encode_chunk([LogEvent.t()]) :: {segment :: binary(), raw_byte_size :: non_neg_integer()}
+  def encode_chunk(log_events) do
+    raw = encode_raw(log_events)
     segment = Framing.encode_segment(raw)
     {segment, byte_size(raw)}
   end
 
-  @spec file_extension(:ndjson | :etf, boolean(), :gzip | :zstd) :: String.t()
-  def file_extension(:ndjson, false, _algorithm), do: "ndjson"
-  def file_extension(:etf, false, _algorithm), do: "etf"
-  def file_extension(:ndjson, true, :gzip), do: "ndjson.gz"
-  def file_extension(:ndjson, true, :zstd), do: "ndjson.zst"
-  def file_extension(:etf, true, :gzip), do: "etf.gz"
-  def file_extension(:etf, true, :zstd), do: "etf.zst"
+  @spec file_extension(boolean()) :: String.t()
+  def file_extension(false), do: "etf"
+  def file_extension(true), do: "etf.zst"
 
-  @spec content_type(:ndjson | :etf) :: String.t()
-  def content_type(:ndjson), do: "application/x-ndjson"
-  def content_type(:etf), do: "application/octet-stream"
+  @spec content_type() :: String.t()
+  def content_type, do: "application/octet-stream"
 
-  @spec content_encoding(boolean(), :gzip | :zstd) :: String.t() | nil
-  def content_encoding(false, _algorithm), do: nil
-  def content_encoding(true, :gzip), do: "gzip"
-  def content_encoding(true, :zstd), do: "zstd"
+  @spec content_encoding(boolean()) :: String.t() | nil
+  def content_encoding(false), do: nil
+  def content_encoding(true), do: "zstd"
 
-  @spec format_tag(:ndjson | :etf, boolean(), :gzip | :zstd) :: atom()
-  def format_tag(:ndjson, false, _algorithm), do: :ndjson
-  def format_tag(:etf, false, _algorithm), do: :etf
-  def format_tag(:ndjson, true, :gzip), do: :ndjson_gz
-  def format_tag(:ndjson, true, :zstd), do: :ndjson_zstd
-  def format_tag(:etf, true, :gzip), do: :etf_gz
-  def format_tag(:etf, true, :zstd), do: :etf_zstd
+  @spec format_tag(boolean()) :: atom()
+  def format_tag(false), do: :etf
+  def format_tag(true), do: :etf_zstd
 
-  defp encode_raw(log_events, :ndjson) do
-    log_events
-    |> Enum.flat_map(fn log_event -> [encode_line(log_event), "\n"] end)
-    |> IO.iodata_to_binary()
-  end
-
-  defp encode_raw(log_events, :etf) do
+  defp encode_raw(log_events) do
     log_events
     |> Enum.map(fn log_event ->
       %{
@@ -98,31 +80,7 @@ defmodule Logflare.Backends.Spool.Encoder do
     |> :erlang.term_to_binary()
   end
 
-  defp encode_line(log_event) do
-    Jason.encode!(%{
-      id: log_event.id,
-      source_id: log_event.source_id,
-      body: log_event.body,
-      event_type: log_event.event_type,
-      ingested_at: log_event.ingested_at,
-      via_rule_id: log_event.via_rule_id
-    })
-  end
-
-  @doc "Compresses `data` with `algorithm`."
-  @spec compress_binary(:gzip | :zstd, binary()) :: binary()
-  def compress_binary(:gzip, data) do
-    z = :zlib.open()
-
-    try do
-      :ok = :zlib.deflateInit(z, :default, :deflated, 31, 8, :default)
-      chunks = :zlib.deflate(z, data, :finish)
-      :zlib.deflateEnd(z)
-      IO.iodata_to_binary(chunks)
-    after
-      :zlib.close(z)
-    end
-  end
-
-  def compress_binary(:zstd, data), do: :ezstd.compress(data, @zstd_compression_level)
+  @doc "Compresses `data` with zstd."
+  @spec compress_binary(binary()) :: binary()
+  def compress_binary(data), do: :ezstd.compress(data, @zstd_compression_level)
 end

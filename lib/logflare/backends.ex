@@ -678,15 +678,11 @@ defmodule Logflare.Backends do
     :ok
   end
 
-  @default_spool_format :ndjson
   @default_spool_append_timeout 15_000
 
   @spec dispatch_to_spool_producer([LogEvent.t()]) :: :ok | {:error, term()}
   defp dispatch_to_spool_producer(log_events) do
-    spool_config = Application.get_env(:logflare, :spool, [])
-    format = Keyword.get(spool_config, :format, @default_spool_format)
-
-    {segment, raw_bytes} = SpoolEncoder.encode_chunk(log_events, format)
+    {segment, raw_bytes} = SpoolEncoder.encode_chunk(log_events)
 
     event_count = length(log_events)
 

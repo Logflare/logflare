@@ -119,10 +119,10 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
   @impl Broadway
   def handle_message(
         _processor,
-        %Message{data: %{segment: segment, format: format}} = message,
+        %Message{data: %{segment: segment}} = message,
         _context
       ) do
-    {duration, result} = :timer.tc(fn -> parse_segment(segment, format) end)
+    {duration, result} = :timer.tc(fn -> parse_segment(segment) end)
 
     case result do
       {:ok, records} ->
@@ -141,27 +141,12 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     end
   end
 
-  defp parse_segment(content, format) do
-    {:ok, do_parse_segment(content, format)}
+  defp parse_segment(content) do
+    {:ok, :erlang.binary_to_term(content)}
   rescue
     e -> {:error, e}
   catch
     kind, reason -> {:error, {kind, reason}}
-  end
-
-  defp do_parse_segment(content, :etf), do: :erlang.binary_to_term(content)
-
-  defp do_parse_segment(content, :ndjson) do
-    content
-    |> String.split("\n", trim: true)
-    |> Enum.flat_map(&decode_json_line/1)
-  end
-
-  defp decode_json_line(line) do
-    case Jason.decode(line) do
-      {:ok, map} -> [map]
-      {:error, _} -> []
-    end
   end
 
   defp maybe_register_source(record) do
