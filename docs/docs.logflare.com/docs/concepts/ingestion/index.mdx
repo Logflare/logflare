@@ -121,7 +121,7 @@ Example — two sources in one `batch`:
 The same routing applies when POSTing a **bare JSON array** (array root with `application/json`), which maps to `_json`-style ingestion.
 
 :::note
-In multi-source batches, events that omit `__LF_SOURCE` fall back to the source from the **`source`** or **`source_name`** query string. Omitting both per-event routing and a query-parameter default returns **406** with ingestion errors.
+In multi-source batches, events that omit `__LF_SOURCE` fall back to the source from the **`source`** or **`source_name`** query string. Omitting both per-event routing and a query-parameter default returns **400** with ingestion errors.
 :::
 
 ## Pipeline Transformations
