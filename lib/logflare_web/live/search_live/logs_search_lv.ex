@@ -397,6 +397,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       socket
+      |> assign(:scroll_to_bottom_on_result?, true)
       |> assign_new_search_with_qs(
         %{querystring: qs, tailing?: prev_assigns.tailing?},
         schema_flatmap

@@ -1684,6 +1684,25 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert get_view_assigns(view).querystring =~ "t:2020-04-20T00:{01..02}:00"
     end
 
+    test "start_search scrolls to the bottom once the results render", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} =
+        live_with_redirect(conn, Routes.live_path(conn, SearchLV, source, querystring: "error"))
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      allow_sandbox(search_executor_pid)
+
+      view
+      |> TestUtils.wait_for_render("#logs-list-container")
+
+      render_change(view, "start_search", %{"querystring" => "error again"})
+
+      assert_push_event(view, "scroll-to-bottom", %{}, 5_000)
+      refute get_view_assigns(view).scroll_to_bottom_on_result?
+    end
+
     test "datetime_update scrolls to the bottom once the results render", %{
       conn: conn,
       source: source
