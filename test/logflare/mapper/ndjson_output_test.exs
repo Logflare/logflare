@@ -143,12 +143,12 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
     ndjson_context = OutputContext.ndjson(event, "cfg")
     rowbinary_context = OutputContext.ch_row_binary(event, <<0::128>>)
 
-    assert {:error, "NDJSON output requires an ndjson output_context"} =
+    assert {:error, "Invalid ndjson output context"} =
              Mapper.map_result(event.body, ndjson.log, output_context: rowbinary_context)
 
     assert {:error, _} = Mapper.map_result(event.body, ndjson.log)
 
-    assert {:error, "ClickHouse RowBinary output requires a ch_row_binary output_context"} =
+    assert {:error, "Invalid ch_row_binary output context"} =
              Mapper.map_result(event.body, rowbinary, output_context: ndjson_context)
   end
 

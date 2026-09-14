@@ -163,7 +163,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
     assert Mapper.map(%{"message" => "mapped"}, map_compiled, output_context: output_context) ==
              %{"message" => "mapped"}
 
-    assert_raise ArgumentError, ~r/requires a ch_row_binary output_context/, fn ->
+    assert_raise ArgumentError, ~r/Invalid ch_row_binary output context/, fn ->
       Mapper.map(event.body, output_compiled)
     end
   end
@@ -311,7 +311,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
     config_id = encoded_config_id(:log)
     event = raw_event(:log, %{"event_message" => "valid", "timestamp" => 1_700_000_000_000_301})
 
-    assert {:error, "ClickHouse RowBinary output requires a ch_row_binary output_context"} =
+    assert {:error, "Invalid ch_row_binary output context"} =
              Native.map(event.body, compiled, {false, nil})
 
     assert {:error, "row envelope must contain ID, source UUID, source name, and ingested_at"} =
@@ -321,7 +321,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
                {false, {:ch_row_binary, config_id, :invalid_envelope}}
              )
 
-    assert {:error, "mapping_config_id must be a pre-encoded 16-byte UUID binary"} =
+    assert {:error, "mapping_config_id must be a binary"} =
              Native.map(
                event.body,
                compiled,
@@ -372,7 +372,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
     config_id = encoded_config_id(:log)
     valid = raw_event(:log, %{"event_message" => "valid", "timestamp" => 1_700_000_000_000_401})
 
-    assert_raise ArgumentError, ~r/requires a ch_row_binary output_context/, fn ->
+    assert_raise ArgumentError, ~r/Invalid ch_row_binary output context/, fn ->
       Mapper.map(valid.body, compiled)
     end
 

@@ -103,14 +103,7 @@ fn map_ndjson_output<'a>(
     layout: &ndjson::CompiledLayout,
     options: Term<'a>,
 ) -> Result<rustler::OwnedBinary, String> {
-    const CONTEXT_ERROR: &str = "NDJSON output requires an ndjson output_context";
-    let (flat_keys, format, mapping_config_id, envelope) = decode_output_options(options)?;
-    if format != atoms::ndjson() {
-        return Err(CONTEXT_ERROR.to_string());
-    }
-    let mapping_config_id = mapping_config_id
-        .decode::<Binary>()
-        .map_err(|_| "mapping_config_id must be a UUID string".to_string())?;
+    let (flat_keys, mapping_config_id, envelope) = decode_output_options(options, atoms::ndjson())?;
     let (id, source_uuid, source_name, ingested_at) = decode_envelope(envelope)?;
     let envelope = ndjson::RowEnvelope {
         id,
@@ -141,7 +134,8 @@ fn map_clickhouse_output<'a>(
     layout: &clickhouse_rowbinary::CompiledLayout,
     options: Term<'a>,
 ) -> Result<rustler::OwnedBinary, String> {
-    let (flat_keys, mapping_config_id, envelope) = decode_clickhouse_options(options)?;
+    let (flat_keys, mapping_config_id, envelope) =
+        decode_output_options(options, atoms::ch_row_binary())?;
     let envelope = decode_clickhouse_envelope(envelope)?;
     let nil = atoms::nil().encode(env);
     let mut scratch = mapper::MapScratch::new(mapping, nil);
@@ -157,35 +151,31 @@ fn map_clickhouse_output<'a>(
     output.finish()
 }
 
-fn decode_clickhouse_options<'a>(
+/// Splits `{flat_keys, {format, mapping_config_id, envelope}}`, checks the
+/// format matches the compiled output, and decodes `mapping_config_id` as a
+/// binary. The envelope is returned undecoded.
+fn decode_output_options<'a>(
     options: Term<'a>,
+    expected_format: rustler::types::atom::Atom,
 ) -> Result<(bool, Binary<'a>, Term<'a>), String> {
-    const CONTEXT_ERROR: &str =
-        "ClickHouse RowBinary output requires a ch_row_binary output_context";
-    let (flat_keys, format, mapping_config_id, envelope) =
-        decode_output_options(options).map_err(|_| CONTEXT_ERROR.to_string())?;
-    if format != atoms::ch_row_binary() {
-        return Err(CONTEXT_ERROR.to_string());
+    let context_error = || {
+        let format_name = expected_format
+            .to_term(options.get_env())
+            .atom_to_string()
+            .unwrap_or_default();
+        format!("Invalid {format_name} output context")
+    };
+    let (flat_keys, output_context): (bool, Term<'a>) =
+        options.decode().map_err(|_| context_error())?;
+    let (format, mapping_config_id, envelope): (rustler::types::atom::Atom, Term<'a>, Term<'a>) =
+        output_context.decode().map_err(|_| context_error())?;
+    if format != expected_format {
+        return Err(context_error());
     }
     let mapping_config_id = mapping_config_id
         .decode::<Binary>()
-        .map_err(|_| "mapping_config_id must be a pre-encoded 16-byte UUID binary".to_string())?;
+        .map_err(|_| "mapping_config_id must be a binary".to_string())?;
     Ok((flat_keys, mapping_config_id, envelope))
-}
-
-/// Splits `{flat_keys, {format, mapping_config_id, envelope}}` without
-/// interpreting the format-specific parts.
-fn decode_output_options<'a>(
-    options: Term<'a>,
-) -> Result<(bool, rustler::types::atom::Atom, Term<'a>, Term<'a>), String> {
-    let (flat_keys, output_context): (bool, Term<'a>) = options
-        .decode()
-        .map_err(|_| "mapper options must contain flat_keys and output_context".to_string())?;
-    let (format, mapping_config_id, envelope): (rustler::types::atom::Atom, Term<'a>, Term<'a>) =
-        output_context.decode().map_err(|_| {
-            "output_context must be a {format, mapping_config_id, envelope} tuple".to_string()
-        })?;
-    Ok((flat_keys, format, mapping_config_id, envelope))
 }
 
 type Envelope<'a> = (Binary<'a>, Binary<'a>, Binary<'a>, i64);
