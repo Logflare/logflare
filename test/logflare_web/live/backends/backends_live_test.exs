@@ -450,14 +450,14 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       assert html =~ "Logstash URL"
       refute html =~ "Filebeat URL"
-      refute html =~ "Elastic Supabase Endpoint"
+      refute html =~ "Elasticsearch OTLP Endpoint"
 
       html =
         view
         |> element("select#elastic-transport")
         |> render_change(%{backend: %{config: %{transport: "otlp"}}})
 
-      assert html =~ "Elastic Supabase Endpoint"
+      assert html =~ "Elasticsearch OTLP Endpoint"
       refute html =~ "Logstash URL"
     end
 

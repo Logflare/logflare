@@ -17,6 +17,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
 
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.HttpBased
+  alias Logflare.Backends.Adaptor.HttpBased.Headers
   alias Logflare.Backends.Adaptor.OtlpAdaptor
   alias Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter
   alias Logflare.Backends.Adaptor.WebhookAdaptor
@@ -29,7 +30,6 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
 
   @transports ["filebeat", "logstash", "otlp"]
   @webhook_transports ["filebeat", "logstash"]
-  @sensitive_headers ["authorization", "x-api-key", "x-auth-token"]
 
   @doc """
   Returns supported Elastic transport modes.
@@ -74,23 +74,15 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
         %{
           url: config.url,
           http: "http1",
-          gzip: Map.get(config, :gzip, true),
           headers: headers_with_basic_auth(config),
           format_batch: &format_batch/1
         }
 
       "filebeat" ->
-        basic_auth = Utils.encode_basic_auth(config)
-
         %{
           url: config.url,
           http: "http1",
-          headers:
-            if basic_auth do
-              %{"Authorization" => "Basic #{basic_auth}"}
-            else
-              %{}
-            end
+          headers: headers_with_basic_auth(config)
         }
     end
   end
@@ -109,11 +101,6 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
   end
 
   @impl Adaptor
-  def redact_config(config) do
-    Map.replace_lazy(config, :password, fn _ -> "REDACTED" end)
-  end
-
-  @impl Adaptor
   def sanitize_config_for_display(config) do
     Adaptor.mask_config_values(config, except: [:url])
   end
@@ -122,23 +109,18 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
   def cast_config(params, existing_config \\ %{}) do
     types = %{
       transport: :string,
+      headers: {:map, :string},
       # filebeat, logstash
       url: :string,
       username: :string,
       password: :string,
-      # logstash, otlp
-      gzip: :boolean,
-      headers: {:map, :string},
       # otlp
-      endpoint: :string,
-      protocol: :string
+      endpoint: :string
     }
 
     {existing_config, types}
     |> Ecto.Changeset.cast(params, Map.keys(types))
     |> Utils.default_field_value(:transport, "filebeat")
-    |> Utils.default_field_value(:gzip, true)
-    |> Utils.default_field_value(:protocol, "http/protobuf")
     |> Utils.default_field_value(:headers, %{})
     |> validate_user_pass()
   end
@@ -157,7 +139,6 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
           cs
           |> validate_required([:endpoint])
           |> validate_format(:endpoint, ~r/https?\:\/\/.+/)
-          |> validate_inclusion(:protocol, OtlpAdaptor.protocols())
 
         "logstash" ->
           cs
@@ -179,7 +160,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
     |> Map.replace_lazy(:password, fn _ -> "REDACTED" end)
     |> then(fn cfg ->
       if Map.has_key?(cfg, :headers) do
-        Map.update!(cfg, :headers, &redact_headers/1)
+        Map.update!(cfg, :headers, &Headers.redact/1)
       else
         cfg
       end
@@ -212,7 +193,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
     [
       url: config.endpoint,
       formatter: ProtobufFormatter,
-      gzip: config.gzip,
+      gzip: true,
       json: false,
       headers: config.headers || %{}
     ]
@@ -275,18 +256,6 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
       |> Ecto.Changeset.add_error(:password, msg)
     else
       changeset
-    end
-  end
-
-  defp redact_headers(headers) do
-    for {k, v} <- headers, into: %{}, do: redact_header(k, v)
-  end
-
-  defp redact_header(k, v) do
-    if Enum.member?(@sensitive_headers, String.downcase(k)) do
-      {k, "REDACTED"}
-    else
-      {k, v}
     end
   end
 end
