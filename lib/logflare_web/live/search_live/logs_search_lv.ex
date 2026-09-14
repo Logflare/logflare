@@ -408,6 +408,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       socket
+      |> assign(:scroll_to_bottom_on_result?, true)
       |> cancel_async(:generate_natural_language_lql)
       |> assign(
         :ai_assist,
