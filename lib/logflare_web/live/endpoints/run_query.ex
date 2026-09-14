@@ -176,33 +176,26 @@ defmodule LogflareWeb.Endpoints.RunQuery do
   attr :declared_params, :list, default: []
 
   defp endpoint_call_examples(assigns) do
+    headers =
+      [
+        "-H 'X-API-KEY: YOUR-ACCESS-TOKEN'",
+        if(assigns.endpoint.redact_pii, do: "-H 'LF-ENDPOINT-REDACT-PII: true'"),
+        if(assigns.endpoint.enable_dynamic_reservation,
+          do:
+            "-H 'LF-ENDPOINT-BIGQUERY-RESERVATION: projects/PROJECT/locations/LOCATION/reservations/RESERVATION'"
+        ),
+        "-H 'Content-Type: application/json; charset=utf-8'"
+      ]
+      |> Enum.reject(&is_nil/1)
+
+    assigns = assign(assigns, :headers, headers)
+
     ~H"""
     <section id="endpoint-call-examples">
       <h3 class="tw-mb-3 tw-text-xl tw-font-semibold tw-text-white">Call your endpoint</h3>
       <div class="tw-flex tw-flex-col tw-gap-3">
-        <.curl_example title="By UUID" identifier={@endpoint.token} declared_params={@declared_params} />
-        <.curl_example :if={@endpoint.enable_auth} title="By name" identifier={@endpoint.name} declared_params={@declared_params} />
-        <.curl_example
-          title="With per-request PII redaction"
-          identifier={@endpoint.token}
-          headers={[
-            "-H 'X-API-KEY: YOUR-ACCESS-TOKEN'",
-            "-H 'LF-ENDPOINT-REDACT-PII: true'",
-            "-H 'Content-Type: application/json; charset=utf-8'"
-          ]}
-          declared_params={@declared_params}
-        />
-        <.curl_example
-          :if={@endpoint.enable_dynamic_reservation}
-          title="With dynamic BigQuery reservation"
-          identifier={@endpoint.token}
-          headers={[
-            "-H 'X-API-KEY: YOUR-ACCESS-TOKEN'",
-            "-H 'LF-ENDPOINT-BIGQUERY-RESERVATION: projects/PROJECT/locations/LOCATION/reservations/RESERVATION'",
-            "-H 'Content-Type: application/json; charset=utf-8'"
-          ]}
-          declared_params={@declared_params}
-        />
+        <.curl_example title="By UUID" identifier={@endpoint.token} headers={@headers} declared_params={@declared_params} />
+        <.curl_example :if={@endpoint.enable_auth} title="By name" identifier={@endpoint.name} headers={@headers} declared_params={@declared_params} />
       </div>
     </section>
     """
