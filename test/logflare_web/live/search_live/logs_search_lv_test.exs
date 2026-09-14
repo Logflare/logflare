@@ -14,12 +14,15 @@ defmodule LogflareWeb.Source.SearchLVTest do
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.QueryError
   alias Logflare.Google.BigQuery.SchemaUtils
+  alias Logflare.Logs.EventPage
+  alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.Lql.Rules
   alias Logflare.NaturalLanguageLql.AnthropicClient
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Utils.Tasks
+  alias LogflareWeb.SearchLive.EventPagination
   alias LogflareWeb.Source.SearchLV
 
   @endpoint LogflareWeb.Endpoint
@@ -1871,7 +1874,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
       view
       |> TestUtils.wait_for_render("#logs-list-container")
 
-      # the initial search scrolls to the bottom too; consume that push first
       assert_push_event(view, "scroll-to-bottom", %{}, 5_000)
 
       render_change(view, "datetime_update", %{"querystring" => "t:last@2h"})
@@ -2294,8 +2296,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       drain_bq_queries()
 
-      _before_range = current_timestamp_range(view)
-
       view
       |> element("#load-more-events-top")
       |> render_click()
@@ -2419,7 +2419,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
       initial_ids = events |> Enum.slice(2, 100) |> log_event_dom_ids()
       assert visible_log_event_ids(view) == initial_ids
 
-      # the initial search scrolls to the bottom; a page request must not
       assert_push_event(view, "scroll-to-bottom", %{}, 5_000)
 
       before_range = current_timestamp_range(view)
@@ -2442,7 +2441,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert_push_event(view, "scroll-to-event", %{id: ^oldest_loaded_id})
     end
 
-    test "paging forward never pushes the range past now", %{
+    test "every page request moves the range by the same window", %{
       conn: conn,
       events: events,
       message_prefix: message_prefix,
@@ -2451,11 +2450,33 @@ defmodule LogflareWeb.Source.SearchLVTest do
       range_start = div(Enum.at(events, 1).body["timestamp"], 1_000_000) - 1
       range_end = div(Enum.at(events, 99).body["timestamp"], 1_000_000) + 1
       querystring = "#{message_prefix} t:#{range_start}..#{range_end}"
+      window = range_end - range_start
+      label = EventPagination.label(window, "+")
 
       view = open_pagination_search(conn, source, querystring, Enum.at(events, 99))
 
-      assert_push_event(view, "scroll-to-bottom", %{}, 5_000)
-      assert has_element?(view, "#load-more-events-bottom:not([disabled])")
+      assert view |> element("#load-more-events-bottom") |> render() =~ label
+
+      %{max: max_before} = current_timestamp_range(view)
+      %{max: max_after_first} = click_and_wait_for_range(view, "#load-more-events-bottom")
+      %{max: max_after_second} = click_and_wait_for_range(view, "#load-more-events-bottom")
+
+      assert NaiveDateTime.diff(max_after_first, max_before) == window
+      assert NaiveDateTime.diff(max_after_second, max_after_first) == window
+      assert view |> element("#load-more-events-bottom") |> render() =~ label
+    end
+
+    test "a next page does not extend the range past now", %{
+      conn: conn,
+      events: events,
+      message_prefix: message_prefix,
+      source: source
+    } do
+      range_start = div(Enum.at(events, 1).body["timestamp"], 1_000_000) - 1
+      range_end = DateTime.to_unix(DateTime.utc_now())
+      querystring = "#{message_prefix} t:#{range_start}..#{range_end}"
+
+      view = open_pagination_search(conn, source, querystring, Enum.at(events, 99))
 
       view
       |> element("#load-more-events-bottom")
@@ -2464,14 +2485,120 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert_patch(view)
 
       TestUtils.retry_assert(fn ->
-        %{max: max} =
-          view
-          |> get_view_assigns()
-          |> Map.fetch!(:lql_rules)
-          |> Rules.effective_timestamp_range()
-
+        %{max: max} = current_timestamp_range(view)
         assert NaiveDateTime.compare(max, NaiveDateTime.utc_now()) != :gt
       end)
+    end
+
+    test "paging from an open range keeps the user's bound", %{
+      conn: conn,
+      events: events,
+      message_prefix: message_prefix,
+      source: source
+    } do
+      lower_bound =
+        Enum.at(events, 1).body["timestamp"]
+        |> DateTime.from_unix!(:microsecond)
+        |> DateTime.truncate(:second)
+        |> DateTime.to_naive()
+
+      querystring = "#{message_prefix} t:>#{NaiveDateTime.to_iso8601(lower_bound)}"
+
+      view = open_pagination_search(conn, source, querystring, Enum.at(events, 102))
+
+      assert %{min: ^lower_bound, max: nil} =
+               view
+               |> get_view_assigns()
+               |> Map.fetch!(:lql_rules)
+               |> Rules.timestamp_filter_bounds()
+
+      view
+      |> element("#load-more-events-top")
+      |> render_click()
+
+      assert_patch(view)
+
+      TestUtils.retry_assert(fn ->
+        assert %{min: min, max: max} = current_timestamp_range(view)
+        assert NaiveDateTime.compare(min, lower_bound) == :lt
+        assert NaiveDateTime.diff(lower_bound, min) < 3_600
+        assert NaiveDateTime.compare(max, lower_bound) == :gt
+      end)
+    end
+
+    test "paging from an implied range writes the search timezone's wall clock", %{
+      conn: conn,
+      events: events,
+      message_prefix: message_prefix,
+      source: source
+    } do
+      timezone = "America/Los_Angeles"
+      querystring = "#{message_prefix} c:count(*) c:group_by(t::minute)"
+
+      view =
+        open_pagination_search(conn, source, querystring, Enum.at(events, 102), tz: timezone)
+
+      view
+      |> element("#load-more-events-top")
+      |> render_click()
+
+      assert_patch(view)
+
+      local_now = timezone |> DateTime.now!() |> DateTime.to_naive()
+
+      TestUtils.retry_assert(fn ->
+        assert %{max: max} = current_timestamp_range(view)
+        assert abs(NaiveDateTime.diff(max, local_now)) < 120
+      end)
+    end
+
+    test "a page result that no request waits for is dropped", %{
+      conn: conn,
+      events: events,
+      querystring: querystring,
+      source: source
+    } do
+      view = open_pagination_search(conn, source, querystring, Enum.at(events, 101))
+
+      initial_ids = events |> Enum.slice(2, 100) |> log_event_dom_ids()
+      initial_querystring = get_view_assigns(view).querystring
+
+      stale_event = List.first(events)
+      cursor = %{id: stale_event.id, timestamp: stale_event.body["timestamp"]}
+
+      stale_page = %EventPage{
+        rows: [stale_event],
+        request: %{intent: :previous, cursor: cursor, window_seconds: 60},
+        cursor: cursor
+      }
+
+      send(view.pid, {:search_result, %{event_page: stale_page}})
+      render(view)
+
+      assert visible_log_event_ids(view) == initial_ids
+      assert get_view_assigns(view).querystring == initial_querystring
+    end
+
+    test "an invalid search stops the spinner of a page request in flight", %{
+      conn: conn,
+      events: events,
+      querystring: querystring,
+      source: source
+    } do
+      view = open_pagination_search(conn, source, querystring, Enum.at(events, 101))
+
+      stub(SearchQueryExecutor, :query, fn _pid, _params, _intent, _cursor, _window -> :ok end)
+
+      view
+      |> element("#load-more-events-top")
+      |> render_click()
+
+      assert view |> element("#load-more-events-top") |> render() =~ "Loading"
+      assert has_element?(view, "#load-more-events-bottom[disabled]")
+
+      render_change(view, "start_search", %{"querystring" => "timestamp:>20"})
+
+      refute view |> element("#load-more-events-top") |> render() =~ "Loading"
     end
 
     test "paging from an implied range writes an explicit one into the query", %{
@@ -2526,7 +2653,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert visible_log_event_ids(view) == events |> Enum.take(102) |> log_event_dom_ids()
 
-      # a short page means this window was quiet, not that the source has nothing older
       assert has_element?(view, "#load-more-events-top:not([disabled])")
     end
 
@@ -2566,8 +2692,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert has_element?(view, "#load-more-events-top:not([disabled])")
 
-      _before_range = current_timestamp_range(view)
-
       view
       |> element("#load-more-events-top")
       |> render_click()
@@ -2593,6 +2717,47 @@ defmodule LogflareWeb.Source.SearchLVTest do
       render_click(view, "soft_pause", %{})
 
       assert has_element?(view, "#load-more-events-top:not([disabled])")
+    end
+
+    test "a page request still works after a soft pause, play and pause", %{
+      conn: conn,
+      events: events,
+      message_prefix: message_prefix,
+      source: source,
+      user: user
+    } do
+      view =
+        open_pagination_search(conn, source, message_prefix, List.last(events), tailing?: true)
+
+      render_click(view, "soft_pause", %{})
+
+      fresh_event =
+        build(:log_event,
+          source: source,
+          id: "#{message_prefix}-fresh",
+          timestamp: DateTime.to_unix(DateTime.utc_now(), :microsecond),
+          message: "#{message_prefix} fresh"
+        )
+
+      assert {:ok, 1} = Backends.ingest_logs([fresh_event], source)
+      assert :ok = TestUtils.wait_for_postgres_events(source, user, message_prefix, 104)
+
+      render_click(view, "soft_play", %{})
+
+      TestUtils.retry_assert(fn ->
+        assert get_view_assigns(view).pagination_cursors.next
+      end)
+
+      render_click(view, "soft_pause", %{})
+
+      assert has_element?(view, "#load-more-events-bottom:not([disabled])")
+      assert get_view_assigns(view).event_pagination.window_seconds
+
+      view
+      |> element("#load-more-events-bottom")
+      |> render_click()
+
+      assert_patch(view, 5_000)
     end
   end
 
@@ -3304,14 +3469,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
   defp open_pagination_search(conn, source, querystring, expected_event, options \\ []) do
     tailing? = Keyword.get(options, :tailing?, false)
 
+    params = [querystring: querystring, tailing?: tailing?] ++ Keyword.take(options, [:tz])
+
     {:ok, view, _html} =
-      live_with_redirect(
-        conn,
-        Routes.live_path(conn, SearchLV, source.id,
-          querystring: querystring,
-          tailing?: tailing?
-        )
-      )
+      live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id, params))
 
     %{executor_pid: search_executor_pid} = get_view_assigns(view)
     allow_sandbox(search_executor_pid)
@@ -3323,8 +3484,23 @@ defmodule LogflareWeb.Source.SearchLVTest do
     view |> get_view_assigns() |> Map.fetch!(:lql_rules) |> Rules.effective_timestamp_range()
   end
 
-  # A page request widens the range by the window it scanned, so the edge it moves must end
-  # up past where it started. The exact amount is covered by the SearchOperations tests.
+  defp click_and_wait_for_range(view, button) do
+    range_before = current_timestamp_range(view)
+
+    view
+    |> element(button)
+    |> render_click()
+
+    assert_patch(view)
+
+    TestUtils.retry_assert(fn ->
+      assert has_element?(view, "#{button}:not([disabled])")
+      refute current_timestamp_range(view) == range_before
+    end)
+
+    current_timestamp_range(view)
+  end
+
   defp assert_timestamp_range_patch(view, source, original_querystring, direction, before_range) do
     %URI{path: path, query: query} =
       assert_patch(view)

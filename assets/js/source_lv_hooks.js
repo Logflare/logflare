@@ -50,11 +50,6 @@ hooks.SourceLogsSearchList = {
       }
     })
   },
-  // The server asks for a scroll to the bottom in the same message as the rows it wants
-  // shown. More diffs follow it (chart aggregates, pagination buttons), and each one runs
-  // updated() -> restoreScrollAnchor(), which would put the viewport back where it was.
-  // Hold the intent until a frame actually scrolls, and let updated() skip the restore
-  // while it is pending.
   flushScrollToBottom() {
     requestAnimationFrame(() => {
       if (!this.pendingScrollToBottom) return

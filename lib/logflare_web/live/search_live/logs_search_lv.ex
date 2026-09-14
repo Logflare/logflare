@@ -306,7 +306,7 @@ defmodule LogflareWeb.Source.SearchLV do
           search_timezone={@search_timezone}
           loading={@loading}
           tailing?={@tailing?}
-          pagination_buttons={event_pagination_buttons(@event_pagination, @pagination_cursors, @tailing?, @loading, @lql_rules)}
+          pagination_buttons={event_pagination_buttons(@event_pagination, @pagination_cursors, @tailing?, @loading)}
           source_schema_flat_map={@source_schema_flat_map}
         />
       </div>
@@ -479,17 +479,22 @@ defmodule LogflareWeb.Source.SearchLV do
           "cursor-id" => cursor_id,
           "cursor-timestamp" => cursor_timestamp
         },
-        %{assigns: %{loading: false, tailing?: false}} = socket
+        %{assigns: %{loading: false, tailing?: false, event_pagination: %{loading_intent: nil}}} =
+          socket
       ) do
+    requested_at = System.os_time(:microsecond)
+
     with {:ok, {intent, cursor}} <- event_page_request(intent, cursor_id, cursor_timestamp),
          :ok <-
            SearchQueryExecutor.query(
              socket.assigns.executor_pid,
              socket.assigns,
              intent,
-             cursor
+             cursor,
+             socket.assigns.event_pagination.window_seconds
            ) do
-      {:noreply, update_event_pagination(socket, &EventPagination.mark_loading(&1, intent))}
+      {:noreply,
+       update_event_pagination(socket, &EventPagination.mark_loading(&1, intent, requested_at))}
     else
       reason ->
         log_dropped_page_request(socket, %{
@@ -507,6 +512,7 @@ defmodule LogflareWeb.Source.SearchLV do
     log_dropped_page_request(socket, %{
       params: Map.take(params, ["intent", "cursor-id", "cursor-timestamp"]),
       loading: socket.assigns.loading,
+      loading_intent: socket.assigns.event_pagination.loading_intent,
       tailing?: socket.assigns.tailing?
     })
 
@@ -768,9 +774,6 @@ defmodule LogflareWeb.Source.SearchLV do
     end
   end
 
-  # A page request that never reaches the executor used to be indistinguishable from one
-  # that returned no rows: both leave the list untouched and the SQL in the debug modal
-  # unchanged, because that modal only ever shows the initial query.
   defp log_dropped_page_request(socket, context) do
     Logger.warning("Search: dropped a load_events request | #{inspect(context)}",
       source_id: socket.assigns.source.token,
@@ -781,6 +784,11 @@ defmodule LogflareWeb.Source.SearchLV do
   defp update_event_pagination(socket, update) do
     assign(socket, :event_pagination, update.(socket.assigns.event_pagination))
   end
+
+  defp current_page_request?(_socket, :initial), do: true
+
+  defp current_page_request?(socket, intent),
+    do: EventPagination.loading?(socket.assigns.event_pagination, intent)
 
   defp reset_event_pagination(socket) do
     socket
@@ -828,37 +836,33 @@ defmodule LogflareWeb.Source.SearchLV do
 
   defp build_event_page_request(_intent, _cursor_id, _cursor_timestamp), do: :error
 
-  defp event_pagination_buttons(pagination, cursors, tailing?, loading?, lql_rules) do
-    EventPagination.buttons(pagination,
-      cursors: cursors,
-      tailing?: tailing?,
-      loading?: loading?,
-      window_seconds: page_window_seconds(lql_rules)
+  defp event_pagination_buttons(pagination, cursors, tailing?, loading?) do
+    EventPagination.buttons(pagination, cursors: cursors, tailing?: tailing?, loading?: loading?)
+  end
+
+  defp put_page_window(socket) do
+    %{min: min, max: max} = chart_range(socket.assigns)
+    window_seconds = SearchOperations.event_page_window_seconds(min, max)
+    update_event_pagination(socket, &EventPagination.put_window(&1, window_seconds))
+  end
+
+  defp chart_range(%{lql_rules: lql_rules, search_timezone: timezone}) do
+    lql_rules
+    |> adjust_timestamp_rules(timezone)
+    |> SearchOperations.chart_timestamp_range(
+      Rules.get_chart_period(lql_rules, :minute),
+      local_now(timezone)
     )
   end
 
-  # How far one page request travels: the width of the range currently in view. The page
-  # query scans exactly this much and the range grows by the same amount, so the button can
-  # name it.
-  @spec page_window_seconds([term()]) :: pos_integer()
-  defp page_window_seconds(lql_rules) do
-    %{min: min, max: max} = effective_or_implied_range(lql_rules)
-    SearchOperations.event_page_window_seconds(min, max)
-  end
+  defp local_now(timezone) do
+    now =
+      case DateTime.now(timezone) do
+        {:ok, now} -> now
+        {:error, _reason} -> DateTime.utc_now()
+      end
 
-  # A query without a `t:` filter still covers a window: the one the chart is drawing, which
-  # the aggregate query derives from the chart period. That is what the user is looking at,
-  # so that is what a page request measures itself against.
-  defp effective_or_implied_range(lql_rules) do
-    case Rules.effective_timestamp_range(lql_rules) do
-      %{min: _, max: _} = range ->
-        range
-
-      _ ->
-        lql_rules
-        |> Rules.get_chart_period(:minute)
-        |> SearchOperations.implied_timestamp_range()
-    end
+    now |> DateTime.to_naive() |> NaiveDateTime.truncate(:second)
   end
 
   defp put_event_page(socket, rows, :previous) do
@@ -911,82 +915,57 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   defp apply_event_page_result(socket, event_page, intent) when intent in [:previous, :next] do
+    %{window_seconds: window, requested_at: requested_at} = socket.assigns.event_pagination
+
+    cursor =
+      socket.assigns.pagination_cursors
+      |> Map.get(intent)
+      |> shift_cursor(intent, window, requested_at)
+
     socket
     |> update_event_pagination(&EventPagination.clear_loading/1)
-    |> advance_page(event_page, intent)
-  end
-
-  # A page request scans a fixed window and widens the query's range by that same window,
-  # whether or not the window held any events. Extending only as far as the rows that came
-  # back would stall the moment a page landed on a quiet stretch.
-  defp advance_page(socket, event_page, intent) do
-    # The window, and the range it is written into, both describe what was on screen when
-    # the button was clicked, which is what its label promised.
-    cursors = socket.assigns.pagination_cursors
-    window = page_window_seconds(socket.assigns.lql_rules)
-
-    socket
     |> put_event_page_result(event_page, intent)
-    |> keep_cursor_moving(event_page, intent, Map.get(cursors, intent), window)
+    |> keep_cursor_moving(event_page, intent, cursor)
     |> extend_timestamp_range_by(intent, window)
   end
 
-  defp keep_cursor_moving(socket, %EventPage{rows: []}, intent, previous_cursor, window) do
-    update(
-      socket,
-      :pagination_cursors,
-      &Map.put(&1, intent, shift_cursor(previous_cursor, intent, window))
-    )
-  end
+  defp keep_cursor_moving(socket, %EventPage{rows: []}, intent, cursor),
+    do: update(socket, :pagination_cursors, &Map.put(&1, intent, cursor))
 
-  defp keep_cursor_moving(socket, _event_page, _intent, _previous_cursor, _window), do: socket
+  defp keep_cursor_moving(socket, _event_page, _intent, _cursor), do: socket
 
-  # Paging from a query with no `t:` filter writes the chart's own window into the query, so
-  # the range in the URL always describes what is on screen.
-  defp make_timestamp_range_explicit(lql_rules) do
-    case Rules.effective_timestamp_range(lql_rules) do
-      %{min: _, max: _} ->
-        lql_rules
+  defp shift_cursor(nil, _intent, _window, _requested_at), do: nil
 
-      _ ->
-        %{min: min, max: max} = effective_or_implied_range(lql_rules)
-        rule = FilterRule.build(path: "timestamp", operator: :range, values: [min, max])
-        Rules.update_timestamp_rules(lql_rules, [rule])
-    end
-  end
-
-  defp shift_cursor(nil, _intent, _window), do: nil
-
-  defp shift_cursor(%{timestamp: timestamp} = cursor, :previous, window),
+  defp shift_cursor(%{timestamp: timestamp} = cursor, :previous, window, _requested_at),
     do: %{cursor | timestamp: timestamp - window * 1_000_000}
 
-  defp shift_cursor(%{timestamp: timestamp} = cursor, :next, window),
-    do: %{cursor | timestamp: timestamp + window * 1_000_000}
+  defp shift_cursor(%{timestamp: timestamp} = cursor, :next, window, requested_at) do
+    shifted = min(timestamp + window * 1_000_000, requested_at)
+    %{cursor | timestamp: max(timestamp, shifted)}
+  end
 
   defp extend_timestamp_range_by(socket, intent, window) do
+    %{min: min, max: max} = chart_range(socket.assigns)
+
+    values =
+      case intent do
+        :previous ->
+          [NaiveDateTime.add(min, -window, :second), max]
+
+        :next ->
+          now = local_now(socket.assigns.search_timezone)
+          extended = Enum.min([NaiveDateTime.add(max, window, :second), now], NaiveDateTime)
+          [min, Enum.max([max, extended], NaiveDateTime)]
+      end
+
+    timestamp_rule = FilterRule.build(path: "timestamp", operator: :range, values: values)
+
     lql_rules =
       socket.assigns.lql_rules
-      |> adjust_timestamp_rules(socket.assigns.search_timezone)
-      |> make_timestamp_range_explicit()
+      |> Rules.update_timestamp_rules([timestamp_rule])
+      |> maybe_adjust_chart_period()
 
-    case Rules.effective_timestamp_range(lql_rules) do
-      %{min: min, max: max} ->
-        edge =
-          case intent do
-            :previous -> NaiveDateTime.add(min, -window, :second)
-            :next -> NaiveDateTime.add(max, window, :second)
-          end
-
-        lql_rules =
-          lql_rules
-          |> Rules.extend_timestamp_range(intent, edge)
-          |> maybe_adjust_chart_period()
-
-        push_timestamp_range_extension(socket, lql_rules)
-
-      _ ->
-        socket
-    end
+    push_timestamp_range_extension(socket, lql_rules)
   end
 
   defp apply_initial_event_page_result(socket, event_page, events_op) do
@@ -998,6 +977,7 @@ defmodule LogflareWeb.Source.SearchLV do
     socket =
       socket
       |> reset_event_pagination()
+      |> put_page_window()
       |> put_search_events(event_page.rows)
       |> put_pagination_cursors(event_page, :initial)
       |> assign(:search_op_log_events, events_op)
@@ -1023,14 +1003,12 @@ defmodule LogflareWeb.Source.SearchLV do
     socket
     |> put_search_events(event_page.rows)
     |> put_pagination_cursors(event_page, :tail)
+    |> put_page_window()
     |> assign(:tailing_timer, tailing_timer)
     |> assign(:loading, false)
     |> maybe_push_tail_scroll()
   end
 
-  # While tailing, every batch of new events belongs at the bottom of the list. The server
-  # knows when it appended one, so it says so rather than leaving the hook to infer it from
-  # a `data-tailing` attribute on each update.
   defp maybe_push_tail_scroll(%{assigns: %{tailing?: true}} = socket),
     do: push_event(socket, "scroll-to-bottom", %{})
 
@@ -1188,9 +1166,11 @@ defmodule LogflareWeb.Source.SearchLV do
           assign(socket, :ai_assist, %AiAssist{ai_assist | loading?: false})
       end
 
-    {:noreply,
-     socket
-     |> apply_event_page_result(event_page)}
+    if current_page_request?(socket, event_page.request.intent) do
+      {:noreply, apply_event_page_result(socket, event_page)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_info(
@@ -1198,8 +1178,12 @@ defmodule LogflareWeb.Source.SearchLV do
         socket
       )
       when intent in [:previous, :next] do
-    socket = update_event_pagination(socket, &EventPagination.clear_loading/1)
-    {:noreply, put_flash_query_error(socket, search_op.error)}
+    if current_page_request?(socket, intent) do
+      socket = update_event_pagination(socket, &EventPagination.clear_loading/1)
+      {:noreply, put_flash_query_error(socket, search_op.error)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_info({:search_error, search_op}, socket) do
@@ -1551,6 +1535,7 @@ defmodule LogflareWeb.Source.SearchLV do
     socket
     |> assign(:tailing?, false)
     |> assign(:loading, false)
+    |> update_event_pagination(&EventPagination.clear_loading/1)
     |> assign(:chart_loading, false)
     |> put_flash(:error, error)
   end
