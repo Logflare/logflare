@@ -52,7 +52,11 @@ defmodule Logflare.ContextCache.Supervisor do
         buster_specs()
       end
 
-    caches ++
+    routing_snapshot_store =
+      {Rules.RoutingSnapshotStore, Application.get_env(:logflare, Rules.RoutingSnapshotStore, [])}
+
+    [routing_snapshot_store] ++
+      caches ++
       List.wrap(maybe_transaction_broadcaster) ++
       List.wrap(maybe_cainophile) ++
       List.wrap(maybe_busters)
