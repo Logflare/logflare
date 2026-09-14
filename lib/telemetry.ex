@@ -516,9 +516,9 @@ defmodule Logflare.Telemetry do
         tags: [:result],
         description: "Spool storage downloads: bytes by result"
       ),
-      sum("logflare.backends.spool.storage.get.line_count",
+      sum("logflare.backends.spool.storage.get.segment_count",
         tags: [:result],
-        description: "Spool events parsed per downloaded file"
+        description: "Spool segments split per downloaded file"
       ),
       distribution("logflare.backends.spool.storage.get.duration",
         tags: [:result],
@@ -545,11 +545,20 @@ defmodule Logflare.Telemetry do
         description:
           "Time spent in the full background prefetch Task (queue receive + download + decode), by result and whether a file was already buffered when this prefetch started"
       ),
+      counter("logflare.backends.spool.consumer.prefetch.count",
+        tags: [:result, :started_while_buffered],
+        description:
+          "Prefetch Task invocations, by result and whether a file was already buffered when it started"
+      ),
       distribution("logflare.backends.spool.consumer.poll.duration",
         tags: [:idle],
         unit: {:microsecond, :millisecond},
         description:
           "Time spent in the producer's own :poll handling (excludes the background prefetch Task)"
+      ),
+      counter("logflare.backends.spool.consumer.poll.count",
+        tags: [:idle],
+        description: "Spool consumer :poll invocations, by whether it was idle"
       ),
       counter("logflare.backends.spool.queue.ack.count",
         tags: [:reason, :result],

@@ -65,9 +65,22 @@ defmodule Logflare.Backends.Spool.PartitionTest do
     dir
   end
 
+  # Only used by the WAL-backed "group commit" describe block below — it's
+  # the only buffer whose append/4 ever comes back :pending.
+  defp start_wal_partition(opts) do
+    start_partition(Keyword.merge([buffer_mod: Buffer.WAL, wal_dir: wal_dir!()], opts))
+  end
+
   defp segment(payload \\ "line\n"), do: Framing.encode_segment(payload)
 
   defp buffer_state(pid), do: :sys.get_state(pid).buffer_state
+
+  # Callers held un-replied by group commit, waiting on a batched fsync.
+  defp await_sync_ack_froms(pid, count) do
+    TestUtils.retry_assert([sleep: 5], fn ->
+      assert length(:sys.get_state(pid).sync_ack_froms) == count
+    end)
+  end
 
   defp assert_recovered_put(expected_payload, timeout) do
     receive do
@@ -219,6 +232,90 @@ defmodule Logflare.Backends.Spool.PartitionTest do
       assert {:ok, segments} = Framing.decode_segments(body)
       assert Enum.sort(segments) == ["one\n", "two\n"]
       refute_receive {:put, _body}, 100
+    end
+  end
+
+  # Backed by Buffer.WAL, not the rest of this file's Buffer.Mem — it's the
+  # only buffer that ever returns :pending from append/4 (Buffer.Mem is
+  # always immediately durable), so it's the only way to exercise
+  # Partition's deferred-reply side of group commit end-to-end.
+  describe "group commit (deferred replies for a :pending append)" do
+    test "concurrent appends under the threshold are all released together by the one that crosses it" do
+      Application.put_env(:logflare, :spool, sync_threshold_bytes: 100)
+      on_exit(fn -> Application.delete_env(:logflare, :spool) end)
+      stub(StorageMod, :put, fn _b, _k, _body, _opts -> {:ok, %{}} end)
+
+      {pid, _name} = start_wal_partition(batch_timeout: 60_000)
+
+      tasks =
+        for payload <- ["one\n", "two\n", "three\n"] do
+          Task.async(fn -> Partition.append(pid, segment(payload), 10, 1) end)
+        end
+
+      await_sync_ack_froms(pid, 3)
+      assert Enum.all?(tasks, &(Task.yield(&1, 0) == nil))
+
+      # One fsync covers every byte written since the last one, so this
+      # append's own :ok makes all three waiting callers durable too — the
+      # actual group-commit property.
+      assert :ok = Partition.append(pid, segment("big\n"), 100, 1)
+
+      assert Enum.map(tasks, &Task.await(&1, 2000)) == [:ok, :ok, :ok]
+      assert :sys.get_state(pid).sync_ack_froms == []
+    end
+
+    test "a roll releases still-pending appends even though the byte threshold was never crossed" do
+      Application.put_env(:logflare, :spool, sync_threshold_bytes: 1_000_000)
+      on_exit(fn -> Application.delete_env(:logflare, :spool) end)
+      test_pid = self()
+
+      stub(StorageMod, :put, fn _b, _k, body, _opts ->
+        send(test_pid, {:put, body})
+        {:ok, %{}}
+      end)
+
+      {pid, _name} = start_wal_partition(batch_timeout: 300)
+
+      task = Task.async(fn -> Partition.append(pid, segment("rolled\n"), 10, 1) end)
+
+      await_sync_ack_froms(pid, 1)
+      refute Task.yield(task, 50)
+
+      # Nothing crosses the sync threshold — the batch_timeout roll is what
+      # releases this caller. Safe because Buffer.WAL.roll/2 always fsyncs
+      # before sealing.
+      assert Task.await(task, 2000) == :ok
+      assert :sys.get_state(pid).sync_ack_froms == []
+
+      assert_receive {:put, body}, 1000
+      assert {:ok, ["rolled\n"]} = Framing.decode_segments(body)
+    end
+
+    test "wait_until_committed: true still waits for the commit, never released early by a sync" do
+      Application.put_env(:logflare, :spool, sync_threshold_bytes: 1_000_000)
+      on_exit(fn -> Application.delete_env(:logflare, :spool) end)
+      test_pid = self()
+
+      stub(StorageMod, :put, fn _b, _k, body, _opts ->
+        send(test_pid, {:put, body})
+        Process.sleep(150)
+        {:ok, %{}}
+      end)
+
+      {pid, _name} = start_wal_partition(batch_timeout: 50)
+
+      task =
+        Task.async(fn ->
+          Partition.append(pid, segment("committed\n"), 10, 1, wait_until_committed: true)
+        end)
+
+      # This caller waits on commit_ack_froms, a strictly stronger guarantee
+      # than a WAL fsync, so the :pending/:ok distinction is invisible to it.
+      assert_receive {:put, body}, 1000
+      refute Task.yield(task, 50)
+
+      assert Task.await(task, 2000) == :ok
+      assert {:ok, ["committed\n"]} = Framing.decode_segments(body)
     end
   end
 

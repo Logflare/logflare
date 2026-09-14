@@ -22,6 +22,7 @@ defmodule Logflare.Backends.Spool.MemoryMonitor do
   alias Logflare.Backends
 
   @table __MODULE__
+  @seen_sources_table __MODULE__.SeenSources
   @cache_key :stats
   @throttled_position 2
   @consumer_throttled_position 3
@@ -78,16 +79,26 @@ defmodule Logflare.Backends.Spool.MemoryMonitor do
 
   @doc """
   Registers a source as currently active in the spool consumer, so the next
-  refresh cycle checks its destination buffer for backlog. Cheap/async and
-  idempotent — registering an already-registered source is a no-op. Stays
-  watched permanently (no expiry) until it no longer resolves to a real
-  source. Callers that see the same sources repeatedly (e.g. `QueueProducer`)
-  should track what they've already sent and skip redundant casts rather
-  than registering on every single record.
+  refresh cycle checks its destination buffer for backlog. Stays watched
+  permanently (no expiry) until it no longer resolves to a real source.
+
+  A plain write into a `:public` ETS table (`insert_new/2` is atomic) —
+  no GenServer call/cast involved, so this is safe to call unconditionally,
+  once per record, from many concurrent callers (e.g. `ConsumerPipeline`'s
+  Broadway processors) without funneling anything through a single
+  process's mailbox. `refresh/1` reads this same table directly on its own
+  schedule instead of this GenServer maintaining its own duplicate copy of
+  the set via cast messages.
   """
   @spec register_source(pos_integer()) :: :ok
   def register_source(source_id) do
-    GenServer.cast(__MODULE__, {:register_source, source_id})
+    :ets.insert_new(@seen_sources_table, {source_id})
+    :ok
+  rescue
+    # Table doesn't exist yet — MemoryMonitor isn't started (e.g. a unit
+    # test calling a consumer directly). Same fallback intent as
+    # throttled?/0 / consumer_throttled?/0: never crash the caller over this.
+    ArgumentError -> :ok
   end
 
   @spec start_link(keyword()) :: GenServer.on_start()
@@ -98,30 +109,37 @@ defmodule Logflare.Backends.Spool.MemoryMonitor do
   @impl GenServer
   def init(_opts) do
     :ets.new(@table, [:named_table, :set, :protected, read_concurrency: true])
-    {:ok, %{registered_sources: MapSet.new()}, {:continue, :refresh}}
+
+    :ets.new(@seen_sources_table, [
+      :public,
+      :named_table,
+      :set,
+      write_concurrency: true,
+      read_concurrency: true
+    ])
+
+    {:ok, %{}, {:continue, :refresh}}
   end
 
   @impl GenServer
   def handle_continue(:refresh, state) do
-    refresh(state)
+    refresh()
     schedule_refresh()
     {:noreply, state}
   end
 
   @impl GenServer
   def handle_info(:refresh, state) do
-    refresh(state)
+    refresh()
     schedule_refresh()
     {:noreply, state}
   end
 
-  @impl GenServer
-  def handle_cast({:register_source, source_id}, state) do
-    {:noreply, %{state | registered_sources: MapSet.put(state.registered_sources, source_id)}}
-  end
+  defp refresh do
+    registered_sources =
+      Enum.map(:ets.tab2list(@seen_sources_table), fn {source_id} -> source_id end)
 
-  defp refresh(state) do
-    stats = compute_stats(state.registered_sources)
+    stats = compute_stats(registered_sources)
 
     :telemetry.execute(
       [:logflare, :backends, :spool, :throttled],

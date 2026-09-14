@@ -46,6 +46,20 @@ defmodule Logflare.Backends.Spool.Buffer.WALTest do
       assert state.fd != nil
     end
 
+    test "defaults sync_threshold_bytes to 64KB, with nothing pending an fsync yet" do
+      state = init!()
+
+      assert state.sync_threshold_bytes == 64 * 1024
+      assert state.sync_pending_bytes == 0
+    end
+
+    test "reads sync_threshold_bytes from config" do
+      Application.put_env(:logflare, :spool, sync_threshold_bytes: 42)
+      on_exit(fn -> Application.delete_env(:logflare, :spool) end)
+
+      assert init!().sync_threshold_bytes == 42
+    end
+
     test "truncates a torn tail left in the active file, rather than treating it as corruption" do
       dir = wal_dir!()
       active_path = Path.join(dir, "p0.wal")
@@ -62,19 +76,54 @@ defmodule Logflare.Backends.Spool.Buffer.WALTest do
   end
 
   describe "append/4" do
-    test "writes and fsyncs the segment, tracking pending_bytes/pending_count across calls" do
+    test "writes the segment, tracking pending_bytes/pending_count across calls" do
       state = init!()
 
-      assert {:ok, state} = WAL.append(state, segment(), 10, 1)
+      assert {:pending, state} = WAL.append(state, segment(), 10, 1)
       assert state.pending_bytes == 10
       assert state.pending_count == 1
 
-      assert {:ok, state} = WAL.append(state, segment(), 5, 1)
+      assert {:pending, state} = WAL.append(state, segment(), 5, 1)
       assert state.pending_bytes == 15
       assert state.pending_count == 2
 
+      # Written, just not fsync'd yet — the bytes are readable immediately
+      # regardless of where the group-commit sync window happens to be.
       assert {:ok, body} = File.read(state.active_path)
       assert {:ok, ["line\n", "line\n"]} = Framing.decode_segments(body)
+    end
+
+    test "a write under sync_threshold_bytes is :pending, accumulating toward the next fsync" do
+      state = init!()
+
+      assert {:pending, state} = WAL.append(state, segment(), 10, 1)
+      assert state.sync_pending_bytes == 10
+
+      assert {:pending, state} = WAL.append(state, segment(), 5, 1)
+      assert state.sync_pending_bytes == 15
+    end
+
+    test "the write that crosses sync_threshold_bytes fsyncs the whole group, reporting :ok" do
+      state = init!()
+      threshold = state.sync_threshold_bytes
+
+      assert {:pending, state} = WAL.append(state, segment(), threshold - 1, 1)
+      assert state.sync_pending_bytes == threshold - 1
+
+      assert {:ok, state} = WAL.append(state, segment(), 1, 1)
+      assert state.sync_pending_bytes == 0
+
+      # The roll-level counters track since the last *roll*, not the last
+      # fsync, so crossing the sync threshold leaves them alone.
+      assert state.pending_bytes == threshold
+      assert state.pending_count == 2
+    end
+
+    test "a single write at or over sync_threshold_bytes is durable on its own" do
+      state = init!()
+
+      assert {:ok, state} = WAL.append(state, segment(), state.sync_threshold_bytes, 1)
+      assert state.sync_pending_bytes == 0
     end
 
     test "reports Health recovery on every successful write" do
@@ -84,7 +133,7 @@ defmodule Logflare.Backends.Spool.Buffer.WALTest do
       assert Health.healthy?() == false
 
       state = init!()
-      assert {:ok, _state} = WAL.append(state, segment(), 10, 1)
+      assert {:pending, _state} = WAL.append(state, segment(), 10, 1)
 
       assert Health.healthy?() == true
     end
@@ -93,7 +142,7 @@ defmodule Logflare.Backends.Spool.Buffer.WALTest do
       state = init!()
       :file.close(state.fd)
 
-      assert {:ok, state} = WAL.append(state, segment(), 10, 1)
+      assert {:pending, state} = WAL.append(state, segment(), 10, 1)
       assert state.fd != nil
       assert Health.healthy?() == true
     end
@@ -139,14 +188,14 @@ defmodule Logflare.Backends.Spool.Buffer.WALTest do
 
     test "does not roll under the byte threshold without force" do
       state = init!()
-      {:ok, state} = WAL.append(state, segment(), 10, 1)
+      {:pending, state} = WAL.append(state, segment(), 10, 1)
 
       assert {:no_roll, ^state} = WAL.roll(state, false)
     end
 
     test "rolls when force: true, however little has accumulated" do
       state = init!()
-      {:ok, state} = WAL.append(state, segment(), 10, 1)
+      {:pending, state} = WAL.append(state, segment(), 10, 1)
       active_path = state.active_path
 
       assert {:ok, thunk, sealed_path, 1, new_state} = WAL.roll(state, true)
@@ -163,9 +212,25 @@ defmodule Logflare.Backends.Spool.Buffer.WALTest do
       assert {:ok, ["line\n"]} = Framing.decode_segments(body)
     end
 
+    test "fsyncs before sealing even when the sync threshold was never crossed" do
+      state = init!()
+      {:pending, state} = WAL.append(state, segment(), 10, 1)
+      assert state.sync_pending_bytes == 10
+
+      assert {:ok, thunk, sealed_path, 1, new_state} = WAL.roll(state, true)
+
+      # A sealed file is always fully durable regardless of where the
+      # group-commit window happened to be.
+      assert new_state.sync_pending_bytes == 0
+
+      assert File.exists?(sealed_path)
+      assert {:ok, body} = thunk.()
+      assert {:ok, ["line\n"]} = Framing.decode_segments(body)
+    end
+
     test "rolls automatically once the 32MB threshold is crossed" do
       state = init!()
-      {:ok, state} = WAL.append(state, segment(), 10, 1)
+      {:pending, state} = WAL.append(state, segment(), 10, 1)
       # Faking the accumulated byte count avoids actually writing 32MB to disk.
       state = %{state | pending_bytes: 32 * 1024 * 1024}
 
@@ -174,7 +239,7 @@ defmodule Logflare.Backends.Spool.Buffer.WALTest do
 
     test "a roll whose rename fails leaves pending counters untouched and the fd nil, to be reopened lazily" do
       state = init!()
-      {:ok, state} = WAL.append(state, segment(), 10, 1)
+      {:pending, state} = WAL.append(state, segment(), 10, 1)
       state = %{state | wal_dir: Path.join(state.wal_dir, "does-not-exist")}
 
       assert {:error, :enoent, new_state} = WAL.roll(state, true)
@@ -191,7 +256,7 @@ defmodule Logflare.Backends.Spool.Buffer.WALTest do
       on_exit(fn -> Application.delete_env(:logflare, :spool) end)
 
       state = init!()
-      {:ok, state} = WAL.append(state, segment(), 10, 1)
+      {:pending, state} = WAL.append(state, segment(), 10, 1)
       state = %{state | wal_dir: Path.join(state.wal_dir, "does-not-exist")}
 
       assert {:error, :enoent, _state} = WAL.roll(state, true)
@@ -206,7 +271,7 @@ defmodule Logflare.Backends.Spool.Buffer.WALTest do
   describe "on_commit_result/3" do
     test ":ok deletes the sealed file" do
       state = init!()
-      {:ok, state} = WAL.append(state, segment(), 10, 1)
+      {:pending, state} = WAL.append(state, segment(), 10, 1)
       {:ok, _thunk, sealed_path, _count, state} = WAL.roll(state, true)
 
       _state = WAL.on_commit_result(state, sealed_path, :ok)
@@ -216,7 +281,7 @@ defmodule Logflare.Backends.Spool.Buffer.WALTest do
 
     test "a failure leaves the sealed file on disk untouched, for recover/1 to find again next restart" do
       state = init!()
-      {:ok, state} = WAL.append(state, segment(), 10, 1)
+      {:pending, state} = WAL.append(state, segment(), 10, 1)
       {:ok, _thunk, sealed_path, _count, state} = WAL.roll(state, true)
 
       _state = WAL.on_commit_result(state, sealed_path, {:error, :timeout})

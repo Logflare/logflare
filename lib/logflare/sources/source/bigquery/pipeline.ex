@@ -18,10 +18,10 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.Backends.BufferProducer
   alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.BigQuery.SchemaUpdateSampler
   alias Logflare.Sources.Source.Supervisor
   alias Logflare.Sources
   alias Logflare.Users
-  alias Logflare.PubSubRates
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Utils
   require OpenTelemetry.Tracer
@@ -491,25 +491,14 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     # Send those events through the pipeline again, but run them through our schema process this time. Do all
     # these things a max of like 5 times and after that send them to the rejected pile.
 
-    # random sample if local ingest rate is above a certain level
-    # dynamic calculation maintains ~1 schema update per second across all rate levels
-    if source && not source.lock_schema do
-      probability =
-        case PubSubRates.Cache.get_local_rates(source.token) do
-          %{average_rate: avg} when avg > 0 ->
-            # probability = 1.0 / avg with safety bounds
-            # supports rates up to 100K+/sec: at 100K/sec -> 0.00001 (samples ~1/sec)
-            min(1.0, max(0.00001, 1.0 / avg))
-
-          _ ->
-            1.0
-        end
-
-      if :rand.uniform() <= probability do
-        :ok =
-          Backends.via_source(source, {Schema, Map.get(context, :backend_id)})
-          |> Schema.update(log_event, source)
-      end
+    # Random sample if local ingest rate is above a certain level — see
+    # SchemaUpdateSampler's moduledoc for why this is a dedicated, local-only
+    # signal rather than PubSubRates (which only reflects direct-HTTP-ingest
+    # volume, not events arriving via the spool consumer relay).
+    if source && not source.lock_schema && SchemaUpdateSampler.sample?(source.token) do
+      :ok =
+        Backends.via_source(source, {Schema, Map.get(context, :backend_id)})
+        |> Schema.update(log_event, source)
     end
 
     log_event

@@ -9,14 +9,19 @@ defmodule Logflare.Backends.Spool.Partition do
 
   What this module *does* own, uniformly regardless of buffer:
 
-    * **Reply timing.** `append/5` replies the moment the buffer itself
-      accepts the segment (`buffer_mod.append/4` succeeds) — for the WAL
-      buffer that's a local `fsync`; for the Mem buffer, just landing in a
-      list. `wait_until_committed: true` instead defers the reply until the
-      batch this segment ends up part of is actually committed (uploaded to
-      GCS/S3, published to Pub-Sub/SQS) — its `from` is stashed in
-      `commit_ack_froms` and carried along with whatever roll eventually
-      seals it in.
+    * **Reply timing.** `append/5` replies once the buffer says the segment
+      is durable — for the Mem buffer that's immediate (just landing in a
+      list); for the WAL buffer, `buffer_mod.append/4` can come back
+      `:pending` (written, not yet `fsync`'d — see `Buffer.WAL`'s group
+      commit), in which case `from` is stashed in `sync_ack_froms` until a
+      later append's `:ok` or the next roll (always fsyncs unconditionally
+      before sealing) releases every caller accumulated since the last
+      release. `wait_until_committed: true`
+      instead defers the reply until the batch this segment ends up part of
+      is actually committed (uploaded to GCS/S3, published to Pub-Sub/SQS) —
+      its `from` is stashed in `commit_ack_froms` and carried along with
+      whatever roll eventually seals it in, regardless of WAL-sync timing
+      (a stronger guarantee that already subsumes it).
     * **When to attempt a roll.** After every append (an early roll if the
       buffer's own threshold is crossed) and on a recurring
       `batch_timeout` timer (`force: true` — rolls however little has
@@ -120,6 +125,7 @@ defmodule Logflare.Backends.Spool.Partition do
       recovery_retry_delay_ms:
         Keyword.get(spool_config, :recovery_retry_delay_ms, @default_recovery_retry_delay_ms),
       commit_ack_froms: [],
+      sync_ack_froms: [],
       task_in_flight: 0,
       tasks: %{},
       committer_config: committer_config
@@ -145,16 +151,23 @@ defmodule Logflare.Backends.Spool.Partition do
   end
 
   @impl GenServer
-  def handle_call({:append, segment, raw_byte_size, event_count}, _from, state) do
+  def handle_call({:append, segment, raw_byte_size, event_count}, from, state) do
     case do_append(state, segment, raw_byte_size, event_count) do
-      {:ok, state} -> {:reply, :ok, maybe_roll(state, :size)}
-      {:error, reason, state} -> {:reply, {:error, reason}, state}
+      {:ok, state} ->
+        Enum.each(state.sync_ack_froms, &GenServer.reply(&1, :ok))
+        {:reply, :ok, maybe_roll(%{state | sync_ack_froms: []}, :size)}
+
+      {:pending, state} ->
+        {:noreply, %{state | sync_ack_froms: [from | state.sync_ack_froms]}}
+
+      {:error, reason, state} ->
+        {:reply, {:error, reason}, state}
     end
   end
 
   def handle_call({:append_committed, segment, raw_byte_size, event_count}, from, state) do
     case do_append(state, segment, raw_byte_size, event_count) do
-      {:ok, state} ->
+      {result, state} when result in [:ok, :pending] ->
         state = %{state | commit_ack_froms: [from | state.commit_ack_froms]}
         {:noreply, maybe_roll(state, :size)}
 
@@ -221,6 +234,7 @@ defmodule Logflare.Backends.Spool.Partition do
   defp do_append(state, segment, raw_byte_size, event_count) do
     case state.buffer_mod.append(state.buffer_state, segment, raw_byte_size, event_count) do
       {:ok, buffer_state} -> {:ok, %{state | buffer_state: buffer_state}}
+      {:pending, buffer_state} -> {:pending, %{state | buffer_state: buffer_state}}
       {:error, reason, buffer_state} -> {:error, reason, %{state | buffer_state: buffer_state}}
     end
   end
@@ -239,8 +253,20 @@ defmodule Logflare.Backends.Spool.Partition do
         %{state | buffer_state: buffer_state}
 
       {:ok, body_thunk, context, total_count, buffer_state} ->
+        # A successful roll always fully fsyncs before sealing (see
+        # Buffer.WAL.roll/2) — safe to release every :pending caller
+        # accumulated so far regardless of where the sync-batching window
+        # happened to be.
+        Enum.each(state.sync_ack_froms, &GenServer.reply(&1, :ok))
         froms = state.commit_ack_froms
-        state = %{state | buffer_state: buffer_state, commit_ack_froms: []}
+
+        state = %{
+          state
+          | buffer_state: buffer_state,
+            commit_ack_froms: [],
+            sync_ack_froms: []
+        }
+
         start_commit_or_defer(state, body_thunk, context, froms, total_count, trigger)
 
       {:error, _reason, buffer_state} ->

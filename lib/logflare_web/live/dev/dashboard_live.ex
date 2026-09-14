@@ -17,6 +17,8 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
     write_total_atomic = :atomics.new(1, [])
     read_rate_atomic = :atomics.new(1, [])
     read_total_atomic = :atomics.new(1, [])
+    parse_rate_atomic = :atomics.new(1, [])
+    parse_total_atomic = :atomics.new(1, [])
     ch_rate_atomic = :atomics.new(1, [])
     ch_total_atomic = :atomics.new(1, [])
     bq_rate_atomic = :atomics.new(1, [])
@@ -62,6 +64,20 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
         {read_rate_atomic, read_total_atomic}
       )
 
+      # Events actually parsed by ConsumerPipeline.handle_message/3, per
+      # segment — compared against read_rate (events dispatched), this
+      # shows whether a gap is upstream of parsing (segments not arriving
+      # fast enough) or downstream of it (dispatch/batch handling).
+      :telemetry.attach(
+        "dev-dashboard-parse-#{pid}",
+        [:logflare, :backends, :spool, :consumer, :parse],
+        fn _event, %{event_count: count}, _meta, {rate_ref, total_ref} ->
+          :atomics.add(rate_ref, 1, count)
+          :atomics.add(total_ref, 1, count)
+        end,
+        {parse_rate_atomic, parse_total_atomic}
+      )
+
       Process.send_after(self(), :tick, @tick_ms)
     end
 
@@ -83,6 +99,8 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
        write_total_atomic: write_total_atomic,
        read_rate_atomic: read_rate_atomic,
        read_total_atomic: read_total_atomic,
+       parse_rate_atomic: parse_rate_atomic,
+       parse_total_atomic: parse_total_atomic,
        ch_rate_atomic: ch_rate_atomic,
        ch_total_atomic: ch_total_atomic,
        bq_rate_atomic: bq_rate_atomic,
@@ -100,6 +118,7 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
     :telemetry.detach("dev-dashboard-ch-#{pid}")
     :telemetry.detach("dev-dashboard-bq-#{pid}")
     :telemetry.detach("dev-dashboard-read-#{pid}")
+    :telemetry.detach("dev-dashboard-parse-#{pid}")
     socket
   end
 
@@ -125,7 +144,9 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
         socket.assigns.write_rate_atomic,
         socket.assigns.write_total_atomic,
         socket.assigns.read_rate_atomic,
-        socket.assigns.read_total_atomic
+        socket.assigns.read_total_atomic,
+        socket.assigns.parse_rate_atomic,
+        socket.assigns.parse_total_atomic
       )
       |> Map.merge(ch_metrics)
       |> Map.merge(cpu_metrics)
@@ -212,7 +233,14 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
     """
   end
 
-  defp gather_metrics(write_rate_atomic, write_total_atomic, read_rate_atomic, read_total_atomic) do
+  defp gather_metrics(
+         write_rate_atomic,
+         write_total_atomic,
+         read_rate_atomic,
+         read_total_atomic,
+         parse_rate_atomic,
+         parse_total_atomic
+       ) do
     spool_key = {:spool_producer, nil}
     ets_pending = IngestEventQueue.total_by_status(spool_key, :pending)
     ets_processing = IngestEventQueue.total_by_status(spool_key, :processing)
@@ -227,6 +255,8 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
     written_total = :atomics.get(write_total_atomic, 1)
     read_rate = :atomics.exchange(read_rate_atomic, 1, 0)
     read_total = :atomics.get(read_total_atomic, 1)
+    parse_rate = :atomics.exchange(parse_rate_atomic, 1, 0)
+    parse_total = :atomics.get(parse_total_atomic, 1)
 
     %{
       ets_pending: ets_pending,
@@ -237,6 +267,8 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
       written_total: written_total,
       read_rate: read_rate,
       read_total: read_total,
+      parse_rate: parse_rate,
+      parse_total: parse_total,
       ets_mb: Float.round(ets_bytes / 1_048_576, 1),
       proc_mb: Float.round(proc_bytes / 1_048_576, 1),
       total_mb: Float.round(total_bytes / 1_048_576, 1)
@@ -393,6 +425,8 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
       written_total: 0,
       read_rate: 0,
       read_total: 0,
+      parse_rate: 0,
+      parse_total: 0,
       ets_mb: 0.0,
       proc_mb: 0.0,
       total_mb: 0.0,

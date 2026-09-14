@@ -2,7 +2,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   @moduledoc """
   GenStage producer for `Logflare.Backends.Spool.ConsumerPipeline` — pulls
   queue messages (SQS or Pub/Sub, via `queue_mod`) that each point at a spool
-  file in `bucket`, downloads and decodes that file's lines (via
+  file in `bucket`, downloads and splits it into segments (via
   `storage_mod`), and emits them to Broadway on demand.
 
   ## Polling and prefetch
@@ -57,15 +57,20 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   ## max_in_flight
 
-  Emitting to Broadway is capped by a `max_in_flight` limit, backed by an
-  `:atomics` counter: incremented in `emit_from_buffer/1` as lines are
-  handed out, decremented by `ConsumerPipeline`'s Acknowledger once Broadway
-  finishes with those events (success or failure). This is the same
-  primitive BigQuery/ClickHouse/the spool producer pipeline get via
-  `BufferProducer`, duplicated here rather than shared since this producer
-  isn't `IngestEventQueue`-backed — it stops a slow destination backend from
-  letting this producer keep draining the queue into an unbounded batcher
-  backlog. The ref lives in this process's own dictionary (read via
+  Emitting to Broadway is capped by a `max_in_flight` **byte** budget, backed
+  by an `:atomics` counter: incremented in `emit_from_buffer/1` by each
+  emitted segment's byte size, decremented by `ConsumerPipeline`'s
+  Acknowledger (by the same byte size, stashed in `ack_data` at `transform/2`
+  time) once Broadway finishes with those segments (success or failure). This
+  is the same primitive BigQuery/ClickHouse/the spool producer pipeline get
+  via `BufferProducer`, duplicated here rather than shared since this
+  producer isn't `IngestEventQueue`-backed — it stops a slow destination
+  backend from letting this producer keep draining the queue into an
+  unbounded batcher backlog. Bytes, not segment count, since segments vary
+  widely in size (one per original ingest request's chunk) — this producer
+  never parses a segment to know its event count up front (see "Spool file
+  format" below), and byte size is a more meaningful memory-pressure signal
+  regardless. The ref lives in this process's own dictionary (read via
   `get_in_flight_ref/0`) rather than a cross-process registry, since
   Broadway always runs `ConsumerPipeline.transform/2` in the producer's own
   process.
@@ -102,7 +107,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   SQS/Pub/Sub acking is entirely decoupled from Broadway's per-message ack
   (which is a no-op — see `ConsumerPipeline.ack/3`). A queue message is
-  acked once all of its file's lines have been transferred into the emit
+  acked once all of its file's segments have been transferred into the emit
   buffer and drained (`maybe_ack_exhausted/1`), regardless of whether
   Broadway has actually finished processing them yet.
 
@@ -111,23 +116,29 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   A spool file (see `Committer.file_key/1`, `Encoder.current_version/0`) is
   one or more raw, length+CRC32-framed chunks, one per ingest request,
   compressed once as a whole by `Committer` at commit time.
-  `decode_content/2` reverses that: decompress the whole file, split it
-  into segments (`Logflare.Backends.Spool.Framing.decode_segments/1`),
-  then parse each one. Dispatching on the file_key's version tag itself,
-  rather than sniffing the content, is exact — there's no ambiguity to
-  fall back on. A version
-  this build doesn't recognize (newer than `Encoder.current_version/0` —
-  some future rollout where not every consumer is upgraded yet) is
-  reported back as `{:unsupported_version, _}` rather than attempted, so
-  the caller can leave it for a node that does understand it instead of
-  destroying it as if it were corrupt.
+  `decode_content/2` reverses that: decompress the whole file and split it
+  into segments (`Logflare.Backends.Spool.Framing.decode_segments/1`) — it
+  stops there. Parsing each segment's raw content (`binary_to_term`/JSON)
+  happens later, in `ConsumerPipeline.handle_message/3`, so that work runs
+  with Broadway's `processors` concurrency instead of serialized here — it's
+  the dominant cost of handling a file, so this producer only ever holds one
+  file's segments in flight at a time and would otherwise cap total consumer
+  throughput regardless of core count. Dispatching on the file_key's version
+  tag itself, rather than sniffing the content, is exact — there's no
+  ambiguity to fall back on. A version this build doesn't recognize (newer
+  than `Encoder.current_version/0` — some future rollout where not every
+  consumer is upgraded yet) is reported back as `{:unsupported_version, _}`
+  rather than attempted, so the caller can leave it for a node that does
+  understand it instead of destroying it as if it were corrupt.
 
-  Decompression and parsing are both capable of raising on truncated or
-  otherwise corrupt content (`:zlib.gunzip/1`, `:ezstd.decompress/1`, and
-  `:erlang.binary_to_term/2` all crash or return `{:error, _}` rather than
-  a clean error tuple in every case) — caught close to the queue handle, so
-  the caller can ack (drop) the poison message instead of losing the
-  handle to `safe_fetch_next/4`'s outer rescue and retrying forever.
+  Decompression is capable of raising on truncated or otherwise corrupt
+  content (`:zlib.gunzip/1`, `:ezstd.decompress/1` both crash or return
+  `{:error, _}` rather than a clean error tuple in every case) — caught
+  close to the queue handle, so the caller can ack (drop) the poison message
+  instead of losing the handle to `safe_fetch_next/4`'s outer rescue and
+  retrying forever. A segment whose *content* fails to parse (passes CRC but
+  isn't valid ETF/JSON) is no longer a whole-file failure — it's isolated to
+  that one Broadway message, same as any other per-segment dispatch failure.
   """
 
   @behaviour Broadway.Producer
@@ -179,14 +190,11 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       demand: 0,
       current: nil,
       # nil | :running | {:ready, fetch_result}
-      # fetch_result = {:ok, handle, lines} | :empty | {:error, handle, reason}
+      # fetch_result = {:ok, handle, segments, format} | :empty | {:error, handle, reason}
       prefetch: nil,
       poll_timer: nil,
       poll_backoff_ms: @min_backoff,
-      # source_ids already sent to MemoryMonitor.register_source/1 — sent
-      # once per producer lifetime, never again.
-      registered_sources: MapSet.new(),
-      # Caps how many lines can be emitted to Broadway and not yet acked, so a
+      # Caps how many bytes can be emitted to Broadway and not yet acked, so a
       # slow destination backend can't let this producer keep draining the
       # queue into an unbounded batcher backlog.
       in_flight_ref: in_flight_ref,
@@ -227,7 +235,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   defp current_handle(%{handle: handle}), do: handle
   defp current_handle(nil), do: nil
 
-  defp prefetch_handle({:ready, {:ok, handle, _lines}}), do: handle
+  defp prefetch_handle({:ready, {:ok, handle, _segments, _format}}), do: handle
   defp prefetch_handle({:ready, {:error, handle, _reason}}), do: handle
   defp prefetch_handle(_), do: nil
 
@@ -320,7 +328,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   @impl GenStage
   def handle_info({:prefetch_result, result}, %{draining: true} = state) do
     case result do
-      {:ok, handle, _lines} ->
+      {:ok, handle, _segments, _format} ->
         nack_and_notify(state.queue_mod, state.queue_url, handle, :draining)
 
       {:error, handle, _reason} when not is_nil(handle) ->
@@ -376,10 +384,10 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   end
 
   defp buffered?(%{current: nil}), do: false
-  defp buffered?(%{current: %{lines: []}}), do: false
+  defp buffered?(%{current: %{segments: []}}), do: false
   defp buffered?(_), do: true
 
-  defp maybe_ack_exhausted(%{current: %{lines: [], handle: handle}} = state) do
+  defp maybe_ack_exhausted(%{current: %{segments: [], handle: handle}} = state) do
     ack_and_notify(state.queue_mod, state.queue_url, handle, :buffer_exhausted)
     %{state | current: nil}
   end
@@ -387,9 +395,10 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   defp maybe_ack_exhausted(state), do: state
 
   # Prefetch landed — use it immediately with zero download wait
-  defp maybe_load_next(%{current: nil, prefetch: {:ready, {:ok, handle, lines}}} = state) do
-    state = register_sources(state, lines)
-    %{state | current: %{handle: handle, lines: lines}, prefetch: nil}
+  defp maybe_load_next(
+         %{current: nil, prefetch: {:ready, {:ok, handle, segments, format}}} = state
+       ) do
+    %{state | current: %{handle: handle, segments: segments, format: format}, prefetch: nil}
   end
 
   # Prefetch landed but queue was empty
@@ -421,31 +430,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   defp maybe_load_next(%{current: nil} = state), do: state
 
   defp maybe_load_next(state), do: state
-
-  # Lets MemoryMonitor know these sources are currently flowing through the
-  # spool consumer, so its refresh cycle checks their destination ingest
-  # buffers for backlog (see over_limit?/0). Only casts for sources this
-  # producer hasn't already sent — sent once per producer lifetime, never
-  # again, since MemoryMonitor keeps a registered source watched permanently.
-  defp register_sources(state, lines) do
-    source_ids =
-      Enum.reduce(lines, MapSet.new(), fn line, source_ids ->
-        case record_source_id(line) do
-          nil -> source_ids
-          source_id -> MapSet.put(source_ids, source_id)
-        end
-      end)
-
-    new_source_ids = MapSet.difference(source_ids, state.registered_sources)
-
-    Enum.each(new_source_ids, &MemoryMonitor.register_source/1)
-
-    %{state | registered_sources: MapSet.union(state.registered_sources, source_ids)}
-  end
-
-  defp record_source_id(%{source_id: id}), do: id
-  defp record_source_id(%{"source_id" => id}), do: id
-  defp record_source_id(_), do: nil
 
   # Starts a background Task to fetch the next message/file whenever nothing
   # is already in flight — regardless of whether a file is currently being
@@ -499,7 +483,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     deliver_or_settle(result, parent, parent_ref, queue_mod, queue_url)
   end
 
-  defp prefetch_result_tag({:ok, _handle, _lines}), do: :ok
+  defp prefetch_result_tag({:ok, _handle, _segments, _format}), do: :ok
   defp prefetch_result_tag(:empty), do: :empty
   defp prefetch_result_tag({:error, _handle, _reason}), do: :error
 
@@ -525,7 +509,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     end
   end
 
-  defp settle_orphaned_result({:ok, handle, _lines}, queue_mod, queue_url),
+  defp settle_orphaned_result({:ok, handle, _segments, _format}, queue_mod, queue_url),
     do: nack_and_notify(queue_mod, queue_url, handle, :producer_gone)
 
   defp settle_orphaned_result({:error, handle, _reason}, queue_mod, queue_url)
@@ -535,26 +519,63 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   defp settle_orphaned_result(_result, _queue_mod, _queue_url), do: :ok
 
   defp emit_from_buffer(%{current: nil} = state), do: {[], state}
-  defp emit_from_buffer(%{current: %{lines: []}} = state), do: {[], state}
+  defp emit_from_buffer(%{current: %{segments: []}} = state), do: {[], state}
   defp emit_from_buffer(%{demand: 0} = state), do: {[], state}
 
   defp emit_from_buffer(state) do
-    to_take = min(state.demand, available_in_flight(state))
-    {to_emit, remaining} = Enum.split(state.current.lines, to_take)
+    nothing_in_flight? = :atomics.get(state.in_flight_ref, 1) == 0
 
-    if to_emit != [], do: :atomics.add(state.in_flight_ref, 1, length(to_emit))
+    count =
+      take_count_within_budget(
+        state.current.segments,
+        state.demand,
+        available_in_flight(state),
+        nothing_in_flight?
+      )
+
+    {to_emit, remaining} = Enum.split(state.current.segments, count)
+    bytes_emitted = Enum.sum(Enum.map(to_emit, &byte_size/1))
+
+    if to_emit != [], do: :atomics.add(state.in_flight_ref, 1, bytes_emitted)
+
+    format = state.current.format
+    events = Enum.map(to_emit, &%{segment: &1, format: format})
 
     new_state = %{
       state
       | demand: state.demand - length(to_emit),
-        current: %{state.current | lines: remaining}
+        current: %{state.current | segments: remaining}
     }
 
-    {to_emit, new_state}
+    {events, new_state}
+  end
+
+  # How many of the first `max_count` segments fit within `available_bytes`.
+  # The very first segment is only exempt from the budget check when nothing
+  # is currently in flight at all — otherwise a single segment bigger than
+  # the whole budget would permanently stall this producer. That exemption
+  # must not apply just because *this call's* running count happens to be
+  # zero (every call starts at zero): checking the real in-flight counter
+  # instead of the local count is what makes this an actual cap rather than
+  # a per-poll trickle that never blocks.
+  defp take_count_within_budget(segments, max_count, available_bytes, nothing_in_flight?) do
+    segments
+    |> Enum.take(max_count)
+    |> Enum.reduce_while({0, 0}, fn segment, {count, bytes_used} ->
+      size = byte_size(segment)
+      exempt? = count == 0 and nothing_in_flight?
+
+      if not exempt? and bytes_used + size > available_bytes do
+        {:halt, {count, bytes_used}}
+      else
+        {:cont, {count + 1, bytes_used + size}}
+      end
+    end)
+    |> elem(0)
   end
 
   # A generous safety valve mirroring BufferProducer's capped_fetch_amount/2, not
-  # a fine-grained flow-control knob — caps how many lines this producer will
+  # a fine-grained flow-control knob — caps how many bytes this producer will
   # hand to Broadway once too much already-emitted work is sitting unacked,
   # e.g. stuck deep in the batcher's own buffering while a destination backend
   # is slow. Should never engage during healthy operation.
@@ -617,8 +638,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     case Jason.decode(body) do
       {:ok, %{"file_key" => file_key}} when is_binary(file_key) ->
         case download_and_parse(bucket, file_key, storage_mod) do
-          {:ok, lines} ->
-            {:ok, handle, lines}
+          {:ok, segments, format} ->
+            {:ok, handle, segments, format}
 
           {:error, :not_found} ->
             Logger.debug(
@@ -678,16 +699,18 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       %{
         bytes:
           if(match?({:ok, _}, download_result), do: byte_size(elem(download_result, 1)), else: 0),
-        line_count: if(match?({:ok, _}, result), do: length(elem(result, 1)), else: 0),
+        segment_count: if(match?({:ok, _, _}, result), do: length(elem(result, 1)), else: 0),
         duration: duration
       },
-      %{result: if(match?({:ok, _}, result), do: :ok, else: :error)}
+      %{result: if(match?({:ok, _, _}, result), do: :ok, else: :error)}
     )
 
     result
   end
 
-  # See this module's "Spool file format" moduledoc section.
+  # Decompresses and splits into segments — see this module's "Spool file
+  # format" moduledoc section for why parsing each segment happens later,
+  # downstream in ConsumerPipeline.handle_message/3, not here.
   defp decode_content(file_key, raw) do
     current = Encoder.current_version()
 
@@ -701,9 +724,11 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
           %{}
         )
 
+        format = file_format(file_key)
+
         case Framing.decode_segments(decompressed) do
-          {:ok, segments} -> decode_versioned_segments(file_key, segments)
-          {:error, :corrupt, decoded} -> decode_versioned_segments(file_key, decoded)
+          {:ok, segments} -> {:ok, segments, format}
+          {:error, :corrupt, decoded} -> {:ok, decoded, format}
           {:error, :not_framed} -> {:error, {:decode_failed, :not_framed}}
         end
 
@@ -716,25 +741,14 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     kind, reason -> {:error, {:decode_failed, %RuntimeError{message: inspect({kind, reason})}}}
   end
 
-  # Segments are already decompressed by decode_content/2.
-  defp decode_versioned_segments(file_key, segments) do
-    {duration, events} =
-      :timer.tc(fn -> Enum.flat_map(segments, &parse_segment!(file_key, &1)) end)
+  @spec file_format(String.t()) :: :etf | :ndjson
+  defp file_format(file_key) do
+    base =
+      file_key
+      |> String.replace_suffix(".gz", "")
+      |> String.replace_suffix(".zst", "")
 
-    :telemetry.execute(
-      [:logflare, :backends, :spool, :consumer, :parse],
-      %{duration: duration, segment_count: length(segments), event_count: length(events)},
-      %{}
-    )
-
-    {:ok, events}
-  end
-
-  # parse_content/2 always succeeds or raises (never returns {:error, _}) —
-  # any decode failure propagates up to decode_content/2's rescue/catch.
-  defp parse_segment!(file_key, content) do
-    {:ok, events} = parse_content(file_key, content)
-    events
+    if String.ends_with?(base, ".etf"), do: :etf, else: :ndjson
   end
 
   defp decompress_by_extension(content, file_key) do
@@ -754,31 +768,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     case :ezstd.decompress(raw) do
       binary when is_binary(binary) -> binary
       {:error, reason} -> raise "zstd decompression failed: #{inspect(reason)}"
-    end
-  end
-
-  defp parse_content(file_key, content) do
-    base =
-      file_key
-      |> String.replace_suffix(".gz", "")
-      |> String.replace_suffix(".zst", "")
-
-    if String.ends_with?(base, ".etf") do
-      {:ok, :erlang.binary_to_term(content)}
-    else
-      lines =
-        content
-        |> String.split("\n", trim: true)
-        |> Enum.flat_map(&decode_json_line/1)
-
-      {:ok, lines}
-    end
-  end
-
-  defp decode_json_line(line) do
-    case Jason.decode(line) do
-      {:ok, map} -> [map]
-      {:error, _} -> []
     end
   end
 

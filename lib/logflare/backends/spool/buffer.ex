@@ -26,13 +26,20 @@ defmodule Logflare.Backends.Spool.Buffer do
   @doc "Builds this buffer's initial state from the same opts a Partition starts with."
   @callback init(opts :: keyword()) :: state()
 
-  @doc "Appends one already-framed segment to the buffer."
+  @doc """
+  Appends one already-framed segment to the buffer. `:pending` means the
+  segment is written but not yet durable — `Partition` must not reply to
+  this caller until a later `:ok` from a subsequent `append/4`, or the next
+  roll (which always fsyncs unconditionally before sealing), releases it.
+  Only a buffer with a group-commit durability step of its own
+  (`Buffer.WAL`) ever returns `:pending`; `Buffer.Mem` always returns `:ok`.
+  """
   @callback append(
               state(),
               segment :: binary(),
               raw_byte_size :: non_neg_integer(),
               event_count :: non_neg_integer()
-            ) :: {:ok, state()} | {:error, reason :: term(), state()}
+            ) :: {:ok, state()} | {:pending, state()} | {:error, reason :: term(), state()}
 
   @doc """
   Seals whatever's accumulated into one commit, if there's anything to

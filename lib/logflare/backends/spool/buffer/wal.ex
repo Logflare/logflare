@@ -1,10 +1,21 @@
 defmodule Logflare.Backends.Spool.Buffer.WAL do
   @moduledoc """
-  Local-disk WAL buffer for `Logflare.Backends.Spool.Partition` — every
-  append is written and `datasync`ed before `Partition` can reply to an
-  `append/5` caller, so durability here means local-disk-durable, not
-  GCS/Pub-Sub-durable, which is what keeps that call fast (an `fsync`
-  instead of a network round trip).
+  Local-disk WAL buffer for `Logflare.Backends.Spool.Partition`.
+
+  Every append is written to the active file immediately (`:file.write/2`),
+  but the `:file.datasync/1` (fsync) that makes it durable is batched across
+  every append that arrives since the last one — group commit. A single
+  synchronous fsync per request doesn't scale (measured directly: it
+  collapses under concurrent load well before a single partition needs to
+  sustain production-scale request rates), so `append/4` only forces an
+  actual fsync once `sync_pending_bytes` crosses `sync_threshold_bytes`
+  (config, default 64KB); otherwise it returns `:pending` and `Partition`
+  holds that caller's reply until a later append crosses the threshold.
+  `roll/2` always fsyncs unconditionally before sealing (see below), so a
+  quiet period's stray `:pending` caller is bounded by the next roll
+  (`batch_timeout`) rather than left waiting indefinitely, and a sealed
+  file is never subject to this window regardless of where it happened
+  to be.
 
   A local WAL write failure has no GCS fallback — a synchronous per-request
   GCS PUT on this hot path doesn't scale (blocking every append on its own
@@ -42,12 +53,15 @@ defmodule Logflare.Backends.Spool.Buffer.WAL do
 
   @max_batch_bytes 32 * 1024 * 1024
   @max_write_retry 1
+  @default_sync_threshold_bytes 64 * 1024
 
   @impl true
   def init(opts) do
     index = Keyword.fetch!(opts, :index)
     wal_dir = Keyword.fetch!(opts, :wal_dir)
     File.mkdir_p!(wal_dir)
+
+    spool_config = Application.get_env(:logflare, :spool, [])
 
     active_path = active_path(wal_dir, index)
     _offset = Framing.recover!(active_path)
@@ -59,7 +73,13 @@ defmodule Logflare.Backends.Spool.Buffer.WAL do
       fd: fd,
       active_path: active_path,
       pending_bytes: 0,
-      pending_count: 0
+      pending_count: 0,
+      # Bytes written since the last actual fsync — separate from
+      # pending_bytes/pending_count above, which track since the last roll
+      # (a much bigger, coarser threshold). See this module's moduledoc.
+      sync_pending_bytes: 0,
+      sync_threshold_bytes:
+        Keyword.get(spool_config, :sync_threshold_bytes, @default_sync_threshold_bytes)
     }
   end
 
@@ -68,7 +88,16 @@ defmodule Logflare.Backends.Spool.Buffer.WAL do
     case write_segment(state, segment) do
       {:ok, state} ->
         Health.report_recovery!()
-        {:ok, track_pending(state, raw_byte_size, event_count)}
+
+        state =
+          state |> track_pending(raw_byte_size, event_count) |> track_sync_pending(raw_byte_size)
+
+        if state.sync_pending_bytes >= state.sync_threshold_bytes do
+          :file.datasync(state.fd)
+          {:ok, %{state | sync_pending_bytes: 0}}
+        else
+          {:pending, state}
+        end
 
       {:error, reason, state} ->
         emit_wal_write_error_telemetry(state, reason)
@@ -143,11 +172,9 @@ defmodule Logflare.Backends.Spool.Buffer.WAL do
     end
   end
 
-  defp try_write(fd, segment) do
-    with :ok <- :file.write(fd, segment) do
-      :file.datasync(fd)
-    end
-  end
+  # Write only — the fsync that makes this durable is batched across
+  # appends, not done here. See this module's moduledoc.
+  defp try_write(fd, segment), do: :file.write(fd, segment)
 
   defp track_pending(state, raw_byte_size, event_count) do
     %{
@@ -155,6 +182,10 @@ defmodule Logflare.Backends.Spool.Buffer.WAL do
       | pending_bytes: state.pending_bytes + raw_byte_size,
         pending_count: state.pending_count + event_count
     }
+  end
+
+  defp track_sync_pending(state, raw_byte_size) do
+    %{state | sync_pending_bytes: state.sync_pending_bytes + raw_byte_size}
   end
 
   defp emit_wal_write_error_telemetry(state, reason) do
@@ -172,6 +203,12 @@ defmodule Logflare.Backends.Spool.Buffer.WAL do
   # rename succeeded, active_path is gone and reopening (in :append mode)
   # creates the next segment's fresh file.
   defp do_roll(state) do
+    # Unconditional fsync before sealing — closing an fd does not guarantee
+    # one, so without this, bytes still inside the group-commit sync window
+    # could be silently lost on a hard crash despite already being renamed
+    # into a .sealed file. A sealed file must always be fully durable.
+    :file.datasync(state.fd)
+
     case :file.close(state.fd) do
       :ok ->
         :ok
@@ -186,13 +223,21 @@ defmodule Logflare.Backends.Spool.Buffer.WAL do
 
     with :ok <- File.rename(state.active_path, sealed_path),
          {:ok, fd} <- :file.open(state.active_path, [:append, :raw, :binary]) do
-      new_state = %{state | pending_bytes: 0, pending_count: 0, fd: fd}
+      new_state = %{
+        state
+        | pending_bytes: 0,
+          pending_count: 0,
+          sync_pending_bytes: 0,
+          fd: fd
+      }
+
       {:ok, fn -> File.read(sealed_path) end, sealed_path, state.pending_count, new_state}
     else
       {:error, reason} ->
         Health.report_failure!()
         Logger.error("spool_buffer_wal: failed to roll WAL segment: #{inspect(reason)}")
-        {:error, reason, %{state | fd: nil}}
+        # The datasync above already ran regardless of what failed after it.
+        {:error, reason, %{state | fd: nil, sync_pending_bytes: 0}}
     end
   end
 

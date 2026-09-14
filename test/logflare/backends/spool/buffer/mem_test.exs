@@ -38,6 +38,15 @@ defmodule Logflare.Backends.Spool.Buffer.MemTest do
       assert state.pending_bytes == 15
       assert state.pending_count == 2
     end
+
+    test "is never :pending — there's no durability step to wait on" do
+      state = Mem.init([])
+
+      # Landing in a list *is* this buffer's durability, so Partition can
+      # always reply immediately; only Buffer.WAL ever defers a reply.
+      assert {:ok, state} = Mem.append(state, segment(), 10, 1)
+      assert {:ok, _state} = Mem.append(state, segment(), 7 * 1024 * 1024, 1)
+    end
   end
 
   describe "roll/2" do
@@ -85,6 +94,25 @@ defmodule Logflare.Backends.Spool.Buffer.MemTest do
       assert {:ok, thunk, nil, 3, _new_state} = Mem.roll(state, true)
       assert {:ok, body} = thunk.()
       assert {:ok, ["first\n", "second\n", "third\n"]} = Framing.decode_segments(body)
+    end
+
+    test "the returned thunk closes over the rolled segments, surviving the state reset" do
+      state = Mem.init([])
+      {:ok, state} = Mem.append(state, segment("first\n"), 6, 1)
+      {:ok, state} = Mem.append(state, segment("second\n"), 7, 1)
+
+      assert {:ok, thunk, nil, 2, new_state} = Mem.roll(state, true)
+      assert new_state.pending == []
+
+      # The concat is deferred into the thunk (run in the commit Task, off
+      # Partition's own process) rather than done eagerly in roll/2, so what
+      # it yields depends only on what it captured — repeatable, and
+      # unaffected by the emptied state or by later appends.
+      {:ok, _newer_state} = Mem.append(new_state, segment("third\n"), 6, 1)
+
+      assert {:ok, body} = thunk.()
+      assert {:ok, ["first\n", "second\n"]} = Framing.decode_segments(body)
+      assert thunk.() == {:ok, body}
     end
   end
 

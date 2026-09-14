@@ -8,15 +8,19 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
   alias Broadway.Message
   alias Logflare.Backends
   alias Logflare.Backends.Spool.ConsumerPipeline.QueueProducer
+  alias Logflare.Backends.Spool.MemoryMonitor
   alias Logflare.Backends.Spool.Queue
   alias Logflare.Backends.Spool.Storage
   alias Logflare.Sources
 
   @behaviour Broadway.Acknowledger
 
-  # Generous safety valve (2x total batcher capacity), not a fine-grained
-  # flow-control knob — same ratio as the ClickHouse/spool producer pipelines.
-  @max_in_flight_multiplier 2
+  # Flat byte budget, not derived from batch_size/concurrency — max_in_flight
+  # is a byte budget (see QueueProducer), and a single segment can already be
+  # tens of KB, so a formula scaled off segment *count* (e.g. batch_size)
+  # undershoots by orders of magnitude. 2GB is a temporary, deliberately
+  # generous placeholder pending a properly-tuned default.
+  @default_max_in_flight_bytes 2 * 1024 * 1024 * 1024
 
   @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
   def start_link(args) do
@@ -28,13 +32,19 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     concurrency =
       Keyword.get(spool_config, :consumer_concurrency, max(System.schedulers_online(), 4))
 
-    batch_size = Keyword.get(spool_config, :consumer_batch_size, 500)
+    # Now counts segments, not events (each Broadway item is one segment —
+    # parsing happens in handle_message/3), so the default is far smaller
+    # than the old event-based 500 — needs tuning against real segment-size
+    # distribution in production.
+    batch_size = Keyword.get(spool_config, :consumer_batch_size, 20)
     queue_name = Keyword.fetch!(spool_config, :queue_name)
     provider = Keyword.get(spool_config, :provider, :aws)
     storage_mod = Keyword.get(spool_config, :storage_mod, default_storage_mod(provider))
     queue_mod = Keyword.get(spool_config, :queue_mod, default_queue_mod(provider))
     queue_url = resolve_queue_url!(queue_name, queue_mod)
-    max_in_flight = @max_in_flight_multiplier * batch_size * concurrency
+
+    max_in_flight =
+      Keyword.get(spool_config, :consumer_max_in_flight_bytes, @default_max_in_flight_bytes)
 
     Broadway.start_link(__MODULE__,
       name: name,
@@ -51,7 +61,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
         transformer: {__MODULE__, :transform, []}
       ],
       processors: [
-        default: [concurrency: concurrency, min_demand: 50, max_demand: 500]
+        default: [concurrency: concurrency, min_demand: 2, max_demand: 10]
       ],
       batchers: [
         default: [
@@ -64,12 +74,13 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
   end
 
   @spec transform(map(), keyword()) :: Message.t()
-  def transform(line, _opts) do
+  def transform(%{segment: segment} = unparsed, _opts) do
     in_flight_ref = QueueProducer.get_in_flight_ref()
 
     %Message{
-      data: line,
-      acknowledger: {__MODULE__, :noop, %{in_flight_ref: in_flight_ref}}
+      data: unparsed,
+      acknowledger:
+        {__MODULE__, :noop, %{in_flight_ref: in_flight_ref, bytes: byte_size(segment)}}
     }
   end
 
@@ -96,10 +107,10 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
   @spec decrement_in_flight([Message.t()]) :: :ok
   defp decrement_in_flight(messages) do
     messages
-    |> Enum.group_by(&in_flight_ref_of/1)
+    |> Enum.group_by(&in_flight_ref_of/1, &bytes_of/1)
     |> Enum.each(fn
-      {nil, _msgs} -> :ok
-      {ref, msgs} -> :atomics.sub(ref, 1, length(msgs))
+      {nil, _bytes} -> :ok
+      {ref, bytes} -> :atomics.sub(ref, 1, Enum.sum(bytes))
     end)
   end
 
@@ -110,9 +121,74 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
 
   defp in_flight_ref_of(_), do: nil
 
+  defp bytes_of(%{acknowledger: {_, _, %{} = ack_data}}), do: Map.get(ack_data, :bytes, 0)
+  defp bytes_of(_), do: 0
+
+  # Parses one segment (deferred by QueueProducer so this runs with real
+  # processor concurrency instead of serialized in the producer — see
+  # QueueProducer's "Spool file format" moduledoc section). A segment that
+  # fails to parse (passes CRC but isn't valid content) fails just this one
+  # message; Broadway routes it straight to ack/3's `failed` list without
+  # ever reaching handle_batch/4.
   @impl Broadway
-  def handle_message(_processor, %Message{} = message, _context) do
-    message
+  def handle_message(
+        _processor,
+        %Message{data: %{segment: segment, format: format}} = message,
+        _context
+      ) do
+    {duration, result} = :timer.tc(fn -> parse_segment(segment, format) end)
+
+    case result do
+      {:ok, records} ->
+        :telemetry.execute(
+          [:logflare, :backends, :spool, :consumer, :parse],
+          %{duration: duration, segment_count: 1, event_count: length(records)},
+          %{}
+        )
+
+        Enum.each(records, &maybe_register_source/1)
+        %{message | data: records}
+
+      {:error, reason} ->
+        Logger.error("spool_consumer: failed to parse segment, discarding: #{inspect(reason)}")
+        Message.failed(message, reason)
+    end
+  end
+
+  defp parse_segment(content, format) do
+    {:ok, do_parse_segment(content, format)}
+  rescue
+    e -> {:error, e}
+  catch
+    kind, reason -> {:error, {kind, reason}}
+  end
+
+  defp do_parse_segment(content, :etf), do: :erlang.binary_to_term(content)
+
+  defp do_parse_segment(content, :ndjson) do
+    content
+    |> String.split("\n", trim: true)
+    |> Enum.flat_map(&decode_json_line/1)
+  end
+
+  defp decode_json_line(line) do
+    case Jason.decode(line) do
+      {:ok, map} -> [map]
+      {:error, _} -> []
+    end
+  end
+
+  # Lets MemoryMonitor know this source is currently flowing through the
+  # spool consumer, so its refresh cycle checks its destination ingest buffer
+  # for backlog. register_source/1's cast handler is idempotent (MapSet.put),
+  # so no dedup bookkeeping is needed here — unlike when this lived in
+  # QueueProducer, one process's worth of state can't be shared across
+  # concurrent processors anyway.
+  defp maybe_register_source(record) do
+    case record_source_id(record) do
+      nil -> :ok
+      source_id -> MemoryMonitor.register_source(source_id)
+    end
   end
 
   @impl Broadway
@@ -128,15 +204,19 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
 
     failed_source_ids =
       messages
-      |> Enum.group_by(&record_source_id(&1.data), & &1.data)
+      |> Enum.flat_map(fn message -> Enum.map(message.data, &{message, &1}) end)
+      |> Enum.group_by(fn {_message, record} -> record_source_id(record) end, fn {_message,
+                                                                                  record} ->
+        record
+      end)
       |> Enum.flat_map(fn
-        {nil, lines} ->
-          emit_skipped_telemetry(:missing_source_id, length(lines))
-          Logger.debug("spool_consumer: #{length(lines)} events missing source_id, skipping")
+        {nil, records} ->
+          emit_skipped_telemetry(:missing_source_id, length(records))
+          Logger.debug("spool_consumer: #{length(records)} events missing source_id, skipping")
           []
 
-        {source_id, lines} ->
-          dispatch_group(source_id, lines)
+        {source_id, records} ->
+          dispatch_group(source_id, records)
       end)
       |> MapSet.new()
 
@@ -151,8 +231,12 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     end
   end
 
+  # A message is one segment's worth of records — a segment is always a
+  # single original ingest request's chunk, so in practice every record in
+  # it shares one source_id, but this checks all of them rather than
+  # assuming that.
   defp fail_message(message, failed_source_ids) do
-    if MapSet.member?(failed_source_ids, record_source_id(message.data)) do
+    if Enum.any?(message.data, &MapSet.member?(failed_source_ids, record_source_id(&1))) do
       Message.failed(message, :dispatch_error)
     else
       message
