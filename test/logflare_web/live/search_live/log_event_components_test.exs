@@ -95,7 +95,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
         })
 
       assert html =~ "Log message 1"
-      assert html =~ ~s(data-tailing="false")
+      assert html =~ ~s(phx-hook="SourceLogsSearchList")
     end
 
     test "renders loading state", %{search_op_log_events: search_op_log_events} do
