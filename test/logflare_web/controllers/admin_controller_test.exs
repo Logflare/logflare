@@ -109,13 +109,35 @@ defmodule LogflareWeb.AdminControllerTest do
       assert html_response(conn, 200) =~ "~/admin"
     end
 
+    test "become_account audit log uses session admin identity, not SetTeamContext user", %{
+      conn: conn,
+      admin: admin
+    } do
+      non_admin_owner = insert(:user, admin: false)
+      team = insert(:team, user: non_admin_owner)
+      insert(:team_user, email: admin.email, team: team, valid_google_account: true)
+
+      target = insert(:user, provider_uid: "google-audit-test")
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          conn
+          |> login_user(admin)
+          |> Plug.Test.init_test_session(%{last_switched_team_id: team.id})
+          |> post(~p"/admin/accounts/#{target.id}/become")
+        end)
+
+      assert log =~ admin.email
+      refute log =~ non_admin_owner.email
+    end
+
     test "become functionality lets an admin turn into a google user", %{conn: conn, admin: admin} do
       user = insert(:user, provider_uid: "google", team: insert(:team))
 
       conn =
         conn
         |> login_user(admin)
-        |> get(~p"/admin/accounts/#{user.id}/become")
+        |> post(~p"/admin/accounts/#{user.id}/become")
         |> follow_redirect()
 
       assert redir_path = redirected_to(conn)
@@ -156,7 +178,7 @@ defmodule LogflareWeb.AdminControllerTest do
         |> login_user(admin)
         |> put_resp_cookie("_logflare_user_id", inspect(admin.id), max_age: 2_592_000)
         |> put_resp_cookie("_logflare_team_user_id", inspect(user_team.id), max_age: 2_592_000)
-        |> get(~p"/admin/accounts/#{user.id}/become")
+        |> post(~p"/admin/accounts/#{user.id}/become")
         |> follow_redirect()
 
       assert redir_path = redirected_to(conn)
@@ -168,6 +190,180 @@ defmodule LogflareWeb.AdminControllerTest do
       assert html =~ user_team.name
       refute html =~ admin.name
       refute html =~ admin_team.name
+    end
+
+    test "admin can grant admin to another user", %{conn: conn, admin: admin} do
+      target = insert(:user, admin: false)
+
+      conn =
+        conn
+        |> login_user(admin)
+        |> post(~p"/admin/accounts/#{target.id}/grant_admin")
+
+      assert redirected_to(conn) == ~p"/admin/accounts"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Admin access granted!"
+      assert Logflare.Users.get(target.id).admin == true
+    end
+
+    test "non-admin cannot grant admin (403)", %{conn: conn, user: user} do
+      target = insert(:user, admin: false)
+
+      conn =
+        conn
+        |> login_user(user)
+        |> post(~p"/admin/accounts/#{target.id}/grant_admin")
+
+      assert conn.halted == true
+      assert conn.status == 403
+      refute Logflare.Users.get(target.id).admin
+    end
+
+    test "grant_admin identifies granter by session email, not team context user", %{
+      conn: conn,
+      admin: admin
+    } do
+      # Admin is a member of a non-admin's team; SetTeamContext will resolve
+      # conn.assigns.user = non_admin_owner (a non-admin), not the logged-in admin.
+      # Without the fix, granter = non_admin_owner → {:error, :unauthorized}.
+      non_admin_owner = insert(:user, admin: false)
+      team = insert(:team, user: non_admin_owner)
+      insert(:team_user, email: admin.email, team: team, valid_google_account: true)
+
+      target = insert(:user, admin: false)
+
+      conn =
+        conn
+        |> login_user(admin)
+        |> Plug.Test.init_test_session(%{last_switched_team_id: team.id})
+        |> post(~p"/admin/accounts/#{target.id}/grant_admin")
+
+      assert redirected_to(conn) == ~p"/admin/accounts"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Admin access granted!"
+      assert Logflare.Users.get(target.id).admin == true
+    end
+
+    test "revoke_admin identifies granter by session email, not team context user", %{
+      conn: conn,
+      admin: admin
+    } do
+      non_admin_owner = insert(:user, admin: false)
+      team = insert(:team, user: non_admin_owner)
+      insert(:team_user, email: admin.email, team: team, valid_google_account: true)
+
+      # A second admin must exist so the last-admin guard does not fire.
+      target = insert(:user, admin: true)
+
+      conn =
+        conn
+        |> login_user(admin)
+        |> Plug.Test.init_test_session(%{last_switched_team_id: team.id})
+        |> post(~p"/admin/accounts/#{target.id}/revoke_admin")
+
+      assert redirected_to(conn) == ~p"/admin/accounts"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Admin access revoked."
+      refute Logflare.Users.get(target.id).admin
+    end
+
+    test "become_account redirects with error flash for a non-existent user ID", %{
+      conn: conn,
+      admin: admin
+    } do
+      conn =
+        conn
+        |> login_user(admin)
+        |> post(~p"/admin/accounts/0/become")
+
+      assert redirected_to(conn) == ~p"/admin/accounts"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Account not found."
+    end
+
+    test "grant_admin redirects with error flash for a non-existent target user ID", %{
+      conn: conn,
+      admin: admin
+    } do
+      conn =
+        conn
+        |> login_user(admin)
+        |> post(~p"/admin/accounts/0/grant_admin")
+
+      assert redirected_to(conn) == ~p"/admin/accounts"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Account not found."
+    end
+
+    test "revoke_admin redirects with error flash for a non-existent target user ID", %{
+      conn: conn,
+      admin: admin
+    } do
+      conn =
+        conn
+        |> login_user(admin)
+        |> post(~p"/admin/accounts/0/revoke_admin")
+
+      assert redirected_to(conn) == ~p"/admin/accounts"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Account not found."
+    end
+
+    test "admin can revoke admin from another admin", %{conn: conn, admin: admin} do
+      target = insert(:user, admin: true)
+
+      conn =
+        conn
+        |> login_user(admin)
+        |> post(~p"/admin/accounts/#{target.id}/revoke_admin")
+
+      assert redirected_to(conn) == ~p"/admin/accounts"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Admin access revoked."
+      refute Logflare.Users.get(target.id).admin
+    end
+
+    test "revoke_admin is blocked when target is the last remaining admin", %{admin: admin} do
+      other_admin = insert(:user, admin: true)
+
+      # With exactly two admins, each revoking the other concurrently should
+      # allow exactly one to succeed while the other is blocked, since it
+      # would leave zero admins.
+      parent = self()
+
+      results =
+        [{admin, other_admin}, {other_admin, admin}]
+        |> Enum.map(fn {granter, target} ->
+          Task.async(fn ->
+            Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, parent, self())
+            Logflare.Admin.revoke_admin(granter, target)
+          end)
+        end)
+        |> Enum.map(&Task.await/1)
+
+      assert Enum.count(results, &match?({:ok, _}, &1)) == 1
+      assert Enum.count(results, &match?({:error, :last_admin}, &1)) == 1
+      assert Logflare.Users.get(admin.id).admin or Logflare.Users.get(other_admin.id).admin
+    end
+
+    test "admin cannot revoke their own admin access", %{conn: conn, admin: admin} do
+      conn =
+        conn
+        |> login_user(admin)
+        |> post(~p"/admin/accounts/#{admin.id}/revoke_admin")
+
+      assert redirected_to(conn) == ~p"/admin/accounts"
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
+               "Cannot revoke your own admin access."
+
+      assert Logflare.Users.get(admin.id).admin
+    end
+
+    test "non-admin cannot revoke admin (403)", %{conn: conn, user: user} do
+      target = insert(:user, admin: true)
+
+      conn =
+        conn
+        |> login_user(user)
+        |> post(~p"/admin/accounts/#{target.id}/revoke_admin")
+
+      assert conn.halted == true
+      assert conn.status == 403
+      assert Logflare.Users.get(target.id).admin
     end
 
     test "admin can delete an account", %{conn: conn, admin: admin} do
@@ -210,7 +406,7 @@ defmodule LogflareWeb.AdminControllerTest do
         conn
         |> login_user(admin)
         |> Plug.Test.init_test_session(%{last_switched_team_id: admin_team.id})
-        |> get(~p"/admin/accounts/#{user.id}/become")
+        |> post(~p"/admin/accounts/#{user.id}/become")
 
       assert redir_path = redirected_to(conn)
       assert ~p"/dashboard" == redir_path
