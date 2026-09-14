@@ -104,17 +104,16 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
 
   attr :id, :string, required: true
   attr :intent, :string, values: ~w(previous next), required: true
-  attr :state, :atom, values: ~w(hidden ready disabled)a, required: true
+  attr :state, :atom, values: ~w(hidden ready disabled loading)a, required: true
   attr :cursor, :map, default: nil
 
   def load_more_button(assigns) do
     ~H"""
     <div class={["tw-justify-center", if(@state == :hidden, do: "tw-hidden", else: "tw-flex")]}>
-      <button id={@id} type="button" class="tw-group btn btn-outline-secondary btn-sm tw-text-xs" phx-click="load_events" phx-value-intent={@intent} phx-value-cursor-id={@cursor && @cursor.id} phx-value-cursor-timestamp={@cursor && @cursor.timestamp} disabled={@state != :ready}>
+      <button id={@id} type="button" class="btn btn-outline-secondary btn-sm tw-text-xs" phx-click="load_events" phx-value-intent={@intent} phx-value-cursor-id={@cursor && @cursor.id} phx-value-cursor-timestamp={@cursor && @cursor.timestamp} disabled={@state != :ready}>
         <span class="tw-relative tw-whitespace-nowrap tw-w-20 tw-flex tw-justify-center">
-          <i class="spinner-border spinner-border-sm text-info tw-mr-1 tw-hidden group-[.phx-click-loading]:tw-inline" aria-hidden="true"></i>
-          <span class="group-[.phx-click-loading]:tw-hidden">Load more</span>
-          <span class="tw-hidden group-[.phx-click-loading]:tw-inline">Loading</span>
+          <i :if={@state == :loading} class="spinner-border spinner-border-sm text-info tw-mr-1" aria-hidden="true"></i>
+          <span>{if @state == :loading, do: "Loading", else: "Load more"}</span>
         </span>
       </button>
     </div>
