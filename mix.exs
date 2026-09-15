@@ -154,6 +154,8 @@ defmodule Logflare.Mixfile do
       # Concurrency and pipelines
       {:broadway, "~> 1.3"},
       {:syn, github: "Logflare/syn"},
+      {:durable_buffer,
+       git: "https://github.com/Baishan/durable_buffer.git", branch: "chore/make_req_optional"},
 
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
