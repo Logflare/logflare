@@ -91,11 +91,11 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
 
       state = if should_rotate?(state), do: rotate(state), else: state
 
-      Health.report_recovery!()
+      Health.report_recovery!(:disk)
       {:ok, state}
     else
       {:error, reason} ->
-        Health.report_failure!()
+        Health.report_failure!(:disk)
         {:error, reason, state}
     end
   end

@@ -822,10 +822,21 @@ defmodule Logflare.Backends do
   end
 
   # Stops routing ingest through the spool path once Health goes unhealthy,
-  # falling through to normal dispatch instead.
+  # falling through to normal dispatch instead. Gated on the scope that
+  # actually backstops this mode: :wal mode's local WAL absorbs upload
+  # outages by design, so only a failing local disk should stop ingest;
+  # :mem mode has no local buffer at all, so a failing upload is the same
+  # thing as a failing commit.
   @spec spool_producer_mode?() :: boolean()
   def spool_producer_mode? do
-    spool_mode() in [:producer, :both] and SpoolHealth.healthy?()
+    spool_mode() in [:producer, :both] and SpoolHealth.healthy?(spool_health_gate_scope())
+  end
+
+  defp spool_health_gate_scope do
+    case spool_buffer() do
+      :wal -> :disk
+      :mem -> :upload
+    end
   end
 
   @spec spool_consumer_mode?() :: boolean()

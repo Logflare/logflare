@@ -2161,7 +2161,7 @@ defmodule Logflare.BackendsTest do
       assert pending_entry_count() == 0
     end
 
-    test "does not dispatch to the spool producer once Health is unhealthy, even if everything else is enabled",
+    test "does not dispatch to the spool producer once :wal mode's disk health is unhealthy, even if everything else is enabled",
          %{source: source} do
       Application.put_env(:logflare, :spool,
         mode: :producer,
@@ -2169,8 +2169,55 @@ defmodule Logflare.BackendsTest do
         max_spool_health_failures: 1
       )
 
-      Health.report_failure!()
-      on_exit(fn -> Health.report_recovery!() end)
+      Health.report_failure!(:disk)
+      on_exit(fn -> Health.report_recovery!(:disk) end)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      assert pending_entry_count() == 0
+    end
+
+    test "an unhealthy upload doesn't stop :wal mode ingest — the local WAL is the backstop, not the upload path",
+         %{source: source} do
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        buffer: :wal,
+        max_spool_health_failures: 1
+      )
+
+      Health.report_failure!(:upload)
+      on_exit(fn -> Health.report_recovery!(:upload) end)
+
+      # append/3 blocks until the local WAL fsync settles, not until an
+      # upload happens — so proving dispatch actually reached the spool
+      # (rather than falling through to normal dispatch) means observing
+      # the eventual upload, not just pending_entry_count/0's local state.
+      test_pid = self()
+
+      stub(SpoolStorageMod, :put, fn _b, key, _body, _opts ->
+        send(test_pid, :spool_uploaded)
+        {:ok, key}
+      end)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      assert_receive :spool_uploaded, 2000
+    end
+
+    test "does not dispatch to the spool producer once :mem mode's upload health is unhealthy",
+         %{source: source} do
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        buffer: :mem,
+        max_spool_health_failures: 1
+      )
+
+      Health.report_failure!(:upload)
+      on_exit(fn -> Health.report_recovery!(:upload) end)
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]

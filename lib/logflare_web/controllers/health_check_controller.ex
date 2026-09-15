@@ -64,7 +64,10 @@ defmodule LogflareWeb.HealthCheckController do
         repo_uptime: repo_uptime,
         caches: caches,
         memory_utilization: if(memory_utilization < max_memory_ratio, do: :ok, else: :critical),
-        spool_write_healthy: SpoolHealth.healthy?()
+        spool_write_healthy: %{
+          disk: SpoolHealth.healthy?(:disk),
+          upload: SpoolHealth.healthy?(:upload)
+        }
       )
       |> JSON.encode!()
 

@@ -44,11 +44,11 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.Cloud do
   def commit(state, batch, _byte_size, _span) do
     case do_commit(state, IO.iodata_to_binary(batch), 0) do
       {:ok, state} ->
-        Health.report_recovery!()
+        Health.report_recovery!(:upload)
         {:ok, state}
 
       {:error, reason, state} ->
-        Health.report_failure!()
+        Health.report_failure!(:upload)
         {:error, reason, state}
     end
   end
