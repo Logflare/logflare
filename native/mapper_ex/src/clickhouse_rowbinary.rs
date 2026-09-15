@@ -96,14 +96,6 @@ fn field_type_name(field_type: FieldType) -> &'static str {
     }
 }
 
-/// OTEL `SeverityNumber` defines 1-24; 0 is UNSPECIFIED. `uint8` coercion saturates
-/// anything larger to 255, so a supplied value outside this range is not a severity
-/// and the `severity_text` mapping is used instead. Non-integer inputs (floats,
-/// booleans) never reach this check: `severity_number_alt` is configured with
-/// `coercion: :strict`, which resolves them to the field default of 0.
-const OTEL_SEVERITY_MIN: u64 = 1;
-const OTEL_SEVERITY_MAX: u64 = 24;
-
 const LOG_FIELDS: &[(&str, WireType)] = &[
     ("project", WireType::String),
     ("trace_id", WireType::String),
@@ -250,7 +242,7 @@ pub struct RowEnvelope<'a> {
     pub id: Binary<'a>,
     pub source_uuid: Binary<'a>,
     pub source_name: Binary<'a>,
-    pub ingested_at: Option<i64>,
+    pub ingested_at: i64,
 }
 
 pub struct BinaryBuilder {
@@ -408,12 +400,8 @@ fn append_log(
     encode_string(output, values.next("severity_text")?)?;
 
     let severity_alt = decode_u64(values.next("severity_number_alt")?)?;
-    let mapped_severity = values.next("severity_number")?;
-    let severity = if (OTEL_SEVERITY_MIN..=OTEL_SEVERITY_MAX).contains(&severity_alt) {
-        severity_alt
-    } else {
-        decode_u64(mapped_severity)?
-    };
+    let mapped_severity = decode_u64(values.next("severity_number")?)?;
+    let severity = crate::derive::severity_number(severity_alt, mapped_severity);
     output.push(to_u8(severity, "severity_number")?)?;
 
     encode_string(output, values.next("service_name")?)?;
@@ -518,16 +506,10 @@ fn append_trace(
     encode_string(output, values.next("service_name")?)?;
     encode_string(output, values.next("event_message")?)?;
 
-    let mut duration = decode_u64(values.next("duration")?)?;
+    let duration = decode_u64(values.next("duration")?)?;
     let start_time = decode_i64(values.next("start_time")?);
     let end_time = decode_i64(values.next("end_time")?);
-    if duration == 0 {
-        if let (Ok(start_time), Ok(end_time)) = (start_time, end_time) {
-            if end_time > start_time {
-                duration = end_time.abs_diff(start_time);
-            }
-        }
-    }
+    let duration = crate::derive::duration(duration, start_time, end_time);
     output.extend_from_slice(&duration.to_le_bytes())?;
 
     encode_string(output, values.next("status_code")?)?;
@@ -567,20 +549,15 @@ fn encode_envelope(
 fn encode_suffix(
     output: &mut BinaryBuilder,
     mapping_config_id: Binary,
-    ingested_at: Option<i64>,
+    ingested_at: i64,
     timestamp: Term,
 ) -> EncodeResult<()> {
     if mapping_config_id.len() != 16 {
         return Err("mapping config ID must be a 16-byte encoded UUID".to_string());
     }
     output.extend_from_slice(mapping_config_id.as_slice())?;
-    match ingested_at {
-        Some(value) => {
-            output.push(0)?;
-            output.extend_from_slice(&value.to_le_bytes())?;
-        }
-        None => output.push(1)?,
-    }
+    output.push(0)?;
+    output.extend_from_slice(&ingested_at.to_le_bytes())?;
     encode_int64(output, timestamp)
 }
 

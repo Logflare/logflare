@@ -1291,9 +1291,9 @@ fn term_to_json_string<'a>(value: Term<'a>, nil: Term<'a>, fallback: &str) -> St
     serde_json::to_string(&JsonTerm { value, nil }).unwrap_or_else(|_| fallback.to_string())
 }
 
-struct JsonTerm<'a> {
-    value: Term<'a>,
-    nil: Term<'a>,
+pub struct JsonTerm<'a> {
+    pub value: Term<'a>,
+    pub nil: Term<'a>,
 }
 
 impl Serialize for JsonTerm<'_> {
@@ -1309,6 +1309,9 @@ impl Serialize for JsonTerm<'_> {
         }
         if let Ok(value) = self.value.decode::<i64>() {
             return serializer.serialize_i64(value);
+        }
+        if let Ok(value) = self.value.decode::<u64>() {
+            return serializer.serialize_u64(value);
         }
         if let Ok(value) = self.value.decode::<f64>() {
             return if value.is_finite() {
