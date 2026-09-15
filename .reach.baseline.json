@@ -1562,10 +1562,9 @@
       "source_roots": [
         "lib",
         "src",
-        "test/e2e",
         "test/support"
       ],
-      "file_count": 603
+      "file_count": 624
     }
   }
 }
