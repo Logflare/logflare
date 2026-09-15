@@ -14,6 +14,7 @@ defmodule Logflare.Application do
   alias Logflare.SystemMetricsSup
   alias Logflare.Sources.Counters
   alias Logflare.Sources.RateCounters
+  alias Logflare.Sources.Source.BigQuery.SchemaUpdateSampler
   alias Logflare.PubSubRates
   alias Logflare.Utils
 
@@ -66,6 +67,7 @@ defmodule Logflare.Application do
         Logflare.LogEvent.DayBucket,
         Counters,
         RateCounters,
+        SchemaUpdateSampler,
         Logs.LogEvents.Cache,
         {Phoenix.PubSub, name: Logflare.PubSub},
         PubSubRates,
@@ -110,6 +112,7 @@ defmodule Logflare.Application do
         # init Counters before Supervisof as Supervisor calls Counters through table create
         Counters,
         RateCounters,
+        SchemaUpdateSampler,
         # Backends needs to be before Source.Supervisor
         Logflare.Backends,
         Logflare.Sources.Source.Supervisor,
