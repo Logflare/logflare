@@ -124,10 +124,40 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWalTest do
     for {worker, expected_index} <- Enum.zip(state.workers, [15, 16, 17]) do
       {entry, size} = framed("w")
 
-      Worker.commit_segment(worker, write_temp!(IO.iodata_to_binary(entry)))
+      Worker.commit_segment(worker.pid, write_temp!(IO.iodata_to_binary(entry)))
 
       assert_receive {:committed, ^expected_index, _body, ^size}
     end
+  end
+
+  test "commit/4 replaces a dead worker and re-dispatches any sealed files left stranded" do
+    config = config(max_batch_bytes: 1_000_000, worker_count: 1)
+    {:ok, state} = Backend.open(config, 0)
+
+    [worker] = state.workers
+
+    # Simulates a segment the dead worker either never got to, or was
+    # mid-flight on when it crashed — recover_sealed_segments/1's glob
+    # picks up anything left on disk regardless of how it got stranded.
+    {leftover, _size} = framed("leftover")
+    stranded_path = Path.join(config.wal_dir, "p0-stranded.sealed")
+    File.write!(stranded_path, IO.iodata_to_binary(leftover))
+
+    ref = Process.monitor(worker.pid)
+    Process.exit(worker.pid, :kill)
+    assert_receive {:DOWN, ^ref, :process, _, _}
+
+    {entry, size} = framed("next")
+    assert {:ok, new_state} = Backend.commit(state, entry, size, {0, 1})
+
+    assert [new_worker] = new_state.workers
+    assert new_worker.index == worker.index
+    assert new_worker.pid != worker.pid
+    assert Process.alive?(new_worker.pid)
+
+    assert_receive {:committed, 0, body, _size}
+    {payloads, _valid, _rest} = WAL.decode_all(body)
+    assert payloads == ["leftover"]
   end
 
   test "truncate/2 clears the active file" do

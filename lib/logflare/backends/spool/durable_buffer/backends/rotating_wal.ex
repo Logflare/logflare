@@ -20,6 +20,17 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
   `recover_sealed_segments/1` re-dispatches leftover `.sealed` files to
   workers.
 
+  A `Worker` is started unlinked (see its own moduledoc) and only
+  monitored, so a crash there can't take down the local WAL commit path
+  — but that also means a dead `Worker` would otherwise sit in the pool
+  forever, silently swallowing every future dispatch `Enum.random/1`
+  happens to route to it. `commit/4` checks liveness on every call and
+  respawns any dead worker (same `sub_partition_index`), then re-runs
+  `recover_sealed_segments/1` to pick back up whatever the dead worker
+  was holding — accepting a narrow chance of double-dispatching some
+  other, still in-flight segment, traded for not waiting on a full
+  backend restart to recover.
+
   Rotation is triggered by `max_batch_bytes`, or by `max_rotation_interval_ms`
   elapsing since the last rotation — whichever comes first. The time
   check runs inside `commit/4`, since that's already invoked on whatever
@@ -81,6 +92,8 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
 
   @impl true
   def commit(state, batch, byte_size, _span) do
+    state = replace_dead_workers(state)
+
     with :ok <- :file.write(state.fd, batch),
          :ok <- sync(state) do
       state = %{
@@ -122,7 +135,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
     # nothing runs on the way down from that).
     state = if state.pending_bytes > 0, do: rotate(state), else: state
     :ok = :file.close(state.fd)
-    Enum.each(state.workers, &Worker.stop/1)
+    Enum.each(state.workers, &Worker.stop(&1.pid))
     :ok
   end
 
@@ -166,18 +179,41 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
   defp dispatch_to_worker(state, sealed_path) do
     state.workers
     |> Enum.random()
+    |> Map.fetch!(:pid)
     |> Worker.commit_segment(sealed_path)
   end
 
-  defp start_workers(config, partition_index) do
-    {inner_module, inner_config} = config.inner_backend
+  defp replace_dead_workers(state) do
+    {workers, any_replaced?} =
+      Enum.map_reduce(state.workers, false, fn worker, replaced? ->
+        if Process.alive?(worker.pid) do
+          {worker, replaced?}
+        else
+          Logger.warning(
+            "durable_buffer_rotating_wal: worker #{worker.index} is dead, restarting it"
+          )
 
+          {start_worker(state.config, state.partition_index, worker.index), true}
+        end
+      end)
+
+    state = %{state | workers: workers}
+    if any_replaced?, do: recover_sealed_segments(state)
+    state
+  end
+
+  defp start_workers(config, partition_index) do
     for worker_index <- 0..(config.worker_count - 1) do
-      sub_partition_index = partition_index * config.worker_count + worker_index
-      {:ok, pid} = Worker.start(inner_module, inner_config, sub_partition_index)
-      Process.monitor(pid)
-      pid
+      start_worker(config, partition_index, worker_index)
     end
+  end
+
+  defp start_worker(config, partition_index, worker_index) do
+    {inner_module, inner_config} = config.inner_backend
+    sub_partition_index = partition_index * config.worker_count + worker_index
+    {:ok, pid} = Worker.start(inner_module, inner_config, sub_partition_index)
+    Process.monitor(pid)
+    %{index: worker_index, pid: pid}
   end
 
   defp recover_sealed_segments(state) do
