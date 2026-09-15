@@ -16,6 +16,57 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Headers do
   @type header_list :: [{String.t(), term()}]
   @type headers :: %{optional(String.t()) => term()} | header_list()
 
+  # Sentinel value substituted for credential-bearing headers by `redact/1`.
+  @redacted_value "REDACTED"
+
+  # Header names are case-insensitive. Keep this list intentionally explicit so
+  # adding another credential-bearing header is a reviewed policy change.
+  @sensitive_header_names MapSet.new(~w(
+                            api-key
+                            apikey
+                            authorization
+                            cookie
+                            proxy-authorization
+                            webhook-secret
+                            x-access-token
+                            x-amz-security-token
+                            x-api-key
+                            x-api-token
+                            x-auth-token
+                            x-hub-signature
+                            x-hub-signature-256
+                            x-secret-key
+                            x-signature
+                            x-webhook-secret
+                          ))
+
+  @doc """
+  The sentinel substituted for a redacted header value.
+  """
+  @spec redacted_value() :: String.t()
+  def redacted_value, do: @redacted_value
+
+  @doc """
+  Returns true when the header name carries credentials and must not be exposed.
+  """
+  @spec sensitive?(term()) :: boolean()
+  def sensitive?(key), do: MapSet.member?(@sensitive_header_names, normalize_key(key))
+
+  @doc """
+  Replaces the values of credential-bearing headers with `redacted_value/0`.
+
+  Used by adaptors' `redact_config/1` callbacks so secrets never reach an API
+  response or the browser. Keys keep their original casing.
+  """
+  @spec redact(headers() | nil) :: map()
+  def redact(nil), do: %{}
+
+  def redact(headers) do
+    for {key, value} <- headers, into: %{} do
+      if sensitive?(key), do: {key, @redacted_value}, else: {key, value}
+    end
+  end
+
   @doc """
   Drops the client-owned header names from user-supplied headers.
 
