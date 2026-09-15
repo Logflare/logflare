@@ -12,7 +12,11 @@ defmodule LogflareWeb.HealthCheckControllerTest do
   setup do
     reset_readiness()
     on_exit(&reset_readiness/0)
-    on_exit(fn -> Health.report_recovery!() end)
+
+    on_exit(fn ->
+      Health.report_recovery!(:disk)
+      Health.report_recovery!(:upload)
+    end)
 
     Logflare.Google.BigQuery
     |> stub(:init_table!, fn _, _, _, _, _, _ -> :ok end)
@@ -82,21 +86,21 @@ defmodule LogflareWeb.HealthCheckControllerTest do
       end
     end)
 
-    assert %{"status" => "ok", "spool_write_healthy" => true} =
+    assert %{"status" => "ok", "spool_write_healthy" => %{"disk" => true, "upload" => true}} =
              conn |> get("/health") |> json_response(200)
 
-    Health.report_failure!()
+    Health.report_failure!(:disk)
 
     # An unhealthy spool disables spool routing on its own
     # (Backends.spool_producer_mode?/0) — this node's own /health check is
     # deliberately not also gated on it right now, see
     # HealthCheckController.check/2.
-    assert %{"status" => "ok", "spool_write_healthy" => false} =
+    assert %{"status" => "ok", "spool_write_healthy" => %{"disk" => false, "upload" => true}} =
              conn |> get("/health") |> json_response(200)
 
-    Health.report_recovery!()
+    Health.report_recovery!(:disk)
 
-    assert %{"status" => "ok", "spool_write_healthy" => true} =
+    assert %{"status" => "ok", "spool_write_healthy" => %{"disk" => true, "upload" => true}} =
              conn |> get("/health") |> json_response(200)
   end
 

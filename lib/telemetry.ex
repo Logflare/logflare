@@ -494,10 +494,13 @@ defmodule Logflare.Telemetry do
           "Spool consumer backpressure state: 1 if any recently-seen source's destination ingest buffer is backed up, 0 otherwise"
       ),
       last_value("logflare.backends.spool.write_health.healthy",
-        description: "Spool health (1=healthy, 0=unhealthy — spool routing disabled on this node)"
+        tags: [:scope],
+        description:
+          "Spool health by scope (:disk local WAL fsync, :upload Cloud backend commit) — 1=healthy, 0=unhealthy (spool routing disabled on this node if it's the active buffer mode's gating scope)"
       ),
       last_value("logflare.backends.spool.write_health.failure_count",
-        description: "Spool consecutive write/roll/commit failure count"
+        tags: [:scope],
+        description: "Spool consecutive write/roll/commit failure count, by scope"
       ),
       sum("logflare.backends.spool.queue.receive.count",
         tags: [:result],
