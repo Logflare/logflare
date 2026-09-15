@@ -221,7 +221,7 @@
           <%= case @elastic_transport do %>
             <% "otlp" -> %>
               <div class="form-group">
-                {label(f_config, :endpoint, "Elastic Supabase Endpoint (OTLP)")}
+                {label(f_config, :endpoint, "Elasticsearch OTLP Endpoint")}
                 {text_input(f_config, :endpoint,
                   class: "form-control",
                   value: "https://abc.ingest.us-central1.gcp.elastic.cloud:443/supabase/v1/logs"
@@ -525,6 +525,13 @@
               )}
               <small class="form-text text-muted">
                 Transport protocol used for OTLP
+              </small>
+            </div>
+            <div class="form-group">
+              {label(f_config, :flatten_to_attributes, "Flatten to attributes")}
+              {checkbox(f_config, :flatten_to_attributes, id: "flatten-attributes")}
+              <small class="form-text text-muted">
+                Sends the log event_message as a text string in the body field and flattens other fields into individual attributes, instead of the default nested body. Defaults to false.
               </small>
             </div>
           <% else %>
