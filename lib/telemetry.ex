@@ -385,7 +385,7 @@ defmodule Logflare.Telemetry do
         measurement: :count,
         tags: [:backend_id, :read_cluster, :error_kind],
         description:
-          "ClickHouse read queries that resolved to an error, excluding invalid-query (user SQL) errors, counted once per query after any failover retry and tagged with the read cluster that produced the final error"
+          "ClickHouse read queries that resolved to an error, excluding invalid-query (user SQL) errors, counted once per query after any failover retry and tagged with the read cluster that produced the final error. Checkout failures are additionally counted per attempt in `checkout_error`; `connection_error` here covers both failed checkouts and connections lost mid-query"
       ),
       sum("logflare.clickhouse.read_pool.failover",
         event_name: [:logflare, :clickhouse, :read_pool, :failover],
@@ -411,6 +411,13 @@ defmodule Logflare.Telemetry do
         keep: &ch_read_pool_connection_event?/1,
         description:
           "ClickHouse read pool connections lost or recycled, per backend and read cluster. Paired with `connected`, this is the pool's connection churn rate"
+      ),
+      sum("logflare.clickhouse.read_pool.checkout_error",
+        event_name: [:logflare, :clickhouse, :read_pool, :checkout_error],
+        measurement: :count,
+        tags: [:backend_id, :read_cluster, :reason],
+        description:
+          "ClickHouse read pool checkouts that failed before a connection was obtained, counted once per checkout attempt (including attempts masked by a successful failover) and tagged with the read cluster that shed it. `reason` mirrors `DBConnection.ConnectionError.reason`: `:queue_timeout` when the request was dropped from a saturated pool's queue, `:error` for other checkout failures such as the deadline expiring while queued. A `queue_timeout` here also surfaces in `query_error` as `pool_exhausted`; do not sum the two series"
       ),
       sum("logflare.clickhouse.insert.result.count",
         event_name: [:logflare, :clickhouse, :insert, :result],
