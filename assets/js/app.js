@@ -24,6 +24,7 @@ import $ from "jquery";
 import moment from "moment";
 import { CodeEditorHook } from "../../deps/live_monaco_editor/priv/static/live_monaco_editor.esm"
 import LqlEditorWrapper from "./lql_editor_wrapper_hook"
+import { scrollToPageBottom } from "./utils"
 
 
 // set moment globally before daterangepicker
@@ -158,6 +159,10 @@ window.addEventListener("logflare:copy-logs-list", (event) => {
       detail: {text},
     })
   );
+});
+
+window.addEventListener("logflare:scroll-to-bottom", () => {
+  scrollToPageBottom();
 });
 
 window.addEventListener("phx:page-loading-stop", (_info) => {
