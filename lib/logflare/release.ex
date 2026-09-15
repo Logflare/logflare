@@ -17,7 +17,10 @@ defmodule Logflare.Release do
   end
 
   def rollback(repo, version) do
-    {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :down, to: version))
+    migration_repo = Logflare.Repo.Migrator.migration_repo_for(repo)
+
+    {:ok, _, _} =
+      Ecto.Migrator.with_repo(migration_repo, &Ecto.Migrator.run(&1, :down, to: version))
   end
 
   defp repos do

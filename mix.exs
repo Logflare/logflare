@@ -301,15 +301,21 @@ defmodule Logflare.Mixfile do
       ],
       "ecto.seed": ["run priv/repo/seeds.exs"],
       "ecto.setup": ["ecto.create", &migrate/1],
-      "ecto.reset": ["ecto.drop", "ecto.setup"]
+      "ecto.reset": ["ecto.drop", "ecto.setup"],
+      "ecto.rollback": [&rollback/1]
     ]
   end
 
-  # Routes `mix ecto.migrate` through `Logflare.Repo.Migrator`, so migrations
-  # honor LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS in dev/test too.
+  # Routes `mix ecto.migrate`/`mix ecto.rollback` through `Logflare.Repo.Migrator`,
+  # so migrations honor LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS in dev/test too.
   defp migrate(args) do
     repo = Logflare.Repo.Migrator.migration_repo_for(Logflare.Repo) |> inspect()
     Mix.Task.run("ecto.migrate", ["-r", repo | args])
+  end
+
+  defp rollback(args) do
+    repo = Logflare.Repo.Migrator.migration_repo_for(Logflare.Repo) |> inspect()
+    Mix.Task.run("ecto.rollback", ["-r", repo | args])
   end
 
   defp migrate_quiet(args), do: migrate(["--quiet" | args])
