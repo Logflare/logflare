@@ -1,0 +1,13 @@
+FROM postgres:16
+
+# Installs the pglogical extension for Postgres 16 from the PostgreSQL APT
+# repository (apt.postgresql.org), which ships pglogical packages built
+# against the official postgres:16 image's PGDG packaging.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-16-pglogical \
+    && rm -rf /var/lib/apt/lists/*
+
+# output_plugin_libraries is an allowlist introduced in recent Postgres 16
+# minors; without pglogical_output on it the provider refuses to create the
+# replication slot and the subscription stays "down".
+CMD ["postgres", "-c", "wal_level=logical", "-c", "shared_preload_libraries=pglogical", "-c", "output_plugin_libraries=pgoutput,test_decoding,pglogical_output", "-c", "max_worker_processes=10", "-c", "max_replication_slots=10", "-c", "max_wal_senders=10"]
