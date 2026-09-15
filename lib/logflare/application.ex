@@ -10,6 +10,7 @@ defmodule Logflare.Application do
   alias Logflare.Backends.UserMonitoring
   alias Logflare.ContextCache
   alias Logflare.Logs
+  alias Logflare.NaturalLanguageLql.AnthropicClient
   alias Logflare.SingleTenant
   alias Logflare.SystemMetricsSup
   alias Logflare.Sources.Counters
@@ -28,6 +29,7 @@ defmodule Logflare.Application do
     start_user_log_interceptor()
     add_logger_backends()
     warn_if_stripe_webhook_secret_unset()
+    warn_if_anthropic_api_key_unset()
 
     env = Application.get_env(:logflare, :env)
     # TODO: Set node status in GCP when sigterm is received
@@ -141,6 +143,12 @@ defmodule Logflare.Application do
       Logger.warning(
         "STRIPE_WEBHOOK_SECRET is not set — all Stripe webhook requests will be rejected"
       )
+    end
+  end
+
+  defp warn_if_anthropic_api_key_unset do
+    unless AnthropicClient.configured?() do
+      Logger.warning("ANTHROPIC_API_KEY is not set — AI-assisted search will be unavailable")
     end
   end
 

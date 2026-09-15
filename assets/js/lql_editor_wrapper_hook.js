@@ -49,11 +49,24 @@ const LqlEditorWrapper = {
     );
     this._completionDisposable = null;
     this._editor = null;
+    this._editorDomNode = null;
     this._editorDisposables = [];
     this._pendingServerValue = null;
     this._lastServerQuerystring = this.el.dataset.querystring ?? "";
-    this._handleSubmitRequest = () => {
-      this.submitSearch();
+    this._triggerAiAssist = () => {
+      this.searchControl()?.querySelector("#ai-search-button")?.click();
+    };
+    this._handleEditorKeydown = (event) => {
+      if (event.key !== "Tab") return;
+
+      const suggestionsVisible = this._editorDomNode?.querySelector(
+        ".suggest-widget.visible"
+      );
+
+      // allow tab out of Monaco when no suggestions are visible
+      if (!suggestionsVisible) {
+        event.stopImmediatePropagation();
+      }
     };
     this._handleFieldFocusOut = (event) => {
       trimFieldInput(event.target);
@@ -68,6 +81,12 @@ const LqlEditorWrapper = {
 
       this.disposeEditorBindings();
       this._editor = standaloneEditor;
+      this._editorDomNode = standaloneEditor.getDomNode();
+      this._editorDomNode?.addEventListener(
+        "keydown",
+        this._handleEditorKeydown,
+        true
+      );
       this.applyPendingEditorValue();
 
       const monaco = window.monaco;
@@ -95,6 +114,10 @@ const LqlEditorWrapper = {
         "!suggestWidgetVisible"
       );
 
+      standaloneEditor.addCommand(
+        monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, this._triggerAiAssist
+      );
+
       this._editorDisposables = [
         standaloneEditor.onDidChangeModelContent(() => {}),
         standaloneEditor.onDidFocusEditorText(() => {
@@ -106,7 +129,8 @@ const LqlEditorWrapper = {
       ];
     };
 
-    this.el.addEventListener("lql:submit", this._handleSubmitRequest);
+    this.el.addEventListener("lql:submit", () => this.submitSearch());
+    this.el.addEventListener("lql:ai-submit", () => this.submitAiSearch());
     this.el.addEventListener("lme:editor_mounted", this._handleEditorMounted);
 
     this._fieldsContainer = this.searchControl();
@@ -198,7 +222,23 @@ const LqlEditorWrapper = {
     });
   },
 
+  submitAiSearch() {
+    const querystring = this._editor?.getValue?.() ?? "";
+
+    this.pushEvent("start_ai_search", {
+      querystring,
+      fields: this.collectRecommendedFields(),
+    });
+  },
+
   disposeEditorBindings() {
+    this._editorDomNode?.removeEventListener(
+      "keydown",
+      this._handleEditorKeydown,
+      true
+    );
+    this._editorDomNode = null;
+
     this._editorDisposables.forEach((disposable) => disposable?.dispose?.());
     this._editorDisposables = [];
 
