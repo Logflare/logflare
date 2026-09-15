@@ -15,7 +15,6 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.Cloud do
 
   require Logger
 
-  alias DurableBuffer.WAL
   alias Logflare.Backends.Spool.Encoder
   alias Logflare.Backends.Spool.Health
 
@@ -42,7 +41,10 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.Cloud do
 
   @impl true
   def commit(state, batch, _byte_size, _span) do
-    case do_commit(state, IO.iodata_to_binary(batch), 0) do
+    body = IO.iodata_to_binary(batch)
+    emit_handle_batch_telemetry(body)
+
+    case do_commit(state, body, 0) do
       {:ok, state} ->
         Health.report_recovery!(:upload)
         {:ok, state}
@@ -51,6 +53,19 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.Cloud do
         Health.report_failure!(:upload)
         {:error, reason, state}
     end
+  end
+
+  # Mirrors the shared [:logflare, :backends, :pipeline, :handle_batch]
+  # event every other ingest pipeline emits, so the same dashboards/alerts
+  # apply — fired once per commit, before the upload is attempted, same as
+  # the rest. batch_trigger is always nil: DurableBuffer.Partition doesn't
+  # expose why this batch formed (size vs. dwell) to the backend.
+  defp emit_handle_batch_telemetry(body) do
+    :telemetry.execute(
+      [:logflare, :backends, :pipeline, :handle_batch],
+      %{batch_size: Encoder.count_events(body), batch_trigger: nil},
+      %{backend_type: :spool_producer, batch_trigger: nil}
+    )
   end
 
   defp do_commit(state, body, attempt) do
@@ -91,8 +106,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.Cloud do
   defp notify_queue(%{queue_ref: nil}, _file_key, _body), do: :ok
 
   defp notify_queue(config, file_key, body) do
-    {payloads, _valid_bytes, _rest} = WAL.decode_all(body)
-    msg = Jason.encode!(%{file_key: file_key, event_count: length(payloads)})
+    msg = Jason.encode!(%{file_key: file_key, event_count: Encoder.count_events(body)})
 
     case config.queue_mod.publish(config.queue_ref, msg) do
       :ok -> :ok

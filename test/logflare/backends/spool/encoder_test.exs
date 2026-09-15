@@ -18,12 +18,44 @@ defmodule Logflare.Backends.Spool.EncoderTest do
   end
 
   describe "encode_raw_chunk/1" do
-    test "round-trips to a single term of records, unframed" do
+    test "round-trips to a single term of records, with an event-count header" do
       events = [log_event(%{"message" => "hello"}, 123)]
 
       raw = Encoder.encode_raw_chunk(events)
 
-      assert [%{via_rule_id: 123}] = :erlang.binary_to_term(raw)
+      assert <<1::32-big, etf::binary>> = raw
+      assert [%{via_rule_id: 123}] = :erlang.binary_to_term(etf)
+    end
+  end
+
+  describe "decode_segments/1 and count_events/1" do
+    test "decode_segments strips each segment's event-count header" do
+      segment = Encoder.encode_raw_chunk([log_event(%{"message" => "hello"}, 123)])
+      {frame, _size} = DurableBuffer.WAL.encode(segment)
+      file_body = IO.iodata_to_binary(frame)
+
+      assert {[etf], _valid, _rest} = Encoder.decode_segments(file_body)
+      assert [%{via_rule_id: 123}] = :erlang.binary_to_term(etf)
+    end
+
+    test "count_events sums each segment's header without decoding etf" do
+      segment_1 = Encoder.encode_raw_chunk([log_event(%{"message" => "a"}, 1)])
+
+      segment_2 =
+        Encoder.encode_raw_chunk([
+          log_event(%{"message" => "b"}, 2),
+          log_event(%{"message" => "c"}, 3)
+        ])
+
+      file_body =
+        [segment_1, segment_2]
+        |> Enum.map(fn segment ->
+          {frame, _size} = DurableBuffer.WAL.encode(segment)
+          frame
+        end)
+        |> IO.iodata_to_binary()
+
+      assert Encoder.count_events(file_body) == 3
     end
   end
 
