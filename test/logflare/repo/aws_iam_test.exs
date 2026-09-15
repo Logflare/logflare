@@ -15,16 +15,22 @@ defmodule Logflare.Repo.AwsIamTest do
     setup do
       previous_access_key_id = Application.fetch_env(:ex_aws, :access_key_id)
       previous_secret_access_key = Application.fetch_env(:ex_aws, :secret_access_key)
+      previous_security_token = Application.fetch_env(:ex_aws, :security_token)
+      previous_rds_config = Application.fetch_env(:ex_aws, :rds)
       previous_path = Application.fetch_env(:logflare, :rds_ca_cert_path)
       {path, certificate} = write_ca_bundle!()
 
       Application.put_env(:ex_aws, :access_key_id, "AKIAIOSFODNN7EXAMPLE")
       Application.put_env(:ex_aws, :secret_access_key, "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+      Application.delete_env(:ex_aws, :security_token)
+      Application.delete_env(:ex_aws, :rds)
       Application.put_env(:logflare, :rds_ca_cert_path, path)
 
       on_exit(fn ->
         restore_application_env(:ex_aws, :access_key_id, previous_access_key_id)
         restore_application_env(:ex_aws, :secret_access_key, previous_secret_access_key)
+        restore_application_env(:ex_aws, :security_token, previous_security_token)
+        restore_application_env(:ex_aws, :rds, previous_rds_config)
         restore_application_env(:logflare, :rds_ca_cert_path, previous_path)
       end)
 
@@ -543,116 +549,55 @@ defmodule Logflare.Repo.AwsIamTest do
       assert token =~ "X-Amz-Signature="
       assert token =~ "X-Amz-Expires=900"
       assert token =~ "#{region}%2Frds-db"
+      refute token =~ "X-Amz-Security-Token"
     end
 
-    test "auth_token/4 handles static environment session tokens and normalizes hostnames", %{
+    test "auth_token/4 signs RDS service session credentials and normalizes hostnames", %{
       host: host,
       region: region
     } do
-      previous_security_token = Application.fetch_env(:ex_aws, :security_token)
-      previous_env = take_aws_credential_env()
-
-      Application.delete_env(:ex_aws, :access_key_id)
-      Application.delete_env(:ex_aws, :secret_access_key)
-      Application.delete_env(:ex_aws, :security_token)
-      System.put_env("AWS_ACCESS_KEY_ID", "ASIATEMPORARY")
-      System.put_env("AWS_SECRET_ACCESS_KEY", "temporary-secret")
-      System.put_env("AWS_SESSION_TOKEN", "session-token")
-
-      on_exit(fn ->
-        restore_aws_credential_env(previous_env)
-        restore_application_env(:ex_aws, :security_token, previous_security_token)
-      end)
+      Application.put_env(:ex_aws, :rds,
+        access_key_id: "ASIARDSEXAMPLE",
+        secret_access_key: "rds-secret-access-key",
+        security_token: "rds-session-token"
+      )
 
       token = AwsIam.auth_token(String.upcase(host), 5432, "logflare", region)
 
       assert String.starts_with?(token, "#{host}:5432/?")
-      assert token =~ "X-Amz-Security-Token=session-token"
-
-      for empty_token <- [nil, ""] do
-        restore_system_env("AWS_SESSION_TOKEN", empty_token)
-        token = AwsIam.auth_token(host, 5432, "logflare", region)
-        refute token =~ "X-Amz-Security-Token"
-      end
+      assert token =~ "X-Amz-Credential=ASIARDSEXAMPLE"
+      assert token =~ "X-Amz-Security-Token=rds-session-token"
     end
 
-    test "auth_token/4 includes temporary environment credentials resolved from provider chains",
-         %{
-           host: host,
-           region: region
-         } do
-      previous_security_token = Application.fetch_env(:ex_aws, :security_token)
-      previous_env = take_aws_credential_env()
+    test "RDS service credentials do not affect other ExAws services", %{region: region} do
+      Application.put_env(:ex_aws, :security_token, "common-session-token")
 
-      Application.put_env(
-        :ex_aws,
-        :access_key_id,
-        [{:system, "AWS_ACCESS_KEY_ID"}, :instance_role]
+      Application.put_env(:ex_aws, :rds,
+        access_key_id: "ASIARDSEXAMPLE",
+        secret_access_key: "rds-secret-access-key",
+        security_token: "rds-session-token"
       )
 
-      Application.put_env(
-        :ex_aws,
-        :secret_access_key,
-        [{:system, "AWS_SECRET_ACCESS_KEY"}, :instance_role]
-      )
+      rds_config = ExAws.Config.new(:rds, region: region)
+      s3_config = ExAws.Config.new(:s3, region: region)
 
-      Application.delete_env(:ex_aws, :security_token)
-      System.put_env("AWS_ACCESS_KEY_ID", "ASIAPROVIDERCHAIN")
-      System.put_env("AWS_SECRET_ACCESS_KEY", "provider-chain-secret")
-      System.put_env("AWS_SESSION_TOKEN", "provider-chain-session-token")
+      assert rds_config.access_key_id == "ASIARDSEXAMPLE"
+      assert rds_config.secret_access_key == "rds-secret-access-key"
+      assert rds_config.security_token == "rds-session-token"
 
-      on_exit(fn ->
-        restore_aws_credential_env(previous_env)
-        restore_application_env(:ex_aws, :security_token, previous_security_token)
-      end)
-
-      token = AwsIam.auth_token(host, 5432, "logflare", region)
-      assert token =~ "X-Amz-Security-Token=provider-chain-session-token"
+      assert s3_config.access_key_id == "AKIAIOSFODNN7EXAMPLE"
+      assert s3_config.secret_access_key == "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+      assert s3_config.security_token == "common-session-token"
     end
 
-    test "auth_token/4 drops empty configured session tokens", %{host: host, region: region} do
-      previous_security_token = Application.fetch_env(:ex_aws, :security_token)
-      previous_env = take_aws_credential_env()
-
-      System.put_env("AWS_ACCESS_KEY_ID", "UNRELATED")
-      System.put_env("AWS_SECRET_ACCESS_KEY", "unrelated-secret")
-
-      on_exit(fn ->
-        restore_aws_credential_env(previous_env)
-        restore_application_env(:ex_aws, :security_token, previous_security_token)
-      end)
-
-      for {configured_token, environment_token} <- [
-            {"", "unrelated-session-token"},
-            {{:system, "AWS_SESSION_TOKEN"}, ""}
-          ] do
-        Application.put_env(:ex_aws, :security_token, configured_token)
-        System.put_env("AWS_SESSION_TOKEN", environment_token)
-
-        token = AwsIam.auth_token(host, 5432, "logflare", region)
-        refute token =~ "X-Amz-Security-Token"
-      end
-    end
-
-    test "auth_token/4 prefers the configured ExAws session token", %{
+    test "auth_token/4 preserves the configured ExAws provider session token", %{
       host: host,
       region: region
     } do
-      previous_env = take_aws_credential_env()
-      previous_security_token = Application.fetch_env(:ex_aws, :security_token)
-      System.delete_env("AWS_ACCESS_KEY_ID")
-      System.delete_env("AWS_SECRET_ACCESS_KEY")
-      System.put_env("AWS_SESSION_TOKEN", "unrelated-session-token")
       Application.put_env(:ex_aws, :security_token, "provider-session-token")
-
-      on_exit(fn ->
-        restore_aws_credential_env(previous_env)
-        restore_application_env(:ex_aws, :security_token, previous_security_token)
-      end)
 
       token = AwsIam.auth_token(host, 5432, "logflare", region)
       assert token =~ "X-Amz-Security-Token=provider-session-token"
-      refute token =~ "unrelated-session-token"
     end
 
     test "configure/3 allows an inherited callback to provide the hostname", %{
@@ -735,19 +680,6 @@ defmodule Logflare.Repo.AwsIamTest do
     {path, certificate}
   end
 
-  defp take_aws_credential_env do
-    for key <- ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"],
-        into: %{},
-        do: {key, System.get_env(key)}
-  end
-
-  defp restore_aws_credential_env(env) do
-    Enum.each(env, fn {key, value} -> restore_system_env(key, value) end)
-  end
-
   defp restore_application_env(app, key, {:ok, value}), do: Application.put_env(app, key, value)
   defp restore_application_env(app, key, :error), do: Application.delete_env(app, key)
-
-  defp restore_system_env(key, nil), do: System.delete_env(key)
-  defp restore_system_env(key, value), do: System.put_env(key, value)
 end

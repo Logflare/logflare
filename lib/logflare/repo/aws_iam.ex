@@ -158,36 +158,7 @@ defmodule Logflare.Repo.AwsIam do
     end)
   end
 
-  defp aws_config(region) do
-    :rds
-    |> ExAws.Config.new(region: region)
-    |> maybe_put_environment_session_token()
-    |> drop_empty_session_token()
-  end
-
-  defp maybe_put_environment_session_token(%{security_token: token} = config)
-       when is_binary(token) and token != "",
-       do: config
-
-  defp maybe_put_environment_session_token(config) do
-    with access_key_id when is_binary(access_key_id) and access_key_id != "" <-
-           System.get_env("AWS_ACCESS_KEY_ID"),
-         secret_access_key when is_binary(secret_access_key) and secret_access_key != "" <-
-           System.get_env("AWS_SECRET_ACCESS_KEY"),
-         session_token when is_binary(session_token) and session_token != "" <-
-           System.get_env("AWS_SESSION_TOKEN"),
-         true <- config[:access_key_id] == access_key_id,
-         true <- config[:secret_access_key] == secret_access_key do
-      Map.put(config, :security_token, session_token)
-    else
-      _ -> config
-    end
-  end
-
-  defp drop_empty_session_token(%{security_token: token} = config) when token in [nil, ""],
-    do: Map.delete(config, :security_token)
-
-  defp drop_empty_session_token(config), do: config
+  defp aws_config(region), do: ExAws.Config.new(:rds, region: region)
 
   defp run_configure(opts, nil), do: opts
 

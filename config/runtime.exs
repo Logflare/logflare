@@ -33,6 +33,19 @@ defmodule Env do
         end
     end
   end
+
+  @spec aws_rds_credentials(map()) :: keyword(String.t())
+  def aws_rds_credentials(env) when is_map(env) do
+    credentials = [
+      access_key_id: env["AWS_ACCESS_KEY_ID"],
+      secret_access_key: env["AWS_SECRET_ACCESS_KEY"],
+      security_token: env["AWS_SESSION_TOKEN"]
+    ]
+
+    if Enum.all?(credentials, fn {_key, value} -> is_binary(value) and value != "" end),
+      do: credentials,
+      else: []
+  end
 end
 
 if config_env() == :test and Env.get_boolean("E2E") do
@@ -173,6 +186,11 @@ config :logflare,
            |> filter_nil_kv_pairs.(),
          live_dashboard: Env.get_boolean("LOGFLARE_ENABLE_LIVE_DASHBOARD")
        )
+
+case Env.aws_rds_credentials(System.get_env()) do
+  [] -> :ok
+  credentials -> config :ex_aws, :rds, credentials
+end
 
 db_auth_options =
   case System.get_env("DB_AUTH") do
