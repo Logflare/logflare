@@ -148,15 +148,14 @@ defmodule Logflare.Mixfile do
       {:mint, "~> 1.0"},
       {:httpoison, "~> 1.4"},
       {:poison, "~> 5.0.0", override: true},
-      {:swoosh, "~> 0.23"},
+      {:swoosh, "~> 1.0"},
       {:ex_twilio, "~> 0.8.1"},
       {:tesla, "~> 1.6"},
 
       # Concurrency and pipelines
       {:broadway, "~> 1.3"},
       {:syn, github: "Logflare/syn"},
-      {:durable_buffer,
-       git: "https://github.com/Baishan/durable_buffer.git", branch: "chore/make_req_optional"},
+      {:durable_buffer, github: "chasers/durable_buffer", tag: "v0.5.0"},
 
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
