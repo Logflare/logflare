@@ -79,7 +79,7 @@ defmodule Logflare.Mixfile do
 
   # Specifies which paths to compile per environment.
   defp elixirc_paths(:dev), do: ["lib", "priv/tasks", "test/support"]
-  defp elixirc_paths(:test), do: ["lib", "test/support", "test/e2e"]
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib", "priv/tasks"]
 
   defp deps do
