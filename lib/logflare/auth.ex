@@ -197,7 +197,7 @@ defmodule Logflare.Auth do
     do: verify_create_scopes(context, %{"scopes" => scopes})
 
   defp verify_create_scopes(context, attrs) do
-    with scopes when is_binary(scopes) <- Map.get(attrs, "scopes", nil),
+    with scopes when is_binary(scopes) <- Map.get(attrs, "scopes"),
          true <- @admin_scope in String.split(scopes),
          false <- can_create_admin_token?(context) do
       {:error, :unauthorized}
