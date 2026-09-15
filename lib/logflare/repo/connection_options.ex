@@ -176,28 +176,30 @@ defmodule Logflare.Repo.ConnectionOptions do
         config
 
       {url, config} when is_binary(url) ->
-        try do
-          url_options = Ecto.Repo.Supervisor.parse_url(url)
-
-          case normalize_url_options(url_options) do
-            {:ok, url_options} ->
-              merge_url_options(config, url_options)
-
-            {:error, reason} ->
-              raise ArgumentError,
-                    "invalid database URL #{inspect(redact_url(url))}: #{reason}"
-          end
-        rescue
-          error in Ecto.InvalidURLError ->
-            redacted_url = redact_url(url)
-            message = redact_url_error(error.message, url)
-
-            reraise %{error | message: message, url: redacted_url}, __STACKTRACE__
-        end
+        parse_and_merge_url!(url, config)
 
       {url, _config} ->
         raise ArgumentError, "database URL must be a string, got: #{inspect(url)}"
     end
+  end
+
+  defp parse_and_merge_url!(url, config) do
+    url_options = Ecto.Repo.Supervisor.parse_url(url)
+
+    case normalize_url_options(url_options) do
+      {:ok, url_options} ->
+        merge_url_options(config, url_options)
+
+      {:error, reason} ->
+        raise ArgumentError,
+              "invalid database URL #{inspect(redact_url(url))}: #{reason}"
+    end
+  rescue
+    error in Ecto.InvalidURLError ->
+      redacted_url = redact_url(url)
+      message = redact_url_error(error.message, url)
+
+      reraise %{error | message: message, url: redacted_url}, __STACKTRACE__
   end
 
   defp merge_url_options(config, url_options) do
