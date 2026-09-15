@@ -34,11 +34,14 @@ All browser authentication will be disabled when in single-tenant mode.
 | `DB_HOSTNAME`                                  | String, defaults to `nil`                                               | Hostname for Logflare's internal PostgreSQL database connection. IPv4 and IPv6 hosts are detected automatically for socket configuration.                                                                                                                            |
 | `DB_PORT`                                      | Integer, defaults to `5432`                                             | Port for Logflare's internal PostgreSQL database connection.                                                                                                                                                                                                         |
 | `DB_USERNAME`                                  | String, defaults to `nil`                                               | Username for Logflare's internal PostgreSQL database connection.                                                                                                                                                                                                     |
-| `DB_PASSWORD`                                  | String, defaults to `nil`                                               | Password for Logflare's internal PostgreSQL database connection.                                                                                                                                                                                                     |
+| `DB_PASSWORD`                                  | String, defaults to `nil`                                               | Password for Logflare's internal PostgreSQL database connection. Not required when `DB_AUTH=aws_iam`.                                                                                                                                                                |
+| `DB_AUTH`                                      | `password` or `aws_iam`, defaults to `password`                         | Authentication mode for Logflare's primary PostgreSQL connection.                                                                                                                                                                                                    |
+| `DB_AWS_REGION`                                | AWS region, defaults to `nil`                                           | Required when `DB_AUTH=aws_iam`; for example, `eu-west-1`.                                                                                                                                                                                                            |
 | `DB_POOL_SIZE`                                 | Integer, defaults to `10`                                               | Overrides the Ecto connection pool size for Logflare's internal PostgreSQL database connection.                                                                                                                                                                      |
 | `DB_SCHEMA`                                    | String, defaults to `nil`                                               | Allows configuration of the database schema to scope Logflare operations.                                                                                                                                                                                            |
 | `DB_SSL`                                       | Boolean, defaults to `false`                                            | Enables SSL/TLS connection to the internal Logflare database. Requires certificate files when enabled. See [Database SSL Configuration](#database-ssl-configuration).                                                                                                |
 | `LOGFLARE_READ_REPLICAS`                       | String, defaults to `nil`                                               | Comma-separated list of PostgreSQL read replicas. If unset, all queries go to the primary. See [Read Replicas](#read-replicas).                                                                                                                                     |
+| `RDS_CA_CERT_PATH`                             | String, defaults to the container bundle path                           | Additional AWS RDS CA bundle for primary or replica IAM connections. Set it outside container images and for non-commercial AWS partitions.                                                                                                                          |
 | `LOGFLARE_LOG_LEVEL`                           | String, defaults to `info`. <br/>Options: `error`,`warning`, `info`     | Allows runtime configuration of log level.                                                                                                                                                                                                                           |
 | `LOGFLARE_NODE_HOST`                           | string, defaults to `127.0.0.1`                                         | Sets node host on startup, which affects the node name `logflare@<host>`                                                                                                                                                                                             |
 | `LOGFLARE_METADATA_CLUSTER`                    | string, defaults to `nil`                                               | Sets global logging/tracing metadata for the cluster name and affects the release node name (e.g., `logflare-production@<host>`). Useful for filtering logs by cluster name and distinguishing nodes in multi-cluster setups. See the [metadata](#Metadata) section. |
@@ -168,9 +171,32 @@ The configuration follows the [Erlang Security Working Group recommendations](ht
 
 `LOGFLARE_READ_REPLICAS` is a comma-separated list of PostgreSQL read replicas for selected context-cache and key-value-cache reads. If unset or empty, those reads use the primary database.
 
-Each entry is either a **bare hostname** or a **connection URI** (`postgres://user:pass@host:port/database?ssl=true&pool_size=5`). In both cases, only the parts given override the primary's `DB_*` settings - anything omitted (port, database, credentials, SSL, ...) is inherited from the primary. Query params: `ssl` (`true`/`false`), `pool_size` (positive integer).
+Each entry is either a **bare host name or IP literal** or a **connection URI** (`postgres://user:pass@host:port/database?ssl=true&pool_size=5`). In both cases, only the parts given override the primary's `DB_*` settings - anything omitted (port, database, credentials, SSL, authentication, ...) is inherited from the primary. Query params: `ssl` (`true`/`false`), `pool_size` (positive integer), `auth` (`aws_iam`), and `aws_region`.
+
+The `auth` and `aws_region` query parameters are Logflare configuration and are removed before the connection options reach Postgrex. A replica URI containing a password uses password authentication even when the primary uses IAM.
 
 Example: `LOGFLARE_READ_REPLICAS=replica1.example.com,postgres://user:pass@replica2.example.com:5432/logflare`
+
+### AWS IAM database authentication
+
+AWS IAM authentication is supported for both the primary database and read replicas. Logflare generates a fresh token before each connection attempt. The runtime role needs `rds-db:connect` permission for the database user.
+
+Configure the primary with an explicit AWS region:
+
+```
+DB_AUTH=aws_iam
+DB_AWS_REGION=eu-west-1
+```
+
+A replica can inherit IAM authentication from the primary or configure it in its URI. An explicit replica IAM configuration carries a username but no password:
+
+```
+LOGFLARE_READ_REPLICAS=postgres://logflare@my-proxy.proxy-abc.eu-west-1.rds.amazonaws.com:5432/logflare?auth=aws_iam&aws_region=eu-west-1
+```
+
+Use the AWS-issued database, cluster, reader, or proxy endpoint because the hostname is included in the signed token. Supported credential sources include static `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` values with an optional `AWS_SESSION_TOKEN`, EKS Pod Identity, ECS task roles, and EC2 instance roles.
+
+IAM connections always use peer and hostname verification. `ssl=false` is rejected. RDS Proxy certificates use the system trust store; direct RDS and Aurora connections may require an [RDS CA bundle](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.SSL.html). Container images install the commercial-region bundle at `/etc/ssl/certs/aws-rds-global-bundle.pem`. Other deployments and AWS partitions can set `RDS_CA_CERT_PATH`; when the bundle is unavailable, Logflare logs a warning and uses the system trust store.
 
 Logflare marks each replica session read-only with `SET default_transaction_read_only = on`. This makes accidental writes fail immediately on logical replicas; physical standbys already enforce read-only operation.
 
