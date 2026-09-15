@@ -99,6 +99,16 @@ jobs:
       - name: Create and migrate the primary application database
         run: epmd -daemon; mix do ecto.create --quiet + ecto.migrate --quiet
 
+      - name: Migrate the pglogical primary from zero with DDL replication enabled
+        env:
+          DB_HOSTNAME: localhost
+          DB_PORT: "5433"
+          DB_DATABASE: logflare_test
+          DB_USERNAME: postgres
+          DB_PASSWORD: postgres
+          LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS: my_set
+        run: epmd -daemon; mix ecto.migrate -r Logflare.Repo.Pglogical --quiet
+
       - name: Run pglogical DDL replication integration tests
         run: mix test --only pglogical_replica
 
