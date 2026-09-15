@@ -2,7 +2,6 @@ defmodule Logflare.Backends.Spool.EncoderTest do
   use ExUnit.Case, async: true
 
   alias Logflare.Backends.Spool.Encoder
-  alias Logflare.Backends.Spool.Framing
   alias Logflare.LogEvent
 
   defp log_event(body, via_rule_id) do
@@ -18,15 +17,13 @@ defmodule Logflare.Backends.Spool.EncoderTest do
     }
   end
 
-  describe "encode_chunk/1" do
-    test "round-trips to a single term of records, framed, uncompressed" do
+  describe "encode_raw_chunk/1" do
+    test "round-trips to a single term of records, unframed" do
       events = [log_event(%{"message" => "hello"}, 123)]
 
-      {segment, raw_byte_size} = Encoder.encode_chunk(events)
+      raw = Encoder.encode_raw_chunk(events)
 
-      assert {:ok, [body]} = Framing.decode_segments(segment)
-      assert byte_size(body) == raw_byte_size
-      assert [%{via_rule_id: 123}] = :erlang.binary_to_term(body)
+      assert [%{via_rule_id: 123}] = :erlang.binary_to_term(raw)
     end
   end
 
@@ -41,13 +38,6 @@ defmodule Logflare.Backends.Spool.EncoderTest do
     test "reflects compress" do
       assert Encoder.file_extension(false) == "etf"
       assert Encoder.file_extension(true) == "etf.zst"
-    end
-  end
-
-  describe "format_tag/1" do
-    test "reflects compress" do
-      assert Encoder.format_tag(false) == :etf
-      assert Encoder.format_tag(true) == :etf_zstd
     end
   end
 

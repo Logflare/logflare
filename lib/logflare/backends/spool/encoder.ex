@@ -1,12 +1,13 @@
 defmodule Logflare.Backends.Spool.Encoder do
   @moduledoc """
-  Encodes one caller's chunk of `LogEvent`s into a single framed (raw,
-  uncompressed) segment, ready to hand to a `Partition`. Runs in the
-  ingest caller's own process. Compression happens separately, once for
-  the whole accumulated file, at commit time (`Committer`).
+  Encodes one caller's chunk of `LogEvent`s into a single raw (unframed)
+  binary, ready to hand to `DurableBuffer.append/3` — the buffer frames it
+  itself (`DurableBuffer.WAL.encode/1`) as part of its own group commit.
+  Runs in the ingest caller's own process. Compression happens separately,
+  once for the whole accumulated file, at commit time
+  (`DurableBuffer.Backends.Cloud`).
   """
 
-  alias Logflare.Backends.Spool.Framing
   alias Logflare.LogEvent
 
   @zstd_compression_level 3
@@ -43,12 +44,8 @@ defmodule Logflare.Backends.Spool.Encoder do
   @spec generate_uuidv7() :: String.t()
   def generate_uuidv7, do: UUIDv7.generate()
 
-  @spec encode_chunk([LogEvent.t()]) :: {segment :: binary(), raw_byte_size :: non_neg_integer()}
-  def encode_chunk(log_events) do
-    raw = encode_raw(log_events)
-    segment = Framing.encode_segment(raw)
-    {segment, byte_size(raw)}
-  end
+  @spec encode_raw_chunk([LogEvent.t()]) :: binary()
+  def encode_raw_chunk(log_events), do: encode_raw(log_events)
 
   @spec file_extension(boolean()) :: String.t()
   def file_extension(false), do: "etf"
@@ -61,9 +58,19 @@ defmodule Logflare.Backends.Spool.Encoder do
   def content_encoding(false), do: nil
   def content_encoding(true), do: "zstd"
 
-  @spec format_tag(boolean()) :: atom()
-  def format_tag(false), do: :etf
-  def format_tag(true), do: :etf_zstd
+  @doc "Storage upload headers (content-type, and content-encoding when `compress` is true)."
+  @spec upload_headers(boolean()) :: [headers: %{String.t() => String.t()}]
+  def upload_headers(compress) do
+    base = %{"content-type" => content_type()}
+
+    headers =
+      case content_encoding(compress) do
+        nil -> base
+        encoding -> Map.put(base, "content-encoding", encoding)
+      end
+
+    [headers: headers]
+  end
 
   defp encode_raw(log_events) do
     log_events

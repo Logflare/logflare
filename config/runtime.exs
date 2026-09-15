@@ -612,10 +612,11 @@ spool_provider_override =
       raise ArgumentError, "Invalid SPOOL_PROVIDER=#{other}. Must be aws or gcp."
   end
 
-# Which Logflare.Backends.Spool.Buffer every Partition uses — :wal (local
-# disk, the default) or :mem (in-memory, never durable locally at all).
-# Orthogonal to SPOOL_BLOCKING below: this picks where the buffer lives,
-# not how long an ingest caller waits (see Logflare.Backends.spool_buffer/0).
+# Which backend the spool DurableBuffer instance commits through — :wal
+# (local disk, the default) or :mem (in-memory, never durable locally at
+# all). Orthogonal to SPOOL_BLOCKING below: this picks where the buffer
+# lives, not how long an ingest caller waits (see
+# Logflare.Backends.spool_buffer/0).
 spool_buffer_override =
   case System.get_env("SPOOL_BUFFER") do
     v when v in [nil, ""] ->
@@ -639,12 +640,12 @@ spool_blocking_override =
   end
 
 # Local disk directory for the producer's durable WAL segments (see
-# Logflare.Backends.Spool.Buffer.WAL) — only used when SPOOL_BUFFER is
-# :wal. Falls back to a tmp dir so a plain `mix phx.server` still boots
-# with spool mode on, but that fallback is not durable across a real
-# restart — set this explicitly wherever the WAL is meant to survive one
-# (see cloudbuild/gce-startup.sh's mount_wal_disk for how the dev/staging
-# producer instances provide it).
+# Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal) — only used
+# when SPOOL_BUFFER is :wal. Falls back to a tmp dir so a plain
+# `mix phx.server` still boots with spool mode on, but that fallback is
+# not durable across a real restart — set this explicitly wherever the
+# WAL is meant to survive one (see cloudbuild/gce-startup.sh's
+# mount_wal_disk for how the dev/staging producer instances provide it).
 spool_overrides =
   spool_mode_override ++
     spool_provider_override ++

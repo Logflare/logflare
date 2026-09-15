@@ -64,8 +64,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   require Logger
 
+  alias DurableBuffer.WAL
   alias Logflare.Backends.Spool.Encoder
-  alias Logflare.Backends.Spool.Framing
   alias Logflare.Backends.Spool.MemoryMonitor
 
   @throttle_interval 100
@@ -544,10 +544,9 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
           %{}
         )
 
-        case Framing.decode_segments(decompressed) do
-          {:ok, segments} -> {:ok, segments}
-          {:error, :corrupt, []} -> {:error, {:decode_failed, :not_framed}}
-          {:error, :corrupt, decoded} -> {:ok, decoded}
+        case WAL.decode_all(decompressed) do
+          {[], _valid, _rest} -> {:error, {:decode_failed, :not_framed}}
+          {segments, _valid, _rest} -> {:ok, segments}
         end
 
       version ->

@@ -5,8 +5,8 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
 
   alias Logflare.Backends
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.Spool.DurableBuffer.Supervisor, as: SpoolDurableBufferSup
   alias Logflare.Backends.Spool.MemoryMonitor
-  alias Logflare.Backends.Spool.PartitionSupervisor
 
   @max_points 1_800
   @tick_ms 1_000
@@ -174,7 +174,7 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
 
     result =
       try do
-        partitions = PartitionSupervisor.partitions()
+        partitions = SpoolDurableBufferSup.partitions()
 
         if paused do
           Enum.each(partitions, &:sys.resume/1)

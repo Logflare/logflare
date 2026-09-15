@@ -5,7 +5,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
   alias Logflare.Backends.Spool.ConsumerPipeline.QueueProducer
   alias Logflare.Backends.Spool.Encoder
-  alias Logflare.Backends.Spool.Framing
   alias Logflare.Backends.Spool.MemoryMonitor
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
@@ -56,16 +55,21 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
   defp etf_body(records), do: :erlang.term_to_binary(records)
 
   # A spool file is one or more length+CRC32-framed segments (see
-  # Logflare.Backends.Spool.Framing) — this wraps a plain, uncompressed
-  # etf body as the single-segment file most tests below need. The one
-  # compressed-content test builds its frame explicitly instead, since
-  # compression has to happen before framing, not after.
-  defp framed_etf_body(records), do: Framing.encode_segment(etf_body(records))
+  # DurableBuffer.WAL) — this wraps a plain, uncompressed etf body as the
+  # single-segment file most tests below need. The one compressed-content
+  # test builds its frame explicitly instead, since compression has to
+  # happen before framing, not after.
+  defp encode_segment(payload) do
+    {iodata, _size} = DurableBuffer.WAL.encode(payload)
+    IO.iodata_to_binary(iodata)
+  end
+
+  defp framed_etf_body(records), do: encode_segment(etf_body(records))
 
   # Frames each segment, concatenates them, then compresses the whole thing once.
   defp compressed_file_body(segment_bodies) do
     segment_bodies
-    |> Enum.map(&Framing.encode_segment/1)
+    |> Enum.map(&encode_segment/1)
     |> IO.iodata_to_binary()
     |> Encoder.compress_binary()
   end
@@ -234,7 +238,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
           :erlang.term_to_binary([%{"id" => "e1"}]),
           :erlang.term_to_binary([%{"id" => "e2"}, %{"id" => "e3"}])
         ]
-        |> Enum.map(&Framing.encode_segment/1)
+        |> Enum.map(&encode_segment/1)
         |> IO.iodata_to_binary()
 
       stub_storage(%{"0/a.v2.etf" => body})
@@ -280,7 +284,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
           etf_body([%{"id" => "e1"}]),
           etf_body([%{"id" => "e2"}, %{"id" => "e3"}])
         ]
-        |> Enum.map(&Framing.encode_segment/1)
+        |> Enum.map(&encode_segment/1)
         |> IO.iodata_to_binary()
 
       stub_storage(%{"0/a.v2.etf" => body})
@@ -439,7 +443,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
           etf_body([%{"id" => "e2"}]),
           etf_body([%{"id" => "e3"}])
         ]
-        |> Enum.map(&Framing.encode_segment/1)
+        |> Enum.map(&encode_segment/1)
         |> IO.iodata_to_binary()
 
       stub_storage(%{"0/a.v2.etf" => body})
@@ -482,7 +486,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
           etf_body([%{"id" => "e2"}]),
           etf_body([%{"id" => "e3"}])
         ]
-        |> Enum.map(&Framing.encode_segment/1)
+        |> Enum.map(&encode_segment/1)
         |> IO.iodata_to_binary()
 
       stub_storage(%{"0/a.v2.etf" => body})
@@ -639,7 +643,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       stub_queue([queue_message("h1", "0/corrupt.v2.etf")])
       # Well-formed bytes for storage.get and a valid frame, but not a valid
       # Erlang external term.
-      stub_storage(%{"0/corrupt.v2.etf" => Framing.encode_segment("this is not valid etf")})
+      stub_storage(%{"0/corrupt.v2.etf" => encode_segment("this is not valid etf")})
 
       pid = start_producer()
 
@@ -660,7 +664,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       stub_ack_nack(self())
       stub_queue([queue_message("h1", "0/corrupt.v2.etf.zst")])
-      stub_storage(%{"0/corrupt.v2.etf.zst" => Framing.encode_segment("not zstd data")})
+      stub_storage(%{"0/corrupt.v2.etf.zst" => encode_segment("not zstd data")})
 
       pid = start_producer()
       Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
@@ -676,7 +680,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       stub_ack_nack(self())
       stub_queue([queue_message("h1", "0/corrupt.v2.etf")])
-      good_frame = Framing.encode_segment("hello\n")
+      good_frame = encode_segment("hello\n")
       <<len::32-big, crc::32-big, _payload::binary>> = good_frame
       tampered = <<len::32-big, crc::32-big, "TAMPER"::binary>>
       stub_storage(%{"0/corrupt.v2.etf" => tampered})
@@ -700,13 +704,13 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       good_segment_2 = etf_body([%{"id" => "e2"}])
 
       corrupt_frame =
-        "not the right length or crc for anything" |> Framing.encode_segment() |> corrupt_crc()
+        "not the right length or crc for anything" |> encode_segment() |> corrupt_crc()
 
       raw =
         [
-          Framing.encode_segment(good_segment_1),
+          encode_segment(good_segment_1),
           corrupt_frame,
-          Framing.encode_segment(good_segment_2)
+          encode_segment(good_segment_2)
         ]
         |> IO.iodata_to_binary()
 

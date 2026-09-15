@@ -33,6 +33,7 @@ config :logflare, :spool,
   mode: :disable,
   bucket: "logflare-spool",
   partitions: 1,
-  batch_timeout: 1_000,
+  flush_delay_ms: 100,
+  wal_max_rotation_interval_ms: 1_000,
   compress: true,
   queue_name: "logflare-spool"

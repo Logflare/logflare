@@ -15,9 +15,8 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourcesSup
   alias Logflare.Backends.SourceSup
+  alias Logflare.Backends.Spool.DurableBuffer.Supervisor, as: SpoolDurableBufferSup
   alias Logflare.Backends.Spool.Encoder, as: SpoolEncoder
-  alias Logflare.Backends.Spool.Partition, as: SpoolPartition
-  alias Logflare.Backends.Spool.PartitionSupervisor, as: SpoolPartitionSupervisor
   alias Logflare.Backends.Spool.Health, as: SpoolHealth
   alias Logflare.ContextCache
   alias Logflare.Cluster
@@ -648,13 +647,6 @@ defmodule Logflare.Backends do
 
     if spoolable?(log_events, source, allow_spooling) do
       case dispatch_to_spool_producer(log_events) do
-        {:error, :no_spool_partition_available} ->
-          Logger.warning(
-            "backends: no spool partition registered, falling back to normal dispatch for source #{source.token}"
-          )
-
-          dispatch_to_backend_path(source, backend, log_events)
-
         {:error, reason} ->
           Logger.error(
             "backends: spool dispatch failed for source #{source.token}, falling back to normal dispatch: #{inspect(reason)}"
@@ -680,26 +672,45 @@ defmodule Logflare.Backends do
 
   @default_spool_append_timeout 15_000
 
+  # No source/partition affinity needed — any partition will do, so a fresh
+  # unique term per call spreads load across them the same way random
+  # selection did.
   @spec dispatch_to_spool_producer([LogEvent.t()]) :: :ok | {:error, term()}
   defp dispatch_to_spool_producer(log_events) do
-    {segment, raw_bytes} = SpoolEncoder.encode_chunk(log_events)
+    payload = SpoolEncoder.encode_raw_chunk(log_events)
+    partition_key = :erlang.unique_integer()
 
-    event_count = length(log_events)
+    result =
+      case {spool_buffer(), spool_blocking_mode?()} do
+        {:mem, false} ->
+          DurableBuffer.append_async(SpoolDurableBufferSup.name(), partition_key, payload)
 
-    case SpoolPartitionSupervisor.random_partition() do
-      nil ->
-        {:error, :no_spool_partition_available}
+        _ ->
+          # WAL mode always blocks on the local fsync tier (that IS its
+          # durability guarantee — there's no non-durable ack to skip to);
+          # mem mode blocks on the real upload only when spool_blocking_mode?.
+          DurableBuffer.append(
+            SpoolDurableBufferSup.name(),
+            partition_key,
+            payload,
+            @default_spool_append_timeout
+          )
+      end
 
-      partition ->
-        SpoolPartition.append(
-          partition,
-          segment,
-          raw_bytes,
-          event_count,
-          timeout: @default_spool_append_timeout,
-          wait_until_committed: spool_blocking_mode?()
-        )
+    case result do
+      :ok -> :ok
+      {:ok, _offset} -> :ok
+      {:error, reason} -> {:error, reason}
     end
+  rescue
+    # The buffer was never started (fresh boot, spool disabled) —
+    # DurableBuffer.config/1's :persistent_term lookup has nothing to find.
+    ArgumentError -> {:error, :no_spool_partition_available}
+  catch
+    # The buffer's config is registered but its partition process is gone
+    # (subtree crashed and is mid-restart) — the registry lookup resolves
+    # to a via-tuple with no live process behind it.
+    :exit, _reason -> {:error, :no_spool_partition_available}
   end
 
   # Requires an explicit opt-in (allow_spooling), not just global mode +
@@ -821,18 +832,23 @@ defmodule Logflare.Backends do
   def spool_consumer_mode?, do: spool_mode() in [:consumer, :both]
 
   @doc """
-  Which `Logflare.Backends.Spool.Buffer` every `Partition` on this node
-  uses — `:mem` (in-memory, default) or `:wal` (local-disk-durable). Set
-  via `SPOOL_BUFFER`/`:logflare, :spool, :buffer`.
+  Which backend the node's spool `DurableBuffer` instance commits
+  through — `:wal` (`Backends.RotatingWal`, local-disk-durable, wrapping
+  `Backends.Cloud`, default) or `:mem` (`Backends.Cloud`, straight to
+  cloud storage, never durable locally at all). Set via
+  `SPOOL_BUFFER`/`:logflare, :spool, :buffer`.
   """
   @spec spool_buffer() :: :wal | :mem
   def spool_buffer,
-    do: :logflare |> Application.get_env(:spool, []) |> Keyword.get(:buffer, :mem)
+    do: :logflare |> Application.get_env(:spool, []) |> Keyword.get(:buffer, :wal)
 
   @doc """
   Whether a spoolable event should block until its batch is actually
-  committed, rather than just until it's durable in the buffer. Set via
-  `SPOOL_BLOCKING`/`:logflare, :spool, :blocking` (default off).
+  committed, rather than just until it's durable in the buffer. Only
+  meaningful in `:mem` buffer mode — `:wal` mode always blocks on the
+  local fsync tier, since that's the only durability guarantee it has to
+  give. Set via `SPOOL_BLOCKING`/`:logflare, :spool, :blocking` (default
+  off).
   """
   @spec spool_blocking_mode?() :: boolean()
   def spool_blocking_mode?,

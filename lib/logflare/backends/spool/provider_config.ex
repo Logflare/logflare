@@ -1,8 +1,8 @@
 defmodule Logflare.Backends.Spool.ProviderConfig do
   @moduledoc """
   Resolves shared `:logflare, :spool` config into concrete storage/queue
-  modules and a resolved queue ref — used by `PartitionSupervisor`
-  regardless of which `Logflare.Backends.Spool.Buffer` its partitions use.
+  modules and a resolved queue ref — used by both the producer side
+  (`DurableBuffer.Supervisor`) and the consumer side (`ConsumerPipeline`).
   """
 
   alias Logflare.Backends.Spool.Queue
