@@ -66,15 +66,19 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWalIntegrationT
 
     start_supervised!({DurableBuffer, name: name, backend: backend, partitions: 1})
 
+    # Prefixed with a 4-byte event-count header (see Encoder), matching
+    # what the real write path hands to DurableBuffer.append/3.
+    payload = <<1::32-big, "hello, rotating wal"::binary>>
+
     {time_us, {:ok, _offset}} =
-      :timer.tc(fn -> DurableBuffer.append(name, :some_key, "hello, rotating wal") end)
+      :timer.tc(fn -> DurableBuffer.append(name, :some_key, payload) end)
 
     # append/3 only waits on the LOCAL fsync — it must return in a small
     # fraction of the upload's artificial delay, not anywhere near it.
     assert time_us < upload_delay_ms * 1_000 / 2
 
     assert_receive {:put, body}, upload_delay_ms * 3
-    assert {["hello, rotating wal"], _valid, ""} = DurableBuffer.WAL.decode_all(body)
+    assert {[^payload], _valid, ""} = DurableBuffer.WAL.decode_all(body)
 
     assert_receive {:publish, "projects/p/topics/t", notify_body}
     assert %{"event_count" => 1} = Jason.decode!(notify_body)
