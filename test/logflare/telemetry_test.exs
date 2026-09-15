@@ -109,13 +109,12 @@ defmodule Logflare.TelemetryTest do
 
       for expected <- [
             [:logflare, :backends, :spool, :throttled, :throttled],
-            [:logflare, :backends, :spool, :storage, :put, :count],
+            [:logflare, :backends, :spool, :write_health, :healthy],
+            [:logflare, :backends, :spool, :write_health, :failure_count],
             [:logflare, :backends, :spool, :storage, :get, :count],
-            [:logflare, :backends, :spool, :queue, :publish, :count],
             [:logflare, :backends, :spool, :queue, :receive, :count],
             [:logflare, :backends, :spool, :queue, :ack, :count],
-            [:logflare, :backends, :spool, :queue, :nack, :count],
-            [:logflare, :backends, :spool, :producer, :batch, :count]
+            [:logflare, :backends, :spool, :queue, :nack, :count]
           ] do
         assert expected in names, "expected #{inspect(expected)} to be a defined metric"
       end
