@@ -785,6 +785,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @spec handle_read_pool_log(DBConnection.LogEntry.t(), pos_integer(), String.t() | nil) :: :ok
+  defp handle_read_pool_log(
+         %DBConnection.LogEntry{
+           result: {:error, %DBConnection.ConnectionError{reason: reason}},
+           connection_time: nil
+         },
+         backend_id,
+         label
+       ) do
+    :telemetry.execute(
+      [:logflare, :clickhouse, :read_pool, :checkout_error],
+      %{count: 1},
+      %{backend_id: backend_id, read_cluster: read_cluster_tag(label), reason: reason}
+    )
+  end
+
   defp handle_read_pool_log(%DBConnection.LogEntry{} = entry, backend_id, label) do
     metadata = %{backend_id: backend_id, read_cluster: read_cluster_tag(label)}
 
