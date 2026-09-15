@@ -8,6 +8,17 @@ steps:
         umask 077
         {
           printf '%s\n' 'LOGFLARE_GRPC_PORT=50051'
+          # Tied to how gce-startup.sh mounts the WAL disk (WAL_CONTAINER_DIR)
+          # — deployment-topology-specific, not a secret, so it belongs here
+          # rather than in the baked-in staging secrets.
+          printf '%s\n' 'SPOOL_WAL_DIR=/var/lib/logflare/spool_wal'
+          # Local-disk WAL buffer (see Logflare.Backends.spool_buffer/0,
+          # otherwise defaulting to in-memory) — same as prod and the dev
+          # cluster. Blocking (spool_blocking_mode?/0) stays off here —
+          # ingest callers don't wait for the GCS/Pub-Sub commit, only for
+          # local WAL durability.
+          printf '%s\n' 'SPOOL_BUFFER=wal'
+          printf '%s\n' 'SPOOL_BLOCKING=false'
           printf 'RELEASE_COOKIE=%s\n' "$$1"
           printf 'LOGFLARE_METADATA_CLUSTER=%s\n' "$$2"
           # SPOOL_PUBSUB_TOPIC/SPOOL_QUEUE_NAME point at this cluster's own
