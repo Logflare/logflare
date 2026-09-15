@@ -175,16 +175,24 @@ defmodule LogflareWeb.EndpointsLiveTest do
                  command =~ "LF-ENDPOINT-BIGQUERY-RESERVATION: projects/PROJECT"
              end)
 
-      reservation = "projects/1234/locations/au/reservations/5678"
+      reservations = [
+        {"projects/1234/locations/au/reservations/5678",
+         "projects/1234/locations/au/reservations/5678"},
+        {"projects/1234/locations/au/reservations/5678'; echo exploited #\"",
+         "projects/1234/locations/au/reservations/5678; echo exploited #"}
+      ]
 
-      assert view
-             |> element("#endpoint-test-form")
-             |> render_change(%{run: %{reservation: reservation}})
-             |> Floki.parse_fragment!()
-             |> Floki.find("#endpoint-call-examples pre code")
-             |> Enum.count(fn command ->
-               Floki.text(command) =~ "LF-ENDPOINT-BIGQUERY-RESERVATION: #{reservation}'"
-             end) == 2
+      Enum.each(reservations, fn {reservation, expected_reservation} ->
+        assert view
+               |> element("#endpoint-test-form")
+               |> render_change(%{run: %{reservation: reservation}})
+               |> Floki.parse_fragment!()
+               |> Floki.find("#endpoint-call-examples pre code")
+               |> Enum.count(fn command ->
+                 Floki.text(command) =~
+                   "LF-ENDPOINT-BIGQUERY-RESERVATION: #{expected_reservation}'"
+               end) == 2
+      end)
     end
 
     test "hides expanded query when it matches the endpoint query", %{conn: conn, user: user} do

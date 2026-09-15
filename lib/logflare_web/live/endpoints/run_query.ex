@@ -180,7 +180,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
   defp endpoint_call_examples(assigns) do
     reservation =
       case assigns.form[:reservation].value do
-        value when is_binary(value) and value != "" -> value
+        value when is_binary(value) and value != "" -> String.replace(value, ["'", "\""], "")
         _ -> "projects/PROJECT/locations/LOCATION/reservations/RESERVATION"
       end
 
