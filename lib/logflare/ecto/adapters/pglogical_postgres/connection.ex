@@ -45,6 +45,9 @@ defmodule Logflare.Ecto.Adapters.PglogicalPostgres.Connection do
   defdelegate table_exists_query(table), to: PG
 
   @impl true
+  def execute_ddl(command) when is_binary(command), do: PG.execute_ddl(command)
+
+  @impl true
   def execute_ddl(command) do
     replication_sets = Migrator.replication_sets()
 
@@ -54,13 +57,26 @@ defmodule Logflare.Ecto.Adapters.PglogicalPostgres.Connection do
     |> Enum.map(&wrap_in_pglogical(&1, replication_sets))
   end
 
-  defp wrap_in_pglogical(sql, []), do: sql
+  @doc """
+  Explicitly opts a raw `Ecto.Migration.execute/1` SQL string, such as
+  `ALTER TABLE ... REPLICA IDENTITY FULL`, into pglogical replication.
 
-  defp wrap_in_pglogical(sql, replication_sets) when is_list(sql) do
+  By default, ddl string migrations are NOT replicated to replicas.
+  """
+  @spec replicated_execute(String.t()) :: String.t()
+  def replicated_execute(sql) when is_binary(sql) do
+    wrap_in_pglogical(sql, Migrator.replication_sets())
+  end
+
+  @doc false
+  @spec wrap_in_pglogical(iodata(), [String.t()]) :: String.t()
+  def wrap_in_pglogical(sql, []), do: sql |> IO.iodata_to_binary()
+
+  def wrap_in_pglogical(sql, replication_sets) when is_list(sql) do
     sql |> IO.iodata_to_binary() |> wrap_in_pglogical(replication_sets)
   end
 
-  defp wrap_in_pglogical(sql, replication_sets) when is_binary(sql) do
+  def wrap_in_pglogical(sql, replication_sets) when is_binary(sql) do
     sets_array = replication_sets |> Enum.map(&"'#{&1}'") |> Enum.join(", ")
 
     # pglogical applies replicated DDL with an empty search_path on both
