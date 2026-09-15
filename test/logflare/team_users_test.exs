@@ -112,6 +112,7 @@ defmodule Logflare.TeamUsersTest do
       assert {:ok, %TeamUser{} = team_user} = TeamUsers.create_team_user(team.id, @valid_attrs)
       assert team_user.email == @valid_attrs.email
       assert team_user.provider == @valid_attrs.provider
+      assert team_user.role == :user
       assert team_user.team_id == team.id
     end
 
@@ -128,8 +129,11 @@ defmodule Logflare.TeamUsersTest do
       team_user = insert(:team_user, team: team)
       new_email = "updated_#{System.unique_integer()}@example.com"
 
-      assert {:ok, updated} = TeamUsers.update_team_user(team_user, %{email: new_email})
+      assert {:ok, updated} =
+               TeamUsers.update_team_user(team_user, %{email: new_email, role: "admin"})
+
       assert updated.email == new_email
+      assert updated.role == team_user.role, "should not change"
     end
 
     test "returns error changeset with invalid attrs" do
@@ -137,6 +141,26 @@ defmodule Logflare.TeamUsersTest do
       team_user = insert(:team_user, team: team)
 
       assert {:error, %Ecto.Changeset{}} = TeamUsers.update_team_user(team_user, %{email: nil})
+    end
+  end
+
+  describe "update_team_role/2" do
+    test "updates team user role with valid attrs" do
+      team = insert(:team)
+      team_user = insert(:team_user, team: team)
+
+      assert {:ok, updated} = TeamUsers.update_team_role(team_user, %{role: :admin})
+      assert updated.role == :admin
+    end
+
+    test "returns error changeset with invalid role" do
+      team = insert(:team)
+      team_user = insert(:team_user, team: team)
+
+      assert {:error, %Ecto.Changeset{} = changeset} =
+               TeamUsers.update_team_role(team_user, %{role: :owner})
+
+      assert [role: {"is invalid", _meta}] = changeset.errors
     end
   end
 

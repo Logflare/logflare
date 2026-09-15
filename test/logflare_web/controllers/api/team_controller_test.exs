@@ -101,7 +101,7 @@ defmodule LogflareWeb.Api.TeamControllerTest do
 
       response =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> post(~p"/api/teams", %{name: name})
         |> json_response(201)
 
@@ -111,7 +111,7 @@ defmodule LogflareWeb.Api.TeamControllerTest do
     test "returns 422 on bad arguments", %{conn: conn, user: user} do
       response =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> post(~p"/api/teams", %{name: 123})
         |> json_response(422)
 
@@ -121,11 +121,18 @@ defmodule LogflareWeb.Api.TeamControllerTest do
     test "returns 422 on missing arguments", %{conn: conn, user: user} do
       response =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> post(~p"/api/teams")
         |> json_response(422)
 
       assert response == %{"errors" => %{"name" => ["can't be blank"]}}
+    end
+
+    test "admin scope is required", %{conn: conn, user: user} do
+      assert conn
+             |> add_access_token(user, "private")
+             |> post(~p"/api/teams", %{name: TestUtils.random_string()})
+             |> json_response(401) == %{"error" => "Unauthorized"}
     end
   end
 
@@ -139,7 +146,7 @@ defmodule LogflareWeb.Api.TeamControllerTest do
 
       response =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> patch(~p"/api/teams/#{main_team.token}", %{name: name})
         |> response(204)
 
@@ -149,7 +156,7 @@ defmodule LogflareWeb.Api.TeamControllerTest do
 
       response =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> put(~p"/api/teams/#{main_team.token}", %{name: another_name})
         |> json_response(201)
 
@@ -161,7 +168,7 @@ defmodule LogflareWeb.Api.TeamControllerTest do
       invalid_user = insert(:user)
 
       conn
-      |> add_access_token(invalid_user, "private")
+      |> add_access_token(invalid_user, "private:admin")
       |> patch(~p"/api/teams/#{main_team.token}", %{name: TestUtils.random_string()})
       |> json_response(404)
     end
@@ -169,11 +176,18 @@ defmodule LogflareWeb.Api.TeamControllerTest do
     test "returns 422 on bad arguments", %{conn: conn, user: user, main_team: main_team} do
       response =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> patch(~p"/api/teams/#{main_team.token}", %{name: 123})
         |> json_response(422)
 
       assert response == %{"errors" => %{"name" => ["is invalid"]}}
+    end
+
+    test "admin scope is required", %{conn: conn, user: user, main_team: main_team} do
+      assert conn
+             |> add_access_token(user, "private")
+             |> patch(~p"/api/teams/#{main_team.token}", %{name: TestUtils.random_string()})
+             |> json_response(401) == %{"error" => "Unauthorized"}
     end
   end
 
@@ -184,7 +198,7 @@ defmodule LogflareWeb.Api.TeamControllerTest do
       main_team: main_team
     } do
       assert conn
-             |> add_access_token(user, "private")
+             |> add_access_token(user, "private:admin")
              |> delete(~p"/api/teams/#{main_team.token}")
              |> response(204) == ""
     end
@@ -193,9 +207,16 @@ defmodule LogflareWeb.Api.TeamControllerTest do
       invalid_user = insert(:user)
 
       assert conn
-             |> add_access_token(invalid_user, "private")
+             |> add_access_token(invalid_user, "private:admin")
              |> delete(~p"/api/teams/#{main_team.token}")
              |> json_response(404) == %{"error" => "Not Found"}
+    end
+
+    test "admin scope is required", %{conn: conn, user: user, main_team: main_team} do
+      assert conn
+             |> add_access_token(user, "private")
+             |> delete(~p"/api/teams/#{main_team.token}")
+             |> json_response(401) == %{"error" => "Unauthorized"}
     end
   end
 end
