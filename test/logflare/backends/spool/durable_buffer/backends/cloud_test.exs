@@ -32,19 +32,31 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.CloudTest do
     )
   end
 
+  # Each payload becomes one segment prefixed with a 4-byte event-count
+  # header (see Encoder) — a count of 1 per payload, since each represents
+  # a single logical event in these tests.
   defp batch(payloads) do
     Enum.map(payloads, fn payload ->
-      {iodata, _size} = DurableBuffer.WAL.encode(payload)
+      {iodata, _size} = DurableBuffer.WAL.encode(<<1::32-big, payload::binary>>)
       iodata
     end)
   end
 
   defp decode_segments(body) do
     case DurableBuffer.WAL.decode_all(body) do
-      {segments, _valid, ""} -> {:ok, segments}
-      {segments, _valid, rest} -> {:error, :corrupt, segments, rest}
+      {segments, _valid, ""} ->
+        {:ok, Enum.map(segments, fn <<_count::32-big, etf::binary>> -> etf end)}
+
+      {segments, _valid, rest} ->
+        {:error, :corrupt, segments, rest}
     end
   end
+
+  # DurableBuffer.append/3 frames whatever raw bytes it's given — the
+  # event-count header a real caller (Encoder.encode_raw_chunk/1) would
+  # add is our responsibility to add here too, so Cloud.commit/4's header
+  # parsing has something valid to strip.
+  defp headered(payload), do: <<1::32-big, payload::binary>>
 
   describe "commit/4" do
     test "uploads the framed batch and publishes a queue notification" do
@@ -180,7 +192,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.CloudTest do
           backend: {Backend, config(%{queue_ref: "projects/p/topics/t"}) |> Map.to_list()}
         )
 
-      assert {:ok, _offset} = DurableBuffer.append(name, :some_key, "hello")
+      assert {:ok, _offset} = DurableBuffer.append(name, :some_key, headered("hello"))
 
       assert_receive {:put, body}
       assert {:ok, ["hello"]} = decode_segments(body)
@@ -199,7 +211,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.CloudTest do
 
       name = start_buffer!([])
 
-      assert :ok = DurableBuffer.append_async(name, :some_key, "one")
+      assert :ok = DurableBuffer.append_async(name, :some_key, headered("one"))
       refute_receive {:put, _body}, 10
 
       assert :ok = DurableBuffer.sync(name, :some_key)
@@ -224,7 +236,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.CloudTest do
 
       tasks =
         for payload <- ["a", "b", "c"] do
-          Task.async(fn -> DurableBuffer.append(name, :some_key, payload) end)
+          Task.async(fn -> DurableBuffer.append(name, :some_key, headered(payload)) end)
         end
 
       results = Enum.map(tasks, &Task.await/1)

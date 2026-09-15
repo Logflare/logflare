@@ -55,12 +55,14 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
   defp etf_body(records), do: :erlang.term_to_binary(records)
 
   # A spool file is one or more length+CRC32-framed segments (see
-  # DurableBuffer.WAL) — this wraps a plain, uncompressed etf body as the
-  # single-segment file most tests below need. The one compressed-content
-  # test builds its frame explicitly instead, since compression has to
-  # happen before framing, not after.
+  # DurableBuffer.WAL), each prefixed with a 4-byte event-count header (see
+  # Encoder) before framing — this wraps a plain, uncompressed etf body as
+  # the single-segment file most tests below need. The count value itself
+  # doesn't matter to these tests, so it's a fixed placeholder. The one
+  # compressed-content test builds its frame explicitly instead, since
+  # compression has to happen before framing, not after.
   defp encode_segment(payload) do
-    {iodata, _size} = DurableBuffer.WAL.encode(payload)
+    {iodata, _size} = DurableBuffer.WAL.encode(<<0::32-big, payload::binary>>)
     IO.iodata_to_binary(iodata)
   end
 
@@ -186,8 +188,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :ack])
 
       stub_ack_nack(self())
-      stub_queue([queue_message("h1", "0/a.v2.etf")])
-      stub_storage(%{"0/a.v2.etf" => framed_etf_body([%{"id" => "e1"}, %{"id" => "e2"}])})
+      stub_queue([queue_message("h1", "0/a.v3.etf")])
+      stub_storage(%{"0/a.v3.etf" => framed_etf_body([%{"id" => "e1"}, %{"id" => "e2"}])})
 
       pid = start_producer()
 
@@ -214,10 +216,10 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
     test "streams segments from a zstd-compressed .etf.zst file" do
       stub_ack_nack(self())
-      stub_queue([queue_message("h1", "0/a.v2.etf.zst")])
+      stub_queue([queue_message("h1", "0/a.v3.etf.zst")])
 
       body = compressed_file_body([etf_body([%{"id" => "e1"}, %{"id" => "e2"}])])
-      stub_storage(%{"0/a.v2.etf.zst" => body})
+      stub_storage(%{"0/a.v3.etf.zst" => body})
 
       pid = start_producer()
 
@@ -231,7 +233,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
     test "emits one Broadway item per segment" do
       stub_ack_nack(self())
-      stub_queue([queue_message("h1", "0/a.v2.etf")])
+      stub_queue([queue_message("h1", "0/a.v3.etf")])
 
       body =
         [
@@ -241,7 +243,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
         |> Enum.map(&encode_segment/1)
         |> IO.iodata_to_binary()
 
-      stub_storage(%{"0/a.v2.etf" => body})
+      stub_storage(%{"0/a.v3.etf" => body})
 
       pid = start_producer()
 
@@ -255,7 +257,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
     test "streams every segment from a file with multiple raw segments compressed once as a whole (group commit)" do
       stub_ack_nack(self())
-      stub_queue([queue_message("h1", "0/a.v2.etf.zst")])
+      stub_queue([queue_message("h1", "0/a.v3.etf.zst")])
 
       segment_1 = etf_body([%{"id" => "e1"}, %{"id" => "e2"}])
       segment_2 = etf_body([%{"id" => "e3"}])
@@ -263,7 +265,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       body = compressed_file_body([segment_1, segment_2, segment_3])
 
-      stub_storage(%{"0/a.v2.etf.zst" => body})
+      stub_storage(%{"0/a.v3.etf.zst" => body})
 
       pid = start_producer()
 
@@ -277,7 +279,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
     test "streams every segment from a file with multiple uncompressed segments (group commit)" do
       stub_ack_nack(self())
-      stub_queue([queue_message("h1", "0/a.v2.etf")])
+      stub_queue([queue_message("h1", "0/a.v3.etf")])
 
       body =
         [
@@ -287,7 +289,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
         |> Enum.map(&encode_segment/1)
         |> IO.iodata_to_binary()
 
-      stub_storage(%{"0/a.v2.etf" => body})
+      stub_storage(%{"0/a.v3.etf" => body})
 
       pid = start_producer()
 
@@ -342,8 +344,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       throttled!()
 
       stub_ack_nack(self())
-      stub_queue([queue_message("h1", "0/a.v2.etf")])
-      stub_storage(%{"0/a.v2.etf" => framed_etf_body([%{"id" => "e1"}])})
+      stub_queue([queue_message("h1", "0/a.v3.etf")])
+      stub_storage(%{"0/a.v3.etf" => framed_etf_body([%{"id" => "e1"}])})
 
       pid = start_producer()
 
@@ -380,8 +382,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       stub(MemoryMonitor, :consumer_throttled?, fn -> true end)
 
       stub_ack_nack(self())
-      stub_queue([queue_message("h1", "0/a.v2.etf")])
-      stub_storage(%{"0/a.v2.etf" => framed_etf_body([%{"id" => "e1"}])})
+      stub_queue([queue_message("h1", "0/a.v3.etf")])
+      stub_storage(%{"0/a.v3.etf" => framed_etf_body([%{"id" => "e1"}])})
 
       pid = start_producer()
 
@@ -410,10 +412,10 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       stub(MemoryMonitor, :register_source, fn sid -> send(test_pid, {:registered, sid}) end)
 
       stub_ack_nack(self())
-      stub_queue([queue_message("h1", "0/a.v2.etf")])
+      stub_queue([queue_message("h1", "0/a.v3.etf")])
 
       stub_storage(%{
-        "0/a.v2.etf" =>
+        "0/a.v3.etf" =>
           framed_etf_body([
             %{"id" => "e1", "source_id" => 1},
             %{"id" => "e2", "source_id" => 2}
@@ -434,7 +436,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
   describe "max_in_flight byte budget" do
     test "emits the first oversized segment (so it can never wedge the producer), then holds back the rest until in-flight capacity frees up" do
       stub_ack_nack(self())
-      stub_queue([queue_message("h1", "0/a.v2.etf")])
+      stub_queue([queue_message("h1", "0/a.v3.etf")])
 
       # Three segments, each individually larger than the 1-byte budget below.
       body =
@@ -446,7 +448,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
         |> Enum.map(&encode_segment/1)
         |> IO.iodata_to_binary()
 
-      stub_storage(%{"0/a.v2.etf" => body})
+      stub_storage(%{"0/a.v3.etf" => body})
 
       pid = start_producer(max_in_flight: 1)
 
@@ -478,7 +480,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
     test "an :infinity budget (the default) emits every segment without capping" do
       stub_ack_nack(self())
-      stub_queue([queue_message("h1", "0/a.v2.etf")])
+      stub_queue([queue_message("h1", "0/a.v3.etf")])
 
       body =
         [
@@ -489,7 +491,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
         |> Enum.map(&encode_segment/1)
         |> IO.iodata_to_binary()
 
-      stub_storage(%{"0/a.v2.etf" => body})
+      stub_storage(%{"0/a.v3.etf" => body})
 
       pid = start_producer()
 
@@ -540,15 +542,15 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       stub_ack_nack(self())
 
       stub_queue([
-        queue_message("h1", "0/a.v2.etf"),
+        queue_message("h1", "0/a.v3.etf"),
         queue_message("h2", "0/b.etf"),
-        queue_message("h3", "0/c.v2.etf")
+        queue_message("h3", "0/c.v3.etf")
       ])
 
       stub_storage(%{
-        "0/a.v2.etf" => framed_etf_body([%{"id" => "e1"}]),
+        "0/a.v3.etf" => framed_etf_body([%{"id" => "e1"}]),
         "0/b.etf" => :raise,
-        "0/c.v2.etf" => framed_etf_body([%{"id" => "e3"}])
+        "0/c.v3.etf" => framed_etf_body([%{"id" => "e3"}])
       })
 
       pid = start_producer()
@@ -571,12 +573,12 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       stub_queue([
         queue_message("h1", "0/bad.etf"),
-        queue_message("h2", "0/good.v2.etf")
+        queue_message("h2", "0/good.v3.etf")
       ])
 
       stub_storage(%{
         "0/bad.etf" => :raise,
-        "0/good.v2.etf" => framed_etf_body([%{"id" => "e1"}])
+        "0/good.v3.etf" => framed_etf_body([%{"id" => "e1"}])
       })
 
       pid = start_producer()
@@ -640,10 +642,10 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :ack])
 
       stub_ack_nack(self())
-      stub_queue([queue_message("h1", "0/corrupt.v2.etf")])
+      stub_queue([queue_message("h1", "0/corrupt.v3.etf")])
       # Well-formed bytes for storage.get and a valid frame, but not a valid
       # Erlang external term.
-      stub_storage(%{"0/corrupt.v2.etf" => encode_segment("this is not valid etf")})
+      stub_storage(%{"0/corrupt.v3.etf" => encode_segment("this is not valid etf")})
 
       pid = start_producer()
 
@@ -663,8 +665,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :ack])
 
       stub_ack_nack(self())
-      stub_queue([queue_message("h1", "0/corrupt.v2.etf.zst")])
-      stub_storage(%{"0/corrupt.v2.etf.zst" => encode_segment("not zstd data")})
+      stub_queue([queue_message("h1", "0/corrupt.v3.etf.zst")])
+      stub_storage(%{"0/corrupt.v3.etf.zst" => encode_segment("not zstd data")})
 
       pid = start_producer()
       Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
@@ -679,11 +681,11 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :ack])
 
       stub_ack_nack(self())
-      stub_queue([queue_message("h1", "0/corrupt.v2.etf")])
+      stub_queue([queue_message("h1", "0/corrupt.v3.etf")])
       good_frame = encode_segment("hello\n")
       <<len::32-big, crc::32-big, _payload::binary>> = good_frame
       tampered = <<len::32-big, crc::32-big, "TAMPER"::binary>>
-      stub_storage(%{"0/corrupt.v2.etf" => tampered})
+      stub_storage(%{"0/corrupt.v3.etf" => tampered})
 
       pid = start_producer()
       Task.async(fn -> GenStage.stream([{pid, max_demand: 1}]) |> Enum.take(1) end)
@@ -698,7 +700,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :ack])
 
       stub_ack_nack(self())
-      stub_queue([queue_message("h1", "0/mixed.v2.etf.zst")])
+      stub_queue([queue_message("h1", "0/mixed.v3.etf.zst")])
 
       good_segment_1 = etf_body([%{"id" => "e1"}])
       good_segment_2 = etf_body([%{"id" => "e2"}])
@@ -715,7 +717,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
         |> IO.iodata_to_binary()
 
       body = :ezstd.compress(raw, 3)
-      stub_storage(%{"0/mixed.v2.etf.zst" => body})
+      stub_storage(%{"0/mixed.v3.etf.zst" => body})
 
       pid = start_producer()
 
@@ -803,12 +805,12 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       stub_ack_nack(self())
 
       stub_queue([
-        queue_message("h1", "0/a.v2.etf"),
+        queue_message("h1", "0/a.v3.etf"),
         queue_message("h2", "0/broken.etf")
       ])
 
       stub_storage(%{
-        "0/a.v2.etf" => framed_etf_body([%{"id" => "e1"}]),
+        "0/a.v3.etf" => framed_etf_body([%{"id" => "e1"}]),
         "0/broken.etf" => {:error, :network_error}
       })
 
@@ -898,7 +900,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       test_pid = self()
 
       stub_ack_nack(self())
-      stub_queue([queue_message("h1", "0/a.v2.etf")])
+      stub_queue([queue_message("h1", "0/a.v3.etf")])
 
       # Blocks until released, so the background prefetch Task started by
       # maybe_start_prefetch/1 is still genuinely :running when
@@ -947,7 +949,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       test_pid = self()
 
       stub_ack_nack(self())
-      stub_queue([queue_message("h1", "0/a.v2.etf")])
+      stub_queue([queue_message("h1", "0/a.v3.etf")])
 
       # Blocks until released, so the producer can be killed while this
       # fetch is still genuinely in flight — the scenario djwhitt flagged as
