@@ -671,7 +671,7 @@ defmodule Logflare.Bench.ClickHousePipelineData do
       event_type: type,
       day_bucket: div(1_700_000_000 + i, 86_400),
       ingested_at: DateTime.from_unix!(1_700_000_000_000_000 + i, :microsecond),
-      body: Map.put(body, "mapping_config_id", MappingDefaults.config_id(type))
+      body: Map.put(body, "mapping_config_id", OtelDefaults.config_id(type))
     }
   end
 

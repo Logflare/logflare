@@ -9,7 +9,7 @@
 # (before/after) and saves Benchee results for cross-SHA comparison.
 
 alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester
-alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults
+alias Logflare.Mapper.OtelDefaults
 alias Logflare.LogEvent
 
 tag = System.get_env("TAG", "untagged")
@@ -84,7 +84,7 @@ base_event = fn type, body ->
     source_name: "bench source",
     event_type: type,
     ingested_at: DateTime.utc_now(),
-    body: Map.merge(body, %{"mapping_config_id" => MappingDefaults.config_id(type)})
+    body: Map.merge(body, %{"mapping_config_id" => OtelDefaults.config_id(type)})
   }
 end
 
