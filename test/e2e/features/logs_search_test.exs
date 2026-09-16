@@ -70,6 +70,26 @@ defmodule E2e.Features.LogsSearchTest do
       |> refute_has("#logs-list-container", text: non_matching_message)
     end
 
+    test "timezone label focuses the enhanced combobox", %{conn: conn, source: source} do
+      conn =
+        conn
+        |> visit(~p"/auth/login/single_tenant")
+        |> assert_path(~p"/dashboard")
+        |> visit(~p"/sources/#{source.id}/search")
+        |> assert_has("[data-phx-main].phx-connected")
+        |> click("label.input-group-prepend")
+
+      unwrap(conn, fn %{frame_id: frame_id} ->
+        {:ok, focused?} =
+          Frame.evaluate(frame_id,
+            expression: "document.activeElement.matches('input[role=combobox]')",
+            timeout: 5_000
+          )
+
+        assert focused?
+      end)
+    end
+
     test "loads the remaining previous page of search results", %{
       conn: conn,
       source: source,

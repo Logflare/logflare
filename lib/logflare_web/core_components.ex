@@ -66,10 +66,12 @@ defmodule LogflareWeb.CoreComponents do
 
   def combobox(assigns) do
     assigns =
-      assign(assigns, :select_rest, Map.put_new(assigns.rest, :"aria-label", assigns.prompt))
+      assigns
+      |> assign(:input_id, "#{assigns.id}-input")
+      |> assign(:select_rest, Map.put_new(assigns.rest, :"aria-label", assigns.prompt))
 
     ~H"""
-    <div id={"#{@id}-combobox"} class="tw-w-full [&:has(input[role=combobox])>select]:tw-hidden" data-combobox-empty-text={@empty_text} data-combobox-prompt={@prompt} phx-hook="Combobox">
+    <div id={"#{@id}-combobox"} class="tw-w-full [&:has(input[role=combobox])>select]:tw-hidden" data-combobox-empty-text={@empty_text} data-combobox-input-id={@input_id} data-combobox-prompt={@prompt} phx-hook="Combobox">
       <.select id={@id} name={@name} value={@value} prompt={@prompt} prompt_hidden={@prompt_hidden} options={@options} class={@class} {@select_rest} />
       <div id={"#{@id}-react"} class="tw-w-full" data-combobox-container phx-update="ignore"></div>
     </div>

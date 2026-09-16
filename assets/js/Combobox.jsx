@@ -24,22 +24,10 @@ export const optionsFromSelect = (select) => {
   };
 };
 
-const labelledBy = (select) => {
-  const ariaLabel = select.getAttribute("aria-label");
-  const ariaLabelledBy = select.getAttribute("aria-labelledby");
-
-  if (ariaLabel || ariaLabelledBy) return ariaLabelledBy;
-
-  return Array.from(select.labels)
-    .map((label, index) => {
-      label.id ||= `${select.id}-label-${index}`;
-      return label.id;
-    })
-    .join(" ") || undefined;
-};
-
 export function Combobox({
   emptyText,
+  inputId,
+  onInputMount,
   prompt,
   select,
 }) {
@@ -72,14 +60,16 @@ export function Combobox({
         <BaseCombobox.Input
           aria-describedby={select.getAttribute("aria-describedby")}
           aria-label={select.getAttribute("aria-label")}
-          aria-labelledby={labelledBy(select)}
+          aria-labelledby={select.getAttribute("aria-labelledby")}
           className="tw-min-w-0 tw-flex-1 tw-border-0 tw-bg-transparent tw-px-2 tw-py-1 tw-text-[#495057] tw-outline-none"
+          id={inputId}
           onKeyDownCapture={(event) => {
             if (event.key === "Enter" && inputValue && !event.currentTarget.ariaActiveDescendant) {
               event.preventDefault();
             }
           }}
           placeholder={prompt}
+          ref={onInputMount}
         />
         <BaseCombobox.Trigger
           className="tw-group tw-flex tw-self-stretch tw-items-center tw-justify-center tw-border-0 tw-bg-transparent tw-px-[0.6rem] tw-py-0 tw-text-[#495057]"

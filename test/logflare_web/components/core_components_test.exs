@@ -26,6 +26,7 @@ defmodule LogflareWeb.CoreComponentsTest do
       })
 
     assert html =~ ~s(id="token_source_id-combobox")
+    assert html =~ ~s(data-combobox-input-id="token_source_id-input")
     assert html =~ ~s(phx-hook="Combobox")
     assert html =~ ~s(<select id="token_source_id" name="token[source_id]")
     assert html =~ ~s(<option selected value="1">First</option>)
