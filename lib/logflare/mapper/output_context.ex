@@ -13,21 +13,27 @@ defmodule Logflare.Mapper.OutputContext do
 
   @typep envelope() :: {binary(), binary(), binary(), integer()}
 
-  @doc "Builds the per-row context required by ClickHouse RowBinary output."
-  @spec ch_row_binary(LogEvent.t(), binary()) :: t()
-  def ch_row_binary(%LogEvent{} = event, mapping_config_id) when is_binary(mapping_config_id) do
+  @doc """
+  Builds the per-row context required by ClickHouse RowBinary output.
+
+  `mapping_config_id` is the 16-byte RowBinary UUID encoding (see
+  `Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester.encode_mapping_config_id/1`),
+  pre-encoded once by the caller rather than per row.
+  """
+  @spec ch_row_binary(LogEvent.t(), <<_::128>>) :: t()
+  def ch_row_binary(%LogEvent{} = event, <<_::128>> = mapping_config_id) do
     {:ch_row_binary, mapping_config_id, envelope(event)}
   end
 
   @doc """
   Builds the per-row context required by NDJSON output.
 
-  `mapping_config_id` is emitted as the UUID string. `ingested_at` is emitted
-  as Unix **microseconds**, matching the microsecond precision of the mapped
-  timestamp fields in NDJSON output.
+  `mapping_config_id` is the 36-character UUID string and is emitted as-is.
+  `ingested_at` is emitted as Unix **microseconds**, matching the microsecond
+  precision of the default NDJSON timestamp fields.
   """
-  @spec ndjson(LogEvent.t(), String.t()) :: t()
-  def ndjson(%LogEvent{} = event, mapping_config_id) when is_binary(mapping_config_id) do
+  @spec ndjson(LogEvent.t(), <<_::288>>) :: t()
+  def ndjson(%LogEvent{} = event, <<_::288>> = mapping_config_id) do
     {:ndjson, mapping_config_id, envelope(event)}
   end
 

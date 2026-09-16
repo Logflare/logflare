@@ -58,7 +58,27 @@ pub struct RowEnvelope<'a> {
     pub ingested_at: i64,
 }
 
+/// Keys written by `write_row` before the mapped columns; a config field with
+/// one of these names would produce a duplicate JSON key.
+const ENVELOPE_KEYS: [&str; 5] = [
+    "id",
+    "source_uuid",
+    "source_name",
+    "mapping_config_id",
+    "ingested_at",
+];
+
 pub fn compile_layout(row_type: &str, fields: &[CompiledField]) -> EncodeResult<CompiledLayout> {
+    if let Some(field) = fields
+        .iter()
+        .find(|field| ENVELOPE_KEYS.contains(&field.name.as_str()))
+    {
+        return Err(format!(
+            "field name '{}' is reserved for the NDJSON envelope",
+            field.name
+        ));
+    }
+
     let index_of = |name: &str| {
         fields
             .iter()

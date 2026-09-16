@@ -139,14 +139,22 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
     test "non-UTF-8 string field", %{ndjson: ndjson} do
       body = Map.put(@fixtures.log, "event_message", <<0xFF, 0xFE>>)
 
-      assert %{"event_message" => nil} = map_and_decode(:log, body, ndjson)
+      assert %{"event_message" => "\uFFFD\uFFFD"} = map_and_decode(:log, body, ndjson)
     end
+  end
+
+  test "mapping_config_id with the other format's encoding" do
+    event = raw_event(:log, @fixtures.log)
+    uuid = OtelDefaults.config_id(:log)
+
+    assert_raise FunctionClauseError, fn -> OutputContext.ndjson(event, <<0::128>>) end
+    assert_raise FunctionClauseError, fn -> OutputContext.ch_row_binary(event, uuid) end
   end
 
   test "mismatched output_context", %{ndjson: ndjson} do
     rowbinary = Mapper.compile!(OtelDefaults.for_log())
     event = raw_event(:log, @fixtures.log)
-    ndjson_context = OutputContext.ndjson(event, "cfg")
+    ndjson_context = OutputContext.ndjson(event, OtelDefaults.config_id(:log))
     rowbinary_context = OutputContext.ch_row_binary(event, <<0::128>>)
 
     assert {:error, "Invalid ndjson output context"} =
@@ -159,6 +167,16 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
   end
 
   describe "custom configs" do
+    test "config with an envelope field name" do
+      config =
+        MappingConfig.new([Field.string("source_name", path: "$.source")],
+          output: OutputFormat.ndjson(:metric)
+        )
+
+      assert {:error, "field name 'source_name' is reserved for the NDJSON envelope"} =
+               Mapper.compile(config)
+    end
+
     test "config missing derived-rule inputs" do
       config =
         MappingConfig.new([Field.string("event_message", path: "$.event_message")],
@@ -184,7 +202,7 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
 
       for {kind, expected} <- [{"one", "one"}, {1, "one"}, {9, nil}] do
         event = raw_event(:metric, %{"b" => "x", "a" => 1, "kind" => kind})
-        decoded = map_and_decode(event, compiled, "cfg")
+        decoded = map_and_decode(event, compiled, OtelDefaults.config_id(:metric))
 
         assert Map.drop(decoded, @envelope_keys) == %{"b" => "x", "a" => 1, "kind" => expected}
       end

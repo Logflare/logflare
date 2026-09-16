@@ -376,10 +376,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MapperOutputTest do
       Mapper.map(valid.body, compiled)
     end
 
-    invalid_config_context = OutputContext.ch_row_binary(valid, <<0::120>>)
-
     assert_raise ArgumentError, ~r/mapping config ID must be a 16-byte encoded UUID/, fn ->
-      Mapper.map(valid.body, compiled, output_context: invalid_config_context)
+      Mapper.map(valid.body, compiled,
+        output_context: {:ch_row_binary, <<0::120>>, native_envelope(valid)}
+      )
     end
 
     invalid_uuid = %{valid | id: "not-a-uuid"}

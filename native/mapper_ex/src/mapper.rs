@@ -1323,10 +1323,7 @@ impl Serialize for JsonTerm<'_> {
             };
         }
         if let Ok(binary) = self.value.decode::<Binary>() {
-            return match std::str::from_utf8(binary.as_slice()) {
-                Ok(value) => serializer.serialize_str(value),
-                Err(_) => serializer.serialize_none(),
-            };
+            return serializer.serialize_str(&String::from_utf8_lossy(binary.as_slice()));
         }
         if self.value.is_atom() {
             return match self.value.atom_to_string() {
@@ -1347,10 +1344,7 @@ impl Serialize for JsonTerm<'_> {
         if let Some(iter) = MapIterator::new(self.value) {
             let mut entries = Vec::new();
             for (key, value) in iter {
-                let Ok(binary) = key.decode::<Binary>() else {
-                    continue;
-                };
-                if std::str::from_utf8(binary.as_slice()).is_ok() {
+                if let Ok(binary) = key.decode::<Binary>() {
                     entries.push((binary, value));
                 }
             }
@@ -1358,9 +1352,8 @@ impl Serialize for JsonTerm<'_> {
 
             let mut map = serializer.serialize_map(Some(entries.len()))?;
             for (binary, value) in entries {
-                let key = std::str::from_utf8(binary.as_slice()).expect("validated UTF-8 key");
                 map.serialize_entry(
-                    key,
+                    &String::from_utf8_lossy(binary.as_slice()),
                     &JsonTerm {
                         value,
                         nil: self.nil,

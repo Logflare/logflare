@@ -594,7 +594,7 @@ defmodule Logflare.Mapper.OptimizedMapperTest do
 
       assert Mapper.map(document, compiled) == %{
                "attrs" => %{
-                 "complex" => ~S([{"a":"quote\"","z":1},null,true,"ok",null])
+                 "complex" => ~S([{"a":"quote\"","z":1},null,true,"ok","�"])
                }
              }
     end
