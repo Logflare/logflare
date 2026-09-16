@@ -77,7 +77,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
         </section>
       </div>
 
-      <.endpoint_call_examples endpoint={@endpoint} declared_params={@declared_params} />
+      <.endpoint_call_examples endpoint={@endpoint} form={@form} declared_params={@declared_params} />
     </aside>
     """
   end
@@ -88,7 +88,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
 
   def endpoint_test_form(assigns) do
     ~H"""
-    <.form :let={f} for={@form} phx-submit="run-query" aria-label="Test endpoint">
+    <.form :let={f} for={@form} id="endpoint-test-form" phx-change="validate" phx-submit="run-query" aria-label="Test endpoint">
       {hidden_input(f, :query)}
 
       <.parameter_fields form={f} declared_params={@declared_params} dynamic_reservation?={@endpoint.enable_dynamic_reservation} />
@@ -166,6 +166,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
       {label(@form, :reservation, "BigQuery Reservation")}
       {text_input(@form, :reservation,
         class: "form-control",
+        phx_debounce: "300",
         placeholder: "projects/{project}/locations/{location}/reservations/{reservation}"
       )}
     </div>
@@ -173,36 +174,35 @@ defmodule LogflareWeb.Endpoints.RunQuery do
   end
 
   attr :endpoint, :map, required: true
+  attr :form, :map, required: true
   attr :declared_params, :list, default: []
 
   defp endpoint_call_examples(assigns) do
+    reservation =
+      case assigns.form[:reservation].value do
+        value when is_binary(value) and value != "" -> String.replace(value, ["'", "\""], "")
+        _ -> "projects/PROJECT/locations/LOCATION/reservations/RESERVATION"
+      end
+
+    headers =
+      [
+        "-H 'X-API-KEY: YOUR-ACCESS-TOKEN'",
+        if(assigns.endpoint.redact_pii, do: "-H 'LF-ENDPOINT-REDACT-PII: true'"),
+        if(assigns.endpoint.enable_dynamic_reservation,
+          do: "-H 'LF-ENDPOINT-BIGQUERY-RESERVATION: #{reservation}'"
+        ),
+        "-H 'Content-Type: application/json; charset=utf-8'"
+      ]
+      |> Enum.reject(&is_nil/1)
+
+    assigns = assign(assigns, :headers, headers)
+
     ~H"""
     <section id="endpoint-call-examples">
       <h3 class="tw-mb-3 tw-text-xl tw-font-semibold tw-text-white">Call your endpoint</h3>
       <div class="tw-flex tw-flex-col tw-gap-3">
-        <.curl_example title="By UUID" identifier={@endpoint.token} declared_params={@declared_params} />
-        <.curl_example :if={@endpoint.enable_auth} title="By name" identifier={@endpoint.name} declared_params={@declared_params} />
-        <.curl_example
-          title="With per-request PII redaction"
-          identifier={@endpoint.token}
-          headers={[
-            "-H 'X-API-KEY: YOUR-ACCESS-TOKEN'",
-            "-H 'LF-ENDPOINT-REDACT-PII: true'",
-            "-H 'Content-Type: application/json; charset=utf-8'"
-          ]}
-          declared_params={@declared_params}
-        />
-        <.curl_example
-          :if={@endpoint.enable_dynamic_reservation}
-          title="With dynamic BigQuery reservation"
-          identifier={@endpoint.token}
-          headers={[
-            "-H 'X-API-KEY: YOUR-ACCESS-TOKEN'",
-            "-H 'LF-ENDPOINT-BIGQUERY-RESERVATION: projects/PROJECT/locations/LOCATION/reservations/RESERVATION'",
-            "-H 'Content-Type: application/json; charset=utf-8'"
-          ]}
-          declared_params={@declared_params}
-        />
+        <.curl_example title="By UUID" identifier={@endpoint.token} headers={@headers} declared_params={@declared_params} />
+        <.curl_example :if={@endpoint.enable_auth} title="By name" identifier={@endpoint.name} headers={@headers} declared_params={@declared_params} />
       </div>
     </section>
     """
@@ -251,7 +251,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
         </.alert>
       </div>
 
-      <div :if={@result.kind == :sandbox and @result.status == :error} class="tw-mt-5">
+      <div :if={@result.kind == :sandboxed_endpoint and @result.status == :error} class="tw-mt-5">
         <.alert variant="danger">
           {@result.error}
         </.alert>
@@ -260,7 +260,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
       <div :if={@result.status == :ok} class="tw-mt-5">
         <div class="tw-mb-2 tw-flex tw-justify-between">
           <h5 class="tw-text-white">
-            {if @result.kind == :sandbox, do: "Sandbox Query Results", else: "Results"}
+            {if @result.kind == :sandboxed_endpoint, do: "Sandbox Query Results", else: "Results"}
           </h5>
           <QueryComponents.query_cost :if={is_integer(@result.total_bytes_processed)} bytes={@result.total_bytes_processed} />
         </div>
