@@ -137,8 +137,7 @@ defmodule Logflare.Mapper.MappingConfig do
   end
 
   @spec to_nif_map(t()) :: map()
-  def to_nif_map(%__MODULE__{} = config) do
-    %__MODULE__{fields: fields, output: output} = apply_timestamp_precision(config)
+  def to_nif_map(%__MODULE__{fields: fields, output: output}) do
     nif_config = %{"fields" => Enum.map(fields, &field_to_nif_map/1)}
 
     case output do
@@ -148,20 +147,14 @@ defmodule Logflare.Mapper.MappingConfig do
   end
 
   @doc """
-  Rewrites every `datetime64`/`array_datetime64` field to the output's
-  `timestamp_precision`, so the emitted timestamps are in the unit the output
-  format declares. A no-op without an output or when the output declares no
-  precision.
+  Rewrites every `datetime64`/`array_datetime64` field to `precision`, so a
+  field list authored for one timestamp unit can target another.
   """
-  @spec apply_timestamp_precision(t()) :: t()
-  def apply_timestamp_precision(
-        %__MODULE__{output: %OutputFormat{timestamp_precision: precision}} = config
-      )
-      when is_non_negative_integer(precision) do
-    %{config | fields: Enum.map(config.fields, &put_timestamp_precision(&1, precision))}
+  @spec with_timestamp_precision(t(), 0..9) :: t()
+  def with_timestamp_precision(%__MODULE__{fields: fields} = config, precision)
+      when is_non_negative_integer(precision) and precision <= 9 do
+    %{config | fields: Enum.map(fields, &put_timestamp_precision(&1, precision))}
   end
-
-  def apply_timestamp_precision(%__MODULE__{} = config), do: config
 
   @spec put_timestamp_precision(FieldConfig.t(), non_neg_integer()) :: FieldConfig.t()
   defp put_timestamp_precision(%FieldConfig{type: type} = field, precision)

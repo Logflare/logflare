@@ -49,8 +49,6 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
   }
 
   setup_all do
-    # the :map comparison configs take the NDJSON timestamp precision
-    # (microseconds) so both sides of the comparison share the same unit
     {:ok,
      ndjson:
        Map.new(
@@ -60,14 +58,7 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
      map:
        Map.new(
          [:log, :metric, :trace],
-         fn event_type ->
-           config = %{
-             MappingConfig.apply_timestamp_precision(OtelDefaults.for_type(event_type, :ndjson))
-             | output: nil
-           }
-
-           {event_type, Mapper.compile!(config)}
-         end
+         &{&1, Mapper.compile!(%{OtelDefaults.for_type(&1, :ndjson) | output: nil})}
        )}
   end
 

@@ -38,23 +38,18 @@ defmodule Logflare.Mapper.OtelDefaultsTest do
         base = OtelDefaults.for_type(event_type)
 
         assert %Mapper.MappingConfig{
-                 output: %OutputFormat{
-                   format: :ch_row_binary,
-                   row_type: ^event_type,
-                   timestamp_precision: 9
-                 }
+                 fields: fields,
+                 output: %OutputFormat{format: :ch_row_binary, row_type: ^event_type}
                } = OtelDefaults.for_type(event_type, :ch_row_binary)
+
+        assert fields == base.fields
 
         assert %Mapper.MappingConfig{
                  fields: fields,
-                 output: %OutputFormat{
-                   format: :ndjson,
-                   row_type: ^event_type,
-                   timestamp_precision: 6
-                 }
+                 output: %OutputFormat{format: :ndjson, row_type: ^event_type}
                } = OtelDefaults.for_type(event_type, :ndjson)
 
-        assert fields == base.fields
+        assert fields == Mapper.MappingConfig.with_timestamp_precision(base, 6).fields
 
         assert %Mapper.MappingConfig{output: nil} = OtelDefaults.for_type(event_type, :map)
       end

@@ -76,17 +76,19 @@ defmodule Logflare.Mapper.OtelDefaults do
   @doc """
   Returns the default config for `event_type` targeting `output_format`.
 
-  Each serialized format declares its timestamp unit via the output's
-  `timestamp_precision` (RowBinary 9/nanoseconds, NDJSON 6/microseconds),
-  applied to the timestamp fields at compile time — emitted integers,
-  including derived spans such as trace `duration`, are in that unit.
-  `:map` drops the output so the compiled mapping returns a plain map.
+  `:ndjson` narrows the timestamp fields to microseconds (the unit its
+  consumers store, e.g. Iceberg `timestamptz`), so every emitted timestamp
+  integer, including derived spans such as trace `duration`, is in that
+  unit. `:map` drops the output so the compiled mapping returns a plain map.
   """
   @spec for_type(TypeDetection.event_type(), output_format()) :: MappingConfig.t()
   def for_type(event_type, :ch_row_binary), do: for_type(event_type)
 
   def for_type(event_type, :ndjson) do
-    %{for_type(event_type) | output: OutputFormat.ndjson(event_type)}
+    event_type
+    |> for_type()
+    |> MappingConfig.with_timestamp_precision(6)
+    |> Map.put(:output, OutputFormat.ndjson(event_type))
   end
 
   def for_type(event_type, :map), do: %{for_type(event_type) | output: nil}

@@ -483,31 +483,26 @@ defmodule Logflare.Mapper.MappingConfigTest do
     end
   end
 
-  describe "MappingConfig.apply_timestamp_precision/1" do
-    test "output with and without a timestamp_precision" do
+  describe "MappingConfig.with_timestamp_precision/2" do
+    test "config with timestamp, array timestamp, and non-timestamp fields" do
       fields = [
         Field.datetime64("timestamp", path: "$.timestamp", precision: 9),
         Field.array_datetime64("times", path: "$.times", precision: 9),
         Field.string("event_message", path: "$.event_message")
       ]
 
-      config = MappingConfig.new(fields, output: OutputFormat.ndjson(:log))
-
-      assert %MappingConfig{
-               fields: [
-                 %Field{name: "timestamp", precision: 6},
-                 %Field{name: "times", precision: 6},
-                 %Field{name: "event_message", precision: nil}
-               ]
-             } = MappingConfig.apply_timestamp_precision(config)
-
-      for unchanged <- [
+      for %MappingConfig{output: output} = config <- [
             MappingConfig.new(fields),
-            MappingConfig.new(fields,
-              output: %{OutputFormat.ndjson(:log) | timestamp_precision: nil}
-            )
+            MappingConfig.new(fields, output: OutputFormat.ndjson(:log))
           ] do
-        assert MappingConfig.apply_timestamp_precision(unchanged).fields == fields
+        assert %MappingConfig{
+                 fields: [
+                   %Field{name: "timestamp", precision: 6},
+                   %Field{name: "times", precision: 6},
+                   %Field{name: "event_message", precision: nil}
+                 ],
+                 output: ^output
+               } = MappingConfig.with_timestamp_precision(config, 6)
       end
     end
   end
