@@ -2,13 +2,11 @@ use std::collections::HashMap;
 
 use rustler::types::list::ListIterator;
 use rustler::types::map::MapIterator;
-use rustler::{Binary, OwnedBinary, Term};
+use rustler::{Binary, Term};
 
 use crate::mapping::FieldType;
+use crate::output::{decode_u64, BinaryBuilder, EncodeResult, RowEnvelope};
 
-pub type EncodeResult<T> = Result<T, String>;
-
-const INITIAL_ROW_CAPACITY: usize = 3072;
 const UUID_BYTE_OFFSETS: [usize; 16] = [0, 2, 4, 6, 9, 11, 14, 16, 19, 21, 24, 26, 28, 30, 32, 34];
 
 #[derive(Debug, Clone, Copy)]
@@ -237,83 +235,6 @@ pub fn compile_layout(
     })
 }
 
-#[derive(Clone, Copy)]
-pub struct RowEnvelope<'a> {
-    pub id: Binary<'a>,
-    pub source_uuid: Binary<'a>,
-    pub source_name: Binary<'a>,
-    pub ingested_at: i64,
-}
-
-pub struct BinaryBuilder {
-    binary: OwnedBinary,
-    len: usize,
-}
-
-impl BinaryBuilder {
-    pub fn new() -> EncodeResult<Self> {
-        let binary = OwnedBinary::new(INITIAL_ROW_CAPACITY)
-            .ok_or_else(|| "failed to allocate ClickHouse row output".to_string())?;
-        Ok(Self { binary, len: 0 })
-    }
-
-    pub fn finish(mut self) -> EncodeResult<OwnedBinary> {
-        if self.len == 0 {
-            return OwnedBinary::new(0)
-                .ok_or_else(|| "failed to allocate empty ClickHouse row output".to_string());
-        }
-        self.resize(self.len)?;
-        Ok(self.binary)
-    }
-
-    fn push(&mut self, value: u8) -> EncodeResult<()> {
-        let end = self.reserve(1)?;
-        self.binary.as_mut_slice()[self.len] = value;
-        self.len = end;
-        Ok(())
-    }
-
-    fn extend_from_slice(&mut self, value: &[u8]) -> EncodeResult<()> {
-        let end = self.reserve(value.len())?;
-        self.binary.as_mut_slice()[self.len..end].copy_from_slice(value);
-        self.len = end;
-        Ok(())
-    }
-
-    fn reserve(&mut self, additional: usize) -> EncodeResult<usize> {
-        let required = self
-            .len
-            .checked_add(additional)
-            .ok_or_else(|| "ClickHouse row output size overflow".to_string())?;
-        if required <= self.binary.len() {
-            return Ok(required);
-        }
-
-        let capacity = self
-            .binary
-            .len()
-            .saturating_mul(2)
-            .max(required)
-            .max(INITIAL_ROW_CAPACITY);
-        self.resize(capacity)?;
-        Ok(required)
-    }
-
-    fn resize(&mut self, size: usize) -> EncodeResult<()> {
-        if self.binary.realloc(size) {
-            return Ok(());
-        }
-
-        let copy_len = self.len.min(size);
-        let mut replacement = OwnedBinary::new(size)
-            .ok_or_else(|| "failed to resize ClickHouse row output".to_string())?;
-        let initialized = &self.binary.as_mut_slice()[..copy_len];
-        replacement.as_mut_slice()[..copy_len].copy_from_slice(initialized);
-        self.binary = replacement;
-        Ok(())
-    }
-}
-
 struct RowValues<'values, 'env> {
     values: &'values [Term<'env>],
     layout: &'values [usize],
@@ -399,8 +320,8 @@ fn append_log(
     encode_uint8(output, values.next("trace_flags")?)?;
     encode_string(output, values.next("severity_text")?)?;
 
-    let severity_alt = decode_u64(values.next("severity_number_alt")?)?;
-    let mapped_severity = decode_u64(values.next("severity_number")?)?;
+    let severity_alt = decode_u64(values.next("severity_number_alt")?, "severity_number_alt")?;
+    let mapped_severity = decode_u64(values.next("severity_number")?, "severity_number")?;
     let severity = crate::derive::severity_number(severity_alt, mapped_severity);
     output.push(to_u8(severity, "severity_number")?)?;
 
@@ -506,7 +427,7 @@ fn append_trace(
     encode_string(output, values.next("service_name")?)?;
     encode_string(output, values.next("event_message")?)?;
 
-    let duration = decode_u64(values.next("duration")?)?;
+    let duration = decode_u64(values.next("duration")?, "duration")?;
     let start_time = decode_i64(values.next("start_time")?);
     let end_time = decode_i64(values.next("end_time")?);
     let duration = crate::derive::duration(duration, start_time, end_time);
@@ -664,19 +585,19 @@ fn encode_bool(output: &mut BinaryBuilder, value: Term) -> EncodeResult<()> {
 }
 
 fn encode_uint8(output: &mut BinaryBuilder, value: Term) -> EncodeResult<()> {
-    let value = decode_u64(value)?;
+    let value = decode_u64(value, "UInt8")?;
     output.push(to_u8(value, "UInt8")?)
 }
 
 fn encode_uint32(output: &mut BinaryBuilder, value: Term) -> EncodeResult<()> {
-    let value = decode_u64(value)?;
+    let value = decode_u64(value, "UInt32")?;
     let value =
         u32::try_from(value).map_err(|_| "mapped UInt32 field is out of range".to_string())?;
     output.extend_from_slice(&value.to_le_bytes())
 }
 
 fn encode_uint64(output: &mut BinaryBuilder, value: Term) -> EncodeResult<()> {
-    output.extend_from_slice(&decode_u64(value)?.to_le_bytes())
+    output.extend_from_slice(&decode_u64(value, "UInt64")?.to_le_bytes())
 }
 
 fn encode_int8(output: &mut BinaryBuilder, value: Term) -> EncodeResult<()> {
@@ -716,16 +637,6 @@ fn encode_float64(output: &mut BinaryBuilder, value: Term) -> EncodeResult<()> {
         return Err("mapped Float64 field is not numeric".to_string());
     };
     output.extend_from_slice(&value.to_le_bytes())
-}
-
-fn decode_u64(value: Term) -> EncodeResult<u64> {
-    if let Ok(value) = value.decode::<u64>() {
-        Ok(value)
-    } else if let Ok(value) = value.decode::<i64>() {
-        u64::try_from(value).map_err(|_| "mapped unsigned field is negative".to_string())
-    } else {
-        Err("mapped unsigned field is not an integer".to_string())
-    }
 }
 
 fn decode_i64(value: Term) -> EncodeResult<i64> {

@@ -4,6 +4,7 @@ mod derive;
 mod mapper;
 mod mapping;
 mod ndjson;
+mod output;
 mod path;
 mod query;
 mod string_filters;
@@ -103,17 +104,9 @@ fn map_ndjson_output<'a>(
     layout: &ndjson::CompiledLayout,
     options: Term<'a>,
 ) -> Result<rustler::OwnedBinary, String> {
-    let (flat_keys, mapping_config_id, envelope) = decode_output_options(options, atoms::ndjson())?;
-    let (id, source_uuid, source_name, ingested_at) = decode_envelope(envelope)?;
-    let envelope = ndjson::RowEnvelope {
-        id,
-        source_uuid,
-        source_name,
-        ingested_at,
-    };
     let nil = atoms::nil().encode(env);
-    let mut scratch = mapper::MapScratch::new(mapping, nil);
-    mapper::map_values_into(env, document, mapping, flat_keys, nil, &mut scratch);
+    let (scratch, envelope, mapping_config_id) =
+        map_output_values(env, document, mapping, options, atoms::ndjson(), nil)?;
     ndjson::encode_row(layout, scratch.values(), nil, envelope, mapping_config_id)
 }
 
@@ -134,13 +127,10 @@ fn map_clickhouse_output<'a>(
     layout: &clickhouse_rowbinary::CompiledLayout,
     options: Term<'a>,
 ) -> Result<rustler::OwnedBinary, String> {
-    let (flat_keys, mapping_config_id, envelope) =
-        decode_output_options(options, atoms::ch_row_binary())?;
-    let envelope = decode_clickhouse_envelope(envelope)?;
     let nil = atoms::nil().encode(env);
-    let mut scratch = mapper::MapScratch::new(mapping, nil);
-    mapper::map_values_into(env, document, mapping, flat_keys, nil, &mut scratch);
-    let mut output = clickhouse_rowbinary::BinaryBuilder::new()?;
+    let (scratch, envelope, mapping_config_id) =
+        map_output_values(env, document, mapping, options, atoms::ch_row_binary(), nil)?;
+    let mut output = output::BinaryBuilder::new()?;
     clickhouse_rowbinary::append_row(
         &mut output,
         layout,
@@ -149,6 +139,24 @@ fn map_clickhouse_output<'a>(
         mapping_config_id,
     )?;
     output.finish()
+}
+
+/// Shared prelude of every serialized output: validate the output context
+/// for `expected_format`, decode the envelope, and map the document into a
+/// scratch buffer the format-specific writer serializes from.
+fn map_output_values<'a>(
+    env: Env<'a>,
+    document: Term<'a>,
+    mapping: &CompiledMapping,
+    options: Term<'a>,
+    expected_format: rustler::types::atom::Atom,
+    nil: Term<'a>,
+) -> Result<(mapper::MapScratch<'a>, output::RowEnvelope<'a>, Binary<'a>), String> {
+    let (flat_keys, mapping_config_id, envelope) = decode_output_options(options, expected_format)?;
+    let envelope = decode_envelope(envelope)?;
+    let mut scratch = mapper::MapScratch::new(mapping, nil);
+    mapper::map_values_into(env, document, mapping, flat_keys, nil, &mut scratch);
+    Ok((scratch, envelope, mapping_config_id))
 }
 
 /// Splits `{flat_keys, {format, mapping_config_id, envelope}}`, checks the
@@ -178,9 +186,7 @@ fn decode_output_options<'a>(
     Ok((flat_keys, mapping_config_id, envelope))
 }
 
-type Envelope<'a> = (Binary<'a>, Binary<'a>, Binary<'a>, i64);
-
-fn decode_envelope<'a>(envelope: Term<'a>) -> Result<Envelope<'a>, String> {
+fn decode_envelope<'a>(envelope: Term<'a>) -> Result<output::RowEnvelope<'a>, String> {
     let (id, source_uuid, source_name, ingested_at): (
         Binary<'a>,
         Binary<'a>,
@@ -192,14 +198,7 @@ fn decode_envelope<'a>(envelope: Term<'a>) -> Result<Envelope<'a>, String> {
     let ingested_at = ingested_at
         .decode::<i64>()
         .map_err(|_| "ingested_at must be an integer Unix timestamp".to_string())?;
-    Ok((id, source_uuid, source_name, ingested_at))
-}
-
-fn decode_clickhouse_envelope<'a>(
-    envelope: Term<'a>,
-) -> Result<clickhouse_rowbinary::RowEnvelope<'a>, String> {
-    let (id, source_uuid, source_name, ingested_at) = decode_envelope(envelope)?;
-    Ok(clickhouse_rowbinary::RowEnvelope {
+    Ok(output::RowEnvelope {
         id,
         source_uuid,
         source_name,

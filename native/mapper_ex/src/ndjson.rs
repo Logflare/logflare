@@ -12,8 +12,7 @@ use serde::Serializer;
 
 use crate::mapper::JsonTerm;
 use crate::mapping::{CompiledField, FieldType};
-
-pub type EncodeResult<T> = Result<T, String>;
+use crate::output::{decode_u64, EncodeResult, RowEnvelope};
 
 const INITIAL_ROW_CAPACITY: usize = 2048;
 
@@ -48,14 +47,6 @@ enum Derived {
         end_time: usize,
         precision: u8,
     },
-}
-
-#[derive(Clone, Copy)]
-pub struct RowEnvelope<'a> {
-    pub id: Binary<'a>,
-    pub source_uuid: Binary<'a>,
-    pub source_name: Binary<'a>,
-    pub ingested_at: i64,
 }
 
 /// Keys written by `write_row` before the mapped columns; a config field with
@@ -243,18 +234,6 @@ fn enum_label<'a>(column: &'a Column, value: Term) -> Option<&'a str> {
     let labels = column.enum_labels.as_ref()?;
     let value = value.decode::<i64>().ok()?;
     labels.get(&value).map(String::as_str)
-}
-
-fn decode_u64(value: Term, field: &str) -> EncodeResult<u64> {
-    if let Ok(value) = value.decode::<u64>() {
-        return Ok(value);
-    }
-    match value.decode::<i64>() {
-        Ok(value) => {
-            u64::try_from(value).map_err(|_| format!("mapped field '{field}' is negative"))
-        }
-        Err(_) => Err(format!("mapped field '{field}' is not an integer")),
-    }
 }
 
 fn utf8<'a>(binary: Binary<'a>, field: &str) -> EncodeResult<&'a str> {
