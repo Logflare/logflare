@@ -324,8 +324,7 @@ defmodule Logflare.Alerting do
           send_slack_notification!(alert_query, results)
         end
 
-        # iterate over backends and fire for each
-        for backend <- alert_query.backends do
+        for %{enabled: true} = backend <- alert_query.backends do
           adaptor_mod = Adaptor.get_adaptor(backend)
           adaptor_mod.send_alert(backend, alert_query, results)
 
