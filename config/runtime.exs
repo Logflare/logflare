@@ -363,10 +363,18 @@ socket_options_for_url = fn
 end
 
 single_tenant? = Env.get_boolean("LOGFLARE_SINGLE_TENANT")
+bigquery_service_account = System.get_env("GOOGLE_SERVICE_ACCOUNT")
 postgres_backend_url = System.get_env("POSTGRES_BACKEND_URL")
 clickhouse_backend_url = System.get_env("CLICKHOUSE_BACKEND_URL")
 
 backend_url_set? = fn url -> is_binary(url) and String.trim(url) != "" end
+
+if Enum.count(
+     [bigquery_service_account, postgres_backend_url, clickhouse_backend_url],
+     backend_url_set?
+   ) > 1 do
+  raise "Only one of GOOGLE_SERVICE_ACCOUNT, POSTGRES_BACKEND_URL, or CLICKHOUSE_BACKEND_URL may be configured"
+end
 
 single_tenant_backend =
   cond do
