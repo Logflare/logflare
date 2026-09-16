@@ -22,8 +22,11 @@ defmodule Logflare.Repo.Replicas do
   the dynamic repo and restores it afterwards.
 
   Every replica connection opens its session read-only. URI query parameters
-  `auth=aws_iam` and `aws_region` configure AWS IAM database authentication.
+  `auth=password|aws_iam` and `aws_region` use the same authentication semantics
+  as the primary database URL.
   """
+
+  alias Logflare.Repo.ConnectionOptions
 
   @registry __MODULE__.Registry
 
@@ -46,15 +49,21 @@ defmodule Logflare.Repo.Replicas do
     if entries == [] do
       :ignore
     else
+      primary_config =
+        :logflare
+        |> Application.get_env(Logflare.Repo, [])
+        |> ConnectionOptions.resolve_url!()
+        |> Keyword.put(:url, nil)
+
       primary_ssl = Logflare.Repo.config()[:ssl]
 
       replicas =
         Enum.map(entries, fn {key, config} ->
           config =
-            [
-              name: {:via, Registry, {@registry, key}},
-              logflare_connection_role: :replica
-            ] ++ resolve_ssl(config, primary_ssl)
+            primary_config
+            |> Keyword.merge(resolve_ssl(config, primary_ssl))
+            |> Keyword.put(:name, {:via, Registry, {@registry, key}})
+            |> Keyword.put(:logflare_connection_role, :replica)
 
           Supervisor.child_spec({Logflare.Repo, config}, id: key)
         end)
@@ -138,62 +147,32 @@ defmodule Logflare.Repo.Replicas do
   defp parse_uri(entry) do
     uri = URI.parse(entry)
 
+    {url, inherit_database?} =
+      case uri.path do
+        v when v not in [nil, "", "/"] ->
+          {entry, false}
+
+        _ ->
+          # no database set - use a placeholder to satisfy Ecto's URL parser,
+          # then drop it so the primary's database is inherited instead
+          {URI.to_string(%{uri | path: "/placeholder"}), true}
+      end
+
     try do
       config =
-        case uri.path do
-          v when v not in [nil, "", "/"] ->
-            entry
-            |> Ecto.Repo.Supervisor.parse_url()
-
-          _ ->
-            # no database set - use a placeholder to satisfy Ecto's URL parser,
-            # then drop it so the primary's database is inherited instead
-            URI.to_string(%{uri | path: "/placeholder"})
-            |> Ecto.Repo.Supervisor.parse_url()
-            |> Keyword.delete(:database)
-        end
+        url
+        |> Ecto.Repo.Supervisor.parse_url()
+        |> then(&if(inherit_database?, do: Keyword.delete(&1, :database), else: &1))
         |> Keyword.delete(:scheme)
         |> maybe_put_socket_options()
 
-      with {:ok, config} <- normalize_auth(config) do
+      with {:ok, config} <- ConnectionOptions.normalize_url_options(config) do
         {:ok, {build_key(config), config}}
       end
     rescue
-      e in Ecto.InvalidURLError -> {:error, redact(e.message, uri.userinfo)}
+      e in Ecto.InvalidURLError -> {:error, ConnectionOptions.redact_url_error(e.message, url)}
     end
   end
-
-  defp normalize_auth(config) do
-    {auth, config} = Keyword.pop(config, :auth)
-    {aws_region, config} = Keyword.pop(config, :aws_region)
-
-    with {:ok, config} <- put_auth(config, auth),
-         {:ok, config} <- put_aws_region(config, aws_region) do
-      {:ok, config}
-    end
-  end
-
-  defp put_auth(config, nil) do
-    if Keyword.has_key?(config, :password),
-      do: {:ok, Keyword.put(config, :logflare_auth, :password)},
-      else: {:ok, config}
-  end
-
-  defp put_auth(config, "aws_iam") do
-    if Keyword.has_key?(config, :password),
-      do: {:error, "auth=aws_iam cannot be combined with a password"},
-      else: {:ok, Keyword.put(config, :logflare_auth, :aws_iam)}
-  end
-
-  defp put_auth(_config, other),
-    do: {:error, ~s(unsupported auth=#{other}, expected "aws_iam")}
-
-  defp put_aws_region(config, nil), do: {:ok, config}
-
-  defp put_aws_region(config, region) when is_binary(region) and region != "",
-    do: {:ok, Keyword.put(config, :logflare_aws_region, region)}
-
-  defp put_aws_region(_config, _region), do: {:error, "aws_region cannot be empty"}
 
   defp maybe_put_socket_options(config) do
     case Logflare.Utils.ip_version(config[:hostname]) do
@@ -207,16 +186,8 @@ defmodule Logflare.Repo.Replicas do
   end
 
   defp redact(entry) do
-    if String.contains?(entry, "://") do
-      uri = URI.parse(entry)
-      URI.to_string(%{uri | userinfo: if(uri.userinfo, do: "REDACTED")})
-    else
-      entry
-    end
+    if String.contains?(entry, "://"), do: ConnectionOptions.redact_url(entry), else: entry
   end
-
-  defp redact(message, nil), do: message
-  defp redact(message, userinfo), do: String.replace(message, userinfo, "REDACTED")
 
   defp resolve_ssl(config, primary_ssl) when is_list(primary_ssl) do
     case Keyword.fetch(config, :ssl) do
