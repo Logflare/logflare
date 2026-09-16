@@ -152,6 +152,7 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
       # link to the backend
       assert alert_source_url =~ "/backends/"
       assert title =~ "events detected"
+
       # no alert query is configured for raw log ingestion, so dedup key falls back to the backend's source_url
       assert deduplication_key =~ ~r/^backend:#{Regex.escape(alert_source_url)}-\d+$/
     end
