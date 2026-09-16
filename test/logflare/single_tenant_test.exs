@@ -179,6 +179,22 @@ defmodule Logflare.SingleTenantTest do
     assert Backends.bigquery_default_backend?()
   end
 
+  test "backend_type/0 requires runtime configuration" do
+    previous_backend = Application.fetch_env(:logflare, :single_tenant_backend)
+    Application.delete_env(:logflare, :single_tenant_backend)
+
+    on_exit(fn ->
+      case previous_backend do
+        {:ok, backend} -> Application.put_env(:logflare, :single_tenant_backend, backend)
+        :error -> Application.delete_env(:logflare, :single_tenant_backend)
+      end
+    end)
+
+    assert_raise ArgumentError, ~r/could not fetch application environment/, fn ->
+      SingleTenant.backend_type()
+    end
+  end
+
   describe "supabase_mode=true using Big Query" do
     TestUtils.setup_single_tenant(seed_user: true, supabase_mode: true)
 

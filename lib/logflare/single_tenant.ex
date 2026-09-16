@@ -423,26 +423,20 @@ defmodule Logflare.SingleTenant do
   """
   @spec backend_type :: backend_type()
   def backend_type do
-    Application.get_env(:logflare, :single_tenant_backend) || :bigquery
+    Application.fetch_env!(:logflare, :single_tenant_backend)
   end
 
   @doc "Returns true if BigQuery is selected in single-tenant mode"
   @spec bigquery_backend? :: boolean()
-  def bigquery_backend? do
-    selected_backend?(:bigquery)
-  end
+  def bigquery_backend?, do: selected_backend?(:bigquery)
 
   @doc "Returns true if PostgreSQL is selected in single-tenant mode"
   @spec postgres_backend? :: boolean()
-  def postgres_backend? do
-    selected_backend?(:postgres)
-  end
+  def postgres_backend?, do: selected_backend?(:postgres)
 
   @doc "Returns true if ClickHouse is selected in single-tenant mode"
   @spec clickhouse_backend? :: boolean()
-  def clickhouse_backend? do
-    selected_backend?(:clickhouse)
-  end
+  def clickhouse_backend?, do: selected_backend?(:clickhouse)
 
   def supabase_mode_source_schemas_updated? do
     user = get_default_user()
