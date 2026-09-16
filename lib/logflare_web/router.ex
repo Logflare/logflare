@@ -40,6 +40,8 @@ defmodule LogflareWeb.Router do
            """
            \
            default-src 'self';\
+           base-uri 'self';\
+           frame-ancestors 'self';\
            connect-src 'self' #{if Application.compile_env(:logflare, :env) == :prod, do: "wss://logflare.app", else: "ws://localhost:4000"} https://api.github.com;\
            script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://buttons.github.io https://platform.twitter.com https://cdnjs.cloudflare.com https://js.stripe.com;\
            worker-src 'self' blob:;\
@@ -169,7 +171,10 @@ defmodule LogflareWeb.Router do
 
   pipeline :oauth_public do
     plug(:accepts, ["json"])
-    plug(:put_secure_browser_headers, %{"content-security-policy" => "default-src 'self'"})
+
+    plug(:put_secure_browser_headers, %{
+      "content-security-policy" => "default-src 'self'; base-uri 'self'; frame-ancestors 'self';"
+    })
   end
 
   pipeline :check_admin do
