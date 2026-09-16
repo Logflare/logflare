@@ -129,6 +129,11 @@ config :logflare,
        ]
        |> filter_nil_kv_pairs.()
 
+config :logflare, Logflare.NaturalLanguageLql.AnthropicClient,
+  api_key: System.get_env("ANTHROPIC_API_KEY"),
+  base_url: System.get_env("ANTHROPIC_BASE_URL", "https://api.anthropic.com"),
+  model: System.get_env("ANTHROPIC_MODEL", "claude-sonnet-5")
+
 config :logflare,
        :bigquery_backend_adaptor,
        [
