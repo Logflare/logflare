@@ -12,6 +12,7 @@ import * as User from "./user";
 import BillingHooks from "./billing";
 import LiveModalHooks from "./live_modal";
 import { LogEventsChart } from "./LogEventsChart.jsx";
+import ComboboxHooks from "./combobox_hook.jsx";
 import Chart from "./admin_dashboard_charts.jsx";
 import Loader from "./loader.jsx";
 import DevDashboard from "./DevDashboard.jsx";
@@ -50,6 +51,7 @@ const hooks = {
   ...liveReactHooks,
   ...sourceLiveViewHooks,
   ...LiveModalHooks,
+  ...ComboboxHooks,
   ...BillingHooks,
   CodeEditorHook,
   LqlEditorWrapper,

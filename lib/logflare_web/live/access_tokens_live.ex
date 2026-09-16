@@ -54,10 +54,17 @@ defmodule LogflareWeb.AccessTokensLive do
                 <label class="form-check-label tw-px-1" for={["scopes", "main", value]}>
                   {String.capitalize(value)}
                   <small class="form-text text-muted">{description}</small>
-                  <select :for={input_n <- 0..4} :if={value == "ingest" and value in @create_token_form["scopes_main"]} id={["scopes", "ingest", input_n]} name="scopes_ingest[]" class="mt-1 form-control form-control-sm">
-                    <option hidden value="">Ingest into a specific source...</option>
-                    <option :for={source <- @sources} selected={"ingest:source:#{source.id}" == Enum.at(@create_token_form["scopes_ingest"], input_n)} value={"ingest:source:#{source.id}"} }>Ingest into {source.name} only</option>
-                  </select>
+                  <.combobox
+                    :for={input_n <- 0..4}
+                    :if={value == "ingest" and value in @create_token_form["scopes_main"]}
+                    id={"scopes-ingest-#{input_n}"}
+                    name="scopes_ingest[]"
+                    value={Enum.at(@create_token_form["scopes_ingest"], input_n)}
+                    prompt="Ingest into a specific source..."
+                    prompt_hidden={true}
+                    options={source_options(@sources)}
+                    empty_text="No sources found."
+                  />
                   <select :for={input_n <- 0..2} :if={value == "query" and value in @create_token_form["scopes_main"]} id={["scopes", "query", input_n]} name="scopes_query[]" class="mt-1 form-control form-control-sm">
                     <option hidden value="">Query a specific endpoint...</option>
                     <option :for={endpoint <- @endpoints} value={"query:endpoint:#{endpoint.id}"} selected={"query:endpoint:#{endpoint.id}" == Enum.at(@create_token_form["scopes_query"], input_n)}>Query {endpoint.name} only</option>
@@ -146,6 +153,12 @@ defmodule LogflareWeb.AccessTokensLive do
     "scopes_query" => [],
     "scopes_main" => ["ingest"]
   }
+
+  defp source_options(sources) do
+    sources
+    |> Enum.sort_by(&String.downcase(&1.name))
+    |> Enum.map(&{"Ingest into #{&1.name} only", "ingest:source:#{&1.id}"})
+  end
 
   defp coerce_scope_list(value) do
     value

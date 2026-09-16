@@ -71,6 +71,29 @@ defmodule LogflareWeb.AccessTokensLiveTest do
     refute html =~ "ingest (all)"
   end
 
+  test "source selectors are sorted alphabetically", %{conn: conn, user: user} do
+    for name <- ["Zulu", "alpha", "Bravo"], do: insert(:source, user: user, name: name)
+
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+    view |> element("button", "Create access token") |> render_click()
+
+    select_html =
+      view
+      |> element("#scopes-ingest-0")
+      |> render()
+      |> Floki.parse_fragment!()
+
+    assert [_prompt] = Floki.find(select_html, "option[hidden][value='']")
+
+    labels =
+      select_html
+      |> Floki.find("option[value^='ingest:source:']")
+      |> Enum.map(&Floki.text/1)
+      |> Enum.map(&String.trim/1)
+
+    assert labels == ["Ingest into alpha only", "Ingest into Bravo only", "Ingest into Zulu only"]
+  end
+
   test "create token - query for one endpoint", %{conn: conn, user: user} do
     endpoint = insert(:endpoint, user: user)
     {:ok, view, _html} = live(conn, ~p"/access-tokens")
