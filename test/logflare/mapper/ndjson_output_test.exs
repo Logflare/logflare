@@ -101,10 +101,12 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
                map_and_decode(:log, Map.delete(body, "severity_number"), ndjson)
     end
 
-    test "trace with explicit, derived, and non-positive duration", %{ndjson: ndjson} do
+    test "trace with explicit, derived, sub-microsecond, and non-positive duration",
+         %{ndjson: ndjson} do
       for {overrides, expected} <- [
             {%{}, 1},
-            {%{"duration" => 42}, 42},
+            {%{"duration" => 42_000}, 42},
+            {%{"duration" => 999}, 1},
             {%{"end_time" => 1}, 0}
           ] do
         assert %{"duration" => ^expected} =
@@ -119,12 +121,13 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
       end
     end
 
-    test "uint64 above 2^53", %{ndjson: ndjson} do
-      big = Integer.pow(2, 53) + 1
-      row = encode(:trace, Map.put(@fixtures.trace, "duration", big), ndjson)
+    test "uint64 duration above 2^53 and above i64 max", %{ndjson: ndjson} do
+      for nanos <- [Integer.pow(2, 53) * 1000 + 1000, Integer.pow(2, 64) - 1] do
+        expected = div(nanos, 1000)
+        row = encode(:trace, Map.put(@fixtures.trace, "duration", nanos), ndjson)
 
-      assert String.contains?(row, ~s("duration":#{big},))
-      assert %{"duration" => ^big} = Jason.decode!(row)
+        assert %{"duration" => ^expected} = Jason.decode!(row)
+      end
     end
 
     test "non-UTF-8 string field", %{ndjson: ndjson} do
