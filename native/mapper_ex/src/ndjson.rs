@@ -27,6 +27,8 @@ pub struct CompiledLayout {
 struct Column {
     name: String,
     index: usize,
+    /// Enum8 value -> label. The label is undefined when two labels share a
+    /// value; `decode_enum_values` does not enforce reverse uniqueness yet.
     enum_labels: Option<HashMap<i64, String>>,
 }
 
@@ -169,13 +171,12 @@ fn write_row<'a>(
             )
         })?;
 
-        // Try derived value, then enum mapping, fallback to generic conversion
         match derived_value(layout, column.index, values)? {
             Some(number) => object.serialize_entry(&column.name, &number),
-            None => match enum_label(column, value) {
-                Some(label) => object.serialize_entry(&column.name, label),
-                None => object.serialize_entry(&column.name, &JsonTerm { value, nil }),
-            },
+            None if column.enum_labels.is_some() => {
+                object.serialize_entry(&column.name, &enum_label(column, value))
+            }
+            None => object.serialize_entry(&column.name, &JsonTerm { value, nil }),
         }
         .map_err(|error| error.to_string())?;
     }

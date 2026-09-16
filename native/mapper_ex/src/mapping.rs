@@ -166,6 +166,9 @@ pub enum PredicateValue {
 #[derive(Debug)]
 pub struct Enum8Data {
     pub value_map: HashMap<String, i8>,
+    /// The configured integer values; an integer input outside this set is
+    /// not a valid enum member and falls through to infer rules and default.
+    pub values: HashSet<i8>,
     pub infer_rules: Vec<InferRule>,
 }
 
@@ -810,9 +813,11 @@ fn decode_filters<'a>(env: Env<'a>, field: Term<'a>) -> Result<Option<StringFilt
 
 pub fn decode_enum8_data<'a>(env: Env<'a>, field: Term<'a>) -> Result<Enum8Data, String> {
     let value_map = decode_enum_values(env, field)?;
+    let values: HashSet<i8> = value_map.values().copied().collect();
     let infer_rules = decode_infer_rules(env, field)?;
     Ok(Enum8Data {
         value_map,
+        values,
         infer_rules,
     })
 }

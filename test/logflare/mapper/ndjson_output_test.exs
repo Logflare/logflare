@@ -115,8 +115,14 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
     end
 
     test "metric_type labels", %{ndjson: ndjson} do
-      for label <- ~w(gauge histogram summary) do
-        body = Map.put(@fixtures.metric, "metric_type", label)
+      for {input, label} <- [
+            {"gauge", "gauge"},
+            {"histogram", "histogram"},
+            {"summary", "summary"},
+            {3, "histogram"},
+            {7, "gauge"}
+          ] do
+        body = Map.put(@fixtures.metric, "metric_type", input)
         assert %{"metric_type" => ^label} = map_and_decode(:metric, body, ndjson)
       end
     end
@@ -174,10 +180,14 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
           output: OutputFormat.ndjson(:metric)
         )
 
-      event = raw_event(:metric, %{"b" => "x", "a" => 1, "kind" => "one"})
-      decoded = map_and_decode(event, Mapper.compile!(config), "cfg")
+      compiled = Mapper.compile!(config)
 
-      assert Map.drop(decoded, @envelope_keys) == %{"b" => "x", "a" => 1, "kind" => "one"}
+      for {kind, expected} <- [{"one", "one"}, {1, "one"}, {9, nil}] do
+        event = raw_event(:metric, %{"b" => "x", "a" => 1, "kind" => kind})
+        decoded = map_and_decode(event, compiled, "cfg")
+
+        assert Map.drop(decoded, @envelope_keys) == %{"b" => "x", "a" => 1, "kind" => expected}
+      end
     end
   end
 

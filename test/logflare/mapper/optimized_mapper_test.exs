@@ -130,7 +130,7 @@ defmodule Logflare.Mapper.OptimizedMapperTest do
             ),
             Field.enum8("kind",
               paths: ["$.root.kind"],
-              values: %{"fallback" => 1, "inferred" => 2},
+              values: %{"unknown" => 0, "fallback" => 1, "inferred" => 2},
               infer: [
                 %InferRule{
                   result: "inferred",

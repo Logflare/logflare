@@ -331,9 +331,11 @@ fn resolve_enum8<'a>(
         if let Some(val) = coerce::case_insensitive_get(&enum8_data.value_map, resolved_value) {
             return (*val as i64).encode(env);
         }
-        // If it's already an integer, pass through
-        if resolved_value.decode::<i64>().is_ok() {
-            return resolved_value;
+        // Integers pass through only when they name a configured value
+        if let Ok(i) = resolved_value.decode::<i64>() {
+            if i8::try_from(i).map(|v| enum8_data.values.contains(&v)) == Ok(true) {
+                return resolved_value;
+            }
         }
     }
 

@@ -1231,6 +1231,33 @@ defmodule Logflare.MapperTest do
 
       assert result["mt"] == 2
     end
+
+    test "integer input that is or is not a configured value" do
+      fields = [
+        Field.enum8("mt",
+          paths: ["$.metric_type"],
+          values: %{"gauge" => 1, "sum" => 2},
+          infer: [
+            %InferRule{
+              result: "sum",
+              any: [%InferCondition{path: "$.is_monotonic", predicate: "exists"}]
+            }
+          ],
+          default: 1
+        )
+      ]
+
+      for {document, expected} <- [
+            {%{"metric_type" => 2}, 2},
+            {%{"metric_type" => 7}, 1},
+            {%{"metric_type" => 7, "is_monotonic" => true}, 2},
+            {%{"metric_type" => 127}, 1},
+            {%{"metric_type" => 200}, 1},
+            {%{"metric_type" => -200}, 1}
+          ] do
+        assert %{"mt" => ^expected} = compile_and_map(fields, document)
+      end
+    end
   end
 
   describe "predicates" do
@@ -1951,19 +1978,6 @@ defmodule Logflare.MapperTest do
         )
 
       assert result["kind"] == -128
-    end
-
-    test "clamps an out-of-range enum8 value at map time rather than wrapping it" do
-      fields = [
-        Field.enum8("kind", paths: ["$.kind"], values: %{"a" => 1, "b" => 2}, default: 0)
-      ]
-
-      # Wrapping would turn 200 into -56 and -200 into 56 — both valid-looking
-      # but wrong variants. Saturating keeps the value at the boundary.
-      assert compile_and_map(fields, %{"kind" => 200})["kind"] == 127
-      assert compile_and_map(fields, %{"kind" => -200})["kind"] == -128
-      assert compile_and_map(fields, %{"kind" => 127})["kind"] == 127
-      assert compile_and_map(fields, %{"kind" => -128})["kind"] == -128
     end
 
     test "rejects a negative string filter length" do
