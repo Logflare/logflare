@@ -430,7 +430,7 @@ defmodule Logflare.Telemetry do
         measurement: :ready_conn_count,
         tags: [:backend_id, :read_cluster],
         description:
-          "Idle, checked-in connections in a ClickHouse read pool on this node, sampled from `DBConnection.get_connection_metrics/1` every #{div(@metrics_interval, 1000)}s. Reads 0 whenever the pool is busy (every connection checked out), so 0 here with 0 `checkout_queue_length` means fully utilized with nobody waiting. A missing sample means the pool was idle-stopped or the poll timed out; `poll_timeout` tells the two apart. Pools are per node; view per instance"
+          "Idle, checked-in connections in a ClickHouse read pool on this node, sampled from `DBConnection.get_connection_metrics/1` every #{div(@metrics_interval, 1000)}s. Reads 0 whenever no connection is immediately available: every connection is checked out, or none is established because the pool is still starting or every connection is reconnecting. 0 here with 0 `checkout_queue_length` means no connection is immediately available and no caller is queued, not necessarily full utilization; `connected`/`disconnected` moving at the same time points to connectivity loss rather than saturation. A missing sample means the pool was idle-stopped or the poll timed out; `poll_timeout` tells the two apart. Pools are per node; view per instance"
       ),
       last_value("logflare.clickhouse.read_pool.checkout_queue_length",
         event_name: @ch_read_pool_status_event,
