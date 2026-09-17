@@ -60,9 +60,20 @@ defmodule Logflare.KeyValues.Cache do
     user_id = Keyword.get(kw, :user_id)
     key = Keyword.get(kw, :key)
 
-    keys = bust_keys(user_id, key)
-    # delete by exact keys so the bust propagates to every cache level
-    Multilevel.delete_all(in: keys)
+    busted =
+      user_id
+      |> bust_keys(key)
+      |> Enum.count(&delete_key/1)
+
+    {:ok, busted}
+  end
+
+  # Workaround for poor `delete_all(in: x)` performance
+  # until https://github.com/elixir-nebulex/nebulex_local/issues/8 is released
+  defp delete_key(cache_key) do
+    {:ok, present?} = Multilevel.has_key?(cache_key)
+    :ok = Multilevel.delete(cache_key)
+    present?
   end
 
   defp fetch_or_store(cache_key, getter) do
