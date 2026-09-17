@@ -327,13 +327,6 @@
               Connections per node for the primary read pool.
             </small>
           </div>
-          <div class="form-group">
-            {label(f_config, :read_only_url, "Read-Only URL (Optional)")}
-            {text_input(f_config, :read_only_url, class: "form-control")}
-            <small class="form-text text-muted">
-              Separate endpoint for read queries, for example: <code>https://read-warehouse.clickhouse.cloud:8443</code>
-            </small>
-          </div>
           <.live_component module={LogflareWeb.Backends.ReadClusterUrlsComponent} id={read_cluster_component_id(@backend)} form={f_config} backend={@backend} />
         <% "incidentio" -> %>
           <div class="form-group">

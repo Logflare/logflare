@@ -113,7 +113,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         :port,
         :read_pool_size,
         :labeled_read_pool_size,
-        :read_only_url,
         :read_only_urls,
         :default_read_cluster,
         :use_async_inserts_for_small_batches,
@@ -267,8 +266,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        port: :integer,
        read_pool_size: :integer,
        labeled_read_pool_size: :integer,
-       # read_only_url is depreciated and will be removed in the release after PR#3693 lands
-       read_only_url: :string,
        read_only_urls: {:map, :string},
        default_read_cluster: :string,
        use_async_inserts_for_small_batches: :boolean,
@@ -287,7 +284,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :port,
       :read_pool_size,
       :labeled_read_pool_size,
-      :read_only_url,
       :read_only_urls,
       :default_read_cluster,
       :use_async_inserts_for_small_batches,
@@ -352,7 +348,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> validate_format(:replica_routing_param, @param_name_pattern,
       message: "must be a parameter name using only letters, numbers, and underscores"
     )
-    |> validate_read_only_url()
     |> validate_read_only_urls()
     |> validate_default_read_cluster()
     |> validate_user_pass()
@@ -500,9 +495,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @spec unlabeled_read_grant_targets(map()) :: [{nil, String.t()}]
-  defp unlabeled_read_grant_targets(%{read_only_url: url}) when is_non_empty_binary(url),
-    do: [{nil, url}]
-
   defp unlabeled_read_grant_targets(%{url: url} = config) when is_non_empty_binary(url) do
     if dedicated_query_user?(config), do: [{nil, url}], else: []
   end
@@ -566,8 +558,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @doc """
-  Normalizes a read cluster label into a telemetry tag, mapping the legacy
-  unlabeled pool to `#{@unlabeled_read_cluster_tag}`.
+  Normalizes a read cluster label into a telemetry tag, mapping the unlabeled
+  primary-URL pool to `#{@unlabeled_read_cluster_tag}`.
 
   The value is reserved: `read_only_urls` rejects it as a cluster label, so a
   labeled pool can never share a tag with the unlabeled one.
@@ -1291,14 +1283,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     changeset
     |> Changeset.add_error(:query_user, msg)
     |> Changeset.add_error(:query_password, msg)
-  end
-
-  @spec validate_read_only_url(Changeset.t()) :: Changeset.t()
-  defp validate_read_only_url(changeset) do
-    case Changeset.get_field(changeset, :read_only_url) do
-      nil -> changeset
-      _url -> Changeset.validate_format(changeset, :read_only_url, ~r/https?\:\/\/.+/)
-    end
   end
 
   @spec validate_read_only_urls(Changeset.t()) :: Changeset.t()
