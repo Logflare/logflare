@@ -112,6 +112,29 @@ defmodule Logflare.SingleTenant do
     |> Backends.get_default_backend()
   end
 
+  @doc "Returns the synthetic ClickHouse backend when selected and the user exists."
+  @spec get_default_clickhouse_backend(User.t() | nil) :: Backend.t() | nil
+  @spec get_default_clickhouse_backend() :: Backend.t() | nil
+  def get_default_clickhouse_backend(user \\ get_default_user()) do
+    if clickhouse_backend?() && user do
+      %Backend{
+        id: 0,
+        type: :clickhouse,
+        config: Map.new(clickhouse_backend_adapter_opts()),
+        user_id: user.id,
+        name: "Default ClickHouse backend",
+        consolidated_ingest?: true,
+        single_tenant_default?: true
+      }
+    end
+  end
+
+  @doc "Returns a source's synthetic ClickHouse backend, or nil for legacy per-source defaults."
+  @spec lookup_system_default_backend(Source.t()) :: Backend.t() | nil
+  def lookup_system_default_backend(%Source{user_id: user_id}) do
+    get_default_clickhouse_backend(%User{id: user_id})
+  end
+
   @doc """
   Creates an enterprise user
   """

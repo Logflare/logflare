@@ -38,7 +38,6 @@ defmodule Logflare.Backends do
 
   @max_future_event_us 1 * 3_600 * 1_000_000
   @max_pending_buffer_len_per_queue IngestEventQueue.max_queue_size()
-  @single_tenant_clickhouse_backend_id 0
 
   @type one_or_list_or_nil :: Backend.t() | [Backend.t()] | nil
   @type ingest_queue_key ::
@@ -81,7 +80,7 @@ defmodule Logflare.Backends do
   """
   @spec system_default_ingest_queue_key(Source.t()) :: ingest_queue_key()
   def system_default_ingest_queue_key(%Source{} = source) do
-    ingest_queue_key(source, lookup_system_default_backend(source))
+    ingest_queue_key(source, SingleTenant.lookup_system_default_backend(source))
   end
 
   @doc """
@@ -277,31 +276,11 @@ defmodule Logflare.Backends do
     end
   end
 
-  @spec get_single_tenant_default_backend() :: Backend.t() | nil
-  def get_single_tenant_default_backend do
-    user = SingleTenant.get_default_user()
-
-    if SingleTenant.clickhouse_backend?() && user,
-      do: single_tenant_clickhouse_backend(user)
-  end
-
-  defp single_tenant_clickhouse_backend(%User{} = user) do
-    %Backend{
-      id: @single_tenant_clickhouse_backend_id,
-      type: :clickhouse,
-      config: Map.new(SingleTenant.clickhouse_backend_adapter_opts()),
-      user_id: user.id,
-      name: "Default ClickHouse backend",
-      consolidated_ingest?: true,
-      single_tenant_default?: true
-    }
-  end
-
   @spec get_default_backend(User.t()) :: Backend.t() | nil
   def get_default_backend(%User{} = user) do
     cond do
       SingleTenant.clickhouse_backend?() ->
-        single_tenant_clickhouse_backend(user)
+        SingleTenant.get_default_clickhouse_backend(user)
 
       SingleTenant.postgres_backend?() ->
         opts = SingleTenant.postgres_backend_adapter_opts()
@@ -592,7 +571,7 @@ defmodule Logflare.Backends do
   Retrieves a Backend by id.
   """
   @spec get_backend(integer()) :: Backend.t() | nil
-  def get_backend(@single_tenant_clickhouse_backend_id), do: get_single_tenant_default_backend()
+  def get_backend(0), do: SingleTenant.get_default_clickhouse_backend()
 
   def get_backend(id) do
     backend = Repo.get(Backend, id)
@@ -986,14 +965,8 @@ defmodule Logflare.Backends do
   defp dispatch_to_backends(source, nil, log_events) do
     backends = __MODULE__.Cache.list_backends(source_id: source.id)
 
-    for backend <- [lookup_system_default_backend(source) | backends] do
+    for backend <- [SingleTenant.lookup_system_default_backend(source) | backends] do
       dispatch_to_default_backend(source, backend, log_events)
-    end
-  end
-
-  defp lookup_system_default_backend(%Source{user_id: user_id}) do
-    if SingleTenant.clickhouse_backend?() do
-      get_default_backend(%User{id: user_id})
     end
   end
 
