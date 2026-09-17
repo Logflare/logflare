@@ -6,7 +6,8 @@ defmodule Logflare.RuntimeConfigTest do
   @backend_env_vars [
     "GOOGLE_SERVICE_ACCOUNT",
     "POSTGRES_BACKEND_URL",
-    "CLICKHOUSE_BACKEND_URL"
+    "CLICKHOUSE_BACKEND_URL",
+    "LOGFLARE_CLICKHOUSE_TABLE_SUFFIX"
   ]
   @clickhouse_backend_url "http://localhost:8123/logflare"
   @postgres_backend_url "postgresql://postgres:postgres@localhost/logflare"
@@ -36,6 +37,14 @@ defmodule Logflare.RuntimeConfigTest do
 
   test "defaults the single-tenant backend to BigQuery when no backend URL is configured" do
     assert runtime_backend_type() == :bigquery
+  end
+
+  test "configures the ClickHouse table suffix" do
+    assert get_in(runtime_config(), [:logflare, :clickhouse_table_suffix]) == "default"
+
+    System.put_env("LOGFLARE_CLICKHOUSE_TABLE_SUFFIX", "custom")
+
+    assert get_in(runtime_config(), [:logflare, :clickhouse_table_suffix]) == "custom"
   end
 
   test "selects the configured backend" do
