@@ -399,6 +399,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                read_pool_size: 10
              } == ClickHouseAdaptor.sanitize_config_for_display(config)
     end
+
+    test "preserves replica_routing_param for display" do
+      config = %{
+        url: "https://clickhouse.example.com:8443",
+        database: "logs",
+        port: 8443,
+        replica_routing_param: "project"
+      }
+
+      assert %{replica_routing_param: "project"} =
+               ClickHouseAdaptor.sanitize_config_for_display(config)
+    end
   end
 
   describe "redact_config/1" do
@@ -739,6 +751,47 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       refute changeset.valid?
       assert Keyword.has_key?(changeset.errors, :max_event_age_hours)
+    end
+
+    test "casts replica_routing_param when provided" do
+      changeset = cast_and_validate_config(replica_routing_param: "project")
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :replica_routing_param) == "project"
+    end
+
+    test "replica_routing_param defaults to nil when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert Ecto.Changeset.get_field(changeset, :replica_routing_param) == nil
+    end
+
+    test "casts a blank replica_routing_param to nil" do
+      changeset = cast_and_validate_config(replica_routing_param: "")
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :replica_routing_param) == nil
+    end
+
+    test "casts a whitespace-only replica_routing_param to nil" do
+      changeset = cast_and_validate_config(replica_routing_param: "   ")
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :replica_routing_param) == nil
+    end
+
+    test "rejects a replica_routing_param containing whitespace" do
+      changeset = cast_and_validate_config(replica_routing_param: " project ")
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :replica_routing_param)
+    end
+
+    test "rejects a replica_routing_param that is not a bare parameter name" do
+      changeset = cast_and_validate_config(replica_routing_param: "@project")
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :replica_routing_param)
     end
 
     test "casts query_user and query_password when both are provided" do
@@ -2280,6 +2333,176 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert {:ok, %QueryResult{rows: [%{"param_result" => "hello"}]}} = result
     end
 
+    test "sends the configured routing param as the replica tag header" do
+      backend = start_replica_routing_backend("project")
+      parent = self()
+
+      expect(Ch, :query, fn pool, statement, params, opts ->
+        send(parent, {:ch_headers, Keyword.get(opts, :headers)})
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert {:ok, %QueryResult{}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 {"SELECT 1 as test", [], %{"project" => "abcdefghij"}},
+                 []
+               )
+
+      assert_received {:ch_headers, [{"x-clickhouse-replica-tag", "abcdefghij"}]}
+    end
+
+    test "sends the replica tag header on the max_limit endpoint path" do
+      backend = start_replica_routing_backend("project")
+      parent = self()
+
+      expect(Ch, :query, fn pool, statement, params, opts ->
+        send(parent, {:ch_headers, Keyword.get(opts, :headers)})
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert {:ok, %QueryResult{}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 endpoint_query_args("SELECT 1 as test", 10, [], %{"project" => "abcdefghij"}),
+                 []
+               )
+
+      assert_received {:ch_headers, [{"x-clickhouse-replica-tag", "abcdefghij"}]}
+    end
+
+    test "does not send a replica tag header when the routing param is absent from the request" do
+      backend = start_replica_routing_backend("project")
+      parent = self()
+
+      expect(Ch, :query, fn pool, statement, params, opts ->
+        send(parent, {:ch_headers, Keyword.get(opts, :headers, [])})
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert {:ok, %QueryResult{}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 {"SELECT 1 as test", [], %{"other" => "value"}},
+                 []
+               )
+
+      assert_received {:ch_headers, []}
+    end
+
+    test "does not send a replica tag header when the backend has no routing param configured",
+         %{backend: backend} do
+      parent = self()
+
+      expect(Ch, :query, fn pool, statement, params, opts ->
+        send(parent, {:ch_headers, Keyword.get(opts, :headers, [])})
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert {:ok, %QueryResult{}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 {"SELECT 1 as test", [], %{"project" => "abcdefghij"}},
+                 []
+               )
+
+      assert_received {:ch_headers, []}
+    end
+
+    test "does not send a replica tag header for raw string queries without request params" do
+      backend = start_replica_routing_backend("project")
+      parent = self()
+
+      expect(Ch, :query, fn pool, statement, params, opts ->
+        send(parent, {:ch_headers, Keyword.get(opts, :headers, [])})
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert {:ok, %QueryResult{}} =
+               ClickHouseAdaptor.execute_query(backend, "SELECT 1 as test", [])
+
+      assert_received {:ch_headers, []}
+    end
+
+    test "ignores a routing param value that is not a printable token" do
+      backend = start_replica_routing_backend("project")
+      parent = self()
+
+      expect(Ch, :query, fn pool, statement, params, opts ->
+        send(parent, {:ch_headers, Keyword.get(opts, :headers, [])})
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert {:ok, %QueryResult{}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 {"SELECT 1 as test", [], %{"project" => "abc\r\nX-Injected: 1"}},
+                 []
+               )
+
+      assert_received {:ch_headers, []}
+    end
+
+    test "ignores a routing param value that is not a string" do
+      backend = start_replica_routing_backend("project")
+      parent = self()
+
+      expect(Ch, :query, fn pool, statement, params, opts ->
+        send(parent, {:ch_headers, Keyword.get(opts, :headers, [])})
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert {:ok, %QueryResult{}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 {"SELECT 1 as test", [], %{"project" => ["a", "b"]}},
+                 []
+               )
+
+      assert_received {:ch_headers, []}
+    end
+
+    test "keeps the replica tag header on the default cluster failover retry" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            replica_routing_param: "project",
+            read_only_urls: %{
+              "api" => "http://localhost:8123",
+              "dashboard_logs" => "http://localhost:8123"
+            },
+            default_read_cluster: "dashboard_logs"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend}, id: {:replica_routing, backend.id})
+      parent = self()
+      backend_id = backend.id
+
+      stub(Ch, :query, fn pool, statement, params, opts ->
+        {:via, Registry, {_registry, {_mod, ^backend_id, label}}} = pool
+        send(parent, {:ch_query, label, Keyword.get(opts, :headers, [])})
+
+        case label do
+          "api" -> {:error, %DBConnection.ConnectionError{message: "unreachable"}}
+          _ -> Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+        end
+      end)
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert {:ok, %QueryResult{}} =
+                 ClickHouseAdaptor.execute_query(
+                   backend,
+                   {"SELECT 1 as test", [], %{"project" => "abcdefghij"}},
+                   read_cluster: "api"
+                 )
+      end)
+
+      assert_received {:ch_query, "api", [{"x-clickhouse-replica-tag", "abcdefghij"}]}
+
+      assert_received {:ch_query, "dashboard_logs", [{"x-clickhouse-replica-tag", "abcdefghij"}]}
+    end
+
     test "enforces an endpoint max_limit exactly in the submitted SQL", %{backend: backend} do
       query = "SELECT number FROM numbers(100) ORDER BY number"
       parent = self()
@@ -3160,6 +3383,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
   defp endpoint_query_args(query, max_limit, declared_params \\ [], input_params \\ %{}) do
     {query, declared_params, input_params, %EndpointQuery{max_limit: max_limit}}
+  end
+
+  defp start_replica_routing_backend(param) do
+    {_source, backend} = setup_clickhouse_test(config: %{replica_routing_param: param})
+    start_supervised!({ClickHouseAdaptor, backend}, id: {:replica_routing, backend.id})
+    backend
   end
 
   defp stub_read_cluster_connection_error(backend, label_or_labels, notify \\ nil)
