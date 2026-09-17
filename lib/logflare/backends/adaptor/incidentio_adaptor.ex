@@ -58,7 +58,7 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptor do
       end
 
     # for simplicity, we use unix epoch for window alignment
-    window = div(DateTime.to_unix(DateTime.utc_now()), 3 * 60 * 60)
+    window = div(DateTime.to_unix(DateTime.utc_now()), 1 * 60 * 60)
 
     metadata = Map.get(config, :metadata, %{})
     merged_metadata = Map.merge(metadata, %{"data" => batch})
