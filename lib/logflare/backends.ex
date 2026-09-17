@@ -46,7 +46,6 @@ defmodule Logflare.Backends do
   @max_pending_buffer_len_per_queue IngestEventQueue.max_queue_size()
   @default_source_sup_start_timeout :timer.seconds(30)
   @max_pipeline_swap_delay_ms 5_000
-  @single_tenant_clickhouse_backend_id 0
 
   @type one_or_list_or_nil :: Backend.t() | [Backend.t()] | nil
   @type ingest_queue_key ::
@@ -89,7 +88,7 @@ defmodule Logflare.Backends do
   """
   @spec system_default_ingest_queue_key(Source.t()) :: ingest_queue_key()
   def system_default_ingest_queue_key(%Source{} = source) do
-    ingest_queue_key(source, lookup_system_default_backend(source))
+    ingest_queue_key(source, SingleTenant.lookup_system_default_backend(source))
   end
 
   @doc """
@@ -289,31 +288,11 @@ defmodule Logflare.Backends do
     end
   end
 
-  @spec get_single_tenant_default_backend() :: Backend.t() | nil
-  def get_single_tenant_default_backend do
-    user = SingleTenant.get_default_user()
-
-    if SingleTenant.clickhouse_backend?() && user,
-      do: single_tenant_clickhouse_backend(user)
-  end
-
-  defp single_tenant_clickhouse_backend(%User{} = user) do
-    %Backend{
-      id: @single_tenant_clickhouse_backend_id,
-      type: :clickhouse,
-      config: Map.new(SingleTenant.clickhouse_backend_adapter_opts()),
-      user_id: user.id,
-      name: "Default ClickHouse backend",
-      consolidated_ingest?: true,
-      single_tenant_default?: true
-    }
-  end
-
   @spec get_default_backend(User.t()) :: Backend.t() | nil
   def get_default_backend(%User{} = user) do
     cond do
       SingleTenant.clickhouse_backend?() ->
-        single_tenant_clickhouse_backend(user)
+        SingleTenant.get_default_clickhouse_backend(user)
 
       SingleTenant.postgres_backend?() ->
         opts = SingleTenant.postgres_backend_adapter_opts()
@@ -688,7 +667,7 @@ defmodule Logflare.Backends do
   Retrieves a Backend by id.
   """
   @spec get_backend(integer()) :: Backend.t() | nil
-  def get_backend(@single_tenant_clickhouse_backend_id), do: get_single_tenant_default_backend()
+  def get_backend(0), do: SingleTenant.get_default_clickhouse_backend()
 
   def get_backend(id) do
     backend = Repo.get(Backend, id)
@@ -1157,14 +1136,8 @@ defmodule Logflare.Backends do
   defp dispatch_to_backends(source, nil, log_events) do
     backends = list_dispatch_backends(source)
 
-    for backend <- [lookup_system_default_backend(source) | backends] do
+    for backend <- [SingleTenant.lookup_system_default_backend(source) | backends] do
       dispatch_to_default_backend(source, backend, log_events)
-    end
-  end
-
-  defp lookup_system_default_backend(%Source{user_id: user_id}) do
-    if SingleTenant.clickhouse_backend?() do
-      get_default_backend(%User{id: user_id})
     end
   end
 
@@ -1571,7 +1544,7 @@ defmodule Logflare.Backends do
   def cached_local_pending_buffer_full?(
         %Source{id: source_id, default_ingest_backend_enabled?: true} = source
       ) do
-    buffer_full_for_backend?(source_id, lookup_system_default_backend(source)) or
+    buffer_full_for_backend?(source_id, SingleTenant.lookup_system_default_backend(source)) or
       source
       |> list_dispatch_backends()
       |> Enum.filter(& &1.default_ingest?)
@@ -1579,7 +1552,7 @@ defmodule Logflare.Backends do
   end
 
   def cached_local_pending_buffer_full?(%Source{id: source_id} = source) do
-    buffer_full_for_backend?(source_id, lookup_system_default_backend(source))
+    buffer_full_for_backend?(source_id, SingleTenant.lookup_system_default_backend(source))
   end
 
   @spec buffer_full_for_backend?(non_neg_integer(), Backend.t() | pos_integer() | nil) ::
@@ -1620,7 +1593,7 @@ defmodule Logflare.Backends do
   @spec any_ingest_queue_over_limit?(pos_integer()) :: boolean()
   def any_ingest_queue_over_limit?(source_id) when is_pos_integer(source_id) do
     source = Sources.Cache.get_by_id(source_id)
-    system_backend = if source, do: lookup_system_default_backend(source)
+    system_backend = if source, do: SingleTenant.lookup_system_default_backend(source)
 
     queue_over_limit_for_backend?(source_id, system_backend) or
       source_id

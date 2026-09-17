@@ -14,6 +14,7 @@ defmodule Logflare.Backends.ConsolidatedSupWorker do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.ConsolidatedSup
+  alias Logflare.SingleTenant
 
   @default_interval 30_000
 
@@ -53,7 +54,7 @@ defmodule Logflare.Backends.ConsolidatedSupWorker do
 
   defp list_expected_backend_ids do
     default_backend_ids =
-      case Backends.get_single_tenant_default_backend() do
+      case SingleTenant.get_default_clickhouse_backend() do
         nil -> []
         backend -> [backend.id]
       end
