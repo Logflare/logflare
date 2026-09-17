@@ -45,7 +45,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.Cloud do
 
   @impl true
   def open(config, partition_index) do
-    {:ok, %{config: config, partition_index: partition_index}}
+    {:ok, %{config: config, partition_index: partition_index, inflight: %{}}}
   end
 
   @impl true
@@ -70,19 +70,58 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.Cloud do
     emit_handle_batch_telemetry(body)
 
     parent = self()
-    Task.start(fn -> send(parent, {:backend, {tag, safe_commit_result(state, body)}}) end)
 
-    {:pending, state}
+    {:ok, pid} =
+      Task.start(fn -> send(parent, {:backend, {tag, safe_commit_result(state, body)}}) end)
+
+    ref = Process.monitor(pid)
+
+    {:pending, %{state | inflight: Map.put(state.inflight, ref, tag)}}
   end
 
   @impl true
+  def handle_message({:DOWN, ref, :process, _pid, reason}, state) do
+    # rescue/catch inside safe_commit_result/2 already covers every
+    # ordinary failure — this only fires if the Task itself was killed
+    # outright (an unconditional :kill, a max_heap_size limit, ...),
+    # which no rescue/catch can intercept. Committer.flush/1 replies in
+    # strict submission order, so leaving `tag` unresolved wouldn't just
+    # hang this one caller — it would wedge every later commit on this
+    # partition behind it, forever.
+    case Map.pop(state.inflight, ref) do
+      {nil, _inflight} ->
+        {[], state}
+
+      {tag, inflight} ->
+        Health.report_failure!(:upload)
+        {[{tag, {:error, {:task_down, reason}}}], %{state | inflight: inflight}}
+    end
+  end
+
   def handle_message({tag, result}, state) do
     case result do
       :ok -> Health.report_recovery!(:upload)
       {:error, _reason} -> Health.report_failure!(:upload)
     end
 
-    {[{tag, result}], state}
+    {[{tag, result}], %{state | inflight: demonitor_tag(state.inflight, tag)}}
+  end
+
+  # Cancels the monitor set up in commit_async/5 now that the task's own
+  # completion message got here first — otherwise its :DOWN would still
+  # arrive later and hit the handle_message/2 clause above for nothing
+  # (harmless: `tag` is already gone from `inflight` by then, so it's a
+  # no-op — but no reason to leave the monitor and a queued message
+  # around when we know we're done with it).
+  defp demonitor_tag(inflight, tag) do
+    case Enum.find(inflight, fn {_ref, t} -> t == tag end) do
+      {ref, ^tag} ->
+        Process.demonitor(ref, [:flush])
+        Map.delete(inflight, ref)
+
+      nil ->
+        inflight
+    end
   end
 
   # Runs in an unlinked Task, never the Committer — a crash here must
