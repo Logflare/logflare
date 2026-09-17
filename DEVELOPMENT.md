@@ -95,6 +95,7 @@ make start.st.ch
 
 - `CLICKHOUSE_BACKEND_URL` - the ClickHouse HTTP connection URL, including the database name
 - `CLICKHOUSE_BACKEND_POOL_SIZE` - optional connection pool size
+- `LOGFLARE_CLICKHOUSE_TABLE_SUFFIX` - suffix for the single-tenant `otel_logs`, `otel_metrics`, and `otel_traces` tables (defaults to `default`)
 - `LOGFLARE_PUBLIC_ACCESS_TOKEN` and `LOGFLARE_PRIVATE_ACCESS_TOKEN` - local API tokens
 
 PostgreSQL is still required for Logflare application data. ClickHouse becomes the default
