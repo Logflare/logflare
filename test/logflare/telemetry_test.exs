@@ -37,7 +37,7 @@ defmodule Logflare.TelemetryTest do
 
   @ch_read_pool_checkout_event [:logflare, :clickhouse, :read_pool, :checkout]
   @ch_read_pool_status_event [:logflare, :clickhouse, :read_pool, :pool_status]
-  @ch_read_pool_poll_timeout_event [:logflare, :clickhouse, :read_pool, :poll_timeout]
+  @ch_read_pool_poll_failure_event [:logflare, :clickhouse, :read_pool, :poll_failure]
   @ch_read_pool_wait_buckets_us [
     50,
     100,
@@ -305,13 +305,13 @@ defmodule Logflare.TelemetryTest do
       assert queued.measurement == :checkout_queue_length
     end
 
-    test "defines a ClickHouse read pool poll timeout counter" do
-      metric = read_pool_metric(@ch_read_pool_poll_timeout_event)
+    test "defines a ClickHouse read pool poll failure counter tagged by reason" do
+      metric = read_pool_metric(@ch_read_pool_poll_failure_event)
 
       assert to_string(metric.__struct__) == "Elixir.Telemetry.Metrics.Sum"
-      assert metric.event_name == @ch_read_pool_poll_timeout_event
+      assert metric.event_name == @ch_read_pool_poll_failure_event
       assert metric.measurement == :count
-      assert metric.tags == [:backend_id, :read_cluster]
+      assert metric.tags == [:backend_id, :read_cluster, :reason]
     end
 
     test "honors configured Broadway processor message duration sampling" do
@@ -531,7 +531,7 @@ defmodule Logflare.TelemetryTest do
       insert(:plan, name: "Free")
       {_source, backend} = setup_clickhouse_test()
       TestUtils.attach_forwarder(@ch_read_pool_status_event)
-      TestUtils.attach_forwarder(@ch_read_pool_poll_timeout_event)
+      TestUtils.attach_forwarder(@ch_read_pool_poll_failure_event)
 
       [backend: backend]
     end
@@ -610,15 +610,15 @@ defmodule Logflare.TelemetryTest do
 
       backend_id = backend.id
 
-      assert_receive {:telemetry_event, @ch_read_pool_poll_timeout_event, %{count: 1},
-                      %{backend_id: ^backend_id, read_cluster: "stuck"}}
+      assert_receive {:telemetry_event, @ch_read_pool_poll_failure_event, %{count: 1},
+                      %{backend_id: ^backend_id, read_cluster: "stuck", reason: :timeout}}
 
       refute_received {:telemetry_event, @ch_read_pool_status_event, _, _}
 
       Process.exit(stuck_pool, :kill)
     end
 
-    test "logs and keeps sweeping when a pool answers with an unexpected shape", %{
+    test "counts an unexpected result as a poll failure and keeps sweeping", %{
       backend: backend
     } do
       odd_pool =
@@ -634,8 +634,13 @@ defmodule Logflare.TelemetryTest do
         end)
 
       assert log =~ "ClickHouse read pool metrics poll returned an unexpected result"
+
+      backend_id = backend.id
+
+      assert_receive {:telemetry_event, @ch_read_pool_poll_failure_event, %{count: 1},
+                      %{backend_id: ^backend_id, read_cluster: "odd", reason: :unexpected_result}}
+
       refute_received {:telemetry_event, @ch_read_pool_status_event, _, _}
-      refute_received {:telemetry_event, @ch_read_pool_poll_timeout_event, _, _}
     end
   end
 
