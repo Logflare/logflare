@@ -84,6 +84,7 @@ defmodule Logflare.NetworkingTest do
       assert datadog_pools == expected_datadog_pools
     end
   end
+
   describe "ClickHouse ingest pools" do
     test "bound the request send path in addition to connect" do
       for name <- [Logflare.FinchClickHouseIngest, Logflare.FinchClickHouseAsyncIngest] do

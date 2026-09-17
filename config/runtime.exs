@@ -113,6 +113,7 @@ config :logflare,
          recaptcha_secret: System.get_env("LOGFLARE_RECAPTCHA_SECRET"),
          config_cat_sdk_key: System.get_env("LOGFLARE_CONFIG_CAT_SDK_KEY"),
          single_tenant: Env.get_boolean("LOGFLARE_SINGLE_TENANT"),
+         clickhouse_table_suffix: System.get_env("LOGFLARE_CLICKHOUSE_TABLE_SUFFIX", "default"),
          supabase_mode: Env.get_boolean("LOGFLARE_SUPABASE_MODE"),
          unsafe_disable_ssrf_s3_endpoint_check:
            Env.get_boolean("LOGFLARE_UNSAFE_DISABLE_SSRF_S3_ENDPOINT_CHECK"),

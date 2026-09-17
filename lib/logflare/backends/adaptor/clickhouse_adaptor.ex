@@ -647,17 +647,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   - `:metric` -> `otel_metrics_<token>`
   - `:trace`  -> `otel_traces_<token>`
 
-  Single-tenant defaults use `single_tenant` suffix in place of `<token>`
+  Single-tenant defaults use the configured table suffix in place of `_<token>`.
   """
   @spec clickhouse_ingest_table_name(Backend.t(), TypeDetection.event_type()) :: String.t()
   def clickhouse_ingest_table_name(%Backend{single_tenant_default?: true}, :log),
-    do: "otel_logs_single_tenant"
+    do: "otel_logs_#{clickhouse_table_suffix()}"
 
   def clickhouse_ingest_table_name(%Backend{single_tenant_default?: true}, :metric),
-    do: "otel_metrics_single_tenant"
+    do: "otel_metrics_#{clickhouse_table_suffix()}"
 
   def clickhouse_ingest_table_name(%Backend{single_tenant_default?: true}, :trace),
-    do: "otel_traces_single_tenant"
+    do: "otel_traces_#{clickhouse_table_suffix()}"
 
   def clickhouse_ingest_table_name(%Backend{} = backend, :log),
     do: build_otel_table_name(backend, "otel_logs")
@@ -667,6 +667,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   def clickhouse_ingest_table_name(%Backend{} = backend, :trace),
     do: build_otel_table_name(backend, "otel_traces")
+
+  @spec clickhouse_table_suffix() :: String.t()
+  defp clickhouse_table_suffix, do: Application.fetch_env!(:logflare, :clickhouse_table_suffix)
 
   @spec build_otel_table_name(Backend.t(), String.t()) :: String.t()
   defp build_otel_table_name(%Backend{token: token}, prefix) do
