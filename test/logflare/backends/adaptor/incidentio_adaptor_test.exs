@@ -216,5 +216,31 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
       assert title =~ alert_query.name
       assert description =~ alert_query.description
     end
+
+    test "disabled destinations do not receive alert query results", %{
+      user: user,
+      backend: backend
+    } do
+      backend = backend |> Ecto.Changeset.change(enabled: false) |> Logflare.Repo.update!()
+
+      alert_query =
+        insert(:alert,
+          user: user,
+          slack_hook_url: nil,
+          webhook_notification_url: nil,
+          backends: [backend]
+        )
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      # A disabled destination must not issue an external alert request.
+      @client
+      |> reject(:send, 1)
+
+      assert {:ok, %{fired: true}} = Alerting.run_alert(alert_query)
+    end
   end
 end

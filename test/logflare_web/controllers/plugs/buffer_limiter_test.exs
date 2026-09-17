@@ -350,6 +350,38 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       assert json_response(conn, 429)
     end
 
+    test "ignores a full default ingest backend after it is disabled", %{
+      conn: conn,
+      source: source,
+      backend1: backend
+    } do
+      user_queue_key = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(user_queue_key)
+      fill_queue(user_queue_key, source)
+      Backends.cache_local_buffer_lens(source.id, backend.id)
+
+      limited_conn =
+        conn
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      assert limited_conn.halted
+
+      backend
+      |> Ecto.Changeset.change(enabled: false)
+      |> Logflare.Repo.update!()
+
+      Backends.clear_list_backends_cache(source.id)
+
+      conn =
+        conn
+        |> recycle()
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      refute conn.halted
+    end
+
     test "allows request when both system and default ingest buffers have space", %{
       conn: conn,
       source: source,
