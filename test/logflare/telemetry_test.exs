@@ -1,6 +1,8 @@
 defmodule Logflare.TelemetryTest do
   use Logflare.DataCase, async: false
 
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
   alias Logflare.SystemMetrics.Observer
   alias Logflare.SystemMetrics.Schedulers
   alias Logflare.Telemetry
@@ -34,6 +36,8 @@ defmodule Logflare.TelemetryTest do
   ]
 
   @ch_read_pool_checkout_event [:logflare, :clickhouse, :read_pool, :checkout]
+  @ch_read_pool_status_event [:logflare, :clickhouse, :read_pool, :pool_status]
+  @ch_read_pool_poll_failure_event [:logflare, :clickhouse, :read_pool, :poll_failure]
   @ch_read_pool_wait_buckets_us [
     50,
     100,
@@ -287,6 +291,29 @@ defmodule Logflare.TelemetryTest do
       assert metric.tags == [:backend_id, :read_cluster, :reason]
     end
 
+    test "defines ClickHouse read pool status gauges polled from DBConnection" do
+      ready = read_pool_metric([:logflare, :clickhouse, :read_pool, :ready_conn_count])
+      queued = read_pool_metric([:logflare, :clickhouse, :read_pool, :checkout_queue_length])
+
+      for metric <- [ready, queued] do
+        assert to_string(metric.__struct__) == "Elixir.Telemetry.Metrics.LastValue"
+        assert metric.event_name == @ch_read_pool_status_event
+        assert metric.tags == [:backend_id, :read_cluster]
+      end
+
+      assert ready.measurement == :ready_conn_count
+      assert queued.measurement == :checkout_queue_length
+    end
+
+    test "defines a ClickHouse read pool poll failure counter tagged by reason" do
+      metric = read_pool_metric(@ch_read_pool_poll_failure_event)
+
+      assert to_string(metric.__struct__) == "Elixir.Telemetry.Metrics.Sum"
+      assert metric.event_name == @ch_read_pool_poll_failure_event
+      assert metric.measurement == :count
+      assert metric.tags == [:backend_id, :read_cluster, :reason]
+    end
+
     test "honors configured Broadway processor message duration sampling" do
       denominator = Application.fetch_env!(:logflare, :broadway_message_sample_denominator)
 
@@ -496,6 +523,124 @@ defmodule Logflare.TelemetryTest do
     test "omits commit when the SHA is empty or whitespace-only" do
       refute Map.has_key?(Telemetry.service_attributes(""), :commit)
       refute Map.has_key?(Telemetry.service_attributes("   "), :commit)
+    end
+  end
+
+  describe "clickhouse_read_pool_metrics/2" do
+    setup do
+      insert(:plan, name: "Free")
+      {_source, backend} = setup_clickhouse_test()
+      TestUtils.attach_forwarder(@ch_read_pool_status_event)
+      TestUtils.attach_forwarder(@ch_read_pool_poll_failure_event)
+
+      [backend: backend]
+    end
+
+    test "emits ready and queued counts for every active pool, tagged by read cluster", %{
+      backend: backend
+    } do
+      {:ok, _} =
+        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend))
+
+      {:ok, _} =
+        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend, "api"))
+
+      assert :ok == ConnectionManager.ensure_pool_started(backend)
+      assert :ok == ConnectionManager.ensure_pool_started(backend, "api")
+
+      Telemetry.clickhouse_read_pool_metrics()
+
+      backend_id = backend.id
+
+      assert_receive {:telemetry_event, @ch_read_pool_status_event, default_measurements,
+                      %{backend_id: ^backend_id, read_cluster: "(unlabeled)"}}
+
+      assert_receive {:telemetry_event, @ch_read_pool_status_event, api_measurements,
+                      %{backend_id: ^backend_id, read_cluster: "api"}}
+
+      for measurements <- [default_measurements, api_measurements] do
+        assert %{ready_conn_count: ready, checkout_queue_length: queued} = measurements
+        assert is_integer(ready) and ready >= 0
+        assert is_integer(queued) and queued >= 0
+      end
+
+      refute_received {:telemetry_event, @ch_read_pool_status_event, _, _}
+    end
+
+    test "emits nothing when no read pool is running" do
+      Telemetry.clickhouse_read_pool_metrics()
+
+      refute_received {:telemetry_event, @ch_read_pool_status_event, _, _}
+    end
+
+    test "skips a pool that exited between enumeration and poll", %{backend: backend} do
+      {:ok, _} =
+        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend))
+
+      assert :ok == ConnectionManager.ensure_pool_started(backend)
+      live_pool = ConnectionManager.get_pool_pid(backend)
+
+      dead_pool = spawn(fn -> :ok end)
+      TestUtils.retry_assert(fn -> refute Process.alive?(dead_pool) end)
+
+      Telemetry.clickhouse_read_pool_metrics([
+        {backend.id, "gone", dead_pool},
+        {backend.id, nil, live_pool}
+      ])
+
+      backend_id = backend.id
+
+      assert_receive {:telemetry_event, @ch_read_pool_status_event, _,
+                      %{backend_id: ^backend_id, read_cluster: "(unlabeled)"}}
+
+      refute_received {:telemetry_event, @ch_read_pool_status_event, _, %{read_cluster: "gone"}}
+    end
+
+    test "gives up on a pool that does not answer within the timeout and logs it", %{
+      backend: backend
+    } do
+      stuck_pool = spawn(fn -> Process.sleep(:infinity) end)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          Telemetry.clickhouse_read_pool_metrics([{backend.id, "stuck", stuck_pool}], 50)
+        end)
+
+      assert log =~ "ClickHouse read pool did not answer the metrics poll"
+
+      backend_id = backend.id
+
+      assert_receive {:telemetry_event, @ch_read_pool_poll_failure_event, %{count: 1},
+                      %{backend_id: ^backend_id, read_cluster: "stuck", reason: :timeout}}
+
+      refute_received {:telemetry_event, @ch_read_pool_status_event, _, _}
+
+      Process.exit(stuck_pool, :kill)
+    end
+
+    test "counts an unexpected result as a poll failure and keeps sweeping", %{
+      backend: backend
+    } do
+      odd_pool =
+        spawn(fn ->
+          receive do
+            {:"$gen_call", from, :get_connection_metrics} -> GenServer.reply(from, :unexpected)
+          end
+        end)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert :ok == Telemetry.clickhouse_read_pool_metrics([{backend.id, "odd", odd_pool}])
+        end)
+
+      assert log =~ "ClickHouse read pool metrics poll returned an unexpected result"
+
+      backend_id = backend.id
+
+      assert_receive {:telemetry_event, @ch_read_pool_poll_failure_event, %{count: 1},
+                      %{backend_id: ^backend_id, read_cluster: "odd", reason: :unexpected_result}}
+
+      refute_received {:telemetry_event, @ch_read_pool_status_event, _, _}
     end
   end
 
