@@ -2437,8 +2437,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       expected_ids = events |> Enum.take(102) |> log_event_dom_ids()
       assert visible_log_event_ids(view) == expected_ids
 
-      [oldest_loaded_id | _] = expected_ids
-      assert_push_event(view, "scroll-to-event", %{id: ^oldest_loaded_id})
+      refute_push_event(view, "scroll-to-event", %{})
     end
 
     test "every page request moves the range by the same window", %{
