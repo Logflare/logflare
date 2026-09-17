@@ -29,22 +29,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.SingleTenantIngestionTest 
     backend = Logflare.Backends.get_default_backend(user)
 
     start_supervised!(AllLogsLogged)
-    {:ok, connection_manager_pid} = ConnectionManager.start_link(backend)
-    {:ok, supervisor_pid} = ClickHouseAdaptor.start_link(backend)
+    start_supervised!({ConnectionManager, backend})
+    start_supervised!({ClickHouseAdaptor, backend})
 
     cleanup_single_tenant_tables(backend)
 
-    on_exit(fn ->
-      cleanup_single_tenant_tables(backend)
-
-      if Process.alive?(supervisor_pid) do
-        Process.exit(supervisor_pid, :shutdown)
-      end
-
-      if Process.alive?(connection_manager_pid) do
-        Process.exit(connection_manager_pid, :shutdown)
-      end
-    end)
+    on_exit(fn -> cleanup_single_tenant_tables(backend) end)
 
     [source: source, backend: backend]
   end
