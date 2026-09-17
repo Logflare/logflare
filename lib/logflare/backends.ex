@@ -56,7 +56,12 @@ defmodule Logflare.Backends do
   def bigquery_default_backend?,
     do: not SingleTenant.single_tenant?() or SingleTenant.bigquery_backend?()
 
-  @doc false
+  @doc """
+  Returns queue key used to buffer events for a source and backend.
+
+  Consolidated backends share a queue keyed by backend ID, other backends scope
+  to source and backend.
+  """
   @spec ingest_queue_key(Source.t(), Backend.t() | nil) :: ingest_queue_key()
   def ingest_queue_key(%Source{}, %Backend{consolidated_ingest?: true, id: backend_id}) do
     {:consolidated, backend_id}
@@ -68,7 +73,12 @@ defmodule Logflare.Backends do
 
   def ingest_queue_key(%Source{id: source_id}, nil), do: {source_id, nil}
 
-  @doc false
+  @doc """
+  Returns the queue key used to buffer events for a source's system default backend.
+
+  In single-tenant ClickHouse deployments, uses `ingest_queue_key/2` with the
+  source user's default backend. Otherwise, returns `{source_id, nil}`.
+  """
   @spec system_default_ingest_queue_key(Source.t()) :: ingest_queue_key()
   def system_default_ingest_queue_key(%Source{} = source) do
     ingest_queue_key(source, lookup_system_default_backend(source))
