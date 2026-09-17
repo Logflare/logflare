@@ -1,71 +1,106 @@
 defmodule LogflareWeb.SearchLive.EventPaginationTest do
   use ExUnit.Case, async: true
 
-  alias Logflare.Logs.EventPage
   alias LogflareWeb.SearchLive.EventPagination
 
-  describe "buttons/2" do
-    test "determines visibility from cursor and exhaustion state" do
-      previous_cursor = %{id: "previous", timestamp: 1}
-      next_cursor = %{id: "next", timestamp: 2}
+  @cursors %{previous: %{id: "previous", timestamp: 1}, next: %{id: "next", timestamp: 2}}
+  @ready_opts [cursors: @cursors, tailing?: false, loading?: false]
 
-      pagination =
+  describe "buttons/2" do
+    test "a page request in flight spins its own button and disables the other" do
+      loading_previous =
         EventPagination.new()
-        |> EventPagination.complete_initial(%EventPage{
-          rows: [],
-          request: %{intent: :initial, cursor: nil},
-          cursor: previous_cursor,
-          next_cursor: next_cursor,
-          has_more?: true
-        })
+        |> EventPagination.mark_loading(:previous, 10)
+        |> EventPagination.buttons(@ready_opts)
+
+      assert %{previous: %{state: :loading}, next: %{state: :disabled}} = loading_previous
+
+      loading_next =
+        EventPagination.new()
+        |> EventPagination.mark_loading(:next, 10)
+        |> EventPagination.buttons(@ready_opts)
+
+      assert %{previous: %{state: :disabled}, next: %{state: :loading}} = loading_next
+
+      cleared =
+        EventPagination.new()
+        |> EventPagination.mark_loading(:next, 10)
+        |> EventPagination.clear_loading()
+        |> EventPagination.buttons(@ready_opts)
+
+      assert %{previous: %{state: :ready}, next: %{state: :ready}} = cleared
+    end
+
+    test "a hidden button stays hidden while a page request is in flight" do
+      cursors = %{previous: nil, next: nil}
 
       buttons =
-        EventPagination.buttons(pagination,
-          cursors: %{previous: previous_cursor, next: next_cursor},
-          tailing?: false,
-          loading?: false,
-          next_available?: true
-        )
+        EventPagination.new()
+        |> EventPagination.mark_loading(:previous, 10)
+        |> EventPagination.buttons(cursors: cursors, tailing?: false, loading?: false)
+
+      assert %{previous: %{state: :hidden}, next: %{state: :hidden}} = buttons
+    end
+
+    test "shows a button whenever it has a cursor and the view is not tailing" do
+      %{previous: previous_cursor, next: next_cursor} = @cursors
 
       assert %{
                previous: %{state: :ready, cursor: ^previous_cursor},
                next: %{state: :ready, cursor: ^next_cursor}
-             } = buttons
+             } = EventPagination.buttons(EventPagination.new(), @ready_opts)
+    end
 
-      hidden_next_buttons =
-        EventPagination.buttons(pagination,
-          cursors: %{previous: previous_cursor, next: next_cursor},
-          tailing?: false,
-          loading?: false,
-          next_available?: false
-        )
+    test "hides a button with no cursor, and both while tailing" do
+      cursor = %{id: "cursor", timestamp: 1}
+      pagination = EventPagination.new()
 
-      assert %{next: %{state: :hidden, cursor: ^next_cursor}} = hidden_next_buttons
+      assert %{previous: %{state: :hidden}, next: %{state: :ready}} =
+               EventPagination.buttons(pagination,
+                 cursors: %{previous: nil, next: cursor},
+                 tailing?: false,
+                 loading?: false
+               )
 
-      pagination =
-        EventPagination.complete_page(
-          pagination,
-          %EventPage{
-            rows: [],
-            request: %{intent: :next, cursor: next_cursor},
-            cursor: next_cursor,
-            has_more?: false
-          },
-          :next
-        )
+      assert %{previous: %{state: :hidden}, next: %{state: :hidden}} =
+               EventPagination.buttons(pagination,
+                 cursors: %{previous: cursor, next: cursor},
+                 tailing?: true,
+                 loading?: false
+               )
+    end
 
-      buttons =
-        EventPagination.buttons(pagination,
-          cursors: %{previous: previous_cursor, next: next_cursor},
-          tailing?: false,
-          loading?: false,
-          next_available?: true
-        )
+    test "disables both buttons while a search is running" do
+      assert %{previous: %{state: :disabled}, next: %{state: :disabled}} =
+               EventPagination.buttons(EventPagination.new(),
+                 cursors: @cursors,
+                 tailing?: false,
+                 loading?: true
+               )
+    end
+
+    test "labels both buttons with the stored window" do
+      assert %{previous: %{label: "Load more"}, next: %{label: "Load more"}} =
+               EventPagination.buttons(EventPagination.new(), @ready_opts)
 
       assert %{
-               previous: %{state: :ready, cursor: ^previous_cursor},
-               next: %{state: :hidden, cursor: ^next_cursor}
-             } = buttons
+               previous: %{label: "Load more (-10 minutes)"},
+               next: %{label: "Load more (+10 minutes)"}
+             } =
+               EventPagination.new()
+               |> EventPagination.put_window(600)
+               |> EventPagination.buttons(@ready_opts)
+    end
+  end
+
+  describe "loading?/2" do
+    test "matches only the intent in flight" do
+      pagination = EventPagination.mark_loading(EventPagination.new(), :previous, 10)
+
+      assert EventPagination.loading?(pagination, :previous)
+      refute EventPagination.loading?(pagination, :next)
+      refute EventPagination.loading?(EventPagination.new(), :previous)
+      refute EventPagination.loading?(EventPagination.clear_loading(pagination), :previous)
     end
   end
 end
