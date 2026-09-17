@@ -38,14 +38,13 @@ enum Derived {
         severity_alt: usize,
         severity_number: usize,
     },
-    /// `precision` is the `start_time` field's DateTime64 precision. The
-    /// derived span inherits it through the coerced endpoints, and an explicit
-    /// OTEL `duration` (nanoseconds) is scaled to it so the column has one unit.
+    /// `duration_precision` is the `start_time` field's DateTime64
+    /// precision: the unit `duration` is derived and emitted in.
     Trace {
         duration: usize,
         start_time: usize,
         end_time: usize,
-        precision: u8,
+        duration_precision: u8,
     },
 }
 
@@ -88,7 +87,7 @@ pub fn compile_layout(row_type: &str, fields: &[CompiledField]) -> EncodeResult<
         "metric" => (Derived::None, None),
         "trace" => {
             let start_time = index_of("start_time")?;
-            let precision = match fields[start_time].field_type {
+            let duration_precision = match fields[start_time].field_type {
                 FieldType::DateTime64 { precision } => precision,
                 _ => return Err("NDJSON trace field 'start_time' must be a datetime64".to_string()),
             };
@@ -97,7 +96,7 @@ pub fn compile_layout(row_type: &str, fields: &[CompiledField]) -> EncodeResult<
                     duration: index_of("duration")?,
                     start_time,
                     end_time: index_of("end_time")?,
-                    precision,
+                    duration_precision,
                 },
                 None,
             )
@@ -213,24 +212,20 @@ fn derived_value(
             duration,
             start_time,
             end_time,
-            precision,
+            duration_precision,
         } if index == duration => {
             let explicit = decode_u64(values[duration], "duration")?;
-            if explicit != 0 {
-                return Ok(Some(scale_duration(explicit, precision)));
-            }
             let start = values[start_time].decode::<i64>();
             let end = values[end_time].decode::<i64>();
-            Ok(Some(crate::derive::duration(0, start, end)))
+            Ok(Some(crate::derive::duration(
+                explicit,
+                start,
+                end,
+                duration_precision,
+            )))
         }
         _ => Ok(None),
     }
-}
-
-/// Explicit OTEL durations arrive in nanoseconds; scale them down to the
-/// layout's timestamp precision (0..=9, validated at compile time).
-fn scale_duration(nanos: u64, precision: u8) -> u64 {
-    nanos / 10u64.pow(u32::from(9 - precision))
 }
 
 fn enum_label<'a>(column: &'a Column, value: Term) -> Option<&'a str> {

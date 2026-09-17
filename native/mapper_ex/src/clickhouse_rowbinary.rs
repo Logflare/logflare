@@ -197,6 +197,9 @@ enum RowType {
 pub struct CompiledLayout {
     row_type: RowType,
     field_indices: Box<[usize]>,
+    /// Unit of the trace `duration` column: the `start_time` field's
+    /// DateTime64 precision, since the span is derived from it.
+    duration_precision: u8,
 }
 
 pub fn compile_layout(
@@ -229,9 +232,15 @@ pub fn compile_layout(
         })
         .collect::<EncodeResult<Box<[usize]>>>()?;
 
+    let duration_precision = match fields_by_name.get("start_time") {
+        Some((_, FieldType::DateTime64 { precision })) => *precision,
+        _ => 9,
+    };
+
     Ok(CompiledLayout {
         row_type,
         field_indices,
+        duration_precision,
     })
 }
 
@@ -296,7 +305,13 @@ pub fn append_row(
         match layout.row_type {
             RowType::Log => append_log(output, values, envelope, mapping_config_id),
             RowType::Metric => append_metric(output, values, envelope, mapping_config_id),
-            RowType::Trace => append_trace(output, values, envelope, mapping_config_id),
+            RowType::Trace => append_trace(
+                output,
+                values,
+                envelope,
+                mapping_config_id,
+                layout.duration_precision,
+            ),
         }
     })
 }
@@ -409,6 +424,7 @@ fn append_trace(
     values: &mut RowValues<'_, '_>,
     envelope: RowEnvelope,
     mapping_config_id: Binary,
+    duration_precision: u8,
 ) -> EncodeResult<()> {
     encode_envelope(
         output,
@@ -430,7 +446,7 @@ fn append_trace(
     let duration = decode_u64(values.next("duration")?, "duration")?;
     let start_time = decode_i64(values.next("start_time")?);
     let end_time = decode_i64(values.next("end_time")?);
-    let duration = crate::derive::duration(duration, start_time, end_time);
+    let duration = crate::derive::duration(duration, start_time, end_time, duration_precision);
     output.extend_from_slice(&duration.to_le_bytes())?;
 
     encode_string(output, values.next("status_code")?)?;

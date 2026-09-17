@@ -21,12 +21,20 @@ pub fn severity_number(severity_alt: u64, mapped: u64) -> u64 {
     }
 }
 
-/// Trace `duration`: an explicit non-zero value passes through; otherwise it is
-/// computed from `end_time - start_time` when both decode and the span is
+/// Trace `duration` emitted in `duration_precision` (0..=9), the precision
+/// of the `start_time`/`end_time` fields. `explicit` is the mapped `duration`
+/// field in OTEL nanoseconds; a non-zero value wins and is scaled down.
+/// Otherwise the span is `end_time - start_time`, whose endpoints were
+/// already coerced to that precision, when both decode and the span is
 /// positive.
-pub fn duration<E>(duration: u64, start_time: Result<i64, E>, end_time: Result<i64, E>) -> u64 {
-    if duration != 0 {
-        return duration;
+pub fn duration<E>(
+    explicit: u64,
+    start_time: Result<i64, E>,
+    end_time: Result<i64, E>,
+    duration_precision: u8,
+) -> u64 {
+    if explicit != 0 {
+        return explicit / 10u64.pow(u32::from(9_u8.saturating_sub(duration_precision)));
     }
     match (start_time, end_time) {
         (Ok(start), Ok(end)) if end > start => end.abs_diff(start),
@@ -47,29 +55,36 @@ mod tests {
 
     #[test]
     fn duration_passes_through_non_zero() {
-        assert_eq!(duration::<()>(42, Ok(100), Ok(50)), 42);
+        assert_eq!(duration::<()>(42, Ok(100), Ok(50), 9), 42);
+    }
+
+    #[test]
+    fn duration_scales_explicit_nanoseconds_to_precision() {
+        assert_eq!(duration::<()>(42_000, Ok(0), Ok(0), 6), 42);
+        assert_eq!(duration::<()>(999, Ok(0), Ok(1_000), 6), 0);
+        assert_eq!(duration::<()>(u64::MAX, Ok(0), Ok(0), 6), u64::MAX / 1_000);
     }
 
     #[test]
     fn duration_derives_from_positive_span() {
-        assert_eq!(duration::<()>(0, Ok(100), Ok(250)), 150);
+        assert_eq!(duration::<()>(0, Ok(100), Ok(250), 9), 150);
     }
 
     #[test]
     fn duration_is_zero_for_non_positive_span() {
-        assert_eq!(duration::<()>(0, Ok(100), Ok(100)), 0);
-        assert_eq!(duration::<()>(0, Ok(100), Ok(50)), 0);
+        assert_eq!(duration::<()>(0, Ok(100), Ok(100), 9), 0);
+        assert_eq!(duration::<()>(0, Ok(100), Ok(50), 9), 0);
     }
 
     #[test]
     fn duration_is_zero_when_endpoints_missing() {
-        assert_eq!(duration(0, Err(()), Ok(50)), 0);
-        assert_eq!(duration(0, Ok(50), Err(())), 0);
-        assert_eq!(duration::<()>(0, Err(()), Err(())), 0);
+        assert_eq!(duration(0, Err(()), Ok(50), 9), 0);
+        assert_eq!(duration(0, Ok(50), Err(()), 9), 0);
+        assert_eq!(duration::<()>(0, Err(()), Err(()), 9), 0);
     }
 
     #[test]
     fn duration_handles_extreme_spans() {
-        assert_eq!(duration::<()>(0, Ok(i64::MIN), Ok(i64::MAX)), u64::MAX);
+        assert_eq!(duration::<()>(0, Ok(i64::MIN), Ok(i64::MAX), 9), u64::MAX);
     }
 }
