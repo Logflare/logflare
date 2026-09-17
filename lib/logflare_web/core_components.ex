@@ -5,8 +5,84 @@ defmodule LogflareWeb.CoreComponents do
   use LogflareWeb, :routes
   use Phoenix.Component
 
-  alias Phoenix.LiveView.JS
   alias Logflare.Teams.TeamContext
+  alias Phoenix.HTML.Form
+  alias Phoenix.LiveView.JS
+
+  @doc """
+  Renders a select element.
+
+  Accepts either `%Phoenix.HTML.FormField{}` (preferred) or individual `name`, `value`, and `id` attrs.
+  """
+  attr :id, :any, default: nil
+  attr :name, :any
+  attr :value, :any
+
+  attr :field, Phoenix.HTML.FormField
+
+  attr :prompt, :string, default: nil
+  attr :prompt_hidden, :boolean, default: false
+  attr :options, :list, required: true
+  attr :class, :any, default: "form-control mt-1 form-control-sm"
+
+  attr :rest, :global, include: ~w(disabled)
+
+  def select(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
+    assigns
+    |> assign_form_field(field)
+    |> select()
+  end
+
+  def select(assigns) do
+    ~H"""
+    <select id={@id} name={@name} class={@class} {@rest}>
+      <option :if={@prompt} value="" hidden={@prompt_hidden}>{@prompt}</option>
+      {Form.options_for_select(@options, @value)}
+    </select>
+    """
+  end
+
+  @doc """
+  Renders a searchable combobox with a native select fallback.
+  """
+  attr :id, :string, default: nil
+  attr :name, :any
+  attr :value, :any
+
+  attr :field, Phoenix.HTML.FormField,
+    doc: "the preferred way to provide a combobox's id, name, and value"
+
+  attr :prompt, :string, default: nil
+  attr :prompt_hidden, :boolean, default: false
+  attr :options, :list, required: true
+  attr :class, :any, default: nil
+  attr :empty_text, :string, default: "No options found."
+  attr :rest, :global, include: ~w(disabled)
+
+  def combobox(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
+    assigns
+    |> assign_form_field(field)
+    |> combobox()
+  end
+
+  def combobox(assigns) do
+    assigns =
+      assign(assigns, :select_rest, Map.put_new(assigns.rest, :"aria-label", assigns.prompt))
+
+    ~H"""
+    <div id={"#{@id}-combobox"} class="tw-w-full [&:has(input[role=combobox])>select]:tw-hidden" data-combobox-empty-text={@empty_text} data-combobox-prompt={@prompt} phx-hook="Combobox">
+      <.select id={@id} name={@name} value={@value} prompt={@prompt} prompt_hidden={@prompt_hidden} options={@options} class={@class} {@select_rest} />
+      <div id={"#{@id}-react"} class="tw-w-full" data-combobox-container phx-update="ignore"></div>
+    </div>
+    """
+  end
+
+  defp assign_form_field(assigns, field) do
+    assigns
+    |> assign(field: nil, id: assigns.id || field.id)
+    |> assign_new(:name, fn -> field.name end)
+    |> assign_new(:value, fn -> field.value end)
+  end
 
   @doc "Alert the user of something"
   attr :variant, :string,

@@ -14,7 +14,7 @@ defmodule LogflareWeb.MarketingController do
   }
 
   # only set the banner assigns on marketing pages
-  plug :assign, {:banner, @announcement}
+  plug :assign, banner: @announcement
   plug :single_tenant_redirect
 
   def index(conn, _params) do
