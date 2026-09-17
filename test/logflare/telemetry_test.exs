@@ -664,6 +664,33 @@ defmodule Logflare.TelemetryTest do
       assert match?(%{length: _}, metrics)
       assert match?(%{name: _}, meta)
     end
+
+    test "names an unregistered process by its process label" do
+      event = [:logflare, :system, :top_processes, :message_queue]
+      parent = self()
+
+      pid =
+        spawn(fn ->
+          Process.set_label({:ch_read_pool_manager, 123, "(unlabeled)"})
+          send(parent, :labeled)
+          Process.sleep(:infinity)
+        end)
+
+      on_exit(fn -> Process.exit(pid, :kill) end)
+
+      assert_receive :labeled
+      Enum.each(1..5_000, fn _ -> send(pid, :fill_the_mailbox) end)
+
+      TestUtils.attach_forwarder(event)
+      Telemetry.process_message_queue_metrics()
+
+      inspected_pid = inspect(pid)
+
+      expected_single_line_name = "{ch_read_pool_manager,123,<<\"(unlabeled)\">>}"
+
+      assert_receive {:telemetry_event, ^event, %{length: 5_000},
+                      %{pid: ^inspected_pid, name: ^expected_single_line_name}}
+    end
   end
 
   describe "ets_table_metrics/1" do

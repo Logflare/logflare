@@ -15,6 +15,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   Pools authenticate with the credentials resolved by
   `ClickHouseAdaptor.query_credentials/1`, which prefers a
   dedicated query user when one is configured.
+
+  Managers are registered through `Registry`, so they carry no registered name.
+  Each labels itself `{:ch_read_pool_manager, backend_id, read_cluster_tag}` with
+  `Process.set_label/1` so that `observer`, `:recon`, crash reports, and the
+  `Logflare.Telemetry` top-process metrics can attribute it to a backend and read
+  cluster. The third element matches the `read_cluster` telemetry tag.
   """
 
   use GenServer
@@ -250,6 +256,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
 
   @impl true
   def init({backend_id, label}) do
+    Process.set_label(
+      {:ch_read_pool_manager, backend_id, ClickHouseAdaptor.read_cluster_tag(label)}
+    )
+
     resolve_timer_ref = resolve_timer_send_after()
 
     initial_state = %__MODULE__{
