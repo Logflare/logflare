@@ -12,12 +12,19 @@ use crate::string_filters::{CharClass, StringFilters};
 const ROOT_CACHE_MIN_REFERENCES: usize = 8;
 
 #[derive(Debug)]
+pub enum CompiledOutput {
+    Map,
+    ClickHouseRowBinary(crate::clickhouse_rowbinary::CompiledLayout),
+}
+
+#[derive(Debug)]
 pub struct CompiledMapping {
     pub fields: Vec<CompiledField>,
     pub path_cache_size: usize,
     pub root_cache_size: usize,
     pub root_cache_scan_limit: usize,
     pub root_cache_keys: HashMap<Vec<u8>, usize>,
+    pub output: CompiledOutput,
 }
 
 #[derive(Debug)]
@@ -33,6 +40,12 @@ pub struct CompiledField {
     pub exclude_keys: Vec<Vec<u8>>,
     pub elevate_keys: Vec<Vec<u8>>,
     pub pick: Vec<PickEntry>,
+    /// When true, a resolved pick map is unioned over the path/paths value
+    /// (pick winning on collision) instead of replacing it.
+    pub pick_merge: bool,
+    /// When true (`coercion: :strict` on a uint field), only integer terms and
+    /// binaries holding an integer resolve; floats and booleans are unresolved.
+    pub strict_uint: bool,
     pub enum8_data: Option<Enum8Data>,
     pub filter_nil: bool,
     pub flat_map_value_type: FlatMapValueType,
@@ -159,6 +172,7 @@ pub struct Enum8Data {
 
 pub fn decode_mapping<'a>(env: Env<'a>, config: Term<'a>) -> Result<CompiledMapping, String> {
     let mut fields = decode_fields(env, config)?;
+    let output = decode_output(env, config, &fields)?;
     let (path_cache_size, root_cache_size, root_cache_keys) =
         assign_path_cache_indices(&mut fields);
     Ok(CompiledMapping {
@@ -167,7 +181,35 @@ pub fn decode_mapping<'a>(env: Env<'a>, config: Term<'a>) -> Result<CompiledMapp
         root_cache_size,
         root_cache_scan_limit: root_cache_keys.len().max(ROOT_CACHE_MIN_REFERENCES),
         root_cache_keys,
+        output,
     })
+}
+
+fn decode_output<'a>(
+    env: Env<'a>,
+    config: Term<'a>,
+    fields: &[CompiledField],
+) -> Result<CompiledOutput, String> {
+    let Some(output) = get_term_key(env, config, "output") else {
+        return Ok(CompiledOutput::Map);
+    };
+    let format = get_string_key(env, output, "format")?
+        .ok_or_else(|| "output format is required".to_string())?;
+
+    match format.as_str() {
+        "clickhouse_row_binary" => {
+            let row_type = get_string_key(env, output, "row_type")?
+                .ok_or_else(|| "ClickHouse RowBinary output row_type is required".to_string())?;
+            let fields_by_name = fields
+                .iter()
+                .enumerate()
+                .map(|(index, field)| (field.name.as_str(), (index, field.field_type)))
+                .collect();
+            let layout = crate::clickhouse_rowbinary::compile_layout(&row_type, &fields_by_name)?;
+            Ok(CompiledOutput::ClickHouseRowBinary(layout))
+        }
+        _ => Err(format!("unsupported mapping output format '{format}'")),
+    }
 }
 
 fn assign_path_cache_indices(
@@ -354,6 +396,16 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
     let exclude_keys = decode_string_list_bytes(env, field, "exclude_keys");
     let elevate_keys = decode_string_list_bytes(env, field, "elevate_keys");
     let pick = decode_pick(env, field)?;
+    let pick_merge = decode_pick_merge(env, field)?;
+    let strict_uint = decode_coercion(env, field, &field_type)?;
+    if strict_uint && !value_map.is_empty() {
+        return Err(
+            "coercion \"strict\" cannot be combined with value_map: the map's string keys \
+             would never pass the integer check, so the field would always resolve to its \
+             default"
+                .to_string(),
+        );
+    }
 
     let enum8_data = if matches!(field_type, FieldType::Enum8 { .. }) {
         Some(decode_enum8_data(env, field)?)
@@ -363,7 +415,7 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
 
     let filter_nil = decode_filter_nil(env, field);
     let flat_map_value_type = decode_flat_map_value_type(env, field)?;
-    let filters = decode_filters(env, field);
+    let filters = decode_filters(env, field)?;
 
     Ok(CompiledField {
         name,
@@ -377,6 +429,8 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
         exclude_keys,
         elevate_keys,
         pick,
+        pick_merge,
+        strict_uint,
         enum8_data,
         filter_nil,
         flat_map_value_type,
@@ -395,7 +449,7 @@ fn parse_field_type<'a>(env: Env<'a>, field: Term<'a>, s: &str) -> Result<FieldT
         "bool" | "boolean" => Ok(FieldType::Bool),
         "enum8" => Ok(FieldType::Enum8 { precision: 0 }),
         "datetime64" => {
-            let precision = get_int_key(env, field, "precision").unwrap_or(9) as u8;
+            let precision = decode_precision(env, field)?;
             Ok(FieldType::DateTime64 { precision })
         }
         "json" => Ok(FieldType::Json),
@@ -403,7 +457,7 @@ fn parse_field_type<'a>(env: Env<'a>, field: Term<'a>, s: &str) -> Result<FieldT
         "array_uint64" => Ok(FieldType::ArrayUInt64),
         "array_float64" => Ok(FieldType::ArrayFloat64),
         "array_datetime64" => {
-            let precision = get_int_key(env, field, "precision").unwrap_or(9) as u8;
+            let precision = decode_precision(env, field)?;
             Ok(FieldType::ArrayDateTime64 { precision })
         }
         "array_json" => Ok(FieldType::ArrayJson),
@@ -583,6 +637,38 @@ fn decode_value_map_str<'a>(
     Ok(result)
 }
 
+fn decode_pick_merge<'a>(env: Env<'a>, field: Term<'a>) -> Result<bool, String> {
+    match get_string_key(env, field, "pick_mode")?.as_deref() {
+        None | Some("replace") => Ok(false),
+        Some("merge") => Ok(true),
+        Some(other) => Err(format!(
+            "pick_mode must be \"replace\" or \"merge\", got {:?}",
+            other
+        )),
+    }
+}
+
+fn decode_coercion<'a>(
+    env: Env<'a>,
+    field: Term<'a>,
+    field_type: &FieldType,
+) -> Result<bool, String> {
+    match get_string_key(env, field, "coercion")?.as_deref() {
+        None | Some("lenient") => Ok(false),
+        Some("strict") => match field_type {
+            FieldType::UInt8 | FieldType::UInt32 | FieldType::UInt64 => Ok(true),
+            _ => Err(
+                "coercion \"strict\" is only supported on uint8, uint32, and uint64 fields"
+                    .to_string(),
+            ),
+        },
+        Some(other) => Err(format!(
+            "coercion must be \"lenient\" or \"strict\", got {:?}",
+            other
+        )),
+    }
+}
+
 fn decode_pick<'a>(env: Env<'a>, field: Term<'a>) -> Result<Vec<PickEntry>, String> {
     let pick_term = match get_term_key(env, field, "pick") {
         Some(t) => t,
@@ -656,14 +742,31 @@ fn decode_flat_map_value_type<'a>(
     }
 }
 
-fn decode_filters<'a>(env: Env<'a>, field: Term<'a>) -> Option<StringFilters> {
-    let filters_term = get_term_key(env, field, "filters")?;
+/// Decode a string length filter. A negative value would wrap to a huge
+/// `usize` and silently make the filter unsatisfiable, so it is rejected.
+fn decode_filter_len<'a>(
+    env: Env<'a>,
+    filters: Term<'a>,
+    key: &str,
+) -> Result<Option<usize>, String> {
+    match get_int_key(env, filters, key)? {
+        None => Ok(None),
+        Some(v) => usize::try_from(v)
+            .map(Some)
+            .map_err(|_| format!("filter '{}' must not be negative, got {}", key, v)),
+    }
+}
 
-    let len_eq = get_int_key(env, filters_term, "len_eq").map(|v| v as usize);
-    let len_gt = get_int_key(env, filters_term, "len_gt").map(|v| v as usize);
-    let len_gte = get_int_key(env, filters_term, "len_gte").map(|v| v as usize);
-    let len_lt = get_int_key(env, filters_term, "len_lt").map(|v| v as usize);
-    let len_lte = get_int_key(env, filters_term, "len_lte").map(|v| v as usize);
+fn decode_filters<'a>(env: Env<'a>, field: Term<'a>) -> Result<Option<StringFilters>, String> {
+    let Some(filters_term) = get_term_key(env, field, "filters") else {
+        return Ok(None);
+    };
+
+    let len_eq = decode_filter_len(env, filters_term, "len_eq")?;
+    let len_gt = decode_filter_len(env, filters_term, "len_gt")?;
+    let len_gte = decode_filter_len(env, filters_term, "len_gte")?;
+    let len_lt = decode_filter_len(env, filters_term, "len_lt")?;
+    let len_lte = decode_filter_len(env, filters_term, "len_lte")?;
 
     let char_class = get_string_key(env, filters_term, "char_class")
         .ok()
@@ -683,17 +786,17 @@ fn decode_filters<'a>(env: Env<'a>, field: Term<'a>) -> Option<StringFilters> {
         && len_lte.is_none()
         && char_class.is_none()
     {
-        return None;
+        return Ok(None);
     }
 
-    Some(StringFilters {
+    Ok(Some(StringFilters {
         len_eq,
         len_gt,
         len_gte,
         len_lt,
         len_lte,
         char_class,
-    })
+    }))
 }
 
 // ── Enum8-specific decoders ────────────────────────────────────────────────
@@ -705,6 +808,17 @@ pub fn decode_enum8_data<'a>(env: Env<'a>, field: Term<'a>) -> Result<Enum8Data,
         value_map,
         infer_rules,
     })
+}
+
+/// Decode a `DateTime64` precision. ClickHouse allows 0-9; anything else would
+/// truncate or wrap when narrowed to `u8` and silently produce a column with
+/// the wrong scale.
+fn decode_precision<'a>(env: Env<'a>, field: Term<'a>) -> Result<u8, String> {
+    match get_int_key(env, field, "precision")? {
+        None => Ok(9),
+        Some(v) if (0..=9).contains(&v) => Ok(v as u8),
+        Some(v) => Err(format!("precision must be between 0 and 9, got {}", v)),
+    }
 }
 
 fn decode_enum_values<'a>(_env: Env<'a>, field: Term<'a>) -> Result<HashMap<String, i8>, String> {
@@ -723,8 +837,18 @@ fn decode_enum_values<'a>(_env: Env<'a>, field: Term<'a>) -> Result<HashMap<Stri
         let val = v
             .decode::<i64>()
             .map_err(|_| "enum_values values must be integers".to_string())?;
+
+        // ClickHouse Enum8 is i8-backed, so anything outside that range would
+        // wrap silently and store the wrong value.
+        let val = i8::try_from(val).map_err(|_| {
+            format!(
+                "enum_values values must be between -128 and 127, got {} for '{}'",
+                val, key
+            )
+        })?;
+
         // Pre-normalize to lowercase for case-insensitive lookups at map time
-        result.insert(key.to_lowercase(), val as i8);
+        result.insert(key.to_lowercase(), val);
     }
     Ok(result)
 }
@@ -962,6 +1086,18 @@ pub fn get_string_key<'a>(
     }
 }
 
-pub fn get_int_key<'a>(env: Env<'a>, map: Term<'a>, key: &str) -> Option<i64> {
-    get_term_key(env, map, key).and_then(|t| t.decode::<i64>().ok())
+/// Read an optional integer key. An absent key is `Ok(None)`. A key that is
+/// present but does not decode as `i64` (wrong type, or an integer too large to
+/// fit) is an error, so a misconfigured value can never be mistaken for "not
+/// set" and silently replaced by a default.
+pub fn get_int_key<'a>(env: Env<'a>, map: Term<'a>, key: &str) -> Result<Option<i64>, String> {
+    match get_term_key(env, map, key) {
+        None => Ok(None),
+        Some(t) => t.decode::<i64>().map(Some).map_err(|_| {
+            format!(
+                "'{}' must be an integer that fits in 64 bits, got {:?}",
+                key, t
+            )
+        }),
+    }
 }

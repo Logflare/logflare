@@ -10,7 +10,26 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
   alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Tesla.Middleware.JSON
+
   @subject Logflare.Backends.Adaptor.WebhookAdaptor
+  @sensitive_header_names ~w(
+    api-key
+    apikey
+    authorization
+    cookie
+    proxy-authorization
+    webhook-secret
+    x-access-token
+    x-amz-security-token
+    x-api-key
+    x-api-token
+    x-auth-token
+    x-hub-signature
+    x-hub-signature-256
+    x-secret-key
+    x-signature
+    x-webhook-secret
+  )
 
   setup do
     insert(:plan)
@@ -52,6 +71,28 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       assert_receive ^ref, 2000
     end
 
+    test "logs the batch size when JSON encoding fails", %{source: source} do
+      this = self()
+      ref = make_ref()
+
+      @subject.Client
+      |> expect(:send, fn _req ->
+        send(this, ref)
+        {:error, {Tesla.Middleware.JSON, :encode, :invalid}}
+      end)
+
+      les = for _ <- 1..2, do: build(:log_event, source: source)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, _} = Backends.ingest_logs(les, source)
+          assert_receive ^ref, 2000
+          Process.sleep(100)
+        end)
+
+      assert log =~ "Dropped 2 log events from webhook batch: JSON encoding failed"
+    end
+
     test "uses cache for config fetching", %{source: source} do
       Logflare.Repo.update_all(Backend,
         set: [config_encrypted: %{http: "http1", url: "https://other-email.com"}]
@@ -76,6 +117,141 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
     end
   end
 
+  describe "ndjson ingestion" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      [source: source]
+    end
+
+    test "sends a newline-delimited binary body with the ndjson content-type", %{source: source} do
+      insert(:backend,
+        type: :webhook,
+        sources: [source],
+        config: %{http: "http1", url: "https://example.com", format: "ndjson"}
+      )
+
+      start_supervised!({SourceSup, source})
+
+      this = self()
+      ref = make_ref()
+
+      @subject.Client
+      |> expect(:send, fn req ->
+        send(this, {ref, req[:body], req[:headers]})
+        %Tesla.Env{}
+      end)
+
+      les = for _ <- 1..2, do: build(:log_event, source: source)
+
+      assert {:ok, _} = Backends.ingest_logs(les, source)
+      assert_receive {^ref, body, headers}, 2000
+
+      assert is_binary(body)
+
+      decoded =
+        body
+        |> String.split("\n")
+        |> Enum.map(&Jason.decode!/1)
+
+      assert length(decoded) == 2
+      assert Enum.all?(decoded, &is_map/1)
+      assert headers["content-type"] == "application/x-ndjson"
+    end
+
+    test "skips the request when every event is dropped", %{source: source} do
+      insert(:backend,
+        type: :webhook,
+        sources: [source],
+        config: %{http: "http1", url: "https://example.com", format: "ndjson"}
+      )
+
+      start_supervised!({SourceSup, source})
+
+      @subject.Client
+      |> reject(:send, 1)
+
+      les =
+        for _ <- 1..2 do
+          build(:log_event, source: source, unencodable: <<0xFF>>)
+        end
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, _} = Backends.ingest_logs(les, source)
+          Process.sleep(500)
+        end)
+
+      assert log =~ "Skipped webhook batch: all 2 log events were dropped"
+    end
+
+    test "keeps a user-configured content-type", %{source: source} do
+      insert(:backend,
+        type: :webhook,
+        sources: [source],
+        config: %{
+          http: "http1",
+          url: "https://example.com",
+          format: "ndjson",
+          headers: %{"content-type" => "text/plain"}
+        }
+      )
+
+      start_supervised!({SourceSup, source})
+
+      this = self()
+      ref = make_ref()
+
+      @subject.Client
+      |> expect(:send, fn req ->
+        send(this, {ref, req[:headers]})
+        %Tesla.Env{}
+      end)
+
+      le = build(:log_event, source: source)
+
+      assert {:ok, _} = Backends.ingest_logs([le], source)
+      assert_receive {^ref, headers}, 2000
+
+      assert headers["content-type"] == "text/plain"
+    end
+  end
+
+  describe "transform_config/1" do
+    test "collapses a case-variant content-type header for the ndjson format" do
+      backend =
+        build(:backend,
+          type: :webhook,
+          config: %{
+            url: "https://example.com",
+            format: "ndjson",
+            headers: %{"Content-Type" => "text/plain"}
+          }
+        )
+
+      assert %{headers: headers} = @subject.transform_config(backend)
+      assert headers == %{"content-type" => "text/plain"}
+    end
+
+    test "adds the ndjson content-type when the config has no headers" do
+      backend =
+        build(:backend,
+          type: :webhook,
+          config: %{url: "https://example.com", format: "ndjson"}
+        )
+
+      assert %{headers: headers} = @subject.transform_config(backend)
+      assert headers == %{"content-type" => "application/x-ndjson"}
+    end
+
+    test "leaves a json format config untouched" do
+      config = %{url: "https://example.com", format: "json", headers: %{"X-Api" => "abc"}}
+      backend = build(:backend, type: :webhook, config: config)
+
+      assert @subject.transform_config(backend) == config
+    end
+  end
+
   describe "test_connection/1" do
     setup do
       user = insert(:user)
@@ -97,6 +273,26 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
         assert req[:url] == "https://example.com"
         assert req[:body] == []
         assert req[:headers] == %{"x-key" => "v"}
+        {:ok, %Tesla.Env{status: 200, body: ""}}
+      end)
+
+      assert :ok = @subject.test_connection(backend)
+    end
+
+    test "sends an ndjson probe for an ndjson backend" do
+      user = insert(:user)
+
+      backend =
+        insert(:backend,
+          type: :webhook,
+          user: user,
+          config: %{http: "http1", url: "https://example.com", format: "ndjson"}
+        )
+
+      @subject.Client
+      |> expect(:send, fn req ->
+        assert req[:body] == ""
+        assert req[:headers]["content-type"] == "application/x-ndjson"
         {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
@@ -403,22 +599,92 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
              })
   end
 
-  describe "redact_config/1" do
-    test "redacts Authorization header" do
+  test "cast_and_validate_config/1 for format" do
+    assert %Ecto.Changeset{
+             valid?: true,
+             changes: %{
+               format: "json"
+             }
+           } = Adaptor.cast_and_validate_config(@subject, %{url: "http://example.com"})
+
+    assert %Ecto.Changeset{
+             valid?: true,
+             changes: %{
+               format: "ndjson"
+             }
+           } =
+             Adaptor.cast_and_validate_config(@subject, %{
+               url: "http://example.com",
+               format: "ndjson"
+             })
+
+    assert %Ecto.Changeset{valid?: false} =
+             Adaptor.cast_and_validate_config(@subject, %{
+               url: "http://example.com",
+               format: "xml"
+             })
+  end
+
+  describe "sanitize_config_for_display/1" do
+    test "masks headers and strips url credentials" do
       config = %{
-        headers: %{
-          "Authorization" => "Bearer secret-token-123",
-          "Content-Type" => "application/json"
-        }
+        url: "https://user:pass@example.com/hook",
+        headers: %{"authorization" => "Bearer secret"},
+        http: "http2",
+        gzip: true
       }
 
-      assert %{headers: %{"Authorization" => "REDACTED", "Content-Type" => "application/json"}} =
+      assert %{
+               url: "https://REDACTED@example.com/hook",
+               headers: "**********",
+               http: "http2",
+               gzip: true
+             } == @subject.sanitize_config_for_display(config)
+    end
+  end
+
+  describe "redact_config/1" do
+    test "redacts every maintained sensitive header while preserving other headers" do
+      sensitive_headers = Map.new(@sensitive_header_names, &{&1, "leaked-secret"})
+
+      config = %{
+        headers:
+          Map.merge(sensitive_headers, %{
+            "Content-Type" => "application/json",
+            "X-Custom" => "visible-value"
+          })
+      }
+
+      assert %{headers: redacted_headers} = @subject.redact_config(config)
+
+      assert Map.take(redacted_headers, @sensitive_header_names) ==
+               Map.new(@sensitive_header_names, &{&1, "REDACTED"})
+
+      assert redacted_headers["Content-Type"] == "application/json"
+      assert redacted_headers["X-Custom"] == "visible-value"
+    end
+
+    test "redacts sensitive headers case-insensitively" do
+      config = %{headers: %{"Authorization" => "Basic dXNlcjpwYXNz", "X-API-KEY" => "secret"}}
+
+      assert %{headers: %{"Authorization" => "REDACTED", "X-API-KEY" => "REDACTED"}} =
                @subject.redact_config(config)
     end
 
-    test "redacts authorization header case-insensitive" do
-      config = %{headers: %{"authorization" => "Basic dXNlcjpwYXNz"}}
-      assert %{headers: %{"authorization" => "REDACTED"}} = @subject.redact_config(config)
+    test "redacts URL userinfo" do
+      config = %{url: "https://user:leaked-secret@example.com/hooks"}
+
+      assert %{url: "https://REDACTED@example.com/hooks"} = @subject.redact_config(config)
+    end
+
+    test "preserves a URL without userinfo" do
+      config = %{url: "https://example.com/hooks"}
+      assert %{url: "https://example.com/hooks", headers: %{}} = @subject.redact_config(config)
+    end
+
+    test "normalizes nil headers when serializing legacy config" do
+      config = %{url: "https://example.com/hooks", headers: nil}
+      assert %{url: "https://example.com/hooks", headers: %{}} = @subject.redact_config(config)
     end
   end
 
@@ -518,6 +784,26 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       changeset = @subject.cast_config(params, %{url: "https://example.com", headers: %{}})
 
       assert Ecto.Changeset.get_field(changeset, :headers) == %{}
+    end
+  end
+
+  describe "cast_config/2 URL redaction round-trip" do
+    test "restores stored URL credentials when the redacted URL is submitted unchanged" do
+      existing = %{url: "https://user:leaked-secret@example.com/hooks"}
+      params = %{url: "https://REDACTED@example.com/hooks"}
+
+      changeset = @subject.cast_config(params, existing)
+
+      assert Ecto.Changeset.get_field(changeset, :url) == existing.url
+    end
+
+    test "does not copy stored credentials when the destination changes" do
+      existing = %{url: "https://user:leaked-secret@example.com/hooks"}
+      params = %{url: "https://REDACTED@other.example.com/hooks"}
+
+      changeset = @subject.cast_config(params, existing)
+
+      assert Ecto.Changeset.get_field(changeset, :url) == params.url
     end
   end
 

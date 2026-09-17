@@ -40,6 +40,8 @@ defmodule LogflareWeb.Router do
            """
            \
            default-src 'self';\
+           base-uri 'self';\
+           frame-ancestors 'self';\
            connect-src 'self' #{if Application.compile_env(:logflare, :env) == :prod, do: "wss://logflare.app", else: "ws://localhost:4000"} https://api.github.com;\
            script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://buttons.github.io https://platform.twitter.com https://cdnjs.cloudflare.com https://js.stripe.com;\
            worker-src 'self' blob:;\
@@ -147,6 +149,14 @@ defmodule LogflareWeb.Router do
     plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(private))
   end
 
+  pipeline :ingest_source_discovery_auth do
+    plug(Plug.RequestId)
+    plug(OpenApiSpex.Plug.PutApiSpec, module: LogflareWeb.ApiSpec)
+    plug(LogflareWeb.Plugs.VerifyApiAccess, require_token: true)
+    plug(:accepts, ["json", "csv"])
+    plug(LogflareWeb.Plugs.SetHeaders)
+  end
+
   pipeline :require_auth do
     plug(LogflareWeb.Plugs.RequireAuth)
   end
@@ -161,7 +171,10 @@ defmodule LogflareWeb.Router do
 
   pipeline :oauth_public do
     plug(:accepts, ["json"])
-    plug(:put_secure_browser_headers, %{"content-security-policy" => "default-src 'self'"})
+
+    plug(:put_secure_browser_headers, %{
+      "content-security-policy" => "default-src 'self'; base-uri 'self'; frame-ancestors 'self';"
+    })
   end
 
   pipeline :check_admin do
@@ -442,6 +455,11 @@ defmodule LogflareWeb.Router do
     get("/", HealthCheckController, :check)
   end
 
+  scope "/ready", LogflareWeb do
+    pipe_through(:api)
+    get("/", HealthCheckController, :ready)
+  end
+
   # Account management API.
   scope "/api", LogflareWeb do
     pipe_through([:api, :require_mgmt_api_auth])
@@ -499,6 +517,12 @@ defmodule LogflareWeb.Router do
     delete "/key-values", Api.KeyValueController, :delete
   end
 
+  scope "/api", LogflareWeb do
+    pipe_through([:ingest_source_discovery_auth])
+
+    get("/ingest-sources", Api.IngestSourceController, :index)
+  end
+
   scope "/api/partner", LogflareWeb do
     pipe_through([:api, :partner_api])
 
@@ -508,7 +532,6 @@ defmodule LogflareWeb.Router do
     put("/users/:user_token/downgrade", Api.Partner.UserController, :downgrade)
 
     get("/users/:user_token", Api.Partner.UserController, :get_user)
-    get("/users/:user_token/usage", Api.Partner.UserController, :get_user_usage)
 
     delete("/users/:user_token", Api.Partner.UserController, :delete_user)
   end

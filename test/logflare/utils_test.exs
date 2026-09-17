@@ -338,7 +338,7 @@ defmodule Logflare.UtilsSyncTest do
 
           ref = Process.monitor(pid)
           assert_receive {:DOWN, ^ref, :process, ^pid, _}, 1000
-          Process.sleep(500)
+          Logger.flush()
         end)
 
       refute log =~ "secret_bearer_token_789"
@@ -361,7 +361,7 @@ defmodule Logflare.UtilsSyncTest do
 
           ref = Process.monitor(pid)
           assert_receive {:DOWN, ^ref, :process, ^pid, _}, 1000
-          Process.sleep(500)
+          Logger.flush()
         end)
 
       assert log =~ "UndefinedError"

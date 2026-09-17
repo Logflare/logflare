@@ -11,6 +11,7 @@ rel/
 test/
 _build/
 .elixir_ls/
+gha-creds-*.json
 tmp/
 deps/
 

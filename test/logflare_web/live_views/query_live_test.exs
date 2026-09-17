@@ -121,18 +121,16 @@ defmodule LogflareWeb.QueryLiveTest do
     end
 
     test "shows backend adaptor error", %{conn: conn, user: user} do
-      source = insert(:source, user: user)
+      source = insert(:source, user: user, name: "query_live_backend_error")
 
       {source, backend} = Logflare.DataCase.setup_clickhouse_test(user: user, source: source)
 
       start_supervised!({ClickHouseAdaptor, backend})
 
-      {:ok, view, _html} = live_with_redirect(conn, "/query?backend_id=#{backend.id}")
+      query = ~s(select non_existent from "#{source.name}")
 
-      view
-      |> render_hook("parse-query", %{
-        value: ~s(select non_existent from "#{source.name}")
-      })
+      {:ok, view, _html} =
+        live_with_redirect(conn, ~p"/query?#{%{backend_id: backend.id, q: query}}")
 
       html =
         view

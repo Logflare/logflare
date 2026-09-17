@@ -4,6 +4,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   for DataDog logs ingestion endpoint.
   """
 
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Backend
   alias Logflare.Sources.Source
@@ -85,6 +86,11 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   @impl Logflare.Backends.Adaptor
   def redact_config(config) do
     Map.put(config, :api_key, "REDACTED")
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def sanitize_config_for_display(config) do
+    Adaptor.mask_config_values(config, except: [:region])
   end
 
   @impl Logflare.Backends.Adaptor

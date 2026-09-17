@@ -5,10 +5,11 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
 
   alias Logflare.Backends
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.Spool.DurableBuffer.Supervisor, as: SpoolDurableBufferSup
+  alias Logflare.Backends.Spool.MemoryMonitor
 
   @max_points 1_800
   @tick_ms 1_000
-  @pipeline Logflare.Backends.Spool.ProducerPipeline
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -16,6 +17,8 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
     write_total_atomic = :atomics.new(1, [])
     read_rate_atomic = :atomics.new(1, [])
     read_total_atomic = :atomics.new(1, [])
+    parse_rate_atomic = :atomics.new(1, [])
+    parse_total_atomic = :atomics.new(1, [])
     ch_rate_atomic = :atomics.new(1, [])
     ch_total_atomic = :atomics.new(1, [])
     bq_rate_atomic = :atomics.new(1, [])
@@ -61,6 +64,17 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
         {read_rate_atomic, read_total_atomic}
       )
 
+      # Events parsed by ConsumerPipeline.handle_message/3.
+      :telemetry.attach(
+        "dev-dashboard-parse-#{pid}",
+        [:logflare, :backends, :spool, :consumer, :parse],
+        fn _event, %{event_count: count}, _meta, {rate_ref, total_ref} ->
+          :atomics.add(rate_ref, 1, count)
+          :atomics.add(total_ref, 1, count)
+        end,
+        {parse_rate_atomic, parse_total_atomic}
+      )
+
       Process.send_after(self(), :tick, @tick_ms)
     end
 
@@ -82,6 +96,8 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
        write_total_atomic: write_total_atomic,
        read_rate_atomic: read_rate_atomic,
        read_total_atomic: read_total_atomic,
+       parse_rate_atomic: parse_rate_atomic,
+       parse_total_atomic: parse_total_atomic,
        ch_rate_atomic: ch_rate_atomic,
        ch_total_atomic: ch_total_atomic,
        bq_rate_atomic: bq_rate_atomic,
@@ -99,6 +115,7 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
     :telemetry.detach("dev-dashboard-ch-#{pid}")
     :telemetry.detach("dev-dashboard-bq-#{pid}")
     :telemetry.detach("dev-dashboard-read-#{pid}")
+    :telemetry.detach("dev-dashboard-parse-#{pid}")
     socket
   end
 
@@ -124,10 +141,13 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
         socket.assigns.write_rate_atomic,
         socket.assigns.write_total_atomic,
         socket.assigns.read_rate_atomic,
-        socket.assigns.read_total_atomic
+        socket.assigns.read_total_atomic,
+        socket.assigns.parse_rate_atomic,
+        socket.assigns.parse_total_atomic
       )
       |> Map.merge(ch_metrics)
       |> Map.merge(cpu_metrics)
+      |> Map.merge(gather_throttle_metrics())
 
     label = Time.utc_now() |> Time.truncate(:second) |> Time.to_string()
 
@@ -154,12 +174,12 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
 
     result =
       try do
-        producers = Broadway.producer_names(@pipeline)
+        partitions = SpoolDurableBufferSup.partitions()
 
         if paused do
-          Enum.each(producers, &:sys.resume/1)
+          Enum.each(partitions, &:sys.resume/1)
         else
-          Enum.each(producers, &:sys.suspend/1)
+          Enum.each(partitions, &:sys.suspend/1)
         end
 
         {:ok, !paused}
@@ -203,14 +223,21 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
         </button>
 
         <div style="color: #6c7086; font-size: 12px; align-self: center; font-family: monospace;">
-          Pausing the producer suspends spool writes — ETS queue will grow.
+          Pausing the producer suspends spool commits — pending in-memory batches will grow.
         </div>
       </div>
     </div>
     """
   end
 
-  defp gather_metrics(write_rate_atomic, write_total_atomic, read_rate_atomic, read_total_atomic) do
+  defp gather_metrics(
+         write_rate_atomic,
+         write_total_atomic,
+         read_rate_atomic,
+         read_total_atomic,
+         parse_rate_atomic,
+         parse_total_atomic
+       ) do
     spool_key = {:spool_producer, nil}
     ets_pending = IngestEventQueue.total_by_status(spool_key, :pending)
     ets_processing = IngestEventQueue.total_by_status(spool_key, :processing)
@@ -225,6 +252,8 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
     written_total = :atomics.get(write_total_atomic, 1)
     read_rate = :atomics.exchange(read_rate_atomic, 1, 0)
     read_total = :atomics.get(read_total_atomic, 1)
+    parse_rate = :atomics.exchange(parse_rate_atomic, 1, 0)
+    parse_total = :atomics.get(parse_total_atomic, 1)
 
     %{
       ets_pending: ets_pending,
@@ -235,6 +264,8 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
       written_total: written_total,
       read_rate: read_rate,
       read_total: read_total,
+      parse_rate: parse_rate,
+      parse_total: parse_total,
       ets_mb: Float.round(ets_bytes / 1_048_576, 1),
       proc_mb: Float.round(proc_bytes / 1_048_576, 1),
       total_mb: Float.round(total_bytes / 1_048_576, 1)
@@ -335,6 +366,15 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
     {%{os_cpu: os_cpu, scheduler_pct: scheduler_pct}, new_wall_time}
   end
 
+  defp gather_throttle_metrics do
+    stats = MemoryMonitor.stats()
+
+    %{
+      throttled: stats.throttled?,
+      consumer_throttled: stats.consumer_throttled?
+    }
+  end
+
   defp sample_scheduler_wall_time do
     :erlang.system_flag(:scheduler_wall_time, true)
     :erlang.statistics(:scheduler_wall_time) |> Enum.sort()
@@ -382,6 +422,8 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
       written_total: 0,
       read_rate: 0,
       read_total: 0,
+      parse_rate: 0,
+      parse_total: 0,
       ets_mb: 0.0,
       proc_mb: 0.0,
       total_mb: 0.0,
@@ -396,7 +438,9 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
       gc_long_rate: 0,
       gc_reclaimed_mb: 0.0,
       os_cpu: 0.0,
-      scheduler_pct: 0.0
+      scheduler_pct: 0.0,
+      throttled: false,
+      consumer_throttled: false
     }
   end
 end

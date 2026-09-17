@@ -1,6 +1,7 @@
 defmodule Logflare.Backends.ConsolidatedSupTest do
   use Logflare.DataCase, async: false
 
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.ConsolidatedSup
   alias Logflare.Backends.IngestEventQueue
 
@@ -92,19 +93,24 @@ defmodule Logflare.Backends.ConsolidatedSupTest do
       [source: source, backend: backend]
     end
 
-    test "pipeline processes events from consolidated queue", %{
+    test "pipeline processes and inserts events from the consolidated queue", %{
       source: source,
       backend: backend
     } do
+      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
       assert {:ok, _pid} = ConsolidatedSup.start_pipeline(backend)
 
       events = for _ <- 1..5, do: build(:log_event, source: source)
       IngestEventQueue.add_to_table({:consolidated, backend.id}, events)
 
-      TestUtils.retry_assert(fn ->
-        pending_counts = IngestEventQueue.list_pending_counts({:consolidated, backend.id})
-        total_pending = Enum.reduce(pending_counts, 0, fn {_key, count}, acc -> acc + count end)
-        assert total_pending < 5
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+
+      TestUtils.retry_assert([duration: 10_000], fn ->
+        assert {:ok, {[%{"count" => 5}], _bytes}} =
+                 ClickHouseAdaptor.execute_ch_query(
+                   backend,
+                   "SELECT count(*) AS count FROM #{table_name}"
+                 )
       end)
     end
   end

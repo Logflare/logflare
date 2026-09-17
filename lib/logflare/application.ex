@@ -7,17 +7,23 @@ defmodule Logflare.Application do
   alias Logflare.Alerting.AlertSchedulerWorker
   alias Logflare.Networking
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Spool.Health, as: SpoolHealth
   alias Logflare.Backends.UserMonitoring
   alias Logflare.ContextCache
   alias Logflare.Logs
+  alias Logflare.NaturalLanguageLql.AnthropicClient
   alias Logflare.SingleTenant
   alias Logflare.SystemMetricsSup
   alias Logflare.Sources.Counters
   alias Logflare.Sources.RateCounters
+  alias Logflare.Sources.Source.BigQuery.SchemaUpdateSampler
   alias Logflare.PubSubRates
   alias Logflare.Utils
 
   def start(_type, _args) do
+    Logflare.Readiness.initialize()
+    SpoolHealth.initialize()
+
     # set inspect function to redact sensitive information
     prev = Inspect.Opts.default_inspect_fun()
     Inspect.Opts.default_inspect_fun(&Utils.inspect_fun(prev, &1, &2))
@@ -26,6 +32,7 @@ defmodule Logflare.Application do
     start_user_log_interceptor()
     add_logger_backends()
     warn_if_stripe_webhook_secret_unset()
+    warn_if_anthropic_api_key_unset()
 
     env = Application.get_env(:logflare, :env)
     # TODO: Set node status in GCP when sigterm is received
@@ -48,7 +55,11 @@ defmodule Logflare.Application do
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Logflare.Supervisor]
-    Supervisor.start_link(children, opts)
+
+    with {:ok, supervisor} <- Supervisor.start_link(children, opts) do
+      Logflare.Readiness.mark_ready()
+      {:ok, supervisor}
+    end
   end
 
   defp get_children(:test) do
@@ -60,6 +71,7 @@ defmodule Logflare.Application do
         Logflare.LogEvent.DayBucket,
         Counters,
         RateCounters,
+        SchemaUpdateSampler,
         Logs.LogEvents.Cache,
         {Phoenix.PubSub, name: Logflare.PubSub},
         PubSubRates,
@@ -92,7 +104,7 @@ defmodule Logflare.Application do
         {PartitionSupervisor, child_spec: Task.Supervisor, name: Logflare.TaskSupervisors},
         {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
         Logflare.Repo,
-        {Logflare.Repo.Replicas, hostnames: read_replicas},
+        {Logflare.Repo.Replicas, entries: read_replicas},
         Logflare.Vault,
         {Oban, Application.fetch_env!(:logflare, Oban)},
         {Phoenix.PubSub, name: Logflare.PubSub, pool_size: pool_size},
@@ -104,6 +116,7 @@ defmodule Logflare.Application do
         # init Counters before Supervisof as Supervisor calls Counters through table create
         Counters,
         RateCounters,
+        SchemaUpdateSampler,
         # Backends needs to be before Source.Supervisor
         Logflare.Backends,
         Logflare.Sources.Source.Supervisor,
@@ -135,6 +148,12 @@ defmodule Logflare.Application do
       Logger.warning(
         "STRIPE_WEBHOOK_SECRET is not set — all Stripe webhook requests will be rejected"
       )
+    end
+  end
+
+  defp warn_if_anthropic_api_key_unset do
+    unless AnthropicClient.configured?() do
+      Logger.warning("ANTHROPIC_API_KEY is not set — AI-assisted search will be unavailable")
     end
   end
 
@@ -197,6 +216,11 @@ defmodule Logflare.Application do
       end
 
     goth ++ config_cat
+  end
+
+  def prep_stop(state) do
+    Logflare.Readiness.begin_draining()
+    state
   end
 
   def config_change(changed, _new, removed) do

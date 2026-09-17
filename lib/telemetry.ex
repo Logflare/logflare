@@ -3,7 +3,9 @@ defmodule Logflare.Telemetry do
 
   import Telemetry.Metrics
   import Logflare.Utils, only: [ets_info: 1]
-  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1]
+  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1, is_pos_integer: 1]
+
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
 
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
@@ -27,6 +29,58 @@ defmodule Logflare.Telemetry do
   }
 
   @metrics_interval 30_000
+  @max_phash2_range 4_294_967_296
+
+  @ch_read_pool_time_buckets_ms [
+    5,
+    10,
+    25,
+    50,
+    100,
+    250,
+    500,
+    1_000,
+    2_500,
+    5_000,
+    10_000,
+    30_000,
+    60_000
+  ]
+
+  @ch_read_pool_wait_buckets_us [
+    50,
+    100,
+    250,
+    500,
+    1_000,
+    5_000,
+    25_000,
+    100_000,
+    500_000,
+    1_000_000,
+    2_500_000,
+    5_000_000,
+    10_000_000,
+    30_000_000,
+    60_000_000
+  ]
+
+  @ch_read_pool_idle_buckets_ms [
+    100,
+    500,
+    1_000,
+    2_500,
+    5_000,
+    7_500,
+    9_000,
+    10_000,
+    11_000,
+    12_500,
+    15_000,
+    30_000,
+    60_000,
+    300_000
+  ]
 
   @impl true
   def init(_arg) do
@@ -85,6 +139,29 @@ defmodule Logflare.Telemetry do
   end
 
   defp maybe_put_commit(service, _commit_sha), do: service
+
+  defp sample_broadway_processor_message_duration?(
+         %{telemetry_span_context: context},
+         denominator
+       ) do
+    :erlang.phash2(context, denominator) == 0
+  end
+
+  defp sample_broadway_processor_message_duration?(_metadata, _denominator), do: false
+
+  defp broadway_processor_message_sample_denominator! do
+    case Application.fetch_env!(:logflare, :broadway_message_sample_denominator) do
+      :disabled ->
+        :disabled
+
+      denominator when is_pos_integer(denominator) and denominator <= @max_phash2_range ->
+        denominator
+
+      value ->
+        raise ArgumentError,
+              "LOGFLARE_BROADWAY_MESSAGE_SAMPLE_DENOMINATOR must be 'disabled' or an integer between 1 and #{@max_phash2_range}, got: #{inspect(value)}"
+    end
+  end
 
   # Public (not private) so the metric definitions can be validated directly
   # in tests — init/1 only calls this when OpenTelemetry is enabled, which
@@ -170,12 +247,34 @@ defmodule Logflare.Telemetry do
       last_value("logflare.system.scheduler.utilization", tags: [:name, :type])
     ]
 
-    broadway_metrics = [
-      distribution("broadway.batcher.stop.duration", unit: {:native, :millisecond}),
-      distribution("broadway.batch_processor.stop.duration", unit: {:native, :millisecond}),
-      distribution("broadway.processor.message.stop.duration", unit: {:native, :millisecond}),
-      distribution("broadway.processor.stop.duration", unit: {:native, :millisecond})
-    ]
+    broadway_processor_message_metrics =
+      case broadway_processor_message_sample_denominator!() do
+        :disabled ->
+          []
+
+        1 ->
+          [
+            distribution("broadway.processor.message.stop.duration",
+              unit: {:native, :millisecond}
+            )
+          ]
+
+        denominator ->
+          [
+            distribution("broadway.processor.message.stop.duration",
+              unit: {:native, :millisecond},
+              keep: &sample_broadway_processor_message_duration?(&1, denominator)
+            )
+          ]
+      end
+
+    broadway_metrics =
+      [
+        distribution("broadway.batcher.stop.duration", unit: {:native, :millisecond}),
+        distribution("broadway.batch_processor.stop.duration", unit: {:native, :millisecond})
+      ] ++
+        broadway_processor_message_metrics ++
+        [distribution("broadway.processor.stop.duration", unit: {:native, :millisecond})]
 
     application_metrics = [
       distribution("logflare.goth.fetch.stop.duration",
@@ -221,6 +320,27 @@ defmodule Logflare.Telemetry do
         keep: &clickhouse_batch?/1,
         description: "Sum of ClickHouse batch sizes by backend, event type, and trigger"
       ),
+      distribution("logflare.backends.spool.pipeline.handle_batch.batch_size",
+        event_name: [:logflare, :backends, :pipeline, :handle_batch],
+        measurement: :batch_size,
+        tags: [:backend_type, :batch_trigger],
+        keep: &spool_batch?/1,
+        reporter_options: batch_size_reporter_opts(),
+        description:
+          "Distribution of spool producer/consumer batch sizes by backend type and trigger"
+      ),
+      sum("logflare.backends.spool.pipeline.handle_batch.batch_size",
+        event_name: [:logflare, :backends, :pipeline, :handle_batch],
+        measurement: :batch_size,
+        tags: [:backend_type, :batch_trigger],
+        keep: &spool_batch?/1,
+        description: "Sum of spool producer/consumer batch sizes by backend type and trigger"
+      ),
+      distribution("logflare.backends.spool.queue.poll_backoff.backoff_ms",
+        reporter_options: [buckets: [100, 200, 400, 800, 1_000]],
+        description:
+          "Distribution of the spool consumer queue producer's empty-queue poll backoff (ms)"
+      ),
       counter("logflare.cache_buster.to_bust.count", tags: []),
       sum("logflare.logs.ingest_logs.drop_lql",
         event_name: [:logflare, :logs, :ingest_logs, :drop_lql],
@@ -234,6 +354,84 @@ defmodule Logflare.Telemetry do
         keep: &backend_scoped_drop?/1,
         description:
           "Sum of events dropped by a backend (timestamp older than its configured max event age)"
+      ),
+      distribution("logflare.clickhouse.read_pool.checkout.pool_time",
+        event_name: [:logflare, :clickhouse, :read_pool, :checkout],
+        measurement: :pool_time,
+        unit: {:native, :microsecond},
+        tags: [:backend_id, :read_cluster],
+        reporter_options: [buckets: @ch_read_pool_wait_buckets_us],
+        description: "Time spent waiting to check out a ClickHouse read pool connection (µs)"
+      ),
+      distribution("logflare.clickhouse.read_pool.checkout.idle_time",
+        event_name: [:logflare, :clickhouse, :read_pool, :checkout],
+        measurement: :idle_time,
+        unit: {:native, :millisecond},
+        tags: [:backend_id, :read_cluster],
+        reporter_options: [buckets: @ch_read_pool_idle_buckets_ms],
+        description: "Time a ClickHouse read pool connection sat idle before being checked out"
+      ),
+      distribution("logflare.clickhouse.read_pool.connection_time",
+        event_name: [:logflare, :clickhouse, :read_pool, :checkout],
+        measurement: :connection_time,
+        unit: {:native, :millisecond},
+        tags: [:backend_id, :read_cluster],
+        reporter_options: [buckets: @ch_read_pool_time_buckets_ms],
+        description:
+          "Time spent using a ClickHouse read pool connection for a query (query execution latency, not pool wait)"
+      ),
+      sum("logflare.clickhouse.read_pool.query_error",
+        event_name: [:logflare, :clickhouse, :read_pool, :query_error],
+        measurement: :count,
+        tags: [:backend_id, :read_cluster, :error_kind],
+        description:
+          "ClickHouse read queries that resolved to an error, excluding invalid-query (user SQL) errors, counted once per query after any failover retry and tagged with the read cluster that produced the final error. Checkout failures are additionally counted per attempt in `checkout_error`; `connection_error` here covers both failed checkouts and connections lost mid-query"
+      ),
+      sum("logflare.clickhouse.read_pool.failover",
+        event_name: [:logflare, :clickhouse, :read_pool, :failover],
+        measurement: :count,
+        tags: [:backend_id, :read_cluster],
+        description:
+          "Read queries that failed over to the default read cluster, tagged with the unhealthy cluster failed over from"
+      ),
+      sum("logflare.clickhouse.read_pool.connected.count",
+        event_name: [:db_connection, :connected],
+        measurement: :count,
+        tags: [:backend_id, :read_cluster],
+        tag_values: &ch_read_pool_connection_tags/1,
+        keep: &ch_read_pool_connection_event?/1,
+        description:
+          "ClickHouse read pool connections established, per backend and read cluster. Only pools started after deploy are counted"
+      ),
+      sum("logflare.clickhouse.read_pool.disconnected.count",
+        event_name: [:db_connection, :disconnected],
+        measurement: :count,
+        tags: [:backend_id, :read_cluster],
+        tag_values: &ch_read_pool_connection_tags/1,
+        keep: &ch_read_pool_connection_event?/1,
+        description:
+          "ClickHouse read pool connections lost or recycled, per backend and read cluster. Paired with `connected`, this is the pool's connection churn rate"
+      ),
+      sum("logflare.clickhouse.read_pool.checkout_error",
+        event_name: [:logflare, :clickhouse, :read_pool, :checkout_error],
+        measurement: :count,
+        tags: [:backend_id, :read_cluster, :reason],
+        description:
+          "ClickHouse read pool checkouts that failed before a connection was obtained, counted once per checkout attempt (including attempts masked by a successful failover) and tagged with the read cluster that shed it. `reason` mirrors `DBConnection.ConnectionError.reason`: `:queue_timeout` when the request was dropped from a saturated pool's queue, `:error` for other checkout failures such as the deadline expiring while queued. A `queue_timeout` here also surfaces in `query_error` as `pool_exhausted`; do not sum the two series"
+      ),
+      sum("logflare.clickhouse.insert.result.count",
+        event_name: [:logflare, :clickhouse, :insert, :result],
+        measurement: :count,
+        tags: [:backend_id, :event_type, :async, :result, :error_class],
+        description:
+          "ClickHouse inserts by outcome, counted once per batch after any HTTP retry. `result` provides the insert error rate numerator and denominator, and `error_class` is `:none` on success"
+      ),
+      counter("logflare.clickhouse.circuit_breaker.open.count",
+        event_name: [:logflare, :clickhouse, :circuit_breaker, :open],
+        measurement: :failures,
+        tags: [:backend_id, :reason],
+        description:
+          "Times a backend's ClickHouse insert circuit breaker opened, tagged `:threshold` when the failure count in the window was reached or `:forced` when opened immediately by a TOO_MANY_PARTS response"
       ),
       sum("logflare.logs.ingest_logs.drop_future",
         event_name: [:logflare, :logs, :ingest_logs, :drop_future],
@@ -302,28 +500,25 @@ defmodule Logflare.Telemetry do
         description:
           "Spool consumer backpressure state: 1 if any recently-seen source's destination ingest buffer is backed up, 0 otherwise"
       ),
-      sum("logflare.backends.spool.storage.put.count",
-        tags: [:format, :result],
-        description: "Spool storage writes (S3/GCS put) count by format/result"
-      ),
-      sum("logflare.backends.spool.storage.put.bytes",
-        tags: [:format, :result],
-        description: "Spool storage writes: bytes by format/result"
-      ),
-      sum("logflare.backends.spool.queue.publish.count",
-        tags: [:result],
-        description: "Spool queue publish (SQS send / PubSub publish) count"
-      ),
-      sum("logflare.backends.spool.producer.batch.count",
-        tags: [:result, :stage],
+      last_value("logflare.backends.spool.write_health.healthy",
+        tags: [:scope],
         description:
-          "Spool producer batches by end-to-end outcome (:ok, or :error tagged with which stage — :upload or :notify — failed)"
+          "Spool health by scope (:disk local WAL fsync, :upload Cloud backend commit) — 1=healthy, 0=unhealthy (spool routing disabled on this node if it's the active buffer mode's gating scope)"
+      ),
+      last_value("logflare.backends.spool.write_health.failure_count",
+        tags: [:scope],
+        description: "Spool consecutive write/roll/commit failure count, by scope"
       ),
       sum("logflare.backends.spool.queue.receive.count",
         tags: [:result],
         description: "Spool queue receive (SQS/PubSub) message count"
       ),
-      sum("logflare.backends.spool.storage.get.count",
+      distribution("logflare.backends.spool.queue.receive.duration",
+        tags: [:result],
+        unit: {:microsecond, :millisecond},
+        description: "Time spent in the actual queue_mod.receive network call, by result"
+      ),
+      counter("logflare.backends.spool.storage.get.count",
         tags: [:result],
         description: "Spool storage downloads (S3/GCS get) count by result"
       ),
@@ -331,16 +526,53 @@ defmodule Logflare.Telemetry do
         tags: [:result],
         description: "Spool storage downloads: bytes by result"
       ),
-      sum("logflare.backends.spool.storage.get.line_count",
+      sum("logflare.backends.spool.storage.get.segment_count",
         tags: [:result],
-        description: "Spool events parsed per downloaded file"
+        description: "Spool segments split per downloaded file"
       ),
-      sum("logflare.backends.spool.queue.ack.count",
+      distribution("logflare.backends.spool.storage.get.duration",
+        tags: [:result],
+        unit: {:microsecond, :millisecond},
+        description: "Time spent in the actual storage_mod.get network call, by result"
+      ),
+      distribution("logflare.backends.spool.consumer.decompress.duration",
+        unit: {:microsecond, :millisecond},
+        description: "Time spent decompressing one downloaded spool file"
+      ),
+      distribution("logflare.backends.spool.consumer.parse.duration",
+        unit: {:microsecond, :millisecond},
+        description: "Time spent parsing one downloaded spool file's segments into events"
+      ),
+      sum("logflare.backends.spool.consumer.parse.segment_count",
+        description: "Segments parsed per downloaded spool file"
+      ),
+      sum("logflare.backends.spool.consumer.parse.event_count",
+        description: "Events parsed per downloaded spool file"
+      ),
+      distribution("logflare.backends.spool.consumer.prefetch.duration",
+        tags: [:result, :started_while_buffered],
+        unit: {:microsecond, :millisecond},
+        description: "Time spent in the background prefetch Task, by result"
+      ),
+      counter("logflare.backends.spool.consumer.prefetch.count",
+        tags: [:result, :started_while_buffered],
+        description: "Prefetch Task invocations, by result"
+      ),
+      distribution("logflare.backends.spool.consumer.poll.duration",
+        tags: [:idle],
+        unit: {:microsecond, :millisecond},
+        description: "Time spent in the producer's own :poll handling"
+      ),
+      counter("logflare.backends.spool.consumer.poll.count",
+        tags: [:idle],
+        description: "Spool consumer :poll invocations, by whether it was idle"
+      ),
+      counter("logflare.backends.spool.queue.ack.count",
         tags: [:reason, :result],
         description:
           "Spool queue ack (delete) count by reason, and whether the underlying SQS/PubSub call itself succeeded"
       ),
-      sum("logflare.backends.spool.queue.nack.count",
+      counter("logflare.backends.spool.queue.nack.count",
         tags: [:reason, :result],
         description:
           "Spool queue nack (requeue) count by reason, and whether the underlying SQS/PubSub call itself succeeded"
@@ -382,7 +614,7 @@ defmodule Logflare.Telemetry do
       sum("logflare.ingest_event_queue.missing_ids.count",
         event_name: [:logflare, :ingest_event_queue, :missing_ids],
         tags: [:backend_type],
-        description: "Count of event IDs not found in ETS during handle_batch fetch"
+        description: "Count of event IDs not found during pipeline generation-store resolution"
       ),
       sum("logflare.ingest_event_queue.not_initialized.dropped.count",
         event_name: [:logflare, :ingest_event_queue, :not_initialized, :dropped],
@@ -411,6 +643,27 @@ defmodule Logflare.Telemetry do
         measurement: :count,
         description:
           "Count of retriable events whose generation-store row was already gone by requeue lookup time"
+      ),
+      sum("logflare.ingest_event_queue.retry_dropped.count",
+        event_name: [:logflare, :ingest_event_queue, :retry_dropped],
+        measurement: :count,
+        tags: [:backend_id, :reason],
+        description:
+          "Count of ClickHouse events dropped outright after an insert failure, tagged `:retries_exhausted` when the payload ran out of retries or `:circuit_breaker_open` when the breaker shed the retry. This is realized ingest data loss"
+      ),
+      sum("logflare.ingest_event_queue.requeue_queue_unavailable.count",
+        event_name: [:logflare, :ingest_event_queue, :requeue_queue_unavailable],
+        measurement: :count,
+        tags: [:backend_id],
+        description:
+          "Count of retriable ClickHouse events dropped because no retry queue remained available to requeue them into"
+      ),
+      sum("logflare.ingest_event_queue.requeue_deduplicated.count",
+        event_name: [:logflare, :ingest_event_queue, :requeue_deduplicated],
+        measurement: :count,
+        tags: [:backend_type],
+        description:
+          "Count of claimed retry payloads discarded because an existing same-ID pointer had a resolvable payload"
       )
     ]
 
@@ -606,8 +859,23 @@ defmodule Logflare.Telemetry do
   defp clickhouse_batch?(%{backend_type: :clickhouse}), do: true
   defp clickhouse_batch?(_metadata), do: false
 
+  defp spool_batch?(%{backend_type: type}) when type in [:spool_producer, :spool_consumer],
+    do: true
+
+  defp spool_batch?(_metadata), do: false
+
   defp backend_scoped_drop?(%{backend_id: _, backend_type: _}), do: true
   defp backend_scoped_drop?(_metadata), do: false
+
+  defp ch_read_pool_connection_event?(%{tag: {backend_id, label}})
+       when is_pos_integer(backend_id) and (is_binary(label) or is_nil(label)),
+       do: true
+
+  defp ch_read_pool_connection_event?(_metadata), do: false
+
+  defp ch_read_pool_connection_tags(%{tag: {backend_id, label}}) do
+    %{backend_id: backend_id, read_cluster: ClickHouseAdaptor.read_cluster_tag(label)}
+  end
 
   defp batch_size_reporter_opts do
     [buckets: [0, 1, 50, 100, 250, 500, 1_000, 5_000, 10_000, 20_000, 50_000]]

@@ -31,14 +31,18 @@ All browser authentication will be disabled when in single-tenant mode.
 | `PHX_HTTP_IP`                                  | String, defaults to `nil`                                               | Allows configuration of the HTTP server IP to bind to. Specifying an IPv6 like `::` will enable IPv6.                                                                                                                                                                |
 | `PHX_HTTP_PORT`                                | Integer, defaults to `4000`                                             | Allows configuration of the HTTP server port.                                                                                                                                                                                                                        |
 | `DB_DATABASE`                                  | String, defaults to `nil`                                               | Database name for Logflare's internal PostgreSQL database connection.                                                                                                                                                                                                |
+| `DB_URL`                                       | PostgreSQL connection URI, defaults to `nil`                            | Primary database connection URI. Values in the URI override the corresponding individual `DB_*` settings. See [Primary Database URL](#primary-database-url).                                                                                                        |
 | `DB_HOSTNAME`                                  | String, defaults to `nil`                                               | Hostname for Logflare's internal PostgreSQL database connection. IPv4 and IPv6 hosts are detected automatically for socket configuration.                                                                                                                            |
 | `DB_PORT`                                      | Integer, defaults to `5432`                                             | Port for Logflare's internal PostgreSQL database connection.                                                                                                                                                                                                         |
 | `DB_USERNAME`                                  | String, defaults to `nil`                                               | Username for Logflare's internal PostgreSQL database connection.                                                                                                                                                                                                     |
-| `DB_PASSWORD`                                  | String, defaults to `nil`                                               | Password for Logflare's internal PostgreSQL database connection.                                                                                                                                                                                                     |
+| `DB_PASSWORD`                                  | String, defaults to `nil`                                               | Password for Logflare's internal PostgreSQL database connection. Not required when `DB_AUTH=aws_iam`.                                                                                                                                                                |
+| `DB_AUTH`                                      | `password` or `aws_iam`, defaults to `password`                         | Authentication mode for Logflare's primary PostgreSQL connection.                                                                                                                                                                                                    |
+| `DB_AWS_REGION`                                | AWS region, defaults to `nil`                                           | Required when `DB_AUTH=aws_iam`; for example, `eu-west-1`.                                                                                                                                                                                                            |
 | `DB_POOL_SIZE`                                 | Integer, defaults to `10`                                               | Overrides the Ecto connection pool size for Logflare's internal PostgreSQL database connection.                                                                                                                                                                      |
 | `DB_SCHEMA`                                    | String, defaults to `nil`                                               | Allows configuration of the database schema to scope Logflare operations.                                                                                                                                                                                            |
 | `DB_SSL`                                       | Boolean, defaults to `false`                                            | Enables SSL/TLS connection to the internal Logflare database. Requires certificate files when enabled. See [Database SSL Configuration](#database-ssl-configuration).                                                                                                |
-| `LOGFLARE_READ_REPLICAS`                       | String, defaults to `nil`                                               | Comma-separated list of read replica hostnames. Each replica is assumed to use the same port, credentials, and database name as the primary. If unset, all queries go to the primary. Example: `replica1.example.com,replica2.example.com`                           |
+| `LOGFLARE_READ_REPLICAS`                       | String, defaults to `nil`                                               | Comma-separated list of PostgreSQL read replicas. If unset, all queries go to the primary. See [Read Replicas](#read-replicas).                                                                                                                                     |
+| `RDS_CA_CERT_PATH`                             | String, defaults to the container bundle path                           | Additional AWS RDS CA bundle for primary or replica IAM connections. Set it outside container images and for non-commercial AWS partitions.                                                                                                                          |
 | `LOGFLARE_LOG_LEVEL`                           | String, defaults to `info`. <br/>Options: `error`,`warning`, `info`     | Allows runtime configuration of log level.                                                                                                                                                                                                                           |
 | `LOGFLARE_NODE_HOST`                           | string, defaults to `127.0.0.1`                                         | Sets node host on startup, which affects the node name `logflare@<host>`                                                                                                                                                                                             |
 | `LOGFLARE_METADATA_CLUSTER`                    | string, defaults to `nil`                                               | Sets global logging/tracing metadata for the cluster name and affects the release node name (e.g., `logflare-production@<host>`). Useful for filtering logs by cluster name and distinguishing nodes in multi-cluster setups. See the [metadata](#Metadata) section. |
@@ -49,17 +53,23 @@ All browser authentication will be disabled when in single-tenant mode.
 | `LOGFLARE_OTEL_SOURCE_UUID`                    | String, defaults to `nil`, optionally required for OpenTelemetry.       | Sets the appropriate header for ingesting OpenTelemetry events into a Logflare source.                                                                                                                                                                               |
 | `LOGFLARE_OTEL_ACCESS_TOKEN`                   | String, defaults to `nil`, optionally required for OpenTelemetry.       | Sets the appropriate authentication header for ingesting OpenTelemetry events into a Logflare source.                                                                                                                                                                |
 | `LOGFLARE_OTEL_SAMPLE_RATIO`                   | Float, defaults to `1.0`.                                               | Sets the sample ratio for server traces.                                                                                                                                                                                                                             |
+| `LOGFLARE_BROADWAY_MESSAGE_SAMPLE_DENOMINATOR` | Integer from `1` to `4294967296`, or `disabled`; defaults to `100`.      | Samples the Broadway per-message duration metric at approximately one event per denominator. `disabled` omits the metric and its handler. Histogram counts represent sampled observations. Use the same value on every node contributing to an aggregate histogram. |
 | `LOGFLARE_OTEL_INGEST_SAMPLE_RATIO`            | Float, defaults to the value of `LOGFLARE_OTEL_SAMPLE_RATIO`, optional. | Sets the sample ratio for ingestion-related server traces.                                                                                                                                                                                                           |
 | `LOGFLARE_OTEL_ENDPOINT_SAMPLE_RATIO`          | Float, defaults to the value of `LOGFLARE_OTEL_SAMPLE_RATIO`, optional. | Sets the sample ratio for endpoint-related server traces.                                                                                                                                                                                                            |
 | `LOGFLARE_HEALTH_MAX_MEMORY_UTILIZATION_RATIO` | Float, defaults to `0.80`                                               | Sets the maximum allowable memory utilization ratio for health checks. If exceeded, the health check will fail.                                                                                                                                                      |
 | `LOGFLARE_HTTP_CONNECTION_POOLS`               | String, defaults to `nil`, optionally used for performance tuning.      | Controls which HTTP connection pools are created for backend adaptors. Accepts comma-separated list of providers: `all`, `datadog`. Use `all` for all pools, `datadog` for DataDog only, or omit to use default behavior.                                            |
 | `LOGFLARE_UNSAFE_DISABLE_SSRF_S3_ENDPOINT_CHECK` | Boolean, defaults to `false`                                        | **Unsafe.** When `true`, disables the SSRF hostname allowlist for S3 backend custom endpoints, allowing arbitrary endpoints including internal addresses. Intended only for trusted self-hosted deployments using non-public S3-compatible storage (e.g. an internal MinIO instance). **Do not enable in multi-tenant or public-facing deployments — doing so exposes the server to SSRF attacks.** |
+| `ANTHROPIC_API_KEY`                             | String, defaults to `nil`                                               | Anthropic API key used by AI-assisted LQL search. AI Assist is unavailable when this is unset or blank.                                                                                                                                                              |
+| `ANTHROPIC_BASE_URL`                            | String, defaults to `https://api.anthropic.com`                         | Base URL for the Anthropic Messages API.                                                                                                                                                                                                                              |
+| `ANTHROPIC_MODEL`                               | String, defaults to `claude-sonnet-5`                                   | Anthropic model used to generate LQL queries.                                                                                                                                                                                                                          |
 
 Additional environment variable configurations for the OpenTelemetry libraries used can be found [here](https://hexdocs.pm/opentelemetry_exporter/readme.html).perf/bq-pipeline-sharding
 
 #### Health Checks
 
 Logflare has a health check endpoint `/health`, which is used to ensure that the system is functioning correctly with sufficient resources for normal functions.
+
+Use `/ready` for readiness probes. It performs the health checks and returns `503` as soon as graceful shutdown begins so load balancers can stop routing new traffic to the instance.
 
 Environment variables that influence the logic are prefixed with `LOGFLARE_HEALTH_*`. Refer to above table for customizing the values.
 
@@ -127,6 +137,24 @@ Without these two additional permissions, the managed service accounts feature w
 | `POSTGRES_BACKEND_URL`    | string, required                       | PostgreSQL connection string, for connecting to the database. User must have sufficient permissions to manage the schema. |
 | `POSTGRES_BACKEND_SCHEMA` | string, optional, defaults to `public` | Specifies the database schema to scope all operations.                                                                   |
 
+## Primary Database URL
+
+`DB_URL` configures the primary database with a PostgreSQL connection URI. URI values override corresponding individual settings such as `DB_HOSTNAME`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE`, and `DB_POOL_SIZE`. Individual settings that are absent from the URI remain in effect.
+
+```text
+DB_URL=postgres://logflare:password@database.example.com:5432/logflare?ssl=true&pool_size=10
+```
+
+Primary and replica URIs use the same Logflare-specific query parameters: `auth` (`password` or `aws_iam`) and `aws_region`. These parameters are removed before the connection options reach Postgrex. A password in the URI implies password authentication, while an explicit `auth` value can override `DB_AUTH`. `DB_AUTH` and `DB_AWS_REGION` remain defaults when the URI omits those parameters.
+
+An IAM-authenticated primary URL carries a username but no password:
+
+```text
+DB_URL=postgres://logflare@my-database.cluster-abc.eu-west-1.rds.amazonaws.com:5432/logflare?auth=aws_iam&aws_region=eu-west-1
+```
+
+`auth=aws_iam` cannot be combined with a password in the same URI. `auth=password` can use a password in the URI or inherit `DB_PASSWORD`.
+
 ## Database SSL Configuration
 
 Logflare supports secure SSL/TLS connections to its internal database (not the PostgreSQL backend). This is configured using the `DB_SSL` environment variable and certificate files.
@@ -160,6 +188,41 @@ The SSL connection is configured with:
 - **Wildcard support**: Enabled via `public_key.pkix_verify_hostname_match_fun(:https)`
 
 The configuration follows the [Erlang Security Working Group recommendations](https://erlef.github.io/security-wg/secure_coding_and_deployment_hardening/ssl).
+
+## Read Replicas
+
+`LOGFLARE_READ_REPLICAS` is a comma-separated list of PostgreSQL read replicas for selected context-cache and key-value-cache reads. If unset or empty, those reads use the primary database.
+
+Each entry is either a **bare host name or IP literal** or a **connection URI** (`postgres://user:pass@host:port/database?ssl=true&pool_size=5`). In both cases, only the parts given override the primary's `DB_*` settings - anything omitted (port, database, credentials, SSL, authentication, ...) is inherited from the primary. Query params: `ssl` (`true`/`false`), `pool_size` (positive integer), `auth` (`password` or `aws_iam`), and `aws_region`.
+
+The `auth` and `aws_region` query parameters are Logflare configuration and are removed before the connection options reach Postgrex. A replica URI containing a password uses password authentication even when the primary uses IAM.
+
+Example: `LOGFLARE_READ_REPLICAS=replica1.example.com,postgres://user:pass@replica2.example.com:5432/logflare`
+
+### AWS IAM database authentication
+
+AWS IAM authentication is supported for both the primary database and read replicas. Logflare generates a fresh token before each connection attempt. The runtime role needs `rds-db:connect` permission for the database user.
+
+Configure the primary with an explicit AWS region:
+
+```
+DB_AUTH=aws_iam
+DB_AWS_REGION=eu-west-1
+```
+
+A replica can inherit IAM authentication from the primary or configure it in its URI. An explicit replica IAM configuration carries a username but no password:
+
+```
+LOGFLARE_READ_REPLICAS=postgres://logflare@my-proxy.proxy-abc.eu-west-1.rds.amazonaws.com:5432/logflare?auth=aws_iam&aws_region=eu-west-1
+```
+
+Use the AWS-issued database, cluster, reader, or proxy endpoint because the hostname is included in the signed token. Supported credential sources include static `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` values with an optional `AWS_SESSION_TOKEN`, EKS Pod Identity, ECS task roles, and EC2 instance roles.
+
+IAM connections always use peer and hostname verification. `ssl=false` is rejected. RDS Proxy certificates use the system trust store; direct RDS and Aurora connections may require an [RDS CA bundle](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.SSL.html). Container images install the commercial-region bundle at `/etc/ssl/certs/aws-rds-global-bundle.pem`. Other deployments and AWS partitions can set `RDS_CA_CERT_PATH`; when the bundle is unavailable, Logflare logs a warning and uses the system trust store.
+
+Logflare marks each replica session read-only with `SET default_transaction_read_only = on`. This makes accidental writes fail immediately on logical replicas; physical standbys already enforce read-only operation.
+
+PostgreSQL RDS Proxy [pins sessions that issue `SET`](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy-pinning.html), so each Logflare replica connection keeps one database connection for its lifetime. Size the proxy and database connection limits for that behavior.
 
 ## Database Encryption
 

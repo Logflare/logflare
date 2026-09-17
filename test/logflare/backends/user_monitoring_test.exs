@@ -28,11 +28,12 @@ defmodule Logflare.Backends.UserMonitoringTest do
     start_supervised!({SourceSup, source}, id: :source)
     start_supervised!({SourceSup, source_b}, id: :source_b)
 
-    :timer.sleep(250)
     [source: source, source_b: source_b, user: user]
   end
 
-  def start_otel_exporter(_context) do
+  def start_user_monitoring_pipeline(_context) do
+    start_supervised!(AllLogsLogged)
+
     UserMonitoring.get_otel_exporter()
     |> Enum.each(&start_supervised!/1)
 
@@ -111,16 +112,20 @@ defmodule Logflare.Backends.UserMonitoringTest do
         backend: Logflare.Backends.Adaptor.BigQueryAdaptor
       }
 
-      assert capture_log(fn ->
-               QueryError.log(error,
-                 user_id: user.id,
-                 source_token: source.token
-               )
-             end) == ""
+      log =
+        capture_log(fn ->
+          QueryError.log(error,
+            user_id: user.id,
+            source_token: source.token
+          )
+        end)
+
+      refute log =~ "Backend query error"
+      refute log =~ "raw user query detail"
 
       refute Enum.any?(
                Backends.list_recent_logs(system_source),
-               &query_error_log_event?/1
+               &invalid_query_error_log_event?/1
              )
     end
 
@@ -154,11 +159,31 @@ defmodule Logflare.Backends.UserMonitoringTest do
 
   defp query_error_log_event?(_event), do: false
 
+  defp invalid_query_error_log_event?(%{
+         body: %{
+           "metadata" => %{
+             "error_kind" => "invalid_query"
+           }
+         }
+       }),
+       do: true
+
+  defp invalid_query_error_log_event?(%{
+         body: %{
+           "metadata" => %{
+             "error_string" => error_string
+           }
+         }
+       })
+       when is_binary(error_string),
+       do: error_string =~ "raw user query detail"
+
+  defp invalid_query_error_log_event?(_event), do: false
+
   describe "system monitoring labels" do
-    setup :start_otel_exporter
+    setup :start_user_monitoring_pipeline
 
     setup do
-      start_supervised!(AllLogsLogged)
       insert(:plan)
       :ok
     end
@@ -180,8 +205,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
       metrics_source = insert(:source, user: user, system_source_type: :metrics)
       start_supervised!({SourceSup, metrics_source}, id: :metrics_source)
       start_supervised!({SourceSup, source}, id: :source)
-
-      :timer.sleep(1000)
 
       assert {:ok, _} = Backends.ingest_logs([%{"metadata" => %{"value" => "test"}}], source)
 
@@ -312,12 +335,11 @@ defmodule Logflare.Backends.UserMonitoringTest do
   end
 
   describe "egress" do
-    setup :start_otel_exporter
+    setup :start_user_monitoring_pipeline
     setup :set_mimic_global
 
     setup do
       Mimic.stub(Logflare.Utils.SSRF, :safe_resolve, fn _ -> {:ok, {127, 0, 0, 1}} end)
-      start_supervised!(AllLogsLogged)
       insert(:plan)
       :ok
     end
@@ -350,8 +372,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
       {:ok, _} = Backends.update_source_backends(source, [webhook_backend])
       Backends.Cache.get_backend(webhook_backend.id)
 
-      :timer.sleep(1000)
-
       assert {:ok, _} = Backends.ingest_logs([%{"message" => "test webhook egress"}], source)
 
       assert_receive {:insert_all, [%{json: %{"attributes" => _}} | _] = rows}, 15_000
@@ -378,10 +398,9 @@ defmodule Logflare.Backends.UserMonitoringTest do
   end
 
   describe "endpoints" do
-    setup :start_otel_exporter
+    setup :start_user_monitoring_pipeline
 
     setup do
-      start_supervised!(AllLogsLogged)
       insert(:plan)
       :ok
     end
@@ -416,7 +435,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
         )
 
       assert {:ok, _} = Endpoints.run_query(endpoint)
-      :timer.sleep(1000)
       endpoint_id = endpoint.id
 
       assert_receive {:insert_all,
@@ -470,7 +488,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
         )
 
       assert {:ok, _} = Endpoints.run_query(endpoint)
-      :timer.sleep(1000)
 
       backend_id = backend.id
 

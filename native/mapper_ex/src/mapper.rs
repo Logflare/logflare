@@ -7,7 +7,6 @@ use crate::mapping::{
     CompiledField, CompiledMapping, Enum8Data, FieldType, PathSource, Predicate, PredicateValue,
 };
 use crate::query;
-use crate::string_filters;
 
 use serde::ser::{SerializeMap, SerializeSeq};
 use serde::{Serialize, Serializer};
@@ -32,6 +31,28 @@ fn is_array_type(field_type: &FieldType) -> bool {
     )
 }
 
+pub struct MapScratch<'a> {
+    values: Vec<Term<'a>>,
+    query_cache: query::QueryCache<'a>,
+}
+
+impl<'a> MapScratch<'a> {
+    pub fn new(mapping: &CompiledMapping, nil: Term<'a>) -> Self {
+        Self {
+            values: Vec::with_capacity(mapping.fields.len()),
+            query_cache: query::QueryCache::new(
+                mapping.path_cache_size,
+                mapping.root_cache_size,
+                nil,
+            ),
+        }
+    }
+
+    pub fn values(&self) -> &[Term<'a>] {
+        &self.values
+    }
+}
+
 /// Execute the mapping on a single document, returning the mapped output map.
 ///
 /// When `flat_keys` is true, dotted paths are resolved as literal flat-key
@@ -43,12 +64,35 @@ pub fn map_single<'a>(
     flat_keys: bool,
 ) -> Term<'a> {
     let nil = atoms::nil().encode(env);
-    let field_count = mapping.fields.len();
+    let mut scratch = MapScratch::new(mapping, nil);
+    map_values_into(env, body, mapping, flat_keys, nil, &mut scratch);
 
-    let mut keys: Vec<Term<'a>> = Vec::with_capacity(field_count);
-    let mut values: Vec<Term<'a>> = Vec::with_capacity(field_count);
-    let mut query_cache =
-        query::QueryCache::new(mapping.path_cache_size, mapping.root_cache_size, nil);
+    let keys: Vec<Term<'a>> = mapping
+        .fields
+        .iter()
+        .map(|field| crate::encode_string(env, &field.name))
+        .collect();
+
+    // Build the output map in a single allocation via enif_make_map_from_arrays.
+    // Duplicate field names are rejected at compile time so this should not fail.
+    Term::map_from_term_arrays(env, &keys, scratch.values()).unwrap_or_else(|_| Term::map_new(env))
+}
+
+/// Execute the shared mapping core into field-order storage.
+///
+/// ClickHouse's fused encoder consumes these values directly, avoiding an
+/// intermediate output map.
+pub fn map_values_into<'a>(
+    env: Env<'a>,
+    body: Term<'a>,
+    mapping: &CompiledMapping,
+    flat_keys: bool,
+    nil: Term<'a>,
+    scratch: &mut MapScratch<'a>,
+) {
+    let values = &mut scratch.values;
+    let query_cache = &mut scratch.query_cache;
+
     if !flat_keys
         && !mapping.root_cache_keys.is_empty()
         && body.map_size().unwrap_or(usize::MAX) <= mapping.root_cache_scan_limit
@@ -68,7 +112,7 @@ pub fn map_single<'a>(
                     path,
                     nil,
                     flat_keys,
-                    &mut query_cache,
+                    query_cache,
                     |elem| {
                         coerce::coerce_array_element(
                             env,
@@ -80,7 +124,6 @@ pub fn map_single<'a>(
                         )
                     },
                 ) {
-                    keys.push(crate::encode_string(env, &field.name));
                     values.push(value);
                     continue;
                 }
@@ -92,15 +135,14 @@ pub fn map_single<'a>(
         let is_enum8 = matches!(&field.field_type, FieldType::Enum8 { .. });
 
         let value = if is_enum8 {
-            resolve_value_raw(env, body, field, &values, nil, flat_keys, &mut query_cache)
+            resolve_value_raw(env, body, field, values, nil, flat_keys, query_cache)
         } else {
-            resolve_value(env, body, field, &values, nil, flat_keys, &mut query_cache)
+            resolve_value(env, body, field, values, nil, flat_keys, query_cache)
         };
 
         // Array types skip transform, allowed_values, value_map, enum8, and json operations
         if is_array {
             let value = coerce::coerce_array(env, value, &field.field_type, field.filter_nil, nil);
-            keys.push(crate::encode_string(env, &field.name));
             values.push(value);
             continue;
         }
@@ -153,7 +195,7 @@ pub fn map_single<'a>(
 
         // For Enum8 fields, handle enum resolution (string->int lookup + inference + default)
         let value = if is_enum8 {
-            resolve_enum8(env, body, field, value, nil, flat_keys, &mut query_cache)
+            resolve_enum8(env, body, field, value, nil, flat_keys, query_cache)
         } else {
             value
         };
@@ -161,30 +203,25 @@ pub fn map_single<'a>(
         let value = match field.field_type {
             FieldType::Json => {
                 if flat_keys {
-                    apply_json_operations_flat(env, body, field, value, nil, &mut query_cache)
+                    apply_json_operations_flat(env, body, field, value, nil, query_cache)
                 } else {
-                    apply_json_operations(env, body, field, value, nil, false, &mut query_cache)
+                    apply_json_operations(env, body, field, value, nil, false, query_cache)
                 }
             }
             FieldType::FlatMap => {
                 if flat_keys {
                     let value =
-                        apply_json_operations_flat(env, body, field, value, nil, &mut query_cache);
+                        apply_json_operations_flat(env, body, field, value, nil, query_cache);
                     stringify_values(env, value, nil)
                 } else {
-                    flatten_field(env, body, field, value, nil, &mut query_cache)
+                    flatten_field(env, body, field, value, nil, query_cache)
                 }
             }
             _ => coerce::coerce(env, value, &field.field_type, nil),
         };
 
-        keys.push(crate::encode_string(env, &field.name));
         values.push(value);
     }
-
-    // Build the output map in a single allocation via enif_make_map_from_arrays.
-    // Duplicate field names are rejected at compile time so this should not fail.
-    Term::map_from_term_arrays(env, &keys, &values).unwrap_or_else(|_| Term::map_new(env))
 }
 
 /// Resolve the source value without applying defaults (for enum8 fields).
@@ -200,9 +237,15 @@ fn resolve_value_raw<'a>(
     match &field.path_source {
         PathSource::Root => body,
         PathSource::Single(path) => query::evaluate(env, body, path, nil, flat_keys, cache),
-        PathSource::Coalesce(paths) => {
-            query::evaluate_first(env, body, paths, (false, None), nil, flat_keys, cache)
-        }
+        PathSource::Coalesce(paths) => query::evaluate_first(
+            env,
+            body,
+            paths,
+            query::ResolveOptions::NONE,
+            nil,
+            flat_keys,
+            cache,
+        ),
         PathSource::FromOutput(idx) => {
             let v = output_values[*idx];
             if v != nil {
@@ -225,46 +268,30 @@ fn resolve_value<'a>(
     flat_keys: bool,
     cache: &mut query::QueryCache<'a>,
 ) -> Term<'a> {
-    let skip_empty = field.field_type == FieldType::String;
+    let options = query::ResolveOptions {
+        skip_empty_strings: field.field_type == FieldType::String,
+        string_filters: field.filters.as_ref(),
+        strict_uint: field.strict_uint,
+    };
 
     match &field.path_source {
-        PathSource::Root => body,
+        PathSource::Root => {
+            if options.accepts(body) {
+                body
+            } else {
+                coerce::encode_default(env, &field.default, nil)
+            }
+        }
         PathSource::Single(path) => {
             let v = query::evaluate(env, body, path, nil, flat_keys, cache);
-            if v == nil {
+            if v == nil || !options.accepts(v) {
                 coerce::encode_default(env, &field.default, nil)
-            } else if skip_empty {
-                // Check binary length without allocating a String
-                if let Ok(b) = v.decode::<Binary>() {
-                    if b.is_empty() {
-                        coerce::encode_default(env, &field.default, nil)
-                    } else if let Some(ref f) = field.filters {
-                        if !string_filters::passes_filters(b.as_slice(), f) {
-                            coerce::encode_default(env, &field.default, nil)
-                        } else {
-                            v
-                        }
-                    } else {
-                        v
-                    }
-                } else {
-                    v
-                }
             } else {
                 v
             }
         }
         PathSource::Coalesce(paths) => {
-            let string_filters = field.filters.as_ref();
-            let result = query::evaluate_first(
-                env,
-                body,
-                paths,
-                (skip_empty, string_filters),
-                nil,
-                flat_keys,
-                cache,
-            );
+            let result = query::evaluate_first(env, body, paths, options, nil, flat_keys, cache);
             if result == nil {
                 coerce::encode_default(env, &field.default, nil)
             } else {
@@ -273,7 +300,7 @@ fn resolve_value<'a>(
         }
         PathSource::FromOutput(idx) => {
             let v = output_values[*idx];
-            if v != nil {
+            if v != nil && options.accepts(v) {
                 v
             } else {
                 coerce::encode_default(env, &field.default, nil)
@@ -367,10 +394,34 @@ fn select_json_value<'a>(
 
     let picked = build_pick_map(env, body, field, nil, flat_keys, cache);
     if picked == nil {
-        value
-    } else {
-        picked
+        return value;
     }
+
+    if !field.pick_merge {
+        return picked;
+    }
+
+    merge_pick_over_source(value, picked, nil)
+}
+
+/// Union a resolved pick map over the path/paths value, pick winning on key
+/// collision. Falls back to the pick map alone when the source did not resolve
+/// to a map, which is the same shape `:replace` would have produced.
+fn merge_pick_over_source<'a>(source: Term<'a>, picked: Term<'a>, nil: Term<'a>) -> Term<'a> {
+    if source == nil || !source.is_map() {
+        return picked;
+    }
+
+    let Some(entries) = MapIterator::new(picked) else {
+        return source;
+    };
+
+    let mut result = source;
+    for (key, value) in entries {
+        result = result.map_put(key, value).unwrap_or(result);
+    }
+
+    result
 }
 
 /// Build a sparse map from pick entries.
@@ -390,7 +441,7 @@ fn build_pick_map<'a>(
             env,
             body,
             &entry.paths,
-            (false, None),
+            query::ResolveOptions::NONE,
             nil,
             flat_keys,
             cache,
@@ -478,8 +529,7 @@ fn apply_elevate_keys<'a>(env: Env<'a>, map: Term<'a>, elevate: &[Vec<u8>]) -> T
     let mut result = if elevated_keys.is_empty() {
         Term::map_new(env)
     } else {
-        Term::map_from_term_arrays(env, &elevated_keys, &elevated_values)
-            .unwrap_or_else(|_| Term::map_new(env))
+        map_from_pairs(env, &elevated_keys, &elevated_values)
     };
 
     // Top-level keys overwrite elevated children via map_put
@@ -631,9 +681,7 @@ fn apply_elevate_keys_flat<'a>(env: Env<'a>, map: Term<'a>, elevate: &[Vec<u8>])
                 {
                     // Strip prefix: "metadata.level" -> "level"
                     let suffix = &key_bytes[ek.len() + 1..];
-                    let suffix_term =
-                        crate::encode_string(env, std::str::from_utf8(suffix).unwrap_or(""));
-                    elevated_keys.push(suffix_term);
+                    elevated_keys.push(crate::encode_binary(env, suffix));
                     elevated_values.push(v);
                     matched = true;
                     break;
@@ -651,8 +699,7 @@ fn apply_elevate_keys_flat<'a>(env: Env<'a>, map: Term<'a>, elevate: &[Vec<u8>])
     let mut result = if elevated_keys.is_empty() {
         Term::map_new(env)
     } else {
-        Term::map_from_term_arrays(env, &elevated_keys, &elevated_values)
-            .unwrap_or_else(|_| Term::map_new(env))
+        map_from_pairs(env, &elevated_keys, &elevated_values)
     };
 
     // Top-level keys overwrite elevated children
@@ -661,6 +708,21 @@ fn apply_elevate_keys_flat<'a>(env: Env<'a>, map: Term<'a>, elevate: &[Vec<u8>])
     }
 
     result
+}
+
+/// Build a map from parallel key/value arrays. `map_from_term_arrays` rejects
+/// duplicate keys outright, so fall back to sequential inserts (last writer
+/// wins) rather than discarding every entry.
+fn map_from_pairs<'a>(env: Env<'a>, keys: &[Term<'a>], values: &[Term<'a>]) -> Term<'a> {
+    Term::map_from_term_arrays(env, keys, values).unwrap_or_else(|_| {
+        let mut acc = Term::map_new(env);
+
+        for (key, value) in keys.iter().zip(values.iter()) {
+            acc = acc.map_put(*key, *value).unwrap_or(acc);
+        }
+
+        acc
+    })
 }
 
 fn apply_multiple_elevate_keys_flat<'a>(
@@ -672,8 +734,17 @@ fn apply_multiple_elevate_keys_flat<'a>(
         return map;
     };
 
-    let mut elevated_entries = vec![Vec::new(); elevate.len()];
-    let mut top_entries = Vec::new();
+    let capacity = map.map_size().unwrap_or(0);
+    let mut elevated_keys: Vec<Term<'a>> = Vec::with_capacity(capacity);
+    let mut elevated_values: Vec<Term<'a>> = Vec::with_capacity(capacity);
+    let mut elevated_groups: Vec<usize> = Vec::with_capacity(capacity);
+    let mut top_entries: Vec<(Term<'a>, Term<'a>)> = Vec::with_capacity(capacity);
+
+    // A suffix can only repeat when two elevate keys both contribute, so track
+    // whether more than one group matched. One group means the suffixes are
+    // unique and the base map can be built in a single call.
+    let mut first_group: Option<usize> = None;
+    let mut multiple_groups = false;
 
     for (key, value) in entries {
         let Ok(binary) = key.decode::<Binary>() else {
@@ -693,8 +764,16 @@ fn apply_multiple_elevate_keys_flat<'a>(
                 && key_bytes[elevate_key.len()] == b'.'
             {
                 let suffix = &key_bytes[elevate_key.len() + 1..];
-                let suffix = crate::encode_string(env, std::str::from_utf8(suffix).unwrap_or(""));
-                elevated_entries[index].push((suffix, value));
+                elevated_keys.push(crate::encode_binary(env, suffix));
+                elevated_values.push(value);
+                elevated_groups.push(index);
+
+                match first_group {
+                    None => first_group = Some(index),
+                    Some(group) if group != index => multiple_groups = true,
+                    Some(_) => {}
+                }
+
                 matched = true;
                 break;
             }
@@ -705,12 +784,29 @@ fn apply_multiple_elevate_keys_flat<'a>(
         }
     }
 
-    let mut result = Term::map_new(env);
-    for entries in elevated_entries.into_iter().rev() {
-        for (key, value) in entries {
-            result = result.map_put(key, value).unwrap_or(result);
+    let mut result = if elevated_keys.is_empty() {
+        Term::map_new(env)
+    } else if multiple_groups {
+        // Insert in reverse configured order so the earlier elevate key wins a
+        // suffix collision. Group counts are tiny, so the repeated scan is cheap.
+        let mut acc = Term::map_new(env);
+
+        for group in (0..elevate.len()).rev() {
+            for index in 0..elevated_keys.len() {
+                if elevated_groups[index] == group {
+                    acc = acc
+                        .map_put(elevated_keys[index], elevated_values[index])
+                        .unwrap_or(acc);
+                }
+            }
         }
-    }
+
+        acc
+    } else {
+        Term::map_from_term_arrays(env, &elevated_keys, &elevated_values)
+            .unwrap_or_else(|_| Term::map_new(env))
+    };
+
     for (key, value) in top_entries {
         result = result.map_put(key, value).unwrap_or(result);
     }
@@ -946,9 +1042,6 @@ fn try_flatten_with_operations<'a>(
 ) -> Option<Term<'a>> {
     if value == nil || !value.is_map() {
         return Some(Term::map_new(env));
-    }
-    if elevate.len() > 1 {
-        return None;
     }
 
     let capacity = value.map_size().unwrap_or(0);

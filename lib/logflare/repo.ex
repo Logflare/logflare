@@ -4,8 +4,17 @@ defmodule Logflare.Repo do
     adapter: Ecto.Adapters.Postgres
 
   use Scrivener
+
   require Logger
+
+  alias Logflare.Repo.ConnectionOptions
   alias Logflare.Repo.Replicas
+
+  @impl true
+  def init(_context, config) do
+    {role, config} = Keyword.pop(config, :logflare_connection_role, :primary)
+    {:ok, ConnectionOptions.prepare(config, role)}
+  end
 
   def get_uptime do
     query = "SELECT EXTRACT(epoch FROM (current_timestamp - pg_postmaster_start_time()));"
@@ -32,17 +41,6 @@ defmodule Logflare.Repo do
   end
 
   @doc """
-  Applies the given MFA using a randomly selected repo (primary or read replica).
-  """
-  @spec apply_with_random_repo(module(), atom(), list()) :: term()
-  def apply_with_random_repo(m, f, a) do
-    [__MODULE__ | Application.fetch_env!(:logflare, :read_replicas)]
-    |> Enum.random()
-    |> resolve_repo()
-    |> with_dynamic_repo(fn -> apply(m, f, a) end)
-  end
-
-  @doc """
   Applies the given MFA on a randomly selected read replica when replicas are
   configured. Always uses a replica when any are set; falls back to the primary
   repo only when no replicas are configured.
@@ -59,7 +57,7 @@ defmodule Logflare.Repo do
   defp pick_replica_repo(replicas), do: replicas |> Enum.random() |> resolve_repo()
 
   defp resolve_repo(repo) when is_atom(repo), do: repo
-  defp resolve_repo(hostname) when is_binary(hostname), do: Replicas.lookup!(hostname)
+  defp resolve_repo({key, _config}), do: Replicas.lookup!(key)
 
   defp with_dynamic_repo(new_repo, fun) do
     prev_repo = get_dynamic_repo()

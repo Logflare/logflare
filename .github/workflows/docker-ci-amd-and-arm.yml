@@ -15,7 +15,7 @@ jobs:
       version: ${{steps.env.outputs.version}}
       short_sha: ${{steps.env.outputs.short_sha}}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
       - name: Setup outputs
         id: env
         run: |
@@ -30,25 +30,28 @@ jobs:
             arch: amd64
           - runner: blacksmith-4vcpu-ubuntu-2404-arm
             arch: arm64
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}-${{ matrix.arch }}
+      cancel-in-progress: ${{ github.event_name == 'push' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     steps:
       # checkout git commit
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
       # Setup docker
       # https://github.com/supabase/postgres/blob/develop/.github/workflows/dockerhub-release.yml#LL41C11-L42C44
       - run: docker context create builders
-      - uses: docker/setup-buildx-action@v2
+      - uses: docker/setup-buildx-action@v4
         with:
           endpoint: builders
       - name: Login to DockerHub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       # Build and push
       - id: build
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v7
         with:
           push: true
           tags: supabase/logflare:dev-${{ needs.settings.outputs.short_sha }}-${{ matrix.arch }}
@@ -57,9 +60,9 @@ jobs:
           # resource attribute at runtime (see Dockerfile / Logflare.Telemetry).
           build-args: |
             COMMIT_SHA=${{ needs.settings.outputs.short_sha }}
-          # caching
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Keep architecture-specific caches from overwriting each other.
+          cache-from: type=gha,scope=app-${{ matrix.arch }}
+          cache-to: type=gha,scope=app-${{ matrix.arch }},mode=max
 
   merge_publish:
     needs:
@@ -67,7 +70,7 @@ jobs:
       - build
     runs-on: ubuntu-latest
     steps:
-      - uses: docker/login-action@v2
+      - uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}

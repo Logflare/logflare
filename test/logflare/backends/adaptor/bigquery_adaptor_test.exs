@@ -547,4 +547,12 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
       assert_received {:timeouts, 25_000, 25_000}
     end
   end
+
+  describe "sanitize_config_for_display/1" do
+    test "preserves project_id and dataset_id" do
+      config = %{project_id: "my-project", dataset_id: "my_dataset"}
+
+      assert config == BigQueryAdaptor.sanitize_config_for_display(config)
+    end
+  end
 end

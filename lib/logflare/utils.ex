@@ -316,13 +316,13 @@ defmodule Logflare.Utils do
   iex> ip_version("127.0.0.1:8222")
   :nxdomain
 
-  iex> ip_version("1467:f4e1:7a77:756a:896c:dff5:ca48:cf3c")
-  :inet6
-
-  iex> ip_version("supabase.com")
+  iex> ip_version("localhost")
   :inet
 
-  iex> ip_version("ipv6.google.com")
+  iex> ip_version("::1")
+  :inet6
+
+  iex> ip_version("1467:f4e1:7a77:756a:896c:dff5:ca48:cf3c")
   :inet6
 
   iex> ip_version("not_an_address")

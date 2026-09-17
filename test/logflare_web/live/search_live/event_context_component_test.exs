@@ -258,8 +258,8 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
 
       html =
         view
-        |> TestUtils.wait_for_render("#logs-list li:first-of-type a")
-        |> element("#logs-list li:first-of-type a", "context")
+        |> TestUtils.wait_for_render("#logs-list li[data-event-id] a")
+        |> element("#logs-list li[data-event-id] a", "context")
         |> render_click()
 
       # Verify the context modal opens
@@ -277,8 +277,8 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
         live_with_redirect(conn, ~p"/sources/#{source.id}/search?tailing=false")
 
       view
-      |> TestUtils.wait_for_render("#logs-list li:first-of-type a")
-      |> element("#logs-list li:first-of-type a", "context")
+      |> TestUtils.wait_for_render("#logs-list li[data-event-id] a")
+      |> element("#logs-list li[data-event-id] a", "context")
       |> render_click()
 
       view

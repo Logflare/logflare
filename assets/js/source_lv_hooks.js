@@ -1,12 +1,11 @@
 import {
   activateClipboardForSelector,
-  activateDelegatedTooltips
+  activateDelegatedTooltips,
+  scrollToPageBottom
 } from "./utils"
 import $ from "jquery"
 import _ from "lodash"
 import idle from "./vendor/idle"
-import hljs from "highlight.js"
-import "highlight.js/styles/tomorrow-night-blue.css"
 import { applyToAllLogTimestamps } from "./logs";
 import { timestampNsToAgo } from "./formatters";
 
@@ -22,11 +21,52 @@ hooks.SourceSchemaModalTable = {
 }
 
 hooks.SourceLogsSearchList = {
+  captureScrollAnchor() {
+    this.scrollPosition = window.scrollY
+
+    const firstVisibleLogEvent = [...this.el.querySelectorAll("#logs-list > li[data-event-id]")]
+      .find((element) => {
+        const { top, bottom } = element.getBoundingClientRect()
+        return top < window.innerHeight && bottom > 0
+      })
+
+    this.scrollAnchor = firstVisibleLogEvent && {
+      id: firstVisibleLogEvent.id,
+      top: firstVisibleLogEvent.getBoundingClientRect().top,
+    }
+  },
+  restoreScrollAnchor() {
+    const scrollAnchor = this.scrollAnchor
+    const scrollPosition = this.scrollPosition
+
+    requestAnimationFrame(() => {
+      const anchorElement = scrollAnchor && document.getElementById(scrollAnchor.id)
+
+      if (anchorElement && this.el.contains(anchorElement)) {
+        const scrollDelta = anchorElement.getBoundingClientRect().top - scrollAnchor.top
+        window.scrollBy(0, scrollDelta)
+      } else if (scrollPosition !== undefined) {
+        window.scrollTo(0, scrollPosition)
+      }
+    })
+  },
+  scrollToLatest() {
+    if (this.el.dataset.tailing === "true") {
+      scrollToPageBottom()
+    }
+  },
+  beforeUpdate() {
+    this.captureScrollAnchor()
+  },
   updated() {
     const hook = this
     activateDelegatedTooltips(this.el, '[data-toggle="tooltip"]')
 
-    window.scrollTo(0, document.body.scrollHeight)
+    if (this.el.dataset.tailing === "true") {
+      this.scrollToLatest()
+    } else {
+      this.restoreScrollAnchor()
+    }
 
     const observer =
       new IntersectionObserver((entries, observer) => {
@@ -47,10 +87,15 @@ hooks.SourceLogsSearchList = {
   },
   mounted() {
     activateDelegatedTooltips(this.el, '[data-toggle="tooltip"]')
-
-    $("html, body").animate({
-      scrollTop: document.body.scrollHeight
+    this.handleEvent("scroll-to-bottom", () => {
+      requestAnimationFrame(scrollToPageBottom)
     })
+    this.handleEvent("scroll-to-event", ({ id }) => {
+      requestAnimationFrame(() => {
+        document.getElementById(id)?.scrollIntoView({ block: "start" })
+      })
+    })
+    this.scrollToLatest()
   },
   destroyed() {
     $(this.el).tooltip("dispose")
@@ -131,25 +176,6 @@ const buildTsClause = (start, end, label) => {
       break
   }
   return timestampFilter.join(" ")
-}
-
-hooks.BigQuerySqlQueryFormatter = {
-  mounted() {
-    this.formatSql()
-  },
-  updated() {
-    this.formatSql()
-  },
-  formatSql() {
-    const $this = $(this.el)
-    const $code = $this.find(`code#search-op-sql-string`)
-    const fmtSql = sqlFormatter.format($code.text())
-    // replace with formatted sql
-    $code.text(fmtSql)
-    $this.find("pre code").each((i, block) => {
-      hljs.highlightBlock(block)
-    })
-  },
 }
 
 hooks.SourceLogsSearch = {
