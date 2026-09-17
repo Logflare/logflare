@@ -2462,6 +2462,64 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert_received {:ch_headers, []}
     end
 
+    test "ignores a routing param value containing non-ASCII characters" do
+      backend = start_replica_routing_backend("project")
+      parent = self()
+
+      expect(Ch, :query, fn pool, statement, params, opts ->
+        send(parent, {:ch_headers, Keyword.get(opts, :headers, [])})
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert {:ok, %QueryResult{}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 {"SELECT 1 as test", [], %{"project" => "café"}},
+                 []
+               )
+
+      assert_received {:ch_headers, []}
+    end
+
+    test "sends a routing param value of exactly 256 bytes" do
+      backend = start_replica_routing_backend("project")
+      parent = self()
+      value = String.duplicate("a", 256)
+
+      expect(Ch, :query, fn pool, statement, params, opts ->
+        send(parent, {:ch_headers, Keyword.get(opts, :headers, [])})
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert {:ok, %QueryResult{}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 {"SELECT 1 as test", [], %{"project" => value}},
+                 []
+               )
+
+      assert_received {:ch_headers, [{"x-clickhouse-replica-tag", ^value}]}
+    end
+
+    test "ignores a routing param value of 257 bytes" do
+      backend = start_replica_routing_backend("project")
+      parent = self()
+
+      expect(Ch, :query, fn pool, statement, params, opts ->
+        send(parent, {:ch_headers, Keyword.get(opts, :headers, [])})
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert {:ok, %QueryResult{}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 {"SELECT 1 as test", [], %{"project" => String.duplicate("a", 257)}},
+                 []
+               )
+
+      assert_received {:ch_headers, []}
+    end
+
     test "keeps the replica tag header on the default cluster failover retry" do
       {_source, backend} =
         setup_clickhouse_test(

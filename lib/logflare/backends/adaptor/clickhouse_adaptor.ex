@@ -51,7 +51,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @unlabeled_read_cluster_tag "(unlabeled)"
   @replica_tag_header "x-clickhouse-replica-tag"
   @replica_tag_max_bytes 256
-  @replica_tag_value_pattern ~r/\A[[:graph:]]+\z/
+  @replica_tag_value_pattern ~r/\A[\x21-\x7E]+\z/
   @param_name_pattern ~r/\A\w+\z/
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
