@@ -167,6 +167,12 @@ defmodule Logflare.Utils do
     1.5
     iex> Logflare.Utils.parse_float!("1")
     1.0
+    iex> Logflare.Utils.parse_float!("1e-4")
+    1.0e-4
+    iex> Logflare.Utils.parse_float!(" 0.95\\n")
+    0.95
+    iex> Logflare.Utils.parse_float!(".95")
+    0.95
     iex> Logflare.Utils.parse_float!(2)
     2.0
     iex> Logflare.Utils.parse_float!(3.14)
@@ -174,10 +180,13 @@ defmodule Logflare.Utils do
   """
   @spec parse_float!(binary() | integer() | float()) :: float()
   def parse_float!(v) when is_binary(v) do
-    if String.contains?(v, ".") do
-      String.to_float(v)
-    else
-      String.to_integer(v) / 1
+    v
+    |> String.trim()
+    |> pad_leading_dot()
+    |> Float.parse()
+    |> case do
+      {float, ""} -> float
+      _ -> raise ArgumentError, "Could not parse to float: #{inspect(v)}"
     end
   end
 
@@ -185,65 +194,9 @@ defmodule Logflare.Utils do
   def parse_float!(v) when is_float(v), do: v
   def parse_float!(v), do: raise("Could not parse to float: #{inspect(v)}")
 
-  @doc """
-  Parses a value into a float.
-
-  Accepts binaries, integers, and floats. Raises on unsupported types or
-  unparseable binaries.
-
-  ## Examples
-
-    iex> Logflare.Utils.parse_float!("1.5")
-    1.5
-    iex> Logflare.Utils.parse_float!("1")
-    1.0
-    iex> Logflare.Utils.parse_float!(2)
-    2.0
-    iex> Logflare.Utils.parse_float!(3.14)
-    3.14
-  """
-  @spec parse_float!(binary() | integer() | float()) :: float()
-  def parse_float!(v) when is_binary(v) do
-    if String.contains?(v, ".") do
-      String.to_float(v)
-    else
-      String.to_integer(v) / 1
-    end
-  end
-
-  def parse_float!(v) when is_integer(v), do: v / 1
-  def parse_float!(v) when is_float(v), do: v
-  def parse_float!(v), do: raise("Could not parse to float: #{inspect(v)}")
-
-  @doc """
-  Parses a value into a float.
-
-  Accepts binaries, integers, and floats. Raises on unsupported types or
-  unparseable binaries.
-
-  ## Examples
-
-    iex> Logflare.Utils.parse_float!("1.5")
-    1.5
-    iex> Logflare.Utils.parse_float!("1")
-    1.0
-    iex> Logflare.Utils.parse_float!(2)
-    2.0
-    iex> Logflare.Utils.parse_float!(3.14)
-    3.14
-  """
-  @spec parse_float!(binary() | integer() | float()) :: float()
-  def parse_float!(v) when is_binary(v) do
-    if String.contains?(v, ".") do
-      String.to_float(v)
-    else
-      String.to_integer(v) / 1
-    end
-  end
-
-  def parse_float!(v) when is_integer(v), do: v / 1
-  def parse_float!(v) when is_float(v), do: v
-  def parse_float!(v), do: raise("Could not parse to float: #{inspect(v)}")
+  defp pad_leading_dot("." <> _rest = v), do: "0" <> v
+  defp pad_leading_dot("-." <> rest), do: "-0." <> rest
+  defp pad_leading_dot(v), do: v
 
   @doc """
   Appends a value to the end of a tuple.

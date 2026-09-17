@@ -22,6 +22,26 @@ defmodule Logflare.UtilsTest do
       assert Logflare.Utils.parse_float!(3.14) == 3.14
     end
 
+    test "parses scientific notation" do
+      assert Logflare.Utils.parse_float!("1e-4") == 0.0001
+    end
+
+    test "parses a string with trailing whitespace" do
+      assert Logflare.Utils.parse_float!("0.95\n") == 0.95
+    end
+
+    test "parses a string with leading whitespace" do
+      assert Logflare.Utils.parse_float!(" 0.95") == 0.95
+    end
+
+    test "parses a string with a leading dot" do
+      assert Logflare.Utils.parse_float!(".95") == 0.95
+    end
+
+    test "parses a negative string with a leading dot" do
+      assert Logflare.Utils.parse_float!("-.95") == -0.95
+    end
+
     test "raises on an unparseable binary" do
       assert_raise ArgumentError, fn -> Logflare.Utils.parse_float!("not-a-number") end
     end
