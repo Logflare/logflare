@@ -186,7 +186,7 @@ defmodule E2e.Features.LogsSearchTest do
       |> assert_has("#logs-list li[data-event-id]", count: 100)
       |> click("#load-more-events-top")
       |> assert_has("#logs-list li[data-event-id]", count: 105)
-      |> refute_has("#load-more-events-top")
+      |> assert_has("#load-more-events-top:not([disabled])")
     end
 
     test "shows a missing field error from the search page", %{conn: conn, source: source} do
