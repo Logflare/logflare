@@ -112,16 +112,28 @@ defmodule Logflare.SingleTenant do
     |> Backends.get_default_backend()
   end
 
-  @doc "Returns the synthetic ClickHouse backend when selected and the user exists."
+  @doc """
+  Builds the synthetic backend when ClickHouse is selected in single-tenant mode.
+
+  Uses the supplied user's ID, looking up the default user only when omitted.
+  Returns nil when ClickHouse is not selected or the user is nil.
+
+  Backend ID `0` is reserved for this synthetic backend and identifies its
+  consolidated pipeline and ingestion queues. The backend is not persisted.
+  """
   @spec get_default_clickhouse_backend(User.t() | nil) :: Backend.t() | nil
   @spec get_default_clickhouse_backend() :: Backend.t() | nil
-  def get_default_clickhouse_backend(user \\ get_default_user()) do
-    if clickhouse_backend?() && user do
+  def get_default_clickhouse_backend(user \\ get_default_user())
+
+  def get_default_clickhouse_backend(nil), do: nil
+
+  def get_default_clickhouse_backend(%User{id: user_id}) do
+    if clickhouse_backend?() do
       %Backend{
         id: 0,
         type: :clickhouse,
         config: Map.new(clickhouse_backend_adapter_opts()),
-        user_id: user.id,
+        user_id: user_id,
         name: "Default ClickHouse backend",
         consolidated_ingest?: true,
         single_tenant_default?: true
