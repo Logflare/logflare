@@ -86,7 +86,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
     end
   end
 
-  describe "new_event_page/3" do
+  describe "new_event_page/4" do
     setup do
       [
         so: %SO{
@@ -101,7 +101,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
 
     test "creates an initial page request for a tailing search", %{so: so} do
       assert {:ok, %{event_page_request: request}} =
-               SearchOperations.new_event_page(so, :initial, nil)
+               SearchOperations.new_event_page(so, :initial, nil, nil)
 
       assert request == %{intent: :initial, cursor: nil}
     end
@@ -110,20 +110,34 @@ defmodule Logflare.Logs.SearchOperationsTest do
       cursor = %{id: "event-id", timestamp: 1_769_904_600_000_000}
 
       assert {:ok, %{event_page_request: request}} =
-               %{so | tailing?: false} |> SearchOperations.new_event_page(:next, cursor)
+               %{so | tailing?: false} |> SearchOperations.new_event_page(:next, cursor, 600)
 
-      assert request == %{intent: :next, cursor: cursor}
+      assert request == %{intent: :next, cursor: cursor, window_seconds: 600}
     end
 
     test "returns an invalid request error when a page cursor is missing", %{so: so} do
       for intent <- [:previous, :next] do
         assert {:error, :invalid_request} =
-                 %{so | tailing?: false} |> SearchOperations.new_event_page(intent, nil)
+                 %{so | tailing?: false} |> SearchOperations.new_event_page(intent, nil, 600)
+      end
+    end
+
+    test "returns an invalid request error when a page window is missing", %{so: so} do
+      cursor = %{id: "event-id", timestamp: 1_769_904_600_000_000}
+
+      for window_seconds <- [nil, 0] do
+        assert {:error, :invalid_request} =
+                 SearchOperations.new_event_page(
+                   %{so | tailing?: false},
+                   :previous,
+                   cursor,
+                   window_seconds
+                 )
       end
     end
 
     test "returns a tailing error for tailing searches", %{so: so} do
-      assert {:error, :tailing} = SearchOperations.new_event_page(so, :previous, nil)
+      assert {:error, :tailing} = SearchOperations.new_event_page(so, :previous, nil, nil)
     end
   end
 
@@ -917,6 +931,114 @@ defmodule Logflare.Logs.SearchOperationsTest do
     end
   end
 
+  describe "event page window" do
+    setup %{user: user} do
+      source = insert(:source, user: user, bq_table_id: "test_table")
+      [source: source]
+    end
+
+    defp page_sql(source, intent, ts_filters, window_seconds) do
+      cursor = %{id: "cursor-uuid", timestamp: 1_789_490_000_000_000}
+
+      so =
+        %SO{
+          source: source,
+          querystring: "",
+          query: from("test_table"),
+          chart_data_shape_id: nil,
+          tailing?: false,
+          partition_by: :timestamp,
+          type: :events,
+          lql_ts_filters: ts_filters,
+          lql_meta_and_msg_filters: []
+        }
+        |> SearchOperations.apply_query_defaults()
+
+      {:ok, so} = SearchOperations.new_event_page(so, intent, cursor, window_seconds)
+
+      so =
+        so
+        |> SearchOperations.apply_timestamp_filter_rules()
+        |> SearchOperations.apply_cursor()
+
+      {:ok, {sql, params}} = BigQueryAdaptor.ecto_to_sql(so.query, [])
+      {sql, Enum.map(params, & &1.parameterValue.value)}
+    end
+
+    defp range_filter(min, max) do
+      [FilterRule.build(path: "timestamp", operator: :range, values: [min, max])]
+    end
+
+    test "a previous page scans one window back from the cursor", %{source: source} do
+      ts_filters = range_filter(~N[2026-09-15 10:00:00], ~N[2026-09-15 10:10:00])
+
+      {sql, params} = page_sql(source, :previous, ts_filters, 600)
+
+      assert sql =~ "t0.timestamp >= TIMESTAMP_MICROS(?)"
+      assert sql =~ "t0.timestamp <= TIMESTAMP_MICROS(?)"
+      assert sql =~ "EXTRACT(DATE FROM t0.timestamp) >= ?"
+      assert sql =~ "EXTRACT(DATE FROM t0.timestamp) <= ?"
+
+      assert [min_us, max_us | _] = params
+      assert max_us == 1_789_490_000_000_000
+      assert max_us - min_us == 600 * 1_000_000
+    end
+
+    test "a next page scans one window forward from the cursor", %{source: source} do
+      ts_filters = range_filter(~N[2026-09-15 10:00:00], ~N[2026-09-15 10:10:00])
+
+      {_sql, params} = page_sql(source, :next, ts_filters, 600)
+
+      assert [min_us, max_us | _] = params
+      assert min_us == 1_789_490_000_000_000
+      assert max_us - min_us == 600 * 1_000_000
+    end
+
+    test "a page scans the window its request carries, whatever the filter", %{source: source} do
+      {_sql, params} = page_sql(source, :previous, [], 120)
+
+      assert [min_us, max_us | _] = params
+      assert max_us - min_us == 120 * 1_000_000
+    end
+  end
+
+  describe "chart_timestamp_range/3" do
+    test "covers the default tick count back from now without a timestamp filter" do
+      now = ~N[2026-09-15 12:00:00]
+
+      assert SearchOperations.chart_timestamp_range([], :minute, now) ==
+               %{min: ~N[2026-09-15 10:00:00], max: now}
+    end
+
+    test "keeps a closed range as it is" do
+      rules = [
+        %FilterRule{
+          path: "timestamp",
+          operator: :range,
+          values: [~N[2026-09-15 10:00:00], ~N[2026-09-15 10:10:00]]
+        }
+      ]
+
+      assert SearchOperations.chart_timestamp_range(rules, :minute, ~N[2026-09-15 12:00:00]) ==
+               %{min: ~N[2026-09-15 10:00:00], max: ~N[2026-09-15 10:10:00]}
+    end
+
+    test "keeps a lower bound and stops at now" do
+      rules = [%FilterRule{path: "timestamp", operator: :>, value: ~N[2026-09-15 11:30:00]}]
+
+      assert SearchOperations.chart_timestamp_range(rules, :minute, ~N[2026-09-15 12:00:00]) ==
+               %{min: ~N[2026-09-15 11:30:00], max: ~N[2026-09-15 12:00:00]}
+    end
+
+    test "keeps an upper bound and reaches the open interval length back from it" do
+      upper = ~N[2026-09-15 11:30:00]
+      rules = [%FilterRule{path: "timestamp", operator: :<, value: upper}]
+
+      assert SearchOperations.chart_timestamp_range(rules, :hour, ~N[2026-09-15 12:00:00]) ==
+               %{min: NaiveDateTime.add(upper, -1_000 * 3_600, :second), max: upper}
+    end
+  end
+
   describe "backend adaptor integration" do
     setup %{user: user} do
       source = insert(:source, user: user, bq_table_id: "test_table")
@@ -948,7 +1070,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
          QueryResult.new([%{"test" => "data"}], %{
            total_rows: 1,
            query_string: "SELECT * FROM test_table LIMIT ?",
-           bq_params: [SearchOperations.fetch_limit()]
+           bq_params: [SearchOperations.default_limit()]
          })}
       end)
 
@@ -970,7 +1092,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
                BigQueryAdaptor.ecto_to_sql(captured_query, [])
 
       assert executed_sql =~ "LIMIT ?"
-      assert List.last(executed_params).parameterValue.value == SearchOperations.fetch_limit()
+      assert List.last(executed_params).parameterValue.value == SearchOperations.default_limit()
 
       assert result_so.sql_string =~ "LIMIT ?"
 
