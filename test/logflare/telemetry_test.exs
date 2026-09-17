@@ -279,6 +279,15 @@ defmodule Logflare.TelemetryTest do
       end
     end
 
+    test "defines ClickHouse read pool checkout failures tagged by reason" do
+      metric = read_pool_metric([:logflare, :clickhouse, :read_pool, :checkout_error])
+
+      assert to_string(metric.__struct__) == "Elixir.Telemetry.Metrics.Sum"
+      assert metric.event_name == [:logflare, :clickhouse, :read_pool, :checkout_error]
+      assert metric.measurement == :count
+      assert metric.tags == [:backend_id, :read_cluster, :reason]
+    end
+
     test "honors configured Broadway processor message duration sampling" do
       denominator = Application.fetch_env!(:logflare, :broadway_message_sample_denominator)
 

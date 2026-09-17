@@ -214,6 +214,107 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert measurements.idle_time < minute_in_native
     end
 
+    test "emits checkout error telemetry when the pool sheds a checkout", %{backend: backend} do
+      TestUtils.attach_forwarder([:logflare, :clickhouse, :read_pool, :checkout_error])
+
+      error = %DBConnection.ConnectionError{message: "dropped", reason: :queue_timeout}
+      stub_failed_checkout(error)
+
+      assert {:error, %QueryError{kind: :pool_exhausted}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :read_pool, :checkout_error],
+                      %{count: 1}, metadata}
+
+      assert metadata.backend_id == backend.id
+      assert metadata.read_cluster == "(unlabeled)"
+      assert metadata.reason == :queue_timeout
+    end
+
+    test "tags non-queue checkout failures with the error reason", %{backend: backend} do
+      TestUtils.attach_forwarder([:logflare, :clickhouse, :read_pool, :checkout_error])
+
+      error = %DBConnection.ConnectionError{
+        message: "connection not available because deadline reached while in queue"
+      }
+
+      stub_failed_checkout(error)
+
+      assert {:error, %QueryError{kind: :connection_error}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :read_pool, :checkout_error],
+                      %{count: 1}, %{reason: :error}}
+    end
+
+    test "does not record checkout latency for a failed checkout", %{backend: backend} do
+      TestUtils.attach_forwarder([:logflare, :clickhouse, :read_pool, :checkout])
+
+      error = %DBConnection.ConnectionError{message: "dropped", reason: :queue_timeout}
+      stub_failed_checkout(error)
+
+      assert {:error, %QueryError{kind: :pool_exhausted}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+
+      refute_received {:telemetry_event, [:logflare, :clickhouse, :read_pool, :checkout], _, _}
+    end
+
+    test "does not warn about a slow checkout that never got a connection", %{backend: backend} do
+      original = Application.get_env(:logflare, ClickHouseAdaptor)
+
+      on_exit(fn ->
+        if original do
+          Application.put_env(:logflare, ClickHouseAdaptor, original)
+        else
+          Application.delete_env(:logflare, ClickHouseAdaptor)
+        end
+      end)
+
+      Application.put_env(:logflare, ClickHouseAdaptor, slow_pool_checkout_ms: 0)
+
+      error = %DBConnection.ConnectionError{message: "dropped", reason: :queue_timeout}
+      stub_failed_checkout(error)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, %QueryError{kind: :pool_exhausted}} =
+                   ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+        end)
+
+      refute log =~ "ClickHouse slow connection checkout"
+    end
+
+    test "still emits query error telemetry for a connection error after checkout",
+         %{backend: backend} do
+      TestUtils.attach_forwarder([:logflare, :clickhouse, :read_pool, :checkout_error])
+      TestUtils.attach_forwarder([:logflare, :clickhouse, :read_pool, :checkout])
+
+      error = %DBConnection.ConnectionError{message: "socket closed"}
+
+      expect(Ch, :query, fn _pool, statement, params, opts ->
+        entry = %DBConnection.LogEntry{
+          call: :execute,
+          query: statement,
+          params: params,
+          result: {:error, error},
+          pool_time: System.convert_time_unit(1, :millisecond, :native),
+          connection_time: System.convert_time_unit(5, :millisecond, :native)
+        }
+
+        opts[:log].(entry)
+        {:error, error}
+      end)
+
+      assert {:error, %QueryError{kind: :connection_error}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+
+      refute_received {:telemetry_event, [:logflare, :clickhouse, :read_pool, :checkout_error], _,
+                       _}
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :read_pool, :checkout],
+                      %{connection_time: _}, _}
+    end
+
     test "emits query error telemetry with the error kind", %{backend: backend} do
       TestUtils.attach_forwarder([:logflare, :clickhouse, :read_pool, :query_error])
 
@@ -3115,6 +3216,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         _ ->
           Mimic.call_original(Ch, :query, [pool, statement, params, opts])
       end
+    end)
+  end
+
+  defp stub_failed_checkout(%DBConnection.ConnectionError{} = error) do
+    expect(Ch, :query, fn _pool, statement, params, opts ->
+      entry = %DBConnection.LogEntry{
+        call: :execute,
+        query: statement,
+        params: params,
+        result: {:error, error},
+        pool_time: System.convert_time_unit(12_000, :millisecond, :native)
+      }
+
+      opts[:log].(entry)
+      {:error, error}
     end)
   end
 
