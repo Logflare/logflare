@@ -14,10 +14,21 @@ defmodule Logflare.Backends.Spool.DurableBuffer.ConsumerInteropTest do
   alias Logflare.Backends.Spool.ConsumerPipeline.QueueProducer
   alias Logflare.Backends.Spool.DurableBuffer.Backends.Cloud
   alias Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal
+  alias Logflare.Backends.Spool.Health
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
 
   setup :set_mimic_global
+
+  # Cloud.commit/4 and RotatingWal.commit/4 report to the real, global
+  # :upload/:disk Health scopes on every call — reset both so a failure
+  # here can't leak into another test file's own Health assertions.
+  setup do
+    on_exit(fn ->
+      Health.report_recovery!(:disk)
+      Health.report_recovery!(:upload)
+    end)
+  end
 
   defp wal_dir! do
     dir =

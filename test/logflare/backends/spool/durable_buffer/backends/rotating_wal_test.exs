@@ -4,7 +4,17 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWalTest do
   alias DurableBuffer.WAL
   alias Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal, as: Backend
   alias Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal.Worker
+  alias Logflare.Backends.Spool.Health
   alias Logflare.Test.FakeDurableBufferBackend, as: FakeInnerBackend
+
+  # Backend.commit/4 reports to the real, global :disk Health scope on
+  # every call — reset it so a failure here can't leak into another test
+  # file's own Health assertions (this module runs async, i.e. before any
+  # sync test module starts, so whatever it leaves behind is what the
+  # first sync test to touch :disk would otherwise see).
+  setup do
+    on_exit(fn -> Health.report_recovery!(:disk) end)
+  end
 
   defp wal_dir! do
     dir = Path.join(System.tmp_dir!(), "rotating_wal_test_#{System.unique_integer([:positive])}")

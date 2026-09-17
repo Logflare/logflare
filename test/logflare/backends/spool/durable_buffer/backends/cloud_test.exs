@@ -4,10 +4,18 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.CloudTest do
   import Mimic
 
   alias Logflare.Backends.Spool.DurableBuffer.Backends.Cloud, as: Backend
+  alias Logflare.Backends.Spool.Health
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
 
   setup :set_mimic_global
+
+  # Backend.commit/4 reports to the real, global :upload Health scope on
+  # every call — reset it so a failure here (or a prior test's) can't
+  # leak into another test file's own Health assertions.
+  setup do
+    on_exit(fn -> Health.report_recovery!(:upload) end)
+  end
 
   defp config(overrides \\ %{}) do
     Map.merge(
