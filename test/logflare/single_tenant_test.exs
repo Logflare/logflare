@@ -317,7 +317,7 @@ defmodule Logflare.SingleTenantTest do
 
       assert %Backend{
                id: 0,
-               token: "00000000-0000-0000-0000-000000000000",
+               token: nil,
                user_id: user_id,
                type: :clickhouse,
                single_tenant_default?: true,

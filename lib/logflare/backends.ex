@@ -288,7 +288,6 @@ defmodule Logflare.Backends do
   defp single_tenant_clickhouse_backend(%User{} = user) do
     %Backend{
       id: @single_tenant_clickhouse_backend_id,
-      token: "00000000-0000-0000-0000-000000000000",
       type: :clickhouse,
       config: Map.new(SingleTenant.clickhouse_backend_adapter_opts()),
       user_id: user.id,
