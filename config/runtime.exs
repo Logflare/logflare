@@ -64,7 +64,7 @@ logflare_metadata =
 logflare_health =
   [
     memory_utilization:
-      System.get_env("LOGFLARE_HEALTH_MAX_MEMORY_UTILIZATION", "0.95") |> Utils.parse_float!()
+      System.get_env("LOGFLARE_HEALTH_MAX_MEMORY_UTILIZATION", "0.95") |> Utils.parse_ratio!()
   ]
   |> filter_nil_kv_pairs.()
 
@@ -484,20 +484,20 @@ config :libcluster,
 if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
   default_sample_ratio =
     System.get_env("LOGFLARE_OTEL_SAMPLE_RATIO", "1.0")
-    |> Utils.parse_float!()
+    |> Utils.parse_ratio!()
 
   ingest_sample_ratio =
     System.get_env("LOGFLARE_OTEL_INGEST_SAMPLE_RATIO")
     |> case do
       nil -> default_sample_ratio
-      value -> Utils.parse_float!(value)
+      value -> Utils.parse_ratio!(value)
     end
 
   endpoint_sample_ratio =
     System.get_env("LOGFLARE_OTEL_ENDPOINT_SAMPLE_RATIO")
     |> case do
       nil -> default_sample_ratio
-      value -> Utils.parse_float!(value)
+      value -> Utils.parse_ratio!(value)
     end
 
   config :logflare,

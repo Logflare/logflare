@@ -199,6 +199,32 @@ defmodule Logflare.Utils do
   defp pad_leading_dot(v), do: v
 
   @doc """
+  Parses a value into a float bounded to the `0.0..1.0` range, raising if it
+  falls outside that range. Intended for ratio/ratio-like configuration values
+  (e.g. sampling ratios) where an out-of-range value would otherwise crash
+  later at the point of use instead of at boot.
+
+  ## Examples
+
+    iex> Logflare.Utils.parse_ratio!("0.5")
+    0.5
+    iex> Logflare.Utils.parse_ratio!(1)
+    1.0
+    iex> Logflare.Utils.parse_ratio!("2")
+    ** (ArgumentError) Ratio must be between 0.0 and 1.0, got: "2"
+  """
+  @spec parse_ratio!(binary() | integer() | float()) :: float()
+  def parse_ratio!(v) do
+    case parse_float!(v) do
+      float when float >= 0.0 and float <= 1.0 ->
+        float
+
+      _float ->
+        raise ArgumentError, "Ratio must be between 0.0 and 1.0, got: #{inspect(v)}"
+    end
+  end
+
+  @doc """
   Appends a value to the end of a tuple.
 
   ## Examples
