@@ -5,7 +5,10 @@ defmodule Logflare.Telemetry do
   import Logflare.Utils, only: [ets_info: 1]
   import Logflare.Utils.Guards, only: [is_non_empty_binary: 1, is_pos_integer: 1]
 
+  require Logger
+
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
 
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
@@ -29,6 +32,8 @@ defmodule Logflare.Telemetry do
   }
 
   @metrics_interval 30_000
+  @ch_read_pool_poll_timeout :timer.seconds(5)
+  @ch_read_pool_status_event [:logflare, :clickhouse, :read_pool, :pool_status]
   @max_phash2_range 4_294_967_296
 
   @ch_read_pool_time_buckets_ms [
@@ -419,6 +424,20 @@ defmodule Logflare.Telemetry do
         description:
           "ClickHouse read pool checkouts that failed before a connection was obtained, counted once per checkout attempt (including attempts masked by a successful failover) and tagged with the read cluster that shed it. `reason` mirrors `DBConnection.ConnectionError.reason`: `:queue_timeout` when the request was dropped from a saturated pool's queue, `:error` for other checkout failures such as the deadline expiring while queued. A `queue_timeout` here also surfaces in `query_error` as `pool_exhausted`; do not sum the two series"
       ),
+      last_value("logflare.clickhouse.read_pool.ready_conn_count",
+        event_name: @ch_read_pool_status_event,
+        measurement: :ready_conn_count,
+        tags: [:backend_id, :read_cluster],
+        description:
+          "Idle, checked-in connections in a ClickHouse read pool on this node, sampled from `DBConnection.get_connection_metrics/1` every #{div(@metrics_interval, 1000)}s. Reads 0 whenever the pool is busy (every connection checked out), so 0 here with 0 `checkout_queue_length` means fully utilized with nobody waiting. Pools are per node; view per instance"
+      ),
+      last_value("logflare.clickhouse.read_pool.checkout_queue_length",
+        event_name: @ch_read_pool_status_event,
+        measurement: :checkout_queue_length,
+        tags: [:backend_id, :read_cluster],
+        description:
+          "Callers waiting to check out a ClickHouse read pool connection on this node, sampled alongside `ready_conn_count`. Non-zero only while the pool is busy; a sustained depth is a pool stall, and whether `connected`/`disconnected` move at the same time tells reconnect recovery apart from drain"
+      ),
       sum("logflare.clickhouse.insert.result.count",
         event_name: [:logflare, :clickhouse, :insert, :result],
         measurement: :count,
@@ -714,10 +733,69 @@ defmodule Logflare.Telemetry do
       [
         {__MODULE__, :process_message_queue_metrics, []},
         {__MODULE__, :process_memory_metrics, []},
-        {__MODULE__, :ets_table_metrics, []}
+        {__MODULE__, :ets_table_metrics, []},
+        {__MODULE__, :clickhouse_read_pool_metrics, []}
       ]
 
     cachex_metrics ++ process_metrics
+  end
+
+  @doc """
+  Polls every active ClickHouse read pool on this node for `DBConnection` pool metrics
+  and emits them as a `#{inspect(@ch_read_pool_status_event)}` event per pool.
+
+  Each pool is polled in its own task bounded by `timeout`, so one unresponsive pool
+  cannot stall the remaining periodic measurements. A pool that exited between
+  enumeration and poll is skipped silently; one that does not answer in time is
+  skipped with a warning.
+  """
+  @spec clickhouse_read_pool_metrics(
+          [{pos_integer(), String.t() | nil, pid()}],
+          non_neg_integer()
+        ) :: :ok
+  def clickhouse_read_pool_metrics(
+        pools \\ QueryConnectionSup.list_read_pools(),
+        timeout \\ @ch_read_pool_poll_timeout
+      ) do
+    pools
+    |> Task.async_stream(&poll_read_pool/1,
+      timeout: timeout,
+      on_timeout: :kill_task,
+      ordered: false,
+      zip_input_on_exit: true
+    )
+    |> Enum.each(&emit_read_pool_status/1)
+  end
+
+  @spec poll_read_pool({pos_integer(), String.t() | nil, pid()}) ::
+          {tuple(), [DBConnection.Pool.connection_metrics()] | :gone}
+  defp poll_read_pool({_backend_id, _label, pool_pid} = pool) do
+    {pool, DBConnection.get_connection_metrics(pool_pid)}
+  catch
+    :exit, _reason -> {pool, :gone}
+  end
+
+  @spec emit_read_pool_status({:ok, {tuple(), term()}} | {:exit, {tuple(), term()}}) :: :ok
+  defp emit_read_pool_status({:ok, {_pool, :gone}}), do: :ok
+
+  defp emit_read_pool_status({:ok, {{backend_id, label, _pool_pid}, pool_metrics}}) do
+    metadata = %{backend_id: backend_id, read_cluster: ClickHouseAdaptor.read_cluster_tag(label)}
+
+    Enum.each(pool_metrics, fn %{ready_conn_count: ready, checkout_queue_length: queued} ->
+      :telemetry.execute(
+        @ch_read_pool_status_event,
+        %{ready_conn_count: ready, checkout_queue_length: queued},
+        metadata
+      )
+    end)
+  end
+
+  defp emit_read_pool_status({:exit, {{backend_id, label, _pool_pid}, reason}}) do
+    Logger.warning("ClickHouse read pool did not answer the metrics poll",
+      backend_id: backend_id,
+      read_cluster: ClickHouseAdaptor.read_cluster_tag(label),
+      reason: inspect(reason)
+    )
   end
 
   def cachex_metrics do
