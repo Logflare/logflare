@@ -58,29 +58,7 @@
             <% end %>
             {text_input(f_config, :url, class: "form-control")}
           </div>
-          <% stored_headers = input_value(f_config, :headers) || %{}
-
-          fields =
-            stored_headers
-            |> Enum.sort_by(fn {key, _value} -> key end)
-            |> Stream.concat(Stream.repeatedly(fn -> {"", ""} end))
-            |> Enum.take(max(map_size(stored_headers) + 1, 2)) %>
-          <%= for {{key, val}, i} <- Enum.with_index(fields, 1) do %>
-            <div class="form-group">
-              {label(f_config, "header#{i}_key", "Custom header #{i} - Key")}
-              {text_input(f_config, "header#{i}_key", value: key, class: "form-control")}
-              {label(f_config, "header#{i}_value", "Custom header #{i} - Value")}
-              {text_input(f_config, "header#{i}_value",
-                value:
-                  if(val in [nil, ""],
-                    do: val,
-                    else: Logflare.Backends.Adaptor.WebhookAdaptor.redacted_value()
-                  ),
-                class: "form-control"
-              )}
-              {hidden_input(f_config, "header#{i}_stored_key", value: key)}
-            </div>
-          <% end %>
+          <.header_inputs form={f_config} />
           <small class="form-text text-muted">
             Headers sent with each request. For a bearer token, set the key to <code>authorization</code>
             and the value to <code>Bearer &lt;token&gt;</code>. Stored values show as <code>REDACTED</code>; leave them unchanged to keep them. You can rename a key without retyping its value. Clear a key to remove the header.
@@ -265,20 +243,7 @@
                 </small>
               </div>
           <% end %>
-          <% headers_number = 2
-
-          fields =
-            (input_value(f_config, :headers) || %{})
-            |> Stream.concat(Stream.repeatedly(fn -> {"", ""} end))
-            |> Enum.take(headers_number) %>
-          <%= for {{key, val}, i} <- Enum.with_index(fields, 1) do %>
-            <div class="form-group">
-              {label(f_config, "header#{i}_key", "Custom header #{i} - Key")}
-              {text_input(f_config, "header#{i}_key", value: key, class: "form-control")}
-              {label(f_config, "header#{i}_value", "Custom header #{i} - Value")}
-              {text_input(f_config, "header#{i}_value", value: val, class: "form-control")}
-            </div>
-          <% end %>
+          <.header_inputs form={f_config} />
         <% "loki" -> %>
           <div class="form-group">
             {label(f_config, :url, "Loki URL")}
@@ -502,20 +467,7 @@
               Address of the OTLP Endpoint
             </small>
           </div>
-          <% headers_number = 2
-          # TODO: Adjust number of entries dynamically
-          fields =
-            (input_value(f_config, :headers) || %{})
-            |> Stream.concat(Stream.repeatedly(fn -> {"", ""} end))
-            |> Enum.take(headers_number) %>
-          <%= for {{key, val}, i} <- Enum.with_index(fields, 1) do %>
-            <div class="form-group">
-              {label(f_config, "header#{i}_key", "Custom header #{i} - Key")}
-              {text_input(f_config, "header#{i}_key", value: key, class: "form-control")}
-              {label(f_config, "header#{i}_value", "Custom header #{i} - Value")}
-              {text_input(f_config, "header#{i}_value", value: val, class: "form-control")}
-            </div>
-          <% end %>
+          <.header_inputs form={f_config} />
           <%= if @form_type == "otlp" do %>
             <div class="form-group">
               {label(f_config, :protocol, "Protocol")}

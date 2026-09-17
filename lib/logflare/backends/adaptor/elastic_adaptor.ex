@@ -192,6 +192,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
   def client_opts(%Backend{config: config}) do
     [
       url: config.endpoint,
+      ssrf: true,
       formatter: ProtobufFormatter,
       gzip: true,
       json: false,

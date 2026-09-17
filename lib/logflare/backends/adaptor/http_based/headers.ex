@@ -47,6 +47,17 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Headers do
   def redacted_value, do: @redacted_value
 
   @doc """
+  What a form should display for a stored header value: blank stays blank so the field
+  reads as empty, anything else becomes `redacted_value/0`.
+
+  Unlike `redact/1` this ignores the header name — a stored value is never shown back
+  to the user, whether or not the header is credential-bearing.
+  """
+  @spec mask_value(term()) :: term()
+  def mask_value(value) when value in [nil, ""], do: value
+  def mask_value(_value), do: @redacted_value
+
+  @doc """
   Returns true when the header name carries credentials and must not be exposed.
   """
   @spec sensitive?(term()) :: boolean()

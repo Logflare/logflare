@@ -13,6 +13,7 @@ defmodule LogflareWeb.BackendsLive do
   alias Logflare.Rules
   alias Logflare.Sources
   alias LogflareWeb.Backends.ReadClusterUrlsComponent
+  alias Logflare.Backends.Adaptor.ElasticAdaptor
 
   require Logger
 
@@ -449,7 +450,7 @@ defmodule LogflareWeb.BackendsLive do
 
     elastic_transport =
       if backend.type == :elastic do
-        Logflare.Backends.Adaptor.ElasticAdaptor.transport(backend.config || %{})
+        ElasticAdaptor.transport(backend.config || %{})
       else
         "filebeat"
       end
