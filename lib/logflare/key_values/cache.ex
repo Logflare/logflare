@@ -75,7 +75,16 @@ defmodule Logflare.KeyValues.Cache do
 
   @impl ContextCache
   def delete_keys(keys) do
-    Multilevel.delete_all(in: keys)
+    # Per-key deletes: Nebulex.Adapters.Cachex (3.1.0) runs `delete_all(in: keys)` as a full
+    # table scan per chunk of keys, like https://github.com/elixir-nebulex/nebulex_local/issues/8
+    busted =
+      Enum.count(keys, fn cache_key ->
+        {:ok, present?} = Multilevel.has_key?(cache_key)
+        :ok = Multilevel.delete(cache_key)
+        present?
+      end)
+
+    {:ok, busted}
   end
 
   @impl ContextCache
