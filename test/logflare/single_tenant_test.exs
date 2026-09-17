@@ -313,6 +313,12 @@ defmodule Logflare.SingleTenantTest do
       assert Backends.get_backend(0) == nil
     end
 
+    test "rejects plain maps in place of user structs" do
+      assert_raise FunctionClauseError, fn ->
+        apply(SingleTenant, :get_default_clickhouse_backend, [%{id: 123}])
+      end
+    end
+
     test "source lookup uses the source owner rather than the default user" do
       assert {:ok, _plan} = SingleTenant.create_default_plan()
       assert {:ok, default_user} = SingleTenant.create_default_user()
