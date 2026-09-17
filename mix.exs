@@ -114,6 +114,8 @@ defmodule Logflare.Mixfile do
       {:postgrex, ">= 0.0.0"},
       {:gettext, "~> 0.11"},
       {:jason, "~> 1.0"},
+      {:ezstd, "~> 1.0"},
+      {:uuidv7, "~> 1.0"},
       {:deep_merge, "~> 1.0"},
       {:number, "~> 1.0.0"},
       {:timex, "~> 3.1"},
@@ -153,6 +155,8 @@ defmodule Logflare.Mixfile do
       # Concurrency and pipelines
       {:broadway, "~> 1.3"},
       {:syn, github: "Logflare/syn"},
+      {:durable_buffer,
+       git: "https://github.com/Baishan/durable_buffer.git", branch: "chore/make_req_optional"},
 
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},

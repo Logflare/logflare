@@ -68,6 +68,24 @@ defmodule Logflare.Networking do
            start_pool_metrics?: true
          ]
        }},
+      # Dedicated pool for the spool producer/consumer's GCS + Pub/Sub calls.
+      {Finch,
+       name: Logflare.FinchSpool,
+       pools: %{
+         :default => [protocols: [:http1]],
+         "https://storage.googleapis.com" => [
+           protocols: [:http1],
+           size: max(base * 150, 150),
+           count: http1_count,
+           start_pool_metrics?: true
+         ],
+         "https://pubsub.googleapis.com" => [
+           protocols: [:http1],
+           size: max(base * 150, 150),
+           count: http1_count,
+           start_pool_metrics?: true
+         ]
+       }},
       {Finch,
        name: Logflare.FinchDefault,
        pools:
