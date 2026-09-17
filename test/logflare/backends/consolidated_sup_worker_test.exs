@@ -4,6 +4,7 @@ defmodule Logflare.Backends.ConsolidatedSupWorkerTest do
   alias Logflare.Backends
   alias Logflare.Backends.ConsolidatedSup
   alias Logflare.Backends.ConsolidatedSupWorker
+  alias Logflare.SingleTenant
 
   describe "ConsolidatedSupWorker" do
     setup do
@@ -83,7 +84,7 @@ defmodule Logflare.Backends.ConsolidatedSupWorkerTest do
     TestUtils.setup_single_tenant(seed_user: true, backend_type: :clickhouse)
 
     test "starts the synthetic consolidated backend without sources or rules" do
-      backend = Backends.get_single_tenant_default_backend()
+      backend = SingleTenant.get_default_clickhouse_backend()
       assert backend.id == 0
 
       on_exit(fn -> ConsolidatedSup.stop_pipeline(backend.id) end)
