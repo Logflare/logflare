@@ -159,6 +159,90 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.CloudTest do
     end
   end
 
+  describe "commit_async/5 and handle_message/2" do
+    setup do
+      prev_spool_config = Application.get_env(:logflare, :spool)
+      Application.put_env(:logflare, :spool, max_spool_health_failures: 1)
+
+      on_exit(fn ->
+        Health.report_recovery!(:upload)
+
+        if prev_spool_config do
+          Application.put_env(:logflare, :spool, prev_spool_config)
+        else
+          Application.delete_env(:logflare, :spool)
+        end
+      end)
+    end
+
+    test "async?/1 reports Cloud as an async backend" do
+      assert DurableBuffer.Backend.async?(Backend)
+    end
+
+    test "returns :pending immediately without waiting for the upload" do
+      test_pid = self()
+
+      stub(StorageMod, :put, fn _b, _k, body, _opts ->
+        Process.sleep(50)
+        send(test_pid, {:put, body})
+        {:ok, %{}}
+      end)
+
+      config = config(%{max_commit_attempts: 1})
+      {:ok, state} = Backend.open(config, 0)
+
+      {time_us, {:pending, ^state}} =
+        :timer.tc(fn -> Backend.commit_async(state, batch(["one"]), 0, {0, 1}, make_ref()) end)
+
+      assert time_us < 50_000
+      refute_receive {:put, _}, 10
+      assert_receive {:put, _body}, 200
+    end
+
+    test "resolves the tag with :ok and reports upload health recovery once the upload settles" do
+      stub(StorageMod, :put, fn _b, _k, _body, _opts -> {:ok, %{}} end)
+
+      config = config(%{max_commit_attempts: 1})
+      {:ok, state} = Backend.open(config, 0)
+      tag = make_ref()
+
+      assert {:pending, ^state} = Backend.commit_async(state, batch(["one"]), 0, {0, 1}, tag)
+
+      assert_receive {:backend, {^tag, :ok}}, 200
+      assert {[{^tag, :ok}], ^state} = Backend.handle_message({tag, :ok}, state)
+      assert Health.healthy?(:upload) == true
+    end
+
+    test "resolves the tag with {:error, reason} and reports upload health failure after retries are exhausted" do
+      stub(StorageMod, :put, fn _b, _k, _body, _opts -> {:error, :timeout} end)
+
+      config = config(%{max_commit_attempts: 1, retry_delay_ms: 1})
+      {:ok, state} = Backend.open(config, 0)
+      tag = make_ref()
+
+      assert {:pending, ^state} = Backend.commit_async(state, batch(["one"]), 0, {0, 1}, tag)
+
+      assert_receive {:backend, {^tag, {:error, :timeout}}}, 200
+
+      assert {[{^tag, {:error, :timeout}}], ^state} =
+               Backend.handle_message({tag, {:error, :timeout}}, state)
+
+      assert Health.healthy?(:upload) == false
+    end
+
+    test "an unexpected crash mid-upload still resolves the tag, instead of leaking the in-flight credit forever" do
+      stub(StorageMod, :put, fn _b, _k, _body, _opts -> raise "boom" end)
+
+      config = config(%{max_commit_attempts: 1})
+      {:ok, state} = Backend.open(config, 0)
+      tag = make_ref()
+
+      assert {:pending, ^state} = Backend.commit_async(state, batch(["one"]), 0, {0, 1}, tag)
+
+      assert_receive {:backend, {^tag, {:error, %RuntimeError{message: "boom"}}}}, 200
+    end
+  end
+
   describe "via a real DurableBuffer instance" do
     defp start_buffer!(opts) do
       name = :"durable_buffer_spike_#{System.unique_integer([:positive])}"

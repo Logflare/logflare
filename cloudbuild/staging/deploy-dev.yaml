@@ -23,6 +23,7 @@ steps:
           printf 'SPOOL_BLOCKING=%s\n' "$$7"
           printf 'SPOOL_WAL_DIR=%s\n' "$$8"
           printf 'SPOOL_BUFFER=%s\n' "$$9"
+          printf 'SPOOL_MAX_BATCH_BYTES=%s\n' "$${10}"
         } > gce-container.env
       - --
       - ${_COOKIE}
@@ -34,6 +35,7 @@ steps:
       - ${_SPOOL_BLOCKING}
       - ${_SPOOL_WAL_DIR}
       - ${_SPOOL_BUFFER}
+      - ${_SPOOL_MAX_BATCH_BYTES}
   # create instance template - dedicated
   - name: gcr.io/cloud-builders/gcloud
     entrypoint: bash
@@ -136,15 +138,15 @@ substitutions:
   # separate disk — see gce-startup.sh for why). Set unconditionally
   # (consumer just never reads it).
   _SPOOL_WAL_DIR: /var/lib/logflare/spool_wal
-  # Blocking (see Backends.spool_blocking_mode?/0) was enabled here to test
-  # whether waiting for the actual GCS/Pub-Sub commit prevents the OOM
-  # reproduced under full-saturation load — off by default for now while
-  # a separate consumer-side slowness is investigated. Toggle explicitly
-  # via the console to retest.
-  _SPOOL_BLOCKING: "false"
-  # Local-disk WAL buffer, matching prod/staging — see
-  # Logflare.Backends.spool_buffer/0 (otherwise defaults to in-memory).
-  _SPOOL_BUFFER: wal
+  # In-memory buffer, matching prod/staging — see
+  # Logflare.Backends.spool_buffer/0. Blocking (spool_blocking_mode?/0) is
+  # on: with no local WAL, this is the only durability guarantee an ingest
+  # caller gets, so it must wait for the actual GCS/Pub-Sub commit.
+  _SPOOL_BLOCKING: "true"
+  _SPOOL_BUFFER: mem
+  # Caps each uploaded spool file at ~6MB (Logflare.Backends.Spool.
+  # DurableBuffer.Supervisor's max_batch_bytes, default 64KiB).
+  _SPOOL_MAX_BATCH_BYTES: "6291456"
   _COOKIE: default-dev-${_DEV_NUMBER}
   _NORMALIZED_IMAGE_TAG: ${_IMAGE_TAG}
   _INSTANCE_TYPE: c2d-highcpu-4

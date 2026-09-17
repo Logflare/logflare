@@ -9,6 +9,15 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.Cloud do
   `DurableBuffer.append/3`'s blocking return already matches "mem sync"
   mode; `DurableBuffer.append_async/3` (no wait) matches "mem async".
   There is no local WAL, so `stream/2`/`truncate/2` have nothing to do.
+
+  Implements the optional async commit contract (`commit_async/5` +
+  `handle_message/2`) so `DurableBuffer.Partition.Committer` can pipeline
+  uploads — up to `max_inflight_commits` concurrent GCS/queue round
+  trips per partition — instead of one commit blocking the next behind
+  it. `state` is never mutated by a commit either way, so handing a copy
+  to a concurrent `Task` is safe. `commit/4` stays synchronous and is
+  used unconditionally by `RotatingWal.Worker`, which calls it directly
+  rather than through any `DurableBuffer.Partition`.
   """
 
   @behaviour DurableBuffer.Backend
@@ -53,6 +62,42 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.Cloud do
         Health.report_failure!(:upload)
         {:error, reason, state}
     end
+  end
+
+  @impl true
+  def commit_async(state, batch, _byte_size, _span, tag) do
+    body = IO.iodata_to_binary(batch)
+    emit_handle_batch_telemetry(body)
+
+    parent = self()
+    Task.start(fn -> send(parent, {:backend, {tag, safe_commit_result(state, body)}}) end)
+
+    {:pending, state}
+  end
+
+  @impl true
+  def handle_message({tag, result}, state) do
+    case result do
+      :ok -> Health.report_recovery!(:upload)
+      {:error, _reason} -> Health.report_failure!(:upload)
+    end
+
+    {[{tag, result}], state}
+  end
+
+  # Runs in an unlinked Task, never the Committer — a crash here must
+  # still resolve `tag`, or the Committer's in-flight credit for it is
+  # never released and this partition eventually stalls (mirrors
+  # QueueProducer.safe_fetch_next/4's same guarantee).
+  defp safe_commit_result(state, body) do
+    case do_commit(state, body, 0) do
+      {:ok, _state} -> :ok
+      {:error, reason, _state} -> {:error, reason}
+    end
+  rescue
+    e -> {:error, e}
+  catch
+    kind, reason -> {:error, {kind, reason}}
   end
 
   # Mirrors the shared [:logflare, :backends, :pipeline, :handle_batch]

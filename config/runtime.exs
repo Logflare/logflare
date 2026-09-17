@@ -663,6 +663,27 @@ spool_blocking_override =
     v -> [blocking: v == "true"]
   end
 
+# How much accumulates before the spool's local commit tier flushes (see
+# Logflare.Backends.Spool.DurableBuffer.Supervisor's max_batch_bytes,
+# default 64KiB) — applies in both :wal and :mem buffer mode, since it
+# governs DurableBuffer.Partition's own group-commit trigger rather than
+# anything backend-specific.
+spool_max_batch_bytes_override =
+  case System.get_env("SPOOL_MAX_BATCH_BYTES") do
+    v when v in [nil, ""] ->
+      []
+
+    v ->
+      case Integer.parse(v) do
+        {bytes, ""} when bytes > 0 ->
+          [max_batch_bytes: bytes]
+
+        _ ->
+          raise ArgumentError,
+                "Invalid SPOOL_MAX_BATCH_BYTES=#{v}. Must be a positive integer."
+      end
+  end
+
 # Local disk directory for the producer's durable WAL segments (see
 # Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal) — only used
 # when SPOOL_BUFFER is :wal. Falls back to a tmp dir so a plain
@@ -675,6 +696,7 @@ spool_overrides =
     spool_provider_override ++
     spool_buffer_override ++
     spool_blocking_override ++
+    spool_max_batch_bytes_override ++
     if((q = System.get_env("SPOOL_QUEUE_NAME")) && q != "", do: [queue_name: q], else: []) ++
     if((t = System.get_env("SPOOL_PUBSUB_TOPIC")) && t != "", do: [pubsub_topic: t], else: []) ++
     if((b = System.get_env("SPOOL_BUCKET")) && b != "", do: [bucket: b], else: []) ++
