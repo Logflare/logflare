@@ -41,7 +41,13 @@ defmodule Logflare.Backends.Spool.DurableBuffer.ConsumerInteropTest do
     dir
   end
 
-  defp raw_segment(ids), do: :erlang.term_to_binary(Enum.map(ids, &%{"id" => &1}))
+  # Matches Encoder.encode_raw_chunk/1's wire format — a 4-byte event-count
+  # header followed by the etf-encoded records — since that's what the real
+  # write path (Backends.ex) hands to DurableBuffer.append/3.
+  defp raw_segment(ids) do
+    records = Enum.map(ids, &%{"id" => &1})
+    <<length(records)::32-big, :erlang.term_to_binary(records)::binary>>
+  end
 
   defp capture_uploads(test_pid) do
     stub(StorageMod, :put, fn bucket, file_key, body, _opts ->
