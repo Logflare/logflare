@@ -309,11 +309,13 @@ defmodule Logflare.Mixfile do
   # Routes `mix ecto.migrate`/`mix ecto.rollback` through `Logflare.Repo.Migrator`,
   # so migrations honor LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS in dev/test too.
   defp migrate(args) do
+    Mix.Task.run("compile")
     repo = Logflare.Repo.Migrator.migration_repo_for(Logflare.Repo) |> inspect()
     Mix.Task.run("ecto.migrate", ["-r", repo | args])
   end
 
   defp rollback(args) do
+    Mix.Task.run("compile")
     repo = Logflare.Repo.Migrator.migration_repo_for(Logflare.Repo) |> inspect()
     Mix.Task.run("ecto.rollback", ["-r", repo | args])
   end
