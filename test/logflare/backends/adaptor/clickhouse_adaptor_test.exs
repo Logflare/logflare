@@ -26,6 +26,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     setup do
       insert(:plan, name: "Free")
 
+      previous_table_suffix = Application.fetch_env(:logflare, :clickhouse_table_suffix)
+      Application.put_env(:logflare, :clickhouse_table_suffix, "default")
+
+      on_exit(fn ->
+        case previous_table_suffix do
+          {:ok, suffix} -> Application.put_env(:logflare, :clickhouse_table_suffix, suffix)
+          :error -> Application.delete_env(:logflare, :clickhouse_table_suffix)
+        end
+      end)
+
       {source, backend} = setup_clickhouse_test()
 
       stringified_backend_token =
@@ -58,17 +68,33 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                "otel_traces_#{stringified_backend_token}"
     end
 
-    test "uses fixed table names for the synthetic single-tenant backend", %{backend: backend} do
+    test "uses default table names for the synthetic single-tenant backend", %{backend: backend} do
       backend = %{backend | id: 0, single_tenant_default?: true}
 
       assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log) ==
-               "otel_logs_single_tenant"
+               "otel_logs_default"
 
       assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :metric) ==
-               "otel_metrics_single_tenant"
+               "otel_metrics_default"
 
       assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace) ==
-               "otel_traces_single_tenant"
+               "otel_traces_default"
+    end
+
+    test "uses the configured suffix for the synthetic single-tenant backend", %{
+      backend: backend
+    } do
+      Application.put_env(:logflare, :clickhouse_table_suffix, "custom")
+      backend = %{backend | id: 0, single_tenant_default?: true}
+
+      assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log) ==
+               "otel_logs_custom"
+
+      assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :metric) ==
+               "otel_metrics_custom"
+
+      assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace) ==
+               "otel_traces_custom"
     end
   end
 
