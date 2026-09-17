@@ -34,6 +34,7 @@ defmodule Logflare.Telemetry do
   @metrics_interval 30_000
   @ch_read_pool_poll_timeout :timer.seconds(5)
   @ch_read_pool_status_event [:logflare, :clickhouse, :read_pool, :pool_status]
+  @ch_read_pool_poll_timeout_event [:logflare, :clickhouse, :read_pool, :poll_timeout]
   @max_phash2_range 4_294_967_296
 
   @ch_read_pool_time_buckets_ms [
@@ -429,7 +430,7 @@ defmodule Logflare.Telemetry do
         measurement: :ready_conn_count,
         tags: [:backend_id, :read_cluster],
         description:
-          "Idle, checked-in connections in a ClickHouse read pool on this node, sampled from `DBConnection.get_connection_metrics/1` every #{div(@metrics_interval, 1000)}s. Reads 0 whenever the pool is busy (every connection checked out), so 0 here with 0 `checkout_queue_length` means fully utilized with nobody waiting. Pools are per node; view per instance"
+          "Idle, checked-in connections in a ClickHouse read pool on this node, sampled from `DBConnection.get_connection_metrics/1` every #{div(@metrics_interval, 1000)}s. Reads 0 whenever the pool is busy (every connection checked out), so 0 here with 0 `checkout_queue_length` means fully utilized with nobody waiting. A missing sample means the pool was idle-stopped or the poll timed out; `poll_timeout` tells the two apart. Pools are per node; view per instance"
       ),
       last_value("logflare.clickhouse.read_pool.checkout_queue_length",
         event_name: @ch_read_pool_status_event,
@@ -437,6 +438,13 @@ defmodule Logflare.Telemetry do
         tags: [:backend_id, :read_cluster],
         description:
           "Callers waiting to check out a ClickHouse read pool connection on this node, sampled alongside `ready_conn_count`. Non-zero only while the pool is busy; a sustained depth is a pool stall, and whether `connected`/`disconnected` move at the same time tells reconnect recovery apart from drain"
+      ),
+      sum("logflare.clickhouse.read_pool.poll_timeout",
+        event_name: @ch_read_pool_poll_timeout_event,
+        measurement: :count,
+        tags: [:backend_id, :read_cluster],
+        description:
+          "ClickHouse read pool status polls that did not answer within #{div(@ch_read_pool_poll_timeout, 1000)}s, per backend and read cluster. Each count is a sample missing from `ready_conn_count`/`checkout_queue_length` because the pool process was unresponsive, not because it was idle-stopped"
       ),
       sum("logflare.clickhouse.insert.result.count",
         event_name: [:logflare, :clickhouse, :insert, :result],
@@ -744,10 +752,12 @@ defmodule Logflare.Telemetry do
   Polls every active ClickHouse read pool on this node for `DBConnection` pool metrics
   and emits them as a `#{inspect(@ch_read_pool_status_event)}` event per pool.
 
-  Each pool is polled in its own task bounded by `timeout`, so one unresponsive pool
-  cannot stall the remaining periodic measurements. A pool that exited between
-  enumeration and poll is skipped silently; one that does not answer in time is
-  skipped with a warning.
+  Each pool is polled in its own task bounded by `timeout`, so the sweep delays the
+  poller by at most `timeout` per batch of pools rather than hanging on one
+  unresponsive pool. A pool that exited between enumeration and poll is skipped
+  silently; one that does not answer in time is skipped with a warning and a
+  `#{inspect(@ch_read_pool_poll_timeout_event)}` count so the missing sample is
+  attributable on a dashboard.
   """
   @spec clickhouse_read_pool_metrics(
           [{pos_integer(), String.t() | nil, pid()}],
@@ -775,26 +785,36 @@ defmodule Logflare.Telemetry do
     :exit, _reason -> {pool, :gone}
   end
 
-  @spec emit_read_pool_status({:ok, {tuple(), term()}} | {:exit, {tuple(), term()}}) :: :ok
+  @spec emit_read_pool_status(term()) :: :ok
   defp emit_read_pool_status({:ok, {_pool, :gone}}), do: :ok
 
-  defp emit_read_pool_status({:ok, {{backend_id, label, _pool_pid}, pool_metrics}}) do
-    metadata = %{backend_id: backend_id, read_cluster: ClickHouseAdaptor.read_cluster_tag(label)}
-
-    Enum.each(pool_metrics, fn %{ready_conn_count: ready, checkout_queue_length: queued} ->
-      :telemetry.execute(
-        @ch_read_pool_status_event,
-        %{ready_conn_count: ready, checkout_queue_length: queued},
-        metadata
-      )
-    end)
+  defp emit_read_pool_status(
+         {:ok,
+          {{backend_id, label, _pool_pid},
+           [%{ready_conn_count: ready, checkout_queue_length: queued}]}}
+       ) do
+    :telemetry.execute(
+      @ch_read_pool_status_event,
+      %{ready_conn_count: ready, checkout_queue_length: queued},
+      %{backend_id: backend_id, read_cluster: ClickHouseAdaptor.read_cluster_tag(label)}
+    )
   end
 
   defp emit_read_pool_status({:exit, {{backend_id, label, _pool_pid}, reason}}) do
+    metadata = %{backend_id: backend_id, read_cluster: ClickHouseAdaptor.read_cluster_tag(label)}
+
+    :telemetry.execute(@ch_read_pool_poll_timeout_event, %{count: 1}, metadata)
+
     Logger.warning("ClickHouse read pool did not answer the metrics poll",
       backend_id: backend_id,
-      read_cluster: ClickHouseAdaptor.read_cluster_tag(label),
+      read_cluster: metadata.read_cluster,
       reason: inspect(reason)
+    )
+  end
+
+  defp emit_read_pool_status(other) do
+    Logger.warning("ClickHouse read pool metrics poll returned an unexpected result",
+      result: inspect(other)
     )
   end
 
