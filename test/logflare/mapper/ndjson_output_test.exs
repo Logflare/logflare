@@ -106,7 +106,7 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
       for {overrides, expected} <- [
             {%{}, 1},
             {%{"duration" => 42_000}, 42},
-            {%{"duration" => 999}, 1},
+            {%{"duration" => 999}, 0},
             {%{"end_time" => 1}, 0}
           ] do
         assert %{"duration" => ^expected} =

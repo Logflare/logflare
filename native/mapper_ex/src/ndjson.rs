@@ -215,10 +215,13 @@ fn derived_value(
             end_time,
             precision,
         } if index == duration => {
-            let explicit = scale_duration(decode_u64(values[duration], "duration")?, precision);
+            let explicit = decode_u64(values[duration], "duration")?;
+            if explicit != 0 {
+                return Ok(Some(scale_duration(explicit, precision)));
+            }
             let start = values[start_time].decode::<i64>();
             let end = values[end_time].decode::<i64>();
-            Ok(Some(crate::derive::duration(explicit, start, end)))
+            Ok(Some(crate::derive::duration(0, start, end)))
         }
         _ => Ok(None),
     }

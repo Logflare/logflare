@@ -813,6 +813,9 @@ fn decode_filters<'a>(env: Env<'a>, field: Term<'a>) -> Result<Option<StringFilt
 
 pub fn decode_enum8_data<'a>(env: Env<'a>, field: Term<'a>) -> Result<Enum8Data, String> {
     let value_map = decode_enum_values(env, field)?;
+    if value_map.is_empty() {
+        return Err("enum8 field requires a non-empty 'enum_values' map".to_string());
+    }
     let values: HashSet<i8> = value_map.values().copied().collect();
     let infer_rules = decode_infer_rules(env, field)?;
     Ok(Enum8Data {

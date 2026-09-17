@@ -1847,6 +1847,13 @@ defmodule Logflare.MapperTest do
       assert reason =~ "unknown field type"
     end
 
+    test "returns {:error, reason} on enum8 without values" do
+      config = MappingConfig.new([Field.enum8("kind", paths: ["$.kind"])])
+
+      assert {:error, reason} = Mapper.compile(config)
+      assert reason =~ "non-empty 'enum_values'"
+    end
+
     test "returns {:error, reason} on duplicate field names" do
       config =
         MappingConfig.new([
