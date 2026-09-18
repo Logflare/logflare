@@ -61,9 +61,9 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
     if requires_outer_limit?(query_ast) do
       wrap_with_limit(statement, max_rows)
     else
-      with {:ok, limit} <- build_limit(query_ast["limit"], max_rows) do
+      with {:ok, limit_clause} <- build_limit_clause(query_ast["limit_clause"], max_rows) do
         statement
-        |> put_in(["Query", "limit"], limit)
+        |> put_in(["Query", "limit_clause"], limit_clause)
         |> Parser.to_string()
       end
     end
@@ -123,15 +123,21 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
   # do not have ordinary row-count semantics. Cap their completed result from an
   # outer query instead of comparing the original expression numerically.
   defp requires_outer_limit?(%{"fetch" => fetch}) when not is_nil(fetch), do: true
+  defp requires_outer_limit?(%{"limit_clause" => nil}), do: false
 
-  defp requires_outer_limit?(%{"offset" => %{"rows" => rows}})
+  defp requires_outer_limit?(%{"limit_clause" => %{"LimitOffset" => limit_offset}}),
+    do: requires_outer_limit_offset?(limit_offset)
+
+  defp requires_outer_limit?(_query_ast), do: true
+
+  defp requires_outer_limit_offset?(%{"offset" => %{"rows" => rows}})
        when rows in ["Rows", "Row"],
        do: true
 
-  defp requires_outer_limit?(%{"limit_by" => [_ | _]}), do: true
-  defp requires_outer_limit?(%{"limit" => nil}), do: false
+  defp requires_outer_limit_offset?(%{"limit_by" => [_ | _]}), do: true
+  defp requires_outer_limit_offset?(%{"limit" => nil}), do: false
 
-  defp requires_outer_limit?(%{
+  defp requires_outer_limit_offset?(%{
          "limit" => %{"Value" => %{"value" => %{"Number" => [value, _long]}}}
        }) do
     case Integer.parse(value) do
@@ -140,7 +146,7 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
     end
   end
 
-  defp requires_outer_limit?(_query_ast), do: true
+  defp requires_outer_limit_offset?(_limit_offset), do: true
 
   defp wrap_with_limit(%{"Query" => query_ast} = statement, max_rows) do
     terminal_modifiers = Map.take(query_ast, @terminal_modifiers)
@@ -159,22 +165,34 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
     end
   end
 
-  defp build_limit(nil, max_rows), do: parse_limit("SELECT 1 LIMIT #{max_rows}")
+  defp build_limit_clause(nil, max_rows), do: parse_limit_clause("SELECT 1 LIMIT #{max_rows}")
 
-  defp build_limit(existing_limit, max_rows) do
-    with {:ok, limit} <- parse_limit("SELECT 1 LIMIT least(1, #{max_rows})") do
+  defp build_limit_clause(%{"LimitOffset" => %{"limit" => nil} = limit_offset}, max_rows) do
+    with {:ok, %{"LimitOffset" => %{"limit" => limit}}} <-
+           parse_limit_clause("SELECT 1 LIMIT #{max_rows}") do
+      {:ok, %{"LimitOffset" => %{limit_offset | "limit" => limit}}}
+    end
+  end
+
+  defp build_limit_clause(
+         %{"LimitOffset" => %{"limit" => existing_limit} = limit_offset},
+         max_rows
+       ) do
+    with {:ok, %{"LimitOffset" => %{"limit" => limit}}} <-
+           parse_limit_clause("SELECT 1 LIMIT least(1, #{max_rows})") do
       limited =
         update_in(limit, ["Function", "args", "List", "args"], fn [_placeholder, maximum] ->
           [%{"Unnamed" => %{"Expr" => existing_limit}}, maximum]
         end)
 
-      {:ok, limited}
+      {:ok, %{"LimitOffset" => %{limit_offset | "limit" => limited}}}
     end
   end
 
-  defp parse_limit(query) do
-    with {:ok, [%{"Query" => %{"limit" => limit}}]} <- Parser.parse(dialect(), query) do
-      {:ok, limit}
+  defp parse_limit_clause(query) do
+    with {:ok, [%{"Query" => %{"limit_clause" => limit_clause}}]} <-
+           Parser.parse(dialect(), query) do
+      {:ok, limit_clause}
     end
   end
 
