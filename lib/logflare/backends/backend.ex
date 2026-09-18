@@ -15,6 +15,7 @@ defmodule Logflare.Backends.Backend do
 
   @adaptor_mapping %{
     webhook: Adaptor.WebhookAdaptor,
+    consolidated_webhook: Adaptor.ConsolidatedWebhookAdaptor,
     elastic: Adaptor.ElasticAdaptor,
     datadog: Adaptor.DatadogAdaptor,
     sentry: Adaptor.SentryAdaptor,
