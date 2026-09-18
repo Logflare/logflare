@@ -153,6 +153,7 @@ defmodule Logflare.Google.BigQuery.SourceSchemaBuilderTest do
   describe "OpenTelemetry schema generation" do
     test "OTel: start_time and end_time are TIMESTAMP" do
       otel_trace_params = %{
+        "metadata" => %{"type" => "span"},
         "resource" => %{"service.name" => "my-service"},
         "scope" => %{"name" => "my-scope", "version" => "1.0"},
         "attributes" => %{"http.status" => 200},
@@ -190,6 +191,7 @@ defmodule Logflare.Google.BigQuery.SourceSchemaBuilderTest do
 
       # OTel: start_time becomes TIMESTAMP, other integer fields stay INTEGER
       otel_params = %{
+        "metadata" => %{"type" => "metric"},
         "resource" => %{"service.name" => "my-service"},
         "scope" => %{"name" => "my-scope", "version" => "1.0"},
         "attributes" => %{"request_id" => "abc"},

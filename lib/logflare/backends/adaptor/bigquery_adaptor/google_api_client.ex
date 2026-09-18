@@ -24,10 +24,10 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
     end
   end
 
-  def encode_arrow_data(ndjson) do
+  def encode_arrow_data(ndjson, is_otel \\ false) do
     {arrow_schema, batch_msgs} =
       OpenTelemetry.Tracer.with_span "ingest.bq_ipc_encode" do
-        {_schema, msgs} = r = ArrowIPC.get_ipc_bytes(ndjson)
+        {_schema, msgs} = r = ArrowIPC.get_ipc_bytes(ndjson, is_otel)
         OpenTelemetry.Tracer.set_attribute(:ipc_batch_count, length(msgs))
         r
       end

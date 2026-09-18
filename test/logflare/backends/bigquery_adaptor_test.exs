@@ -239,6 +239,52 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       end)
     end
 
+    test "encodes OTel start_time/end_time as int64 unix microseconds, forcing Arrow Timestamp" do
+      user = insert(:user)
+      source = insert(:source, user: user, bq_storage_write_api: true)
+      start_supervised!({SourceSup, source})
+
+      log_event =
+        build(:log_event,
+          source: source,
+          metadata: %{"type" => "span"},
+          start_time: 1_779_436_330_890_427_000,
+          end_time: 1_779_436_901_362_775_000
+        )
+
+      assert log_event.otel_timestamps
+      pid = self()
+
+      Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
+      |> expect(:encode_arrow_data, fn ndjson, is_otel ->
+        assert is_otel
+
+        assert ndjson =~ ~s("start_time":1779436330890427)
+        assert ndjson =~ ~s("end_time":1779436901362775)
+
+        # confirms is_otel actually changes the produced Arrow schema
+        {otel_schema, _} = BigQueryAdaptor.ArrowIPC.get_ipc_bytes(ndjson, true)
+        {plain_schema, _} = BigQueryAdaptor.ArrowIPC.get_ipc_bytes(ndjson, false)
+        refute otel_schema == plain_schema
+
+        send(pid, :encoded)
+        []
+      end)
+
+      Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
+      |> expect(:append_rows, fn {:arrow, _dataframe}, _context, _table_id ->
+        send(pid, :streamed)
+        {:ok, %Google.Cloud.Bigquery.Storage.V1.AppendRowsResponse{}}
+      end)
+
+      assert {:ok, 1} = Backends.ingest_logs([log_event], source)
+
+      TestUtils.retry_assert(fn ->
+        assert_receive :encoded, 2500
+        assert_receive :streamed, 2500
+      end)
+    end
+
     test "can ingest logs with different schemas" do
       user = insert(:user)
       source = insert(:source, user: user, bq_storage_write_api: true)
