@@ -80,6 +80,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.SingleTenantIngestionTest 
       end
     after
       if stop_manager? and Process.alive?(manager_pid) do
+        ConnectionManager.refresh_pool(backend)
         GenServer.stop(manager_pid)
       end
     end
