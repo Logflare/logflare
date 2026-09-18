@@ -117,6 +117,20 @@
               Maximum number of events in one request. All sources attached to this backend share the batches.
             </small>
           </div>
+          <div :if={webhook_type == "consolidated_webhook"} class="form-group">
+            {label(f_config, :sample_percentage, "Sample percentage")}
+            {number_input(f_config, :sample_percentage,
+              class: "form-control",
+              id: "webhook-sample-percentage",
+              min: 0,
+              max: 100,
+              step: "any",
+              placeholder: Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.default_sample_percentage()
+            )}
+            <small class="form-text text-muted">
+              Percentage of events to send, from above <code>0</code> to <code>100</code>. The backend drops the other events. Each event is sampled at random.
+            </small>
+          </div>
         <% "postgres" -> %>
           <div class="form-group">
             <%= label f_config, :url do %>

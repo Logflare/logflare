@@ -931,13 +931,14 @@ defmodule LogflareWeb.BackendsLiveTest do
         |> render_change(%{backend: %{type: "consolidated_webhook"}})
 
       assert html =~ "webhook-batch-size"
+      assert html =~ "webhook-sample-percentage"
 
       view
       |> form("form", %{
         backend: %{
           name: "consolidated webhook backend",
           type: "consolidated_webhook",
-          config: %{url: "https://example.com", batch_size: "2500"}
+          config: %{url: "https://example.com", batch_size: "2500", sample_percentage: "12.5"}
         }
       })
       |> render_submit()
@@ -948,6 +949,7 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       assert backend.type == :consolidated_webhook
       assert backend.config.batch_size == 2_500
+      assert backend.config.sample_percentage == 12.5
       assert backend.config.gzip == true
     end
 
