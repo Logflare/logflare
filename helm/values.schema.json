@@ -53,6 +53,9 @@
         "extraEnv": {
             "type": "array"
         },
+        "extraIngresses": {
+            "type": "array"
+        },
         "fullnameOverride": {
             "type": "string"
         },
@@ -160,6 +163,12 @@
                                             "type": "string"
                                         },
                                         "pathType": {
+                                            "type": "string"
+                                        },
+                                        "serviceName": {
+                                            "type": "string"
+                                        },
+                                        "servicePortName": {
                                             "type": "string"
                                         }
                                     }
