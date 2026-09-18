@@ -1467,6 +1467,67 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.get_table_size(startup_key) == 10_000
       for queue <- queues, do: assert(IngestEventQueue.get_table_size(queue) == max_size)
     end
+
+    test "drops an incoming batch when the startup queue is at the hard cap", %{
+      source: source,
+      backend: backend
+    } do
+      startup_key = {:consolidated, backend.id, nil}
+      IngestEventQueue.upsert_tid(startup_key)
+      max_size = IngestEventQueue.max_consolidated_queue_size()
+      :ok = IngestEventQueue.add_to_table(startup_key, build_queue_saturation_events(max_size))
+
+      queue_full_event = [:logflare, :ingest_event_queue, :queue_full, :dropped]
+      ref = :telemetry_test.attach_event_handlers(self(), [queue_full_event])
+      on_exit(fn -> :telemetry.detach(ref) end)
+
+      backend_id = backend.id
+      new_events = build_list(10, :log_event, source: source)
+
+      assert :ok = IngestEventQueue.add_to_table({:consolidated, backend_id}, new_events)
+      assert IngestEventQueue.get_table_size(startup_key) == max_size
+
+      assert_receive {^queue_full_event, ^ref, %{count: 10},
+                      %{backend_id: ^backend_id, backend_type: backend_type}}
+
+      assert backend_type == backend.type
+    end
+
+    test "keeps an incoming batch below the hard cap of the startup queue", %{
+      source: source,
+      backend: backend
+    } do
+      startup_key = {:consolidated, backend.id, nil}
+      IngestEventQueue.upsert_tid(startup_key)
+      max_size = IngestEventQueue.max_consolidated_queue_size()
+
+      :ok =
+        IngestEventQueue.add_to_table(startup_key, build_queue_saturation_events(max_size - 1))
+
+      new_events = build_list(10, :log_event, source: source)
+
+      assert :ok = IngestEventQueue.add_to_table({:consolidated, backend.id}, new_events)
+      assert IngestEventQueue.get_table_size(startup_key) == max_size + 9
+    end
+
+    test "ignores the hard cap of the startup queue when `check_queue_size` is false", %{
+      source: source,
+      backend: backend
+    } do
+      startup_key = {:consolidated, backend.id, nil}
+      IngestEventQueue.upsert_tid(startup_key)
+      max_size = IngestEventQueue.max_consolidated_queue_size()
+      :ok = IngestEventQueue.add_to_table(startup_key, build_queue_saturation_events(max_size))
+
+      new_events = build_list(10, :log_event, source: source)
+
+      assert :ok =
+               IngestEventQueue.add_to_table({:consolidated, backend.id}, new_events,
+                 check_queue_size: false
+               )
+
+      assert IngestEventQueue.get_table_size(startup_key) == max_size + 10
+    end
   end
 
   describe "pop_pending/2" do
