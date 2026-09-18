@@ -189,6 +189,56 @@ defmodule E2e.Features.LogsSearchTest do
       |> assert_has("#load-more-events-top:not([disabled])")
     end
 
+    @scroll_anchor_tail "at Module.handleRequest (/srv/app/lib/handler.js:142:19) -> at Router.dispatch (/srv/app/node_modules/router/index.js:88:7) -> at Layer.handle (/srv/app/node_modules/router/layer.js:95:5)"
+
+    test "an older page keeps the row the reader is on in place", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      prefix = "featurescrollanchor#{System.unique_integer([:positive])}"
+
+      log_events =
+        for index <- 1..150 do
+          build(:log_event,
+            source: source,
+            message: "#{prefix}-#{index} request failed with status 503 #{@scroll_anchor_tail}"
+          )
+        end
+
+      assert {:ok, 150} = Backends.ingest_logs(log_events, source)
+      assert :ok = TestUtils.wait_for_postgres_events(source, user, prefix, 150)
+
+      conn =
+        conn
+        |> visit(~p"/auth/login/single_tenant")
+        |> assert_path(~p"/dashboard")
+        |> visit(
+          ~p"/sources/#{source.id}/search?#{%{querystring: ~s|event_message:~\"^#{prefix}-\"|, tailing?: false}}"
+        )
+        |> assert_has("#logs-list li[data-event-id]", count: 100)
+        |> assert_has("#load-more-events-top:not([disabled])")
+        |> scroll_top_button_into_view()
+
+      before = read_anchor(conn)
+
+      assert before.top > 0, "no row was visible to anchor on"
+
+      conn
+      |> click("#load-more-events-top")
+      |> assert_has("#logs-list li[data-event-id]", count: 150)
+      |> settle_scroll()
+
+      after_click = read_anchor(conn, before.id)
+
+      assert after_click.present, "the anchor row left the page"
+
+      drift = round(after_click.top - before.top)
+
+      assert abs(drift) <= 4,
+             "the reader's row moved #{drift}px. An older page must not move the viewport."
+    end
+
     test "shows a missing field error from the search page", %{conn: conn, source: source} do
       conn
       |> visit(~p"/auth/login/single_tenant")
@@ -312,6 +362,84 @@ defmodule E2e.Features.LogsSearchTest do
 
       assert querystring =~ ~r/t:\S+\.\.\S+/
     end
+  end
+
+  defp scroll_top_button_into_view(conn) do
+    conn
+    |> unwrap(fn %{frame_id: frame_id} ->
+      {:ok, _} =
+        Frame.evaluate(frame_id,
+          expression: """
+          () => {
+            const button = document.getElementById("load-more-events-top")
+            const target = window.scrollY + button.getBoundingClientRect().top - 300
+            window.scrollTo(0, Math.max(0, Math.round(target)))
+          }
+          """,
+          is_function: true,
+          timeout: 5_000
+        )
+    end)
+  end
+
+  defp settle_scroll(conn) do
+    conn
+    |> unwrap(fn %{frame_id: frame_id} ->
+      {:ok, _} =
+        Frame.wait_for_function(frame_id,
+          expression: """
+          () => {
+            const y = Math.round(window.scrollY)
+            window.__stableFor = window.__lastY === y ? (window.__stableFor || 0) + 1 : 0
+            window.__lastY = y
+            return window.__stableFor >= 8
+          }
+          """,
+          is_function: true,
+          polling: 100,
+          timeout: 20_000
+        )
+    end)
+  end
+
+  defp read_anchor(conn, id \\ nil) do
+    ref = make_ref()
+
+    conn
+    |> unwrap(fn %{frame_id: frame_id} ->
+      {:ok, anchor} =
+        Frame.evaluate(frame_id,
+          expression: """
+          ({ id }) => {
+            if (id) {
+              const known = document.getElementById(id)
+              return known
+                ? { id, top: known.getBoundingClientRect().top, present: true }
+                : { id, top: 0, present: false }
+            }
+
+            const middle = window.innerHeight / 2
+            const row = [...document.querySelectorAll("#logs-list li[data-event-id]")]
+              .map((element) => ({ element, top: element.getBoundingClientRect().top }))
+              .filter(({ top }) => top > 0 && top < window.innerHeight)
+              .sort((a, b) => Math.abs(a.top - middle) - Math.abs(b.top - middle))[0]
+
+            return row
+              ? { id: row.element.id, top: row.top, present: true }
+              : { id: null, top: 0, present: false }
+          }
+          """,
+          is_function: true,
+          arg: %{id: id},
+          timeout: 5_000
+        )
+
+      send(self(), {ref, anchor})
+    end)
+
+    assert_receive {^ref, anchor}
+
+    %{id: anchor["id"], top: anchor["top"], present: anchor["present"]}
   end
 
   def wait_for_selector(conn, selector, opts \\ []) do

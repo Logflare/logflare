@@ -866,20 +866,12 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   defp put_event_page(socket, rows, :previous) do
-    socket
-    |> stream(:log_events, rows, at: -1)
-    |> push_scroll_to_oldest(rows)
+    stream(socket, :log_events, rows, at: -1)
   end
 
   defp put_event_page(socket, rows, :next) do
     socket
     |> stream(:log_events, Enum.reverse(rows), at: 0)
-  end
-
-  defp push_scroll_to_oldest(socket, []), do: socket
-
-  defp push_scroll_to_oldest(socket, rows) do
-    push_event(socket, "scroll-to-event", %{id: log_event_dom_id(List.last(rows))})
   end
 
   defp put_search_events(socket, rows)
