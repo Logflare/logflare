@@ -292,7 +292,7 @@ defmodule Logflare.Telemetry do
       ),
       counter("logflare.total_http_requests",
         measurement: :duration,
-        event_name: "bandit.request.stop.duration"
+        event_name: "bandit.request.stop"
       ),
       sum("logflare.logs.processor.ingest.logs.count",
         tags: [:processor],
