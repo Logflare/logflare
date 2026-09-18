@@ -5,6 +5,7 @@ defmodule Logflare.Sources.Source.Supervisor do
   use GenServer
 
   alias Logflare.Backends
+  alias Logflare.Backends.SystemBackend
   alias Logflare.ContextCache
   alias Logflare.Google.BigQuery
   alias Logflare.Repo
@@ -12,7 +13,6 @@ defmodule Logflare.Sources.Source.Supervisor do
   alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Logflare.Sources.Source
-  alias Logflare.Utils.Tasks
 
   require Logger
 
@@ -96,7 +96,6 @@ defmodule Logflare.Sources.Source.Supervisor do
   ## Public Functions
 
   def start_source(source_token) when is_atom(source_token) do
-    # Calling this server doing boot times out due to dealing with bigquery in init_table()
     GenServer.abcast(__MODULE__, {:create, source_token})
 
     {:ok, source_token}
@@ -139,7 +138,7 @@ defmodule Logflare.Sources.Source.Supervisor do
 
   defp create_source(%Source{} = source) do
     with {:ok, _pid} = res <- do_start_source_sup(source),
-         :ok <- maybe_init_table(source.token) do
+         :ok <- SystemBackend.on_source_start(source) do
       res
     else
       {:error, :already_started} = err ->
@@ -149,7 +148,7 @@ defmodule Logflare.Sources.Source.Supervisor do
         {:error, reason}
 
       {:error, :start_timeout} = err ->
-        init_table(source.token)
+        SystemBackend.on_source_start(source)
         err
 
       {:error, _reason} = err ->
@@ -158,10 +157,6 @@ defmodule Logflare.Sources.Source.Supervisor do
       {:error} = err ->
         err
     end
-  end
-
-  defp maybe_init_table(source_token) do
-    if Backends.bigquery_default_backend?(), do: init_table(source_token), else: :ok
   end
 
   @spec ensure_started(Source.t()) :: :ok
@@ -175,29 +170,6 @@ defmodule Logflare.Sources.Source.Supervisor do
       _ ->
         :noop
     end
-
-    :ok
-  end
-
-  def init_table(source_token) do
-    %{
-      user_id: user_id,
-      bigquery_table_ttl: bigquery_table_ttl,
-      bigquery_project_id: bigquery_project_id,
-      bigquery_dataset_location: bigquery_dataset_location,
-      bigquery_dataset_id: bigquery_dataset_id
-    } = BigQuery.GenUtils.get_bq_user_info(source_token)
-
-    Tasks.start_child(fn ->
-      BigQuery.init_table!(
-        user_id,
-        source_token,
-        bigquery_project_id,
-        bigquery_table_ttl,
-        bigquery_dataset_location,
-        bigquery_dataset_id
-      )
-    end)
 
     :ok
   end
