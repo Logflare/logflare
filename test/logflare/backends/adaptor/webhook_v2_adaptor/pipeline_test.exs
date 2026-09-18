@@ -12,6 +12,7 @@ defmodule Logflare.Backends.Adaptor.WebhookV2Adaptor.PipelineTest do
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
 
   @dropped_event [:logflare, :ingest_event_queue, :retry_dropped]
+  @missing_ids_event [:logflare, :ingest_event_queue, :missing_ids]
 
   setup do
     insert(:plan)
@@ -345,15 +346,25 @@ defmodule Logflare.Backends.Adaptor.WebhookV2Adaptor.PipelineTest do
       assert_receive {@dropped_event, ^ref, %{count: 1}, %{reason: :rejected}}
     end
 
-    test "ignores a message whose event is missing", %{source: source, backend: backend} do
-      event = build(:log_event, source: source)
+    test "counts messages whose event is missing in the missing_ids telemetry", %{
+      source: source,
+      backend: %{id: backend_id}
+    } do
+      events = for _n <- 1..3, do: build(:log_event, source: source)
       gen_tid = setup_generation_events([])
-      ref = attach_dropped_handler()
+      dropped_ref = attach_dropped_handler()
+      missing_ref = :telemetry_test.attach_event_handlers(self(), [@missing_ids_event])
+      on_exit(fn -> :telemetry.detach(missing_ref) end)
 
-      failed = encoded_message(event, gen_tid, backend.id)
+      failed = Enum.map(events, &encoded_message(&1, gen_tid, backend_id))
 
-      assert :ok = Pipeline.ack(:ack_ref, [], [failed])
-      refute_receive {@dropped_event, ^ref, _, _}
+      assert :ok = Pipeline.ack(:ack_ref, [], failed)
+
+      assert_receive {@missing_ids_event, ^missing_ref, %{count: 3},
+                      %{backend_type: :webhook_v2, backend_id: ^backend_id}}
+
+      refute_receive {@missing_ids_event, ^missing_ref, _, _}
+      refute_receive {@dropped_event, ^dropped_ref, _, _}
     end
   end
 end

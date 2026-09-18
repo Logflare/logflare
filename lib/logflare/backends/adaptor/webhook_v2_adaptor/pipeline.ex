@@ -13,6 +13,10 @@ defmodule Logflare.Backends.Adaptor.WebhookV2Adaptor.Pipeline do
   A failed request is requeued when the failure is transient. All other failures drop
   the affected events. Each transient failure counts toward the circuit breaker of the
   backend. The pipeline drops retries while the breaker is open.
+
+  An event can wait in the queue until its generation is dropped. The processor then
+  finds no event for the pointer. The pipeline counts these pointers in the
+  `missing_ids` telemetry.
   """
 
   @behaviour Broadway.Acknowledger
@@ -285,7 +289,7 @@ defmodule Logflare.Backends.Adaptor.WebhookV2Adaptor.Pipeline do
     |> Enum.group_by(&failure_action/1, & &1.data)
     |> Enum.each(fn
       {:requeue, payloads} -> requeue_or_shed(backend_id, payloads)
-      {:not_found, _payloads} -> :ok
+      {:not_found, payloads} -> emit_missing_ids(backend_id, length(payloads))
       {reason, payloads} -> drop(backend_id, payloads, reason)
     end)
   end
@@ -333,6 +337,15 @@ defmodule Logflare.Backends.Adaptor.WebhookV2Adaptor.Pipeline do
       {:error, :not_initialized} -> :queue_unavailable
       _published_or_deduplicated -> :requeued
     end
+  end
+
+  @spec emit_missing_ids(pos_integer(), pos_integer()) :: :ok
+  defp emit_missing_ids(backend_id, count) do
+    :telemetry.execute(
+      [:logflare, :ingest_event_queue, :missing_ids],
+      %{count: count},
+      %{backend_type: :webhook_v2, backend_id: backend_id}
+    )
   end
 
   @spec drop(pos_integer(), [EncodedEvent.t() | LogEventPointer.t()], drop_reason()) :: :ok
