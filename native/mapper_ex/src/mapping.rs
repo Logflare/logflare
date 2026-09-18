@@ -15,6 +15,7 @@ const ROOT_CACHE_MIN_REFERENCES: usize = 8;
 pub enum CompiledOutput {
     Map,
     ClickHouseRowBinary(crate::clickhouse_rowbinary::CompiledLayout),
+    Ndjson(crate::ndjson::CompiledLayout),
 }
 
 #[derive(Debug)]
@@ -165,6 +166,9 @@ pub enum PredicateValue {
 #[derive(Debug)]
 pub struct Enum8Data {
     pub value_map: HashMap<String, i8>,
+    /// The configured integer values; an integer input outside this set is
+    /// not a valid enum member and falls through to infer rules and default.
+    pub values: HashSet<i8>,
     pub infer_rules: Vec<InferRule>,
 }
 
@@ -197,7 +201,7 @@ fn decode_output<'a>(
         .ok_or_else(|| "output format is required".to_string())?;
 
     match format.as_str() {
-        "clickhouse_row_binary" => {
+        "ch_row_binary" => {
             let row_type = get_string_key(env, output, "row_type")?
                 .ok_or_else(|| "ClickHouse RowBinary output row_type is required".to_string())?;
             let fields_by_name = fields
@@ -207,6 +211,12 @@ fn decode_output<'a>(
                 .collect();
             let layout = crate::clickhouse_rowbinary::compile_layout(&row_type, &fields_by_name)?;
             Ok(CompiledOutput::ClickHouseRowBinary(layout))
+        }
+        "ndjson" => {
+            let row_type = get_string_key(env, output, "row_type")?
+                .ok_or_else(|| "NDJSON output row_type is required".to_string())?;
+            let layout = crate::ndjson::compile_layout(&row_type, fields)?;
+            Ok(CompiledOutput::Ndjson(layout))
         }
         _ => Err(format!("unsupported mapping output format '{format}'")),
     }
@@ -411,6 +421,18 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
         Some(decode_enum8_data(env, field)?)
     } else {
         None
+    };
+
+    let default = match (&enum8_data, &default) {
+        (Some(data), DefaultValue::Str(label)) => match data.value_map.get(&label.to_lowercase()) {
+            Some(value) => DefaultValue::Int(i64::from(*value)),
+            None => {
+                return Err(format!(
+                    "enum8 field '{name}' default '{label}' is not one of its enum_values"
+                ))
+            }
+        },
+        _ => default,
     };
 
     let filter_nil = decode_filter_nil(env, field);
@@ -803,9 +825,14 @@ fn decode_filters<'a>(env: Env<'a>, field: Term<'a>) -> Result<Option<StringFilt
 
 pub fn decode_enum8_data<'a>(env: Env<'a>, field: Term<'a>) -> Result<Enum8Data, String> {
     let value_map = decode_enum_values(env, field)?;
+    if value_map.is_empty() {
+        return Err("enum8 field requires a non-empty 'enum_values' map".to_string());
+    }
+    let values: HashSet<i8> = value_map.values().copied().collect();
     let infer_rules = decode_infer_rules(env, field)?;
     Ok(Enum8Data {
         value_map,
+        values,
         infer_rules,
     })
 }
