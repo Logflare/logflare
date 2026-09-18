@@ -50,7 +50,7 @@
   <.inputs_for :let={f_config} field={f[:config]}>
     <div class="form-group mt-2">
       <%= case @form_type do %>
-        <% "webhook" -> %>
+        <% webhook_type when webhook_type in ["webhook", "webhook_v2"] -> %>
           <div class="form-group">
             <%= label f_config, :url do %>
               Websocket URL to send the ingested data
@@ -102,6 +102,19 @@
             )}
             <small class="form-text text-muted">
               Enable "gzip" compression in sent requests. Disable this when the receiver does not decompress request bodies.
+            </small>
+          </div>
+          <div :if={webhook_type == "webhook_v2"} class="form-group">
+            {label(f_config, :batch_size, "Batch size")}
+            {number_input(f_config, :batch_size,
+              class: "form-control",
+              id: "webhook-batch-size",
+              min: 1,
+              max: Logflare.Backends.Adaptor.WebhookV2Adaptor.max_batch_size(),
+              placeholder: Logflare.Backends.Adaptor.WebhookV2Adaptor.default_batch_size()
+            )}
+            <small class="form-text text-muted">
+              Maximum number of events in one request. All sources attached to this backend share the batches.
             </small>
           </div>
         <% "postgres" -> %>

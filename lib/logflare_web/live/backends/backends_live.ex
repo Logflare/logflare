@@ -380,6 +380,7 @@ defmodule LogflareWeb.BackendsLive do
     socket
     |> assign(:backend_types, [
       {"Webhook", :webhook},
+      {"Webhook v2", :webhook_v2},
       {"Postgres", :postgres},
       {"BigQuery", :bigquery},
       {"Datadog", :datadog},

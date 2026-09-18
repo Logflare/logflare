@@ -922,6 +922,40 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert backend.config.gzip == false
     end
 
+    test "webhook v2 create saves the batch size", %{conn: conn, user: user} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      html = view |> element("select#type") |> render_change(%{backend: %{type: "webhook_v2"}})
+
+      assert html =~ "webhook-batch-size"
+
+      view
+      |> form("form", %{
+        backend: %{
+          name: "webhook v2 backend",
+          type: "webhook_v2",
+          config: %{url: "https://example.com", batch_size: "2500"}
+        }
+      })
+      |> render_submit()
+
+      backend =
+        Backends.list_backends_by_user_id(user.id)
+        |> Enum.find(&(&1.name == "webhook v2 backend"))
+
+      assert backend.type == :webhook_v2
+      assert backend.config.batch_size == 2_500
+      assert backend.config.gzip == true
+    end
+
+    test "webhook form does not show the batch size", %{conn: conn} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      html = view |> element("select#type") |> render_change(%{backend: %{type: "webhook"}})
+
+      refute html =~ "webhook-batch-size"
+    end
+
     test "webhook edit keeps gzip disabled", %{conn: conn, source: source, user: user} do
       backend =
         insert(:backend,
