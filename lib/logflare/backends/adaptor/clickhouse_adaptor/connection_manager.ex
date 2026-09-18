@@ -513,12 +513,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
     url = read_url(config, label)
 
     with {:ok, {scheme, hostname, url_port}} <- extract_url_components(url) do
-      pool_via = connection_pool_via(backend, label)
       port = get_read_port(config, url_port)
       {username, password} = ClickHouseAdaptor.query_credentials(config)
 
       ch_opts = [
-        name: pool_via,
+        name: pool_registration_name(backend, label, pool_size),
         scheme: scheme,
         hostname: hostname,
         port: port,
@@ -536,6 +535,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
 
       {:ok, ch_opts}
     end
+  end
+
+  @spec pool_registration_name(Backend.t(), String.t() | nil, pos_integer()) :: tuple()
+  defp pool_registration_name(%Backend{} = backend, label, pool_size) do
+    {:via, Registry, {registry, key}} = connection_pool_via(backend, label)
+    {:via, Registry, {registry, key, %{pool_size: pool_size}}}
   end
 
   @spec pool_size_key(map(), String.t() | nil) :: :read_pool_size | :labeled_read_pool_size

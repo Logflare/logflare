@@ -596,31 +596,6 @@ defmodule Logflare.TelemetryTest do
                       %{backend_id: ^backend_id, read_cluster: "api"}}
     end
 
-    test "counts a pool whose backend no longer exists as a poll failure", %{backend: backend} do
-      {:ok, _} =
-        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend))
-
-      assert :ok == ConnectionManager.ensure_pool_started(backend)
-      live_pool = ConnectionManager.get_pool_pid(backend)
-      missing_backend_id = backend.id + 100_000
-
-      log =
-        ExUnit.CaptureLog.capture_log(fn ->
-          Telemetry.clickhouse_read_pool_metrics([{missing_backend_id, "api", live_pool}])
-        end)
-
-      assert log =~ "ClickHouse read pool backend not found during metrics poll"
-
-      assert_receive {:telemetry_event, @ch_read_pool_poll_failure_event, %{count: 1},
-                      %{
-                        backend_id: ^missing_backend_id,
-                        read_cluster: "api",
-                        reason: :backend_not_found
-                      }}
-
-      refute_received {:telemetry_event, @ch_read_pool_status_event, _, _}
-    end
-
     test "emits nothing when no read pool is running" do
       Telemetry.clickhouse_read_pool_metrics()
 
@@ -638,8 +613,8 @@ defmodule Logflare.TelemetryTest do
       TestUtils.retry_assert(fn -> refute Process.alive?(dead_pool) end)
 
       Telemetry.clickhouse_read_pool_metrics([
-        {backend.id, "gone", dead_pool},
-        {backend.id, nil, live_pool}
+        {backend.id, "gone", dead_pool, 32},
+        {backend.id, nil, live_pool, 50}
       ])
 
       backend_id = backend.id
@@ -657,7 +632,7 @@ defmodule Logflare.TelemetryTest do
 
       log =
         ExUnit.CaptureLog.capture_log(fn ->
-          Telemetry.clickhouse_read_pool_metrics([{backend.id, "stuck", stuck_pool}], 50)
+          Telemetry.clickhouse_read_pool_metrics([{backend.id, "stuck", stuck_pool, 32}], 50)
         end)
 
       assert log =~ "ClickHouse read pool did not answer the metrics poll"
@@ -684,7 +659,8 @@ defmodule Logflare.TelemetryTest do
 
       log =
         ExUnit.CaptureLog.capture_log(fn ->
-          assert :ok == Telemetry.clickhouse_read_pool_metrics([{backend.id, "odd", odd_pool}])
+          assert :ok ==
+                   Telemetry.clickhouse_read_pool_metrics([{backend.id, "odd", odd_pool, 32}])
         end)
 
       assert log =~ "ClickHouse read pool metrics poll returned an unexpected result"
