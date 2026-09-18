@@ -46,7 +46,6 @@ defmodule Logflare.Backends.Backend do
     field :metadata, :map
     field :default_ingest?, :boolean, source: :default_ingest, default: false
     field :enabled, :boolean, default: true
-    field :single_tenant_default?, :boolean, virtual: true, default: false
 
     belongs_to :user, User
 
