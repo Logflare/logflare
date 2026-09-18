@@ -7,6 +7,8 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Google.CloudResourceManager
+  alias Logflare.SingleTenant
   alias Logflare.SystemMetrics.AllLogsLogged
   alias GoogleApi.CloudResourceManager.V1.Model
 
@@ -487,6 +489,37 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       assert_receive {:created, "logflare-managed-1"}, 1000
     end
 
+    test "on_system_start/0 provisions missing accounts and updates IAM policy" do
+      expect(GoogleApi.IAM.V1.Api.Projects, :iam_projects_service_accounts_list, fn
+        _conn, "projects/" <> project_id, _opts ->
+          {:ok,
+           %{
+             accounts: [
+               %GoogleApi.IAM.V1.Model.ServiceAccount{
+                 email: "logflare-managed-0@#{project_id}.iam.gserviceaccount.com",
+                 name:
+                   "projects/#{project_id}/serviceAccounts/logflare-managed-0@#{project_id}.iam.gserviceaccount.com"
+               }
+             ],
+             nextPageToken: nil
+           }}
+      end)
+
+      expect(GoogleApi.IAM.V1.Api.Projects, :iam_projects_service_accounts_create, fn
+        _conn, "projects/" <> project_id, opts ->
+          assert %{accountId: "logflare-managed-1"} = opts[:body]
+
+          {:ok,
+           %GoogleApi.IAM.V1.Model.ServiceAccount{
+             email: "logflare-managed-1@#{project_id}.iam.gserviceaccount.com"
+           }}
+      end)
+
+      expect(CloudResourceManager, :set_iam_policy, fn [async: false] -> :ok end)
+
+      assert :ok = BigQueryAdaptor.on_system_start()
+    end
+
     test "update_iam_policy/0" do
       pid = self()
       # Mock IAM API calls for listing existing service accounts
@@ -524,6 +557,12 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
                end)
              end)
     end
+  end
+
+  test "on_supabase_start/0 updates source schemas" do
+    expect(SingleTenant, :update_supabase_source_schemas, fn -> :ok end)
+
+    assert :ok = BigQueryAdaptor.on_supabase_start()
   end
 
   describe "managed service accounts is disabled" do
