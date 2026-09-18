@@ -10,10 +10,11 @@ defmodule Logflare.Endpoints.Resolver do
   @doc """
   Lists all caches for an endpoint across all paritions
   """
-  def list_caches(%Logflare.Endpoints.EndpointQuery{id: id}) do
-    endpoints_partition = ResultsCache.endpoints_part(id)
+  def list_caches(%Logflare.Endpoints.EndpointQuery{} = query) do
+    {query_id, version_key} = ResultsCache.endpoint_cache_key(query)
+    endpoints_partition = ResultsCache.endpoints_part(query_id, version_key)
 
-    :syn.members(endpoints_partition, id)
+    :syn.members(endpoints_partition, {query_id, version_key})
     |> Enum.map(fn {pid, _} -> pid end)
   end
 
@@ -29,7 +30,7 @@ defmodule Logflare.Endpoints.Resolver do
       "endpoint.user_id" => query.user_id
     }
 
-    ResultsCache.name(query.id, params)
+    ResultsCache.name(query, params)
     |> GenServer.whereis()
     |> case do
       pid when is_pid(pid) ->
@@ -45,7 +46,8 @@ defmodule Logflare.Endpoints.Resolver do
 
           via =
             {:via, PartitionSupervisor,
-             {Logflare.Endpoints.ResultsCache.PartitionSupervisor, {id, params, opts}}}
+             {Logflare.Endpoints.ResultsCache.PartitionSupervisor,
+              ResultsCache.cache_partition_key(query, params, opts)}}
 
           case DynamicSupervisor.start_child(via, spec) do
             {:ok, pid} ->
