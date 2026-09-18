@@ -7,6 +7,7 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.PipelineTest do
   alias Logflare.Backends.Adaptor.WebhookAdaptor.Client
   alias Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.EncodedEvent
   alias Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.Pipeline
+  alias Logflare.Backends.CircuitBreaker
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
 
@@ -36,12 +37,12 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.PipelineTest do
     tid
   end
 
-  defp pointer_for(event, gen_tid) do
+  defp pointer_for(event, gen_tid, queue_tid \\ nil) do
     %LogEventPointer{
       id: event.id,
       tid: gen_tid,
       gen_event_id: event.id,
-      queue_tid: :ets.new(:test_consolidated_webhook_queue, [:set, :public]),
+      queue_tid: queue_tid || :ets.new(:test_consolidated_webhook_queue, [:set, :public]),
       size: :erlang.external_size(event.body),
       retries: event.retries || 0,
       event_type: event.event_type,
@@ -49,11 +50,11 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.PipelineTest do
     }
   end
 
-  defp pointer_message(event, gen_tid, backend_id, opts) do
+  defp pointer_message(event, gen_tid, backend_id, opts \\ []) do
     ack_data = %{backend_id: backend_id, in_flight_ref: opts[:in_flight_ref]}
 
     %Message{
-      data: pointer_for(event, gen_tid),
+      data: pointer_for(event, gen_tid, opts[:queue_tid]),
       acknowledger: {Pipeline, :ack_id, ack_data}
     }
   end
@@ -231,6 +232,8 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.PipelineTest do
       context: context,
       backend: backend
     } do
+      reject(&CircuitBreaker.record_failure/1)
+
       expect(Client, :send, fn req ->
         assert req[:url] == "https://example.com"
         assert req[:gzip] == true
@@ -252,8 +255,11 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.PipelineTest do
     test "marks the batch as retriable for transient failures", %{
       messages: messages,
       batch_info: batch_info,
-      context: context
+      context: context,
+      backend: %{id: backend_id}
     } do
+      expect(CircuitBreaker, :record_failure, 4, fn %{id: ^backend_id} -> :ok end)
+
       responses = [
         {:ok, %Tesla.Env{status: 500}},
         {:ok, %Tesla.Env{status: 429}},
@@ -275,6 +281,7 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.PipelineTest do
       batch_info: batch_info,
       context: context
     } do
+      reject(&CircuitBreaker.record_failure/1)
       expect(Client, :send, fn _req -> {:ok, %Tesla.Env{status: 400}} end)
 
       result = Pipeline.handle_batch(:http, messages, batch_info, context)
@@ -319,23 +326,81 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.PipelineTest do
       assert :atomics.get(in_flight_ref, 1) == 4
     end
 
-    test "drops the events of a failed request", %{source: source, backend: backend} do
+    test "requeues a retriable failure with the same encoded bytes", %{
+      source: source,
+      backend: backend
+    } do
+      event = build(:log_event, source: source, message: "retry")
+      gen_tid = setup_generation_events([event])
+      retry_key = {:consolidated, backend.id, self()}
+      assert {:ok, queue_tid} = IngestEventQueue.upsert_tid(retry_key)
+
+      failed =
+        event
+        |> encoded_message(gen_tid, backend.id, queue_tid: queue_tid)
+        |> Message.failed({:retriable, 503})
+
+      %EncodedEvent{json: json} = failed.data
+
+      capture_log(fn -> assert :ok = Pipeline.ack(:ack_ref, [], [failed]) end)
+
+      assert {:ok, [%LogEventPointer{retries: 1} = retry_pointer], ^queue_tid} =
+               IngestEventQueue.pop_pending_pointers(retry_key, 1)
+
+      assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
+
+      assert %EncodedEvent{json: ^json} =
+               IngestEventQueue.lookup_event(retry_pointer.tid, retry_pointer.gen_event_id)
+    end
+
+    test "drops a retriable failure while the circuit breaker is open", %{
+      source: source,
+      backend: %{id: backend_id}
+    } do
       event = build(:log_event, source: source)
       gen_tid = setup_generation_events([event])
+      retry_key = {:consolidated, backend_id, self()}
+      assert {:ok, queue_tid} = IngestEventQueue.upsert_tid(retry_key)
       ref = attach_dropped_handler()
 
-      failed = event |> encoded_message(gen_tid, backend.id) |> Message.failed({:retriable, 503})
+      stub(CircuitBreaker, :check, fn ^backend_id -> {:error, :circuit_open, 0} end)
+
+      failed =
+        event
+        |> encoded_message(gen_tid, backend_id, queue_tid: queue_tid)
+        |> Message.failed({:retriable, 503})
 
       log = capture_log(fn -> Pipeline.ack(:ack_ref, [], [failed]) end)
 
-      assert log =~ "Dropping 1 webhook events: request_failed"
+      assert log =~ "Dropping 1 webhook events: circuit_breaker_open"
+      assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
+      assert {:ok, [], _tid} = IngestEventQueue.pop_pending_pointers(retry_key, 1)
+      assert_receive {@dropped_event, ^ref, %{count: 1}, %{reason: :circuit_breaker_open}}
+    end
+
+    test "drops a retriable failure after the retries are exhausted", %{
+      source: source,
+      backend: backend
+    } do
+      event =
+        build(:log_event, source: source) |> Map.put(:retries, Pipeline.max_retries())
+
+      gen_tid = setup_generation_events([event])
+      ref = attach_dropped_handler()
+
+      failed =
+        event |> encoded_message(gen_tid, backend.id) |> Message.failed({:retriable, :timeout})
+
+      log = capture_log(fn -> Pipeline.ack(:ack_ref, [], [failed]) end)
+
+      assert log =~ "Dropping 1 webhook events: retries_exhausted"
       assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
 
       assert_receive {@dropped_event, ^ref, %{count: 1},
-                      %{reason: :request_failed, backend_type: :consolidated_webhook}}
+                      %{reason: :retries_exhausted, backend_type: :consolidated_webhook}}
     end
 
-    test "drops rejected events", %{source: source, backend: backend} do
+    test "drops rejected events without a retry", %{source: source, backend: backend} do
       event = build(:log_event, source: source)
       gen_tid = setup_generation_events([event])
       ref = attach_dropped_handler()
