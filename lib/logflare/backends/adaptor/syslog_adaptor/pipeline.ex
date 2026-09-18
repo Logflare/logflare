@@ -41,7 +41,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
 
   @impl Broadway
   def handle_batch(:syslog, messages, _batch_info, context) do
-    %{pool: pool, backend_id: backend_id} = context
+    %{pool: pool, source_id: source_id, backend_id: backend_id} = context
     config = lookup_backend_config(backend_id)
 
     content =
@@ -49,7 +49,9 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
         Syslog.format(log_event, config)
       end
 
-    case Pool.send(pool, content) do
+    meta = %{source_id: source_id, backend_id: backend_id}
+
+    case Pool.send(pool, content, meta) do
       :ok -> messages
       {:error, reason} -> fail_batch(messages, reason)
     end
