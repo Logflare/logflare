@@ -37,6 +37,11 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouseTest do
                )
     end
 
+    test "keeps FINAL when adding a limit" do
+      assert {:ok, "SELECT a FROM t FINAL WHERE b = 1 LIMIT 10"} =
+               ClickHouse.apply_limit("SELECT a FROM t FINAL WHERE b = 1", 10)
+    end
+
     test "adds a limit while keeping an existing offset" do
       assert {:ok, "SELECT number FROM numbers(100) LIMIT 10 OFFSET 2"} =
                ClickHouse.apply_limit("SELECT number FROM numbers(100) OFFSET 2", 10)

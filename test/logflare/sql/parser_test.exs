@@ -65,6 +65,30 @@ defmodule Logflare.Sql.ParserTest do
     end
   end
 
+  describe "parse/2 with clickhouse FINAL and ARRAY JOIN" do
+    test "round-trips FINAL on an unaliased table" do
+      for query <- [
+            "SELECT a FROM t FINAL",
+            "SELECT a FROM db.t FINAL WHERE b = 1",
+            "SELECT count() FROM t FINAL GROUP BY a"
+          ] do
+        assert {:ok, ast} = Parser.parse("clickhouse", query)
+        assert {:ok, ^query} = Parser.to_string(ast)
+      end
+    end
+
+    test "round-trips ARRAY JOIN" do
+      query = "SELECT a, arr FROM t ARRAY JOIN arr"
+
+      assert {:ok, ast} = Parser.parse("clickhouse", query)
+      assert {:ok, ^query} = Parser.to_string(ast)
+    end
+
+    test "rejects FINAL after an explicit alias" do
+      assert {:error, _reason} = Parser.parse("clickhouse", "SELECT a FROM t AS x FINAL")
+    end
+  end
+
   describe "parse/2 with clickhouse query-level SETTINGS" do
     test "Parses and round-trips a single setting" do
       query = "SELECT a FROM t SETTINGS max_threads = 4"
