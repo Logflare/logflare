@@ -143,9 +143,16 @@ defmodule Logflare.TelemetryTest do
       circuit_breaker = ch_metric([:logflare, :clickhouse, :circuit_breaker, :open, :count])
 
       assert to_string(circuit_breaker.__struct__) == "Elixir.Telemetry.Metrics.Counter"
-      assert circuit_breaker.event_name == [:logflare, :clickhouse, :circuit_breaker, :open]
+      assert circuit_breaker.event_name == [:logflare, :backends, :circuit_breaker, :open]
       assert circuit_breaker.measurement == :failures
       assert circuit_breaker.tags == [:backend_id, :reason]
+      assert circuit_breaker.keep.(%{backend_type: :clickhouse})
+      refute circuit_breaker.keep.(%{backend_type: :webhook_v2})
+
+      all_backends = ch_metric([:logflare, :backends, :circuit_breaker, :open, :count])
+
+      assert all_backends.event_name == [:logflare, :backends, :circuit_breaker, :open]
+      assert all_backends.tags == [:backend_id, :backend_type, :reason]
     end
 
     test "defines queue-unavailable retry drops separately from not-initialized drops" do
