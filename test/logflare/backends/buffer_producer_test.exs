@@ -507,7 +507,7 @@ defmodule Logflare.Backends.BufferProducerTest do
              } = pointer
 
       assert event_id == le.id
-      assert size == :erlang.external_size(le.body)
+      assert size == Logflare.LogEvent.body_byte_size(le.body)
 
       # The claimed pointer row is already deleted (pop_pending_pointers/2 claims via
       # :ets.take/2), so the full event is resolved lazily via the pointer's own tid.
