@@ -23,7 +23,8 @@ pub fn severity_number(severity_alt: u64, mapped: u64) -> u64 {
 
 /// Trace `duration` emitted in `duration_precision` (0..=9), the precision
 /// of the `start_time`/`end_time` fields. `explicit` is the mapped `duration`
-/// field in OTEL nanoseconds; a non-zero value wins and is scaled down.
+/// field in OTEL nanoseconds; a non-zero value wins and is scaled down,
+/// never below 1 so a supplied span cannot read as missing.
 /// Otherwise the span is `end_time - start_time`, whose endpoints were
 /// already coerced to that precision, when both decode and the span is
 /// positive.
@@ -34,7 +35,8 @@ pub fn duration<E>(
     duration_precision: u8,
 ) -> u64 {
     if explicit != 0 {
-        return explicit / 10u64.pow(u32::from(9_u8.saturating_sub(duration_precision)));
+        let scaled = explicit / 10u64.pow(u32::from(9_u8.saturating_sub(duration_precision)));
+        return scaled.max(1);
     }
     match (start_time, end_time) {
         (Ok(start), Ok(end)) if end > start => end.abs_diff(start),
@@ -61,7 +63,7 @@ mod tests {
     #[test]
     fn duration_scales_explicit_nanoseconds_to_precision() {
         assert_eq!(duration::<()>(42_000, Ok(0), Ok(0), 6), 42);
-        assert_eq!(duration::<()>(999, Ok(0), Ok(1_000), 6), 0);
+        assert_eq!(duration::<()>(999, Ok(0), Ok(1_000), 6), 1);
         assert_eq!(duration::<()>(u64::MAX, Ok(0), Ok(0), 6), u64::MAX / 1_000);
     }
 

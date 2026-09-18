@@ -197,6 +197,14 @@ defmodule Logflare.Mapper.MappingConfig do
 
   defp encode_nif_default(%FieldConfig{default: nil}), do: nil
 
+  defp encode_nif_default(%FieldConfig{default: default, type: "enum8"})
+       when is_non_empty_binary(default) do
+    case Integer.parse(default) do
+      {value, ""} -> value
+      _label -> default
+    end
+  end
+
   defp encode_nif_default(%FieldConfig{default: val, type: type})
        when type in ["uint8", "uint32", "uint64", "int32", "float64", "enum8", "datetime64"] do
     parse_numeric_default(val, type)

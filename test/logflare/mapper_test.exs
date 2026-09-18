@@ -1847,6 +1847,30 @@ defmodule Logflare.MapperTest do
       assert reason =~ "unknown field type"
     end
 
+    test "enum8 default given as a label" do
+      fields = [
+        Field.enum8("mt",
+          paths: ["$.metric_type"],
+          values: %{"gauge" => 1, "sum" => 2},
+          default: "Sum"
+        )
+      ]
+
+      assert %{"mt" => 2} = compile_and_map(fields, %{})
+
+      config =
+        MappingConfig.new([
+          Field.enum8("mt",
+            paths: ["$.metric_type"],
+            values: %{"gauge" => 1},
+            default: "histogram"
+          )
+        ])
+
+      assert {:error, reason} = Mapper.compile(config)
+      assert reason =~ "default 'histogram' is not one of its enum_values"
+    end
+
     test "returns {:error, reason} on enum8 without values" do
       config = MappingConfig.new([Field.enum8("kind", paths: ["$.kind"])])
 

@@ -423,6 +423,18 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
         None
     };
 
+    let default = match (&enum8_data, &default) {
+        (Some(data), DefaultValue::Str(label)) => match data.value_map.get(&label.to_lowercase()) {
+            Some(value) => DefaultValue::Int(i64::from(*value)),
+            None => {
+                return Err(format!(
+                    "enum8 field '{name}' default '{label}' is not one of its enum_values"
+                ))
+            }
+        },
+        _ => default,
+    };
+
     let filter_nil = decode_filter_nil(env, field);
     let flat_map_value_type = decode_flat_map_value_type(env, field)?;
     let filters = decode_filters(env, field)?;
