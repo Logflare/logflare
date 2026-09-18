@@ -33,6 +33,11 @@ defmodule LogflareWeb.Backends.Components do
     LogflareWeb.QueryErrorHelpers.query_error_message(query_error)
   end
 
+  defp status_error_message(reason)
+       when reason in [:source_required, {:error, :source_required}] do
+    "Attach a source or add a drain rule before testing this connection."
+  end
+
   defp status_error_message(_reason) do
     LogflareWeb.QueryErrorHelpers.generic_query_error_message()
   end
