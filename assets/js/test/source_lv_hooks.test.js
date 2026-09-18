@@ -102,7 +102,6 @@ describe("SourceLogsSearchList scroll anchor", () => {
   };
 
   beforeEach(() => {
-    vi.stubGlobal("requestAnimationFrame", (callback) => callback());
     scrollBy = vi.fn();
     scrollTo = vi.fn();
     vi.stubGlobal("scrollBy", scrollBy);
@@ -144,5 +143,21 @@ describe("SourceLogsSearchList scroll anchor", () => {
 
     expect(scrollBy).not.toHaveBeenCalled();
     expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  it("restores the anchor before the next frame so a following diff sees the corrected position", () => {
+    const hook = mountWithLogList();
+    const anchor = document.getElementById("log-events-a-1");
+    const rafQueue = [];
+    vi.stubGlobal("requestAnimationFrame", (callback) => rafQueue.push(callback));
+
+    stubRect(anchor, 100);
+    hook.captureScrollAnchor();
+
+    stubRect(anchor, 420);
+    hook.restoreScrollAnchor();
+
+    expect(scrollBy).toHaveBeenCalledWith(0, 320);
+    expect(rafQueue).toHaveLength(0);
   });
 });

@@ -40,15 +40,13 @@ hooks.SourceLogsSearchList = {
 
     if (!scrollAnchor) return
 
-    requestAnimationFrame(() => {
-      const anchorElement = document.getElementById(scrollAnchor.id)
+    const anchorElement = document.getElementById(scrollAnchor.id)
 
-      if (!anchorElement || !this.el.contains(anchorElement)) return
+    if (!anchorElement || !this.el.contains(anchorElement)) return
 
-      const scrollDelta = anchorElement.getBoundingClientRect().top - scrollAnchor.top
+    const scrollDelta = anchorElement.getBoundingClientRect().top - scrollAnchor.top
 
-      if (scrollDelta !== 0) window.scrollBy(0, scrollDelta)
-    })
+    if (scrollDelta !== 0) window.scrollBy(0, scrollDelta)
   },
   flushScrollToBottom() {
     requestAnimationFrame(() => {
