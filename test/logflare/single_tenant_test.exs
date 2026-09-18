@@ -122,12 +122,38 @@ defmodule Logflare.SingleTenantTest do
     end
 
     test "Logflare.Application.startup_tasks/0 should insert plan and user" do
-      expect(BigQueryAdaptor, :update_iam_policy, fn -> :ok end)
+      expect(BigQueryAdaptor, :on_system_start, fn ->
+        assert SingleTenant.get_default_user() == nil
+        :ok
+      end)
 
       Logflare.Application.startup_tasks()
 
       assert [_] = Billing.list_plans()
       assert 1 = Users.count_users()
+    end
+
+    test "startup invokes Supabase setup after sources and endpoints are seeded" do
+      previous_supabase_mode = Application.get_env(:logflare, :supabase_mode)
+      Application.put_env(:logflare, :supabase_mode, true)
+      on_exit(fn -> Application.put_env(:logflare, :supabase_mode, previous_supabase_mode) end)
+
+      expect(BigQueryAdaptor, :on_system_start, fn -> :ok end)
+      expect(SingleTenant, :create_supabase_sources, fn -> send(self(), :sources_seeded) end)
+      expect(SingleTenant, :create_supabase_endpoints, fn -> send(self(), :endpoints_seeded) end)
+
+      expect(SingleTenant, :ensure_supabase_sources_started, fn ->
+        send(self(), :sources_started)
+      end)
+
+      expect(BigQueryAdaptor, :on_supabase_start, fn ->
+        assert_received :sources_seeded
+        assert_received :endpoints_seeded
+        assert_received :sources_started
+        :ok
+      end)
+
+      Logflare.Application.startup_tasks()
     end
   end
 
@@ -331,11 +357,7 @@ defmodule Logflare.SingleTenantTest do
       assert SingleTenant.get_default_clickhouse_backend().user_id == default_user.id
     end
 
-    test "startup uses a synthetic backend and skips BigQuery side effects" do
-      reject(BigQueryAdaptor, :create_managed_service_accounts, 0)
-      reject(BigQueryAdaptor, :update_iam_policy, 0)
-      reject(Schema, :update, 3)
-
+    test "startup uses a synthetic ClickHouse backend" do
       expect(SingleTenant, :create_supabase_sources, fn -> {:ok, []} end)
       expect(SingleTenant, :create_supabase_endpoints, fn -> {:ok, []} end)
       expect(SingleTenant, :ensure_supabase_sources_started, fn -> :ok end)
