@@ -361,6 +361,14 @@ defmodule Logflare.Telemetry do
         description:
           "Sum of events dropped by a backend (timestamp older than its configured max event age)"
       ),
+      sum("logflare.logs.ingest_logs.drop_sampled",
+        event_name: [:logflare, :logs, :ingest_logs, :drop_sampled],
+        measurement: :count,
+        tags: [:backend_id, :backend_type],
+        keep: &backend_scoped_drop?/1,
+        description:
+          "Sum of events dropped by a backend because of its configured sample percentage"
+      ),
       distribution("logflare.clickhouse.read_pool.checkout.pool_time",
         event_name: [:logflare, :clickhouse, :read_pool, :checkout],
         measurement: :pool_time,
