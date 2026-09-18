@@ -20,6 +20,8 @@ defmodule Logflare.SingleTenant do
   alias Logflare.SourceSchemas
   require Logger
 
+  @single_tenant_clickhouse_backend_id 0
+
   @user_attrs %{
     name: "default",
     email: "default@logflare.app",
@@ -130,13 +132,12 @@ defmodule Logflare.SingleTenant do
   def get_default_clickhouse_backend(%User{id: user_id}) do
     if clickhouse_backend?() do
       %Backend{
-        id: 0,
+        id: @single_tenant_clickhouse_backend_id,
         type: :clickhouse,
         config: Map.new(clickhouse_backend_adapter_opts()),
         user_id: user_id,
         name: "Default ClickHouse backend",
-        consolidated_ingest?: true,
-        single_tenant_default?: true
+        consolidated_ingest?: true
       }
     end
   end
@@ -472,6 +473,16 @@ defmodule Logflare.SingleTenant do
   @doc "Returns true if ClickHouse is selected in single-tenant mode"
   @spec clickhouse_backend? :: boolean()
   def clickhouse_backend?, do: selected_backend?(:clickhouse)
+
+  @doc "Returns whether this is the default backend in a single-tenant ClickHouse mode."
+  @spec default_clickhouse_backend?(Backend.t()) :: boolean()
+  def default_clickhouse_backend?(%Backend{
+        id: @single_tenant_clickhouse_backend_id,
+        type: :clickhouse
+      }),
+      do: clickhouse_backend?()
+
+  def default_clickhouse_backend?(%Backend{}), do: false
 
   def supabase_mode_source_schemas_updated? do
     user = get_default_user()
