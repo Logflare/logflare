@@ -781,10 +781,10 @@
     {
       "source": "smells",
       "kind": "redundant_computation",
-      "fingerprint": "sha256:c11a818553aa555ded1547fd77cc839db246a2b0fd33218a890f793d4056839f",
-      "message": "Logflare.Auth.list_valid_access_tokens called twice with same args (line 139 and 169)",
+      "fingerprint": "sha256:9a7130a7a6e263eec866c2d02c31a837cb2fc4f7ed89ceac5eda162e7d76570e",
+      "message": "Logflare.Auth.list_valid_access_tokens called twice with same args (line 187 and 217)",
       "file": "lib/logflare/single_tenant.ex",
-      "line": 169
+      "line": 217
     },
     {
       "source": "smells",
