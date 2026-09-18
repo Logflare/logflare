@@ -5,6 +5,7 @@ defmodule Logflare.Backends.Adaptor.WebhookV2AdaptorTest do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor.Client
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.CircuitBreaker
   alias Logflare.SystemMetrics.AllLogsLogged
 
   @subject Logflare.Backends.Adaptor.WebhookV2Adaptor
@@ -87,6 +88,19 @@ defmodule Logflare.Backends.Adaptor.WebhookV2AdaptorTest do
       assert sanitized.batch_size == 500
       assert sanitized.url == "https://example.com"
       refute sanitized.headers == config.headers
+    end
+  end
+
+  describe "supervision" do
+    test "starts a circuit breaker and opens it after repeated transient failures" do
+      backend = insert(:backend, type: :webhook_v2, config: %{url: "https://example.com"})
+      start_supervised!({@subject, backend})
+
+      assert %CircuitBreaker{backend_type: :webhook_v2} = CircuitBreaker.get_state(backend)
+      assert :ok = CircuitBreaker.check(backend)
+
+      assert :ok = CircuitBreaker.trip(backend)
+      assert {:error, :circuit_open, _blocked_until} = CircuitBreaker.check(backend)
     end
   end
 

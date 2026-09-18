@@ -3,7 +3,8 @@ defmodule Logflare.Backends.Adaptor.WebhookV2Adaptor do
   Backend adaptor for webhooks / HTTP posts that uses consolidated ingestion.
 
   All sources attached to the backend share one pipeline per node. This gives larger
-  batches, fewer processes, and bounded in-flight events.
+  batches, fewer processes, bounded in-flight events, and retries for failed requests.
+  A `Logflare.Backends.CircuitBreaker` sheds the retries while the receiver fails.
 
   The config is a superset of the `Logflare.Backends.Adaptor.WebhookAdaptor` config.
   Cast, validation, and redaction of the shared fields delegate to that module.
@@ -23,6 +24,7 @@ defmodule Logflare.Backends.Adaptor.WebhookV2Adaptor do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.CircuitBreaker
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Utils
@@ -66,6 +68,7 @@ defmodule Logflare.Backends.Adaptor.WebhookV2Adaptor do
     IngestEventQueue.current_generation_tid({:consolidated, backend.id})
 
     children = [
+      CircuitBreaker.child_spec(backend),
       {
         DynamicPipeline,
         name: Backends.via_backend(backend, Pipeline),

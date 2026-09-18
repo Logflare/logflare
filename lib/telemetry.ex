@@ -691,7 +691,7 @@ defmodule Logflare.Telemetry do
         measurement: :count,
         tags: [:backend_id, :reason],
         description:
-          "Count of ClickHouse events dropped outright after an insert failure, tagged `:retries_exhausted` when the payload ran out of retries or `:circuit_breaker_open` when the breaker shed the retry. This is realized ingest data loss"
+          "Count of ClickHouse and webhook v2 events dropped outright after a write failure, tagged `:retries_exhausted` when the payload ran out of retries or `:circuit_breaker_open` when the breaker shed the retry. This is realized ingest data loss"
       ),
       sum("logflare.ingest_event_queue.requeue_queue_unavailable.count",
         event_name: [:logflare, :ingest_event_queue, :requeue_queue_unavailable],

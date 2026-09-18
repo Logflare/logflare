@@ -8,7 +8,7 @@ defmodule Logflare.Backends.CircuitBreaker do
   initial write attempts are never blocked. This stops requeued retries from
   compounding load on a struggling destination.
 
-  Used by the ClickHouse pipeline.
+  Used by the ClickHouse and webhook v2 pipelines.
   """
 
   use GenServer
