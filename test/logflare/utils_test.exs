@@ -155,7 +155,9 @@ defmodule Logflare.Utils.FlagTest do
 
       Application.put_env(:logflare, :feature_flag_override, %{
         "enabled" => "true",
-        "disabled" => "false"
+        "disabled" => "false",
+        "boolean-enabled" => true,
+        "boolean-disabled" => false
       })
 
       on_exit(fn ->
@@ -175,6 +177,11 @@ defmodule Logflare.Utils.FlagTest do
       assert Utils.flag("enabled") == true
       assert Utils.flag("disabled") == false
       assert Utils.flag("unknown") == false
+    end
+
+    test "accepts boolean override values" do
+      assert Utils.flag("boolean-enabled") == true
+      assert Utils.flag("boolean-disabled") == false
     end
   end
 end
