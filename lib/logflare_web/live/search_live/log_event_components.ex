@@ -112,7 +112,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
     ~H"""
     <div class={["tw-justify-center", if(@state == :hidden, do: "tw-hidden", else: "tw-flex")]}>
       <button id={@id} type="button" class="btn btn-outline-secondary btn-sm tw-text-xs" phx-click="load_events" phx-value-intent={@intent} phx-value-cursor-id={@cursor && @cursor.id} phx-value-cursor-timestamp={@cursor && @cursor.timestamp} disabled={@state != :ready}>
-        <span class="tw-inline-flex tw-items-center tw-justify-center tw-whitespace-nowrap tw-min-w-[5rem]">
+        <span class="tw-inline-flex tw-items-center tw-justify-center tw-whitespace-nowrap tw-align-top tw-min-w-[5rem]">
           <i :if={@state == :loading} class="spinner-border spinner-border-sm text-info tw-mr-1" aria-hidden="true"></i>
           <span>{if @state == :loading, do: "Loading", else: @label}</span>
         </span>
