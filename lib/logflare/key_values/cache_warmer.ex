@@ -5,6 +5,7 @@ defmodule Logflare.KeyValues.CacheWarmer do
 
   alias Logflare.KeyValues.Cache
   alias Logflare.KeyValues.KeyValue
+  alias Logflare.KeyValues.KeyValueUsage
   alias Logflare.Repo
 
   require Logger
@@ -18,7 +19,7 @@ defmodule Logflare.KeyValues.CacheWarmer do
       Repo.apply_with_replica(__MODULE__, :warm_recent, [])
     else
       try do
-        Repo.apply_with_replica(__MODULE__, :warm_full, [])
+        Repo.apply_with_replica(__MODULE__, :warm_top_n, [])
         :persistent_term.put(@pt_key, true)
       rescue
         e ->
@@ -29,9 +30,19 @@ defmodule Logflare.KeyValues.CacheWarmer do
     :ignore
   end
 
-  def warm_full do
-    Repo.transaction(fn ->
+  def warm_top_n do
+    limit =
+      Application.get_env(:logflare, __MODULE__, [])
+      |> Keyword.get(:warm_limit, 500_000)
+
+    ordered =
       KeyValue
+      |> join(:left, [kv], u in KeyValueUsage, on: u.key_value_id == kv.id)
+      |> order_by([kv, u], desc_nulls_last: u.last_used_at, desc: kv.updated_at)
+      |> limit(^limit)
+
+    Repo.transaction(fn ->
+      ordered
       |> Repo.stream()
       |> Stream.chunk_every(500)
       |> Enum.each(fn chunk ->
