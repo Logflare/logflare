@@ -525,14 +525,7 @@ defmodule Logflare.Sql.DialectTranslation do
 
   # drop cross join unnest
   defp pg_traverse_final_pass({"joins" = k, joins}) do
-    filtered_joins =
-      for j <- joins,
-          Map.get(j, "join_operator") != "CrossJoin",
-          !is_map_key(Map.get(j, "relation"), "UNNEST") do
-        j
-      end
-
-    {k, filtered_joins}
+    {k, Enum.reject(joins, &dropped_join?/1)}
   end
 
   defp pg_traverse_final_pass({k, v}) when is_list(v) or is_map(v) do
@@ -548,6 +541,10 @@ defmodule Logflare.Sql.DialectTranslation do
   end
 
   defp pg_traverse_final_pass(kv), do: kv
+
+  defp dropped_join?(%{"join_operator" => %{"CrossJoin" => _constraint}}), do: true
+  defp dropped_join?(%{"relation" => %{"UNNEST" => _unnest}}), do: true
+  defp dropped_join?(_join), do: false
 
   @spec bq_to_pg_field_references(ast :: any()) :: any()
   defp bq_to_pg_field_references(ast) do
