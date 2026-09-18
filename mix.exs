@@ -283,7 +283,7 @@ defmodule Logflare.Mixfile do
       "test.compile": ["compile --warnings-as-errors"],
       "test.format": ["format --check-formatted"],
       "test.security": ["sobelow --threshold high --ignore Config.HTTPS"],
-      "test.slop": ["ex_dna --max-clones 29"],
+      "test.slop": ["ex_dna --max-clones 26"],
       "test.structure": [
         "reach.check --smells --strict --baseline .reach.baseline.json"
       ],

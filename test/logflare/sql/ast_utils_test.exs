@@ -2,6 +2,8 @@ defmodule Logflare.Sql.AstUtilsTest do
   use ExUnit.Case, async: true
 
   alias Logflare.Sql.AstUtils
+  alias Logflare.Sql.Parser
+
   doctest AstUtils
 
   describe "transform_recursive/3" do
@@ -244,6 +246,83 @@ defmodule Logflare.Sql.AstUtilsTest do
         end)
 
       assert restricted_functions == ["session_user"]
+    end
+  end
+
+  describe "build_object_name_part/2" do
+    test "wraps an identifier as an object-name segment" do
+      assert %{"Identifier" => %{"value" => "events", "quote_style" => "`", "span" => _}} =
+               AstUtils.build_object_name_part("events", "`")
+    end
+
+    test "defaults to an unquoted identifier" do
+      assert %{"Identifier" => %{"value" => "events", "quote_style" => nil}} =
+               AstUtils.build_object_name_part("events")
+    end
+  end
+
+  describe "build_value/1" do
+    test "wraps a literal with the span the parser requires" do
+      assert %{"Value" => %{"value" => %{"SingleQuotedString" => "x"}, "span" => _}} =
+               AstUtils.build_value(%{"SingleQuotedString" => "x"})
+    end
+  end
+
+  describe "object_name_values/1" do
+    test "returns the identifier value of each segment in order" do
+      parts = [AstUtils.build_object_name_part("db"), AstUtils.build_object_name_part("t", "`")]
+
+      assert AstUtils.object_name_values(parts) == ["db", "t"]
+    end
+
+    test "raises on a segment that is not an identifier" do
+      assert_raise FunctionClauseError, fn ->
+        AstUtils.object_name_part_value(%{"Function" => %{}})
+      end
+    end
+  end
+
+  describe "hand-built nodes" do
+    test "object-name segments and values serialize back to SQL" do
+      {:ok, [statement]} = Parser.parse("clickhouse", "SELECT a FROM t WHERE b = 'x'")
+      select_path = ["Query", "body", "Select"]
+
+      statement =
+        statement
+        |> put_in(select_path ++ ["from", Access.at(0), "relation", "Table", "name"], [
+          AstUtils.build_object_name_part("db"),
+          AstUtils.build_object_name_part("events")
+        ])
+        |> put_in(
+          select_path ++ ["selection", "BinaryOp", "right"],
+          AstUtils.build_value(%{"SingleQuotedString" => "y"})
+        )
+
+      assert {:ok, "SELECT a FROM db.events WHERE b = 'y'"} = Parser.to_string(statement)
+    end
+  end
+
+  describe "extract_parameters/1" do
+    test "collects placeholder parameters once each, in order" do
+      ast = [%{"Placeholder" => "@a"}, %{"Placeholder" => "@b"}, %{"Placeholder" => "@a"}]
+
+      assert AstUtils.extract_parameters(ast) == ["a", "b"]
+    end
+
+    test "collects identifier parameters" do
+      ast = %{"Identifier" => AstUtils.build_identifier("@a")}
+
+      assert AstUtils.extract_parameters(ast) == ["a"]
+    end
+
+    test "ignores system variables, plain identifiers, and positional placeholders" do
+      ast = [
+        %{"Identifier" => AstUtils.build_identifier("@@system_variable")},
+        %{"Identifier" => AstUtils.build_identifier("column")},
+        %{"Placeholder" => "$1"}
+      ]
+
+      assert AstUtils.extract_parameters(ast) == []
     end
   end
 

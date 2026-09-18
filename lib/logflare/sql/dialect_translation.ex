@@ -26,7 +26,7 @@ defmodule Logflare.Sql.DialectTranslation do
       |> pg_traverse_final_pass()
     end
     |> then(fn ast ->
-      params = extract_all_parameters(ast)
+      params = AstUtils.extract_parameters(ast)
 
       {:ok, query_string} =
         ast
@@ -55,15 +55,6 @@ defmodule Logflare.Sql.DialectTranslation do
       {:ok, converted}
     end)
   end
-
-  @spec extract_all_parameters(ast :: any()) :: [String.t()]
-  defp extract_all_parameters(ast) do
-    AstUtils.collect_from_ast(ast, &do_extract_parameters/1) |> Enum.uniq()
-  end
-
-  @spec do_extract_parameters(ast_node :: any()) :: {:collect, String.t()} | :skip
-  defp do_extract_parameters({"Placeholder", "@" <> value}), do: {:collect, value}
-  defp do_extract_parameters(_ast_node), do: :skip
 
   @spec bq_to_pg_convert_parameters(string :: String.t(), params :: [String.t()]) :: String.t()
   defp bq_to_pg_convert_parameters(string, []), do: string
@@ -104,21 +95,10 @@ defmodule Logflare.Sql.DialectTranslation do
   end
 
   defp do_bq_to_pg_convert_tables({"Table" = k, v}, _data) do
-    {quote_style, table_name} =
-      case Map.get(v, "name") do
-        [%{"quote_style" => quote_style, "value" => value}] ->
-          {quote_style, value}
+    [%{"Identifier" => %{"quote_style" => quote_style}} | _] = names = Map.get(v, "name")
+    table_name = names |> AstUtils.object_name_values() |> Enum.join(".")
 
-        [%{"quote_style" => quote_style, "value" => _} | _] = values ->
-          value = Enum.map_join(values, ".", & &1["value"])
-          {quote_style, value}
-      end
-
-    {k,
-     %{
-       v
-       | "name" => [AstUtils.build_identifier(table_name, quote_style)]
-     }}
+    {k, %{v | "name" => [AstUtils.build_object_name_part(table_name, quote_style)]}}
   end
 
   defp do_bq_to_pg_convert_tables(ast_node, _data), do: {:recurse, ast_node}
@@ -130,7 +110,8 @@ defmodule Logflare.Sql.DialectTranslation do
 
   defp do_bq_to_pg_convert_functions({k, v} = kv, _data)
        when k in ["Function", "AggregateExpressionWithFilter"] do
-    function_name = v |> get_in(["name", Access.at(0), "value"]) |> String.downcase()
+    function_name =
+      v |> get_in(["name", Access.at(0), "Identifier", "value"]) |> String.downcase()
 
     case function_name do
       "regexp_contains" ->
@@ -143,24 +124,27 @@ defmodule Logflare.Sql.DialectTranslation do
             %{"Identifier" => _arr} = identifier ->
               identifier
 
-            %{"Value" => %{"DoubleQuotedString" => value}} when is_non_empty_binary(value) ->
-              %{"Value" => %{"SingleQuotedString" => value}}
+            %{"Value" => %{"value" => %{"DoubleQuotedString" => value}}}
+            when is_non_empty_binary(value) ->
+              AstUtils.build_value(%{"SingleQuotedString" => value})
 
             _ ->
-              %{"Value" => %{"SingleQuotedString" => ""}}
+              AstUtils.build_value(%{"SingleQuotedString" => ""})
           end
 
         pattern =
           get_function_arg(v, 1)
           |> case do
-            %{"Value" => %{"DoubleQuotedString" => value}} when is_non_empty_binary(value) ->
-              %{"Value" => %{"SingleQuotedString" => value}}
+            %{"Value" => %{"value" => %{"DoubleQuotedString" => value}}}
+            when is_non_empty_binary(value) ->
+              AstUtils.build_value(%{"SingleQuotedString" => value})
 
-            %{"Value" => %{"SingleQuotedString" => value}} when is_non_empty_binary(value) ->
-              %{"Value" => %{"SingleQuotedString" => value}}
+            %{"Value" => %{"value" => %{"SingleQuotedString" => value}}}
+            when is_non_empty_binary(value) ->
+              AstUtils.build_value(%{"SingleQuotedString" => value})
 
             _ ->
-              %{"Value" => %{"SingleQuotedString" => ""}}
+              AstUtils.build_value(%{"SingleQuotedString" => ""})
           end
 
         {"BinaryOp", %{"left" => string, "op" => "PGRegexMatch", "right" => pattern}}
@@ -179,14 +163,14 @@ defmodule Logflare.Sql.DialectTranslation do
                }
              },
              "filter" => bq_to_pg_convert_functions(filter),
-             "name" => [AstUtils.build_identifier("count")]
+             "name" => [AstUtils.build_object_name_part("count")]
          }}
 
       "timestamp_sub" ->
         to_sub = get_function_arg(v, 0)
         interval = get_in(get_function_arg(v, 1), ["Interval"])
         interval_type = interval["leading_field"]
-        interval_value_str = get_in(interval, ["value", "Value", "Number", Access.at(0)])
+        interval_value_str = get_in(interval, ["value", "Value", "value", "Number", Access.at(0)])
         pg_interval = String.downcase("#{interval_value_str} #{interval_type}")
 
         {"BinaryOp",
@@ -199,7 +183,7 @@ defmodule Logflare.Sql.DialectTranslation do
                "last_field" => nil,
                "leading_field" => nil,
                "leading_precision" => nil,
-               "value" => %{"Value" => %{"SingleQuotedString" => pg_interval}}
+               "value" => AstUtils.build_value(%{"SingleQuotedString" => pg_interval})
              }
            }
          }}
@@ -226,7 +210,7 @@ defmodule Logflare.Sql.DialectTranslation do
                  "args" => [
                    %{
                      "Unnamed" => %{
-                       "Expr" => %{"Value" => %{"SingleQuotedString" => interval_type}}
+                       "Expr" => AstUtils.build_value(%{"SingleQuotedString" => interval_type})
                      }
                    },
                    %{
@@ -237,7 +221,7 @@ defmodule Logflare.Sql.DialectTranslation do
                  "duplicate_treatment" => nil
                }
              },
-             "name" => [AstUtils.build_identifier("date_trunc")]
+             "name" => [AstUtils.build_object_name_part("date_trunc")]
          }}
 
       _ ->
@@ -347,7 +331,9 @@ defmodule Logflare.Sql.DialectTranslation do
      }}
   end
 
-  defp pg_traverse_final_pass({"Function" = k, %{"name" => [%{"value" => function_name}]} = v})
+  defp pg_traverse_final_pass(
+         {"Function" = k, %{"name" => [%{"Identifier" => %{"value" => function_name}}]} = v}
+       )
        when function_name in ["DATE_TRUNC", "date_trunc"] do
     processed_args =
       case v do
@@ -672,9 +658,7 @@ defmodule Logflare.Sql.DialectTranslation do
               ]
             },
             "op" => "LongArrow",
-            "right" => %{
-              "Value" => %{"SingleQuotedString" => "timestamp"}
-            }
+            "right" => AstUtils.build_value(%{"SingleQuotedString" => "timestamp"})
           }
         }
       },
@@ -691,9 +675,7 @@ defmodule Logflare.Sql.DialectTranslation do
               "Identifier" => AstUtils.build_identifier("body")
             },
             "op" => "LongArrow",
-            "right" => %{
-              "Value" => %{"SingleQuotedString" => "timestamp"}
-            }
+            "right" => AstUtils.build_value(%{"SingleQuotedString" => "timestamp"})
           }
         }
       },
@@ -716,9 +698,7 @@ defmodule Logflare.Sql.DialectTranslation do
             ]
           },
           "op" => select_json_operator(data, false),
-          "right" => %{
-            "Value" => %{"SingleQuotedString" => key}
-          }
+          "right" => AstUtils.build_value(%{"SingleQuotedString" => key})
         }
       }
     }
@@ -734,9 +714,7 @@ defmodule Logflare.Sql.DialectTranslation do
         "BinaryOp" => %{
           "left" => %{"Identifier" => AstUtils.build_identifier(base)},
           "op" => select_json_operator(data, false),
-          "right" => %{
-            "Value" => %{"SingleQuotedString" => key}
-          }
+          "right" => AstUtils.build_value(%{"SingleQuotedString" => key})
         }
       }
     }
@@ -756,9 +734,7 @@ defmodule Logflare.Sql.DialectTranslation do
         "BinaryOp" => %{
           "left" => %{"Identifier" => AstUtils.build_identifier(base)},
           "op" => select_json_operator(data, true),
-          "right" => %{
-            "Value" => %{"SingleQuotedString" => path}
-          }
+          "right" => AstUtils.build_value(%{"SingleQuotedString" => path})
         }
       }
     }
@@ -777,9 +753,7 @@ defmodule Logflare.Sql.DialectTranslation do
             "BinaryOp" => %{
               "left" => %{"Identifier" => AstUtils.build_identifier(base)},
               "op" => select_json_operator(data, false),
-              "right" => %{
-                "Value" => %{"SingleQuotedString" => key}
-              }
+              "right" => AstUtils.build_value(%{"SingleQuotedString" => key})
             }
           }
         }
@@ -793,9 +767,7 @@ defmodule Logflare.Sql.DialectTranslation do
             "BinaryOp" => %{
               "left" => %{"Identifier" => AstUtils.build_identifier(base)},
               "op" => select_json_operator(data, true),
-              "right" => %{
-                "Value" => %{"SingleQuotedString" => path}
-              }
+              "right" => AstUtils.build_value(%{"SingleQuotedString" => path})
             }
           }
         }
@@ -812,9 +784,7 @@ defmodule Logflare.Sql.DialectTranslation do
         "BinaryOp" => %{
           "left" => %{"Identifier" => AstUtils.build_identifier(base)},
           "op" => select_json_operator(data, false),
-          "right" => %{
-            "Value" => %{"SingleQuotedString" => name}
-          }
+          "right" => AstUtils.build_value(%{"SingleQuotedString" => name})
         }
       }
     }
@@ -838,6 +808,8 @@ defmodule Logflare.Sql.DialectTranslation do
        }) do
     key
   end
+
+  defp get_identifier_alias(%{"Identifier" => %{"value" => "@" <> _}}), do: nil
 
   defp get_identifier_alias(%{"Identifier" => %{"value" => name}}) do
     name
@@ -995,7 +967,7 @@ defmodule Logflare.Sql.DialectTranslation do
       for from <- from_list,
           value_map = (get_in(from, ["relation", "Table", "name"]) || []) |> hd(),
           value_map != nil do
-        value_map["value"]
+        AstUtils.object_name_part_value(value_map)
       end
 
     alias_path_mappings = get_bq_alias_path_mappings(%{"Query" => v})
@@ -1032,7 +1004,7 @@ defmodule Logflare.Sql.DialectTranslation do
       for from <- from_list,
           value_map = (get_in(from, ["relation", "Table", "name"]) || []) |> hd(),
           value_map != nil do
-        value_map["value"]
+        AstUtils.object_name_part_value(value_map)
       end
 
     alias_path_mappings = get_bq_alias_path_mappings(%{"Query" => v})
@@ -1063,7 +1035,7 @@ defmodule Logflare.Sql.DialectTranslation do
          "expr" => traverse_convert_identifiers(identifier, data)
        }}
     else
-      identifier
+      {"UnnamedExpr", traverse_convert_identifiers(identifier, data)}
     end
   end
 
@@ -1163,9 +1135,7 @@ defmodule Logflare.Sql.DialectTranslation do
                    ]
                  },
                  "op" => op,
-                 "right" => %{
-                   "Value" => %{"SingleQuotedString" => full_path}
-                 }
+                 "right" => AstUtils.build_value(%{"SingleQuotedString" => full_path})
                }
              }}
 
@@ -1253,9 +1223,7 @@ defmodule Logflare.Sql.DialectTranslation do
                ]
              },
              "op" => select_json_operator(data, false),
-             "right" => %{
-               "Value" => %{"SingleQuotedString" => nested_key}
-             }
+             "right" => AstUtils.build_value(%{"SingleQuotedString" => nested_key})
            }
          }}
       else
@@ -1273,9 +1241,7 @@ defmodule Logflare.Sql.DialectTranslation do
                ]
              },
              "op" => select_json_operator(data, true),
-             "right" => %{
-               "Value" => %{"SingleQuotedString" => full_path}
-             }
+             "right" => AstUtils.build_value(%{"SingleQuotedString" => full_path})
            }
          }}
       end
@@ -1288,6 +1254,14 @@ defmodule Logflare.Sql.DialectTranslation do
 
   # leave compound identifier as is
   defp traverse_convert_identifiers({"CompoundIdentifier" = k, v}, _data), do: {k, v}
+
+  # object-name path segments (table and function names) are not column references
+  defp traverse_convert_identifiers({"name" = k, [%{"Identifier" => _} | _] = v}, _data),
+    do: {k, v}
+
+  # `@name` query parameters are not column references
+  defp traverse_convert_identifiers({"Identifier" = k, %{"value" => "@" <> _} = v}, _data),
+    do: {k, v}
 
   defp traverse_convert_identifiers({"Identifier" = k, v}, data) do
     convert_keys_to_json_query(%{k => v}, data)
@@ -1318,7 +1292,7 @@ defmodule Logflare.Sql.DialectTranslation do
   defp identifier?(identifier),
     do: is_map_key(identifier, "CompoundIdentifier") or is_map_key(identifier, "Identifier")
 
-  defp numeric_value?(%{"Value" => %{"Number" => _}}), do: true
+  defp numeric_value?(%{"Value" => %{"value" => %{"Number" => _}}}), do: true
   defp numeric_value?(_), do: false
 
   defp json_access?(%{"Nested" => nested}), do: json_access?(nested)
@@ -1349,7 +1323,7 @@ defmodule Logflare.Sql.DialectTranslation do
     %{
       "Nested" => %{
         "AtTimeZone" => %{
-          "time_zone" => %{"Value" => %{"SingleQuotedString" => "UTC"}},
+          "time_zone" => AstUtils.build_value(%{"SingleQuotedString" => "UTC"}),
           "timestamp" => %{
             "Function" => %{
               "args" => %{
@@ -1368,7 +1342,7 @@ defmodule Logflare.Sql.DialectTranslation do
                               }
                             },
                             "op" => "Divide",
-                            "right" => %{"Value" => %{"Number" => ["1000000.0", false]}}
+                            "right" => AstUtils.build_value(%{"Number" => ["1000000.0", false]})
                           }
                         }
                       }
@@ -1381,7 +1355,7 @@ defmodule Logflare.Sql.DialectTranslation do
               "parameters" => "None",
               "filter" => nil,
               "uses_odbc_syntax" => false,
-              "name" => [AstUtils.build_identifier("to_timestamp")],
+              "name" => [AstUtils.build_object_name_part("to_timestamp")],
               "null_treatment" => nil,
               "over" => nil,
               "within_group" => []
@@ -1396,7 +1370,7 @@ defmodule Logflare.Sql.DialectTranslation do
     %{
       "Nested" => %{
         "AtTimeZone" => %{
-          "time_zone" => %{"Value" => %{"SingleQuotedString" => "UTC"}},
+          "time_zone" => AstUtils.build_value(%{"SingleQuotedString" => "UTC"}),
           "timestamp" => %{
             "Function" => %{
               "args" => %{
@@ -1415,7 +1389,7 @@ defmodule Logflare.Sql.DialectTranslation do
                               }
                             },
                             "op" => "Divide",
-                            "right" => %{"Value" => %{"Number" => ["1000000.0", false]}}
+                            "right" => AstUtils.build_value(%{"Number" => ["1000000.0", false]})
                           }
                         }
                       }
@@ -1428,7 +1402,7 @@ defmodule Logflare.Sql.DialectTranslation do
               "parameters" => "None",
               "filter" => nil,
               "uses_odbc_syntax" => false,
-              "name" => [AstUtils.build_identifier("to_timestamp")],
+              "name" => [AstUtils.build_object_name_part("to_timestamp")],
               "null_treatment" => nil,
               "over" => nil,
               "within_group" => []
@@ -1457,7 +1431,7 @@ defmodule Logflare.Sql.DialectTranslation do
         "expr" => expr,
         "data_type" => %{
           "Custom" => [
-            [AstUtils.build_identifier("jsonb")],
+            [AstUtils.build_object_name_part("jsonb")],
             []
           ]
         },
@@ -1473,7 +1447,7 @@ defmodule Logflare.Sql.DialectTranslation do
         "expr" => expr,
         "data_type" => %{
           "Custom" => [
-            [AstUtils.build_identifier("jsonb")],
+            [AstUtils.build_object_name_part("jsonb")],
             []
           ]
         },
@@ -1504,9 +1478,7 @@ defmodule Logflare.Sql.DialectTranslation do
         "BinaryOp" => %{
           "left" => expr,
           "op" => "HashLongArrow",
-          "right" => %{
-            "Value" => %{"SingleQuotedString" => "{}"}
-          }
+          "right" => AstUtils.build_value(%{"SingleQuotedString" => "{}"})
         }
       }
     }

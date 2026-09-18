@@ -89,6 +89,11 @@ defmodule Logflare.Sql.ParserTest do
       assert {:ok, parsed_query} = Parser.parse("bigquery", bq_query)
       assert {:ok, bq_query} == Parser.to_string(parsed_query)
     end
+
+    test "returns an error instead of raising when the AST is malformed" do
+      assert {:error, message} = Parser.to_string(%{"Query" => %{}})
+      assert message =~ "missing field"
+    end
   end
 
   defp extract_table_name_parts_from_ast([%{} = ast]) do
@@ -101,5 +106,6 @@ defmodule Logflare.Sql.ParserTest do
     |> Map.get("relation")
     |> Map.get("Table")
     |> Map.get("name")
+    |> Enum.map(&Map.fetch!(&1, "Identifier"))
   end
 end

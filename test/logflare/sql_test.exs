@@ -905,6 +905,8 @@ defmodule Logflare.SqlTest do
     for {input, output} <- [
           {"select old.a from old where @test = 123", ["test"]},
           {"select @a from old", ["a"]},
+          # system variables are not parameters
+          {"select @a from old where @@time_zone = 'UTC'", ["a"]},
           {"select old.a from old where char_length(@c)", ["c"]},
           # backticked function
           {"select `some.function`(@c)", ["c"]},
@@ -1047,6 +1049,20 @@ defmodule Logflare.SqlTest do
                Sql.transform(:pg_sql, "SELECT current_user, id FROM #{name}", user)
 
       assert msg =~ "Restricted function"
+    end
+
+    test "does not treat a source named like a restricted identifier as a function call", %{
+      user: user
+    } do
+      source = insert(:source, user: user, name: "current_role")
+
+      assert {:ok, transformed} = Sql.transform(:pg_sql, "SELECT id FROM current_role", user)
+      assert transformed =~ ~s("#{PostgresAdaptor.table_name(source)}")
+
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "SELECT current_role, id FROM current_role", user)
+
+      assert msg =~ "Restricted function current_role"
     end
 
     test "rejects restricted function pg_read_file", %{source: %{name: name}, user: user} do
@@ -1871,6 +1887,14 @@ defmodule Logflare.SqlTest do
     end
 
     # test "cte WHERE identifiers are translated correctly"
+
+    test "parameters without an alias are neither aliased nor converted to json queries" do
+      bq_query = ~s|select @test, coalesce(@test, '') from my_source|
+      pg_query = ~s|select $1::text, coalesce($2::text, '') from my_source|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert_semantically_equal(translated, pg_query)
+    end
 
     test "parameters are translated" do
       # test that substring of another arg is replaced correctly

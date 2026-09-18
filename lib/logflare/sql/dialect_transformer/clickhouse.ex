@@ -132,7 +132,7 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
   defp requires_outer_limit?(%{"limit" => nil}), do: false
 
   defp requires_outer_limit?(%{
-         "limit" => %{"Value" => %{"Number" => [value, _long]}}
+         "limit" => %{"Value" => %{"value" => %{"Number" => [value, _long]}}}
        }) do
     case Integer.parse(value) do
       {_integer, ""} -> false
