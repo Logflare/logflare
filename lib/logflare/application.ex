@@ -7,18 +7,22 @@ defmodule Logflare.Application do
   alias Logflare.Alerting.AlertSchedulerWorker
   alias Logflare.Networking
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Spool.Health, as: SpoolHealth
   alias Logflare.Backends.UserMonitoring
   alias Logflare.ContextCache
   alias Logflare.Logs
+  alias Logflare.NaturalLanguageLql.AnthropicClient
   alias Logflare.SingleTenant
   alias Logflare.SystemMetricsSup
   alias Logflare.Sources.Counters
   alias Logflare.Sources.RateCounters
+  alias Logflare.Sources.Source.BigQuery.SchemaUpdateSampler
   alias Logflare.PubSubRates
   alias Logflare.Utils
 
   def start(_type, _args) do
     Logflare.Readiness.initialize()
+    SpoolHealth.initialize()
 
     # set inspect function to redact sensitive information
     prev = Inspect.Opts.default_inspect_fun()
@@ -28,6 +32,7 @@ defmodule Logflare.Application do
     start_user_log_interceptor()
     add_logger_backends()
     warn_if_stripe_webhook_secret_unset()
+    warn_if_anthropic_api_key_unset()
 
     env = Application.get_env(:logflare, :env)
     # TODO: Set node status in GCP when sigterm is received
@@ -66,6 +71,7 @@ defmodule Logflare.Application do
         Logflare.LogEvent.DayBucket,
         Counters,
         RateCounters,
+        SchemaUpdateSampler,
         Logs.LogEvents.Cache,
         {Phoenix.PubSub, name: Logflare.PubSub},
         PubSubRates,
@@ -110,6 +116,7 @@ defmodule Logflare.Application do
         # init Counters before Supervisof as Supervisor calls Counters through table create
         Counters,
         RateCounters,
+        SchemaUpdateSampler,
         # Backends needs to be before Source.Supervisor
         Logflare.Backends,
         Logflare.Sources.Source.Supervisor,
@@ -141,6 +148,12 @@ defmodule Logflare.Application do
       Logger.warning(
         "STRIPE_WEBHOOK_SECRET is not set — all Stripe webhook requests will be rejected"
       )
+    end
+  end
+
+  defp warn_if_anthropic_api_key_unset do
+    unless AnthropicClient.configured?() do
+      Logger.warning("ANTHROPIC_API_KEY is not set — AI-assisted search will be unavailable")
     end
   end
 

@@ -40,6 +40,8 @@ defmodule LogflareWeb.Router do
            """
            \
            default-src 'self';\
+           base-uri 'self';\
+           frame-ancestors 'self';\
            connect-src 'self' #{if Application.compile_env(:logflare, :env) == :prod, do: "wss://logflare.app", else: "ws://localhost:4000"} https://api.github.com;\
            script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://buttons.github.io https://platform.twitter.com https://cdnjs.cloudflare.com https://js.stripe.com;\
            worker-src 'self' blob:;\
@@ -169,7 +171,10 @@ defmodule LogflareWeb.Router do
 
   pipeline :oauth_public do
     plug(:accepts, ["json"])
-    plug(:put_secure_browser_headers, %{"content-security-policy" => "default-src 'self'"})
+
+    plug(:put_secure_browser_headers, %{
+      "content-security-policy" => "default-src 'self'; base-uri 'self'; frame-ancestors 'self';"
+    })
   end
 
   pipeline :check_admin do
@@ -527,7 +532,6 @@ defmodule LogflareWeb.Router do
     put("/users/:user_token/downgrade", Api.Partner.UserController, :downgrade)
 
     get("/users/:user_token", Api.Partner.UserController, :get_user)
-    get("/users/:user_token/usage", Api.Partner.UserController, :get_user_usage)
 
     delete("/users/:user_token", Api.Partner.UserController, :delete_user)
   end

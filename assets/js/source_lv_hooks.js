@@ -1,12 +1,11 @@
 import {
   activateClipboardForSelector,
-  activateDelegatedTooltips
+  activateDelegatedTooltips,
+  scrollToPageBottom
 } from "./utils"
 import $ from "jquery"
 import _ from "lodash"
 import idle from "./vendor/idle"
-import hljs from "highlight.js"
-import "highlight.js/styles/tomorrow-night-blue.css"
 import { applyToAllLogTimestamps } from "./logs";
 import { timestampNsToAgo } from "./formatters";
 
@@ -51,10 +50,13 @@ hooks.SourceLogsSearchList = {
       }
     })
   },
-  scrollToLatest() {
-    if (this.el.dataset.tailing === "true") {
-      window.scrollTo(0, document.body.scrollHeight)
-    }
+  flushScrollToBottom() {
+    requestAnimationFrame(() => {
+      if (!this.pendingScrollToBottom) return
+
+      this.pendingScrollToBottom = false
+      scrollToPageBottom()
+    })
   },
   beforeUpdate() {
     this.captureScrollAnchor()
@@ -63,8 +65,8 @@ hooks.SourceLogsSearchList = {
     const hook = this
     activateDelegatedTooltips(this.el, '[data-toggle="tooltip"]')
 
-    if (this.el.dataset.tailing === "true") {
-      this.scrollToLatest()
+    if (this.pendingScrollToBottom) {
+      this.flushScrollToBottom()
     } else {
       this.restoreScrollAnchor()
     }
@@ -88,7 +90,16 @@ hooks.SourceLogsSearchList = {
   },
   mounted() {
     activateDelegatedTooltips(this.el, '[data-toggle="tooltip"]')
-    this.scrollToLatest()
+    this.pendingScrollToBottom = false
+    this.handleEvent("scroll-to-bottom", () => {
+      this.pendingScrollToBottom = true
+      this.flushScrollToBottom()
+    })
+    this.handleEvent("scroll-to-event", ({ id }) => {
+      requestAnimationFrame(() => {
+        document.getElementById(id)?.scrollIntoView({ block: "start" })
+      })
+    })
   },
   destroyed() {
     $(this.el).tooltip("dispose")
@@ -169,25 +180,6 @@ const buildTsClause = (start, end, label) => {
       break
   }
   return timestampFilter.join(" ")
-}
-
-hooks.BigQuerySqlQueryFormatter = {
-  mounted() {
-    this.formatSql()
-  },
-  updated() {
-    this.formatSql()
-  },
-  formatSql() {
-    const $this = $(this.el)
-    const $code = $this.find(`code#search-op-sql-string`)
-    const fmtSql = sqlFormatter.format($code.text())
-    // replace with formatted sql
-    $code.text(fmtSql)
-    $this.find("pre code").each((i, block) => {
-      hljs.highlightBlock(block)
-    })
-  },
 }
 
 hooks.SourceLogsSearch = {

@@ -192,7 +192,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert is_integer(measurements.connection_time)
       assert measurements.connection_time > System.convert_time_unit(10, :microsecond, :native)
       assert metadata.backend_id == backend.id
-      assert metadata.read_cluster == nil
+      assert metadata.read_cluster == "(unlabeled)"
     end
 
     test "emits a plausible idle_time on a checked-in connection", %{backend: backend} do
@@ -214,6 +214,107 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert measurements.idle_time < minute_in_native
     end
 
+    test "emits checkout error telemetry when the pool sheds a checkout", %{backend: backend} do
+      TestUtils.attach_forwarder([:logflare, :clickhouse, :read_pool, :checkout_error])
+
+      error = %DBConnection.ConnectionError{message: "dropped", reason: :queue_timeout}
+      stub_failed_checkout(error)
+
+      assert {:error, %QueryError{kind: :pool_exhausted}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :read_pool, :checkout_error],
+                      %{count: 1}, metadata}
+
+      assert metadata.backend_id == backend.id
+      assert metadata.read_cluster == "(unlabeled)"
+      assert metadata.reason == :queue_timeout
+    end
+
+    test "tags non-queue checkout failures with the error reason", %{backend: backend} do
+      TestUtils.attach_forwarder([:logflare, :clickhouse, :read_pool, :checkout_error])
+
+      error = %DBConnection.ConnectionError{
+        message: "connection not available because deadline reached while in queue"
+      }
+
+      stub_failed_checkout(error)
+
+      assert {:error, %QueryError{kind: :connection_error}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :read_pool, :checkout_error],
+                      %{count: 1}, %{reason: :error}}
+    end
+
+    test "does not record checkout latency for a failed checkout", %{backend: backend} do
+      TestUtils.attach_forwarder([:logflare, :clickhouse, :read_pool, :checkout])
+
+      error = %DBConnection.ConnectionError{message: "dropped", reason: :queue_timeout}
+      stub_failed_checkout(error)
+
+      assert {:error, %QueryError{kind: :pool_exhausted}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+
+      refute_received {:telemetry_event, [:logflare, :clickhouse, :read_pool, :checkout], _, _}
+    end
+
+    test "does not warn about a slow checkout that never got a connection", %{backend: backend} do
+      original = Application.get_env(:logflare, ClickHouseAdaptor)
+
+      on_exit(fn ->
+        if original do
+          Application.put_env(:logflare, ClickHouseAdaptor, original)
+        else
+          Application.delete_env(:logflare, ClickHouseAdaptor)
+        end
+      end)
+
+      Application.put_env(:logflare, ClickHouseAdaptor, slow_pool_checkout_ms: 0)
+
+      error = %DBConnection.ConnectionError{message: "dropped", reason: :queue_timeout}
+      stub_failed_checkout(error)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, %QueryError{kind: :pool_exhausted}} =
+                   ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+        end)
+
+      refute log =~ "ClickHouse slow connection checkout"
+    end
+
+    test "still emits query error telemetry for a connection error after checkout",
+         %{backend: backend} do
+      TestUtils.attach_forwarder([:logflare, :clickhouse, :read_pool, :checkout_error])
+      TestUtils.attach_forwarder([:logflare, :clickhouse, :read_pool, :checkout])
+
+      error = %DBConnection.ConnectionError{message: "socket closed"}
+
+      expect(Ch, :query, fn _pool, statement, params, opts ->
+        entry = %DBConnection.LogEntry{
+          call: :execute,
+          query: statement,
+          params: params,
+          result: {:error, error},
+          pool_time: System.convert_time_unit(1, :millisecond, :native),
+          connection_time: System.convert_time_unit(5, :millisecond, :native)
+        }
+
+        opts[:log].(entry)
+        {:error, error}
+      end)
+
+      assert {:error, %QueryError{kind: :connection_error}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+
+      refute_received {:telemetry_event, [:logflare, :clickhouse, :read_pool, :checkout_error], _,
+                       _}
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :read_pool, :checkout],
+                      %{connection_time: _}, _}
+    end
+
     test "emits query error telemetry with the error kind", %{backend: backend} do
       TestUtils.attach_forwarder([:logflare, :clickhouse, :read_pool, :query_error])
 
@@ -228,7 +329,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                       %{count: 1}, metadata}
 
       assert metadata.backend_id == backend.id
-      assert metadata.read_cluster == nil
+      assert metadata.read_cluster == "(unlabeled)"
       assert metadata.error_kind == :connection_error
     end
 
@@ -297,6 +398,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                port: 8443,
                read_pool_size: 10
              } == ClickHouseAdaptor.sanitize_config_for_display(config)
+    end
+
+    test "preserves replica_routing_param for display" do
+      config = %{
+        url: "https://clickhouse.example.com:8443",
+        database: "logs",
+        port: 8443,
+        replica_routing_param: "project"
+      }
+
+      assert %{replica_routing_param: "project"} =
+               ClickHouseAdaptor.sanitize_config_for_display(config)
     end
   end
 
@@ -462,6 +575,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert Keyword.has_key?(changeset.errors, :read_only_urls)
     end
 
+    test "rejects the read cluster label reserved for the unlabeled pool" do
+      changeset =
+        cast_and_validate_config(
+          read_only_urls: %{"(unlabeled)" => "http://logs-read.local:8123"}
+        )
+
+      refute changeset.valid?
+      assert {message, _opts} = changeset.errors[:read_only_urls]
+      assert message =~ "reserved"
+    end
+
+    test "accepts a read cluster labeled \"default\"" do
+      urls = %{"default" => "http://logs-read.local:8123"}
+
+      changeset = cast_and_validate_config(read_only_urls: urls)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :read_only_urls) == urls
+    end
+
     test "strips basic auth credentials from every URL config field" do
       changeset =
         cast_and_validate_config(
@@ -618,6 +751,47 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       refute changeset.valid?
       assert Keyword.has_key?(changeset.errors, :max_event_age_hours)
+    end
+
+    test "casts replica_routing_param when provided" do
+      changeset = cast_and_validate_config(replica_routing_param: "project")
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :replica_routing_param) == "project"
+    end
+
+    test "replica_routing_param defaults to nil when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert Ecto.Changeset.get_field(changeset, :replica_routing_param) == nil
+    end
+
+    test "casts a blank replica_routing_param to nil" do
+      changeset = cast_and_validate_config(replica_routing_param: "")
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :replica_routing_param) == nil
+    end
+
+    test "casts a whitespace-only replica_routing_param to nil" do
+      changeset = cast_and_validate_config(replica_routing_param: "   ")
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :replica_routing_param) == nil
+    end
+
+    test "rejects a replica_routing_param containing whitespace" do
+      changeset = cast_and_validate_config(replica_routing_param: " project ")
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :replica_routing_param)
+    end
+
+    test "rejects a replica_routing_param that is not a bare parameter name" do
+      changeset = cast_and_validate_config(replica_routing_param: "@project")
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :replica_routing_param)
     end
 
     test "casts query_user and query_password when both are provided" do
@@ -937,6 +1111,34 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       backend = %Backend{config: config}
 
       assert ClickHouseAdaptor.resolve_read_cluster_label(backend, "api") == "api"
+    end
+  end
+
+  describe "read_cluster_tag/1" do
+    test "returns a configured label unchanged" do
+      assert ClickHouseAdaptor.read_cluster_tag("api") == "api"
+    end
+
+    test "returns a stable tag for the legacy pool" do
+      assert ClickHouseAdaptor.read_cluster_tag(nil) == "(unlabeled)"
+      assert ClickHouseAdaptor.read_cluster_tag("") == "(unlabeled)"
+    end
+
+    test "keeps the legacy pool distinct from a cluster labeled \"default\"" do
+      config = %{
+        url: "http://ingest.local:8123",
+        read_only_url: "http://legacy-read.local:8123",
+        read_only_urls: %{"default" => "http://named-default-read.local:8123"}
+      }
+
+      legacy_label = ClickHouseAdaptor.resolve_read_cluster_label(config, nil)
+      named_label = ClickHouseAdaptor.resolve_read_cluster_label(config, "default")
+
+      assert legacy_label == nil
+      assert named_label == "default"
+
+      refute ClickHouseAdaptor.read_cluster_tag(legacy_label) ==
+               ClickHouseAdaptor.read_cluster_tag(named_label)
     end
   end
 
@@ -1657,6 +1859,118 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
+  describe "insert outcome telemetry" do
+    setup do
+      insert(:plan, name: "Free")
+      {_source, backend} = setup_clickhouse_test()
+
+      TestUtils.attach_forwarder([:logflare, :clickhouse, :insert, :result])
+
+      [backend: backend]
+    end
+
+    test "emits an :ok result for a successful insert", %{backend: backend} do
+      Mimic.expect(Finch, :request, fn _request, _pool, _opts ->
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
+
+      assert :ok = ClickHouseAdaptor.insert_log_events_compressed(backend, :log, :zlib.gzip(""))
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :insert, :result], %{count: 1},
+                      metadata}
+
+      assert metadata.backend_id == backend.id
+      assert metadata.event_type == :log
+      assert metadata.async == false
+      assert metadata.result == :ok
+      assert metadata.error_class == :none
+    end
+
+    test "tags the error class for a failed insert", %{backend: backend} do
+      Mimic.expect(Finch, :request, fn _request, _pool, _opts ->
+        {:ok, %Finch.Response{status: 400, body: "boom"}}
+      end)
+
+      assert {:error, _reason} =
+               ClickHouseAdaptor.insert_log_events_compressed(backend, :log, :zlib.gzip(""))
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :insert, :result], %{count: 1},
+                      metadata}
+
+      assert metadata.result == :error
+      assert metadata.error_class == :http_client_error
+    end
+
+    test "counts a pool checkout timeout as :pool_timeout", %{backend: backend} do
+      # Raised, not returned — the real HTTP/1 pool behaviour. Before FinchPoolTimeoutNormalizer
+      # normalized it, this exception escaped handle_insert_result/4 entirely and the
+      # insert never appeared in this metric at all.
+      Mimic.stub(Finch, :request, fn _request, _pool, _opts ->
+        raise """
+        Finch was unable to provide a connection within the timeout due to excess queuing         for connections. Consider adjusting the pool size, count, timeout or reducing the         rate of requests if it is possible that the downstream service is unable to keep up         with the current rate.
+        """
+      end)
+
+      assert {:error, :pool_timeout} =
+               ClickHouseAdaptor.insert_log_events_compressed(backend, :log, :zlib.gzip(""))
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :insert, :result], %{count: 1},
+                      metadata}
+
+      assert metadata.result == :error
+      assert metadata.error_class == :pool_timeout
+    end
+
+    test "distinguishes too-many-parts rejections", %{backend: backend} do
+      Mimic.stub(Finch, :request, fn _request, _pool, _opts ->
+        {:ok, %Finch.Response{status: 500, body: "Code: 252. DB::Exception: Too many parts"}}
+      end)
+
+      assert {:error, _reason} =
+               ClickHouseAdaptor.insert_log_events_compressed(backend, :log, :zlib.gzip(""))
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :insert, :result], %{count: 1},
+                      metadata}
+
+      assert metadata.error_class == :too_many_parts
+    end
+
+    test "counts a retried insert once", %{backend: backend} do
+      Mimic.stub(Finch, :request, fn _request, _pool, _opts ->
+        {:ok, %Finch.Response{status: 503, body: "unavailable"}}
+      end)
+
+      assert {:error, _reason} =
+               ClickHouseAdaptor.insert_log_events_compressed(backend, :log, :zlib.gzip(""))
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :insert, :result], %{count: 1},
+                      metadata}
+
+      assert metadata.error_class == :http_server_error
+
+      refute_received {:telemetry_event, [:logflare, :clickhouse, :insert, :result], _, _}
+    end
+
+    test "flags async inserts", %{backend: backend} do
+      Mimic.expect(Finch, :request, fn _request, _pool, _opts ->
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
+
+      assert :ok =
+               ClickHouseAdaptor.insert_log_events_compressed(
+                 backend,
+                 :log,
+                 :zlib.gzip(""),
+                 async: true
+               )
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :insert, :result], %{count: 1},
+                      metadata}
+
+      assert metadata.async == true
+    end
+  end
+
   describe "log event insertion and retrieval" do
     setup do
       insert(:plan, name: "Free")
@@ -2017,6 +2331,234 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         )
 
       assert {:ok, %QueryResult{rows: [%{"param_result" => "hello"}]}} = result
+    end
+
+    test "sends the configured routing param as the replica tag header" do
+      backend = start_replica_routing_backend("project")
+      parent = self()
+
+      expect(Ch, :query, fn pool, statement, params, opts ->
+        send(parent, {:ch_headers, Keyword.get(opts, :headers)})
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert {:ok, %QueryResult{}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 {"SELECT 1 as test", [], %{"project" => "abcdefghij"}},
+                 []
+               )
+
+      assert_received {:ch_headers, [{"x-clickhouse-replica-tag", "abcdefghij"}]}
+    end
+
+    test "sends the replica tag header on the max_limit endpoint path" do
+      backend = start_replica_routing_backend("project")
+      parent = self()
+
+      expect(Ch, :query, fn pool, statement, params, opts ->
+        send(parent, {:ch_headers, Keyword.get(opts, :headers)})
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert {:ok, %QueryResult{}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 endpoint_query_args("SELECT 1 as test", 10, [], %{"project" => "abcdefghij"}),
+                 []
+               )
+
+      assert_received {:ch_headers, [{"x-clickhouse-replica-tag", "abcdefghij"}]}
+    end
+
+    test "does not send a replica tag header when the routing param is absent from the request" do
+      backend = start_replica_routing_backend("project")
+      parent = self()
+
+      expect(Ch, :query, fn pool, statement, params, opts ->
+        send(parent, {:ch_headers, Keyword.get(opts, :headers, [])})
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert {:ok, %QueryResult{}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 {"SELECT 1 as test", [], %{"other" => "value"}},
+                 []
+               )
+
+      assert_received {:ch_headers, []}
+    end
+
+    test "does not send a replica tag header when the backend has no routing param configured",
+         %{backend: backend} do
+      parent = self()
+
+      expect(Ch, :query, fn pool, statement, params, opts ->
+        send(parent, {:ch_headers, Keyword.get(opts, :headers, [])})
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert {:ok, %QueryResult{}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 {"SELECT 1 as test", [], %{"project" => "abcdefghij"}},
+                 []
+               )
+
+      assert_received {:ch_headers, []}
+    end
+
+    test "does not send a replica tag header for raw string queries without request params" do
+      backend = start_replica_routing_backend("project")
+      parent = self()
+
+      expect(Ch, :query, fn pool, statement, params, opts ->
+        send(parent, {:ch_headers, Keyword.get(opts, :headers, [])})
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert {:ok, %QueryResult{}} =
+               ClickHouseAdaptor.execute_query(backend, "SELECT 1 as test", [])
+
+      assert_received {:ch_headers, []}
+    end
+
+    test "ignores a routing param value that is not a printable token" do
+      backend = start_replica_routing_backend("project")
+      parent = self()
+
+      expect(Ch, :query, fn pool, statement, params, opts ->
+        send(parent, {:ch_headers, Keyword.get(opts, :headers, [])})
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert {:ok, %QueryResult{}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 {"SELECT 1 as test", [], %{"project" => "abc\r\nX-Injected: 1"}},
+                 []
+               )
+
+      assert_received {:ch_headers, []}
+    end
+
+    test "ignores a routing param value that is not a string" do
+      backend = start_replica_routing_backend("project")
+      parent = self()
+
+      expect(Ch, :query, fn pool, statement, params, opts ->
+        send(parent, {:ch_headers, Keyword.get(opts, :headers, [])})
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert {:ok, %QueryResult{}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 {"SELECT 1 as test", [], %{"project" => ["a", "b"]}},
+                 []
+               )
+
+      assert_received {:ch_headers, []}
+    end
+
+    test "ignores a routing param value containing non-ASCII characters" do
+      backend = start_replica_routing_backend("project")
+      parent = self()
+
+      expect(Ch, :query, fn pool, statement, params, opts ->
+        send(parent, {:ch_headers, Keyword.get(opts, :headers, [])})
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert {:ok, %QueryResult{}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 {"SELECT 1 as test", [], %{"project" => "café"}},
+                 []
+               )
+
+      assert_received {:ch_headers, []}
+    end
+
+    test "sends a routing param value of exactly 256 bytes" do
+      backend = start_replica_routing_backend("project")
+      parent = self()
+      value = String.duplicate("a", 256)
+
+      expect(Ch, :query, fn pool, statement, params, opts ->
+        send(parent, {:ch_headers, Keyword.get(opts, :headers, [])})
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert {:ok, %QueryResult{}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 {"SELECT 1 as test", [], %{"project" => value}},
+                 []
+               )
+
+      assert_received {:ch_headers, [{"x-clickhouse-replica-tag", ^value}]}
+    end
+
+    test "ignores a routing param value of 257 bytes" do
+      backend = start_replica_routing_backend("project")
+      parent = self()
+
+      expect(Ch, :query, fn pool, statement, params, opts ->
+        send(parent, {:ch_headers, Keyword.get(opts, :headers, [])})
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert {:ok, %QueryResult{}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 {"SELECT 1 as test", [], %{"project" => String.duplicate("a", 257)}},
+                 []
+               )
+
+      assert_received {:ch_headers, []}
+    end
+
+    test "keeps the replica tag header on the default cluster failover retry" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            replica_routing_param: "project",
+            read_only_urls: %{
+              "api" => "http://localhost:8123",
+              "dashboard_logs" => "http://localhost:8123"
+            },
+            default_read_cluster: "dashboard_logs"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend}, id: {:replica_routing, backend.id})
+      parent = self()
+      backend_id = backend.id
+
+      stub(Ch, :query, fn pool, statement, params, opts ->
+        {:via, Registry, {_registry, {_mod, ^backend_id, label}}} = pool
+        send(parent, {:ch_query, label, Keyword.get(opts, :headers, [])})
+
+        case label do
+          "api" -> {:error, %DBConnection.ConnectionError{message: "unreachable"}}
+          _ -> Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+        end
+      end)
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert {:ok, %QueryResult{}} =
+                 ClickHouseAdaptor.execute_query(
+                   backend,
+                   {"SELECT 1 as test", [], %{"project" => "abcdefghij"}},
+                   read_cluster: "api"
+                 )
+      end)
+
+      assert_received {:ch_query, "api", [{"x-clickhouse-replica-tag", "abcdefghij"}]}
+
+      assert_received {:ch_query, "dashboard_logs", [{"x-clickhouse-replica-tag", "abcdefghij"}]}
     end
 
     test "enforces an endpoint max_limit exactly in the submitted SQL", %{backend: backend} do
@@ -2901,6 +3443,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     {query, declared_params, input_params, %EndpointQuery{max_limit: max_limit}}
   end
 
+  defp start_replica_routing_backend(param) do
+    {_source, backend} = setup_clickhouse_test(config: %{replica_routing_param: param})
+    start_supervised!({ClickHouseAdaptor, backend}, id: {:replica_routing, backend.id})
+    backend
+  end
+
   defp stub_read_cluster_connection_error(backend, label_or_labels, notify \\ nil)
 
   defp stub_read_cluster_connection_error(%Backend{id: backend_id}, labels, notify)
@@ -2955,6 +3503,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         _ ->
           Mimic.call_original(Ch, :query, [pool, statement, params, opts])
       end
+    end)
+  end
+
+  defp stub_failed_checkout(%DBConnection.ConnectionError{} = error) do
+    expect(Ch, :query, fn _pool, statement, params, opts ->
+      entry = %DBConnection.LogEntry{
+        call: :execute,
+        query: statement,
+        params: params,
+        result: {:error, error},
+        pool_time: System.convert_time_unit(12_000, :millisecond, :native)
+      }
+
+      opts[:log].(entry)
+      {:error, error}
     end)
   end
 

@@ -14,6 +14,10 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.RecentInsertsCacher
+  alias Logflare.Backends.Spool.DurableBuffer.Supervisor, as: SpoolDurableBufferSup
+  alias Logflare.Backends.Spool.Queue.PubSub, as: SpoolQueueMod
+  alias Logflare.Backends.Spool.Storage.GCS, as: SpoolStorageMod
+  alias Logflare.Backends.Spool.Health
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.SourceSupWorker
   alias Logflare.LogEvent
@@ -763,6 +767,111 @@ defmodule Logflare.BackendsTest do
       assert :ok = Backends.ensure_source_sup_started(source)
     end
 
+    test "prefetch/1 warms the cache keys read during initial startup", %{source: source} do
+      source = Sources.get(source.id)
+      source_schema = insert(:source_schema, source: source)
+
+      caches = [
+        Logflare.Backends.Cache,
+        Logflare.Billing.Cache,
+        Logflare.Rules.Cache,
+        Logflare.SourceSchemas.Cache,
+        Logflare.Sources.Cache,
+        Logflare.Users.Cache
+      ]
+
+      for cache <- caches, do: Cachex.clear(cache)
+      for cache <- caches, do: assert({:ok, 0} = Cachex.size(cache))
+
+      assert :ok = SourceSup.prefetch(source)
+
+      source_id = source.id
+      source_schema_id = source_schema.id
+      user_id = source.user_id
+
+      assert {:ok, {:cached, []}} =
+               Cachex.get(Logflare.Rules.Cache, {:list_by_source_id, [source_id]})
+
+      assert {:ok, {:cached, []}} =
+               Cachex.get(Logflare.Backends.Cache, {:list_backends, [[source_id: source_id]]})
+
+      assert {:ok, {:cached, []}} =
+               Cachex.get(Logflare.Backends.Cache, {
+                 :list_backends,
+                 [[rules_source_id: source_id]]
+               })
+
+      assert {:ok, {:cached, %Source{id: ^source_id}}} =
+               Cachex.get(Logflare.Sources.Cache, {:get_by, [[id: source_id]]})
+
+      assert {:ok, {:cached, %User{id: ^user_id} = cached_user}} =
+               Cachex.get(Logflare.Users.Cache, {:get, [user_id]})
+
+      assert {:ok, {:cached, %{}}} =
+               Cachex.get(Logflare.Billing.Cache, {:get_plan_by_user, [cached_user]})
+
+      assert {:ok, {:cached, %{id: ^source_schema_id}}} =
+               Cachex.get(Logflare.SourceSchemas.Cache, {
+                 :get_source_schema_by,
+                 [[source_id: source_id]]
+               })
+    end
+
+    test "prefetch/1 includes the default backend before filtering consolidated backends", %{
+      source: source
+    } do
+      stub(Backends, :get_default_backend, fn _user ->
+        %Backend{type: :bigquery, consolidated_ingest?: true}
+      end)
+
+      Cachex.clear(Logflare.SourceSchemas.Cache)
+
+      assert :ok = SourceSup.prefetch(source)
+
+      assert {:ok, {:cached, nil}} =
+               Cachex.get(Logflare.SourceSchemas.Cache, {
+                 :get_source_schema_by,
+                 [[source_id: source.id]]
+               })
+    end
+
+    test "prefetch/1 skips schemas when no BigQuery backend starts", %{source: source} do
+      stub(Logflare.SingleTenant, :single_tenant?, fn -> true end)
+      stub(Logflare.SingleTenant, :postgres_backend?, fn -> true end)
+      stub(Logflare.SingleTenant, :postgres_backend_adapter_opts, fn -> [url: "ecto://"] end)
+      Cachex.clear(Logflare.SourceSchemas.Cache)
+
+      assert :ok = SourceSup.prefetch(source)
+
+      assert {:ok, nil} =
+               Cachex.get(Logflare.SourceSchemas.Cache, {
+                 :get_source_schema_by,
+                 [[source_id: source.id]]
+               })
+    end
+
+    test "start_source_sup/1 prefetches before starting", %{source: source} do
+      expect(SourceSup, :prefetch, fn received_source ->
+        assert received_source.id == source.id
+        :ok
+      end)
+
+      assert :ok = Backends.start_source_sup(source)
+    end
+
+    test "start_source_sup/1 skips prefetch but still delegates when already started", %{
+      source: source
+    } do
+      start_supervised!({SourceSup, source})
+      reject(&SourceSup.prefetch/1)
+
+      expect(SourceSup, :child_spec, fn received_source ->
+        call_original(SourceSup, :child_spec, [received_source])
+      end)
+
+      assert {:error, :already_started} = Backends.start_source_sup(source)
+    end
+
     test "on attach to source, update SourceSup", %{source: source} do
       [backend1, backend2] = insert_pair(:backend)
       start_supervised!({SourceSup, source})
@@ -822,6 +931,65 @@ defmodule Logflare.BackendsTest do
       assert {:error, :not_started} = Backends.restart_source_sup(source)
       assert :ok = Backends.start_source_sup(source)
       assert :ok = Backends.restart_source_sup(source)
+    end
+
+    test "stop_backend_child/2 stops only requested backend children", %{
+      source: source,
+      user: user
+    } do
+      # Start two distinct backend children so each lifecycle can be tracked independently.
+      backend_ids =
+        for backend_name <- ["first", "second"] do
+          insert(:backend,
+            name: "#{backend_name} webhook",
+            user: user,
+            sources: [source],
+            type: :webhook,
+            config: %{url: "https://#{backend_name}.example.com"}
+          ).id
+        end
+
+      Backends.clear_list_backends_cache(source.id)
+      start_supervised!({SourceSup, source})
+
+      children = fn ->
+        source
+        |> Backends.via_source(SourceSup)
+        |> Supervisor.which_children()
+        |> Enum.map(fn {child_id, pid, _type, _modules} when is_pid(pid) -> {child_id, pid} end)
+      end
+
+      backend_children = fn children ->
+        for {{_mod, _source_id, backend_id}, pid} <- children, backend_id in backend_ids do
+          {backend_id, pid}
+        end
+      end
+
+      prev_children = children.()
+
+      assert [
+               {first_backend_id, first_backend_pid},
+               {second_backend_id, second_backend_pid}
+             ] = backend_children.(prev_children)
+
+      # An unknown backend ID must leave every existing child running with the same PID.
+      unknown_backend_id = Enum.max(backend_ids) + 1
+      assert {:error, :not_found} = SourceSup.stop_backend_child(source, unknown_backend_id)
+      assert children.() == prev_children
+      assert Process.alive?(first_backend_pid)
+      assert Process.alive?(second_backend_pid)
+
+      # Stopping the second backend must leave the first running with the same PID.
+      assert :ok = SourceSup.stop_backend_child(source, second_backend_id)
+      assert [{^first_backend_id, ^first_backend_pid}] = backend_children.(children.())
+      assert Process.alive?(first_backend_pid)
+      refute Process.alive?(second_backend_pid)
+
+      # The first backend remains independently stoppable after the second is removed.
+      assert :ok = SourceSup.stop_backend_child(source, first_backend_id)
+      assert [] = backend_children.(children.())
+      refute Process.alive?(first_backend_pid)
+      refute Process.alive?(second_backend_pid)
     end
 
     test "rules_child_started? when SourceSup already started", %{source: source} do
@@ -1916,6 +2084,11 @@ defmodule Logflare.BackendsTest do
   end
 
   describe "ingest_logs/3 per-source spooling gate" do
+    # Needed for tests in this block that stub SpoolStorageMod/SpoolQueueMod
+    # directly — RotatingWal's Worker commits from its own process, not this
+    # test's, so a private-mode stub wouldn't be visible to it.
+    setup :set_mimic_global
+
     setup do
       insert(:plan)
       user = insert(:user)
@@ -1932,67 +2105,254 @@ defmodule Logflare.BackendsTest do
         end
       end)
 
+      # A real DurableBuffer instance (RotatingWal wrapping Cloud), with
+      # stubbed storage/queue mods, backs every test below —
+      # dispatch_to_spool_producer/1 routes straight into it. Short
+      # flush_delay_ms/wal_max_rotation_interval_ms keep the blocking-append
+      # test fast.
+      wal_dir =
+        Path.join(
+          System.tmp_dir!(),
+          "backends_test_spool_wal_#{System.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(wal_dir)
+      on_exit(fn -> File.rm_rf!(wal_dir) end)
+
+      stub(SpoolStorageMod, :put, fn _b, key, _body, _opts -> {:ok, key} end)
+      stub(SpoolQueueMod, :publish, fn _ref, _body -> :ok end)
+
+      Application.put_env(:logflare, :spool,
+        mode: :disable,
+        buffer: :wal,
+        partitions: 1,
+        flush_delay_ms: 10,
+        wal_max_rotation_interval_ms: 10,
+        max_commit_attempts: 1,
+        retry_delay_ms: 1,
+        bucket: "test-bucket",
+        storage_mod: SpoolStorageMod,
+        queue_mod: SpoolQueueMod,
+        wal_dir: wal_dir
+      )
+
+      start_supervised!(SpoolDurableBufferSup)
+
       {:ok, source: source}
     end
 
-    defp stub_add_to_table_observer(test_pid) do
-      stub(IngestEventQueue, :add_to_table, fn key, _batch ->
-        send(test_pid, {:add_to_table, key})
-        :ok
-      end)
+    defp merge_spool_config!(overrides) do
+      config = Application.get_env(:logflare, :spool, [])
+      Application.put_env(:logflare, :spool, Keyword.merge(config, overrides))
+    end
+
+    defp pending_entry_count do
+      [partition_pid] = SpoolDurableBufferSup.partitions()
+      :sys.get_state(partition_pid).pending_count
     end
 
     test "does not dispatch to the spool producer when source.enable_spooling is false, even if the global mode is on and allow_spooling is true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :producer)
-      stub_add_to_table_observer(self())
 
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
 
-      refute_receive {:add_to_table, {:spool_producer, nil}}
+      assert pending_entry_count() == 0
+    end
+
+    test "does not dispatch to the spool producer once :wal mode's disk health is unhealthy, even if everything else is enabled",
+         %{source: source} do
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        buffer: :wal,
+        max_spool_health_failures: 1
+      )
+
+      Health.report_failure!(:disk)
+      on_exit(fn -> Health.report_recovery!(:disk) end)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      assert pending_entry_count() == 0
+    end
+
+    test "an unhealthy upload doesn't stop :wal mode ingest — the local WAL is the backstop, not the upload path",
+         %{source: source} do
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        buffer: :wal,
+        max_spool_health_failures: 1
+      )
+
+      Health.report_failure!(:upload)
+      on_exit(fn -> Health.report_recovery!(:upload) end)
+
+      # append/3 blocks until the local WAL fsync settles, not until an
+      # upload happens — so proving dispatch actually reached the spool
+      # (rather than falling through to normal dispatch) means observing
+      # the eventual upload, not just pending_entry_count/0's local state.
+      test_pid = self()
+
+      stub(SpoolStorageMod, :put, fn _b, key, _body, _opts ->
+        send(test_pid, :spool_uploaded)
+        {:ok, key}
+      end)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      assert_receive :spool_uploaded, 2000
+    end
+
+    test "does not dispatch to the spool producer once :mem mode's upload health is unhealthy",
+         %{source: source} do
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        buffer: :mem,
+        max_spool_health_failures: 1
+      )
+
+      Health.report_failure!(:upload)
+      on_exit(fn -> Health.report_recovery!(:upload) end)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      assert pending_entry_count() == 0
+    end
+
+    test "falls back to normal dispatch when no spool partition is registered (e.g. the subtree crashed and is mid-restart)",
+         %{source: source} do
+      # Simulates the only window this can actually happen in — see
+      # dispatch_to_spool_producer/1's caller — by stopping the buffer and
+      # not restarting it, so DurableBuffer's via-tuple lookup for it
+      # resolves to no live process.
+      stop_supervised!(SpoolDurableBufferSup)
+
+      merge_spool_config!(mode: :producer)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+    end
+
+    test "falls back to normal dispatch and logs an error when the spool commit itself fails (e.g. GCS unavailable)",
+         %{source: source} do
+      # blocking: true so the commit failure — not just a local WAL write —
+      # is what dispatch_to_spool_producer/1 sees. :mem buffer specifically:
+      # WAL mode's local fsync always succeeds regardless of the (async,
+      # separately shipped) upload outcome, so only :mem mode can surface
+      # this failure synchronously through append/3.
+      stop_supervised!(SpoolDurableBufferSup)
+
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        buffer: :mem,
+        blocking: true,
+        partitions: 1,
+        max_commit_attempts: 1,
+        retry_delay_ms: 1,
+        bucket: "test-bucket",
+        storage_mod: SpoolStorageMod,
+        queue_mod: SpoolQueueMod
+      )
+
+      stub(SpoolStorageMod, :put, fn _b, _k, _body, _opts -> {:error, :timeout} end)
+
+      start_supervised!(SpoolDurableBufferSup)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      log =
+        capture_log(fn ->
+          assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+        end)
+
+      assert log =~ "spool dispatch failed"
     end
 
     test "does not dispatch to the spool producer when the global mode is off, even if source.enable_spooling and allow_spooling are true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :disable)
-      stub_add_to_table_observer(self())
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
 
-      refute_receive {:add_to_table, {:spool_producer, nil}}
+      assert pending_entry_count() == 0
     end
 
     test "dispatches to the spool producer only when the global mode, source.enable_spooling, and allow_spooling are all true",
          %{source: source} do
-      Application.put_env(:logflare, :spool, mode: :producer)
-      stub_add_to_table_observer(self())
+      # :mem buffer, restarted with its own observable stub — proving the
+      # segment reached storage doesn't depend on WAL rotation timing, and
+      # storage_mod is baked into the backend at start time so observing a
+      # specific call needs a fresh instance.
+      stop_supervised!(SpoolDurableBufferSup)
+      test_pid = self()
+
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        buffer: :mem,
+        partitions: 1,
+        bucket: "test-bucket",
+        storage_mod: SpoolStorageMod,
+        queue_mod: SpoolQueueMod
+      )
+
+      stub(SpoolStorageMod, :put, fn _b, key, _body, _opts ->
+        send(test_pid, :put_called)
+        {:ok, key}
+      end)
+
+      start_supervised!(SpoolDurableBufferSup)
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
 
-      assert_receive {:add_to_table, {:spool_producer, nil}}
+      # Proves the segment actually reached the spool buffer and got
+      # committed to storage before ingest_logs/4 returned (:mem mode
+      # commits directly, no rotation to wait on).
+      assert_receive :put_called, 1000
+
+      assert pending_entry_count() == 0
+    end
+
+    test "blocks until the segment is durably written to the local WAL",
+         %{source: source} do
+      merge_spool_config!(mode: :producer)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      # ingest_logs/4 blocks on DurableBuffer.append/3, which only replies
+      # once the segment has been written and fsynced to the local WAL — so
+      # this succeeding at all proves that happened.
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
     end
 
     test "does not dispatch to the spool producer when allow_spooling is omitted, even if the global mode and source.enable_spooling are true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :producer)
-      stub_add_to_table_observer(self())
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source)
 
-      refute_receive {:add_to_table, {:spool_producer, nil}}
+      assert pending_entry_count() == 0
     end
 
     test "does not dispatch to the spool producer when the event already has a via_rule_id, even if allow_spooling is true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :producer)
-      stub_add_to_table_observer(self())
 
       source = %{source | enable_spooling: true}
       le = build(:log_event, source: source)
@@ -2000,7 +2360,7 @@ defmodule Logflare.BackendsTest do
 
       assert {:ok, 1} = Backends.ingest_logs([le], source, nil, true)
 
-      refute_receive {:add_to_table, {:spool_producer, nil}}
+      assert pending_entry_count() == 0
     end
   end
 end

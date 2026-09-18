@@ -36,6 +36,7 @@ defmodule Logflare.Logs.SearchOperations do
 
   @default_limit 100
   @default_max_n_chart_ticks 1_000
+  @min_event_page_window_seconds 60
   @tailing_timestamp_filter_minutes 10
   # Note that this is only a timeout for the request, not the query.
   # If the query takes longer to run than the timeout value, the call returns without any results and with the
@@ -55,37 +56,37 @@ defmodule Logflare.Logs.SearchOperations do
   def default_limit, do: @default_limit
 
   @doc """
-  Fetch one extra row as a sentinel to indicate if further pages are available.
-  """
-  @spec fetch_limit :: pos_integer()
-  def fetch_limit, do: @default_limit + 1
-
-  @doc """
   Adds a validated event-page request to a search operation.
 
   The first page does not need a cursor. Other pages require tailing to be false
   and a valid cursor to page from.
   """
-  @spec new_event_page(map() | SO.t(), EventPage.intent(), EventPage.cursor() | nil) ::
+  @spec new_event_page(
+          map() | SO.t(),
+          EventPage.intent(),
+          EventPage.cursor() | nil,
+          pos_integer() | nil
+        ) ::
           {:ok, SO.t()} | {:error, :invalid_request | :tailing}
-  def new_event_page(%SO{} = so, :initial, nil) do
+  def new_event_page(%SO{} = so, :initial, nil, nil) do
     {:ok, %{so | event_page_request: %{intent: :initial, cursor: nil}}}
   end
 
-  def new_event_page(%SO{tailing?: false} = so, intent, cursor) do
-    if EventPage.valid_request?(intent, cursor) do
-      {:ok, %{so | event_page_request: %{intent: intent, cursor: cursor}}}
+  def new_event_page(%SO{tailing?: false} = so, intent, cursor, window_seconds) do
+    if EventPage.valid_request?(intent, cursor, window_seconds) do
+      request = %{intent: intent, cursor: cursor, window_seconds: window_seconds}
+      {:ok, %{so | event_page_request: request}}
     else
       {:error, :invalid_request}
     end
   end
 
-  def new_event_page(%SO{}, _intent, _cursor), do: {:error, :tailing}
+  def new_event_page(%SO{}, _intent, _cursor, _window_seconds), do: {:error, :tailing}
 
-  def new_event_page(params, intent, cursor) when is_map(params) do
+  def new_event_page(params, intent, cursor, window_seconds) when is_map(params) do
     params
     |> SO.new()
-    |> new_event_page(intent, cursor)
+    |> new_event_page(intent, cursor, window_seconds)
   end
 
   @spec do_query(SO.t()) :: SO.t()
@@ -134,13 +135,12 @@ defmodule Logflare.Logs.SearchOperations do
     end)
   end
 
-  # Override the default limit; fetch extra row to check if more events are available
   @spec query_for_execution(SO.t()) :: Ecto.Query.t()
   defp query_for_execution(%SO{
          type: :events,
          query: %Ecto.Query{limit: %Ecto.Query.LimitExpr{}} = query
        }),
-       do: limit(query, ^fetch_limit())
+       do: limit(query, ^default_limit())
 
   defp query_for_execution(%SO{query: query}), do: query
 
@@ -221,7 +221,7 @@ defmodule Logflare.Logs.SearchOperations do
     dynamic(
       [t],
       t.timestamp < fragment("TIMESTAMP_MICROS(?)", ^timestamp) or
-        (t.timestamp == fragment("TIMESTAMP_MICROS(?)", ^timestamp) and t.id <= ^id)
+        (t.timestamp == fragment("TIMESTAMP_MICROS(?)", ^timestamp) and t.id < ^id)
     )
   end
 
@@ -234,7 +234,7 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   defp cursor_condition(:previous, timestamp, id) do
-    dynamic([t], t.timestamp < ^timestamp or (t.timestamp == ^timestamp and t.id <= ^id))
+    dynamic([t], t.timestamp < ^timestamp or (t.timestamp == ^timestamp and t.id < ^id))
   end
 
   defp cursor_condition(:next, timestamp, id) do
@@ -467,43 +467,109 @@ defmodule Logflare.Logs.SearchOperations do
          } = so
        ) do
     direction = EventPage.direction(intent)
-    timestamp = normalize_event_timestamp(so.backend_type, timestamp)
+    {min_us, max_us} = event_page_bounds(so, direction, timestamp)
 
-    %{so | query: apply_event_page_partition_filter(so.query, so, direction, timestamp)}
+    %{so | query: apply_event_page_window(so.query, so, min_us, max_us)}
   end
 
-  defp apply_event_page_partition_filter(query, %SO{backend_type: :postgres}, _, _), do: query
+  @doc """
+  The timestamp range the chart draws for a set of LQL rules.
 
-  defp apply_event_page_partition_filter(
-         query,
-         %SO{partition_by: :timestamp},
-         direction,
-         timestamp
-       ) do
-    date = timestamp |> event_timestamp_datetime() |> DateTime.to_date()
+  A closed range stays as is. An open bound keeps its value and reaches the open interval
+  length away from it, never past `now`. Without a `t:` filter the chart covers
+  `default_period_tick_count/1` periods back from `now`. Every value shares the wall clock
+  of `now`.
+  """
+  @spec chart_timestamp_range(Rules.lql_rules(), chart_period(), NaiveDateTime.t()) ::
+          Rules.timestamp_range()
+  def chart_timestamp_range(lql_rules, chart_period, %NaiveDateTime{} = now) do
+    period = period_seconds(chart_period)
+    open_interval = SearchOperationHelpers.default_open_interval_length() * period
 
-    case direction do
-      :previous -> where(query, [t], fragment("EXTRACT(DATE FROM ?)", t.timestamp) <= ^date)
-      :next -> where(query, [t], fragment("EXTRACT(DATE FROM ?)", t.timestamp) >= ^date)
+    case Rules.timestamp_filter_bounds(lql_rules) do
+      %{min: nil, max: nil} ->
+        ticks = SearchOperationHelpers.default_period_tick_count(chart_period)
+        %{min: NaiveDateTime.add(now, -ticks * period, :second), max: now}
+
+      %{min: min, max: nil} ->
+        max = Enum.min([NaiveDateTime.add(min, open_interval, :second), now], NaiveDateTime)
+        %{min: min, max: Enum.max([min, max], NaiveDateTime)}
+
+      %{min: nil, max: max} ->
+        %{min: NaiveDateTime.add(max, -open_interval, :second), max: max}
+
+      range ->
+        range
     end
   end
 
-  defp apply_event_page_partition_filter(query, %SO{partition_by: :pseudo}, direction, timestamp) do
-    date = timestamp |> event_timestamp_datetime() |> DateTime.to_date()
+  defp period_seconds(:second), do: 1
+  defp period_seconds(:minute), do: 60
+  defp period_seconds(:hour), do: 3_600
+  defp period_seconds(:day), do: 86_400
+
+  @doc """
+  Seconds a single page request may scan.
+
+  A page request drops the query's own timestamp range so it can page past it. Without a
+  replacement bound the scan runs to the end of the table, which on a partitioned BigQuery
+  table means reading every partition that has ever existed. One page therefore moves by
+  the width of the range currently in view, and the button says so.
+  """
+  @spec event_page_window_seconds(NaiveDateTime.t(), NaiveDateTime.t()) :: pos_integer()
+  def event_page_window_seconds(min, max) do
+    max(NaiveDateTime.diff(max, min, :second), @min_event_page_window_seconds)
+  end
+
+  @spec event_page_bounds(SO.t(), EventPage.direction(), integer()) :: {integer(), integer()}
+  defp event_page_bounds(%SO{event_page_request: request}, direction, timestamp) do
+    window = request.window_seconds * 1_000_000
 
     case direction do
-      :previous -> where(query, partition_date() <= ^date or in_streaming_buffer())
-      :next -> where(query, partition_date() >= ^date or in_streaming_buffer())
+      :previous -> {timestamp - window, timestamp}
+      :next -> {timestamp, timestamp + window}
     end
   end
 
-  defp event_timestamp_datetime(timestamp) when is_integer(timestamp),
-    do: DateTime.from_unix!(timestamp, :microsecond)
+  defp apply_event_page_window(query, %SO{backend_type: :postgres}, min_us, max_us) do
+    where(
+      query,
+      [t],
+      t.timestamp >= ^DateTime.from_unix!(min_us, :microsecond) and
+        t.timestamp <= ^DateTime.from_unix!(max_us, :microsecond)
+    )
+  end
 
-  defp event_timestamp_datetime(%DateTime{} = timestamp), do: timestamp
+  defp apply_event_page_window(query, %SO{partition_by: :timestamp}, min_us, max_us) do
+    query
+    |> where(
+      [t],
+      t.timestamp >= fragment("TIMESTAMP_MICROS(?)", ^min_us) and
+        t.timestamp <= fragment("TIMESTAMP_MICROS(?)", ^max_us)
+    )
+    |> where(
+      [t],
+      fragment("EXTRACT(DATE FROM ?)", t.timestamp) >= ^event_page_date(min_us) and
+        fragment("EXTRACT(DATE FROM ?)", t.timestamp) <= ^event_page_date(max_us)
+    )
+  end
 
-  defp event_timestamp_datetime(%NaiveDateTime{} = timestamp),
-    do: DateTime.from_naive!(timestamp, "Etc/UTC")
+  defp apply_event_page_window(query, %SO{partition_by: :pseudo}, min_us, max_us) do
+    query
+    |> where(
+      [t],
+      t.timestamp >= fragment("TIMESTAMP_MICROS(?)", ^min_us) and
+        t.timestamp <= fragment("TIMESTAMP_MICROS(?)", ^max_us)
+    )
+    |> where(
+      (partition_date() >= ^event_page_date(min_us) and
+         partition_date() <= ^event_page_date(max_us)) or in_streaming_buffer()
+    )
+  end
+
+  defp event_page_date(microseconds) do
+    microseconds |> DateTime.from_unix!(:microsecond) |> DateTime.to_date()
+  end
 
   defp apply_bq_aggregate_timestamp_filters(query, so, filters, chart_period) do
     period = to_bq_interval_token(chart_period)

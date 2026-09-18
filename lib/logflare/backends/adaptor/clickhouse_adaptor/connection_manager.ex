@@ -15,6 +15,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   Pools authenticate with the credentials resolved by
   `ClickHouseAdaptor.query_credentials/1`, which prefers a
   dedicated query user when one is configured.
+
+  Managers are registered through `Registry`, so they carry no registered name.
+  Each labels itself `{:ch_read_pool_manager, backend_id, read_cluster_tag}` with
+  `Process.set_label/1` so that `observer`, `:recon`, crash reports, and the
+  `Logflare.Telemetry` top-process metrics can attribute it to a backend and read
+  cluster. The third element matches the `read_cluster` telemetry tag.
   """
 
   use GenServer
@@ -37,6 +43,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   @ch_idle_interval :timer.seconds(3)
   @default_read_pool_size 50
   @default_labeled_read_pool_size 32
+  @telemetry_listener __MODULE__.TelemetryListener
 
   typedstruct do
     field :backend_id, pos_integer(), enforce: true
@@ -68,6 +75,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
       start: {__MODULE__, :start_link, [backend, label]}
     }
   end
+
+  @doc """
+  Registered name of the `DBConnection.TelemetryListener` that read pools report
+  connect and disconnect events to.
+
+  The listener is supervised by `QueryConnectionSup` so that it outlives the pools,
+  which are stopped and restarted on config refresh, inactivity, and recycle.
+  """
+  @spec telemetry_listener_name() :: atom()
+  def telemetry_listener_name, do: @telemetry_listener
 
   @doc """
   Generates a unique ClickHouse connection pool via tuple based on a `Backend` and
@@ -239,6 +256,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
 
   @impl true
   def init({backend_id, label}) do
+    Process.set_label(
+      {:ch_read_pool_manager, backend_id, ClickHouseAdaptor.read_cluster_tag(label)}
+    )
+
     resolve_timer_ref = resolve_timer_send_after()
 
     initial_state = %__MODULE__{
@@ -509,7 +530,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
         timeout: @ch_query_conn_timeout,
         queue_target: @ch_queue_target,
         idle_interval: @ch_idle_interval,
-        idle_limit: pool_size
+        idle_limit: pool_size,
+        connection_listeners: {[@telemetry_listener], {backend.id, label}}
       ]
 
       {:ok, ch_opts}

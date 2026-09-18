@@ -4,8 +4,17 @@ defmodule Logflare.Repo do
     adapter: Ecto.Adapters.Postgres
 
   use Scrivener
+
   require Logger
+
+  alias Logflare.Repo.ConnectionOptions
   alias Logflare.Repo.Replicas
+
+  @impl true
+  def init(_context, config) do
+    {role, config} = Keyword.pop(config, :logflare_connection_role, :primary)
+    {:ok, ConnectionOptions.prepare(config, role)}
+  end
 
   def get_uptime do
     query = "SELECT EXTRACT(epoch FROM (current_timestamp - pg_postmaster_start_time()));"

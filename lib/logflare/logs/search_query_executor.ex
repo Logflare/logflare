@@ -39,14 +39,19 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   end
 
   @spec query(GenServer.server(), map()) :: :ok | :error
-  def query(pid, params), do: query(pid, params, :initial, nil)
+  def query(pid, params), do: query(pid, params, :initial, nil, nil)
 
-  @spec query(GenServer.server(), map(), EventPage.intent(), EventPage.cursor() | nil) ::
-          :ok | :error
-  def query(pid, params, intent, cursor) do
+  @spec query(
+          GenServer.server(),
+          map(),
+          EventPage.intent(),
+          EventPage.cursor() | nil,
+          pos_integer() | nil
+        ) :: :ok | :error
+  def query(pid, params, intent, cursor, window_seconds) do
     GenServer.call(
       pid,
-      {:query, query_params(params), intent, cursor},
+      {:query, query_params(params), intent, cursor, window_seconds},
       @query_timeout
     )
   end
@@ -66,12 +71,12 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   # Callbacks
 
   @impl true
-  def handle_call({:query, params, intent, cursor}, {lv_pid, _ref}, state) do
+  def handle_call({:query, params, intent, cursor, window_seconds}, {lv_pid, _ref}, state) do
     Logger.debug(
       "Starting search query from #{pid_to_string(lv_pid)} for #{state.source_id} source..."
     )
 
-    case SearchOperations.new_event_page(params, intent, cursor) do
+    case SearchOperations.new_event_page(params, intent, cursor, window_seconds) do
       {:ok, search_op} ->
         {ref, _params} = state.event_task
 
@@ -192,25 +197,20 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     page_size = SearchOperations.default_limit()
     raw_rows = events_so.rows
 
-    # indicates another page of events is available to fetch
-    has_sentinel_row? = length(raw_rows) >= SearchOperations.fetch_limit()
-
-    {page_rows, sentinel_row} =
+    page_rows =
       raw_rows
+      |> Enum.take(page_size)
       |> Enum.map(&LogEvent.make_from_db(&1, %{source: events_so.source}))
-      |> then(fn rows -> {Enum.take(rows, page_size), Enum.at(rows, page_size)} end)
-
-    page_rows = uniq_sort_log_events(page_rows)
+      |> uniq_sort_log_events()
 
     request = events_so.event_page_request
-    cursors = page_cursors(request, page_rows, sentinel_row)
+    cursors = page_cursors(request, page_rows)
 
     event_page = %EventPage{
       rows: page_rows,
       request: request,
       cursor: cursors.cursor,
       next_cursor: cursors.next_cursor,
-      has_more?: has_sentinel_row?,
       events: if(request.intent == :initial, do: %{events_so | rows: page_rows})
     }
 
@@ -271,18 +271,18 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     %{timestamp: event.body["timestamp"], id: event_id(event)}
   end
 
-  defp page_cursors(%{intent: :initial}, rows, sentinel_row) do
+  defp page_cursors(%{intent: :initial}, rows) do
     %{
-      cursor: log_event_cursor(sentinel_row),
+      cursor: rows |> List.last() |> log_event_cursor(),
       next_cursor: rows |> List.first() |> log_event_cursor()
     }
   end
 
-  defp page_cursors(%{intent: :previous}, _rows, sentinel_row) do
-    %{cursor: log_event_cursor(sentinel_row), next_cursor: nil}
+  defp page_cursors(%{intent: :previous}, rows) do
+    %{cursor: rows |> List.last() |> log_event_cursor(), next_cursor: nil}
   end
 
-  defp page_cursors(%{intent: :next}, rows, _sentinel_row) do
+  defp page_cursors(%{intent: :next}, rows) do
     %{cursor: rows |> List.first() |> log_event_cursor(), next_cursor: nil}
   end
 

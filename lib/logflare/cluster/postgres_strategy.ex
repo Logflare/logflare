@@ -19,16 +19,16 @@ defmodule Logflare.Cluster.PostgresStrategy do
 
   alias Cluster.Strategy
   alias Cluster.Logger
+  alias Logflare.Repo
+  alias Logflare.Repo.ConnectionOptions
   alias Postgrex, as: P
   @channel_prefix "cluster_"
 
   def start_link(args), do: GenServer.start_link(__MODULE__, args)
 
   def init([state]) do
-    url = get_db_url()
-
     opts =
-      Ecto.Repo.Supervisor.parse_url(url)
+      get_db_options()
       |> Keyword.put_new(:parameters, application_name: "cluster_node_#{node()}")
       |> Keyword.put_new(:auto_reconnect, true)
 
@@ -36,7 +36,6 @@ defmodule Logflare.Cluster.PostgresStrategy do
       state.config
       |> Keyword.put_new(:heartbeat_interval, 5_000)
       |> Keyword.put(:channel_name, clean_cookie(Node.get_cookie()))
-      |> Keyword.put(:url, url)
 
     meta = %{
       opts: fn -> opts end,
@@ -113,14 +112,10 @@ defmodule Logflare.Cluster.PostgresStrategy do
     Process.send_after(self(), :heartbeat, interval)
   end
 
-  @spec get_db_url() :: String.t()
-  def get_db_url do
-    username = Application.get_env(:logflare, Logflare.Repo)[:username]
-    password = Application.get_env(:logflare, Logflare.Repo)[:password]
-    port = Application.get_env(:logflare, Logflare.Repo)[:port]
-    hostname = Application.get_env(:logflare, Logflare.Repo)[:hostname]
-    database = Application.get_env(:logflare, Logflare.Repo)[:database]
-    ~s|postgresql://#{username}:#{password}@#{hostname}:#{port}/#{database}|
+  @spec get_db_options() :: keyword()
+  def get_db_options do
+    Repo.config()
+    |> ConnectionOptions.prepare_postgrex()
   end
 
   defp clean_cookie(cookie) when is_atom(cookie), do: cookie |> Atom.to_string() |> clean_cookie()

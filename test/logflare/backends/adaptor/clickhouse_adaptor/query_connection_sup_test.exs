@@ -42,6 +42,64 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSupTest do
     end
   end
 
+  describe "list_read_pools/0" do
+    test "lists only backends with an active pool, per label", %{backend: backend} do
+      {_source, other_backend} = setup_clickhouse_test()
+
+      {:ok, _} =
+        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend))
+
+      {:ok, _} =
+        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend, "api"))
+
+      {:ok, _} =
+        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(other_backend))
+
+      assert :ok == ConnectionManager.ensure_pool_started(backend)
+      assert :ok == ConnectionManager.ensure_pool_started(backend, "api")
+
+      default_pool = ConnectionManager.get_pool_pid(backend)
+      api_pool = ConnectionManager.get_pool_pid(backend, "api")
+
+      pools = QueryConnectionSup.list_read_pools()
+
+      assert {backend.id, nil, default_pool} in pools
+      assert {backend.id, "api", api_pool} in pools
+      refute Enum.any?(pools, fn {backend_id, _label, _pid} -> backend_id == other_backend.id end)
+    end
+
+    test "drops pools once they are stopped", %{backend: backend} do
+      {:ok, _} =
+        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend, "api"))
+
+      assert :ok == ConnectionManager.ensure_pool_started(backend, "api")
+      api_pool = ConnectionManager.get_pool_pid(backend, "api")
+      assert {backend.id, "api", api_pool} in QueryConnectionSup.list_read_pools()
+
+      assert :ok == QueryConnectionSup.refresh_backend_local(backend.id)
+
+      TestUtils.retry_assert(fn ->
+        refute Enum.any?(QueryConnectionSup.list_read_pools(), fn {backend_id, _label, _pid} ->
+                 backend_id == backend.id
+               end)
+      end)
+    end
+  end
+
+  describe "telemetry listener" do
+    test "supervises a named DBConnection telemetry listener" do
+      listener_pid = Process.whereis(ConnectionManager.telemetry_listener_name())
+
+      assert is_pid(listener_pid)
+      assert Process.alive?(listener_pid)
+
+      assert Enum.any?(Supervisor.which_children(QueryConnectionSup), fn
+               {DBConnection.TelemetryListener, ^listener_pid, _type, _modules} -> true
+               _child -> false
+             end)
+    end
+  end
+
   describe "recycle_backend_local/1" do
     test "returns an error when no manager is running for the backend", %{backend: backend} do
       assert {:error, :no_manager} == QueryConnectionSup.recycle_backend_local(backend.id)

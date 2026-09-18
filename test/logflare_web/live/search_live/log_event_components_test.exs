@@ -25,6 +25,38 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
     tailing?: false
   }
 
+  describe "load_more_button/1" do
+    test "a loading button spins, says Loading, and cannot be clicked again" do
+      html =
+        render_component(&LogEventComponents.load_more_button/1,
+          id: "load-more-events-next",
+          intent: "next",
+          state: :loading,
+          cursor: %{id: "abc", timestamp: 1}
+        )
+
+      assert html =~ "spinner-border"
+      assert html =~ "Loading"
+      refute html =~ "Load more"
+      assert html =~ "disabled"
+    end
+
+    test "a ready button offers to load and carries its cursor" do
+      html =
+        render_component(&LogEventComponents.load_more_button/1,
+          id: "load-more-events-previous",
+          intent: "previous",
+          state: :ready,
+          cursor: %{id: "abc", timestamp: 1}
+        )
+
+      assert html =~ "Load more"
+      refute html =~ "spinner-border"
+      refute html =~ "disabled"
+      assert html =~ ~s(phx-value-cursor-id="abc")
+    end
+  end
+
   describe "results_list/1" do
     setup do
       user = insert(:user)
@@ -63,7 +95,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
         })
 
       assert html =~ "Log message 1"
-      assert html =~ ~s(data-tailing="false")
+      assert html =~ ~s(phx-hook="SourceLogsSearchList")
     end
 
     test "renders loading state", %{search_op_log_events: search_op_log_events} do
@@ -105,17 +137,12 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
       assert html =~ ~s(phx-value-cursor-id="previous")
       assert html =~ ~s(phx-value-cursor-timestamp="1")
 
-      [button] =
-        html
-        |> Floki.parse_fragment!()
-        |> Floki.find("#load-more-events-top span")
-        |> Enum.filter(&(Floki.text(&1) == "Load more"))
+      document = Floki.parse_fragment!(html)
 
-      refute button
-             |> Floki.attribute("class")
-             |> Enum.join(" ")
-             |> String.split()
-             |> Enum.member?("phx-click-loading")
+      assert [button] = Floki.find(document, "#load-more-events-top")
+      assert Floki.text(button) =~ "Load more"
+      assert Floki.attribute(button, "disabled") == []
+      assert Floki.find(button, "i.spinner-border") == []
     end
 
     test "keeps the previous-page button hidden without a cursor", %{

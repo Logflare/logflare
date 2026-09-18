@@ -46,8 +46,8 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
       |> assign(:earlier_result_dt, first_date_with_results(assigns.search_op_log_aggregates))
 
     ~H"""
-    <div :if={@search_op_log_events} id="source-logs-search-list" data-tailing={if(@tailing?, do: "true", else: "false")} phx-hook="SourceLogsSearchList" class="mt-4 tw-relative">
-      <.load_more_button id="load-more-events-top" intent="previous" state={@pagination_buttons.previous.state} cursor={@pagination_buttons.previous.cursor} />
+    <div :if={@search_op_log_events} id="source-logs-search-list" phx-hook="SourceLogsSearchList" class="mt-4 tw-relative">
+      <.load_more_button id="load-more-events-top" intent="previous" state={@pagination_buttons.previous.state} cursor={@pagination_buttons.previous.cursor} label={@pagination_buttons.previous[:label] || "Load more"} />
       <ul id="logs-list" phx-update="stream" class={["list-unstyled console-text-list", if(@loading, do: "blurred", else: nil)]}>
         <.empty_result_list search_op_log_events={@search_op_log_events} earlier_result_dt={@earlier_result_dt} loading={@loading} />
         <.log_event :for={{dom_id, log} <- @log_events} id={dom_id} data-event-id={event_id(log)} data-event-timestamp={log.body["timestamp"]} timezone={@search_timezone} log_event={log} select_fields={@select_fields} source_schema_flat_map={@source_schema_flat_map}>
@@ -97,24 +97,24 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
                </:actions>
         </.log_event>
       </ul>
-      <.load_more_button id="load-more-events-bottom" intent="next" state={@pagination_buttons.next.state} cursor={@pagination_buttons.next.cursor} />
+      <.load_more_button id="load-more-events-bottom" intent="next" state={@pagination_buttons.next.state} cursor={@pagination_buttons.next.cursor} label={@pagination_buttons.next[:label] || "Load more"} />
     </div>
     """
   end
 
   attr :id, :string, required: true
   attr :intent, :string, values: ~w(previous next), required: true
-  attr :state, :atom, values: ~w(hidden ready disabled)a, required: true
+  attr :state, :atom, values: ~w(hidden ready disabled loading)a, required: true
   attr :cursor, :map, default: nil
+  attr :label, :string, default: "Load more"
 
   def load_more_button(assigns) do
     ~H"""
     <div class={["tw-justify-center", if(@state == :hidden, do: "tw-hidden", else: "tw-flex")]}>
-      <button id={@id} type="button" class="tw-group btn btn-outline-secondary btn-sm tw-text-xs" phx-click="load_events" phx-value-intent={@intent} phx-value-cursor-id={@cursor && @cursor.id} phx-value-cursor-timestamp={@cursor && @cursor.timestamp} disabled={@state != :ready}>
-        <span class="tw-relative tw-whitespace-nowrap tw-w-20 tw-flex tw-justify-center">
-          <i class="spinner-border spinner-border-sm text-info tw-mr-1 tw-hidden group-[.phx-click-loading]:tw-inline" aria-hidden="true"></i>
-          <span class="group-[.phx-click-loading]:tw-hidden">Load more</span>
-          <span class="tw-hidden group-[.phx-click-loading]:tw-inline">Loading</span>
+      <button id={@id} type="button" class="btn btn-outline-secondary btn-sm tw-text-xs" phx-click="load_events" phx-value-intent={@intent} phx-value-cursor-id={@cursor && @cursor.id} phx-value-cursor-timestamp={@cursor && @cursor.timestamp} disabled={@state != :ready}>
+        <span class="tw-inline-flex tw-items-center tw-justify-center tw-whitespace-nowrap tw-min-w-[5rem]">
+          <i :if={@state == :loading} class="spinner-border spinner-border-sm text-info tw-mr-1" aria-hidden="true"></i>
+          <span>{if @state == :loading, do: "Loading", else: @label}</span>
         </span>
       </button>
     </div>

@@ -397,7 +397,8 @@ defmodule LogflareWeb.OpenApiSchemas do
       use_async_inserts_for_small_batches: %Schema{type: :boolean, nullable: true},
       async_insert_cluster_url: %Schema{type: :string, nullable: true},
       async_insert_max_rows: %Schema{type: :integer, nullable: true},
-      max_event_age_hours: %Schema{type: :integer, nullable: true}
+      max_event_age_hours: %Schema{type: :integer, nullable: true},
+      replica_routing_param: %Schema{type: :string, nullable: true}
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:url, :database, :port]
@@ -469,6 +470,19 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: [:region, :username, :password]
   end
 
+  defmodule SplunkConfigSchema do
+    @properties %{
+      url: %Schema{type: :string},
+      token: %Schema{type: :string},
+      index: %Schema{type: :string, nullable: true},
+      source: %Schema{type: :string, nullable: true},
+      sourcetype: %Schema{type: :string, nullable: true},
+      host: %Schema{type: :string, nullable: true}
+    }
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:url, :token]
+  end
+
   defmodule SigNozConfigSchema do
     @properties %{
       endpoint: %Schema{type: :string},
@@ -532,6 +546,7 @@ defmodule LogflareWeb.OpenApiSchemas do
           LogflareWeb.OpenApiSchemas.Last9ConfigSchema,
           LogflareWeb.OpenApiSchemas.SigNozConfigSchema,
           LogflareWeb.OpenApiSchemas.SyslogConfigSchema,
+          LogflareWeb.OpenApiSchemas.SplunkConfigSchema,
           LogflareWeb.OpenApiSchemas.GoogleSecOpsConfigSchema
         ]
       },
