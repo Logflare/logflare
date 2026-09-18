@@ -1174,35 +1174,49 @@ defmodule Logflare.Backends do
 
   For sources with `default_ingest_backend_enabled? = true`:
     - Checks the system default backend queue
-    - Checks user-designated default backends
+    - Checks the attached backends that have `default_ingest?` set
     - Returns true if ANY of these are full
-    - Falls back to checking all queues if no user default backends are configured
 
-  For normal sources:
-    - Checks ALL backend queues
-    - Returns true only if ALL queues are full
+  A consolidated default ingest backend is full when every producer queue of the
+  backend is at `IngestEventQueue.max_consolidated_queue_size/0`. All sources of the
+  backend share those queues.
+
+  For all other sources:
+    - Checks the system default backend queue only
   """
   @spec cached_local_pending_buffer_full?(Source.t()) :: boolean()
   def cached_local_pending_buffer_full?(%Source{
         id: source_id,
         default_ingest_backend_enabled?: true
       }) do
-    default_backend_ids =
+    default_backends =
       __MODULE__.Cache.list_backends(source_id: source_id)
       |> Enum.filter(& &1.default_ingest?)
-      |> MapSet.new(& &1.id)
+      |> Enum.uniq_by(& &1.id)
 
-    # Check system default backend (nil backend_id)
     system_default_full? = buffer_full_for_backend?(source_id, nil)
-
-    # Check user-configured default backends
-    user_defaults_full? = Enum.any?(default_backend_ids, &buffer_full_for_backend?(source_id, &1))
+    user_defaults_full? = Enum.any?(default_backends, &default_backend_full?(source_id, &1))
 
     system_default_full? || user_defaults_full?
   end
 
   def cached_local_pending_buffer_full?(%Source{id: source_id}) do
     buffer_full_for_backend?(source_id, nil)
+  end
+
+  @spec default_backend_full?(non_neg_integer(), Backend.t()) :: boolean()
+  defp default_backend_full?(_source_id, %Backend{consolidated_ingest?: true, id: backend_id}) do
+    %{queues: queues} = PubSubRates.Cache.get_local_buffer(:consolidated, backend_id)
+
+    producer_counts =
+      for {{:consolidated, _backend_id, pid}, count} when is_pid(pid) <- queues, do: count
+
+    producer_counts != [] and
+      Enum.all?(producer_counts, &(&1 >= IngestEventQueue.max_consolidated_queue_size()))
+  end
+
+  defp default_backend_full?(source_id, %Backend{id: backend_id}) do
+    buffer_full_for_backend?(source_id, backend_id)
   end
 
   @spec buffer_full_for_backend?(
