@@ -354,7 +354,6 @@ defmodule Logflare.SingleTenantTest do
                token: nil,
                user_id: user_id,
                type: :clickhouse,
-               single_tenant_default?: true,
                config: %{
                  url: "http://localhost:8123",
                  database: "logflare_test",
@@ -362,6 +361,9 @@ defmodule Logflare.SingleTenantTest do
                }
              } = backend = Backends.get_default_backend(user)
 
+      assert SingleTenant.default_clickhouse_backend?(backend)
+      refute SingleTenant.default_clickhouse_backend?(%{backend | id: 1})
+      refute SingleTenant.default_clickhouse_backend?(%{backend | type: :postgres})
       assert user.id == user_id
       assert SingleTenant.get_default_backend() == backend
       assert Backends.get_backend(0) == backend
