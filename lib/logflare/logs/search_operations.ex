@@ -898,12 +898,18 @@ defmodule Logflare.Logs.SearchOperations do
   @spec intersperse_missing_range_timestamps(list(map), dt_or_ndt, dt_or_ndt, chart_period) ::
           list(map)
   def intersperse_missing_range_timestamps(aggs, min, max, chart_period) do
-    use Timex
-
     step_period = String.to_existing_atom("#{chart_period}s")
     from = DateTimeUtils.truncate(min, chart_period)
     until = DateTimeUtils.truncate(max, chart_period)
 
+    [aggs | empty_range_aggs(from, until, step_period)]
+    |> List.flatten()
+    |> Enum.uniq_by(& &1["timestamp"])
+    |> Enum.sort_by(& &1["timestamp"], :desc)
+  end
+
+  @spec empty_range_aggs(dt_or_ndt, dt_or_ndt, atom()) :: list(map)
+  defp empty_range_aggs(from, until, step_period) do
     until =
       if from == until and step_period == :seconds do
         Timex.shift(until, seconds: 1)
@@ -911,29 +917,27 @@ defmodule Logflare.Logs.SearchOperations do
         until
       end
 
-    empty_aggs =
-      Interval.new(
-        from: from,
-        until: until,
-        left_open: false,
-        right_open: false,
-        step: [{step_period, 1}]
-      )
-      |> Enum.to_list()
-      |> Enum.map(fn dt ->
-        ts = dt |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_unix(:microsecond)
+    case Timex.Interval.new(
+           from: from,
+           until: until,
+           left_open: false,
+           right_open: false,
+           step: [{step_period, 1}]
+         ) do
+      %Timex.Interval{} = interval ->
+        Enum.map(interval, fn dt ->
+          ts = dt |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_unix(:microsecond)
 
-        %{
-          "timestamp" => ts,
-          "datetime" => dt,
-          "value" => 0
-        }
-      end)
+          %{
+            "timestamp" => ts,
+            "datetime" => dt,
+            "value" => 0
+          }
+        end)
 
-    [aggs | empty_aggs]
-    |> List.flatten()
-    |> Enum.uniq_by(& &1["timestamp"])
-    |> Enum.sort_by(& &1["timestamp"], :desc)
+      {:error, _reason} ->
+        []
+    end
   end
 
   def put_time_stats(%SO{} = so) do
