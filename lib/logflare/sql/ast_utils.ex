@@ -38,6 +38,23 @@ defmodule Logflare.Sql.AstUtils do
   end
 
   @doc """
+  Builds a `CAST` expression node with the fields the parser requires when a
+  hand-built AST is serialized back into SQL.
+  """
+  @spec build_cast(expr :: map(), data_type :: map() | String.t(), kind :: String.t()) :: map()
+  def build_cast(expr, data_type, kind \\ "Cast") when is_map(expr) do
+    %{
+      "Cast" => %{
+        "kind" => kind,
+        "expr" => expr,
+        "data_type" => data_type,
+        "array" => false,
+        "format" => nil
+      }
+    }
+  end
+
+  @doc """
   Returns the identifier value of a single object-name path segment.
   """
   @spec object_name_part_value(part :: map()) :: String.t()

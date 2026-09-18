@@ -243,22 +243,7 @@ defmodule Logflare.Sql.DialectTranslation do
               is_map_key(data_type, "SmallInt") or is_map_key(data_type, "Numeric") or
               is_map_key(data_type, "Decimal") or is_map_key(data_type, "Float") or
               is_map_key(data_type, "Double") do
-    text_cast = %{
-      "Cast" => %{
-        "data_type" => %{"Text" => nil},
-        "expr" => identifier,
-        "format" => nil,
-        "kind" => "DoubleColon"
-      }
-    }
-
-    {k,
-     %{
-       "kind" => Map.get(v, "kind", "Cast"),
-       "expr" => text_cast,
-       "data_type" => data_type,
-       "format" => Map.get(v, "format")
-     }}
+    {k, %{v | "expr" => AstUtils.build_cast(identifier, %{"Text" => nil}, "DoubleColon")}}
   end
 
   # Handle CAST to numeric types for CompoundIdentifiers
@@ -273,22 +258,7 @@ defmodule Logflare.Sql.DialectTranslation do
               is_map_key(data_type, "SmallInt") or is_map_key(data_type, "Numeric") or
               is_map_key(data_type, "Decimal") or is_map_key(data_type, "Float") or
               is_map_key(data_type, "Double") do
-    text_cast = %{
-      "Cast" => %{
-        "data_type" => %{"Text" => nil},
-        "expr" => compound,
-        "format" => nil,
-        "kind" => "DoubleColon"
-      }
-    }
-
-    {k,
-     %{
-       "kind" => Map.get(v, "kind", "Cast"),
-       "expr" => text_cast,
-       "data_type" => data_type,
-       "format" => Map.get(v, "format")
-     }}
+    {k, %{v | "expr" => AstUtils.build_cast(compound, %{"Text" => nil}, "DoubleColon")}}
   end
 
   # Handle other CAST expressions
@@ -324,10 +294,10 @@ defmodule Logflare.Sql.DialectTranslation do
 
     {k,
      %{
-       "kind" => converted_kind,
-       "expr" => processed_expr,
-       "data_type" => converted_data_type,
-       "format" => Map.get(v, "format")
+       v
+       | "kind" => converted_kind,
+         "expr" => processed_expr,
+         "data_type" => converted_data_type
      }}
   end
 
@@ -409,14 +379,7 @@ defmodule Logflare.Sql.DialectTranslation do
         is_regex_operator and identifier?(left) ->
           # Cast identifiers to text for regex operations
           # This handles CTE fields that might be JSONB
-          %{
-            "Cast" => %{
-              "data_type" => %{"Text" => nil},
-              "expr" => left,
-              "format" => nil,
-              "kind" => "DoubleColon"
-            }
-          }
+          AstUtils.build_cast(left, %{"Text" => nil}, "DoubleColon")
 
         is_regex_operator and json_access?(left) ->
           # For regex operators, ensure JSONB accessors return text
@@ -1330,14 +1293,7 @@ defmodule Logflare.Sql.DialectTranslation do
                       "Unnamed" => %{
                         "Expr" => %{
                           "BinaryOp" => %{
-                            "left" => %{
-                              "Cast" => %{
-                                "kind" => "Cast",
-                                "data_type" => %{"BigInt" => nil},
-                                "expr" => identifier,
-                                "format" => nil
-                              }
-                            },
+                            "left" => AstUtils.build_cast(identifier, %{"BigInt" => nil}),
                             "op" => "Divide",
                             "right" => AstUtils.build_value(%{"Number" => ["1000000.0", false]})
                           }
@@ -1377,14 +1333,8 @@ defmodule Logflare.Sql.DialectTranslation do
                       "Unnamed" => %{
                         "Expr" => %{
                           "BinaryOp" => %{
-                            "left" => %{
-                              "Cast" => %{
-                                "kind" => "DoubleColon",
-                                "data_type" => %{"BigInt" => nil},
-                                "expr" => identifier,
-                                "format" => nil
-                              }
-                            },
+                            "left" =>
+                              AstUtils.build_cast(identifier, %{"BigInt" => nil}, "DoubleColon"),
                             "op" => "Divide",
                             "right" => AstUtils.build_value(%{"Number" => ["1000000.0", false]})
                           }
@@ -1410,48 +1360,15 @@ defmodule Logflare.Sql.DialectTranslation do
     }
   end
 
-  defp cast_to_numeric(expr) do
-    %{
-      "Cast" => %{
-        "kind" => "DoubleColon",
-        "expr" => expr,
-        "data_type" => %{"Numeric" => "None"},
-        "format" => nil
-      }
-    }
-  end
+  defp cast_to_numeric(expr),
+    do: AstUtils.build_cast(expr, %{"Numeric" => "None"}, "DoubleColon")
 
-  defp cast_to_jsonb(expr) do
-    %{
-      "Cast" => %{
-        "kind" => "Cast",
-        "expr" => expr,
-        "data_type" => %{
-          "Custom" => [
-            [AstUtils.build_object_name_part("jsonb")],
-            []
-          ]
-        },
-        "format" => nil
-      }
-    }
-  end
+  defp cast_to_jsonb(expr), do: AstUtils.build_cast(expr, jsonb_data_type())
 
-  defp cast_to_jsonb_double_colon(expr) do
-    %{
-      "Cast" => %{
-        "kind" => "DoubleColon",
-        "expr" => expr,
-        "data_type" => %{
-          "Custom" => [
-            [AstUtils.build_object_name_part("jsonb")],
-            []
-          ]
-        },
-        "format" => nil
-      }
-    }
-  end
+  defp cast_to_jsonb_double_colon(expr),
+    do: AstUtils.build_cast(expr, jsonb_data_type(), "DoubleColon")
+
+  defp jsonb_data_type, do: %{"Custom" => [[AstUtils.build_object_name_part("jsonb")], []]}
 
   defp choose_cast_style(expr) do
     case expr do

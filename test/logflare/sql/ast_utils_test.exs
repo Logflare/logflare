@@ -268,6 +268,26 @@ defmodule Logflare.Sql.AstUtilsTest do
     end
   end
 
+  describe "build_cast/3" do
+    test "defaults to the CAST keyword form" do
+      assert %{"Cast" => %{"kind" => "Cast", "array" => false, "format" => nil} = cast} =
+               AstUtils.build_cast(%{"Identifier" => AstUtils.build_identifier("a")}, %{
+                 "BigInt" => nil
+               })
+
+      assert cast["data_type"] == %{"BigInt" => nil}
+    end
+
+    test "accepts an explicit cast kind" do
+      assert %{"Cast" => %{"kind" => "DoubleColon"}} =
+               AstUtils.build_cast(
+                 %{"Identifier" => AstUtils.build_identifier("a")},
+                 %{"Text" => nil},
+                 "DoubleColon"
+               )
+    end
+  end
+
   describe "object_name_values/1" do
     test "returns the identifier value of each segment in order" do
       parts = [AstUtils.build_object_name_part("db"), AstUtils.build_object_name_part("t", "`")]
@@ -297,8 +317,12 @@ defmodule Logflare.Sql.AstUtilsTest do
           select_path ++ ["selection", "BinaryOp", "right"],
           AstUtils.build_value(%{"SingleQuotedString" => "y"})
         )
+        |> update_in(
+          select_path ++ ["selection", "BinaryOp", "left"],
+          &AstUtils.build_cast(&1, %{"Text" => nil}, "DoubleColon")
+        )
 
-      assert {:ok, "SELECT a FROM db.events WHERE b = 'y'"} = Parser.to_string(statement)
+      assert {:ok, "SELECT a FROM db.events WHERE b::TEXT = 'y'"} = Parser.to_string(statement)
     end
   end
 
