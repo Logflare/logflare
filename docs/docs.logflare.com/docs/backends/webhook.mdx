@@ -40,10 +40,17 @@ The Webhook v2 backend (`webhook_v2`) sends the same requests as the Webhook bac
 Webhook v2 accepts all Webhook configuration values. It adds one optional value:
 
 - `batch_size`: (`integer`, optional, default `1000`) the maximum number of events in one request. The range is `1` to `10000`.
+- `sample_percentage`: (`number`, optional, default `100`) the percentage of events to send. The value must be greater than `0` and not greater than `100`.
 
 ### Batching
 
 All sources attached to the backend share the batches. A request contains up to `batch_size` events, with intervals of up to 1 second. The payload does not identify the source of an event.
+
+### Sampling
+
+With `sample_percentage` below `100`, Webhook v2 sends only a sample of the events. It drops the other events before they enter the queue. For example, a value of `10` sends about 1 of 10 events.
+
+The decision is random and independent for each event. It does not keep all events of one trace or one request together. The dropped events stay available in the other backends of the source.
 
 ### Retries
 

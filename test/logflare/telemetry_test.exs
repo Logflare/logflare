@@ -478,6 +478,15 @@ defmodule Logflare.TelemetryTest do
       assert metric.tags == [:backend_id, :backend_type]
     end
 
+    test "tags sampled event drops by backend" do
+      metric = ch_metric([:logflare, :logs, :ingest_logs, :drop_sampled])
+
+      assert metric.event_name == [:logflare, :logs, :ingest_logs, :drop_sampled]
+      assert metric.measurement == :count
+      assert metric.tags == [:backend_id, :backend_type]
+      assert metric.keep.(%{backend_id: 1, backend_type: :webhook_v2})
+    end
+
     test "keeps only stale event drops carrying backend metadata" do
       [metric] = drop_stale_metrics()
 

@@ -6,9 +6,11 @@ defmodule Logflare.Backends.Adaptor.WebhookV2AdaptorTest do
   alias Logflare.Backends.Adaptor.WebhookAdaptor.Client
   alias Logflare.Backends.Backend
   alias Logflare.Backends.CircuitBreaker
+  alias Logflare.Backends.IngestEventQueue
   alias Logflare.SystemMetrics.AllLogsLogged
 
   @subject Logflare.Backends.Adaptor.WebhookV2Adaptor
+  @drop_sampled_event [:logflare, :logs, :ingest_logs, :drop_sampled]
 
   setup do
     insert(:plan)
@@ -29,8 +31,37 @@ defmodule Logflare.Backends.Adaptor.WebhookV2AdaptorTest do
 
       assert changeset.valid?
 
-      assert %{http: "http2", gzip: true, format: "json", batch_size: 1_000} =
-               Ecto.Changeset.apply_changes(changeset)
+      assert %{
+               http: "http2",
+               gzip: true,
+               format: "json",
+               batch_size: 1_000,
+               sample_percentage: 100.0
+             } = Ecto.Changeset.apply_changes(changeset)
+    end
+
+    test "accepts a custom sample percentage" do
+      changeset =
+        Adaptor.cast_and_validate_config(@subject, %{
+          "url" => "https://example.com",
+          "sample_percentage" => "12.5"
+        })
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :sample_percentage) == 12.5
+    end
+
+    test "rejects a sample percentage outside the allowed range" do
+      for sample_percentage <- [0, -5, 100.1] do
+        changeset =
+          Adaptor.cast_and_validate_config(@subject, %{
+            url: "https://example.com",
+            sample_percentage: sample_percentage
+          })
+
+        refute changeset.valid?
+        assert %{sample_percentage: [_]} = errors_on(changeset)
+      end
     end
 
     test "accepts a custom batch size" do
@@ -80,14 +111,67 @@ defmodule Logflare.Backends.Adaptor.WebhookV2AdaptorTest do
       config = %{
         url: "https://example.com",
         headers: %{"authorization" => "Bearer secret"},
-        batch_size: 500
+        batch_size: 500,
+        sample_percentage: 25.0
       }
 
       sanitized = @subject.sanitize_config_for_display(config)
 
       assert sanitized.batch_size == 500
+      assert sanitized.sample_percentage == 25.0
       assert sanitized.url == "https://example.com"
       refute sanitized.headers == config.headers
+    end
+  end
+
+  describe "pre_ingest/3" do
+    setup do
+      source = insert(:source, user: insert(:user))
+      events = for _n <- 1..10_000, do: build(:log_event, source: source)
+      ref = :telemetry_test.attach_event_handlers(self(), [@drop_sampled_event])
+      on_exit(fn -> :telemetry.detach(ref) end)
+
+      [source: source, events: events, ref: ref]
+    end
+
+    test "keeps all events at 100 percent", %{source: source, events: events, ref: ref} do
+      backend = %Backend{id: 1, type: :webhook_v2, config: %{sample_percentage: 100.0}}
+
+      assert @subject.pre_ingest(source, backend, events) == events
+      refute_receive {@drop_sampled_event, ^ref, _, _}
+    end
+
+    test "keeps all events when the config has no sample percentage", %{
+      source: source,
+      events: events
+    } do
+      backend = %Backend{id: 1, type: :webhook_v2, config: %{url: "https://example.com"}}
+
+      assert @subject.pre_ingest(source, backend, events) == events
+    end
+
+    test "keeps about the configured percentage and reports the dropped count", %{
+      source: source,
+      events: events,
+      ref: ref
+    } do
+      backend = %Backend{id: 1, type: :webhook_v2, config: %{sample_percentage: 50.0}}
+
+      kept = @subject.pre_ingest(source, backend, events)
+
+      assert length(kept) in 4_500..5_500
+      assert kept -- events == []
+
+      dropped = length(events) - length(kept)
+
+      assert_receive {@drop_sampled_event, ^ref, %{count: ^dropped},
+                      %{backend_id: 1, backend_type: :webhook_v2}}
+    end
+
+    test "returns an empty list for an empty batch", %{source: source} do
+      backend = %Backend{id: 1, type: :webhook_v2, config: %{sample_percentage: 50.0}}
+
+      assert @subject.pre_ingest(source, backend, []) == []
     end
   end
 
@@ -162,6 +246,23 @@ defmodule Logflare.Backends.Adaptor.WebhookV2AdaptorTest do
       assert req[:url] == "https://example.com"
       assert req[:headers]["content-type"] == "application/json"
       assert [%{"event_message" => "v2 event"}] = Jason.decode!(req[:body])
+    end
+
+    test "drops sampled-out events before the queue", %{source: source, backend: backend} do
+      reject(&Client.send/1)
+
+      {:ok, _backend} =
+        Backends.update_backend(backend, %{config: %{sample_percentage: 0.000001}})
+
+      ref = :telemetry_test.attach_event_handlers(self(), [@drop_sampled_event])
+      on_exit(fn -> :telemetry.detach(ref) end)
+
+      events = for _n <- 1..50, do: build(:log_event, source: source)
+      backend_id = backend.id
+
+      assert {:ok, 50} = Backends.ingest_logs(events, source)
+      assert_receive {@drop_sampled_event, ^ref, %{count: 50}, %{backend_id: ^backend_id}}
+      assert IngestEventQueue.total_pending({:consolidated, backend.id}) == 0
     end
 
     test "batches events from more than one source into the same pipeline", %{
