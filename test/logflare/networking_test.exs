@@ -117,7 +117,8 @@ defmodule Logflare.NetworkingTest do
                Logflare.FinchDefault,
                Logflare.FinchDefaultHttp1,
                Logflare.FinchClickHouseIngest,
-               Logflare.FinchClickHouseAsyncIngest
+               Logflare.FinchClickHouseAsyncIngest,
+               Logflare.FinchS3
              ]
 
       refute Enum.any?(Networking.pools(), &match?({Logflare.Networking.GrpcPool, _}, &1))
