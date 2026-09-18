@@ -7,8 +7,11 @@ defmodule Logflare.Telemetry do
 
   require Logger
 
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
+  alias Logflare.Backends.Backend
 
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
@@ -439,12 +442,19 @@ defmodule Logflare.Telemetry do
         description:
           "Callers waiting to check out a ClickHouse read pool connection on this node, sampled alongside `ready_conn_count`. Non-zero only while the pool is busy; a sustained depth is a pool stall, and whether `connected`/`disconnected` move at the same time tells reconnect recovery apart from drain"
       ),
+      last_value("logflare.clickhouse.read_pool.pool_size",
+        event_name: @ch_read_pool_status_event,
+        measurement: :pool_size,
+        tags: [:backend_id, :read_cluster],
+        description:
+          "Configured connection count of a ClickHouse read pool on this node, resolved from the backend's `read_pool_size`/`labeled_read_pool_size` for the pool's read cluster and sampled alongside `ready_conn_count` so the two share a timestamp. Read from the backend config at poll time; a config update restarts the pool, so the two agree outside that refresh window. `(pool_size - ready_conn_count) / pool_size` is the share of connections not immediately available, an upper bound on utilization because it also counts connections still establishing or reconnecting; read it with `connected`/`disconnected`. It tells a 0 `ready_conn_count` on a 32-connection labeled pool apart from one on a 50-connection default pool"
+      ),
       sum("logflare.clickhouse.read_pool.poll_failure",
         event_name: @ch_read_pool_poll_failure_event,
         measurement: :count,
         tags: [:backend_id, :read_cluster, :reason],
         description:
-          "ClickHouse read pool status polls that produced no sample, per backend and read cluster. `reason` is `:timeout` when the pool process did not answer within #{div(@ch_read_pool_poll_timeout, 1000)}s and `:unexpected_result` when it answered with a shape this poller does not understand. Each count is a sample missing from `ready_conn_count`/`checkout_queue_length` because the poll failed, not because the pool was idle-stopped"
+          "ClickHouse read pool status polls that produced no sample, per backend and read cluster. `reason` is `:timeout` when the poll, the pool metrics call plus the backend lookup that sizes it, did not complete within #{div(@ch_read_pool_poll_timeout, 1000)}s, `:unexpected_result` when it answered with a shape this poller does not understand, and `:backend_not_found` when the pool's backend row could not be loaded to resolve `pool_size`, which is expected briefly while a deleted backend's pools are being torn down. Each count is a sample missing from `ready_conn_count`/`checkout_queue_length`/`pool_size` because the poll failed, not because the pool was idle-stopped"
       ),
       sum("logflare.clickhouse.insert.result.count",
         event_name: [:logflare, :clickhouse, :insert, :result],
@@ -754,10 +764,12 @@ defmodule Logflare.Telemetry do
 
   Each pool is polled in its own task bounded by `timeout`, so the sweep delays the
   poller by at most `timeout` per batch of pools rather than hanging on one
-  unresponsive pool. A pool that exited between enumeration and poll is skipped
-  silently; one that does not answer in time, or answers with an unexpected shape,
-  is skipped with a warning and a `#{inspect(@ch_read_pool_poll_failure_event)}`
-  count tagged with the reason so the missing sample is attributable on a dashboard.
+  unresponsive pool. The pool's configured size is resolved from the backend config in
+  the same task so it shares a timestamp with the `DBConnection` counts. A pool that
+  exited between enumeration and poll is skipped silently; one that does not answer in
+  time, answers with an unexpected shape, or whose backend can no longer be found is
+  skipped with a warning and a `#{inspect(@ch_read_pool_poll_failure_event)}` count
+  tagged with the reason so the missing sample is attributable on a dashboard.
   """
   @spec clickhouse_read_pool_metrics(
           [{pos_integer(), String.t() | nil, pid()}],
@@ -778,24 +790,44 @@ defmodule Logflare.Telemetry do
   end
 
   @spec poll_read_pool({pos_integer(), String.t() | nil, pid()}) ::
-          {tuple(), [DBConnection.Pool.connection_metrics()] | :gone}
-  defp poll_read_pool({_backend_id, _label, pool_pid} = pool) do
-    {pool, DBConnection.get_connection_metrics(pool_pid)}
+          {tuple(), [DBConnection.Pool.connection_metrics()] | :gone, pos_integer() | nil}
+  defp poll_read_pool({backend_id, label, pool_pid} = pool) do
+    {pool, DBConnection.get_connection_metrics(pool_pid),
+     configured_read_pool_size(backend_id, label)}
   catch
-    :exit, _reason -> {pool, :gone}
+    :exit, _reason -> {pool, :gone, nil}
+  end
+
+  @spec configured_read_pool_size(pos_integer(), String.t() | nil) :: pos_integer() | nil
+  defp configured_read_pool_size(backend_id, label) do
+    case Backends.Cache.get_backend(backend_id) do
+      %Backend{config: config} -> ConnectionManager.read_pool_size(config, label)
+      nil -> nil
+    end
   end
 
   @spec emit_read_pool_status(term()) :: :ok
-  defp emit_read_pool_status({:ok, {_pool, :gone}}), do: :ok
+  defp emit_read_pool_status({:ok, {_pool, :gone, _pool_size}}), do: :ok
+
+  defp emit_read_pool_status({:ok, {{backend_id, label, _pool_pid}, _metrics, nil}}) do
+    metadata = poll_failure_metadata(backend_id, label, :backend_not_found)
+
+    :telemetry.execute(@ch_read_pool_poll_failure_event, %{count: 1}, metadata)
+
+    Logger.warning("ClickHouse read pool backend not found during metrics poll",
+      backend_id: backend_id,
+      read_cluster: metadata.read_cluster
+    )
+  end
 
   defp emit_read_pool_status(
          {:ok,
           {{backend_id, label, _pool_pid},
-           [%{ready_conn_count: ready, checkout_queue_length: queued}]}}
+           [%{ready_conn_count: ready, checkout_queue_length: queued}], pool_size}}
        ) do
     :telemetry.execute(
       @ch_read_pool_status_event,
-      %{ready_conn_count: ready, checkout_queue_length: queued},
+      %{ready_conn_count: ready, checkout_queue_length: queued, pool_size: pool_size},
       %{backend_id: backend_id, read_cluster: ClickHouseAdaptor.read_cluster_tag(label)}
     )
   end
@@ -812,7 +844,7 @@ defmodule Logflare.Telemetry do
     )
   end
 
-  defp emit_read_pool_status({:ok, {{backend_id, label, _pool_pid}, result}}) do
+  defp emit_read_pool_status({:ok, {{backend_id, label, _pool_pid}, result, _pool_size}}) do
     metadata = poll_failure_metadata(backend_id, label, :unexpected_result)
 
     :telemetry.execute(@ch_read_pool_poll_failure_event, %{count: 1}, metadata)
@@ -824,8 +856,11 @@ defmodule Logflare.Telemetry do
     )
   end
 
-  @spec poll_failure_metadata(pos_integer(), String.t() | nil, :timeout | :unexpected_result) ::
-          map()
+  @spec poll_failure_metadata(
+          pos_integer(),
+          String.t() | nil,
+          :timeout | :unexpected_result | :backend_not_found
+        ) :: map()
   defp poll_failure_metadata(backend_id, label, reason) do
     %{
       backend_id: backend_id,
