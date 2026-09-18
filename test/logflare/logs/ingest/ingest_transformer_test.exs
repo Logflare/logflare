@@ -418,6 +418,57 @@ defmodule Logflare.Logs.IngestTransformerTest do
   end
 
   describe ":clean_to_bigquery_column_spec fused pipeline" do
+    test "preserves clean nested payload values" do
+      input = %{
+        "safe" => %{"nested" => 1, "values" => [true, 2, "three"]},
+        "items" => [%{"id" => 1}, %{"id" => 2}],
+        :non_binary_key => "kept"
+      }
+
+      assert transform(input, :clean_to_bigquery_column_spec) == input
+    end
+
+    test "cleans sparse map changes without altering unaffected values" do
+      input = %{
+        "safe" => %{"kept" => 1, "removed" => nil},
+        "bad-key" => %{"nested" => true},
+        "items" => [nil, %{"kept" => 2, "removed" => ""}, false]
+      }
+
+      assert transform(input, :clean_to_bigquery_column_spec) == %{
+               "safe" => %{"kept" => 1},
+               "_bad_key" => %{"nested" => true},
+               "items" => [%{"kept" => 2}, false]
+             }
+    end
+
+    test "removes large maps containing only empty values" do
+      input = Map.new(1..16, &{"empty_#{&1}", nil})
+      assert transform(input, :clean_to_bigquery_column_spec) == %{}
+    end
+
+    test "normalizes every key in large unsafe-key maps" do
+      input = Map.new(1..16, &{"field-#{&1}", &1})
+
+      expected =
+        input
+        |> MetadataCleaner.deep_reject_nil_and_empty()
+        |> transform(:to_bigquery_column_spec)
+
+      assert transform(input, :clean_to_bigquery_column_spec) == expected
+    end
+
+    test "retains sequential struct-cleaning behavior" do
+      input = %{"date" => ~D[2026-09-13]}
+
+      expected =
+        input
+        |> MetadataCleaner.deep_reject_nil_and_empty()
+        |> transform(:to_bigquery_column_spec)
+
+      assert transform(input, :clean_to_bigquery_column_spec) == expected
+    end
+
     property "matches sequential cleaning and key normalization" do
       check all input <- log_params_generator() do
         assert transform(input, :clean_to_bigquery_column_spec) ==
