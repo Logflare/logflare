@@ -30,3 +30,28 @@ With `format` set to `ndjson`, each batch is sent as newline-delimited JSON, one
 ### Batching
 
 Events will be sent in batches of up to 250, with intervals of up to 1 second.
+
+## Consolidated Webhook
+
+The Consolidated Webhook backend (`consolidated_webhook`) sends the same requests as the Webhook backend. It uses one shared pipeline for each backend, not one pipeline for each source. Use it for a backend with many attached sources or a high event rate.
+
+### Configuration
+
+Consolidated Webhook accepts all Webhook configuration values. It adds one optional value:
+
+- `batch_size`: (`integer`, optional, default `1000`) the maximum number of events in one request. The range is `1` to `10000`.
+
+### Batching
+
+All sources attached to the backend share the batches. A request contains up to `batch_size` events, with intervals of up to 1 second. The payload does not identify the source of an event.
+
+### Retries
+
+Consolidated Webhook sends a failed batch again one time when the failure is transient:
+
+- a `408`, a `429`, or a `5xx` response status
+- a connection error or a timeout
+
+Each transient failure counts toward a circuit breaker for the backend. The circuit breaker opens after 20 transient failures in 30 seconds. It stays open for 30 seconds. Consolidated Webhook does not send a failed batch again while the circuit breaker is open. It still sends new batches.
+
+Consolidated Webhook drops a batch when the receiver returns any other `4xx` response status. An event that does not encode to JSON is dropped alone. The other events of the batch are sent.
