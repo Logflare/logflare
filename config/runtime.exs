@@ -113,6 +113,10 @@ config :logflare,
          config_cat_sdk_key: System.get_env("LOGFLARE_CONFIG_CAT_SDK_KEY"),
          single_tenant: Env.get_boolean("LOGFLARE_SINGLE_TENANT"),
          supabase_mode: Env.get_boolean("LOGFLARE_SUPABASE_MODE"),
+         signup_allowed_domains:
+           "LOGFLARE_SIGNUP_ALLOWED_DOMAINS"
+           |> System.get_env()
+           |> Logflare.Users.SignupDomains.parse(),
          unsafe_disable_ssrf_s3_endpoint_check:
            Env.get_boolean("LOGFLARE_UNSAFE_DISABLE_SSRF_S3_ENDPOINT_CHECK"),
          public_access_token:

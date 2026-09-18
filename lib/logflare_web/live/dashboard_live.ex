@@ -89,6 +89,10 @@ defmodule LogflareWeb.DashboardLive do
          |> put_flash(:info, "Home team created. Welcome to your new team!")
          |> redirect(to: ~p"/dashboard")}
 
+      {:error, :signup_domain_not_allowed} ->
+        {:noreply,
+         put_flash(socket, :error, "New accounts are restricted to approved email domains.")}
+
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Could not create home team.")}
     end
