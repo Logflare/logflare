@@ -583,6 +583,14 @@ defmodule Logflare.Mapper.OptimizedMapperTest do
              }
     end
 
+    test "non-UTF-8 nested flat_map value" do
+      compiled = compile([Field.flat_map("attrs", path: "$.attributes")])
+      document = %{"attributes" => %{"top" => <<255>>, "nested" => %{"bad" => <<254>>}}}
+
+      assert %{"attrs" => %{"top" => <<255>>, "nested.bad" => <<254>>}} =
+               Mapper.map(document, compiled)
+    end
+
     test "streams compound values to the same JSON representation" do
       compiled = compile([Field.flat_map("attrs", path: "$.attributes")])
 

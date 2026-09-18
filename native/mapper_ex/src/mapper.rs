@@ -1258,12 +1258,8 @@ fn build_flat_map<'a>(env: Env<'a>, keys: &[Term<'a>], values: &[Term<'a>]) -> T
 }
 
 fn term_to_string_term<'a>(env: Env<'a>, value: Term<'a>, nil: Term<'a>) -> Term<'a> {
-    if let Ok(binary) = value.decode::<Binary>() {
-        return if std::str::from_utf8(binary.as_slice()).is_ok() {
-            value
-        } else {
-            crate::encode_string(env, "")
-        };
+    if value.is_binary() {
+        return value;
     }
 
     if let Ok(i) = value.decode::<i64>() {
@@ -1342,18 +1338,22 @@ impl Serialize for JsonTerm<'_> {
             return sequence.end();
         }
         if let Some(iter) = MapIterator::new(self.value) {
+            // Keys are converted before sorting so that distinct byte strings
+            // which collapse to the same lossy text become adjacent and dedupe;
+            // serde_json would otherwise emit a duplicate key.
             let mut entries = Vec::new();
             for (key, value) in iter {
                 if let Ok(binary) = key.decode::<Binary>() {
-                    entries.push((binary, value));
+                    entries.push((String::from_utf8_lossy(binary.as_slice()), value));
                 }
             }
-            entries.sort_unstable_by(|(left, _), (right, _)| left.as_slice().cmp(right.as_slice()));
+            entries.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+            entries.dedup_by(|(left, _), (right, _)| left == right);
 
             let mut map = serializer.serialize_map(Some(entries.len()))?;
-            for (binary, value) in entries {
+            for (key, value) in entries {
                 map.serialize_entry(
-                    &String::from_utf8_lossy(binary.as_slice()),
+                    key.as_ref(),
                     &JsonTerm {
                         value,
                         nil: self.nil,

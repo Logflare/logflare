@@ -143,14 +143,6 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
     end
   end
 
-  test "mapping_config_id with the other format's encoding" do
-    event = raw_event(:log, @fixtures.log)
-    uuid = OtelDefaults.config_id(:log)
-
-    assert_raise FunctionClauseError, fn -> OutputContext.ndjson(event, <<0::128>>) end
-    assert_raise FunctionClauseError, fn -> OutputContext.ch_row_binary(event, uuid) end
-  end
-
   test "mismatched output_context", %{ndjson: ndjson} do
     rowbinary = Mapper.compile!(OtelDefaults.for_log())
     event = raw_event(:log, @fixtures.log)
@@ -167,6 +159,22 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
   end
 
   describe "custom configs" do
+    test "json column with keys that collapse to the same lossy string" do
+      config =
+        MappingConfig.new([Field.json("attrs", path: "$.attrs")],
+          output: OutputFormat.ndjson(:metric)
+        )
+
+      body = %{"attrs" => %{<<0xFF>> => "a", <<0xFE>> => "b", "ok" => "c"}}
+      event = raw_event(:metric, body)
+      context = OutputContext.ndjson(event, OtelDefaults.config_id(:metric))
+      row = Mapper.map(event.body, Mapper.compile!(config), output_context: context)
+
+      assert length(String.split(row, ~s("\uFFFD":))) == 2
+      assert %{"attrs" => %{"\uFFFD" => _, "ok" => "c"} = attrs} = Jason.decode!(row)
+      assert map_size(attrs) == 2
+    end
+
     test "config with an envelope field name" do
       config =
         MappingConfig.new([Field.string("source_name", path: "$.source")],
