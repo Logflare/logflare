@@ -13,7 +13,6 @@ ex_slop_backlog = [
   ExSlop.Check.Refactor.RedundantEnumJoinSeparator,
   ExSlop.Check.Refactor.ReduceMapPut,
   ExSlop.Check.Refactor.WithIdentityElse,
-  ExSlop.Check.Warning.DualKeyAccess,
   ExSlop.Check.Warning.RescueWithoutReraise
 ]
 
