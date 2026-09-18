@@ -656,6 +656,12 @@ defmodule Logflare.Telemetry do
         description:
           "Count of events dropped because a backend had no live producer queue with capacity and its startup queue was never initialized"
       ),
+      sum("logflare.ingest_event_queue.queue_full.dropped.count",
+        event_name: [:logflare, :ingest_event_queue, :queue_full, :dropped],
+        tags: [:backend_type],
+        description:
+          "Count of events dropped at insert because every producer queue of a consolidated backend was full and its startup queue reached the maximum size"
+      ),
       sum("logflare.ingest_event_queue.generation_janitor.drop.generations",
         event_name: [:logflare, :ingest_event_queue, :generation_janitor, :drop],
         measurement: :generations,

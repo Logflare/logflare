@@ -20,6 +20,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   use GenServer
 
   alias Logflare.Sources.Source
+  alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.LogEvent
@@ -587,8 +588,7 @@ defmodule Logflare.Backends.IngestEventQueue do
         )
       else
         _ ->
-          add_to_table(startup_queue, batch)
-          |> maybe_emit_not_initialized(:clickhouse, batch)
+          add_to_consolidated_startup_queue(startup_queue, batch, check_queue_size)
       end
     else
       proc_counts =
@@ -602,8 +602,7 @@ defmodule Logflare.Backends.IngestEventQueue do
       procs = Enum.map(proc_counts, fn {proc_key, _count} -> proc_key end)
 
       if procs == [] do
-        add_to_table({:consolidated, bid, nil}, batch)
-        |> maybe_emit_not_initialized(:clickhouse, batch)
+        add_to_consolidated_startup_queue(startup_queue, batch, check_queue_size)
       else
         Logflare.Utils.chunked_round_robin(
           batch,
@@ -1741,15 +1740,55 @@ defmodule Logflare.Backends.IngestEventQueue do
     :telemetry.execute([:logflare, :ingest_event_queue, :stale_table], %{count: 1}, %{})
   end
 
-  defp maybe_emit_not_initialized({:error, :not_initialized}, backend_type, batch) do
+  @spec add_to_consolidated_startup_queue(
+          {:consolidated, pos_integer(), nil},
+          [LogEvent.t()],
+          boolean()
+        ) :: :ok | {:error, :not_initialized | :queue_full}
+  defp add_to_consolidated_startup_queue({:consolidated, bid, nil} = startup_queue, batch, true) do
+    case get_table_size(startup_queue) do
+      size when is_integer(size) and size >= @consolidated_max_queue_size ->
+        emit_queue_full(bid, batch)
+
+      _ ->
+        add_to_consolidated_startup_queue(startup_queue, batch, false)
+    end
+  end
+
+  defp add_to_consolidated_startup_queue({:consolidated, bid, nil} = startup_queue, batch, false) do
+    startup_queue
+    |> add_to_table(batch)
+    |> maybe_emit_not_initialized(bid, batch)
+  end
+
+  @spec emit_queue_full(pos_integer(), [LogEvent.t()]) :: {:error, :queue_full}
+  defp emit_queue_full(backend_id, batch) do
+    :telemetry.execute(
+      [:logflare, :ingest_event_queue, :queue_full, :dropped],
+      %{count: length(batch)},
+      %{backend_type: consolidated_backend_type(backend_id), backend_id: backend_id}
+    )
+
+    {:error, :queue_full}
+  end
+
+  defp maybe_emit_not_initialized({:error, :not_initialized}, backend_id, batch) do
     :telemetry.execute(
       [:logflare, :ingest_event_queue, :not_initialized, :dropped],
       %{count: length(batch)},
-      %{backend_type: backend_type}
+      %{backend_type: consolidated_backend_type(backend_id)}
     )
 
     {:error, :not_initialized}
   end
 
   defp maybe_emit_not_initialized(other, _, _), do: other
+
+  @spec consolidated_backend_type(pos_integer()) :: atom()
+  defp consolidated_backend_type(backend_id) do
+    case Backends.Cache.get_backend(backend_id) do
+      %Backend{type: type} -> type
+      nil -> :unknown
+    end
+  end
 end
