@@ -452,6 +452,16 @@ defmodule Logflare.SqlTest do
       assert transformed =~ ~r/FROM my_ch_table FINAL WHERE/i
     end
 
+    test "preserves ARRAY JOIN on a source table" do
+      user = insert(:user)
+      insert(:source, user: user, name: "my_ch_table")
+
+      assert {:ok, transformed} =
+               Sql.transform(:ch_sql, "select a, x from my_ch_table array join arr as x", user)
+
+      assert transformed =~ ~r/FROM my_ch_table ARRAY JOIN arr AS x/i
+    end
+
     test "parser can handle tuple definitions" do
       user = insert(:user)
 

@@ -78,10 +78,14 @@ defmodule Logflare.Sql.ParserTest do
     end
 
     test "round-trips ARRAY JOIN" do
-      query = "SELECT a, arr FROM t ARRAY JOIN arr"
-
-      assert {:ok, ast} = Parser.parse("clickhouse", query)
-      assert {:ok, ^query} = Parser.to_string(ast)
+      for query <- [
+            "SELECT a, arr FROM t ARRAY JOIN arr",
+            "SELECT a, x FROM t LEFT ARRAY JOIN arr AS x WHERE x > 1",
+            "SELECT a FROM t FINAL ARRAY JOIN arr AS x, other AS y"
+          ] do
+        assert {:ok, ast} = Parser.parse("clickhouse", query)
+        assert {:ok, ^query} = Parser.to_string(ast)
+      end
     end
 
     test "rejects FINAL after an explicit alias" do

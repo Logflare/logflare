@@ -42,6 +42,11 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouseTest do
                ClickHouse.apply_limit("SELECT a FROM t FINAL WHERE b = 1", 10)
     end
 
+    test "keeps ARRAY JOIN when adding a limit" do
+      assert {:ok, "SELECT a, x FROM t LEFT ARRAY JOIN arr AS x LIMIT 10"} =
+               ClickHouse.apply_limit("SELECT a, x FROM t LEFT ARRAY JOIN arr AS x", 10)
+    end
+
     test "adds a limit while keeping an existing offset" do
       assert {:ok, "SELECT number FROM numbers(100) LIMIT 10 OFFSET 2"} =
                ClickHouse.apply_limit("SELECT number FROM numbers(100) OFFSET 2", 10)
