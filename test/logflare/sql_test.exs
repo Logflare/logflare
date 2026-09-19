@@ -442,6 +442,26 @@ defmodule Logflare.SqlTest do
   end
 
   describe "clickhouse dialect" do
+    test "preserves FINAL on a source table" do
+      user = insert(:user)
+      insert(:source, user: user, name: "my_ch_table")
+
+      assert {:ok, transformed} =
+               Sql.transform(:ch_sql, "select a from my_ch_table FINAL where b = 1", user)
+
+      assert transformed =~ ~r/FROM my_ch_table FINAL WHERE/i
+    end
+
+    test "preserves ARRAY JOIN on a source table" do
+      user = insert(:user)
+      insert(:source, user: user, name: "my_ch_table")
+
+      assert {:ok, transformed} =
+               Sql.transform(:ch_sql, "select a, x from my_ch_table array join arr as x", user)
+
+      assert transformed =~ ~r/FROM my_ch_table ARRAY JOIN arr AS x/i
+    end
+
     test "parser can handle tuple definitions" do
       user = insert(:user)
 
@@ -905,6 +925,8 @@ defmodule Logflare.SqlTest do
     for {input, output} <- [
           {"select old.a from old where @test = 123", ["test"]},
           {"select @a from old", ["a"]},
+          # system variables are not parameters
+          {"select @a from old where @@time_zone = 'UTC'", ["a"]},
           {"select old.a from old where char_length(@c)", ["c"]},
           # backticked function
           {"select `some.function`(@c)", ["c"]},
@@ -1049,6 +1071,20 @@ defmodule Logflare.SqlTest do
       assert msg =~ "Restricted function"
     end
 
+    test "does not treat a source named like a restricted identifier as a function call", %{
+      user: user
+    } do
+      source = insert(:source, user: user, name: "current_role")
+
+      assert {:ok, transformed} = Sql.transform(:pg_sql, "SELECT id FROM current_role", user)
+      assert transformed =~ ~s("#{PostgresAdaptor.table_name(source)}")
+
+      assert {:error, msg} =
+               Sql.transform(:pg_sql, "SELECT current_role, id FROM current_role", user)
+
+      assert msg =~ "Restricted function current_role"
+    end
+
     test "rejects restricted function pg_read_file", %{source: %{name: name}, user: user} do
       assert {:error, msg} =
                Sql.transform(:pg_sql, "SELECT pg_read_file('/etc/passwd'), id FROM #{name}", user)
@@ -1081,7 +1117,7 @@ defmodule Logflare.SqlTest do
       query = "WITH x AS (DELETE FROM #{name} WHERE id > 0 RETURNING id) SELECT id FROM x"
 
       assert {:error, msg} = Sql.transform(:pg_sql, query, user)
-      assert msg =~ "found: DELETE"
+      assert msg =~ "Only SELECT queries allowed"
     end
 
     test "rejects writable CTE with embedded INSERT", %{source: %{name: name}, user: user} do
@@ -1871,6 +1907,14 @@ defmodule Logflare.SqlTest do
     end
 
     # test "cte WHERE identifiers are translated correctly"
+
+    test "parameters without an alias are neither aliased nor converted to json queries" do
+      bq_query = ~s|select @test, coalesce(@test, '') from my_source|
+      pg_query = ~s|select $1::text, coalesce($2::text, '') from my_source|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert_semantically_equal(translated, pg_query)
+    end
 
     test "parameters are translated" do
       # test that substring of another arg is replaced correctly
