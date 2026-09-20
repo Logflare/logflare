@@ -5,7 +5,10 @@ defmodule Logflare.Telemetry do
   import Logflare.Utils, only: [ets_info: 1]
   import Logflare.Utils.Guards, only: [is_non_empty_binary: 1, is_pos_integer: 1]
 
+  require Logger
+
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
 
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
@@ -29,6 +32,9 @@ defmodule Logflare.Telemetry do
   }
 
   @metrics_interval 30_000
+  @ch_read_pool_poll_timeout :timer.seconds(5)
+  @ch_read_pool_status_event [:logflare, :clickhouse, :read_pool, :pool_status]
+  @ch_read_pool_poll_failure_event [:logflare, :clickhouse, :read_pool, :poll_failure]
   @max_phash2_range 4_294_967_296
 
   @ch_read_pool_time_buckets_ms [
@@ -385,7 +391,7 @@ defmodule Logflare.Telemetry do
         measurement: :count,
         tags: [:backend_id, :read_cluster, :error_kind],
         description:
-          "ClickHouse read queries that resolved to an error, excluding invalid-query (user SQL) errors, counted once per query after any failover retry and tagged with the read cluster that produced the final error"
+          "ClickHouse read queries that resolved to an error, excluding invalid-query (user SQL) errors, counted once per query after any failover retry and tagged with the read cluster that produced the final error. Checkout failures are additionally counted per attempt in `checkout_error`; `connection_error` here covers both failed checkouts and connections lost mid-query"
       ),
       sum("logflare.clickhouse.read_pool.failover",
         event_name: [:logflare, :clickhouse, :read_pool, :failover],
@@ -411,6 +417,41 @@ defmodule Logflare.Telemetry do
         keep: &ch_read_pool_connection_event?/1,
         description:
           "ClickHouse read pool connections lost or recycled, per backend and read cluster. Paired with `connected`, this is the pool's connection churn rate"
+      ),
+      sum("logflare.clickhouse.read_pool.checkout_error",
+        event_name: [:logflare, :clickhouse, :read_pool, :checkout_error],
+        measurement: :count,
+        tags: [:backend_id, :read_cluster, :reason],
+        description:
+          "ClickHouse read pool checkouts that failed before a connection was obtained, counted once per checkout attempt (including attempts masked by a successful failover) and tagged with the read cluster that shed it. `reason` mirrors `DBConnection.ConnectionError.reason`: `:queue_timeout` when the request was dropped from a saturated pool's queue, `:error` for other checkout failures such as the deadline expiring while queued. A `queue_timeout` here also surfaces in `query_error` as `pool_exhausted`; do not sum the two series"
+      ),
+      last_value("logflare.clickhouse.read_pool.ready_conn_count",
+        event_name: @ch_read_pool_status_event,
+        measurement: :ready_conn_count,
+        tags: [:backend_id, :read_cluster],
+        description:
+          "Idle, checked-in connections in a ClickHouse read pool on this node, sampled from `DBConnection.get_connection_metrics/1` every #{div(@metrics_interval, 1000)}s. Reads 0 whenever no connection is immediately available: every connection is checked out, or none is established because the pool is still starting or every connection is reconnecting. 0 here with 0 `checkout_queue_length` means no connection is immediately available and no caller is queued, not necessarily full utilization; `connected`/`disconnected` moving at the same time points to connectivity loss rather than saturation. A missing sample means the pool was idle-stopped or the poll failed; `poll_failure` tells the two apart. Pools are per node; view per instance"
+      ),
+      last_value("logflare.clickhouse.read_pool.checkout_queue_length",
+        event_name: @ch_read_pool_status_event,
+        measurement: :checkout_queue_length,
+        tags: [:backend_id, :read_cluster],
+        description:
+          "Callers waiting to check out a ClickHouse read pool connection on this node, sampled alongside `ready_conn_count`. Non-zero only while the pool is busy; a sustained depth is a pool stall, and whether `connected`/`disconnected` move at the same time tells reconnect recovery apart from drain"
+      ),
+      last_value("logflare.clickhouse.read_pool.pool_size",
+        event_name: @ch_read_pool_status_event,
+        measurement: :pool_size,
+        tags: [:backend_id, :read_cluster],
+        description:
+          "Connection count a ClickHouse read pool on this node was started with, from the backend's `read_pool_size`/`labeled_read_pool_size` for the pool's read cluster at pool start, emitted alongside `ready_conn_count` so the two share a timestamp. This is the running pool's size, not the current config: a config change takes effect here when the pool restarts. `(pool_size - ready_conn_count) / pool_size` is the share of connections not immediately available, an upper bound on utilization because it also counts connections still establishing or reconnecting; read it with `connected`/`disconnected`. It tells a 0 `ready_conn_count` on a 32-connection labeled pool apart from one on a 50-connection default pool"
+      ),
+      sum("logflare.clickhouse.read_pool.poll_failure",
+        event_name: @ch_read_pool_poll_failure_event,
+        measurement: :count,
+        tags: [:backend_id, :read_cluster, :reason],
+        description:
+          "ClickHouse read pool status polls that produced no sample, per backend and read cluster. `reason` is `:timeout` when the pool process did not answer within #{div(@ch_read_pool_poll_timeout, 1000)}s and `:unexpected_result` when it answered with a shape this poller does not understand. Each count is a sample missing from `ready_conn_count`/`checkout_queue_length`/`pool_size` because the poll failed, not because the pool was idle-stopped"
       ),
       sum("logflare.clickhouse.insert.result.count",
         event_name: [:logflare, :clickhouse, :insert, :result],
@@ -493,28 +534,25 @@ defmodule Logflare.Telemetry do
         description:
           "Spool consumer backpressure state: 1 if any recently-seen source's destination ingest buffer is backed up, 0 otherwise"
       ),
-      sum("logflare.backends.spool.storage.put.count",
-        tags: [:format, :result],
-        description: "Spool storage writes (S3/GCS put) count by format/result"
-      ),
-      sum("logflare.backends.spool.storage.put.bytes",
-        tags: [:format, :result],
-        description: "Spool storage writes: bytes by format/result"
-      ),
-      sum("logflare.backends.spool.queue.publish.count",
-        tags: [:result],
-        description: "Spool queue publish (SQS send / PubSub publish) count"
-      ),
-      sum("logflare.backends.spool.producer.batch.count",
-        tags: [:result, :stage],
+      last_value("logflare.backends.spool.write_health.healthy",
+        tags: [:scope],
         description:
-          "Spool producer batches by end-to-end outcome (:ok, or :error tagged with which stage — :upload or :notify — failed)"
+          "Spool health by scope (:disk local WAL fsync, :upload Cloud backend commit) — 1=healthy, 0=unhealthy (spool routing disabled on this node if it's the active buffer mode's gating scope)"
+      ),
+      last_value("logflare.backends.spool.write_health.failure_count",
+        tags: [:scope],
+        description: "Spool consecutive write/roll/commit failure count, by scope"
       ),
       sum("logflare.backends.spool.queue.receive.count",
         tags: [:result],
         description: "Spool queue receive (SQS/PubSub) message count"
       ),
-      sum("logflare.backends.spool.storage.get.count",
+      distribution("logflare.backends.spool.queue.receive.duration",
+        tags: [:result],
+        unit: {:microsecond, :millisecond},
+        description: "Time spent in the actual queue_mod.receive network call, by result"
+      ),
+      counter("logflare.backends.spool.storage.get.count",
         tags: [:result],
         description: "Spool storage downloads (S3/GCS get) count by result"
       ),
@@ -522,16 +560,53 @@ defmodule Logflare.Telemetry do
         tags: [:result],
         description: "Spool storage downloads: bytes by result"
       ),
-      sum("logflare.backends.spool.storage.get.line_count",
+      sum("logflare.backends.spool.storage.get.segment_count",
         tags: [:result],
-        description: "Spool events parsed per downloaded file"
+        description: "Spool segments split per downloaded file"
       ),
-      sum("logflare.backends.spool.queue.ack.count",
+      distribution("logflare.backends.spool.storage.get.duration",
+        tags: [:result],
+        unit: {:microsecond, :millisecond},
+        description: "Time spent in the actual storage_mod.get network call, by result"
+      ),
+      distribution("logflare.backends.spool.consumer.decompress.duration",
+        unit: {:microsecond, :millisecond},
+        description: "Time spent decompressing one downloaded spool file"
+      ),
+      distribution("logflare.backends.spool.consumer.parse.duration",
+        unit: {:microsecond, :millisecond},
+        description: "Time spent parsing one downloaded spool file's segments into events"
+      ),
+      sum("logflare.backends.spool.consumer.parse.segment_count",
+        description: "Segments parsed per downloaded spool file"
+      ),
+      sum("logflare.backends.spool.consumer.parse.event_count",
+        description: "Events parsed per downloaded spool file"
+      ),
+      distribution("logflare.backends.spool.consumer.prefetch.duration",
+        tags: [:result, :started_while_buffered],
+        unit: {:microsecond, :millisecond},
+        description: "Time spent in the background prefetch Task, by result"
+      ),
+      counter("logflare.backends.spool.consumer.prefetch.count",
+        tags: [:result, :started_while_buffered],
+        description: "Prefetch Task invocations, by result"
+      ),
+      distribution("logflare.backends.spool.consumer.poll.duration",
+        tags: [:idle],
+        unit: {:microsecond, :millisecond},
+        description: "Time spent in the producer's own :poll handling"
+      ),
+      counter("logflare.backends.spool.consumer.poll.count",
+        tags: [:idle],
+        description: "Spool consumer :poll invocations, by whether it was idle"
+      ),
+      counter("logflare.backends.spool.queue.ack.count",
         tags: [:reason, :result],
         description:
           "Spool queue ack (delete) count by reason, and whether the underlying SQS/PubSub call itself succeeded"
       ),
-      sum("logflare.backends.spool.queue.nack.count",
+      counter("logflare.backends.spool.queue.nack.count",
         tags: [:reason, :result],
         description:
           "Spool queue nack (requeue) count by reason, and whether the underlying SQS/PubSub call itself succeeded"
@@ -673,10 +748,100 @@ defmodule Logflare.Telemetry do
       [
         {__MODULE__, :process_message_queue_metrics, []},
         {__MODULE__, :process_memory_metrics, []},
-        {__MODULE__, :ets_table_metrics, []}
+        {__MODULE__, :ets_table_metrics, []},
+        {__MODULE__, :clickhouse_read_pool_metrics, []}
       ]
 
     cachex_metrics ++ process_metrics
+  end
+
+  @doc """
+  Polls every active ClickHouse read pool on this node for `DBConnection` pool metrics
+  and emits them as a `#{inspect(@ch_read_pool_status_event)}` event per pool.
+
+  Each pool is polled in its own task bounded by `timeout`, so the sweep delays the
+  poller by at most `timeout` per batch of pools rather than hanging on one
+  unresponsive pool. The pool's size comes from the registry value it was started with,
+  so the sweep touches neither the backend cache nor the database, and the size is
+  emitted in the same event as the `DBConnection` counts. A pool that exited between
+  enumeration and poll is skipped silently; one that does not answer in time, or answers
+  with an unexpected shape, is skipped with a warning and a
+  `#{inspect(@ch_read_pool_poll_failure_event)}` count tagged with the reason so the
+  missing sample is attributable on a dashboard.
+  """
+  @spec clickhouse_read_pool_metrics(
+          [{pos_integer(), String.t() | nil, pid(), pos_integer()}],
+          non_neg_integer()
+        ) :: :ok
+  def clickhouse_read_pool_metrics(
+        pools \\ QueryConnectionSup.list_read_pools(),
+        timeout \\ @ch_read_pool_poll_timeout
+      ) do
+    pools
+    |> Task.async_stream(&poll_read_pool/1,
+      timeout: timeout,
+      on_timeout: :kill_task,
+      ordered: false,
+      zip_input_on_exit: true
+    )
+    |> Enum.each(&emit_read_pool_status/1)
+  end
+
+  @spec poll_read_pool({pos_integer(), String.t() | nil, pid(), pos_integer()}) ::
+          {tuple(), [DBConnection.Pool.connection_metrics()] | :gone}
+  defp poll_read_pool({_backend_id, _label, pool_pid, _pool_size} = pool) do
+    {pool, DBConnection.get_connection_metrics(pool_pid)}
+  catch
+    :exit, _reason -> {pool, :gone}
+  end
+
+  @spec emit_read_pool_status(term()) :: :ok
+  defp emit_read_pool_status({:ok, {_pool, :gone}}), do: :ok
+
+  defp emit_read_pool_status(
+         {:ok,
+          {{backend_id, label, _pool_pid, pool_size},
+           [%{ready_conn_count: ready, checkout_queue_length: queued}]}}
+       ) do
+    :telemetry.execute(
+      @ch_read_pool_status_event,
+      %{ready_conn_count: ready, checkout_queue_length: queued, pool_size: pool_size},
+      %{backend_id: backend_id, read_cluster: ClickHouseAdaptor.read_cluster_tag(label)}
+    )
+  end
+
+  defp emit_read_pool_status({:exit, {{backend_id, label, _pool_pid, _pool_size}, reason}}) do
+    metadata = poll_failure_metadata(backend_id, label, :timeout)
+
+    :telemetry.execute(@ch_read_pool_poll_failure_event, %{count: 1}, metadata)
+
+    Logger.warning("ClickHouse read pool did not answer the metrics poll",
+      backend_id: backend_id,
+      read_cluster: metadata.read_cluster,
+      reason: inspect(reason)
+    )
+  end
+
+  defp emit_read_pool_status({:ok, {{backend_id, label, _pool_pid, _pool_size}, result}}) do
+    metadata = poll_failure_metadata(backend_id, label, :unexpected_result)
+
+    :telemetry.execute(@ch_read_pool_poll_failure_event, %{count: 1}, metadata)
+
+    Logger.warning("ClickHouse read pool metrics poll returned an unexpected result",
+      backend_id: backend_id,
+      read_cluster: metadata.read_cluster,
+      result: inspect(result)
+    )
+  end
+
+  @spec poll_failure_metadata(pos_integer(), String.t() | nil, :timeout | :unexpected_result) ::
+          map()
+  defp poll_failure_metadata(backend_id, label, reason) do
+    %{
+      backend_id: backend_id,
+      read_cluster: ClickHouseAdaptor.read_cluster_tag(label),
+      reason: reason
+    }
   end
 
   def cachex_metrics do

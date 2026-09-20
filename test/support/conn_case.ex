@@ -42,13 +42,16 @@ defmodule LogflareWeb.ConnCase do
     quote do
       use Mimic
 
+      use Phoenix.VerifiedRoutes,
+        endpoint: LogflareWeb.Endpoint,
+        router: LogflareWeb.Router
+
       require Logflare.TestUtils
 
       import Logflare.Factory
       import LogflareWeb.Router.Helpers
       import Phoenix.ConnTest, except: unquote(@conn_test_request_macros)
       import Phoenix.LiveViewTest
-      import Phoenix.VerifiedRoutes
       import PhoenixTest
       import Plug.Conn
       import unquote(__MODULE__)

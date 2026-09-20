@@ -15,6 +15,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   Pools authenticate with the credentials resolved by
   `ClickHouseAdaptor.query_credentials/1`, which prefers a
   dedicated query user when one is configured.
+
+  Managers are registered through `Registry`, so they carry no registered name.
+  Each labels itself `{:ch_read_pool_manager, backend_id, read_cluster_tag}` with
+  `Process.set_label/1` so that `observer`, `:recon`, crash reports, and the
+  `Logflare.Telemetry` top-process metrics can attribute it to a backend and read
+  cluster. The third element matches the `read_cluster` telemetry tag.
   """
 
   use GenServer
@@ -250,6 +256,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
 
   @impl true
   def init({backend_id, label}) do
+    Process.set_label(
+      {:ch_read_pool_manager, backend_id, ClickHouseAdaptor.read_cluster_tag(label)}
+    )
+
     resolve_timer_ref = resolve_timer_send_after()
 
     initial_state = %__MODULE__{
@@ -503,12 +513,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
     url = read_url(config, label)
 
     with {:ok, {scheme, hostname, url_port}} <- extract_url_components(url) do
-      pool_via = connection_pool_via(backend, label)
       port = get_read_port(config, url_port)
       {username, password} = ClickHouseAdaptor.query_credentials(config)
 
       ch_opts = [
-        name: pool_via,
+        name: pool_registration_name(backend, label, pool_size),
         scheme: scheme,
         hostname: hostname,
         port: port,
@@ -526,6 +535,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
 
       {:ok, ch_opts}
     end
+  end
+
+  @spec pool_registration_name(Backend.t(), String.t() | nil, pos_integer()) :: tuple()
+  defp pool_registration_name(%Backend{} = backend, label, pool_size) do
+    {:via, Registry, {registry, key}} = connection_pool_via(backend, label)
+    {:via, Registry, {registry, key, %{pool_size: pool_size}}}
   end
 
   @spec pool_size_key(map(), String.t() | nil) :: :read_pool_size | :labeled_read_pool_size

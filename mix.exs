@@ -11,6 +11,7 @@ defmodule Logflare.Mixfile do
       aliases: aliases(),
       deps: deps(),
       dialyzer: dialyzer(),
+      listeners: [Phoenix.CodeReloader],
       test_coverage: [tool: ExCoveralls],
       test_ignore_filters: [~r|test/profiling|, "test/bq_logs_search_seed.exs"],
       releases: [
@@ -85,7 +86,7 @@ defmodule Logflare.Mixfile do
   defp deps do
     [
       # Phoenix stuff
-      {:phoenix, "~> 1.7.14"},
+      {:phoenix, "~> 1.8.0"},
       {:phoenix_html, "~> 4.0"},
       {:phoenix_html_helpers, "~> 1.0"},
       {:phoenix_live_view, "~> 1.0.0"},
@@ -106,13 +107,15 @@ defmodule Logflare.Mixfile do
 
       # Oauth2 provider
       {:phoenix_oauth2_provider,
-       github: "Logflare/phoenix_oauth2_provider", ref: "9ab5f7b2905286d9e4a1f731ac22009553e3a048"},
+       github: "Logflare/phoenix_oauth2_provider", ref: "6a6d2778ca105adc856e67e2b512430ef00a6ac7"},
       {:ex_oauth2_provider, github: "aristamd/ex_oauth2_provider", override: true},
 
       # Ecto and DB
       {:postgrex, ">= 0.0.0"},
       {:gettext, "~> 0.11"},
       {:jason, "~> 1.0"},
+      {:ezstd, "~> 1.0"},
+      {:uuidv7, "~> 1.0"},
       {:deep_merge, "~> 1.0"},
       {:number, "~> 1.0.0"},
       {:timex, "~> 3.1"},
@@ -145,13 +148,14 @@ defmodule Logflare.Mixfile do
       {:mint, "~> 1.0"},
       {:httpoison, "~> 1.4"},
       {:poison, "~> 5.0.0", override: true},
-      {:swoosh, "~> 0.23"},
+      {:swoosh, "~> 1.0"},
       {:ex_twilio, "~> 0.8.1"},
       {:tesla, "~> 1.6"},
 
       # Concurrency and pipelines
       {:broadway, "~> 1.3"},
       {:syn, github: "Logflare/syn"},
+      {:durable_buffer, github: "chasers/durable_buffer", tag: "v0.5.0"},
 
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},

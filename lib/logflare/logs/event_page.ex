@@ -9,8 +9,9 @@ defmodule Logflare.Logs.EventPage do
   @type direction :: :previous | :next
   @type intent :: :initial | :previous | :next
   @type request :: %{
-          intent: intent(),
-          cursor: cursor() | nil
+          required(:intent) => intent(),
+          required(:cursor) => cursor() | nil,
+          optional(:window_seconds) => pos_integer()
         }
 
   typedstruct do
@@ -18,7 +19,6 @@ defmodule Logflare.Logs.EventPage do
     field :request, request(), enforce: true
     field :cursor, cursor() | nil, enforce: true
     field :next_cursor, cursor() | nil, default: nil
-    field :has_more?, boolean(), enforce: true
     field :events, :any, default: nil
   end
 
@@ -28,17 +28,21 @@ defmodule Logflare.Logs.EventPage do
   def direction(:initial), do: :previous
 
   @doc """
-  Returns whether an event-page request has a valid intent and cursor.
+  Returns whether an event-page request has a valid intent, cursor and window.
+
+  The window is the number of seconds the page query scans from the cursor.
 
   An intent can be one of:
   * `:next` - fetching the next page of newer events after the curosr
   * `:previous` - fetch a page of older events before the cursor
   * `:initial` - no cursor, used for the first search by Search LiveView.
   """
-  @spec valid_request?(term(), term()) :: boolean()
-  def valid_request?(intent, cursor) when intent in [:previous, :next], do: valid_cursor?(cursor)
+  @spec valid_request?(term(), term(), term()) :: boolean()
+  def valid_request?(intent, cursor, window_seconds)
+      when intent in [:previous, :next] and is_integer(window_seconds) and window_seconds > 0,
+      do: valid_cursor?(cursor)
 
-  def valid_request?(_intent, _cursor), do: false
+  def valid_request?(_intent, _cursor, _window_seconds), do: false
 
   @doc """
   Validate the cursor for the page query has a timestamp and id.

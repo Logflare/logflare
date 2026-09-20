@@ -333,7 +333,6 @@ jobs:
           --cpus="1.0"
           --shm-size="256m"
           --tmpfs /var/lib/clickhouse:rw,size=1G
-          --tmpfs /var/log/clickhouse-server:rw,size=100M
     env:
       MIX_ENV: test
       SHELL: /bin/bash

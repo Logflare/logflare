@@ -397,7 +397,8 @@ defmodule LogflareWeb.OpenApiSchemas do
       use_async_inserts_for_small_batches: %Schema{type: :boolean, nullable: true},
       async_insert_cluster_url: %Schema{type: :string, nullable: true},
       async_insert_max_rows: %Schema{type: :integer, nullable: true},
-      max_event_age_hours: %Schema{type: :integer, nullable: true}
+      max_event_age_hours: %Schema{type: :integer, nullable: true},
+      replica_routing_param: %Schema{type: :string, nullable: true}
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:url, :database, :port]

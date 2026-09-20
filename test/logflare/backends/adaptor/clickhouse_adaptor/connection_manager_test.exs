@@ -64,6 +64,30 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
     end
   end
 
+  describe "process label" do
+    test "an unlabeled manager carries the reserved unlabeled read cluster tag", %{
+      backend: backend
+    } do
+      {:ok, manager_pid} = ConnectionManager.start_link(backend)
+
+      assert :proc_lib.get_label(manager_pid) ==
+               {:ch_read_pool_manager, backend.id, "(unlabeled)"}
+    end
+
+    test "a labeled manager carries its read cluster label", %{backend: backend} do
+      {:ok, manager_pid} = ConnectionManager.start_link(backend, "reads-eu")
+
+      assert :proc_lib.get_label(manager_pid) == {:ch_read_pool_manager, backend.id, "reads-eu"}
+    end
+
+    test "managers for the same backend are distinguishable by label", %{backend: backend} do
+      {:ok, unlabeled_pid} = ConnectionManager.start_link(backend)
+      {:ok, labeled_pid} = ConnectionManager.start_link(backend, "reads-eu")
+
+      assert :proc_lib.get_label(unlabeled_pid) != :proc_lib.get_label(labeled_pid)
+    end
+  end
+
   describe "query pool connection management" do
     setup context do
       {:ok, _manager_pid} = ConnectionManager.start_link(context.backend)

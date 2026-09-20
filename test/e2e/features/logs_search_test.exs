@@ -1,7 +1,10 @@
 defmodule E2e.Features.LogsSearchTest do
   use Logflare.FeatureCase, async: false
 
+  alias Ecto.Changeset
   alias Logflare.Backends
+  alias Logflare.NaturalLanguageLql.AnthropicClient
+  alias Logflare.Repo
   alias Logflare.SingleTenant
   alias PlaywrightEx.Frame
 
@@ -24,7 +27,7 @@ defmodule E2e.Features.LogsSearchTest do
       bq_schema =
         TestUtils.build_bq_schema(%{
           "event_message" => matching_message,
-          "metadata" => %{"response" => %{"status_code" => 200}}
+          "metadata" => %{"level" => "warning", "response" => %{"status_code" => 200}}
         })
 
       insert(:source_schema, source: source, bigquery_schema: bq_schema)
@@ -36,12 +39,12 @@ defmodule E2e.Features.LogsSearchTest do
           build(:log_event,
             source: source,
             message: matching_message,
-            metadata: %{"response" => %{"status_code" => 200}}
+            metadata: %{"level" => "warning", "response" => %{"status_code" => 200}}
           ),
           build(:log_event,
             source: source,
             message: non_matching_message,
-            metadata: %{"response" => %{"status_code" => 200}}
+            metadata: %{"level" => "warning", "response" => %{"status_code" => 200}}
           )
         ]
         |> Backends.ingest_logs(source)
@@ -70,6 +73,95 @@ defmodule E2e.Features.LogsSearchTest do
       |> refute_has("#logs-list-container", text: non_matching_message)
     end
 
+    test "Cmd/Ctrl+Enter submits the editor value to AI Assist", %{
+      conn: conn,
+      source: source
+    } do
+      parent = self()
+
+      source =
+        source
+        |> Changeset.change(suggested_keys: "metadata.level")
+        |> Repo.update!()
+
+      stub(AnthropicClient, :configured?, fn -> true end)
+
+      stub(AnthropicClient, :generate, fn prompt ->
+        send(parent, {:anthropic_prompt, prompt})
+
+        {:ok,
+         %{
+           text: ~s({"kind":"query","lql":"event_message:error","error":null}),
+           request_id: "request-e2e-shortcut"
+         }}
+      end)
+
+      conn =
+        conn
+        |> visit(~p"/auth/login/single_tenant")
+        |> assert_path(~p"/dashboard")
+        |> visit(~p"/sources/#{source.id}/search?#{%{querystring: "warning"}}")
+        |> assert_has("#ai-search-button")
+        |> fill_in("metadata.level", with: " error ")
+        |> wait_for_selector(".monaco-editor textarea.inputarea")
+
+      conn = press(conn, ".monaco-editor textarea.inputarea", "Control+Enter")
+
+      assert_receive {:anthropic_prompt, prompt}, 5_000
+      assert prompt =~ "<request>\nwarning"
+      assert prompt =~ "\n</request>"
+
+      querystring = wait_for_editor_querystring(conn, ~s|~"(?i)error"|)
+      assert querystring =~ ~s|~"(?i)error"|
+      assert querystring =~ "m.level:error"
+    end
+
+    test "Enter submits a regular search from the editor", %{
+      conn: conn,
+      source: source,
+      non_matching_message: non_matching_message
+    } do
+      stub(AnthropicClient, :configured?, fn -> true end)
+      reject(AnthropicClient, :generate, 1)
+
+      conn =
+        conn
+        |> visit(~p"/auth/login/single_tenant")
+        |> assert_path(~p"/dashboard")
+        |> visit(~p"/sources/#{source.id}/search?#{%{querystring: "warning"}}")
+        |> wait_for_selector(".monaco-editor textarea.inputarea")
+        |> fill_editor("event_message:#{non_matching_message}")
+        |> press(".monaco-editor textarea.inputarea", "Enter")
+
+      assert wait_for_editor_querystring(conn, non_matching_message) =~ non_matching_message
+    end
+
+    test "Tab focuses the AI Assist button and Enter activates it", %{
+      conn: conn,
+      source: source
+    } do
+      parent = self()
+      stub(AnthropicClient, :configured?, fn -> true end)
+
+      stub(AnthropicClient, :generate, fn prompt ->
+        send(parent, {:anthropic_prompt, prompt})
+        {:error, :unavailable}
+      end)
+
+      conn
+      |> visit(~p"/auth/login/single_tenant")
+      |> assert_path(~p"/dashboard")
+      |> visit(~p"/sources/#{source.id}/search?#{%{querystring: "warning"}}")
+      |> wait_for_selector(".monaco-editor textarea.inputarea")
+      |> press(".monaco-editor textarea.inputarea", "Tab")
+      |> wait_for_selector("#ai-search-button:focus")
+      |> press("#ai-search-button", "Enter")
+
+      assert_receive {:anthropic_prompt, prompt}, 5_000
+      assert prompt =~ "<request>\nwarning"
+      assert prompt =~ "\n</request>"
+    end
+
     test "loads the remaining previous page of search results", %{
       conn: conn,
       source: source,
@@ -94,7 +186,57 @@ defmodule E2e.Features.LogsSearchTest do
       |> assert_has("#logs-list li[data-event-id]", count: 100)
       |> click("#load-more-events-top")
       |> assert_has("#logs-list li[data-event-id]", count: 105)
-      |> refute_has("#load-more-events-top")
+      |> assert_has("#load-more-events-top:not([disabled])")
+    end
+
+    @scroll_anchor_tail "at Module.handleRequest (/srv/app/lib/handler.js:142:19) -> at Router.dispatch (/srv/app/node_modules/router/index.js:88:7) -> at Layer.handle (/srv/app/node_modules/router/layer.js:95:5)"
+
+    test "an older page keeps the row the reader is on in place", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      prefix = "featurescrollanchor#{System.unique_integer([:positive])}"
+
+      log_events =
+        for index <- 1..150 do
+          build(:log_event,
+            source: source,
+            message: "#{prefix}-#{index} request failed with status 503 #{@scroll_anchor_tail}"
+          )
+        end
+
+      assert {:ok, 150} = Backends.ingest_logs(log_events, source)
+      assert :ok = TestUtils.wait_for_postgres_events(source, user, prefix, 150)
+
+      conn =
+        conn
+        |> visit(~p"/auth/login/single_tenant")
+        |> assert_path(~p"/dashboard")
+        |> visit(
+          ~p"/sources/#{source.id}/search?#{%{querystring: ~s|event_message:~\"^#{prefix}-\"|, tailing?: false}}"
+        )
+        |> assert_has("#logs-list li[data-event-id]", count: 100)
+        |> assert_has("#load-more-events-top:not([disabled])")
+        |> scroll_top_button_into_view()
+
+      before = read_anchor(conn)
+
+      assert before.top > 0, "no row was visible to anchor on"
+
+      conn
+      |> click("#load-more-events-top")
+      |> assert_has("#logs-list li[data-event-id]", count: 150)
+      |> settle_scroll()
+
+      after_click = read_anchor(conn, before.id)
+
+      assert after_click.present, "the anchor row left the page"
+
+      drift = round(after_click.top - before.top)
+
+      assert abs(drift) <= 4,
+             "the reader's row moved #{drift}px. An older page must not move the viewport."
     end
 
     test "shows a missing field error from the search page", %{conn: conn, source: source} do
@@ -222,6 +364,84 @@ defmodule E2e.Features.LogsSearchTest do
     end
   end
 
+  defp scroll_top_button_into_view(conn) do
+    conn
+    |> unwrap(fn %{frame_id: frame_id} ->
+      {:ok, _} =
+        Frame.evaluate(frame_id,
+          expression: """
+          () => {
+            const button = document.getElementById("load-more-events-top")
+            const target = window.scrollY + button.getBoundingClientRect().top - 300
+            window.scrollTo(0, Math.max(0, Math.round(target)))
+          }
+          """,
+          is_function: true,
+          timeout: 5_000
+        )
+    end)
+  end
+
+  defp settle_scroll(conn) do
+    conn
+    |> unwrap(fn %{frame_id: frame_id} ->
+      {:ok, _} =
+        Frame.wait_for_function(frame_id,
+          expression: """
+          () => {
+            const y = Math.round(window.scrollY)
+            window.__stableFor = window.__lastY === y ? (window.__stableFor || 0) + 1 : 0
+            window.__lastY = y
+            return window.__stableFor >= 8
+          }
+          """,
+          is_function: true,
+          polling: 100,
+          timeout: 20_000
+        )
+    end)
+  end
+
+  defp read_anchor(conn, id \\ nil) do
+    ref = make_ref()
+
+    conn
+    |> unwrap(fn %{frame_id: frame_id} ->
+      {:ok, anchor} =
+        Frame.evaluate(frame_id,
+          expression: """
+          ({ id }) => {
+            if (id) {
+              const known = document.getElementById(id)
+              return known
+                ? { id, top: known.getBoundingClientRect().top, present: true }
+                : { id, top: 0, present: false }
+            }
+
+            const middle = window.innerHeight / 2
+            const row = [...document.querySelectorAll("#logs-list li[data-event-id]")]
+              .map((element) => ({ element, top: element.getBoundingClientRect().top }))
+              .filter(({ top }) => top > 0 && top < window.innerHeight)
+              .sort((a, b) => Math.abs(a.top - middle) - Math.abs(b.top - middle))[0]
+
+            return row
+              ? { id: row.element.id, top: row.top, present: true }
+              : { id: null, top: 0, present: false }
+          }
+          """,
+          is_function: true,
+          arg: %{id: id},
+          timeout: 5_000
+        )
+
+      send(self(), {ref, anchor})
+    end)
+
+    assert_receive {^ref, anchor}
+
+    %{id: anchor["id"], top: anchor["top"], present: anchor["present"]}
+  end
+
   def wait_for_selector(conn, selector, opts \\ []) do
     opts = opts |> Keyword.merge(selector: selector, timeout: 10_000)
 
@@ -249,6 +469,17 @@ defmodule E2e.Features.LogsSearchTest do
           event_init: %{bubbles: true, cancelable: true},
           timeout: 5_000
         )
+    end)
+  end
+
+  defp fill_editor(conn, value) do
+    conn
+    |> unwrap(fn %{frame_id: frame_id} ->
+      Frame.fill(frame_id,
+        selector: ".monaco-editor textarea.inputarea",
+        value: value,
+        timeout: 5_000
+      )
     end)
   end
 
