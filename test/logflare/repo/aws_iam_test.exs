@@ -545,6 +545,18 @@ defmodule Logflare.Repo.AwsIamTest do
       assert token =~ "#{region}%2Frds-db"
     end
 
+    test "auth_token/4 signs the hash of an empty payload, not UNSIGNED-PAYLOAD", %{
+      host: host,
+      region: region
+    } do
+      token = AwsIam.auth_token(host, 5432, "logflare", region)
+
+      params = token |> token_query() |> URI.decode_query()
+
+      assert params["X-Amz-Signature"] ==
+               reference_signature(token, "#{host}:5432", params["X-Amz-Date"], region)
+    end
+
     test "auth_token/4 handles static environment session tokens and normalizes hostnames", %{
       host: host,
       region: region
@@ -743,6 +755,51 @@ defmodule Logflare.Repo.AwsIamTest do
 
   defp restore_aws_credential_env(env) do
     Enum.each(env, fn {key, value} -> restore_system_env(key, value) end)
+  end
+
+  defp token_query(token) do
+    token |> String.split("?", parts: 2) |> List.last()
+  end
+
+  # An independent SigV4 presign of the token ExAws produced. RDS hashes an empty payload, so
+  # this only reproduces the signature while `auth_token/4` passes a body to ExAws; the S3
+  # `UNSIGNED-PAYLOAD` marker ExAws signs by default yields a different signature.
+  defp reference_signature(token, host_header, amz_date, region) do
+    canonical_query =
+      token
+      |> token_query()
+      |> String.split("&")
+      |> Enum.reject(&String.starts_with?(&1, "X-Amz-Signature="))
+      |> Enum.sort()
+      |> Enum.join("&")
+
+    date_stamp = String.slice(amz_date, 0, 8)
+    scope = "#{date_stamp}/#{region}/rds-db/aws4_request"
+    empty_payload = Base.encode16(:crypto.hash(:sha256, ""), case: :lower)
+
+    canonical_request =
+      Enum.join(
+        ["GET", "/", canonical_query, "host:#{host_header}", "", "host", empty_payload],
+        "\n"
+      )
+
+    string_to_sign =
+      Enum.join(
+        [
+          "AWS4-HMAC-SHA256",
+          amz_date,
+          scope,
+          Base.encode16(:crypto.hash(:sha256, canonical_request), case: :lower)
+        ],
+        "\n"
+      )
+
+    secret = Application.fetch_env!(:ex_aws, :secret_access_key)
+
+    [date_stamp, region, "rds-db", "aws4_request"]
+    |> Enum.reduce("AWS4" <> secret, &:crypto.mac(:hmac, :sha256, &2, &1))
+    |> then(&:crypto.mac(:hmac, :sha256, &1, string_to_sign))
+    |> Base.encode16(case: :lower)
   end
 
   defp restore_application_env(app, key, {:ok, value}), do: Application.put_env(app, key, value)
