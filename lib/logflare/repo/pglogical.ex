@@ -6,6 +6,9 @@ defmodule Logflare.Repo.Pglogical do
   Never added to `:ecto_repos`; never started as part of the normal
   application supervision tree. Only used by `Logflare.Repo.Migrator` when
   `LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS` is set.
+
+  `:migrator` is set explicitly because Oban picks its migration flavor by matching on
+  the repo's adapter module, which this custom adapter does not match.
   """
   use Ecto.Repo,
     otp_app: :logflare,
@@ -17,6 +20,7 @@ defmodule Logflare.Repo.Pglogical do
       Logflare.Repo.config()
       |> Keyword.merge(config)
       |> Keyword.put(:priv, "priv/repo")
+      |> Keyword.put_new(:migrator, Oban.Migrations.Postgres)
 
     {:ok, config}
   end

@@ -13,7 +13,9 @@ defmodule Logflare.Ecto.Adapters.PglogicalPostgres do
   `execute/1` calls added to future migrations should be schema-qualified
   to behave identically whether or not this adapter is in use.
 
-  Raw `execute/1` SQL strings are NOT replicated by default; opt in explicitly with `Logflare.Ecto.Adapters.PglogicalPostgres.Connection.replicated_execute/1`.
+  Raw `execute/1` SQL strings are NOT replicated by default; opt in with
+  `Logflare.Repo.Migrator.with_replicated_execute/1`, which replicates every raw
+  statement flushed inside the given block.
   """
   use Ecto.Adapters.SQL, driver: :postgrex
 

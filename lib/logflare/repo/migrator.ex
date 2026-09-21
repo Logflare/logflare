@@ -6,6 +6,7 @@ defmodule Logflare.Repo.Migrator do
   """
 
   @default_search_path "public"
+  @replicate_execute_key {__MODULE__, :replicate_execute?}
 
   @spec migration_repo_for(Ecto.Repo.t()) :: Ecto.Repo.t()
   def migration_repo_for(Logflare.Repo) do
@@ -36,5 +37,42 @@ defmodule Logflare.Repo.Migrator do
       "" -> @default_search_path
       search_path -> search_path
     end
+  end
+
+  @doc """
+  Runs `fun` with raw `Ecto.Migration.execute/1` SQL strings opted into pglogical
+  replication, for migrations that must replicate DDL they do not author themselves
+  (for example `Oban.Migration.up/1`, which creates types, functions and triggers
+  through raw SQL).
+
+  The flag is scoped to the calling process, which is the same process the migration
+  runner flushes DDL from. Pending DDL is flushed before the block returns, because
+  `Ecto.Migrator` would otherwise execute it after `up/0` or `down/0` has returned,
+  with the flag already cleared.
+  """
+  @spec with_replicated_execute((-> result)) :: result when result: term()
+  def with_replicated_execute(fun) when is_function(fun, 0) do
+    previous = Process.put(@replicate_execute_key, true)
+
+    try do
+      result = fun.()
+      flush_pending_ddl()
+      result
+    after
+      if previous == nil do
+        Process.delete(@replicate_execute_key)
+      else
+        Process.put(@replicate_execute_key, previous)
+      end
+    end
+  end
+
+  @spec replicate_execute?() :: boolean()
+  def replicate_execute?, do: Process.get(@replicate_execute_key, false)
+
+  defp flush_pending_ddl do
+    if Process.get(:ecto_migration), do: Ecto.Migration.Runner.flush()
+
+    :ok
   end
 end

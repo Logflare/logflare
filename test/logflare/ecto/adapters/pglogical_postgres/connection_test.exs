@@ -52,23 +52,27 @@ defmodule Logflare.Ecto.Adapters.PglogicalPostgres.ConnectionTest do
       refute sql =~ "pglogical.replicate_ddl_command"
       assert sql =~ "ALTER SYSTEM SET wal_level = 'logical'"
     end
-  end
 
-  describe "replicated_execute/1" do
-    test "wraps a raw SQL string in pglogical.replicate_ddl_command" do
+    test "wraps raw execute/1 SQL strings inside with_replicated_execute/1" do
       Application.put_env(:logflare, Migrator, replication_sets: ["my_set"])
 
-      sql = Connection.replicated_execute("alter table sources replica identity full")
+      [sql] =
+        Migrator.with_replicated_execute(fn ->
+          Connection.execute_ddl("CREATE TYPE oban_job_state AS ENUM ('available')")
+        end)
 
       assert sql =~ "SELECT pglogical.replicate_ddl_command($lf_ddl$"
-      assert sql =~ "alter table sources replica identity full"
+      assert sql =~ "CREATE TYPE oban_job_state AS ENUM ('available')"
       assert sql =~ "ARRAY['my_set']::text[]"
     end
 
-    test "returns the raw SQL unwrapped when no replication sets are configured" do
+    test "does not wrap raw execute/1 SQL strings inside with_replicated_execute/1 when no replication sets are configured" do
       Application.put_env(:logflare, Migrator, replication_sets: [])
 
-      sql = Connection.replicated_execute("alter table sources replica identity full")
+      [sql] =
+        Migrator.with_replicated_execute(fn ->
+          Connection.execute_ddl("alter table sources replica identity full")
+        end)
 
       assert sql == "alter table sources replica identity full"
     end

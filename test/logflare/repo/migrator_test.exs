@@ -56,4 +56,43 @@ defmodule Logflare.Repo.MigratorTest do
       assert Migrator.replication_sets() == ["a", "b"]
     end
   end
+
+  describe "with_replicated_execute/1" do
+    test "is disabled by default" do
+      refute Migrator.replicate_execute?()
+    end
+
+    test "enables the flag inside the block and restores it after" do
+      assert Migrator.with_replicated_execute(fn ->
+               assert Migrator.replicate_execute?()
+               :done
+             end) == :done
+
+      refute Migrator.replicate_execute?()
+    end
+
+    test "does not flush when called outside a migration runner" do
+      refute Process.get(:ecto_migration)
+
+      assert Migrator.with_replicated_execute(fn -> :ok end) == :ok
+    end
+
+    test "restores the flag when the block raises" do
+      assert_raise RuntimeError, fn ->
+        Migrator.with_replicated_execute(fn -> raise "boom" end)
+      end
+
+      refute Migrator.replicate_execute?()
+    end
+
+    test "supports nesting" do
+      Migrator.with_replicated_execute(fn ->
+        Migrator.with_replicated_execute(fn -> assert Migrator.replicate_execute?() end)
+
+        assert Migrator.replicate_execute?()
+      end)
+
+      refute Migrator.replicate_execute?()
+    end
+  end
 end
