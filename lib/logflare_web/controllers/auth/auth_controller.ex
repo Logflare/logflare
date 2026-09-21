@@ -12,8 +12,6 @@ defmodule LogflareWeb.AuthController do
 
   require Logger
 
-  @signup_domain_not_allowed_message "New accounts are restricted to approved email domains."
-
   def logout(conn, _params) do
     conn
     |> configure_session(drop: true)
@@ -144,15 +142,15 @@ defmodule LogflareWeb.AuthController do
 
       signin(conn, auth_params)
     else
-      reject_signup_domain(conn)
+      reject_signup_domain(conn, ~p"/dashboard")
     end
   end
 
-  @spec reject_signup_domain(Plug.Conn.t()) :: Plug.Conn.t()
-  defp reject_signup_domain(conn) do
+  @spec reject_signup_domain(Plug.Conn.t(), String.t()) :: Plug.Conn.t()
+  defp reject_signup_domain(conn, redirect_to \\ ~p"/auth/login") do
     conn
-    |> put_flash(:error, @signup_domain_not_allowed_message)
-    |> redirect(to: Routes.auth_path(conn, :login))
+    |> put_flash(:error, SignupDomains.rejection_message())
+    |> redirect(to: redirect_to)
   end
 
   defp signin(conn, auth_params) do

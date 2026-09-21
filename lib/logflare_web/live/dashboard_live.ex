@@ -6,7 +6,9 @@ defmodule LogflareWeb.DashboardLive do
   alias Logflare.Sources
   alias Logflare.Sources.UserMetricsPoller
   alias Logflare.Teams
+  alias Logflare.TeamUsers.TeamUser
   alias Logflare.Users
+  alias Logflare.Users.SignupDomains
   alias LogflareWeb.DashboardLive.DashboardComponents
   alias LogflareWeb.DashboardLive.DashboardSourceComponents
   alias LogflareWeb.Helpers.Forms
@@ -19,7 +21,7 @@ defmodule LogflareWeb.DashboardLive do
     can_create_home_team? =
       case socket.assigns[:team_user] do
         nil -> false
-        team_user -> is_nil(Teams.get_home_team(team_user))
+        team_user -> home_team_creatable?(team_user)
       end
 
     socket =
@@ -90,8 +92,7 @@ defmodule LogflareWeb.DashboardLive do
          |> redirect(to: ~p"/dashboard")}
 
       {:error, :signup_domain_not_allowed} ->
-        {:noreply,
-         put_flash(socket, :error, "New accounts are restricted to approved email domains.")}
+        {:noreply, put_flash(socket, :error, SignupDomains.rejection_message())}
 
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Could not create home team.")}
@@ -194,6 +195,11 @@ defmodule LogflareWeb.DashboardLive do
   end
 
   # groups services by name, ungrouped sources last.
+  @spec home_team_creatable?(TeamUser.t()) :: boolean()
+  defp home_team_creatable?(%TeamUser{} = team_user) do
+    is_nil(Teams.get_home_team(team_user)) and SignupDomains.allowed?(team_user.email)
+  end
+
   defp grouped_sources(sources) do
     sources |> Enum.group_by(fn source -> source.service_name end) |> Enum.reverse()
   end

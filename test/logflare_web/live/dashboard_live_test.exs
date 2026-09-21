@@ -228,6 +228,15 @@ defmodule LogflareWeb.DashboardLiveTest do
       refute view |> has_element?("#members button[phx-click='create_home_team']")
     end
 
+    test "hides 'Create your home team' button when the email domain is not allowed for signups",
+         %{conn: conn, other_team: other_team} do
+      Mimic.stub(Logflare.Users.SignupDomains, :allowed_domains, fn -> ["not-the-domain.test"] end)
+
+      {:ok, view, _html} = live(conn, ~p"/dashboard?t=#{other_team.id}")
+
+      refute view |> has_element?("#members button[phx-click='create_home_team']")
+    end
+
     test "clicking 'Create your home team' creates a User + Team and redirects to /dashboard",
          %{conn: conn, other_team: other_team, team_user: team_user} do
       {:ok, view, _html} = live(conn, ~p"/dashboard?t=#{other_team.id}")

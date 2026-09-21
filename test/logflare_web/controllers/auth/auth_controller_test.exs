@@ -184,7 +184,11 @@ defmodule LogflareWeb.AuthControllerTest do
         |> put_session(:current_email, team_user.email)
         |> post("/account")
 
-      assert redirected_to(conn, 302) == ~p"/auth/login"
+      assert redirected_to(conn, 302) == ~p"/dashboard"
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~
+               "restricted to approved email domains"
+
       refute Logflare.Users.get_by(email: team_user.email)
     end
   end
