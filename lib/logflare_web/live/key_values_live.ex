@@ -136,6 +136,10 @@ defmodule LogflareWeb.KeyValuesLive do
   end
 
   defp paginate(query, page_num) do
+    Repo.with_replica(fn -> do_paginate(query, page_num) end)
+  end
+
+  defp do_paginate(query, page_num) do
     import Ecto.Query, only: [offset: 2, limit: 2]
 
     total = Repo.aggregate(query, :count)

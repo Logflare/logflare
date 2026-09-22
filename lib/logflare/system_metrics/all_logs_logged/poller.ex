@@ -30,10 +30,12 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
   end
 
   def total_logs_logged_cluster do
-    SystemMetric
-    |> Repo.all()
-    |> Enum.map(fn x -> x.all_logs_logged end)
-    |> Enum.sum()
+    Repo.with_replica(fn ->
+      SystemMetric
+      |> Repo.all()
+      |> Enum.map(fn x -> x.all_logs_logged end)
+      |> Enum.sum()
+    end)
   end
 
   def init(_state) do
