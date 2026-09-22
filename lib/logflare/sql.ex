@@ -12,7 +12,7 @@ defmodule Logflare.Sql do
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Endpoints
   alias Logflare.SingleTenant
-  alias Logflare.Sources
+  alias Logflare.Sources.Catalog.Cache, as: SourceCatalog
   alias Logflare.Sql.AstUtils
   alias Logflare.Sql.DialectTransformer
   alias Logflare.Sql.DialectTranslation
@@ -280,7 +280,7 @@ defmodule Logflare.Sql do
       end
 
     sql_dialect = to_dialect(language)
-    sources = Sources.list_sources_by_user(user)
+    sources = SourceCatalog.list_by_user(user)
     source_mapping = source_mapping(sources)
 
     Logger.metadata(query_string: query, user_id: user.id)
@@ -310,7 +310,7 @@ defmodule Logflare.Sql do
   # postgres (no sandboxed query support)
   def transform(:pg_sql = language, query, %User{} = user) do
     sql_dialect = to_dialect(language)
-    sources = Sources.list_sources_by_user(user)
+    sources = SourceCatalog.list_by_user(user)
     source_mapping = source_mapping(sources)
 
     Logger.metadata(query_string: query, user_id: user.id)
@@ -341,7 +341,7 @@ defmodule Logflare.Sql do
         other when is_tuple(other) -> other
       end
 
-    sources = Sources.list_sources_by_user(user)
+    sources = SourceCatalog.list_by_user(user)
     source_mapping = source_mapping(sources)
 
     Logger.metadata(query_string: query, user_id: user.id)
@@ -400,7 +400,7 @@ defmodule Logflare.Sql do
           {:ok, %{String.t() => String.t()}} | {:error, String.t()}
   def sources(query, user, opts \\ []) when is_list(opts) do
     dialect = Keyword.get(opts, :dialect, "bigquery")
-    sources = Sources.list_sources_by_user(user)
+    sources = SourceCatalog.list_by_user(user)
     source_names = for s <- sources, do: s.name
 
     source_mapping =
@@ -544,7 +544,7 @@ defmodule Logflare.Sql do
 
   def source_mapping(query, user_id, mapping, opts) when is_list(opts) and is_integer(user_id) do
     dialect = Keyword.get(opts, :dialect, "bigquery")
-    sources = Sources.list_sources_by_user(user_id)
+    sources = SourceCatalog.list_by_user(user_id)
 
     with {:ok, ast} <- Parser.parse(dialect, query) do
       ast
