@@ -122,7 +122,7 @@
             {number_input(f_config, :sample_percentage,
               class: "form-control",
               id: "webhook-sample-percentage",
-              min: 0,
+              min: 0.000001,
               max: 100,
               step: "any",
               placeholder: Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.default_sample_percentage()

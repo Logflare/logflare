@@ -97,10 +97,15 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor do
 
   @spec sample(Backend.t(), [LogEvent.t()], number()) :: [LogEvent.t()]
   defp sample(backend, log_events, percentage) do
-    kept = Enum.filter(log_events, fn _event -> :rand.uniform() * 100 < percentage end)
+    {kept, dropped} =
+      Enum.reduce(log_events, {[], 0}, fn event, {kept, dropped} ->
+        if :rand.uniform() * 100 < percentage,
+          do: {[event | kept], dropped},
+          else: {kept, dropped + 1}
+      end)
 
-    emit_sampled_drop(backend, length(log_events) - length(kept))
-    kept
+    emit_sampled_drop(backend, dropped)
+    Enum.reverse(kept)
   end
 
   @spec emit_sampled_drop(Backend.t(), non_neg_integer()) :: :ok

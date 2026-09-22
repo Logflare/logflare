@@ -128,7 +128,7 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptorTest do
   describe "pre_ingest/3" do
     setup do
       source = insert(:source, user: insert(:user))
-      events = for _n <- 1..10_000, do: build(:log_event, source: source)
+      events = for _n <- 1..5, do: build(:log_event, source: source)
       ref = :telemetry_test.attach_event_handlers(self(), [@drop_sampled_event])
       on_exit(fn -> :telemetry.detach(ref) end)
 
@@ -157,15 +157,16 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptorTest do
 
     test "keeps about the configured percentage and reports the dropped count", %{
       source: source,
-      events: events,
       ref: ref
     } do
       backend = %Backend{id: 1, type: :consolidated_webhook, config: %{sample_percentage: 50.0}}
+      events = for _n <- 1..10_000, do: build(:log_event, source: source)
 
       kept = @subject.pre_ingest(source, backend, events)
 
       assert length(kept) in 4_500..5_500
       assert kept -- events == []
+      assert kept == Enum.filter(events, &(&1 in kept))
 
       dropped = length(events) - length(kept)
 
