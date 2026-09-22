@@ -158,7 +158,7 @@ defmodule Logflare.Endpoints.CacheTest do
       assert Logflare.Repo.update_all(Endpoints.EndpointQuery, set: [cache_duration_seconds: 0]) ==
                {2, nil}
 
-      assert Logflare.ContextCache.bust_keys([{Logflare.Endpoints, endpoint.id}]) == {:ok, 1}
+      assert Logflare.ContextCache.bust_keys([{Logflare.Endpoints, endpoint.id}]) == {:ok, 2}
 
       monitor_ref = Process.monitor(cache_pid)
       send(cache_pid, :refresh)
