@@ -19,6 +19,7 @@ defmodule Logflare.ContextCache.CacheBuster do
   alias Logflare.SavedSearches
   alias Logflare.SourceSchemas
   alias Logflare.Sources
+  alias Logflare.Sources.Catalog
   alias Logflare.TeamUsers
   alias Logflare.Users
   alias Logflare.ContextCache.CacheBusterWorker
@@ -60,11 +61,14 @@ defmodule Logflare.ContextCache.CacheBuster do
   def handle_info(%Transaction{changes: changes} = transaction, state) do
     Logger.debug("WAL record received from pubsub: #{inspect(transaction)}")
 
-    for record <- changes,
-        record = handle_record(record),
-        record != :noop do
-      record
-    end
+    changes
+    |> Enum.flat_map(fn change ->
+      case handle_record(change) do
+        :noop -> []
+        records when is_list(records) -> records
+        record -> [record]
+      end
+    end)
     |> tap(fn
       [] ->
         nil
@@ -76,6 +80,17 @@ defmodule Logflare.ContextCache.CacheBuster do
     end)
 
     {:noreply, state}
+  end
+
+  defp handle_record(%UpdatedRecord{
+         relation: {_schema, "sources"},
+         record: %{"id" => id, "user_id" => user_id}
+       })
+       when is_binary(id) and is_binary(user_id) do
+    [
+      {Sources, String.to_integer(id)},
+      {Catalog, [user_id: String.to_integer(user_id)]}
+    ]
   end
 
   defp handle_record(%UpdatedRecord{
@@ -202,9 +217,11 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"id" => _id, "user_id" => user_id}
        })
        when is_binary(user_id) do
-    # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
-    {Sources, :not_found}
-    # {Users, String.to_integer(user_id)}
+    # Bust both negative source lookups and the owner's cached catalog.
+    [
+      {Sources, :not_found},
+      {Catalog, [user_id: String.to_integer(user_id)]}
+    ]
   end
 
   defp handle_record(%NewRecord{
@@ -259,6 +276,17 @@ defmodule Logflare.ContextCache.CacheBuster do
        })
        when is_binary(id) do
     {Billing, String.to_integer(id)}
+  end
+
+  defp handle_record(%DeletedRecord{
+         relation: {_schema, "sources"},
+         old_record: %{"id" => id, "user_id" => user_id}
+       })
+       when is_binary(id) and is_binary(user_id) do
+    [
+      {Sources, String.to_integer(id)},
+      {Catalog, [user_id: String.to_integer(user_id)]}
+    ]
   end
 
   defp handle_record(%DeletedRecord{

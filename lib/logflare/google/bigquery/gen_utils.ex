@@ -3,15 +3,14 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   Generic utils for BigQuery.
   """
 
-  import Ecto.Query
   import Logflare.Utils.Guards
 
   alias GoogleApi.BigQuery.V2.Connection
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.JSON
-  alias Logflare.Repo
   alias Logflare.Sources
+  alias Logflare.Sources.Catalog.Cache, as: SourceCatalog
   alias Logflare.Sources.Source
   alias Logflare.User
   alias Logflare.Users
@@ -294,13 +293,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
       %{"uuid" => uuid} ->
         uuid = String.replace(uuid, "_", "-")
 
-        query =
-          from(s in Source,
-            where: s.token == ^uuid and s.user_id == ^user_id,
-            select: s.name
-          )
-
-        case Repo.one(query) do
+        case SourceCatalog.source_name_by_token(user_id, uuid) do
           nil -> message
           source_name -> String.replace(message, regex, source_name)
         end
