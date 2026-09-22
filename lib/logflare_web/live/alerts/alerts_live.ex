@@ -531,22 +531,24 @@ defmodule LogflareWeb.AlertsLive do
   end
 
   defp paginate_past_jobs(alert_query_id, page_num) do
-    query = Alerting.past_jobs_query(alert_query_id)
-    total = Repo.aggregate(query, :count)
-    total_pages = max(ceil(total / @past_jobs_page_size), 1)
-    offset_val = (page_num - 1) * @past_jobs_page_size
+    Repo.with_replica(fn ->
+      query = Alerting.past_jobs_query(alert_query_id)
+      total = Repo.aggregate(query, :count)
+      total_pages = max(ceil(total / @past_jobs_page_size), 1)
+      offset_val = (page_num - 1) * @past_jobs_page_size
 
-    entries =
-      query
-      |> offset(^offset_val)
-      |> limit(^@past_jobs_page_size)
-      |> Repo.all()
+      entries =
+        query
+        |> offset(^offset_val)
+        |> limit(^@past_jobs_page_size)
+        |> Repo.all()
 
-    %{
-      entries: entries,
-      page_number: page_num,
-      total_pages: total_pages,
-      total_entries: total
-    }
+      %{
+        entries: entries,
+        page_number: page_num,
+        total_pages: total_pages,
+        total_entries: total
+      }
+    end)
   end
 end

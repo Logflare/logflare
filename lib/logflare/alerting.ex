@@ -387,13 +387,15 @@ defmodule Logflare.Alerting do
   """
   @spec list_execution_history(integer()) :: [Oban.Job.t()]
   def list_execution_history(alert_query_id) do
-    from(j in Oban.Job,
-      where: j.worker == "Logflare.Alerting.AlertWorker",
-      where: fragment("?->>'alert_query_id' = ?", j.args, ^to_string(alert_query_id)),
-      order_by: [desc: j.scheduled_at],
-      limit: 50
-    )
-    |> Repo.all()
+    Repo.with_replica(fn ->
+      from(j in Oban.Job,
+        where: j.worker == "Logflare.Alerting.AlertWorker",
+        where: fragment("?->>'alert_query_id' = ?", j.args, ^to_string(alert_query_id)),
+        order_by: [desc: j.scheduled_at],
+        limit: 50
+      )
+      |> Repo.all()
+    end)
   end
 
   @doc """
@@ -401,13 +403,15 @@ defmodule Logflare.Alerting do
   """
   @spec list_future_jobs(integer()) :: [Oban.Job.t()]
   def list_future_jobs(alert_query_id) do
-    from(j in Oban.Job,
-      where: j.worker == "Logflare.Alerting.AlertWorker",
-      where: fragment("?->>'alert_query_id' = ?", j.args, ^to_string(alert_query_id)),
-      where: j.state in @future_job_states,
-      order_by: [asc: j.scheduled_at]
-    )
-    |> Repo.all()
+    Repo.with_replica(fn ->
+      from(j in Oban.Job,
+        where: j.worker == "Logflare.Alerting.AlertWorker",
+        where: fragment("?->>'alert_query_id' = ?", j.args, ^to_string(alert_query_id)),
+        where: j.state in @future_job_states,
+        order_by: [asc: j.scheduled_at]
+      )
+      |> Repo.all()
+    end)
   end
 
   @doc """
