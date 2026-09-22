@@ -7,7 +7,9 @@ defmodule Logflare.Rules.CacheWarmer do
   use Cachex.Warmer
 
   @impl true
-  def execute(_state) do
+  def execute(_state), do: Repo.with_replica(&warm/0)
+
+  defp warm do
     sources =
       from(s in Source,
         where: s.log_events_updated_at >= ago(2, "hour"),

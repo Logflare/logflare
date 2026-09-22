@@ -6,7 +6,9 @@ defmodule Logflare.SourceSchemas.CacheWarmer do
 
   use Cachex.Warmer
   @impl true
-  def execute(_state) do
+  def execute(_state), do: Repo.with_replica(&warm/0)
+
+  defp warm do
     # Get source schemas for sources that have been active in the last day
     source_schemas =
       from(ss in SourceSchema,
