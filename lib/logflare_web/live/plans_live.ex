@@ -219,7 +219,7 @@ defmodule LogflareWeb.PlansLive do
       |> Users.preload_sources()
       |> Users.preload_billing_account()
 
-    plan = Billing.get_plan_by_user(user)
+    plan = Billing.Cache.get_plan_by_user(user)
     assign(socket, plan: plan, user: user)
   end
 end
