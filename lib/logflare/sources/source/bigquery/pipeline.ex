@@ -18,7 +18,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.Backends.BufferProducer
   alias Logflare.Sources.Source.BigQuery.Schema
-  alias Logflare.Sources.Source.BigQuery.SchemaUpdateSampler
+  alias Logflare.Sources.Source.RateSampler
   alias Logflare.Sources.Source.Supervisor
   alias Logflare.Sources
   alias Logflare.Users
@@ -492,7 +492,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     # these things a max of like 5 times and after that send them to the rejected pile.
 
     # Random sample if local ingest rate is above a certain level.
-    if source && not source.lock_schema && SchemaUpdateSampler.sample?(source.token) do
+    if source && not source.lock_schema && RateSampler.sample?(source.token) do
       :ok =
         Backends.via_source(source, {Schema, Map.get(context, :backend_id)})
         |> Schema.update(log_event, source)
