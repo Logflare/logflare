@@ -50,28 +50,32 @@ defmodule Logflare.Alerting.Cache do
       |> Enum.map(&{:list_alert_queries_by_user_id, [&1]})
 
     Cachex.execute(__MODULE__, fn cache ->
-      Enum.reduce(entries, 0, fn key, acc ->
-        case Cachex.take(cache, key) do
-          {:ok, nil} -> acc
-          {:ok, _value} -> acc + 1
-        end
-      end)
+      Enum.reduce(entries, 0, fn key, acc -> acc + delete_and_count(cache, key) end)
     end)
   end
 
   defp fetch_list_by_user_id(user_id) do
     cache_key = {:list_alert_queries_by_user_id, [user_id]}
 
-    case Cachex.fetch(__MODULE__, cache_key, fn ->
-           alerts = Repo.with_replica(fn -> Alerting.list_alert_queries_by_user_id(user_id) end)
-
-           if alerts == [] do
-             {:ignore, {:cached, alerts}}
-           else
-             {:commit, {:cached, alerts}}
-           end
-         end) do
+    case Cachex.fetch(__MODULE__, cache_key, fn -> fetch_from_repo(user_id) end) do
       {_status, {:cached, alerts}} -> alerts
+    end
+  end
+
+  defp fetch_from_repo(user_id) do
+    alerts = Repo.with_replica(fn -> Alerting.list_alert_queries_by_user_id(user_id) end)
+
+    if alerts == [] do
+      {:ignore, {:cached, alerts}}
+    else
+      {:commit, {:cached, alerts}}
+    end
+  end
+
+  defp delete_and_count(cache, key) do
+    case Cachex.take(cache, key) do
+      {:ok, nil} -> 0
+      {:ok, _value} -> 1
     end
   end
 end
