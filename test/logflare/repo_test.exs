@@ -1,6 +1,7 @@
 defmodule Logflare.RepoTest do
   use ExUnit.Case, async: false
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias Logflare.Repo
   alias Logflare.Repo.Replicas
 
@@ -82,8 +83,8 @@ defmodule Logflare.RepoTest do
 
     test "keeps reads on the primary inside an existing transaction" do
       start_read_replicas(["127.0.0.1"])
-      owner = Ecto.Adapters.SQL.Sandbox.start_owner!(Repo, shared: true)
-      on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(owner) end)
+      owner = Sandbox.start_owner!(Repo, shared: true)
+      on_exit(fn -> Sandbox.stop_owner(owner) end)
 
       assert {:ok, Repo} = Repo.transaction(fn -> Repo.with_replica(&Repo.get_dynamic_repo/0) end)
     end
