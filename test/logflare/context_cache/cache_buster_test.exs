@@ -8,6 +8,7 @@ defmodule Logflare.ContextCache.CacheBusterTest do
   alias Logflare.Backends
   alias Logflare.ContextCache
   alias Logflare.ContextCache.CacheBuster
+  alias Logflare.Endpoints
   alias Logflare.Sources
   alias Logflare.Sources.Catalog
 
@@ -21,7 +22,12 @@ defmodule Logflare.ContextCache.CacheBusterTest do
     end
 
     Cachex.clear!(Catalog.Cache)
-    on_exit(fn -> Cachex.clear!(Catalog.Cache) end)
+    Cachex.clear!(Endpoints.Cache)
+
+    on_exit(fn ->
+      Cachex.clear!(Catalog.Cache)
+      Cachex.clear!(Endpoints.Cache)
+    end)
 
     [source: source, user: user]
   end
@@ -120,6 +126,33 @@ defmodule Logflare.ContextCache.CacheBusterTest do
     backend_id = backend.id
     assert_receive {:busted, [{Backends, ^backend_id}]}, 500
     refute_receive {:refreshed, _user_id}, 300
+  end
+
+  test "endpoint inserts bust negative lookups and owner catalogs", %{user: %{id: user_id} = user} do
+    endpoint = insert(:endpoint, user: user)
+    Endpoints.Cache.list_by_user_id(user_id)
+
+    change = %NewRecord{
+      relation: {"public", "endpoint_queries"},
+      record: %{"id" => Integer.to_string(endpoint.id), "user_id" => Integer.to_string(user_id)}
+    }
+
+    test_pid = self()
+
+    Mimic.expect(ContextCache, :bust_keys, fn arg ->
+      Mimic.call_original(ContextCache, :bust_keys, [arg])
+      send(test_pid, arg)
+    end)
+
+    send(CacheBuster, %Transaction{changes: [change]})
+
+    assert_receive [
+                     {Endpoints, :not_found},
+                     {Endpoints, [user_id: ^user_id]}
+                   ],
+                   500
+
+    assert Cachex.size!(Endpoints.Cache) == 0
   end
 
   test "source updates bust the entity and owner catalog", %{

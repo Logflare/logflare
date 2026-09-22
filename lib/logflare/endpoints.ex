@@ -748,7 +748,7 @@ defmodule Logflare.Endpoints do
     lql_param = Map.get(params, "lql")
 
     endpoints =
-      list_endpoints_by(user_id: endpoint_query.user_id)
+      Cache.list_by_user_id(user_id)
       |> Enum.filter(&(&1.id != endpoint_query.id))
 
     alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
@@ -979,7 +979,7 @@ defmodule Logflare.Endpoints do
     lql_param = Map.get(params, "lql")
 
     endpoints =
-      list_endpoints_by(user_id: endpoint_query.user_id)
+      Cache.list_by_user_id(user_id)
       |> Enum.filter(&(&1.id != endpoint_query.id))
 
     alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
