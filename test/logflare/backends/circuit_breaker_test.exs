@@ -122,6 +122,7 @@ defmodule Logflare.Backends.CircuitBreakerTest do
                       %{failures: 0}, metadata}
 
       assert metadata.backend_id == backend.id
+      assert metadata.backend_type == :clickhouse
       assert metadata.reason == :forced
     end
 
