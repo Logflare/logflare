@@ -24,6 +24,7 @@ Code.require_file("support/clickhouse_pipeline_bench_data.exs", __DIR__)
 
 alias Broadway.Message
 alias Logflare.Backends.Adaptor.WebhookAdaptor
+alias Logflare.Backends.Backend
 alias Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.EncodedEvent
 alias Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.Pipeline
 alias Logflare.Backends.IngestEventQueue
@@ -42,14 +43,30 @@ formats = parse_csv.("FORMATS", "json", & &1)
 benchee_time = System.get_env("BENCH_TIME", "5") |> String.to_integer()
 benchee_warmup = System.get_env("BENCH_WARMUP", "2") |> String.to_integer()
 
-webhook_batch = fn %{events: events, queue_key: key, queue_tid: tid} ->
+# transform_config/1 installs the :format_batch closure that makes format_payload/2
+# emit NDJSON. Without it the webhook scenario silently encodes a JSON array for
+# every format and the ndjson rows compare unlike work.
+webhook_config = fn format ->
+  WebhookAdaptor.transform_config(%Backend{
+    id: 0,
+    config: %{url: "https://bench.invalid", format: format, headers: %{}}
+  })
+end
+
+# format_payload/2 returns an encoded binary for NDJSON and a list of bodies for JSON.
+encode_body = fn
+  body when is_binary(body) -> body
+  bodies -> Jason.encode!(bodies)
+end
+
+webhook_batch = fn %{events: events, queue_key: key, queue_tid: tid, webhook_config: config} ->
   :ets.delete_all_objects(tid)
   :ok = IngestEventQueue.add_to_table({key, tid}, events)
   {:ok, popped} = IngestEventQueue.pop_pending(key, length(events))
 
-  %{}
+  config
   |> WebhookAdaptor.format_payload(popped)
-  |> Jason.encode!()
+  |> encode_body.()
   |> :zlib.gzip()
 end
 
@@ -98,15 +115,15 @@ inputs =
       queue_key: queue_key,
       queue_tid: queue_tid,
       backend_id: backend_id,
-      config: %{format: format}
+      config: %{format: format},
+      webhook_config: webhook_config.(format)
     }
 
     consolidated_body = consolidated_batch.(input)
     consolidated_events = decode.(consolidated_body, format)
 
-    if format == "json" and
-         Enum.sort(decode.(webhook_batch.(input), format)) != Enum.sort(consolidated_events) do
-      raise "webhook and consolidated_webhook payloads differ for batch=#{batch_size}"
+    if Enum.sort(decode.(webhook_batch.(input), format)) != Enum.sort(consolidated_events) do
+      raise "webhook and consolidated_webhook payloads differ for #{format} batch=#{batch_size}"
     end
 
     if length(consolidated_events) != batch_size do
@@ -124,19 +141,11 @@ inputs =
 
 IO.puts("")
 
-scenarios =
-  if "json" in formats do
-    %{"webhook: pop events + encode batch + gzip" => webhook_batch}
-  else
-    %{}
-  end
-
 Benchee.run(
-  Map.put(
-    scenarios,
-    "consolidated webhook: pop pointers + encode each + join + gzip + ack",
-    consolidated_batch
-  ),
+  %{
+    "webhook: pop events + encode batch + gzip" => webhook_batch,
+    "consolidated webhook: pop pointers + encode each + join + gzip + ack" => consolidated_batch
+  },
   inputs: inputs,
   time: benchee_time,
   warmup: benchee_warmup,
