@@ -751,7 +751,7 @@ defmodule Logflare.Endpoints do
       Cache.list_by_user_id(user_id)
       |> Enum.filter(&(&1.id != endpoint_query.id))
 
-    alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
+    alerts = Alerting.Cache.list_by_user_id(user_id)
 
     with {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
          :ok <- validate_query_override(endpoint_query, params),
@@ -982,7 +982,7 @@ defmodule Logflare.Endpoints do
       Cache.list_by_user_id(user_id)
       |> Enum.filter(&(&1.id != endpoint_query.id))
 
-    alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
+    alerts = Alerting.Cache.list_by_user_id(user_id)
 
     with {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
          {:ok, expanded_query} <-
