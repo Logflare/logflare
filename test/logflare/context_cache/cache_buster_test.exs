@@ -5,6 +5,7 @@ defmodule Logflare.ContextCache.CacheBusterTest do
   alias Cainophile.Changes.NewRecord
   alias Cainophile.Changes.Transaction
   alias Cainophile.Changes.UpdatedRecord
+  alias Logflare.Alerting
   alias Logflare.ContextCache
   alias Logflare.ContextCache.CacheBuster
   alias Logflare.Endpoints
@@ -20,10 +21,12 @@ defmodule Logflare.ContextCache.CacheBusterTest do
       start_supervised!(child_spec)
     end
 
+    Cachex.clear!(Alerting.Cache)
     Cachex.clear!(Catalog.Cache)
     Cachex.clear!(Endpoints.Cache)
 
     on_exit(fn ->
+      Cachex.clear!(Alerting.Cache)
       Cachex.clear!(Catalog.Cache)
       Cachex.clear!(Endpoints.Cache)
     end)
@@ -50,6 +53,49 @@ defmodule Logflare.ContextCache.CacheBusterTest do
     send(CacheBuster, %Transaction{changes: [change]})
     assert_receive [{Sources, ^source_id}], 500
     assert Cachex.size!(Sources.Cache) == 0
+  end
+
+  test "alert changes bust alert catalogs", %{user: %{id: user_id} = user} do
+    alert = insert(:alert, user: user)
+    Alerting.Cache.list_by_user_id(user_id)
+
+    alert_id = alert.id
+    id = Integer.to_string(alert_id)
+    user_id_string = Integer.to_string(user_id)
+
+    changes = [
+      %UpdatedRecord{
+        relation: {"public", "alert_queries"},
+        record: %{"id" => id},
+        old_record: %{}
+      },
+      %NewRecord{
+        relation: {"public", "alert_queries"},
+        record: %{"id" => id, "user_id" => user_id_string}
+      },
+      %DeletedRecord{
+        relation: {"public", "alert_queries"},
+        old_record: %{"id" => id}
+      }
+    ]
+
+    test_pid = self()
+
+    Mimic.expect(ContextCache, :bust_keys, fn arg ->
+      Mimic.call_original(ContextCache, :bust_keys, [arg])
+      send(test_pid, arg)
+    end)
+
+    send(CacheBuster, %Transaction{changes: changes})
+
+    assert_receive [
+                     {Alerting, ^alert_id},
+                     {Alerting, [user_id: ^user_id]},
+                     {Alerting, ^alert_id}
+                   ],
+                   500
+
+    assert Cachex.size!(Alerting.Cache) == 0
   end
 
   test "endpoint inserts bust negative lookups and owner catalogs", %{user: %{id: user_id} = user} do

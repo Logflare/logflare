@@ -9,6 +9,7 @@ defmodule Logflare.ContextCache.CacheBuster do
   alias Cainophile.Changes.NewRecord
   alias Cainophile.Changes.Transaction
   alias Cainophile.Changes.UpdatedRecord
+  alias Logflare.Alerting
   alias Logflare.Auth
   alias Logflare.Backends
   alias Logflare.Billing
@@ -174,6 +175,14 @@ defmodule Logflare.ContextCache.CacheBuster do
   end
 
   defp handle_record(%UpdatedRecord{
+         relation: {_schema, "alert_queries"},
+         record: %{"id" => id}
+       })
+       when is_binary(id) do
+    {Alerting, String.to_integer(id)}
+  end
+
+  defp handle_record(%UpdatedRecord{
          relation: {_schema, "saved_searches"},
          record: %{"source_id" => source_id}
        }) do
@@ -213,6 +222,14 @@ defmodule Logflare.ContextCache.CacheBuster do
        })
        when is_binary(source_id) do
     {SavedSearches, [source_id: String.to_integer(source_id)]}
+  end
+
+  defp handle_record(%NewRecord{
+         relation: {_schema, "alert_queries"},
+         record: %{"user_id" => user_id}
+       })
+       when is_binary(user_id) do
+    {Alerting, [user_id: String.to_integer(user_id)]}
   end
 
   defp handle_record(%NewRecord{
@@ -314,6 +331,14 @@ defmodule Logflare.ContextCache.CacheBuster do
        })
        when is_binary(id) do
     {Endpoints, String.to_integer(id)}
+  end
+
+  defp handle_record(%DeletedRecord{
+         relation: {_schema, "alert_queries"},
+         old_record: %{"id" => id}
+       })
+       when is_binary(id) do
+    {Alerting, String.to_integer(id)}
   end
 
   defp handle_record(%DeletedRecord{
