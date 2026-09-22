@@ -633,19 +633,17 @@ end
 
 # pglogical resets search_path when applying replicated DDL, so the migration
 # adaptor has to restore whatever DB_SCHEMA puts on the repo's connections.
-# Validated as identifiers here because DDL cannot use bind parameters.
+# DB_SCHEMA is only inspected when pglogical DDL replication is enabled; without
+# it, DB_SCHEMA keeps its existing pass-through behaviour (see :after_connect above).
+# Validated as identifiers because DDL cannot use bind parameters.
 pglogical_schema =
-  "DB_SCHEMA"
-  |> System.get_env("public")
-  |> String.split(",", trim: true)
-  |> Enum.map(&String.trim/1)
-  |> Enum.reject(&(&1 == ""))
-
-for schema <- pglogical_schema do
-  unless Regex.match?(~r/^[A-Za-z_][A-Za-z0-9_]*$/, schema) do
-    raise "DB_SCHEMA contains an invalid schema name: #{inspect(schema)}"
+  if pglogical_replication_sets == [] do
+    []
+  else
+    "DB_SCHEMA"
+    |> System.get_env("public")
+    |> Utils.Postgres.parse_identifier_list!()
   end
-end
 
 config :logflare, Logflare.Repo.Migrator,
   replication_sets: pglogical_replication_sets,
