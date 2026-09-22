@@ -153,6 +153,30 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.PipelineTest do
       assert %EncodedEvent{json: ^json} = IngestEventQueue.lookup_event(gen_tid, event.id)
     end
 
+    test "reuses an event that was already encoded", %{source: source, backend: backend} do
+      event = build(:log_event, source: source, message: "already encoded")
+      gen_tid = setup_generation_events([event])
+      stale_pointer = pointer_for(event, gen_tid)
+      :ets.insert(gen_tid, {event.id, %EncodedEvent{pointer: stale_pointer, json: ~s({"a":1})}})
+
+      message = pointer_message(event, gen_tid, backend.id, [])
+
+      assert %Message{data: %EncodedEvent{json: ~s({"a":1}), pointer: pointer}} =
+               Pipeline.handle_message(:default, message, %{})
+
+      assert pointer == message.data
+    end
+
+    test "fails a message whose data is not a pointer", %{backend: backend} do
+      message = %Message{
+        data: :unexpected,
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id, in_flight_ref: nil}}
+      }
+
+      assert %Message{status: {:failed, :not_found}} =
+               Pipeline.handle_message(:default, message, %{})
+    end
+
     test "fails one message when the event is missing", %{source: source, backend: backend} do
       event = build(:log_event, source: source)
       gen_tid = setup_generation_events([])

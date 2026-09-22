@@ -22,10 +22,10 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.Pipeline do
   alias Broadway.Message
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
-  alias Logflare.Backends.Adaptor.HttpBased.Headers
-  alias Logflare.Backends.Adaptor.WebhookAdaptor.Client
   alias Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor
   alias Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.EncodedEvent
+  alias Logflare.Backends.Adaptor.HttpBased.Headers
+  alias Logflare.Backends.Adaptor.WebhookAdaptor.Client
   alias Logflare.Backends.Backend
   alias Logflare.Backends.BufferProducer
   alias Logflare.Backends.IngestEventQueue
@@ -133,8 +133,13 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.Pipeline do
 
     case IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) do
       %LogEvent{body: body} -> encode_event(message, pointer, body)
+      %EncodedEvent{} = encoded -> %{message | data: %{encoded | pointer: pointer}}
       nil -> Message.failed(message, :not_found)
     end
+  end
+
+  def handle_message(_processor_name, message, _context) do
+    Message.failed(message, :not_found)
   end
 
   @spec encode_event(Message.t(), LogEventPointer.t(), map()) :: Message.t()
