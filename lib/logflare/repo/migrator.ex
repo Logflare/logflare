@@ -5,6 +5,8 @@ defmodule Logflare.Repo.Migrator do
   the `LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS` env var.
   """
 
+  alias Ecto.Migration.Runner
+
   @default_search_path "public"
   @replicate_execute_key {__MODULE__, :replicate_execute?}
 
@@ -71,7 +73,7 @@ defmodule Logflare.Repo.Migrator do
   def replicate_execute?, do: Process.get(@replicate_execute_key, false)
 
   defp flush_pending_ddl do
-    if Process.get(:ecto_migration), do: Ecto.Migration.Runner.flush()
+    if Process.get(:ecto_migration), do: Runner.flush()
 
     :ok
   end
