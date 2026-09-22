@@ -52,28 +52,32 @@ defmodule Logflare.Endpoints.Cache do
       |> Enum.map(&{:list_endpoints_by, [[user_id: &1]]})
 
     Cachex.execute(__MODULE__, fn cache ->
-      Enum.reduce(entries, 0, fn key, acc ->
-        case Cachex.take(cache, key) do
-          {:ok, nil} -> acc
-          {:ok, _value} -> acc + 1
-        end
-      end)
+      Enum.reduce(entries, 0, fn key, acc -> acc + delete_and_count(cache, key) end)
     end)
   end
 
   defp fetch_list_by_user_id(user_id) do
     cache_key = {:list_endpoints_by, [[user_id: user_id]]}
 
-    case Cachex.fetch(__MODULE__, cache_key, fn ->
-           endpoints = Repo.with_replica(fn -> Endpoints.list_endpoints_by(user_id: user_id) end)
-
-           if endpoints == [] do
-             {:ignore, {:cached, endpoints}}
-           else
-             {:commit, {:cached, endpoints}}
-           end
-         end) do
+    case Cachex.fetch(__MODULE__, cache_key, fn -> fetch_from_repo(user_id) end) do
       {_status, {:cached, endpoints}} -> endpoints
+    end
+  end
+
+  defp fetch_from_repo(user_id) do
+    endpoints = Repo.with_replica(fn -> Endpoints.list_endpoints_by(user_id: user_id) end)
+
+    if endpoints == [] do
+      {:ignore, {:cached, endpoints}}
+    else
+      {:commit, {:cached, endpoints}}
+    end
+  end
+
+  defp delete_and_count(cache, key) do
+    case Cachex.take(cache, key) do
+      {:ok, nil} -> 0
+      {:ok, _value} -> 1
     end
   end
 
