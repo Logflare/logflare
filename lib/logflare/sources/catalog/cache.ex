@@ -55,15 +55,7 @@ defmodule Logflare.Sources.Catalog.Cache do
   defp fetch(user_id) do
     cache_key = {:list_by_user, [user_id]}
 
-    case Cachex.fetch(__MODULE__, cache_key, fn ->
-           sources = Repo.with_replica(fn -> Catalog.list_by_user(user_id) end)
-
-           if sources == [] do
-             {:ignore, {:cached, sources}}
-           else
-             {:commit, {:cached, sources}}
-           end
-         end) do
+    case Cachex.fetch(__MODULE__, cache_key, fn -> fetch_from_repo(user_id) end) do
       {:ok, {:cached, sources}} ->
         sources
 
@@ -76,6 +68,16 @@ defmodule Logflare.Sources.Catalog.Cache do
     end
   end
 
+  defp fetch_from_repo(user_id) do
+    sources = Repo.with_replica(fn -> Catalog.list_by_user(user_id) end)
+
+    if sources == [] do
+      {:ignore, {:cached, sources}}
+    else
+      {:commit, {:cached, sources}}
+    end
+  end
+
   @impl ContextCache
   def bust_by(kw) do
     entries =
@@ -84,12 +86,14 @@ defmodule Logflare.Sources.Catalog.Cache do
       |> Enum.map(&{:list_by_user, [&1]})
 
     Cachex.execute(__MODULE__, fn cache ->
-      Enum.reduce(entries, 0, fn key, acc ->
-        case Cachex.take(cache, key) do
-          {:ok, nil} -> acc
-          {:ok, _value} -> acc + 1
-        end
-      end)
+      Enum.reduce(entries, 0, fn key, acc -> acc + delete_and_count(cache, key) end)
     end)
+  end
+
+  defp delete_and_count(cache, key) do
+    case Cachex.take(cache, key) do
+      {:ok, nil} -> 0
+      {:ok, _value} -> 1
+    end
   end
 end
