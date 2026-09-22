@@ -4,6 +4,7 @@ defmodule Logflare.ContextCache.GossipTest do
   alias Logflare.ContextCache
   alias Logflare.ContextCache.Tombstones
   alias Logflare.Sources
+  alias Logflare.Sources.Catalog
 
   describe "record_tombstones/1" do
     setup do
@@ -51,6 +52,13 @@ defmodule Logflare.ContextCache.GossipTest do
 
       assert_receive {[:logflare, :context_cache_gossip, :multicast, :stop], ^telemetry_ref,
                       _measurements, %{cache: Sources.Cache, key: ^cache_key}}
+    end
+
+    test "does not gossip source catalogs", %{telemetry_ref: telemetry_ref} do
+      ContextCache.Gossip.multicast(Catalog.Cache, :catalog, [%{id: 123}])
+
+      assert_receive {[:logflare, :context_cache_gossip, :multicast, :stop], ^telemetry_ref,
+                      _measurements, %{action: :ignore, cache: Catalog.Cache, key: :catalog}}
     end
   end
 

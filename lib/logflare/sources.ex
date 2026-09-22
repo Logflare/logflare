@@ -47,6 +47,15 @@ defmodule Logflare.Sources do
     |> Enum.map(&put_retention_days/1)
   end
 
+  @spec list_source_catalog_by_user(pos_integer()) :: [Source.t()]
+  def list_source_catalog_by_user(user_id) when is_integer(user_id) do
+    from(s in Source,
+      where: s.user_id == ^user_id,
+      select: struct(s, [:id, :user_id, :name, :token])
+    )
+    |> Repo.all()
+  end
+
   @spec list_ingest_sources_by_user(pos_integer(), :all | [pos_integer()]) :: [map()]
   def list_ingest_sources_by_user(user_id, :all) do
     ingest_sources_query(user_id)

@@ -22,6 +22,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.OauthAccessTokens.OauthAccessToken
   alias Logflare.Repo
   alias Logflare.SingleTenant
+  alias Logflare.Sources.Catalog.Cache, as: SourceCatalog
   alias Logflare.Sql
   alias Logflare.Teams
   alias Logflare.TeamUsers
@@ -643,8 +644,7 @@ defmodule Logflare.Endpoints do
 
     source_mapping =
       user
-      |> Users.Cache.preload_sources()
-      |> then(fn %{sources: sources} -> sources end)
+      |> SourceCatalog.list_by_user()
       |> Map.new(&{&1.name, &1.token})
 
     query = %EndpointQuery{

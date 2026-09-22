@@ -19,6 +19,7 @@ defmodule Logflare.ContextCache.Supervisor do
   alias Logflare.Rules
   alias Logflare.SavedSearches
   alias Logflare.Sources
+  alias Logflare.Sources.Catalog
   alias Logflare.SourceSchemas
   alias Logflare.SystemCache
   alias Logflare.TeamUsers
@@ -73,6 +74,7 @@ defmodule Logflare.ContextCache.Supervisor do
       {Users.Cache, :users},
       {Backends.Cache, :backends},
       {Sources.Cache, :sources},
+      {Catalog.Cache, :source_catalog},
       {Billing.Cache, :billing},
       {SourceSchemas.Cache, :source_schemas},
       {Auth.Cache, :auth},
