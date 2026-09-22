@@ -5,6 +5,7 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptorTest do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor.Client
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.ConsolidatedSup
   alias Logflare.SystemMetrics.AllLogsLogged
 
   @subject Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor
@@ -154,6 +155,35 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptorTest do
       assert [%{"event_message" => "v2 event"}] = Jason.decode!(req[:body])
     end
 
+    test "a backend created with a batch size uses it at once" do
+      this = self()
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      stub(Client, :send, fn req ->
+        send(this, {:sent, Jason.decode!(req[:body])})
+        {:ok, %Tesla.Env{status: 200}}
+      end)
+
+      {:ok, backend} =
+        Backends.create_backend(user, %{
+          name: "small batches",
+          type: :consolidated_webhook,
+          config: %{url: "https://example.com", batch_size: 2}
+        })
+
+      on_exit(fn -> ConsolidatedSup.stop_pipeline(backend.id) end)
+      {:ok, _source} = Backends.update_source_backends(source, [backend])
+
+      events = for n <- 1..6, do: build(:log_event, source: source, message: "event #{n}")
+      assert {:ok, 6} = Backends.ingest_logs(events, source)
+
+      requests = collect_requests(6)
+
+      assert Enum.all?(requests, &(length(&1) <= 2))
+      assert requests |> List.flatten() |> length() == 6
+    end
+
     test "batches events from more than one source into the same pipeline", %{
       source: source,
       other_source: other_source
@@ -174,6 +204,15 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptorTest do
       messages = collect_event_messages(2)
 
       assert Enum.sort(messages) == ["first source", "second source"]
+    end
+  end
+
+  defp collect_requests(count, acc \\ []) do
+    if acc |> List.flatten() |> length() >= count do
+      acc
+    else
+      assert_receive {:sent, bodies}, 2_000
+      collect_requests(count, [bodies | acc])
     end
   end
 

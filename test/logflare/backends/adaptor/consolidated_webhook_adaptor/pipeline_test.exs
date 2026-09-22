@@ -68,6 +68,45 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.PipelineTest do
     ref
   end
 
+  describe "batch_size/1" do
+    test "reads the stored config when the config is not typecast", %{backend: backend} do
+      created = %{
+        backend
+        | config: nil,
+          config_encrypted: %{url: "https://example.com", batch_size: 50}
+      }
+
+      assert Pipeline.batch_size(created) == 50
+    end
+
+    test "prefers the stored config over old typecast values", %{backend: backend} do
+      updated = %{
+        backend
+        | config: %{url: "https://example.com", batch_size: 1_000},
+          config_encrypted: %{"url" => "https://example.com", "batch_size" => 50}
+      }
+
+      assert Pipeline.batch_size(updated) == 50
+    end
+
+    test "uses the default when no batch size is stored", %{backend: backend} do
+      assert Pipeline.batch_size(%{backend | config_encrypted: %{url: "https://example.com"}}) ==
+               1_000
+    end
+  end
+
+  describe "log_dropped/3" do
+    test "logs one warning per backend per interval", %{backend: %{id: backend_id}} do
+      first = capture_log(fn -> Pipeline.log_dropped(backend_id, 1, :rejected) end)
+      second = capture_log(fn -> Pipeline.log_dropped(backend_id, 2, :rejected) end)
+      other = capture_log(fn -> Pipeline.log_dropped(backend_id + 1, 3, :rejected) end)
+
+      assert first =~ "Dropping 1 webhook events: rejected"
+      assert second == ""
+      assert other =~ "Dropping 3 webhook events: rejected"
+    end
+  end
+
   describe "join_payload/2" do
     test "joins encoded events into a JSON array" do
       assert Pipeline.join_payload(%{format: "json"}, [~s({"a":1}), ~s({"b":2})]) ==

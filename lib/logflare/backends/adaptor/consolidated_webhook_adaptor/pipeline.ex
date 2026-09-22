@@ -40,6 +40,7 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.Pipeline do
   @max_in_flight_batches 16
   @retriable_statuses [408, 429]
   @content_types %{"json" => "application/json", "ndjson" => "application/x-ndjson"}
+  @drop_log_interval_ms 5_000
 
   @typep drop_reason :: :request_failed | :rejected
 
@@ -95,12 +96,19 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.Pipeline do
     )
   end
 
-  @spec batch_size(Backend.t()) :: pos_integer()
-  defp batch_size(%Backend{config: %{batch_size: batch_size}})
-       when is_integer(batch_size) and batch_size > 0,
-       do: batch_size
+  @doc """
+  Batch size from the stored config of the backend.
 
-  defp batch_size(_backend), do: ConsolidatedWebhookAdaptor.default_batch_size()
+  `Backends.create_backend/2` and `Backends.update_backend/2` start the pipeline before
+  they typecast the config. At that point `config` is nil or holds the old values, and
+  `config_encrypted` holds the new ones.
+  """
+  @spec batch_size(Backend.t()) :: pos_integer()
+  def batch_size(%Backend{config_encrypted: stored, config: config}) do
+    (stored || config || %{})
+    |> ConsolidatedWebhookAdaptor.cast_config()
+    |> Ecto.Changeset.get_field(:batch_size)
+  end
 
   @spec process_name(via_tuple :: {:via, module(), {module(), term()}}, base_name :: term()) ::
           {:via, module(), {module(), term()}}
@@ -286,13 +294,36 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.Pipeline do
   defp emit_dropped(_backend_id, 0, _reason), do: :ok
 
   defp emit_dropped(backend_id, count, reason) do
-    Logger.warning("Dropping #{count} webhook events: #{reason}", backend_id: backend_id)
+    log_dropped(backend_id, count, reason)
 
     :telemetry.execute(
       [:logflare, :ingest_event_queue, :retry_dropped],
       %{count: count},
       %{backend_type: :consolidated_webhook, backend_id: backend_id, reason: reason}
     )
+  end
+
+  @doc """
+  Logs a drop at most one time per backend per `#{@drop_log_interval_ms}` ms.
+
+  A receiver that stays down fails every batch. Four batch processors then produce up
+  to four warnings per second per backend per node. The telemetry still counts every
+  drop. The last log time lives in the process dictionary of the batch processor.
+  """
+  @spec log_dropped(pos_integer(), pos_integer(), drop_reason()) :: :ok
+  def log_dropped(backend_id, count, reason) do
+    key = {__MODULE__, :last_drop_log, backend_id}
+    now = System.monotonic_time(:millisecond)
+
+    case Process.get(key) do
+      last when is_integer(last) and now - last < @drop_log_interval_ms ->
+        :ok
+
+      _ ->
+        Process.put(key, now)
+        Logger.warning("Dropping #{count} webhook events: #{reason}", backend_id: backend_id)
+        :ok
+    end
   end
 
   @spec delete_payload(EncodedEvent.t() | LogEventPointer.t()) :: :ok
