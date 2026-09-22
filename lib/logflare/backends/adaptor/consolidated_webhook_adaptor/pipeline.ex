@@ -352,9 +352,22 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.Pipeline do
     results = Enum.frequencies_by(encoded_events, &requeue_encoded(backend_id, &1))
 
     emit_dropped(backend_id, Map.get(results, :queue_unavailable, 0), :queue_unavailable)
+    emit_deduplicated(backend_id, Map.get(results, :deduplicated, 0))
   end
 
-  @spec requeue_encoded(pos_integer(), EncodedEvent.t()) :: :requeued | :queue_unavailable
+  @spec emit_deduplicated(pos_integer(), non_neg_integer()) :: :ok
+  defp emit_deduplicated(_backend_id, 0), do: :ok
+
+  defp emit_deduplicated(backend_id, count) do
+    :telemetry.execute(
+      [:logflare, :ingest_event_queue, :requeue_deduplicated],
+      %{count: count},
+      %{backend_type: :consolidated_webhook, backend_id: backend_id}
+    )
+  end
+
+  @spec requeue_encoded(pos_integer(), EncodedEvent.t()) ::
+          :requeued | :deduplicated | :queue_unavailable
   defp requeue_encoded(backend_id, %EncodedEvent{pointer: pointer} = encoded) do
     retried = %{pointer | retries: pointer.retries + 1}
 
@@ -363,8 +376,9 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.Pipeline do
            retried,
            &%{encoded | pointer: &1}
          ) do
+      {:ok, _pointer} -> :requeued
+      {:error, :already_exists} -> :deduplicated
       {:error, :not_initialized} -> :queue_unavailable
-      _published_or_deduplicated -> :requeued
     end
   end
 

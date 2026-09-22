@@ -354,6 +354,33 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.PipelineTest do
                IngestEventQueue.lookup_event(retry_pointer.tid, retry_pointer.gen_event_id)
     end
 
+    test "counts a retry that an existing same-ID pointer replaces", %{
+      source: source,
+      backend: %{id: backend_id}
+    } do
+      event = build(:log_event, source: source, message: "retry")
+      gen_tid = setup_generation_events([event])
+      retry_key = {:consolidated, backend_id, self()}
+      assert {:ok, queue_tid} = IngestEventQueue.upsert_tid(retry_key)
+      dedup_event = [:logflare, :ingest_event_queue, :requeue_deduplicated]
+      ref = :telemetry_test.attach_event_handlers(self(), [dedup_event])
+      on_exit(fn -> :telemetry.detach(ref) end)
+
+      :ok = IngestEventQueue.add_to_table(retry_key, [event])
+
+      failed =
+        event
+        |> encoded_message(gen_tid, backend_id, queue_tid: queue_tid)
+        |> Message.failed({:retriable, 503})
+
+      capture_log(fn -> assert :ok = Pipeline.ack(:ack_ref, [], [failed]) end)
+
+      assert_receive {^dedup_event, ^ref, %{count: 1}, %{backend_type: :consolidated_webhook}}
+
+      assert {:ok, [_one_pointer], ^queue_tid} =
+               IngestEventQueue.pop_pending_pointers(retry_key, 10)
+    end
+
     test "drops a retriable failure while the circuit breaker is open", %{
       source: source,
       backend: %{id: backend_id}
