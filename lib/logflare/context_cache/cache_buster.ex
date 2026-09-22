@@ -190,6 +190,17 @@ defmodule Logflare.ContextCache.CacheBuster do
 
   defp handle_record(%NewRecord{
          relation: {_schema, "endpoint_queries"},
+         record: %{"id" => _id, "user_id" => user_id}
+       })
+       when is_binary(user_id) do
+    [
+      {Endpoints, :not_found},
+      {Endpoints, [user_id: String.to_integer(user_id)]}
+    ]
+  end
+
+  defp handle_record(%NewRecord{
+         relation: {_schema, "endpoint_queries"},
          record: %{"id" => _id}
        }) do
     # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
