@@ -560,7 +560,7 @@ defmodule Logflare.Endpoints do
       EndpointCache.list_by_user_id(user_id)
       |> Enum.filter(&(&1.id != endpoint_query.id))
 
-    alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
+    alerts = Alerting.Cache.list_by_user_id(user_id)
 
     with {:ok, declared_params} <-
            Sql.parameters(query_string, dialect: Sql.to_dialect(query_language)),
@@ -723,7 +723,7 @@ defmodule Logflare.Endpoints do
       EndpointCache.list_by_user_id(user_id)
       |> Enum.filter(&(&1.id != endpoint_query.id))
 
-    alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
+    alerts = Alerting.Cache.list_by_user_id(user_id)
 
     with {:ok, expanded_query} <-
            Sql.expand_subqueries(
