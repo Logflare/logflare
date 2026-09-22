@@ -18,6 +18,7 @@ defmodule Logflare.Sql do
   alias Logflare.Sql.DialectTranslation
   alias Logflare.Sql.Parser
   alias Logflare.User
+  alias Logflare.Users
 
   @valid_query_languages ~w(bq_sql ch_sql pg_sql)a
 
@@ -266,7 +267,7 @@ defmodule Logflare.Sql do
         ) ::
           {:ok, String.t()} | {:error, String.t()}
   def transform(lang, input, user_id) when is_integer(user_id) do
-    user = Logflare.Users.get(user_id)
+    user = Users.Cache.get(user_id)
     transform(lang, input, user)
   end
 

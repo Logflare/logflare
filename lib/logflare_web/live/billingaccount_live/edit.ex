@@ -32,7 +32,7 @@ defmodule LogflareWeb.BillingAccountLive.Edit do
         {:ok, socket}
 
       _billing_account ->
-        plan = Billing.get_plan_by_user(user)
+        plan = Billing.Cache.get_plan_by_user(user)
 
         socket =
           socket
