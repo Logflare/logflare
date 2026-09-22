@@ -4,7 +4,9 @@ defmodule LogflareWeb.OpenApiTest do
   alias LogflareWeb.Api.AccessTokenController
   alias LogflareWeb.Api.QueryController
   alias LogflareWeb.Api.TeamController
+  alias LogflareWeb.ApiSpec
   alias LogflareWeb.OpenApiSchemas.AccessToken
+  alias LogflareWeb.OpenApiSchemas.ClickhouseConfigSchema
   alias LogflareWeb.OpenApiSchemas.QueryResult
   alias OpenApiSpex.MediaType
   alias OpenApiSpex.Response
@@ -38,6 +40,35 @@ defmodule LogflareWeb.OpenApiTest do
   test "Management API access token timestamps are documented as RFC3339" do
     assert %Schema{type: :string, format: :"date-time"} =
              AccessToken.schema().properties.inserted_at
+  end
+
+  test "ClickHouse backend config documents the multi read cluster fields" do
+    properties = ClickhouseConfigSchema.schema().properties
+
+    assert %Schema{
+             type: :object,
+             nullable: true,
+             additionalProperties: %Schema{type: :string, format: :uri}
+           } = properties.read_only_urls
+
+    assert %Schema{type: :string, nullable: true} = properties.default_read_cluster
+    refute Map.has_key?(properties, :read_only_url)
+  end
+
+  test "ClickHouse read_only_urls renders as a string map in the OpenAPI JSON" do
+    schema =
+      ApiSpec.spec()
+      |> OpenApiSpex.OpenApi.json_encoder().encode!()
+      |> Jason.decode!()
+      |> get_in(["components", "schemas", "ClickhouseConfigSchema", "properties"])
+
+    assert %{
+             "type" => "object",
+             "nullable" => true,
+             "additionalProperties" => %{"type" => "string", "format" => "uri"}
+           } = schema["read_only_urls"]
+
+    assert %{"type" => "string", "nullable" => true} = schema["default_read_cluster"]
   end
 
   test "Management API 400 errors are documented as JSON" do
