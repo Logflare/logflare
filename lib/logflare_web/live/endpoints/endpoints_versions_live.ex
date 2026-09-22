@@ -195,18 +195,19 @@ defmodule LogflareWeb.EndpointsVersionsLive do
     endpoint = socket.assigns.endpoint
 
     socket =
-      with {version_number, ""} <- Integer.parse(version_number),
-           selected_version when is_struct(selected_version) <-
-             Endpoints.get_endpoint_query_version(endpoint.id, version_number),
-           {:ok, endpoint_snapshot} <-
-             Endpoints.get_endpoint_query_at_version(endpoint, version_number) do
-        socket
-        |> assign(:selected_version, selected_version)
-        |> assign(:endpoint_snapshot, endpoint_snapshot)
-      else
-        _ ->
+      Repo.with_replica(fn ->
+        with {version_number, ""} <- Integer.parse(version_number),
+             selected_version when is_struct(selected_version) <-
+               Endpoints.get_endpoint_query_version(endpoint.id, version_number),
+             {:ok, endpoint_snapshot} <-
+               Endpoints.get_endpoint_query_at_version(endpoint, version_number) do
           socket
-      end
+          |> assign(:selected_version, selected_version)
+          |> assign(:endpoint_snapshot, endpoint_snapshot)
+        else
+          _ -> socket
+        end
+      end)
 
     {:noreply, socket}
   end
@@ -278,7 +279,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
       socket
       |> assign(:endpoint, endpoint)
       |> assign(:animate?, true)
-      |> assign_versions(endpoint)
+      |> assign_versions(endpoint, replica?: false)
 
     {:noreply,
      put_flash(
@@ -324,28 +325,37 @@ defmodule LogflareWeb.EndpointsVersionsLive do
      |> put_flash(:error, "Unable to load more versions.")}
   end
 
-  @spec fetch_page(integer(), integer() | nil) :: {[Version.t()], integer() | nil}
-  defp fetch_page(endpoint_id, after_version_id \\ nil) do
-    fetched_versions = fetch_versions(endpoint_id, after_version_id)
+  @spec fetch_page(integer(), integer() | nil, keyword()) :: {[Version.t()], integer() | nil}
+  defp fetch_page(endpoint_id, after_version_id, opts \\ []) do
+    fetched_versions = fetch_versions(endpoint_id, after_version_id, opts)
 
     {Enum.take(fetched_versions, @page_size), next_cursor_id(fetched_versions)}
   end
 
-  @spec fetch_versions(integer(), integer() | nil) :: [Version.t()]
-  defp fetch_versions(endpoint_id, after_version_id) do
-    Version
-    |> where([version], version.item_type == "EndpointQuery" and version.item_id == ^endpoint_id)
-    |> where([version], fragment("COALESCE(?->>'kind', '')", version.meta) != "endpoint_policy")
-    |> maybe_filter_after_version(after_version_id)
-    |> order_by([version], desc: version.id)
-    |> limit(^(@page_size + 1))
-    |> Repo.all()
+  @spec fetch_versions(integer(), integer() | nil, keyword()) :: [Version.t()]
+  defp fetch_versions(endpoint_id, after_version_id, opts) do
+    query = fn ->
+      Version
+      |> where(
+        [version],
+        version.item_type == "EndpointQuery" and version.item_id == ^endpoint_id
+      )
+      |> where([version], fragment("COALESCE(?->>'kind', '')", version.meta) != "endpoint_policy")
+      |> maybe_filter_after_version(after_version_id)
+      |> order_by([version], desc: version.id)
+      |> limit(^(@page_size + 1))
+      |> Repo.all()
+    end
+
+    if Keyword.get(opts, :replica?, true),
+      do: Repo.with_replica(query),
+      else: Repo.with_primary(query)
   end
 
-  @spec assign_versions(Phoenix.LiveView.Socket.t(), EndpointQuery.t()) ::
+  @spec assign_versions(Phoenix.LiveView.Socket.t(), EndpointQuery.t(), keyword()) ::
           Phoenix.LiveView.Socket.t()
-  defp assign_versions(socket, %EndpointQuery{id: endpoint_id}) do
-    {versions, next_cursor_id} = fetch_page(endpoint_id)
+  defp assign_versions(socket, %EndpointQuery{id: endpoint_id}, opts \\ []) do
+    {versions, next_cursor_id} = fetch_page(endpoint_id, nil, opts)
 
     socket
     |> assign(:current_version_id, current_version_id(versions))

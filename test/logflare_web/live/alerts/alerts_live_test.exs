@@ -792,9 +792,25 @@ defmodule LogflareWeb.AlertsLiveTest do
       {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
 
       job = insert_oban_job(alert_query, %{state: "completed"})
+      liveview_pid = view.pid
+      telemetry_ref = make_ref()
+
+      :ok =
+        :telemetry.attach(
+          telemetry_ref,
+          [:logflare, :repo, :replica_route],
+          fn _event, _measurements, _metadata, observer ->
+            send(observer, {:replica_read, self()})
+          end,
+          self()
+        )
+
+      on_exit(fn -> :telemetry.detach(telemetry_ref) end)
+
       send(view.pid, {:poll_job, job.id, 0})
 
       refute render(view) =~ "Running..."
+      refute_received {:replica_read, ^liveview_pid}
     end
 
     test "poll_job reschedules while the job is still pending", %{
