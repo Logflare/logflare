@@ -53,7 +53,7 @@
         <% webhook_type when webhook_type in ["webhook", "consolidated_webhook"] -> %>
           <div class="form-group">
             <%= label f_config, :url do %>
-              Websocket URL to send the ingested data
+              HTTP URL to send the ingested data
             <% end %>
             {text_input(f_config, :url, class: "form-control")}
           </div>

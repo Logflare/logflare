@@ -43,15 +43,15 @@ Consolidated Webhook accepts all Webhook configuration values. It adds one optio
 
 ### Batching
 
-All sources attached to the backend share the batches. A request contains up to `batch_size` events, with intervals of up to 1 second. The payload does not identify the source of an event.
+All sources attached to the backend share the batches. A request contains up to `batch_size` events. An event waits up to about 2 seconds before its batch is sent. The payload does not identify the source of an event.
 
 ### Retries
 
-Consolidated Webhook sends a failed batch again one time when the failure is transient:
+Consolidated Webhook sends the events of a failed batch again one time when the failure is transient. The retry happens within about 1 second. The events go into new batches with other events, so delivery is at-least-once. A receiver that stores a batch and then times out gets those events a second time. The transient failures are:
 
 - a `408`, a `429`, or a `5xx` response status
 - a connection error or a timeout
 
 Each transient failure counts toward a circuit breaker for the backend. The circuit breaker opens after 20 transient failures in 30 seconds. It stays open for 30 seconds. Consolidated Webhook does not send a failed batch again while the circuit breaker is open. It still sends new batches.
 
-Consolidated Webhook drops a batch when the receiver returns any other `4xx` response status. An event that does not encode to JSON is dropped alone. The other events of the batch are sent.
+Consolidated Webhook drops a batch when the receiver returns any other response status, for example a `3xx` redirect or a `400`. An event that does not encode to JSON is dropped alone. The other events of the batch are sent.

@@ -347,7 +347,7 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       assert view
              |> element("select#type")
-             |> render_change(%{backend: %{type: "webhook"}}) =~ "Websocket URL"
+             |> render_change(%{backend: %{type: "webhook"}}) =~ "HTTP URL"
 
       assert view
              |> form("form", %{

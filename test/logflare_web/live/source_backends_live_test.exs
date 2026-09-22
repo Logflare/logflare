@@ -12,6 +12,29 @@ defmodule LogflareWeb.SourceBackendsLiveTest do
     [source: source, user: user]
   end
 
+  test "lists a consolidated webhook backend and attaches it", %{
+    conn: conn,
+    user: user,
+    source: source
+  } do
+    backend =
+      insert(:backend,
+        type: :consolidated_webhook,
+        user: user,
+        config: %{url: "https://example.com"}
+      )
+
+    {:ok, view, _html} =
+      live_isolated(conn, SourceBackendsLive, session: %{"source_id" => source.id})
+
+    assert render(view) =~ "Consolidated Webhook"
+    assert render(view) =~ backend.name
+
+    assert view
+           |> element("form")
+           |> render_submit(%{source: %{backends: [backend.id]}}) =~ "connected: 1"
+  end
+
   test "able to add/remove additional backends", %{conn: conn, user: user, source: source} do
     backend = insert(:postgres_backend, user: user)
 
