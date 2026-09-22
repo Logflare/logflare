@@ -11,7 +11,9 @@ defmodule Logflare.Sources.CacheWarmer do
   alias Logflare.Sources.Source
   alias Logflare.User
   @impl true
-  def execute(_state) do
+  def execute(_state), do: Repo.with_replica(&warm/0)
+
+  defp warm do
     # Get sources that have been active in the last day, similar to ingesting users pattern
     sources =
       from(s in Source,
