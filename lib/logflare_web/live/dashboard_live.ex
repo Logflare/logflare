@@ -34,7 +34,7 @@ defmodule LogflareWeb.DashboardLive do
           {to_string(source.token), %{metrics: source.metrics, updated_at: source.updated_at}}
         end)
       end)
-      |> assign(:plan, Billing.get_plan_by_user(user))
+      |> assign(:plan, Billing.Cache.get_plan_by_user(user))
       |> assign(:fade_in, false)
       |> assign(:show_modal, false)
       |> assign(:can_create_home_team?, can_create_home_team?)
