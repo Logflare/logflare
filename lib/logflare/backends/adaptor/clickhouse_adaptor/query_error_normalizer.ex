@@ -7,8 +7,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryErrorNormalizer do
   description, so callers fall back to a generic message.
 
   The description is the ClickHouse message with everything that describes Logflare's
-  rewritten query rather than the caller's SQL removed: the `In query` / `in scope`
-  echo (which repeats the endpoint CTE and the physical `otel_*` table name), the
+  rewritten query rather than the caller's SQL removed: the `In query` / `in scope` /
+  `While processing` echo (which repeats the endpoint CTE and the physical `otel_*` table name), the
   syntax-error offset into that rewritten query, the `Received from <host>` replica
   address, and the version and stack-trace trailers. ClickHouse's `Maybe you meant`
   hint and the error name are kept, since they are what lets a caller (or an AI
@@ -51,7 +51,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryErrorNormalizer do
   @error_code_name ~r/\s*\(([A-Z][A-Z0-9_]*)\)\z/
   @hint ~r/[\s.]*Maybe you meant: (\[[^\]]*\])\.?\z/
   @exception_prefix ~r/\ACode:\s*\d+\.\s*(?:(?:DB::Exception:|Received from \S+)\s*)*/
-  @query_echo ~r/[\s.:,]*\b[Ii]n (?:query|scope)\b.*\z/s
+  @query_echo ~r/[\s.:,]*\b(?:[Ii]n (?:query|scope)|[Ww]hile processing)\b.*\z/s
   @syntax_error_position ~r/ at position \d+ \((.+?)\)(?=[:.\s]|\z)/
   @syntax_error_line_col ~r/ \(line \d+, col \d+\)/
   @trailing_punctuation ~r/[\s.:,]+\z/

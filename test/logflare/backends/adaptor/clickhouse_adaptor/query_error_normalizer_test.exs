@@ -51,6 +51,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryErrorNormalizerTest d
     {36,
      "Code: 36. DB::Exception: Table default.otel_traces_abc123def does not support argument 'x'. (BAD_ARGUMENTS) #{@version}",
      "Table traces does not support argument 'x'. (BAD_ARGUMENTS)"},
+    {43,
+     "Code: 43. DB::Exception: Illegal type UInt8 of argument of function lower: While processing lower(n) AS x FROM otel_logs_abc123def WHERE project = 'abc'. (ILLEGAL_TYPE_OF_ARGUMENT) #{@version}",
+     "Illegal type UInt8 of argument of function lower. (ILLEGAL_TYPE_OF_ARGUMENT)"},
+    {47,
+     "Code: 47. DB::Exception: Missing columns: 'notthere' while processing query: '#{@cte} SELECT notthere FROM logs', required columns: 'notthere'. (UNKNOWN_IDENTIFIER) #{@version}",
+     "Missing columns: 'notthere'. (UNKNOWN_IDENTIFIER)"},
     {215,
      "Code: 215. DB::Exception: Received from 10.0.0.12:9000. DB::Exception: Column 'a' is not under aggregate function and not in GROUP BY keys. In query SELECT a, count() FROM otel_logs_abc123def. (NOT_AN_AGGREGATE) #{@version}",
      "Column 'a' is not under aggregate function and not in GROUP BY keys. (NOT_AN_AGGREGATE)"}
