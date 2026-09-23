@@ -233,6 +233,8 @@ When set to a non-empty value, `mix ecto.migrate` and `mix ecto.rollback` route 
 
 This only affects how Logflare runs its own Ecto migrations at deploy time - it does not change ingestion, query, or read-replica behavior described above. It is intended for self-hosted deployments that use pglogical for logical replication and need DDL changes (not just data) to replicate to subscriber nodes.
 
+As pglogical resets `search_path` while applying replicated DDL, Logflare re-applies the schema configured via `DB_SCHEMA` for the duration of the migration when this setting is enabled.
+
 Example:
 
 ```
