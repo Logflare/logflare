@@ -39,7 +39,7 @@ All browser authentication will be disabled when in single-tenant mode.
 | `DB_AUTH`                                      | `password` or `aws_iam`, defaults to `password`                         | Authentication mode for Logflare's primary PostgreSQL connection.                                                                                                                                                                                                    |
 | `DB_AWS_REGION`                                | AWS region, defaults to `nil`                                           | Required when `DB_AUTH=aws_iam`; for example, `eu-west-1`.                                                                                                                                                                                                            |
 | `DB_POOL_SIZE`                                 | Integer, defaults to `10`                                               | Overrides the Ecto connection pool size for Logflare's internal PostgreSQL database connection.                                                                                                                                                                      |
-| `DB_SCHEMA`                                    | String, defaults to `nil`                                               | Allows configuration of the database schema to scope Logflare operations.                                                                                                                                                                                            |
+| `DB_SCHEMA`                                    | String, defaults to `nil`                                               | Allows configuration of the database schema to scope Logflare operations, including Oban jobs. Defaults to the `public` schema when unset.                                                                                                                                                                                            |
 | `DB_SSL`                                       | Boolean, defaults to `false`                                            | Enables SSL/TLS connection to the internal Logflare database. Requires certificate files when enabled. See [Database SSL Configuration](#database-ssl-configuration).                                                                                                |
 | `LOGFLARE_READ_REPLICAS`                       | String, defaults to `nil`                                               | Comma-separated list of PostgreSQL read replicas. If unset, all queries go to the primary. See [Read Replicas](#read-replicas).                                                                                                                                     |
 | `RDS_CA_CERT_PATH`                             | String, defaults to the container bundle path                           | Additional AWS RDS CA bundle for primary or replica IAM connections. Set it outside container images and for non-commercial AWS partitions.                                                                                                                          |
@@ -64,6 +64,12 @@ All browser authentication will be disabled when in single-tenant mode.
 | `ANTHROPIC_MODEL`                               | String, defaults to `claude-sonnet-5`                                   | Anthropic model used to generate LQL queries.                                                                                                                                                                                                                          |
 
 Additional environment variable configurations for the OpenTelemetry libraries used can be found [here](https://hexdocs.pm/opentelemetry_exporter/readme.html).perf/bq-pipeline-sharding
+
+### Upgrading
+
+#### v1.51.0
+
+When upgrading an existing installation, Oban structures are created in the configured schema. Existing jobs and Oban objects in `public` are not copied or removed automatically. Stop all Logflare nodes before manually migrating jobs that must be preserved.
 
 #### Health Checks
 
