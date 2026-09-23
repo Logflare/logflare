@@ -867,8 +867,8 @@ defmodule Logflare.EndpointsTest do
       assert {:error, %{description: redacted}} =
                Endpoints.run_query_string(user, query, redact_pii: true)
 
-      assert redacted =~ "Cannot parse string 'REDACTED' as UInt8"
-      refute redacted =~ "203.0.113.5"
+      assert redacted ==
+               "Cannot parse string 'REDACTED' as UInt8: syntax error at position 3 (parsed just '203'). (CANNOT_PARSE_TEXT)"
 
       assert {:error, %{description: unredacted}} =
                Endpoints.run_query_string(user, query, redact_pii: false)

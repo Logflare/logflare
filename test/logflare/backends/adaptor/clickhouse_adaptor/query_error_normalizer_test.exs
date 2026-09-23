@@ -57,6 +57,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryErrorNormalizerTest d
     {47,
      "Code: 47. DB::Exception: Missing columns: 'notthere' while processing query: '#{@cte} SELECT notthere FROM logs', required columns: 'notthere'. (UNKNOWN_IDENTIFIER) #{@version}",
      "Missing columns: 'notthere'. (UNKNOWN_IDENTIFIER)"},
+    {6,
+     "Code: 6. DB::Exception: Cannot parse string '12x' as UInt8: syntax error at position 2 (parsed just '12'). Note: there are toUInt8OrZero and toUInt8OrNull functions, which returns zero/NULL instead of throwing exception. (CANNOT_PARSE_TEXT) #{@version}",
+     "Cannot parse string '12x' as UInt8: syntax error at position 2 (parsed just '12'). Note: there are toUInt8OrZero and toUInt8OrNull functions, which returns zero/NULL instead of throwing exception. (CANNOT_PARSE_TEXT)"},
     {215,
      "Code: 215. DB::Exception: Received from 10.0.0.12:9000. DB::Exception: Column 'a' is not under aggregate function and not in GROUP BY keys. In query SELECT a, count() FROM otel_logs_abc123def. (NOT_AN_AGGREGATE) #{@version}",
      "Column 'a' is not under aggregate function and not in GROUP BY keys. (NOT_AN_AGGREGATE)"}

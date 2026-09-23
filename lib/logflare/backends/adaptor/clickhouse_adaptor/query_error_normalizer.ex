@@ -52,7 +52,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryErrorNormalizer do
   @hint ~r/[\s.]*Maybe you meant: (\[[^\]]*\])\.?\z/
   @exception_prefix ~r/\ACode:\s*\d+\.\s*(?:(?:DB::Exception:|Received from \S+)\s*)*/
   @query_echo ~r/[\s.:,]*\b(?:[Ii]n (?:query|scope)|[Ww]hile processing)\b.*\z/s
-  @syntax_error_position ~r/ at position \d+ \((.+?)\)(?=[:.\s]|\z)/
+  @syntax_error_position ~r/ failed at position \d+ \((.+?)\)(?=[:.\s]|\z)/
   @syntax_error_line_col ~r/ \(line \d+, col \d+\)/
   @trailing_punctuation ~r/[\s.:,]+\z/
   @physical_table_qualifier ~r/\b(?:\w+\.)?otel_(?:logs|metrics|traces)_[0-9a-f_]+\./
@@ -116,7 +116,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryErrorNormalizer do
       message
       |> strip(@exception_prefix)
       |> strip(@query_echo)
-      |> then(&Regex.replace(@syntax_error_position, &1, ~S( at "\1")))
+      |> then(&Regex.replace(@syntax_error_position, &1, ~S( failed at "\1")))
       |> strip(@syntax_error_line_col)
       |> strip(@trailing_punctuation)
 
