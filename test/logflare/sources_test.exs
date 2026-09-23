@@ -100,6 +100,33 @@ defmodule Logflare.SourcesTest do
     end
   end
 
+  describe "BigQuery source side effects with a single-tenant ClickHouse default" do
+    TestUtils.setup_single_tenant(backend_type: :clickhouse)
+
+    setup do
+      insert(:plan, name: "Free", limit_source_ttl: :timer.hours(24) * 20)
+      [user: insert(:user)]
+    end
+
+    test "creates a source without creating a BigQuery schema", %{user: user} do
+      assert {:ok, source} = Sources.create_source(%{name: TestUtils.random_string()}, user)
+      refute SourceSchemas.get_source_schema_by(source_id: source.id)
+    end
+
+    test "updates TTL and clustering without patching a BigQuery table", %{user: user} do
+      reject(BigQuery, :patch_table_ttl, 4)
+      reject(BigQuery, :patch_table_clustering, 4)
+
+      source = insert(:source, user: user, bigquery_clustering_fields: nil)
+
+      assert {:ok, %Source{retention_days: 12, bigquery_clustering_fields: "session_id"}} =
+               Sources.update_source(source, %{
+                 retention_days: 12,
+                 bigquery_clustering_fields: "session_id"
+               })
+    end
+  end
+
   describe "update_source/2 with different retention_days" do
     setup do
       user = insert(:user)
@@ -472,6 +499,42 @@ defmodule Logflare.SourcesTest do
     end
   end
 
+  describe "Source.Supervisor with a single-tenant ClickHouse default" do
+    TestUtils.setup_single_tenant(backend_type: :clickhouse)
+
+    setup do
+      reject(BigQuery, :init_table!, 6)
+      reject(BigQuery, :delete_table, 1)
+
+      insert(:plan)
+      user = insert(:user)
+
+      on_exit(fn ->
+        for {_id, child, _, _} <- DynamicSupervisor.which_children(Logflare.Backends.SourcesSup) do
+          DynamicSupervisor.terminate_child(Logflare.Backends.SourcesSup, child)
+        end
+      end)
+
+      [user: user]
+    end
+
+    test "starts and deletes a source without BigQuery table lifecycle calls", %{user: user} do
+      %{token: token} = source = insert(:source, user: user)
+      Sources.Cache.get_by_id(source.id)
+      start_supervised!(Source.Supervisor)
+
+      assert {:ok, ^token} = Source.Supervisor.start_source(token)
+      TestUtils.retry_assert(fn -> assert {:ok, _pid} = Backends.lookup(SourceSup, source) end)
+
+      assert {:ok, ^token} = Source.Supervisor.reset_source(token)
+      assert {:ok, ^token} = Source.Supervisor.delete_source(token)
+
+      TestUtils.retry_assert(fn ->
+        assert {:error, :not_started} = Backends.lookup(SourceSup, source)
+      end)
+    end
+  end
+
   test "ingest_ets_tables_started?/0" do
     assert Sources.ingest_ets_tables_started?()
   end
@@ -543,6 +606,39 @@ defmodule Logflare.SourcesTest do
         assert [_event] = Backends.list_recent_logs_local(source, 1)
       end)
 
+      :ok = Sources.shutdown_idle_sources()
+      assert Backends.source_sup_started?(source)
+    end
+  end
+
+  describe "shutdown_idle_sources/0 with a single-tenant ClickHouse default" do
+    TestUtils.setup_single_tenant(backend_type: :clickhouse)
+
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend = Backends.get_default_backend(user)
+
+      Sources.Cache.get_by_id(source.id)
+      :ok = Backends.start_source_sup(source)
+
+      {:ok, source: source, backend: backend}
+    end
+
+    test "does not shut down a source while the consolidated default has pending events", %{
+      source: source,
+      backend: backend
+    } do
+      event = build(:log_event, source: source)
+      queue_key = {:consolidated, backend.id}
+      Backends.IngestEventQueue.upsert_tid({:consolidated, backend.id, self()})
+      Backends.IngestEventQueue.add_to_table(queue_key, [event])
+
+      assert Backends.system_default_ingest_queue_key(source) == queue_key
+      assert Backends.IngestEventQueue.total_pending(queue_key) == 1
+      TestUtils.retry_assert(fn -> assert Backends.source_sup_started?(source) end)
       :ok = Sources.shutdown_idle_sources()
       assert Backends.source_sup_started?(source)
     end

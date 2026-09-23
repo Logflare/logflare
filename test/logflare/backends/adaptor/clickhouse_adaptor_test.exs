@@ -23,8 +23,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   doctest ClickHouseAdaptor
 
   describe "table name generation" do
+    TestUtils.setup_single_tenant(backend_type: :clickhouse)
+
     setup do
       insert(:plan, name: "Free")
+
+      previous_table_suffix = Application.fetch_env(:logflare, :clickhouse_table_suffix)
+      Application.put_env(:logflare, :clickhouse_table_suffix, "default")
+
+      on_exit(fn ->
+        case previous_table_suffix do
+          {:ok, suffix} -> Application.put_env(:logflare, :clickhouse_table_suffix, suffix)
+          :error -> Application.delete_env(:logflare, :clickhouse_table_suffix)
+        end
+      end)
 
       {source, backend} = setup_clickhouse_test()
 
@@ -57,6 +69,54 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace) ==
                "otel_traces_#{stringified_backend_token}"
     end
+
+    test "uses default table names for the synthetic single-tenant backend", %{backend: backend} do
+      backend = %{backend | id: 0, token: nil}
+
+      assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log) ==
+               "otel_logs_default"
+
+      assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :metric) ==
+               "otel_metrics_default"
+
+      assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace) ==
+               "otel_traces_default"
+    end
+
+    test "uses the configured suffix for the synthetic single-tenant backend", %{
+      backend: backend
+    } do
+      Application.put_env(:logflare, :clickhouse_table_suffix, "custom")
+      backend = %{backend | id: 0, token: nil}
+
+      assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log) ==
+               "otel_logs_custom"
+
+      assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :metric) ==
+               "otel_metrics_custom"
+
+      assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace) ==
+               "otel_traces_custom"
+    end
+
+    test "does not use the configured suffix outside single-tenant ClickHouse mode", %{
+      backend: backend,
+      stringified_backend_token: token
+    } do
+      backend = %{backend | id: 0}
+
+      for {single_tenant, backend_type} <- [
+            {false, :clickhouse},
+            {true, :postgres},
+            {true, :bigquery}
+          ] do
+        Application.put_env(:logflare, :single_tenant, single_tenant)
+        Application.put_env(:logflare, :single_tenant_backend, backend_type)
+
+        assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log) ==
+                 "otel_logs_#{token}"
+      end
+    end
   end
 
   describe "connection and basic functionality" do
@@ -82,6 +142,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
 
       assert {:ok, {[%{"test" => 1}], bytes}} = result
+      assert is_integer(bytes)
+    end
+
+    test "can execute queries for the single tenant backend", %{backend: backend} do
+      backend = %{backend | id: 0}
+      refute Backends.Cache.get_backend(backend.id)
+      Logflare.ContextCache.update(Backends, :get_backend, [backend.id], backend)
+
+      assert {:ok, {[%{"test" => 1}], bytes}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+
       assert is_integer(bytes)
     end
 

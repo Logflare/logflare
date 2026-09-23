@@ -1,5 +1,6 @@
 import Config
 
+alias Logflare.SingleTenant
 alias Logflare.Utils
 
 defmodule Env do
@@ -112,6 +113,7 @@ config :logflare,
          recaptcha_secret: System.get_env("LOGFLARE_RECAPTCHA_SECRET"),
          config_cat_sdk_key: System.get_env("LOGFLARE_CONFIG_CAT_SDK_KEY"),
          single_tenant: Env.get_boolean("LOGFLARE_SINGLE_TENANT"),
+         clickhouse_table_suffix: System.get_env("LOGFLARE_CLICKHOUSE_TABLE_SUFFIX", "default"),
          supabase_mode: Env.get_boolean("LOGFLARE_SUPABASE_MODE"),
          unsafe_disable_ssrf_s3_endpoint_check:
            Env.get_boolean("LOGFLARE_UNSAFE_DISABLE_SSRF_S3_ENDPOINT_CHECK"),
@@ -361,15 +363,54 @@ socket_options_for_url = fn
     nil
 end
 
+single_tenant? = Env.get_boolean("LOGFLARE_SINGLE_TENANT")
+bigquery_service_account = System.get_env("GOOGLE_SERVICE_ACCOUNT")
+postgres_backend_url = System.get_env("POSTGRES_BACKEND_URL")
+clickhouse_backend_url = System.get_env("CLICKHOUSE_BACKEND_URL")
+
+backend_url_set? = fn url -> is_binary(url) and String.trim(url) != "" end
+
+if Enum.count(
+     [bigquery_service_account, postgres_backend_url, clickhouse_backend_url],
+     backend_url_set?
+   ) > 1 do
+  raise "Only one of GOOGLE_SERVICE_ACCOUNT, POSTGRES_BACKEND_URL, or CLICKHOUSE_BACKEND_URL may be configured"
+end
+
+single_tenant_backend =
+  cond do
+    single_tenant? and backend_url_set?.(postgres_backend_url) -> :postgres
+    single_tenant? and backend_url_set?.(clickhouse_backend_url) -> :clickhouse
+    true -> :bigquery
+  end
+
+config :logflare, :single_tenant_backend, single_tenant_backend
+
 cond do
-  Env.get_boolean("LOGFLARE_SINGLE_TENANT") &&
-      not is_nil(System.get_env("POSTGRES_BACKEND_URL")) ->
+  single_tenant? and single_tenant_backend == :postgres ->
     config :logflare,
            :postgres_backend_adapter,
            filter_nil_kv_pairs.(
-             url: System.get_env("POSTGRES_BACKEND_URL"),
+             url: postgres_backend_url,
              schema: System.get_env("POSTGRES_BACKEND_SCHEMA"),
-             socket_options: socket_options_for_url.(System.get_env("POSTGRES_BACKEND_URL", ""))
+             socket_options: socket_options_for_url.(postgres_backend_url)
+           )
+
+  single_tenant? and single_tenant_backend == :clickhouse ->
+    clickhouse_backend_config =
+      SingleTenant.clickhouse_backend_adapter_opts_from_url!(clickhouse_backend_url)
+
+    config :logflare,
+           :clickhouse_backend_adapter,
+           filter_nil_kv_pairs.(
+             clickhouse_backend_config ++
+               [
+                 pool_size:
+                   case System.get_env("CLICKHOUSE_BACKEND_POOL_SIZE") do
+                     nil -> nil
+                     value -> String.to_integer(value)
+                   end
+               ]
            )
 
   config_env() != :test ->
