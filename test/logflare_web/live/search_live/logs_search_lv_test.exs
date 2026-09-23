@@ -10,7 +10,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryErrorNormalizer
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.QueryError
   alias Logflare.Google.BigQuery.SchemaUtils
@@ -1603,11 +1603,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       message =
         "Code: 47. DB::Exception: Unknown expression identifier `notthere` in scope SELECT notthere. (UNKNOWN_IDENTIFIER) (version 26.2.19.43 (official build))\n"
 
-      send_query_error(
-        view,
-        backend: ClickHouseAdaptor,
-        raw_error: %Ch.Error{message: message}
-      )
+      error = QueryErrorNormalizer.normalize(%Ch.Error{code: 47, message: message})
+      send(view.pid, {:search_error, %{error: error}})
 
       assert render(view) =~
                "Query halted: Field &quot;notthere&quot; does not exist."
