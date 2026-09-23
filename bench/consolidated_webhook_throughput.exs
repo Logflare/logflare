@@ -9,6 +9,10 @@
 #
 # Reported as events per second. Each design moves the same number of events.
 #
+# The worker counts in the output row are the webhook backend's fixed 3 processors and
+# 6 batchers per source, against this pipeline's scheduler-derived processors plus 4
+# batchers for the whole backend.
+#
 # SOURCES is the dimension that matters. The webhook backend runs one Broadway
 # topology per source (3 processors and 6 batchers each), while consolidated_webhook
 # runs one topology per backend no matter how many sources feed it. A single source
@@ -326,9 +330,12 @@ defmodule Logflare.Bench.ConsolidatedWebhookThroughput do
         "#{fmt(webhook.median)} | " <>
         "#{fmt(consolidated.median)}              | " <>
         "#{String.pad_leading(Float.to_string(Float.round(consolidated.median / webhook.median, 2)), 5)} | " <>
-        "#{sources} (#{sources * 9} workers) vs 1 (6 workers)"
+        "#{sources} (#{sources * 9} workers) vs 1 (#{consolidated_workers()} workers)"
     )
   end
+
+  defp consolidated_workers,
+    do: ConsolidatedWebhookAdaptor.Pipeline.processor_concurrency() + 4
 
   defp fmt(rate), do: rate |> round() |> Integer.to_string() |> String.pad_leading(8)
 
