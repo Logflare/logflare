@@ -7,9 +7,6 @@ defmodule Logflare.Integration.PglogicalDdlReplicationTest do
   Requires the pglogical primary/replica containers from
   `docker-compose.pglogical.yml`, bootstrapped via
   `test/support/pglogical/bootstrap.exs`.
-  The real application migrations must already have been run against the
-  primary through `Logflare.Repo.Pglogical` with replication sets configured
-  (as the CI workflow does) before these tests run.
   Run with: `mix test --only pglogical_replica`
   """
   use ExUnit.Case, async: false
@@ -48,8 +45,6 @@ defmodule Logflare.Integration.PglogicalDdlReplicationTest do
     {:ok, primary_conn} = Postgrex.start_link(Ecto.Repo.Supervisor.parse_url(@primary_url))
     {:ok, replica_conn} = Postgrex.start_link(Ecto.Repo.Supervisor.parse_url(@replica_url))
 
-    # Captured before any test resets `public`, since the per-test setup wipes
-    # the schema produced by the real migration suite.
     replica_app_schema = await_app_schema(replica_conn)
 
     {:ok,
@@ -144,9 +139,7 @@ defmodule Logflare.Integration.PglogicalDdlReplicationTest do
       {:ok, _} = repo.start_link(url: @primary_url, pool_size: 2)
     end
 
-    # Versions must be stable per migration: `Ecto.Migrator` only runs a `:down`
-    # for a version already recorded in `schema_migrations`, so a freshly minted
-    # version would make the rollback a silent no-op.
+    # stable versions so `:down` finds the recorded migration
     version = Map.fetch!(@migration_versions, migration_module)
     Ecto.Migrator.run(repo, [{version, migration_module}], direction, all: true)
   end
@@ -157,8 +150,6 @@ defmodule Logflare.Integration.PglogicalDdlReplicationTest do
         :ok
 
       pid ->
-        # the repo is linked to the (now dead) test process, so it may already
-        # be shutting down by the time on_exit runs
         try do
           Supervisor.stop(pid)
         catch
@@ -218,10 +209,6 @@ defmodule Logflare.Integration.PglogicalDdlReplicationTest do
     rows != []
   end
 
-  # Drops everything in `public` rather than named tables so a test never
-  # inherits a partially-migrated table, a stale `schema_migrations` row, or a
-  # replication-set membership left by a previous run. CASCADE also clears the
-  # `pglogical.replication_set_table` rows that `replicate_ddl_command` adds.
   defp reset_public_schema!(conn) do
     Postgrex.query!(
       conn,
