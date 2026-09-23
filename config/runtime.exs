@@ -609,6 +609,46 @@ read_replicas =
 
 config :logflare, :read_replicas, read_replicas
 
+# LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS: Comma-separated list of pglogical
+# replication set names. When set to a non-empty value, Ecto migrations are routed
+# through `pglogical.replicate_ddl_command/2` so DDL propagates to replicas subscribed
+# to these replication sets. If unset or empty, migrations run directly against the
+# primary repo, unchanged.
+# Example: "my_set" or "my_set,other_set"
+pglogical_replication_sets =
+  "LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS"
+  |> System.get_env("")
+  |> String.split(",", trim: true)
+  |> Enum.map(&String.trim/1)
+  |> Enum.reject(&(&1 == ""))
+  |> Enum.uniq()
+
+for set <- pglogical_replication_sets do
+  if Regex.match?(~r/^[A-Za-z_][A-Za-z0-9_]*$/, set) do
+    :ok
+  else
+    raise "LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS contains an invalid replication set name: #{inspect(set)}"
+  end
+end
+
+# pglogical resets search_path when applying replicated DDL, so the migration
+# adaptor has to restore whatever DB_SCHEMA puts on the repo's connections.
+# DB_SCHEMA is only inspected when pglogical DDL replication is enabled; without
+# it, DB_SCHEMA keeps its existing pass-through behaviour (see :after_connect above).
+# Validated as identifiers because DDL cannot use bind parameters.
+pglogical_schema =
+  if pglogical_replication_sets == [] do
+    []
+  else
+    "DB_SCHEMA"
+    |> System.get_env("public")
+    |> Utils.Postgres.parse_identifier_list!()
+  end
+
+config :logflare, Logflare.Repo.Migrator,
+  replication_sets: pglogical_replication_sets,
+  search_path: Enum.join(pglogical_schema, ", ")
+
 spool_mode_override =
   case System.get_env("SPOOL_MODE") do
     p when p in [nil, ""] ->

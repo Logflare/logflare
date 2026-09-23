@@ -6,6 +6,8 @@ on:
     branches: [main]
     paths:
       - "priv/repo/migrations/**"
+      - "mix.exs"
+      - "lib/logflare/ecto/adapters/pglogical_postgres.ex"
 
 permissions:
   contents: read
