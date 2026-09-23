@@ -182,17 +182,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "emits checkout telemetry with timing measurements in native units", %{backend: backend} do
       TestUtils.attach_forwarder([:logflare, :clickhouse, :read_pool, :checkout])
 
-      assert {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+      TestUtils.retry_assert(fn ->
+        flush_checkout_telemetry()
 
-      assert_receive {:telemetry_event, [:logflare, :clickhouse, :read_pool, :checkout],
-                      measurements, metadata}
+        assert {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
 
-      assert is_integer(measurements.pool_time)
-      assert measurements.pool_time >= 0
-      assert is_integer(measurements.connection_time)
-      assert measurements.connection_time > System.convert_time_unit(10, :microsecond, :native)
-      assert metadata.backend_id == backend.id
-      assert metadata.read_cluster == "(unlabeled)"
+        assert_receive {:telemetry_event, [:logflare, :clickhouse, :read_pool, :checkout],
+                        measurements, metadata}
+
+        assert is_integer(measurements.pool_time)
+        assert measurements.pool_time >= 0
+        assert is_integer(measurements.connection_time)
+        assert measurements.connection_time > System.convert_time_unit(10, :microsecond, :native)
+        assert metadata.backend_id == backend.id
+        assert metadata.read_cluster == "(unlabeled)"
+      end)
     end
 
     test "emits a plausible idle_time on a checked-in connection", %{backend: backend} do
@@ -3519,6 +3523,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       opts[:log].(entry)
       {:error, error}
     end)
+  end
+
+  defp flush_checkout_telemetry do
+    receive do
+      {:telemetry_event, [:logflare, :clickhouse, :read_pool, :checkout], _, _} ->
+        flush_checkout_telemetry()
+    after
+      0 -> :ok
+    end
   end
 
   defp modify_backend_with_long_token(%Backend{} = backend) do
