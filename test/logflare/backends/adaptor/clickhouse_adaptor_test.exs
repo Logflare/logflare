@@ -182,21 +182,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "emits checkout telemetry with timing measurements in native units", %{backend: backend} do
       TestUtils.attach_forwarder([:logflare, :clickhouse, :read_pool, :checkout])
 
-      TestUtils.retry_assert(fn ->
-        flush_checkout_telemetry()
+      assert {:ok, _} = execute_ch_query_retrying_closed(backend, "SELECT 1 as test")
 
-        assert {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :read_pool, :checkout],
+                      measurements, metadata}
 
-        assert_receive {:telemetry_event, [:logflare, :clickhouse, :read_pool, :checkout],
-                        measurements, metadata}
-
-        assert is_integer(measurements.pool_time)
-        assert measurements.pool_time >= 0
-        assert is_integer(measurements.connection_time)
-        assert measurements.connection_time > System.convert_time_unit(10, :microsecond, :native)
-        assert metadata.backend_id == backend.id
-        assert metadata.read_cluster == "(unlabeled)"
-      end)
+      assert is_integer(measurements.pool_time)
+      assert measurements.pool_time >= 0
+      assert is_integer(measurements.connection_time)
+      assert measurements.connection_time > System.convert_time_unit(10, :microsecond, :native)
+      assert metadata.backend_id == backend.id
+      assert metadata.read_cluster == "(unlabeled)"
     end
 
     test "emits a plausible idle_time on a checked-in connection", %{backend: backend} do
@@ -3523,6 +3519,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       opts[:log].(entry)
       {:error, error}
     end)
+  end
+
+  defp execute_ch_query_retrying_closed(backend, query, attempts \\ 3) do
+    flush_checkout_telemetry()
+
+    case ClickHouseAdaptor.execute_ch_query(backend, query) do
+      {:error, %QueryError{raw_error: %Mint.TransportError{reason: :closed}}} when attempts > 1 ->
+        execute_ch_query_retrying_closed(backend, query, attempts - 1)
+
+      result ->
+        result
+    end
   end
 
   defp flush_checkout_telemetry do
