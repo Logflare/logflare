@@ -109,7 +109,10 @@ defmodule Logflare.Sql.AstUtils do
 
   defp do_extract_parameter({"Placeholder", "@" <> name}), do: {:collect, name}
   defp do_extract_parameter({"Identifier", %{"value" => "@@" <> _}}), do: :skip
-  defp do_extract_parameter({"Identifier", %{"value" => "@" <> name}}), do: {:collect, name}
+
+  defp do_extract_parameter({"Identifier", %{"value" => "@" <> name, "quote_style" => nil}}),
+    do: {:collect, name}
+
   defp do_extract_parameter(_ast_node), do: :skip
 
   @doc """

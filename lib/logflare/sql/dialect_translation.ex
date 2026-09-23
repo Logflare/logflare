@@ -769,7 +769,8 @@ defmodule Logflare.Sql.DialectTranslation do
     key
   end
 
-  defp get_identifier_alias(%{"Identifier" => %{"value" => "@" <> _}}), do: nil
+  defp get_identifier_alias(%{"Identifier" => %{"value" => "@" <> _, "quote_style" => nil}}),
+    do: nil
 
   defp get_identifier_alias(%{"Identifier" => %{"value" => name}}) do
     name
@@ -1220,8 +1221,11 @@ defmodule Logflare.Sql.DialectTranslation do
     do: {k, v}
 
   # `@name` query parameters are not column references
-  defp traverse_convert_identifiers({"Identifier" = k, %{"value" => "@" <> _} = v}, _data),
-    do: {k, v}
+  defp traverse_convert_identifiers(
+         {"Identifier" = k, %{"value" => "@" <> _, "quote_style" => nil} = v},
+         _data
+       ),
+       do: {k, v}
 
   defp traverse_convert_identifiers({"Identifier" = k, v}, data) do
     convert_keys_to_json_query(%{k => v}, data)

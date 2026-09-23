@@ -938,7 +938,10 @@ defmodule Logflare.SqlTest do
            ["c"]},
           # CTEs
           {"with q as (select old.a from old where char_length(@c)) select 1", ["c"]},
-          {"with q as (select @c from old) select 1", ["c"]}
+          {"with q as (select @c from old) select 1", ["c"]},
+          # quoted identifiers are column names, not parameters
+          {"select `@field` from old", []},
+          {"select `@field`, @a from old where `@other` = 1", ["a"]}
         ] do
       assert {:ok, ^output} = Sql.parameters(input)
       assert {:ok, ^output} = Sql.parameters(input)
@@ -1929,6 +1932,18 @@ defmodule Logflare.SqlTest do
       # determines sequence of parameters
       assert {:ok, %{1 => "test", 2 => "test_another", 4 => "test"}} =
                Sql.parameter_positions(bq_query)
+    end
+
+    test "quoted identifiers starting with @ are columns, not parameters" do
+      bq_query = ~s|select `@field` as f, @p from my_source where `@field` = @p|
+
+      pg_query =
+        ~s|select (body -> '@field') as f, $1::text from my_source where (body ->> '@field') = (cast($2::text as jsonb) #>> '{}')|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert_semantically_equal(translated, pg_query)
+      assert {:ok, ["p"]} = Sql.parameters(bq_query)
+      assert {:ok, %{1 => "p", 2 => "p"}} = Sql.parameter_positions(bq_query)
     end
 
     test "malformed table name when global bq project id is not set" do
