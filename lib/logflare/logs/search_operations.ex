@@ -60,33 +60,51 @@ defmodule Logflare.Logs.SearchOperations do
 
   The first page does not need a cursor. Other pages require tailing to be false
   and a valid cursor to page from.
+
+  `requested_at` is the request time in microseconds. A next page scans no further than it.
   """
   @spec new_event_page(
           map() | SO.t(),
           EventPage.intent(),
           EventPage.cursor() | nil,
-          pos_integer() | nil
+          pos_integer() | nil,
+          integer()
         ) ::
           {:ok, SO.t()} | {:error, :invalid_request | :tailing}
-  def new_event_page(%SO{} = so, :initial, nil, nil) do
+  def new_event_page(
+        so_or_params,
+        intent,
+        cursor,
+        window_seconds,
+        requested_at \\ System.os_time(:microsecond)
+      )
+
+  def new_event_page(%SO{} = so, :initial, nil, nil, _requested_at) do
     {:ok, %{so | event_page_request: %{intent: :initial, cursor: nil}}}
   end
 
-  def new_event_page(%SO{tailing?: false} = so, intent, cursor, window_seconds) do
+  def new_event_page(%SO{tailing?: false} = so, intent, cursor, window_seconds, requested_at) do
     if EventPage.valid_request?(intent, cursor, window_seconds) do
-      request = %{intent: intent, cursor: cursor, window_seconds: window_seconds}
+      request = %{
+        intent: intent,
+        cursor: cursor,
+        window_seconds: window_seconds,
+        requested_at: requested_at
+      }
+
       {:ok, %{so | event_page_request: request}}
     else
       {:error, :invalid_request}
     end
   end
 
-  def new_event_page(%SO{}, _intent, _cursor, _window_seconds), do: {:error, :tailing}
+  def new_event_page(%SO{}, _intent, _cursor, _window_seconds, _requested_at),
+    do: {:error, :tailing}
 
-  def new_event_page(params, intent, cursor, window_seconds) when is_map(params) do
+  def new_event_page(params, intent, cursor, window_seconds, requested_at) when is_map(params) do
     params
     |> SO.new()
-    |> new_event_page(intent, cursor, window_seconds)
+    |> new_event_page(intent, cursor, window_seconds, requested_at)
   end
 
   @spec do_query(SO.t()) :: SO.t()
@@ -527,7 +545,7 @@ defmodule Logflare.Logs.SearchOperations do
 
     case direction do
       :previous -> {timestamp - window, timestamp}
-      :next -> {timestamp, timestamp + window}
+      :next -> {timestamp, max(timestamp, min(timestamp + window, request.requested_at))}
     end
   end
 

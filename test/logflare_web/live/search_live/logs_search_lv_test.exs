@@ -423,6 +423,27 @@ defmodule LogflareWeb.Source.SearchLVTest do
              |> render_click() =~ "Event Message Filtering"
     end
 
+    test "reset button links to the search page", %{conn: conn, source: source} do
+      {:ok, view, _html} =
+        live_with_redirect(conn, ~p"/sources/#{source.id}/search?querystring=something123")
+
+      [href] =
+        view
+        |> element("a", "Reset")
+        |> render()
+        |> Floki.parse_fragment!()
+        |> Floki.attribute("href")
+
+      search_path = "/sources/#{source.id}/search"
+
+      assert %URI{path: ^search_path, query: query} = URI.parse(href)
+
+      assert URI.decode_query(query) == %{
+               "querystring" => @default_querystring,
+               "tailing?" => "true"
+             }
+    end
+
     test "subheader - schema modal", %{conn: conn, source: source} do
       {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
 
