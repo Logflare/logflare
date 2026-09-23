@@ -7,6 +7,7 @@ defmodule Logflare.Networking.GrpcChannelMonitor do
 
   @min_backoff 1_000
   @max_backoff 30_000
+  @idle_disconnect_threshold_s 230
 
   defstruct [:idx, :url, :registry, :backoff, :channel, :conn_time]
 
@@ -38,7 +39,12 @@ defmodule Logflare.Networking.GrpcChannelMonitor do
         Registry.register(registry, idx, channel)
 
         {:noreply,
-         %{state | backoff: @min_backoff, channel: channel, conn_time: System.os_time(:second)}}
+         %{
+           state
+           | backoff: @min_backoff,
+             channel: channel,
+             conn_time: System.monotonic_time(:second)
+         }}
 
       {:error, reason} ->
         Logger.warning(
@@ -51,8 +57,12 @@ defmodule Logflare.Networking.GrpcChannelMonitor do
   end
 
   def handle_info({:elixir_grpc, :connection_down, _pid}, state) do
-    Logger.debug(
-      "GrpcChannelMonitor[#{state.idx}]: connection down after #{System.os_time(:second) - state.conn_time}s, reconnecting"
+    elapsed = System.monotonic_time(:second) - state.conn_time
+    level = if elapsed >= @idle_disconnect_threshold_s, do: :debug, else: :warning
+
+    Logger.log(
+      level,
+      "GrpcChannelMonitor[#{state.idx}]: connection down after #{elapsed}s, reconnecting"
     )
 
     {:noreply, handle_disconnection(state)}

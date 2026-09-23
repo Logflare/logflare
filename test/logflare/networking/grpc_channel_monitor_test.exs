@@ -89,7 +89,7 @@ defmodule Logflare.Networking.GrpcChannelMonitorTest do
   end
 
   describe "disconnection handling" do
-    test ":connection_down", %{
+    test ":connection_down after idle timeout logs at debug", %{
       registry: registry,
       channel: channel
     } do
@@ -97,8 +97,11 @@ defmodule Logflare.Networking.GrpcChannelMonitorTest do
       expect(GRPC.Stub, :disconnect, fn ^channel -> {:ok, channel} end)
 
       pid = start_monitor(registry)
-      allow(GRPC.Stub, self(), pid)
       assert_receive {:register, ^registry, 0, _partition, ^channel}
+
+      :sys.replace_state(pid, fn state ->
+        %{state | conn_time: System.monotonic_time(:second) - 240}
+      end)
 
       log =
         capture_log([level: :info], fn ->
@@ -106,6 +109,26 @@ defmodule Logflare.Networking.GrpcChannelMonitorTest do
         end)
 
       refute log =~ "connection down"
+      assert_receive {:unregister, ^registry, 0, _partition}
+      assert_receive {:send_after, 0}
+    end
+
+    test "early :connection_down logs a warning", %{
+      registry: registry,
+      channel: channel
+    } do
+      expect(GRPC.Stub, :connect, fn _url, _opts -> {:ok, channel} end)
+      expect(GRPC.Stub, :disconnect, fn ^channel -> {:ok, channel} end)
+
+      pid = start_monitor(registry)
+      assert_receive {:register, ^registry, 0, _partition, ^channel}
+
+      log =
+        capture_log([level: :warning], fn ->
+          send_and_sync(pid, {:elixir_grpc, :connection_down, channel.ref})
+        end)
+
+      assert log =~ "connection down after 0s"
       assert_receive {:unregister, ^registry, 0, _partition}
       assert_receive {:send_after, 0}
     end

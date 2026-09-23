@@ -20,6 +20,7 @@ defmodule Logflare.Networking.GrpcPool do
     size = Keyword.get(opts, :size, System.schedulers_online())
     registry = registry_name(name)
 
+    # Node-wide and persists after this pool stops, not pool-local configuration
     Logger.put_module_level(GRPC.Client.Connection, :warning)
 
     ref = :atomics.new(1, signed: false)
