@@ -55,3 +55,10 @@ jobs:
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
+      - name: Report denied tool calls
+        if: always() && steps.claude-review.outputs.execution_file != ''
+        env:
+          EXECUTION_FILE: ${{ steps.claude-review.outputs.execution_file }}
+        run: |
+          jq '.[] | select(.type == "result") | {result, permission_denials}' "$EXECUTION_FILE"
+
