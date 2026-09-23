@@ -854,10 +854,17 @@ defmodule Logflare.Endpoints do
           {:ok, result |> Map.put(:rows, redacted_rows) |> Map.from_struct()}
 
         {:error, error} ->
-          {:error, error}
+          {:error, redact_query_error(error, redact_pii)}
       end
     end
   end
+
+  @spec redact_query_error(term(), boolean()) :: term()
+  defp redact_query_error(%QueryError{description: description} = error, true)
+       when is_non_empty_binary(description),
+       do: %{error | description: PiiRedactor.redact_ip_addresses(description)}
+
+  defp redact_query_error(error, _redact_pii), do: error
 
   @spec maybe_transform_query(
           backend :: Backend.t(),
