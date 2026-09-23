@@ -461,11 +461,19 @@ defmodule Logflare.Telemetry do
           "ClickHouse inserts by outcome, counted once per batch after any HTTP retry. `result` provides the insert error rate numerator and denominator, and `error_class` is `:none` on success"
       ),
       counter("logflare.clickhouse.circuit_breaker.open.count",
-        event_name: [:logflare, :clickhouse, :circuit_breaker, :open],
+        event_name: [:logflare, :backends, :circuit_breaker, :open],
         measurement: :failures,
         tags: [:backend_id, :reason],
+        keep: &clickhouse_batch?/1,
         description:
           "Times a backend's ClickHouse insert circuit breaker opened, tagged `:threshold` when the failure count in the window was reached or `:forced` when opened immediately by a TOO_MANY_PARTS response"
+      ),
+      counter("logflare.backends.circuit_breaker.open.count",
+        event_name: [:logflare, :backends, :circuit_breaker, :open],
+        measurement: :failures,
+        tags: [:backend_id, :backend_type, :reason],
+        description:
+          "Times the retry circuit breaker of a backend opened, for every backend type that runs one. Tagged `:threshold` when the failure count in the window was reached or `:forced` when a pipeline opened it immediately"
       ),
       sum("logflare.logs.ingest_logs.drop_future",
         event_name: [:logflare, :logs, :ingest_logs, :drop_future],
