@@ -88,11 +88,13 @@ gate to go green - fix the code.
   clone fails CI. When you remove clones, lower the number. Never raise it.
 - `mix test.structure` runs `reach.check --smells` against
   `.reach.baseline.json` (194 accepted findings), so only **new** structural
-  smells fail. To accept a
-  new smell, run `mix reach.check --smells --write-baseline
-  .reach.baseline.json`, pretty-print it with `jq . .reach.baseline.json > tmp
-  && mv tmp .reach.baseline.json`, and commit it. Keep the checked-in baseline
-  pretty-printed so diffs stay reviewable.
+  smells fail. The baseline records a `MIX_ENV=test` scope, so run it as
+  `MIX_ENV=test mix test.structure`. A plain run uses `MIX_ENV=dev` and aborts
+  with a baseline scope error. To accept a new smell, run `MIX_ENV=test mix
+  reach.check --smells --write-baseline .reach.baseline.json`, pretty-print it
+  with `jq . .reach.baseline.json > tmp && mv tmp .reach.baseline.json`, and
+  commit it. Keep the checked-in baseline pretty-printed so diffs stay
+  reviewable.
 - `mix test.deps` runs `hex.audit` and `deps.audit`. It is advisory in CI, not
   a gate, because the lockfile carries pre-existing advisories.
 
