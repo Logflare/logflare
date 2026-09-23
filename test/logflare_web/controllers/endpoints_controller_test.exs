@@ -5,6 +5,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryErrorNormalizer
   alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
   alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
   alias Logflare.Google.BigQuery.GenUtils
@@ -525,6 +526,66 @@ defmodule LogflareWeb.EndpointsControllerTest do
         |> get(~p"/api/endpoints/query/#{endpoint.name}", %{sql: "select b from function_logs"})
 
       assert json_response(conn, 200)["error"] == ~s(Table "function_logs" does not exist.)
+      refute json_response(conn, 200)["result"]
+    end
+
+    test "sql that fails to parse returns the parser error", %{conn: conn, user: user} do
+      reject(&ClickHouseAdaptor.execute_query/3)
+
+      backend = insert(:backend, type: :clickhouse, user: user)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :ch_sql,
+          enable_auth: true,
+          sandboxable: true,
+          query: "with a as (select 1 as b) select b from a"
+        )
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get(~p"/api/endpoints/query/#{endpoint.name}", %{sql: "select b from"})
+
+      assert json_response(conn, 200)["error"] =~ "sql parser error: "
+      refute json_response(conn, 200)["result"]
+    end
+
+    test "ClickHouse user errors return the sanitized ClickHouse message", %{
+      conn: conn,
+      user: user
+    } do
+      backend = insert(:backend, type: :clickhouse, user: user)
+
+      expect(ClickHouseAdaptor, :execute_query, fn _backend, _query, _opts ->
+        {:error,
+         QueryErrorNormalizer.normalize(%Ch.Error{
+           code: 215,
+           message:
+             "Code: 215. DB::Exception: Column 'b' is not under aggregate function and not in GROUP BY keys. In query WITH a AS (SELECT 1 AS b FROM otel_logs_abc123def) SELECT b, count() FROM a. (NOT_AN_AGGREGATE) (version 26.2.19.43 (official build))"
+         })}
+      end)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :ch_sql,
+          enable_auth: true,
+          sandboxable: true,
+          query: "with a as (select 1 as b) select b from a"
+        )
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get(~p"/api/endpoints/query/#{endpoint.name}", %{sql: "select b, count() from a"})
+
+      assert json_response(conn, 200)["error"] ==
+               "Column 'b' is not under aggregate function and not in GROUP BY keys. (NOT_AN_AGGREGATE)"
+
       refute json_response(conn, 200)["result"]
     end
 

@@ -22,6 +22,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias __MODULE__.Pipeline
   alias __MODULE__.Provisioner
   alias __MODULE__.QueryConnectionSup
+  alias __MODULE__.QueryErrorNormalizer
   alias __MODULE__.QueryTemplates
   alias Ecto.Changeset
   alias Logflare.Backends
@@ -884,11 +885,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @spec to_query_error(term()) :: QueryError.t()
-  defp to_query_error(%Ch.Error{} = error) do
-    error
-    |> ch_query_error_kind()
-    |> query_error(error)
-  end
+  defp to_query_error(%Ch.Error{} = error), do: QueryErrorNormalizer.normalize(error)
 
   defp to_query_error(%DBConnection.ConnectionError{reason: :queue_timeout} = error) do
     query_error(:pool_exhausted, error)
@@ -913,19 +910,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   defp to_query_error(error) do
     query_error(:backend_error, error)
   end
-
-  @spec ch_query_error_kind(term()) :: QueryError.kind()
-  defp ch_query_error_kind(%Ch.Error{code: code}) when code in [47, 62], do: :invalid_query
-
-  defp ch_query_error_kind(%Ch.Error{message: message}) when is_binary(message) do
-    if message =~ "UNKNOWN_IDENTIFIER" or message =~ "SYNTAX_ERROR" do
-      :invalid_query
-    else
-      :backend_error
-    end
-  end
-
-  defp ch_query_error_kind(%Ch.Error{}), do: :backend_error
 
   @spec query_error(QueryError.kind(), term()) :: QueryError.t()
   defp query_error(kind, raw_error) do

@@ -95,7 +95,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       if error.kind == :invalid_query do
         assert %Ch.Error{} = error.raw_error
-        assert error.description == nil
+        assert error.description =~ "(SYNTAX_ERROR)"
       end
     end
 
@@ -118,7 +118,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                   message:
                     "Code: 47. DB::Exception: Unknown expression identifier `notthere` in scope SELECT notthere. (UNKNOWN_IDENTIFIER)"
                 },
-                description: nil
+                description: ~s(Field "notthere" does not exist.)
               }} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT notthere")
     end
 
@@ -134,6 +134,46 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                 raw_error: %Ch.Error{code: 999, message: "Backend server error"},
                 description: nil
               }} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1")
+    end
+
+    test "describes a real ClickHouse NOT_AN_AGGREGATE error without the physical table", %{
+      backend: backend
+    } do
+      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+
+      assert {:error,
+              %QueryError{
+                kind: :invalid_query,
+                raw_error: %Ch.Error{code: 215, message: raw_message},
+                description: description
+              }} =
+               ClickHouseAdaptor.execute_ch_query(
+                 backend,
+                 "SELECT event_message, count() FROM #{table_name}"
+               )
+
+      assert raw_message =~ table_name
+
+      assert description ==
+               "Column 'event_message' is not under aggregate function and not in GROUP BY keys. (NOT_AN_AGGREGATE)"
+    end
+
+    test "classifies allowlisted ClickHouse error codes as invalid queries", %{backend: backend} do
+      message =
+        "Code: 215. DB::Exception: Column 'a' is not under aggregate function and not in GROUP BY keys. (NOT_AN_AGGREGATE)"
+
+      expect(Ch, :query, fn _pool, _statement, _params, _opts ->
+        {:error, %Ch.Error{code: 215, message: message}}
+      end)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, %QueryError{kind: :invalid_query, raw_error: %Ch.Error{code: 215}}} =
+                   ClickHouseAdaptor.execute_ch_query(backend, "SELECT a, count()")
+        end)
+
+      refute log =~ "Backend query error"
     end
 
     test "logs a warning when connection checkout is slow", %{backend: backend} do
