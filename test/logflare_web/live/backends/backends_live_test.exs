@@ -347,7 +347,7 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       assert view
              |> element("select#type")
-             |> render_change(%{backend: %{type: "webhook"}}) =~ "Websocket URL"
+             |> render_change(%{backend: %{type: "webhook"}}) =~ "HTTP URL"
 
       assert view
              |> form("form", %{
@@ -920,6 +920,43 @@ defmodule LogflareWeb.BackendsLiveTest do
         |> Enum.find(&(&1.name == "gzip off backend"))
 
       assert backend.config.gzip == false
+    end
+
+    test "consolidated webhook create saves the batch size", %{conn: conn, user: user} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      html =
+        view
+        |> element("select#type")
+        |> render_change(%{backend: %{type: "consolidated_webhook"}})
+
+      assert html =~ "webhook-batch-size"
+
+      view
+      |> form("form", %{
+        backend: %{
+          name: "consolidated webhook backend",
+          type: "consolidated_webhook",
+          config: %{url: "https://example.com", batch_size: "2500"}
+        }
+      })
+      |> render_submit()
+
+      backend =
+        Backends.list_backends_by_user_id(user.id)
+        |> Enum.find(&(&1.name == "consolidated webhook backend"))
+
+      assert backend.type == :consolidated_webhook
+      assert backend.config.batch_size == 2_500
+      assert backend.config.gzip == true
+    end
+
+    test "webhook form does not show the batch size", %{conn: conn} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      html = view |> element("select#type") |> render_change(%{backend: %{type: "webhook"}})
+
+      refute html =~ "webhook-batch-size"
     end
 
     test "webhook edit keeps gzip disabled", %{conn: conn, source: source, user: user} do
