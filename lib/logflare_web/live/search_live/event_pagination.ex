@@ -73,9 +73,8 @@ defmodule LogflareWeb.SearchLive.EventPagination do
   Returns the state, cursor and label of both pagination buttons.
 
   The `:now` option is the current time in microseconds. It defaults to the system time. A
-  "next" page moves the cursor and the timestamp range no further than now, so the "next"
-  label names only the time left until now. The page query itself still scans the full
-  window from the cursor.
+  "next" page scans, moves the cursor and extends the timestamp range no further than now,
+  so the "next" label names only the time left until now.
   """
   @spec buttons(t(), keyword()) :: buttons()
   def buttons(pagination, options) do

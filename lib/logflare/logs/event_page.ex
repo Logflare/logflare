@@ -11,7 +11,8 @@ defmodule Logflare.Logs.EventPage do
   @type request :: %{
           required(:intent) => intent(),
           required(:cursor) => cursor() | nil,
-          optional(:window_seconds) => pos_integer()
+          optional(:window_seconds) => pos_integer(),
+          optional(:requested_at) => integer()
         }
 
   typedstruct do
