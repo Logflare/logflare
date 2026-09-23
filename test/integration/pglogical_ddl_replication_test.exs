@@ -48,7 +48,9 @@ defmodule Logflare.Integration.PglogicalDdlReplicationTest do
     replica_app_schema = await_app_schema(replica_conn)
 
     {:ok,
-     primary_conn: primary_conn, replica_conn: replica_conn, replica_app_schema: replica_app_schema}
+     primary_conn: primary_conn,
+     replica_conn: replica_conn,
+     replica_app_schema: replica_app_schema}
   end
 
   setup %{primary_conn: primary_conn, replica_conn: replica_conn} do
