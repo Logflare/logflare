@@ -12,6 +12,7 @@ defmodule Logflare.KeyValues.CacheWarmer do
   import Ecto.Query
 
   @pt_key {__MODULE__, :initialized}
+  @pt_warmed_at {__MODULE__, :warmed_at}
 
   @impl true
   def execute(_state) do
@@ -20,6 +21,7 @@ defmodule Logflare.KeyValues.CacheWarmer do
     else
       try do
         Repo.apply_with_replica(__MODULE__, :warm_top_n, [])
+        :persistent_term.put(@pt_warmed_at, DateTime.utc_now())
         :persistent_term.put(@pt_key, true)
       rescue
         e ->
@@ -64,6 +66,18 @@ defmodule Logflare.KeyValues.CacheWarmer do
 
   defp to_cache_entry(%KeyValue{} = kv) do
     {{:lookup, [kv.user_id, kv.key, nil]}, {:cached, kv.value}}
+  end
+
+  @doc """
+  When the last full warm completed on this node, or `nil` if none has.
+
+  Entries `put` by the warmer were written at or before this moment, so consumers
+  of write-recency (like `Cache.touch_recent_usages/1`) can use it to tell warmed
+  entries apart from genuine cache misses.
+  """
+  @spec warmed_at() :: DateTime.t() | nil
+  def warmed_at do
+    :persistent_term.get(@pt_warmed_at, nil)
   end
 
   defp initialized? do

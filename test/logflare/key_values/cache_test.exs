@@ -3,8 +3,11 @@ defmodule Logflare.KeyValues.CacheTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.KeyValues
+  alias Logflare.KeyValues.CacheWarmer
 
   setup do
+    :persistent_term.erase({CacheWarmer, :initialized})
+    :persistent_term.erase({CacheWarmer, :warmed_at})
     user = insert(:user)
     [user: user]
   end
@@ -85,6 +88,17 @@ defmodule Logflare.KeyValues.CacheTest do
       future = DateTime.add(DateTime.utc_now(), 25, :minute)
       assert {:ok, 0} = KeyValues.Cache.touch_recent_usages(future)
       assert [] = Repo.all(KeyValueUsage)
+    end
+
+    test "entries written by the initial warm", %{user: user, kv1: %{id: kv1_id, key: key}} do
+      CacheWarmer.execute(nil)
+      assert {:ok, 0} = KeyValues.Cache.touch_recent_usages(DateTime.utc_now())
+
+      Process.sleep(2)
+      {:ok, true} = Cachex.put(KeyValues.Cache, {:lookup, [user.id, key, nil]}, {:cached, "v"})
+
+      assert {:ok, 1} = KeyValues.Cache.touch_recent_usages(DateTime.utc_now())
+      assert [%KeyValueUsage{key_value_id: ^kv1_id}] = Repo.all(KeyValueUsage)
     end
 
     test "multiple users", %{user: user, kv1: kv1, kv2: kv2} do
