@@ -96,7 +96,7 @@ defmodule Logflare.Endpoints.PiiRedactor do
   @ipv6_leading_punctuation ~r/\A[._%]*/
   @ipv6_trailing_punctuation ~r/[._%]+\z/
   @ipv6_trailing_colon ~r/[._%]*:[._%]*\z/
-  @ipv6_max_length 64
+  @ipv6_max_length 320
 
   @spec redact_ipv4_addresses(String.t()) :: String.t()
   defp redact_ipv4_addresses(value) do

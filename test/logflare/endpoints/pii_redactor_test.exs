@@ -153,6 +153,15 @@ defmodule Logflare.Endpoints.PiiRedactorTest do
       end
     end
 
+    test "redacts zoned IPv6 addresses with long zone suffixes" do
+      for zone_length <- [15, 57, 60, 250, 311] do
+        zone = String.duplicate("a", zone_length)
+        input = "x fe80::1%" <> zone <> " y"
+
+        assert PiiRedactor.redact_ip_addresses(input) == "x REDACTED y"
+      end
+    end
+
     test "redacts IPv6 addresses that embed an IPv4 address as a whole" do
       assert PiiRedactor.redact_ip_addresses("::ffff:203.0.113.5") == "REDACTED"
       assert PiiRedactor.redact_ip_addresses("'2001:db8::203.0.113.5'") == "'REDACTED'"
