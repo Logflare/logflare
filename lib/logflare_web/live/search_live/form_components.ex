@@ -351,7 +351,7 @@ defmodule LogflareWeb.SearchLive.FormComponents do
     </div>
 
     <div class="pr-2 pt-1 pb-1">
-      <.link navigate={~p"/sources/#{@source}?querystring=c:count(*) c:group_by(t::minute)&tailing?=true"} class="btn btn-primary">
+      <.link navigate={~p"/sources/#{@source}/search?#{[querystring: "c:count(*) c:group_by(t::minute)", tailing?: true]}"} class="btn btn-primary">
         <i class="fas fa-redo"></i>
         <span class="hide-on-mobile fas-in-button">Reset</span>
       </.link>

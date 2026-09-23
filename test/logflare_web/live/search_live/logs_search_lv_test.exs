@@ -423,6 +423,16 @@ defmodule LogflareWeb.Source.SearchLVTest do
              |> render_click() =~ "Event Message Filtering"
     end
 
+    test "reset button links to the search page", %{conn: conn, source: source} do
+      {:ok, view, _html} =
+        live_with_redirect(conn, ~p"/sources/#{source.id}/search?querystring=something123")
+
+      reset_path =
+        ~p"/sources/#{source.id}/search?#{[querystring: "c:count(*) c:group_by(t::minute)", tailing?: true]}"
+
+      assert has_element?(view, ~s|a[href="#{reset_path}"]|, "Reset")
+    end
+
     test "subheader - schema modal", %{conn: conn, source: source} do
       {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
 
