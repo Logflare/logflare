@@ -7,6 +7,9 @@ defmodule Logflare.Integration.PglogicalDdlReplicationTest do
   Requires the pglogical primary/replica containers from
   `docker-compose.pglogical.yml`, bootstrapped via
   `test/support/pglogical/bootstrap.exs`.
+  The real application migrations must already have been run against the
+  primary through `Logflare.Repo.Pglogical` with replication sets configured
+  (as the CI workflow does) before these tests run.
   Run with: `mix test --only pglogical_replica`
   """
   use ExUnit.Case, async: false
@@ -30,6 +33,12 @@ defmodule Logflare.Integration.PglogicalDdlReplicationTest do
                )
   @replication_set System.get_env("PGLOGICAL_TEST_REPLICATION_SET", "my_set")
 
+  @app_schema_columns [
+    {"sources", "token", "uuid"},
+    {"backends", "enabled", "boolean"},
+    {"endpoint_queries", "description", "text"}
+  ]
+
   @migration_versions %{
     PglogicalTestMigration => 1,
     PglogicalTestMigrationAlter => 2
@@ -38,7 +47,13 @@ defmodule Logflare.Integration.PglogicalDdlReplicationTest do
   setup_all do
     {:ok, primary_conn} = Postgrex.start_link(Ecto.Repo.Supervisor.parse_url(@primary_url))
     {:ok, replica_conn} = Postgrex.start_link(Ecto.Repo.Supervisor.parse_url(@replica_url))
-    {:ok, primary_conn: primary_conn, replica_conn: replica_conn}
+
+    # Captured before any test resets `public`, since the per-test setup wipes
+    # the schema produced by the real migration suite.
+    replica_app_schema = await_app_schema(replica_conn)
+
+    {:ok,
+     primary_conn: primary_conn, replica_conn: replica_conn, replica_app_schema: replica_app_schema}
   end
 
   setup %{primary_conn: primary_conn, replica_conn: replica_conn} do
@@ -52,6 +67,17 @@ defmodule Logflare.Integration.PglogicalDdlReplicationTest do
     reset_public_schema!(primary_conn)
     reset_public_schema!(replica_conn)
     :ok
+  end
+
+  describe "application migration suite" do
+    test "replicates the resulting application schema to the replica", %{
+      replica_app_schema: replica_app_schema
+    } do
+      for {table, column, data_type} <- @app_schema_columns do
+        assert Map.get(replica_app_schema, {table, column}) == data_type,
+               "expected #{table}.#{column} to be #{data_type} on the replica"
+      end
+    end
   end
 
   describe "when replication sets are configured" do
@@ -139,6 +165,39 @@ defmodule Logflare.Integration.PglogicalDdlReplicationTest do
           :exit, _reason -> :ok
         end
     end
+  end
+
+  @spec await_app_schema(pid()) :: %{{String.t(), String.t()} => String.t()}
+  defp await_app_schema(conn) do
+    expected = Map.new(@app_schema_columns, fn {t, c, type} -> {{t, c}, type} end)
+
+    try do
+      TestUtils.retry_assert([duration: 30_000, sleep: 500], fn ->
+        assert Map.take(app_schema(conn), Map.keys(expected)) == expected
+      end)
+    rescue
+      ExUnit.AssertionError -> :ok
+    end
+
+    app_schema(conn)
+  end
+
+  @spec app_schema(pid()) :: %{{String.t(), String.t()} => String.t()}
+  defp app_schema(conn) do
+    tables = @app_schema_columns |> Enum.map(&elem(&1, 0)) |> Enum.uniq()
+
+    %{rows: rows} =
+      Postgrex.query!(
+        conn,
+        """
+        SELECT table_name, column_name, data_type
+        FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = ANY($1)
+        """,
+        [tables]
+      )
+
+    Map.new(rows, fn [table, column, type] -> {{table, column}, type} end)
   end
 
   defp table_exists?(conn, table_name) do
