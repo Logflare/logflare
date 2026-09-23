@@ -427,10 +427,21 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, view, _html} =
         live_with_redirect(conn, ~p"/sources/#{source.id}/search?querystring=something123")
 
-      reset_path =
-        ~p"/sources/#{source.id}/search?#{[querystring: "c:count(*) c:group_by(t::minute)", tailing?: true]}"
+      [href] =
+        view
+        |> element("a", "Reset")
+        |> render()
+        |> Floki.parse_fragment!()
+        |> Floki.attribute("href")
 
-      assert has_element?(view, ~s|a[href="#{reset_path}"]|, "Reset")
+      search_path = "/sources/#{source.id}/search"
+
+      assert %URI{path: ^search_path, query: query} = URI.parse(href)
+
+      assert URI.decode_query(query) == %{
+               "querystring" => @default_querystring,
+               "tailing?" => "true"
+             }
     end
 
     test "subheader - schema modal", %{conn: conn, source: source} do
