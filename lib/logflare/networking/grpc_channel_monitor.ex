@@ -51,7 +51,7 @@ defmodule Logflare.Networking.GrpcChannelMonitor do
   end
 
   def handle_info({:elixir_grpc, :connection_down, _pid}, state) do
-    Logger.warning(
+    Logger.debug(
       "GrpcChannelMonitor[#{state.idx}]: connection down after #{System.os_time(:second) - state.conn_time}s, reconnecting"
     )
 

@@ -1,6 +1,7 @@
 defmodule Logflare.Networking.GrpcChannelMonitorTest do
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureLog
   import Mimic
 
   alias Logflare.Networking.GrpcChannelMonitor
@@ -99,8 +100,12 @@ defmodule Logflare.Networking.GrpcChannelMonitorTest do
       allow(GRPC.Stub, self(), pid)
       assert_receive {:register, ^registry, 0, _partition, ^channel}
 
-      send_and_sync(pid, {:elixir_grpc, :connection_down, channel.ref})
+      log =
+        capture_log([level: :info], fn ->
+          send_and_sync(pid, {:elixir_grpc, :connection_down, channel.ref})
+        end)
 
+      refute log =~ "connection down"
       assert_receive {:unregister, ^registry, 0, _partition}
       assert_receive {:send_after, 0}
     end
