@@ -151,11 +151,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryErrorNormalizer do
   defp code_label(nil), do: nil
   defp code_label(code_name), do: "(#{code_name})"
 
-  defp join([nil | _rest]), do: nil
-
   defp join(parts) do
-    parts
-    |> Enum.reject(&is_nil/1)
-    |> Enum.join(" ")
+    case Enum.reject(parts, &is_nil/1) do
+      [] -> nil
+      parts -> Enum.join(parts, " ")
+    end
   end
 end

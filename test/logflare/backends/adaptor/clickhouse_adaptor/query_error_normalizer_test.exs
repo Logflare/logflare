@@ -120,6 +120,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryErrorNormalizerTest d
                QueryErrorNormalizer.normalize(error)
     end
 
+    test "keeps the hint and error name when no message body remains after sanitizing" do
+      error = %Ch.Error{
+        code: 46,
+        message:
+          "Code: 46. DB::Exception: In scope SELECT lowr(1) FROM otel_logs_abc123def. Maybe you meant: ['lower']. (UNKNOWN_FUNCTION)"
+      }
+
+      assert %QueryError{
+               kind: :invalid_query,
+               description: "Maybe you meant: ['lower']. (UNKNOWN_FUNCTION)"
+             } = QueryErrorNormalizer.normalize(error)
+    end
+
     test "leaves the description empty when nothing remains after sanitizing" do
       error = %Ch.Error{code: 62, message: "Code: 62. DB::Exception: In query SELECT."}
 
