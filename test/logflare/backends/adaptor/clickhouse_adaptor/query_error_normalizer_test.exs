@@ -89,11 +89,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryErrorNormalizerTest d
       end
     end
 
-    test "classifies codeless errors by their allowlisted error name" do
+    test "classifies codeless errors by their trailing allowlisted error name" do
       error = %Ch.Error{
         code: nil,
         message:
-          "Code: 46. DB::Exception: Function with name `lowr` does not exist. (UNKNOWN_FUNCTION)"
+          "Code: 46. DB::Exception: Function with name `lowr` does not exist. (UNKNOWN_FUNCTION) #{@version}\n"
       }
 
       assert %QueryError{
@@ -171,6 +171,28 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryErrorNormalizerTest d
 
     test "treats codeless errors without an allowlisted name as backend errors" do
       error = %Ch.Error{code: nil, message: "unexpected result for 'SELECT 1'"}
+
+      assert %QueryError{kind: :backend_error, description: nil} =
+               QueryErrorNormalizer.normalize(error)
+    end
+
+    test "ignores an allowlisted name that only appears in echoed caller text" do
+      error = %Ch.Error{
+        code: nil,
+        message:
+          "502 Bad Gateway: upstream failed for query SELECT '(SYNTAX_ERROR)' AS x FROM logs"
+      }
+
+      assert %QueryError{kind: :backend_error, description: nil} =
+               QueryErrorNormalizer.normalize(error)
+    end
+
+    test "ignores an allowlisted name when a different error name ends the message" do
+      error = %Ch.Error{
+        code: nil,
+        message:
+          "Code: 241. DB::Exception: Memory limit exceeded while running SELECT '(NOT_AN_AGGREGATE)'. (MEMORY_LIMIT_EXCEEDED) (version 26.2.19.43 (official build))"
+      }
 
       assert %QueryError{kind: :backend_error, description: nil} =
                QueryErrorNormalizer.normalize(error)

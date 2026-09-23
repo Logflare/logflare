@@ -45,7 +45,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryErrorNormalizer do
     352 => "AMBIGUOUS_COLUMN_NAME"
   }
   @user_error_code_list Map.keys(@user_error_codes)
-  @user_error_name_pattern ~r/\((#{Enum.map_join(@user_error_codes, "|", fn {_code, name} -> name end)})\)/
+  @user_error_names Map.values(@user_error_codes)
 
   @trailer ~r/(?:,?\s*Stack trace|\s*\(version ).*\z/s
   @error_code_name ~r/\s*\(([A-Z][A-Z0-9_]*)\)\z/
@@ -79,8 +79,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryErrorNormalizer do
   @spec user_error?(Ch.Error.t()) :: boolean()
   defp user_error?(%Ch.Error{code: code}) when code in @user_error_code_list, do: true
 
-  defp user_error?(%Ch.Error{code: nil, message: message}) when is_non_empty_binary(message),
-    do: Regex.match?(@user_error_name_pattern, message)
+  defp user_error?(%Ch.Error{code: nil, message: message}) when is_non_empty_binary(message) do
+    {code_name, _message} =
+      message
+      |> String.trim()
+      |> strip(@trailer)
+      |> split_trailing(@error_code_name)
+
+    code_name in @user_error_names
+  end
 
   defp user_error?(%Ch.Error{}), do: false
 
