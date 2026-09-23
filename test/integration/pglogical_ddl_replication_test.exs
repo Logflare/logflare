@@ -171,13 +171,9 @@ defmodule Logflare.Integration.PglogicalDdlReplicationTest do
   defp await_app_schema(conn) do
     expected = Map.new(@app_schema_columns, fn {t, c, type} -> {{t, c}, type} end)
 
-    try do
-      TestUtils.retry_assert(fn ->
-        assert Map.take(app_schema(conn), Map.keys(expected)) == expected
-      end)
-    rescue
-      ExUnit.AssertionError -> :ok
-    end
+    TestUtils.retry_assert(fn ->
+      assert Map.take(app_schema(conn), Map.keys(expected)) == expected
+    end)
 
     app_schema(conn)
   end
