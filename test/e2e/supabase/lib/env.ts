@@ -14,10 +14,11 @@ export function forceIpv4Loopback(url: string): string {
   try {
     const parsed = new URL(url);
 
-    if (parsed.hostname === 'localhost' || parsed.hostname === '::1') {
-      parsed.hostname = '127.0.0.1';
+    if (parsed.hostname !== 'localhost' && parsed.hostname !== '[::1]') {
+      return url;
     }
 
+    parsed.hostname = '127.0.0.1';
     return parsed.toString().replace(/\/$/, '');
   } catch {
     return url;
