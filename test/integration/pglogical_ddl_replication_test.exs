@@ -172,7 +172,7 @@ defmodule Logflare.Integration.PglogicalDdlReplicationTest do
     expected = Map.new(@app_schema_columns, fn {t, c, type} -> {{t, c}, type} end)
 
     try do
-      TestUtils.retry_assert([duration: 30_000, sleep: 500], fn ->
+      TestUtils.retry_assert(fn ->
         assert Map.take(app_schema(conn), Map.keys(expected)) == expected
       end)
     rescue
