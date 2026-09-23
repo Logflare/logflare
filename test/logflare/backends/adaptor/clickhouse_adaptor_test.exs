@@ -551,43 +551,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   end
 
   describe "cast_and_validate_config" do
-    test "casts read_only_url when provided" do
-      changeset =
-        cast_and_validate_config(read_only_url: "https://read-only.clickhouse.cloud:8443")
-
-      assert changeset.valid?
-
-      assert Ecto.Changeset.get_field(changeset, :read_only_url) ==
-               "https://read-only.clickhouse.cloud:8443"
-    end
-
-    test "read_only_url defaults to nil when not provided" do
-      changeset = cast_and_validate_config()
-
-      assert changeset.valid?
-      assert Ecto.Changeset.get_field(changeset, :read_only_url) == nil
-    end
-
-    test "rejects invalid read_only_url format" do
-      changeset = cast_and_validate_config(read_only_url: "invalid-url")
-
-      refute changeset.valid?
-      assert {:read_only_url, _} = hd(changeset.errors)
-    end
-
-    test "accepts valid http read_only_url" do
-      changeset = cast_and_validate_config(read_only_url: "http://read-cluster.local:8123")
-
-      assert changeset.valid?
-    end
-
-    test "accepts valid https read_only_url" do
-      changeset =
-        cast_and_validate_config(read_only_url: "https://read-cluster.clickhouse.cloud:8443")
-
-      assert changeset.valid?
-    end
-
     test "casts read_only_urls map when provided" do
       urls = %{
         "dashboard_logs" => "http://logs-read.local:8123",
@@ -639,7 +602,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       changeset =
         cast_and_validate_config(
           url: "http://ingest_user:ingest_pa55@ingest.local:8123",
-          read_only_url: "http://legacy_user:legacy_pa55@legacy-read.local:8123",
           read_only_urls: %{
             "dashboard_logs" => "http://logs_user:logs_pa55@logs-read.local:8123",
             "api" => "https://api_user@api-read.local:8443"
@@ -649,9 +611,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       assert changeset.valid?
       assert Ecto.Changeset.get_field(changeset, :url) == "http://ingest.local:8123"
-
-      assert Ecto.Changeset.get_field(changeset, :read_only_url) ==
-               "http://legacy-read.local:8123"
 
       assert Ecto.Changeset.get_field(changeset, :read_only_urls) == %{
                "dashboard_logs" => "http://logs-read.local:8123",
@@ -1059,50 +1018,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     Adaptor.cast_and_validate_config(ClickHouseAdaptor, Map.merge(default_attrs, Map.new(attrs)))
   end
 
-  describe "read_only_url fallback behavior" do
-    test "uses primary url when read_only_url is nil" do
-      config = %{
-        url: "http://primary.clickhouse.local",
-        read_only_url: nil,
-        port: 8123
-      }
-
-      assert resolve_read_url(config) == "http://primary.clickhouse.local"
-    end
-
-    test "uses primary url when read_only_url is empty string" do
-      config = %{
-        url: "http://primary.clickhouse.local",
-        read_only_url: "",
-        port: 8123
-      }
-
-      assert resolve_read_url(config) == "http://primary.clickhouse.local"
-    end
-
-    test "uses read_only_url when configured" do
-      config = %{
-        url: "http://primary.clickhouse.local",
-        read_only_url: "http://readonly.clickhouse.local",
-        port: 8123
-      }
-
-      assert resolve_read_url(config) == "http://readonly.clickhouse.local"
-    end
-  end
-
-  defp resolve_read_url(config) do
-    import Logflare.Utils.Guards
-
-    read_only_url = Map.get(config, :read_only_url)
-    if is_non_empty_binary(read_only_url), do: read_only_url, else: Map.get(config, :url)
-  end
-
   describe "resolve_read_cluster_label/2" do
     setup do
       config = %{
         url: "http://ingest.local:8123",
-        read_only_url: "http://legacy-read.local:8123",
         read_only_urls: %{
           "dashboard_metrics" => "http://metrics-read.local:8123",
           "dashboard_logs" => "http://logs-read.local:8123",
@@ -1129,8 +1048,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert ClickHouseAdaptor.resolve_read_cluster_label(config, nil) == "dashboard_logs"
     end
 
-    test "returns nil (legacy path) when no labels are configured" do
-      config = %{url: "http://ingest.local:8123", read_only_url: "http://legacy.local:8123"}
+    test "returns nil when no labels are configured" do
+      config = %{url: "http://ingest.local:8123"}
 
       assert ClickHouseAdaptor.resolve_read_cluster_label(config, "api") == nil
       assert ClickHouseAdaptor.resolve_read_cluster_label(config, nil) == nil
@@ -1159,25 +1078,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert ClickHouseAdaptor.read_cluster_tag("api") == "api"
     end
 
-    test "returns a stable tag for the legacy pool" do
+    test "returns a stable tag for the unlabeled pool" do
       assert ClickHouseAdaptor.read_cluster_tag(nil) == "(unlabeled)"
       assert ClickHouseAdaptor.read_cluster_tag("") == "(unlabeled)"
     end
 
-    test "keeps the legacy pool distinct from a cluster labeled \"default\"" do
+    test "keeps the unlabeled pool distinct from a cluster labeled \"default\"" do
       config = %{
         url: "http://ingest.local:8123",
-        read_only_url: "http://legacy-read.local:8123",
         read_only_urls: %{"default" => "http://named-default-read.local:8123"}
       }
 
-      legacy_label = ClickHouseAdaptor.resolve_read_cluster_label(config, nil)
+      unlabeled_label = ClickHouseAdaptor.resolve_read_cluster_label(config, nil)
       named_label = ClickHouseAdaptor.resolve_read_cluster_label(config, "default")
 
-      assert legacy_label == nil
+      assert unlabeled_label == nil
       assert named_label == "default"
 
-      refute ClickHouseAdaptor.read_cluster_tag(legacy_label) ==
+      refute ClickHouseAdaptor.read_cluster_tag(unlabeled_label) ==
                ClickHouseAdaptor.read_cluster_tag(named_label)
     end
   end
@@ -1509,7 +1427,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       {_source, backend} =
         setup_clickhouse_test(
           config: %{
-            read_only_url: "http://legacy-read.local:8123",
             read_only_urls: %{"adhoc" => "http://adhoc-read.local:8123"},
             default_read_cluster: "adhoc"
           }
@@ -1531,7 +1448,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       assert log =~ "host=adhoc-read.local"
       assert log =~ "clickhouse_read_cluster=adhoc"
-      refute log =~ "legacy-read.local"
+      refute log =~ "host=localhost"
     end
   end
 
@@ -1539,14 +1456,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     setup do
       insert(:plan, name: "Free")
       :ok
-    end
-
-    test "passes when both ingest and read_only_url point to valid clusters" do
-      {_source, backend} =
-        setup_clickhouse_test(config: %{read_only_url: "http://localhost:8123"})
-
-      start_supervised!({ClickHouseAdaptor, backend})
-      assert :ok = ClickHouseAdaptor.test_connection(backend)
     end
 
     test "fails when the ingest cluster returns a connection error and logs the ingest URL" do
@@ -1569,7 +1478,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "fails when the read cluster returns a connection error" do
       {_source, backend} =
         setup_clickhouse_test(
-          config: %{read_only_url: "http://localhost:8123"},
+          config: %{read_only_urls: %{"reporting" => "http://localhost:8123"}},
           cleanup?: false
         )
 
@@ -1683,7 +1592,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       {_source, backend} =
         setup_clickhouse_test(
           config: %{
-            read_only_url: "http://localhost:8123",
+            read_only_urls: %{"reporting" => "http://localhost:8123"},
             query_user: "ch_reader",
             query_password: "reader_pa55"
           },
@@ -1759,7 +1668,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "falls back to the default credentials when only query_user is set" do
       {_source, backend} =
         setup_clickhouse_test(
-          config: %{read_only_url: "http://localhost:8123", query_user: "ch_reader"},
+          config: %{
+            read_only_urls: %{"reporting" => "http://localhost:8123"},
+            query_user: "ch_reader"
+          },
           cleanup?: false
         )
 

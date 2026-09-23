@@ -223,8 +223,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   @doc """
   Resolves the host for a given `label`.
 
-  Falls back to the `default_read_cluster` entry, then to the deprecated
-  `read_only_url`, and finally to the primary `url`.
+  Falls back to the `default_read_cluster` entry, then to the primary `url`.
   """
   @spec read_host(Backend.t() | nil, String.t() | nil) :: String.t() | nil
   def read_host(%Backend{config: config}, label) do
@@ -574,7 +573,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
     urls = Map.get(config, :read_only_urls) || %{}
     default = Map.get(config, :default_read_cluster)
 
-    labeled_url(urls, label) || labeled_url(urls, default) || legacy_read_url(config)
+    labeled_url(urls, label) || labeled_url(urls, default) || Map.get(config, :url)
   end
 
   @spec labeled_url(map(), String.t() | nil) :: String.t() | nil
@@ -586,12 +585,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   end
 
   defp labeled_url(_urls, _label), do: nil
-
-  @spec legacy_read_url(map()) :: String.t() | nil
-  defp legacy_read_url(config) do
-    read_only_url = Map.get(config, :read_only_url)
-    if is_non_empty_binary(read_only_url), do: read_only_url, else: Map.get(config, :url)
-  end
 
   @spec connection_host(pos_integer(), String.t() | nil) :: String.t() | nil
   defp connection_host(backend_id, label) do
