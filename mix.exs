@@ -314,14 +314,21 @@ defmodule Logflare.Mixfile do
   # so migrations honor LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS in dev/test too.
   defp migrate(args) do
     Mix.Task.run("app.config")
-    repo = Logflare.Repo.Migrator.migration_repo_for(Logflare.Repo) |> inspect()
-    Mix.Task.run("ecto.migrate", ["-r", repo | args])
+    Mix.Task.run("ecto.migrate", inject_default_repo(args))
   end
 
   defp rollback(args) do
     Mix.Task.run("app.config")
-    repo = Logflare.Repo.Migrator.migration_repo_for(Logflare.Repo) |> inspect()
-    Mix.Task.run("ecto.rollback", ["-r", repo | args])
+    Mix.Task.run("ecto.rollback", inject_default_repo(args))
+  end
+
+  defp inject_default_repo(args) do
+    if "-r" in args or "--repo" in args do
+      args
+    else
+      repo = Logflare.Repo.Migrator.migration_repo_for(Logflare.Repo) |> inspect()
+      ["-r", repo | args]
+    end
   end
 
   defp migrate_quiet(args), do: migrate(["--quiet" | args])
