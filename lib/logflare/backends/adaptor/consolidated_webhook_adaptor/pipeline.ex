@@ -33,7 +33,7 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.Pipeline do
   alias Logflare.LogEvent
   alias Logflare.Utils
 
-  @processor_concurrency 2
+  @min_processor_concurrency 6
   @batcher_concurrency 4
   @batch_timeout if Application.compile_env(:logflare, :env) == :test, do: 10, else: 1_000
   @producer_interval if Application.compile_env(:logflare, :env) == :test, do: 10, else: 1_000
@@ -43,6 +43,23 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.Pipeline do
   @drop_log_interval_ms 5_000
 
   @typep drop_reason :: :request_failed | :rejected
+
+  @doc false
+  @spec processor_concurrency() :: pos_integer()
+  def processor_concurrency, do: processor_concurrency(System.schedulers_online())
+
+  # Same split as the ClickHouse consolidated pipeline: every scheduler the batch
+  # processors do not reserve, with a floor that oversubscribes a small host on purpose.
+  # This concurrency is allocated per backend, so the total grows with the number of
+  # active backends. A throughput benchmark on ten schedulers measured the previous
+  # fixed two processors as the limit of the whole pipeline, roughly 56% below what
+  # four reach, with no further gain past that.
+  @doc false
+  @spec processor_concurrency(pos_integer()) :: pos_integer()
+  def processor_concurrency(schedulers_online)
+      when is_integer(schedulers_online) and schedulers_online > 0 do
+    max(schedulers_online - @batcher_concurrency, @min_processor_concurrency)
+  end
 
   @doc false
   @spec child_spec(arg :: term()) :: Supervisor.child_spec()
@@ -79,7 +96,7 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.Pipeline do
         concurrency: 1
       ],
       processors: [
-        default: [concurrency: @processor_concurrency, min_demand: 1]
+        default: [concurrency: processor_concurrency(), min_demand: 1]
       ],
       batchers: [
         http: [

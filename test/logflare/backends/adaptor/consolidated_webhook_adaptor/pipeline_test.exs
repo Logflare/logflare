@@ -68,6 +68,25 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.PipelineTest do
     ref
   end
 
+  describe "processor_concurrency/1" do
+    test "takes every scheduler the batch processors do not reserve" do
+      assert Pipeline.processor_concurrency(64) == 60
+      assert Pipeline.processor_concurrency(32) == 28
+      assert Pipeline.processor_concurrency(16) == 12
+    end
+
+    test "keeps a floor of six so a small host still runs a usable pipeline" do
+      assert Pipeline.processor_concurrency(10) == 6
+      assert Pipeline.processor_concurrency(4) == 6
+      assert Pipeline.processor_concurrency(1) == 6
+    end
+
+    test "derives the count from the schedulers of this host" do
+      assert Pipeline.processor_concurrency() ==
+               Pipeline.processor_concurrency(System.schedulers_online())
+    end
+  end
+
   describe "batch_size/1" do
     test "reads the stored config when the config is not typecast", %{backend: backend} do
       created = %{
