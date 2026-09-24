@@ -78,11 +78,20 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     }
   end
 
-  # Queue acking is managed by the producer; this only decrements its
-  # max_in_flight counter.
+  # Queue acking is managed by the producer, except for the one thing it
+  # can't see from there: QueueProducer bumps SpoolAck once per segment a
+  # file decoded into (see its moduledoc), and this is the only place that
+  # knows when each individual segment has been accounted for — success or
+  # failure, either way it releases its own one unit here. Every message is
+  # exactly one segment, so this is one ack per message, regardless of what
+  # order they finish in (no ordering guarantee across a concurrent
+  # processor/batcher pool) — grouped by handle since successful/failed can
+  # span more than one file's segments in the same batch.
   @impl Broadway.Acknowledger
   def ack(_ack_ref, successful, failed) do
-    decrement_in_flight(successful ++ failed)
+    all = successful ++ failed
+    decrement_in_flight(all)
+    release_segment_bumps(all)
 
     if failed != [] do
       :telemetry.execute(
@@ -95,6 +104,14 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     end
 
     :ok
+  end
+
+  defp release_segment_bumps(messages) do
+    messages
+    |> Enum.reduce(%{}, fn message, counts ->
+      Map.update(counts, handle_of(message), 1, &(&1 + 1))
+    end)
+    |> Enum.each(fn {handle, count} -> SpoolAck.ack(handle, count) end)
   end
 
   @spec decrement_in_flight([Message.t()]) :: :ok
@@ -183,35 +200,28 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     fail_dispatched(messages, failed_source_ids)
   end
 
-  # Bumped/acked once per handle per batch — a cushion so SpoolAck's count for
-  # this handle can never cross zero while this call's own dispatch_group/3
-  # calls (below) are still inserting pointers, regardless of how many
-  # distinct source_ids this handle's messages span. A batch can contain more
-  # than one handle's messages (batch_size counts segments, and the producer
-  # can move on to a new file while an older one's segments are still being
-  # batched), so this has to be per-handle, not once for the whole batch.
+  # A batch can contain more than one handle's messages (batch_size counts
+  # segments, and the producer can move on to a new file while an older
+  # one's segments are still being batched), so dispatch is grouped and run
+  # per-handle. No per-call cushion needed here — QueueProducer's floor bump
+  # on `handle` already covers the whole file's lifetime, across however
+  # many of these calls its segments get split into (see its moduledoc).
   defp dispatch_handle_group(handle, messages) do
-    SpoolAck.bump(handle, 1)
+    messages
+    |> Enum.flat_map(fn message -> Enum.map(message.data, &{message, &1}) end)
+    |> Enum.group_by(fn {_message, record} -> record_source_id(record) end, fn {_message,
+                                                                                record} ->
+      record
+    end)
+    |> Enum.flat_map(fn
+      {nil, records} ->
+        emit_skipped_telemetry(:missing_source_id, length(records))
+        Logger.debug("spool_consumer: #{length(records)} events missing source_id, skipping")
+        []
 
-    failed_source_ids =
-      messages
-      |> Enum.flat_map(fn message -> Enum.map(message.data, &{message, &1}) end)
-      |> Enum.group_by(fn {_message, record} -> record_source_id(record) end, fn {_message,
-                                                                                  record} ->
-        record
-      end)
-      |> Enum.flat_map(fn
-        {nil, records} ->
-          emit_skipped_telemetry(:missing_source_id, length(records))
-          Logger.debug("spool_consumer: #{length(records)} events missing source_id, skipping")
-          []
-
-        {source_id, records} ->
-          dispatch_group(source_id, records, handle)
-      end)
-
-    SpoolAck.ack(handle, 1)
-    failed_source_ids
+      {source_id, records} ->
+        dispatch_group(source_id, records, handle)
+    end)
   end
 
   defp fail_dispatched(messages, failed_source_ids) do

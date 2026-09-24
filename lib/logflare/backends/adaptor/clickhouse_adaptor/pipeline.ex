@@ -275,11 +275,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     decrement_in_flight(successful, failed)
     emit_missing_ids_telemetry(failed)
 
-    Enum.each(successful, fn message ->
+    successful
+    |> Enum.reduce(%{}, fn message, counts ->
       pointer = message_pointer(message)
       IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
-      SpoolAck.ack(pointer.spool_handle, 1)
+      Map.update(counts, pointer.spool_handle, 1, &(&1 + 1))
     end)
+    |> Enum.each(fn {handle, count} -> SpoolAck.ack(handle, count) end)
 
     if failed != [] do
       failed
@@ -577,6 +579,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
   defp requeue_payload(backend_id, %LogEventPointer{} = pointer) do
     case IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) do
+      # GenerationJanitor already reclaimed this pointer's body -- deliberately
+      # not acked here. The event's durable copy is still in the original
+      # spool file, so leaving this handle un-acked lets the queue message
+      # redeliver and give it a genuinely fresh attempt, rather than
+      # permanently discarding it just to resolve SpoolAck's own bookkeeping.
+      # See SpoolAck's moduledoc ("Rows that never reach zero") for the sweep
+      # that reclaims the now-orphaned row this leaves behind.
       nil -> :lookup_miss
       event_or_encoded_row -> transfer_retry_payload(backend_id, pointer, event_or_encoded_row)
     end
@@ -676,11 +685,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       %{backend_type: :clickhouse, backend_id: backend_id, reason: reason}
     )
 
-    Enum.each(payloads, fn payload ->
+    payloads
+    |> Enum.reduce(%{}, fn payload, counts ->
       pointer = message_pointer(payload)
       IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
-      SpoolAck.ack(pointer.spool_handle, 1)
+      Map.update(counts, pointer.spool_handle, 1, &(&1 + 1))
     end)
+    |> Enum.each(fn {handle, count} -> SpoolAck.ack(handle, count) end)
   end
 
   @spec drop_reason_message(drop_reason()) :: String.t()

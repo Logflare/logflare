@@ -1313,6 +1313,38 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       assert :ets.lookup(:spool_ack, handle) == []
     end
 
+    test "does not ack the pointer's spool handle when a retriable event's generation is already gone",
+         %{source: source, backend: backend} do
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+      SpoolAck.bump(handle, 1)
+
+      test_pid = self()
+      stub(QueueMod, :ack, fn url, h -> send(test_pid, {:acked, url, h}) end)
+
+      event = build(:log_event, source: source, message: "Test") |> Map.put(:retries, 0)
+      gen_tid = setup_generation_events([event])
+      pointer = %{pointer_for(event, gen_tid) | spool_handle: handle}
+
+      # simulate GenerationJanitor dropping the generation before the
+      # retry's own lookup -- deliberately left un-acked so the queue
+      # message can redeliver and give the event a fresh attempt from its
+      # still-durable copy in the original spool file, rather than
+      # permanently discarding it just to resolve this handle's count.
+      :ets.delete(gen_tid)
+
+      failed_message = %Message{
+        data: pointer,
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}},
+        status: {:failed, "connection error"}
+      }
+
+      capture_log(fn -> Pipeline.ack(:ack_ref, [], [failed_message]) end)
+
+      refute_receive {:acked, "queue-url", ^handle}
+      assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] = :ets.lookup(:spool_ack, handle)
+    end
+
     test "a nil spool handle (an event that never came from the spool) is untouched by ack/3", %{
       source: source,
       backend: backend

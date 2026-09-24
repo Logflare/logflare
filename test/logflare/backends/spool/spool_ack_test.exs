@@ -110,4 +110,31 @@ defmodule Logflare.Backends.Spool.SpoolAckTest do
       assert SpoolAck.ack(unique_handle(), 1) == :ok
     end
   end
+
+  describe "sweep_stale/1" do
+    test "deletes a row older than the given threshold without performing a queue ack" do
+      handle = unique_handle()
+      test_pid = self()
+      stub(QueueMod, :ack, fn _url, h -> send(test_pid, {:acked, h}) end)
+
+      SpoolAck.register(handle, QueueMod, "queue-url")
+      SpoolAck.bump(handle, 3)
+      Process.sleep(5)
+
+      assert :ok = SpoolAck.sweep_stale(0)
+
+      assert :ets.lookup(:spool_ack, handle) == []
+      refute_receive {:acked, ^handle}, 200
+    end
+
+    test "leaves a row younger than the given threshold alone" do
+      handle = unique_handle()
+      SpoolAck.register(handle, QueueMod, "queue-url")
+      SpoolAck.bump(handle, 1)
+
+      assert :ok = SpoolAck.sweep_stale(:timer.minutes(10))
+
+      assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] = :ets.lookup(:spool_ack, handle)
+    end
+  end
 end

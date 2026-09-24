@@ -91,6 +91,41 @@ defmodule Logflare.BigQuery.PipelineTest do
       assert IngestEventQueue.total_pending(sid_bid_pid) == 0
     end
 
+    test "ack does not ack the pointer's spool handle when a retriable event's generation is already gone",
+         %{source: source} do
+      Mimic.set_mimic_global()
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+
+      test_pid = self()
+      stub(QueueMod, :ack, fn url, h -> send(test_pid, {:acked, url, h}) end)
+
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = %{build(:log_event, source: source) | spool_handle: handle}
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
+
+      # simulate GenerationJanitor dropping the generation before the
+      # retry's own lookup -- deliberately left un-acked so the queue
+      # message can redeliver and give the event a fresh attempt from its
+      # still-durable copy in the original spool file, rather than
+      # permanently discarding it just to resolve this handle's count.
+      queues_key = Tuple.delete_at(sid_bid_pid, 2)
+      assert [{gen_tid, _created_at}] = IngestEventQueue.list_generations(queues_key)
+      :ok = IngestEventQueue.drop_generation(queues_key, gen_tid)
+
+      ack_ref = {sid_bid_pid, %{max_retries: 1}}
+      message = Pipeline.transform(pointer, ref: ack_ref)
+      {mod, ack_ref, _data} = message.acknowledger
+
+      capture_log(fn -> mod.ack(ack_ref, [], [message]) end)
+
+      refute_receive {:acked, "queue-url", ^handle}
+      assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] = :ets.lookup(:spool_ack, handle)
+    end
+
     test "ack will not requeue failed events that have exhausted retries", %{source: source} do
       sid_bid_pid = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(sid_bid_pid)

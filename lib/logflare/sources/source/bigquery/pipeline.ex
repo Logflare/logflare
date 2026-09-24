@@ -194,11 +194,13 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   defp finalize_acked_events({sid, bid} = queues_key, successful) do
     record? = bid == nil and should_record_recent?(sid)
 
-    Enum.each(successful, fn %{data: %LogEventPointer{} = pointer} ->
+    successful
+    |> Enum.reduce(%{}, fn %{data: %LogEventPointer{} = pointer}, counts ->
       if record?, do: record_recent_copy(queues_key, pointer)
       IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
-      SpoolAck.ack(pointer.spool_handle, 1)
+      Map.update(counts, pointer.spool_handle, 1, &(&1 + 1))
     end)
+    |> Enum.each(fn {handle, count} -> SpoolAck.ack(handle, count) end)
   end
 
   defp record_recent_copy(queues_key, %LogEventPointer{} = pointer) do
@@ -587,6 +589,13 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     retriable_count = length(retriable)
     Logger.info("Requeuing #{retriable_count} BigQuery events for retry")
 
+    # A lookup miss means GenerationJanitor already reclaimed that pointer's
+    # body -- deliberately left un-acked here. The event's durable copy is
+    # still in the original spool file, so leaving this handle un-acked lets
+    # the queue message redeliver and give it a genuinely fresh attempt,
+    # rather than permanently discarding it just to resolve SpoolAck's own
+    # bookkeeping. See SpoolAck's moduledoc ("Rows that never reach zero")
+    # for the sweep that reclaims the now-orphaned row this leaves behind.
     events =
       for pointer <- retriable,
           event = IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id),
@@ -629,10 +638,12 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   defp drop_pointers(pointers, reason) do
     Logger.warning("Dropping #{length(pointers)} BigQuery events: #{reason}")
 
-    Enum.each(pointers, fn pointer ->
+    pointers
+    |> Enum.reduce(%{}, fn pointer, counts ->
       IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
-      SpoolAck.ack(pointer.spool_handle, 1)
+      Map.update(counts, pointer.spool_handle, 1, &(&1 + 1))
     end)
+    |> Enum.each(fn {handle, count} -> SpoolAck.ack(handle, count) end)
   end
 
   # Emit per-event ingest telemetry from handle_batch, where the full LogEvent is

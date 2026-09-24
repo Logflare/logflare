@@ -120,11 +120,12 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
     end)
   end
 
-  # Confirms the producer registered `handle` with SpoolAck (ack details
-  # attached, count still 0 since nothing in these tests ever bumps it) —
-  # the only thing this producer is still responsible for doing itself.
-  defp assert_spool_ack_registered(handle) do
-    assert [{^handle, 0, QueueMod, "projects/p/subscriptions/s"}] =
+  # Confirms the producer registered `handle` with SpoolAck and bumped it
+  # once per segment the file decoded into (`segment_count`, defaulting to 1
+  # for the common single-segment case) — the only thing this producer is
+  # still responsible for doing itself.
+  defp assert_spool_ack_registered(handle, segment_count \\ 1) do
+    assert [{^handle, ^segment_count, QueueMod, "projects/p/subscriptions/s", _registered_at}] =
              :ets.lookup(:spool_ack, handle)
   end
 
@@ -264,7 +265,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       assert emitted_ids(events) == ["e1", "e2", "e3"]
       refute_receive {:acked, "h1"}, 300
-      assert_spool_ack_registered("h1")
+      assert_spool_ack_registered("h1", 2)
     end
 
     test "streams every segment from a file with multiple raw segments compressed once as a whole (group commit)" do
@@ -287,7 +288,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       assert emitted_ids(events) == ["e1", "e2", "e3", "e4", "e5", "e6"]
       refute_receive {:acked, "h1"}, 300
-      assert_spool_ack_registered("h1")
+      assert_spool_ack_registered("h1", 3)
     end
 
     test "streams every segment from a file with multiple uncompressed segments (group commit)" do
@@ -312,7 +313,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       assert emitted_ids(events) == ["e1", "e2", "e3"]
       refute_receive {:acked, "h1"}, 300
-      assert_spool_ack_registered("h1")
+      assert_spool_ack_registered("h1", 2)
     end
   end
 
@@ -490,7 +491,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       [third] = GenStage.stream([{pid, max_demand: 10}]) |> Enum.take(1)
       assert emitted_ids([third]) == ["e3"]
       refute_receive {:acked, "h1"}, 300
-      assert_spool_ack_registered("h1")
+      assert_spool_ack_registered("h1", 3)
     end
 
     test "an :infinity budget (the default) emits every segment without capping" do
@@ -516,7 +517,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       assert emitted_ids(events) == ["e1", "e2", "e3"]
       refute_receive {:acked, "h1"}, 300
-      assert_spool_ack_registered("h1")
+      assert_spool_ack_registered("h1", 3)
     end
   end
 
