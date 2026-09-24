@@ -183,7 +183,7 @@ defmodule Logflare.TelemetryTest do
 
       assert metric.event_name == [:logflare, :ingest_event_queue, :retry_dropped]
       assert metric.measurement == :count
-      assert metric.tags == [:backend_id, :reason]
+      assert metric.tags == [:backend_id, :backend_type, :reason]
     end
 
     test "defines ClickHouse batch distribution and throughput metrics" do
