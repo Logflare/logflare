@@ -40,7 +40,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
   describe "transform/2" do
     test "wraps the producer's raw segment and stashes its byte size for the in-flight counter" do
       segment = :erlang.term_to_binary([%{"id" => "e1"}, %{"id" => "e2"}])
-      unparsed = %{segment: segment}
+      unparsed = %{segment: segment, handle: "receipt-1"}
 
       assert %Message{data: ^unparsed, acknowledger: {ConsumerPipeline, :noop, ack_data}} =
                ConsumerPipeline.transform(unparsed, [])
@@ -49,6 +49,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
       # to give back rather than a message count.
       assert ack_data.bytes == byte_size(segment)
       assert Map.has_key?(ack_data, :in_flight_ref)
+      assert ack_data.handle == "receipt-1"
     end
   end
 
@@ -127,7 +128,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, dispatched_source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, dispatched_source, _handle ->
         send(pid, {:dispatched, event_params, dispatched_source.id})
         {:ok, length(event_params)}
       end)
@@ -147,7 +148,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, _source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, _source, _handle ->
         send(pid, {:dispatched, Enum.map(event_params, & &1["id"])})
         {:ok, length(event_params)}
       end)
@@ -165,7 +166,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, _source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, _source, _handle ->
         send(pid, {:dispatched, Enum.map(event_params, & &1["id"])})
         {:ok, length(event_params)}
       end)
@@ -186,7 +187,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, source, _handle ->
         send(pid, {:dispatched, source.id, Enum.map(event_params, & &1["id"])})
         {:ok, length(event_params)}
       end)
@@ -214,7 +215,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, source, _handle ->
         send(pid, {:dispatched, event_params, source.id})
         {:ok, length(event_params)}
       end)
@@ -241,7 +242,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, source, _handle ->
         send(pid, {:dispatched, event_params, source.id})
         {:ok, length(event_params)}
       end)
@@ -265,7 +266,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, dispatched_source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, dispatched_source, _handle ->
         if dispatched_source.id == source.id do
           raise FunctionClauseError
         end
