@@ -5,12 +5,14 @@ defmodule Logflare.KeyValues.CacheWarmer do
 
   alias Logflare.KeyValues.Cache
   alias Logflare.KeyValues.KeyValue
+  alias Logflare.KeyValues.KeyValueUsage
   alias Logflare.Repo
 
   require Logger
   import Ecto.Query
 
   @pt_key {__MODULE__, :initialized}
+  @pt_warmed_at {__MODULE__, :warmed_at}
 
   @impl true
   def execute(_state) do
@@ -18,7 +20,8 @@ defmodule Logflare.KeyValues.CacheWarmer do
       Repo.apply_with_replica(__MODULE__, :warm_recent, [])
     else
       try do
-        Repo.apply_with_replica(__MODULE__, :warm_full, [])
+        Repo.apply_with_replica(__MODULE__, :warm_top_n, [])
+        :persistent_term.put(@pt_warmed_at, DateTime.utc_now())
         :persistent_term.put(@pt_key, true)
       rescue
         e ->
@@ -29,9 +32,19 @@ defmodule Logflare.KeyValues.CacheWarmer do
     :ignore
   end
 
-  def warm_full do
-    Repo.transaction(fn ->
+  def warm_top_n do
+    limit =
+      Application.get_env(:logflare, __MODULE__, [])
+      |> Keyword.get(:warm_limit, 500_000)
+
+    ordered =
       KeyValue
+      |> join(:left, [kv], u in KeyValueUsage, on: u.key_value_id == kv.id)
+      |> order_by([kv, u], desc_nulls_last: u.last_used_at, desc: kv.updated_at)
+      |> limit(^limit)
+
+    Repo.transaction(fn ->
+      ordered
       |> Repo.stream()
       |> Stream.chunk_every(500)
       |> Enum.each(fn chunk ->
@@ -53,6 +66,18 @@ defmodule Logflare.KeyValues.CacheWarmer do
 
   defp to_cache_entry(%KeyValue{} = kv) do
     {{:lookup, [kv.user_id, kv.key, nil]}, {:cached, kv.value}}
+  end
+
+  @doc """
+  When the last full warm completed on this node, or `nil` if none has.
+
+  Entries `put` by the warmer were written at or before this moment, so consumers
+  of write-recency (like `Cache.touch_recent_usages/1`) can use it to tell warmed
+  entries apart from genuine cache misses.
+  """
+  @spec warmed_at() :: DateTime.t() | nil
+  def warmed_at do
+    :persistent_term.get(@pt_warmed_at, nil)
   end
 
   defp initialized? do

@@ -1,14 +1,18 @@
 defmodule Logflare.KeyValues.Cache do
   @moduledoc false
 
+  import Cachex.Spec
+
   alias Logflare.ContextCache
   alias Logflare.KeyValues
+  alias Logflare.KeyValues.CacheWarmer
   alias Logflare.Repo
   alias Logflare.Utils
 
-  import Cachex.Spec
-
   @behaviour ContextCache
+
+  @usage_touch_window :timer.minutes(20)
+  @usage_touch_chunk 1_000
 
   def child_spec(_) do
     stats = Application.get_env(:logflare, :cache_stats, false)
@@ -72,6 +76,44 @@ defmodule Logflare.KeyValues.Cache do
     |> case do
       {:commit, {:cached, v}} -> v
       {:ok, {:cached, v}} -> v
+    end
+  end
+
+  @doc """
+  Records which key-values were recently in use so the next full warm can
+  prioritise them.
+
+  Usage is inferred from entries that entered this node's cache since the last
+  run, excluding those loaded by the warmer itself. The signal is approximate:
+  it captures that a key was needed, not how often it was read.
+
+  Returns the number of `{user_id, key}` pairs whose usage was recorded.
+  """
+  @spec touch_recent_usages(DateTime.t()) :: {:ok, non_neg_integer()}
+  def touch_recent_usages(now \\ DateTime.utc_now()) do
+    query = Cachex.Query.build(where: {:>=, :modified, touch_cutoff(now)}, output: :key)
+
+    __MODULE__
+    |> Cachex.stream!(query)
+    |> Stream.flat_map(fn
+      {:lookup, [user_id, key, _accessor]} -> [{user_id, key}]
+      _ -> []
+    end)
+    |> Stream.uniq()
+    |> Stream.chunk_every(@usage_touch_chunk)
+    |> Enum.reduce(0, fn pairs, acc ->
+      KeyValues.bump_usages(pairs, now)
+      acc + length(pairs)
+    end)
+    |> then(&{:ok, &1})
+  end
+
+  defp touch_cutoff(now) do
+    window_start = DateTime.to_unix(now, :millisecond) - @usage_touch_window
+
+    case CacheWarmer.warmed_at() do
+      nil -> window_start
+      warmed_at -> max(window_start, DateTime.to_unix(warmed_at, :millisecond) + 1)
     end
   end
 
