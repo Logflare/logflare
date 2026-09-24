@@ -35,6 +35,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   alias Logflare.Backends.BufferProducer
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
+  alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.LogEvent
   alias Logflare.LogEvent.TypeDetection
   alias Logflare.Mapper
@@ -277,6 +278,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     Enum.each(successful, fn message ->
       pointer = message_pointer(message)
       IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
+      SpoolAck.ack(pointer.spool_handle, 1)
     end)
 
     if failed != [] do
@@ -677,6 +679,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     Enum.each(payloads, fn payload ->
       pointer = message_pointer(payload)
       IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
+      SpoolAck.ack(pointer.spool_handle, 1)
     end)
   end
 

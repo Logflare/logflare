@@ -22,6 +22,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   alias Logflare.Sources.Source
   alias Logflare.Backends.Backend
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
+  alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.LogEvent
 
   require Ex2ms
@@ -35,7 +36,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @consolidated_max_queue_size 120_000
   @requeue_pointer_collision_retries 2
   @pointer_batch_key_match_spec (for event_type <- [:log, :metric, :trace] do
-                                   {{:_, :_, :_, :_, :_, event_type, :"$1"},
+                                   {{:_, :_, :_, :_, :_, event_type, :"$1", :_},
                                     [{:is_integer, :"$1"}], [{{event_type, :"$1"}}]}
                                  end)
 
@@ -696,7 +697,14 @@ defmodule Logflare.Backends.IngestEventQueue do
   # `gen_event_id` makes this row independent from any duplicate event id. If insert_new/2
   # rejects the pointer or the queue disappears during publication, only this insertion's
   # generation row is removed.
-  # Pointer row shape: {event_id, generation_tid, gen_event_id, size, retries, event_type, day_bucket}.
+  # Pointer row shape:
+  # {event_id, generation_tid, gen_event_id, size, retries, event_type, day_bucket, spool_handle}.
+  #
+  # SpoolAck.bump/2 fires only once insert_new/2 has actually confirmed this
+  # is the surviving row for `id` — never unconditionally before that check.
+  # A losing collision's body row gets deleted right below and will never be
+  # claimed by anyone, so bumping for it here would count a unit of work
+  # nothing will ever call SpoolAck.ack/2 for.
   defp insert_pointer_batch(sid_bid_pid, queue_tid, batch) do
     queues_key = pointer_queues_key(sid_bid_pid)
     gen_tid = current_generation_tid(queues_key)
@@ -706,12 +714,14 @@ defmodule Logflare.Backends.IngestEventQueue do
 
       row =
         {id, gen_tid, gen_event_id, :erlang.external_size(event.body), event.retries || 0,
-         event.event_type, event.day_bucket}
+         event.event_type, event.day_bucket, event.spool_handle}
 
       :ets.insert(gen_tid, {gen_event_id, event})
 
       try do
-        if not :ets.insert_new(queue_tid, row) do
+        if :ets.insert_new(queue_tid, row) do
+          SpoolAck.bump(event.spool_handle, 1)
+        else
           :ets.delete(gen_tid, gen_event_id)
         end
       rescue
@@ -758,7 +768,7 @@ defmodule Logflare.Backends.IngestEventQueue do
          to_tid when to_tid != nil <- get_tid(to) do
       moved =
         :ets.foldl(
-          fn {id, _, _, _, _, _, _}, acc -> acc + take_and_insert(from_tid, to_tid, id) end,
+          fn {id, _, _, _, _, _, _, _}, acc -> acc + take_and_insert(from_tid, to_tid, id) end,
           0,
           from_tid
         )
@@ -922,7 +932,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def pop_pending_pointers(_, 0), do: {:ok, [], nil}
 
   def pop_pending_pointers(sid_bid_pid, n) when is_integer(n) do
-    ms = [{{:"$1", :_, :_, :_, :_, :_, :_}, [], [:"$1"]}]
+    ms = [{{:"$1", :_, :_, :_, :_, :_, :_, :_}, [], [:"$1"]}]
 
     pop_selected_pointers(sid_bid_pid, n, ms)
   end
@@ -976,7 +986,7 @@ defmodule Logflare.Backends.IngestEventQueue do
       )
       when event_type in [:log, :metric, :trace] and is_integer(day_bucket) and
              is_integer(n) and n > 0 do
-    ms = [{{:"$1", :_, :_, :_, :_, event_type, day_bucket}, [], [:"$1"]}]
+    ms = [{{:"$1", :_, :_, :_, :_, event_type, day_bucket, :_}, [], [:"$1"]}]
 
     pop_selected_pointers(sid_bid_pid, n, ms)
   end
@@ -1011,7 +1021,7 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   defp claim_pointers([id | ids], tid, pointers) do
     case take_pointer_row(tid, id) do
-      {:ok, {^id, gen_tid, gen_event_id, size, retries, event_type, day_bucket}} ->
+      {:ok, {^id, gen_tid, gen_event_id, size, retries, event_type, day_bucket, spool_handle}} ->
         pointer = %LogEventPointer{
           id: id,
           tid: gen_tid,
@@ -1020,7 +1030,8 @@ defmodule Logflare.Backends.IngestEventQueue do
           size: size,
           retries: retries,
           event_type: event_type,
-          day_bucket: day_bucket
+          day_bucket: day_bucket,
+          spool_handle: spool_handle
         }
 
         claim_pointers(ids, tid, [pointer | pointers])
@@ -1083,6 +1094,16 @@ defmodule Logflare.Backends.IngestEventQueue do
       requeue_payload_to_candidate(candidate_tids, queues_key, pointer, payload_builder)
 
     delete_id(pointer.tid, pointer.gen_event_id)
+
+    # Every live queue rejected this payload -- it's dropped for good, and no
+    # fresh pointer was ever published for it, so nothing else will ever ack
+    # it. :already_exists isn't acked here: no fresh pointer was published for
+    # this attempt either, but the pre-existing pointer it collided with is
+    # already tracked in its own right and will resolve on its own terms.
+    if result == {:error, :not_initialized} do
+      SpoolAck.ack(pointer.spool_handle, 1)
+    end
+
     result
   end
 
@@ -1127,6 +1148,9 @@ defmodule Logflare.Backends.IngestEventQueue do
       :ok ->
         case publish_requeued_pointer(new_pointer, @requeue_pointer_collision_retries) do
           :ok ->
+            # A genuinely new, surviving pointer -- one more unit of pending
+            # work needing its own eventual ack, same as a fresh dispatch.
+            SpoolAck.bump(new_pointer.spool_handle, 1)
             {:ok, new_pointer}
 
           {:error, reason} = error when reason in [:already_exists, :not_initialized] ->
@@ -1175,12 +1199,15 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   defp remove_dangling_pointer(queue_tid, id) do
     case :ets.lookup(queue_tid, id) do
-      [{^id, gen_tid, gen_event_id, _, _, _, _} = row] ->
+      [{^id, gen_tid, gen_event_id, _, _, _, _, spool_handle} = row] ->
         case lookup_event(gen_tid, gen_event_id) do
           nil ->
             # Delete only the row inspected above. If another writer replaced it, this
             # is a no-op and the bounded publication retry re-evaluates that winner.
+            # This pointer's body is already gone (its generation rotated out from
+            # under it) and it's being discarded here for good, so it has to ack now.
             :ets.delete_object(queue_tid, row)
+            SpoolAck.ack(spool_handle, 1)
             :retry
 
           _payload ->
@@ -1240,7 +1267,7 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   defp pointer_row(pointer) do
     {pointer.id, pointer.tid, pointer.gen_event_id, pointer.size, pointer.retries,
-     pointer.event_type, pointer.day_bucket}
+     pointer.event_type, pointer.day_bucket, pointer.spool_handle}
   end
 
   defp reinsert_queue_priority({{_, _, pid}, tid}) do
@@ -1262,7 +1289,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def pop_pending(_, 0), do: {:ok, []}
 
   def pop_pending(sid_bid_pid, n) when is_integer(n) do
-    ms = [{{:"$1", :_, :_, :_, :_, :_, :_}, [], [:"$1"]}]
+    ms = [{{:"$1", :_, :_, :_, :_, :_, :_, :_}, [], [:"$1"]}]
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
          {:ok, ids} <- select_pointer_ids(tid, ms, n) do
@@ -1284,7 +1311,17 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   defp claim_events([id | ids], tid, events, claimed) do
     case take_pointer_row(tid, id) do
-      {:ok, {^id, gen_tid, gen_event_id, _, _, _, _}} ->
+      {:ok, {^id, gen_tid, gen_event_id, _, _, _, _, spool_handle}} ->
+        # Acked here, once, the moment the pointer is claimed -- regardless of
+        # whether the body below actually resolves. Neither outcome ever
+        # reaches a pipeline's own ack/3: a resolved event is handed off for
+        # (for now, inert-for-durability) processing with no further
+        # IngestEventQueue involvement, and a nil body means the generation
+        # was already rotated out from under a still-live pointer -- nothing
+        # downstream will ever see this one either way, so it has to resolve
+        # right here or it never would.
+        SpoolAck.ack(spool_handle, 1)
+
         case take_pointer_event({gen_tid, gen_event_id}) do
           nil -> claim_events(ids, tid, events, claimed + 1)
           event -> claim_events(ids, tid, [event | events], claimed + 1)
@@ -1401,7 +1438,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   def truncate_tid(tid, status, n) when status in [:all, :pending] do
-    ms = [{{:"$1", :_, :_, :_, :_, :_, :_}, [], [:"$_"]}]
+    ms = [{{:"$1", :_, :_, :_, :_, :_, :_, :_}, [], [:"$_"]}]
 
     with size when is_integer(size) <- :ets.info(tid, :size) do
       to_keep = select_to_insert(tid, ms, size, n)
@@ -1536,7 +1573,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def drop_pending({_, _, _}, 0), do: {:ok, 0}
 
   def drop_pending({_, _, _} = sid_bid_pid, n) when is_integer(n) do
-    ms = [{{:"$1", :_, :_, :_, :_, :_, :_}, [], [:"$1"]}]
+    ms = [{{:"$1", :_, :_, :_, :_, :_, :_, :_}, [], [:"$1"]}]
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
          {:ok, ids} <- select_pointer_ids(tid, ms, n) do
@@ -1564,7 +1601,10 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   defp drop_claimed([id | ids], tid, dropped) do
     case take_pointer_row(tid, id) do
-      {:ok, {^id, gen_tid, gen_event_id, _, _, _, _}} ->
+      {:ok, {^id, gen_tid, gen_event_id, _, _, _, _, spool_handle}} ->
+        # Load-shedding is terminal: this event is gone for good, so it has
+        # to resolve here or SpoolAck would never hear about it.
+        SpoolAck.ack(spool_handle, 1)
         delete_id(gen_tid, gen_event_id)
         drop_claimed(ids, tid, dropped + 1)
 

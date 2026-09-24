@@ -120,6 +120,14 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
     end)
   end
 
+  # Confirms the producer registered `handle` with SpoolAck (ack details
+  # attached, count still 0 since nothing in these tests ever bumps it) —
+  # the only thing this producer is still responsible for doing itself.
+  defp assert_spool_ack_registered(handle) do
+    assert [{^handle, 0, QueueMod, "projects/p/subscriptions/s"}] =
+             :ets.lookup(:spool_ack, handle)
+  end
+
   # contents: %{file_key => body} | %{file_key => :raise} | %{file_key => {:error, reason}}
   # `:raise` simulates a crashing download (e.g. an uncaught exception during
   # a prefetch) — safe_fetch_next's rescue always loses the queue handle for
@@ -182,10 +190,9 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
   end
 
   describe "happy path" do
-    test "streams segments from a file and acks the queue message once exhausted" do
+    test "streams segments from a file, registers the handle with SpoolAck, and never acks it directly" do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :receive])
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :storage, :get])
-      TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :ack])
 
       stub_ack_nack(self())
       stub_queue([queue_message("h1", "0/a.v3.etf")])
@@ -200,7 +207,13 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
         |> Enum.take(1)
 
       assert emitted_ids(events) == ["e1", "e2"]
-      assert_receive {:acked, "h1"}, 2000
+
+      # Draining every segment is no longer this producer's cue to ack —
+      # SpoolAck owns that now, once real processing completes (see its own
+      # test suite). This producer's only remaining job is registering the
+      # handle so SpoolAck knows how to ack it later.
+      refute_receive {:acked, "h1"}, 300
+      assert_spool_ack_registered("h1")
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :receive],
                       %{count: 1}, %{result: :ok}}
@@ -209,9 +222,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
                       %{bytes: bytes, segment_count: 1}, %{result: :ok}}
 
       assert bytes > 0
-
-      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{},
-                      %{reason: :buffer_exhausted}}
     end
 
     test "streams segments from a zstd-compressed .etf.zst file" do
@@ -228,7 +238,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
         |> Enum.take(1)
 
       assert emitted_ids(events) == ["e1", "e2"]
-      assert_receive {:acked, "h1"}, 2000
+      refute_receive {:acked, "h1"}, 300
+      assert_spool_ack_registered("h1")
     end
 
     test "emits one Broadway item per segment" do
@@ -252,7 +263,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
         |> Enum.take(2)
 
       assert emitted_ids(events) == ["e1", "e2", "e3"]
-      assert_receive {:acked, "h1"}, 2000
+      refute_receive {:acked, "h1"}, 300
+      assert_spool_ack_registered("h1")
     end
 
     test "streams every segment from a file with multiple raw segments compressed once as a whole (group commit)" do
@@ -274,7 +286,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
         |> Enum.take(3)
 
       assert emitted_ids(events) == ["e1", "e2", "e3", "e4", "e5", "e6"]
-      assert_receive {:acked, "h1"}, 2000
+      refute_receive {:acked, "h1"}, 300
+      assert_spool_ack_registered("h1")
     end
 
     test "streams every segment from a file with multiple uncompressed segments (group commit)" do
@@ -298,7 +311,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
         |> Enum.take(2)
 
       assert emitted_ids(events) == ["e1", "e2", "e3"]
-      assert_receive {:acked, "h1"}, 2000
+      refute_receive {:acked, "h1"}, 300
+      assert_spool_ack_registered("h1")
     end
   end
 
@@ -475,7 +489,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       :atomics.sub(in_flight_ref, 1, byte_size(second.segment))
       [third] = GenStage.stream([{pid, max_demand: 10}]) |> Enum.take(1)
       assert emitted_ids([third]) == ["e3"]
-      assert_receive {:acked, "h1"}, 2000
+      refute_receive {:acked, "h1"}, 300
+      assert_spool_ack_registered("h1")
     end
 
     test "an :infinity budget (the default) emits every segment without capping" do
@@ -500,7 +515,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
         |> Enum.take(3)
 
       assert emitted_ids(events) == ["e1", "e2", "e3"]
-      assert_receive {:acked, "h1"}, 2000
+      refute_receive {:acked, "h1"}, 300
+      assert_spool_ack_registered("h1")
     end
   end
 
@@ -565,7 +581,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
         |> Enum.take(2)
 
       assert emitted_ids(events) == ["e1", "e3"]
-      assert_receive {:acked, "h1"}, 2000
+      refute_receive {:acked, "h1"}, 300
+      assert_spool_ack_registered("h1")
     end
 
     test "a crashing blocking fetch does not kill the producer process" do
@@ -638,9 +655,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
     # poison is emitted as-is and isolated to its own Broadway message by
     # ConsumerPipeline.handle_message/3 (covered in consumer_pipeline_test.exs).
     # The file itself still acks normally.
-    test "emits an unparseable segment as-is and acks the file as exhausted, not decode_error" do
-      TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :ack])
-
+    test "emits an unparseable segment as-is, not decode_error, and does not ack it directly" do
       stub_ack_nack(self())
       stub_queue([queue_message("h1", "0/corrupt.v3.etf")])
       # Well-formed bytes for storage.get and a valid frame, but not a valid
@@ -653,12 +668,10 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
         GenStage.stream([{pid, max_demand: 10}])
         |> Enum.take(1)
 
-      assert events == [%{segment: "this is not valid etf"}]
+      assert events == [%{segment: "this is not valid etf", handle: "h1"}]
 
-      assert_receive {:acked, "h1"}, 2000
-
-      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{},
-                      %{reason: :buffer_exhausted}}
+      refute_receive {:acked, "h1"}, 300
+      assert_spool_ack_registered("h1")
     end
 
     test "acks with reason: :decode_error when the downloaded .zst content is not valid zstd" do
@@ -730,10 +743,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
         |> Enum.take(1)
 
       assert emitted_ids(events) == ["e1"]
-      assert_receive {:acked, "h1"}, 2000
-
-      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :ack], %{},
-                      %{reason: :buffer_exhausted}}
+      refute_receive {:acked, "h1"}, 300
+      assert_spool_ack_registered("h1")
     end
 
     test "nacks (not acks) a file tagged with a version newer than this build understands" do
@@ -846,14 +857,14 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       )
     end
 
-    test "acks an already-exhausted current file (everything in it was already handed off safely)" do
+    test "neither acks nor nacks an already-exhausted current file (SpoolAck owns its fate from here)" do
       stub_ack_nack(self())
 
       state = draining_state(%{current: %{handle: "h1", segments: []}})
 
       assert {:noreply, [], new_state} = QueueProducer.prepare_for_draining(state)
 
-      assert_receive {:acked, "h1"}
+      refute_receive {:acked, "h1"}
       refute_receive {:nacked, "h1"}
       assert new_state.draining == true
       assert new_state.demand == 0

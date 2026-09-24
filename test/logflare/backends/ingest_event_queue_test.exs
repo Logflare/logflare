@@ -459,7 +459,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       rows_before = pointer_tid |> :ets.tab2list()
 
       gen_event_id_by_id =
-        Map.new(rows_before, fn {id, _gen_tid, gen_event_id, _, _, _, _} ->
+        Map.new(rows_before, fn {id, _gen_tid, gen_event_id, _, _, _, _, _} ->
           {id, gen_event_id}
         end)
 
@@ -1002,7 +1002,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       queue_tid = IngestEventQueue.get_tid(sbp)
       [existing_pointer_row] = :ets.lookup(queue_tid, event.id)
 
-      {_, existing_gen_tid, existing_gen_event_id, _, _, _, _} = existing_pointer_row
+      {_, existing_gen_tid, existing_gen_event_id, _, _, _, _, _} = existing_pointer_row
       queues_key = {sid, bid}
       assert :ok = IngestEventQueue.new_generations([queues_key])
       staged_gen_tid = IngestEventQueue.current_generation_tid(queues_key)

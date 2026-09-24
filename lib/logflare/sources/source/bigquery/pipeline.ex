@@ -17,6 +17,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.Backends.BufferProducer
+  alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.Sources.Source.RateSampler
   alias Logflare.Sources.Source.Supervisor
@@ -196,6 +197,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     Enum.each(successful, fn %{data: %LogEventPointer{} = pointer} ->
       if record?, do: record_recent_copy(queues_key, pointer)
       IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
+      SpoolAck.ack(pointer.spool_handle, 1)
     end)
   end
 
@@ -629,6 +631,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
     Enum.each(pointers, fn pointer ->
       IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
+      SpoolAck.ack(pointer.spool_handle, 1)
     end)
   end
 
