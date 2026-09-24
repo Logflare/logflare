@@ -148,6 +148,13 @@ defmodule Logflare.TelemetryTest do
       assert circuit_breaker.tags == [:backend_id, :reason]
     end
 
+    test "defines the queue-full drop metric by backend type" do
+      queue_full = ch_metric([:logflare, :ingest_event_queue, :queue_full, :dropped, :count])
+
+      assert queue_full.event_name == [:logflare, :ingest_event_queue, :queue_full, :dropped]
+      assert queue_full.tags == [:backend_type]
+    end
+
     test "defines queue-unavailable retry drops separately from not-initialized drops" do
       queue_unavailable =
         ch_metric([:logflare, :ingest_event_queue, :requeue_queue_unavailable, :count])
