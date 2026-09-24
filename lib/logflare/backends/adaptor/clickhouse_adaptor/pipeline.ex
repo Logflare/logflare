@@ -27,12 +27,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   alias Broadway.Message
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.EncodedRow
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingConfigStore
   alias Logflare.Backends.Backend
   alias Logflare.Backends.BufferProducer
+  alias Logflare.Backends.CircuitBreaker
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.LogEvent
