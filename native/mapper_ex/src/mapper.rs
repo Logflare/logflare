@@ -331,9 +331,11 @@ fn resolve_enum8<'a>(
         if let Some(val) = coerce::case_insensitive_get(&enum8_data.value_map, resolved_value) {
             return (*val as i64).encode(env);
         }
-        // If it's already an integer, pass through
-        if resolved_value.decode::<i64>().is_ok() {
-            return resolved_value;
+        // Integers pass through only when they name a configured value
+        if let Ok(i) = resolved_value.decode::<i64>() {
+            if i8::try_from(i).map(|v| enum8_data.values.contains(&v)) == Ok(true) {
+                return resolved_value;
+            }
         }
     }
 
@@ -1256,12 +1258,8 @@ fn build_flat_map<'a>(env: Env<'a>, keys: &[Term<'a>], values: &[Term<'a>]) -> T
 }
 
 fn term_to_string_term<'a>(env: Env<'a>, value: Term<'a>, nil: Term<'a>) -> Term<'a> {
-    if let Ok(binary) = value.decode::<Binary>() {
-        return if std::str::from_utf8(binary.as_slice()).is_ok() {
-            value
-        } else {
-            crate::encode_string(env, "")
-        };
+    if value.is_binary() {
+        return value;
     }
 
     if let Ok(i) = value.decode::<i64>() {
@@ -1291,9 +1289,9 @@ fn term_to_json_string<'a>(value: Term<'a>, nil: Term<'a>, fallback: &str) -> St
     serde_json::to_string(&JsonTerm { value, nil }).unwrap_or_else(|_| fallback.to_string())
 }
 
-struct JsonTerm<'a> {
-    value: Term<'a>,
-    nil: Term<'a>,
+pub struct JsonTerm<'a> {
+    pub value: Term<'a>,
+    pub nil: Term<'a>,
 }
 
 impl Serialize for JsonTerm<'_> {
@@ -1310,6 +1308,9 @@ impl Serialize for JsonTerm<'_> {
         if let Ok(value) = self.value.decode::<i64>() {
             return serializer.serialize_i64(value);
         }
+        if let Ok(value) = self.value.decode::<u64>() {
+            return serializer.serialize_u64(value);
+        }
         if let Ok(value) = self.value.decode::<f64>() {
             return if value.is_finite() {
                 serializer.serialize_f64(value)
@@ -1318,10 +1319,7 @@ impl Serialize for JsonTerm<'_> {
             };
         }
         if let Ok(binary) = self.value.decode::<Binary>() {
-            return match std::str::from_utf8(binary.as_slice()) {
-                Ok(value) => serializer.serialize_str(value),
-                Err(_) => serializer.serialize_none(),
-            };
+            return serializer.serialize_str(&String::from_utf8_lossy(binary.as_slice()));
         }
         if self.value.is_atom() {
             return match self.value.atom_to_string() {
@@ -1340,22 +1338,22 @@ impl Serialize for JsonTerm<'_> {
             return sequence.end();
         }
         if let Some(iter) = MapIterator::new(self.value) {
+            // Keys are converted before sorting so that distinct byte strings
+            // which collapse to the same lossy text become adjacent and dedupe;
+            // serde_json would otherwise emit a duplicate key.
             let mut entries = Vec::new();
             for (key, value) in iter {
-                let Ok(binary) = key.decode::<Binary>() else {
-                    continue;
-                };
-                if std::str::from_utf8(binary.as_slice()).is_ok() {
-                    entries.push((binary, value));
+                if let Ok(binary) = key.decode::<Binary>() {
+                    entries.push((String::from_utf8_lossy(binary.as_slice()), value));
                 }
             }
-            entries.sort_unstable_by(|(left, _), (right, _)| left.as_slice().cmp(right.as_slice()));
+            entries.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+            entries.dedup_by(|(left, _), (right, _)| left == right);
 
             let mut map = serializer.serialize_map(Some(entries.len()))?;
-            for (binary, value) in entries {
-                let key = std::str::from_utf8(binary.as_slice()).expect("validated UTF-8 key");
+            for (key, value) in entries {
                 map.serialize_entry(
-                    key,
+                    key.as_ref(),
                     &JsonTerm {
                         value,
                         nil: self.nil,

@@ -1,10 +1,10 @@
-defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
+defmodule Logflare.Mapper.OtelDefaultsTest do
   use ExUnit.Case, async: true
 
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults
   alias Logflare.LogEvent.TypeDetection
   alias Logflare.Mapper
   alias Logflare.Mapper.MappingConfig.OutputFormat
+  alias Logflare.Mapper.OtelDefaults
 
   setup_all do
     {:ok,
@@ -18,16 +18,40 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
       for event_type <- [:log, :metric, :trace] do
         assert %Mapper.MappingConfig{
                  output: %OutputFormat{
-                   format: :clickhouse_row_binary,
+                   format: :ch_row_binary,
                    row_type: ^event_type
                  }
-               } = MappingDefaults.for_type(event_type)
+               } = OtelDefaults.for_type(event_type)
       end
     end
 
     test "raises for unknown log type" do
       assert_raise FunctionClauseError, fn ->
-        apply(MappingDefaults, :for_type, [:unknown])
+        apply(OtelDefaults, :for_type, [:unknown])
+      end
+    end
+  end
+
+  describe "for_type/2" do
+    test "selects the output format over the same fields" do
+      for event_type <- [:log, :metric, :trace] do
+        base = OtelDefaults.for_type(event_type)
+
+        assert %Mapper.MappingConfig{
+                 fields: fields,
+                 output: %OutputFormat{format: :ch_row_binary, row_type: ^event_type}
+               } = OtelDefaults.for_type(event_type, :ch_row_binary)
+
+        assert fields == base.fields
+
+        assert %Mapper.MappingConfig{
+                 fields: fields,
+                 output: %OutputFormat{format: :ndjson, row_type: ^event_type}
+               } = OtelDefaults.for_type(event_type, :ndjson)
+
+        assert fields == Mapper.MappingConfig.with_timestamp_precision(base, 6).fields
+
+        assert %Mapper.MappingConfig{output: nil} = OtelDefaults.for_type(event_type, :map)
       end
     end
   end
@@ -701,7 +725,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
       [log, metric, trace] =
         for event_type <- [:log, :metric, :trace] do
           Enum.find(
-            MappingDefaults.for_type(event_type).fields,
+            OtelDefaults.for_type(event_type).fields,
             &(&1.name == "resource_attributes")
           )
         end
@@ -1205,7 +1229,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
 
   @spec compile_map_output(TypeDetection.event_type()) :: reference()
   defp compile_map_output(event_type) do
-    config = MappingDefaults.for_type(event_type)
-    Mapper.compile!(%{config | output: nil})
+    Mapper.compile!(OtelDefaults.for_type(event_type, :map))
   end
 end
