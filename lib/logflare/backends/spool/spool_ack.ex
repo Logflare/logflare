@@ -34,13 +34,31 @@ defmodule Logflare.Backends.Spool.SpoolAck do
   the network call. The row is removed from the counter table when the
   perform-ack decision is made, whether the count is at zero right then or
   was found already gone (defensive; should not happen under normal use).
+
+  ## Rows that never reach zero
+
+  Some outcomes are deliberately never acked here even though they're
+  terminal for *this* attempt — most notably a pointer whose generation got
+  rotated out by `GenerationJanitor` before a retry could resolve it. The
+  event's durable copy still exists in the original spool file, so letting
+  the queue message redeliver (by not acking it) gives it a genuinely fresh
+  attempt; forcing an ack here would throw that recovery path away for the
+  sake of making this table's bookkeeping tidy. A redelivered message also
+  arrives under a brand new handle (SQS/PubSub never reuse one), so the old
+  handle's row is now permanently orphaned — nothing will ever bump or ack
+  it again. `sweep_stale/0` (run on a timer, see `handle_info/2`) is what
+  reclaims those: any row older than `@stale_after_ms` since `register/3`
+  gets deleted outright, no ack performed. `@stale_after_ms` is comfortably
+  longer than `GenerationJanitor`'s own rotation window, so a row still
+  alive at that age is essentially guaranteed to be orphaned rather than
+  just a slow but legitimately still-progressing file.
   """
 
   use GenServer
 
-  require Logger
-
   @table :spool_ack
+  @sweep_interval_ms :timer.minutes(1)
+  @stale_after_ms :timer.minutes(10)
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
@@ -50,6 +68,7 @@ defmodule Logflare.Backends.Spool.SpoolAck do
   @impl GenServer
   def init(_opts) do
     :ets.new(@table, [:public, :named_table, :set, write_concurrency: true])
+    schedule_sweep()
     {:ok, %{}}
   end
 
@@ -60,7 +79,7 @@ defmodule Logflare.Backends.Spool.SpoolAck do
   """
   @spec register(term(), module(), String.t()) :: :ok
   def register(handle, queue_mod, queue_url) when not is_nil(handle) do
-    :ets.insert(@table, {handle, 0, queue_mod, queue_url})
+    :ets.insert(@table, {handle, 0, queue_mod, queue_url, System.monotonic_time(:millisecond)})
     :ok
   end
 
@@ -73,7 +92,7 @@ defmodule Logflare.Backends.Spool.SpoolAck do
     :ok
   rescue
     ArgumentError ->
-      Logger.warning("SpoolAck: bump/2 against a missing handle row", handle: inspect(handle))
+      emit_missing_handle_telemetry(:bump)
       :ok
   end
 
@@ -91,13 +110,17 @@ defmodule Logflare.Backends.Spool.SpoolAck do
     end
   rescue
     ArgumentError ->
-      Logger.warning("SpoolAck: ack/2 against a missing handle row", handle: inspect(handle))
+      emit_missing_handle_telemetry(:ack)
       :ok
+  end
+
+  defp emit_missing_handle_telemetry(op) do
+    :telemetry.execute([:logflare, :backends, :spool, :ack, :missing_handle], %{}, %{op: op})
   end
 
   defp perform_ack(handle) do
     case :ets.take(@table, handle) do
-      [{^handle, _count, queue_mod, queue_url}] ->
+      [{^handle, _count, queue_mod, queue_url, _registered_at}] ->
         GenServer.cast(__MODULE__, {:perform_ack, queue_mod, queue_url, handle})
 
       [] ->
@@ -115,5 +138,36 @@ defmodule Logflare.Backends.Spool.SpoolAck do
     })
 
     {:noreply, state}
+  end
+
+  @impl GenServer
+  def handle_info(:sweep, state) do
+    sweep_stale(@stale_after_ms)
+    schedule_sweep()
+    {:noreply, state}
+  end
+
+  defp schedule_sweep, do: Process.send_after(self(), :sweep, @sweep_interval_ms)
+
+  @doc false
+  # Exposed (rather than private) so tests can trigger a sweep synchronously
+  # with a small stale_after_ms, instead of waiting on the real timer/TTL —
+  # same convention as GenerationJanitor.do_rotate/2.
+  #
+  # No ack performed here -- see moduledoc's "Rows that never reach zero".
+  # A row this old is orphaned, not just slow: comfortably outlasts
+  # GenerationJanitor's own rotation window, so nothing still legitimately
+  # in flight for it could still be waiting on a bump or ack this late.
+  @spec sweep_stale(non_neg_integer()) :: :ok
+  def sweep_stale(stale_after_ms) do
+    cutoff = System.monotonic_time(:millisecond) - stale_after_ms
+    match_spec = [{{:_, :_, :_, :_, :"$1"}, [{:<, :"$1", cutoff}], [true]}]
+    deleted = :ets.select_delete(@table, match_spec)
+
+    if deleted > 0 do
+      :telemetry.execute([:logflare, :backends, :spool, :ack, :swept_stale], %{count: deleted}, %{})
+    end
+
+    :ok
   end
 end

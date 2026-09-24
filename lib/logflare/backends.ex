@@ -744,7 +744,7 @@ defmodule Logflare.Backends do
 
     log_events =
       Enum.map(spool_records, fn record ->
-        %{LogEvent.make_from_spool(record, source) | spool_handle: handle}
+        LogEvent.make_from_spool(record, source, handle)
       end)
 
     count = length(log_events)
