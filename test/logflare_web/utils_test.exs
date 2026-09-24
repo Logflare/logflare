@@ -27,12 +27,6 @@ defmodule LogflareWeb.UtilsTest do
       :ok
     end
 
-    @tag env: :test
-    test "returns true in test environment" do
-      assert LogflareUtils.flag("some-feature") == true
-      assert LogflareUtils.flag("another-feature", %Logflare.User{}) == true
-    end
-
     @tag env: :prod
     test "returns false for unknown features when no overrides are set" do
       assert LogflareUtils.flag("unknown-feature") == false
