@@ -294,7 +294,7 @@ defmodule Logflare.Mixfile do
       "test.e2e": ["ecto.create --quiet", &migrate_quiet/1, "test --only feature"],
       lint: ["credo"],
       "lint.diff": ["credo diff main"],
-      "lint.all": ["credo --strict"],
+      "lint.all": ["credo --strict", "credo -C migrations"],
       ci: [
         "test.compile",
         "test.format",
