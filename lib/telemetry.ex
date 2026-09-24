@@ -691,7 +691,7 @@ defmodule Logflare.Telemetry do
         measurement: :count,
         tags: [:backend_id, :backend_type, :reason],
         description:
-          "Count of events a backend pipeline dropped after a write failure, tagged by backend type and reason. ClickHouse reasons: `:retries_exhausted`, `:circuit_breaker_open`. Consolidated Webhook reasons: `:request_failed`, `:rejected`. This is realized ingest data loss"
+          "Count of events a backend pipeline dropped after a write failure, tagged by backend type and reason. ClickHouse reasons: `:retries_exhausted`, `:circuit_breaker_open`. Consolidated Webhook reasons: `:retries_exhausted`, `:circuit_breaker_open`, `:queue_unavailable`, `:rejected`. This is realized ingest data loss"
       ),
       sum("logflare.ingest_event_queue.requeue_queue_unavailable.count",
         event_name: [:logflare, :ingest_event_queue, :requeue_queue_unavailable],
