@@ -1479,11 +1479,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     ch_params = Map.take(input_params, declared_params)
     query_opts = put_replica_tag_header(opts, backend, input_params)
 
-    # ClickHouse can send HTTP headers before a streamed result finishes, leaving
-    # X-ClickHouse-Summary with incomplete read_bytes. Delay the response
-    # headers for bounded endpoint results to capture completed query stats.
-    # The upstream memory buffer default is zero, which otherwise spools every
-    # delayed response to temporary storage. Larger results can still spill.
     query_opts =
       if is_pos_integer(max_rows) do
         settings =
