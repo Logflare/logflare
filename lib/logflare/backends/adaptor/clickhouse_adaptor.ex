@@ -47,6 +47,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @insert_max_execution_time_seconds 10
   @max_read_pool_size 4096
   @ch_slow_pool_checkout_ms 1_000
+  @endpoint_response_buffer_size 1_048_576
   @us_per_hour 3_600 * 1_000_000
   @default_max_event_age_hours 24
   @unlabeled_read_cluster_tag "(unlabeled)"
@@ -1481,11 +1482,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     # ClickHouse can send HTTP headers before a streamed result finishes, leaving
     # X-ClickHouse-Summary with incomplete read_bytes. Delay the response
     # headers for bounded endpoint results to capture completed query stats.
+    # The upstream memory buffer default is zero, which otherwise spools every
+    # delayed response to temporary storage. Larger results can still spill.
     query_opts =
       if is_pos_integer(max_rows) do
-        Keyword.update(query_opts, :settings, [wait_end_of_query: 1], fn settings ->
-          Keyword.put(settings, :wait_end_of_query, 1)
-        end)
+        settings =
+          Keyword.merge(Keyword.get(query_opts, :settings, []),
+            wait_end_of_query: 1,
+            http_response_buffer_size: @endpoint_response_buffer_size
+          )
+
+        Keyword.put(query_opts, :settings, settings)
       else
         query_opts
       end

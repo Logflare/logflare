@@ -2513,10 +2513,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       end)
 
       assert_received {:ch_query, "api", [{"x-clickhouse-replica-tag", "abcdefghij"}],
-                       [wait_end_of_query: 1]}
+                       [wait_end_of_query: 1, http_response_buffer_size: 1_048_576]}
 
       assert_received {:ch_query, "dashboard_logs", [{"x-clickhouse-replica-tag", "abcdefghij"}],
-                       [wait_end_of_query: 1]}
+                       [wait_end_of_query: 1, http_response_buffer_size: 1_048_576]}
     end
 
     test "buffers capped endpoint results and preserves other query settings", %{
@@ -2525,6 +2525,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       expect(Ch, :query, fn pool, statement, params, opts ->
         settings = Keyword.fetch!(opts, :settings)
         assert settings[:wait_end_of_query] == 1
+        assert settings[:http_response_buffer_size] == 1_048_576
         assert settings[:max_threads] == 1
         Mimic.call_original(Ch, :query, [pool, statement, params, opts])
       end)
@@ -2533,7 +2534,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                ClickHouseAdaptor.execute_query(
                  backend,
                  endpoint_query_args("SELECT number FROM numbers(10) ORDER BY number", 1),
-                 settings: [max_threads: 1]
+                 settings: [max_threads: 1, http_response_buffer_size: 0]
                )
     end
 
