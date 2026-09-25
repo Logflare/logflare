@@ -579,8 +579,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
   defp requeue_payload(backend_id, %LogEventPointer{} = pointer) do
     case IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) do
-      # Body already reclaimed by GenerationJanitor -- left un-acked so the
-      # message redelivers and retries from the durable spool file.
       nil -> :lookup_miss
       event_or_encoded_row -> transfer_retry_payload(backend_id, pointer, event_or_encoded_row)
     end
