@@ -48,6 +48,12 @@ defmodule LogflareWeb.Api.FallbackController do
     |> json(%{error: "Not Found"})
   end
 
+  def call(conn, {:error, :not_found, message}) when is_binary(message) do
+    conn
+    |> put_status(:not_found)
+    |> json(%{error: message})
+  end
+
   def call(conn, {:error, %QueryError{}}) do
     conn
     |> put_status(400)
