@@ -78,13 +78,11 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     }
   end
 
-  # Releases one SpoolAck bump per message (= one segment), success or
-  # failure, grouped by handle since a batch can span more than one file.
   @impl Broadway.Acknowledger
   def ack(_ack_ref, successful, failed) do
     all = successful ++ failed
     decrement_in_flight(all)
-    release_segment_bumps(all)
+    release_segment_bumps(successful)
 
     if failed != [] do
       :telemetry.execute(
