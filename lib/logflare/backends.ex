@@ -869,14 +869,8 @@ defmodule Logflare.Backends do
   defp spool_mode,
     do: :logflare |> Application.get_env(:spool, []) |> Keyword.get(:mode, :disable)
 
-  # Bumping once here, for the whole batch, is the one place this source's
-  # RateSampler counter gets touched — every other reader (this function's own
-  # broadcast sampling, and SchemaUpdateSampler's replacement in the BigQuery
-  # pipeline) only calls RateSampler.sample?/1, never bump/2, so they all read
-  # the same rate without re-deriving it. See RateSampler's moduledoc for why
-  # this replaces the old `source.metrics.avg < 2` check (a cluster-wide rate
-  # refreshed once per inbound request, before that request's own events were
-  # counted — invisible to a large first burst until the next request).
+  # The one place this source's RateSampler counter gets bumped -- every
+  # other reader only calls RateSampler.sample?/1.
   defp maybe_broadcast_and_route(source, log_events) do
     if log_events != [] do
       RateSampler.bump(source.token, length(log_events))
