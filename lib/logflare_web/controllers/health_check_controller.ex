@@ -8,6 +8,12 @@ defmodule LogflareWeb.HealthCheckController do
   alias Logflare.Sources
   alias Logflare.System
 
+  @doc """
+  Readiness probe: whether this node should receive traffic.
+
+  Does not check the primary database - ingest resolves everything it needs from
+  the context caches, so a node with an unreachable primary is still serving.
+  """
   def ready(conn, params) do
     if Readiness.ready?() do
       check(conn, params)
@@ -20,6 +26,33 @@ defmodule LogflareWeb.HealthCheckController do
     end
   end
 
+  @doc """
+  Startup probe: whether this node has ever been usable.
+
+  The only probe that gates on the primary database: a freshly booted node has
+  cold caches and no way to warm them without it.
+  """
+  def startup(conn, params) do
+    uptime = Logflare.Repo.get_uptime()
+
+    if db_reachable?(uptime) do
+      check(conn, params)
+    else
+      response = JSON.encode!(%{status: :coming_up, repo_uptime: uptime})
+
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(503, response)
+    end
+  end
+
+  @doc """
+  Liveness probe: whether this BEAM is healthy.
+
+  Never gates on the primary database - restarting cannot fix an unreachable
+  database, and it discards the caches ingest needs to ride out the outage.
+  `repo_uptime` stays in the payload for alerting.
+  """
   def check(conn, _params) do
     repo_uptime = Logflare.Repo.get_uptime()
     caches = check_caches()
@@ -29,8 +62,6 @@ defmodule LogflareWeb.HealthCheckController do
     common_checks_ok? =
       [
         Sources.ingest_ets_tables_started?(),
-        # checks that db can execute query and that repo is connected and up
-        repo_uptime > 0,
         Enum.all?(Map.values(caches), &(&1 == :ok)),
         memory_utilization < max_memory_ratio
       ]
@@ -89,6 +120,9 @@ defmodule LogflareWeb.HealthCheckController do
       memory_utilization: memory_utilization
     }
   end
+
+  defp db_reachable?(%Decimal{} = uptime), do: Decimal.compare(uptime, 0) == :gt
+  defp db_reachable?(uptime) when is_number(uptime), do: uptime > 0
 
   defp check_caches do
     for cache <-

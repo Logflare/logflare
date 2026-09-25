@@ -230,21 +230,19 @@ tests:
           value: "mycluster-$(POD_TEMPLATE_HASH)"
         template: deployment.yaml
 
-  - it: should probe /ready for readiness and /health for liveness and startup
+  - it: should probe /ready for readiness, /health for liveness and /startup for startup
     asserts:
       - equal:
           path: spec.template.spec.containers[0].readinessProbe.httpGet.path
           value: /ready
         template: deployment.yaml
-      # Liveness and startup stay on /health, so a draining pod is pulled from the Service
-      # instead of being restarted.
       - equal:
           path: spec.template.spec.containers[0].livenessProbe.httpGet.path
           value: /health
         template: deployment.yaml
       - equal:
           path: spec.template.spec.containers[0].startupProbe.httpGet.path
-          value: /health
+          value: /startup
         template: deployment.yaml
 
   - it: should detect readiness loss well inside the 15 second shutdown grace period

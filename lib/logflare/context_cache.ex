@@ -36,6 +36,8 @@ defmodule Logflare.ContextCache do
   filter out stale incoming messages.
   """
 
+  require Logger
+
   alias Logflare.ContextCache.Gossip
 
   @doc """
@@ -135,8 +137,12 @@ defmodule Logflare.ContextCache do
   @doc """
   Low level API for fetching from cache. Allows wrapping calls with
   `Cachex.execute/2` and accessing arbitrary key or calling any getter function.
+
+  A miss whose getter cannot reach the database returns
+  `{:error, :database_unavailable}` and commits nothing, so the next call retries.
   """
-  @spec fetch(Cachex.t(), {atom(), list()}, fun()) :: term()
+  @spec fetch(Cachex.t(), {atom(), list()}, fun()) ::
+          term() | {:error, :database_unavailable}
   def fetch(cache, cache_key, getter_fn) do
     case Cachex.fetch(cache, cache_key, fn _cache_key ->
            # Use a `:cached` tuple here otherwise when an fn returns nil Cachex will miss
@@ -149,6 +155,13 @@ defmodule Logflare.ContextCache do
 
       {:ok, {:cached, value}} ->
         value
+
+      {:error, %Cachex.Error{message: message}} ->
+        Logger.warning(
+          "#{inspect(cache)} could not load #{inspect(cache_key)} from the database: #{message}"
+        )
+
+        {:error, :database_unavailable}
     end
   end
 

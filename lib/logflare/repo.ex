@@ -7,6 +7,10 @@ defmodule Logflare.Repo do
   require Logger
   alias Logflare.Repo.Replicas
 
+  @doc """
+  Postgres uptime in seconds, or `0` when the primary database cannot be reached.
+  """
+  @spec get_uptime() :: non_neg_integer() | Decimal.t()
   def get_uptime do
     query = "SELECT EXTRACT(epoch FROM (current_timestamp - pg_postmaster_start_time()));"
 
@@ -26,9 +30,13 @@ defmodule Logflare.Repo do
         end
 
       {:error, err} ->
-        Logger.warning("Could not get Postgres uptime, error: #{err}")
+        Logger.warning("Could not get Postgres uptime, error: #{inspect(err)}")
         0
     end
+  rescue
+    err ->
+      Logger.warning("Could not get Postgres uptime, error: #{inspect(err)}")
+      0
   end
 
   @doc """
