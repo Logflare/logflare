@@ -4,7 +4,7 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
 
   import ExUnit.CaptureLog
 
-  alias Logflare.KeyValues.Cache
+  alias Logflare.KeyValues.Cache.Multilevel
   alias Logflare.KeyValues.CacheWarmer
 
   @pt_key {CacheWarmer, :initialized}
@@ -22,8 +22,8 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
 
       CacheWarmer.execute(nil)
 
-      assert {:cached, kv1.value} == Cachex.get!(Cache, {:lookup, [user.id, "k1", nil]})
-      assert {:cached, kv2.value} == Cachex.get!(Cache, {:lookup, [user.id, "k2", nil]})
+      assert {:ok, kv1.value} == Multilevel.fetch({:lookup, [user.id, "k1", nil]})
+      assert {:ok, kv2.value} == Multilevel.fetch({:lookup, [user.id, "k2", nil]})
     end
 
     test "marks itself as initialized after first run" do
@@ -78,10 +78,11 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
 
       CacheWarmer.execute(nil)
 
-      assert {:cached, %{"v" => "new"}} ==
-               Cachex.get!(Cache, {:lookup, [user.id, "new_key", nil]})
+      assert {:ok, %{"v" => "new"}} ==
+               Multilevel.fetch({:lookup, [user.id, "new_key", nil]})
 
-      assert is_nil(Cachex.get!(Cache, {:lookup, [user.id, "old_key", nil]}))
+      assert {:error, %Nebulex.KeyError{}} =
+               Multilevel.fetch({:lookup, [user.id, "old_key", nil]})
     end
 
     test "no-ops when no recent records exist" do

@@ -36,7 +36,7 @@ defmodule Logflare.KeyValues.CacheWarmer do
       |> Stream.chunk_every(500)
       |> Enum.each(fn chunk ->
         entries = Enum.map(chunk, &to_cache_entry/1)
-        Cachex.put_many(Cache, entries)
+        Cache.put_all(entries)
       end)
     end)
   end
@@ -48,11 +48,11 @@ defmodule Logflare.KeyValues.CacheWarmer do
       |> Repo.all()
       |> Enum.map(&to_cache_entry/1)
 
-    if entries != [], do: Cachex.put_many(Cache, entries)
+    Cache.put_all(entries)
   end
 
   defp to_cache_entry(%KeyValue{} = kv) do
-    {{:lookup, [kv.user_id, kv.key, nil]}, {:cached, kv.value}}
+    {{:lookup, [kv.user_id, kv.key, nil]}, kv.value}
   end
 
   defp initialized? do
