@@ -122,7 +122,11 @@ defmodule Logflare.Backends.Spool.SpoolAck do
     deleted = :ets.select_delete(@table, match_spec)
 
     if deleted > 0 do
-      :telemetry.execute([:logflare, :backends, :spool, :ack, :swept_stale], %{count: deleted}, %{})
+      :telemetry.execute(
+        [:logflare, :backends, :spool, :ack, :swept_stale],
+        %{count: deleted},
+        %{}
+      )
     end
 
     :ok

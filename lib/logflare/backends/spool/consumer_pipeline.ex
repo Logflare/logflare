@@ -197,8 +197,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
   defp dispatch_handle_group(handle, messages) do
     messages
     |> Enum.flat_map(fn message -> Enum.map(message.data, &{message, &1}) end)
-    |> Enum.group_by(fn {_message, record} -> record_source_id(record) end, fn {_message,
-                                                                                record} ->
+    |> Enum.group_by(fn {_message, record} -> record_source_id(record) end, fn {_message, record} ->
       record
     end)
     |> Enum.flat_map(fn

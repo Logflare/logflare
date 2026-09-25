@@ -119,7 +119,9 @@ defmodule Logflare.BigQuery.PipelineTest do
       capture_log(fn -> mod.ack(ack_ref, [], [message]) end)
 
       refute_receive {:acked, "queue-url", ^handle}
-      assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] = :ets.lookup(:spool_ack, handle)
+
+      assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] =
+               :ets.lookup(:spool_ack, handle)
     end
 
     test "ack will not requeue failed events that have exhausted retries", %{source: source} do
