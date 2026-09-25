@@ -47,7 +47,7 @@ defmodule LogflareWeb.BillingAccountLive.EditTest do
       assert conn
              |> put_req_header("content-type", "application/json")
              |> put_req_header("stripe-signature", stripe_sign(payload_json))
-             |> post(~p"/webhooks/stripe", payload_json)
+             |> post("/webhooks/stripe", payload_json)
              |> response(200)
 
       TestUtils.retry_assert(fn ->
@@ -90,7 +90,7 @@ defmodule LogflareWeb.BillingAccountLive.EditTest do
       assert conn
              |> put_req_header("content-type", "application/json")
              |> put_req_header("stripe-signature", stripe_sign(payload_json))
-             |> post(~p"/webhooks/stripe", payload_json)
+             |> post("/webhooks/stripe", payload_json)
              |> response(200)
 
       TestUtils.retry_assert(fn ->

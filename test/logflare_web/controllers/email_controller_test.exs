@@ -2,6 +2,7 @@ defmodule LogflareWeb.EmailControllerTest do
   use LogflareWeb.ConnCase
 
   alias Logflare.Auth
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Mailer
 
   setup do
@@ -80,6 +81,9 @@ defmodule LogflareWeb.EmailControllerTest do
 
   describe "POST /auth/login/email/verify (verify_token_form)" do
     test "with valid token signs in user", %{conn: conn} do
+      # Successful email sign-in refreshes Google IAM; avoid a real API call.
+      stub(BigQueryAdaptor, :update_iam_policy, fn _user -> :ok end)
+
       email = "valid@logflare.app"
       token = Auth.gen_email_token(email)
 
@@ -107,6 +111,9 @@ defmodule LogflareWeb.EmailControllerTest do
 
   describe "GET /auth/email/callback/:token" do
     test "with valid token signs in user", %{conn: conn} do
+      # Successful email sign-in refreshes Google IAM; avoid a real API call.
+      stub(BigQueryAdaptor, :update_iam_policy, fn _user -> :ok end)
+
       email = "callback@logflare.app"
       token = Auth.gen_email_token(email)
 
