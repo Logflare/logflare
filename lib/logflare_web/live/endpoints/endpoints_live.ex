@@ -15,10 +15,19 @@ defmodule LogflareWeb.EndpointsLive do
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.SingleTenant
   alias Logflare.Sql
+  alias Logflare.User
+  alias Logflare.Users
   alias LogflareWeb.Endpoints.Components
   alias LogflareWeb.Endpoints.RunQuery
   alias LogflareWeb.QueryErrorHelpers
   alias Logflare.Utils
+
+  @resource_settings [
+    max_bytes_to_read: "Max bytes to read",
+    max_rows_to_read: "Max rows to read",
+    max_memory_usage: "Max memory usage (bytes)",
+    max_execution_time: "Max execution time (seconds)"
+  ]
 
   @test_form_defaults %{
     "query" => "",
@@ -44,7 +53,8 @@ defmodule LogflareWeb.EndpointsLive do
   def mount(%{}, _session, socket) do
     %{assigns: %{user: user}} = socket
 
-    allow_access = Enum.any?([Utils.flag("endpointsOpenBeta"), user.endpoints_beta])
+    admin? = match?(%User{admin: true}, Users.get(user.id))
+    allow_access = Enum.any?([Utils.flag("endpointsOpenBeta"), user.endpoints_beta, admin?])
 
     alerts = Endpoints.list_endpoints_by(user_id: user.id)
 
@@ -54,6 +64,8 @@ defmodule LogflareWeb.EndpointsLive do
       #  must be below user_id assign
       |> refresh_endpoints()
       |> assign(:allow_access, allow_access)
+      |> assign(:admin?, admin?)
+      |> assign(:resource_settings, @resource_settings)
       |> assign(:alerts, alerts)
       |> assign_sources()
       |> assign_backends()
@@ -70,7 +82,10 @@ defmodule LogflareWeb.EndpointsLive do
         parsed_result: nil,
         params_form: test_form(),
         declared_params: [],
-        test_result: nil
+        test_result: nil,
+        can_edit_endpoint?: false,
+        enforced_settings_form: nil,
+        enforced_settings_error: nil
       )
       |> apply_action(socket.assigns.live_action, params)
 
@@ -92,21 +107,39 @@ defmodule LogflareWeb.EndpointsLive do
   defp apply_action(socket, action, %{"id" => id}) when action in [:show, :edit] do
     user = socket.assigns.team_user || socket.assigns.user
 
-    case Endpoints.get_endpoint_query_by_user_access(user, id) do
+    accessible_endpoint = Endpoints.get_endpoint_query_by_user_access(user, id)
+
+    endpoint =
+      accessible_endpoint || if(socket.assigns.admin?, do: Endpoints.get_endpoint_query(id))
+
+    case endpoint do
       nil ->
         socket
 
       endpoint ->
+        {endpoints, alerts} =
+          if accessible_endpoint do
+            {socket.assigns.endpoints, socket.assigns.alerts}
+          else
+            {Endpoints.list_endpoints_by(user_id: endpoint.user_id),
+             Logflare.Alerting.list_alert_queries_by_user_id(endpoint.user_id)}
+          end
+
         {:ok, parsed_result} =
           Endpoints.parse_query_string(
             endpoint.language,
             endpoint.query,
-            Enum.filter(socket.assigns.endpoints, &(&1.id != endpoint.id)),
-            socket.assigns.alerts
+            Enum.filter(endpoints, &(&1.id != endpoint.id)),
+            alerts
           )
 
         socket
+        |> assign(:can_edit_endpoint?, not is_nil(accessible_endpoint))
         |> assign(:show_endpoint, endpoint)
+        |> assign(
+          :enforced_settings_form,
+          enforced_settings_form(endpoint.enforced_clickhouse_settings)
+        )
         |> assign_updated_params_form(parsed_result.parameters, parsed_result.expanded_query)
         |> assign(:endpoint_changeset, Endpoints.change_query(endpoint, %{}))
         |> assign(:parsed_result, parsed_result)
@@ -146,6 +179,41 @@ defmodule LogflareWeb.EndpointsLive do
       {:error, :backend_not_found} ->
         {:noreply, put_flash(socket, :error, "Backend not found")}
     end
+  end
+
+  def handle_event(
+        "save-enforced-settings",
+        %{"settings" => params},
+        %{assigns: %{user: user, show_endpoint: %EndpointQuery{} = endpoint}} = socket
+      )
+      when is_map(params) do
+    settings = parse_enforced_settings(params)
+
+    case Endpoints.configure_enforced_clickhouse_settings(user, endpoint, settings) do
+      {:ok, updated} ->
+        {:noreply,
+         socket
+         |> assign(:show_endpoint, updated)
+         |> assign(
+           :enforced_settings_form,
+           enforced_settings_form(updated.enforced_clickhouse_settings)
+         )
+         |> assign(:enforced_settings_error, nil)
+         |> put_flash(:info, "Enforced ClickHouse settings saved")}
+
+      {:error, :forbidden} ->
+        {:noreply, put_flash(socket, :error, "Not authorized to configure ClickHouse settings")}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:enforced_settings_form, enforced_settings_form(params))
+         |> assign(:enforced_settings_error, settings_error(reason))}
+    end
+  end
+
+  def handle_event("save-enforced-settings", _params, socket) do
+    {:noreply, put_flash(socket, :error, "Endpoint not found")}
   end
 
   def handle_event(
@@ -464,6 +532,37 @@ defmodule LogflareWeb.EndpointsLive do
       _ -> nil
     end
   end
+
+  defp enforced_settings_form(settings) do
+    values =
+      Map.new(@resource_settings, fn {key, _label} ->
+        {Atom.to_string(key), Map.get(settings, Atom.to_string(key), "")}
+      end)
+
+    to_form(values, as: :settings)
+  end
+
+  defp parse_enforced_settings(params) do
+    @resource_settings
+    |> Enum.reduce(%{}, fn {key, _label}, settings ->
+      name = Atom.to_string(key)
+
+      value = Map.get(params, name)
+      if value in [nil, ""], do: settings, else: Map.put(settings, name, parse_limit(value))
+    end)
+  end
+
+  defp parse_limit(value) when is_binary(value) do
+    case Integer.parse(String.trim(value)) do
+      {number, ""} -> number
+      _ -> value
+    end
+  end
+
+  defp parse_limit(value), do: value
+
+  defp settings_error(reason) when is_binary(reason), do: reason
+  defp settings_error(_reason), do: "Unable to configure ClickHouse settings"
 
   defp upsert_query(show_endpoint, user, origin, params) do
     case show_endpoint do
