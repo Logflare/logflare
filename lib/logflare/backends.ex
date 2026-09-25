@@ -869,8 +869,6 @@ defmodule Logflare.Backends do
   defp spool_mode,
     do: :logflare |> Application.get_env(:spool, []) |> Keyword.get(:mode, :disable)
 
-  # The one place this source's RateSampler counter gets bumped -- every
-  # other reader only calls RateSampler.sample?/1.
   defp maybe_broadcast_and_route(source, log_events) do
     if log_events != [] do
       RateSampler.bump(source.token, length(log_events))
