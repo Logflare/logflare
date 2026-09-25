@@ -55,6 +55,33 @@ defmodule Logflare.BigQuery.PipelineTest do
       assert requeued.retries == 1
     end
 
+    test "ack acks the old pointer's spool handle when successfully requeuing a retriable event",
+         %{source: source} do
+      Mimic.set_mimic_global()
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = %{build(:log_event, source: source) | spool_handle: handle}
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
+
+      assert [{^handle, count_before, _, _, _}] = :ets.lookup(:spool_ack, handle)
+
+      ref = {sid_bid_pid, %{max_retries: 1}}
+      message = Pipeline.transform(pointer, ref: ref)
+      {mod, ref, _data} = message.acknowledger
+
+      mod.ack(ref, [], [message])
+
+      # the old pointer's unit is acked, and the requeued replacement bumps a
+      # fresh one of its own -- net count is unchanged, not leaked upward
+      assert [{^handle, count_after, _, _, _}] = :ets.lookup(:spool_ack, handle)
+      assert count_after == count_before
+    end
+
     test "ack emits telemetry and logs a warning when a retriable event's generation is already gone",
          %{source: source} do
       sid_bid_pid = {source.id, nil, self()}

@@ -590,18 +590,24 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     Logger.info("Requeuing #{retriable_count} BigQuery events for retry")
 
     # A lookup miss means the body's already gone -- left un-acked so the
-    # message can redeliver and retry from the durable spool file.
-    events =
+    # message can redeliver and retry from the durable spool file. A resolved
+    # lookup's old pointer is acked only after add_to_table below bumps its
+    # replacement's fresh unit, so a shared handle's count never transiently
+    # hits zero (and triggers a real ack) mid-requeue.
+    resolved =
       for pointer <- retriable,
           event = IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id),
           not is_nil(event) do
         IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
-        %{event | retries: pointer.retries + 1}
+        {pointer, %{event | retries: pointer.retries + 1}}
       end
 
-    emit_requeue_lookup_miss_telemetry(sid_bid, retriable_count - length(events))
+    emit_requeue_lookup_miss_telemetry(sid_bid, retriable_count - length(resolved))
 
+    events = Enum.map(resolved, fn {_pointer, event} -> event end)
     if events != [], do: IngestEventQueue.add_to_table(sid_bid, events)
+
+    Enum.each(resolved, fn {pointer, _event} -> SpoolAck.ack(pointer.spool_handle, 1) end)
 
     :ok
   end
