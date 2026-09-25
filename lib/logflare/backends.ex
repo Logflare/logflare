@@ -28,6 +28,7 @@ defmodule Logflare.Backends do
   alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Logflare.Sources.Source
+  alias Logflare.Sources.Source.RateSampler
   alias Logflare.Sources.SourceRouter
   alias Logflare.SystemMetrics
   alias Logflare.Teams
@@ -869,12 +870,13 @@ defmodule Logflare.Backends do
     do: :logflare |> Application.get_env(:spool, []) |> Keyword.get(:mode, :disable)
 
   defp maybe_broadcast_and_route(source, log_events) do
-    case source.metrics do
-      %{avg: avg} when avg < 2 ->
-        Source.ChannelTopics.broadcast_new(log_events)
+    if log_events != [] do
+      RateSampler.bump(source.token, length(log_events))
 
-      _ ->
-        :ok
+      case Enum.filter(log_events, fn _ -> RateSampler.sample?(source.token) end) do
+        [] -> :ok
+        sampled -> Source.ChannelTopics.broadcast_new(sampled)
+      end
     end
 
     SourceRouter.route_to_sinks_and_ingest(log_events, source)
