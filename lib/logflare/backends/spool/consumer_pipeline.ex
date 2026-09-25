@@ -78,15 +78,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     }
   end
 
-  # Queue acking is managed by the producer, except for the one thing it
-  # can't see from there: QueueProducer bumps SpoolAck once per segment a
-  # file decoded into (see its moduledoc), and this is the only place that
-  # knows when each individual segment has been accounted for — success or
-  # failure, either way it releases its own one unit here. Every message is
-  # exactly one segment, so this is one ack per message, regardless of what
-  # order they finish in (no ordering guarantee across a concurrent
-  # processor/batcher pool) — grouped by handle since successful/failed can
-  # span more than one file's segments in the same batch.
+  # Releases one SpoolAck bump per message (= one segment), success or
+  # failure, grouped by handle since a batch can span more than one file.
   @impl Broadway.Acknowledger
   def ack(_ack_ref, successful, failed) do
     all = successful ++ failed
@@ -200,12 +193,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     fail_dispatched(messages, failed_source_ids)
   end
 
-  # A batch can contain more than one handle's messages (batch_size counts
-  # segments, and the producer can move on to a new file while an older
-  # one's segments are still being batched), so dispatch is grouped and run
-  # per-handle. No per-call cushion needed here — QueueProducer's floor bump
-  # on `handle` already covers the whole file's lifetime, across however
-  # many of these calls its segments get split into (see its moduledoc).
+  # A batch can span more than one file's segments, so dispatch runs per-handle.
   defp dispatch_handle_group(handle, messages) do
     messages
     |> Enum.flat_map(fn message -> Enum.map(message.data, &{message, &1}) end)

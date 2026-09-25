@@ -43,19 +43,10 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   ## Queue acking
 
-  This producer never acks a queue message directly. The moment it obtains
-  a handle (`maybe_load_next/1`), it registers it with `SpoolAck` and bumps
-  it once for every segment the file decoded into. `ConsumerPipeline`
-  releases exactly one of those bumps per segment once Broadway considers
-  it done (success or failure) — in whatever order they actually finish,
-  since segments fan out across a concurrent processor/batcher pool with no
-  ordering guarantee, and can end up split across any number of separate
-  handle_batch calls. Bumping once per segment up front, rather than a
-  single floor released by "the last one," keeps the outstanding count
-  correct regardless of completion order. `SpoolAck` performs the real ack
-  once every segment plus every event they decoded into has resolved (see
-  its moduledoc). This producer draining or exiting does not lose that
-  count: `SpoolAck` is an independently supervised process.
+  This producer never acks a queue message directly. It registers each
+  handle with `SpoolAck` and bumps it once per segment; `SpoolAck` performs
+  the real ack once every segment and the events they decoded into have
+  all been processed (see its moduledoc).
 
   ## Spool file format
 
@@ -274,14 +265,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   defp maybe_load_next(%{current: nil, prefetch: {:ready, {:ok, handle, segments}}} = state) do
     SpoolAck.register(handle, state.queue_mod, state.queue_url)
-    # One bump per segment this file decoded into, up front — ConsumerPipeline
-    # releases exactly one of these for every segment once Broadway considers
-    # it done (success or failure), in whatever order they actually finish.
-    # Segments fan out across a concurrent processor/batcher pool with no
-    # ordering guarantee, so this can't be a single floor released by "the
-    # last one" (there's no reliable way to know which finishes last); a
-    # per-segment count keeps the total outstanding correct regardless of
-    # completion order, the same way real per-event bumps/acks already work.
+    # One bump per segment — order-independent, since segments can finish
+    # out of order across the processor/batcher pool.
     SpoolAck.bump(handle, length(segments))
     %{state | current: %{handle: handle, segments: segments}, prefetch: nil}
   end

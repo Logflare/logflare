@@ -589,13 +589,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     retriable_count = length(retriable)
     Logger.info("Requeuing #{retriable_count} BigQuery events for retry")
 
-    # A lookup miss means GenerationJanitor already reclaimed that pointer's
-    # body -- deliberately left un-acked here. The event's durable copy is
-    # still in the original spool file, so leaving this handle un-acked lets
-    # the queue message redeliver and give it a genuinely fresh attempt,
-    # rather than permanently discarding it just to resolve SpoolAck's own
-    # bookkeeping. See SpoolAck's moduledoc ("Rows that never reach zero")
-    # for the sweep that reclaims the now-orphaned row this leaves behind.
+    # A lookup miss means the body's already gone -- left un-acked so the
+    # message can redeliver and retry from the durable spool file.
     events =
       for pointer <- retriable,
           event = IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id),

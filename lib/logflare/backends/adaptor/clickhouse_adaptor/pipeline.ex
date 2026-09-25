@@ -579,13 +579,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
   defp requeue_payload(backend_id, %LogEventPointer{} = pointer) do
     case IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) do
-      # GenerationJanitor already reclaimed this pointer's body -- deliberately
-      # not acked here. The event's durable copy is still in the original
-      # spool file, so leaving this handle un-acked lets the queue message
-      # redeliver and give it a genuinely fresh attempt, rather than
-      # permanently discarding it just to resolve SpoolAck's own bookkeeping.
-      # See SpoolAck's moduledoc ("Rows that never reach zero") for the sweep
-      # that reclaims the now-orphaned row this leaves behind.
+      # Body already reclaimed by GenerationJanitor -- left un-acked so the
+      # message redelivers and retries from the durable spool file.
       nil -> :lookup_miss
       event_or_encoded_row -> transfer_retry_payload(backend_id, pointer, event_or_encoded_row)
     end

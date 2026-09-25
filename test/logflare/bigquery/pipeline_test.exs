@@ -107,11 +107,7 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
 
-      # simulate GenerationJanitor dropping the generation before the
-      # retry's own lookup -- deliberately left un-acked so the queue
-      # message can redeliver and give the event a fresh attempt from its
-      # still-durable copy in the original spool file, rather than
-      # permanently discarding it just to resolve this handle's count.
+      # simulate GenerationJanitor dropping the generation before retry lookup
       queues_key = Tuple.delete_at(sid_bid_pid, 2)
       assert [{gen_tid, _created_at}] = IngestEventQueue.list_generations(queues_key)
       :ok = IngestEventQueue.drop_generation(queues_key, gen_tid)

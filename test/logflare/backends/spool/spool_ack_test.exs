@@ -61,17 +61,12 @@ defmodule Logflare.Backends.Spool.SpoolAckTest do
       assert_receive {:acked, ^handle}
     end
 
-    test "bump/2 after the initial batch cushion keeps the count from crossing zero early" do
+    test "multiple bumps require an equal number of acks before the count reaches zero" do
       handle = unique_handle()
       test_pid = self()
       stub(QueueMod, :ack, fn _url, h -> send(test_pid, {:acked, h}) end)
 
       SpoolAck.register(handle, QueueMod, "queue-url")
-
-      # Mirrors dispatch_handle_group/2's cushion: bump once for the batch,
-      # then once more per pointer actually inserted, before releasing the
-      # cushion -- the count must never dip to zero while more real
-      # increments are still expected.
       SpoolAck.bump(handle, 1)
       SpoolAck.bump(handle, 1)
       SpoolAck.bump(handle, 1)
