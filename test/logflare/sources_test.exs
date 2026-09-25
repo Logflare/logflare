@@ -1,6 +1,8 @@
 defmodule Logflare.SourcesTest do
   use Logflare.DataCase
 
+  import ExUnit.CaptureLog
+
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Sources.Source
@@ -679,17 +681,36 @@ defmodule Logflare.SourcesTest do
     end
 
     test "abnormal exit restarts SourceSup", %{source: source} do
+      # SourceSup's rate counter reads BigQuery at startup; stub it before starting the tree.
+      stub(BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
+
+      # Also clean up if an assertion fails before the explicit stop below.
+      on_exit(fn -> Backends.stop_source_sup(source) end)
+
       assert :ok = Backends.start_source_sup(source)
       assert {:ok, pid} = Backends.lookup(SourceSup, source)
 
-      Logflare.Utils.try_to_stop_process(pid, :abnormal)
+      # The crash is deliberate; verify its log without printing it in passing runs.
+      assert capture_log(fn ->
+               Logflare.Utils.try_to_stop_process(pid, :abnormal)
+             end) =~ "** (stop) :abnormal"
 
       refute Process.alive?(pid)
 
-      TestUtils.retry_assert(fn ->
-        assert {:ok, pid2} = Backends.lookup(SourceSup, source)
-        assert pid != pid2
-      end)
+      pid2 =
+        TestUtils.retry_assert(fn ->
+          assert {:ok, pid2} = Backends.lookup(SourceSup, source)
+          assert pid != pid2
+          pid2
+        end)
+
+      # Registration precedes initialization; wait for the supervisor to start its children.
+      assert [_ | _] = Supervisor.which_children(pid2)
+
+      # Stop the restarted tree before its database fixtures and stubs are cleaned up.
+      assert :ok = Backends.stop_source_sup(source)
+      refute Process.alive?(pid2)
+      assert {:error, :not_started} = Backends.lookup(SourceSup, source)
     end
   end
 
