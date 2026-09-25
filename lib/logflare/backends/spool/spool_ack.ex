@@ -116,7 +116,6 @@ defmodule Logflare.Backends.Spool.SpoolAck do
   defp schedule_sweep, do: Process.send_after(self(), :sweep, @sweep_interval_ms)
 
   @doc false
-  # Public so tests can trigger a sweep synchronously with a small stale_after_ms.
   @spec sweep_stale(non_neg_integer()) :: :ok
   def sweep_stale(stale_after_ms) do
     cutoff = System.monotonic_time(:millisecond) - stale_after_ms

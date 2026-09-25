@@ -131,8 +131,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     {:noreply, [], %{state | draining: true, demand: 0, current: nil, prefetch: nil}}
   end
 
-  # A fully-drained current has nothing left to nack — its segments are
-  # already emitted, and its fate from here is entirely SpoolAck's.
   defp current_handle(%{segments: [], handle: _}), do: nil
   defp current_handle(%{handle: handle}), do: handle
   defp current_handle(nil), do: nil
@@ -256,8 +254,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   defp buffered?(%{current: %{segments: []}}), do: false
   defp buffered?(_), do: true
 
-  # Unblocks maybe_load_next/1 once a file's segments are all emitted —
-  # SpoolAck (not this producer) owns acking it from here.
   defp maybe_clear_exhausted(%{current: %{segments: []}} = state),
     do: %{state | current: nil}
 
@@ -265,8 +261,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   defp maybe_load_next(%{current: nil, prefetch: {:ready, {:ok, handle, segments}}} = state) do
     SpoolAck.register(handle, state.queue_mod, state.queue_url)
-    # One bump per segment — order-independent, since segments can finish
-    # out of order across the processor/batcher pool.
     SpoolAck.bump(handle, length(segments))
     %{state | current: %{handle: handle, segments: segments}, prefetch: nil}
   end
