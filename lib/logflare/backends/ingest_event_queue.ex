@@ -1191,9 +1191,9 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   defp remove_dangling_pointer(queue_tid, id) do
     case :ets.lookup(queue_tid, id) do
-      [{^id, gen_tid, gen_event_id, _, _, _, _, _spool_handle}] ->
+      [{^id, gen_tid, gen_event_id, _, _, _, _, spool_handle} = row] ->
         case lookup_event(gen_tid, gen_event_id) do
-          nil -> reclaim_dangling_pointer(queue_tid, id)
+          nil -> reclaim_dangling_pointer(queue_tid, row, spool_handle)
           _payload -> :resolvable
         end
 
@@ -1206,12 +1206,12 @@ defmodule Logflare.Backends.IngestEventQueue do
       {:error, :not_initialized}
   end
 
-  # Body's gone for good -- claim the row atomically before acking, so a
-  # concurrent claimer that already took it isn't double-acked.
-  defp reclaim_dangling_pointer(queue_tid, id) do
-    case :ets.take(queue_tid, id) do
-      [{^id, _, _, _, _, _, _, spool_handle}] -> SpoolAck.ack(spool_handle, 1)
-      [] -> :ok
+  # Deletes only if the row is still exactly what was read above -- a no-op if
+  # another writer already replaced or removed it -- so a live pointer that's
+  # since taken this id is never mistaken for the dangling one and double-acked.
+  defp reclaim_dangling_pointer(queue_tid, row, spool_handle) do
+    if :ets.select_delete(queue_tid, [{row, [], [true]}]) == 1 do
+      SpoolAck.ack(spool_handle, 1)
     end
 
     :retry
