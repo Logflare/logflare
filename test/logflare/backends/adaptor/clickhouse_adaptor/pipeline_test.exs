@@ -2,6 +2,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   use Logflare.DataCase, async: false
 
   import ExUnit.CaptureLog
+  import Mimic
 
   alias Broadway.Message
   alias Logflare.Backends
@@ -13,6 +14,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
+  alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
+  alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.Mapper
   alias Logflare.TestUtils
 
@@ -88,7 +91,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
   defp queued_pointer(queue_tid, event_id) do
     case :ets.lookup(queue_tid, event_id) do
-      [{^event_id, gen_tid, gen_event_id, size, retries, event_type, day_bucket}] ->
+      [{^event_id, gen_tid, gen_event_id, size, retries, event_type, day_bucket, spool_handle}] ->
         %LogEventPointer{
           id: event_id,
           tid: gen_tid,
@@ -97,7 +100,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
           size: size,
           retries: retries,
           event_type: event_type,
-          day_bucket: day_bucket
+          day_bucket: day_bucket,
+          spool_handle: spool_handle
         }
 
       [] ->
@@ -1255,6 +1259,150 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       assert metadata.reason == :retries_exhausted
       assert metadata.backend_id == backend.id
       assert metadata.backend_type == :clickhouse
+    end
+
+    test "acks the pointer's spool handle on success, performing the real queue ack once its count reaches zero",
+         %{source: source, backend: backend} do
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+      SpoolAck.bump(handle, 1)
+
+      test_pid = self()
+      stub(QueueMod, :ack, fn url, h -> send(test_pid, {:acked, url, h}) end)
+
+      event = build(:log_event, source: source, message: "Test")
+      gen_tid = setup_generation_events([event])
+      pointer = %{pointer_for(event, gen_tid) | spool_handle: handle}
+
+      message = %Message{
+        data: pointer,
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}}
+      }
+
+      assert :ok = Pipeline.ack(:ack_ref, [message], [])
+
+      assert_receive {:acked, "queue-url", ^handle}
+      assert :ets.lookup(:spool_ack, handle) == []
+    end
+
+    test "acks the pointer's spool handle when dropped after exhausting retries", %{
+      source: source,
+      backend: backend
+    } do
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+      SpoolAck.bump(handle, 1)
+
+      test_pid = self()
+      stub(QueueMod, :ack, fn url, h -> send(test_pid, {:acked, url, h}) end)
+
+      max_retries = Pipeline.max_retries()
+      event = build(:log_event, source: source, message: "Test") |> Map.put(:retries, max_retries)
+      gen_tid = setup_generation_events([event])
+      pointer = %{pointer_for(event, gen_tid) | spool_handle: handle}
+
+      failed_message = %Message{
+        data: pointer,
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}},
+        status: {:failed, "connection error"}
+      }
+
+      capture_log(fn -> Pipeline.ack(:ack_ref, [], [failed_message]) end)
+
+      assert_receive {:acked, "queue-url", ^handle}
+      assert :ets.lookup(:spool_ack, handle) == []
+    end
+
+    test "acks the pointer's spool handle only once retries are actually exhausted, not on an intermediate retry",
+         %{source: source, backend: backend} do
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+      SpoolAck.bump(handle, 1)
+
+      test_pid = self()
+      stub(QueueMod, :ack, fn url, h -> send(test_pid, {:acked, url, h}) end)
+
+      event = build(:log_event, source: source, message: "Test") |> Map.put(:retries, 0)
+      gen_tid = setup_generation_events([event])
+      retry_key = {:consolidated, backend.id, self()}
+      assert {:ok, queue_tid} = IngestEventQueue.upsert_tid(retry_key)
+      pointer = %{pointer_for(event, gen_tid, queue_tid) | spool_handle: handle}
+
+      first_failure = %Message{
+        data: pointer,
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}},
+        status: {:failed, "first connection error"}
+      }
+
+      capture_log(fn -> Pipeline.ack(:ack_ref, [], [first_failure]) end)
+
+      # the body is still live -- requeued for another attempt, not dropped, so
+      # no ack yet even though this specific attempt failed
+      refute_receive {:acked, "queue-url", ^handle}
+
+      assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] =
+               :ets.lookup(:spool_ack, handle)
+
+      assert {:ok, [retry_pointer], ^queue_tid} =
+               IngestEventQueue.pop_pending_pointers(retry_key, 1)
+
+      assert retry_pointer.retries == Pipeline.max_retries()
+      assert retry_pointer.spool_handle == handle
+
+      second_failure = %Message{
+        data: retry_pointer,
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}},
+        status: {:failed, "second connection error"}
+      }
+
+      log = capture_log(fn -> Pipeline.ack(:ack_ref, [], [second_failure]) end)
+
+      assert log =~ "Dropping 1 ClickHouse events: exhausted #{Pipeline.max_retries()} retries"
+      assert_receive {:acked, "queue-url", ^handle}
+      assert :ets.lookup(:spool_ack, handle) == []
+    end
+
+    test "does not ack the pointer's spool handle when a retriable event's generation is already gone",
+         %{source: source, backend: backend} do
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+      SpoolAck.bump(handle, 1)
+
+      test_pid = self()
+      stub(QueueMod, :ack, fn url, h -> send(test_pid, {:acked, url, h}) end)
+
+      event = build(:log_event, source: source, message: "Test") |> Map.put(:retries, 0)
+      gen_tid = setup_generation_events([event])
+      pointer = %{pointer_for(event, gen_tid) | spool_handle: handle}
+
+      # simulate GenerationJanitor dropping the generation before retry lookup
+      :ets.delete(gen_tid)
+
+      failed_message = %Message{
+        data: pointer,
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}},
+        status: {:failed, "connection error"}
+      }
+
+      capture_log(fn -> Pipeline.ack(:ack_ref, [], [failed_message]) end)
+
+      refute_receive {:acked, "queue-url", ^handle}
+
+      assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] =
+               :ets.lookup(:spool_ack, handle)
+    end
+
+    test "a nil spool handle (an event that never came from the spool) is untouched by ack/3", %{
+      source: source,
+      backend: backend
+    } do
+      event = build(:log_event, source: source, message: "Test")
+      gen_tid = setup_generation_events([event])
+      message = batch_message(event, gen_tid, backend.id)
+
+      # No SpoolAck.register/3 call for anything here -- if ack/3 tried to
+      # touch a real handle, this would crash instead of silently no-op'ing.
+      assert :ok = Pipeline.ack(:ack_ref, [message], [])
     end
   end
 

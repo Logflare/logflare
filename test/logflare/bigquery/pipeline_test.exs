@@ -13,6 +13,8 @@ defmodule Logflare.BigQuery.PipelineTest do
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
+  alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.LogEvent
   alias Logflare.Repo
   alias Logflare.Sources.Source.BigQuery.Pipeline
@@ -53,6 +55,33 @@ defmodule Logflare.BigQuery.PipelineTest do
       assert requeued.retries == 1
     end
 
+    test "ack acks the old pointer's spool handle when successfully requeuing a retriable event",
+         %{source: source} do
+      Mimic.set_mimic_global()
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = %{build(:log_event, source: source) | spool_handle: handle}
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
+
+      assert [{^handle, count_before, _, _, _}] = :ets.lookup(:spool_ack, handle)
+
+      ref = {sid_bid_pid, %{max_retries: 1}}
+      message = Pipeline.transform(pointer, ref: ref)
+      {mod, ref, _data} = message.acknowledger
+
+      mod.ack(ref, [], [message])
+
+      # the old pointer's unit is acked, and the requeued replacement bumps a
+      # fresh one of its own -- net count is unchanged, not leaked upward
+      assert [{^handle, count_after, _, _, _}] = :ets.lookup(:spool_ack, handle)
+      assert count_after == count_before
+    end
+
     test "ack emits telemetry and logs a warning when a retriable event's generation is already gone",
          %{source: source} do
       sid_bid_pid = {source.id, nil, self()}
@@ -89,6 +118,39 @@ defmodule Logflare.BigQuery.PipelineTest do
       assert IngestEventQueue.total_pending(sid_bid_pid) == 0
     end
 
+    test "ack does not ack the pointer's spool handle when a retriable event's generation is already gone",
+         %{source: source} do
+      Mimic.set_mimic_global()
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+
+      test_pid = self()
+      stub(QueueMod, :ack, fn url, h -> send(test_pid, {:acked, url, h}) end)
+
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = %{build(:log_event, source: source) | spool_handle: handle}
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
+
+      # simulate GenerationJanitor dropping the generation before retry lookup
+      queues_key = Tuple.delete_at(sid_bid_pid, 2)
+      assert [{gen_tid, _created_at}] = IngestEventQueue.list_generations(queues_key)
+      :ok = IngestEventQueue.drop_generation(queues_key, gen_tid)
+
+      ack_ref = {sid_bid_pid, %{max_retries: 1}}
+      message = Pipeline.transform(pointer, ref: ack_ref)
+      {mod, ack_ref, _data} = message.acknowledger
+
+      capture_log(fn -> mod.ack(ack_ref, [], [message]) end)
+
+      refute_receive {:acked, "queue-url", ^handle}
+
+      assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] =
+               :ets.lookup(:spool_ack, handle)
+    end
+
     test "ack will not requeue failed events that have exhausted retries", %{source: source} do
       sid_bid_pid = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(sid_bid_pid)
@@ -107,6 +169,81 @@ defmodule Logflare.BigQuery.PipelineTest do
       # Event is NOT requeued (retries == max_retries); its event row is deleted
       # from the generation store since nothing will ever ack it
       assert IngestEventQueue.total_pending(sid_bid_pid) == 0
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) == nil
+    end
+
+    test "ack acks the pointer's spool handle on success, performing the real queue ack once its count reaches zero",
+         %{source: source} do
+      Mimic.set_mimic_global()
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+
+      test_pid = self()
+      stub(QueueMod, :ack, fn url, h -> send(test_pid, {:acked, url, h}) end)
+
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = %{build(:log_event, source: source) | spool_handle: handle}
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
+
+      ref = {sid_bid_pid, %{max_retries: 0}}
+      message = Pipeline.transform(pointer, ref: ref)
+      {mod, ref, _} = message.acknowledger
+
+      mod.ack(ref, [message], [])
+
+      assert_receive {:acked, "queue-url", ^handle}
+      assert :ets.lookup(:spool_ack, handle) == []
+    end
+
+    test "ack acks the pointer's spool handle when dropped after exhausting retries", %{
+      source: source
+    } do
+      Mimic.set_mimic_global()
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+
+      test_pid = self()
+      stub(QueueMod, :ack, fn url, h -> send(test_pid, {:acked, url, h}) end)
+
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = %{build(:log_event, source: source) | spool_handle: handle}
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
+      pointer = %{pointer | retries: 1}
+
+      ref = {sid_bid_pid, %{max_retries: 1}}
+      message = Pipeline.transform(pointer, ref: ref)
+      {mod, ref, _data} = message.acknowledger
+
+      capture_log(fn -> mod.ack(ref, [], [message]) end)
+
+      assert_receive {:acked, "queue-url", ^handle}
+      assert :ets.lookup(:spool_ack, handle) == []
+    end
+
+    test "a nil spool handle (an event that never came from the spool) is untouched by ack", %{
+      source: source
+    } do
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
+
+      ref = {sid_bid_pid, %{max_retries: 0}}
+      message = Pipeline.transform(pointer, ref: ref)
+      {mod, ref, _} = message.acknowledger
+
+      # No SpoolAck.register/3 call for anything here -- if ack tried to touch
+      # a real handle, this would crash instead of silently no-op'ing.
+      mod.ack(ref, [message], [])
+
       assert IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) == nil
     end
 
