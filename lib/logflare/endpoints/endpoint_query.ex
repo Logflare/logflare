@@ -64,6 +64,7 @@ defmodule Logflare.Endpoints.EndpointQuery do
     field(:cache_duration_seconds, :integer, default: 3_600)
     field(:proactive_requerying_seconds, :integer, default: 1_800)
     field(:max_limit, :integer, default: 1_000)
+    field(:enforced_clickhouse_settings, :map, default: %{})
     field(:enable_auth, :boolean, default: true)
     field(:redact_pii, :boolean, default: false)
     field(:enable_dynamic_reservation, :boolean, default: false)

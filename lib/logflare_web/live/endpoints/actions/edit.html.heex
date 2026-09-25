@@ -8,5 +8,24 @@
 </.subheader>
 
 <section class="mx-auto container">
-  <Components.endpoint_form {assigns} />
+  <Components.endpoint_form :if={@can_edit_endpoint?} {assigns} />
+  <div :if={!@can_edit_endpoint?} class="tw-my-10">
+    <p>This endpoint belongs to another user. Its query and ordinary settings are read-only here.</p>
+    <pre class="tw-overflow-auto">{@show_endpoint.query}</pre>
+  </div>
+
+  <section :if={@admin? and @show_endpoint.language == :ch_sql} id="enforced-settings-panel" class="tw-mb-10 tw-max-w-xl">
+    <.header_with_anchor text="Enforced ClickHouse settings" />
+    <p class="form-text text-muted">
+      These limits apply to the endpoint's default and custom SQL queries. Leave a field blank to remove its limit. Row and byte limits fail the query when exceeded.
+    </p>
+    <.form :let={f} for={@enforced_settings_form} id="enforced-settings-form" phx-submit="save-enforced-settings">
+      <div :for={{key, text} <- @resource_settings} class="form-group">
+        {label(f, Atom.to_string(key), text)}
+        {number_input(f, Atom.to_string(key), min: 1, step: 1, class: "form-control")}
+      </div>
+      <p :if={@enforced_settings_error} class="text-danger" role="alert">{@enforced_settings_error}</p>
+      <button type="submit" class="btn btn-primary">Save enforced settings</button>
+    </.form>
+  </section>
 </section>
