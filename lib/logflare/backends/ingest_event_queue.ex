@@ -1193,18 +1193,8 @@ defmodule Logflare.Backends.IngestEventQueue do
     case :ets.lookup(queue_tid, id) do
       [{^id, gen_tid, gen_event_id, _, _, _, _, _spool_handle}] ->
         case lookup_event(gen_tid, gen_event_id) do
-          nil ->
-            # Body's gone for good -- claim the row atomically before acking,
-            # so a concurrent claimer that already took it isn't double-acked.
-            case :ets.take(queue_tid, id) do
-              [{^id, _, _, _, _, _, _, spool_handle}] -> SpoolAck.ack(spool_handle, 1)
-              [] -> :ok
-            end
-
-            :retry
-
-          _payload ->
-            :resolvable
+          nil -> reclaim_dangling_pointer(queue_tid, id)
+          _payload -> :resolvable
         end
 
       [] ->
@@ -1214,6 +1204,17 @@ defmodule Logflare.Backends.IngestEventQueue do
     ArgumentError ->
       emit_stale_ets_table_telemetry()
       {:error, :not_initialized}
+  end
+
+  # Body's gone for good -- claim the row atomically before acking, so a
+  # concurrent claimer that already took it isn't double-acked.
+  defp reclaim_dangling_pointer(queue_tid, id) do
+    case :ets.take(queue_tid, id) do
+      [{^id, _, _, _, _, _, _, spool_handle}] -> SpoolAck.ack(spool_handle, 1)
+      [] -> :ok
+    end
+
+    :retry
   end
 
   @doc """
