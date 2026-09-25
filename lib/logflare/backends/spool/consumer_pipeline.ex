@@ -101,9 +101,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
 
   defp release_segment_bumps(messages) do
     messages
-    |> Enum.reduce(%{}, fn message, counts ->
-      Map.update(counts, handle_of(message), 1, &(&1 + 1))
-    end)
+    |> Enum.frequencies_by(&handle_of/1)
     |> Enum.each(fn {handle, count} -> SpoolAck.ack(handle, count) end)
   end
 
