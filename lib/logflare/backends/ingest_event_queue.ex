@@ -1091,12 +1091,10 @@ defmodule Logflare.Backends.IngestEventQueue do
 
     delete_id(pointer.tid, pointer.gen_event_id)
 
-    # Every live queue rejected this payload -- terminal, so ack now.
-    # :already_exists isn't acked here: the pointer it collided with is
-    # already tracked and will resolve on its own.
-    if result == {:error, :not_initialized} do
-      SpoolAck.ack(pointer.spool_handle, 1)
-    end
+    # This pointer's own unit is done here regardless of outcome: on success
+    # a fresh unit was bumped for the new pointer, and on :already_exists or
+    # :not_initialized nothing else will ever claim this pointer again.
+    SpoolAck.ack(pointer.spool_handle, 1)
 
     result
   end
@@ -1193,13 +1191,16 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   defp remove_dangling_pointer(queue_tid, id) do
     case :ets.lookup(queue_tid, id) do
-      [{^id, gen_tid, gen_event_id, _, _, _, _, spool_handle} = row] ->
+      [{^id, gen_tid, gen_event_id, _, _, _, _, _spool_handle}] ->
         case lookup_event(gen_tid, gen_event_id) do
           nil ->
-            # Delete only the row inspected above -- a no-op if another writer
-            # already replaced it. Body's gone for good, so ack now.
-            :ets.delete_object(queue_tid, row)
-            SpoolAck.ack(spool_handle, 1)
+            # Body's gone for good -- claim the row atomically before acking,
+            # so a concurrent claimer that already took it isn't double-acked.
+            case :ets.take(queue_tid, id) do
+              [{^id, _, _, _, _, _, _, spool_handle}] -> SpoolAck.ack(spool_handle, 1)
+              [] -> :ok
+            end
+
             :retry
 
           _payload ->
