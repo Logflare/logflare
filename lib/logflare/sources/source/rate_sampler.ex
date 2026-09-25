@@ -1,38 +1,17 @@
 defmodule Logflare.Sources.Source.RateSampler do
   @moduledoc """
-  Decides whether to sample a per-event, rate-gated action for a source (a
-  BigQuery schema-update check, a dashboard live-tail broadcast), based on this
-  node's own recent local throughput for that source.
+  Decides whether to sample a per-event, rate-gated action for a source
+  (e.g. a BigQuery schema-update check, a dashboard live-tail broadcast),
+  based on this node's own recent local throughput for that source.
 
-  Counting and sampling are deliberately split into two separate calls:
+  `bump/2` records a batch's size against a source's rolling window --
+  call it once per dispatched batch, not per event. `sample?/1` is a
+  read-only probability check against the current rate and can be
+  called as many times as needed without affecting the counter.
 
-    * `bump/2` records a batch's size against a source's rolling window. Call
-      this exactly once per dispatched batch — see `Backends.dispatch/2` — not
-      once per event, so the (batch-sized, cheap either way) count update
-      happens once regardless of how many downstream consumers later check
-      `sample?/1` for that same batch.
-    * `sample?/1` is a read-only probability check. Call it as many times as
-      needed (once per event, from as many independent call sites as needed)
-      without touching the counter — every caller reads the same underlying
-      rate, updated in the one place `bump/2` is called.
-
-  This unifies what used to be two separately-drifting signals: a BigQuery-only
-  `SchemaUpdateSampler` (which bumped its own counter once per event, inside the
-  BigQuery pipeline specifically) and the dashboard broadcast's `source.metrics
-  .avg` (sourced from cluster-wide `PubSubRates`, refreshed only once per
-  inbound request — before that request's own events were counted, so a large
-  first burst on an otherwise-quiet source was invisible to it until the
-  *next* request). Being purely local ETS state written by whichever process
-  calls `bump/2` — no cluster/PubSub round-trip — also means this keeps working
-  correctly if the code path that decides whether to sample moves to run
-  somewhere other than wherever the original request was handled (e.g. a
-  separate consumer process, once spool producer/consumer are split).
-
-  A never-seen source's first `bump/2` seeds an immediate provisional rate from
-  that first batch's own size (`count * 1000 / window_ms`), rather than leaving
-  the rate at 0 (which would mean "sample everything") until a full window has
-  elapsed — a large first burst is throttled starting from the batch that
-  introduces it, not just from the window after.
+  A source's first `bump/2` seeds a provisional rate from that batch's
+  own size, rather than starting at a rate of 0 (which would sample
+  everything) until a full window has elapsed.
   """
 
   use GenServer
