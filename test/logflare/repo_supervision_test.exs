@@ -4,9 +4,8 @@ defmodule Logflare.RepoSupervisionTest do
   @repo_sup Logflare.Repo.Supervisor
   @pool_name :fake_repo_pool
 
-  # `:sys.get_state/1` on a supervisor returns OTP's private `#state{}` record.
-  # Positions 5 and 6 are `intensity` and `period`. There is no public API for
-  # reading these back off a running supervisor.
+  # `:sys.get_state/1` on a supervisor returns OTP's private `#state{}` record;
+  # positions 5 and 6 are `intensity` and `period`. There is no public API.
   defp restart_intensity(sup) do
     state = :sys.get_state(sup)
     {elem(state, 5), elem(state, 6)}

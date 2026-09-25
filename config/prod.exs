@@ -18,7 +18,9 @@ config :logflare, Logflare.Repo,
   prepare: :unnamed,
   timeout: 30_000,
   queue_target: 5_000,
-  port: 5432
+  port: 5432,
+  max_restarts: 1_000,
+  max_seconds: 1
 
 config :logger,
   compile_time_purge_matching: [

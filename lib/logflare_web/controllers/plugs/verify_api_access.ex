@@ -90,7 +90,10 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
     with {:ok, access_token_or_api_key} <- extracted_token,
          {:ok, token, %User{id: user_id}} <-
            Auth.Cache.verify_access_token(access_token_or_api_key, scopes) do
-      {:ok, token, Users.Cache.get(user_id)}
+      case Users.Cache.get(user_id) do
+        {:error, :database_unavailable} -> {:error, :unauthorized}
+        user -> {:ok, token, user}
+      end
     else
       # don't preload for partners
       {:ok, _token, %Partner{} = partner} -> {:ok, partner}

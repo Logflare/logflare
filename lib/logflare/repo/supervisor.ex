@@ -4,15 +4,12 @@ defmodule Logflare.Repo.Supervisor do
 
   `Ecto.Repo.Supervisor` supervises its connection pool with `max_restarts: 0`,
   so any pool exit terminates the repo immediately. Supervised directly by the
-  application supervisor, four such exits within five seconds exhaust the
-  default restart intensity and terminate the whole application - taking down
-  ingest, which otherwise serves from the context caches and does not need the
-  primary database.
+  application supervisor, four such exits within five seconds exhaust the default
+  restart intensity and terminate the whole application.
 
-  The intensity here is deliberately high over a one second period: the budget
-  resets constantly, so sustained reconnect churn during a database outage never
-  trips it, while a genuine hot restart loop (a repo that fails on every start,
-  e.g. invalid configuration) still does.
+  The high intensity over a one second period means the budget resets constantly,
+  so reconnect churn during a database outage never trips it while a repo that
+  fails on every start still does.
   """
 
   use Supervisor

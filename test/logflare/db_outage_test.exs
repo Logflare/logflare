@@ -66,6 +66,28 @@ defmodule Logflare.DbOutageTest do
       assert Readiness.ready?()
       assert %{"status" => "ok"} = conn |> get("/ready") |> json_response(200)
     end
+
+    test "/startup still fails, so a cold node is not sent traffic",
+         %{conn: conn, unreachable_repo: pid} do
+      simulate_outage(pid)
+
+      assert %{"status" => "coming_up"} = conn |> get("/startup") |> json_response(503)
+    end
+  end
+
+  describe "startup probe with a reachable database" do
+    setup do
+      start_supervised!(Source.Supervisor)
+
+      Logflare.Google.BigQuery
+      |> stub(:init_table!, fn _, _, _, _, _, _ -> :ok end)
+
+      :ok
+    end
+
+    test "/startup passes once the primary answers", %{conn: conn} do
+      assert %{"status" => "ok"} = conn |> get("/startup") |> json_response(200)
+    end
   end
 
   describe "ContextCache.fetch/3 when the getter cannot reach the database" do
@@ -74,9 +96,9 @@ defmodule Logflare.DbOutageTest do
     end
 
     test "does not crash the caller", %{cache: cache, key: key} do
-      ContextCache.fetch(cache, key, fn ->
-        raise DBConnection.ConnectionError, "connection not available"
-      end)
+      assert ContextCache.fetch(cache, key, fn ->
+               raise DBConnection.ConnectionError, "connection not available"
+             end) == {:error, :database_unavailable}
     end
 
     test "does not poison the cache once the database recovers", %{cache: cache, key: key} do

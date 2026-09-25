@@ -445,6 +445,8 @@ defmodule Logflare.Sources do
 
   def refresh_source_metrics_for_ingest(nil), do: nil
 
+  def refresh_source_metrics_for_ingest({:error, :database_unavailable}), do: nil
+
   def refresh_source_metrics_for_ingest(%Source{token: token} = source) do
     rates = PubSubRates.Cache.get_cluster_rates(token)
 
