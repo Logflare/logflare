@@ -34,8 +34,6 @@ defmodule Logflare.LogEvent do
     field :day_bucket, :integer
     # Indicates if the event was removed from ets during ingest
     field :is_popped, :boolean, virtual: true, default: false
-    # The spool queue message (SQS/PubSub handle) this event was decoded
-    # from, or nil -- see Logflare.Backends.Spool.SpoolAck.
     field :spool_handle, :any, virtual: true, default: nil
 
     embeds_one :pipeline_error, PipelineError do

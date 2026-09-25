@@ -189,7 +189,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     fail_dispatched(messages, failed_source_ids)
   end
 
-  # A batch can span more than one file's segments, so dispatch runs per-handle.
   defp dispatch_handle_group(handle, messages) do
     messages
     |> Enum.flat_map(fn message -> Enum.map(message.data, &{message, &1}) end)

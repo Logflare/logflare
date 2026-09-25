@@ -699,8 +699,6 @@ defmodule Logflare.Backends.IngestEventQueue do
   # generation row is removed.
   # Pointer row shape:
   # {event_id, generation_tid, gen_event_id, size, retries, event_type, day_bucket, spool_handle}.
-  #
-  # SpoolAck.bump/2 only fires for the row that actually wins insert_new/2.
   defp insert_pointer_batch(sid_bid_pid, queue_tid, batch) do
     queues_key = pointer_queues_key(sid_bid_pid)
     gen_tid = current_generation_tid(queues_key)
@@ -1136,8 +1134,6 @@ defmodule Logflare.Backends.IngestEventQueue do
       :ok ->
         case publish_requeued_pointer(new_pointer, @requeue_pointer_collision_retries) do
           :ok ->
-            # A genuinely new, surviving pointer -- one more unit of pending
-            # work needing its own eventual ack, same as a fresh dispatch.
             SpoolAck.bump(new_pointer.spool_handle, 1)
             {:ok, new_pointer}
 
@@ -1202,9 +1198,6 @@ defmodule Logflare.Backends.IngestEventQueue do
       {:error, :not_initialized}
   end
 
-  # Deletes only if the row is still exactly what was read above -- a no-op if
-  # another writer already replaced or removed it -- so a live pointer that's
-  # since taken this id is never mistaken for the dangling one and double-acked.
   defp reclaim_dangling_pointer(queue_tid, row, spool_handle) do
     if :ets.select_delete(queue_tid, [{row, [], [true]}]) == 1 do
       SpoolAck.ack(spool_handle, 1)
