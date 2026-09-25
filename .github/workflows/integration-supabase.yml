@@ -60,11 +60,10 @@ jobs:
             project: firefox
           - name: Safari
             project: webkit
-        # One BigQuery job (the backend choice is invisible to the browser, so
-        # a single browser is enough coverage). Added conditionally because it
-        # needs repository secrets (GCP service account), which are
-        # unavailable to pull requests from forks.
-        include: ${{ github.event.pull_request.head.repo.fork != true && fromJSON('[{"backend":"bigquery","browsers":{"name":"Chrome","project":"chromium"}}]') || fromJSON('[]') }}
+        # BigQuery needs the CI service account, which is unavailable on forks
+        # and under repair for manual runs. Manual dispatch still exercises
+        # the Postgres matrix while the workflow remains manual-only.
+        include: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork != true && fromJSON('[{"backend":"bigquery","browsers":{"name":"Chrome","project":"chromium"}}]') || fromJSON('[]') }}
 
     timeout-minutes: 60
 

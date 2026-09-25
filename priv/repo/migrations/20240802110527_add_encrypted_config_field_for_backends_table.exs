@@ -1,6 +1,5 @@
 defmodule Logflare.Repo.Migrations.AddEncryptedConfigFieldForBackendsTable do
   use Ecto.Migration
-  alias Logflare.Repo
   import Ecto.Query
   alias Logflare.Ecto.EncryptedMap
 
@@ -13,7 +12,7 @@ defmodule Logflare.Repo.Migrations.AddEncryptedConfigFieldForBackendsTable do
     {:ok, pid} = Logflare.Vault.start_link()
 
     # copy configs over
-    Repo.all(from b in "backends", select: [:id, :config])
+    repo().all(from b in "backends", select: [:id, :config])
     |> Enum.each(fn %{id: id} = backend ->
       {:ok, config_encrypted} = EncryptedMap.dump(backend.config)
 
@@ -21,8 +20,9 @@ defmodule Logflare.Repo.Migrations.AddEncryptedConfigFieldForBackendsTable do
         where: b.id == ^id,
         update: [set: [config_encrypted: ^config_encrypted]]
       )
-      |> Logflare.Repo.update_all([])
+      |> repo().update_all([])
     end)
+
     # stop the vault
     Process.unlink(pid)
     Process.exit(pid, :kill)

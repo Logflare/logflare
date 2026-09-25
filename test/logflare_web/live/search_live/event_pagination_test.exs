@@ -91,6 +91,24 @@ defmodule LogflareWeb.SearchLive.EventPaginationTest do
                |> EventPagination.put_window(600)
                |> EventPagination.buttons(@ready_opts)
     end
+
+    test "caps the next label at the time left until now" do
+      pagination = EventPagination.put_window(EventPagination.new(), 7_200)
+      cursor = %{id: "next", timestamp: 1_000_000_000}
+      cursors = %{previous: cursor, next: cursor}
+      opts = [cursors: cursors, tailing?: false, loading?: false]
+
+      assert %{
+               previous: %{label: "Load more (-2 hours)"},
+               next: %{label: "Load more (+30 minutes)"}
+             } = EventPagination.buttons(pagination, [now: 1_000_000_000 + 1_800_000_000] ++ opts)
+
+      assert %{next: %{label: "Load more (+2 hours)"}} =
+               EventPagination.buttons(pagination, [now: 1_000_000_000 + 9_000_000_000] ++ opts)
+
+      assert %{next: %{label: "Load more"}} =
+               EventPagination.buttons(pagination, [now: 1_000_000_000 + 500_000] ++ opts)
+    end
   end
 
   describe "loading?/2" do

@@ -22,33 +22,31 @@ hooks.SourceSchemaModalTable = {
 
 hooks.SourceLogsSearchList = {
   captureScrollAnchor() {
-    this.scrollPosition = window.scrollY
-
     const firstVisibleLogEvent = [...this.el.querySelectorAll("#logs-list > li[data-event-id]")]
       .find((element) => {
         const { top, bottom } = element.getBoundingClientRect()
         return top < window.innerHeight && bottom > 0
       })
 
-    this.scrollAnchor = firstVisibleLogEvent && {
-      id: firstVisibleLogEvent.id,
-      top: firstVisibleLogEvent.getBoundingClientRect().top,
-    }
+    this.scrollAnchor = firstVisibleLogEvent?.id
+      ? {
+        id: firstVisibleLogEvent.id,
+        top: firstVisibleLogEvent.getBoundingClientRect().top,
+      }
+      : null
   },
   restoreScrollAnchor() {
     const scrollAnchor = this.scrollAnchor
-    const scrollPosition = this.scrollPosition
 
-    requestAnimationFrame(() => {
-      const anchorElement = scrollAnchor && document.getElementById(scrollAnchor.id)
+    if (!scrollAnchor) return
 
-      if (anchorElement && this.el.contains(anchorElement)) {
-        const scrollDelta = anchorElement.getBoundingClientRect().top - scrollAnchor.top
-        window.scrollBy(0, scrollDelta)
-      } else if (scrollPosition !== undefined) {
-        window.scrollTo(0, scrollPosition)
-      }
-    })
+    const anchorElement = document.getElementById(scrollAnchor.id)
+
+    if (!anchorElement || !this.el.contains(anchorElement)) return
+
+    const scrollDelta = anchorElement.getBoundingClientRect().top - scrollAnchor.top
+
+    if (scrollDelta !== 0) window.scrollBy(0, scrollDelta)
   },
   flushScrollToBottom() {
     requestAnimationFrame(() => {
@@ -94,11 +92,6 @@ hooks.SourceLogsSearchList = {
     this.handleEvent("scroll-to-bottom", () => {
       this.pendingScrollToBottom = true
       this.flushScrollToBottom()
-    })
-    this.handleEvent("scroll-to-event", ({ id }) => {
-      requestAnimationFrame(() => {
-        document.getElementById(id)?.scrollIntoView({ block: "start" })
-      })
     })
   },
   destroyed() {

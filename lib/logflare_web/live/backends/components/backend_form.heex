@@ -35,7 +35,8 @@
     {select(f, :type, ["Select a backend type..." | @backend_types],
       phx_change: :change_form_type,
       class: "form-control form-control-margin",
-      id: "type"
+      id: "type",
+      value: @form_type
     )}
   </div>
 
@@ -57,29 +58,7 @@
             <% end %>
             {text_input(f_config, :url, class: "form-control")}
           </div>
-          <% stored_headers = input_value(f_config, :headers) || %{}
-
-          fields =
-            stored_headers
-            |> Enum.sort_by(fn {key, _value} -> key end)
-            |> Stream.concat(Stream.repeatedly(fn -> {"", ""} end))
-            |> Enum.take(max(map_size(stored_headers) + 1, 2)) %>
-          <%= for {{key, val}, i} <- Enum.with_index(fields, 1) do %>
-            <div class="form-group">
-              {label(f_config, "header#{i}_key", "Custom header #{i} - Key")}
-              {text_input(f_config, "header#{i}_key", value: key, class: "form-control")}
-              {label(f_config, "header#{i}_value", "Custom header #{i} - Value")}
-              {text_input(f_config, "header#{i}_value",
-                value:
-                  if(val in [nil, ""],
-                    do: val,
-                    else: Logflare.Backends.Adaptor.WebhookAdaptor.redacted_value()
-                  ),
-                class: "form-control"
-              )}
-              {hidden_input(f_config, "header#{i}_stored_key", value: key)}
-            </div>
-          <% end %>
+          <.header_inputs form={f_config} />
           <small class="form-text text-muted">
             Headers sent with each request. For a bearer token, set the key to <code>authorization</code>
             and the value to <code>Bearer &lt;token&gt;</code>. Stored values show as <code>REDACTED</code>; leave them unchanged to keep them. You can rename a key without retyping its value. Clear a key to remove the header.
@@ -199,21 +178,72 @@
           </div>
         <% "elastic" -> %>
           <div class="form-group">
-            {label(f_config, :url, "Filebeat URL")}
-            {text_input(f_config, :url, class: "form-control")}
+            {label(f_config, :transport, "Transport")}
+            {select(
+              f_config,
+              :transport,
+              [
+                {"Filebeat HTTP", "filebeat"},
+                {"Logstash HTTP", "logstash"},
+                {"OTLP", "otlp"}
+              ],
+              class: "form-control form-control-margin",
+              id: "elastic-transport",
+              phx_change: :change_elastic_transport,
+              value: @elastic_transport
+            )}
             <small class="form-text text-muted">
-              The Filebeat HTTP(S) endpoint to send events.
+              Delivery mode for Elastic. Filebeat and Logstash use their HTTP input plugins; OTLP uses HTTP/protobuf.
             </small>
           </div>
-          <div class="form-group">
-            {label(f_config, :username, "Basic Auth Username")}
-            {text_input(f_config, :username, class: "form-control")}
-            {label(f_config, :password, "Basic Auth Password")}
-            {text_input(f_config, :password, class: "form-control", type: "password")}
-            <small class="form-text text-muted">
-              For basic auth, both username and password must be provided.
-            </small>
-          </div>
+          <%= case @elastic_transport do %>
+            <% "otlp" -> %>
+              <div class="form-group">
+                {label(f_config, :endpoint, "Elasticsearch OTLP Endpoint")}
+                {text_input(f_config, :endpoint,
+                  class: "form-control",
+                  value: "https://abc.ingest.us-central1.gcp.elastic.cloud:443/supabase/v1/logs"
+                )}
+                <small class="form-text text-muted">
+                  Elastic managed OTLP endpoint for Supabase log ingestion (ends with /supabase/v1/logs)
+                </small>
+              </div>
+            <% "logstash" -> %>
+              <div class="form-group">
+                {label(f_config, :url, "Logstash URL")}
+                {text_input(f_config, :url, class: "form-control")}
+                <small class="form-text text-muted">
+                  The Logstash HTTP(S) input endpoint to send events, e.g. http://logstash.internal:8080
+                </small>
+              </div>
+              <div class="form-group">
+                {label(f_config, :username, "Basic Auth Username")}
+                {text_input(f_config, :username, class: "form-control")}
+                {label(f_config, :password, "Basic Auth Password")}
+                {text_input(f_config, :password, class: "form-control", type: "password")}
+                <small class="form-text text-muted">
+                  For basic auth, both username and password must be provided. Matches the "user" and "password" options of the Logstash http input.
+                </small>
+              </div>
+            <% _filebeat -> %>
+              <div class="form-group">
+                {label(f_config, :url, "Filebeat URL")}
+                {text_input(f_config, :url, class: "form-control")}
+                <small class="form-text text-muted">
+                  The Filebeat HTTP(S) endpoint to send events.
+                </small>
+              </div>
+              <div class="form-group">
+                {label(f_config, :username, "Basic Auth Username")}
+                {text_input(f_config, :username, class: "form-control")}
+                {label(f_config, :password, "Basic Auth Password")}
+                {text_input(f_config, :password, class: "form-control", type: "password")}
+                <small class="form-text text-muted">
+                  For basic auth, both username and password must be provided.
+                </small>
+              </div>
+          <% end %>
+          <.header_inputs form={f_config} />
         <% "loki" -> %>
           <div class="form-group">
             {label(f_config, :url, "Loki URL")}
@@ -327,13 +357,6 @@
               Connections per node for the primary read pool.
             </small>
           </div>
-          <div class="form-group">
-            {label(f_config, :read_only_url, "Read-Only URL (Optional)")}
-            {text_input(f_config, :read_only_url, class: "form-control")}
-            <small class="form-text text-muted">
-              Separate endpoint for read queries, for example: <code>https://read-warehouse.clickhouse.cloud:8443</code>
-            </small>
-          </div>
           <.live_component module={LogflareWeb.Backends.ReadClusterUrlsComponent} id={read_cluster_component_id(@backend)} form={f_config} backend={@backend} />
         <% "incidentio" -> %>
           <div class="form-group">
@@ -439,52 +462,33 @@
         <% "otlp" -> %>
           <div class="form-group">
             {label(f_config, :endpoint, "Endpoint")}
-            {text_input(f_config, :endpoint,
-              class: "form-control",
-              placeholder: "https://otlp-endpoint.com/v1/logs"
-            )}
+            {text_input(f_config, :endpoint, class: "form-control", value: "https://otlp-endpoint.com/v1/logs")}
             <small class="form-text text-muted">
               Address of the OTLP Endpoint
             </small>
           </div>
-          <% headers_number = 2
-          # TODO: Adjust number of entries dynamically
-          fields =
-            (input_value(f_config, :headers) || %{})
-            |> Stream.concat(Stream.repeatedly(fn -> {"", ""} end))
-            |> Enum.take(headers_number) %>
-          <%= for {{key, val}, i} <- Enum.with_index(fields, 1) do %>
+          <.header_inputs form={f_config} />
+          <%= if @form_type == "otlp" do %>
             <div class="form-group">
-              {label(f_config, "header#{i}_key", "Custom header #{i} - Key")}
-              {text_input(f_config, "header#{i}_key", value: key, class: "form-control")}
-              {label(f_config, "header#{i}_value", "Custom header #{i} - Value")}
-              {text_input(f_config, "header#{i}_value", value: val, class: "form-control")}
+              {label(f_config, :protocol, "Protocol")}
+              {select(f_config, :protocol, Logflare.Backends.Adaptor.OtlpAdaptor.protocols(),
+                class: "form-control form-control-margin",
+                id: "otlp-protocol"
+              )}
+              <small class="form-text text-muted">
+                Transport protocol used for OTLP
+              </small>
             </div>
+            <div class="form-group">
+              {label(f_config, :flatten_to_attributes, "Flatten to attributes")}
+              {checkbox(f_config, :flatten_to_attributes, id: "flatten-attributes")}
+              <small class="form-text text-muted">
+                Sends the log event_message as a text string in the body field and flattens other fields into individual attributes, instead of the default nested body. Defaults to false.
+              </small>
+            </div>
+          <% else %>
+            {hidden_input(f_config, :protocol, value: "http/protobuf")}
           <% end %>
-          <div class="form-group">
-            {label(f_config, :gzip, "Gzip")}
-            {checkbox(f_config, :gzip, id: "gzip")}
-            <small class="form-text text-muted">
-              Enable "gzip" compression in sent requests
-            </small>
-          </div>
-          <div class="form-group">
-            {label(f_config, :protocol, "Protocol")}
-            {select(f_config, :protocol, Logflare.Backends.Adaptor.OtlpAdaptor.protocols(),
-              class: "form-control form-control-margin",
-              id: "otlp-protocol"
-            )}
-            <small class="form-text text-muted">
-              Transport protocol used for OTLP
-            </small>
-          </div>
-          <div class="form-group">
-            {label(f_config, :flatten_to_attributes, "Flatten to attributes")}
-            {checkbox(f_config, :flatten_to_attributes, id: "flatten-attributes")}
-            <small class="form-text text-muted">
-              Sends the log event_message as a text string in the body field and flattens other fields into individual attributes, instead of the default nested body. Defaults to false.
-            </small>
-          </div>
         <% "last9" -> %>
           <div class="form-group">
             {label(f_config, :username, "Otel integration Username")}

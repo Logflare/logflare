@@ -109,10 +109,18 @@ defmodule Logflare.Logs.SearchOperationsTest do
     test "creates a page request from its cursor", %{so: so} do
       cursor = %{id: "event-id", timestamp: 1_769_904_600_000_000}
 
-      assert {:ok, %{event_page_request: request}} =
-               %{so | tailing?: false} |> SearchOperations.new_event_page(:next, cursor, 600)
+      requested_at = 1_769_904_700_000_000
 
-      assert request == %{intent: :next, cursor: cursor, window_seconds: 600}
+      assert {:ok, %{event_page_request: request}} =
+               %{so | tailing?: false}
+               |> SearchOperations.new_event_page(:next, cursor, 600, requested_at)
+
+      assert request == %{
+               intent: :next,
+               cursor: cursor,
+               window_seconds: 600,
+               requested_at: requested_at
+             }
     end
 
     test "returns an invalid request error when a page cursor is missing", %{so: so} do
@@ -932,13 +940,16 @@ defmodule Logflare.Logs.SearchOperationsTest do
   end
 
   describe "event page window" do
+    @page_cursor_timestamp 1_789_490_000_000_000
+    @page_requested_at 1_789_500_000_000_000
+
     setup %{user: user} do
       source = insert(:source, user: user, bq_table_id: "test_table")
       [source: source]
     end
 
-    defp page_sql(source, intent, ts_filters, window_seconds) do
-      cursor = %{id: "cursor-uuid", timestamp: 1_789_490_000_000_000}
+    defp page_sql(source, intent, ts_filters, window_seconds, requested_at \\ @page_requested_at) do
+      cursor = %{id: "cursor-uuid", timestamp: @page_cursor_timestamp}
 
       so =
         %SO{
@@ -954,7 +965,8 @@ defmodule Logflare.Logs.SearchOperationsTest do
         }
         |> SearchOperations.apply_query_defaults()
 
-      {:ok, so} = SearchOperations.new_event_page(so, intent, cursor, window_seconds)
+      {:ok, so} =
+        SearchOperations.new_event_page(so, intent, cursor, window_seconds, requested_at)
 
       so =
         so
@@ -992,6 +1004,28 @@ defmodule Logflare.Logs.SearchOperationsTest do
       assert [min_us, max_us | _] = params
       assert min_us == 1_789_490_000_000_000
       assert max_us - min_us == 600 * 1_000_000
+    end
+
+    test "a next page scans no further than the request time", %{source: source} do
+      requested_at = @page_cursor_timestamp + 60 * 1_000_000
+
+      {_sql, params} = page_sql(source, :next, [], 600, requested_at)
+
+      assert [min_us, max_us | _] = params
+      assert min_us == @page_cursor_timestamp
+      assert max_us == requested_at
+    end
+
+    test "a next page from a cursor past the request time scans nothing past the cursor", %{
+      source: source
+    } do
+      requested_at = @page_cursor_timestamp - 60 * 1_000_000
+
+      {_sql, params} = page_sql(source, :next, [], 600, requested_at)
+
+      assert [min_us, max_us | _] = params
+      assert min_us == @page_cursor_timestamp
+      assert max_us == @page_cursor_timestamp
     end
 
     test "a page scans the window its request carries, whatever the filter", %{source: source} do

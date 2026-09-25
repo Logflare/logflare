@@ -12,6 +12,29 @@ defmodule LogflareWeb.SourceBackendsLiveTest do
     [source: source, user: user]
   end
 
+  test "renders and attaches backend types beyond the previously hardcoded list", %{
+    conn: conn,
+    user: user,
+    source: source
+  } do
+    backend =
+      insert(:backend,
+        type: :elastic,
+        user: user,
+        config: %{transport: "logstash", url: "http://logstash.example.com:8080"}
+      )
+
+    {:ok, view, _html} =
+      live_isolated(conn, SourceBackendsLive, session: %{"source_id" => source.id})
+
+    assert render(view) =~ "Elastic"
+    assert render(view) =~ backend.name
+
+    assert view
+           |> element("form")
+           |> render_submit(%{source: %{backends: [backend.id]}}) =~ "connected: 1"
+  end
+
   test "able to add/remove additional backends", %{conn: conn, user: user, source: source} do
     backend = insert(:postgres_backend, user: user)
 
@@ -19,7 +42,7 @@ defmodule LogflareWeb.SourceBackendsLiveTest do
       live_isolated(conn, SourceBackendsLive, session: %{"source_id" => source.id})
 
     # create
-    assert render(view) =~ "PostgreSQL"
+    assert render(view) =~ "Postgres"
     assert render(view) =~ "BigQuery"
     assert render(view) =~ backend.name
     assert render(view) =~ "Save"

@@ -55,6 +55,28 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
       refute html =~ "disabled"
       assert html =~ ~s(phx-value-cursor-id="abc")
     end
+
+    test "the label wrapper leaves the baseline in every state" do
+      for state <- [:ready, :loading, :disabled] do
+        html =
+          render_component(&LogEventComponents.load_more_button/1,
+            id: "load-more-events-next",
+            intent: "next",
+            state: state,
+            cursor: %{id: "abc", timestamp: 1}
+          )
+
+        assert [wrapper] =
+                 html
+                 |> Floki.parse_fragment!()
+                 |> Floki.find("button > span")
+
+        classes = wrapper |> Floki.attribute("class") |> List.first()
+
+        assert classes =~ "tw-align-top",
+               "state #{state} lost tw-align-top, so the spinner grows the button"
+      end
+    end
   end
 
   describe "results_list/1" do

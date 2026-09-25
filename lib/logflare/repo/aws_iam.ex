@@ -66,7 +66,11 @@ defmodule Logflare.Repo.AwsIam do
         NaiveDateTime.to_erl(NaiveDateTime.utc_now()),
         config,
         @iam_token_expiry_seconds,
-        [{"Action", "connect"}, {"DBUser", username}]
+        [{"Action", "connect"}, {"DBUser", username}],
+        # RDS verifies the signature against the hash of an empty payload. Omitting the body
+        # leaves ExAws signing S3's `UNSIGNED-PAYLOAD` marker instead, which produces a
+        # well-formed token that every RDS endpoint rejects as invalid credentials.
+        ""
       )
 
     String.replace_prefix(url, "https://", "")

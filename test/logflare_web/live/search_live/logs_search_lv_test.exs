@@ -10,7 +10,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryErrorNormalizer
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.QueryError
   alias Logflare.Google.BigQuery.SchemaUtils
@@ -421,6 +421,27 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert view
              |> element("a", "LQL")
              |> render_click() =~ "Event Message Filtering"
+    end
+
+    test "reset button links to the search page", %{conn: conn, source: source} do
+      {:ok, view, _html} =
+        live_with_redirect(conn, ~p"/sources/#{source.id}/search?querystring=something123")
+
+      [href] =
+        view
+        |> element("a", "Reset")
+        |> render()
+        |> Floki.parse_fragment!()
+        |> Floki.attribute("href")
+
+      search_path = "/sources/#{source.id}/search"
+
+      assert %URI{path: ^search_path, query: query} = URI.parse(href)
+
+      assert URI.decode_query(query) == %{
+               "querystring" => @default_querystring,
+               "tailing?" => "true"
+             }
     end
 
     test "subheader - schema modal", %{conn: conn, source: source} do
@@ -1603,11 +1624,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       message =
         "Code: 47. DB::Exception: Unknown expression identifier `notthere` in scope SELECT notthere. (UNKNOWN_IDENTIFIER) (version 26.2.19.43 (official build))\n"
 
-      send_query_error(
-        view,
-        backend: ClickHouseAdaptor,
-        raw_error: %Ch.Error{message: message}
-      )
+      error = QueryErrorNormalizer.normalize(%Ch.Error{code: 47, message: message})
+      send(view.pid, {:search_error, %{error: error}})
 
       assert render(view) =~
                "Query halted: Field &quot;notthere&quot; does not exist."
@@ -2437,8 +2455,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       expected_ids = events |> Enum.take(102) |> log_event_dom_ids()
       assert visible_log_event_ids(view) == expected_ids
 
-      [oldest_loaded_id | _] = expected_ids
-      assert_push_event(view, "scroll-to-event", %{id: ^oldest_loaded_id})
+      refute_push_event(view, "scroll-to-event", %{})
     end
 
     test "every page request moves the range by the same window", %{
