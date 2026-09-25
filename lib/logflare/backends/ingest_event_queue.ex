@@ -1090,10 +1090,6 @@ defmodule Logflare.Backends.IngestEventQueue do
       requeue_payload_to_candidate(candidate_tids, queues_key, pointer, payload_builder)
 
     delete_id(pointer.tid, pointer.gen_event_id)
-
-    # This pointer's own unit is done here regardless of outcome: on success
-    # a fresh unit was bumped for the new pointer, and on :already_exists or
-    # :not_initialized nothing else will ever claim this pointer again.
     SpoolAck.ack(pointer.spool_handle, 1)
 
     result
@@ -1306,8 +1302,6 @@ defmodule Logflare.Backends.IngestEventQueue do
   defp claim_events([id | ids], tid, events, claimed) do
     case take_pointer_row(tid, id) do
       {:ok, {^id, gen_tid, gen_event_id, _, _, _, _, spool_handle}} ->
-        # Acked once, here, at claim time -- this path never reaches a
-        # pipeline's own ack/3, so it has to resolve here or never would.
         SpoolAck.ack(spool_handle, 1)
 
         case take_pointer_event({gen_tid, gen_event_id}) do
@@ -1590,8 +1584,6 @@ defmodule Logflare.Backends.IngestEventQueue do
   defp drop_claimed([id | ids], tid, dropped) do
     case take_pointer_row(tid, id) do
       {:ok, {^id, gen_tid, gen_event_id, _, _, _, _, spool_handle}} ->
-        # Load-shedding is terminal: this event is gone for good, so it has
-        # to resolve here or SpoolAck would never hear about it.
         SpoolAck.ack(spool_handle, 1)
         delete_id(gen_tid, gen_event_id)
         drop_claimed(ids, tid, dropped + 1)

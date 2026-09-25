@@ -20,6 +20,8 @@ defmodule Logflare.Backends.Spool.SpoolAck do
 
   use GenServer
 
+  import Logflare.Utils.Guards, only: [is_pos_integer: 1]
+
   @table :spool_ack
   @sweep_interval_ms :timer.minutes(1)
   @stale_after_ms :timer.minutes(10)
@@ -51,7 +53,7 @@ defmodule Logflare.Backends.Spool.SpoolAck do
   @spec bump(term(), pos_integer()) :: :ok
   def bump(nil, _n), do: :ok
 
-  def bump(handle, n) when is_integer(n) and n > 0 do
+  def bump(handle, n) when is_pos_integer(n) do
     :ets.update_counter(@table, handle, {2, n})
     :ok
   rescue
@@ -67,7 +69,7 @@ defmodule Logflare.Backends.Spool.SpoolAck do
   @spec ack(term(), pos_integer()) :: :ok
   def ack(nil, _n), do: :ok
 
-  def ack(handle, n) when is_integer(n) and n > 0 do
+  def ack(handle, n) when is_pos_integer(n) do
     case :ets.update_counter(@table, handle, {2, -n}) do
       count when count <= 0 -> perform_ack(handle)
       _ -> :ok

@@ -589,11 +589,6 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     retriable_count = length(retriable)
     Logger.info("Requeuing #{retriable_count} BigQuery events for retry")
 
-    # A lookup miss means the body's already gone -- left un-acked so the
-    # message can redeliver and retry from the durable spool file. A resolved
-    # lookup's old pointer is acked only after add_to_table below bumps its
-    # replacement's fresh unit, so a shared handle's count never transiently
-    # hits zero (and triggers a real ack) mid-requeue.
     resolved =
       for pointer <- retriable,
           event = IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id),
