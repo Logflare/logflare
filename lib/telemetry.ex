@@ -350,12 +350,8 @@ defmodule Logflare.Telemetry do
       sum("logflare.backends.spool_consumer.dispatch.count",
         event_name: [:logflare, :backends, :spool_consumer, :dispatch],
         measurement: :count,
-        description: "Total events dispatched from the spool consumer to their destination backends"
-      ),
-      distribution("logflare.backends.spool_consumer.dispatch.count",
-        event_name: [:logflare, :backends, :spool_consumer, :dispatch],
-        measurement: :count,
-        description: "Distribution of per-call event counts dispatched from the spool consumer"
+        description:
+          "Total events dispatched from the spool consumer to their destination backends"
       ),
       counter("logflare.cache_buster.to_bust.count", tags: []),
       sum("logflare.logs.ingest_logs.drop_lql",
