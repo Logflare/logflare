@@ -129,7 +129,8 @@ defmodule Logflare.Backends.Spool.SpoolAckTest do
 
       assert :ok = SpoolAck.sweep_stale(:timer.minutes(10))
 
-      assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] = :ets.lookup(:spool_ack, handle)
+      assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] =
+               :ets.lookup(:spool_ack, handle)
     end
   end
 end

@@ -1338,7 +1338,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       capture_log(fn -> Pipeline.ack(:ack_ref, [], [failed_message]) end)
 
       refute_receive {:acked, "queue-url", ^handle}
-      assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] = :ets.lookup(:spool_ack, handle)
+
+      assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] =
+               :ets.lookup(:spool_ack, handle)
     end
 
     test "a nil spool handle (an event that never came from the spool) is untouched by ack/3", %{
