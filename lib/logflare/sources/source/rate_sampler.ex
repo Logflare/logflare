@@ -60,8 +60,6 @@ defmodule Logflare.Sources.Source.RateSampler do
     :rand.uniform() <= probability(source_token)
   end
 
-  # probability = 1.0 / rate, with safety bounds. A never-bumped source has no
-  # rate yet, so it samples every event until bump/2 has been called for it.
   defp probability(source_token) do
     case :ets.lookup(@table, source_token) do
       [{^source_token, _window_start, _count, rate}] when rate > 0 ->
