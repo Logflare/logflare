@@ -1313,6 +1313,55 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       assert :ets.lookup(:spool_ack, handle) == []
     end
 
+    test "acks the pointer's spool handle only once retries are actually exhausted, not on an intermediate retry",
+         %{source: source, backend: backend} do
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+      SpoolAck.bump(handle, 1)
+
+      test_pid = self()
+      stub(QueueMod, :ack, fn url, h -> send(test_pid, {:acked, url, h}) end)
+
+      event = build(:log_event, source: source, message: "Test") |> Map.put(:retries, 0)
+      gen_tid = setup_generation_events([event])
+      retry_key = {:consolidated, backend.id, self()}
+      assert {:ok, queue_tid} = IngestEventQueue.upsert_tid(retry_key)
+      pointer = %{pointer_for(event, gen_tid, queue_tid) | spool_handle: handle}
+
+      first_failure = %Message{
+        data: pointer,
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}},
+        status: {:failed, "first connection error"}
+      }
+
+      capture_log(fn -> Pipeline.ack(:ack_ref, [], [first_failure]) end)
+
+      # the body is still live -- requeued for another attempt, not dropped, so
+      # no ack yet even though this specific attempt failed
+      refute_receive {:acked, "queue-url", ^handle}
+
+      assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] =
+               :ets.lookup(:spool_ack, handle)
+
+      assert {:ok, [retry_pointer], ^queue_tid} =
+               IngestEventQueue.pop_pending_pointers(retry_key, 1)
+
+      assert retry_pointer.retries == Pipeline.max_retries()
+      assert retry_pointer.spool_handle == handle
+
+      second_failure = %Message{
+        data: retry_pointer,
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}},
+        status: {:failed, "second connection error"}
+      }
+
+      log = capture_log(fn -> Pipeline.ack(:ack_ref, [], [second_failure]) end)
+
+      assert log =~ "Dropping 1 ClickHouse events: exhausted #{Pipeline.max_retries()} retries"
+      assert_receive {:acked, "queue-url", ^handle}
+      assert :ets.lookup(:spool_ack, handle) == []
+    end
+
     test "does not ack the pointer's spool handle when a retriable event's generation is already gone",
          %{source: source, backend: backend} do
       handle = "spool-handle-#{System.unique_integer([:positive])}"
