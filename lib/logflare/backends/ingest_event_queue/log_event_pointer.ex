@@ -16,11 +16,9 @@ defmodule Logflare.Backends.IngestEventQueue.LogEventPointer do
   round-robin redistribution — the producer that owns `queue_tid` just proved itself
   alive by claiming this.
 
-  `spool_handle` is the spool queue message this event was decoded from (or `nil`, for
-  an event that didn't come from the spool) — carried here, not just on the resolved
-  `LogEvent`, so `Logflare.Backends.Spool.SpoolAck` can be told this pointer is done
-  without resolving the event body first (ack-time code here works with pointers, not
-  bodies — see that module's moduledoc).
+  `spool_handle` is the spool queue message this event was decoded from (or `nil`) —
+  carried here so `Logflare.Backends.Spool.SpoolAck` can be told this pointer is done
+  without resolving the event body first.
   """
 
   alias Logflare.LogEvent.TypeDetection

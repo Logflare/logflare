@@ -120,10 +120,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
     end)
   end
 
-  # Confirms the producer registered `handle` with SpoolAck and bumped it
-  # once per segment the file decoded into (`segment_count`, defaulting to 1
-  # for the common single-segment case) — the only thing this producer is
-  # still responsible for doing itself.
+  # Confirms the producer registered `handle` and bumped it once per segment
+  # (defaults to 1, the common single-segment case).
   defp assert_spool_ack_registered(handle, segment_count \\ 1) do
     assert [{^handle, ^segment_count, QueueMod, "projects/p/subscriptions/s", _registered_at}] =
              :ets.lookup(:spool_ack, handle)

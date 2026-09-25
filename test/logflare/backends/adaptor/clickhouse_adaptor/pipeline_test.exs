@@ -1326,11 +1326,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       gen_tid = setup_generation_events([event])
       pointer = %{pointer_for(event, gen_tid) | spool_handle: handle}
 
-      # simulate GenerationJanitor dropping the generation before the
-      # retry's own lookup -- deliberately left un-acked so the queue
-      # message can redeliver and give the event a fresh attempt from its
-      # still-durable copy in the original spool file, rather than
-      # permanently discarding it just to resolve this handle's count.
+      # simulate GenerationJanitor dropping the generation before retry lookup
       :ets.delete(gen_tid)
 
       failed_message = %Message{

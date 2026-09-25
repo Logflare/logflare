@@ -700,11 +700,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   # Pointer row shape:
   # {event_id, generation_tid, gen_event_id, size, retries, event_type, day_bucket, spool_handle}.
   #
-  # SpoolAck.bump/2 fires only once insert_new/2 has actually confirmed this
-  # is the surviving row for `id` — never unconditionally before that check.
-  # A losing collision's body row gets deleted right below and will never be
-  # claimed by anyone, so bumping for it here would count a unit of work
-  # nothing will ever call SpoolAck.ack/2 for.
+  # SpoolAck.bump/2 only fires for the row that actually wins insert_new/2.
   defp insert_pointer_batch(sid_bid_pid, queue_tid, batch) do
     queues_key = pointer_queues_key(sid_bid_pid)
     gen_tid = current_generation_tid(queues_key)
@@ -1095,11 +1091,9 @@ defmodule Logflare.Backends.IngestEventQueue do
 
     delete_id(pointer.tid, pointer.gen_event_id)
 
-    # Every live queue rejected this payload -- it's dropped for good, and no
-    # fresh pointer was ever published for it, so nothing else will ever ack
-    # it. :already_exists isn't acked here: no fresh pointer was published for
-    # this attempt either, but the pre-existing pointer it collided with is
-    # already tracked in its own right and will resolve on its own terms.
+    # Every live queue rejected this payload -- terminal, so ack now.
+    # :already_exists isn't acked here: the pointer it collided with is
+    # already tracked and will resolve on its own.
     if result == {:error, :not_initialized} do
       SpoolAck.ack(pointer.spool_handle, 1)
     end
@@ -1202,10 +1196,8 @@ defmodule Logflare.Backends.IngestEventQueue do
       [{^id, gen_tid, gen_event_id, _, _, _, _, spool_handle} = row] ->
         case lookup_event(gen_tid, gen_event_id) do
           nil ->
-            # Delete only the row inspected above. If another writer replaced it, this
-            # is a no-op and the bounded publication retry re-evaluates that winner.
-            # This pointer's body is already gone (its generation rotated out from
-            # under it) and it's being discarded here for good, so it has to ack now.
+            # Delete only the row inspected above -- a no-op if another writer
+            # already replaced it. Body's gone for good, so ack now.
             :ets.delete_object(queue_tid, row)
             SpoolAck.ack(spool_handle, 1)
             :retry
@@ -1312,14 +1304,8 @@ defmodule Logflare.Backends.IngestEventQueue do
   defp claim_events([id | ids], tid, events, claimed) do
     case take_pointer_row(tid, id) do
       {:ok, {^id, gen_tid, gen_event_id, _, _, _, _, spool_handle}} ->
-        # Acked here, once, the moment the pointer is claimed -- regardless of
-        # whether the body below actually resolves. Neither outcome ever
-        # reaches a pipeline's own ack/3: a resolved event is handed off for
-        # (for now, inert-for-durability) processing with no further
-        # IngestEventQueue involvement, and a nil body means the generation
-        # was already rotated out from under a still-live pointer -- nothing
-        # downstream will ever see this one either way, so it has to resolve
-        # right here or it never would.
+        # Acked once, here, at claim time -- this path never reaches a
+        # pipeline's own ack/3, so it has to resolve here or never would.
         SpoolAck.ack(spool_handle, 1)
 
         case take_pointer_event({gen_tid, gen_event_id}) do
