@@ -12,6 +12,8 @@
   {"lib/logflare/billing.ex", :no_return},
   {"lib/logflare/billing/stripe.ex", :no_return},
   {"lib/logflare/billing/stripe.ex", :call},
+  {"lib/logflare/ecto/adapters/pglogical_postgres.ex", :no_return},
+  {"lib/logflare/ecto/adapters/pglogical_postgres/connection.ex", :no_return},
   {"lib/logflare/endpoints.ex", :no_return},
   {"lib/logflare/endpoints.ex", :call},
   {"lib/logflare/google/bigquery/bigquery.ex", :pattern_match},

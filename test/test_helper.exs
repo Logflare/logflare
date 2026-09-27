@@ -70,6 +70,7 @@ Mimic.copy(Logflare.Logs.LogEvents)
 Mimic.copy(Logflare.Logs.SearchQueryExecutor)
 Mimic.copy(Logflare.Lql)
 Mimic.copy(Logflare.Mailer)
+Mimic.copy(Logflare.NaturalLanguageLql.AnthropicClient)
 Mimic.copy(Logflare.Networking.GrpcPool)
 Mimic.copy(Logflare.Rules)
 Mimic.copy(Logflare.SingleTenant)
@@ -103,7 +104,8 @@ ExUnit.configure(
     feature: true,
     integration: true,
     failing: true,
-    benchmark: true
+    benchmark: true,
+    pglogical_replica: true
   ]
 )
 

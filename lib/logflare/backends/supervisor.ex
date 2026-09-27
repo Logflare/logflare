@@ -20,7 +20,9 @@ defmodule Logflare.Backends.Supervisor do
     spool_provider = Keyword.get(spool_config, :provider, :aws)
 
     producer_children =
-      if Backends.spool_producer_mode?(), do: [Backends.Spool.ProducerSup], else: []
+      if Backends.spool_producer_mode?(),
+        do: [Backends.Spool.DurableBuffer.Supervisor],
+        else: []
 
     consumer_children =
       if Backends.spool_consumer_mode?(), do: [Backends.Spool.ConsumerSup], else: []
@@ -28,10 +30,10 @@ defmodule Logflare.Backends.Supervisor do
     spool_goth_children =
       if spool_provider == :gcp, do: List.wrap(spool_goth_child_spec()), else: []
 
-    # Shared by both Spool.ProducerSup (batch splitter early-flush decision)
-    # and Spool.ConsumerPipeline.QueueProducer (fetch throttling) — started
-    # here rather than under either sup, since a node can run producer-only,
-    # consumer-only, or both.
+    # Used by Spool.ConsumerPipeline.QueueProducer (fetch throttling) —
+    # started here rather than under ConsumerSup, since a node can run
+    # producer-only, consumer-only, or both, and this only matters when
+    # consuming.
     spool_memory_monitor_children =
       if producer_children != [] or consumer_children != [],
         do: [Backends.Spool.MemoryMonitor],

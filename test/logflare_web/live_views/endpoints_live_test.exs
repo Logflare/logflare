@@ -138,10 +138,61 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert has_element?(view, "h1,h2,h3,h4,h5", endpoint.name)
       assert_query_displayed(view, endpoint.query)
       assert has_element?(view, "p", endpoint.description)
+      refute has_element?(view, "#endpoint-call-examples details")
+      refute render(view) =~ "LF-ENDPOINT-REDACT-PII"
+      refute render(view) =~ "LF-ENDPOINT-BIGQUERY-RESERVATION"
 
       # link to edit
       assert element(view, ".subhead a", "edit") |> render_click() =~ "/edit"
       assert_patched(view, "/endpoints/#{endpoint.id}/edit?t=#{team.id}")
+    end
+
+    test "includes enabled endpoint headers in UUID and name curl examples", %{
+      conn: conn,
+      user: user
+    } do
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          enable_auth: true,
+          redact_pii: true,
+          enable_dynamic_reservation: true
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
+
+      commands =
+        view
+        |> render()
+        |> Floki.parse_document!()
+        |> Floki.find("#endpoint-call-examples pre code")
+        |> Enum.map(&Floki.text/1)
+
+      assert length(commands) == 2
+
+      assert Enum.all?(commands, fn command ->
+               command =~ "LF-ENDPOINT-REDACT-PII: true" and
+                 command =~ "LF-ENDPOINT-BIGQUERY-RESERVATION: projects/PROJECT"
+             end)
+
+      reservations = [
+        {"projects/1234/locations/au/reservations/5678",
+         "projects/1234/locations/au/reservations/5678"},
+        {"projects/1234/locations/au/reservations/5678'; echo exploited #\"",
+         "projects/1234/locations/au/reservations/5678; echo exploited #"}
+      ]
+
+      Enum.each(reservations, fn {reservation, expected_reservation} ->
+        assert view
+               |> element("#endpoint-test-form")
+               |> render_change(%{run: %{reservation: reservation}})
+               |> Floki.parse_fragment!()
+               |> Floki.find("#endpoint-call-examples pre code")
+               |> Enum.count(fn command ->
+                 Floki.text(command) =~
+                   "LF-ENDPOINT-BIGQUERY-RESERVATION: #{expected_reservation}'"
+               end) == 2
+      end)
     end
 
     test "hides expanded query when it matches the endpoint query", %{conn: conn, user: user} do
@@ -1359,7 +1410,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
     test "shows reservation input when enabled", %{conn: conn, endpoint: endpoint} do
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
-      assert has_element?(view, "input[name='run[reservation]']")
+      assert has_element?(view, "input[name='run[reservation]'][phx-debounce='300']")
     end
 
     test "does not show reservation input when disabled", %{conn: conn, user: user} do

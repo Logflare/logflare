@@ -24,7 +24,6 @@ defmodule E2e.Features.BackendsTest do
             password: "secret",
             database: "default",
             port: 8443,
-            read_only_url: "https://reads.example.com:8443",
             read_only_urls: %{"reporting" => "https://reporting.example.com:8443"},
             default_read_cluster: "reporting"
           }

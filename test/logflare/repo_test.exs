@@ -32,9 +32,14 @@ defmodule Logflare.RepoTest do
     for {_key, config} <- entries do
       assert_receive {[:ecto, :repo, :init], ^telemetry_ref, _, %{repo: Repo, opts: opts}}
 
-      for {k, v} <- config, k != :ssl do
+      for {k, v} <- config,
+          k not in [:ssl, :logflare_auth, :logflare_aws_region] do
         assert Keyword.fetch!(opts, k) == v
       end
+
+      refute Keyword.has_key?(opts, :logflare_connection_role)
+      refute Keyword.has_key?(opts, :logflare_auth)
+      refute Keyword.has_key?(opts, :logflare_aws_region)
 
       assert {Replicas, :after_connect, [_primary_after_connect]} =
                Keyword.fetch!(opts, :after_connect)
@@ -217,6 +222,15 @@ defmodule Logflare.RepoTest do
       error =
         assert_raise ArgumentError, fn ->
           Replicas.parse!("postgres://u:supersecret@host?pool_size=abc")
+        end
+
+      refute Exception.message(error) =~ "supersecret"
+    end
+
+    test "parse!/1 redacts credentials in auth validation errors" do
+      error =
+        assert_raise ArgumentError, fn ->
+          Replicas.parse!("postgres://u:supersecret@host?auth=kerberos")
         end
 
       refute Exception.message(error) =~ "supersecret"

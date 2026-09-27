@@ -201,6 +201,11 @@ defmodule LogflareWeb.EndpointsLive do
     {:noreply, socket}
   end
 
+  def handle_event("validate", %{"run" => payload}, socket) do
+    values = Map.merge(socket.assigns.params_form.params, payload)
+    {:noreply, assign(socket, :params_form, test_form(values))}
+  end
+
   def handle_event("validate", %{"endpoint" => endpoint_params}, socket) do
     origin = socket.assigns[:team_user] || socket.assigns.user
 
@@ -338,7 +343,10 @@ defmodule LogflareWeb.EndpointsLive do
 
         socket
         |> put_flash(:info, "Ran sandbox query successfully")
-        |> assign(:test_result, successful_test_result(:sandbox, result, transformed_query))
+        |> assign(
+          :test_result,
+          successful_test_result(:sandboxed_endpoint, result, transformed_query)
+        )
 
       {:error, error} ->
         Logger.error(
@@ -348,7 +356,7 @@ defmodule LogflareWeb.EndpointsLive do
         socket
         |> put_flash(:error, "Error occurred when running sandbox query")
         |> assign(:test_result, %{
-          kind: :sandbox,
+          kind: :sandboxed_endpoint,
           status: :error,
           error: "Please verify your query syntax."
         })
@@ -371,7 +379,7 @@ defmodule LogflareWeb.EndpointsLive do
   end
 
   @spec successful_test_result(
-          :endpoint | :sandbox,
+          :endpoint | :sandboxed_endpoint,
           %{required(:rows) => [term()], optional(atom()) => term()},
           String.t() | nil
         ) :: map()

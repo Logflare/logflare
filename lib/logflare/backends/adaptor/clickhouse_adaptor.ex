@@ -22,6 +22,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias __MODULE__.Pipeline
   alias __MODULE__.Provisioner
   alias __MODULE__.QueryConnectionSup
+  alias __MODULE__.QueryErrorNormalizer
   alias __MODULE__.QueryTemplates
   alias Ecto.Changeset
   alias Logflare.Backends
@@ -37,6 +38,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias Logflare.LogEvent.TypeDetection
   alias Logflare.Sources.Source
   alias Logflare.Sql.DialectTransformer.ClickHouse, as: ClickHouseSqlTransformer
+  alias Mint.Types, as: MintTypes
 
   @min_pipelines 1
   @resolve_interval 10_000
@@ -48,6 +50,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @us_per_hour 3_600 * 1_000_000
   @default_max_event_age_hours 24
   @unlabeled_read_cluster_tag "(unlabeled)"
+  @replica_tag_header "x-clickhouse-replica-tag"
+  @replica_tag_max_bytes 256
+  @replica_tag_value_pattern ~r/\A[\x21-\x7E]+\z/
+  @param_name_pattern ~r/\A\w+\z/
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
   defdelegate connection_pool_via(arg, label), to: ConnectionManager
@@ -108,13 +114,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         :port,
         :read_pool_size,
         :labeled_read_pool_size,
-        :read_only_url,
         :read_only_urls,
         :default_read_cluster,
         :use_async_inserts_for_small_batches,
         :async_insert_cluster_url,
         :async_insert_max_rows,
-        :max_event_age_hours
+        :max_event_age_hours,
+        :replica_routing_param
       ]
     )
   end
@@ -261,14 +267,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        port: :integer,
        read_pool_size: :integer,
        labeled_read_pool_size: :integer,
-       # read_only_url is depreciated and will be removed in the release after PR#3693 lands
-       read_only_url: :string,
        read_only_urls: {:map, :string},
        default_read_cluster: :string,
        use_async_inserts_for_small_batches: :boolean,
        async_insert_cluster_url: :string,
        async_insert_max_rows: :integer,
-       max_event_age_hours: :integer
+       max_event_age_hours: :integer,
+       replica_routing_param: :string
      }}
     |> Changeset.cast(params, [
       :url,
@@ -280,13 +285,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :port,
       :read_pool_size,
       :labeled_read_pool_size,
-      :read_only_url,
       :read_only_urls,
       :default_read_cluster,
       :use_async_inserts_for_small_batches,
       :async_insert_cluster_url,
       :async_insert_max_rows,
-      :max_event_age_hours
+      :max_event_age_hours,
+      :replica_routing_param
     ])
     |> preserve_blank_query_password()
     |> Logflare.Utils.default_field_value(:use_async_inserts_for_small_batches, false)
@@ -341,7 +346,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> Changeset.validate_format(:async_insert_cluster_url, ~r/https?\:\/\/.+/)
     |> validate_number(:async_insert_max_rows, greater_than: 0)
     |> validate_number(:max_event_age_hours, greater_than_or_equal_to: 0)
-    |> validate_read_only_url()
+    |> validate_format(:replica_routing_param, @param_name_pattern,
+      message: "must be a parameter name using only letters, numbers, and underscores"
+    )
     |> validate_read_only_urls()
     |> validate_default_read_cluster()
     |> validate_user_pass()
@@ -489,9 +496,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @spec unlabeled_read_grant_targets(map()) :: [{nil, String.t()}]
-  defp unlabeled_read_grant_targets(%{read_only_url: url}) when is_non_empty_binary(url),
-    do: [{nil, url}]
-
   defp unlabeled_read_grant_targets(%{url: url} = config) when is_non_empty_binary(url) do
     if dedicated_query_user?(config), do: [{nil, url}], else: []
   end
@@ -555,8 +559,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @doc """
-  Normalizes a read cluster label into a telemetry tag, mapping the legacy
-  unlabeled pool to `#{@unlabeled_read_cluster_tag}`.
+  Normalizes a read cluster label into a telemetry tag, mapping the unlabeled
+  primary-URL pool to `#{@unlabeled_read_cluster_tag}`.
 
   The value is reserved: `read_only_urls` rejects it as a cluster label, so a
   labeled pool can never share a tag with the unlabeled one.
@@ -678,11 +682,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     label = resolve_read_cluster_label(backend, requested)
 
     warn_on_unconfigured_read_cluster(backend, requested, label)
+    headers = Keyword.get(opts, :headers, [])
 
     {result, queried_label} =
-      case do_ch_query_on_label(backend, statement, params, label) do
+      case do_ch_query_on_label(backend, statement, params, label, headers) do
         {:error, %QueryError{kind: :connection_error}} = error ->
-          maybe_retry_on_default_cluster(backend, statement, params, label, error)
+          maybe_retry_on_default_cluster(backend, statement, params, label, headers, error)
 
         result ->
           {result, label}
@@ -696,9 +701,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     result
   end
 
-  @spec do_ch_query_on_label(Backend.t(), iodata(), term(), String.t() | nil) ::
+  @spec do_ch_query_on_label(
+          Backend.t(),
+          iodata(),
+          term(),
+          String.t() | nil,
+          MintTypes.headers()
+        ) ::
           {:ok, {[map()], non_neg_integer() | :not_supported}} | {:error, term()}
-  defp do_ch_query_on_label(%Backend{} = backend, statement, params, label) do
+  defp do_ch_query_on_label(%Backend{} = backend, statement, params, label, headers) do
     with :ok <- ensure_query_connection_manager_started(backend, label) do
       pool_via = connection_pool_via(backend, label)
 
@@ -707,7 +718,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       backend_id = backend.id
       log_fun = fn entry -> handle_read_pool_log(entry, backend_id, label) end
 
-      ch_opts = [decode: false, timeout: timeout, log: log_fun]
+      ch_opts = [decode: false, timeout: timeout, log: log_fun, headers: headers]
 
       case Ch.query(pool_via, statement, params, ch_opts) do
         {:ok, %Ch.Result{} = result} ->
@@ -756,11 +767,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           iodata(),
           term(),
           String.t() | nil,
+          MintTypes.headers(),
           {:error, term()}
         ) ::
           {{:ok, {[map()], non_neg_integer() | :not_supported}} | {:error, term()},
            String.t() | nil}
-  defp maybe_retry_on_default_cluster(%Backend{} = backend, statement, params, label, error) do
+  defp maybe_retry_on_default_cluster(
+         %Backend{} = backend,
+         statement,
+         params,
+         label,
+         headers,
+         error
+       ) do
     default = default_read_cluster_label(backend)
 
     if is_non_empty_binary(default) and default != label do
@@ -778,13 +797,28 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         %{backend_id: backend.id, read_cluster: read_cluster_tag(label)}
       )
 
-      {do_ch_query_on_label(backend, statement, params, default), default}
+      {do_ch_query_on_label(backend, statement, params, default, headers), default}
     else
       {error, label}
     end
   end
 
   @spec handle_read_pool_log(DBConnection.LogEntry.t(), pos_integer(), String.t() | nil) :: :ok
+  defp handle_read_pool_log(
+         %DBConnection.LogEntry{
+           result: {:error, %DBConnection.ConnectionError{reason: reason}},
+           connection_time: nil
+         },
+         backend_id,
+         label
+       ) do
+    :telemetry.execute(
+      [:logflare, :clickhouse, :read_pool, :checkout_error],
+      %{count: 1},
+      %{backend_id: backend_id, read_cluster: read_cluster_tag(label), reason: reason}
+    )
+  end
+
   defp handle_read_pool_log(%DBConnection.LogEntry{} = entry, backend_id, label) do
     metadata = %{backend_id: backend_id, read_cluster: read_cluster_tag(label)}
 
@@ -843,11 +877,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @spec to_query_error(term()) :: QueryError.t()
-  defp to_query_error(%Ch.Error{} = error) do
-    error
-    |> ch_query_error_kind()
-    |> query_error(error)
-  end
+  defp to_query_error(%Ch.Error{} = error), do: QueryErrorNormalizer.normalize(error)
 
   defp to_query_error(%DBConnection.ConnectionError{reason: :queue_timeout} = error) do
     query_error(:pool_exhausted, error)
@@ -872,19 +902,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   defp to_query_error(error) do
     query_error(:backend_error, error)
   end
-
-  @spec ch_query_error_kind(term()) :: QueryError.kind()
-  defp ch_query_error_kind(%Ch.Error{code: code}) when code in [47, 62], do: :invalid_query
-
-  defp ch_query_error_kind(%Ch.Error{message: message}) when is_binary(message) do
-    if message =~ "UNKNOWN_IDENTIFIER" or message =~ "SYNTAX_ERROR" do
-      :invalid_query
-    else
-      :backend_error
-    end
-  end
-
-  defp ch_query_error_kind(%Ch.Error{}), do: :backend_error
 
   @spec query_error(QueryError.kind(), term()) :: QueryError.t()
   defp query_error(kind, raw_error) do
@@ -1252,14 +1269,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> Changeset.add_error(:query_password, msg)
   end
 
-  @spec validate_read_only_url(Changeset.t()) :: Changeset.t()
-  defp validate_read_only_url(changeset) do
-    case Changeset.get_field(changeset, :read_only_url) do
-      nil -> changeset
-      _url -> Changeset.validate_format(changeset, :read_only_url, ~r/https?\:\/\/.+/)
-    end
-  end
-
   @spec validate_read_only_urls(Changeset.t()) :: Changeset.t()
   defp validate_read_only_urls(changeset) do
     changeset
@@ -1449,14 +1458,43 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        ) do
     converted_query = convert_query_params(query_string, declared_params)
     ch_params = Map.take(input_params, declared_params)
+    query_opts = put_replica_tag_header(opts, backend, input_params)
 
-    case execute_ch_query(backend, converted_query, ch_params, opts) do
+    case execute_ch_query(backend, converted_query, ch_params, query_opts) do
       {:ok, {rows, bytes}} ->
         rows = if is_pos_integer(max_rows), do: Enum.take(rows, max_rows), else: rows
         {:ok, QueryResult.new(rows, %{total_bytes_processed: bytes})}
 
       error ->
         error
+    end
+  end
+
+  @spec put_replica_tag_header(Keyword.t(), Backend.t(), map()) :: Keyword.t()
+  defp put_replica_tag_header(
+         opts,
+         %Backend{config: %{replica_routing_param: param}},
+         input_params
+       )
+       when is_non_empty_binary(param) do
+    case Map.get(input_params, param) do
+      value when is_non_empty_binary(value) and byte_size(value) <= @replica_tag_max_bytes ->
+        put_replica_tag_value(opts, value)
+
+      _ ->
+        opts
+    end
+  end
+
+  defp put_replica_tag_header(opts, _backend, _input_params), do: opts
+
+  @spec put_replica_tag_value(Keyword.t(), String.t()) :: Keyword.t()
+  defp put_replica_tag_value(opts, value) do
+    if Regex.match?(@replica_tag_value_pattern, value) do
+      headers = Keyword.get(opts, :headers, [])
+      Keyword.put(opts, :headers, [{@replica_tag_header, value} | headers])
+    else
+      opts
     end
   end
 
