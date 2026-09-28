@@ -35,9 +35,9 @@ defmodule Logflare.NetworkingTest do
                Logflare.FinchIngest,
                Logflare.FinchQuery,
                Logflare.FinchDefault,
-               Logflare.FinchDefaultHttp1,
                Logflare.FinchSpoolS3,
                Logflare.FinchSpoolSQS,
+               Logflare.FinchDefaultHttp1,
                Logflare.FinchClickHouseIngest,
                Logflare.FinchClickHouseAsyncIngest,
                Logflare.FinchS3
@@ -66,14 +66,6 @@ defmodule Logflare.NetworkingTest do
       assert [
                {Finch, [name: Logflare.FinchDefault, pools: datadog_pools]},
                {Finch,
-                name: Logflare.FinchDefaultHttp1,
-                pools: %{default: [protocols: [:http1], size: 50]}},
-               {Finch,
-                [
-                  name: Logflare.FinchDefaultHttp1,
-                  pools: %{default: [protocols: [:http1], size: 50]}
-                ]},
-               {Finch,
                 name: Logflare.FinchSpoolS3,
                 pools: %{
                   default: _spool_s3_config
@@ -83,6 +75,11 @@ defmodule Logflare.NetworkingTest do
                 pools: %{
                   default: _spool_sqs_config
                 }},
+               {Finch,
+                [
+                  name: Logflare.FinchDefaultHttp1,
+                  pools: %{default: [protocols: [:http1], size: 50]}
+                ]},
                {Finch,
                 name: Logflare.FinchClickHouseIngest,
                 pools: %{
