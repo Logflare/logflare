@@ -762,7 +762,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       response =
         conn
-        |> add_access_token(user, "private")
+        |> add_access_token(user, "private:admin")
         |> post("/api/backends/#{backend.token}/test")
         |> json_response(200)
 
