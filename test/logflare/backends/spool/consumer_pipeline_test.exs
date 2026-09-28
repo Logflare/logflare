@@ -289,6 +289,41 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :consumer, :skipped],
                       %{count: 1}, %{reason: :dispatch_error}}
     end
+
+    test "does not fail a handle's message when only a different handle's dispatch for the same source fails" do
+      source = insert(:source, user: insert(:user))
+      failing_handle = "spool-handle-failing-#{System.unique_integer([:positive])}"
+      healthy_handle = "spool-handle-healthy-#{System.unique_integer([:positive])}"
+
+      failing = %Message{
+        data: [record(source.id, Ecto.UUID.generate())],
+        acknowledger: {ConsumerPipeline, :noop, %{handle: failing_handle}}
+      }
+
+      healthy = %Message{
+        data: [record(source.id, Ecto.UUID.generate())],
+        acknowledger: {ConsumerPipeline, :noop, %{handle: healthy_handle}}
+      }
+
+      pid = self()
+
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, _source, handle ->
+        if handle == failing_handle do
+          raise FunctionClauseError
+        end
+
+        send(pid, {:dispatched, handle})
+        {:ok, length(event_params)}
+      end)
+
+      assert [returned_failing, returned_healthy] =
+               ConsumerPipeline.handle_batch(:default, [failing, healthy], %{}, %{})
+
+      assert returned_failing.status == {:failed, :dispatch_error}
+      assert returned_healthy.status == :ok
+
+      assert_receive {:dispatched, ^healthy_handle}
+    end
   end
 
   describe "ack/3" do

@@ -178,7 +178,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
       %{backend_type: :spool_consumer, batch_trigger: batch_trigger}
     )
 
-    failed_source_ids =
+    failed_keys =
       messages
       |> Enum.group_by(&handle_of/1)
       |> Enum.flat_map(fn {handle, handle_messages} ->
@@ -186,7 +186,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
       end)
       |> MapSet.new()
 
-    fail_dispatched(messages, failed_source_ids)
+    fail_dispatched(messages, failed_keys)
   end
 
   defp dispatch_handle_group(handle, messages) do
@@ -202,20 +202,22 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
         []
 
       {source_id, records} ->
-        dispatch_group(source_id, records, handle)
+        source_id |> dispatch_group(records, handle) |> Enum.map(&{handle, &1})
     end)
   end
 
-  defp fail_dispatched(messages, failed_source_ids) do
-    if Enum.empty?(failed_source_ids) do
+  defp fail_dispatched(messages, failed_keys) do
+    if Enum.empty?(failed_keys) do
       messages
     else
-      Enum.map(messages, &fail_message(&1, failed_source_ids))
+      Enum.map(messages, &fail_message(&1, failed_keys))
     end
   end
 
-  defp fail_message(message, failed_source_ids) do
-    if Enum.any?(message.data, &MapSet.member?(failed_source_ids, record_source_id(&1))) do
+  defp fail_message(message, failed_keys) do
+    handle = handle_of(message)
+
+    if Enum.any?(message.data, &MapSet.member?(failed_keys, {handle, record_source_id(&1)})) do
       Message.failed(message, :dispatch_error)
     else
       message
