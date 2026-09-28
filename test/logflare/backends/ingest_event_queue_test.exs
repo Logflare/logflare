@@ -893,6 +893,53 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
   end
 
+  describe "add_to_table/2 SpoolAck reservation" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      sbp = {source.id, insert(:backend, user: user).id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      [source: source, sbp: sbp]
+    end
+
+    test "reserves a handle's units before any of its pointers become visible to a claimer",
+         %{source: source, sbp: sbp} do
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+
+      test_pid = self()
+
+      stub(SpoolAck, :bump, fn h, n ->
+        send(test_pid, {:bump, h, n, IngestEventQueue.total_pending(sbp)})
+        :ets.update_counter(:spool_ack, h, {2, n})
+        :ok
+      end)
+
+      events = for _ <- 1..3, do: %{build(:log_event, source: source) | spool_handle: handle}
+      assert :ok = IngestEventQueue.add_to_table(sbp, events)
+
+      assert_receive {:bump, ^handle, 3, pending_at_bump_time}
+      assert pending_at_bump_time == 0
+      assert IngestEventQueue.total_pending(sbp) == 3
+    end
+
+    test "bumps once for a batch sharing a handle, compensating a losing insert_new/2 within it",
+         %{source: source, sbp: sbp} do
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+
+      winner = %{build(:log_event, source: source) | spool_handle: handle}
+      loser = %{winner | body: Map.put(winner.body, "event_message", "newer")}
+
+      assert :ok = IngestEventQueue.add_to_table(sbp, [winner, loser])
+
+      assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] =
+               :ets.lookup(:spool_ack, handle)
+
+      assert IngestEventQueue.total_pending(sbp) == 1
+    end
+  end
+
   describe "pointer reinsertion" do
     setup do
       user = insert(:user)

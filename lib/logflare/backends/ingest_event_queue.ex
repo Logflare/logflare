@@ -703,27 +703,12 @@ defmodule Logflare.Backends.IngestEventQueue do
     queues_key = pointer_queues_key(sid_bid_pid)
     gen_tid = current_generation_tid(queues_key)
 
-    for %{id: id} = event <- batch do
-      gen_event_id = make_ref()
-
-      row =
-        {id, gen_tid, gen_event_id, :erlang.external_size(event.body), event.retries || 0,
-         event.event_type, event.day_bucket, event.spool_handle}
-
-      :ets.insert(gen_tid, {gen_event_id, event})
-
-      try do
-        if :ets.insert_new(queue_tid, row) do
-          SpoolAck.bump(event.spool_handle, 1)
-        else
-          :ets.delete(gen_tid, gen_event_id)
-        end
-      rescue
-        error in ArgumentError ->
-          delete_id(gen_tid, gen_event_id)
-          reraise error, __STACKTRACE__
-      end
-    end
+    batch
+    |> Enum.group_by(& &1.spool_handle)
+    |> Enum.each(fn {handle, events} ->
+      SpoolAck.bump(handle, length(events))
+      insert_reserved_rows(gen_tid, queue_tid, handle, events)
+    end)
 
     :ok
   rescue
@@ -734,6 +719,34 @@ defmodule Logflare.Backends.IngestEventQueue do
         {_, _, nil} -> {:error, :not_initialized}
         _ -> add_to_table(put_elem(sid_bid_pid, 2, nil), batch)
       end
+  end
+
+  defp insert_reserved_rows(_gen_tid, _queue_tid, _handle, []), do: :ok
+
+  defp insert_reserved_rows(gen_tid, queue_tid, handle, [%{id: id} = event | rest]) do
+    gen_event_id = make_ref()
+
+    row =
+      {id, gen_tid, gen_event_id, :erlang.external_size(event.body), event.retries || 0,
+       event.event_type, event.day_bucket, handle}
+
+    try do
+      :ets.insert(gen_tid, {gen_event_id, event})
+
+      if :ets.insert_new(queue_tid, row) do
+        :ok
+      else
+        :ets.delete(gen_tid, gen_event_id)
+        SpoolAck.ack(handle, 1)
+      end
+    rescue
+      error in ArgumentError ->
+        delete_id(gen_tid, gen_event_id)
+        SpoolAck.ack(handle, length(rest) + 1)
+        reraise error, __STACKTRACE__
+    end
+
+    insert_reserved_rows(gen_tid, queue_tid, handle, rest)
   end
 
   @spec pointer_queues_key(consolidated_table_key() | table_key() | spool_producer_table_key()) ::
@@ -1132,12 +1145,14 @@ defmodule Logflare.Backends.IngestEventQueue do
 
     case insert_generation_payload(gen_tid, gen_event_id, payload) do
       :ok ->
+        SpoolAck.bump(new_pointer.spool_handle, 1)
+
         case publish_requeued_pointer(new_pointer, @requeue_pointer_collision_retries) do
           :ok ->
-            SpoolAck.bump(new_pointer.spool_handle, 1)
             {:ok, new_pointer}
 
           {:error, reason} = error when reason in [:already_exists, :not_initialized] ->
+            SpoolAck.ack(new_pointer.spool_handle, 1)
             delete_id(gen_tid, gen_event_id)
             error
         end
