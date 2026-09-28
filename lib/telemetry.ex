@@ -959,24 +959,35 @@ defmodule Logflare.Telemetry do
   end
 
   defp emit_schema_queue_metrics(processes) do
-    queue_lengths =
-      for {pid, queue_length, call_info} <- processes,
-          [_, initial_call] = get_current_and_initial_call(call_info),
-          schema_process?(pid, initial_call),
-          do: queue_length
+    counts = %{
+      observed_process_count: 0,
+      queue_length_max: 0,
+      queue_length_sum: 0,
+      queues_above_32: 0,
+      queues_above_100: 0,
+      queues_above_1000: 0
+    }
 
-    :telemetry.execute(
-      [:logflare, :bigquery, :schema, :queues],
-      %{
-        observed_process_count: length(queue_lengths),
-        queue_length_max: Enum.max(queue_lengths, fn -> 0 end),
-        queue_length_sum: Enum.sum(queue_lengths),
-        queues_above_32: Enum.count(queue_lengths, &(&1 >= 32)),
-        queues_above_100: Enum.count(queue_lengths, &(&1 >= 100)),
-        queues_above_1000: Enum.count(queue_lengths, &(&1 >= 1_000))
-      },
-      %{}
-    )
+    counts =
+      Enum.reduce(processes, counts, fn {pid, queue_length, call_info}, counts ->
+        [_, initial_call] = get_current_and_initial_call(call_info)
+
+        if schema_process?(pid, initial_call) do
+          %{
+            observed_process_count: counts.observed_process_count + 1,
+            queue_length_max: max(counts.queue_length_max, queue_length),
+            queue_length_sum: counts.queue_length_sum + queue_length,
+            queues_above_32: counts.queues_above_32 + if(queue_length >= 32, do: 1, else: 0),
+            queues_above_100: counts.queues_above_100 + if(queue_length >= 100, do: 1, else: 0),
+            queues_above_1000:
+              counts.queues_above_1000 + if(queue_length >= 1_000, do: 1, else: 0)
+          }
+        else
+          counts
+        end
+      end)
+
+    :telemetry.execute([:logflare, :bigquery, :schema, :queues], counts, %{})
   end
 
   defp schema_process?(pid, {:proc_lib, :init_p, 5}) do
