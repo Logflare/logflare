@@ -2254,7 +2254,7 @@ defmodule Logflare.BackendsTest do
       assert pending_entry_count() == 0
     end
 
-    test "falls back to normal dispatch when no spool partition is registered (e.g. the subtree crashed and is mid-restart)",
+    test "in :both mode, falls back to normal dispatch when no spool partition is registered (e.g. the subtree crashed and is mid-restart)",
          %{source: source} do
       # Simulates the only window this can actually happen in — see
       # dispatch_to_spool_producer/1's caller — by stopping the buffer and
@@ -2262,7 +2262,7 @@ defmodule Logflare.BackendsTest do
       # resolves to no live process.
       stop_supervised!(SpoolDurableBufferSup)
 
-      merge_spool_config!(mode: :producer)
+      merge_spool_config!(mode: :both)
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
@@ -2270,13 +2270,56 @@ defmodule Logflare.BackendsTest do
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
     end
 
-    test "falls back to normal dispatch and logs an error when the spool commit itself fails (e.g. GCS unavailable)",
+    test "in :producer mode, fails the request when no spool partition is registered, instead of falling back to a dispatch path with no backend adaptors to receive it",
+         %{source: source} do
+      stop_supervised!(SpoolDurableBufferSup)
+
+      merge_spool_config!(mode: :producer)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      assert {:error, :spool_unavailable} = Backends.ingest_logs(params, source, nil, true)
+    end
+
+    test "in :both mode, falls back to normal dispatch and logs an error when the spool commit itself fails (e.g. GCS unavailable)",
          %{source: source} do
       # blocking: true so the commit failure — not just a local WAL write —
       # is what dispatch_to_spool_producer/1 sees. :mem buffer specifically:
       # WAL mode's local fsync always succeeds regardless of the (async,
       # separately shipped) upload outcome, so only :mem mode can surface
       # this failure synchronously through append/3.
+      stop_supervised!(SpoolDurableBufferSup)
+
+      Application.put_env(:logflare, :spool,
+        mode: :both,
+        buffer: :mem,
+        blocking: true,
+        partitions: 1,
+        max_commit_attempts: 1,
+        retry_delay_ms: 1,
+        bucket: "test-bucket",
+        storage_mod: SpoolStorageMod,
+        queue_mod: SpoolQueueMod
+      )
+
+      stub(SpoolStorageMod, :put, fn _b, _k, _body, _opts -> {:error, :timeout} end)
+
+      start_supervised!(SpoolDurableBufferSup)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      log =
+        capture_log(fn ->
+          assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+        end)
+
+      assert log =~ "spool dispatch failed"
+    end
+
+    test "in :producer mode, fails the request and logs an error when the spool commit itself fails (e.g. GCS unavailable)",
+         %{source: source} do
       stop_supervised!(SpoolDurableBufferSup)
 
       Application.put_env(:logflare, :spool,
@@ -2300,7 +2343,7 @@ defmodule Logflare.BackendsTest do
 
       log =
         capture_log(fn ->
-          assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+          assert {:error, :spool_unavailable} = Backends.ingest_logs(params, source, nil, true)
         end)
 
       assert log =~ "spool dispatch failed"
