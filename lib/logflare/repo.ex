@@ -16,7 +16,6 @@ defmodule Logflare.Repo do
     {:ok, ConnectionOptions.prepare(config, role)}
   end
 
-
   @doc """
   Postgres uptime in seconds, or `0` when the primary database cannot be reached.
   """
