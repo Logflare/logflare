@@ -101,6 +101,18 @@ defmodule Logflare.DbOutageTest do
              end) == {:error, :database_unavailable}
     end
 
+    test "does not log call arguments, which carry raw credentials", %{cache: cache} do
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          ContextCache.fetch(cache, {:get_by, [[api_key: "super-secret-api-key"]]}, fn ->
+            raise DBConnection.ConnectionError, "connection not available"
+          end)
+        end)
+
+      refute log =~ "super-secret-api-key"
+      assert log =~ "get_by/1"
+    end
+
     test "does not poison the cache once the database recovers", %{cache: cache, key: key} do
       ContextCache.fetch(cache, key, fn ->
         raise DBConnection.ConnectionError, "connection not available"

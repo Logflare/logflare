@@ -158,12 +158,19 @@ defmodule Logflare.ContextCache do
 
       {:error, %Cachex.Error{message: message}} ->
         Logger.warning(
-          "#{inspect(cache)} could not load #{inspect(cache_key)} from the database: #{message}"
+          "#{inspect(cache)} could not load #{cache_key_label(cache_key)} from the database: #{message}"
         )
 
         {:error, :database_unavailable}
     end
   end
+
+  # cache keys carry call arguments, which include raw api keys and bearer tokens
+  # on the ingest path, so only the function name is safe to log
+  defp cache_key_label({fun, args}) when is_atom(fun) and is_list(args),
+    do: "#{fun}/#{length(args)}"
+
+  defp cache_key_label(_cache_key), do: "entry"
 
   defp delete_matching_entries(entries, context_cache, pkey) do
     to_delete =
