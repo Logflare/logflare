@@ -44,30 +44,9 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   @behaviour Logflare.Backends.Adaptor
 
   # Sentinel value substituted for credentials by redact_config/1.
-  @redacted_value "REDACTED"
+  @redacted_value Headers.redacted_value()
 
   @formats ["json", "ndjson"]
-
-  # Header names are case-insensitive. Keep this list intentionally explicit so
-  # adding another credential-bearing header is a reviewed policy change.
-  @sensitive_header_names MapSet.new(~w(
-                            api-key
-                            apikey
-                            authorization
-                            cookie
-                            proxy-authorization
-                            webhook-secret
-                            x-access-token
-                            x-amz-security-token
-                            x-api-key
-                            x-api-token
-                            x-auth-token
-                            x-hub-signature
-                            x-hub-signature-256
-                            x-secret-key
-                            x-signature
-                            x-webhook-secret
-                          ))
 
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend} = args) do
@@ -253,7 +232,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   @impl Logflare.Backends.Adaptor
   def redact_config(config) do
     config
-    |> Map.update(:headers, %{}, &redact_headers/1)
+    |> Map.update(:headers, %{}, &Headers.redact/1)
     |> Map.update(:url, nil, &redact_url_userinfo/1)
   end
 
@@ -262,20 +241,6 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     config
     |> Adaptor.mask_config_values(except: [:url, :http, :gzip, :format])
     |> Map.update(:url, nil, &redact_url_userinfo/1)
-  end
-
-  defp redact_headers(nil), do: %{}
-
-  defp redact_headers(headers) do
-    for {key, value} <- headers, into: %{}, do: redact_header(key, value)
-  end
-
-  defp redact_header(key, value) do
-    if MapSet.member?(@sensitive_header_names, String.downcase(to_string(key))) do
-      {key, @redacted_value}
-    else
-      {key, value}
-    end
   end
 
   defp redact_url_userinfo(url) when is_binary(url) do

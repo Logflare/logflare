@@ -12,6 +12,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsPartialSuccess
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceRequest
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceResponse
+  alias Logflare.Backends.Backend
 
   @subject Adaptor.OtlpAdaptor
   @tesla_adapter Tesla.Adapter.Finch
@@ -19,7 +20,6 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
   @valid_config %{
     endpoint: "http://localhost:4318/v1/logs",
     headers: %{},
-    gzip: false,
     protocol: "http/protobuf"
   }
   @valid_config_input Map.new(@valid_config, fn {k, v} -> {Atom.to_string(k), v} end)
@@ -59,7 +59,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
 
       assert changeset.valid?, inspect(changeset)
 
-      assert %{gzip: true, protocol: "http/protobuf", headers: %{}, flatten_to_attributes: false} =
+      assert %{protocol: "http/protobuf", headers: %{}, flatten_to_attributes: false} =
                Ecto.Changeset.apply_changes(changeset)
     end
 
@@ -78,13 +78,12 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       changeset =
         Adaptor.cast_and_validate_config(@subject, %{
           @valid_config_input
-          | "gzip" => "false",
-            "headers" => %{"x-test" => "true"}
+          | "headers" => %{"x-test" => "true"}
         })
 
       assert changeset.valid?
 
-      assert %{gzip: false, headers: %{"x-test" => "true"}} =
+      assert %{headers: %{"x-test" => "true"}} =
                Ecto.Changeset.apply_changes(changeset)
     end
 
@@ -382,7 +381,6 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       assert %{
                endpoint: "**********",
                protocol: "http/protobuf",
-               gzip: false,
                headers: "**********"
              } == @subject.sanitize_config_for_display(config)
     end
@@ -771,6 +769,26 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
     assert {:ok, _} = Backends.ingest_logs([log_event], source)
     assert_receive {^ref, body}, 5000
     body
+  end
+
+  describe "elastic type alias" do
+    test "maps elastic otlp to OtlpAdaptor" do
+      assert Backend.adaptor_mapping()[:otlp] == @subject
+    end
+
+    test "validates elastic otlp backends with OTLP config" do
+      user = insert(:user)
+
+      changeset =
+        Backend.changeset(%Backend{user_id: user.id}, %{
+          name: "elastic otlp drain",
+          type: :otlp,
+          config: @valid_config_input
+        })
+
+      assert changeset.valid?, inspect(changeset)
+      assert Ecto.Changeset.get_field(changeset, :type) == :otlp
+    end
   end
 
   defp mock_adapter(calls_num \\ 1, function) do
