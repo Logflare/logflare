@@ -17,6 +17,7 @@ defmodule Logflare.BigQuery.PipelineTest do
   alias Logflare.Repo
   alias Logflare.Sources.Source.BigQuery.Pipeline
   alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.RateSampler
   alias Logflare.User
 
   @pipeline_name :test_pipeline
@@ -681,6 +682,25 @@ defmodule Logflare.BigQuery.PipelineTest do
       assert is_integer(size) and size > 0
     end
 
+    test "bumps the BQ-specific schema-check rate by the batch size, not per event", %{
+      source: source,
+      context: context
+    } do
+      stub(Logflare.Google.BigQuery, :stream_batch!, fn _ctx, _rows ->
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      events = for _ <- 1..5, do: build(:log_event, source: source)
+      {messages, _queue_tid} = setup_queue(source, events)
+      batch_info = %Broadway.BatchInfo{batcher: :bq, batch_key: :bq, size: 5, trigger: :flush}
+
+      assert RateSampler.rate({source.token, :bq_schema_check}) == 0.0
+
+      Pipeline.handle_batch(:bq, messages, batch_info, context)
+
+      assert RateSampler.rate({source.token, :bq_schema_check}) > 0.0
+    end
+
     test "excludes missing IDs and emits telemetry", %{
       source: source,
       context: context,
@@ -820,6 +840,72 @@ defmodule Logflare.BigQuery.PipelineTest do
       reject(&Schema.update/3)
 
       assert ^le = Pipeline.process_data(le, context, nil)
+    end
+
+    test "always runs the schema update when the source has no schema yet, regardless of rate",
+         %{user: user, context: context} do
+      source = insert(:source, user_id: user.id, lock_schema: false)
+      le = build(:log_event, source: source)
+      test_pid = self()
+
+      RateSampler.bump({source.token, :bq_schema_check}, 100_000)
+
+      expect(Schema, :update, fn _via, ^le, ^source ->
+        send(test_pid, :schema_updated)
+        :ok
+      end)
+
+      assert ^le = Pipeline.process_data(le, context, source)
+      assert_received :schema_updated
+    end
+
+    test "samples against the BQ-specific rate once a schema exists, not the dispatch rate", %{
+      user: user,
+      context: context
+    } do
+      source = insert(:source, user_id: user.id, lock_schema: false)
+      insert(:source_schema, source: source)
+      le = build(:log_event, source: source)
+      test_pid = self()
+
+      RateSampler.bump(source.token, 100_000)
+
+      expect(Schema, :update, fn _via, ^le, ^source ->
+        send(test_pid, :schema_updated)
+        :ok
+      end)
+
+      assert ^le = Pipeline.process_data(le, context, source)
+      assert_received :schema_updated
+    end
+
+    test "a high BQ processing rate suppresses most schema checks once a schema exists", %{
+      user: user,
+      context: context
+    } do
+      source = insert(:source, user_id: user.id, lock_schema: false)
+      insert(:source_schema, source: source)
+      test_pid = self()
+
+      RateSampler.bump({source.token, :bq_schema_check}, 100_000)
+      stub(Schema, :update, fn _via, _le, _source -> send(test_pid, :schema_updated) end)
+
+      for _ <- 1..200 do
+        le = build(:log_event, source: source)
+        Pipeline.process_data(le, context, source)
+      end
+
+      updated_count =
+        Enum.count(1..200, fn _ ->
+          receive do
+            :schema_updated -> true
+          after
+            0 -> false
+          end
+        end)
+
+      assert updated_count < 20,
+             "expected sampling to suppress most checks, got #{updated_count}/200"
     end
   end
 
