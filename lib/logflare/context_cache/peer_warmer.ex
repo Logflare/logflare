@@ -107,7 +107,11 @@ defmodule Logflare.ContextCache.PeerWarmer do
       {:ok, %{node: node, warmed_at: peer_status.warmed_at, count: count}}
     else
       {:error, reason} = error ->
-        Logger.info("Warming #{inspect(cache)} from the database: #{reason}")
+        Logger.info(
+          "Could not copy #{inspect(cache)} from a peer node (reason: #{reason}), " <>
+            "warming it from the database instead"
+        )
+
         error
     end
   end
