@@ -222,7 +222,7 @@ defmodule Logflare.DataCase do
       pool_size: 1
     ]
 
-    {:ok, conn} = Ch.start_link(connection_opts)
+    {:ok, conn} = DBConnection.start_link(Ch.Connection, connection_opts)
 
     # Normal caller exits do not stop this linked pool, so close it explicitly.
     try do
