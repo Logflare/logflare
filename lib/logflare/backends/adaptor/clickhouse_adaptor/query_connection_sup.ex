@@ -2,14 +2,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   @moduledoc """
   This supervisor only manages read/query `ConnectionManager` instances. Write/ingest
   traffic does not flow through these pools — HTTP inserts use the
-  `Logflare.FinchClickHouseIngest` Finch pool and native protocol inserts use the
-  `NativeIngester` connection pools.
+  `Logflare.FinchClickHouseIngest` Finch pool, and async inserts (when configured)
+  use the `Logflare.FinchClickHouseAsyncIngest` Finch pool.
 
   ## Supervision Hierarchy
 
   ```
   Logflare.Backends.Supervisor
   └── QueryConnectionSup (this module)
+      ├── DBConnection.TelemetryListener (read pool connect/disconnect events)
       └── DynamicSupervisor
           └── ConnectionManager (one per backend, lazily started)
   ```
@@ -29,6 +30,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   `list_query_connection_managers/0` can be used to retrieve a list of all active read
   connection manager PIDs along with their respective backend IDs.
 
+  `list_read_pools/0` returns the currently running read pools themselves, with backend ID,
+  read-cluster label, and started pool size. `Logflare.Telemetry` sweeps these for
+  `DBConnection` pool metrics.
+
   ## Modifying Pools
 
   `recycle_backend/1` triggers an immediate connection recycle of a backend's read pool
@@ -45,6 +50,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
 
   import Logflare.Utils.Guards
 
+  require Ex2ms
   require Logger
 
   alias Logflare.Backends
@@ -66,6 +72,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   @impl true
   def init(_args) do
     children = [
+      {DBConnection.TelemetryListener, name: ConnectionManager.telemetry_listener_name()},
       {DynamicSupervisor, strategy: :one_for_one, name: @dynamic_sup_name}
     ]
 
@@ -99,9 +106,42 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   """
   @spec list_query_connection_managers() :: [{backend_id :: integer(), pid()}]
   def list_query_connection_managers do
-    Registry.select(BackendRegistry, [
-      {{{ConnectionManager, :"$1"}, :"$2", :_}, [], [{{:"$1", :"$2"}}]}
-    ])
+    manager = ConnectionManager
+
+    ms =
+      Ex2ms.fun do
+        {{^manager, backend_id}, pid, _} -> {backend_id, pid}
+        {{^manager, backend_id, _}, pid, _} -> {backend_id, pid}
+      end
+
+    Registry.select(BackendRegistry, ms)
+  end
+
+  @doc """
+  Returns every currently running read pool on this node as
+  `{backend_id, label, pool_pid, pool_size}`.
+
+  Only started pools are listed; a `ConnectionManager` whose pool has been stopped for
+  inactivity or refresh is not included. The label is `nil` for the unlabeled pool.
+  `pool_size` is the size the pool was started with, read from its registry value, so
+  it reflects the running pool rather than whatever the backend config says now.
+  """
+  @spec list_read_pools() :: [
+          {backend_id :: pos_integer(), String.t() | nil, pid(), pos_integer()}
+        ]
+  def list_read_pools do
+    pool = CHReadPool
+
+    ms =
+      Ex2ms.fun do
+        {{^pool, backend_id}, pid, %{pool_size: pool_size}} ->
+          {backend_id, nil, pid, pool_size}
+
+        {{^pool, backend_id, label}, pid, %{pool_size: pool_size}} ->
+          {backend_id, label, pid, pool_size}
+      end
+
+    Registry.select(BackendRegistry, ms)
   end
 
   @doc """
@@ -152,9 +192,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   """
   @spec recycle_backend_local(pos_integer()) :: :ok | {:error, term()}
   def recycle_backend_local(backend_id) when is_pos_integer(backend_id) do
-    case Registry.lookup(BackendRegistry, {ConnectionManager, backend_id}) do
-      [{manager_pid, _value}] -> safe_recycle(manager_pid)
+    case lookup_managers(backend_id) do
       [] -> {:error, :no_manager}
+      manager_pids -> manager_pids |> Enum.map(&safe_recycle/1) |> aggregate_results()
     end
   end
 
@@ -192,10 +232,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   def refresh_backend_local(backend_id) when is_pos_integer(backend_id) do
     ContextCache.bust_keys([{Backends, backend_id}])
 
-    case Registry.lookup(BackendRegistry, {ConnectionManager, backend_id}) do
-      [{manager_pid, _value}] -> safe_refresh(manager_pid)
-      [] -> :ok
-    end
+    backend_id
+    |> lookup_managers()
+    |> Enum.each(&safe_refresh/1)
+
+    :ok
   end
 
   @spec safe_refresh(pid()) :: :ok
@@ -228,11 +269,28 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   """
   @spec terminate_backend_local(pos_integer()) :: :ok
   def terminate_backend_local(backend_id) when is_pos_integer(backend_id) do
-    case Registry.lookup(BackendRegistry, {ConnectionManager, backend_id}) do
-      [{manager_pid, _value}] -> terminate_manager(manager_pid)
-      [] -> :ok
-    end
+    backend_id
+    |> lookup_managers()
+    |> Enum.each(&terminate_manager/1)
+
+    :ok
   end
+
+  @spec lookup_managers(pos_integer()) :: [pid()]
+  defp lookup_managers(backend_id) when is_pos_integer(backend_id) do
+    manager = ConnectionManager
+
+    ms =
+      Ex2ms.fun do
+        {{^manager, ^backend_id}, pid, _} -> pid
+        {{^manager, ^backend_id, _}, pid, _} -> pid
+      end
+
+    Registry.select(BackendRegistry, ms)
+  end
+
+  @spec aggregate_results([:ok | {:error, term()}]) :: :ok | {:error, term()}
+  defp aggregate_results(results), do: Enum.find(results, :ok, &(&1 != :ok))
 
   @spec terminate_manager(pid()) :: :ok
   defp terminate_manager(manager_pid) do

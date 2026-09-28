@@ -8,6 +8,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   import Ecto.Changeset
   import NimbleParsec
   import Logflare.Logs.SyslogParser.Helpers
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.SyslogAdaptor.{Pool, Socket, Pipeline}
   alias Logflare.Backends.Backend
   require Logger
@@ -17,7 +18,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   typedstruct enforce: true do
     field(:tls, boolean())
     field(:host, String.t())
-    field(:port, non_neg_integer())
+    field(:port, pos_integer())
     field(:cipher_key, binary())
     field(:ca_cert, String.t())
     field(:client_cert, String.t())
@@ -80,7 +81,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   def validate_config(changeset) do
     changeset
     |> validate_required([:host, :port])
-    |> validate_inclusion(:port, 0..65_535)
+    |> validate_inclusion(:port, 1..65_535)
     |> validate_cipher()
     |> validate_certificate(:ca_cert)
     |> validate_certificate(:client_cert)
@@ -96,6 +97,11 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
     |> redact_config_field(:client_cert)
     |> redact_config_field(:client_key)
     |> redact_config_field(:cipher_key)
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def sanitize_config_for_display(config) do
+    Adaptor.mask_config_values(config, except: [:tls, :host, :port, :max_message_bytes])
   end
 
   defp redact_config_field(config, field) do

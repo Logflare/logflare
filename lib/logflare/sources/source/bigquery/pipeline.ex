@@ -19,10 +19,10 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   alias Logflare.Backends.BufferProducer
   alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.Sources.Source.BigQuery.SchemaMetrics
+  alias Logflare.Sources.Source.BigQuery.SchemaUpdateSampler
   alias Logflare.Sources.Source.Supervisor
   alias Logflare.Sources
   alias Logflare.Users
-  alias Logflare.PubSubRates
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Utils
   require OpenTelemetry.Tracer
@@ -123,7 +123,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   # pid, and this lookup always finds the ref the producer published at init.
   def transform(event, args) do
     ref = args[:ref]
-    in_flight_ref = :persistent_term.get({BufferProducer, :in_flight_ref, self()}, nil)
+    in_flight_ref = BufferProducer.get_in_flight_ref(self())
 
     %Message{
       data: event,
@@ -135,7 +135,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   def ack({queue, config}, successful, failed) do
     {sid, bid, _pipeline_ref} = queue
 
-    decrement_in_flight(successful ++ failed)
+    decrement_in_flight(successful)
+    decrement_in_flight(failed)
     finalize_acked_events({sid, bid}, successful)
     maybe_requeue_failed({sid, bid}, failed, config)
 
@@ -148,17 +149,40 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     :ok
   end
 
+  # Scan messages as contiguous runs of the same in-flight reference.
+  # `current_ref` and `run_count` describe the run immediately preceding `messages`.
+  # When the reference changes, subtract the completed run and begin a new one.
+  # A reference appearing again later is handled as another run.
   @spec decrement_in_flight([Message.t()]) :: :ok
-  defp decrement_in_flight(messages) do
-    messages
-    |> Enum.group_by(fn %{acknowledger: {_, _, ack_data}} ->
-      Map.get(ack_data, :in_flight_ref)
-    end)
-    |> Enum.each(fn
-      {nil, _msgs} -> :ok
-      {ref, msgs} -> :atomics.sub(ref, 1, length(msgs))
-    end)
+  defp decrement_in_flight(messages), do: decrement_in_flight(messages, nil, 0)
+
+  @spec decrement_in_flight(
+          [Message.t()],
+          :atomics.atomics_ref() | nil,
+          non_neg_integer()
+        ) :: :ok
+
+  # Flush the final run after consuming all messages.
+  defp decrement_in_flight([], ref, run_count),
+    do: decrement_in_flight_ref(ref, run_count)
+
+  defp decrement_in_flight(
+         [%{acknowledger: {_, _, ack_data}} | messages],
+         current_ref,
+         run_count
+       ) do
+    ref = Map.get(ack_data, :in_flight_ref)
+
+    if ref == current_ref do
+      decrement_in_flight(messages, current_ref, run_count + 1)
+    else
+      decrement_in_flight_ref(current_ref, run_count)
+      decrement_in_flight(messages, ref, 1)
+    end
   end
+
+  defp decrement_in_flight_ref(nil, _run_count), do: :ok
+  defp decrement_in_flight_ref(ref, run_count), do: :atomics.sub(ref, 1, run_count)
 
   # Always deletes the generation-store row. If the source's ingest rate is low, also
   # keeps an independent copy in the recent-events cache first, so "recent logs" reads
@@ -468,34 +492,19 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     # Send those events through the pipeline again, but run them through our schema process this time. Do all
     # these things a max of like 5 times and after that send them to the rejected pile.
 
-    # random sample if local ingest rate is above a certain level
-    # dynamic calculation maintains ~1 schema update per second across all rate levels
     if source && not source.lock_schema do
-      rates = PubSubRates.Cache.get_local_rates(source.token)
-      {probability, rate_mode} = schema_sampling_probability(rates)
+      case SchemaUpdateSampler.sample_mode(source.token) do
+        :skip ->
+          :ok
 
-      if :rand.uniform() <= probability do
-        SchemaMetrics.record_sample(rate_mode)
-
-        schema_server = Backends.via_source(source, {Schema, Map.get(context, :backend_id)})
-        Schema.update(schema_server, log_event, source)
+        rate_mode ->
+          SchemaMetrics.record_sample(rate_mode)
+          schema_server = Backends.via_source(source, {Schema, Map.get(context, :backend_id)})
+          Schema.update(schema_server, log_event, source)
       end
     end
 
     log_event
-  end
-
-  @doc false
-  def schema_sampling_probability(rates) when is_map(rates) do
-    average_rate = Map.get(rates, :average_rate, 0)
-    last_rate = Map.get(rates, :last_rate, 0)
-    rate = max(average_rate, last_rate)
-
-    cond do
-      rate <= 0 -> {1.0, :zero_rate}
-      rate > 100_000 -> {0.00001, :floor}
-      true -> {1.0 / rate, :normal}
-    end
   end
 
   def name(source_id) when is_atom(source_id) do
@@ -579,7 +588,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   defp requeue_retriable(_sid_bid, []), do: :ok
 
   defp requeue_retriable(sid_bid, retriable) do
-    Logger.info("Requeuing #{length(retriable)} BigQuery events for retry")
+    retriable_count = length(retriable)
+    Logger.info("Requeuing #{retriable_count} BigQuery events for retry")
 
     events =
       for pointer <- retriable,
@@ -589,7 +599,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         %{event | retries: pointer.retries + 1}
       end
 
-    emit_requeue_lookup_miss_telemetry(sid_bid, length(retriable) - length(events))
+    emit_requeue_lookup_miss_telemetry(sid_bid, retriable_count - length(events))
 
     if events != [], do: IngestEventQueue.add_to_table(sid_bid, events)
 

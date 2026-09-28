@@ -28,6 +28,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
 
     matching_rule_ids(event, rule_set)
     |> Rules.Cache.get_rules()
+    |> Enum.reject(&is_nil/1)
   end
 
   @doc """

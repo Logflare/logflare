@@ -1,12 +1,11 @@
 import {
   activateClipboardForSelector,
-  activateDelegatedTooltips
+  activateDelegatedTooltips,
+  scrollToPageBottom
 } from "./utils"
 import $ from "jquery"
 import _ from "lodash"
 import idle from "./vendor/idle"
-import hljs from "highlight.js"
-import "highlight.js/styles/tomorrow-night-blue.css"
 import { applyToAllLogTimestamps } from "./logs";
 import { timestampNsToAgo } from "./formatters";
 
@@ -22,11 +21,53 @@ hooks.SourceSchemaModalTable = {
 }
 
 hooks.SourceLogsSearchList = {
+  captureScrollAnchor() {
+    const firstVisibleLogEvent = [...this.el.querySelectorAll("#logs-list > li[data-event-id]")]
+      .find((element) => {
+        const { top, bottom } = element.getBoundingClientRect()
+        return top < window.innerHeight && bottom > 0
+      })
+
+    this.scrollAnchor = firstVisibleLogEvent?.id
+      ? {
+        id: firstVisibleLogEvent.id,
+        top: firstVisibleLogEvent.getBoundingClientRect().top,
+      }
+      : null
+  },
+  restoreScrollAnchor() {
+    const scrollAnchor = this.scrollAnchor
+
+    if (!scrollAnchor) return
+
+    const anchorElement = document.getElementById(scrollAnchor.id)
+
+    if (!anchorElement || !this.el.contains(anchorElement)) return
+
+    const scrollDelta = anchorElement.getBoundingClientRect().top - scrollAnchor.top
+
+    if (scrollDelta !== 0) window.scrollBy(0, scrollDelta)
+  },
+  flushScrollToBottom() {
+    requestAnimationFrame(() => {
+      if (!this.pendingScrollToBottom) return
+
+      this.pendingScrollToBottom = false
+      scrollToPageBottom()
+    })
+  },
+  beforeUpdate() {
+    this.captureScrollAnchor()
+  },
   updated() {
     const hook = this
     activateDelegatedTooltips(this.el, '[data-toggle="tooltip"]')
 
-    window.scrollTo(0, document.body.scrollHeight)
+    if (this.pendingScrollToBottom) {
+      this.flushScrollToBottom()
+    } else {
+      this.restoreScrollAnchor()
+    }
 
     const observer =
       new IntersectionObserver((entries, observer) => {
@@ -47,9 +88,10 @@ hooks.SourceLogsSearchList = {
   },
   mounted() {
     activateDelegatedTooltips(this.el, '[data-toggle="tooltip"]')
-
-    $("html, body").animate({
-      scrollTop: document.body.scrollHeight
+    this.pendingScrollToBottom = false
+    this.handleEvent("scroll-to-bottom", () => {
+      this.pendingScrollToBottom = true
+      this.flushScrollToBottom()
     })
   },
   destroyed() {
@@ -131,25 +173,6 @@ const buildTsClause = (start, end, label) => {
       break
   }
   return timestampFilter.join(" ")
-}
-
-hooks.BigQuerySqlQueryFormatter = {
-  mounted() {
-    this.formatSql()
-  },
-  updated() {
-    this.formatSql()
-  },
-  formatSql() {
-    const $this = $(this.el)
-    const $code = $this.find(`code#search-op-sql-string`)
-    const fmtSql = sqlFormatter.format($code.text())
-    // replace with formatted sql
-    $code.text(fmtSql)
-    $this.find("pre code").each((i, block) => {
-      hljs.highlightBlock(block)
-    })
-  },
 }
 
 hooks.SourceLogsSearch = {

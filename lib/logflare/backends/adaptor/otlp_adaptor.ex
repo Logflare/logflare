@@ -5,14 +5,13 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
 
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.HttpBased
+  alias Logflare.Backends.Adaptor.HttpBased.Headers
   alias Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter
   alias Logflare.Backends.Backend
   alias Logflare.Utils
 
   @behaviour Adaptor
   @behaviour HttpBased.Client
-
-  @sensitive_headers ["authorization", "x-api-key", "x-auth-token"]
 
   @doc """
   Returns a list of supported protocols
@@ -42,15 +41,26 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
     types = %{
       endpoint: :string,
       protocol: :string,
-      gzip: :boolean,
-      headers: {:map, :string}
+      headers: {:map, :string},
+      flatten_to_attributes: :boolean
     }
 
     {existing_config, types}
     |> Ecto.Changeset.cast(params, Map.keys(types))
-    |> Utils.default_field_value(:gzip, true)
+    |> normalize_header_keys()
     |> Utils.default_field_value(:protocol, "http/protobuf")
     |> Utils.default_field_value(:headers, %{})
+    |> Utils.default_field_value(:flatten_to_attributes, false)
+  end
+
+  # Canonicalizes submitted header names to lower case so stored config cannot
+  # hold case-variant duplicates of the same header (e.g. "Content-Type" and
+  # "content-type"), matching the form used on the wire.
+  defp normalize_header_keys(changeset) do
+    case Ecto.Changeset.get_change(changeset, :headers) do
+      nil -> changeset
+      headers -> Ecto.Changeset.put_change(changeset, :headers, Headers.normalize_keys(headers))
+    end
   end
 
   @impl Adaptor
@@ -63,19 +73,12 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
 
   @impl Adaptor
   def redact_config(config) do
-    Map.update!(config, :headers, &redact_headers/1)
+    Map.update!(config, :headers, &Headers.redact/1)
   end
 
-  defp redact_headers(headers) do
-    for {k, v} <- headers, into: %{}, do: redact_header(k, v)
-  end
-
-  defp redact_header(k, v) do
-    if Enum.member?(@sensitive_headers, String.downcase(k)) do
-      {k, "REDACTED"}
-    else
-      {k, v}
-    end
+  @impl Adaptor
+  def sanitize_config_for_display(config) do
+    Adaptor.mask_config_values(config, except: [:protocol, :flatten_to_attributes])
   end
 
   @impl Adaptor
@@ -87,8 +90,9 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
   def client_opts(%Backend{config: config}) do
     [
       url: config.endpoint,
-      formatter: ProtobufFormatter,
-      gzip: config.gzip,
+      formatter:
+        {ProtobufFormatter, %{flatten_to_attributes: config[:flatten_to_attributes] || false}},
+      gzip: true,
       json: false,
       headers: config.headers
     ]

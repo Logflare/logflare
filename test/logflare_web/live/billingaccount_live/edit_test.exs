@@ -13,11 +13,8 @@ defmodule LogflareWeb.BillingAccountLive.EditTest do
       assert has_element?(view, "h1,h2,h3,h4", "Billing Account")
       assert has_element?(view, "p", "You're currently on the Free plan")
 
-      view
-      |> form("#usage-form", %{"usage" => %{"days" => "60"}})
-      |> render_change()
-
-      assert has_element?(view, "#usage-form")
+      refute has_element?(view, "#usage-form")
+      refute has_element?(view, "#billing-chart")
     end
 
     test "handles Stripe webhook events", %{conn: conn} do

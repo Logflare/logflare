@@ -103,20 +103,16 @@ defmodule Logflare.DataCase do
   end
 
   @doc """
-  A helper that transform changeset errors to a map of messages.
+  A helper that transforms changeset errors to a map of messages.
+
+  Delegates to `LogflareWeb.Utils.changeset_errors/1`.
 
       assert {:error, changeset} = Accounts.create_user(%{password: "short"})
       assert "password is too short" in errors_on(changeset).password
       assert %{password: ["password is too short"]} = errors_on(changeset)
 
   """
-  def errors_on(changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->
-      Enum.reduce(opts, message, fn {key, value}, acc ->
-        String.replace(acc, "%{#{key}}", to_string(value))
-      end)
-    end)
-  end
+  defdelegate errors_on(changeset), to: LogflareWeb.Utils, as: :changeset_errors
 
   @doc """
   Sets up a ClickHouse test environment with automatic cleanup.
@@ -128,6 +124,7 @@ defmodule Logflare.DataCase do
   - `:user` - Existing user to use (creates one if not provided)
   - `:source` - Existing source to use (creates one if not provided)
   - `:default_ingest_backend?` - Whether to set the backend as the default ingest backend (requires a source to be provided with the default ingest backend option set to true)
+  - `:cleanup?` - Whether to drop the backend's ClickHouse tables on exit (defaults to true)
   """
   def setup_clickhouse_test(opts \\ []) do
     config = Keyword.get(opts, :config, %{})
@@ -163,7 +160,9 @@ defmodule Logflare.DataCase do
         sources: [source]
       )
 
-    on_exit(fn -> cleanup_clickhouse_tables(backend) end)
+    if Keyword.get(opts, :cleanup?, true) do
+      on_exit(fn -> cleanup_clickhouse_tables(backend) end)
+    end
 
     {source, backend}
   end

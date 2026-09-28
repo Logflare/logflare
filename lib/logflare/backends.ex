@@ -15,6 +15,9 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourcesSup
   alias Logflare.Backends.SourceSup
+  alias Logflare.Backends.Spool.DurableBuffer.Supervisor, as: SpoolDurableBufferSup
+  alias Logflare.Backends.Spool.Encoder, as: SpoolEncoder
+  alias Logflare.Backends.Spool.Health, as: SpoolHealth
   alias Logflare.ContextCache
   alias Logflare.Cluster
   alias Logflare.LogEvent
@@ -33,7 +36,6 @@ defmodule Logflare.Backends do
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
-  @max_event_age_us 24 * 3_600 * 1_000_000
   @max_future_event_us 1 * 3_600 * 1_000_000
   @max_pending_buffer_len_per_queue IngestEventQueue.max_queue_size()
 
@@ -46,16 +48,12 @@ defmodule Logflare.Backends do
   def max_buffer_queue_len, do: @max_pending_buffer_len_per_queue
 
   @doc """
-  Returns the maximum age, in microseconds, of an event that will be accepted at
-  ingestion. Events older than this are dropped as stale.
-  """
-  @spec max_event_age_us() :: non_neg_integer()
-  def max_event_age_us, do: @max_event_age_us
-
-  @doc """
   Returns the maximum time, in microseconds, that an event's timestamp may be in
   the future and still be accepted at ingestion. Events further ahead than this
   are dropped.
+
+  There is no equivalent global lower bound. Dropping events for being too old is
+  now a backend-specific concern (_see `Logflare.Backends.Adaptor.ClickHouseAdaptor.pre_ingest/3`_)
   """
   @spec max_future_event_us() :: non_neg_integer()
   def max_future_event_us, do: @max_future_event_us
@@ -72,7 +70,11 @@ defmodule Logflare.Backends do
   end
 
   defp filter_backends(query, filters) do
-    Enum.reduce(filters, query, fn
+    {ingesting?, filters} = Keyword.pop(filters, :ingesting, false)
+    {limit, filters} = Keyword.pop(filters, :limit)
+
+    filters
+    |> Enum.reduce(query, fn
       {:types, types}, q when is_list(types) ->
         where(q, [b], b.type in ^types)
 
@@ -83,15 +85,6 @@ defmodule Logflare.Backends do
       # filter down to backends with rules destinations
       {:rules_source_id, source_id}, q ->
         join(q, :inner, [b], r in assoc(b, :rules), on: r.source_id == ^source_id)
-
-      # filter down to backends with sources that have recently ingested.
-      # orders by the last active.
-      {:ingesting, true}, q ->
-        q
-        |> join(:inner, [b], s in assoc(b, :sources),
-          on: s.log_events_updated_at >= ago(1, "day")
-        )
-        |> order_by([..., s], {:desc, s.log_events_updated_at})
 
       {:user_id, id}, q ->
         where(q, [b], b.user_id == ^id)
@@ -121,7 +114,41 @@ defmodule Logflare.Backends do
       _, q ->
         q
     end)
+    |> maybe_filter_ingesting(ingesting?)
+    |> maybe_limit(limit)
   end
+
+  defp maybe_filter_ingesting(query, true) do
+    backend_ids =
+      query
+      |> exclude(:distinct)
+      |> select([b], b.id)
+      |> distinct(true)
+
+    activity =
+      from(s in Source,
+        join: sb in "sources_backends",
+        on: sb.source_id == s.id,
+        where: s.log_events_updated_at >= ago(1, "day"),
+        group_by: sb.backend_id,
+        select: %{
+          backend_id: sb.backend_id,
+          last_active_at: max(s.log_events_updated_at)
+        }
+      )
+
+    from(b in Backend,
+      join: a in subquery(activity),
+      on: a.backend_id == b.id,
+      where: b.id in subquery(backend_ids),
+      order_by: [desc: a.last_active_at, asc: b.id]
+    )
+  end
+
+  defp maybe_filter_ingesting(query, _ingesting?), do: query
+
+  defp maybe_limit(query, limit) when is_pos_integer(limit), do: limit(query, ^limit)
+  defp maybe_limit(query, _limit), do: query
 
   defp distinct_backends(%Ecto.Query{distinct: nil} = query), do: distinct(query, [b], b.id)
   defp distinct_backends(query), do: query
@@ -224,14 +251,8 @@ defmodule Logflare.Backends do
         name: "Default PostgreSQL backend"
       }
     else
-      {project_id, dataset_id} =
-        if user.bigquery_project_id do
-          {user.bigquery_project_id, user.bigquery_dataset_id}
-        else
-          project_id = User.bq_project_id()
-          dataset_id = User.generate_bq_dataset_id(user.id)
-          {project_id, dataset_id}
-        end
+      project_id = user.bigquery_project_id || User.bq_project_id()
+      dataset_id = user.bigquery_dataset_id || User.generate_bq_dataset_id(user.id)
 
       %Backend{
         type: :bigquery,
@@ -486,7 +507,6 @@ defmodule Logflare.Backends do
   @spec clear_list_backends_cache(source_id :: integer()) :: :ok
   def clear_list_backends_cache(source_id) when is_integer(source_id) do
     Cachex.del(__MODULE__.Cache, {:list_backends, [[source_id: source_id]]})
-    Cachex.del(__MODULE__.Cache, {:list_backends, [source_id: source_id]})
     :ok
   end
 
@@ -604,7 +624,13 @@ defmodule Logflare.Backends do
 
   Events are conditionally dispatched to backends based on whether they are registered. If they register for ingestion dispatching, events will get sent to the registered backend.
 
-  Once this function returns `:ok`, the events get dispatched to respective backend adaptor portions of the pipeline to be further processed.
+  For a spoolable event (gated by `allow_spooling`, the global spool mode,
+  and `source.enable_spooling` — see `spoolable?/3`), this blocks the
+  caller until the event's segment is durable in the buffer, or — in
+  blocking mode (`spool_blocking_mode?/0`) — until its batch is actually
+  committed. If no spool partition is available, or spool dispatch fails,
+  this falls back to normal (non-spool) dispatch instead of failing the
+  request.
   """
   @type log_param :: map()
   @spec ingest_logs([log_param()], Source.t()) ::
@@ -612,7 +638,7 @@ defmodule Logflare.Backends do
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) ::
           {:ok, count :: pos_integer()} | {:error, [term()]}
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil, boolean()) ::
-          {:ok, count :: pos_integer()} | {:error, [term()]}
+          {:ok, count :: pos_integer()} | {:error, term()}
   def ingest_logs(event_params, source, backend \\ nil, allow_spooling \\ false) do
     ensure_source_sup_started(source)
     {log_events, errors} = split_valid_events(source, event_params)
@@ -620,13 +646,71 @@ defmodule Logflare.Backends do
     increment_counters(source, count)
 
     if spoolable?(log_events, source, allow_spooling) do
-      dispatch_to_spool_producer(log_events)
+      case dispatch_to_spool_producer(log_events) do
+        {:error, reason} ->
+          Logger.error(
+            "backends: spool dispatch failed for source #{source.token}, falling back to normal dispatch: #{inspect(reason)}"
+          )
+
+          dispatch_to_backend_path(source, backend, log_events)
+
+        :ok ->
+          :ok
+      end
     else
-      maybe_broadcast_and_route(source, log_events)
-      dispatch_to_backends(source, backend, log_events)
+      dispatch_to_backend_path(source, backend, log_events)
     end
 
     if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
+  end
+
+  defp dispatch_to_backend_path(source, backend, log_events) do
+    maybe_broadcast_and_route(source, log_events)
+    dispatch_to_backends(source, backend, log_events)
+    :ok
+  end
+
+  @default_spool_append_timeout 15_000
+
+  # No source/partition affinity needed — any partition will do, so a fresh
+  # unique term per call spreads load across them the same way random
+  # selection did.
+  @spec dispatch_to_spool_producer([LogEvent.t()]) :: :ok | {:error, term()}
+  defp dispatch_to_spool_producer(log_events) do
+    payload = SpoolEncoder.encode_raw_chunk(log_events)
+    partition_key = :erlang.unique_integer()
+
+    result =
+      case {spool_buffer(), spool_blocking_mode?()} do
+        {:mem, false} ->
+          DurableBuffer.append_async(SpoolDurableBufferSup.name(), partition_key, payload)
+
+        _ ->
+          # WAL mode always blocks on the local fsync tier (that IS its
+          # durability guarantee — there's no non-durable ack to skip to);
+          # mem mode blocks on the real upload only when spool_blocking_mode?.
+          DurableBuffer.append(
+            SpoolDurableBufferSup.name(),
+            partition_key,
+            payload,
+            @default_spool_append_timeout
+          )
+      end
+
+    case result do
+      :ok -> :ok
+      {:ok, _offset} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  rescue
+    # The buffer was never started (fresh boot, spool disabled) —
+    # DurableBuffer.config/1's :persistent_term lookup has nothing to find.
+    ArgumentError -> {:error, :no_spool_partition_available}
+  catch
+    # The buffer's config is registered but its partition process is gone
+    # (subtree crashed and is mid-restart) — the registry lookup resolves
+    # to a via-tuple with no live process behind it.
+    :exit, _reason -> {:error, :no_spool_partition_available}
   end
 
   # Requires an explicit opt-in (allow_spooling), not just global mode +
@@ -664,9 +748,7 @@ defmodule Logflare.Backends do
   end
 
   defp split_valid_events(source, event_params) do
-    now_us = System.system_time(:microsecond)
-    min_allowed = now_us - @max_event_age_us
-    max_allowed = now_us + @max_future_event_us
+    max_allowed = System.system_time(:microsecond) + @max_future_event_us
 
     {events, errors, total, tally} =
       for param <- event_params, reduce: {[], [], 0, %{}} do
@@ -678,9 +760,6 @@ defmodule Logflare.Backends do
             %{pipeline_error: %_{message: message}, valid: false} ->
               {events, [message | errors], total + 1, bump(tally, :rejected)}
 
-            %{body: %{"timestamp" => timestamp}} when timestamp < min_allowed ->
-              {events, errors, total + 1, bump(tally, :drop_stale)}
-
             %{body: %{"timestamp" => timestamp}} when timestamp > max_allowed ->
               {events, errors, total + 1, bump(tally, :drop_future)}
 
@@ -691,15 +770,12 @@ defmodule Logflare.Backends do
 
     emit_ingest_telemetry(tally, source)
 
-    dropped_old = Map.get(tally, :drop_stale, 0)
     dropped_future = Map.get(tally, :drop_future, 0)
-    dropped_total = dropped_old + dropped_future
 
-    if dropped_total > 0 do
+    if dropped_future > 0 do
       Logger.warning(
-        "Dropping #{dropped_total} of #{total} event(s): timestamps outside [-24h, +1h] window",
+        "Dropping #{dropped_future} of #{total} event(s): timestamps more than 1h in the future",
         source_id: source.token,
-        old_events_dropped: dropped_old,
         future_events_dropped: dropped_future,
         total_event_count: total
       )
@@ -745,18 +821,52 @@ defmodule Logflare.Backends do
     :ok
   end
 
+  # Stops routing ingest through the spool path once Health goes unhealthy,
+  # falling through to normal dispatch instead. Gated on the scope that
+  # actually backstops this mode: :wal mode's local WAL absorbs upload
+  # outages by design, so only a failing local disk should stop ingest;
+  # :mem mode has no local buffer at all, so a failing upload is the same
+  # thing as a failing commit.
   @spec spool_producer_mode?() :: boolean()
-  def spool_producer_mode?, do: spool_mode() in [:producer, :both]
+  def spool_producer_mode? do
+    spool_mode() in [:producer, :both] and SpoolHealth.healthy?(spool_health_gate_scope())
+  end
+
+  defp spool_health_gate_scope do
+    case spool_buffer() do
+      :wal -> :disk
+      :mem -> :upload
+    end
+  end
 
   @spec spool_consumer_mode?() :: boolean()
   def spool_consumer_mode?, do: spool_mode() in [:consumer, :both]
 
+  @doc """
+  Which backend the node's spool `DurableBuffer` instance commits
+  through — `:wal` (`Backends.RotatingWal`, local-disk-durable, wrapping
+  `Backends.Cloud`, default) or `:mem` (`Backends.Cloud`, straight to
+  cloud storage, never durable locally at all). Set via
+  `SPOOL_BUFFER`/`:logflare, :spool, :buffer`.
+  """
+  @spec spool_buffer() :: :wal | :mem
+  def spool_buffer,
+    do: :logflare |> Application.get_env(:spool, []) |> Keyword.get(:buffer, :wal)
+
+  @doc """
+  Whether a spoolable event should block until its batch is actually
+  committed, rather than just until it's durable in the buffer. Only
+  meaningful in `:mem` buffer mode — `:wal` mode always blocks on the
+  local fsync tier, since that's the only durability guarantee it has to
+  give. Set via `SPOOL_BLOCKING`/`:logflare, :spool, :blocking` (default
+  off).
+  """
+  @spec spool_blocking_mode?() :: boolean()
+  def spool_blocking_mode?,
+    do: :logflare |> Application.get_env(:spool, []) |> Keyword.get(:blocking, false)
+
   defp spool_mode,
     do: :logflare |> Application.get_env(:spool, []) |> Keyword.get(:mode, :disable)
-
-  defp dispatch_to_spool_producer(log_events) do
-    IngestEventQueue.add_to_table({:spool_producer, nil}, log_events)
-  end
 
   defp maybe_broadcast_and_route(source, log_events) do
     case source.metrics do
@@ -901,6 +1011,20 @@ defmodule Logflare.Backends do
   end
 
   @doc """
+  Like `via_backend/2` but adds a `label` dimension to the registry key. `nil` reuses the
+  `via_backend/2` key, so legacy/unlabeled callers are unchanged.
+  """
+  @spec via_backend(Backend.t() | non_neg_integer(), module(), String.t() | nil) ::
+          {:via, module(), term()}
+  def via_backend(%Backend{id: id}, mod, label), do: via_backend(id, mod, label)
+
+  def via_backend(backend_id, mod, nil), do: via_backend(backend_id, mod)
+
+  def via_backend(backend_id, mod, label) when is_pos_integer(backend_id) do
+    {:via, Registry, {BackendRegistry, {mod, backend_id, label}}}
+  end
+
+  @doc """
   drop in replacement for Source.Supervisor.lookup
   """
   def lookup(module, source_token) when is_atom(source_token) do
@@ -932,6 +1056,11 @@ defmodule Logflare.Backends do
   """
   @spec start_source_sup(Source.t()) :: :ok | {:error, :already_started}
   def start_source_sup(%Source{} = source) do
+    if not source_sup_started?(source), do: SourceSup.prefetch(source)
+    do_start_source_sup(source)
+  end
+
+  defp do_start_source_sup(source) do
     case DynamicSupervisor.start_child(
            {:via, PartitionSupervisor, {SourcesSup, source.id}},
            SourceSup.child_spec(source)

@@ -4,7 +4,12 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Socket do
   @type socket :: :gen_tcp.socket() | :ssl.sslsocket()
 
   # see https://www.erlang.org/doc/apps/kernel/inet#setopts/2 for details
-  @default_transport_opts mode: :binary, packet: :raw, active: true, nodelay: true
+  @default_transport_opts mode: :binary,
+                          packet: :raw,
+                          active: true,
+                          nodelay: true,
+                          send_timeout: to_timeout(second: 5),
+                          send_timeout_close: true
 
   @spec connect(map, timeout) :: {:ok, socket} | {:error, reason}
         when reason: :closed | :timeout | :inet.posix() | :ssl.reason()

@@ -29,7 +29,7 @@
         <%= cond do %>
           <% @plan.type == "metered" -> %>
             <p>
-              You're currently on the <u><%= @plan.name %> plan</u>. Review your usage below. Thanks for subscribing!
+              You're currently on the <u><%= @plan.name %> plan</u>. Thanks for subscribing!
             </p>
           <% @plan.name != "Free" -> %>
             <p>
@@ -50,19 +50,6 @@
         </p>
       <% end %>
     <% end %>
-  </div>
-  <div class="sub-form">
-    {section_header("Usage")}
-    <p>Your total log event count per day for the last 30 days.</p>
-    <.form :let={f} id="usage-form" for={@usage_form} action="#" phx-change="usage_picker">
-      {select(f, :days, [{"30 days", 30}, {"60 days", 60}, {"90 days", 90}],
-        class: "btn btn-secondary dropdown-toggle",
-        type: "button",
-        id: "dropdownMenuButton"
-      )}
-    </.form>
-    <.live_component module={LogflareWeb.BillingAccountLive.ChartComponent} id="chart" user={@user} days={30} />
-    <.live_component module={LogflareWeb.BillingAccountLive.EstimateUsageComponent} id="table" user={@user} plan={@plan} />
   </div>
   <div class="sub-form">
     {section_header("Pricing")}

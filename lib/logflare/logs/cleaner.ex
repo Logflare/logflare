@@ -24,17 +24,21 @@ defmodule Logflare.Logs.Ingest.MetadataCleaner do
 
   @spec deep_reject_nil_and_empty(map) :: map
   def deep_reject_nil_and_empty(map) when is_map(map) do
-    Enum.reduce(map, %{}, fn
-      {_, v}, acc when nil_or_empty(v) ->
-        acc
+    :maps.fold(
+      fn
+        _k, v, acc when nil_or_empty(v) ->
+          acc
 
-      {k, v}, acc when is_map(v) or is_list(v) ->
-        cleaned = deep_reject_nil_and_empty(v)
-        if nil_or_empty?(cleaned), do: acc, else: Map.put(acc, k, cleaned)
+        k, v, acc when is_map(v) or is_list(v) ->
+          cleaned = deep_reject_nil_and_empty(v)
+          if nil_or_empty?(cleaned), do: acc, else: Map.put(acc, k, cleaned)
 
-      {k, v}, acc ->
-        Map.put(acc, k, v)
-    end)
+        k, v, acc ->
+          Map.put(acc, k, v)
+      end,
+      %{},
+      map
+    )
   end
 
   def nil_or_empty?(x) when nil_or_empty(x), do: true

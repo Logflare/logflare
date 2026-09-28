@@ -11,6 +11,7 @@ defmodule Logflare.Mixfile do
       aliases: aliases(),
       deps: deps(),
       dialyzer: dialyzer(),
+      listeners: [Phoenix.CodeReloader],
       test_coverage: [tool: ExCoveralls],
       test_ignore_filters: [~r|test/profiling|, "test/bq_logs_search_seed.exs"],
       releases: [
@@ -85,7 +86,7 @@ defmodule Logflare.Mixfile do
   defp deps do
     [
       # Phoenix stuff
-      {:phoenix, "~> 1.7.14"},
+      {:phoenix, "~> 1.8.0"},
       {:phoenix_html, "~> 4.0"},
       {:phoenix_html_helpers, "~> 1.0"},
       {:phoenix_live_view, "~> 1.0.0"},
@@ -106,13 +107,15 @@ defmodule Logflare.Mixfile do
 
       # Oauth2 provider
       {:phoenix_oauth2_provider,
-       github: "Logflare/phoenix_oauth2_provider", ref: "9ab5f7b2905286d9e4a1f731ac22009553e3a048"},
+       github: "Logflare/phoenix_oauth2_provider", ref: "6a6d2778ca105adc856e67e2b512430ef00a6ac7"},
       {:ex_oauth2_provider, github: "aristamd/ex_oauth2_provider", override: true},
 
       # Ecto and DB
       {:postgrex, ">= 0.0.0"},
       {:gettext, "~> 0.11"},
       {:jason, "~> 1.0"},
+      {:ezstd, "~> 1.0"},
+      {:uuidv7, "~> 1.0"},
       {:deep_merge, "~> 1.0"},
       {:number, "~> 1.0.0"},
       {:timex, "~> 3.1"},
@@ -145,13 +148,14 @@ defmodule Logflare.Mixfile do
       {:mint, "~> 1.0"},
       {:httpoison, "~> 1.4"},
       {:poison, "~> 5.0.0", override: true},
-      {:swoosh, "~> 0.23"},
+      {:swoosh, "~> 1.0"},
       {:ex_twilio, "~> 0.8.1"},
       {:tesla, "~> 1.6"},
 
       # Concurrency and pipelines
       {:broadway, "~> 1.3"},
       {:syn, github: "Logflare/syn"},
+      {:durable_buffer, github: "chasers/durable_buffer", tag: "v0.5.0"},
 
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
@@ -208,7 +212,7 @@ defmodule Logflare.Mixfile do
 
       # Frontend
       {:phoenix_live_react, "~> 0.6"},
-      {:sql_fmt, "~> 0.4.0"},
+      {:sql_fmt, "~> 0.5.0"},
 
       # Dev
       {:dialyxir, "~> 1.1", only: [:dev, :test], runtime: false},
@@ -226,14 +230,15 @@ defmodule Logflare.Mixfile do
       # Code quality
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
       {:sobelow, "~> 0.14.1", only: [:dev, :test], runtime: false},
+      {:ex_slop, "~> 0.4", only: [:dev, :test], runtime: false},
+      {:ex_dna, "~> 1.5", only: [:dev, :test], runtime: false},
+      {:reach, "~> 2.8", only: [:dev, :test], runtime: false},
+      {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.10", only: :test},
-
-      # Charting
-      {:contex, "~> 0.3.0"},
 
       # Postgres Subscribe
       {:cainophile, github: "Logflare/cainophile", ref: "f92a552"},
-      {:open_api_spex, "~> 3.16"},
+      {:open_api_spex, "~> 3.22"},
       # required for yaml open api generation
       {:ymlr, "~> 2.0"},
       {:grpc, "~> 0.11.0"},
@@ -272,24 +277,61 @@ defmodule Logflare.Mixfile do
     [
       setup: ["deps.get", "ecto.setup", "ecto.seed"],
       # coveralls will trigger unit tests as well
-      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test --no-start"],
+      test: ["ecto.create --quiet", &migrate_quiet/1, "test --no-start"],
       "test.only": ["test --no-start"],
       "test.watch": ["test.watch --no-start"],
       "test.compile": ["compile --warnings-as-errors"],
       "test.format": ["format --check-formatted"],
       "test.security": ["sobelow --threshold high --ignore Config.HTTPS"],
+      "test.slop": ["ex_dna --max-clones 26"],
+      "test.structure": [
+        "reach.check --smells --strict --baseline .reach.baseline.json"
+      ],
+      "test.deps": ["hex.audit", "deps.audit"],
       "test.typings": ["cmd mkdir -p dialyzer", "dialyzer"],
       "test.coverage": ["coveralls"],
-      "test.coverage.ci": ["coveralls.github"],
-      "test.e2e": ["ecto.create --quiet", "ecto.migrate --quiet", "test --only feature"],
+      "test.coverage.ci": ["coveralls.lcov"],
+      "test.e2e": ["ecto.create --quiet", &migrate_quiet/1, "test --only feature"],
       lint: ["credo"],
       "lint.diff": ["credo diff main"],
       "lint.all": ["credo --strict"],
+      ci: [
+        "test.compile",
+        "test.format",
+        "lint.all",
+        "test.security",
+        "test.slop",
+        "test.structure"
+      ],
       "ecto.seed": ["run priv/repo/seeds.exs"],
-      "ecto.setup": ["ecto.create", "ecto.migrate"],
-      "ecto.reset": ["ecto.drop", "ecto.setup"]
+      "ecto.setup": ["ecto.create", &migrate/1],
+      "ecto.reset": ["ecto.drop", "ecto.setup"],
+      "ecto.rollback": [&rollback/1]
     ]
   end
+
+  # Routes `mix ecto.migrate`/`mix ecto.rollback` through `Logflare.Repo.Migrator`,
+  # so migrations honor LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS in dev/test too.
+  defp migrate(args) do
+    Mix.Task.run("app.config")
+    Mix.Task.run("ecto.migrate", inject_default_repo(args))
+  end
+
+  defp rollback(args) do
+    Mix.Task.run("app.config")
+    Mix.Task.run("ecto.rollback", inject_default_repo(args))
+  end
+
+  defp inject_default_repo(args) do
+    if "-r" in args or "--repo" in args do
+      args
+    else
+      repo = Logflare.Repo.Migrator.migration_repo_for(Logflare.Repo) |> inspect()
+      ["-r", repo | args]
+    end
+  end
+
+  defp migrate_quiet(args), do: migrate(["--quiet" | args])
 
   defp version,
     do: File.read!(Path.join(__DIR__, "VERSION")) |> String.replace("\n", "") |> String.trim()

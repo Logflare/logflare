@@ -1,0 +1,232 @@
+suite: test rollout wiring
+templates:
+  - rollout.yaml
+  - deployment.yaml
+  - service.yaml
+  - service-preview.yaml
+  - hpa.yaml
+  - configmap.yaml
+  - vm-args-configmap.yaml
+tests:
+  - it: should render a Deployment and no Rollout by default
+    asserts:
+      - isKind:
+          of: Deployment
+        template: deployment.yaml
+      - hasDocuments:
+          count: 0
+        template: rollout.yaml
+      - hasDocuments:
+          count: 0
+        template: service-preview.yaml
+
+  - it: should replace the Deployment with a Rollout when enabled
+    set:
+      rollout:
+        enabled: true
+        strategy:
+          blueGreen:
+            activeService: RELEASE-NAME-logflare
+            previewService: RELEASE-NAME-logflare-preview
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: deployment.yaml
+      - isKind:
+          of: Rollout
+        template: rollout.yaml
+      - isAPIVersion:
+          of: argoproj.io/v1alpha1
+        template: rollout.yaml
+
+  - it: should pass the strategy through verbatim
+    set:
+      rollout:
+        enabled: true
+        progressDeadlineSeconds: 900
+        revisionHistoryLimit: 5
+        strategy:
+          blueGreen:
+            activeService: RELEASE-NAME-logflare
+            previewService: RELEASE-NAME-logflare-preview
+            autoPromotionEnabled: false
+            scaleDownDelaySeconds: 120
+    asserts:
+      - equal:
+          path: spec.strategy.blueGreen.activeService
+          value: RELEASE-NAME-logflare
+        template: rollout.yaml
+      - equal:
+          path: spec.strategy.blueGreen.previewService
+          value: RELEASE-NAME-logflare-preview
+        template: rollout.yaml
+      - equal:
+          path: spec.strategy.blueGreen.autoPromotionEnabled
+          value: false
+        template: rollout.yaml
+      - equal:
+          path: spec.strategy.blueGreen.scaleDownDelaySeconds
+          value: 120
+        template: rollout.yaml
+      - equal:
+          path: spec.progressDeadlineSeconds
+          value: 900
+        template: rollout.yaml
+      - equal:
+          path: spec.revisionHistoryLimit
+          value: 5
+        template: rollout.yaml
+
+  - it: should fail when enabled without a strategy
+    set:
+      rollout:
+        enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "rollout.enabled is set but rollout.strategy is empty: supply a blueGreen or canary strategy, referencing the Services named in the chart README"
+        template: rollout.yaml
+
+  # The Rollout and the Deployment share one pod template, so a divergence here would mean the
+  # two controllers could run different pod specs.
+  - it: should give the Rollout the same pod template as the Deployment
+    set:
+      rollout:
+        enabled: true
+        strategy:
+          blueGreen:
+            activeService: RELEASE-NAME-logflare
+            previewService: RELEASE-NAME-logflare-preview
+      logflare:
+        secretRefs: [logflare-secrets]
+        certFilesSecret: logflare-cert-files
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].name
+          value: logflare
+        template: rollout.yaml
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[1].secretRef.name
+          value: logflare-secrets
+        template: rollout.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[0].valueFrom.fieldRef.fieldPath
+          value: status.podIP
+        template: rollout.yaml
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: cert-files
+            secret:
+              secretName: logflare-cert-files
+        template: rollout.yaml
+
+  - it: should keep the active Service unchanged and add a preview Service
+    set:
+      rollout:
+        enabled: true
+        strategy:
+          blueGreen:
+            activeService: RELEASE-NAME-logflare
+            previewService: RELEASE-NAME-logflare-preview
+    asserts:
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-logflare
+        template: service.yaml
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-logflare-preview
+        template: service-preview.yaml
+      - equal:
+          path: spec.ports[0].name
+          value: http
+        template: service-preview.yaml
+      - equal:
+          path: spec.ports[1].name
+          value: grpc
+        template: service-preview.yaml
+
+  - it: should point the HPA at the Rollout when enabled
+    set:
+      autoscaling:
+        enabled: true
+      rollout:
+        enabled: true
+        strategy:
+          blueGreen:
+            activeService: RELEASE-NAME-logflare
+            previewService: RELEASE-NAME-logflare-preview
+    asserts:
+      - equal:
+          path: spec.scaleTargetRef.kind
+          value: Rollout
+        template: hpa.yaml
+      - equal:
+          path: spec.scaleTargetRef.apiVersion
+          value: argoproj.io/v1alpha1
+        template: hpa.yaml
+
+  - it: should point the HPA at the Deployment by default
+    set:
+      autoscaling:
+        enabled: true
+    asserts:
+      - equal:
+          path: spec.scaleTargetRef.kind
+          value: Deployment
+        template: hpa.yaml
+      - equal:
+          path: spec.scaleTargetRef.apiVersion
+          value: apps/v1
+        template: hpa.yaml
+
+  - it: should carry extraEnv onto the Rollout as well
+    set:
+      rollout:
+        enabled: true
+        strategy:
+          blueGreen:
+            activeService: RELEASE-NAME-logflare
+            previewService: RELEASE-NAME-logflare-preview
+      extraEnv:
+        - name: RELEASE_COOKIE
+          value: "mycluster-$(POD_TEMPLATE_HASH)"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[-1].name
+          value: RELEASE_COOKIE
+        template: rollout.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[-1].value
+          value: "mycluster-$(POD_TEMPLATE_HASH)"
+        template: rollout.yaml
+
+  - it: should carry the readiness probe onto the Rollout as well
+    set:
+      rollout:
+        enabled: true
+        strategy:
+          blueGreen:
+            activeService: RELEASE-NAME-logflare
+            previewService: RELEASE-NAME-logflare-preview
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /ready
+        template: rollout.yaml
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.periodSeconds
+          value: 5
+        template: rollout.yaml
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.failureThreshold
+          value: 2
+        template: rollout.yaml
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /health
+        template: rollout.yaml
+      - equal:
+          path: spec.template.spec.terminationGracePeriodSeconds
+          value: 60
+        template: rollout.yaml

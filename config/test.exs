@@ -23,6 +23,7 @@ config :logflare, Logflare.Google,
   service_account: "logflare-dev@logflare-dev-238720.iam.gserviceaccount.com",
   compute_engine_sa: "GOOGLE_COMPUTE_ENGINE_SA",
   grafana_sa: "GOOGLE_GRAFANA_SA",
+  cloud_sql_client_sa: "GOOGLE_CLOUD_SQL_CLIENT_SA",
   api_sa: "GOOGLE_API_SA",
   cloud_build_sa: "GOOGLE_CLOUD_BUILD_SA",
   cloud_build_trigger_sa: "GOOGLE_CLOUD_BUILD_TRIGGER_SA",
@@ -38,6 +39,8 @@ config :logflare, Logflare.Repo,
   pool: Ecto.Adapters.SQL.Sandbox
 
 config :logflare, :postgres_backend_adapter, pool_size: 1
+
+config :logflare, Logflare.Repo.Migrator, replication_sets: []
 
 config :logflare, Logflare.PubSub, pool_size: 10
 

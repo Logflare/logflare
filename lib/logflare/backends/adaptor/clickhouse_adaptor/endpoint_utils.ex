@@ -78,6 +78,36 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.EndpointUtils do
   def host(_url), do: nil
 
   @doc """
+  Removes any basic auth userinfo from a URL.
+
+  ClickHouse basic auth is not supported, so credentials are dropped when config is saved
+  rather than being persisted.
+
+  ## Examples
+
+      iex> strip_credentials("http://user:pa55@cluster.example.com:8123")
+      "http://cluster.example.com:8123"
+
+      iex> strip_credentials("http://user@cluster.example.com:8123")
+      "http://cluster.example.com:8123"
+
+      iex> strip_credentials("https://cluster.example.com:8443")
+      "https://cluster.example.com:8443"
+
+      iex> strip_credentials(nil)
+      nil
+  """
+  @spec strip_credentials(url) :: url when url: term()
+  def strip_credentials(url) when is_non_empty_binary(url) do
+    case URI.parse(url) do
+      %URI{userinfo: nil} -> url
+      %URI{} = uri -> URI.to_string(%{uri | userinfo: nil})
+    end
+  end
+
+  def strip_credentials(url), do: url
+
+  @doc """
   Returns true when the URL host appears to be a ClickHouse Cloud endpoint.
 
   ## Examples

@@ -16,6 +16,8 @@ defmodule Logflare.Lql.Rules do
 
   @type lql_rule :: ChartRule.t() | FilterRule.t() | FromRule.t() | SelectRule.t()
   @type lql_rules :: [lql_rule()]
+  @type timestamp_extension_direction :: :previous | :next
+  @type timestamp_range :: %{min: NaiveDateTime.t(), max: NaiveDateTime.t()}
 
   # =============================================================================
   # Rule Type Extraction
@@ -277,6 +279,73 @@ defmodule Logflare.Lql.Rules do
   end
 
   @doc """
+  Returns the interval that satisfies all timestamp filters.
+  """
+  @spec effective_timestamp_range(lql_rules()) :: timestamp_range() | nil
+  def effective_timestamp_range(lql_rules) when is_list(lql_rules) do
+    case timestamp_filter_bounds(lql_rules) do
+      %{min: nil} -> nil
+      %{max: nil} -> nil
+      range -> range
+    end
+  end
+
+  @doc """
+  Returns the tightest lower and upper bound across all timestamp filters.
+
+  A side that no filter bounds is `nil`.
+  """
+  @spec timestamp_filter_bounds(lql_rules()) :: %{
+          min: NaiveDateTime.t() | nil,
+          max: NaiveDateTime.t() | nil
+        }
+  def timestamp_filter_bounds(lql_rules) when is_list(lql_rules) do
+    {lower_bounds, upper_bounds} =
+      lql_rules
+      |> get_timestamp_filters()
+      |> Enum.reduce({[], []}, fn filter_rule, {lower_bounds, upper_bounds} ->
+        {new_lower_bounds, new_upper_bounds} = timestamp_bounds(filter_rule)
+
+        {
+          Enum.reverse(new_lower_bounds, lower_bounds),
+          Enum.reverse(new_upper_bounds, upper_bounds)
+        }
+      end)
+
+    %{min: tightest_bound(lower_bounds, :max), max: tightest_bound(upper_bounds, :min)}
+  end
+
+  @doc """
+  Replaces timestamp filters with an absolute range extended to an event timestamp.
+  """
+  @spec extend_timestamp_range(lql_rules(), timestamp_extension_direction(), NaiveDateTime.t()) ::
+          lql_rules()
+  def extend_timestamp_range(lql_rules, direction, event_timestamp)
+      when is_list(lql_rules) and direction in [:previous, :next] and
+             is_struct(event_timestamp, NaiveDateTime) do
+    case effective_timestamp_range(lql_rules) do
+      nil ->
+        lql_rules
+
+      %{min: min, max: max} ->
+        values =
+          case direction do
+            :previous -> [event_timestamp, max]
+            :next -> [min, event_timestamp]
+          end
+
+        timestamp_rule =
+          FilterRule.build(
+            path: "timestamp",
+            operator: :range,
+            values: values
+          )
+
+        update_timestamp_rules(lql_rules, [timestamp_rule])
+    end
+  end
+
+  @doc """
   Creates new timestamp filters by jumping forward or backward in time.
 
   Takes existing timestamp filters, calculates the time difference, and creates
@@ -298,6 +367,36 @@ defmodule Logflare.Lql.Rules do
   def timestamp_filter_rule_is_shorthand?(%FilterRule{} = filter_rule) do
     FilterRule.shorthand_timestamp?(filter_rule)
   end
+
+  defp timestamp_bounds(%FilterRule{operator: :range, values: [min, max]})
+       when not is_nil(min) and not is_nil(max),
+       do: {[normalize_timestamp(min)], [normalize_timestamp(max)]}
+
+  defp timestamp_bounds(%FilterRule{operator: op, value: value})
+       when op in [:>, :>=] and not is_nil(value),
+       do: {[normalize_timestamp(value)], []}
+
+  defp timestamp_bounds(%FilterRule{operator: op, value: value})
+       when op in [:<, :<=] and not is_nil(value),
+       do: {[], [normalize_timestamp(value)]}
+
+  defp timestamp_bounds(%FilterRule{operator: :=, value: value}) when not is_nil(value),
+    do: {[normalize_timestamp(value)], [normalize_timestamp(value)]}
+
+  defp timestamp_bounds(%FilterRule{}), do: {[], []}
+
+  defp tightest_bound([], _pick), do: nil
+  defp tightest_bound(bounds, :max), do: Enum.max(bounds, NaiveDateTime)
+  defp tightest_bound(bounds, :min), do: Enum.min(bounds, NaiveDateTime)
+
+  defp normalize_timestamp(%DateTime{} = timestamp) do
+    timestamp
+    |> DateTime.shift_zone!("Etc/UTC")
+    |> DateTime.to_naive()
+  end
+
+  defp normalize_timestamp(%NaiveDateTime{} = timestamp), do: timestamp
+  defp normalize_timestamp(%Date{} = timestamp), do: NaiveDateTime.new!(timestamp, ~T[00:00:00])
 
   # =============================================================================
   # LQL Parser Warnings

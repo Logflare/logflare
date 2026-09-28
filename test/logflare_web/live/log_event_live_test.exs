@@ -8,7 +8,7 @@ defmodule LogflareWeb.LogEventLiveTest do
 
   setup %{conn: conn} do
     insert(:plan)
-    user = insert(:user)
+    user = insert(:user, preferences: build(:user_preferences, timezone: "Singapore"))
     source = insert(:source, user: user)
     insert(:source_schema, source: source)
     conn = login_user(conn, user)
@@ -33,11 +33,13 @@ defmodule LogflareWeb.LogEventLiveTest do
        TestUtils.gen_bq_response([%{"id" => le.id, "event_message" => le.body["event_message"]}])}
     end)
 
-    {:ok, _view, _html} =
+    {:ok, view, _html} =
       live(
         conn,
         ~p"/sources/#{source.id}/event?#{%{timestamp: "2024-01-10T20:13:03Z", uuid: le.id}}"
       )
+
+    assert view |> element("a", "inspect") |> render() =~ "tz=Singapore"
 
     TestUtils.retry_assert(fn ->
       assert_receive {:query, ^ref, body}

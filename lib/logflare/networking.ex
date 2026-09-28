@@ -2,7 +2,20 @@ defmodule Logflare.Networking do
   @moduledoc false
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
+  alias Logflare.Backends.Adaptor.DatadogAdaptor
   alias Logflare.SingleTenant
+
+  # Finch bounds only connect and receive. Without `send_timeout` a peer that accepts
+  # the connection and then stops reading blocks the insert inside `:gen_tcp.send`
+  # forever, wedging a batcher and leaking the connection out of the pool.
+  @clickhouse_transport_opts [
+    timeout: :timer.seconds(10),
+    send_timeout: :timer.seconds(15),
+    send_timeout_close: true
+  ]
+
+  @s3_connect_timeout :timer.seconds(5)
+  @s3_send_timeout :timer.seconds(30)
 
   def pools do
     if SingleTenant.postgres_backend?() do
@@ -14,6 +27,8 @@ defmodule Logflare.Networking do
 
   defp finch_pools(true = _postgres_backend?) do
     [
+      {Finch,
+       name: Logflare.FinchDefaultHttp1, pools: %{default: [protocols: [:http1], size: 50]}},
       {Finch,
        name: Logflare.FinchDefault,
        pools:
@@ -55,6 +70,24 @@ defmodule Logflare.Networking do
            start_pool_metrics?: true
          ]
        }},
+      # Dedicated pool for the spool producer/consumer's GCS + Pub/Sub calls.
+      {Finch,
+       name: Logflare.FinchSpool,
+       pools: %{
+         :default => [protocols: [:http1]],
+         "https://storage.googleapis.com" => [
+           protocols: [:http1],
+           size: max(base * 150, 150),
+           count: http1_count,
+           start_pool_metrics?: true
+         ],
+         "https://pubsub.googleapis.com" => [
+           protocols: [:http1],
+           size: max(base * 150, 150),
+           count: http1_count,
+           start_pool_metrics?: true
+         ]
+       }},
       {Finch,
        name: Logflare.FinchDefault,
        pools:
@@ -88,7 +121,7 @@ defmodule Logflare.Networking do
            conn_max_idle_time: 5_000,
            start_pool_metrics?: true,
            conn_opts: [
-             transport_opts: [timeout: 10_000]
+             transport_opts: @clickhouse_transport_opts
            ]
          ]
        }},
@@ -106,7 +139,21 @@ defmodule Logflare.Networking do
            conn_max_idle_time: 5_000,
            start_pool_metrics?: true,
            conn_opts: [
-             transport_opts: [timeout: 10_000]
+             transport_opts: @clickhouse_transport_opts
+           ]
+         ]
+       }},
+      {Finch,
+       name: Logflare.FinchS3,
+       pools: %{
+         default: [
+           protocols: [:http1],
+           conn_opts: [
+             transport_opts: [
+               timeout: @s3_connect_timeout,
+               send_timeout: @s3_send_timeout,
+               send_timeout_close: true
+             ]
            ]
          ]
        }}
@@ -132,28 +179,9 @@ defmodule Logflare.Networking do
   end
 
   defp all_datadog_pools do
-    %{
-      "https://http-intake.logs.datadoghq.com" => [
-        protocols: [:http1],
-        start_pool_metrics?: true
-      ],
-      "https://http-intake.logs.us3.datadoghq.com" => [
-        protocols: [:http1],
-        start_pool_metrics?: true
-      ],
-      "https://http-intake.logs.us5.datadoghq.com" => [
-        protocols: [:http1],
-        start_pool_metrics?: true
-      ],
-      "https://http-intake.logs.datadoghq.eu" => [
-        protocols: [:http1],
-        start_pool_metrics?: true
-      ],
-      "https://http-intake.logs.ap1.datadoghq.com" => [
-        protocols: [:http1],
-        start_pool_metrics?: true
-      ]
-    }
+    for origin <- DatadogAdaptor.intake_origins(), into: %{} do
+      {origin, [protocols: [:http1], start_pool_metrics?: true]}
+    end
   end
 
   defp grpc_pools do

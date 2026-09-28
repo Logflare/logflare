@@ -7,10 +7,17 @@ defmodule LogflareWeb.BackendsLive do
   import LogflareWeb.Utils, only: [stringify_changeset_errors: 1, with_team_param: 2]
 
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.HttpBased.Headers
+  alias Logflare.Backends.Adaptor.WebhookAdaptor
+  alias Logflare.Backends.Backend
   alias Logflare.Rules
   alias Logflare.Sources
+  alias LogflareWeb.Backends.ReadClusterUrlsComponent
+  alias Logflare.Backends.Adaptor.ElasticAdaptor
 
   require Logger
+
+  @header_form_key_regex ~r/^header(\d+)_(stored_key|key|value)$/
 
   embed_templates("actions/*", suffix: "_action")
   embed_templates("components/*")
@@ -35,6 +42,7 @@ defmodule LogflareWeb.BackendsLive do
       |> assign(:show_alert_form?, false)
       |> assign(:alert_options, [])
       |> assign(:form_type, nil)
+      |> assign(:elastic_transport, "filebeat")
       |> assign(:show_default_ingest_form?, false)
       |> assign(:default_ingest_sources, [])
       |> assign(:flag_multibackend, Logflare.Utils.flag("multibackend", user))
@@ -70,24 +78,26 @@ defmodule LogflareWeb.BackendsLive do
         %{"backend" => params},
         %{assigns: %{live_action: :edit}} = socket
       ) do
-    params = transform_params(params)
+    with {:ok, params} <- transform_params(params, existing_headers(socket.assigns.backend)) do
+      socket =
+        case Backends.update_backend(socket.assigns.backend, params) do
+          {:ok, backend} ->
+            socket
+            |> assign(:show_rule_form?, false)
+            |> refresh_backend(backend.id)
+            |> refresh_backends()
+            |> put_flash(:info, "Successfully updated backend")
+            |> push_patch(to: with_team_param(~p"/backends/#{backend.id}", socket.assigns.team))
 
-    socket =
-      case Backends.update_backend(socket.assigns.backend, params) do
-        {:ok, backend} ->
-          socket
-          |> assign(:show_rule_form?, false)
-          |> refresh_backend(backend.id)
-          |> refresh_backends()
-          |> put_flash(:info, "Successfully updated backend")
-          |> push_patch(to: with_team_param(~p"/backends/#{backend.id}", socket.assigns.team))
+          {:error, changeset} ->
+            message = stringify_changeset_errors(changeset)
+            put_flash(socket, :error, "Encountered error when updating backend:\n#{message}")
+        end
 
-        {:error, changeset} ->
-          message = stringify_changeset_errors(changeset)
-          put_flash(socket, :error, "Encountered error when updating backend:\n#{message}")
-      end
-
-    {:noreply, socket}
+      {:noreply, socket}
+    else
+      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+    end
   end
 
   def handle_event(
@@ -95,26 +105,28 @@ defmodule LogflareWeb.BackendsLive do
         %{"backend" => params},
         %{assigns: %{live_action: :new}} = socket
       ) do
-    params = transform_params(params)
+    with {:ok, params} <- transform_params(params) do
+      socket =
+        case Logflare.Backends.create_backend(socket.assigns.user, params) do
+          {:ok, backend} ->
+            socket
+            |> assign(:show_rule_form?, false)
+            |> assign(:backends, [backend | socket.assigns.backends])
+            |> put_flash(:info, "Successfully created backend")
+            |> push_patch(to: with_team_param(~p"/backends/#{backend.id}", socket.assigns.team))
 
-    socket =
-      case Logflare.Backends.create_backend(socket.assigns.user, params) do
-        {:ok, backend} ->
-          socket
-          |> assign(:show_rule_form?, false)
-          |> assign(:backends, [backend | socket.assigns.backends])
-          |> put_flash(:info, "Successfully created backend")
-          |> push_patch(to: with_team_param(~p"/backends/#{backend.id}", socket.assigns.team))
+          {:error, changeset} ->
+            message = stringify_changeset_errors(changeset)
 
-        {:error, changeset} ->
-          message = stringify_changeset_errors(changeset)
+            put_flash(socket, :error, "Encountered error when adding backend:\n#{message}")
+        end
 
-          put_flash(socket, :error, "Encountered error when adding backend:\n#{message}")
-      end
+      socket = refresh_backends(socket)
 
-    socket = refresh_backends(socket)
-
-    {:noreply, socket}
+      {:noreply, socket}
+    else
+      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+    end
   end
 
   def handle_event("save_rule", %{"rule" => params}, socket) do
@@ -138,7 +150,26 @@ defmodule LogflareWeb.BackendsLive do
   end
 
   def handle_event("change_form_type", %{"backend" => %{"type" => type}}, socket) do
-    {:noreply, assign(socket, form_type: type)}
+    socket =
+      socket
+      |> assign(:form_type, type)
+      |> then(fn s ->
+        if type == "elastic" do
+          assign(s, :elastic_transport, "filebeat")
+        else
+          s
+        end
+      end)
+
+    {:noreply, socket}
+  end
+
+  def handle_event(
+        "change_elastic_transport",
+        %{"backend" => %{"config" => %{"transport" => transport}}},
+        socket
+      ) do
+    {:noreply, assign(socket, :elastic_transport, transport)}
   end
 
   def handle_event(
@@ -367,23 +398,7 @@ defmodule LogflareWeb.BackendsLive do
   end
 
   defp assign_backend_types(socket) do
-    socket
-    |> assign(:backend_types, [
-      {"Webhook", :webhook},
-      {"Postgres", :postgres},
-      {"BigQuery", :bigquery},
-      {"Datadog", :datadog},
-      {"Elastic", :elastic},
-      {"Loki", :loki},
-      {"ClickHouse", :clickhouse},
-      {"Incident.io", :incidentio},
-      {"S3", :s3},
-      {"Sentry", :sentry},
-      {"Axiom", :axiom},
-      {"OTLP", :otlp},
-      {"Last9", :last9},
-      {"Syslog", :syslog}
-    ])
+    assign(socket, :backend_types, Backend.types_with_labels())
   end
 
   defp refresh_backends(socket) do
@@ -400,6 +415,7 @@ defmodule LogflareWeb.BackendsLive do
     |> assign(:backend, nil)
     |> assign(:connection_status, nil)
     |> assign(:form_type, nil)
+    |> assign(:elastic_transport, "filebeat")
   end
 
   defp refresh_backend(socket, id) do
@@ -432,46 +448,122 @@ defmodule LogflareWeb.BackendsLive do
       end)
       |> Enum.sort_by(& &1.name)
 
+    elastic_transport =
+      if backend.type == :elastic do
+        ElasticAdaptor.transport(backend.config || %{})
+      else
+        "filebeat"
+      end
+
     socket
     |> assign(:backend, backend)
     |> assign(:connection_status, nil)
     |> assign(:form_type, Atom.to_string(backend.type))
+    |> assign(:elastic_transport, elastic_transport)
     |> assign(:default_ingest_sources, default_ingest_sources)
     |> assign(:available_sources, available_sources)
   end
 
-  defp transform_params(params) do
+  @spec read_cluster_component_id(Backend.t() | nil) :: String.t()
+  defp read_cluster_component_id(%Backend{id: id}), do: "read-cluster-urls-#{id}"
+  defp read_cluster_component_id(_backend), do: "read-cluster-urls-new"
+
+  @spec transform_params(map(), map()) :: {:ok, map()} | {:error, String.t()}
+  defp transform_params(params, existing_headers \\ %{}) do
     type = params["type"]
 
-    Map.update(params, "config", nil, fn config ->
-      headers_form_keys =
-        for i <- 1..2 do
-          ["header#{i}_key", "header#{i}_value"]
-        end
+    params
+    |> Map.update("config", nil, fn config ->
+      {header_params, config} = Map.split(config, header_form_keys(config))
 
-      {headers, config} = Map.split(config, List.flatten(headers_form_keys))
-
-      headers =
-        for [form_key, form_value] <- headers_form_keys,
-            key = headers[form_key],
-            key != "",
-            value = headers[form_value],
-            into: %{} do
-          {key, value}
-        end
-
-      Map.put(config, "headers", headers)
-      |> case do
-        %{"metadata" => metadata_str} = config
-        when is_binary(metadata_str) and type == "incidentio" ->
-          metadata = parse_incidentio_metadata(metadata_str)
-          Map.put(config, "metadata", metadata)
-
-        config ->
+      config =
+        if map_size(header_params) == 0 do
           config
-      end
+        else
+          Map.put(config, "headers", build_headers(header_params, existing_headers))
+        end
+
+      transform_config_for_type(config, type)
     end)
+    |> assemble_read_clusters()
   end
+
+  @spec existing_headers(Backend.t() | nil) :: map()
+  defp existing_headers(%Backend{config: config}) when is_map(config) do
+    Headers.normalize_keys(Map.get(config, :headers) || %{})
+  end
+
+  defp existing_headers(_backend), do: %{}
+
+  @spec header_form_keys(map()) :: [String.t()]
+  defp header_form_keys(config) when is_map(config) do
+    for key <- Map.keys(config), Regex.match?(@header_form_key_regex, key), do: key
+  end
+
+  defp header_form_keys(_config), do: []
+
+  @spec build_headers(map(), map()) :: map()
+  defp build_headers(header_params, existing_headers) do
+    for index <- header_form_indexes(header_params),
+        key = header_params["header#{index}_key"],
+        is_binary(key),
+        key != "",
+        into: %{} do
+      {key, header_value(header_params, index, existing_headers)}
+    end
+  end
+
+  # Restores the stored secret for a row whose value input still holds the redaction
+  # sentinel. The lookup uses the key the row was rendered with, so renaming a key
+  # carries its stored value over instead of writing the sentinel or dropping the
+  # header. Rows the user actually edited pass through untouched.
+  @spec header_value(map(), String.t(), map()) :: term()
+  defp header_value(header_params, index, existing_headers) do
+    value = header_params["header#{index}_value"]
+    stored_key = header_params["header#{index}_stored_key"]
+
+    with true <- value == WebhookAdaptor.redacted_value(),
+         true <- is_binary(stored_key) and stored_key != "",
+         {:ok, stored_value} <- Map.fetch(existing_headers, Headers.normalize_key(stored_key)) do
+      stored_value
+    else
+      _ -> value
+    end
+  end
+
+  @spec header_form_indexes(map()) :: [String.t()]
+  defp header_form_indexes(header_params) do
+    header_params
+    |> Map.keys()
+    |> Enum.map(&Regex.run(@header_form_key_regex, &1, capture: :all_but_first))
+    |> Enum.map(fn [index, _field] -> index end)
+    |> Enum.uniq()
+  end
+
+  @spec assemble_read_clusters(map()) :: {:ok, map()} | {:error, String.t()}
+  defp assemble_read_clusters(%{"config" => config} = params) when is_map(config) do
+    if has_read_cluster_fields?(config) do
+      with {:ok, config} <- ReadClusterUrlsComponent.assemble_read_only_urls(config) do
+        {:ok, %{params | "config" => config}}
+      end
+    else
+      {:ok, params}
+    end
+  end
+
+  defp assemble_read_clusters(params), do: {:ok, params}
+
+  @spec has_read_cluster_fields?(map()) :: boolean()
+  defp has_read_cluster_fields?(config) do
+    Enum.any?(config, fn {key, _value} -> String.starts_with?(key, "read_cluster_label_") end)
+  end
+
+  defp transform_config_for_type(%{"metadata" => metadata_str} = config, "incidentio")
+       when is_binary(metadata_str) do
+    Map.put(config, "metadata", parse_incidentio_metadata(metadata_str))
+  end
+
+  defp transform_config_for_type(config, _type), do: config
 
   defp parse_incidentio_metadata(data) when is_binary(data) do
     data

@@ -319,15 +319,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
-name = "ch_compression_ex"
-version = "0.1.0"
-dependencies = [
- "cityhash-rs",
- "lz4_flex",
- "rustler",
-]
-
-[[package]]
 name = "chrono"
 version = "0.4.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -337,12 +328,6 @@ dependencies = [
  "num-traits",
  "windows-link",
 ]
-
-[[package]]
-name = "cityhash-rs"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93a719913643003b84bd13022b4b7e703c09342cd03b679c4641c7d2e50dc34d"
 
 [[package]]
 name = "const-random"
@@ -634,7 +619,9 @@ name = "mapper_ex"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "itoa",
  "rustler",
+ "serde",
  "serde_json",
 ]
 
@@ -937,9 +924,9 @@ checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
 
 [[package]]
 name = "sqlparser"
-version = "0.54.0"
+version = "0.63.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c66e3b7374ad4a6af849b08b3e7a6eda0edbd82f0fd59b57e22671bf16979899"
+checksum = "3679862809bd1f92e563cf6fd820e28f39135303668001c10331d5027183e8b4"
 dependencies = [
  "log",
  "recursive",

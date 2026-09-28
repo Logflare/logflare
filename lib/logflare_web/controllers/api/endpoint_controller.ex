@@ -85,7 +85,7 @@ defmodule LogflareWeb.Api.EndpointController do
          origin <- conn.assigns[:access_token] || user,
          query when not is_nil(query) <-
            Endpoints.get_endpoint_query_by_user_access(user, token: token),
-         {:ok, query} <- Endpoints.update_query(query, params, origin) do
+         {:ok, query} <- Endpoints.update_query(user, query, params, origin) do
       conn
       |> case do
         %{method: "PUT"} ->

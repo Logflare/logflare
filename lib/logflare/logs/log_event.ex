@@ -6,8 +6,6 @@ defmodule Logflare.LogEvent do
   import Logflare.Utils.Guards,
     only: [is_non_empty_binary: 1, is_non_negative_integer: 1, is_pos_integer: 1]
 
-  import LogflareWeb.Utils, only: [stringify_changeset_errors: 1]
-
   alias __MODULE__, as: LE
   alias __MODULE__.DayBucket
   alias __MODULE__.TypeDetection
@@ -25,7 +23,6 @@ defmodule Logflare.LogEvent do
     field :body, :map, default: %{}
     field :valid, :boolean
     field :drop, :boolean, default: false
-    field :is_from_stale_query, :boolean
     field :timestamp_inferred, :boolean, default: false
     field :ingested_at, :utc_datetime_usec
     field :source_uuid, Ecto.UUID.Atom
@@ -116,7 +113,7 @@ defmodule Logflare.LogEvent do
   def make_from_db(params, %{source: %Source{} = source}) do
     params =
       params
-      |> mapper(:log)
+      |> mapper_from_db(:log)
 
     %__MODULE__{}
     |> cast(params, [:valid, :id, :body])
@@ -129,49 +126,47 @@ defmodule Logflare.LogEvent do
   Used to make log event from user-provided parameters, for ingestion.
   """
   @spec make(%{optional(String.t()) => term}, %{source: Source.t()}) :: LE.t()
-  def make(params, %{source: source}, _opts \\ []) do
-    event_type = TypeDetection.detect(params)
-    mapped = mapper(params, event_type)
-
-    changeset =
-      %__MODULE__{}
-      |> cast(mapped, [:body, :valid])
-      |> validate_required([:body])
-
-    pipeline_error =
-      if changeset.valid?,
-        do: nil,
-        else: %LE.PipelineError{
-          stage: "changeset",
-          type: "validators",
-          message: stringify_changeset_errors(changeset)
+  def make(
+        params,
+        %{
+          source: %Source{id: source_id, token: source_uuid, name: source_name} = source
         }
+      ) do
+    event_type = TypeDetection.detect(params)
 
-    body = changeset.changes.body
-    day_bucket = DayBucket.from_microseconds(body["timestamp"])
+    %{
+      "body" => %{"id" => id, "timestamp" => timestamp} = body,
+      "timestamp_inferred" => timestamp_inferred
+    } = mapper_for_ingest(params, event_type)
 
-    le_map =
-      Map.merge(changeset.changes, %{
-        pipeline_error: pipeline_error,
-        source_id: source.id,
-        source_uuid: source.token,
-        source_name: source.name,
-        valid: changeset.valid?,
-        ingested_at: DateTime.utc_now(),
-        id: body["id"],
-        event_type: event_type,
-        timestamp_inferred: mapped["timestamp_inferred"],
-        day_bucket: day_bucket
-      })
+    day_bucket = DayBucket.from_microseconds(timestamp)
 
-    Logflare.LogEvent
-    |> struct!(le_map)
+    %__MODULE__{
+      body: body,
+      source_id: source_id,
+      source_uuid: source_uuid,
+      source_name: source_name,
+      valid: true,
+      ingested_at: DateTime.utc_now(),
+      id: id,
+      event_type: event_type,
+      timestamp_inferred: timestamp_inferred,
+      day_bucket: day_bucket
+    }
     |> transform(source)
     |> validate(source)
   end
 
-  @spec mapper(map(), TypeDetection.event_type()) :: %{String.t() => term}
-  defp mapper(params, event_type) do
+  @spec mapper_from_db(map(), TypeDetection.event_type()) :: %{String.t() => term}
+  defp mapper_from_db(params, event_type),
+    do: mapper(params, event_type, &MetadataCleaner.deep_reject_nil_and_empty/1)
+
+  @spec mapper_for_ingest(map(), TypeDetection.event_type()) :: %{String.t() => term}
+  defp mapper_for_ingest(params, event_type),
+    do: mapper(params, event_type, &clean_ingest_body/1)
+
+  @spec mapper(map(), TypeDetection.event_type(), (map() -> map())) :: %{String.t() => term}
+  defp mapper(params, event_type, clean_body) do
     # TODO: deprecate and remove `message`
     event_message = params["message"] || params["event_message"]
     id = id(params)
@@ -192,7 +187,7 @@ defmodule Logflare.LogEvent do
 
     body =
       params
-      |> MetadataCleaner.deep_reject_nil_and_empty()
+      |> clean_body.()
       |> Map.merge(base_merge)
       |> case do
         %{"message" => m, "event_message" => em} = map when m == em ->
@@ -210,8 +205,6 @@ defmodule Logflare.LogEvent do
   end
 
   @spec validate(LE.t(), Source.t()) :: LE.t()
-  defp validate(%LE{valid: false} = le, _source), do: le
-
   defp validate(%LE{valid: true} = le, source) do
     @validators
     |> Enum.reduce_while(true, fn validator, _acc ->
@@ -234,33 +227,17 @@ defmodule Logflare.LogEvent do
     end)
   end
 
-  @spec transform(LE.t(), Source.t()) :: LE.t()
-  defp transform(%LE{valid: false} = le, _source), do: le
+  @spec clean_ingest_body(map()) :: map()
+  defp clean_ingest_body(params),
+    do: IngestTransformers.transform(params, :clean_to_bigquery_column_spec)
 
-  defp transform(%LE{valid: true} = le, %Source{} = source) do
-    with {:ok, le} <- bigquery_spec(le),
-         {:ok, le} <- copy_fields(le, source),
+  @spec transform(LE.t(), Source.t()) :: LE.t()
+  defp transform(%LE{} = le, %Source{} = source) do
+    with {:ok, le} <- copy_fields(le, source),
          {:ok, le} <- kv_enrich(le, source),
          {:ok, le} <- drop_fields(le, source) do
       le
-    else
-      {:error, message} ->
-        %{
-          le
-          | valid: false,
-            pipeline_error: %LE.PipelineError{
-              stage: "transform",
-              type: "transform",
-              message: message
-            }
-        }
     end
-  end
-
-  @spec bigquery_spec(LE.t()) :: {:ok, LE.t()}
-  defp bigquery_spec(le) do
-    new_body = IngestTransformers.transform(le.body, :to_bigquery_column_spec)
-    {:ok, %{le | body: new_body}}
   end
 
   @spec copy_fields(LE.t(), Source.t()) :: {:ok, LE.t()}

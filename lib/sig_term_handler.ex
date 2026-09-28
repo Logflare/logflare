@@ -3,6 +3,8 @@ defmodule Logflare.SigtermHandler do
   @behaviour :gen_event
   require Logger
 
+  alias Logflare.Readiness
+
   defp env_grace_period,
     do:
       Application.get_env(:logflare, :sigterm_shutdown_grace_period_ms) ||
@@ -24,6 +26,8 @@ defmodule Logflare.SigtermHandler do
 
   @impl true
   def handle_event(:sigterm, state) do
+    Readiness.begin_draining()
+
     Logger.warning(
       "#{__MODULE__}: SIGTERM received: waiting for #{env_grace_period() / 1_000} seconds"
     )
@@ -37,6 +41,8 @@ defmodule Logflare.SigtermHandler do
   end
 
   def handle_event(:sigquit, state) do
+    Readiness.begin_draining()
+
     Logger.warning(
       "#{__MODULE__}: SIGQUIT received: waiting for #{env_grace_period() / 1_000} seconds"
     )

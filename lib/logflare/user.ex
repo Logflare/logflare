@@ -97,7 +97,6 @@ defmodule Logflare.User do
     field :partner_upgraded, :boolean, default: false
     field :system_monitoring, :boolean, default: false
 
-    has_many :billing_counts, Logflare.Billing.BillingCount
     has_many :sources, Source
     has_many :endpoint_queries, Logflare.Endpoints.EndpointQuery
     has_many :alert_queries, AlertQuery

@@ -1,0 +1,345 @@
+# Logflare Helm Chart
+
+Deploys single-tenant Logflare on Kubernetes, supporting either **BigQuery** or **Postgres** as the event storage backend.
+
+## Quick install
+
+```sh
+helm install logflare ./helm -f my-values.yaml
+```
+
+At minimum, `my-values.yaml` must pick a backend and supply that backend's credentials (see below).
+
+## Configuring the backend
+
+Set `logflare.backend.type` to `bigquery` or `postgres`. These modes are mutually exclusive.
+
+**BigQuery:**
+
+```yaml
+logflare:
+  backend:
+    type: bigquery
+    bigquery:
+      projectId: "my-gcp-project"
+      projectNumber: "1234567890"
+```
+
+The service account key itself is a secret — see [Loading secrets](#loading-secrets).
+
+**Postgres:**
+
+```yaml
+logflare:
+  backend:
+    type: postgres
+    postgres:
+      schema: "public"
+```
+
+The connection URL (`POSTGRES_BACKEND_URL`) is a secret and is not set here — see below.
+
+## Loading secrets
+
+**This chart never creates or owns a `Secret`.** You provision the Secret(s) yourself (e.g. via `kubectl create secret`, or via a tool like External Secrets Operator) with keys already named the way Logflare expects, and list their names in `logflare.secretRefs`. Every key in each listed Secret is injected in bulk via `envFrom`, the same way the chart's own ConfigMap is:
+
+```yaml
+logflare:
+  secretRefs:
+    - logflare-secrets
+```
+
+Unlike a per-variable mapping, this means **the Secret's key names must exactly match the env vars Logflare reads** (see the table below) — there's no renaming step. If you need to source individual vars from differently-named keys, or split them across Secrets with arbitrary key names, create multiple Secrets with the right key names upstream (e.g. via multiple `ExternalSecret` objects) and list all of them in `secretRefs`.
+
+Most deployments need at least these env vars, so your Secret(s) should contain these keys:
+
+| Env var | Notes |
+|---|---|
+| `LOGFLARE_PUBLIC_ACCESS_TOKEN` | |
+| `LOGFLARE_PRIVATE_ACCESS_TOKEN` | |
+| `DB_PASSWORD` | |
+| `LOGFLARE_DB_ENCRYPTION_KEY` | |
+| `PHX_SECRET_KEY_BASE` | e.g. `openssl rand -base64 48` |
+| `PHX_LIVE_VIEW_SIGNING_SALT` | e.g. `openssl rand -base64 8` |
+| `POSTGRES_BACKEND_URL` | postgres backend only |
+| `GOOGLE_SERVICE_ACCOUNT` | bigquery backend only, the raw service-account JSON key content |
+
+### Creating the Secret yourself
+
+```sh
+kubectl create secret generic logflare-secrets \
+  --from-literal=LOGFLARE_PUBLIC_ACCESS_TOKEN=... \
+  --from-literal=LOGFLARE_PRIVATE_ACCESS_TOKEN=... \
+  --from-literal=DB_PASSWORD=... \
+  --from-literal=LOGFLARE_DB_ENCRYPTION_KEY=... \
+  --from-literal=PHX_SECRET_KEY_BASE=... \
+  --from-literal=PHX_LIVE_VIEW_SIGNING_SALT=... \
+  --from-literal=POSTGRES_BACKEND_URL=postgresql://user:pass@host:5432/db
+  # or: --from-file=GOOGLE_SERVICE_ACCOUNT=./gcloud.json   (bigquery backend)
+```
+
+```yaml
+logflare:
+  secretRefs:
+    - logflare-secrets
+```
+
+### External Secrets Operator (ESO)
+
+[External Secrets Operator](https://external-secrets.io/) is the recommended way to run this in production: it syncs values from a real secret manager (AWS Secrets Manager, GCP Secret Manager, Vault, etc.) into a plain Kubernetes `Secret`, which this chart then references via `logflare.secretRefs`.
+
+1. **Provision an `ExternalSecret`** (outside this chart, e.g. in your cluster-config repo) that materializes the Secret this chart will consume, with keys already named to match what Logflare expects:
+
+    ```yaml
+    apiVersion: external-secrets.io/v1
+    kind: ExternalSecret
+    metadata:
+      name: logflare-secrets
+      namespace: my-namespace
+    spec:
+      secretStoreRef:
+        kind: ClusterSecretStore
+        name: aws-secrets-store
+      refreshPolicy: Periodic
+      refreshInterval: 1h
+      target:
+        name: logflare-secrets
+        creationPolicy: Owner
+        deletionPolicy: Delete
+      dataFrom:
+        - extract:
+            key: prod/logflare/secrets
+    ```
+
+    If the secrets in your secret store at `prod/logflare/secrets` don't already use Logflare's expected key names (e.g. `public_access_token` instead of `LOGFLARE_PUBLIC_ACCESS_TOKEN`), use `data:` entries with explicit `secretKey`/`remoteRef` pairs (or a templated `target.template`) instead of `dataFrom.extract`, so the resulting Secret's keys match exactly — ESO owns creation/rotation of this Secret entirely, and the chart injects whatever keys land in it verbatim.
+
+2. **List the Secret's name in `logflare.secretRefs`:**
+
+    ```yaml
+    logflare:
+      secretRefs:
+        - logflare-secrets
+    ```
+
+3. **Install/upgrade as usual** — no chart changes are needed, since the Deployment always wires every listed Secret in via `envFrom.secretRef`:
+
+    ```sh
+    helm upgrade --install logflare ./helm -f my-values.yaml
+    ```
+
+You can list multiple Secret names in `secretRefs` (e.g. one per `ExternalSecret`/upstream secret-store path) — all of their keys are injected together.
+
+#### Letting the chart render the ExternalSecrets (optional)
+
+If you already run ESO, the chart can render the `ExternalSecret` objects for you instead of you hand-writing them, so all of the deployment configuration lives in one place. This is opt-in via `externalSecrets.enabled` and requires ESO (and its CRDs) to be installed in the cluster. When it is disabled (the default) the chart renders no `ExternalSecret` and the manual flow above still applies.
+
+Point it at an existing `(Cluster)SecretStore` and list the secrets to sync. Each entry produces one `ExternalSecret`, and therefore one Kubernetes `Secret`, whose name you then reference in `logflare.secretRefs` (for env vars) or mount as files (for certificates):
+
+```yaml
+externalSecrets:
+  enabled: true
+  secretStore:
+    name: my-secret-store        # an existing ClusterSecretStore / SecretStore
+    kind: ClusterSecretStore
+  secrets:
+    - name: logflare-secrets           # env-var secrets, injected via secretRefs below
+      remotePrefix: secret/logflare
+      keys:
+        - PHX_SECRET_KEY_BASE
+        - PHX_LIVE_VIEW_SIGNING_SALT
+        - LOGFLARE_DB_ENCRYPTION_KEY
+        - DB_PASSWORD
+        - GOOGLE_SERVICE_ACCOUNT
+    - name: logflare-cert-files        # cert/key files, mounted as a volume
+      remotePrefix: secret/logflare
+      keys:
+        - db-server-ca.pem
+        - db-client-cert.pem
+        - db-client-key.pem
+
+logflare:
+  secretRefs:
+    - logflare-secrets
+
+# Mount the cert-file Secret with the chart's generic volume hooks:
+volumes:
+  - name: logflare-cert-files
+    secret:
+      secretName: logflare-cert-files
+volumeMounts:
+  - name: logflare-cert-files
+    mountPath: /etc/logflare/certs
+    readOnly: true
+```
+
+`remotePrefix` is prepended to each key, so a key of `DB_PASSWORD` reads from `secret/logflare/DB_PASSWORD` and lands in the Secret under the identical key name `DB_PASSWORD`. Omit `remotePrefix` to use each key as the remote reference verbatim.
+
+When the backend paths do not map one-to-one to key names, drop to the verbatim `data` and `dataFrom` passthroughs on an entry (they map straight onto the `ExternalSecret` spec), for example to extract a whole bundle:
+
+```yaml
+externalSecrets:
+  enabled: true
+  secretStore:
+    name: my-secret-store
+  secrets:
+    - name: logflare-secrets
+      dataFrom:
+        - extract:
+            key: secret/logflare/all
+```
+
+Per-entry `refreshInterval` and `creationPolicy` overrides are also supported; see `values.yaml` for the full set of fields. This block is ESO-specific by design, so support for other providers (for example a HashiCorp Vault Agent integration) can be added as a sibling block without disturbing it.
+
+## Progressive delivery with Argo Rollouts
+
+Set `rollout.enabled` and the chart renders an [Argo Rollouts](https://argo-rollouts.readthedocs.io/)
+`Rollout` in place of the `Deployment`, from the same pod template, so the two can never drift. This
+requires the Argo Rollouts controller and its CRDs in the cluster.
+
+Two Services are involved. The chart's existing Service keeps its name and becomes the **active**
+one, so an Ingress or anything already dialing it is unaffected. A second Service named
+`<fullname>-preview` is added for the incoming version. Argo Rollouts owns both selectors, injecting
+the pod template hash so each resolves to a single ReplicaSet.
+
+`rollout.strategy` is passed through verbatim, so the chart takes no opinion on strategy and any
+shape the installed controller understands works. A blue/green setup with manual promotion:
+
+```yaml
+rollout:
+  enabled: true
+  strategy:
+    blueGreen:
+      activeService: logflare
+      previewService: logflare-preview
+      autoPromotionEnabled: false
+      scaleDownDelaySeconds: 120
+```
+
+Verify the new version against the preview Service, then promote:
+
+```sh
+kubectl argo rollouts promote logflare
+```
+
+A canary strategy goes in the same place. If you route canary traffic through an ingress controller
+or a service mesh, add the matching `trafficRouting` block and the Services it names.
+
+When `autoscaling.enabled` is also set, the HorizontalPodAutoscaler targets the `Rollout` rather
+than the `Deployment` automatically.
+
+### Configuration that differs per version
+
+`logflare.extraConfig` renders one ConfigMap that every ReplicaSet reads, so it describes the
+release rather than the version. Changing a value edits that object in place, and a pod of the
+outgoing version that restarts for any reason then reads the incoming version's configuration. For
+most settings that is fine. For anything that partitions the cluster it is not.
+
+`RELEASE_COOKIE` is the case that matters here: `Logflare.Cluster.PostgresStrategy` uses it as the
+Postgres `LISTEN`/`NOTIFY` channel name, so two versions sharing a cookie join one Erlang cluster
+and make distributed calls to each other across the version boundary. Bind it to the ReplicaSet
+instead, with `extraEnv` and the pod template hash:
+
+```yaml
+extraEnv:
+  - name: POD_TEMPLATE_HASH
+    valueFrom:
+      fieldRef:
+        fieldPath: "metadata.labels['rollouts-pod-template-hash']"
+  - name: RELEASE_COOKIE
+    value: "mycluster-$(POD_TEMPLATE_HASH)"
+```
+
+Each ReplicaSet then forms its own cluster on its own channel. `extraEnv` is appended after the env
+vars the chart sets, and `$(VAR)` expansion only sees earlier entries, so `POD_TEMPLATE_HASH` has to
+be declared first. Outside a Rollout that label does not exist and the reference resolves to an
+empty string, so the same values stay safe with the `Deployment`.
+
+## Configurable values
+
+| `values.yaml` key | Env var | Notes |
+|---|---|---|
+| `logflare.singleTenant` | `LOGFLARE_SINGLE_TENANT` | |
+| `logflare.supabaseMode` | `LOGFLARE_SUPABASE_MODE` | |
+| `logflare.nodeHost` | `LOGFLARE_NODE_HOST` | When empty (default), the chart injects the pod IP via the downward API instead — needed for clustering, since a fixed value would collide across pods |
+| `logflare.grpcPort` | `LOGFLARE_GRPC_PORT` | |
+| `logflare.httpConnectionPools` | `LOGFLARE_HTTP_CONNECTION_POOLS` | |
+| `logflare.featureFlagOverride` | `LOGFLARE_FEATURE_FLAG_OVERRIDE` | |
+| `logflare.phx.httpPort` | `PHX_HTTP_PORT` | |
+| `logflare.phx.urlHost` | `PHX_URL_HOST` | |
+| `logflare.phx.urlScheme` | `PHX_URL_SCHEME` | |
+| `logflare.phx.urlPort` | `PHX_URL_PORT` | |
+| `logflare.phx.checkOrigin` | `PHX_CHECK_ORIGIN` | |
+| `logflare.db.hostname` | `DB_HOSTNAME` | Logflare's own metadata Postgres, distinct from the postgres event backend |
+| `logflare.db.port` | `DB_PORT` | |
+| `logflare.db.database` | `DB_DATABASE` | |
+| `logflare.db.username` | `DB_USERNAME` | |
+| `logflare.db.schema` | `DB_SCHEMA` | |
+| `logflare.db.poolSize` | `DB_POOL_SIZE` | |
+| `logflare.db.ssl` | `DB_SSL` | |
+| `logflare.backend.type` | — | `bigquery` or `postgres`, selects which of the two blocks below is rendered |
+| `logflare.backend.bigquery.projectId` | `GOOGLE_PROJECT_ID` | bigquery only |
+| `logflare.backend.bigquery.projectNumber` | `GOOGLE_PROJECT_NUMBER` | bigquery only |
+| `logflare.backend.bigquery.datasetIdAppend` | `GOOGLE_DATASET_ID_APPEND` | bigquery only |
+| `logflare.backend.bigquery.datasetLocation` | `GOOGLE_DATASET_LOCATION` | bigquery only |
+| `logflare.backend.postgres.schema` | `POSTGRES_BACKEND_SCHEMA` | postgres only |
+| `logflare.secretRefs` | see [Loading secrets](#loading-secrets) | |
+| `logflare.certFilesSecret` | — | Name of a Secret whose keys are cert filenames; mounted as files. See [Certificate files](#certificate-files) |
+| `logflare.certFilesMountPath` | `DB_SSL_*_PATH`, `LOGFLARE_TLS_*_PATH` | Mount path for `certFilesSecret`; the chart points the cert path env vars here |
+| `logflare.grpcSsl` | `LOGFLARE_ENABLE_GRPC_SSL` | Serve gRPC over TLS. Requires `certFilesSecret`. See [Certificate files](#certificate-files) |
+| `deploymentAnnotations` | — | Annotations on the Deployment object. Set `reloader.stakater.com/auto: "true"` to roll pods on ConfigMap/Secret changes (requires Stakater Reloader) |
+| `logflare.extraConfig` | (any) | Map of non-secret env vars rendered verbatim into the ConfigMap |
+| `extraEnv` | (any) | Env vars appended to the container, rendered verbatim so `valueFrom` works. For values that must differ per version rather than per release. See [Progressive delivery](#progressive-delivery-with-argo-rollouts) |
+| `rollout.enabled` | — | Render an Argo Rollouts `Rollout` in place of the `Deployment`, plus a `<fullname>-preview` Service |
+| `rollout.strategy` | — | Passed to the `Rollout` verbatim. Required when `rollout.enabled` is set |
+| `rollout.progressDeadlineSeconds` | — | Must cover a full pod start, which `startupProbe` alone allows `failureThreshold` x `periodSeconds` seconds for |
+| `rollout.revisionHistoryLimit` | — | |
+
+See `values.yaml` for the full set of generic chart values (image, service, ingress, resources, autoscaling, etc.).
+
+### Certificate files
+
+Unlike the env-var secrets loaded via `envFrom`, Logflare reads its TLS/mTLS
+material from files on disk: the internal database SSL certs (when `DB_SSL` is
+enabled) and the gRPC TLS cert/key (when `logflare.grpcSsl` is enabled).
+
+Provide these via a separate Secret whose keys are the exact filenames —
+`db-server-ca.pem`, `db-client-cert.pem`, `db-client-key.pem`, `cert.pem`,
+`cert.key` — and set `logflare.certFilesSecret` to its name. The chart mounts it
+at `logflare.certFilesMountPath` and sets `DB_SSL_CA_CERT_PATH`,
+`DB_SSL_CLIENT_CERT_PATH`, `DB_SSL_CLIENT_KEY_PATH`, `LOGFLARE_TLS_CERT_PATH`,
+and `LOGFLARE_TLS_KEY_PATH` to point at the mounted files. (The BigQuery service
+account key is handled as an env-var secret via `GOOGLE_APPLICATION_CREDENTIALS_JSON`,
+not a mounted file.)
+
+Mounting the files is not enough on its own: Logflare only reads the gRPC cert
+and key when `logflare.grpcSsl` is set, and serves plaintext gRPC otherwise. Set
+it whenever OTLP clients reach the gRPC port over a network you do not
+otherwise encrypt, since the ingest token travels in the request headers.
+
+## Verifying a deployment
+
+Render the manifests locally before installing:
+
+```sh
+helm template logflare ./helm -f my-values.yaml -f secrets-values.yaml
+```
+
+Or dry-run against a real cluster:
+
+```sh
+helm install logflare ./helm -f my-values.yaml --dry-run
+```
+
+All three probes hit the service port (default `4000`).
+
+- `livenessProbe` and `startupProbe` use `/health`, which reports node health.
+- `readinessProbe` uses `/ready`, which runs the same checks and additionally
+  fails as soon as a `SIGTERM` starts Logflare's 15 second shutdown grace
+  period, so Kubernetes drops the pod from the Service while it drains.
+- Keep `readinessProbe.periodSeconds` x `readinessProbe.failureThreshold` well
+  under that grace period, and leave liveness on `/health` so a draining pod is
+  not restarted.
+- `terminationGracePeriodSeconds` covers readiness detection, the drain, and the
+  BEAM shutdown that flushes the ingest pipelines. The kubelet `SIGKILL`s
+  whatever is still running when it expires, dropping buffered events, so the
+  chart raises it to `60` from the Kubernetes default of `30`.

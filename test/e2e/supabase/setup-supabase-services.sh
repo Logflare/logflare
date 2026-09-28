@@ -20,6 +20,39 @@ log() {
 warn() { echo -e "${GREY}[$(date +"%Y-%m-%d %H:%M:%S")]${RESET} ${YELLOW}[!]${RESET} $1"; }
 error() { echo -e "${GREY}[$(date +"%Y-%m-%d %H:%M:%S")]${RESET} ${RED}[✗]${RESET} $1"; }
 
+# Replaces (or appends) KEY=VALUE in the compose .env file. Avoids sed
+# replacement-string escaping issues with arbitrary values.
+set_env_var() {
+  local key="$1" value="$2"
+  grep -vE "^${key}=" .env > .env.tmp || true
+  mv .env.tmp .env
+  printf '%s=%s\n' "$key" "$value" >> .env
+}
+
+case "$LOGFLARE_BACKEND" in
+  postgres) ;;
+  bigquery)
+    # Only the service account key is required. GOOGLE_PROJECT_ID,
+    # GOOGLE_PROJECT_NUMBER and GOOGLE_DATASET_ID_APPEND default to the CI
+    # project/dataset via docker-compose.e2e.bigquery.yml and may be overridden
+    # via the environment. Run with e.g.:
+    #   LOGFLARE_BACKEND=bigquery \
+    #   GOOGLE_CREDENTIALS_JSON="$(cat /path/to/gcloud.json)" \
+    #   ./setup-supabase-services.sh
+    if [ -z "${GOOGLE_CREDENTIALS_JSON:-}" ]; then
+      error "LOGFLARE_BACKEND=bigquery requires: GOOGLE_CREDENTIALS_JSON"
+      exit 1
+    fi
+    ;;
+  *)
+    error "Invalid LOGFLARE_BACKEND '$LOGFLARE_BACKEND' (expected 'postgres' or 'bigquery')"
+    exit 1
+    ;;
+esac
+
+log "Using Logflare backend: $LOGFLARE_BACKEND"
+endgroup
+
 log "Cloning Supabase repository..."
 if [ -d "$SUPABASE_DIR" ]; then
   warn "Directory '$SUPABASE_DIR' exists. Removing..."
@@ -50,7 +83,56 @@ fi
 cp .env.example .env
 endgroup
 
+if [ "$LOGFLARE_BACKEND" = "bigquery" ]; then
+  log "Configuring BigQuery backend..."
+  # .env.example ships these as literal placeholders (e.g.
+  # GOOGLE_PROJECT_ID=GOOGLE_PROJECT_ID). Blank them so the non-empty
+  # placeholder doesn't shadow the ${VAR:-default} defaults baked into
+  # docker-compose.e2e.bigquery.yml. Overrides still work: a value set in the
+  # environment wins over the (now empty) .env entry during compose
+  # interpolation, so CI's per-job GOOGLE_DATASET_ID_APPEND still applies.
+  set_env_var "GOOGLE_PROJECT_ID" ""
+  set_env_var "GOOGLE_PROJECT_NUMBER" ""
+  set_env_var "GOOGLE_DATASET_ID_APPEND" ""
+
+  # Bind-mounted into the analytics container by docker-compose.e2e.bigquery.yml.
+  # Must exist before `compose up`, otherwise docker creates a directory at the
+  # mount target and Logflare boots without BigQuery credentials.
+  printf '%s' "$GOOGLE_CREDENTIALS_JSON" > gcloud.json
+  endgroup
+fi
+
 cd ../..
+
+if [ "$LOGFLARE_BACKEND" = "bigquery" ]; then
+  log "Verifying BigQuery compose overlay..."
+  # Logflare picks the Postgres backend whenever POSTGRES_BACKEND_URL is
+  # present (even empty), so the overlay's `!reset` must have removed it from
+  # the merged config. `!reset` is silently ignored when multiple earlier -f
+  # files contribute environment to the analytics service
+  # (docker/compose#11816) — assert the rendered result instead of trusting it.
+  rendered=$(compose config analytics)
+  if grep -q "POSTGRES_BACKEND_URL" <<<"$rendered"; then
+    error "POSTGRES_BACKEND_URL survived the BigQuery overlay; Logflare would boot in Postgres mode."
+    error "Check docker-compose.e2e.bigquery.yml ordering and docker/compose#11816."
+    exit 1
+  fi
+  for key in GOOGLE_PROJECT_ID GOOGLE_PROJECT_NUMBER GOOGLE_DATASET_ID_APPEND; do
+    if ! grep -q "$key" <<<"$rendered"; then
+      error "${key} missing from rendered analytics config."
+      exit 1
+    fi
+    if grep -qE "${key}[[:space:]]*[:=][[:space:]]*\"?${key}\"?" <<<"$rendered"; then
+      error "${key} resolved to its literal .env placeholder; it is shadowing the default in docker-compose.e2e.bigquery.yml."
+      exit 1
+    fi
+  done
+  if ! grep -q "gcloud.json" <<<"$rendered"; then
+    error "gcloud.json mount missing from rendered analytics config."
+    exit 1
+  fi
+  endgroup
+fi
 
 [ ! "$GITHUB_ACTIONS" = "true" ] && log "Build logflare image..." && compose build analytics
 
@@ -72,6 +154,23 @@ if ! compose up -d --wait --wait-timeout 180; then
     for svc in $exited; do
       warn "Logs for $svc:"
       compose logs --no-log-prefix "$svc"
+    done
+    endgroup
+    exit 1
+  fi
+
+  # No container exited, so something is up but unhealthy. `depends_on:
+  # service_healthy` means an unhealthy analytics container silently prevents
+  # kong from ever starting, and nothing then listens on the public port — the
+  # E2E suite fails with a wall of ERR_CONNECTION_REFUSED that says nothing
+  # about the real cause. Name the unhealthy services and dump their logs.
+  unhealthy=$(compose ps --all --format '{{.Service}} {{.Health}}' | awk '$2 == "unhealthy" || $2 == "starting" {print $1}')
+
+  if [ -n "$unhealthy" ]; then
+    error "Services failed their healthcheck: $unhealthy"
+    for svc in $unhealthy; do
+      warn "Logs for $svc:"
+      compose logs --no-log-prefix --tail 100 "$svc"
     done
     endgroup
     exit 1
@@ -154,6 +253,35 @@ for source in "${SOURCES[@]}"; do
 done
 
 log "All ${#SOURCES[@]} Logflare sources seeded and accepting events."
+endgroup
+
+log "Waiting for the API gateway to answer on the host..."
+
+# The probe above runs `curl` *inside* the analytics container, so it stays
+# green even when kong never started and nothing is published to the host.
+# Playwright talks to kong from the host, so check that path explicitly rather
+# than letting every test fail with ERR_CONNECTION_REFUSED.
+KONG_HTTP_PORT=$(grep -E '^KONG_HTTP_PORT=' "$ENV_FILE" | head -1 | cut -d= -f2-)
+KONG_HTTP_PORT="${KONG_HTTP_PORT:-8000}"
+GATEWAY_URL="http://127.0.0.1:${KONG_HTTP_PORT}/"
+
+DEADLINE=$((SECONDS + 60))
+while true; do
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$GATEWAY_URL" 2>/dev/null) || code="000"
+  # Any HTTP response means kong is listening; 401 is expected (dashboard auth).
+  [ "$code" != "000" ] && break
+
+  if [ "$SECONDS" -gt "$DEADLINE" ]; then
+    error "API gateway not reachable at $GATEWAY_URL after 60s."
+    warn  "kong is likely not running — check its depends_on targets above."
+    compose ps --all
+    endgroup
+    exit 1
+  fi
+  sleep 1
+done
+
+log "API gateway is reachable at ${CYAN}${GATEWAY_URL}${RESET} (HTTP $code)."
 endgroup
 
 log "Supabase stack is up! Access Supabase studio via ${CYAN}http://localhost:8000${RESET}"

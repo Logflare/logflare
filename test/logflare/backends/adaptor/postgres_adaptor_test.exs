@@ -37,6 +37,37 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
     %{backend: backend, source: source, postgres_url: url}
   end
 
+  describe "sanitize_config_for_display/1" do
+    test "masks credentials embedded in the connection url" do
+      config = %{url: "postgresql://user:secret123@localhost:5432/dbname"}
+
+      assert %{url: "postgresql://user:REDACTED@localhost:5432/dbname"} =
+               PostgresAdaptor.sanitize_config_for_display(config)
+    end
+
+    test "masks credential fields while preserving connection details" do
+      config = %{
+        hostname: "localhost",
+        username: "user",
+        password: "secret123",
+        database: "db",
+        schema: "public",
+        port: 5432,
+        pool_size: 5
+      }
+
+      assert %{
+               hostname: "localhost",
+               username: "**********",
+               password: "**********",
+               database: "db",
+               schema: "public",
+               port: 5432,
+               pool_size: 5
+             } == PostgresAdaptor.sanitize_config_for_display(config)
+    end
+  end
+
   describe "redact_config/1" do
     test "redacts password in URL" do
       config = %{url: "postgresql://user:secret123@localhost:5432/dbname"}

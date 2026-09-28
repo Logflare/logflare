@@ -17,6 +17,7 @@ defmodule Logflare.BigQuery.PipelineTest do
   alias Logflare.Repo
   alias Logflare.Sources.Source.BigQuery.Pipeline
   alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.BigQuery.SchemaMetrics
   alias Logflare.User
 
   @pipeline_name :test_pipeline
@@ -197,6 +198,43 @@ defmodule Logflare.BigQuery.PipelineTest do
       assert IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) == nil
       assert IngestEventQueue.list_recent_events({source.id, backend.id}, 10) == []
       assert IngestEventQueue.list_recent_events({source.id, nil}, 10) == []
+    end
+
+    test "ack decrements each producer's in-flight count without requiring grouped messages", %{
+      source: source
+    } do
+      backend = insert(:backend, user_id: source.user_id, type: :bigquery)
+      ack_ref = {{source.id, backend.id, self()}, %{max_retries: 0}}
+      generation_tid = :ets.new(:bq_ack_in_flight, [:set])
+      first_ref = :atomics.new(1, signed: false)
+      second_ref = :atomics.new(1, signed: false)
+      :atomics.put(first_ref, 1, 2)
+      :atomics.put(second_ref, 1, 2)
+
+      messages =
+        build_ack_messages(
+          ack_ref,
+          generation_tid,
+          [first_ref, first_ref, second_ref, nil, second_ref]
+        )
+
+      Pipeline.ack(ack_ref, messages, [])
+
+      assert :atomics.get(first_ref, 1) == 0
+      assert :atomics.get(second_ref, 1) == 0
+    end
+
+    test "ack decrements in-flight counts for failed messages", %{source: source} do
+      backend = insert(:backend, user_id: source.user_id, type: :bigquery)
+      ack_ref = {{source.id, backend.id, self()}, %{max_retries: 0}}
+      generation_tid = :ets.new(:bq_failed_ack_in_flight, [:set])
+      in_flight_ref = :atomics.new(1, signed: false)
+      :atomics.put(in_flight_ref, 1, 2)
+      messages = build_ack_messages(ack_ref, generation_tid, [in_flight_ref, in_flight_ref])
+
+      capture_log(fn -> Pipeline.ack(ack_ref, [], messages) end)
+
+      assert :atomics.get(in_flight_ref, 1) == 0
     end
 
     test "handle_batch emits ingest telemetry with resolved labels when source has labels", %{
@@ -748,21 +786,6 @@ defmodule Logflare.BigQuery.PipelineTest do
       [user: user, context: %{backend_id: nil}]
     end
 
-    test "uses the freshest local rate for schema sampling" do
-      assert {probability, :normal} =
-               Pipeline.schema_sampling_probability(%{average_rate: 2, last_rate: 100})
-
-      assert_in_delta probability, 0.01, 0.000001
-    end
-
-    test "identifies zero-rate and probability-floor sampling" do
-      assert Pipeline.schema_sampling_probability(%{average_rate: 0, last_rate: 0}) ==
-               {1.0, :zero_rate}
-
-      assert Pipeline.schema_sampling_probability(%{average_rate: 200_000, last_rate: 0}) ==
-               {0.00001, :floor}
-    end
-
     test "skips schema update when the passed source has lock_schema set", %{
       user: user,
       context: context
@@ -789,8 +812,24 @@ defmodule Logflare.BigQuery.PipelineTest do
         :ok
       end)
 
+      SchemaMetrics.reset()
+      handler_id = "pipeline-schema-sample-#{System.unique_integer()}"
+
+      :telemetry.attach(
+        handler_id,
+        [:logflare, :bigquery, :schema, :report],
+        fn _, counts, _, pid ->
+          send(pid, {:sample_counts, counts})
+        end,
+        self()
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
       assert ^le = Pipeline.process_data(le, context, source)
       assert_received :schema_updated
+      assert :ok = SchemaMetrics.report()
+      assert_receive {:sample_counts, %{samples_selected: 1, samples_selected_zero_rate: 1}}
     end
 
     test "caps pending sampled updates across processor calls", %{
@@ -836,6 +875,28 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       assert ^le = Pipeline.process_data(le, context, nil)
     end
+  end
+
+  defp build_ack_messages(ack_ref, generation_tid, in_flight_refs) do
+    in_flight_refs
+    |> Enum.with_index()
+    |> Enum.map(fn {in_flight_ref, index} ->
+      pointer = %LogEventPointer{
+        id: index,
+        tid: generation_tid,
+        gen_event_id: make_ref(),
+        queue_tid: generation_tid,
+        size: 1,
+        retries: 0,
+        event_type: :log,
+        day_bucket: 0
+      }
+
+      %Message{
+        data: pointer,
+        acknowledger: {Pipeline, ack_ref, %{in_flight_ref: in_flight_ref}}
+      }
+    end)
   end
 
   defp run_pipeline_benchmark(name, batch) do

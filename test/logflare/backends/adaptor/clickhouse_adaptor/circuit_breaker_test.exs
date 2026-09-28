@@ -90,6 +90,50 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreakerTest do
     end
   end
 
+  describe "open telemetry" do
+    setup do
+      TestUtils.attach_forwarder([:logflare, :clickhouse, :circuit_breaker, :open])
+
+      :ok
+    end
+
+    test "emits the failure count and :threshold reason when tripped by the threshold", %{
+      backend: backend
+    } do
+      start_supervised!({CircuitBreaker, backend})
+
+      record_failures(backend, 3)
+      CircuitBreaker.get_state(backend)
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :circuit_breaker, :open],
+                      %{failures: 3}, metadata}
+
+      assert metadata.backend_id == backend.id
+      assert metadata.reason == :threshold
+    end
+
+    test "emits a :forced reason when opened by trip/1", %{backend: backend} do
+      start_supervised!({CircuitBreaker, backend})
+
+      assert :ok = CircuitBreaker.trip(backend)
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :circuit_breaker, :open],
+                      %{failures: 0}, metadata}
+
+      assert metadata.backend_id == backend.id
+      assert metadata.reason == :forced
+    end
+
+    test "does not emit while the breaker stays closed", %{backend: backend} do
+      start_supervised!({CircuitBreaker, backend})
+
+      record_failures(backend, 2)
+      CircuitBreaker.get_state(backend)
+
+      refute_received {:telemetry_event, [:logflare, :clickhouse, :circuit_breaker, :open], _, _}
+    end
+  end
+
   describe "fail-safe on process death" do
     test "reads as closed after the breaker process crashes", %{backend: backend} do
       pid = start_supervised!({CircuitBreaker, backend})

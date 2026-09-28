@@ -44,7 +44,15 @@ fn parse(dialect_str: &str, query: &str) -> NifResult<Response> {
 
 #[rustler::nif]
 fn to_string(json: &str) -> NifResult<Response> {
-    let nodes: Vec<sqlparser::ast::Statement> = serde_json::from_str(json).unwrap();
+    let nodes: Vec<sqlparser::ast::Statement> = match serde_json::from_str(json) {
+        Ok(nodes) => nodes,
+        Err(e) => {
+            return Ok(Response {
+                status: atoms::error(),
+                message: e.to_string(),
+            })
+        }
+    };
 
     let mut parts = vec![];
     for node in nodes {

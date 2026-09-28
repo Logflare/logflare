@@ -1,0 +1,18 @@
+{{- if .Values.rollout.enabled }}
+{{/*
+Target of the Rollout's previewService. Argo Rollouts owns this Service's selector,
+injecting the pod template hash so it resolves to the new ReplicaSet alone.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "logflare.fullname" . }}-preview
+  labels:
+    {{- include "logflare.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    {{- include "logflare.servicePorts" . | nindent 4 }}
+  selector:
+    {{- include "logflare.selectorLabels" . | nindent 4 }}
+{{- end }}

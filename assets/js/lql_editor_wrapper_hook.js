@@ -15,6 +15,32 @@ const parseSuggestedSearches = (suggestedSearchesJson) => {
   return JSON.parse(suggestedSearchesJson);
 };
 
+const FIELD_NAME_PATTERN = /^fields\[(.+)\]$/;
+
+export const trimFieldInput = (input) => {
+  const match = input?.name?.match?.(FIELD_NAME_PATTERN);
+
+  if (!match) return null;
+
+  input.value = input.value.trim();
+
+  return { name: match[1], value: input.value };
+};
+
+export const collectTrimmedFields = (inputs) => {
+  const fields = {};
+
+  inputs.forEach((input) => {
+    const field = trimFieldInput(input);
+
+    if (field) {
+      fields[field.name] = field.value;
+    }
+  });
+
+  return fields;
+};
+
 const LqlEditorWrapper = {
   mounted() {
     this._schemaFields = parseSchemaFields(this.el.dataset.schemaFieldsJson);
@@ -23,11 +49,27 @@ const LqlEditorWrapper = {
     );
     this._completionDisposable = null;
     this._editor = null;
+    this._editorDomNode = null;
     this._editorDisposables = [];
     this._pendingServerValue = null;
     this._lastServerQuerystring = this.el.dataset.querystring ?? "";
-    this._handleSubmitRequest = () => {
-      this.submitSearch();
+    this._triggerAiAssist = () => {
+      this.searchControl()?.querySelector("#ai-search-button")?.click();
+    };
+    this._handleEditorKeydown = (event) => {
+      if (event.key !== "Tab") return;
+
+      const suggestionsVisible = this._editorDomNode?.querySelector(
+        ".suggest-widget.visible"
+      );
+
+      // allow tab out of Monaco when no suggestions are visible
+      if (!suggestionsVisible) {
+        event.stopImmediatePropagation();
+      }
+    };
+    this._handleFieldFocusOut = (event) => {
+      trimFieldInput(event.target);
     };
     this._handleEditorMounted = (event) => {
       const { editor } = event.detail;
@@ -39,6 +81,12 @@ const LqlEditorWrapper = {
 
       this.disposeEditorBindings();
       this._editor = standaloneEditor;
+      this._editorDomNode = standaloneEditor.getDomNode();
+      this._editorDomNode?.addEventListener(
+        "keydown",
+        this._handleEditorKeydown,
+        true
+      );
       this.applyPendingEditorValue();
 
       const monaco = window.monaco;
@@ -66,6 +114,10 @@ const LqlEditorWrapper = {
         "!suggestWidgetVisible"
       );
 
+      standaloneEditor.addCommand(
+        monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, this._triggerAiAssist
+      );
+
       this._editorDisposables = [
         standaloneEditor.onDidChangeModelContent(() => {}),
         standaloneEditor.onDidFocusEditorText(() => {
@@ -77,8 +129,15 @@ const LqlEditorWrapper = {
       ];
     };
 
-    this.el.addEventListener("lql:submit", this._handleSubmitRequest);
+    this.el.addEventListener("lql:submit", () => this.submitSearch());
+    this.el.addEventListener("lql:ai-submit", () => this.submitAiSearch());
     this.el.addEventListener("lme:editor_mounted", this._handleEditorMounted);
+
+    this._fieldsContainer = this.searchControl();
+    this._fieldsContainer?.addEventListener(
+      "focusout",
+      this._handleFieldFocusOut
+    );
   },
 
   updated() {
@@ -139,22 +198,19 @@ const LqlEditorWrapper = {
     }
   },
 
+  searchControl() {
+    return (
+      this.el.closest("#source-logs-search-control") || this.el.parentElement
+    );
+  },
+
   collectRecommendedFields() {
-    const searchControl =
-      this.el.closest("#source-logs-search-control") || this.el.parentElement;
-    const fields = {};
+    const inputs =
+      this.searchControl()?.querySelectorAll(
+        '#recommended_fields input[name^="fields["]'
+      ) ?? [];
 
-    searchControl
-      ?.querySelectorAll('#recommended_fields input[name^="fields["]')
-      .forEach((input) => {
-        const match = input.name.match(/^fields\[(.+)\]$/);
-
-        if (match) {
-          fields[match[1]] = input.value;
-        }
-      });
-
-    return fields;
+    return collectTrimmedFields(inputs);
   },
 
   submitSearch() {
@@ -166,7 +222,23 @@ const LqlEditorWrapper = {
     });
   },
 
+  submitAiSearch() {
+    const querystring = this._editor?.getValue?.() ?? "";
+
+    this.pushEvent("start_ai_search", {
+      querystring,
+      fields: this.collectRecommendedFields(),
+    });
+  },
+
   disposeEditorBindings() {
+    this._editorDomNode?.removeEventListener(
+      "keydown",
+      this._handleEditorKeydown,
+      true
+    );
+    this._editorDomNode = null;
+
     this._editorDisposables.forEach((disposable) => disposable?.dispose?.());
     this._editorDisposables = [];
 
@@ -178,6 +250,12 @@ const LqlEditorWrapper = {
 
   destroyed() {
     this.disposeEditorBindings();
+
+    this._fieldsContainer?.removeEventListener(
+      "focusout",
+      this._handleFieldFocusOut
+    );
+    this._fieldsContainer = null;
   },
 };
 

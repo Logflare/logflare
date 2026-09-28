@@ -1,27 +1,20 @@
 defmodule Logflare.Backends.Spool.MemoryMonitor do
   @moduledoc """
-  Periodically samples system memory pressure and publishes cheap-to-read
-  stats for both the spool producer's batch splitter and the spool
-  consumer's queue producer. Also tracks the set of sources the spool
-  consumer has ever seen and reports whether any of their destination ingest
-  buffers are backed up, so the consumer can pause (`consumer_throttled?/0`)
-  instead of piling more events into an already-overflowing queue. Sources
-  stay watched permanently once registered — no TTL/expiry — until they no
-  longer resolve to a real source.
-
-  Mirrors `Logflare.LogEvent.DayBucket`'s pattern: a GenServer refreshes a
-  `:persistent_term` on a timer, so hot-path readers pay only the cost of a
-  `:persistent_term.get/1` (no GC, no locking) rather than repeating the
-  underlying `:erlang.memory/1` + `:memsup` computation themselves.
-
-  Started once, shared by both sides — see `Logflare.Backends.Supervisor`.
+  Tracks system memory pressure and destination-backlog status for the
+  spool producer and consumer. A GenServer refreshes a read-optimized ETS
+  cache on a timer; hot-path readers just read the cache.
   """
 
   use GenServer
 
   alias Logflare.Backends
 
-  @pt_key {__MODULE__, :stats}
+  @table __MODULE__
+  @seen_sources_table __MODULE__.SeenSources
+  @cache_key :stats
+  @throttled_position 2
+  @consumer_throttled_position 3
+  @stats_position 4
   @refresh_interval 1_000
   @default_memory_limit_percent 0.70
   @default_max_ets_percent 0.25
@@ -35,47 +28,43 @@ defmodule Logflare.Backends.Spool.MemoryMonitor do
           consumer_throttled?: boolean()
         }
 
-  @doc """
-  Returns whether the spool should be treated as under memory pressure
-  right now. Reads a cached value refreshed roughly every second; falls
-  back to a live computation if the cache hasn't been seeded yet (e.g. a
-  read racing this GenServer's own boot).
-  """
+  @doc "Whether the spool should be treated as under memory pressure right now."
   @spec throttled?() :: boolean()
-  def throttled?, do: stats().throttled?
+  def throttled? do
+    :ets.lookup_element(@table, @cache_key, @throttled_position)
+  rescue
+    ArgumentError -> compute_stats(MapSet.new()).throttled?
+  end
 
-  @doc """
-  Returns whether any registered spool consumer source has a backed-up
-  destination ingest buffer right now. Same caching/fallback behavior as
-  `throttled?/0`.
-  """
+  @doc "Whether any registered spool consumer source has a backed-up destination ingest buffer right now."
   @spec consumer_throttled?() :: boolean()
-  def consumer_throttled?, do: stats().consumer_throttled?
+  def consumer_throttled? do
+    :ets.lookup_element(@table, @cache_key, @consumer_throttled_position)
+  rescue
+    ArgumentError -> compute_stats(MapSet.new()).consumer_throttled?
+  end
 
-  @doc """
-  Returns the full stats map behind `throttled?/0` and `consumer_throttled?/0`
-  — the raw ratios and configured limits, for diagnostic logging. Same
-  caching/fallback behavior as `throttled?/0`.
-  """
+  @doc "The full stats map behind `throttled?/0` and `consumer_throttled?/0`."
   @spec stats() :: stats()
   def stats do
-    :persistent_term.get(@pt_key)
+    :ets.lookup_element(@table, @cache_key, @stats_position)
   rescue
     ArgumentError -> compute_stats(MapSet.new())
   end
 
   @doc """
-  Registers a source as currently active in the spool consumer, so the next
-  refresh cycle checks its destination buffer for backlog. Cheap/async and
-  idempotent — registering an already-registered source is a no-op. Stays
-  watched permanently (no expiry) until it no longer resolves to a real
-  source. Callers that see the same sources repeatedly (e.g. `QueueProducer`)
-  should track what they've already sent and skip redundant casts rather
-  than registering on every single record.
+  Registers a source as currently active in the spool consumer, so the
+  next refresh cycle checks its destination buffer for backlog. Safe to
+  call unconditionally and concurrently — a plain atomic ETS write, no
+  GenServer call/cast involved.
   """
   @spec register_source(pos_integer()) :: :ok
   def register_source(source_id) do
-    GenServer.cast(__MODULE__, {:register_source, source_id})
+    :ets.insert_new(@seen_sources_table, {source_id})
+    :ok
+  rescue
+    # Table doesn't exist yet — MemoryMonitor isn't started.
+    ArgumentError -> :ok
   end
 
   @spec start_link(keyword()) :: GenServer.on_start()
@@ -85,30 +74,38 @@ defmodule Logflare.Backends.Spool.MemoryMonitor do
 
   @impl GenServer
   def init(_opts) do
-    {:ok, %{registered_sources: MapSet.new()}, {:continue, :refresh}}
+    :ets.new(@table, [:named_table, :set, :protected, read_concurrency: true])
+
+    :ets.new(@seen_sources_table, [
+      :public,
+      :named_table,
+      :set,
+      write_concurrency: true,
+      read_concurrency: true
+    ])
+
+    {:ok, %{}, {:continue, :refresh}}
   end
 
   @impl GenServer
   def handle_continue(:refresh, state) do
-    refresh(state)
+    refresh()
     schedule_refresh()
     {:noreply, state}
   end
 
   @impl GenServer
   def handle_info(:refresh, state) do
-    refresh(state)
+    refresh()
     schedule_refresh()
     {:noreply, state}
   end
 
-  @impl GenServer
-  def handle_cast({:register_source, source_id}, state) do
-    {:noreply, %{state | registered_sources: MapSet.put(state.registered_sources, source_id)}}
-  end
+  defp refresh do
+    registered_sources =
+      Enum.map(:ets.tab2list(@seen_sources_table), fn {source_id} -> source_id end)
 
-  defp refresh(state) do
-    stats = compute_stats(state.registered_sources)
+    stats = compute_stats(registered_sources)
 
     :telemetry.execute(
       [:logflare, :backends, :spool, :throttled],
@@ -121,7 +118,10 @@ defmodule Logflare.Backends.Spool.MemoryMonitor do
       %{}
     )
 
-    :persistent_term.put(@pt_key, stats)
+    :ets.insert(
+      @table,
+      {@cache_key, stats.throttled?, stats.consumer_throttled?, stats}
+    )
   end
 
   defp compute_stats(registered_sources) do

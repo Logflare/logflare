@@ -341,24 +341,139 @@ defmodule Logflare.Billing do
       Partners.user_upgraded?(user) ->
         get_plan_by(name: "Enterprise")
 
-      user.billing_enabled == false ->
+      true ->
+        billing_account = user.billing_enabled && get_billing_account_by(user_id: user.id)
+        resolve_plan(user.billing_enabled, billing_account, &get_plan_by/1)
+    end
+  end
+
+  @doc """
+  Bulk-resolves plans for a list of users in a bounded number of queries.
+
+  Equivalent to calling `get_plan_by_user/1` for each user, but batches the
+  `partner_users` and `billing_accounts` lookups instead of issuing one query
+  per user. Reuses an already-preloaded `:billing_account` association when
+  present instead of re-querying it.
+  """
+  @spec get_plans_by_users([User.t()]) :: %{optional(pos_integer()) => Plan.t()}
+  def get_plans_by_users(users) when is_list(users) do
+    if SingleTenant.single_tenant?() do
+      plan = get_plan_by(name: "Enterprise")
+      Map.new(users, &{&1.id, plan})
+    else
+      plans = list_plans()
+      plan_finder = &find_plan_in(plans, &1)
+      upgraded_ids = fetch_upgraded_user_ids(users)
+      billing_accounts_by_user_id = fetch_billing_accounts_by_user_id(users)
+
+      Map.new(users, fn user ->
+        billing_account = resolve_billing_account(user, billing_accounts_by_user_id)
+        plan = resolve_user_plan(user, billing_account, upgraded_ids, plan_finder)
+        {user.id, plan}
+      end)
+    end
+  end
+
+  defp upgraded?(%User{partner_upgraded: upgraded?}, _upgraded_ids) when is_boolean(upgraded?),
+    do: upgraded?
+
+  defp upgraded?(%User{id: id}, upgraded_ids), do: MapSet.member?(upgraded_ids, id)
+
+  defp resolve_billing_account(user, billing_accounts_by_user_id) do
+    if Ecto.assoc_loaded?(user.billing_account) do
+      user.billing_account
+    else
+      Map.get(billing_accounts_by_user_id, user.id)
+    end
+  end
+
+  defp resolve_user_plan(user, billing_account, upgraded_ids, plan_finder) do
+    if upgraded?(user, upgraded_ids) do
+      plan_finder.(name: "Enterprise")
+    else
+      resolve_plan(user.billing_enabled, billing_account, plan_finder)
+    end
+  end
+
+  defp fetch_upgraded_user_ids(users) do
+    case users |> Enum.reject(&is_boolean(&1.partner_upgraded)) |> Enum.map(& &1.id) do
+      [] ->
+        MapSet.new()
+
+      pending_ids ->
+        from(pu in "partner_users",
+          where: pu.user_id in ^pending_ids and pu.upgraded == true,
+          select: pu.user_id
+        )
+        |> Repo.all()
+        |> MapSet.new()
+    end
+  end
+
+  defp fetch_billing_accounts_by_user_id(users) do
+    case users |> Enum.reject(&Ecto.assoc_loaded?(&1.billing_account)) |> Enum.map(& &1.id) do
+      [] ->
+        %{}
+
+      missing_ids ->
+        from(ba in BillingAccount, where: ba.user_id in ^missing_ids)
+        |> Repo.all()
+        |> Map.new(&{&1.user_id, &1})
+    end
+  end
+
+  # Shared with `get_plan_by_user/1`: resolves the non-upgraded, non-single-tenant
+  # branch of plan lookup. `plan_finder` abstracts over the underlying plan source
+  # (a DB query for the single-user path, an in-memory list for the bulk path).
+  defp resolve_plan(billing_enabled, billing_account, plan_finder) do
+    cond do
+      billing_enabled == false ->
         legacy_plan()
 
-      user.billing_enabled ->
-        case Billing.get_billing_account_by(user_id: user.id) do
+      billing_enabled ->
+        case billing_account do
           nil ->
-            get_plan_by(name: "Free")
+            plan_finder.(name: "Free")
 
-          %Billing.BillingAccount{lifetime_plan: true} ->
-            get_plan_by(name: "Lifetime")
+          %BillingAccount{lifetime_plan: true} ->
+            plan_finder.(name: "Lifetime")
 
-          %Billing.BillingAccount{stripe_subscriptions: nil} ->
-            get_plan_by(name: "Free")
+          %BillingAccount{stripe_subscriptions: nil} ->
+            plan_finder.(name: "Free")
 
           billing_account ->
-            get_plan_from_billing_account(billing_account)
+            resolve_stripe_plan(billing_account, plan_finder)
         end
     end
+  end
+
+  defp resolve_stripe_plan(billing_account, plan_finder) do
+    case get_billing_account_stripe_plan(billing_account) do
+      nil ->
+        plan_finder.(name: "Free")
+
+      stripe_plan ->
+        plan_finder.(stripe_id: stripe_plan["id"])
+    end
+  end
+
+  defp find_plan_in(plans, name: "Free" = name) do
+    Enum.find(plans, &(&1.name == name)) ||
+      raise "No Free Plan created yet in database."
+  end
+
+  defp find_plan_in(plans, kw) do
+    Enum.find(plans, fn plan -> Enum.all?(kw, fn {k, v} -> Map.get(plan, k) == v end) end) ||
+      warn_and_fallback_to_free(plans, kw)
+  end
+
+  defp warn_and_fallback_to_free(plans, kw) do
+    Logger.warning(
+      "Customer is on a Stripe plan which doesn't exist in our plan list, defaulting to Free",
+      plan_lookup: kw
+    )
+
+    find_plan_in(plans, name: "Free")
   end
 
   @doc "Creates a plan."
@@ -404,14 +519,4 @@ defmodule Logflare.Billing do
 
   @spec cost_estimate(Plan.t(), pos_integer()) :: pos_integer()
   def cost_estimate(%Plan{price: price}, usage), do: price * usage
-
-  defp get_plan_from_billing_account(billing_account) do
-    case Billing.get_billing_account_stripe_plan(billing_account) do
-      nil ->
-        get_plan_by(name: "Free")
-
-      stripe_plan ->
-        get_plan_by(stripe_id: stripe_plan["id"])
-    end
-  end
 end
