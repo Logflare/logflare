@@ -24,6 +24,7 @@ defmodule LogflareWeb.CoreComponents do
   attr :prompt_hidden, :boolean, default: false
   attr :options, :list, required: true
   attr :class, :any, default: "form-control mt-1 form-control-sm"
+  attr :multiple, :boolean, default: false
 
   attr :rest, :global, include: ~w(disabled)
 
@@ -35,7 +36,7 @@ defmodule LogflareWeb.CoreComponents do
 
   def select(assigns) do
     ~H"""
-    <select id={@id} name={@name} class={@class} {@rest}>
+    <select id={@id} name={@name} class={@class} multiple={@multiple} {@rest}>
       <option :if={@prompt} value="" hidden={@prompt_hidden}>{@prompt}</option>
       {Form.options_for_select(@options, @value)}
     </select>
@@ -57,6 +58,7 @@ defmodule LogflareWeb.CoreComponents do
   attr :options, :list, required: true
   attr :class, :any, default: nil
   attr :empty_text, :string, default: "No options found."
+  attr :multiple, :boolean, default: false
   attr :rest, :global, include: ~w(disabled)
 
   def combobox(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
@@ -71,7 +73,7 @@ defmodule LogflareWeb.CoreComponents do
 
     ~H"""
     <div id={"#{@id}-combobox"} class="tw-w-full [&:has(input[role=combobox])>select]:tw-hidden" data-combobox-empty-text={@empty_text} data-combobox-prompt={@prompt} phx-hook="Combobox">
-      <.select id={@id} name={@name} value={@value} prompt={@prompt} prompt_hidden={@prompt_hidden} options={@options} class={@class} {@select_rest} />
+      <.select id={@id} name={@name} value={@value} prompt={@prompt} prompt_hidden={@prompt_hidden} options={@options} class={@class} multiple={@multiple} {@select_rest} />
       <div id={"#{@id}-react"} class="tw-w-full" data-combobox-container phx-update="ignore"></div>
     </div>
     """

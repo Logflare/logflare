@@ -71,19 +71,34 @@ defmodule LogflareWeb.AccessTokensLiveTest do
     refute html =~ "ingest (all)"
   end
 
-  test "source selectors are sorted alphabetically", %{conn: conn, user: user} do
+  test "selected sources combobox is a single, alphabetically sorted multiple select", %{
+    conn: conn,
+    user: user
+  } do
     for name <- ["Zulu", "alpha", "Bravo"], do: insert(:source, user: user, name: name)
 
     {:ok, view, _html} = live(conn, ~p"/access-tokens")
     view |> element("button", "Create access token") |> render_click()
 
+    assert has_element?(view, "#scopes-ingest-all[checked]")
+    refute has_element?(view, "#scopes-ingest")
+
+    view
+    |> element("form")
+    |> render_change(%{
+      scopes_main: ["ingest"],
+      scopes_ingest_mode: "selected",
+      scopes_ingest: [],
+      scopes_query: []
+    })
+
     select_html =
       view
-      |> element("#scopes-ingest-0")
+      |> element("#scopes-ingest")
       |> render()
       |> Floki.parse_fragment!()
 
-    assert [_prompt] = Floki.find(select_html, "option[hidden][value='']")
+    assert [_select] = Floki.find(select_html, "select[multiple]")
 
     labels =
       select_html
@@ -91,7 +106,29 @@ defmodule LogflareWeb.AccessTokensLiveTest do
       |> Enum.map(&Floki.text/1)
       |> Enum.map(&String.trim/1)
 
-    assert labels == ["Ingest into alpha only", "Ingest into Bravo only", "Ingest into Zulu only"]
+    assert labels == ["alpha", "Bravo", "Zulu"]
+  end
+
+  test "create token - ingest into multiple selected sources", %{conn: conn, user: user} do
+    [first, second] = insert_pair(:source, user: user)
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+
+    view |> element("button", "Create access token") |> render_click()
+
+    view
+    |> element("form")
+    |> render_submit(%{
+      description: "multiple sources",
+      scopes_main: ["ingest"],
+      scopes_ingest_mode: "selected",
+      scopes_ingest: ["ingest:source:#{first.id}", "ingest:source:#{second.id}"],
+      scopes_query: []
+    })
+
+    [token] = Logflare.Auth.list_valid_access_tokens(user)
+
+    assert MapSet.new(String.split(token.scopes)) ==
+             MapSet.new(["ingest:source:#{first.id}", "ingest:source:#{second.id}"])
   end
 
   test "create token - query for one endpoint", %{conn: conn, user: user} do
@@ -106,6 +143,103 @@ defmodule LogflareWeb.AccessTokensLiveTest do
     html = view |> element("table") |> render()
     assert html =~ "query (#{endpoint.name})"
     refute html =~ "query (all)"
+  end
+
+  test "create token - query all endpoints", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+    do_ui_create_token(view, "query")
+
+    html = view |> element("table") |> render()
+    assert html =~ "query (all)"
+  end
+
+  test "selected endpoints combobox is a single, alphabetically sorted multiple select", %{
+    conn: conn,
+    user: user
+  } do
+    for name <- ["Zulu", "alpha", "Bravo"], do: insert(:endpoint, user: user, name: name)
+
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+    view |> element("button", "Create access token") |> render_click()
+
+    view
+    |> element("form")
+    |> render_change(%{
+      scopes_main: ["ingest", "query"],
+      scopes_ingest_mode: "all",
+      scopes_query_mode: "selected",
+      scopes_query: []
+    })
+
+    select_html =
+      view
+      |> element("#scopes-query")
+      |> render()
+      |> Floki.parse_fragment!()
+
+    assert [_select] = Floki.find(select_html, "select[multiple]")
+
+    labels =
+      select_html
+      |> Floki.find("option[value^='query:endpoint:']")
+      |> Enum.map(&Floki.text/1)
+      |> Enum.map(&String.trim/1)
+
+    assert labels == ["alpha", "Bravo", "Zulu"]
+  end
+
+  test "create token - query multiple selected endpoints", %{conn: conn, user: user} do
+    [first, second] = insert_pair(:endpoint, user: user)
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+
+    view |> element("button", "Create access token") |> render_click()
+
+    view
+    |> element("form")
+    |> render_submit(%{
+      description: "multiple endpoints",
+      scopes_main: ["query"],
+      scopes_query_mode: "selected",
+      scopes_query: ["query:endpoint:#{first.id}", "query:endpoint:#{second.id}"],
+      scopes_ingest: []
+    })
+
+    [token] = Logflare.Auth.list_valid_access_tokens(user)
+
+    assert MapSet.new(String.split(token.scopes)) ==
+             MapSet.new(["query:endpoint:#{first.id}", "query:endpoint:#{second.id}"])
+  end
+
+  test "selected resources require at least one selection", %{conn: conn, user: user} do
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+    view |> element("button", "Create access token") |> render_click()
+
+    html =
+      view
+      |> element("form")
+      |> render_submit(%{
+        description: "empty sources",
+        scopes_main: ["ingest"],
+        scopes_ingest_mode: "selected",
+        scopes_ingest: [""],
+        scopes_query: []
+      })
+
+    assert html =~ "Select at least one source"
+
+    html =
+      view
+      |> element("form")
+      |> render_submit(%{
+        description: "empty endpoints",
+        scopes_main: ["query"],
+        scopes_query_mode: "selected",
+        scopes_ingest: [],
+        scopes_query: [""]
+      })
+
+    assert html =~ "Select at least one endpoint"
+    assert Logflare.Auth.list_valid_access_tokens(user) == []
   end
 
   test "create ingest token", %{conn: conn} do
@@ -130,6 +264,83 @@ defmodule LogflareWeb.AccessTokensLiveTest do
     html = view |> element("table") |> render()
     assert html =~ "some description"
     assert html =~ "private"
+  end
+
+  test "private scope selects and disables unrestricted ingest and query", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+    view |> element("button", "Create access token") |> render_click()
+
+    view
+    |> element("form")
+    |> render_change(%{
+      private: "true",
+      scopes_main: ["ingest"],
+      scopes_ingest_mode: "selected",
+      scopes_ingest: [],
+      scopes_query: []
+    })
+
+    assert has_element?(view, "input[value='ingest'][checked][disabled]")
+    assert has_element?(view, "input[value='query'][checked][disabled]")
+    assert has_element?(view, "input[name='private'][value='true'][checked]:not([disabled])")
+    assert has_element?(view, "#scopes-ingest-all[checked][disabled]")
+    assert has_element?(view, "#scopes-ingest-selected:not([checked])[disabled]")
+    assert has_element?(view, "#scopes-query-all[checked][disabled]")
+    assert has_element?(view, "#scopes-query-selected:not([checked])[disabled]")
+    refute has_element?(view, "#scopes-ingest")
+    refute has_element?(view, "#scopes-query")
+  end
+
+  test "private scope can be unchecked without losing selected resources", %{
+    conn: conn,
+    user: user
+  } do
+    source = insert(:source, user: user)
+    endpoint = insert(:endpoint, user: user)
+    source_scope = "ingest:source:#{source.id}"
+    endpoint_scope = "query:endpoint:#{endpoint.id}"
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+    view |> element("button", "Create access token") |> render_click()
+
+    view
+    |> element("form")
+    |> render_change(%{
+      private: "true",
+      scopes_main: ["ingest", "query"],
+      scopes_ingest_mode: "selected",
+      scopes_ingest: [source_scope],
+      scopes_query_mode: "selected",
+      scopes_query: [endpoint_scope]
+    })
+
+    assert has_element?(
+             view,
+             "input[type='hidden'][name='scopes_ingest[]'][value='#{source_scope}']"
+           )
+
+    assert has_element?(
+             view,
+             "input[type='hidden'][name='scopes_query[]'][value='#{endpoint_scope}']"
+           )
+
+    view
+    |> element("form")
+    |> render_change(%{
+      private: "false",
+      scopes_main: ["ingest", "query"],
+      scopes_ingest_mode: "selected",
+      scopes_ingest: [source_scope],
+      scopes_query_mode: "selected",
+      scopes_query: [endpoint_scope]
+    })
+
+    refute has_element?(view, "input[name='private'][value='true'][checked]")
+    assert has_element?(view, "input[value='ingest'][checked]")
+    assert has_element?(view, "input[value='query'][checked]")
+    assert has_element?(view, "#scopes-ingest-selected[checked]")
+    assert has_element?(view, "#scopes-query-selected[checked]")
+    assert has_element?(view, "#scopes-ingest option[value='#{source_scope}'][selected]")
+    assert has_element?(view, "#scopes-query option[value='#{endpoint_scope}'][selected]")
   end
 
   test "create token - rejects partner scope from crafted form payload", %{conn: conn, user: user} do
@@ -240,7 +451,10 @@ defmodule LogflareWeb.AccessTokensLiveTest do
            |> element("form")
            |> render_submit(%{
              description: "some description",
-             scopes_main: if(scopes =~ ":", do: [], else: [scopes]),
+             private: to_string(scopes == "private"),
+             scopes_main: if(scopes == "private" or scopes =~ ":", do: [], else: [scopes]),
+             scopes_ingest_mode: if(scopes =~ "ingest:", do: "selected", else: "all"),
+             scopes_query_mode: if(scopes =~ "query:", do: "selected", else: "all"),
              scopes_ingest: if(scopes =~ "ingest:", do: [scopes], else: []),
              scopes_query: if(scopes =~ "query:", do: [scopes], else: [])
            }) =~ "created successfully"

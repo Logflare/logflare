@@ -52,4 +52,21 @@ defmodule LogflareWeb.CoreComponentsTest do
     assert html =~ ~s(<select id="token_source_id" name="token[source_id]")
     assert html =~ ~s(<option selected value="1">First</option>)
   end
+
+  test "combobox renders a native multiple select with all selected values" do
+    html =
+      render_component(&CoreComponents.combobox/1, %{
+        id: "sources",
+        name: "sources[]",
+        value: ["1", "3"],
+        options: [{"First", "1"}, {"Second", "2"}, {"Third", "3"}],
+        multiple: true
+      })
+
+    assert html =~ ~s(<select id="sources" name="sources[]")
+    assert html =~ ~s(class="" multiple)
+    assert html =~ ~s(<option selected value="1">First</option>)
+    refute html =~ ~s(<option selected value="2">Second</option>)
+    assert html =~ ~s(<option selected value="3">Third</option>)
+  end
 end

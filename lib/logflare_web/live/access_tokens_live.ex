@@ -29,55 +29,20 @@ defmodule LogflareWeb.AccessTokensLive do
           The <code>X-API-KEY</code> header method expects the header format <code>X-API-KEY: your-access-token</code>.
           The <code>api_key</code> query parameter method expects the search format <code>?api_key=your-access-token</code>.</p>
 
-        <.form for={@create_token_form} action="#" phx-change="update-token-form" phx-submit="create-token" class={["mt-4", "jumbotron jumbotron-fluid tw-p-4", if(@show_create_form == false, do: "hidden")]}>
+        <.form :let={f} for={@create_token_form} action="#" phx-change="update-token-form" phx-submit="create-token" class={["mt-4", "jumbotron jumbotron-fluid tw-p-4", if(@show_create_form == false, do: "hidden")]}>
           <h5>New Access Token</h5>
           <div class="form-group">
             <label name="description">Description</label>
-            <input name="description" autofocus class="form-control" value={@create_token_form["description"]} />
+            <input name="description" autofocus class="form-control" value={f[:description].value} />
             <small class="form-text text-muted">A short description for identifying what this access token is to be used for.</small>
           </div>
 
           <div class="form-group ">
             <label name="scopes" class="tw-mr-3">Scope</label>
-            <%= for %{value: value, description: description} <- [%{
-              value: "ingest",
-              description: "For ingestion into a source. Allows ingest into all sources if no specific source is selected."
-            }, %{
-              value: "query",
-              description: "For querying an endpoint. Allows querying of all endpoints if no specific endpoint is selected"
-            },%{
-              value: "private",
-              description: "For account management, has all privileges"
-            }] do %>
-              <div class="form-check tw-mr-2">
-                <input class="form-check-input" type="checkbox" name="scopes_main[]" id={["scopes", "main", value]} value={value} checked={value in @create_token_form["scopes_main"]} />
-                <label class="form-check-label tw-px-1" for={["scopes", "main", value]}>
-                  {String.capitalize(value)}
-                  <small class="form-text text-muted">{description}</small>
-                  <.combobox
-                    :for={input_n <- 0..4}
-                    :if={value == "ingest" and value in @create_token_form["scopes_main"]}
-                    id={"scopes-ingest-#{input_n}"}
-                    name="scopes_ingest[]"
-                    value={Enum.at(@create_token_form["scopes_ingest"], input_n)}
-                    prompt="Ingest into a specific source..."
-                    prompt_hidden={true}
-                    options={source_options(@sources)}
-                    empty_text="No sources found."
-                  />
-                  <.select
-                    :for={input_n <- 0..2}
-                    :if={value == "query" and value in @create_token_form["scopes_main"]}
-                    id={["scopes", "query", input_n]}
-                    name="scopes_query[]"
-                    value={Enum.at(@create_token_form["scopes_query"], input_n)}
-                    prompt="Query a specific endpoint..."
-                    prompt_hidden={true}
-                    options={Enum.map(@endpoints, &{"Query #{&1.name} only", "query:endpoint:#{&1.id}"})}
-                  />
-                </label>
-              </div>
-            <% end %>
+            <input type="hidden" name="scopes_main[]" value="" />
+            <.scope value="ingest" label="Ingest into" description="Choose whether this token can ingest into all or selected sources." form={f} resource="sources" options={source_options(@sources)} mode_field={f[:scopes_ingest_mode]} selected_field={f[:scopes_ingest]} />
+            <.scope value="query" label="Query" description="Choose whether this token can query all or selected endpoints." form={f} resource="endpoints" options={endpoint_options(@endpoints)} mode_field={f[:scopes_query_mode]} selected_field={f[:scopes_query]} />
+            <.scope value="private" label="Private" description="For account management, has all privileges" form={f} />
           </div>
           <button type="button" class="btn btn-secondary" phx-click="toggle-create-form" phx-value-show="false">Cancel</button>
           {submit("Create", class: "btn btn-primary")}
@@ -152,18 +117,84 @@ defmodule LogflareWeb.AccessTokensLive do
     """
   end
 
+  attr :value, :string, required: true
+  attr :label, :string, required: true
+  attr :description, :string, required: true
+  attr :form, Phoenix.HTML.Form, required: true
+  attr :resource, :string, default: nil
+  attr :options, :list, default: []
+  attr :mode_field, Phoenix.HTML.FormField, default: nil
+  attr :selected_field, Phoenix.HTML.FormField, default: nil
+
+  defp scope(assigns) do
+    private_scope? = private_scope?(assigns.form[:private].value)
+    resource_checked? = assigns.value in assigns.form[:scopes_main].value
+
+    assigns =
+      assigns
+      |> assign(:private_scope?, private_scope?)
+      |> assign(
+        :checked?,
+        if(assigns.value == "private",
+          do: private_scope?,
+          else: resource_checked? or private_scope?
+        )
+      )
+      |> assign(:resource_checked?, resource_checked?)
+      |> assign(:disabled?, private_scope? and assigns.value != "private")
+      |> assign(
+        :selected_values,
+        if(assigns.selected_field, do: coerce_scope_list(assigns.selected_field.value), else: [])
+      )
+
+    ~H"""
+    <div class="form-check tw-mr-2">
+      <input :if={@value == "private"} type="hidden" name="private" value="false" />
+      <input class="form-check-input" type="checkbox" name={if(@value == "private", do: "private", else: "scopes_main[]")} id={["scopes", "main", @value]} value={if(@value == "private", do: "true", else: @value)} checked={@checked?} disabled={@disabled?} />
+      <label class="form-check-label tw-px-1" for={["scopes", "main", @value]}>
+        {@label}
+        <small class="form-text text-muted">{@description}</small>
+      </label>
+      <div :if={@resource && @checked?} id={"scopes-#{@value}-permissions-#{if(@private_scope?, do: "private", else: "standard")}"} class="tw-ml-5 tw-mt-2 tw-max-w-3xl">
+        <input :if={@private_scope? and @resource_checked?} type="hidden" name="scopes_main[]" value={@value} />
+        <input :if={@private_scope?} type="hidden" name={@mode_field.name} value={@mode_field.value} />
+        <input :for={selected <- @selected_values} :if={@private_scope?} type="hidden" name={"#{@selected_field.name}[]"} value={selected} />
+        <div class="form-check">
+          <input class="form-check-input" type="radio" name={@mode_field.name} id={"scopes-#{@value}-all"} value="all" checked={@private_scope? or @mode_field.value == "all"} disabled={@private_scope?} />
+          <label class="form-check-label" for={"scopes-#{@value}-all"}>All {@resource}</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="radio" name={@mode_field.name} id={"scopes-#{@value}-selected"} value="selected" checked={not @private_scope? and @mode_field.value == "selected"} disabled={@private_scope?} />
+          <label class="form-check-label" for={"scopes-#{@value}-selected"}>Selected {@resource}</label>
+        </div>
+        <input :if={not @private_scope? and @mode_field.value == "selected"} type="hidden" name={"#{@selected_field.name}[]"} value="" />
+        <.combobox :if={not @private_scope? and @mode_field.value == "selected"} id={"scopes-#{@value}"} name={"#{@selected_field.name}[]"} value={@selected_field.value} prompt={"Select #{@resource}..."} options={@options} empty_text={"No #{@resource} found."} multiple={true} />
+      </div>
+    </div>
+    """
+  end
+
   @default_create_form %{
     "description" => "",
     "scopes" => [],
     "scopes_ingest" => [],
+    "scopes_ingest_mode" => "all",
     "scopes_query" => [],
-    "scopes_main" => ["ingest"]
+    "scopes_query_mode" => "all",
+    "scopes_main" => ["ingest"],
+    "private" => "false"
   }
 
   defp source_options(sources) do
     sources
     |> Enum.sort_by(&String.downcase(&1.name))
-    |> Enum.map(&{"Ingest into #{&1.name} only", "ingest:source:#{&1.id}"})
+    |> Enum.map(&{&1.name, "ingest:source:#{&1.id}"})
+  end
+
+  defp endpoint_options(endpoints) do
+    endpoints
+    |> Enum.sort_by(&String.downcase(&1.name))
+    |> Enum.map(&{&1.name, "query:endpoint:#{&1.id}"})
   end
 
   defp coerce_scope_list(value) do
@@ -214,35 +245,54 @@ defmodule LogflareWeb.AccessTokensLive do
       "Creating access token for user, user_id=#{inspect(user.id)}, params: #{inspect(params)}"
     )
 
-    scopes_ingest_params = params |> Map.get("scopes_ingest", []) |> coerce_scope_list()
-    scopes_query_params = params |> Map.get("scopes_query", []) |> coerce_scope_list()
     scopes_main_params = params |> Map.get("scopes_main", []) |> coerce_scope_list()
+    scopes_ingest_mode = scope_mode(params, "ingest")
+    scopes_query_mode = scope_mode(params, "query")
+    scopes_ingest_params = selected_scopes(params, "ingest", scopes_ingest_mode)
+    scopes_query_params = selected_scopes(params, "query", scopes_query_mode)
+    private_scope? = private_scope?(Map.get(params, "private"))
 
     scopes_main =
-      if scopes_ingest_params != [],
+      if scopes_ingest_mode == "selected",
         do: List.delete(scopes_main_params, "ingest"),
         else: scopes_main_params
 
     scopes_main =
-      if scopes_query_params != [], do: List.delete(scopes_main, "query"), else: scopes_main
+      if scopes_query_mode == "selected",
+        do: List.delete(scopes_main, "query"),
+        else: scopes_main
 
-    scopes = scopes_main ++ scopes_ingest_params ++ scopes_query_params
+    scopes =
+      if private_scope?,
+        do: ["private"],
+        else: scopes_main ++ scopes_ingest_params ++ scopes_query_params
 
     attrs =
       params
       |> Map.take(["description"])
       |> Map.put("scopes", Enum.join(scopes, " "))
 
-    case Auth.create_access_token(user, attrs) do
-      {:ok, token} ->
-        socket =
-          socket
-          |> do_refresh()
-          |> assign(:show_create_form, false)
-          |> assign(:create_token_form, @default_create_form)
-          |> assign(:created_token, token)
+    with nil <-
+           selected_scope_error(
+             private_scope?,
+             scopes_main_params,
+             scopes_ingest_mode,
+             scopes_ingest_params,
+             scopes_query_mode,
+             scopes_query_params
+           ),
+         {:ok, token} <- Auth.create_access_token(user, attrs) do
+      socket =
+        socket
+        |> do_refresh()
+        |> assign(:show_create_form, false)
+        |> assign(:create_token_form, @default_create_form)
+        |> assign(:created_token, token)
 
-        {:noreply, socket}
+      {:noreply, socket}
+    else
+      message when is_binary(message) ->
+        {:noreply, put_flash(socket, :error, message)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         message =
@@ -298,6 +348,35 @@ defmodule LogflareWeb.AccessTokensLive do
 
     {:noreply, socket}
   end
+
+  defp scope_mode(params, scope) do
+    Map.get_lazy(params, "scopes_#{scope}_mode", fn ->
+      if Map.get(params, "scopes_#{scope}", []) == [], do: "all", else: "selected"
+    end)
+  end
+
+  defp selected_scopes(params, scope, "selected") do
+    params |> Map.get("scopes_#{scope}", []) |> coerce_scope_list()
+  end
+
+  defp selected_scopes(_params, _scope, _mode), do: []
+
+  defp selected_scope_error(true, _main, _ingest_mode, _ingest, _query_mode, _query), do: nil
+
+  defp selected_scope_error(false, main, ingest_mode, ingest, query_mode, query) do
+    cond do
+      "ingest" in main and ingest_mode == "selected" and ingest == [] ->
+        "Select at least one source"
+
+      "query" in main and query_mode == "selected" and query == [] ->
+        "Select at least one endpoint"
+
+      true ->
+        nil
+    end
+  end
+
+  defp private_scope?(value), do: value in [true, "true"]
 
   defp do_refresh(%{assigns: %{user: user}} = socket) do
     tokens = user |> Auth.list_valid_access_tokens() |> Enum.sort_by(& &1.inserted_at, :desc)
