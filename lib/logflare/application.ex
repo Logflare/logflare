@@ -8,6 +8,7 @@ defmodule Logflare.Application do
   alias Logflare.Networking
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Spool.Health, as: SpoolHealth
+  alias Logflare.Backends.SystemBackend
   alias Logflare.Backends.UserMonitoring
   alias Logflare.ContextCache
   alias Logflare.Logs
@@ -231,15 +232,13 @@ defmodule Logflare.Application do
   def startup_tasks do
     Logger.info("Executing startup tasks")
 
-    if !SingleTenant.postgres_backend?() do
-      BigQueryAdaptor.create_managed_service_accounts()
-      BigQueryAdaptor.update_iam_policy()
-    end
+    SystemBackend.on_system_start()
 
     if SingleTenant.single_tenant?() do
       Logger.info("Ensuring single tenant user is seeded...")
       SingleTenant.create_default_plan()
       SingleTenant.create_default_user()
+      SingleTenant.ensure_default_backend()
       SingleTenant.create_access_tokens()
     end
 
@@ -248,13 +247,7 @@ defmodule Logflare.Application do
       SingleTenant.create_supabase_endpoints()
       SingleTenant.ensure_supabase_sources_started()
 
-      unless SingleTenant.postgres_backend?() do
-        # buffer time for all sources to init and create tables
-        # in case of latency.
-        :timer.sleep(3_000)
-
-        SingleTenant.update_supabase_source_schemas()
-      end
+      SystemBackend.on_supabase_start()
     end
 
     # Schedule all alerts immediately on startup

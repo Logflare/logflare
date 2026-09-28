@@ -20,6 +20,8 @@ defmodule Logflare.SingleTenant do
   alias Logflare.SourceSchemas
   require Logger
 
+  @single_tenant_clickhouse_backend_id 0
+
   @user_attrs %{
     name: "default",
     email: "default@logflare.app",
@@ -55,6 +57,8 @@ defmodule Logflare.SingleTenant do
     "postgREST.logs.prod",
     "pgbouncer.logs.prod"
   ]
+
+  @type backend_type :: :bigquery | :clickhouse | :postgres
 
   defp endpoint_params do
     [
@@ -111,6 +115,40 @@ defmodule Logflare.SingleTenant do
   end
 
   @doc """
+  Builds the synthetic backend when ClickHouse is selected in single-tenant mode.
+
+  Uses the supplied user's ID, looking up the default user only when omitted.
+  Returns nil when ClickHouse is not selected or the user is nil.
+
+  Backend ID `0` is reserved for this synthetic backend and identifies its
+  consolidated pipeline and ingestion queues. The backend is not persisted.
+  """
+  @spec get_default_clickhouse_backend(User.t() | nil) :: Backend.t() | nil
+  @spec get_default_clickhouse_backend() :: Backend.t() | nil
+  def get_default_clickhouse_backend(user \\ get_default_user())
+
+  def get_default_clickhouse_backend(nil), do: nil
+
+  def get_default_clickhouse_backend(%User{id: user_id}) do
+    if clickhouse_backend?() do
+      %Backend{
+        id: @single_tenant_clickhouse_backend_id,
+        type: :clickhouse,
+        config: Map.new(clickhouse_backend_adapter_opts()),
+        user_id: user_id,
+        name: "Default ClickHouse backend",
+        consolidated_ingest?: true
+      }
+    end
+  end
+
+  @doc "Returns a source's synthetic ClickHouse backend, or nil for legacy per-source defaults."
+  @spec lookup_system_default_backend(Source.t()) :: Backend.t() | nil
+  def lookup_system_default_backend(%Source{user_id: user_id}) do
+    get_default_clickhouse_backend(%User{id: user_id})
+  end
+
+  @doc """
   Creates an enterprise user
   """
   @spec create_default_user() :: {:ok, User.t()} | {:error, :already_created}
@@ -124,6 +162,17 @@ defmodule Logflare.SingleTenant do
       {:error, %Ecto.Changeset{errors: [email: {_, [{:constraint, :unique} | _]}]}} ->
         {:error, :already_created}
     end
+  end
+
+  @doc "Ensures the selected single-tenant ClickHouse pipeline is running"
+  @spec ensure_default_backend() :: :ok
+  def ensure_default_backend do
+    if clickhouse_backend?() do
+      get_default_backend()
+      |> Backends.maybe_restart_consolidated_pipeline()
+    end
+
+    :ok
   end
 
   @doc """
@@ -262,10 +311,10 @@ defmodule Logflare.SingleTenant do
   end
 
   defp start_supabase_source(source) do
-    if postgres_backend?() do
-      Backends.start_source_sup(source)
-    else
+    if bigquery_backend?() do
       Supervisor.ensure_started(source)
+    else
+      Backends.start_source_sup(source)
     end
   end
 
@@ -295,15 +344,44 @@ defmodule Logflare.SingleTenant do
   @spec single_tenant? :: boolean()
   def single_tenant?, do: !!Application.get_env(:logflare, :single_tenant)
 
+  @doc "Builds ClickHouse adapter configuration from a connection URL"
+  @spec clickhouse_backend_adapter_opts_from_url!(String.t()) :: keyword()
+  def clickhouse_backend_adapter_opts_from_url!(url) when is_binary(url) do
+    uri = parse_clickhouse_backend_url!(url)
+    {username, password} = clickhouse_credentials(uri)
+
+    sanitized_url =
+      uri
+      |> Map.merge(%{userinfo: nil, path: nil, query: nil, fragment: nil})
+      |> URI.to_string()
+
+    [
+      url: sanitized_url,
+      username: username,
+      password: password,
+      database: clickhouse_database(uri),
+      port: clickhouse_port(url, uri.scheme)
+    ]
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+  end
+
   @doc "Returns true if supabase mode flag is set via config and if is single tenant"
   @spec supabase_mode? :: boolean()
   def supabase_mode?, do: !!Application.get_env(:logflare, :supabase_mode) and single_tenant?()
 
-  @doc "Returns postgres backend adapter configurations if single tenant and env is set"
-  @spec postgres_backend_adapter_opts :: Keyword.t() | nil
+  @doc "Returns PostgreSQL backend adapter configuration in single-tenant mode"
+  @spec postgres_backend_adapter_opts :: keyword() | nil
   def postgres_backend_adapter_opts do
     if single_tenant?() do
       Application.get_env(:logflare, :postgres_backend_adapter)
+    end
+  end
+
+  @doc "Returns ClickHouse backend adapter configuration when selected in single-tenant mode"
+  @spec clickhouse_backend_adapter_opts :: keyword() | nil
+  def clickhouse_backend_adapter_opts do
+    if clickhouse_backend?() do
+      Application.get_env(:logflare, :clickhouse_backend_adapter)
     end
   end
 
@@ -361,7 +439,7 @@ defmodule Logflare.SingleTenant do
 
     source_schemas_updated =
       cond do
-        postgres_backend?() -> :ok
+        not bigquery_backend?() -> :ok
         # for mocking, use full qualified function name
         __MODULE__.supabase_mode_source_schemas_updated?() -> :ok
         true -> nil
@@ -377,27 +455,34 @@ defmodule Logflare.SingleTenant do
   end
 
   @doc """
-  Returns true if postgres backend is enabled for single tenant
+  Returns the selected single-tenant backend type.
   """
-  @spec postgres_backend? :: boolean()
-  def postgres_backend? do
-    opts = postgres_backend_adapter_opts() || []
-
-    url = Keyword.get(opts, :url)
-    single_tenant?() && url != nil
-  end
-
-  @doc """
-  Returns the type of the default backend
-  """
-  @spec backend_type :: :postgres | :bigquery
+  @spec backend_type :: backend_type()
   def backend_type do
-    if postgres_backend?() do
-      :postgres
-    else
-      :bigquery
-    end
+    Application.fetch_env!(:logflare, :single_tenant_backend)
   end
+
+  @doc "Returns true if BigQuery is selected in single-tenant mode"
+  @spec bigquery_backend? :: boolean()
+  def bigquery_backend?, do: selected_backend?(:bigquery)
+
+  @doc "Returns true if PostgreSQL is selected in single-tenant mode"
+  @spec postgres_backend? :: boolean()
+  def postgres_backend?, do: selected_backend?(:postgres)
+
+  @doc "Returns true if ClickHouse is selected in single-tenant mode"
+  @spec clickhouse_backend? :: boolean()
+  def clickhouse_backend?, do: selected_backend?(:clickhouse)
+
+  @doc "Returns whether this is the default backend in a single-tenant ClickHouse mode."
+  @spec default_clickhouse_backend?(Backend.t()) :: boolean()
+  def default_clickhouse_backend?(%Backend{
+        id: @single_tenant_clickhouse_backend_id,
+        type: :clickhouse
+      }),
+      do: clickhouse_backend?()
+
+  def default_clickhouse_backend?(%Backend{}), do: false
 
   def supabase_mode_source_schemas_updated? do
     user = get_default_user()
@@ -424,5 +509,41 @@ defmodule Logflare.SingleTenant do
     Application.app_dir(:logflare, "priv/supabase/ingest_samples/#{source_name}.json")
     |> File.read!()
     |> Jason.decode!()
+  end
+
+  defp parse_clickhouse_backend_url!(url) do
+    case URI.parse(url) do
+      %URI{host: host} = uri when host not in [nil, ""] -> uri
+      %URI{} -> raise "CLICKHOUSE_BACKEND_URL must include a hostname"
+    end
+  end
+
+  defp clickhouse_database(%URI{path: path}) when path in [nil, "", "/"], do: "default"
+
+  defp clickhouse_database(%URI{path: path}) do
+    path
+    |> String.trim_leading("/")
+    |> URI.decode()
+  end
+
+  defp clickhouse_credentials(%URI{userinfo: nil}), do: {nil, nil}
+
+  defp clickhouse_credentials(%URI{userinfo: userinfo}) do
+    case String.split(userinfo, ":", parts: 2) do
+      [username, password] -> {URI.decode(username), URI.decode(password)}
+      [username] -> {URI.decode(username), nil}
+    end
+  end
+
+  defp clickhouse_port(url, scheme) do
+    case :uri_string.parse(url) do
+      %{port: port} -> port
+      _uri when scheme == "https" -> 8443
+      _uri -> 8123
+    end
+  end
+
+  defp selected_backend?(backend_type) do
+    single_tenant?() and backend_type() == backend_type
   end
 end
