@@ -2189,6 +2189,19 @@ defmodule Logflare.BackendsTest do
       assert_receive :put_called, 1000
     end
 
+    test "in :producer mode, does not spool an empty batch when every event is filtered out (e.g. all future-dropped)",
+         %{source: source} do
+      merge_spool_config!(mode: :producer)
+
+      now_us = System.system_time(:microsecond)
+      future_timestamp = now_us + 2 * 3_600 * 1_000_000
+      params = [%{"message" => "too future", "timestamp" => future_timestamp}]
+
+      assert {:ok, 0} = Backends.ingest_logs(params, source, nil, true)
+
+      assert pending_entry_count() == 0
+    end
+
     test "does not dispatch to the spool producer once :wal mode's disk health is unhealthy, even if everything else is enabled",
          %{source: source} do
       Application.put_env(:logflare, :spool,
