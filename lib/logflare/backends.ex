@@ -869,13 +869,14 @@ defmodule Logflare.Backends do
   defp spool_mode,
     do: :logflare |> Application.get_env(:spool, []) |> Keyword.get(:mode, :disable)
 
+  @broadcast_rate_ceiling 2
+
   defp maybe_broadcast_and_route(source, log_events) do
     if log_events != [] do
       RateSampler.bump(source.token, length(log_events))
 
-      case Enum.filter(log_events, fn _ -> RateSampler.sample?(source.token) end) do
-        [] -> :ok
-        sampled -> Source.ChannelTopics.broadcast_new(sampled)
+      if RateSampler.rate(source.token) < @broadcast_rate_ceiling do
+        Source.ChannelTopics.broadcast_new(log_events)
       end
     end
 
