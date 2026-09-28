@@ -594,6 +594,28 @@ config :logflare, :context_cache_gossip, %{
   max_nodes: cache_gossip_max_nodes
 }
 
+# LOGFLARE_CACHE_PEER_WARM_*: Copy caches from already running cluster peers on startup
+default_cache_peer_warm_enabled = if config_env() == :test, do: "false", else: "true"
+
+cache_peer_warm_integer = fn env_var, default ->
+  value = env_var |> System.get_env(default) |> String.to_integer()
+
+  if value <= 0 do
+    raise ArgumentError, "Invalid #{env_var}: #{value}. Must be a positive integer."
+  end
+
+  value
+end
+
+config :logflare, Logflare.ContextCache.PeerWarmer,
+  enabled:
+    System.get_env("LOGFLARE_CACHE_PEER_WARM_ENABLED", default_cache_peer_warm_enabled) == "true",
+  max_peers: cache_peer_warm_integer.("LOGFLARE_CACHE_PEER_WARM_MAX_PEERS", "3"),
+  peer_wait: cache_peer_warm_integer.("LOGFLARE_CACHE_PEER_WARM_PEER_WAIT_MS", "5000"),
+  copy_timeout: cache_peer_warm_integer.("LOGFLARE_CACHE_PEER_WARM_COPY_TIMEOUT_MS", "30000"),
+  key_values_max_age:
+    to_timeout(minute: cache_peer_warm_integer.("LOGFLARE_CACHE_PEER_WARM_KV_MAX_AGE_MIN", "70"))
+
 # LOGFLARE_READ_REPLICAS: PostgreSQL read replicas for selected cache queries.
 # An empty list uses the primary database. Entries are bare host names, IP literals, or URIs
 # whose omitted options inherit the primary.

@@ -659,6 +659,16 @@ defmodule Logflare.Telemetry do
         unit: {:native, :millisecond},
         description: "Latency of processing an incoming cache gossip cast"
       ),
+      counter("logflare.context_cache.peer_warm.count",
+        event_name: "logflare.context_cache.peer_warm.stop",
+        tags: [:cache, :outcome],
+        description: "Startup cache warming attempts from cluster peers and their outcome"
+      ),
+      distribution("logflare.context_cache.peer_warm.stop.duration",
+        tags: [:cache, :outcome],
+        unit: {:native, :millisecond},
+        description: "Latency of warming a cache from a cluster peer on startup"
+      ),
       counter("logflare.ingest_event_queue.stale_table.count",
         event_name: [:logflare, :ingest_event_queue, :stale_table],
         description: "Count of ack operations on a stale (already deleted) ETS table"

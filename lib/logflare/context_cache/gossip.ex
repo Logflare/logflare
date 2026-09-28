@@ -19,6 +19,7 @@ defmodule Logflare.ContextCache.Gossip do
   alias Logflare.Cluster.Utils, as: ClusterUtils
   alias Logflare.ContextCache
   alias Logflare.ContextCache.Tombstones
+  alias Logflare.KeyValues
 
   @telemetry_handler_id "context-cache-gossip-logger"
 
@@ -179,6 +180,28 @@ defmodule Logflare.ContextCache.Gossip do
     end
   end
 
+  @doc """
+  Returns true when a cache entry copied from a peer must be dropped, because its record was
+  recently invalidated or it has no primary key to detect staleness with.
+  """
+  @spec stale_entry?(atom(), term(), term()) :: boolean()
+  def stale_entry?(KeyValues.Cache, {:lookup, [user_id, key | _accessor]}, _value) do
+    Tombstones.Cache.tombstoned?(KeyValues.Cache, {:key, user_id, key})
+  end
+
+  def stale_entry?(KeyValues.Cache, {:count, user_id}, _value) do
+    Tombstones.Cache.tombstoned?(KeyValues.Cache, {:count, user_id})
+  end
+
+  def stale_entry?(cache, _key, {:cached, value}) do
+    case pkeys_from_cached_value(value) do
+      [] -> true
+      pkeys -> Enum.any?(pkeys, &Tombstones.Cache.tombstoned?(cache, &1))
+    end
+  end
+
+  def stale_entry?(_cache, _key, _value), do: true
+
   defp pkeys_from_cached_value(values) when is_list(values) do
     Enum.flat_map(values, &pkeys_from_cached_value/1)
   end
@@ -197,12 +220,25 @@ defmodule Logflare.ContextCache.Gossip do
       {_context, :not_found} ->
         :ignore
 
+      {KeyValues, kw} when is_list(kw) ->
+        kw
+        |> key_values_tombstones()
+        |> Enum.each(&Tombstones.Cache.put_tombstone(KeyValues.Cache, &1))
+
       {context, pkey} ->
         if pkey = format_busted_pkey(pkey) do
           cache = ContextCache.cache_name(context)
           Tombstones.Cache.put_tombstone(cache, pkey)
         end
     end)
+  end
+
+  defp key_values_tombstones(kw) do
+    case {Keyword.get(kw, :user_id), Keyword.get(kw, :key)} do
+      {nil, _key} -> []
+      {user_id, nil} -> [{:count, user_id}]
+      {user_id, key} -> [{:count, user_id}, {:key, user_id, key}]
+    end
   end
 
   defp format_busted_pkey(pkey) when is_integer(pkey) or is_binary(pkey), do: pkey
