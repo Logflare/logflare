@@ -30,8 +30,6 @@ defmodule Logflare.Networking do
   defp base_finch_pools_with_default do
     [
       {Finch,
-       name: Logflare.FinchDefaultHttp1, pools: %{default: [protocols: [:http1], size: 50]}},
-      {Finch,
        name: Logflare.FinchDefault,
        pools:
          %{
