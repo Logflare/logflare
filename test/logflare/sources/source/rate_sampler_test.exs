@@ -61,6 +61,29 @@ defmodule Logflare.Sources.Source.RateSamplerTest do
     end
   end
 
+  describe "rate/1" do
+    test "returns 0.0 for a key that has never been bumped" do
+      assert RateSampler.rate(unique_token()) == 0.0
+    end
+
+    test "returns the current window's rate without mutating it, unlike sample?/1" do
+      token = unique_token()
+      RateSampler.bump(token, 5)
+
+      rate = RateSampler.rate(token)
+      assert rate > 0.0
+      assert RateSampler.rate(token) == rate
+    end
+
+    test "accepts any term as a key, not just atoms" do
+      key = {unique_token(), :some_other_dimension}
+      RateSampler.bump(key, 3)
+
+      assert RateSampler.rate(key) > 0.0
+      assert RateSampler.rate(unique_token()) == 0.0
+    end
+  end
+
   describe "bump/2" do
     test "a large first batch on a never-seen source seeds a provisional rate immediately" do
       token = unique_token()
