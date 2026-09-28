@@ -507,8 +507,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
   # Never sampled away: a source's very first schema check always runs.
   defp schema_check_sample?(source) do
-    is_nil(SourceSchemas.Cache.get_source_schema_by(source_id: source.id)) or
-      RateSampler.sample?(schema_check_rate_key(source))
+    RateSampler.sample?(schema_check_rate_key(source)) or
+      is_nil(SourceSchemas.Cache.get_source_schema_by(source_id: source.id))
   end
 
   defp schema_check_rate_key(source), do: {source.token, :bq_schema_check}
