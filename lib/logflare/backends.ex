@@ -717,6 +717,7 @@ defmodule Logflare.Backends do
   @spec spoolable?([LogEvent.t()], Source.t(), boolean()) :: boolean()
   defp spoolable?(log_events, source, allow_spooling) do
     allow_spooling and
+      log_events != [] and
       spool_producer_mode?() and
       case spool_mode() do
         :producer -> true
