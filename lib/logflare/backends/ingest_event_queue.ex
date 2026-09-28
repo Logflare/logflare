@@ -1291,7 +1291,11 @@ defmodule Logflare.Backends.IngestEventQueue do
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
          {:ok, ids} <- select_pointer_ids(tid, ms, n) do
-      {events, claimed, stale?} = claim_events(ids, tid, [], 0)
+      {events, claimed, stale?, handles} = claim_events(ids, tid, [], 0, [])
+
+      handles
+      |> Enum.frequencies()
+      |> Enum.each(fn {handle, count} -> SpoolAck.ack(handle, count) end)
 
       if stale? and claimed == 0 do
         {:error, :not_initialized}
@@ -1304,24 +1308,24 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   end
 
-  defp claim_events([], _tid, events, claimed),
-    do: {:lists.reverse(events), claimed, false}
+  defp claim_events([], _tid, events, claimed, handles),
+    do: {:lists.reverse(events), claimed, false, handles}
 
-  defp claim_events([id | ids], tid, events, claimed) do
+  defp claim_events([id | ids], tid, events, claimed, handles) do
     case take_pointer_row(tid, id) do
       {:ok, {^id, gen_tid, gen_event_id, _, _, _, _, spool_handle}} ->
-        SpoolAck.ack(spool_handle, 1)
+        handles = [spool_handle | handles]
 
         case take_pointer_event({gen_tid, gen_event_id}) do
-          nil -> claim_events(ids, tid, events, claimed + 1)
-          event -> claim_events(ids, tid, [event | events], claimed + 1)
+          nil -> claim_events(ids, tid, events, claimed + 1, handles)
+          event -> claim_events(ids, tid, [event | events], claimed + 1, handles)
         end
 
       :missing ->
-        claim_events(ids, tid, events, claimed)
+        claim_events(ids, tid, events, claimed, handles)
 
       :stale ->
-        {:lists.reverse(events), claimed, true}
+        {:lists.reverse(events), claimed, true, handles}
     end
   end
 
@@ -1567,7 +1571,11 @@ defmodule Logflare.Backends.IngestEventQueue do
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
          {:ok, ids} <- select_pointer_ids(tid, ms, n) do
-      {dropped, stale?} = drop_claimed(ids, tid, 0)
+      {dropped, stale?, handles} = drop_claimed(ids, tid, 0, [])
+
+      handles
+      |> Enum.frequencies()
+      |> Enum.each(fn {handle, count} -> SpoolAck.ack(handle, count) end)
 
       if stale? and dropped == 0 do
         {:error, :not_initialized}
@@ -1587,20 +1595,19 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   end
 
-  defp drop_claimed([], _tid, dropped), do: {dropped, false}
+  defp drop_claimed([], _tid, dropped, handles), do: {dropped, false, handles}
 
-  defp drop_claimed([id | ids], tid, dropped) do
+  defp drop_claimed([id | ids], tid, dropped, handles) do
     case take_pointer_row(tid, id) do
       {:ok, {^id, gen_tid, gen_event_id, _, _, _, _, spool_handle}} ->
-        SpoolAck.ack(spool_handle, 1)
         delete_id(gen_tid, gen_event_id)
-        drop_claimed(ids, tid, dropped + 1)
+        drop_claimed(ids, tid, dropped + 1, [spool_handle | handles])
 
       :missing ->
-        drop_claimed(ids, tid, dropped)
+        drop_claimed(ids, tid, dropped, handles)
 
       :stale ->
-        {dropped, true}
+        {dropped, true, handles}
     end
   end
 

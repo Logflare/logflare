@@ -488,6 +488,30 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert %LogEvent{} = IngestEventQueue.lookup_event(gen_tid, remaining_gen_event_id)
     end
 
+    test "drop_pending/2 acks a shared handle's units via a single batched call", %{
+      source: source,
+      source_backend_pid: sbp
+    } do
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+
+      events = for _ <- 1..5, do: %{build(:log_event, source: source) | spool_handle: handle}
+      assert :ok = IngestEventQueue.add_to_table(sbp, events)
+
+      test_pid = self()
+
+      stub(SpoolAck, :ack, fn h, n ->
+        send(test_pid, {:ack_call, h, n})
+        :ets.update_counter(:spool_ack, h, {2, -n})
+        :ok
+      end)
+
+      assert {:ok, 5} = IngestEventQueue.drop_pending(sbp, 5)
+
+      assert_receive {:ack_call, ^handle, 5}
+      refute_receive {:ack_call, ^handle, _}
+    end
+
     @tag :race
     test "drop_pending/2 never deletes events claimed by pointer consumers", %{
       source: source,
@@ -1587,6 +1611,31 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
     test "returns empty list when no pending events", %{key: key} do
       assert {:ok, []} = IngestEventQueue.pop_pending(key, 10)
+    end
+
+    test "acks a shared handle's units via a single batched call, not once per event", %{
+      key: key,
+      source: source
+    } do
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+
+      events = for _ <- 1..5, do: %{build(:log_event, source: source) | spool_handle: handle}
+      :ok = IngestEventQueue.add_to_table(key, events)
+
+      test_pid = self()
+
+      stub(SpoolAck, :ack, fn h, n ->
+        send(test_pid, {:ack_call, h, n})
+        :ets.update_counter(:spool_ack, h, {2, -n})
+        :ok
+      end)
+
+      assert {:ok, popped} = IngestEventQueue.pop_pending(key, 5)
+      assert length(popped) == 5
+
+      assert_receive {:ack_call, ^handle, 5}
+      refute_receive {:ack_call, ^handle, _}
     end
 
     test "returns error when queue not initialized" do
