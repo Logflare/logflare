@@ -725,10 +725,16 @@ defmodule Logflare.Backends do
   @spec spoolable?([LogEvent.t()], Source.t(), boolean()) :: boolean()
   defp spoolable?(log_events, source, allow_spooling) do
     allow_spooling and
-      spool_producer_mode?() and
       case spool_mode() do
-        :producer -> true
-        :both -> source.enable_spooling and Enum.all?(log_events, &(&1.via_rule_id == nil))
+        :producer ->
+          true
+
+        :both ->
+          spool_write_healthy?() and source.enable_spooling and
+            Enum.all?(log_events, &(&1.via_rule_id == nil))
+
+        _ ->
+          false
       end
   end
 
@@ -827,21 +833,17 @@ defmodule Logflare.Backends do
     :ok
   end
 
-  # Stops routing ingest through the spool path once Health goes unhealthy,
-  # falling through to normal dispatch instead. Gated on the scope that
-  # actually backstops this mode: :wal mode's local WAL absorbs upload
-  # outages by design, so only a failing local disk should stop ingest;
-  # :mem mode has no local buffer at all, so a failing upload is the same
-  # thing as a failing commit.
   @spec spool_producer_mode?() :: boolean()
-  def spool_producer_mode? do
-    spool_mode() in [:producer, :both] and SpoolHealth.healthy?(spool_health_gate_scope())
-  end
+  def spool_producer_mode?, do: spool_mode() in [:producer, :both]
 
-  defp spool_health_gate_scope do
+  # :wal mode writes to both tiers, so both must be healthy — a WAL that's
+  # happily absorbing writes locally while GCS stays down still means the
+  # spool isn't actually getting data to its durable home. :mem mode has no
+  # local disk tier at all, so only :upload applies there.
+  defp spool_write_healthy? do
     case spool_buffer() do
-      :wal -> :disk
-      :mem -> :upload
+      :wal -> SpoolHealth.healthy?(:disk) and SpoolHealth.healthy?(:upload)
+      :mem -> SpoolHealth.healthy?(:upload)
     end
   end
 
@@ -857,7 +859,7 @@ defmodule Logflare.Backends do
   """
   @spec spool_healthcheck_ok?() :: boolean()
   def spool_healthcheck_ok? do
-    spool_mode() != :producer or SpoolHealth.healthy?(spool_health_gate_scope())
+    spool_mode() != :producer or spool_write_healthy?()
   end
 
   @doc """
