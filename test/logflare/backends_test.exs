@@ -769,6 +769,42 @@ defmodule Logflare.BackendsTest do
       assert :ok = Backends.ensure_source_sup_started(source)
     end
 
+    test "child_spec/1 starts the SourceSup with the source id only", %{source: source} do
+      source_id = source.id
+
+      assert %{id: {SourceSup, ^source_id}, start: {SourceSup, :start_link, [^source_id]}} =
+               SourceSup.child_spec(source)
+    end
+
+    test "start_source_sup/1 returns not_found for a deleted source", %{source: source} do
+      Repo.delete!(source)
+      stub(SourceSup, :prefetch, fn _source -> :ok end)
+
+      assert {:error, :not_found} = Backends.start_source_sup(source)
+      refute Backends.source_sup_started?(source)
+    end
+
+    test "concurrent ensure_source_sup_started/1 calls start a stopped SourceSup once", %{
+      source: source
+    } do
+      test_pid = self()
+
+      stub(SourceSup, :child_spec, fn received_source ->
+        send(test_pid, :start_child)
+        call_original(SourceSup, :child_spec, [received_source])
+      end)
+
+      results =
+        1..1_000
+        |> Enum.map(fn _ -> Task.async(fn -> Backends.ensure_source_sup_started(source) end) end)
+        |> Task.await_many(30_000)
+
+      assert Enum.all?(results, &(&1 == :ok))
+      assert Backends.source_sup_started?(source)
+      assert_received :start_child
+      refute_received :start_child
+    end
+
     test "prefetch/1 warms the cache keys read during initial startup", %{source: source} do
       source = Sources.get(source.id)
       source_schema = insert(:source_schema, source: source)

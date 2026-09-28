@@ -49,6 +49,10 @@ defmodule Logflare.Backends.Supervisor do
         Backends.Adaptor.PostgresAdaptor.Supervisor,
         Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup,
         Backends.ConsolidatedSup,
+        %{
+          id: Backends.SourceSupStarts,
+          start: {Cachex, :start_link, [Backends.SourceSupStarts, []]}
+        },
         {PartitionSupervisor, child_spec: DynamicSupervisor, name: Backends.SourcesSup},
         {Registry,
          name: Backends.SourceRegistry, keys: :unique, partitions: max(round(base / 8), 1)},

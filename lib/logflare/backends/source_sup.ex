@@ -20,16 +20,27 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Sources
   alias Logflare.Backends.AdaptorSupervisor
 
-  def child_spec(%Source{id: id} = arg) do
+  @doc """
+  Child spec for a source's supervision tree.
+
+  The start arguments carry only the source id. A source with many rules is about 1 MB, and the
+  `SourcesSup` partition copies the start arguments into every `start_child` message and keeps them
+  in its state. `init/1` loads the source and its rules from the cache.
+  """
+  @spec child_spec(Source.t() | pos_integer()) :: Supervisor.child_spec()
+  def child_spec(%Source{id: id}), do: child_spec(id)
+
+  def child_spec(source_id) when is_integer(source_id) do
     %{
-      id: {__MODULE__, id},
-      start: {__MODULE__, :start_link, [arg]},
+      id: {__MODULE__, source_id},
+      start: {__MODULE__, :start_link, [source_id]},
       restart: :transient
     }
   end
 
-  def start_link(%Source{} = source) do
-    Supervisor.start_link(__MODULE__, source, name: Backends.via_source(source, __MODULE__))
+  @spec start_link(pos_integer()) :: Supervisor.on_start()
+  def start_link(source_id) when is_integer(source_id) do
+    Supervisor.start_link(__MODULE__, source_id, name: Backends.via_source(source_id, __MODULE__))
   end
 
   @doc """
@@ -73,9 +84,14 @@ defmodule Logflare.Backends.SourceSup do
     :ok
   end
 
-  def init(source) do
-    source = Sources.Cache.preload_rules(source)
+  def init(source_id) do
+    case Sources.Cache.get_by_id(source_id) do
+      nil -> :ignore
+      source -> source |> Sources.Cache.preload_rules() |> init_children()
+    end
+  end
 
+  defp init_children(source) do
     ingest_backends =
       Backends.Cache.list_backends(source_id: source.id)
       |> Enum.reject(& &1.consolidated_ingest?)

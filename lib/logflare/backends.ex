@@ -13,6 +13,7 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.ConsolidatedSup
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.SourceRegistry
+  alias Logflare.Backends.SourceSupStarts
   alias Logflare.Backends.SourcesSup
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.Spool.DurableBuffer.Supervisor, as: SpoolDurableBufferSup
@@ -1091,7 +1092,7 @@ defmodule Logflare.Backends do
   @doc """
   Starts a given SourceSup for a source. If already started, will return an error tuple.
   """
-  @spec start_source_sup(Source.t()) :: :ok | {:error, :already_started}
+  @spec start_source_sup(Source.t()) :: :ok | {:error, :already_started | :not_found}
   def start_source_sup(%Source{} = source) do
     if not source_sup_started?(source), do: SourceSup.prefetch(source)
     do_start_source_sup(source)
@@ -1105,6 +1106,9 @@ defmodule Logflare.Backends do
       {:ok, _pid} ->
         :ok
 
+      :ignore ->
+        {:error, :not_found}
+
       {:error, {:already_started = reason, _pid}} ->
         {:error, reason}
 
@@ -1114,17 +1118,25 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Ensures that a the SourceSup is started.
+  Ensures that the SourceSup of a source is started.
+
+  Every ingest batch calls this. When the SourceSup is down, only the first caller for a source
+  starts it. The other callers for that source wait for that start and get its result, so the
+  `SourcesSup` partition receives one `start_child` call per source, not one per caller.
   """
-  @spec ensure_source_sup_started(Source.t()) :: :ok
-  def ensure_source_sup_started(%Source{} = source) do
-    if source_sup_started?(source) == false do
-      case start_source_sup(source) do
+  @spec ensure_source_sup_started(Source.t()) :: :ok | {:error, :not_found}
+  def ensure_source_sup_started(%Source{id: id} = source) do
+    if source_sup_started?(id) do
+      :ok
+    else
+      {:ignore, result} =
+        Cachex.fetch(SourceSupStarts, id, fn _id -> {:ignore, start_source_sup(source)} end)
+
+      case result do
         :ok -> :ok
         {:error, :already_started} -> :ok
+        {:error, :not_found} = error -> error
       end
-    else
-      :ok
     end
   end
 
