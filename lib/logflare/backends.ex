@@ -624,8 +624,9 @@ defmodule Logflare.Backends do
 
   Events are conditionally dispatched to backends based on whether they are registered. If they register for ingestion dispatching, events will get sent to the registered backend.
 
-  For a spoolable event (gated by `allow_spooling`, the global spool mode,
-  and `source.enable_spooling` — see `spoolable?/3`), this blocks the
+  For a spoolable event (gated by `allow_spooling` and the global spool
+  mode — plus `source.enable_spooling` when the mode is `:both` — see
+  `spoolable?/3`), this blocks the
   caller until the event's segment is durable in the buffer, or — in
   blocking mode (`spool_blocking_mode?/0`) — until its batch is actually
   committed. If no spool partition is available, or spool dispatch fails,
@@ -713,17 +714,14 @@ defmodule Logflare.Backends do
     :exit, _reason -> {:error, :no_spool_partition_available}
   end
 
-  # Requires an explicit opt-in (allow_spooling), not just global mode +
-  # source.enable_spooling: SourceRouter's re-entrant calls (routing an
-  # already-matched rule to its backend/sink) never pass allow_spooling, so
-  # they always land here as false regardless of source config. The
-  # via_rule_id check is defense-in-depth on top of that — even a caller that
-  # does pass allow_spooling: true should never spool an event that's
-  # already been routed once
   @spec spoolable?([LogEvent.t()], Source.t(), boolean()) :: boolean()
   defp spoolable?(log_events, source, allow_spooling) do
-    allow_spooling and spool_producer_mode?() and source.enable_spooling and
-      Enum.all?(log_events, &(&1.via_rule_id == nil))
+    allow_spooling and
+      spool_producer_mode?() and
+      case spool_mode() do
+        :producer -> true
+        :both -> source.enable_spooling and Enum.all?(log_events, &(&1.via_rule_id == nil))
+      end
   end
 
   @doc """
