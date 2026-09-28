@@ -677,6 +677,8 @@ defmodule Logflare.Backends do
   # unique term per call spreads load across them the same way random
   # selection did.
   @spec dispatch_to_spool_producer([LogEvent.t()]) :: :ok | {:error, term()}
+  defp dispatch_to_spool_producer([]), do: :ok
+
   defp dispatch_to_spool_producer(log_events) do
     payload = SpoolEncoder.encode_raw_chunk(log_events)
     partition_key = :erlang.unique_integer()
@@ -717,7 +719,6 @@ defmodule Logflare.Backends do
   @spec spoolable?([LogEvent.t()], Source.t(), boolean()) :: boolean()
   defp spoolable?(log_events, source, allow_spooling) do
     allow_spooling and
-      log_events != [] and
       spool_producer_mode?() and
       case spool_mode() do
         :producer -> true
