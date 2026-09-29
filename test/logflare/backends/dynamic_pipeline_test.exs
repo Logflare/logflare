@@ -52,11 +52,17 @@ defmodule Logflare.Backends.DynamicPipelineTest do
 
     assert DynamicPipeline.pipeline_count(name) == 1
     assert {:ok, 2, _} = DynamicPipeline.add_pipeline(name)
-    assert {:ok, 1, removed_id} = DynamicPipeline.remove_pipeline(name)
+    assert {:ok, :draining, removed_id} = DynamicPipeline.remove_pipeline(name)
+
+    # removal is asynchronous -- wait for the scheduled termination to land
+    TestUtils.retry_assert(fn ->
+      assert DynamicPipeline.pipeline_count(name) == 1
+    end)
+
+    assert DynamicPipeline.whereis(removed_id) == nil
     # lower limit
     assert {:error, :min_pipelines} = DynamicPipeline.remove_pipeline(name)
     assert DynamicPipeline.pipeline_count(name) == 1
-    assert DynamicPipeline.whereis(removed_id) == nil
   end
 
   test "remove_pipeline/1 migrates a shard's pending events to a surviving shard instead of destroying them",
@@ -84,16 +90,19 @@ defmodule Logflare.Backends.DynamicPipelineTest do
 
     assert IngestEventQueue.total_pending({source.id, backend.id}) == 3
 
-    assert {:ok, 2, removed_id} = DynamicPipeline.remove_pipeline(name)
+    assert {:ok, :draining, removed_id} = DynamicPipeline.remove_pipeline(name)
 
     {_id, removed_sid_bid_pid} =
       Enum.find(shard_producers, fn {id, _key} -> id == removed_id end)
 
-    refute Process.alive?(elem(removed_sid_bid_pid, 2))
+    # removal is asynchronous -- wait for the scheduled termination to land
+    TestUtils.retry_assert(fn ->
+      refute Process.alive?(elem(removed_sid_bid_pid, 2))
+    end)
 
     # The removed shard's own ETS table is gone -- destroyed along with its
-    # process -- but its pending event was drained and redistributed to a
-    # surviving shard first, not lost.
+    # process -- but its pending event was moved to a surviving shard first,
+    # not lost.
     assert IngestEventQueue.total_pending(removed_sid_bid_pid) == {:error, :not_initialized}
     assert IngestEventQueue.total_pending({source.id, backend.id}) == 3
 
@@ -125,13 +134,18 @@ defmodule Logflare.Backends.DynamicPipelineTest do
         {id, sid_bid_pid, handle}
       end
 
-    assert {:ok, 1, removed_id} = DynamicPipeline.remove_pipeline(name)
+    assert {:ok, :draining, removed_id} = DynamicPipeline.remove_pipeline(name)
 
-    {_id, _removed_key, removed_handle} =
+    {_id, removed_key, removed_handle} =
       Enum.find(shards, fn {id, _key, _handle} -> id == removed_id end)
 
     {_id, surviving_key, surviving_handle} =
       Enum.find(shards, fn {id, _key, _handle} -> id != removed_id end)
+
+    # removal is asynchronous -- wait for the scheduled termination to land
+    TestUtils.retry_assert(fn ->
+      refute Process.alive?(elem(removed_key, 2))
+    end)
 
     # The migration itself must be invisible to SpoolAck -- no extra bump, no
     # premature ack -- for both the migrated pointer and the one already on

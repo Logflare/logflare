@@ -432,30 +432,51 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   defp do_get_tid(key, pid) do
     @ets_table_mapper
-    |> :ets.match({key, pid, :"$1"})
+    |> :ets.match({key, pid, :"$1", :_})
     |> Enum.find_value(fn [tid] ->
       if :ets.info(tid, :name) != :undefined, do: tid
     end)
   end
 
   @doc """
-  Removes a queue's mapper entry without deleting its underlying table, so
-  no new inserts can target it while its existing rows are still readable.
+  Flags a queue as draining, in place. `get_tid/1` still resolves it;
+  `list_counts_with_tids/1` (used by `add_to_table/3`) no longer does.
   """
-  @spec deregister_queue(table_key() | consolidated_table_key()) :: :ok
-  def deregister_queue({:consolidated, bid, pid}) when is_integer(bid),
-    do: do_deregister_queue({:consolidated, bid}, pid)
+  @spec mark_draining(table_key() | consolidated_table_key()) :: :ok
+  def mark_draining({:consolidated, bid, pid}) when is_integer(bid),
+    do: do_mark_draining({:consolidated, bid}, pid)
 
-  def deregister_queue({sid, bid, pid}) when is_integer(sid),
-    do: do_deregister_queue({sid, bid}, pid)
+  def mark_draining({sid, bid, pid}) when is_integer(sid),
+    do: do_mark_draining({sid, bid}, pid)
 
-  defp do_deregister_queue(key, pid) do
-    case do_get_tid(key, pid) do
-      nil -> :ok
-      tid -> :ets.delete_object(@ets_table_mapper, {key, pid, tid})
+  defp do_mark_draining(key, pid) do
+    case :ets.match(@ets_table_mapper, {key, pid, :"$1", :"$2"}) do
+      [[tid, status] | _] ->
+        :ets.delete_object(@ets_table_mapper, {key, pid, tid, status})
+        :ets.insert(@ets_table_mapper, {key, pid, tid, :draining})
+
+      [] ->
+        :ok
     end
 
     :ok
+  end
+
+  @doc """
+  Returns whether a queue is currently flagged draining (see `mark_draining/1`).
+  """
+  @spec draining?(table_key() | consolidated_table_key()) :: boolean()
+  def draining?({:consolidated, bid, pid}) when is_integer(bid),
+    do: do_draining?({:consolidated, bid}, pid)
+
+  def draining?({sid, bid, pid}) when is_integer(sid),
+    do: do_draining?({sid, bid}, pid)
+
+  defp do_draining?(key, pid) do
+    case :ets.match(@ets_table_mapper, {key, pid, :_, :"$1"}) do
+      [[:draining] | _] -> true
+      _ -> false
+    end
   end
 
   @doc """
@@ -488,7 +509,7 @@ defmodule Logflare.Backends.IngestEventQueue do
             {:read_concurrency, true}
           ])
 
-        :ets.insert(@ets_table_mapper, {mapper_key, pid, tid})
+        :ets.insert(@ets_table_mapper, {mapper_key, pid, tid, :active})
         {:ok, tid}
 
       tid ->
@@ -824,7 +845,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def delete_queue({sid, bid, pid} = sid_bid_pid) do
     with tid when tid != nil <- get_tid(sid_bid_pid) do
       :ets.delete(tid)
-      :ets.delete_object(@ets_table_mapper, {{sid, bid}, pid, tid})
+      :ets.select_delete(@ets_table_mapper, [{{{sid, bid}, pid, tid, :_}, [], [true]}])
       :ok
     else
       nil -> {:error, :not_initialized}
@@ -880,7 +901,7 @@ defmodule Logflare.Backends.IngestEventQueue do
              non_neg_integer()}
           ]
   def list_counts_with_tids(key) do
-    for {table_key, tid} <- list_queues_with_tids(key),
+    for {table_key, tid} <- list_active_queues_with_tids(key),
         size = :ets.info(tid, :size),
         is_integer(size) do
       {table_key, size}
@@ -962,32 +983,6 @@ defmodule Logflare.Backends.IngestEventQueue do
     ms = [{{:"$1", :_, :_, :_, :_, :_, :_, :_}, [], [:"$1"]}]
 
     pop_selected_pointers(sid_bid_pid, n, ms)
-  end
-
-  @doc """
-  Same as `pop_pending_pointers/2`, but claims directly from a known table id
-  instead of resolving one through the mapper. For draining a table whose
-  mapper entry has already been removed (see `deregister_queue/1`) but which
-  still exists and may still hold rows.
-  """
-  @spec pop_pending_pointers_from_tid(:ets.tid(), non_neg_integer()) ::
-          {:ok, [LogEventPointer.t()]}
-  def pop_pending_pointers_from_tid(_tid, 0), do: {:ok, []}
-
-  def pop_pending_pointers_from_tid(tid, n) when is_integer(n) do
-    ms = [{{:"$1", :_, :_, :_, :_, :_, :_, :_}, [], [:"$1"]}]
-
-    case select_pointer_ids(tid, ms, n) do
-      {:ok, []} ->
-        {:ok, []}
-
-      {:ok, ids} ->
-        {pointers, _stale?} = claim_pointers(tid, ids)
-        {:ok, pointers}
-
-      {:error, :not_initialized} ->
-        {:ok, []}
-    end
   end
 
   @doc """
@@ -1684,9 +1679,9 @@ defmodule Logflare.Backends.IngestEventQueue do
   defp next_and_cleanup(:"$end_of_table"), do: :ok
 
   defp next_and_cleanup({to_check, cont}) do
-    for {{sid, bid}, pid, tid} <- to_check do
+    for {{sid, bid}, pid, tid, status} <- to_check do
       if :ets.info(tid, :name) == :undefined do
-        :ets.delete_object(@ets_table_mapper, {{sid, bid}, pid, tid})
+        :ets.delete_object(@ets_table_mapper, {{sid, bid}, pid, tid, status})
       end
     end
 
@@ -1702,7 +1697,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def list_queues({:consolidated, bid}) when is_integer(bid) do
     ms =
       Ex2ms.fun do
-        {{:consolidated, ^bid}, pid, _tid} -> {:consolidated, ^bid, pid}
+        {{:consolidated, ^bid}, pid, _tid, _status} -> {:consolidated, ^bid, pid}
       end
 
     with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
@@ -1715,7 +1710,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def list_queues({sid, bid}) do
     ms =
       Ex2ms.fun do
-        {{^sid, ^bid}, pid, _tid} -> {^sid, ^bid, pid}
+        {{^sid, ^bid}, pid, _tid, _status} -> {^sid, ^bid, pid}
       end
 
     with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
@@ -1737,7 +1732,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def list_queues_with_tids({:consolidated, bid}) when is_integer(bid) do
     ms =
       Ex2ms.fun do
-        {{:consolidated, ^bid}, pid, tid} -> {{:consolidated, ^bid, pid}, tid}
+        {{:consolidated, ^bid}, pid, tid, _status} -> {{:consolidated, ^bid, pid}, tid}
       end
 
     with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
@@ -1750,7 +1745,33 @@ defmodule Logflare.Backends.IngestEventQueue do
   def list_queues_with_tids({sid, bid}) do
     ms =
       Ex2ms.fun do
-        {{^sid, ^bid}, pid, tid} -> {{^sid, ^bid, pid}, tid}
+        {{^sid, ^bid}, pid, tid, _status} -> {{^sid, ^bid, pid}, tid}
+      end
+
+    with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
+      queues
+    else
+      :"$end_of_table" -> []
+    end
+  end
+
+  defp list_active_queues_with_tids({:consolidated, bid}) when is_integer(bid) do
+    ms =
+      Ex2ms.fun do
+        {{:consolidated, ^bid}, pid, tid, :active} -> {{:consolidated, ^bid, pid}, tid}
+      end
+
+    with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
+      queues
+    else
+      :"$end_of_table" -> []
+    end
+  end
+
+  defp list_active_queues_with_tids({sid, bid}) do
+    ms =
+      Ex2ms.fun do
+        {{^sid, ^bid}, pid, tid, :active} -> {{^sid, ^bid, pid}, tid}
       end
 
     with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
@@ -1773,7 +1794,7 @@ defmodule Logflare.Backends.IngestEventQueue do
 
     ms =
       Ex2ms.fun do
-        {{:consolidated, ^bid}, pid, tid} -> {{:consolidated, ^bid, pid}, tid}
+        {{:consolidated, ^bid}, pid, tid, _status} -> {{:consolidated, ^bid, pid}, tid}
       end
 
     res =
@@ -1789,7 +1810,7 @@ defmodule Logflare.Backends.IngestEventQueue do
 
     ms =
       Ex2ms.fun do
-        {{^sid, ^bid}, pid, tid} -> {{^sid, ^bid, pid}, tid}
+        {{^sid, ^bid}, pid, tid, _status} -> {{^sid, ^bid, pid}, tid}
       end
 
     res =
