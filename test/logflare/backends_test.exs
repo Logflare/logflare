@@ -2157,7 +2157,6 @@ defmodule Logflare.BackendsTest do
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :both)
 
-
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
 
