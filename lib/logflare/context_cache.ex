@@ -12,8 +12,8 @@ defmodule Logflare.ContextCache do
   primary key checking within the matchspec. This approach queries across a narrower set of records,
   providing better performance compared to a reverse index approach.
 
-  If customization of busting is needed, cache module may implement `c:bust_by/1` callback expecting
-  a keyword list instead of primary key for entry.
+  `use Logflare.ContextCache` makes the module a `Logflare.Cache` and injects a default `c:bust_by/1`
+  that busts by `id:` (see `bust_by/2`). Caches that need other busting keys override it.
 
   ## List Busting
 
@@ -36,12 +36,26 @@ defmodule Logflare.ContextCache do
   filter out stale incoming messages.
   """
 
+  alias Logflare.Cache.CachexOps
   alias Logflare.ContextCache.Gossip
 
   @doc """
-  Optional callback implementing custom cache key busting by a keyword of values
+  Busts cache entries by a keyword of values, returning the number of entries busted.
   """
   @callback bust_by(keyword()) :: {:ok, non_neg_integer()} | {:error, term()}
+
+  defmacro __using__(opts) do
+    quote do
+      use Logflare.Cache, unquote(opts)
+
+      @behaviour Logflare.ContextCache
+
+      @impl Logflare.ContextCache
+      def bust_by(kw), do: Logflare.ContextCache.bust_by(__MODULE__, kw)
+
+      defoverridable bust_by: 1
+    end
+  end
 
   @spec apply_fun(module(), tuple() | atom(), list()) :: any()
   def apply_fun(context, {fun, _arity}, args), do: apply_fun(context, fun, args)
@@ -70,36 +84,30 @@ defmodule Logflare.ContextCache do
 
   It is intended for following a WAL for cache busting. When a new record comes in from the WAL,
   the CacheBuster process calls this function with either the primary keys extracted from those records
-  or a keyword list with fields useful for busting.
-
-  For primary key, the function then:
-
-  1. Queries the relevant context cache using a matchspec to find entries to bust
-  2. Handles both single records and lists of records containing matching IDs
-  3. Deletes matching cache entries
-
-  For keywords, it expects the cache to handle busting by implementing `c:bust_by/1`
+  or a keyword list with fields useful for busting. Both are passed to the context cache's `c:bust_by/1`,
+  a primary key as `[id: pkey]`.
   """
   @spec bust_keys(list()) :: {:ok, non_neg_integer()}
   def bust_keys(values) when is_list(values) do
     busted =
-      for {context, primary_key} <- values, reduce: 0 do
+      for {context, pkey_or_kw} <- values, reduce: 0 do
         acc ->
-          {:ok, n} = bust_key({context, primary_key})
+          {:ok, n} = bust_key(context, pkey_or_kw)
           acc + n
       end
 
     {:ok, busted}
   end
 
-  defp bust_key({context, kw}) when is_list(kw) do
-    context_cache = cache_name(context)
-    context_cache.bust_by(kw)
-  end
+  defp bust_key(context, kw) when is_list(kw), do: cache_name(context).bust_by(kw)
+  defp bust_key(context, pkey), do: cache_name(context).bust_by(id: pkey)
 
-  defp bust_key({context, pkey}) do
-    context_cache = cache_name(context)
-
+  @doc """
+  Default `c:bust_by/1`: with `[id: pkey]`, busts every entry whose cached value is a map with that `:id`,
+  an `{:ok, map}` with that `:id`, or a list containing such a map. Raises `ArgumentError` for any other keyword.
+  """
+  @spec bust_by(Cachex.t(), keyword()) :: {:ok, non_neg_integer()}
+  def bust_by(cache, id: pkey) do
     filter =
       {
         # use orelse to prevent 2nd condition failing as value is not a map
@@ -119,12 +127,22 @@ defmodule Logflare.ContextCache do
          {:==, {:map_get, :id, {:element, 2, :value}}, pkey}}
       }
 
-    query =
-      Cachex.Query.build(where: filter, output: {:key, :value})
+    query = Cachex.Query.build(where: filter, output: {:key, :value})
 
-    context_cache
-    |> Cachex.stream!(query)
-    |> delete_matching_entries(context_cache, pkey)
+    keys =
+      cache
+      |> Cachex.stream!(query)
+      |> Stream.filter(fn
+        {_k, {:cached, v}} when is_list(v) -> Enum.any?(v, &(&1.id == pkey))
+        {_k, _v} -> true
+      end)
+      |> Stream.map(fn {k, _v} -> k end)
+
+    CachexOps.delete_keys(cache, keys)
+  end
+
+  def bust_by(cache, kw) do
+    raise ArgumentError, "#{inspect(cache)} does not support busting by #{inspect(kw)}"
   end
 
   @spec cache_name(atom()) :: atom()
@@ -150,24 +168,5 @@ defmodule Logflare.ContextCache do
       {:ok, {:cached, value}} ->
         value
     end
-  end
-
-  defp delete_matching_entries(entries, context_cache, pkey) do
-    to_delete =
-      entries
-      |> Stream.filter(fn
-        {_k, {:cached, v}} when is_list(v) ->
-          Enum.any?(v, &(&1.id == pkey))
-
-        {_k, _v} ->
-          true
-      end)
-
-    Cachex.execute(context_cache, fn worker ->
-      Enum.reduce(to_delete, 0, fn {k, _v}, acc ->
-        Cachex.del(worker, k)
-        acc + 1
-      end)
-    end)
   end
 end
