@@ -617,6 +617,18 @@ defmodule Logflare.Telemetry do
         description:
           "Spool queue nack (requeue) count by reason, and whether the underlying SQS/PubSub call itself succeeded"
       ),
+      counter("logflare.backends.spool.ack.missing_handle.count",
+        event_name: [:logflare, :backends, :spool, :ack, :missing_handle],
+        tags: [:op],
+        description:
+          "Count of SpoolAck bump/2 or ack/2 calls against a handle with no row (already resolved, orphaned by redelivery, or swept as stale)"
+      ),
+      sum("logflare.backends.spool.ack.swept_stale.count",
+        event_name: [:logflare, :backends, :spool, :ack, :swept_stale],
+        measurement: :count,
+        description:
+          "Count of SpoolAck rows deleted by the periodic stale sweep (orphaned by redelivery under a new handle, not acked)"
+      ),
       sum("logflare.backends.spool.consumer.skipped.count",
         tags: [:reason],
         description: "Spool consumer: events skipped (missing/unknown source_id) by reason"
