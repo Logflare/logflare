@@ -240,7 +240,7 @@ defmodule Logflare.Mixfile do
       {:cainophile, github: "Logflare/cainophile", ref: "f92a552"},
       {:open_api_spex, "~> 3.22"},
       # required for yaml open api generation
-      {:ymlr, "~> 2.0"},
+      {:ymlr, "~> 5.1"},
       {:grpc, "~> 0.11.0"},
       {:protobuf, "~> 0.15.0", override: true},
       {:gun, "~> 2.0", override: true},
