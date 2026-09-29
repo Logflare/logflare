@@ -30,8 +30,10 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Sources.Counters
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.Pipeline
+  alias Logflare.Sources.Source.ChannelTopics
   alias Logflare.Sources.Source.Data
   alias Logflare.Sources.Source.RateCounterServer
+  alias Logflare.Sources.Source.RateSampler
   alias Logflare.Sources.SourceRouter
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.User
@@ -2155,8 +2157,50 @@ defmodule Logflare.BackendsTest do
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :both)
 
+
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      assert pending_entry_count() == 0
+    end
+
+    test "in :producer mode, dispatches to the spool producer for every source, regardless of source.enable_spooling",
+         %{source: source} do
+      # source.enable_spooling is false (the setup default)
+      stop_supervised!(SpoolDurableBufferSup)
+      test_pid = self()
+
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        buffer: :mem,
+        partitions: 1,
+        bucket: "test-bucket",
+        storage_mod: SpoolStorageMod,
+        queue_mod: SpoolQueueMod
+      )
+
+      stub(SpoolStorageMod, :put, fn _b, key, _body, _opts ->
+        send(test_pid, :put_called)
+        {:ok, key}
+      end)
+
+      start_supervised!(SpoolDurableBufferSup)
+
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      assert_receive :put_called, 1000
+    end
+
+    test "in :producer mode, does not spool an empty batch when every event is filtered out (e.g. all future-dropped)",
+         %{source: source} do
+      merge_spool_config!(mode: :producer)
+
+      now_us = System.system_time(:microsecond)
+      future_timestamp = now_us + 2 * 3_600 * 1_000_000
+      params = [%{"message" => "too future", "timestamp" => future_timestamp}]
+
+      assert {:ok, 0} = Backends.ingest_logs(params, source, nil, true)
 
       assert pending_entry_count() == 0
     end
@@ -2531,6 +2575,43 @@ defmodule Logflare.BackendsTest do
       assert {:ok, 1} = Backends.ingest_logs([le], source, nil, true)
 
       assert_receive :put_called, 1000
+    end
+  end
+
+  describe "maybe_broadcast_and_route/2 broadcast rate gating" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user)
+      start_supervised!({SourceSup, source})
+      [source: source]
+    end
+
+    test "broadcasts while the source's local rate stays below the ceiling", %{source: source} do
+      test_pid = self()
+      stub(ChannelTopics, :broadcast_new, fn events -> send(test_pid, {:broadcast, events}) end)
+
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source)
+
+      assert_receive {:broadcast, [_event]}
+    end
+
+    test "suppresses broadcasts once the source's local rate reaches the ceiling", %{
+      source: source
+    } do
+      test_pid = self()
+      stub(ChannelTopics, :broadcast_new, fn events -> send(test_pid, {:broadcast, events}) end)
+
+      RateSampler.bump(source.token, 100)
+
+      # Large batch: makes a coincidental pass under a probabilistic sampler
+      # (rather than this hard cutoff) astronomically unlikely.
+      now_us = System.system_time(:microsecond)
+      params = for _ <- 1..1_000, do: %{"message" => "hello", "timestamp" => now_us}
+      assert {:ok, 1_000} = Backends.ingest_logs(params, source)
+
+      refute_receive {:broadcast, _events}
     end
   end
 end

@@ -28,6 +28,7 @@ defmodule Logflare.Backends do
   alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Logflare.Sources.Source
+  alias Logflare.Sources.Source.RateSampler
   alias Logflare.Sources.SourceRouter
   alias Logflare.SystemMetrics
   alias Logflare.Teams
@@ -743,11 +744,23 @@ defmodule Logflare.Backends do
   @doc """
   Dispatches events from the spool consumer directly to backends, bypassing the spool producer path.
   Use this in the consumer pipeline to avoid re-routing events back to the spool in `:both` mode.
+
+  `handle` is the spool queue message (SQS receipt handle / PubSub ack id)
+  these records were decoded from, or `nil` if they didn't come from the
+  spool. Stamped onto each event as `spool_handle` so `IngestEventQueue` can
+  track, per handle, how many pipeline completions are still outstanding
+  before `Logflare.Backends.Spool.SpoolAck` acks it — see that module's
+  moduledoc.
   """
-  @spec dispatch_from_spool([map()], Source.t()) :: {:ok, non_neg_integer()}
-  def dispatch_from_spool(spool_records, source) do
+  @spec dispatch_from_spool([map()], Source.t(), term()) :: {:ok, non_neg_integer()}
+  def dispatch_from_spool(spool_records, source, handle \\ nil) do
     ensure_source_sup_started(source)
-    log_events = Enum.map(spool_records, &LogEvent.make_from_spool(&1, source))
+
+    log_events =
+      Enum.map(spool_records, fn record ->
+        LogEvent.make_from_spool(record, source, handle)
+      end)
+
     count = length(log_events)
 
     :telemetry.execute(
@@ -890,13 +903,15 @@ defmodule Logflare.Backends do
   defp spool_mode,
     do: :logflare |> Application.get_env(:spool, []) |> Keyword.get(:mode, :disable)
 
-  defp maybe_broadcast_and_route(source, log_events) do
-    case source.metrics do
-      %{avg: avg} when avg < 2 ->
-        Source.ChannelTopics.broadcast_new(log_events)
+  @broadcast_rate_ceiling 2
 
-      _ ->
-        :ok
+  defp maybe_broadcast_and_route(source, log_events) do
+    if log_events != [] do
+      RateSampler.bump(source.token, length(log_events))
+
+      if RateSampler.rate(source.token) < @broadcast_rate_ceiling do
+        Source.ChannelTopics.broadcast_new(log_events)
+      end
     end
 
     SourceRouter.route_to_sinks_and_ingest(log_events, source)
