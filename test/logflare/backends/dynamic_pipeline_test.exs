@@ -65,6 +65,27 @@ defmodule Logflare.Backends.DynamicPipelineTest do
     assert DynamicPipeline.pipeline_count(name) == 1
   end
 
+  test "remove_pipeline/1 respects min_pipelines against a shard still draining from a prior call",
+       %{name: name, pipeline_args: pipeline_args} do
+    start_supervised!(
+      {DynamicPipeline,
+       name: name, pipeline: Pipeline, pipeline_args: pipeline_args, min_pipelines: 1}
+    )
+
+    assert {:ok, 2, _} = DynamicPipeline.add_pipeline(name)
+
+    assert {:ok, :draining, _first_id} = DynamicPipeline.remove_pipeline(name)
+
+    # `pipeline_count/1` still reports 2 here -- the first shard hasn't actually
+    # terminated yet -- so this call must not proceed as if a second shard were
+    # still safely removable.
+    assert {:error, :min_pipelines} = DynamicPipeline.remove_pipeline(name)
+
+    TestUtils.retry_assert(fn ->
+      assert DynamicPipeline.pipeline_count(name) == 1
+    end)
+  end
+
   test "remove_pipeline/1 migrates a shard's pending events to a surviving shard instead of destroying them",
        %{name: name, pipeline_args: pipeline_args} do
     start_supervised!(
@@ -157,6 +178,61 @@ defmodule Logflare.Backends.DynamicPipelineTest do
              :ets.lookup(:spool_ack, surviving_handle)
 
     assert IngestEventQueue.total_pending(surviving_key) == 2
+  end
+
+  test "remove_pipeline/1 migrates to a live survivor even when a stale mapper entry is also a candidate",
+       %{name: name, pipeline_args: pipeline_args} do
+    start_supervised!(
+      {DynamicPipeline,
+       name: name, pipeline: Pipeline, pipeline_args: pipeline_args, min_pipelines: 1}
+    )
+
+    source = Keyword.fetch!(pipeline_args, :source)
+    backend = Keyword.fetch!(pipeline_args, :backend)
+
+    assert {:ok, 2, _} = DynamicPipeline.add_pipeline(name)
+
+    shard_producers =
+      for id <- DynamicPipeline.list_pipelines(name) do
+        producer_pid = id |> Broadway.producer_names() |> hd() |> GenServer.whereis()
+        sid_bid_pid = {source.id, backend.id, producer_pid}
+        le = build(:log_event, source: source)
+        assert :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
+        {id, sid_bid_pid}
+      end
+
+    test_pid = self()
+
+    stale_pid =
+      spawn(fn ->
+        table_key = {source.id, backend.id, self()}
+        {:ok, _tid} = IngestEventQueue.upsert_tid(table_key)
+        send(test_pid, :ready)
+        Process.sleep(:infinity)
+      end)
+
+    stale_ref = Process.monitor(stale_pid)
+    assert_receive :ready
+    Process.exit(stale_pid, :kill)
+    assert_receive {:DOWN, ^stale_ref, :process, ^stale_pid, :killed}
+
+    assert IngestEventQueue.total_pending({source.id, backend.id}) == 2
+
+    assert {:ok, :draining, removed_id} = DynamicPipeline.remove_pipeline(name)
+
+    {_id, removed_sid_bid_pid} =
+      Enum.find(shard_producers, fn {id, _key} -> id == removed_id end)
+
+    TestUtils.retry_assert(fn ->
+      refute Process.alive?(elem(removed_sid_bid_pid, 2))
+    end)
+
+    assert IngestEventQueue.total_pending({source.id, backend.id}) == 2
+
+    {_id, surviving_sid_bid_pid} =
+      Enum.find(shard_producers, fn {id, _key} -> id != removed_id end)
+
+    assert IngestEventQueue.total_pending(surviving_sid_bid_pid) == 2
   end
 
   test ":initial_count will determine number of pipelines at the start",

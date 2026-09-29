@@ -810,6 +810,11 @@ defmodule Logflare.Backends.IngestEventQueue do
   empty and we skip it, instead of recreating an already-claimed pointer in `to_tid`
   and risking both sides processing (and acking) the same event
   (github.com/Logflare/logflare/pull/3690#discussion_r3598370787).
+
+  Event IDs can collide across two source queues (client-suppliable, not guaranteed
+  globally unique), so `to_tid` may already hold an unrelated row for the same ID.
+  That row is claimed and acked before the incoming one is inserted in its place,
+  rather than silently overwritten with its spool handle left to leak.
   """
   def move(from, to) when is_tuple(from) and is_tuple(to) do
     with from_tid when from_tid != nil <- get_tid(from),
@@ -830,11 +835,19 @@ defmodule Logflare.Backends.IngestEventQueue do
   defp take_and_insert(from_tid, to_tid, id) do
     case :ets.take(from_tid, id) do
       [row] ->
+        ack_conflicting_row(to_tid, id)
         :ets.insert(to_tid, row)
         1
 
       [] ->
         0
+    end
+  end
+
+  defp ack_conflicting_row(to_tid, id) do
+    case :ets.take(to_tid, id) do
+      [{^id, _, _, _, _, _, _, spool_handle}] -> SpoolAck.ack(spool_handle, 1)
+      [] -> :ok
     end
   end
 

@@ -171,9 +171,15 @@ defmodule Logflare.Backends.DynamicPipeline do
   """
   @spec remove_pipeline(tuple()) :: {:ok, :draining, tuple()} | {:error, atom()}
   def remove_pipeline(name) do
-    count = pipeline_count(name)
     state = get_state(name)
+    count = effective_pipeline_count(name, state)
     maybe_remove_pipeline(name, count, state)
+  end
+
+  @doc false
+  @spec effective_pipeline_count(tuple(), state() | map()) :: non_neg_integer()
+  def effective_pipeline_count(name, state) do
+    name |> list_pipelines() |> Enum.count(&(not already_draining?(&1, state)))
   end
 
   @doc """
@@ -247,22 +253,28 @@ defmodule Logflare.Backends.DynamicPipeline do
     with {_, _, doomed_pid} = sid_bid_pid <- shard_sid_bid_pid(id, state),
          queues_key when queues_key != nil <- pipeline_args_sid_bid(state[:pipeline_args] || []),
          [_ | _] = survivors <- survivor_targets(queues_key, doomed_pid) do
-      {survivor_key, _tid} = Enum.random(survivors)
-
-      case IngestEventQueue.move(sid_bid_pid, survivor_key) do
-        {:ok, 0} ->
-          :ok
-
-        {:ok, moved} ->
-          Logger.debug(
-            "DynamicPipeline - moved #{moved} pending pointer(s) from #{inspect(id)} before removal"
-          )
-
-        {:error, :not_initialized} ->
-          :ok
-      end
+      move_to_any_survivor(sid_bid_pid, survivors, id)
     else
       _ -> :ok
+    end
+  end
+
+  defp move_to_any_survivor(_sid_bid_pid, [], _id), do: :ok
+
+  defp move_to_any_survivor(sid_bid_pid, survivors, id) do
+    {survivor_key, _tid} = candidate = Enum.random(survivors)
+
+    case IngestEventQueue.move(sid_bid_pid, survivor_key) do
+      {:ok, 0} ->
+        :ok
+
+      {:ok, moved} ->
+        Logger.debug(
+          "DynamicPipeline - moved #{moved} pending pointer(s) from #{inspect(id)} before removal"
+        )
+
+      {:error, :not_initialized} ->
+        move_to_any_survivor(sid_bid_pid, survivors -- [candidate], id)
     end
   end
 
@@ -421,10 +433,12 @@ defmodule Logflare.Backends.DynamicPipeline do
         build_telemetry_metadata(state)
       )
 
+      effective_count = DynamicPipeline.effective_pipeline_count(state.name, state)
+
       state =
-        case DynamicPipeline.resolve_pipeline_count(state, pipeline_count) do
+        case DynamicPipeline.resolve_pipeline_count(state, effective_count) do
           {:incr, desired_count, new_state} ->
-            diff = desired_count - pipeline_count
+            diff = desired_count - effective_count
 
             for _ <- 1..diff do
               DynamicPipeline.add_pipeline(state.name)
@@ -434,7 +448,7 @@ defmodule Logflare.Backends.DynamicPipeline do
             new_state
 
           {:decr, desired_count, new_state} ->
-            diff = pipeline_count - desired_count
+            diff = effective_count - desired_count
 
             for _pipeline <- 1..diff do
               DynamicPipeline.remove_pipeline(state.name)
