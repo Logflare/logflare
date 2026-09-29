@@ -18,6 +18,20 @@ defmodule LogflareWeb.AccessTokensLiveTest do
            |> has_element?()
   end
 
+  test "new action controls create form visibility", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+
+    refute has_element?(view, "form")
+
+    view |> element("button", "Create access token") |> render_click()
+    assert_patch(view, ~p"/access-tokens/new")
+    assert has_element?(view, "form")
+
+    view |> element("button", "Cancel") |> render_click()
+    assert_patch(view, ~p"/access-tokens")
+    refute has_element?(view, "form")
+  end
+
   test "legacy api key - show only when no access tokens", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/access-tokens")
     html = render(view)

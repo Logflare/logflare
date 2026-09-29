@@ -29,6 +29,7 @@ defmodule E2e.Features.AccessTokensTest do
       |> visit(~p"/access-tokens")
       |> assert_has("[data-phx-main].phx-connected")
       |> click_button("Create access token")
+      |> assert_path(~p"/access-tokens/new")
       |> click("#scopes-ingest-selected")
       |> click("#scopes-ingest-combobox button")
       |> type("#scopes-ingest-combobox input[role='combobox']", String.slice(source_name, 0, 2))
@@ -51,6 +52,7 @@ defmodule E2e.Features.AccessTokensTest do
       |> assert_has("button[aria-label='Remove #{other_source_option}']")
       |> type("input[name='description']", description)
       |> click_button("button[type='submit']", "Create")
+      |> assert_path(~p"/access-tokens")
       |> assert_has("*", text: "Access token created successfully")
 
       token = Enum.find(Auth.list_valid_access_tokens(user), &(&1.description == description))
@@ -71,6 +73,7 @@ defmodule E2e.Features.AccessTokensTest do
       |> visit(~p"/access-tokens")
       |> assert_has("[data-phx-main].phx-connected")
       |> click_button("Create access token")
+      |> assert_path(~p"/access-tokens/new")
       |> type("input[name='description']", description)
       |> click("#scopes-ingest-selected")
       |> click("#scopes-ingest-combobox button")

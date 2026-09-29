@@ -18,7 +18,7 @@ defmodule LogflareWeb.AccessTokensLive do
 
     <section class="content container mx-auto tw-flex tw-flex-col w-full tw-gap-4">
       <div>
-        <button class="btn btn-primary" phx-click="toggle-create-form" phx-value-show="true">
+        <button :if={@live_action == :index} class="btn btn-primary" phx-click={JS.patch(~p"/access-tokens/new")}>
           Create access token
         </button>
       </div>
@@ -29,7 +29,7 @@ defmodule LogflareWeb.AccessTokensLive do
           The <code>X-API-KEY</code> header method expects the header format <code>X-API-KEY: your-access-token</code>.
           The <code>api_key</code> query parameter method expects the search format <code>?api_key=your-access-token</code>.</p>
 
-        <.form :let={f} for={@create_token_form} action="#" phx-change="update-token-form" phx-submit="create-token" class={["mt-4", "jumbotron jumbotron-fluid tw-p-4", if(@show_create_form == false, do: "hidden")]}>
+        <.form :let={f} :if={@live_action == :new} for={@create_token_form} action="#" phx-change="update-token-form" phx-submit="create-token" class="mt-4 jumbotron jumbotron-fluid tw-p-4">
           <h5>New Access Token</h5>
           <div class="form-group">
             <label name="description">Description</label>
@@ -44,7 +44,7 @@ defmodule LogflareWeb.AccessTokensLive do
             <.scope value="query" label="Query" description="Choose whether this token can query all or selected endpoints." form={f} resource="endpoints" options={endpoint_options(@endpoints)} mode_field={f[:scopes_query_mode]} selected_field={f[:scopes_query]} />
             <.scope value="private" label="Private" description="For account management, has all privileges" form={f} />
           </div>
-          <button type="button" class="btn btn-secondary" phx-click="toggle-create-form" phx-value-show="false">Cancel</button>
+          <button type="button" class="btn btn-secondary" phx-click={JS.patch(~p"/access-tokens")}>Cancel</button>
           {submit("Create", class: "btn btn-primary")}
         </.form>
 
@@ -216,7 +216,6 @@ defmodule LogflareWeb.AccessTokensLive do
 
     socket =
       socket
-      |> assign(:show_create_form, false)
       |> assign(:created_token, nil)
       |> assign(:sources, sources)
       |> assign(:endpoints, endpoints)
@@ -228,9 +227,7 @@ defmodule LogflareWeb.AccessTokensLive do
     {:ok, socket}
   end
 
-  def handle_event("toggle-create-form", %{"show" => value}, socket)
-      when value in ["true", "false"],
-      do: {:noreply, assign(socket, show_create_form: value === "true")}
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   def handle_event("dismiss-created-token", _params, socket) do
     {:noreply, assign(socket, created_token: nil)}
@@ -285,9 +282,9 @@ defmodule LogflareWeb.AccessTokensLive do
       socket =
         socket
         |> do_refresh()
-        |> assign(:show_create_form, false)
         |> assign(:create_token_form, @default_create_form)
         |> assign(:created_token, token)
+        |> push_patch(to: ~p"/access-tokens")
 
       {:noreply, socket}
     else
