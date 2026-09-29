@@ -14,11 +14,12 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Mailer
   alias Logflare.Sources
+  alias Logflare.SourceSchemas
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.Backends.BufferProducer
   alias Logflare.Sources.Source.BigQuery.Schema
-  alias Logflare.Sources.Source.BigQuery.SchemaUpdateSampler
+  alias Logflare.Sources.Source.RateSampler
   alias Logflare.Sources.Source.Supervisor
   alias Logflare.Sources
   alias Logflare.Users
@@ -280,6 +281,10 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     } do
       source = Sources.Cache.get_by_id(context.source_id)
 
+      if source do
+        RateSampler.bump(schema_check_rate_key(source), batch_info.size)
+      end
+
       # Fetch full LogEvents from ETS. Sizes were computed in the producer and are
       # carried on each message — no recomputation needed here. The batch is already
       # byte-bounded by bq_batch_size_splitter/0 in the batcher config.
@@ -491,8 +496,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     # Send those events through the pipeline again, but run them through our schema process this time. Do all
     # these things a max of like 5 times and after that send them to the rejected pile.
 
-    # Random sample if local ingest rate is above a certain level.
-    if source && not source.lock_schema && SchemaUpdateSampler.sample?(source.token) do
+    if source && not source.lock_schema && schema_check_sample?(source) do
       :ok =
         Backends.via_source(source, {Schema, Map.get(context, :backend_id)})
         |> Schema.update(log_event, source)
@@ -500,6 +504,14 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
     log_event
   end
+
+  # Never sampled away: a source's very first schema check always runs.
+  defp schema_check_sample?(source) do
+    RateSampler.sample?(schema_check_rate_key(source)) or
+      is_nil(SourceSchemas.Cache.get_source_schema_by(source_id: source.id))
+  end
+
+  defp schema_check_rate_key(source), do: {source.token, :bq_schema_check}
 
   def name(source_id) when is_atom(source_id) do
     String.to_atom("#{source_id}" <> "-pipeline")
