@@ -416,6 +416,37 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
       assert length(claimed_pointers) + IngestEventQueue.total_pending(target) == 1
     end
+
+    test "move/2 acks a conflicting same-ID row on the target instead of silently overwriting it",
+         %{queue: {sid, bid, _} = queue} do
+      target = {sid, bid, self()}
+      IngestEventQueue.upsert_tid(target)
+
+      moved_handle = "spool-handle-#{System.unique_integer([:positive])}"
+      stranded_handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(moved_handle, QueueMod, "queue-url")
+      SpoolAck.register(stranded_handle, QueueMod, "queue-url")
+
+      le = %{build(:log_event, message: "moved") | spool_handle: moved_handle}
+
+      conflicting = %{
+        build(:log_event, message: "stranded")
+        | id: le.id,
+          spool_handle: stranded_handle
+      }
+
+      :ok = IngestEventQueue.add_to_table(queue, [le])
+      :ok = IngestEventQueue.add_to_table(target, [conflicting])
+
+      assert {:ok, 1} = IngestEventQueue.move(queue, target)
+
+      assert :ets.lookup(:spool_ack, stranded_handle) == []
+
+      assert [{^moved_handle, 1, QueueMod, "queue-url", _registered_at}] =
+               :ets.lookup(:spool_ack, moved_handle)
+
+      assert IngestEventQueue.total_pending(target) == 1
+    end
   end
 
   describe "with a queue" do
