@@ -26,12 +26,12 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaUpdateSamplerTest do
       # module's rolling-window design), so this simulates a just-completed
       # window with a high rate directly, rather than relying on enough
       # real wall-clock time passing in the test itself.
-      SchemaUpdateSampler.sample?(token)
+      SchemaUpdateSampler.sample_mode(token)
       now = System.monotonic_time(:millisecond)
       :ets.insert(:schema_update_sampler, {token, now - 1_001, 2_000, 0})
 
-      sampled = for _ <- 1..2_000, do: SchemaUpdateSampler.sample?(token)
-      sampled_count = Enum.count(sampled, & &1)
+      sampled = for _ <- 1..2_000, do: SchemaUpdateSampler.sample_mode(token)
+      sampled_count = Enum.count(sampled, &(&1 != :skip))
 
       assert sampled_count < 100,
              "expected sampling to have backed off after a high local rate, got #{sampled_count}/2000"
@@ -40,7 +40,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaUpdateSamplerTest do
     test "a gap longer than the window resets the rate instead of carrying it forward" do
       token = unique_token()
 
-      for _ <- 1..2_000, do: SchemaUpdateSampler.sample?(token)
+      for _ <- 1..2_000, do: SchemaUpdateSampler.sample_mode(token)
 
       # Force the next call to land in a fresh window without actually
       # sleeping a full second in the test: insert a stale window directly.
@@ -52,7 +52,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaUpdateSamplerTest do
       # The stale window's near-zero rate must not carry forward — its first
       # call in the new window should already be resampling near 1.0 (only
       # decaying again once *this* window accumulates real volume).
-      assert SchemaUpdateSampler.sample?(token)
+      assert SchemaUpdateSampler.sample_mode(token) == :normal
     end
   end
 end

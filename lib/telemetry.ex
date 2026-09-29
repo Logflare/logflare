@@ -977,10 +977,9 @@ defmodule Logflare.Telemetry do
             observed_process_count: counts.observed_process_count + 1,
             queue_length_max: max(counts.queue_length_max, queue_length),
             queue_length_sum: counts.queue_length_sum + queue_length,
-            queues_above_32: counts.queues_above_32 + if(queue_length >= 32, do: 1, else: 0),
-            queues_above_100: counts.queues_above_100 + if(queue_length >= 100, do: 1, else: 0),
-            queues_above_1000:
-              counts.queues_above_1000 + if(queue_length >= 1_000, do: 1, else: 0)
+            queues_above_32: counts.queues_above_32 + if(queue_length > 32, do: 1, else: 0),
+            queues_above_100: counts.queues_above_100 + if(queue_length > 100, do: 1, else: 0),
+            queues_above_1000: counts.queues_above_1000 + if(queue_length > 1_000, do: 1, else: 0)
           }
         else
           counts

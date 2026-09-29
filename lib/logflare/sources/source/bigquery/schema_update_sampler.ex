@@ -20,10 +20,6 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaUpdateSampler do
     {:ok, state}
   end
 
-  @doc "Whether to sample a schema-update check for `source_token`'s next event."
-  @spec sample?(atom()) :: boolean()
-  def sample?(source_token), do: sample_mode(source_token) != :skip
-
   @doc "Sample a schema-update check, returning the rate mode or `:skip`."
   @spec sample_mode(atom()) :: :normal | :zero_rate | :floor | :skip
   def sample_mode(source_token) do
