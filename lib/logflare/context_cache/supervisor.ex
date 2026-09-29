@@ -13,6 +13,7 @@ defmodule Logflare.ContextCache.Supervisor do
   alias Logflare.Endpoints
   alias Logflare.GenSingleton
   alias Logflare.KeyValues
+  alias Logflare.KeyValues.Cache.L1, as: KeyValuesL1
   alias Logflare.Partners
   alias Logflare.Repo
   alias Logflare.Repo.ConnectionOptions
@@ -88,6 +89,13 @@ defmodule Logflare.ContextCache.Supervisor do
   def list_caches do
     Enum.map(list_caches_with_metrics(), fn {cache, _} -> cache end)
   end
+
+  @doc """
+  Returns the name of the Cachex cache backing a context cache from `list_caches/0`.
+  """
+  @spec cachex_name(module()) :: atom()
+  def cachex_name(KeyValues.Cache), do: KeyValuesL1.cache_name()
+  def cachex_name(cache), do: cache
 
   @doc """
   Returns the publisher :via name used for syn registry.

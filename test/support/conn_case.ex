@@ -78,8 +78,7 @@ defmodule LogflareWeb.ConnCase do
           func.()
         end)
 
-        caches = Logflare.ContextCache.Supervisor.list_caches()
-        Enum.each(caches, &Cachex.reset(&1, hooks: [Cachex.Stats]))
+        Logflare.DataCase.reset_context_caches()
 
         on_exit(fn ->
           IngestEventQueue.delete_all_mappings()

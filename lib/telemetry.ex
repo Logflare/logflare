@@ -846,6 +846,7 @@ defmodule Logflare.Telemetry do
 
   def cachex_metrics do
     Enum.each(@caches, fn {cache, metric} ->
+      cache = Logflare.ContextCache.Supervisor.cachex_name(cache)
       {:ok, stats} = Cachex.stats(cache)
 
       {:total_heap_size, total_heap_size} =
