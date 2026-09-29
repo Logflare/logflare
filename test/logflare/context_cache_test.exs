@@ -9,6 +9,11 @@ defmodule Logflare.ContextCacheTest do
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Auth
+  alias Logflare.Cache.CachexOps
+
+  defmodule TestCache do
+    use Logflare.ContextCache
+  end
 
   describe "ContextCache" do
     setup do
@@ -51,6 +56,33 @@ defmodule Logflare.ContextCacheTest do
 
       assert {:ok, 1} = ContextCache.bust_keys([{Backends, backend.id}])
       assert is_nil(Cachex.get!(Backends.Cache, cache_key))
+    end
+  end
+
+  describe "default bust_by/1" do
+    setup do
+      start_supervised!(CachexOps.child_spec(TestCache, limit: nil))
+      :ok
+    end
+
+    for {name, value, expected_count} <- [
+          {"map with the id", %{id: 1}, 1},
+          {":ok tuple with a map with the id", {:ok, %{id: 1}}, 1},
+          {"list containing a map with the id", [%{id: 2}, %{id: 1}], 1},
+          {"map with another id", %{id: 2}, 0},
+          {"list without the id", [%{id: 2}], 0},
+          {"nil", nil, 0}
+        ] do
+      test "cached #{name}" do
+        Cachex.put(TestCache, :key, {:cached, unquote(Macro.escape(value))})
+
+        assert {:ok, unquote(expected_count)} = TestCache.bust_by(id: 1)
+        assert {:ok, unquote(expected_count == 0)} = Cachex.exists?(TestCache, :key)
+      end
+    end
+
+    test "keyword other than id" do
+      assert_raise ArgumentError, fn -> TestCache.bust_by(source_id: 1) end
     end
   end
 

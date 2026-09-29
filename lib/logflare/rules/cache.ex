@@ -1,41 +1,22 @@
 defmodule Logflare.Rules.Cache do
   @moduledoc false
 
+  use Logflare.ContextCache
+
   alias Logflare.Backends.Backend
+  alias Logflare.Cache.CachexOps
   alias Logflare.ContextCache
   alias Logflare.Repo
   alias Logflare.Rules
   alias Logflare.Sources.Source
-  alias Logflare.Utils
-  import Cachex.Spec
-
-  @behaviour ContextCache
 
   def child_spec(_) do
-    stats = Application.get_env(:logflare, :cache_stats, false)
-
-    %{
-      id: __MODULE__,
-      start: {
-        Cachex,
-        :start_link,
-        [
-          __MODULE__,
-          [
-            warmers: [
-              warmer(required: false, module: Rules.CacheWarmer, name: Rules.CacheWarmer)
-            ],
-            hooks:
-              [
-                if(stats, do: Utils.cache_stats()),
-                Utils.cache_limit(100_000)
-              ]
-              |> Enum.filter(& &1),
-            expiration: Utils.cache_expiration_min(60, 5)
-          ]
-        ]
-      }
-    }
+    CachexOps.child_spec(__MODULE__,
+      limit: 100_000,
+      ttl: to_timeout(hour: 1),
+      purge_interval: to_timeout(minute: 5),
+      warmer: Rules.CacheWarmer
+    )
   end
 
   @spec list_rules(Source.t() | Backend.t()) :: [Rules.Rule.t()]
@@ -57,9 +38,8 @@ defmodule Logflare.Rules.Cache do
 
   @impl ContextCache
   def bust_by(kw) do
-    entries =
-      kw
-      |> Enum.flat_map(fn
+    keys =
+      Enum.flat_map(kw, fn
         {:id, id} ->
           [{:get_rule, [id]}]
 
@@ -70,24 +50,13 @@ defmodule Logflare.Rules.Cache do
           [{:list_by_backend_id, [backend_id]}]
       end)
 
-    Cachex.execute(Rules.Cache, fn worker ->
-      Enum.reduce(entries, 0, fn k, acc ->
-        acc + delete_and_count(worker, k)
-      end)
-    end)
+    CachexOps.delete_keys(__MODULE__, keys)
   end
 
   defp fetch_rule(cache, id) do
     ContextCache.fetch(cache, {:get_rule, [id]}, fn ->
       Repo.with_replica(fn -> Rules.get_rule(id) end)
     end)
-  end
-
-  defp delete_and_count(cache, key) do
-    case Cachex.take(cache, key) do
-      {:ok, nil} -> 0
-      {:ok, _value} -> 1
-    end
   end
 
   defp apply_repo_fun(fun, args) do

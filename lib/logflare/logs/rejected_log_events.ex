@@ -22,33 +22,21 @@ defmodule Logflare.Logs.RejectedLogEvents do
   ```
   """
 
+  use Logflare.Cache
+
+  alias Logflare.Cache.CachexOps
   alias Logflare.Sources.Source
   alias Logflare.LogEvent, as: LE
-  alias Logflare.Utils
   alias Logflare.Sources
 
   @cache __MODULE__
 
   def child_spec(_) do
-    stats = Application.get_env(:logflare, :cache_stats, false)
-
-    %{
-      id: @cache,
-      start:
-        {Cachex, :start_link,
-         [
-           @cache,
-           [
-             expiration: Utils.cache_expiration_min(60),
-             hooks:
-               [
-                 if(stats, do: Utils.cache_stats()),
-                 Utils.cache_limit(10_000)
-               ]
-               |> Enum.filter(& &1)
-           ]
-         ]}
-    }
+    CachexOps.child_spec(@cache,
+      limit: 10_000,
+      ttl: to_timeout(hour: 1),
+      purge_interval: to_timeout(minute: 5)
+    )
   end
 
   @spec get_by_source(Source.t()) :: list(LE.t())

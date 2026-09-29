@@ -891,8 +891,6 @@ defmodule Logflare.TelemetryTest do
                  :miss_rate,
                  :misses,
                  :operations,
-                 :purge,
-                 :stats,
                  :total_heap_size
                ]
 
