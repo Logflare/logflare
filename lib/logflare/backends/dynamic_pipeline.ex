@@ -16,8 +16,12 @@ defmodule Logflare.Backends.DynamicPipeline do
   use Supervisor
 
   alias __MODULE__.Coordinator
+  alias Logflare.Backends.IngestEventQueue
 
   require Logger
+
+  @drain_settle_ms 20
+  @drain_max_passes 10
 
   @type state :: %{
           name: term(),
@@ -182,25 +186,127 @@ defmodule Logflare.Backends.DynamicPipeline do
   defp maybe_remove_pipeline(_name, count, _state) when count == 0,
     do: {:error, :min_pipelines}
 
-  defp maybe_remove_pipeline(name, _count, _state) do
+  defp maybe_remove_pipeline(name, _count, state) do
     id =
       list_pipelines(name)
       |> Enum.random()
 
-    try do
-      with :ok <- Supervisor.terminate_child(name, id),
-           :ok <- Supervisor.delete_child(name, id) do
-        count = pipeline_count(name)
-        Logger.debug("DynamicPipeline - Removed pipeline #{inspect(id)}, count is now #{count}")
-        {:ok, count, id}
+    drained = drain_shard_before_terminate(id, state)
+
+    result =
+      try do
+        with :ok <- Supervisor.terminate_child(name, id),
+             :ok <- Supervisor.delete_child(name, id) do
+          count = pipeline_count(name)
+          Logger.debug("DynamicPipeline - Removed pipeline #{inspect(id)}, count is now #{count}")
+          {:ok, count, id}
+        end
+      rescue
+        e ->
+          Logger.error(
+            "Error when attempting to terminate and remove pipeline. Error: #{Exception.format(:error, e, __STACKTRACE__)}"
+          )
+
+          {:error, :unknown_error}
       end
-    rescue
-      e ->
+
+    redistribute_drained(state, drained)
+    result
+  end
+
+  # Terminating a shard's process destroys its own ETS pointer table along
+  # with it (table ownership dies with the owning process), so anything
+  # still pending there has to be pulled out before Supervisor.terminate_child
+  # runs, not after. Deregistering first stops new round-robin inserts from
+  # targeting it, then drains until two consecutive pops come back empty (or
+  # a pass limit is hit) to catch anything that raced in before deregistration
+  # took effect.
+  defp drain_shard_before_terminate(id, state) do
+    with sid_bid_pid when sid_bid_pid != nil <- shard_sid_bid_pid(id, state),
+         tid when tid != nil <- IngestEventQueue.get_tid(sid_bid_pid) do
+      IngestEventQueue.deregister_queue(sid_bid_pid)
+      drain_until_quiescent(tid)
+    else
+      _ -> []
+    end
+  end
+
+  defp shard_sid_bid_pid(id, state) do
+    producer_pid = id |> Broadway.producer_names() |> List.first() |> GenServer.whereis()
+
+    case {producer_pid, pipeline_args_sid_bid(state[:pipeline_args] || [])} do
+      {nil, _} -> nil
+      {_pid, nil} -> nil
+      {pid, {:consolidated, bid}} -> {:consolidated, bid, pid}
+      {pid, {sid, bid}} -> {sid, bid, pid}
+    end
+  end
+
+  defp pipeline_args_sid_bid(pipeline_args) do
+    case {Keyword.get(pipeline_args, :source), Keyword.get(pipeline_args, :backend)} do
+      {%{id: sid}, %{id: bid}} -> {sid, bid}
+      {nil, %{id: bid}} -> {:consolidated, bid}
+      _ -> nil
+    end
+  end
+
+  defp drain_until_quiescent(tid), do: drain_until_quiescent(tid, [], 0)
+
+  defp drain_until_quiescent(_tid, acc, @drain_max_passes), do: acc
+
+  defp drain_until_quiescent(tid, acc, passes) do
+    {:ok, pointers} = IngestEventQueue.pop_pending_pointers_from_tid(tid, 50_000)
+    acc = acc ++ pointers
+
+    if passes > 0 and pointers == [] do
+      acc
+    else
+      Process.sleep(@drain_settle_ms)
+      drain_until_quiescent(tid, acc, passes + 1)
+    end
+  end
+
+  defp redistribute_drained(_state, []), do: :ok
+
+  defp redistribute_drained(state, pointers) do
+    case pipeline_args_sid_bid(state[:pipeline_args] || []) do
+      nil ->
         Logger.error(
-          "Error when attempting to terminate and remove pipeline. Error: #{Exception.format(:error, e, __STACKTRACE__)}"
+          "DynamicPipeline - drained #{length(pointers)} pointer(s) during scale-down but could not resolve a redistribution target"
         )
 
-        {:error, :unknown_error}
+      queues_key ->
+        redistribute_to_targets(redistribution_targets(queues_key), pointers)
+    end
+
+    :ok
+  end
+
+  defp redistribute_to_targets([], pointers) do
+    Logger.error(
+      "DynamicPipeline - drained #{length(pointers)} pointer(s) during scale-down but no surviving queue was available to redistribute them to"
+    )
+  end
+
+  defp redistribute_to_targets(targets, pointers) do
+    Enum.each(pointers, fn pointer ->
+      {_table_key, target_tid} = Enum.random(targets)
+      IngestEventQueue.reinsert_pointer(%{pointer | queue_tid: target_tid})
+    end)
+
+    Logger.debug(
+      "DynamicPipeline - redistributed #{length(pointers)} pointer(s) from a removed pipeline"
+    )
+  end
+
+  # Prefers a live shard so redistributed pointers get drained immediately;
+  # only falls back to an unowned queue (e.g. startup) if none survive.
+  defp redistribution_targets(queues_key) do
+    targets = IngestEventQueue.list_queues_with_tids(queues_key)
+
+    case Enum.filter(targets, fn {table_key, _tid} -> elem(table_key, 2) != nil end) do
+      [] -> targets
+      live -> live
     end
   end
 

@@ -439,6 +439,26 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
+  Removes a queue's mapper entry without deleting its underlying table, so
+  no new inserts can target it while its existing rows are still readable.
+  """
+  @spec deregister_queue(table_key() | consolidated_table_key()) :: :ok
+  def deregister_queue({:consolidated, bid, pid}) when is_integer(bid),
+    do: do_deregister_queue({:consolidated, bid}, pid)
+
+  def deregister_queue({sid, bid, pid}) when is_integer(sid),
+    do: do_deregister_queue({sid, bid}, pid)
+
+  defp do_deregister_queue(key, pid) do
+    case do_get_tid(key, pid) do
+      nil -> :ok
+      tid -> :ets.delete_object(@ets_table_mapper, {key, pid, tid})
+    end
+
+    :ok
+  end
+
+  @doc """
   Creates or updates a private :ets table. The :ets table mapper is stored in #{@ets_table_mapper} .
   """
   @spec upsert_tid(table_key() | consolidated_table_key() | spool_producer_table_key()) ::
@@ -942,6 +962,32 @@ defmodule Logflare.Backends.IngestEventQueue do
     ms = [{{:"$1", :_, :_, :_, :_, :_, :_, :_}, [], [:"$1"]}]
 
     pop_selected_pointers(sid_bid_pid, n, ms)
+  end
+
+  @doc """
+  Same as `pop_pending_pointers/2`, but claims directly from a known table id
+  instead of resolving one through the mapper. For draining a table whose
+  mapper entry has already been removed (see `deregister_queue/1`) but which
+  still exists and may still hold rows.
+  """
+  @spec pop_pending_pointers_from_tid(:ets.tid(), non_neg_integer()) ::
+          {:ok, [LogEventPointer.t()]}
+  def pop_pending_pointers_from_tid(_tid, 0), do: {:ok, []}
+
+  def pop_pending_pointers_from_tid(tid, n) when is_integer(n) do
+    ms = [{{:"$1", :_, :_, :_, :_, :_, :_, :_}, [], [:"$1"]}]
+
+    case select_pointer_ids(tid, ms, n) do
+      {:ok, []} ->
+        {:ok, []}
+
+      {:ok, ids} ->
+        {pointers, _stale?} = claim_pointers(tid, ids)
+        {:ok, pointers}
+
+      {:error, :not_initialized} ->
+        {:ok, []}
+    end
   end
 
   @doc """

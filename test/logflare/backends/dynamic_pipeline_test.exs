@@ -6,7 +6,8 @@ defmodule Logflare.Backends.DynamicPipelineTest do
   alias Logflare.Sources.Source.BigQuery.Pipeline
   alias Logflare.PipelinesTest.StubPipeline
   alias Logflare.Backends.IngestEventQueue
-  alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
+  alias Logflare.Backends.Spool.SpoolAck
 
   import ExUnit.CaptureLog
 
@@ -56,6 +57,92 @@ defmodule Logflare.Backends.DynamicPipelineTest do
     assert {:error, :min_pipelines} = DynamicPipeline.remove_pipeline(name)
     assert DynamicPipeline.pipeline_count(name) == 1
     assert DynamicPipeline.whereis(removed_id) == nil
+  end
+
+  test "remove_pipeline/1 migrates a shard's pending events to a surviving shard instead of destroying them",
+       %{name: name, pipeline_args: pipeline_args} do
+    start_supervised!(
+      {DynamicPipeline,
+       name: name, pipeline: Pipeline, pipeline_args: pipeline_args, min_pipelines: 1}
+    )
+
+    source = Keyword.fetch!(pipeline_args, :source)
+    backend = Keyword.fetch!(pipeline_args, :backend)
+
+    assert {:ok, 2, _} = DynamicPipeline.add_pipeline(name)
+    assert {:ok, 3, _} = DynamicPipeline.add_pipeline(name)
+
+    shard_producers =
+      for id <- DynamicPipeline.list_pipelines(name) do
+        producer_pid = id |> Broadway.producer_names() |> hd() |> GenServer.whereis()
+        sid_bid_pid = {source.id, backend.id, producer_pid}
+        le = build(:log_event, source: source)
+        assert :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
+        assert IngestEventQueue.total_pending(sid_bid_pid) == 1
+        {id, sid_bid_pid}
+      end
+
+    assert IngestEventQueue.total_pending({source.id, backend.id}) == 3
+
+    assert {:ok, 2, removed_id} = DynamicPipeline.remove_pipeline(name)
+
+    {_id, removed_sid_bid_pid} =
+      Enum.find(shard_producers, fn {id, _key} -> id == removed_id end)
+
+    refute Process.alive?(elem(removed_sid_bid_pid, 2))
+
+    # The removed shard's own ETS table is gone -- destroyed along with its
+    # process -- but its pending event was drained and redistributed to a
+    # surviving shard first, not lost.
+    assert IngestEventQueue.total_pending(removed_sid_bid_pid) == {:error, :not_initialized}
+    assert IngestEventQueue.total_pending({source.id, backend.id}) == 3
+
+    surviving = for {id, sid_bid_pid} <- shard_producers, id != removed_id, do: sid_bid_pid
+    assert Enum.all?(surviving, fn key -> Process.alive?(elem(key, 2)) end)
+    assert surviving |> Enum.map(&IngestEventQueue.total_pending/1) |> Enum.sum() == 3
+  end
+
+  test "remove_pipeline/1 does not bump or ack SpoolAck when migrating a shard's pending events",
+       %{name: name, pipeline_args: pipeline_args} do
+    start_supervised!(
+      {DynamicPipeline,
+       name: name, pipeline: Pipeline, pipeline_args: pipeline_args, min_pipelines: 1}
+    )
+
+    source = Keyword.fetch!(pipeline_args, :source)
+    backend = Keyword.fetch!(pipeline_args, :backend)
+
+    assert {:ok, 2, _} = DynamicPipeline.add_pipeline(name)
+
+    shards =
+      for id <- DynamicPipeline.list_pipelines(name) do
+        producer_pid = id |> Broadway.producer_names() |> hd() |> GenServer.whereis()
+        sid_bid_pid = {source.id, backend.id, producer_pid}
+        handle = "spool-handle-#{System.unique_integer([:positive])}"
+        SpoolAck.register(handle, QueueMod, "queue-url")
+        le = %{build(:log_event, source: source) | spool_handle: handle}
+        assert :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
+        {id, sid_bid_pid, handle}
+      end
+
+    assert {:ok, 1, removed_id} = DynamicPipeline.remove_pipeline(name)
+
+    {_id, _removed_key, removed_handle} =
+      Enum.find(shards, fn {id, _key, _handle} -> id == removed_id end)
+
+    {_id, surviving_key, surviving_handle} =
+      Enum.find(shards, fn {id, _key, _handle} -> id != removed_id end)
+
+    # The migration itself must be invisible to SpoolAck -- no extra bump, no
+    # premature ack -- for both the migrated pointer and the one already on
+    # the surviving shard.
+    assert [{^removed_handle, 1, QueueMod, "queue-url", _registered_at}] =
+             :ets.lookup(:spool_ack, removed_handle)
+
+    assert [{^surviving_handle, 1, QueueMod, "queue-url", _registered_at}] =
+             :ets.lookup(:spool_ack, surviving_handle)
+
+    assert IngestEventQueue.total_pending(surviving_key) == 2
   end
 
   test ":initial_count will determine number of pipelines at the start",
