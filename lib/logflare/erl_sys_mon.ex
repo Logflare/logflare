@@ -82,8 +82,12 @@ defmodule Logflare.ErlSysMon do
     %{dictionary: dictionary, source_registry_keys: source_registry_keys(pid)}
   end
 
-  defp source_registry_keys(pid) do
-    Registry.keys(Logflare.Backends.SourceRegistry, pid)
+  @doc false
+  @spec source_registry_keys(pid(), atom()) :: [term()]
+  def source_registry_keys(pid, registry \\ Logflare.Backends.SourceRegistry) do
+    Registry.keys(registry, pid)
+  rescue
+    ArgumentError -> []
   catch
     :exit, _reason -> []
   end
