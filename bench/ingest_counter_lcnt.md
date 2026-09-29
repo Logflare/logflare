@@ -52,13 +52,21 @@ workloads reported no database-lock conflicts. An all-category follow-up
 reported only scheduler run-queue and task process locks, with no counter lock
 replacing the removed ETS contention. The source counter was subsequently
 changed to fixed-size `:atomics` to bound per-source memory; the global counter
-still uses `:counters`. The hybrid has not been rerun under the lock-counting VM.
+still uses `:counters`.
 
-Median instrumented-VM elapsed time also dropped from 0.099784 seconds to
-0.001618 seconds for the source scenario and from 0.099877 seconds to 0.001602
-seconds for the system scenario. These timings describe the lock-counting
-emulator; the collision counts, rather than absolute throughput, are the primary
-result.
+Three fresh-VM trials of the **final hybrid** on the same OTP 27.3.4.6
+lock-counting build, with eight workers × 1,000 increments per scenario, all
+reported zero database-lock conflicts and verified the exact final count.
+Source elapsed times were 0.002658, 0.002881, and 0.002763 seconds (median
+0.002763); system elapsed times were 0.001494, 0.001345, and 0.001305 seconds
+(median 0.001345). An all-category trial of each scenario found only scheduler
+run-queue and process-message-queue locks, with no replacement counter lock.
+
+For comparison, the initial sharded candidate's median instrumented-VM elapsed
+time was 0.001618 seconds for source and 0.001602 seconds for system, versus
+0.099784 and 0.099877 seconds for the old ETS baseline. These timings describe
+the lock-counting emulator; collision counts, rather than absolute throughput,
+are the primary result.
 
 Concurrent reads of the ingest queue mapper were also profiled. They produced
 no lock conflicts, so its ETS configuration was left unchanged.
