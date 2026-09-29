@@ -30,28 +30,29 @@ defmodule E2e.Features.AccessTokensTest do
       |> assert_has("[data-phx-main].phx-connected")
       |> click_button("Create access token")
       |> assert_path(~p"/access-tokens/new")
-      |> click("#scopes-ingest-selected")
-      |> click("#scopes-ingest-combobox button")
-      |> type("#scopes-ingest-combobox input[role='combobox']", String.slice(source_name, 0, 2))
+      |> choose("Selected sources")
+      |> click_button("Open options")
+      |> fill_in("input[role='combobox']", "Select sources...",
+        with: String.slice(source_name, 0, 2)
+      )
       |> assert_has("[role='option']", text: source_option)
       |> refute_has("[role='option']", text: other_source_option)
       |> click("[role='option']", source_option)
-      |> type(
-        "#scopes-ingest-combobox input[role='combobox']",
-        String.slice(other_source_name, 0, 2)
+      |> fill_in("input[role='combobox']", "Select sources...",
+        with: String.slice(other_source_name, 0, 2)
       )
       |> click("[role='option']", other_source_option)
       |> assert_has("button[aria-label='Remove #{source_option}']")
       |> assert_has("button[aria-label='Remove #{other_source_option}']")
-      |> click("label[for='scopesmainprivate']")
-      |> assert_has("#scopes-ingest-all:checked:disabled")
+      |> check("Private", exact: false)
+      |> assert_has("input:checked:disabled", label: "All sources")
       |> refute_has("button[aria-label='Remove #{source_option}']")
-      |> click("label[for='scopesmainprivate']")
-      |> assert_has("#scopes-ingest-selected:checked")
+      |> uncheck("Private", exact: false)
+      |> assert_has("input:checked", label: "Selected sources")
       |> assert_has("button[aria-label='Remove #{source_option}']")
       |> assert_has("button[aria-label='Remove #{other_source_option}']")
-      |> type("input[name='description']", description)
-      |> click_button("button[type='submit']", "Create")
+      |> fill_in("Description", with: description)
+      |> click_button("Create")
       |> assert_path(~p"/access-tokens")
       |> assert_has("*", text: "Access token created successfully")
 
@@ -59,6 +60,25 @@ defmodule E2e.Features.AccessTokensTest do
 
       assert MapSet.new(String.split(token.scopes)) ==
                MapSet.new(["ingest:source:#{source.id}", "ingest:source:#{other_source.id}"])
+    end
+
+    test "restores disabled source selections after failed validation", %{conn: conn} do
+      user = SingleTenant.get_default_user()
+      source = insert(:source, user: user, name: "Validation recovery source")
+
+      conn
+      |> visit(~p"/auth/login/single_tenant")
+      |> visit(~p"/access-tokens/new")
+      |> assert_has("[data-phx-main].phx-connected")
+      |> choose("Selected sources")
+      |> fill_in("input[role='combobox']", "Select sources...", with: source.name)
+      |> click("[role='option']", source.name)
+      |> uncheck("Ingest", exact: false)
+      |> click_button("Create")
+      |> assert_has("*", text: "select at least one scope")
+      |> check("Ingest", exact: false)
+      |> assert_has("input:checked", label: "Selected sources")
+      |> assert_has("button[aria-label='Remove #{source.name}']")
     end
 
     test "does not submit an unrestricted token when Enter has no highlighted source", %{
@@ -74,12 +94,12 @@ defmodule E2e.Features.AccessTokensTest do
       |> assert_has("[data-phx-main].phx-connected")
       |> click_button("Create access token")
       |> assert_path(~p"/access-tokens/new")
-      |> type("input[name='description']", description)
-      |> click("#scopes-ingest-selected")
-      |> click("#scopes-ingest-combobox button")
-      |> type("#scopes-ingest-combobox input[role='combobox']", "no matching source")
-      |> press("#scopes-ingest-combobox input[role='combobox']", "Enter")
-      |> assert_has("input[name='description']")
+      |> fill_in("Description", with: description)
+      |> choose("Selected sources")
+      |> click_button("Open options")
+      |> fill_in("input[role='combobox']", "Select sources...", with: "no matching source")
+      |> press("[role='combobox'][aria-label='Select sources...']", "Enter")
+      |> assert_has("input", label: "Description", value: description)
 
       refute Enum.any?(Auth.list_valid_access_tokens(user), &(&1.description == description))
     end

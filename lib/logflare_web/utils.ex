@@ -51,8 +51,9 @@ defmodule LogflareWeb.Utils do
   def stringify_changeset_errors(%Ecto.Changeset{} = changeset) do
     changeset
     |> changeset_errors()
-    |> Enum.reduce([], fn {k, v}, acc ->
-      ["#{k}: #{Enum.join(v, " & ")}" | acc]
+    |> Enum.reduce([], fn
+      {:base, errors}, acc -> [Enum.join(errors, " & ") | acc]
+      {field, errors}, acc -> ["#{field}: #{Enum.join(errors, " & ")}" | acc]
     end)
     |> Enum.reverse()
     |> Enum.join("\n")
@@ -62,11 +63,23 @@ defmodule LogflareWeb.Utils do
   def stringify_changeset_errors(%Ecto.Changeset{} = changeset, default_message) do
     changeset
     |> changeset_errors()
-    |> Enum.map_join("; ", fn {field, errors} -> "#{field}: #{Enum.join(errors, ", ")}" end)
+    |> Enum.map_join("; ", fn
+      {:base, errors} -> format_nested_errors(errors)
+      {field, errors} -> "#{field}: #{format_nested_errors(errors)}"
+    end)
     |> case do
       "" -> default_message
       errors -> "#{default_message}: #{errors}"
     end
+  end
+
+  @spec format_nested_errors([String.t()] | map()) :: String.t()
+  defp format_nested_errors(errors) when is_list(errors), do: Enum.join(errors, ", ")
+
+  defp format_nested_errors(errors) when is_map(errors) do
+    Enum.map_join(errors, ", ", fn {field, nested} ->
+      "#{field}: #{format_nested_errors(nested)}"
+    end)
   end
 
   @spec changeset_errors(Ecto.Changeset.t()) :: Ecto.Changeset.traverse_result()
