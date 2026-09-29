@@ -14,8 +14,9 @@ defmodule Logflare.Backends.Spool.SpoolAck do
   before a retry could resolve it) are intentionally never acked here —
   the message redelivers instead, giving it a fresh attempt from the
   durable spool file. That leaves the old handle's row orphaned, so a
-  periodic sweep (`sweep_stale/1`) deletes any row older than
-  `@stale_after_ms` without acking it.
+  periodic sweep (`sweep_stale/1`) reclaims any row older than
+  `@stale_after_ms`. Set `config :logflare, #{inspect(__MODULE__)}, ack_stale: true`
+  to also ack those rows instead of just discarding them.
   """
 
   use GenServer
@@ -119,8 +120,12 @@ defmodule Logflare.Backends.Spool.SpoolAck do
   @spec sweep_stale(non_neg_integer()) :: :ok
   def sweep_stale(stale_after_ms) do
     cutoff = System.monotonic_time(:millisecond) - stale_after_ms
-    match_spec = [{{:_, :_, :_, :_, :"$1"}, [{:<, :"$1", cutoff}], [true]}]
-    deleted = :ets.select_delete(@table, match_spec)
+    match_spec = [{{:"$1", :_, :_, :_, :"$2"}, [{:<, :"$2", cutoff}], [:"$1"]}]
+
+    deleted =
+      @table
+      |> :ets.select(match_spec)
+      |> Enum.count(&reclaim_stale/1)
 
     if deleted > 0 do
       :telemetry.execute(
@@ -131,5 +136,22 @@ defmodule Logflare.Backends.Spool.SpoolAck do
     end
 
     :ok
+  end
+
+  defp reclaim_stale(handle) do
+    case :ets.take(@table, handle) do
+      [{^handle, _count, queue_mod, queue_url, _registered_at}] ->
+        if ack_stale?(),
+          do: GenServer.cast(__MODULE__, {:perform_ack, queue_mod, queue_url, handle})
+
+        true
+
+      [] ->
+        false
+    end
+  end
+
+  defp ack_stale? do
+    Application.get_env(:logflare, __MODULE__, [])[:ack_stale] || false
   end
 end
