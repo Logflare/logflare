@@ -51,6 +51,26 @@ defmodule Logflare.Sources.CountersTest do
     assert Counters.get_inserts(counter) == {:ok, workers * increments_per_worker}
   end
 
+  test "an increment on a detached ref reaches the current source counter" do
+    counter = :sources_counters_reset_race_test
+    on_exit(fn -> Counters.delete(counter) end)
+
+    assert {:ok, ^counter} = Counters.create(counter)
+    [{^counter, old_ref}] = :ets.lookup(:table_counters, counter)
+    assert :atomics.info(old_ref).size == 6
+
+    # A reset can happen after increment/2 looks up the ref but before it adds.
+    assert {:ok, ^counter} = Counters.delete(counter)
+    assert {:ok, ^counter} = Counters.create(counter)
+    assert {:ok, ^counter} = Counters.add_to_ref(counter, 1, 7, old_ref)
+    assert Counters.get_inserts(counter) == {:ok, 7}
+
+    [{^counter, replaced_ref}] = :ets.lookup(:table_counters, counter)
+    assert {:ok, ^counter} = Counters.delete(counter)
+    assert {:ok, ^counter} = Counters.add_to_ref(counter, 1, 3, replaced_ref)
+    assert Counters.get_inserts(counter) == {:ok, 3}
+  end
+
   test "deleting a source counter restores zero-valued reads and permits recreation" do
     counter = :sources_counters_delete_test
     on_exit(fn -> Counters.delete(counter) end)

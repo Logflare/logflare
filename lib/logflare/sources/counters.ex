@@ -95,7 +95,7 @@ defmodule Logflare.Sources.Counters do
   def log_count(table) when is_atom(table) do
     case lookup_counter_ref(table) do
       nil -> 0
-      ref -> :counters.get(ref, @inserts) - :counters.get(ref, @deletes)
+      ref -> :atomics.get(ref, @inserts) - :atomics.get(ref, @deletes)
     end
   end
 
@@ -116,22 +116,32 @@ defmodule Logflare.Sources.Counters do
 
   @spec add(atom(), pos_integer(), integer()) :: success_tuple()
   defp add(table, index, count) do
-    table
-    |> counter_ref()
-    |> :counters.add(index, count)
+    add_to_ref(table, index, count, counter_ref(table))
+  end
 
-    {:ok, table}
+  # Keep the increment if a source reset replaced the ref between lookup and add.
+  # Exposed only to let the reset interleaving be exercised deterministically.
+  @doc false
+  @spec add_to_ref(atom(), pos_integer(), integer(), reference()) :: success_tuple()
+  def add_to_ref(table, index, count, ref) do
+    :atomics.add(ref, index, count)
+
+    if lookup_counter_ref(table) == ref do
+      {:ok, table}
+    else
+      add(table, index, count)
+    end
   end
 
   @spec counter_value(atom(), pos_integer()) :: integer()
   defp counter_value(table, index) do
     case lookup_counter_ref(table) do
       nil -> 0
-      ref -> :counters.get(ref, index)
+      ref -> :atomics.get(ref, index)
     end
   end
 
-  @spec counter_ref(atom()) :: :counters.counters_ref()
+  @spec counter_ref(atom()) :: reference()
   defp counter_ref(table) do
     case lookup_counter_ref(table) do
       nil -> insert_counter_ref(table)
@@ -139,9 +149,9 @@ defmodule Logflare.Sources.Counters do
     end
   end
 
-  @spec insert_counter_ref(atom()) :: :counters.counters_ref()
+  @spec insert_counter_ref(atom()) :: reference()
   defp insert_counter_ref(table) do
-    ref = :counters.new(@counter_count, [:write_concurrency])
+    ref = :atomics.new(@counter_count, signed: true)
 
     if :ets.insert_new(@ets_table_name, {table, ref}) do
       ref
@@ -150,7 +160,7 @@ defmodule Logflare.Sources.Counters do
     end
   end
 
-  @spec lookup_counter_ref(atom()) :: :counters.counters_ref() | nil
+  @spec lookup_counter_ref(atom()) :: reference() | nil
   defp lookup_counter_ref(table) do
     case :ets.lookup(@ets_table_name, table) do
       [{^table, ref}] -> ref

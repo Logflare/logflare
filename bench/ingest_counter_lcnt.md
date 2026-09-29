@@ -46,11 +46,13 @@ collided:
 | source | `db_tab table_counters` | 8,000 | 7,999 (7,994–7,999) | 99.9875% (99.9250–99.9875%) | 768,797 us |
 | system | `db_tab system_counter` | 8,000 | 7,998 (7,986–7,999) | 99.9750% (99.8250–99.9875%) | 768,284 us |
 
-The candidate stores write-concurrent `:counters` references in read-concurrent
-ETS lookup tables. Three matching fresh-VM trials of both workloads reported no
-database-lock conflicts. An all-category follow-up reported only scheduler
-run-queue and task process locks, with no counter lock replacing the removed ETS
-contention.
+The initial candidate stored write-concurrent `:counters` references in
+read-concurrent ETS lookup tables. Three matching fresh-VM trials of both
+workloads reported no database-lock conflicts. An all-category follow-up
+reported only scheduler run-queue and task process locks, with no counter lock
+replacing the removed ETS contention. The source counter was subsequently
+changed to fixed-size `:atomics` to bound per-source memory; the global counter
+still uses `:counters`. The hybrid has not been rerun under the lock-counting VM.
 
 Median instrumented-VM elapsed time also dropped from 0.099784 seconds to
 0.001618 seconds for the source scenario and from 0.099877 seconds to 0.001602
@@ -60,3 +62,28 @@ result.
 
 Concurrent reads of the ingest queue mapper were also profiled. They produced
 no lock conflicts, so its ETS configuration was left unchanged.
+
+## Normal-VM source-counter comparison
+
+Run `ERL_FLAGS='+S 8:8' ../bin/x mix run --no-start bench/ingest_counter_throughput.exs`
+from this workspace. The script uses three trials of one source key per scenario,
+verifies the exact final count, and compares primitive-level simulations of the
+old ETS update and initial sharded counter with the **actual** current source
+counter API (including the post-add reset check). OTP 27 on the local runner:
+
+| Concurrent writers | Old ETS median ops/s | Sharded median ops/s | Hybrid median ops/s |
+| ---: | ---: | ---: | ---: |
+| 1 | 53.5M | 32.7M | 15.8M |
+| 2 | 3.53M | 23.0M | 9.76M |
+| 8 | 81.5K | 13.2M | 5.09M |
+
+These isolated, continuously contended updates are not end-to-end ingest
+throughput. The extra ref verification has an uncontended per-call cost, while
+the hybrid remains much faster than table-locked ETS under sustained contention.
+
+A separate 1,000-source allocation probe (ETS storage plus counter refs) on the
+same OTP 27 runner measured 117 KB for old ETS, 733 KB for sharded counters at
+8 schedulers (4.32 MB at 64), and 189 KB for the hybrid at both scheduler
+counts. A six-slot `:atomics` ref is 88 bytes; a six-slot write-concurrent
+`:counters` ref is 608 bytes at 8 schedulers and 4,192 bytes at 64. These are
+allocation estimates, not a whole-application memory benchmark.
