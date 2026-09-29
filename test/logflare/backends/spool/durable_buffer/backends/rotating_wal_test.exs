@@ -87,6 +87,38 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWalTest do
     assert payloads == ["a", "b"]
   end
 
+  test "handle_message/2 flush_tick rotates a pending tail once idle past max_rotation_interval_ms" do
+    config = config(max_batch_bytes: 1_000_000, max_rotation_interval_ms: 20, worker_count: 1)
+    {:ok, state} = Backend.open(config, 0)
+
+    {entry, size} = framed("idle tail")
+    assert {:ok, state} = Backend.commit(state, entry, size, {0, 1})
+    refute_receive {:committed, _, _, _}, 10
+
+    assert_receive {:backend, :flush_tick}, 100
+    assert {[], new_state} = Backend.handle_message(:flush_tick, state)
+
+    assert new_state.pending_bytes == 0
+    assert_receive {:committed, 0, body, ^size}
+    {payloads, _valid, _rest} = WAL.decode_all(body)
+    assert payloads == ["idle tail"]
+
+    assert :ok = Backend.close(new_state)
+  end
+
+  test "handle_message/2 flush_tick is a no-op when nothing is pending" do
+    config = config(max_batch_bytes: 1_000_000, max_rotation_interval_ms: 20, worker_count: 1)
+    {:ok, state} = Backend.open(config, 0)
+
+    assert_receive {:backend, :flush_tick}, 100
+    assert {[], new_state} = Backend.handle_message(:flush_tick, state)
+
+    assert new_state.pending_bytes == 0
+    refute_receive {:committed, _, _, _}, 50
+
+    assert :ok = Backend.close(new_state)
+  end
+
   test "close/1 ships whatever hasn't rotated yet instead of leaving it stranded" do
     config = config(max_batch_bytes: 1_000_000, worker_count: 1)
     {:ok, state} = Backend.open(config, 0)
