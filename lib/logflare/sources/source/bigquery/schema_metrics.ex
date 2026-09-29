@@ -4,19 +4,20 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaMetrics do
   use GenServer
 
   @counter_key {__MODULE__, :counters}
-  @counter_count 6
+  @counter_count 7
   @selected 1
   @selected_zero_rate 2
   @selected_floor 3
   @admitted 4
   @rejected 5
   @handled 6
+  @selected_bootstrap 7
 
   def start_link(_args) do
     GenServer.start_link(__MODULE__, nil, name: __MODULE__)
   end
 
-  @spec record_sample(:normal | :zero_rate | :floor) :: :ok
+  @spec record_sample(:normal | :zero_rate | :floor | :bootstrap) :: :ok
   def record_sample(mode) do
     increment(@selected)
 
@@ -24,6 +25,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaMetrics do
       :zero_rate -> increment(@selected_zero_rate)
       :floor -> increment(@selected_floor)
       :normal -> :ok
+      :bootstrap -> increment(@selected_bootstrap)
     end
   end
 
@@ -102,12 +104,14 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaMetrics do
          selected_floor,
          admitted,
          rejected,
-         handled
+         handled,
+         selected_bootstrap
        ]) do
     %{
       samples_selected: selected,
       samples_selected_zero_rate: selected_zero_rate,
       samples_selected_floor: selected_floor,
+      samples_selected_bootstrap: selected_bootstrap,
       samples_admitted: admitted,
       samples_rejected: rejected,
       samples_handled: handled

@@ -14,12 +14,14 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Mailer
   alias Logflare.Sources
+  alias Logflare.SourceSchemas
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.Backends.BufferProducer
+  alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.Sources.Source.BigQuery.SchemaMetrics
-  alias Logflare.Sources.Source.BigQuery.SchemaUpdateSampler
+  alias Logflare.Sources.Source.RateSampler
   alias Logflare.Sources.Source.Supervisor
   alias Logflare.Sources
   alias Logflare.Users
@@ -194,10 +196,13 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   defp finalize_acked_events({sid, bid} = queues_key, successful) do
     record? = bid == nil and should_record_recent?(sid)
 
-    Enum.each(successful, fn %{data: %LogEventPointer{} = pointer} ->
+    successful
+    |> Enum.reduce(%{}, fn %{data: %LogEventPointer{} = pointer}, counts ->
       if record?, do: record_recent_copy(queues_key, pointer)
       IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
+      Map.update(counts, pointer.spool_handle, 1, &(&1 + 1))
     end)
+    |> Enum.each(fn {handle, count} -> SpoolAck.ack(handle, count) end)
   end
 
   defp record_recent_copy(queues_key, %LogEventPointer{} = pointer) do
@@ -280,6 +285,10 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       attributes: Map.new(attributes)
     } do
       source = Sources.Cache.get_by_id(context.source_id)
+
+      if source do
+        RateSampler.bump(schema_check_rate_key(source), batch_info.size)
+      end
 
       # Fetch full LogEvents from ETS. Sizes were computed in the producer and are
       # carried on each message — no recomputation needed here. The batch is already
@@ -493,12 +502,12 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     # these things a max of like 5 times and after that send them to the rejected pile.
 
     if source && not source.lock_schema do
-      case SchemaUpdateSampler.sample_mode(source.token) do
+      case schema_check_sample_mode(source) do
         :skip ->
           :ok
 
-        rate_mode ->
-          SchemaMetrics.record_sample(rate_mode)
+        mode ->
+          SchemaMetrics.record_sample(mode)
           schema_server = Backends.via_source(source, {Schema, Map.get(context, :backend_id)})
           Schema.update(schema_server, log_event, source)
       end
@@ -506,6 +515,21 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
     log_event
   end
+
+  # Never sample away a source's first schema check.
+  defp schema_check_sample_mode(source) do
+    case RateSampler.sample_mode(schema_check_rate_key(source)) do
+      :skip ->
+        if is_nil(SourceSchemas.Cache.get_source_schema_by(source_id: source.id)),
+          do: :bootstrap,
+          else: :skip
+
+      mode ->
+        mode
+    end
+  end
+
+  defp schema_check_rate_key(source), do: {source.token, :bq_schema_check}
 
   def name(source_id) when is_atom(source_id) do
     String.to_atom("#{source_id}" <> "-pipeline")
@@ -591,17 +615,20 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     retriable_count = length(retriable)
     Logger.info("Requeuing #{retriable_count} BigQuery events for retry")
 
-    events =
+    resolved =
       for pointer <- retriable,
           event = IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id),
           not is_nil(event) do
         IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
-        %{event | retries: pointer.retries + 1}
+        {pointer, %{event | retries: pointer.retries + 1}}
       end
 
-    emit_requeue_lookup_miss_telemetry(sid_bid, retriable_count - length(events))
+    emit_requeue_lookup_miss_telemetry(sid_bid, retriable_count - length(resolved))
 
+    events = Enum.map(resolved, fn {_pointer, event} -> event end)
     if events != [], do: IngestEventQueue.add_to_table(sid_bid, events)
+
+    Enum.each(resolved, fn {pointer, _event} -> SpoolAck.ack(pointer.spool_handle, 1) end)
 
     :ok
   end
@@ -633,9 +660,12 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   defp drop_pointers(pointers, reason) do
     Logger.warning("Dropping #{length(pointers)} BigQuery events: #{reason}")
 
-    Enum.each(pointers, fn pointer ->
+    pointers
+    |> Enum.reduce(%{}, fn pointer, counts ->
       IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
+      Map.update(counts, pointer.spool_handle, 1, &(&1 + 1))
     end)
+    |> Enum.each(fn {handle, count} -> SpoolAck.ack(handle, count) end)
   end
 
   # Emit per-event ingest telemetry from handle_batch, where the full LogEvent is

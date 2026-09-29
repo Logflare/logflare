@@ -31,6 +31,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaMetricsTest do
     SchemaMetrics.record_sample(:zero_rate)
     SchemaMetrics.record_sample(:floor)
     SchemaMetrics.record_sample(:normal)
+    SchemaMetrics.record_sample(:bootstrap)
     SchemaMetrics.record_admission(:admitted)
     SchemaMetrics.record_admission(:rejected)
     SchemaMetrics.record_handled()
@@ -39,9 +40,10 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaMetricsTest do
 
     assert_receive {:schema_telemetry, [:logflare, :bigquery, :schema, :report],
                     %{
-                      samples_selected: 3,
+                      samples_selected: 4,
                       samples_selected_zero_rate: 1,
                       samples_selected_floor: 1,
+                      samples_selected_bootstrap: 1,
                       samples_admitted: 1,
                       samples_rejected: 1,
                       samples_handled: 1
@@ -54,6 +56,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaMetricsTest do
                       samples_selected: 0,
                       samples_selected_zero_rate: 0,
                       samples_selected_floor: 0,
+                      samples_selected_bootstrap: 0,
                       samples_admitted: 0,
                       samples_rejected: 0,
                       samples_handled: 0
