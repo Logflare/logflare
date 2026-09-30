@@ -17,6 +17,24 @@ defmodule LogflareWeb.BillingAccountLive.EditTest do
       refute has_element?(view, "#billing-chart")
     end
 
+    test "pricing comparison identifies AI-assisted queries and their paid-plan availability", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live(conn, ~p"/billing/edit")
+
+      for {plan, availability} <- [
+            {"Project", "None"},
+            {"Metered", "Included"},
+            {"Metered BYOB", "Included"}
+          ] do
+        assert has_element?(
+                 view,
+                 ~s|ul[aria-label="#{plan} plan features"] li|,
+                 ~r/^\s*AI-assisted queries:\s+#{availability}\s*$/
+               )
+      end
+    end
+
     test "handles Stripe webhook events", %{conn: conn} do
       billing_account = insert(:billing_account)
 
