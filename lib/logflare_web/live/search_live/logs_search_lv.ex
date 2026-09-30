@@ -82,6 +82,10 @@ defmodule LogflareWeb.Source.SearchLV do
         do: false,
         else: Map.get(params, "tailing?", "true") == "true"
 
+    ai_assist_configured? = AnthropicClient.configured?()
+    plan = Billing.get_plan_by_user(user)
+    user_agent = if connected?(socket), do: get_connect_info(socket, :user_agent)
+
     {:ok, executor_pid} = SearchQueryExecutor.start_link(source: source)
 
     flat_map = SourceSchemas.source_schema_flatmap_or_default(source)
@@ -108,7 +112,7 @@ defmodule LogflareWeb.Source.SearchLV do
       search_op_log_aggregates: nil,
       user_idle_interval: @user_idle_interval,
       show_modal: nil,
-      ai_assist: AiAssist.new(nil, ai_assist_enabled?(user)),
+      ai_assist: AiAssist.new(user_agent, ai_assist_configured?, plan.name),
       last_query_completed_at: nil,
       uri_params: nil,
       uri: nil,
@@ -122,20 +126,12 @@ defmodule LogflareWeb.Source.SearchLV do
     |> maybe_assign_user_timezone(team_user, user)
   end
 
-  defp ai_assist_enabled?(user) do
-    AnthropicClient.configured?() and
-      Billing.get_plan_by_user(user).name not in ["Free", "Legacy"]
-  end
-
   defp maybe_assign_user_timezone(socket, team_user, user) do
     if connected?(socket) do
       connect_params = get_connect_params(socket)
       user_tz = Map.get(connect_params, "user_timezone")
-      user_agent = get_connect_info(socket, :user_agent)
-      %AiAssist{enabled?: ai_assist_enabled?} = socket.assigns.ai_assist
 
       socket
-      |> assign(:ai_assist, AiAssist.new(user_agent, ai_assist_enabled?))
       |> assign(:user_timezone_from_connect_params, user_tz)
       |> assign_new_user_timezone(team_user, user)
     else
@@ -340,6 +336,7 @@ defmodule LogflareWeb.Source.SearchLV do
         last_query_completed_at={@last_query_completed_at}
         lql_schema_flat_map={lql_schema_flat_map(@source)}
         ai_assist={@ai_assist}
+        team={@team}
       />
       <div id="user-idle" phx-click="user_idle" class="d-none" data-user-idle-interval={@user_idle_interval}></div>
     </div>
@@ -401,14 +398,22 @@ defmodule LogflareWeb.Source.SearchLV do
         %{"querystring" => qs} = params,
         socket
       ) do
-    %AiAssist{enabled?: ai_assist_enabled?, macintosh?: macintosh?} = socket.assigns.ai_assist
+    %AiAssist{
+      enabled?: ai_assist_enabled?,
+      upgrade_required?: upgrade_required?,
+      macintosh?: macintosh?
+    } = socket.assigns.ai_assist
 
     socket =
       socket
       |> cancel_async(:generate_natural_language_lql)
       |> assign(
         :ai_assist,
-        %AiAssist{enabled?: ai_assist_enabled?, macintosh?: macintosh?}
+        %AiAssist{
+          enabled?: ai_assist_enabled?,
+          upgrade_required?: upgrade_required?,
+          macintosh?: macintosh?
+        }
       )
 
     {_result, socket} = start_search(socket, qs, Map.get(params, "fields", %{}))

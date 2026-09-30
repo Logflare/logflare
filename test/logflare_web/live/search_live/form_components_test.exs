@@ -11,16 +11,45 @@ defmodule LogflareWeb.SearchLive.FormComponentsTest do
   describe "search_controls/1" do
     test "shows the platform shortcut when AI assist is enabled" do
       for {macintosh?, shortcut} <- [{true, "⌘ Enter"}, {false, "Ctrl+Enter"}] do
-        assert [_button] =
-                 %{ai_assist: %AiAssist{enabled?: true, macintosh?: macintosh?}}
-                 |> render_search_controls()
-                 |> Floki.find(~s|#ai-search-button[data-title*="#{shortcut}"]|)
+        document =
+          render_search_controls(%{ai_assist: %AiAssist{enabled?: true, macintosh?: macintosh?}})
+
+        assert [button] = Floki.find(document, "#ai-search-button")
+
+        assert Floki.attribute(button, "disabled") == []
+        assert Floki.attribute(button, "data-title") == ["AI search assistant<br>#{shortcut}"]
+
+        assert Floki.find(document, "#ai-search-upgrade-prompt") == []
       end
     end
 
     test "hides AI assist when disabled" do
       document = render_search_controls(%{ai_assist: %AiAssist{}})
       assert Floki.find(document, "#ai-search-button") == []
+    end
+
+    test "shows disabled AI assist button with upgrade prompt" do
+      document =
+        render_search_controls(%{
+          ai_assist: %AiAssist{upgrade_required?: true, loading?: true},
+          team: %Logflare.Teams.Team{id: 42}
+        })
+
+      assert [_button] = Floki.find(document, "#ai-search-button[disabled]")
+
+      prompt =
+        document
+        |> Floki.find("#ai-search-upgrade-prompt")
+        |> Floki.attribute("data-title")
+        |> hd()
+        |> Floki.parse_fragment!()
+
+      assert [link] =
+               Enum.filter(Floki.find(prompt, "a"), fn link ->
+                 link |> Floki.text() |> String.trim() == "Upgrade your plan"
+               end)
+
+      assert Floki.attribute(link, "href") == ["/billing/edit?t=42"]
     end
 
     test "renders one-time bad response feedback after an AI search" do
