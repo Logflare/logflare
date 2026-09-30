@@ -88,6 +88,20 @@ defmodule Logflare.Networking do
            start_pool_metrics?: true
          ]
        }},
+      # Dedicated pool for the spool producer/consumer's S3 + SQS calls (via
+      # Logflare.Backends.Spool.HttpClient) — isolated from FinchS3 below,
+      # which belongs to the S3 destination backend adaptor, so spool
+      # retries/throughput never contend with a customer's own S3 traffic.
+      {Finch,
+       name: Logflare.FinchSpoolS3,
+       pools: %{
+         default: [
+           protocols: [:http1],
+           size: max(base * 150, 150),
+           count: http1_count,
+           start_pool_metrics?: true
+         ]
+       }},
       {Finch,
        name: Logflare.FinchDefault,
        pools:
@@ -143,6 +157,8 @@ defmodule Logflare.Networking do
            ]
          ]
        }},
+      # S3 destination backend adaptor's own pool — see Logflare.FinchSpoolS3
+      # above for the separate pool the spool producer/consumer uses.
       {Finch,
        name: Logflare.FinchS3,
        pools: %{

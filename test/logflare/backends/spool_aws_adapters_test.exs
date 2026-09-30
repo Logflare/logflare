@@ -3,12 +3,49 @@ defmodule Logflare.Backends.SpoolAwsAdaptersTest do
 
   import Mimic
 
+  alias Logflare.Backends.Spool.HttpClient
   alias Logflare.Backends.Spool.Queue.SQS
   alias Logflare.Backends.Spool.Storage.S3
 
+  describe "Storage.S3.put/4" do
+    test "sends content-type and content-encoding as real S3 headers, on the spool's own HttpClient" do
+      stub(ExAws, :request, fn %ExAws.Operation.S3{} = op, opts ->
+        assert op.headers["content-type"] == "application/x-ndjson"
+        assert op.headers["content-encoding"] == "zstd"
+        assert opts[:http_client] == HttpClient
+        {:ok, %{}}
+      end)
+
+      assert {:ok, %{}} =
+               S3.put("test-bucket", "0/abc.etf.zst", "binary-data",
+                 headers: %{
+                   "content-type" => "application/x-ndjson",
+                   "content-encoding" => "zstd"
+                 }
+               )
+    end
+
+    test "defaults content-type to application/octet-stream and omits content-encoding when not provided" do
+      stub(ExAws, :request, fn %ExAws.Operation.S3{} = op, _opts ->
+        assert op.headers["content-type"] == "application/octet-stream"
+        refute Map.has_key?(op.headers, "content-encoding")
+        {:ok, %{}}
+      end)
+
+      assert {:ok, %{}} = S3.put("test-bucket", "0/abc.etf", "binary-data", [])
+    end
+
+    test "returns {:error, reason} on request failure" do
+      stub(ExAws, :request, fn _op, _opts -> {:error, "AccessDenied"} end)
+
+      assert {:error, "AccessDenied"} =
+               S3.put("test-bucket", "0/abc.etf", "binary-data", headers: %{})
+    end
+  end
+
   describe "Storage.S3.get/2" do
     test "returns binary body on success" do
-      stub(ExAws, :request, fn _op ->
+      stub(ExAws, :request, fn _op, _opts ->
         {:ok, %{body: "file-contents"}}
       end)
 
@@ -16,7 +53,7 @@ defmodule Logflare.Backends.SpoolAwsAdaptersTest do
     end
 
     test "normalizes a missing object (404) to {:error, :not_found}" do
-      stub(ExAws, :request, fn _op ->
+      stub(ExAws, :request, fn _op, _opts ->
         {:error, {:http_error, 404, "Not Found"}}
       end)
 
@@ -24,7 +61,7 @@ defmodule Logflare.Backends.SpoolAwsAdaptersTest do
     end
 
     test "passes through other errors unchanged" do
-      stub(ExAws, :request, fn _op ->
+      stub(ExAws, :request, fn _op, _opts ->
         {:error, {:http_error, 500, "Internal Server Error"}}
       end)
 
@@ -35,7 +72,7 @@ defmodule Logflare.Backends.SpoolAwsAdaptersTest do
 
   describe "Queue.SQS.ack/2" do
     test "acknowledges successfully on a normal response" do
-      stub(ExAws, :request, fn _op -> {:ok, %{body: %{}}} end)
+      stub(ExAws, :request, fn _op, _opts -> {:ok, %{body: %{}}} end)
 
       assert :ok = SQS.ack("http://fake/queue", "handle-1")
     end
@@ -44,7 +81,7 @@ defmodule Logflare.Backends.SpoolAwsAdaptersTest do
       # ElasticMQ returns 200 with an empty body for DeleteMessage. Our XML
       # parser (xmerl, via SweetXml) can't parse an empty document and exits
       # with this exact reason even though the delete itself landed.
-      stub(ExAws, :request, fn _op ->
+      stub(ExAws, :request, fn _op, _opts ->
         exit(
           {:fatal,
            {:expected_element_start_tag, {:file, :file_name_unknown}, {:line, 1}, {:col, 1}}}
@@ -55,15 +92,26 @@ defmodule Logflare.Backends.SpoolAwsAdaptersTest do
     end
 
     test "surfaces a genuine request failure instead of swallowing it" do
-      stub(ExAws, :request, fn _op -> {:error, "AccessDenied"} end)
+      stub(ExAws, :request, fn _op, _opts -> {:error, "AccessDenied"} end)
 
       assert {:error, "AccessDenied"} = SQS.ack("http://fake/queue", "handle-1")
     end
 
     test "surfaces an unrelated exit reason as an error instead of assuming success" do
-      stub(ExAws, :request, fn _op -> exit(:some_other_reason) end)
+      stub(ExAws, :request, fn _op, _opts -> exit(:some_other_reason) end)
 
       assert {:error, :some_other_reason} = SQS.ack("http://fake/queue", "handle-1")
+    end
+  end
+
+  describe "Queue.SQS calls route through the spool's own HttpClient" do
+    test "publish/2 passes http_client: HttpClient to ExAws.request/2" do
+      stub(ExAws, :request, fn _op, opts ->
+        assert opts[:http_client] == HttpClient
+        {:ok, %{}}
+      end)
+
+      assert :ok = SQS.publish("http://fake/queue", "body")
     end
   end
 end
