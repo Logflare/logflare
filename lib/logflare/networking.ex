@@ -26,9 +26,6 @@ defmodule Logflare.Networking do
   end
 
   defp finch_pools(true = _postgres_backend?) do
-    base = System.schedulers_online()
-    http1_count = max(div(base, 4), 1)
-
     [
       {Finch,
        name: Logflare.FinchDefaultHttp1, pools: %{default: [protocols: [:http1], size: 50]}},
@@ -40,7 +37,7 @@ defmodule Logflare.Networking do
            :default => [protocols: [:http1]]
          }
          |> Map.merge(datadog_connection_pools())}
-      | spool_finch_pools(base, http1_count) ++ base_finch_pools()
+      | spool_finch_pools() ++ base_finch_pools()
     ]
   end
 
@@ -88,48 +85,66 @@ defmodule Logflare.Networking do
            ]
          }
          |> Map.merge(datadog_connection_pools())}
-      | spool_finch_pools(base, http1_count) ++ base_finch_pools()
+      | spool_finch_pools() ++ base_finch_pools()
     ]
   end
 
-  # Dedicated pools for the spool producer/consumer's GCS+Pub/Sub and S3+SQS
-  # calls — gated only by SPOOL_MODE (see Backends.Supervisor), not by
-  # single-tenant/postgres_backend?, so these must be registered in both
-  # finch_pools/1 branches or spool fails to find its Finch pool whenever
-  # it's enabled on a single-tenant Postgres deployment.
-  defp spool_finch_pools(base, http1_count) do
-    [
-      {Finch,
-       name: Logflare.FinchSpool,
-       pools: %{
-         :default => [protocols: [:http1]],
-         "https://storage.googleapis.com" => [
-           protocols: [:http1],
-           size: max(base * 150, 150),
-           count: http1_count,
-           start_pool_metrics?: true
-         ],
-         "https://pubsub.googleapis.com" => [
-           protocols: [:http1],
-           size: max(base * 150, 150),
-           count: http1_count,
-           start_pool_metrics?: true
-         ]
-       }},
-      # Isolated from FinchS3 below, which belongs to the S3 destination
-      # backend adaptor, so spool retries/throughput never contend with a
-      # customer's own S3 traffic.
-      {Finch,
-       name: Logflare.FinchSpoolS3,
-       pools: %{
-         default: [
-           protocols: [:http1],
-           size: max(base * 150, 150),
-           count: http1_count,
-           start_pool_metrics?: true
-         ]
-       }}
-    ]
+  # The spool producer/consumer's Finch pool — gated only by SPOOL_MODE (see
+  # Backends.Supervisor), not by single-tenant/postgres_backend?, so this
+  # must be registered in both finch_pools/1 branches or spool fails to find
+  # its Finch pool whenever it's enabled on a single-tenant Postgres
+  # deployment. Only one of GCS+Pub/Sub or S3+SQS is ever active per
+  # :logflare, :spool, :provider (see ProviderConfig.resolve_mods/1), so
+  # only that provider's pool is started — the other backend's calls never
+  # happen, and starting its pool too would just be dead weight.
+  #
+  # Sized flat, not scaled by schedulers_online/0: spool's concurrent HTTP
+  # calls are bounded by the producer's max_inflight_commits x partitions
+  # (durable_buffer dep default: 32, both default to 1 partition here) and
+  # by ConsumerPipeline.QueueProducer's single in-flight prefetch per node —
+  # none of that scales with CPU core count, so a flat 100 gives headroom
+  # over the realistic ~32-connection peak without over-provisioning.
+  @spool_pool_size 100
+  defp spool_finch_pools do
+    spool_config = Application.get_env(:logflare, :spool, [])
+
+    case Keyword.get(spool_config, :provider, :aws) do
+      :gcp -> [spool_gcs_pubsub_pool()]
+      _aws -> [spool_s3_sqs_pool()]
+    end
+  end
+
+  defp spool_gcs_pubsub_pool do
+    {Finch,
+     name: Logflare.FinchSpool,
+     pools: %{
+       :default => [protocols: [:http1]],
+       "https://storage.googleapis.com" => [
+         protocols: [:http1],
+         size: @spool_pool_size,
+         start_pool_metrics?: true
+       ],
+       "https://pubsub.googleapis.com" => [
+         protocols: [:http1],
+         size: @spool_pool_size,
+         start_pool_metrics?: true
+       ]
+     }}
+  end
+
+  # Isolated from FinchS3 below, which belongs to the S3 destination backend
+  # adaptor, so spool retries/throughput never contend with a customer's own
+  # S3 traffic.
+  defp spool_s3_sqs_pool do
+    {Finch,
+     name: Logflare.FinchSpoolS3,
+     pools: %{
+       default: [
+         protocols: [:http1],
+         size: @spool_pool_size,
+         start_pool_metrics?: true
+       ]
+     }}
   end
 
   defp base_finch_pools do
