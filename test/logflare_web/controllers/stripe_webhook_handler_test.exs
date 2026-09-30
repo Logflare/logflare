@@ -39,14 +39,14 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
       # Unsigned request
       assert conn
              |> put_req_header("content-type", "application/json")
-             |> post(~p"/webhooks/stripe", payload_json)
+             |> post("/webhooks/stripe", payload_json)
              |> response(400)
 
       # Request signed with the previously-valid secret should also be rejected
       assert build_conn()
              |> put_req_header("content-type", "application/json")
              |> put_req_header("stripe-signature", stripe_sign(payload_json))
-             |> post(~p"/webhooks/stripe", payload_json)
+             |> post("/webhooks/stripe", payload_json)
              |> response(400)
     end
   end
@@ -59,7 +59,7 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
       conn =
         conn
         |> put_req_header("content-type", "application/json")
-        |> post(~p"/webhooks/stripe", payload_json)
+        |> post("/webhooks/stripe", payload_json)
 
       assert response(conn, 400)
     end
@@ -72,7 +72,7 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
         conn
         |> put_req_header("content-type", "application/json")
         |> put_req_header("stripe-signature", "t=12345,v1=invalidsignature")
-        |> post(~p"/webhooks/stripe", payload_json)
+        |> post("/webhooks/stripe", payload_json)
 
       assert response(conn, 400)
     end
@@ -90,7 +90,7 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
         conn
         |> put_req_header("content-type", "application/json")
         |> put_req_header("stripe-signature", signature)
-        |> post(~p"/webhooks/stripe", payload_json)
+        |> post("/webhooks/stripe", payload_json)
 
       assert response(conn, 200)
     end
@@ -379,7 +379,7 @@ defmodule LogflareWeb.StripeWebhookHandlerTest do
     conn
     |> put_req_header("content-type", "application/json")
     |> put_req_header("stripe-signature", signature)
-    |> post(~p"/webhooks/stripe", payload_json)
+    |> post("/webhooks/stripe", payload_json)
   end
 
   # Computes a valid Stripe-Signature header value for the given raw body.
