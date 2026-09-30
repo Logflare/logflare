@@ -23,6 +23,7 @@ defmodule Logflare.NetworkingTest do
                Logflare.FinchIngest,
                Logflare.FinchQuery,
                Logflare.FinchSpool,
+               Logflare.FinchSpoolS3,
                Logflare.FinchDefault,
                Logflare.FinchClickHouseIngest,
                Logflare.FinchClickHouseAsyncIngest,
