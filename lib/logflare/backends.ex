@@ -630,9 +630,10 @@ defmodule Logflare.Backends do
   `spoolable?/3`), this blocks the
   caller until the event's segment is durable in the buffer, or — in
   blocking mode (`spool_blocking_mode?/0`) — until its batch is actually
-  committed. If no spool partition is available, or spool dispatch fails,
-  this falls back to normal (non-spool) dispatch instead of failing the
-  request.
+  committed. If spool dispatch fails, `:both` mode falls back to normal
+  (non-spool) dispatch; `:producer`-only mode has no backend adaptors to
+  fall back to, so it fails the request with `{:error, :spool_unavailable}`
+  instead.
   """
   @type log_param :: map()
   @spec ingest_logs([log_param()], Source.t()) ::
@@ -647,23 +648,30 @@ defmodule Logflare.Backends do
     count = Enum.count(log_events)
     increment_counters(source, count)
 
+    with :ok <- dispatch_logs(source, backend, log_events, allow_spooling) do
+      if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
+    end
+  end
+
+  defp dispatch_logs(source, backend, log_events, allow_spooling) do
     if spoolable?(log_events, source, allow_spooling) do
       case dispatch_to_spool_producer(log_events) do
-        {:error, reason} ->
-          Logger.error(
-            "backends: spool dispatch failed for source #{source.token}, falling back to normal dispatch: #{inspect(reason)}"
-          )
-
-          dispatch_to_backend_path(source, backend, log_events)
-
-        :ok ->
-          :ok
+        :ok -> :ok
+        {:error, reason} -> handle_spool_dispatch_error(source, backend, log_events, reason)
       end
     else
       dispatch_to_backend_path(source, backend, log_events)
     end
+  end
 
-    if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
+  defp handle_spool_dispatch_error(source, backend, log_events, reason) do
+    Logger.error("backends: spool dispatch failed for source #{source.token}: #{inspect(reason)}")
+
+    if spool_mode() == :both do
+      dispatch_to_backend_path(source, backend, log_events)
+    else
+      {:error, :spool_unavailable}
+    end
   end
 
   defp dispatch_to_backend_path(source, backend, log_events) do
@@ -720,10 +728,16 @@ defmodule Logflare.Backends do
   @spec spoolable?([LogEvent.t()], Source.t(), boolean()) :: boolean()
   defp spoolable?(log_events, source, allow_spooling) do
     allow_spooling and
-      spool_producer_mode?() and
       case spool_mode() do
-        :producer -> true
-        :both -> source.enable_spooling and Enum.all?(log_events, &(&1.via_rule_id == nil))
+        :producer ->
+          true
+
+        :both ->
+          spool_write_healthy?() and source.enable_spooling and
+            Enum.all?(log_events, &(&1.via_rule_id == nil))
+
+        _ ->
+          false
       end
   end
 
@@ -834,26 +848,34 @@ defmodule Logflare.Backends do
     :ok
   end
 
-  # Stops routing ingest through the spool path once Health goes unhealthy,
-  # falling through to normal dispatch instead. Gated on the scope that
-  # actually backstops this mode: :wal mode's local WAL absorbs upload
-  # outages by design, so only a failing local disk should stop ingest;
-  # :mem mode has no local buffer at all, so a failing upload is the same
-  # thing as a failing commit.
   @spec spool_producer_mode?() :: boolean()
-  def spool_producer_mode? do
-    spool_mode() in [:producer, :both] and SpoolHealth.healthy?(spool_health_gate_scope())
-  end
+  def spool_producer_mode?, do: spool_mode() in [:producer, :both]
 
-  defp spool_health_gate_scope do
+  # :wal mode writes to both tiers, so both must be healthy — a WAL that's
+  # happily absorbing writes locally while GCS stays down still means the
+  # spool isn't actually getting data to its durable home. :mem mode has no
+  # local disk tier at all, so only :upload applies there.
+  defp spool_write_healthy? do
     case spool_buffer() do
-      :wal -> :disk
-      :mem -> :upload
+      :wal -> SpoolHealth.healthy?(:disk) and SpoolHealth.healthy?(:upload)
+      :mem -> SpoolHealth.healthy?(:upload)
     end
   end
 
   @spec spool_consumer_mode?() :: boolean()
   def spool_consumer_mode?, do: spool_mode() in [:consumer, :both]
+
+  @doc """
+  Whether spool health should gate this node's own healthcheck. Only
+  `:producer`-only mode gates on it — that's the only mode where a failing
+  spool has no working fallback (see `ingest_logs/4`); `:both` still falls
+  back to direct backend dispatch on spool failure, so it shouldn't be
+  pulled out of rotation for it.
+  """
+  @spec spool_healthcheck_ok?() :: boolean()
+  def spool_healthcheck_ok? do
+    spool_mode() != :producer or spool_write_healthy?()
+  end
 
   @doc """
   Which backend the node's spool `DurableBuffer` instance commits
