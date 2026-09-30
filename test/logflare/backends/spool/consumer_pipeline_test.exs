@@ -7,6 +7,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
   alias Broadway.Message
   alias Logflare.Backends.Spool.ConsumerPipeline
   alias Logflare.Backends.Spool.MemoryMonitor
+  alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
+  alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.TestUtils
 
   setup :set_mimic_global
@@ -40,7 +42,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
   describe "transform/2" do
     test "wraps the producer's raw segment and stashes its byte size for the in-flight counter" do
       segment = :erlang.term_to_binary([%{"id" => "e1"}, %{"id" => "e2"}])
-      unparsed = %{segment: segment}
+      unparsed = %{segment: segment, handle: "receipt-1"}
 
       assert %Message{data: ^unparsed, acknowledger: {ConsumerPipeline, :noop, ack_data}} =
                ConsumerPipeline.transform(unparsed, [])
@@ -49,6 +51,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
       # to give back rather than a message count.
       assert ack_data.bytes == byte_size(segment)
       assert Map.has_key?(ack_data, :in_flight_ref)
+      assert ack_data.handle == "receipt-1"
     end
   end
 
@@ -128,7 +131,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, dispatched_source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, dispatched_source, _handle ->
         send(pid, {:dispatched, event_params, dispatched_source.id})
         {:ok, length(event_params)}
       end)
@@ -148,7 +151,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, _source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, _source, _handle ->
         send(pid, {:dispatched, Enum.map(event_params, & &1["id"])})
         {:ok, length(event_params)}
       end)
@@ -166,7 +169,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, _source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, _source, _handle ->
         send(pid, {:dispatched, Enum.map(event_params, & &1["id"])})
         {:ok, length(event_params)}
       end)
@@ -187,7 +190,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, source, _handle ->
         send(pid, {:dispatched, source.id, Enum.map(event_params, & &1["id"])})
         {:ok, length(event_params)}
       end)
@@ -215,7 +218,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, source, _handle ->
         send(pid, {:dispatched, event_params, source.id})
         {:ok, length(event_params)}
       end)
@@ -242,7 +245,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, source, _handle ->
         send(pid, {:dispatched, event_params, source.id})
         {:ok, length(event_params)}
       end)
@@ -267,7 +270,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, dispatched_source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, dispatched_source, _handle ->
         if dispatched_source.id == source.id do
           raise FunctionClauseError
         end
@@ -287,6 +290,41 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :consumer, :skipped],
                       %{count: 1}, %{reason: :dispatch_error}}
+    end
+
+    test "does not fail a handle's message when only a different handle's dispatch for the same source fails" do
+      source = insert(:source, user: insert(:user))
+      failing_handle = "spool-handle-failing-#{System.unique_integer([:positive])}"
+      healthy_handle = "spool-handle-healthy-#{System.unique_integer([:positive])}"
+
+      failing = %Message{
+        data: [record(source.id, Ecto.UUID.generate())],
+        acknowledger: {ConsumerPipeline, :noop, %{handle: failing_handle}}
+      }
+
+      healthy = %Message{
+        data: [record(source.id, Ecto.UUID.generate())],
+        acknowledger: {ConsumerPipeline, :noop, %{handle: healthy_handle}}
+      }
+
+      pid = self()
+
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, _source, handle ->
+        if handle == failing_handle do
+          raise FunctionClauseError
+        end
+
+        send(pid, {:dispatched, handle})
+        {:ok, length(event_params)}
+      end)
+
+      assert [returned_failing, returned_healthy] =
+               ConsumerPipeline.handle_batch(:default, [failing, healthy], %{}, %{})
+
+      assert returned_failing.status == {:failed, :dispatch_error}
+      assert returned_healthy.status == :ok
+
+      assert_receive {:dispatched, ^healthy_handle}
     end
   end
 
@@ -317,6 +355,42 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
       refute_receive {:telemetry_event,
                       [:logflare, :backends, :spool, :consumer, :messages_failed], _, _}
+    end
+
+    test "releases a segment's bump only when it succeeds, not when dispatch fails" do
+      success_handle = "spool-handle-#{System.unique_integer([:positive])}"
+      failed_handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(success_handle, QueueMod, "queue-url")
+      SpoolAck.bump(success_handle, 1)
+      SpoolAck.register(failed_handle, QueueMod, "queue-url")
+      SpoolAck.bump(failed_handle, 1)
+
+      test_pid = self()
+      stub(QueueMod, :ack, fn url, h -> send(test_pid, {:acked, url, h}) end)
+
+      successful = [
+        %Message{data: [], acknowledger: {ConsumerPipeline, :noop, %{handle: success_handle}}}
+      ]
+
+      failed = [
+        %Message{
+          data: [],
+          acknowledger: {ConsumerPipeline, :noop, %{handle: failed_handle}},
+          status: {:failed, :dispatch_error}
+        }
+      ]
+
+      assert ConsumerPipeline.ack(:ref, successful, failed) == :ok
+
+      assert_receive {:acked, "queue-url", ^success_handle}
+      assert :ets.lookup(:spool_ack, success_handle) == []
+
+      # a dispatch_error never reached any pipeline's own ack/3, so releasing
+      # its bump here would ack a segment that was never actually delivered
+      refute_receive {:acked, "queue-url", ^failed_handle}
+
+      assert [{^failed_handle, 1, QueueMod, "queue-url", _registered_at}] =
+               :ets.lookup(:spool_ack, failed_handle)
     end
 
     @tag capture_log: true
