@@ -70,12 +70,14 @@ defmodule Logflare.Cache.CachexOps do
   def stats(cache) do
     {:ok, stats} = Cachex.stats(cache)
 
-    {:total_heap_size, total_heap_size} =
+    {:total_heap_size, heap_words} =
       cache
       |> Process.whereis()
       |> Process.info(:total_heap_size)
 
-    for key <- @stat_keys, into: %{total_heap_size: total_heap_size} do
+    heap_bytes = heap_words * :erlang.system_info(:wordsize)
+
+    for key <- @stat_keys, into: %{total_heap_size: heap_bytes} do
       {key, Map.get(stats, key, 0)}
     end
   end
