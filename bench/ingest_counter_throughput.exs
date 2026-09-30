@@ -1,15 +1,29 @@
-# Normal-VM microbenchmark of the source counter update path. The ETS and
-# sharded modes reproduce the prior primitives; hybrid calls the actual module.
+# Normal-VM microbenchmark of the original source-counter API versus the
+# current implementation. Only the ETS write-concurrency option differs.
+defmodule Logflare.Bench.BaselineSourceCounter do
+  @moduledoc false
+  @table :baseline_counter
+
+  def start, do: :ets.new(@table, [:public, :named_table])
+  def create(key), do: (:ets.update_counter(@table, key, {2, 0}, default(key)); {:ok, key})
+  def increment(key), do: (:ets.update_counter(@table, key, {2, 1}, default(key)); {:ok, key})
+  def get_inserts(key), do: {:ok, elem(hd(:ets.lookup(@table, key)), 1)}
+  def delete(key), do: :ets.delete(@table, key)
+  defp default(key), do: {key, 0, 0, 0, 0, 0, 0}
+end
+
 defmodule Logflare.Bench.IngestCounterThroughput do
   @moduledoc false
 
   alias Logflare.Sources.Counters
+  alias Logflare.Bench.BaselineSourceCounter
 
   def run do
+    BaselineSourceCounter.start()
     {:ok, _pid} = Counters.start_link()
     IO.puts("OTP=#{:erlang.system_info(:otp_release)} schedulers=#{System.schedulers_online()}")
 
-    for workers <- [1, 2, 8], mode <- [:ets, :sharded, :hybrid] do
+    for workers <- [1, 2, 8], mode <- [:ets, :auto] do
       iterations = if workers == 1, do: 1_000_000, else: 50_000
       samples = for trial <- 1..3, do: sample(workers, iterations, mode, trial)
       median = samples |> Enum.sort() |> Enum.at(1)
@@ -47,24 +61,13 @@ defmodule Logflare.Bench.IngestCounterThroughput do
   end
 
   defp prepare(:ets, key, expected) do
-    table = :ets.new(:baseline_counter, [:public])
-    default = {key, 0, 0, 0, 0, 0, 0}
-    :ets.insert(table, default)
-    increment = fn -> :ets.update_counter(table, key, {2, 1}, default); {:ok, key} end
-    verify = fn -> [{^key, ^expected, _, _, _, _, _}] = :ets.lookup(table, key) end
-    {increment, verify, fn -> :ets.delete(table) end}
+    {:ok, ^key} = BaselineSourceCounter.create(key)
+    increment = fn -> {:ok, ^key} = BaselineSourceCounter.increment(key) end
+    verify = fn -> {:ok, ^expected} = BaselineSourceCounter.get_inserts(key) end
+    {increment, verify, fn -> BaselineSourceCounter.delete(key) end}
   end
 
-  defp prepare(:sharded, key, expected) do
-    table = :ets.new(:sharded_counter, [:public, read_concurrency: true])
-    ref = :counters.new(6, [:write_concurrency])
-    :ets.insert(table, {key, ref})
-    increment = fn -> [{^key, r}] = :ets.lookup(table, key); :counters.add(r, 1, 1); {:ok, key} end
-    verify = fn -> ^expected = :counters.get(ref, 1) end
-    {increment, verify, fn -> :ets.delete(table) end}
-  end
-
-  defp prepare(:hybrid, key, expected) do
+  defp prepare(:auto, key, expected) do
     {:ok, ^key} = Counters.create(key)
     increment = fn -> {:ok, ^key} = Counters.increment(key) end
     verify = fn -> {:ok, ^expected} = Counters.get_inserts(key) end

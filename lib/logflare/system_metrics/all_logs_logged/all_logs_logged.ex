@@ -2,15 +2,12 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
   @moduledoc false
   use GenServer
 
-  alias Logflare.Cluster
   alias Logflare.Repo
   alias Logflare.SystemMetric
+  alias Logflare.Cluster
 
   @total_logs :total_logs_logged
   @table :system_counter
-  @inserts_since_init 1
-  @init_log_count 2
-  @counter_count 2
   @persist_every 5_000
 
   def start_link(init_args) do
@@ -41,11 +38,12 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
 
   ## Public Functions
 
-  @spec create(atom(), integer()) :: {:ok, atom()}
+  @spec create(atom, integer()) :: {:ok, atom}
   def create(metric, count \\ 0) do
-    :ets.new(@table, [:public, :named_table, read_concurrency: true])
-    ref = new_counter(count)
-    true = :ets.insert(@table, {metric, ref})
+    :ets.new(@table, [:public, :named_table, write_concurrency: :auto])
+
+    :ets.update_counter(@table, metric, {2, 0}, {metric, 0, 0})
+    :ets.update_counter(@table, metric, {3, count}, {metric, 0, 0})
 
     {:ok, metric}
   end
@@ -53,75 +51,33 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
   @spec increment(atom()) :: {:ok, atom()}
   @spec increment(atom(), non_neg_integer()) :: {:ok, atom()}
   def increment(metric, n \\ 1) do
-    metric
-    |> counter_ref()
-    |> :counters.add(@inserts_since_init, n)
+    :ets.update_counter(@table, metric, {2, n}, {metric, 0, 0})
 
     {:ok, metric}
   end
 
-  @spec log_count(atom()) :: {:ok, non_neg_integer()}
+  @spec log_count(atom) :: {:ok, non_neg_integer}
   def log_count(metric) do
-    ref = fetch_counter_ref!(metric)
-    count = :counters.get(ref, @inserts_since_init) + :counters.get(ref, @init_log_count)
+    [{_metric, inserts_since_init, init_log_count}] = :ets.lookup(@table, metric)
+    count = inserts_since_init + init_log_count
 
     {:ok, count}
   end
 
-  @spec init_log_count(atom()) :: {:ok, non_neg_integer()}
   def init_log_count(metric) do
-    {:ok, metric |> fetch_counter_ref!() |> :counters.get(@init_log_count)}
+    [{_metric, _inserts_since_init, init_log_count}] = :ets.lookup(@table, metric)
+
+    {:ok, init_log_count}
   end
 
-  @spec all_metrics(atom()) ::
-          {:ok,
-           %{
-             inserts_since_init: non_neg_integer(),
-             init_log_count: non_neg_integer(),
-             total: non_neg_integer()
-           }}
   def all_metrics(metric) do
-    ref = fetch_counter_ref!(metric)
-    inserts_since_init = :counters.get(ref, @inserts_since_init)
-    init_log_count = :counters.get(ref, @init_log_count)
+    [{_metric, inserts_since_init, init_log_count}] = :ets.lookup(@table, metric)
     total = inserts_since_init + init_log_count
 
     {:ok, %{inserts_since_init: inserts_since_init, init_log_count: init_log_count, total: total}}
   end
 
   ## Private Functions
-
-  @spec counter_ref(atom()) :: :counters.counters_ref()
-  defp counter_ref(metric) do
-    case :ets.lookup(@table, metric) do
-      [{^metric, ref}] -> ref
-      [] -> insert_counter_ref(metric)
-    end
-  end
-
-  @spec insert_counter_ref(atom()) :: :counters.counters_ref()
-  defp insert_counter_ref(metric) do
-    ref = new_counter(0)
-
-    if :ets.insert_new(@table, {metric, ref}) do
-      ref
-    else
-      counter_ref(metric)
-    end
-  end
-
-  @spec fetch_counter_ref!(atom()) :: :counters.counters_ref()
-  defp fetch_counter_ref!(metric) do
-    [{^metric, ref}] = :ets.lookup(@table, metric)
-    ref
-  end
-
-  @spec new_counter(non_neg_integer()) :: :counters.counters_ref()
-  defp new_counter(init_log_count) do
-    ref = :counters.new(@counter_count, [:write_concurrency])
-    :counters.put(ref, @init_log_count, init_log_count)
-    ref
-  end
 
   defp node_name do
     Atom.to_string(node())

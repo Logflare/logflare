@@ -1,97 +1,59 @@
-# Ingest counter lock contention
+# Ingest counter contention
 
-`ingest_counter_lcnt.exs` profiles the two counters updated by every
-`Logflare.Backends.ingest_logs/4` call. It uses OTP's built-in `:lcnt` tool and
-does not add a project dependency.
+`Logflare.Backends.ingest_logs/4` increments one source counter and one
+node-wide counter **per call**, not per event. This PR keeps the existing ETS
+counter operations and enables `write_concurrency: :auto` on both tables.
+There are no new counter references or reset semantics.
 
-## Run
+## Lock-counting benchmark
 
-Build OTP with its additional lock-counting emulator, then place that OTP
-installation first on `PATH`:
-
-```sh
-./configure --prefix=/path/to/lock-counting-otp --enable-lock-counter
-make
-make install
-```
-
-Run each scenario in a fresh VM. The benchmark rejects a normal VM so a missing
-`-emu_type lcnt` cannot silently produce invalid results.
+`ingest_counter_lcnt.exs` exercises the actual counter modules. To build an
+OTP 27 lock-counting VM, configure OTP with `--enable-lock-counter`, then run
+`make && make install`. With that installation available, run each scenario
+in a fresh VM from this workspace:
 
 ```sh
-PATH=/path/to/lock-counting-otp/bin:$PATH \
-ERL_FLAGS='-emu_type lcnt +S 8:8' \
-SCENARIO=source WORKERS=8 ITERATIONS=1000 \
-  mix run --no-start bench/ingest_counter_lcnt.exs
-
-PATH=/path/to/lock-counting-otp/bin:$PATH \
-ERL_FLAGS='-emu_type lcnt +S 8:8' \
-SCENARIO=system WORKERS=8 ITERATIONS=1000 \
-  mix run --no-start bench/ingest_counter_lcnt.exs
+../bin/x sh -c 'PATH=/path/to/lock-counting-otp/bin:$PATH \
+  ERL_FLAGS="-emu_type lcnt +S 8:8" SCENARIO=source WORKERS=8 ITERATIONS=1000 \
+  mix run --no-start bench/ingest_counter_lcnt.exs'
+# Repeat with SCENARIO=system for the node-wide counter.
 ```
 
-The workload starts all workers behind one barrier, clears the lock counters,
-runs a fixed number of increments, verifies the exact final count, and prints
-uncombined database-lock conflicts.
+The script rejects a normal VM, starts all workers behind one barrier, checks
+the exact final count, and reports database-lock conflicts. This is an
+**intentionally saturated** same-key workload, not a realistic batch rate.
 
-## OTP 27.3.4.6 results
+On OTP 27.3.4.6, the old tables without write concurrency had median
+7,999/8,000 source-table and 7,998/8,000 system-table lock collisions in
+three trials. With `:auto`, three matching trials still had database-lock
+conflicts on table and/or hash-slot locks, but the original single-table
+lock bottleneck was reduced. The number and location of internal lock
+acquisitions change under `:auto`, so collision ratios across lock types are
+not directly comparable. The setting does **not** make updates lock-free.
 
-The baseline stored each metric tuple directly in ETS and used
-`:ets.update_counter/4`. Three fresh-VM trials with eight workers contending on
-one source or the global system metric found that nearly every acquisition
-collided:
+## Normal-VM throughput
 
-| Scenario | ETS lock | Tries/trial | Median collisions (range) | Median ratio (range) | Median wait time |
-| --- | --- | ---: | ---: | ---: | ---: |
-| source | `db_tab table_counters` | 8,000 | 7,999 (7,994–7,999) | 99.9875% (99.9250–99.9875%) | 768,797 us |
-| system | `db_tab system_counter` | 8,000 | 7,998 (7,986–7,999) | 99.9750% (99.8250–99.9875%) | 768,284 us |
+Run `ERL_FLAGS='+S 8:8' ../bin/x mix run --no-start
+bench/ingest_counter_throughput.exs` to compare the original source-counter
+update API with the current `:auto` API. Three trials on the same OTP 27
+runner yielded these medians:
 
-The initial candidate stored write-concurrent `:counters` references in
-read-concurrent ETS lookup tables. Three matching fresh-VM trials of both
-workloads reported no database-lock conflicts. An all-category follow-up
-reported only scheduler run-queue and task process locks, with no counter lock
-replacing the removed ETS contention. The source counter was subsequently
-changed to fixed-size `:atomics` to bound per-source memory; the global counter
-still uses `:counters`.
+| Workers continuously updating one source | Original updates/s | `:auto` updates/s |
+| ---: | ---: | ---: |
+| 1 | 35.5M | 28.7M |
+| 2 | 4.15M | 2.87M |
+| 8 | 81.8K | 293.9K |
 
-Three fresh-VM trials of the **final hybrid** on the same OTP 27.3.4.6
-lock-counting build, with eight workers × 1,000 increments per scenario, all
-reported zero database-lock conflicts and verified the exact final count.
-Source elapsed times were 0.002658, 0.002881, and 0.002763 seconds (median
-0.002763); system elapsed times were 0.001494, 0.001345, and 0.001305 seconds
-(median 0.001345). An all-category trial of each scenario found only scheduler
-run-queue and process-message-queue locks, with no replacement counter lock.
+The crossover depends on concurrency and burst shape, not simply the average
+event rate. In a separate paced, paired-counter probe (eight workers, 500
+events counted per call), the original ETS path and `:auto` sustained the same
+~95, ~800, and ~2,660 calls/s. The requested 4,000/s run only achieved
+~2,660/s because millisecond sleeps limited the driver. At ~95 calls/s, the
+old source table saw 2–19 collisions per 296 calls across three lock-counting
+trials, with generally microseconds of total wait; synchronized bursts at
+similar average rate caused more collisions. `:auto` usually reduced the wait.
 
-For comparison, the initial sharded candidate's median instrumented-VM elapsed
-time was 0.001618 seconds for source and 0.001602 seconds for system, versus
-0.099784 and 0.099877 seconds for the old ETS baseline. These timings describe
-the lock-counting emulator; collision counts, rather than absolute throughput,
-are the primary result.
-
-Concurrent reads of the ingest queue mapper were also profiled. They produced
-no lock conflicts, so its ETS configuration was left unchanged.
-
-## Normal-VM source-counter comparison
-
-Run `ERL_FLAGS='+S 8:8' ../bin/x mix run --no-start bench/ingest_counter_throughput.exs`
-from this workspace. The script uses three trials of one source key per scenario,
-verifies the exact final count, and compares primitive-level simulations of the
-old ETS update and initial sharded counter with the **actual** current source
-counter API (including the post-add reset check). OTP 27 on the local runner:
-
-| Concurrent writers | Old ETS median ops/s | Sharded median ops/s | Hybrid median ops/s |
-| ---: | ---: | ---: | ---: |
-| 1 | 53.5M | 32.7M | 15.8M |
-| 2 | 3.53M | 23.0M | 9.76M |
-| 8 | 81.5K | 13.2M | 5.09M |
-
-These isolated, continuously contended updates are not end-to-end ingest
-throughput. The extra ref verification has an uncontended per-call cost, while
-the hybrid remains much faster than table-locked ETS under sustained contention.
-
-A separate 1,000-source allocation probe (ETS storage plus counter refs) on the
-same OTP 27 runner measured 117 KB for old ETS, 733 KB for sharded counters at
-8 schedulers (4.32 MB at 64), and 189 KB for the hybrid at both scheduler
-counts. A six-slot `:atomics` ref is 88 bytes; a six-slot write-concurrent
-`:counters` ref is 608 bytes at 8 schedulers and 4,192 bytes at 64. These are
-allocation estimates, not a whole-application memory benchmark.
+These are isolated counter-path experiments. They do not measure end-to-end
+ingest throughput or establish the batch-call rate of a production node. The
+previously profiled ingest queue mapper showed no lock conflicts and remains
+unchanged.

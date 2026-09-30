@@ -5,6 +5,7 @@ defmodule Logflare.SystemMetrics.AllLogsLoggedTest do
 
   test "preserves the initial count and reports increments" do
     assert {:ok, :total_logs_logged} = AllLogsLogged.create(:total_logs_logged, 41)
+    assert :ets.info(:system_counter, :write_concurrency) == :auto
     assert {:ok, 41} = AllLogsLogged.log_count(:total_logs_logged)
     assert {:ok, 41} = AllLogsLogged.init_log_count(:total_logs_logged)
 
