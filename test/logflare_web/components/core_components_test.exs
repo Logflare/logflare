@@ -3,6 +3,28 @@ defmodule LogflareWeb.CoreComponentsTest do
 
   alias LogflareWeb.CoreComponents
 
+  test "button defaults to a non-submit button and accepts a submit type" do
+    inner_block = [%{inner_block: fn _, _ -> "Run query" end}]
+
+    default =
+      render_component(&CoreComponents.button/1, %{
+        variant: "secondary",
+        inner_block: inner_block
+      })
+
+    submit =
+      render_component(&CoreComponents.button/1, %{
+        variant: "secondary",
+        type: "submit",
+        disabled: true,
+        inner_block: inner_block
+      })
+
+    assert default =~ ~s(type="button")
+    assert submit =~ ~s(type="submit")
+    assert submit =~ "disabled"
+  end
+
   test "select derives id, name, and value from a form field" do
     form = Phoenix.Component.to_form(%{"source_id" => "2"}, as: :token)
 
