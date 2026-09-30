@@ -630,6 +630,16 @@ config :logflare, :context_cache_gossip, %{
   max_nodes: cache_gossip_max_nodes
 }
 
+# LOGFLARE_CACHE_REFRESH_AHEAD_ENABLED: Refresh hot cache entries in the background before they expire
+default_cache_refresh_ahead_enabled = if config_env() == :test, do: "false", else: "true"
+
+config :logflare, Logflare.ContextCache.RefreshAhead,
+  enabled:
+    System.get_env("LOGFLARE_CACHE_REFRESH_AHEAD_ENABLED", default_cache_refresh_ahead_enabled) ==
+      "true",
+  threshold: 0.2,
+  max_concurrency: 100
+
 # LOGFLARE_READ_REPLICAS: PostgreSQL read replicas for selected cache queries.
 # An empty list uses the primary database. Entries are bare host names, IP literals, or URIs
 # whose omitted options inherit the primary.
