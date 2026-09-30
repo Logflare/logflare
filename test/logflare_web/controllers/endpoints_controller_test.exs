@@ -29,6 +29,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
       {:ok, user: user, source: source}
     end
 
+    @tag capture_log: true
     test "GET query", %{conn: init_conn, user: user} do
       endpoint = insert(:endpoint, user: user, enable_auth: false)
       pid = self()

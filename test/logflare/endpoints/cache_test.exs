@@ -49,6 +49,7 @@ defmodule Logflare.Endpoints.CacheTest do
       assert {:ok, %{rows: [%{"testing" => "123"}]}} = Endpoints.run_cached_query(endpoint)
     end
 
+    @tag capture_log: true
     test "cache dies on timeout error from query", %{endpoint: endpoint} do
       GoogleApi.BigQuery.V2.Api.Jobs
       |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
@@ -68,6 +69,7 @@ defmodule Logflare.Endpoints.CacheTest do
       refute Process.alive?(cache_pid)
     end
 
+    @tag capture_log: true
     test "cache dies on timeout from query task", %{endpoint: endpoint} do
       endpoint = %{endpoint | proactive_requerying_seconds: 3}
       test_response = [%{"testing" => "123"}]
@@ -94,6 +96,7 @@ defmodule Logflare.Endpoints.CacheTest do
       assert_receive {:DOWN, ^monitor_ref, :process, ^cache_pid, :normal}, 1_500
     end
 
+    @tag capture_log: true
     test "cache handles BigQuery error response bodies", %{endpoint: endpoint} do
       GoogleApi.BigQuery.V2.Api.Jobs
       |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
