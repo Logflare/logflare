@@ -53,7 +53,8 @@ defmodule Logflare.ContextCache.Supervisor do
         buster_specs()
       end
 
-    caches ++
+    [ContextCache.RefreshAhead] ++
+      caches ++
       List.wrap(maybe_transaction_broadcaster) ++
       List.wrap(maybe_cainophile) ++
       List.wrap(maybe_busters)
