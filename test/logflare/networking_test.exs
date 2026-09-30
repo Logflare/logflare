@@ -17,9 +17,6 @@ defmodule Logflare.NetworkingTest do
         end)
         |> Enum.map(fn {Finch, opts} -> Keyword.get(opts, :name) end)
 
-      # No :logflare, :spool, :provider override is configured for tests,
-      # so this defaults to :aws (FinchSpoolS3) — see the "spool provider
-      # selection" describe block below for the :gcp (FinchSpool) case.
       assert finch_names == [
                Logflare.FinchGoth,
                Logflare.FinchDefaultHttp1,
@@ -27,6 +24,7 @@ defmodule Logflare.NetworkingTest do
                Logflare.FinchQuery,
                Logflare.FinchDefault,
                Logflare.FinchSpoolS3,
+               Logflare.FinchSpoolSQS,
                Logflare.FinchClickHouseIngest,
                Logflare.FinchClickHouseAsyncIngest,
                Logflare.FinchS3
@@ -58,6 +56,11 @@ defmodule Logflare.NetworkingTest do
                 name: Logflare.FinchSpoolS3,
                 pools: %{
                   default: _spool_s3_config
+                }},
+               {Finch,
+                name: Logflare.FinchSpoolSQS,
+                pools: %{
+                  default: _spool_sqs_config
                 }},
                {Finch,
                 name: Logflare.FinchClickHouseIngest,
@@ -106,21 +109,24 @@ defmodule Logflare.NetworkingTest do
       names = finch_names()
       assert Logflare.FinchSpool in names
       refute Logflare.FinchSpoolS3 in names
+      refute Logflare.FinchSpoolSQS in names
     end
 
-    test "starts only FinchSpoolS3 (S3+SQS) when provider is :aws" do
+    test "starts separate FinchSpoolS3 and FinchSpoolSQS pools when provider is :aws" do
       Application.put_env(:logflare, :spool, provider: :aws)
 
       names = finch_names()
       assert Logflare.FinchSpoolS3 in names
+      assert Logflare.FinchSpoolSQS in names
       refute Logflare.FinchSpool in names
     end
 
-    test "defaults to FinchSpoolS3 (S3+SQS) when no provider is configured" do
+    test "defaults to FinchSpoolS3 + FinchSpoolSQS when no provider is configured" do
       Application.put_env(:logflare, :spool, [])
 
       names = finch_names()
       assert Logflare.FinchSpoolS3 in names
+      assert Logflare.FinchSpoolSQS in names
       refute Logflare.FinchSpool in names
     end
   end

@@ -3,16 +3,17 @@ defmodule Logflare.Backends.SpoolAwsAdaptersTest do
 
   import Mimic
 
-  alias Logflare.Backends.Spool.HttpClient
   alias Logflare.Backends.Spool.Queue.SQS
+  alias Logflare.Backends.Spool.Queue.SQS.HttpClient, as: SQSHttpClient
   alias Logflare.Backends.Spool.Storage.S3
+  alias Logflare.Backends.Spool.Storage.S3.HttpClient, as: S3HttpClient
 
   describe "Storage.S3.put/4" do
-    test "sends content-type and content-encoding as real S3 headers, on the spool's own HttpClient" do
+    test "sends content-type and content-encoding as real S3 headers, on S3's own dedicated pool" do
       stub(ExAws, :request, fn %ExAws.Operation.S3{} = op, opts ->
         assert op.headers["content-type"] == "application/x-ndjson"
         assert op.headers["content-encoding"] == "zstd"
-        assert opts[:http_client] == HttpClient
+        assert opts[:http_client] == S3HttpClient
         {:ok, %{}}
       end)
 
@@ -104,10 +105,10 @@ defmodule Logflare.Backends.SpoolAwsAdaptersTest do
     end
   end
 
-  describe "Queue.SQS calls route through the spool's own HttpClient" do
+  describe "Queue.SQS calls route through SQS's own dedicated pool" do
     test "publish/2 passes http_client: HttpClient to ExAws.request/2" do
       stub(ExAws, :request, fn _op, opts ->
-        assert opts[:http_client] == HttpClient
+        assert opts[:http_client] == SQSHttpClient
         {:ok, %{}}
       end)
 

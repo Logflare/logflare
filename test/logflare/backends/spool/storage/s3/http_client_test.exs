@@ -1,13 +1,13 @@
-defmodule Logflare.Backends.Spool.HttpClientTest do
+defmodule Logflare.Backends.Spool.Storage.S3.HttpClientTest do
   use ExUnit.Case, async: false
   use Mimic
 
-  alias Logflare.Backends.Spool.HttpClient
+  alias Logflare.Backends.Spool.Storage.S3.HttpClient
 
   setup :set_mimic_global
   setup :verify_on_exit!
 
-  test "sends requests through the spool's own dedicated Finch pool" do
+  test "sends requests through S3's own dedicated Finch pool" do
     http_opts = [pool_timeout: 5_000, receive_timeout: 30_000, request_timeout: 60_000]
 
     Finch

@@ -89,28 +89,13 @@ defmodule Logflare.Networking do
     ]
   end
 
-  # The spool producer/consumer's Finch pool — gated only by SPOOL_MODE (see
-  # Backends.Supervisor), not by single-tenant/postgres_backend?, so this
-  # must be registered in both finch_pools/1 branches or spool fails to find
-  # its Finch pool whenever it's enabled on a single-tenant Postgres
-  # deployment. Only one of GCS+Pub/Sub or S3+SQS is ever active per
-  # :logflare, :spool, :provider (see ProviderConfig.resolve_mods/1), so
-  # only that provider's pool is started — the other backend's calls never
-  # happen, and starting its pool too would just be dead weight.
-  #
-  # Sized flat, not scaled by schedulers_online/0: spool's concurrent HTTP
-  # calls are bounded by the producer's max_inflight_commits x partitions
-  # (durable_buffer dep default: 32, both default to 1 partition here) and
-  # by ConsumerPipeline.QueueProducer's single in-flight prefetch per node —
-  # none of that scales with CPU core count, so a flat 100 gives headroom
-  # over the realistic ~32-connection peak without over-provisioning.
   @spool_pool_size 100
   defp spool_finch_pools do
     spool_config = Application.get_env(:logflare, :spool, [])
 
     case Keyword.get(spool_config, :provider, :aws) do
       :gcp -> [spool_gcs_pubsub_pool()]
-      _aws -> [spool_s3_sqs_pool()]
+      _aws -> [spool_s3_pool(), spool_sqs_pool()]
     end
   end
 
@@ -132,12 +117,21 @@ defmodule Logflare.Networking do
      }}
   end
 
-  # Isolated from FinchS3 below, which belongs to the S3 destination backend
-  # adaptor, so spool retries/throughput never contend with a customer's own
-  # S3 traffic.
-  defp spool_s3_sqs_pool do
+  defp spool_s3_pool do
     {Finch,
      name: Logflare.FinchSpoolS3,
+     pools: %{
+       default: [
+         protocols: [:http1],
+         size: @spool_pool_size,
+         start_pool_metrics?: true
+       ]
+     }}
+  end
+
+  defp spool_sqs_pool do
+    {Finch,
+     name: Logflare.FinchSpoolSQS,
      pools: %{
        default: [
          protocols: [:http1],
@@ -183,8 +177,6 @@ defmodule Logflare.Networking do
            ]
          ]
        }},
-      # S3 destination backend adaptor's own pool — see Logflare.FinchSpoolS3
-      # above for the separate pool the spool producer/consumer uses.
       {Finch,
        name: Logflare.FinchS3,
        pools: %{

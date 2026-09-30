@@ -3,7 +3,7 @@ defmodule Logflare.Backends.Spool.Queue.SQS do
 
   @behaviour Logflare.Backends.Spool.Queue
 
-  alias Logflare.Backends.Spool.HttpClient
+  alias Logflare.Backends.Spool.Queue.SQS.HttpClient
 
   @impl Logflare.Backends.Spool.Queue
   def resolve(queue_name) do
