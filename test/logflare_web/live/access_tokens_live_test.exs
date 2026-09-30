@@ -103,15 +103,11 @@ defmodule LogflareWeb.AccessTokensLiveTest do
     {:ok, view, _html} = live(conn, ~p"/access-tokens")
     view |> element("button", "Create access token") |> render_click()
 
-    assert has_element?(view, "#scopes-ingest-all[checked]")
-    refute has_element?(view, "#scopes-ingest")
+    assert has_element?(view, "#scopes-ingest-selected[checked]")
+    refute has_element?(view, "#scopes-ingest-all[checked]")
     assert has_element?(view, "input#access_token_private[type='checkbox']")
     assert has_element?(view, "label[for='access_token_private']", "Private")
     assert has_element?(view, "input#access_token_description[type='text'][autofocus]")
-
-    view
-    |> element("form")
-    |> render_change(token_params(ingest: %{enabled: true, mode: :selected}))
 
     select_html =
       view
@@ -141,7 +137,7 @@ defmodule LogflareWeb.AccessTokensLiveTest do
     |> render_submit(
       token_params(
         description: "multiple sources",
-        ingest: %{enabled: true, mode: :selected, selected_ids: [first.id, second.id]}
+        ingest: %{enabled: true, mode: :selected, selected_ids: ["", first.id, second.id]}
       )
     )
 
@@ -220,7 +216,7 @@ defmodule LogflareWeb.AccessTokensLiveTest do
       token_params(
         description: "multiple endpoints",
         ingest: %{enabled: false},
-        query: %{enabled: true, mode: :selected, selected_ids: [first.id, second.id]}
+        query: %{enabled: true, mode: :selected, selected_ids: ["", first.id, second.id]}
       )
     )
 
@@ -293,23 +289,80 @@ defmodule LogflareWeb.AccessTokensLiveTest do
     assert Logflare.Auth.list_valid_access_tokens(user) == []
   end
 
+  test "missing modes grant only selected resources for cast enabled values", %{
+    conn: conn,
+    user: user
+  } do
+    source = insert(:source, user: user)
+    endpoint = insert(:endpoint, user: user)
+
+    for enabled <- ["true", "1"] do
+      {:ok, view, _html} = live(conn, ~p"/access-tokens/new")
+
+      payload =
+        token_params(
+          description: "missing modes #{enabled}",
+          ingest: %{enabled: enabled, selected_ids: [source.id]},
+          query: %{enabled: enabled, selected_ids: [endpoint.id]}
+        )
+        |> update_in(["access_token", "ingest"], &Map.delete(&1, "mode"))
+        |> update_in(["access_token", "query"], &Map.delete(&1, "mode"))
+
+      assert render_submit(view, "create-token", payload) =~ "created successfully"
+    end
+
+    tokens = Logflare.Auth.list_valid_access_tokens(user)
+    assert length(tokens) == 2
+
+    for token <- tokens do
+      assert MapSet.new(String.split(token.scopes)) ==
+               MapSet.new(["ingest:source:#{source.id}", "query:endpoint:#{endpoint.id}"])
+    end
+  end
+
+  test "missing modes still reject empty and unowned selected resources", %{
+    conn: conn,
+    user: user
+  } do
+    other_user = insert(:user)
+    other_source = insert(:source, user: other_user)
+    other_endpoint = insert(:endpoint, user: other_user)
+    {:ok, view, _html} = live(conn, ~p"/access-tokens/new")
+
+    for {permission, selected_ids, error} <- [
+          {:ingest, [], "select at least one source"},
+          {:query, [], "select at least one endpoint"},
+          {:ingest, [other_source.id], "contains an invalid selected source"},
+          {:query, [other_endpoint.id], "contains an invalid selected endpoint"}
+        ] do
+      payload =
+        token_params(ingest: %{enabled: false}, query: %{enabled: false})
+        |> put_in(["access_token", Atom.to_string(permission)], %{
+          "enabled" => "1",
+          "selected_ids" => Enum.map(selected_ids, &to_string/1)
+        })
+
+      assert render_submit(view, "create-token", payload) =~ error
+    end
+
+    assert Logflare.Auth.list_valid_access_tokens(user) == []
+  end
+
   test "permission fields and embeds cannot be null or blank", %{conn: conn, user: user} do
-    other_source = insert(:source, user: insert(:user))
+    source = insert(:source, user: user)
     {:ok, view, _html} = live(conn, ~p"/access-tokens/new")
 
     base =
       token_params(
         description: "invalid permission",
-        ingest: %{enabled: true, mode: :selected, selected_ids: [other_source.id]}
+        ingest: %{enabled: true, mode: :selected, selected_ids: [source.id]}
       )
 
     invalid_payloads = [
       put_in(base, ["access_token", "ingest", "mode"], nil),
       put_in(base, ["access_token", "ingest", "mode"], ""),
       put_in(base, ["access_token", "ingest", "enabled"], nil),
-      put_in(base, ["access_token", "ingest"], nil),
-      update_in(base, ["access_token", "ingest"], &Map.delete(&1, "mode")),
-      update_in(base, ["access_token", "ingest"], &Map.delete(&1, "enabled"))
+      put_in(base, ["access_token", "ingest"], nil)
     ]
 
     for payload <- invalid_payloads do
