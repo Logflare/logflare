@@ -5,6 +5,7 @@ defmodule Logflare.EndpointsTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryErrorNormalizer
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Endpoints
@@ -845,6 +846,62 @@ defmodule Logflare.EndpointsTest do
 
       assert {:ok, %{rows: [%{"ip" => "192.168.1.1", "message" => "User 10.0.0.1 logged in"}]}} =
                Endpoints.run_query(endpoint)
+    end
+
+    test "run_query_string/3 applies PII redaction to ClickHouse error descriptions" do
+      user = insert(:user)
+      insert(:source, user: user, name: "c")
+      insert(:backend, user: user, type: :clickhouse)
+
+      stub(ClickHouseAdaptor, :execute_query, fn _backend, _query, _opts ->
+        {:error,
+         QueryErrorNormalizer.normalize(%Ch.Error{
+           code: 6,
+           message:
+             "Code: 6. DB::Exception: Cannot parse string '203.0.113.5' as UInt8: syntax error at position 3 (parsed just '203'). (CANNOT_PARSE_TEXT)"
+         })}
+      end)
+
+      query = {:ch_sql, "SELECT toUInt8(ip) FROM c"}
+
+      assert {:error, %{description: redacted}} =
+               Endpoints.run_query_string(user, query, redact_pii: true)
+
+      assert redacted ==
+               "Cannot parse string 'REDACTED' as UInt8: syntax error at position 3 (parsed just '203'). (CANNOT_PARSE_TEXT)"
+
+      assert {:error, %{description: unredacted}} =
+               Endpoints.run_query_string(user, query, redact_pii: false)
+
+      assert unredacted =~ "'203.0.113.5'"
+    end
+
+    test "run_query_string/3 applies PII redaction to IPv6 values in ClickHouse error descriptions" do
+      user = insert(:user)
+      insert(:source, user: user, name: "c")
+      insert(:backend, user: user, type: :clickhouse)
+
+      stub(ClickHouseAdaptor, :execute_query, fn _backend, _query, _opts ->
+        {:error,
+         QueryErrorNormalizer.normalize(%Ch.Error{
+           code: 6,
+           message:
+             "Code: 6. DB::Exception: Cannot parse string '2001:db8::1' as UInt8: syntax error at position 4 (parsed just '2001'). (CANNOT_PARSE_TEXT)"
+         })}
+      end)
+
+      query = {:ch_sql, "SELECT toUInt8(ip) FROM c"}
+
+      assert {:error, %{description: redacted}} =
+               Endpoints.run_query_string(user, query, redact_pii: true)
+
+      assert redacted ==
+               "Cannot parse string 'REDACTED' as UInt8: syntax error at position 4 (parsed just '2001'). (CANNOT_PARSE_TEXT)"
+
+      assert {:error, %{description: unredacted}} =
+               Endpoints.run_query_string(user, query, redact_pii: false)
+
+      assert unredacted =~ "'2001:db8::1'"
     end
 
     test "run_cached_query/2 applies PII redaction" do

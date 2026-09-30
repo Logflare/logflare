@@ -4,6 +4,7 @@ defmodule Logflare.UtilsTest do
   doctest Logflare.EnumDeepUpdate, import: true
   doctest Logflare.Utils, import: true
   doctest Logflare.Utils.Map, import: true
+  doctest Logflare.Utils.Postgres
 
   describe "parse_float!/1" do
     test "parses a decimal string" do
@@ -60,6 +61,9 @@ defmodule Logflare.Utils.FlagTest do
   alias Logflare.ConfigCatCache
   alias Logflare.User
   alias Logflare.Utils
+
+  # Let cache callbacks use this test's mocks and reset any previous global owner.
+  setup :set_mimic_global
 
   setup do
     start_supervised!(ConfigCatCache)

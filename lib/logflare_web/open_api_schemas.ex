@@ -393,7 +393,19 @@ defmodule LogflareWeb.OpenApiSchemas do
       query_password: %Schema{type: :string, nullable: true},
       read_pool_size: %Schema{type: :integer, nullable: true},
       labeled_read_pool_size: %Schema{type: :integer, nullable: true},
-      read_only_url: %Schema{type: :string, nullable: true},
+      read_only_urls: %Schema{
+        type: :object,
+        additionalProperties: %Schema{type: :string, format: :uri},
+        nullable: true,
+        description: "Read cluster label to ClickHouse HTTP URL",
+        example: %{"prod-a" => "https://reads-a.example.com:8443"}
+      },
+      default_read_cluster: %Schema{
+        type: :string,
+        nullable: true,
+        description: "Label from read_only_urls used when a query names no cluster",
+        example: "prod-a"
+      },
       use_async_inserts_for_small_batches: %Schema{type: :boolean, nullable: true},
       async_insert_cluster_url: %Schema{type: :string, nullable: true},
       async_insert_max_rows: %Schema{type: :integer, nullable: true},

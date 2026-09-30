@@ -66,7 +66,11 @@ defmodule Logflare.Repo.AwsIam do
         NaiveDateTime.to_erl(NaiveDateTime.utc_now()),
         config,
         @iam_token_expiry_seconds,
-        [{"Action", "connect"}, {"DBUser", username}]
+        [{"Action", "connect"}, {"DBUser", username}],
+        # RDS verifies the signature against the hash of an empty payload. Omitting the body
+        # leaves ExAws signing S3's `UNSIGNED-PAYLOAD` marker instead, which produces a
+        # well-formed token that every RDS endpoint rejects as invalid credentials.
+        ""
       )
 
     String.replace_prefix(url, "https://", "")
@@ -161,27 +165,7 @@ defmodule Logflare.Repo.AwsIam do
   defp aws_config(region) do
     :rds
     |> ExAws.Config.new(region: region)
-    |> maybe_put_environment_session_token()
     |> drop_empty_session_token()
-  end
-
-  defp maybe_put_environment_session_token(%{security_token: token} = config)
-       when is_binary(token) and token != "",
-       do: config
-
-  defp maybe_put_environment_session_token(config) do
-    with access_key_id when is_binary(access_key_id) and access_key_id != "" <-
-           System.get_env("AWS_ACCESS_KEY_ID"),
-         secret_access_key when is_binary(secret_access_key) and secret_access_key != "" <-
-           System.get_env("AWS_SECRET_ACCESS_KEY"),
-         session_token when is_binary(session_token) and session_token != "" <-
-           System.get_env("AWS_SESSION_TOKEN"),
-         true <- config[:access_key_id] == access_key_id,
-         true <- config[:secret_access_key] == secret_access_key do
-      Map.put(config, :security_token, session_token)
-    else
-      _ -> config
-    end
   end
 
   defp drop_empty_session_token(%{security_token: token} = config) when token in [nil, ""],

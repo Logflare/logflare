@@ -35,6 +35,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   alias Logflare.Backends.BufferProducer
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
+  alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.LogEvent
   alias Logflare.LogEvent.TypeDetection
   alias Logflare.Mapper
@@ -274,10 +275,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     decrement_in_flight(successful, failed)
     emit_missing_ids_telemetry(failed)
 
-    Enum.each(successful, fn message ->
+    successful
+    |> Enum.reduce(%{}, fn message, counts ->
       pointer = message_pointer(message)
       IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
+      Map.update(counts, pointer.spool_handle, 1, &(&1 + 1))
     end)
+    |> Enum.each(fn {handle, count} -> SpoolAck.ack(handle, count) end)
 
     if failed != [] do
       failed
@@ -674,10 +678,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       %{backend_type: :clickhouse, backend_id: backend_id, reason: reason}
     )
 
-    Enum.each(payloads, fn payload ->
+    payloads
+    |> Enum.reduce(%{}, fn payload, counts ->
       pointer = message_pointer(payload)
       IngestEventQueue.delete_id(pointer.tid, pointer.gen_event_id)
+      Map.update(counts, pointer.spool_handle, 1, &(&1 + 1))
     end)
+    |> Enum.each(fn {handle, count} -> SpoolAck.ack(handle, count) end)
   end
 
   @spec drop_reason_message(drop_reason()) :: String.t()

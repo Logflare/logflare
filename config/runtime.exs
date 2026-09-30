@@ -33,6 +33,19 @@ defmodule Env do
         end
     end
   end
+
+  @spec aws_rds_credentials(map()) :: keyword(String.t())
+  def aws_rds_credentials(env) when is_map(env) do
+    credentials = [
+      access_key_id: env["AWS_ACCESS_KEY_ID"],
+      secret_access_key: env["AWS_SECRET_ACCESS_KEY"],
+      security_token: env["AWS_SESSION_TOKEN"]
+    ]
+
+    if Enum.all?(credentials, fn {_key, value} -> is_binary(value) and value != "" end),
+      do: credentials,
+      else: []
+  end
 end
 
 if config_env() == :test and Env.get_boolean("E2E") do
@@ -180,6 +193,11 @@ config :logflare,
            |> filter_nil_kv_pairs.(),
          live_dashboard: Env.get_boolean("LOGFLARE_ENABLE_LIVE_DASHBOARD")
        )
+
+case Env.aws_rds_credentials(System.get_env()) do
+  [] -> :ok
+  credentials -> config :ex_aws, :rds, credentials
+end
 
 db_auth_options =
   case System.get_env("DB_AUTH") do
@@ -612,6 +630,46 @@ read_replicas =
   |> Enum.map(&Logflare.Repo.Replicas.parse!/1)
 
 config :logflare, :read_replicas, read_replicas
+
+# LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS: Comma-separated list of pglogical
+# replication set names. When set to a non-empty value, Ecto migrations are routed
+# through `pglogical.replicate_ddl_command/2` so DDL propagates to replicas subscribed
+# to these replication sets. If unset or empty, migrations run directly against the
+# primary repo, unchanged.
+# Example: "my_set" or "my_set,other_set"
+pglogical_replication_sets =
+  "LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS"
+  |> System.get_env("")
+  |> String.split(",", trim: true)
+  |> Enum.map(&String.trim/1)
+  |> Enum.reject(&(&1 == ""))
+  |> Enum.uniq()
+
+for set <- pglogical_replication_sets do
+  if Regex.match?(~r/^[A-Za-z_][A-Za-z0-9_]*$/, set) do
+    :ok
+  else
+    raise "LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS contains an invalid replication set name: #{inspect(set)}"
+  end
+end
+
+# pglogical resets search_path when applying replicated DDL, so the migration
+# adaptor has to restore whatever DB_SCHEMA puts on the repo's connections.
+# DB_SCHEMA is only inspected when pglogical DDL replication is enabled; without
+# it, DB_SCHEMA keeps its existing pass-through behaviour (see :after_connect above).
+# Validated as identifiers because DDL cannot use bind parameters.
+pglogical_schema =
+  if pglogical_replication_sets == [] do
+    []
+  else
+    "DB_SCHEMA"
+    |> System.get_env("public")
+    |> Utils.Postgres.parse_identifier_list!()
+  end
+
+config :logflare, Logflare.Repo.Migrator,
+  replication_sets: pglogical_replication_sets,
+  search_path: Enum.join(pglogical_schema, ", ")
 
 spool_mode_override =
   case System.get_env("SPOOL_MODE") do

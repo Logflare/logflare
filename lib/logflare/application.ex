@@ -8,6 +8,7 @@ defmodule Logflare.Application do
   alias Logflare.Networking
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Spool.Health, as: SpoolHealth
+  alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.Backends.UserMonitoring
   alias Logflare.ContextCache
   alias Logflare.Logs
@@ -16,7 +17,7 @@ defmodule Logflare.Application do
   alias Logflare.SystemMetricsSup
   alias Logflare.Sources.Counters
   alias Logflare.Sources.RateCounters
-  alias Logflare.Sources.Source.BigQuery.SchemaUpdateSampler
+  alias Logflare.Sources.Source.RateSampler
   alias Logflare.PubSubRates
   alias Logflare.Utils
 
@@ -71,7 +72,8 @@ defmodule Logflare.Application do
         Logflare.LogEvent.DayBucket,
         Counters,
         RateCounters,
-        SchemaUpdateSampler,
+        RateSampler,
+        SpoolAck,
         Logs.LogEvents.Cache,
         {Phoenix.PubSub, name: Logflare.PubSub},
         PubSubRates,
@@ -116,7 +118,8 @@ defmodule Logflare.Application do
         # init Counters before Supervisof as Supervisor calls Counters through table create
         Counters,
         RateCounters,
-        SchemaUpdateSampler,
+        RateSampler,
+        SpoolAck,
         # Backends needs to be before Source.Supervisor
         Logflare.Backends,
         Logflare.Sources.Source.Supervisor,

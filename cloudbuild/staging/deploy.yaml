@@ -12,14 +12,10 @@ steps:
           # — deployment-topology-specific, not a secret, so it belongs here
           # rather than in the baked-in staging secrets.
           printf '%s\n' 'SPOOL_WAL_DIR=/var/lib/logflare/spool_wal'
-          # In-memory buffer (see Logflare.Backends.spool_buffer/0) — same as
-          # prod and the dev cluster. Blocking (spool_blocking_mode?/0) is
-          # on: with no local WAL, this is the only durability guarantee an
-          # ingest caller gets, so it must wait for the actual GCS/Pub-Sub
-          # commit. max_batch_bytes caps each uploaded spool file at ~6MB.
-          printf '%s\n' 'SPOOL_BUFFER=mem'
+          # Turn on disk WAL with 64KB syncs.
+          printf '%s\n' 'SPOOL_BUFFER=wal'
           printf '%s\n' 'SPOOL_BLOCKING=true'
-          printf '%s\n' 'SPOOL_MAX_BATCH_BYTES=6291456'
+          printf '%s\n' 'SPOOL_MAX_BATCH_BYTES=65536'
           printf 'RELEASE_COOKIE=%s\n' "$$1"
           printf 'LOGFLARE_METADATA_CLUSTER=%s\n' "$$2"
           # SPOOL_PUBSUB_TOPIC/SPOOL_QUEUE_NAME point at this cluster's own

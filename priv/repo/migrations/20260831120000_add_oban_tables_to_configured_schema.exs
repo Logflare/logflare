@@ -1,7 +1,14 @@
 defmodule Logflare.Repo.Migrations.AddObanTablesToConfiguredSchema do
   use Ecto.Migration
 
-  def up, do: Oban.Migration.up(version: 12, prefix: oban_prefix())
+  alias Logflare.Repo.Migrator
+
+  def up do
+    Migrator.with_replicated_execute(fn ->
+      Oban.Migration.up(version: 12, prefix: oban_prefix())
+    end)
+  end
+
   def down, do: :ok
 
   defp oban_prefix do

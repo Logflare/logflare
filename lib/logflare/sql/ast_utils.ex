@@ -20,6 +20,54 @@ defmodule Logflare.Sql.AstUtils do
   end
 
   @doc """
+  Builds an object-name path segment (`ObjectNamePart::Identifier`), the element
+  type of table and function `name` lists.
+  """
+  @spec build_object_name_part(value :: String.t(), quote_style :: String.t() | nil) :: map()
+  def build_object_name_part(value, quote_style \\ nil) do
+    %{"Identifier" => build_identifier(value, quote_style)}
+  end
+
+  @doc """
+  Builds a literal value AST node (`Expr::Value`), including the `span` field the
+  parser requires when a hand-built AST is serialized back into SQL.
+  """
+  @spec build_value(value :: map()) :: map()
+  def build_value(value) when is_map(value) do
+    %{"Value" => %{"value" => value, "span" => @empty_span}}
+  end
+
+  @doc """
+  Builds a `CAST` expression node with the fields the parser requires when a
+  hand-built AST is serialized back into SQL.
+  """
+  @spec build_cast(expr :: map(), data_type :: map() | String.t(), kind :: String.t()) :: map()
+  def build_cast(expr, data_type, kind \\ "Cast") when is_map(expr) do
+    %{
+      "Cast" => %{
+        "kind" => kind,
+        "expr" => expr,
+        "data_type" => data_type,
+        "array" => false,
+        "format" => nil
+      }
+    }
+  end
+
+  @doc """
+  Returns the identifier value of a single object-name path segment.
+  """
+  @spec object_name_part_value(part :: map()) :: String.t()
+  def object_name_part_value(%{"Identifier" => %{"value" => value}}), do: value
+
+  @doc """
+  Returns the identifier values of an object name's path segments, in order.
+  """
+  @spec object_name_values(parts :: [map()]) :: [String.t()]
+  def object_name_values(parts) when is_list(parts),
+    do: Enum.map(parts, &object_name_part_value/1)
+
+  @doc """
   Recursively transforms an AST using a provided transform function.
 
   Transform function should return `{:recurse, node}` to continue traversal.
@@ -46,6 +94,26 @@ defmodule Logflare.Sql.AstUtils do
   end
 
   defp do_recursive_transform(ast_node, _data, _transform_fn), do: ast_node
+
+  @doc """
+  Collects the names of `@name` query parameters, without the prefix and in order
+  of first appearance.
+
+  Most dialects tokenize `@name` as a `Placeholder` value; BigQuery tokenizes it
+  as an `Identifier`. BigQuery `@@name` system variables are not parameters.
+  """
+  @spec extract_parameters(ast :: any()) :: [String.t()]
+  def extract_parameters(ast) do
+    ast |> collect_from_ast(&do_extract_parameter/1) |> Enum.uniq()
+  end
+
+  defp do_extract_parameter({"Placeholder", "@" <> name}), do: {:collect, name}
+  defp do_extract_parameter({"Identifier", %{"value" => "@@" <> _}}), do: :skip
+
+  defp do_extract_parameter({"Identifier", %{"value" => "@" <> name, "quote_style" => nil}}),
+    do: {:collect, name}
+
+  defp do_extract_parameter(_ast_node), do: :skip
 
   @doc """
   Collects items from an AST using a provided collector function.

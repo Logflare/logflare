@@ -28,6 +28,7 @@ defmodule Logflare.Backends do
   alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Logflare.Sources.Source
+  alias Logflare.Sources.Source.RateSampler
   alias Logflare.Sources.SourceRouter
   alias Logflare.SystemMetrics
   alias Logflare.Teams
@@ -624,8 +625,9 @@ defmodule Logflare.Backends do
 
   Events are conditionally dispatched to backends based on whether they are registered. If they register for ingestion dispatching, events will get sent to the registered backend.
 
-  For a spoolable event (gated by `allow_spooling`, the global spool mode,
-  and `source.enable_spooling` — see `spoolable?/3`), this blocks the
+  For a spoolable event (gated by `allow_spooling` and the global spool
+  mode — plus `source.enable_spooling` when the mode is `:both` — see
+  `spoolable?/3`), this blocks the
   caller until the event's segment is durable in the buffer, or — in
   blocking mode (`spool_blocking_mode?/0`) — until its batch is actually
   committed. If no spool partition is available, or spool dispatch fails,
@@ -676,6 +678,8 @@ defmodule Logflare.Backends do
   # unique term per call spreads load across them the same way random
   # selection did.
   @spec dispatch_to_spool_producer([LogEvent.t()]) :: :ok | {:error, term()}
+  defp dispatch_to_spool_producer([]), do: :ok
+
   defp dispatch_to_spool_producer(log_events) do
     payload = SpoolEncoder.encode_raw_chunk(log_events)
     partition_key = :erlang.unique_integer()
@@ -713,27 +717,36 @@ defmodule Logflare.Backends do
     :exit, _reason -> {:error, :no_spool_partition_available}
   end
 
-  # Requires an explicit opt-in (allow_spooling), not just global mode +
-  # source.enable_spooling: SourceRouter's re-entrant calls (routing an
-  # already-matched rule to its backend/sink) never pass allow_spooling, so
-  # they always land here as false regardless of source config. The
-  # via_rule_id check is defense-in-depth on top of that — even a caller that
-  # does pass allow_spooling: true should never spool an event that's
-  # already been routed once
   @spec spoolable?([LogEvent.t()], Source.t(), boolean()) :: boolean()
   defp spoolable?(log_events, source, allow_spooling) do
-    allow_spooling and spool_producer_mode?() and source.enable_spooling and
-      Enum.all?(log_events, &(&1.via_rule_id == nil))
+    allow_spooling and
+      spool_producer_mode?() and
+      case spool_mode() do
+        :producer -> true
+        :both -> source.enable_spooling and Enum.all?(log_events, &(&1.via_rule_id == nil))
+      end
   end
 
   @doc """
   Dispatches events from the spool consumer directly to backends, bypassing the spool producer path.
   Use this in the consumer pipeline to avoid re-routing events back to the spool in `:both` mode.
+
+  `handle` is the spool queue message (SQS receipt handle / PubSub ack id)
+  these records were decoded from, or `nil` if they didn't come from the
+  spool. Stamped onto each event as `spool_handle` so `IngestEventQueue` can
+  track, per handle, how many pipeline completions are still outstanding
+  before `Logflare.Backends.Spool.SpoolAck` acks it — see that module's
+  moduledoc.
   """
-  @spec dispatch_from_spool([map()], Source.t()) :: {:ok, non_neg_integer()}
-  def dispatch_from_spool(spool_records, source) do
+  @spec dispatch_from_spool([map()], Source.t(), term()) :: {:ok, non_neg_integer()}
+  def dispatch_from_spool(spool_records, source, handle \\ nil) do
     ensure_source_sup_started(source)
-    log_events = Enum.map(spool_records, &LogEvent.make_from_spool(&1, source))
+
+    log_events =
+      Enum.map(spool_records, fn record ->
+        LogEvent.make_from_spool(record, source, handle)
+      end)
+
     count = length(log_events)
 
     :telemetry.execute(
@@ -868,13 +881,15 @@ defmodule Logflare.Backends do
   defp spool_mode,
     do: :logflare |> Application.get_env(:spool, []) |> Keyword.get(:mode, :disable)
 
-  defp maybe_broadcast_and_route(source, log_events) do
-    case source.metrics do
-      %{avg: avg} when avg < 2 ->
-        Source.ChannelTopics.broadcast_new(log_events)
+  @broadcast_rate_ceiling 2
 
-      _ ->
-        :ok
+  defp maybe_broadcast_and_route(source, log_events) do
+    if log_events != [] do
+      RateSampler.bump(source.token, length(log_events))
+
+      if RateSampler.rate(source.token) < @broadcast_rate_ceiling do
+        Source.ChannelTopics.broadcast_new(log_events)
+      end
     end
 
     SourceRouter.route_to_sinks_and_ingest(log_events, source)

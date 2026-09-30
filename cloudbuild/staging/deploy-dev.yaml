@@ -138,15 +138,10 @@ substitutions:
   # separate disk — see gce-startup.sh for why). Set unconditionally
   # (consumer just never reads it).
   _SPOOL_WAL_DIR: /var/lib/logflare/spool_wal
-  # In-memory buffer, matching prod/staging — see
-  # Logflare.Backends.spool_buffer/0. Blocking (spool_blocking_mode?/0) is
-  # on: with no local WAL, this is the only durability guarantee an ingest
-  # caller gets, so it must wait for the actual GCS/Pub-Sub commit.
+  # Turn on disk WAL with 64KB syncs.
   _SPOOL_BLOCKING: "true"
-  _SPOOL_BUFFER: mem
-  # Caps each uploaded spool file at ~6MB (Logflare.Backends.Spool.
-  # DurableBuffer.Supervisor's max_batch_bytes, default 64KiB).
-  _SPOOL_MAX_BATCH_BYTES: "6291456"
+  _SPOOL_BUFFER: wal
+  _SPOOL_MAX_BATCH_BYTES: "65536"
   _COOKIE: default-dev-${_DEV_NUMBER}
   _NORMALIZED_IMAGE_TAG: ${_IMAGE_TAG}
   _INSTANCE_TYPE: c2d-highcpu-4
