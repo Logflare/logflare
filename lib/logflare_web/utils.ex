@@ -46,6 +46,19 @@ defmodule LogflareWeb.Utils do
       iex> stringify_changeset_errors(changeset, "No errors")
       "No errors"
 
+      iex> profile = %Ecto.Changeset{
+      ...>   errors: [email: {"is invalid", []}],
+      ...>   data: %{},
+      ...>   types: %{email: :string}
+      ...> }
+      iex> changeset = %Ecto.Changeset{
+      ...>   changes: %{profile: profile},
+      ...>   data: %{},
+      ...>   types: %{profile: {:embed, %Ecto.Embedded{cardinality: :one}}}
+      ...> }
+      iex> stringify_changeset_errors(changeset, "Validation failed")
+      "Validation failed: profile: email: is invalid"
+
   """
   @spec stringify_changeset_errors(Ecto.Changeset.t()) :: String.t()
   def stringify_changeset_errors(%Ecto.Changeset{} = changeset) do
