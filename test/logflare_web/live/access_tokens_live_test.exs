@@ -105,6 +105,9 @@ defmodule LogflareWeb.AccessTokensLiveTest do
 
     assert has_element?(view, "#scopes-ingest-all[checked]")
     refute has_element?(view, "#scopes-ingest")
+    assert has_element?(view, "input#access_token_private[type='checkbox']")
+    assert has_element?(view, "label[for='access_token_private']", "Private")
+    assert has_element?(view, "input#access_token_description[type='text'][autofocus]")
 
     view
     |> element("form")
@@ -456,6 +459,18 @@ defmodule LogflareWeb.AccessTokensLiveTest do
 
     assert has_element?(view, "#scopesmainingest[checked][disabled]")
     assert has_element?(view, "#scopesmainquery[checked][disabled]")
+
+    for {permission, enabled} <- [{"ingest", "true"}, {"query", "false"}] do
+      hidden_inputs =
+        view
+        |> render()
+        |> Floki.parse_fragment!()
+        |> Floki.find(
+          "input[type='hidden'][name='access_token[#{permission}][enabled]']:not([disabled])"
+        )
+
+      assert Floki.attribute(hidden_inputs, "value") == [enabled]
+    end
 
     assert has_element?(
              view,

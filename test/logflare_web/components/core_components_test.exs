@@ -25,6 +25,94 @@ defmodule LogflareWeb.CoreComponentsTest do
     assert submit =~ "disabled"
   end
 
+  test "input derives id, name, and value from a form field and accepts overrides" do
+    form = Phoenix.Component.to_form(%{"description" => "Original"}, as: :token)
+
+    html = render_component(&CoreComponents.input/1, %{field: form[:description]})
+
+    assert html =~
+             ~s(type="text" id="token_description" name="token[description]" value="Original")
+
+    html =
+      render_component(&CoreComponents.input/1, %{
+        field: form[:description],
+        id: "custom",
+        name: "description",
+        value: "Override",
+        type: "search"
+      })
+
+    assert html =~ ~s(type="search" id="custom" name="description" value="Override")
+    refute html =~ "<label"
+  end
+
+  test "radio input preserves explicit option values and checked states" do
+    form = Phoenix.Component.to_form(%{"mode" => "selected"}, as: :permission)
+
+    for {value, checked} <- [{"all", false}, {"selected", true}] do
+      html =
+        render_component(&CoreComponents.input/1, %{
+          field: form[:mode],
+          type: "radio",
+          id: "mode-#{value}",
+          value: value,
+          checked: checked
+        })
+        |> Floki.parse_fragment!()
+
+      assert [_] =
+               Floki.find(
+                 html,
+                 ~s(input[type="radio"][name="permission[mode]"][value="#{value}"])
+               )
+
+      assert Floki.find(html, "input[checked]") != [] == checked
+      assert Floki.find(html, "input[type='hidden']") == []
+    end
+  end
+
+  test "checkbox input normalizes field values and submits false when unchecked" do
+    for value <- [true, "true", false, "false", nil] do
+      form = Phoenix.Component.to_form(%{"private" => value}, as: :token)
+
+      html =
+        render_component(&CoreComponents.input/1, %{
+          field: form[:private],
+          type: "checkbox"
+        })
+        |> Floki.parse_fragment!()
+
+      assert [_] =
+               Floki.find(html, ~s(input[type="hidden"][name="token[private]"][value="false"]))
+
+      assert [_] =
+               Floki.find(
+                 html,
+                 ~s(input[type="checkbox"]#token_private[name="token[private]"][value="true"])
+               )
+
+      assert Floki.find(html, "label, div") == []
+      assert Floki.find(html, "input[checked]") != [] == value in [true, "true"]
+    end
+  end
+
+  test "checkbox input allows overriding checked state and forwards disabled and form" do
+    form = Phoenix.Component.to_form(%{"private" => true}, as: :token)
+
+    html =
+      render_component(&CoreComponents.input/1, %{
+        field: form[:private],
+        type: "checkbox",
+        checked: false,
+        disabled: true,
+        form: "external-form"
+      })
+      |> Floki.parse_fragment!()
+
+    assert Floki.find(html, "input[checked]") == []
+    assert length(Floki.find(html, ~s(input[disabled][form="external-form"]))) == 2
+  end
+
   test "select derives id, name, and value from a form field" do
     form = Phoenix.Component.to_form(%{"source_id" => "2"}, as: :token)
 

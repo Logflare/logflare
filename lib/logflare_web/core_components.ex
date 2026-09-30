@@ -10,6 +10,53 @@ defmodule LogflareWeb.CoreComponents do
   alias Phoenix.LiveView.JS
 
   @doc """
+  Render an input with id, name, and value from field.
+
+  ## Examples
+
+      <label for={@form[:description].id}>Description</label>
+      <.input field={@form[:description]} autofocus />
+
+      <div class="form-check">
+        <.input field={@form[:private]} type="checkbox" />
+        <label class="form-check-label" for={@form[:private].id}>Private</label>
+      </div>
+  """
+  attr :id, :string, default: nil
+  attr :name, :any
+  attr :value, :any
+  attr :field, Phoenix.HTML.FormField
+  attr :type, :string, default: "text"
+  attr :class, :any, default: nil
+  attr :checked, :boolean
+
+  attr :rest, :global,
+    include: ~w(disabled required placeholder autocomplete autofocus min max step form)
+
+  @spec input(map()) :: Phoenix.LiveView.Rendered.t()
+  def input(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
+    assigns
+    |> assign_form_field(field)
+    |> input()
+  end
+
+  def input(%{type: "checkbox"} = assigns) do
+    assigns =
+      assign_new(assigns, :checked, fn -> Form.normalize_value("checkbox", assigns.value) end)
+
+    ~H"""
+    <input type="hidden" name={@name} value="false" disabled={@rest[:disabled]} form={@rest[:form]} />
+    <input type="checkbox" id={@id} name={@name} value="true" checked={@checked} class={@class || "form-check-input"} {@rest} />
+    """
+  end
+
+  def input(assigns) do
+    ~H"""
+    <input type={@type} id={@id} name={@name} value={Form.normalize_value(@type, @value)} checked={assigns[:checked]} class={@class || "form-control"} {@rest} />
+    """
+  end
+
+  @doc """
   Renders a select element.
 
   Accepts either `%Phoenix.HTML.FormField{}` (preferred) or individual `name`, `value`, and `id` attrs.

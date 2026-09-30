@@ -112,7 +112,7 @@ defmodule LogflareWeb.AccessTokensLive do
       <h5>New Access Token</h5>
       <div class="form-group">
         <label for={f[:description].id}>Description</label>
-        <input id={f[:description].id} name={f[:description].name} autofocus class="form-control" value={f[:description].value} />
+        <.input field={f[:description]} autofocus />
         <small class="form-text text-muted">A short description for identifying what this access token is to be used for.</small>
       </div>
 
@@ -124,7 +124,12 @@ defmodule LogflareWeb.AccessTokensLive do
         <.inputs_for :let={permission_form} field={f[:query]}>
           <.scope value="query" label="Query" description="Choose whether this token can query all or selected endpoints." form={permission_form} private_scope?={private_scope?(f[:private].value)} resource="endpoints" options={resource_options(@endpoints)} />
         </.inputs_for>
-        <.private_scope field={f[:private]} />
+        <div class="form-check tw-mr-2">
+          <.input field={f[:private]} type="checkbox" />
+          <label class="form-check-label tw-px-1" for={f[:private].id}>
+            Private <small class="form-text text-muted">For account management, has all privileges</small>
+          </label>
+        </div>
       </div>
       <.button variant="secondary" phx-click={JS.patch(~p"/access-tokens")}>Cancel</.button>
       {submit("Create", class: "btn btn-primary")}
@@ -149,24 +154,24 @@ defmodule LogflareWeb.AccessTokensLive do
 
     ~H"""
     <div class="form-check tw-mr-2">
-      <input type="hidden" name={@form[:enabled].name} value={if(@private_scope?, do: to_string(@enabled?), else: "false")} />
-      <input class="form-check-input" type="checkbox" name={@form[:enabled].name} id={["scopes", "main", @value]} value="true" checked={@enabled? or @private_scope?} disabled={@private_scope?} />
+      <.input :if={@private_scope?} type="hidden" name={@form[:enabled].name} value={to_string(@enabled?)} />
+      <.input field={@form[:enabled]} type="checkbox" id={"scopesmain#{@value}"} checked={@enabled? or @private_scope?} disabled={@private_scope?} />
       <label class="form-check-label tw-px-1" for={["scopes", "main", @value]}>
         {@label}
         <small class="form-text text-muted">{@description}</small>
       </label>
-      <input :if={not @enabled? or @private_scope?} type="hidden" name={@form[:mode].name} value={@mode} />
-      <input :for={selected <- @selected_values} :if={not @enabled? or @private_scope? or @mode != :selected} type="hidden" name={"#{@form[:selected_ids].name}[]"} value={selected} />
+      <.input :if={not @enabled? or @private_scope?} type="hidden" name={@form[:mode].name} value={@mode} />
+      <.input :for={selected <- @selected_values} :if={not @enabled? or @private_scope? or @mode != :selected} type="hidden" name={"#{@form[:selected_ids].name}[]"} value={selected} />
       <div :if={@enabled? or @private_scope?} id={"scopes-#{@value}-permissions-#{if(@private_scope?, do: "private", else: "standard")}"} class="tw-ml-5 tw-mt-2 tw-max-w-3xl">
         <div class="form-check">
-          <input class="form-check-input" type="radio" name={@form[:mode].name} id={"scopes-#{@value}-all"} value="all" checked={@private_scope? or @mode == :all} disabled={@private_scope?} />
+          <.input field={@form[:mode]} class="form-check-input" type="radio" id={"scopes-#{@value}-all"} value="all" checked={@private_scope? or @mode == :all} disabled={@private_scope?} />
           <label class="form-check-label" for={"scopes-#{@value}-all"}>All {@resource}</label>
         </div>
         <div class="form-check">
-          <input class="form-check-input" type="radio" name={@form[:mode].name} id={"scopes-#{@value}-selected"} value="selected" checked={not @private_scope? and @mode == :selected} disabled={@private_scope?} />
+          <.input field={@form[:mode]} class="form-check-input" type="radio" id={"scopes-#{@value}-selected"} value="selected" checked={not @private_scope? and @mode == :selected} disabled={@private_scope?} />
           <label class="form-check-label" for={"scopes-#{@value}-selected"}>Selected {@resource}</label>
         </div>
-        <input :if={not @private_scope? and @mode == :selected} type="hidden" name={"#{@form[:selected_ids].name}[]"} value="" />
+        <.input :if={not @private_scope? and @mode == :selected} type="hidden" name={"#{@form[:selected_ids].name}[]"} value="" />
         <.combobox :if={not @private_scope? and @mode == :selected} id={"scopes-#{@value}"} name={"#{@form[:selected_ids].name}[]"} value={@selected_values} prompt={"Select #{@resource}..."} prompt_hidden={true} options={@options} empty_text={"No #{@resource} found."} multiple={true} />
       </div>
     </div>
@@ -180,22 +185,6 @@ defmodule LogflareWeb.AccessTokensLive do
   defp mode(_value), do: nil
 
   defp selected_values(values), do: Enum.reject(values, &is_nil/1)
-
-  attr :field, Phoenix.HTML.FormField, required: true
-
-  defp private_scope(assigns) do
-    assigns = assign(assigns, :checked?, private_scope?(assigns.field.value))
-
-    ~H"""
-    <div class="form-check tw-mr-2">
-      <input type="hidden" name={@field.name} value="false" />
-      <input class="form-check-input" type="checkbox" name={@field.name} id="scopesmainprivate" value="true" checked={@checked?} />
-      <label class="form-check-label tw-px-1" for="scopesmainprivate">
-        Private <small class="form-text text-muted">For account management, has all privileges</small>
-      </label>
-    </div>
-    """
-  end
 
   defp resource_options(resources) do
     resources
