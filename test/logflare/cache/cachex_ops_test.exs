@@ -238,6 +238,39 @@ defmodule Logflare.Cache.CachexOpsTest do
     end
   end
 
+  describe "expiry/2" do
+    setup do
+      start_cache(limit: nil, ttl: to_timeout(minute: 10))
+      :ok
+    end
+
+    test "remaining and total ttl of an entry" do
+      CachexOps.put_entries(@cache, [{:key, :value, to_timeout(minute: 2)}])
+
+      assert {remaining, total} = CachexOps.expiry(@cache, :key)
+      assert total == to_timeout(minute: 2)
+      assert remaining > to_timeout(minute: 1) and remaining <= total
+    end
+
+    test "entries written by fetch/3 get the default ttl" do
+      CachexOps.fetch(@cache, :key, fn -> :value end)
+
+      assert {_remaining, total} = CachexOps.expiry(@cache, :key)
+      assert total == to_timeout(minute: 10)
+    end
+
+    test "zero remaining for an expired entry that wasn't purged yet" do
+      CachexOps.put_entries(@cache, [{:key, :value, 1}])
+      Process.sleep(5)
+
+      assert {0, 1} = CachexOps.expiry(@cache, :key)
+    end
+
+    test "nil when not cached" do
+      assert nil == CachexOps.expiry(@cache, :missing)
+    end
+  end
+
   describe "cached?/2 and size/1" do
     setup do
       start_cache(limit: nil)

@@ -3,7 +3,7 @@ defmodule Logflare.Users.Cache do
   Cache for users.
   """
 
-  use Logflare.ContextCache
+  use Logflare.ContextCache, refresh_ahead: true
 
   alias Logflare.Cache.CachexOps
   alias Logflare.Users

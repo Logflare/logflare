@@ -17,6 +17,12 @@ defmodule Logflare.ContextCache do
   `c:entries/0` and `c:put_entries/1` read and write entries as `t:entry/0`, independent of the
   storage backend, so a cache can be copied between nodes running different backends.
 
+  ## Refresh-ahead
+
+  With `refresh_ahead: true`, `c:fetch/2` also hands the key to `Logflare.ContextCache.RefreshAhead`,
+  which reloads entries close to expiry in the background, so reads don't block on the getter
+  when a hot entry expires. It relies on `c:expiry/1`, `c:cached?/1` and `c:put_entries/1` only.
+
   ## Busting
 
   `bust_keys/1` busts entries by primary key or by a keyword of fields. Caches that need busting
@@ -32,6 +38,7 @@ defmodule Logflare.ContextCache do
 
   alias Logflare.Cache.CachexOps
   alias Logflare.ContextCache.Gossip
+  alias Logflare.ContextCache.RefreshAhead
 
   @typedoc """
   A cached value under `key`, with its remaining time-to-live in ms, `nil` when it does not expire.
@@ -65,6 +72,13 @@ defmodule Logflare.ContextCache do
 
   @callback cached?(key :: term()) :: boolean()
 
+  @doc """
+  Remaining and total time-to-live in ms of the entry cached under `key`, `nil` when it is not
+  cached or does not expire.
+  """
+  @callback expiry(key :: term()) ::
+              {remaining :: non_neg_integer(), total :: pos_integer()} | nil
+
   @callback size() :: non_neg_integer()
 
   @doc """
@@ -81,6 +95,7 @@ defmodule Logflare.ContextCache do
 
   defmacro __using__(opts) do
     impl = Keyword.get(opts, :impl, CachexOps)
+    refresh_ahead? = Keyword.get(opts, :refresh_ahead, false)
 
     quote do
       use Logflare.Cache, unquote(opts)
@@ -91,7 +106,14 @@ defmodule Logflare.ContextCache do
       def bust_by(kw), do: unquote(impl).bust_by(__MODULE__, kw)
 
       @impl Logflare.ContextCache
-      def fetch(key, getter), do: unquote(impl).fetch(__MODULE__, key, getter)
+      def fetch(key, getter) do
+        value = unquote(impl).fetch(__MODULE__, key, getter)
+
+        if unquote(refresh_ahead?),
+          do: unquote(RefreshAhead).maybe_refresh(__MODULE__, key, getter)
+
+        value
+      end
 
       @impl Logflare.ContextCache
       def update(key, value), do: unquote(impl).update(__MODULE__, key, value)
@@ -104,6 +126,9 @@ defmodule Logflare.ContextCache do
 
       @impl Logflare.ContextCache
       def cached?(key), do: unquote(impl).cached?(__MODULE__, key)
+
+      @impl Logflare.ContextCache
+      def expiry(key), do: unquote(impl).expiry(__MODULE__, key)
 
       @impl Logflare.ContextCache
       def size, do: unquote(impl).size(__MODULE__)
@@ -120,6 +145,7 @@ defmodule Logflare.ContextCache do
                      entries: 0,
                      put_entries: 1,
                      cached?: 1,
+                     expiry: 1,
                      size: 0,
                      tombstones: 1,
                      stale_entry?: 2

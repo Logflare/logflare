@@ -220,6 +220,22 @@ defmodule Logflare.Cache.CachexOps do
   @spec cached?(Cachex.t(), term()) :: boolean()
   def cached?(cache, key), do: Cachex.exists?(cache, key) == {:ok, true}
 
+  @doc """
+  Reads the entry's expiration without expiring it, so an entry past its TTL but not yet purged
+  reports a remaining time-to-live of `0`.
+  """
+  @impl Logflare.ContextCache.Ops
+  @spec expiry(Cachex.t(), term()) :: {non_neg_integer(), pos_integer()} | nil
+  def expiry(cache, key) do
+    case Cachex.inspect(cache, {:entry, key}) do
+      {:ok, entry(modified: modified, expiration: expiration)} when is_integer(expiration) ->
+        {max(modified + expiration - now(), 0), expiration}
+
+      _not_cached_or_not_expiring ->
+        nil
+    end
+  end
+
   @impl Logflare.ContextCache.Ops
   @spec size(Cachex.t()) :: non_neg_integer()
   def size(cache) do

@@ -12,5 +12,7 @@ defmodule Logflare.ContextCache.Ops do
   @callback entries(cache :: module()) :: Enumerable.t(Logflare.ContextCache.entry())
   @callback put_entries(cache :: module(), [Logflare.ContextCache.entry()]) :: :ok
   @callback cached?(cache :: module(), key :: term()) :: boolean()
+  @callback expiry(cache :: module(), key :: term()) ::
+              {remaining :: non_neg_integer(), total :: pos_integer()} | nil
   @callback size(cache :: module()) :: non_neg_integer()
 end
