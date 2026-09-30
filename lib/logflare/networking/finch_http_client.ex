@@ -41,7 +41,7 @@ defmodule Logflare.Networking.FinchHttpClient do
   end
 
   @doc false
-  @spec pool_timeout?(RuntimeError.t()) :: boolean()
+  @spec pool_timeout?(Exception.t()) :: boolean()
   def pool_timeout?(%RuntimeError{message: message}) when is_binary(message),
     do: String.contains?(message, @pool_timeout_marker)
 
