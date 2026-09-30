@@ -16,8 +16,13 @@ defmodule Logflare.Backends.DynamicPipeline do
   use Supervisor
 
   alias __MODULE__.Coordinator
+  alias Logflare.Backends.IngestEventQueue
 
   require Logger
+
+  @finish_removal_delay_ms if Application.compile_env(:logflare, :env) == :test,
+                             do: 50,
+                             else: 1_000
 
   @type state :: %{
           name: term(),
@@ -160,12 +165,21 @@ defmodule Logflare.Backends.DynamicPipeline do
 
   @doc """
   Removes a pipeline from a DynamicPipeline tree.
+
+  Asynchronous: marks the chosen shard's queue draining and returns immediately; it's
+  actually terminated `@finish_removal_delay_ms` later (see `finish_remove_pipeline/3`).
   """
-  @spec remove_pipeline(tuple()) :: {:ok, integer(), tuple()} | {:error, :min_pipelines}
+  @spec remove_pipeline(tuple()) :: {:ok, :draining, tuple()} | {:error, atom()}
   def remove_pipeline(name) do
-    count = pipeline_count(name)
     state = get_state(name)
+    count = effective_pipeline_count(name, state)
     maybe_remove_pipeline(name, count, state)
+  end
+
+  @doc false
+  @spec effective_pipeline_count(tuple(), state() | map()) :: non_neg_integer()
+  def effective_pipeline_count(name, state) do
+    name |> list_pipelines() |> Enum.count(&(not already_draining?(&1, state)))
   end
 
   @doc """
@@ -182,25 +196,116 @@ defmodule Logflare.Backends.DynamicPipeline do
   defp maybe_remove_pipeline(_name, count, _state) when count == 0,
     do: {:error, :min_pipelines}
 
-  defp maybe_remove_pipeline(name, _count, _state) do
-    id =
-      list_pipelines(name)
-      |> Enum.random()
+  defp maybe_remove_pipeline(name, _count, state) do
+    case removal_candidates(name, state) do
+      [] ->
+        {:error, :no_candidates}
+
+      candidates ->
+        id = Enum.random(candidates)
+
+        case shard_sid_bid_pid(id, state) do
+          nil -> :ok
+          sid_bid_pid -> IngestEventQueue.mark_draining(sid_bid_pid)
+        end
+
+        coordinator = find_coordinator_name(name)
+        Process.send_after(coordinator, {:finish_remove_pipeline, id}, @finish_removal_delay_ms)
+
+        {:ok, :draining, id}
+    end
+  end
+
+  defp removal_candidates(name, state) do
+    for id <- list_pipelines(name), not already_draining?(id, state), do: id
+  end
+
+  defp already_draining?(id, state) do
+    case shard_sid_bid_pid(id, state) do
+      nil -> false
+      sid_bid_pid -> IngestEventQueue.draining?(sid_bid_pid)
+    end
+  end
+
+  @doc false
+  @spec finish_remove_pipeline(tuple(), tuple(), state()) :: :ok
+  def finish_remove_pipeline(name, id, state) do
+    move_remaining_to_survivor(name, id, state)
 
     try do
       with :ok <- Supervisor.terminate_child(name, id),
            :ok <- Supervisor.delete_child(name, id) do
-        count = pipeline_count(name)
-        Logger.debug("DynamicPipeline - Removed pipeline #{inspect(id)}, count is now #{count}")
-        {:ok, count, id}
+        Logger.debug(
+          "DynamicPipeline - Removed pipeline #{inspect(id)}, count is now #{pipeline_count(name)}"
+        )
       end
     rescue
       e ->
         Logger.error(
           "Error when attempting to terminate and remove pipeline. Error: #{Exception.format(:error, e, __STACKTRACE__)}"
         )
+    end
 
-        {:error, :unknown_error}
+    :ok
+  end
+
+  defp move_remaining_to_survivor(_name, id, state) do
+    with {_, _, doomed_pid} = sid_bid_pid <- shard_sid_bid_pid(id, state),
+         queues_key when queues_key != nil <- pipeline_args_sid_bid(state[:pipeline_args] || []),
+         [_ | _] = survivors <- survivor_targets(queues_key, doomed_pid) do
+      move_to_any_survivor(sid_bid_pid, survivors, id)
+    else
+      _ -> :ok
+    end
+  end
+
+  defp move_to_any_survivor(_sid_bid_pid, [], _id), do: :ok
+
+  defp move_to_any_survivor(sid_bid_pid, survivors, id) do
+    {survivor_key, _tid} = candidate = Enum.random(survivors)
+
+    case IngestEventQueue.move(sid_bid_pid, survivor_key) do
+      {:ok, 0} ->
+        :ok
+
+      {:ok, moved} ->
+        Logger.debug(
+          "DynamicPipeline - moved #{moved} pending pointer(s) from #{inspect(id)} before removal"
+        )
+
+      {:error, :not_initialized} ->
+        move_to_any_survivor(sid_bid_pid, survivors -- [candidate], id)
+    end
+  end
+
+  defp survivor_targets(queues_key, doomed_pid) do
+    targets =
+      queues_key
+      |> IngestEventQueue.list_queues_with_tids()
+      |> Enum.reject(fn {table_key, _tid} -> elem(table_key, 2) == doomed_pid end)
+
+    case Enum.filter(targets, fn {table_key, _tid} -> elem(table_key, 2) != nil end) do
+      [] -> targets
+      live -> live
+    end
+  end
+
+  defp shard_sid_bid_pid(id, state) do
+    producer_pid = id |> Broadway.producer_names() |> List.first() |> GenServer.whereis()
+
+    case {producer_pid, pipeline_args_sid_bid(state[:pipeline_args] || [])} do
+      {nil, _} -> nil
+      {_pid, nil} -> nil
+      {pid, {:consolidated, bid}} -> {:consolidated, bid, pid}
+      {pid, {sid, bid}} -> {sid, bid, pid}
+    end
+  end
+
+  defp pipeline_args_sid_bid(pipeline_args) do
+    case {Keyword.get(pipeline_args, :source), Keyword.get(pipeline_args, :backend)} do
+      {%{id: sid}, %{id: bid}} -> {sid, bid}
+      {nil, %{id: bid}} -> {:consolidated, bid}
+      _ -> nil
     end
   end
 
@@ -312,6 +417,12 @@ defmodule Logflare.Backends.DynamicPipeline do
     end
 
     @impl GenServer
+    def handle_info({:finish_remove_pipeline, id}, state) do
+      DynamicPipeline.finish_remove_pipeline(state.name, id, state)
+      {:noreply, state}
+    end
+
+    @impl GenServer
     def handle_info(:check, state) do
       pipelines = DynamicPipeline.list_pipelines(state.name)
       pipeline_count = Enum.count(pipelines)
@@ -322,10 +433,12 @@ defmodule Logflare.Backends.DynamicPipeline do
         build_telemetry_metadata(state)
       )
 
+      effective_count = DynamicPipeline.effective_pipeline_count(state.name, state)
+
       state =
-        case DynamicPipeline.resolve_pipeline_count(state, pipeline_count) do
+        case DynamicPipeline.resolve_pipeline_count(state, effective_count) do
           {:incr, desired_count, new_state} ->
-            diff = desired_count - pipeline_count
+            diff = desired_count - effective_count
 
             for _ <- 1..diff do
               DynamicPipeline.add_pipeline(state.name)
@@ -335,7 +448,7 @@ defmodule Logflare.Backends.DynamicPipeline do
             new_state
 
           {:decr, desired_count, new_state} ->
-            diff = pipeline_count - desired_count
+            diff = effective_count - desired_count
 
             for _pipeline <- 1..diff do
               DynamicPipeline.remove_pipeline(state.name)
