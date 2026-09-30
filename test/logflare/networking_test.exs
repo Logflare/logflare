@@ -22,9 +22,9 @@ defmodule Logflare.NetworkingTest do
                Logflare.FinchDefaultHttp1,
                Logflare.FinchIngest,
                Logflare.FinchQuery,
+               Logflare.FinchDefault,
                Logflare.FinchSpool,
                Logflare.FinchSpoolS3,
-               Logflare.FinchDefault,
                Logflare.FinchClickHouseIngest,
                Logflare.FinchClickHouseAsyncIngest,
                Logflare.FinchS3
@@ -35,7 +35,7 @@ defmodule Logflare.NetworkingTest do
   describe "single tenant mode using Postgres" do
     TestUtils.setup_single_tenant(backend_type: :postgres)
 
-    test "returns only datadog connection pools" do
+    test "returns bigquery, clickhouse, and spool connection pools" do
       expected_datadog_pools =
         DatadogAdaptor.intake_origins()
         |> Map.new(fn origin ->
@@ -52,6 +52,18 @@ defmodule Logflare.NetworkingTest do
                   name: Logflare.FinchDefault,
                   pools: datadog_pools
                 ]},
+               {Finch,
+                name: Logflare.FinchSpool,
+                pools: %{
+                  :default => _spool_default_config,
+                  "https://storage.googleapis.com" => _spool_gcs_config,
+                  "https://pubsub.googleapis.com" => _spool_pubsub_config
+                }},
+               {Finch,
+                name: Logflare.FinchSpoolS3,
+                pools: %{
+                  default: _spool_s3_config
+                }},
                {Finch,
                 name: Logflare.FinchClickHouseIngest,
                 pools: %{
