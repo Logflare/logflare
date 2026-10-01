@@ -80,7 +80,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   def insert_log_events(source, backend, events) when is_list(events) do
     table = PostgresAdaptor.table_name(source)
 
-    schema = backend.config["schema"] || backend.config[:schema]
+    schema = backend.config[:schema]
 
     event_params =
       Enum.map(events, fn log_event ->
