@@ -43,6 +43,11 @@
   <p>Review apps with access to your Google account</a>.</p>
 <%= link "Visit Google", to: "https://myaccount.google.com/permissions?authuser=#{@team_user.email}", class: "btn btn-primary form-button" %>
 <% end %>
+<%= if assigns[:team] do %>
+<h5 class="header-margin">Team Members</h5>
+<p>Members of your team.</p>
+<%= render(LogflareWeb.SharedView, "team_members.html", assigns) %>
+<% end %>
 <h5 class="header-margin">Leave Team</h5>
 <p>Leave this team now. There is no undo.</p>
 <%= link "Leave now", to: Routes.team_user_path(@conn, :delete_self), class: "btn btn-danger form-button", method: :delete %>
