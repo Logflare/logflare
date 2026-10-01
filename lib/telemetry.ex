@@ -511,10 +511,14 @@ defmodule Logflare.Telemetry do
         unit: {:byte, :megabyte}
       ),
       last_value("logflare.system.top_ets_tables.individual.memory",
+        measurement: fn %{memory: words} -> words * :erlang.system_info(:wordsize) end,
+        unit: :byte,
         tags: [:name],
         description: "Top ETS individual tables by memory usage"
       ),
       last_value("logflare.system.top_ets_tables.grouped.memory",
+        measurement: fn %{memory: words} -> words * :erlang.system_info(:wordsize) end,
+        unit: :byte,
         tags: [:name],
         description: "Top ETS tables by memory usage, grouped by name"
       ),
