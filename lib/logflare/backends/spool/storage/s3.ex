@@ -29,8 +29,7 @@ defmodule Logflare.Backends.Spool.Storage.S3 do
     e -> {:error, Exception.message(e)}
   end
 
-  # ExAws.S3.put_object/4 needs flat :content_type/:content_encoding opts,
-  # not a nested :headers map.
+  @spec put_object_opts(map()) :: keyword()
   defp put_object_opts(headers) do
     [content_type: Map.get(headers, "content-type", "application/octet-stream")] ++
       case Map.get(headers, "content-encoding") do
