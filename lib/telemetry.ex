@@ -961,15 +961,15 @@ defmodule Logflare.Telemetry do
     top_100_tables
     |> Enum.take(10)
     |> Enum.each(fn table ->
-      metrics = %{memory: table[:memory]}
-      metadata = %{name: table[:name]}
+      metrics = %{memory: table.memory}
+      metadata = %{name: table.name}
 
       :telemetry.execute([:logflare, :system, :top_ets_tables, :individual], metrics, metadata)
     end)
 
     # send grouped top 100
     top_100_tables
-    |> Enum.group_by(&ets_table_base_name(&1[:name]), & &1[:memory])
+    |> Enum.group_by(&ets_table_base_name(&1.name), & &1.memory)
     |> Enum.each(fn {name, memory} ->
       metrics = %{memory: Enum.sum(memory)}
       metadata = %{name: name}
@@ -982,8 +982,16 @@ defmodule Logflare.Telemetry do
     :ets.all()
     |> Stream.map(fn table ->
       case ets_info(table) do
-        :undefined -> nil
-        info -> {0, info[:memory], info}
+        :undefined ->
+          nil
+
+        info ->
+          table = %{
+            name: Keyword.fetch!(info, :name),
+            memory: Keyword.fetch!(info, :memory)
+          }
+
+          {0, table.memory, table}
       end
     end)
     |> Enum.filter(& &1)
