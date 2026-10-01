@@ -328,9 +328,7 @@ deploy.staging.versioned:
 # `make deploy.staging.dev DEV_NUMBER=2`.
 DEV_NUMBER ?= 1
 
-# deploy.staging.dev-consumer is intentionally not a dependency here — see
-# deploy.staging.dev-producer's _SPOOL_MODE.
-deploy.staging.dev: deploy.staging.dev-image deploy.staging.dev-producer
+deploy.staging.dev: deploy.staging.dev-image deploy.staging.dev-producer deploy.staging.dev-consumer
 
 deploy.staging.dev-image:
 	@gcloud config set project logflare-staging

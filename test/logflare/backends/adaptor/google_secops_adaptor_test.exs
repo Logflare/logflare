@@ -41,6 +41,8 @@ defmodule Logflare.Backends.Adaptor.GoogleSecOpsAdaptorTest do
   end
 
   setup do
+    # SourceSup's rate counter reads BigQuery at startup; stub it before starting the tree.
+    stub(Logflare.Google.BigQuery, :get_table, fn _ -> {:error, :not_found} end)
     start_supervised!(AllLogsLogged)
     insert(:plan)
     :ok

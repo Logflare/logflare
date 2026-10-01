@@ -30,8 +30,10 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Sources.Counters
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.Pipeline
+  alias Logflare.Sources.Source.ChannelTopics
   alias Logflare.Sources.Source.Data
   alias Logflare.Sources.Source.RateCounterServer
+  alias Logflare.Sources.Source.RateSampler
   alias Logflare.Sources.SourceRouter
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.User
@@ -2138,6 +2140,21 @@ defmodule Logflare.BackendsTest do
 
       start_supervised!(SpoolDurableBufferSup)
 
+      # The supervisor waits for partitions, but their linked committers may still upload.
+      # DurableBuffer has no public committer lookup, so read their PIDs here and wait
+      # for them before cleanup removes WAL files and mocks.
+      committers =
+        Enum.map(SpoolDurableBufferSup.partitions(), fn partition ->
+          :sys.get_state(partition).committer
+        end)
+
+      on_exit(fn ->
+        Enum.each(committers, fn committer ->
+          ref = Process.monitor(committer)
+          assert_receive {:DOWN, ^ref, :process, ^committer, _reason}, to_timeout(second: 5)
+        end)
+      end)
+
       {:ok, source: source}
     end
 
@@ -2151,9 +2168,9 @@ defmodule Logflare.BackendsTest do
       :sys.get_state(partition_pid).pending_count
     end
 
-    test "does not dispatch to the spool producer when source.enable_spooling is false, even if the global mode is on and allow_spooling is true",
+    test "in :both mode, does not dispatch to the spool producer when source.enable_spooling is false, even if allow_spooling is true",
          %{source: source} do
-      Application.put_env(:logflare, :spool, mode: :producer)
+      Application.put_env(:logflare, :spool, mode: :both)
 
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
@@ -2161,10 +2178,51 @@ defmodule Logflare.BackendsTest do
       assert pending_entry_count() == 0
     end
 
-    test "does not dispatch to the spool producer once :wal mode's disk health is unhealthy, even if everything else is enabled",
+    test "in :producer mode, dispatches to the spool producer for every source, regardless of source.enable_spooling",
          %{source: source} do
+      # source.enable_spooling is false (the setup default)
+      stop_supervised!(SpoolDurableBufferSup)
+      test_pid = self()
+
       Application.put_env(:logflare, :spool,
         mode: :producer,
+        buffer: :mem,
+        partitions: 1,
+        bucket: "test-bucket",
+        storage_mod: SpoolStorageMod,
+        queue_mod: SpoolQueueMod
+      )
+
+      stub(SpoolStorageMod, :put, fn _b, key, _body, _opts ->
+        send(test_pid, :put_called)
+        {:ok, key}
+      end)
+
+      start_supervised!(SpoolDurableBufferSup)
+
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      assert_receive :put_called, 1000
+    end
+
+    test "in :producer mode, does not spool an empty batch when every event is filtered out (e.g. all future-dropped)",
+         %{source: source} do
+      merge_spool_config!(mode: :producer)
+
+      now_us = System.system_time(:microsecond)
+      future_timestamp = now_us + 2 * 3_600 * 1_000_000
+      params = [%{"message" => "too future", "timestamp" => future_timestamp}]
+
+      assert {:ok, 0} = Backends.ingest_logs(params, source, nil, true)
+
+      assert pending_entry_count() == 0
+    end
+
+    test "in :both mode, does not dispatch to the spool producer once :wal mode's disk health is unhealthy, even if everything else is enabled",
+         %{source: source} do
+      Application.put_env(:logflare, :spool,
+        mode: :both,
         buffer: :wal,
         max_spool_health_failures: 1
       )
@@ -2179,10 +2237,10 @@ defmodule Logflare.BackendsTest do
       assert pending_entry_count() == 0
     end
 
-    test "an unhealthy upload doesn't stop :wal mode ingest — the local WAL is the backstop, not the upload path",
+    test "in :both mode, does not dispatch to the spool producer once :wal mode's upload health is unhealthy either — a locally-absorbing WAL still isn't reaching its durable home",
          %{source: source} do
       Application.put_env(:logflare, :spool,
-        mode: :producer,
+        mode: :both,
         buffer: :wal,
         max_spool_health_failures: 1
       )
@@ -2190,28 +2248,17 @@ defmodule Logflare.BackendsTest do
       Health.report_failure!(:upload)
       on_exit(fn -> Health.report_recovery!(:upload) end)
 
-      # append/3 blocks until the local WAL fsync settles, not until an
-      # upload happens — so proving dispatch actually reached the spool
-      # (rather than falling through to normal dispatch) means observing
-      # the eventual upload, not just pending_entry_count/0's local state.
-      test_pid = self()
-
-      stub(SpoolStorageMod, :put, fn _b, key, _body, _opts ->
-        send(test_pid, :spool_uploaded)
-        {:ok, key}
-      end)
-
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
 
-      assert_receive :spool_uploaded, 2000
+      assert pending_entry_count() == 0
     end
 
-    test "does not dispatch to the spool producer once :mem mode's upload health is unhealthy",
+    test "in :both mode, does not dispatch to the spool producer once :mem mode's upload health is unhealthy",
          %{source: source} do
       Application.put_env(:logflare, :spool,
-        mode: :producer,
+        mode: :both,
         buffer: :mem,
         max_spool_health_failures: 1
       )
@@ -2226,7 +2273,74 @@ defmodule Logflare.BackendsTest do
       assert pending_entry_count() == 0
     end
 
-    test "falls back to normal dispatch when no spool partition is registered (e.g. the subtree crashed and is mid-restart)",
+    test "in :both mode, an unhealthy disk does not gate :mem mode dispatch — the disk scope is meaningless there",
+         %{source: source} do
+      stop_supervised!(SpoolDurableBufferSup)
+      test_pid = self()
+
+      Application.put_env(:logflare, :spool,
+        mode: :both,
+        buffer: :mem,
+        partitions: 1,
+        bucket: "test-bucket",
+        storage_mod: SpoolStorageMod,
+        queue_mod: SpoolQueueMod,
+        max_spool_health_failures: 1
+      )
+
+      stub(SpoolStorageMod, :put, fn _b, key, _body, _opts ->
+        send(test_pid, :put_called)
+        {:ok, key}
+      end)
+
+      start_supervised!(SpoolDurableBufferSup)
+
+      Health.report_failure!(:disk)
+      on_exit(fn -> Health.report_recovery!(:disk) end)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      assert_receive :put_called, 1000
+    end
+
+    test "in :producer mode, still attempts spool dispatch even when spool health is flagged unhealthy",
+         %{source: source} do
+      # SpoolHealth is a symptom tracker in :producer mode, not a pre-check
+      # gate — there's no working fallback to divert to (see
+      # dispatch_logs/4), so only the write's actual outcome decides
+      # whether the request fails.
+      stop_supervised!(SpoolDurableBufferSup)
+      test_pid = self()
+
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        buffer: :mem,
+        partitions: 1,
+        bucket: "test-bucket",
+        storage_mod: SpoolStorageMod,
+        queue_mod: SpoolQueueMod,
+        max_spool_health_failures: 1
+      )
+
+      stub(SpoolStorageMod, :put, fn _b, key, _body, _opts ->
+        send(test_pid, :put_called)
+        {:ok, key}
+      end)
+
+      start_supervised!(SpoolDurableBufferSup)
+
+      Health.report_failure!(:upload)
+      on_exit(fn -> Health.report_recovery!(:upload) end)
+
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      assert_receive :put_called, 1000
+    end
+
+    test "in :both mode, falls back to normal dispatch when no spool partition is registered (e.g. the subtree crashed and is mid-restart)",
          %{source: source} do
       # Simulates the only window this can actually happen in — see
       # dispatch_to_spool_producer/1's caller — by stopping the buffer and
@@ -2234,7 +2348,7 @@ defmodule Logflare.BackendsTest do
       # resolves to no live process.
       stop_supervised!(SpoolDurableBufferSup)
 
-      merge_spool_config!(mode: :producer)
+      merge_spool_config!(mode: :both)
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
@@ -2242,7 +2356,19 @@ defmodule Logflare.BackendsTest do
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
     end
 
-    test "falls back to normal dispatch and logs an error when the spool commit itself fails (e.g. GCS unavailable)",
+    test "in :producer mode, fails the request when no spool partition is registered, instead of falling back to a dispatch path with no backend adaptors to receive it",
+         %{source: source} do
+      stop_supervised!(SpoolDurableBufferSup)
+
+      merge_spool_config!(mode: :producer)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      assert {:error, :spool_unavailable} = Backends.ingest_logs(params, source, nil, true)
+    end
+
+    test "in :both mode, falls back to normal dispatch and logs an error when the spool commit itself fails (e.g. GCS unavailable)",
          %{source: source} do
       # blocking: true so the commit failure — not just a local WAL write —
       # is what dispatch_to_spool_producer/1 sees. :mem buffer specifically:
@@ -2252,7 +2378,7 @@ defmodule Logflare.BackendsTest do
       stop_supervised!(SpoolDurableBufferSup)
 
       Application.put_env(:logflare, :spool,
-        mode: :producer,
+        mode: :both,
         buffer: :mem,
         blocking: true,
         partitions: 1,
@@ -2278,6 +2404,37 @@ defmodule Logflare.BackendsTest do
       assert log =~ "spool dispatch failed"
     end
 
+    test "in :producer mode, fails the request and logs an error when the spool commit itself fails (e.g. GCS unavailable)",
+         %{source: source} do
+      stop_supervised!(SpoolDurableBufferSup)
+
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        buffer: :mem,
+        blocking: true,
+        partitions: 1,
+        max_commit_attempts: 1,
+        retry_delay_ms: 1,
+        bucket: "test-bucket",
+        storage_mod: SpoolStorageMod,
+        queue_mod: SpoolQueueMod
+      )
+
+      stub(SpoolStorageMod, :put, fn _b, _k, _body, _opts -> {:error, :timeout} end)
+
+      start_supervised!(SpoolDurableBufferSup)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      log =
+        capture_log(fn ->
+          assert {:error, :spool_unavailable} = Backends.ingest_logs(params, source, nil, true)
+        end)
+
+      assert log =~ "spool dispatch failed"
+    end
+
     test "does not dispatch to the spool producer when the global mode is off, even if source.enable_spooling and allow_spooling are true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :disable)
@@ -2289,7 +2446,7 @@ defmodule Logflare.BackendsTest do
       assert pending_entry_count() == 0
     end
 
-    test "dispatches to the spool producer only when the global mode, source.enable_spooling, and allow_spooling are all true",
+    test "in :both mode, dispatches to the spool producer only when the global mode, source.enable_spooling, and allow_spooling are all true",
          %{source: source} do
       # :mem buffer, restarted with its own observable stub — proving the
       # segment reached storage doesn't depend on WAL rotation timing, and
@@ -2299,7 +2456,7 @@ defmodule Logflare.BackendsTest do
       test_pid = self()
 
       Application.put_env(:logflare, :spool,
-        mode: :producer,
+        mode: :both,
         buffer: :mem,
         partitions: 1,
         bucket: "test-bucket",
@@ -2350,9 +2507,9 @@ defmodule Logflare.BackendsTest do
       assert pending_entry_count() == 0
     end
 
-    test "does not dispatch to the spool producer when the event already has a via_rule_id, even if allow_spooling is true",
+    test "in :both mode, does not dispatch to the spool producer when the event already has a via_rule_id, even if allow_spooling is true",
          %{source: source} do
-      Application.put_env(:logflare, :spool, mode: :producer)
+      Application.put_env(:logflare, :spool, mode: :both)
 
       source = %{source | enable_spooling: true}
       le = build(:log_event, source: source)
@@ -2361,6 +2518,73 @@ defmodule Logflare.BackendsTest do
       assert {:ok, 1} = Backends.ingest_logs([le], source, nil, true)
 
       assert pending_entry_count() == 0
+    end
+
+    test "in :producer mode, dispatches to the spool producer even when the event already has a via_rule_id",
+         %{source: source} do
+      stop_supervised!(SpoolDurableBufferSup)
+      test_pid = self()
+
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        buffer: :mem,
+        partitions: 1,
+        bucket: "test-bucket",
+        storage_mod: SpoolStorageMod,
+        queue_mod: SpoolQueueMod
+      )
+
+      stub(SpoolStorageMod, :put, fn _b, key, _body, _opts ->
+        send(test_pid, :put_called)
+        {:ok, key}
+      end)
+
+      start_supervised!(SpoolDurableBufferSup)
+
+      source = %{source | enable_spooling: true}
+      le = build(:log_event, source: source)
+      le = %{le | via_rule_id: 123}
+
+      assert {:ok, 1} = Backends.ingest_logs([le], source, nil, true)
+
+      assert_receive :put_called, 1000
+    end
+  end
+
+  describe "maybe_broadcast_and_route/2 broadcast rate gating" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user)
+      start_supervised!({SourceSup, source})
+      [source: source]
+    end
+
+    test "broadcasts while the source's local rate stays below the ceiling", %{source: source} do
+      test_pid = self()
+      stub(ChannelTopics, :broadcast_new, fn events -> send(test_pid, {:broadcast, events}) end)
+
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source)
+
+      assert_receive {:broadcast, [_event]}
+    end
+
+    test "suppresses broadcasts once the source's local rate reaches the ceiling", %{
+      source: source
+    } do
+      test_pid = self()
+      stub(ChannelTopics, :broadcast_new, fn events -> send(test_pid, {:broadcast, events}) end)
+
+      RateSampler.bump(source.token, 100)
+
+      # Large batch: makes a coincidental pass under a probabilistic sampler
+      # (rather than this hard cutoff) astronomically unlikely.
+      now_us = System.system_time(:microsecond)
+      params = for _ <- 1..1_000, do: %{"message" => "hello", "timestamp" => now_us}
+      assert {:ok, 1_000} = Backends.ingest_logs(params, source)
+
+      refute_receive {:broadcast, _events}
     end
   end
 end
