@@ -1,9 +1,17 @@
 defmodule Logflare.Cache.CachexOps do
   @moduledoc """
-  Cachex implementations of the `Logflare.Cache` callbacks, and builders for Cachex start options.
+  Cachex implementations of the `Logflare.Cache` and `Logflare.ContextCache` callbacks, and builders
+  for Cachex start options.
+
+  Context cache values are stored as `{:cached, value}`, because Cachex treats a stored `nil` as a miss.
   """
 
+  @behaviour Logflare.Cache.Ops
+  @behaviour Logflare.ContextCache.Ops
+
   import Cachex.Spec
+
+  alias Logflare.ContextCache.Gossip
 
   @stat_keys [
     :evictions,
@@ -60,12 +68,14 @@ defmodule Logflare.Cache.CachexOps do
   @spec stats_enabled?() :: boolean()
   def stats_enabled?, do: Application.get_env(:logflare, :cache_stats, false)
 
+  @impl Logflare.Cache.Ops
   @spec healthy?(Cachex.t()) :: boolean()
   def healthy?(cache), do: match?({:ok, _}, Cachex.size(cache))
 
   @doc """
   Raises when the cache runs without the stats hook.
   """
+  @impl Logflare.Cache.Ops
   @spec stats(Cachex.t()) :: Logflare.Cache.stats()
   def stats(cache) do
     {:ok, stats} = Cachex.stats(cache)
@@ -82,9 +92,82 @@ defmodule Logflare.Cache.CachexOps do
     end
   end
 
+  @impl Logflare.Cache.Ops
   @spec reset(Cachex.t()) :: :ok
   def reset(cache) do
     {:ok, true} = Cachex.reset(cache, hooks: [Cachex.Stats])
+    :ok
+  end
+
+  @doc """
+  With `[id: pkey]`, busts every entry whose cached value is a map with that `:id`, an `{:ok, map}`
+  with that `:id`, or a list containing such a map. Raises `ArgumentError` for any other keyword.
+
+  It scans the cache with a match spec instead of keeping a reverse index of primary keys.
+  """
+  @impl Logflare.ContextCache.Ops
+  @spec bust_by(Cachex.t(), keyword()) :: {:ok, non_neg_integer()}
+  def bust_by(cache, id: pkey) do
+    filter =
+      {
+        # use orelse to prevent 2nd condition failing as value is not a map
+        :orelse,
+        {
+          :orelse,
+          # handle lists
+          {:is_list, {:element, 2, :value}},
+          # handle :ok tuples when struct with id is in 2nd element pos.
+          {:andalso, {:is_tuple, {:element, 2, :value}},
+           {:andalso, {:==, {:element, 1, {:element, 2, :value}}, :ok},
+            {:andalso, {:is_map, {:element, 2, {:element, 2, :value}}},
+             {:==, {:map_get, :id, {:element, 2, {:element, 2, :value}}}, pkey}}}}
+        },
+        # handle single maps
+        {:andalso, {:is_map, {:element, 2, :value}},
+         {:==, {:map_get, :id, {:element, 2, :value}}, pkey}}
+      }
+
+    query = Cachex.Query.build(where: filter, output: {:key, :value})
+
+    keys =
+      cache
+      |> Cachex.stream!(query)
+      |> Stream.filter(fn
+        {_k, {:cached, v}} when is_list(v) -> Enum.any?(v, &(&1.id == pkey))
+        {_k, _v} -> true
+      end)
+      |> Stream.map(fn {k, _v} -> k end)
+
+    delete_keys(cache, keys)
+  end
+
+  def bust_by(cache, kw) do
+    raise ArgumentError, "#{inspect(cache)} does not support busting by #{inspect(kw)}"
+  end
+
+  @doc """
+  Returns the cached value for `key`, calling `getter` and caching its result on a miss.
+
+  A miss is also multicast to peer nodes, see `Logflare.ContextCache.Gossip`. Accepts a Cachex
+  worker, so calls can be batched in `Cachex.execute/2`.
+  """
+  @impl Logflare.ContextCache.Ops
+  @spec fetch(Cachex.t(), term(), (-> term())) :: term()
+  def fetch(cache, key, getter) do
+    case Cachex.fetch(cache, key, fn _key -> {:commit, {:cached, getter.()}} end) do
+      {:commit, {:cached, value}} ->
+        Gossip.multicast(cache, key, value)
+        value
+
+      {:ok, {:cached, value}} ->
+        value
+    end
+  end
+
+  @impl Logflare.ContextCache.Ops
+  @spec update(Cachex.t(), term(), term()) :: :ok
+  def update(cache, key, value) do
+    {:ok, _updated?} = Cachex.update(cache, key, {:cached, value})
     :ok
   end
 

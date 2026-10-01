@@ -1,3 +1,4 @@
+alias Logflare.Cache.CachexOps
 alias Logflare.ContextCache
 alias Logflare.Rules
 
@@ -20,7 +21,7 @@ Benchee.run(
   %{
     # Rules.Cache overrides bust_by/1, so call the default match-spec scan directly
     "bust_keys by primary key" => fn [{_source, rule} | _] ->
-      ContextCache.bust_by(cache, id: rule.id)
+      CachexOps.bust_by(cache, id: rule.id)
     end,
     "bust_keys by relation key" => fn [{source, _rule} | _] ->
       ContextCache.bust_keys([{Rules, source_id: source.id}])
