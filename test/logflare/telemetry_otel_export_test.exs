@@ -1,14 +1,17 @@
 defmodule Logflare.TelemetryOtelExportTest do
   use ExUnit.Case, async: false
+  use Mimic
 
+  import Logflare.TelemetryExportTestHelpers
   import Telemetry.Metrics, only: [counter: 1]
 
+  alias Logflare.SystemMetrics.Cluster
   alias Logflare.TestUtils
   alias OtelMetricExporter.MetricStore
 
+  setup :set_mimic_private
+
   test "exports HTTP metrics from real endpoint requests", %{test: name} do
-    test_pid = self()
-    ref = make_ref()
     finch_name = __MODULE__.Finch
 
     metrics =
@@ -16,15 +19,7 @@ defmodule Logflare.TelemetryOtelExportTest do
         prefix in [:bandit, :phoenix, :thousand_island, :finch]
       end)
 
-    start_supervised!(
-      {OtelMetricExporter,
-       name: name,
-       metrics: metrics,
-       export_callback: fn {:metrics, batch}, _config ->
-         send(test_pid, {ref, batch})
-         :ok
-       end}
-    )
+    start_exporter(metrics, name)
 
     start_supervised!(
       {Finch,
@@ -71,9 +66,7 @@ defmodule Logflare.TelemetryOtelExportTest do
              } = MetricStore.get_metrics(name)
     end)
 
-    assert :ok = MetricStore.export_sync(name)
-
-    assert_receive {^ref, batch}
+    batch = export_metrics(name)
     assert MapSet.new(batch, & &1.name) == MapSet.new(metrics, &Enum.join(&1.name, "."))
     exported = Map.new(batch, &{&1.name, &1})
 
@@ -101,6 +94,82 @@ defmodule Logflare.TelemetryOtelExportTest do
     end
   end
 
+  for protocol <- [:http1, :http2] do
+    test "exports active and idle #{protocol} Finch pool requests", %{test: name} do
+      assert [metric] =
+               Enum.filter(
+                 Logflare.Telemetry.metrics(),
+                 &(&1.name == [:logflare, :system, :finch, :in_flight_requests])
+               )
+
+      start_exporter([metric], name)
+      test_pid = self()
+      finch_name = __MODULE__.Finch
+
+      server =
+        start_supervised!(
+          {Bandit,
+           plug: fn conn, _opts ->
+             send(test_pid, {:request_started, self()})
+
+             receive do
+               :respond -> Plug.Conn.send_resp(conn, 200, "ok")
+             end
+           end,
+           ip: {127, 0, 0, 1},
+           port: 0,
+           startup_log: false}
+        )
+
+      {:ok, {_address, port}} = ThousandIsland.listener_info(server)
+      url = "http://127.0.0.1:#{port}"
+
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           url => [protocols: [unquote(protocol)], count: 1, size: 1, start_pool_metrics?: true]
+         }}
+      )
+
+      stub(Finch, :get_pool_status, fn
+        Logflare.FinchDefault, "https://bigquery.googleapis.com" ->
+          Mimic.call_original(Finch, :get_pool_status, [finch_name, {:http, "127.0.0.1", port}])
+
+        _pool, _url ->
+          {:error, :not_found}
+      end)
+
+      request = Task.async(fn -> Finch.request(Finch.build(:get, url), finch_name) end)
+      assert_receive {:request_started, connection}, 5_000
+
+      tags = %{
+        pool: Atom.to_string(Logflare.FinchDefault),
+        url: "https://bigquery.googleapis.com"
+      }
+
+      try do
+        Cluster.finch()
+        assert_in_flight_requests(name, tags, 1)
+      after
+        send(connection, :respond)
+      end
+
+      assert {:ok, %Finch.Response{status: 200}} = Task.await(request)
+
+      TestUtils.retry_assert(fn ->
+        Cluster.finch()
+
+        assert %{{:last_value, "logflare.system.finch.in_flight_requests"} => values} =
+                 MetricStore.get_metrics(name)
+
+        assert values[tags] == 0
+      end)
+
+      assert_in_flight_requests(name, tags, 0)
+    end
+  end
+
   describe "OTel resource export" do
     test "emits the build commit SHA as a service resource attribute" do
       resource = export_resource("deadbeef")
@@ -124,6 +193,21 @@ defmodule Logflare.TelemetryOtelExportTest do
       assert resource["service.name"] == "Logflare"
       refute Map.has_key?(resource, "service.commit")
     end
+  end
+
+  @spec assert_in_flight_requests(atom(), map(), non_neg_integer()) :: :ok
+  defp assert_in_flight_requests(exporter, tags, expected) do
+    assert [%{name: "logflare.system.finch.in_flight_requests", data: {:gauge, gauge}}] =
+             export_metrics(exporter)
+
+    assert [point] = gauge.data_points
+
+    assert point_attributes(point) ==
+             Map.new(tags, fn {key, value} -> {Atom.to_string(key), value} end)
+
+    assert {:as_double, value} = point.value
+    assert value == expected
+    :ok
   end
 
   # Builds the OTel resource via Telemetry.resource/0, runs it through a real
