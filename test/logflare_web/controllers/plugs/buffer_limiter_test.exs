@@ -22,6 +22,41 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     IngestEventQueue.add_to_table(table_key, events)
   end
 
+  defp clickhouse_default_ingest_setup(opts \\ []) do
+    user = insert(:user)
+    source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+
+    backend =
+      insert(:backend,
+        user: user,
+        type: :clickhouse,
+        config: %{
+          url: "http://localhost:8123",
+          username: "default",
+          password: "",
+          database: "test_db"
+        },
+        default_ingest?: Keyword.get(opts, :default_ingest?, true)
+      )
+
+    {:ok, _} = Backends.update_source_backends(source, [backend])
+
+    %{source: source, backend: backend}
+  end
+
+  defp consolidated_producer_queues(backend, count) do
+    for n <- 1..count do
+      queue = {:consolidated, backend.id, :erlang.list_to_pid(~c"<0.300.#{n}>")}
+      IngestEventQueue.upsert_tid(queue)
+      queue
+    end
+  end
+
+  defp fill_consolidated_queue(queue) do
+    events = build_queue_saturation_events(IngestEventQueue.max_consolidated_queue_size())
+    :ok = IngestEventQueue.add_to_table(queue, events)
+  end
+
   test "returns 429 when memory utilization is at or over 85%", %{conn: conn, source: source} do
     SystemCache
     |> stub(:memory_utilization, fn -> 0.85 end)
@@ -483,42 +518,11 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
 
     test "returns 429 when user-configured ClickHouse default backend is full but system default is not",
          %{conn: conn} do
-      user = insert(:user)
-      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+      %{source: source, backend: backend} = clickhouse_default_ingest_setup()
+      producer_queues = consolidated_producer_queues(backend, 2)
 
-      clickhouse_backend =
-        insert(:backend,
-          user: user,
-          type: :clickhouse,
-          config: %{
-            url: "http://localhost:8123",
-            username: "default",
-            password: "",
-            database: "test_db"
-          },
-          default_ingest?: true
-        )
-
-      {:ok, _} = Backends.update_source_backends(source, [clickhouse_backend])
-
-      # Keep system default queue under the limit
-      system_queue_key = {source.id, nil, self()}
-      IngestEventQueue.upsert_tid(system_queue_key)
-
-      for _ <- 1..100 do
-        le = build(:log_event, source: source)
-        IngestEventQueue.add_to_table(system_queue_key, [le])
-      end
-
-      # Fill CH backend queue over the limit
-      clickhouse_queue_key = {source.id, clickhouse_backend.id, self()}
-      IngestEventQueue.upsert_tid(clickhouse_queue_key)
-
-      fill_queue(clickhouse_queue_key, source)
-
-      # Cache buffer stats for both backends
-      Backends.cache_local_buffer_lens(source.id, nil)
-      Backends.cache_local_buffer_lens(source.id, clickhouse_backend.id)
+      for queue <- producer_queues, do: fill_consolidated_queue(queue)
+      Backends.cache_local_buffer_lens(:consolidated, backend.id)
 
       conn =
         conn
@@ -527,6 +531,56 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
 
       assert conn.halted
       assert json_response(conn, 429)
+    end
+
+    test "allows request when one ClickHouse producer queue has room", %{conn: conn} do
+      %{source: source, backend: backend} = clickhouse_default_ingest_setup()
+      [full_queue, _queue_with_room] = consolidated_producer_queues(backend, 2)
+
+      fill_consolidated_queue(full_queue)
+      Backends.cache_local_buffer_lens(:consolidated, backend.id)
+
+      conn =
+        conn
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      refute conn.halted
+    end
+
+    test "allows request when only the ClickHouse startup queue has events", %{conn: conn} do
+      %{source: source, backend: backend} = clickhouse_default_ingest_setup()
+      startup_queue = {:consolidated, backend.id, nil}
+      IngestEventQueue.upsert_tid(startup_queue)
+
+      fill_consolidated_queue(startup_queue)
+      Backends.cache_local_buffer_lens(:consolidated, backend.id)
+
+      conn =
+        conn
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      refute conn.halted
+    end
+
+    test "allows request when the full ClickHouse backend is not a default ingest backend", %{
+      conn: conn
+    } do
+      %{source: source, backend: backend} =
+        clickhouse_default_ingest_setup(default_ingest?: false)
+
+      producer_queues = consolidated_producer_queues(backend, 1)
+
+      for queue <- producer_queues, do: fill_consolidated_queue(queue)
+      Backends.cache_local_buffer_lens(:consolidated, backend.id)
+
+      conn =
+        conn
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      refute conn.halted
     end
   end
 end
