@@ -514,7 +514,7 @@ defmodule Logflare.Telemetry do
         tags: [:name],
         description: "Top ETS individual tables by memory usage"
       ),
-      sum("logflare.system.top_ets_tables.grouped.memory",
+      last_value("logflare.system.top_ets_tables.grouped.memory",
         tags: [:name],
         description: "Top ETS tables by memory usage, grouped by name"
       ),
@@ -965,9 +965,10 @@ defmodule Logflare.Telemetry do
 
     # send grouped top 100
     top_100_tables
-    |> Enum.each(fn table ->
-      metrics = %{memory: table[:memory]}
-      metadata = %{name: ets_table_base_name(table[:name])}
+    |> Enum.group_by(&ets_table_base_name(&1[:name]), & &1[:memory])
+    |> Enum.each(fn {name, memory} ->
+      metrics = %{memory: Enum.sum(memory)}
+      metadata = %{name: name}
 
       :telemetry.execute([:logflare, :system, :top_ets_tables, :grouped], metrics, metadata)
     end)
