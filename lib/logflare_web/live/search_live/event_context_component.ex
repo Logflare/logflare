@@ -1,7 +1,6 @@
 defmodule LogflareWeb.SearchLive.EventContextComponent do
   use LogflareWeb, :live_component
 
-  alias Logflare.JSON
   alias Logflare.Lql.Rules, as: LqlRules
   alias Logflare.Lql.Rules.FilterRule
   alias Phoenix.LiveView.{AsyncResult, JS}
@@ -152,7 +151,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
                   event body
                 </a>
                 <div class="collapse metadata tw-overflow-hidden tw-basis-full" id={"metadata-" <> log_event.id}>
-                  <pre class="pre-metadata text-clip tw-overflow-x-auto"><code class="tw-text-nowrap"><%= JSON.encode!(log_event.body, pretty: true) %></code></pre>
+                  <pre class="pre-metadata text-clip tw-overflow-x-auto"><code class="tw-text-nowrap"><%= Jason.encode_to_iodata!(log_event.body, pretty: true) %></code></pre>
                 </div>
               </:actions>
             </.log_event>

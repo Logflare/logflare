@@ -3,7 +3,6 @@ defmodule LogflareWeb.Helpers.BqSchema do
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
   alias Logflare.BigQuery.SchemaTypes
   alias Logflare.Google.BigQuery.SchemaUtils
-  alias Logflare.JSON
   alias Logflare.Utils
   alias LogflareWeb.SharedView
 
@@ -94,6 +93,6 @@ defmodule LogflareWeb.Helpers.BqSchema do
       end,
       yield: :all
     )
-    |> JSON.encode!(pretty: true)
+    |> Jason.encode!(pretty: true)
   end
 end

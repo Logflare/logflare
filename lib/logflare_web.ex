@@ -35,8 +35,6 @@ defmodule LogflareWeb do
 
   def view do
     quote do
-      alias Logflare.JSON
-
       use Phoenix.View,
         root: "lib/logflare_web/templates",
         namespace: LogflareWeb

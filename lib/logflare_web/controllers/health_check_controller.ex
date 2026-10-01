@@ -3,7 +3,6 @@ defmodule LogflareWeb.HealthCheckController do
 
   alias Logflare.Backends
   alias Logflare.Backends.Spool.Health, as: SpoolHealth
-  alias Logflare.JSON
   alias Logflare.Cluster
   alias Logflare.Readiness
   alias Logflare.SingleTenant
@@ -14,7 +13,7 @@ defmodule LogflareWeb.HealthCheckController do
     if Readiness.ready?() do
       check(conn, params)
     else
-      response = JSON.encode!(%{status: :not_ready})
+      response = Jason.encode_to_iodata!(%{status: :not_ready})
 
       conn
       |> put_resp_content_type("application/json")
@@ -69,7 +68,7 @@ defmodule LogflareWeb.HealthCheckController do
           upload: SpoolHealth.healthy?(:upload)
         }
       )
-      |> JSON.encode!()
+      |> Jason.encode_to_iodata!()
 
     conn
     |> put_resp_content_type("application/json")

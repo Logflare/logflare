@@ -6,7 +6,6 @@ defmodule LogflareWeb.SourceController do
   alias Logflare.Billing
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GCPConfig
-  alias Logflare.JSON
   alias Logflare.Logs.RejectedLogEvents
   alias Logflare.Logs.SearchUtils
   alias Logflare.Lql
@@ -477,7 +476,7 @@ defmodule LogflareWeb.SourceController do
        )
        when is_atom(source_id) do
     {:ok, explore_link_config} =
-      JSON.encode(%{
+      Jason.encode(%{
         "projectId" => project_id,
         "tableId" => BigQuery.GenUtils.format_table_name(source_id),
         "datasetId" => dataset_id,

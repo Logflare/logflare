@@ -5,8 +5,6 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
 
   import NimbleParsec
 
-  alias Logflare.JSON
-
   def parse(input) do
     {:ok, [result], _, _, _, _} = do_parse(input)
 
@@ -178,7 +176,7 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
   defp build_map(maybe_json, message, tokens) do
     cleaned_json = String.replace(maybe_json, "\n", "")
 
-    case JSON.decode(cleaned_json) do
+    case Jason.decode(cleaned_json) do
       {:ok, json} ->
         %{"data" => json, "message" => message}
 
@@ -270,7 +268,7 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
 
   def parse_json_body([{:maybe_json, maybe_json}]) do
     maybe_json
-    |> JSON.decode()
+    |> Jason.decode()
     |> case do
       {:ok, json} ->
         {"lines", [%{"data" => json}]}

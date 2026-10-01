@@ -9,7 +9,6 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   alias GoogleApi.BigQuery.V2.Connection
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Google.BigQuery.GCPConfig
-  alias Logflare.JSON
   alias Logflare.Repo
   alias Logflare.Sources
   alias Logflare.Sources.Source
@@ -164,7 +163,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
   @spec get_tesla_error_message(transport_error() | Tesla.Env.t()) :: String.t()
   def get_tesla_error_message(%Tesla.Env{} = message) do
-    case JSON.decode(message.body) do
+    case Jason.decode(message.body) do
       {:ok, body} ->
         body["error"]["message"]
 

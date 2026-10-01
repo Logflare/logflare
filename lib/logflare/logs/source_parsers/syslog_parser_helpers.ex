@@ -1,6 +1,5 @@
 defmodule Logflare.Logs.SyslogParser.Helpers do
   @moduledoc false
-  alias Logflare.JSON
   import NimbleParsec
   @ascii_printable_chars [33..126]
 
@@ -213,7 +212,7 @@ defmodule Logflare.Logs.SyslogParser.Helpers do
     json_regex = ~r/([^{]*)(?<maybe_json>{.+})([^}]*)/
 
     with %{"maybe_json" => maybe_json} <- Regex.named_captures(json_regex, msg_text),
-         {:ok, data} <- JSON.decode(maybe_json) do
+         {:ok, data} <- Jason.decode(maybe_json) do
       [msg_json: data, message_text: msg_text, message: clean_message_text(msg_text)]
     else
       _ -> [message_text: msg_text, message: clean_message_text(msg_text)]
