@@ -4,16 +4,6 @@ defmodule Logflare.ContextCacheTest do
   alias Ecto.Adapters.SQL
   alias Logflare.ContextCache
   alias Logflare.ContextCache.TransactionBroadcaster
-  alias Logflare.Sources
-  alias Logflare.Sources.Source
-  alias Logflare.Backends
-  alias Logflare.Backends.Backend
-  alias Logflare.Auth
-  alias Logflare.Cache.CachexOps
-
-  defmodule TestCache do
-    use Logflare.ContextCache
-  end
 
   defmodule RecordingOps do
     @behaviour Logflare.Cache.Ops
@@ -43,75 +33,8 @@ defmodule Logflare.ContextCacheTest do
     use Logflare.ContextCache, impl: RecordingOps
   end
 
-  describe "ContextCache" do
-    setup do
-      insert(:plan, name: "Free")
-      user = insert(:user)
-      source = insert(:source, user: user)
-      %{source: source, user: user}
-    end
-
-    test "bust_keys/1, does nothing for empty list" do
-      assert {:ok, 0} = ContextCache.bust_keys([])
-    end
-
-    test "apply_fun/3,  bust_keys/1 by :id field of value", %{source: source} do
-      Sources.Cache.get_by(token: source.token)
-      cache_key = {:get_by, [[token: source.token]]}
-      assert {:cached, %Source{}} = Cachex.get!(Sources.Cache, cache_key)
-
-      assert {:ok, 1} = ContextCache.bust_keys([{Sources, source.id}])
-      assert is_nil(Cachex.get!(Sources.Cache, cache_key))
-    end
-
-    test "apply_fun/3,  bust_keys/1 by :id field of value for :ok tuple", %{user: user} do
-      {:ok, key} = Auth.create_access_token(user)
-      assert {:ok, _token, _user} = Auth.Cache.verify_access_token(key.token)
-      cache_key = {:verify_access_token, [key.token]}
-      assert {:cached, {:ok, %_{}, _user}} = Cachex.get!(Auth.Cache, cache_key)
-
-      assert {:ok, 1} = ContextCache.bust_keys([{Auth, key.id}])
-      assert is_nil(Cachex.get!(Auth.Cache, cache_key))
-    end
-
-    test "apply_fun/3, bust_keys/1 if primary key is in list of returned structs", %{
-      source: source
-    } do
-      backend = insert(:backend, sources: [source])
-      Backends.Cache.list_backends(source_id: source.id)
-      cache_key = {:list_backends, [[source_id: source.id]]}
-      assert {:cached, [%Backend{}]} = Cachex.get!(Backends.Cache, cache_key)
-
-      assert {:ok, 1} = ContextCache.bust_keys([{Backends, backend.id}])
-      assert is_nil(Cachex.get!(Backends.Cache, cache_key))
-    end
-  end
-
-  describe "default bust_by/1" do
-    setup do
-      start_supervised!(CachexOps.child_spec(TestCache, limit: nil))
-      :ok
-    end
-
-    for {name, value, expected_count} <- [
-          {"map with the id", %{id: 1}, 1},
-          {":ok tuple with a map with the id", {:ok, %{id: 1}}, 1},
-          {"list containing a map with the id", [%{id: 2}, %{id: 1}], 1},
-          {"map with another id", %{id: 2}, 0},
-          {"list without the id", [%{id: 2}], 0},
-          {"nil", nil, 0}
-        ] do
-      test "cached #{name}" do
-        Cachex.put(TestCache, :key, {:cached, unquote(Macro.escape(value))})
-
-        assert {:ok, unquote(expected_count)} = TestCache.bust_by(id: 1)
-        assert {:ok, unquote(expected_count == 0)} = Cachex.exists?(TestCache, :key)
-      end
-    end
-
-    test "keyword other than id" do
-      assert_raise ArgumentError, fn -> TestCache.bust_by(source_id: 1) end
-    end
+  test "bust_keys/1 with an empty list" do
+    assert {:ok, 0} = ContextCache.bust_keys([])
   end
 
   describe "context cache with a custom impl module" do

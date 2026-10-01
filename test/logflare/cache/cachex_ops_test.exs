@@ -8,13 +8,6 @@ defmodule Logflare.Cache.CachexOpsTest do
   @cache __MODULE__.Cache
 
   describe "child_spec/2" do
-    test "started under a supervisor" do
-      start_cache(limit: 10)
-
-      assert {:ok, true} = Cachex.put(@cache, :key, :value)
-      assert {:ok, :value} = Cachex.get(@cache, :key)
-    end
-
     for {stats_enabled?, expected} <- [{true, :ok}, {false, :error}] do
       test "cache stats config set to #{stats_enabled?}" do
         original = Application.get_env(:logflare, :cache_stats)
@@ -99,6 +92,34 @@ defmodule Logflare.Cache.CachexOpsTest do
           assert {:ok, false} = Cachex.exists?(@cache, key)
         end
       end
+    end
+  end
+
+  describe "bust_by/2" do
+    setup do
+      start_cache(limit: nil)
+      :ok
+    end
+
+    for {name, value, expected_count} <- [
+          {"map with the id", %{id: 1}, 1},
+          {":ok tuple with a map with the id", {:ok, %{id: 1}}, 1},
+          {":ok 3-tuple with a map with the id", {:ok, %{id: 1}, :extra}, 1},
+          {"list containing a map with the id", [%{id: 2}, %{id: 1}], 1},
+          {"map with another id", %{id: 2}, 0},
+          {"list without the id", [%{id: 2}], 0},
+          {"nil", nil, 0}
+        ] do
+      test "cached #{name}" do
+        Cachex.put(@cache, :key, {:cached, unquote(Macro.escape(value))})
+
+        assert {:ok, unquote(expected_count)} = CachexOps.bust_by(@cache, id: 1)
+        assert {:ok, unquote(expected_count == 0)} = Cachex.exists?(@cache, :key)
+      end
+    end
+
+    test "keyword other than id" do
+      assert_raise ArgumentError, fn -> CachexOps.bust_by(@cache, source_id: 1) end
     end
   end
 
