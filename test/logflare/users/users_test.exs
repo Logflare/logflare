@@ -259,6 +259,14 @@ defmodule Logflare.UsersTest do
 
       assert {:error, %Ecto.Changeset{}} = Users.create_user(team_user)
     end
+
+    test "rejects a team user whose email domain is not allowed for signups" do
+      stub(Logflare.Users.SignupDomains, :allowed_domains, fn -> ["supabase.com"] end)
+      team_user = insert(:team_user, email: "member@example.com")
+
+      assert {:error, :signup_domain_not_allowed} = Users.create_user(team_user)
+      refute Users.get_by(email: "member@example.com")
+    end
   end
 
   describe "insert_or_update_user/1" do
@@ -306,6 +314,51 @@ defmodule Logflare.UsersTest do
       }
 
       assert {:ok, _user} = Users.insert_or_update_user(params)
+    end
+
+    test "rejects a new user whose email domain is not allowed for signups" do
+      stub(Logflare.Users.SignupDomains, :allowed_domains, fn -> ["supabase.com"] end)
+
+      params = %{
+        name: TestUtils.random_string(),
+        provider: "email",
+        email: "new@example.com",
+        provider_uid: Ecto.UUID.generate(),
+        token: Ecto.UUID.generate()
+      }
+
+      assert {:error, :signup_domain_not_allowed} = Users.insert_or_update_user(params)
+      refute Users.get_by(email: "new@example.com")
+    end
+
+    test "creates a new user whose email domain is allowed for signups" do
+      expect_post_insert_user_side_effects()
+      stub(Logflare.Users.SignupDomains, :allowed_domains, fn -> ["supabase.com"] end)
+
+      params = %{
+        name: TestUtils.random_string(),
+        provider: "email",
+        email: "new@supabase.com",
+        provider_uid: Ecto.UUID.generate(),
+        token: Ecto.UUID.generate()
+      }
+
+      assert {:ok, %{email: "new@supabase.com"}} = Users.insert_or_update_user(params)
+    end
+
+    test "lets an existing user sign in from a domain that is not allowed for signups" do
+      stub(Logflare.Users.SignupDomains, :allowed_domains, fn -> ["supabase.com"] end)
+      user = insert(:user, email: "existing@example.com", provider_uid: Ecto.UUID.generate())
+
+      params = %{
+        name: TestUtils.random_string(),
+        provider: "email",
+        email: user.email,
+        provider_uid: user.provider_uid,
+        token: Ecto.UUID.generate()
+      }
+
+      assert {:ok_found_user, _user} = Users.insert_or_update_user(params)
     end
 
     test "if there are missing params, returns the error changeset" do

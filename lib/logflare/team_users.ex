@@ -8,6 +8,7 @@ defmodule Logflare.TeamUsers do
   alias Logflare.Billing
   alias Logflare.Repo
   alias Logflare.TeamUsers.TeamUser
+  alias Logflare.Users.SignupDomains
 
   @doc """
   Returns the list of team_users.
@@ -74,7 +75,7 @@ defmodule Logflare.TeamUsers do
           |> Repo.one() ->
         update_team_user(team_user, auth_params)
 
-      true ->
+      SignupDomains.allowed?(auth_params.email) ->
         count = list_team_users_by(team_id: team_id) |> Enum.count()
         %Billing.Plan{limit_team_users_limit: limit} = Billing.get_plan_by_user(user)
 
@@ -83,6 +84,9 @@ defmodule Logflare.TeamUsers do
         else
           {:error, :limit_reached}
         end
+
+      true ->
+        {:error, :signup_domain_not_allowed}
     end
   end
 
