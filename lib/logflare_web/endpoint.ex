@@ -35,6 +35,7 @@ defmodule LogflareWeb.Endpoint do
     plug(Phoenix.CodeReloader)
   end
 
+  plug(Plug.Telemetry, event_prefix: [:phoenix, :endpoint], log: false)
   plug(Plug.Logger, log: :debug)
 
   plug(LogflareWeb.Plugs.StripeWebhook,
