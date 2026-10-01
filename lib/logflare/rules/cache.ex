@@ -54,7 +54,7 @@ defmodule Logflare.Rules.Cache do
   end
 
   defp fetch_rule(cache, id) do
-    ContextCache.fetch(cache, {:get_rule, [id]}, fn ->
+    CachexOps.fetch(cache, {:get_rule, [id]}, fn ->
       Repo.with_replica(fn -> Rules.get_rule(id) end)
     end)
   end

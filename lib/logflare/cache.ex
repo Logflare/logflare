@@ -4,7 +4,7 @@ defmodule Logflare.Cache do
 
   `use Logflare.Cache` injects default implementations of every callback, delegating to
   `Logflare.Cache.CachexOps`. A cache on another backend overrides them, or passes
-  `impl: module` whose `healthy?/1`, `stats/1` and `reset/1` take the cache module.
+  `impl: module` naming a `Logflare.Cache.Ops` implementation.
   """
 
   alias Logflare.Cache.CachexOps

@@ -102,5 +102,40 @@ defmodule Logflare.Cache.CachexOpsTest do
     end
   end
 
+  describe "fetch/3" do
+    setup do
+      start_cache(limit: nil)
+      :ok
+    end
+
+    for value <- [:value, nil] do
+      test "missing key with a getter returning #{inspect(value)}" do
+        value = unquote(value)
+
+        assert CachexOps.fetch(@cache, :key, fn -> value end) == value
+        assert CachexOps.fetch(@cache, :key, fn -> flunk("getter called on a hit") end) == value
+      end
+    end
+  end
+
+  describe "update/3" do
+    setup do
+      start_cache(limit: nil)
+      :ok
+    end
+
+    test "cached key" do
+      CachexOps.fetch(@cache, :key, fn -> :old end)
+
+      assert :ok = CachexOps.update(@cache, :key, :new)
+      assert :new = CachexOps.fetch(@cache, :key, fn -> flunk("getter called on a hit") end)
+    end
+
+    test "missing key" do
+      assert :ok = CachexOps.update(@cache, :key, :new)
+      assert {:ok, false} = Cachex.exists?(@cache, :key)
+    end
+  end
+
   defp start_cache(opts), do: start_supervised!(CachexOps.child_spec(@cache, opts))
 end
