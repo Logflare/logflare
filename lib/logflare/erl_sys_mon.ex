@@ -68,14 +68,27 @@ defmodule Logflare.ErlSysMon do
   end
 
   defp get_process_info(pid) do
-    pid
-    |> Process.info(:dictionary)
-    |> case do
-      {:dictionary, dict} when is_list(dict) ->
-        Keyword.take(dict, [:"$ancestors", :"$initial_call"])
+    dictionary =
+      pid
+      |> Process.info(:dictionary)
+      |> case do
+        {:dictionary, dict} when is_list(dict) ->
+          Keyword.take(dict, [:"$ancestors", :"$initial_call"])
 
-      other ->
-        other
-    end
+        other ->
+          other
+      end
+
+    %{dictionary: dictionary, source_registry_keys: source_registry_keys(pid)}
+  end
+
+  @doc false
+  @spec source_registry_keys(pid(), atom()) :: [term()]
+  def source_registry_keys(pid, registry \\ Logflare.Backends.SourceRegistry) do
+    Registry.keys(registry, pid)
+  rescue
+    ArgumentError -> []
+  catch
+    :exit, _reason -> []
   end
 end

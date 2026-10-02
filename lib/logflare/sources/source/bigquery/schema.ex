@@ -11,6 +11,7 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
 
   alias Logflare.Google.BigQuery
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
+  alias Logflare.Sources.Source.BigQuery.SchemaMetrics
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Sources
   alias Logflare.SourceSchemas
@@ -21,8 +22,17 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   alias Logflare.TeamUsers
   alias Logflare.SingleTenant
 
+  @admission_value_tag :schema_admission
+
+  @type admission_counter :: :atomics.atomics_ref()
+
   def start_link(args) when is_list(args) do
     {name, args} = Keyword.pop(args, :name)
+    {max_pending_samples, args} = Keyword.pop(args, :max_pending_samples)
+
+    max_pending_samples = max_pending_samples || configured_max_pending_samples()
+
+    name = register_admission_counter(name, max_pending_samples)
 
     GenServer.start_link(__MODULE__, args,
       name: name,
@@ -31,20 +41,86 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
     )
   end
 
-  @spec update(atom(), LogEvent.t(), Source.t()) :: :ok
-  def update(pid, %LogEvent{} = log_event, %Source{} = source)
-      when is_pid(pid) or is_tuple(pid) do
-    GenServer.cast(pid, {:update, log_event, source})
+  @spec update(GenServer.server(), LogEvent.t(), Source.t()) :: :ok
+  def update(
+        {:via, Registry, {registry, key}},
+        %LogEvent{} = log_event,
+        %Source{} = source
+      ) do
+    with [{pid, {@admission_value_tag, sample_counter, limit}}] <-
+           Registry.lookup(registry, key),
+         :ok <- reserve_update_slot(sample_counter, limit) do
+      SchemaMetrics.record_admission(:admitted)
+      GenServer.cast(pid, {:update, log_event, source, sample_counter})
+    else
+      _reason -> SchemaMetrics.record_admission(:rejected)
+    end
+
+    :ok
+  end
+
+  def update(server, %LogEvent{}, %Source{}) do
+    raise ArgumentError,
+          "expected the Schema server to use a Registry name, got: #{inspect(server)}"
+  end
+
+  @doc false
+  @spec reserve_update_slot(admission_counter(), pos_integer()) :: :ok | :full
+  def reserve_update_slot(sample_counter, limit) when is_integer(limit) and limit > 0 do
+    current = :atomics.get(sample_counter, 1)
+
+    if current >= limit do
+      :full
+    else
+      case :atomics.compare_exchange(sample_counter, 1, current, current + 1) do
+        :ok -> :ok
+        _actual -> reserve_update_slot(sample_counter, limit)
+      end
+    end
+  end
+
+  @doc false
+  @spec pending_update_slots(admission_counter()) :: non_neg_integer()
+  def pending_update_slots(sample_counter) do
+    :atomics.get(sample_counter, 1)
+  end
+
+  @spec release_update_slot(admission_counter()) :: :ok
+  defp release_update_slot(sample_counter) do
+    :atomics.sub(sample_counter, 1, 1)
+    :ok
+  end
+
+  defp configured_max_pending_samples do
+    Application.get_env(:logflare, __MODULE__, [])
+    |> Keyword.fetch!(:max_pending_samples)
+  end
+
+  defp register_admission_counter(
+         {:via, Registry, {registry, key}},
+         max_pending_samples
+       )
+       when is_integer(max_pending_samples) and max_pending_samples > 0 do
+    sample_counter = :atomics.new(1, signed: false)
+
+    {:via, Registry, {registry, key, {@admission_value_tag, sample_counter, max_pending_samples}}}
+  end
+
+  defp register_admission_counter({:via, Registry, _name}, max_pending_samples) do
+    raise ArgumentError,
+          "expected :max_pending_samples to be a positive integer, got: #{inspect(max_pending_samples)}"
+  end
+
+  defp register_admission_counter(name, _max_pending_samples) do
+    raise ArgumentError, "expected :name to be a Registry name, got: #{inspect(name)}"
   end
 
   # Public for profiling: benchmarks can target the GenServer's pure schema
   # planning work without measuring mailbox scheduling or BigQuery side effects.
   @doc false
   def plan_update(body, db_schema, state) do
-    schema = try_schema_update(body, db_schema)
-
-    if schema_needs_update?(db_schema, schema, state) do
-      {:update, schema}
+    if schema_update_allowed?(state) do
+      plan_schema_update(body, db_schema)
     else
       :noop
     end
@@ -87,61 +163,80 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   end
 
   def handle_cast(
-        {:update, %LogEvent{}, %Source{lock_schema: true}},
+        {:update, %LogEvent{} = log_event, %Source{} = source, sample_counter},
         state
-      ),
-      do: {:noreply, state}
+      ) do
+    release_update_slot(sample_counter)
 
-  def handle_cast(
-        {:update, %LogEvent{}, _source},
-        %{field_count: fc, field_count_limit: limit} = state
-      )
-      when fc > limit,
-      do: {:noreply, state}
+    SchemaMetrics.record_handled()
+    handle_update(log_event, source, state)
+  end
 
-  def handle_cast({:update, %LogEvent{body: body, id: event_id}, _source}, state) do
-    LogflareLogger.context(source_id: state.source_token, log_event_id: event_id)
+  defp handle_update(%LogEvent{}, %Source{lock_schema: true}, state), do: {:noreply, state}
 
-    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: state.source_id)
+  defp handle_update(
+         %LogEvent{},
+         _source,
+         %{field_count: fc, field_count_limit: limit} = state
+       )
+       when fc > limit,
+       do: {:noreply, state}
 
-    db_schema =
-      if source_schema,
-        do: source_schema.bigquery_schema,
-        else: SchemaBuilder.initial_table_schema()
+  defp handle_update(%LogEvent{body: body, id: event_id}, _source, state) do
+    if schema_update_allowed?(state) do
+      LogflareLogger.context(source_id: state.source_token, log_event_id: event_id)
 
-    case plan_update(body, db_schema, state) do
-      {:update, schema} ->
-        case patch_bigquery_table(state, schema) do
-          {:ok, _table_info} ->
-            handle_successful_patch(state, schema, db_schema)
+      source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: state.source_id)
 
-          {:error, response} ->
-            handle_patch_error(body, state, response)
-        end
+      db_schema =
+        if source_schema,
+          do: source_schema.bigquery_schema,
+          else: SchemaBuilder.initial_table_schema()
 
-      :noop ->
-        {:noreply, state}
+      case plan_schema_update(body, db_schema) do
+        {:update, schema} -> patch_schema_update(body, db_schema, schema, state)
+        :noop -> {:noreply, state}
+      end
+    else
+      {:noreply, state}
     end
   end
 
-  defp schema_needs_update?(db_schema, schema, state) do
-    not same_schemas?(db_schema, schema) and
-      state.next_update <= System.system_time(:millisecond) and
+  defp patch_schema_update(body, db_schema, schema, state) do
+    case patch_bigquery_table(state, schema) do
+      {:ok, _table_info} -> handle_successful_patch(state, schema, db_schema)
+      {:error, response} -> handle_patch_error(body, state, response)
+    end
+  end
+
+  defp plan_schema_update(body, db_schema) do
+    schema = try_schema_update(body, db_schema)
+
+    if same_schemas?(db_schema, schema), do: :noop, else: {:update, schema}
+  end
+
+  defp schema_update_allowed?(state) do
+    state.next_update <= System.system_time(:millisecond) and
       not SingleTenant.postgres_backend?()
   end
 
   defp patch_bigquery_table(state, schema) do
-    BigQuery.patch_table(
-      state.source_token,
-      schema,
-      state.bigquery_dataset_id,
-      state.bigquery_project_id
-    )
+    instrument_phase(:patch, state.source_id, fn ->
+      BigQuery.patch_table(
+        state.source_token,
+        schema,
+        state.bigquery_dataset_id,
+        state.bigquery_project_id
+      )
+    end)
   end
 
   defp handle_successful_patch(state, schema, db_schema) do
-    persist(state.source_id, schema)
-    notify_maybe(state.source_token, schema, db_schema)
+    instrument_phase(:persist, state.source_id, fn -> persist(state.source_id, schema) end)
+
+    instrument_phase(:notify, state.source_id, fn ->
+      notify_maybe(state.source_token, schema, db_schema)
+    end)
 
     {:noreply, %{state | field_count: count_fields(schema), next_update: next_update()}}
   end
@@ -157,11 +252,14 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   end
 
   defp handle_schema_mismatch(body, state) do
-    with {:ok, table} <- BigQuery.get_table(state.source_token),
+    with {:ok, table} <-
+           instrument_phase(:refresh, state.source_id, fn ->
+             BigQuery.get_table(state.source_token)
+           end),
          schema <- try_schema_update(body, table.schema),
          {:ok, _table_info} <- patch_bigquery_table(state, schema) do
       field_count = count_fields(schema)
-      persist(state.source_id, schema)
+      instrument_phase(:persist, state.source_id, fn -> persist(state.source_id, schema) end)
       {:noreply, %{state | field_count: field_count, next_update: next_update()}}
     else
       {:error, response} ->
@@ -198,6 +296,18 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
     |> Enum.count()
   end
 
+  defp instrument_phase(phase, source_id, function) do
+    metadata = %{phase: phase, source_id: source_id}
+
+    :telemetry.span([:logflare, :bigquery, :schema, :operation], metadata, fn ->
+      result = function.()
+      {result, Map.put(metadata, :result, telemetry_result(result))}
+    end)
+  end
+
+  defp telemetry_result({:error, _reason}), do: :error
+  defp telemetry_result(_result), do: :ok
+
   def next_update_ts(max_updates_per_min) do
     ms = 60 * 1000 / max_updates_per_min
     System.system_time(:millisecond) + ms
@@ -208,14 +318,7 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
     next_update_ts(updates_per_minute)
   end
 
-  defp same_schemas?(old_schema, new_schema) do
-    old_flatmap = SchemaUtils.bq_schema_to_flat_typemap(old_schema)
-    new_flatmap = SchemaUtils.bq_schema_to_flat_typemap(new_schema)
-
-    diff_keys = Map.keys(new_flatmap) -- Map.keys(old_flatmap)
-
-    old_schema == new_schema and Enum.empty?(diff_keys)
-  end
+  defp same_schemas?(old_schema, new_schema), do: old_schema == new_schema
 
   defp try_schema_update(body, schema) do
     SchemaBuilder.build_table_schema(body, schema)
