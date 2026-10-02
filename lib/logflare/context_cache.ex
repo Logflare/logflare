@@ -37,6 +37,7 @@ defmodule Logflare.ContextCache do
   """
 
   alias Logflare.ContextCache.Gossip
+  alias Logflare.ContextCache.RefreshAhead
 
   @doc """
   Optional callback implementing custom cache key busting by a keyword of values
@@ -148,6 +149,7 @@ defmodule Logflare.ContextCache do
         value
 
       {:ok, {:cached, value}} ->
+        RefreshAhead.maybe_refresh(cache, cache_key, getter_fn)
         value
     end
   end
