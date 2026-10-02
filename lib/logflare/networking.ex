@@ -16,7 +16,7 @@ defmodule Logflare.Networking do
 
   @s3_connect_timeout :timer.seconds(5)
   @s3_send_timeout :timer.seconds(30)
-  @spool_pool_size 100
+  @spool_pool_size 150
 
   def pools do
     if SingleTenant.postgres_backend?() do
