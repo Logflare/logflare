@@ -1,46 +1,21 @@
 defmodule Logflare.KeyValues.Cache do
   @moduledoc false
 
+  use Logflare.ContextCache
+
+  alias Logflare.Cache.CachexOps
   alias Logflare.ContextCache
   alias Logflare.KeyValues
   alias Logflare.Repo
-  alias Logflare.Utils
-
-  import Cachex.Spec
-
-  @behaviour ContextCache
 
   def child_spec(_) do
-    stats = Application.get_env(:logflare, :cache_stats, false)
-
-    %{
-      id: __MODULE__,
-      start: {
-        Cachex,
-        :start_link,
-        [
-          __MODULE__,
-          [
-            compressed: true,
-            warmers: [
-              warmer(
-                required: false,
-                module: KeyValues.CacheWarmer,
-                name: KeyValues.CacheWarmer,
-                interval: :timer.hours(1)
-              )
-            ],
-            hooks:
-              [
-                if(stats, do: Utils.cache_stats()),
-                Utils.cache_limit(10_000_000)
-              ]
-              |> Enum.filter(& &1),
-            expiration: Utils.cache_expiration_min(1440, 60)
-          ]
-        ]
-      }
-    }
+    CachexOps.child_spec(__MODULE__,
+      limit: 10_000_000,
+      ttl: to_timeout(day: 1),
+      purge_interval: to_timeout(hour: 1),
+      compressed: true,
+      warmer: {KeyValues.CacheWarmer, interval: :timer.hours(1)}
+    )
   end
 
   @spec count(integer()) :: non_neg_integer()
@@ -77,13 +52,7 @@ defmodule Logflare.KeyValues.Cache do
 
   @impl ContextCache
   def bust_by(kw) do
-    entries = bust_entries(kw)
-
-    Cachex.execute(__MODULE__, fn worker ->
-      Enum.reduce(entries, 0, fn k, acc ->
-        acc + delete_and_count(worker, k)
-      end)
-    end)
+    CachexOps.delete_keys(__MODULE__, bust_entries(kw))
   end
 
   defp bust_entries(kw) do
@@ -107,12 +76,5 @@ defmodule Logflare.KeyValues.Cache do
       {:lookup, [^user_id, ^key | _]} -> true
       _ -> false
     end)
-  end
-
-  defp delete_and_count(cache, key) do
-    case Cachex.take(cache, key) do
-      {:ok, nil} -> 0
-      {:ok, _value} -> 1
-    end
   end
 end
