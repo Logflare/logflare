@@ -637,6 +637,7 @@ defmodule Logflare.Telemetry do
         description: "Spool consumer: Broadway messages marked failed during processing"
       ),
       counter("thousand_island.acceptor.spawn_error",
+        event_name: [:thousand_island, :acceptor, :spawn_error],
         description: "Count of client connection spawn errors"
       ),
       counter("logflare.context_cache_gossip.multicast.count",
