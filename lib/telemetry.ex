@@ -872,8 +872,8 @@ defmodule Logflare.Telemetry do
         |> Process.info(:total_heap_size)
 
       metrics = %{
-        purge: Map.get(stats, :purge, 0),
-        stats: Map.get(stats, :stats, 0),
+        purge: get_in(stats, [:calls, :purge]) || 0,
+        stats: get_in(stats, [:calls, :stats]) || 0,
         evictions: Map.get(stats, :evictions, 0),
         expirations: Map.get(stats, :expirations, 0),
         operations: Map.get(stats, :operations, 0),
