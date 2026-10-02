@@ -4,6 +4,7 @@ defmodule LogflareWeb.UtilsTest do
   alias Ecto.Changeset
   alias Logflare.Rules
   alias Logflare.Utils, as: LogflareUtils
+  alias LogflareWeb.AccessTokensLive.Form
   alias LogflareWeb.Utils
 
   doctest LogflareWeb.Utils, import: true
@@ -277,6 +278,17 @@ defmodule LogflareWeb.UtilsTest do
   end
 
   describe "stringify_changeset_errors/2" do
+    test "omits the field prefix for form-level errors" do
+      changeset =
+        Changeset.change({%{}, %{}})
+        |> Changeset.add_error(:base, "select at least one scope")
+
+      assert Utils.stringify_changeset_errors(changeset) == "select at least one scope"
+
+      assert Utils.stringify_changeset_errors(changeset, "Validation failed") ==
+               "Validation failed: select at least one scope"
+    end
+
     test "joins multiple fields with semicolons and errors with commas" do
       changeset =
         example_config_changeset(%{
@@ -289,6 +301,23 @@ defmodule LogflareWeb.UtilsTest do
                "Backend configuration is invalid: name: has invalid format, " <>
                  "should be at least 3 character(s); port: is invalid; " <>
                  "endpoint: has invalid format"
+    end
+
+    test "formats errors in embedded permission fields" do
+      changeset =
+        Form.validate(
+          Form.new(),
+          %{
+            "private" => "false",
+            "ingest" => %{"enabled" => "true", "mode" => "invalid"},
+            "query" => %{"enabled" => "false", "mode" => "all"}
+          },
+          [],
+          []
+        )
+
+      assert Utils.stringify_changeset_errors(changeset, "Could not create access token") ==
+               "Could not create access token: ingest: mode: is invalid"
     end
   end
 
