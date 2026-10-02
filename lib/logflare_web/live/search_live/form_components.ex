@@ -11,6 +11,7 @@ defmodule LogflareWeb.SearchLive.FormComponents do
   alias Logflare.Utils
   alias Logflare.Sources.Source
   alias LogflareWeb.SearchLive.AiAssist
+  alias Phoenix.HTML.Safe
 
   attr :lql_rules, :list, required: true
   attr :chart_aggregate_enabled?, :boolean, required: true
@@ -130,27 +131,57 @@ defmodule LogflareWeb.SearchLive.FormComponents do
   end
 
   attr :ai_assist, AiAssist, required: true
+  attr :upgrade_required?, :boolean, default: false
+  attr :team, :any, default: nil
+
+  def ai_assist(%{upgrade_required?: true} = assigns) do
+    upgrade_prompt = ~H"""
+    <.team_link href={~p"/billing/edit"} team={@team} class="tw-text-white tw-underline hover:tw-text-gray-300">
+      Upgrade your plan
+    </.team_link>
+    for AI search assistant
+    """
+
+    assigns =
+      assigns
+      |> assign(:upgrade_prompt, upgrade_prompt |> Safe.to_iodata() |> IO.iodata_to_binary())
+
+    ~H"""
+    <div id="ai-search-upgrade-prompt" class="tw-relative tw-shrink-0" tabindex="0" aria-label="AI search assistant (upgrade required)" data-toggle="tooltip" data-title={@upgrade_prompt} data-html="true" data-placement="top" data-boundary="viewport" data-container="#ai-search-upgrade-prompt">
+      <.ai_assist_button disabled class="tw-pointer-events-none" />
+    </div>
+    """
+  end
 
   def ai_assist(assigns) do
     ~H"""
     <div class="tw-shrink-0">
-      <button
-        type="button"
-        id="ai-search-button"
-        class="btn btn-primary tw-mx-1 tw-flex tw-h-7 tw-w-9 tw-items-center tw-justify-center tw-p-0"
-        aria-label="AI search assistant"
+      <.ai_assist_button
+        loading?={@ai_assist.loading?}
+        disabled={@ai_assist.loading?}
         data-title={"AI search assistant<br>#{if(@ai_assist.macintosh?, do: "⌘ Enter", else: "Ctrl+Enter")}"}
         data-toggle="tooltip"
         data-html="true"
         data-placement="top"
         aria-busy={to_string(@ai_assist.loading?)}
         phx-click={Phoenix.LiveView.JS.dispatch("lql:ai-submit", to: "#lql-editor-hook")}
-        disabled={@ai_assist.loading?}
-      >
-        <i :if={@ai_assist.loading?} class="spinner-border spinner-border-sm" aria-hidden="true"></i>
-        <i :if={!@ai_assist.loading?} class="fas fa-magic" aria-hidden="true"></i>
-      </button>
+      />
     </div>
+    """
+  end
+
+  attr :disabled, :boolean, default: false
+  attr :loading?, :boolean, default: false
+  attr :class, :string, default: ""
+  attr :rest, :global
+
+  @spec ai_assist_button(map()) :: Phoenix.LiveView.Rendered.t()
+  defp ai_assist_button(assigns) do
+    ~H"""
+    <button type="button" id="ai-search-button" class={["btn btn-primary tw-mx-1 tw-flex tw-h-7 tw-w-9 tw-items-center tw-justify-center tw-p-0", @class]} aria-label="AI search assistant" disabled={@disabled} {@rest}>
+      <i :if={@loading?} class="spinner-border spinner-border-sm" aria-hidden="true"></i>
+      <i :if={!@loading?} class="fas fa-magic" aria-hidden="true"></i>
+    </button>
     """
   end
 
@@ -167,6 +198,8 @@ defmodule LogflareWeb.SearchLive.FormComponents do
   attr :last_query_completed_at, :any, default: nil
   attr :lql_schema_flat_map, :map, required: true
   attr :ai_assist, AiAssist, default: %AiAssist{}
+  attr :ai_assist_upgrade_required?, :boolean, default: false
+  attr :team, :any, default: nil
 
   def search_controls(assigns) do
     assigns =
@@ -189,7 +222,7 @@ defmodule LogflareWeb.SearchLive.FormComponents do
                 <div id="lql-editor-hook" phx-hook="LqlEditorWrapper" phx-update="ignore" data-querystring={@querystring} data-schema-fields-json={@lql_schema_fields_json} data-suggested-searches-json={@saved_searches_json} class="tw-min-w-0 tw-flex-1">
                   <LiveMonacoEditor.code_editor value={@querystring} path="lql_query" class="tw-w-full tw-h-8" opts={lql_editor_opts()} />
                 </div>
-                <.ai_assist :if={@ai_assist.enabled?} ai_assist={@ai_assist} />
+                <.ai_assist :if={@ai_assist.enabled? or @ai_assist_upgrade_required?} ai_assist={@ai_assist} upgrade_required?={@ai_assist_upgrade_required?} team={@team} />
               </div>
             </div>
           </div>

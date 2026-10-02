@@ -693,30 +693,41 @@ defmodule LogflareWeb.Source.SearchLVTest do
       refute has_element?(view, "#ai-search-button")
     end
 
-    @tag plan_name: "Free"
-    test "rejects AI assist for free plans", %{conn: conn, source: source} do
-      reject(AnthropicClient, :generate, 1)
+    for {plan_name, billing_enabled?} <- [{"Free", true}, {"Legacy", false}] do
+      @tag plan_name: plan_name, user_attrs: [billing_enabled: billing_enabled?]
+      test "prompts #{plan_name} users to upgrade while rejecting AI assist", %{
+        conn: conn,
+        source: source
+      } do
+        reject(AnthropicClient, :generate, 1)
 
-      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
+        {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
 
-      refute has_element?(view, "#ai-search-button")
+        assert has_element?(view, ~s|button[aria-label="AI search assistant"][disabled]|)
+        assert has_element?(view, ~s|[aria-label*="upgrade required"]|)
 
-      render_change(view, :start_ai_search, %{"querystring" => "find errors"})
+        render_change(view, :start_ai_search, %{"querystring" => "find errors"})
 
-      refute get_view_assigns(view).ai_assist.loading?
-    end
+        refute get_view_assigns(view).ai_assist.loading?
 
-    @tag user_attrs: [billing_enabled: false]
-    test "rejects AI assist for legacy plans", %{conn: conn, source: source} do
-      reject(AnthropicClient, :generate, 1)
+        render_change(view, :start_search, %{"querystring" => "warning"})
 
-      {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
+        assert has_element?(view, ~s|button[aria-label="AI search assistant"][disabled]|)
+        assert has_element?(view, ~s|[aria-label*="upgrade required"]|)
+      end
 
-      refute has_element?(view, "#ai-search-button")
+      @tag plan_name: plan_name, user_attrs: [billing_enabled: billing_enabled?]
+      test "hides the #{plan_name} upgrade prompt when Anthropic is not configured", %{
+        conn: conn,
+        source: source
+      } do
+        stub(AnthropicClient, :configured?, fn -> false end)
 
-      render_change(view, :start_ai_search, %{"querystring" => "find errors"})
+        {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))
 
-      refute get_view_assigns(view).ai_assist.loading?
+        refute has_element?(view, ~s|button[aria-label="AI search assistant"]|)
+        refute has_element?(view, ~s|[aria-label*="upgrade required"]|)
+      end
     end
 
     @tag source_attrs: [default_search_lql: "s:m.level"]

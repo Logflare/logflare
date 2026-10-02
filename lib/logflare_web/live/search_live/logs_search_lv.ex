@@ -82,6 +82,9 @@ defmodule LogflareWeb.Source.SearchLV do
         do: false,
         else: Map.get(params, "tailing?", "true") == "true"
 
+    ai_assist_configured? = AnthropicClient.configured?()
+    plan = Billing.get_plan_by_user(user)
+
     {:ok, executor_pid} = SearchQueryExecutor.start_link(source: source)
 
     flat_map = SourceSchemas.source_schema_flatmap_or_default(source)
@@ -108,7 +111,8 @@ defmodule LogflareWeb.Source.SearchLV do
       search_op_log_aggregates: nil,
       user_idle_interval: @user_idle_interval,
       show_modal: nil,
-      ai_assist: AiAssist.new(nil, ai_assist_enabled?(user)),
+      ai_assist: AiAssist.new(nil, ai_assist_configured? and plan.name not in ["Free", "Legacy"]),
+      ai_assist_upgrade_required?: ai_assist_configured? and plan.name in ["Free", "Legacy"],
       last_query_completed_at: nil,
       uri_params: nil,
       uri: nil,
@@ -120,11 +124,6 @@ defmodule LogflareWeb.Source.SearchLV do
     |> stream_configure(:log_events, dom_id: &log_event_dom_id/1)
     |> stream(:log_events, [])
     |> maybe_assign_user_timezone(team_user, user)
-  end
-
-  defp ai_assist_enabled?(user) do
-    AnthropicClient.configured?() and
-      Billing.get_plan_by_user(user).name not in ["Free", "Legacy"]
   end
 
   defp maybe_assign_user_timezone(socket, team_user, user) do
@@ -340,6 +339,8 @@ defmodule LogflareWeb.Source.SearchLV do
         last_query_completed_at={@last_query_completed_at}
         lql_schema_flat_map={lql_schema_flat_map(@source)}
         ai_assist={@ai_assist}
+        ai_assist_upgrade_required?={@ai_assist_upgrade_required?}
+        team={@team}
       />
       <div id="user-idle" phx-click="user_idle" class="d-none" data-user-idle-interval={@user_idle_interval}></div>
     </div>
