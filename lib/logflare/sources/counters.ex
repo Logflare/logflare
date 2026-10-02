@@ -16,7 +16,7 @@ defmodule Logflare.Sources.Counters do
   def init(state) do
     Process.flag(:trap_exit, true)
 
-    :ets.new(@ets_table_name, [:public, :named_table])
+    :ets.new(@ets_table_name, [:public, :named_table, write_concurrency: :auto])
     {:ok, state}
   end
 

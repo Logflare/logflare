@@ -40,7 +40,7 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
 
   @spec create(atom, integer()) :: {:ok, atom}
   def create(metric, count \\ 0) do
-    :ets.new(@table, [:public, :named_table])
+    :ets.new(@table, [:public, :named_table, write_concurrency: :auto])
 
     :ets.update_counter(@table, metric, {2, 0}, {metric, 0, 0})
     :ets.update_counter(@table, metric, {3, count}, {metric, 0, 0})
