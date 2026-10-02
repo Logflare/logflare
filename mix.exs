@@ -155,7 +155,7 @@ defmodule Logflare.Mixfile do
       # Concurrency and pipelines
       {:broadway, "~> 1.3"},
       {:syn, github: "Logflare/syn"},
-      {:durable_buffer, github: "chasers/durable_buffer", tag: "v0.5.0"},
+      {:durable_buffer, github: "chasers/durable_buffer", tag: "v0.6.1"},
 
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
