@@ -283,6 +283,8 @@ resources: {}
   #   memory: 128Mi
 
 # This is to setup the liveness and readiness probes more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
+# Neither `/health` nor `/ready` gates on the primary database, so a database outage cannot
+# restart the pod or drop it from the Service while it is still serving ingest from cache.
 livenessProbe:
   httpGet:
     path: /health
@@ -296,10 +298,11 @@ readinessProbe:
     port: http
   periodSeconds: 5
   failureThreshold: 2
-# Guards against liveness/readiness killing the pod mid-migration on first boot.
+# Guards against liveness/readiness killing the pod mid-migration on first boot. The only
+# probe that gates on the primary database being reachable.
 startupProbe:
   httpGet:
-    path: /health
+    path: /startup
     port: http
   failureThreshold: 30
   periodSeconds: 10
