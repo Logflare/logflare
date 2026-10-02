@@ -65,7 +65,7 @@ RUN find native Cargo.toml Cargo.lock -exec touch -h -d @1 {} + && \
 FROM ${RUNNER_IMAGE}
 
 # Install runtime dependencies and the commercial-region RDS CA bundle.
-RUN apt-get update -y && apt-get install -y ca-certificates curl libstdc++6 openssl locales \
+RUN apt-get update -y && apt-get install -y --no-install-recommends ca-certificates curl libstdc++6 openssl \
     && curl --fail --show-error --location --retry 3 \
       --output /tmp/aws-rds-global-bundle.pem \
       https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
@@ -77,12 +77,9 @@ RUN apt-get update -y && apt-get install -y ca-certificates curl libstdc++6 open
     && rm /tmp/aws-rds-global-bundle.pem \
     && apt-get clean && rm -f /var/lib/apt/lists/*_*
 
-# Set the locale
-RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
-
-ENV LANG=en_US.UTF-8
-ENV LANGUAGE=en_US:en
-ENV LC_ALL=en_US.UTF-8
+# C.UTF-8 ships with glibc, so no locales package or locale-gen is needed.
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
 
 # Git commit SHA of the build, surfaced as an OTel resource attribute at runtime
 # (see Logflare.Telemetry). Passed in by CI; empty in local/ad-hoc builds.
