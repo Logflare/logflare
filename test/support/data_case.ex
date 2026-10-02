@@ -44,8 +44,7 @@ defmodule Logflare.DataCase do
           func.()
         end)
 
-        caches = Logflare.ContextCache.Supervisor.list_caches()
-        Enum.each(caches, &Cachex.reset(&1, hooks: [Cachex.Stats]))
+        Logflare.DataCase.reset_context_caches()
 
         on_exit(fn ->
           # Deterministic, not timer-based: IngestEventQueue's generation-store
@@ -228,8 +227,15 @@ defmodule Logflare.DataCase do
     end
   end
 
+  def reset_context_caches do
+    Logflare.ContextCache.Supervisor.list_caches()
+    |> Enum.map(&Logflare.ContextCache.Supervisor.cachex_name/1)
+    |> Enum.each(&Cachex.reset(&1, hooks: [Cachex.Stats]))
+  end
+
   def allow_context_cache_sandbox do
     Logflare.ContextCache.Supervisor.list_caches()
+    |> Enum.map(&Logflare.ContextCache.Supervisor.cachex_name/1)
     |> Enum.each(fn cache ->
       allow_sandbox(cache)
       allow_sandbox(:"#{cache}_courier")

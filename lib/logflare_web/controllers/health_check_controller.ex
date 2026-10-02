@@ -5,6 +5,7 @@ defmodule LogflareWeb.HealthCheckController do
   alias Logflare.Backends.Spool.Health, as: SpoolHealth
   alias Logflare.JSON
   alias Logflare.Cluster
+  alias Logflare.ContextCache
   alias Logflare.Readiness
   alias Logflare.SingleTenant
   alias Logflare.Sources
@@ -101,13 +102,13 @@ defmodule LogflareWeb.HealthCheckController do
 
   defp check_caches do
     for cache <-
-          Logflare.ContextCache.Supervisor.list_caches() ++
+          ContextCache.Supervisor.list_caches() ++
             [
               Logflare.Logs.LogEvents.Cache
             ],
         into: %{} do
       # call is O(1)
-      case Cachex.size(cache) do
+      case cache |> ContextCache.Supervisor.cachex_name() |> Cachex.size() do
         {:ok, _} -> {cache, :ok}
         {:error, :no_cache} -> {cache, :no_cache}
       end
