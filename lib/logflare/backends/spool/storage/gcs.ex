@@ -51,6 +51,7 @@ defmodule Logflare.Backends.Spool.Storage.GCS do
     end
   end
 
+  @spec request_headers(String.t(), map()) :: [{String.t(), String.t()}]
   defp request_headers(content_type, headers) do
     base = [{"Content-Type", content_type}]
 
