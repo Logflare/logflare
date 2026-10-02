@@ -46,7 +46,7 @@ config :logflare, LogflareWeb.Endpoint,
     http_options: [log_protocol_errors: :short, log_client_closures: false],
     http_1_options: [gc_every_n_keepalive_requests: 1],
     thousand_island_options: [
-      num_acceptors: 1250,
+      # num_acceptors is set in runtime.exs, scaled to the host's schedulers
       # default backend keepalive timeout is fixed at 600 seconds
       # https://cloud.google.com/load-balancing/docs/https/request-distribution#timeout-keepalive-backends
       read_timeout: 620_000,

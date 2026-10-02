@@ -4,6 +4,9 @@ alias Logflare.Utils
 
 defmodule Env do
   @max_phash2_range 4_294_967_296
+  # 40 per scheduler keeps 32-vCPU production hosts at the previous fixed 1250
+  @http_acceptors_per_scheduler 40
+  @max_http_acceptors 1250
 
   def get_boolean(env, default \\ false) when is_boolean(default) do
     value = System.get_env(env)
@@ -30,6 +33,27 @@ defmodule Env do
           _ ->
             raise ArgumentError,
                   "LOGFLARE_BROADWAY_MESSAGE_SAMPLE_DENOMINATOR must be 'disabled' or an integer between 1 and #{@max_phash2_range}, got: #{inspect(value)}"
+        end
+    end
+  end
+
+  @spec http_num_acceptors(String.t() | nil, pos_integer()) :: pos_integer()
+  def http_num_acceptors(nil, schedulers_online), do: http_num_acceptors("", schedulers_online)
+
+  def http_num_acceptors(value, schedulers_online)
+      when is_binary(value) and is_integer(schedulers_online) and schedulers_online > 0 do
+    case String.trim(value) do
+      "" ->
+        min(schedulers_online * @http_acceptors_per_scheduler, @max_http_acceptors)
+
+      trimmed ->
+        case Integer.parse(trimmed) do
+          {num_acceptors, ""} when num_acceptors > 0 ->
+            num_acceptors
+
+          _ ->
+            raise ArgumentError,
+                  "PHX_HTTP_NUM_ACCEPTORS must be a positive integer, got: #{inspect(value)}"
         end
     end
   end
@@ -172,7 +196,14 @@ config :logflare,
                      {:ok, ip} -> ip
                      {:error, _} -> raise "Failed to parse IP address: #{value}"
                    end
-               end
+               end,
+             thousand_island_options: [
+               num_acceptors:
+                 Env.http_num_acceptors(
+                   System.get_env("PHX_HTTP_NUM_ACCEPTORS"),
+                   System.schedulers_online()
+                 )
+             ]
            ),
          url:
            filter_nil_kv_pairs.(
