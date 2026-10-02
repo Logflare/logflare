@@ -89,9 +89,9 @@ ENV LC_ALL=en_US.UTF-8
 ARG COMMIT_SHA
 ENV LOGFLARE_COMMIT_SHA=${COMMIT_SHA}
 
-# Copy required files from builder step
-COPY --from=builder app/_build/prod /opt/app
-COPY --from=builder app/VERSION /opt/app/VERSION
+# Only the self-contained release is needed at runtime, not the rest of _build.
+COPY --from=builder /app/_build/prod/rel/logflare /opt/app/rel/logflare
+COPY --from=builder /app/VERSION /opt/app/VERSION
 COPY --from=builder app/priv/static /opt/app/rel/logflare/bin/priv/static
 
 # Move files to the correct folder taking into consideration the VERSION
