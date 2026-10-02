@@ -881,7 +881,7 @@ defmodule Logflare.Telemetry do
         misses: Map.get(stats, :misses, 0),
         hit_rate: Map.get(stats, :hit_rate, 0),
         miss_rate: Map.get(stats, :miss_rate, 0),
-        total_heap_size: total_heap_size
+        total_heap_size: total_heap_size * :erlang.system_info(:wordsize)
       }
 
       :telemetry.execute([:cachex, metric], metrics)
