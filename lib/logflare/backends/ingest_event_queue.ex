@@ -432,10 +432,51 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   defp do_get_tid(key, pid) do
     @ets_table_mapper
-    |> :ets.match({key, pid, :"$1"})
+    |> :ets.match({key, pid, :"$1", :_})
     |> Enum.find_value(fn [tid] ->
       if :ets.info(tid, :name) != :undefined, do: tid
     end)
+  end
+
+  @doc """
+  Flags a queue as draining, in place. `get_tid/1` still resolves it;
+  `list_counts_with_tids/1` (used by `add_to_table/3`) no longer does.
+  """
+  @spec mark_draining(table_key() | consolidated_table_key()) :: :ok
+  def mark_draining({:consolidated, bid, pid}) when is_integer(bid),
+    do: do_mark_draining({:consolidated, bid}, pid)
+
+  def mark_draining({sid, bid, pid}) when is_integer(sid),
+    do: do_mark_draining({sid, bid}, pid)
+
+  defp do_mark_draining(key, pid) do
+    case :ets.match(@ets_table_mapper, {key, pid, :"$1", :"$2"}) do
+      [[tid, status] | _] ->
+        :ets.delete_object(@ets_table_mapper, {key, pid, tid, status})
+        :ets.insert(@ets_table_mapper, {key, pid, tid, :draining})
+
+      [] ->
+        :ok
+    end
+
+    :ok
+  end
+
+  @doc """
+  Returns whether a queue is currently flagged draining (see `mark_draining/1`).
+  """
+  @spec draining?(table_key() | consolidated_table_key()) :: boolean()
+  def draining?({:consolidated, bid, pid}) when is_integer(bid),
+    do: do_draining?({:consolidated, bid}, pid)
+
+  def draining?({sid, bid, pid}) when is_integer(sid),
+    do: do_draining?({sid, bid}, pid)
+
+  defp do_draining?(key, pid) do
+    case :ets.match(@ets_table_mapper, {key, pid, :_, :"$1"}) do
+      [[:draining] | _] -> true
+      _ -> false
+    end
   end
 
   @doc """
@@ -468,7 +509,7 @@ defmodule Logflare.Backends.IngestEventQueue do
             {:read_concurrency, true}
           ])
 
-        :ets.insert(@ets_table_mapper, {mapper_key, pid, tid})
+        :ets.insert(@ets_table_mapper, {mapper_key, pid, tid, :active})
         {:ok, tid}
 
       tid ->
@@ -769,6 +810,11 @@ defmodule Logflare.Backends.IngestEventQueue do
   empty and we skip it, instead of recreating an already-claimed pointer in `to_tid`
   and risking both sides processing (and acking) the same event
   (github.com/Logflare/logflare/pull/3690#discussion_r3598370787).
+
+  Event IDs can collide across two source queues (client-suppliable, not guaranteed
+  globally unique), so `to_tid` may already hold an unrelated row for the same ID.
+  That row is claimed and acked before the incoming one is inserted in its place,
+  rather than silently overwritten with its spool handle left to leak.
   """
   def move(from, to) when is_tuple(from) and is_tuple(to) do
     with from_tid when from_tid != nil <- get_tid(from),
@@ -789,11 +835,19 @@ defmodule Logflare.Backends.IngestEventQueue do
   defp take_and_insert(from_tid, to_tid, id) do
     case :ets.take(from_tid, id) do
       [row] ->
+        ack_conflicting_row(to_tid, id)
         :ets.insert(to_tid, row)
         1
 
       [] ->
         0
+    end
+  end
+
+  defp ack_conflicting_row(to_tid, id) do
+    case :ets.take(to_tid, id) do
+      [{^id, _, _, _, _, _, _, spool_handle}] -> SpoolAck.ack(spool_handle, 1)
+      [] -> :ok
     end
   end
 
@@ -804,7 +858,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def delete_queue({sid, bid, pid} = sid_bid_pid) do
     with tid when tid != nil <- get_tid(sid_bid_pid) do
       :ets.delete(tid)
-      :ets.delete_object(@ets_table_mapper, {{sid, bid}, pid, tid})
+      :ets.select_delete(@ets_table_mapper, [{{{sid, bid}, pid, tid, :_}, [], [true]}])
       :ok
     else
       nil -> {:error, :not_initialized}
@@ -860,7 +914,7 @@ defmodule Logflare.Backends.IngestEventQueue do
              non_neg_integer()}
           ]
   def list_counts_with_tids(key) do
-    for {table_key, tid} <- list_queues_with_tids(key),
+    for {table_key, tid} <- list_active_queues_with_tids(key),
         size = :ets.info(tid, :size),
         is_integer(size) do
       {table_key, size}
@@ -1638,9 +1692,9 @@ defmodule Logflare.Backends.IngestEventQueue do
   defp next_and_cleanup(:"$end_of_table"), do: :ok
 
   defp next_and_cleanup({to_check, cont}) do
-    for {{sid, bid}, pid, tid} <- to_check do
+    for {{sid, bid}, pid, tid, status} <- to_check do
       if :ets.info(tid, :name) == :undefined do
-        :ets.delete_object(@ets_table_mapper, {{sid, bid}, pid, tid})
+        :ets.delete_object(@ets_table_mapper, {{sid, bid}, pid, tid, status})
       end
     end
 
@@ -1656,7 +1710,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def list_queues({:consolidated, bid}) when is_integer(bid) do
     ms =
       Ex2ms.fun do
-        {{:consolidated, ^bid}, pid, _tid} -> {:consolidated, ^bid, pid}
+        {{:consolidated, ^bid}, pid, _tid, _status} -> {:consolidated, ^bid, pid}
       end
 
     with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
@@ -1669,7 +1723,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def list_queues({sid, bid}) do
     ms =
       Ex2ms.fun do
-        {{^sid, ^bid}, pid, _tid} -> {^sid, ^bid, pid}
+        {{^sid, ^bid}, pid, _tid, _status} -> {^sid, ^bid, pid}
       end
 
     with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
@@ -1691,7 +1745,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def list_queues_with_tids({:consolidated, bid}) when is_integer(bid) do
     ms =
       Ex2ms.fun do
-        {{:consolidated, ^bid}, pid, tid} -> {{:consolidated, ^bid, pid}, tid}
+        {{:consolidated, ^bid}, pid, tid, _status} -> {{:consolidated, ^bid, pid}, tid}
       end
 
     with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
@@ -1704,7 +1758,33 @@ defmodule Logflare.Backends.IngestEventQueue do
   def list_queues_with_tids({sid, bid}) do
     ms =
       Ex2ms.fun do
-        {{^sid, ^bid}, pid, tid} -> {{^sid, ^bid, pid}, tid}
+        {{^sid, ^bid}, pid, tid, _status} -> {{^sid, ^bid, pid}, tid}
+      end
+
+    with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
+      queues
+    else
+      :"$end_of_table" -> []
+    end
+  end
+
+  defp list_active_queues_with_tids({:consolidated, bid}) when is_integer(bid) do
+    ms =
+      Ex2ms.fun do
+        {{:consolidated, ^bid}, pid, tid, :active} -> {{:consolidated, ^bid, pid}, tid}
+      end
+
+    with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
+      queues
+    else
+      :"$end_of_table" -> []
+    end
+  end
+
+  defp list_active_queues_with_tids({sid, bid}) do
+    ms =
+      Ex2ms.fun do
+        {{^sid, ^bid}, pid, tid, :active} -> {{^sid, ^bid, pid}, tid}
       end
 
     with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
@@ -1727,7 +1807,7 @@ defmodule Logflare.Backends.IngestEventQueue do
 
     ms =
       Ex2ms.fun do
-        {{:consolidated, ^bid}, pid, tid} -> {{:consolidated, ^bid, pid}, tid}
+        {{:consolidated, ^bid}, pid, tid, _status} -> {{:consolidated, ^bid, pid}, tid}
       end
 
     res =
@@ -1743,7 +1823,7 @@ defmodule Logflare.Backends.IngestEventQueue do
 
     ms =
       Ex2ms.fun do
-        {{^sid, ^bid}, pid, tid} -> {{^sid, ^bid, pid}, tid}
+        {{^sid, ^bid}, pid, tid, _status} -> {{^sid, ^bid, pid}, tid}
       end
 
     res =

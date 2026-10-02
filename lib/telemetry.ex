@@ -223,7 +223,7 @@ defmodule Logflare.Telemetry do
       last_value("vm.total_run_queue_lengths.total"),
       last_value("vm.total_run_queue_lengths.cpu"),
       last_value("vm.total_run_queue_lengths.io"),
-      last_value("logflare.system.observer.metrics.uptime", unit: {:second, :millisecond}),
+      last_value("logflare.system.observer.metrics.uptime", unit: :millisecond),
       last_value("logflare.system.observer.metrics.run_queue"),
       last_value("logflare.system.observer.metrics.io_input", unit: {:byte, :kilobyte}),
       last_value("logflare.system.observer.metrics.io_output", unit: {:byte, :kilobyte}),
@@ -292,7 +292,7 @@ defmodule Logflare.Telemetry do
       ),
       counter("logflare.total_http_requests",
         measurement: :duration,
-        event_name: "bandit.request.stop.duration"
+        event_name: "bandit.request.stop"
       ),
       sum("logflare.logs.processor.ingest.logs.count",
         tags: [:processor],

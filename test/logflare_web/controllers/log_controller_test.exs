@@ -199,6 +199,59 @@ defmodule LogflareWeb.LogControllerTest do
       end)
     end
 
+    test "returns 500 when the spool producer is unavailable", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch, _source, _backend, _allow_spooling ->
+        {:error, :spool_unavailable}
+      end)
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> post(Routes.log_path(conn, :create, source: source.token), @valid)
+
+      assert json_response(conn, 500)
+    end
+
+    for {path, request_module, _response_module} <- [
+          {:otel_metrics, ExportMetricsServiceRequest, ExportMetricsServiceResponse},
+          {:otel_traces, ExportTraceServiceRequest, ExportTraceServiceResponse},
+          {:otel_logs, ExportLogsServiceRequest, ExportLogsServiceResponse}
+        ] do
+      test "#{path} returns 500 when the spool producer is unavailable", %{
+        conn: conn,
+        source: source,
+        user: user
+      } do
+        Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch,
+                                                       _source,
+                                                       _backend,
+                                                       _allow_spooling ->
+          {:error, :spool_unavailable}
+        end)
+
+        body =
+          case unquote(path) do
+            :otel_metrics -> TestUtilsGrpc.random_otel_metrics_request()
+            :otel_traces -> TestUtilsGrpc.random_export_service_request()
+            :otel_logs -> TestUtilsGrpc.random_otel_logs_request()
+          end
+          |> unquote(request_module).encode()
+
+        conn =
+          conn
+          |> put_req_header("x-api-key", user.api_key)
+          |> put_req_header("x-source", Atom.to_string(source.token))
+          |> put_req_header("content-type", "application/x-protobuf")
+          |> post(Routes.log_path(conn, unquote(path)), body)
+
+        assert conn.status == 500
+      end
+    end
+
     test "invaild source token uuid checks", %{conn: conn, user: user} do
       conn =
         conn
