@@ -4,9 +4,11 @@ alias Logflare.Utils
 
 defmodule Env do
   @max_phash2_range 4_294_967_296
-  # 40 per scheduler keeps 32-vCPU production hosts at the previous fixed 1250
-  @http_acceptors_per_scheduler 40
+  # linear from 100 acceptors at <= 2 schedulers to 1250 at >= 32 (production c2d-highcpu-32)
+  @min_http_acceptors 100
   @max_http_acceptors 1250
+  @min_http_acceptor_schedulers 2
+  @max_http_acceptor_schedulers 32
 
   def get_boolean(env, default \\ false) when is_boolean(default) do
     value = System.get_env(env)
@@ -44,7 +46,17 @@ defmodule Env do
       when is_binary(value) and is_integer(schedulers_online) and schedulers_online > 0 do
     case String.trim(value) do
       "" ->
-        min(schedulers_online * @http_acceptors_per_scheduler, @max_http_acceptors)
+        schedulers =
+          schedulers_online
+          |> max(@min_http_acceptor_schedulers)
+          |> min(@max_http_acceptor_schedulers)
+
+        @min_http_acceptors +
+          div(
+            (schedulers - @min_http_acceptor_schedulers) *
+              (@max_http_acceptors - @min_http_acceptors),
+            @max_http_acceptor_schedulers - @min_http_acceptor_schedulers
+          )
 
       trimmed ->
         case Integer.parse(trimmed) do

@@ -32,21 +32,26 @@ defmodule Logflare.RuntimeConfigurationTest do
            ]
   end
 
-  test "scales HTTP acceptors with online schedulers" do
-    assert Env.http_num_acceptors(nil, 1) == 40
-    assert Env.http_num_acceptors(nil, 2) == 80
-    assert Env.http_num_acceptors(nil, 4) == 160
-    assert Env.http_num_acceptors(nil, 31) == 1240
+  test "uses 100 HTTP acceptors at two or fewer schedulers" do
+    assert Env.http_num_acceptors(nil, 1) == 100
+    assert Env.http_num_acceptors(nil, 2) == 100
   end
 
-  test "caps scaled HTTP acceptors at 1250" do
+  test "scales HTTP acceptors linearly between 2 and 32 schedulers" do
+    assert Env.http_num_acceptors(nil, 3) == 138
+    assert Env.http_num_acceptors(nil, 4) == 176
+    assert Env.http_num_acceptors(nil, 16) == 636
+    assert Env.http_num_acceptors(nil, 31) == 1211
+  end
+
+  test "caps scaled HTTP acceptors at 1250 from 32 schedulers" do
     assert Env.http_num_acceptors(nil, 32) == 1250
     assert Env.http_num_acceptors(nil, 128) == 1250
   end
 
   test "treats a blank HTTP acceptor override as unset" do
-    assert Env.http_num_acceptors("", 2) == 80
-    assert Env.http_num_acceptors(" \t\n", 2) == 80
+    assert Env.http_num_acceptors("", 4) == 176
+    assert Env.http_num_acceptors(" \t\n", 4) == 176
   end
 
   test "uses an explicit HTTP acceptor override without the cap" do
