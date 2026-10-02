@@ -150,7 +150,7 @@ defmodule Logflare.Mixfile do
       {:poison, "~> 5.0.0", override: true},
       {:swoosh, "~> 1.0"},
       {:ex_twilio, "~> 0.8.1"},
-      {:tesla, "~> 1.6"},
+      {:tesla, "~> 1.21"},
 
       # Concurrency and pipelines
       {:broadway, "~> 1.3"},
