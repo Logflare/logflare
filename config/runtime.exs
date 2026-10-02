@@ -745,3 +745,5 @@ if spool_overrides != [] do
          :spool,
          Keyword.merge(Application.get_env(:logflare, :spool, []), spool_overrides)
 end
+
+config :logflare, Logflare.Backends.Spool.SpoolAck, ack_stale: Env.get_boolean("SPOOL_ACK_STALE")

@@ -8,6 +8,12 @@ defmodule Logflare.Backends.Spool.SpoolAckTest do
 
   setup :set_mimic_global
 
+  setup do
+    :ets.delete_all_objects(:spool_ack)
+    on_exit(fn -> :ets.delete_all_objects(:spool_ack) end)
+    :ok
+  end
+
   defp unique_handle, do: "handle-#{System.unique_integer([:positive])}"
 
   describe "nil handle" do

@@ -15,8 +15,9 @@ defmodule Logflare.Backends.Spool.SpoolAck do
   the message redelivers instead, giving it a fresh attempt from the
   durable spool file. That leaves the old handle's row orphaned, so a
   periodic sweep (`sweep_stale/1`) reclaims any row older than
-  `@stale_after_ms`. Set `config :logflare, #{inspect(__MODULE__)}, ack_stale: true`
-  to also ack those rows instead of just discarding them.
+  `@stale_after_ms`. Set `SPOOL_ACK_STALE=true` (or
+  `config :logflare, #{inspect(__MODULE__)}, ack_stale: true`) to also ack
+  those rows instead of just discarding them — off by default.
   """
 
   use GenServer
