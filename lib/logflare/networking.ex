@@ -16,6 +16,7 @@ defmodule Logflare.Networking do
 
   @s3_connect_timeout :timer.seconds(5)
   @s3_send_timeout :timer.seconds(30)
+  @spool_pool_size 150
 
   def pools do
     if SingleTenant.postgres_backend?() do
@@ -37,7 +38,7 @@ defmodule Logflare.Networking do
            :default => [protocols: [:http1]]
          }
          |> Map.merge(datadog_connection_pools())}
-      | base_finch_pools()
+      | spool_finch_pools() ++ base_finch_pools()
     ]
   end
 
@@ -70,24 +71,6 @@ defmodule Logflare.Networking do
            start_pool_metrics?: true
          ]
        }},
-      # Dedicated pool for the spool producer/consumer's GCS + Pub/Sub calls.
-      {Finch,
-       name: Logflare.FinchSpool,
-       pools: %{
-         :default => [protocols: [:http1]],
-         "https://storage.googleapis.com" => [
-           protocols: [:http1],
-           size: max(base * 150, 150),
-           count: http1_count,
-           start_pool_metrics?: true
-         ],
-         "https://pubsub.googleapis.com" => [
-           protocols: [:http1],
-           size: max(base * 150, 150),
-           count: http1_count,
-           start_pool_metrics?: true
-         ]
-       }},
       {Finch,
        name: Logflare.FinchDefault,
        pools:
@@ -103,8 +86,59 @@ defmodule Logflare.Networking do
            ]
          }
          |> Map.merge(datadog_connection_pools())}
-      | base_finch_pools()
+      | spool_finch_pools() ++ base_finch_pools()
     ]
+  end
+
+  defp spool_finch_pools do
+    spool_config = Application.get_env(:logflare, :spool, [])
+
+    case Keyword.get(spool_config, :provider, :aws) do
+      :gcp -> [spool_gcs_pubsub_pool()]
+      _aws -> [spool_s3_pool(), spool_sqs_pool()]
+    end
+  end
+
+  defp spool_gcs_pubsub_pool do
+    {Finch,
+     name: Logflare.FinchSpool,
+     pools: %{
+       :default => [protocols: [:http1]],
+       "https://storage.googleapis.com" => [
+         protocols: [:http1],
+         size: @spool_pool_size,
+         start_pool_metrics?: true
+       ],
+       "https://pubsub.googleapis.com" => [
+         protocols: [:http1],
+         size: @spool_pool_size,
+         start_pool_metrics?: true
+       ]
+     }}
+  end
+
+  defp spool_s3_pool do
+    {Finch,
+     name: Logflare.FinchSpoolS3,
+     pools: %{
+       default: [
+         protocols: [:http1],
+         size: @spool_pool_size,
+         start_pool_metrics?: true
+       ]
+     }}
+  end
+
+  defp spool_sqs_pool do
+    {Finch,
+     name: Logflare.FinchSpoolSQS,
+     pools: %{
+       default: [
+         protocols: [:http1],
+         size: @spool_pool_size,
+         start_pool_metrics?: true
+       ]
+     }}
   end
 
   defp base_finch_pools do
