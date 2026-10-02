@@ -7,6 +7,12 @@
 ## Increase number of concurrent ports/sockets
 ##+Q 65536
 
+## Poll sockets with 4 threads over 4 pollsets instead of 1, so one thread does not handle all connections.
+## https://www.erlang.org/doc/apps/erts/erl_cmd.html#%2BIOt
+## https://www.erlang.org/doc/apps/erts/erl_cmd.html#%2BIOp
++IOt 4
++IOp 4
+
 ## Tweak GC to run more often
 ##-env ERL_FULLSWEEP_AFTER 10
 
