@@ -42,6 +42,7 @@ All browser authentication will be disabled when in single-tenant mode.
 | `DB_SCHEMA`                                    | String, defaults to `nil`                                               | Allows configuration of the database schema to scope Logflare operations.                                                                                                                                                                                            |
 | `DB_SSL`                                       | Boolean, defaults to `false`                                            | Enables SSL/TLS connection to the internal Logflare database. Requires certificate files when enabled. See [Database SSL Configuration](#database-ssl-configuration).                                                                                                |
 | `LOGFLARE_READ_REPLICAS`                       | String, defaults to `nil`                                               | Comma-separated list of PostgreSQL read replicas. If unset, all queries go to the primary. See [Read Replicas](#read-replicas).                                                                                                                                     |
+| `LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS` | String, defaults to `nil`                                             | Comma-separated list of pglogical replication set names. If set, `mix ecto.migrate`/`mix ecto.rollback` route DDL through `pglogical.replicate_ddl_command/2` so it propagates to replicas subscribed to these sets. See [pglogical DDL Replication](#pglogical-ddl-replication).                                                                                                                                     |
 | `RDS_CA_CERT_PATH`                             | String, defaults to the container bundle path                           | Additional AWS RDS CA bundle for primary or replica IAM connections. Set it outside container images and for non-commercial AWS partitions.                                                                                                                          |
 | `LOGFLARE_LOG_LEVEL`                           | String, defaults to `info`. <br/>Options: `error`,`warning`, `info`     | Allows runtime configuration of log level.                                                                                                                                                                                                                           |
 | `LOGFLARE_NODE_HOST`                           | string, defaults to `127.0.0.1`                                         | Sets node host on startup, which affects the node name `logflare@<host>`                                                                                                                                                                                             |
@@ -223,6 +224,22 @@ IAM connections always use peer and hostname verification. `ssl=false` is reject
 Logflare marks each replica session read-only with `SET default_transaction_read_only = on`. This makes accidental writes fail immediately on logical replicas; physical standbys already enforce read-only operation.
 
 PostgreSQL RDS Proxy [pins sessions that issue `SET`](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy-pinning.html), so each Logflare replica connection keeps one database connection for its lifetime. Size the proxy and database connection limits for that behavior.
+
+## pglogical DDL Replication
+
+`LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS` is a comma-separated list of [pglogical](https://github.com/2ndQuadrant/pglogical) replication set names, for example `my_set` or `my_set,other_set`. Each name must be a valid Postgres identifier (letters, digits, underscores; not starting with a digit).
+
+When set to a non-empty value, `mix ecto.migrate` and `mix ecto.rollback` route DDL through `pglogical.replicate_ddl_command/2` instead of running it directly, so schema changes propagate to any replicas subscribed to the given replication sets. If unset or empty, migrations run directly against the primary database, unchanged.
+
+This only affects how Logflare runs its own Ecto migrations at deploy time - it does not change ingestion, query, or read-replica behavior described above. It is intended for self-hosted deployments that use pglogical for logical replication and need DDL changes (not just data) to replicate to subscriber nodes.
+
+As pglogical resets `search_path` while applying replicated DDL, Logflare re-applies the schema configured via `DB_SCHEMA` for the duration of the migration when this setting is enabled.
+
+Example:
+
+```
+LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS=my_set,my_other_set
+```
 
 ## Database Encryption
 

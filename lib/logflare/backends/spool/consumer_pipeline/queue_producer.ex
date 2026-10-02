@@ -37,15 +37,16 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   ## Draining
 
   Implements `Broadway.Producer.prepare_for_draining/1`: freezes
-  `handle_demand/2` and the `:poll` loop, acks `current` if already fully
-  exhausted, and nacks everything else (including any in-flight prefetch)
-  so it's redelivered rather than silently lost.
+  `handle_demand/2` and the `:poll` loop, and nacks anything not yet fully
+  handed off (including any in-flight prefetch) so it's redelivered rather
+  than silently lost.
 
   ## Queue acking
 
-  A queue message is acked once all of its file's segments have been
-  transferred into the emit buffer and drained, regardless of whether
-  Broadway has actually finished processing them.
+  This producer never acks a queue message directly. It registers each
+  handle with `SpoolAck` and bumps it once per segment; `SpoolAck` performs
+  the real ack once every segment and the events they decoded into have
+  all been processed (see its moduledoc).
 
   ## Spool file format
 
@@ -66,6 +67,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   alias Logflare.Backends.Spool.Encoder
   alias Logflare.Backends.Spool.MemoryMonitor
+  alias Logflare.Backends.Spool.SpoolAck
 
   @throttle_interval 100
   @min_backoff 100
@@ -118,8 +120,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   @impl Broadway.Producer
   def prepare_for_draining(state) do
-    state = maybe_ack_exhausted(state)
-
     if handle = current_handle(state.current) do
       nack_and_notify(state.queue_mod, state.queue_url, handle, :draining)
     end
@@ -131,6 +131,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     {:noreply, [], %{state | draining: true, demand: 0, current: nil, prefetch: nil}}
   end
 
+  defp current_handle(%{segments: [], handle: _}), do: nil
   defp current_handle(%{handle: handle}), do: handle
   defp current_handle(nil), do: nil
 
@@ -180,7 +181,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
           {[], state}
         else
           state
-          |> maybe_ack_exhausted()
+          |> maybe_clear_exhausted()
           |> maybe_load_next()
           |> maybe_start_prefetch()
           |> emit_from_buffer()
@@ -253,14 +254,14 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   defp buffered?(%{current: %{segments: []}}), do: false
   defp buffered?(_), do: true
 
-  defp maybe_ack_exhausted(%{current: %{segments: [], handle: handle}} = state) do
-    ack_and_notify(state.queue_mod, state.queue_url, handle, :buffer_exhausted)
-    %{state | current: nil}
-  end
+  defp maybe_clear_exhausted(%{current: %{segments: []}} = state),
+    do: %{state | current: nil}
 
-  defp maybe_ack_exhausted(state), do: state
+  defp maybe_clear_exhausted(state), do: state
 
   defp maybe_load_next(%{current: nil, prefetch: {:ready, {:ok, handle, segments}}} = state) do
+    SpoolAck.register(handle, state.queue_mod, state.queue_url)
+    SpoolAck.bump(handle, length(segments))
     %{state | current: %{handle: handle, segments: segments}, prefetch: nil}
   end
 
@@ -381,7 +382,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
     if to_emit != [], do: :atomics.add(state.in_flight_ref, 1, bytes_emitted)
 
-    events = Enum.map(to_emit, &%{segment: &1})
+    handle = state.current.handle
+    events = Enum.map(to_emit, &%{segment: &1, handle: handle})
 
     new_state = %{
       state

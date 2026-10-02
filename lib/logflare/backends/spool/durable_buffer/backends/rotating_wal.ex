@@ -32,13 +32,16 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
   backend restart to recover.
 
   Rotation is triggered by `max_batch_bytes`, or by `max_rotation_interval_ms`
-  elapsing since the last rotation — whichever comes first. The time
-  check runs inside `commit/4`, since that's already invoked on whatever
-  cadence the owning `DurableBuffer.Partition` group-commits at — no
-  separate timer needed. That only helps while commits keep happening,
-  though, so a pending tail is also rotated on `close/1` (a clean
-  shutdown), leaving only an unclean kill between commits as an accepted
-  gap.
+  elapsing since the last rotation — whichever comes first. The size check
+  runs inside `commit/4`, since that's already invoked on whatever cadence
+  the owning `DurableBuffer.Partition` group-commits at. The time check
+  additionally runs on its own `:timer.send_interval/2` tick — delivered to
+  the owning process as `{:backend, :flush_tick}` and routed here via
+  `handle_message/2` — so a pending tail still gets rotated and shipped once
+  `max_rotation_interval_ms` elapses even after traffic stops entirely (e.g.
+  draining), instead of waiting on a commit that may never come. A pending
+  tail is also rotated on `close/1` (a clean shutdown), leaving only an
+  unclean kill as an accepted gap.
   """
 
   @behaviour DurableBuffer.Backend
@@ -74,6 +77,9 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
     {offset, _entry_count} = WAL.recover!(path)
     {:ok, fd} = :file.open(path, [:append, :raw, :binary])
 
+    {:ok, flush_timer} =
+      :timer.send_interval(config.max_rotation_interval_ms, {:backend, :flush_tick})
+
     state = %{
       config: config,
       partition_index: partition_index,
@@ -82,6 +88,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
       offset: offset,
       pending_bytes: 0,
       last_rotation_at: System.monotonic_time(:millisecond),
+      flush_timer: flush_timer,
       workers: start_workers(config, partition_index)
     }
 
@@ -114,6 +121,13 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
   end
 
   @impl true
+  def handle_message(:flush_tick, state) do
+    state = replace_dead_workers(state)
+    state = if state.pending_bytes > 0 and should_rotate?(state), do: rotate(state), else: state
+    {[], state}
+  end
+
+  @impl true
   def stream(_config, _partition_index) do
     raise "#{inspect(__MODULE__)} does not support stream/2 — consumption happens via " <>
             "the inner backend's own fan-out, not by reading this buffer back."
@@ -129,6 +143,8 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
 
   @impl true
   def close(state) do
+    {:ok, :cancel} = :timer.cancel(state.flush_timer)
+
     # Ships whatever hasn't crossed max_batch_bytes/max_rotation_interval_ms
     # yet, so a clean shutdown doesn't leave a tail waiting on traffic that
     # may not resume for a while (an unclean kill is still an accepted gap —

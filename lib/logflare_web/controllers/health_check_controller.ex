@@ -1,6 +1,7 @@
 defmodule LogflareWeb.HealthCheckController do
   use LogflareWeb, :controller
 
+  alias Logflare.Backends
   alias Logflare.Backends.Spool.Health, as: SpoolHealth
   alias Logflare.JSON
   alias Logflare.Cluster
@@ -33,9 +34,8 @@ defmodule LogflareWeb.HealthCheckController do
         # checks that db can execute query and that repo is connected and up
         repo_uptime > 0,
         Enum.all?(Map.values(caches), &(&1 == :ok)),
-        memory_utilization < max_memory_ratio
-        # Temporarily not gating the health check on SpoolHealth.healthy?()
-        # until it's been observed in production for a while.
+        memory_utilization < max_memory_ratio,
+        Backends.spool_healthcheck_ok?()
       ]
       |> Enum.all?()
 

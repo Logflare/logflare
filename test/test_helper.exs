@@ -8,6 +8,7 @@ Mimic.copy(Broadway)
 Mimic.copy(Logflare.Backends.Spool.MemoryMonitor)
 Mimic.copy(Logflare.Backends.Spool.Storage.GCS)
 Mimic.copy(Logflare.Backends.Spool.Queue.PubSub)
+Mimic.copy(Logflare.Backends.Spool.SpoolAck)
 Mimic.copy(Ch)
 Mimic.copy(ConfigCat)
 Mimic.copy(ConfigCat.User)
@@ -43,6 +44,7 @@ Mimic.copy(Tesla.Adapter.Finch)
 Mimic.copy(Logflare.Admin)
 Mimic.copy(Logflare.Auth)
 Mimic.copy(Logflare.Backends)
+Mimic.copy(Logflare.Sources.Source.ChannelTopics)
 Mimic.copy(Logflare.Backends.Adaptor)
 Mimic.copy(Logflare.Backends.Adaptor.AxiomAdaptor)
 Mimic.copy(Logflare.Backends.Adaptor.BigQueryAdaptor)
@@ -104,7 +106,8 @@ ExUnit.configure(
     feature: true,
     integration: true,
     failing: true,
-    benchmark: true
+    benchmark: true,
+    pglogical_replica: true
   ]
 )
 

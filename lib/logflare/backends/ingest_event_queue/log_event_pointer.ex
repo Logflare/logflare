@@ -15,6 +15,10 @@ defmodule Logflare.Backends.IngestEventQueue.LogEventPointer do
   `Logflare.Backends.IngestEventQueue.reinsert_pointer/1`) without going through
   round-robin redistribution — the producer that owns `queue_tid` just proved itself
   alive by claiming this.
+
+  `spool_handle` is the spool queue message this event was decoded from (or `nil`) —
+  carried here so `Logflare.Backends.Spool.SpoolAck` can be told this pointer is done
+  without resolving the event body first.
   """
 
   alias Logflare.LogEvent.TypeDetection
@@ -37,7 +41,8 @@ defmodule Logflare.Backends.IngestEventQueue.LogEventPointer do
     :size,
     :retries,
     :event_type,
-    :day_bucket
+    :day_bucket,
+    :spool_handle
   ]
 
   @type t :: %__MODULE__{
@@ -48,6 +53,7 @@ defmodule Logflare.Backends.IngestEventQueue.LogEventPointer do
           size: non_neg_integer(),
           retries: non_neg_integer(),
           event_type: TypeDetection.event_type(),
-          day_bucket: integer()
+          day_bucket: integer(),
+          spool_handle: term()
         }
 end
