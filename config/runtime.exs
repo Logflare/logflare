@@ -746,4 +746,10 @@ if spool_overrides != [] do
          Keyword.merge(Application.get_env(:logflare, :spool, []), spool_overrides)
 end
 
-config :logflare, Logflare.Backends.Spool.SpoolAck, ack_stale: Env.get_boolean("SPOOL_ACK_STALE")
+spool_ack_stale? =
+  case System.get_env("SPOOL_ACK_STALE") do
+    v when v in [nil, ""] -> false
+    v -> String.downcase(v) == "true"
+  end
+
+config :logflare, Logflare.Backends.Spool.SpoolAck, ack_stale: spool_ack_stale?
