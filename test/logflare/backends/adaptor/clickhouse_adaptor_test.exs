@@ -2491,7 +2491,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       stub(Ch, :query, fn pool, statement, params, opts ->
         {:via, Registry, {_registry, {_mod, ^backend_id, label}}} = pool
-        send(parent, {:ch_query, label, Keyword.get(opts, :headers, [])})
+
+        send(
+          parent,
+          {:ch_query, label, Keyword.get(opts, :headers, []), Keyword.get(opts, :settings)}
+        )
 
         case label do
           "api" -> {:error, %DBConnection.ConnectionError{message: "unreachable"}}
@@ -2503,14 +2507,45 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         assert {:ok, %QueryResult{}} =
                  ClickHouseAdaptor.execute_query(
                    backend,
-                   {"SELECT 1 as test", [], %{"project" => "abcdefghij"}},
+                   endpoint_query_args("SELECT 1 as test", 1, [], %{"project" => "abcdefghij"}),
                    read_cluster: "api"
                  )
       end)
 
-      assert_received {:ch_query, "api", [{"x-clickhouse-replica-tag", "abcdefghij"}]}
+      assert_received {:ch_query, "api", [{"x-clickhouse-replica-tag", "abcdefghij"}],
+                       [wait_end_of_query: 1, http_response_buffer_size: 1_048_576]}
 
-      assert_received {:ch_query, "dashboard_logs", [{"x-clickhouse-replica-tag", "abcdefghij"}]}
+      assert_received {:ch_query, "dashboard_logs", [{"x-clickhouse-replica-tag", "abcdefghij"}],
+                       [wait_end_of_query: 1, http_response_buffer_size: 1_048_576]}
+    end
+
+    test "buffers capped endpoint results and preserves other query settings", %{
+      backend: backend
+    } do
+      expect(Ch, :query, fn pool, statement, params, opts ->
+        settings = Keyword.fetch!(opts, :settings)
+        assert settings[:wait_end_of_query] == 1
+        assert settings[:http_response_buffer_size] == 1_048_576
+        assert settings[:max_threads] == 1
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert {:ok, %QueryResult{rows: [%{"number" => 0}]}} =
+               ClickHouseAdaptor.execute_query(
+                 backend,
+                 endpoint_query_args("SELECT number FROM numbers(10) ORDER BY number", 1),
+                 settings: [max_threads: 1, http_response_buffer_size: 0]
+               )
+    end
+
+    test "does not buffer unrestricted ClickHouse queries", %{backend: backend} do
+      expect(Ch, :query, fn pool, statement, params, opts ->
+        assert Keyword.fetch!(opts, :settings) == []
+        Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
+      assert {:ok, %QueryResult{rows: [%{"number" => 0}]}} =
+               ClickHouseAdaptor.execute_query(backend, "SELECT number FROM numbers(1)", [])
     end
 
     test "enforces an endpoint max_limit exactly in the submitted SQL", %{backend: backend} do
