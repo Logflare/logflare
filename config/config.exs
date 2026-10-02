@@ -162,6 +162,11 @@ config :tesla, GoogleApi.Storage.V1.Connection,
 config :tesla, GoogleApi.PubSub.V1.Connection,
   adapter: {Tesla.Adapter.Finch, name: Logflare.FinchSpool, receive_timeout: 60_000}
 
+# google_gax caps a decompressed response at 32 MB by default. Spool WAL segments
+# rotate once they cross RotatingWal's 32 MiB max_batch_bytes, so a segment fetched
+# back from GCS can exceed that cap.
+config :google_api_storage, max_body_size: 128 * 1024 * 1024
+
 config :number,
   delimit: [
     precision: 0,
