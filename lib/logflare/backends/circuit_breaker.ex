@@ -1,12 +1,14 @@
-defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker do
+defmodule Logflare.Backends.CircuitBreaker do
   @moduledoc """
-  Per-backend circuit breaker for ClickHouse insert retries, backed by ETS.
+  Per-backend circuit breaker for write retries, backed by ETS.
 
-  Trips when the number of insert failures within `window_ms` reaches
+  Trips when the number of write failures within `window_ms` reaches
   `max_failures`, after which `check/1` reports the breaker open for `block_ms`.
-  The pipeline uses this to shed **retries** while open;
-  initial insert attempts are never blocked. This stops requeued retries from
-  compounding load on a struggling ClickHouse cluster.
+  A pipeline uses this to shed **retries** while open;
+  initial write attempts are never blocked. This stops requeued retries from
+  compounding load on a struggling destination.
+
+  Used by the ClickHouse pipeline.
   """
 
   use GenServer
@@ -27,6 +29,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker do
 
   typedstruct do
     field :backend_id, pos_integer(), enforce: true
+    field :backend_type, atom(), enforce: true
     field :table, :ets.table(), enforce: true
     field :failures, [integer()], default: []
   end
@@ -46,7 +49,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker do
   end
 
   @doc """
-  Returns `:ok` if inserts are allowed, or `{:error, :circuit_open, blocked_until}`
+  Returns `:ok` if retries are allowed, or `{:error, :circuit_open, blocked_until}`
   when the breaker is open.
 
   Reads the breaker's ETS table directly via the backend registry, so a missing
@@ -67,7 +70,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker do
   end
 
   @doc """
-  Records a single insert failure for the backend.
+  Records a single write failure for the backend.
 
   Best-effort async cast. The breaker trips once `max_failures` failures land
   within `window_ms`.
@@ -123,10 +126,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker do
   end
 
   @impl true
-  def init(%Backend{id: backend_id}) do
-    table = :ets.new(:clickhouse_circuit_breaker, [:set, :public, read_concurrency: true])
+  def init(%Backend{id: backend_id, type: backend_type}) do
+    table = :ets.new(:backend_circuit_breaker, [:set, :public, read_concurrency: true])
     Registry.update_value(BackendRegistry, {__MODULE__, backend_id}, fn _ -> table end)
-    {:ok, %__MODULE__{backend_id: backend_id, table: table}}
+    {:ok, %__MODULE__{backend_id: backend_id, backend_type: backend_type, table: table}}
   end
 
   @impl true
@@ -157,17 +160,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker do
     blocked_until = now + block_ms()
     :ets.insert(state.table, {@blocked_key, blocked_until})
 
-    Logger.warning("ClickHouse circuit breaker opened",
+    Logger.warning("Backend circuit breaker opened",
       backend_id: state.backend_id,
+      backend_type: state.backend_type,
       blocked_until: blocked_until,
       failures: failure_count,
       reason: reason
     )
 
     :telemetry.execute(
-      [:logflare, :clickhouse, :circuit_breaker, :open],
+      [:logflare, :backends, :circuit_breaker, :open],
       %{failures: failure_count},
-      %{backend_id: state.backend_id, reason: reason}
+      state |> Map.take([:backend_id, :backend_type]) |> Map.put(:reason, reason)
     )
 
     %{state | failures: []}
