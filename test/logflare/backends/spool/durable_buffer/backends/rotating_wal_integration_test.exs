@@ -94,4 +94,50 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWalIntegrationT
     assert_receive {:publish, "projects/p/topics/t", notify_body}
     assert %{"event_count" => 1} = Jason.decode!(notify_body)
   end
+
+  test "a tail below max_batch_bytes still ships once traffic stops (draining)" do
+    test_pid = self()
+
+    stub(StorageMod, :put, fn _b, _k, body, _opts ->
+      send(test_pid, {:put, body})
+      {:ok, %{}}
+    end)
+
+    stub(QueueMod, :publish, fn ref, body ->
+      send(test_pid, {:publish, ref, body})
+      :ok
+    end)
+
+    name = :"rotating_wal_drain_#{System.unique_integer([:positive])}"
+
+    backend =
+      {
+        RotatingWal,
+        # Large enough that the append below never crosses it on its own —
+        # only the idle-flush tick can rotate this tail.
+        wal_dir: wal_dir!(),
+        max_batch_bytes: 1_000_000,
+        max_rotation_interval_ms: 20,
+        worker_count: 1,
+        inner_backend:
+          {Cloud,
+           bucket: "test-bucket",
+           storage_mod: StorageMod,
+           queue_mod: QueueMod,
+           queue_ref: "projects/p/topics/t",
+           compress: false}
+      }
+
+    start_supervised!({DurableBuffer, name: name, backend: backend, partitions: 1})
+
+    payload = <<1::32-big, "hello, draining"::binary>>
+    assert {:ok, _offset} = DurableBuffer.append(name, :some_key, payload)
+
+    # No further traffic after this — simulates the last append before a
+    # drain. Without the idle-flush tick, this tail would sit in the local
+    # WAL file forever.
+    assert_receive {:put, body}, 200
+    assert {[^payload], _valid, ""} = DurableBuffer.WAL.decode_all(body)
+    assert_receive {:publish, "projects/p/topics/t", _notify_body}, 200
+  end
 end

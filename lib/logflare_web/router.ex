@@ -282,6 +282,7 @@ defmodule LogflareWeb.Router do
 
     live_session :without_team_param, on_mount: @common_on_mount_hooks ++ @auth_live_hooks do
       live("/access-tokens", AccessTokensLive, :index)
+      live("/access-tokens/new", AccessTokensLive, :new)
 
       scope "/integrations" do
         live("/vercel/edit", VercelLogDrainsLive, :edit)
