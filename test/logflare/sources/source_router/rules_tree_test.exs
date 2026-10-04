@@ -20,6 +20,30 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
       assert @subject.build([]) == []
     end
 
+    test "positional routing keeps unsorted, non-contiguous IDs aligned with targets" do
+      rules = [
+        %Rule{id: 91, backend_id: 910, lql_filters: [filter("project", :=, "late")]},
+        %Rule{id: 5, backend_id: 50, lql_filters: [filter("project", :=, "early")]},
+        %Rule{id: 42, backend_id: 420, lql_filters: [filter("project", :=, "middle")]}
+      ]
+
+      {tree, targets} = @subject.build_routing(rules)
+      assert Enum.map(targets, &Target.id/1) == [5, 42, 91]
+
+      for {value, expected_position, expected_id} <- [
+            {"early", 0, 5},
+            {"middle", 1, 42},
+            {"late", 2, 91}
+          ] do
+        positions = @subject.matching_positions(%LogEvent{body: %{"project" => value}}, tree)
+        assert positions == [expected_position]
+
+        assert positions |> Enum.map(&Enum.at(targets, &1)) |> Enum.map(&Target.id/1) == [
+                 expected_id
+               ]
+      end
+    end
+
     test "Two simple rules" do
       rules = [
         %Rule{
@@ -414,7 +438,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
       assert Target.id(target) == hd(source.rules).id
     end
 
-    test "drops matched rule IDs missing from the snapshot", %{source: source, log_event: le} do
+    test "drops matched positions missing from the snapshot", %{source: source, log_event: le} do
       {tree, _targets} = Rules.rules_tree_by_source_id(source.id)
 
       expect(Rules, :rules_tree_by_source_id, fn _id -> {tree, []} end)
@@ -422,17 +446,17 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
       assert @subject.matching_rules(le, source) == []
     end
 
-    test "the snapshot resolves every rule ID its tree can match", %{
+    test "the snapshot resolves every position its tree can match", %{
       source: source,
       log_event: le
     } do
-      {tree, entries} = Rules.rules_tree_by_source_id(source.id)
+      {tree, targets} = Rules.rules_tree_by_source_id(source.id)
 
-      assert [_ | _] = rule_ids = @subject.matching_rule_ids(le, tree)
-      targets_by_id = Map.new(entries)
+      assert [_ | _] = positions = @subject.matching_positions(le, tree)
 
-      for rule_id <- rule_ids do
-        assert Map.has_key?(targets_by_id, rule_id)
+      for position <- positions do
+        assert position >= 0
+        assert position < length(targets)
       end
     end
 
@@ -449,9 +473,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
 
       {^tree, repaired} = Rules.Cache.rules_tree_by_source_id(source.id)
       assert repaired.key != snapshot.key
-
-      assert {:ok, [^target]} =
-               RoutingSnapshot.resolve_with_status(repaired, [hd(source.rules).id])
+      assert {:ok, [^target]} = RoutingSnapshot.resolve_with_status(repaired, [0])
     end
   end
 

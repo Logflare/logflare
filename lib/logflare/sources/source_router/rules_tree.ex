@@ -4,6 +4,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   alias Logflare.Rules
   alias Logflare.Rules.Rule
   alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Sources.SourceRouter.Target
 
   import Logflare.Utils, only: [stringify: 1]
 
@@ -36,9 +37,9 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
 
   @impl true
   def matching_rules_with_state(event, source, {rule_set, snapshot}) do
-    rule_ids = matching_rule_ids(event, rule_set)
+    positions = matching_positions(event, rule_set)
 
-    case Rules.RoutingSnapshot.resolve_with_status(snapshot, rule_ids) do
+    case Rules.RoutingSnapshot.resolve_with_status(snapshot, positions) do
       {:ok, targets} ->
         {targets, {rule_set, snapshot}}
 
@@ -52,6 +53,10 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
         {targets, {rule_set, snapshot}}
     end
   end
+
+  @doc false
+  @spec matching_positions(LogEvent.t(), t()) :: [non_neg_integer()]
+  def matching_positions(event, rules_tree), do: matching_rule_ids(event, rules_tree)
 
   @doc """
   Finds ids of matching rules.
@@ -230,11 +235,24 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   You can find more examples by looking at `rules_tree_test.exs`
   """
   @spec build([Rule.t()]) :: t()
-  def build(rules) do
-    for rule <- rules,
+  def build(rules), do: rules |> Enum.map(&{&1, &1.id}) |> build_targets()
+
+  @doc false
+  @spec build_routing([Rule.t()]) :: {t(), [Target.t()]}
+  def build_routing(rules) do
+    indexed_rules = rules |> Enum.sort_by(& &1.id) |> Enum.with_index()
+
+    tree = build_targets(indexed_rules)
+
+    targets = Enum.map(indexed_rules, fn {rule, _position} -> Target.from_rule(rule) end)
+    {tree, targets}
+  end
+
+  defp build_targets(rule_targets) do
+    for {rule, route_key} <- rule_targets,
         filters_num = length(rule.lql_filters),
         {filter, index} <- Enum.with_index(rule.lql_filters) do
-      target = build_target(rule.id, filters_num, index)
+      target = build_target(route_key, filters_num, index)
 
       reverse_path = String.split(filter.path, ".") |> Enum.reverse()
 

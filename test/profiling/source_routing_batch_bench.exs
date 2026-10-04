@@ -5,7 +5,6 @@ alias Logflare.Rules.Rule
 alias Logflare.Rules.RoutingSnapshot
 alias Logflare.Sources.Source
 alias Logflare.Sources.SourceRouter.RulesTree
-alias Logflare.Sources.SourceRouter.Target
 
 source_id = System.unique_integer([:positive])
 source = %Source{id: source_id}
@@ -23,8 +22,7 @@ rules =
     }
   end
 
-tree = RulesTree.build(rules)
-targets = rules |> Enum.sort_by(& &1.id) |> Enum.map(&{&1.id, Target.from_rule(&1)})
+{tree, targets} = RulesTree.build_routing(rules)
 
 snapshot =
   RoutingSnapshot.new(source_id, targets, extra_estimated_bytes: :erlang.external_size(tree))
@@ -36,7 +34,7 @@ Cachex.put!(
 )
 
 event = %LogEvent{body: %{"severity_number" => 9}, source_id: source_id}
-8 = event |> RulesTree.matching_rule_ids(tree) |> length()
+8 = event |> RulesTree.matching_positions(tree) |> length()
 
 Benchee.run(
   %{
