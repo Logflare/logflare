@@ -77,7 +77,7 @@ defmodule RoutingScaleBench do
       Jason.encode!(%{system: Map.from_struct(suite.system), results: rows}, pretty: true)
     )
 
-    IO.puts("ROUTING_RESULTS #{output}")
+    IO.write(["ROUTING_RESULTS ", output, "\n"])
 
     unless fallback? do
       footprints =
