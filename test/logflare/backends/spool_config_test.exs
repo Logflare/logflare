@@ -99,7 +99,7 @@ defmodule Logflare.Backends.SpoolConfigTest do
     test "returns the URL from SQS on success" do
       import Mimic
 
-      stub(ExAws, :request, fn _ ->
+      stub(ExAws, :request, fn _op, _opts ->
         {:ok, %{body: %{queue_url: "http://localhost:9324/000000000000/logflare-spool"}}}
       end)
 
@@ -109,7 +109,7 @@ defmodule Logflare.Backends.SpoolConfigTest do
 
     test "returns error when SQS call fails" do
       import Mimic
-      stub(ExAws, :request, fn _ -> {:error, {:http_error, 404, "not found"}} end)
+      stub(ExAws, :request, fn _op, _opts -> {:error, {:http_error, 404, "not found"}} end)
       assert {:error, _} = SQS.resolve("logflare-spool")
     end
   end
