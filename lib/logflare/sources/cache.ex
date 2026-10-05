@@ -40,6 +40,9 @@ defmodule Logflare.Sources.Cache do
       nil ->
         nil
 
+      {:error, :database_unavailable} = err ->
+        err
+
       %Source{} = source ->
         source
         |> preload_rules()

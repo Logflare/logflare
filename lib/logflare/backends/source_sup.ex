@@ -6,6 +6,7 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Backends.SourceSupWorker
   alias Logflare.Backends
   alias Logflare.Sources.Source
+  alias Logflare.User
   alias Logflare.Users
   alias Logflare.Billing
   alias Logflare.Sources.Source.RateCounterServer
@@ -59,15 +60,16 @@ defmodule Logflare.Backends.SourceSup do
       Backends.Cache.list_backends(rules_source_id: source.id)
       |> Enum.reject(& &1.consolidated_ingest?)
 
-    user = Users.Cache.get(source.user_id)
-    Billing.Cache.get_plan_by_user(user)
+    with %User{} = user <- Users.Cache.get(source.user_id) do
+      Billing.Cache.get_plan_by_user(user)
 
-    started_backends =
-      [Backends.get_default_backend(user) | source_backends]
-      |> Enum.concat(rules_backends)
+      started_backends =
+        [Backends.get_default_backend(user) | source_backends]
+        |> Enum.concat(rules_backends)
 
-    if Enum.any?(started_backends, &(&1.type == :bigquery)) do
-      SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
+      if Enum.any?(started_backends, &(&1.type == :bigquery)) do
+        SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
+      end
     end
 
     :ok
@@ -85,7 +87,7 @@ defmodule Logflare.Backends.SourceSup do
       |> Enum.reject(& &1.consolidated_ingest?)
       |> Enum.map(&%{&1 | register_for_ingest: false})
 
-    user = Users.Cache.get(source.user_id)
+    user = Users.Cache.get!(source.user_id)
 
     plan = Billing.Cache.get_plan_by_user(user)
 

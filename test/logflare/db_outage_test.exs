@@ -263,6 +263,33 @@ defmodule Logflare.DbOutageTest do
 
       assert_receive ^ref, 2_000
     end
+
+    test "a rule routing to a sink source does not crash when the sink is uncached",
+         %{conn: conn, user: user, source: source, unreachable_repo: pid} do
+      sink = insert(:source, user: user)
+      insert(:rule, source: source, sink: sink.token, lql_string: "testing")
+      start_supervised!({SourceSup, sink})
+
+      {_pid, warmup_ref} = expect_webhook_success()
+      conn = put_req_header(conn, "x-api-key", user.api_key)
+
+      assert conn
+             |> post("/logs?source=#{source.token}", %{"message" => "before outage"})
+             |> response(200)
+
+      assert_receive ^warmup_ref, 2_000
+
+      # the warmup message does not match the rule, so the sink was never cached
+      cut_database_connections(pid)
+
+      {_pid, ref} = expect_webhook_success()
+
+      assert conn
+             |> post("/logs?source=#{source.token}", %{"message" => "testing"})
+             |> response(200)
+
+      assert_receive ^ref, 2_000
+    end
   end
 
   describe "ContextCache.fetch/3 when the getter cannot reach the database" do

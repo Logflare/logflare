@@ -15,6 +15,7 @@ defmodule LogflareWeb.Plugs.FetchResource do
   alias Logflare.Sources
   alias Logflare.Endpoints
   alias Logflare.Utils
+  alias LogflareWeb.Api.FallbackController
 
   def init(_opts), do: nil
 
@@ -27,11 +28,8 @@ defmodule LogflareWeb.Plugs.FetchResource do
       when is_map_key(params, "source_name") or is_map_key(params, "collection_name") do
     name = params["source_name"] || params["collection_name"]
 
-    source =
-      Sources.Cache.get_by_and_preload_rules(name: name, user_id: user.id)
-      |> Sources.refresh_source_metrics_for_ingest()
-
-    assign(conn, :source, source)
+    Sources.Cache.get_by_and_preload_rules(name: name, user_id: user.id)
+    |> assign_source(conn)
   end
 
   # ingest by source token
@@ -40,17 +38,11 @@ defmodule LogflareWeb.Plugs.FetchResource do
       Utils.Map.get(params, :source) || Utils.Map.get(params, :collection) ||
         get_source_from_headers(conn)
 
-    source =
-      case uuid?(token) do
-        true ->
-          Sources.Cache.get_by_and_preload_rules(token: token)
-          |> Sources.refresh_source_metrics_for_ingest()
-
-        _ ->
-          nil
-      end
-
-    assign(conn, :source, source)
+    case uuid?(token) do
+      true -> Sources.Cache.get_by_and_preload_rules(token: token)
+      _ -> nil
+    end
+    |> assign_source(conn)
   end
 
   def call(
@@ -95,6 +87,14 @@ defmodule LogflareWeb.Plugs.FetchResource do
   end
 
   def call(conn, _), do: conn
+
+  # the source is not cached and the primary database is unreachable, so we cannot
+  # tell whether it exists - ask the client to retry instead of rejecting outright
+  defp assign_source({:error, :database_unavailable} = err, conn),
+    do: FallbackController.call(conn, err)
+
+  defp assign_source(source, conn),
+    do: assign(conn, :source, Sources.refresh_source_metrics_for_ingest(source))
 
   # returns true if it is a valid uuid4 string
   defp uuid?(value) when is_binary(value) do

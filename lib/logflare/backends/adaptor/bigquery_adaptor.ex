@@ -58,7 +58,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   def init({source, backend}) do
     backend = backend || %Backend{}
 
-    user = Users.Cache.get(source.user_id)
+    user = Users.Cache.get!(source.user_id)
     plan = Billing.Cache.get_plan_by_user(user)
 
     project_id = backend.config.project_id
