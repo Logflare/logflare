@@ -524,6 +524,23 @@
               Required by SigNoz Cloud, and typically unset for self-managed deployments
             </small>
           </div>
+        <% "victoria_metrics" -> %>
+          <div class="form-group">
+            {label(f_config, :url, "Remote Write URL (Required)")}
+            {text_input(f_config, :url, class: "form-control")}
+            <small class="form-text text-muted">
+              The Prometheus remote write endpoint, e.g. <code>https://victoriametrics.example.com:8428/api/v1/write</code>. Only metric events are sent
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :username, "Basic Auth Username")}
+            {text_input(f_config, :username, class: "form-control")}
+            {label(f_config, :password, "Basic Auth Password")}
+            {text_input(f_config, :password, class: "form-control", type: "password")}
+            <small class="form-text text-muted">
+              For basic auth, both username and password must be provided.
+            </small>
+          </div>
         <% "google_secops" -> %>
           <div class="form-group">
             {label(f_config, :region, "Region")}

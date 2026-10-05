@@ -504,6 +504,18 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: [:endpoint]
   end
 
+  defmodule VictoriaMetricsConfigSchema do
+    @properties %{
+      url: %Schema{type: :string},
+      headers: %Schema{type: :object},
+      username: %Schema{type: :string, nullable: true},
+      password: %Schema{type: :string, nullable: true},
+      labels: %Schema{type: :object, nullable: true}
+    }
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:url]
+  end
+
   defmodule GoogleSecOpsConfigSchema do
     @properties %{
       region: %Schema{type: :string},
@@ -559,6 +571,7 @@ defmodule LogflareWeb.OpenApiSchemas do
           LogflareWeb.OpenApiSchemas.SigNozConfigSchema,
           LogflareWeb.OpenApiSchemas.SyslogConfigSchema,
           LogflareWeb.OpenApiSchemas.SplunkConfigSchema,
+          LogflareWeb.OpenApiSchemas.VictoriaMetricsConfigSchema,
           LogflareWeb.OpenApiSchemas.GoogleSecOpsConfigSchema
         ]
       },

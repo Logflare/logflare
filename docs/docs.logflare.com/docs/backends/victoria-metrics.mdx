@@ -1,0 +1,28 @@
+---
+sidebar_position: 14
+---
+
+# VictoriaMetrics
+
+The VictoriaMetrics backend is **ingest-only**, and sends metric events to [VictoriaMetrics](https://victoriametrics.com) using the Prometheus remote write protocol (v1).
+
+## Behaviour and configurations
+
+### Configuration
+
+The backend can be configured with the following options:
+
+- `url` (`string`, required) - The remote write endpoint, such as `http://victoriametrics:8428/api/v1/write`.
+- `username` and `password` (`string`, optional) - Basic auth credentials. Both must be provided together.
+- `headers` (`map`, optional) - Extra headers attached to each request.
+- `labels` (`map`, optional) - Static labels added to every time series. These take precedence over event attributes with the same name.
+
+### Implementation Details
+
+Implementation is based on the [webhook backend](/backends/webhook).
+
+- Only metric events are sent, meaning events with `metadata.type` set to `metric`, as produced by OpenTelemetry metrics ingestion. Log and trace events routed to this backend are dropped.
+- Gauges and sums are sent as a single series. Histograms are sent as `_count`, `_sum` and cumulative `_bucket` series with an `le` label. Exponential histograms are dropped, as remote write v1 cannot represent them.
+- Metric and label names are converted into valid Prometheus identifiers, so `http.server.duration` becomes `http_server_duration`.
+- Each series has a `source` label set to the source name. Data point attributes with string, number or boolean values become labels; list and map values are skipped.
+- Payloads are Protobuf-encoded and snappy-compressed, and batched with a maximum of 250 events per request.
