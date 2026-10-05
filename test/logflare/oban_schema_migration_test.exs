@@ -7,13 +7,13 @@ defmodule Logflare.ObanSchemaMigrationTest do
   alias Logflare.Repo.Migrations.AddObanJobsTable
   alias Logflare.Repo.Migrations.AddObanTablesToConfiguredSchema
 
-  @historical_migration Path.expand(
-                          "../../priv/repo/migrations/20260216120000_add_oban_jobs_table.exs",
-                          __DIR__
+  @historical_migration Application.app_dir(
+                          :logflare,
+                          "priv/repo/migrations/20260216120000_add_oban_jobs_table.exs"
                         )
-  @upgrade_migration Path.expand(
-                       "../../priv/repo/migrations/20260831120000_add_oban_tables_to_configured_schema.exs",
-                       __DIR__
+  @upgrade_migration Application.app_dir(
+                       :logflare,
+                       "priv/repo/migrations/20260831120000_add_oban_tables_to_configured_schema.exs"
                      )
 
   setup do
