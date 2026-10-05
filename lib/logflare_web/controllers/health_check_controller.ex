@@ -9,6 +9,8 @@ defmodule LogflareWeb.HealthCheckController do
   alias Logflare.Sources
   alias Logflare.System
 
+  @db_answered_key {__MODULE__, :db_answered_once?}
+
   @doc """
   Readiness probe: whether this node should receive traffic.
 
@@ -28,32 +30,13 @@ defmodule LogflareWeb.HealthCheckController do
   end
 
   @doc """
-  Startup probe: whether this node has ever been usable.
-
-  The only probe that gates on the primary database: a freshly booted node has
-  cold caches and no way to warm them without it.
-  """
-  def startup(conn, params) do
-    uptime = Logflare.Repo.get_uptime()
-
-    if db_reachable?(uptime) do
-      check(conn, params)
-    else
-      response = JSON.encode!(%{status: :coming_up, repo_uptime: uptime})
-
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(503, response)
-    end
-  end
-
-  @doc """
   Liveness probe: whether this BEAM is healthy.
 
-  Never touches the primary database - restarting cannot fix an unreachable
-  database, and it discards the caches ingest needs to ride out the outage.
-  Querying it to report uptime would also block on connection checkout, which
-  can outlast the probe's own timeout. `/startup` reports uptime instead.
+  The primary database is only checked until it has answered once. A node that
+  has never reached it has cold caches and no way to warm them, so it must not
+  take traffic. Once it has, database availability stops being a liveness
+  concern: restarting cannot fix an unreachable database, and it discards the
+  caches ingest needs to ride out the outage.
   """
   def check(conn, _params) do
     caches = check_caches()
@@ -63,6 +46,7 @@ defmodule LogflareWeb.HealthCheckController do
     common_checks_ok? =
       [
         Sources.ingest_ets_tables_started?(),
+        db_answered_once?(),
         Enum.all?(Map.values(caches), &(&1 == :ok)),
         memory_utilization < max_memory_ratio
         # Temporarily not gating the health check on SpoolHealth.healthy?()
@@ -125,6 +109,14 @@ defmodule LogflareWeb.HealthCheckController do
       caches: caches,
       memory_utilization: memory_utilization
     }
+  end
+
+  defp db_answered_once? do
+    :persistent_term.get(@db_answered_key, false) or
+      with true <- db_reachable?(Logflare.Repo.get_uptime()) do
+        :persistent_term.put(@db_answered_key, true)
+        true
+      end
   end
 
   defp db_reachable?(%Decimal{} = uptime), do: Decimal.compare(uptime, 0) == :gt

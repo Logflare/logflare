@@ -7,15 +7,17 @@ defmodule Logflare.Repo.Supervisor do
   application supervisor, four such exits within five seconds exhaust the default
   restart intensity and terminate the whole application.
 
-  The high intensity over a one second period means the budget resets constantly,
-  so reconnect churn during a database outage never trips it while a repo that
-  fails on every start still does.
+  A brief outage does not restart the repo at all, so the intensity here is sized
+  for the other case: a repo that cannot start. Supervisors restart immediately,
+  with no backoff, so the budget is spent in milliseconds and the application
+  terminates rather than looping silently - surfacing as a crash loop that pages
+  someone instead of a node that is up but permanently unusable.
   """
 
   use Supervisor
 
-  @max_restarts 1_000
-  @max_seconds 1
+  @max_restarts 10
+  @max_seconds 300
 
   @spec start_link(term()) :: Supervisor.on_start()
   def start_link(_opts) do

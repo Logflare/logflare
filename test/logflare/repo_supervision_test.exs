@@ -28,12 +28,17 @@ defmodule Logflare.RepoSupervisionTest do
       assert Logflare.Repo in child_ids(@repo_sup)
     end
 
-    test "the repo supervisor tolerates far more restarts than the app supervisor" do
-      {app_intensity, _period} = restart_intensity(Logflare.Supervisor)
-      {repo_intensity, _period} = restart_intensity(Process.whereis(@repo_sup))
+    test "the repo supervisor absorbs repeated crashes but still gives up eventually" do
+      {intensity, period} = restart_intensity(Process.whereis(@repo_sup))
 
-      assert repo_intensity > app_intensity
-      assert repo_intensity >= 10
+      assert intensity > 1,
+             "a single repo crash must not escalate to the application supervisor"
+
+      assert period >= 60,
+             "the window must be long enough that a brief outage cannot exhaust the budget"
+
+      refute {intensity, period} == restart_intensity(Logflare.Supervisor),
+             "the repo must not inherit the application supervisor's default intensity"
     end
 
     test "the repo is still started and reachable" do
