@@ -62,6 +62,8 @@ defmodule Logflare.DataCase do
           # judged against genuinely-still-live state — including other concurrently
           # running tests' own queues_keys — not a mapper this same callback is about
           # to clear out from under them.
+          IngestEventQueue.delete_stale_mappings()
+
           for queues_key <- IngestEventQueue.list_generation_queues_keys(),
               IngestEventQueue.list_queues(queues_key) == [] do
             IngestEventQueue.prune_generations(queues_key)
