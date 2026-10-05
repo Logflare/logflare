@@ -8,7 +8,10 @@ defmodule Logflare.Rules.RoutingSnapshotStore do
   through a slower fallback, and the still-current header is rehydrated after
   that first fallback.
 
-  Publication and retirement are serialized, but routing reads never call the
+  Short-lived Cachex publishers are monitored until they finish committing the
+  header. Retirement of a pending generation completes after its publisher exits,
+  including abnormal exits; header deletion runs outside the server and compares
+  generations so it cannot delete a replacement. Routing reads never call the
   server. Capacity is bounded by both source count and estimated bytes. Byte
   estimates include the tree, compact target tuple and compressed fallback;
   the bound is soft for one individually oversized snapshot so it remains usable.
@@ -48,6 +51,20 @@ defmodule Logflare.Rules.RoutingSnapshotStore do
   @spec prune(GenServer.server()) :: :ok
   def prune(server), do: GenServer.call(server, :prune)
 
+  @doc false
+  @spec emit_metrics(GenServer.server()) :: :ok
+  def emit_metrics(server \\ __MODULE__) do
+    pid = GenServer.whereis(server)
+
+    if is_pid(pid) and Process.alive?(pid) do
+      GenServer.cast(pid, :emit_metrics)
+    else
+      :telemetry.execute(@telemetry_event, %{sources: 0, estimated_bytes: 0}, %{
+        action: :unavailable
+      })
+    end
+  end
+
   @impl true
   def init(opts) do
     state = %{
@@ -63,6 +80,7 @@ defmodule Logflare.Rules.RoutingSnapshotStore do
     }
 
     schedule_prune(state)
+    emit(state, :start)
     {:ok, state}
   end
 
@@ -105,6 +123,11 @@ defmodule Logflare.Rules.RoutingSnapshotStore do
           state
       end
 
+    {:noreply, state}
+  end
+
+  def handle_cast(:emit_metrics, state) do
+    emit(state, :poll)
     {:noreply, state}
   end
 

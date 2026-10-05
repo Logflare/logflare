@@ -190,7 +190,8 @@ defmodule Logflare.Rules.RoutingCacheConcurrencyTest do
       result
     end)
 
-    RoutingSnapshot.new(source_id + 1, [], store: store)
+    RoutingSnapshotStore.delete(store, old_key)
+    :sys.get_state(store)
     send(publisher.pid, :publish)
     assert_receive :published
     current = RoutingSnapshot.new(source_id, snapshot_entries([{1, 20, nil}]), store: store)
