@@ -35,10 +35,10 @@ defmodule Logflare.Rules.RoutingSnapshotStore do
     super(Keyword.put_new(opts, :name, __MODULE__))
   end
 
-  @spec put(GenServer.server(), integer(), tuple(), non_neg_integer()) ::
+  @spec put(GenServer.server(), integer(), tuple(), non_neg_integer(), pid() | nil) ::
           {:ets.tid(), {integer(), reference()}}
-  def put(server, source_id, targets, estimated_bytes) do
-    GenServer.call(server, {:put, source_id, targets, estimated_bytes})
+  def put(server, source_id, targets, estimated_bytes, publisher \\ nil) do
+    GenServer.call(server, {:put, source_id, targets, estimated_bytes, publisher})
   end
 
   @spec delete(GenServer.server(), {integer(), reference()}) :: :ok
@@ -57,6 +57,7 @@ defmodule Logflare.Rules.RoutingSnapshotStore do
       limit: Keyword.get(opts, :limit, @default_limit),
       max_bytes: Keyword.get(opts, :max_bytes, @default_max_bytes),
       estimated_bytes: 0,
+      publishers: %{},
       ttl: Keyword.get(opts, :ttl, @default_ttl),
       interval: Keyword.get(opts, :interval, @default_interval)
     }
@@ -66,14 +67,15 @@ defmodule Logflare.Rules.RoutingSnapshotStore do
   end
 
   @impl true
-  def handle_call({:put, source_id, targets, estimated_bytes}, _from, state) do
+  def handle_call({:put, source_id, targets, estimated_bytes, publisher}, _from, state) do
     state = remove_source(state, source_id, :replace)
     key = {source_id, make_ref()}
+    {state, monitor} = monitor_publisher(state, publisher, key)
     expires_at = System.monotonic_time(:millisecond) + state.ttl
     estimated_bytes = max(estimated_bytes, 0)
 
     :ets.insert(state.table, Tuple.insert_at(targets, 0, key))
-    :ets.insert(state.sources, {source_id, key, expires_at, estimated_bytes})
+    :ets.insert(state.sources, {source_id, key, expires_at, estimated_bytes, monitor})
     :ets.insert(state.expiry, {{expires_at, key}})
 
     state =
@@ -94,7 +96,7 @@ defmodule Logflare.Rules.RoutingSnapshotStore do
   def handle_cast({:delete, {source_id, _generation} = key}, state) do
     state =
       case :ets.lookup(state.sources, source_id) do
-        [{^source_id, ^key, _expires_at, _estimated_bytes}] ->
+        [{^source_id, ^key, _expires_at, _estimated_bytes, _monitor}] ->
           state = remove_source(state, source_id, :delete)
           emit(state, :delete)
           state
@@ -113,14 +115,49 @@ defmodule Logflare.Rules.RoutingSnapshotStore do
     {:noreply, state}
   end
 
+  def handle_info({:DOWN, monitor, :process, _publisher, reason}, state) do
+    case Map.pop(state.publishers, monitor) do
+      {nil, _publishers} ->
+        {:noreply, state}
+
+      {{source_id, _generation} = key, publishers} ->
+        state = %{state | publishers: publishers}
+
+        case :ets.lookup(state.sources, source_id) do
+          [{^source_id, ^key, _expires_at, _bytes, ^monitor}] when reason == :normal ->
+            :ets.update_element(state.sources, source_id, {5, nil})
+            {:noreply, state}
+
+          [{^source_id, ^key, _expires_at, _bytes, ^monitor}] ->
+            state = remove_source(state, source_id, :abort)
+            retire_header(key)
+            emit(state, :abort)
+            {:noreply, state}
+
+          _ ->
+            retire_header(key)
+            {:noreply, state}
+        end
+    end
+  end
+
+  @spec monitor_publisher(map(), pid() | nil, {integer(), reference()}) ::
+          {map(), reference() | nil}
+  defp monitor_publisher(state, nil, _key), do: {state, nil}
+
+  defp monitor_publisher(state, publisher, key) do
+    monitor = Process.monitor(publisher)
+    {%{state | publishers: Map.put(state.publishers, monitor, key)}, monitor}
+  end
+
   defp remove_source(state, source_id, reason) do
     case :ets.take(state.sources, source_id) do
-      [{^source_id, key, expires_at, estimated_bytes}] ->
+      [{^source_id, key, expires_at, estimated_bytes, monitor}] ->
         :ets.delete(state.table, key)
         :ets.delete(state.expiry, {expires_at, key})
 
         state = Map.update!(state, :estimated_bytes, &max(&1 - estimated_bytes, 0))
-        maybe_delete_header(reason, key)
+        if monitor == nil, do: maybe_delete_header(reason, key)
         state
 
       [] ->
@@ -160,12 +197,16 @@ defmodule Logflare.Rules.RoutingSnapshotStore do
     state.estimated_bytes > state.max_bytes and size > 1
   end
 
-  defp maybe_delete_header(reason, key) when reason in [:expire, :evict] do
+  defp maybe_delete_header(reason, key) when reason in [:expire, :evict],
+    do: retire_header(key)
+
+  defp maybe_delete_header(_reason, _key), do: :ok
+
+  @spec retire_header({integer(), reference()}) :: :ok
+  defp retire_header(key) do
     Tasks.start_child(fn -> Cache.delete_routing_snapshot(key) end)
     :ok
   end
-
-  defp maybe_delete_header(_reason, _key), do: :ok
 
   defp emit(state, action) do
     :telemetry.execute(

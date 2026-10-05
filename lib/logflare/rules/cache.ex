@@ -70,7 +70,10 @@ defmodule Logflare.Rules.Cache do
         Logflare.Repo.apply_with_replica(Rules, :rules_tree_by_source_id, [id])
 
       snapshot =
-        Rules.RoutingSnapshot.new(id, targets, extra_estimated_bytes: :erlang.external_size(tree))
+        Rules.RoutingSnapshot.new(id, targets,
+          extra_estimated_bytes: :erlang.external_size(tree),
+          publisher: self()
+        )
 
       {tree, snapshot}
     end)

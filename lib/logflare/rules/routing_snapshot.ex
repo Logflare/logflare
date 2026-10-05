@@ -46,7 +46,15 @@ defmodule Logflare.Rules.RoutingSnapshot do
         Keyword.get(opts, :extra_estimated_bytes, 0)
 
     store = Keyword.get(opts, :store, RoutingSnapshotStore)
-    {table, key} = put_or_fallback(store, source_id, entry_tuple, estimated_bytes)
+
+    {table, key} =
+      put_or_fallback(
+        store,
+        source_id,
+        entry_tuple,
+        estimated_bytes,
+        Keyword.get(opts, :publisher)
+      )
 
     %__MODULE__{
       key: key,
@@ -58,8 +66,8 @@ defmodule Logflare.Rules.RoutingSnapshot do
     }
   end
 
-  defp put_or_fallback(store, source_id, entries, estimated_bytes) do
-    RoutingSnapshotStore.put(store, source_id, entries, estimated_bytes)
+  defp put_or_fallback(store, source_id, entries, estimated_bytes, publisher) do
+    RoutingSnapshotStore.put(store, source_id, entries, estimated_bytes, publisher)
   catch
     :exit, _reason -> {nil, {source_id, make_ref()}}
   end
