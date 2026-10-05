@@ -12,6 +12,7 @@ defmodule Logflare.Rules.RoutingSnapshot do
   immutable tuple and can conditionally rehydrate the still-current cache entry.
   """
 
+  alias Logflare.Rules.Rule
   alias Logflare.Rules.RoutingSnapshotStore
   alias Logflare.Sources.SourceRouter.Target
 
@@ -40,7 +41,15 @@ defmodule Logflare.Rules.RoutingSnapshot do
         Keyword.get(opts, :extra_estimated_bytes, 0)
 
     store = Keyword.get(opts, :store, RoutingSnapshotStore)
-    {table, key} = put_or_fallback(store, source_id, target_tuple, estimated_bytes)
+
+    {table, key} =
+      put_or_fallback(
+        store,
+        source_id,
+        target_tuple,
+        estimated_bytes,
+        Keyword.get(opts, :publisher)
+      )
 
     %__MODULE__{
       key: key,
@@ -51,8 +60,8 @@ defmodule Logflare.Rules.RoutingSnapshot do
     }
   end
 
-  defp put_or_fallback(store, source_id, entries, estimated_bytes) do
-    RoutingSnapshotStore.put(store, source_id, entries, estimated_bytes)
+  defp put_or_fallback(store, source_id, entries, estimated_bytes, publisher) do
+    RoutingSnapshotStore.put(store, source_id, entries, estimated_bytes, publisher)
   catch
     :exit, _reason -> {nil, {source_id, make_ref()}}
   end
@@ -70,6 +79,26 @@ defmodule Logflare.Rules.RoutingSnapshot do
       RoutingSnapshotStore.put(store, source_id, targets, snapshot.estimated_bytes)
 
     %{snapshot | table: table, key: key, decoded: nil}
+  end
+
+  @doc false
+  @spec contains_any_rule?(t(), MapSet.t(Rule.id())) :: boolean()
+  def contains_any_rule?(%__MODULE__{} = snapshot, ids) do
+    targets = :erlang.binary_to_term(snapshot.encoded, [:safe])
+    contains_target_id?(targets, ids, tuple_size(targets))
+  end
+
+  @spec contains_target_id?(tuple(), MapSet.t(Rule.id()), non_neg_integer()) :: boolean()
+  defp contains_target_id?(_targets, _ids, 0), do: false
+
+  defp contains_target_id?(targets, ids, remaining) do
+    case elem(targets, remaining - 1) do
+      {id, _backend_id, _sink} ->
+        MapSet.member?(ids, id) or contains_target_id?(targets, ids, remaining - 1)
+
+      nil ->
+        contains_target_id?(targets, ids, remaining - 1)
+    end
   end
 
   @spec resolve(t(), [non_neg_integer()]) :: [Target.t()]

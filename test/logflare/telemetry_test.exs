@@ -3,6 +3,8 @@ defmodule Logflare.TelemetryTest do
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
+  alias Logflare.Rules.RoutingSnapshot
+  alias Logflare.Rules.RoutingSnapshotStore
   alias Logflare.SystemMetrics.Observer
   alias Logflare.SystemMetrics.Schedulers
   alias Logflare.Telemetry
@@ -514,6 +516,51 @@ defmodule Logflare.TelemetryTest do
                MetricStore.get_metrics(@drop_stale_exporter)
 
       assert sums == %{backend_one => 12, backend_two => 3}
+    end
+  end
+
+  describe "routing snapshot store gauges" do
+    test "exports lifecycle values and resets gauges when the store is unavailable" do
+      event = [:logflare, :rules, :routing_snapshot_store]
+      metrics = Enum.filter(Telemetry.metrics(), &(&1.event_name == event))
+      assert Enum.map(metrics, & &1.measurement) == [:sources, :estimated_bytes]
+      assert Enum.all?(metrics, &(&1.tags == []))
+
+      exporter = :routing_snapshot_store_gauges_test
+
+      start_supervised!(
+        {OtelMetricExporter,
+         name: exporter,
+         metrics: metrics,
+         export_period: :timer.minutes(5),
+         otlp_protocol: :http_protobuf,
+         otlp_endpoint: "http://localhost:4318",
+         otlp_headers: %{},
+         otlp_compression: nil}
+      )
+
+      store = start_supervised!({RoutingSnapshotStore, name: nil})
+      snapshot = RoutingSnapshot.new(1, [{1, 10, nil}], store: store)
+
+      assert %{
+               {:last_value, "logflare.rules.routing_snapshot_store.sources"} => %{%{} => 1},
+               {:last_value, "logflare.rules.routing_snapshot_store.estimated_bytes"} => %{
+                 %{} => bytes
+               }
+             } = MetricStore.get_metrics(exporter)
+
+      assert bytes == snapshot.estimated_bytes
+      RoutingSnapshotStore.emit_metrics(store)
+      :sys.get_state(store)
+      stop_supervised!(RoutingSnapshotStore)
+      RoutingSnapshotStore.emit_metrics(store)
+
+      assert %{
+               {:last_value, "logflare.rules.routing_snapshot_store.sources"} => %{%{} => 0},
+               {:last_value, "logflare.rules.routing_snapshot_store.estimated_bytes"} => %{
+                 %{} => 0
+               }
+             } = MetricStore.get_metrics(exporter)
     end
   end
 

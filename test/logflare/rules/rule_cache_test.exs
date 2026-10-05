@@ -1,3 +1,5 @@
+Mimic.copy(Cachex)
+
 defmodule Logflare.Rules.CacheTest do
   alias Logflare.Rules.Rule
   use Logflare.DataCase
@@ -300,15 +302,96 @@ defmodule Logflare.Rules.CacheTest do
 
       assert {:ok, 1} = @subject.bust_by(id: rid1)
       assert _r1 = @subject.get_rule(rid1)
-      assert %{misses: 2, writes: 2} = Cachex.stats!(@subject)
+      assert %{misses: 4, writes: 2} = Cachex.stats!(@subject)
 
       # Bust missing key
       assert {:ok, 0} = @subject.bust_by(id: rid2)
+    end
+
+    test "ID-only invalidation refreshes routing destinations", %{
+      source: source,
+      backend: backend,
+      rule_ids: [id, _other]
+    } do
+      {_tree, old} = @subject.rules_tree_by_source_id(source.id)
+      assert @subject.get_rule(id).backend_id == backend.id
+      replacement = insert(:backend)
+      rule = Repo.get!(Rule, id)
+      assert {:ok, _rule} = Rules.update_rule(rule, %{backend_id: replacement.id})
+
+      assert {:ok, 2} = @subject.bust_by(id: id)
+      assert @subject.get_rule(id).backend_id == replacement.id
+      {_tree, current} = @subject.rules_tree_by_source_id(source.id)
+      assert resolve_ids(current, [id]) == [{id, replacement.id, nil}]
+      assert resolve_ids(old, [id]) == [{id, backend.id, nil}]
+    end
+
+    test "ID-only invalidation finds deleted rules in snapshots without per-rule entries", %{
+      source: source,
+      rule_ids: [id, _other]
+    } do
+      {_tree, _old} = @subject.rules_tree_by_source_id(source.id)
+      Repo.delete!(Repo.get!(Rule, id))
+
+      assert {:ok, 1} = @subject.bust_by(id: id)
+      {_tree, current} = @subject.rules_tree_by_source_id(source.id)
+      assert resolve_ids(current, [id]) == []
+    end
+
+    test "ID-only invalidation finds the owner of a newly inserted rule", %{source: source} do
+      {_tree, _old} = @subject.rules_tree_by_source_id(source.id)
+      rule = insert(:rule, source: source, backend: insert(:backend))
+
+      assert {:ok, 1} = @subject.bust_by(id: rule.id)
+      {_tree, current} = @subject.rules_tree_by_source_id(source.id)
+      assert resolve_ids(current, [rule.id]) == [Target.from_rule(rule)]
+    end
+
+    test "ID-only invalidation retires both owners after a move", %{
+      source: source,
+      backend: backend,
+      rule_ids: [id, _other]
+    } do
+      destination = insert(:source, user: source.user)
+      {_tree, _old} = @subject.rules_tree_by_source_id(source.id)
+      {_tree, _empty} = @subject.rules_tree_by_source_id(destination.id)
+      Repo.update_all(from(rule in Rule, where: rule.id == ^id), set: [source_id: destination.id])
+
+      assert {:ok, 2} = @subject.bust_by(id: id)
+      {_tree, old_owner} = @subject.rules_tree_by_source_id(source.id)
+      {_tree, new_owner} = @subject.rules_tree_by_source_id(destination.id)
+      assert resolve_ids(old_owner, [id]) == []
+      assert resolve_ids(new_owner, [id]) == [{id, backend.id, nil}]
+    end
+
+    test "source-aware invalidation does not scan headers or query rule ownership", %{
+      source: source,
+      rule_ids: [id, _other]
+    } do
+      {_tree, _snapshot} = @subject.rules_tree_by_source_id(source.id)
+      Mimic.reject(Cachex, :stream, 3)
+      ref = :telemetry_test.attach_event_handlers(self(), [[:logflare, :repo, :query]])
+      on_exit(fn -> :telemetry.detach(ref) end)
+
+      assert {:ok, 1} = @subject.bust_by(id: id, source_id: source.id, source_id: source.id)
+      refute_receive {[:logflare, :repo, :query], ^ref, _measurements, _metadata}
     end
 
     test "cache warming" do
       assert Cachex.warm!(@subject, wait: true) == [Logflare.Rules.CacheWarmer]
       assert Cachex.size!(@subject) == 1
     end
+  end
+
+  defp resolve_ids(snapshot, ids) do
+    positions =
+      snapshot.encoded
+      |> :erlang.binary_to_term()
+      |> Tuple.to_list()
+      |> Enum.with_index()
+      |> Enum.filter(fn {target, _position} -> is_tuple(target) and Target.id(target) in ids end)
+      |> Enum.map(&elem(&1, 1))
+
+    RoutingSnapshot.resolve(snapshot, positions)
   end
 end
