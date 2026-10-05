@@ -20,6 +20,14 @@ defmodule LogflareWeb.Api.FallbackController do
     |> halt()
   end
 
+  def call(conn, {:error, :database_unavailable}) do
+    conn
+    |> put_status(503)
+    |> put_resp_header("retry-after", "5")
+    |> json(%{error: "Service Unavailable: credentials could not be verified"})
+    |> halt()
+  end
+
   def call(conn, {:error, :buffer_full}) do
     conn
     |> put_status(429)

@@ -50,12 +50,12 @@ defmodule LogflareWeb.HealthCheckController do
   @doc """
   Liveness probe: whether this BEAM is healthy.
 
-  Never gates on the primary database - restarting cannot fix an unreachable
+  Never touches the primary database - restarting cannot fix an unreachable
   database, and it discards the caches ingest needs to ride out the outage.
-  `repo_uptime` stays in the payload for alerting.
+  Querying it to report uptime would also block on connection checkout, which
+  can outlast the probe's own timeout. `/startup` reports uptime instead.
   """
   def check(conn, _params) do
-    repo_uptime = Logflare.Repo.get_uptime()
     caches = check_caches()
     memory_utilization = System.memory_utilization()
     max_memory_ratio = Application.get_env(:logflare, :health) |> Keyword.get(:memory_utilization)
@@ -92,7 +92,6 @@ defmodule LogflareWeb.HealthCheckController do
     response =
       status
       |> build_payload(
-        repo_uptime: repo_uptime,
         caches: caches,
         memory_utilization: if(memory_utilization < max_memory_ratio, do: :ok, else: :critical),
         spool_write_healthy: %{
@@ -108,7 +107,6 @@ defmodule LogflareWeb.HealthCheckController do
   end
 
   defp build_payload(status,
-         repo_uptime: repo_uptime,
          caches: caches,
          memory_utilization: memory_utilization,
          spool_write_healthy: spool_write_healthy
@@ -124,7 +122,6 @@ defmodule LogflareWeb.HealthCheckController do
       nodes: nodes,
       nodes_count: Enum.count(nodes),
       spool_write_healthy: spool_write_healthy,
-      repo_uptime: repo_uptime,
       caches: caches,
       memory_utilization: memory_utilization
     }

@@ -140,15 +140,13 @@ defmodule Logflare.ContextCache do
 
   A miss whose getter cannot reach the database returns
   `{:error, :database_unavailable}` and commits nothing, so the next call retries.
+  Any other exception is left to propagate: Cachex would otherwise rescue it into
+  an indistinguishable error tuple, hiding genuine bugs behind a retryable status.
   """
   @spec fetch(Cachex.t(), {atom(), list()}, fun()) ::
           term() | {:error, :database_unavailable}
   def fetch(cache, cache_key, getter_fn) do
-    case Cachex.fetch(cache, cache_key, fn _cache_key ->
-           # Use a `:cached` tuple here otherwise when an fn returns nil Cachex will miss
-           # the cache because it thinks ETS returned nil
-           {:commit, {:cached, getter_fn.()}}
-         end) do
+    case Cachex.fetch(cache, cache_key, fn _cache_key -> commit_or_ignore(getter_fn) end) do
       {:commit, {:cached, value}} ->
         Gossip.multicast(cache, cache_key, value)
         value
@@ -156,13 +154,28 @@ defmodule Logflare.ContextCache do
       {:ok, {:cached, value}} ->
         value
 
-      {:error, %Cachex.Error{message: message}} ->
+      {:ignore, {:unavailable, reason}} ->
         Logger.warning(
-          "#{inspect(cache)} could not load #{cache_key_label(cache_key)} from the database: #{message}"
+          "#{inspect(cache)} could not load #{cache_key_label(cache_key)}: #{inspect(reason)}"
         )
 
         {:error, :database_unavailable}
+
+      {:ignore, {:raised, error, stacktrace}} ->
+        reraise(error, stacktrace)
+
+      {:error, %Cachex.Error{} = error} ->
+        raise error
     end
+  end
+
+  defp commit_or_ignore(getter_fn) do
+    {:commit, {:cached, getter_fn.()}}
+  rescue
+    error in [DBConnection.ConnectionError] -> {:ignore, {:unavailable, error}}
+    error -> {:ignore, {:raised, error, __STACKTRACE__}}
+  catch
+    :exit, {reason, _} when reason in [:noproc, :killed] -> {:ignore, {:unavailable, reason}}
   end
 
   # cache keys carry call arguments, which include raw api keys and bearer tokens
