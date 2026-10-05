@@ -46,6 +46,14 @@ defmodule Env do
       do: credentials,
       else: []
   end
+
+  @spec aws_region(map()) :: String.t() | nil
+  def aws_region(env) when is_map(env) do
+    case env["AWS_REGION"] || env["AWS_DEFAULT_REGION"] do
+      region when is_binary(region) and region != "" -> region
+      _ -> nil
+    end
+  end
 end
 
 if config_env() == :test and Env.get_boolean("E2E") do
@@ -762,4 +770,16 @@ if spool_overrides != [] do
   config :logflare,
          :spool,
          Keyword.merge(Application.get_env(:logflare, :spool, []), spool_overrides)
+end
+
+spool_ack_stale? =
+  case System.get_env("SPOOL_ACK_STALE") do
+    v when v in [nil, ""] -> true
+    v -> String.downcase(v) == "true"
+  end
+
+config :logflare, Logflare.Backends.Spool.SpoolAck, ack_stale: spool_ack_stale?
+
+if region = Env.aws_region(System.get_env()) do
+  config :ex_aws, region: region
 end

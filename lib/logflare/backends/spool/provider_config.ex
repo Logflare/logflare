@@ -20,9 +20,7 @@ defmodule Logflare.Backends.Spool.ProviderConfig do
 
   @spec resolve_queue_ref(keyword(), module()) :: term() | nil
   def resolve_queue_ref(spool_config, queue_mod) do
-    name = Keyword.get(spool_config, :pubsub_topic) || Keyword.get(spool_config, :queue_name)
-
-    case name do
+    case queue_name(spool_config, queue_mod) do
       nil ->
         nil
 
@@ -40,6 +38,9 @@ defmodule Logflare.Backends.Spool.ProviderConfig do
         end
     end
   end
+
+  defp queue_name(spool_config, Queue.PubSub), do: Keyword.get(spool_config, :pubsub_topic)
+  defp queue_name(spool_config, _queue_mod), do: Keyword.get(spool_config, :queue_name)
 
   defp default_storage_mod(:gcp), do: Storage.GCS
   defp default_storage_mod(_), do: Storage.S3
