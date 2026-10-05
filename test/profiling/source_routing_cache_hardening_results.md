@@ -1,5 +1,8 @@
 # Routing snapshot cache hardening follow-up
 
+> Historical measurements. Current PR results and reproduction commands are in
+> [the 10,000-rule refresh](source_routing_scale_results.md); fixtures and revisions differ.
+
 This note records the measurements for the additive hardening commit on PR
 #3943. It intentionally excludes the stacked zero-based positional-tree change.
 

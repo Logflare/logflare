@@ -1,5 +1,8 @@
 # Positional routing snapshot follow-up
 
+> Historical measurements. Current PR results and reproduction commands are in
+> [the 10,000-rule refresh](source_routing_scale_results.md); fixtures and revisions differ.
+
 This note isolates the stacked zero-based positional-tree change from the cache
 hardening included in PR #3943. The parent already owns compact targets, batch
 reuse, missing-generation repair, byte-aware capacity, and lifecycle telemetry.

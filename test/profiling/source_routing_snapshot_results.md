@@ -1,5 +1,8 @@
 # Routing snapshot benchmark and lifetime protocol
 
+> Historical measurements. Current PR results and reproduction commands are in
+> [the 10,000-rule refresh](source_routing_scale_results.md); fixtures and revisions differ.
+
 ## Comparison
 
 Current parent: `130bdeb6` (#3942, the rollback of #3937). The implementation was
