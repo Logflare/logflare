@@ -1,6 +1,8 @@
 defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
   use Logflare.DataCase, async: false
 
+  import ExUnit.CaptureLog
+
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.AdaptorSupervisor
@@ -21,6 +23,11 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
   end
 
   describe "cast_config/validate_config" do
+    setup do
+      stub(Logflare.Utils.SSRF, :safe_resolve, fn _ -> {:ok, {1, 2, 3, 4}} end)
+      :ok
+    end
+
     test "url is required" do
       refute Adaptor.cast_and_validate_config(@subject, %{}).valid?
     end
@@ -57,17 +64,88 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
                "labels" => %{"env" => "prod"}
              }).valid?
     end
+
+    test "keeps stored credentials submitted back in redacted form" do
+      existing = %{
+        url: "https://user:secret@vm.example.com/api/v1/write",
+        username: "user",
+        password: "pass",
+        headers: %{"authorization" => "Bearer token", "x-tenant" => "acme"}
+      }
+
+      params =
+        existing
+        |> @subject.redact_config()
+        |> Map.put(:headers, %{"Authorization" => "REDACTED", "x-tenant" => "acme"})
+
+      changeset = Adaptor.cast_and_validate_config(@subject, params, existing)
+
+      assert changeset.valid?
+      config = Ecto.Changeset.apply_changes(changeset)
+      assert config.url == existing.url
+      assert config.password == "pass"
+      assert config.headers == %{"authorization" => "Bearer token", "x-tenant" => "acme"}
+    end
+  end
+
+  describe "validate_config/1 SSRF" do
+    test "rejects private destinations" do
+      changeset =
+        Adaptor.cast_and_validate_config(@subject, %{
+          "url" => "http://127.0.0.1:8428/api/v1/write"
+        })
+
+      refute changeset.valid?
+      assert {_msg, [validation: :ssrf]} = changeset.errors[:url]
+    end
   end
 
   describe "redact_config/1" do
-    test "redacts password when present" do
-      assert %{password: "REDACTED"} =
-               @subject.redact_config(%{password: "secret", url: "http://vm:8428/api/v1/write"})
+    test "redacts the password, credential headers and url userinfo" do
+      redacted =
+        @subject.redact_config(%{
+          url: "https://user:secret@vm.example.com/api/v1/write",
+          username: "user",
+          password: "secret",
+          headers: %{"authorization" => "Bearer token", "x-tenant" => "acme"}
+        })
+
+      assert redacted.password == "REDACTED"
+      assert redacted.username == "user"
+      assert redacted.url == "https://REDACTED@vm.example.com/api/v1/write"
+      assert redacted.headers == %{"authorization" => "REDACTED", "x-tenant" => "acme"}
     end
 
-    test "leaves config unchanged when password absent" do
-      config = %{url: "http://vm:8428/api/v1/write"}
-      assert ^config = @subject.redact_config(config)
+    test "leaves a config without secrets readable" do
+      assert %{url: "http://vm:8428/api/v1/write", headers: %{}} =
+               redacted = @subject.redact_config(%{url: "http://vm:8428/api/v1/write"})
+
+      refute Map.has_key?(redacted, :password)
+    end
+  end
+
+  describe "transform_config/1" do
+    test "sends one canonical copy of each protocol header" do
+      backend =
+        build(:backend,
+          type: :victoria_metrics,
+          config: %{
+            url: @vm_remote_write_url,
+            username: "user",
+            password: "pass",
+            headers: %{"Content-Type" => "text/plain", "X-Tenant" => "acme"}
+          }
+        )
+
+      assert %{headers: headers, gzip: false, http: "http1"} = @subject.transform_config(backend)
+
+      assert headers == %{
+               "authorization" => "Basic " <> Base.encode64("user:pass"),
+               "content-encoding" => "snappy",
+               "content-type" => "application/x-protobuf",
+               "x-prometheus-remote-write-version" => "0.1.0",
+               "x-tenant" => "acme"
+             }
     end
   end
 
@@ -110,21 +188,13 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       [source: source]
     end
 
-    test "drops non-metric events" do
-      le = build(:log_event, event_message: "hello")
-
-      assert decode([le]) == []
-    end
-
     test "gauge event produces single TimeSeries", %{source: source} do
       le =
-        build(:log_event,
-          source: source,
+        metric_event(source,
           event_message: "http.server.duration",
           metric_type: "gauge",
           value: 42.5,
           timestamp: 1_700_000_000_000_000_000,
-          metadata: %{"type" => "metric"},
           attributes: %{"method" => "GET", "status" => "200"}
         )
 
@@ -142,33 +212,23 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
     end
 
     test "sum event produces single TimeSeries", %{source: source} do
-      le =
-        build(:log_event,
-          source: source,
-          event_message: "requests_total",
-          metric_type: "sum",
-          value: 100,
-          timestamp: 1_700_000_000_000_000_000,
-          metadata: %{"type" => "metric"}
-        )
+      le = metric_event(source, event_message: "requests_total", metric_type: "sum", value: 100)
 
       assert [ts] = decode([le])
       assert label_map(ts)["__name__"] == "requests_total"
       assert [%{value: 100.0}] = ts.samples
     end
 
-    test "histogram event produces _count, _sum, and _bucket series", %{source: source} do
+    test "histogram event produces _count, _sum, and cumulative _bucket series",
+         %{source: source} do
       le =
-        build(:log_event,
-          source: source,
+        metric_event(source,
           event_message: "latency",
           metric_type: "histogram",
           count: 10,
           sum: 500.0,
           bucket_counts: [2, 5, 3],
-          explicit_bounds: [100.0, 500.0],
-          timestamp: 1_700_000_000_000_000_000,
-          metadata: %{"type" => "metric"}
+          explicit_bounds: [100.0, 500.0]
         )
 
       timeseries = decode([le])
@@ -178,30 +238,88 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       assert "latency_sum" in names
       assert "latency_bucket" in names
 
-      buckets =
-        timeseries
-        |> Enum.map(&{label_map(&1), &1.samples})
-        |> Enum.filter(fn {labels, _samples} -> labels["__name__"] == "latency_bucket" end)
-        |> Map.new(fn {labels, samples} -> {labels["le"], samples} end)
+      assert %{
+               "100" => [%{value: 2.0}],
+               "500" => [%{value: 7.0}],
+               "+Inf" => [%{value: 10.0}]
+             } = buckets(timeseries, "latency_bucket")
+    end
+
+    test "formats le bounds as plain decimals", %{source: source} do
+      le =
+        metric_event(source,
+          event_message: "latency",
+          metric_type: "histogram",
+          count: 4,
+          sum: 1.0,
+          bucket_counts: [1, 1, 1, 1, 0],
+          explicit_bounds: [0.005, 2.5, 1000.0, 1.0e-9]
+        )
+
+      assert ["+Inf", "0.000000001", "0.005", "1000", "2.5"] =
+               [le] |> decode() |> buckets("latency_bucket") |> Map.keys() |> Enum.sort()
+    end
+
+    test "maps service resource attributes to job and instance", %{source: source} do
+      le =
+        metric_event(source,
+          metric_type: "gauge",
+          value: 1.0,
+          resource: %{
+            "service.name" => "checkout",
+            "service.namespace" => "shop",
+            "service.instance.id" => "checkout-1"
+          }
+        )
+
+      assert [ts] = decode([le])
+      assert %{"job" => "shop/checkout", "instance" => "checkout-1"} = label_map(ts)
+    end
+
+    test "uses service.name alone as job when there is no namespace", %{source: source} do
+      le =
+        metric_event(source,
+          metric_type: "gauge",
+          value: 1.0,
+          resource: %{"service.name" => "checkout"}
+        )
+
+      assert [ts] = decode([le])
+      labels = label_map(ts)
+      assert labels["job"] == "checkout"
+      refute Map.has_key?(labels, "instance")
+    end
+
+    test "keeps colliding attributes as exported_ labels", %{source: source} do
+      le =
+        metric_event(source,
+          metric_type: "gauge",
+          value: 1.0,
+          resource: %{"service.name" => "checkout"},
+          attributes: %{"source" => "client", "job" => "batch", "region" => "eu"}
+        )
+
+      assert [ts] = decode([le])
 
       assert %{
-               "100.0" => [%{value: 2.0}],
-               "500.0" => [%{value: 7.0}],
-               "+Inf" => [%{value: 10.0}]
-             } = buckets
+               "source" => "myservice",
+               "job" => "checkout",
+               "exported_source" => "client",
+               "exported_job" => "batch",
+               "region" => "eu"
+             } = label_map(ts)
     end
 
     test "skips list and map attribute values instead of crashing", %{source: source} do
       le =
-        build(:log_event,
-          source: source,
+        metric_event(source,
           event_message: "jobs",
           metric_type: "gauge",
           value: 1.0,
-          metadata: %{"type" => "metric"},
           attributes: %{
             "queue" => "default",
             "retry" => true,
+            "ratio" => 1000.0,
             "tags" => ["a", 0.3],
             "http" => %{"method" => "GET"}
           }
@@ -210,9 +328,69 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       assert [ts] = decode([le])
       labels = label_map(ts)
 
-      assert %{"queue" => "default", "retry" => "true"} = labels
+      assert %{"queue" => "default", "retry" => "true", "ratio" => "1000"} = labels
       refute Map.has_key?(labels, "tags")
       refute Map.has_key?(labels, "http")
+    end
+
+    test "sanitizes metric and label names into Prometheus identifiers", %{source: source} do
+      le =
+        metric_event(source,
+          event_message: "9lives.req/sec-é:x",
+          metric_type: "gauge",
+          value: 1.0,
+          attributes: %{"http.route" => "/", "1st" => "a"}
+        )
+
+      assert [ts] = decode([le])
+      labels = label_map(ts)
+
+      assert labels["__name__"] == "_9lives_req_sec___:x"
+      # LogEvent.make/2 has already normalized the attribute keys
+      assert labels["_http_route"] == "/"
+      assert labels["_1st"] == "a"
+    end
+
+    test "drops unrepresentable events with a warning and telemetry", %{source: source} do
+      attach_drop_handler()
+
+      events = [
+        build(:log_event, source: source, event_message: "hello"),
+        metric_event(source, metric_type: "exponential_histogram", count: 1),
+        metric_event(source,
+          metric_type: "sum",
+          is_monotonic: true,
+          aggregation_temporality: "delta",
+          value: 1
+        ),
+        metric_event(source,
+          metric_type: "histogram",
+          aggregation_temporality: "delta",
+          count: 1,
+          bucket_counts: [1],
+          explicit_bounds: []
+        ),
+        metric_event(source,
+          event_message: "queue_depth",
+          metric_type: "sum",
+          is_monotonic: false,
+          aggregation_temporality: "delta",
+          value: 3
+        )
+      ]
+
+      log = capture_log(fn -> assert [_ts] = decode(events) end)
+
+      assert log =~ "Dropping 4 of 5 VictoriaMetrics event(s)"
+      assert_received {:drop, %{count: 1}, %{reason: :not_a_metric}}
+      assert_received {:drop, %{count: 1}, %{reason: :unsupported_type}}
+      assert_received {:drop, %{count: 2}, %{reason: :non_cumulative}}
+    end
+
+    test "does not warn when every event is sent", %{source: source} do
+      le = metric_event(source, metric_type: "gauge", value: 1.0)
+
+      assert capture_log(fn -> assert [_ts] = decode([le]) end) == ""
     end
   end
 
@@ -222,12 +400,10 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       source = insert(:source, user: insert(:user))
 
       le =
-        build(:log_event,
-          source: source,
+        metric_event(source,
           event_message: "jobs",
           metric_type: "gauge",
           value: 1.0,
-          metadata: %{"type" => "metric"},
           attributes: %{"env" => "staging", "queue" => "default"}
         )
 
@@ -237,6 +413,60 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
         |> decode_payload()
 
       assert %{"env" => "prod", "deploy_region" => "eu", "queue" => "default"} = label_map(ts)
+    end
+  end
+
+  # Runs in CI: drives the real Broadway pipeline and captures the HTTP request at the
+  # client boundary, so no VictoriaMetrics instance is needed.
+  describe "pipeline" do
+    setup :set_mimic_global
+
+    setup do
+      insert(:plan)
+      source = insert(:source, user: insert(:user), name: "pipeline_source")
+
+      backend =
+        insert(:backend,
+          type: :victoria_metrics,
+          sources: [source],
+          config: %{url: @vm_remote_write_url, labels: %{"env" => "test"}}
+        )
+
+      start_supervised!({AdaptorSupervisor, {source, backend}})
+      [source: source]
+    end
+
+    test "sends metric batches as snappy remote write requests", %{source: source} do
+      test_pid = self()
+
+      expect(@client, :send, fn opts ->
+        send(test_pid, {:sent, opts})
+        {:ok, %Tesla.Env{status: 204}}
+      end)
+
+      le =
+        metric_event(source,
+          event_message: "pipeline.gauge",
+          metric_type: "gauge",
+          value: 2.0,
+          attributes: %{"queue" => "default"}
+        )
+
+      assert {:ok, _} = Backends.ingest_logs([le], source)
+      assert_receive {:sent, opts}, 5_000
+
+      assert opts[:url] == @vm_remote_write_url
+      assert opts[:gzip] == false
+      assert opts[:headers]["content-encoding"] == "snappy"
+
+      assert [ts] = decode_payload(opts[:body])
+
+      assert %{
+               "__name__" => "pipeline_gauge",
+               "source" => "pipeline_source",
+               "queue" => "default",
+               "env" => "test"
+             } = label_map(ts)
     end
   end
 
@@ -271,7 +501,6 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
         )
 
       start_supervised!({AdaptorSupervisor, {source, backend}})
-      :timer.sleep(500)
       [source: source, backend: backend]
     end
 
@@ -383,6 +612,33 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
   defp decode_payload(payload) do
     {:ok, decompressed} = :snappyer.decompress(payload)
     Prometheus.WriteRequest.decode(decompressed).timeseries
+  end
+
+  defp metric_event(source, attrs) do
+    defaults = %{source: source, event_message: "metric", metadata: %{"type" => "metric"}}
+    build(:log_event, Map.merge(defaults, Map.new(attrs)))
+  end
+
+  defp buckets(timeseries, name) do
+    for ts <- timeseries, labels = label_map(ts), labels["__name__"] == name, into: %{} do
+      {labels["le"], ts.samples}
+    end
+  end
+
+  defp attach_drop_handler do
+    test_pid = self()
+    handler_id = {__MODULE__, make_ref()}
+
+    :telemetry.attach(
+      handler_id,
+      [:logflare, :backends, :victoria_metrics, :drop],
+      fn _event, measurements, metadata, _config ->
+        send(test_pid, {:drop, measurements, metadata})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
   end
 
   defp label_map(timeseries) do

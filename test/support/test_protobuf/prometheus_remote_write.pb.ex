@@ -1,3 +1,6 @@
+# Subset of prometheus/prompb types.proto and remote.proto (package prometheus) used
+# to decode remote write payloads in tests. Field numbers match upstream.
+
 defmodule Prometheus.Label do
   @moduledoc false
 
@@ -30,5 +33,5 @@ defmodule Prometheus.WriteRequest do
 
   use Protobuf, syntax: :proto3
 
-  field :timeseries, 1, repeated: true, type: Prometheus.TimeSeries, json_name: "timeseries"
+  field :timeseries, 1, repeated: true, type: Prometheus.TimeSeries
 end

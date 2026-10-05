@@ -12,17 +12,25 @@ The VictoriaMetrics backend is **ingest-only**, and sends metric events to [Vict
 
 The backend can be configured with the following options:
 
-- `url` (`string`, required) - The remote write endpoint, such as `http://victoriametrics:8428/api/v1/write`.
+- `url` (`string`, required) - The remote write endpoint, such as `http://victoriametrics:8428/api/v1/write`. Private and reserved addresses are rejected.
 - `username` and `password` (`string`, optional) - Basic auth credentials. Both must be provided together.
-- `headers` (`map`, optional) - Extra headers attached to each request.
+- `headers` (`map`, optional) - Extra headers attached to each request. Credential headers such as `authorization` are redacted when the backend is read back.
 - `labels` (`map`, optional) - Static labels added to every time series. These take precedence over event attributes with the same name.
 
 ### Implementation Details
 
 Implementation is based on the [webhook backend](/backends/webhook).
 
-- Only metric events are sent, meaning events with `metadata.type` set to `metric`, as produced by OpenTelemetry metrics ingestion. Log and trace events routed to this backend are dropped.
-- Gauges and sums are sent as a single series. Histograms are sent as `_count`, `_sum` and cumulative `_bucket` series with an `le` label. Exponential histograms are dropped, as remote write v1 cannot represent them.
-- Metric and label names are converted into valid Prometheus identifiers, so `http.server.duration` becomes `http_server_duration`.
-- Each series has a `source` label set to the source name. Data point attributes with string, number or boolean values become labels; list and map values are skipped.
+- Only metric events are sent, meaning events with `metadata.type` set to `metric`, as produced by OpenTelemetry metrics ingestion.
+- Gauges and sums are sent as a single series. Histograms are sent as `_count`, `_sum` and cumulative `_bucket` series with an `le` label, formatted as a plain decimal such as `0.005` or `1000`.
+- Monotonic sums and histograms must use cumulative temporality. Remote write has no way to represent delta temporality, so those data points are dropped. Non-monotonic sums are sent regardless of temporality.
+- Log and trace events, exponential histograms and delta data points are dropped. Each batch with drops logs a warning and emits the `logflare.backends.victoria_metrics.drop` metric, tagged by reason.
 - Payloads are Protobuf-encoded and snappy-compressed, and batched with a maximum of 250 events per request.
+
+### Labels
+
+- `source` is set to the source name. Renaming a source starts new series under the new name.
+- `job` is set from the `service.name` resource attribute, prefixed with `service.namespace/` when present, and `instance` from `service.instance.id`.
+- Data point attributes with string, number or boolean values become labels; list and map values are skipped. Logflare normalizes attribute keys at ingest, so an attribute such as `http.route` is sent as the `_http_route` label.
+- Metric and label names are converted into valid Prometheus identifiers, so a metric named `http.server.duration` becomes `http_server_duration`.
+- The labels the backend sets (`__name__`, `le`, `source`, `job` and `instance`) always win. An attribute or configured label with one of those names is kept as `exported_<name>`, for example `exported_job`.

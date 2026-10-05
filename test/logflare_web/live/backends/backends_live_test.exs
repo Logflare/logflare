@@ -603,7 +603,7 @@ defmodule LogflareWeb.BackendsLiveTest do
             name: "my vm",
             type: "victoria_metrics",
             config: %{
-              url: "https://vm.example.com/api/v1/write",
+              url: "https://example.com/api/v1/write",
               username: "user",
               password: "pass"
             }
@@ -615,7 +615,7 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert html =~ "my vm"
 
       [backend] = Backends.list_backends_by_user_access(user, type: :victoria_metrics)
-      assert backend.config.url == "https://vm.example.com/api/v1/write"
+      assert backend.config.url == "https://example.com/api/v1/write"
       assert backend.config.username == "user"
     end
 
