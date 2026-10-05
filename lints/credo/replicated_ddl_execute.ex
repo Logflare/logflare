@@ -39,13 +39,16 @@ defmodule Logflare.CredoChecks.ReplicatedDdlExecute do
             modify(:user_id, references(:users, on_delete: :delete_all))
           end
 
+      Both the up and down SQL of `execute/2` are checked, and leading SQL comments or
+      preceding statements (`SET ...; CREATE ...`) do not hide a DDL statement.
+
       Statements matching `:node_local_patterns` (publications, subscriptions, replica
       identity, `ALTER SYSTEM`, role changes) are ignored: those configure the node or
       cluster itself and must not be replicated.
       """,
       params: [
         ddl_prefixes: "Leading SQL keywords that mark a statement as replicable DDL.",
-        node_local_patterns: "Statements containing these are node-local and exempt."
+        node_local_patterns: "Statements containing these whole words are node-local and exempt."
       ]
     ]
 
@@ -55,53 +58,68 @@ defmodule Logflare.CredoChecks.ReplicatedDdlExecute do
   def run(%SourceFile{} = source_file, params) do
     issue_meta = IssueMeta.for(source_file, params)
     ddl_prefixes = Params.get(params, :ddl_prefixes, __MODULE__)
-    node_local_patterns = Params.get(params, :node_local_patterns, __MODULE__)
+
+    node_local_regexes =
+      params
+      |> Params.get(:node_local_patterns, __MODULE__)
+      |> Enum.map(&Regex.compile!("\\b" <> Regex.escape(String.downcase(&1)) <> "\\b"))
+
     ast = Credo.Code.ast(source_file)
     scopes = ReplicatedExecuteScope.line_ranges(ast)
 
     ast
     |> Macro.prewalk([], fn node, issues ->
-      traverse(node, issues, issue_meta, scopes, ddl_prefixes, node_local_patterns)
+      traverse(node, issues, issue_meta, scopes, ddl_prefixes, node_local_regexes)
     end)
     |> elem(1)
     |> Enum.reverse()
   end
 
   defp traverse(
-         {:execute, meta, [argument | _]} = ast,
+         {:execute, meta, arguments} = ast,
          issues,
          issue_meta,
          scopes,
          ddl_prefixes,
-         node_local_patterns
-       ) do
-    with sql when is_binary(sql) <- leading_sql(argument),
-         true <- ddl?(sql, ddl_prefixes),
-         false <- node_local?(sql, node_local_patterns),
-         false <- ReplicatedExecuteScope.within?(scopes, meta[:line]) do
-      {ast, [issue_for(issue_meta, meta, sql) | issues]}
+         node_local_regexes
+       )
+       when is_list(arguments) do
+    if ReplicatedExecuteScope.within?(scopes, meta[:line]) do
+      {ast, issues}
     else
-      _ -> {ast, issues}
+      new_issues =
+        for sql when is_binary(sql) <- Enum.map(arguments, &sql_text/1),
+            replicable_ddl?(sql, ddl_prefixes, node_local_regexes),
+            do: issue_for(issue_meta, meta, sql)
+
+      {ast, Enum.reverse(new_issues, issues)}
     end
   end
 
-  defp traverse(ast, issues, _issue_meta, _scopes, _ddl_prefixes, _node_local_patterns),
+  defp traverse(ast, issues, _issue_meta, _scopes, _ddl_prefixes, _node_local_regexes),
     do: {ast, issues}
 
-  defp leading_sql(sql) when is_binary(sql), do: sql
-  defp leading_sql({:<<>>, _meta, [sql | _rest]}) when is_binary(sql), do: sql
-  defp leading_sql(_argument), do: nil
+  defp sql_text(sql) when is_binary(sql), do: sql
+  defp sql_text({:<<>>, _meta, parts}), do: Enum.map_join(parts, &sql_part/1)
 
-  defp ddl?(sql, ddl_prefixes) do
-    normalized = normalize(sql)
+  defp sql_text({sigil, _meta, [sql, _mods]}) when sigil in [:sigil_s, :sigil_S],
+    do: sql_text(sql)
 
-    Enum.any?(ddl_prefixes, &String.starts_with?(normalized, &1 <> " "))
-  end
+  defp sql_text(_argument), do: nil
 
-  defp node_local?(sql, node_local_patterns) do
-    normalized = normalize(sql)
+  defp sql_part(part) when is_binary(part), do: part
+  defp sql_part(_interpolation), do: "..."
 
-    Enum.any?(node_local_patterns, &String.contains?(normalized, &1))
+  defp replicable_ddl?(sql, ddl_prefixes, node_local_regexes) do
+    sql
+    |> String.replace(~r/--[^\n]*/, " ")
+    |> String.replace(~r/\/\*.*?\*\//s, " ")
+    |> String.split(";")
+    |> Enum.map(&normalize/1)
+    |> Enum.any?(fn statement ->
+      Enum.any?(ddl_prefixes, &String.starts_with?(statement, &1 <> " ")) and
+        not Enum.any?(node_local_regexes, &Regex.match?(&1, statement))
+    end)
   end
 
   defp normalize(sql) do

@@ -213,6 +213,7 @@ ex_slop_checks =
         excluded: []
       },
       requires: [
+        "lints/credo/module_aliases.ex",
         "lints/credo/replicated_execute_scope.ex",
         "lints/credo/oban_migration_replication.ex",
         "lints/credo/replicated_ddl_execute.ex"
