@@ -3,6 +3,8 @@ defmodule Logflare.Backends.Spool.Queue.SQS do
 
   @behaviour Logflare.Backends.Spool.Queue
 
+  alias Logflare.Backends.Spool.Queue.SQS.HttpClient
+
   @impl Logflare.Backends.Spool.Queue
   def resolve(queue_name) do
     case request(ExAws.SQS.get_queue_url(queue_name)) do
@@ -65,7 +67,7 @@ defmodule Logflare.Backends.Spool.Queue.SQS do
   end
 
   defp request(operation) do
-    ExAws.request(operation)
+    ExAws.request(operation, http_client: HttpClient)
   rescue
     e -> {:error, Exception.message(e)}
   catch
