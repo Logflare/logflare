@@ -53,7 +53,51 @@ mix test --only focus           # Run tests tagged with @tag :focus
 # Code Quality
 mix format                      # Format code
 mix credo                       # Check style and correctness
+mix ci                          # Run every gate CI enforces
 ```
+
+## Understanding the codebase & anti-slop tooling
+
+Before reading files one by one, use these static-analysis tools. They answer
+structural questions faster than grep, and they catch AI-generated slop the
+compiler does not. All support `--format json`.
+
+- **Orient in an unfamiliar area** - `mix reach.map` gives the project map:
+  modules, coupling, `--hotspots`, `--boundaries`, `--effects`, `--depth`.
+  Prefer this over many reads just to learn the structure.
+- **Before editing a function** - `mix reach.inspect <Mod.fun/arity | file:line>
+  --impact --deps` shows the blast radius.
+- **Trace data flow** - `mix reach.trace --from params --to write!` for security
+  and refactor reasoning.
+- **OTP topology** - `mix reach.otp` shows GenServer state machines, missing
+  message handlers, and supervision trees.
+- **Find duplication before extracting a helper** - `mix ex_dna` lists clones;
+  `mix ex_dna.explain <n>` suggests the extraction.
+
+`mix ci` runs every gate CI enforces: `test.compile`, `test.format`,
+`lint.all`, `test.security`, `test.slop`, `test.structure`. Do not disable a
+gate to go green - fix the code.
+
+- `mix lint.all` runs `credo --strict` with the **ex_slop** plugin, which adds
+  checks for LLM patterns (blanket rescues, narrator comments, anti-idiomatic
+  `Enum`). The `ex_slop_backlog` list in `config/.credo.exs` holds the 10 checks
+  that have pre-existing findings. They are off so the gate is green on existing
+  code. Fixing a backlog check's findings and removing it from that list is a
+  welcome change on its own. Never add a check to the list to go green.
+- `mix test.slop` runs `ex_dna --max-clones 29`, a duplication ratchet. A new
+  clone fails CI. When you remove clones, lower the number. Never raise it.
+- `mix test.structure` runs `reach.check --smells` against
+  `.reach.baseline.json` (194 accepted findings), so only **new** structural
+  smells fail. To accept a
+  new smell, run `mix reach.check --smells --write-baseline
+  .reach.baseline.json`, pretty-print it with `jq . .reach.baseline.json > tmp
+  && mv tmp .reach.baseline.json`, and commit it. Keep the checked-in baseline
+  pretty-printed so diffs stay reviewable.
+- `mix test.deps` runs `hex.audit` and `deps.audit`. It is advisory in CI, not
+  a gate, because the lockfile carries pre-existing advisories.
+
+Credo config lives in **`config/.credo.exs`**, not the repo root. `mix credo
+gen.config` writes a root `.credo.exs` that credo then ignores.
 
 ## Workflow
 

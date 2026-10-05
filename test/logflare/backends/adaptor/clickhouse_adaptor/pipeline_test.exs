@@ -2,18 +2,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   use Logflare.DataCase, async: false
 
   import ExUnit.CaptureLog
+  import Mimic
 
   alias Broadway.Message
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.EncodedRow
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
+  alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
+  alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.Mapper
+  alias Logflare.Mapper.OtelDefaults
   alias Logflare.TestUtils
 
   # Arbitrary day bucket value — pipeline only passes it through telemetry/OTEL
@@ -88,7 +91,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
   defp queued_pointer(queue_tid, event_id) do
     case :ets.lookup(queue_tid, event_id) do
-      [{^event_id, gen_tid, gen_event_id, size, retries, event_type, day_bucket}] ->
+      [{^event_id, gen_tid, gen_event_id, size, retries, event_type, day_bucket, spool_handle}] ->
         %LogEventPointer{
           id: event_id,
           tid: gen_tid,
@@ -97,7 +100,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
           size: size,
           retries: retries,
           event_type: event_type,
-          day_bucket: day_bucket
+          day_bucket: day_bucket,
+          spool_handle: spool_handle
         }
 
       [] ->
@@ -694,7 +698,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       event =
         build(:log_event,
           source: source,
-          ingested_at: nil,
           project: "log-project",
           trace_id: "log-trace",
           span_id: "log-span",
@@ -716,10 +719,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
           custom_log: "log-attribute",
           timestamp: timestamp
         )
-        |> Map.put(:ingested_at, nil)
 
-      map_config = MappingDefaults.for_log()
-      map_compiled = Mapper.compile!(%{map_config | output: nil})
+      map_compiled = Mapper.compile!(OtelDefaults.for_type(:log, :map))
       mapped_body = Mapper.map(event.body, map_compiled)
       gen_tid = setup_generation_events([event])
       messages = [batch_message(event, gen_tid, backend.id)]
@@ -770,8 +771,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         assert row["resource_attributes"] == mapped_body["resource_attributes"]
         assert row["scope_attributes"] == mapped_body["scope_attributes"]
         assert row["log_attributes"] == mapped_body["log_attributes"]
-        assert row["mapping_config_id"] == MappingDefaults.config_id(:log)
-        assert row["ingested_at"] == nil
+        assert row["mapping_config_id"] == OtelDefaults.config_id(:log)
+        assert row["ingested_at"] == DateTime.to_naive(event.ingested_at)
         assert row["timestamp_nano"] == timestamp * 1_000
       end)
     end
@@ -837,10 +838,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
           timestamp: timestamp
         )
         |> Map.put(:event_type, :metric)
-        |> Map.put(:ingested_at, nil)
 
-      map_config = MappingDefaults.for_metric()
-      map_compiled = Mapper.compile!(%{map_config | output: nil})
+      map_compiled = Mapper.compile!(OtelDefaults.for_type(:metric, :map))
       mapped_body = Mapper.map(event.body, map_compiled)
       gen_tid = setup_generation_events([event])
       messages = [batch_message(event, gen_tid, backend.id)]
@@ -930,8 +929,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         assert row["exemplars.value"] == mapped_body["exemplars.value"]
         assert row["exemplars.span_id"] == mapped_body["exemplars.span_id"]
         assert row["exemplars.trace_id"] == mapped_body["exemplars.trace_id"]
-        assert row["mapping_config_id"] == MappingDefaults.config_id(:metric)
-        assert row["ingested_at"] == nil
+        assert row["mapping_config_id"] == OtelDefaults.config_id(:metric)
+        assert row["ingested_at"] == DateTime.to_naive(event.ingested_at)
         assert row["timestamp_nano"] == timestamp * 1_000
       end)
     end
@@ -984,10 +983,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
           timestamp: timestamp
         )
         |> Map.put(:event_type, :trace)
-        |> Map.put(:ingested_at, nil)
 
-      map_config = MappingDefaults.for_trace()
-      map_compiled = Mapper.compile!(%{map_config | output: nil})
+      map_compiled = Mapper.compile!(OtelDefaults.for_type(:trace, :map))
       mapped_body = Mapper.map(event.body, map_compiled)
       gen_tid = setup_generation_events([event])
       messages = [batch_message(event, gen_tid, backend.id)]
@@ -1049,8 +1046,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         assert row["links.span_id"] == mapped_body["links.span_id"]
         assert row["links.trace_state"] == mapped_body["links.trace_state"]
         assert row["links.attributes"] == mapped_body["links.attributes"]
-        assert row["mapping_config_id"] == MappingDefaults.config_id(:trace)
-        assert row["ingested_at"] == nil
+        assert row["mapping_config_id"] == OtelDefaults.config_id(:trace)
+        assert row["ingested_at"] == DateTime.to_naive(event.ingested_at)
         assert row["timestamp_nano"] == timestamp * 1_000
       end)
     end
@@ -1239,6 +1236,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         status: {:failed, "connection error"}
       }
 
+      dropped_event = [:logflare, :ingest_event_queue, :retry_dropped]
+      ref = :telemetry_test.attach_event_handlers(self(), [dropped_event])
+      on_exit(fn -> :telemetry.detach(ref) end)
+
       log =
         capture_log(fn ->
           Pipeline.ack(:ack_ref, [], [failed_message])
@@ -1246,6 +1247,155 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       assert log =~ "Dropping 1 ClickHouse events: exhausted #{max_retries} retries"
       assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
+
+      assert_receive {^dropped_event, ^ref, %{count: 1}, metadata}
+      assert metadata.reason == :retries_exhausted
+      assert metadata.backend_id == backend.id
+      assert metadata.backend_type == :clickhouse
+    end
+
+    test "acks the pointer's spool handle on success, performing the real queue ack once its count reaches zero",
+         %{source: source, backend: backend} do
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+      SpoolAck.bump(handle, 1)
+
+      test_pid = self()
+      stub(QueueMod, :ack, fn url, h -> send(test_pid, {:acked, url, h}) end)
+
+      event = build(:log_event, source: source, message: "Test")
+      gen_tid = setup_generation_events([event])
+      pointer = %{pointer_for(event, gen_tid) | spool_handle: handle}
+
+      message = %Message{
+        data: pointer,
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}}
+      }
+
+      assert :ok = Pipeline.ack(:ack_ref, [message], [])
+
+      assert_receive {:acked, "queue-url", ^handle}
+      assert :ets.lookup(:spool_ack, handle) == []
+    end
+
+    test "acks the pointer's spool handle when dropped after exhausting retries", %{
+      source: source,
+      backend: backend
+    } do
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+      SpoolAck.bump(handle, 1)
+
+      test_pid = self()
+      stub(QueueMod, :ack, fn url, h -> send(test_pid, {:acked, url, h}) end)
+
+      max_retries = Pipeline.max_retries()
+      event = build(:log_event, source: source, message: "Test") |> Map.put(:retries, max_retries)
+      gen_tid = setup_generation_events([event])
+      pointer = %{pointer_for(event, gen_tid) | spool_handle: handle}
+
+      failed_message = %Message{
+        data: pointer,
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}},
+        status: {:failed, "connection error"}
+      }
+
+      capture_log(fn -> Pipeline.ack(:ack_ref, [], [failed_message]) end)
+
+      assert_receive {:acked, "queue-url", ^handle}
+      assert :ets.lookup(:spool_ack, handle) == []
+    end
+
+    test "acks the pointer's spool handle only once retries are actually exhausted, not on an intermediate retry",
+         %{source: source, backend: backend} do
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+      SpoolAck.bump(handle, 1)
+
+      test_pid = self()
+      stub(QueueMod, :ack, fn url, h -> send(test_pid, {:acked, url, h}) end)
+
+      event = build(:log_event, source: source, message: "Test") |> Map.put(:retries, 0)
+      gen_tid = setup_generation_events([event])
+      retry_key = {:consolidated, backend.id, self()}
+      assert {:ok, queue_tid} = IngestEventQueue.upsert_tid(retry_key)
+      pointer = %{pointer_for(event, gen_tid, queue_tid) | spool_handle: handle}
+
+      first_failure = %Message{
+        data: pointer,
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}},
+        status: {:failed, "first connection error"}
+      }
+
+      capture_log(fn -> Pipeline.ack(:ack_ref, [], [first_failure]) end)
+
+      # the body is still live -- requeued for another attempt, not dropped, so
+      # no ack yet even though this specific attempt failed
+      refute_receive {:acked, "queue-url", ^handle}
+
+      assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] =
+               :ets.lookup(:spool_ack, handle)
+
+      assert {:ok, [retry_pointer], ^queue_tid} =
+               IngestEventQueue.pop_pending_pointers(retry_key, 1)
+
+      assert retry_pointer.retries == Pipeline.max_retries()
+      assert retry_pointer.spool_handle == handle
+
+      second_failure = %Message{
+        data: retry_pointer,
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}},
+        status: {:failed, "second connection error"}
+      }
+
+      log = capture_log(fn -> Pipeline.ack(:ack_ref, [], [second_failure]) end)
+
+      assert log =~ "Dropping 1 ClickHouse events: exhausted #{Pipeline.max_retries()} retries"
+      assert_receive {:acked, "queue-url", ^handle}
+      assert :ets.lookup(:spool_ack, handle) == []
+    end
+
+    test "does not ack the pointer's spool handle when a retriable event's generation is already gone",
+         %{source: source, backend: backend} do
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+      SpoolAck.bump(handle, 1)
+
+      test_pid = self()
+      stub(QueueMod, :ack, fn url, h -> send(test_pid, {:acked, url, h}) end)
+
+      event = build(:log_event, source: source, message: "Test") |> Map.put(:retries, 0)
+      gen_tid = setup_generation_events([event])
+      pointer = %{pointer_for(event, gen_tid) | spool_handle: handle}
+
+      # simulate GenerationJanitor dropping the generation before retry lookup
+      :ets.delete(gen_tid)
+
+      failed_message = %Message{
+        data: pointer,
+        acknowledger: {Pipeline, :ack_id, %{backend_id: backend.id}},
+        status: {:failed, "connection error"}
+      }
+
+      capture_log(fn -> Pipeline.ack(:ack_ref, [], [failed_message]) end)
+
+      refute_receive {:acked, "queue-url", ^handle}
+
+      assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] =
+               :ets.lookup(:spool_ack, handle)
+    end
+
+    test "a nil spool handle (an event that never came from the spool) is untouched by ack/3", %{
+      source: source,
+      backend: backend
+    } do
+      event = build(:log_event, source: source, message: "Test")
+      gen_tid = setup_generation_events([event])
+      message = batch_message(event, gen_tid, backend.id)
+
+      # No SpoolAck.register/3 call for anything here -- if ack/3 tried to
+      # touch a real handle, this would crash instead of silently no-op'ing.
+      assert :ok = Pipeline.ack(:ack_ref, [message], [])
     end
   end
 
@@ -1491,9 +1641,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
                  IngestEventQueue.lookup_event(retry_pointer.tid, retry_pointer.gen_event_id)
       end
 
-      test "reports a queue-unavailable drop separately from a generation lookup miss", %{
-        source: source
-      } do
+      test "reports a queue-unavailable drop under its own event, separately from a generation lookup miss",
+           %{source: source} do
         retry_backend_id = System.unique_integer([:positive])
         stale_queue_tid = :ets.new(:test_pipeline_stale_retry_queue, [:set, :public])
         :ets.delete(stale_queue_tid)
@@ -1510,11 +1659,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
           status: {:failed, "connection error"}
         }
 
-        dropped_event = [:logflare, :ingest_event_queue, :not_initialized, :dropped]
+        dropped_event = [:logflare, :ingest_event_queue, :requeue_queue_unavailable]
+        not_initialized_event = [:logflare, :ingest_event_queue, :not_initialized, :dropped]
         lookup_miss_event = [:logflare, :ingest_event_queue, :requeue_lookup_miss]
 
         ref =
-          :telemetry_test.attach_event_handlers(self(), [dropped_event, lookup_miss_event])
+          :telemetry_test.attach_event_handlers(self(), [
+            dropped_event,
+            not_initialized_event,
+            lookup_miss_event
+          ])
 
         on_exit(fn -> :telemetry.detach(ref) end)
         Mimic.stub(CircuitBreaker, :check, fn ^retry_backend_id -> :ok end)
@@ -1525,6 +1679,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         assert metadata.backend_type == :clickhouse
         assert metadata.backend_id == retry_backend_id
         refute_receive {^lookup_miss_event, ^ref, _, _}
+        refute_receive {^not_initialized_event, ^ref, _, _}
         assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
       end
 
@@ -1790,7 +1945,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       expected_backend_id = backend.id
 
       too_many_parts_error =
-        "HTTP 500: Code: 252. DB::Exception: Too many parts (600 with average size of 1.00 MiB) in table."
+        {:http, 500,
+         "Code: 252. DB::Exception: Too many parts (600 with average size of 1.00 MiB) in table."}
 
       Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
                                                                         _event_type,
@@ -1831,7 +1987,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       source: source,
       backend: backend
     } do
-      too_many_parts_error = "HTTP 500: Code: 252. DB::Exception: Too many parts in table."
+      too_many_parts_error = {:http, 500, "Code: 252. DB::Exception: Too many parts in table."}
 
       Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
                                                                         _event_type,
@@ -1879,10 +2035,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         status: {:failed, "boom"}
       }
 
+      dropped_event = [:logflare, :ingest_event_queue, :retry_dropped]
+      ref = :telemetry_test.attach_event_handlers(self(), [dropped_event])
+      on_exit(fn -> :telemetry.detach(ref) end)
+
       log = capture_log(fn -> Pipeline.ack(:ack_ref, [], [failed_message]) end)
 
       assert log =~ "circuit breaker open"
       assert IngestEventQueue.lookup_event(gen_tid, event.id) == nil
+
+      assert_receive {^dropped_event, ^ref, %{count: 1}, metadata}
+      assert metadata.reason == :circuit_breaker_open
+      assert metadata.backend_id == backend.id
     end
 
     test "requeues encoded rows when the breaker is closed", %{

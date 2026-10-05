@@ -13,8 +13,6 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
   @behaviour Adaptor
   @behaviour HttpBased.Client
 
-  @sensitive_headers ["authorization", "x-api-key", "x-auth-token"]
-
   @doc """
   Returns a list of supported protocols
   """
@@ -43,7 +41,6 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
     types = %{
       endpoint: :string,
       protocol: :string,
-      gzip: :boolean,
       headers: {:map, :string},
       flatten_to_attributes: :boolean
     }
@@ -51,7 +48,6 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
     {existing_config, types}
     |> Ecto.Changeset.cast(params, Map.keys(types))
     |> normalize_header_keys()
-    |> Utils.default_field_value(:gzip, true)
     |> Utils.default_field_value(:protocol, "http/protobuf")
     |> Utils.default_field_value(:headers, %{})
     |> Utils.default_field_value(:flatten_to_attributes, false)
@@ -77,24 +73,12 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
 
   @impl Adaptor
   def redact_config(config) do
-    Map.update!(config, :headers, &redact_headers/1)
+    Map.update!(config, :headers, &Headers.redact/1)
   end
 
   @impl Adaptor
   def sanitize_config_for_display(config) do
-    Adaptor.mask_config_values(config, except: [:protocol, :gzip, :flatten_to_attributes])
-  end
-
-  defp redact_headers(headers) do
-    for {k, v} <- headers, into: %{}, do: redact_header(k, v)
-  end
-
-  defp redact_header(k, v) do
-    if Enum.member?(@sensitive_headers, String.downcase(k)) do
-      {k, "REDACTED"}
-    else
-      {k, v}
-    end
+    Adaptor.mask_config_values(config, except: [:protocol, :flatten_to_attributes])
   end
 
   @impl Adaptor
@@ -108,7 +92,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
       url: config.endpoint,
       formatter:
         {ProtobufFormatter, %{flatten_to_attributes: config[:flatten_to_attributes] || false}},
-      gzip: config.gzip,
+      gzip: true,
       json: false,
       headers: config.headers
     ]

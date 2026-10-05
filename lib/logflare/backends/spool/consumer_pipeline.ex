@@ -8,15 +8,16 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
   alias Broadway.Message
   alias Logflare.Backends
   alias Logflare.Backends.Spool.ConsumerPipeline.QueueProducer
-  alias Logflare.Backends.Spool.Queue
-  alias Logflare.Backends.Spool.Storage
+  alias Logflare.Backends.Spool.MemoryMonitor
+  alias Logflare.Backends.Spool.ProviderConfig
+  alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.Sources
 
   @behaviour Broadway.Acknowledger
 
-  # Generous safety valve (2x total batcher capacity), not a fine-grained
-  # flow-control knob — same ratio as the ClickHouse/spool producer pipelines.
-  @max_in_flight_multiplier 2
+  # Byte budget for QueueProducer's max_in_flight — a temporary, generous
+  # placeholder pending a properly-tuned default.
+  @default_max_in_flight_bytes 2 * 1024 * 1024 * 1024
 
   @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
   def start_link(args) do
@@ -28,13 +29,15 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     concurrency =
       Keyword.get(spool_config, :consumer_concurrency, max(System.schedulers_online(), 4))
 
-    batch_size = Keyword.get(spool_config, :consumer_batch_size, 500)
+    # Counts segments, not events — needs tuning against real segment-size
+    # distribution in production.
+    batch_size = Keyword.get(spool_config, :consumer_batch_size, 20)
     queue_name = Keyword.fetch!(spool_config, :queue_name)
-    provider = Keyword.get(spool_config, :provider, :aws)
-    storage_mod = Keyword.get(spool_config, :storage_mod, default_storage_mod(provider))
-    queue_mod = Keyword.get(spool_config, :queue_mod, default_queue_mod(provider))
+    {storage_mod, queue_mod} = ProviderConfig.resolve_mods(spool_config)
     queue_url = resolve_queue_url!(queue_name, queue_mod)
-    max_in_flight = @max_in_flight_multiplier * batch_size * concurrency
+
+    max_in_flight =
+      Keyword.get(spool_config, :consumer_max_in_flight_bytes, @default_max_in_flight_bytes)
 
     Broadway.start_link(__MODULE__,
       name: name,
@@ -51,7 +54,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
         transformer: {__MODULE__, :transform, []}
       ],
       processors: [
-        default: [concurrency: concurrency, min_demand: 50, max_demand: 500]
+        default: [concurrency: concurrency, min_demand: 2, max_demand: 10]
       ],
       batchers: [
         default: [
@@ -64,21 +67,22 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
   end
 
   @spec transform(map(), keyword()) :: Message.t()
-  def transform(line, _opts) do
+  def transform(%{segment: segment, handle: handle} = unparsed, _opts) do
     in_flight_ref = QueueProducer.get_in_flight_ref()
 
     %Message{
-      data: line,
-      acknowledger: {__MODULE__, :noop, %{in_flight_ref: in_flight_ref}}
+      data: unparsed,
+      acknowledger:
+        {__MODULE__, :noop,
+         %{in_flight_ref: in_flight_ref, bytes: byte_size(segment), handle: handle}}
     }
   end
 
-  # Queue acking (SQS/PubSub) is managed by the producer — individual message
-  # ack is a no-op there. This still has to decrement the producer's
-  # max_in_flight counter, the other half of QueueProducer's emit-side cap.
   @impl Broadway.Acknowledger
   def ack(_ack_ref, successful, failed) do
-    decrement_in_flight(successful ++ failed)
+    all = successful ++ failed
+    decrement_in_flight(all)
+    release_segment_bumps(successful)
 
     if failed != [] do
       :telemetry.execute(
@@ -93,13 +97,19 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     :ok
   end
 
+  defp release_segment_bumps(messages) do
+    messages
+    |> Enum.frequencies_by(&handle_of/1)
+    |> Enum.each(fn {handle, count} -> SpoolAck.ack(handle, count) end)
+  end
+
   @spec decrement_in_flight([Message.t()]) :: :ok
   defp decrement_in_flight(messages) do
     messages
-    |> Enum.group_by(&in_flight_ref_of/1)
+    |> Enum.group_by(&in_flight_ref_of/1, &bytes_of/1)
     |> Enum.each(fn
-      {nil, _msgs} -> :ok
-      {ref, msgs} -> :atomics.sub(ref, 1, length(msgs))
+      {nil, _bytes} -> :ok
+      {ref, bytes} -> :atomics.sub(ref, 1, Enum.sum(bytes))
     end)
   end
 
@@ -110,9 +120,51 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
 
   defp in_flight_ref_of(_), do: nil
 
+  defp bytes_of(%{acknowledger: {_, _, %{} = ack_data}}), do: Map.get(ack_data, :bytes, 0)
+  defp bytes_of(_), do: 0
+
+  defp handle_of(%{acknowledger: {_, _, %{} = ack_data}}), do: Map.get(ack_data, :handle)
+  defp handle_of(_), do: nil
+
+  # A segment that fails to parse fails just this one message.
   @impl Broadway
-  def handle_message(_processor, %Message{} = message, _context) do
-    message
+  def handle_message(
+        _processor,
+        %Message{data: %{segment: segment}} = message,
+        _context
+      ) do
+    {duration, result} = :timer.tc(fn -> parse_segment(segment) end)
+
+    case result do
+      {:ok, records} ->
+        :telemetry.execute(
+          [:logflare, :backends, :spool, :consumer, :parse],
+          %{duration: duration, segment_count: 1, event_count: length(records)},
+          %{}
+        )
+
+        Enum.each(records, &maybe_register_source/1)
+        %{message | data: records}
+
+      {:error, reason} ->
+        Logger.error("spool_consumer: failed to parse segment, discarding: #{inspect(reason)}")
+        Message.failed(message, reason)
+    end
+  end
+
+  defp parse_segment(content) do
+    {:ok, :erlang.binary_to_term(content)}
+  rescue
+    e -> {:error, e}
+  catch
+    kind, reason -> {:error, {kind, reason}}
+  end
+
+  defp maybe_register_source(record) do
+    case record_source_id(record) do
+      nil -> :ok
+      source_id -> MemoryMonitor.register_source(source_id)
+    end
   end
 
   @impl Broadway
@@ -126,40 +178,53 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
       %{backend_type: :spool_consumer, batch_trigger: batch_trigger}
     )
 
-    failed_source_ids =
+    failed_keys =
       messages
-      |> Enum.group_by(&record_source_id(&1.data), & &1.data)
-      |> Enum.flat_map(fn
-        {nil, lines} ->
-          emit_skipped_telemetry(:missing_source_id, length(lines))
-          Logger.debug("spool_consumer: #{length(lines)} events missing source_id, skipping")
-          []
-
-        {source_id, lines} ->
-          dispatch_group(source_id, lines)
+      |> Enum.group_by(&handle_of/1)
+      |> Enum.flat_map(fn {handle, handle_messages} ->
+        dispatch_handle_group(handle, handle_messages)
       end)
       |> MapSet.new()
 
-    fail_dispatched(messages, failed_source_ids)
+    fail_dispatched(messages, failed_keys)
   end
 
-  defp fail_dispatched(messages, failed_source_ids) do
-    if Enum.empty?(failed_source_ids) do
+  defp dispatch_handle_group(handle, messages) do
+    messages
+    |> Enum.flat_map(fn message -> Enum.map(message.data, &{message, &1}) end)
+    |> Enum.group_by(fn {_message, record} -> record_source_id(record) end, fn {_message, record} ->
+      record
+    end)
+    |> Enum.flat_map(fn
+      {nil, records} ->
+        emit_skipped_telemetry(:missing_source_id, length(records))
+        Logger.debug("spool_consumer: #{length(records)} events missing source_id, skipping")
+        []
+
+      {source_id, records} ->
+        source_id |> dispatch_group(records, handle) |> Enum.map(&{handle, &1})
+    end)
+  end
+
+  defp fail_dispatched(messages, failed_keys) do
+    if Enum.empty?(failed_keys) do
       messages
     else
-      Enum.map(messages, &fail_message(&1, failed_source_ids))
+      Enum.map(messages, &fail_message(&1, failed_keys))
     end
   end
 
-  defp fail_message(message, failed_source_ids) do
-    if MapSet.member?(failed_source_ids, record_source_id(message.data)) do
+  defp fail_message(message, failed_keys) do
+    handle = handle_of(message)
+
+    if Enum.any?(message.data, &MapSet.member?(failed_keys, {handle, record_source_id(&1)})) do
       Message.failed(message, :dispatch_error)
     else
       message
     end
   end
 
-  defp dispatch_group(source_id, lines) do
+  defp dispatch_group(source_id, lines, handle) do
     case Sources.Cache.get_by(id: source_id) do
       nil ->
         emit_skipped_telemetry(:unknown_source_id, length(lines))
@@ -171,7 +236,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
         []
 
       source ->
-        {:ok, _} = Backends.dispatch_from_spool(lines, source)
+        {:ok, _} = Backends.dispatch_from_spool(lines, source, handle)
         []
     end
   rescue
@@ -208,10 +273,4 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
   defp record_source_id(%{source_id: id}), do: id
   defp record_source_id(%{"source_id" => id}), do: id
   defp record_source_id(_), do: nil
-
-  defp default_storage_mod(:gcp), do: Storage.GCS
-  defp default_storage_mod(_), do: Storage.S3
-
-  defp default_queue_mod(:gcp), do: Queue.PubSub
-  defp default_queue_mod(_), do: Queue.SQS
 end

@@ -123,3 +123,49 @@ describe("focusout handler lifecycle", () => {
     expect(() => hook.destroyed()).not.toThrow();
   });
 });
+
+describe("editor keyboard handling", () => {
+  it("stops Monaco from consuming Tab when autocomplete suggestions are hidden", () => {
+    const { hook } = mountHook();
+    const event = {
+      key: "Tab",
+      preventDefault: vi.fn(),
+      stopImmediatePropagation: vi.fn(),
+    };
+
+    hook._handleEditorKeydown(event);
+
+    expect(event.stopImmediatePropagation).toHaveBeenCalledOnce();
+    expect(event.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it("leaves Tab to Monaco when autocomplete suggestions are visible", () => {
+    const { hook } = mountHook();
+    hook._editorDomNode = {
+      querySelector: vi.fn(() => ({ className: "suggest-widget visible" })),
+    };
+    const event = {
+      key: "Tab",
+      stopImmediatePropagation: vi.fn(),
+    };
+
+    hook._handleEditorKeydown(event);
+
+    expect(hook._editorDomNode.querySelector).toHaveBeenCalledWith(
+      ".suggest-widget.visible"
+    );
+    expect(event.stopImmediatePropagation).not.toHaveBeenCalled();
+  });
+
+  it("leaves other keys to Monaco", () => {
+    const { hook } = mountHook();
+    const event = {
+      key: "Enter",
+      stopImmediatePropagation: vi.fn(),
+    };
+
+    hook._handleEditorKeydown(event);
+
+    expect(event.stopImmediatePropagation).not.toHaveBeenCalled();
+  });
+});

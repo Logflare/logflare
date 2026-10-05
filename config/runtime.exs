@@ -33,6 +33,19 @@ defmodule Env do
         end
     end
   end
+
+  @spec aws_rds_credentials(map()) :: keyword(String.t())
+  def aws_rds_credentials(env) when is_map(env) do
+    credentials = [
+      access_key_id: env["AWS_ACCESS_KEY_ID"],
+      secret_access_key: env["AWS_SECRET_ACCESS_KEY"],
+      security_token: env["AWS_SESSION_TOKEN"]
+    ]
+
+    if Enum.all?(credentials, fn {_key, value} -> is_binary(value) and value != "" end),
+      do: credentials,
+      else: []
+  end
 end
 
 if config_env() == :test and Env.get_boolean("E2E") do
@@ -64,7 +77,7 @@ logflare_metadata =
 logflare_health =
   [
     memory_utilization:
-      System.get_env("LOGFLARE_HEALTH_MAX_MEMORY_UTILIZATION", "0.95") |> String.to_float()
+      System.get_env("LOGFLARE_HEALTH_MAX_MEMORY_UTILIZATION", "0.95") |> Utils.parse_ratio!()
   ]
   |> filter_nil_kv_pairs.()
 
@@ -129,6 +142,11 @@ config :logflare,
        ]
        |> filter_nil_kv_pairs.()
 
+config :logflare, Logflare.NaturalLanguageLql.AnthropicClient,
+  api_key: System.get_env("ANTHROPIC_API_KEY"),
+  base_url: System.get_env("ANTHROPIC_BASE_URL", "https://api.anthropic.com"),
+  model: System.get_env("ANTHROPIC_MODEL", "claude-sonnet-5")
+
 config :logflare,
        :bigquery_backend_adaptor,
        [
@@ -174,34 +192,56 @@ config :logflare,
          live_dashboard: Env.get_boolean("LOGFLARE_ENABLE_LIVE_DASHBOARD")
        )
 
+case Env.aws_rds_credentials(System.get_env()) do
+  [] -> :ok
+  credentials -> config :ex_aws, :rds, credentials
+end
+
+db_auth_options =
+  case System.get_env("DB_AUTH") do
+    auth when auth in [nil, "", "password"] ->
+      []
+
+    "aws_iam" ->
+      [logflare_auth: :aws_iam]
+
+    auth ->
+      raise "Unsupported DB_AUTH=#{inspect(auth)}, expected password or aws_iam"
+  end
+  |> Keyword.put(:logflare_aws_region, System.get_env("DB_AWS_REGION"))
+
 config :logflare,
        Logflare.Repo,
-       filter_nil_kv_pairs.(
-         pool_size:
-           if(System.get_env("DB_POOL_SIZE") != nil,
-             do: String.to_integer(System.get_env("DB_POOL_SIZE")),
-             else: nil
-           ),
-         database: System.get_env("DB_DATABASE"),
-         hostname: System.get_env("DB_HOSTNAME"),
-         password: System.get_env("DB_PASSWORD"),
-         username: System.get_env("DB_USERNAME"),
-         socket_options:
-           case Utils.ip_version(System.get_env("DB_HOSTNAME", "")) do
-             nil -> []
-             version when version in [:inet, :inet6] -> [version]
-             error -> raise "Failed to detect IP version for DB_HOSTNAME: #{error}"
-           end,
-         after_connect:
-           if(System.get_env("DB_SCHEMA"),
-             do: {Postgrex, :query!, ["set search_path=#{System.get_env("DB_SCHEMA")}", []]},
-             else: nil
-           ),
-         port:
-           if(System.get_env("DB_PORT") != nil,
-             do: String.to_integer(System.get_env("DB_PORT")),
-             else: nil
-           )
+       Keyword.merge(
+         filter_nil_kv_pairs.(
+           pool_size:
+             if(System.get_env("DB_POOL_SIZE") != nil,
+               do: String.to_integer(System.get_env("DB_POOL_SIZE")),
+               else: nil
+             ),
+           database: System.get_env("DB_DATABASE"),
+           url: System.get_env("DB_URL"),
+           hostname: System.get_env("DB_HOSTNAME"),
+           password: System.get_env("DB_PASSWORD"),
+           username: System.get_env("DB_USERNAME"),
+           socket_options:
+             case Utils.ip_version(System.get_env("DB_HOSTNAME", "")) do
+               nil -> []
+               version when version in [:inet, :inet6] -> [version]
+               error -> raise "Failed to detect IP version for DB_HOSTNAME: #{error}"
+             end,
+           after_connect:
+             if(System.get_env("DB_SCHEMA"),
+               do: {Postgrex, :query!, ["set search_path=#{System.get_env("DB_SCHEMA")}", []]},
+               else: nil
+             ),
+           port:
+             if(System.get_env("DB_PORT") != nil,
+               do: String.to_integer(System.get_env("DB_PORT")),
+               else: nil
+             )
+         ),
+         filter_nil_kv_pairs.(db_auth_options)
        )
 
 if System.get_env("LOGFLARE_MIN_CLUSTER_SIZE") do
@@ -420,6 +460,10 @@ if(
   config :logflare, Logflare.Repo, ssl: db_ssl_opts
 end
 
+config :logflare,
+       :rds_ca_cert_path,
+       System.get_env("RDS_CA_CERT_PATH", "/etc/ssl/certs/aws-rds-global-bundle.pem")
+
 case System.get_env("LOGFLARE_FEATURE_FLAG_OVERRIDE") do
   nil ->
     nil
@@ -458,20 +502,20 @@ config :libcluster,
 if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
   default_sample_ratio =
     System.get_env("LOGFLARE_OTEL_SAMPLE_RATIO", "1.0")
-    |> String.to_float()
+    |> Utils.parse_ratio!()
 
   ingest_sample_ratio =
     System.get_env("LOGFLARE_OTEL_INGEST_SAMPLE_RATIO")
     |> case do
       nil -> default_sample_ratio
-      value -> String.to_float(value)
+      value -> Utils.parse_ratio!(value)
     end
 
   endpoint_sample_ratio =
     System.get_env("LOGFLARE_OTEL_ENDPOINT_SAMPLE_RATIO")
     |> case do
       nil -> default_sample_ratio
-      value -> String.to_float(value)
+      value -> Utils.parse_ratio!(value)
     end
 
   config :logflare,
@@ -493,9 +537,7 @@ if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
          root:
            {LogflareWeb.OpenTelemetrySampler,
             %{
-              probability:
-                System.get_env("LOGFLARE_OTEL_SAMPLE_RATIO", "1.0")
-                |> String.to_float()
+              probability: default_sample_ratio
             }}
        }}
 
@@ -570,12 +612,10 @@ config :logflare, :context_cache_gossip, %{
   max_nodes: cache_gossip_max_nodes
 }
 
-# LOGFLARE_READ_REPLICAS: Comma-separated list of PostgreSQL read replicas to distribute
-# context cache queries across. If unset or empty, all queries go to the primary database.
-# Each entry is either a bare hostname (inheriting the primary's port, credentials, database
-# and SSL settings) or a full URI, in which case only the parts present in the URI override
-# the primary's config: postgres://user:pass@host:port/database?ssl=true&pool_size=5
-# Example: "replica1.example.com,postgres://user:pass@replica2.example.com:5432/logflare"
+# LOGFLARE_READ_REPLICAS: PostgreSQL read replicas for selected cache queries.
+# An empty list uses the primary database. Entries are bare host names, IP literals, or URIs
+# whose omitted options inherit the primary.
+# `auth=aws_iam&aws_region=REGION` enables AWS IAM authentication.
 read_replicas =
   "LOGFLARE_READ_REPLICAS"
   |> System.get_env("")
@@ -586,6 +626,46 @@ read_replicas =
   |> Enum.map(&Logflare.Repo.Replicas.parse!/1)
 
 config :logflare, :read_replicas, read_replicas
+
+# LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS: Comma-separated list of pglogical
+# replication set names. When set to a non-empty value, Ecto migrations are routed
+# through `pglogical.replicate_ddl_command/2` so DDL propagates to replicas subscribed
+# to these replication sets. If unset or empty, migrations run directly against the
+# primary repo, unchanged.
+# Example: "my_set" or "my_set,other_set"
+pglogical_replication_sets =
+  "LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS"
+  |> System.get_env("")
+  |> String.split(",", trim: true)
+  |> Enum.map(&String.trim/1)
+  |> Enum.reject(&(&1 == ""))
+  |> Enum.uniq()
+
+for set <- pglogical_replication_sets do
+  if Regex.match?(~r/^[A-Za-z_][A-Za-z0-9_]*$/, set) do
+    :ok
+  else
+    raise "LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS contains an invalid replication set name: #{inspect(set)}"
+  end
+end
+
+# pglogical resets search_path when applying replicated DDL, so the migration
+# adaptor has to restore whatever DB_SCHEMA puts on the repo's connections.
+# DB_SCHEMA is only inspected when pglogical DDL replication is enabled; without
+# it, DB_SCHEMA keeps its existing pass-through behaviour (see :after_connect above).
+# Validated as identifiers because DDL cannot use bind parameters.
+pglogical_schema =
+  if pglogical_replication_sets == [] do
+    []
+  else
+    "DB_SCHEMA"
+    |> System.get_env("public")
+    |> Utils.Postgres.parse_identifier_list!()
+  end
+
+config :logflare, Logflare.Repo.Migrator,
+  replication_sets: pglogical_replication_sets,
+  search_path: Enum.join(pglogical_schema, ", ")
 
 spool_mode_override =
   case System.get_env("SPOOL_MODE") do
@@ -612,12 +692,71 @@ spool_provider_override =
       raise ArgumentError, "Invalid SPOOL_PROVIDER=#{other}. Must be aws or gcp."
   end
 
+# Which backend the spool DurableBuffer instance commits through — :wal
+# (local disk, the default) or :mem (in-memory, never durable locally at
+# all). Orthogonal to SPOOL_BLOCKING below: this picks where the buffer
+# lives, not how long an ingest caller waits (see
+# Logflare.Backends.spool_buffer/0).
+spool_buffer_override =
+  case System.get_env("SPOOL_BUFFER") do
+    v when v in [nil, ""] ->
+      []
+
+    buffer when buffer in ["wal", "mem"] ->
+      [buffer: String.to_existing_atom(buffer)]
+
+    other ->
+      raise ArgumentError, "Invalid SPOOL_BUFFER=#{other}. Must be wal or mem."
+  end
+
+# Blocks every ingest caller until its batch is actually committed
+# (uploaded to GCS/S3, published to Pub-Sub/SQS) rather than just until
+# it's durable in whichever buffer is active — see
+# Logflare.Backends.spool_blocking_mode?/0. Off by default.
+spool_blocking_override =
+  case System.get_env("SPOOL_BLOCKING") do
+    v when v in [nil, ""] -> []
+    v -> [blocking: v == "true"]
+  end
+
+# How much accumulates before the spool's local commit tier flushes (see
+# Logflare.Backends.Spool.DurableBuffer.Supervisor's max_batch_bytes,
+# default 64KiB) — applies in both :wal and :mem buffer mode, since it
+# governs DurableBuffer.Partition's own group-commit trigger rather than
+# anything backend-specific.
+spool_max_batch_bytes_override =
+  case System.get_env("SPOOL_MAX_BATCH_BYTES") do
+    v when v in [nil, ""] ->
+      []
+
+    v ->
+      case Integer.parse(v) do
+        {bytes, ""} when bytes > 0 ->
+          [max_batch_bytes: bytes]
+
+        _ ->
+          raise ArgumentError,
+                "Invalid SPOOL_MAX_BATCH_BYTES=#{v}. Must be a positive integer."
+      end
+  end
+
+# Local disk directory for the producer's durable WAL segments (see
+# Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal) — only used
+# when SPOOL_BUFFER is :wal. Falls back to a tmp dir so a plain
+# `mix phx.server` still boots with spool mode on, but that fallback is
+# not durable across a real restart — set this explicitly wherever the
+# WAL is meant to survive one (see cloudbuild/gce-startup.sh's
+# prepare_wal_dir for how the dev/staging producer instances provide it).
 spool_overrides =
   spool_mode_override ++
     spool_provider_override ++
+    spool_buffer_override ++
+    spool_blocking_override ++
+    spool_max_batch_bytes_override ++
     if((q = System.get_env("SPOOL_QUEUE_NAME")) && q != "", do: [queue_name: q], else: []) ++
     if((t = System.get_env("SPOOL_PUBSUB_TOPIC")) && t != "", do: [pubsub_topic: t], else: []) ++
-    if (b = System.get_env("SPOOL_BUCKET")) && b != "", do: [bucket: b], else: []
+    if((b = System.get_env("SPOOL_BUCKET")) && b != "", do: [bucket: b], else: []) ++
+    if (w = System.get_env("SPOOL_WAL_DIR")) && w != "", do: [wal_dir: w], else: []
 
 if spool_overrides != [] do
   config :logflare,

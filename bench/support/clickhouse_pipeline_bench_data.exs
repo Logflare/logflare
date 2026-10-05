@@ -2,25 +2,23 @@ defmodule Logflare.Bench.ClickHousePipelineData do
   @moduledoc false
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.LogEvent
   alias Logflare.Mapper
+  alias Logflare.Mapper.OtelDefaults
 
-  @mapping_config_id "00000000-0000-0000-0001-000000000003"
   @source_uuid String.to_atom("550e8400-e29b-41d4-a716-446655440000")
 
   @type event_type :: :log | :metric | :trace
 
   @spec compiled(event_type()) :: {reference(), String.t()}
   def compiled(type) do
-    config = MappingDefaults.for_type(type)
-    {%{config | output: nil} |> Mapper.compile!(), MappingDefaults.config_id(type)}
+    {type |> OtelDefaults.for_type(:map) |> Mapper.compile!(), OtelDefaults.config_id(type)}
   end
 
   @spec compiled_output(event_type()) :: {reference(), String.t()}
   def compiled_output(type) do
-    {type |> MappingDefaults.for_type() |> Mapper.compile!(), MappingDefaults.config_id(type)}
+    {type |> OtelDefaults.for_type() |> Mapper.compile!(), OtelDefaults.config_id(type)}
   end
 
   @spec batch(event_type(), pos_integer(), atom()) :: [LogEvent.t()]
@@ -554,7 +552,7 @@ defmodule Logflare.Bench.ClickHousePipelineData do
   defp maybe_compute_duration(body, _type), do: body
 
   defp resolve_severity_number(%{"severity_number_alt" => alt} = body, :log)
-       when is_integer(alt) and alt > 0 do
+       when is_integer(alt) and alt in 1..24 do
     %{body | "severity_number" => alt}
   end
 
@@ -673,7 +671,7 @@ defmodule Logflare.Bench.ClickHousePipelineData do
       event_type: type,
       day_bucket: div(1_700_000_000 + i, 86_400),
       ingested_at: DateTime.from_unix!(1_700_000_000_000_000 + i, :microsecond),
-      body: Map.put(body, "mapping_config_id", @mapping_config_id)
+      body: Map.put(body, "mapping_config_id", OtelDefaults.config_id(type))
     }
   end
 

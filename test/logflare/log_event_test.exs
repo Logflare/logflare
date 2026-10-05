@@ -866,6 +866,7 @@ defmodule Logflare.LogEventTest do
     end
 
     @alphas [?a..?z, ?A..?Z]
+    @reserved_message_keys ~w[id message event_message]
 
     property "`m.` can be used as an alias for `metadata.`" do
       check all key <- string(@alphas, min_length: 1),
@@ -878,17 +879,13 @@ defmodule Logflare.LogEventTest do
     end
 
     property "top keys are reachable" do
-      check all metadata <-
-                  map_of(
-                    string(@alphas, min_length: 1),
-                    string(:printable),
-                    min_length: 1
-                  ) do
-        key = Enum.random(Map.keys(metadata))
+      check all key <-
+                  string(@alphas, min_length: 1)
+                  |> filter(&(&1 not in @reserved_message_keys)),
+                value <- string(:printable) do
+        le = event_with_message(key, %{key => value})
 
-        le = event_with_message(key, metadata)
-
-        assert Jason.encode!(metadata[key]) == le.body["event_message"]
+        assert Jason.encode!(value) == le.body["event_message"]
       end
     end
 
