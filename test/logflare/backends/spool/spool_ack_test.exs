@@ -8,6 +8,12 @@ defmodule Logflare.Backends.Spool.SpoolAckTest do
 
   setup :set_mimic_global
 
+  setup do
+    :ets.delete_all_objects(:spool_ack)
+    on_exit(fn -> :ets.delete_all_objects(:spool_ack) end)
+    :ok
+  end
+
   defp unique_handle, do: "handle-#{System.unique_integer([:positive])}"
 
   describe "nil handle" do
@@ -106,7 +112,12 @@ defmodule Logflare.Backends.Spool.SpoolAckTest do
     end
   end
 
-  describe "sweep_stale/1" do
+  describe "sweep_stale/1 with ack_stale: false" do
+    setup do
+      Application.put_env(:logflare, SpoolAck, ack_stale: false)
+      on_exit(fn -> Application.put_env(:logflare, SpoolAck, ack_stale: true) end)
+    end
+
     test "deletes a row older than the given threshold without performing a queue ack" do
       handle = unique_handle()
       test_pid = self()
@@ -128,6 +139,48 @@ defmodule Logflare.Backends.Spool.SpoolAckTest do
       SpoolAck.bump(handle, 1)
 
       assert :ok = SpoolAck.sweep_stale(:timer.minutes(10))
+
+      assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] =
+               :ets.lookup(:spool_ack, handle)
+    end
+  end
+
+  describe "sweep_stale/1 with ack_stale: true" do
+    setup do
+      Application.put_env(:logflare, SpoolAck, ack_stale: true)
+      on_exit(fn -> Application.put_env(:logflare, SpoolAck, ack_stale: true) end)
+    end
+
+    test "performs the real queue ack for a stale row before deleting it" do
+      handle = unique_handle()
+      test_pid = self()
+
+      stub(QueueMod, :ack, fn url, h ->
+        send(test_pid, {:acked, url, h})
+        :ok
+      end)
+
+      SpoolAck.register(handle, QueueMod, "queue-url")
+      SpoolAck.bump(handle, 3)
+      Process.sleep(5)
+
+      assert :ok = SpoolAck.sweep_stale(0)
+
+      assert_receive {:acked, "queue-url", ^handle}
+      assert :ets.lookup(:spool_ack, handle) == []
+    end
+
+    test "leaves a row younger than the given threshold alone" do
+      handle = unique_handle()
+      test_pid = self()
+      stub(QueueMod, :ack, fn _url, h -> send(test_pid, {:acked, h}) end)
+
+      SpoolAck.register(handle, QueueMod, "queue-url")
+      SpoolAck.bump(handle, 1)
+
+      assert :ok = SpoolAck.sweep_stale(:timer.minutes(10))
+
+      refute_receive {:acked, ^handle}, 200
 
       assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] =
                :ets.lookup(:spool_ack, handle)
