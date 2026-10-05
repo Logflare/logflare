@@ -32,8 +32,11 @@ defmodule Logflare.Sql.Parser do
 
   @doc """
   Converts an AST or list of ASTs back into a SQL string.
+
+  Returns an error when the AST cannot be deserialized by the parser crate, for
+  example when a hand-built node is missing a required field.
   """
-  @spec to_string(map() | [map()]) :: {:ok, String.t()}
+  @spec to_string(map() | [map()]) :: {:ok, String.t()} | {:error, String.t()}
   def to_string(ast) when is_map(ast), do: __MODULE__.to_string([ast])
 
   def to_string(asts) when is_list(asts) do

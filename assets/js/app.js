@@ -12,6 +12,7 @@ import * as User from "./user";
 import BillingHooks from "./billing";
 import LiveModalHooks from "./live_modal";
 import { LogEventsChart } from "./LogEventsChart.jsx";
+import ComboboxHooks from "./combobox_hook.jsx";
 import Chart from "./admin_dashboard_charts.jsx";
 import Loader from "./loader.jsx";
 import DevDashboard from "./DevDashboard.jsx";
@@ -24,6 +25,7 @@ import $ from "jquery";
 import moment from "moment";
 import { CodeEditorHook } from "../../deps/live_monaco_editor/priv/static/live_monaco_editor.esm"
 import LqlEditorWrapper from "./lql_editor_wrapper_hook"
+import { scrollToPageBottom } from "./utils"
 
 
 // set moment globally before daterangepicker
@@ -49,6 +51,7 @@ const hooks = {
   ...liveReactHooks,
   ...sourceLiveViewHooks,
   ...LiveModalHooks,
+  ...ComboboxHooks,
   ...BillingHooks,
   CodeEditorHook,
   LqlEditorWrapper,
@@ -158,6 +161,10 @@ window.addEventListener("logflare:copy-logs-list", (event) => {
       detail: {text},
     })
   );
+});
+
+window.addEventListener("logflare:scroll-to-bottom", () => {
+  scrollToPageBottom();
 });
 
 window.addEventListener("phx:page-loading-stop", (_info) => {
