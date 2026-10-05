@@ -68,7 +68,7 @@ defmodule Logflare.Bench.ClickHouseProcessorRowBinary do
 
   defp encode_pointer({id, tid}, compiled, mapping_config_id) do
     %LogEvent{} = event = IngestEventQueue.lookup_event(tid, id)
-    output_context = OutputContext.clickhouse_row_binary(event, mapping_config_id)
+    output_context = OutputContext.ch_row_binary(event, mapping_config_id)
     Mapper.map(event.body, compiled, output_context: output_context)
   end
 
