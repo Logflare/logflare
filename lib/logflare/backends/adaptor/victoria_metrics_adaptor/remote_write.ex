@@ -16,7 +16,8 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.RemoteWrite do
   import Bitwise
 
   @type label :: {name :: String.t(), value :: String.t()}
-  @type sample :: {value :: float(), timestamp_ms :: integer()}
+  @type sample_value :: float() | :nan | :infinity | :negative_infinity
+  @type sample :: {value :: sample_value(), timestamp_ms :: integer()}
   @type series :: {[label()], [sample()]}
 
   @spec encode([series()]) :: binary()
@@ -45,8 +46,12 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.RemoteWrite do
   defp string_field(_tag, ""), do: <<>>
   defp string_field(tag, value), do: <<tag, varint(byte_size(value))::binary, value::binary>>
 
-  # Only +0.0 is the default; -0.0 is written like any other value.
+  # Only +0.0 is the default; -0.0 is written like any other value. NaN uses the
+  # bits Prometheus calls a normal NaN, distinct from its staleness marker.
   defp double_field(value) when value === 0.0, do: <<>>
+  defp double_field(:nan), do: <<0x09, 0x7FF8000000000001::little-64>>
+  defp double_field(:infinity), do: <<0x09, 0x7FF0000000000000::little-64>>
+  defp double_field(:negative_infinity), do: <<0x09, 0xFFF0000000000000::little-64>>
   defp double_field(value), do: <<0x09, value::float-little-64>>
 
   defp int64_field(0), do: <<>>

@@ -36,7 +36,12 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.RemoteWriteTest do
 
   defp sample do
     tuple({
-      one_of([constant(0.0), constant(-0.0), float()]),
+      one_of([
+        constant(0.0),
+        constant(-0.0),
+        member_of([:nan, :infinity, :negative_infinity]),
+        float()
+      ]),
       one_of([
         constant(0),
         integer(),

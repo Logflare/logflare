@@ -86,6 +86,77 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       assert config.password == "pass"
       assert config.headers == %{"authorization" => "Bearer token", "x-tenant" => "acme"}
     end
+
+    test "does not carry stored credentials to a different host" do
+      existing = %{
+        url: "https://vm.example.com/api/v1/write",
+        username: "user",
+        password: "pass",
+        headers: %{"authorization" => "Bearer token", "x-tenant" => "acme"}
+      }
+
+      redacted = @subject.redact_config(existing)
+
+      moved =
+        Adaptor.cast_and_validate_config(
+          @subject,
+          %{redacted | url: "https://other.example.com/api/v1/write"},
+          existing
+        )
+
+      refute moved.valid?
+      assert {_msg, _opts} = moved.errors[:password]
+      config = Ecto.Changeset.apply_changes(moved)
+      assert config.password == nil
+      assert config.headers == %{"x-tenant" => "acme"}
+
+      url_only =
+        Adaptor.cast_and_validate_config(
+          @subject,
+          %{url: "https://other.example.com/api/v1/write"},
+          existing
+        )
+
+      config = Ecto.Changeset.apply_changes(url_only)
+      assert config.password == nil
+      assert config.headers == %{"x-tenant" => "acme"}
+
+      reentered =
+        Adaptor.cast_and_validate_config(
+          @subject,
+          %{redacted | url: "https://other.example.com/api/v1/write", password: "new"},
+          existing
+        )
+
+      assert reentered.valid?
+      assert Ecto.Changeset.apply_changes(reentered).password == "new"
+    end
+
+    test "keeps credentials across a stored round trip through the backend API" do
+      user = insert(:user)
+
+      {:ok, backend} =
+        Backends.create_backend(user, %{
+          name: "vm",
+          type: :victoria_metrics,
+          config: %{
+            url: "https://vm.example.com/api/v1/write",
+            username: "user",
+            password: "pass",
+            headers: %{"authorization" => "Bearer token"},
+            labels: %{"env" => "prod"}
+          }
+        })
+
+      loaded = Backends.get_backend(backend.id)
+      assert %{password: "pass", labels: %{"env" => "prod"}} = loaded.config
+
+      {:ok, _updated} =
+        Backends.update_backend(loaded, %{config: @subject.redact_config(loaded.config)})
+
+      assert %{password: "pass", headers: %{"authorization" => "Bearer token"}} =
+               Backends.get_backend(backend.id).config
+    end
   end
 
   describe "validate_config/1 SSRF" do
@@ -172,6 +243,20 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       assert {:error, :http_client_error} = @subject.test_connection(backend)
     end
 
+    test "sends a valid snappy-encoded empty write request", %{backend: backend} do
+      test_pid = self()
+
+      @client
+      |> expect(:send, fn opts ->
+        send(test_pid, {:body, opts[:body]})
+        {:ok, %Tesla.Env{status: 204}}
+      end)
+
+      assert :ok = @subject.test_connection(backend)
+      assert_received {:body, <<0>>}
+      assert {:ok, ""} = :snappyer.decompress(<<0>>)
+    end
+
     test "returns error on transport failure", %{backend: backend} do
       @client
       |> expect(:send, fn _req -> {:error, :nxdomain} end)
@@ -253,7 +338,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
           count: 4,
           sum: 1.0,
           bucket_counts: [1, 1, 1, 1, 0],
-          explicit_bounds: [0.005, 2.5, 1000.0, 1.0e-9]
+          explicit_bounds: [1.0e-9, 0.005, 2.5, 1000.0]
         )
 
       assert ["+Inf", "0.000000001", "0.005", "1000", "2.5"] =
@@ -364,27 +449,148 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
           value: 1
         ),
         metric_event(source,
+          metric_type: "sum",
+          is_monotonic: false,
+          aggregation_temporality: "delta",
+          value: 3
+        ),
+        metric_event(source,
           metric_type: "histogram",
           aggregation_temporality: "delta",
           count: 1,
           bucket_counts: [1],
           explicit_bounds: []
         ),
-        metric_event(source,
-          event_message: "queue_depth",
-          metric_type: "sum",
-          is_monotonic: false,
-          aggregation_temporality: "delta",
-          value: 3
-        )
+        metric_event(source, event_message: "kept", metric_type: "gauge", value: 1.0)
       ]
 
       log = capture_log(fn -> assert [_ts] = decode(events) end)
 
-      assert log =~ "Dropping 4 of 5 VictoriaMetrics event(s)"
+      assert log =~ "Dropping 4 of 6 VictoriaMetrics metric event(s)"
       assert_received {:drop, %{count: 1}, %{reason: :not_a_metric}}
       assert_received {:drop, %{count: 1}, %{reason: :unsupported_type}}
-      assert_received {:drop, %{count: 2}, %{reason: :non_cumulative}}
+      assert_received {:drop, %{count: 3}, %{reason: :non_cumulative}}
+    end
+
+    test "drops malformed data points without losing the batch", %{source: source} do
+      attach_drop_handler()
+
+      malformed = [
+        [event_message: 123, metric_type: "gauge", value: 1.0],
+        [metric_type: "gauge"],
+        [metric_type: "gauge", value: "12"],
+        [metric_type: "histogram", count: 1, bucket_counts: ["1"]],
+        [metric_type: "histogram", count: 2, bucket_counts: [1, 1], explicit_bounds: ["1"]],
+        [
+          metric_type: "histogram",
+          count: 3,
+          bucket_counts: [1, 1, 1],
+          explicit_bounds: [2.0, 1.0]
+        ],
+        [metric_type: "histogram", count: 3, bucket_counts: [1, 1, 1], explicit_bounds: [1.0, 1]],
+        [metric_type: "histogram", count: 5, bucket_counts: [2, 3], explicit_bounds: [1.0, 2.0]],
+        [metric_type: "histogram", count: -1]
+      ]
+
+      events =
+        Enum.map(malformed, &metric_event(source, &1)) ++
+          [metric_event(source, event_message: "kept", metric_type: "gauge", value: 1.0)]
+
+      log = capture_log(fn -> assert [_ts] = decode(events) end)
+
+      assert log =~ "Dropping 9 of 10"
+      assert_received {:drop, %{count: 9}, %{reason: :invalid}}
+    end
+
+    test "sends NaN, infinite and out-of-range values as IEEE specials", %{source: source} do
+      events =
+        for {name, value} <- [nan: :nan, inf: :infinity, neg: :negative_infinity, big: 10 ** 400] do
+          metric_event(source, event_message: "#{name}", metric_type: "gauge", value: value)
+        end
+
+      values = Map.new(decode(events), &{label_map(&1)["__name__"], hd(&1.samples).value})
+
+      assert values == %{
+               "nan" => :nan,
+               "inf" => :infinity,
+               "neg" => :negative_infinity,
+               "big" => :infinity
+             }
+    end
+
+    test "leaves out _sum when the histogram has no sum", %{source: source} do
+      le =
+        metric_event(source,
+          event_message: "latency",
+          metric_type: "histogram",
+          count: 3,
+          bucket_counts: [1, 2],
+          explicit_bounds: [1.0]
+        )
+
+      names = [le] |> decode() |> Enum.map(&label_map(&1)["__name__"]) |> Enum.uniq()
+
+      assert Enum.sort(names) == ["latency_bucket", "latency_count"]
+    end
+
+    test "always sends a +Inf bucket holding the count", %{source: source} do
+      without_buckets =
+        metric_event(source, event_message: "no_buckets", metric_type: "histogram", count: 4)
+
+      inconsistent_overflow =
+        metric_event(source,
+          event_message: "overflow",
+          metric_type: "histogram",
+          count: 9,
+          bucket_counts: [1, 2, 3],
+          explicit_bounds: [1.0, 2.0]
+        )
+
+      timeseries = decode([without_buckets, inconsistent_overflow])
+
+      assert %{"+Inf" => [%{value: 4.0}]} = buckets(timeseries, "no_buckets_bucket")
+
+      assert %{"1" => [%{value: 1.0}], "2" => [%{value: 3.0}], "+Inf" => [%{value: 9.0}]} =
+               buckets(timeseries, "overflow_bucket")
+    end
+
+    test "does not warn for log and trace events", %{source: source} do
+      attach_drop_handler()
+      le = build(:log_event, source: source, event_message: "hello")
+
+      assert capture_log(fn -> assert [] = decode([le]) end) == ""
+      assert_received {:drop, %{count: 1}, %{reason: :not_a_metric}}
+    end
+
+    test "skips empty label names and values", %{source: source} do
+      le = metric_event(source, metric_type: "gauge", value: 1.0, attributes: %{"kept" => "x"})
+
+      [ts] =
+        [le]
+        |> @subject.format_batch(%{labels: %{"" => "x", "empty" => ""}})
+        |> decode_payload()
+
+      labels = label_map(ts)
+      assert labels["kept"] == "x"
+      refute Map.has_key?(labels, "")
+      refute Map.has_key?(labels, "empty")
+    end
+
+    test "prefixes exported_ again when the exported name is taken", %{source: source} do
+      le =
+        metric_event(source,
+          metric_type: "gauge",
+          value: 1.0,
+          attributes: %{"source" => "client", "exported_source" => "proxy"}
+        )
+
+      assert [ts] = decode([le])
+
+      assert %{
+               "source" => "myservice",
+               "exported_source" => "proxy",
+               "exported_exported_source" => "client"
+             } = label_map(ts)
     end
 
     test "does not warn when every event is sent", %{source: source} do
@@ -413,6 +619,22 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
         |> decode_payload()
 
       assert %{"env" => "prod", "deploy_region" => "eu", "queue" => "default"} = label_map(ts)
+    end
+
+    test "keeps config labels with reserved names as exported_ labels" do
+      insert(:plan)
+      source = insert(:source, user: insert(:user), name: "configured")
+      le = metric_event(source, metric_type: "gauge", value: 1.0)
+
+      [ts] =
+        [le]
+        |> @subject.format_batch(%{labels: %{"job" => "static", "source" => "static"}})
+        |> decode_payload()
+
+      labels = label_map(ts)
+      assert %{"source" => "configured", "exported_job" => "static"} = labels
+      assert labels["exported_source"] == "static"
+      refute Map.has_key?(labels, "job")
     end
   end
 
