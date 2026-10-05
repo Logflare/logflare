@@ -25,8 +25,10 @@ defmodule Logflare.Backends.Spool.ProviderConfigTest do
 
   describe "resolve_queue_ref/2" do
     test "uses queue_name for SQS even when a stale pubsub_topic is also configured" do
+      test_pid = self()
+
       stub(ExAws, :request, fn %ExAws.Operation.Query{params: %{"QueueName" => name}}, _opts ->
-        assert name == "logflare-spool"
+        send(test_pid, {:queue_name_used, name})
         {:ok, %{body: %{queue_url: "http://localhost:9324/0/logflare-spool"}}}
       end)
 
@@ -38,6 +40,8 @@ defmodule Logflare.Backends.Spool.ProviderConfigTest do
 
       assert ProviderConfig.resolve_queue_ref(spool_config, SQS) ==
                "http://localhost:9324/0/logflare-spool"
+
+      assert_received {:queue_name_used, "logflare-spool"}
     end
 
     test "uses pubsub_topic for PubSub even when a stale queue_name is also configured" do

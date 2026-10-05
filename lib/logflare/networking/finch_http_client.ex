@@ -19,6 +19,7 @@ defmodule Logflare.Networking.FinchHttpClient do
       @behaviour ExAws.Request.HttpClient
 
       @finch_name unquote(finch_name)
+      @mod unquote(__MODULE__)
 
       @impl ExAws.Request.HttpClient
       @spec request(atom(), binary(), binary(), [{binary(), binary()}], keyword()) ::
@@ -28,10 +29,10 @@ defmodule Logflare.Networking.FinchHttpClient do
         method
         |> Finch.build(url, headers, body)
         |> Finch.request(@finch_name, http_opts)
-        |> unquote(__MODULE__).normalize_response()
+        |> @mod.normalize_response()
       rescue
         error in RuntimeError ->
-          if unquote(__MODULE__).pool_timeout?(error) do
+          if @mod.pool_timeout?(error) do
             {:error, %{reason: :pool_timeout}}
           else
             reraise(error, __STACKTRACE__)

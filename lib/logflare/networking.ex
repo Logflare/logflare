@@ -1,6 +1,7 @@
 defmodule Logflare.Networking do
   @moduledoc false
 
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
   alias Logflare.Backends.Adaptor.DatadogAdaptor
   alias Logflare.SingleTenant
@@ -91,11 +92,15 @@ defmodule Logflare.Networking do
   end
 
   defp spool_finch_pools do
-    spool_config = Application.get_env(:logflare, :spool, [])
+    if Backends.spool_producer_mode?() or Backends.spool_consumer_mode?() do
+      spool_config = Application.get_env(:logflare, :spool, [])
 
-    case Keyword.get(spool_config, :provider, :aws) do
-      :gcp -> [spool_gcs_pubsub_pool()]
-      _aws -> [spool_s3_pool(), spool_sqs_pool()]
+      case Keyword.get(spool_config, :provider, :aws) do
+        :gcp -> [spool_gcs_pubsub_pool()]
+        _aws -> [spool_s3_pool(), spool_sqs_pool()]
+      end
+    else
+      []
     end
   end
 

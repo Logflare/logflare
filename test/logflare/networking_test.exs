@@ -8,7 +8,14 @@ defmodule Logflare.NetworkingTest do
   describe "single tenant mode using Big Query" do
     TestUtils.setup_single_tenant()
 
-    test "returns bigquery and clickhouse connection pools" do
+    setup do
+      prev = Application.get_env(:logflare, :spool, [])
+      Application.put_env(:logflare, :spool, Keyword.put(prev, :mode, :both))
+      on_exit(fn -> Application.put_env(:logflare, :spool, prev) end)
+      :ok
+    end
+
+    test "returns bigquery, clickhouse, and spool connection pools" do
       finch_names =
         Networking.pools()
         |> Enum.filter(fn
@@ -34,6 +41,13 @@ defmodule Logflare.NetworkingTest do
 
   describe "single tenant mode using Postgres" do
     TestUtils.setup_single_tenant(backend_type: :postgres)
+
+    setup do
+      prev = Application.get_env(:logflare, :spool, [])
+      Application.put_env(:logflare, :spool, Keyword.put(prev, :mode, :both))
+      on_exit(fn -> Application.put_env(:logflare, :spool, prev) end)
+      :ok
+    end
 
     test "returns bigquery, clickhouse, and spool connection pools" do
       expected_datadog_pools =
@@ -104,7 +118,7 @@ defmodule Logflare.NetworkingTest do
     defp finch_name(_), do: []
 
     test "starts only FinchSpool (GCS+Pub/Sub) when provider is :gcp" do
-      Application.put_env(:logflare, :spool, provider: :gcp)
+      Application.put_env(:logflare, :spool, provider: :gcp, mode: :both)
 
       names = finch_names()
       assert Logflare.FinchSpool in names
@@ -113,7 +127,7 @@ defmodule Logflare.NetworkingTest do
     end
 
     test "starts separate FinchSpoolS3 and FinchSpoolSQS pools when provider is :aws" do
-      Application.put_env(:logflare, :spool, provider: :aws)
+      Application.put_env(:logflare, :spool, provider: :aws, mode: :both)
 
       names = finch_names()
       assert Logflare.FinchSpoolS3 in names
@@ -122,12 +136,38 @@ defmodule Logflare.NetworkingTest do
     end
 
     test "defaults to FinchSpoolS3 + FinchSpoolSQS when no provider is configured" do
-      Application.put_env(:logflare, :spool, [])
+      Application.put_env(:logflare, :spool, mode: :both)
 
       names = finch_names()
       assert Logflare.FinchSpoolS3 in names
       assert Logflare.FinchSpoolSQS in names
       refute Logflare.FinchSpool in names
+    end
+
+    test "starts no spool pools when spool mode is :disable, regardless of provider" do
+      Application.put_env(:logflare, :spool, provider: :aws, mode: :disable)
+
+      names = finch_names()
+      refute Logflare.FinchSpoolS3 in names
+      refute Logflare.FinchSpoolSQS in names
+      refute Logflare.FinchSpool in names
+    end
+
+    test "starts no spool pools when spool mode is not configured (defaults to disabled)" do
+      Application.put_env(:logflare, :spool, provider: :gcp)
+
+      names = finch_names()
+      refute Logflare.FinchSpoolS3 in names
+      refute Logflare.FinchSpoolSQS in names
+      refute Logflare.FinchSpool in names
+    end
+
+    test "starts spool pools for :producer-only and :consumer-only modes too" do
+      Application.put_env(:logflare, :spool, provider: :aws, mode: :producer)
+      assert Logflare.FinchSpoolS3 in finch_names()
+
+      Application.put_env(:logflare, :spool, provider: :aws, mode: :consumer)
+      assert Logflare.FinchSpoolS3 in finch_names()
     end
   end
 

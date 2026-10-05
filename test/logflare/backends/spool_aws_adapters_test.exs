@@ -10,10 +10,10 @@ defmodule Logflare.Backends.SpoolAwsAdaptersTest do
 
   describe "Storage.S3.put/4" do
     test "sends content-type and content-encoding as real S3 headers, on S3's own dedicated pool" do
+      test_pid = self()
+
       stub(ExAws, :request, fn %ExAws.Operation.S3{} = op, opts ->
-        assert op.headers["content-type"] == "application/x-ndjson"
-        assert op.headers["content-encoding"] == "zstd"
-        assert opts[:http_client] == S3HttpClient
+        send(test_pid, {:put_called, op.headers, opts[:http_client]})
         {:ok, %{}}
       end)
 
@@ -24,16 +24,26 @@ defmodule Logflare.Backends.SpoolAwsAdaptersTest do
                    "content-encoding" => "zstd"
                  }
                )
+
+      assert_received {:put_called, headers, http_client}
+      assert headers["content-type"] == "application/x-ndjson"
+      assert headers["content-encoding"] == "zstd"
+      assert http_client == S3HttpClient
     end
 
     test "defaults content-type to application/octet-stream and omits content-encoding when not provided" do
+      test_pid = self()
+
       stub(ExAws, :request, fn %ExAws.Operation.S3{} = op, _opts ->
-        assert op.headers["content-type"] == "application/octet-stream"
-        refute Map.has_key?(op.headers, "content-encoding")
+        send(test_pid, {:headers_used, op.headers})
         {:ok, %{}}
       end)
 
       assert {:ok, %{}} = S3.put("test-bucket", "0/abc.etf", "binary-data", [])
+
+      assert_received {:headers_used, headers}
+      assert headers["content-type"] == "application/octet-stream"
+      refute Map.has_key?(headers, "content-encoding")
     end
 
     test "returns {:error, reason} on request failure" do
