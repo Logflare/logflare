@@ -1082,7 +1082,7 @@ defmodule Logflare.EndpointsTest do
         assert_receive {:DOWN, ^monitor_ref, :process, ^cache_pid, :normal}
 
         TestUtils.retry_assert(fn ->
-          assert GenServer.whereis(ResultsCache.name(endpoint.id, %{})) == nil
+          assert GenServer.whereis(ResultsCache.name(endpoint, %{})) == nil
         end)
 
         # run_cached_query would create a cache that outlives this test.
