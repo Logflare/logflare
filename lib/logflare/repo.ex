@@ -21,15 +21,17 @@ defmodule Logflare.Repo do
   @doc """
   Postgres uptime in seconds, or `0` when the primary database cannot be reached.
 
-  The timeout bounds connection checkout as well as the query itself, so this
-  fails fast rather than blocking for `queue_target`. Probes have their own, often
-  shorter, timeout and would otherwise be marked as timed out before this returns.
+  `queue: false` fails immediately when no connection is free instead of waiting
+  out `queue_target`/`queue_interval`, which a per-call `:timeout` does not bound -
+  measured at ~12s with the production settings, long past any probe's own timeout.
+  A busy pool therefore reads as unreachable here, which is acceptable: the only
+  caller needs one successful answer per node and retries until it gets it.
   """
   @spec get_uptime() :: non_neg_integer() | Decimal.t()
   def get_uptime do
     query = "SELECT EXTRACT(epoch FROM (current_timestamp - pg_postmaster_start_time()));"
 
-    __MODULE__.query(query, [], timeout: @uptime_timeout)
+    __MODULE__.query(query, [], queue: false, timeout: @uptime_timeout)
     |> case do
       {:ok,
        %{

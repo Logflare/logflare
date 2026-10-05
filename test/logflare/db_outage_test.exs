@@ -14,6 +14,10 @@ defmodule Logflare.DbOutageTest do
   # A repo pool pointed at a closed port. Queries against it fail the same way
   # they do when the primary database is unreachable, without touching the
   # sandbox-owned connection the rest of the suite depends on.
+  #
+  # The queue settings mirror `config/prod.exs` on purpose: with them, a checkout
+  # on an empty pool blocks for ~12s regardless of any per-call `:timeout`, so
+  # anything asserting that a caller fails fast has to opt out of queueing.
   defp start_unreachable_repo!(_context) do
     {:ok, pid} =
       Repo.start_link(
@@ -22,8 +26,8 @@ defmodule Logflare.DbOutageTest do
         port: 1,
         pool: DBConnection.ConnectionPool,
         pool_size: 1,
-        queue_target: 10,
-        queue_interval: 10
+        queue_target: 5_000,
+        queue_interval: 2_000
       )
 
     [unreachable_repo: pid]
