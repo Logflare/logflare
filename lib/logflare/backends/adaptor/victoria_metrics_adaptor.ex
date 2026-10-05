@@ -10,35 +10,43 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   should point to the VictoriaMetrics remote-write endpoint, e.g.
   http://victoriametrics:8428/api/v1/write.
 
+  Only scalar attribute values (strings, numbers and booleans) become labels; list
+  and map values are skipped.
+
   Optional `labels` config map is merged into every time series (config wins over
   event attributes on key collision).
   """
 
-  alias Logflare.Backends.Adaptor.QueryResult
+  @behaviour Logflare.Backends.Adaptor
+
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Backend
+  alias Logflare.LogEvent
   alias Logflare.Sources
   alias Logflare.Utils
-
-  @behaviour Logflare.Backends.Adaptor
 
   def child_spec(arg) do
     %{id: __MODULE__, start: {__MODULE__, :start_link, [arg]}}
   end
 
   @impl Logflare.Backends.Adaptor
-  def start_link({source, backend}) do
-    backend = %{backend | config: transform_config(backend)}
-    WebhookAdaptor.start_link({source, backend})
+  def start_link({source, %Backend{} = backend}) do
+    WebhookAdaptor.start_link({source, %{backend | config: transform_config(backend)}})
   end
 
   @impl Logflare.Backends.Adaptor
-  @spec format_batch(list()) :: binary()
-  def format_batch(log_events) do
+  @spec format_batch([LogEvent.t()]) :: binary()
+  def format_batch(log_events), do: format_batch(log_events, %{})
+
+  @impl Logflare.Backends.Adaptor
+  @spec format_batch([LogEvent.t()], map()) :: binary()
+  def format_batch(log_events, config) do
+    static_labels = flat_labels(Map.get(config, :labels))
+
     timeseries =
       log_events
       |> Enum.filter(&metric_event?/1)
-      |> Enum.flat_map(&to_labeled_samples/1)
+      |> Enum.flat_map(&to_labeled_samples(&1, static_labels))
       |> Enum.group_by(fn {labels, _sample} -> labels end, fn {_labels, sample} -> sample end)
       |> Enum.map(fn {labels, samples} ->
         %Prometheus.TimeSeries{
@@ -66,10 +74,9 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     %{
       url: config.url,
       headers: headers,
-      format_batch: &format_batch/1,
+      format_batch: &format_batch(&1, config),
       gzip: false,
-      http: "http1",
-      allow_private_destinations: Map.get(config, :allow_private_destinations, false)
+      http: "http1"
     }
   end
 
@@ -82,11 +89,9 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def validate_config(changeset) do
-    import Ecto.Changeset
-
     changeset
-    |> validate_required([:url])
-    |> validate_format(:url, ~r/https?\:\/\/.+/)
+    |> Ecto.Changeset.validate_required([:url])
+    |> Ecto.Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
     |> validate_user_pass()
   end
 
@@ -107,66 +112,6 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     WebhookAdaptor.test_connection(backend, empty_body)
   end
 
-  @doc """
-  Executes a PromQL instant query against the backend's VictoriaMetrics instance.
-
-  Each result row is normalized to a map with `__name__`, label key/value pairs,
-  `value` (float) and `timestamp` (integer seconds — VM returns float seconds,
-  we coerce to integer).
-  """
-  @impl Logflare.Backends.Adaptor
-  @spec execute_query(Backend.t(), String.t(), keyword()) ::
-          {:ok, QueryResult.t()} | {:error, term()}
-  def execute_query(%Backend{config: config}, query, _opts \\ []) when is_binary(query) do
-    url = query_url(config) <> "?" <> URI.encode_query(%{"query" => query})
-
-    with {:ok, %{status_code: 200, body: body}} <- HTTPoison.get(url, auth_headers(config)),
-         {:ok, %{"data" => %{"result" => result}}} <- Jason.decode(body) do
-      rows = Enum.map(result, &normalize_query_result/1)
-      {:ok, QueryResult.new(rows, %{query_string: query})}
-    else
-      {:ok, %{status_code: status, body: body}} ->
-        {:error, "VictoriaMetrics returned #{status}: #{body}"}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  # --- private helpers ---
-
-  defp query_url(%{url: url}) do
-    uri = URI.parse(url)
-    %URI{scheme: uri.scheme, host: uri.host, port: uri.port, path: "/api/v1/query"} |> URI.to_string()
-  end
-
-  defp auth_headers(config) do
-    case Utils.encode_basic_auth(config) do
-      nil -> []
-      encoded -> [{"Authorization", "Basic #{encoded}"}]
-    end
-  end
-
-  defp normalize_query_result(%{"metric" => labels, "value" => [ts, value_str]}) do
-    labels
-    |> Map.put("timestamp", trunc(to_number(ts)))
-    |> Map.put("value", to_number(value_str))
-  end
-
-  defp normalize_query_result(other), do: other
-
-  defp to_number(v) when is_number(v), do: v
-
-  defp to_number(v) when is_binary(v) do
-    case Float.parse(v) do
-      {f, _} -> f
-      :error -> 0.0
-    end
-  end
-
-  defp to_number(_), do: 0.0
-
-
   defp encode_write_request(%Prometheus.WriteRequest{} = req) do
     {:ok, compressed} = req |> Prometheus.WriteRequest.encode() |> :snappyer.compress()
     compressed
@@ -175,10 +120,10 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   defp metric_event?(%{body: %{"metadata" => %{"type" => "metric"}}}), do: true
   defp metric_event?(_), do: false
 
-  defp to_labeled_samples(%{body: body, source_id: source_id}) do
+  defp to_labeled_samples(%{body: body, source_id: source_id}, static_labels) do
     metric_name = sanitize_metric_name(body["event_message"])
-    ts_ms = nano_to_ms(body["timestamp"])
-    base_labels = base_labels(source_id, body)
+    ts_ms = micro_to_ms(body["timestamp"])
+    base_labels = base_labels(source_id, body, static_labels)
 
     case body["metric_type"] do
       type when type in ["gauge", "sum"] ->
@@ -225,27 +170,28 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     ]
   end
 
-  defp base_labels(source_id, body) do
+  defp base_labels(source_id, body, static_labels) do
     source_label =
       case Sources.Cache.get_by_id(source_id) do
         %{name: name} -> name
         _ -> "unknown"
       end
 
-    Map.merge(%{"source" => source_label}, flat_attributes(body["attributes"]))
+    %{"source" => source_label}
+    |> Map.merge(flat_labels(body["attributes"]))
+    |> Map.merge(static_labels)
   end
 
-  defp flat_attributes(nil), do: %{}
-
-  defp flat_attributes(attrs) when is_map(attrs) do
-    for {k, v} <- attrs,
-        is_binary(k),
+  defp flat_labels(labels) when is_map(labels) do
+    for {k, v} <- labels,
+        is_binary(k) or is_atom(k),
+        is_binary(v) or is_number(v) or is_boolean(v),
         into: %{} do
-      {sanitize_label_name(k), to_string(v)}
+      {sanitize_label_name(to_string(k)), to_string(v)}
     end
   end
 
-  defp flat_attributes(_), do: %{}
+  defp flat_labels(_), do: %{}
 
   defp to_label_list(label_map) do
     label_map
@@ -277,9 +223,9 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   defp to_float(v) when is_integer(v), do: v * 1.0
   defp to_float(_), do: 0.0
 
-  defp nano_to_ms(nil), do: 0
-  defp nano_to_ms(ns) when is_integer(ns), do: div(ns, 1_000_000)
-  defp nano_to_ms(_), do: 0
+  # LogEvent.make/2 normalizes body["timestamp"] to microseconds.
+  defp micro_to_ms(us) when is_integer(us), do: div(us, 1_000)
+  defp micro_to_ms(_), do: System.system_time(:millisecond)
 
   defp validate_user_pass(changeset) do
     user = Ecto.Changeset.get_field(changeset, :username)

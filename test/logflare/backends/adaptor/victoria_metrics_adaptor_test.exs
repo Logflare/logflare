@@ -10,7 +10,10 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
   @client Logflare.Backends.Adaptor.WebhookAdaptor.Client
 
   # docker-compose `vm` service — see docker-compose.yml
-  @vm_remote_write_url "http://localhost:8428/api/v1/write"
+  @vm_base_url "http://localhost:8428"
+  @vm_remote_write_url @vm_base_url <> "/api/v1/write"
+  # Freshly written samples take a few seconds to become searchable in VM.
+  @vm_retry [sleep: 250, duration: 30_000]
 
   setup do
     start_supervised!(AllLogsLogged)
@@ -23,7 +26,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
     end
 
     test "valid with url only" do
-      assert Adaptor.cast_and_validate_config(@subject, %{"url" => "http://vm:8428/api/v1/write"}).valid?
+      assert Adaptor.cast_and_validate_config(@subject, %{"url" => @vm_remote_write_url}).valid?
     end
 
     test "rejects invalid url" do
@@ -88,34 +91,32 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       @client
       |> expect(:send, fn _req -> {:ok, %Tesla.Env{status: 401, body: "unauthorized"}} end)
 
-      assert {:error, reason} = @subject.test_connection(backend)
-      assert reason =~ "401"
+      assert {:error, :http_client_error} = @subject.test_connection(backend)
     end
 
     test "returns error on transport failure", %{backend: backend} do
       @client
       |> expect(:send, fn _req -> {:error, :nxdomain} end)
 
-      assert {:error, reason} = @subject.test_connection(backend)
-      assert reason =~ "nxdomain"
+      assert {:error, :unknown_error} = @subject.test_connection(backend)
     end
   end
 
   describe "format_batch/1" do
-    test "drops non-metric events" do
-      le = build(:log_event, event_message: "hello")
-      result = @subject.format_batch([le])
-
-      {:ok, decompressed} = :snappyer.decompress(result)
-      decoded = Prometheus.WriteRequest.decode(decompressed)
-      assert decoded.timeseries == []
-    end
-
-    test "gauge event produces single TimeSeries" do
+    setup do
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user: user, name: "myservice")
+      [source: source]
+    end
 
+    test "drops non-metric events" do
+      le = build(:log_event, event_message: "hello")
+
+      assert decode([le]) == []
+    end
+
+    test "gauge event produces single TimeSeries", %{source: source} do
       le =
         build(:log_event,
           source: source,
@@ -127,27 +128,20 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
           attributes: %{"method" => "GET", "status" => "200"}
         )
 
-      result = @subject.format_batch([le])
-      {:ok, decompressed} = :snappyer.decompress(result)
-      decoded = Prometheus.WriteRequest.decode(decompressed)
-
-      assert [ts] = decoded.timeseries
+      assert [ts] = decode([le])
       assert [sample] = ts.samples
       assert sample.value == 42.5
       assert sample.timestamp == 1_700_000_000_000
 
-      label_map = Map.new(ts.labels, fn %{name: k, value: v} -> {k, v} end)
-      assert label_map["__name__"] == "http_server_duration"
-      assert label_map["source"] == "myservice"
-      assert label_map["method"] == "GET"
-      assert label_map["status"] == "200"
+      assert %{
+               "__name__" => "http_server_duration",
+               "source" => "myservice",
+               "method" => "GET",
+               "status" => "200"
+             } = label_map(ts)
     end
 
-    test "sum event produces single TimeSeries" do
-      insert(:plan)
-      user = insert(:user)
-      source = insert(:source, user: user)
-
+    test "sum event produces single TimeSeries", %{source: source} do
       le =
         build(:log_event,
           source: source,
@@ -158,21 +152,12 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
           metadata: %{"type" => "metric"}
         )
 
-      result = @subject.format_batch([le])
-      {:ok, decompressed} = :snappyer.decompress(result)
-      decoded = Prometheus.WriteRequest.decode(decompressed)
-
-      assert [ts] = decoded.timeseries
-      label_map = Map.new(ts.labels, fn %{name: k, value: v} -> {k, v} end)
-      assert label_map["__name__"] == "requests_total"
+      assert [ts] = decode([le])
+      assert label_map(ts)["__name__"] == "requests_total"
       assert [%{value: 100.0}] = ts.samples
     end
 
-    test "histogram event produces _count, _sum, and _bucket series" do
-      insert(:plan)
-      user = insert(:user)
-      source = insert(:source, user: user)
-
+    test "histogram event produces _count, _sum, and _bucket series", %{source: source} do
       le =
         build(:log_event,
           source: source,
@@ -186,41 +171,73 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
           metadata: %{"type" => "metric"}
         )
 
-      result = @subject.format_batch([le])
-      {:ok, decompressed} = :snappyer.decompress(result)
-      decoded = Prometheus.WriteRequest.decode(decompressed)
-
-      names =
-        Enum.map(decoded.timeseries, fn ts ->
-          Map.new(ts.labels, fn %{name: k, value: v} -> {k, v} end)["__name__"]
-        end)
+      timeseries = decode([le])
+      names = Enum.map(timeseries, &label_map(&1)["__name__"])
 
       assert "latency_count" in names
       assert "latency_sum" in names
       assert "latency_bucket" in names
 
-      bucket_series =
-        Enum.filter(decoded.timeseries, fn ts ->
-          Map.new(ts.labels, fn %{name: k, value: v} -> {k, v} end)["__name__"] == "latency_bucket"
-        end)
+      buckets =
+        timeseries
+        |> Enum.map(&{label_map(&1), &1.samples})
+        |> Enum.filter(fn {labels, _samples} -> labels["__name__"] == "latency_bucket" end)
+        |> Map.new(fn {labels, samples} -> {labels["le"], samples} end)
 
-      le_values =
-        Enum.map(bucket_series, fn ts ->
-          Map.new(ts.labels, fn %{name: k, value: v} -> {k, v} end)["le"]
-        end)
-
-      assert "100.0" in le_values
-      assert "500.0" in le_values
-      assert "+Inf" in le_values
-
-      inf_ts =
-        Enum.find(bucket_series, fn ts ->
-          Map.new(ts.labels, fn %{name: k, value: v} -> {k, v} end)["le"] == "+Inf"
-        end)
-
-      assert [%{value: 10.0}] = inf_ts.samples
+      assert %{
+               "100.0" => [%{value: 2.0}],
+               "500.0" => [%{value: 7.0}],
+               "+Inf" => [%{value: 10.0}]
+             } = buckets
     end
 
+    test "skips list and map attribute values instead of crashing", %{source: source} do
+      le =
+        build(:log_event,
+          source: source,
+          event_message: "jobs",
+          metric_type: "gauge",
+          value: 1.0,
+          metadata: %{"type" => "metric"},
+          attributes: %{
+            "queue" => "default",
+            "retry" => true,
+            "tags" => ["a", 0.3],
+            "http" => %{"method" => "GET"}
+          }
+        )
+
+      assert [ts] = decode([le])
+      labels = label_map(ts)
+
+      assert %{"queue" => "default", "retry" => "true"} = labels
+      refute Map.has_key?(labels, "tags")
+      refute Map.has_key?(labels, "http")
+    end
+  end
+
+  describe "format_batch/2" do
+    test "merges config labels into every series, overriding attributes" do
+      insert(:plan)
+      source = insert(:source, user: insert(:user))
+
+      le =
+        build(:log_event,
+          source: source,
+          event_message: "jobs",
+          metric_type: "gauge",
+          value: 1.0,
+          metadata: %{"type" => "metric"},
+          attributes: %{"env" => "staging", "queue" => "default"}
+        )
+
+      [ts] =
+        [le]
+        |> @subject.format_batch(%{labels: %{"env" => "prod", "deploy.region" => "eu"}})
+        |> decode_payload()
+
+      assert %{"env" => "prod", "deploy_region" => "eu", "queue" => "default"} = label_map(ts)
+    end
   end
 
   # End-to-end tests against the docker-compose `vm` service.
@@ -233,22 +250,24 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
   describe "victoriametrics e2e" do
     @describetag :integration
 
+    # The vm service is on loopback, which SSRFProtection blocks. The pipeline sends
+    # from its own processes, so the stub has to be global.
+    setup :set_mimic_global
+
     setup do
+      stub(Logflare.Utils.SSRF, :safe_resolve, fn _ -> {:ok, {127, 0, 0, 1}} end)
+
       insert(:plan)
       user = insert(:user)
 
       source =
         insert(:source, user: user, name: "vm_e2e_#{System.unique_integer([:positive])}")
 
-      # The vm service is on loopback, which SSRFProtection blocks by default.
-      # `allow_private_destinations` opts this pipeline out. It is absent from
-      # cast_config/2, so it cannot be set through normal backend creation —
-      # the factory reaches it only because it bypasses Backend.changeset/2.
       backend =
         insert(:backend,
           type: :victoria_metrics,
           sources: [source],
-          config: %{url: @vm_remote_write_url, allow_private_destinations: true}
+          config: %{url: @vm_remote_write_url}
         )
 
       start_supervised!({AdaptorSupervisor, {source, backend}})
@@ -261,8 +280,8 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       assert :ok = @subject.test_connection(backend)
     end
 
-    test "metrics flow through the pipeline and are queryable via execute_query/3",
-         %{source: source, backend: backend} do
+    test "metrics flow through the pipeline and are queryable",
+         %{source: source} do
       metric_name = "logflare_e2e_#{System.unique_integer([:positive])}"
       expected_value = 42.0
 
@@ -279,10 +298,10 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
 
       assert {:ok, _} = Backends.ingest_logs([le], source)
 
-      TestUtils.retry_assert(fn ->
-        {:ok, %{rows: rows}} = @subject.execute_query(backend, metric_name)
+      TestUtils.retry_assert(@vm_retry, fn ->
+        assert [%{"value" => ^expected_value, "source" => src, "env" => "test"} | _] =
+                 query_vm(metric_name)
 
-        assert [%{"value" => ^expected_value, "source" => src, "env" => "test"} | _] = rows
         assert src == source.name
       end)
     end
@@ -291,7 +310,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
     # etc. with `_`). Verify by ingesting under the raw name and asserting
     # that VM has the series under the sanitized name.
     test "metric names are sanitized into Prometheus identifiers",
-         %{source: source, backend: backend} do
+         %{source: source} do
       suffix = System.unique_integer([:positive])
       raw_name = "logflare.e2e/duration-ms_#{suffix}"
       sanitized = "logflare_e2e_duration_ms_#{suffix}"
@@ -308,9 +327,8 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
 
       assert {:ok, _} = Backends.ingest_logs([le], source)
 
-      TestUtils.retry_assert(fn ->
-        {:ok, %{rows: rows}} = @subject.execute_query(backend, sanitized)
-        assert [%{"__name__" => ^sanitized} | _] = rows
+      TestUtils.retry_assert(@vm_retry, fn ->
+        assert [%{"__name__" => ^sanitized} | _] = query_vm(sanitized)
       end)
     end
 
@@ -319,7 +337,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
     # ingesting a control gauge alongside, waiting for the gauge to appear,
     # then asserting the exponential_histogram series is absent.
     test "exponential_histogram events are dropped during ingestion",
-         %{source: source, backend: backend} do
+         %{source: source} do
       suffix = System.unique_integer([:positive])
       exp_name = "logflare_e2e_exp_#{suffix}"
       control_name = "logflare_e2e_control_#{suffix}"
@@ -348,13 +366,41 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
 
       # Wait until the control gauge is visible — that means VM has flushed
       # this batch, so anything missing now was dropped, not just late.
-      TestUtils.retry_assert(fn ->
-        {:ok, %{rows: rows}} = @subject.execute_query(backend, control_name)
-        assert [_ | _] = rows
+      TestUtils.retry_assert(@vm_retry, fn ->
+        assert [_ | _] = query_vm(control_name)
       end)
 
-      {:ok, %{rows: rows}} = @subject.execute_query(backend, exp_name)
-      assert rows == []
+      assert query_vm(exp_name) == []
+    end
+  end
+
+  defp decode(log_events) do
+    log_events
+    |> @subject.format_batch()
+    |> decode_payload()
+  end
+
+  defp decode_payload(payload) do
+    {:ok, decompressed} = :snappyer.decompress(payload)
+    Prometheus.WriteRequest.decode(decompressed).timeseries
+  end
+
+  defp label_map(timeseries) do
+    Map.new(timeseries.labels, fn %{name: k, value: v} -> {k, v} end)
+  end
+
+  # Runs a PromQL instant query against the docker-compose VM service and returns
+  # each series' labels with its sample value under "value". VM hides samples newer
+  # than 30s from queries by default, so the latency offset is lowered.
+  defp query_vm(query) do
+    params = URI.encode_query(%{"query" => query, "latency_offset" => "1ms"})
+    url = @vm_base_url <> "/api/v1/query?" <> params
+    {:ok, %{status_code: 200, body: body}} = HTTPoison.get(url)
+    %{"data" => %{"result" => result}} = Jason.decode!(body)
+
+    for %{"metric" => labels, "value" => [_ts, value]} <- result do
+      {value, ""} = Float.parse(value)
+      Map.put(labels, "value", value)
     end
   end
 end

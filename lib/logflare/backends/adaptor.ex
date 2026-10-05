@@ -213,8 +213,8 @@ defmodule Logflare.Backends.Adaptor do
   @doc """
   Optional callback to manipulate a batch before it is sent. This is pipeline specific, and must be handled by the underlying pipeline.
   """
-  @callback format_batch([LogEvent.t()]) :: map() | list(map())
-  @callback format_batch([LogEvent.t()], config :: map()) :: map() | list(map())
+  @callback format_batch([LogEvent.t()]) :: map() | list(map()) | binary()
+  @callback format_batch([LogEvent.t()], config :: map()) :: map() | list(map()) | binary()
 
   @doc """
   Typecasts config params.
