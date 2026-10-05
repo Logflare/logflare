@@ -1,6 +1,8 @@
 defmodule Logflare.Rules.Cache do
   @moduledoc false
 
+  import Ecto.Query, only: [from: 2]
+
   alias Logflare.Backends.Backend
   alias Logflare.ContextCache
   alias Logflare.Repo
@@ -10,6 +12,12 @@ defmodule Logflare.Rules.Cache do
   import Cachex.Spec
 
   @behaviour ContextCache
+
+  @routing_snapshots_query Cachex.Query.build(
+                             where: {:==, {:element, 1, :key}, :rules_tree_by_source_id},
+                             output:
+                               {{:hd, {:element, 2, :key}}, {:element, 2, {:element, 2, :value}}}
+                           )
 
   def child_spec(_) do
     stats = Application.get_env(:logflare, :cache_stats, false)
@@ -134,8 +142,11 @@ defmodule Logflare.Rules.Cache do
 
   @impl ContextCache
   def bust_by(kw) do
+    kw = add_routing_sources(kw)
+
     entries =
       kw
+      |> Enum.uniq()
       |> Enum.flat_map(fn
         {:id, id} ->
           [{:get_rule, [id]}]
@@ -152,6 +163,34 @@ defmodule Logflare.Rules.Cache do
         acc + delete_and_count(worker, k)
       end)
     end)
+  end
+
+  @spec add_routing_sources(keyword()) :: keyword()
+  defp add_routing_sources(kw) do
+    ids = Keyword.get_values(kw, :id)
+
+    if ids == [] or Keyword.has_key?(kw, :source_id) do
+      kw
+    else
+      rule_ids = MapSet.new(ids)
+
+      cached_sources =
+        __MODULE__
+        |> Cachex.stream!(@routing_snapshots_query)
+        |> Enum.filter(fn {_source_id, snapshot} ->
+          Rules.RoutingSnapshot.contains_any_rule?(snapshot, rule_ids)
+        end)
+        |> Enum.map(&elem(&1, 0))
+
+      current_sources =
+        Repo.all(
+          from rule in Rules.Rule,
+            where: rule.id in ^ids and not is_nil(rule.source_id),
+            select: rule.source_id
+        )
+
+      kw ++ Enum.map(Enum.uniq(cached_sources ++ current_sources), &{:source_id, &1})
+    end
   end
 
   defp fetch_rule(cache, id) do

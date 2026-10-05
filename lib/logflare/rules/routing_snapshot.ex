@@ -81,6 +81,11 @@ defmodule Logflare.Rules.RoutingSnapshot do
     %{snapshot | table: table, key: key, decoded: nil}
   end
 
+  @doc false
+  @spec contains_any_rule?(t(), MapSet.t(Rule.id())) :: boolean()
+  def contains_any_rule?(%__MODULE__{} = snapshot, ids),
+    do: Enum.any?(ids, &(position(snapshot.index, &1, 0, snapshot.count - 1) != nil))
+
   @spec resolve(t(), [Rule.id()]) :: [Target.t()]
   def resolve(snapshot, ids) do
     case resolve_with_status(snapshot, ids) do
