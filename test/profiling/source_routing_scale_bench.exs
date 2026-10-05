@@ -72,7 +72,11 @@ defmodule RoutingScaleBench do
         }
       end)
 
-    File.write!(output, Jason.encode!(%{system: Map.from_struct(suite.system), results: rows}, pretty: true))
+    File.write!(
+      output,
+      Jason.encode!(%{system: Map.from_struct(suite.system), results: rows}, pretty: true)
+    )
+
     IO.puts("ROUTING_RESULTS #{output}")
 
     unless fallback? do
