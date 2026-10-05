@@ -229,6 +229,15 @@ defmodule LogflareWeb.DashboardLiveTest do
       refute view |> has_element?("#members button[phx-click='create_home_team']")
     end
 
+    test "hides 'Create your home team' button when the email domain is not allowed for signups",
+         %{conn: conn, other_team: other_team} do
+      Mimic.stub(Logflare.Users.SignupDomains, :allowed_domains, fn -> ["not-the-domain.test"] end)
+
+      {:ok, view, _html} = live(conn, ~p"/dashboard?t=#{other_team.id}")
+
+      refute view |> has_element?("#members button[phx-click='create_home_team']")
+    end
+
     test "clicking 'Create your home team' creates a User + Team and redirects to /dashboard",
          %{conn: conn, other_team: other_team, team_user: team_user} do
       # Avoid real Google IAM updates during home team creation.
@@ -261,6 +270,24 @@ defmodule LogflareWeb.DashboardLiveTest do
         |> render_click()
 
       assert html =~ "Could not create home team"
+    end
+
+    test "shows error flash when the email domain is not allowed for signups", %{
+      conn: conn,
+      other_team: other_team
+    } do
+      Mimic.expect(Logflare.Users, :create_user, fn _team_user ->
+        {:error, :signup_domain_not_allowed}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/dashboard?t=#{other_team.id}")
+
+      html =
+        view
+        |> element("button[phx-click='create_home_team']")
+        |> render_click()
+
+      assert html =~ "New accounts are restricted to approved email domains"
     end
   end
 

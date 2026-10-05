@@ -20,6 +20,7 @@ defmodule Logflare.Users do
   alias Logflare.User
   alias Logflare.Users
   alias Logflare.Users.Cache
+  alias Logflare.Users.SignupDomains
   alias Logflare.Users.UserPreferences
 
   @max_limit 100
@@ -269,8 +270,17 @@ defmodule Logflare.Users do
   end
 
   @doc "create user from team user"
-  @spec create_user(TeamUser.t()) :: {:ok, User.t()} | {:error, Ecto.Changeset.t()}
-  def create_user(%TeamUser{} = team_user) do
+  @spec create_user(TeamUser.t()) ::
+          {:ok, User.t()} | {:error, Ecto.Changeset.t() | :signup_domain_not_allowed}
+  def create_user(%TeamUser{email: email} = team_user) do
+    if SignupDomains.allowed?(email) do
+      do_create_user(team_user)
+    else
+      {:error, :signup_domain_not_allowed}
+    end
+  end
+
+  defp do_create_user(%TeamUser{} = team_user) do
     auth_params =
       Map.take(team_user, [
         :email,
@@ -319,9 +329,12 @@ defmodule Logflare.Users do
       user = Repo.get_by(User, email: auth_params.email) ->
         update_user_by_email(user, auth_params)
 
-      true ->
+      SignupDomains.allowed?(auth_params.email) ->
         insert_user(auth_params)
         |> post_insert_user()
+
+      true ->
+        {:error, :signup_domain_not_allowed}
     end
   end
 

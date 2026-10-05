@@ -5,6 +5,7 @@ defmodule LogflareWeb.AuthControllerTest do
   alias Logflare.Auth
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.SingleTenant
+  alias Logflare.Users.SignupDomains
 
   setup do
     insert(:plan)
@@ -112,6 +113,83 @@ defmodule LogflareWeb.AuthControllerTest do
 
       assert redirected_to(conn, 302) =~ "/sources/new"
       assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "Thanks for signing up"
+    end
+  end
+
+  describe "GET /auth/email/callback/:token - allowed signup domains" do
+    setup do
+      stub(SignupDomains, :allowed_domains, fn -> ["supabase.com", "supabase.io"] end)
+      :ok
+    end
+
+    test "signs up a new user on an allowed domain", %{conn: conn} do
+      email = "newuser_#{System.unique_integer([:positive])}@supabase.io"
+      token = Auth.gen_email_token(email)
+
+      conn = get(conn, "/auth/email/callback/#{token}")
+
+      assert redirected_to(conn, 302) =~ "/sources/new"
+      assert Logflare.Users.get_by(email: email)
+    end
+
+    test "rejects a new user on another domain", %{conn: conn} do
+      email = "newuser_#{System.unique_integer([:positive])}@example.com"
+      token = Auth.gen_email_token(email)
+
+      conn = get(conn, "/auth/email/callback/#{token}")
+
+      assert redirected_to(conn, 302) == ~p"/auth/login"
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~
+               "restricted to approved email domains"
+
+      refute Logflare.Users.get_by(email: email)
+    end
+
+    test "signs in an existing user on another domain", %{conn: conn} do
+      user = insert(:user, provider: "email", email: "existing@example.com")
+      token = Auth.gen_email_token(user.email)
+
+      conn = get(conn, "/auth/email/callback/#{token}")
+
+      assert redirected_to(conn, 302) == ~p"/dashboard"
+    end
+
+    test "rejects an invited team member on another domain", %{conn: conn} do
+      owner = insert(:user, email: "owner@supabase.com")
+      team = insert(:team, user: owner)
+      invitee_email = "invitee_#{System.unique_integer([:positive])}@example.com"
+
+      email_token = Auth.gen_email_token(invitee_email)
+      invite_token = Auth.gen_email_token(team.id)
+
+      conn =
+        conn
+        |> put_session(:invite_token, invite_token)
+        |> get("/auth/email/callback/#{email_token}")
+
+      assert redirected_to(conn, 302) == ~p"/auth/login"
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~
+               "restricted to approved email domains"
+
+      refute Logflare.TeamUsers.get_team_user_by(email: invitee_email)
+    end
+
+    test "does not create an account for a team user on another domain", %{conn: conn} do
+      team_user = insert(:team_user, email: "member@example.com")
+
+      conn =
+        conn
+        |> put_session(:current_email, team_user.email)
+        |> post("/account")
+
+      assert redirected_to(conn, 302) == ~p"/dashboard"
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~
+               "restricted to approved email domains"
+
+      refute Logflare.Users.get_by(email: team_user.email)
     end
   end
 

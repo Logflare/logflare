@@ -6,6 +6,7 @@ defmodule LogflareWeb.AuthController do
   alias Logflare.TeamUsers
   alias Logflare.Teams
   alias Logflare.Users
+  alias Logflare.Users.SignupDomains
   alias Logflare.Vercel
   alias LogflareWeb.ErrorView
 
@@ -95,6 +96,11 @@ defmodule LogflareWeb.AuthController do
         |> put_session(:invite_token, nil)
         |> redirect(to: Routes.auth_path(conn, :login))
 
+      {:error, :signup_domain_not_allowed} ->
+        conn
+        |> put_session(:invite_token, nil)
+        |> reject_signup_domain()
+
       {:error, _changeset} ->
         conn
         |> put_flash(
@@ -125,15 +131,26 @@ defmodule LogflareWeb.AuthController do
   end
 
   def create_and_sign_in(%{assigns: %{team_user: team_user}} = conn, _params) do
-    {:ok, user} =
-      team_user
-      |> Map.take([:email, :email_preferred, :provider, :image, :name, :provider_uid, :token])
-      |> Users.insert_user()
+    if SignupDomains.allowed?(team_user.email) do
+      {:ok, user} =
+        team_user
+        |> Map.take([:email, :email_preferred, :provider, :image, :name, :provider_uid, :token])
+        |> Users.insert_user()
 
-    auth_params =
-      Map.take(user, [:email, :email_preferred, :provider, :image, :name, :provider_uid, :token])
+      auth_params =
+        Map.take(user, [:email, :email_preferred, :provider, :image, :name, :provider_uid, :token])
 
-    signin(conn, auth_params)
+      signin(conn, auth_params)
+    else
+      reject_signup_domain(conn, ~p"/dashboard")
+    end
+  end
+
+  @spec reject_signup_domain(Plug.Conn.t(), String.t()) :: Plug.Conn.t()
+  defp reject_signup_domain(conn, redirect_to \\ ~p"/auth/login") do
+    conn
+    |> put_flash(:error, SignupDomains.rejection_message())
+    |> redirect(to: redirect_to)
   end
 
   defp signin(conn, auth_params) do
@@ -195,6 +212,9 @@ defmodule LogflareWeb.AuthController do
             |> put_session(:current_email, user.email)
             |> redirect(to: ~p"/dashboard")
         end
+
+      {:error, :signup_domain_not_allowed} ->
+        reject_signup_domain(conn)
 
       {:error, reason} ->
         Logger.error("Unhandled sign in error", error_string: inspect(reason))

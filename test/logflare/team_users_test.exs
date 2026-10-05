@@ -122,6 +122,42 @@ defmodule Logflare.TeamUsersTest do
     end
   end
 
+  describe "insert_or_update_team_user/2 with allowed signup domains" do
+    setup do
+      insert(:plan)
+      stub(Logflare.Users.SignupDomains, :allowed_domains, fn -> ["supabase.com"] end)
+      team = insert(:team, user: insert(:user))
+
+      [team: Logflare.Teams.preload_user(team)]
+    end
+
+    test "creates a new team user on an allowed domain", %{team: team} do
+      params = %{email: "member@supabase.com", provider: "email", provider_uid: "uid-allowed"}
+
+      assert {:ok, %TeamUser{email: "member@supabase.com"}} =
+               TeamUsers.insert_or_update_team_user(team, params)
+    end
+
+    test "rejects a new team user on another domain", %{team: team} do
+      params = %{email: "member@example.com", provider: "email", provider_uid: "uid-rejected"}
+
+      assert {:error, :signup_domain_not_allowed} =
+               TeamUsers.insert_or_update_team_user(team, params)
+
+      refute TeamUsers.get_team_user_by(email: "member@example.com")
+    end
+
+    test "updates an existing team user on another domain", %{team: team} do
+      existing =
+        insert(:team_user, team: team, email: "old@example.com", provider_uid: "uid-existing")
+
+      params = %{email: existing.email, provider: "email", provider_uid: existing.provider_uid}
+
+      assert {:ok, %TeamUser{id: id}} = TeamUsers.insert_or_update_team_user(team, params)
+      assert id == existing.id
+    end
+  end
+
   describe "update_team_user/2" do
     test "updates team user with valid attrs" do
       team = insert(:team)
