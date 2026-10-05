@@ -1,5 +1,9 @@
 # Routing benchmark refresh: 10,000 rules per source
 
+> Historical pre-review measurements. Current correctness fixes, synchronized
+> footprints, paired before/after timings and cold-publication results are in
+> [source_routing_review_hardening_results.md](source_routing_review_hardening_results.md).
+
 ## Scope and measured revisions
 
 - Current main: `52a4d2bcdc4df8ffa794431ac8487d0f5fee9f14`.
