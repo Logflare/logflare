@@ -22,6 +22,7 @@ defmodule Logflare.Rules.Cache do
         [
           __MODULE__,
           [
+            transactions: true,
             warmers: [
               warmer(required: false, module: Rules.CacheWarmer, name: Rules.CacheWarmer)
             ],
