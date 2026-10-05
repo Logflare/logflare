@@ -145,6 +145,7 @@ defmodule LogflareWeb.OpenApiSchemas do
       name: %Schema{type: :string},
       id: %Schema{type: :integer},
       token: %Schema{type: :string},
+      user_id: %Schema{type: :integer},
       config: %Schema{type: :object},
       metadata: %Schema{type: :object},
       default_ingest?: %Schema{type: :boolean},

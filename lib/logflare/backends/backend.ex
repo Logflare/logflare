@@ -127,6 +127,7 @@ defmodule Logflare.Backends.Backend do
           :description,
           :type,
           :id,
+          :user_id,
           :config,
           :metadata,
           :default_ingest?,
