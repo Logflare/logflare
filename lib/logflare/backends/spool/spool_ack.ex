@@ -24,6 +24,8 @@ defmodule Logflare.Backends.Spool.SpoolAck do
 
   import Logflare.Utils.Guards, only: [is_pos_integer: 1]
 
+  require Ex2ms
+
   @table :spool_ack
   @sweep_interval_ms :timer.minutes(1)
   @stale_after_ms :timer.minutes(10)
@@ -121,7 +123,13 @@ defmodule Logflare.Backends.Spool.SpoolAck do
   @spec sweep_stale(non_neg_integer()) :: :ok
   def sweep_stale(stale_after_ms) do
     cutoff = System.monotonic_time(:millisecond) - stale_after_ms
-    match_spec = [{{:"$1", :_, :_, :_, :"$2"}, [{:<, :"$2", cutoff}], [:"$1"]}]
+
+    match_spec =
+      Ex2ms.fun do
+        {handle, _count, _queue_mod, _queue_url, registered_at}
+        when registered_at < ^cutoff ->
+          handle
+      end
 
     deleted =
       @table

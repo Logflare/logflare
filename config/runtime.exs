@@ -779,6 +779,7 @@ spool_ack_stale? =
   end
 
 config :logflare, Logflare.Backends.Spool.SpoolAck, ack_stale: spool_ack_stale?
+
 if region = Env.aws_region(System.get_env()) do
   config :ex_aws, region: region
 end
