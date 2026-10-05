@@ -43,6 +43,10 @@ defmodule Logflare.ContextCache do
   """
   @callback bust_by(keyword()) :: {:ok, non_neg_integer()} | {:error, term()}
 
+  @doc "Optional primary-key invalidation for caches with derived entries."
+  @callback bust_by_id(integer()) :: {:ok, non_neg_integer()} | {:error, term()}
+  @optional_callbacks bust_by_id: 1
+
   @spec apply_fun(module(), tuple() | atom(), list()) :: any()
   def apply_fun(context, {fun, _arity}, args), do: apply_fun(context, fun, args)
 
@@ -100,6 +104,15 @@ defmodule Logflare.ContextCache do
   defp bust_key({context, pkey}) do
     context_cache = cache_name(context)
 
+    if is_integer(pkey) and function_exported?(context_cache, :bust_by_id, 1) do
+      context_cache.bust_by_id(pkey)
+    else
+      bust_primary_key(context_cache, pkey)
+    end
+  end
+
+  @spec bust_primary_key(module(), term()) :: {:ok, non_neg_integer()} | {:error, term()}
+  defp bust_primary_key(context_cache, pkey) do
     filter =
       {
         # use orelse to prevent 2nd condition failing as value is not a map

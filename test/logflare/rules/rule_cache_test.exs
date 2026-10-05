@@ -344,6 +344,19 @@ defmodule Logflare.Rules.CacheTest do
       assert RoutingSnapshot.resolve(current, [rule.id]) == [Target.from_rule(rule)]
     end
 
+    test "generic primary-key invalidation retires derived routing snapshots", %{
+      source: source,
+      rule_ids: [id, _other]
+    } do
+      {_tree, _old} = @subject.rules_tree_by_source_id(source.id)
+      replacement = insert(:backend)
+      assert {:ok, _rule} = Rules.update_rule(Repo.get!(Rule, id), %{backend_id: replacement.id})
+
+      assert {:ok, 1} = Logflare.ContextCache.bust_keys([{Rules, id}])
+      {_tree, current} = @subject.rules_tree_by_source_id(source.id)
+      assert RoutingSnapshot.resolve(current, [id]) == [{id, replacement.id, nil}]
+    end
+
     test "ID-only invalidation retires both owners after a move", %{
       source: source,
       backend: backend,

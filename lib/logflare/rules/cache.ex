@@ -144,6 +144,9 @@ defmodule Logflare.Rules.Cache do
   end
 
   @impl ContextCache
+  def bust_by_id(id), do: bust_by(id: id)
+
+  @impl ContextCache
   def bust_by(kw) do
     kw = add_routing_sources(kw)
 
