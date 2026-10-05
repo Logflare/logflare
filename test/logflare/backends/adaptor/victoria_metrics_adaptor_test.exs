@@ -558,7 +558,9 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       attach_drop_handler()
       le = build(:log_event, source: source, event_message: "hello")
 
-      assert capture_log(fn -> assert [] = decode([le]) end) == ""
+      # capture_log also sees other test modules' processes, so only this adaptor's
+      # warning is checked for.
+      refute capture_log(fn -> assert [] = decode([le]) end) =~ "VictoriaMetrics"
       assert_received {:drop, %{count: 1}, %{reason: :not_a_metric}}
     end
 
@@ -596,7 +598,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
     test "does not warn when every event is sent", %{source: source} do
       le = metric_event(source, metric_type: "gauge", value: 1.0)
 
-      assert capture_log(fn -> assert [_ts] = decode([le]) end) == ""
+      refute capture_log(fn -> assert [_ts] = decode([le]) end) =~ "VictoriaMetrics"
     end
   end
 
