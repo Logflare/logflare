@@ -202,6 +202,28 @@ ex_slop_checks =
           {Credo.Check.Warning.UnsafeToAtom, []}
         ]
       }
+    },
+    %{
+      # Migrations are not part of the default analysis, but DDL replication under
+      # `Logflare.Repo.Pglogical` has to be enforced there. Run with
+      # `mix credo -C migrations` (wired into `mix lint.all`).
+      name: "migrations",
+      files: %{
+        included: ["priv/repo/migrations/"],
+        excluded: []
+      },
+      requires: [
+        "lints/credo/replicated_execute_scope.ex",
+        "lints/credo/oban_migration_replication.ex",
+        "lints/credo/replicated_ddl_execute.ex"
+      ],
+      strict: true,
+      checks: %{
+        enabled: [
+          {Logflare.CredoChecks.ObanMigrationReplication, []},
+          {Logflare.CredoChecks.ReplicatedDdlExecute, []}
+        ]
+      }
     }
   ]
 }
