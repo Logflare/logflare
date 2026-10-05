@@ -13,13 +13,15 @@ defmodule RoutingScaleBench do
   def run do
     Code.ensure_loaded!(RulesTree)
     sizes = integers("ROUTING_BENCH_RULES", "100,1000,10000")
-    batches = integers("ROUTING_BENCH_BATCHES", "1,10,100")
+    publication? = System.get_env("ROUTING_BENCH_PUBLICATION") == "1"
+    batches = if publication?, do: [1], else: integers("ROUTING_BENCH_BATCHES", "1,10,100")
+    shapes = if publication?, do: [:eight], else: [:zero, :one, :eight, :all]
     fallback? = System.get_env("ROUTING_BENCH_FALLBACK") == "1"
     compare? = System.get_env("ROUTING_BENCH_COMPARE_BATCH") == "1"
 
     inputs =
       for count <- sizes,
-          shape <- [:zero, :one, :eight, :all],
+          shape <- shapes,
           batch <- batches,
           not (shape == :all and count * batch > 100_000),
           not fallback? or shape in [:one, :eight],
@@ -27,10 +29,15 @@ defmodule RoutingScaleBench do
         {"#{count} rules / #{shape} matches / #{batch} events", {count, shape, batch}}
       end
 
-    scenarios = %{"production batch API" => &route/1}
+    scenarios =
+      if publication?,
+        do: %{"cold synthetic build/publication" => &publish/1},
+        else: %{"production batch API" => &route/1}
 
     scenarios =
-      if compare?, do: Map.put(scenarios, "fetch per event", &unprepared/1), else: scenarios
+      if compare? and not publication?,
+        do: Map.put(scenarios, "fetch per event", &unprepared/1),
+        else: scenarios
 
     suite =
       Benchee.run(scenarios,
@@ -79,7 +86,7 @@ defmodule RoutingScaleBench do
 
     IO.write(["ROUTING_RESULTS ", output, "\n"])
 
-    unless fallback? do
+    unless fallback? or publication? do
       footprints =
         for count <- sizes, shape <- [:zero, :one, :eight, :all], do: footprint(count, shape)
 
@@ -129,6 +136,7 @@ defmodule RoutingScaleBench do
 
   def warm(fixture, mode \\ :full) do
     cleanup(fixture)
+    publisher_opts = if mode == :publication, do: [publisher: self()], else: []
 
     header =
       cond do
@@ -139,7 +147,7 @@ defmodule RoutingScaleBench do
            apply(@snapshot, :new, [
              fixture.source.id,
              targets,
-             [extra_estimated_bytes: :erlang.external_size(tree)]
+             [extra_estimated_bytes: :erlang.external_size(tree)] ++ publisher_opts
            ])}
 
         Code.ensure_loaded?(@snapshot) ->
@@ -150,7 +158,7 @@ defmodule RoutingScaleBench do
            apply(@snapshot, :new, [
              fixture.source.id,
              targets,
-             [extra_estimated_bytes: :erlang.external_size(tree)]
+             [extra_estimated_bytes: :erlang.external_size(tree)] ++ publisher_opts
            ])}
 
         true ->
@@ -161,6 +169,14 @@ defmodule RoutingScaleBench do
 
     Cachex.put!(Rules.Cache, {:rules_tree_by_source_id, [fixture.source.id]}, {:cached, header})
     header
+  end
+
+  def publish(fixture) do
+    Task.async(fn ->
+      warm(fixture, :publication)
+      :ok
+    end)
+    |> Task.await()
   end
 
   def route(fixture) do
@@ -192,6 +208,8 @@ defmodule RoutingScaleBench do
   def cleanup(fixture) do
     Rules.Cache.bust_by(source_id: fixture.source.id)
     Cachex.clear!(Rules.Cache)
+
+    if pid = Process.whereis(@store), do: :sys.get_state(pid)
   end
 
   def footprint(count, shape) do
