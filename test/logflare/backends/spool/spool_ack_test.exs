@@ -112,7 +112,12 @@ defmodule Logflare.Backends.Spool.SpoolAckTest do
     end
   end
 
-  describe "sweep_stale/1" do
+  describe "sweep_stale/1 with ack_stale: false" do
+    setup do
+      Application.put_env(:logflare, SpoolAck, ack_stale: false)
+      on_exit(fn -> Application.put_env(:logflare, SpoolAck, ack_stale: true) end)
+    end
+
     test "deletes a row older than the given threshold without performing a queue ack" do
       handle = unique_handle()
       test_pid = self()
@@ -143,7 +148,7 @@ defmodule Logflare.Backends.Spool.SpoolAckTest do
   describe "sweep_stale/1 with ack_stale: true" do
     setup do
       Application.put_env(:logflare, SpoolAck, ack_stale: true)
-      on_exit(fn -> Application.put_env(:logflare, SpoolAck, ack_stale: false) end)
+      on_exit(fn -> Application.put_env(:logflare, SpoolAck, ack_stale: true) end)
     end
 
     test "performs the real queue ack for a stale row before deleting it" do

@@ -774,7 +774,7 @@ end
 
 spool_ack_stale? =
   case System.get_env("SPOOL_ACK_STALE") do
-    v when v in [nil, ""] -> false
+    v when v in [nil, ""] -> true
     v -> String.downcase(v) == "true"
   end
 
