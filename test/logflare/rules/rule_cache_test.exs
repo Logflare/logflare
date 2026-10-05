@@ -19,7 +19,15 @@ defmodule Logflare.Rules.CacheTest do
 
   describe "rules cache" do
     test "get rules", %{rule_ids: rule_ids} do
+      ref = :telemetry_test.attach_event_handlers(self(), [[:logflare, :repo, :replica_route]])
+      on_exit(fn -> :telemetry.detach(ref) end)
+
       assert rules = @subject.get_rules(rule_ids)
+
+      for _id <- rule_ids do
+        assert_receive {[:logflare, :repo, :replica_route], ^ref, %{count: 1},
+                        %{role: :primary, reason: :not_configured}}
+      end
 
       for %Rule{id: id} <- rules do
         assert id in rule_ids

@@ -1,6 +1,7 @@
 defmodule Logflare.RepoTest do
   use ExUnit.Case, async: false
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias Logflare.Repo
   alias Logflare.Repo.Replicas
 
@@ -48,22 +49,63 @@ defmodule Logflare.RepoTest do
     start_result
   end
 
-  describe "apply_with_replica/3" do
+  describe "with_replica/1" do
     test "uses default repo when replicas list is empty" do
       start_read_replicas(_no_replicas = [])
 
       assert Repo.get_dynamic_repo() == Repo
-      assert Repo.apply_with_replica(Repo, :get_dynamic_repo, []) == Repo
+      assert Repo.with_replica(&Repo.get_dynamic_repo/0) == Repo
     end
 
     test "always uses a replica when replicas are configured" do
       start_read_replicas(["127.0.0.1", "::1"])
 
-      repos = for _ <- 1..30, do: Repo.apply_with_replica(Repo, :get_dynamic_repo, [])
+      repos = for _ <- 1..30, do: Repo.with_replica(&Repo.get_dynamic_repo/0)
 
       refute Enum.any?(repos, fn repo -> repo == Repo end),
              "expected every call to use a replica, never the primary"
 
+      assert Repo.get_dynamic_repo() == Repo
+    end
+
+    test "keeps nested reads on the selected replica" do
+      start_read_replicas(["127.0.0.1", "::1"])
+
+      {outer_repo, inner_repo} =
+        Repo.with_replica(fn ->
+          {Repo.get_dynamic_repo(), Repo.with_replica(&Repo.get_dynamic_repo/0)}
+        end)
+
+      assert outer_repo == inner_repo
+      refute outer_repo == Repo
+      assert Repo.get_dynamic_repo() == Repo
+    end
+
+    test "keeps reads on the primary inside an existing transaction" do
+      start_read_replicas(["127.0.0.1"])
+      owner = Sandbox.start_owner!(Repo, shared: true)
+      on_exit(fn -> Sandbox.stop_owner(owner) end)
+
+      assert {:ok, Repo} = Repo.transaction(fn -> Repo.with_replica(&Repo.get_dynamic_repo/0) end)
+    end
+
+    test "emits the selected route" do
+      start_read_replicas(["127.0.0.1"])
+      ref = :telemetry_test.attach_event_handlers(self(), [[:logflare, :repo, :replica_route]])
+      on_exit(fn -> :telemetry.detach(ref) end)
+
+      Repo.with_replica(&Repo.get_dynamic_repo/0)
+
+      assert_receive {[:logflare, :repo, :replica_route], ^ref, %{count: 1},
+                      %{role: :replica, reason: :selected}}
+    end
+  end
+
+  describe "apply_with_replica/3" do
+    test "delegates to scoped replica routing" do
+      start_read_replicas(["127.0.0.1"])
+
+      refute Repo.apply_with_replica(Repo, :get_dynamic_repo, []) == Repo
       assert Repo.get_dynamic_repo() == Repo
     end
 
