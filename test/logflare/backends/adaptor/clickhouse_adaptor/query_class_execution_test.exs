@@ -33,6 +33,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
       )
 
     assert {:ok, backend} = Backends.configure_query_class_settings(admin, original, @policy)
+    drop_clickhouse_tables_on_exit(backend)
     start_supervised!({ClickHouseAdaptor, backend})
     %{backend: backend, original: original, admin: admin, source: source}
   end
