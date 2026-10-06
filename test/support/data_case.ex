@@ -135,6 +135,11 @@ defmodule Logflare.DataCase do
           {Logflare.Sources.Source.t(), Logflare.Backends.Backend.t()}
   def setup_clickhouse_test(opts \\ []) do
     config = Keyword.get(opts, :config, %{})
+
+    if not (is_map_key(config, :url) or is_map_key(config, :port)) do
+      ensure_clickhouse_reachable!()
+    end
+
     user = Keyword.get(opts, :user) || Logflare.Factory.insert(:user)
     source = Keyword.get(opts, :source) || Logflare.Factory.insert(:source, user: user)
 
@@ -200,6 +205,18 @@ defmodule Logflare.DataCase do
       end)
     after
       GenServer.stop(conn)
+    end
+  end
+
+  @spec ensure_clickhouse_reachable!() :: :ok
+  defp ensure_clickhouse_reachable! do
+    case :gen_tcp.connect(~c"localhost", 8123, [:binary, active: false], 500) do
+      {:ok, socket} ->
+        :gen_tcp.close(socket)
+
+      {:error, reason} ->
+        raise "ClickHouse is not reachable on localhost:8123 (#{inspect(reason)}). " <>
+                "Start it with `docker compose up -d clickhouse`."
     end
   end
 
