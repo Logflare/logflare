@@ -14,6 +14,7 @@ defmodule Logflare.Backends.ConsolidatedSupWorkerTest do
       insert(:plan, name: "Free")
 
       {_source, backend} = setup_clickhouse_test()
+      drop_clickhouse_tables_on_exit(backend)
 
       start_supervised!({ConsolidatedSupWorker, [interval: 100]})
 
