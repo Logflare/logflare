@@ -9,6 +9,7 @@ defmodule Logflare.Endpoints.FilesystemCacheClickHouseTest do
     insert(:plan)
     user = insert(:user)
     {_source, backend} = setup_clickhouse_test(user: user)
+    drop_clickhouse_tables_on_exit(backend)
     start_supervised!({ClickHouseAdaptor, backend})
 
     endpoint =

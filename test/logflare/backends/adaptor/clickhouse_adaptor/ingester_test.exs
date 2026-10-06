@@ -389,11 +389,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       insert(:plan, name: "Free")
       {source, backend} = setup_clickhouse_test()
 
-      {:ok, _supervisor_pid} = ClickHouseAdaptor.start_link(backend)
-
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
-
-      Process.sleep(200)
 
       [source: source, backend: backend, table_name: table_name]
     end
