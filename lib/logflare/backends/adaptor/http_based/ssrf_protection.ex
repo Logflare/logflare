@@ -2,6 +2,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.SSRFProtection do
   @moduledoc false
   @behaviour Tesla.Middleware
 
+  alias Logflare.Backends.Adaptor.HttpBased.Headers
   alias Logflare.Utils.SSRF
 
   @impl Tesla.Middleware
@@ -15,7 +16,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.SSRFProtection do
         # hostname (required by HTTP/1.1 and virtual hosting).
         ip_host = SSRF.url_host(addr)
         rewritten = URI.to_string(%{uri | host: ip_host, authority: nil})
-        headers = List.keystore(env.headers, "host", 0, {"host", uri.host})
+        headers = [{"host", uri.host} | Headers.drop_reserved(env.headers, ["host"])]
         Tesla.run(%{env | url: rewritten, headers: headers}, next)
 
       {:ok, _addr} ->

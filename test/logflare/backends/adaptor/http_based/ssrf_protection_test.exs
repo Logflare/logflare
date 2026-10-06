@@ -6,8 +6,10 @@ defmodule Logflare.Backends.Adaptor.HttpBased.SSRFProtectionTest do
 
   defp ok_next(env), do: {:ok, env}
 
-  defp call(url),
-    do: SSRFProtection.call(%Tesla.Env{url: url, headers: []}, [{:fn, &ok_next/1}], [])
+  defp call(url, opts \\ []) do
+    env = struct!(Tesla.Env, Keyword.put(opts, :url, url))
+    SSRFProtection.call(env, [{:fn, &ok_next/1}], [])
+  end
 
   describe "call/3 with HTTP URLs" do
     test "blocks private IPv4 at request time" do
@@ -31,6 +33,24 @@ defmodule Logflare.Backends.Adaptor.HttpBased.SSRFProtectionTest do
 
       assert env.url == "http://1.2.3.4/path"
       assert {"host", "1.2.3.4"} in env.headers
+    end
+
+    test "replaces all existing Host headers case-insensitively" do
+      {:ok, env} =
+        call("http://1.2.3.4/path",
+          headers: [
+            {"Host", "other.example"},
+            {"hOsT", "duplicate.example"},
+            {"host", "third.example"},
+            {"authorization", "Bearer token"}
+          ]
+        )
+
+      host_headers =
+        Enum.filter(env.headers, fn {key, _value} -> String.downcase(key) == "host" end)
+
+      assert host_headers == [{"host", "1.2.3.4"}]
+      assert {"authorization", "Bearer token"} in env.headers
     end
   end
 
