@@ -130,6 +130,10 @@ defmodule Logflare.DataCase do
     config = Keyword.get(opts, :config, %{})
     default_ingest_backend? = Keyword.get(opts, :default_ingest_backend?, false)
 
+    if not (is_map_key(config, :url) or is_map_key(config, :port)) do
+      ensure_clickhouse_reachable!()
+    end
+
     user =
       case Keyword.get(opts, :user) do
         nil ->
@@ -165,6 +169,18 @@ defmodule Logflare.DataCase do
     end
 
     {source, backend}
+  end
+
+  @spec ensure_clickhouse_reachable!() :: :ok
+  defp ensure_clickhouse_reachable! do
+    case :gen_tcp.connect(~c"localhost", 8123, [:binary, active: false], 500) do
+      {:ok, socket} ->
+        :gen_tcp.close(socket)
+
+      {:error, reason} ->
+        raise "ClickHouse is not reachable on localhost:8123 (#{inspect(reason)}). " <>
+                "Start it with `docker compose up -d clickhouse`."
+    end
   end
 
   @doc """
