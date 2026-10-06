@@ -4,7 +4,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
   use LogflareWeb.ConnCase
 
   import Logflare.ClickHouseMappedEvents, only: [build_mapped_log_event: 1]
-  import Logflare.DataCase, only: [setup_clickhouse_test: 1]
+  import Logflare.DataCase, only: [provision_clickhouse_tables!: 1, setup_clickhouse_test: 1]
 
   setup %{conn: conn} do
     insert(:plan)
@@ -1160,8 +1160,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       {edge_source, backend} = setup_clickhouse_test(source: edge_source, user: user)
 
-      start_supervised!({ClickHouseAdaptor, backend})
-      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+      provision_clickhouse_tables!(backend)
 
       log_events = [
         build_mapped_log_event(

@@ -662,8 +662,7 @@ defmodule Logflare.SqlTest do
       # setup local clickhouse for e2e test
       {source, backend} = setup_clickhouse_test(source: source, user: user)
 
-      {:ok, _pid} = ClickHouseAdaptor.start_link(backend)
-      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+      provision_clickhouse_tables!(backend)
 
       log_events = [
         build_mapped_log_event(

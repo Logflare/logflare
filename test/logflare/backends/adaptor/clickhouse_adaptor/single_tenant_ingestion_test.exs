@@ -2,24 +2,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.SingleTenantIngestionTest 
   use Logflare.DataCase, async: false
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Provisioner
   alias Logflare.SingleTenant
   alias Logflare.SystemMetrics.AllLogsLogged
 
-  TestUtils.setup_single_tenant(
-    backend_type: :clickhouse,
-    seed_user: true,
-    clickhouse_backend_adapter_opts: [
-      url: "http://localhost:8123",
-      database: "logflare_test",
-      username: "logflare",
-      password: "logflare",
-      port: 8123,
-      ingest_pool_size: 5,
-      query_pool_size: 3
-    ]
-  )
+  TestUtils.setup_single_tenant(backend_type: :clickhouse, seed_user: true)
 
   setup do
     insert(:plan, name: "Free")
@@ -28,13 +15,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.SingleTenantIngestionTest 
     source = insert(:source, user: user)
     backend = Logflare.Backends.get_default_backend(user)
 
+    drop_clickhouse_tables_on_exit(backend)
     start_supervised!(AllLogsLogged)
-    start_supervised!({ConnectionManager, backend})
     start_supervised!({ClickHouseAdaptor, backend})
-
-    cleanup_single_tenant_tables(backend)
-
-    on_exit(fn -> cleanup_single_tenant_tables(backend) end)
 
     [source: source, backend: backend]
   end
@@ -60,31 +43,5 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.SingleTenantIngestionTest 
                  %{message: message}
                )
     end)
-  end
-
-  defp cleanup_single_tenant_tables(backend) do
-    {manager_pid, stop_manager?} =
-      case ConnectionManager.start_link(backend) do
-        {:ok, pid} ->
-          Process.unlink(pid)
-          {pid, true}
-
-        {:error, {:already_started, pid}} ->
-          {pid, false}
-      end
-
-    try do
-      for event_type <- [:log, :metric, :trace] do
-        table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, event_type)
-        ClickHouseAdaptor.execute_ch_query(backend, "DROP TABLE IF EXISTS #{table_name}")
-      end
-    after
-      if stop_manager? and Process.alive?(manager_pid) do
-        ConnectionManager.refresh_pool(backend)
-        GenServer.stop(manager_pid)
-      end
-    end
-
-    :ok
   end
 end
