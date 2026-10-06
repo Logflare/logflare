@@ -90,19 +90,24 @@ defmodule Logflare.Backends.UserMonitoring do
   end
 
   @doc """
-  Intercepts Logger messages related to specific users, and send them to the respective
-  System Source when the user has activated it.
+  Sends a Logger message for a user to the system logs source of that user.
 
-  The filter runs in the process that logs, which can be a process inside a `SourceSup` start.
-  It ingests only when the system logs source's `SourceSup` is already up, and it never waits on
-  a start. A start from here can wait on the `SourcesSup` partition that is starting the logging
-  process, which deadlocks that partition. When the `SourceSup` is down, the event is dropped,
-  `[:logflare, :user_monitoring, :log_interceptor, :dropped]` is emitted, and
-  `SystemSourceStarter` starts the `SourceSup` in its own process.
+  The filter acts only when the user has turned on system monitoring.
 
-  A rule on the system logs source can still route an event to a sink source whose `SourceSup`
-  is down. That start waits in the logging process, for at most the timeout of
-  `Logflare.Backends.start_source_sup/1`.
+  The filter runs in the process that logs. That process can be inside a `SourceSup` start. A
+  start from here can wait on the `SourcesSup` partition that starts the logging process. That
+  wait deadlocks the partition. Thus the filter never waits on a start.
+
+  When the `SourceSup` of the system logs source is up, the filter sends the event to that source.
+  When it is down, the filter does these steps:
+
+  1. It drops the event.
+  2. It emits `[:logflare, :user_monitoring, :log_interceptor, :dropped]`.
+  3. It asks `SystemSourceStarter` to start the `SourceSup` in a different process.
+
+  A rule on the system logs source can route an event to a sink source whose `SourceSup` is down.
+  That start waits in the logging process. The timeout of `Logflare.Backends.start_source_sup/1`
+  limits the wait.
   """
   @spec log_interceptor(:logger.log_event(), term()) :: :ignore
   def log_interceptor(%{meta: %{system_source: true}}, _), do: :ignore

@@ -21,11 +21,11 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Backends.AdaptorSupervisor
 
   @doc """
-  Child spec for a source's supervision tree.
+  Returns the child spec for the supervision tree of a source.
 
-  The start arguments carry only the source id. A source with many rules is about 1 MB, and the
-  `SourcesSup` partition copies the start arguments into every `start_child` message and keeps them
-  in its state. `init/1` loads the source and its rules from the cache.
+  The start arguments hold only the source id. A source with many rules is about 1 MB. The
+  `SourcesSup` partition copies the start arguments into each `start_child` message. The
+  partition also keeps them in its state. `init/1` loads the source and its rules from the cache.
   """
   @spec child_spec(Source.t() | pos_integer()) :: Supervisor.child_spec()
   def child_spec(%Source{id: id}), do: child_spec(id)

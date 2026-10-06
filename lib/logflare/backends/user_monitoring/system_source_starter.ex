@@ -1,14 +1,18 @@
 defmodule Logflare.Backends.UserMonitoring.SystemSourceStarter do
   @moduledoc """
-  Starts the `SourceSup` of a user's system logs source outside the process that logs.
+  Starts the `SourceSup` of the system logs source of a user. The start runs outside the process
+  that logs.
 
-  `Logflare.Backends.UserMonitoring.log_interceptor/2` runs in the logging process, which can be a
-  process inside a `SourceSup` start. A synchronous start from there can wait on the same
-  `SourcesSup` partition and deadlock it. The interceptor casts the source id here instead.
+  `Logflare.Backends.UserMonitoring.log_interceptor/2` runs in the logging process. That process
+  can be inside a `SourceSup` start. A synchronous start from there can wait on the same
+  `SourcesSup` partition. That wait deadlocks the partition. Thus the interceptor casts the
+  source id to this process.
 
-  Each start runs in an unlinked task, so this process never waits on a partition and a failed
-  start can not crash it. Requests for an id whose start is still in flight, or whose `SourceSup`
-  is already up, are skipped. A log flood therefore causes at most one start per source at a time.
+  This process runs each start in an unlinked task. Thus it never waits on a partition. A failed
+  start can not crash it.
+
+  This process skips a request in two cases: a start for that id is in flight, or the `SourceSup`
+  is already up. Thus a log flood causes at most one start per source at a time.
   """
 
   use GenServer
@@ -25,7 +29,9 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarter do
   end
 
   @doc """
-  Requests a start of the `SourceSup` for the source id. Returns at once.
+  Asks for a start of the `SourceSup` of the source id.
+
+  The function returns at once. It does not wait for the start.
   """
   @spec request_start(pos_integer()) :: :ok
   def request_start(source_id) when is_integer(source_id) do

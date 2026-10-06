@@ -1091,12 +1091,14 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Starts a given SourceSup for a source. If already started, will return an error tuple.
+  Starts the SourceSup of a source.
+
+  Returns `{:error, :already_started}` when the SourceSup is already up.
 
   The caller waits for the `SourcesSup` partition for at most the `:source_sup_start_timeout`
-  application env value (30 seconds by default), then gets `{:error, :start_timeout}`. A blocked
-  partition then delays ingest, but it can not hold every caller forever. The partition still
-  completes the start after the timeout.
+  application environment value. The default is 30 seconds. After that time, the caller gets
+  `{:error, :start_timeout}`. A blocked partition can delay ingest, but it can not hold the
+  callers forever. The partition still completes the start after the timeout.
   """
   @spec start_source_sup(Source.t()) ::
           :ok | {:error, :already_started | :not_found | :start_timeout | term()}
@@ -1157,13 +1159,13 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Ensures that the SourceSup of a source is started.
+  Makes sure that the SourceSup of a source is up.
 
-  Every ingest batch calls this. When the SourceSup is down, only the first caller for a source
-  starts it. The other callers for that source wait for that start and get its result, so the
-  `SourcesSup` partition receives one `start_child` call per source, not one per caller.
+  Every ingest batch calls this function. When the SourceSup is down, the first caller for the
+  source starts it. The other callers for that source wait for that start. Each caller gets the
+  result of the same start. Thus the `SourcesSup` partition gets one `start_child` call per source.
 
-  A failed start returns `{:error, reason}` and does not raise.
+  A failed start returns `{:error, reason}`. It does not raise.
   """
   @spec ensure_source_sup_started(Source.t()) ::
           :ok | {:error, :not_found | :start_timeout | term()}
