@@ -27,6 +27,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   alias Broadway.Message
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.AsyncInsertFallback
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.EncodedRow
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester
@@ -473,7 +474,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   end
 
   defp finalize_insert(backend, event_type, compressed, good_count, good, rejected) do
-    insert_opts = async_insert_opts(backend, good_count)
+    {insert_opts, fallback_token} = async_insert_opts(backend, good_count)
 
     case ClickHouseAdaptor.insert_log_events_compressed(
            backend,
@@ -482,41 +483,54 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
            insert_opts
          ) do
       :ok ->
+        AsyncInsertFallback.record_result(backend, fallback_token, :ok)
         # `rejected` (rare, typically empty) goes on the left of `++` so the cons
         # cells being rebuilt are its short list; `good` is attached without copying.
         rejected ++ good
 
       {:error, reason} ->
+        AsyncInsertFallback.record_result(backend, fallback_token, {:error, reason})
         record_insert_failure(backend, reason)
         rejected ++ Enum.map(good, &Message.failed(&1, reason))
     end
   end
 
-  @spec async_insert_opts(Backend.t(), non_neg_integer()) :: keyword()
-  defp async_insert_opts(%Backend{config: %{async_insert_mode: "all_batches"}}, _row_count),
-    do: [async: true, async_target: :primary]
+  @spec async_insert_opts(Backend.t(), non_neg_integer()) ::
+          {keyword(), AsyncInsertFallback.token()}
+  defp async_insert_opts(
+         %Backend{config: %{async_insert_mode: "all_batches"}} = backend,
+         row_count
+       ) do
+    case AsyncInsertFallback.route(backend, row_count) do
+      {:all, token} -> {[async: true, async_target: :primary], token}
+      :split -> {small_batch_insert_opts(backend, row_count), nil}
+    end
+  end
 
   defp async_insert_opts(%Backend{config: %{async_insert_mode: "sync"}}, _row_count),
-    do: [async: false]
+    do: {[async: false], nil}
 
   defp async_insert_opts(
-         %Backend{config: %{async_insert_mode: "small_batches", async_insert_max_rows: max_rows}},
+         %Backend{config: %{async_insert_mode: "small_batches"}} = backend,
          row_count
-       )
-       when is_pos_integer(max_rows) and is_pos_integer(row_count),
-       do: [async: row_count < max_rows]
+       ),
+       do: {small_batch_insert_opts(backend, row_count), nil}
 
   # Older backends have no mode; keep their existing small-batch setting effective.
   defp async_insert_opts(
-         %Backend{
-           config: %{use_async_inserts_for_small_batches: true, async_insert_max_rows: max_rows}
-         },
+         %Backend{config: %{use_async_inserts_for_small_batches: true}} = backend,
          row_count
-       )
+       ),
+       do: {small_batch_insert_opts(backend, row_count), nil}
+
+  defp async_insert_opts(_backend, _row_count), do: {[async: false], nil}
+
+  @spec small_batch_insert_opts(Backend.t(), non_neg_integer()) :: keyword()
+  defp small_batch_insert_opts(%Backend{config: %{async_insert_max_rows: max_rows}}, row_count)
        when is_pos_integer(max_rows) and is_pos_integer(row_count),
        do: [async: row_count < max_rows]
 
-  defp async_insert_opts(_backend, _row_count), do: [async: false]
+  defp small_batch_insert_opts(_backend, _row_count), do: [async: false]
 
   @spec record_insert_failure(Backend.t(), term()) :: :ok
   defp record_insert_failure(backend, reason) do

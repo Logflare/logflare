@@ -15,6 +15,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   require Logger
   require Logflare.Backends.QueryError
 
+  alias __MODULE__.AsyncInsertFallback
   alias __MODULE__.CircuitBreaker
   alias __MODULE__.ConnectionManager
   alias __MODULE__.EndpointUtils
@@ -1146,6 +1147,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       ) ++
         [
           CircuitBreaker.child_spec(backend),
+          AsyncInsertFallback.child_spec(backend),
           {
             DynamicPipeline,
             name: Backends.via_backend(backend, Pipeline),

@@ -7,6 +7,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   alias Broadway.Message
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.AsyncInsertFallback
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.EncodedRow
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline
@@ -1233,6 +1234,73 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       })
 
       assert_received {:insert_opts, [async: false]}
+    end
+
+    test "async failures switch later batches to the old split rule without resending the failed batch",
+         %{
+           async_source: source,
+           async_backend: backend
+         } do
+      {:ok, backend} =
+        Backends.update_backend(backend, %{
+          config: %{
+            async_insert_mode: "all_batches",
+            async_insert_cluster_url: "http://dedicated.local:8123"
+          }
+        })
+
+      TestUtils.retry_assert(fn ->
+        assert Backends.Cache.get_backend(backend.id).config.async_insert_mode == "all_batches"
+      end)
+
+      Application.put_env(:logflare, AsyncInsertFallback,
+        min_attempts: 1,
+        min_failures: 1,
+        failure_ratio: 1.0
+      )
+
+      on_exit(fn -> Application.delete_env(:logflare, AsyncInsertFallback) end)
+      assert AsyncInsertFallback.get_state(backend)
+      test_pid = self()
+
+      Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
+                                                                        _type,
+                                                                        _payload,
+                                                                        opts ->
+        send(test_pid, {:insert_opts, opts})
+        {:error, :timeout}
+      end)
+
+      Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, 2, fn _backend,
+                                                                           _type,
+                                                                           _payload,
+                                                                           opts ->
+        send(test_pid, {:insert_opts, opts})
+        :ok
+      end)
+
+      events = for n <- 1..2, do: build(:log_event, source: source, message: "row #{n}")
+      gen_tid = setup_generation_events(events)
+      large_messages = Enum.map(events, &batch_message(&1, gen_tid, backend.id))
+      small_messages = [hd(large_messages)]
+
+      large_info = %Broadway.BatchInfo{
+        batcher: :ch,
+        batch_key: {:log, @day_bucket},
+        size: 2,
+        trigger: :flush
+      }
+
+      small_info = %{large_info | size: 1}
+      Pipeline.handle_batch(:ch, large_messages, large_info, %{backend_id: backend.id})
+      assert_received {:insert_opts, [async: true, async_target: :primary]}
+      assert AsyncInsertFallback.get_state(backend).phase == :open
+
+      Pipeline.handle_batch(:ch, large_messages, large_info, %{backend_id: backend.id})
+      assert_received {:insert_opts, [async: false]}
+
+      Pipeline.handle_batch(:ch, small_messages, small_info, %{backend_id: backend.id})
+      assert_received {:insert_opts, [async: true]}
     end
   end
 
