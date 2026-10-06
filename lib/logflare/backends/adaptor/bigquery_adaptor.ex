@@ -71,6 +71,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       system_source: source.system_source
     )
 
+    source = Ecto.reset_fields(source, [:rules])
+
     children = [
       {
         DynamicPipeline,

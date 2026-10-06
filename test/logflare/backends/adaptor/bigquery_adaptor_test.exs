@@ -555,4 +555,35 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
       assert config == BigQueryAdaptor.sanitize_config_for_display(config)
     end
   end
+
+  describe "init/1" do
+    test "child specs carry the source without its rules" do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :bigquery,
+          user: user,
+          config: %{project_id: "my-project-id", dataset_id: "my_dataset"}
+        )
+
+      for _ <- 1..50, do: insert(:rule, source: source, backend: backend)
+      source = Repo.preload(source, :rules, force: true)
+      assert length(source.rules) == 50
+
+      assert {:ok, {_flags, children}} = BigQueryAdaptor.init({source, backend})
+
+      sources =
+        for %{start: {_mod, :start_link, [opts]}} <- children,
+            child_source <- [opts[:source], opts[:pipeline_args][:source]],
+            child_source != nil,
+            do: child_source
+
+      assert length(sources) == 2
+      assert Enum.all?(sources, &match?(%Ecto.Association.NotLoaded{}, &1.rules))
+      assert :erts_debug.flat_size(children) < :erts_debug.flat_size(source)
+    end
+  end
 end
