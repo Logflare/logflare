@@ -99,11 +99,8 @@ defmodule Logflare.Backends.UserMonitoring do
   wait deadlocks the partition. Thus the filter never waits on a start.
 
   When the `SourceSup` of the system logs source is up, the filter sends the event to that source.
-  When it is down, the filter does these steps:
-
-  1. It drops the event.
-  2. It emits `[:logflare, :user_monitoring, :log_interceptor, :dropped]`.
-  3. It asks `SystemSourceStarter` to start the `SourceSup` in a different process.
+  When it is down, the filter casts the event to `SystemSourceStarter`. That process holds the
+  event, starts the `SourceSup` in a different process, and then sends the event to the source.
 
   A rule on the system logs source can route an event to a sink source whose `SourceSup` is down.
   That start waits in the logging process. The timeout of `Logflare.Backends.start_source_sup/1`
@@ -116,19 +113,15 @@ defmodule Logflare.Backends.UserMonitoring do
       when is_integer(user_id) do
     with %{system_monitoring: true} <- Users.Cache.get(user_id),
          %Sources.Source{} = source <- get_system_source_logs(user_id) do
-      if Backends.source_sup_started?(source) do
+      events =
         log_event.level
         |> LogflareLogger.Formatter.format(format_message(log_event), get_datetime(), meta)
         |> List.wrap()
-        |> Processor.ingest(Logs.Raw, source)
-      else
-        :telemetry.execute(
-          [:logflare, :user_monitoring, :log_interceptor, :dropped],
-          %{count: 1},
-          %{source_id: source.id, user_id: user_id}
-        )
 
-        SystemSourceStarter.request_start(source.id)
+      if Backends.source_sup_started?(source) do
+        Processor.ingest(events, Logs.Raw, source)
+      else
+        SystemSourceStarter.buffer(source.id, events)
       end
 
       :ignore

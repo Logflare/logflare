@@ -160,6 +160,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
 
       on_exit(fn -> :logger.remove_primary_filter(:user_log_intercetor) end)
 
+      start_supervised!(AllLogsLogged)
       insert(:plan)
       user = insert(:user, system_monitoring: true)
       Sources.create_user_system_sources(user.id)
@@ -170,33 +171,22 @@ defmodule Logflare.Backends.UserMonitoringTest do
       [user: user, source: source, system_source: system_source]
     end
 
-    test "drops the event and starts the SourceSup in another process when it is down", %{
+    test "holds the event while the SourceSup is down and ingests it after the start", %{
       user: user,
       system_source: system_source
     } do
-      test_pid = self()
-      ref = make_ref()
-      event = [:logflare, :user_monitoring, :log_interceptor, :dropped]
-
-      :telemetry.attach(
-        ref,
-        event,
-        fn ^event, measurements, metadata, _ ->
-          send(test_pid, {:dropped, measurements, metadata})
-        end,
-        nil
-      )
-
-      on_exit(fn -> :telemetry.detach(ref) end)
-
       refute Backends.source_sup_started?(system_source)
 
       capture_log(fn -> Logger.error("system source down", user_id: user.id) end)
 
-      system_source_id = system_source.id
-      assert_receive {:dropped, %{count: 1}, %{source_id: ^system_source_id}}
-      TestUtils.retry_assert(fn -> assert Backends.source_sup_started?(system_source) end)
-      refute Enum.any?(Backends.list_recent_logs_local(system_source))
+      TestUtils.retry_assert(fn ->
+        assert Backends.source_sup_started?(system_source)
+
+        assert Enum.any?(
+                 Backends.list_recent_logs_local(system_source),
+                 &match?(%{body: %{"event_message" => "system source down"}}, &1)
+               )
+      end)
     end
 
     test "a log during a SourceSup start on the system source's partition does not deadlock it",
@@ -218,7 +208,15 @@ defmodule Logflare.Backends.UserMonitoringTest do
 
       capture_log(fn -> assert {:ok, :ok} = Task.yield(task, 5_000) end)
       assert Backends.source_sup_started?(source)
-      TestUtils.retry_assert(fn -> assert Backends.source_sup_started?(system_source) end)
+
+      TestUtils.retry_assert(fn ->
+        assert Backends.source_sup_started?(system_source)
+
+        assert Enum.any?(
+                 Backends.list_recent_logs_local(system_source),
+                 &match?(%{body: %{"event_message" => "log during SourceSup start"}}, &1)
+               )
+      end)
     end
   end
 

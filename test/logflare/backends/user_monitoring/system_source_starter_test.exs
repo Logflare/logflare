@@ -3,54 +3,168 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarterTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.UserMonitoring.SystemSourceStarter
+  alias Logflare.SystemMetrics.AllLogsLogged
 
   setup :set_mimic_global
 
   setup do
+    Application.put_env(:logflare, :system_source_starter_retry_interval, 50)
+
+    on_exit(fn ->
+      Application.delete_env(:logflare, :system_source_starter_retry_interval)
+      Application.delete_env(:logflare, :system_source_starter_max_buffer)
+
+      :sys.replace_state(SystemSourceStarter, fn _state ->
+        %{in_flight: %{}, retrying: MapSet.new(), buffers: %{}}
+      end)
+    end)
+
+    start_supervised!(AllLogsLogged)
     insert(:plan)
     user = insert(:user)
     source = insert(:source, user: user)
     [source: source]
   end
 
-  test "runs one start per source while a start is in flight", %{source: source} do
+  test "runs one start while a start is in flight, then ingests every held event", %{
+    source: source
+  } do
     test_pid = self()
-    source_id = source.id
+    calls = :counters.new(1, [])
 
     stub(Backends, :ensure_source_sup_started, fn received ->
-      send(test_pid, {:start, received.id, self()})
+      :counters.add(calls, 1, 1)
 
-      receive do
-        :release -> :ok
+      if :counters.get(calls, 1) == 1 do
+        send(test_pid, {:start, self()})
+
+        receive do
+          :release -> :ok
+        end
+      end
+
+      call_original(Backends, :ensure_source_sup_started, [received])
+    end)
+
+    for i <- 1..50, do: SystemSourceStarter.buffer(source.id, [%{"message" => "event #{i}"}])
+
+    assert_receive {:start, task_pid}
+    TestUtils.retry_assert(fn -> assert {50, _held} = buffers()[source.id] end)
+    assert :counters.get(calls, 1) == 1
+
+    send(task_pid, :release)
+
+    TestUtils.retry_assert(fn ->
+      assert buffers() == %{}
+      assert length(Backends.list_recent_logs_local(source)) == 50
+    end)
+  end
+
+  test "keeps the held events after a failed start and retries the start", %{source: source} do
+    calls = :counters.new(1, [])
+
+    stub(Backends, :ensure_source_sup_started, fn received ->
+      :counters.add(calls, 1, 1)
+
+      if :counters.get(calls, 1) == 1 do
+        {:error, :start_timeout}
+      else
+        call_original(Backends, :ensure_source_sup_started, [received])
       end
     end)
 
-    for _ <- 1..100, do: SystemSourceStarter.request_start(source_id)
+    SystemSourceStarter.buffer(source.id, [%{"message" => "after retry"}])
 
-    assert_receive {:start, ^source_id, task_pid}
-    refute_receive {:start, ^source_id, _pid}, 200
-
-    send(task_pid, :release)
-    TestUtils.retry_assert(fn -> assert in_flight() == %{} end)
-
-    SystemSourceStarter.request_start(source_id)
-    assert_receive {:start, ^source_id, next_task_pid}
-    send(next_task_pid, :release)
-    TestUtils.retry_assert(fn -> assert in_flight() == %{} end)
+    TestUtils.retry_assert(fn ->
+      assert Backends.source_sup_started?(source)
+      assert [_event] = Backends.list_recent_logs_local(source)
+    end)
   end
 
-  test "survives a start that raises", %{source: source} do
+  test "keeps the held events after a start that raises", %{source: source} do
     starter = Process.whereis(SystemSourceStarter)
-    stub(Backends, :ensure_source_sup_started, fn _source -> raise "boom" end)
+    calls = :counters.new(1, [])
+
+    stub(Backends, :ensure_source_sup_started, fn received ->
+      :counters.add(calls, 1, 1)
+
+      if :counters.get(calls, 1) == 1 do
+        raise "boom"
+      else
+        call_original(Backends, :ensure_source_sup_started, [received])
+      end
+    end)
 
     ExUnit.CaptureLog.capture_log(fn ->
-      SystemSourceStarter.request_start(source.id)
-      TestUtils.retry_assert(fn -> assert in_flight() == %{} end)
+      SystemSourceStarter.buffer(source.id, [%{"message" => "after raise"}])
+
+      TestUtils.retry_assert(fn ->
+        assert [_event] = Backends.list_recent_logs_local(source)
+      end)
     end)
 
     assert Process.whereis(SystemSourceStarter) == starter
-    assert Process.alive?(starter)
   end
 
-  defp in_flight, do: :sys.get_state(SystemSourceStarter).in_flight
+  test "drops the held events when the source does not exist" do
+    attach_dropped()
+    missing_id = 999_999_999
+
+    SystemSourceStarter.buffer(missing_id, [%{"message" => "a"}, %{"message" => "b"}])
+
+    assert_receive {:dropped, %{count: 2}, %{source_id: ^missing_id, reason: :not_found}}
+    TestUtils.retry_assert(fn -> assert buffers() == %{} end)
+  end
+
+  test "drops the events over the buffer cap", %{source: source} do
+    Application.put_env(:logflare, :system_source_starter_max_buffer, 3)
+    attach_dropped()
+    test_pid = self()
+    calls = :counters.new(1, [])
+
+    stub(Backends, :ensure_source_sup_started, fn received ->
+      :counters.add(calls, 1, 1)
+
+      if :counters.get(calls, 1) == 1 do
+        send(test_pid, {:start, self()})
+
+        receive do
+          :release -> :ok
+        end
+      end
+
+      call_original(Backends, :ensure_source_sup_started, [received])
+    end)
+
+    events = for i <- 1..5, do: %{"message" => "event #{i}"}
+    SystemSourceStarter.buffer(source.id, events)
+
+    source_id = source.id
+    assert_receive {:dropped, %{count: 2}, %{source_id: ^source_id, reason: :buffer_full}}
+    assert_receive {:start, task_pid}
+    send(task_pid, :release)
+
+    TestUtils.retry_assert(fn ->
+      assert length(Backends.list_recent_logs_local(source)) == 3
+    end)
+  end
+
+  defp buffers, do: :sys.get_state(SystemSourceStarter).buffers
+
+  defp attach_dropped do
+    test_pid = self()
+    ref = make_ref()
+    event = [:logflare, :user_monitoring, :system_source_starter, :dropped]
+
+    :telemetry.attach(
+      ref,
+      event,
+      fn ^event, measurements, metadata, _ ->
+        send(test_pid, {:dropped, measurements, metadata})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(ref) end)
+  end
 end
