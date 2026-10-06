@@ -22,7 +22,11 @@ defmodule Logflare.Logs.IngestTransformers do
 
   @spec transform(map(), direct_transform() | [transform_rule()]) :: map()
   def transform(log_params, :clean_to_bigquery_column_spec) when is_map(log_params) do
-    clean_and_to_bigquery_column_spec(log_params)
+    if clean_and_bq_safe?(log_params) do
+      log_params
+    else
+      clean_and_to_bigquery_column_spec(log_params)
+    end
   catch
     :throw, :normalized_bigquery_column_collision ->
       log_params
@@ -37,6 +41,46 @@ defmodule Logflare.Logs.IngestTransformers do
   def transform(log_params, rules) when is_map(log_params) and is_list(rules) do
     Enum.reduce(rules, log_params, &do_transform(&2, &1))
   end
+
+  defp clean_and_bq_safe?(%_{}), do: false
+
+  defp clean_and_bq_safe?(data) when is_map(data) do
+    :maps.fold(
+      fn
+        _k, _v, false ->
+          false
+
+        _k, v, true when is_nil_or_empty(v) ->
+          false
+
+        k, v, true when is_map(v) or is_list(v) ->
+          bq_safe_key?(k) and clean_and_bq_safe?(v)
+
+        k, _v, true ->
+          bq_safe_key?(k)
+      end,
+      true,
+      data
+    )
+  end
+
+  defp clean_and_bq_safe?([head | tail]) do
+    clean_list_is_unchanged?(head) and clean_and_bq_safe_list_tail?(tail)
+  end
+
+  defp clean_list_is_unchanged?(value) when is_nil_or_empty(value), do: false
+
+  defp clean_list_is_unchanged?(value) when is_map(value) or is_list(value),
+    do: clean_and_bq_safe?(value)
+
+  defp clean_list_is_unchanged?(_value), do: true
+
+  defp clean_and_bq_safe_list_tail?([]), do: true
+
+  defp clean_and_bq_safe_list_tail?([head | tail]),
+    do: clean_list_is_unchanged?(head) and clean_and_bq_safe_list_tail?(tail)
+
+  defp clean_and_bq_safe_list_tail?(_improper_tail), do: false
 
   defp clean_and_to_bigquery_column_spec(data) when is_map(data) do
     :maps.fold(
@@ -140,6 +184,7 @@ defmodule Logflare.Logs.IngestTransformers do
   defp bq_reserved_prefix?("_CHANGE_TIMESTAMP" <> _), do: true
   defp bq_reserved_prefix?(_), do: false
 
+  defp bq_safe_key?(key) when not is_binary(key), do: true
   defp bq_safe_key?(key) when byte_size(key) > @max_field_length, do: false
   defp bq_safe_key?(<<>>), do: true
   defp bq_safe_key?(<<b, _rest::binary>>) when b in ?0..?9, do: false

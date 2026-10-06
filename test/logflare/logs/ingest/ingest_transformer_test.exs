@@ -418,6 +418,33 @@ defmodule Logflare.Logs.IngestTransformerTest do
   end
 
   describe ":clean_to_bigquery_column_spec fused pipeline" do
+    test "preserves a fully clean and BigQuery-safe nested payload" do
+      input = %{
+        "safe_key" => "value",
+        "nested_map" => %{"child_1" => 1, "child_2" => false},
+        "nested_list" => [%{"item_1" => "one"}, [1, 2, 3]],
+        :non_binary_key => 42
+      }
+
+      assert transform(input, :clean_to_bigquery_column_spec) == input
+    end
+
+    test "detects cleaning and normalization needs inside nested maps and lists" do
+      for input <- [
+            %{"safe" => %{"empty" => nil, "kept" => 1}},
+            %{"safe" => [%{"bad-key" => 1}]},
+            %{"safe" => [%{"_TABLE_value" => 1}]},
+            %{"safe" => [[[], %{}, "", "kept"]]}
+          ] do
+        expected =
+          input
+          |> MetadataCleaner.deep_reject_nil_and_empty()
+          |> transform(:to_bigquery_column_spec)
+
+        assert transform(input, :clean_to_bigquery_column_spec) == expected
+      end
+    end
+
     property "matches sequential cleaning and key normalization" do
       check all input <- log_params_generator() do
         assert transform(input, :clean_to_bigquery_column_spec) ==
