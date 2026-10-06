@@ -40,6 +40,7 @@ defmodule Logflare.Backends do
 
   @max_future_event_us 1 * 3_600 * 1_000_000
   @max_pending_buffer_len_per_queue IngestEventQueue.max_queue_size()
+  @default_source_sup_start_timeout :timer.seconds(30)
 
   @type one_or_list_or_nil :: Backend.t() | [Backend.t()] | nil
 
@@ -1091,18 +1092,50 @@ defmodule Logflare.Backends do
 
   @doc """
   Starts a given SourceSup for a source. If already started, will return an error tuple.
+
+  The caller waits for the `SourcesSup` partition for at most the `:source_sup_start_timeout`
+  application env value (30 seconds by default), then gets `{:error, :start_timeout}`. A blocked
+  partition then delays ingest, but it can not hold every caller forever. The partition still
+  completes the start after the timeout.
   """
-  @spec start_source_sup(Source.t()) :: :ok | {:error, :already_started | :not_found}
+  @spec start_source_sup(Source.t()) ::
+          :ok | {:error, :already_started | :not_found | :start_timeout}
   def start_source_sup(%Source{} = source) do
     if not source_sup_started?(source), do: SourceSup.prefetch(source)
     do_start_source_sup(source)
   end
 
   defp do_start_source_sup(source) do
-    case DynamicSupervisor.start_child(
-           {:via, PartitionSupervisor, {SourcesSup, source.id}},
-           SourceSup.child_spec(source)
-         ) do
+    timeout =
+      Application.get_env(:logflare, :source_sup_start_timeout, @default_source_sup_start_timeout)
+
+    task =
+      Task.async(fn ->
+        DynamicSupervisor.start_child(
+          {:via, PartitionSupervisor, {SourcesSup, source.id}},
+          SourceSup.child_spec(source)
+        )
+      end)
+
+    case Task.yield(task, timeout) || Task.shutdown(task, :brutal_kill) do
+      {:ok, result} ->
+        handle_start_child_result(result)
+
+      {:exit, reason} ->
+        exit(reason)
+
+      nil ->
+        Logger.warning("SourceSup start timed out after #{timeout}ms",
+          source_id: source.id,
+          source_token: source.token
+        )
+
+        {:error, :start_timeout}
+    end
+  end
+
+  defp handle_start_child_result(result) do
+    case result do
       {:ok, _pid} ->
         :ok
 
@@ -1124,7 +1157,7 @@ defmodule Logflare.Backends do
   starts it. The other callers for that source wait for that start and get its result, so the
   `SourcesSup` partition receives one `start_child` call per source, not one per caller.
   """
-  @spec ensure_source_sup_started(Source.t()) :: :ok | {:error, :not_found}
+  @spec ensure_source_sup_started(Source.t()) :: :ok | {:error, :not_found | :start_timeout}
   def ensure_source_sup_started(%Source{id: id} = source) do
     if source_sup_started?(id) do
       :ok
@@ -1135,7 +1168,7 @@ defmodule Logflare.Backends do
       case result do
         :ok -> :ok
         {:error, :already_started} -> :ok
-        {:error, :not_found} = error -> error
+        {:error, reason} = error when reason in [:not_found, :start_timeout] -> error
       end
     end
   end
@@ -1161,7 +1194,7 @@ defmodule Logflare.Backends do
   Restarts a SourceSup of a given source.
   """
   @spec restart_source_sup(Source.t()) ::
-          :ok | {:error, :already_started} | {:error, :not_started}
+          :ok | {:error, :already_started | :not_started | :not_found | :start_timeout}
   def restart_source_sup(%Source{} = source) do
     with :ok <- stop_source_sup(source),
          :ok <- start_source_sup(source) do

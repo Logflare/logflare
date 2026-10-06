@@ -156,7 +156,7 @@ defmodule Logflare.Sources.Source.Supervisor do
       {:error, {:already_started = reason, _pid}} ->
         {:error, reason}
 
-      {:error, :not_found} = err ->
+      {:error, reason} = err when reason in [:not_found, :start_timeout] ->
         err
 
       {:error} = err ->

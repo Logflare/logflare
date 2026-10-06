@@ -148,6 +148,80 @@ defmodule Logflare.Backends.UserMonitoringTest do
     end
   end
 
+  describe "log interceptor and the system source SourceSup" do
+    setup :set_mimic_global
+
+    setup do
+      :ok =
+        :logger.add_primary_filter(
+          :user_log_intercetor,
+          {&UserMonitoring.log_interceptor/2, []}
+        )
+
+      on_exit(fn -> :logger.remove_primary_filter(:user_log_intercetor) end)
+
+      insert(:plan)
+      user = insert(:user, system_monitoring: true)
+      Sources.create_user_system_sources(user.id)
+      system_source = Sources.get_by(user_id: user.id, system_source_type: :logs)
+      partitions = PartitionSupervisor.partitions(Backends.SourcesSup)
+      source = insert(:source, user: user, id: system_source.id + partitions * 1_000_000)
+
+      [user: user, source: source, system_source: system_source]
+    end
+
+    test "drops the event and starts the SourceSup in another process when it is down", %{
+      user: user,
+      system_source: system_source
+    } do
+      test_pid = self()
+      ref = make_ref()
+      event = [:logflare, :user_monitoring, :log_interceptor, :dropped]
+
+      :telemetry.attach(
+        ref,
+        event,
+        fn ^event, measurements, metadata, _ ->
+          send(test_pid, {:dropped, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(ref) end)
+
+      refute Backends.source_sup_started?(system_source)
+
+      capture_log(fn -> Logger.error("system source down", user_id: user.id) end)
+
+      system_source_id = system_source.id
+      assert_receive {:dropped, %{count: 1}, %{source_id: ^system_source_id}}
+      TestUtils.retry_assert(fn -> assert Backends.source_sup_started?(system_source) end)
+      refute Enum.any?(Backends.list_recent_logs_local(system_source))
+    end
+
+    test "a log during a SourceSup start on the system source's partition does not deadlock it",
+         %{user: user, source: source, system_source: system_source} do
+      source_id = source.id
+      user_id = user.id
+
+      stub(SourceSup, :init, fn
+        ^source_id = id ->
+          Logger.metadata(user_id: user_id)
+          Logger.error("log during SourceSup start")
+          call_original(SourceSup, :init, [id])
+
+        id ->
+          call_original(SourceSup, :init, [id])
+      end)
+
+      task = Task.async(fn -> Backends.ensure_source_sup_started(source) end)
+
+      capture_log(fn -> assert {:ok, :ok} = Task.yield(task, 5_000) end)
+      assert Backends.source_sup_started?(source)
+      TestUtils.retry_assert(fn -> assert Backends.source_sup_started?(system_source) end)
+    end
+  end
+
   defp query_error_log_event?(%{
          body: %{
            "event_message" => "Backend query error",

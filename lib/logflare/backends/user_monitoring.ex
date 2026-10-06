@@ -4,7 +4,10 @@ defmodule Logflare.Backends.UserMonitoring do
   """
 
   import Telemetry.Metrics
+
+  alias Logflare.Backends
   alias Logflare.Backends.UserMonitoring.IngestPipeline
+  alias Logflare.Backends.UserMonitoring.SystemSourceStarter
   alias Logflare.Logs
   alias Logflare.Logs.Processor
   alias Logflare.Sources
@@ -88,20 +91,37 @@ defmodule Logflare.Backends.UserMonitoring do
 
   @doc """
   Intercepts Logger messages related to specific users, and send them to the respective
-  System Source when the user has activated it
+  System Source when the user has activated it.
+
+  The filter runs in the process that logs, which can be a process inside a `SourceSup` start.
+  It ingests only when the system logs source's `SourceSup` is already up, and it never waits on
+  a start. A start from here can wait on the `SourcesSup` partition that is starting the logging
+  process, which deadlocks that partition. When the `SourceSup` is down, the event is dropped,
+  `[:logflare, :user_monitoring, :log_interceptor, :dropped]` is emitted, and
+  `SystemSourceStarter` starts the `SourceSup` in its own process.
   """
+  @spec log_interceptor(:logger.log_event(), term()) :: :ignore
   def log_interceptor(%{meta: %{system_source: true}}, _), do: :ignore
 
   def log_interceptor(%{meta: %{user_id: user_id} = meta} = log_event, _)
       when is_integer(user_id) do
     with %{system_monitoring: true} <- Users.Cache.get(user_id),
          %Sources.Source{} = source <- get_system_source_logs(user_id) do
-      log_event.level
-      |> LogflareLogger.Formatter.format(format_message(log_event), get_datetime(), meta)
-      |> List.wrap()
-      |> Processor.ingest(Logs.Raw, source)
+      if Backends.source_sup_started?(source) do
+        log_event.level
+        |> LogflareLogger.Formatter.format(format_message(log_event), get_datetime(), meta)
+        |> List.wrap()
+        |> Processor.ingest(Logs.Raw, source)
+      else
+        :telemetry.execute(
+          [:logflare, :user_monitoring, :log_interceptor, :dropped],
+          %{count: 1},
+          %{source_id: source.id, user_id: user_id}
+        )
 
-      # do not block the event from being shipped.
+        SystemSourceStarter.request_start(source.id)
+      end
+
       :ignore
     else
       _ -> :ignore

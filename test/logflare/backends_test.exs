@@ -805,6 +805,27 @@ defmodule Logflare.BackendsTest do
       refute_received :start_child
     end
 
+    test "ensure_source_sup_started/1 returns start_timeout when the partition does not answer",
+         %{source: source} do
+      Application.put_env(:logflare, :source_sup_start_timeout, 100)
+      on_exit(fn -> Application.delete_env(:logflare, :source_sup_start_timeout) end)
+
+      stub(SourceSup, :child_spec, fn received_source ->
+        %{
+          call_original(SourceSup, :child_spec, [received_source])
+          | start: {Process, :sleep, [300]}
+        }
+      end)
+
+      log =
+        capture_log(fn ->
+          assert {:error, :start_timeout} = Backends.ensure_source_sup_started(source)
+        end)
+
+      assert log =~ "SourceSup start timed out after 100ms"
+      refute Backends.source_sup_started?(source)
+    end
+
     test "prefetch/1 warms the cache keys read during initial startup", %{source: source} do
       source = Sources.get(source.id)
       source_schema = insert(:source_schema, source: source)
