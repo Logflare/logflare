@@ -407,6 +407,13 @@ defmodule LogflareWeb.OpenApiSchemas do
         example: "prod-a"
       },
       use_async_inserts_for_small_batches: %Schema{type: :boolean, nullable: true},
+      async_insert_mode: %Schema{
+        type: :string,
+        nullable: true,
+        enum: ["sync", "small_batches", "all_batches"],
+        description:
+          "All-batches mode uses the primary ingest URL regardless of the async cluster URL"
+      },
       async_insert_cluster_url: %Schema{type: :string, nullable: true},
       async_insert_max_rows: %Schema{type: :integer, nullable: true},
       max_event_age_hours: %Schema{type: :integer, nullable: true},

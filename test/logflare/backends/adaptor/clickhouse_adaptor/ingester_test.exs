@@ -618,6 +618,31 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       assert :ok = Ingester.insert_compressed(backend, table, :log, :zlib.gzip(""), @async_opts)
     end
 
+    test "all-batches async insert targets primary URL and pool despite a dedicated URL" do
+      {backend, table} =
+        ingest_target(%{async_insert_cluster_url: "http://async-cluster.local:9000"})
+
+      expect(Finch, :request, fn request, pool, _opts ->
+        assert request.host == "localhost"
+        assert request.port == 8123
+        assert pool == Logflare.FinchClickHouseIngest
+        params = URI.decode_query(request.query)
+        assert params["async_insert"] == "1"
+        assert params["wait_for_async_insert"] == "1"
+        refute Map.has_key?(params, "async_target")
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
+
+      assert :ok =
+               Ingester.insert_compressed(
+                 backend,
+                 table,
+                 :log,
+                 :zlib.gzip(""),
+                 @async_opts ++ [async_target: :primary]
+               )
+    end
+
     test "async insert honors an explicit standard port on the cluster URL" do
       {backend, table} =
         ingest_target(%{async_insert_cluster_url: "http://async-cluster.local:80"})
@@ -641,8 +666,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
     test "async insert falls back to the primary URL/port when no cluster URL is configured" do
       {backend, table} = ingest_target(%{})
 
-      # ensure the async pool is utilized
-      expect_ingest_request("localhost", 8123, Logflare.FinchClickHouseAsyncIngest)
+      expect_ingest_request("localhost", 8123, Logflare.FinchClickHouseIngest)
 
       assert :ok = Ingester.insert_compressed(backend, table, :log, :zlib.gzip(""), @async_opts)
     end
@@ -650,8 +674,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
     test "async insert falls back to the primary URL/port when the dedicated async cluster URL an empty string" do
       {backend, table} = ingest_target(%{async_insert_cluster_url: ""})
 
-      # ensure the async pool is utilized
-      expect_ingest_request("localhost", 8123, Logflare.FinchClickHouseAsyncIngest)
+      expect_ingest_request("localhost", 8123, Logflare.FinchClickHouseIngest)
 
       assert :ok = Ingester.insert_compressed(backend, table, :log, :zlib.gzip(""), @async_opts)
     end

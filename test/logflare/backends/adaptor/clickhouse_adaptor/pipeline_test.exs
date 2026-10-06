@@ -1160,6 +1160,80 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       assert_received {:insert_opts, opts}
       assert Keyword.get(opts, :async) == false
     end
+
+    test "all-batches mode bypasses the threshold and targets primary", %{
+      async_source: source,
+      async_backend: backend
+    } do
+      {:ok, backend} =
+        Backends.update_backend(backend, %{config: %{async_insert_mode: "all_batches"}})
+
+      TestUtils.retry_assert(fn ->
+        assert Backends.Cache.get_backend(backend.id).config.async_insert_mode == "all_batches"
+      end)
+
+      test_pid = self()
+
+      Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
+                                                                        _event_type,
+                                                                        _compressed,
+                                                                        opts ->
+        send(test_pid, {:insert_opts, opts})
+        :ok
+      end)
+
+      events = for n <- 1..2, do: build(:log_event, source: source, message: "row #{n}")
+      gen_tid = setup_generation_events(events)
+      messages = Enum.map(events, &batch_message(&1, gen_tid, backend.id))
+
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch,
+        batch_key: {:log, @day_bucket},
+        size: 2,
+        trigger: :flush
+      }
+
+      Pipeline.handle_batch(:ch, messages, batch_info, %{backend_id: backend.id})
+
+      assert_received {:insert_opts, [async: true, async_target: :primary]}
+    end
+
+    test "sync mode overrides the legacy small-batch setting", %{
+      async_source: source,
+      async_backend: backend
+    } do
+      {:ok, backend} = Backends.update_backend(backend, %{config: %{async_insert_mode: "sync"}})
+
+      TestUtils.retry_assert(fn ->
+        assert Backends.Cache.get_backend(backend.id).config.async_insert_mode == "sync"
+      end)
+
+      test_pid = self()
+
+      Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
+                                                                        _event_type,
+                                                                        _compressed,
+                                                                        opts ->
+        send(test_pid, {:insert_opts, opts})
+        :ok
+      end)
+
+      event = build(:log_event, source: source, message: "sync row")
+      gen_tid = setup_generation_events([event])
+
+      batch_info = %Broadway.BatchInfo{
+        batcher: :ch,
+        batch_key: {:log, @day_bucket},
+        size: 1,
+        trigger: :flush
+      }
+
+      Pipeline.handle_batch(:ch, [batch_message(event, gen_tid, backend.id)], batch_info, %{
+        backend_id: backend.id
+      })
+
+      assert_received {:insert_opts, [async: false]}
+    end
   end
 
   describe "ack/3" do

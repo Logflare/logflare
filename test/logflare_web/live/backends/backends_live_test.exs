@@ -531,6 +531,39 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert html =~ "my clickhouse"
     end
 
+    test "can select all-batches async mode for a ClickHouse backend", %{conn: conn} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      view
+      |> element("select#type")
+      |> render_change(%{backend: %{type: "clickhouse"}})
+
+      assert has_element?(
+               view,
+               "select[name='backend[config][async_insert_mode]'] option[value='all_batches']"
+             )
+
+      view
+      |> form("form", %{
+        backend: %{
+          name: "async primary",
+          type: "clickhouse",
+          config: %{
+            url: "http://localhost",
+            database: "test_db",
+            port: 8123,
+            username: "user",
+            password: "pass",
+            async_insert_mode: "all_batches"
+          }
+        }
+      })
+      |> render_submit()
+
+      assert {:ok, backend} = Backends.fetch_backend_by(name: "async primary")
+      assert backend.config.async_insert_mode == "all_batches"
+    end
+
     test "can create otlp backend with flatten_to_attributes enabled", %{conn: conn, user: user} do
       {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
 

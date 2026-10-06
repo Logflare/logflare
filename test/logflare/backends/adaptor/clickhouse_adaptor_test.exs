@@ -679,6 +679,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert Ecto.Changeset.get_field(changeset, :use_async_inserts_for_small_batches) == true
     end
 
+    test "async_insert_mode is optional for existing backends" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :async_insert_mode) == nil
+    end
+
+    test "casts the supported async insert modes" do
+      for mode <- ["sync", "small_batches", "all_batches"] do
+        changeset = cast_and_validate_config(async_insert_mode: mode)
+
+        assert changeset.valid?
+        assert Ecto.Changeset.get_field(changeset, :async_insert_mode) == mode
+      end
+    end
+
+    test "rejects an unknown async insert mode" do
+      changeset = cast_and_validate_config(async_insert_mode: "unknown")
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :async_insert_mode)
+    end
+
     test "async_insert_max_rows defaults to 1000 when not provided" do
       changeset = cast_and_validate_config()
 
@@ -1568,6 +1591,33 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
     end
 
+    test "checks the dedicated endpoint when small-batches mode is selected" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            async_insert_mode: "small_batches",
+            async_insert_cluster_url: "http://localhost:19999"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert {:error, _} = ClickHouseAdaptor.test_connection(backend)
+    end
+
+    test "all-batches primary mode does not require a reachable dedicated endpoint" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            use_async_inserts_for_small_batches: true,
+            async_insert_mode: "all_batches",
+            async_insert_cluster_url: "http://localhost:19999"
+          }
+        )
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert :ok = ClickHouseAdaptor.test_connection(backend)
+    end
+
     test "skips the async check when async is disabled even if the cluster URL is unreachable" do
       {_source, backend} =
         setup_clickhouse_test(
@@ -1808,6 +1858,34 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       assert log =~ "host=async-cluster.local"
       refute log =~ "localhost"
+    end
+
+    test "logs the primary host for all-batches async inserts" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{async_insert_cluster_url: "http://async-cluster.local:9000"}
+        )
+
+      Mimic.expect(Finch, :request, fn request, pool, _opts ->
+        assert request.host == "localhost"
+        assert pool == Logflare.FinchClickHouseIngest
+        {:ok, %Finch.Response{status: 400, body: "boom"}}
+      end)
+
+      log =
+        ExUnit.CaptureLog.capture_log([format: "$metadata$message", metadata: [:host]], fn ->
+          assert {:error, _} =
+                   ClickHouseAdaptor.insert_log_events_compressed(
+                     backend,
+                     :log,
+                     :zlib.gzip(""),
+                     async: true,
+                     async_target: :primary
+                   )
+        end)
+
+      assert log =~ "host=localhost"
+      refute log =~ "async-cluster.local"
     end
   end
 

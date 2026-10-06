@@ -117,6 +117,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         :read_only_urls,
         :default_read_cluster,
         :use_async_inserts_for_small_batches,
+        :async_insert_mode,
         :async_insert_cluster_url,
         :async_insert_max_rows,
         :max_event_age_hours,
@@ -270,6 +271,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        read_only_urls: {:map, :string},
        default_read_cluster: :string,
        use_async_inserts_for_small_batches: :boolean,
+       async_insert_mode: :string,
        async_insert_cluster_url: :string,
        async_insert_max_rows: :integer,
        max_event_age_hours: :integer,
@@ -288,6 +290,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :read_only_urls,
       :default_read_cluster,
       :use_async_inserts_for_small_batches,
+      :async_insert_mode,
       :async_insert_cluster_url,
       :async_insert_max_rows,
       :max_event_age_hours,
@@ -344,6 +347,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> validate_required([:url, :database, :port])
     |> Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
     |> Changeset.validate_format(:async_insert_cluster_url, ~r/https?\:\/\/.+/)
+    |> validate_inclusion(:async_insert_mode, ["sync", "small_batches", "all_batches"])
     |> validate_number(:async_insert_max_rows, greater_than: 0)
     |> validate_number(:max_event_age_hours, greater_than_or_equal_to: 0)
     |> validate_format(:replica_routing_param, @param_name_pattern,
@@ -402,7 +406,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   cluster is, the primary `url` is checked for `SELECT` so those credentials are still
   validated.
 
-  When async inserts are enabled and a parsable `async_insert_cluster_url` is configured,
+  When small-batch async inserts route to a parsable `async_insert_cluster_url`,
   additionally checks that endpoint for connectivity and write permissions.
   """
   @impl Logflare.Backends.Adaptor
@@ -590,17 +594,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end
   end
 
-  # The dedicated async endpoint is only checked when async routing is enabled and a
-  # set, parsable `async_insert_cluster_url` is configured.
   @spec async_grant_check_url(map()) :: String.t() | nil
-  defp async_grant_check_url(%{
-         use_async_inserts_for_small_batches: true,
-         async_insert_cluster_url: url
-       })
+  defp async_grant_check_url(%{async_insert_cluster_url: url} = config)
        when is_non_empty_binary(url) do
-    case EndpointUtils.host(url) do
-      host when is_non_empty_binary(host) -> url
-      _ -> nil
+    mode = Map.get(config, :async_insert_mode)
+
+    if mode == "small_batches" or
+         (is_nil(mode) and Map.get(config, :use_async_inserts_for_small_batches) == true) do
+      case EndpointUtils.host(url) do
+        host when is_non_empty_binary(host) -> url
+        _ -> nil
+      end
     end
   end
 
@@ -980,11 +984,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     Logger.metadata(backend_id: backend.id)
     table_name = clickhouse_ingest_table_name(backend, event_type)
     async? = Keyword.get(opts, :async, false)
-    insert_opts = [{:async, async?} | build_insert_opts(opts)]
+    target = Keyword.get(opts, :async_target, :configured)
+    insert_opts = [async: async?, async_target: target] ++ build_insert_opts(opts)
 
     backend
     |> Ingester.insert(table_name, events, event_type, insert_opts)
-    |> handle_insert_result(backend, event_type, async?)
+    |> handle_insert_result(backend, event_type, async?, target)
   end
 
   @doc """
@@ -1003,27 +1008,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     Logger.metadata(backend_id: backend.id)
     table_name = clickhouse_ingest_table_name(backend, event_type)
     async? = Keyword.get(opts, :async, false)
-    insert_opts = [{:async, async?} | build_insert_opts(opts)]
+    target = Keyword.get(opts, :async_target, :configured)
+    insert_opts = [async: async?, async_target: target] ++ build_insert_opts(opts)
 
     backend
     |> Ingester.insert_compressed(table_name, event_type, compressed, insert_opts)
-    |> handle_insert_result(backend, event_type, async?)
+    |> handle_insert_result(backend, event_type, async?, target)
   end
 
   @spec handle_insert_result(
           :ok | {:error, term()},
           Backend.t(),
           TypeDetection.event_type(),
-          boolean()
+          boolean(),
+          :primary | :configured
         ) :: :ok | {:error, term()}
-  defp handle_insert_result(:ok, backend, event_type, async?) do
+  defp handle_insert_result(:ok, backend, event_type, async?, _target) do
     emit_insert_telemetry(backend, event_type, async?, :ok, :none)
     :ok
   end
 
-  defp handle_insert_result({:error, reason}, backend, event_type, async?) do
+  defp handle_insert_result({:error, reason}, backend, event_type, async?, target) do
     Logger.warning("ClickHouse http insert error.",
-      host: insert_host(backend.config, async?),
+      host: insert_host(backend.config, async?, target),
       error_string: Ingester.error_string(reason)
     )
 
@@ -1069,20 +1076,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     [max_execution_time: @insert_max_execution_time_seconds]
   end
 
-  # The endpoint host an HTTP insert actually targets, for failure logging: async inserts
-  # hit the dedicated `async_insert_cluster_url` when configured (falling back to the
-  # primary URL), mirroring the routing in `Ingester`; everything else hits the primary URL.
-  @spec insert_host(term(), boolean()) :: String.t() | nil
-  defp insert_host(%{async_insert_cluster_url: async_url} = config, true)
+  # Mirror the ingester's route when reporting failures: only configured-target async
+  # inserts can hit the dedicated URL; primary-target and sync inserts use the primary.
+  @spec insert_host(term(), boolean(), :primary | :configured) :: String.t() | nil
+  defp insert_host(%{async_insert_cluster_url: async_url} = config, true, :configured)
        when is_non_empty_binary(async_url) do
     EndpointUtils.host(async_url) || EndpointUtils.host(Map.get(config, :url))
   end
 
-  defp insert_host(config, _async?) when is_map(config) do
+  defp insert_host(config, _async?, _target) when is_map(config) do
     EndpointUtils.host(Map.get(config, :url))
   end
 
-  defp insert_host(_config, _async?), do: nil
+  defp insert_host(_config, _async?, _target), do: nil
 
   @spec async_insert_opts() :: keyword()
   defp async_insert_opts do

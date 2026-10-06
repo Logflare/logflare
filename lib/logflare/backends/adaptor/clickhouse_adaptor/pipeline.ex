@@ -473,7 +473,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   end
 
   defp finalize_insert(backend, event_type, compressed, good_count, good, rejected) do
-    insert_opts = [async: async_insert?(backend, good_count)]
+    insert_opts = async_insert_opts(backend, good_count)
 
     case ClickHouseAdaptor.insert_log_events_compressed(
            backend,
@@ -492,17 +492,31 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     end
   end
 
-  @spec async_insert?(Backend.t(), non_neg_integer()) :: boolean()
-  defp async_insert?(
+  @spec async_insert_opts(Backend.t(), non_neg_integer()) :: keyword()
+  defp async_insert_opts(%Backend{config: %{async_insert_mode: "all_batches"}}, _row_count),
+    do: [async: true, async_target: :primary]
+
+  defp async_insert_opts(%Backend{config: %{async_insert_mode: "sync"}}, _row_count),
+    do: [async: false]
+
+  defp async_insert_opts(
+         %Backend{config: %{async_insert_mode: "small_batches", async_insert_max_rows: max_rows}},
+         row_count
+       )
+       when is_pos_integer(max_rows) and is_pos_integer(row_count),
+       do: [async: row_count < max_rows]
+
+  # Older backends have no mode; keep their existing small-batch setting effective.
+  defp async_insert_opts(
          %Backend{
            config: %{use_async_inserts_for_small_batches: true, async_insert_max_rows: max_rows}
          },
          row_count
        )
-       when is_pos_integer(max_rows) and is_pos_integer(row_count) and row_count < max_rows,
-       do: true
+       when is_pos_integer(max_rows) and is_pos_integer(row_count),
+       do: [async: row_count < max_rows]
 
-  defp async_insert?(_backend, _row_count), do: false
+  defp async_insert_opts(_backend, _row_count), do: [async: false]
 
   @spec record_insert_failure(Backend.t(), term()) :: :ok
   defp record_insert_failure(backend, reason) do

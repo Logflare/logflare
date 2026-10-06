@@ -303,10 +303,15 @@
             </small>
           </div>
           <div class="form-group">
-            {label(f_config, :use_async_inserts_for_small_batches, "Async Inserts for Small Batches")}
-            {checkbox(f_config, :use_async_inserts_for_small_batches, id: "use_async_inserts_for_small_batches")}
+            {label(f_config, :async_insert_mode, "Async Insert Mode")}
+            {select(f_config, :async_insert_mode, [Synchronous: "sync", "Async for small batches": "small_batches", "Async for all batches on primary": "all_batches"],
+              class: "form-control",
+              value:
+                input_value(f_config, "async_insert_mode") ||
+                  if(input_value(f_config, "use_async_inserts_for_small_batches"), do: "small_batches", else: "sync")
+            )}
             <small class="form-text text-muted">
-              When enabled, small batches are sent to ClickHouse as async inserts.
+              Changes take effect on subsequent batches. All-batches mode ignores the row threshold and sends inserts to the primary URL, even if a dedicated async URL is configured.
             </small>
           </div>
           <div class="form-group">
@@ -323,7 +328,7 @@
               value: input_value(f_config, "async_insert_max_rows") || 1000
             )}
             <small class="form-text text-muted">
-              Batches with fewer than this many rows are sent as async inserts (when enabled above).
+              In small-batches mode, batches with fewer than this many rows are sent as async inserts.
             </small>
           </div>
           <div class="form-group">

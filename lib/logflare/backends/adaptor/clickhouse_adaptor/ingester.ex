@@ -90,9 +90,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
           :ok | {:error, http_error() | term()}
   defp do_insert(connection_opts, table, event_type, request_body, opts) do
     async? = Keyword.get(opts, :async, false)
-    settings = Keyword.delete(opts, :async)
-    client = build_client(connection_opts, async?)
-    url = build_request_url(connection_opts, table, event_type, settings, async?)
+    async_target = Keyword.get(opts, :async_target, :configured)
+    settings = Keyword.drop(opts, [:async, :async_target])
+    dedicated_url = dedicated_async_url(connection_opts, async?, async_target)
+    client = build_client(connection_opts, not is_nil(dedicated_url))
+    url = build_request_url(connection_opts, table, event_type, settings, dedicated_url)
 
     case Tesla.post(client, url, request_body) do
       {:ok, %Tesla.Env{status: 200}} ->
@@ -156,7 +158,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   defp transport_error_class(_reason), do: :unknown
 
   @spec build_client(Keyword.t(), boolean()) :: Tesla.Client.t()
-  defp build_client(connection_opts, async?) do
+  defp build_client(connection_opts, dedicated_async?) do
     middleware = [
       {Tesla.Middleware.Headers,
        [{"content-type", "application/octet-stream"}, {"content-encoding", "gzip"}]},
@@ -175,7 +177,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
 
     adapter =
       {Tesla.Adapter.Finch,
-       name: finch_pool(async?), pool_timeout: @pool_timeout, receive_timeout: @receive_timeout}
+       name: finch_pool(dedicated_async?),
+       pool_timeout: @pool_timeout,
+       receive_timeout: @receive_timeout}
 
     Tesla.client(middleware, adapter)
   end
@@ -438,34 +442,30 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     {:error, "Unable to build connection options"}
   end
 
-  @spec insert_origin(Keyword.t(), boolean()) ::
-          {String.t(), String.t() | nil, pos_integer() | nil}
-  defp insert_origin(connection_opts, async?) do
-    # async inserts with a configured dedicated cluster URL target it; everything else
-    # (sync, or async with no dedicated URL) targets the primary URL.
-    url = dedicated_async_url(connection_opts, async?) || Keyword.get(connection_opts, :url)
-    EndpointUtils.origin(url, Keyword.get(connection_opts, :port))
-  end
-
-  @spec dedicated_async_url(Keyword.t(), boolean()) :: String.t() | nil
-  defp dedicated_async_url(connection_opts, true) do
+  @spec dedicated_async_url(Keyword.t(), boolean(), :primary | :configured) :: String.t() | nil
+  defp dedicated_async_url(connection_opts, true, :configured) do
     case Keyword.get(connection_opts, :async_insert_cluster_url) do
       url when is_non_empty_binary(url) -> url
       _ -> nil
     end
   end
 
-  defp dedicated_async_url(_connection_opts, false), do: nil
+  defp dedicated_async_url(_connection_opts, _async?, _target), do: nil
 
   @spec build_request_url(
           connection_opts :: Keyword.t(),
           table :: String.t(),
           TypeDetection.event_type(),
           opts :: keyword(),
-          async? :: boolean()
+          dedicated_url :: String.t() | nil
         ) :: String.t()
-  defp build_request_url(connection_opts, table, event_type, opts, async?) do
-    {scheme, host, port} = insert_origin(connection_opts, async?)
+  defp build_request_url(connection_opts, table, event_type, opts, dedicated_url) do
+    {scheme, host, port} =
+      EndpointUtils.origin(
+        dedicated_url || Keyword.get(connection_opts, :url),
+        Keyword.get(connection_opts, :port)
+      )
+
     database = Keyword.get(connection_opts, :database)
 
     columns = columns_for_type(event_type) |> Enum.join(", ")
