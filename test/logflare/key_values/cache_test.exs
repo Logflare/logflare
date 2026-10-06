@@ -2,6 +2,8 @@ defmodule Logflare.KeyValues.CacheTest do
   @moduledoc false
   use Logflare.DataCase, async: false
 
+  alias Logflare.ContextCache.Gossip
+  alias Logflare.ContextCache.Tombstones
   alias Logflare.KeyValues
 
   setup do
@@ -72,6 +74,46 @@ defmodule Logflare.KeyValues.CacheTest do
 
       cache_key = {:count, user.id}
       assert is_nil(Cachex.get!(KeyValues.Cache, cache_key))
+    end
+  end
+
+  describe "tombstones/1" do
+    for {name, kw, expected} <- [
+          {"user and key", [user_id: 1, key: "k"], [{:count, 1}, {:key, 1, "k"}]},
+          {"user only", [user_id: 1], [{:count, 1}]},
+          {"no user", [key: "k"], []}
+        ] do
+      test name do
+        assert KeyValues.Cache.tombstones(unquote(kw)) == unquote(Macro.escape(expected))
+      end
+    end
+
+    test "primary key" do
+      assert KeyValues.Cache.tombstones(1) == []
+    end
+  end
+
+  describe "stale_entry?/2" do
+    setup do
+      Cachex.clear!(Tombstones.Cache)
+      Gossip.record_tombstones([{KeyValues, [user_id: 1, key: "changed"]}])
+      :ok
+    end
+
+    test "lookups, for every accessor path, of a changed key" do
+      assert KeyValues.Cache.stale_entry?({:lookup, [1, "changed", nil]}, %{})
+      assert KeyValues.Cache.stale_entry?({:lookup, [1, "changed", "org.id"]}, "abc")
+      refute KeyValues.Cache.stale_entry?({:lookup, [1, "unchanged", nil]}, %{})
+      refute KeyValues.Cache.stale_entry?({:lookup, [2, "changed", nil]}, %{})
+    end
+
+    test "counts of a user with a changed key" do
+      assert KeyValues.Cache.stale_entry?({:count, 1}, 3)
+      refute KeyValues.Cache.stale_entry?({:count, 2}, 3)
+    end
+
+    test "unknown key" do
+      assert KeyValues.Cache.stale_entry?(:unknown, %{})
     end
   end
 end

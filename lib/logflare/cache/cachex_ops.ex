@@ -11,6 +11,7 @@ defmodule Logflare.Cache.CachexOps do
 
   import Cachex.Spec
 
+  alias Logflare.ContextCache
   alias Logflare.ContextCache.Gossip
 
   @stat_keys [
@@ -172,6 +173,61 @@ defmodule Logflare.Cache.CachexOps do
   end
 
   @doc """
+  Streams unexpired entries with values unwrapped from `{:cached, value}`. Entries not written as
+  `{:cached, value}` are skipped.
+  """
+  @impl Logflare.ContextCache.Ops
+  @spec entries(Cachex.t()) :: Enumerable.t(ContextCache.entry())
+  def entries(cache) do
+    query =
+      Cachex.Query.build(
+        where: Cachex.Query.unexpired(),
+        output: {:key, :value, :modified, :expiration}
+      )
+
+    cache
+    |> Cachex.stream!(query)
+    |> Stream.flat_map(fn
+      {key, {:cached, value}, modified, expiration} ->
+        [{key, value, remaining_ttl(modified, expiration)}]
+
+      _not_cached_value ->
+        []
+    end)
+  end
+
+  @doc """
+  Writes `entries` keeping their remaining time-to-live. Entries that do not expire get the
+  cache's default expiration.
+  """
+  @impl Logflare.ContextCache.Ops
+  @spec put_entries(Cachex.t(), [ContextCache.entry()]) :: :ok
+  def put_entries(_cache, []), do: :ok
+
+  def put_entries(cache, entries) do
+    modified = now()
+
+    records =
+      for {key, value, ttl} <- entries do
+        entry(key: key, value: {:cached, value}, modified: modified, expiration: ttl)
+      end
+
+    {:ok, _imported} = Cachex.import(cache, records)
+    :ok
+  end
+
+  @impl Logflare.ContextCache.Ops
+  @spec cached?(Cachex.t(), term()) :: boolean()
+  def cached?(cache, key), do: Cachex.exists?(cache, key) == {:ok, true}
+
+  @impl Logflare.ContextCache.Ops
+  @spec size(Cachex.t()) :: non_neg_integer()
+  def size(cache) do
+    {:ok, size} = Cachex.size(cache)
+    size
+  end
+
+  @doc """
   Deletes `keys` and returns how many of them were present.
   """
   @spec delete_keys(Cachex.t(), Enumerable.t()) :: {:ok, non_neg_integer()}
@@ -187,6 +243,9 @@ defmodule Logflare.Cache.CachexOps do
       {:ok, _value} -> 1
     end
   end
+
+  defp remaining_ttl(_modified, nil), do: nil
+  defp remaining_ttl(modified, expiration), do: max(modified + expiration - now(), 1)
 
   defp stats_hooks, do: if(stats_enabled?(), do: [hook(module: Cachex.Stats)], else: [])
 

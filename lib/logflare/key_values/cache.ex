@@ -5,6 +5,7 @@ defmodule Logflare.KeyValues.Cache do
 
   alias Logflare.Cache.CachexOps
   alias Logflare.ContextCache
+  alias Logflare.ContextCache.Tombstones
   alias Logflare.KeyValues
   alias Logflare.Repo
 
@@ -54,6 +55,26 @@ defmodule Logflare.KeyValues.Cache do
   def bust_by(kw) do
     CachexOps.delete_keys(__MODULE__, bust_entries(kw))
   end
+
+  @impl ContextCache
+  def tombstones(kw) when is_list(kw) do
+    case {Keyword.get(kw, :user_id), Keyword.get(kw, :key)} do
+      {nil, _key} -> []
+      {user_id, nil} -> [{:count, user_id}]
+      {user_id, key} -> [{:count, user_id}, {:key, user_id, key}]
+    end
+  end
+
+  def tombstones(_pkey), do: []
+
+  @impl ContextCache
+  def stale_entry?({:lookup, [user_id, key | _accessor]}, _value),
+    do: Tombstones.Cache.tombstoned?(__MODULE__, {:key, user_id, key})
+
+  def stale_entry?({:count, user_id}, _value),
+    do: Tombstones.Cache.tombstoned?(__MODULE__, {:count, user_id})
+
+  def stale_entry?(_key, _value), do: true
 
   defp bust_entries(kw) do
     user_id = Keyword.get(kw, :user_id)

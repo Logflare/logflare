@@ -9,4 +9,8 @@ defmodule Logflare.ContextCache.Ops do
   @callback bust_by(cache :: module(), keyword()) :: {:ok, non_neg_integer()} | {:error, term()}
   @callback fetch(cache :: module(), key :: term(), getter :: (-> term())) :: term()
   @callback update(cache :: module(), key :: term(), value :: term()) :: :ok
+  @callback entries(cache :: module()) :: Enumerable.t(Logflare.ContextCache.entry())
+  @callback put_entries(cache :: module(), [Logflare.ContextCache.entry()]) :: :ok
+  @callback cached?(cache :: module(), key :: term()) :: boolean()
+  @callback size(cache :: module()) :: non_neg_integer()
 end
