@@ -25,7 +25,6 @@ defmodule Logflare.TestUtils do
   - :seed_user - boolean - enable to seed default plan and user
   - :supabase_mode - enable to seed supabase data
   - :backend_type - the selected single-tenant backend
-  - :clickhouse_backend_adapter_opts - ClickHouse connection options
   """
   defmacro setup_single_tenant(opts \\ []) do
     opts =
@@ -34,12 +33,7 @@ defmodule Logflare.TestUtils do
         supabase_mode: false,
         bigquery_project_id: random_string(),
         backend_type: :bigquery,
-        pg_schema: nil,
-        clickhouse_backend_adapter_opts: [
-          url: "http://localhost:8123",
-          database: "logflare_test",
-          port: 8123
-        ]
+        pg_schema: nil
       })
 
     quote do
@@ -137,19 +131,32 @@ defmodule Logflare.TestUtils do
     end
   end
 
-  defp setup_single_tenant_backend(%{
-         backend_type: :clickhouse,
-         clickhouse_backend_adapter_opts: opts
-       }) do
+  defp setup_single_tenant_backend(%{backend_type: :clickhouse}) do
     quote do
       setup do
         previous = Application.get_env(:logflare, :clickhouse_backend_adapter)
-        Application.put_env(:logflare, :clickhouse_backend_adapter, unquote(opts))
+
+        Application.put_env(
+          :logflare,
+          :clickhouse_backend_adapter,
+          Map.to_list(Logflare.TestUtils.clickhouse_config())
+        )
 
         on_exit(fn -> Application.put_env(:logflare, :clickhouse_backend_adapter, previous) end)
         :ok
       end
     end
+  end
+
+  @spec clickhouse_config() :: map()
+  def clickhouse_config do
+    %{
+      url: "http://localhost:8123",
+      database: "logflare_test",
+      username: "logflare",
+      password: "logflare",
+      port: 8123
+    }
   end
 
   def default_bq_schema, do: SchemaBuilder.initial_table_schema()

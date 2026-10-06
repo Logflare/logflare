@@ -324,14 +324,7 @@ defmodule Logflare.SingleTenantTest do
   end
 
   describe "single tenant mode using ClickHouse" do
-    TestUtils.setup_single_tenant(
-      backend_type: :clickhouse,
-      clickhouse_backend_adapter_opts: [
-        url: "http://localhost:8123",
-        database: "logflare_test",
-        port: 8123
-      ]
-    )
+    TestUtils.setup_single_tenant(backend_type: :clickhouse)
 
     test "returns nil before the default user exists" do
       assert SingleTenant.get_default_user() == nil
@@ -366,6 +359,7 @@ defmodule Logflare.SingleTenantTest do
       Application.put_env(:logflare, :supabase_mode, true)
 
       on_exit(fn -> Application.put_env(:logflare, :supabase_mode, previous_supabase_mode) end)
+      on_exit(fn -> ConsolidatedSup.stop_pipeline(0) end)
 
       Logflare.Application.startup_tasks()
 
@@ -390,8 +384,6 @@ defmodule Logflare.SingleTenantTest do
       assert SingleTenant.get_default_backend() == backend
       assert Backends.get_backend(0) == backend
       assert Backends.list_backends(user_id: user_id) == []
-
-      on_exit(fn -> ConsolidatedSup.stop_pipeline(backend.id) end)
     end
   end
 

@@ -11,14 +11,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
     insert(:plan, name: "Free")
 
     {source, backend} = setup_clickhouse_test()
-
-    {:ok, supervisor_pid} = ClickHouseAdaptor.start_link(backend)
-
-    on_exit(fn ->
-      if Process.alive?(supervisor_pid) do
-        Process.exit(supervisor_pid, :shutdown)
-      end
-    end)
+    drop_clickhouse_tables_on_exit(backend)
 
     [source: source, backend: backend]
   end
@@ -94,13 +87,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
       {_source, read_backend} =
         setup_clickhouse_test(config: %{query_user: "ch_reader", query_password: "reader_pa55"})
 
-      {:ok, adaptor_pid} = ClickHouseAdaptor.start_link(read_backend)
-
-      on_exit(fn ->
-        if Process.alive?(adaptor_pid) do
-          Process.exit(adaptor_pid, :shutdown)
-        end
-      end)
+      drop_clickhouse_tables_on_exit(read_backend)
 
       {:ok, pid} = Provisioner.start_link(read_backend)
       ref = Process.monitor(pid)
