@@ -99,6 +99,10 @@ defmodule Logflare.Backends.UserMonitoring do
   process, which deadlocks that partition. When the `SourceSup` is down, the event is dropped,
   `[:logflare, :user_monitoring, :log_interceptor, :dropped]` is emitted, and
   `SystemSourceStarter` starts the `SourceSup` in its own process.
+
+  A rule on the system logs source can still route an event to a sink source whose `SourceSup`
+  is down. That start waits in the logging process, for at most the timeout of
+  `Logflare.Backends.start_source_sup/1`.
   """
   @spec log_interceptor(:logger.log_event(), term()) :: :ignore
   def log_interceptor(%{meta: %{system_source: true}}, _), do: :ignore

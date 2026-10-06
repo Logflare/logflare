@@ -1099,7 +1099,7 @@ defmodule Logflare.Backends do
   completes the start after the timeout.
   """
   @spec start_source_sup(Source.t()) ::
-          :ok | {:error, :already_started | :not_found | :start_timeout}
+          :ok | {:error, :already_started | :not_found | :start_timeout | term()}
   def start_source_sup(%Source{} = source) do
     if not source_sup_started?(source), do: SourceSup.prefetch(source)
     do_start_source_sup(source)
@@ -1110,19 +1110,22 @@ defmodule Logflare.Backends do
       Application.get_env(:logflare, :source_sup_start_timeout, @default_source_sup_start_timeout)
 
     task =
-      Task.async(fn ->
-        DynamicSupervisor.start_child(
-          {:via, PartitionSupervisor, {SourcesSup, source.id}},
-          SourceSup.child_spec(source)
-        )
-      end)
+      Task.Supervisor.async_nolink(
+        {:via, PartitionSupervisor, {Logflare.TaskSupervisors, source.id}},
+        fn ->
+          DynamicSupervisor.start_child(
+            {:via, PartitionSupervisor, {SourcesSup, source.id}},
+            SourceSup.child_spec(source)
+          )
+        end
+      )
 
     case Task.yield(task, timeout) || Task.shutdown(task, :brutal_kill) do
       {:ok, result} ->
         handle_start_child_result(result)
 
       {:exit, reason} ->
-        exit(reason)
+        {:error, reason}
 
       nil ->
         Logger.warning("SourceSup start timed out after #{timeout}ms",
@@ -1147,6 +1150,9 @@ defmodule Logflare.Backends do
 
       {:error, {:shutdown, {:failed_to_start_child, _mod, {:already_started = reason, _pid}}}} ->
         {:error, reason}
+
+      {:error, _reason} = error ->
+        error
     end
   end
 
@@ -1156,22 +1162,25 @@ defmodule Logflare.Backends do
   Every ingest batch calls this. When the SourceSup is down, only the first caller for a source
   starts it. The other callers for that source wait for that start and get its result, so the
   `SourcesSup` partition receives one `start_child` call per source, not one per caller.
+
+  A failed start returns `{:error, reason}` and does not raise.
   """
-  @spec ensure_source_sup_started(Source.t()) :: :ok | {:error, :not_found | :start_timeout}
+  @spec ensure_source_sup_started(Source.t()) ::
+          :ok | {:error, :not_found | :start_timeout | term()}
   def ensure_source_sup_started(%Source{id: id} = source) do
     if source_sup_started?(id) do
       :ok
     else
-      {:ignore, result} =
-        Cachex.fetch(SourceSupStarts, id, fn _id -> {:ignore, start_source_sup(source)} end)
-
-      case result do
-        :ok -> :ok
-        {:error, :already_started} -> :ok
-        {:error, reason} = error when reason in [:not_found, :start_timeout] -> error
-      end
+      SourceSupStarts
+      |> Cachex.fetch(id, fn _id -> {:ignore, start_source_sup(source)} end)
+      |> handle_source_sup_start()
     end
   end
+
+  defp handle_source_sup_start({:ignore, :ok}), do: :ok
+  defp handle_source_sup_start({:ignore, {:error, :already_started}}), do: :ok
+  defp handle_source_sup_start({:ignore, {:error, _reason} = error}), do: error
+  defp handle_source_sup_start({:error, _reason} = error), do: error
 
   @doc """
   Stops a given SourceSup for a source. if not started, it will return an error tuple.
@@ -1194,7 +1203,7 @@ defmodule Logflare.Backends do
   Restarts a SourceSup of a given source.
   """
   @spec restart_source_sup(Source.t()) ::
-          :ok | {:error, :already_started | :not_started | :not_found | :start_timeout}
+          :ok | {:error, :already_started | :not_started | :not_found | :start_timeout | term()}
   def restart_source_sup(%Source{} = source) do
     with :ok <- stop_source_sup(source),
          :ok <- start_source_sup(source) do

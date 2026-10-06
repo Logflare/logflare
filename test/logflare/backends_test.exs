@@ -826,6 +826,29 @@ defmodule Logflare.BackendsTest do
       refute Backends.source_sup_started?(source)
     end
 
+    test "ensure_source_sup_started/1 returns the error when the start fails", %{
+      source: source
+    } do
+      stub(SourceSup, :child_spec, fn received_source ->
+        %{
+          call_original(SourceSup, :child_spec, [received_source])
+          | start: {Function, :identity, [{:error, :boom}]}
+        }
+      end)
+
+      assert {:error, :boom} = Backends.ensure_source_sup_started(source)
+      refute Backends.source_sup_started?(source)
+    end
+
+    test "start_source_sup/1 leaves no EXIT message in a caller that traps exits", %{
+      source: source
+    } do
+      Process.flag(:trap_exit, true)
+
+      assert :ok = Backends.start_source_sup(source)
+      refute_receive {:EXIT, _pid, _reason}, 100
+    end
+
     test "prefetch/1 warms the cache keys read during initial startup", %{source: source} do
       source = Sources.get(source.id)
       source_schema = insert(:source_schema, source: source)
