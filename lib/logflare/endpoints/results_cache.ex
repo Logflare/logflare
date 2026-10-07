@@ -249,9 +249,10 @@ defmodule Logflare.Endpoints.ResultsCache do
   @spec endpoint_query(t()) :: EndpointQuery.t() | {:error, atom()} | nil
   defp endpoint_query(%__MODULE__{endpoint_version_number: version_number} = state)
        when is_integer(version_number) do
-    case Endpoints.Cache.get_endpoint_query_at_version(state.endpoint_query_id, version_number) do
-      {:ok, query} -> query
-      {:error, error} -> {:error, error}
+    with %EndpointQuery{} = current <- Endpoints.Cache.get_endpoint_query(state.endpoint_query_id),
+         {:ok, query} <-
+           Endpoints.Cache.get_endpoint_query_at_version(state.endpoint_query_id, version_number) do
+      %{query | sandboxable: current.sandboxable}
     end
   end
 
