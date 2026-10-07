@@ -15,7 +15,7 @@ defmodule LogflareWeb.Endpoints.SnapshotModalComponent do
         Version {@version_number}
       </div>
       <Components.endpoint_settings_panel endpoint={@snapshot} />
-      <Components.endpoint_query_panel endpoint={@snapshot} />
+      <Components.query_panel language={@snapshot.language} query={@snapshot.query} />
     </div>
     """
   end

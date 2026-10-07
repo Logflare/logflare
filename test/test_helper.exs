@@ -8,6 +8,7 @@ Mimic.copy(Broadway)
 Mimic.copy(Logflare.Backends.Spool.MemoryMonitor)
 Mimic.copy(Logflare.Backends.Spool.Storage.GCS)
 Mimic.copy(Logflare.Backends.Spool.Queue.PubSub)
+Mimic.copy(Logflare.Backends.Spool.SpoolAck)
 Mimic.copy(Ch)
 Mimic.copy(ConfigCat)
 Mimic.copy(ConfigCat.User)
@@ -43,6 +44,7 @@ Mimic.copy(Tesla.Adapter.Finch)
 Mimic.copy(Logflare.Admin)
 Mimic.copy(Logflare.Auth)
 Mimic.copy(Logflare.Backends)
+Mimic.copy(Logflare.Sources.Source.ChannelTopics)
 Mimic.copy(Logflare.Backends.Adaptor)
 Mimic.copy(Logflare.Backends.Adaptor.AxiomAdaptor)
 Mimic.copy(Logflare.Backends.Adaptor.BigQueryAdaptor)
@@ -70,6 +72,7 @@ Mimic.copy(Logflare.Logs.LogEvents)
 Mimic.copy(Logflare.Logs.SearchQueryExecutor)
 Mimic.copy(Logflare.Lql)
 Mimic.copy(Logflare.Mailer)
+Mimic.copy(Logflare.NaturalLanguageLql.AnthropicClient)
 Mimic.copy(Logflare.Networking.GrpcPool)
 Mimic.copy(Logflare.Rules)
 Mimic.copy(Logflare.SingleTenant)
@@ -86,6 +89,7 @@ Mimic.copy(Logflare.SystemMetrics.AllLogsLogged)
 Mimic.copy(Logflare.TeamUsers)
 Mimic.copy(Logflare.Users)
 Mimic.copy(Logflare.Users.Cache)
+Mimic.copy(Logflare.KeyValues)
 Mimic.copy(Logflare.KeyValues.CacheWarmer)
 Mimic.copy(Logflare.Utils)
 Mimic.copy(Logflare.Utils.SSRF)
@@ -103,7 +107,8 @@ ExUnit.configure(
     feature: true,
     integration: true,
     failing: true,
-    benchmark: true
+    benchmark: true,
+    pglogical_replica: true
   ]
 )
 

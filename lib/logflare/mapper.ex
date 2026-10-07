@@ -62,9 +62,9 @@ defmodule Logflare.Mapper do
       ignores it.
 
   The compiled mapping configuration selects the output representation. Map
-  output returns a map; ClickHouse RowBinary output maps the supplied document
-  and returns one encoded row binary without constructing an intermediate
-  Elixir map.
+  output returns a map; ClickHouse RowBinary and NDJSON output map the supplied
+  document and return one encoded row binary (a newline-terminated JSON object
+  for NDJSON) without constructing an intermediate Elixir map.
   """
   @spec map(map(), reference(), keyword()) :: map() | binary()
   def map(document, compiled_mapping, opts \\ []) when is_map(document) do

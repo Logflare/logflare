@@ -37,6 +37,7 @@ defmodule Logflare.LogEvent do
     field :batch_bytes, :integer, virtual: true
     # Indicates if the event was removed from ets during ingest
     field :is_popped, :boolean, virtual: true, default: false
+    field :spool_handle, :any, virtual: true, default: nil
 
     embeds_one :pipeline_error, PipelineError do
       field :stage, :string
@@ -53,7 +54,9 @@ defmodule Logflare.LogEvent do
   Handles both NDJSON (string keys, ISO8601 ingested_at) and ETF (atom keys,
   native DateTime) formats written by the producer.
   """
-  @spec make_from_spool(map(), Source.t()) :: t()
+  @spec make_from_spool(map(), Source.t(), term()) :: t()
+  def make_from_spool(record, source, handle \\ nil)
+
   def make_from_spool(
         %{
           id: id,
@@ -61,7 +64,8 @@ defmodule Logflare.LogEvent do
           event_type: event_type,
           ingested_at: ingested_at_us
         } = record,
-        source
+        source,
+        handle
       )
       when is_integer(ingested_at_us) do
     ingested_at_dt = DateTime.from_unix!(ingested_at_us, :microsecond)
@@ -78,7 +82,8 @@ defmodule Logflare.LogEvent do
       valid: true,
       drop: false,
       day_bucket: day_bucket,
-      via_rule_id: Map.get(record, :via_rule_id)
+      via_rule_id: Map.get(record, :via_rule_id),
+      spool_handle: handle
     }
   end
 
@@ -89,7 +94,8 @@ defmodule Logflare.LogEvent do
           "event_type" => event_type,
           "ingested_at" => ingested_at
         } = record,
-        source
+        source,
+        handle
       ) do
     {:ok, ingested_at_dt, _} = DateTime.from_iso8601(ingested_at)
     day_bucket = body["timestamp"] && DayBucket.from_microseconds(body["timestamp"])
@@ -105,7 +111,8 @@ defmodule Logflare.LogEvent do
       valid: true,
       drop: false,
       day_bucket: day_bucket,
-      via_rule_id: Map.get(record, "via_rule_id")
+      via_rule_id: Map.get(record, "via_rule_id"),
+      spool_handle: handle
     }
   end
 

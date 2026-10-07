@@ -29,6 +29,8 @@ config :logflare, Logflare.Logs.Validators.BigQuerySchemaChange, enabled: false
 
 config :logflare, Logflare.Google, dataset_id_append: "_default"
 
+config :logflare, Logflare.Backends.Spool.SpoolAck, ack_stale: true
+
 config :logflare, :postgres_backend_adapter, pool_size: 3
 
 config :logflare, :bigquery_backend_adaptor, managed_service_account_pool_size: 0
@@ -147,6 +149,18 @@ config :tesla,
   # TODO: `use Tesla.Builder` and `use Tesla` are soft-deprecated. It will be removed in future major version in favor of Runtime Configuration instead. See https://github.com/elixir-tesla/tesla/discussions/732 to learn more.
   disable_deprecated_builder_warning: true,
   adapter: {Tesla.Adapter.Finch, name: Logflare.FinchDefault, receive_timeout: 60_000}
+
+# Per-module adapter overrides for the spool producer/consumer's GCS + Pub/Sub
+# clients — a global `config :tesla, :adapter` change does NOT affect these,
+# since GoogleApi.Gax.Connection's `use Tesla` resolves its adapter per-module,
+# not from the process-wide default. Points both at the dedicated
+# Logflare.FinchSpool pool (see Logflare.Networking.pools/0) instead of sharing
+# FinchDefault's small, unconfigured :default bucket with everything else.
+config :tesla, GoogleApi.Storage.V1.Connection,
+  adapter: {Tesla.Adapter.Finch, name: Logflare.FinchSpool, receive_timeout: 60_000}
+
+config :tesla, GoogleApi.PubSub.V1.Connection,
+  adapter: {Tesla.Adapter.Finch, name: Logflare.FinchSpool, receive_timeout: 60_000}
 
 config :number,
   delimit: [

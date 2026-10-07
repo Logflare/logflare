@@ -1,6 +1,8 @@
 defmodule Logflare.Backends.IngestEventQueueTest do
   use Logflare.DataCase
 
+  import Mimic
+
   alias Logflare.LogEvent
   alias Logflare.PubSubRates
   alias Logflare.Backends.IngestEventQueue.BufferCacheWorker
@@ -9,6 +11,8 @@ defmodule Logflare.Backends.IngestEventQueueTest do
   alias Logflare.Backends.IngestEventQueue.GenerationJanitor
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
+  alias Logflare.Backends.Spool.SpoolAck
 
   setup do
     insert(:plan)
@@ -412,6 +416,37 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
       assert length(claimed_pointers) + IngestEventQueue.total_pending(target) == 1
     end
+
+    test "move/2 acks a conflicting same-ID row on the target instead of silently overwriting it",
+         %{queue: {sid, bid, _} = queue} do
+      target = {sid, bid, self()}
+      IngestEventQueue.upsert_tid(target)
+
+      moved_handle = "spool-handle-#{System.unique_integer([:positive])}"
+      stranded_handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(moved_handle, QueueMod, "queue-url")
+      SpoolAck.register(stranded_handle, QueueMod, "queue-url")
+
+      le = %{build(:log_event, message: "moved") | spool_handle: moved_handle}
+
+      conflicting = %{
+        build(:log_event, message: "stranded")
+        | id: le.id,
+          spool_handle: stranded_handle
+      }
+
+      :ok = IngestEventQueue.add_to_table(queue, [le])
+      :ok = IngestEventQueue.add_to_table(target, [conflicting])
+
+      assert {:ok, 1} = IngestEventQueue.move(queue, target)
+
+      assert :ets.lookup(:spool_ack, stranded_handle) == []
+
+      assert [{^moved_handle, 1, QueueMod, "queue-url", _registered_at}] =
+               :ets.lookup(:spool_ack, moved_handle)
+
+      assert IngestEventQueue.total_pending(target) == 1
+    end
   end
 
   describe "with a queue" do
@@ -459,7 +494,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       rows_before = pointer_tid |> :ets.tab2list()
 
       gen_event_id_by_id =
-        Map.new(rows_before, fn {id, _gen_tid, gen_event_id, _, _, _, _} ->
+        Map.new(rows_before, fn {id, _gen_tid, gen_event_id, _, _, _, _, _} ->
           {id, gen_event_id}
         end)
 
@@ -482,6 +517,30 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       remaining_id = ids_after |> MapSet.to_list() |> hd()
       remaining_gen_event_id = Map.fetch!(gen_event_id_by_id, remaining_id)
       assert %LogEvent{} = IngestEventQueue.lookup_event(gen_tid, remaining_gen_event_id)
+    end
+
+    test "drop_pending/2 acks a shared handle's units via a single batched call", %{
+      source: source,
+      source_backend_pid: sbp
+    } do
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+
+      events = for _ <- 1..5, do: %{build(:log_event, source: source) | spool_handle: handle}
+      assert :ok = IngestEventQueue.add_to_table(sbp, events)
+
+      test_pid = self()
+
+      stub(SpoolAck, :ack, fn h, n ->
+        send(test_pid, {:ack_call, h, n})
+        :ets.update_counter(:spool_ack, h, {2, -n})
+        :ok
+      end)
+
+      assert {:ok, 5} = IngestEventQueue.drop_pending(sbp, 5)
+
+      assert_receive {:ack_call, ^handle, 5}
+      refute_receive {:ack_call, ^handle, _}
     end
 
     @tag :race
@@ -913,6 +972,53 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
   end
 
+  describe "add_to_table/2 SpoolAck reservation" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      sbp = {source.id, insert(:backend, user: user).id, self()}
+      IngestEventQueue.upsert_tid(sbp)
+      [source: source, sbp: sbp]
+    end
+
+    test "reserves a handle's units before any of its pointers become visible to a claimer",
+         %{source: source, sbp: sbp} do
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+
+      test_pid = self()
+
+      stub(SpoolAck, :bump, fn h, n ->
+        send(test_pid, {:bump, h, n, IngestEventQueue.total_pending(sbp)})
+        :ets.update_counter(:spool_ack, h, {2, n})
+        :ok
+      end)
+
+      events = for _ <- 1..3, do: %{build(:log_event, source: source) | spool_handle: handle}
+      assert :ok = IngestEventQueue.add_to_table(sbp, events)
+
+      assert_receive {:bump, ^handle, 3, pending_at_bump_time}
+      assert pending_at_bump_time == 0
+      assert IngestEventQueue.total_pending(sbp) == 3
+    end
+
+    test "bumps once for a batch sharing a handle, compensating a losing insert_new/2 within it",
+         %{source: source, sbp: sbp} do
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+
+      winner = %{build(:log_event, source: source) | spool_handle: handle}
+      loser = %{winner | body: Map.put(winner.body, "event_message", "newer")}
+
+      assert :ok = IngestEventQueue.add_to_table(sbp, [winner, loser])
+
+      assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] =
+               :ets.lookup(:spool_ack, handle)
+
+      assert IngestEventQueue.total_pending(sbp) == 1
+    end
+  end
+
   describe "pointer reinsertion" do
     setup do
       user = insert(:user)
@@ -1026,7 +1132,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       queue_tid = IngestEventQueue.get_tid(sbp)
       [existing_pointer_row] = :ets.lookup(queue_tid, event.id)
 
-      {_, existing_gen_tid, existing_gen_event_id, _, _, _, _} = existing_pointer_row
+      {_, existing_gen_tid, existing_gen_event_id, _, _, _, _, _} = existing_pointer_row
       queues_key = {sid, bid}
       assert :ok = IngestEventQueue.new_generations([queues_key])
       staged_gen_tid = IngestEventQueue.current_generation_tid(queues_key)
@@ -1046,6 +1152,34 @@ defmodule Logflare.Backends.IngestEventQueueTest do
                duplicate
     end
 
+    test "acks the old pointer's spool handle when a newer pointer already exists", %{
+      source: source,
+      sbp: {sid, bid, _pid} = sbp
+    } do
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+
+      event = %{build(:log_event, source: source) | spool_handle: handle}
+      assert :ok = IngestEventQueue.add_to_table(sbp, [event])
+      assert {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
+
+      duplicate = %{event | body: Map.put(event.body, "event_message", "newer")}
+      assert :ok = IngestEventQueue.add_to_table(sbp, [duplicate])
+      queues_key = {sid, bid}
+      assert :ok = IngestEventQueue.new_generations([queues_key])
+
+      assert [{^handle, 2, _, _, _}] = :ets.lookup(:spool_ack, handle)
+
+      assert {:error, :already_exists} =
+               IngestEventQueue.requeue_payload(
+                 queues_key,
+                 %{pointer | retries: pointer.retries + 1},
+                 fn new_pointer -> {:retried, new_pointer} end
+               )
+
+      assert [{^handle, 1, _, _, _}] = :ets.lookup(:spool_ack, handle)
+    end
+
     test "replaces a same-ID pointer whose generation payload is gone", %{
       source: source,
       sbp: {sid, bid, _pid} = sbp
@@ -1054,6 +1188,13 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert :ok = IngestEventQueue.add_to_table(sbp, [event])
       assert {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
 
+      dangling_handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(dangling_handle, QueueMod, "queue-url")
+      SpoolAck.bump(dangling_handle, 1)
+
+      test_pid = self()
+      stub(QueueMod, :ack, fn url, h -> send(test_pid, {:acked, url, h}) end)
+
       stale_gen_tid = :ets.new(:stale_retry_generation, [:set, :public])
       stale_gen_event_id = make_ref()
 
@@ -1061,7 +1202,8 @@ defmodule Logflare.Backends.IngestEventQueueTest do
         pointer
         | tid: stale_gen_tid,
           gen_event_id: stale_gen_event_id,
-          retries: 99
+          retries: 99,
+          spool_handle: dangling_handle
       }
 
       :ets.delete(stale_gen_tid)
@@ -1077,6 +1219,11 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       refute published_pointer.tid == stale_gen_tid
       refute published_pointer.gen_event_id == stale_gen_event_id
       assert published_pointer.retries == 1
+
+      # the dangling row's own unit is acked exactly once, atomically with the
+      # ETS row being reclaimed -- not left outstanding, not double-acked
+      assert_receive {:acked, "queue-url", ^dangling_handle}
+      assert :ets.lookup(:spool_ack, dangling_handle) == []
 
       assert {:ok, [^published_pointer], _tid} =
                IngestEventQueue.pop_pending_pointers(sbp, 1)
@@ -1519,6 +1666,31 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
     test "returns empty list when no pending events", %{key: key} do
       assert {:ok, []} = IngestEventQueue.pop_pending(key, 10)
+    end
+
+    test "acks a shared handle's units via a single batched call, not once per event", %{
+      key: key,
+      source: source
+    } do
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+
+      events = for _ <- 1..5, do: %{build(:log_event, source: source) | spool_handle: handle}
+      :ok = IngestEventQueue.add_to_table(key, events)
+
+      test_pid = self()
+
+      stub(SpoolAck, :ack, fn h, n ->
+        send(test_pid, {:ack_call, h, n})
+        :ets.update_counter(:spool_ack, h, {2, -n})
+        :ok
+      end)
+
+      assert {:ok, popped} = IngestEventQueue.pop_pending(key, 5)
+      assert length(popped) == 5
+
+      assert_receive {:ack_call, ^handle, 5}
+      refute_receive {:ack_call, ^handle, _}
     end
 
     test "returns error when queue not initialized" do

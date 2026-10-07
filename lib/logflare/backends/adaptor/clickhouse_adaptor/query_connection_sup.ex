@@ -30,6 +30,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   `list_query_connection_managers/0` can be used to retrieve a list of all active read
   connection manager PIDs along with their respective backend IDs.
 
+  `list_read_pools/0` returns the currently running read pools themselves, with backend ID,
+  read-cluster label, and started pool size. `Logflare.Telemetry` sweeps these for
+  `DBConnection` pool metrics.
+
   ## Modifying Pools
 
   `recycle_backend/1` triggers an immediate connection recycle of a backend's read pool
@@ -108,6 +112,33 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
       Ex2ms.fun do
         {{^manager, backend_id}, pid, _} -> {backend_id, pid}
         {{^manager, backend_id, _}, pid, _} -> {backend_id, pid}
+      end
+
+    Registry.select(BackendRegistry, ms)
+  end
+
+  @doc """
+  Returns every currently running read pool on this node as
+  `{backend_id, label, pool_pid, pool_size}`.
+
+  Only started pools are listed; a `ConnectionManager` whose pool has been stopped for
+  inactivity or refresh is not included. The label is `nil` for the unlabeled pool.
+  `pool_size` is the size the pool was started with, read from its registry value, so
+  it reflects the running pool rather than whatever the backend config says now.
+  """
+  @spec list_read_pools() :: [
+          {backend_id :: pos_integer(), String.t() | nil, pid(), pos_integer()}
+        ]
+  def list_read_pools do
+    pool = CHReadPool
+
+    ms =
+      Ex2ms.fun do
+        {{^pool, backend_id}, pid, %{pool_size: pool_size}} ->
+          {backend_id, nil, pid, pool_size}
+
+        {{^pool, backend_id, label}, pid, %{pool_size: pool_size}} ->
+          {backend_id, label, pid, pool_size}
       end
 
     Registry.select(BackendRegistry, ms)

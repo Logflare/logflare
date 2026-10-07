@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "helm/**"
+      - "VERSION"
       - ".github/workflows/helm-chart.yml"
 
 permissions:
@@ -117,3 +118,15 @@ jobs:
           fi
 
           echo "Chart version bumped: $base_version -> $head_version"
+
+      - name: Ensure chart appVersion matches VERSION
+        run: |
+          app_version=$(cat VERSION)
+          chart_app_version=$(helm show chart helm | awk '/^appVersion:/ {print $2}' | tr -d '"')
+
+          if [ "$chart_app_version" != "$app_version" ]; then
+            echo "::error::helm/Chart.yaml appVersion ($chart_app_version) does not match VERSION ($app_version). Update appVersion in helm/Chart.yaml."
+            exit 1
+          fi
+
+          echo "Chart appVersion matches VERSION: $app_version"

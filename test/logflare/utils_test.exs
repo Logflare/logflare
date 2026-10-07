@@ -4,6 +4,54 @@ defmodule Logflare.UtilsTest do
   doctest Logflare.EnumDeepUpdate, import: true
   doctest Logflare.Utils, import: true
   doctest Logflare.Utils.Map, import: true
+  doctest Logflare.Utils.Postgres
+
+  describe "parse_float!/1" do
+    test "parses a decimal string" do
+      assert Logflare.Utils.parse_float!("1.5") == 1.5
+    end
+
+    test "parses an integer-like string without a decimal point" do
+      assert Logflare.Utils.parse_float!("1") == 1.0
+    end
+
+    test "parses an integer" do
+      assert Logflare.Utils.parse_float!(2) == 2.0
+    end
+
+    test "parses a float" do
+      assert Logflare.Utils.parse_float!(3.14) == 3.14
+    end
+
+    test "parses scientific notation" do
+      assert Logflare.Utils.parse_float!("1e-4") == 0.0001
+    end
+
+    test "parses a string with trailing whitespace" do
+      assert Logflare.Utils.parse_float!("0.95\n") == 0.95
+    end
+
+    test "parses a string with leading whitespace" do
+      assert Logflare.Utils.parse_float!(" 0.95") == 0.95
+    end
+
+    test "parses a string with a leading dot" do
+      assert Logflare.Utils.parse_float!(".95") == 0.95
+    end
+
+    test "parses a negative string with a leading dot" do
+      assert Logflare.Utils.parse_float!("-.95") == -0.95
+    end
+
+    test "raises on an unparseable binary" do
+      assert_raise ArgumentError, fn -> Logflare.Utils.parse_float!("not-a-number") end
+    end
+
+    test "raises on unsupported types" do
+      assert_raise RuntimeError, fn -> Logflare.Utils.parse_float!(%{}) end
+      assert_raise RuntimeError, fn -> Logflare.Utils.parse_float!(nil) end
+    end
+  end
 end
 
 defmodule Logflare.Utils.FlagTest do
@@ -13,6 +61,9 @@ defmodule Logflare.Utils.FlagTest do
   alias Logflare.ConfigCatCache
   alias Logflare.User
   alias Logflare.Utils
+
+  # Let cache callbacks use this test's mocks and reset any previous global owner.
+  setup :set_mimic_global
 
   setup do
     start_supervised!(ConfigCatCache)

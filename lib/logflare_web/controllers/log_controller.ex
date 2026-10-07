@@ -242,6 +242,13 @@ defmodule LogflareWeb.LogController do
   defp handle({:ok, _}, conn), do: render(conn, "index.json", message: @message)
   defp handle(:ok, conn), do: render(conn, "index.json", message: @message)
 
+  defp handle({:error, :spool_unavailable}, conn) do
+    conn
+    |> put_status(500)
+    |> put_view(LogflareWeb.LogView)
+    |> render("index.json", message: "Internal server error")
+  end
+
   defp handle({:error, errors}, conn) do
     conn
     |> put_status(406)
@@ -299,6 +306,10 @@ defmodule LogflareWeb.LogController do
     exception ->
       send_proto_error(conn, 500, "Internal server error")
       reraise exception, __STACKTRACE__
+  end
+
+  defp protobuf_response({:error, :spool_unavailable}, conn, _success_response) do
+    send_proto_error(conn, 500, "Internal server error")
   end
 
   defp protobuf_response({:error, errors}, conn, success_response) when is_list(errors) do
