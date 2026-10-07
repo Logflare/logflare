@@ -105,6 +105,8 @@ defmodule RoutingRestoreBench do
     drain_retirement(snapshots)
     retained = retained_bytes() - empty
     header_count = Cachex.size!(Cache)
+    header_binaries = header_binary_bytes()
+    store_sources = :ets.info(state.sources, :size)
 
     for snapshot <- snapshots do
       ids = match_ids(snapshot, count, :sparse)
@@ -122,7 +124,9 @@ defmodule RoutingRestoreBench do
       after_routing_ets_bytes: retained_bytes() - empty,
       headers_before_routing: header_count,
       headers_after_routing: Cachex.size!(Cache),
-      store_sources_before: :ets.info(state.sources, :size),
+      header_binary_bytes_before: header_binaries,
+      header_binary_bytes_after: header_binary_bytes(),
+      store_sources_before: store_sources,
       store_sources_after: :ets.info(state_after.sources, :size),
       store_estimated_bytes: state_after.estimated_bytes
     }
@@ -131,8 +135,10 @@ defmodule RoutingRestoreBench do
   defp publish(id, count) do
     targets = for rule_id <- 1..count, do: {rule_id, id * 100_000 + rule_id, nil}
     entries = if positional?(), do: targets, else: Enum.map(targets, &{elem(&1, 0), &1})
-    snapshot = Snapshot.new(id, entries)
-    Cachex.put!(Cache, {:rules_tree_by_source_id, [id]}, {:cached, {[], snapshot}})
+    index = Map.new(1..count, &{&1, if(positional?(), do: &1 - 1, else: &1)})
+    tree = [{"rule_id", [{:eq_index, index}]}]
+    snapshot = Snapshot.new(id, entries, extra_estimated_bytes: :erlang.external_size(tree))
+    Cachex.put!(Cache, {:rules_tree_by_source_id, [id]}, {:cached, {tree, snapshot}})
     snapshot
   end
 
@@ -197,6 +203,15 @@ defmodule RoutingRestoreBench do
     unless :ets.member(snapshot.table, snapshot.key) do
       apply(Cache, :delete_routing_snapshot, [snapshot.key])
     end
+  end
+
+  defp header_binary_bytes do
+    Cachex.keys!(Cache)
+    |> Enum.map(&Cachex.get!(Cache, &1))
+    |> Enum.map(fn {:cached, {_tree, snapshot}} ->
+      byte_size(snapshot.encoded) + byte_size(Map.get(snapshot, :index, <<>>))
+    end)
+    |> Enum.sum()
   end
 
   defp retained_bytes do
