@@ -179,10 +179,10 @@ defmodule Logflare.TelemetryTest do
       assert metric.tags == [:backend_id, :reason]
     end
 
-    test "defines system source starter drops as a reason-tagged loss counter" do
-      metric = ch_metric([:logflare, :user_monitoring, :system_source_starter, :dropped, :count])
+    test "defines system log drops as a reason-tagged counter" do
+      metric = ch_metric([:logflare, :user_monitoring, :system_logs, :dropped, :count])
 
-      assert metric.event_name == [:logflare, :user_monitoring, :system_source_starter, :dropped]
+      assert metric.event_name == [:logflare, :user_monitoring, :system_logs, :dropped]
       assert metric.measurement == :count
       assert metric.tags == [:reason]
     end

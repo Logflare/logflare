@@ -478,12 +478,12 @@ defmodule Logflare.Telemetry do
         measurement: :count,
         description: "Sum of events dropped (timestamp more than 1h in the future)"
       ),
-      sum("logflare.user_monitoring.system_source_starter.dropped.count",
-        event_name: [:logflare, :user_monitoring, :system_source_starter, :dropped],
+      sum("logflare.user_monitoring.system_logs.dropped.count",
+        event_name: [:logflare, :user_monitoring, :system_logs, :dropped],
         measurement: :count,
         tags: [:reason],
         description:
-          "Count of async system log events that SystemSourceStarter dropped. A system log event is an internal Logflare log line copied to a user's system.logs source; logs that users ingest never count here. Tagged `:not_found` when the system logs source does not exist or `:buffer_full` when its buffer reached the cap"
+          "Count of async system log events that the log interceptor dropped. A system log event is an internal Logflare log line copied to a user's system.logs source; logs that users ingest never count here. Tagged `:source_not_started` when the system logs source was down, or `:source_unavailable` when its start did not finish in time"
       ),
       sum("logflare.logs.ingest_logs.rejected",
         event_name: [:logflare, :logs, :ingest_logs, :rejected],

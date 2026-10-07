@@ -101,15 +101,16 @@ defmodule Logflare.Backends.UserMonitoring do
   wait deadlocks the partition. Thus the filter never starts the system logs source itself.
 
   When the `SourceSup` of the system logs source is up, the filter sends the event to that source.
-  When it is down, the filter casts the event to `SystemSourceStarter`. That process holds the
-  event, starts the `SourceSup` in a different process, and then sends the event to the source.
+  When it is down, the filter drops the system log event and asks `SystemSourceStarter` to start
+  the `SourceSup` in a different process. The original log line is not affected: it still reaches
+  the Logflare logs. Each drop emits `[:logflare, :user_monitoring, :system_logs, :dropped]`.
 
   Two waits remain in the logging process. The timeout of `Logflare.Backends.start_source_sup/1`
   limits each of them:
 
   - A rule on the system logs source routes an event to a sink source whose `SourceSup` is down.
   - The `SourceSup` of the system logs source stops between the check and the ingest. In that
-    case, the filter casts the event to `SystemSourceStarter` after the wait.
+    case, the filter drops the system log event after the wait.
   """
   @spec log_interceptor(:logger.log_event(), term()) :: :ignore
   def log_interceptor(%{meta: %{system_source: true}}, _), do: :ignore
@@ -139,11 +140,22 @@ defmodule Logflare.Backends.UserMonitoring do
   defp deliver(source, events) do
     with true <- Backends.source_sup_started?(source),
          {:error, :source_unavailable} <- Processor.ingest(events, Logs.Raw, source) do
-      SystemSourceStarter.buffer(source.id, events)
+      drop(source, events, :source_unavailable)
     else
-      false -> SystemSourceStarter.buffer(source.id, events)
+      false -> drop(source, events, :source_not_started)
       _result -> :ok
     end
+  end
+
+  @spec drop(Sources.Source.t(), [map()], :source_not_started | :source_unavailable) :: :ok
+  defp drop(source, events, reason) do
+    :telemetry.execute(
+      [:logflare, :user_monitoring, :system_logs, :dropped],
+      %{count: length(events)},
+      %{source_id: source.id, reason: reason}
+    )
+
+    SystemSourceStarter.request_start(source.id)
   end
 
   defp get_system_source_logs(user_id) do

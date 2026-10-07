@@ -11,7 +11,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
   alias Logflare.Backends.QueryError
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.UserMonitoring
-  alias Logflare.Backends.UserMonitoring.SystemSourceStarter
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.LogEvent
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
@@ -172,44 +171,36 @@ defmodule Logflare.Backends.UserMonitoringTest do
       [user: user, source: source, system_source: system_source]
     end
 
-    test "holds the event while the SourceSup is down and ingests it after the start", %{
+    test "drops the system log event while the SourceSup is down and requests a start", %{
       user: user,
       system_source: system_source
     } do
+      attach_system_log_drops()
       refute Backends.source_sup_started?(system_source)
 
       capture_log(fn -> Logger.error("system source down", user_id: user.id) end)
 
-      TestUtils.retry_assert(fn ->
-        assert Backends.source_sup_started?(system_source)
+      system_source_id = system_source.id
 
-        assert Enum.any?(
-                 Backends.list_recent_logs_local(system_source),
-                 &match?(%{body: %{"event_message" => "system source down"}}, &1)
-               )
-      end)
+      assert_receive {:dropped, %{count: 1},
+                      %{source_id: ^system_source_id, reason: :source_not_started}}
+
+      TestUtils.retry_assert(fn -> assert Backends.source_sup_started?(system_source) end)
+      assert Backends.list_recent_logs_local(system_source) == []
     end
 
-    test "holds the event when the ingest finds the SourceSup down after the check", %{
-      user: user,
-      system_source: system_source
-    } do
+    test "drops the system log event when the ingest finds the SourceSup down after the check",
+         %{user: user, system_source: system_source} do
       :ok = Backends.ensure_source_sup_started(system_source)
-
-      on_exit(fn ->
-        :sys.replace_state(SystemSourceStarter, fn _ -> SystemSourceStarter.empty_state() end)
-      end)
-
+      attach_system_log_drops()
       stub(Backends, :ensure_source_sup_started, fn _source -> {:error, :start_timeout} end)
 
       capture_log(fn -> Logger.error("source stopped after the check", user_id: user.id) end)
 
       system_source_id = system_source.id
 
-      TestUtils.retry_assert(fn ->
-        assert %{^system_source_id => {1, [_event]}} =
-                 :sys.get_state(SystemSourceStarter).buffers
-      end)
+      assert_receive {:dropped, %{count: 1},
+                      %{source_id: ^system_source_id, reason: :source_unavailable}}
     end
 
     test "a log during a SourceSup start on the system source's partition does not deadlock it",
@@ -232,15 +223,25 @@ defmodule Logflare.Backends.UserMonitoringTest do
       capture_log(fn -> assert {:ok, :ok} = Task.yield(task, 5_000) end)
       assert Backends.source_sup_started?(source)
 
-      TestUtils.retry_assert(fn ->
-        assert Backends.source_sup_started?(system_source)
-
-        assert Enum.any?(
-                 Backends.list_recent_logs_local(system_source),
-                 &match?(%{body: %{"event_message" => "log during SourceSup start"}}, &1)
-               )
-      end)
+      TestUtils.retry_assert(fn -> assert Backends.source_sup_started?(system_source) end)
     end
+  end
+
+  defp attach_system_log_drops do
+    test_pid = self()
+    ref = make_ref()
+    event = [:logflare, :user_monitoring, :system_logs, :dropped]
+
+    :telemetry.attach(
+      ref,
+      event,
+      fn ^event, measurements, metadata, _ ->
+        send(test_pid, {:dropped, measurements, metadata})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(ref) end)
   end
 
   defp query_error_log_event?(%{
