@@ -3,12 +3,21 @@ defmodule Logflare.Google.BigQuery.EventUtils do
   Event utils for BigQuery.
   """
 
-  @doc """
-  Converts LogEvent's body into a valid dataframe struct for Explorer
-  """
-  def log_event_to_df_struct(%Logflare.LogEvent{body: body}) do
-    {:ok, bq_timestamp} = DateTime.from_unix(body["timestamp"], :microsecond)
+  @ns_threshold 1_000_000_000_000_000_000
+  @us_threshold 1_000_000_000_000
+  @pow3 :math.pow(1_000, 3)
+  @pow2 :math.pow(1_000, 2)
 
+  @doc """
+  Converts LogEvent's body into a valid dataframe struct for Explorer.
+
+  OTel `start_time`/`end_time` are converted from unix nanoseconds to int64
+  unix microseconds, matching `timestamp` (already in unix microseconds).
+  The Storage Write API's Arrow encoder (native/arrowipc_ex) forces these
+  three field names to the Arrow `Timestamp(Microsecond)` type regardless of
+  the inferred JSON value type, so the values must already be in that unit.
+  """
+  def log_event_to_df_struct(%Logflare.LogEvent{body: body, otel_timestamps: otel_timestamps?}) do
     for {k, v} <- body, into: %{} do
       if is_map(v) do
         {k, prepare_for_ingest(v)}
@@ -16,9 +25,65 @@ defmodule Logflare.Google.BigQuery.EventUtils do
         {k, v}
       end
     end
-    |> Map.put("timestamp", bq_timestamp)
     |> Map.put("event_message", body["event_message"])
+    |> convert_to_microseconds(otel_timestamps?)
   end
+
+  @doc """
+  Converts OTel nanosecond `start_time`/`end_time` to int64 unix microseconds.
+  """
+  @spec convert_to_microseconds(map(), boolean()) :: map()
+  def convert_to_microseconds(data, false), do: data
+
+  def convert_to_microseconds(data, true) do
+    data
+    |> ns_to_us("start_time")
+    |> ns_to_us("end_time")
+  end
+
+  defp ns_to_us(data, field) do
+    case data do
+      %{^field => ts} when is_integer(ts) and ts > @ns_threshold ->
+        %{data | field => div(ts, 1_000)}
+
+      _ ->
+        data
+    end
+  end
+
+  @doc """
+  Converts nanosecond/microsecond timestamps to seconds.
+  https://docs.cloud.google.com/bigquery/docs/streaming-data-into-bigquery#send_date_and_time_data
+  """
+  @spec convert_to_seconds(map(), boolean()) :: map()
+  def convert_to_seconds(data, false), do: timestamp_to_seconds(data)
+
+  def convert_to_seconds(data, true) do
+    data
+    |> timestamp_to_seconds()
+    |> ns_to_seconds("start_time")
+    |> ns_to_seconds("end_time")
+  end
+
+  defp ns_to_seconds(data, field) do
+    case data do
+      %{^field => ts} when is_integer(ts) and ts > @ns_threshold ->
+        %{data | field => ts / @pow3}
+
+      _ ->
+        data
+    end
+  end
+
+  defp timestamp_to_seconds(%{"timestamp" => ts} = data) when is_integer(ts) do
+    cond do
+      ts > @ns_threshold -> %{data | "timestamp" => ts / @pow3}
+      ts > @us_threshold -> %{data | "timestamp" => ts / @pow2}
+      true -> data
+    end
+  end
+
+  defp timestamp_to_seconds(data), do: data
 
   @doc """
   Checks for all maps fields from the dataframe list, then adds the missing fields to the
