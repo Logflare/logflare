@@ -236,6 +236,26 @@ defmodule Logflare.Backends.DynamicPipelineTest do
       assert IngestEventQueue.total_pending({source.id, backend.id}) == 1
     end
 
+    test "resolves args from a function when the swap runs",
+         %{name: name, pipeline_args: pipeline_args, backend: backend} = ctx do
+      new_args = Keyword.put(pipeline_args, :backend, %{backend | name: "resolved"})
+
+      assert :ok = DynamicPipeline.replace_pipelines(name, fn -> new_args end)
+
+      TestUtils.retry_assert(fn ->
+        refute Process.alive?(elem(ctx.old_key, 2))
+      end)
+
+      assert DynamicPipeline.get_state(name).pipeline_args == new_args
+    end
+
+    test "skips the swap when the args function returns nil", %{name: name} = ctx do
+      assert :ok = DynamicPipeline.replace_pipelines(name, fn -> nil end)
+
+      assert DynamicPipeline.list_pipelines(name) == [ctx.old_id]
+      refute IngestEventQueue.draining?(ctx.old_key)
+    end
+
     test "keeps the old pipeline and returns an error when a replacement fails to start",
          %{name: name, pipeline_args: pipeline_args} = ctx do
       stub(Broadway, :start_link, fn _module, _opts -> {:error, :boom} end)

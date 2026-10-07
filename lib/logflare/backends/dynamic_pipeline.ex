@@ -221,15 +221,27 @@ defmodule Logflare.Backends.DynamicPipeline do
   @doc """
   Replaces every pipeline with one started from `pipeline_args`.
 
+  `pipeline_args` may be a zero-arity function, which the coordinator calls when the swap
+  runs so concurrent swaps always resolve the newest args. A `nil` result skips the swap.
+
   Each outgoing pipeline is drained through the same path as `remove_pipeline/1`, so its
   pending events move to a replacement instead of being destroyed with its queue.
   """
-  @spec replace_pipelines(tuple(), keyword()) :: :ok | {:error, [{tuple(), term()}]}
-  def replace_pipelines(name, pipeline_args) when is_list(pipeline_args) do
+  @spec replace_pipelines(tuple(), keyword() | (-> keyword() | nil)) ::
+          :ok | {:error, [{tuple(), term()}]}
+  def replace_pipelines(name, pipeline_args)
+      when is_list(pipeline_args) or is_function(pipeline_args, 0) do
     name
     |> find_coordinator_name()
     |> GenServer.call({:replace_pipelines, pipeline_args}, @replace_timeout_ms)
   end
+
+  @doc false
+  @spec resolve_pipeline_args(keyword() | (-> keyword() | nil)) :: keyword() | nil
+  def resolve_pipeline_args(pipeline_args) when is_function(pipeline_args, 0),
+    do: pipeline_args.()
+
+  def resolve_pipeline_args(pipeline_args) when is_list(pipeline_args), do: pipeline_args
 
   @doc false
   @spec do_replace_pipelines(tuple(), keyword()) :: :ok | {:error, [{tuple(), term()}]}
@@ -483,8 +495,14 @@ defmodule Logflare.Backends.DynamicPipeline do
     end
 
     def handle_call({:replace_pipelines, pipeline_args}, _caller, state) do
-      res = DynamicPipeline.do_replace_pipelines(state.name, pipeline_args)
-      {:reply, res, %{state | pipeline_args: pipeline_args}}
+      case DynamicPipeline.resolve_pipeline_args(pipeline_args) do
+        nil ->
+          {:reply, :ok, state}
+
+        resolved_args ->
+          res = DynamicPipeline.do_replace_pipelines(state.name, resolved_args)
+          {:reply, res, %{state | pipeline_args: resolved_args}}
+      end
     end
 
     @impl GenServer

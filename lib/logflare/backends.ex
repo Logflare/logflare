@@ -1200,17 +1200,26 @@ defmodule Logflare.Backends do
     end
 
     if pipeline_changes != [] do
-      Cluster.Utils.rpc_multicast(__MODULE__, :replace_pipelines_after_delay, [updated])
+      Cluster.Utils.rpc_multicast(__MODULE__, :replace_pipelines_after_delay, [updated.id])
     end
 
     :ok
   end
 
   @doc false
-  @spec replace_pipelines_after_delay(Backend.t()) :: :ok | {:error, term()}
-  def replace_pipelines_after_delay(%Backend{} = backend) do
+  @spec replace_pipelines_after_delay(pos_integer()) :: :ok | {:error, term()}
+  def replace_pipelines_after_delay(backend_id) when is_integer(backend_id) do
     Process.sleep(pipeline_swap_delay_ms())
-    Adaptor.replace_pipelines(backend)
+    replace_pipelines_with_latest(backend_id)
+  end
+
+  @doc false
+  @spec replace_pipelines_with_latest(integer()) :: :ok | {:error, term()}
+  def replace_pipelines_with_latest(backend_id) when is_integer(backend_id) do
+    case get_backend(backend_id) do
+      nil -> :ok
+      backend -> Adaptor.replace_pipelines(backend)
+    end
   end
 
   @doc false

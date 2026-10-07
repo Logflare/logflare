@@ -385,7 +385,8 @@ defmodule Logflare.Backends.Adaptor do
 
   @doc """
   Optional callback that replaces the backend's running ingest pipelines on the local node
-  with ones started from the given backend, without dropping pending events.
+  with ones started from the latest saved version of the backend, without dropping pending
+  events.
   """
   @callback replace_pipelines(Backend.t()) :: :ok | {:error, term()}
 

@@ -263,6 +263,43 @@ defmodule Logflare.BackendsTest do
       Backends.ConsolidatedSup.stop_pipeline(backend)
     end
 
+    test "replace_pipelines_with_latest/1 ends on the latest saved limits when swaps run in reverse order",
+         %{user: user} do
+      config =
+        Map.merge(clickhouse_backend_attrs().config, %{batch_size: 2_000, batch_timeout: 1_500})
+
+      assert {:ok, backend} =
+               Backends.create_backend(user, %{clickhouse_backend_attrs() | config: config})
+
+      for {batch_size, batch_timeout} <- [{2_500, 2_000}, {3_000, 2_500}] do
+        {:ok, _saved} =
+          backend
+          |> Repo.reload!()
+          |> Backend.changeset(%{
+            config: %{config | batch_size: batch_size, batch_timeout: batch_timeout}
+          })
+          |> Repo.update()
+      end
+
+      assert :ok = Backends.replace_pipelines_with_latest(backend.id)
+      assert :ok = Backends.replace_pipelines_with_latest(backend.id)
+
+      pipeline_sup = Backends.via_backend(backend, ClickHousePipeline)
+
+      TestUtils.retry_assert(fn ->
+        assert [_pipeline] = DynamicPipeline.list_pipelines(pipeline_sup)
+      end)
+
+      assert %{batch_size: 3_000, batch_timeout: 2_500} =
+               TestUtils.clickhouse_batcher_state(backend)
+
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+    end
+
+    test "replace_pipelines_with_latest/1 is a no-op for a deleted backend" do
+      assert :ok = Backends.replace_pipelines_with_latest(-1)
+    end
+
     test "update_backend/2 restarts the consolidated pipeline when other config changes", %{
       user: user
     } do

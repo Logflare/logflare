@@ -97,12 +97,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   def runtime_config_keys, do: @runtime_config_keys
 
   @impl Logflare.Backends.Adaptor
-  def replace_pipelines(%Backend{} = backend) do
+  def replace_pipelines(%Backend{id: backend_id} = backend) do
     name = Backends.via_backend(backend, Pipeline)
 
     case GenServer.whereis(name) do
       nil -> :ok
-      _pid -> DynamicPipeline.replace_pipelines(name, backend: backend)
+      _pid -> DynamicPipeline.replace_pipelines(name, fn -> latest_pipeline_args(backend_id) end)
+    end
+  end
+
+  @spec latest_pipeline_args(pos_integer()) :: keyword() | nil
+  defp latest_pipeline_args(backend_id) do
+    case Backends.get_backend(backend_id) do
+      nil -> nil
+      backend -> [backend: backend]
     end
   end
 
