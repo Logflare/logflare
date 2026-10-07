@@ -4,7 +4,8 @@ defmodule Logflare.LogEvent.Size do
 
   Strings contribute their byte length, numbers their Elixir textual length,
   booleans one byte, and nil zero bytes. Maps exclude keys and lists exclude
-  structural overhead. Non-JSON leaves retain Erlang external-format sizing.
+  structural overhead. Other atoms use their name's byte length; remaining
+  non-JSON leaves retain Erlang external-format sizing.
   """
 
   @spec body_byte_size(term()) :: non_neg_integer()
