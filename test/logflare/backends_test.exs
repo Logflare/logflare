@@ -230,6 +230,39 @@ defmodule Logflare.BackendsTest do
       Backends.ConsolidatedSup.stop_pipeline(backend)
     end
 
+    test "create_backend/2 starts the pipeline with the configured batch limits", %{user: user} do
+      config =
+        Map.merge(clickhouse_backend_attrs().config, %{batch_size: 2_000, batch_timeout: 1_500})
+
+      attrs = %{clickhouse_backend_attrs() | config: config}
+
+      assert {:ok, backend} = Backends.create_backend(user, attrs)
+
+      assert %{batch_size: 2_000, batch_timeout: 1_500} =
+               TestUtils.clickhouse_batcher_state(backend)
+
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+    end
+
+    test "remove_all_default_ingest_sources/1 restarts the pipeline with the configured batch limits",
+         %{user: user} do
+      config =
+        Map.merge(clickhouse_backend_attrs().config, %{batch_size: 2_000, batch_timeout: 1_500})
+
+      attrs =
+        clickhouse_backend_attrs()
+        |> Map.put(:config, config)
+        |> Map.put(:default_ingest?, true)
+
+      assert {:ok, backend} = Backends.create_backend(user, attrs)
+      assert {:ok, _updated} = Backends.remove_all_default_ingest_sources(backend)
+
+      assert %{batch_size: 2_000, batch_timeout: 1_500} =
+               TestUtils.clickhouse_batcher_state(backend)
+
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+    end
+
     test "update_backend/2 restarts the consolidated pipeline when other config changes", %{
       user: user
     } do

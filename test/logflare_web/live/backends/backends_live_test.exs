@@ -817,6 +817,9 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert backend.config.batch_size == 2_000
       assert backend.config.batch_timeout == 1_500
 
+      assert %{batch_size: 2_000, batch_timeout: 1_500} =
+               TestUtils.clickhouse_batcher_state(backend)
+
       Backends.ConsolidatedSup.stop_pipeline(backend)
     end
 

@@ -1177,6 +1177,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @doc false
   @impl Supervisor
   def init(%Backend{} = backend) do
+    backend = Backends.typecast_config_string_map_to_atom_map(backend)
+
     # create the startup queue and its generation, before any producer/traffic exists
     # for this queues_key — avoids racing concurrent first-time inserts against each
 
