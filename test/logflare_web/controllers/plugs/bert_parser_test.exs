@@ -92,5 +92,13 @@ defmodule LogflareWeb.BertParserTest do
 
       assert BertParser.decode({:ok, body, conn}) == {:ok, data, conn}
     end
+
+    test "rejects a compressed term without decoding it", %{conn: conn} do
+      body = :erlang.term_to_binary(List.duplicate(0, 1_000), compressed: 9)
+
+      assert_raise Plug.Parsers.ParseError, ~r/compressed/, fn ->
+        BertParser.decode({:ok, body, conn})
+      end
+    end
   end
 end
