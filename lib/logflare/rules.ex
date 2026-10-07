@@ -2,15 +2,15 @@ defmodule Logflare.Rules do
   @moduledoc false
   import Ecto.Query
 
-  alias Logflare.Lql
-  alias Logflare.Repo
-  alias Logflare.Rules.Rule
-  alias Logflare.Sources.Source
-  alias Logflare.Sources.SourceRouter.RulesTree
-  alias Logflare.SourceSchemas
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceSup
   alias Logflare.Cluster
+  alias Logflare.Lql
+  alias Logflare.Repo
+  alias Logflare.Rules.Rule
+  alias Logflare.SourceSchemas
+  alias Logflare.Sources.Source
+  alias Logflare.Sources.SourceRouter.RulesTree
 
   @doc """
   Lists rules for a given Source or Backend

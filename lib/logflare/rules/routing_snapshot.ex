@@ -9,19 +9,20 @@ defmodule Logflare.Rules.RoutingSnapshot do
 
   The compressed target tuple is a reader-owned fallback. If the backing store
   replaces, evicts or loses a generation, the caller resolves from that exact
-  immutable tuple and can conditionally rehydrate the still-current cache entry.
+  immutable tuple. Restore only repopulates disposable ETS acceleration; the header
+  and its generation never change.
   """
 
-  alias Logflare.Rules.Rule
   alias Logflare.Rules.RoutingSnapshotStore
+  alias Logflare.Rules.Rule
   alias Logflare.Sources.SourceRouter.Target
 
   @enforce_keys [:key, :table, :encoded, :count, :estimated_bytes]
   defstruct [:key, :table, :encoded, :count, :estimated_bytes, decoded: nil]
 
   @type t() :: %__MODULE__{
-          key: {integer(), reference()},
-          table: :ets.tid() | nil,
+          key: RoutingSnapshotStore.key(),
+          table: RoutingSnapshotStore.table(),
           encoded: binary(),
           count: non_neg_integer(),
           estimated_bytes: non_neg_integer(),
@@ -42,14 +43,8 @@ defmodule Logflare.Rules.RoutingSnapshot do
 
     store = Keyword.get(opts, :store, RoutingSnapshotStore)
 
-    {table, key} =
-      put_or_fallback(
-        store,
-        source_id,
-        target_tuple,
-        estimated_bytes,
-        Keyword.get(opts, :publisher)
-      )
+    key = {source_id, :erlang.unique_integer([:monotonic, :positive])}
+    table = put_or_fallback(store, key, target_tuple, estimated_bytes, opts)
 
     %__MODULE__{
       key: key,
@@ -60,25 +55,29 @@ defmodule Logflare.Rules.RoutingSnapshot do
     }
   end
 
-  defp put_or_fallback(store, source_id, entries, estimated_bytes, publisher) do
-    RoutingSnapshotStore.put(store, source_id, entries, estimated_bytes, publisher)
+  @spec put_or_fallback(
+          GenServer.server(),
+          RoutingSnapshotStore.key(),
+          tuple(),
+          non_neg_integer(),
+          keyword()
+        ) :: RoutingSnapshotStore.table()
+  defp put_or_fallback(store, key, entries, estimated_bytes, opts) do
+    RoutingSnapshotStore.put(store, key, entries, estimated_bytes)
   catch
-    :exit, _reason -> {nil, {source_id, make_ref()}}
+    :exit, _reason -> Keyword.get(opts, :table, RoutingSnapshotStore)
   end
 
   @doc false
-  @spec rehydrate(t(), integer(), tuple(), GenServer.server()) :: t()
-  def rehydrate(
-        %__MODULE__{} = snapshot,
-        source_id,
-        targets,
-        store \\ RoutingSnapshotStore
-      )
-      when is_tuple(targets) do
-    {table, key} =
-      RoutingSnapshotStore.put(store, source_id, targets, snapshot.estimated_bytes)
-
-    %{snapshot | table: table, key: key, decoded: nil}
+  @spec restore(t(), GenServer.server()) :: :ok
+  def restore(%__MODULE__{} = snapshot, store \\ RoutingSnapshotStore) do
+    RoutingSnapshotStore.restore(
+      store,
+      snapshot.table,
+      snapshot.key,
+      snapshot.encoded,
+      snapshot.estimated_bytes
+    )
   end
 
   @doc false

@@ -1,9 +1,9 @@
 defmodule Logflare.Sources.SourceRouter.RulesTree do
   @moduledoc false
   alias Logflare.LogEvent
+  alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Rules
   alias Logflare.Rules.Rule
-  alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Sources.SourceRouter.Target
 
   import Logflare.Utils, only: [stringify: 1]
@@ -36,20 +36,16 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   end
 
   @impl true
-  def matching_rules_with_state(event, source, {rule_set, snapshot}) do
+  def matching_rules_with_state(event, _source, {rule_set, snapshot}) do
     positions = matching_positions(event, rule_set)
 
     case Rules.RoutingSnapshot.resolve_with_status(snapshot, positions) do
       {:ok, targets} ->
         {targets, {rule_set, snapshot}}
 
-      {:fallback, targets, encoded_targets} ->
-        snapshot =
-          case Rules.Cache.repair_routing_snapshot(source.id, snapshot, encoded_targets) do
-            {:repaired, repaired} -> repaired
-            _ -> Rules.RoutingSnapshot.with_decoded(snapshot, encoded_targets)
-          end
-
+      {:fallback, targets, decoded_targets} ->
+        Rules.RoutingSnapshot.restore(snapshot)
+        snapshot = Rules.RoutingSnapshot.with_decoded(snapshot, decoded_targets)
         {targets, {rule_set, snapshot}}
     end
   end
