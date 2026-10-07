@@ -54,7 +54,8 @@ defmodule RoutingScaleBench do
         inputs: inputs,
         before_scenario: fn {count, shape, batch} ->
           fixture = fixture(count, shape)
-          warm(fixture)
+          mode = System.get_env("ROUTING_BENCH_WARM_MODE", "full") |> String.to_existing_atom()
+          warm(fixture, mode)
           expected = expected(fixture)
 
           ^expected =

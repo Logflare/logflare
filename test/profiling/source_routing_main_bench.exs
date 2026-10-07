@@ -119,11 +119,12 @@ defmodule RoutingMainBench do
 
   @spec retained() :: map()
   defp retained do
-    rows =
-      Enum.map(
-        RoutingScaleBench.integers("ROUTING_BENCH_RULES", "100,1000,10000"),
-        &retained_count/1
-      )
+    inputs =
+      for count <- RoutingScaleBench.integers("ROUTING_BENCH_RULES", "100,1000,10000"),
+          mode <- [:representative, :full],
+          do: {count, mode}
+
+    rows = Enum.map(inputs, &retained_count/1)
 
     %{
       system: %{
@@ -135,19 +136,20 @@ defmodule RoutingMainBench do
     }
   end
 
-  @spec retained_count(pos_integer()) :: map()
-  defp retained_count(count) do
+  @spec retained_count({pos_integer(), atom()}) :: map()
+  defp retained_count({count, mode}) do
     reset_store()
+    sources = if mode == :full and count == 10_000, do: 8, else: 32
 
     fixtures =
-      for index <- 1..32, do: count |> RoutingScaleBench.fixture(:one) |> clone(index)
+      for index <- 1..sources, do: count |> RoutingScaleBench.fixture(:one) |> clone(index)
 
     RoutingScaleBench.cleanup(hd(fixtures))
     empty = memory()
 
     rounds =
       for round <- 1..3 do
-        Enum.each(fixtures, &RoutingScaleBench.publish_header/1)
+        Enum.each(fixtures, &RoutingScaleBench.publish_header(&1, mode))
         drain_store()
         after_publication = memory()
 
@@ -169,7 +171,8 @@ defmodule RoutingMainBench do
 
     %{
       rules: count,
-      sources: 32,
+      sources: sources,
+      warming: mode,
       store_limit: 8,
       empty: empty,
       rounds: rounds,
