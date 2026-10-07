@@ -14,10 +14,10 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarter do
   2. It runs one start at a time in an unlinked task. Thus it never waits on a partition, and a
      failed start can not crash it.
   3. When the start succeeds, it sends the buffer to the source through `Processor.ingest/3` in
-     an unlinked task.
-  4. When the start fails, it keeps the buffer and tries the start again after the
-     `:system_source_starter_retry_interval` application environment value. The default is
-     5 seconds.
+     an unlinked task. It keeps the events until that task finishes.
+  4. When the start or the ingest fails, it puts the events back in the buffer. It tries the
+     start again after the `:system_source_starter_retry_interval` application environment
+     value. The default is 5 seconds.
 
   This process drops events in two cases only. Each drop emits
   `[:logflare, :user_monitoring, :system_source_starter, :dropped]`.
@@ -25,7 +25,8 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarter do
   - The source does not exist (`reason: :not_found`). Nothing can receive the events.
   - The buffer holds the `:system_source_starter_max_buffer` application environment value of
     events (`reason: :buffer_full`). The default is 10,000 events per source. The cap keeps a
-    log flood during a blocked partition from using all memory.
+    log flood during a blocked partition from using all memory. The cap applies to new events
+    only. Events that come back from a failed ingest always return to the buffer.
   """
 
   use GenServer
@@ -38,10 +39,12 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarter do
 
   @default_max_buffer 10_000
   @default_retry_interval :timer.seconds(5)
+  @retryable_ingest_errors [:source_unavailable, :spool_unavailable]
 
   @type buffer :: {non_neg_integer(), [map()]}
   @type state :: %{
           in_flight: %{reference() => pos_integer()},
+          flushes: %{reference() => {pos_integer(), [map()]}},
           retrying: MapSet.t(pos_integer()),
           buffers: %{pos_integer() => buffer()}
         }
@@ -61,9 +64,15 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarter do
     GenServer.cast(__MODULE__, {:buffer, source_id, events})
   end
 
+  @doc """
+  Returns an empty state. Tests use it to reset this process.
+  """
+  @spec empty_state() :: state()
+  def empty_state, do: %{in_flight: %{}, flushes: %{}, retrying: MapSet.new(), buffers: %{}}
+
   @impl GenServer
   @spec init(keyword()) :: {:ok, state()}
-  def init(_opts), do: {:ok, %{in_flight: %{}, retrying: MapSet.new(), buffers: %{}}}
+  def init(_opts), do: {:ok, empty_state()}
 
   @impl GenServer
   def handle_cast({:buffer, source_id, events}, state) do
@@ -80,10 +89,22 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarter do
     {:noreply, handle_result(%{state | in_flight: in_flight}, source_id, result)}
   end
 
+  def handle_info({ref, result}, state) when is_map_key(state.flushes, ref) do
+    Process.demonitor(ref, [:flush])
+    {flush, flushes} = Map.pop!(state.flushes, ref)
+    {:noreply, handle_flush_result(%{state | flushes: flushes}, flush, result)}
+  end
+
   def handle_info({:DOWN, ref, :process, _pid, reason}, state)
       when is_map_key(state.in_flight, ref) do
     {source_id, in_flight} = Map.pop!(state.in_flight, ref)
     {:noreply, handle_result(%{state | in_flight: in_flight}, source_id, {:error, reason})}
+  end
+
+  def handle_info({:DOWN, ref, :process, _pid, reason}, state)
+      when is_map_key(state.flushes, ref) do
+    {flush, flushes} = Map.pop!(state.flushes, ref)
+    {:noreply, handle_flush_result(%{state | flushes: flushes}, flush, {:error, reason})}
   end
 
   def handle_info({:retry, source_id}, state) do
@@ -112,6 +133,13 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarter do
     %{state | buffers: Map.put(state.buffers, source_id, buffer)}
   end
 
+  @spec return_to_buffer(state(), pos_integer(), [map()]) :: state()
+  defp return_to_buffer(state, source_id, events) do
+    {count, held} = Map.get(state.buffers, source_id, {0, []})
+    buffer = {count + length(events), held ++ Enum.reverse(events)}
+    %{state | buffers: Map.put(state.buffers, source_id, buffer)}
+  end
+
   @spec maybe_start(state(), pos_integer()) :: state()
   defp maybe_start(state, source_id) do
     if source_id in Map.values(state.in_flight) or MapSet.member?(state.retrying, source_id) do
@@ -124,13 +152,20 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarter do
 
   @spec handle_result(state(), pos_integer(), :ok | {:error, term()}) :: state()
   defp handle_result(state, source_id, :ok) do
-    {{_count, held}, buffers} = Map.pop(state.buffers, source_id, {0, []})
+    case Map.pop(state.buffers, source_id) do
+      {{_count, [_ | _] = held}, buffers} ->
+        events = Enum.reverse(held)
+        %Task{ref: ref} = run_task(source_id, fn -> ingest(source_id, events) end)
 
-    if held != [] do
-      run_task(source_id, fn -> ingest(source_id, Enum.reverse(held)) end)
+        %{
+          state
+          | buffers: buffers,
+            flushes: Map.put(state.flushes, ref, {source_id, events})
+        }
+
+      {_empty, buffers} ->
+        %{state | buffers: buffers}
     end
-
-    %{state | buffers: buffers}
   end
 
   defp handle_result(state, source_id, {:error, :not_found}) do
@@ -143,7 +178,25 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarter do
     %{state | buffers: buffers}
   end
 
-  defp handle_result(state, source_id, {:error, _reason}) do
+  defp handle_result(state, source_id, {:error, _reason}), do: schedule_retry(state, source_id)
+
+  @spec handle_flush_result(state(), {pos_integer(), [map()]}, term()) :: state()
+  defp handle_flush_result(state, {source_id, events}, {:error, :not_found}) do
+    emit_dropped(source_id, length(events), :not_found)
+    state
+  end
+
+  defp handle_flush_result(state, {source_id, events}, {:error, reason})
+       when reason in @retryable_ingest_errors or not is_list(reason) do
+    state
+    |> return_to_buffer(source_id, events)
+    |> schedule_retry(source_id)
+  end
+
+  defp handle_flush_result(state, _flush, _result), do: state
+
+  @spec schedule_retry(state(), pos_integer()) :: state()
+  defp schedule_retry(state, source_id) do
     interval =
       Application.get_env(
         :logflare,
@@ -151,8 +204,12 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarter do
         @default_retry_interval
       )
 
-    Process.send_after(self(), {:retry, source_id}, interval)
-    %{state | retrying: MapSet.put(state.retrying, source_id)}
+    if MapSet.member?(state.retrying, source_id) do
+      state
+    else
+      Process.send_after(self(), {:retry, source_id}, interval)
+      %{state | retrying: MapSet.put(state.retrying, source_id)}
+    end
   end
 
   @spec run_task(pos_integer(), (-> term())) :: Task.t()
@@ -180,7 +237,7 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarter do
         |> then(&Processor.ingest(events, Logs.Raw, &1))
 
       nil ->
-        emit_dropped(source_id, length(events), :not_found)
+        {:error, :not_found}
     end
   end
 

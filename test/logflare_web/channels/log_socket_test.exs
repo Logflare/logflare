@@ -46,10 +46,11 @@ defmodule LogflareWeb.LogSocketTest do
 
       Phoenix.ChannelTest.push(socket, "batch", %{"batch" => [%{"message" => "early-log"}]})
 
-      Phoenix.ChannelTest.assert_push("batch", %{
-        message: "Batch error",
-        errors: ["Source is starting. Send the batch again."]
-      })
+      Phoenix.ChannelTest.assert_push(
+        "batch",
+        %{message: "Batch error", errors: ["Source is starting. Send the batch again."]},
+        1_000
+      )
 
       leave(socket)
     end

@@ -14,9 +14,7 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarterTest do
       Application.delete_env(:logflare, :system_source_starter_retry_interval)
       Application.delete_env(:logflare, :system_source_starter_max_buffer)
 
-      :sys.replace_state(SystemSourceStarter, fn _state ->
-        %{in_flight: %{}, retrying: MapSet.new(), buffers: %{}}
-      end)
+      :sys.replace_state(SystemSourceStarter, fn _state -> SystemSourceStarter.empty_state() end)
     end)
 
     start_supervised!(AllLogsLogged)
@@ -79,6 +77,31 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarterTest do
       assert Backends.source_sup_started?(source)
       assert [_event] = Backends.list_recent_logs_local(source)
     end)
+  end
+
+  test "puts the events back and retries when the ingest after the start fails", %{
+    source: source
+  } do
+    calls = :counters.new(1, [])
+
+    stub(Backends, :ensure_source_sup_started, fn received ->
+      :counters.add(calls, 1, 1)
+
+      if :counters.get(calls, 1) == 2 do
+        {:error, :start_timeout}
+      else
+        call_original(Backends, :ensure_source_sup_started, [received])
+      end
+    end)
+
+    SystemSourceStarter.buffer(source.id, [%{"message" => "after failed ingest"}])
+
+    TestUtils.retry_assert(fn ->
+      assert [_event] = Backends.list_recent_logs_local(source)
+      assert buffers() == %{}
+    end)
+
+    assert :counters.get(calls, 1) >= 4
   end
 
   test "keeps the held events after a start that raises", %{source: source} do

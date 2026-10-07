@@ -96,15 +96,18 @@ defmodule Logflare.Backends.UserMonitoring do
 
   The filter runs in the process that logs. That process can be inside a `SourceSup` start. A
   start from here can wait on the `SourcesSup` partition that starts the logging process. That
-  wait deadlocks the partition. Thus the filter never waits on a start.
+  wait deadlocks the partition. Thus the filter never starts the system logs source itself.
 
   When the `SourceSup` of the system logs source is up, the filter sends the event to that source.
   When it is down, the filter casts the event to `SystemSourceStarter`. That process holds the
   event, starts the `SourceSup` in a different process, and then sends the event to the source.
 
-  A rule on the system logs source can route an event to a sink source whose `SourceSup` is down.
-  That start waits in the logging process. The timeout of `Logflare.Backends.start_source_sup/1`
-  limits the wait.
+  Two waits remain in the logging process. The timeout of `Logflare.Backends.start_source_sup/1`
+  limits each of them:
+
+  - A rule on the system logs source routes an event to a sink source whose `SourceSup` is down.
+  - The `SourceSup` of the system logs source stops between the check and the ingest. In that
+    case, the filter casts the event to `SystemSourceStarter` after the wait.
   """
   @spec log_interceptor(:logger.log_event(), term()) :: :ignore
   def log_interceptor(%{meta: %{system_source: true}}, _), do: :ignore
@@ -118,12 +121,7 @@ defmodule Logflare.Backends.UserMonitoring do
         |> LogflareLogger.Formatter.format(format_message(log_event), get_datetime(), meta)
         |> List.wrap()
 
-      if Backends.source_sup_started?(source) do
-        Processor.ingest(events, Logs.Raw, source)
-      else
-        SystemSourceStarter.buffer(source.id, events)
-      end
-
+      deliver(source, events)
       :ignore
     else
       _ -> :ignore
@@ -134,6 +132,17 @@ defmodule Logflare.Backends.UserMonitoring do
   end
 
   def log_interceptor(_, _), do: :ignore
+
+  @spec deliver(Sources.Source.t(), [map()]) :: :ok
+  defp deliver(source, events) do
+    with true <- Backends.source_sup_started?(source),
+         {:error, :source_unavailable} <- Processor.ingest(events, Logs.Raw, source) do
+      SystemSourceStarter.buffer(source.id, events)
+    else
+      false -> SystemSourceStarter.buffer(source.id, events)
+      _result -> :ok
+    end
+  end
 
   defp get_system_source_logs(user_id) do
     Sources.Cache.get_by_and_preload_rules(user_id: user_id, system_source_type: :logs)

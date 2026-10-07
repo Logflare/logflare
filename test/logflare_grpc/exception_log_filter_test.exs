@@ -5,20 +5,17 @@ defmodule LogflareGrpc.ExceptionLogFilterTest do
   alias LogflareGrpc.ExceptionLogFilter
 
   describe "emit_log?/1" do
-    test "returns false for a permission_denied GRPC.RPCError rejection" do
-      exception = ReportException.new([req: :ok], %GRPC.RPCError{status: :permission_denied})
+    for status <- [:permission_denied, :unauthenticated, :unavailable] do
+      test "returns false for a #{status} GRPC.RPCError rejection" do
+        error = GRPC.RPCError.exception(status: unquote(status))
+        exception = ReportException.new([req: :ok], error)
 
-      refute ExceptionLogFilter.emit_log?(exception)
-    end
-
-    test "returns false for an unauthenticated GRPC.RPCError rejection" do
-      exception = ReportException.new([req: :ok], %GRPC.RPCError{status: :unauthenticated})
-
-      refute ExceptionLogFilter.emit_log?(exception)
+        refute ExceptionLogFilter.emit_log?(exception)
+      end
     end
 
     test "returns true for a GRPC.RPCError with an unrecognized status" do
-      exception = ReportException.new([req: :ok], %GRPC.RPCError{status: :internal})
+      exception = ReportException.new([req: :ok], GRPC.RPCError.exception(status: :internal))
 
       assert ExceptionLogFilter.emit_log?(exception)
     end

@@ -11,6 +11,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
   alias Logflare.Backends.QueryError
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.UserMonitoring
+  alias Logflare.Backends.UserMonitoring.SystemSourceStarter
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.LogEvent
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
@@ -186,6 +187,28 @@ defmodule Logflare.Backends.UserMonitoringTest do
                  Backends.list_recent_logs_local(system_source),
                  &match?(%{body: %{"event_message" => "system source down"}}, &1)
                )
+      end)
+    end
+
+    test "holds the event when the ingest finds the SourceSup down after the check", %{
+      user: user,
+      system_source: system_source
+    } do
+      :ok = Backends.ensure_source_sup_started(system_source)
+
+      on_exit(fn ->
+        :sys.replace_state(SystemSourceStarter, fn _ -> SystemSourceStarter.empty_state() end)
+      end)
+
+      stub(Backends, :ensure_source_sup_started, fn _source -> {:error, :start_timeout} end)
+
+      capture_log(fn -> Logger.error("source stopped after the check", user_id: user.id) end)
+
+      system_source_id = system_source.id
+
+      TestUtils.retry_assert(fn ->
+        assert %{^system_source_id => {1, [_event]}} =
+                 :sys.get_state(SystemSourceStarter).buffers
       end)
     end
 
