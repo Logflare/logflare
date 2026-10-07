@@ -8,6 +8,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline, as: ClickHousePipeline
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
   alias Logflare.Backends.Backend
   alias Logflare.Cluster.Utils, as: ClusterUtils
@@ -164,6 +165,57 @@ defmodule Logflare.BackendsTest do
 
       assert {:ok, updated} = Backends.update_backend(backend, %{name: "Updated Name"})
       assert Backends.ConsolidatedSup.pipeline_running?(updated)
+
+      Backends.ConsolidatedSup.stop_pipeline(updated)
+    end
+
+    test "update_backend/2 swaps pipelines in place when only batch limits change", %{
+      user: user
+    } do
+      assert {:ok, backend} = Backends.create_backend(user, clickhouse_backend_attrs())
+      adaptor_sup = consolidated_sup_pid(backend)
+      pipeline_sup = Backends.via_backend(backend, ClickHousePipeline)
+      [old_id] = DynamicPipeline.list_pipelines(pipeline_sup)
+
+      config =
+        Map.merge(clickhouse_backend_attrs().config, %{batch_size: 2_000, batch_timeout: 1_500})
+
+      assert {:ok, _updated} = Backends.update_backend(backend, %{config: config})
+
+      new_id =
+        TestUtils.retry_assert([duration: 10_000], fn ->
+          assert [new_id] = DynamicPipeline.list_pipelines(pipeline_sup)
+          refute new_id == old_id
+          new_id
+        end)
+
+      assert consolidated_sup_pid(backend) == adaptor_sup
+
+      {:ok, %{start: {ClickHousePipeline, :start_link, [args]}}} =
+        :supervisor.get_childspec(pipeline_sup, new_id)
+
+      assert %{batch_size: 2_000, batch_timeout: 1_500} = Keyword.fetch!(args, :backend).config
+
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+    end
+
+    test "pipeline_swap_delay_ms/0 spreads swaps across 0..5 seconds" do
+      delays = for _ <- 1..200, do: Backends.pipeline_swap_delay_ms()
+
+      assert Enum.all?(delays, &(&1 in 0..5_000))
+      assert length(Enum.uniq(delays)) > 1
+    end
+
+    test "update_backend/2 restarts the consolidated pipeline when other config changes", %{
+      user: user
+    } do
+      assert {:ok, backend} = Backends.create_backend(user, clickhouse_backend_attrs())
+      adaptor_sup = consolidated_sup_pid(backend)
+
+      config = Map.put(clickhouse_backend_attrs().config, :database, "other_db")
+      assert {:ok, updated} = Backends.update_backend(backend, %{config: config})
+
+      refute consolidated_sup_pid(updated) == adaptor_sup
 
       Backends.ConsolidatedSup.stop_pipeline(updated)
     end
@@ -2586,5 +2638,26 @@ defmodule Logflare.BackendsTest do
 
       refute_receive {:broadcast, _events}
     end
+  end
+
+  defp clickhouse_backend_attrs do
+    %{
+      type: :clickhouse,
+      name: "Test ClickHouse",
+      config: %{
+        url: "http://localhost",
+        port: 8123,
+        database: "test_db",
+        username: "user",
+        password: "pass"
+      }
+    }
+  end
+
+  defp consolidated_sup_pid(backend) do
+    {_backend_id, pid} =
+      Enum.find(Backends.ConsolidatedSup.list_pipelines(), &(elem(&1, 0) == backend.id))
+
+    pid
   end
 end

@@ -44,6 +44,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @resolve_interval 10_000
   @scaling_threshold 15_000
   @pipeline_shutdown_ms 30_000
+  @min_batch_size 1_000
+  @min_batch_timeout_ms 1_000
+  @max_batch_timeout_ms 30_000
+  @pipeline_config_keys [:batch_size, :batch_timeout]
   @async_insert_busy_timeout_max_ms 3_000
   @insert_max_execution_time_seconds 10
   @max_read_pool_size 4096
@@ -78,6 +82,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @impl Logflare.Backends.Adaptor
   def on_backend_deleted(%Backend{id: backend_id}) do
     QueryConnectionSup.terminate_backend(backend_id)
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def pipeline_config_keys, do: @pipeline_config_keys
+
+  @impl Logflare.Backends.Adaptor
+  def replace_pipelines(%Backend{} = backend) do
+    name = Backends.via_backend(backend, Pipeline)
+
+    case GenServer.whereis(name) do
+      nil -> :ok
+      _pid -> DynamicPipeline.replace_pipelines(name, backend: backend)
+    end
   end
 
   @doc false
@@ -120,6 +137,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         :use_async_inserts_for_small_batches,
         :async_insert_cluster_url,
         :async_insert_max_rows,
+        :batch_size,
+        :batch_timeout,
         :max_event_age_hours,
         :replica_routing_param
       ]
@@ -273,6 +292,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        use_async_inserts_for_small_batches: :boolean,
        async_insert_cluster_url: :string,
        async_insert_max_rows: :integer,
+       batch_size: :integer,
+       batch_timeout: :integer,
        max_event_age_hours: :integer,
        replica_routing_param: :string
      }}
@@ -291,12 +312,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :use_async_inserts_for_small_batches,
       :async_insert_cluster_url,
       :async_insert_max_rows,
+      :batch_size,
+      :batch_timeout,
       :max_event_age_hours,
       :replica_routing_param
     ])
     |> preserve_blank_query_password()
     |> Logflare.Utils.default_field_value(:use_async_inserts_for_small_batches, false)
     |> Logflare.Utils.default_field_value(:async_insert_max_rows, 1_000)
+    |> Logflare.Utils.default_field_value(:batch_size, Pipeline.max_batch_size())
+    |> Logflare.Utils.default_field_value(:batch_timeout, Pipeline.default_batch_timeout())
     |> Logflare.Utils.default_field_value(
       :max_event_age_hours,
       @default_max_event_age_hours
@@ -346,6 +371,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
     |> Changeset.validate_format(:async_insert_cluster_url, ~r/https?\:\/\/.+/)
     |> validate_number(:async_insert_max_rows, greater_than: 0)
+    |> validate_number(:batch_size,
+      greater_than_or_equal_to: @min_batch_size,
+      less_than_or_equal_to: Pipeline.max_batch_size()
+    )
+    |> validate_number(:batch_timeout,
+      greater_than_or_equal_to: @min_batch_timeout_ms,
+      less_than_or_equal_to: @max_batch_timeout_ms
+    )
     |> validate_number(:max_event_age_hours, greater_than_or_equal_to: 0)
     |> validate_format(:replica_routing_param, @param_name_pattern,
       message: "must be a parameter name using only letters, numbers, and underscores"

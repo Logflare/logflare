@@ -327,6 +327,26 @@
             </small>
           </div>
           <div class="form-group">
+            {label(f_config, :batch_size, "Batch Size (Rows)")}
+            {text_input(f_config, :batch_size,
+              class: "form-control",
+              value: input_value(f_config, "batch_size") || 60_000
+            )}
+            <small class="form-text text-muted">
+              Maximum rows per insert, between 1,000 and 60,000. Changes are applied without restarting ingestion.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :batch_timeout, "Batch Timeout (ms)")}
+            {text_input(f_config, :batch_timeout,
+              class: "form-control",
+              value: input_value(f_config, "batch_timeout") || 5_000
+            )}
+            <small class="form-text text-muted">
+              Longest a partial batch waits before being inserted, between 1,000 and 30,000 ms. Changes are applied without restarting ingestion.
+            </small>
+          </div>
+          <div class="form-group">
             {label(f_config, :max_event_age_hours, "Max Event Age (Hours)")}
             {text_input(f_config, :max_event_age_hours,
               class: "form-control",

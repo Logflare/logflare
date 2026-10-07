@@ -130,6 +130,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   defp message_id(%Message{data: %EncodedRow{pointer: %{id: id}}}), do: id
   defp message_id(%Message{data: %LogEventPointer{id: id}}), do: id
 
+  defp batcher_state(backend) do
+    [pipeline_name] =
+      backend
+      |> Backends.via_backend(Pipeline)
+      |> DynamicPipeline.list_pipelines()
+
+    %GenStage{state: state} =
+      pipeline_name
+      |> Pipeline.process_name("Batcher_ch")
+      |> :sys.get_state()
+
+    state
+  end
+
   describe "child_spec/1" do
     test "returns proper child specification" do
       spec = Pipeline.child_spec(:some_arg)
@@ -155,6 +169,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       assert processor.concurrency == Pipeline.processor_concurrency()
       assert batcher.concurrency == 4
+    end
+
+    test "starts the batcher with the pipeline default batch limits", %{backend: backend} do
+      assert %{batch_size: 60_000, batch_timeout: 5_000} = batcher_state(backend)
+    end
+
+    test "starts the batcher with the backend's configured batch limits" do
+      {_source, backend} =
+        setup_clickhouse_test(config: %{batch_size: 2_000, batch_timeout: 1_500})
+
+      start_supervised!(ClickHouseAdaptor.child_spec(backend), id: :configured_backend)
+
+      assert %{batch_size: 2_000, batch_timeout: 1_500} = batcher_state(backend)
     end
 
     test "retains 64 batches of in-flight capacity independently of insert concurrency" do

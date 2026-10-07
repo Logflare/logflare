@@ -701,6 +701,43 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert Keyword.has_key?(changeset.errors, :async_insert_max_rows)
     end
 
+    test "batch_size and batch_timeout default to the pipeline defaults" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :batch_size) == 60_000
+      assert Ecto.Changeset.get_field(changeset, :batch_timeout) == 5_000
+    end
+
+    test "accepts batch_size and batch_timeout at their bounds" do
+      for {batch_size, batch_timeout} <- [{1_000, 1_000}, {60_000, 30_000}] do
+        changeset =
+          cast_and_validate_config(batch_size: batch_size, batch_timeout: batch_timeout)
+
+        assert changeset.valid?
+        assert Ecto.Changeset.get_field(changeset, :batch_size) == batch_size
+        assert Ecto.Changeset.get_field(changeset, :batch_timeout) == batch_timeout
+      end
+    end
+
+    test "rejects batch_size outside 1,000..60,000" do
+      for batch_size <- [999, 60_001] do
+        changeset = cast_and_validate_config(batch_size: batch_size)
+
+        refute changeset.valid?
+        assert Keyword.has_key?(changeset.errors, :batch_size)
+      end
+    end
+
+    test "rejects batch_timeout outside 1,000..30,000 ms" do
+      for batch_timeout <- [999, 30_001] do
+        changeset = cast_and_validate_config(batch_timeout: batch_timeout)
+
+        refute changeset.valid?
+        assert Keyword.has_key?(changeset.errors, :batch_timeout)
+      end
+    end
+
     test "async_insert_cluster_url defaults to nil when not provided" do
       changeset = cast_and_validate_config()
 
