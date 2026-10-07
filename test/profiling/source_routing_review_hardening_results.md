@@ -2,7 +2,7 @@
 
 ## Scope and revisions
 
-This records the earlier transactional hardening of #3943 and #3946. [Store-only restore results](source_routing_restore_results.md) supersede its repair, retirement and memory-bound claims; the measurements below apply only to the recorded revisions. Earlier scale/snapshot reports remain historical.
+This records the earlier transactional hardening of #3943 and #3946. [Store-only restore results](source_routing_restore_results.md) supersede its repair, retirement and memory-bound claims; the measurements below apply only to the recorded revisions. Earlier scale/snapshot reports remain historical. [Steady-state/cold follow-up](source_routing_store_only_steady_results.md) measures the subsequent store-only boundaries; it does not relabel the measurements below as current.
 
 - Main: `52a4d2bc`.
 - Published parent / child before fixes: `cc3b304b` / `b27aea47`.

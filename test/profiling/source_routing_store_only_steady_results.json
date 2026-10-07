@@ -1,0 +1,4985 @@
+{
+  "revisions": {
+    "parent": {
+      "before": "acc8f99f",
+      "after": "bfc70119"
+    },
+    "child": {
+      "before": "229bb1d0",
+      "after": "1ea29092"
+    }
+  },
+  "method": {
+    "full_hot_cases_per_run": 23,
+    "initial_cold_cases_per_run": 3,
+    "initial_order": [
+      "parent before r1",
+      "parent after r1",
+      "child before r1",
+      "child after r1",
+      "child after r2",
+      "child before r2",
+      "parent after r2",
+      "parent before r2"
+    ],
+    "confirmation_order": "Per boundary: before r3, after r3, after r4, before r4. Parent isolation: before r5, after r5, after r6, before r6.",
+    "aggregation": "Equal-weight average of all available per-run means/medians for each case; not a pooled distribution. All outliers retained.",
+    "harness": "source_routing_scale_bench.exs, unchanged timed paths; confirmations add optional input selection before Benchee.",
+    "scopes": "Hot excludes fixture construction/publication, DB and sink I/O. Cold includes cleanup/barrier, task creation, tree build from parsed rules, encoding/registration/Cachex publication; excludes DB/parsing.",
+    "system": {
+      "erlang": "27.3.4.6",
+      "os": "Linux",
+      "elixir": "1.19.5",
+      "available_memory": "11.65 GB",
+      "cpu_speed": "Unrecognized processor",
+      "jit_enabled?": true,
+      "num_cores": 6
+    }
+  },
+  "runs": [
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "side": "before",
+      "revision": "acc8f99f",
+      "repeat": 1,
+      "path": "/tmp/routing-steady-parent-before-r1.json",
+      "config": {
+        "warmup_s": 1,
+        "time_s": 3,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / all matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 18492.734017703086,
+            "median_ns": 17000,
+            "deviation": 0.2793104076220183,
+            "memory_bytes": 71720
+          },
+          {
+            "input": "100 rules / all matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 165615.85044247788,
+            "median_ns": 152459,
+            "deviation": 0.7561834617392447,
+            "memory_bytes": 561224
+          },
+          {
+            "input": "100 rules / all matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 1626515.9235357917,
+            "median_ns": 1527689.5,
+            "deviation": 0.181912905956145,
+            "memory_bytes": 6324008.80620155
+          },
+          {
+            "input": "100 rules / eight matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 5950.995925083444,
+            "median_ns": 5209,
+            "deviation": 0.7485466305030389,
+            "memory_bytes": 15072
+          },
+          {
+            "input": "100 rules / eight matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 20832.900148592576,
+            "median_ns": 19625,
+            "deviation": 0.22135371799390433,
+            "memory_bytes": 57192
+          },
+          {
+            "input": "100 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 189520.02133316454,
+            "median_ns": 177792,
+            "deviation": 0.20075220065395014,
+            "memory_bytes": 478392
+          },
+          {
+            "input": "100 rules / one matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 10598.607056564697,
+            "median_ns": 9209,
+            "deviation": 0.3600871291071956,
+            "memory_bytes": 33744
+          },
+          {
+            "input": "100 rules / one matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 53182.68708052198,
+            "median_ns": 49541,
+            "deviation": 0.7672679672355761,
+            "memory_bytes": 258176
+          },
+          {
+            "input": "100 rules / one matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 576564.7412466333,
+            "median_ns": 524293,
+            "deviation": 0.4121084443840004,
+            "memory_bytes": 2615110.1307759373
+          },
+          {
+            "input": "100 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 9699.998073692757,
+            "median_ns": 8875,
+            "deviation": 0.5764576611227713,
+            "memory_bytes": 33288
+          },
+          {
+            "input": "100 rules / zero matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 51900.10838157826,
+            "median_ns": 47084,
+            "deviation": 0.9045750519565535,
+            "memory_bytes": 257632.10369118061
+          },
+          {
+            "input": "100 rules / zero matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 498019.539943531,
+            "median_ns": 493251,
+            "deviation": 0.08251130602846256,
+            "memory_bytes": 2612184.564952049
+          },
+          {
+            "input": "10000 rules / all matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 6865972.887871854,
+            "median_ns": 6687302,
+            "deviation": 0.1904247285708597,
+            "memory_bytes": 10865152
+          },
+          {
+            "input": "10000 rules / all matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 40852040.31081081,
+            "median_ns": 39195789.5,
+            "deviation": 0.163306472801373,
+            "memory_bytes": 96897288
+          },
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 383215.0167562036,
+            "median_ns": 428063,
+            "deviation": 0.2384317999174893,
+            "memory_bytes": 888392
+          },
+          {
+            "input": "10000 rules / eight matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 784488.8618162784,
+            "median_ns": 838126,
+            "deviation": 0.15302343536889879,
+            "memory_bytes": 949592
+          },
+          {
+            "input": "10000 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 4770805.373608903,
+            "median_ns": 4759174,
+            "deviation": 0.07241979138861451,
+            "memory_bytes": 1561592
+          },
+          {
+            "input": "10000 rules / one matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 3724578.790062112,
+            "median_ns": 3513297,
+            "deviation": 0.41161851238981184,
+            "memory_bytes": 4111424
+          },
+          {
+            "input": "10000 rules / one matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 18431700.122699387,
+            "median_ns": 17534526,
+            "deviation": 0.258054637536834,
+            "memory_bytes": 42336296
+          },
+          {
+            "input": "10000 rules / one matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 115629003.81481482,
+            "median_ns": 114676128,
+            "deviation": 0.08317552334535291,
+            "memory_bytes": 422787800
+          },
+          {
+            "input": "10000 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 4246372.300283286,
+            "median_ns": 3880984.5,
+            "deviation": 0.4965969085759591,
+            "memory_bytes": 4110448
+          },
+          {
+            "input": "10000 rules / zero matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 16117163.940860216,
+            "median_ns": 16069898.5,
+            "deviation": 0.12113227066020187,
+            "memory_bytes": 42324728
+          },
+          {
+            "input": "10000 rules / zero matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 137677533,
+            "median_ns": 122353658,
+            "deviation": 0.27395060334179944,
+            "memory_bytes": 423874648
+          }
+        ]
+      }
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "side": "before",
+      "revision": "acc8f99f",
+      "repeat": 2,
+      "path": "/tmp/routing-steady-parent-before-r2.json",
+      "config": {
+        "warmup_s": 1,
+        "time_s": 3,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / all matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 21228.043913961563,
+            "median_ns": 18041,
+            "deviation": 2.8801607250626007,
+            "memory_bytes": 71720
+          },
+          {
+            "input": "100 rules / all matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 168440.58368953882,
+            "median_ns": 159292,
+            "deviation": 0.23727294597687834,
+            "memory_bytes": 561224
+          },
+          {
+            "input": "100 rules / all matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 1668004.5016685205,
+            "median_ns": 1560209.5,
+            "deviation": 0.14900176832028378,
+            "memory_bytes": 6258703.873684211
+          },
+          {
+            "input": "100 rules / eight matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 6323.212400224285,
+            "median_ns": 5209,
+            "deviation": 1.4342616977622429,
+            "memory_bytes": 15072
+          },
+          {
+            "input": "100 rules / eight matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 20306.26906114312,
+            "median_ns": 19333,
+            "deviation": 0.18365438260490646,
+            "memory_bytes": 57192
+          },
+          {
+            "input": "100 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 190357.01958415465,
+            "median_ns": 178041,
+            "deviation": 0.3125556892052233,
+            "memory_bytes": 478392
+          },
+          {
+            "input": "100 rules / one matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 11686.30299004113,
+            "median_ns": 9542,
+            "deviation": 0.8171504331073561,
+            "memory_bytes": 33744
+          },
+          {
+            "input": "100 rules / one matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 55395.10344763636,
+            "median_ns": 52042,
+            "deviation": 0.2827067419060711,
+            "memory_bytes": 258176
+          },
+          {
+            "input": "100 rules / one matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 633161.9900634249,
+            "median_ns": 542937.5,
+            "deviation": 0.8018380522586892,
+            "memory_bytes": 2615085.507311586
+          },
+          {
+            "input": "100 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 11840.991430088838,
+            "median_ns": 10958,
+            "deviation": 0.9958436995073869,
+            "memory_bytes": 33288
+          },
+          {
+            "input": "100 rules / zero matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 50687.404314178064,
+            "median_ns": 48041,
+            "deviation": 0.21904282764147587,
+            "memory_bytes": 257632.97761645494
+          },
+          {
+            "input": "100 rules / zero matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 540644.5722532924,
+            "median_ns": 513542,
+            "deviation": 0.19010433631579313,
+            "memory_bytes": 2612065.9266227656
+          },
+          {
+            "input": "10000 rules / all matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 6282424.99790795,
+            "median_ns": 6205067,
+            "deviation": 0.1471719671309386,
+            "memory_bytes": 10865152
+          },
+          {
+            "input": "10000 rules / all matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 38921676.67532468,
+            "median_ns": 37968864,
+            "deviation": 0.06300757864817359,
+            "memory_bytes": 97285261.77777778
+          },
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 371890.7445382324,
+            "median_ns": 413521.5,
+            "deviation": 0.22912671430472206,
+            "memory_bytes": 888392
+          },
+          {
+            "input": "10000 rules / eight matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 772009.942055112,
+            "median_ns": 817542,
+            "deviation": 0.1465049750986324,
+            "memory_bytes": 949592
+          },
+          {
+            "input": "10000 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 4659621.604037267,
+            "median_ns": 4703900,
+            "deviation": 0.04124780923039856,
+            "memory_bytes": 1561592
+          },
+          {
+            "input": "10000 rules / one matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 3737520.2518703244,
+            "median_ns": 3630857,
+            "deviation": 0.40042037290748894,
+            "memory_bytes": 4111424
+          },
+          {
+            "input": "10000 rules / one matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 15525543.469072165,
+            "median_ns": 15772616.5,
+            "deviation": 0.07608183019742075,
+            "memory_bytes": 42336296
+          },
+          {
+            "input": "10000 rules / one matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 110720544.64285715,
+            "median_ns": 111258732.5,
+            "deviation": 0.05574978533211759,
+            "memory_bytes": 422787800
+          },
+          {
+            "input": "10000 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 3648727.7141119223,
+            "median_ns": 3591440.5,
+            "deviation": 0.3974465286741522,
+            "memory_bytes": 4110448
+          },
+          {
+            "input": "10000 rules / zero matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 15462535.80412371,
+            "median_ns": 15506804,
+            "deviation": 0.08725431207625445,
+            "memory_bytes": 42324728
+          },
+          {
+            "input": "10000 rules / zero matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 110873146.82142857,
+            "median_ns": 109007168,
+            "deviation": 0.05281440366511376,
+            "memory_bytes": 423874648
+          }
+        ]
+      }
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "side": "before",
+      "revision": "acc8f99f",
+      "repeat": 3,
+      "path": "/tmp/routing-steady-parent-before-r3.json",
+      "config": {
+        "warmup_s": 2,
+        "time_s": 5,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / eight matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 6045.020747559331,
+            "median_ns": 5250,
+            "deviation": 1.1993676927001773,
+            "memory_bytes": 15072
+          },
+          {
+            "input": "100 rules / eight matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 20084.61736489555,
+            "median_ns": 19084,
+            "deviation": 0.22031859195585324,
+            "memory_bytes": 57192
+          },
+          {
+            "input": "100 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 182544.50676565242,
+            "median_ns": 173918,
+            "deviation": 0.18711606328955677,
+            "memory_bytes": 478392
+          },
+          {
+            "input": "10000 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 3620009.7023895727,
+            "median_ns": 3411679,
+            "deviation": 0.44161868083197314,
+            "memory_bytes": 4110448
+          }
+        ]
+      }
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "side": "before",
+      "revision": "acc8f99f",
+      "repeat": 4,
+      "path": "/tmp/routing-steady-parent-before-r4.json",
+      "config": {
+        "warmup_s": 2,
+        "time_s": 5,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / eight matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 6616.532747975805,
+            "median_ns": 5291,
+            "deviation": 1.865774626750673,
+            "memory_bytes": 15072
+          },
+          {
+            "input": "100 rules / eight matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 20027.10761534545,
+            "median_ns": 19084,
+            "deviation": 0.21738540444193025,
+            "memory_bytes": 57192
+          },
+          {
+            "input": "100 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 199011.80090985275,
+            "median_ns": 174750,
+            "deviation": 0.7531847290239654,
+            "memory_bytes": 478392
+          },
+          {
+            "input": "10000 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 3123365.91625,
+            "median_ns": 2459111,
+            "deviation": 0.3731433609034145,
+            "memory_bytes": 4110448
+          }
+        ]
+      }
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "side": "before",
+      "revision": "acc8f99f",
+      "repeat": 5,
+      "path": "/tmp/routing-steady-parent-before-r5.json",
+      "config": {
+        "warmup_s": 5,
+        "time_s": 10,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "10000 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 3482473.222570533,
+            "median_ns": 3194924,
+            "deviation": 0.4010420747231979,
+            "memory_bytes": 4110448
+          }
+        ]
+      }
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "side": "before",
+      "revision": "acc8f99f",
+      "repeat": 6,
+      "path": "/tmp/routing-steady-parent-before-r6.json",
+      "config": {
+        "warmup_s": 5,
+        "time_s": 10,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "10000 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 3722832.55472822,
+            "median_ns": 3428256,
+            "deviation": 0.412099169574558,
+            "memory_bytes": 4110448
+          }
+        ]
+      }
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "side": "after",
+      "revision": "bfc70119",
+      "repeat": 1,
+      "path": "/tmp/routing-steady-parent-after-r1.json",
+      "config": {
+        "warmup_s": 1,
+        "time_s": 3,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / all matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 20457.291895135426,
+            "median_ns": 19250,
+            "deviation": 1.548224827663335,
+            "memory_bytes": 47664
+          },
+          {
+            "input": "100 rules / all matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 167252.74583845382,
+            "median_ns": 153875,
+            "deviation": 0.33417467576289406,
+            "memory_bytes": 536754.6397146254
+          },
+          {
+            "input": "100 rules / all matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 1656411.5875207067,
+            "median_ns": 1511960,
+            "deviation": 0.30104661995006743,
+            "memory_bytes": 6336874.926829268
+          },
+          {
+            "input": "100 rules / eight matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 6966.699718941346,
+            "median_ns": 5417,
+            "deviation": 1.1932777720517058,
+            "memory_bytes": 15024
+          },
+          {
+            "input": "100 rules / eight matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 21992.63017418715,
+            "median_ns": 20208,
+            "deviation": 1.1918967194037702,
+            "memory_bytes": 57144
+          },
+          {
+            "input": "100 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 204743.21585390877,
+            "median_ns": 184417,
+            "deviation": 0.3224915779730651,
+            "memory_bytes": 478344
+          },
+          {
+            "input": "100 rules / one matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 10149.553647109007,
+            "median_ns": 9042,
+            "deviation": 0.37660835727310227,
+            "memory_bytes": 32672
+          },
+          {
+            "input": "100 rules / one matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 54515.06910977548,
+            "median_ns": 49417,
+            "deviation": 0.683901035819933,
+            "memory_bytes": 258192
+          },
+          {
+            "input": "100 rules / one matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 512487.9266666667,
+            "median_ns": 502584,
+            "deviation": 0.09457148324330539,
+            "memory_bytes": 2609397.878725591
+          },
+          {
+            "input": "100 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 10071.652485272774,
+            "median_ns": 8959,
+            "deviation": 0.4986473618851343,
+            "memory_bytes": 32216
+          },
+          {
+            "input": "100 rules / zero matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 49068.51115162265,
+            "median_ns": 45709,
+            "deviation": 0.25569941696564313,
+            "memory_bytes": 258760.59916462624
+          },
+          {
+            "input": "100 rules / zero matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 498857.19517470885,
+            "median_ns": 486959,
+            "deviation": 0.12272724192862436,
+            "memory_bytes": 2615685.55920484
+          },
+          {
+            "input": "10000 rules / all matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 6180946.072016461,
+            "median_ns": 6047299.5,
+            "deviation": 0.16861127140695192,
+            "memory_bytes": 10889272
+          },
+          {
+            "input": "10000 rules / all matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 41407949.82191781,
+            "median_ns": 40120094,
+            "deviation": 0.11475359961122182,
+            "memory_bytes": 96683989.4736842
+          },
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 374635.67687882954,
+            "median_ns": 428168,
+            "deviation": 0.2342194050638232,
+            "memory_bytes": 888344
+          },
+          {
+            "input": "10000 rules / eight matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 768852.9664016415,
+            "median_ns": 817876,
+            "deviation": 0.13772944115870944,
+            "memory_bytes": 949544
+          },
+          {
+            "input": "10000 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 4710678.270015699,
+            "median_ns": 4686173,
+            "deviation": 0.15174364669462914,
+            "memory_bytes": 1561544
+          },
+          {
+            "input": "10000 rules / one matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 3889118.0531776915,
+            "median_ns": 3676338,
+            "deviation": 0.4279005657163616,
+            "memory_bytes": 4111424
+          },
+          {
+            "input": "10000 rules / one matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 15376231.642857144,
+            "median_ns": 15511186.5,
+            "deviation": 0.08812137411685843,
+            "memory_bytes": 42328976
+          },
+          {
+            "input": "10000 rules / one matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 115947528.96153846,
+            "median_ns": 112620685,
+            "deviation": 0.0939339936208064,
+            "memory_bytes": 423480192
+          },
+          {
+            "input": "10000 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 2800877.5508870217,
+            "median_ns": 2382503,
+            "deviation": 0.3058808906558502,
+            "memory_bytes": 4110448
+          },
+          {
+            "input": "10000 rules / zero matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 15705468.790575916,
+            "median_ns": 15700603,
+            "deviation": 0.09704259447821287,
+            "memory_bytes": 42324744
+          },
+          {
+            "input": "10000 rules / zero matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 108572606.46428572,
+            "median_ns": 109810262.5,
+            "deviation": 0.040529009848562406,
+            "memory_bytes": 423879280
+          }
+        ]
+      }
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "side": "after",
+      "revision": "bfc70119",
+      "repeat": 2,
+      "path": "/tmp/routing-steady-parent-after-r2.json",
+      "config": {
+        "warmup_s": 1,
+        "time_s": 3,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / all matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 18758.251252946717,
+            "median_ns": 17000,
+            "deviation": 0.4346232519254039,
+            "memory_bytes": 47664
+          },
+          {
+            "input": "100 rules / all matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 158911.72237253966,
+            "median_ns": 151542,
+            "deviation": 0.20232148901769598,
+            "memory_bytes": 536887.6047058824
+          },
+          {
+            "input": "100 rules / all matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 1573201.0498164657,
+            "median_ns": 1501501,
+            "deviation": 0.13543764816615605,
+            "memory_bytes": 6313175.111111111
+          },
+          {
+            "input": "100 rules / eight matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 6461.2131846034945,
+            "median_ns": 5334,
+            "deviation": 2.566361773704639,
+            "memory_bytes": 15024
+          },
+          {
+            "input": "100 rules / eight matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 21797.67634663168,
+            "median_ns": 20750,
+            "deviation": 0.2576416210999326,
+            "memory_bytes": 57144
+          },
+          {
+            "input": "100 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 203272.27441797327,
+            "median_ns": 185917,
+            "deviation": 0.4147902381679257,
+            "memory_bytes": 478344
+          },
+          {
+            "input": "100 rules / one matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 10645.17724955474,
+            "median_ns": 9209,
+            "deviation": 1.113993636438681,
+            "memory_bytes": 32672
+          },
+          {
+            "input": "100 rules / one matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 52607.56751188589,
+            "median_ns": 49041,
+            "deviation": 0.3366471613154977,
+            "memory_bytes": 258192
+          },
+          {
+            "input": "100 rules / one matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 520137.0149201943,
+            "median_ns": 509646.5,
+            "deviation": 0.07399435121476092,
+            "memory_bytes": 2609319.80876494
+          },
+          {
+            "input": "100 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 11278.564548502654,
+            "median_ns": 10917,
+            "deviation": 0.4555452394992367,
+            "memory_bytes": 32216
+          },
+          {
+            "input": "100 rules / zero matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 49318.547974378445,
+            "median_ns": 46583,
+            "deviation": 0.18321502941884915,
+            "memory_bytes": 258760.44739443582
+          },
+          {
+            "input": "100 rules / zero matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 501083.0310828877,
+            "median_ns": 495437.5,
+            "deviation": 0.08909412625684057,
+            "memory_bytes": 2613677.1292657703
+          },
+          {
+            "input": "10000 rules / all matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 6698750.283482143,
+            "median_ns": 6471547,
+            "deviation": 0.21843534241434012,
+            "memory_bytes": 10889272
+          },
+          {
+            "input": "10000 rules / all matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 38477249.679487176,
+            "median_ns": 37721135,
+            "deviation": 0.06554462302007104,
+            "memory_bytes": 96625778.5263158
+          },
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 379202.8032662362,
+            "median_ns": 426084,
+            "deviation": 0.24077405427985318,
+            "memory_bytes": 888344
+          },
+          {
+            "input": "10000 rules / eight matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 766549.4295576579,
+            "median_ns": 823167,
+            "deviation": 0.1266651459632141,
+            "memory_bytes": 949544
+          },
+          {
+            "input": "10000 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 4782477.974522293,
+            "median_ns": 4762004,
+            "deviation": 0.0522179195322363,
+            "memory_bytes": 1561544
+          },
+          {
+            "input": "10000 rules / one matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 3683591.568796069,
+            "median_ns": 3559107,
+            "deviation": 0.41126283502420335,
+            "memory_bytes": 4111424
+          },
+          {
+            "input": "10000 rules / one matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 16365282.141304348,
+            "median_ns": 16221533.5,
+            "deviation": 0.12912133631632292,
+            "memory_bytes": 42328976
+          },
+          {
+            "input": "10000 rules / one matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 111021630.60714285,
+            "median_ns": 111278465.5,
+            "deviation": 0.04919263993810526,
+            "memory_bytes": 423480192
+          },
+          {
+            "input": "10000 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 3809564.330368488,
+            "median_ns": 3610253,
+            "deviation": 0.41209208827092825,
+            "memory_bytes": 4110448
+          },
+          {
+            "input": "10000 rules / zero matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 15828471.842105264,
+            "median_ns": 15712325,
+            "deviation": 0.1320982051005286,
+            "memory_bytes": 42324744
+          },
+          {
+            "input": "10000 rules / zero matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 116810855.96153846,
+            "median_ns": 112743299.5,
+            "deviation": 0.11947500079626883,
+            "memory_bytes": 423879280
+          }
+        ]
+      }
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "side": "after",
+      "revision": "bfc70119",
+      "repeat": 3,
+      "path": "/tmp/routing-steady-parent-after-r3.json",
+      "config": {
+        "warmup_s": 2,
+        "time_s": 5,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / eight matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 6390.959029885564,
+            "median_ns": 5375,
+            "deviation": 1.1565310550645087,
+            "memory_bytes": 15024
+          },
+          {
+            "input": "100 rules / eight matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 20931.410083756902,
+            "median_ns": 19666,
+            "deviation": 0.2673447663804908,
+            "memory_bytes": 57144
+          },
+          {
+            "input": "100 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 189300.64793325748,
+            "median_ns": 179292,
+            "deviation": 0.2171371569360556,
+            "memory_bytes": 478344
+          },
+          {
+            "input": "10000 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 3583449.8487455198,
+            "median_ns": 3325469,
+            "deviation": 0.4023538308507036,
+            "memory_bytes": 4110448
+          }
+        ]
+      }
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "side": "after",
+      "revision": "bfc70119",
+      "repeat": 4,
+      "path": "/tmp/routing-steady-parent-after-r4.json",
+      "config": {
+        "warmup_s": 2,
+        "time_s": 5,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / eight matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 7073.71793700307,
+            "median_ns": 5458,
+            "deviation": 8.536797321290052,
+            "memory_bytes": 15024
+          },
+          {
+            "input": "100 rules / eight matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 21864.741303243758,
+            "median_ns": 20292,
+            "deviation": 0.4847136257933543,
+            "memory_bytes": 57144
+          },
+          {
+            "input": "100 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 206489.12513971105,
+            "median_ns": 185751,
+            "deviation": 0.8399878290597899,
+            "memory_bytes": 478344
+          },
+          {
+            "input": "10000 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 4095352.9459016393,
+            "median_ns": 3964408,
+            "deviation": 0.47836195466751896,
+            "memory_bytes": 4110448
+          }
+        ]
+      }
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "side": "after",
+      "revision": "bfc70119",
+      "repeat": 5,
+      "path": "/tmp/routing-steady-parent-after-r5.json",
+      "config": {
+        "warmup_s": 5,
+        "time_s": 10,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "10000 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 3810672.765535646,
+            "median_ns": 3877966,
+            "deviation": 0.37420390327010383,
+            "memory_bytes": 4110448
+          }
+        ]
+      }
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "side": "after",
+      "revision": "bfc70119",
+      "repeat": 6,
+      "path": "/tmp/routing-steady-parent-after-r6.json",
+      "config": {
+        "warmup_s": 5,
+        "time_s": 10,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "10000 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 3732945.0126960417,
+            "median_ns": 3803319.5,
+            "deviation": 0.3679150769761482,
+            "memory_bytes": 4110448
+          }
+        ]
+      }
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "side": "before",
+      "revision": "229bb1d0",
+      "repeat": 1,
+      "path": "/tmp/routing-steady-child-before-r1.json",
+      "config": {
+        "warmup_s": 1,
+        "time_s": 3,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / all matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 15129.708650483703,
+            "median_ns": 14333,
+            "deviation": 0.30528669126040875,
+            "memory_bytes": 65136
+          },
+          {
+            "input": "100 rules / all matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 117107.38735038723,
+            "median_ns": 110792,
+            "deviation": 0.2578106063076764,
+            "memory_bytes": 518232
+          },
+          {
+            "input": "100 rules / all matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 1162203.3560635413,
+            "median_ns": 1100585,
+            "deviation": 0.11114935707387855,
+            "memory_bytes": 5881328
+          },
+          {
+            "input": "100 rules / eight matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 4903.715431188832,
+            "median_ns": 4541,
+            "deviation": 1.1260124384467833,
+            "memory_bytes": 12880
+          },
+          {
+            "input": "100 rules / eight matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 14686.215377744697,
+            "median_ns": 12875,
+            "deviation": 2.1153786676445026,
+            "memory_bytes": 35992
+          },
+          {
+            "input": "100 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 112145.95680191825,
+            "median_ns": 107417,
+            "deviation": 0.2726348531419376,
+            "memory_bytes": 266800
+          },
+          {
+            "input": "100 rules / one matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 9739.631531914752,
+            "median_ns": 8917,
+            "deviation": 0.5079911482233356,
+            "memory_bytes": 32328
+          },
+          {
+            "input": "100 rules / one matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 49919.60499005665,
+            "median_ns": 47166,
+            "deviation": 0.18646327709170102,
+            "memory_bytes": 258464
+          },
+          {
+            "input": "100 rules / one matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 503567.99748068524,
+            "median_ns": 494438.5,
+            "deviation": 0.07959267029221855,
+            "memory_bytes": 2613536.124878049
+          },
+          {
+            "input": "100 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 10023.193975313347,
+            "median_ns": 8750,
+            "deviation": 1.5833099672641389,
+            "memory_bytes": 32176
+          },
+          {
+            "input": "100 rules / zero matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 50062.62251156244,
+            "median_ns": 48083,
+            "deviation": 0.18136796695132118,
+            "memory_bytes": 258664
+          },
+          {
+            "input": "100 rules / zero matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 507803.5810604777,
+            "median_ns": 486293,
+            "deviation": 0.26480879741935504,
+            "memory_bytes": 2617715.536770921
+          },
+          {
+            "input": "10000 rules / all matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 3044577.428426396,
+            "median_ns": 2730628,
+            "deviation": 0.22671078937848368,
+            "memory_bytes": 10954440
+          },
+          {
+            "input": "10000 rules / all matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 29877197.17821782,
+            "median_ns": 29048409,
+            "deviation": 0.13022728255674204,
+            "memory_bytes": 96833560
+          },
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 329065.51405666594,
+            "median_ns": 290917,
+            "deviation": 0.22610960760035673,
+            "memory_bytes": 884080
+          },
+          {
+            "input": "10000 rules / eight matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 711992.972453099,
+            "median_ns": 663209,
+            "deviation": 0.1333854625029901,
+            "memory_bytes": 907192
+          },
+          {
+            "input": "10000 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 4479806.859701493,
+            "median_ns": 4365546.5,
+            "deviation": 0.056780872960926716,
+            "memory_bytes": 1138312
+          },
+          {
+            "input": "10000 rules / one matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 1778393.1352313168,
+            "median_ns": 1620585.5,
+            "deviation": 0.2594591312038087,
+            "memory_bytes": 4110200
+          },
+          {
+            "input": "10000 rules / one matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 10543118.96491228,
+            "median_ns": 9727136,
+            "deviation": 0.15408314798263698,
+            "memory_bytes": 42319000
+          },
+          {
+            "input": "10000 rules / one matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 94700552.25,
+            "median_ns": 93427626,
+            "deviation": 0.07319794385393619,
+            "memory_bytes": 426000264
+          },
+          {
+            "input": "10000 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 1727276.434907834,
+            "median_ns": 1547543.5,
+            "deviation": 0.24114457108026077,
+            "memory_bytes": 4110168
+          },
+          {
+            "input": "10000 rules / zero matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 11086358.357933579,
+            "median_ns": 10299637,
+            "deviation": 0.18857570888987857,
+            "memory_bytes": 42319776
+          },
+          {
+            "input": "10000 rules / zero matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 93920826.15625,
+            "median_ns": 90437685,
+            "deviation": 0.07207113956006045,
+            "memory_bytes": 421817328
+          }
+        ]
+      }
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "side": "before",
+      "revision": "229bb1d0",
+      "repeat": 2,
+      "path": "/tmp/routing-steady-child-before-r2.json",
+      "config": {
+        "warmup_s": 1,
+        "time_s": 3,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / all matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 15667.841167597322,
+            "median_ns": 13583,
+            "deviation": 0.5227415370970834,
+            "memory_bytes": 65136
+          },
+          {
+            "input": "100 rules / all matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 127554.88846727776,
+            "median_ns": 115542,
+            "deviation": 0.47396187220743374,
+            "memory_bytes": 518232
+          },
+          {
+            "input": "100 rules / all matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 1315829.8652326602,
+            "median_ns": 1179438.5,
+            "deviation": 0.24845028044868844,
+            "memory_bytes": 5881328
+          },
+          {
+            "input": "100 rules / eight matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 5080.098437513616,
+            "median_ns": 4459,
+            "deviation": 0.8935813428397765,
+            "memory_bytes": 12880
+          },
+          {
+            "input": "100 rules / eight matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 14885.808762575452,
+            "median_ns": 13459,
+            "deviation": 0.5884734359366892,
+            "memory_bytes": 35992
+          },
+          {
+            "input": "100 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 116609.95232345266,
+            "median_ns": 112375,
+            "deviation": 0.22864516326549375,
+            "memory_bytes": 266800
+          },
+          {
+            "input": "100 rules / one matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 11421.767343289128,
+            "median_ns": 10958,
+            "deviation": 0.5685370895905983,
+            "memory_bytes": 32328
+          },
+          {
+            "input": "100 rules / one matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 51512.499387857155,
+            "median_ns": 48292,
+            "deviation": 0.1903379558094661,
+            "memory_bytes": 258464
+          },
+          {
+            "input": "100 rules / one matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 524738.9490635393,
+            "median_ns": 511709,
+            "deviation": 0.09844511265781754,
+            "memory_bytes": 2613530.6861924687
+          },
+          {
+            "input": "100 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 11445.800966014898,
+            "median_ns": 11125,
+            "deviation": 0.26803993358564615,
+            "memory_bytes": 32176
+          },
+          {
+            "input": "100 rules / zero matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 51756.731817158296,
+            "median_ns": 49750,
+            "deviation": 0.21316841267801195,
+            "memory_bytes": 258664
+          },
+          {
+            "input": "100 rules / zero matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 499387.05263157893,
+            "median_ns": 492667,
+            "deviation": 0.07947547657915653,
+            "memory_bytes": 2618073.0556079173
+          },
+          {
+            "input": "10000 rules / all matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 3135131.6778242677,
+            "median_ns": 2837482,
+            "deviation": 0.2254241128628271,
+            "memory_bytes": 10954440
+          },
+          {
+            "input": "10000 rules / all matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 29604193.343137253,
+            "median_ns": 28105128.5,
+            "deviation": 0.12042633484195098,
+            "memory_bytes": 96833560
+          },
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 338328.8180277872,
+            "median_ns": 297959,
+            "deviation": 0.24056612834372335,
+            "memory_bytes": 884080
+          },
+          {
+            "input": "10000 rules / eight matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 712304.2551068884,
+            "median_ns": 668688,
+            "deviation": 0.12399146097904233,
+            "memory_bytes": 907192
+          },
+          {
+            "input": "10000 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 4580633.764885496,
+            "median_ns": 4462463,
+            "deviation": 0.10117746932234842,
+            "memory_bytes": 1138312
+          },
+          {
+            "input": "10000 rules / one matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 1771819.2695035462,
+            "median_ns": 1582605,
+            "deviation": 0.2631776391345844,
+            "memory_bytes": 4110200
+          },
+          {
+            "input": "10000 rules / one matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 11910161.912698412,
+            "median_ns": 10346279.5,
+            "deviation": 0.574845516948038,
+            "memory_bytes": 42319000
+          },
+          {
+            "input": "10000 rules / one matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 93281723.12121212,
+            "median_ns": 89999994,
+            "deviation": 0.060716692395229394,
+            "memory_bytes": 426000264
+          },
+          {
+            "input": "10000 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 1841973.6244622003,
+            "median_ns": 1657585,
+            "deviation": 0.3222025317159125,
+            "memory_bytes": 4110168
+          },
+          {
+            "input": "10000 rules / zero matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 10877359.43478261,
+            "median_ns": 9935591.5,
+            "deviation": 0.17680950478951216,
+            "memory_bytes": 42319776
+          },
+          {
+            "input": "10000 rules / zero matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 96104729.25,
+            "median_ns": 92660246,
+            "deviation": 0.09345120609661975,
+            "memory_bytes": 421817328
+          }
+        ]
+      }
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "side": "before",
+      "revision": "229bb1d0",
+      "repeat": 3,
+      "path": "/tmp/routing-steady-child-before-r3.json",
+      "config": {
+        "warmup_s": 2,
+        "time_s": 5,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 9841.047843222026,
+            "median_ns": 8875,
+            "deviation": 0.6075650786002122,
+            "memory_bytes": 32176
+          },
+          {
+            "input": "10000 rules / all matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 3039863.5316301705,
+            "median_ns": 2745570,
+            "deviation": 0.209715135067093,
+            "memory_bytes": 10954440
+          },
+          {
+            "input": "10000 rules / all matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 30715827.90797546,
+            "median_ns": 31855501,
+            "deviation": 0.15255062240546258,
+            "memory_bytes": 96833560
+          },
+          {
+            "input": "10000 rules / one matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 10642435.572340425,
+            "median_ns": 9804317,
+            "deviation": 0.16326352566157923,
+            "memory_bytes": 42319000
+          }
+        ]
+      }
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "side": "before",
+      "revision": "229bb1d0",
+      "repeat": 4,
+      "path": "/tmp/routing-steady-child-before-r4.json",
+      "config": {
+        "warmup_s": 2,
+        "time_s": 5,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 10371.661441821123,
+            "median_ns": 8958,
+            "deviation": 0.5266178203595481,
+            "memory_bytes": 32176
+          },
+          {
+            "input": "10000 rules / all matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 2967324.9264094955,
+            "median_ns": 2707673,
+            "deviation": 0.18971170079278443,
+            "memory_bytes": 10954440
+          },
+          {
+            "input": "10000 rules / all matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 29294291.567251462,
+            "median_ns": 28254605,
+            "deviation": 0.11115596066073691,
+            "memory_bytes": 96833560
+          },
+          {
+            "input": "10000 rules / one matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 10769603.066810345,
+            "median_ns": 9974626.5,
+            "deviation": 0.16843921215861998,
+            "memory_bytes": 42319000
+          }
+        ]
+      }
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "side": "after",
+      "revision": "1ea29092",
+      "repeat": 1,
+      "path": "/tmp/routing-steady-child-after-r1.json",
+      "config": {
+        "warmup_s": 1,
+        "time_s": 3,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / all matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 15476.929172213955,
+            "median_ns": 14625,
+            "deviation": 0.35359355612285304,
+            "memory_bytes": 41040
+          },
+          {
+            "input": "100 rules / all matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 115205.66011235955,
+            "median_ns": 110291,
+            "deviation": 0.23802474479808577,
+            "memory_bytes": 507440
+          },
+          {
+            "input": "100 rules / all matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 1199597.662,
+            "median_ns": 1115438.5,
+            "deviation": 0.17984405581566898,
+            "memory_bytes": 5659404.189753321
+          },
+          {
+            "input": "100 rules / eight matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 4784.3167477915995,
+            "median_ns": 4459,
+            "deviation": 1.2467821829491514,
+            "memory_bytes": 12832
+          },
+          {
+            "input": "100 rules / eight matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 14168.930599444604,
+            "median_ns": 12916,
+            "deviation": 1.9850210625971831,
+            "memory_bytes": 35944
+          },
+          {
+            "input": "100 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 122092.36190359577,
+            "median_ns": 108458,
+            "deviation": 0.5368325942432387,
+            "memory_bytes": 266800
+          },
+          {
+            "input": "100 rules / one matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 10743.958180732629,
+            "median_ns": 9250,
+            "deviation": 0.41953030088061155,
+            "memory_bytes": 32280
+          },
+          {
+            "input": "100 rules / one matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 49714.68394696125,
+            "median_ns": 47125,
+            "deviation": 0.1551826810152731,
+            "memory_bytes": 258488
+          },
+          {
+            "input": "100 rules / one matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 516330.63216807303,
+            "median_ns": 506501,
+            "deviation": 0.08410166386497879,
+            "memory_bytes": 2615168.22614841
+          },
+          {
+            "input": "100 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 11406.248726356975,
+            "median_ns": 10875,
+            "deviation": 0.32497243487681116,
+            "memory_bytes": 33336
+          },
+          {
+            "input": "100 rules / zero matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 52459.50033367286,
+            "median_ns": 51209,
+            "deviation": 0.21093229948957787,
+            "memory_bytes": 257680
+          },
+          {
+            "input": "100 rules / zero matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 491336.5380203212,
+            "median_ns": 482875,
+            "deviation": 0.09245345686738063,
+            "memory_bytes": 2618177.292307692
+          },
+          {
+            "input": "10000 rules / all matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 3094762.7966976264,
+            "median_ns": 2808920,
+            "deviation": 0.2161187051210677,
+            "memory_bytes": 10877200
+          },
+          {
+            "input": "10000 rules / all matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 28966458.076923076,
+            "median_ns": 27956508.5,
+            "deviation": 0.12392536589307374,
+            "memory_bytes": 95595120
+          },
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 333364.63584779704,
+            "median_ns": 290584,
+            "deviation": 0.2511155606618463,
+            "memory_bytes": 884032
+          },
+          {
+            "input": "10000 rules / eight matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 695097.3351877608,
+            "median_ns": 651104.5,
+            "deviation": 0.12166889920108515,
+            "memory_bytes": 907144
+          },
+          {
+            "input": "10000 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 4460491.778603269,
+            "median_ns": 4386129,
+            "deviation": 0.04601905516339883,
+            "memory_bytes": 1138264
+          },
+          {
+            "input": "10000 rules / one matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 1733937.265317919,
+            "median_ns": 1550730.5,
+            "deviation": 0.24610386290522412,
+            "memory_bytes": 4110200
+          },
+          {
+            "input": "10000 rules / one matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 11005300.326007325,
+            "median_ns": 9957010,
+            "deviation": 0.19203702611899323,
+            "memory_bytes": 42317328
+          },
+          {
+            "input": "10000 rules / one matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 93410394.60606061,
+            "median_ns": 90335966,
+            "deviation": 0.06409903095561664,
+            "memory_bytes": 426138408
+          },
+          {
+            "input": "10000 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 1836456.6605392157,
+            "median_ns": 1636981,
+            "deviation": 0.3894967834390677,
+            "memory_bytes": 4110168
+          },
+          {
+            "input": "10000 rules / zero matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 10525615.101754386,
+            "median_ns": 9684885,
+            "deviation": 0.1594235561532694,
+            "memory_bytes": 42318304
+          },
+          {
+            "input": "10000 rules / zero matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 87401385.91428572,
+            "median_ns": 82914666,
+            "deviation": 0.10570501030957685,
+            "memory_bytes": 421729000
+          }
+        ]
+      }
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "side": "after",
+      "revision": "1ea29092",
+      "repeat": 2,
+      "path": "/tmp/routing-steady-child-after-r2.json",
+      "config": {
+        "warmup_s": 1,
+        "time_s": 3,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / all matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 14952.388484781228,
+            "median_ns": 14334,
+            "deviation": 0.3580972459569916,
+            "memory_bytes": 41040
+          },
+          {
+            "input": "100 rules / all matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 116894.57402779946,
+            "median_ns": 110792,
+            "deviation": 0.25821605699477235,
+            "memory_bytes": 507440
+          },
+          {
+            "input": "100 rules / all matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 1159203.317356011,
+            "median_ns": 1095542,
+            "deviation": 0.125835570981922,
+            "memory_bytes": 5658456.157549234
+          },
+          {
+            "input": "100 rules / eight matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 5514.68547651382,
+            "median_ns": 4375,
+            "deviation": 1.1333695385634759,
+            "memory_bytes": 12832
+          },
+          {
+            "input": "100 rules / eight matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 13473.5314053116,
+            "median_ns": 12917,
+            "deviation": 0.13275703931693641,
+            "memory_bytes": 35944
+          },
+          {
+            "input": "100 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 112831.64940254061,
+            "median_ns": 108500,
+            "deviation": 0.20313353385239216,
+            "memory_bytes": 266800
+          },
+          {
+            "input": "100 rules / one matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 9926.038434792541,
+            "median_ns": 9000,
+            "deviation": 0.5028452214722788,
+            "memory_bytes": 32280
+          },
+          {
+            "input": "100 rules / one matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 49975.338138640356,
+            "median_ns": 46583,
+            "deviation": 0.21664175835670793,
+            "memory_bytes": 258488
+          },
+          {
+            "input": "100 rules / one matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 503746.7662577718,
+            "median_ns": 490500,
+            "deviation": 0.11715336723126224,
+            "memory_bytes": 2615182.7147030183
+          },
+          {
+            "input": "100 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 11896.223293852228,
+            "median_ns": 11500,
+            "deviation": 0.32268424236440135,
+            "memory_bytes": 33336
+          },
+          {
+            "input": "100 rules / zero matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 50074.85269772118,
+            "median_ns": 48833,
+            "deviation": 0.15870542686854375,
+            "memory_bytes": 257680
+          },
+          {
+            "input": "100 rules / zero matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 477725.1991714468,
+            "median_ns": 468833.5,
+            "deviation": 0.10442451020939875,
+            "memory_bytes": 2618188.308747856
+          },
+          {
+            "input": "10000 rules / all matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 3531885.603062426,
+            "median_ns": 2829794,
+            "deviation": 0.678049721150429,
+            "memory_bytes": 10877200
+          },
+          {
+            "input": "10000 rules / all matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 34942447.27906977,
+            "median_ns": 33385657,
+            "deviation": 0.39822534312073615,
+            "memory_bytes": 95595120
+          },
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 336507.3984278495,
+            "median_ns": 293959,
+            "deviation": 0.34479496940503884,
+            "memory_bytes": 884032
+          },
+          {
+            "input": "10000 rules / eight matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 770758.8664436438,
+            "median_ns": 676521.5,
+            "deviation": 0.3254883332842767,
+            "memory_bytes": 907144
+          },
+          {
+            "input": "10000 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 4589674.272171254,
+            "median_ns": 4430504,
+            "deviation": 0.11840136017158201,
+            "memory_bytes": 1138264
+          },
+          {
+            "input": "10000 rules / one matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 1864742.6838830118,
+            "median_ns": 1688335,
+            "deviation": 0.3073384355186626,
+            "memory_bytes": 4110200
+          },
+          {
+            "input": "10000 rules / one matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 12954134.561702128,
+            "median_ns": 10974427,
+            "deviation": 0.4420883070173048,
+            "memory_bytes": 42317328
+          },
+          {
+            "input": "10000 rules / one matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 94817879.6875,
+            "median_ns": 91136584.5,
+            "deviation": 0.07336113167366579,
+            "memory_bytes": 426138408
+          },
+          {
+            "input": "10000 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 1753219.2824561403,
+            "median_ns": 1571792.5,
+            "deviation": 0.25927166388443745,
+            "memory_bytes": 4110168
+          },
+          {
+            "input": "10000 rules / zero matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 10684027.5658363,
+            "median_ns": 9866634,
+            "deviation": 0.16304331400725558,
+            "memory_bytes": 42318304
+          },
+          {
+            "input": "10000 rules / zero matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 96232688.8125,
+            "median_ns": 92374439,
+            "deviation": 0.07784961227693718,
+            "memory_bytes": 421729000
+          }
+        ]
+      }
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "side": "after",
+      "revision": "1ea29092",
+      "repeat": 3,
+      "path": "/tmp/routing-steady-child-after-r3.json",
+      "config": {
+        "warmup_s": 2,
+        "time_s": 5,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 10268.502506657984,
+            "median_ns": 8917,
+            "deviation": 0.667265740337714,
+            "memory_bytes": 33336
+          },
+          {
+            "input": "10000 rules / all matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 2972286.413198573,
+            "median_ns": 2703736,
+            "deviation": 0.19997188872804683,
+            "memory_bytes": 10877200
+          },
+          {
+            "input": "10000 rules / all matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 29889933.38095238,
+            "median_ns": 29550886,
+            "deviation": 0.12830869643989276,
+            "memory_bytes": 95595120
+          },
+          {
+            "input": "10000 rules / one matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 10929056.851528384,
+            "median_ns": 9978128.5,
+            "deviation": 0.18369286279298103,
+            "memory_bytes": 42317328
+          }
+        ]
+      }
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "side": "after",
+      "revision": "1ea29092",
+      "repeat": 4,
+      "path": "/tmp/routing-steady-child-after-r4.json",
+      "config": {
+        "warmup_s": 2,
+        "time_s": 5,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / zero matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 10996.240943257317,
+            "median_ns": 10625,
+            "deviation": 0.5689356751464653,
+            "memory_bytes": 33336
+          },
+          {
+            "input": "10000 rules / all matches / 1 events",
+            "job": "production batch API",
+            "mean_ns": 3052815.572388516,
+            "median_ns": 2721382,
+            "deviation": 0.3180329298673075,
+            "memory_bytes": 10877200
+          },
+          {
+            "input": "10000 rules / all matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 29305261.210526317,
+            "median_ns": 28563401,
+            "deviation": 0.10260106128890438,
+            "memory_bytes": 95595120
+          },
+          {
+            "input": "10000 rules / one matches / 10 events",
+            "job": "production batch API",
+            "mean_ns": 10500173.586134454,
+            "median_ns": 9748023,
+            "deviation": 0.1556540135576237,
+            "memory_bytes": 42317328
+          }
+        ]
+      }
+    },
+    {
+      "mode": "cold",
+      "boundary": "parent",
+      "side": "before",
+      "revision": "acc8f99f",
+      "repeat": 1,
+      "path": "/tmp/routing-cold-parent-before-r1.json",
+      "config": {
+        "warmup_s": 1,
+        "time_s": 3,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 103097.44154635978,
+            "median_ns": 100458,
+            "deviation": 0.12050145928002287,
+            "memory_bytes": 591.9794132784355
+          },
+          {
+            "input": "1000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 898459.0119832235,
+            "median_ns": 883939,
+            "deviation": 0.10066613689547668,
+            "memory_bytes": 592
+          },
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 11018393.432234433,
+            "median_ns": 10754515,
+            "deviation": 0.08378207753078501,
+            "memory_bytes": 592
+          }
+        ]
+      }
+    },
+    {
+      "mode": "cold",
+      "boundary": "parent",
+      "side": "before",
+      "revision": "acc8f99f",
+      "repeat": 2,
+      "path": "/tmp/routing-cold-parent-before-r2.json",
+      "config": {
+        "warmup_s": 1,
+        "time_s": 3,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 105406.3523379964,
+            "median_ns": 102084,
+            "deviation": 0.16785942967829745,
+            "memory_bytes": 592
+          },
+          {
+            "input": "1000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 909553.0922050349,
+            "median_ns": 891792,
+            "deviation": 0.08914589565901486,
+            "memory_bytes": 592
+          },
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 11010956.183150183,
+            "median_ns": 10855675,
+            "deviation": 0.050648161337495626,
+            "memory_bytes": 592
+          }
+        ]
+      }
+    },
+    {
+      "mode": "cold",
+      "boundary": "parent",
+      "side": "before",
+      "revision": "acc8f99f",
+      "repeat": 3,
+      "path": "/tmp/routing-cold-parent-before-r3.json",
+      "config": {
+        "warmup_s": 2,
+        "time_s": 5,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "1000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 908960.8590396508,
+            "median_ns": 892628,
+            "deviation": 0.09387365409359764,
+            "memory_bytes": 592
+          },
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 11004521.648351649,
+            "median_ns": 10751412,
+            "deviation": 0.07765251941334857,
+            "memory_bytes": 592
+          }
+        ]
+      }
+    },
+    {
+      "mode": "cold",
+      "boundary": "parent",
+      "side": "before",
+      "revision": "acc8f99f",
+      "repeat": 4,
+      "path": "/tmp/routing-cold-parent-before-r4.json",
+      "config": {
+        "warmup_s": 2,
+        "time_s": 5,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "1000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 888754.895607327,
+            "median_ns": 880710,
+            "deviation": 0.054405703733190765,
+            "memory_bytes": 592
+          },
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 10854398.104121475,
+            "median_ns": 10800655,
+            "deviation": 0.03533138735120021,
+            "memory_bytes": 592
+          }
+        ]
+      }
+    },
+    {
+      "mode": "cold",
+      "boundary": "parent",
+      "side": "before",
+      "revision": "acc8f99f",
+      "repeat": 5,
+      "path": "/tmp/routing-cold-parent-before-r5.json",
+      "config": {
+        "warmup_s": 5,
+        "time_s": 10,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 15192467.457446808,
+            "median_ns": 12081128,
+            "deviation": 1.0058983744146799,
+            "memory_bytes": 592
+          }
+        ]
+      }
+    },
+    {
+      "mode": "cold",
+      "boundary": "parent",
+      "side": "before",
+      "revision": "acc8f99f",
+      "repeat": 6,
+      "path": "/tmp/routing-cold-parent-before-r6.json",
+      "config": {
+        "warmup_s": 5,
+        "time_s": 10,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 11141667.668151448,
+            "median_ns": 11025978,
+            "deviation": 0.08475865620216039,
+            "memory_bytes": 592
+          }
+        ]
+      }
+    },
+    {
+      "mode": "cold",
+      "boundary": "parent",
+      "side": "after",
+      "revision": "bfc70119",
+      "repeat": 1,
+      "path": "/tmp/routing-cold-parent-after-r1.json",
+      "config": {
+        "warmup_s": 1,
+        "time_s": 3,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 100360.00952796324,
+            "median_ns": 96833,
+            "deviation": 0.14494812925924333,
+            "memory_bytes": 591.9706565594817
+          },
+          {
+            "input": "1000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 871273.193201627,
+            "median_ns": 847751,
+            "deviation": 0.09458000453161172,
+            "memory_bytes": 592
+          },
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 11133930.870370371,
+            "median_ns": 10683909,
+            "deviation": 0.19083149302201835,
+            "memory_bytes": 592
+          }
+        ]
+      }
+    },
+    {
+      "mode": "cold",
+      "boundary": "parent",
+      "side": "after",
+      "revision": "bfc70119",
+      "repeat": 2,
+      "path": "/tmp/routing-cold-parent-after-r2.json",
+      "config": {
+        "warmup_s": 1,
+        "time_s": 3,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 99776.1006671114,
+            "median_ns": 97417,
+            "deviation": 0.13719519369530483,
+            "memory_bytes": 591.9583766909469
+          },
+          {
+            "input": "1000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 966427.0045132173,
+            "median_ns": 854417.5,
+            "deviation": 0.5680358229143044,
+            "memory_bytes": 592
+          },
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 11284884.15037594,
+            "median_ns": 10997821,
+            "deviation": 0.085069864871865,
+            "memory_bytes": 592
+          }
+        ]
+      }
+    },
+    {
+      "mode": "cold",
+      "boundary": "parent",
+      "side": "after",
+      "revision": "bfc70119",
+      "repeat": 3,
+      "path": "/tmp/routing-cold-parent-after-r3.json",
+      "config": {
+        "warmup_s": 2,
+        "time_s": 5,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "1000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 902275.2946912242,
+            "median_ns": 873836,
+            "deviation": 0.21749337468930707,
+            "memory_bytes": 592
+          },
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 11019339.718061674,
+            "median_ns": 10836888,
+            "deviation": 0.06887025445415788,
+            "memory_bytes": 592
+          }
+        ]
+      }
+    },
+    {
+      "mode": "cold",
+      "boundary": "parent",
+      "side": "after",
+      "revision": "bfc70119",
+      "repeat": 4,
+      "path": "/tmp/routing-cold-parent-after-r4.json",
+      "config": {
+        "warmup_s": 2,
+        "time_s": 5,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "1000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 869167.6331535919,
+            "median_ns": 854878,
+            "deviation": 0.07537896496989618,
+            "memory_bytes": 592
+          },
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 11902302.047619049,
+            "median_ns": 11254200,
+            "deviation": 0.2502664464060956,
+            "memory_bytes": 592
+          }
+        ]
+      }
+    },
+    {
+      "mode": "cold",
+      "boundary": "parent",
+      "side": "after",
+      "revision": "bfc70119",
+      "repeat": 5,
+      "path": "/tmp/routing-cold-parent-after-r5.json",
+      "config": {
+        "warmup_s": 5,
+        "time_s": 10,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 11002014.393839383,
+            "median_ns": 10986146,
+            "deviation": 0.07384738162465765,
+            "memory_bytes": 592
+          }
+        ]
+      }
+    },
+    {
+      "mode": "cold",
+      "boundary": "parent",
+      "side": "after",
+      "revision": "bfc70119",
+      "repeat": 6,
+      "path": "/tmp/routing-cold-parent-after-r6.json",
+      "config": {
+        "warmup_s": 5,
+        "time_s": 10,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 11173902.681564245,
+            "median_ns": 10926395,
+            "deviation": 0.0836823253703206,
+            "memory_bytes": 592
+          }
+        ]
+      }
+    },
+    {
+      "mode": "cold",
+      "boundary": "child",
+      "side": "before",
+      "revision": "229bb1d0",
+      "repeat": 1,
+      "path": "/tmp/routing-cold-child-before-r1.json",
+      "config": {
+        "warmup_s": 1,
+        "time_s": 3,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 94262.37387713934,
+            "median_ns": 92291,
+            "deviation": 0.12090874227955348,
+            "memory_bytes": 592
+          },
+          {
+            "input": "1000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 692345.5315169707,
+            "median_ns": 684542,
+            "deviation": 0.05244698248108611,
+            "memory_bytes": 592
+          },
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 8232337.032876712,
+            "median_ns": 8120676,
+            "deviation": 0.05950052858686745,
+            "memory_bytes": 592
+          }
+        ]
+      }
+    },
+    {
+      "mode": "cold",
+      "boundary": "child",
+      "side": "before",
+      "revision": "229bb1d0",
+      "repeat": 2,
+      "path": "/tmp/routing-cold-child-before-r2.json",
+      "config": {
+        "warmup_s": 1,
+        "time_s": 3,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 95682.28725004,
+            "median_ns": 91792,
+            "deviation": 0.2348935660401548,
+            "memory_bytes": 591.9805754522278
+          },
+          {
+            "input": "1000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 682528.850443888,
+            "median_ns": 676834,
+            "deviation": 0.054742937545239304,
+            "memory_bytes": 592
+          },
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 8210533.434426229,
+            "median_ns": 8120319.5,
+            "deviation": 0.06059398187604785,
+            "memory_bytes": 592
+          }
+        ]
+      }
+    },
+    {
+      "mode": "cold",
+      "boundary": "child",
+      "side": "before",
+      "revision": "229bb1d0",
+      "repeat": 3,
+      "path": "/tmp/routing-cold-child-before-r3.json",
+      "config": {
+        "warmup_s": 2,
+        "time_s": 5,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 8649159.394463668,
+            "median_ns": 8644168,
+            "deviation": 0.07917868107893773,
+            "memory_bytes": 592
+          }
+        ]
+      }
+    },
+    {
+      "mode": "cold",
+      "boundary": "child",
+      "side": "before",
+      "revision": "229bb1d0",
+      "repeat": 4,
+      "path": "/tmp/routing-cold-child-before-r4.json",
+      "config": {
+        "warmup_s": 2,
+        "time_s": 5,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 8480371.333898306,
+            "median_ns": 8478852,
+            "deviation": 0.0801236708807963,
+            "memory_bytes": 592
+          }
+        ]
+      }
+    },
+    {
+      "mode": "cold",
+      "boundary": "child",
+      "side": "after",
+      "revision": "1ea29092",
+      "repeat": 1,
+      "path": "/tmp/routing-cold-child-after-r1.json",
+      "config": {
+        "warmup_s": 1,
+        "time_s": 3,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 95284.47280894581,
+            "median_ns": 92125,
+            "deviation": 0.13322034463589705,
+            "memory_bytes": 591.9528968440885
+          },
+          {
+            "input": "1000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 684040.4406934306,
+            "median_ns": 680417.5,
+            "deviation": 0.027776560660881754,
+            "memory_bytes": 592
+          },
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 8431895.109550562,
+            "median_ns": 8167925,
+            "deviation": 0.10392441906811975,
+            "memory_bytes": 592
+          }
+        ]
+      }
+    },
+    {
+      "mode": "cold",
+      "boundary": "child",
+      "side": "after",
+      "revision": "1ea29092",
+      "repeat": 2,
+      "path": "/tmp/routing-cold-child-after-r2.json",
+      "config": {
+        "warmup_s": 1,
+        "time_s": 3,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "100 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 95301.56259758468,
+            "median_ns": 91917,
+            "deviation": 0.1862168616354772,
+            "memory_bytes": 592
+          },
+          {
+            "input": "1000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 709139.2403595931,
+            "median_ns": 686209,
+            "deviation": 0.1704534315327338,
+            "memory_bytes": 592
+          },
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 10854282.31768953,
+            "median_ns": 8552299,
+            "deviation": 0.569145769527547,
+            "memory_bytes": 592
+          }
+        ]
+      }
+    },
+    {
+      "mode": "cold",
+      "boundary": "child",
+      "side": "after",
+      "revision": "1ea29092",
+      "repeat": 3,
+      "path": "/tmp/routing-cold-child-after-r3.json",
+      "config": {
+        "warmup_s": 2,
+        "time_s": 5,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 8848109.892035399,
+            "median_ns": 8477437,
+            "deviation": 0.30627053517776265,
+            "memory_bytes": 592
+          }
+        ]
+      }
+    },
+    {
+      "mode": "cold",
+      "boundary": "child",
+      "side": "after",
+      "revision": "1ea29092",
+      "repeat": 4,
+      "path": "/tmp/routing-cold-child-after-r4.json",
+      "config": {
+        "warmup_s": 2,
+        "time_s": 5,
+        "memory_time_s": 1,
+        "schedulers": 6,
+        "parallel": 1
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "10000 rules / eight matches / 1 events",
+            "job": "cold synthetic build/publication",
+            "mean_ns": 8195908.954098361,
+            "median_ns": 8229789.5,
+            "deviation": 0.0763584162680253,
+            "memory_bytes": 592
+          }
+        ]
+      }
+    }
+  ],
+  "summaries": [
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "input": "100 rules / all matches / 1 events",
+      "run_count": 2,
+      "before_mean_ns": 19860.388965832324,
+      "after_mean_ns": 19607.77157404107,
+      "mean_change_pct": -1.271965983273815,
+      "before_median_ns": 17520.5,
+      "after_median_ns": 18125,
+      "median_change_pct": 3.450243999885849,
+      "before_memory_bytes": 71720,
+      "after_memory_bytes": 47664,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 10.623404173507666,
+          "median_change_pct": 13.235294117647056,
+          "before_deviation": 0.2793104076220183,
+          "after_deviation": 1.548224827663335
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -11.63457486250289,
+          "median_change_pct": -5.770190122498753,
+          "before_deviation": 2.8801607250626007,
+          "after_deviation": 0.4346232519254039
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "input": "100 rules / all matches / 10 events",
+      "run_count": 2,
+      "before_mean_ns": 167028.21706600836,
+      "after_mean_ns": 163082.23410549673,
+      "mean_change_pct": -2.3624648755917743,
+      "before_median_ns": 155875.5,
+      "after_median_ns": 152708.5,
+      "median_change_pct": -2.031749697675389,
+      "before_memory_bytes": 561224,
+      "after_memory_bytes": 536821.122210254,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 0.9883688014176384,
+          "median_change_pct": 0.928774293416601,
+          "before_deviation": 0.7561834617392447,
+          "after_deviation": 0.33417467576289406
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -5.657105377028538,
+          "median_change_pct": -4.865278858950861,
+          "before_deviation": 0.23727294597687834,
+          "after_deviation": 0.20232148901769598
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "input": "100 rules / all matches / 100 events",
+      "run_count": 2,
+      "before_mean_ns": 1647260.2126021562,
+      "after_mean_ns": 1614806.3186685862,
+      "mean_change_pct": -1.9701740918214083,
+      "before_median_ns": 1543949.5,
+      "after_median_ns": 1506730.5,
+      "median_change_pct": -2.4106358400970973,
+      "before_memory_bytes": 6291356.33994288,
+      "after_memory_bytes": 6325025.01897019,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 1.8380185248925596,
+          "median_change_pct": -1.0296267664338887,
+          "before_deviation": 0.181912905956145,
+          "after_deviation": 0.30104661995006743
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -5.683644843717273,
+          "median_change_pct": -3.7628600518071487,
+          "before_deviation": 0.14900176832028378,
+          "after_deviation": 0.13543764816615605
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "input": "100 rules / eight matches / 1 events",
+      "run_count": 4,
+      "before_mean_ns": 6233.940455210716,
+      "after_mean_ns": 6723.147467608369,
+      "mean_change_pct": 7.847476502422213,
+      "before_median_ns": 5239.75,
+      "after_median_ns": 5396,
+      "median_change_pct": 2.982012500596398,
+      "before_memory_bytes": 15072,
+      "after_memory_bytes": 15024,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 17.067795149660768,
+          "median_change_pct": 3.9930888846227752,
+          "before_deviation": 0.7485466305030389,
+          "after_deviation": 1.1932777720517058
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 2.1824473961101543,
+          "median_change_pct": 2.3996928393165584,
+          "before_deviation": 1.4342616977622429,
+          "after_deviation": 2.566361773704639
+        },
+        {
+          "repeat": 3,
+          "mean_change_pct": 5.722698014988703,
+          "median_change_pct": 2.3809523809523725,
+          "before_deviation": 1.1993676927001773,
+          "after_deviation": 1.1565310550645087
+        },
+        {
+          "repeat": 4,
+          "mean_change_pct": 6.9097396845368975,
+          "median_change_pct": 3.156303156303153,
+          "before_deviation": 1.865774626750673,
+          "after_deviation": 8.536797321290052
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "input": "100 rules / eight matches / 10 events",
+      "run_count": 4,
+      "before_mean_ns": 20312.723547494174,
+      "after_mean_ns": 21646.614476954874,
+      "mean_change_pct": 6.566775382640655,
+      "before_median_ns": 19281.5,
+      "after_median_ns": 20229,
+      "median_change_pct": 4.914036770998109,
+      "before_memory_bytes": 57192,
+      "after_memory_bytes": 57144,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 5.566819873002293,
+          "median_change_pct": 2.970700636942669,
+          "before_deviation": 0.22135371799390433,
+          "after_deviation": 1.1918967194037702
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 7.344565764384692,
+          "median_change_pct": 7.3294367144261185,
+          "before_deviation": 0.18365438260490646,
+          "after_deviation": 0.2576416210999326
+        },
+        {
+          "repeat": 3,
+          "mean_change_pct": 4.216125721874109,
+          "median_change_pct": 3.0496751205198125,
+          "before_deviation": 0.22031859195585324,
+          "after_deviation": 0.2673447663804908
+        },
+        {
+          "repeat": 4,
+          "mean_change_pct": 9.175731829044809,
+          "median_change_pct": 6.329909872144213,
+          "before_deviation": 0.21738540444193025,
+          "after_deviation": 0.4847136257933543
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "input": "100 rules / eight matches / 100 events",
+      "run_count": 4,
+      "before_mean_ns": 190358.33714820608,
+      "after_mean_ns": 200951.31583621266,
+      "mean_change_pct": 5.564756893079648,
+      "before_median_ns": 176125.25,
+      "after_median_ns": 183844.25,
+      "median_change_pct": 4.3826765327515504,
+      "before_memory_bytes": 478392,
+      "after_memory_bytes": 478344,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 8.032499370598313,
+          "median_change_pct": 3.7262643988480892,
+          "before_deviation": 0.20075220065395014,
+          "after_deviation": 0.3224915779730651
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 6.7847536497643635,
+          "median_change_pct": 4.4237001589521485,
+          "before_deviation": 0.3125556892052233,
+          "after_deviation": 0.4147902381679257
+        },
+        {
+          "repeat": 3,
+          "mean_change_pct": 3.701092564937314,
+          "median_change_pct": 3.0899619360848174,
+          "before_deviation": 0.18711606328955677,
+          "after_deviation": 0.2171371569360556
+        },
+        {
+          "repeat": 4,
+          "mean_change_pct": 3.7572265542410443,
+          "median_change_pct": 6.295278969957074,
+          "before_deviation": 0.7531847290239654,
+          "after_deviation": 0.8399878290597899
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "input": "100 rules / one matches / 1 events",
+      "run_count": 2,
+      "before_mean_ns": 11142.455023302913,
+      "after_mean_ns": 10397.365448331873,
+      "mean_change_pct": -6.686942629903259,
+      "before_median_ns": 9375.5,
+      "after_median_ns": 9125.5,
+      "median_change_pct": -2.6665244520292286,
+      "before_memory_bytes": 33744,
+      "after_memory_bytes": 32672,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -4.23690969067062,
+          "median_change_pct": -1.8134433706156972,
+          "before_deviation": 0.3600871291071956,
+          "after_deviation": 0.37660835727310227
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -8.908940161603029,
+          "median_change_pct": -3.4898344162649364,
+          "before_deviation": 0.8171504331073561,
+          "after_deviation": 1.113993636438681
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "input": "100 rules / one matches / 10 events",
+      "run_count": 2,
+      "before_mean_ns": 54288.89526407917,
+      "after_mean_ns": 53561.318310830684,
+      "mean_change_pct": -1.3401948035768774,
+      "before_median_ns": 50791.5,
+      "after_median_ns": 49229,
+      "median_change_pct": -3.0763021371686183,
+      "before_memory_bytes": 258176,
+      "after_memory_bytes": 258192,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 2.5052927980795614,
+          "median_change_pct": -0.25029773319068527,
+          "before_deviation": 0.7672679672355761,
+          "after_deviation": 0.683901035819933
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -5.032098077739766,
+          "median_change_pct": -5.766496291456901,
+          "before_deviation": 0.2827067419060711,
+          "after_deviation": 0.3366471613154977
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "input": "100 rules / one matches / 100 events",
+      "run_count": 2,
+      "before_mean_ns": 604863.3656550292,
+      "after_mean_ns": 516312.47079343046,
+      "mean_change_pct": -14.639817831536817,
+      "before_median_ns": 533615.25,
+      "after_median_ns": 506115.25,
+      "median_change_pct": -5.153525878430198,
+      "before_memory_bytes": 2615097.8190437616,
+      "after_memory_bytes": 2609358.8437452656,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -11.113550655460037,
+          "median_change_pct": -4.140623658908282,
+          "before_deviation": 0.4121084443840004,
+          "after_deviation": 0.09457148324330539
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -17.850878119185374,
+          "median_change_pct": -6.131644986761831,
+          "before_deviation": 0.8018380522586892,
+          "after_deviation": 0.07399435121476092
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "input": "100 rules / zero matches / 1 events",
+      "run_count": 2,
+      "before_mean_ns": 10770.494751890797,
+      "after_mean_ns": 10675.108516887714,
+      "mean_change_pct": -0.8856253793386615,
+      "before_median_ns": 9916.5,
+      "after_median_ns": 9938,
+      "median_change_pct": 0.21681036656078234,
+      "before_memory_bytes": 33288,
+      "after_memory_bytes": 32216,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 3.831489540064714,
+          "median_change_pct": 0.9464788732394425,
+          "before_deviation": 0.5764576611227713,
+          "after_deviation": 0.4986473618851343
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -4.749829310382026,
+          "median_change_pct": -0.37415586785909394,
+          "before_deviation": 0.9958436995073869,
+          "after_deviation": 0.4555452394992367
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "input": "100 rules / zero matches / 10 events",
+      "run_count": 2,
+      "before_mean_ns": 51293.75634787817,
+      "after_mean_ns": 49193.52956300055,
+      "mean_change_pct": -4.094507664117475,
+      "before_median_ns": 47562.5,
+      "after_median_ns": 46146,
+      "median_change_pct": -2.978186596583443,
+      "before_memory_bytes": 257632.54065381776,
+      "after_memory_bytes": 258760.52327953104,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -5.45585995531499,
+          "median_change_pct": -2.920312632741484,
+          "before_deviation": 0.9045750519565535,
+          "after_deviation": 0.25569941696564313
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -2.700584806661188,
+          "median_change_pct": -3.034907683020749,
+          "before_deviation": 0.21904282764147587,
+          "after_deviation": 0.18321502941884915
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "input": "100 rules / zero matches / 100 events",
+      "run_count": 2,
+      "before_mean_ns": 519332.0560984117,
+      "after_mean_ns": 499970.1131287983,
+      "mean_change_pct": -3.728239522719612,
+      "before_median_ns": 503396.5,
+      "after_median_ns": 491198.25,
+      "median_change_pct": -2.4231892752532014,
+      "before_memory_bytes": 2612125.2457874073,
+      "after_memory_bytes": 2614681.344235305,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 0.1681972621541794,
+          "median_change_pct": -1.2756182957561202,
+          "before_deviation": 0.08251130602846256,
+          "after_deviation": 0.12272724192862436
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -7.3174768046816,
+          "median_change_pct": -3.525417589992641,
+          "before_deviation": 0.19010433631579313,
+          "after_deviation": 0.08909412625684057
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "input": "10000 rules / all matches / 1 events",
+      "run_count": 2,
+      "before_mean_ns": 6574198.942889902,
+      "after_mean_ns": 6439848.177749302,
+      "mean_change_pct": -2.0436066250459572,
+      "before_median_ns": 6446184.5,
+      "after_median_ns": 6259423.25,
+      "median_change_pct": -2.897237117553808,
+      "before_memory_bytes": 10865152,
+      "after_memory_bytes": 10889272,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -9.977126723955376,
+          "median_change_pct": -9.570414196936227,
+          "before_deviation": 0.1904247285708597,
+          "after_deviation": 0.16861127140695192
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 6.62682460535271,
+          "median_change_pct": 4.294554756620683,
+          "before_deviation": 0.1471719671309386,
+          "after_deviation": 0.21843534241434012
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "input": "10000 rules / all matches / 10 events",
+      "run_count": 2,
+      "before_mean_ns": 39886858.49306774,
+      "after_mean_ns": 39942599.75070249,
+      "mean_change_pct": 0.13974842777964014,
+      "before_median_ns": 38582326.75,
+      "after_median_ns": 38920614.5,
+      "median_change_pct": 0.8767945805653099,
+      "before_memory_bytes": 97091274.8888889,
+      "after_memory_bytes": 96654884,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 1.3607876298895372,
+          "median_change_pct": 2.3581729358965964,
+          "before_deviation": 0.163306472801373,
+          "after_deviation": 0.11475359961122182
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -1.1418495650760474,
+          "median_change_pct": -0.6524530204538137,
+          "before_deviation": 0.06300757864817359,
+          "after_deviation": 0.06554462302007104
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "input": "10000 rules / eight matches / 1 events",
+      "run_count": 2,
+      "before_mean_ns": 377552.880647218,
+      "after_mean_ns": 376919.2400725329,
+      "mean_change_pct": -0.16782829827675094,
+      "before_median_ns": 420792.25,
+      "after_median_ns": 427126,
+      "median_change_pct": 1.5051964478908442,
+      "before_memory_bytes": 888392,
+      "after_memory_bytes": 888344,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -2.2387796673511207,
+          "median_change_pct": 0.024529099688597178,
+          "before_deviation": 0.2384317999174893,
+          "after_deviation": 0.2342194050638232
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 1.9661846484195333,
+          "median_change_pct": 3.0379315223029613,
+          "before_deviation": 0.22912671430472206,
+          "after_deviation": 0.24077405427985318
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "input": "10000 rules / eight matches / 10 events",
+      "run_count": 2,
+      "before_mean_ns": 778249.4019356952,
+      "after_mean_ns": 767701.1979796498,
+      "mean_change_pct": -1.3553757869661731,
+      "before_median_ns": 827834,
+      "after_median_ns": 820521.5,
+      "median_change_pct": -0.8833292664954584,
+      "before_memory_bytes": 949592,
+      "after_memory_bytes": 949544,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -1.993131601439968,
+          "median_change_pct": -2.416104499800742,
+          "before_deviation": 0.15302343536889879,
+          "after_deviation": 0.13772944115870944
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -0.7073111627187156,
+          "median_change_pct": 0.688038045751771,
+          "before_deviation": 0.1465049750986324,
+          "after_deviation": 0.1266651459632141
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "input": "10000 rules / eight matches / 100 events",
+      "run_count": 2,
+      "before_mean_ns": 4715213.488823085,
+      "after_mean_ns": 4746578.122268995,
+      "mean_change_pct": 0.6651794986644033,
+      "before_median_ns": 4731537,
+      "after_median_ns": 4724088.5,
+      "median_change_pct": -0.15742241897295228,
+      "before_memory_bytes": 1561592,
+      "after_memory_bytes": 1561544,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -1.2603134876516764,
+          "median_change_pct": -1.5339006306556602,
+          "before_deviation": 0.07241979138861451,
+          "after_deviation": 0.15174364669462914
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 2.6366168956418745,
+          "median_change_pct": 1.2352303407810572,
+          "before_deviation": 0.04124780923039856,
+          "after_deviation": 0.0522179195322363
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "input": "10000 rules / one matches / 1 events",
+      "run_count": 2,
+      "before_mean_ns": 3731049.520966218,
+      "after_mean_ns": 3786354.81098688,
+      "mean_change_pct": 1.4822984715126442,
+      "before_median_ns": 3572077,
+      "after_median_ns": 3617722.5,
+      "median_change_pct": 1.2778419950073783,
+      "before_memory_bytes": 4111424,
+      "after_memory_bytes": 4111424,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 4.4176609595319105,
+          "median_change_pct": 4.640683665514178,
+          "before_deviation": 0.41161851238981184,
+          "after_deviation": 0.4279005657163616
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -1.442900089899679,
+          "median_change_pct": -1.976117484109119,
+          "before_deviation": 0.40042037290748894,
+          "after_deviation": 0.41126283502420335
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "input": "10000 rules / one matches / 10 events",
+      "run_count": 2,
+      "before_mean_ns": 16978621.795885775,
+      "after_mean_ns": 15870756.892080747,
+      "mean_change_pct": -6.525057905898368,
+      "before_median_ns": 16653571.25,
+      "after_median_ns": 15866360,
+      "median_change_pct": -4.726981607623648,
+      "before_memory_bytes": 42336296,
+      "after_memory_bytes": 42328976,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -16.577247131312156,
+          "median_change_pct": -11.539174198378676,
+          "before_deviation": 0.258054637536834,
+          "after_deviation": 0.08812137411685843
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 5.408755409464372,
+          "median_change_pct": 2.8461796430541586,
+          "before_deviation": 0.07608183019742075,
+          "after_deviation": 0.12912133631632292
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "input": "10000 rules / one matches / 100 events",
+      "run_count": 2,
+      "before_mean_ns": 113174774.22883599,
+      "after_mean_ns": 113484579.78434065,
+      "mean_change_pct": 0.27374082043958303,
+      "before_median_ns": 112967430.25,
+      "after_median_ns": 111949575.25,
+      "median_change_pct": -0.9010163351927725,
+      "before_memory_bytes": 422787800,
+      "after_memory_bytes": 423480192,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 0.27547166905785847,
+          "median_change_pct": -1.7923896070156764,
+          "before_deviation": 0.08317552334535291,
+          "after_deviation": 0.0939339936208064
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 0.27193323990311047,
+          "median_change_pct": 0.017736135902857164,
+          "before_deviation": 0.05574978533211759,
+          "after_deviation": 0.04919263993810526
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "input": "10000 rules / zero matches / 1 events",
+      "run_count": 6,
+      "before_mean_ns": 3640630.2350555887,
+      "after_mean_ns": 3638810.4090223927,
+      "mean_change_pct": -0.04998656594324968,
+      "before_median_ns": 3327732.5,
+      "after_median_ns": 3493986.4166666665,
+      "median_change_pct": 4.996012049245735,
+      "before_memory_bytes": 4110448,
+      "after_memory_bytes": 4110448,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -34.0406974984231,
+          "median_change_pct": -38.61086020827963,
+          "before_deviation": 0.4965969085759591,
+          "after_deviation": 0.3058808906558502
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 4.408019146907272,
+          "median_change_pct": 0.5238148870905679,
+          "before_deviation": 0.3974465286741522,
+          "after_deviation": 0.41209208827092825
+        },
+        {
+          "repeat": 3,
+          "mean_change_pct": -1.0099380015451298,
+          "median_change_pct": -2.5269083052655295,
+          "before_deviation": 0.44161868083197314,
+          "after_deviation": 0.4023538308507036
+        },
+        {
+          "repeat": 4,
+          "mean_change_pct": 31.11985773407664,
+          "median_change_pct": 61.21305626301536,
+          "before_deviation": 0.3731433609034145,
+          "after_deviation": 0.47836195466751896
+        },
+        {
+          "repeat": 5,
+          "mean_change_pct": 9.424323519215982,
+          "median_change_pct": 21.378974898933436,
+          "before_deviation": 0.4010420747231979,
+          "after_deviation": 0.37420390327010383
+        },
+        {
+          "repeat": 6,
+          "mean_change_pct": 0.2716334355403083,
+          "median_change_pct": 10.940358596324185,
+          "before_deviation": 0.412099169574558,
+          "after_deviation": 0.3679150769761482
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "input": "10000 rules / zero matches / 10 events",
+      "run_count": 2,
+      "before_mean_ns": 15789849.872491963,
+      "after_mean_ns": 15766970.31634059,
+      "mean_change_pct": -0.14490040333590137,
+      "before_median_ns": 15788351.25,
+      "after_median_ns": 15706464,
+      "median_change_pct": -0.5186561199669315,
+      "before_memory_bytes": 42324728,
+      "after_memory_bytes": 42324744,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -2.554389542694735,
+          "median_change_pct": -2.2980574519496755,
+          "before_deviation": 0.12113227066020187,
+          "after_deviation": 0.09704259447821287
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 2.366597837619633,
+          "median_change_pct": 1.3253601451337138,
+          "before_deviation": 0.08725431207625445,
+          "after_deviation": 0.1320982051005286
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "parent",
+      "input": "10000 rules / zero matches / 100 events",
+      "run_count": 2,
+      "before_mean_ns": 124275339.91071428,
+      "after_mean_ns": 112691731.21291208,
+      "mean_change_pct": -9.320922965187183,
+      "before_median_ns": 115680413,
+      "after_median_ns": 111276781,
+      "median_change_pct": -3.806722232224391,
+      "before_memory_bytes": 423874648,
+      "after_memory_bytes": 423879280,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -21.13992450439556,
+          "median_change_pct": -10.251753568332223,
+          "before_deviation": 0.27395060334179944,
+          "after_deviation": 0.040529009848562406
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 5.3554077883918305,
+          "median_change_pct": 3.427418185930664,
+          "before_deviation": 0.05281440366511376,
+          "after_deviation": 0.11947500079626883
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "input": "100 rules / all matches / 1 events",
+      "run_count": 2,
+      "before_mean_ns": 15398.774909040512,
+      "after_mean_ns": 15214.658828497591,
+      "mean_change_pct": -1.195654080473818,
+      "before_median_ns": 13958,
+      "after_median_ns": 14479.5,
+      "median_change_pct": 3.736208625877624,
+      "before_memory_bytes": 65136,
+      "after_memory_bytes": 41040,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 2.294958414279513,
+          "median_change_pct": 2.037256680387922,
+          "before_deviation": 0.30528669126040875,
+          "after_deviation": 0.35359355612285304
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -4.566376919212855,
+          "median_change_pct": 5.52897003607451,
+          "before_deviation": 0.5227415370970834,
+          "after_deviation": 0.3580972459569916
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "input": "100 rules / all matches / 10 events",
+      "run_count": 2,
+      "before_mean_ns": 122331.13790883249,
+      "after_mean_ns": 116050.1170700795,
+      "mean_change_pct": -5.134441603440266,
+      "before_median_ns": 113167,
+      "after_median_ns": 110541.5,
+      "median_change_pct": -2.32002262143558,
+      "before_memory_bytes": 518232,
+      "after_memory_bytes": 507440,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -1.6239173984282318,
+          "median_change_pct": -0.45219871470864037,
+          "before_deviation": 0.2578106063076764,
+          "after_deviation": 0.23802474479808577
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -8.35743307651673,
+          "median_change_pct": -4.1110591819425,
+          "before_deviation": 0.47396187220743374,
+          "after_deviation": 0.25821605699477235
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "input": "100 rules / all matches / 100 events",
+      "run_count": 2,
+      "before_mean_ns": 1239016.6106481007,
+      "after_mean_ns": 1179400.4896780055,
+      "mean_change_pct": -4.811567533296546,
+      "before_median_ns": 1140011.75,
+      "after_median_ns": 1105490.25,
+      "median_change_pct": -3.0281705429790473,
+      "before_memory_bytes": 5881328,
+      "after_memory_bytes": 5658930.173651278,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 3.2175355320875676,
+          "median_change_pct": 1.3496004397661299,
+          "before_deviation": 0.11114935707387855,
+          "after_deviation": 0.17984405581566898
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -11.90325223762535,
+          "median_change_pct": -7.1132577069512255,
+          "before_deviation": 0.24845028044868844,
+          "after_deviation": 0.125835570981922
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "input": "100 rules / eight matches / 1 events",
+      "run_count": 2,
+      "before_mean_ns": 4991.906934351224,
+      "after_mean_ns": 5149.5011121527095,
+      "mean_change_pct": 3.15699350717098,
+      "before_median_ns": 4500,
+      "after_median_ns": 4417,
+      "median_change_pct": -1.8444444444444485,
+      "before_memory_bytes": 12880,
+      "after_memory_bytes": 12832,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -2.434861587559245,
+          "median_change_pct": -1.80576965426118,
+          "before_deviation": 1.1260124384467833,
+          "after_deviation": 1.2467821829491514
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 8.554697204113747,
+          "median_change_pct": -1.883830455259028,
+          "before_deviation": 0.8935813428397765,
+          "after_deviation": 1.1333695385634759
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "input": "100 rules / eight matches / 10 events",
+      "run_count": 2,
+      "before_mean_ns": 14786.012070160075,
+      "after_mean_ns": 13821.231002378103,
+      "mean_change_pct": -6.524957934594244,
+      "before_median_ns": 13167,
+      "after_median_ns": 12916.5,
+      "median_change_pct": -1.90248348143085,
+      "before_memory_bytes": 35992,
+      "after_memory_bytes": 35944,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -3.5222469846382554,
+          "median_change_pct": 0.31844660194175756,
+          "before_deviation": 2.1153786676445026,
+          "after_deviation": 1.9850210625971831
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -9.48740763628827,
+          "median_change_pct": -4.027045099933135,
+          "before_deviation": 0.5884734359366892,
+          "after_deviation": 0.13275703931693641
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "input": "100 rules / eight matches / 100 events",
+      "run_count": 2,
+      "before_mean_ns": 114377.95456268545,
+      "after_mean_ns": 117462.00565306819,
+      "mean_change_pct": 2.696368458567333,
+      "before_median_ns": 109896,
+      "after_median_ns": 108479,
+      "median_change_pct": -1.289400888112402,
+      "before_memory_bytes": 266800,
+      "after_memory_bytes": 266800,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 8.869160677139432,
+          "median_change_pct": 0.9691203440796103,
+          "before_deviation": 0.2726348531419376,
+          "after_deviation": 0.5368325942432387
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -3.2401204576705367,
+          "median_change_pct": -3.4482758620689613,
+          "before_deviation": 0.22864516326549375,
+          "after_deviation": 0.20313353385239216
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "input": "100 rules / one matches / 1 events",
+      "run_count": 2,
+      "before_mean_ns": 10580.69943760194,
+      "after_mean_ns": 10334.998307762584,
+      "mean_change_pct": -2.322163400334165,
+      "before_median_ns": 9937.5,
+      "after_median_ns": 9125,
+      "median_change_pct": -8.176100628930815,
+      "before_memory_bytes": 32328,
+      "after_memory_bytes": 32280,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 10.31175199520542,
+          "median_change_pct": 3.734439834024905,
+          "before_deviation": 0.5079911482233356,
+          "after_deviation": 0.41953030088061155
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -13.095424407987121,
+          "median_change_pct": -17.868224128490596,
+          "before_deviation": 0.5685370895905983,
+          "after_deviation": 0.5028452214722788
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "input": "100 rules / one matches / 10 events",
+      "run_count": 2,
+      "before_mean_ns": 50716.052188956906,
+      "after_mean_ns": 49845.011042800805,
+      "mean_change_pct": -1.7174860987026253,
+      "before_median_ns": 47729,
+      "after_median_ns": 46854,
+      "median_change_pct": -1.8332669865281037,
+      "before_memory_bytes": 258464,
+      "after_memory_bytes": 258488,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -0.4105021326515246,
+          "median_change_pct": -0.08692702370352023,
+          "before_deviation": 0.18646327709170102,
+          "after_deviation": 0.1551826810152731
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -2.9840548749982543,
+          "median_change_pct": -3.538888428725251,
+          "before_deviation": 0.1903379558094661,
+          "after_deviation": 0.21664175835670793
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "input": "100 rules / one matches / 100 events",
+      "run_count": 2,
+      "before_mean_ns": 514153.47327211226,
+      "after_mean_ns": 510038.6992129224,
+      "mean_change_pct": -0.800300741528226,
+      "before_median_ns": 503073.75,
+      "after_median_ns": 498500.5,
+      "median_change_pct": -0.9090615441572969,
+      "before_memory_bytes": 2613533.405535259,
+      "after_memory_bytes": 2615175.470425714,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 2.5344411780014564,
+          "median_change_pct": 2.439636072029172,
+          "before_deviation": 0.07959267029221855,
+          "after_deviation": 0.08410166386497879
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -4.000500218867032,
+          "median_change_pct": -4.144738513491064,
+          "before_deviation": 0.09844511265781754,
+          "after_deviation": 0.11715336723126224
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "input": "100 rules / zero matches / 1 events",
+      "run_count": 4,
+      "before_mean_ns": 10420.426056592849,
+      "after_mean_ns": 11141.803867531125,
+      "mean_change_pct": 6.922728562349634,
+      "before_median_ns": 9427,
+      "after_median_ns": 10479.25,
+      "median_change_pct": 11.16208762066404,
+      "before_memory_bytes": 32176,
+      "after_memory_bytes": 33336,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 13.79854320339431,
+          "median_change_pct": 24.28571428571429,
+          "before_deviation": 1.5833099672641389,
+          "after_deviation": 0.32497243487681116
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 3.935262627532432,
+          "median_change_pct": 3.370786516853941,
+          "before_deviation": 0.26803993358564615,
+          "after_deviation": 0.32268424236440135
+        },
+        {
+          "repeat": 3,
+          "mean_change_pct": 4.343588917011165,
+          "median_change_pct": 0.47323943661972123,
+          "before_deviation": 0.6075650786002122,
+          "after_deviation": 0.667265740337714
+        },
+        {
+          "repeat": 4,
+          "mean_change_pct": 6.021981193078041,
+          "median_change_pct": 18.60906452333111,
+          "before_deviation": 0.5266178203595481,
+          "after_deviation": 0.5689356751464653
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "input": "100 rules / zero matches / 10 events",
+      "run_count": 2,
+      "before_mean_ns": 50909.67716436037,
+      "after_mean_ns": 51267.17651569702,
+      "mean_change_pct": 0.7022227820900895,
+      "before_median_ns": 48916.5,
+      "after_median_ns": 50021,
+      "median_change_pct": 2.257929328549668,
+      "before_memory_bytes": 258664,
+      "after_memory_bytes": 257680,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 4.787759214086007,
+          "median_change_pct": 6.501258240958352,
+          "before_deviation": 0.18136796695132118,
+          "after_deviation": 0.21093229948957787
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -3.249585243092068,
+          "median_change_pct": -1.8432160804020103,
+          "before_deviation": 0.21316841267801195,
+          "after_deviation": 0.15870542686854375
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "input": "100 rules / zero matches / 100 events",
+      "run_count": 2,
+      "before_mean_ns": 503595.3168460283,
+      "after_mean_ns": 484530.868595884,
+      "mean_change_pct": -3.785668296032463,
+      "before_median_ns": 489480,
+      "after_median_ns": 475854.25,
+      "median_change_pct": -2.783719457383349,
+      "before_memory_bytes": 2617894.296189419,
+      "after_memory_bytes": 2618182.800527774,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -3.242797738008729,
+          "median_change_pct": -0.702868435284898,
+          "before_deviation": 0.26480879741935504,
+          "after_deviation": 0.09245345686738063
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -4.33768824121139,
+          "median_change_pct": -4.837648959642116,
+          "before_deviation": 0.07947547657915653,
+          "after_deviation": 0.10442451020939875
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "input": "10000 rules / all matches / 1 events",
+      "run_count": 4,
+      "before_mean_ns": 3046724.391072583,
+      "after_mean_ns": 3162937.5963367857,
+      "mean_change_pct": 3.814365539749076,
+      "before_median_ns": 2755338.25,
+      "after_median_ns": 2765958,
+      "median_change_pct": 0.38542454814758376,
+      "before_memory_bytes": 10954440,
+      "after_memory_bytes": 10877200,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 1.6483525037879865,
+          "median_change_pct": 2.867179271581488,
+          "before_deviation": 0.22671078937848368,
+          "after_deviation": 0.2161187051210677
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 12.655096053684733,
+          "median_change_pct": -0.27094445004408607,
+          "before_deviation": 0.2254241128628271,
+          "after_deviation": 0.678049721150429
+        },
+        {
+          "repeat": 3,
+          "mean_change_pct": -2.2230313212566633,
+          "median_change_pct": -1.5236908911446467,
+          "before_deviation": 0.209715135067093,
+          "after_deviation": 0.19997188872804683
+        },
+        {
+          "repeat": 4,
+          "mean_change_pct": 2.8810679011976426,
+          "median_change_pct": 0.5063019057323315,
+          "before_deviation": 0.18971170079278443,
+          "after_deviation": 0.3180329298673075
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "input": "10000 rules / all matches / 10 events",
+      "run_count": 4,
+      "before_mean_ns": 29872877.4991455,
+      "after_mean_ns": 30776024.986867882,
+      "mean_change_pct": 3.023302618732382,
+      "before_median_ns": 29315910.875,
+      "after_median_ns": 29864113.125,
+      "median_change_pct": 1.869981977832702,
+      "before_memory_bytes": 96833560,
+      "after_memory_bytes": 95595120,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -3.048274896276837,
+          "median_change_pct": -3.758899497731527,
+          "before_deviation": 0.13022728255674204,
+          "after_deviation": 0.12392536589307374
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 18.032087123799336,
+          "median_change_pct": 18.78848730401641,
+          "before_deviation": 0.12042633484195098,
+          "after_deviation": 0.39822534312073615
+        },
+        {
+          "repeat": 3,
+          "mean_change_pct": -2.688823916768446,
+          "median_change_pct": -7.234590345949988,
+          "before_deviation": 0.15255062240546258,
+          "after_deviation": 0.12830869643989276
+        },
+        {
+          "repeat": 4,
+          "mean_change_pct": 0.03744635110793926,
+          "median_change_pct": 1.09290503264865,
+          "before_deviation": 0.11115596066073691,
+          "after_deviation": 0.10260106128890438
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "input": "10000 rules / eight matches / 1 events",
+      "run_count": 2,
+      "before_mean_ns": 333697.1660422266,
+      "after_mean_ns": 334936.0171378233,
+      "mean_change_pct": 0.37125010987955065,
+      "before_median_ns": 294438,
+      "after_median_ns": 292271.5,
+      "median_change_pct": -0.7358085573193729,
+      "before_memory_bytes": 884080,
+      "after_memory_bytes": 884032,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 1.3064637913989374,
+          "median_change_pct": -0.11446563796546627,
+          "before_deviation": 0.22610960760035673,
+          "after_deviation": 0.2511155606618463
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -0.5383578054495186,
+          "median_change_pct": -1.3424665809725456,
+          "before_deviation": 0.24056612834372335,
+          "after_deviation": 0.34479496940503884
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "input": "10000 rules / eight matches / 10 events",
+      "run_count": 2,
+      "before_mean_ns": 712148.6137799937,
+      "after_mean_ns": 732928.1008157022,
+      "mean_change_pct": 2.917858243859195,
+      "before_median_ns": 665948.5,
+      "after_median_ns": 663813,
+      "median_change_pct": -0.3206704422338946,
+      "before_memory_bytes": 907192,
+      "after_memory_bytes": 907144,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -2.373006183913029,
+          "median_change_pct": -1.8251410942855095,
+          "before_deviation": 0.1333854625029901,
+          "after_deviation": 0.12166889920108515
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 8.206410521580242,
+          "median_change_pct": 1.1714730935802553,
+          "before_deviation": 0.12399146097904233,
+          "after_deviation": 0.3254883332842767
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "input": "10000 rules / eight matches / 100 events",
+      "run_count": 2,
+      "before_mean_ns": 4530220.312293494,
+      "after_mean_ns": 4525083.025387261,
+      "mean_change_pct": -0.1134003768490488,
+      "before_median_ns": 4414004.75,
+      "after_median_ns": 4408316.5,
+      "median_change_pct": -0.12886823467962438,
+      "before_memory_bytes": 1138312,
+      "after_memory_bytes": 1138264,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -0.43115879106250254,
+          "median_change_pct": 0.4714759079991415,
+          "before_deviation": 0.056780872960926716,
+          "after_deviation": 0.04601905516339883
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 0.1973636782547583,
+          "median_change_pct": -0.7161740052522569,
+          "before_deviation": 0.10117746932234842,
+          "after_deviation": 0.11840136017158201
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "input": "10000 rules / one matches / 1 events",
+      "run_count": 2,
+      "before_mean_ns": 1775106.2023674315,
+      "after_mean_ns": 1799339.9746004655,
+      "mean_change_pct": 1.3652012595479546,
+      "before_median_ns": 1601595.25,
+      "after_median_ns": 1619532.75,
+      "median_change_pct": 1.1199770978341794,
+      "before_memory_bytes": 4110200,
+      "after_memory_bytes": 4110200,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -2.499777413255444,
+          "median_change_pct": -4.310479144728863,
+          "before_deviation": 0.2594591312038087,
+          "after_deviation": 0.24610386290522412
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 5.24451991119288,
+          "median_change_pct": 6.680757358911404,
+          "before_deviation": 0.2631776391345844,
+          "after_deviation": 0.3073384355186626
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "input": "10000 rules / one matches / 10 events",
+      "run_count": 4,
+      "before_mean_ns": 10966329.879190365,
+      "after_mean_ns": 11347166.331343073,
+      "mean_change_pct": 3.4727794654014765,
+      "before_median_ns": 9963089.75,
+      "after_median_ns": 10164397.125,
+      "median_change_pct": 2.020531582584617,
+      "before_memory_bytes": 42319000,
+      "after_memory_bytes": 42317328,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 4.383725182587761,
+          "median_change_pct": 2.363223871857034,
+          "before_deviation": 0.15408314798263698,
+          "after_deviation": 0.19203702611899323
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 8.765394262949954,
+          "median_change_pct": 6.071240391292343,
+          "before_deviation": 0.574845516948038,
+          "after_deviation": 0.4420883070173048
+        },
+        {
+          "repeat": 3,
+          "mean_change_pct": 2.693192523832466,
+          "median_change_pct": 1.7728057956510446,
+          "before_deviation": 0.16326352566157923,
+          "after_deviation": 0.18369286279298103
+        },
+        {
+          "repeat": 4,
+          "mean_change_pct": -2.5017586906820766,
+          "median_change_pct": -2.2717993500809275,
+          "before_deviation": 0.16843921215861998,
+          "after_deviation": 0.1556540135576237
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "input": "10000 rules / one matches / 100 events",
+      "run_count": 2,
+      "before_mean_ns": 93991137.68560606,
+      "after_mean_ns": 94114137.14678031,
+      "mean_change_pct": 0.13086282835055307,
+      "before_median_ns": 91713810,
+      "after_median_ns": 90736275.25,
+      "median_change_pct": -1.0658533867473174,
+      "before_memory_bytes": 426000264,
+      "after_memory_bytes": 426138408,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -1.3623549317151817,
+          "median_change_pct": -3.3091496941172416,
+          "before_deviation": 0.07319794385393619,
+          "after_deviation": 0.06409903095561664
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 1.6467926565762125,
+          "median_change_pct": 1.2628784175252372,
+          "before_deviation": 0.060716692395229394,
+          "after_deviation": 0.07336113167366579
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "input": "10000 rules / zero matches / 1 events",
+      "run_count": 2,
+      "before_mean_ns": 1784625.0296850172,
+      "after_mean_ns": 1794837.971497678,
+      "mean_change_pct": 0.5722738190253596,
+      "before_median_ns": 1602564.25,
+      "after_median_ns": 1604386.75,
+      "median_change_pct": 0.11372398953739538,
+      "before_memory_bytes": 4110168,
+      "after_memory_bytes": 4110168,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 6.320946863216337,
+          "median_change_pct": 5.779320581295444,
+          "before_deviation": 0.24114457108026077,
+          "after_deviation": 0.3894967834390677
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -4.818437182127056,
+          "median_change_pct": -5.175752676333345,
+          "before_deviation": 0.3222025317159125,
+          "after_deviation": 0.25927166388443745
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "input": "10000 rules / zero matches / 10 events",
+      "run_count": 2,
+      "before_mean_ns": 10981858.896358095,
+      "after_mean_ns": 10604821.333795343,
+      "mean_change_pct": -3.433276334371671,
+      "before_median_ns": 10117614.25,
+      "after_median_ns": 9775759.5,
+      "median_change_pct": -3.3788079042448182,
+      "before_memory_bytes": 42319776,
+      "after_memory_bytes": 42318304,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -5.057957158474102,
+          "median_change_pct": -5.968676371798343,
+          "before_deviation": 0.18857570888987857,
+          "after_deviation": 0.1594235561532694
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -1.7773786929214719,
+          "median_change_pct": -0.6940452412923737,
+          "before_deviation": 0.17680950478951216,
+          "after_deviation": 0.16304331400725558
+        }
+      ]
+    },
+    {
+      "mode": "steady",
+      "boundary": "child",
+      "input": "10000 rules / zero matches / 100 events",
+      "run_count": 2,
+      "before_mean_ns": 95012777.703125,
+      "after_mean_ns": 91817037.36339286,
+      "mean_change_pct": -3.3634848038202714,
+      "before_median_ns": 91548965.5,
+      "after_median_ns": 87644552.5,
+      "median_change_pct": -4.264835739733186,
+      "before_memory_bytes": 421817328,
+      "after_memory_bytes": 421729000,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -6.941421310666829,
+          "median_change_pct": -8.318455962246274,
+          "before_deviation": 0.07207113956006045,
+          "after_deviation": 0.10570501030957685
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 0.1331459580590888,
+          "median_change_pct": -0.3084461916926018,
+          "before_deviation": 0.09345120609661975,
+          "after_deviation": 0.07784961227693718
+        }
+      ]
+    },
+    {
+      "mode": "cold",
+      "boundary": "parent",
+      "input": "100 rules / eight matches / 1 events",
+      "run_count": 2,
+      "before_mean_ns": 104251.8969421781,
+      "after_mean_ns": 100068.05509753732,
+      "mean_change_pct": -4.013204524193248,
+      "before_median_ns": 101271,
+      "after_median_ns": 97125,
+      "median_change_pct": -4.093965696003787,
+      "before_memory_bytes": 591.9897066392177,
+      "after_memory_bytes": 591.9645166252143,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -2.6551890884368934,
+          "median_change_pct": -3.608473192777084,
+          "before_deviation": 0.12050145928002287,
+          "after_deviation": 0.14494812925924333
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -5.341472829674454,
+          "median_change_pct": -4.571725245875946,
+          "before_deviation": 0.16785942967829745,
+          "after_deviation": 0.13719519369530483
+        }
+      ]
+    },
+    {
+      "mode": "cold",
+      "boundary": "parent",
+      "input": "1000 rules / eight matches / 1 events",
+      "run_count": 4,
+      "before_mean_ns": 901431.964708809,
+      "after_mean_ns": 902285.781389915,
+      "mean_change_pct": 0.09471781726553274,
+      "before_median_ns": 887267.25,
+      "after_median_ns": 857720.625,
+      "median_change_pct": -3.330070505814342,
+      "before_memory_bytes": 592,
+      "after_memory_bytes": 592,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -3.0258273798809743,
+          "median_change_pct": -4.093947659284181,
+          "before_deviation": 0.10066613689547668,
+          "after_deviation": 0.09458000453161172
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 6.252951344522684,
+          "median_change_pct": -4.190943628110588,
+          "before_deviation": 0.08914589565901486,
+          "after_deviation": 0.5680358229143044
+        },
+        {
+          "repeat": 3,
+          "mean_change_pct": -0.7355172977954294,
+          "median_change_pct": -2.105244289894559,
+          "before_deviation": 0.09387365409359764,
+          "after_deviation": 0.21749337468930707
+        },
+        {
+          "repeat": 4,
+          "mean_change_pct": -2.2038992471991037,
+          "median_change_pct": -2.9330880766654133,
+          "before_deviation": 0.054405703733190765,
+          "after_deviation": 0.07537896496989618
+        }
+      ]
+    },
+    {
+      "mode": "cold",
+      "boundary": "parent",
+      "input": "10000 rules / eight matches / 1 events",
+      "run_count": 6,
+      "before_mean_ns": 11703734.082242666,
+      "after_mean_ns": 11252728.976971777,
+      "mean_change_pct": -3.853514631327537,
+      "before_median_ns": 11044893.833333334,
+      "after_median_ns": 10947559.833333334,
+      "median_change_pct": -0.8812579049537583,
+      "before_memory_bytes": 592,
+      "after_memory_bytes": 592,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 1.0485869727426156,
+          "median_change_pct": -0.6565242598108756,
+          "before_deviation": 0.08378207753078501,
+          "after_deviation": 0.19083149302201835
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 2.4877763808100806,
+          "median_change_pct": 1.3094165033496363,
+          "before_deviation": 0.050648161337495626,
+          "after_deviation": 0.085069864871865
+        },
+        {
+          "repeat": 3,
+          "mean_change_pct": 0.1346543737523076,
+          "median_change_pct": 0.7950211562909093,
+          "before_deviation": 0.07765251941334857,
+          "after_deviation": 0.06887025445415788
+        },
+        {
+          "repeat": 4,
+          "mean_change_pct": 9.654187486450105,
+          "median_change_pct": 4.199236064849776,
+          "before_deviation": 0.03533138735120021,
+          "after_deviation": 0.2502664464060956
+        },
+        {
+          "repeat": 5,
+          "mean_change_pct": -27.582438964207967,
+          "median_change_pct": -9.063574196051894,
+          "before_deviation": 1.0058983744146799,
+          "after_deviation": 0.07384738162465765
+        },
+        {
+          "repeat": 6,
+          "mean_change_pct": 0.28931946610597503,
+          "median_change_pct": -0.903167047857345,
+          "before_deviation": 0.08475865620216039,
+          "after_deviation": 0.0836823253703206
+        }
+      ]
+    },
+    {
+      "mode": "cold",
+      "boundary": "child",
+      "input": "100 rules / eight matches / 1 events",
+      "run_count": 2,
+      "before_mean_ns": 94972.33056358967,
+      "after_mean_ns": 95293.01770326524,
+      "mean_change_pct": 0.3376637571938401,
+      "before_median_ns": 92041.5,
+      "after_median_ns": 92021,
+      "median_change_pct": -0.022272561833525106,
+      "before_memory_bytes": 591.9902877261138,
+      "after_memory_bytes": 591.9764484220443,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 1.0843127430024913,
+          "median_change_pct": -0.17986585907617814,
+          "before_deviation": 0.12090874227955348,
+          "after_deviation": 0.13322034463589705
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": -0.39790504951078276,
+          "median_change_pct": 0.1361774446574815,
+          "before_deviation": 0.2348935660401548,
+          "after_deviation": 0.1862168616354772
+        }
+      ]
+    },
+    {
+      "mode": "cold",
+      "boundary": "child",
+      "input": "1000 rules / eight matches / 1 events",
+      "run_count": 2,
+      "before_mean_ns": 687437.1909804293,
+      "after_mean_ns": 696589.8405265119,
+      "mean_change_pct": 1.3314161157078175,
+      "before_median_ns": 680688,
+      "after_median_ns": 683313.25,
+      "median_change_pct": 0.38567596314318386,
+      "before_memory_bytes": 592,
+      "after_memory_bytes": 592,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": -1.199558666225975,
+          "median_change_pct": -0.60251964086937,
+          "before_deviation": 0.05244698248108611,
+          "after_deviation": 0.027776560660881754
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 3.8987934207321384,
+          "median_change_pct": 1.3851254517355915,
+          "before_deviation": 0.054742937545239304,
+          "after_deviation": 0.1704534315327338
+        }
+      ]
+    },
+    {
+      "mode": "cold",
+      "boundary": "child",
+      "input": "10000 rules / eight matches / 1 events",
+      "run_count": 4,
+      "before_mean_ns": 8393100.298916228,
+      "after_mean_ns": 9082549.068343462,
+      "mean_change_pct": 8.214470754224878,
+      "before_median_ns": 8341003.875,
+      "after_median_ns": 8356862.625,
+      "median_change_pct": 0.1901299919969235,
+      "before_memory_bytes": 592,
+      "after_memory_bytes": 592,
+      "paired": [
+        {
+          "repeat": 1,
+          "mean_change_pct": 2.424075640694645,
+          "median_change_pct": 0.5818357979064714,
+          "before_deviation": 0.05950052858686745,
+          "after_deviation": 0.10392441906811975
+        },
+        {
+          "repeat": 2,
+          "mean_change_pct": 32.199477712108624,
+          "median_change_pct": 5.319735264111225,
+          "before_deviation": 0.06059398187604785,
+          "after_deviation": 0.569145769527547
+        },
+        {
+          "repeat": 3,
+          "mean_change_pct": 2.3002292881673547,
+          "median_change_pct": -1.9288264642704722,
+          "before_deviation": 0.07917868107893773,
+          "after_deviation": 0.30627053517776265
+        },
+        {
+          "repeat": 4,
+          "mean_change_pct": -3.3543623103256537,
+          "median_change_pct": -2.937455447978099,
+          "before_deviation": 0.0801236708807963,
+          "after_deviation": 0.0763584162680253
+        }
+      ]
+    }
+  ]
+}

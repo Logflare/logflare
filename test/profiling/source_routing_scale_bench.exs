@@ -29,6 +29,8 @@ defmodule RoutingScaleBench do
         {"#{count} rules / #{shape} matches / #{batch} events", {count, shape, batch}}
       end
 
+    inputs = filter_inputs(inputs)
+
     scenarios =
       if publication?,
         do: %{"cold synthetic build/publication" => &publish/1},
@@ -262,6 +264,18 @@ defmodule RoutingScaleBench do
         target -> target
       end)
       |> Enum.sort()
+
+  @spec filter_inputs(map()) :: map()
+  def filter_inputs(inputs) do
+    case System.get_env("ROUTING_BENCH_INPUT_FILTER") do
+      nil ->
+        inputs
+
+      pattern ->
+        regex = Regex.compile!(pattern)
+        Map.filter(inputs, fn {name, _input} -> Regex.match?(regex, name) end)
+    end
+  end
 
   def integers(key, default),
     do: System.get_env(key, default) |> String.split(",") |> Enum.map(&String.to_integer/1)
