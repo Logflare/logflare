@@ -9,6 +9,10 @@ those revisions, not measurements of this implementation.
 now measures the published store-only boundaries against their predecessors,
 including small hot-path regressions and all noisy confirmation runs.
 
+[Current-main regression checks](source_routing_current_main_results.md) now compare
+pinned main and both published PR heads, including sparse break-even, concurrency,
+partial/full memory populations and actual local HTTP-to-Postgres ingestion.
+
 ## Implementation
 
 - The production ETS table is named `Logflare.Rules.RoutingSnapshotStore`.
