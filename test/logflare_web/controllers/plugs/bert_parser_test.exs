@@ -100,5 +100,26 @@ defmodule LogflareWeb.BertParserTest do
         BertParser.decode({:ok, body, conn})
       end
     end
+
+    test "rejects a compressed term header before inflating invalid zlib data", %{conn: conn} do
+      body = <<131, 80, 1_000_000::32, "not zlib data">>
+
+      assert_raise Plug.Parsers.ParseError, ~r/compressed BERT payloads are not supported/, fn ->
+        BertParser.decode({:ok, body, conn})
+      end
+    end
+
+    test "decodes an uncompressed term sent with HTTP gzip content encoding" do
+      data = %{"batch" => [%{"message" => "gzipped"}], "source_name" => "dashboard1"}
+
+      conn =
+        :post
+        |> build_conn("/", :zlib.gzip(Bertex.encode(data)))
+        |> put_req_header("content-encoding", "gzip")
+
+      opts = BertParser.init(body_reader: {PlugCaisson, :read_body, []})
+
+      assert {:ok, ^data, _conn} = BertParser.parse(conn, "application", "bert", %{}, opts)
+    end
   end
 end
