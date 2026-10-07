@@ -12,6 +12,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
@@ -3263,6 +3264,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
              "Connection pool PID should be reused across concurrent queries"
 
       assert ConnectionManager.pool_active?(backend)
+    end
+  end
+
+  describe "init/1" do
+    test "gives ingest pipelines a 30 second shutdown to drain in-flight inserts" do
+      backend = %Backend{id: System.unique_integer([:positive]), type: :clickhouse}
+
+      {:ok, {_flags, children}} = ClickHouseAdaptor.init(backend)
+
+      assert %{start: {DynamicPipeline, :start_link, [opts]}} =
+               Enum.find(children, &(&1.id == DynamicPipeline))
+
+      assert Keyword.fetch!(opts, :shutdown) == 30_000
     end
   end
 

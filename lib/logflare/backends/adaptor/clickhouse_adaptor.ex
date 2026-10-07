@@ -43,6 +43,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @min_pipelines 1
   @resolve_interval 10_000
   @scaling_threshold 15_000
+  @pipeline_shutdown_ms 30_000
   @async_insert_busy_timeout_max_ms 3_000
   @insert_max_execution_time_seconds 10
   @max_read_pool_size 4096
@@ -1149,6 +1150,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
             max_pipelines: 1,
             initial_count: @min_pipelines,
             resolve_interval: @resolve_interval,
+            shutdown: @pipeline_shutdown_ms,
             resolve_count: fn state ->
               lens = IngestEventQueue.list_pending_counts({:consolidated, backend.id})
 
