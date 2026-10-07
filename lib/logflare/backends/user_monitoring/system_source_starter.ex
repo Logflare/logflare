@@ -78,7 +78,7 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarter do
 
   @spec start(pos_integer()) :: :ok | {:error, term()}
   defp start(source_id) do
-    case Sources.Cache.get_by_id(source_id) do
+    case Sources.Cache.get_by_id_or_primary(source_id) do
       %Source{} = source -> Backends.ensure_source_sup_started(source)
       nil -> {:error, :not_found}
     end

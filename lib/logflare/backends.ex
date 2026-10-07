@@ -639,13 +639,33 @@ defmodule Logflare.Backends do
   """
   @type log_param :: map()
   @spec ingest_logs([log_param()], Source.t()) ::
-          {:ok, count :: pos_integer()} | {:error, [term()]}
+          {:ok, count :: pos_integer()} | {:error, term()}
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) ::
-          {:ok, count :: pos_integer()} | {:error, [term()]}
+          {:ok, count :: pos_integer()} | {:error, term()}
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil, boolean()) ::
           {:ok, count :: pos_integer()} | {:error, term()}
   def ingest_logs(event_params, source, backend \\ nil, allow_spooling \\ false) do
-    ensure_source_sup_started(source)
+    with :ok <- start_for_ingest(source) do
+      do_ingest_logs(event_params, source, backend, allow_spooling)
+    end
+  end
+
+  @doc """
+  Makes sure that the SourceSup of the source is up before an ingest writes events.
+
+  Returns `{:error, :source_not_found}` for a deleted source and `{:error, :source_unavailable}`
+  for any other failed start. The caller must not write the events then.
+  """
+  @spec start_for_ingest(Source.t()) :: :ok | {:error, :source_not_found | :source_unavailable}
+  def start_for_ingest(source) do
+    case ensure_source_sup_started(source) do
+      :ok -> :ok
+      {:error, :not_found} -> {:error, :source_not_found}
+      {:error, _reason} -> {:error, :source_unavailable}
+    end
+  end
+
+  defp do_ingest_logs(event_params, source, backend, allow_spooling) do
     {log_events, errors} = split_valid_events(source, event_params)
     count = Enum.count(log_events)
     increment_counters(source, count)
@@ -754,10 +774,15 @@ defmodule Logflare.Backends do
   before `Logflare.Backends.Spool.SpoolAck` acks it — see that module's
   moduledoc.
   """
-  @spec dispatch_from_spool([map()], Source.t(), term()) :: {:ok, non_neg_integer()}
+  @spec dispatch_from_spool([map()], Source.t(), term()) ::
+          {:ok, non_neg_integer()} | {:error, :source_not_found | :source_unavailable}
   def dispatch_from_spool(spool_records, source, handle \\ nil) do
-    ensure_source_sup_started(source)
+    with :ok <- start_for_ingest(source) do
+      do_dispatch_from_spool(spool_records, source, handle)
+    end
+  end
 
+  defp do_dispatch_from_spool(spool_records, source, handle) do
     log_events =
       Enum.map(spool_records, fn record ->
         LogEvent.make_from_spool(record, source, handle)
@@ -1095,17 +1120,16 @@ defmodule Logflare.Backends do
 
   Returns `{:error, :already_started}` when the SourceSup is already up.
 
-  The caller waits for the `SourcesSup` partition for at most the `:source_sup_start_timeout`
-  application environment value. The default is 30 seconds. After that time, the caller gets
-  `{:error, :start_timeout}`. A blocked partition can delay ingest, but it can not hold the
-  callers forever. The partition still completes the start after the timeout.
+  The start has two steps: `SourceSup.prefetch/1` warms the caches, then the `SourcesSup`
+  partition starts the `SourceSup`. The caller waits for both steps for at most the
+  `:source_sup_start_timeout` application environment value. The default is 30 seconds. After
+  that time, the caller gets `{:error, :start_timeout}`. A blocked cache or partition can delay
+  ingest, but it can not hold the callers forever. The partition still completes the start after
+  the timeout.
   """
   @spec start_source_sup(Source.t()) ::
           :ok | {:error, :already_started | :not_found | :start_timeout | term()}
-  def start_source_sup(%Source{} = source) do
-    if not source_sup_started?(source), do: SourceSup.prefetch(source)
-    do_start_source_sup(source)
-  end
+  def start_source_sup(%Source{} = source), do: do_start_source_sup(source)
 
   defp do_start_source_sup(source) do
     timeout =
@@ -1115,6 +1139,8 @@ defmodule Logflare.Backends do
       Task.Supervisor.async_nolink(
         {:via, PartitionSupervisor, {Logflare.TaskSupervisors, source.id}},
         fn ->
+          if not source_sup_started?(source), do: SourceSup.prefetch(source)
+
           DynamicSupervisor.start_child(
             {:via, PartitionSupervisor, {SourcesSup, source.id}},
             SourceSup.child_spec(source)
@@ -1169,13 +1195,21 @@ defmodule Logflare.Backends do
   """
   @spec ensure_source_sup_started(Source.t()) ::
           :ok | {:error, :not_found | :start_timeout | term()}
-  def ensure_source_sup_started(%Source{id: id} = source) do
+  def ensure_source_sup_started(%Source{id: id}) do
     if source_sup_started?(id) do
       :ok
     else
       SourceSupStarts
-      |> Cachex.fetch(id, fn _id -> {:ignore, start_source_sup(source)} end)
+      |> Cachex.fetch(id, &start_source_sup_by_id/1)
       |> handle_source_sup_start()
+    end
+  end
+
+  @spec start_source_sup_by_id(pos_integer()) :: {:ignore, :ok | {:error, term()}}
+  defp start_source_sup_by_id(source_id) do
+    case Sources.Cache.get_by_id_or_primary(source_id) do
+      %Source{} = source -> {:ignore, start_source_sup(source)}
+      nil -> {:ignore, {:error, :not_found}}
     end
   end
 

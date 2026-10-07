@@ -43,6 +43,15 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarterTest do
     TestUtils.retry_assert(fn -> assert in_flight() == %{} end)
   end
 
+  test "starts a source whose cache entry holds nil", %{source: source} do
+    {:ok, true} = Cachex.put(Logflare.Sources.Cache, {:get_by, [[id: source.id]]}, {:cached, nil})
+    on_exit(fn -> Backends.stop_source_sup(source) end)
+
+    SystemSourceStarter.request_start(source.id)
+
+    TestUtils.retry_assert(fn -> assert Backends.source_sup_started?(source) end)
+  end
+
   test "survives a start that raises", %{source: source} do
     starter = Process.whereis(SystemSourceStarter)
     stub(Backends, :ensure_source_sup_started, fn _source -> raise "boom" end)

@@ -840,6 +840,64 @@ defmodule Logflare.BackendsTest do
       refute Backends.source_sup_started?(source)
     end
 
+    test "ensure_source_sup_started/1 sends only the source id to the Cachex courier", %{
+      source: source,
+      user: user
+    } do
+      sink = insert(:source, user: user)
+      for _ <- 1..200, do: insert(:rule, source: source, sink: sink.token)
+      source = Repo.preload(source, :rules, force: true)
+      assert :erlang.external_size(source) > 100_000
+
+      courier =
+        Backends.SourceSupStarts
+        |> Supervisor.which_children()
+        |> Enum.find_value(fn
+          {Cachex.Services.Courier, pid, _type, _modules} -> pid
+          _child -> nil
+        end)
+
+      :erlang.trace(courier, true, [:receive])
+      assert :ok = Backends.ensure_source_sup_started(source)
+      :erlang.trace(courier, false, [:receive])
+
+      sizes = collect_dispatch_sizes(courier, [])
+      assert [_ | _] = sizes
+      assert Enum.max(sizes) < 10_000
+    end
+
+    test "start_source_sup/1 returns start_timeout when prefetch does not return", %{
+      source: source
+    } do
+      Application.put_env(:logflare, :source_sup_start_timeout, 100)
+      on_exit(fn -> Application.delete_env(:logflare, :source_sup_start_timeout) end)
+      stub(SourceSup, :prefetch, fn _source -> Process.sleep(:infinity) end)
+
+      capture_log(fn ->
+        assert {:error, :start_timeout} = Backends.start_source_sup(source)
+      end)
+
+      refute Backends.source_sup_started?(source)
+    end
+
+    test "ingest_logs/4 writes nothing and returns source_unavailable when the start fails", %{
+      source: source
+    } do
+      stub_failing_child_spec()
+      reject(IngestEventQueue, :add_to_table, 2)
+
+      assert {:error, :source_unavailable} = Backends.ingest_logs([%{"message" => "x"}], source)
+    end
+
+    test "dispatch_from_spool/3 writes nothing and returns source_unavailable when the start fails",
+         %{source: source} do
+      stub_failing_child_spec()
+      reject(IngestEventQueue, :add_to_table, 2)
+
+      assert {:error, :source_unavailable} =
+               Backends.dispatch_from_spool([%{"message" => "x"}], source)
+    end
+
     test "start_source_sup/1 starts a source when the cache holds nil for it", %{source: source} do
       {:ok, true} = Cachex.put(Sources.Cache, {:get_by, [[id: source.id]]}, {:cached, nil})
       assert Sources.Cache.get_by_id(source.id) == nil
@@ -2675,5 +2733,26 @@ defmodule Logflare.BackendsTest do
 
       refute_receive {:broadcast, _events}
     end
+  end
+
+  defp collect_dispatch_sizes(courier, sizes) do
+    receive do
+      {:trace, ^courier, :receive, {:"$gen_call", _from, {:dispatch, _, _, _, _}} = message} ->
+        collect_dispatch_sizes(courier, [:erlang.external_size(message) | sizes])
+
+      {:trace, ^courier, :receive, _message} ->
+        collect_dispatch_sizes(courier, sizes)
+    after
+      0 -> sizes
+    end
+  end
+
+  defp stub_failing_child_spec do
+    stub(SourceSup, :child_spec, fn received_source ->
+      %{
+        call_original(SourceSup, :child_spec, [received_source])
+        | start: {Function, :identity, [{:error, :boom}]}
+      }
+    end)
   end
 end

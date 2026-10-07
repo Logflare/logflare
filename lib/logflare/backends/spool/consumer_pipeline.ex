@@ -236,8 +236,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
         []
 
       source ->
-        {:ok, _} = Backends.dispatch_from_spool(lines, source, handle)
-        []
+        dispatch_source(source_id, source, lines, handle)
     end
   rescue
     exception ->
@@ -250,6 +249,28 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
       )
 
       [source_id]
+  end
+
+  defp dispatch_source(source_id, source, lines, handle) do
+    case Backends.dispatch_from_spool(lines, source, handle) do
+      {:ok, _count} ->
+        []
+
+      {:error, :source_not_found} ->
+        emit_skipped_telemetry(:unknown_source_id, length(lines))
+        []
+
+      {:error, :source_unavailable} ->
+        count = length(lines)
+        emit_skipped_telemetry(:source_unavailable, count)
+
+        Logger.warning(
+          "spool_consumer: SourceSup did not start for source_id=#{source_id}, " <>
+            "failing #{count} events for redelivery"
+        )
+
+        [source_id]
+    end
   end
 
   defp emit_skipped_telemetry(reason, count) do

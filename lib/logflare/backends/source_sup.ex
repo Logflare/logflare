@@ -87,23 +87,14 @@ defmodule Logflare.Backends.SourceSup do
   @doc """
   Loads the source and starts its children. Returns `:ignore` when the source does not exist.
 
-  The cache can hold `nil` for a source that exists, for example after a read from a replica that
-  lags behind. The cache buster does not remove a cached `nil`, and the children read the source
-  from the same cache entry. Thus `init/1` reads the primary database before it returns
-  `:ignore`. When the primary has the source, `init/1` puts it in the cache entry.
+  The cache can hold `nil` for a source that exists. The children read the source from the same
+  cache entry. Thus `init/1` uses `Sources.Cache.get_by_id_or_primary/1`, which reads the primary
+  database on a cached `nil` and repairs the entry.
   """
   def init(source_id) do
-    case Sources.Cache.get_by_id(source_id) || load_from_primary(source_id) do
+    case Sources.Cache.get_by_id_or_primary(source_id) do
       nil -> :ignore
       source -> source |> Sources.Cache.preload_rules() |> init_children()
-    end
-  end
-
-  @spec load_from_primary(pos_integer()) :: Source.t() | nil
-  defp load_from_primary(source_id) do
-    with %Source{} = source <- Sources.get(source_id) do
-      Sources.Cache.update_by_id(source)
-      source
     end
   end
 
