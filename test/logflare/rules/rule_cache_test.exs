@@ -87,7 +87,7 @@ defmodule Logflare.Rules.CacheTest do
 
       assert :ok = Supervisor.terminate_child(ContextCacheSupervisor, RoutingSnapshotStore)
 
-      assert {tree, %RoutingSnapshot{table: nil} = snapshot} =
+      assert {tree, %RoutingSnapshot{table: RoutingSnapshotStore} = snapshot} =
                @subject.rules_tree_by_source_id(source.id)
 
       expected = RoutingSnapshot.resolve(snapshot, rule_ids)
@@ -96,13 +96,13 @@ defmodule Logflare.Rules.CacheTest do
 
       assert {:ok, _pid} = Supervisor.restart_child(ContextCacheSupervisor, RoutingSnapshotStore)
 
-      assert {:fallback, ^expected, rules_by_id} =
+      assert {:fallback, ^expected, _rules_by_id} =
                RoutingSnapshot.resolve_with_status(snapshot, rule_ids)
 
-      assert {:repaired, repaired} =
-               @subject.repair_routing_snapshot(source.id, snapshot, rules_by_id)
-
-      assert {^tree, ^repaired} = @subject.rules_tree_by_source_id(source.id)
+      assert :ok = RoutingSnapshot.restore(snapshot)
+      :sys.get_state(RoutingSnapshotStore)
+      assert {:ok, ^expected} = RoutingSnapshot.resolve_with_status(snapshot, rule_ids)
+      assert {^tree, ^snapshot} = @subject.rules_tree_by_source_id(source.id)
     end
 
     for invalidation <- [:bust, :expire, :clear] do
@@ -154,32 +154,29 @@ defmodule Logflare.Rules.CacheTest do
       end
     end
 
-    test "repairs the still-current header after its ETS generation is lost", %{source: source} do
-      {_tree, snapshot} = @subject.rules_tree_by_source_id(source.id)
-      rule_ids = snapshot.encoded |> :erlang.binary_to_term() |> Map.keys()
+    test "restores a missing generation without changing the cached header or TTL", %{
+      source: source,
+      rule_ids: rule_ids
+    } do
+      {tree, snapshot} = @subject.rules_tree_by_source_id(source.id)
       expected = RoutingSnapshot.resolve(snapshot, rule_ids)
+      key = {:rules_tree_by_source_id, [source.id]}
+      {:ok, entry_before} = Cachex.inspect(@subject, {:entry, key})
+      RoutingSnapshotStore.delete(RoutingSnapshotStore, snapshot.key)
+      :sys.get_state(RoutingSnapshotStore)
 
-      _replacement =
-        RoutingSnapshot.rehydrate(
-          snapshot,
-          source.id,
-          :erlang.binary_to_term(snapshot.encoded)
-        )
-
-      assert {:fallback, ^expected, encoded_targets} =
+      assert {:fallback, ^expected, _decoded} =
                RoutingSnapshot.resolve_with_status(snapshot, rule_ids)
 
-      assert {:repaired, repaired} =
-               @subject.repair_routing_snapshot(source.id, snapshot, encoded_targets)
-
-      {_tree, ^repaired} = @subject.rules_tree_by_source_id(source.id)
-      assert repaired.key != snapshot.key
-      assert {:ok, ^expected} = RoutingSnapshot.resolve_with_status(repaired, rule_ids)
+      assert :ok = RoutingSnapshot.restore(snapshot)
+      :sys.get_state(RoutingSnapshotStore)
+      assert {^tree, ^snapshot} = @subject.rules_tree_by_source_id(source.id)
+      assert {:ok, ^entry_before} = Cachex.inspect(@subject, {:entry, key})
+      assert {:ok, ^expected} = RoutingSnapshot.resolve_with_status(snapshot, rule_ids)
     end
 
-    test "store failures do not strand repair transaction locks", %{source: source} do
-      {tree, snapshot} = @subject.rules_tree_by_source_id(source.id)
-      rules_by_id = :erlang.binary_to_term(snapshot.encoded)
+    test "store outage does not block restore or invalidation", %{source: source} do
+      {_tree, snapshot} = @subject.rules_tree_by_source_id(source.id)
 
       on_exit(fn ->
         if Process.whereis(RoutingSnapshotStore) == nil do
@@ -188,16 +185,12 @@ defmodule Logflare.Rules.CacheTest do
       end)
 
       assert :ok = Supervisor.terminate_child(ContextCacheSupervisor, RoutingSnapshotStore)
-
-      assert {:error, _reason} =
-               @subject.repair_routing_snapshot(source.id, snapshot, rules_by_id)
-
+      assert :ok = RoutingSnapshot.restore(snapshot)
+      assert {:ok, 1} = @subject.bust_by(source_id: source.id)
       assert {:ok, _pid} = Supervisor.restart_child(ContextCacheSupervisor, RoutingSnapshotStore)
-
-      assert {:repaired, repaired} =
-               @subject.repair_routing_snapshot(source.id, snapshot, rules_by_id)
-
-      assert {^tree, ^repaired} = @subject.rules_tree_by_source_id(source.id)
+      assert :ok = RoutingSnapshot.restore(snapshot)
+      :sys.get_state(RoutingSnapshotStore)
+      assert Cachex.get(@subject, {:rules_tree_by_source_id, [source.id]}) == {:ok, nil}
     end
 
     test "stale repair cannot overwrite a newer cached generation", %{source: source} do
@@ -216,7 +209,8 @@ defmodule Logflare.Rules.CacheTest do
       assert {:fallback, _targets, ^old_rules_by_id} =
                RoutingSnapshot.resolve_with_status(old, Map.keys(old_rules_by_id))
 
-      assert :stale = @subject.repair_routing_snapshot(source.id, old, old_rules_by_id)
+      assert :ok = RoutingSnapshot.restore(old)
+      :sys.get_state(RoutingSnapshotStore)
       assert {^tree, ^current} = @subject.rules_tree_by_source_id(source.id)
       assert :ets.member(current.table, current.key)
     end

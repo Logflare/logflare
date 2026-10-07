@@ -539,7 +539,7 @@ defmodule Logflare.TelemetryTest do
          otlp_compression: nil}
       )
 
-      store = start_supervised!({RoutingSnapshotStore, name: nil})
+      store = start_supervised!({RoutingSnapshotStore, name: nil, table: nil})
       snapshot = RoutingSnapshot.new(1, [{1, {1, 10, nil}}], store: store)
 
       assert %{

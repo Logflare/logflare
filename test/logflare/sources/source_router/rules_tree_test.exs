@@ -436,22 +436,31 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
       end
     end
 
-    test "the first fallback rehydrates the still-current cached header", %{
+    test "fallback restores the store and retains decoded state only within the batch", %{
       source: source,
       log_event: le
     } do
       {tree, snapshot} = Rules.Cache.rules_tree_by_source_id(source.id)
-      encoded_targets = :erlang.binary_to_term(snapshot.encoded)
-      _replacement = RoutingSnapshot.rehydrate(snapshot, source.id, encoded_targets)
+      Rules.RoutingSnapshotStore.delete(Rules.RoutingSnapshotStore, snapshot.key)
+      :sys.get_state(Rules.RoutingSnapshotStore)
       refute :ets.member(snapshot.table, snapshot.key)
 
-      assert [target] = @subject.matching_rules(le, source, {tree, snapshot})
+      assert {[target], {^tree, local}} =
+               @subject.matching_rules_with_state(le, source, {tree, snapshot})
 
-      {^tree, repaired} = Rules.Cache.rules_tree_by_source_id(source.id)
-      assert repaired.key != snapshot.key
+      assert is_map(local.decoded)
+      assert local.key == snapshot.key
+      :sys.get_state(Rules.RoutingSnapshotStore)
+      assert {^tree, ^snapshot} = Rules.Cache.rules_tree_by_source_id(source.id)
+      assert snapshot.decoded == nil
 
       assert {:ok, [^target]} =
-               RoutingSnapshot.resolve_with_status(repaired, [hd(source.rules).id])
+               RoutingSnapshot.resolve_with_status(snapshot, [hd(source.rules).id])
+
+      local = %{local | encoded: <<>>}
+
+      assert {[^target], {^tree, ^local}} =
+               @subject.matching_rules_with_state(le, source, {tree, local})
     end
   end
 
