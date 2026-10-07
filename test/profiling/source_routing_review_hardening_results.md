@@ -2,7 +2,7 @@
 
 ## Scope and revisions
 
-This is the authoritative post-review report for #3943 and #3946. Earlier scale/snapshot reports remain historical.
+This records the earlier transactional hardening of #3943 and #3946. [Store-only restore results](source_routing_restore_results.md) supersede its repair, retirement and memory-bound claims; the measurements below apply only to the recorded revisions. Earlier scale/snapshot reports remain historical.
 
 - Main: `52a4d2bc`.
 - Published parent / child before fixes: `cc3b304b` / `b27aea47`.
