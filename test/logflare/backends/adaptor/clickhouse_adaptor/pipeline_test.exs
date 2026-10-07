@@ -130,6 +130,35 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   defp message_id(%Message{data: %EncodedRow{pointer: %{id: id}}}), do: id
   defp message_id(%Message{data: %LogEventPointer{id: id}}), do: id
 
+  defp hold_inserts_until_released(test_pid) do
+    stub(ClickHouseAdaptor, :insert_log_events_compressed, fn backend,
+                                                              event_type,
+                                                              compressed,
+                                                              opts ->
+      send(test_pid, {:insert_started, self()})
+
+      receive do
+        :release ->
+          Mimic.call_original(ClickHouseAdaptor, :insert_log_events_compressed, [
+            backend,
+            event_type,
+            compressed,
+            opts
+          ])
+      after
+        25_000 -> {:error, :not_released}
+      end
+    end)
+  end
+
+  defp add_spooled_event(backend, source, handle, message) do
+    event =
+      build(:log_event, source: source, message: message)
+      |> Map.merge(%{event_type: :log, day_bucket: @day_bucket, spool_handle: handle})
+
+    :ok = IngestEventQueue.add_to_table({:consolidated, backend.id}, [event])
+  end
+
   defp insert_opts_for_rows(source, backend, row_count) do
     test_pid = self()
 
@@ -1223,6 +1252,60 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       {source, backend} = setup_clickhouse_test(config: %{use_async_inserts_only: true})
 
       assert Keyword.get(insert_opts_for_rows(source, backend, 1), :async) == true
+    end
+  end
+
+  describe "replacing pipelines with an insert in flight" do
+    test "finishes the held insert, inserts events queued during the swap, and acks the spool handle once",
+         %{source: source} do
+      {_source, backend} = setup_clickhouse_test(config: %{batch_timeout: 1_000})
+      start_supervised!(ClickHouseAdaptor.child_spec(backend), id: :in_flight_backend)
+
+      TestUtils.retry_assert(fn ->
+        assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+      end)
+
+      test_pid = self()
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+      stub(QueueMod, :ack, fn _url, acked_handle -> send(test_pid, {:acked, acked_handle}) end)
+      hold_inserts_until_released(test_pid)
+
+      [old_id] =
+        backend
+        |> Backends.via_backend(Pipeline)
+        |> DynamicPipeline.list_pipelines()
+
+      old_pipeline = GenServer.whereis(old_id)
+      old_pipeline_ref = Process.monitor(old_pipeline)
+
+      add_spooled_event(backend, source, handle, "in flight")
+      assert_receive {:insert_started, held_insert}, 5_000
+
+      assert :ok = ClickHouseAdaptor.replace_pipelines(backend)
+
+      add_spooled_event(backend, source, handle, "queued during swap")
+      assert_receive {:insert_started, queued_insert}, 5_000
+      send(queued_insert, :release)
+
+      refute_receive {:acked, _handle}, 300
+      assert Process.alive?(old_pipeline)
+
+      send(held_insert, :release)
+      assert_receive {:DOWN, ^old_pipeline_ref, :process, ^old_pipeline, _reason}, 10_000
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, {[%{"count" => 2}], _bytes}} =
+                 ClickHouseAdaptor.execute_ch_query(
+                   backend,
+                   "SELECT count(*) as count FROM #{table_name}"
+                 )
+      end)
+
+      assert_receive {:acked, ^handle}, 5_000
+      refute_receive {:acked, _handle}, 500
     end
   end
 
