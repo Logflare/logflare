@@ -5,6 +5,10 @@ retirement and memory-bound claims in the earlier routing hardening reports.
 Their hot-path and publication measurements remain historical measurements of
 those revisions, not measurements of this implementation.
 
+[Steady-state and cold-publication follow-up](source_routing_store_only_steady_results.md)
+now measures the published store-only boundaries against their predecessors,
+including small hot-path regressions and all noisy confirmation runs.
+
 ## Implementation
 
 - The production ETS table is named `Logflare.Rules.RoutingSnapshotStore`.
