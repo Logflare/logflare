@@ -15,7 +15,15 @@ defmodule RoutingScaleBench do
     sizes = integers("ROUTING_BENCH_RULES", "100,1000,10000")
     publication? = System.get_env("ROUTING_BENCH_PUBLICATION") == "1"
     batches = if publication?, do: [1], else: integers("ROUTING_BENCH_BATCHES", "1,10,100")
-    shapes = if publication?, do: [:eight], else: [:zero, :one, :eight, :all]
+
+    shapes =
+      if publication?,
+        do: [:eight],
+        else:
+          System.get_env("ROUTING_BENCH_SHAPES", "zero,one,eight,all")
+          |> String.split(",")
+          |> Enum.map(&String.to_existing_atom/1)
+
     fallback? = System.get_env("ROUTING_BENCH_FALLBACK") == "1"
     compare? = System.get_env("ROUTING_BENCH_COMPARE_BATCH") == "1"
 
@@ -77,6 +85,8 @@ defmodule RoutingScaleBench do
           mean_ns: scenario.run_time_data.statistics.average,
           median_ns: scenario.run_time_data.statistics.median,
           deviation: scenario.run_time_data.statistics.std_dev_ratio,
+          p99_ns: Map.get(scenario.run_time_data.statistics.percentiles, 99),
+          samples: scenario.run_time_data.statistics.sample_size,
           memory_bytes: scenario.memory_usage_data.statistics.average
         }
       end)
@@ -88,7 +98,7 @@ defmodule RoutingScaleBench do
 
     IO.write(["ROUTING_RESULTS ", output, "\n"])
 
-    unless fallback? or publication? do
+    unless fallback? or publication? or System.get_env("ROUTING_BENCH_SKIP_FOOTPRINT") == "1" do
       footprints =
         for count <- sizes, shape <- [:zero, :one, :eight, :all], do: footprint(count, shape)
 
@@ -100,7 +110,7 @@ defmodule RoutingScaleBench do
     source_id = 1_900_000_000 + count
 
     rules =
-      for i <- 1..count do
+      for i <- 1..count//1 do
         lql =
           case shape do
             :zero -> ~s(metadata.rule_id:"rule-#{i}" severity_number:>8)
@@ -127,7 +137,7 @@ defmodule RoutingScaleBench do
       body: %{
         "metadata" => %{
           "type" => "otel_log",
-          "rule_id" => if(shape == :zero, do: "absent", else: "rule-100")
+          "rule_id" => if(shape == :zero, do: "absent", else: "rule-#{min(count, 100)}")
         },
         "severity_number" => 9
       }
@@ -138,6 +148,11 @@ defmodule RoutingScaleBench do
 
   def warm(fixture, mode \\ :full) do
     cleanup(fixture)
+    publish_header(fixture, mode)
+  end
+
+  @spec publish_header(map(), atom()) :: term()
+  def publish_header(fixture, mode \\ :full) do
     publisher_opts = if mode == :publication, do: [publisher: self()], else: []
 
     header =
@@ -240,6 +255,8 @@ defmodule RoutingScaleBench do
     |> Enum.sum()
   end
 
+  def matching(%{count: 0}), do: []
+
   def matching(fixture) do
     count =
       case fixture.shape do
@@ -250,7 +267,7 @@ defmodule RoutingScaleBench do
       end
 
     if fixture.shape == :one,
-      do: [Enum.at(fixture.rules, 99)],
+      do: [Enum.at(fixture.rules, min(fixture.count, 100) - 1)],
       else: Enum.take(fixture.rules, count)
   end
 
@@ -283,4 +300,4 @@ defmodule RoutingScaleBench do
   def number(key, default), do: System.get_env(key, default) |> Float.parse() |> elem(0)
 end
 
-RoutingScaleBench.run()
+if System.get_env("ROUTING_BENCH_LIBRARY") != "1", do: RoutingScaleBench.run()
