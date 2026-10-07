@@ -135,8 +135,8 @@ defmodule Logflare.Backends.Adaptor do
   end
 
   @doc """
-  Returns the config keys an adaptor reads on every batch, so changes to them need no
-  pipeline restart or replacement.
+  Returns the config keys whose changes need no ingest pipeline restart or replacement,
+  because the adaptor reads them on every batch or ingestion does not use them.
 
   Defaults to `[]`.
   """
@@ -378,8 +378,9 @@ defmodule Logflare.Backends.Adaptor do
   @callback pipeline_config_keys() :: [atom()]
 
   @doc """
-  Optional callback listing config keys the adaptor reads on every batch, so a change to
-  them takes effect without restarting or replacing the ingest pipelines.
+  Optional callback listing config keys whose changes take effect without restarting or
+  replacing the ingest pipelines, because they are read on every batch or not used by
+  ingestion.
   """
   @callback runtime_config_keys() :: [atom()]
 

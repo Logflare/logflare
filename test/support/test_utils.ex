@@ -513,14 +513,25 @@ defmodule Logflare.TestUtils do
   end
 
   @doc """
+  Returns the pid of the running consolidated pipeline supervisor for a backend.
+  """
+  @spec consolidated_sup_pid(Backends.Backend.t()) :: pid()
+  def consolidated_sup_pid(backend) do
+    {_backend_id, pid} =
+      Enum.find(Backends.ConsolidatedSup.list_pipelines(), &(elem(&1, 0) == backend.id))
+
+    pid
+  end
+
+  @doc """
   Returns the state of the running ClickHouse batcher for a backend's single ingest pipeline.
   """
   @spec clickhouse_batcher_state(Backends.Backend.t()) :: map()
   def clickhouse_batcher_state(backend) do
-    [pipeline_name] =
-      backend
-      |> Backends.via_backend(ClickHousePipeline)
-      |> DynamicPipeline.list_pipelines()
+    assert [pipeline_name] =
+             backend
+             |> Backends.via_backend(ClickHousePipeline)
+             |> DynamicPipeline.list_pipelines()
 
     %GenStage{state: state} =
       pipeline_name

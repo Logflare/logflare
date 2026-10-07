@@ -52,7 +52,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     :use_async_inserts_for_small_batches,
     :use_async_inserts_only,
     :async_insert_max_rows,
-    :async_insert_cluster_url
+    :async_insert_cluster_url,
+    :read_pool_size,
+    :labeled_read_pool_size,
+    :read_only_urls,
+    :default_read_cluster,
+    :query_user,
+    :query_password,
+    :replica_routing_param
   ]
   @async_insert_busy_timeout_max_ms 3_000
   @insert_max_execution_time_seconds 10

@@ -173,7 +173,7 @@ defmodule Logflare.BackendsTest do
       user: user
     } do
       assert {:ok, backend} = Backends.create_backend(user, clickhouse_backend_attrs())
-      adaptor_sup = consolidated_sup_pid(backend)
+      adaptor_sup = TestUtils.consolidated_sup_pid(backend)
       pipeline_sup = Backends.via_backend(backend, ClickHousePipeline)
       [old_id] = DynamicPipeline.list_pipelines(pipeline_sup)
 
@@ -189,7 +189,7 @@ defmodule Logflare.BackendsTest do
           new_id
         end)
 
-      assert consolidated_sup_pid(backend) == adaptor_sup
+      assert TestUtils.consolidated_sup_pid(backend) == adaptor_sup
 
       {:ok, %{start: {ClickHousePipeline, :start_link, [args]}}} =
         :supervisor.get_childspec(pipeline_sup, new_id)
@@ -210,7 +210,7 @@ defmodule Logflare.BackendsTest do
       user: user
     } do
       assert {:ok, backend} = Backends.create_backend(user, clickhouse_backend_attrs())
-      adaptor_sup = consolidated_sup_pid(backend)
+      adaptor_sup = TestUtils.consolidated_sup_pid(backend)
       pipeline_sup = Backends.via_backend(backend, ClickHousePipeline)
       pipelines = DynamicPipeline.list_pipelines(pipeline_sup)
 
@@ -224,7 +224,7 @@ defmodule Logflare.BackendsTest do
 
       assert {:ok, _updated} = Backends.update_backend(backend, %{config: config})
 
-      assert consolidated_sup_pid(backend) == adaptor_sup
+      assert TestUtils.consolidated_sup_pid(backend) == adaptor_sup
       assert DynamicPipeline.list_pipelines(pipeline_sup) == pipelines
 
       Backends.ConsolidatedSup.stop_pipeline(backend)
@@ -263,7 +263,7 @@ defmodule Logflare.BackendsTest do
       Backends.ConsolidatedSup.stop_pipeline(backend)
     end
 
-    test "replace_pipelines_with_latest/1 ends on the latest saved limits when swaps run in reverse order",
+    test "replace_pipelines_with_latest/1 uses limits saved while the swap waits for the coordinator",
          %{user: user} do
       config =
         Map.merge(clickhouse_backend_attrs().config, %{batch_size: 2_000, batch_timeout: 1_500})
@@ -271,20 +271,25 @@ defmodule Logflare.BackendsTest do
       assert {:ok, backend} =
                Backends.create_backend(user, %{clickhouse_backend_attrs() | config: config})
 
-      for {batch_size, batch_timeout} <- [{2_500, 2_000}, {3_000, 2_500}] do
-        {:ok, _saved} =
-          backend
-          |> Repo.reload!()
-          |> Backend.changeset(%{
-            config: %{config | batch_size: batch_size, batch_timeout: batch_timeout}
-          })
-          |> Repo.update()
-      end
-
-      assert :ok = Backends.replace_pipelines_with_latest(backend.id)
-      assert :ok = Backends.replace_pipelines_with_latest(backend.id)
-
       pipeline_sup = Backends.via_backend(backend, ClickHousePipeline)
+      coordinator = DynamicPipeline.find_coordinator_name(pipeline_sup)
+      :ok = :sys.suspend(coordinator)
+
+      swap = Task.async(fn -> Backends.replace_pipelines_with_latest(backend.id) end)
+
+      TestUtils.retry_assert(fn ->
+        {:messages, messages} = Process.info(coordinator, :messages)
+        assert Enum.any?(messages, &match?({:"$gen_call", _from, {:replace_pipelines, _}}, &1))
+      end)
+
+      {:ok, _saved} =
+        backend
+        |> Repo.reload!()
+        |> Backend.changeset(%{config: %{config | batch_size: 3_000, batch_timeout: 2_500}})
+        |> Repo.update()
+
+      :ok = :sys.resume(coordinator)
+      assert :ok = Task.await(swap, 30_000)
 
       TestUtils.retry_assert(fn ->
         assert [_pipeline] = DynamicPipeline.list_pipelines(pipeline_sup)
@@ -304,12 +309,12 @@ defmodule Logflare.BackendsTest do
       user: user
     } do
       assert {:ok, backend} = Backends.create_backend(user, clickhouse_backend_attrs())
-      adaptor_sup = consolidated_sup_pid(backend)
+      adaptor_sup = TestUtils.consolidated_sup_pid(backend)
 
       config = Map.put(clickhouse_backend_attrs().config, :database, "other_db")
       assert {:ok, updated} = Backends.update_backend(backend, %{config: config})
 
-      refute consolidated_sup_pid(updated) == adaptor_sup
+      refute TestUtils.consolidated_sup_pid(updated) == adaptor_sup
 
       Backends.ConsolidatedSup.stop_pipeline(updated)
     end
@@ -2746,12 +2751,5 @@ defmodule Logflare.BackendsTest do
         password: "pass"
       }
     }
-  end
-
-  defp consolidated_sup_pid(backend) do
-    {_backend_id, pid} =
-      Enum.find(Backends.ConsolidatedSup.list_pipelines(), &(elem(&1, 0) == backend.id))
-
-    pid
   end
 end
