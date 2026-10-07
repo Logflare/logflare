@@ -43,7 +43,7 @@ Alert events are sent to the Incident.io HTTP Alert Events endpoint at `https://
 
 The backend automatically handles:
 
-- **Deduplication**: Uses a hash of the batch data combined with the current minute for deduplication keys. The deduplication key is a combination of the data sent and the current minute.
+- **Deduplication**: Uses the alert title combined with the current 3-hour time window for deduplication keys, so repeated firings of the same alert within a window are deduplicated by incident.io regardless of the batch data sent.
 - **Metadata merging**: Combines configured metadata with the actual alert data. See [Metadata management](#metadata-management).
 - **Status management**: Sets alert event status to "firing".
 

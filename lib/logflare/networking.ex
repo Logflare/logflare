@@ -1,12 +1,23 @@
 defmodule Logflare.Networking do
   @moduledoc false
 
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
   alias Logflare.Backends.Adaptor.DatadogAdaptor
   alias Logflare.SingleTenant
 
+  # Finch bounds only connect and receive. Without `send_timeout` a peer that accepts
+  # the connection and then stops reading blocks the insert inside `:gen_tcp.send`
+  # forever, wedging a batcher and leaking the connection out of the pool.
+  @clickhouse_transport_opts [
+    timeout: :timer.seconds(10),
+    send_timeout: :timer.seconds(15),
+    send_timeout_close: true
+  ]
+
   @s3_connect_timeout :timer.seconds(5)
   @s3_send_timeout :timer.seconds(30)
+  @spool_pool_size 150
 
   def pools do
     if SingleTenant.postgres_backend?() do
@@ -19,6 +30,8 @@ defmodule Logflare.Networking do
   defp finch_pools(true = _postgres_backend?) do
     [
       {Finch,
+       name: Logflare.FinchDefaultHttp1, pools: %{default: [protocols: [:http1], size: 50]}},
+      {Finch,
        name: Logflare.FinchDefault,
        pools:
          %{
@@ -26,7 +39,7 @@ defmodule Logflare.Networking do
            :default => [protocols: [:http1]]
          }
          |> Map.merge(datadog_connection_pools())}
-      | base_finch_pools()
+      | spool_finch_pools() ++ base_finch_pools()
     ]
   end
 
@@ -74,8 +87,63 @@ defmodule Logflare.Networking do
            ]
          }
          |> Map.merge(datadog_connection_pools())}
-      | base_finch_pools()
+      | spool_finch_pools() ++ base_finch_pools()
     ]
+  end
+
+  defp spool_finch_pools do
+    if Backends.spool_producer_mode?() or Backends.spool_consumer_mode?() do
+      spool_config = Application.get_env(:logflare, :spool, [])
+
+      case Keyword.get(spool_config, :provider, :aws) do
+        :gcp -> [spool_gcs_pubsub_pool()]
+        _aws -> [spool_s3_pool(), spool_sqs_pool()]
+      end
+    else
+      []
+    end
+  end
+
+  defp spool_gcs_pubsub_pool do
+    {Finch,
+     name: Logflare.FinchSpool,
+     pools: %{
+       :default => [protocols: [:http1]],
+       "https://storage.googleapis.com" => [
+         protocols: [:http1],
+         size: @spool_pool_size,
+         start_pool_metrics?: true
+       ],
+       "https://pubsub.googleapis.com" => [
+         protocols: [:http1],
+         size: @spool_pool_size,
+         start_pool_metrics?: true
+       ]
+     }}
+  end
+
+  defp spool_s3_pool do
+    {Finch,
+     name: Logflare.FinchSpoolS3,
+     pools: %{
+       default: [
+         protocols: [:http1],
+         size: @spool_pool_size,
+         start_pool_metrics?: true
+       ]
+     }}
+  end
+
+  defp spool_sqs_pool do
+    {Finch,
+     name: Logflare.FinchSpoolSQS,
+     pools: %{
+       default: [
+         protocols: [:http1],
+         size: @spool_pool_size,
+         start_pool_metrics?: true
+       ]
+     }}
   end
 
   defp base_finch_pools do
@@ -92,7 +160,7 @@ defmodule Logflare.Networking do
            conn_max_idle_time: 5_000,
            start_pool_metrics?: true,
            conn_opts: [
-             transport_opts: [timeout: 10_000]
+             transport_opts: @clickhouse_transport_opts
            ]
          ]
        }},
@@ -110,7 +178,7 @@ defmodule Logflare.Networking do
            conn_max_idle_time: 5_000,
            start_pool_metrics?: true,
            conn_opts: [
-             transport_opts: [timeout: 10_000]
+             transport_opts: @clickhouse_transport_opts
            ]
          ]
        }},

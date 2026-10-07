@@ -1221,8 +1221,8 @@
     {
       "source": "smells",
       "kind": "behaviour_candidate",
-      "fingerprint": "sha256:43d5d7cea65a0acc84a9477a203efbc0e5a491f977a6216ac04e0a22525f95c5",
-      "message": "4 modules expose the same 5 public callbacks; consider extracting a behaviour if these modules are interchangeable implementations",
+      "fingerprint": "sha256:7af484b68168d6d089973247cfe765e0ed7d7c61aad9e3736c07775496e2f480",
+      "message": "3 modules expose the same 5 public callbacks; consider extracting a behaviour if these modules are interchangeable implementations",
       "file": "lib/logflare_web/live/alerts/alerts_live.ex",
       "line": 1
     },

@@ -8,6 +8,10 @@ export function activateDelegatedTooltips(el, selector) {
   })
 }
 
+export function scrollToPageBottom() {
+  window.scrollTo(0, document.body.scrollHeight)
+}
+
 export function activateClipboardForSelector(selector, options) {
   const clipboard = new ClipboardJS(selector, options)
 

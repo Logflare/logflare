@@ -9,7 +9,7 @@ ARG RUNNER_IMAGE="debian:${DEBIAN_VERSION}"
 FROM ${BUILDER_IMAGE} AS builder
 
 ARG RUST_VERSION
-ENV MIX_ENV prod
+ENV MIX_ENV=prod
 
 WORKDIR /app
 
@@ -64,25 +64,34 @@ RUN find native Cargo.toml Cargo.lock -exec touch -h -d @1 {} + && \
 
 FROM ${RUNNER_IMAGE}
 
-# Required for the BeamVM to run
-RUN apt-get update -y && apt-get install -y curl libstdc++6 openssl locales \
+# Install runtime dependencies and the commercial-region RDS CA bundle.
+RUN apt-get update -y && apt-get install -y ca-certificates curl libstdc++6 openssl locales \
+    && curl --fail --show-error --location --retry 3 \
+      --output /tmp/aws-rds-global-bundle.pem \
+      https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
+    && echo "fe45bbebf92ad3e27a583bbb2ddd1553c521ed4d49af5514dc0a40372ea5395c  /tmp/aws-rds-global-bundle.pem" \
+      | sha256sum --check - \
+    && openssl crl2pkcs7 -nocrl -certfile /tmp/aws-rds-global-bundle.pem \
+      | openssl pkcs7 -print_certs -noout | grep --quiet "Amazon RDS" \
+    && install -m 0644 /tmp/aws-rds-global-bundle.pem /etc/ssl/certs/aws-rds-global-bundle.pem \
+    && rm /tmp/aws-rds-global-bundle.pem \
     && apt-get clean && rm -f /var/lib/apt/lists/*_*
 
 # Set the locale
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
 
-ENV LANG en_US.UTF-8
-ENV LANGUAGE en_US:en
-ENV LC_ALL en_US.UTF-8
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+ENV LC_ALL=en_US.UTF-8
 
 # Git commit SHA of the build, surfaced as an OTel resource attribute at runtime
 # (see Logflare.Telemetry). Passed in by CI; empty in local/ad-hoc builds.
 ARG COMMIT_SHA
 ENV LOGFLARE_COMMIT_SHA=${COMMIT_SHA}
 
-# Copy required files from builder step
-COPY --from=builder app/_build/prod /opt/app
-COPY --from=builder app/VERSION /opt/app/VERSION
+# Only the self-contained release is needed at runtime, not the rest of _build.
+COPY --from=builder /app/_build/prod/rel/logflare /opt/app/rel/logflare
+COPY --from=builder /app/VERSION /opt/app/VERSION
 COPY --from=builder app/priv/static /opt/app/rel/logflare/bin/priv/static
 
 # Move files to the correct folder taking into consideration the VERSION
