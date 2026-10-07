@@ -15,7 +15,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   require Logger
   require Logflare.Backends.QueryError
 
-  alias __MODULE__.CircuitBreaker
   alias __MODULE__.ConnectionManager
   alias __MODULE__.EndpointUtils
   alias __MODULE__.Ingester
@@ -29,6 +28,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias Logflare.Backends.Adaptor
   alias Logflare.Ecto.ClickHouse, as: EctoClickHouse
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.CircuitBreaker
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.IngestEventQueue
