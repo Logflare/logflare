@@ -252,6 +252,51 @@ defmodule LogflareWeb.LogControllerTest do
       end
     end
 
+    test "returns 503 with retry-after when the SourceSup does not start in time", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      Mimic.stub(Logflare.Backends, :ensure_source_sup_started, fn _source ->
+        {:error, :start_timeout}
+      end)
+
+      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> post(Routes.log_path(conn, :create, source: source.token), @valid)
+
+      assert %{"message" => "Source is starting. Send the batch again."} =
+               json_response(conn, 503)
+
+      assert get_resp_header(conn, "retry-after") == ["5"]
+    end
+
+    test "otel_logs returns 503 with retry-after when the SourceSup does not start in time", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      Mimic.stub(Logflare.Backends, :ensure_source_sup_started, fn _source ->
+        {:error, :start_timeout}
+      end)
+
+      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+      body = TestUtilsGrpc.random_otel_logs_request() |> ExportLogsServiceRequest.encode()
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> put_req_header("x-source", Atom.to_string(source.token))
+        |> put_req_header("content-type", "application/x-protobuf")
+        |> post(Routes.log_path(conn, :otel_logs), body)
+
+      assert conn.status == 503
+      assert get_resp_header(conn, "retry-after") == ["5"]
+    end
+
     test "invaild source token uuid checks", %{conn: conn, user: user} do
       conn =
         conn

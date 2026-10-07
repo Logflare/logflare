@@ -41,6 +41,26 @@ defmodule LogflareGrpc.Logs.ServerTest do
 
       assert {:ok, %ExportLogsServiceResponse{}} = emulate_request(channel, request)
     end
+
+    test "returns UNAVAILABLE when the SourceSup does not start in time", %{
+      source: source,
+      user: user,
+      port: port
+    } do
+      Mimic.set_mimic_global()
+
+      Mimic.stub(Logflare.Backends, :ensure_source_sup_started, fn _source ->
+        {:error, :start_timeout}
+      end)
+
+      access_token = insert(:access_token, resource_owner: user, scopes: "ingest")
+      headers = [{"x-api-key", access_token.token}, {"x-source", source.token}]
+      {:ok, channel} = GRPC.Stub.connect("localhost:#{port}", headers: headers)
+      unavailable = GRPC.Status.unavailable()
+
+      assert {:error, %GRPC.RPCError{status: ^unavailable}} =
+               emulate_request(channel, TestUtilsGrpc.random_otel_logs_request())
+    end
   end
 
   defp emulate_request(channel, request) do

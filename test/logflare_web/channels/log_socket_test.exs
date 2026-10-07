@@ -33,6 +33,27 @@ defmodule LogflareWeb.LogSocketTest do
       leave(socket)
     end
 
+    test "replies with an error when the SourceSup does not start in time" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      token = insert(:access_token, resource_owner: user)
+
+      {:ok, socket} = Phoenix.ChannelTest.connect(LogSocket, %{"access_token" => token.token})
+      {:ok, _, socket} = subscribe_and_join(socket, LogChannel, "logs:#{source.token}")
+
+      stub(Backends, :ensure_source_sup_started, fn _source -> {:error, :start_timeout} end)
+      reject(Backends, :ingest_logs, 4)
+
+      Phoenix.ChannelTest.push(socket, "batch", %{"batch" => [%{"message" => "early-log"}]})
+
+      Phoenix.ChannelTest.assert_push("batch", %{
+        message: "Batch error",
+        errors: ["Source is starting. Send the batch again."]
+      })
+
+      leave(socket)
+    end
+
     test "access token cannot connect with an unknown token" do
       assert :error =
                Phoenix.ChannelTest.connect(LogSocket, %{"access_token" => "not-a-real-token"})

@@ -20,6 +20,11 @@ defmodule LogflareGrpc.Trace.Server do
     source = stream.local.source
 
     case Processor.ingest(spans, OtelTrace, source) do
+      {:error, :source_unavailable} ->
+        raise GRPC.RPCError,
+          status: :unavailable,
+          message: "Source is starting. Send the batch again."
+
       {:error, errors} when is_list(errors) ->
         Logger.warning("OTLP gRPC ingest rejected #{length(errors)} event(s) at validation",
           source_token: source.token,
