@@ -939,6 +939,75 @@ defmodule Logflare.Logs.SearchOperationsTest do
     end
   end
 
+  describe "intersperse_missing_range_timestamps/4" do
+    test "fills the empty buckets between min and max" do
+      populated_ts =
+        ~N[2026-09-17 12:02:00]
+        |> DateTime.from_naive!("Etc/UTC")
+        |> DateTime.to_unix(:microsecond)
+
+      aggs = [%{"timestamp" => populated_ts, "datetime" => ~N[2026-09-17 12:02:00], "value" => 7}]
+
+      rows =
+        SearchOperations.intersperse_missing_range_timestamps(
+          aggs,
+          ~N[2026-09-17 12:00:00],
+          ~N[2026-09-17 12:04:00],
+          :minute
+        )
+
+      timestamps = Enum.map(rows, & &1["timestamp"])
+
+      assert length(rows) == 5
+      assert timestamps == Enum.sort(timestamps, :desc)
+      assert Enum.find(rows, &(&1["timestamp"] == populated_ts))["value"] == 7
+      assert Enum.count(rows, &(&1["value"] == 0)) == 4
+    end
+
+    test "returns the aggregates when the range is narrower than one chart period" do
+      aggs = [%{"timestamp" => 123, "value" => 7}]
+
+      assert SearchOperations.intersperse_missing_range_timestamps(
+               aggs,
+               ~N[2026-09-17 12:00:10],
+               ~N[2026-09-17 12:00:40],
+               :minute
+             ) == aggs
+    end
+
+    test "returns the aggregates when the range is inverted" do
+      aggs = [%{"timestamp" => 123, "value" => 7}]
+
+      assert SearchOperations.intersperse_missing_range_timestamps(
+               aggs,
+               ~N[2026-09-17 13:00:00],
+               ~N[2026-09-17 12:00:00],
+               :minute
+             ) == aggs
+    end
+
+    test "returns an empty list when there are no aggregates and the range is invalid" do
+      assert SearchOperations.intersperse_missing_range_timestamps(
+               [],
+               ~N[2026-09-17 12:00:10],
+               ~N[2026-09-17 12:00:40],
+               :minute
+             ) == []
+    end
+
+    test "still fills a single second bucket when min and max collapse" do
+      rows =
+        SearchOperations.intersperse_missing_range_timestamps(
+          [],
+          ~N[2026-09-17 12:00:10],
+          ~N[2026-09-17 12:00:10],
+          :second
+        )
+
+      refute rows == []
+    end
+  end
+
   describe "event page window" do
     @page_cursor_timestamp 1_789_490_000_000_000
     @page_requested_at 1_789_500_000_000_000
