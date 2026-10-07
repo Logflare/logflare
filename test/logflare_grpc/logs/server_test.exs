@@ -65,8 +65,6 @@ defmodule LogflareGrpc.Logs.ServerTest do
       user: user,
       port: port
     } do
-      Mimic.set_mimic_global()
-
       Mimic.stub(Logflare.Backends, :ensure_source_sup_started, fn _source ->
         {:error, :start_timeout}
       end)

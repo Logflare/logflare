@@ -840,6 +840,15 @@ defmodule Logflare.BackendsTest do
       refute Backends.source_sup_started?(source)
     end
 
+    test "start_source_sup/1 starts a source when the cache holds nil for it", %{source: source} do
+      {:ok, true} = Cachex.put(Sources.Cache, {:get_by, [[id: source.id]]}, {:cached, nil})
+      assert Sources.Cache.get_by_id(source.id) == nil
+
+      assert :ok = Backends.start_source_sup(source)
+      assert Backends.source_sup_started?(source)
+      assert %Source{} = Sources.Cache.get_by_id(source.id)
+    end
+
     test "start_source_sup/1 leaves no EXIT message in a caller that traps exits", %{
       source: source
     } do

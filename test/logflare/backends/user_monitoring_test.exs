@@ -168,6 +168,11 @@ defmodule Logflare.Backends.UserMonitoringTest do
       partitions = PartitionSupervisor.partitions(Backends.SourcesSup)
       source = insert(:source, user: user, id: system_source.id + partitions * 1_000_000)
 
+      on_exit(fn ->
+        Backends.stop_source_sup(source)
+        Backends.stop_source_sup(system_source)
+      end)
+
       [user: user, source: source, system_source: system_source]
     end
 
@@ -201,6 +206,29 @@ defmodule Logflare.Backends.UserMonitoringTest do
 
       assert_receive {:dropped, %{count: 1},
                       %{source_id: ^system_source_id, reason: :source_unavailable}}
+    end
+
+    test "ignores a log line that the ingest emits in the same process", %{
+      user: user,
+      system_source: system_source
+    } do
+      :ok = Backends.ensure_source_sup_started(system_source)
+      calls = :counters.new(1, [])
+      user_id = user.id
+
+      stub(Backends, :ingest_logs, fn _batch, _source, _backend, _allow_spooling ->
+        :counters.add(calls, 1, 1)
+
+        if :counters.get(calls, 1) < 10 do
+          Logger.error("spool dispatch failed inside the ingest", user_id: user_id)
+        end
+
+        {:error, :spool_unavailable}
+      end)
+
+      capture_log(fn -> Logger.error("first line", user_id: user_id) end)
+
+      assert :counters.get(calls, 1) == 1
     end
 
     test "a log during a SourceSup start on the system source's partition does not deadlock it",

@@ -14,6 +14,7 @@ defmodule Logflare.Backends.UserMonitoring do
   alias Logflare.Users
 
   @store_name :user_metrics_store
+  @delivering_key {__MODULE__, :delivering}
 
   def metrics do
     [
@@ -111,13 +112,17 @@ defmodule Logflare.Backends.UserMonitoring do
   - A rule on the system logs source routes an event to a sink source whose `SourceSup` is down.
   - The `SourceSup` of the system logs source stops between the check and the ingest. In that
     case, the filter drops the system log event after the wait.
+
+  A log line that the ingest emits in the same process does not go through the filter again. The
+  filter ignores it, so a failed ingest can not log, intercept and ingest without end.
   """
   @spec log_interceptor(:logger.log_event(), term()) :: :ignore
   def log_interceptor(%{meta: %{system_source: true}}, _), do: :ignore
 
   def log_interceptor(%{meta: %{user_id: user_id} = meta} = log_event, _)
       when is_integer(user_id) do
-    with %{system_monitoring: true} <- Users.Cache.get(user_id),
+    with nil <- Process.get(@delivering_key),
+         %{system_monitoring: true} <- Users.Cache.get(user_id),
          %Sources.Source{} = source <- get_system_source_logs(user_id) do
       events =
         log_event.level
@@ -138,6 +143,8 @@ defmodule Logflare.Backends.UserMonitoring do
 
   @spec deliver(Sources.Source.t(), [map()]) :: :ok
   defp deliver(source, events) do
+    Process.put(@delivering_key, true)
+
     with true <- Backends.source_sup_started?(source),
          {:error, reason} when reason in [:source_unavailable, :source_not_found] <-
            Processor.ingest(events, Logs.Raw, source) do
@@ -146,6 +153,8 @@ defmodule Logflare.Backends.UserMonitoring do
       false -> drop(source, events, :source_not_started)
       _result -> :ok
     end
+  after
+    Process.delete(@delivering_key)
   end
 
   @spec drop(
