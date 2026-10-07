@@ -88,7 +88,8 @@ defmodule RoutingMainBench do
       true = Enum.all?(results, &(RoutingScaleBench.normalize(&1) == expected))
     end
 
-    %{fixtures: fixtures, readers: readers, batch: batch}
+    inputs = Enum.map(fixtures, &Map.take(&1, [:source, :events]))
+    %{fixtures: inputs, readers: readers, batch: batch}
   end
 
   @spec wave(map()) :: :ok
