@@ -92,7 +92,9 @@ defmodule Logflare.Backends.UserMonitoring do
   @doc """
   Sends a Logger message for a user to the system logs source of that user.
 
-  The filter acts only when the user has turned on system monitoring.
+  The filter acts only when the user has turned on system monitoring. It copies internal Logflare
+  log lines, such as adaptor errors, as async system log events. It never sees logs that users
+  ingest.
 
   The filter runs in the process that logs. That process can be inside a `SourceSup` start. A
   start from here can wait on the `SourcesSup` partition that starts the logging process. That

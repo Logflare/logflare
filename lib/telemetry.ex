@@ -483,7 +483,7 @@ defmodule Logflare.Telemetry do
         measurement: :count,
         tags: [:reason],
         description:
-          "Count of user system log events that SystemSourceStarter dropped, tagged `:not_found` when the system logs source does not exist or `:buffer_full` when its buffer reached the cap. This is realized loss of system logs"
+          "Count of async system log events that SystemSourceStarter dropped. A system log event is an internal Logflare log line copied to a user's system.logs source; logs that users ingest never count here. Tagged `:not_found` when the system logs source does not exist or `:buffer_full` when its buffer reached the cap"
       ),
       sum("logflare.logs.ingest_logs.rejected",
         event_name: [:logflare, :logs, :ingest_logs, :rejected],

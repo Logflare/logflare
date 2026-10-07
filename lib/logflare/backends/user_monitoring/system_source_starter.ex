@@ -1,7 +1,12 @@
 defmodule Logflare.Backends.UserMonitoring.SystemSourceStarter do
   @moduledoc """
-  Holds the log events for a system logs source whose `SourceSup` is down. It starts that
-  `SourceSup` outside the process that logs, then sends the held events to the source.
+  Holds async system log events for a system logs source whose `SourceSup` is down. It starts
+  that `SourceSup` outside the process that logs, then sends the held events to the source.
+
+  A system log event is an internal Logflare log line about a user's resources, for example a
+  BigQuery insert error. `Logflare.Backends.UserMonitoring.log_interceptor/2` copies it to the
+  `system.logs` source of that user, after the original line is logged. Logs that users ingest
+  never go through this process. This process never holds or drops them.
 
   `Logflare.Backends.UserMonitoring.log_interceptor/2` runs in the logging process. That process
   can be inside a `SourceSup` start. A synchronous start from there can wait on the same
@@ -19,8 +24,9 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarter do
      start again after the `:system_source_starter_retry_interval` application environment
      value. The default is 5 seconds.
 
-  This process drops events in two cases only. Each drop emits
-  `[:logflare, :user_monitoring, :system_source_starter, :dropped]`.
+  This process drops system log events in two cases only. Each drop emits
+  `[:logflare, :user_monitoring, :system_source_starter, :dropped]`. The original log line is not
+  affected: it still reaches the Logflare logs.
 
   - The source does not exist (`reason: :not_found`). Nothing can receive the events.
   - The buffer holds the `:system_source_starter_max_buffer` application environment value of

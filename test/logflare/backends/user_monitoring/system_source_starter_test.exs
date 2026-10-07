@@ -129,7 +129,7 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarterTest do
     assert Process.whereis(SystemSourceStarter) == starter
   end
 
-  test "drops the held events when the source does not exist" do
+  test "drops held system log events when the system logs source does not exist" do
     attach_dropped()
     missing_id = 999_999_999
 
@@ -139,7 +139,7 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarterTest do
     TestUtils.retry_assert(fn -> assert buffers() == %{} end)
   end
 
-  test "drops the events over the buffer cap", %{source: source} do
+  test "drops system log events over the buffer cap", %{source: source} do
     Application.put_env(:logflare, :system_source_starter_max_buffer, 3)
     attach_dropped()
     test_pid = self()
