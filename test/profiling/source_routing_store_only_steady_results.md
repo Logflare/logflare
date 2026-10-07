@@ -6,6 +6,10 @@ This supplements [store-only restore results](source_routing_restore_results.md)
 with hot-routing and synthetic cold-publication measurements. It does not replace
 the miss-latency/retained-header memory tradeoff report.
 
+[Current-main regression checks](source_routing_current_main_results.md) provide
+the subsequent pinned-main comparison. The previous-head measurements below
+remain valid historical observations, not headline gains versus main.
+
 - Parent before: `acc8f99f`; store-only parent: `bfc70119`.
 - Positional child before: `229bb1d0`; store-only child: `1ea29092`.
 - Subsequent documentation commits and the benchmark input filter do not change

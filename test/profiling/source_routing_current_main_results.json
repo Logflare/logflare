@@ -9767,6 +9767,124 @@
     },
     {
       "lane": "concurrent",
+      "head": "main",
+      "revision": "6c1d54c13cb58c8a496b65588f02770e8f14f9d8",
+      "repeat": 6,
+      "source_file": "/tmp/routing-current-concurrent-main-r6.json",
+      "config": {
+        "warmup_s": 2,
+        "time_s": 8,
+        "memory_time_s": 0
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "revision": "6c1d54c1",
+        "rules": 10000,
+        "results": [
+          {
+            "input": "8 readers / 1 sources / 1 events",
+            "mean_ns": 7980993.593812375,
+            "median_ns": 7927216.0,
+            "p99_ns": 11027244.25,
+            "deviation": 0.1356763299725685,
+            "samples": 1002
+          },
+          {
+            "input": "8 readers / 1 sources / 10 events",
+            "mean_ns": 52894671.91447368,
+            "median_ns": 51979874.5,
+            "p99_ns": 70951519.82,
+            "deviation": 0.0715022025893193,
+            "samples": 152
+          },
+          {
+            "input": "8 readers / 8 sources / 1 events",
+            "mean_ns": 8116276.5578093305,
+            "median_ns": 8009612.0,
+            "p99_ns": 11451128.42,
+            "deviation": 0.13188557446048635,
+            "samples": 986
+          },
+          {
+            "input": "8 readers / 8 sources / 10 events",
+            "mean_ns": 54459128.25170068,
+            "median_ns": 53266733.0,
+            "p99_ns": 75917801.20000003,
+            "deviation": 0.08389056011154822,
+            "samples": 147
+          }
+        ]
+      }
+    },
+    {
+      "lane": "concurrent",
+      "head": "main",
+      "revision": "6c1d54c13cb58c8a496b65588f02770e8f14f9d8",
+      "repeat": 7,
+      "source_file": "/tmp/routing-current-concurrent-main-r7.json",
+      "config": {
+        "warmup_s": 2,
+        "time_s": 8,
+        "memory_time_s": 0
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "revision": "6c1d54c1",
+        "rules": 10000,
+        "results": [
+          {
+            "input": "8 readers / 1 sources / 1 events",
+            "mean_ns": 8043237.608040201,
+            "median_ns": 7967695.0,
+            "p99_ns": 10681516.68,
+            "deviation": 0.1247969574048686,
+            "samples": 995
+          },
+          {
+            "input": "8 readers / 1 sources / 10 events",
+            "mean_ns": 51961522.77272727,
+            "median_ns": 51159036.5,
+            "p99_ns": 64318386.89999991,
+            "deviation": 0.0648798198639642,
+            "samples": 154
+          },
+          {
+            "input": "8 readers / 8 sources / 1 events",
+            "mean_ns": 8116249.718052738,
+            "median_ns": 8040757.5,
+            "p99_ns": 10831713.459999999,
+            "deviation": 0.13140428251814823,
+            "samples": 986
+          },
+          {
+            "input": "8 readers / 8 sources / 10 events",
+            "mean_ns": 52805189.848684214,
+            "median_ns": 52090831.0,
+            "p99_ns": 66525077.96999999,
+            "deviation": 0.06361936458682352,
+            "samples": 152
+          }
+        ]
+      }
+    },
+    {
+      "lane": "concurrent",
       "head": "parent",
       "revision": "b32324541bad02984057a7287129c313876e33ca",
       "repeat": 1,
@@ -10382,6 +10500,124 @@
     },
     {
       "lane": "concurrent",
+      "head": "parent",
+      "revision": "b32324541bad02984057a7287129c313876e33ca",
+      "repeat": 6,
+      "source_file": "/tmp/routing-current-concurrent-parent-r6.json",
+      "config": {
+        "warmup_s": 2,
+        "time_s": 8,
+        "memory_time_s": 0
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "revision": "b3232454",
+        "rules": 10000,
+        "results": [
+          {
+            "input": "8 readers / 1 sources / 1 events",
+            "mean_ns": 8186092.324462641,
+            "median_ns": 8036695.0,
+            "p99_ns": 11173952.0,
+            "deviation": 0.10218518635836481,
+            "samples": 977
+          },
+          {
+            "input": "8 readers / 1 sources / 10 events",
+            "mean_ns": 34040149.51914894,
+            "median_ns": 33771746.0,
+            "p99_ns": 42090528.879999965,
+            "deviation": 0.054232966155892647,
+            "samples": 235
+          },
+          {
+            "input": "8 readers / 8 sources / 1 events",
+            "mean_ns": 8462569.415873015,
+            "median_ns": 8326571.0,
+            "p99_ns": 11241996.68,
+            "deviation": 0.10524380617420546,
+            "samples": 945
+          },
+          {
+            "input": "8 readers / 8 sources / 10 events",
+            "mean_ns": 36079926.15765766,
+            "median_ns": 35432751.5,
+            "p99_ns": 45414708.660000004,
+            "deviation": 0.07243288849080004,
+            "samples": 222
+          }
+        ]
+      }
+    },
+    {
+      "lane": "concurrent",
+      "head": "parent",
+      "revision": "b32324541bad02984057a7287129c313876e33ca",
+      "repeat": 7,
+      "source_file": "/tmp/routing-current-concurrent-parent-r7.json",
+      "config": {
+        "warmup_s": 2,
+        "time_s": 8,
+        "memory_time_s": 0
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "revision": "b3232454",
+        "rules": 10000,
+        "results": [
+          {
+            "input": "8 readers / 1 sources / 1 events",
+            "mean_ns": 8081434.922222222,
+            "median_ns": 7958278.0,
+            "p99_ns": 11190770.72,
+            "deviation": 0.10556035441960494,
+            "samples": 990
+          },
+          {
+            "input": "8 readers / 1 sources / 10 events",
+            "mean_ns": 33053185.572016463,
+            "median_ns": 32564492.0,
+            "p99_ns": 40402529.08,
+            "deviation": 0.07003046440523547,
+            "samples": 243
+          },
+          {
+            "input": "8 readers / 8 sources / 1 events",
+            "mean_ns": 8428461.802950474,
+            "median_ns": 8236071.0,
+            "p99_ns": 11623625.0,
+            "deviation": 0.11557714494057454,
+            "samples": 949
+          },
+          {
+            "input": "8 readers / 8 sources / 10 events",
+            "mean_ns": 34105132.64255319,
+            "median_ns": 33418744.0,
+            "p99_ns": 43557468.43999998,
+            "deviation": 0.0826619924902611,
+            "samples": 235
+          }
+        ]
+      }
+    },
+    {
+      "lane": "concurrent",
       "head": "child",
       "revision": "1c89d80880a15677d9d46fc567394b5ac94dba48",
       "repeat": 1,
@@ -10991,6 +11227,124 @@
             "p99_ns": 65290808.99999993,
             "deviation": 0.14596900069838584,
             "samples": 139
+          }
+        ]
+      }
+    },
+    {
+      "lane": "concurrent",
+      "head": "child",
+      "revision": "1c89d80880a15677d9d46fc567394b5ac94dba48",
+      "repeat": 6,
+      "source_file": "/tmp/routing-current-concurrent-child-r6.json",
+      "config": {
+        "warmup_s": 2,
+        "time_s": 8,
+        "memory_time_s": 0
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "revision": "1c89d808",
+        "rules": 10000,
+        "results": [
+          {
+            "input": "8 readers / 1 sources / 1 events",
+            "mean_ns": 8130095.300813008,
+            "median_ns": 7963612.0,
+            "p99_ns": 11891196.69999999,
+            "deviation": 0.11727529926551987,
+            "samples": 984
+          },
+          {
+            "input": "8 readers / 1 sources / 10 events",
+            "mean_ns": 33534727.376569036,
+            "median_ns": 33094368.0,
+            "p99_ns": 42279784.79999999,
+            "deviation": 0.07083574245938642,
+            "samples": 239
+          },
+          {
+            "input": "8 readers / 8 sources / 1 events",
+            "mean_ns": 8116975.200811359,
+            "median_ns": 8009153.5,
+            "p99_ns": 11071939.75,
+            "deviation": 0.09924734899495999,
+            "samples": 986
+          },
+          {
+            "input": "8 readers / 8 sources / 10 events",
+            "mean_ns": 33869554.78059072,
+            "median_ns": 32562699.0,
+            "p99_ns": 44146414.30000002,
+            "deviation": 0.2495298821658462,
+            "samples": 237
+          }
+        ]
+      }
+    },
+    {
+      "lane": "concurrent",
+      "head": "child",
+      "revision": "1c89d80880a15677d9d46fc567394b5ac94dba48",
+      "repeat": 7,
+      "source_file": "/tmp/routing-current-concurrent-child-r7.json",
+      "config": {
+        "warmup_s": 2,
+        "time_s": 8,
+        "memory_time_s": 0
+      },
+      "raw": {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "revision": "1c89d808",
+        "rules": 10000,
+        "results": [
+          {
+            "input": "8 readers / 1 sources / 1 events",
+            "mean_ns": 8085632.160768453,
+            "median_ns": 7999236.0,
+            "p99_ns": 10556179.300000003,
+            "deviation": 0.09593026020447566,
+            "samples": 989
+          },
+          {
+            "input": "8 readers / 1 sources / 10 events",
+            "mean_ns": 33520935.263598327,
+            "median_ns": 32610742.0,
+            "p99_ns": 47403743.79999999,
+            "deviation": 0.09834423648162484,
+            "samples": 239
+          },
+          {
+            "input": "8 readers / 8 sources / 1 events",
+            "mean_ns": 8130272.836382113,
+            "median_ns": 7966987.0,
+            "p99_ns": 11607495.649999999,
+            "deviation": 0.11555271024291285,
+            "samples": 984
+          },
+          {
+            "input": "8 readers / 8 sources / 10 events",
+            "mean_ns": 32635929.951219514,
+            "median_ns": 32123614.5,
+            "p99_ns": 41702196.31,
+            "deviation": 0.0666044975589147,
+            "samples": 246
           }
         ]
       }
@@ -28162,28 +28516,28 @@
       "input": "8 readers / 1 sources / 1 events",
       "heads": {
         "main": {
-          "run_count": 5,
-          "mean_ns": 8218315.793162279,
-          "median_ns": 8063123.2,
-          "p99_ns": 12153336.636
+          "run_count": 7,
+          "mean_ns": 8159401.452523424,
+          "median_ns": 8030075.285714285,
+          "p99_ns": 11782206.301428571
         },
         "parent": {
-          "run_count": 5,
-          "mean_ns": 8319878.941380395,
-          "median_ns": 8084212.4,
-          "p99_ns": 14570810.343999987,
-          "mean_ns_change_pct": 1.2358146215629473,
-          "median_ns_change_pct": 0.26155125596989404,
-          "mean_speedup": 0.9877927132193026
+          "run_count": 7,
+          "mean_ns": 8266703.136226691,
+          "median_ns": 8059433.571428572,
+          "p99_ns": 13602682.062857134,
+          "mean_ns_change_pct": 1.315068076103576,
+          "median_ns_change_pct": 0.3656041153999645,
+          "mean_speedup": 0.987020014879566
         },
         "child": {
-          "run_count": 5,
-          "mean_ns": 10875668.077257928,
-          "median_ns": 10566617.1,
-          "p99_ns": 17857809.126,
-          "mean_ns_change_pct": 32.334511729356905,
-          "median_ns_change_pct": 31.048687188607005,
-          "mean_speedup": 0.755660777322505
+          "run_count": 7,
+          "mean_ns": 10084866.835410157,
+          "median_ns": 9827990.5,
+          "p99_ns": 15962345.947142854,
+          "mean_ns_change_pct": 23.59812045148548,
+          "median_ns_change_pct": 22.38976784544291,
+          "mean_speedup": 0.8090737920181548
         }
       }
     },
@@ -28192,28 +28546,28 @@
       "input": "8 readers / 1 sources / 10 events",
       "heads": {
         "main": {
-          "run_count": 5,
-          "mean_ns": 55991330.1370153,
-          "median_ns": 54170846.6,
-          "p99_ns": 92036484.8
+          "run_count": 7,
+          "mean_ns": 54973263.624611065,
+          "median_ns": 53427592.0,
+          "p99_ns": 85064618.6742857
         },
         "parent": {
-          "run_count": 5,
-          "mean_ns": 33810669.74889002,
-          "median_ns": 33192011.0,
-          "p99_ns": 45700580.21,
-          "mean_ns_change_pct": -39.61445519127231,
-          "median_ns_change_pct": -38.72716953255074,
-          "mean_speedup": 1.6560254663057496
+          "run_count": 7,
+          "mean_ns": 33735240.54794507,
+          "median_ns": 33185184.714285713,
+          "p99_ns": 44427994.14428571,
+          "mean_ns_change_pct": -38.63336770705735,
+          "median_ns_change_pct": -37.88755309375404,
+          "mean_speedup": 1.629550070837117
         },
         "child": {
-          "run_count": 5,
-          "mean_ns": 44831246.68239981,
-          "median_ns": 43400092.6,
-          "p99_ns": 64104373.48599998,
-          "mean_ns_change_pct": -19.931806276625085,
-          "median_ns_change_pct": -19.882934596779954,
-          "mean_speedup": 1.2489353805767975
+          "run_count": 7,
+          "mean_ns": 41601699.43602377,
+          "median_ns": 40386510.428571425,
+          "p99_ns": 58600770.86142856,
+          "mean_ns_change_pct": -24.323759054757954,
+          "median_ns_change_pct": -24.408888896637105,
+          "mean_speedup": 1.321418700915102
         }
       }
     },
@@ -28222,28 +28576,28 @@
       "input": "8 readers / 8 sources / 1 events",
       "heads": {
         "main": {
-          "run_count": 5,
-          "mean_ns": 8624054.317093117,
-          "median_ns": 8311628.0,
-          "p99_ns": 18496876.55
+          "run_count": 7,
+          "mean_ns": 8478971.123046808,
+          "median_ns": 8229787.071428572,
+          "p99_ns": 16395317.804285714
         },
         "parent": {
-          "run_count": 5,
-          "mean_ns": 8452988.19486487,
-          "median_ns": 8250791.9,
-          "p99_ns": 13001154.686000003,
-          "mean_ns_change_pct": -1.983592820017266,
-          "median_ns_change_pct": -0.7319396392620026,
-          "mean_speedup": 1.0202373549193136
+          "run_count": 7,
+          "mean_ns": 8450853.17044969,
+          "median_ns": 8259514.5,
+          "p99_ns": 12553056.444285715,
+          "mean_ns_change_pct": -0.33161986506463625,
+          "median_ns_change_pct": 0.3612174690962977,
+          "mean_speedup": 1.003327232414289
         },
         "child": {
-          "run_count": 5,
-          "mean_ns": 12201014.75454051,
-          "median_ns": 11081718.9,
-          "p99_ns": 33740674.948000036,
-          "mean_ns_change_pct": 41.47655274338611,
-          "median_ns_change_pct": 33.327897976184694,
-          "mean_speedup": 0.706830906329635
+          "run_count": 7,
+          "mean_ns": 11036045.97284229,
+          "median_ns": 10197819.285714285,
+          "p99_ns": 27340401.448571455,
+          "mean_ns_change_pct": 30.157843595493095,
+          "median_ns_change_pct": 23.9135253100065,
+          "mean_speedup": 0.7682979161116237
         }
       }
     },
@@ -28252,28 +28606,28 @@
       "input": "8 readers / 8 sources / 10 events",
       "heads": {
         "main": {
-          "run_count": 5,
-          "mean_ns": 59184987.38123442,
-          "median_ns": 56549782.1,
-          "p99_ns": 105647132.2
+          "run_count": 7,
+          "mean_ns": 57598465.00093671,
+          "median_ns": 55443782.071428575,
+          "p99_ns": 95811220.02428572
         },
         "parent": {
-          "run_count": 5,
-          "mean_ns": 34433463.339271426,
-          "median_ns": 33915404.4,
-          "p99_ns": 44674535.53799998,
-          "mean_ns_change_pct": -41.820612180802584,
-          "median_ns_change_pct": -40.025578984503284,
-          "mean_speedup": 1.7188217983793062
+          "run_count": 7,
+          "mean_ns": 34621767.92808114,
+          "median_ns": 34061216.78571428,
+          "p99_ns": 44620693.54142855,
+          "mean_ns_change_pct": -39.89116215593923,
+          "median_ns_change_pct": -38.56620974768099,
+          "mean_speedup": 1.6636488673999676
         },
         "child": {
-          "run_count": 5,
-          "mean_ns": 46718429.164822355,
-          "median_ns": 44543314.5,
-          "p99_ns": 101951412.07199997,
-          "mean_ns_change_pct": -21.063716945836163,
-          "median_ns_change_pct": -21.231677920117043,
-          "mean_speedup": 1.2668445501973133
+          "run_count": 7,
+          "mean_ns": 42871090.07941743,
+          "median_ns": 41057555.14285714,
+          "p99_ns": 85086524.4242857,
+          "mean_ns_change_pct": -25.569040635509598,
+          "median_ns_change_pct": -25.947412660336855,
+          "mean_speedup": 1.3435269524109896
         }
       }
     },
