@@ -714,8 +714,11 @@ spool_buffer_override =
     v when v in [nil, ""] ->
       []
 
-    buffer when buffer in ["wal", "mem"] ->
-      [buffer: String.to_existing_atom(buffer)]
+    "wal" ->
+      [buffer: :wal]
+
+    "mem" ->
+      [buffer: :mem]
 
     other ->
       raise ArgumentError, "Invalid SPOOL_BUFFER=#{other}. Must be wal or mem."
