@@ -139,15 +139,20 @@ defmodule Logflare.Backends.UserMonitoring do
   @spec deliver(Sources.Source.t(), [map()]) :: :ok
   defp deliver(source, events) do
     with true <- Backends.source_sup_started?(source),
-         {:error, :source_unavailable} <- Processor.ingest(events, Logs.Raw, source) do
-      drop(source, events, :source_unavailable)
+         {:error, reason} when reason in [:source_unavailable, :source_not_found] <-
+           Processor.ingest(events, Logs.Raw, source) do
+      drop(source, events, reason)
     else
       false -> drop(source, events, :source_not_started)
       _result -> :ok
     end
   end
 
-  @spec drop(Sources.Source.t(), [map()], :source_not_started | :source_unavailable) :: :ok
+  @spec drop(
+          Sources.Source.t(),
+          [map()],
+          :source_not_started | :source_unavailable | :source_not_found
+        ) :: :ok
   defp drop(source, events, reason) do
     :telemetry.execute(
       [:logflare, :user_monitoring, :system_logs, :dropped],

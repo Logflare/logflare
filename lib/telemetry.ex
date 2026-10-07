@@ -483,7 +483,7 @@ defmodule Logflare.Telemetry do
         measurement: :count,
         tags: [:reason],
         description:
-          "Count of async system log events that the log interceptor dropped. A system log event is an internal Logflare log line copied to a user's system.logs source; logs that users ingest never count here. Tagged `:source_not_started` when the system logs source was down, or `:source_unavailable` when its start did not finish in time"
+          "Count of async system log events that the log interceptor dropped. A system log event is an internal Logflare log line copied to a user's system.logs source; logs that users ingest never count here. Tagged `:source_not_started` when the system logs source was down, `:source_unavailable` when its start did not finish in time, or `:source_not_found` when it was deleted"
       ),
       sum("logflare.logs.ingest_logs.rejected",
         event_name: [:logflare, :logs, :ingest_logs, :rejected],

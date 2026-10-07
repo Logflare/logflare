@@ -22,9 +22,14 @@ defmodule Logflare.Logs.Processor do
   limit (see `Logflare.Backends.start_source_sup/1`). When the `SourceSup` is still not up after
   the wait, the function does not ingest and returns `{:error, :source_unavailable}`. The write
   is not certain then, so the caller must tell the client to send the batch again.
+
+  When the source was deleted after the caller loaded it, the function does not ingest and
+  returns `{:error, :source_not_found}`.
   """
   @spec ingest([map()], module(), Logflare.Sources.Source.t()) ::
-          :ok | {:ok, count :: pos_integer()} | {:error, :source_unavailable | term()}
+          :ok
+          | {:ok, count :: pos_integer()}
+          | {:error, :source_unavailable | :source_not_found | term()}
   def ingest(data, processor, %Source{} = source)
       when is_list(data) and is_atom(processor) do
     metadata = %{
@@ -65,6 +70,7 @@ defmodule Logflare.Logs.Processor do
   defp store(batch, source) do
     case Backends.ensure_source_sup_started(source) do
       :ok -> Backends.ingest_logs(batch, source, nil, true)
+      {:error, :not_found} -> {:error, :source_not_found}
       {:error, _reason} -> {:error, :source_unavailable}
     end
   end

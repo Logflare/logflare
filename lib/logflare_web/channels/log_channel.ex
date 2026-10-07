@@ -73,6 +73,10 @@ defmodule LogflareWeb.LogChannel do
       :ok ->
         ingest_batch(batch, source, socket)
 
+      {:error, :not_found} ->
+        push(socket, "batch", %{message: "Batch error", errors: ["Source not found."]})
+        {:noreply, socket}
+
       {:error, _reason} ->
         push(socket, "batch", %{
           message: "Batch error",

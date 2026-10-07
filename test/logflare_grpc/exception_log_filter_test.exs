@@ -5,7 +5,7 @@ defmodule LogflareGrpc.ExceptionLogFilterTest do
   alias LogflareGrpc.ExceptionLogFilter
 
   describe "emit_log?/1" do
-    for status <- [:permission_denied, :unauthenticated, :unavailable] do
+    for status <- [:not_found, :permission_denied, :unauthenticated, :unavailable] do
       test "returns false for a #{status} GRPC.RPCError rejection" do
         error = GRPC.RPCError.exception(status: unquote(status))
         exception = ReportException.new([req: :ok], error)

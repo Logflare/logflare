@@ -43,6 +43,7 @@ defmodule LogflareWeb.LogController do
   @message "Logged!"
   @source_unavailable_message "Source is starting. Send the batch again."
   @source_unavailable_retry_after "5"
+  @source_not_found_message "Source not found."
 
   operation(:create,
     summary: "Create log event",
@@ -251,6 +252,13 @@ defmodule LogflareWeb.LogController do
     |> render("index.json", message: "Internal server error")
   end
 
+  defp handle({:error, :source_not_found}, conn) do
+    conn
+    |> put_status(404)
+    |> put_view(LogflareWeb.LogView)
+    |> render("index.json", message: @source_not_found_message)
+  end
+
   defp handle({:error, :source_unavailable}, conn) do
     conn
     |> put_status(503)
@@ -316,6 +324,10 @@ defmodule LogflareWeb.LogController do
     exception ->
       send_proto_error(conn, 500, "Internal server error")
       reraise exception, __STACKTRACE__
+  end
+
+  defp protobuf_response({:error, :source_not_found}, conn, _success_response) do
+    send_proto_error(conn, 404, @source_not_found_message)
   end
 
   defp protobuf_response({:error, :source_unavailable}, conn, _success_response) do

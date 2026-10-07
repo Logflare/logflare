@@ -20,6 +20,9 @@ defmodule LogflareGrpc.Logs.Server do
     source = stream.local.source
 
     case Processor.ingest(logs, OtelLog, source) do
+      {:error, :source_not_found} ->
+        raise GRPC.RPCError, status: :not_found, message: "Source not found."
+
       {:error, :source_unavailable} ->
         raise GRPC.RPCError,
           status: :unavailable,
