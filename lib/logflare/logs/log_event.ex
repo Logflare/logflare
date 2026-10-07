@@ -8,6 +8,7 @@ defmodule Logflare.LogEvent do
 
   alias __MODULE__, as: LE
   alias __MODULE__.DayBucket
+  alias __MODULE__.Size
   alias __MODULE__.TypeDetection
   alias Logflare.KeyValues
   alias Logflare.Logs.Ingest.MetadataCleaner
@@ -32,6 +33,8 @@ defmodule Logflare.LogEvent do
     field :event_type, Ecto.Enum, values: [:log, :metric, :trace], default: :log
     field :source_id, :integer, default: nil
     field :day_bucket, :integer
+    field :accounted_bytes, :integer, virtual: true
+    field :batch_bytes, :integer, virtual: true
     # Indicates if the event was removed from ets during ingest
     field :is_popped, :boolean, virtual: true, default: false
 
@@ -136,6 +139,7 @@ defmodule Logflare.LogEvent do
 
     %{
       "body" => %{"id" => id, "timestamp" => timestamp} = body,
+      "accounted_bytes" => accounted_bytes,
       "timestamp_inferred" => timestamp_inferred
     } = mapper_for_ingest(params, event_type)
 
@@ -143,6 +147,7 @@ defmodule Logflare.LogEvent do
 
     %__MODULE__{
       body: body,
+      accounted_bytes: accounted_bytes,
       source_id: source_id,
       source_uuid: source_uuid,
       source_name: source_name,
@@ -158,14 +163,18 @@ defmodule Logflare.LogEvent do
   end
 
   @spec mapper_from_db(map(), TypeDetection.event_type()) :: %{String.t() => term}
-  defp mapper_from_db(params, event_type),
-    do: mapper(params, event_type, &MetadataCleaner.deep_reject_nil_and_empty/1)
+  defp mapper_from_db(params, event_type) do
+    mapper(params, event_type, fn body ->
+      {MetadataCleaner.deep_reject_nil_and_empty(body), nil}
+    end)
+  end
 
   @spec mapper_for_ingest(map(), TypeDetection.event_type()) :: %{String.t() => term}
   defp mapper_for_ingest(params, event_type),
     do: mapper(params, event_type, &clean_ingest_body/1)
 
-  @spec mapper(map(), TypeDetection.event_type(), (map() -> map())) :: %{String.t() => term}
+  @spec mapper(map(), TypeDetection.event_type(), (map() -> {map(), non_neg_integer() | nil})) ::
+          %{String.t() => term}
   defp mapper(params, event_type, clean_body) do
     # TODO: deprecate and remove `message`
     event_message = params["message"] || params["event_message"]
@@ -185,20 +194,23 @@ defmodule Logflare.LogEvent do
         base_merge
       end
 
-    body =
-      params
-      |> clean_body.()
-      |> Map.merge(base_merge)
-      |> case do
-        %{"message" => m, "event_message" => em} = map when m == em ->
-          Map.delete(map, "message")
+    {body, accounted_bytes} =
+      Enum.reduce(base_merge, clean_body.(params), fn {key, value}, {body, bytes} ->
+        {Map.put(body, key, value), adjust_byte_size(bytes, Map.get(body, key), value)}
+      end)
 
-        other ->
-          other
+    {body, accounted_bytes} =
+      case body do
+        %{"message" => m, "event_message" => em} when m == em ->
+          {Map.delete(body, "message"), adjust_byte_size(accounted_bytes, m, nil)}
+
+        _ ->
+          {body, accounted_bytes}
       end
 
     %{
       "body" => body,
+      "accounted_bytes" => accounted_bytes,
       "id" => id,
       "timestamp_inferred" => timestamp_inferred
     }
@@ -227,9 +239,8 @@ defmodule Logflare.LogEvent do
     end)
   end
 
-  @spec clean_ingest_body(map()) :: map()
-  defp clean_ingest_body(params),
-    do: IngestTransformers.transform(params, :clean_to_bigquery_column_spec)
+  @spec clean_ingest_body(map()) :: {map(), non_neg_integer()}
+  defp clean_ingest_body(params), do: IngestTransformers.transform_with_byte_size(params)
 
   @spec transform(LE.t(), Source.t()) :: LE.t()
   defp transform(%LE{} = le, %Source{} = source) do
@@ -260,7 +271,7 @@ defmodule Logflare.LogEvent do
         end
       end)
 
-    {:ok, %{le | body: new_body}}
+    {:ok, replace_body(le, new_body)}
   end
 
   defp copy_fields(%LE{} = le, %Source{} = source) do
@@ -280,7 +291,7 @@ defmodule Logflare.LogEvent do
         apply_kv_instruction(acc, instruction, user_id)
       end)
 
-    {:ok, %{le | body: new_body}}
+    {:ok, replace_body(le, new_body)}
   end
 
   # Fallback: parse at ingestion time when parsed field is not populated
@@ -328,7 +339,7 @@ defmodule Logflare.LogEvent do
   defp drop_fields(%LE{} = le, %Source{transform_drop_fields_parsed: parsed})
        when is_list(parsed) do
     new_body = Enum.reduce(parsed, le.body, fn keys, acc -> drop_field_at(acc, keys) end)
-    {:ok, %{le | body: new_body}}
+    {:ok, replace_body(le, new_body)}
   end
 
   defp drop_fields(%LE{} = le, %Source{} = source) do
@@ -360,8 +371,19 @@ defmodule Logflare.LogEvent do
   def apply_custom_event_message(%LE{} = le, %Source{} = source) do
     message = make_message(le, source)
 
-    le
-    |> Kernel.put_in([Access.key(:body), "event_message"], message)
+    body = Map.put(le.body, "event_message", message)
+
+    if body === le.body do
+      le
+    else
+      %{
+        le
+        | body: body,
+          accounted_bytes:
+            adjust_byte_size(le.accounted_bytes, le.body["event_message"], message),
+          batch_bytes: nil
+      }
+    end
   end
 
   @doc """
@@ -416,18 +438,46 @@ defmodule Logflare.LogEvent do
   end
 
   @doc """
-  Size in bytes of an event body's values, excluding map keys.
+  Values-only ingestion bytes, excluding map keys and structural overhead.
+  See `Logflare.LogEvent.Size` for scalar accounting rules.
   """
   @spec body_byte_size(term()) :: non_neg_integer()
-  def body_byte_size(value) when is_map(value) and not is_struct(value) do
-    Enum.reduce(value, 0, fn {_k, v}, acc -> acc + body_byte_size(v) end)
+  defdelegate body_byte_size(value), to: Size
+
+  @doc """
+  Replaces a body and invalidates its cached sizes. Body mutations must use this
+  function or maintain both size fields explicitly.
+  """
+  @spec replace_body(LE.t(), map()) :: LE.t()
+  def replace_body(%LE{body: body} = le, new_body) when body === new_body, do: le
+
+  def replace_body(%LE{} = le, body),
+    do: %{le | body: body, accounted_bytes: nil, batch_bytes: nil}
+
+  @doc """
+  Caches both measurements for reuse across dispatch, queue insertion and retries.
+  The batch estimate retains Erlang external-format sizing, including map keys.
+  """
+  @spec cache_sizes(LE.t()) :: LE.t()
+  def cache_sizes(%LE{} = le) do
+    %{le | accounted_bytes: accounted_byte_size(le), batch_bytes: batch_byte_size(le)}
   end
 
-  def body_byte_size(value) when is_list(value) do
-    Enum.reduce(value, 0, fn v, acc -> acc + body_byte_size(v) end)
-  end
+  @spec accounted_byte_size(LE.t()) :: non_neg_integer()
+  def accounted_byte_size(%LE{accounted_bytes: bytes}) when is_non_negative_integer(bytes),
+    do: bytes
 
-  def body_byte_size(value), do: :erlang.external_size(value)
+  def accounted_byte_size(%LE{body: body}), do: body_byte_size(body)
+
+  @spec batch_byte_size(LE.t()) :: non_neg_integer()
+  def batch_byte_size(%LE{batch_bytes: bytes}) when is_non_negative_integer(bytes), do: bytes
+  def batch_byte_size(%LE{body: body}), do: :erlang.external_size(body)
+
+  @spec adjust_byte_size(non_neg_integer() | nil, term(), term()) :: non_neg_integer() | nil
+  defp adjust_byte_size(nil, _old_value, _new_value), do: nil
+
+  defp adjust_byte_size(bytes, old_value, new_value),
+    do: bytes - body_byte_size(old_value) + body_byte_size(new_value)
 
   @spec query_json(map(), String.t()) :: String.t()
   defp query_json(metadata, query) do

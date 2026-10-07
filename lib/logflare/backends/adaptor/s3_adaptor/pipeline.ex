@@ -163,7 +163,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor.Pipeline do
 
         # check content length
         message, {count, len} ->
-          length = message_size(message.data.body)
+          length = message_size(message.data)
 
           if len - length <= 0 do
             # below max batch count, but reach max batch length
@@ -176,8 +176,6 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor.Pipeline do
     }
   end
 
-  @spec message_size(any()) :: non_neg_integer()
-  defp message_size(data) do
-    :erlang.external_size(data)
-  end
+  @spec message_size(LogEvent.t()) :: non_neg_integer()
+  defp message_size(event), do: LogEvent.batch_byte_size(event)
 end

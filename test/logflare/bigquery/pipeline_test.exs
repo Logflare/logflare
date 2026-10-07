@@ -247,8 +247,12 @@ defmodule Logflare.BigQuery.PipelineTest do
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
-      le = build(:log_event, source: source, metadata: %{"level" => "error"})
+      le =
+        build(:log_event, source: source, metadata: %{"level" => "error"})
+        |> LogEvent.cache_sizes()
+
       {messages, _tid} = setup_queue(source, [le])
+      assert hd(messages).data.size == :erlang.external_size(le.body)
 
       test_pid = self()
       handler = "test-ingest-labels-#{inspect(make_ref())}"
@@ -267,7 +271,9 @@ defmodule Logflare.BigQuery.PipelineTest do
       Pipeline.handle_batch(:bq, messages, batch_info, context)
 
       assert_receive {:ingest, %{ingested_bytes: bytes}, metadata}
-      assert bytes > 0
+      assert bytes == le.accounted_bytes
+      assert bytes == LogEvent.body_byte_size(le.body)
+      assert bytes < hd(messages).data.size
       # labels resolved from the event body, no per-event ETS lookup in ack
       assert metadata["lvl"] == "error"
     end
@@ -282,7 +288,7 @@ defmodule Logflare.BigQuery.PipelineTest do
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
-      le = build(:log_event, source: source)
+      le = %{build(:log_event, source: source) | accounted_bytes: nil, batch_bytes: nil}
       {messages, _tid} = setup_queue(source, [le])
 
       test_pid = self()
@@ -303,7 +309,8 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       source_id = source.id
       assert_receive {:ingest, %{ingested_bytes: bytes}, %{"source_id" => ^source_id}}
-      assert bytes > 0
+      assert bytes == LogEvent.body_byte_size(le.body)
+      assert bytes < hd(messages).data.size
     end
 
     test "le_to_bq_row/1 generates TableDataInsertAllRequestRows struct correctly", %{

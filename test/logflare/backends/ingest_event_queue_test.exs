@@ -648,6 +648,30 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.total_pending(key) == 0
     end
 
+    test "cached sizes survive queue insertion and retry without changing the batch estimate", %{
+      source: source,
+      sbp: sbp
+    } do
+      event =
+        build(:log_event, source: source, metadata: %{"a-long-attribute-name" => "x"})
+        |> LogEvent.cache_sizes()
+
+      assert :ok = IngestEventQueue.add_to_table(sbp, [event])
+      assert {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
+      assert pointer.size == :erlang.external_size(event.body)
+      assert pointer.size > event.accounted_bytes
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) == event
+
+      retried = %{event | retries: 1}
+      assert :ok = IngestEventQueue.add_to_table(sbp, [retried])
+      assert {:ok, [retry_pointer], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
+      assert retry_pointer.size == pointer.size
+      assert retry_pointer.retries == 1
+
+      assert IngestEventQueue.lookup_event(retry_pointer.tid, retry_pointer.gen_event_id) ==
+               retried
+    end
+
     test "pointers carry routing metadata and can resolve the full event via lookup_event/2",
          %{source: source, sbp: sbp} do
       log_ev =
@@ -670,7 +694,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       log_pointer = Map.fetch!(by_id, log_ev.id)
       assert log_pointer.event_type == :log
       assert log_pointer.day_bucket == 12_345
-      assert log_pointer.size == Logflare.LogEvent.body_byte_size(log_ev.body)
+      assert log_pointer.size == :erlang.external_size(log_ev.body)
 
       assert IngestEventQueue.lookup_event(log_pointer.tid, log_pointer.gen_event_id).id ==
                log_ev.id
@@ -802,7 +826,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert {:ok, [pointer], tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
       assert tid != nil
       assert pointer.id == event.id
-      assert pointer.size == Logflare.LogEvent.body_byte_size(event.body)
+      assert pointer.size == :erlang.external_size(event.body)
       assert pointer.event_type == nil
       assert pointer.day_bucket == nil
       assert IngestEventQueue.total_pending(sbp) == 0

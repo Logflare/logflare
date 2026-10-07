@@ -655,9 +655,10 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     backend_metadata = backend_metadata(context.backend_id)
     queue = {context.source_id, context.backend_id, nil}
 
-    for {_msg, le, size} <- triples do
+    for {_msg, le, _batch_bytes} <- triples do
       event_labels = Sources.extract_labels(label_mapping, le)
-      emit_event_telemetry(queue, source, event_labels, size, backend_metadata)
+      accounted_bytes = LE.accounted_byte_size(le)
+      emit_event_telemetry(queue, source, event_labels, accounted_bytes, backend_metadata)
     end
   end
 
