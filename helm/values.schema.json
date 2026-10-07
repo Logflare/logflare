@@ -54,7 +54,13 @@
             "type": "array"
         },
         "extraIngresses": {
-            "type": "array"
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": [
+                    "nameSuffix"
+                ]
+            }
         },
         "fullnameOverride": {
             "type": "string"

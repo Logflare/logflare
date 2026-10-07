@@ -56,7 +56,7 @@ spec:
 {{- end }}
 {{- range $index, $extra := .Values.extraIngresses }}
 {{- if not $extra.nameSuffix }}
-{{- fail (printf "extraIngresses[%d] has no nameSuffix: each extra Ingress needs one so its name stays distinct from the chart's own Ingress" $index) }}
+{{- fail (printf "extraIngresses[%d] has an empty nameSuffix: each extra Ingress needs one so its name stays distinct from the chart's own Ingress" $index) }}
 {{- end }}
 ---
 {{ include "logflare.ingressObject" (dict "root" $ "ingress" $extra) }}

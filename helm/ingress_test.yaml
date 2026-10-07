@@ -117,4 +117,12 @@ tests:
                   pathType: Prefix
     asserts:
       - failedTemplate:
-          errorMessage: "extraIngresses[0] has no nameSuffix: each extra Ingress needs one so its name stays distinct from the chart's own Ingress"
+          errorPattern: "missing property 'nameSuffix'"
+
+  - it: should fail when an extraIngresses entry has an empty nameSuffix
+    set:
+      extraIngresses:
+        - nameSuffix: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "extraIngresses[0] has an empty nameSuffix: each extra Ingress needs one so its name stays distinct from the chart's own Ingress"

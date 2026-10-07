@@ -241,7 +241,7 @@ ingress:
 # `nameSuffix` that keeps its name distinct from `<fullname>`. For routes that cannot share one
 # Ingress, because they belong on different ingress classes or because an annotation applies per
 # Ingress rather than per rule. `ingress.enabled` does not gate these. See README.md#ingress.
-extraIngresses: []
+extraIngresses: [] # @schema item:object; itemRequired:[nameSuffix]
   # - nameSuffix: grpc
   #   className: alb
   #   annotations:
