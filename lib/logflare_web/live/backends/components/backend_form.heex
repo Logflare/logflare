@@ -306,7 +306,14 @@
             {label(f_config, :use_async_inserts_for_small_batches, "Async Inserts for Small Batches")}
             {checkbox(f_config, :use_async_inserts_for_small_batches, id: "use_async_inserts_for_small_batches")}
             <small class="form-text text-muted">
-              When enabled, small batches are sent to ClickHouse as async inserts.
+              When enabled, small batches are sent to ClickHouse as async inserts. Ignored when Async Inserts Only is enabled.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :use_async_inserts_only, "Async Inserts Only")}
+            {checkbox(f_config, :use_async_inserts_only, id: "use_async_inserts_only")}
+            <small class="form-text text-muted">
+              When enabled, every batch is sent to ClickHouse as an async insert, regardless of size.
             </small>
           </div>
           <div class="form-group">
@@ -323,7 +330,7 @@
               value: input_value(f_config, "async_insert_max_rows") || 1000
             )}
             <small class="form-text text-muted">
-              Batches with fewer than this many rows are sent as async inserts (when enabled above).
+              Batches with fewer than this many rows are sent as async inserts (when small-batch async inserts are enabled above). Ignored when Async Inserts Only is enabled.
             </small>
           </div>
           <div class="form-group">

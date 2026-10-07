@@ -206,6 +206,30 @@ defmodule Logflare.BackendsTest do
       assert length(Enum.uniq(delays)) > 1
     end
 
+    test "update_backend/2 leaves the pipeline alone when only per-batch settings change", %{
+      user: user
+    } do
+      assert {:ok, backend} = Backends.create_backend(user, clickhouse_backend_attrs())
+      adaptor_sup = consolidated_sup_pid(backend)
+      pipeline_sup = Backends.via_backend(backend, ClickHousePipeline)
+      pipelines = DynamicPipeline.list_pipelines(pipeline_sup)
+
+      config =
+        Map.merge(clickhouse_backend_attrs().config, %{
+          use_async_inserts_only: true,
+          use_async_inserts_for_small_batches: true,
+          async_insert_max_rows: 500,
+          async_insert_cluster_url: "http://localhost:8124"
+        })
+
+      assert {:ok, _updated} = Backends.update_backend(backend, %{config: config})
+
+      assert consolidated_sup_pid(backend) == adaptor_sup
+      assert DynamicPipeline.list_pipelines(pipeline_sup) == pipelines
+
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+    end
+
     test "update_backend/2 restarts the consolidated pipeline when other config changes", %{
       user: user
     } do

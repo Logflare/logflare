@@ -819,6 +819,43 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       Backends.ConsolidatedSup.stop_pipeline(backend)
     end
+
+    test "can create a clickhouse backend with async-only inserts", %{conn: conn, user: user} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      view
+      |> element("select#type")
+      |> render_change(%{backend: %{type: "clickhouse"}})
+
+      html =
+        view
+        |> form("form", %{
+          backend: %{
+            name: "ch async only",
+            type: "clickhouse",
+            config: %{
+              url: "http://localhost",
+              database: "test_db",
+              port: 8123,
+              username: "ingest_user",
+              password: "ingest_pa55",
+              use_async_inserts_only: true
+            }
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Successfully created backend"
+
+      backend =
+        user.id
+        |> Backends.list_backends_by_user_id()
+        |> Enum.find(&(&1.name == "ch async only"))
+
+      assert backend.config.use_async_inserts_only == true
+
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+    end
   end
 
   describe "edit" do

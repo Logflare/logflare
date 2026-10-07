@@ -1185,14 +1185,17 @@ defmodule Logflare.Backends do
   defp apply_consolidated_pipeline_change(backend, updated, default_ingest_modified?) do
     updated = typecast_config_string_map_to_atom_map(updated)
     pipeline_keys = Adaptor.pipeline_config_keys(updated)
+    runtime_keys = Adaptor.runtime_config_keys(updated)
 
-    {pipeline_changes, other_changes} =
+    changes =
       backend
       |> typecast_config_string_map_to_atom_map()
       |> changed_config_keys(updated)
-      |> Enum.split_with(&(&1 in pipeline_keys))
 
-    if default_ingest_modified? or other_changes != [] or pipeline_changes == [] do
+    pipeline_changes = Enum.filter(changes, &(&1 in pipeline_keys))
+    other_changes = Enum.reject(changes, &(&1 in pipeline_keys or &1 in runtime_keys))
+
+    if default_ingest_modified? or other_changes != [] or changes == [] do
       maybe_restart_consolidated_pipeline(updated)
     end
 

@@ -135,6 +135,23 @@ defmodule Logflare.Backends.Adaptor do
   end
 
   @doc """
+  Returns the config keys an adaptor reads on every batch, so changes to them need no
+  pipeline restart or replacement.
+
+  Defaults to `[]`.
+  """
+  @spec runtime_config_keys(Backend.t()) :: [atom()]
+  def runtime_config_keys(%Backend{} = backend) do
+    adaptor = get_adaptor(backend)
+
+    if function_exported?(adaptor, :runtime_config_keys, 0) do
+      adaptor.runtime_config_keys()
+    else
+      []
+    end
+  end
+
+  @doc """
   Replaces a backend's running ingest pipelines on the local node with ones started from
   the given backend.
 
@@ -361,6 +378,12 @@ defmodule Logflare.Backends.Adaptor do
   @callback pipeline_config_keys() :: [atom()]
 
   @doc """
+  Optional callback listing config keys the adaptor reads on every batch, so a change to
+  them takes effect without restarting or replacing the ingest pipelines.
+  """
+  @callback runtime_config_keys() :: [atom()]
+
+  @doc """
   Optional callback that replaces the backend's running ingest pipelines on the local node
   with ones started from the given backend, without dropping pending events.
   """
@@ -402,6 +425,7 @@ defmodule Logflare.Backends.Adaptor do
                       on_backend_config_changed: 1,
                       on_backend_deleted: 1,
                       pipeline_config_keys: 0,
+                      runtime_config_keys: 0,
                       replace_pipelines: 1,
                       sanitize_config_for_display: 1
 end

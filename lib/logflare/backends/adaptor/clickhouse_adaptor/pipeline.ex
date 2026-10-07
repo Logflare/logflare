@@ -509,6 +509,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   end
 
   @spec async_insert?(Backend.t(), non_neg_integer()) :: boolean()
+  defp async_insert?(%Backend{config: %{use_async_inserts_only: true}}, _row_count), do: true
+
   defp async_insert?(
          %Backend{
            config: %{use_async_inserts_for_small_batches: true, async_insert_max_rows: max_rows}

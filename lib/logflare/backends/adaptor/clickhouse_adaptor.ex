@@ -48,6 +48,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @min_batch_timeout_ms 1_000
   @max_batch_timeout_ms 30_000
   @pipeline_config_keys [:batch_size, :batch_timeout]
+  @runtime_config_keys [
+    :use_async_inserts_for_small_batches,
+    :use_async_inserts_only,
+    :async_insert_max_rows,
+    :async_insert_cluster_url
+  ]
   @async_insert_busy_timeout_max_ms 3_000
   @insert_max_execution_time_seconds 10
   @max_read_pool_size 4096
@@ -86,6 +92,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def pipeline_config_keys, do: @pipeline_config_keys
+
+  @impl Logflare.Backends.Adaptor
+  def runtime_config_keys, do: @runtime_config_keys
 
   @impl Logflare.Backends.Adaptor
   def replace_pipelines(%Backend{} = backend) do
@@ -135,6 +144,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         :read_only_urls,
         :default_read_cluster,
         :use_async_inserts_for_small_batches,
+        :use_async_inserts_only,
         :async_insert_cluster_url,
         :async_insert_max_rows,
         :batch_size,
@@ -290,6 +300,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        read_only_urls: {:map, :string},
        default_read_cluster: :string,
        use_async_inserts_for_small_batches: :boolean,
+       use_async_inserts_only: :boolean,
        async_insert_cluster_url: :string,
        async_insert_max_rows: :integer,
        batch_size: :integer,
@@ -310,6 +321,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :read_only_urls,
       :default_read_cluster,
       :use_async_inserts_for_small_batches,
+      :use_async_inserts_only,
       :async_insert_cluster_url,
       :async_insert_max_rows,
       :batch_size,
@@ -319,6 +331,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     ])
     |> preserve_blank_query_password()
     |> Logflare.Utils.default_field_value(:use_async_inserts_for_small_batches, false)
+    |> Logflare.Utils.default_field_value(:use_async_inserts_only, false)
     |> Logflare.Utils.default_field_value(:async_insert_max_rows, 1_000)
     |> Logflare.Utils.default_field_value(:batch_size, Pipeline.max_batch_size())
     |> Logflare.Utils.default_field_value(:batch_timeout, Pipeline.default_batch_timeout())
@@ -627,18 +640,23 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   # The dedicated async endpoint is only checked when async routing is enabled and a
   # set, parsable `async_insert_cluster_url` is configured.
   @spec async_grant_check_url(map()) :: String.t() | nil
-  defp async_grant_check_url(%{
-         use_async_inserts_for_small_batches: true,
-         async_insert_cluster_url: url
-       })
-       when is_non_empty_binary(url) do
+  defp async_grant_check_url(%{use_async_inserts_only: true} = config),
+    do: parsable_async_url(config)
+
+  defp async_grant_check_url(%{use_async_inserts_for_small_batches: true} = config),
+    do: parsable_async_url(config)
+
+  defp async_grant_check_url(_config), do: nil
+
+  @spec parsable_async_url(map()) :: String.t() | nil
+  defp parsable_async_url(%{async_insert_cluster_url: url}) when is_non_empty_binary(url) do
     case EndpointUtils.host(url) do
       host when is_non_empty_binary(host) -> url
       _ -> nil
     end
   end
 
-  defp async_grant_check_url(_config), do: nil
+  defp parsable_async_url(_config), do: nil
 
   @spec check_async_grants(Backend.t(), map(), String.t()) ::
           :ok | {:error, :async_permissions_missing} | {:error, :grant_check_unknown_failure}

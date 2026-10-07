@@ -701,6 +701,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert Keyword.has_key?(changeset.errors, :async_insert_max_rows)
     end
 
+    test "use_async_inserts_only defaults to false" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :use_async_inserts_only) == false
+    end
+
+    test "casts use_async_inserts_only" do
+      changeset = cast_and_validate_config(use_async_inserts_only: true)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :use_async_inserts_only) == true
+    end
+
     test "batch_size and batch_timeout default to the pipeline defaults" do
       changeset = cast_and_validate_config()
 
@@ -1617,6 +1631,31 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       start_supervised!({ClickHouseAdaptor, backend})
       assert :ok = ClickHouseAdaptor.test_connection(backend)
+    end
+  end
+
+  describe "test_connection/1 async insert grants" do
+    test "checks the async cluster grants when async-only inserts are enabled" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            use_async_inserts_only: true,
+            async_insert_cluster_url: "http://localhost:8123"
+          },
+          cleanup?: false
+        )
+
+      assert {:ok, true} = test_connection_running?(backend, async_grant_statement())
+    end
+
+    test "skips the async cluster grant check when async inserts are disabled" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{async_insert_cluster_url: "http://localhost:8123"},
+          cleanup?: false
+        )
+
+      assert {:ok, false} = test_connection_running?(backend, async_grant_statement())
     end
   end
 
@@ -3531,6 +3570,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       backend
       | token: long_token
     }
+  end
+
+  defp async_grant_statement, do: QueryTemplates.async_insert_grant_check_statement()
+
+  defp test_connection_running?(backend, statement) do
+    test_pid = self()
+
+    stub(Ch, :query, fn pool, query_statement, params, opts ->
+      if query_statement == statement, do: send(test_pid, :statement_ran)
+
+      Mimic.call_original(Ch, :query, [pool, query_statement, params, opts])
+    end)
+
+    with :ok <- ClickHouseAdaptor.test_connection(backend) do
+      receive do
+        :statement_ran -> {:ok, true}
+      after
+        0 -> {:ok, false}
+      end
+    end
   end
 
   defp random_string(length) do

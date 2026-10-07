@@ -130,6 +130,34 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   defp message_id(%Message{data: %EncodedRow{pointer: %{id: id}}}), do: id
   defp message_id(%Message{data: %LogEventPointer{id: id}}), do: id
 
+  defp insert_opts_for_rows(source, backend, row_count) do
+    test_pid = self()
+
+    Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
+                                                                      _event_type,
+                                                                      _compressed,
+                                                                      opts ->
+      send(test_pid, {:insert_opts, opts})
+      :ok
+    end)
+
+    events = for n <- 1..row_count, do: build(:log_event, source: source, message: "row #{n}")
+    gen_tid = setup_generation_events(events)
+    messages = Enum.map(events, &batch_message(&1, gen_tid, backend.id))
+
+    batch_info = %Broadway.BatchInfo{
+      batcher: :ch,
+      batch_key: {:log, @day_bucket},
+      size: row_count,
+      trigger: :flush
+    }
+
+    Pipeline.handle_batch(:ch, messages, batch_info, %{backend_id: backend.id})
+
+    assert_received {:insert_opts, opts}
+    opts
+  end
+
   defp batcher_state(backend) do
     [pipeline_name] =
       backend
@@ -1186,6 +1214,27 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       assert_received {:insert_opts, opts}
       assert Keyword.get(opts, :async) == false
+    end
+  end
+
+  describe "handle_batch/4 async-only inserts" do
+    test "sends async: true for every batch, ignoring the small-batch cutoff" do
+      {source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            use_async_inserts_only: true,
+            use_async_inserts_for_small_batches: true,
+            async_insert_max_rows: 2
+          }
+        )
+
+      assert Keyword.get(insert_opts_for_rows(source, backend, 2), :async) == true
+    end
+
+    test "sends async: true when small-batch async inserts are disabled" do
+      {source, backend} = setup_clickhouse_test(config: %{use_async_inserts_only: true})
+
+      assert Keyword.get(insert_opts_for_rows(source, backend, 1), :async) == true
     end
   end
 
