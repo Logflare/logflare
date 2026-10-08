@@ -48,7 +48,6 @@ defmodule Logflare.Backends.SourceSup do
   """
   @spec prefetch(Source.t()) :: :ok
   def prefetch(%Source{} = source) do
-    Sources.Cache.preload_rules(source)
     Sources.Cache.get_by_id(source.id)
 
     source_backends =
@@ -74,8 +73,6 @@ defmodule Logflare.Backends.SourceSup do
   end
 
   def init(source) do
-    source = Sources.Cache.preload_rules(source)
-
     ingest_backends =
       Backends.Cache.list_backends(source_id: source.id)
       |> Enum.reject(& &1.consolidated_ingest?)

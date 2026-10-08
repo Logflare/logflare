@@ -114,7 +114,7 @@ defmodule Logflare.Backends.UserMonitoring do
   def log_interceptor(_, _), do: :ignore
 
   defp get_system_source_logs(user_id) do
-    Sources.Cache.get_by_and_preload_rules(user_id: user_id, system_source_type: :logs)
+    Sources.Cache.get_by_for_ingest(user_id: user_id, system_source_type: :logs)
     |> Sources.refresh_source_metrics_for_ingest()
   end
 
