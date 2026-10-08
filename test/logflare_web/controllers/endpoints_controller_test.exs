@@ -437,8 +437,9 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
         Logflare.ContextCache.bust_keys([{Endpoints, endpoint.id}])
 
-        expect(ClickHouseAdaptor, :execute_query, fn _backend, query_args, _opts ->
-          sql = elem(query_args, 0)
+        expect(ClickHouseAdaptor, :execute_query, fn backend, query_args, opts ->
+          assert opts[:enforced_clickhouse_settings]["max_execution_time"] == 5
+          assert {:ok, sql} = ClickHouseAdaptor.prepare_query(backend, elem(query_args, 0), opts)
           assert sql =~ "'historical'"
           assert sql =~ "max_execution_time = 5"
 

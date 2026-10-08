@@ -105,15 +105,43 @@ defmodule Logflare.Backends.Backend do
     |> Enum.sort()
   end
 
-  def changeset(backend, attrs) do
+  def changeset(backend, attrs, opts \\ []) do
     backend
     |> cast(attrs, [:type, :config, :name, :description, :metadata, :default_ingest?])
     |> validate_required([:user_id, :type, :config, :name])
     |> validate_inclusion(:type, Map.keys(@adaptor_mapping))
     |> validate_config()
+    |> protect_query_class_settings(opts)
     |> validate_default_ingest()
     |> do_config_change()
   end
+
+  @spec protect_query_class_settings(Changeset.t(), Keyword.t()) :: Changeset.t()
+  defp protect_query_class_settings(changeset, opts) do
+    current = query_class_policy(changeset.data.config_encrypted)
+
+    proposed =
+      query_class_policy(get_field(changeset, :config) || changeset.data.config_encrypted)
+
+    changing_type? = get_field(changeset, :type) != changeset.data.type
+    changing_policy? = current != proposed or (current != %{} and changing_type?)
+
+    if changing_policy? and not Keyword.get(opts, :allow_query_class_settings, false) do
+      add_error(
+        changeset,
+        :"config.query_class_settings",
+        "can only be configured by an administrator"
+      )
+    else
+      changeset
+    end
+  end
+
+  @spec query_class_policy(term()) :: term()
+  defp query_class_policy(config) when is_map(config),
+    do: Map.get(config, :query_class_settings) || Map.get(config, "query_class_settings") || %{}
+
+  defp query_class_policy(_config), do: %{}
 
   # temp function
   defp do_config_change(%Changeset{changes: %{config: config}} = changeset) do

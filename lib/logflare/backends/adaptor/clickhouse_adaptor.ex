@@ -21,6 +21,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias __MODULE__.Ingester
   alias __MODULE__.Pipeline
   alias __MODULE__.Provisioner
+  alias __MODULE__.QueryClassSettings
   alias __MODULE__.QueryConnectionSup
   alias __MODULE__.QueryErrorNormalizer
   alias __MODULE__.QueryTemplates
@@ -34,6 +35,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
+  alias Logflare.Endpoints.ClickHouseSettings
   alias Logflare.LogEvent
   alias Logflare.LogEvent.TypeDetection
   alias Logflare.Sources.Source
@@ -57,6 +59,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     :labeled_read_pool_size,
     :read_only_urls,
     :default_read_cluster,
+    :query_class_settings,
     :query_user,
     :query_password,
     :replica_routing_param
@@ -144,6 +147,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   def redact_config(config) do
     config
     |> Map.put(:password, "REDACTED")
+    |> Map.delete(:query_class_settings)
     |> redact_query_password()
   end
 
@@ -198,6 +202,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       )
       when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) and
              is_list(opts) do
+    endpoint_settings =
+      if is_map(endpoint_query),
+        do: Map.get(endpoint_query, :enforced_clickhouse_settings, %{}),
+        else: %{}
+
+    opts = Keyword.put(opts, :enforced_clickhouse_settings, endpoint_settings)
+
     with {:ok, {limited_query, max_rows}} <- limit_endpoint_query(query_string, endpoint_query) do
       execute_query_with_params(
         backend,
@@ -314,6 +325,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        labeled_read_pool_size: :integer,
        read_only_urls: {:map, :string},
        default_read_cluster: :string,
+       query_class_settings: :map,
        use_async_inserts_for_small_batches: :boolean,
        use_async_inserts_only: :boolean,
        async_insert_cluster_url: :string,
@@ -335,6 +347,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :labeled_read_pool_size,
       :read_only_urls,
       :default_read_cluster,
+      :query_class_settings,
       :use_async_inserts_for_small_batches,
       :use_async_inserts_only,
       :async_insert_cluster_url,
@@ -413,6 +426,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     )
     |> validate_read_only_urls()
     |> validate_default_read_cluster()
+    |> validate_query_class_settings()
     |> validate_user_pass()
     |> validate_query_user_pass()
     |> validate_number(:read_pool_size,
@@ -745,27 +759,62 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   def execute_ch_query(%Backend{} = backend, statement, params, opts)
       when is_list_or_map(params) and is_list(opts) do
-    requested = Keyword.get(opts, :read_cluster)
-    label = resolve_read_cluster_label(backend, requested)
+    with {:ok, statement} <- prepare_query(backend, statement, opts) do
+      requested = Keyword.get(opts, :read_cluster)
+      label = resolve_read_cluster_label(backend, requested)
 
-    warn_on_unconfigured_read_cluster(backend, requested, label)
-    headers = Keyword.get(opts, :headers, [])
+      warn_on_unconfigured_read_cluster(backend, requested, label)
+      headers = Keyword.get(opts, :headers, [])
 
-    {result, queried_label} =
-      case do_ch_query_on_label(backend, statement, params, label, headers) do
-        {:error, %QueryError{kind: :connection_error}} = error ->
-          maybe_retry_on_default_cluster(backend, statement, params, label, headers, error)
+      {result, queried_label} =
+        case do_ch_query_on_label(backend, statement, params, label, headers) do
+          {:error, %QueryError{kind: :connection_error}} = error ->
+            maybe_retry_on_default_cluster(backend, statement, params, label, headers, error)
 
-        result ->
-          {result, label}
-      end
+          result ->
+            {result, label}
+        end
 
-    emit_query_error_telemetry(result, %{
-      backend_id: backend.id,
-      read_cluster: read_cluster_tag(queried_label)
-    })
+      emit_query_error_telemetry(result, %{
+        backend_id: backend.id,
+        read_cluster: read_cluster_tag(queried_label)
+      })
 
-    result
+      result
+    else
+      {:error, reason} ->
+        {:error, %{query_error(:invalid_query, reason) | description: reason}}
+    end
+  end
+
+  @spec prepare_query(Backend.t(), iodata(), Keyword.t()) ::
+          {:ok, String.t()} | {:error, String.t()}
+  def prepare_query(%Backend{config: config}, statement, opts \\ []) do
+    classes = Map.get(config, :query_class_settings) || %{}
+    endpoint_settings = Keyword.get(opts, :enforced_clickhouse_settings, %{})
+
+    with {:ok, settings} <-
+           QueryClassSettings.resolve(
+             classes,
+             Keyword.get(opts, :read_cluster),
+             endpoint_settings
+           ) do
+      ClickHouseSettings.enforce(IO.iodata_to_binary(statement), settings)
+    end
+  end
+
+  @spec validate_query_class_settings(Changeset.t()) :: Changeset.t()
+  defp validate_query_class_settings(changeset) do
+    case Changeset.get_field(changeset, :query_class_settings) do
+      nil ->
+        changeset
+
+      settings ->
+        case QueryClassSettings.normalize(settings) do
+          {:ok, settings} -> Changeset.put_change(changeset, :query_class_settings, settings)
+          {:error, reason} -> Changeset.add_error(changeset, :query_class_settings, reason)
+        end
+    end
   end
 
   @spec do_ch_query_on_label(
@@ -816,7 +865,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @spec warn_on_unconfigured_read_cluster(Backend.t(), String.t() | nil, String.t() | nil) :: :ok
   defp warn_on_unconfigured_read_cluster(%Backend{} = backend, requested, label)
        when is_non_empty_binary(requested) and requested != label do
-    Logger.warning(
+    level = if QueryClassSettings.class_label?(requested), do: :debug, else: :warning
+
+    Logger.log(
+      level,
       "ClickHouse read cluster not configured, falling back to resolved read cluster",
       user_id: backend.user_id,
       backend_id: backend.id,
