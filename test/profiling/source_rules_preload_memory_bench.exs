@@ -4,7 +4,7 @@
 #
 # Measures the memory impact of no longer preloading `rules` onto `%Source{}` on the
 # ingest path. Each section compares the removed behaviour ("before") against the
-# current one ("after") for sources with 0, 10 and 100 rules:
+# current one ("after") for sources with 0, 10, 100 and 1000 rules:
 #
 #   1. Per-request lookup: Sources.Cache.get_by_for_ingest/1, used by FetchResource,
 #      LogChannel, the gRPC VerifyApiResourceAccess interceptor and UserMonitoring.
@@ -28,7 +28,7 @@ Ecto.Adapters.SQL.Sandbox.start_owner!(Repo, shared: true, ownership_timeout: 1_
 
 insert(:plan)
 user = insert(:user)
-rule_counts = [0, 10, 100]
+rule_counts = [0, 10, 100, 1000]
 
 preload_rules_from_cache = fn source ->
   Repo.preload(source, rules: fn [id] -> Rules.Cache.list_by_source_id(id) end)
