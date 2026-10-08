@@ -91,6 +91,63 @@ defmodule LogflareWeb.EndpointsLiveTest do
   end
 
   describe "enforced ClickHouse settings" do
+    for sandbox? <- [false, true] do
+      @tag sandbox?: sandbox?
+      test "open endpoint test views use current limits (sandbox: #{sandbox?})", %{
+        conn: conn,
+        user: user,
+        sandbox?: sandbox?
+      } do
+        admin = insert(:user, admin: true)
+        backend = insert(:backend, user: user, type: :clickhouse)
+
+        endpoint =
+          insert(:endpoint,
+            user: user,
+            backend: backend,
+            language: :ch_sql,
+            sandboxable: true,
+            query: "WITH data AS (SELECT 1 AS n) SELECT n FROM data"
+          )
+
+        {:ok, view, _} = live_with_redirect(conn, ~p"/endpoints/#{endpoint.id}")
+
+        for settings <- [%{"max_execution_time" => 5}, %{"max_execution_time" => 3}, %{}] do
+          assert {:ok, current} =
+                   Logflare.Endpoints.configure_enforced_clickhouse_settings(
+                     admin,
+                     endpoint,
+                     settings
+                   )
+
+          expect(ClickHouseAdaptor, :execute_query, fn _backend, {sql, _, _, query}, _opts ->
+            assert query.enforced_clickhouse_settings == current.enforced_clickhouse_settings
+
+            if settings == %{} do
+              refute sql =~ "max_execution_time"
+            else
+              assert sql =~ "max_execution_time = #{settings["max_execution_time"]}"
+            end
+
+            assert sql =~ if(sandbox?, do: "SELECT n FROM data", else: "SELECT 2 AS n")
+
+            {:ok,
+             Logflare.Backends.Adaptor.QueryResult.new([%{"n" => 2}], %{total_bytes_processed: 0})}
+          end)
+
+          payload =
+            if sandbox?,
+              do: %{params: %{}, sandbox_query: "SELECT n FROM data", query_mode: "sql"},
+              else: %{params: %{}, query: "SELECT 2 AS n"}
+
+          view |> element("#endpoint-test-form") |> render_submit(%{run: payload})
+
+          assert render(view) =~
+                   "Ran #{if sandbox?, do: "sandbox query", else: "query"} successfully"
+        end
+      end
+    end
+
     test "only admins see and can save settings, including for another user's endpoint", %{
       conn: conn
     } do

@@ -156,6 +156,41 @@ defmodule Logflare.EndpointsTest do
       end
     end
 
+    test "previews reload current policy while preserving unsaved and historical SQL", %{
+      admin: admin,
+      endpoint: endpoint
+    } do
+      insert(:endpoint_version,
+        endpoint: endpoint,
+        version_number: 1,
+        snapshot_overrides: %{
+          "query" => "WITH src AS (SELECT b FROM settings_source) SELECT b FROM src"
+        }
+      )
+
+      assert {:ok, historical} = Endpoints.get_endpoint_query_at_version(endpoint.id, 1)
+
+      unsaved = %{
+        endpoint
+        | query: "SELECT 42 AS edited",
+          enforced_clickhouse_settings: %{"max_execution_time" => 100}
+      }
+
+      for settings <- [%{"max_execution_time" => 5}, %{}] do
+        assert {:ok, _} =
+                 Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, settings)
+
+        for {query, expected} <- [{historical, "SELECT b"}, {unsaved, "SELECT 42 AS edited"}] do
+          assert {:ok, sql} = Endpoints.get_transformed_query(query)
+          assert sql =~ expected
+
+          if settings == %{},
+            do: refute(sql =~ "max_execution_time"),
+            else: assert(sql =~ "max_execution_time = 5")
+        end
+      end
+    end
+
     test "applies limits to default and caller SQL, rejects overrides", %{
       admin: admin,
       endpoint: endpoint

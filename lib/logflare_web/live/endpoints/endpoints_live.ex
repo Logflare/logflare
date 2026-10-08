@@ -368,6 +368,7 @@ defmodule LogflareWeb.EndpointsLive do
     case Endpoints.run_query_string(user, {endpoint_language, query_string},
            params: query_params,
            parsed_labels: parsed_labels,
+           endpoint_id: socket.assigns.endpoint_changeset.data.id,
            use_query_cache: false,
            redact_pii: redact_pii,
            backend_id: backend_id,

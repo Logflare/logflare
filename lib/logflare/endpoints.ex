@@ -649,7 +649,8 @@ defmodule Logflare.Endpoints do
 
     alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
 
-    with :ok <- validate_query_override(endpoint_query, params),
+    with {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
+         :ok <- validate_query_override(endpoint_query, params),
          {:ok, declared_params} <-
            Sql.parameters(query_string, dialect: Sql.to_dialect(query_language)),
          {:ok, expanded_query} <-
@@ -751,6 +752,7 @@ defmodule Logflare.Endpoints do
       |> Map.new(&{&1.name, &1.token})
 
     query = %EndpointQuery{
+      id: Keyword.get(opts, :endpoint_id),
       query: query_string,
       language: language,
       sandboxable: Keyword.get(opts, :sandboxable, false),
@@ -843,7 +845,8 @@ defmodule Logflare.Endpoints do
 
     alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
 
-    with {:ok, expanded_query} <-
+    with {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
+         {:ok, expanded_query} <-
            Sql.expand_subqueries(
              query_language,
              query_string,
@@ -867,6 +870,21 @@ defmodule Logflare.Endpoints do
       {:ok, transformed_query}
     end
   end
+
+  @spec reload_enforced_settings(EndpointQuery.t()) ::
+          {:ok, EndpointQuery.t()} | {:error, String.t()}
+  defp reload_enforced_settings(%EndpointQuery{id: id, language: :ch_sql} = endpoint)
+       when is_integer(id) do
+    case Repo.with_primary(fn -> Repo.get(EndpointQuery, id) end) do
+      %EndpointQuery{enforced_clickhouse_settings: settings} ->
+        {:ok, %{endpoint | enforced_clickhouse_settings: settings}}
+
+      nil ->
+        {:error, "Endpoint not found"}
+    end
+  end
+
+  defp reload_enforced_settings(endpoint), do: {:ok, endpoint}
 
   defp apply_enforced_settings(
          %EndpointQuery{language: :ch_sql, enforced_clickhouse_settings: settings},
