@@ -16,7 +16,10 @@ defmodule Logflare.DataCase do
 
   alias Ecto.Adapters.SQL
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.EndpointUtils
+  alias Logflare.Backends.Backend
   alias Logflare.Backends.ConsolidatedSup
+  alias Logflare.TestUtils
 
   using do
     quote do
@@ -62,6 +65,8 @@ defmodule Logflare.DataCase do
           # judged against genuinely-still-live state — including other concurrently
           # running tests' own queues_keys — not a mapper this same callback is about
           # to clear out from under them.
+          IngestEventQueue.delete_stale_mappings()
+
           for queues_key <- IngestEventQueue.list_generation_queues_keys(),
               IngestEventQueue.list_queues(queues_key) == [] do
             IngestEventQueue.prune_generations(queues_key)
@@ -115,60 +120,92 @@ defmodule Logflare.DataCase do
   defdelegate errors_on(changeset), to: LogflareWeb.Utils, as: :changeset_errors
 
   @doc """
-  Sets up a ClickHouse test environment with automatic cleanup.
+  Creates ClickHouse source and backend fixtures.
 
-  Returns `{source, backend}` tuple. Registers cleanup via `on_exit/1`.
+  Use `provision_clickhouse_tables!/1` to create tables with automatic teardown,
+  or `drop_clickhouse_tables_on_exit/1` when testing provisioning or ingestion startup.
 
   ## Options
   - `:config` - Custom ClickHouse configuration (merged with defaults)
   - `:user` - Existing user to use (creates one if not provided)
   - `:source` - Existing source to use (creates one if not provided)
-  - `:default_ingest_backend?` - Whether to set the backend as the default ingest backend (requires a source to be provided with the default ingest backend option set to true)
-  - `:cleanup?` - Whether to drop the backend's ClickHouse tables on exit (defaults to true)
+  - `:default_ingest?` - Whether to set the backend as the default ingest backend
   """
+  @spec setup_clickhouse_test(keyword()) ::
+          {Logflare.Sources.Source.t(), Logflare.Backends.Backend.t()}
   def setup_clickhouse_test(opts \\ []) do
     config = Keyword.get(opts, :config, %{})
-    default_ingest_backend? = Keyword.get(opts, :default_ingest_backend?, false)
 
     if not (is_map_key(config, :url) or is_map_key(config, :port)) do
       ensure_clickhouse_reachable!()
     end
 
-    user =
-      case Keyword.get(opts, :user) do
-        nil ->
-          Logflare.Factory.insert(:user)
-
-        existing_user ->
-          existing_user
-      end
-
+    user = Keyword.get(opts, :user) || Logflare.Factory.insert(:user)
     source = Keyword.get(opts, :source) || Logflare.Factory.insert(:source, user: user)
-
-    default_config = %{
-      url: "http://localhost:8123",
-      database: "logflare_test",
-      username: "logflare",
-      password: "logflare",
-      port: 8123,
-      ingest_pool_size: 5,
-      query_pool_size: 3
-    }
 
     backend =
       Logflare.Factory.insert(:backend,
         type: :clickhouse,
-        config: Map.merge(default_config, config),
-        default_ingest?: default_ingest_backend?,
+        config: Map.merge(TestUtils.clickhouse_config(), config),
+        default_ingest?: Keyword.get(opts, :default_ingest?, false),
         user: user,
         sources: [source]
       )
 
-    if Keyword.get(opts, :cleanup?, true) do
-      on_exit(fn -> cleanup_clickhouse_tables(backend) end)
-    end
-
     {source, backend}
+  end
+
+  @spec provision_clickhouse_tables!(Backend.t()) :: :ok
+  def provision_clickhouse_tables!(backend) do
+    drop_clickhouse_tables_on_exit(backend)
+    assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+  end
+
+  @doc """
+  Registers teardown to synchronously drop a backend's typed tables after a test,
+  stopping its pipeline first. Uses the primary connection, not read routing.
+  """
+  @spec drop_clickhouse_tables_on_exit(Backend.t()) :: :ok
+  def drop_clickhouse_tables_on_exit(%Backend{config: config} = backend) do
+    tables =
+      Enum.map(
+        [:log, :metric, :trace],
+        &ClickHouseAdaptor.clickhouse_ingest_table_name(backend, &1)
+      )
+
+    {scheme, hostname, port} = EndpointUtils.origin(config.url, config[:port])
+
+    opts = [
+      scheme: scheme,
+      hostname: hostname,
+      port: port,
+      database: config.database,
+      username: config[:username],
+      password: config[:password],
+      pool_size: 1,
+      timeout: 60_000
+    ]
+
+    on_exit(fn ->
+      ConsolidatedSup.stop_pipeline(backend.id)
+      drop_clickhouse_tables(opts, tables)
+    end)
+  end
+
+  @spec drop_clickhouse_tables(keyword(), [String.t()]) :: :ok
+  defp drop_clickhouse_tables(opts, tables) do
+    {:ok, conn} = Ch.start_link(opts)
+
+    try do
+      Enum.each(tables, fn table ->
+        Ch.query!(conn, "DROP TABLE IF EXISTS #{table} SYNC", [],
+          timeout: 60_000,
+          pool_timeout: 60_000
+        )
+      end)
+    after
+      GenServer.stop(conn)
+    end
   end
 
   @spec ensure_clickhouse_reachable!() :: :ok
@@ -180,67 +217,6 @@ defmodule Logflare.DataCase do
       {:error, reason} ->
         raise "ClickHouse is not reachable on localhost:8123 (#{inspect(reason)}). " <>
                 "Start it with `docker compose up -d clickhouse`."
-    end
-  end
-
-  @doc """
-  Builds ClickHouse connection options for testing.
-  """
-  def build_clickhouse_connection_opts(source, backend, type) when type in [:ingest, :query] do
-    base_opts = [
-      scheme: "http",
-      hostname: "localhost",
-      port: 8123,
-      database: "logflare_test",
-      username: "logflare",
-      password: "logflare"
-    ]
-
-    type_specific_opts =
-      case type do
-        :ingest -> [pool_size: 5, timeout: 15_000]
-        :query -> [pool_size: 3, timeout: 60_000]
-      end
-
-    connection_name =
-      case type do
-        :ingest -> ClickHouseAdaptor.connection_pool_via({source, backend})
-        :query -> ClickHouseAdaptor.connection_pool_via(backend)
-      end
-
-    base_opts
-    |> Keyword.merge(type_specific_opts)
-    |> Keyword.put(:name, connection_name)
-  end
-
-  @doc """
-  Cleanup ClickHouse tables for a given `Backend`.
-
-  Drops all type-specific tables (`_logs`, `_metrics`, `_traces`).
-  """
-  def cleanup_clickhouse_tables(backend) do
-    tables =
-      Enum.map([:log, :metric, :trace], fn type ->
-        ClickHouseAdaptor.clickhouse_ingest_table_name(backend, type)
-      end)
-
-    drop_query =
-      tables
-      |> Enum.map_join("; ", fn table_name -> "DROP TABLE IF EXISTS #{table_name}" end)
-
-    try do
-      ClickHouseAdaptor.execute_ch_query(
-        backend,
-        drop_query,
-        [],
-        pool_timeout: 1_000
-      )
-
-      ConsolidatedSup.stop_pipeline(backend.id)
-    rescue
-      _ -> :ok
-    catch
-      :exit, _ -> :ok
     end
   end
 

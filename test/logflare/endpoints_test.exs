@@ -832,8 +832,7 @@ defmodule Logflare.EndpointsTest do
       source = insert(:source, user: user, name: "c")
       {_source, backend} = setup_clickhouse_test(user: user, source: source)
 
-      start_supervised!({ClickHouseAdaptor, backend})
-      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+      provision_clickhouse_tables!(backend)
 
       log_events =
         for i <- 1..5 do
