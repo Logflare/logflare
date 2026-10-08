@@ -15,6 +15,7 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Sources.Source.SlackHookServer
   alias Logflare.Sources.Source.BillingWriter
   alias Logflare.Backends.RecentInsertsCacher
+  alias Logflare.Rules
   alias Logflare.Rules.Rule
   alias Logflare.SourceSchemas
   alias Logflare.Sources
@@ -49,6 +50,7 @@ defmodule Logflare.Backends.SourceSup do
   @spec prefetch(Source.t()) :: :ok
   def prefetch(%Source{} = source) do
     Sources.Cache.get_by_id(source.id)
+    Rules.Cache.rules_tree_by_source_id(source.id)
 
     source_backends =
       Backends.Cache.list_backends(source_id: source.id)
