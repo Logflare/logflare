@@ -110,7 +110,7 @@ defmodule Logflare.RepoTest do
         refute replica == Repo
         assert Repo.with_primary(&Repo.get_dynamic_repo/0) == Repo
         assert Repo.get_dynamic_repo() == replica
-        assert_raise ArithmeticError, fn -> Repo.with_primary(fn -> 1 / 0 end) end
+        assert_raise ArithmeticError, fn -> Repo.with_primary(fn -> raise ArithmeticError end) end
         assert Repo.get_dynamic_repo() == replica
       end)
 

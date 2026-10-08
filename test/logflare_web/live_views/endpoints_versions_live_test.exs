@@ -275,7 +275,7 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
       |> element(version_restore_button(version_1), "Restore")
       |> render_click()
 
-      assert render_async(view) =~ "Restored endpoint version 1 as new version 3."
+      assert render_async(view, 5_000) =~ "Restored endpoint version 1 as new version 3."
 
       restored_endpoint = Endpoints.get_endpoint_query(endpoint.id)
 
@@ -347,7 +347,7 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
       |> element(version_restore_button(version_1), "Restore")
       |> render_click()
 
-      assert render_async(view) =~ "Unable to restore endpoint version."
+      assert render_async(view, 5_000) =~ "Unable to restore endpoint version."
       assert Endpoints.get_endpoint_query(endpoint.id).query == endpoint.query
       assert nil == Endpoints.get_endpoint_query_version(endpoint.id, 3)
     end

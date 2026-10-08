@@ -184,8 +184,11 @@ defmodule Logflare.Endpoints do
            |> Ecto.Changeset.change(enforced_clickhouse_settings: settings)
            |> Repo.update() do
       ContextCache.bust_keys([{__MODULE__, updated.id}])
-      maybe_kill_endpoint_caches(updated, %{enforced_clickhouse_settings: settings})
-      {:ok, updated}
+
+      case maybe_kill_endpoint_caches(updated, %{enforced_clickhouse_settings: settings}) do
+        :ok -> {:ok, updated}
+        {:error, reason} -> {:error, {:settings_saved, updated, reason}}
+      end
     else
       nil -> {:error, :not_found}
       %User{} -> {:error, :forbidden}
@@ -457,7 +460,8 @@ defmodule Logflare.Endpoints do
     )
   end
 
-  @spec maybe_kill_endpoint_caches(EndpointQuery.t(), map()) :: :ok
+  @spec maybe_kill_endpoint_caches(EndpointQuery.t(), map()) ::
+          :ok | {:error, :cache_invalidation_failed}
   defp maybe_kill_endpoint_caches(endpoint, changes) do
     if should_kill_caches?(changes) do
       scope =
@@ -467,16 +471,29 @@ defmodule Logflare.Endpoints do
 
       endpoint
       |> Resolver.list_caches(scope)
-      |> Enum.map(&invalidate_cache_async/1)
-      |> Task.await_many(30_000)
+      |> invalidate_caches()
+    else
+      :ok
     end
-
-    :ok
   end
 
-  @spec invalidate_cache_async(pid()) :: Task.t()
-  defp invalidate_cache_async(pid) do
-    Utils.Tasks.async(fn -> ResultsCache.invalidate(pid) end)
+  @spec invalidate_caches([pid()]) :: :ok | {:error, :cache_invalidation_failed}
+  defp invalidate_caches(pids) do
+    supervisor = {:via, PartitionSupervisor, {Logflare.TaskSupervisors, self()}}
+
+    supervisor
+    |> Task.Supervisor.async_stream_nolink(pids, ResultsCache, :invalidate, [],
+      timeout: 10_000,
+      on_timeout: :kill_task
+    )
+    |> Enum.reduce(:ok, fn
+      {:ok, {:ok, :stopped}}, status ->
+        status
+
+      failure, _status ->
+        Logger.warning("Endpoint cache invalidation failed", reason: inspect(failure))
+        {:error, :cache_invalidation_failed}
+    end)
   end
 
   @spec get_endpoint_query_version(integer(), integer()) :: Version.t() | nil

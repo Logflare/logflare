@@ -8,13 +8,13 @@ defmodule Logflare.Endpoints.ResultsCache do
   alias Logflare.Endpoints
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Utils
-  alias Logflare.Utils.Tasks
 
   use GenServer, restart: :temporary
 
   @latest_version :latest
 
   defstruct query_tasks: [],
+            waiting_callers: [],
             params: %{},
             opts: [],
             cached_result: nil,
@@ -30,6 +30,7 @@ defmodule Logflare.Endpoints.ResultsCache do
           endpoint_query_token: String.t(),
           endpoint_version_number: integer() | nil,
           query_tasks: list(%Task{}),
+          waiting_callers: [GenServer.from()],
           params: map(),
           opts: list(),
           cached_result: map() | nil,
@@ -90,10 +91,16 @@ defmodule Logflare.Endpoints.ResultsCache do
   @doc """
   Invalidates the cache by stopping the cache process.
   """
+  @spec invalidate(pid()) :: {:ok, :stopped} | {:error, term()}
   def invalidate(cache) when is_pid(cache) do
     GenServer.call(cache, :invalidate)
+  catch
+    :exit, {:noproc, _call} -> {:ok, :stopped}
+    :exit, {:normal, _call} -> {:ok, :stopped}
+    :exit, reason -> {:error, reason}
   end
 
+  @impl true
   def init({query, params, opts}) do
     endpoint_cache_key = {query_id, version_key} = endpoint_cache_key(query)
     endpoints = endpoints_part(query_id, version_key)
@@ -101,6 +108,7 @@ defmodule Logflare.Endpoints.ResultsCache do
     :syn.join(endpoints_part(query_id, :all_versions), {query_id, :all_versions}, self())
 
     timer = query |> cache_duration_ms() |> shutdown()
+    refresh_timer = if disable_cache?(query), do: nil, else: refresh(proactive_querying_ms(query))
 
     state =
       %__MODULE__{
@@ -110,32 +118,17 @@ defmodule Logflare.Endpoints.ResultsCache do
         params: params,
         opts: opts,
         shutdown_timer: timer,
+        refresh_timer: refresh_timer,
         parsed_labels: query.parsed_labels
       }
-
-    unless disable_cache?(query), do: refresh(proactive_querying_ms(query))
 
     {:ok, state}
   end
 
-  @doc """
-  Queries BigQuery. Public because it's spawned in a task.
-  """
-  def handle_call(:query, _from, %__MODULE__{cached_result: nil} = state) do
-    case do_query(state) do
-      {:ok, result, query} ->
-        state = Map.put(state, :cached_result, result)
-        response = {:ok, result}
-
-        if disable_cache?(query) do
-          {:stop, :normal, response, state}
-        else
-          {:reply, response, state}
-        end
-
-      {:error, err, _query} ->
-        {:stop, :normal, {:error, err}, state}
-    end
+  @impl true
+  def handle_call(:query, from, %__MODULE__{cached_result: nil} = state) do
+    state = %{state | waiting_callers: [from | state.waiting_callers]}
+    {:noreply, start_query(state)}
   end
 
   def handle_call(:query, _from, %__MODULE__{cached_result: cached_result} = state) do
@@ -143,57 +136,86 @@ defmodule Logflare.Endpoints.ResultsCache do
   end
 
   def handle_call(:invalidate, _from, state) do
-    Enum.each(state.query_tasks, &Task.shutdown(&1, :brutal_kill))
     {:stop, :normal, {:ok, :stopped}, state}
   end
 
-  def handle_info(:refresh, state) do
-    task = Tasks.async(__MODULE__, :do_query, [state])
-    tasks = [task | state.query_tasks]
+  @impl true
+  def handle_info(:refresh, state), do: {:noreply, start_query(state)}
 
-    running = Enum.count(tasks)
-
-    if running > 1,
-      do: Logger.warning("CacheTaskError: #{running} Endpoints.ResultsCache tasks are running")
-
-    {:noreply, %{state | query_tasks: tasks}}
-  end
+  def handle_info(:shutdown, %__MODULE__{cached_result: nil, waiting_callers: [_ | _]} = state),
+    do: {:noreply, %{state | shutdown_timer: nil}}
 
   def handle_info(:shutdown, state) do
     Logger.debug("#{__MODULE__}: shutting down cache normally")
     {:stop, :normal, state}
   end
 
-  def handle_info({from_task, {:ok, results, query}}, state) do
-    tasks = Enum.reject(state.query_tasks, &(&1.pid == from_task))
+  def handle_info({ref, {:ok, results, query}}, state) when is_reference(ref) do
+    state = complete_query(state, ref, {:ok, results})
 
     if is_reference(state.refresh_timer) do
       Process.cancel_timer(state.refresh_timer)
     end
 
     timer = refresh(proactive_querying_ms(query))
-    new_state = %{state | cached_result: results, query_tasks: tasks, refresh_timer: timer}
+    new_state = %{state | cached_result: results, refresh_timer: timer}
 
-    if disable_cache?(query) do
+    if disable_cache?(query) or is_nil(state.shutdown_timer) do
       {:stop, :normal, new_state}
     else
       {:noreply, new_state}
     end
   end
 
-  def handle_info({_from_task, {:error, _response, _query}}, state) do
-    {:stop, :normal, state}
+  def handle_info({ref, {:error, response, _query}}, state) when is_reference(ref) do
+    {:stop, :normal, complete_query(state, ref, {:error, response})}
   end
 
-  def handle_info({:DOWN, _ref, :process, pid, :normal}, state) do
-    tasks = Enum.reject(state.query_tasks, &(&1.pid == pid))
-
-    {:noreply, %{state | query_tasks: tasks}}
+  def handle_info({:DOWN, ref, :process, _pid, reason}, state) do
+    Logger.warning("#{__MODULE__}: task exited with reason #{inspect(reason)}")
+    {:stop, :normal, complete_query(state, ref, {:error, stopped_error()})}
   end
 
-  def handle_info({:DOWN, _ref, :process, _pid, reason}, state) do
-    Logger.warning("#{__MODULE__}: task exited with reason #{reason}")
-    {:stop, :normal, state}
+  @impl true
+  def terminate(_reason, state) do
+    Enum.each(state.query_tasks, &Task.shutdown(&1, :brutal_kill))
+    reply_waiting_callers(state, {:error, stopped_error()})
+  end
+
+  @spec start_query(t()) :: t()
+  defp start_query(%__MODULE__{query_tasks: []} = state) do
+    task =
+      Task.Supervisor.async_nolink(
+        {:via, PartitionSupervisor, {Logflare.TaskSupervisors, self()}},
+        __MODULE__,
+        :do_query,
+        [state]
+      )
+
+    %{state | query_tasks: [task]}
+  end
+
+  defp start_query(state), do: state
+
+  @spec complete_query(t(), reference(), term()) :: t()
+  defp complete_query(state, ref, response) do
+    Process.demonitor(ref, [:flush])
+    reply_waiting_callers(state, response)
+    %{state | query_tasks: Enum.reject(state.query_tasks, &(&1.ref == ref)), waiting_callers: []}
+  end
+
+  @spec reply_waiting_callers(t(), term()) :: :ok
+  defp reply_waiting_callers(state, response),
+    do: Enum.each(state.waiting_callers, &GenServer.reply(&1, response))
+
+  @spec stopped_error() :: map()
+  defp stopped_error do
+    %{
+      "code" => 503,
+      "errors" => [],
+      "status" => "CACHE_STOPPED",
+      "message" => "Query cache stopped before execution completed. Retry the request."
+    }
   end
 
   def do_query(state) do

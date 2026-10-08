@@ -6,6 +6,8 @@ defmodule LogflareWeb.EndpointsLiveTest do
   import Logflare.ClickHouseMappedEvents, only: [build_mapped_log_event: 1]
   import Logflare.DataCase, only: [setup_clickhouse_test: 1]
 
+  alias Logflare.Backends.Adaptor.QueryResult
+
   setup %{conn: conn} do
     insert(:plan)
     user = insert(:user)
@@ -131,8 +133,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
             assert sql =~ if(sandbox?, do: "SELECT n FROM data", else: "SELECT 2 AS n")
 
-            {:ok,
-             Logflare.Backends.Adaptor.QueryResult.new([%{"n" => 2}], %{total_bytes_processed: 0})}
+            {:ok, QueryResult.new([%{"n" => 2}], %{total_bytes_processed: 0})}
           end)
 
           payload =
@@ -191,6 +192,46 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       assert Logflare.Endpoints.get_endpoint_query(endpoint.id).enforced_clickhouse_settings ==
                %{}
+    end
+
+    test "incomplete invalidation reports that settings were saved without crashing", %{
+      conn: conn
+    } do
+      admin = insert(:user, admin: true, endpoints_beta: true)
+      backend = insert(:backend, user: admin, type: :clickhouse)
+
+      endpoint =
+        insert(:endpoint,
+          user: admin,
+          backend: backend,
+          language: :ch_sql,
+          cache_duration_seconds: 60,
+          proactive_requerying_seconds: 60
+        )
+
+      cache = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}, []}})
+
+      {:ok, view, _} =
+        conn |> login_user(admin) |> live_with_redirect(~p"/endpoints/#{endpoint.id}/edit")
+
+      :ok = :sys.suspend(cache)
+
+      try do
+        html =
+          view
+          |> element("#enforced-settings-form")
+          |> render_submit(%{settings: %{max_execution_time: "5"}})
+
+        assert html =~ "Settings saved, but cache invalidation is incomplete"
+
+        assert Logflare.Endpoints.get_endpoint_query(endpoint.id).enforced_clickhouse_settings[
+                 "max_execution_time"
+               ] == 5
+
+        assert render(view) =~ "enforced-settings-form"
+      after
+        :sys.resume(cache)
+      end
     end
 
     test "admin endpoint owners can edit the endpoint and its protected limits", %{conn: conn} do
