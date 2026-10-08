@@ -67,15 +67,25 @@ defmodule Logflare.KeyValues.Cache do
 
   @spec lookup(integer(), String.t(), String.t() | nil) :: term() | nil
   def lookup(user_id, key, accessor_path) do
-    cache_key = {:lookup, [user_id, key, accessor_path]}
+    key_args = [user_id, key, accessor_path]
+    cache_key = {:lookup, key_args}
 
-    Cachex.fetch(__MODULE__, cache_key, fn _key ->
-      {:commit,
-       {:cached, Repo.apply_with_replica(KeyValues, :lookup, [user_id, key, accessor_path])}}
+    Cachex.execute!(__MODULE__, fn worker ->
+      Cachex.fetch(worker, cache_key, fn _key -> lookup_fallback(worker, key_args) end)
     end)
     |> case do
       {:commit, {:cached, v}} -> v
       {:ok, {:cached, v}} -> v
+    end
+  end
+
+  defp lookup_fallback(worker, [user_id, key, accessor_path] = key_args) do
+    case Cachex.get(worker, {:lookup, [user_id, key, nil]}) do
+      {:ok, {:cached, full_value}} ->
+        {:commit, {:cached, KeyValues.extract_value(full_value, accessor_path)}}
+
+      {:ok, nil} ->
+        {:commit, {:cached, Repo.apply_with_replica(KeyValues, :lookup, key_args)}}
     end
   end
 

@@ -31,23 +31,38 @@ defmodule Logflare.KeyValues.CacheTest do
     assert {:cached, "abc"} = Cachex.get!(KeyValues.Cache, cache_key)
   end
 
+  test "lookup/3 on a warmed entry", %{user: user} do
+    value = %{"org" => %{"id" => "abc", "name" => "Acme"}}
+    insert(:key_value, user: user, key: "proj1", value: value)
+    KeyValues.CacheWarmer.warm_recent()
+    reject(&KeyValues.lookup/2)
+    reject(&KeyValues.lookup/3)
+
+    for {accessor_path, expected} <- [
+          {"org.id", "abc"},
+          {"$.org.name", "Acme"},
+          {"org.missing", nil}
+        ] do
+      assert KeyValues.Cache.lookup(user.id, "proj1", accessor_path) == expected
+    end
+  end
+
   test "lookup/2 returns nil for missing keys", %{user: user} do
     assert nil == KeyValues.Cache.lookup(user.id, "nonexistent")
   end
 
   test "bust_by/1 clears cached lookup and all accessor variants", %{user: user} do
-    value = %{"org" => %{"id" => "abc"}}
-    insert(:key_value, user: user, key: "proj1", value: value)
+    kv = insert(:key_value, user: user, key: "proj1", value: %{"org" => %{"id" => "abc"}})
 
-    # populate cache with different accessor paths
-    assert ^value = KeyValues.Cache.lookup(user.id, "proj1")
     assert "abc" = KeyValues.Cache.lookup(user.id, "proj1", "org.id")
+    assert %{"org" => %{"id" => "abc"}} = KeyValues.Cache.lookup(user.id, "proj1")
 
-    # bust clears both lookups + count entry (if cached)
-    assert {:ok, busted} = KeyValues.Cache.bust_by(user_id: user.id, key: "proj1")
-    assert busted >= 2
-    assert is_nil(Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "proj1", nil]}))
-    assert is_nil(Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "proj1", "org.id"]}))
+    new_value = %{"org" => %{"id" => "xyz"}}
+    kv |> Ecto.Changeset.change(value: new_value) |> Repo.update!()
+    assert {:ok, _} = KeyValues.Cache.bust_by(user_id: user.id, key: "proj1")
+
+    assert "xyz" = KeyValues.Cache.lookup(user.id, "proj1", "org.id")
+    assert ^new_value = KeyValues.Cache.lookup(user.id, "proj1")
   end
 
   test "bust_by/1 returns 0 when key not cached", %{user: user} do
