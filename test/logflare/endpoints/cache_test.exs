@@ -168,6 +168,75 @@ defmodule Logflare.Endpoints.CacheTest do
       Endpoints.ResultsCache.invalidate(versioned_cache_pid)
     end
 
+    test "operator limit changes stop every version cache and active refresh", %{user: user} do
+      backend = insert(:backend, user: user, type: :clickhouse)
+      endpoint = insert_versioned_endpoint(user, backend)
+      insert(:endpoint_version, endpoint: endpoint, version_number: 2)
+      admin = insert(:user, admin: true)
+      test_pid = self()
+
+      other_endpoint = insert_versioned_endpoint(user, backend)
+
+      other_pid =
+        start_supervised!({Endpoints.ResultsCache, {other_endpoint, %{}, []}},
+          id: :other_endpoint
+        )
+
+      for settings <- [%{"max_execution_time" => 5}, %{}] do
+        assert {:ok, first_version} = Endpoints.get_endpoint_query_at_version(endpoint.id, 1)
+        assert {:ok, second_version} = Endpoints.get_endpoint_query_at_version(endpoint.id, 2)
+        Endpoints.Cache.get_endpoint_query(endpoint.id)
+
+        caches =
+          for {query, params} <- [
+                {endpoint, %{}},
+                {first_version, %{}},
+                {first_version, %{"variant" => "another"}},
+                {second_version, %{}}
+              ] do
+            pid =
+              start_supervised!({Endpoints.ResultsCache, {query, params, []}},
+                id: {query.version_number, params, settings}
+              )
+
+            {pid, Process.monitor(pid)}
+          end
+
+        cache_pids = Enum.map(caches, &elem(&1, 0))
+
+        assert Enum.sort(Endpoints.Resolver.list_caches(endpoint, :all_versions)) ==
+                 Enum.sort(cache_pids)
+
+        expect(ClickHouseAdaptor, :execute_query, fn _backend, _query_args, _opts ->
+          send(test_pid, {:refresh_started, self()})
+
+          receive do
+            :finish -> {:ok, QueryResult.new([], %{total_bytes_processed: 0})}
+          end
+        end)
+
+        {refresh_cache, _} = Enum.at(caches, 1)
+        send(refresh_cache, :refresh)
+        assert_receive {:refresh_started, task_pid}, 5_000
+        task_monitor = Process.monitor(task_pid)
+
+        assert {:ok, current} =
+                 Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, settings)
+
+        for {pid, monitor} <- caches do
+          assert_receive {:DOWN, ^monitor, :process, ^pid, :normal}
+        end
+
+        assert_receive {:DOWN, ^task_monitor, :process, ^task_pid, :killed}
+        assert Endpoints.Resolver.list_caches(endpoint, :all_versions) == []
+
+        assert Endpoints.Cache.get_endpoint_query(endpoint.id).enforced_clickhouse_settings ==
+                 current.enforced_clickhouse_settings
+
+        assert Process.alive?(other_pid)
+      end
+    end
+
     test "versioned cache queries overlay current limits on a memoized snapshot", %{user: user} do
       backend = insert(:backend, user: user, type: :clickhouse)
       endpoint = insert_versioned_endpoint(user, backend)

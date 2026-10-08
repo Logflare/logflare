@@ -12,6 +12,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.Backend
   alias Logflare.Backends.QueryError
+  alias Logflare.ContextCache
   alias Logflare.Endpoints.ClickHouseSettings
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Endpoints.PiiRedactor
@@ -182,6 +183,7 @@ defmodule Logflare.Endpoints do
            query
            |> Ecto.Changeset.change(enforced_clickhouse_settings: settings)
            |> Repo.update() do
+      ContextCache.bust_keys([{__MODULE__, updated.id}])
       maybe_kill_endpoint_caches(updated, %{enforced_clickhouse_settings: settings})
       {:ok, updated}
     else
@@ -458,8 +460,13 @@ defmodule Logflare.Endpoints do
   @spec maybe_kill_endpoint_caches(EndpointQuery.t(), map()) :: :ok
   defp maybe_kill_endpoint_caches(endpoint, changes) do
     if should_kill_caches?(changes) do
+      scope =
+        if is_map_key(changes, :enforced_clickhouse_settings),
+          do: :all_versions,
+          else: :selected_version
+
       endpoint
-      |> Resolver.list_caches()
+      |> Resolver.list_caches(scope)
       |> Enum.map(&invalidate_cache_async/1)
       |> Task.await_many(30_000)
     end

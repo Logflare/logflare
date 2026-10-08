@@ -98,6 +98,7 @@ defmodule Logflare.Endpoints.ResultsCache do
     endpoint_cache_key = {query_id, version_key} = endpoint_cache_key(query)
     endpoints = endpoints_part(query_id, version_key)
     :syn.join(endpoints, endpoint_cache_key, self())
+    :syn.join(endpoints_part(query_id, :all_versions), {query_id, :all_versions}, self())
 
     timer = query |> cache_duration_ms() |> shutdown()
 
@@ -142,6 +143,7 @@ defmodule Logflare.Endpoints.ResultsCache do
   end
 
   def handle_call(:invalidate, _from, state) do
+    Enum.each(state.query_tasks, &Task.shutdown(&1, :brutal_kill))
     {:stop, :normal, {:ok, :stopped}, state}
   end
 
