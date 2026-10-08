@@ -221,6 +221,26 @@ defmodule Logflare.Cache.CachexOps do
   def cached?(cache, key), do: Cachex.exists?(cache, key) == {:ok, true}
 
   @doc """
+  Reads the entry without expiring it or calling a getter. Entries past their TTL but not yet
+  purged, and entries not written as `{:cached, value}`, are `nil`.
+  """
+  @impl Logflare.ContextCache.Ops
+  @spec entry(Cachex.t(), term()) :: ContextCache.entry() | nil
+  def entry(cache, key) do
+    case Cachex.inspect(cache, {:entry, key}) do
+      {:ok, entry(value: {:cached, value}, expiration: nil)} ->
+        {key, value, nil}
+
+      {:ok, entry(value: {:cached, value}, modified: modified, expiration: expiration)} ->
+        ttl = modified + expiration - now()
+        if ttl > 0, do: {key, value, ttl}
+
+      _not_cached ->
+        nil
+    end
+  end
+
+  @doc """
   Reads the entry's expiration without expiring it, so an entry past its TTL but not yet purged
   reports a remaining time-to-live of `0`.
   """

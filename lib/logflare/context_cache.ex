@@ -21,7 +21,8 @@ defmodule Logflare.ContextCache do
 
   With `refresh_ahead: true`, `c:fetch/2` also hands the key to `Logflare.ContextCache.RefreshAhead`,
   which reloads entries close to expiry in the background, so reads don't block on the getter
-  when a hot entry expires. It relies on `c:expiry/1`, `c:cached?/1` and `c:put_entries/1` only.
+  when a hot entry expires. It relies on `c:expiry/1`, `c:entry/1`, `c:cached?/1`,
+  `c:put_entries/1` and `c:stale_entry?/2` only.
 
   ## Busting
 
@@ -71,6 +72,11 @@ defmodule Logflare.ContextCache do
   @callback put_entries([entry()]) :: :ok
 
   @callback cached?(key :: term()) :: boolean()
+
+  @doc """
+  The unexpired entry cached under `key`, without calling a getter on a miss.
+  """
+  @callback entry(key :: term()) :: entry() | nil
 
   @doc """
   Remaining and total time-to-live in ms of the entry cached under `key`, `nil` when it is not
@@ -128,6 +134,9 @@ defmodule Logflare.ContextCache do
       def cached?(key), do: unquote(impl).cached?(__MODULE__, key)
 
       @impl Logflare.ContextCache
+      def entry(key), do: unquote(impl).entry(__MODULE__, key)
+
+      @impl Logflare.ContextCache
       def expiry(key), do: unquote(impl).expiry(__MODULE__, key)
 
       @impl Logflare.ContextCache
@@ -145,6 +154,7 @@ defmodule Logflare.ContextCache do
                      entries: 0,
                      put_entries: 1,
                      cached?: 1,
+                     entry: 1,
                      expiry: 1,
                      size: 0,
                      tombstones: 1,

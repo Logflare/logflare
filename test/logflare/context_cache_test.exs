@@ -31,6 +31,8 @@ defmodule Logflare.ContextCacheTest do
     @impl Logflare.ContextCache.Ops
     def cached?(cache, key), do: record({:cached?, cache, key}, true)
     @impl Logflare.ContextCache.Ops
+    def entry(cache, key), do: record({:entry, cache, key}, {key, :value, 500})
+    @impl Logflare.ContextCache.Ops
     def expiry(cache, key), do: record({:expiry, cache, key}, {500, 1_000})
     @impl Logflare.ContextCache.Ops
     def size(cache), do: record({:size, cache}, 1)
@@ -69,6 +71,9 @@ defmodule Logflare.ContextCacheTest do
 
       assert CustomImpl.Cache.cached?(:key)
       assert_received {:cached?, CustomImpl.Cache, :key}
+
+      assert {:key, :value, 500} = CustomImpl.Cache.entry(:key)
+      assert_received {:entry, CustomImpl.Cache, :key}
 
       assert {500, 1_000} = CustomImpl.Cache.expiry(:key)
       assert_received {:expiry, CustomImpl.Cache, :key}

@@ -238,6 +238,39 @@ defmodule Logflare.Cache.CachexOpsTest do
     end
   end
 
+  describe "entry/2" do
+    setup do
+      start_cache(limit: nil, ttl: to_timeout(minute: 10))
+      :ok
+    end
+
+    test "value and remaining ttl, including nil values" do
+      CachexOps.put_entries(@cache, [{:a, :value, to_timeout(minute: 2)}, {:b, nil, nil}])
+
+      assert {:a, :value, ttl} = CachexOps.entry(@cache, :a)
+      assert ttl > to_timeout(minute: 1) and ttl <= to_timeout(minute: 2)
+      assert {:b, nil, _ttl} = CachexOps.entry(@cache, :b)
+    end
+
+    test "does not call a getter or cache anything on a miss" do
+      assert nil == CachexOps.entry(@cache, :missing)
+      refute CachexOps.cached?(@cache, :missing)
+    end
+
+    test "nil for an expired entry that wasn't purged yet" do
+      CachexOps.put_entries(@cache, [{:key, :value, 1}])
+      Process.sleep(5)
+
+      assert nil == CachexOps.entry(@cache, :key)
+    end
+
+    test "nil for values not written as {:cached, value}" do
+      Cachex.put(@cache, :raw, :value)
+
+      assert nil == CachexOps.entry(@cache, :raw)
+    end
+  end
+
   describe "expiry/2" do
     setup do
       start_cache(limit: nil, ttl: to_timeout(minute: 10))
