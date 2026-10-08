@@ -228,7 +228,10 @@ defmodule Logflare.Endpoints.CacheTest do
         end
 
         assert_receive {:DOWN, ^task_monitor, :process, ^task_pid, :killed}
-        assert Endpoints.Resolver.list_caches(endpoint, :all_versions) == []
+
+        TestUtils.retry_assert(fn ->
+          assert Endpoints.Resolver.list_caches(endpoint, :all_versions) == []
+        end)
 
         assert Endpoints.Cache.get_endpoint_query(endpoint.id).enforced_clickhouse_settings ==
                  current.enforced_clickhouse_settings

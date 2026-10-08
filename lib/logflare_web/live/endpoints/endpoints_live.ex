@@ -193,13 +193,17 @@ defmodule LogflareWeb.EndpointsLive do
       {:ok, updated} ->
         {:noreply,
          socket
-         |> assign(:show_endpoint, updated)
-         |> assign(
-           :enforced_settings_form,
-           enforced_settings_form(updated.enforced_clickhouse_settings)
-         )
-         |> assign(:enforced_settings_error, nil)
+         |> assign_enforced_settings(updated)
          |> put_flash(:info, "Enforced ClickHouse settings saved")}
+
+      {:error, {:settings_saved, updated, :cache_invalidation_failed}} ->
+        {:noreply,
+         socket
+         |> assign_enforced_settings(updated)
+         |> put_flash(
+           :error,
+           "Settings saved, but cache invalidation is incomplete. Retry the save."
+         )}
 
       {:error, :forbidden} ->
         {:noreply, put_flash(socket, :error, "Not authorized to configure ClickHouse settings")}
@@ -368,6 +372,7 @@ defmodule LogflareWeb.EndpointsLive do
     case Endpoints.run_query_string(user, {endpoint_language, query_string},
            params: query_params,
            parsed_labels: parsed_labels,
+           endpoint_id: socket.assigns.endpoint_changeset.data.id,
            use_query_cache: false,
            redact_pii: redact_pii,
            backend_id: backend_id,
@@ -531,6 +536,18 @@ defmodule LogflareWeb.EndpointsLive do
       {:ok, transformed} -> transformed
       _ -> nil
     end
+  end
+
+  @spec assign_enforced_settings(Phoenix.LiveView.Socket.t(), EndpointQuery.t()) ::
+          Phoenix.LiveView.Socket.t()
+  defp assign_enforced_settings(socket, endpoint) do
+    socket
+    |> assign(:show_endpoint, endpoint)
+    |> assign(
+      :enforced_settings_form,
+      enforced_settings_form(endpoint.enforced_clickhouse_settings)
+    )
+    |> assign(:enforced_settings_error, nil)
   end
 
   defp enforced_settings_form(settings) do

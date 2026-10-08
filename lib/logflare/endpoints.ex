@@ -185,8 +185,11 @@ defmodule Logflare.Endpoints do
            |> Ecto.Changeset.change(enforced_clickhouse_settings: settings)
            |> Repo.update() do
       ContextCache.bust_keys([{__MODULE__, updated.id}])
-      maybe_kill_endpoint_caches(updated, %{enforced_clickhouse_settings: settings})
-      {:ok, updated}
+
+      case maybe_kill_endpoint_caches(updated, %{enforced_clickhouse_settings: settings}) do
+        :ok -> {:ok, updated}
+        {:error, reason} -> {:error, {:settings_saved, updated, reason}}
+      end
     else
       nil -> {:error, :not_found}
       %User{} -> {:error, :forbidden}
@@ -458,7 +461,8 @@ defmodule Logflare.Endpoints do
     )
   end
 
-  @spec maybe_kill_endpoint_caches(EndpointQuery.t(), map()) :: :ok
+  @spec maybe_kill_endpoint_caches(EndpointQuery.t(), map()) ::
+          :ok | {:error, :cache_invalidation_failed}
   defp maybe_kill_endpoint_caches(endpoint, changes) do
     if should_kill_caches?(changes) do
       scope =
@@ -468,16 +472,29 @@ defmodule Logflare.Endpoints do
 
       endpoint
       |> Resolver.list_caches(scope)
-      |> Enum.map(&invalidate_cache_async/1)
-      |> Task.await_many(30_000)
+      |> invalidate_caches()
+    else
+      :ok
     end
-
-    :ok
   end
 
-  @spec invalidate_cache_async(pid()) :: Task.t()
-  defp invalidate_cache_async(pid) do
-    Utils.Tasks.async(fn -> ResultsCache.invalidate(pid) end)
+  @spec invalidate_caches([pid()]) :: :ok | {:error, :cache_invalidation_failed}
+  defp invalidate_caches(pids) do
+    supervisor = {:via, PartitionSupervisor, {Logflare.TaskSupervisors, self()}}
+
+    supervisor
+    |> Task.Supervisor.async_stream_nolink(pids, ResultsCache, :invalidate, [],
+      timeout: 10_000,
+      on_timeout: :kill_task
+    )
+    |> Enum.reduce(:ok, fn
+      {:ok, {:ok, :stopped}}, status ->
+        status
+
+      failure, _status ->
+        Logger.warning("Endpoint cache invalidation failed", reason: inspect(failure))
+        {:error, :cache_invalidation_failed}
+    end)
   end
 
   @spec get_endpoint_query_version(integer(), integer()) :: Version.t() | nil
@@ -650,7 +667,8 @@ defmodule Logflare.Endpoints do
 
     alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
 
-    with :ok <- validate_query_override(endpoint_query, params),
+    with {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
+         :ok <- validate_query_override(endpoint_query, params),
          {:ok, declared_params} <-
            Sql.parameters(query_string, dialect: Sql.to_dialect(query_language)),
          {:ok, expanded_query} <-
@@ -751,6 +769,7 @@ defmodule Logflare.Endpoints do
       |> Map.new(&{&1.name, &1.token})
 
     query = %EndpointQuery{
+      id: Keyword.get(opts, :endpoint_id),
       query: query_string,
       language: language,
       sandboxable: Keyword.get(opts, :sandboxable, false),
@@ -843,7 +862,8 @@ defmodule Logflare.Endpoints do
 
     alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
 
-    with {:ok, expanded_query} <-
+    with {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
+         {:ok, expanded_query} <-
            Sql.expand_subqueries(
              query_language,
              query_string,
@@ -867,6 +887,21 @@ defmodule Logflare.Endpoints do
       {:ok, transformed_query}
     end
   end
+
+  @spec reload_enforced_settings(EndpointQuery.t()) ::
+          {:ok, EndpointQuery.t()} | {:error, String.t()}
+  defp reload_enforced_settings(%EndpointQuery{id: id, language: :ch_sql} = endpoint)
+       when is_integer(id) do
+    case Repo.with_primary(fn -> Repo.get(EndpointQuery, id) end) do
+      %EndpointQuery{enforced_clickhouse_settings: settings} ->
+        {:ok, %{endpoint | enforced_clickhouse_settings: settings}}
+
+      nil ->
+        {:error, "Endpoint not found"}
+    end
+  end
+
+  defp reload_enforced_settings(endpoint), do: {:ok, endpoint}
 
   @spec preview_query_policy(EndpointQuery.t(), String.t(), Keyword.t()) ::
           {:ok, String.t()} | {:error, term()}

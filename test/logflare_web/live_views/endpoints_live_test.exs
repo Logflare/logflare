@@ -6,6 +6,8 @@ defmodule LogflareWeb.EndpointsLiveTest do
   import Logflare.ClickHouseMappedEvents, only: [build_mapped_log_event: 1]
   import Logflare.DataCase, only: [setup_clickhouse_test: 1]
 
+  alias Logflare.Backends.Adaptor.QueryResult
+
   setup %{conn: conn} do
     insert(:plan)
     user = insert(:user)
@@ -91,6 +93,63 @@ defmodule LogflareWeb.EndpointsLiveTest do
   end
 
   describe "enforced ClickHouse settings" do
+    for sandbox? <- [false, true] do
+      @tag sandbox?: sandbox?
+      test "open endpoint test views use current limits (sandbox: #{sandbox?})", %{
+        conn: conn,
+        user: user,
+        sandbox?: sandbox?
+      } do
+        admin = insert(:user, admin: true)
+        backend = insert(:backend, user: user, type: :clickhouse)
+
+        endpoint =
+          insert(:endpoint,
+            user: user,
+            backend: backend,
+            language: :ch_sql,
+            sandboxable: true,
+            query: "WITH data AS (SELECT 1 AS n) SELECT n FROM data"
+          )
+
+        {:ok, view, _} = live_with_redirect(conn, ~p"/endpoints/#{endpoint.id}")
+
+        for settings <- [%{"max_execution_time" => 5}, %{"max_execution_time" => 3}, %{}] do
+          assert {:ok, current} =
+                   Logflare.Endpoints.configure_enforced_clickhouse_settings(
+                     admin,
+                     endpoint,
+                     settings
+                   )
+
+          expect(ClickHouseAdaptor, :execute_query, fn backend, {sql, _, _, query}, opts ->
+            assert query.enforced_clickhouse_settings == current.enforced_clickhouse_settings
+            assert {:ok, sql} = ClickHouseAdaptor.prepare_query(backend, sql, opts)
+
+            if settings == %{} do
+              refute sql =~ "max_execution_time"
+            else
+              assert sql =~ "max_execution_time = #{settings["max_execution_time"]}"
+            end
+
+            assert sql =~ if(sandbox?, do: "SELECT n FROM data", else: "SELECT 2 AS n")
+
+            {:ok, QueryResult.new([%{"n" => 2}], %{total_bytes_processed: 0})}
+          end)
+
+          payload =
+            if sandbox?,
+              do: %{params: %{}, sandbox_query: "SELECT n FROM data", query_mode: "sql"},
+              else: %{params: %{}, query: "SELECT 2 AS n"}
+
+          view |> element("#endpoint-test-form") |> render_submit(%{run: payload})
+
+          assert render(view) =~
+                   "Ran #{if sandbox?, do: "sandbox query", else: "query"} successfully"
+        end
+      end
+    end
+
     test "only admins see and can save settings, including for another user's endpoint", %{
       conn: conn
     } do
@@ -135,6 +194,46 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       assert Logflare.Endpoints.get_endpoint_query(endpoint.id).enforced_clickhouse_settings ==
                %{}
+    end
+
+    test "incomplete invalidation reports that settings were saved without crashing", %{
+      conn: conn
+    } do
+      admin = insert(:user, admin: true, endpoints_beta: true)
+      backend = insert(:backend, user: admin, type: :clickhouse)
+
+      endpoint =
+        insert(:endpoint,
+          user: admin,
+          backend: backend,
+          language: :ch_sql,
+          cache_duration_seconds: 60,
+          proactive_requerying_seconds: 60
+        )
+
+      cache = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}, []}})
+
+      {:ok, view, _} =
+        conn |> login_user(admin) |> live_with_redirect(~p"/endpoints/#{endpoint.id}/edit")
+
+      :ok = :sys.suspend(cache)
+
+      try do
+        html =
+          view
+          |> element("#enforced-settings-form")
+          |> render_submit(%{settings: %{max_execution_time: "5"}})
+
+        assert html =~ "Settings saved, but cache invalidation is incomplete"
+
+        assert Logflare.Endpoints.get_endpoint_query(endpoint.id).enforced_clickhouse_settings[
+                 "max_execution_time"
+               ] == 5
+
+        assert render(view) =~ "enforced-settings-form"
+      after
+        :sys.resume(cache)
+      end
     end
 
     test "admin endpoint owners can edit the endpoint and its protected limits", %{conn: conn} do
