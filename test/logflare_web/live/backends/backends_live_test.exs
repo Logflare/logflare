@@ -896,6 +896,60 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert updated.config.headers == %{"authorization" => "Bearer write-token"}
     end
 
+    test "victoria_metrics mixed header edits require token reentry for a new write origin", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      for {url, header_key, token, expected_headers} <- [
+            {"https://example.org/api/v1/write", "authorization", "REDACTED",
+             %{"x-tenant" => "updated"}},
+            {"http://example.com/api/v1/write", "authorization", "REDACTED",
+             %{"x-tenant" => "updated"}},
+            {"https://example.com:8443/api/v1/write", "authorization", "REDACTED",
+             %{"x-tenant" => "updated"}},
+            {"https://example.org/api/v1/write", "x-api-key", "REDACTED",
+             %{"x-tenant" => "updated"}},
+            {"https://example.org/api/v1/write", "authorization", "Bearer write-token",
+             %{"authorization" => "Bearer write-token", "x-tenant" => "updated"}},
+            {"https://example.com/api/v1/write", "authorization", "REDACTED",
+             %{"authorization" => "Bearer write-token", "x-tenant" => "updated"}}
+          ] do
+        backend =
+          insert(:backend,
+            sources: [source],
+            user: user,
+            type: :victoria_metrics,
+            config: %{
+              url: "https://example.com/api/v1/write",
+              headers: %{"authorization" => "Bearer write-token", "x-tenant" => "acme"}
+            }
+          )
+
+        {:ok, view, html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+        refute html =~ "write-token"
+
+        html =
+          view
+          |> form("form", %{
+            backend: %{
+              config: %{
+                url: url,
+                header1_key: header_key,
+                header1_value: token,
+                header2_value: "updated"
+              }
+            }
+          })
+          |> render_submit()
+
+        assert html =~ "Successfully updated backend"
+        updated = Backends.get_backend(backend.id)
+        assert updated.config.url == url
+        assert updated.config.headers == expected_headers
+      end
+    end
+
     test "webhook edit renders stored headers and preserves them on submit", %{
       conn: conn,
       source: source,

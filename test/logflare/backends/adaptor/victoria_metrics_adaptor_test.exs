@@ -249,6 +249,49 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       assert Ecto.Changeset.apply_changes(reentered).password == "new"
     end
 
+    test "keeps explicitly reentered identical credentials when moving the write destination" do
+      existing = %{
+        url: "https://vm.example.com/api/v1/write",
+        headers: %{"authorization" => "Bearer token", "x-tenant" => "acme"}
+      }
+
+      changeset =
+        Adaptor.cast_and_validate_config(
+          @subject,
+          %{existing | url: "https://other.example.com/api/v1/write"},
+          existing
+        )
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :headers) == existing.headers
+    end
+
+    test "drops masked credentials in mixed header edits only when the write origin changes" do
+      existing = %{
+        url: "https://vm.example.com/api/v1/write",
+        headers: %{"authorization" => "Bearer token", "x-tenant" => "acme"}
+      }
+
+      for {url, expected_headers} <- [
+            {"https://other.example.com/api/v1/write", %{"x-tenant" => "updated"}},
+            {"https://vm.example.com/api/v1/write",
+             %{"authorization" => "Bearer token", "x-tenant" => "updated"}}
+          ] do
+        changeset =
+          Adaptor.cast_and_validate_config(
+            @subject,
+            %{
+              url: url,
+              headers: %{"Authorization" => "REDACTED", "x-tenant" => "updated"}
+            },
+            existing
+          )
+
+        assert changeset.valid?
+        assert Ecto.Changeset.get_field(changeset, :headers) == expected_headers
+      end
+    end
+
     test "keeps credentials across a stored round trip through the backend API" do
       user = insert(:user)
 

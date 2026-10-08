@@ -3,6 +3,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsQueryIntegrationTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.VictoriaMetricsAdaptor
+  alias Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.SeriesIdentity
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.LogEvent
   alias Logflare.Logs.OtelMetric
@@ -10,6 +11,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsQueryIntegrationTest do
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Utils.SSRF
   alias Opentelemetry.Proto.Common.V1.AnyValue
+  alias Opentelemetry.Proto.Common.V1.ArrayValue
   alias Opentelemetry.Proto.Common.V1.InstrumentationScope
   alias Opentelemetry.Proto.Common.V1.KeyValue
   alias Opentelemetry.Proto.Metrics.V1.Gauge
@@ -85,14 +87,22 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsQueryIntegrationTest do
 
     assert {:ok, _count} = Backends.ingest_logs(events, source)
 
-    expected_labels = %{
-      "__name__" => query_name,
-      "source" => source.name,
-      "job" => "integration/metrics-api",
-      "instance" => "replica-a",
-      "env" => "integration",
-      "_http_route" => "/metrics"
-    }
+    expected_labels =
+      events
+      |> hd()
+      |> Map.fetch!(:body)
+      |> SeriesIdentity.labels()
+      |> Map.take(["logflare_resource_id", "logflare_scope_id"])
+      |> Map.merge(%{
+        "__name__" => query_name,
+        "source" => source.name,
+        "job" => "integration/metrics-api",
+        "instance" => "replica-a",
+        "env" => "integration",
+        "_http_route" => "/metrics",
+        "otel_scope_name" => "vm.query.integration",
+        "otel_scope_version" => "1.0"
+      })
 
     TestUtils.retry_assert(@retry, fn ->
       assert {:ok,
@@ -141,6 +151,87 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsQueryIntegrationTest do
            }
   end
 
+  test "keeps resource and scope variants separate at the same timestamp", %{
+    source: source,
+    backend: backend,
+    prefix: prefix
+  } do
+    timestamp = System.system_time(:second) - 120
+    metric_name = prefix <> "_identity"
+
+    context = [
+      resource_attributes: [attribute("host.name", "host-a")],
+      scope_attributes: [attribute("build.flags", ["alpha", "beta"])]
+    ]
+
+    variants = [
+      {10.0, []},
+      {20.0, resource_attributes: [attribute("host.name", "host-b")]},
+      {30.0, scope_name: "vm.query.other"},
+      {40.0, scope_version: "2.0"},
+      {50.0, scope_attributes: [attribute("build.flags", ["alpha", "gamma"])]},
+      {60.0, scope_attributes: [attribute("build.flags", ["beta", "alpha"])]}
+    ]
+
+    events =
+      Enum.flat_map(variants, fn {value, overrides} ->
+        metric_events(
+          source,
+          metric_name,
+          [{timestamp, value}],
+          Keyword.merge(context, overrides)
+        )
+      end)
+
+    assert {:ok, _count} = Backends.ingest_logs(events, source)
+
+    TestUtils.retry_assert(@retry, fn ->
+      assert {:ok,
+              %{
+                "status" => "success",
+                "data" => %{"resultType" => "vector", "result" => results}
+              }} =
+               VictoriaMetricsAdaptor.execute_promql(backend, metric_name, %{"time" => timestamp})
+
+      assert length(results) == length(variants)
+
+      by_value =
+        Map.new(results, fn %{"metric" => labels, "value" => [sample_time, value]} ->
+          assert sample_time == timestamp
+          assert labels["__name__"] == metric_name
+          assert labels["source"] == source.name
+          assert labels["job"] == "integration/metrics-api"
+          assert labels["instance"] == "replica-a"
+          assert labels["env"] == "integration"
+          assert labels["_http_route"] == "/metrics"
+          assert labels["logflare_resource_id"] =~ ~r/\A[0-9a-f]{64}\z/
+          assert labels["logflare_scope_id"] =~ ~r/\A[0-9a-f]{64}\z/
+          {value, labels}
+        end)
+
+      assert Enum.sort(Map.keys(by_value)) == ~w(10 20 30 40 50 60)
+      baseline = by_value["10"]
+
+      assert by_value["20"]["logflare_resource_id"] != baseline["logflare_resource_id"]
+      assert by_value["20"]["logflare_scope_id"] == baseline["logflare_scope_id"]
+      assert by_value["30"]["otel_scope_name"] == "vm.query.other"
+      assert by_value["40"]["otel_scope_version"] == "2.0"
+
+      scope_variants = Enum.map(~w(10 30 40 50 60), &Map.fetch!(by_value, &1))
+
+      assert scope_variants |> Enum.map(& &1["logflare_scope_id"]) |> Enum.uniq() |> length() == 5
+
+      assert Enum.all?(scope_variants, fn labels ->
+               labels["logflare_resource_id"] == baseline["logflare_resource_id"]
+             end)
+
+      for value <- ~w(10 20 50 60) do
+        assert by_value[value]["otel_scope_name"] == "vm.query.integration"
+        assert by_value[value]["otel_scope_version"] == "1.0"
+      end
+    end)
+  end
+
   test "returns native errors from the real PromQL parser", %{
     backend: backend,
     user: user,
@@ -163,19 +254,24 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsQueryIntegrationTest do
     assert conn.status == 401
   end
 
-  @spec metric_events(Source.t(), String.t(), [{integer(), float()}]) :: [LogEvent.t()]
-  defp metric_events(source, name, samples) do
+  @spec metric_events(Source.t(), String.t(), [{integer(), float()}], keyword()) :: [LogEvent.t()]
+  defp metric_events(source, name, samples, context \\ []) do
     resource_metrics = %ResourceMetrics{
       resource: %Resource{
-        attributes: [
-          attribute("service.name", "metrics-api"),
-          attribute("service.namespace", "integration"),
-          attribute("service.instance.id", "replica-a")
-        ]
+        attributes:
+          [
+            attribute("service.name", "metrics-api"),
+            attribute("service.namespace", "integration"),
+            attribute("service.instance.id", "replica-a")
+          ] ++ Keyword.get(context, :resource_attributes, [])
       },
       scope_metrics: [
         %ScopeMetrics{
-          scope: %InstrumentationScope{name: "vm.query.integration", version: "1.0"},
+          scope: %InstrumentationScope{
+            name: Keyword.get(context, :scope_name, "vm.query.integration"),
+            version: Keyword.get(context, :scope_version, "1.0"),
+            attributes: Keyword.get(context, :scope_attributes, [])
+          },
           metrics: [
             %Metric{
               name: name,
@@ -205,7 +301,12 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsQueryIntegrationTest do
     |> Enum.map(&LogEvent.make(&1, %{source: source}))
   end
 
-  @spec attribute(String.t(), String.t()) :: KeyValue.t()
-  defp attribute(key, value),
+  @spec attribute(String.t(), String.t() | [String.t()]) :: KeyValue.t()
+  defp attribute(key, values) when is_list(values) do
+    array = %ArrayValue{values: Enum.map(values, &%AnyValue{value: {:string_value, &1}})}
+    %KeyValue{key: key, value: %AnyValue{value: {:array_value, array}}}
+  end
+
+  defp attribute(key, value) when is_binary(value),
     do: %KeyValue{key: key, value: %AnyValue{value: {:string_value, value}}}
 end
