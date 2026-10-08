@@ -19,6 +19,22 @@ defmodule Logflare.Endpoints.ClickHouseSettingsTest do
     end
   end
 
+  test "native parameters retain their bindings without bypassing nested conflicts" do
+    sql = "WITH data AS (SELECT {$0:Int64} AS n) SELECT n, '{$0:Int64}' AS literal FROM data"
+    assert {:ok, prepared} = ClickHouseSettings.enforce(sql, %{"priority" => 5})
+    assert prepared =~ "{$0: Int64}"
+    assert prepared =~ "'{$0:Int64}' AS literal"
+    assert prepared =~ "priority = 5"
+
+    assert {:error, reason} =
+             ClickHouseSettings.enforce(
+               "WITH data AS (SELECT {$0:Int64} AS n SETTINGS priority = 1) SELECT n FROM data",
+               %{"priority" => 5}
+             )
+
+    assert reason =~ "priority is enforced"
+  end
+
   test "preserves caller settings and adds resource limits to the final query" do
     query = "WITH src AS (SELECT a FROM t) SELECT a FROM src SETTINGS optimize_read_in_order = 1"
     settings = %{"max_execution_time" => 5, "max_memory_usage" => 100}

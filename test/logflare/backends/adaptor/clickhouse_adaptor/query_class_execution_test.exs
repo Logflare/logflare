@@ -1,6 +1,8 @@
 defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
   use Logflare.DataCase
 
+  import Logflare.ClickHouseMappedEvents, only: [build_mapped_log_event: 1]
+
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.QueryError
@@ -22,7 +24,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
     insert(:plan)
     admin = insert(:user, admin: true)
 
-    {_source, original} =
+    {source, original} =
       setup_clickhouse_test(
         config: %{
           read_only_urls: %{"dashboard_logs_paid" => "http://localhost:8123"},
@@ -32,7 +34,52 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
 
     assert {:ok, backend} = Backends.configure_query_class_settings(admin, original, @policy)
     start_supervised!({ClickHouseAdaptor, backend})
-    %{backend: backend, original: original, admin: admin}
+    %{backend: backend, original: original, admin: admin, source: source}
+  end
+
+  test "native positional parameters preserve values and enforce policy", %{backend: backend} do
+    sql =
+      "SELECT {$0:Int64} + {$0:Int64} AS n, {$1:Array(String)} AS values, " <>
+        "{$2:String} AS literal, toInt64(getSetting('priority')) AS priority"
+
+    assert {:ok,
+            {[%{"n" => 6, "values" => ["a", "b"], "literal" => "{$0:String}", "priority" => 10}],
+             _}} =
+             ClickHouseAdaptor.execute_ch_query(backend, sql, [3, ["a", "b"], "{$0:String}"],
+               read_cluster: "api_paid"
+             )
+
+    assert {:error, %QueryError{kind: :invalid_query}} =
+             ClickHouseAdaptor.execute_ch_query(
+               backend,
+               "SELECT {$0:Int64} AS n SETTINGS priority = 0",
+               [3],
+               read_cluster: "api_paid"
+             )
+  end
+
+  test "generated Ecto parameters work before and after enabling policy", context do
+    assert :ok = ClickHouseAdaptor.provision_ingest_tables(context.backend)
+    event = build_mapped_log_event(source: context.source, message: "parameter-policy")
+    assert :ok = ClickHouseAdaptor.insert_log_events(context.backend, [event], :log)
+    table = ClickHouseAdaptor.clickhouse_ingest_table_name(context.backend, :log)
+
+    query =
+      from(t in table,
+        where: t.source_name == ^context.source.name,
+        select: %{
+          event_message: t.event_message,
+          priority: fragment("toInt64(getSetting('priority'))")
+        }
+      )
+
+    assert {:ok, %{rows: [%{"event_message" => "parameter-policy"}]}} =
+             ClickHouseAdaptor.execute_query(context.original, query, [])
+
+    assert {:ok, %{rows: [%{"event_message" => "parameter-policy", "priority" => 1}]}} =
+             ClickHouseAdaptor.execute_query(context.backend, query,
+               read_cluster: "dashboard_logs_paid"
+             )
   end
 
   test "effective priorities use requested classes despite routing fallback", %{backend: backend} do
