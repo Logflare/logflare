@@ -11,7 +11,7 @@ To run adhoc queries for exploratory analysis, use the Querying or Search functi
 
 :::info
 
-You will need to use an access token with the `management` scope to query the management API. 
+You will need to use an access token with the `private` scope to query the management API.
 An `ingest` or `query` scoped token **cannot** be used to for this querying API.   
 :::
 
@@ -19,6 +19,8 @@ An `ingest` or `query` scoped token **cannot** be used to for this querying API.
 ## Via Management API
 
 Sources can be queried through SQL using our management API.
+
+[VictoriaMetrics backends support raw PromQL queries](/backends/victoria-metrics#querying) through the same API using `promql` and `backend_id`. The SQL parameters and caveats below do not apply to PromQL.
 
 The following query parameters are available:
 

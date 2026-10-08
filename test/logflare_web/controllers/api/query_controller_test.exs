@@ -1,6 +1,7 @@
 defmodule LogflareWeb.Api.QueryControllerTest do
   use LogflareWeb.ConnCase
 
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.DataCase
@@ -350,5 +351,262 @@ defmodule LogflareWeb.Api.QueryControllerTest do
 
       assert %{"error" => "Backend does not support querying"} = response
     end
+  end
+
+  describe "query with promql" do
+    setup %{user: user} do
+      backend =
+        insert(:backend,
+          user: user,
+          type: :victoria_metrics,
+          config: %{
+            url: "https://8.8.8.8/api/v1/write",
+            query_url: "https://8.8.8.8",
+            username: "query-user",
+            password: "query:password"
+          }
+        )
+
+      stub(Tesla.Adapter.Finch, :call, fn _env, _opts ->
+        flunk("Unexpected VictoriaMetrics request")
+      end)
+
+      %{backend: backend}
+    end
+
+    test "forwards raw expressions and instant options with stored basic authentication", %{
+      conn: conn,
+      user: user,
+      backend: backend
+    } do
+      query = ~S'sum(rate(http_requests_total{path=~"/a|b",service="café"}[5m])) by (job)'
+      data = %{"resultType" => "vector", "result" => []}
+      expected = %{"status" => "success", "data" => data, "warnings" => ["partial data"]}
+
+      expect(Tesla.Adapter.Finch, :call, fn env, _opts ->
+        assert env.method == :post
+        assert env.url == "https://8.8.8.8/api/v1/query"
+
+        assert Tesla.get_header(env, "authorization") ==
+                 "Basic " <> Base.encode64("query-user:query:password")
+
+        assert URI.decode_query(env.body) == %{
+                 "query" => query,
+                 "time" => "2026-10-08T01:02:03Z",
+                 "timeout" => "10s"
+               }
+
+        tesla_response(env, 200, expected)
+      end)
+
+      assert promql_response(conn, user, %{
+               promql: query,
+               backend_id: backend.id,
+               time: "2026-10-08T01:02:03Z",
+               timeout: "10s",
+               query: "ignored",
+               username: "ignored",
+               password: "ignored"
+             }) == expected
+    end
+
+    test "range queries preserve timestamps, labels, and special sample values", %{
+      conn: conn,
+      user: user,
+      backend: backend
+    } do
+      expected = %{
+        "status" => "success",
+        "data" => %{
+          "resultType" => "matrix",
+          "result" => [
+            %{
+              "metric" => %{"__name__" => "temperature", "instance" => "host-1"},
+              "values" => [[1_791_421_200.25, "NaN"], [1_791_421_215.25, "+Inf"]]
+            }
+          ]
+        },
+        "infos" => ["sample information"]
+      }
+
+      expect(Tesla.Adapter.Finch, :call, fn env, _opts ->
+        assert env.url == "https://8.8.8.8/api/v1/query_range"
+
+        assert URI.decode_query(env.body) == %{
+                 "query" => "temperature",
+                 "start" => "1791421200.25",
+                 "end" => "1791421260.25",
+                 "step" => "15s"
+               }
+
+        tesla_response(env, 200, expected)
+      end)
+
+      assert promql_response(conn, user, %{
+               promql: "temperature",
+               backend_id: backend.id,
+               start: "1791421200.25",
+               end: "1791421260.25",
+               step: "15s"
+             }) == expected
+    end
+
+    test "preserves vector, scalar, and string response shapes", %{
+      conn: conn,
+      user: user,
+      backend: backend
+    } do
+      for {type, result} <- [
+            {"vector", [%{"metric" => %{"job" => "api"}, "value" => [123.5, "-Inf"]}]},
+            {"scalar", [123.5, "NaN"]},
+            {"string", [123.5, "a string result"]}
+          ] do
+        expected = %{"status" => "success", "data" => %{"resultType" => type, "result" => result}}
+
+        expect(Tesla.Adapter.Finch, :call, fn env, _opts ->
+          tesla_response(env, 200, expected)
+        end)
+
+        assert promql_response(conn, user, %{promql: "up", backend_id: backend.id}) == expected
+      end
+    end
+
+    test "preserves native backend errors and HTTP statuses", %{
+      conn: conn,
+      user: user,
+      backend: backend
+    } do
+      for {status, type} <- [{400, "bad_data"}, {422, "execution"}, {503, "timeout"}] do
+        expected = %{
+          "status" => "error",
+          "errorType" => type,
+          "error" => "query failed",
+          "warnings" => ["backend warning"]
+        }
+
+        expect(Tesla.Adapter.Finch, :call, fn env, _opts ->
+          tesla_response(env, status, expected)
+        end)
+
+        assert promql_response(conn, user, %{promql: "up", backend_id: backend.id}, status) ==
+                 expected
+      end
+    end
+
+    test "requires an explicit valid backend ID", %{conn: conn, user: user} do
+      for params <- [%{promql: "up"}, %{promql: "up", backend_id: ""}] do
+        assert %{
+                 "status" => "error",
+                 "errorType" => "bad_data",
+                 "error" => "backend_id is required for PromQL queries"
+               } =
+                 promql_response(conn, user, params, 400)
+      end
+
+      for backend_id <- ["invalid", "1.5", %{id: "1"}] do
+        assert %{"error" => "Invalid backend_id: must be an integer"} =
+                 promql_response(conn, user, %{promql: "up", backend_id: backend_id}, 400)
+      end
+
+      for backend_id <- [0, -1, "9223372036854775808"] do
+        assert %{"error" => "Invalid backend_id: must be a positive 64-bit integer"} =
+                 promql_response(conn, user, %{promql: "up", backend_id: backend_id}, 400)
+      end
+
+      assert %{"error" => "Backend not found"} =
+               promql_response(conn, user, %{promql: "up", backend_id: 999_999}, 400)
+    end
+
+    test "rejects another user's backend and non-VictoriaMetrics backends", %{
+      conn: conn,
+      user: user
+    } do
+      other_backend = insert(:backend, user: insert(:user), type: :victoria_metrics)
+      sql_backend = insert(:backend, user: user, type: :clickhouse)
+
+      assert %{"error" => "Backend not found"} =
+               promql_response(conn, user, %{promql: "up", backend_id: other_backend.id}, 400)
+
+      assert %{"error" => "Backend does not support PromQL queries"} =
+               promql_response(conn, user, %{promql: "up", backend_id: sql_backend.id}, 400)
+    end
+
+    test "rejects every SQL parameter mixed with PromQL", %{
+      conn: conn,
+      user: user,
+      backend: backend
+    } do
+      for sql_key <- [:sql, :bq_sql, :ch_sql, :pg_sql] do
+        params = Map.put(%{promql: "up", backend_id: backend.id}, sql_key, "SELECT 1")
+
+        assert %{"error" => "promql cannot be combined with SQL parameters"} =
+                 promql_response(conn, user, params, 400)
+      end
+    end
+
+    test "rejects malformed expressions and options before sending a request", %{
+      conn: conn,
+      user: user,
+      backend: backend
+    } do
+      for invalid <- [
+            %{promql: " "},
+            %{promql: %{query: "up"}},
+            %{time: %{invalid: "value"}},
+            %{start: "1"},
+            %{start: "1", end: "2", step: "1s", time: "1"}
+          ] do
+        params = Map.merge(%{promql: "up", backend_id: backend.id}, invalid)
+
+        assert %{"status" => "error", "errorType" => "bad_data", "error" => error} =
+                 promql_response(conn, user, params, 400)
+
+        assert is_binary(error)
+      end
+    end
+
+    test "VictoriaMetrics remains unavailable to SQL execution and parsing", %{
+      conn: conn,
+      user: user,
+      backend: backend
+    } do
+      refute Adaptor.can_query?(backend)
+      params = %{sql: "SELECT 1", backend_id: backend.id}
+
+      assert %{"error" => "Backend does not support querying"} =
+               promql_response(conn, user, params, 400)
+
+      response =
+        conn
+        |> add_access_token(user, ~w(private))
+        |> get(~p"/api/query/parse", params)
+        |> json_response(400)
+
+      assert %{"error" => "Backend does not support querying"} = response
+    end
+
+    test "requires management authentication", %{conn: conn, backend: backend} do
+      conn = get(conn, ~p"/api/query", %{promql: "up", backend_id: backend.id})
+      assert %{"error" => _error} = json_response(conn, 401)
+    end
+  end
+
+  @spec promql_response(Plug.Conn.t(), Logflare.User.t(), map(), pos_integer()) :: map()
+  defp promql_response(conn, user, params, status \\ 200) do
+    conn
+    |> add_access_token(user, ~w(private))
+    |> get(~p"/api/query", params)
+    |> json_response(status)
+  end
+
+  @spec tesla_response(Tesla.Env.t(), pos_integer(), map()) :: Tesla.Env.result()
+  defp tesla_response(%Tesla.Env{} = env, status, body) do
+    {:ok,
+     %Tesla.Env{
+       env
+       | status: status,
+         headers: [{"content-type", "application/json"}],
+         body: Jason.encode!(body)
+     }}
   end
 end

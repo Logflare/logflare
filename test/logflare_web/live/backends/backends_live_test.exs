@@ -604,6 +604,7 @@ defmodule LogflareWeb.BackendsLiveTest do
             type: "victoria_metrics",
             config: %{
               url: "https://example.com/api/v1/write",
+              query_url: "https://example.com/select/0/prometheus",
               username: "user",
               password: "pass"
             }
@@ -616,6 +617,7 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       [backend] = Backends.list_backends_by_user_access(user, type: :victoria_metrics)
       assert backend.config.url == "https://example.com/api/v1/write"
+      assert backend.config.query_url == "https://example.com/select/0/prometheus"
       assert backend.config.username == "user"
     end
 
@@ -837,6 +839,61 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert html =~ "example.org"
       assert html =~ "some other name"
       assert html =~ "some description"
+    end
+
+    test "victoria_metrics edit requires password reentry for a new query destination", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :victoria_metrics,
+          config: %{
+            url: "https://example.com/api/v1/write",
+            query_url: "https://example.com/select/0/prometheus",
+            username: "user",
+            password: "vm-secret",
+            headers: %{"authorization" => "Bearer write-token"}
+          }
+        )
+
+      {:ok, view, html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      refute html =~ "vm-secret"
+      refute html =~ "write-token"
+
+      assert view
+             |> element("input[name='backend[config][query_url]']")
+             |> render() =~ "https://example.com/select/0/prometheus"
+
+      html =
+        view
+        |> form("form", %{
+          backend: %{config: %{query_url: "https://example.org/select/0/prometheus"}}
+        })
+        |> render_submit()
+
+      assert html =~ "Both username and password must be provided for basic auth"
+      assert Backends.get_backend(backend.id).config.query_url == backend.config.query_url
+
+      view
+      |> form("form", %{
+        backend: %{
+          config: %{
+            query_url: "https://example.org/select/0/prometheus",
+            password: "vm-secret"
+          }
+        }
+      })
+      |> render_submit()
+
+      updated = Backends.get_backend(backend.id)
+      assert updated.config.query_url == "https://example.org/select/0/prometheus"
+      assert updated.config.password == "vm-secret"
+      assert updated.config.headers == %{"authorization" => "Bearer write-token"}
     end
 
     test "webhook edit renders stored headers and preserves them on submit", %{

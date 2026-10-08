@@ -65,6 +65,123 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
              }).valid?
     end
 
+    test "accepts an optional query base URL and allows clearing it" do
+      existing = %{
+        url: @vm_remote_write_url,
+        query_url: "https://vmselect.example.com/select/0/prometheus"
+      }
+
+      assert Adaptor.cast_and_validate_config(@subject, existing).valid?
+
+      for query_url <- [nil, ""] do
+        changeset = Adaptor.cast_and_validate_config(@subject, %{query_url: query_url}, existing)
+        assert changeset.valid?
+        assert Ecto.Changeset.get_field(changeset, :query_url) == nil
+      end
+    end
+
+    test "rejects query base URLs with invalid transport or embedded request options" do
+      for query_url <- [
+            "not-a-url",
+            "ftp://vm.example.com",
+            "https:///api",
+            "https://vm.example.com:0",
+            "https://vm.example.com:65536",
+            "https://user:password@vm.example.com",
+            "https://vm.example.com?query=up",
+            "https://vm.example.com#fragment"
+          ] do
+        changeset =
+          Adaptor.cast_and_validate_config(@subject, %{
+            url: @vm_remote_write_url,
+            query_url: query_url
+          })
+
+        refute changeset.valid?, query_url
+        assert changeset.errors[:query_url]
+      end
+    end
+
+    test "returns a validation error when editing the query URL to a malformed port" do
+      existing = %{
+        url: "https://8.8.8.8/api/v1/write",
+        query_url: "https://8.8.8.8"
+      }
+
+      changeset =
+        Adaptor.cast_and_validate_config(
+          @subject,
+          %{query_url: "https://8.8.8.8:notaport"},
+          existing
+        )
+
+      refute changeset.valid?
+      assert changeset.errors[:query_url]
+    end
+
+    test "requires password reentry for a new read origin while keeping write-only headers" do
+      for previous_query_url <- [nil, "https://reader.example.com/select/0/prometheus"] do
+        existing = %{
+          url: "https://vm.example.com/api/v1/write",
+          query_url: previous_query_url,
+          username: "user",
+          password: "pass",
+          headers: %{"authorization" => "Bearer write-token"}
+        }
+
+        params =
+          existing
+          |> @subject.redact_config()
+          |> Map.put(:query_url, "https://other-reader.example.com/select/0/prometheus")
+
+        changeset = Adaptor.cast_and_validate_config(@subject, params, existing)
+        refute changeset.valid?
+        assert changeset.errors[:password]
+        assert Ecto.Changeset.get_field(changeset, :password) == nil
+        assert Ecto.Changeset.get_field(changeset, :headers) == existing.headers
+
+        reentered =
+          Adaptor.cast_and_validate_config(@subject, Map.put(params, :password, "pass"), existing)
+
+        assert reentered.valid?
+        assert Ecto.Changeset.get_field(reentered, :password) == "pass"
+      end
+    end
+
+    test "keeps shared credentials for same-origin read paths and when disabling reads" do
+      existing = %{
+        url: "https://vm.example.com/api/v1/write",
+        username: "user",
+        password: "pass"
+      }
+
+      for old_url <- [nil, "https://vm.example.com/select/0/prometheus"],
+          new_url <- [nil, "https://vm.example.com/select/1/prometheus"] do
+        stored = Map.put(existing, :query_url, old_url)
+        params = stored |> @subject.redact_config() |> Map.put(:query_url, new_url)
+        changeset = Adaptor.cast_and_validate_config(@subject, params, stored)
+
+        assert changeset.valid?
+        assert Ecto.Changeset.get_field(changeset, :password) == "pass"
+        assert Ecto.Changeset.get_field(changeset, :query_url) == new_url
+      end
+    end
+
+    test "treats query URL scheme and port changes as a new destination" do
+      existing = %{
+        url: "https://vm.example.com/api/v1/write",
+        query_url: "https://reader.example.com/select/0/prometheus",
+        username: "user",
+        password: "pass"
+      }
+
+      for query_url <- ["http://reader.example.com", "https://reader.example.com:8443"] do
+        changeset = Adaptor.cast_and_validate_config(@subject, %{query_url: query_url}, existing)
+        refute changeset.valid?
+        assert changeset.errors[:password]
+      end
+    end
+
     test "keeps stored credentials submitted back in redacted form" do
       existing = %{
         url: "https://user:secret@vm.example.com/api/v1/write",
@@ -168,6 +285,23 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
 
       refute changeset.valid?
       assert {_msg, [validation: :ssrf]} = changeset.errors[:url]
+    end
+
+    test "rejects a private read destination independently of the write URL" do
+      stub(Logflare.Utils.SSRF, :safe_resolve, fn
+        "vm.example.com" -> {:ok, {1, 2, 3, 4}}
+        "127.0.0.1" -> {:error, "private address is not allowed"}
+      end)
+
+      changeset =
+        Adaptor.cast_and_validate_config(@subject, %{
+          url: "https://vm.example.com/api/v1/write",
+          query_url: "http://127.0.0.1:8428"
+        })
+
+      refute changeset.valid?
+      assert changeset.errors[:query_url]
+      refute changeset.errors[:url]
     end
   end
 
@@ -709,7 +843,22 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
     setup :set_mimic_global
 
     setup do
-      stub(Logflare.Utils.SSRF, :safe_resolve, fn _ -> {:ok, {127, 0, 0, 1}} end)
+      stub(Logflare.Utils.SSRF, :safe_resolve, fn
+        "localhost" -> {:ok, {127, 0, 0, 1}}
+        host -> Mimic.call_original(Logflare.Utils.SSRF, :safe_resolve, [host])
+      end)
+
+      stub(Finch, :build, fn method, url, headers, body ->
+        Mimic.call_original(Finch, :build, [method, url, headers, body])
+      end)
+
+      stub(Finch, :request, fn
+        %Finch.Request{host: "127.0.0.1", port: 8428} = request, pool, opts ->
+          Mimic.call_original(Finch, :request, [request, pool, opts])
+
+        _request, _pool, _opts ->
+          {:error, :unexpected_external_request}
+      end)
 
       insert(:plan)
       user = insert(:user)

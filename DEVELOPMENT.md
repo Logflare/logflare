@@ -71,6 +71,24 @@ mix lint
 
 To configure the BigQuery backend, please follow the [BigQuery setup documentation](https://docs.logflare.app/self-hosting/#bigquery-setup).
 
+### VictoriaMetrics integration tests
+
+Start the receiver and run the complete adaptor and query integration test files:
+
+```bash
+docker compose up -d vm
+curl --fail http://localhost:8428/health
+mix test test/logflare/backends/adaptor/victoria_metrics_adaptor_test.exs \
+  test/logflare/backends/adaptor/victoria_metrics_query_integration_test.exs \
+  --include integration
+```
+
+The query tests send OpenTelemetry metrics through the backend pipeline and query
+the stored samples through the authenticated `/api/query` endpoint using instant
+and range PromQL queries. Integration tests are excluded from ordinary test runs;
+Elixir CI runs these files separately after VictoriaMetrics passes its health check.
+Only the receiver's test hostname is allowed through SSRF validation in these tests.
+
 ### Developing for Single Tenant
 
 Use the single tenant `make start.*` variations. This works by switching out the `LOGFLARE_SINGLE_TENANT` env var.
