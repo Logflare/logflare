@@ -68,8 +68,9 @@ defmodule Logflare.Rules.CacheTest do
       rule_ids: rule_ids
     } do
       assert {tree, %RoutingSnapshot{} = snapshot} = @subject.rules_tree_by_source_id(source.id)
+      positions = Enum.to_list(0..(snapshot.count - 1))
       assert snapshot.count == length(rule_ids)
-      assert Enum.map(RoutingSnapshot.resolve(snapshot, rule_ids), &Target.id/1) == rule_ids
+      assert Enum.map(RoutingSnapshot.resolve(snapshot, positions), &Target.id/1) == rule_ids
 
       Mimic.reject(Rules, :rules_tree_by_source_id, 1)
       assert @subject.rules_tree_by_source_id(source.id) == {tree, snapshot}
@@ -90,35 +91,36 @@ defmodule Logflare.Rules.CacheTest do
       assert {tree, %RoutingSnapshot{table: RoutingSnapshotStore} = snapshot} =
                @subject.rules_tree_by_source_id(source.id)
 
-      expected = RoutingSnapshot.resolve(snapshot, rule_ids)
+      positions = Enum.to_list(0..(snapshot.count - 1))
+      expected = RoutingSnapshot.resolve(snapshot, positions)
       assert Enum.map(expected, &Target.id/1) == rule_ids
       assert @subject.rules_tree_by_source_id(source.id) == {tree, snapshot}
 
       assert {:ok, _pid} = Supervisor.restart_child(ContextCacheSupervisor, RoutingSnapshotStore)
 
-      assert {:fallback, ^expected, _rules_by_id} =
-               RoutingSnapshot.resolve_with_status(snapshot, rule_ids)
+      assert {:fallback, ^expected, _decoded} =
+               RoutingSnapshot.resolve_with_status(snapshot, positions)
 
       assert :ok = RoutingSnapshot.restore(snapshot)
       :sys.get_state(RoutingSnapshotStore)
-      assert {:ok, ^expected} = RoutingSnapshot.resolve_with_status(snapshot, rule_ids)
+      assert {:ok, ^expected} = RoutingSnapshot.resolve_with_status(snapshot, positions)
       assert {^tree, ^snapshot} = @subject.rules_tree_by_source_id(source.id)
     end
 
     for invalidation <- [:bust, :expire, :clear] do
       @invalidation invalidation
       test "#{invalidation} and rebuild preserve a paused reader's snapshot", %{
-        source: source,
-        rule_ids: rule_ids
+        source: source
       } do
         {tree, old} = @subject.rules_tree_by_source_id(source.id)
-        old_targets = RoutingSnapshot.resolve(old, rule_ids)
+        positions = Enum.to_list(0..(old.count - 1))
+        old_targets = RoutingSnapshot.resolve(old, positions)
         parent = self()
 
         reader =
           Task.async(fn ->
             send(parent, :snapshot_acquired)
-            receive do: (:resume -> RoutingSnapshot.resolve(old, rule_ids))
+            receive do: (:resume -> RoutingSnapshot.resolve(old, positions))
           end)
 
         assert_receive :snapshot_acquired
@@ -135,19 +137,19 @@ defmodule Logflare.Rules.CacheTest do
             assert {:ok, 1} = Cachex.clear(@subject)
         end
 
-        new_entries =
+        new_targets =
           Enum.map(old_targets, fn {id, backend_id, sink} ->
-            {id, {id, backend_id + 1_000_000, sink}}
+            {id, backend_id + 1_000_000, sink}
           end)
 
         expect(Rules, :rules_tree_by_source_id, fn id ->
           assert id == source.id
-          {tree, new_entries}
+          {tree, new_targets}
         end)
 
         {^tree, current} = @subject.rules_tree_by_source_id(source.id)
         assert current.key != old.key
-        assert RoutingSnapshot.resolve(current, rule_ids) == Enum.map(new_entries, &elem(&1, 1))
+        assert RoutingSnapshot.resolve(current, positions) == new_targets
         refute :ets.member(old.table, old.key)
         send(reader.pid, :resume)
         assert Task.await(reader) == old_targets
@@ -155,24 +157,24 @@ defmodule Logflare.Rules.CacheTest do
     end
 
     test "restores a missing generation without changing the cached header or TTL", %{
-      source: source,
-      rule_ids: rule_ids
+      source: source
     } do
       {tree, snapshot} = @subject.rules_tree_by_source_id(source.id)
-      expected = RoutingSnapshot.resolve(snapshot, rule_ids)
+      positions = Enum.to_list(0..(snapshot.count - 1))
+      expected = RoutingSnapshot.resolve(snapshot, positions)
       key = {:rules_tree_by_source_id, [source.id]}
       {:ok, entry_before} = Cachex.inspect(@subject, {:entry, key})
       RoutingSnapshotStore.delete(RoutingSnapshotStore, snapshot.key)
       :sys.get_state(RoutingSnapshotStore)
 
       assert {:fallback, ^expected, _decoded} =
-               RoutingSnapshot.resolve_with_status(snapshot, rule_ids)
+               RoutingSnapshot.resolve_with_status(snapshot, positions)
 
       assert :ok = RoutingSnapshot.restore(snapshot)
       :sys.get_state(RoutingSnapshotStore)
       assert {^tree, ^snapshot} = @subject.rules_tree_by_source_id(source.id)
       assert {:ok, ^entry_before} = Cachex.inspect(@subject, {:entry, key})
-      assert {:ok, ^expected} = RoutingSnapshot.resolve_with_status(snapshot, rule_ids)
+      assert {:ok, ^expected} = RoutingSnapshot.resolve_with_status(snapshot, positions)
     end
 
     test "store outage does not block restore or invalidation", %{source: source} do
@@ -195,19 +197,20 @@ defmodule Logflare.Rules.CacheTest do
 
     test "stale repair cannot overwrite a newer cached generation", %{source: source} do
       {tree, old} = @subject.rules_tree_by_source_id(source.id)
-      old_rules_by_id = :erlang.binary_to_term(old.encoded)
+      old_targets = :erlang.binary_to_term(old.encoded)
 
-      new_entries =
-        Enum.map(old_rules_by_id, fn {id, {target_id, backend_id, sink}} when target_id == id ->
-          {id, {id, backend_id + 1_000_000, sink}}
-        end)
+      new_targets =
+        old_targets
+        |> Tuple.to_list()
+        |> Enum.map(fn {id, backend_id, sink} -> {id, backend_id + 1_000_000, sink} end)
 
-      current = RoutingSnapshot.new(source.id, new_entries)
+      current = RoutingSnapshot.new(source.id, new_targets)
       cache_key = {:rules_tree_by_source_id, [source.id]}
       assert {:ok, true} = Cachex.put(@subject, cache_key, {:cached, {tree, current}})
+      positions = Enum.to_list(0..(old.count - 1))
 
-      assert {:fallback, _targets, ^old_rules_by_id} =
-               RoutingSnapshot.resolve_with_status(old, Map.keys(old_rules_by_id))
+      assert {:fallback, _targets, ^old_targets} =
+               RoutingSnapshot.resolve_with_status(old, positions)
 
       assert :ok = RoutingSnapshot.restore(old)
       :sys.get_state(RoutingSnapshotStore)
@@ -313,8 +316,8 @@ defmodule Logflare.Rules.CacheTest do
       assert {:ok, 2} = @subject.bust_by(id: id)
       assert @subject.get_rule(id).backend_id == replacement.id
       {_tree, current} = @subject.rules_tree_by_source_id(source.id)
-      assert RoutingSnapshot.resolve(current, [id]) == [{id, replacement.id, nil}]
-      assert RoutingSnapshot.resolve(old, [id]) == [{id, backend.id, nil}]
+      assert resolve_ids(current, [id]) == [{id, replacement.id, nil}]
+      assert resolve_ids(old, [id]) == [{id, backend.id, nil}]
     end
 
     test "ID-only invalidation finds deleted rules in snapshots without per-rule entries", %{
@@ -326,7 +329,7 @@ defmodule Logflare.Rules.CacheTest do
 
       assert {:ok, 1} = @subject.bust_by(id: id)
       {_tree, current} = @subject.rules_tree_by_source_id(source.id)
-      assert RoutingSnapshot.resolve(current, [id]) == []
+      assert resolve_ids(current, [id]) == []
     end
 
     test "ID-only invalidation finds the owner of a newly inserted rule", %{source: source} do
@@ -335,7 +338,7 @@ defmodule Logflare.Rules.CacheTest do
 
       assert {:ok, 1} = @subject.bust_by(id: rule.id)
       {_tree, current} = @subject.rules_tree_by_source_id(source.id)
-      assert RoutingSnapshot.resolve(current, [rule.id]) == [Target.from_rule(rule)]
+      assert resolve_ids(current, [rule.id]) == [Target.from_rule(rule)]
     end
 
     test "generic primary-key invalidation retires derived routing snapshots", %{
@@ -348,7 +351,7 @@ defmodule Logflare.Rules.CacheTest do
 
       assert {:ok, 1} = Logflare.ContextCache.bust_keys([{Rules, id}])
       {_tree, current} = @subject.rules_tree_by_source_id(source.id)
-      assert RoutingSnapshot.resolve(current, [id]) == [{id, replacement.id, nil}]
+      assert resolve_ids(current, [id]) == [{id, replacement.id, nil}]
     end
 
     test "ID-only invalidation retires both owners after a move", %{
@@ -364,8 +367,8 @@ defmodule Logflare.Rules.CacheTest do
       assert {:ok, 2} = @subject.bust_by(id: id)
       {_tree, old_owner} = @subject.rules_tree_by_source_id(source.id)
       {_tree, new_owner} = @subject.rules_tree_by_source_id(destination.id)
-      assert RoutingSnapshot.resolve(old_owner, [id]) == []
-      assert RoutingSnapshot.resolve(new_owner, [id]) == [{id, backend.id, nil}]
+      assert resolve_ids(old_owner, [id]) == []
+      assert resolve_ids(new_owner, [id]) == [{id, backend.id, nil}]
     end
 
     test "source-aware invalidation does not scan headers or query rule ownership", %{
@@ -385,5 +388,17 @@ defmodule Logflare.Rules.CacheTest do
       assert Cachex.warm!(@subject, wait: true) == [Logflare.Rules.CacheWarmer]
       assert Cachex.size!(@subject) == 1
     end
+  end
+
+  defp resolve_ids(snapshot, ids) do
+    positions =
+      snapshot.encoded
+      |> :erlang.binary_to_term()
+      |> Tuple.to_list()
+      |> Enum.with_index()
+      |> Enum.filter(fn {target, _position} -> is_tuple(target) and Target.id(target) in ids end)
+      |> Enum.map(&elem(&1, 1))
+
+    RoutingSnapshot.resolve(snapshot, positions)
   end
 end

@@ -36,7 +36,7 @@ defmodule Logflare.Rules.RoutingCacheConcurrencyTest do
     assert Cachex.get(Cache, key) == {:ok, nil}
     assert {:ok, cache} = Cachex.inspect(Cache, :cache)
     refute Cachex.Spec.cache(cache, :transactions)
-    assert RoutingSnapshot.resolve(snapshot, [1]) == [{1, 10, nil}]
+    assert RoutingSnapshot.resolve(snapshot, [0]) == [{1, 10, nil}]
   end
 
   test "a cold loader evicted before Cachex commits leaves a usable fallback header" do
@@ -72,7 +72,7 @@ defmodule Logflare.Rules.RoutingCacheConcurrencyTest do
     send(publisher, :publish)
     assert {_tree, old} = Task.await(reader)
     assert old.key == key
-    assert RoutingSnapshot.resolve(old, [first_id]) == [{first_id, 10, nil}]
+    assert RoutingSnapshot.resolve(old, [0]) == [{first_id, 10, nil}]
     assert Cachex.get!(Cache, {:rules_tree_by_source_id, [first_id]}) == {:cached, {[], old}}
 
     RoutingSnapshot.restore(old, store)
@@ -123,7 +123,7 @@ defmodule Logflare.Rules.RoutingCacheConcurrencyTest do
       :sys.get_state(store)
       refute :ets.member(snapshot.table, snapshot.key)
       assert Cachex.get!(Cache, {:rules_tree_by_source_id, [source_id]}) == expected
-      assert RoutingSnapshot.resolve(snapshot, [1]) == [{1, 10, nil}]
+      assert RoutingSnapshot.resolve(snapshot, [0]) == [{1, 10, nil}]
     end
   end
 
@@ -140,8 +140,8 @@ defmodule Logflare.Rules.RoutingCacheConcurrencyTest do
     assert :ok = RoutingSnapshot.restore(old)
     :sys.get_state(RoutingSnapshotStore)
     assert Cachex.get!(Cache, cache_key) == {:cached, {[], current}}
-    assert RoutingSnapshot.resolve(current, [1]) == [{1, 20, nil}]
-    assert RoutingSnapshot.resolve(old, [1]) == [{1, 10, nil}]
+    assert RoutingSnapshot.resolve(current, [0]) == [{1, 20, nil}]
+    assert RoutingSnapshot.resolve(old, [0]) == [{1, 10, nil}]
     refute :ets.member(old.table, old.key)
   end
 
@@ -156,7 +156,7 @@ defmodule Logflare.Rules.RoutingCacheConcurrencyTest do
 
     assert Cachex.get!(Cache, key) == {:cached, {[], snapshot}}
     refute :ets.member(snapshot.table, snapshot.key)
-    assert RoutingSnapshot.resolve(snapshot, [1]) == [{1, 10, nil}]
+    assert RoutingSnapshot.resolve(snapshot, [0]) == [{1, 10, nil}]
 
     RoutingSnapshotStore.delete(store, current.key)
     :sys.get_state(store)
@@ -170,5 +170,5 @@ defmodule Logflare.Rules.RoutingCacheConcurrencyTest do
     on_exit(fn -> Enum.each(ids, &Cache.bust_by(source_id: &1)) end)
   end
 
-  defp snapshot_entries(targets), do: Enum.map(targets, &{elem(&1, 0), &1})
+  defp snapshot_entries(targets), do: targets
 end

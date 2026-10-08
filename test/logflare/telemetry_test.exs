@@ -540,7 +540,7 @@ defmodule Logflare.TelemetryTest do
       )
 
       store = start_supervised!({RoutingSnapshotStore, name: nil, table: nil})
-      snapshot = RoutingSnapshot.new(1, [{1, {1, 10, nil}}], store: store)
+      snapshot = RoutingSnapshot.new(1, [{1, 10, nil}], store: store)
 
       assert %{
                {:last_value, "logflare.rules.routing_snapshot_store.sources"} => %{%{} => 1},
