@@ -2,15 +2,16 @@ defmodule Logflare.Rules do
   @moduledoc false
   import Ecto.Query
 
-  alias Logflare.Lql
-  alias Logflare.Repo
-  alias Logflare.Rules.Rule
-  alias Logflare.Sources.Source
-  alias Logflare.Sources.SourceRouter.RulesTree
-  alias Logflare.SourceSchemas
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceSup
   alias Logflare.Cluster
+  alias Logflare.Lql
+  alias Logflare.Repo
+  alias Logflare.Rules.Rule
+  alias Logflare.SourceSchemas
+  alias Logflare.Sources.Source
+  alias Logflare.Sources.SourceRouter.RulesTree
+  alias Logflare.Sources.SourceRouter.Target
 
   @doc """
   Lists rules for a given Source or Backend
@@ -48,9 +49,23 @@ defmodule Logflare.Rules do
     where(query, [r], r.backend_id == ^backend_id)
   end
 
+  @doc """
+  Returns a routing tree and its ordered compact routing targets.
+
+  Both halves come from one `list_by_source_id/1` read, so every rule ID in the
+  tree resolves to a target in the same immutable snapshot.
+  """
+  @spec rules_tree_by_source_id(integer()) ::
+          {RulesTree.t(), [{Rule.id(), Target.t()}]}
   def rules_tree_by_source_id(id) do
     rules = list_by_source_id(id)
-    RulesTree.build(rules)
+
+    targets =
+      rules
+      |> Enum.sort_by(& &1.id)
+      |> Enum.map(&{&1.id, Target.from_rule(&1)})
+
+    {RulesTree.build(rules), targets}
   end
 
   @doc """

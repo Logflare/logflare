@@ -5,15 +5,20 @@ defmodule Logflare.Sources.SourceRouter.Sequential do
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Rules
   alias Logflare.Rules.Rule
+  alias Logflare.Sources.SourceRouter.Target
 
   @behaviour Logflare.Sources.SourceRouter
 
   @impl true
-  def matching_rules(le, source) do
-    rules = Rules.Cache.list_rules(source)
+  def prepare(source), do: Rules.Cache.list_rules(source)
 
+  @impl true
+  def matching_rules(le, source), do: matching_rules(le, source, prepare(source))
+
+  @impl true
+  def matching_rules(le, _source, rules) do
     for %Rule{lql_filters: [_ | _]} = rule <- rules, route_with_lql_rules?(le, rule) do
-      rule
+      Target.from_rule(rule)
     end
   end
 

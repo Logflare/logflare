@@ -1,0 +1,630 @@
+{
+  "parent-baseline": {
+    "system": {
+      "otp": "27",
+      "schedulers": 6,
+      "elixir": "1.19.5",
+      "architecture": "aarch64-unknown-linux-gnu"
+    },
+    "revision": "acc8f99f",
+    "rules": 1000,
+    "readers": 32,
+    "timings": [
+      {
+        "shape": "sparse",
+        "repeat": 1,
+        "reader_us": 12079,
+        "drain_us": 3,
+        "resident_sources": 32,
+        "pending_requests": 0
+      },
+      {
+        "shape": "sparse",
+        "repeat": 2,
+        "reader_us": 6894,
+        "drain_us": 4,
+        "resident_sources": 32,
+        "pending_requests": 0
+      },
+      {
+        "shape": "sparse",
+        "repeat": 3,
+        "reader_us": 7491,
+        "drain_us": 4,
+        "resident_sources": 32,
+        "pending_requests": 0
+      },
+      {
+        "shape": "sparse",
+        "repeat": 4,
+        "reader_us": 7251,
+        "drain_us": 2,
+        "resident_sources": 32,
+        "pending_requests": 0
+      },
+      {
+        "shape": "sparse",
+        "repeat": 5,
+        "reader_us": 6889,
+        "drain_us": 7,
+        "resident_sources": 32,
+        "pending_requests": 0
+      },
+      {
+        "shape": "dense",
+        "repeat": 1,
+        "reader_us": 58581,
+        "drain_us": 6,
+        "resident_sources": 32,
+        "pending_requests": 0
+      },
+      {
+        "shape": "dense",
+        "repeat": 2,
+        "reader_us": 59688,
+        "drain_us": 8,
+        "resident_sources": 32,
+        "pending_requests": 0
+      },
+      {
+        "shape": "dense",
+        "repeat": 3,
+        "reader_us": 58223,
+        "drain_us": 8,
+        "resident_sources": 32,
+        "pending_requests": 0
+      },
+      {
+        "shape": "dense",
+        "repeat": 4,
+        "reader_us": 57140,
+        "drain_us": 6,
+        "resident_sources": 32,
+        "pending_requests": 0
+      },
+      {
+        "shape": "dense",
+        "repeat": 5,
+        "reader_us": 57673,
+        "drain_us": 7,
+        "resident_sources": 32,
+        "pending_requests": 0
+      }
+    ],
+    "footprints": [
+      {
+        "repeat": 1,
+        "before_routing_ets_bytes": 757440,
+        "after_routing_ets_bytes": 757440,
+        "headers_before_routing": 8,
+        "headers_after_routing": 8,
+        "header_binary_bytes_before": 131661,
+        "header_binary_bytes_after": 131661,
+        "store_sources_before": 8,
+        "store_sources_after": 8,
+        "store_estimated_bytes": 379581
+      },
+      {
+        "repeat": 2,
+        "before_routing_ets_bytes": 757440,
+        "after_routing_ets_bytes": 757440,
+        "headers_before_routing": 8,
+        "headers_after_routing": 8,
+        "header_binary_bytes_before": 131661,
+        "header_binary_bytes_after": 131661,
+        "store_sources_before": 8,
+        "store_sources_after": 8,
+        "store_estimated_bytes": 379581
+      },
+      {
+        "repeat": 3,
+        "before_routing_ets_bytes": 757440,
+        "after_routing_ets_bytes": 757440,
+        "headers_before_routing": 8,
+        "headers_after_routing": 8,
+        "header_binary_bytes_before": 131661,
+        "header_binary_bytes_after": 131661,
+        "store_sources_before": 8,
+        "store_sources_after": 8,
+        "store_estimated_bytes": 379581
+      },
+      {
+        "repeat": 4,
+        "before_routing_ets_bytes": 757440,
+        "after_routing_ets_bytes": 757440,
+        "headers_before_routing": 8,
+        "headers_after_routing": 8,
+        "header_binary_bytes_before": 131661,
+        "header_binary_bytes_after": 131661,
+        "store_sources_before": 8,
+        "store_sources_after": 8,
+        "store_estimated_bytes": 379581
+      },
+      {
+        "repeat": 5,
+        "before_routing_ets_bytes": 757440,
+        "after_routing_ets_bytes": 757440,
+        "headers_before_routing": 8,
+        "headers_after_routing": 8,
+        "header_binary_bytes_before": 131661,
+        "header_binary_bytes_after": 131661,
+        "store_sources_before": 8,
+        "store_sources_after": 8,
+        "store_estimated_bytes": 379581
+      }
+    ],
+    "events_per_reader": 100,
+    "async_restore": false
+  },
+  "parent-store-only": {
+    "system": {
+      "otp": "27",
+      "schedulers": 6,
+      "elixir": "1.19.5",
+      "architecture": "aarch64-unknown-linux-gnu"
+    },
+    "revision": "parent-store-only",
+    "rules": 1000,
+    "readers": 32,
+    "timings": [
+      {
+        "shape": "sparse",
+        "repeat": 1,
+        "reader_us": 1390,
+        "drain_us": 6864,
+        "resident_sources": 30,
+        "pending_requests": 0
+      },
+      {
+        "shape": "sparse",
+        "repeat": 2,
+        "reader_us": 1230,
+        "drain_us": 5684,
+        "resident_sources": 30,
+        "pending_requests": 0
+      },
+      {
+        "shape": "sparse",
+        "repeat": 3,
+        "reader_us": 1141,
+        "drain_us": 5470,
+        "resident_sources": 30,
+        "pending_requests": 0
+      },
+      {
+        "shape": "sparse",
+        "repeat": 4,
+        "reader_us": 1205,
+        "drain_us": 6523,
+        "resident_sources": 30,
+        "pending_requests": 0
+      },
+      {
+        "shape": "sparse",
+        "repeat": 5,
+        "reader_us": 1756,
+        "drain_us": 7291,
+        "resident_sources": 30,
+        "pending_requests": 0
+      },
+      {
+        "shape": "dense",
+        "repeat": 1,
+        "reader_us": 12941,
+        "drain_us": 7,
+        "resident_sources": 31,
+        "pending_requests": 0
+      },
+      {
+        "shape": "dense",
+        "repeat": 2,
+        "reader_us": 12931,
+        "drain_us": 9,
+        "resident_sources": 30,
+        "pending_requests": 0
+      },
+      {
+        "shape": "dense",
+        "repeat": 3,
+        "reader_us": 13839,
+        "drain_us": 6,
+        "resident_sources": 30,
+        "pending_requests": 0
+      },
+      {
+        "shape": "dense",
+        "repeat": 4,
+        "reader_us": 12203,
+        "drain_us": 1685,
+        "resident_sources": 30,
+        "pending_requests": 0
+      },
+      {
+        "shape": "dense",
+        "repeat": 5,
+        "reader_us": 13293,
+        "drain_us": 8,
+        "resident_sources": 30,
+        "pending_requests": 0
+      }
+    ],
+    "footprints": [
+      {
+        "repeat": 1,
+        "before_routing_ets_bytes": 1483136,
+        "after_routing_ets_bytes": 1483136,
+        "headers_before_routing": 32,
+        "headers_after_routing": 32,
+        "header_binary_bytes_before": 526789,
+        "header_binary_bytes_after": 526789,
+        "store_sources_before": 8,
+        "store_sources_after": 8,
+        "store_estimated_bytes": 379581
+      },
+      {
+        "repeat": 2,
+        "before_routing_ets_bytes": 1483136,
+        "after_routing_ets_bytes": 1483136,
+        "headers_before_routing": 32,
+        "headers_after_routing": 32,
+        "header_binary_bytes_before": 526789,
+        "header_binary_bytes_after": 526789,
+        "store_sources_before": 8,
+        "store_sources_after": 8,
+        "store_estimated_bytes": 379581
+      },
+      {
+        "repeat": 3,
+        "before_routing_ets_bytes": 1483136,
+        "after_routing_ets_bytes": 1483136,
+        "headers_before_routing": 32,
+        "headers_after_routing": 32,
+        "header_binary_bytes_before": 526789,
+        "header_binary_bytes_after": 526789,
+        "store_sources_before": 8,
+        "store_sources_after": 8,
+        "store_estimated_bytes": 379581
+      },
+      {
+        "repeat": 4,
+        "before_routing_ets_bytes": 1483136,
+        "after_routing_ets_bytes": 1483136,
+        "headers_before_routing": 32,
+        "headers_after_routing": 32,
+        "header_binary_bytes_before": 526789,
+        "header_binary_bytes_after": 526789,
+        "store_sources_before": 8,
+        "store_sources_after": 8,
+        "store_estimated_bytes": 379581
+      },
+      {
+        "repeat": 5,
+        "before_routing_ets_bytes": 1483136,
+        "after_routing_ets_bytes": 1483136,
+        "headers_before_routing": 32,
+        "headers_after_routing": 32,
+        "header_binary_bytes_before": 526789,
+        "header_binary_bytes_after": 526789,
+        "store_sources_before": 8,
+        "store_sources_after": 8,
+        "store_estimated_bytes": 379581
+      }
+    ],
+    "events_per_reader": 100,
+    "async_restore": true
+  },
+  "child-baseline": {
+    "system": {
+      "otp": "27",
+      "schedulers": 6,
+      "elixir": "1.19.5",
+      "architecture": "aarch64-unknown-linux-gnu"
+    },
+    "revision": "229bb1d0",
+    "rules": 1000,
+    "readers": 32,
+    "timings": [
+      {
+        "shape": "sparse",
+        "repeat": 1,
+        "reader_us": 5143,
+        "drain_us": 4,
+        "resident_sources": 32,
+        "pending_requests": 0
+      },
+      {
+        "shape": "sparse",
+        "repeat": 2,
+        "reader_us": 3048,
+        "drain_us": 2,
+        "resident_sources": 32,
+        "pending_requests": 0
+      },
+      {
+        "shape": "sparse",
+        "repeat": 3,
+        "reader_us": 2952,
+        "drain_us": 4,
+        "resident_sources": 32,
+        "pending_requests": 0
+      },
+      {
+        "shape": "sparse",
+        "repeat": 4,
+        "reader_us": 2997,
+        "drain_us": 2,
+        "resident_sources": 32,
+        "pending_requests": 0
+      },
+      {
+        "shape": "sparse",
+        "repeat": 5,
+        "reader_us": 2709,
+        "drain_us": 3,
+        "resident_sources": 32,
+        "pending_requests": 0
+      },
+      {
+        "shape": "dense",
+        "repeat": 1,
+        "reader_us": 13261,
+        "drain_us": 6,
+        "resident_sources": 32,
+        "pending_requests": 0
+      },
+      {
+        "shape": "dense",
+        "repeat": 2,
+        "reader_us": 12976,
+        "drain_us": 10,
+        "resident_sources": 32,
+        "pending_requests": 0
+      },
+      {
+        "shape": "dense",
+        "repeat": 3,
+        "reader_us": 13181,
+        "drain_us": 5,
+        "resident_sources": 32,
+        "pending_requests": 0
+      },
+      {
+        "shape": "dense",
+        "repeat": 4,
+        "reader_us": 12553,
+        "drain_us": 10,
+        "resident_sources": 32,
+        "pending_requests": 0
+      },
+      {
+        "shape": "dense",
+        "repeat": 5,
+        "reader_us": 13086,
+        "drain_us": 6,
+        "resident_sources": 32,
+        "pending_requests": 0
+      }
+    ],
+    "footprints": [
+      {
+        "repeat": 1,
+        "before_routing_ets_bytes": 564800,
+        "after_routing_ets_bytes": 564800,
+        "headers_before_routing": 8,
+        "headers_after_routing": 8,
+        "header_binary_bytes_before": 32015,
+        "header_binary_bytes_after": 32015,
+        "store_sources_before": 8,
+        "store_sources_after": 8,
+        "store_estimated_bytes": 230031
+      },
+      {
+        "repeat": 2,
+        "before_routing_ets_bytes": 564800,
+        "after_routing_ets_bytes": 564800,
+        "headers_before_routing": 8,
+        "headers_after_routing": 8,
+        "header_binary_bytes_before": 32015,
+        "header_binary_bytes_after": 32015,
+        "store_sources_before": 8,
+        "store_sources_after": 8,
+        "store_estimated_bytes": 230031
+      },
+      {
+        "repeat": 3,
+        "before_routing_ets_bytes": 564800,
+        "after_routing_ets_bytes": 564800,
+        "headers_before_routing": 8,
+        "headers_after_routing": 8,
+        "header_binary_bytes_before": 32015,
+        "header_binary_bytes_after": 32015,
+        "store_sources_before": 8,
+        "store_sources_after": 8,
+        "store_estimated_bytes": 230031
+      },
+      {
+        "repeat": 4,
+        "before_routing_ets_bytes": 564800,
+        "after_routing_ets_bytes": 564800,
+        "headers_before_routing": 8,
+        "headers_after_routing": 8,
+        "header_binary_bytes_before": 32015,
+        "header_binary_bytes_after": 32015,
+        "store_sources_before": 8,
+        "store_sources_after": 8,
+        "store_estimated_bytes": 230031
+      },
+      {
+        "repeat": 5,
+        "before_routing_ets_bytes": 564800,
+        "after_routing_ets_bytes": 564800,
+        "headers_before_routing": 8,
+        "headers_after_routing": 8,
+        "header_binary_bytes_before": 32015,
+        "header_binary_bytes_after": 32015,
+        "store_sources_before": 8,
+        "store_sources_after": 8,
+        "store_estimated_bytes": 230031
+      }
+    ],
+    "events_per_reader": 100,
+    "async_restore": false
+  },
+  "child-store-only": {
+    "system": {
+      "otp": "27",
+      "schedulers": 6,
+      "elixir": "1.19.5",
+      "architecture": "aarch64-unknown-linux-gnu"
+    },
+    "revision": "child-store-only",
+    "rules": 1000,
+    "readers": 32,
+    "timings": [
+      {
+        "shape": "sparse",
+        "repeat": 1,
+        "reader_us": 596,
+        "drain_us": 1731,
+        "resident_sources": 30,
+        "pending_requests": 0
+      },
+      {
+        "shape": "sparse",
+        "repeat": 2,
+        "reader_us": 610,
+        "drain_us": 1863,
+        "resident_sources": 30,
+        "pending_requests": 0
+      },
+      {
+        "shape": "sparse",
+        "repeat": 3,
+        "reader_us": 632,
+        "drain_us": 1675,
+        "resident_sources": 30,
+        "pending_requests": 0
+      },
+      {
+        "shape": "sparse",
+        "repeat": 4,
+        "reader_us": 655,
+        "drain_us": 1637,
+        "resident_sources": 30,
+        "pending_requests": 0
+      },
+      {
+        "shape": "sparse",
+        "repeat": 5,
+        "reader_us": 538,
+        "drain_us": 1636,
+        "resident_sources": 30,
+        "pending_requests": 0
+      },
+      {
+        "shape": "dense",
+        "repeat": 1,
+        "reader_us": 8385,
+        "drain_us": 5,
+        "resident_sources": 32,
+        "pending_requests": 0
+      },
+      {
+        "shape": "dense",
+        "repeat": 2,
+        "reader_us": 8718,
+        "drain_us": 5,
+        "resident_sources": 30,
+        "pending_requests": 0
+      },
+      {
+        "shape": "dense",
+        "repeat": 3,
+        "reader_us": 8839,
+        "drain_us": 4,
+        "resident_sources": 30,
+        "pending_requests": 0
+      },
+      {
+        "shape": "dense",
+        "repeat": 4,
+        "reader_us": 8302,
+        "drain_us": 49,
+        "resident_sources": 30,
+        "pending_requests": 0
+      },
+      {
+        "shape": "dense",
+        "repeat": 5,
+        "reader_us": 8055,
+        "drain_us": 5,
+        "resident_sources": 30,
+        "pending_requests": 0
+      }
+    ],
+    "footprints": [
+      {
+        "repeat": 1,
+        "before_routing_ets_bytes": 1288576,
+        "after_routing_ets_bytes": 1288576,
+        "headers_before_routing": 32,
+        "headers_after_routing": 32,
+        "header_binary_bytes_before": 128043,
+        "header_binary_bytes_after": 128043,
+        "store_sources_before": 8,
+        "store_sources_after": 8,
+        "store_estimated_bytes": 230031
+      },
+      {
+        "repeat": 2,
+        "before_routing_ets_bytes": 1288576,
+        "after_routing_ets_bytes": 1288576,
+        "headers_before_routing": 32,
+        "headers_after_routing": 32,
+        "header_binary_bytes_before": 128043,
+        "header_binary_bytes_after": 128043,
+        "store_sources_before": 8,
+        "store_sources_after": 8,
+        "store_estimated_bytes": 230031
+      },
+      {
+        "repeat": 3,
+        "before_routing_ets_bytes": 1288576,
+        "after_routing_ets_bytes": 1288576,
+        "headers_before_routing": 32,
+        "headers_after_routing": 32,
+        "header_binary_bytes_before": 128043,
+        "header_binary_bytes_after": 128043,
+        "store_sources_before": 8,
+        "store_sources_after": 8,
+        "store_estimated_bytes": 230031
+      },
+      {
+        "repeat": 4,
+        "before_routing_ets_bytes": 1288576,
+        "after_routing_ets_bytes": 1288576,
+        "headers_before_routing": 32,
+        "headers_after_routing": 32,
+        "header_binary_bytes_before": 128043,
+        "header_binary_bytes_after": 128043,
+        "store_sources_before": 8,
+        "store_sources_after": 8,
+        "store_estimated_bytes": 230031
+      },
+      {
+        "repeat": 5,
+        "before_routing_ets_bytes": 1288576,
+        "after_routing_ets_bytes": 1288576,
+        "headers_before_routing": 32,
+        "headers_after_routing": 32,
+        "header_binary_bytes_before": 128043,
+        "header_binary_bytes_after": 128043,
+        "store_sources_before": 8,
+        "store_sources_after": 8,
+        "store_estimated_bytes": 230031
+      }
+    ],
+    "events_per_reader": 100,
+    "async_restore": true
+  }
+}

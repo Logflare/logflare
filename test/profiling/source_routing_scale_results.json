@@ -1,0 +1,2476 @@
+{
+  "revisions": {
+    "main": "52a4d2bcdc4df8ffa794431ac8487d0f5fee9f14",
+    "parent": "787816c6cf3d5ae2189a96b4ed46ffd04f8225d3",
+    "child": "b01cd339a80c7262814b2cbb6643d0a3897d7c45"
+  },
+  "hot": {
+    "main": [
+      {
+        "measurement": {
+          "system": {
+            "erlang": "27.3.4.6",
+            "os": "Linux",
+            "elixir": "1.19.5",
+            "available_memory": "11.65 GB",
+            "cpu_speed": "Unrecognized processor",
+            "jit_enabled?": true,
+            "num_cores": 6
+          },
+          "results": [
+            {
+              "input": "100 rules / one matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 1383199.7772140221,
+              "median_ns": 1365152,
+              "deviation": 0.1418540594971812,
+              "memory_bytes": 3648552
+            },
+            {
+              "input": "1000 rules / one matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 9951118.913907284,
+              "median_ns": 9564087.5,
+              "deviation": 0.07689413963116584,
+              "memory_bytes": 34064260.05063291
+            },
+            {
+              "input": "1000 rules / zero matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 105244.05676103393,
+              "median_ns": 103210,
+              "deviation": 0.1592748243125229,
+              "memory_bytes": 308984
+            },
+            {
+              "input": "100 rules / all matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 18598077.64814815,
+              "median_ns": 18335807,
+              "deviation": 0.13242115137844537,
+              "memory_bytes": 28294184
+            },
+            {
+              "input": "1000 rules / all matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 1282614.99358426,
+              "median_ns": 1268400.5,
+              "deviation": 0.15740927134546004,
+              "memory_bytes": 2705952
+            },
+            {
+              "input": "100 rules / zero matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 97732.2401475822,
+              "median_ns": 94585,
+              "deviation": 0.14375872289020988,
+              "memory_bytes": 391032
+            },
+            {
+              "input": "10000 rules / one matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 1526438.4707081,
+              "median_ns": 1420320,
+              "deviation": 0.18410257599332408,
+              "memory_bytes": 4113408
+            },
+            {
+              "input": "100 rules / zero matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 10414.160064718288,
+              "median_ns": 9209,
+              "deviation": 0.25861370770597475,
+              "memory_bytes": 33936
+            },
+            {
+              "input": "100 rules / one matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 116333.51509382649,
+              "median_ns": 112544,
+              "deviation": 0.13962666938020662,
+              "memory_bytes": 366272
+            },
+            {
+              "input": "10000 rules / all matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 345155230.7777778,
+              "median_ns": 329060913,
+              "deviation": 0.2528041495899127,
+              "memory_bytes": 317862664
+            },
+            {
+              "input": "10000 rules / one matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 14583823.631067961,
+              "median_ns": 14039263.5,
+              "deviation": 0.10350381673067856,
+              "memory_bytes": 41121376
+            },
+            {
+              "input": "1000 rules / eight matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 4880481.718699187,
+              "median_ns": 4822806,
+              "deviation": 0.058546930389662716,
+              "memory_bytes": 8220608
+            },
+            {
+              "input": "100 rules / all matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 1336624.5499108734,
+              "median_ns": 1338714.5,
+              "deviation": 0.07468538548733047,
+              "memory_bytes": 2819464
+            },
+            {
+              "input": "10000 rules / eight matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 3388018.809255079,
+              "median_ns": 3364818.5,
+              "deviation": 0.05580330410462349,
+              "memory_bytes": 6348448
+            },
+            {
+              "input": "100 rules / zero matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 1143776.550133435,
+              "median_ns": 1144440,
+              "deviation": 0.10344629181171287,
+              "memory_bytes": 3282544
+            },
+            {
+              "input": "1000 rules / all matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 275480462.1818182,
+              "median_ns": 232056395,
+              "deviation": 0.34002692381940863,
+              "memory_bytes": 296771728
+            },
+            {
+              "input": "10000 rules / zero matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 1464394.8422081093,
+              "median_ns": 1403237,
+              "deviation": 0.13842488831653246,
+              "memory_bytes": 4111392
+            },
+            {
+              "input": "1000 rules / zero matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 985648.056851791,
+              "median_ns": 985853,
+              "deviation": 0.04310467432086396,
+              "memory_bytes": 2482376
+            },
+            {
+              "input": "100 rules / one matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 11811.257718276414,
+              "median_ns": 10625,
+              "deviation": 0.22722911590275668,
+              "memory_bytes": 34984
+            },
+            {
+              "input": "10000 rules / zero matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 149484451.0952381,
+              "median_ns": 142295995,
+              "deviation": 0.10795149851165102,
+              "memory_bytes": 412813488
+            },
+            {
+              "input": "100 rules / eight matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 13098.401803273595,
+              "median_ns": 12834,
+              "deviation": 0.333537150875543,
+              "memory_bytes": 26360
+            },
+            {
+              "input": "1000 rules / one matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 1009612.4973063973,
+              "median_ns": 980582.5,
+              "deviation": 0.07103375768170987,
+              "memory_bytes": 2417024
+            },
+            {
+              "input": "1000 rules / one matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 100981.69887860569,
+              "median_ns": 100335,
+              "deviation": 0.23112929546880484,
+              "memory_bytes": 346024
+            },
+            {
+              "input": "1000 rules / eight matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 488834.87324632955,
+              "median_ns": 478926.5,
+              "deviation": 0.11222515489304992,
+              "memory_bytes": 716240
+            },
+            {
+              "input": "10000 rules / one matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 147251052.14285713,
+              "median_ns": 141278196,
+              "deviation": 0.09932450988937934,
+              "memory_bytes": 412875872
+            },
+            {
+              "input": "10000 rules / zero matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 15263956.340101523,
+              "median_ns": 14610759,
+              "deviation": 0.10474897478723912,
+              "memory_bytes": 41113632
+            },
+            {
+              "input": "1000 rules / all matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 18713378.01242236,
+              "median_ns": 18165041,
+              "deviation": 0.1335734715080284,
+              "memory_bytes": 29139328
+            },
+            {
+              "input": "100 rules / eight matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 1644969.16840373,
+              "median_ns": 1631742,
+              "deviation": 0.1083512322776948,
+              "memory_bytes": 2719704
+            },
+            {
+              "input": "1000 rules / zero matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 9624960.887820512,
+              "median_ns": 9514508.5,
+              "deviation": 0.03074803885325722,
+              "memory_bytes": 34000304
+            },
+            {
+              "input": "10000 rules / eight matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 350707.7192694919,
+              "median_ns": 301007,
+              "deviation": 0.4240009074679351,
+              "memory_bytes": 898936
+            },
+            {
+              "input": "1000 rules / eight matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 51720.571740486586,
+              "median_ns": 51751,
+              "deviation": 0.2050434322416769,
+              "memory_bytes": 18728
+            },
+            {
+              "input": "10000 rules / eight matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 35182087.406976745,
+              "median_ns": 34799220,
+              "deviation": 0.03446721305723879,
+              "memory_bytes": 67883856
+            },
+            {
+              "input": "10000 rules / all matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 22404833.95522388,
+              "median_ns": 22041894,
+              "deviation": 0.12616408705190874,
+              "memory_bytes": 31029920
+            },
+            {
+              "input": "100 rules / eight matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 142356.5698382493,
+              "median_ns": 142648.5,
+              "deviation": 0.12252878766961535,
+              "memory_bytes": 256304
+            },
+            {
+              "input": "100 rules / all matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 130785.05443574833,
+              "median_ns": 125336,
+              "deviation": 0.17082497808166686,
+              "memory_bytes": 270528
+            }
+          ]
+        },
+        "footprint": [
+          {
+            "rules": 100,
+            "shape": "zero",
+            "representative_ets_bytes": 12272,
+            "fully_warmed_ets_bytes": 183472
+          },
+          {
+            "rules": 100,
+            "shape": "one",
+            "representative_ets_bytes": 13984,
+            "fully_warmed_ets_bytes": 183472
+          },
+          {
+            "rules": 100,
+            "shape": "eight",
+            "representative_ets_bytes": 20160,
+            "fully_warmed_ets_bytes": 148224
+          },
+          {
+            "rules": 100,
+            "shape": "all",
+            "representative_ets_bytes": 177360,
+            "fully_warmed_ets_bytes": 177360
+          },
+          {
+            "rules": 1000,
+            "shape": "zero",
+            "representative_ets_bytes": 118152,
+            "fully_warmed_ets_bytes": 1848640
+          },
+          {
+            "rules": 1000,
+            "shape": "one",
+            "representative_ets_bytes": 119864,
+            "fully_warmed_ets_bytes": 1848640
+          },
+          {
+            "rules": 1000,
+            "shape": "eight",
+            "representative_ets_bytes": 99360,
+            "fully_warmed_ets_bytes": 1498704
+          },
+          {
+            "rules": 1000,
+            "shape": "all",
+            "representative_ets_bytes": 1787040,
+            "fully_warmed_ets_bytes": 1787040
+          },
+          {
+            "rules": 10000,
+            "shape": "zero",
+            "representative_ets_bytes": 1254008,
+            "fully_warmed_ets_bytes": 18530032
+          },
+          {
+            "rules": 10000,
+            "shape": "one",
+            "representative_ets_bytes": 1255720,
+            "fully_warmed_ets_bytes": 18530032
+          },
+          {
+            "rules": 10000,
+            "shape": "eight",
+            "representative_ets_bytes": 891360,
+            "fully_warmed_ets_bytes": 14884240
+          },
+          {
+            "rules": 10000,
+            "shape": "all",
+            "representative_ets_bytes": 17764576,
+            "fully_warmed_ets_bytes": 17764576
+          }
+        ]
+      },
+      {
+        "measurement": {
+          "system": {
+            "erlang": "27.3.4.6",
+            "os": "Linux",
+            "elixir": "1.19.5",
+            "available_memory": "11.65 GB",
+            "cpu_speed": "Unrecognized processor",
+            "jit_enabled?": true,
+            "num_cores": 6
+          },
+          "results": [
+            {
+              "input": "100 rules / one matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 1413464.682375118,
+              "median_ns": 1477850,
+              "deviation": 0.13348131033424235,
+              "memory_bytes": 3648552
+            },
+            {
+              "input": "1000 rules / one matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 9848009.652459016,
+              "median_ns": 9625450,
+              "deviation": 0.05126769232578456,
+              "memory_bytes": 34064259.90243903
+            },
+            {
+              "input": "1000 rules / zero matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 106165.19943959708,
+              "median_ns": 104256,
+              "deviation": 0.46980116972232755,
+              "memory_bytes": 308984
+            },
+            {
+              "input": "100 rules / all matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 19258063.019230768,
+              "median_ns": 18981729.5,
+              "deviation": 0.12336040124516179,
+              "memory_bytes": 28294184
+            },
+            {
+              "input": "1000 rules / all matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 1548979.367252066,
+              "median_ns": 1289707.5,
+              "deviation": 1.9941928706238365,
+              "memory_bytes": 2705952
+            },
+            {
+              "input": "100 rules / zero matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 119744.27540524314,
+              "median_ns": 119326,
+              "deviation": 0.4302564916632997,
+              "memory_bytes": 391032
+            },
+            {
+              "input": "10000 rules / one matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 1501977.8671679199,
+              "median_ns": 1421734,
+              "deviation": 0.16435373410181964,
+              "memory_bytes": 4113408
+            },
+            {
+              "input": "100 rules / zero matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 9581.401892549911,
+              "median_ns": 9086,
+              "deviation": 0.23353682072824777,
+              "memory_bytes": 33936
+            },
+            {
+              "input": "100 rules / one matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 116810.6997581526,
+              "median_ns": 112748,
+              "deviation": 0.12853226797364276,
+              "memory_bytes": 366272
+            },
+            {
+              "input": "10000 rules / all matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 375245416,
+              "median_ns": 361252112.5,
+              "deviation": 0.25660234524185643,
+              "memory_bytes": 317862664
+            },
+            {
+              "input": "10000 rules / one matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 16154463.123655913,
+              "median_ns": 14659928.5,
+              "deviation": 0.2193128294134627,
+              "memory_bytes": 41121376
+            },
+            {
+              "input": "1000 rules / eight matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 5011376.093489149,
+              "median_ns": 4898952,
+              "deviation": 0.07338305387187573,
+              "memory_bytes": 8220608
+            },
+            {
+              "input": "100 rules / all matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 1400050.056022409,
+              "median_ns": 1390331,
+              "deviation": 0.0688029000820092,
+              "memory_bytes": 2819464
+            },
+            {
+              "input": "10000 rules / eight matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 3397446.870894677,
+              "median_ns": 3383344,
+              "deviation": 0.06335487491475038,
+              "memory_bytes": 6348448
+            },
+            {
+              "input": "100 rules / zero matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 1093613.0820269778,
+              "median_ns": 1052491,
+              "deviation": 0.09652315411843945,
+              "memory_bytes": 3282544
+            },
+            {
+              "input": "1000 rules / all matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 302300074.6,
+              "median_ns": 263151531,
+              "deviation": 0.4238993957498508,
+              "memory_bytes": 296771728
+            },
+            {
+              "input": "10000 rules / zero matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 1548551.330232558,
+              "median_ns": 1473853,
+              "deviation": 0.1626488575023086,
+              "memory_bytes": 4111392
+            },
+            {
+              "input": "1000 rules / zero matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 925064.6067242443,
+              "median_ns": 917875,
+              "deviation": 0.02927232243382042,
+              "memory_bytes": 2482376
+            },
+            {
+              "input": "100 rules / one matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 11566.160628449175,
+              "median_ns": 10458,
+              "deviation": 0.297027079506311,
+              "memory_bytes": 34984
+            },
+            {
+              "input": "10000 rules / zero matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 177264554.52941176,
+              "median_ns": 163370810,
+              "deviation": 0.23593650668734475,
+              "memory_bytes": 412813488
+            },
+            {
+              "input": "100 rules / eight matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 13134.190800901471,
+              "median_ns": 12167,
+              "deviation": 0.7701922346513422,
+              "memory_bytes": 26360
+            },
+            {
+              "input": "1000 rules / one matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 1008938.2347007397,
+              "median_ns": 975134.5,
+              "deviation": 0.13662576277417593,
+              "memory_bytes": 2417024
+            },
+            {
+              "input": "1000 rules / one matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 102123.8088621855,
+              "median_ns": 99845,
+              "deviation": 0.30295203964635115,
+              "memory_bytes": 346024
+            },
+            {
+              "input": "1000 rules / eight matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 487329.28926829266,
+              "median_ns": 471440.5,
+              "deviation": 0.19498760759537548,
+              "memory_bytes": 716240
+            },
+            {
+              "input": "10000 rules / one matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 156681905.2,
+              "median_ns": 152417216.5,
+              "deviation": 0.07866914835639409,
+              "memory_bytes": 412875872
+            },
+            {
+              "input": "10000 rules / zero matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 15345853.943877552,
+              "median_ns": 14457021,
+              "deviation": 0.13587485776742617,
+              "memory_bytes": 41113632
+            },
+            {
+              "input": "1000 rules / all matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 20063307.94,
+              "median_ns": 19543730,
+              "deviation": 0.16210433408118932,
+              "memory_bytes": 29139328
+            },
+            {
+              "input": "100 rules / eight matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 1672949.4969325154,
+              "median_ns": 1620517,
+              "deviation": 0.21451422070770262,
+              "memory_bytes": 2719704
+            },
+            {
+              "input": "1000 rules / zero matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 9652638.257234726,
+              "median_ns": 9510240,
+              "deviation": 0.04263506933890235,
+              "memory_bytes": 34000307.31034483
+            },
+            {
+              "input": "10000 rules / eight matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 355947.09184885933,
+              "median_ns": 302863,
+              "deviation": 0.40295549074926246,
+              "memory_bytes": 898936
+            },
+            {
+              "input": "1000 rules / eight matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 47513.035824602746,
+              "median_ns": 43886,
+              "deviation": 0.20019026761393108,
+              "memory_bytes": 18728
+            },
+            {
+              "input": "10000 rules / eight matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 34936373.76744186,
+              "median_ns": 34126634.5,
+              "deviation": 0.06437009933354657,
+              "memory_bytes": 67883856
+            },
+            {
+              "input": "10000 rules / all matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 26815736.848214287,
+              "median_ns": 25040667,
+              "deviation": 0.26705749949930047,
+              "memory_bytes": 31029920
+            },
+            {
+              "input": "100 rules / eight matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 139347.80403297165,
+              "median_ns": 134160,
+              "deviation": 0.20860375221364472,
+              "memory_bytes": 256304
+            },
+            {
+              "input": "100 rules / all matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 138653.17144181734,
+              "median_ns": 135328,
+              "deviation": 0.28127656583154603,
+              "memory_bytes": 270528
+            }
+          ]
+        },
+        "footprint": [
+          {
+            "rules": 100,
+            "shape": "zero",
+            "representative_ets_bytes": 12272,
+            "fully_warmed_ets_bytes": 183472
+          },
+          {
+            "rules": 100,
+            "shape": "one",
+            "representative_ets_bytes": 13984,
+            "fully_warmed_ets_bytes": 183472
+          },
+          {
+            "rules": 100,
+            "shape": "eight",
+            "representative_ets_bytes": 20160,
+            "fully_warmed_ets_bytes": 148224
+          },
+          {
+            "rules": 100,
+            "shape": "all",
+            "representative_ets_bytes": 177360,
+            "fully_warmed_ets_bytes": 177360
+          },
+          {
+            "rules": 1000,
+            "shape": "zero",
+            "representative_ets_bytes": 118152,
+            "fully_warmed_ets_bytes": 1848640
+          },
+          {
+            "rules": 1000,
+            "shape": "one",
+            "representative_ets_bytes": 119864,
+            "fully_warmed_ets_bytes": 1848640
+          },
+          {
+            "rules": 1000,
+            "shape": "eight",
+            "representative_ets_bytes": 99360,
+            "fully_warmed_ets_bytes": 1498704
+          },
+          {
+            "rules": 1000,
+            "shape": "all",
+            "representative_ets_bytes": 1787040,
+            "fully_warmed_ets_bytes": 1787040
+          },
+          {
+            "rules": 10000,
+            "shape": "zero",
+            "representative_ets_bytes": 1254008,
+            "fully_warmed_ets_bytes": 18530032
+          },
+          {
+            "rules": 10000,
+            "shape": "one",
+            "representative_ets_bytes": 1255720,
+            "fully_warmed_ets_bytes": 18530032
+          },
+          {
+            "rules": 10000,
+            "shape": "eight",
+            "representative_ets_bytes": 891360,
+            "fully_warmed_ets_bytes": 14884240
+          },
+          {
+            "rules": 10000,
+            "shape": "all",
+            "representative_ets_bytes": 17764576,
+            "fully_warmed_ets_bytes": 17764576
+          }
+        ]
+      }
+    ],
+    "parent": [
+      {
+        "measurement": {
+          "system": {
+            "erlang": "27.3.4.6",
+            "os": "Linux",
+            "elixir": "1.19.5",
+            "available_memory": "11.65 GB",
+            "cpu_speed": "Unrecognized processor",
+            "jit_enabled?": true,
+            "num_cores": 6
+          },
+          "results": [
+            {
+              "input": "100 rules / one matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 507316.3150059212,
+              "median_ns": 498469,
+              "deviation": 0.08366867276528181,
+              "memory_bytes": 2615008.899315738
+            },
+            {
+              "input": "1000 rules / one matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 5379351.779569892,
+              "median_ns": 5253109,
+              "deviation": 0.06860608716348002,
+              "memory_bytes": 33845856
+            },
+            {
+              "input": "1000 rules / zero matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 102945.73644210599,
+              "median_ns": 101252,
+              "deviation": 0.053061609532148134,
+              "memory_bytes": 307792
+            },
+            {
+              "input": "100 rules / all matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 1578778.237894737,
+              "median_ns": 1504636,
+              "deviation": 0.08833494092693643,
+              "memory_bytes": 6322372.21749409
+            },
+            {
+              "input": "1000 rules / all matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 254748.56159143077,
+              "median_ns": 236838,
+              "deviation": 0.31080696708156264,
+              "memory_bytes": 617056
+            },
+            {
+              "input": "100 rules / zero matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 50525.96880181369,
+              "median_ns": 48251,
+              "deviation": 0.2336767801252642,
+              "memory_bytes": 257632.132706663
+            },
+            {
+              "input": "10000 rules / one matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 3726403.792546584,
+              "median_ns": 3599075,
+              "deviation": 0.407417474868648,
+              "memory_bytes": 4111424
+            },
+            {
+              "input": "100 rules / zero matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 11434.575960890348,
+              "median_ns": 10916,
+              "deviation": 0.4984632840645412,
+              "memory_bytes": 33288
+            },
+            {
+              "input": "100 rules / one matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 51334.12267651606,
+              "median_ns": 49043,
+              "deviation": 0.15403643637842576,
+              "memory_bytes": 258176
+            },
+            {
+              "input": "10000 rules / all matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 39256278.79220779,
+              "median_ns": 38141172,
+              "deviation": 0.0683919901920396,
+              "memory_bytes": 96739558.73684211
+            },
+            {
+              "input": "10000 rules / one matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 15308254.698979592,
+              "median_ns": 15550096,
+              "deviation": 0.08030488367719799,
+              "memory_bytes": 42336296
+            },
+            {
+              "input": "1000 rules / eight matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 667152.3566978193,
+              "median_ns": 637430,
+              "deviation": 0.14636281682084926,
+              "memory_bytes": 569000
+            },
+            {
+              "input": "100 rules / all matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 157011.29669235204,
+              "median_ns": 151170,
+              "deviation": 0.18834062252543232,
+              "memory_bytes": 561224
+            },
+            {
+              "input": "10000 rules / eight matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 769344.0233572895,
+              "median_ns": 815871,
+              "deviation": 0.13184745077453652,
+              "memory_bytes": 949592
+            },
+            {
+              "input": "100 rules / zero matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 485259.6195177213,
+              "median_ns": 481594,
+              "deviation": 0.060774031285604935,
+              "memory_bytes": 2612025.5599284437
+            },
+            {
+              "input": "1000 rules / all matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 23293398.48837209,
+              "median_ns": 23222279,
+              "deviation": 0.09448410003208826,
+              "memory_bytes": 82133350.97435898
+            },
+            {
+              "input": "10000 rules / zero matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 3762659.73902133,
+              "median_ns": 3667077,
+              "deviation": 0.3912295527086854,
+              "memory_bytes": 4110448
+            },
+            {
+              "input": "1000 rules / zero matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 651172.214378801,
+              "median_ns": 610908.5,
+              "deviation": 0.24388458830945695,
+              "memory_bytes": 2115448
+            },
+            {
+              "input": "100 rules / one matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 11626.158153257127,
+              "median_ns": 10792,
+              "deviation": 1.0349451007162886,
+              "memory_bytes": 33744
+            },
+            {
+              "input": "10000 rules / zero matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 111540674.18518518,
+              "median_ns": 111264633,
+              "deviation": 0.06526525400100665,
+              "memory_bytes": 423874648
+            },
+            {
+              "input": "100 rules / eight matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 6174.001536464654,
+              "median_ns": 5334,
+              "deviation": 0.6002225661940999,
+              "memory_bytes": 15072
+            },
+            {
+              "input": "1000 rules / one matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 669112.4077214907,
+              "median_ns": 625555,
+              "deviation": 0.23061858141699937,
+              "memory_bytes": 2107344
+            },
+            {
+              "input": "1000 rules / one matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 103586.80372344107,
+              "median_ns": 102336,
+              "deviation": 0.05361910832217613,
+              "memory_bytes": 308216
+            },
+            {
+              "input": "1000 rules / eight matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 89293.81567328918,
+              "median_ns": 92043,
+              "deviation": 0.1143938173618112,
+              "memory_bytes": 57800
+            },
+            {
+              "input": "10000 rules / one matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 107165924.10714285,
+              "median_ns": 105101739.5,
+              "deviation": 0.057590078973245,
+              "memory_bytes": 422787800
+            },
+            {
+              "input": "10000 rules / zero matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 15390527.17948718,
+              "median_ns": 15548787,
+              "deviation": 0.09637832009885561,
+              "memory_bytes": 42324728
+            },
+            {
+              "input": "1000 rules / all matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 2307766.9153846153,
+              "median_ns": 2230213.5,
+              "deviation": 0.13061783865721302,
+              "memory_bytes": 6667553.042253521
+            },
+            {
+              "input": "100 rules / eight matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 189871.5256483419,
+              "median_ns": 181337,
+              "deviation": 0.15121995582993497,
+              "memory_bytes": 478392
+            },
+            {
+              "input": "1000 rules / zero matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 5402289.032374101,
+              "median_ns": 5339737.5,
+              "deviation": 0.04031915892536195,
+              "memory_bytes": 33852248
+            },
+            {
+              "input": "10000 rules / eight matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 366904.6978082527,
+              "median_ns": 424426,
+              "deviation": 0.2332320741338882,
+              "memory_bytes": 888392
+            },
+            {
+              "input": "1000 rules / eight matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 38537.79002984072,
+              "median_ns": 35334,
+              "deviation": 0.20418895962752162,
+              "memory_bytes": 6680
+            },
+            {
+              "input": "10000 rules / eight matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 4621728.915254237,
+              "median_ns": 4694433,
+              "deviation": 0.03918237659836105,
+              "memory_bytes": 1561592
+            },
+            {
+              "input": "10000 rules / all matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 6074975.034412956,
+              "median_ns": 5974710,
+              "deviation": 0.1475135029443959,
+              "memory_bytes": 10865152
+            },
+            {
+              "input": "100 rules / eight matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 21297.14370322627,
+              "median_ns": 20251,
+              "deviation": 0.1339649203951461,
+              "memory_bytes": 57192
+            },
+            {
+              "input": "100 rules / all matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 17948.52867797266,
+              "median_ns": 16625,
+              "deviation": 0.20567825370539888,
+              "memory_bytes": 71720
+            }
+          ]
+        },
+        "footprint": [
+          {
+            "rules": 100,
+            "shape": "zero",
+            "representative_ets_bytes": 19400,
+            "fully_warmed_ets_bytes": 19400
+          },
+          {
+            "rules": 100,
+            "shape": "one",
+            "representative_ets_bytes": 19400,
+            "fully_warmed_ets_bytes": 19400
+          },
+          {
+            "rules": 100,
+            "shape": "eight",
+            "representative_ets_bytes": 16152,
+            "fully_warmed_ets_bytes": 16152
+          },
+          {
+            "rules": 100,
+            "shape": "all",
+            "representative_ets_bytes": 15688,
+            "fully_warmed_ets_bytes": 15688
+          },
+          {
+            "rules": 1000,
+            "shape": "zero",
+            "representative_ets_bytes": 182880,
+            "fully_warmed_ets_bytes": 182880
+          },
+          {
+            "rules": 1000,
+            "shape": "one",
+            "representative_ets_bytes": 182880,
+            "fully_warmed_ets_bytes": 182880
+          },
+          {
+            "rules": 1000,
+            "shape": "eight",
+            "representative_ets_bytes": 152952,
+            "fully_warmed_ets_bytes": 152952
+          },
+          {
+            "rules": 1000,
+            "shape": "all",
+            "representative_ets_bytes": 145288,
+            "fully_warmed_ets_bytes": 145288
+          },
+          {
+            "rules": 10000,
+            "shape": "zero",
+            "representative_ets_bytes": 1894736,
+            "fully_warmed_ets_bytes": 1894736
+          },
+          {
+            "rules": 10000,
+            "shape": "one",
+            "representative_ets_bytes": 1894736,
+            "fully_warmed_ets_bytes": 1894736
+          },
+          {
+            "rules": 10000,
+            "shape": "eight",
+            "representative_ets_bytes": 1520952,
+            "fully_warmed_ets_bytes": 1520952
+          },
+          {
+            "rules": 10000,
+            "shape": "all",
+            "representative_ets_bytes": 1441288,
+            "fully_warmed_ets_bytes": 1441288
+          }
+        ]
+      },
+      {
+        "measurement": {
+          "system": {
+            "erlang": "27.3.4.6",
+            "os": "Linux",
+            "elixir": "1.19.5",
+            "available_memory": "11.65 GB",
+            "cpu_speed": "Unrecognized processor",
+            "jit_enabled?": true,
+            "num_cores": 6
+          },
+          "results": [
+            {
+              "input": "100 rules / one matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 527283.3294635004,
+              "median_ns": 506349,
+              "deviation": 0.15045765083619897,
+              "memory_bytes": 2615109.2352941176
+            },
+            {
+              "input": "1000 rules / one matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 5456380.0218181815,
+              "median_ns": 5366044.5,
+              "deviation": 0.06203355118123369,
+              "memory_bytes": 33845856
+            },
+            {
+              "input": "1000 rules / zero matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 104196.91505657093,
+              "median_ns": 101848,
+              "deviation": 0.10783999790010297,
+              "memory_bytes": 307792
+            },
+            {
+              "input": "100 rules / all matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 1579268.3336842104,
+              "median_ns": 1508374.5,
+              "deviation": 0.08936237328909208,
+              "memory_bytes": 6310617.384615385
+            },
+            {
+              "input": "1000 rules / all matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 257998.3604270708,
+              "median_ns": 236832.5,
+              "deviation": 0.3326773473823756,
+              "memory_bytes": 617056
+            },
+            {
+              "input": "100 rules / zero matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 49772.24667644021,
+              "median_ns": 46951,
+              "deviation": 0.187899572216667,
+              "memory_bytes": 257632.24774774775
+            },
+            {
+              "input": "10000 rules / one matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 2984674.2696517413,
+              "median_ns": 2449448,
+              "deviation": 0.3446666638478146,
+              "memory_bytes": 4111424
+            },
+            {
+              "input": "100 rules / zero matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 9700.143647897086,
+              "median_ns": 8875,
+              "deviation": 0.4716322847418177,
+              "memory_bytes": 33288
+            },
+            {
+              "input": "100 rules / one matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 53384.66438503056,
+              "median_ns": 49663,
+              "deviation": 0.32736689649682904,
+              "memory_bytes": 258176
+            },
+            {
+              "input": "10000 rules / all matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 37451491.2962963,
+              "median_ns": 36952768,
+              "deviation": 0.048631967823490704,
+              "memory_bytes": 96855805.89473684
+            },
+            {
+              "input": "10000 rules / one matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 16075847.834224598,
+              "median_ns": 16102941,
+              "deviation": 0.10125714171037967,
+              "memory_bytes": 42336296
+            },
+            {
+              "input": "1000 rules / eight matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 650887.7957456046,
+              "median_ns": 628615,
+              "deviation": 0.11945889596787704,
+              "memory_bytes": 569000
+            },
+            {
+              "input": "100 rules / all matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 162946.0913393537,
+              "median_ns": 156168,
+              "deviation": 0.21304346699982715,
+              "memory_bytes": 561224
+            },
+            {
+              "input": "10000 rules / eight matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 758858.9762085548,
+              "median_ns": 811933,
+              "deviation": 0.11743257412999308,
+              "memory_bytes": 949592
+            },
+            {
+              "input": "100 rules / zero matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 497598.69941908715,
+              "median_ns": 490812,
+              "deviation": 0.09088202383674818,
+              "memory_bytes": 2612169.0727432077
+            },
+            {
+              "input": "1000 rules / all matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 22425318.641791046,
+              "median_ns": 21865504.5,
+              "deviation": 0.07625701537446139,
+              "memory_bytes": 82161566.8
+            },
+            {
+              "input": "10000 rules / zero matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 3725636.3391304347,
+              "median_ns": 3788836,
+              "deviation": 0.3509368009982639,
+              "memory_bytes": 4110448
+            },
+            {
+              "input": "1000 rules / zero matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 645425.1728740581,
+              "median_ns": 607510,
+              "deviation": 0.2506971971085414,
+              "memory_bytes": 2115448
+            },
+            {
+              "input": "100 rules / one matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 9919.677093698734,
+              "median_ns": 9084,
+              "deviation": 0.3402055829707059,
+              "memory_bytes": 33744
+            },
+            {
+              "input": "10000 rules / zero matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 107278648.82142857,
+              "median_ns": 107901652.5,
+              "deviation": 0.040120263502441376,
+              "memory_bytes": 423874648
+            },
+            {
+              "input": "100 rules / eight matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 5715.475118228509,
+              "median_ns": 5250,
+              "deviation": 0.6363600322783624,
+              "memory_bytes": 15072
+            },
+            {
+              "input": "1000 rules / one matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 654220.590661139,
+              "median_ns": 616868,
+              "deviation": 0.21814118210799296,
+              "memory_bytes": 2107344
+            },
+            {
+              "input": "1000 rules / one matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 106121.3445390071,
+              "median_ns": 103347,
+              "deviation": 0.1560078306348779,
+              "memory_bytes": 308216
+            },
+            {
+              "input": "1000 rules / eight matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 89583.77760818819,
+              "median_ns": 92513,
+              "deviation": 0.16811541120133072,
+              "memory_bytes": 57800
+            },
+            {
+              "input": "10000 rules / one matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 114172524.74074075,
+              "median_ns": 113825801,
+              "deviation": 0.06927750883386682,
+              "memory_bytes": 422787800
+            },
+            {
+              "input": "10000 rules / zero matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 15117173.72361809,
+              "median_ns": 15344253,
+              "deviation": 0.07672919944013612,
+              "memory_bytes": 42324728
+            },
+            {
+              "input": "1000 rules / all matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 2304550.390168971,
+              "median_ns": 2233021,
+              "deviation": 0.12616788342541346,
+              "memory_bytes": 6673831.633802817
+            },
+            {
+              "input": "100 rules / eight matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 184725.45401838032,
+              "median_ns": 177029,
+              "deviation": 0.14962917932339678,
+              "memory_bytes": 478392
+            },
+            {
+              "input": "1000 rules / zero matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 5566180.083487941,
+              "median_ns": 5437113,
+              "deviation": 0.059352632692048726,
+              "memory_bytes": 33852248
+            },
+            {
+              "input": "10000 rules / eight matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 373140.58934130246,
+              "median_ns": 427283,
+              "deviation": 0.23026675501026084,
+              "memory_bytes": 888392
+            },
+            {
+              "input": "1000 rules / eight matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 40279.291836045646,
+              "median_ns": 36331,
+              "deviation": 0.21318867048732543,
+              "memory_bytes": 6680
+            },
+            {
+              "input": "10000 rules / eight matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 4655840.995348837,
+              "median_ns": 4728447,
+              "deviation": 0.04194620130035292,
+              "memory_bytes": 1561592
+            },
+            {
+              "input": "10000 rules / all matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 6084398.492900608,
+              "median_ns": 5923246,
+              "deviation": 0.14898157148847427,
+              "memory_bytes": 10865152
+            },
+            {
+              "input": "100 rules / eight matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 20101.69788168519,
+              "median_ns": 19362,
+              "deviation": 0.1060311825004943,
+              "memory_bytes": 57192
+            },
+            {
+              "input": "100 rules / all matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 19225.51060139281,
+              "median_ns": 18685,
+              "deviation": 0.2775863861140458,
+              "memory_bytes": 71720
+            }
+          ]
+        },
+        "footprint": [
+          {
+            "rules": 100,
+            "shape": "zero",
+            "representative_ets_bytes": 19400,
+            "fully_warmed_ets_bytes": 19400
+          },
+          {
+            "rules": 100,
+            "shape": "one",
+            "representative_ets_bytes": 19400,
+            "fully_warmed_ets_bytes": 19400
+          },
+          {
+            "rules": 100,
+            "shape": "eight",
+            "representative_ets_bytes": 16152,
+            "fully_warmed_ets_bytes": 16152
+          },
+          {
+            "rules": 100,
+            "shape": "all",
+            "representative_ets_bytes": 15688,
+            "fully_warmed_ets_bytes": 15688
+          },
+          {
+            "rules": 1000,
+            "shape": "zero",
+            "representative_ets_bytes": 182880,
+            "fully_warmed_ets_bytes": 182880
+          },
+          {
+            "rules": 1000,
+            "shape": "one",
+            "representative_ets_bytes": 182880,
+            "fully_warmed_ets_bytes": 182880
+          },
+          {
+            "rules": 1000,
+            "shape": "eight",
+            "representative_ets_bytes": 152952,
+            "fully_warmed_ets_bytes": 152952
+          },
+          {
+            "rules": 1000,
+            "shape": "all",
+            "representative_ets_bytes": 145288,
+            "fully_warmed_ets_bytes": 145288
+          },
+          {
+            "rules": 10000,
+            "shape": "zero",
+            "representative_ets_bytes": 1894736,
+            "fully_warmed_ets_bytes": 1894736
+          },
+          {
+            "rules": 10000,
+            "shape": "one",
+            "representative_ets_bytes": 1894736,
+            "fully_warmed_ets_bytes": 1894736
+          },
+          {
+            "rules": 10000,
+            "shape": "eight",
+            "representative_ets_bytes": 1520952,
+            "fully_warmed_ets_bytes": 1520952
+          },
+          {
+            "rules": 10000,
+            "shape": "all",
+            "representative_ets_bytes": 1441288,
+            "fully_warmed_ets_bytes": 1441288
+          }
+        ]
+      }
+    ],
+    "child": [
+      {
+        "measurement": {
+          "system": {
+            "erlang": "27.3.4.6",
+            "os": "Linux",
+            "elixir": "1.19.5",
+            "available_memory": "11.65 GB",
+            "cpu_speed": "Unrecognized processor",
+            "jit_enabled?": true,
+            "num_cores": 6
+          },
+          "results": [
+            {
+              "input": "100 rules / one matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 510883.34963366843,
+              "median_ns": 500302,
+              "deviation": 0.07282732921003256,
+              "memory_bytes": 2613483.2598130843
+            },
+            {
+              "input": "1000 rules / one matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 5662288.1113207545,
+              "median_ns": 5666600,
+              "deviation": 0.05164381414860359,
+              "memory_bytes": 33857671.95454545
+            },
+            {
+              "input": "1000 rules / zero matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 107363.21846418708,
+              "median_ns": 105961,
+              "deviation": 0.0709300589905369,
+              "memory_bytes": 307744
+            },
+            {
+              "input": "100 rules / all matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 1160016.917246713,
+              "median_ns": 1100856.5,
+              "deviation": 0.10854934577059643,
+              "memory_bytes": 5881328
+            },
+            {
+              "input": "1000 rules / all matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 180722.92747677086,
+              "median_ns": 171462,
+              "deviation": 0.24653772703005128,
+              "memory_bytes": 563584
+            },
+            {
+              "input": "100 rules / zero matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 49416.57545438007,
+              "median_ns": 47459,
+              "deviation": 0.17044873660241663,
+              "memory_bytes": 258664
+            },
+            {
+              "input": "10000 rules / one matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 1728863.0242214534,
+              "median_ns": 1537886.5,
+              "deviation": 0.2511801256958162,
+              "memory_bytes": 4110200
+            },
+            {
+              "input": "100 rules / zero matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 10184.522596988449,
+              "median_ns": 8958,
+              "deviation": 0.24195191255233928,
+              "memory_bytes": 32176
+            },
+            {
+              "input": "100 rules / one matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 49778.49474403185,
+              "median_ns": 46709,
+              "deviation": 0.17706077133155176,
+              "memory_bytes": 258464
+            },
+            {
+              "input": "10000 rules / all matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 29130587.058252428,
+              "median_ns": 27783344,
+              "deviation": 0.11760335267236997,
+              "memory_bytes": 96833560
+            },
+            {
+              "input": "10000 rules / one matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 10643632.195035461,
+              "median_ns": 9777563,
+              "deviation": 0.1703273997988825,
+              "memory_bytes": 42319000
+            },
+            {
+              "input": "1000 rules / eight matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 496809.61083499005,
+              "median_ns": 492802,
+              "deviation": 0.028242516431219538,
+              "memory_bytes": 257800
+            },
+            {
+              "input": "100 rules / all matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 116485.33345004669,
+              "median_ns": 111169,
+              "deviation": 0.24301988696466972,
+              "memory_bytes": 518232
+            },
+            {
+              "input": "10000 rules / eight matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 696578.5966542751,
+              "median_ns": 654347,
+              "deviation": 0.11608906338188973,
+              "memory_bytes": 907192
+            },
+            {
+              "input": "100 rules / zero matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 489507.1916734694,
+              "median_ns": 482302,
+              "deviation": 0.07255541323058236,
+              "memory_bytes": 2617994.697947214
+            },
+            {
+              "input": "1000 rules / all matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 16352585.336956521,
+              "median_ns": 15686669,
+              "deviation": 0.09418911225239707,
+              "memory_bytes": 73346504
+            },
+            {
+              "input": "10000 rules / zero matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 1763807.68,
+              "median_ns": 1578721.5,
+              "deviation": 0.2642710833077371,
+              "memory_bytes": 4110168
+            },
+            {
+              "input": "1000 rules / zero matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 660206.442756495,
+              "median_ns": 635867.5,
+              "deviation": 0.16997122747790375,
+              "memory_bytes": 2118688
+            },
+            {
+              "input": "100 rules / one matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 10244.179865348127,
+              "median_ns": 9083,
+              "deviation": 0.5549934272253966,
+              "memory_bytes": 32328
+            },
+            {
+              "input": "10000 rules / zero matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 93336229.0909091,
+              "median_ns": 90169267,
+              "deviation": 0.06422994596747496,
+              "memory_bytes": 421817328
+            },
+            {
+              "input": "100 rules / eight matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 4824.070370652307,
+              "median_ns": 4500,
+              "deviation": 0.7695130698874378,
+              "memory_bytes": 12880
+            },
+            {
+              "input": "1000 rules / one matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 660271.4472583132,
+              "median_ns": 633930,
+              "deviation": 0.1713228681394421,
+              "memory_bytes": 2106904
+            },
+            {
+              "input": "1000 rules / one matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 106956.08278843749,
+              "median_ns": 105627,
+              "deviation": 0.11544272297932898,
+              "memory_bytes": 307864
+            },
+            {
+              "input": "1000 rules / eight matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 87934.16857673158,
+              "median_ns": 75669,
+              "deviation": 1.463453848610474,
+              "memory_bytes": 26680
+            },
+            {
+              "input": "10000 rules / one matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 95680488.6875,
+              "median_ns": 93062229.5,
+              "deviation": 0.07281638874633016,
+              "memory_bytes": 426000264
+            },
+            {
+              "input": "10000 rules / zero matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 10565294.626760563,
+              "median_ns": 9734000.5,
+              "deviation": 0.15916692055149798,
+              "memory_bytes": 42319776
+            },
+            {
+              "input": "1000 rules / all matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 1689797.423661972,
+              "median_ns": 1586992,
+              "deviation": 0.20863752797926557,
+              "memory_bytes": 5648008
+            },
+            {
+              "input": "100 rules / eight matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 109439.47598684211,
+              "median_ns": 107044,
+              "deviation": 0.14743103676736732,
+              "memory_bytes": 266800
+            },
+            {
+              "input": "1000 rules / zero matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 5760394.403071017,
+              "median_ns": 5670997,
+              "deviation": 0.04360510720570023,
+              "memory_bytes": 33850616.09142857
+            },
+            {
+              "input": "10000 rules / eight matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 327974.52692055155,
+              "median_ns": 290070,
+              "deviation": 0.23014194897228749,
+              "memory_bytes": 884080
+            },
+            {
+              "input": "1000 rules / eight matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 33960.19907117572,
+              "median_ns": 30128,
+              "deviation": 0.21850806425087518,
+              "memory_bytes": 3568
+            },
+            {
+              "input": "10000 rules / eight matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 4483060.669656203,
+              "median_ns": 4355499,
+              "deviation": 0.09634297049108015,
+              "memory_bytes": 1138312
+            },
+            {
+              "input": "10000 rules / all matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 3047340.9339430896,
+              "median_ns": 2814331.5,
+              "deviation": 0.1904971228894355,
+              "memory_bytes": 10954440
+            },
+            {
+              "input": "100 rules / eight matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 13546.001851157773,
+              "median_ns": 12844,
+              "deviation": 0.22051105895850637,
+              "memory_bytes": 35992
+            },
+            {
+              "input": "100 rules / all matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 14724.283148580802,
+              "median_ns": 13050,
+              "deviation": 0.5389698019394769,
+              "memory_bytes": 65136
+            }
+          ]
+        },
+        "footprint": [
+          {
+            "rules": 100,
+            "shape": "zero",
+            "representative_ets_bytes": 16920,
+            "fully_warmed_ets_bytes": 16920
+          },
+          {
+            "rules": 100,
+            "shape": "one",
+            "representative_ets_bytes": 16920,
+            "fully_warmed_ets_bytes": 16920
+          },
+          {
+            "rules": 100,
+            "shape": "eight",
+            "representative_ets_bytes": 13672,
+            "fully_warmed_ets_bytes": 13672
+          },
+          {
+            "rules": 100,
+            "shape": "all",
+            "representative_ets_bytes": 13208,
+            "fully_warmed_ets_bytes": 13208
+          },
+          {
+            "rules": 1000,
+            "shape": "zero",
+            "representative_ets_bytes": 158800,
+            "fully_warmed_ets_bytes": 158800
+          },
+          {
+            "rules": 1000,
+            "shape": "one",
+            "representative_ets_bytes": 158800,
+            "fully_warmed_ets_bytes": 158800
+          },
+          {
+            "rules": 1000,
+            "shape": "eight",
+            "representative_ets_bytes": 128872,
+            "fully_warmed_ets_bytes": 128872
+          },
+          {
+            "rules": 1000,
+            "shape": "all",
+            "representative_ets_bytes": 121208,
+            "fully_warmed_ets_bytes": 121208
+          },
+          {
+            "rules": 10000,
+            "shape": "zero",
+            "representative_ets_bytes": 1654656,
+            "fully_warmed_ets_bytes": 1654656
+          },
+          {
+            "rules": 10000,
+            "shape": "one",
+            "representative_ets_bytes": 1654656,
+            "fully_warmed_ets_bytes": 1654656
+          },
+          {
+            "rules": 10000,
+            "shape": "eight",
+            "representative_ets_bytes": 1280872,
+            "fully_warmed_ets_bytes": 1280872
+          },
+          {
+            "rules": 10000,
+            "shape": "all",
+            "representative_ets_bytes": 1201208,
+            "fully_warmed_ets_bytes": 1201208
+          }
+        ]
+      },
+      {
+        "measurement": {
+          "system": {
+            "erlang": "27.3.4.6",
+            "os": "Linux",
+            "elixir": "1.19.5",
+            "available_memory": "11.65 GB",
+            "cpu_speed": "Unrecognized processor",
+            "jit_enabled?": true,
+            "num_cores": 6
+          },
+          "results": [
+            {
+              "input": "100 rules / one matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 497214.74842454394,
+              "median_ns": 488530,
+              "deviation": 0.08368766172273553,
+              "memory_bytes": 2613480.4854700854
+            },
+            {
+              "input": "1000 rules / one matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 5303696.376325089,
+              "median_ns": 5267291.5,
+              "deviation": 0.04742713824376819,
+              "memory_bytes": 33857672
+            },
+            {
+              "input": "1000 rules / zero matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 104267.88715126607,
+              "median_ns": 103876,
+              "deviation": 0.05198951142977256,
+              "memory_bytes": 307744
+            },
+            {
+              "input": "100 rules / all matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 1155529.4888289676,
+              "median_ns": 1092619,
+              "deviation": 0.11621772161324415,
+              "memory_bytes": 5881328
+            },
+            {
+              "input": "1000 rules / all matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 177327.11195311113,
+              "median_ns": 167995,
+              "deviation": 0.25655455765438523,
+              "memory_bytes": 563584
+            },
+            {
+              "input": "100 rules / zero matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 50945.70240998789,
+              "median_ns": 48846,
+              "deviation": 0.2227297733109412,
+              "memory_bytes": 258664
+            },
+            {
+              "input": "10000 rules / one matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 1816334.429436705,
+              "median_ns": 1612381,
+              "deviation": 0.26524131385377936,
+              "memory_bytes": 4110200
+            },
+            {
+              "input": "100 rules / zero matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 9436.6973160223,
+              "median_ns": 8794,
+              "deviation": 0.36262995060978254,
+              "memory_bytes": 32176
+            },
+            {
+              "input": "100 rules / one matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 49956.10692128894,
+              "median_ns": 46807,
+              "deviation": 0.18165081670001063,
+              "memory_bytes": 258464
+            },
+            {
+              "input": "10000 rules / all matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 28935349.807692308,
+              "median_ns": 28845707.5,
+              "deviation": 0.11058537442330903,
+              "memory_bytes": 96833560
+            },
+            {
+              "input": "10000 rules / one matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 10556967.29122807,
+              "median_ns": 9743612,
+              "deviation": 0.1591878355974454,
+              "memory_bytes": 42319000
+            },
+            {
+              "input": "1000 rules / eight matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 498188.06512709754,
+              "median_ns": 493934,
+              "deviation": 0.025769476621251876,
+              "memory_bytes": 257800
+            },
+            {
+              "input": "100 rules / all matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 114450.30025231287,
+              "median_ns": 109583,
+              "deviation": 0.23859689501570577,
+              "memory_bytes": 518232
+            },
+            {
+              "input": "10000 rules / eight matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 703523.9807602065,
+              "median_ns": 659070,
+              "deviation": 0.12019627950202463,
+              "memory_bytes": 907192
+            },
+            {
+              "input": "100 rules / zero matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 481632.92514056223,
+              "median_ns": 474821,
+              "deviation": 0.07598412112301794,
+              "memory_bytes": 2618465.2471794873
+            },
+            {
+              "input": "1000 rules / all matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 16102481.379679145,
+              "median_ns": 15271514,
+              "deviation": 0.09469336312607672,
+              "memory_bytes": 73346504
+            },
+            {
+              "input": "10000 rules / zero matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 1728285.1308357348,
+              "median_ns": 1546945,
+              "deviation": 0.2405553111715215,
+              "memory_bytes": 4110168
+            },
+            {
+              "input": "1000 rules / zero matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 627867.8686910995,
+              "median_ns": 599300,
+              "deviation": 0.19884135157848043,
+              "memory_bytes": 2118688
+            },
+            {
+              "input": "100 rules / one matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 9799.082022087974,
+              "median_ns": 9000,
+              "deviation": 0.516755254593882,
+              "memory_bytes": 32328
+            },
+            {
+              "input": "10000 rules / zero matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 90797703.38235295,
+              "median_ns": 88456756.5,
+              "deviation": 0.05864354116667498,
+              "memory_bytes": 421817328
+            },
+            {
+              "input": "100 rules / eight matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 5018.509185913095,
+              "median_ns": 4542,
+              "deviation": 0.6764733202392653,
+              "memory_bytes": 12880
+            },
+            {
+              "input": "1000 rules / one matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 641878.557268251,
+              "median_ns": 608441,
+              "deviation": 0.20020267669175537,
+              "memory_bytes": 2106904
+            },
+            {
+              "input": "1000 rules / one matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 104252.98774159847,
+              "median_ns": 102263,
+              "deviation": 0.05399726716256755,
+              "memory_bytes": 307864
+            },
+            {
+              "input": "1000 rules / eight matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 78103.90520188969,
+              "median_ns": 74095,
+              "deviation": 0.1345924260551975,
+              "memory_bytes": 26680
+            },
+            {
+              "input": "10000 rules / one matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 96872625.87096775,
+              "median_ns": 93966474,
+              "deviation": 0.08296595177529874,
+              "memory_bytes": 426000264
+            },
+            {
+              "input": "10000 rules / zero matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 10606427.996466432,
+              "median_ns": 9726198,
+              "deviation": 0.1689984208194377,
+              "memory_bytes": 42319776
+            },
+            {
+              "input": "1000 rules / all matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 1615993.3399784483,
+              "median_ns": 1525133,
+              "deviation": 0.1674853616508009,
+              "memory_bytes": 5648008
+            },
+            {
+              "input": "100 rules / eight matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 109795.04686468648,
+              "median_ns": 106815,
+              "deviation": 0.1481652503011056,
+              "memory_bytes": 266800
+            },
+            {
+              "input": "1000 rules / zero matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 5565754.632653061,
+              "median_ns": 5407480,
+              "deviation": 0.1991757931929801,
+              "memory_bytes": 33850616
+            },
+            {
+              "input": "10000 rules / eight matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 330404.16196251375,
+              "median_ns": 292154.5,
+              "deviation": 0.22567374121133746,
+              "memory_bytes": 884080
+            },
+            {
+              "input": "1000 rules / eight matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 35725.48654703148,
+              "median_ns": 31800,
+              "deviation": 0.2311725016035053,
+              "memory_bytes": 3568
+            },
+            {
+              "input": "10000 rules / eight matches / 100 events",
+              "job": "production batch API",
+              "mean_ns": 4456555.67756315,
+              "median_ns": 4314518,
+              "deviation": 0.1277956870733345,
+              "memory_bytes": 1138312
+            },
+            {
+              "input": "10000 rules / all matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 2992073.8113772455,
+              "median_ns": 2729987.5,
+              "deviation": 0.2121806026700437,
+              "memory_bytes": 10954440
+            },
+            {
+              "input": "100 rules / eight matches / 10 events",
+              "job": "production batch API",
+              "mean_ns": 13508.000738424513,
+              "median_ns": 12837,
+              "deviation": 0.15303932347747315,
+              "memory_bytes": 35992
+            },
+            {
+              "input": "100 rules / all matches / 1 events",
+              "job": "production batch API",
+              "mean_ns": 15390.453085477144,
+              "median_ns": 14545,
+              "deviation": 0.3163774564030493,
+              "memory_bytes": 65136
+            }
+          ]
+        },
+        "footprint": [
+          {
+            "rules": 100,
+            "shape": "zero",
+            "representative_ets_bytes": 16920,
+            "fully_warmed_ets_bytes": 16920
+          },
+          {
+            "rules": 100,
+            "shape": "one",
+            "representative_ets_bytes": 16920,
+            "fully_warmed_ets_bytes": 16920
+          },
+          {
+            "rules": 100,
+            "shape": "eight",
+            "representative_ets_bytes": 13672,
+            "fully_warmed_ets_bytes": 13672
+          },
+          {
+            "rules": 100,
+            "shape": "all",
+            "representative_ets_bytes": 13208,
+            "fully_warmed_ets_bytes": 13208
+          },
+          {
+            "rules": 1000,
+            "shape": "zero",
+            "representative_ets_bytes": 158800,
+            "fully_warmed_ets_bytes": 158800
+          },
+          {
+            "rules": 1000,
+            "shape": "one",
+            "representative_ets_bytes": 158800,
+            "fully_warmed_ets_bytes": 158800
+          },
+          {
+            "rules": 1000,
+            "shape": "eight",
+            "representative_ets_bytes": 128872,
+            "fully_warmed_ets_bytes": 128872
+          },
+          {
+            "rules": 1000,
+            "shape": "all",
+            "representative_ets_bytes": 121208,
+            "fully_warmed_ets_bytes": 121208
+          },
+          {
+            "rules": 10000,
+            "shape": "zero",
+            "representative_ets_bytes": 1654656,
+            "fully_warmed_ets_bytes": 1654656
+          },
+          {
+            "rules": 10000,
+            "shape": "one",
+            "representative_ets_bytes": 1654656,
+            "fully_warmed_ets_bytes": 1654656
+          },
+          {
+            "rules": 10000,
+            "shape": "eight",
+            "representative_ets_bytes": 1280872,
+            "fully_warmed_ets_bytes": 1280872
+          },
+          {
+            "rules": 10000,
+            "shape": "all",
+            "representative_ets_bytes": 1201208,
+            "fully_warmed_ets_bytes": 1201208
+          }
+        ]
+      }
+    ]
+  },
+  "fallback": {
+    "parent": [
+      {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "10000 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 11566295.234615386,
+            "median_ns": 11599121,
+            "deviation": 0.13007845341690452,
+            "memory_bytes": 236768
+          },
+          {
+            "input": "10000 rules / one matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 99127086.77419356,
+            "median_ns": 95178405,
+            "deviation": 0.08693658717500152,
+            "memory_bytes": 427684968
+          }
+        ]
+      },
+      {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "10000 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 11905938.984189723,
+            "median_ns": 11663566,
+            "deviation": 0.14233313124218133,
+            "memory_bytes": 236768
+          },
+          {
+            "input": "10000 rules / one matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 101271776.53333333,
+            "median_ns": 98363232.5,
+            "deviation": 0.08045121719749102,
+            "memory_bytes": 427684968
+          }
+        ]
+      }
+    ],
+    "child": [
+      {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "10000 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 11474060.93129771,
+            "median_ns": 10762754.5,
+            "deviation": 0.3006449002150259,
+            "memory_bytes": 237040
+          },
+          {
+            "input": "10000 rules / one matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 97713578.93548387,
+            "median_ns": 95677454,
+            "deviation": 0.06393038197264138,
+            "memory_bytes": 423347728
+          }
+        ]
+      },
+      {
+        "system": {
+          "erlang": "27.3.4.6",
+          "os": "Linux",
+          "elixir": "1.19.5",
+          "available_memory": "11.65 GB",
+          "cpu_speed": "Unrecognized processor",
+          "jit_enabled?": true,
+          "num_cores": 6
+        },
+        "results": [
+          {
+            "input": "10000 rules / eight matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 10262307.706484642,
+            "median_ns": 10474094,
+            "deviation": 0.05834171797202444,
+            "memory_bytes": 237040
+          },
+          {
+            "input": "10000 rules / one matches / 100 events",
+            "job": "production batch API",
+            "mean_ns": 98279009.64516129,
+            "median_ns": 93391621,
+            "deviation": 0.11772464421571258,
+            "memory_bytes": 423347728
+          }
+        ]
+      }
+    ]
+  },
+  "batch_reuse": {
+    "system": {
+      "erlang": "27.3.4.6",
+      "os": "Linux",
+      "elixir": "1.19.5",
+      "available_memory": "11.65 GB",
+      "cpu_speed": "Unrecognized processor",
+      "jit_enabled?": true,
+      "num_cores": 6
+    },
+    "results": [
+      {
+        "input": "10000 rules / all matches / 10 events",
+        "job": "production batch API",
+        "mean_ns": 28968408.490384616,
+        "median_ns": 27245211,
+        "deviation": 0.1100323144109919,
+        "memory_bytes": 96833560
+      },
+      {
+        "input": "10000 rules / all matches / 10 events",
+        "job": "fetch per event",
+        "mean_ns": 31027840.6185567,
+        "median_ns": 30670061,
+        "deviation": 0.05126551538966729,
+        "memory_bytes": 100727888
+      },
+      {
+        "input": "10000 rules / eight matches / 10 events",
+        "job": "production batch API",
+        "mean_ns": 766430.7996930161,
+        "median_ns": 665062,
+        "deviation": 0.8489524043782795,
+        "memory_bytes": 907192
+      },
+      {
+        "input": "10000 rules / eight matches / 10 events",
+        "job": "fetch per event",
+        "mean_ns": 3321683.4540420817,
+        "median_ns": 3299776,
+        "deviation": 0.0675398754057809,
+        "memory_bytes": 6198496
+      },
+      {
+        "input": "10000 rules / eight matches / 100 events",
+        "job": "production batch API",
+        "mean_ns": 4558282.238601823,
+        "median_ns": 4391546.5,
+        "deviation": 0.14833741216294768,
+        "memory_bytes": 1138312
+      },
+      {
+        "input": "10000 rules / eight matches / 100 events",
+        "job": "fetch per event",
+        "mean_ns": 32929871.97826087,
+        "median_ns": 32784566.5,
+        "deviation": 0.029097827723835963,
+        "memory_bytes": 66387232
+      },
+      {
+        "input": "10000 rules / one matches / 10 events",
+        "job": "production batch API",
+        "mean_ns": 10606495.787985865,
+        "median_ns": 9735647,
+        "deviation": 0.17901795811772755,
+        "memory_bytes": 42319000
+      },
+      {
+        "input": "10000 rules / one matches / 10 events",
+        "job": "fetch per event",
+        "mean_ns": 17610620.093567252,
+        "median_ns": 17421885,
+        "deviation": 0.10680455638051937,
+        "memory_bytes": 52115392
+      },
+      {
+        "input": "10000 rules / one matches / 100 events",
+        "job": "production batch API",
+        "mean_ns": 93960705.15625,
+        "median_ns": 90112086,
+        "deviation": 0.07582165277842683,
+        "memory_bytes": 426000264
+      },
+      {
+        "input": "10000 rules / one matches / 100 events",
+        "job": "fetch per event",
+        "mean_ns": 176522777.3529412,
+        "median_ns": 174425612,
+        "deviation": 0.04780716271747077,
+        "memory_bytes": 565721344
+      },
+      {
+        "input": "10000 rules / zero matches / 10 events",
+        "job": "production batch API",
+        "mean_ns": 10598378.45229682,
+        "median_ns": 9740350,
+        "deviation": 0.16475444965121006,
+        "memory_bytes": 42319776
+      },
+      {
+        "input": "10000 rules / zero matches / 10 events",
+        "job": "fetch per event",
+        "mean_ns": 17560448.280701753,
+        "median_ns": 17236620,
+        "deviation": 0.08968802358515035,
+        "memory_bytes": 52119136
+      },
+      {
+        "input": "10000 rules / zero matches / 100 events",
+        "job": "production batch API",
+        "mean_ns": 111800291.22222222,
+        "median_ns": 109792881,
+        "deviation": 0.186201788813005,
+        "memory_bytes": 421817328
+      },
+      {
+        "input": "10000 rules / zero matches / 100 events",
+        "job": "fetch per event",
+        "mean_ns": 173015146.05555555,
+        "median_ns": 172108600.5,
+        "deviation": 0.02548031831173708,
+        "memory_bytes": 565738936
+      }
+    ]
+  }
+}

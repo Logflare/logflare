@@ -746,6 +746,10 @@ defmodule Logflare.Telemetry do
       database_metrics,
       vm_metrics,
       cache_metrics,
+      [
+        last_value("logflare.rules.routing_snapshot_store.sources"),
+        last_value("logflare.rules.routing_snapshot_store.estimated_bytes", unit: :byte)
+      ],
       broadway_metrics,
       application_metrics,
       finch_metrics
@@ -767,7 +771,8 @@ defmodule Logflare.Telemetry do
         {__MODULE__, :process_message_queue_metrics, []},
         {__MODULE__, :process_memory_metrics, []},
         {__MODULE__, :ets_table_metrics, []},
-        {__MODULE__, :clickhouse_read_pool_metrics, []}
+        {__MODULE__, :clickhouse_read_pool_metrics, []},
+        {Logflare.Rules.RoutingSnapshotStore, :emit_metrics, []}
       ]
 
     cachex_metrics ++ process_metrics

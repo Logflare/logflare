@@ -4,8 +4,10 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
   alias Logflare.LogEvent
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Rules
+  alias Logflare.Rules.RoutingSnapshot
   alias Logflare.Rules.Rule
   alias Logflare.Sources.SourceRouter.RulesTree
+  alias Logflare.Sources.SourceRouter.Target
 
   @subject RulesTree
 
@@ -404,14 +406,61 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
       [source: source, log_event: build(:log_event, source: source, message: "testing123")]
     end
 
-    test "returns the rules matching the event", %{source: source, log_event: le} do
-      assert [%Rule{}] = @subject.matching_rules(le, source)
+    test "returns compact targets for the rules matching the event", %{
+      source: source,
+      log_event: le
+    } do
+      assert [target] = @subject.matching_rules(le, source)
+      assert Target.id(target) == hd(source.rules).id
     end
 
-    test "drops matched ids whose rule no longer exists", %{source: source, log_event: le} do
-      stub(Rules, :get_rule, fn _id -> nil end)
+    test "drops matched rule IDs missing from the snapshot", %{source: source, log_event: le} do
+      {tree, _targets} = Rules.rules_tree_by_source_id(source.id)
+
+      expect(Rules, :rules_tree_by_source_id, fn _id -> {tree, []} end)
 
       assert @subject.matching_rules(le, source) == []
+    end
+
+    test "the snapshot resolves every rule ID its tree can match", %{
+      source: source,
+      log_event: le
+    } do
+      {tree, entries} = Rules.rules_tree_by_source_id(source.id)
+
+      assert [_ | _] = rule_ids = @subject.matching_rule_ids(le, tree)
+      targets_by_id = Map.new(entries)
+
+      for rule_id <- rule_ids do
+        assert Map.has_key?(targets_by_id, rule_id)
+      end
+    end
+
+    test "fallback restores the store and retains decoded state only within the batch", %{
+      source: source,
+      log_event: le
+    } do
+      {tree, snapshot} = Rules.Cache.rules_tree_by_source_id(source.id)
+      Rules.RoutingSnapshotStore.delete(Rules.RoutingSnapshotStore, snapshot.key)
+      :sys.get_state(Rules.RoutingSnapshotStore)
+      refute :ets.member(snapshot.table, snapshot.key)
+
+      assert {[target], {^tree, local}} =
+               @subject.matching_rules_with_state(le, source, {tree, snapshot})
+
+      assert is_map(local.decoded)
+      assert local.key == snapshot.key
+      :sys.get_state(Rules.RoutingSnapshotStore)
+      assert {^tree, ^snapshot} = Rules.Cache.rules_tree_by_source_id(source.id)
+      assert snapshot.decoded == nil
+
+      assert {:ok, [^target]} =
+               RoutingSnapshot.resolve_with_status(snapshot, [hd(source.rules).id])
+
+      local = %{local | encoded: <<>>}
+
+      assert {[^target], {^tree, ^local}} =
+               @subject.matching_rules_with_state(le, source, {tree, local})
     end
   end
 

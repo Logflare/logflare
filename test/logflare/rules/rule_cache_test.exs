@@ -1,9 +1,15 @@
+Mimic.copy(Cachex)
+
 defmodule Logflare.Rules.CacheTest do
   alias Logflare.Rules.Rule
   use Logflare.DataCase
 
+  alias Logflare.ContextCache.Supervisor, as: ContextCacheSupervisor
   alias Logflare.Rules
+  alias Logflare.Rules.RoutingSnapshot
+  alias Logflare.Rules.RoutingSnapshotStore
   alias Logflare.Sources
+  alias Logflare.Sources.SourceRouter.Target
 
   @subject Rules.Cache
 
@@ -14,10 +20,24 @@ defmodule Logflare.Rules.CacheTest do
     source = insert(:source, user: user, log_events_updated_at: DateTime.utc_now())
     [r1, r2] = insert_list(2, :rule, source: source, backend: backend)
 
+    on_exit(fn -> @subject.bust_by(source_id: source.id) end)
+
     [source: source, backend: backend, rule_ids: [r1.id, r2.id]]
   end
 
   describe "rules cache" do
+    test "get rule", %{rule_ids: [rid1, _rid2]} do
+      assert %Rule{id: ^rid1} = @subject.get_rule(rid1)
+
+      assert Cachex.size!(@subject) == 1
+      assert %{hits: 0, writes: 1} = Cachex.stats!(@subject)
+
+      Mimic.reject(Rules, :get_rule, 1)
+
+      assert %Rule{id: ^rid1} = @subject.get_rule(rid1)
+      assert %{hits: 1, writes: 1} = Cachex.stats!(@subject)
+    end
+
     test "get rules", %{rule_ids: rule_ids} do
       ref = :telemetry_test.attach_event_handlers(self(), [[:logflare, :repo, :replica_route]])
       on_exit(fn -> :telemetry.detach(ref) end)
@@ -35,15 +55,164 @@ defmodule Logflare.Rules.CacheTest do
 
       assert Cachex.size!(@subject) == 2
       assert %{hits: 0, writes: 2} = Cachex.stats!(@subject)
-
       Mimic.reject(Rules, :get_rule, 1)
-
       assert [_r1, _r2] = @subject.get_rules(rule_ids)
       assert %{hits: 2, writes: 2} = Cachex.stats!(@subject)
-
       [rid1, _rid2] = rule_ids
       assert %Rule{id: ^rid1} = @subject.get_rule(rid1)
       assert %{hits: 3, writes: 2} = Cachex.stats!(@subject)
+    end
+
+    test "rules tree by source id caches the tree with compact targets", %{
+      source: source,
+      rule_ids: rule_ids
+    } do
+      assert {tree, %RoutingSnapshot{} = snapshot} = @subject.rules_tree_by_source_id(source.id)
+      assert snapshot.count == length(rule_ids)
+      assert Enum.map(RoutingSnapshot.resolve(snapshot, rule_ids), &Target.id/1) == rule_ids
+
+      Mimic.reject(Rules, :rules_tree_by_source_id, 1)
+      assert @subject.rules_tree_by_source_id(source.id) == {tree, snapshot}
+    end
+
+    test "rules tree cache misses recover through fallback while the store is unavailable", %{
+      source: source,
+      rule_ids: rule_ids
+    } do
+      on_exit(fn ->
+        if Process.whereis(RoutingSnapshotStore) == nil do
+          Supervisor.restart_child(ContextCacheSupervisor, RoutingSnapshotStore)
+        end
+      end)
+
+      assert :ok = Supervisor.terminate_child(ContextCacheSupervisor, RoutingSnapshotStore)
+
+      assert {tree, %RoutingSnapshot{table: RoutingSnapshotStore} = snapshot} =
+               @subject.rules_tree_by_source_id(source.id)
+
+      expected = RoutingSnapshot.resolve(snapshot, rule_ids)
+      assert Enum.map(expected, &Target.id/1) == rule_ids
+      assert @subject.rules_tree_by_source_id(source.id) == {tree, snapshot}
+
+      assert {:ok, _pid} = Supervisor.restart_child(ContextCacheSupervisor, RoutingSnapshotStore)
+
+      assert {:fallback, ^expected, _rules_by_id} =
+               RoutingSnapshot.resolve_with_status(snapshot, rule_ids)
+
+      assert :ok = RoutingSnapshot.restore(snapshot)
+      :sys.get_state(RoutingSnapshotStore)
+      assert {:ok, ^expected} = RoutingSnapshot.resolve_with_status(snapshot, rule_ids)
+      assert {^tree, ^snapshot} = @subject.rules_tree_by_source_id(source.id)
+    end
+
+    for invalidation <- [:bust, :expire, :clear] do
+      @invalidation invalidation
+      test "#{invalidation} and rebuild preserve a paused reader's snapshot", %{
+        source: source,
+        rule_ids: rule_ids
+      } do
+        {tree, old} = @subject.rules_tree_by_source_id(source.id)
+        old_targets = RoutingSnapshot.resolve(old, rule_ids)
+        parent = self()
+
+        reader =
+          Task.async(fn ->
+            send(parent, :snapshot_acquired)
+            receive do: (:resume -> RoutingSnapshot.resolve(old, rule_ids))
+          end)
+
+        assert_receive :snapshot_acquired
+
+        case @invalidation do
+          :bust ->
+            assert {:ok, 1} = @subject.bust_by(source_id: source.id)
+
+          :expire ->
+            assert {:ok, true} =
+                     Cachex.expire(@subject, {:rules_tree_by_source_id, [source.id]}, -1)
+
+          :clear ->
+            assert {:ok, 1} = Cachex.clear(@subject)
+        end
+
+        new_entries =
+          Enum.map(old_targets, fn {id, backend_id, sink} ->
+            {id, {id, backend_id + 1_000_000, sink}}
+          end)
+
+        expect(Rules, :rules_tree_by_source_id, fn id ->
+          assert id == source.id
+          {tree, new_entries}
+        end)
+
+        {^tree, current} = @subject.rules_tree_by_source_id(source.id)
+        assert current.key != old.key
+        assert RoutingSnapshot.resolve(current, rule_ids) == Enum.map(new_entries, &elem(&1, 1))
+        refute :ets.member(old.table, old.key)
+        send(reader.pid, :resume)
+        assert Task.await(reader) == old_targets
+      end
+    end
+
+    test "restores a missing generation without changing the cached header or TTL", %{
+      source: source,
+      rule_ids: rule_ids
+    } do
+      {tree, snapshot} = @subject.rules_tree_by_source_id(source.id)
+      expected = RoutingSnapshot.resolve(snapshot, rule_ids)
+      key = {:rules_tree_by_source_id, [source.id]}
+      {:ok, entry_before} = Cachex.inspect(@subject, {:entry, key})
+      RoutingSnapshotStore.delete(RoutingSnapshotStore, snapshot.key)
+      :sys.get_state(RoutingSnapshotStore)
+
+      assert {:fallback, ^expected, _decoded} =
+               RoutingSnapshot.resolve_with_status(snapshot, rule_ids)
+
+      assert :ok = RoutingSnapshot.restore(snapshot)
+      :sys.get_state(RoutingSnapshotStore)
+      assert {^tree, ^snapshot} = @subject.rules_tree_by_source_id(source.id)
+      assert {:ok, ^entry_before} = Cachex.inspect(@subject, {:entry, key})
+      assert {:ok, ^expected} = RoutingSnapshot.resolve_with_status(snapshot, rule_ids)
+    end
+
+    test "store outage does not block restore or invalidation", %{source: source} do
+      {_tree, snapshot} = @subject.rules_tree_by_source_id(source.id)
+
+      on_exit(fn ->
+        if Process.whereis(RoutingSnapshotStore) == nil do
+          Supervisor.restart_child(ContextCacheSupervisor, RoutingSnapshotStore)
+        end
+      end)
+
+      assert :ok = Supervisor.terminate_child(ContextCacheSupervisor, RoutingSnapshotStore)
+      assert :ok = RoutingSnapshot.restore(snapshot)
+      assert {:ok, 1} = @subject.bust_by(source_id: source.id)
+      assert {:ok, _pid} = Supervisor.restart_child(ContextCacheSupervisor, RoutingSnapshotStore)
+      assert :ok = RoutingSnapshot.restore(snapshot)
+      :sys.get_state(RoutingSnapshotStore)
+      assert Cachex.get(@subject, {:rules_tree_by_source_id, [source.id]}) == {:ok, nil}
+    end
+
+    test "stale repair cannot overwrite a newer cached generation", %{source: source} do
+      {tree, old} = @subject.rules_tree_by_source_id(source.id)
+      old_rules_by_id = :erlang.binary_to_term(old.encoded)
+
+      new_entries =
+        Enum.map(old_rules_by_id, fn {id, {target_id, backend_id, sink}} when target_id == id ->
+          {id, {id, backend_id + 1_000_000, sink}}
+        end)
+
+      current = RoutingSnapshot.new(source.id, new_entries)
+      cache_key = {:rules_tree_by_source_id, [source.id]}
+      assert {:ok, true} = Cachex.put(@subject, cache_key, {:cached, {tree, current}})
+
+      assert {:fallback, _targets, ^old_rules_by_id} =
+               RoutingSnapshot.resolve_with_status(old, Map.keys(old_rules_by_id))
+
+      assert :ok = RoutingSnapshot.restore(old)
+      :sys.get_state(RoutingSnapshotStore)
+      assert {^tree, ^current} = @subject.rules_tree_by_source_id(source.id)
+      assert :ets.member(current.table, current.key)
     end
 
     test "list by source", %{source: source, rule_ids: expected_rule_ids} do
@@ -124,10 +293,92 @@ defmodule Logflare.Rules.CacheTest do
 
       assert {:ok, 1} = @subject.bust_by(id: rid1)
       assert _r1 = @subject.get_rule(rid1)
-      assert %{misses: 2, writes: 2} = Cachex.stats!(@subject)
+      assert %{misses: 4, writes: 2} = Cachex.stats!(@subject)
 
       # Bust missing key
       assert {:ok, 0} = @subject.bust_by(id: rid2)
+    end
+
+    test "ID-only invalidation refreshes routing destinations", %{
+      source: source,
+      backend: backend,
+      rule_ids: [id, _other]
+    } do
+      {_tree, old} = @subject.rules_tree_by_source_id(source.id)
+      assert @subject.get_rule(id).backend_id == backend.id
+      replacement = insert(:backend)
+      rule = Repo.get!(Rule, id)
+      assert {:ok, _rule} = Rules.update_rule(rule, %{backend_id: replacement.id})
+
+      assert {:ok, 2} = @subject.bust_by(id: id)
+      assert @subject.get_rule(id).backend_id == replacement.id
+      {_tree, current} = @subject.rules_tree_by_source_id(source.id)
+      assert RoutingSnapshot.resolve(current, [id]) == [{id, replacement.id, nil}]
+      assert RoutingSnapshot.resolve(old, [id]) == [{id, backend.id, nil}]
+    end
+
+    test "ID-only invalidation finds deleted rules in snapshots without per-rule entries", %{
+      source: source,
+      rule_ids: [id, _other]
+    } do
+      {_tree, _old} = @subject.rules_tree_by_source_id(source.id)
+      Repo.delete!(Repo.get!(Rule, id))
+
+      assert {:ok, 1} = @subject.bust_by(id: id)
+      {_tree, current} = @subject.rules_tree_by_source_id(source.id)
+      assert RoutingSnapshot.resolve(current, [id]) == []
+    end
+
+    test "ID-only invalidation finds the owner of a newly inserted rule", %{source: source} do
+      {_tree, _old} = @subject.rules_tree_by_source_id(source.id)
+      rule = insert(:rule, source: source, backend: insert(:backend))
+
+      assert {:ok, 1} = @subject.bust_by(id: rule.id)
+      {_tree, current} = @subject.rules_tree_by_source_id(source.id)
+      assert RoutingSnapshot.resolve(current, [rule.id]) == [Target.from_rule(rule)]
+    end
+
+    test "generic primary-key invalidation retires derived routing snapshots", %{
+      source: source,
+      rule_ids: [id, _other]
+    } do
+      {_tree, _old} = @subject.rules_tree_by_source_id(source.id)
+      replacement = insert(:backend)
+      assert {:ok, _rule} = Rules.update_rule(Repo.get!(Rule, id), %{backend_id: replacement.id})
+
+      assert {:ok, 1} = Logflare.ContextCache.bust_keys([{Rules, id}])
+      {_tree, current} = @subject.rules_tree_by_source_id(source.id)
+      assert RoutingSnapshot.resolve(current, [id]) == [{id, replacement.id, nil}]
+    end
+
+    test "ID-only invalidation retires both owners after a move", %{
+      source: source,
+      backend: backend,
+      rule_ids: [id, _other]
+    } do
+      destination = insert(:source, user: source.user)
+      {_tree, _old} = @subject.rules_tree_by_source_id(source.id)
+      {_tree, _empty} = @subject.rules_tree_by_source_id(destination.id)
+      Repo.update_all(from(rule in Rule, where: rule.id == ^id), set: [source_id: destination.id])
+
+      assert {:ok, 2} = @subject.bust_by(id: id)
+      {_tree, old_owner} = @subject.rules_tree_by_source_id(source.id)
+      {_tree, new_owner} = @subject.rules_tree_by_source_id(destination.id)
+      assert RoutingSnapshot.resolve(old_owner, [id]) == []
+      assert RoutingSnapshot.resolve(new_owner, [id]) == [{id, backend.id, nil}]
+    end
+
+    test "source-aware invalidation does not scan headers or query rule ownership", %{
+      source: source,
+      rule_ids: [id, _other]
+    } do
+      {_tree, _snapshot} = @subject.rules_tree_by_source_id(source.id)
+      Mimic.reject(Cachex, :stream, 3)
+      ref = :telemetry_test.attach_event_handlers(self(), [[:logflare, :repo, :query]])
+      on_exit(fn -> :telemetry.detach(ref) end)
+
+      assert {:ok, 1} = @subject.bust_by(id: id, source_id: source.id, source_id: source.id)
+      refute_receive {[:logflare, :repo, :query], ^ref, _measurements, _metadata}
     end
 
     test "cache warming" do
