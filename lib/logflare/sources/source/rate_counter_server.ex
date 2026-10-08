@@ -8,7 +8,6 @@ defmodule Logflare.Sources.Source.RateCounterServer do
   alias Logflare.Backends
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.PubSubRates
-  alias Logflare.SingleTenant
   alias Logflare.Source.Data
   alias Logflare.Sources
   alias Logflare.Sources.Counters
@@ -64,7 +63,7 @@ defmodule Logflare.Sources.Source.RateCounterServer do
     put_current_rate()
 
     bigquery_project_id =
-      if !SingleTenant.postgres_backend?() do
+      if Backends.bigquery_default_backend?() do
         GenUtils.get_project_id(source_token)
       end
 

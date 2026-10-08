@@ -63,6 +63,7 @@ gha-creds-*.json
 
 !.template.env
 !.single_tenant_bq.env
+!.single_tenant_ch.env
 !.single_tenant_pg.env
 # rustler nif binaries
 /priv/native

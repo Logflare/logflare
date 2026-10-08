@@ -67,6 +67,7 @@ defmodule Logflare.PubSubRates.Cache do
   Merges a node map into the local cache.
   """
   @typep node_buffers :: %{atom() => non_neg_integer()}
+
   @spec cache_buffers(non_neg_integer() | :consolidated, non_neg_integer() | nil, node_buffers()) ::
           {:ok, true}
   def cache_buffers(:consolidated, backend_id, buffers) when is_integer(backend_id),
@@ -108,8 +109,12 @@ defmodule Logflare.PubSubRates.Cache do
   Returns the sum of all buffers across the cluster for a given source and backend combination.
   """
   @spec get_cluster_buffers(non_neg_integer()) :: non_neg_integer()
-  @spec get_cluster_buffers(non_neg_integer(), non_neg_integer() | nil) :: non_neg_integer()
-  def get_cluster_buffers(source_id, backend_id \\ nil) when is_integer(source_id) do
+  @spec get_cluster_buffers(non_neg_integer() | :consolidated, non_neg_integer() | nil) ::
+          non_neg_integer()
+
+  def get_cluster_buffers(source_id, backend_id \\ nil)
+      when is_integer(source_id) or
+             (source_id == :consolidated and is_integer(backend_id)) do
     case get_buffers(source_id, backend_id) do
       {:ok, node_buffers} when node_buffers != nil -> merge_buffers(node_buffers)
       _ -> 0
