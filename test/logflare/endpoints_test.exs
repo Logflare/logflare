@@ -183,6 +183,30 @@ defmodule Logflare.EndpointsTest do
     end
   end
 
+  test "EXPLAIN endpoint queries execute with enforced limits" do
+    owner = insert(:user)
+    admin = insert(:user, admin: true)
+    {_source, backend} = setup_clickhouse_test(user: owner)
+    start_supervised!({ClickHouseAdaptor, backend})
+
+    endpoint =
+      insert(:endpoint,
+        user: owner,
+        backend: backend,
+        language: :ch_sql,
+        query: "EXPLAIN SELECT 1 AS n"
+      )
+
+    assert {:ok, endpoint} =
+             Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, %{
+               "max_execution_time" => 5
+             })
+
+    assert {:ok, transformed} = Endpoints.get_transformed_query(endpoint)
+    assert transformed =~ "EXPLAIN SELECT 1 AS n SETTINGS max_execution_time = 5"
+    assert {:ok, %{rows: [_ | _]}} = Endpoints.run_query(endpoint)
+  end
+
   test "enforced read limits are observed by ClickHouse execution" do
     owner = insert(:user)
     admin = insert(:user, admin: true)

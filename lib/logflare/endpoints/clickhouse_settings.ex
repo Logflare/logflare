@@ -36,20 +36,32 @@ defmodule Logflare.Endpoints.ClickHouseSettings do
 
   def enforce(query, settings) when is_binary(query) and is_map(settings) do
     with {:ok, settings} <- normalize(settings),
-         {:ok, [%{"Query" => ast} = statement]} <- Parser.parse("clickhouse", query),
+         {:ok, [statement]} <- Parser.parse("clickhouse", query),
          :ok <- reject_conflicts(statement, Map.keys(settings)),
          {:ok, [%{"Query" => %{"settings" => setting_nodes}}]} <-
            Parser.parse("clickhouse", settings_sql(settings)),
-         {:ok, sql} <-
-           Parser.to_string([
-             %{"Query" => Map.update!(ast, "settings", &((&1 || []) ++ setting_nodes))}
-           ]) do
+         {:ok, statement} <- append_settings(statement, setting_nodes),
+         {:ok, sql} <- Parser.to_string([statement]) do
       {:ok, sql}
     else
-      {:ok, _} -> {:error, "Expected one ClickHouse SELECT query"}
+      {:ok, _} -> {:error, "Expected one ClickHouse SELECT or EXPLAIN SELECT query"}
       error -> error
     end
   end
+
+  @spec append_settings(map(), [map()]) :: {:ok, map()} | {:error, String.t()}
+  defp append_settings(%{"Query" => ast} = statement, setting_nodes) do
+    {:ok, %{statement | "Query" => Map.update!(ast, "settings", &((&1 || []) ++ setting_nodes))}}
+  end
+
+  defp append_settings(%{"Explain" => %{"statement" => inner}} = statement, setting_nodes) do
+    with {:ok, inner} <- append_settings(inner, setting_nodes) do
+      {:ok, put_in(statement, ["Explain", "statement"], inner)}
+    end
+  end
+
+  defp append_settings(_statement, _setting_nodes),
+    do: {:error, "Expected one ClickHouse SELECT or EXPLAIN SELECT query"}
 
   defp validate_entries(settings) do
     Enum.reduce_while(settings, :ok, fn
