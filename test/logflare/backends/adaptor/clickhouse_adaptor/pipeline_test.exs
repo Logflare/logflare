@@ -123,6 +123,63 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   defp message_id(%Message{data: %EncodedRow{pointer: %{id: id}}}), do: id
   defp message_id(%Message{data: %LogEventPointer{id: id}}), do: id
 
+  defp hold_inserts_until_released(test_pid) do
+    stub(ClickHouseAdaptor, :insert_log_events_compressed, fn backend,
+                                                              event_type,
+                                                              compressed,
+                                                              opts ->
+      send(test_pid, {:insert_started, self()})
+
+      receive do
+        :release ->
+          Mimic.call_original(ClickHouseAdaptor, :insert_log_events_compressed, [
+            backend,
+            event_type,
+            compressed,
+            opts
+          ])
+      after
+        25_000 -> {:error, :not_released}
+      end
+    end)
+  end
+
+  defp add_spooled_event(backend, source, handle, message) do
+    event =
+      build(:log_event, source: source, message: message)
+      |> Map.merge(%{event_type: :log, day_bucket: @day_bucket, spool_handle: handle})
+
+    :ok = IngestEventQueue.add_to_table({:consolidated, backend.id}, [event])
+  end
+
+  defp insert_opts_for_rows(source, backend, row_count) do
+    test_pid = self()
+
+    Mimic.expect(ClickHouseAdaptor, :insert_log_events_compressed, fn _backend,
+                                                                      _event_type,
+                                                                      _compressed,
+                                                                      opts ->
+      send(test_pid, {:insert_opts, opts})
+      :ok
+    end)
+
+    events = for n <- 1..row_count, do: build(:log_event, source: source, message: "row #{n}")
+    gen_tid = setup_generation_events(events)
+    messages = Enum.map(events, &batch_message(&1, gen_tid, backend.id))
+
+    batch_info = %Broadway.BatchInfo{
+      batcher: :ch,
+      batch_key: {:log, @day_bucket},
+      size: row_count,
+      trigger: :flush
+    }
+
+    Pipeline.handle_batch(:ch, messages, batch_info, %{backend_id: backend.id})
+
+    assert_received {:insert_opts, opts}
+    opts
+  end
+
   describe "child_spec/1" do
     test "returns proper child specification" do
       spec = Pipeline.child_spec(:some_arg)
@@ -148,6 +205,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       assert processor.concurrency == Pipeline.processor_concurrency()
       assert batcher.concurrency == 4
+    end
+
+    test "starts the batcher with the pipeline default batch limits", %{backend: backend} do
+      assert %{batch_size: 60_000, batch_timeout: 5_000} =
+               TestUtils.clickhouse_batcher_state(backend)
+    end
+
+    test "starts the batcher with the backend's configured batch limits" do
+      {_source, backend} =
+        setup_clickhouse_test(config: %{batch_size: 2_000, batch_timeout: 1_500})
+
+      start_supervised!(ClickHouseAdaptor.child_spec(backend), id: :configured_backend)
+
+      assert %{batch_size: 2_000, batch_timeout: 1_500} =
+               TestUtils.clickhouse_batcher_state(backend)
     end
 
     test "retains 64 batches of in-flight capacity independently of insert concurrency" do
@@ -1152,6 +1224,81 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       assert_received {:insert_opts, opts}
       assert Keyword.get(opts, :async) == false
+    end
+  end
+
+  describe "handle_batch/4 async-only inserts" do
+    test "sends async: true for every batch, ignoring the small-batch cutoff" do
+      {source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            use_async_inserts_only: true,
+            use_async_inserts_for_small_batches: true,
+            async_insert_max_rows: 2
+          }
+        )
+
+      assert Keyword.get(insert_opts_for_rows(source, backend, 2), :async) == true
+    end
+
+    test "sends async: true when small-batch async inserts are disabled" do
+      {source, backend} = setup_clickhouse_test(config: %{use_async_inserts_only: true})
+
+      assert Keyword.get(insert_opts_for_rows(source, backend, 1), :async) == true
+    end
+  end
+
+  describe "replacing pipelines with an insert in flight" do
+    test "finishes the held insert, inserts events queued during the swap, and acks the spool handle once",
+         %{source: source} do
+      {_source, backend} = setup_clickhouse_test(config: %{batch_timeout: 1_000})
+      start_supervised!(ClickHouseAdaptor.child_spec(backend), id: :in_flight_backend)
+
+      TestUtils.retry_assert(fn ->
+        assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+      end)
+
+      test_pid = self()
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+      stub(QueueMod, :ack, fn _url, acked_handle -> send(test_pid, {:acked, acked_handle}) end)
+      hold_inserts_until_released(test_pid)
+
+      [old_id] =
+        backend
+        |> Backends.via_backend(Pipeline)
+        |> DynamicPipeline.list_pipelines()
+
+      old_pipeline = GenServer.whereis(old_id)
+      old_pipeline_ref = Process.monitor(old_pipeline)
+
+      add_spooled_event(backend, source, handle, "in flight")
+      assert_receive {:insert_started, held_insert}, 5_000
+
+      assert :ok = ClickHouseAdaptor.replace_pipelines(backend)
+
+      add_spooled_event(backend, source, handle, "queued during swap")
+      assert_receive {:insert_started, queued_insert}, 5_000
+      send(queued_insert, :release)
+
+      refute_receive {:acked, _handle}, 300
+      assert Process.alive?(old_pipeline)
+
+      send(held_insert, :release)
+      assert_receive {:DOWN, ^old_pipeline_ref, :process, ^old_pipeline, _reason}, 10_000
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, {[%{"count" => 2}], _bytes}} =
+                 ClickHouseAdaptor.execute_ch_query(
+                   backend,
+                   "SELECT count(*) as count FROM #{table_name}"
+                 )
+      end)
+
+      assert_receive {:acked, ^handle}, 5_000
+      refute_receive {:acked, _handle}, 500
     end
   end
 
