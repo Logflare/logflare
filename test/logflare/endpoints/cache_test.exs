@@ -2,6 +2,7 @@ defmodule Logflare.Endpoints.CacheTest do
   use Logflare.DataCase
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
   alias Logflare.Endpoints
 
@@ -165,6 +166,47 @@ defmodule Logflare.Endpoints.CacheTest do
 
       assert Process.alive?(versioned_cache_pid)
       Endpoints.ResultsCache.invalidate(versioned_cache_pid)
+    end
+
+    test "versioned cache queries overlay current limits on a memoized snapshot", %{user: user} do
+      backend = insert(:backend, user: user, type: :clickhouse)
+      endpoint = insert_versioned_endpoint(user, backend)
+      assert {:ok, snapshot} = Endpoints.Cache.get_endpoint_query_at_version(endpoint.id, 1)
+      assert snapshot.enforced_clickhouse_settings == %{}
+
+      admin = insert(:user, admin: true)
+
+      assert {:ok, current} =
+               Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, %{
+                 "max_execution_time" => 5
+               })
+
+      Logflare.ContextCache.bust_keys([{Endpoints, endpoint.id}])
+
+      Cachex.put(
+        Endpoints.Cache,
+        {:get_endpoint_query_at_version, [endpoint.id, 1]},
+        {:cached, {:ok, snapshot}}
+      )
+
+      expect(ClickHouseAdaptor, :execute_query, fn _backend, query_args, _opts ->
+        sql = elem(query_args, 0)
+        assert sql =~ "'historical'"
+        assert sql =~ "max_execution_time = 5"
+        {:ok, QueryResult.new([%{"testing" => "historical"}], %{total_bytes_processed: 0})}
+      end)
+
+      state = %Endpoints.ResultsCache{
+        endpoint_query_id: endpoint.id,
+        endpoint_version_number: 1,
+        params: %{},
+        opts: []
+      }
+
+      assert {:ok, %{rows: [%{"testing" => "historical"}]}, query} =
+               Endpoints.ResultsCache.do_query(state)
+
+      assert query.enforced_clickhouse_settings == current.enforced_clickhouse_settings
     end
 
     @tag :clickhouse_cache

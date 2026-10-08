@@ -252,7 +252,11 @@ defmodule Logflare.Endpoints.ResultsCache do
     with %EndpointQuery{} = current <- Endpoints.Cache.get_endpoint_query(state.endpoint_query_id),
          {:ok, query} <-
            Endpoints.Cache.get_endpoint_query_at_version(state.endpoint_query_id, version_number) do
-      %{query | sandboxable: current.sandboxable}
+      %{
+        query
+        | sandboxable: current.sandboxable,
+          enforced_clickhouse_settings: current.enforced_clickhouse_settings
+      }
     end
   end
 

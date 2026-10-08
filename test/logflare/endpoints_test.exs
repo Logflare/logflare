@@ -126,6 +126,36 @@ defmodule Logflare.EndpointsTest do
       assert user_updated.enforced_clickhouse_settings == updated.enforced_clickhouse_settings
     end
 
+    test "historical queries use current operator limits instead of snapshot settings", %{
+      admin: admin,
+      endpoint: endpoint
+    } do
+      insert(:endpoint_version,
+        endpoint: endpoint,
+        version_number: 1,
+        snapshot_overrides: %{
+          "query" => "WITH src AS (SELECT b FROM settings_source) SELECT b FROM src",
+          "enforced_clickhouse_settings" => %{"max_execution_time" => 100}
+        }
+      )
+
+      for settings <- [%{"max_execution_time" => 5}, %{"max_execution_time" => 3}, %{}] do
+        assert {:ok, current} =
+                 Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, settings)
+
+        assert {:ok, historical} = Endpoints.get_endpoint_query_at_version(current.id, 1)
+        assert historical.enforced_clickhouse_settings == current.enforced_clickhouse_settings
+        assert {:ok, sql} = Endpoints.get_transformed_query(historical)
+        assert sql =~ "SELECT b FROM settings_source"
+
+        if settings == %{} do
+          refute sql =~ "max_execution_time"
+        else
+          assert sql =~ "max_execution_time = #{settings["max_execution_time"]}"
+        end
+      end
+    end
+
     test "applies limits to default and caller SQL, rejects overrides", %{
       admin: admin,
       endpoint: endpoint

@@ -495,6 +495,7 @@ defmodule Logflare.Endpoints do
       id: endpoint.id,
       user_id: endpoint.user_id,
       token: endpoint.token,
+      enforced_clickhouse_settings: endpoint.enforced_clickhouse_settings,
       version_number: version_number
     })
     |> map_query_sources()
