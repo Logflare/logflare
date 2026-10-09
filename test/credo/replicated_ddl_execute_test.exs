@@ -220,4 +220,70 @@ defmodule Logflare.CredoChecks.ReplicatedDdlExecuteTest do
     |> run_check(ReplicatedDdlExecute)
     |> assert_issues(&assert(length(&1) == 2))
   end
+
+  test "resolves the migrator alias lexically at each call site" do
+    """
+    defmodule Logflare.Repo.Migrations.DropOldSources do
+      use Ecto.Migration
+
+      alias Logflare.Repo.Migrator
+
+      def up do
+        Migrator.with_replicated_execute(fn ->
+          execute("DROP TABLE old_sources")
+        end)
+      end
+
+      defp unrelated do
+        alias Other.Migrator
+
+        Migrator.with_replicated_execute(fn ->
+          execute("DROP TABLE older_sources")
+        end)
+      end
+    end
+    """
+    |> to_source_file()
+    |> run_check(ReplicatedDdlExecute)
+    |> assert_issue(&assert(&1.message =~ "older_sources"))
+  end
+
+  test "reports DDL when the migrator alias is declared in another function" do
+    """
+    defmodule Logflare.Repo.Migrations.DropOldSources do
+      use Ecto.Migration
+
+      def up do
+        alias Logflare.Repo.Migrator
+        :ok
+      end
+
+      def down do
+        Migrator.with_replicated_execute(fn ->
+          execute("DROP TABLE old_sources")
+        end)
+      end
+    end
+    """
+    |> to_source_file()
+    |> run_check(ReplicatedDdlExecute)
+    |> assert_issue(&assert(&1.message =~ "old_sources"))
+  end
+
+  test "reports DDL that only shares a line with a wrapped block" do
+    """
+    defmodule Logflare.Repo.Migrations.SameLine do
+      use Ecto.Migration
+
+      alias Logflare.Repo.Migrator
+
+      def up do
+        Migrator.with_replicated_execute(fn -> :ok end); execute("DROP TABLE old_sources")
+      end
+    end
+    """
+    |> to_source_file()
+    |> run_check(ReplicatedDdlExecute)
+    |> assert_issue(&assert(&1.message =~ "old_sources"))
+  end
 end

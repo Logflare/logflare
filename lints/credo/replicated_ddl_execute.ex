@@ -64,40 +64,33 @@ defmodule Logflare.CredoChecks.ReplicatedDdlExecute do
       |> Params.get(:node_local_patterns, __MODULE__)
       |> Enum.map(&Regex.compile!("\\b" <> Regex.escape(String.downcase(&1)) <> "\\b"))
 
-    ast = Credo.Code.ast(source_file)
-    scopes = ReplicatedExecuteScope.line_ranges(ast)
+    rules = %{
+      issue_meta: issue_meta,
+      ddl_prefixes: ddl_prefixes,
+      node_local_regexes: node_local_regexes
+    }
 
-    ast
-    |> Macro.prewalk([], fn node, issues ->
-      traverse(node, issues, issue_meta, scopes, ddl_prefixes, node_local_regexes)
-    end)
-    |> elem(1)
+    source_file
+    |> SourceFile.ast()
+    |> ReplicatedExecuteScope.walk([], &collect_issues(&1, &2, &3, rules))
     |> Enum.reverse()
   end
 
-  defp traverse(
-         {:execute, meta, arguments} = ast,
+  defp collect_issues(
+         {:execute, meta, arguments},
+         %ReplicatedExecuteScope{replicated?: false},
          issues,
-         issue_meta,
-         scopes,
-         ddl_prefixes,
-         node_local_regexes
+         rules
        )
        when is_list(arguments) do
-    if ReplicatedExecuteScope.within?(scopes, meta[:line]) do
-      {ast, issues}
-    else
-      new_issues =
-        for sql when is_binary(sql) <- Enum.map(arguments, &sql_text/1),
-            replicable_ddl?(sql, ddl_prefixes, node_local_regexes),
-            do: issue_for(issue_meta, meta, sql)
-
-      {ast, Enum.reverse(new_issues, issues)}
+    for sql when is_binary(sql) <- Enum.map(arguments, &sql_text/1),
+        replicable_ddl?(sql, rules.ddl_prefixes, rules.node_local_regexes),
+        reduce: issues do
+      issues -> [issue_for(rules.issue_meta, meta, sql) | issues]
     end
   end
 
-  defp traverse(ast, issues, _issue_meta, _scopes, _ddl_prefixes, _node_local_regexes),
-    do: {ast, issues}
+  defp collect_issues(_node, _env, issues, _rules), do: issues
 
   defp sql_text(sql) when is_binary(sql), do: sql
   defp sql_text({:<<>>, _meta, parts}), do: Enum.map_join(parts, &sql_part/1)

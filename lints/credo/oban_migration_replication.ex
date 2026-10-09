@@ -34,35 +34,28 @@ defmodule Logflare.CredoChecks.ObanMigrationReplication do
   @impl true
   def run(%SourceFile{} = source_file, params) do
     issue_meta = IssueMeta.for(source_file, params)
-    ast = Credo.Code.ast(source_file)
-    scopes = ReplicatedExecuteScope.line_ranges(ast)
-    aliases = ModuleAliases.collect(ast)
 
-    ast
-    |> Macro.prewalk([], &traverse(&1, &2, issue_meta, scopes, aliases))
-    |> elem(1)
+    source_file
+    |> SourceFile.ast()
+    |> ReplicatedExecuteScope.walk([], &collect_issue(&1, &2, &3, issue_meta))
     |> Enum.reverse()
   end
 
-  defp traverse(
-         {{:., _, [{:__aliases__, _, segments}, fun]}, meta, _args} = ast,
+  defp collect_issue(
+         {{:., _, [{:__aliases__, _, segments}, fun]}, meta, _args},
+         %ReplicatedExecuteScope{replicated?: false} = env,
          issues,
-         issue_meta,
-         scopes,
-         aliases
+         issue_meta
        )
        when fun in @oban_migration_funs do
-    module = ModuleAliases.resolve(segments, aliases)
+    module = ModuleAliases.resolve(segments, env.aliases)
 
-    if module in @oban_migration_modules and
-         not ReplicatedExecuteScope.within?(scopes, meta[:line]) do
-      {ast, [issue_for(issue_meta, meta, module, fun) | issues]}
-    else
-      {ast, issues}
-    end
+    if module in @oban_migration_modules,
+      do: [issue_for(issue_meta, meta, module, fun) | issues],
+      else: issues
   end
 
-  defp traverse(ast, issues, _issue_meta, _scopes, _aliases), do: {ast, issues}
+  defp collect_issue(_node, _env, issues, _issue_meta), do: issues
 
   defp issue_for(issue_meta, meta, module, fun) do
     trigger = Enum.map_join(module, ".", &Atom.to_string/1) <> ".#{fun}"

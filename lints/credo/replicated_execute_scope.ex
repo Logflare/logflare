@@ -1,10 +1,13 @@
 defmodule Logflare.CredoChecks.ReplicatedExecuteScope do
   @moduledoc """
-  Shared AST helper for the migration replication checks: locates the line ranges
-  covered by `Logflare.Repo.Migrator.with_replicated_execute/1` blocks.
+  Shared AST walker for the migration replication checks. Every node is visited with the
+  lexical environment in effect at that point: the aliases declared so far, whether
+  `Logflare.Repo.Migrator.with_replicated_execute/1` is imported, and whether the node is
+  inside a `with_replicated_execute/1` call.
 
-  Calls are only recognised through `Logflare.Repo.Migrator` itself, one of its aliases,
-  or a bare call when the module is imported.
+  As in Elixir, `alias` and `import` only apply to the expressions after them in the same
+  block, and declarations inside a nested block (a function body, `fn`, `if`, ...) do not
+  leak out of it.
   """
 
   alias Logflare.CredoChecks.ModuleAliases
@@ -12,53 +15,62 @@ defmodule Logflare.CredoChecks.ReplicatedExecuteScope do
   @wrapper_module [:Logflare, :Repo, :Migrator]
   @wrapper_fun :with_replicated_execute
 
-  @spec line_ranges(Macro.t()) :: [Range.t()]
-  def line_ranges(ast) do
-    aliases = ModuleAliases.collect(ast)
-    imported? = @wrapper_module in ModuleAliases.imported_modules(ast, aliases)
+  defstruct aliases: %{}, wrapper_imported?: false, replicated?: false
 
-    ast
-    |> Macro.prewalk([], fn node, acc ->
-      if wrapper_call?(node, aliases, imported?),
-        do: {node, [subtree_range(node) | acc]},
-        else: {node, acc}
+  @type t :: %__MODULE__{
+          aliases: ModuleAliases.t(),
+          wrapper_imported?: boolean(),
+          replicated?: boolean()
+        }
+
+  @spec walk(Macro.t(), acc, (Macro.t(), t(), acc -> acc)) :: acc when acc: term()
+  def walk(ast, acc, fun), do: visit(ast, %__MODULE__{}, acc, fun)
+
+  defp visit(node, env, acc, fun) do
+    descend(node, env, fun.(node, env, acc), fun)
+  end
+
+  defp visit_all(nodes, env, acc, fun) do
+    Enum.reduce(nodes, acc, &visit(&1, env, &2, fun))
+  end
+
+  defp descend({:__block__, _meta, statements}, env, acc, fun) when is_list(statements) do
+    statements
+    |> Enum.reduce({env, acc}, fn statement, {env, acc} ->
+      {declare(statement, env), visit(statement, env, acc, fun)}
     end)
     |> elem(1)
-    |> Enum.reject(&is_nil/1)
   end
 
-  @spec within?([Range.t()], pos_integer() | nil) :: boolean()
-  def within?(_ranges, nil), do: false
-  def within?(ranges, line), do: Enum.any?(ranges, &(line in &1))
-
-  defp wrapper_call?(
-         {{:., _, [{:__aliases__, _, segments}, @wrapper_fun]}, _meta, _args},
-         aliases,
-         _imported?
-       ),
-       do: ModuleAliases.resolve(segments, aliases) == @wrapper_module
-
-  defp wrapper_call?({@wrapper_fun, _meta, args}, _aliases, imported?) when is_list(args),
-    do: imported?
-
-  defp wrapper_call?(_node, _aliases, _imported?), do: false
-
-  defp subtree_range(node) do
-    lines =
-      node
-      |> Macro.prewalk([], fn
-        {_form, meta, _args} = child, acc when is_list(meta) ->
-          {child, [meta[:line], meta[:closing][:line], meta[:end][:line] | acc]}
-
-        child, acc ->
-          {child, acc}
-      end)
-      |> elem(1)
-      |> Enum.reject(&is_nil/1)
-
-    case lines do
-      [] -> nil
-      lines -> Enum.min(lines)..Enum.max(lines)
-    end
+  defp descend(
+         {{:., _, [{:__aliases__, _, segments}, @wrapper_fun]} = callee, _meta, args},
+         env,
+         acc,
+         fun
+       )
+       when is_list(args) do
+    if ModuleAliases.resolve(segments, env.aliases) == @wrapper_module,
+      do: visit_all(args, %{env | replicated?: true}, acc, fun),
+      else: visit_all([callee | args], env, acc, fun)
   end
+
+  defp descend({@wrapper_fun, _meta, args}, %{wrapper_imported?: true} = env, acc, fun)
+       when is_list(args),
+       do: visit_all(args, %{env | replicated?: true}, acc, fun)
+
+  defp descend({form, _meta, args}, env, acc, fun) when is_list(args),
+    do: visit_all([form | args], env, acc, fun)
+
+  defp descend({left, right}, env, acc, fun), do: visit_all([left, right], env, acc, fun)
+  defp descend(nodes, env, acc, fun) when is_list(nodes), do: visit_all(nodes, env, acc, fun)
+  defp descend(_leaf, _env, acc, _fun), do: acc
+
+  defp declare({:import, _meta, [{:__aliases__, _, segments} | _opts]}, env) do
+    if ModuleAliases.resolve(segments, env.aliases) == @wrapper_module,
+      do: %{env | wrapper_imported?: true},
+      else: env
+  end
+
+  defp declare(statement, env),
+    do: %{env | aliases: ModuleAliases.declare(statement, env.aliases)}
 end

@@ -1,23 +1,23 @@
 defmodule Logflare.CredoChecks.ModuleAliases do
   @moduledoc """
-  Shared AST helper for the migration replication checks: resolves `alias` declarations
-  so a call through a shortened or renamed alias can be matched against its full module.
+  Shared AST helper for the migration replication checks: applies `alias` declarations
+  (and `require ..., as:`) to an alias map, so a call through a shortened or renamed
+  alias can be matched against its full module.
   """
 
   @type t :: %{atom() => [atom()]}
 
-  @spec collect(Macro.t()) :: t()
-  def collect(ast) do
-    ast
-    |> Macro.prewalk(%{}, fn
-      {:alias, _meta, [target | opts]} = node, aliases ->
-        {node, Map.merge(aliases, declared(target, opts, aliases))}
+  @spec declare(Macro.t(), t()) :: t()
+  def declare({:alias, _meta, [target | opts]}, aliases),
+    do: Map.merge(aliases, declared(target, opts, aliases))
 
-      node, aliases ->
-        {node, aliases}
-    end)
-    |> elem(1)
+  def declare({:require, _meta, [target, opts]}, aliases) when is_list(opts) do
+    if Keyword.keyword?(opts) and Keyword.has_key?(opts, :as),
+      do: Map.merge(aliases, declared(target, [opts], aliases)),
+      else: aliases
   end
+
+  def declare(_node, aliases), do: aliases
 
   @spec resolve(list(), t()) :: list()
   def resolve([first | rest] = segments, aliases) do
@@ -28,19 +28,6 @@ defmodule Logflare.CredoChecks.ModuleAliases do
   end
 
   def resolve(segments, _aliases), do: segments
-
-  @spec imported_modules(Macro.t(), t()) :: [[atom()]]
-  def imported_modules(ast, aliases) do
-    ast
-    |> Macro.prewalk([], fn
-      {:import, _meta, [{:__aliases__, _, segments} | _opts]} = node, modules ->
-        {node, [resolve(segments, aliases) | modules]}
-
-      node, modules ->
-        {node, modules}
-    end)
-    |> elem(1)
-  end
 
   defp declared({:__aliases__, _, segments}, [opts], aliases) when is_list(opts) do
     case Keyword.get(opts, :as) do

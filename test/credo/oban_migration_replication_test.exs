@@ -137,4 +137,68 @@ defmodule Logflare.CredoChecks.ObanMigrationReplicationTest do
     |> run_check(ObanMigrationReplication)
     |> assert_issue(&assert(&1.message =~ "Oban.Migration.up"))
   end
+
+  test "resolves aliases lexically at each call site" do
+    """
+    defmodule Logflare.Repo.Migrations.AddObanJobsTable do
+      use Ecto.Migration
+
+      alias Oban.Migration
+
+      def up, do: Migration.up(version: 12)
+
+      defp unrelated do
+        alias Other.Migration
+        Migration.up(version: 1)
+      end
+    end
+    """
+    |> to_source_file()
+    |> run_check(ObanMigrationReplication)
+    |> assert_issue(&assert(&1.line_no == 6 and &1.message =~ "Oban.Migration.up"))
+  end
+
+  test "ignores aliases that are out of scope at the call site" do
+    """
+    defmodule Logflare.Repo.Migrations.NotOban do
+      use Ecto.Migration
+
+      def up do
+        alias Oban.Migration
+        :ok
+      end
+
+      def down do
+        if true do
+          alias Oban.Migration
+        end
+
+        Migration.down(version: 1)
+      end
+
+      def change do
+        Migration.up(version: 12)
+        alias Oban.Migration
+      end
+    end
+    """
+    |> to_source_file()
+    |> run_check(ObanMigrationReplication)
+    |> refute_issues()
+  end
+
+  test "reports an unwrapped Oban migration called through a require alias" do
+    """
+    defmodule Logflare.Repo.Migrations.AddObanJobsTable do
+      use Ecto.Migration
+
+      require Oban.Migration, as: ObanMigration
+
+      def up, do: ObanMigration.up(version: 12)
+    end
+    """
+    |> to_source_file()
+    |> run_check(ObanMigrationReplication)
+    |> assert_issue(&assert(&1.message =~ "Oban.Migration.up"))
+  end
 end
