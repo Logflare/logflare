@@ -108,6 +108,11 @@ defmodule LogflareWeb.EndpointsController do
         Logger.debug("Endpoint cache result, #{inspect(result, pretty: true)}")
         render(conn, "query.json", result: result.rows)
 
+      {:error, :sandboxing_disabled} ->
+        conn
+        |> put_status(:bad_request)
+        |> json(%{error: "SQL and LQL overrides are disabled for this endpoint"})
+
       {:error, error = %QueryError{}} ->
         render(conn, "query.json", error: QueryErrorHelpers.query_error_message(error))
 
@@ -125,7 +130,7 @@ defmodule LogflareWeb.EndpointsController do
          {:ok, version_number} <- parse_endpoint_version(version_str),
          {:ok, endpoint_query} <-
            Endpoints.get_endpoint_query_at_version(endpoint, version_number) do
-      assign(conn, :endpoint_query, endpoint_query)
+      assign(conn, :endpoint_query, %{endpoint_query | sandboxable: endpoint.sandboxable})
     else
       [] ->
         assign(conn, :endpoint_query, Endpoints.map_query_sources(endpoint))
@@ -142,11 +147,9 @@ defmodule LogflareWeb.EndpointsController do
     end
   end
 
-  # only parse body for get when `?sql=` and `?lql=` are empty
-  # passthrough for all other cases
+  # Parse the GET body only when the query string has neither a sql key nor an lql key.
   defp parse_get_body(
-         %{method: "GET", assigns: %{endpoint_query: %{sandboxable: true}}, query_params: qp} =
-           conn,
+         %{method: "GET", query_params: qp} = conn,
          _opts
        )
        when not is_map_key(qp, "sql") and not is_map_key(qp, "lql") do

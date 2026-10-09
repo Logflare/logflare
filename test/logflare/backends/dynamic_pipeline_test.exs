@@ -132,6 +132,146 @@ defmodule Logflare.Backends.DynamicPipelineTest do
     assert surviving |> Enum.map(&IngestEventQueue.total_pending/1) |> Enum.sum() == 3
   end
 
+  describe ":shutdown option" do
+    test "defaults pipeline children to a 5 second shutdown", %{
+      name: name,
+      pipeline_args: pipeline_args
+    } do
+      start_supervised!(
+        {DynamicPipeline,
+         name: name, pipeline: Pipeline, pipeline_args: pipeline_args, min_pipelines: 1}
+      )
+
+      [id] = DynamicPipeline.list_pipelines(name)
+      assert {:ok, %{shutdown: 5_000}} = :supervisor.get_childspec(name, id)
+    end
+
+    test "applies to initial and added pipeline children", %{
+      name: name,
+      pipeline_args: pipeline_args
+    } do
+      start_supervised!(
+        {DynamicPipeline,
+         name: name,
+         pipeline: Pipeline,
+         pipeline_args: pipeline_args,
+         min_pipelines: 1,
+         shutdown: 30_000}
+      )
+
+      assert {:ok, 2, _added_id} = DynamicPipeline.add_pipeline(name)
+
+      for id <- DynamicPipeline.list_pipelines(name) do
+        assert {:ok, %{shutdown: 30_000}} = :supervisor.get_childspec(name, id)
+      end
+    end
+  end
+
+  describe "replace_pipelines/2" do
+    setup %{name: name, pipeline_args: pipeline_args} do
+      stub(IngestEventQueue, :pop_pending_pointers, fn _key, _n -> {:ok, [], nil} end)
+
+      start_supervised!(
+        {DynamicPipeline,
+         name: name,
+         pipeline: Pipeline,
+         pipeline_args: pipeline_args,
+         min_pipelines: 1,
+         max_pipelines: 1}
+      )
+
+      source = Keyword.fetch!(pipeline_args, :source)
+      backend = Keyword.fetch!(pipeline_args, :backend)
+      [old_id] = DynamicPipeline.list_pipelines(name)
+
+      [
+        source: source,
+        backend: backend,
+        old_id: old_id,
+        old_key: {source.id, backend.id, producer_pid(old_id)}
+      ]
+    end
+
+    test "swaps pipelines for ones started with the new args without losing pending events",
+         %{name: name, pipeline_args: pipeline_args, source: source, backend: backend} = ctx do
+      sid_bid = {source.id, backend.id}
+      assert :ok = IngestEventQueue.add_to_table(ctx.old_key, [build(:log_event, source: source)])
+
+      new_args = Keyword.put(pipeline_args, :backend, %{backend | name: "replaced"})
+      assert :ok = DynamicPipeline.replace_pipelines(name, new_args)
+
+      assert :ok = IngestEventQueue.add_to_table(sid_bid, [build(:log_event, source: source)])
+      assert IngestEventQueue.total_pending(ctx.old_key) == 1
+
+      new_id =
+        TestUtils.retry_assert(fn ->
+          refute Process.alive?(elem(ctx.old_key, 2))
+          assert [new_id] = DynamicPipeline.list_pipelines(name)
+          new_id
+        end)
+
+      refute new_id == ctx.old_id
+      assert DynamicPipeline.get_state(name).pipeline_args == new_args
+
+      {:ok, %{start: {Pipeline, :start_link, [started_args]}}} =
+        :supervisor.get_childspec(name, new_id)
+
+      assert Keyword.fetch!(started_args, :backend).name == "replaced"
+
+      assert IngestEventQueue.total_pending({source.id, backend.id, producer_pid(new_id)}) == 2
+      assert IngestEventQueue.total_pending(sid_bid) == 2
+    end
+
+    test "keeps pending events when called twice in a row",
+         %{name: name, pipeline_args: pipeline_args, source: source, backend: backend} = ctx do
+      assert :ok = IngestEventQueue.add_to_table(ctx.old_key, [build(:log_event, source: source)])
+
+      assert :ok = DynamicPipeline.replace_pipelines(name, pipeline_args)
+      assert :ok = DynamicPipeline.replace_pipelines(name, pipeline_args)
+
+      TestUtils.retry_assert(fn ->
+        assert [_new_id] = DynamicPipeline.list_pipelines(name)
+      end)
+
+      assert IngestEventQueue.total_pending({source.id, backend.id}) == 1
+    end
+
+    test "resolves args from a function when the swap runs",
+         %{name: name, pipeline_args: pipeline_args, backend: backend} = ctx do
+      new_args = Keyword.put(pipeline_args, :backend, %{backend | name: "resolved"})
+
+      assert :ok = DynamicPipeline.replace_pipelines(name, fn -> new_args end)
+
+      TestUtils.retry_assert(fn ->
+        refute Process.alive?(elem(ctx.old_key, 2))
+      end)
+
+      assert DynamicPipeline.get_state(name).pipeline_args == new_args
+    end
+
+    test "skips the swap when the args function returns nil", %{name: name} = ctx do
+      assert :ok = DynamicPipeline.replace_pipelines(name, fn -> nil end)
+
+      assert DynamicPipeline.list_pipelines(name) == [ctx.old_id]
+      refute IngestEventQueue.draining?(ctx.old_key)
+    end
+
+    test "keeps the old pipeline and returns an error when a replacement fails to start",
+         %{name: name, pipeline_args: pipeline_args} = ctx do
+      stub(Broadway, :start_link, fn _module, _opts -> {:error, :boom} end)
+
+      capture_log(fn ->
+        assert {:error, [{old_id, :boom}]} =
+                 DynamicPipeline.replace_pipelines(name, pipeline_args)
+
+        assert old_id == ctx.old_id
+      end)
+
+      assert DynamicPipeline.list_pipelines(name) == [ctx.old_id]
+      refute IngestEventQueue.draining?(ctx.old_key)
+    end
+  end
+
   test "remove_pipeline/1 does not bump or ack SpoolAck when migrating a shard's pending events",
        %{name: name, pipeline_args: pipeline_args} do
     start_supervised!(
@@ -431,5 +571,9 @@ defmodule Logflare.Backends.DynamicPipelineTest do
                        backend_token: ^backend_token,
                        backend_type: ^backend_type
                      }}
+  end
+
+  defp producer_pid(pipeline_id) do
+    pipeline_id |> Broadway.producer_names() |> hd() |> GenServer.whereis()
   end
 end

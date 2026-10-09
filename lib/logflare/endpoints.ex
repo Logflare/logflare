@@ -38,7 +38,7 @@ defmodule Logflare.Endpoints do
   @typep origin :: User.t() | TeamUser.t() | OauthAccessToken.t()
   @typep run_query_return ::
            {:ok, %{required(:rows) => [term()], optional(atom()) => any()}}
-           | {:error, String.t() | QueryError.t()}
+           | {:error, String.t() | QueryError.t() | :sandboxing_disabled}
 
   defguardp is_integer_or_string(value) when is_integer(value) or is_non_empty_binary(value)
 
@@ -605,7 +605,8 @@ defmodule Logflare.Endpoints do
 
     alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
 
-    with {:ok, declared_params} <-
+    with :ok <- validate_query_override(endpoint_query, params),
+         {:ok, declared_params} <-
            Sql.parameters(query_string, dialect: Sql.to_dialect(query_language)),
          {:ok, expanded_query} <-
            Sql.expand_subqueries(
@@ -725,15 +726,31 @@ defmodule Logflare.Endpoints do
   @spec run_cached_query(query :: EndpointQuery.t(), params :: map()) :: run_query_return()
   def run_cached_query(%EndpointQuery{} = query, params \\ %{}, opts \\ [])
       when is_map(params) and is_list(opts) do
-    if query.cache_duration_seconds > 0 do
+    with :ok <- validate_query_override(query, params),
+         true <- query.cache_duration_seconds > 0 do
       query
       |> Resolver.resolve(params, opts)
       |> ResultsCache.query()
     else
-      # execute the query directly
-      run_query(query, params, opts)
+      false ->
+        run_query(query, params, opts)
+
+      {:error, _reason} = error ->
+        error
     end
   end
+
+  @spec validate_query_override(EndpointQuery.t(), map()) ::
+          :ok | {:error, :sandboxing_disabled}
+  defp validate_query_override(%EndpointQuery{sandboxable: false}, params) do
+    if is_non_empty_binary(params["sql"]) or is_non_empty_binary(params["lql"]) do
+      {:error, :sandboxing_disabled}
+    else
+      :ok
+    end
+  end
+
+  defp validate_query_override(%EndpointQuery{}, _params), do: :ok
 
   @doc """
   Calculates and sets the `:metrics` key with `EndpointQuery.Metrics`, which contains info and stats relating to the endpoint
