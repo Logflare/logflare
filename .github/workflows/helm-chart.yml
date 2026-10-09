@@ -34,7 +34,8 @@ jobs:
         run: elixir scripts/bump_release_test.exs
 
       - name: Check release script formatting
-        run: mix format --dot-formatter scripts/.formatter.exs --check-formatted
+        working-directory: scripts
+        run: mix format --check-formatted
 
       - name: Ensure chart appVersion matches VERSION
         run: elixir scripts/bump_release.exs --check

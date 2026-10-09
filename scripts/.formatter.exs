@@ -1,3 +1,3 @@
 [
-  inputs: ["scripts/.formatter.exs", "scripts/bump_release{,_test}.exs"]
+  inputs: [".formatter.exs", "bump_release{,_test}.exs"]
 ]
