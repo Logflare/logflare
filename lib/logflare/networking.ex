@@ -187,6 +187,8 @@ defmodule Logflare.Networking do
        pools: %{
          default: [
            protocols: [:http1],
+           conn_max_idle_time: 5_000,
+           start_pool_metrics?: true,
            conn_opts: [
              transport_opts: [
                timeout: @s3_connect_timeout,

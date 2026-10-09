@@ -91,6 +91,8 @@ defmodule Logflare.NetworkingTest do
                 pools: %{
                   :default => [
                     protocols: [:http1],
+                    conn_max_idle_time: 5_000,
+                    start_pool_metrics?: true,
                     conn_opts: [
                       transport_opts: [
                         timeout: 5_000,
@@ -168,6 +170,28 @@ defmodule Logflare.NetworkingTest do
 
       Application.put_env(:logflare, :spool, provider: :aws, mode: :consumer)
       assert Logflare.FinchSpoolS3 in finch_names()
+    end
+  end
+
+  describe "S3 drain pool" do
+    test "expires idle drain connections and enables pool metrics without tuning spool pools" do
+      previous = Application.get_env(:logflare, :spool, [])
+      Application.put_env(:logflare, :spool, provider: :aws, mode: :both)
+      on_exit(fn -> Application.put_env(:logflare, :spool, previous) end)
+
+      pools =
+        for {Finch, opts} <- Networking.pools(), into: %{} do
+          {Keyword.fetch!(opts, :name), Keyword.fetch!(opts, :pools)}
+        end
+
+      drain_config = pools[Logflare.FinchS3].default
+      assert Keyword.fetch!(drain_config, :conn_max_idle_time) == 5_000
+      assert Keyword.fetch!(drain_config, :start_pool_metrics?) == true
+      assert Keyword.fetch!(drain_config, :protocols) == [:http1]
+
+      for name <- [Logflare.FinchSpoolS3, Logflare.FinchSpoolSQS] do
+        refute Keyword.has_key?(pools[name].default, :conn_max_idle_time)
+      end
     end
   end
 
