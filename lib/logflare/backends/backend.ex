@@ -156,7 +156,7 @@ defmodule Logflare.Backends.Backend do
     type = get_field(changeset, :type)
     backend = %Backend{type: type}
 
-    if Adaptor.supports_default_ingest?(backend) do
+    if Adaptor.default_ingest_capable?(backend) do
       changeset
     else
       add_error(

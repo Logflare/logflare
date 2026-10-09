@@ -8,7 +8,9 @@ defmodule Logflare.Backends.BackendTest do
       {:ok, user: user}
     end
 
-    test "validates `default_ingest?` for BigQuery backend", %{user: user} do
+    test "rejects `default_ingest?` for BigQuery backend without a consolidated pipeline", %{
+      user: user
+    } do
       attrs = %{
         name: "Test BigQuery Backend",
         type: :bigquery,
@@ -17,8 +19,11 @@ defmodule Logflare.Backends.BackendTest do
       }
 
       changeset = Backend.changeset(Ecto.build_assoc(user, :backends), attrs)
-      assert changeset.valid?
-      assert get_change(changeset, :default_ingest?) == true
+      refute changeset.valid?
+
+      assert errors_on(changeset)[:default_ingest?] == [
+               "Backend type bigquery does not support default ingest"
+             ]
     end
 
     test "validates `default_ingest?` for ClickHouse backend", %{user: user} do
@@ -34,7 +39,9 @@ defmodule Logflare.Backends.BackendTest do
       assert get_change(changeset, :default_ingest?) == true
     end
 
-    test "validates `default_ingest?` for Postgres backend", %{user: user} do
+    test "rejects `default_ingest?` for Postgres backend without a consolidated pipeline", %{
+      user: user
+    } do
       attrs = %{
         name: "Test Postgres Backend",
         type: :postgres,
@@ -43,11 +50,14 @@ defmodule Logflare.Backends.BackendTest do
       }
 
       changeset = Backend.changeset(Ecto.build_assoc(user, :backends), attrs)
-      assert changeset.valid?
-      assert get_change(changeset, :default_ingest?) == true
+      refute changeset.valid?
+
+      assert errors_on(changeset)[:default_ingest?] == [
+               "Backend type postgres does not support default ingest"
+             ]
     end
 
-    test "validates `default_ingest?` for S3 backend", %{user: user} do
+    test "rejects `default_ingest?` for S3 backend without a consolidated pipeline", %{user: user} do
       attrs = %{
         name: "Test S3 Backend",
         type: :s3,
@@ -61,8 +71,11 @@ defmodule Logflare.Backends.BackendTest do
       }
 
       changeset = Backend.changeset(Ecto.build_assoc(user, :backends), attrs)
-      assert changeset.valid?
-      assert get_change(changeset, :default_ingest?) == true
+      refute changeset.valid?
+
+      assert errors_on(changeset)[:default_ingest?] == [
+               "Backend type s3 does not support default ingest"
+             ]
     end
 
     test "rejects `default_ingest?` for webhook backend", %{user: user} do

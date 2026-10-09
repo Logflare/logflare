@@ -11,6 +11,7 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.Backend
   alias Logflare.Backends.BackendRegistry
   alias Logflare.Backends.ConsolidatedSup
+  alias Logflare.Backends.DefaultIngestRefresher
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourceSupStarts
@@ -112,7 +113,10 @@ defmodule Logflare.Backends do
         q
         |> join(:left, [b], sb in "sources_backends", on: sb.backend_id == b.id)
         |> join(:left, [b], r in Rule, on: r.backend_id == b.id)
-        |> where([b, ..., sb, r], not is_nil(sb.backend_id) or not is_nil(r.backend_id))
+        |> where(
+          [b, ..., sb, r],
+          not is_nil(sb.backend_id) or not is_nil(r.backend_id) or b.default_ingest? == true
+        )
         |> distinct_backends()
 
       _, q ->
@@ -236,7 +240,7 @@ defmodule Logflare.Backends do
       backend = Repo.preload(updated, :sources)
       Enum.each(backend.sources, &restart_source_sup(&1))
 
-      if updated.default_ingest?, do: sync_backend_across_cluster(updated.id)
+      if updated.default_ingest?, do: default_ingest_flag_changed(updated)
 
       maybe_start_consolidated_pipeline(updated)
 
@@ -271,49 +275,89 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Adds all given sources as default ingest for a backend in bulk.
+  Returns the backends flagged as the account's default ingest destinations, ordered by id.
+  A unique index guarantees at most one per backend type, and only backends that are
+  `Adaptor.default_ingest_capable?/1` are returned.
   """
-  @spec add_all_default_ingest_sources(Backend.t(), [Source.t()]) :: {:ok, Backend.t()}
-  def add_all_default_ingest_sources(
-        %Backend{default_ingest?: true} = backend,
-        [%Source{} | _] = sources
-      ) do
-    for source <- sources do
-      source = Sources.preload_backends(source)
-
-      unless Enum.any?(source.backends, &(&1.id == backend.id)) do
-        update_source_backends(source, source.backends ++ [backend])
-      end
-    end
-
-    sync_backend_across_cluster(backend.id)
-    maybe_restart_consolidated_pipeline(backend)
-
-    {:ok, Repo.reload!(backend) |> preload_sources()}
+  @spec list_default_ingest_backends(pos_integer()) :: [Backend.t()]
+  def list_default_ingest_backends(user_id) when is_pos_integer(user_id) do
+    from(b in Backend,
+      where: b.user_id == ^user_id and b.default_ingest? == true,
+      order_by: [asc: b.id]
+    )
+    |> Repo.all()
+    |> Enum.filter(&Adaptor.default_ingest_capable?/1)
+    |> Enum.map(&typecast_config_string_map_to_atom_map/1)
   end
 
   @doc """
-  Removes all sources from a default ingest backend and disables the flag.
+  Backends a source dispatches to: its explicit links plus the account default ingest
+  backends when the source participates in default ingest. Participation is read from the
+  cached source, falling back to the given struct when it is not cached, so long-lived
+  holders of a source struct follow opt in and opt out changes.
   """
-  @spec remove_all_default_ingest_sources(Backend.t()) :: {:ok, Backend.t()}
-  def remove_all_default_ingest_sources(%Backend{default_ingest?: true} = backend) do
-    backend = Repo.reload!(backend) |> Repo.preload(:sources)
+  @spec list_dispatch_backends(Source.t()) :: [Backend.t()]
+  def list_dispatch_backends(%Source{id: source_id, user_id: user_id} = source) do
+    explicit = __MODULE__.Cache.list_backends(source_id: source_id)
 
-    for source <- backend.sources do
-      source = Sources.preload_backends(source)
-      filtered_backends = Enum.reject(source.backends, &(&1.id == backend.id))
-      update_source_backends(source, filtered_backends)
+    source
+    |> cached_or_given_source()
+    |> default_ingest_backends_for(user_id)
+    |> Enum.concat(explicit)
+    |> Enum.uniq_by(& &1.id)
+  end
+
+  defp default_ingest_backends_for(%Source{default_ingest_backend_enabled?: true}, user_id),
+    do: __MODULE__.Cache.list_default_ingest_backends(user_id)
+
+  defp default_ingest_backends_for(_source, _user_id), do: []
+
+  defp cached_or_given_source(%Source{id: source_id} = source) do
+    case Sources.Cache.get_by_id(source_id) do
+      %Source{} = cached -> cached
+      nil -> source
     end
+  end
 
-    {:ok, updated} =
-      backend
-      |> Changeset.change(default_ingest?: false)
-      |> Repo.update()
+  @doc """
+  Refreshes this node's cached account default ingest backend lookup from the primary
+  database, whether or not it was cached. A missing entry is filled, so a WAL bust that just
+  deleted it is not followed by a read from a lagging replica.
 
-    sync_backend_across_cluster(updated.id)
-    maybe_restart_consolidated_pipeline(updated)
+  The refresh is queued on this node's `DefaultIngestRefresher` partition for the user and
+  this call waits for it to run, so refreshes for a user run one at a time in arrival order
+  and each reads the primary when it runs. The refresh attempts to start the consolidated
+  pipeline of each default on this node, then caches the lookup regardless of whether the
+  start succeeded; events dispatched to a default whose pipeline is not running buffer in
+  its consolidated queue until `ConsolidatedSupWorker` starts the pipeline.
 
-    {:ok, preload_sources(updated)}
+  Because a refresh can start a pipeline after the read, a refresh that read a default just
+  before it was disabled can start that pipeline again after the disable stopped it; the
+  orphaned pipeline is stopped by `ConsolidatedSupWorker` on its next check.
+
+  Returns `{:error, reason}` and leaves the cache untouched when the primary read fails with
+  a database connection or Postgrex error.
+
+  Multicast to every node when a backend's `default_ingest?` flag changes or a default
+  backend is deleted.
+  """
+  @spec refresh_default_ingest_backends_cache(pos_integer()) :: :ok | {:error, Exception.t()}
+  def refresh_default_ingest_backends_cache(user_id) when is_pos_integer(user_id),
+    do: DefaultIngestRefresher.refresh(user_id)
+
+  @doc """
+  Returns the user ids whose cached account default ingest lookup on this node contains
+  any of the given backend ids.
+  """
+  @spec cached_default_ingest_user_ids([pos_integer()]) :: [pos_integer()]
+  def cached_default_ingest_user_ids([]), do: []
+
+  def cached_default_ingest_user_ids(backend_ids) when is_list(backend_ids) do
+    for backend_id <- backend_ids,
+        {:list_default_ingest_backends, [user_id]} <-
+          __MODULE__.Cache.keys_to_bust(id: backend_id),
+        uniq: true,
+        do: user_id
   end
 
   @doc """
@@ -328,12 +372,9 @@ defmodule Logflare.Backends do
 
     config_modified? = Map.has_key?(attrs, "config") or Map.has_key?(attrs, :config)
 
-    source_id = Map.get(attrs, "source_id") || Map.get(attrs, :source_id)
-
     changeset =
       backend
       |> Backend.changeset(attrs)
-      |> validate_default_ingest_source(source_id)
       |> then(fn changeset ->
         if alerts_modified do
           Changeset.put_assoc(changeset, :alert_queries, Map.get(attrs, :alert_queries))
@@ -346,18 +387,9 @@ defmodule Logflare.Backends do
       {:ok, updated} ->
         updated = preload_sources(updated)
 
-        updated =
-          if default_ingest_modified? do
-            was_enabled? = backend.default_ingest?
-            is_enabled? = updated.default_ingest?
-            handle_default_ingest_associations(updated, source_id, was_enabled?, is_enabled?)
-            sync_backend_across_cluster(updated.id)
-
-            # force refresh after association changes
-            Repo.reload!(updated) |> preload_sources()
-          else
-            updated
-          end
+        if backend.default_ingest? != updated.default_ingest? do
+          default_ingest_flag_changed(updated)
+        end
 
         Enum.each(updated.sources, &restart_source_sup(&1))
 
@@ -372,77 +404,10 @@ defmodule Logflare.Backends do
     end
   end
 
-  @spec validate_default_ingest_source(Changeset.t(), String.t() | integer() | nil) ::
-          Changeset.t()
-  defp validate_default_ingest_source(%{changes: %{default_ingest?: true}} = changeset, source_id)
-       when is_non_empty_binary(source_id) or is_integer(source_id) do
-    case Sources.get(source_id) do
-      %Source{default_ingest_backend_enabled?: true} ->
-        changeset
-
-      %Source{default_ingest_backend_enabled?: false} ->
-        Changeset.add_error(
-          changeset,
-          :default_ingest?,
-          "Source must have default ingest backend support enabled"
-        )
-
-      nil ->
-        Changeset.add_error(
-          changeset,
-          :default_ingest?,
-          "Source not found"
-        )
-    end
+  @spec default_ingest_flag_changed(Backend.t()) :: :ok
+  defp default_ingest_flag_changed(%Backend{user_id: user_id}) do
+    Cluster.Utils.rpc_multicast(__MODULE__, :refresh_default_ingest_backends_cache, [user_id])
   end
-
-  defp validate_default_ingest_source(
-         %Changeset{changes: %{default_ingest?: true}} = changeset,
-         _source_id
-       ) do
-    Changeset.add_error(
-      changeset,
-      :default_ingest?,
-      "Please select a source when enabling default ingest"
-    )
-  end
-
-  defp validate_default_ingest_source(changeset, _source_id), do: changeset
-
-  @spec handle_default_ingest_associations(
-          Backend.t(),
-          source_id :: String.t() | integer() | nil,
-          was_enabled :: boolean(),
-          is_enabled :: boolean()
-        ) :: :ok
-  defp handle_default_ingest_associations(backend, source_id, _was_enabled, true)
-       when is_non_empty_binary(source_id) or is_integer(source_id) do
-    source = Sources.get(source_id) |> Sources.preload_backends()
-
-    if not Enum.any?(source.backends, &(&1.id == backend.id)) do
-      update_source_backends(source, source.backends ++ [backend])
-    end
-
-    :ok
-  end
-
-  defp handle_default_ingest_associations(backend, _source_id, true, false) do
-    backend_with_sources =
-      backend
-      |> Repo.reload!()
-      |> Repo.preload(:sources)
-
-    Enum.each(backend_with_sources.sources, fn source ->
-      source = Sources.preload_backends(source)
-      filtered_backends = Enum.reject(source.backends, &(&1.id == backend.id))
-      update_source_backends(source, filtered_backends)
-    end)
-
-    :ok
-  end
-
-  defp handle_default_ingest_associations(_backend, _source_id, _was_enabled, _is_enabled),
-    do: :ok
 
   @doc """
   Updates the backends of a source wholly. Does not work on partial data, all backends must be provided.
@@ -510,7 +475,7 @@ defmodule Logflare.Backends do
   """
   @spec clear_list_backends_cache(source_id :: integer()) :: :ok
   def clear_list_backends_cache(source_id) when is_integer(source_id) do
-    Cachex.del(__MODULE__.Cache, {:list_backends, [[source_id: source_id]]})
+    {:ok, _deleted} = __MODULE__.Cache.delete_keys([{:list_backends, [[source_id: source_id]]}])
     :ok
   end
 
@@ -573,6 +538,8 @@ defmodule Logflare.Backends do
       |> Repo.delete()
 
     with {:ok, deleted} <- result do
+      if deleted.default_ingest?, do: default_ingest_flag_changed(deleted)
+
       maybe_stop_consolidated_pipeline(deleted)
       Adaptor.on_backend_deleted(deleted)
       {:ok, deleted}
@@ -589,11 +556,12 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Syncs backend across all cluster nodes for v2 pipeline sources.
+  Syncs backend across all cluster nodes for v2 pipeline sources explicitly linked to it.
 
-  This ensures that when a backend's configuration changes (e.g., `default_ingest?` flag),
-  all running `SourceSup` instances are updated immediately without waiting for the
-  periodic `SourceSupWorker` check.
+  This ensures that when a backend's configuration changes, the running `SourceSup`
+  instances of its explicitly linked sources are updated immediately without waiting for
+  the periodic `SourceSupWorker` check. Account default ingest dispatch does not use links
+  and is not affected.
   """
   @spec sync_backend_across_cluster(integer()) :: :ok
   def sync_backend_across_cluster(backend_id) when is_integer(backend_id) do
@@ -990,7 +958,7 @@ defmodule Logflare.Backends do
   end
 
   defp dispatch_to_backends(source, nil, log_events) do
-    backends = __MODULE__.Cache.list_backends(source_id: source.id)
+    backends = list_dispatch_backends(source)
 
     for backend <- [nil | backends] do
       dispatch_to_default_backend(source, backend, log_events)
@@ -1036,7 +1004,7 @@ defmodule Logflare.Backends do
   defp maybe_pre_ingest(source, backend, events) do
     mod = Adaptor.get_adaptor(backend)
 
-    if function_exported?(mod, :pre_ingest, 3) do
+    if Adaptor.exports?(mod, :pre_ingest, 3) do
       mod.pre_ingest(source, backend, events)
     else
       events
@@ -1391,86 +1359,103 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Uses the buffers cache in `PubSubRates.Cache` to determine if pending buffer is full.
+  Uses the buffers cache in `PubSubRates.Cache` to determine if a source's pending buffer
+  is full on this node. A buffer is full when every one of its queues is over its limit.
 
-  For sources with `default_ingest_backend_enabled? = true`:
-    - Checks the system default backend queue
-    - Checks user-designated default backends
-    - Returns true if ANY of these are full
-    - Falls back to checking all queues if no user default backends are configured
+  For sources with `default_ingest_backend_enabled? = true`, returns true if the system
+  default backend buffer is full or the buffer of any `default_ingest?` backend among
+  `list_dispatch_backends/1` is full. That covers both explicitly linked backends flagged
+  `default_ingest?` and the account default ingest backends the source receives without a
+  link. A consolidated backend is checked against its shared `{:consolidated, backend_id}`
+  buffer and `IngestEventQueue.max_consolidated_queue_size/0`; any other backend against
+  its per-source buffer and `max_buffer_queue_len/0`. Backends not flagged
+  `default_ingest?` are ignored.
 
-  For normal sources:
-    - Checks ALL backend queues
-    - Returns true only if ALL queues are full
+  For other sources, only the system default backend buffer is checked.
   """
   @spec cached_local_pending_buffer_full?(Source.t()) :: boolean()
-  def cached_local_pending_buffer_full?(%Source{
-        id: source_id,
-        default_ingest_backend_enabled?: true
-      }) do
-    default_backend_ids =
-      __MODULE__.Cache.list_backends(source_id: source_id)
+  def cached_local_pending_buffer_full?(
+        %Source{id: source_id, default_ingest_backend_enabled?: true} = source
+      ) do
+    buffer_full_for_backend?(source_id, nil) or
+      source
+      |> list_dispatch_backends()
       |> Enum.filter(& &1.default_ingest?)
-      |> MapSet.new(& &1.id)
-
-    # Check system default backend (nil backend_id)
-    system_default_full? = buffer_full_for_backend?(source_id, nil)
-
-    # Check user-configured default backends
-    user_defaults_full? = Enum.any?(default_backend_ids, &buffer_full_for_backend?(source_id, &1))
-
-    system_default_full? || user_defaults_full?
+      |> Enum.any?(&buffer_full_for_backend?(source_id, &1))
   end
 
   def cached_local_pending_buffer_full?(%Source{id: source_id}) do
     buffer_full_for_backend?(source_id, nil)
   end
 
-  @spec buffer_full_for_backend?(
-          source_id :: non_neg_integer(),
-          backend_id :: non_neg_integer() | nil
-        ) ::
+  @spec buffer_full_for_backend?(non_neg_integer(), Backend.t() | pos_integer() | nil) ::
           boolean()
-  defp buffer_full_for_backend?(source_id, backend_id) do
-    case PubSubRates.Cache.get_local_buffer(source_id, backend_id) do
-      %{queues: [_ | _] = queues} ->
-        Enum.all?(queues, fn {_key, count} ->
-          count > @max_pending_buffer_len_per_queue
-        end)
+  defp buffer_full_for_backend?(_source_id, %Backend{consolidated_ingest?: true, id: backend_id}) do
+    :consolidated
+    |> PubSubRates.Cache.get_local_buffer(backend_id)
+    |> all_queues_over?(IngestEventQueue.max_consolidated_queue_size())
+  end
 
-      _ ->
-        false
+  defp buffer_full_for_backend?(source_id, %Backend{id: backend_id}),
+    do: buffer_full_for_backend?(source_id, backend_id)
+
+  defp buffer_full_for_backend?(source_id, backend_id) do
+    source_id
+    |> PubSubRates.Cache.get_local_buffer(backend_id)
+    |> all_queues_over?(@max_pending_buffer_len_per_queue)
+  end
+
+  defp all_queues_over?(%{queues: [_ | _] = queues}, limit),
+    do: Enum.all?(queues, fn {_key, count} -> count > limit end)
+
+  defp all_queues_over?(_buffer, _limit), do: false
+
+  @doc """
+  Returns true if ANY of a source's ingest queues on this node currently exceeds its limit:
+  the system default queue plus every backend in `list_dispatch_backends/1`, regardless of
+  `default_ingest?` flags. A consolidated backend is checked through its shared
+  `{:consolidated, backend_id}` queues against
+  `IngestEventQueue.max_consolidated_queue_size/0`; any other backend through its
+  per-source queues against `max_buffer_queue_len/0`. Unlike
+  `cached_local_pending_buffer_full?/1` (scoped to the system default and `default_ingest?`
+  backends for the HTTP 429 gate), this reads live `IngestEventQueue` sizes directly rather
+  than a separately-cadenced cache, matching `QueueJanitor`'s own `get_table_size/1`-based
+  overflow check. When the source is not cached, only its explicitly linked backends are
+  checked.
+  """
+  @spec any_ingest_queue_over_limit?(pos_integer()) :: boolean()
+  def any_ingest_queue_over_limit?(source_id) when is_pos_integer(source_id) do
+    queue_over_limit_for_backend?(source_id, nil) or
+      source_id
+      |> backends_for_queue_limit()
+      |> Enum.any?(&queue_over_limit_for_backend?(source_id, &1))
+  end
+
+  defp backends_for_queue_limit(source_id) do
+    case Sources.Cache.get_by_id(source_id) do
+      %Source{} = source -> list_dispatch_backends(source)
+      nil -> __MODULE__.Cache.list_backends(source_id: source_id)
     end
   end
 
-  @doc """
-  Returns true if ANY of a source's ingest queues — the system default plus
-  every backend actually configured on it, regardless of default-ingest
-  flags — currently exceeds `max_buffer_queue_len/0`. Unlike
-  `cached_local_pending_buffer_full?/1` (scoped to just the "default ingest"
-  backend(s), for the HTTP 429 gate's specific question), this checks every
-  backend a source can dispatch to and reads live `IngestEventQueue` sizes
-  directly rather than a separately-cadenced cache — matching
-  `QueueJanitor`'s own `get_table_size/1`-based overflow check exactly, so it
-  can't miss a backend that isn't part of the "default ingest" set.
-  """
-  @spec any_ingest_queue_over_limit?(pos_integer()) :: boolean()
-  def any_ingest_queue_over_limit?(source_id) do
-    backend_ids =
-      [nil | __MODULE__.Cache.list_backends(source_id: source_id) |> Enum.map(& &1.id)]
+  defp queue_over_limit_for_backend?(_source_id, %Backend{consolidated_ingest?: true, id: bid}),
+    do: any_queue_over?({:consolidated, bid}, IngestEventQueue.max_consolidated_queue_size())
 
-    Enum.any?(backend_ids, &any_queue_over_limit_for_backend?(source_id, &1))
-  end
+  defp queue_over_limit_for_backend?(source_id, %Backend{id: backend_id}),
+    do: queue_over_limit_for_backend?(source_id, backend_id)
 
-  defp any_queue_over_limit_for_backend?(source_id, backend_id) do
-    {source_id, backend_id}
+  defp queue_over_limit_for_backend?(source_id, backend_id),
+    do: any_queue_over?({source_id, backend_id}, max_buffer_queue_len())
+
+  defp any_queue_over?(queues_key, limit) do
+    queues_key
     |> IngestEventQueue.list_queues()
-    |> Enum.any?(&queue_over_limit?/1)
+    |> Enum.any?(&queue_over_limit?(&1, limit))
   end
 
-  defp queue_over_limit?(table_key) do
+  defp queue_over_limit?(table_key, limit) do
     case IngestEventQueue.get_table_size(table_key) do
-      size when is_integer(size) -> size > max_buffer_queue_len()
+      size when is_integer(size) -> size > limit
       _ -> false
     end
   end
@@ -1478,7 +1463,7 @@ defmodule Logflare.Backends do
   @doc """
   Caches total buffer len. Includes ingested events that are awaiting cleanup.
   """
-  @spec cache_local_buffer_lens(non_neg_integer(), non_neg_integer() | nil) ::
+  @spec cache_local_buffer_lens(non_neg_integer() | :consolidated, non_neg_integer() | nil) ::
           {:ok,
            %{
              len: non_neg_integer(),

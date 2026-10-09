@@ -245,7 +245,7 @@ defmodule Logflare.BackendsTest do
       Backends.ConsolidatedSup.stop_pipeline(backend)
     end
 
-    test "remove_all_default_ingest_sources/1 restarts the pipeline with the configured batch limits",
+    test "disabling default ingest restarts the pipeline with the configured batch limits",
          %{user: user} do
       config =
         Map.merge(clickhouse_backend_attrs().config, %{batch_size: 2_000, batch_timeout: 1_500})
@@ -256,7 +256,7 @@ defmodule Logflare.BackendsTest do
         |> Map.put(:default_ingest?, true)
 
       assert {:ok, backend} = Backends.create_backend(user, attrs)
-      assert {:ok, _updated} = Backends.remove_all_default_ingest_sources(backend)
+      assert {:ok, _updated} = Backends.update_backend(backend, %{default_ingest?: false})
 
       assert %{batch_size: 2_000, batch_timeout: 1_500} =
                TestUtils.clickhouse_batcher_state(backend)
@@ -812,6 +812,11 @@ defmodule Logflare.BackendsTest do
 
   describe "update_backend/2 with default_ingest?" do
     setup do
+      stub(ClusterUtils, :rpc_multicast, fn mod, fun, args ->
+        apply(mod, fun, args)
+        :ok
+      end)
+
       insert(:plan)
       user = insert(:user)
       clickhouse_config = %{url: "http://localhost", database: "test", port: 8123}
@@ -824,88 +829,273 @@ defmodule Logflare.BackendsTest do
           config: clickhouse_config
         )
 
-      source = insert(:source, user: user)
-
-      {:ok, user: user, backend: backend, source: source, config: clickhouse_config}
+      {:ok, user: user, backend: backend, config: clickhouse_config}
     end
 
-    test "requires source_id when enabling default_ingest?", %{backend: backend} do
-      assert {:error, changeset} =
+    test "enables default ingest without a source_id", %{backend: backend} do
+      assert {:ok, %Backend{default_ingest?: true}} =
                Backends.update_backend(backend, %{default_ingest?: true})
 
-      assert "Please select a source when enabling default ingest" in errors_on(changeset).default_ingest?
+      assert [] = Sources.list_sources(backend_id: backend.id)
     end
 
-    test "creates source association when enabling default_ingest?", %{
-      backend: backend,
-      source: source
-    } do
-      {:ok, source} = Sources.update_source(source, %{default_ingest_backend_enabled?: true})
-
-      assert {:ok, updated} =
-               Backends.update_backend(backend, %{
-                 default_ingest?: true,
-                 source_id: to_string(source.id)
-               })
-
-      assert updated.default_ingest? == true
-
-      source = Sources.get(source.id) |> Sources.preload_backends()
-      assert Enum.any?(source.backends, &(&1.id == backend.id))
-    end
-
-    test "removes source associations when disabling default_ingest?", %{
+    test "rejects a second default ingest backend of the same type for the same account", %{
       user: user,
-      source: source,
+      backend: backend,
       config: config
     } do
-      {:ok, source} = Sources.update_source(source, %{default_ingest_backend_enabled?: true})
+      assert {:ok, _} = Backends.update_backend(backend, %{default_ingest?: true})
+      other = insert(:backend, user: user, type: :clickhouse, config: config)
 
-      backend =
-        insert(:backend, user: user, type: :clickhouse, default_ingest?: true, config: config)
+      assert {:error, changeset} = Backends.update_backend(other, %{default_ingest?: true})
 
+      assert "another backend of this type is already the default ingest backend for this account" in errors_on(
+               changeset
+             ).default_ingest?
+    end
+
+    test "allows the same type to be default in a different account", %{
+      backend: backend,
+      config: config
+    } do
+      other_user = insert(:user)
+      assert {:ok, _} = Backends.update_backend(backend, %{default_ingest?: true})
+
+      other = insert(:backend, user: other_user, type: :clickhouse, config: config)
+
+      assert {:ok, %Backend{default_ingest?: true}} =
+               Backends.update_backend(other, %{default_ingest?: true})
+    end
+
+    test "disabling default ingest keeps explicit links", %{
+      user: user,
+      backend: backend
+    } do
+      source = insert(:source, user: user)
       assert {:ok, _} = Backends.update_source_backends(source, [backend])
+      assert {:ok, _} = Backends.update_backend(backend, %{default_ingest?: true})
 
-      assert {:ok, updated} =
+      assert {:ok, %Backend{default_ingest?: false}} =
                Backends.update_backend(backend, %{default_ingest?: false})
 
-      assert updated.default_ingest? == false
+      assert [%Backend{id: id}] =
+               Sources.get(source.id) |> Sources.preload_backends() |> Map.get(:backends)
 
-      source = Sources.get(source.id) |> Sources.preload_backends()
-      assert Enum.empty?(source.backends)
+      assert id == backend.id
     end
 
-    test "does not duplicate source associations", %{user: user, source: source, config: config} do
-      {:ok, source} = Sources.update_source(source, %{default_ingest_backend_enabled?: true})
-
-      backend =
-        insert(:backend, user: user, type: :clickhouse, default_ingest?: true, config: config)
-
-      assert {:ok, _} = Backends.update_source_backends(source, [backend])
-
-      assert {:ok, _updated} =
-               Backends.update_backend(backend, %{
-                 default_ingest?: true,
-                 source_id: to_string(source.id)
-               })
-
-      source = Sources.get(source.id) |> Sources.preload_backends()
-      backend_ids = Enum.map(source.backends, & &1.id)
-      assert length(backend_ids) == 1
-      assert backend.id in backend_ids
-    end
-
-    test "requires source to have default_ingest_backend_enabled?", %{
-      backend: backend,
-      source: source
+    test "toggling the flag refreshes the cached account lookup in both directions", %{
+      user: user,
+      backend: backend
     } do
-      assert {:error, changeset} =
-               Backends.update_backend(backend, %{
-                 default_ingest?: true,
-                 source_id: to_string(source.id)
-               })
+      assert [] = Backends.Cache.list_default_ingest_backends(user.id)
+      assert {:ok, backend} = Backends.update_backend(backend, %{default_ingest?: true})
 
-      assert "Source must have default ingest backend support enabled" in errors_on(changeset).default_ingest?
+      assert [%Backend{id: id}] = Backends.Cache.list_default_ingest_backends(user.id)
+      assert id == backend.id
+
+      assert {:ok, _} = Backends.update_backend(backend, %{default_ingest?: false})
+      assert [] = Backends.Cache.list_default_ingest_backends(user.id)
+    end
+
+    test "a consolidated default flag change refreshes the account lookup without per-source work",
+         %{user: user, backend: backend} do
+      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+      start_supervised!({SourceSup, source})
+      reject(&SourceSup.start_backend_child/2)
+      reject(&SourceSup.stop_backend_child/2)
+
+      assert {:ok, _} = Backends.update_backend(backend, %{default_ingest?: true})
+
+      assert [%Backend{id: id}] = Backends.Cache.list_default_ingest_backends(user.id)
+      assert id == backend.id
+    end
+
+    test "refreshing the account lookup starts the default's consolidated pipeline", %{
+      user: user,
+      backend: backend
+    } do
+      backend = backend |> Ecto.Changeset.change(default_ingest?: true) |> Repo.update!()
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+      refute Backends.ConsolidatedSup.pipeline_running?(backend)
+
+      assert :ok = Backends.refresh_default_ingest_backends_cache(user.id)
+
+      assert Backends.ConsolidatedSup.pipeline_running?(backend)
+      assert [%Backend{id: id}] = Backends.Cache.list_default_ingest_backends(user.id)
+      assert id == backend.id
+
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+    end
+
+    test "refreshing after a disable clears the account lookup without starting a pipeline", %{
+      user: user,
+      backend: backend
+    } do
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+      stale = [%{backend | name: "stale"}]
+      key = {:list_default_ingest_backends, [user.id]}
+      assert ^stale = Backends.Cache.fetch(key, fn -> stale end)
+
+      assert :ok = Backends.refresh_default_ingest_backends_cache(user.id)
+
+      assert [] = Backends.Cache.list_default_ingest_backends(user.id)
+      refute Backends.ConsolidatedSup.pipeline_running?(backend)
+    end
+
+    test "deleting a default backend refreshes the cached account lookup", %{
+      user: user,
+      backend: backend
+    } do
+      assert {:ok, backend} = Backends.update_backend(backend, %{default_ingest?: true})
+      assert [%Backend{}] = Backends.Cache.list_default_ingest_backends(user.id)
+
+      assert {:ok, _deleted} = Backends.delete_backend(backend)
+      assert [] = Backends.Cache.list_default_ingest_backends(user.id)
+    end
+  end
+
+  describe "list_default_ingest_backends/1 and list_dispatch_backends/1" do
+    setup do
+      stub(ClusterUtils, :rpc_multicast, fn mod, fun, args ->
+        apply(mod, fun, args)
+        :ok
+      end)
+
+      insert(:plan)
+      user = insert(:user)
+      config = %{url: "http://localhost", database: "test", port: 8123}
+
+      default =
+        insert(:backend, user: user, type: :clickhouse, config: config, default_ingest?: true)
+
+      {:ok, user: user, default: default, config: config}
+    end
+
+    test "list_default_ingest_backends/1 returns the flagged backends with typecast config", %{
+      user: user,
+      default: default
+    } do
+      assert [%Backend{id: id, config: %{url: "http://localhost"}}] =
+               Backends.list_default_ingest_backends(user.id)
+
+      assert id == default.id
+      assert Backends.list_default_ingest_backends(insert(:user).id) == []
+    end
+
+    test "flagged backends without a consolidated pipeline are ignored", %{
+      user: user,
+      default: default
+    } do
+      insert(:backend,
+        user: user,
+        type: :s3,
+        default_ingest?: true,
+        config: %{
+          access_key_id: "key",
+          secret_access_key: "secret",
+          s3_bucket: "bucket",
+          storage_region: "us-east-1"
+        }
+      )
+
+      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+
+      assert [%Backend{id: id}] = Backends.list_default_ingest_backends(user.id)
+      assert id == default.id
+      assert [%Backend{id: ^id}] = Backends.list_dispatch_backends(source)
+    end
+
+    test "opted-in source dispatches to the default backend without an explicit link", %{
+      user: user,
+      default: default
+    } do
+      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+
+      assert [%Backend{id: id}] = Backends.list_dispatch_backends(source)
+      assert id == default.id
+    end
+
+    test "bulk opt in and out only needs the source cache bust to change dispatch", %{
+      user: user,
+      default: default
+    } do
+      source = insert(:source, user: user, default_ingest_backend_enabled?: false)
+      reject(&SourceSup.start_backend_child/2)
+      reject(&SourceSup.stop_backend_child/2)
+
+      assert [] = source.id |> Sources.Cache.get_by_id() |> Backends.list_dispatch_backends()
+
+      assert {:ok, 1} = Sources.set_default_ingest_opt_in(user.id, true)
+
+      assert [%Backend{id: id}] =
+               source.id |> Sources.Cache.get_by_id() |> Backends.list_dispatch_backends()
+
+      assert id == default.id
+
+      assert {:ok, 1} = Sources.set_default_ingest_opt_in(user.id, false)
+      assert [] = source.id |> Sources.Cache.get_by_id() |> Backends.list_dispatch_backends()
+    end
+
+    test "a stale opted-out struct follows the cached opted-in source", %{
+      user: user,
+      default: default
+    } do
+      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+      stale = %{source | default_ingest_backend_enabled?: false}
+
+      assert [%Backend{id: id}] = Backends.list_dispatch_backends(stale)
+      assert id == default.id
+    end
+
+    test "opted-out source only dispatches to explicit links", %{user: user} do
+      source = insert(:source, user: user, default_ingest_backend_enabled?: false)
+
+      webhook =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://test.com"},
+          sources: [source]
+        )
+
+      assert [%Backend{id: id}] = Backends.list_dispatch_backends(source)
+      assert id == webhook.id
+    end
+
+    test "an explicit link to the default backend is not duplicated", %{
+      user: user,
+      default: default
+    } do
+      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+      assert {:ok, _} = Backends.update_source_backends(source, [default])
+
+      assert [%Backend{id: id}] = Backends.list_dispatch_backends(source)
+      assert id == default.id
+    end
+
+    test "another account's default backend is never included", %{config: config} do
+      other_user = insert(:user)
+      insert(:backend, user: other_user, type: :clickhouse, config: config, default_ingest?: true)
+      lonely_user = insert(:user)
+      source = insert(:source, user: lonely_user, default_ingest_backend_enabled?: true)
+
+      assert [] = Backends.list_dispatch_backends(source)
+    end
+
+    test "explicit links and the default backend are combined", %{user: user, default: default} do
+      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+
+      webhook =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://test.com"},
+          sources: [source]
+        )
+
+      ids = source |> Backends.list_dispatch_backends() |> Enum.map(& &1.id) |> Enum.sort()
+      assert ids == Enum.sort([default.id, webhook.id])
     end
   end
 
@@ -954,16 +1144,6 @@ defmodule Logflare.BackendsTest do
                })
 
       assert @message in errors_on(changeset).default_ingest?
-    end
-
-    test "a default of a different type is allowed", %{user: user} do
-      assert {:ok, %Backend{default_ingest?: true}} =
-               Backends.create_backend(user, %{
-                 name: "pg default",
-                 type: :postgres,
-                 config: %{url: "postgresql://user:pass@localhost:5432/db"},
-                 default_ingest?: true
-               })
     end
 
     test "a default of the same type for a different user is allowed", %{config: config} do
@@ -1591,6 +1771,12 @@ defmodule Logflare.BackendsTest do
       IngestEventQueue.add_to_table(table_key, events)
     end
 
+    defp fill_consolidated_queue(backend, count) do
+      table_key = {:consolidated, backend.id, self()}
+      IngestEventQueue.upsert_tid(table_key)
+      IngestEventQueue.add_to_table(table_key, build_queue_saturation_events(count))
+    end
+
     test "any_ingest_queue_over_limit?/1 is false when no queues exist for the source", %{
       source: source
     } do
@@ -1610,7 +1796,15 @@ defmodule Logflare.BackendsTest do
     test "any_ingest_queue_over_limit?/1 is true for a backend that is not flagged default_ingest?",
          %{source: source} do
       user = Repo.get(User, source.user_id)
-      backend = insert(:backend, user: user, type: :clickhouse, default_ingest?: false)
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://example.com"},
+          default_ingest?: false
+        )
+
       {:ok, _} = Backends.update_source_backends(source, [backend])
 
       table_key = {source.id, backend.id, self()}
@@ -1619,6 +1813,52 @@ defmodule Logflare.BackendsTest do
       fill_queue_over_limit(table_key)
 
       assert Backends.any_ingest_queue_over_limit?(source.id)
+    end
+
+    test "any_ingest_queue_over_limit?/1 is true when a linked consolidated backend's shared queue is over the consolidated limit",
+         %{source: source} do
+      stub(IngestEventQueue, :max_consolidated_queue_size, fn -> 50 end)
+      user = Repo.get(User, source.user_id)
+      backend = insert(:backend, user: user, type: :clickhouse, default_ingest?: false)
+      {:ok, _} = Backends.update_source_backends(source, [backend])
+
+      fill_consolidated_queue(backend, 51)
+
+      assert Backends.any_ingest_queue_over_limit?(source.id)
+    end
+
+    test "any_ingest_queue_over_limit?/1 checks a consolidated queue against the consolidated limit, not the per-source one",
+         %{source: source} do
+      user = Repo.get(User, source.user_id)
+      backend = insert(:backend, user: user, type: :clickhouse, default_ingest?: false)
+      {:ok, _} = Backends.update_source_backends(source, [backend])
+
+      fill_consolidated_queue(backend, Backends.max_buffer_queue_len() + 500)
+
+      refute Backends.any_ingest_queue_over_limit?(source.id)
+    end
+
+    test "any_ingest_queue_over_limit?/1 is true for an opted-in source when the unlinked account default's consolidated queue is over the limit",
+         %{source: source} do
+      stub(IngestEventQueue, :max_consolidated_queue_size, fn -> 50 end)
+      user = Repo.get(User, source.user_id)
+      opted_in = insert(:source, user: user, default_ingest_backend_enabled?: true)
+      backend = insert(:backend, user: user, type: :clickhouse, default_ingest?: true)
+
+      fill_consolidated_queue(backend, 51)
+
+      assert Backends.any_ingest_queue_over_limit?(opted_in.id)
+    end
+
+    test "any_ingest_queue_over_limit?/1 ignores the account default's consolidated queue for an opted-out source",
+         %{source: source} do
+      stub(IngestEventQueue, :max_consolidated_queue_size, fn -> 50 end)
+      user = Repo.get(User, source.user_id)
+      backend = insert(:backend, user: user, type: :clickhouse, default_ingest?: true)
+
+      fill_consolidated_queue(backend, 51)
+
+      refute Backends.any_ingest_queue_over_limit?(source.id)
     end
 
     test "any_ingest_queue_over_limit?/1 is false when queues exist but are under the limit", %{
@@ -1927,6 +2167,101 @@ defmodule Logflare.BackendsTest do
       assert consolidated_event.batch_bytes == :erlang.external_size(consolidated_event.body)
       assert system_event.accounted_bytes == consolidated_event.accounted_bytes
       assert system_event.batch_bytes == consolidated_event.batch_bytes
+    end
+
+    test "dispatch_to_backends with nil backend reaches the account default backend with no explicit link",
+         %{user: user} do
+      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+      start_supervised!({SourceSup, source})
+
+      backend =
+        insert(:backend,
+          type: :clickhouse,
+          config: %{url: "http://localhost", database: "test", port: 8123},
+          user: user,
+          default_ingest?: true
+        )
+
+      Backends.refresh_default_ingest_backends_cache(user.id)
+      IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
+      IngestEventQueue.upsert_tid({source.id, nil, nil})
+
+      events = [build(:log_event, source: source, message: "auto opt-in")]
+      assert {:ok, 1} = Backends.ingest_logs(events, source)
+
+      {:ok, queued} = IngestEventQueue.fetch_events({:consolidated, backend.id}, 10)
+      assert [%{body: %{"event_message" => "auto opt-in"}}] = queued
+    end
+
+    test "dispatch_to_backends with nil backend skips the default backend for an opted-out source",
+         %{user: user} do
+      source = insert(:source, user: user, default_ingest_backend_enabled?: false)
+      start_supervised!({SourceSup, source})
+
+      backend =
+        insert(:backend,
+          type: :clickhouse,
+          config: %{url: "http://localhost", database: "test", port: 8123},
+          user: user,
+          default_ingest?: true
+        )
+
+      Backends.refresh_default_ingest_backends_cache(user.id)
+      IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
+      IngestEventQueue.upsert_tid({source.id, nil, nil})
+
+      events = [build(:log_event, source: source, message: "opted out")]
+      assert {:ok, 1} = Backends.ingest_logs(events, source)
+
+      assert {:ok, []} = IngestEventQueue.fetch_events({:consolidated, backend.id}, 10)
+    end
+
+    test "dispatch_to_backends stops reaching the default backend once the flag is disabled",
+         %{user: user} do
+      stub(ClusterUtils, :rpc_multicast, fn mod, fun, args ->
+        apply(mod, fun, args)
+        :ok
+      end)
+
+      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+      start_supervised!({SourceSup, source})
+
+      backend =
+        insert(:backend,
+          type: :clickhouse,
+          config: %{url: "http://localhost", database: "test", port: 8123},
+          user: user,
+          default_ingest?: true
+        )
+
+      backend_id = backend.id
+      pid = self()
+      Backends.refresh_default_ingest_backends_cache(user.id)
+      IngestEventQueue.upsert_tid({source.id, nil, nil})
+
+      stub(IngestEventQueue, :add_to_table, fn
+        {:consolidated, ^backend_id}, _batch -> send(pid, :consolidated_dispatch)
+        key, batch -> call_original(IngestEventQueue, :add_to_table, [key, batch])
+      end)
+
+      assert {:ok, 1} = Backends.ingest_logs([build(:log_event, source: source)], source)
+      assert_received :consolidated_dispatch
+
+      assert {:ok, _updated} = Backends.update_backend(backend, %{default_ingest?: false})
+      assert [] = Backends.list_dispatch_backends(source)
+
+      stub(IngestEventQueue, :add_to_table, fn
+        {:consolidated, ^backend_id}, _batch -> flunk("dispatched to the disabled default")
+        key, batch -> call_original(IngestEventQueue, :add_to_table, [key, batch])
+      end)
+
+      stub(IngestEventQueue, :add_to_table, fn
+        {:consolidated, ^backend_id}, _batch, _opts -> flunk("dispatched to the disabled default")
+        key, batch, opts -> call_original(IngestEventQueue, :add_to_table, [key, batch, opts])
+      end)
+
+      assert {:ok, 1} = Backends.ingest_logs([build(:log_event, source: source)], source)
+      refute_received :consolidated_dispatch
     end
 
     test "route to backend", %{user: user} do
@@ -2370,8 +2705,7 @@ defmodule Logflare.BackendsTest do
       assert :ok = Backends.sync_backend_across_cluster(non_existent_id)
     end
 
-    test "works with backend having no associated sources", %{user: user} do
-      # Backend has no associated sources
+    test "does not multicast when the backend has no explicit links", %{user: user} do
       backend =
         insert(:backend,
           user: user,
@@ -2380,8 +2714,6 @@ defmodule Logflare.BackendsTest do
           type: :webhook,
           config: %{url: "http://test.com"}
         )
-
-      # Should not make any RPC calls
 
       reject(&ClusterUtils.rpc_multicast/3)
 
