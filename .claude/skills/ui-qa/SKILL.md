@@ -1,6 +1,6 @@
 ---
 name: ui-qa
-description: Screenshot-verify the Logflare UI with the Playwright harness in scripts/screenshot/. Each capture carries plain-English expectations that you check against the PNG. Use on /ui-qa, to check a release Docker image after a change to the Dockerfile, the release, or asset bundling, and to check a UI change on the dev server before you report it done.
+description: Screenshot-verify the Logflare UI with `mix qa.ui`, an Elixir harness that drives Chromium through PlaywrightEx. Each capture carries plain-English expectations that you check against the PNG. Use on /ui-qa, to check a release Docker image after a change to the Dockerfile, the release, or asset bundling, and to check a UI change on the dev server before you report it done.
 ---
 
 # UI QA
@@ -13,29 +13,40 @@ This skill tells you how to verify the Logflare UI with screenshots. It has thre
 
 ## The screenshot harness
 
-The harness is in `scripts/screenshot/`. It is a small npm package with `@playwright/test`.
+The harness is Elixir code in `test/support/qa/`, compiled in the dev and test environments.
+It drives Chromium with `PlaywrightEx`, using the Playwright driver in `assets/node_modules`.
+The `ingest-qa` skill uses the same harness and server.
 
-| File                  | Purpose                                                                       |
-| --------------------- | ----------------------------------------------------------------------------- |
-| `specs/*.spec.ts`     | One spec for each flow. A spec drives the real app in Chromium.               |
-| `capture.ts`          | `capture(page, { name, expectations })` writes a PNG and a JSON manifest.     |
-| `fixtures.ts`         | Fails a spec on a static-asset error, a failed request, or a console error.  |
-| `playwright.config.ts`| Reads the server URL from `LOGFLARE_URL`. The default is `localhost:4000`.    |
+| Module | Purpose |
+| --- | --- |
+| `Logflare.QA.Browser` | Opens pages, waits for elements, and saves captures with expectations. Records console errors and failed same-origin assets. |
+| `Logflare.QA.UI.*Spec` | One spec for each flow. A spec drives the real app and returns its captures. |
+| `Logflare.QA.Report` | Prints `QA_CHECK`, `QA_CAPTURE` and `QA_RESULT` lines. |
+| `Logflare.QA.Config` | Reads the server URL from `LOGFLARE_URL`. The default is `localhost:4000`. |
+| `mix qa.ui` | Runs the specs. |
+| `mix qa.server` | Runs the dev server for Procedure B. |
 
 A spec has two kinds of checks:
 
-- **DOM assertions** use Playwright `expect`. They prove that the page reached a state before the capture.
-- **Expectations** are one to three plain-English claims about the picture: colors, layout, icons, copy. The harness does not run them. It writes them to `.generated/<name>.json` next to `.generated/<name>.png`. You read the PNG and confirm or refute each claim.
+- **DOM assertions** use `Browser.wait_for/3` and raise when the page is not in the expected state. They prove that the page reached a state before the capture.
+- **Expectations** are one to three plain-English claims about the picture: colors, layout, icons, copy. The harness does not run them. It writes them to `tmp/qa/<name>.json` next to `tmp/qa/<name>.png`. You read the PNG and confirm or refute each claim.
 
 A spec can pass all its DOM assertions and still show a broken page. The expectations catch that.
 
 ## Before you start
 
 1. Make sure that Docker runs: `docker info`.
-2. Install the harness: `npm --prefix scripts/screenshot ci`.
-3. If Chromium is not installed, install it: `npx --prefix scripts/screenshot playwright install chromium`.
+2. Install the dependencies. `assets/node_modules` holds the Playwright driver:
 
-> **Note: cloud sessions.** Chromium is in `/opt/pw-browsers`. Do not install it again.
+   ```sh
+   mix deps.get
+   npm --prefix assets ci
+   ```
+
+3. If Chromium is not installed, install it: `npx --prefix assets playwright install chromium`.
+   Or set `PLAYWRIGHT_CHROMIUM_PATH` to an installed Chromium executable.
+
+> **Note: cloud sessions.** Chromium is in `/opt/pw-browsers`. Do not install it again: set `PLAYWRIGHT_CHROMIUM_PATH=/opt/pw-browsers/chromium`.
 > Docker Hub can return `429 Too Many Requests`. If it does, pull through `mirror.gcr.io`.
 > An HTTPS proxy can also re-sign TLS traffic. Then `curl`, `git`, `hex`, `npm`, and `cargo` fail inside the build.
 > To fix this, see [Builds behind a TLS proxy](#builds-behind-a-tls-proxy).
@@ -169,22 +180,16 @@ The watcher writes the output to `priv/static`. The dev server does not use dige
 ### B1. Start the dev server
 
 1. Start Postgres: `docker compose up -d db`.
-2. Install the dependencies:
+2. Install the dependencies, as in [Before you start](#before-you-start).
+3. Start the server in single-tenant Postgres mode:
 
    ```sh
-   npm --prefix assets ci
-   mix deps.get
+   mix qa.server > /tmp/logflare-qa-server.log 2>&1 &
    ```
 
-3. Start the server in single-tenant Postgres mode with the shared QA script.
-   It creates and migrates the databases and runs the server as a named node, so
-   `scripts/qa/remsh.sh` can run checks inside it. The `ingest-qa` skill uses the same script.
-
-   ```sh
-   scripts/qa/server.sh > /tmp/logflare-qa-server.log 2>&1 &
-   ```
-
-   Settings such as the port and the public access token are in `scripts/qa/env.sh`.
+   `mix qa.server` creates and migrates the databases and runs `mix phx.server` as a
+   distributed node, so `mix qa.ingest` can also run checks inside it. Settings such as the
+   port and the public access token are in `Logflare.QA.Config`.
 
 4. Wait for the health check to return `200`:
 
@@ -197,7 +202,7 @@ The watcher writes the output to `priv/static`. The dev server does not use dige
 7. When you finish, stop the server with `kill` on its PID. Then stop Postgres: `docker compose stop db`.
 
 > **Note:** `make start` and `make start.st.pg` read `.dev.env`. That file holds team secrets and is not in Git.
-> If you have the file, you can use `make start.st.pg`. If not, use `scripts/qa/server.sh`.
+> If you have the file, you can use `make start.st.pg`. If not, use `mix qa.server`.
 
 > **Note:** The first start compiles the Rust NIFs. This can take more than 10 minutes.
 
@@ -210,58 +215,64 @@ The watcher writes the output to `priv/static`. The dev server does not use dige
 
 Do this step only when the change has a flow that no spec covers.
 
-1. Find the closest spec in `scripts/screenshot/specs/`. If a spec covers the same flow, add captures to it. Do not copy its setup into a new file.
-2. Otherwise, create `scripts/screenshot/specs/<slug>.spec.ts` with this shape:
+1. Find the closest spec in `test/support/qa/ui/`. If a spec covers the same flow, add captures to it. Do not copy its setup into a new module.
+2. Otherwise, create `test/support/qa/ui/<slug>_spec.ex` with this shape, and add it to `@specs` in `test/support/qa/mix/qa.ui.ex`:
 
-   ```ts
-   import { capture } from "../capture";
-   import { expect, test } from "../fixtures";
+   ```elixir
+   defmodule Logflare.QA.UI.SlugSpec do
+     @moduledoc "<What the user does.>"
 
-   test("<what the user does>", async ({ page }) => {
-     await page.goto("/dashboard");
-     await expect(page.getByText("New source")).toBeVisible();
+     alias Logflare.QA.Browser
 
-     await capture(page, {
-       name: "<slug>-01-before",
-       expectations: ["A claim about what the picture shows."],
-     });
+     @spec run(String.t()) :: [Path.t()]
+     def run(browser) do
+       page =
+         browser
+         |> Browser.new_page()
+         |> Browser.goto("/dashboard")
+         |> Browser.wait_for("text=New source")
 
-     await page.getByText("New source").click();
-     await expect(page).toHaveURL(/\/sources\/new/);
+       before = Browser.capture(page, "<slug>-01-before", ["A claim about what the picture shows."])
 
-     await capture(page, {
-       name: "<slug>-02-after",
-       expectations: ["A claim about what changed in the picture."],
-     });
-   });
+       page
+       |> Browser.click("text=New source")
+       |> Browser.wait_for(~s|input[placeholder="YourApp.SourceName"]|)
+
+       problems = Browser.problems(page)
+       problems == [] || raise "page problems: #{inspect(problems)}"
+
+       [before, Browser.capture(page, "<slug>-02-after", ["A claim about what changed in the picture."])]
+     end
+   end
    ```
 
-3. Import `test` and `expect` from `../fixtures`, not from `@playwright/test`. The fixture adds the asset and console checks.
-4. Drive the page as a user does: `click`, `fill`, `press`, `hover`. Do not call app internals.
-5. Before each capture, assert the DOM state with `expect`. A capture of a page that has not loaded proves nothing.
+3. Drive the page as a user does with `Browser.click/2`, `Browser.fill/3` and `Browser.goto/2`. Do not call app internals.
+   Selectors are Playwright selectors, such as CSS, `text=...` and `:has-text("...")`.
+4. Before each capture, assert the DOM state with `Browser.wait_for/3` or a `raise`. A capture of a page that has not loaded proves nothing.
+5. End each spec by checking `Browser.problems/1`. It lists console errors and same-origin assets that failed to load.
 6. Give each capture a name in the form `<slug>-<NN>-<what-it-shows>`. The name becomes the PNG and JSON file names.
 7. Write one to three expectations for each capture. `capture` rejects zero or more than three.
    If you need more claims, the screenshot shows more than one thing. Take a second capture.
 8. Write each expectation as a claim that you can see: a color, a position, an icon, some text.
    Do not repeat a DOM assertion as an expectation.
-9. To capture one element, set `clipSelector`. To show `:hover` styles, set `hoverSelector`.
+9. To capture one element, pass `clip: selector`. Let the layout settle before a clipped capture: a scroll can move the element after its box is measured.
 
-`specs/dashboard.spec.ts` shows a page check and a clipped capture. `specs/new-source.spec.ts` shows a form flow.
+`DashboardSpec` shows page checks and a clipped capture. `NewSourceSpec` shows a form flow.
 
 ### C2. Run the specs
 
 1. Run all specs:
 
    ```sh
-   npm --prefix scripts/screenshot run screenshot
+   mix qa.ui
    ```
 
-2. To run one spec, add its path: `npm --prefix scripts/screenshot run screenshot -- specs/<slug>.spec.ts`.
+2. To run one spec, add its name: `mix qa.ui dashboard`.
 3. To use a different server, set `LOGFLARE_URL`, for example `LOGFLARE_URL=http://localhost:4001`.
 4. If Playwright cannot find Chromium, set `PLAYWRIGHT_CHROMIUM_PATH` to the Chromium executable.
-5. Make sure that each spec passes. A fixture failure lists each asset error or console error.
+5. Make sure that each spec passes. A failure prints the assertion or the page problems that failed it.
 
-The output goes to `scripts/screenshot/.generated/`. Git ignores this directory.
+The output goes to `tmp/qa/`. Git ignores this directory.
 
 ### C3. Verify each screenshot
 
@@ -269,15 +280,15 @@ Do this step yourself. Do not give it to a subagent. The purpose is that the age
 
 For each capture:
 
-1. Read `scripts/screenshot/.generated/<name>.json`.
-2. Read `scripts/screenshot/.generated/<name>.png`.
+1. Read `tmp/qa/<name>.json`.
+2. Read `tmp/qa/<name>.png`.
 3. For each expectation, decide if the image confirms it or refutes it.
 4. Write down each refuted expectation and what the image shows instead.
 
 To list all expectations at once, run:
 
 ```sh
-for f in scripts/screenshot/.generated/*.json; do
+for f in tmp/qa/*.json; do
   jq -r '"\(.name) (\(.url))", (.expectations[] | "  - " + .)' "$f"
 done
 ```
@@ -295,7 +306,7 @@ Give the reviewer:
 - The screenshots. Send them with `SendUserFile` when you can.
 - Each failure, with the command that shows it.
 
-Keep the specs. `scripts/screenshot/specs/` is a regression library. When a later change touches the same flow, extend its spec.
+Keep the specs. `test/support/qa/ui/` is a regression library. When a later change touches the same flow, extend its spec.
 
 ## Builds behind a TLS proxy
 
