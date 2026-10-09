@@ -527,7 +527,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       saved_search = insert(:saved_search, %{source: source})
 
-      _ = Logflare.SavedSearches.Cache.bust_by(source_id: saved_search.source_id)
+      _ =
+        Logflare.ContextCache.bust_keys([
+          {Logflare.SavedSearches, source_id: saved_search.source_id}
+        ])
+
       {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
 
       assert view
@@ -822,7 +826,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
           schema_flat_map: schema_flat_map
         })
 
-      _ = Logflare.SavedSearches.Cache.bust_by(source_id: source.id)
+      _ = Logflare.ContextCache.bust_keys([{Logflare.SavedSearches, source_id: source.id}])
       Cachex.clear(Logflare.SourceSchemas.Cache)
 
       {:ok, view, _html} = live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id))

@@ -6,63 +6,59 @@ defmodule Logflare.ContextCache do
   e.g. `Logflare.Users.Cache` functions go through `apply_fun/3` and results of those
   functions are returned to the caller and cached in the respective cache.
 
-  ## Cache Implementation
+  ## Implementation
 
-  The cache implementation directly queries the relevant context cache to be busted and performs
-  primary key checking within the matchspec. This approach queries across a narrower set of records,
-  providing better performance compared to a reverse index approach.
+  A context cache implements both this behaviour and `Logflare.Cache`. Every callback is optional;
+  `Logflare.Cache.CachexOps` handles the ones a cache does not implement.
 
-  If customization of busting is needed, cache module may implement `c:bust_by/1` callback expecting
-  a keyword list instead of primary key for entry.
+  ## Busting
 
-  ## List Busting
-
-  The cache supports busting records within lists. If a struct in a non-empty list contains
-  the :id field, the record will get busted when that ID is encountered in the write-ahead log.
+  `bust_keys/1` busts entries by primary key or by a keyword of fields. Caches that need busting
+  keys other than `id:` implement `c:keys_to_bust/1` themselves.
 
   ## Memoization
 
   This module can also be used to cache heavy functions or db calls hidden behind a 3rd party
-  library. See `Logflare.Auth.Cache` for an example. In this example, the `expiration` set in that
-  Cachex child_spec is handling the cache expiration.
-
-  In the case functions don't return a response with a primary key, or something else we can
-  bust the cache on, it will get reverse indexed with `select_key/1` as `:unknown`.
-
-  ## Gossip
-
-  Cache misses are optionally multicast to peer nodes via `:erpc` to warm the cluster.
-  To prevent race conditions, WAL invalidations write short-lived tombstones that
-  filter out stale incoming messages.
+  library. See `Logflare.Auth.Cache` for an example, where the cache's own expiration is the only
+  invalidation.
   """
-
-  alias Logflare.ContextCache.Gossip
 
   @doc """
-  Optional callback implementing custom cache key busting by a keyword of values
+  Returns the keys of the entries to bust for a keyword of values.
   """
-  @callback bust_by(keyword()) :: {:ok, non_neg_integer()} | {:error, term()}
+  @callback keys_to_bust(keyword()) :: Enumerable.t()
+
+  @doc """
+  Deletes `keys`, returning the number of entries deleted.
+  """
+  @callback delete_keys(Enumerable.t()) :: {:ok, non_neg_integer()}
+
+  @doc """
+  Returns the cached value for `key`, calling `getter` and caching its result on a miss.
+  """
+  @callback fetch(key :: term(), getter :: (-> term())) :: term()
+
+  @doc """
+  Replaces the value cached for `key`. Does nothing when `key` is not cached.
+  """
+  @callback update(key :: term(), value :: term()) :: :ok
+
+  @optional_callbacks keys_to_bust: 1, delete_keys: 1, fetch: 2, update: 2
 
   @spec apply_fun(module(), tuple() | atom(), list()) :: any()
   def apply_fun(context, {fun, _arity}, args), do: apply_fun(context, fun, args)
 
   def apply_fun(context, fun, args) when is_atom(fun) do
-    cache = cache_name(context)
-    cache_key = {fun, args}
-
-    fetch(cache, cache_key, fn ->
-      Logflare.Repo.apply_with_replica(context, fun, args)
-    end)
+    getter = fn -> Logflare.Repo.apply_with_replica(context, fun, args) end
+    Logflare.Cache.dispatch(cache_name(context), :fetch, [{fun, args}, getter])
   end
 
   @doc """
   Updates cache entry to the given value
   """
+  @spec update(module(), atom(), list(), term()) :: :ok
   def update(context, fun, args, value) when is_atom(fun) do
-    cache = cache_name(context)
-    cache_key = {fun, args}
-
-    Cachex.update(cache, cache_key, {:cached, value})
+    Logflare.Cache.dispatch(cache_name(context), :update, [{fun, args}, value])
   end
 
   @doc """
@@ -70,104 +66,31 @@ defmodule Logflare.ContextCache do
 
   It is intended for following a WAL for cache busting. When a new record comes in from the WAL,
   the CacheBuster process calls this function with either the primary keys extracted from those records
-  or a keyword list with fields useful for busting.
-
-  For primary key, the function then:
-
-  1. Queries the relevant context cache using a matchspec to find entries to bust
-  2. Handles both single records and lists of records containing matching IDs
-  3. Deletes matching cache entries
-
-  For keywords, it expects the cache to handle busting by implementing `c:bust_by/1`
+  or a keyword list with fields useful for busting. Both are passed to the context cache's
+  `c:keys_to_bust/1`, a primary key as `[id: pkey]`, and the returned keys to `c:delete_keys/1`.
   """
   @spec bust_keys(list()) :: {:ok, non_neg_integer()}
   def bust_keys(values) when is_list(values) do
     busted =
-      for {context, primary_key} <- values, reduce: 0 do
+      for {context, pkey_or_kw} <- values, reduce: 0 do
         acc ->
-          {:ok, n} = bust_key({context, primary_key})
+          {:ok, n} = bust_key(context, pkey_or_kw)
           acc + n
       end
 
     {:ok, busted}
   end
 
-  defp bust_key({context, kw}) when is_list(kw) do
-    context_cache = cache_name(context)
-    context_cache.bust_by(kw)
+  defp bust_key(context, kw) when is_list(kw) do
+    cache = cache_name(context)
+    keys = Logflare.Cache.dispatch(cache, :keys_to_bust, [kw])
+    Logflare.Cache.dispatch(cache, :delete_keys, [keys])
   end
 
-  defp bust_key({context, pkey}) do
-    context_cache = cache_name(context)
-
-    filter =
-      {
-        # use orelse to prevent 2nd condition failing as value is not a map
-        :orelse,
-        {
-          :orelse,
-          # handle lists
-          {:is_list, {:element, 2, :value}},
-          # handle :ok tuples when struct with id is in 2nd element pos.
-          {:andalso, {:is_tuple, {:element, 2, :value}},
-           {:andalso, {:==, {:element, 1, {:element, 2, :value}}, :ok},
-            {:andalso, {:is_map, {:element, 2, {:element, 2, :value}}},
-             {:==, {:map_get, :id, {:element, 2, {:element, 2, :value}}}, pkey}}}}
-        },
-        # handle single maps
-        {:andalso, {:is_map, {:element, 2, :value}},
-         {:==, {:map_get, :id, {:element, 2, :value}}, pkey}}
-      }
-
-    query =
-      Cachex.Query.build(where: filter, output: {:key, :value})
-
-    context_cache
-    |> Cachex.stream!(query)
-    |> delete_matching_entries(context_cache, pkey)
-  end
+  defp bust_key(context, pkey), do: bust_key(context, id: pkey)
 
   @spec cache_name(atom()) :: atom()
   def cache_name(context) do
     Module.concat(context, Cache)
-  end
-
-  @doc """
-  Low level API for fetching from cache. Allows wrapping calls with
-  `Cachex.execute/2` and accessing arbitrary key or calling any getter function.
-  """
-  @spec fetch(Cachex.t(), {atom(), list()}, fun()) :: term()
-  def fetch(cache, cache_key, getter_fn) do
-    case Cachex.fetch(cache, cache_key, fn _cache_key ->
-           # Use a `:cached` tuple here otherwise when an fn returns nil Cachex will miss
-           # the cache because it thinks ETS returned nil
-           {:commit, {:cached, getter_fn.()}}
-         end) do
-      {:commit, {:cached, value}} ->
-        Gossip.multicast(cache, cache_key, value)
-        value
-
-      {:ok, {:cached, value}} ->
-        value
-    end
-  end
-
-  defp delete_matching_entries(entries, context_cache, pkey) do
-    to_delete =
-      entries
-      |> Stream.filter(fn
-        {_k, {:cached, v}} when is_list(v) ->
-          Enum.any?(v, &(&1.id == pkey))
-
-        {_k, _v} ->
-          true
-      end)
-
-    Cachex.execute(context_cache, fn worker ->
-      Enum.reduce(to_delete, 0, fn {k, _v}, acc ->
-        Cachex.del(worker, k)
-        acc + 1
-      end)
-    end)
   end
 end

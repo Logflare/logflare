@@ -1,36 +1,28 @@
 defmodule Logflare.PubSubRates.Cache do
   @moduledoc false
+
+  @behaviour Logflare.Cache
+
   require Logger
 
+  alias Logflare.Cache.CachexOps
   alias Logflare.Sources.Source
   alias Logflare.Cluster
   alias Logflare.Users.Cache, as: UsersCache
-  alias Logflare.Utils
 
   @cache __MODULE__
   @default_bucket_width 60
 
   def child_spec(_) do
-    stats = Application.get_env(:logflare, :cache_stats, false)
-
-    %{
-      id: __MODULE__,
-      start:
-        {Cachex, :start_link,
-         [
-           @cache,
-           [
-             hooks:
-               [
-                 if(stats, do: Utils.cache_stats()),
-                 Utils.cache_limit(100_000)
-               ]
-               |> Enum.filter(& &1),
-             expiration: Utils.cache_expiration_min(5)
-           ]
-         ]}
-    }
+    CachexOps.child_spec(@cache,
+      limit: 100_000,
+      ttl: to_timeout(minute: 5),
+      purge_interval: to_timeout(minute: 5)
+    )
   end
+
+  @impl Logflare.Cache
+  def healthy?, do: CachexOps.healthy?(__MODULE__)
 
   def clear do
     Cachex.clear(__MODULE__)
