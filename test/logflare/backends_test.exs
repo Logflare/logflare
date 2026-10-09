@@ -19,6 +19,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.Spool.Queue.PubSub, as: SpoolQueueMod
   alias Logflare.Backends.Spool.Storage.GCS, as: SpoolStorageMod
   alias Logflare.Backends.Spool.Health
+  alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.SourceSupWorker
   alias Logflare.LogEvent
@@ -905,6 +906,45 @@ defmodule Logflare.BackendsTest do
                })
 
       assert "Source must have default ingest backend support enabled" in errors_on(changeset).default_ingest?
+    end
+  end
+
+  describe "SourceSup readiness" do
+    setup :set_mimic_global
+
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user_id: user.id)
+      on_exit(fn -> Backends.stop_source_sup(source) end)
+      {:ok, source: source}
+    end
+
+    test "a registered SourceSup is not started until its children are up", %{source: source} do
+      test_pid = self()
+
+      stub(RateCounterServer, :start_link, fn args ->
+        send(test_pid, {:children_starting, self()})
+
+        receive do
+          :release -> call_original(RateCounterServer, :start_link, [args])
+        end
+      end)
+
+      first = Task.async(fn -> Backends.ensure_source_sup_started(source) end)
+      assert_receive {:children_starting, sup_pid}, 5_000
+
+      assert [{^sup_pid, nil}] = Registry.lookup(SourceRegistry, {source.id, SourceSup})
+      refute Backends.source_sup_started?(source)
+
+      second = Task.async(fn -> Backends.ensure_source_sup_started(source) end)
+      refute Task.yield(second, 200)
+
+      send(sup_pid, :release)
+
+      assert :ok = Task.await(first)
+      assert :ok = Task.await(second)
+      assert Backends.source_sup_started?(source)
     end
   end
 

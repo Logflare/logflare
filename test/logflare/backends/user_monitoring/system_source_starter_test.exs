@@ -22,7 +22,7 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarterTest do
     source_id = source.id
 
     stub(Backends, :ensure_source_sup_started, fn received ->
-      send(test_pid, {:start, received.id, self()})
+      send(test_pid, {:start, received, self()})
 
       receive do
         :release -> :ok
@@ -47,6 +47,28 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarterTest do
     {:ok, true} = Cachex.put(Logflare.Sources.Cache, {:get_by, [[id: source.id]]}, {:cached, nil})
     on_exit(fn -> Backends.stop_source_sup(source) end)
 
+    SystemSourceStarter.request_start(source.id)
+
+    TestUtils.retry_assert(fn -> assert Backends.source_sup_started?(source) end)
+  end
+
+  test "times out a stalled source lookup and starts again on the next request", %{
+    source: source
+  } do
+    Application.put_env(:logflare, :source_sup_start_timeout, 50)
+    on_exit(fn -> Application.delete_env(:logflare, :source_sup_start_timeout) end)
+    stub(Logflare.Sources.Cache, :get_by_id_or_primary, fn _id -> Process.sleep(:infinity) end)
+
+    ExUnit.CaptureLog.capture_log(fn ->
+      SystemSourceStarter.request_start(source.id)
+      TestUtils.retry_assert(fn -> assert in_flight() == %{} end)
+    end)
+
+    stub(Logflare.Sources.Cache, :get_by_id_or_primary, fn id ->
+      call_original(Logflare.Sources.Cache, :get_by_id_or_primary, [id])
+    end)
+
+    on_exit(fn -> Backends.stop_source_sup(source) end)
     SystemSourceStarter.request_start(source.id)
 
     TestUtils.retry_assert(fn -> assert Backends.source_sup_started?(source) end)

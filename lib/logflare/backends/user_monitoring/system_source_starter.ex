@@ -9,7 +9,9 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarter do
   id to this process. This process does not hold any events.
 
   This process runs each start in an unlinked task. Thus it never waits on a partition. A failed
-  start can not crash it.
+  start can not crash it. The task passes only the source id to
+  `Logflare.Backends.ensure_source_sup_started/1`. The source lookup then runs inside the start
+  deadline, so a stalled lookup can not hold the task forever.
 
   This process skips a request in two cases: a start for that id is in flight, or the `SourceSup`
   is already up. Thus a log flood causes at most one start per source at a time. After a failed
@@ -19,8 +21,6 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarter do
   use GenServer
 
   alias Logflare.Backends
-  alias Logflare.Sources
-  alias Logflare.Sources.Source
 
   @type state :: %{in_flight: %{reference() => pos_integer()}}
 
@@ -57,7 +57,7 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarter do
       %Task{ref: ref} =
         Task.Supervisor.async_nolink(
           {:via, PartitionSupervisor, {Logflare.TaskSupervisors, source_id}},
-          fn -> start(source_id) end
+          fn -> Backends.ensure_source_sup_started(source_id) end
         )
 
       {:noreply, put_in(state, [:in_flight, ref], source_id)}
@@ -75,12 +75,4 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarter do
   end
 
   def handle_info(_message, state), do: {:noreply, state}
-
-  @spec start(pos_integer()) :: :ok | {:error, term()}
-  defp start(source_id) do
-    case Sources.Cache.get_by_id_or_primary(source_id) do
-      %Source{} = source -> Backends.ensure_source_sup_started(source)
-      nil -> {:error, :not_found}
-    end
-  end
 end

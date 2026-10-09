@@ -1107,13 +1107,16 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Checks if the SourceSup for a given source has been started.
+  Checks if the SourceSup for a given source is up and all its initial children are started.
+
+  A `SourceSup` that is registered but still in its start returns `false`. See
+  `Logflare.Backends.SourceSup.mark_ready/1`.
   """
   @spec source_sup_started?(Source.t() | non_neg_integer()) :: boolean()
   def source_sup_started?(%Source{id: id}), do: source_sup_started?(id)
 
   def source_sup_started?(id) when is_number(id) do
-    Registry.lookup(SourceRegistry, {id, SourceSup}) != []
+    match?([{_pid, :ready}], Registry.lookup(SourceRegistry, {id, SourceSup}))
   end
 
   @doc """
@@ -1210,11 +1213,16 @@ defmodule Logflare.Backends do
   prefetch and the `start_child` call share the deadline of `start_source_sup/1`. So a stalled
   cache or primary read returns `{:error, :start_timeout}` to every caller.
 
+  The function also takes a source id. Then the caller does not need its own lookup, which would
+  run outside the deadline.
+
   A failed start returns `{:error, reason}`. It does not raise.
   """
-  @spec ensure_source_sup_started(Source.t()) ::
+  @spec ensure_source_sup_started(Source.t() | pos_integer()) ::
           :ok | {:error, :not_found | :start_timeout | term()}
-  def ensure_source_sup_started(%Source{id: id}) do
+  def ensure_source_sup_started(%Source{id: id}), do: ensure_source_sup_started(id)
+
+  def ensure_source_sup_started(id) when is_integer(id) do
     if source_sup_started?(id) do
       :ok
     else

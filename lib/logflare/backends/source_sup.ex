@@ -3,6 +3,7 @@ defmodule Logflare.Backends.SourceSup do
   use Supervisor
 
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourceSupWorker
   alias Logflare.Backends
   alias Logflare.Sources.Source
@@ -134,9 +135,31 @@ defmodule Logflare.Backends.SourceSup do
         if(Application.get_env(:logflare, :env) != :test,
           do: [{SourceSupWorker, [source: source]}],
           else: []
-        ) ++ specs
+        ) ++ specs ++ [ready_marker_spec(source.id)]
 
     Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  defp ready_marker_spec(source_id) do
+    Supervisor.child_spec(%{id: :ready_marker, start: {__MODULE__, :mark_ready, [source_id]}},
+      restart: :temporary
+    )
+  end
+
+  @doc """
+  Sets the `SourceRegistry` value of the `SourceSup` to `:ready`.
+
+  `Supervisor.start_link/3` registers the name before the children start. So a registered
+  `SourceSup` can still be in its start. The `SourceSup` calls this function as the start of its
+  last child. The supervisor process runs child starts in order, so all other children are up
+  then. The function returns `:ignore`, so it starts no process.
+  """
+  @spec mark_ready(pos_integer()) :: :ignore
+  def mark_ready(source_id) do
+    {:ready, _old} =
+      Registry.update_value(SourceRegistry, {source_id, __MODULE__}, fn _ -> :ready end)
+
+    :ignore
   end
 
   @doc """
