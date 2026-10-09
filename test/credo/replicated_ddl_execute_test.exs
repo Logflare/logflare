@@ -382,4 +382,57 @@ defmodule Logflare.CredoChecks.ReplicatedDdlExecuteTest do
       end
     end)
   end
+
+  test "ignores semicolons, comment markers and DDL inside quoted SQL" do
+    ~S"""
+    defmodule Logflare.Repo.Migrations.QuotedSql do
+      use Ecto.Migration
+
+      def up do
+        execute("UPDATE templates SET sql = 'SELECT 1; CREATE TABLE things (id bigint)'")
+        execute("UPDATE templates SET body = E'it\\'s; DROP TABLE things'")
+        execute("UPDATE templates SET body = $body$ ; CREATE TABLE things $body$")
+        execute("SELECT 1 /* outer /* nested */ ; DROP TABLE things */")
+        execute(~s|UPDATE "odd; DROP TABLE things" SET id = 1|)
+      end
+    end
+    """
+    |> to_source_file()
+    |> run_check(ReplicatedDdlExecute)
+    |> refute_issues()
+  end
+
+  test "reports DDL after quoted SQL that contains comment markers or semicolons" do
+    ~S"""
+    defmodule Logflare.Repo.Migrations.DdlAfterQuotedSql do
+      use Ecto.Migration
+
+      def up do
+        execute("SET application_name = '--migration'; CREATE TABLE dash_things (id bigint)")
+        execute("SELECT $$;$$; DROP TABLE dollar_things")
+        execute("SELECT 'it''s; fine'; DROP TABLE escaped_things")
+      end
+    end
+    """
+    |> to_source_file()
+    |> run_check(ReplicatedDdlExecute)
+    |> assert_issues(fn issues ->
+      assert issues |> Enum.map(& &1.line_no) |> Enum.sort() == [5, 6, 7]
+    end)
+  end
+
+  test "does not exempt DDL whose quoted identifier is a node-local keyword" do
+    """
+    defmodule Logflare.Repo.Migrations.QuotedIdentifier do
+      use Ecto.Migration
+
+      def up do
+        execute(~s|CREATE TABLE "publication" (id bigint)|)
+      end
+    end
+    """
+    |> to_source_file()
+    |> run_check(ReplicatedDdlExecute)
+    |> assert_issue()
+  end
 end

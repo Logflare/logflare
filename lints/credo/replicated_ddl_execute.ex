@@ -40,7 +40,9 @@ defmodule Logflare.CredoChecks.ReplicatedDdlExecute do
           end
 
       Both the up and down SQL of `execute/2` are checked, and leading SQL comments or
-      preceding statements (`SET ...; CREATE ...`) do not hide a DDL statement.
+      preceding statements (`SET ...; CREATE ...`) do not hide a DDL statement. Quoted
+      strings, quoted identifiers and dollar-quoted bodies are skipped, so their contents
+      never count as DDL or as a node-local keyword.
 
       Statements matching `:node_local_patterns` (publications, subscriptions, replica
       identity, `ALTER SYSTEM`, role changes) are ignored: those configure the node or
@@ -105,14 +107,96 @@ defmodule Logflare.CredoChecks.ReplicatedDdlExecute do
 
   defp replicable_ddl?(sql, ddl_prefixes, node_local_regexes) do
     sql
-    |> String.replace(~r/--[^\n]*/, " ")
-    |> String.replace(~r/\/\*.*?\*\//s, " ")
-    |> String.split(";")
+    |> sql_statements()
     |> Enum.map(&normalize/1)
     |> Enum.any?(fn statement ->
       Enum.any?(ddl_prefixes, &String.starts_with?(statement, &1 <> " ")) and
         not Enum.any?(node_local_regexes, &Regex.match?(&1, statement))
     end)
+  end
+
+  defp sql_statements(sql), do: scan(sql, [], [])
+
+  defp scan(<<>>, current, statements),
+    do: Enum.reverse([IO.iodata_to_binary(current) | statements])
+
+  defp scan(<<?;, rest::binary>>, current, statements),
+    do: scan(rest, [], [IO.iodata_to_binary(current) | statements])
+
+  defp scan(<<"--", rest::binary>>, current, statements),
+    do: rest |> skip_line_comment() |> scan([current, ?\s], statements)
+
+  defp scan(<<"/*", rest::binary>>, current, statements),
+    do: rest |> skip_block_comment(1) |> scan([current, ?\s], statements)
+
+  defp scan(<<?', rest::binary>>, current, statements),
+    do: rest |> skip_quoted(?', false) |> scan([current, "''"], statements)
+
+  defp scan(<<?", rest::binary>>, current, statements),
+    do: rest |> skip_quoted(?", false) |> scan([current, ~s("")], statements)
+
+  defp scan(<<?$, rest::binary>> = sql, current, statements) do
+    case Regex.run(~r/\A\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/, sql) do
+      [delimiter] ->
+        sql
+        |> binary_part(byte_size(delimiter), byte_size(sql) - byte_size(delimiter))
+        |> skip_dollar_quoted(delimiter)
+        |> scan([current, "''"], statements)
+
+      nil ->
+        scan(rest, [current, ?$], statements)
+    end
+  end
+
+  defp scan(<<char, _::binary>> = sql, current, statements)
+       when char in ?a..?z or char in ?A..?Z or char == ?_ do
+    [word] = Regex.run(~r/\A[A-Za-z0-9_$]+/, sql)
+
+    case binary_part(sql, byte_size(word), byte_size(sql) - byte_size(word)) do
+      <<?', rest::binary>> when word in ["e", "E"] ->
+        rest |> skip_quoted(?', true) |> scan([current, "''"], statements)
+
+      rest ->
+        scan(rest, [current, word], statements)
+    end
+  end
+
+  defp scan(<<char, rest::binary>>, current, statements),
+    do: scan(rest, [current, char], statements)
+
+  defp skip_line_comment(sql) do
+    case :binary.split(sql, "\n") do
+      [_comment, rest] -> rest
+      [_comment] -> ""
+    end
+  end
+
+  defp skip_block_comment(sql, 0), do: sql
+  defp skip_block_comment(<<>>, _depth), do: ""
+  defp skip_block_comment(<<"/*", rest::binary>>, depth), do: skip_block_comment(rest, depth + 1)
+  defp skip_block_comment(<<"*/", rest::binary>>, depth), do: skip_block_comment(rest, depth - 1)
+  defp skip_block_comment(<<_char, rest::binary>>, depth), do: skip_block_comment(rest, depth)
+
+  defp skip_quoted(<<>>, _quote, _backslash_escapes?), do: ""
+
+  defp skip_quoted(<<?\\, _escaped, rest::binary>>, quote, true),
+    do: skip_quoted(rest, quote, true)
+
+  defp skip_quoted(<<char, next, rest::binary>>, quote, backslash_escapes?)
+       when char == quote and next == quote,
+       do: skip_quoted(rest, quote, backslash_escapes?)
+
+  defp skip_quoted(<<char, rest::binary>>, quote, _backslash_escapes?) when char == quote,
+    do: rest
+
+  defp skip_quoted(<<_char, rest::binary>>, quote, backslash_escapes?),
+    do: skip_quoted(rest, quote, backslash_escapes?)
+
+  defp skip_dollar_quoted(sql, delimiter) do
+    case :binary.split(sql, delimiter) do
+      [_body, rest] -> rest
+      [_body] -> ""
+    end
   end
 
   defp normalize(sql) do
