@@ -19,6 +19,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.Spool.Queue.PubSub, as: SpoolQueueMod
   alias Logflare.Backends.Spool.Storage.GCS, as: SpoolStorageMod
   alias Logflare.Backends.Spool.Health
+  alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.SourceSupWorker
   alias Logflare.LogEvent
@@ -908,6 +909,63 @@ defmodule Logflare.BackendsTest do
     end
   end
 
+  describe "SourceSup readiness" do
+    setup :set_mimic_global
+
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user_id: user.id)
+      on_exit(fn -> Backends.stop_source_sup(source) end)
+      {:ok, source: source}
+    end
+
+    test "a registered SourceSup is not started until its children are up", %{source: source} do
+      {first, sup_pid} = start_with_blocked_children(source)
+
+      assert [{^sup_pid, nil}] = Registry.lookup(SourceRegistry, {source.id, SourceSup})
+      refute Backends.source_sup_started?(source)
+
+      second = Task.async(fn -> Backends.ensure_source_sup_started(source) end)
+      refute Task.yield(second, 200)
+
+      send(sup_pid, :release)
+
+      assert :ok = Task.await(first)
+      assert :ok = Task.await(second)
+      assert Backends.source_sup_started?(source)
+    end
+
+    test "a backend attached during the start gets its child", %{source: source} do
+      backend = insert(:backend)
+      {first, sup_pid} = start_with_blocked_children(source)
+
+      attach = Task.async(fn -> Backends.update_source_backends(source, [backend]) end)
+      refute Task.yield(attach, 200)
+
+      send(sup_pid, :release)
+
+      assert :ok = Task.await(first)
+      assert {:ok, _source} = Task.await(attach)
+      assert SourceSup.backend_child_started?(backend.id, source.id)
+    end
+
+    test "a backend detached during the start loses its child", %{source: source} do
+      backend = insert(:backend)
+      {:ok, source} = Backends.update_source_backends(source, [backend])
+      {first, sup_pid} = start_with_blocked_children(source)
+
+      detach = Task.async(fn -> Backends.update_source_backends(source, []) end)
+      refute Task.yield(detach, 200)
+
+      send(sup_pid, :release)
+
+      assert :ok = Task.await(first)
+      assert {:ok, _source} = Task.await(detach)
+      refute SourceSup.backend_child_started?(backend.id, source.id)
+    end
+  end
+
   describe "SourceSup management" do
     setup do
       insert(:plan)
@@ -918,6 +976,188 @@ defmodule Logflare.BackendsTest do
 
     test "ensure_source_sup_started/1", %{source: source} do
       assert :ok = Backends.ensure_source_sup_started(source)
+    end
+
+    test "child_spec/1 starts the SourceSup with the source id only", %{source: source} do
+      source_id = source.id
+
+      assert %{id: {SourceSup, ^source_id}, start: {SourceSup, :start_link, [^source_id]}} =
+               SourceSup.child_spec(source)
+    end
+
+    test "start_source_sup/1 returns not_found for a deleted source", %{source: source} do
+      Repo.delete!(source)
+      stub(SourceSup, :prefetch, fn _source -> :ok end)
+
+      assert {:error, :not_found} = Backends.start_source_sup(source)
+      refute Backends.source_sup_started?(source)
+    end
+
+    test "start_for_ingest/1 returns source_not_found for a deleted source", %{source: source} do
+      Repo.delete!(source)
+      stub(SourceSup, :prefetch, fn _source -> :ok end)
+
+      assert {:error, :source_not_found} = Backends.start_for_ingest(source)
+    end
+
+    test "start_for_ingest/1 returns source_unavailable when the start fails", %{source: source} do
+      stub_failing_child_spec()
+
+      capture_log(fn ->
+        assert {:error, :source_unavailable} = Backends.start_for_ingest(source)
+      end)
+    end
+
+    test "concurrent ensure_source_sup_started/1 calls start a stopped SourceSup once", %{
+      source: source
+    } do
+      test_pid = self()
+
+      stub(SourceSup, :child_spec, fn received_source ->
+        send(test_pid, :start_child)
+        call_original(SourceSup, :child_spec, [received_source])
+      end)
+
+      results =
+        1..1_000
+        |> Enum.map(fn _ -> Task.async(fn -> Backends.ensure_source_sup_started(source) end) end)
+        |> Task.await_many(30_000)
+
+      assert Enum.all?(results, &(&1 == :ok))
+      assert Backends.source_sup_started?(source)
+      assert_received :start_child
+      refute_received :start_child
+    end
+
+    test "ensure_source_sup_started/1 returns start_timeout when the partition does not answer",
+         %{source: source} do
+      Application.put_env(:logflare, :source_sup_start_timeout, 100)
+      on_exit(fn -> Application.delete_env(:logflare, :source_sup_start_timeout) end)
+
+      stub(SourceSup, :child_spec, fn received_source ->
+        %{
+          call_original(SourceSup, :child_spec, [received_source])
+          | start: {Process, :sleep, [300]}
+        }
+      end)
+
+      log =
+        capture_log(fn ->
+          assert {:error, :start_timeout} = Backends.ensure_source_sup_started(source)
+        end)
+
+      assert log =~ "SourceSup start timed out after 100ms"
+      refute Backends.source_sup_started?(source)
+    end
+
+    test "ensure_source_sup_started/1 returns and logs the error when the start fails", %{
+      source: source
+    } do
+      stub(SourceSup, :child_spec, fn received_source ->
+        %{
+          call_original(SourceSup, :child_spec, [received_source])
+          | start: {Function, :identity, [{:error, :boom}]}
+        }
+      end)
+
+      log =
+        capture_log(fn ->
+          assert {:error, :boom} = Backends.ensure_source_sup_started(source)
+        end)
+
+      assert log =~ "SourceSup start failed: :boom"
+      refute Backends.source_sup_started?(source)
+    end
+
+    test "ensure_source_sup_started/1 sends only the source id to the Cachex courier", %{
+      source: source,
+      user: user
+    } do
+      sink = insert(:source, user: user)
+      for _ <- 1..200, do: insert(:rule, source: source, sink: sink.token)
+      source = Repo.preload(source, :rules, force: true)
+      assert :erlang.external_size(source) > 100_000
+
+      courier =
+        Backends.SourceSupStarts
+        |> Supervisor.which_children()
+        |> Enum.find_value(fn
+          {Cachex.Services.Courier, pid, _type, _modules} -> pid
+          _child -> nil
+        end)
+
+      :erlang.trace(courier, true, [:receive])
+      assert :ok = Backends.ensure_source_sup_started(source)
+      :erlang.trace(courier, false, [:receive])
+
+      sizes = collect_dispatch_sizes(courier, [])
+      assert [_ | _] = sizes
+      assert Enum.max(sizes) < 10_000
+    end
+
+    test "ensure_source_sup_started/1 returns start_timeout when the source lookup does not return",
+         %{source: source} do
+      Application.put_env(:logflare, :source_sup_start_timeout, 100)
+      on_exit(fn -> Application.delete_env(:logflare, :source_sup_start_timeout) end)
+      stub(Sources.Cache, :get_by_id_or_primary, fn _id -> Process.sleep(:infinity) end)
+
+      log =
+        capture_log(fn ->
+          assert {:error, :start_timeout} = Backends.ensure_source_sup_started(source)
+        end)
+
+      assert log =~ "SourceSup start timed out after 100ms"
+      refute Backends.source_sup_started?(source)
+    end
+
+    test "start_source_sup/1 returns start_timeout when prefetch does not return", %{
+      source: source
+    } do
+      Application.put_env(:logflare, :source_sup_start_timeout, 100)
+      on_exit(fn -> Application.delete_env(:logflare, :source_sup_start_timeout) end)
+      stub(SourceSup, :prefetch, fn _source -> Process.sleep(:infinity) end)
+
+      capture_log(fn ->
+        assert {:error, :start_timeout} = Backends.start_source_sup(source)
+      end)
+
+      refute Backends.source_sup_started?(source)
+    end
+
+    test "ingest_logs/4 writes nothing and returns source_unavailable when the start fails", %{
+      source: source
+    } do
+      stub_failing_child_spec()
+      reject(IngestEventQueue, :add_to_table, 2)
+
+      assert {:error, :source_unavailable} = Backends.ingest_logs([%{"message" => "x"}], source)
+    end
+
+    test "dispatch_from_spool/3 writes nothing and returns source_unavailable when the start fails",
+         %{source: source} do
+      stub_failing_child_spec()
+      reject(IngestEventQueue, :add_to_table, 2)
+
+      assert {:error, :source_unavailable} =
+               Backends.dispatch_from_spool([%{"message" => "x"}], source)
+    end
+
+    test "start_source_sup/1 starts a source when the cache holds nil for it", %{source: source} do
+      {:ok, true} = Cachex.put(Sources.Cache, {:get_by, [[id: source.id]]}, {:cached, nil})
+      assert Sources.Cache.get_by_id(source.id) == nil
+
+      assert :ok = Backends.start_source_sup(source)
+      assert Backends.source_sup_started?(source)
+      assert %Source{} = Sources.Cache.get_by_id(source.id)
+    end
+
+    test "start_source_sup/1 leaves no EXIT message in a caller that traps exits", %{
+      source: source
+    } do
+      Process.flag(:trap_exit, true)
+
+      assert :ok = Backends.start_source_sup(source)
+      refute_receive {:EXIT, _pid, _reason}, 100
     end
 
     test "prefetch/1 warms the cache keys read during initial startup", %{source: source} do
@@ -2737,6 +2977,43 @@ defmodule Logflare.BackendsTest do
 
       refute_receive {:broadcast, _events}
     end
+  end
+
+  defp collect_dispatch_sizes(courier, sizes) do
+    receive do
+      {:trace, ^courier, :receive, {:"$gen_call", _from, {:dispatch, _, _, _, _}} = message} ->
+        collect_dispatch_sizes(courier, [:erlang.external_size(message) | sizes])
+
+      {:trace, ^courier, :receive, _message} ->
+        collect_dispatch_sizes(courier, sizes)
+    after
+      0 -> sizes
+    end
+  end
+
+  defp start_with_blocked_children(source) do
+    test_pid = self()
+
+    stub(RateCounterServer, :start_link, fn args ->
+      send(test_pid, {:children_starting, self()})
+
+      receive do
+        :release -> call_original(RateCounterServer, :start_link, [args])
+      end
+    end)
+
+    task = Task.async(fn -> Backends.ensure_source_sup_started(source) end)
+    assert_receive {:children_starting, sup_pid}, 5_000
+    {task, sup_pid}
+  end
+
+  defp stub_failing_child_spec do
+    stub(SourceSup, :child_spec, fn received_source ->
+      %{
+        call_original(SourceSup, :child_spec, [received_source])
+        | start: {Function, :identity, [{:error, :boom}]}
+      }
+    end)
   end
 
   defp clickhouse_backend_attrs do

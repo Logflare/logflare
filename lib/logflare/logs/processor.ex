@@ -17,11 +17,27 @@ defmodule Logflare.Logs.Processor do
 
   @doc """
   Process `data` using `processor` to translate from incoming format to storage format.
+
+  The function first makes sure that the `SourceSup` of the source is up. That wait has a time
+  limit (see `Logflare.Backends.start_source_sup/1`). When the `SourceSup` is still not up after
+  the wait, the function does not ingest and returns `{:error, :source_unavailable}`. The write
+  is not certain then, so the caller must tell the client to send the batch again.
+
+  When the source was deleted after the caller loaded it, the function does not ingest and
+  returns `{:error, :source_not_found}`.
   """
   @spec ingest([map()], module(), Logflare.Sources.Source.t()) ::
-          :ok | {:ok, count :: pos_integer()} | {:error, term()}
+          :ok
+          | {:ok, count :: pos_integer()}
+          | {:error, :source_unavailable | :source_not_found | term()}
   def ingest(data, processor, %Source{} = source)
       when is_list(data) and is_atom(processor) do
+    with :ok <- Backends.start_for_ingest(source) do
+      process_and_store(data, processor, source)
+    end
+  end
+
+  defp process_and_store(data, processor, source) do
     metadata = %{
       processor: processor,
       source_token: source.token,
@@ -43,7 +59,6 @@ defmodule Logflare.Logs.Processor do
       )
 
       :telemetry.span([:logflare, :logs, :processor, :ingest, :store], metadata, fn ->
-        Backends.ensure_source_sup_started(source)
         # allow_spooling: true — this is the genuine client-submitted entry
         # point (every log_controller.ex/gRPC ingestion action funnels
         # through here), as opposed to SourceRouter's re-entrant calls,

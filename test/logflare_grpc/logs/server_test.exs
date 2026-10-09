@@ -41,6 +41,42 @@ defmodule LogflareGrpc.Logs.ServerTest do
 
       assert {:ok, %ExportLogsServiceResponse{}} = emulate_request(channel, request)
     end
+
+    test "returns NOT_FOUND when the source was deleted after the plug loaded it", %{
+      source: source,
+      user: user,
+      port: port
+    } do
+      Mimic.stub(Logflare.Backends, :start_for_ingest, fn _source ->
+        {:error, :source_not_found}
+      end)
+
+      access_token = insert(:access_token, resource_owner: user, scopes: "ingest")
+      headers = [{"x-api-key", access_token.token}, {"x-source", source.token}]
+      {:ok, channel} = GRPC.Stub.connect("localhost:#{port}", headers: headers)
+      not_found = GRPC.Status.not_found()
+
+      assert {:error, %GRPC.RPCError{status: ^not_found}} =
+               emulate_request(channel, TestUtilsGrpc.random_otel_logs_request())
+    end
+
+    test "returns UNAVAILABLE when the SourceSup does not start in time", %{
+      source: source,
+      user: user,
+      port: port
+    } do
+      Mimic.stub(Logflare.Backends, :start_for_ingest, fn _source ->
+        {:error, :source_unavailable}
+      end)
+
+      access_token = insert(:access_token, resource_owner: user, scopes: "ingest")
+      headers = [{"x-api-key", access_token.token}, {"x-source", source.token}]
+      {:ok, channel} = GRPC.Stub.connect("localhost:#{port}", headers: headers)
+      unavailable = GRPC.Status.unavailable()
+
+      assert {:error, %GRPC.RPCError{status: ^unavailable}} =
+               emulate_request(channel, TestUtilsGrpc.random_otel_logs_request())
+    end
   end
 
   defp emulate_request(channel, request) do

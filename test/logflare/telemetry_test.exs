@@ -179,6 +179,22 @@ defmodule Logflare.TelemetryTest do
       assert metric.tags == [:backend_id, :reason]
     end
 
+    test "defines routed copy drops as a reason-tagged counter" do
+      metric = ch_metric([:logflare, :sources, :source_router, :dropped, :count])
+
+      assert metric.event_name == [:logflare, :sources, :source_router, :dropped]
+      assert metric.measurement == :count
+      assert metric.tags == [:reason]
+    end
+
+    test "defines system log drops as a reason-tagged counter" do
+      metric = ch_metric([:logflare, :user_monitoring, :system_logs, :dropped, :count])
+
+      assert metric.event_name == [:logflare, :user_monitoring, :system_logs, :dropped]
+      assert metric.measurement == :count
+      assert metric.tags == [:reason]
+    end
+
     test "defines ClickHouse batch distribution and throughput metrics" do
       metrics = clickhouse_batch_metrics()
 

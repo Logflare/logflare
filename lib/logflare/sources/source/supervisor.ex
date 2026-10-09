@@ -156,6 +156,13 @@ defmodule Logflare.Sources.Source.Supervisor do
       {:error, {:already_started = reason, _pid}} ->
         {:error, reason}
 
+      {:error, :start_timeout} = err ->
+        init_table(source.token)
+        err
+
+      {:error, _reason} = err ->
+        err
+
       {:error} = err ->
         err
     end

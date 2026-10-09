@@ -69,14 +69,10 @@ defmodule LogflareWeb.LogChannel do
 
     # allow_spooling: true — a genuine client-submitted entry point, same as
     # the HTTP/gRPC controllers routed through Logflare.Logs.Processor.
-    case Backends.ingest_logs(batch, source, nil, true) do
-      {:ok, _count} ->
-        push(socket, "batch", %{message: "Handled batch"})
-        {:noreply, socket}
-
-      {:error, errors} ->
-        push(socket, "batch", %{message: "Batch error", errors: errors})
-        {:noreply, socket}
+    with :ok <- Backends.start_for_ingest(source) do
+      ingest_batch(batch, source, socket)
+    else
+      {:error, reason} -> reply_start_error(socket, reason)
     end
   end
 
@@ -100,6 +96,35 @@ defmodule LogflareWeb.LogChannel do
 
   def handle_info({:notify, payload}, socket) do
     push(socket, "notify", payload)
+    {:noreply, socket}
+  end
+
+  defp ingest_batch(batch, source, socket) do
+    case Backends.ingest_logs(batch, source, nil, true) do
+      {:ok, _count} ->
+        push(socket, "batch", %{message: "Handled batch"})
+        {:noreply, socket}
+
+      {:error, reason} when reason in [:source_not_found, :source_unavailable] ->
+        reply_start_error(socket, reason)
+
+      {:error, errors} ->
+        push(socket, "batch", %{message: "Batch error", errors: errors})
+        {:noreply, socket}
+    end
+  end
+
+  defp reply_start_error(socket, :source_not_found) do
+    push(socket, "batch", %{message: "Batch error", errors: ["Source not found."]})
+    {:noreply, socket}
+  end
+
+  defp reply_start_error(socket, :source_unavailable) do
+    push(socket, "batch", %{
+      message: "Batch error",
+      errors: ["Source is unavailable. Send the batch again."]
+    })
+
     {:noreply, socket}
   end
 end
