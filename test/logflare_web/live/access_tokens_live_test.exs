@@ -674,6 +674,79 @@ defmodule LogflareWeb.AccessTokensLiveTest do
     assert html =~ "private"
   end
 
+  test "token table renders each token row with its columns", %{conn: conn, user: user} do
+    source = insert(:source, user: user)
+    deleted_source_id = source.id + 1_000_000
+
+    token =
+      insert(:access_token,
+        description: "my token",
+        scopes: "ingest:source:#{source.id} ingest:source:#{deleted_source_id} query",
+        inserted_at: ~N[2026-10-07 18:12:34],
+        resource_owner: user
+      )
+
+    Logflare.Auth.persist_access_token_usage([{token.id, ~U[2026-10-08 18:24:56.123456Z]}])
+
+    undescribed_tokens =
+      for description <- [nil, ""] do
+        insert(:access_token,
+          description: description,
+          scopes: "ingest",
+          resource_owner: user
+        )
+      end
+
+    conn = put_connect_params(conn, %{"user_timezone" => "Australia/Brisbane"})
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+
+    row = "#access-tokens #access-token-#{token.id}"
+    assert has_element?(view, row, "my token")
+    refute has_element?(view, row, "No description")
+
+    assert has_element?(
+             view,
+             "#{row} [title='2026-10-07T18:12:34Z']",
+             "08 Oct 2026, 04:12:34 AM"
+           )
+
+    assert has_element?(
+             view,
+             "#{row} [title='2026-10-08T18:24:56Z']",
+             "09 Oct 2026, 04:24:56 AM"
+           )
+
+    refute has_element?(view, row, "Unknown")
+
+    for token <- undescribed_tokens do
+      assert has_element?(view, "#access-token-#{token.id}", "No description")
+      assert has_element?(view, "#access-token-#{token.id}", "Unknown")
+    end
+
+    assert has_element?(view, "#{row} .badge", "ingest (#{source.name})")
+    assert has_element?(view, "#{row} .badge", "ingest (deleted)")
+    assert has_element?(view, "#{row} .badge", "query (all)")
+    assert has_element?(view, "#{row} button", "Copy")
+  end
+
+  test "revoking a token removes it from the table", %{conn: conn, user: user} do
+    token = insert(:access_token, scopes: "ingest", resource_owner: user)
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+
+    revoke =
+      element(
+        view,
+        "#access-token-#{token.id} button[phx-click='revoke-token'][data-confirm='Are you sure? This cannot be undone.']",
+        "Revoke"
+      )
+
+    render_click(revoke)
+
+    refute has_element?(view, "#access-tokens")
+    assert render(view) =~ "Deprecated"
+    assert Logflare.Auth.list_valid_access_tokens(user) == []
+  end
+
   # returns the rendered table html
   defp do_ui_create_token(view, scopes) do
     assert view
