@@ -42,13 +42,18 @@ defmodule Logflare.Sources.SourceRouter do
   end
 
   defp do_routing(%Rule{sink: sink} = rule, %LE{} = le, _source) when sink != nil do
-    sink_source =
-      Sources.Cache.get_by(token: rule.sink) |> Sources.refresh_source_metrics_for_ingest()
+    Sources.Cache.get_by(token: rule.sink)
+    |> Sources.refresh_source_metrics_for_ingest()
+    |> case do
+      %Source{} = sink_source ->
+        le = %{le | source_id: sink_source.id, via_rule_id: rule.id}
 
-    le = %{le | source_id: sink_source.id, via_rule_id: rule.id}
+        Backends.ensure_source_sup_started(sink_source)
+        Backends.ingest_logs([le], sink_source)
 
-    Backends.ensure_source_sup_started(sink_source)
-    Backends.ingest_logs([le], sink_source)
+      nil ->
+        {:error, :sink_not_found}
+    end
   end
 
   defp do_routing(%Rule{sink: nil}, _le, _source) do

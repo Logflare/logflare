@@ -43,6 +43,9 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccess do
       {:ok, access_token, user} ->
         {:ok, access_token, user}
 
+      {:error, :database_unavailable} ->
+        {:error, GRPC.RPCError.exception(status: :unavailable)}
+
       {:error, _reason} ->
         {:error, GRPC.RPCError.exception(status: :permission_denied)}
     end

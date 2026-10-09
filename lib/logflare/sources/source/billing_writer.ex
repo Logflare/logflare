@@ -17,7 +17,7 @@ defmodule Logflare.Sources.Source.BillingWriter do
   def init(args) do
     source = Keyword.get(args, :source)
     write()
-    user = Users.Cache.get(source.user_id)
+    user = Users.Cache.get!(source.user_id)
     plan = Billing.Cache.get_plan_by_user(user)
 
     {:ok,

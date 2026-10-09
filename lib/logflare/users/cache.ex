@@ -37,6 +37,21 @@ defmodule Logflare.Users.Cache do
 
   def get(id), do: apply_repo_fun(__ENV__.function, [id])
 
+  @doc """
+  Same as `get/1` but raises when the user cannot be resolved.
+
+  For callers that cannot proceed without one - typically a process `init/1` -
+  so an uncached user during a database outage fails with the reason instead of
+  a `FunctionClauseError` further in.
+  """
+  @spec get!(integer()) :: Logflare.User.t()
+  def get!(id) do
+    case get(id) do
+      %Logflare.User{} = user -> user
+      other -> raise "user #{inspect(id)} could not be resolved: #{inspect(other)}"
+    end
+  end
+
   def get_by(keyword), do: apply_repo_fun(__ENV__.function, [keyword])
   def get_by_and_preload(keyword), do: apply_repo_fun(__ENV__.function, [keyword])
   def preload_defaults(user), do: apply_repo_fun(__ENV__.function, [user])

@@ -10,6 +10,14 @@ defmodule LogflareWeb.HealthCheckController do
   alias Logflare.Sources
   alias Logflare.System
 
+  @db_answered_key {__MODULE__, :db_answered_once?}
+
+  @doc """
+  Readiness probe: whether this node should receive traffic.
+
+  Does not check the primary database - ingest resolves everything it needs from
+  the context caches, so a node with an unreachable primary is still serving.
+  """
   def ready(conn, params) do
     if Readiness.ready?() do
       check(conn, params)
@@ -22,8 +30,16 @@ defmodule LogflareWeb.HealthCheckController do
     end
   end
 
+  @doc """
+  Liveness probe: whether this BEAM is healthy.
+
+  The primary database is only checked until it has answered once. A node that
+  has never reached it has cold caches and no way to warm them, so it must not
+  take traffic. Once it has, database availability stops being a liveness
+  concern: restarting cannot fix an unreachable database, and it discards the
+  caches ingest needs to ride out the outage.
+  """
   def check(conn, _params) do
-    repo_uptime = Logflare.Repo.get_uptime()
     caches = check_caches()
     memory_utilization = System.memory_utilization()
     max_memory_ratio = Application.get_env(:logflare, :health) |> Keyword.get(:memory_utilization)
@@ -31,8 +47,7 @@ defmodule LogflareWeb.HealthCheckController do
     common_checks_ok? =
       [
         Sources.ingest_ets_tables_started?(),
-        # checks that db can execute query and that repo is connected and up
-        repo_uptime > 0,
+        db_answered_once?(),
         Enum.all?(Map.values(caches), &(&1 == :ok)),
         memory_utilization < max_memory_ratio,
         Backends.spool_healthcheck_ok?()
@@ -61,7 +76,6 @@ defmodule LogflareWeb.HealthCheckController do
     response =
       status
       |> build_payload(
-        repo_uptime: repo_uptime,
         caches: caches,
         memory_utilization: if(memory_utilization < max_memory_ratio, do: :ok, else: :critical),
         spool_write_healthy: %{
@@ -77,7 +91,6 @@ defmodule LogflareWeb.HealthCheckController do
   end
 
   defp build_payload(status,
-         repo_uptime: repo_uptime,
          caches: caches,
          memory_utilization: memory_utilization,
          spool_write_healthy: spool_write_healthy
@@ -93,11 +106,21 @@ defmodule LogflareWeb.HealthCheckController do
       nodes: nodes,
       nodes_count: Enum.count(nodes),
       spool_write_healthy: spool_write_healthy,
-      repo_uptime: repo_uptime,
       caches: caches,
       memory_utilization: memory_utilization
     }
   end
+
+  defp db_answered_once? do
+    :persistent_term.get(@db_answered_key, false) or
+      with true <- db_reachable?(Logflare.Repo.get_uptime()) do
+        :persistent_term.put(@db_answered_key, true)
+        true
+      end
+  end
+
+  defp db_reachable?(%Decimal{} = uptime), do: Decimal.compare(uptime, 0) == :gt
+  defp db_reachable?(uptime) when is_number(uptime), do: uptime > 0
 
   defp check_caches do
     for cache <-
