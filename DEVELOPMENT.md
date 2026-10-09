@@ -178,7 +178,40 @@ make ssl.{prod|staging|telegraf}
 
 ## Release Management
 
-Logflare's `VERSION` file is bumped on each release.
+Use `scripts/bump-release` (Python 3, standard library only) to prepare a release:
+
+```bash
+# Preview, then update VERSION and helm/Chart.yaml appVersion.
+# The chart version receives a patch bump by default.
+scripts/bump-release 1.54.0 --dry-run
+scripts/bump-release 1.54.0
+
+# Override the chart version when a minor or major chart release is needed.
+scripts/bump-release 1.54.0 --chart-version 0.7.0
+
+# Release chart changes without changing the application version.
+scripts/bump-release --chart-only
+scripts/bump-release --chart-only --chart-version 0.7.0 --dry-run
+
+# Validate the current versions without writing files (also run in Helm CI).
+scripts/bump-release --check
+```
+
+The bump examples are alternatives, not a sequence. Versions must be stable
+`X.Y.Z` with no leading zeros; prerelease and build suffixes are not supported.
+Application and chart bumps must increase their respective versions. Existing
+`VERSION` / `appVersion` drift or malformed version fields fail before any
+writes; resolve the mismatch before bumping. The script works from any working
+directory when invoked by its path and preserves chart comments and unrelated
+fields. It does not modify `helm/values.yaml`: the default image tag already
+uses `appVersion`. Review the diff and commit the changes through the usual PR
+workflow; the script does not commit, tag, push, or publish a release.
+
+Run the dependency-free CLI tests with:
+
+```bash
+python3 -B -m unittest discover -s scripts -p test_bump_release.py -v
+```
 
 The `master` branch reflects what is on production on <https://logflare.app>
 
