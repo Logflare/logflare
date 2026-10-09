@@ -48,14 +48,31 @@ defmodule LogflareWeb.Helpers.BqSchema do
 
   @timestamp_format "%a %b %d %Y %H:%M:%S"
 
-  @spec format_timestamp(integer(), String.t() | nil, timestamp_format_opts()) :: String.t()
+  @spec format_timestamp(
+          integer() | DateTime.t() | NaiveDateTime.t(),
+          String.t() | nil,
+          timestamp_format_opts()
+        ) :: String.t()
   def format_timestamp(timestamp, search_timezone \\ nil, opts \\ [])
-      when is_integer(timestamp) do
-    format = Keyword.get(opts, :format, @timestamp_format)
 
+  def format_timestamp(timestamp, search_timezone, opts) when is_integer(timestamp) do
     timestamp
     |> Utils.to_microseconds()
     |> DateTime.from_unix!(:microsecond)
+    |> format_timestamp(search_timezone, opts)
+  end
+
+  def format_timestamp(%NaiveDateTime{} = timestamp, search_timezone, opts) do
+    timestamp
+    |> DateTime.from_naive!("Etc/UTC")
+    |> format_timestamp(search_timezone, opts)
+  end
+
+  def format_timestamp(%DateTime{} = timestamp, search_timezone, opts) do
+    format = Keyword.get(opts, :format, @timestamp_format)
+
+    timestamp
+    |> DateTime.shift_zone!("Etc/UTC")
     |> convert_timezone(search_timezone)
     |> Timex.format!(format, :strftime)
   end
