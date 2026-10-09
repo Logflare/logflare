@@ -8,6 +8,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryErrorNormalizer
   alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
   alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Endpoints
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.SingleTenant
@@ -418,6 +419,41 @@ defmodule LogflareWeb.EndpointsControllerTest do
                )
 
       {:ok, user: user, endpoint: endpoint}
+    end
+
+    for cache_duration <- [0, 60] do
+      @tag cache_duration_seconds: cache_duration
+      test "version-pinned requests apply current limits with cache duration #{cache_duration}",
+           %{
+             conn: conn,
+             endpoint: endpoint
+           } do
+        admin = insert(:user, admin: true)
+
+        assert {:ok, _} =
+                 Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, %{
+                   "max_execution_time" => 5
+                 })
+
+        Logflare.ContextCache.bust_keys([{Endpoints, endpoint.id}])
+
+        expect(ClickHouseAdaptor, :execute_query, fn _backend, query_args, _opts ->
+          sql = elem(query_args, 0)
+          assert sql =~ "'historical'"
+          assert sql =~ "max_execution_time = 5"
+
+          {:ok,
+           QueryResult.new([%{"versioned_value" => "historical"}], %{total_bytes_processed: 0})}
+        end)
+
+        response =
+          conn
+          |> put_req_header("lf-endpoint-version", "1")
+          |> get(~p"/endpoints/query/#{endpoint.token}")
+          |> json_response(200)
+
+        assert response["result"] == [%{"versioned_value" => "historical"}]
+      end
     end
 
     test "runs the requested endpoint version", %{

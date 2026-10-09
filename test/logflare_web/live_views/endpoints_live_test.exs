@@ -90,6 +90,131 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
   end
 
+  describe "enforced ClickHouse settings" do
+    test "only admins see and can save settings, including for another user's endpoint", %{
+      conn: conn
+    } do
+      admin = insert(:user, admin: true, endpoints_beta: true)
+      owner = insert(:user, endpoints_beta: true)
+      backend = insert(:backend, user: owner, type: :clickhouse)
+      endpoint = insert(:endpoint, user: owner, backend: backend, language: :ch_sql)
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(admin)
+        |> live_with_redirect(~p"/endpoints/#{endpoint.id}/edit")
+
+      assert has_element?(view, "#enforced-settings-form")
+      refute has_element?(view, "form#endpoint")
+
+      view
+      |> element("#enforced-settings-form")
+      |> render_submit(%{settings: %{max_rows_to_read: "100", max_execution_time: "5"}})
+
+      assert Logflare.Endpoints.get_endpoint_query(endpoint.id).enforced_clickhouse_settings == %{
+               "max_rows_to_read" => 100,
+               "max_execution_time" => 5,
+               "read_overflow_mode" => "throw"
+             }
+
+      html =
+        view
+        |> element("#enforced-settings-form")
+        |> render_submit(%{settings: %{max_rows_to_read: "0"}})
+
+      assert html =~ "Invalid enforced ClickHouse setting"
+
+      assert Logflare.Endpoints.get_endpoint_query(endpoint.id).enforced_clickhouse_settings[
+               "max_rows_to_read"
+             ] == 100
+
+      view
+      |> element("#enforced-settings-form")
+      |> render_submit(%{settings: %{max_rows_to_read: "", max_execution_time: ""}})
+
+      assert Logflare.Endpoints.get_endpoint_query(endpoint.id).enforced_clickhouse_settings ==
+               %{}
+    end
+
+    test "admin endpoint owners can edit the endpoint and its protected limits", %{conn: conn} do
+      admin = insert(:user, admin: true, endpoints_beta: true)
+      backend = insert(:backend, user: admin, type: :clickhouse)
+      endpoint = insert(:endpoint, user: admin, backend: backend, language: :ch_sql)
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(admin)
+        |> live_with_redirect(~p"/endpoints/#{endpoint.id}/edit")
+
+      assert has_element?(view, "form#endpoint")
+      assert has_element?(view, "#enforced-settings-form")
+    end
+
+    test "revoking admin access prevents saves even in an open edit view", %{conn: conn} do
+      admin = insert(:user, admin: true, endpoints_beta: true)
+      backend = insert(:backend, user: admin, type: :clickhouse)
+      endpoint = insert(:endpoint, user: admin, backend: backend, language: :ch_sql)
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(admin)
+        |> live_with_redirect(~p"/endpoints/#{endpoint.id}/edit")
+
+      assert has_element?(view, "#enforced-settings-form")
+      admin |> Ecto.Changeset.change(admin: false) |> Logflare.Repo.update!()
+
+      html =
+        render_hook(view, "save-enforced-settings", %{
+          "settings" => %{"max_rows_to_read" => "100"}
+        })
+
+      assert html =~ "Not authorized to configure ClickHouse settings"
+
+      assert Logflare.Endpoints.get_endpoint_query(endpoint.id).enforced_clickhouse_settings ==
+               %{}
+    end
+
+    test "ordinary endpoint owners cannot see or forge changes to enforced settings", %{
+      conn: conn,
+      user: user
+    } do
+      backend = insert(:backend, user: user, type: :clickhouse)
+      endpoint = insert(:endpoint, user: user, backend: backend, language: :ch_sql)
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/endpoints/#{endpoint.id}/edit")
+
+      refute has_element?(view, "#enforced-settings-form")
+
+      html =
+        render_hook(view, "save-enforced-settings", %{
+          "settings" => %{"max_rows_to_read" => "100"}
+        })
+
+      assert html =~ "Not authorized to configure ClickHouse settings"
+
+      assert Logflare.Endpoints.get_endpoint_query(endpoint.id).enforced_clickhouse_settings ==
+               %{}
+
+      view
+      |> element("form#endpoint")
+      |> render_submit(%{endpoint: %{enforced_clickhouse_settings: %{"max_rows_to_read" => 100}}})
+
+      assert Logflare.Endpoints.get_endpoint_query(endpoint.id).enforced_clickhouse_settings ==
+               %{}
+    end
+
+    test "admin settings form is absent for non-ClickHouse endpoints", %{conn: conn, user: user} do
+      admin = insert(:user, admin: true, endpoints_beta: true)
+      endpoint = insert(:endpoint, user: user)
+
+      {:ok, view, _html} =
+        conn
+        |> login_user(admin)
+        |> live_with_redirect(~p"/endpoints/#{endpoint.id}/edit")
+
+      refute has_element?(view, "#enforced-settings-form")
+    end
+  end
+
   describe "with existing endpoint" do
     setup %{user: user} do
       {:ok, endpoint: insert(:endpoint, user: user)}
