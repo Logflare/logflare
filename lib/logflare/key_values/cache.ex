@@ -1,7 +1,8 @@
 defmodule Logflare.KeyValues.Cache do
   @moduledoc false
 
-  use Logflare.ContextCache
+  @behaviour Logflare.Cache
+  @behaviour Logflare.ContextCache
 
   alias Logflare.Cache.CachexOps
   alias Logflare.ContextCache
@@ -17,6 +18,9 @@ defmodule Logflare.KeyValues.Cache do
       warmer: {KeyValues.CacheWarmer, interval: :timer.hours(1)}
     )
   end
+
+  @impl Logflare.Cache
+  def healthy?, do: CachexOps.healthy?(__MODULE__)
 
   @spec count(integer()) :: non_neg_integer()
   def count(user_id) do

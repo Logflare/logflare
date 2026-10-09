@@ -1,33 +1,39 @@
 defmodule Logflare.CacheTest do
   use ExUnit.Case, async: true
 
-  defmodule RecordingImpl do
-    @behaviour Logflare.Cache.Ops
+  alias Logflare.Cache
+  alias Logflare.Cache.CachexOps
 
-    @impl true
-    def healthy?(cache), do: record({:healthy?, cache}, true)
-    @impl true
-    def stats(cache), do: record({:stats, cache}, %{})
-    @impl true
-    def reset(cache), do: record({:reset, cache}, :ok)
-
-    defp record(call, result) do
-      send(self(), call)
-      result
-    end
+  defmodule DefaultCache do
+    @behaviour Logflare.Cache
   end
 
-  defmodule CustomImplCache do
-    use Logflare.Cache, impl: RecordingImpl
+  defmodule CustomCache do
+    @behaviour Logflare.Cache
+
+    @impl true
+    def healthy?, do: false
+    @impl true
+    def stats, do: %{hits: 42}
+    @impl true
+    def reset, do: send(self(), :reset) && :ok
   end
 
-  test "cache with a custom impl module" do
-    assert CustomImplCache.healthy?()
-    assert %{} = CustomImplCache.stats()
-    assert :ok = CustomImplCache.reset()
+  test "cache without callbacks" do
+    start_supervised!(CachexOps.child_spec(DefaultCache, limit: nil))
+    Cachex.put(DefaultCache, :key, :value)
+    Cachex.get(DefaultCache, :key)
 
-    assert_received {:healthy?, CustomImplCache}
-    assert_received {:stats, CustomImplCache}
-    assert_received {:reset, CustomImplCache}
+    assert Cache.healthy?(DefaultCache)
+    assert %{hits: 1} = Cache.stats(DefaultCache)
+    assert :ok = Cache.reset(DefaultCache)
+    assert {:ok, 0} = Cachex.size(DefaultCache)
+  end
+
+  test "cache implementing the callbacks" do
+    refute Cache.healthy?(CustomCache)
+    assert %{hits: 42} = Cache.stats(CustomCache)
+    assert :ok = Cache.reset(CustomCache)
+    assert_received :reset
   end
 end

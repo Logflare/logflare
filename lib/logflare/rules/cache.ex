@@ -1,7 +1,8 @@
 defmodule Logflare.Rules.Cache do
   @moduledoc false
 
-  use Logflare.ContextCache
+  @behaviour Logflare.Cache
+  @behaviour Logflare.ContextCache
 
   alias Logflare.Backends.Backend
   alias Logflare.Cache.CachexOps
@@ -18,6 +19,9 @@ defmodule Logflare.Rules.Cache do
       warmer: Rules.CacheWarmer
     )
   end
+
+  @impl Logflare.Cache
+  def healthy?, do: CachexOps.healthy?(__MODULE__)
 
   @spec list_rules(Source.t() | Backend.t()) :: [Rules.Rule.t()]
   def list_rules(%Source{id: source_id}), do: list_by_source_id(source_id)

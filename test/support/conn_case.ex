@@ -79,7 +79,7 @@ defmodule LogflareWeb.ConnCase do
         end)
 
         caches = Logflare.ContextCache.Supervisor.list_caches()
-        Enum.each(caches, & &1.reset())
+        Enum.each(caches, &Logflare.Cache.reset/1)
 
         on_exit(fn ->
           IngestEventQueue.delete_all_mappings()

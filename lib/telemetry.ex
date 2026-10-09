@@ -863,7 +863,7 @@ defmodule Logflare.Telemetry do
 
   def cachex_metrics do
     Enum.each(@caches, fn {cache, metric} ->
-      :telemetry.execute([:cachex, metric], cache.stats())
+      :telemetry.execute([:cachex, metric], Logflare.Cache.stats(cache))
     end)
   end
 

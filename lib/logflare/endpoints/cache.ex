@@ -3,7 +3,8 @@ defmodule Logflare.Endpoints.Cache do
   Cachex for Endpoints context.
   """
 
-  use Logflare.ContextCache
+  @behaviour Logflare.Cache
+  @behaviour Logflare.ContextCache
 
   alias Logflare.Cache.CachexOps
   alias Logflare.Endpoints
@@ -15,6 +16,9 @@ defmodule Logflare.Endpoints.Cache do
       purge_interval: to_timeout(minute: 1)
     )
   end
+
+  @impl Logflare.Cache
+  def healthy?, do: CachexOps.healthy?(__MODULE__)
 
   def get_endpoint_query(kw), do: apply_repo_fun(:get_endpoint_query, [kw])
 

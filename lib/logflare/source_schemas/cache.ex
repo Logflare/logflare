@@ -1,7 +1,8 @@
 defmodule Logflare.SourceSchemas.Cache do
   @moduledoc false
 
-  use Logflare.ContextCache
+  @behaviour Logflare.Cache
+  @behaviour Logflare.ContextCache
 
   alias Logflare.Cache.CachexOps
   alias Logflare.SourceSchemas
@@ -14,6 +15,9 @@ defmodule Logflare.SourceSchemas.Cache do
       warmer: SourceSchemas.CacheWarmer
     )
   end
+
+  @impl Logflare.Cache
+  def healthy?, do: CachexOps.healthy?(__MODULE__)
 
   def get_source_schema_by(kv), do: apply_fun(__ENV__.function, [kv])
 

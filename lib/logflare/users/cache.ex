@@ -3,7 +3,8 @@ defmodule Logflare.Users.Cache do
   Cache for users.
   """
 
-  use Logflare.ContextCache
+  @behaviour Logflare.Cache
+  @behaviour Logflare.ContextCache
 
   alias Logflare.Cache.CachexOps
   alias Logflare.Users
@@ -16,6 +17,9 @@ defmodule Logflare.Users.Cache do
       warmer: Users.CacheWarmer
     )
   end
+
+  @impl Logflare.Cache
+  def healthy?, do: CachexOps.healthy?(__MODULE__)
 
   def update(user),
     do: Logflare.ContextCache.update(Users, :get, [user.id], user)

@@ -3,12 +3,16 @@ defmodule Logflare.Partners.Cache do
   Cache for Partners
   """
 
-  use Logflare.ContextCache
+  @behaviour Logflare.Cache
+  @behaviour Logflare.ContextCache
 
   alias Logflare.Cache.CachexOps
   alias Logflare.Partners
 
   def child_spec(_), do: CachexOps.child_spec(__MODULE__, limit: 100_000)
+
+  @impl Logflare.Cache
+  def healthy?, do: CachexOps.healthy?(__MODULE__)
 
   def get_partner(id), do: apply_repo_fun(__ENV__.function, [id])
   def get_user_by_uuid(partner, token), do: apply_repo_fun(__ENV__.function, [partner, token])

@@ -6,9 +6,6 @@ defmodule Logflare.Cache.CachexOps do
   Context cache values are stored as `{:cached, value}`, because Cachex treats a stored `nil` as a miss.
   """
 
-  @behaviour Logflare.Cache.Ops
-  @behaviour Logflare.ContextCache.Ops
-
   import Cachex.Spec
 
   alias Logflare.ContextCache.Gossip
@@ -68,14 +65,12 @@ defmodule Logflare.Cache.CachexOps do
   @spec stats_enabled?() :: boolean()
   def stats_enabled?, do: Application.get_env(:logflare, :cache_stats, false)
 
-  @impl Logflare.Cache.Ops
   @spec healthy?(Cachex.t()) :: boolean()
   def healthy?(cache), do: match?({:ok, _}, Cachex.size(cache))
 
   @doc """
   Raises when the cache runs without the stats hook.
   """
-  @impl Logflare.Cache.Ops
   @spec stats(Cachex.t()) :: Logflare.Cache.stats()
   def stats(cache) do
     {:ok, stats} = Cachex.stats(cache)
@@ -92,7 +87,6 @@ defmodule Logflare.Cache.CachexOps do
     end
   end
 
-  @impl Logflare.Cache.Ops
   @spec reset(Cachex.t()) :: :ok
   def reset(cache) do
     {:ok, true} = Cachex.reset(cache, hooks: [Cachex.Stats])
@@ -106,7 +100,6 @@ defmodule Logflare.Cache.CachexOps do
 
   It scans the cache with a match spec instead of keeping a reverse index of primary keys.
   """
-  @impl Logflare.ContextCache.Ops
   @spec keys_to_bust(Cachex.t(), keyword()) :: Enumerable.t()
   def keys_to_bust(cache, id: pkey) do
     filter =
@@ -149,7 +142,6 @@ defmodule Logflare.Cache.CachexOps do
   A miss is also multicast to peer nodes, see `Logflare.ContextCache.Gossip`. Accepts a Cachex
   worker, so calls can be batched in `Cachex.execute/2`.
   """
-  @impl Logflare.ContextCache.Ops
   @spec fetch(Cachex.t(), term(), (-> term())) :: term()
   def fetch(cache, key, getter) do
     case Cachex.fetch(cache, key, fn _key -> {:commit, {:cached, getter.()}} end) do
@@ -162,7 +154,6 @@ defmodule Logflare.Cache.CachexOps do
     end
   end
 
-  @impl Logflare.ContextCache.Ops
   @spec update(Cachex.t(), term(), term()) :: :ok
   def update(cache, key, value) do
     {:ok, _updated?} = Cachex.update(cache, key, {:cached, value})
@@ -172,7 +163,6 @@ defmodule Logflare.Cache.CachexOps do
   @doc """
   Deletes `keys` and returns how many of them were present.
   """
-  @impl Logflare.ContextCache.Ops
   @spec delete_keys(Cachex.t(), Enumerable.t()) :: {:ok, non_neg_integer()}
   def delete_keys(cache, keys) do
     Cachex.execute(cache, fn worker ->

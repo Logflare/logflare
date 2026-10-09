@@ -1,7 +1,8 @@
 defmodule Logflare.Sources.Cache do
   @moduledoc false
 
-  use Logflare.ContextCache
+  @behaviour Logflare.Cache
+  @behaviour Logflare.ContextCache
 
   alias Logflare.Cache.CachexOps
   alias Logflare.Sources
@@ -15,6 +16,9 @@ defmodule Logflare.Sources.Cache do
       warmer: Sources.CacheWarmer
     )
   end
+
+  @impl Logflare.Cache
+  def healthy?, do: CachexOps.healthy?(__MODULE__)
 
   def get_by_for_ingest(kv) do
     case get_by(kv) do

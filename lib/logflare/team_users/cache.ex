@@ -3,12 +3,16 @@ defmodule Logflare.TeamUsers.Cache do
   Cache for TeamUsers.
   """
 
-  use Logflare.ContextCache
+  @behaviour Logflare.Cache
+  @behaviour Logflare.ContextCache
 
   alias Logflare.Cache.CachexOps
   alias Logflare.TeamUsers
 
   def child_spec(_), do: CachexOps.child_spec(__MODULE__, limit: 100_000)
+
+  @impl Logflare.Cache
+  def healthy?, do: CachexOps.healthy?(__MODULE__)
 
   def get_team_user(id), do: apply_repo_fun({:get_team_user, 1}, [id])
   def get_team_user!(id), do: apply_repo_fun(:get_team_user!, [id])

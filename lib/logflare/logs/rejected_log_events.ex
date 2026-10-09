@@ -22,7 +22,7 @@ defmodule Logflare.Logs.RejectedLogEvents do
   ```
   """
 
-  use Logflare.Cache
+  @behaviour Logflare.Cache
 
   alias Logflare.Cache.CachexOps
   alias Logflare.Sources.Source
@@ -38,6 +38,9 @@ defmodule Logflare.Logs.RejectedLogEvents do
       purge_interval: to_timeout(minute: 5)
     )
   end
+
+  @impl Logflare.Cache
+  def healthy?, do: CachexOps.healthy?(__MODULE__)
 
   @spec get_by_source(Source.t()) :: list(LE.t())
   def get_by_source(%Source{token: token}) do

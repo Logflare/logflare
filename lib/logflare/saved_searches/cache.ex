@@ -1,12 +1,16 @@
 defmodule Logflare.SavedSearches.Cache do
   @moduledoc false
 
-  use Logflare.ContextCache
+  @behaviour Logflare.Cache
+  @behaviour Logflare.ContextCache
 
   alias Logflare.Cache.CachexOps
   alias Logflare.SavedSearches
 
   def child_spec(_), do: CachexOps.child_spec(__MODULE__, limit: 10_000)
+
+  @impl Logflare.Cache
+  def healthy?, do: CachexOps.healthy?(__MODULE__)
 
   def list_saved_searches_by_source(source_id), do: apply_repo_fun(__ENV__.function, [source_id])
 

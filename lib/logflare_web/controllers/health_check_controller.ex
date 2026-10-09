@@ -106,7 +106,7 @@ defmodule LogflareWeb.HealthCheckController do
               Logflare.Logs.LogEvents.Cache
             ],
         into: %{} do
-      {cache, if(cache.healthy?(), do: :ok, else: :unhealthy)}
+      {cache, if(Logflare.Cache.healthy?(cache), do: :ok, else: :unhealthy)}
     end
   end
 end

@@ -2,9 +2,8 @@ defmodule Logflare.Cache do
   @moduledoc """
   Operational contract of an application cache, independent of its storage backend.
 
-  `use Logflare.Cache` injects default implementations of every callback, delegating to
-  `Logflare.Cache.CachexOps`. A cache on another backend overrides them, or passes
-  `impl: module` naming a `Logflare.Cache.Ops` implementation.
+  Every callback is optional. Generic code calls the functions of this module, which fall back to
+  `Logflare.Cache.CachexOps` for callbacks the cache does not implement.
   """
 
   alias Logflare.Cache.CachexOps
@@ -31,22 +30,25 @@ defmodule Logflare.Cache do
   @doc "Clears all entries and statistics."
   @callback reset() :: :ok
 
-  defmacro __using__(opts) do
-    impl = Keyword.get(opts, :impl, CachexOps)
+  @optional_callbacks healthy?: 0, stats: 0, reset: 0
 
-    quote do
-      @behaviour Logflare.Cache
+  @spec healthy?(module()) :: boolean()
+  def healthy?(cache), do: dispatch(cache, :healthy?, [])
 
-      @impl Logflare.Cache
-      def healthy?, do: unquote(impl).healthy?(__MODULE__)
+  @spec stats(module()) :: stats()
+  def stats(cache), do: dispatch(cache, :stats, [])
 
-      @impl Logflare.Cache
-      def stats, do: unquote(impl).stats(__MODULE__)
+  @spec reset(module()) :: :ok
+  def reset(cache), do: dispatch(cache, :reset, [])
 
-      @impl Logflare.Cache
-      def reset, do: unquote(impl).reset(__MODULE__)
-
-      defoverridable healthy?: 0, stats: 0, reset: 0
-    end
+  @doc """
+  Calls `fun` on `cache` when the cache implements it, otherwise the `Logflare.Cache.CachexOps`
+  function of the same name with `cache` prepended to `args`.
+  """
+  @spec dispatch(module(), atom(), list()) :: term()
+  def dispatch(cache, fun, args) do
+    if Code.ensure_loaded?(cache) and function_exported?(cache, fun, length(args)),
+      do: apply(cache, fun, args),
+      else: apply(CachexOps, fun, [cache | args])
   end
 end

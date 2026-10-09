@@ -1,7 +1,7 @@
 defmodule Logflare.SystemCache do
   @moduledoc false
 
-  use Logflare.Cache
+  @behaviour Logflare.Cache
 
   require Logger
 
@@ -22,6 +22,9 @@ defmodule Logflare.SystemCache do
       warmer: warmer
     )
   end
+
+  @impl Logflare.Cache
+  def healthy?, do: CachexOps.healthy?(__MODULE__)
 
   @spec memory_utilization() :: float()
   def memory_utilization do

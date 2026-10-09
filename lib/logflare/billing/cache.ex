@@ -1,7 +1,8 @@
 defmodule Logflare.Billing.Cache do
   @moduledoc false
 
-  use Logflare.ContextCache
+  @behaviour Logflare.Cache
+  @behaviour Logflare.ContextCache
 
   alias Logflare.Billing
   alias Logflare.Cache.CachexOps
@@ -13,6 +14,9 @@ defmodule Logflare.Billing.Cache do
       purge_interval: to_timeout(minute: 10)
     )
   end
+
+  @impl Logflare.Cache
+  def healthy?, do: CachexOps.healthy?(__MODULE__)
 
   def get_billing_account_by(keyword) do
     apply_fun(__ENV__.function, [keyword])

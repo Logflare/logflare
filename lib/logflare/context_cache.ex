@@ -8,14 +8,13 @@ defmodule Logflare.ContextCache do
 
   ## Implementation
 
-  `use Logflare.ContextCache` makes the module a `Logflare.Cache` and injects overridable defaults
-  for `c:fetch/2`, `c:update/2` and `c:bust_by/1`. They delegate to a `Logflare.ContextCache.Ops`
-  module, `Logflare.Cache.CachexOps` unless `impl: module` is given.
+  A context cache implements both this behaviour and `Logflare.Cache`. Every callback is optional;
+  `Logflare.Cache.CachexOps` handles the ones a cache does not implement.
 
   ## Busting
 
   `bust_keys/1` busts entries by primary key or by a keyword of fields. Caches that need busting
-  keys other than `id:` override `c:keys_to_bust/1`.
+  keys other than `id:` implement `c:keys_to_bust/1` themselves.
 
   ## Memoization
 
@@ -23,8 +22,6 @@ defmodule Logflare.ContextCache do
   library. See `Logflare.Auth.Cache` for an example, where the cache's own expiration is the only
   invalidation.
   """
-
-  alias Logflare.Cache.CachexOps
 
   @doc """
   Returns the keys of the entries to bust for a keyword of values.
@@ -46,37 +43,14 @@ defmodule Logflare.ContextCache do
   """
   @callback update(key :: term(), value :: term()) :: :ok
 
-  defmacro __using__(opts) do
-    impl = Keyword.get(opts, :impl, CachexOps)
-
-    quote do
-      use Logflare.Cache, unquote(opts)
-
-      @behaviour Logflare.ContextCache
-
-      @impl Logflare.ContextCache
-      def keys_to_bust(kw), do: unquote(impl).keys_to_bust(__MODULE__, kw)
-
-      @impl Logflare.ContextCache
-      def delete_keys(keys), do: unquote(impl).delete_keys(__MODULE__, keys)
-
-      @impl Logflare.ContextCache
-      def fetch(key, getter), do: unquote(impl).fetch(__MODULE__, key, getter)
-
-      @impl Logflare.ContextCache
-      def update(key, value), do: unquote(impl).update(__MODULE__, key, value)
-
-      defoverridable keys_to_bust: 1, delete_keys: 1, fetch: 2, update: 2
-    end
-  end
+  @optional_callbacks keys_to_bust: 1, delete_keys: 1, fetch: 2, update: 2
 
   @spec apply_fun(module(), tuple() | atom(), list()) :: any()
   def apply_fun(context, {fun, _arity}, args), do: apply_fun(context, fun, args)
 
   def apply_fun(context, fun, args) when is_atom(fun) do
-    cache_name(context).fetch({fun, args}, fn ->
-      Logflare.Repo.apply_with_replica(context, fun, args)
-    end)
+    getter = fn -> Logflare.Repo.apply_with_replica(context, fun, args) end
+    Logflare.Cache.dispatch(cache_name(context), :fetch, [{fun, args}, getter])
   end
 
   @doc """
@@ -84,7 +58,7 @@ defmodule Logflare.ContextCache do
   """
   @spec update(module(), atom(), list(), term()) :: :ok
   def update(context, fun, args, value) when is_atom(fun) do
-    cache_name(context).update({fun, args}, value)
+    Logflare.Cache.dispatch(cache_name(context), :update, [{fun, args}, value])
   end
 
   @doc """
@@ -109,7 +83,8 @@ defmodule Logflare.ContextCache do
 
   defp bust_key(context, kw) when is_list(kw) do
     cache = cache_name(context)
-    cache.delete_keys(cache.keys_to_bust(kw))
+    keys = Logflare.Cache.dispatch(cache, :keys_to_bust, [kw])
+    Logflare.Cache.dispatch(cache, :delete_keys, [keys])
   end
 
   defp bust_key(context, pkey), do: bust_key(context, id: pkey)
