@@ -720,8 +720,8 @@ defmodule LogflareWeb.LogControllerTest do
 
   defp warm_caches(%{user: user, source: source}) do
     # hit the caches
-    Sources.Cache.get_by_and_preload_rules(token: Atom.to_string(source.token))
-    Sources.Cache.get_by_and_preload_rules(name: source.name, user_id: user.id)
+    Sources.Cache.get_by_for_ingest(token: Atom.to_string(source.token))
+    Sources.Cache.get_by_for_ingest(name: source.name, user_id: user.id)
     Sources.Cache.get_source_by_token(source.token)
     Sources.Cache.get_by_id(source.id)
     Users.Cache.get(user.id)
@@ -744,7 +744,6 @@ defmodule LogflareWeb.LogControllerTest do
     # Allow Sources.get_by/1 to be called by background processes (like the SourceSupWorker)
     # but stub it to return nil to avoid actual database calls
     stub(Sources, :get_by, fn _ -> nil end)
-    reject(&Sources.get_by_and_preload_rules/1)
     reject(&Sources.preload_defaults/1)
     reject(&Users.get/1)
     reject(&Users.get_by/1)

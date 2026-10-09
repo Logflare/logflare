@@ -402,13 +402,6 @@ defmodule Logflare.Sources do
     end
   end
 
-  def get_by_and_preload_rules(kv) do
-    case get_by(kv) do
-      nil -> nil
-      source -> Repo.preload(source, :rules)
-    end
-  end
-
   @spec preload_defaults(Source.t()) :: Source.t()
   def preload_defaults(source) do
     source

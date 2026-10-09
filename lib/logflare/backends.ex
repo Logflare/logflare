@@ -39,6 +39,7 @@ defmodule Logflare.Backends do
 
   @max_future_event_us 1 * 3_600 * 1_000_000
   @max_pending_buffer_len_per_queue IngestEventQueue.max_queue_size()
+  @max_pipeline_swap_delay_ms 5_000
 
   @type one_or_list_or_nil :: Backend.t() | [Backend.t()] | nil
 
@@ -358,7 +359,7 @@ defmodule Logflare.Backends do
 
         Enum.each(updated.sources, &restart_source_sup(&1))
 
-        maybe_restart_consolidated_pipeline(updated)
+        apply_consolidated_pipeline_change(backend, updated, default_ingest_modified?)
 
         if config_modified?, do: Adaptor.on_backend_config_changed(updated)
 
@@ -926,7 +927,7 @@ defmodule Logflare.Backends do
       IngestEventQueue.add_to_table({:consolidated, backend.id}, log_events)
 
       :telemetry.execute(
-        [:logflare, :backends, :ingest, :count],
+        [:logflare, :backends, :ingest, :dispatch],
         %{count: length(log_events)},
         %{backend_type: backend.type}
       )
@@ -949,7 +950,7 @@ defmodule Logflare.Backends do
       IngestEventQueue.add_to_table(queue_key, log_events)
 
       :telemetry.execute(
-        [:logflare, :backends, :ingest, :count],
+        [:logflare, :backends, :ingest, :dispatch],
         %{count: length(log_events)},
         %{backend_type: backend.type}
       )
@@ -1178,6 +1179,58 @@ defmodule Logflare.Backends do
     end
 
     :ok
+  end
+
+  @spec apply_consolidated_pipeline_change(Backend.t(), Backend.t(), boolean()) :: :ok
+  defp apply_consolidated_pipeline_change(backend, updated, default_ingest_modified?) do
+    updated = typecast_config_string_map_to_atom_map(updated)
+    pipeline_keys = Adaptor.pipeline_config_keys(updated)
+    runtime_keys = Adaptor.runtime_config_keys(updated)
+
+    changes =
+      backend
+      |> typecast_config_string_map_to_atom_map()
+      |> changed_config_keys(updated)
+
+    pipeline_changes = Enum.filter(changes, &(&1 in pipeline_keys))
+    other_changes = Enum.reject(changes, &(&1 in pipeline_keys or &1 in runtime_keys))
+
+    if default_ingest_modified? or other_changes != [] or changes == [] do
+      maybe_restart_consolidated_pipeline(updated)
+    end
+
+    if pipeline_changes != [] do
+      Cluster.Utils.rpc_multicast(__MODULE__, :replace_pipelines_after_delay, [updated.id])
+    end
+
+    :ok
+  end
+
+  @doc false
+  @spec replace_pipelines_after_delay(pos_integer()) :: :ok | {:error, term()}
+  def replace_pipelines_after_delay(backend_id) when is_integer(backend_id) do
+    Process.sleep(pipeline_swap_delay_ms())
+    replace_pipelines_with_latest(backend_id)
+  end
+
+  @doc false
+  @spec replace_pipelines_with_latest(integer()) :: :ok | {:error, term()}
+  def replace_pipelines_with_latest(backend_id) when is_integer(backend_id) do
+    case get_backend(backend_id) do
+      nil -> :ok
+      backend -> Adaptor.replace_pipelines(backend)
+    end
+  end
+
+  @doc false
+  @spec pipeline_swap_delay_ms() :: non_neg_integer()
+  def pipeline_swap_delay_ms, do: :rand.uniform(@max_pipeline_swap_delay_ms + 1) - 1
+
+  @spec changed_config_keys(Backend.t(), Backend.t()) :: [atom()]
+  defp changed_config_keys(%Backend{config: before}, %Backend{config: after_update}) do
+    (Map.keys(before) ++ Map.keys(after_update))
+    |> Enum.uniq()
+    |> Enum.reject(&(Map.get(before, &1) == Map.get(after_update, &1)))
   end
 
   @doc """

@@ -32,7 +32,7 @@ defmodule LogflareWeb.LogChannel do
   def join(source_uuid, socket) do
     user = socket.assigns[:user]
 
-    case Sources.Cache.get_by_and_preload_rules(token: source_uuid) do
+    case Sources.Cache.get_by_for_ingest(token: source_uuid) do
       %Source{} when is_nil(user) ->
         {:error, %{reason: "Not authorized!"}}
 

@@ -27,7 +27,7 @@ defmodule Logflare.SourcesCacheTest do
       assert length(left_source.rules) == 2
     end
 
-    test "get_by_and_preload_rules/1 populates transform parsed virtuals" do
+    test "get_by_for_ingest/1 populates transform parsed virtuals" do
       user = insert(:user)
 
       source =
@@ -48,7 +48,7 @@ defmodule Logflare.SourcesCacheTest do
                  ["metadata", "routing", "region"]
                ],
                transform_key_values_parsed: [_ | _]
-             } = get_by_and_preload_rules(token: source.token)
+             } = get_by_for_ingest(token: source.token)
     end
   end
 end

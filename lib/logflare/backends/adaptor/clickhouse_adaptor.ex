@@ -43,6 +43,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @min_pipelines 1
   @resolve_interval 10_000
   @scaling_threshold 15_000
+  @pipeline_shutdown_ms 30_000
+  @min_batch_size 1_000
+  @min_batch_timeout_ms 1_000
+  @max_batch_timeout_ms 30_000
+  @pipeline_config_keys [:batch_size, :batch_timeout]
+  @runtime_config_keys [
+    :use_async_inserts_for_small_batches,
+    :use_async_inserts_only,
+    :async_insert_max_rows,
+    :async_insert_cluster_url,
+    :read_pool_size,
+    :labeled_read_pool_size,
+    :read_only_urls,
+    :default_read_cluster,
+    :query_user,
+    :query_password,
+    :replica_routing_param
+  ]
   @async_insert_busy_timeout_max_ms 3_000
   @insert_max_execution_time_seconds 10
   @max_read_pool_size 4096
@@ -77,6 +95,30 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @impl Logflare.Backends.Adaptor
   def on_backend_deleted(%Backend{id: backend_id}) do
     QueryConnectionSup.terminate_backend(backend_id)
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def pipeline_config_keys, do: @pipeline_config_keys
+
+  @impl Logflare.Backends.Adaptor
+  def runtime_config_keys, do: @runtime_config_keys
+
+  @impl Logflare.Backends.Adaptor
+  def replace_pipelines(%Backend{id: backend_id} = backend) do
+    name = Backends.via_backend(backend, Pipeline)
+
+    case GenServer.whereis(name) do
+      nil -> :ok
+      _pid -> DynamicPipeline.replace_pipelines(name, fn -> latest_pipeline_args(backend_id) end)
+    end
+  end
+
+  @spec latest_pipeline_args(pos_integer()) :: keyword() | nil
+  defp latest_pipeline_args(backend_id) do
+    case Backends.get_backend(backend_id) do
+      nil -> nil
+      backend -> [backend: backend]
+    end
   end
 
   @doc false
@@ -117,8 +159,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         :read_only_urls,
         :default_read_cluster,
         :use_async_inserts_for_small_batches,
+        :use_async_inserts_only,
         :async_insert_cluster_url,
         :async_insert_max_rows,
+        :batch_size,
+        :batch_timeout,
         :max_event_age_hours,
         :replica_routing_param
       ]
@@ -270,8 +315,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        read_only_urls: {:map, :string},
        default_read_cluster: :string,
        use_async_inserts_for_small_batches: :boolean,
+       use_async_inserts_only: :boolean,
        async_insert_cluster_url: :string,
        async_insert_max_rows: :integer,
+       batch_size: :integer,
+       batch_timeout: :integer,
        max_event_age_hours: :integer,
        replica_routing_param: :string
      }}
@@ -288,14 +336,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :read_only_urls,
       :default_read_cluster,
       :use_async_inserts_for_small_batches,
+      :use_async_inserts_only,
       :async_insert_cluster_url,
       :async_insert_max_rows,
+      :batch_size,
+      :batch_timeout,
       :max_event_age_hours,
       :replica_routing_param
     ])
     |> preserve_blank_query_password()
     |> Logflare.Utils.default_field_value(:use_async_inserts_for_small_batches, false)
+    |> Logflare.Utils.default_field_value(:use_async_inserts_only, false)
     |> Logflare.Utils.default_field_value(:async_insert_max_rows, 1_000)
+    |> Logflare.Utils.default_field_value(:batch_size, Pipeline.max_batch_size())
+    |> Logflare.Utils.default_field_value(:batch_timeout, Pipeline.default_batch_timeout())
     |> Logflare.Utils.default_field_value(
       :max_event_age_hours,
       @default_max_event_age_hours
@@ -345,6 +399,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
     |> Changeset.validate_format(:async_insert_cluster_url, ~r/https?\:\/\/.+/)
     |> validate_number(:async_insert_max_rows, greater_than: 0)
+    |> validate_number(:batch_size,
+      greater_than_or_equal_to: @min_batch_size,
+      less_than_or_equal_to: Pipeline.max_batch_size()
+    )
+    |> validate_number(:batch_timeout,
+      greater_than_or_equal_to: @min_batch_timeout_ms,
+      less_than_or_equal_to: @max_batch_timeout_ms
+    )
     |> validate_number(:max_event_age_hours, greater_than_or_equal_to: 0)
     |> validate_format(:replica_routing_param, @param_name_pattern,
       message: "must be a parameter name using only letters, numbers, and underscores"
@@ -593,18 +655,23 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   # The dedicated async endpoint is only checked when async routing is enabled and a
   # set, parsable `async_insert_cluster_url` is configured.
   @spec async_grant_check_url(map()) :: String.t() | nil
-  defp async_grant_check_url(%{
-         use_async_inserts_for_small_batches: true,
-         async_insert_cluster_url: url
-       })
-       when is_non_empty_binary(url) do
+  defp async_grant_check_url(%{use_async_inserts_only: true} = config),
+    do: parsable_async_url(config)
+
+  defp async_grant_check_url(%{use_async_inserts_for_small_batches: true} = config),
+    do: parsable_async_url(config)
+
+  defp async_grant_check_url(_config), do: nil
+
+  @spec parsable_async_url(map()) :: String.t() | nil
+  defp parsable_async_url(%{async_insert_cluster_url: url}) when is_non_empty_binary(url) do
     case EndpointUtils.host(url) do
       host when is_non_empty_binary(host) -> url
       _ -> nil
     end
   end
 
-  defp async_grant_check_url(_config), do: nil
+  defp parsable_async_url(_config), do: nil
 
   @spec check_async_grants(Backend.t(), map(), String.t()) ::
           :ok | {:error, :async_permissions_missing} | {:error, :grant_check_unknown_failure}
@@ -1125,6 +1192,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @doc false
   @impl Supervisor
   def init(%Backend{} = backend) do
+    backend = Backends.typecast_config_string_map_to_atom_map(backend)
+
     # create the startup queue and its generation, before any producer/traffic exists
     # for this queues_key — avoids racing concurrent first-time inserts against each
 
@@ -1149,6 +1218,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
             max_pipelines: 1,
             initial_count: @min_pipelines,
             resolve_interval: @resolve_interval,
+            shutdown: @pipeline_shutdown_ms,
             resolve_count: fn state ->
               lens = IngestEventQueue.list_pending_counts({:consolidated, backend.id})
 
