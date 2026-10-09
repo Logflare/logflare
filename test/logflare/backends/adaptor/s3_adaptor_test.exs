@@ -17,6 +17,60 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
     batch_timeout: 1_000
   }
 
+  @malformed_endpoints [
+    "bucket.s3.amazonaws.com",
+    "//bucket.s3.amazonaws.com",
+    "https:///bucket",
+    "https://",
+    "https://:443",
+    "ftp://bucket.s3.amazonaws.com",
+    "https://bucket.s3.amazonaws.com:invalid",
+    "https://bucket.s3.amazonaws.com:0",
+    "https://bucket.s3.amazonaws.com:65536",
+    "https://bucket .s3.amazonaws.com",
+    "https://bucket\t.s3.amazonaws.com",
+    " https://bucket.s3.amazonaws.com "
+  ]
+
+  describe "validate_config/1 endpoint structure" do
+    setup do
+      previous = Application.get_env(:logflare, :unsafe_disable_ssrf_s3_endpoint_check, false)
+
+      on_exit(fn ->
+        Application.put_env(:logflare, :unsafe_disable_ssrf_s3_endpoint_check, previous)
+      end)
+    end
+
+    test "rejects malformed endpoints even when the SSRF allowlist is disabled" do
+      for disabled? <- [false, true], endpoint <- @malformed_endpoints do
+        Application.put_env(:logflare, :unsafe_disable_ssrf_s3_endpoint_check, disabled?)
+
+        changeset =
+          Adaptor.cast_and_validate_config(S3Adaptor, Map.put(@valid_config, :endpoint, endpoint))
+
+        refute changeset.valid?, "accepted #{inspect(endpoint)} with SSRF bypass #{disabled?}"
+
+        assert {"Endpoint must include a valid HTTP(S) scheme and host",
+                [validation: :endpoint_malformed]} = changeset.errors[:endpoint]
+      end
+    end
+
+    test "allows HTTP and HTTPS endpoints with a port and path" do
+      Application.put_env(:logflare, :unsafe_disable_ssrf_s3_endpoint_check, false)
+
+      for endpoint <- [
+            "http://bucket.s3.amazonaws.com:9000/prefix",
+            "https://project-ref.supabase.co/storage/v1/s3"
+          ] do
+        assert %Ecto.Changeset{valid?: true} =
+                 Adaptor.cast_and_validate_config(
+                   S3Adaptor,
+                   Map.put(@valid_config, :endpoint, endpoint)
+                 )
+      end
+    end
+  end
+
   describe "validate_config/1 endpoint allowlist (check enabled, default)" do
     setup do
       Application.delete_env(:logflare, :unsafe_disable_ssrf_s3_endpoint_check)
@@ -262,6 +316,22 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
       assert opts[:retries] == [max_attempts: 1]
     end
 
+    test "rejects malformed stored endpoints without uploading or raising", %{backend: backend} do
+      reject(ExAws, :request, 2)
+      reject(Explorer.DataFrame, :dump_parquet, 1)
+
+      for endpoint <- @malformed_endpoints ++ ["", 123] do
+        backend = %{backend | config: Map.put(backend.config, :endpoint, endpoint)}
+
+        log =
+          capture_log([format: "$metadata$message", metadata: [:error_string]], fn ->
+            assert {:error, :s3_write_failed} = S3Adaptor.test_connection(backend)
+          end)
+
+        assert log =~ "invalid_endpoint"
+      end
+    end
+
     test "returns error when the upload fails", %{backend: backend} do
       ExAws
       |> expect(:request, fn _op, _opts ->
@@ -419,6 +489,26 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
       assert opts[:scheme] == "https://"
       assert opts[:host] == "project-ref.supabase.co"
       assert opts[:port] == 443
+    end
+
+    test "rejects malformed persisted endpoints before serialization or upload", %{
+      source: source,
+      events: events
+    } do
+      reject(ExAws, :request, 2)
+      reject(Explorer.DataFrame, :dump_parquet, 1)
+
+      for endpoint <- @malformed_endpoints do
+        backend =
+          insert(:backend,
+            type: :s3,
+            sources: [source],
+            config: Map.put(@valid_config, :endpoint, endpoint)
+          )
+
+        assert {:error, :invalid_endpoint} =
+                 S3Adaptor.push_log_events_to_s3({source.id, backend.id}, events)
+      end
     end
 
     test "returns the ExAws error when the upload fails", %{
