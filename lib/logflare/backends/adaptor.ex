@@ -118,6 +118,57 @@ defmodule Logflare.Backends.Adaptor do
   end
 
   @doc """
+  Returns the config keys whose changes an adaptor applies by replacing its ingest pipelines
+  in place instead of restarting them.
+
+  Defaults to `[]`.
+  """
+  @spec pipeline_config_keys(Backend.t()) :: [atom()]
+  def pipeline_config_keys(%Backend{} = backend) do
+    adaptor = get_adaptor(backend)
+
+    if function_exported?(adaptor, :pipeline_config_keys, 0) do
+      adaptor.pipeline_config_keys()
+    else
+      []
+    end
+  end
+
+  @doc """
+  Returns the config keys whose changes need no ingest pipeline restart or replacement,
+  because the adaptor reads them on every batch or ingestion does not use them.
+
+  Defaults to `[]`.
+  """
+  @spec runtime_config_keys(Backend.t()) :: [atom()]
+  def runtime_config_keys(%Backend{} = backend) do
+    adaptor = get_adaptor(backend)
+
+    if function_exported?(adaptor, :runtime_config_keys, 0) do
+      adaptor.runtime_config_keys()
+    else
+      []
+    end
+  end
+
+  @doc """
+  Replaces a backend's running ingest pipelines on the local node with ones started from
+  the given backend.
+
+  No-op for adaptors that do not implement the optional callback.
+  """
+  @spec replace_pipelines(Backend.t()) :: :ok | {:error, term()}
+  def replace_pipelines(%Backend{} = backend) do
+    adaptor = get_adaptor(backend)
+
+    if function_exported?(adaptor, :replace_pipelines, 1) do
+      adaptor.replace_pipelines(backend)
+    else
+      :ok
+    end
+  end
+
+  @doc """
   Notifies a backend's adaptor that the backend has been deleted.
 
   No-op for adaptors that do not implement the optional callback.
@@ -321,6 +372,26 @@ defmodule Logflare.Backends.Adaptor do
   @callback on_backend_deleted(Backend.t()) :: :ok
 
   @doc """
+  Optional callback listing config keys that only affect the ingest pipelines, so a change to
+  them can be applied with `c:replace_pipelines/1` instead of a restart.
+  """
+  @callback pipeline_config_keys() :: [atom()]
+
+  @doc """
+  Optional callback listing config keys whose changes take effect without restarting or
+  replacing the ingest pipelines, because they are read on every batch or not used by
+  ingestion.
+  """
+  @callback runtime_config_keys() :: [atom()]
+
+  @doc """
+  Optional callback that replaces the backend's running ingest pipelines on the local node
+  with ones started from the latest saved version of the backend, without dropping pending
+  events.
+  """
+  @callback replace_pipelines(Backend.t()) :: :ok | {:error, term()}
+
+  @doc """
   Validates a given adaptor's configuration, using Ecto.Changeset functions. Accepts a chaangeset
   """
   @callback validate_config(changeset :: Ecto.Changeset.t()) :: Ecto.Changeset.t()
@@ -355,5 +426,8 @@ defmodule Logflare.Backends.Adaptor do
                       consolidated_ingest?: 0,
                       on_backend_config_changed: 1,
                       on_backend_deleted: 1,
+                      pipeline_config_keys: 0,
+                      runtime_config_keys: 0,
+                      replace_pipelines: 1,
                       sanitize_config_for_display: 1
 end

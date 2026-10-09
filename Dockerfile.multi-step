@@ -19,8 +19,8 @@ RUN npm run --prefix assets deploy && \
 
 FROM supabase/logflare:runner
 
-# Copy required files from builder step
-COPY --from=builder /app/_build/prod /opt/app
+# Only the self-contained release is needed at runtime, not the rest of _build.
+COPY --from=builder /app/_build/prod/rel/logflare /opt/app/rel/logflare
 COPY --from=builder /app/VERSION /opt/app/VERSION
 
 WORKDIR /opt/app/rel/logflare/bin
