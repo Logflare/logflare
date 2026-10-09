@@ -1,6 +1,8 @@
 defmodule LogflareWeb.AccessTokensLive do
   @moduledoc false
   use LogflareWeb, :live_view
+  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1]
+  import LogflareWeb.FormattedTimestampComponent
   require Logger
   alias Logflare.Auth
   alias Logflare.Endpoints
@@ -35,69 +37,49 @@ defmodule LogflareWeb.AccessTokensLive do
 
         <.create_token_form :if={@live_action == :new} form={@create_token_form} sources={@sources} endpoints={@endpoints} />
 
-        <%= if @created_token do %>
-          <.alert variant="success">
-            <p>Access token created successfully, copy this token to a safe location. For security purposes, this token will not be shown again.</p>
+        <.alert :if={@created_token} variant="success">
+          <p>Access token created successfully, copy this token to a safe location. For security purposes, this token will not be shown again.</p>
 
-            <pre class="p-2"><%= @created_token.token %></pre>
-            <.clipboard_button text={@created_token.token} />
-            <.button variant="secondary" phx-click="dismiss-created-token">
-              Dismiss
-            </.button>
-          </.alert>
-        <% end %>
+          <pre class="p-2"><%= @created_token.token %></pre>
+          <.clipboard_button text={@created_token.token} />
+          <.button variant="secondary" phx-click="dismiss-created-token">
+            Dismiss
+          </.button>
+        </.alert>
       </div>
 
-      <%= if @access_tokens == [] do %>
-        <.alert variant="dark" class="tw-max-w-md">
-          <h5>Legacy Ingest API Key</h5>
-          <p><strong>Deprecated</strong>, use access tokens instead.</p>
-          <.clipboard_button text={@user.api_key} class="btn-sm" />
-        </.alert>
-      <% end %>
+      <.alert :if={@access_tokens == []} variant="dark" class="tw-max-w-md">
+        <h5>Legacy Ingest API Key</h5>
+        <p><strong>Deprecated</strong>, use access tokens instead.</p>
+        <.clipboard_button text={@user.api_key} class="btn-sm" />
+      </.alert>
 
-      <table :if={@access_tokens != []} class="table-dark table-auto w-full flex-grow">
-        <thead>
-          <tr>
-            <th class="p-2">Description</th>
-            <th class="p-2">Scope</th>
-            <th class="p-2">Created on</th>
-            <th class="p-2">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr :for={token <- @access_tokens}>
-            <td class="p-2">
-              <span class="tw-text-sm">
-                <%= if token.description do %>
-                  {token.description}
-                <% else %>
-                  <span class="tw-italic">No description</span>
-                <% end %>
-              </span>
-            </td>
-            <td>
-              <span :for={scope <- String.split(token.scopes || "")} class="badge badge-secondary mr-1">
-                {case scope do
-                  "ingest" <> _ -> get_ingest_label(assigns, scope)
-                  "query" <> _ -> get_query_label(assigns, scope)
-                  scope -> scope
-                end}
-              </span>
-            </td>
-            <td class="p-2 tw-text-sm">
-              {Calendar.strftime(token.inserted_at, "%d %b %Y, %I:%M:%S %p")}
-            </td>
-
-            <td class="p-2">
-              <.clipboard_button :if={!(token.scopes =~ "private")} text={token.token} class="btn-sm" />
-              <button class="btn text-danger btn-sm" data-confirm="Are you sure? This cannot be undone." phx-click="revoke-token" phx-value-token-id={token.id} data-toggle="tooltip" data-placement="top" title="Revoke access token forever">
-                <i class="fa fa-trash" aria-hidden="true"></i> Revoke
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <.table :if={@access_tokens != []} id="access-tokens" rows={@access_tokens} row_id={&"access-token-#{&1.id}"}>
+        <:col :let={token} label="Description">
+          <span :if={is_non_empty_binary(token.description)} class="tw-text-sm">{token.description}</span>
+          <span :if={not is_non_empty_binary(token.description)} class="tw-text-sm tw-italic">No description</span>
+        </:col>
+        <:col :let={token} label="Scope">
+          <span :for={label <- scope_labels(assigns, token.scopes)} class="badge badge-secondary mr-1">
+            {label}
+          </span>
+        </:col>
+        <:col :let={token} label="Created on">
+          <.formatted_timestamp value={token.inserted_at} timezone={@user_timezone} format="%d %b %Y, %I:%M:%S %p" class="tw-text-sm" />
+        </:col>
+        <:col :let={token} label="Last used">
+          <.formatted_timestamp :if={token.usage} value={token.usage.last_used_at} timezone={@user_timezone} format="%d %b %Y, %I:%M:%S %p" class="tw-text-sm" />
+          <span :if={is_nil(token.usage)} class="tw-text-sm tw-italic">Unknown</span>
+        </:col>
+        <:action :let={token}>
+          <.clipboard_button :if={!(token.scopes =~ "private")} text={token.token} class="btn-sm" />
+        </:action>
+        <:action :let={token}>
+          <.button class="text-danger btn-sm" data-confirm="Are you sure? This cannot be undone." phx-click="revoke-token" phx-value-token-id={token.id} data-toggle="tooltip" data-placement="top" title="Revoke access token forever">
+            <i class="fa fa-trash" aria-hidden="true"></i> Revoke
+          </.button>
+        </:action>
+      </.table>
     </section>
     """
   end
@@ -196,9 +178,11 @@ defmodule LogflareWeb.AccessTokensLive do
     %{assigns: %{user: user}} = socket
     sources = Sources.list_sources_by_user(user)
     endpoints = Endpoints.list_endpoints_by(user_id: user.id)
+    timezone = socket |> get_connect_params() |> get_in(["user_timezone"])
 
     socket =
       socket
+      |> assign(:user_timezone, timezone)
       |> assign(:created_token, nil)
       |> assign(:sources, sources)
       |> assign(:endpoints, endpoints)
@@ -337,6 +321,16 @@ defmodule LogflareWeb.AccessTokensLive do
   defp parse_query_scope_endpoint_id(scopes) do
     Regex.scan(~r/query:endpoint:([0-9]+)/, scopes, capture: :all_but_first)
     |> List.flatten()
+  end
+
+  @spec scope_labels(map(), String.t() | nil) :: [String.t()]
+  defp scope_labels(assigns, scopes) do
+    String.split(scopes || "")
+    |> Enum.map(fn
+      "ingest" <> _ = scope -> get_ingest_label(assigns, scope)
+      "query" <> _ = scope -> get_query_label(assigns, scope)
+      scope -> scope
+    end)
   end
 
   defp get_query_label(_assigns, "query"), do: "query (all)"

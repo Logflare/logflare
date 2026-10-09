@@ -1,6 +1,7 @@
 defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccessTest do
   use Logflare.DataCase, async: false
 
+  alias Logflare.Auth.UsageCache
   alias Logflare.TestProtobuf.Mock.EmptyRequest
   alias Logflare.TestProtobuf.Mock.EmptyResponse
   alias Logflare.SystemMetrics.AllLogsLogged
@@ -49,6 +50,8 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccessTest do
       headers = [{"x-api-key", access_token.token}, {"x-source", source.token}]
 
       assert {:ok, %EmptyResponse{}} = request_with_headers(headers, port)
+      assert [{id, %DateTime{}}] = UsageCache.snapshot()
+      assert id == access_token.id
     end
 
     test "success using access token for specific source", %{

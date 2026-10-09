@@ -1,6 +1,8 @@
 defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
   @moduledoc false
   use LogflareWeb.ConnCase
+  alias Logflare.Auth
+  alias Logflare.Repo
   alias LogflareWeb.Plugs.VerifyApiAccess
 
   setup do
@@ -18,6 +20,82 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       source: source,
       access_token: access_token
     ]
+  end
+
+  describe "access token usage" do
+    test "records requests on both cache misses and hits", %{access_token: token, user: user} do
+      before_request = DateTime.utc_now()
+
+      build_conn(:post, "/logs")
+      |> put_req_header("authorization", "Bearer #{token.token}")
+      |> VerifyApiAccess.call(%{})
+      |> assert_authorized(user)
+
+      first_use = Auth.UsageCache.snapshot() |> Map.new() |> Map.fetch!(token.id)
+      assert DateTime.compare(first_use, before_request) in [:eq, :gt]
+
+      reject(&Auth.verify_access_token/2)
+
+      build_conn(:post, "/logs")
+      |> put_req_header("x-api-key", token.token)
+      |> VerifyApiAccess.call(%{})
+      |> assert_authorized(user)
+
+      last_use = Auth.UsageCache.snapshot() |> Map.new() |> Map.fetch!(token.id)
+      assert DateTime.compare(last_use, first_use) == :gt
+      assert Repo.preload(token, :usage).usage == nil
+    end
+
+    test "records partner authentication", %{conn: conn} do
+      partner = insert(:partner)
+      {:ok, token} = Auth.create_access_token(partner)
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer #{token.token}")
+        |> VerifyApiAccess.call(%{scopes: ["partner"]})
+
+      assert conn.assigns.partner.id == partner.id
+      assert [{id, %DateTime{}}] = Auth.UsageCache.snapshot()
+      assert id == token.id
+    end
+
+    test "does not record rejected tokens or legacy API keys", %{access_token: token, user: user} do
+      expired_token =
+        insert(:access_token,
+          resource_owner: user,
+          expires_in: 1,
+          inserted_at: ~N[2000-01-01 00:00:00]
+        )
+
+      {:ok, revoked_token} = Auth.create_access_token(user)
+      :ok = Auth.revoke_access_token(revoked_token)
+
+      reject(&Auth.record_access_token_usage/1)
+
+      for {value, scopes} <- [
+            {token.token, ["private"]},
+            {expired_token.token, []},
+            {revoked_token.token, []},
+            {"invalid-token", []}
+          ] do
+        build_conn(:post, "/logs")
+        |> put_req_header("x-api-key", value)
+        |> VerifyApiAccess.call(%{scopes: scopes})
+        |> assert_unauthorized()
+      end
+
+      build_conn(:post, "/logs")
+      |> put_req_header("x-api-key", user.api_key)
+      |> VerifyApiAccess.call(%{})
+      |> assert_authorized(user)
+
+      for unused_token <- [token, expired_token, revoked_token] do
+        assert Repo.preload(unused_token, :usage).usage == nil
+      end
+
+      assert Auth.UsageCache.snapshot() == []
+    end
   end
 
   describe "partner impersonation" do
