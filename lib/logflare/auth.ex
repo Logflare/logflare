@@ -4,7 +4,9 @@ defmodule Logflare.Auth do
   import Ecto.Query
 
   alias Ecto.Changeset
+  alias Logflare.Auth.UsageCache
   alias Logflare.OauthAccessTokens.OauthAccessToken
+  alias Logflare.OauthAccessTokens.OauthAccessTokenUsage
   alias Logflare.OauthAccessTokens.PartnerOauthAccessToken
   alias Logflare.Partners
   alias Logflare.Partners.Partner
@@ -80,8 +82,10 @@ defmodule Logflare.Auth do
   def list_valid_access_tokens(%User{id: user_id}) do
     Repo.all(
       from(t in OauthAccessToken,
+        left_join: usage in assoc(t, :usage),
         where: t.resource_owner_id == ^user_id and is_nil(t.revoked_at),
-        where: not ilike(t.scopes, "%partner%")
+        where: not ilike(t.scopes, "%partner%"),
+        preload: [usage: usage]
       )
     )
   end
@@ -89,8 +93,10 @@ defmodule Logflare.Auth do
   def list_valid_access_tokens(%Partner{id: partner_id}) do
     Repo.all(
       from(t in PartnerOauthAccessToken,
+        left_join: usage in assoc(t, :usage),
         where: t.resource_owner_id == ^partner_id and is_nil(t.revoked_at),
-        where: ilike(t.scopes, "%partner%")
+        where: ilike(t.scopes, "%partner%"),
+        preload: [usage: usage]
       )
     )
   end
@@ -260,6 +266,45 @@ defmodule Logflare.Auth do
 
   defp get_resource_owner_by_id(User, id), do: Users.Cache.get(id)
   defp get_resource_owner_by_id(Partner, id), do: Partners.Cache.get_partner(id)
+
+  @doc """
+  Buffers successful API authentication, including cached verification results.
+  Usage is persisted separately every five minutes without invalidating the token cache.
+  Unflushed usage may be lost on node failure; missing usage means unknown, not never used.
+  """
+  @spec record_access_token_usage(OauthAccessToken.t() | PartnerOauthAccessToken.t()) :: :ok
+  def record_access_token_usage(%{id: id}) do
+    UsageCache.record(id, DateTime.utc_now())
+  end
+
+  @spec persist_access_token_usage(UsageCache.snapshot()) :: :ok
+  def persist_access_token_usage([]), do: :ok
+
+  def persist_access_token_usage(entries) do
+    rows =
+      Enum.map(entries, fn {id, timestamp} -> %{access_token_id: id, last_used_at: timestamp} end)
+
+    query =
+      from(usage in values(rows, OauthAccessTokenUsage),
+        join: token in OauthAccessToken,
+        on: token.id == usage.access_token_id,
+        select: %{access_token_id: usage.access_token_id, last_used_at: usage.last_used_at}
+      )
+
+    on_conflict =
+      from(usage in OauthAccessTokenUsage,
+        update: [
+          set: [last_used_at: fragment("GREATEST(?, EXCLUDED.last_used_at)", usage.last_used_at)]
+        ]
+      )
+
+    Repo.insert_all(OauthAccessTokenUsage, query,
+      conflict_target: [:access_token_id],
+      on_conflict: on_conflict
+    )
+
+    :ok
+  end
 
   @doc """
   Checks that an access token contains any scopes that are provided in a given required scopes list.

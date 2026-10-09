@@ -76,6 +76,7 @@ defmodule Logflare.ContextCache.Supervisor do
       {Billing.Cache, :billing},
       {SourceSchemas.Cache, :source_schemas},
       {Auth.Cache, :auth},
+      {Auth.UsageCache, :access_token_usage},
       {Endpoints.Cache, :endpoints},
       {Rules.Cache, :rules},
       {KeyValues.Cache, :key_values},

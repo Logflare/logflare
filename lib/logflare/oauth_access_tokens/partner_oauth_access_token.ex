@@ -3,11 +3,14 @@ defmodule Logflare.OauthAccessTokens.PartnerOauthAccessToken do
   use TypedEctoSchema
   use ExOauth2Provider.AccessTokens.AccessToken, otp_app: :logflare
 
+  alias Logflare.OauthAccessTokens.OauthAccessTokenUsage
+
   typed_schema "oauth_access_tokens" do
     belongs_to(:resource_owner, Logflare.Partners.Partner)
 
     access_token_fields()
     field(:description, :string)
+    has_one(:usage, OauthAccessTokenUsage, foreign_key: :access_token_id)
     timestamps()
   end
 end

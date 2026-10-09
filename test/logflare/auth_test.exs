@@ -30,6 +30,49 @@ defmodule Logflare.AuthTest do
       assert Auth.list_valid_access_tokens(partner) |> length() == 2
     end
 
+    test "new tokens have unknown usage and ignore caller-supplied usage", context do
+      for owner <- [context.user, context.team, context.partner] do
+        assert {:ok, token} =
+                 Auth.create_access_token(owner, %{
+                   last_used_at: ~U[2000-01-01 00:00:00.000000Z]
+                 })
+
+        token = Repo.reload!(token)
+        refute Ecto.assoc_loaded?(token.usage)
+        assert Repo.preload(token, :usage).usage == nil
+      end
+    end
+
+    test "usage is buffered and persisted separately without moving backwards", %{user: user} do
+      token =
+        access_token_fixture(user)
+        |> change(updated_at: ~N[2000-01-01 00:00:00])
+        |> Repo.update!()
+        |> Repo.reload!()
+
+      other_token = access_token_fixture(user)
+      before_usage = DateTime.utc_now()
+
+      assert :ok = Auth.record_access_token_usage(token)
+      assert Enum.all?(Auth.list_valid_access_tokens(user), &is_nil(&1.usage))
+
+      snapshot = Auth.UsageCache.snapshot()
+      assert :ok = Auth.persist_access_token_usage(snapshot)
+      used_token = Enum.find(Auth.list_valid_access_tokens(user), &(&1.id == token.id))
+      assert DateTime.compare(used_token.usage.last_used_at, before_usage) in [:eq, :gt]
+      assert DateTime.compare(used_token.usage.last_used_at, DateTime.utc_now()) in [:eq, :lt]
+      assert %{used_token | usage: token.usage} == token
+      assert Repo.reload!(token) == token
+      assert Repo.preload(other_token, :usage).usage == nil
+
+      future = DateTime.add(DateTime.utc_now(), 60, :second)
+      assert :ok = Auth.persist_access_token_usage([{token.id, future}])
+      assert :ok = Auth.persist_access_token_usage(snapshot)
+
+      assert Enum.find(Auth.list_valid_access_tokens(user), &(&1.id == token.id)).usage.last_used_at ==
+               future
+    end
+
     test "user token attrs rejects partner scope via changeset error", %{user: user} do
       assert_scope_error(Auth.create_access_token(user, %{"scopes" => "partner"}))
       assert_scope_error(Auth.create_access_token(user, %{scopes: "partner"}))
