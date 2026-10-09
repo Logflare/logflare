@@ -257,8 +257,8 @@ defmodule LogflareWeb.LogControllerTest do
       source: source,
       user: user
     } do
-      Mimic.stub(Logflare.Backends, :ensure_source_sup_started, fn _source ->
-        {:error, :start_timeout}
+      Mimic.stub(Logflare.Backends, :start_for_ingest, fn _source ->
+        {:error, :source_unavailable}
       end)
 
       Mimic.reject(Logflare.Backends, :ingest_logs, 4)
@@ -268,7 +268,7 @@ defmodule LogflareWeb.LogControllerTest do
         |> put_req_header("x-api-key", user.api_key)
         |> post(Routes.log_path(conn, :create, source: source.token), @valid)
 
-      assert %{"message" => "Source is starting. Send the batch again."} =
+      assert %{"message" => "Source is unavailable. Send the batch again."} =
                json_response(conn, 503)
 
       assert get_resp_header(conn, "retry-after") == ["5"]
@@ -279,8 +279,8 @@ defmodule LogflareWeb.LogControllerTest do
       source: source,
       user: user
     } do
-      Mimic.stub(Logflare.Backends, :ensure_source_sup_started, fn _source ->
-        {:error, :start_timeout}
+      Mimic.stub(Logflare.Backends, :start_for_ingest, fn _source ->
+        {:error, :source_unavailable}
       end)
 
       Mimic.reject(Logflare.Backends, :ingest_logs, 4)
@@ -302,8 +302,8 @@ defmodule LogflareWeb.LogControllerTest do
       source: source,
       user: user
     } do
-      Mimic.stub(Logflare.Backends, :ensure_source_sup_started, fn _source ->
-        {:error, :not_found}
+      Mimic.stub(Logflare.Backends, :start_for_ingest, fn _source ->
+        {:error, :source_not_found}
       end)
 
       Mimic.reject(Logflare.Backends, :ingest_logs, 4)
@@ -321,8 +321,8 @@ defmodule LogflareWeb.LogControllerTest do
       source: source,
       user: user
     } do
-      Mimic.stub(Logflare.Backends, :ensure_source_sup_started, fn _source ->
-        {:error, :not_found}
+      Mimic.stub(Logflare.Backends, :start_for_ingest, fn _source ->
+        {:error, :source_not_found}
       end)
 
       Mimic.reject(Logflare.Backends, :ingest_logs, 4)

@@ -41,14 +41,14 @@ defmodule LogflareWeb.LogSocketTest do
       {:ok, socket} = Phoenix.ChannelTest.connect(LogSocket, %{"access_token" => token.token})
       {:ok, _, socket} = subscribe_and_join(socket, LogChannel, "logs:#{source.token}")
 
-      stub(Backends, :ensure_source_sup_started, fn _source -> {:error, :start_timeout} end)
+      stub(Backends, :start_for_ingest, fn _source -> {:error, :source_unavailable} end)
       reject(Backends, :ingest_logs, 4)
 
       Phoenix.ChannelTest.push(socket, "batch", %{"batch" => [%{"message" => "early-log"}]})
 
       Phoenix.ChannelTest.assert_push(
         "batch",
-        %{message: "Batch error", errors: ["Source is starting. Send the batch again."]},
+        %{message: "Batch error", errors: ["Source is unavailable. Send the batch again."]},
         1_000
       )
 
@@ -63,7 +63,7 @@ defmodule LogflareWeb.LogSocketTest do
       {:ok, socket} = Phoenix.ChannelTest.connect(LogSocket, %{"access_token" => token.token})
       {:ok, _, socket} = subscribe_and_join(socket, LogChannel, "logs:#{source.token}")
 
-      stub(Backends, :ensure_source_sup_started, fn _source -> {:error, :not_found} end)
+      stub(Backends, :start_for_ingest, fn _source -> {:error, :source_not_found} end)
       reject(Backends, :ingest_logs, 4)
 
       Phoenix.ChannelTest.push(socket, "batch", %{"batch" => [%{"message" => "late-log"}]})

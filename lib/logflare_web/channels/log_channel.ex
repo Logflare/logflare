@@ -69,10 +69,10 @@ defmodule LogflareWeb.LogChannel do
 
     # allow_spooling: true — a genuine client-submitted entry point, same as
     # the HTTP/gRPC controllers routed through Logflare.Logs.Processor.
-    case Backends.ensure_source_sup_started(source) do
-      :ok -> ingest_batch(batch, source, socket)
-      {:error, :not_found} -> reply_start_error(socket, :source_not_found)
-      {:error, _reason} -> reply_start_error(socket, :source_unavailable)
+    with :ok <- Backends.start_for_ingest(source) do
+      ingest_batch(batch, source, socket)
+    else
+      {:error, reason} -> reply_start_error(socket, reason)
     end
   end
 
@@ -122,7 +122,7 @@ defmodule LogflareWeb.LogChannel do
   defp reply_start_error(socket, :source_unavailable) do
     push(socket, "batch", %{
       message: "Batch error",
-      errors: ["Source is starting. Send the batch again."]
+      errors: ["Source is unavailable. Send the batch again."]
     })
 
     {:noreply, socket}

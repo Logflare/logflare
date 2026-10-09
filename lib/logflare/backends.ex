@@ -1126,6 +1126,8 @@ defmodule Logflare.Backends do
   that time, the caller gets `{:error, :start_timeout}`. A blocked cache or partition can delay
   ingest, but it can not hold the callers forever. The partition still completes the start after
   the timeout.
+
+  A failed start logs its reason, except for `:already_started` and `:not_found`.
   """
   @spec start_source_sup(Source.t()) ::
           :ok | {:error, :already_started | :not_found | :start_timeout | term()}
@@ -1150,10 +1152,12 @@ defmodule Logflare.Backends do
 
     case Task.yield(task, timeout) || Task.shutdown(task, :brutal_kill) do
       {:ok, result} ->
-        handle_start_child_result(result)
+        result
+        |> handle_start_child_result()
+        |> log_start_failure(source)
 
       {:exit, reason} ->
-        {:error, reason}
+        log_start_failure({:error, reason}, source)
 
       nil ->
         Logger.warning("SourceSup start timed out after #{timeout}ms",
@@ -1183,6 +1187,18 @@ defmodule Logflare.Backends do
         error
     end
   end
+
+  defp log_start_failure({:error, reason} = error, source)
+       when reason not in [:already_started, :not_found] do
+    Logger.error("SourceSup start failed: #{inspect(reason)}",
+      source_id: source.id,
+      source_token: source.token
+    )
+
+    error
+  end
+
+  defp log_start_failure(result, _source), do: result
 
   @doc """
   Makes sure that the SourceSup of a source is up.

@@ -784,6 +784,21 @@ defmodule Logflare.BackendsTest do
       refute Backends.source_sup_started?(source)
     end
 
+    test "start_for_ingest/1 returns source_not_found for a deleted source", %{source: source} do
+      Repo.delete!(source)
+      stub(SourceSup, :prefetch, fn _source -> :ok end)
+
+      assert {:error, :source_not_found} = Backends.start_for_ingest(source)
+    end
+
+    test "start_for_ingest/1 returns source_unavailable when the start fails", %{source: source} do
+      stub_failing_child_spec()
+
+      capture_log(fn ->
+        assert {:error, :source_unavailable} = Backends.start_for_ingest(source)
+      end)
+    end
+
     test "concurrent ensure_source_sup_started/1 calls start a stopped SourceSup once", %{
       source: source
     } do
@@ -826,7 +841,7 @@ defmodule Logflare.BackendsTest do
       refute Backends.source_sup_started?(source)
     end
 
-    test "ensure_source_sup_started/1 returns the error when the start fails", %{
+    test "ensure_source_sup_started/1 returns and logs the error when the start fails", %{
       source: source
     } do
       stub(SourceSup, :child_spec, fn received_source ->
@@ -836,7 +851,12 @@ defmodule Logflare.BackendsTest do
         }
       end)
 
-      assert {:error, :boom} = Backends.ensure_source_sup_started(source)
+      log =
+        capture_log(fn ->
+          assert {:error, :boom} = Backends.ensure_source_sup_started(source)
+        end)
+
+      assert log =~ "SourceSup start failed: :boom"
       refute Backends.source_sup_started?(source)
     end
 

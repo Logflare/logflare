@@ -26,7 +26,7 @@ defmodule LogflareGrpc.Trace.Server do
       {:error, :source_unavailable} ->
         raise GRPC.RPCError,
           status: :unavailable,
-          message: "Source is starting. Send the batch again."
+          message: "Source is unavailable. Send the batch again."
 
       {:error, errors} when is_list(errors) ->
         Logger.warning("OTLP gRPC ingest rejected #{length(errors)} event(s) at validation",

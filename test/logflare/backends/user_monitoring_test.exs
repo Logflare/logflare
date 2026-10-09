@@ -198,7 +198,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
          %{user: user, system_source: system_source} do
       :ok = Backends.ensure_source_sup_started(system_source)
       attach_system_log_drops()
-      stub(Backends, :ensure_source_sup_started, fn _source -> {:error, :start_timeout} end)
+      stub(Backends, :start_for_ingest, fn _source -> {:error, :source_unavailable} end)
 
       capture_log(fn -> Logger.error("source stopped after the check", user_id: user.id) end)
 

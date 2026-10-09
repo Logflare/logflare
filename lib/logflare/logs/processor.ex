@@ -32,6 +32,12 @@ defmodule Logflare.Logs.Processor do
           | {:error, :source_unavailable | :source_not_found | term()}
   def ingest(data, processor, %Source{} = source)
       when is_list(data) and is_atom(processor) do
+    with :ok <- Backends.start_for_ingest(source) do
+      process_and_store(data, processor, source)
+    end
+  end
+
+  defp process_and_store(data, processor, source) do
     metadata = %{
       processor: processor,
       source_token: source.token,
@@ -57,21 +63,12 @@ defmodule Logflare.Logs.Processor do
         # point (every log_controller.ex/gRPC ingestion action funnels
         # through here), as opposed to SourceRouter's re-entrant calls,
         # which never pass this and so can never be spooled.
-        result = store(batch, source)
+        result = Backends.ingest_logs(batch, source, nil, true)
 
         new_meta = Map.merge(metadata, %{success: elem(result, 0) == :ok})
 
         {{result, new_meta}, new_meta}
       end)
     end)
-  end
-
-  @spec store([map()], Source.t()) :: {:ok, non_neg_integer()} | {:error, term()}
-  defp store(batch, source) do
-    case Backends.ensure_source_sup_started(source) do
-      :ok -> Backends.ingest_logs(batch, source, nil, true)
-      {:error, :not_found} -> {:error, :source_not_found}
-      {:error, _reason} -> {:error, :source_unavailable}
-    end
   end
 end

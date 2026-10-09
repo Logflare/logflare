@@ -41,7 +41,7 @@ defmodule LogflareWeb.LogController do
   plug(LogflareWeb.Plugs.BlockSystemSource)
 
   @message "Logged!"
-  @source_unavailable_message "Source is starting. Send the batch again."
+  @source_unavailable_message "Source is unavailable. Send the batch again."
   @source_unavailable_retry_after "5"
   @source_not_found_message "Source not found."
 

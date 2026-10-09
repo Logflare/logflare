@@ -47,8 +47,8 @@ defmodule LogflareGrpc.Logs.ServerTest do
       user: user,
       port: port
     } do
-      Mimic.stub(Logflare.Backends, :ensure_source_sup_started, fn _source ->
-        {:error, :not_found}
+      Mimic.stub(Logflare.Backends, :start_for_ingest, fn _source ->
+        {:error, :source_not_found}
       end)
 
       access_token = insert(:access_token, resource_owner: user, scopes: "ingest")
@@ -65,8 +65,8 @@ defmodule LogflareGrpc.Logs.ServerTest do
       user: user,
       port: port
     } do
-      Mimic.stub(Logflare.Backends, :ensure_source_sup_started, fn _source ->
-        {:error, :start_timeout}
+      Mimic.stub(Logflare.Backends, :start_for_ingest, fn _source ->
+        {:error, :source_unavailable}
       end)
 
       access_token = insert(:access_token, resource_owner: user, scopes: "ingest")
