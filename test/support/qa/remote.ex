@@ -16,7 +16,9 @@ defmodule Logflare.QA.Remote do
 
     if node() == :nonode@nohost do
       {_, 0} = System.cmd("epmd", ["-daemon"])
-      {:ok, _} = Node.start(:"qa_client_#{System.unique_integer([:positive])}", :shortnames)
+
+      {:ok, _} =
+        Node.start(:"qa_client_#{System.unique_integer([:positive])}", name_domain: :shortnames)
     end
 
     Node.set_cookie(Config.cookie())

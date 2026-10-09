@@ -40,7 +40,7 @@ defmodule Logflare.QA.Ingest.Targets do
   def message(kind, channel, run_id), do: "#{kind} from #{channel} #{run_id}"
 
   @doc "All messages a run sends over `channels`."
-  @spec messages(t(), String.t(), [String.t()]) :: [String.t()]
+  @spec messages(t(), String.t(), [String.t()] | nil) :: [String.t()]
   def messages(config, run_id, channels \\ nil) do
     for channel <- channels || config.channels,
         kind <- config.kinds,
