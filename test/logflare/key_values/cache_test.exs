@@ -3,6 +3,7 @@ defmodule Logflare.KeyValues.CacheTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.KeyValues
+  alias Logflare.KeyValues.Cache.Multilevel
 
   setup do
     user = insert(:user)
@@ -16,7 +17,7 @@ defmodule Logflare.KeyValues.CacheTest do
     # first call populates cache
     assert ^value = KeyValues.Cache.lookup(user.id, "proj1")
     cache_key = {:lookup, [user.id, "proj1", nil]}
-    assert {:cached, ^value} = Cachex.get!(KeyValues.Cache, cache_key)
+    assert {:ok, ^value} = Multilevel.fetch(cache_key)
   end
 
   test "lookup/3 caches extracted value with accessor path", %{user: user} do
@@ -25,7 +26,7 @@ defmodule Logflare.KeyValues.CacheTest do
 
     assert "abc" = KeyValues.Cache.lookup(user.id, "proj1", "org.id")
     cache_key = {:lookup, [user.id, "proj1", "org.id"]}
-    assert {:cached, "abc"} = Cachex.get!(KeyValues.Cache, cache_key)
+    assert {:ok, "abc"} = Multilevel.fetch(cache_key)
   end
 
   test "lookup/3 on a warmed entry", %{user: user} do
@@ -86,7 +87,7 @@ defmodule Logflare.KeyValues.CacheTest do
       KeyValues.Cache.bust_by(user_id: user.id, key: "k1")
 
       cache_key = {:count, user.id}
-      assert is_nil(Cachex.get!(KeyValues.Cache, cache_key))
+      assert {:error, %Nebulex.KeyError{}} = Multilevel.fetch(cache_key)
     end
   end
 end

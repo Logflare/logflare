@@ -1,38 +1,18 @@
 defmodule Logflare.SourceSchemas.Cache do
   @moduledoc false
-  alias Logflare.SourceSchemas
-  alias Logflare.Utils
 
-  import Cachex.Spec
+  use Logflare.ContextCache
+
+  alias Logflare.Cache.CachexOps
+  alias Logflare.SourceSchemas
 
   def child_spec(_) do
-    stats = Application.get_env(:logflare, :cache_stats, false)
-
-    %{
-      id: __MODULE__,
-      start:
-        {Cachex, :start_link,
-         [
-           __MODULE__,
-           [
-             warmers: [
-               warmer(
-                 required: false,
-                 module: SourceSchemas.CacheWarmer,
-                 name: SourceSchemas.CacheWarmer
-               )
-             ],
-             hooks:
-               [
-                 if(stats, do: Utils.cache_stats()),
-                 Utils.cache_limit(100_000)
-               ]
-               |> Enum.filter(& &1),
-             # shorter expiration for schemas
-             expiration: Utils.cache_expiration_min(10, 2)
-           ]
-         ]}
-    }
+    CachexOps.child_spec(__MODULE__,
+      limit: 100_000,
+      ttl: to_timeout(minute: 10),
+      purge_interval: to_timeout(minute: 2),
+      warmer: SourceSchemas.CacheWarmer
+    )
   end
 
   def get_source_schema_by(kv), do: apply_fun(__ENV__.function, [kv])

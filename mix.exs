@@ -122,6 +122,9 @@ defmodule Logflare.Mixfile do
       {:typed_struct, "~> 0.1", runtime: false},
       {:lqueue, "~> 1.1"},
       {:cachex, "~> 4.0"},
+      {:nebulex, "~> 3.0"},
+      {:nebulex_distributed, "~> 3.0"},
+      {:nebulex_adapters_cachex, "~> 3.0"},
       {:ex_machina, "~> 2.3", only: [:dev, :test]},
       {:iteraptor, "~> 1.15"},
       {:decorator, "~> 1.3"},
@@ -283,7 +286,7 @@ defmodule Logflare.Mixfile do
       "test.compile": ["compile --warnings-as-errors"],
       "test.format": ["format --check-formatted"],
       "test.security": ["sobelow --threshold high --ignore Config.HTTPS"],
-      "test.slop": ["ex_dna --max-clones 26"],
+      "test.slop": ["ex_dna --max-clones 25"],
       "test.structure": [
         "reach.check --smells --strict --baseline .reach.baseline.json"
       ],
