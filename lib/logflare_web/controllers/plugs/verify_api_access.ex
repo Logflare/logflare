@@ -10,6 +10,8 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
   """
   import Plug.Conn
   alias Logflare.Auth
+  alias Logflare.OauthAccessTokens.OauthAccessToken
+  alias Logflare.RecordUsages
   alias Logflare.Users
   alias Logflare.User
   alias Logflare.Partners.Partner
@@ -94,13 +96,21 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
          {:ok, token, %User{id: user_id}} <-
            Auth.Cache.verify_access_token(access_token_or_api_key, scopes),
          %User{} = user <- Users.Cache.get(user_id) do
+      RecordUsages.record(OauthAccessToken, token.id)
       {:ok, token, user}
     else
       # don't preload for partners
-      {:ok, _token, %Partner{} = partner} -> {:ok, partner}
-      {:error, :no_token} = err -> err
-      {:error, _} = err -> handle_legacy_api_key(extracted_token, err, is_private_route?)
-      nil -> {:error, :unauthorized}
+      {:ok, _token, %Partner{} = partner} ->
+        {:ok, partner}
+
+      {:error, :no_token} = err ->
+        err
+
+      {:error, _} = err ->
+        handle_legacy_api_key(extracted_token, err, is_private_route?)
+
+      nil ->
+        {:error, :unauthorized}
     end
   end
 
