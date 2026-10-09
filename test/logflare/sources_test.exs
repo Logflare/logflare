@@ -103,6 +103,22 @@ defmodule Logflare.SourcesTest do
       assert {:ok, 0} = Sources.set_default_ingest_opt_in(user.id, true)
       assert Sources.get(system.id).default_ingest_backend_enabled? == false
     end
+
+    test "count_default_ingest_opt_in/1 counts the sources set_default_ingest_opt_in/2 updates",
+         %{user: user} do
+      insert(:source, user: user, default_ingest_backend_enabled?: true)
+      null_system = insert(:source, user: user, default_ingest_backend_enabled?: false)
+      null_column!(null_system, :system_source)
+      null_flag = insert(:source, user: user)
+      null_column!(null_flag, :default_ingest_backend_enabled)
+      insert(:source, user: insert(:user), default_ingest_backend_enabled?: true)
+      Sources.create_user_system_sources(user.id)
+
+      assert %{eligible: 3, opted_in: 1} = Sources.count_default_ingest_opt_in(user.id)
+
+      assert {:ok, 2} = Sources.set_default_ingest_opt_in(user.id, true)
+      assert %{eligible: 3, opted_in: 3} = Sources.count_default_ingest_opt_in(user.id)
+    end
   end
 
   defp null_column!(source, column) do

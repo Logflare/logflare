@@ -289,6 +289,23 @@ defmodule Logflare.Sources do
   end
 
   @doc """
+  Counts the user's non-system sources and how many of them participate in default ingest.
+  """
+  @spec count_default_ingest_opt_in(pos_integer()) :: %{
+          eligible: non_neg_integer(),
+          opted_in: non_neg_integer()
+        }
+  def count_default_ingest_opt_in(user_id) when is_pos_integer(user_id) do
+    user_id
+    |> default_ingest_eligible_query()
+    |> select([s], %{
+      eligible: count(s.id),
+      opted_in: filter(count(s.id), s.default_ingest_backend_enabled? == true)
+    })
+    |> Repo.one()
+  end
+
+  @doc """
   Flips default-ingest participation for every non-system source owned by the user.
   Returns the number of sources updated.
   """
@@ -296,19 +313,25 @@ defmodule Logflare.Sources do
   def set_default_ingest_opt_in(user_id, opt_in?)
       when is_pos_integer(user_id) and is_boolean(opt_in?) do
     {count, ids} =
-      from(s in Source,
-        where:
-          s.user_id == ^user_id and
-            (s.system_source == false or is_nil(s.system_source)) and
-            (is_nil(s.default_ingest_backend_enabled?) or
-               s.default_ingest_backend_enabled? != ^opt_in?),
-        select: s.id
+      user_id
+      |> default_ingest_eligible_query()
+      |> where(
+        [s],
+        is_nil(s.default_ingest_backend_enabled?) or
+          s.default_ingest_backend_enabled? != ^opt_in?
       )
+      |> select([s], s.id)
       |> Repo.update_all(set: [default_ingest_backend_enabled?: opt_in?])
 
     ContextCache.bust_keys(Enum.map(ids, &{__MODULE__, &1}))
 
     {:ok, count}
+  end
+
+  defp default_ingest_eligible_query(user_id) do
+    from(s in Source,
+      where: s.user_id == ^user_id and (s.system_source == false or is_nil(s.system_source))
+    )
   end
 
   def update_source_by_user(_source, _plan, %{"notifications_every" => ""}) do
@@ -700,7 +723,7 @@ defmodule Logflare.Sources do
     user = Users.Cache.get(source.user_id)
     default_backend = Backends.get_default_backend(user)
 
-    ingest_backends = Backends.Cache.list_backends(source_id: source.id)
+    ingest_backends = Backends.list_dispatch_backends(source)
 
     rules_backends =
       Backends.Cache.list_backends(rules_source_id: source.id)

@@ -51,6 +51,7 @@ defmodule Logflare.Backends.Supervisor do
         Backends.Adaptor.PostgresAdaptor.Supervisor,
         Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup,
         Backends.ConsolidatedSup,
+        Backends.DefaultIngestRefresher.supervisor_spec(),
         %{
           id: Backends.SourceSupStarts,
           start: {Cachex, :start_link, [Backends.SourceSupStarts, []]}
