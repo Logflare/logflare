@@ -1,13 +1,16 @@
 defmodule Logflare.SourceSchemas.CacheWarmer do
-  alias Logflare.SourceSchemas.SourceSchema
+  alias Logflare.ContextCache.Warmer
   alias Logflare.Repo
+  alias Logflare.SourceSchemas.Cache
+  alias Logflare.SourceSchemas.SourceSchema
   alias Logflare.Sources.Source
   import Ecto.Query
 
   use Cachex.Warmer
   @impl true
-  def execute(_state), do: Repo.with_replica(&warm/0)
+  def execute(_state), do: Warmer.warm(Cache, &warm/0)
 
+  @spec warm() :: Warmer.pairs()
   defp warm do
     # Get source schemas for sources that have been active in the last day
     source_schemas =
@@ -20,11 +23,8 @@ defmodule Logflare.SourceSchemas.CacheWarmer do
       )
       |> Repo.all()
 
-    get_kv =
-      for ss <- source_schemas do
-        {{:get_source_schema_by, [[source_id: ss.source_id]]}, {:cached, ss}}
-      end
-
-    {:ok, get_kv}
+    for ss <- source_schemas do
+      {{:get_source_schema_by, [[source_id: ss.source_id]]}, {:cached, ss}}
+    end
   end
 end

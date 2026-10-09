@@ -624,6 +624,14 @@ config :logflare, :context_cache_gossip, %{
   max_nodes: cache_gossip_max_nodes
 }
 
+# LOGFLARE_CACHE_WARMER_REFRESH_ENABLED: Re-run cache warmers every third of the cache TTL
+default_cache_warmer_refresh_enabled = if config_env() == :test, do: "false", else: "true"
+
+config :logflare, Logflare.ContextCache.Warmer,
+  refresh_enabled:
+    System.get_env("LOGFLARE_CACHE_WARMER_REFRESH_ENABLED", default_cache_warmer_refresh_enabled) ==
+      "true"
+
 # LOGFLARE_READ_REPLICAS: PostgreSQL read replicas for selected cache queries.
 # An empty list uses the primary database. Entries are bare host names, IP literals, or URIs
 # whose omitted options inherit the primary.

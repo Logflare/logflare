@@ -1,12 +1,14 @@
 defmodule Logflare.Users.CacheWarmer do
-  alias Logflare.Repo
+  alias Logflare.ContextCache.Warmer
   alias Logflare.Users
+  alias Logflare.Users.Cache
 
   use Cachex.Warmer
 
   @impl true
-  def execute(_state), do: Repo.with_replica(&warm/0)
+  def execute(_state), do: Warmer.warm(Cache, &warm/0)
 
+  @spec warm() :: Warmer.pairs()
   defp warm do
     users = Users.list_ingesting_users(limit: 1_000)
 
@@ -30,6 +32,6 @@ defmodule Logflare.Users.CacheWarmer do
         ]
       end
 
-    {:ok, List.flatten(get_kv ++ preloaded_kv) |> Enum.map(fn {k, v} -> {k, {:cached, v}} end)}
+    List.flatten(get_kv ++ preloaded_kv) |> Enum.map(fn {k, v} -> {k, {:cached, v}} end)
   end
 end
