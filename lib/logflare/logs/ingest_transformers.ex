@@ -2,6 +2,7 @@ defmodule Logflare.Logs.IngestTransformers do
   @moduledoc false
   import Logflare.EnumDeepUpdate, only: [update_all_keys_deep: 2]
 
+  alias Logflare.LogEvent.Size
   alias Logflare.Logs.Ingest.MetadataCleaner
 
   @alphanumeric_regex ~r/\W/
@@ -22,12 +23,8 @@ defmodule Logflare.Logs.IngestTransformers do
 
   @spec transform(map(), direct_transform() | [transform_rule()]) :: map()
   def transform(log_params, :clean_to_bigquery_column_spec) when is_map(log_params) do
-    clean_and_to_bigquery_column_spec(log_params)
-  catch
-    :throw, :normalized_bigquery_column_collision ->
-      log_params
-      |> MetadataCleaner.deep_reject_nil_and_empty()
-      |> transform(:to_bigquery_column_spec)
+    {body, _bytes} = transform_with_byte_size(log_params)
+    body
   end
 
   def transform(log_params, :to_bigquery_column_spec) when is_map(log_params) do
@@ -38,44 +35,63 @@ defmodule Logflare.Logs.IngestTransformers do
     Enum.reduce(rules, log_params, &do_transform(&2, &1))
   end
 
+  @doc """
+  Cleans and normalizes an ingestion body while counting its retained values.
+  """
+  @spec transform_with_byte_size(map()) :: {map(), non_neg_integer()}
+  def transform_with_byte_size(log_params) when is_map(log_params) do
+    clean_and_to_bigquery_column_spec(log_params)
+  catch
+    :throw, :normalized_bigquery_column_collision ->
+      body =
+        log_params
+        |> MetadataCleaner.deep_reject_nil_and_empty()
+        |> transform(:to_bigquery_column_spec)
+
+      {body, Size.body_byte_size(body)}
+  end
+
   defp clean_and_to_bigquery_column_spec(data) when is_map(data) do
     :maps.fold(
       fn
         _k, v, acc when is_nil_or_empty(v) ->
           acc
 
-        k, v, acc when is_map(v) or is_list(v) ->
-          cleaned = clean_and_to_bigquery_column_spec(v)
+        k, v, {body, bytes} when is_map(v) or is_list(v) ->
+          {cleaned, value_bytes} = clean_and_to_bigquery_column_spec(v)
 
           if is_nil_or_empty(cleaned) do
-            acc
+            {body, bytes}
           else
-            put_bigquery_column(acc, k, cleaned)
+            {put_bigquery_column(body, k, cleaned), bytes + value_bytes}
           end
 
-        k, v, acc ->
-          put_bigquery_column(acc, k, v)
+        k, v, {body, bytes} ->
+          {put_bigquery_column(body, k, v), bytes + Size.body_byte_size(v)}
       end,
-      %{},
+      {%{}, 0},
       data
     )
   end
 
-  defp clean_and_to_bigquery_column_spec(data) when is_list(data) do
-    data
-    |> Enum.reduce([], fn
-      x, acc when is_nil_or_empty(x) ->
-        acc
+  defp clean_and_to_bigquery_column_spec(data) when is_list(data),
+    do: clean_bigquery_list(data, [], 0)
 
-      x, acc when is_map(x) or is_list(x) ->
-        cleaned = clean_and_to_bigquery_column_spec(x)
-        if is_nil_or_empty(cleaned), do: acc, else: [cleaned | acc]
+  defp clean_bigquery_list([], items, bytes), do: {Enum.reverse(items), bytes}
 
-      x, acc ->
-        [x | acc]
-    end)
-    |> Enum.reverse()
+  defp clean_bigquery_list([x | rest], items, bytes) when is_nil_or_empty(x),
+    do: clean_bigquery_list(rest, items, bytes)
+
+  defp clean_bigquery_list([x | rest], items, bytes) when is_map(x) or is_list(x) do
+    {cleaned, value_bytes} = clean_and_to_bigquery_column_spec(x)
+
+    if is_nil_or_empty(cleaned),
+      do: clean_bigquery_list(rest, items, bytes),
+      else: clean_bigquery_list(rest, [cleaned | items], bytes + value_bytes)
   end
+
+  defp clean_bigquery_list([x | rest], items, bytes),
+    do: clean_bigquery_list(rest, [x | items], bytes + Size.body_byte_size(x))
 
   @compile {:inline, put_bigquery_column: 3}
   @spec put_bigquery_column(map(), term(), term()) :: map()

@@ -1607,6 +1607,16 @@ defmodule Logflare.BackendsTest do
 
       {:ok, system_events} = IngestEventQueue.fetch_events({source.id, nil}, 10)
       assert length(system_events) == 1
+
+      [consolidated_event] = consolidated_events
+      [system_event] = system_events
+
+      assert consolidated_event.accounted_bytes ==
+               LogEvent.body_byte_size(consolidated_event.body)
+
+      assert consolidated_event.batch_bytes == :erlang.external_size(consolidated_event.body)
+      assert system_event.accounted_bytes == consolidated_event.accounted_bytes
+      assert system_event.batch_bytes == consolidated_event.batch_bytes
     end
 
     test "route to backend", %{user: user} do
