@@ -6,8 +6,10 @@ on:
     paths:
       - "helm/**"
       - "VERSION"
-      - "scripts/bump-release"
-      - "scripts/test_bump_release.py"
+      - "scripts/bump_release.exs"
+      - "scripts/bump_release_test.exs"
+      - "scripts/.formatter.exs"
+      - ".tool-versions"
       - ".github/workflows/helm-chart.yml"
 
 permissions:
@@ -22,11 +24,20 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+
       - name: Test release bump script
-        run: python3 -B -m unittest discover -s scripts -p test_bump_release.py -v
+        run: elixir scripts/bump_release_test.exs
+
+      - name: Check release script formatting
+        run: mix format --dot-formatter scripts/.formatter.exs --check-formatted
 
       - name: Ensure chart appVersion matches VERSION
-        run: scripts/bump-release --check
+        run: elixir scripts/bump_release.exs --check
 
       - name: Set up Helm
         uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
