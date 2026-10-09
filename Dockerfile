@@ -56,11 +56,11 @@ RUN set -eu; \
 
 COPY . ./
 
-# release
+# Build and digest assets before the release so priv/static is bundled into it.
 RUN find native Cargo.toml Cargo.lock -exec touch -h -d @1 {} + && \
-    mix release && \
     npm run --prefix assets deploy && \
-    mix phx.digest
+    mix phx.digest && \
+    mix release
 
 FROM ${RUNNER_IMAGE}
 
@@ -92,13 +92,6 @@ ENV LOGFLARE_COMMIT_SHA=${COMMIT_SHA}
 # Only the self-contained release is needed at runtime, not the rest of _build.
 COPY --from=builder /app/_build/prod/rel/logflare /opt/app/rel/logflare
 COPY --from=builder /app/VERSION /opt/app/VERSION
-COPY --from=builder app/priv/static /opt/app/rel/logflare/bin/priv/static
-
-# Move files to the correct folder taking into consideration the VERSION
-RUN cp -r /opt/app/rel/logflare/bin/priv/static /opt/app/rel/logflare/lib/logflare-$(cat /opt/app/VERSION)/priv/static
-
-# Cleanup static assets not in use
-RUN rm -r /opt/app/rel/logflare/bin/priv
 
 WORKDIR /opt/app/rel/logflare/bin
 COPY run.sh ./run.sh
