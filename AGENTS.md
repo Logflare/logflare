@@ -85,7 +85,8 @@ gate to go green - fix the code.
   code. Fixing a backlog check's findings and removing it from that list is a
   welcome change on its own. Never add a check to the list to go green.
 - `mix test.slop` runs `ex_dna --max-clones <Current clone number>`,
-  a duplication ratchet. A new clone fails CI. When you remove clones,
+  This tool counts duplicated code (clones), and the number should only go down,
+  never up. If you add a new clone, CI fails. If you remove clones,
   lower the number. Never raise it.
 - `mix test.structure` runs `reach.check --smells` against
   `.reach.baseline.json` (194 accepted findings), so only **new** structural
