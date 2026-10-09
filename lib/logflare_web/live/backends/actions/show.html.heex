@@ -28,6 +28,9 @@
   </div>
   <div>
     <.button variant="primary" phx-click="test_connection">Test connection</.button>
+    <span :if={@backend.type == :bigquery} class="text-muted tw-text-sm tw-ml-2">
+      Sends one test event to an attached source's BigQuery table.
+    </span>
     <.status_indicator :if={@connection_status} status={@connection_status} />
   </div>
 </section>
