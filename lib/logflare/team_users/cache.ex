@@ -3,30 +3,34 @@ defmodule Logflare.TeamUsers.Cache do
   Cache for TeamUsers.
   """
 
+  @behaviour Logflare.Cache
+  @behaviour Logflare.ContextCache
+
+  alias Logflare.Cache.CachexOps
   alias Logflare.TeamUsers
-  alias Logflare.Utils
 
-  def child_spec(_) do
-    stats = Application.get_env(:logflare, :cache_stats, false)
+  def child_spec(_), do: CachexOps.child_spec(__MODULE__, limit: 100_000)
 
-    %{
-      id: __MODULE__,
-      start:
-        {Cachex, :start_link,
-         [
-           __MODULE__,
-           [
-             hooks:
-               [
-                 if(stats, do: Utils.cache_stats()),
-                 Utils.cache_limit(100_000)
-               ]
-               |> Enum.filter(& &1),
-             expiration: Utils.cache_expiration_min()
-           ]
-         ]}
-    }
-  end
+  @impl Logflare.Cache
+  def healthy?, do: CachexOps.healthy?(__MODULE__)
+
+  @impl Logflare.Cache
+  def stats, do: CachexOps.stats(__MODULE__)
+
+  @impl Logflare.Cache
+  def reset, do: CachexOps.reset(__MODULE__)
+
+  @impl Logflare.ContextCache
+  def fetch(key, getter), do: CachexOps.fetch(__MODULE__, key, getter)
+
+  @impl Logflare.ContextCache
+  def update(key, value), do: CachexOps.update(__MODULE__, key, value)
+
+  @impl Logflare.ContextCache
+  def keys_to_bust(kw), do: CachexOps.keys_to_bust(__MODULE__, kw)
+
+  @impl Logflare.ContextCache
+  def delete_keys(keys), do: CachexOps.delete_keys(__MODULE__, keys)
 
   def get_team_user(id), do: apply_repo_fun({:get_team_user, 1}, [id])
   def get_team_user!(id), do: apply_repo_fun(:get_team_user!, [id])
