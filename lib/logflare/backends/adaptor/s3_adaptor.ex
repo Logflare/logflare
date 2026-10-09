@@ -144,8 +144,6 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     !!Application.get_env(:logflare, :unsafe_disable_ssrf_s3_endpoint_check)
   end
 
-  defp trusted_endpoint_host?(nil), do: false
-
   defp trusted_endpoint_host?(host) do
     Enum.any?(@trusted_endpoint_suffixes, fn suffix ->
       host == suffix or String.ends_with?(host, suffix)
