@@ -590,6 +590,7 @@ config :logflare, Oban,
     {Oban.Plugins.Cron,
      crontab: [
        {"* * * * *", Logflare.Alerting.AlertSchedulerWorker},
+       {"*/5 * * * *", Logflare.RecordUsages.SyncWorker},
        {"*/15 * * * *", Logflare.Sources.RecentEventsTouchWorker},
        {"*/15 * * * *", Logflare.KeyValues.UsageTouchWorker}
      ]}
