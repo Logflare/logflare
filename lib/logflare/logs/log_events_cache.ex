@@ -1,7 +1,8 @@
 defmodule Logflare.Logs.LogEvents.Cache do
   @moduledoc false
 
-  use Logflare.ContextCache
+  @behaviour Logflare.Cache
+  @behaviour Logflare.ContextCache
 
   alias Logflare.Cache.CachexOps
   alias Logflare.ContextCache
@@ -18,6 +19,27 @@ defmodule Logflare.Logs.LogEvents.Cache do
       compressed: true
     )
   end
+
+  @impl Logflare.Cache
+  def healthy?, do: CachexOps.healthy?(__MODULE__)
+
+  @impl Logflare.Cache
+  def stats, do: CachexOps.stats(__MODULE__)
+
+  @impl Logflare.Cache
+  def reset, do: CachexOps.reset(__MODULE__)
+
+  @impl ContextCache
+  def fetch(key, getter), do: CachexOps.fetch(__MODULE__, key, getter)
+
+  @impl ContextCache
+  def update(key, value), do: CachexOps.update(__MODULE__, key, value)
+
+  @impl ContextCache
+  def keys_to_bust(kw), do: CachexOps.keys_to_bust(__MODULE__, kw)
+
+  @impl ContextCache
+  def delete_keys(keys), do: CachexOps.delete_keys(__MODULE__, keys)
 
   @fetch_event_by_id {:fetch_event_by_id, 2}
   @spec fetch_event_by_id(atom, binary(), Keyword.t()) :: {:ok, LE.t() | nil} | {:error, map()}

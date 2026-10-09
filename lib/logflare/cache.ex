@@ -2,12 +2,8 @@ defmodule Logflare.Cache do
   @moduledoc """
   Operational contract of an application cache, independent of its storage backend.
 
-  `use Logflare.Cache` injects default implementations of every callback, delegating to
-  `Logflare.Cache.CachexOps`. A cache on another backend overrides them, or passes
-  `impl: module` naming a `Logflare.Cache.Ops` implementation.
+  Caches on Cachex implement the callbacks by delegating to `Logflare.Cache.CachexOps`.
   """
-
-  alias Logflare.Cache.CachexOps
 
   @typedoc """
   Counters since the last `c:reset/0`. Rates are percentages (0-100); `total_heap_size` is in bytes.
@@ -30,23 +26,4 @@ defmodule Logflare.Cache do
 
   @doc "Clears all entries and statistics."
   @callback reset() :: :ok
-
-  defmacro __using__(opts) do
-    impl = Keyword.get(opts, :impl, CachexOps)
-
-    quote do
-      @behaviour Logflare.Cache
-
-      @impl Logflare.Cache
-      def healthy?, do: unquote(impl).healthy?(__MODULE__)
-
-      @impl Logflare.Cache
-      def stats, do: unquote(impl).stats(__MODULE__)
-
-      @impl Logflare.Cache
-      def reset, do: unquote(impl).reset(__MODULE__)
-
-      defoverridable healthy?: 0, stats: 0, reset: 0
-    end
-  end
 end

@@ -1,7 +1,7 @@
 defmodule Logflare.PubSubRates.Cache do
   @moduledoc false
 
-  use Logflare.Cache
+  @behaviour Logflare.Cache
 
   require Logger
 
@@ -20,6 +20,15 @@ defmodule Logflare.PubSubRates.Cache do
       purge_interval: to_timeout(minute: 5)
     )
   end
+
+  @impl Logflare.Cache
+  def healthy?, do: CachexOps.healthy?(__MODULE__)
+
+  @impl Logflare.Cache
+  def stats, do: CachexOps.stats(__MODULE__)
+
+  @impl Logflare.Cache
+  def reset, do: CachexOps.reset(__MODULE__)
 
   def clear do
     Cachex.clear(__MODULE__)

@@ -1,7 +1,7 @@
 defmodule Logflare.ContextCache.Tombstones.Cache do
   @moduledoc false
 
-  use Logflare.Cache
+  @behaviour Logflare.Cache
 
   alias Logflare.Cache.CachexOps
 
@@ -14,6 +14,15 @@ defmodule Logflare.ContextCache.Tombstones.Cache do
       purge_interval: to_timeout(second: 30)
     )
   end
+
+  @impl Logflare.Cache
+  def healthy?, do: CachexOps.healthy?(__MODULE__)
+
+  @impl Logflare.Cache
+  def stats, do: CachexOps.stats(__MODULE__)
+
+  @impl Logflare.Cache
+  def reset, do: CachexOps.reset(__MODULE__)
 
   def put_tombstone(cache, tombstone) do
     Cachex.put(@name, {cache, tombstone}, true)

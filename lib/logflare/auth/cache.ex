@@ -4,7 +4,8 @@ defmodule Logflare.Auth.Cache do
   Cachex `expiration`.
   """
 
-  use Logflare.ContextCache
+  @behaviour Logflare.Cache
+  @behaviour Logflare.ContextCache
 
   alias Logflare.Auth
   alias Logflare.Cache.CachexOps
@@ -18,6 +19,27 @@ defmodule Logflare.Auth.Cache do
       purge_interval: to_timeout(minute: 2)
     )
   end
+
+  @impl Logflare.Cache
+  def healthy?, do: CachexOps.healthy?(__MODULE__)
+
+  @impl Logflare.Cache
+  def stats, do: CachexOps.stats(__MODULE__)
+
+  @impl Logflare.Cache
+  def reset, do: CachexOps.reset(__MODULE__)
+
+  @impl Logflare.ContextCache
+  def fetch(key, getter), do: CachexOps.fetch(__MODULE__, key, getter)
+
+  @impl Logflare.ContextCache
+  def update(key, value), do: CachexOps.update(__MODULE__, key, value)
+
+  @impl Logflare.ContextCache
+  def keys_to_bust(kw), do: CachexOps.keys_to_bust(__MODULE__, kw)
+
+  @impl Logflare.ContextCache
+  def delete_keys(keys), do: CachexOps.delete_keys(__MODULE__, keys)
 
   @spec verify_access_token(OauthAccessToken.t() | String.t()) ::
           {:ok, OauthAccessToken.t(), User.t()} | {:error, term()}
