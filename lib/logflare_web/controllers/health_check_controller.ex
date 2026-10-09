@@ -106,11 +106,7 @@ defmodule LogflareWeb.HealthCheckController do
               Logflare.Logs.LogEvents.Cache
             ],
         into: %{} do
-      # call is O(1)
-      case Cachex.size(cache) do
-        {:ok, _} -> {cache, :ok}
-        {:error, :no_cache} -> {cache, :no_cache}
-      end
+      {cache, if(cache.healthy?(), do: :ok, else: :unhealthy)}
     end
   end
 end

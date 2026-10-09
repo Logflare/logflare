@@ -43,7 +43,6 @@
   {"lib/logflare_web/controllers/api/endpoint_controller.ex", :pattern_match},
   {"lib/logflare_web/controllers/billing_controller.ex", :unused_fun},
   {"lib/logflare_web/controllers/billing_controller.ex", :pattern_match_cov},
-  {"lib/logflare_web/controllers/health_check_controller.ex", :pattern_match},
   {"lib/logflare_web/controllers/source_controller.ex", :pattern_match},
   {"lib/logflare_web/live/monaco_editor_component.ex", :pattern_match},
   {"lib/logflare_web/live/query_live.ex", :no_return},

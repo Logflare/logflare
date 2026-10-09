@@ -4,28 +4,14 @@ defmodule Logflare.ConfigCatCache do
   Used to avoid repeated ConfigCat calls on hot paths like LogEvent processing.
   """
 
-  alias Logflare.Utils
+  alias Logflare.Cache.CachexOps
 
   def child_spec(_) do
-    stats = Application.get_env(:logflare, :cache_stats, false)
-
-    %{
-      id: __MODULE__,
-      start:
-        {Cachex, :start_link,
-         [
-           __MODULE__,
-           [
-             hooks:
-               [
-                 if(stats, do: Utils.cache_stats()),
-                 Utils.cache_limit(100_000)
-               ]
-               |> Enum.filter(& &1),
-             expiration: Utils.cache_expiration_min(10, 1)
-           ]
-         ]}
-    }
+    CachexOps.child_spec(__MODULE__,
+      limit: 100_000,
+      ttl: to_timeout(minute: 10),
+      purge_interval: to_timeout(minute: 1)
+    )
   end
 
   @spec get(term()) :: {:ok, term()} | {:error, term()}
