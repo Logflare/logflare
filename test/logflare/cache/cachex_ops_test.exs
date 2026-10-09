@@ -70,6 +70,53 @@ defmodule Logflare.Cache.CachexOpsTest do
     end
   end
 
+  describe "healthy?/1" do
+    test "started cache" do
+      start_cache(limit: 10)
+      assert CachexOps.healthy?(@cache)
+    end
+
+    test "cache that is not started" do
+      refute CachexOps.healthy?(@cache)
+    end
+  end
+
+  describe "stats/1" do
+    test "cache after reads and writes" do
+      start_cache(limit: 10)
+      Cachex.put(@cache, :key, :value)
+      Cachex.get(@cache, :key)
+      Cachex.get(@cache, :missing)
+
+      assert %{hits: 1, misses: 1, total_heap_size: heap} = stats = CachexOps.stats(@cache)
+      assert heap > 0
+
+      assert stats |> Map.keys() |> Enum.sort() == [
+               :evictions,
+               :expirations,
+               :hit_rate,
+               :hits,
+               :miss_rate,
+               :misses,
+               :operations,
+               :total_heap_size
+             ]
+    end
+  end
+
+  describe "reset/1" do
+    test "cache with entries and stats" do
+      start_cache(limit: 10)
+      Cachex.put(@cache, :key, :value)
+      Cachex.get(@cache, :key)
+
+      assert :ok = CachexOps.reset(@cache)
+
+      assert {:ok, nil} = Cachex.get(@cache, :key)
+      assert %{hits: 0} = CachexOps.stats(@cache)
+    end
+  end
+
   describe "delete_keys/2" do
     setup do
       start_cache(limit: nil)
