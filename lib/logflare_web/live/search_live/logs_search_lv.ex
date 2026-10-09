@@ -27,7 +27,6 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.TeamUsers
   alias Logflare.User
   alias Logflare.Users
-  alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.QueryErrorHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchLive.AiAssist
@@ -1119,7 +1118,7 @@ defmodule LogflareWeb.Source.SearchLV do
         Map.update!(
           la,
           "timestamp",
-          &BqSchemaHelpers.format_timestamp(&1, socket.assigns.search_timezone)
+          &Utils.format_timestamp(&1, socket.assigns.search_timezone)
         )
       end)
 
