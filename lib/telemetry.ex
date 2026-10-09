@@ -493,6 +493,11 @@ defmodule Logflare.Telemetry do
           "Ingest requests rejected (429) — pending buffer full (per request, not per event)"
       ),
       last_value("logflare.system.finch.in_flight_requests", tags: [:pool, :url]),
+      last_value("logflare.system.finch.in_use_connections", tags: [:pool, :url]),
+      last_value("logflare.system.finch.available_connections",
+        tags: [:pool, :url],
+        description: "Available pool capacity, including slots without an established connection"
+      ),
       distribution("logflare.backends.dynamic_pipeline.pipeline_count"),
       distribution("logflare.ingest.pipeline.stream_batch.stop.duration",
         unit: {:native, :millisecond}

@@ -108,6 +108,21 @@ defmodule Logflare.TelemetryTest do
              end)
     end
 
+    test "exports Finch occupancy and capacity as last-value gauges" do
+      metrics = Telemetry.metrics()
+
+      for measurement <- [:in_flight_requests, :in_use_connections, :available_connections] do
+        name = [:logflare, :system, :finch, measurement]
+        metric = Enum.find(metrics, &(&1.name == name))
+
+        assert metric
+        assert to_string(metric.__struct__) == "Elixir.Telemetry.Metrics.LastValue"
+        assert metric.event_name == [:logflare, :system, :finch]
+        assert metric.measurement == measurement
+        assert metric.tags == [:pool, :url]
+      end
+    end
+
     test "includes the spool telemetry metrics added for throttling/storage/queue observability" do
       names = Telemetry.metrics() |> Enum.map(& &1.name)
 
