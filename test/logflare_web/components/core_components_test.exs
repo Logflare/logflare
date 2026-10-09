@@ -6,6 +6,12 @@ defmodule LogflareWeb.CoreComponentsTest do
   test "button defaults to a non-submit button and accepts a submit type" do
     inner_block = [%{inner_block: fn _, _ -> "Run query" end}]
 
+    plain =
+      render_component(&CoreComponents.button/1, %{
+        class: "text-danger btn-sm",
+        inner_block: inner_block
+      })
+
     default =
       render_component(&CoreComponents.button/1, %{
         variant: "secondary",
@@ -20,6 +26,9 @@ defmodule LogflareWeb.CoreComponentsTest do
         inner_block: inner_block
       })
 
+    assert plain =~ ~s(class="btn text-danger btn-sm")
+    assert plain =~ ~s(type="button")
+    assert [_] = default |> Floki.parse_fragment!() |> Floki.find("button.btn.btn-secondary")
     assert default =~ ~s(type="button")
     assert submit =~ ~s(type="submit")
     assert submit =~ "disabled"
@@ -156,5 +165,51 @@ defmodule LogflareWeb.CoreComponentsTest do
     assert html =~ ~s(<option selected value="1">First</option>)
     refute html =~ ~s(<option selected value="2">Second</option>)
     assert html =~ ~s(<option selected value="3">Third</option>)
+  end
+
+  describe "table/1" do
+    import Phoenix.Component, only: [sigil_H: 2]
+
+    test "renders column labels, mapped rows, row ids, and an actions column" do
+      assigns = %{rows: [%{id: 1, name: "first"}, %{id: 2, name: "second"}]}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.table id="items" rows={@rows} row_id={&"item-#{&1.id}"} row_item={&Map.update!(&1, :name, fn name -> String.upcase(name) end)}>
+          <:col :let={item} label="Name">{item.name}</:col>
+          <:action :let={item}><button id={"edit-#{item.id}"}>Edit {item.name}</button></:action>
+          <:action :let={item}><button id={"delete-#{item.id}"}>Delete</button></:action>
+        </CoreComponents.table>
+        """)
+        |> Floki.parse_fragment!()
+
+      assert [_] = Floki.find(html, "table.table-dark.table-auto.w-full.flex-grow")
+
+      assert html |> Floki.find("thead th") |> Enum.map(&Floki.text/1) == ["Name", "Actions"]
+
+      assert html |> Floki.find("thead th .tw-sr-only") |> Floki.text() == "Actions"
+
+      assert [_] = Floki.find(html, "tbody#items")
+      assert html |> Floki.find("tbody tr") |> Floki.attribute("id") == ["item-1", "item-2"]
+      assert html |> Floki.find("#item-1 td.p-2") |> length() == 2
+      assert html |> Floki.find("#item-2 td") |> hd() |> Floki.text() |> String.trim() == "SECOND"
+      assert html |> Floki.find("#item-2 #edit-2") |> Floki.text() == "Edit SECOND"
+      assert [_] = Floki.find(html, "#item-2 #delete-2")
+    end
+
+    test "renders only the supplied columns" do
+      assigns = %{rows: [%{id: 1}]}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.table id="items" rows={@rows}>
+          <:col :let={item} label="ID">{item.id}</:col>
+        </CoreComponents.table>
+        """)
+        |> Floki.parse_fragment!()
+
+      assert html |> Floki.find("thead th") |> Enum.map(&Floki.text/1) == ["ID"]
+      assert [_] = Floki.find(html, "#items td")
+    end
   end
 end

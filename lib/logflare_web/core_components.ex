@@ -150,7 +150,8 @@ defmodule LogflareWeb.CoreComponents do
 
   @doc "button"
   attr :variant, :string,
-    values: ["primary", "secondary", "success", "danger", "warning", "info", "light", "dark"]
+    default: nil,
+    values: [nil, "primary", "secondary", "success", "danger", "warning", "info", "light", "dark"]
 
   attr :class, :string, default: ""
   attr :disabled, :boolean, default: false
@@ -160,7 +161,7 @@ defmodule LogflareWeb.CoreComponents do
 
   def button(assigns) do
     ~H"""
-    <button class={"btn btn-#{@variant} #{@class}"} type={@type} disabled={@disabled} {@rest}>
+    <button class={["btn", @variant && "btn-#{@variant}", @class]} type={@type} disabled={@disabled} {@rest}>
       {render_slot(@inner_block)}
     </button>
     """
@@ -451,5 +452,64 @@ defmodule LogflareWeb.CoreComponents do
     assigns
     |> Map.merge(nav_assign)
     |> link()
+  end
+
+  @doc """
+  Renders a table with generic styling.
+
+  ## Examples
+
+      <.table id="users" rows={@users}>
+        <:col :let={user} label="id">{user.id}</:col>
+        <:col :let={user} label="username">{user.username}</:col>
+      </.table>
+  """
+  attr :id, :string, required: true
+  attr :rows, :list, required: true
+  attr :row_id, :any, default: nil, doc: "the function for generating the row id"
+
+  attr :row_item, :any,
+    default: &Function.identity/1,
+    doc: "the function for mapping each row before calling the :col slots"
+
+  slot :col, required: true do
+    attr :label, :string
+  end
+
+  slot :action, doc: "the slot for showing user actions in the last table column"
+
+  @spec table(map()) :: Phoenix.LiveView.Rendered.t()
+  def table(assigns) do
+    assigns =
+      with %{rows: %Phoenix.LiveView.LiveStream{}} <- assigns do
+        assign(assigns, row_id: assigns.row_id || fn {id, _item} -> id end)
+      end
+
+    ~H"""
+    <table class="table-dark table-auto w-full flex-grow">
+      <thead>
+        <tr>
+          <th :for={col <- @col} class="p-2">{col[:label]}</th>
+          <th :if={@action != []} class="p-2">
+            <span class="tw-sr-only">Actions</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody id={@id} phx-update={is_struct(@rows, Phoenix.LiveView.LiveStream) && "stream"}>
+        <tr :for={row <- @rows} id={@row_id && @row_id.(row)}>
+          <td :for={col <- @col} class="p-2">
+            {render_slot(col, @row_item.(row))}
+          </td>
+          <td :if={@action != []} class="p-2">
+            <div class="tw-flex tw-items-center tw-justify-end tw-gap-2">
+              <%= for action <- @action do %>
+                {render_slot(action, @row_item.(row))}
+              <% end %>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    """
   end
 end
