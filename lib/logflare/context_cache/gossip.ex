@@ -179,6 +179,19 @@ defmodule Logflare.ContextCache.Gossip do
     end
   end
 
+  @doc """
+  Returns true when any record in a cached value was recently invalidated. Values without
+  primary keys (e.g. empty lists) are not considered busted.
+  """
+  @spec recently_busted?(atom(), term()) :: boolean()
+  def recently_busted?(cache, {:cached, value}) do
+    value
+    |> pkeys_from_cached_value()
+    |> Enum.any?(&Tombstones.Cache.tombstoned?(cache, &1))
+  end
+
+  def recently_busted?(_cache, _value), do: false
+
   defp pkeys_from_cached_value(values) when is_list(values) do
     Enum.flat_map(values, &pkeys_from_cached_value/1)
   end

@@ -4,6 +4,7 @@ defmodule Logflare.Sources.CacheWarmerTest do
   import ExUnit.CaptureLog
 
   alias Logflare.Billing
+  alias Logflare.ContextCache.Gossip
   alias Logflare.Sources
   alias Logflare.Sources.Cache
   alias Logflare.Sources.CacheWarmer
@@ -111,6 +112,26 @@ defmodule Logflare.Sources.CacheWarmerTest do
     |> reject(:get_plans_by_users, 1)
 
     assert {:ok, []} = CacheWarmer.execute(nil)
+  end
+
+  test "skips sources invalidated while warming", %{source: source} do
+    stub(Billing, :get_plans_by_users, fn users ->
+      Gossip.record_tombstones([{Sources, source.id}])
+      call_original(Billing, :get_plans_by_users, [users])
+    end)
+
+    assert {:ok, []} = CacheWarmer.execute(nil)
+  end
+
+  test "logs errors and keeps running on the next interval" do
+    stub(Billing, :get_plans_by_users, fn _users -> raise "db down" end)
+
+    log =
+      capture_log(fn ->
+        assert :ignore = CacheWarmer.execute(nil)
+      end)
+
+    assert log =~ "Error warming Logflare.Sources.Cache: db down"
   end
 
   test "skips sources whose users cannot be resolved" do
