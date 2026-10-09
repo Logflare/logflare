@@ -176,28 +176,28 @@ The watcher writes the output to `priv/static`. The dev server does not use dige
    mix deps.get
    ```
 
-3. Create and migrate the database: `mix ecto.setup`.
-4. Start the server in single-tenant Postgres mode:
+3. Start the server in single-tenant Postgres mode with the shared QA script.
+   It creates and migrates the databases and runs the server as a named node, so
+   `scripts/qa/remsh.sh` can run checks inside it. The `ingest-qa` skill uses the same script.
 
    ```sh
-   LOGFLARE_SINGLE_TENANT=true \
-   POSTGRES_BACKEND_URL=postgresql://postgres:postgres@localhost:5432/logflare_dev \
-   GOOGLE_PROJECT_ID=logflare-qa \
-   mix phx.server
+   scripts/qa/server.sh > /tmp/logflare-qa-server.log 2>&1 &
    ```
 
-5. Wait for the health check to return `200`:
+   Settings such as the port and the public access token are in `scripts/qa/env.sh`.
+
+4. Wait for the health check to return `200`:
 
    ```sh
    until curl -fs -o /dev/null localhost:4000/health; do sleep 2; done
    ```
 
-6. Do [Procedure C](#procedure-c-run-and-verify-the-screenshot-specs).
-7. To test a change to CSS or JS, edit the file under `assets/`. The watcher rebuilds it. Then run Procedure C again.
-8. When you finish, press `Ctrl+C` two times in the server terminal. Then stop Postgres: `docker compose stop db`.
+5. Do [Procedure C](#procedure-c-run-and-verify-the-screenshot-specs).
+6. To test a change to CSS or JS, edit the file under `assets/`. The watcher rebuilds it. Then run Procedure C again.
+7. When you finish, stop the server with `kill` on its PID. Then stop Postgres: `docker compose stop db`.
 
 > **Note:** `make start` and `make start.st.pg` read `.dev.env`. That file holds team secrets and is not in Git.
-> If you have the file, you can use `make start.st.pg`. If not, use the `mix phx.server` command above.
+> If you have the file, you can use `make start.st.pg`. If not, use `scripts/qa/server.sh`.
 
 > **Note:** The first start compiles the Rust NIFs. This can take more than 10 minutes.
 

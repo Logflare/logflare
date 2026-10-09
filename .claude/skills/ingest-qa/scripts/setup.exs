@@ -43,7 +43,7 @@ defmodule IngestQA.Setup do
 
     Backends.ensure_source_sup_started(main)
 
-    IO.puts("QA_ENV MAIN_TOKEN=#{main.token}")
+    IO.puts("QA_ENV MAIN_TOKEN=#{main.token} MAIN_ID=#{main.id}")
   end
 
   defp source(user, name) do
@@ -65,5 +65,5 @@ defmodule IngestQA.Setup do
   end
 end
 
-{config, _} = Code.eval_file("{{SKILL_DIR}}/scripts/targets.exs")
+{config, _} = Code.eval_file("{{SCRIPT_DIR}}/targets.exs")
 IngestQA.Setup.run(config)
