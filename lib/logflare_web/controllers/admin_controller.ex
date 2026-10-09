@@ -49,27 +49,97 @@ defmodule LogflareWeb.AdminController do
   end
 
   def become_account(conn, %{"id" => id}) do
-    user = Users.get(id)
+    case Users.get(id) do
+      nil ->
+        conn
+        |> put_flash(:error, "Account not found.")
+        |> redirect(to: Routes.admin_path(conn, :accounts))
 
-    auth_params = %{
-      token: user.token,
-      email: user.email,
-      email_preferred: user.email_preferred,
-      provider: user.provider,
-      image: user.image,
-      name: user.name,
-      provider_uid: user.provider_uid
-    }
+      user ->
+        admin = Users.get_by(email: get_session(conn, :current_email))
 
-    # clear the user session and cookies
-    conn =
-      conn
-      |> delete_session(:team_user_id)
-      |> delete_session(:last_switched_team_id)
-      |> delete_resp_cookie("_logflare_user_id")
-      |> delete_resp_cookie("_logflare_team_user_id")
+        Logger.info("Admin impersonating user",
+          audit: %{
+            admin_user_id: admin.id,
+            admin_email: admin.email,
+            target_user_id: user.id,
+            target_user_email: user.email
+          }
+        )
 
-    AuthController.check_invite_token_and_signin(conn, auth_params)
+        auth_params = %{
+          token: user.token,
+          email: user.email,
+          email_preferred: user.email_preferred,
+          provider: user.provider,
+          image: user.image,
+          name: user.name,
+          provider_uid: user.provider_uid
+        }
+
+        conn =
+          conn
+          |> delete_session(:team_user_id)
+          |> delete_session(:last_switched_team_id)
+          |> delete_resp_cookie("_logflare_user_id")
+          |> delete_resp_cookie("_logflare_team_user_id")
+
+        AuthController.check_invite_token_and_signin(conn, auth_params)
+    end
+  end
+
+  def grant_admin(conn, %{"id" => id}) do
+    granter = Users.get_by(email: get_session(conn, :current_email))
+    target = Users.get(id)
+
+    case Admin.grant_admin(granter, target) do
+      {:ok, _user} ->
+        conn
+        |> put_flash(:info, "Admin access granted!")
+        |> redirect(to: Routes.admin_path(conn, :accounts))
+
+      {:error, :not_found} ->
+        conn
+        |> put_flash(:error, "Account not found.")
+        |> redirect(to: Routes.admin_path(conn, :accounts))
+
+      {:error, _reason} ->
+        conn
+        |> put_flash(:error, "Something went wrong!")
+        |> redirect(to: Routes.admin_path(conn, :accounts))
+    end
+  end
+
+  def revoke_admin(conn, %{"id" => id}) do
+    granter = Users.get_by(email: get_session(conn, :current_email))
+    target = Users.get(id)
+
+    case Admin.revoke_admin(granter, target) do
+      {:ok, _user} ->
+        conn
+        |> put_flash(:info, "Admin access revoked.")
+        |> redirect(to: Routes.admin_path(conn, :accounts))
+
+      {:error, :self_revocation} ->
+        conn
+        |> put_flash(:error, "Cannot revoke your own admin access.")
+        |> redirect(to: Routes.admin_path(conn, :accounts))
+
+      {:error, :last_admin} ->
+        conn
+        |> put_flash(:error, "Cannot revoke the last admin account.")
+        |> redirect(to: Routes.admin_path(conn, :accounts))
+
+      {:error, :not_found} ->
+        conn
+        |> put_flash(:error, "Account not found.")
+        |> redirect(to: Routes.admin_path(conn, :accounts))
+
+      {:error, _reason} ->
+        conn
+        |> put_flash(:error, "Something went wrong!")
+        |> redirect(to: Routes.admin_path(conn, :accounts))
+    end
   end
 
   def delete_account(conn, %{"id" => user_id}) do
