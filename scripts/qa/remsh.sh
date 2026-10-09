@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # Usage: remsh.sh <script.exs> [KEY=VALUE ...]
-# Pipes an .exs file into `iex --remsh` on the QA node, replacing {{KEY}} placeholders.
+# Pipes an .exs file into `iex --remsh` on the node that server.sh started, replacing
+# {{KEY}} placeholders. {{SCRIPT_DIR}} is always set to the directory of the .exs file.
 # The session ends by halting the local probe node: EOF on a piped --remsh session
 # stops the remote node too.
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
 
-probe="ingest_qa_probe_$$"
+probe="qa_probe_$$"
 script=$(cat "$1")
+script_dir=$(cd "$(dirname "$1")" && pwd)
 shift
 
-for kv in "SKILL_DIR=$(cd "$(dirname "$0")/.." && pwd)" "$@"; do
+for kv in "SCRIPT_DIR=$script_dir" "$@"; do
   script=${script//"{{${kv%%=*}}}"/${kv#*=}}
 done
 

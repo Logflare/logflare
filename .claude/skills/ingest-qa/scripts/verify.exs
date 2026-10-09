@@ -104,5 +104,5 @@ defmodule IngestQA.Verify do
   end
 end
 
-{config, _} = Code.eval_file("{{SKILL_DIR}}/scripts/targets.exs")
+{config, _} = Code.eval_file("{{SCRIPT_DIR}}/targets.exs")
 IngestQA.Verify.run(config, "{{RUN_ID}}")
