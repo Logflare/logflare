@@ -2,6 +2,7 @@ defmodule LogflareWeb.SearchLive.AiAssist do
   @moduledoc false
 
   defstruct enabled?: false,
+            upgrade_required?: false,
             fields: %{},
             loading?: false,
             request: nil,
@@ -17,6 +18,7 @@ defmodule LogflareWeb.SearchLive.AiAssist do
 
   @type t :: %__MODULE__{
           enabled?: boolean(),
+          upgrade_required?: boolean(),
           fields: map(),
           loading?: boolean(),
           request: String.t() | nil,
@@ -25,10 +27,13 @@ defmodule LogflareWeb.SearchLive.AiAssist do
           macintosh?: boolean()
         }
 
-  @spec new(String.t() | nil, boolean()) :: t()
-  def new(user_agent, enabled?) do
+  @spec new(String.t() | nil, boolean(), String.t()) :: t()
+  def new(user_agent, configured?, plan_name) do
+    upgrade_required? = configured? and plan_name in ["Free", "Legacy"]
+
     %__MODULE__{
-      enabled?: enabled?,
+      enabled?: configured? and not upgrade_required?,
+      upgrade_required?: upgrade_required?,
       macintosh?: is_binary(user_agent) and String.contains?(user_agent, "Macintosh")
     }
   end
