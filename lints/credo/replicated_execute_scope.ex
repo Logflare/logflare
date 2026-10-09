@@ -65,12 +65,28 @@ defmodule Logflare.CredoChecks.ReplicatedExecuteScope do
   defp descend(nodes, env, acc, fun) when is_list(nodes), do: visit_all(nodes, env, acc, fun)
   defp descend(_leaf, _env, acc, _fun), do: acc
 
-  defp declare({:import, _meta, [{:__aliases__, _, segments} | _opts]}, env) do
+  defp declare({:import, _meta, [{:__aliases__, _, segments} | opts]}, env) do
     if ModuleAliases.resolve(segments, env.aliases) == @wrapper_module,
-      do: %{env | wrapper_imported?: true},
+      do: %{env | wrapper_imported?: imports_wrapper?(opts)},
       else: env
   end
 
   defp declare(statement, env),
     do: %{env | aliases: ModuleAliases.declare(statement, env.aliases)}
+
+  defp imports_wrapper?([]), do: true
+
+  defp imports_wrapper?([opts]) when is_list(opts) do
+    only_includes_wrapper?(Keyword.get(opts, :only, :functions)) and
+      not except_excludes_wrapper?(Keyword.get(opts, :except, []))
+  end
+
+  defp imports_wrapper?(_opts), do: false
+
+  defp only_includes_wrapper?(:functions), do: true
+  defp only_includes_wrapper?(only) when is_list(only), do: {@wrapper_fun, 1} in only
+  defp only_includes_wrapper?(_only), do: false
+
+  defp except_excludes_wrapper?(except) when is_list(except), do: {@wrapper_fun, 1} in except
+  defp except_excludes_wrapper?(_except), do: true
 end

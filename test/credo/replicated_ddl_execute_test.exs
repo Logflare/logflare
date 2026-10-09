@@ -286,4 +286,100 @@ defmodule Logflare.CredoChecks.ReplicatedDdlExecuteTest do
     |> run_check(ReplicatedDdlExecute)
     |> assert_issue(&assert(&1.message =~ "old_sources"))
   end
+
+  test "accepts bare wrapper calls when the import includes with_replicated_execute/1" do
+    """
+    defmodule Logflare.Repo.Migrations.ImportFunctions do
+      use Ecto.Migration
+
+      import Logflare.Repo.Migrator, only: :functions
+
+      def up do
+        with_replicated_execute(fn -> execute("DROP TABLE old_sources") end)
+      end
+    end
+
+    defmodule Logflare.Repo.Migrations.ImportExceptOther do
+      use Ecto.Migration
+
+      import Logflare.Repo.Migrator, except: [other: 1]
+
+      def up do
+        with_replicated_execute(fn -> execute("DROP TABLE old_sources") end)
+      end
+    end
+    """
+    |> to_source_file()
+    |> run_check(ReplicatedDdlExecute)
+    |> refute_issues()
+  end
+
+  test "reports bare wrapper calls when the import excludes with_replicated_execute/1" do
+    """
+    defmodule Logflare.Repo.Migrations.ImportExcept do
+      use Ecto.Migration
+
+      import Logflare.Repo.Migrator, except: [with_replicated_execute: 1]
+
+      def up do
+        with_replicated_execute(fn -> execute("DROP TABLE except_sources") end)
+      end
+
+      defp with_replicated_execute(fun), do: fun.()
+    end
+
+    defmodule Logflare.Repo.Migrations.ImportOnlyOther do
+      use Ecto.Migration
+
+      import Logflare.Repo.Migrator, only: [other: 1]
+
+      def up do
+        with_replicated_execute(fn -> execute("DROP TABLE only_sources") end)
+      end
+    end
+
+    defmodule Logflare.Repo.Migrations.ImportOnlyMacros do
+      use Ecto.Migration
+
+      import Logflare.Repo.Migrator, only: :macros
+
+      def up do
+        with_replicated_execute(fn -> execute("DROP TABLE macro_sources") end)
+      end
+    end
+
+    defmodule Logflare.Repo.Migrations.ImportReplaced do
+      use Ecto.Migration
+
+      import Logflare.Repo.Migrator
+      import Logflare.Repo.Migrator, only: [other: 1]
+
+      def up do
+        with_replicated_execute(fn -> execute("DROP TABLE replaced_sources") end)
+      end
+    end
+
+    defmodule Logflare.Repo.Migrations.ImportInOtherFunction do
+      use Ecto.Migration
+
+      def up do
+        import Logflare.Repo.Migrator
+        :ok
+      end
+
+      def down do
+        with_replicated_execute(fn -> execute("DROP TABLE scoped_sources") end)
+      end
+    end
+    """
+    |> to_source_file()
+    |> run_check(ReplicatedDdlExecute)
+    |> assert_issues(fn issues ->
+      assert length(issues) == 5
+
+      for table <- ~w(except only macro replaced scoped) do
+        assert Enum.any?(issues, &(&1.message =~ "#{table}_sources"))
+      end
+    end)
+  end
 end
