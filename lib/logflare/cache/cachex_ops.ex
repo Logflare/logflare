@@ -100,14 +100,15 @@ defmodule Logflare.Cache.CachexOps do
   end
 
   @doc """
-  With `[id: pkey]`, busts every entry whose cached value is a map with that `:id`, an `{:ok, map}`
-  with that `:id`, or a list containing such a map. Raises `ArgumentError` for any other keyword.
+  With `[id: pkey]`, returns the keys of every entry whose cached value is a map with that `:id`, an
+  `{:ok, map}` with that `:id`, or a list containing such a map. Raises `ArgumentError` for any other
+  keyword.
 
   It scans the cache with a match spec instead of keeping a reverse index of primary keys.
   """
   @impl Logflare.ContextCache.Ops
-  @spec bust_by(Cachex.t(), keyword()) :: {:ok, non_neg_integer()}
-  def bust_by(cache, id: pkey) do
+  @spec keys_to_bust(Cachex.t(), keyword()) :: Enumerable.t()
+  def keys_to_bust(cache, id: pkey) do
     filter =
       {
         # use orelse to prevent 2nd condition failing as value is not a map
@@ -129,19 +130,16 @@ defmodule Logflare.Cache.CachexOps do
 
     query = Cachex.Query.build(where: filter, output: {:key, :value})
 
-    keys =
-      cache
-      |> Cachex.stream!(query)
-      |> Stream.filter(fn
-        {_k, {:cached, v}} when is_list(v) -> Enum.any?(v, &(&1.id == pkey))
-        {_k, _v} -> true
-      end)
-      |> Stream.map(fn {k, _v} -> k end)
-
-    delete_keys(cache, keys)
+    cache
+    |> Cachex.stream!(query)
+    |> Stream.filter(fn
+      {_k, {:cached, v}} when is_list(v) -> Enum.any?(v, &(&1.id == pkey))
+      {_k, _v} -> true
+    end)
+    |> Stream.map(fn {k, _v} -> k end)
   end
 
-  def bust_by(cache, kw) do
+  def keys_to_bust(cache, kw) do
     raise ArgumentError, "#{inspect(cache)} does not support busting by #{inspect(kw)}"
   end
 
@@ -174,6 +172,7 @@ defmodule Logflare.Cache.CachexOps do
   @doc """
   Deletes `keys` and returns how many of them were present.
   """
+  @impl Logflare.ContextCache.Ops
   @spec delete_keys(Cachex.t(), Enumerable.t()) :: {:ok, non_neg_integer()}
   def delete_keys(cache, keys) do
     Cachex.execute(cache, fn worker ->

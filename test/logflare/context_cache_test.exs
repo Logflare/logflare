@@ -17,7 +17,9 @@ defmodule Logflare.ContextCacheTest do
     def reset(cache), do: record({:reset, cache}, :ok)
 
     @impl Logflare.ContextCache.Ops
-    def bust_by(cache, kw), do: record({:bust_by, cache, kw}, {:ok, 1})
+    def keys_to_bust(cache, kw), do: record({:keys_to_bust, cache, kw}, [:key])
+    @impl Logflare.ContextCache.Ops
+    def delete_keys(cache, keys), do: record({:delete_keys, cache, keys}, {:ok, 1})
     @impl Logflare.ContextCache.Ops
     def fetch(cache, key, _getter), do: record({:fetch, cache, key}, :fetched)
     @impl Logflare.ContextCache.Ops
@@ -54,7 +56,8 @@ defmodule Logflare.ContextCacheTest do
         ] do
       test "bust_keys/1 with a #{name}" do
         assert {:ok, 1} = ContextCache.bust_keys([{CustomImpl, unquote(bust)}])
-        assert_received {:bust_by, CustomImpl.Cache, unquote(expected_kw)}
+        assert_received {:keys_to_bust, CustomImpl.Cache, unquote(expected_kw)}
+        assert_received {:delete_keys, CustomImpl.Cache, [:key]}
       end
     end
   end

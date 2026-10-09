@@ -61,11 +61,7 @@ defmodule Logflare.KeyValues.Cache do
   end
 
   @impl ContextCache
-  def bust_by(kw) do
-    CachexOps.delete_keys(__MODULE__, bust_entries(kw))
-  end
-
-  defp bust_entries(kw) do
+  def keys_to_bust(kw) do
     user_id = Keyword.get(kw, :user_id)
     key = Keyword.get(kw, :key)
 

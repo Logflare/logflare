@@ -6,7 +6,8 @@ defmodule Logflare.ContextCache.Ops do
   implement `Logflare.Cache.Ops`. Every function takes the cache module the callback was called on.
   """
 
-  @callback bust_by(cache :: module(), keyword()) :: {:ok, non_neg_integer()} | {:error, term()}
+  @callback keys_to_bust(cache :: module(), keyword()) :: Enumerable.t()
+  @callback delete_keys(cache :: module(), Enumerable.t()) :: {:ok, non_neg_integer()}
   @callback fetch(cache :: module(), key :: term(), getter :: (-> term())) :: term()
   @callback update(cache :: module(), key :: term(), value :: term()) :: :ok
 end

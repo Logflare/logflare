@@ -15,7 +15,7 @@ defmodule Logflare.ContextCache do
   ## Busting
 
   `bust_keys/1` busts entries by primary key or by a keyword of fields. Caches that need busting
-  keys other than `id:` override `c:bust_by/1`.
+  keys other than `id:` override `c:keys_to_bust/1`.
 
   ## Memoization
 
@@ -27,9 +27,14 @@ defmodule Logflare.ContextCache do
   alias Logflare.Cache.CachexOps
 
   @doc """
-  Busts cache entries by a keyword of values, returning the number of entries busted.
+  Returns the keys of the entries to bust for a keyword of values.
   """
-  @callback bust_by(keyword()) :: {:ok, non_neg_integer()} | {:error, term()}
+  @callback keys_to_bust(keyword()) :: Enumerable.t()
+
+  @doc """
+  Deletes `keys`, returning the number of entries deleted.
+  """
+  @callback delete_keys(Enumerable.t()) :: {:ok, non_neg_integer()}
 
   @doc """
   Returns the cached value for `key`, calling `getter` and caching its result on a miss.
@@ -50,7 +55,10 @@ defmodule Logflare.ContextCache do
       @behaviour Logflare.ContextCache
 
       @impl Logflare.ContextCache
-      def bust_by(kw), do: unquote(impl).bust_by(__MODULE__, kw)
+      def keys_to_bust(kw), do: unquote(impl).keys_to_bust(__MODULE__, kw)
+
+      @impl Logflare.ContextCache
+      def delete_keys(keys), do: unquote(impl).delete_keys(__MODULE__, keys)
 
       @impl Logflare.ContextCache
       def fetch(key, getter), do: unquote(impl).fetch(__MODULE__, key, getter)
@@ -58,7 +66,7 @@ defmodule Logflare.ContextCache do
       @impl Logflare.ContextCache
       def update(key, value), do: unquote(impl).update(__MODULE__, key, value)
 
-      defoverridable bust_by: 1, fetch: 2, update: 2
+      defoverridable keys_to_bust: 1, delete_keys: 1, fetch: 2, update: 2
     end
   end
 
@@ -84,8 +92,8 @@ defmodule Logflare.ContextCache do
 
   It is intended for following a WAL for cache busting. When a new record comes in from the WAL,
   the CacheBuster process calls this function with either the primary keys extracted from those records
-  or a keyword list with fields useful for busting. Both are passed to the context cache's `c:bust_by/1`,
-  a primary key as `[id: pkey]`.
+  or a keyword list with fields useful for busting. Both are passed to the context cache's
+  `c:keys_to_bust/1`, a primary key as `[id: pkey]`, and the returned keys to `c:delete_keys/1`.
   """
   @spec bust_keys(list()) :: {:ok, non_neg_integer()}
   def bust_keys(values) when is_list(values) do
@@ -99,8 +107,12 @@ defmodule Logflare.ContextCache do
     {:ok, busted}
   end
 
-  defp bust_key(context, kw) when is_list(kw), do: cache_name(context).bust_by(kw)
-  defp bust_key(context, pkey), do: cache_name(context).bust_by(id: pkey)
+  defp bust_key(context, kw) when is_list(kw) do
+    cache = cache_name(context)
+    cache.delete_keys(cache.keys_to_bust(kw))
+  end
+
+  defp bust_key(context, pkey), do: bust_key(context, id: pkey)
 
   @spec cache_name(atom()) :: atom()
   def cache_name(context) do

@@ -142,31 +142,30 @@ defmodule Logflare.Cache.CachexOpsTest do
     end
   end
 
-  describe "bust_by/2" do
+  describe "keys_to_bust/2" do
     setup do
       start_cache(limit: nil)
       :ok
     end
 
-    for {name, value, expected_count} <- [
-          {"map with the id", %{id: 1}, 1},
-          {":ok tuple with a map with the id", {:ok, %{id: 1}}, 1},
-          {":ok 3-tuple with a map with the id", {:ok, %{id: 1}, :extra}, 1},
-          {"list containing a map with the id", [%{id: 2}, %{id: 1}], 1},
-          {"map with another id", %{id: 2}, 0},
-          {"list without the id", [%{id: 2}], 0},
-          {"nil", nil, 0}
+    for {name, value, expected_keys} <- [
+          {"map with the id", %{id: 1}, [:key]},
+          {":ok tuple with a map with the id", {:ok, %{id: 1}}, [:key]},
+          {":ok 3-tuple with a map with the id", {:ok, %{id: 1}, :extra}, [:key]},
+          {"list containing a map with the id", [%{id: 2}, %{id: 1}], [:key]},
+          {"map with another id", %{id: 2}, []},
+          {"list without the id", [%{id: 2}], []},
+          {"nil", nil, []}
         ] do
       test "cached #{name}" do
         Cachex.put(@cache, :key, {:cached, unquote(Macro.escape(value))})
 
-        assert {:ok, unquote(expected_count)} = CachexOps.bust_by(@cache, id: 1)
-        assert {:ok, unquote(expected_count == 0)} = Cachex.exists?(@cache, :key)
+        assert Enum.to_list(CachexOps.keys_to_bust(@cache, id: 1)) == unquote(expected_keys)
       end
     end
 
     test "keyword other than id" do
-      assert_raise ArgumentError, fn -> CachexOps.bust_by(@cache, source_id: 1) end
+      assert_raise ArgumentError, fn -> CachexOps.keys_to_bust(@cache, source_id: 1) end
     end
   end
 
