@@ -942,8 +942,8 @@ defmodule Logflare.BackendsTest do
       source_schema_id = source_schema.id
       user_id = source.user_id
 
-      assert {:ok, {:cached, []}} =
-               Cachex.get(Logflare.Rules.Cache, {:list_by_source_id, [source_id]})
+      assert {:ok, {:cached, _rules_tree}} =
+               Cachex.get(Logflare.Rules.Cache, {:rules_tree_by_source_id, [source_id]})
 
       assert {:ok, {:cached, []}} =
                Cachex.get(Logflare.Backends.Cache, {:list_backends, [[source_id: source_id]]})
