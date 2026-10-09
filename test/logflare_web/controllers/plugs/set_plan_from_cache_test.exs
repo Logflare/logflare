@@ -78,7 +78,7 @@ defmodule LogflareWeb.Plugs.SetPlanFromCacheTest do
       insert(:backend, sources: [source], type: :webhook, config: %{url: "some url"})
 
       # warm caches so the pipeline resolves user/source/plan from cache
-      Sources.Cache.get_by_and_preload_rules(token: Atom.to_string(source.token))
+      Sources.Cache.get_by_for_ingest(token: Atom.to_string(source.token))
       Sources.Cache.get_source_by_token(source.token)
       Users.Cache.get(user.id)
       Users.Cache.get_by(api_key: user.api_key)
