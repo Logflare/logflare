@@ -8,6 +8,7 @@ defmodule Logflare.Backends do
 
   alias Ecto.Changeset
   alias Logflare.Backends.Adaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassSettings
   alias Logflare.Backends.Backend
   alias Logflare.Backends.BackendRegistry
   alias Logflare.Backends.ConsolidatedSup
@@ -318,7 +319,27 @@ defmodule Logflare.Backends do
   Updates the config of a Backend.
   """
   @spec update_backend(Backend.t(), map()) :: {:ok, Backend.t()} | {:error, Changeset.t()}
-  def update_backend(%Backend{} = backend, attrs) do
+  def update_backend(%Backend{} = backend, attrs), do: update_backend_config(backend, attrs, [])
+
+  @spec configure_query_class_settings(User.t(), Backend.t(), map()) ::
+          {:ok, Backend.t()} | {:error, term()}
+  def configure_query_class_settings(%User{id: user_id}, %Backend{id: id}, settings) do
+    with %User{admin: true} <- Repo.get(User, user_id),
+         %Backend{type: :clickhouse} = backend <- get_backend(id),
+         {:ok, settings} <- QueryClassSettings.normalize(settings) do
+      update_backend_config(backend, %{config: %{query_class_settings: settings}},
+        allow_query_class_settings: true,
+        query_policy_only: true
+      )
+    else
+      nil -> {:error, :not_found}
+      %User{} -> {:error, :forbidden}
+      %Backend{} -> {:error, :not_clickhouse_backend}
+      error -> error
+    end
+  end
+
+  defp update_backend_config(%Backend{} = backend, attrs, opts) do
     alerts_modified = Map.has_key?(attrs, :alert_queries)
 
     default_ingest_modified? =
@@ -328,20 +349,29 @@ defmodule Logflare.Backends do
 
     source_id = Map.get(attrs, "source_id") || Map.get(attrs, :source_id)
 
-    changeset =
-      backend
-      |> Backend.changeset(attrs)
-      |> validate_default_ingest_source(source_id)
-      |> then(fn changeset ->
-        if alerts_modified do
-          Changeset.put_assoc(changeset, :alert_queries, Map.get(attrs, :alert_queries))
-        else
-          changeset
+    result =
+      Repo.transact(fn ->
+        current =
+          from(b in Backend, where: b.id == ^backend.id, lock: "FOR UPDATE")
+          |> Repo.one!()
+          |> typecast_config_string_map_to_atom_map()
+
+        current = if alerts_modified, do: Repo.preload(current, :alert_queries), else: current
+
+        changeset =
+          current
+          |> Backend.changeset(attrs, opts)
+          |> validate_default_ingest_source(source_id)
+          |> maybe_put_backend_alerts(attrs, alerts_modified)
+
+        with :ok <- validate_query_policy_backend(current, opts),
+             {:ok, updated} <- Repo.update(changeset) do
+          {:ok, {current, updated}}
         end
       end)
 
-    case Repo.update(changeset) do
-      {:ok, updated} ->
+    case result do
+      {:ok, {backend, updated}} ->
         updated = preload_sources(updated)
 
         updated =
@@ -357,11 +387,15 @@ defmodule Logflare.Backends do
             updated
           end
 
-        Enum.each(updated.sources, &restart_source_sup(&1))
-
-        apply_consolidated_pipeline_change(backend, updated, default_ingest_modified?)
-
-        if config_modified?, do: Adaptor.on_backend_config_changed(updated)
+        if Keyword.get(opts, :query_policy_only, false) do
+          keys = [{__MODULE__, updated.id}]
+          Logflare.ContextCache.bust_keys(keys)
+          Cluster.Utils.rpc_multicast(Logflare.ContextCache, :bust_keys, [keys])
+        else
+          Enum.each(updated.sources, &restart_source_sup(&1))
+          apply_consolidated_pipeline_change(backend, updated, default_ingest_modified?)
+          notify_backend_config_change(updated, config_modified?)
+        end
 
         {:ok, typecast_config_string_map_to_atom_map(updated)}
 
@@ -370,11 +404,33 @@ defmodule Logflare.Backends do
     end
   end
 
+  @spec maybe_put_backend_alerts(Changeset.t(), map(), boolean()) :: Changeset.t()
+  defp maybe_put_backend_alerts(changeset, attrs, true),
+    do: Changeset.put_assoc(changeset, :alert_queries, Map.get(attrs, :alert_queries))
+
+  defp maybe_put_backend_alerts(changeset, _attrs, false), do: changeset
+
+  @spec notify_backend_config_change(Backend.t(), boolean()) :: term()
+  defp notify_backend_config_change(_backend, false), do: :ok
+
+  defp notify_backend_config_change(backend, true),
+    do: Adaptor.on_backend_config_changed(backend)
+
+  @spec validate_query_policy_backend(Backend.t(), Keyword.t()) ::
+          :ok | {:error, :not_clickhouse_backend}
+  defp validate_query_policy_backend(%Backend{type: :clickhouse}, _opts), do: :ok
+
+  defp validate_query_policy_backend(_backend, opts) do
+    if Keyword.get(opts, :query_policy_only, false),
+      do: {:error, :not_clickhouse_backend},
+      else: :ok
+  end
+
   @spec validate_default_ingest_source(Changeset.t(), String.t() | integer() | nil) ::
           Changeset.t()
   defp validate_default_ingest_source(%{changes: %{default_ingest?: true}} = changeset, source_id)
        when is_non_empty_binary(source_id) or is_integer(source_id) do
-    case Sources.get(source_id) do
+    case Repo.get(Source, source_id) do
       %Source{default_ingest_backend_enabled?: true} ->
         changeset
 

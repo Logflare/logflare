@@ -114,7 +114,8 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert Logflare.Endpoints.get_endpoint_query(endpoint.id).enforced_clickhouse_settings == %{
                "max_rows_to_read" => 100,
                "max_execution_time" => 5,
-               "read_overflow_mode" => "throw"
+               "read_overflow_mode" => "throw",
+               "timeout_overflow_mode" => "throw"
              }
 
       html =
