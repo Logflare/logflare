@@ -466,7 +466,7 @@ defmodule Logflare.Backends do
       ContextCache.bust_keys(cache_keys)
       clear_list_backends_cache(source.id)
 
-      if source_sup_started?(source) do
+      if source_sup_registered?(source) do
         sync_backend_children(source, source_with_backends.backends, backends)
       else
         :ok
@@ -1117,6 +1117,20 @@ defmodule Logflare.Backends do
 
   def source_sup_started?(id) when is_number(id) do
     match?([{_pid, :ready}], Registry.lookup(SourceRegistry, {id, SourceSup}))
+  end
+
+  @doc """
+  Checks if the SourceSup for a given source is registered. It can still be in its start.
+
+  Backend reconciliation uses this check. A child start or stop on a `SourceSup` in its start
+  waits until its `init/1` returns. Thus a backend change during the start still reaches the
+  `SourceSup`. Ingest must use `source_sup_started?/1`.
+  """
+  @spec source_sup_registered?(Source.t() | non_neg_integer()) :: boolean()
+  def source_sup_registered?(%Source{id: id}), do: source_sup_registered?(id)
+
+  def source_sup_registered?(id) when is_number(id) do
+    Registry.lookup(SourceRegistry, {id, SourceSup}) != []
   end
 
   @doc """

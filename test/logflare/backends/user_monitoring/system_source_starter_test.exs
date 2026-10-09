@@ -64,6 +64,8 @@ defmodule Logflare.Backends.UserMonitoring.SystemSourceStarterTest do
       TestUtils.retry_assert(fn -> assert in_flight() == %{} end)
     end)
 
+    Application.delete_env(:logflare, :source_sup_start_timeout)
+
     stub(Logflare.Sources.Cache, :get_by_id_or_primary, fn id ->
       call_original(Logflare.Sources.Cache, :get_by_id_or_primary, [id])
     end)

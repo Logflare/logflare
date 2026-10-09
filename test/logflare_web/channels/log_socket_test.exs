@@ -19,6 +19,8 @@ defmodule LogflareWeb.LogSocketTest do
       {:ok, socket} = Phoenix.ChannelTest.connect(LogSocket, %{"access_token" => token.token})
       {:ok, _, socket} = subscribe_and_join(socket, LogChannel, "logs:#{source.token}")
 
+      stub(Backends, :start_for_ingest, fn _source -> :ok end)
+
       Backends
       |> expect(:ingest_logs, fn batch, ingest_source, _backend, _allow_spooling ->
         assert [%{"message" => "access-token-log"}] = batch
@@ -105,6 +107,8 @@ defmodule LogflareWeb.LogSocketTest do
 
       {:ok, socket} = Phoenix.ChannelTest.connect(LogSocket, %{"api_key" => user.api_key})
       {:ok, _, socket} = subscribe_and_join(socket, LogChannel, "logs:#{source.token}")
+
+      stub(Backends, :start_for_ingest, fn _source -> :ok end)
 
       Backends
       |> expect(:ingest_logs, fn batch, ingest_source, _backend, _allow_spooling ->

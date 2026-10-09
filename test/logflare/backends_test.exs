@@ -921,18 +921,7 @@ defmodule Logflare.BackendsTest do
     end
 
     test "a registered SourceSup is not started until its children are up", %{source: source} do
-      test_pid = self()
-
-      stub(RateCounterServer, :start_link, fn args ->
-        send(test_pid, {:children_starting, self()})
-
-        receive do
-          :release -> call_original(RateCounterServer, :start_link, [args])
-        end
-      end)
-
-      first = Task.async(fn -> Backends.ensure_source_sup_started(source) end)
-      assert_receive {:children_starting, sup_pid}, 5_000
+      {first, sup_pid} = start_with_blocked_children(source)
 
       assert [{^sup_pid, nil}] = Registry.lookup(SourceRegistry, {source.id, SourceSup})
       refute Backends.source_sup_started?(source)
@@ -945,6 +934,35 @@ defmodule Logflare.BackendsTest do
       assert :ok = Task.await(first)
       assert :ok = Task.await(second)
       assert Backends.source_sup_started?(source)
+    end
+
+    test "a backend attached during the start gets its child", %{source: source} do
+      backend = insert(:backend)
+      {first, sup_pid} = start_with_blocked_children(source)
+
+      attach = Task.async(fn -> Backends.update_source_backends(source, [backend]) end)
+      refute Task.yield(attach, 200)
+
+      send(sup_pid, :release)
+
+      assert :ok = Task.await(first)
+      assert {:ok, _source} = Task.await(attach)
+      assert SourceSup.backend_child_started?(backend.id, source.id)
+    end
+
+    test "a backend detached during the start loses its child", %{source: source} do
+      backend = insert(:backend)
+      {:ok, source} = Backends.update_source_backends(source, [backend])
+      {first, sup_pid} = start_with_blocked_children(source)
+
+      detach = Task.async(fn -> Backends.update_source_backends(source, []) end)
+      refute Task.yield(detach, 200)
+
+      send(sup_pid, :release)
+
+      assert :ok = Task.await(first)
+      assert {:ok, _source} = Task.await(detach)
+      refute SourceSup.backend_child_started?(backend.id, source.id)
     end
   end
 
@@ -2971,6 +2989,22 @@ defmodule Logflare.BackendsTest do
     after
       0 -> sizes
     end
+  end
+
+  defp start_with_blocked_children(source) do
+    test_pid = self()
+
+    stub(RateCounterServer, :start_link, fn args ->
+      send(test_pid, {:children_starting, self()})
+
+      receive do
+        :release -> call_original(RateCounterServer, :start_link, [args])
+      end
+    end)
+
+    task = Task.async(fn -> Backends.ensure_source_sup_started(source) end)
+    assert_receive {:children_starting, sup_pid}, 5_000
+    {task, sup_pid}
   end
 
   defp stub_failing_child_spec do
