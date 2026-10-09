@@ -886,6 +886,21 @@ defmodule Logflare.BackendsTest do
       assert Enum.max(sizes) < 10_000
     end
 
+    test "ensure_source_sup_started/1 returns start_timeout when the source lookup does not return",
+         %{source: source} do
+      Application.put_env(:logflare, :source_sup_start_timeout, 100)
+      on_exit(fn -> Application.delete_env(:logflare, :source_sup_start_timeout) end)
+      stub(Sources.Cache, :get_by_id_or_primary, fn _id -> Process.sleep(:infinity) end)
+
+      log =
+        capture_log(fn ->
+          assert {:error, :start_timeout} = Backends.ensure_source_sup_started(source)
+        end)
+
+      assert log =~ "SourceSup start timed out after 100ms"
+      refute Backends.source_sup_started?(source)
+    end
+
     test "start_source_sup/1 returns start_timeout when prefetch does not return", %{
       source: source
     } do

@@ -1131,43 +1131,45 @@ defmodule Logflare.Backends do
   """
   @spec start_source_sup(Source.t()) ::
           :ok | {:error, :already_started | :not_found | :start_timeout | term()}
-  def start_source_sup(%Source{} = source), do: do_start_source_sup(source)
+  def start_source_sup(%Source{} = source), do: do_start_source_sup(source.id, fn -> source end)
 
-  defp do_start_source_sup(source) do
+  @spec do_start_source_sup(pos_integer(), (-> Source.t() | nil)) ::
+          :ok | {:error, :already_started | :not_found | :start_timeout | term()}
+  defp do_start_source_sup(source_id, load_source) do
     timeout =
       Application.get_env(:logflare, :source_sup_start_timeout, @default_source_sup_start_timeout)
 
     task =
       Task.Supervisor.async_nolink(
-        {:via, PartitionSupervisor, {Logflare.TaskSupervisors, source.id}},
-        fn ->
-          if not source_sup_started?(source), do: SourceSup.prefetch(source)
-
-          DynamicSupervisor.start_child(
-            {:via, PartitionSupervisor, {SourcesSup, source.id}},
-            SourceSup.child_spec(source)
-          )
-        end
+        {:via, PartitionSupervisor, {Logflare.TaskSupervisors, source_id}},
+        fn -> start_loaded_source_sup(load_source.()) end
       )
 
     case Task.yield(task, timeout) || Task.shutdown(task, :brutal_kill) do
       {:ok, result} ->
         result
         |> handle_start_child_result()
-        |> log_start_failure(source)
+        |> log_start_failure(source_id)
 
       {:exit, reason} ->
-        log_start_failure({:error, reason}, source)
+        log_start_failure({:error, reason}, source_id)
 
       nil ->
-        Logger.warning("SourceSup start timed out after #{timeout}ms",
-          source_id: source.id,
-          source_token: source.token
-        )
-
+        Logger.warning("SourceSup start timed out after #{timeout}ms", source_id: source_id)
         {:error, :start_timeout}
     end
   end
+
+  defp start_loaded_source_sup(%Source{} = source) do
+    if not source_sup_started?(source), do: SourceSup.prefetch(source)
+
+    DynamicSupervisor.start_child(
+      {:via, PartitionSupervisor, {SourcesSup, source.id}},
+      SourceSup.child_spec(source)
+    )
+  end
+
+  defp start_loaded_source_sup(nil), do: :ignore
 
   defp handle_start_child_result(result) do
     case result do
@@ -1188,17 +1190,13 @@ defmodule Logflare.Backends do
     end
   end
 
-  defp log_start_failure({:error, reason} = error, source)
+  defp log_start_failure({:error, reason} = error, source_id)
        when reason not in [:already_started, :not_found] do
-    Logger.error("SourceSup start failed: #{inspect(reason)}",
-      source_id: source.id,
-      source_token: source.token
-    )
-
+    Logger.error("SourceSup start failed: #{inspect(reason)}", source_id: source_id)
     error
   end
 
-  defp log_start_failure(result, _source), do: result
+  defp log_start_failure(result, _source_id), do: result
 
   @doc """
   Makes sure that the SourceSup of a source is up.
@@ -1206,6 +1204,10 @@ defmodule Logflare.Backends do
   Every ingest batch calls this function. When the SourceSup is down, the first caller for the
   source starts it. The other callers for that source wait for that start. Each caller gets the
   result of the same start. Thus the `SourcesSup` partition gets one `start_child` call per source.
+
+  The start loads the source by id with `Sources.Cache.get_by_id_or_primary/1`. The lookup, the
+  prefetch and the `start_child` call share the deadline of `start_source_sup/1`. So a stalled
+  cache or primary read returns `{:error, :start_timeout}` to every caller.
 
   A failed start returns `{:error, reason}`. It does not raise.
   """
@@ -1223,10 +1225,8 @@ defmodule Logflare.Backends do
 
   @spec start_source_sup_by_id(pos_integer()) :: {:ignore, :ok | {:error, term()}}
   defp start_source_sup_by_id(source_id) do
-    case Sources.Cache.get_by_id_or_primary(source_id) do
-      %Source{} = source -> {:ignore, start_source_sup(source)}
-      nil -> {:ignore, {:error, :not_found}}
-    end
+    {:ignore,
+     do_start_source_sup(source_id, fn -> Sources.Cache.get_by_id_or_primary(source_id) end)}
   end
 
   defp handle_source_sup_start({:ignore, :ok}), do: :ok
