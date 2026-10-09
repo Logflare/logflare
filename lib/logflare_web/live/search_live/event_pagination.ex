@@ -69,15 +69,23 @@ defmodule LogflareWeb.SearchLive.EventPagination do
   def loading?(%__MODULE__{loading_intent: intent}, intent) when not is_nil(intent), do: true
   def loading?(%__MODULE__{}, _intent), do: false
 
+  @doc """
+  Returns the state, cursor and label of both pagination buttons.
+
+  The `:now` option is the current time in microseconds. It defaults to the system time. A
+  "next" page scans, moves the cursor and extends the timestamp range no further than now,
+  so the "next" label names only the time left until now.
+  """
   @spec buttons(t(), keyword()) :: buttons()
   def buttons(pagination, options) do
     tailing? = Keyword.fetch!(options, :tailing?)
     cursors = Keyword.fetch!(options, :cursors)
     busy? = Keyword.fetch!(options, :loading?) or not is_nil(pagination.loading_intent)
+    now = Keyword.get_lazy(options, :now, fn -> System.os_time(:microsecond) end)
 
     %{
-      previous: button(pagination, :previous, cursors.previous, tailing?, busy?),
-      next: button(pagination, :next, cursors.next, tailing?, busy?)
+      previous: button(pagination, :previous, cursors.previous, tailing?, busy?, now),
+      next: button(pagination, :next, cursors.next, tailing?, busy?, now)
     }
   end
 
@@ -87,13 +95,13 @@ defmodule LogflareWeb.SearchLive.EventPagination do
   A page request scans that window and widens the query's timestamp range by it, so the
   button says exactly how far the next click travels.
   """
-  @spec label(pos_integer() | nil, String.t()) :: String.t()
-  def label(nil, _sign), do: "Load more"
-
+  @spec label(integer() | nil, String.t()) :: String.t()
   def label(window_seconds, sign) when is_integer(window_seconds) and window_seconds > 0 do
     {amount, unit} = humanize(window_seconds)
     "Load more (#{sign}#{amount} #{unit})"
   end
+
+  def label(_window_seconds, _sign), do: "Load more"
 
   defp humanize(seconds) when seconds < 60, do: {seconds, pluralize(seconds, "second")}
 
@@ -115,14 +123,22 @@ defmodule LogflareWeb.SearchLive.EventPagination do
   defp pluralize(1, unit), do: unit
   defp pluralize(_amount, unit), do: unit <> "s"
 
-  defp button(pagination, intent, cursor, tailing?, busy?) do
+  defp button(pagination, intent, cursor, tailing?, busy?, now) do
     state =
       cursor
       |> button_state(tailing?, busy?)
       |> apply_loading(pagination.loading_intent == intent)
 
-    %{state: state, cursor: cursor, label: label(pagination.window_seconds, sign(intent))}
+    span = span_seconds(pagination.window_seconds, intent, cursor, now)
+
+    %{state: state, cursor: cursor, label: label(span, sign(intent))}
   end
+
+  defp span_seconds(window_seconds, :next, %{timestamp: timestamp}, now)
+       when is_integer(window_seconds),
+       do: min(window_seconds, div(now - timestamp, 1_000_000))
+
+  defp span_seconds(window_seconds, _intent, _cursor, _now), do: window_seconds
 
   defp sign(:previous), do: "-"
   defp sign(:next), do: "+"

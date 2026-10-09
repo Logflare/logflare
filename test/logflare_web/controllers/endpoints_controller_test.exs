@@ -5,8 +5,10 @@ defmodule LogflareWeb.EndpointsControllerTest do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryErrorNormalizer
   alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
   alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
+  alias Logflare.Endpoints
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.SingleTenant
   alias Logflare.Sources
@@ -381,6 +383,188 @@ defmodule LogflareWeb.EndpointsControllerTest do
     end
   end
 
+  describe "lf-endpoint-version" do
+    setup context do
+      insert(:plan, name: "Free")
+      user = insert(:user)
+      {_source, backend} = Logflare.DataCase.setup_clickhouse_test(user: user)
+
+      assert {:ok, endpoint} =
+               Endpoints.create_query(
+                 user,
+                 %{
+                   name: "versioned-clickhouse-endpoint",
+                   query:
+                     "with data as (select 'historical' as versioned_value) select versioned_value from data",
+                   backend_id: backend.id,
+                   cache_duration_seconds: context[:cache_duration_seconds] || 0,
+                   enable_auth: false,
+                   sandboxable: true,
+                   labels: "endpoint_version=caller"
+                 },
+                 user
+               )
+
+      assert {:ok, endpoint} =
+               Endpoints.update_query(
+                 user,
+                 endpoint,
+                 %{
+                   query:
+                     "with data as (select 'current' as versioned_value) select versioned_value from data",
+                   sandboxable: true
+                 },
+                 user
+               )
+
+      {:ok, user: user, endpoint: endpoint}
+    end
+
+    test "runs the requested endpoint version", %{
+      conn: init_conn,
+      endpoint: endpoint,
+      user: user
+    } do
+      conn =
+        init_conn
+        |> put_req_header("lf-endpoint-version", "1")
+        |> get(~p"/endpoints/query/#{endpoint.token}")
+
+      assert %{"result" => [%{"versioned_value" => "historical"}]} = json_response(conn, 200)
+
+      conn =
+        init_conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> put_req_header("lf-endpoint-version", "1")
+        |> get(~p"/api/endpoints/query/#{endpoint.name}")
+
+      assert %{"result" => [%{"versioned_value" => "historical"}]} = json_response(conn, 200)
+
+      conn =
+        init_conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> put_req_header("lf-endpoint-version", "1")
+        |> post(~p"/api/endpoints/query/#{endpoint.name}", %{})
+
+      assert %{"result" => [%{"versioned_value" => "historical"}]} = json_response(conn, 200)
+    end
+
+    @tag cache_duration_seconds: 60
+    test "current sandboxing controls cached overrides for a sandboxable historical version", %{
+      conn: init_conn,
+      endpoint: endpoint,
+      user: user
+    } do
+      assert {:ok, %{sandboxable: true} = versioned} =
+               Endpoints.get_endpoint_query_at_version(endpoint, 1)
+
+      conn =
+        init_conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("lf-endpoint-version", "1")
+
+      path = ~p"/api/endpoints/query/#{endpoint.name}"
+      params = %{"sql" => "SELECT 'override' AS versioned_value"}
+      body = Jason.encode!(params)
+
+      cache_pid =
+        start_supervised!(
+          {Endpoints.ResultsCache,
+           {versioned, Map.put(params, "token_or_name", endpoint.name), []}}
+        )
+
+      response = get(conn, path, body)
+
+      assert %{"result" => [%{"versioned_value" => "override"}]} = json_response(response, 200)
+
+      reject(&ClickHouseAdaptor.execute_query/3)
+
+      assert %{"result" => [%{"versioned_value" => "override"}]} =
+               conn |> get(path, body) |> json_response(200)
+
+      assert {:ok, endpoint} =
+               Endpoints.update_query(user, endpoint, %{sandboxable: false}, user)
+
+      Logflare.ContextCache.bust_keys([{Endpoints, endpoint.id}])
+
+      assert {:ok, %{rows: [%{"versioned_value" => "override"}]}} =
+               Endpoints.ResultsCache.query(cache_pid)
+
+      assert %{"error" => "SQL and LQL overrides are disabled for this endpoint"} =
+               conn |> get(path, body) |> json_response(400)
+    end
+
+    test "returns version not found for a missing version", %{
+      conn: init_conn,
+      endpoint: endpoint
+    } do
+      conn =
+        init_conn
+        |> put_req_header("lf-endpoint-version", "99")
+        |> get(~p"/endpoints/query/#{endpoint.token}")
+
+      assert %{"error" => "version not found"} = json_response(conn, 404)
+
+      conn =
+        init_conn
+        |> put_req_header("lf-endpoint-version", "2147483648")
+        |> get(~p"/endpoints/query/#{endpoint.token}")
+
+      assert %{"error" => "version not found"} = json_response(conn, 404)
+    end
+
+    test "returns a client error for an invalid version", %{
+      conn: init_conn,
+      endpoint: endpoint
+    } do
+      for version <- ["latest", "0", "-1"] do
+        conn =
+          init_conn
+          |> put_req_header("lf-endpoint-version", version)
+          |> get(~p"/endpoints/query/#{endpoint.token}")
+
+        assert %{"error" => "invalid lf-endpoint-version"} = json_response(conn, 400)
+      end
+    end
+
+    test "adds the requested endpoint version to query telemetry labels", %{
+      conn: init_conn,
+      endpoint: endpoint,
+      user: user
+    } do
+      test_pid = self()
+      handler_id = "test-endpoint-version-label-#{inspect(self())}"
+
+      :telemetry.attach(
+        handler_id,
+        [:logflare, :endpoints, :query],
+        fn _event, _measurements, metadata, _config ->
+          send(test_pid, {:endpoint_query_metadata, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      conn =
+        init_conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("lf-endpoint-version", "1")
+        |> get(~p"/api/endpoints/query/#{endpoint.name}")
+
+      assert [_] = json_response(conn, 200)["result"]
+      assert conn.halted == false
+
+      assert_received {:endpoint_query_metadata,
+                       %{
+                         "endpoint_id" => _endpoint_id,
+                         "endpoint_version" => "1"
+                       }}
+    end
+  end
+
   describe "bigquery with labels" do
     setup do
       _plan = insert(:plan, name: "Free")
@@ -405,6 +589,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
         insert(:endpoint,
           user: user,
           enable_auth: true,
+          sandboxable: true,
           query: "with a as (select 1 as b) select b from a",
           labels: ",my_label=@my_param,other_value,my=value,"
         )
@@ -525,6 +710,66 @@ defmodule LogflareWeb.EndpointsControllerTest do
         |> get(~p"/api/endpoints/query/#{endpoint.name}", %{sql: "select b from function_logs"})
 
       assert json_response(conn, 200)["error"] == ~s(Table "function_logs" does not exist.)
+      refute json_response(conn, 200)["result"]
+    end
+
+    test "sql that fails to parse returns the parser error", %{conn: conn, user: user} do
+      reject(&ClickHouseAdaptor.execute_query/3)
+
+      backend = insert(:backend, type: :clickhouse, user: user)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :ch_sql,
+          enable_auth: true,
+          sandboxable: true,
+          query: "with a as (select 1 as b) select b from a"
+        )
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get(~p"/api/endpoints/query/#{endpoint.name}", %{sql: "select b from"})
+
+      assert json_response(conn, 200)["error"] =~ "sql parser error: "
+      refute json_response(conn, 200)["result"]
+    end
+
+    test "ClickHouse user errors return the sanitized ClickHouse message", %{
+      conn: conn,
+      user: user
+    } do
+      backend = insert(:backend, type: :clickhouse, user: user)
+
+      expect(ClickHouseAdaptor, :execute_query, fn _backend, _query, _opts ->
+        {:error,
+         QueryErrorNormalizer.normalize(%Ch.Error{
+           code: 215,
+           message:
+             "Code: 215. DB::Exception: Column 'b' is not under aggregate function and not in GROUP BY keys. In query WITH a AS (SELECT 1 AS b FROM otel_logs_abc123def) SELECT b, count() FROM a. (NOT_AN_AGGREGATE) (version 26.2.19.43 (official build))"
+         })}
+      end)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :ch_sql,
+          enable_auth: true,
+          sandboxable: true,
+          query: "with a as (select 1 as b) select b from a"
+        )
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get(~p"/api/endpoints/query/#{endpoint.name}", %{sql: "select b, count() from a"})
+
+      assert json_response(conn, 200)["error"] ==
+               "Column 'b' is not under aggregate function and not in GROUP BY keys. (NOT_AN_AGGREGATE)"
+
       refute json_response(conn, 200)["result"]
     end
 

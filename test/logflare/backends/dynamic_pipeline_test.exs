@@ -6,7 +6,8 @@ defmodule Logflare.Backends.DynamicPipelineTest do
   alias Logflare.Sources.Source.BigQuery.Pipeline
   alias Logflare.PipelinesTest.StubPipeline
   alias Logflare.Backends.IngestEventQueue
-  alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
+  alias Logflare.Backends.Spool.SpoolAck
 
   import ExUnit.CaptureLog
 
@@ -51,11 +52,327 @@ defmodule Logflare.Backends.DynamicPipelineTest do
 
     assert DynamicPipeline.pipeline_count(name) == 1
     assert {:ok, 2, _} = DynamicPipeline.add_pipeline(name)
-    assert {:ok, 1, removed_id} = DynamicPipeline.remove_pipeline(name)
+    assert {:ok, :draining, removed_id} = DynamicPipeline.remove_pipeline(name)
+
+    # removal is asynchronous -- wait for the scheduled termination to land
+    TestUtils.retry_assert(fn ->
+      assert DynamicPipeline.pipeline_count(name) == 1
+    end)
+
+    assert DynamicPipeline.whereis(removed_id) == nil
     # lower limit
     assert {:error, :min_pipelines} = DynamicPipeline.remove_pipeline(name)
     assert DynamicPipeline.pipeline_count(name) == 1
-    assert DynamicPipeline.whereis(removed_id) == nil
+  end
+
+  test "remove_pipeline/1 respects min_pipelines against a shard still draining from a prior call",
+       %{name: name, pipeline_args: pipeline_args} do
+    start_supervised!(
+      {DynamicPipeline,
+       name: name, pipeline: Pipeline, pipeline_args: pipeline_args, min_pipelines: 1}
+    )
+
+    assert {:ok, 2, _} = DynamicPipeline.add_pipeline(name)
+
+    assert {:ok, :draining, _first_id} = DynamicPipeline.remove_pipeline(name)
+
+    # `pipeline_count/1` still reports 2 here -- the first shard hasn't actually
+    # terminated yet -- so this call must not proceed as if a second shard were
+    # still safely removable.
+    assert {:error, :min_pipelines} = DynamicPipeline.remove_pipeline(name)
+
+    TestUtils.retry_assert(fn ->
+      assert DynamicPipeline.pipeline_count(name) == 1
+    end)
+  end
+
+  test "remove_pipeline/1 migrates a shard's pending events to a surviving shard instead of destroying them",
+       %{name: name, pipeline_args: pipeline_args} do
+    start_supervised!(
+      {DynamicPipeline,
+       name: name, pipeline: Pipeline, pipeline_args: pipeline_args, min_pipelines: 1}
+    )
+
+    source = Keyword.fetch!(pipeline_args, :source)
+    backend = Keyword.fetch!(pipeline_args, :backend)
+
+    assert {:ok, 2, _} = DynamicPipeline.add_pipeline(name)
+    assert {:ok, 3, _} = DynamicPipeline.add_pipeline(name)
+
+    shard_producers =
+      for id <- DynamicPipeline.list_pipelines(name) do
+        producer_pid = id |> Broadway.producer_names() |> hd() |> GenServer.whereis()
+        sid_bid_pid = {source.id, backend.id, producer_pid}
+        le = build(:log_event, source: source)
+        assert :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
+        assert IngestEventQueue.total_pending(sid_bid_pid) == 1
+        {id, sid_bid_pid}
+      end
+
+    assert IngestEventQueue.total_pending({source.id, backend.id}) == 3
+
+    assert {:ok, :draining, removed_id} = DynamicPipeline.remove_pipeline(name)
+
+    {_id, removed_sid_bid_pid} =
+      Enum.find(shard_producers, fn {id, _key} -> id == removed_id end)
+
+    # removal is asynchronous -- wait for the scheduled termination to land
+    TestUtils.retry_assert(fn ->
+      refute Process.alive?(elem(removed_sid_bid_pid, 2))
+    end)
+
+    # The removed shard's own ETS table is gone -- destroyed along with its
+    # process -- but its pending event was moved to a surviving shard first,
+    # not lost.
+    assert IngestEventQueue.total_pending(removed_sid_bid_pid) == {:error, :not_initialized}
+    assert IngestEventQueue.total_pending({source.id, backend.id}) == 3
+
+    surviving = for {id, sid_bid_pid} <- shard_producers, id != removed_id, do: sid_bid_pid
+    assert Enum.all?(surviving, fn key -> Process.alive?(elem(key, 2)) end)
+    assert surviving |> Enum.map(&IngestEventQueue.total_pending/1) |> Enum.sum() == 3
+  end
+
+  describe ":shutdown option" do
+    test "defaults pipeline children to a 5 second shutdown", %{
+      name: name,
+      pipeline_args: pipeline_args
+    } do
+      start_supervised!(
+        {DynamicPipeline,
+         name: name, pipeline: Pipeline, pipeline_args: pipeline_args, min_pipelines: 1}
+      )
+
+      [id] = DynamicPipeline.list_pipelines(name)
+      assert {:ok, %{shutdown: 5_000}} = :supervisor.get_childspec(name, id)
+    end
+
+    test "applies to initial and added pipeline children", %{
+      name: name,
+      pipeline_args: pipeline_args
+    } do
+      start_supervised!(
+        {DynamicPipeline,
+         name: name,
+         pipeline: Pipeline,
+         pipeline_args: pipeline_args,
+         min_pipelines: 1,
+         shutdown: 30_000}
+      )
+
+      assert {:ok, 2, _added_id} = DynamicPipeline.add_pipeline(name)
+
+      for id <- DynamicPipeline.list_pipelines(name) do
+        assert {:ok, %{shutdown: 30_000}} = :supervisor.get_childspec(name, id)
+      end
+    end
+  end
+
+  describe "replace_pipelines/2" do
+    setup %{name: name, pipeline_args: pipeline_args} do
+      stub(IngestEventQueue, :pop_pending_pointers, fn _key, _n -> {:ok, [], nil} end)
+
+      start_supervised!(
+        {DynamicPipeline,
+         name: name,
+         pipeline: Pipeline,
+         pipeline_args: pipeline_args,
+         min_pipelines: 1,
+         max_pipelines: 1}
+      )
+
+      source = Keyword.fetch!(pipeline_args, :source)
+      backend = Keyword.fetch!(pipeline_args, :backend)
+      [old_id] = DynamicPipeline.list_pipelines(name)
+
+      [
+        source: source,
+        backend: backend,
+        old_id: old_id,
+        old_key: {source.id, backend.id, producer_pid(old_id)}
+      ]
+    end
+
+    test "swaps pipelines for ones started with the new args without losing pending events",
+         %{name: name, pipeline_args: pipeline_args, source: source, backend: backend} = ctx do
+      sid_bid = {source.id, backend.id}
+      assert :ok = IngestEventQueue.add_to_table(ctx.old_key, [build(:log_event, source: source)])
+
+      new_args = Keyword.put(pipeline_args, :backend, %{backend | name: "replaced"})
+      assert :ok = DynamicPipeline.replace_pipelines(name, new_args)
+
+      assert :ok = IngestEventQueue.add_to_table(sid_bid, [build(:log_event, source: source)])
+      assert IngestEventQueue.total_pending(ctx.old_key) == 1
+
+      new_id =
+        TestUtils.retry_assert(fn ->
+          refute Process.alive?(elem(ctx.old_key, 2))
+          assert [new_id] = DynamicPipeline.list_pipelines(name)
+          new_id
+        end)
+
+      refute new_id == ctx.old_id
+      assert DynamicPipeline.get_state(name).pipeline_args == new_args
+
+      {:ok, %{start: {Pipeline, :start_link, [started_args]}}} =
+        :supervisor.get_childspec(name, new_id)
+
+      assert Keyword.fetch!(started_args, :backend).name == "replaced"
+
+      assert IngestEventQueue.total_pending({source.id, backend.id, producer_pid(new_id)}) == 2
+      assert IngestEventQueue.total_pending(sid_bid) == 2
+    end
+
+    test "keeps pending events when called twice in a row",
+         %{name: name, pipeline_args: pipeline_args, source: source, backend: backend} = ctx do
+      assert :ok = IngestEventQueue.add_to_table(ctx.old_key, [build(:log_event, source: source)])
+
+      assert :ok = DynamicPipeline.replace_pipelines(name, pipeline_args)
+      assert :ok = DynamicPipeline.replace_pipelines(name, pipeline_args)
+
+      TestUtils.retry_assert(fn ->
+        assert [_new_id] = DynamicPipeline.list_pipelines(name)
+      end)
+
+      assert IngestEventQueue.total_pending({source.id, backend.id}) == 1
+    end
+
+    test "resolves args from a function when the swap runs",
+         %{name: name, pipeline_args: pipeline_args, backend: backend} = ctx do
+      new_args = Keyword.put(pipeline_args, :backend, %{backend | name: "resolved"})
+
+      assert :ok = DynamicPipeline.replace_pipelines(name, fn -> new_args end)
+
+      TestUtils.retry_assert(fn ->
+        refute Process.alive?(elem(ctx.old_key, 2))
+      end)
+
+      assert DynamicPipeline.get_state(name).pipeline_args == new_args
+    end
+
+    test "skips the swap when the args function returns nil", %{name: name} = ctx do
+      assert :ok = DynamicPipeline.replace_pipelines(name, fn -> nil end)
+
+      assert DynamicPipeline.list_pipelines(name) == [ctx.old_id]
+      refute IngestEventQueue.draining?(ctx.old_key)
+    end
+
+    test "keeps the old pipeline and returns an error when a replacement fails to start",
+         %{name: name, pipeline_args: pipeline_args} = ctx do
+      stub(Broadway, :start_link, fn _module, _opts -> {:error, :boom} end)
+
+      capture_log(fn ->
+        assert {:error, [{old_id, :boom}]} =
+                 DynamicPipeline.replace_pipelines(name, pipeline_args)
+
+        assert old_id == ctx.old_id
+      end)
+
+      assert DynamicPipeline.list_pipelines(name) == [ctx.old_id]
+      refute IngestEventQueue.draining?(ctx.old_key)
+    end
+  end
+
+  test "remove_pipeline/1 does not bump or ack SpoolAck when migrating a shard's pending events",
+       %{name: name, pipeline_args: pipeline_args} do
+    start_supervised!(
+      {DynamicPipeline,
+       name: name, pipeline: Pipeline, pipeline_args: pipeline_args, min_pipelines: 1}
+    )
+
+    source = Keyword.fetch!(pipeline_args, :source)
+    backend = Keyword.fetch!(pipeline_args, :backend)
+
+    assert {:ok, 2, _} = DynamicPipeline.add_pipeline(name)
+
+    shards =
+      for id <- DynamicPipeline.list_pipelines(name) do
+        producer_pid = id |> Broadway.producer_names() |> hd() |> GenServer.whereis()
+        sid_bid_pid = {source.id, backend.id, producer_pid}
+        handle = "spool-handle-#{System.unique_integer([:positive])}"
+        SpoolAck.register(handle, QueueMod, "queue-url")
+        le = %{build(:log_event, source: source) | spool_handle: handle}
+        assert :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
+        {id, sid_bid_pid, handle}
+      end
+
+    assert {:ok, :draining, removed_id} = DynamicPipeline.remove_pipeline(name)
+
+    {_id, removed_key, removed_handle} =
+      Enum.find(shards, fn {id, _key, _handle} -> id == removed_id end)
+
+    {_id, surviving_key, surviving_handle} =
+      Enum.find(shards, fn {id, _key, _handle} -> id != removed_id end)
+
+    # removal is asynchronous -- wait for the scheduled termination to land
+    TestUtils.retry_assert(fn ->
+      refute Process.alive?(elem(removed_key, 2))
+    end)
+
+    # The migration itself must be invisible to SpoolAck -- no extra bump, no
+    # premature ack -- for both the migrated pointer and the one already on
+    # the surviving shard.
+    assert [{^removed_handle, 1, QueueMod, "queue-url", _registered_at}] =
+             :ets.lookup(:spool_ack, removed_handle)
+
+    assert [{^surviving_handle, 1, QueueMod, "queue-url", _registered_at}] =
+             :ets.lookup(:spool_ack, surviving_handle)
+
+    assert IngestEventQueue.total_pending(surviving_key) == 2
+  end
+
+  test "remove_pipeline/1 migrates to a live survivor even when a stale mapper entry is also a candidate",
+       %{name: name, pipeline_args: pipeline_args} do
+    start_supervised!(
+      {DynamicPipeline,
+       name: name, pipeline: Pipeline, pipeline_args: pipeline_args, min_pipelines: 1}
+    )
+
+    source = Keyword.fetch!(pipeline_args, :source)
+    backend = Keyword.fetch!(pipeline_args, :backend)
+
+    assert {:ok, 2, _} = DynamicPipeline.add_pipeline(name)
+
+    shard_producers =
+      for id <- DynamicPipeline.list_pipelines(name) do
+        producer_pid = id |> Broadway.producer_names() |> hd() |> GenServer.whereis()
+        sid_bid_pid = {source.id, backend.id, producer_pid}
+        le = build(:log_event, source: source)
+        assert :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
+        {id, sid_bid_pid}
+      end
+
+    test_pid = self()
+
+    stale_pid =
+      spawn(fn ->
+        table_key = {source.id, backend.id, self()}
+        {:ok, _tid} = IngestEventQueue.upsert_tid(table_key)
+        send(test_pid, :ready)
+        Process.sleep(:infinity)
+      end)
+
+    stale_ref = Process.monitor(stale_pid)
+    assert_receive :ready
+    Process.exit(stale_pid, :kill)
+    assert_receive {:DOWN, ^stale_ref, :process, ^stale_pid, :killed}
+
+    assert IngestEventQueue.total_pending({source.id, backend.id}) == 2
+
+    assert {:ok, :draining, removed_id} = DynamicPipeline.remove_pipeline(name)
+
+    {_id, removed_sid_bid_pid} =
+      Enum.find(shard_producers, fn {id, _key} -> id == removed_id end)
+
+    TestUtils.retry_assert(fn ->
+      refute Process.alive?(elem(removed_sid_bid_pid, 2))
+    end)
+
+    assert IngestEventQueue.total_pending({source.id, backend.id}) == 2
+
+    {_id, surviving_sid_bid_pid} =
+      Enum.find(shard_producers, fn {id, _key} -> id != removed_id end)
+
+    assert IngestEventQueue.total_pending(surviving_sid_bid_pid) == 2
   end
 
   test ":initial_count will determine number of pipelines at the start",
@@ -254,5 +571,9 @@ defmodule Logflare.Backends.DynamicPipelineTest do
                        backend_token: ^backend_token,
                        backend_type: ^backend_type
                      }}
+  end
+
+  defp producer_pid(pipeline_id) do
+    pipeline_id |> Broadway.producer_names() |> hd() |> GenServer.whereis()
   end
 end

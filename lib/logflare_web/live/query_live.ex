@@ -6,11 +6,13 @@ defmodule LogflareWeb.QueryLive do
 
   alias Logflare.Alerting
   alias Logflare.Backends
+  alias Logflare.Backends.QueryError
   alias Logflare.Endpoints
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Repo
   alias Logflare.Sql
   alias Logflare.Teams.TeamContext
+  alias Logflare.User
   alias LogflareWeb.AuthLive
   alias LogflareWeb.QueryComponents
   alias LogflareWeb.QueryErrorHelpers
@@ -85,7 +87,9 @@ defmodule LogflareWeb.QueryLive do
           <button type="button" class="btn btn-secondary" phx-click="format-query">
             Format
           </button>
-          {submit("Run query", class: "btn btn-secondary")}
+          <.button variant="secondary" type="submit" disabled={@query_running?}>
+            Run query
+          </.button>
         </div>
       </.form>
 
@@ -180,6 +184,7 @@ defmodule LogflareWeb.QueryLive do
       |> assign(:parse_error_message, nil)
       |> assign(:run_error_message, nil)
       |> assign(:query_string, nil)
+      |> assign(:query_running?, false)
       |> assign(:endpoints, endpoints)
       |> assign(:alerts, alerts)
       |> assign_backends()
@@ -293,6 +298,10 @@ defmodule LogflareWeb.QueryLive do
     {:noreply, parse_query(socket)}
   end
 
+  def handle_event("run-query", _params, %{assigns: %{query_running?: true}} = socket) do
+    {:noreply, socket}
+  end
+
   def handle_event(
         "run-query",
         params,
@@ -305,10 +314,15 @@ defmodule LogflareWeb.QueryLive do
       socket
       |> build_params(params["backend"])
 
+    backend = get_selected_backend(socket)
+    language = EndpointQuery.map_backend_to_language(backend, false)
+    backend_id = backend && backend.id
+
     socket =
       socket
       |> assign(:user_id, user.id)
-      |> run_query(user, query_string)
+      |> assign(:query_running?, true)
+      |> start_async(:run_query, fn -> run_query(user, language, query_string, backend_id) end)
       |> push_patch(to: ~p"/query?#{patch_params}")
 
     {:noreply, socket}
@@ -340,31 +354,46 @@ defmodule LogflareWeb.QueryLive do
     {:noreply, assign_form(socket, params)}
   end
 
-  defp run_query(socket, user, query_string) do
-    backend = get_selected_backend(socket)
-    language = EndpointQuery.map_backend_to_language(backend, false)
+  def handle_async(:run_query, {:ok, {:ok, %{rows: rows} = result}}, socket) do
+    total_bytes_processed = Map.get(result, :total_bytes_processed)
 
-    case Endpoints.run_query_string(user, {language, query_string},
-           params: %{},
-           use_query_cache: false,
-           backend_id: backend && backend.id
-         ) do
-      {:ok, %{rows: rows} = result} ->
-        total_bytes_processed = Map.get(result, :total_bytes_processed)
+    socket =
+      socket
+      |> put_flash(:info, "Ran query successfully")
+      |> assign(:query_result_rows, rows)
+      |> assign(:total_bytes_processed, total_bytes_processed)
+      |> assign(:parse_error_message, nil)
+      |> assign(:run_error_message, nil)
+      |> assign(:query_running?, false)
 
-        socket
-        |> put_flash(:info, "Ran query successfully")
-        |> assign(:query_result_rows, rows)
-        |> assign(:total_bytes_processed, total_bytes_processed)
-        |> assign(:parse_error_message, nil)
-        |> assign(:run_error_message, nil)
+    {:noreply, socket}
+  end
 
-      {:error, err} ->
-        message = if is_binary(err), do: err, else: QueryErrorHelpers.query_error_message(err)
+  def handle_async(:run_query, {:ok, {:error, error}}, socket) do
+    message = if is_binary(error), do: error, else: QueryErrorHelpers.query_error_message(error)
 
-        socket
-        |> assign(:run_error_message, message)
-    end
+    {:noreply,
+     socket
+     |> assign(:run_error_message, message)
+     |> assign(:query_running?, false)}
+  end
+
+  def handle_async(:run_query, {:exit, _reason}, socket) do
+    handle_async(
+      :run_query,
+      {:ok, {:error, QueryErrorHelpers.generic_query_error_message()}},
+      socket
+    )
+  end
+
+  @spec run_query(User.t(), :bq_sql | :ch_sql | :pg_sql, String.t(), integer() | nil) ::
+          {:ok, map()} | {:error, String.t() | QueryError.t()}
+  defp run_query(user, language, query_string, backend_id) do
+    Endpoints.run_query_string(user, {language, query_string},
+      params: %{},
+      use_query_cache: false,
+      backend_id: backend_id
+    )
   end
 
   defp format_query_error(error) do

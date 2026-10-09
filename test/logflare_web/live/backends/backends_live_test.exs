@@ -2,6 +2,8 @@ defmodule LogflareWeb.BackendsLiveTest do
   use LogflareWeb.ConnCase
 
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline, as: ClickHousePipeline
+  alias Logflare.Backends.DynamicPipeline
   alias Logflare.Rules
   alias Logflare.Sources
 
@@ -780,6 +782,85 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       assert html =~ "Both query user and query password must be provided"
     end
+
+    test "can create a clickhouse backend with custom batch limits", %{conn: conn, user: user} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      view
+      |> element("select#type")
+      |> render_change(%{backend: %{type: "clickhouse"}})
+
+      html =
+        view
+        |> form("form", %{
+          backend: %{
+            name: "ch batch limits",
+            type: "clickhouse",
+            config: %{
+              url: "http://localhost",
+              database: "test_db",
+              port: 8123,
+              username: "ingest_user",
+              password: "ingest_pa55",
+              batch_size: 2_000,
+              batch_timeout: 1_500
+            }
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Successfully created backend"
+
+      backend =
+        user.id
+        |> Backends.list_backends_by_user_id()
+        |> Enum.find(&(&1.name == "ch batch limits"))
+
+      assert backend.config.batch_size == 2_000
+      assert backend.config.batch_timeout == 1_500
+
+      assert %{batch_size: 2_000, batch_timeout: 1_500} =
+               TestUtils.clickhouse_batcher_state(backend)
+
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+    end
+
+    test "can create a clickhouse backend with async-only inserts", %{conn: conn, user: user} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      view
+      |> element("select#type")
+      |> render_change(%{backend: %{type: "clickhouse"}})
+
+      html =
+        view
+        |> form("form", %{
+          backend: %{
+            name: "ch async only",
+            type: "clickhouse",
+            config: %{
+              url: "http://localhost",
+              database: "test_db",
+              port: 8123,
+              username: "ingest_user",
+              password: "ingest_pa55",
+              use_async_inserts_only: true
+            }
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Successfully created backend"
+
+      backend =
+        user.id
+        |> Backends.list_backends_by_user_id()
+        |> Enum.find(&(&1.name == "ch async only"))
+
+      assert backend.config.use_async_inserts_only == true
+
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+    end
   end
 
   describe "edit" do
@@ -1122,6 +1203,55 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert view
              |> element("input[name='backend[config][default_read_cluster]'][required]")
              |> has_element?()
+    end
+
+    test "editing only the batch limits swaps the running pipeline without a restart", %{
+      conn: conn,
+      user: user
+    } do
+      backend = create_running_clickhouse_backend(user)
+      adaptor_sup = TestUtils.consolidated_sup_pid(backend)
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      html =
+        view
+        |> form("form", %{backend: %{config: %{batch_size: 3_000, batch_timeout: 2_500}}})
+        |> render_submit()
+
+      assert html =~ "Successfully updated backend"
+
+      TestUtils.retry_assert([duration: 10_000], fn ->
+        assert %{batch_size: 3_000, batch_timeout: 2_500} =
+                 TestUtils.clickhouse_batcher_state(backend)
+      end)
+
+      assert TestUtils.consolidated_sup_pid(backend) == adaptor_sup
+
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+    end
+
+    test "editing only async-only mode leaves the running pipeline in place", %{
+      conn: conn,
+      user: user
+    } do
+      backend = create_running_clickhouse_backend(user)
+      adaptor_sup = TestUtils.consolidated_sup_pid(backend)
+      pipeline_sup = Backends.via_backend(backend, ClickHousePipeline)
+      pipelines = DynamicPipeline.list_pipelines(pipeline_sup)
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      html =
+        view
+        |> form("form", %{backend: %{config: %{use_async_inserts_only: true}}})
+        |> render_submit()
+
+      assert html =~ "Successfully updated backend"
+      assert TestUtils.consolidated_sup_pid(backend) == adaptor_sup
+      assert DynamicPipeline.list_pipelines(pipeline_sup) == pipelines
+
+      Backends.ConsolidatedSup.stop_pipeline(backend)
     end
 
     test "does not require a default read cluster when none is configured", %{
@@ -2044,5 +2174,22 @@ defmodule LogflareWeb.BackendsLiveTest do
     assert conn
            |> get(~p"/backends")
            |> redirected_to(302) == ~p"/auth/login"
+  end
+
+  defp create_running_clickhouse_backend(user) do
+    {:ok, backend} =
+      Backends.create_backend(user, %{
+        type: :clickhouse,
+        name: "ch running pipeline",
+        config: %{
+          url: "http://localhost",
+          port: 8123,
+          database: "test_db",
+          username: "user",
+          password: "pass"
+        }
+      })
+
+    backend
   end
 end

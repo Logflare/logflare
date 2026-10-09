@@ -12,8 +12,8 @@ defmodule Logflare.Endpoints do
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.Backend
   alias Logflare.Backends.QueryError
-  alias Logflare.Endpoints.PiiRedactor
   alias Logflare.Endpoints.EndpointQuery
+  alias Logflare.Endpoints.PiiRedactor
   alias Logflare.Endpoints.Resolver
   alias Logflare.Endpoints.ResultsCache
   alias Logflare.Lql
@@ -31,13 +31,14 @@ defmodule Logflare.Endpoints do
   alias Logflare.Utils
   alias PaperTrail.Version
 
+  @endpoint_version_label "endpoint_version"
   @valid_sql_languages ~w(bq_sql ch_sql pg_sql)a
 
   @typep language :: :bq_sql | :ch_sql | :pg_sql | :lql
   @typep origin :: User.t() | TeamUser.t() | OauthAccessToken.t()
   @typep run_query_return ::
            {:ok, %{required(:rows) => [term()], optional(atom()) => any()}}
-           | {:error, String.t() | QueryError.t()}
+           | {:error, String.t() | QueryError.t() | :sandboxing_disabled}
 
   defguardp is_integer_or_string(value) when is_integer(value) or is_non_empty_binary(value)
 
@@ -100,6 +101,31 @@ defmodule Logflare.Endpoints do
   @spec get_endpoint_query(query_id :: integer() | String.t()) :: EndpointQuery.t() | nil
   def get_endpoint_query(query_id) when is_integer_or_string(query_id),
     do: Repo.get(EndpointQuery, query_id)
+
+  @spec get_endpoint_query_at_version(EndpointQuery.t() | integer() | String.t(), integer()) ::
+          {:ok, EndpointQuery.t()} | {:error, :invalid_version | :version_not_found}
+  def get_endpoint_query_at_version(%EndpointQuery{} = endpoint, version_number)
+      when is_integer(version_number) and version_number > 0 do
+    case get_endpoint_query_version(endpoint.id, version_number) do
+      %Version{} = version ->
+        {:ok, endpoint_from_version(endpoint, version, version_number)}
+
+      nil ->
+        {:error, :version_not_found}
+    end
+  end
+
+  def get_endpoint_query_at_version(%EndpointQuery{}, _version_number),
+    do: {:error, :invalid_version}
+
+  def get_endpoint_query_at_version(nil, _version_number), do: {:error, :version_not_found}
+
+  def get_endpoint_query_at_version(query_id, version_number)
+      when is_integer_or_string(query_id) do
+    query_id
+    |> get_endpoint_query()
+    |> get_endpoint_query_at_version(version_number)
+  end
 
   @doc """
   Retrieves a mapped endpoint `EndpointQuery` by token
@@ -416,9 +442,26 @@ defmodule Logflare.Endpoints do
     from(version in Version,
       where:
         version.item_type == "EndpointQuery" and version.item_id == ^endpoint_id and
-          fragment("(?->>'version_number')::integer = ?", version.meta, ^version_number)
+          fragment("?->>'version_number' = ?", version.meta, ^Integer.to_string(version_number))
     )
     |> Repo.one()
+  end
+
+  @spec endpoint_from_version(EndpointQuery.t(), Version.t(), pos_integer()) :: EndpointQuery.t()
+  defp endpoint_from_version(%EndpointQuery{} = endpoint, %Version{meta: meta}, version_number)
+       when is_map(meta) do
+    snapshot = Map.get(meta, "endpoint_snapshot", %{})
+
+    %EndpointQuery{}
+    |> Ecto.Changeset.cast(snapshot, EndpointQuery.version_snapshot_fields())
+    |> Ecto.Changeset.apply_changes()
+    |> Map.merge(%{
+      id: endpoint.id,
+      user_id: endpoint.user_id,
+      token: endpoint.token,
+      version_number: version_number
+    })
+    |> map_query_sources()
   end
 
   @spec delete_query(EndpointQuery.t(), origin()) :: {:ok, EndpointQuery.t()} | {:error, any()}
@@ -548,6 +591,8 @@ defmodule Logflare.Endpoints do
         opts \\ []
       )
       when is_map(params) and is_list(opts) do
+    endpoint_query = put_endpoint_version_label(endpoint_query)
+
     %EndpointQuery{query: query_string, user_id: user_id, sandboxable: sandboxable} =
       endpoint_query
 
@@ -560,7 +605,8 @@ defmodule Logflare.Endpoints do
 
     alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
 
-    with {:ok, declared_params} <-
+    with :ok <- validate_query_override(endpoint_query, params),
+         {:ok, declared_params} <-
            Sql.parameters(query_string, dialect: Sql.to_dialect(query_language)),
          {:ok, expanded_query} <-
            Sql.expand_subqueries(
@@ -599,6 +645,18 @@ defmodule Logflare.Endpoints do
       )
     end
   end
+
+  @spec put_endpoint_version_label(EndpointQuery.t()) :: EndpointQuery.t()
+  defp put_endpoint_version_label(%EndpointQuery{version_number: version_number} = endpoint_query)
+       when is_integer(version_number) do
+    parsed_labels =
+      (endpoint_query.parsed_labels || %{})
+      |> Map.put(@endpoint_version_label, Integer.to_string(version_number))
+
+    %{endpoint_query | parsed_labels: parsed_labels}
+  end
+
+  defp put_endpoint_version_label(%EndpointQuery{} = endpoint_query), do: endpoint_query
 
   @spec emit_query_telemetry(result :: run_query_return(), endpoint_query :: EndpointQuery.t()) ::
           {run_query_return(), map()}
@@ -668,15 +726,31 @@ defmodule Logflare.Endpoints do
   @spec run_cached_query(query :: EndpointQuery.t(), params :: map()) :: run_query_return()
   def run_cached_query(%EndpointQuery{} = query, params \\ %{}, opts \\ [])
       when is_map(params) and is_list(opts) do
-    if query.cache_duration_seconds > 0 do
+    with :ok <- validate_query_override(query, params),
+         true <- query.cache_duration_seconds > 0 do
       query
       |> Resolver.resolve(params, opts)
       |> ResultsCache.query()
     else
-      # execute the query directly
-      run_query(query, params, opts)
+      false ->
+        run_query(query, params, opts)
+
+      {:error, _reason} = error ->
+        error
     end
   end
+
+  @spec validate_query_override(EndpointQuery.t(), map()) ::
+          :ok | {:error, :sandboxing_disabled}
+  defp validate_query_override(%EndpointQuery{sandboxable: false}, params) do
+    if is_non_empty_binary(params["sql"]) or is_non_empty_binary(params["lql"]) do
+      {:error, :sandboxing_disabled}
+    else
+      :ok
+    end
+  end
+
+  defp validate_query_override(%EndpointQuery{}, _params), do: :ok
 
   @doc """
   Calculates and sets the `:metrics` key with `EndpointQuery.Metrics`, which contains info and stats relating to the endpoint
@@ -854,10 +928,17 @@ defmodule Logflare.Endpoints do
           {:ok, result |> Map.put(:rows, redacted_rows) |> Map.from_struct()}
 
         {:error, error} ->
-          {:error, error}
+          {:error, redact_query_error(error, redact_pii)}
       end
     end
   end
+
+  @spec redact_query_error(term(), boolean()) :: term()
+  defp redact_query_error(%QueryError{description: description} = error, true)
+       when is_non_empty_binary(description),
+       do: %{error | description: PiiRedactor.redact_ip_addresses(description)}
+
+  defp redact_query_error(error, _redact_pii), do: error
 
   @spec maybe_transform_query(
           backend :: Backend.t(),

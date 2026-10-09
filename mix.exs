@@ -240,7 +240,7 @@ defmodule Logflare.Mixfile do
       {:cainophile, github: "Logflare/cainophile", ref: "f92a552"},
       {:open_api_spex, "~> 3.22"},
       # required for yaml open api generation
-      {:ymlr, "~> 2.0"},
+      {:ymlr, "~> 5.1"},
       {:grpc, "~> 0.11.0"},
       {:protobuf, "~> 0.15.0", override: true},
       {:gun, "~> 2.0", override: true},
@@ -283,7 +283,7 @@ defmodule Logflare.Mixfile do
       "test.compile": ["compile --warnings-as-errors"],
       "test.format": ["format --check-formatted"],
       "test.security": ["sobelow --threshold high --ignore Config.HTTPS"],
-      "test.slop": ["ex_dna --max-clones 29"],
+      "test.slop": ["ex_dna --max-clones 26"],
       "test.structure": [
         "reach.check --smells --strict --baseline .reach.baseline.json"
       ],
@@ -294,7 +294,7 @@ defmodule Logflare.Mixfile do
       "test.e2e": ["ecto.create --quiet", &migrate_quiet/1, "test --only feature"],
       lint: ["credo"],
       "lint.diff": ["credo diff main"],
-      "lint.all": ["credo --strict"],
+      "lint.all": ["credo --strict", "credo -C migrations"],
       ci: [
         "test.compile",
         "test.format",

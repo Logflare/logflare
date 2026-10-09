@@ -111,6 +111,72 @@ defmodule LogflareWeb.QueryLiveTest do
       refute html =~ "raw backend detail"
     end
 
+    test "persists a running query and restores it after a BigQuery job timeout", %{conn: conn} do
+      parent = self()
+      query = "SELECT current_timestamp() AS retained_value"
+      timeout_message = "Job execution was cancelled: Job timed out"
+
+      timeout_error =
+        TestUtils.gen_bq_error(timeout_message,
+          code: 499,
+          status: "CANCELLED",
+          errors: [
+            %{"domain" => "global", "message" => timeout_message, "reason" => "stopped"}
+          ]
+        )
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 2, fn _conn, _project_id, opts ->
+        %{query: submitted_query} = opts[:body]
+        send(parent, {:query_started, self(), submitted_query})
+
+        receive do
+          :return_timeout -> {:error, timeout_error}
+        end
+      end)
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/query")
+      render_hook(view, "parse-query", %{value: query})
+
+      view
+      |> element("form#query-form")
+      |> render_submit(%{})
+
+      assert_receive {:query_started, first_task, ^query}
+
+      patch = assert_patch(view)
+      assert URI.decode_query(URI.parse(patch).query)["q"] == query
+      assert has_element?(view, ~s(button[type="submit"][disabled]), "Run query")
+
+      view
+      |> element("form#query-form")
+      |> render_submit(%{})
+
+      refute_receive {:query_started, _task, _query}
+
+      send(first_task, :return_timeout)
+
+      assert render_async(view, 5_000) =~
+               LogflareWeb.QueryErrorHelpers.generic_query_error_message()
+
+      refute has_element?(view, ~s(button[type="submit"][disabled]), "Run query")
+
+      {:ok, rerun_view, _html} = live_with_redirect(conn, patch)
+
+      rerun_view
+      |> element("form#query-form")
+      |> render_submit(%{})
+
+      assert_receive {:query_started, second_task, rerun_query}
+      assert rerun_query =~ "retained_value"
+      refute rerun_query =~ "YourSource"
+
+      send(second_task, :return_timeout)
+
+      assert render_async(rerun_view, 5_000) =~
+               LogflareWeb.QueryErrorHelpers.generic_query_error_message()
+    end
+
     test "parser error", %{conn: conn} do
       {:ok, view, _html} = live_with_redirect(conn, ~p"/query")
 
@@ -132,10 +198,11 @@ defmodule LogflareWeb.QueryLiveTest do
       {:ok, view, _html} =
         live_with_redirect(conn, ~p"/query?#{%{backend_id: backend.id, q: query}}")
 
-      html =
-        view
-        |> element("form#query-form")
-        |> render_submit(%{backend: %{backend_id: backend.id}})
+      view
+      |> element("form#query-form")
+      |> render_submit(%{backend: %{backend_id: backend.id}})
+
+      html = render_async(view, 30_000)
 
       assert html =~ LogflareWeb.QueryErrorHelpers.generic_query_error_message()
     end
@@ -388,10 +455,11 @@ defmodule LogflareWeb.QueryLiveTest do
 
       view |> render_hook("parse-query", %{value: "SELECT now() as ts"})
 
-      html =
-        view
-        |> element("form#query-form")
-        |> render_submit(%{backend: %{backend_id: backend.id}})
+      view
+      |> element("form#query-form")
+      |> render_submit(%{backend: %{backend_id: backend.id}})
+
+      html = render_async(view, 5_000)
 
       assert_patch(view) =~ "backend_id=#{backend.id}"
 
@@ -431,7 +499,8 @@ defmodule LogflareWeb.QueryLiveTest do
 
       view |> render_hook("parse-query", %{value: "SELECT current_timestamp() as ts"})
 
-      html = view |> element("form#query-form") |> render_submit(%{})
+      view |> element("form#query-form") |> render_submit(%{})
+      html = render_async(view, 5_000)
 
       assert html =~ "Ran query successfully"
       assert render(view) =~ "bq-data"
@@ -445,7 +514,7 @@ defmodule LogflareWeb.QueryLiveTest do
         html
 
       html when is_binary(html) ->
-        html
+        render_async(view, 5_000)
     end
   end
 end

@@ -223,7 +223,7 @@ defmodule Logflare.Telemetry do
       last_value("vm.total_run_queue_lengths.total"),
       last_value("vm.total_run_queue_lengths.cpu"),
       last_value("vm.total_run_queue_lengths.io"),
-      last_value("logflare.system.observer.metrics.uptime", unit: {:second, :millisecond}),
+      last_value("logflare.system.observer.metrics.uptime", unit: :millisecond),
       last_value("logflare.system.observer.metrics.run_queue"),
       last_value("logflare.system.observer.metrics.io_input", unit: {:byte, :kilobyte}),
       last_value("logflare.system.observer.metrics.io_output", unit: {:byte, :kilobyte}),
@@ -292,7 +292,7 @@ defmodule Logflare.Telemetry do
       ),
       counter("logflare.total_http_requests",
         measurement: :duration,
-        event_name: "bandit.request.stop.duration"
+        event_name: "bandit.request.stop"
       ),
       sum("logflare.logs.processor.ingest.logs.count",
         tags: [:processor],
@@ -346,6 +346,12 @@ defmodule Logflare.Telemetry do
         reporter_options: [buckets: [100, 200, 400, 800, 1_000]],
         description:
           "Distribution of the spool consumer queue producer's empty-queue poll backoff (ms)"
+      ),
+      sum("logflare.backends.spool_consumer.dispatch.count",
+        event_name: [:logflare, :backends, :spool_consumer, :dispatch],
+        measurement: :count,
+        description:
+          "Total events dispatched from the spool consumer to their destination backends"
       ),
       counter("logflare.cache_buster.to_bust.count", tags: []),
       sum("logflare.logs.ingest_logs.drop_lql",
@@ -610,6 +616,18 @@ defmodule Logflare.Telemetry do
         tags: [:reason, :result],
         description:
           "Spool queue nack (requeue) count by reason, and whether the underlying SQS/PubSub call itself succeeded"
+      ),
+      counter("logflare.backends.spool.ack.missing_handle.count",
+        event_name: [:logflare, :backends, :spool, :ack, :missing_handle],
+        tags: [:op],
+        description:
+          "Count of SpoolAck bump/2 or ack/2 calls against a handle with no row (already resolved, orphaned by redelivery, or swept as stale)"
+      ),
+      sum("logflare.backends.spool.ack.swept_stale.count",
+        event_name: [:logflare, :backends, :spool, :ack, :swept_stale],
+        measurement: :count,
+        description:
+          "Count of SpoolAck rows deleted by the periodic stale sweep (orphaned by redelivery under a new handle, not acked)"
       ),
       sum("logflare.backends.spool.consumer.skipped.count",
         tags: [:reason],

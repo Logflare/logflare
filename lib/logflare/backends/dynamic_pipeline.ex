@@ -12,12 +12,21 @@ defmodule Logflare.Backends.DynamicPipeline do
   - `:initial_count` - the initial number of pipelines to start. Defaults to :min_pipelines value.
   - `:resolve_count` - anonymous 1-arity function to determine what number of pipelines to scale to.
   - `:resolve_interval` - interval that the resolve_count will be checked.
+  - `:shutdown` - how long each pipeline gets to drain on termination before it is killed. Defaults to 5_000.
   """
   use Supervisor
 
   alias __MODULE__.Coordinator
+  alias Logflare.Backends.IngestEventQueue
 
   require Logger
+
+  @finish_removal_delay_ms if Application.compile_env(:logflare, :env) == :test,
+                             do: 50,
+                             else: 1_000
+
+  @replace_timeout_ms 30_000
+  @default_shutdown_ms 5_000
 
   @type state :: %{
           name: term(),
@@ -28,6 +37,7 @@ defmodule Logflare.Backends.DynamicPipeline do
           initial_count: non_neg_integer(),
           resolve_count: (map() -> non_neg_integer()),
           resolve_interval: pos_integer(),
+          shutdown: timeout(),
           last_count_increase: NaiveDateTime.t() | nil,
           last_count_decrease: NaiveDateTime.t() | nil
         }
@@ -51,6 +61,7 @@ defmodule Logflare.Backends.DynamicPipeline do
         initial_count: args[:min_pipelines] || 0,
         resolve_count: fn _state -> 0 end,
         resolve_interval: @resolve_interval,
+        shutdown: @default_shutdown_ms,
         last_count_increase: nil,
         last_count_decrease: nil
       })
@@ -115,15 +126,19 @@ defmodule Logflare.Backends.DynamicPipeline do
   """
   @spec get_state(tuple()) :: map()
   def get_state(name) do
-    pid =
-      Supervisor.which_children(name)
-      |> Enum.find(fn
-        {_id, _child, _type, [Agent]} -> true
-        _ -> false
-      end)
-      |> elem(1)
+    name
+    |> find_agent()
+    |> Agent.get(fn v -> v end)
+  end
 
-    Agent.get(pid, fn v -> v end)
+  @spec find_agent(tuple()) :: pid()
+  defp find_agent(name) do
+    Supervisor.which_children(name)
+    |> Enum.find(fn
+      {_id, _child, _type, [Agent]} -> true
+      _ -> false
+    end)
+    |> elem(1)
   end
 
   @doc """
@@ -160,12 +175,21 @@ defmodule Logflare.Backends.DynamicPipeline do
 
   @doc """
   Removes a pipeline from a DynamicPipeline tree.
+
+  Asynchronous: marks the chosen shard's queue draining and returns immediately; it's
+  actually terminated `@finish_removal_delay_ms` later (see `finish_remove_pipeline/3`).
   """
-  @spec remove_pipeline(tuple()) :: {:ok, integer(), tuple()} | {:error, :min_pipelines}
+  @spec remove_pipeline(tuple()) :: {:ok, :draining, tuple()} | {:error, atom()}
   def remove_pipeline(name) do
-    count = pipeline_count(name)
     state = get_state(name)
+    count = effective_pipeline_count(name, state)
     maybe_remove_pipeline(name, count, state)
+  end
+
+  @doc false
+  @spec effective_pipeline_count(tuple(), state() | map()) :: non_neg_integer()
+  def effective_pipeline_count(name, state) do
+    name |> list_pipelines() |> Enum.count(&(not already_draining?(&1, state)))
   end
 
   @doc """
@@ -182,33 +206,192 @@ defmodule Logflare.Backends.DynamicPipeline do
   defp maybe_remove_pipeline(_name, count, _state) when count == 0,
     do: {:error, :min_pipelines}
 
-  defp maybe_remove_pipeline(name, _count, _state) do
-    id =
-      list_pipelines(name)
-      |> Enum.random()
+  defp maybe_remove_pipeline(name, _count, state) do
+    case removal_candidates(name, state) do
+      [] ->
+        {:error, :no_candidates}
+
+      candidates ->
+        id = Enum.random(candidates)
+        drain_and_schedule_removal(name, id, state)
+        {:ok, :draining, id}
+    end
+  end
+
+  @doc """
+  Replaces every pipeline with one started from `pipeline_args`.
+
+  `pipeline_args` may be a zero-arity function, which the coordinator calls when the swap
+  runs so concurrent swaps always resolve the newest args. A `nil` result skips the swap.
+
+  Each outgoing pipeline is drained through the same path as `remove_pipeline/1`, so its
+  pending events move to a replacement instead of being destroyed with its queue.
+  """
+  @spec replace_pipelines(tuple(), keyword() | (-> keyword() | nil)) ::
+          :ok | {:error, [{tuple(), term()}]}
+  def replace_pipelines(name, pipeline_args)
+      when is_list(pipeline_args) or is_function(pipeline_args, 0) do
+    name
+    |> find_coordinator_name()
+    |> GenServer.call({:replace_pipelines, pipeline_args}, @replace_timeout_ms)
+  end
+
+  @doc false
+  @spec resolve_pipeline_args(keyword() | (-> keyword() | nil)) :: keyword() | nil
+  def resolve_pipeline_args(pipeline_args) when is_function(pipeline_args, 0),
+    do: pipeline_args.()
+
+  def resolve_pipeline_args(pipeline_args) when is_list(pipeline_args), do: pipeline_args
+
+  @doc false
+  @spec do_replace_pipelines(tuple(), keyword()) :: :ok | {:error, [{tuple(), term()}]}
+  def do_replace_pipelines(name, pipeline_args) do
+    state = get_state(name)
+    new_state = %{state | pipeline_args: pipeline_args}
+    :ok = name |> find_agent() |> Agent.update(fn _ -> new_state end)
+
+    failures =
+      for id <- removal_candidates(name, state),
+          {:error, reason} <- [replace_pipeline(name, id, state, new_state)],
+          do: {id, reason}
+
+    if failures == [], do: :ok, else: {:error, failures}
+  end
+
+  @spec replace_pipeline(tuple(), tuple(), state(), state()) :: :ok | {:error, term()}
+  defp replace_pipeline(name, id, state, new_state) do
+    case Supervisor.start_child(name, child_spec(new_state, make_ref())) do
+      {:ok, _pid} ->
+        drain_and_schedule_removal(name, id, state)
+        :ok
+
+      {:error, error} ->
+        reason = start_error_reason(error)
+
+        Logger.error(
+          "DynamicPipeline - failed to start replacement for #{inspect(id)}, keeping it. Error: #{inspect(reason)}"
+        )
+
+        {:error, reason}
+    end
+  end
+
+  @spec start_error_reason(term()) :: term()
+  defp start_error_reason({reason, child}) when elem(child, 0) == :child, do: reason
+  defp start_error_reason(reason), do: reason
+
+  @spec drain_and_schedule_removal(tuple(), tuple(), state() | map()) :: reference()
+  defp drain_and_schedule_removal(name, id, state) do
+    case shard_sid_bid_pid(id, state) do
+      nil -> :ok
+      sid_bid_pid -> IngestEventQueue.mark_draining(sid_bid_pid)
+    end
+
+    coordinator = find_coordinator_name(name)
+    Process.send_after(coordinator, {:finish_remove_pipeline, id}, @finish_removal_delay_ms)
+  end
+
+  defp removal_candidates(name, state) do
+    for id <- list_pipelines(name), not already_draining?(id, state), do: id
+  end
+
+  defp already_draining?(id, state) do
+    case shard_sid_bid_pid(id, state) do
+      nil -> false
+      sid_bid_pid -> IngestEventQueue.draining?(sid_bid_pid)
+    end
+  end
+
+  @doc false
+  @spec finish_remove_pipeline(tuple(), tuple(), state()) :: :ok
+  def finish_remove_pipeline(name, id, state) do
+    move_remaining_to_survivor(name, id, state)
 
     try do
       with :ok <- Supervisor.terminate_child(name, id),
            :ok <- Supervisor.delete_child(name, id) do
-        count = pipeline_count(name)
-        Logger.debug("DynamicPipeline - Removed pipeline #{inspect(id)}, count is now #{count}")
-        {:ok, count, id}
+        Logger.debug(
+          "DynamicPipeline - Removed pipeline #{inspect(id)}, count is now #{pipeline_count(name)}"
+        )
       end
     rescue
       e ->
         Logger.error(
           "Error when attempting to terminate and remove pipeline. Error: #{Exception.format(:error, e, __STACKTRACE__)}"
         )
+    end
 
-        {:error, :unknown_error}
+    :ok
+  end
+
+  defp move_remaining_to_survivor(_name, id, state) do
+    with {_, _, doomed_pid} = sid_bid_pid <- shard_sid_bid_pid(id, state),
+         queues_key when queues_key != nil <- pipeline_args_sid_bid(state[:pipeline_args] || []),
+         [_ | _] = survivors <- survivor_targets(queues_key, doomed_pid) do
+      move_to_any_survivor(sid_bid_pid, survivors, id)
+    else
+      _ -> :ok
+    end
+  end
+
+  defp move_to_any_survivor(_sid_bid_pid, [], _id), do: :ok
+
+  defp move_to_any_survivor(sid_bid_pid, survivors, id) do
+    {survivor_key, _tid} = candidate = Enum.random(survivors)
+
+    case IngestEventQueue.move(sid_bid_pid, survivor_key) do
+      {:ok, 0} ->
+        :ok
+
+      {:ok, moved} ->
+        Logger.debug(
+          "DynamicPipeline - moved #{moved} pending pointer(s) from #{inspect(id)} before removal"
+        )
+
+      {:error, :not_initialized} ->
+        move_to_any_survivor(sid_bid_pid, survivors -- [candidate], id)
+    end
+  end
+
+  defp survivor_targets(queues_key, doomed_pid) do
+    targets =
+      queues_key
+      |> IngestEventQueue.list_queues_with_tids()
+      |> Enum.reject(fn {table_key, _tid} -> elem(table_key, 2) == doomed_pid end)
+
+    case Enum.filter(targets, fn {table_key, _tid} -> elem(table_key, 2) != nil end) do
+      [] -> targets
+      live -> live
+    end
+  end
+
+  defp shard_sid_bid_pid(id, state) do
+    producer_pid = id |> Broadway.producer_names() |> List.first() |> GenServer.whereis()
+
+    case {producer_pid, pipeline_args_sid_bid(state[:pipeline_args] || [])} do
+      {nil, _} -> nil
+      {_pid, nil} -> nil
+      {pid, {:consolidated, bid}} -> {:consolidated, bid, pid}
+      {pid, {sid, bid}} -> {sid, bid, pid}
+    end
+  end
+
+  defp pipeline_args_sid_bid(pipeline_args) do
+    case {Keyword.get(pipeline_args, :source), Keyword.get(pipeline_args, :backend)} do
+      {%{id: sid}, %{id: bid}} -> {sid, bid}
+      {nil, %{id: bid}} -> {:consolidated, bid}
+      _ -> nil
     end
   end
 
   @spec child_spec(state :: state(), ref :: reference()) :: Supervisor.child_spec()
-  defp child_spec(%{pipeline: pipeline, name: name, pipeline_args: pipeline_args}, ref) do
+  defp child_spec(
+         %{pipeline: pipeline, name: name, pipeline_args: pipeline_args, shutdown: shutdown},
+         ref
+       ) do
     sharded_name = sup_name_to_pipeline_name(name, ref)
     new_args = pipeline_args ++ [name: sharded_name]
-    %{id: sharded_name, start: {pipeline, :start_link, [new_args]}}
+    %{id: sharded_name, start: {pipeline, :start_link, [new_args]}, shutdown: shutdown}
   end
 
   @spec ack(via :: term(), successful :: list(), failed :: list()) :: :ok
@@ -311,6 +494,23 @@ defmodule Logflare.Backends.DynamicPipeline do
       {:reply, res, state}
     end
 
+    def handle_call({:replace_pipelines, pipeline_args}, _caller, state) do
+      case DynamicPipeline.resolve_pipeline_args(pipeline_args) do
+        nil ->
+          {:reply, :ok, state}
+
+        resolved_args ->
+          res = DynamicPipeline.do_replace_pipelines(state.name, resolved_args)
+          {:reply, res, %{state | pipeline_args: resolved_args}}
+      end
+    end
+
+    @impl GenServer
+    def handle_info({:finish_remove_pipeline, id}, state) do
+      DynamicPipeline.finish_remove_pipeline(state.name, id, state)
+      {:noreply, state}
+    end
+
     @impl GenServer
     def handle_info(:check, state) do
       pipelines = DynamicPipeline.list_pipelines(state.name)
@@ -322,10 +522,12 @@ defmodule Logflare.Backends.DynamicPipeline do
         build_telemetry_metadata(state)
       )
 
+      effective_count = DynamicPipeline.effective_pipeline_count(state.name, state)
+
       state =
-        case DynamicPipeline.resolve_pipeline_count(state, pipeline_count) do
+        case DynamicPipeline.resolve_pipeline_count(state, effective_count) do
           {:incr, desired_count, new_state} ->
-            diff = desired_count - pipeline_count
+            diff = desired_count - effective_count
 
             for _ <- 1..diff do
               DynamicPipeline.add_pipeline(state.name)
@@ -335,7 +537,7 @@ defmodule Logflare.Backends.DynamicPipeline do
             new_state
 
           {:decr, desired_count, new_state} ->
-            diff = pipeline_count - desired_count
+            diff = effective_count - desired_count
 
             for _pipeline <- 1..diff do
               DynamicPipeline.remove_pipeline(state.name)

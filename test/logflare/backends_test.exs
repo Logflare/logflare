@@ -8,6 +8,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline, as: ClickHousePipeline
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
   alias Logflare.Backends.Backend
   alias Logflare.Cluster.Utils, as: ClusterUtils
@@ -30,8 +31,10 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Sources.Counters
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.Pipeline
+  alias Logflare.Sources.Source.ChannelTopics
   alias Logflare.Sources.Source.Data
   alias Logflare.Sources.Source.RateCounterServer
+  alias Logflare.Sources.Source.RateSampler
   alias Logflare.Sources.SourceRouter
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.User
@@ -162,6 +165,156 @@ defmodule Logflare.BackendsTest do
 
       assert {:ok, updated} = Backends.update_backend(backend, %{name: "Updated Name"})
       assert Backends.ConsolidatedSup.pipeline_running?(updated)
+
+      Backends.ConsolidatedSup.stop_pipeline(updated)
+    end
+
+    test "update_backend/2 swaps pipelines in place when only batch limits change", %{
+      user: user
+    } do
+      assert {:ok, backend} = Backends.create_backend(user, clickhouse_backend_attrs())
+      adaptor_sup = TestUtils.consolidated_sup_pid(backend)
+      pipeline_sup = Backends.via_backend(backend, ClickHousePipeline)
+      [old_id] = DynamicPipeline.list_pipelines(pipeline_sup)
+
+      config =
+        Map.merge(clickhouse_backend_attrs().config, %{batch_size: 2_000, batch_timeout: 1_500})
+
+      assert {:ok, _updated} = Backends.update_backend(backend, %{config: config})
+
+      new_id =
+        TestUtils.retry_assert([duration: 10_000], fn ->
+          assert [new_id] = DynamicPipeline.list_pipelines(pipeline_sup)
+          refute new_id == old_id
+          new_id
+        end)
+
+      assert TestUtils.consolidated_sup_pid(backend) == adaptor_sup
+
+      {:ok, %{start: {ClickHousePipeline, :start_link, [args]}}} =
+        :supervisor.get_childspec(pipeline_sup, new_id)
+
+      assert %{batch_size: 2_000, batch_timeout: 1_500} = Keyword.fetch!(args, :backend).config
+
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+    end
+
+    test "pipeline_swap_delay_ms/0 spreads swaps across 0..5 seconds" do
+      delays = for _ <- 1..200, do: Backends.pipeline_swap_delay_ms()
+
+      assert Enum.all?(delays, &(&1 in 0..5_000))
+      assert length(Enum.uniq(delays)) > 1
+    end
+
+    test "update_backend/2 leaves the pipeline alone when only per-batch settings change", %{
+      user: user
+    } do
+      assert {:ok, backend} = Backends.create_backend(user, clickhouse_backend_attrs())
+      adaptor_sup = TestUtils.consolidated_sup_pid(backend)
+      pipeline_sup = Backends.via_backend(backend, ClickHousePipeline)
+      pipelines = DynamicPipeline.list_pipelines(pipeline_sup)
+
+      config =
+        Map.merge(clickhouse_backend_attrs().config, %{
+          use_async_inserts_only: true,
+          use_async_inserts_for_small_batches: true,
+          async_insert_max_rows: 500,
+          async_insert_cluster_url: "http://localhost:8124"
+        })
+
+      assert {:ok, _updated} = Backends.update_backend(backend, %{config: config})
+
+      assert TestUtils.consolidated_sup_pid(backend) == adaptor_sup
+      assert DynamicPipeline.list_pipelines(pipeline_sup) == pipelines
+
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+    end
+
+    test "create_backend/2 starts the pipeline with the configured batch limits", %{user: user} do
+      config =
+        Map.merge(clickhouse_backend_attrs().config, %{batch_size: 2_000, batch_timeout: 1_500})
+
+      attrs = %{clickhouse_backend_attrs() | config: config}
+
+      assert {:ok, backend} = Backends.create_backend(user, attrs)
+
+      assert %{batch_size: 2_000, batch_timeout: 1_500} =
+               TestUtils.clickhouse_batcher_state(backend)
+
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+    end
+
+    test "remove_all_default_ingest_sources/1 restarts the pipeline with the configured batch limits",
+         %{user: user} do
+      config =
+        Map.merge(clickhouse_backend_attrs().config, %{batch_size: 2_000, batch_timeout: 1_500})
+
+      attrs =
+        clickhouse_backend_attrs()
+        |> Map.put(:config, config)
+        |> Map.put(:default_ingest?, true)
+
+      assert {:ok, backend} = Backends.create_backend(user, attrs)
+      assert {:ok, _updated} = Backends.remove_all_default_ingest_sources(backend)
+
+      assert %{batch_size: 2_000, batch_timeout: 1_500} =
+               TestUtils.clickhouse_batcher_state(backend)
+
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+    end
+
+    test "replace_pipelines_with_latest/1 uses limits saved while the swap waits for the coordinator",
+         %{user: user} do
+      config =
+        Map.merge(clickhouse_backend_attrs().config, %{batch_size: 2_000, batch_timeout: 1_500})
+
+      assert {:ok, backend} =
+               Backends.create_backend(user, %{clickhouse_backend_attrs() | config: config})
+
+      pipeline_sup = Backends.via_backend(backend, ClickHousePipeline)
+      coordinator = DynamicPipeline.find_coordinator_name(pipeline_sup)
+      :ok = :sys.suspend(coordinator)
+
+      swap = Task.async(fn -> Backends.replace_pipelines_with_latest(backend.id) end)
+
+      TestUtils.retry_assert(fn ->
+        {:messages, messages} = Process.info(coordinator, :messages)
+        assert Enum.any?(messages, &match?({:"$gen_call", _from, {:replace_pipelines, _}}, &1))
+      end)
+
+      {:ok, _saved} =
+        backend
+        |> Repo.reload!()
+        |> Backend.changeset(%{config: %{config | batch_size: 3_000, batch_timeout: 2_500}})
+        |> Repo.update()
+
+      :ok = :sys.resume(coordinator)
+      assert :ok = Task.await(swap, 30_000)
+
+      TestUtils.retry_assert(fn ->
+        assert [_pipeline] = DynamicPipeline.list_pipelines(pipeline_sup)
+      end)
+
+      assert %{batch_size: 3_000, batch_timeout: 2_500} =
+               TestUtils.clickhouse_batcher_state(backend)
+
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+    end
+
+    test "replace_pipelines_with_latest/1 is a no-op for a deleted backend" do
+      assert :ok = Backends.replace_pipelines_with_latest(-1)
+    end
+
+    test "update_backend/2 restarts the consolidated pipeline when other config changes", %{
+      user: user
+    } do
+      assert {:ok, backend} = Backends.create_backend(user, clickhouse_backend_attrs())
+      adaptor_sup = TestUtils.consolidated_sup_pid(backend)
+
+      config = Map.put(clickhouse_backend_attrs().config, :database, "other_db")
+      assert {:ok, updated} = Backends.update_backend(backend, %{config: config})
+
+      refute TestUtils.consolidated_sup_pid(updated) == adaptor_sup
 
       Backends.ConsolidatedSup.stop_pipeline(updated)
     end
@@ -789,8 +942,8 @@ defmodule Logflare.BackendsTest do
       source_schema_id = source_schema.id
       user_id = source.user_id
 
-      assert {:ok, {:cached, []}} =
-               Cachex.get(Logflare.Rules.Cache, {:list_by_source_id, [source_id]})
+      assert {:ok, {:cached, _rules_tree}} =
+               Cachex.get(Logflare.Rules.Cache, {:rules_tree_by_source_id, [source_id]})
 
       assert {:ok, {:cached, []}} =
                Cachex.get(Logflare.Backends.Cache, {:list_backends, [[source_id: source_id]]})
@@ -2138,6 +2291,21 @@ defmodule Logflare.BackendsTest do
 
       start_supervised!(SpoolDurableBufferSup)
 
+      # The supervisor waits for partitions, but their linked committers may still upload.
+      # DurableBuffer has no public committer lookup, so read their PIDs here and wait
+      # for them before cleanup removes WAL files and mocks.
+      committers =
+        Enum.map(SpoolDurableBufferSup.partitions(), fn partition ->
+          :sys.get_state(partition).committer
+        end)
+
+      on_exit(fn ->
+        Enum.each(committers, fn committer ->
+          ref = Process.monitor(committer)
+          assert_receive {:DOWN, ^ref, :process, ^committer, _reason}, to_timeout(second: 5)
+        end)
+      end)
+
       {:ok, source: source}
     end
 
@@ -2151,9 +2319,9 @@ defmodule Logflare.BackendsTest do
       :sys.get_state(partition_pid).pending_count
     end
 
-    test "does not dispatch to the spool producer when source.enable_spooling is false, even if the global mode is on and allow_spooling is true",
+    test "in :both mode, does not dispatch to the spool producer when source.enable_spooling is false, even if allow_spooling is true",
          %{source: source} do
-      Application.put_env(:logflare, :spool, mode: :producer)
+      Application.put_env(:logflare, :spool, mode: :both)
 
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
@@ -2161,10 +2329,51 @@ defmodule Logflare.BackendsTest do
       assert pending_entry_count() == 0
     end
 
-    test "does not dispatch to the spool producer once :wal mode's disk health is unhealthy, even if everything else is enabled",
+    test "in :producer mode, dispatches to the spool producer for every source, regardless of source.enable_spooling",
          %{source: source} do
+      # source.enable_spooling is false (the setup default)
+      stop_supervised!(SpoolDurableBufferSup)
+      test_pid = self()
+
       Application.put_env(:logflare, :spool,
         mode: :producer,
+        buffer: :mem,
+        partitions: 1,
+        bucket: "test-bucket",
+        storage_mod: SpoolStorageMod,
+        queue_mod: SpoolQueueMod
+      )
+
+      stub(SpoolStorageMod, :put, fn _b, key, _body, _opts ->
+        send(test_pid, :put_called)
+        {:ok, key}
+      end)
+
+      start_supervised!(SpoolDurableBufferSup)
+
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      assert_receive :put_called, 1000
+    end
+
+    test "in :producer mode, does not spool an empty batch when every event is filtered out (e.g. all future-dropped)",
+         %{source: source} do
+      merge_spool_config!(mode: :producer)
+
+      now_us = System.system_time(:microsecond)
+      future_timestamp = now_us + 2 * 3_600 * 1_000_000
+      params = [%{"message" => "too future", "timestamp" => future_timestamp}]
+
+      assert {:ok, 0} = Backends.ingest_logs(params, source, nil, true)
+
+      assert pending_entry_count() == 0
+    end
+
+    test "in :both mode, does not dispatch to the spool producer once :wal mode's disk health is unhealthy, even if everything else is enabled",
+         %{source: source} do
+      Application.put_env(:logflare, :spool,
+        mode: :both,
         buffer: :wal,
         max_spool_health_failures: 1
       )
@@ -2179,10 +2388,10 @@ defmodule Logflare.BackendsTest do
       assert pending_entry_count() == 0
     end
 
-    test "an unhealthy upload doesn't stop :wal mode ingest — the local WAL is the backstop, not the upload path",
+    test "in :both mode, does not dispatch to the spool producer once :wal mode's upload health is unhealthy either — a locally-absorbing WAL still isn't reaching its durable home",
          %{source: source} do
       Application.put_env(:logflare, :spool,
-        mode: :producer,
+        mode: :both,
         buffer: :wal,
         max_spool_health_failures: 1
       )
@@ -2190,28 +2399,17 @@ defmodule Logflare.BackendsTest do
       Health.report_failure!(:upload)
       on_exit(fn -> Health.report_recovery!(:upload) end)
 
-      # append/3 blocks until the local WAL fsync settles, not until an
-      # upload happens — so proving dispatch actually reached the spool
-      # (rather than falling through to normal dispatch) means observing
-      # the eventual upload, not just pending_entry_count/0's local state.
-      test_pid = self()
-
-      stub(SpoolStorageMod, :put, fn _b, key, _body, _opts ->
-        send(test_pid, :spool_uploaded)
-        {:ok, key}
-      end)
-
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
 
-      assert_receive :spool_uploaded, 2000
+      assert pending_entry_count() == 0
     end
 
-    test "does not dispatch to the spool producer once :mem mode's upload health is unhealthy",
+    test "in :both mode, does not dispatch to the spool producer once :mem mode's upload health is unhealthy",
          %{source: source} do
       Application.put_env(:logflare, :spool,
-        mode: :producer,
+        mode: :both,
         buffer: :mem,
         max_spool_health_failures: 1
       )
@@ -2226,7 +2424,74 @@ defmodule Logflare.BackendsTest do
       assert pending_entry_count() == 0
     end
 
-    test "falls back to normal dispatch when no spool partition is registered (e.g. the subtree crashed and is mid-restart)",
+    test "in :both mode, an unhealthy disk does not gate :mem mode dispatch — the disk scope is meaningless there",
+         %{source: source} do
+      stop_supervised!(SpoolDurableBufferSup)
+      test_pid = self()
+
+      Application.put_env(:logflare, :spool,
+        mode: :both,
+        buffer: :mem,
+        partitions: 1,
+        bucket: "test-bucket",
+        storage_mod: SpoolStorageMod,
+        queue_mod: SpoolQueueMod,
+        max_spool_health_failures: 1
+      )
+
+      stub(SpoolStorageMod, :put, fn _b, key, _body, _opts ->
+        send(test_pid, :put_called)
+        {:ok, key}
+      end)
+
+      start_supervised!(SpoolDurableBufferSup)
+
+      Health.report_failure!(:disk)
+      on_exit(fn -> Health.report_recovery!(:disk) end)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      assert_receive :put_called, 1000
+    end
+
+    test "in :producer mode, still attempts spool dispatch even when spool health is flagged unhealthy",
+         %{source: source} do
+      # SpoolHealth is a symptom tracker in :producer mode, not a pre-check
+      # gate — there's no working fallback to divert to (see
+      # dispatch_logs/4), so only the write's actual outcome decides
+      # whether the request fails.
+      stop_supervised!(SpoolDurableBufferSup)
+      test_pid = self()
+
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        buffer: :mem,
+        partitions: 1,
+        bucket: "test-bucket",
+        storage_mod: SpoolStorageMod,
+        queue_mod: SpoolQueueMod,
+        max_spool_health_failures: 1
+      )
+
+      stub(SpoolStorageMod, :put, fn _b, key, _body, _opts ->
+        send(test_pid, :put_called)
+        {:ok, key}
+      end)
+
+      start_supervised!(SpoolDurableBufferSup)
+
+      Health.report_failure!(:upload)
+      on_exit(fn -> Health.report_recovery!(:upload) end)
+
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      assert_receive :put_called, 1000
+    end
+
+    test "in :both mode, falls back to normal dispatch when no spool partition is registered (e.g. the subtree crashed and is mid-restart)",
          %{source: source} do
       # Simulates the only window this can actually happen in — see
       # dispatch_to_spool_producer/1's caller — by stopping the buffer and
@@ -2234,7 +2499,7 @@ defmodule Logflare.BackendsTest do
       # resolves to no live process.
       stop_supervised!(SpoolDurableBufferSup)
 
-      merge_spool_config!(mode: :producer)
+      merge_spool_config!(mode: :both)
 
       source = %{source | enable_spooling: true}
       params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
@@ -2242,7 +2507,19 @@ defmodule Logflare.BackendsTest do
       assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
     end
 
-    test "falls back to normal dispatch and logs an error when the spool commit itself fails (e.g. GCS unavailable)",
+    test "in :producer mode, fails the request when no spool partition is registered, instead of falling back to a dispatch path with no backend adaptors to receive it",
+         %{source: source} do
+      stop_supervised!(SpoolDurableBufferSup)
+
+      merge_spool_config!(mode: :producer)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      assert {:error, :spool_unavailable} = Backends.ingest_logs(params, source, nil, true)
+    end
+
+    test "in :both mode, falls back to normal dispatch and logs an error when the spool commit itself fails (e.g. GCS unavailable)",
          %{source: source} do
       # blocking: true so the commit failure — not just a local WAL write —
       # is what dispatch_to_spool_producer/1 sees. :mem buffer specifically:
@@ -2252,7 +2529,7 @@ defmodule Logflare.BackendsTest do
       stop_supervised!(SpoolDurableBufferSup)
 
       Application.put_env(:logflare, :spool,
-        mode: :producer,
+        mode: :both,
         buffer: :mem,
         blocking: true,
         partitions: 1,
@@ -2278,6 +2555,37 @@ defmodule Logflare.BackendsTest do
       assert log =~ "spool dispatch failed"
     end
 
+    test "in :producer mode, fails the request and logs an error when the spool commit itself fails (e.g. GCS unavailable)",
+         %{source: source} do
+      stop_supervised!(SpoolDurableBufferSup)
+
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        buffer: :mem,
+        blocking: true,
+        partitions: 1,
+        max_commit_attempts: 1,
+        retry_delay_ms: 1,
+        bucket: "test-bucket",
+        storage_mod: SpoolStorageMod,
+        queue_mod: SpoolQueueMod
+      )
+
+      stub(SpoolStorageMod, :put, fn _b, _k, _body, _opts -> {:error, :timeout} end)
+
+      start_supervised!(SpoolDurableBufferSup)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+
+      log =
+        capture_log(fn ->
+          assert {:error, :spool_unavailable} = Backends.ingest_logs(params, source, nil, true)
+        end)
+
+      assert log =~ "spool dispatch failed"
+    end
+
     test "does not dispatch to the spool producer when the global mode is off, even if source.enable_spooling and allow_spooling are true",
          %{source: source} do
       Application.put_env(:logflare, :spool, mode: :disable)
@@ -2289,7 +2597,7 @@ defmodule Logflare.BackendsTest do
       assert pending_entry_count() == 0
     end
 
-    test "dispatches to the spool producer only when the global mode, source.enable_spooling, and allow_spooling are all true",
+    test "in :both mode, dispatches to the spool producer only when the global mode, source.enable_spooling, and allow_spooling are all true",
          %{source: source} do
       # :mem buffer, restarted with its own observable stub — proving the
       # segment reached storage doesn't depend on WAL rotation timing, and
@@ -2299,7 +2607,7 @@ defmodule Logflare.BackendsTest do
       test_pid = self()
 
       Application.put_env(:logflare, :spool,
-        mode: :producer,
+        mode: :both,
         buffer: :mem,
         partitions: 1,
         bucket: "test-bucket",
@@ -2350,9 +2658,9 @@ defmodule Logflare.BackendsTest do
       assert pending_entry_count() == 0
     end
 
-    test "does not dispatch to the spool producer when the event already has a via_rule_id, even if allow_spooling is true",
+    test "in :both mode, does not dispatch to the spool producer when the event already has a via_rule_id, even if allow_spooling is true",
          %{source: source} do
-      Application.put_env(:logflare, :spool, mode: :producer)
+      Application.put_env(:logflare, :spool, mode: :both)
 
       source = %{source | enable_spooling: true}
       le = build(:log_event, source: source)
@@ -2362,5 +2670,86 @@ defmodule Logflare.BackendsTest do
 
       assert pending_entry_count() == 0
     end
+
+    test "in :producer mode, dispatches to the spool producer even when the event already has a via_rule_id",
+         %{source: source} do
+      stop_supervised!(SpoolDurableBufferSup)
+      test_pid = self()
+
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        buffer: :mem,
+        partitions: 1,
+        bucket: "test-bucket",
+        storage_mod: SpoolStorageMod,
+        queue_mod: SpoolQueueMod
+      )
+
+      stub(SpoolStorageMod, :put, fn _b, key, _body, _opts ->
+        send(test_pid, :put_called)
+        {:ok, key}
+      end)
+
+      start_supervised!(SpoolDurableBufferSup)
+
+      source = %{source | enable_spooling: true}
+      le = build(:log_event, source: source)
+      le = %{le | via_rule_id: 123}
+
+      assert {:ok, 1} = Backends.ingest_logs([le], source, nil, true)
+
+      assert_receive :put_called, 1000
+    end
+  end
+
+  describe "maybe_broadcast_and_route/2 broadcast rate gating" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user)
+      start_supervised!({SourceSup, source})
+      [source: source]
+    end
+
+    test "broadcasts while the source's local rate stays below the ceiling", %{source: source} do
+      test_pid = self()
+      stub(ChannelTopics, :broadcast_new, fn events -> send(test_pid, {:broadcast, events}) end)
+
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source)
+
+      assert_receive {:broadcast, [_event]}
+    end
+
+    test "suppresses broadcasts once the source's local rate reaches the ceiling", %{
+      source: source
+    } do
+      test_pid = self()
+      stub(ChannelTopics, :broadcast_new, fn events -> send(test_pid, {:broadcast, events}) end)
+
+      RateSampler.bump(source.token, 100)
+
+      # Large batch: makes a coincidental pass under a probabilistic sampler
+      # (rather than this hard cutoff) astronomically unlikely.
+      now_us = System.system_time(:microsecond)
+      params = for _ <- 1..1_000, do: %{"message" => "hello", "timestamp" => now_us}
+      assert {:ok, 1_000} = Backends.ingest_logs(params, source)
+
+      refute_receive {:broadcast, _events}
+    end
+  end
+
+  defp clickhouse_backend_attrs do
+    %{
+      type: :clickhouse,
+      name: "Test ClickHouse",
+      config: %{
+        url: "http://localhost",
+        port: 8123,
+        database: "test_db",
+        username: "user",
+        password: "pass"
+      }
+    }
   end
 end

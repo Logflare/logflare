@@ -12,6 +12,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
@@ -95,7 +96,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       if error.kind == :invalid_query do
         assert %Ch.Error{} = error.raw_error
-        assert error.description == nil
+        assert error.description =~ "(SYNTAX_ERROR)"
       end
     end
 
@@ -118,7 +119,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                   message:
                     "Code: 47. DB::Exception: Unknown expression identifier `notthere` in scope SELECT notthere. (UNKNOWN_IDENTIFIER)"
                 },
-                description: nil
+                description: ~s(Field "notthere" does not exist.)
               }} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT notthere")
     end
 
@@ -134,6 +135,46 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                 raw_error: %Ch.Error{code: 999, message: "Backend server error"},
                 description: nil
               }} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1")
+    end
+
+    test "describes a real ClickHouse NOT_AN_AGGREGATE error without the physical table", %{
+      backend: backend
+    } do
+      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+
+      assert {:error,
+              %QueryError{
+                kind: :invalid_query,
+                raw_error: %Ch.Error{code: 215, message: raw_message},
+                description: description
+              }} =
+               ClickHouseAdaptor.execute_ch_query(
+                 backend,
+                 "SELECT event_message, count() FROM #{table_name}"
+               )
+
+      assert raw_message =~ table_name
+
+      assert description ==
+               "Column 'event_message' is not under aggregate function and not in GROUP BY keys. (NOT_AN_AGGREGATE)"
+    end
+
+    test "classifies allowlisted ClickHouse error codes as invalid queries", %{backend: backend} do
+      message =
+        "Code: 215. DB::Exception: Column 'a' is not under aggregate function and not in GROUP BY keys. (NOT_AN_AGGREGATE)"
+
+      expect(Ch, :query, fn _pool, _statement, _params, _opts ->
+        {:error, %Ch.Error{code: 215, message: message}}
+      end)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, %QueryError{kind: :invalid_query, raw_error: %Ch.Error{code: 215}}} =
+                   ClickHouseAdaptor.execute_ch_query(backend, "SELECT a, count()")
+        end)
+
+      refute log =~ "Backend query error"
     end
 
     test "logs a warning when connection checkout is slow", %{backend: backend} do
@@ -511,43 +552,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   end
 
   describe "cast_and_validate_config" do
-    test "casts read_only_url when provided" do
-      changeset =
-        cast_and_validate_config(read_only_url: "https://read-only.clickhouse.cloud:8443")
-
-      assert changeset.valid?
-
-      assert Ecto.Changeset.get_field(changeset, :read_only_url) ==
-               "https://read-only.clickhouse.cloud:8443"
-    end
-
-    test "read_only_url defaults to nil when not provided" do
-      changeset = cast_and_validate_config()
-
-      assert changeset.valid?
-      assert Ecto.Changeset.get_field(changeset, :read_only_url) == nil
-    end
-
-    test "rejects invalid read_only_url format" do
-      changeset = cast_and_validate_config(read_only_url: "invalid-url")
-
-      refute changeset.valid?
-      assert {:read_only_url, _} = hd(changeset.errors)
-    end
-
-    test "accepts valid http read_only_url" do
-      changeset = cast_and_validate_config(read_only_url: "http://read-cluster.local:8123")
-
-      assert changeset.valid?
-    end
-
-    test "accepts valid https read_only_url" do
-      changeset =
-        cast_and_validate_config(read_only_url: "https://read-cluster.clickhouse.cloud:8443")
-
-      assert changeset.valid?
-    end
-
     test "casts read_only_urls map when provided" do
       urls = %{
         "dashboard_logs" => "http://logs-read.local:8123",
@@ -599,7 +603,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       changeset =
         cast_and_validate_config(
           url: "http://ingest_user:ingest_pa55@ingest.local:8123",
-          read_only_url: "http://legacy_user:legacy_pa55@legacy-read.local:8123",
           read_only_urls: %{
             "dashboard_logs" => "http://logs_user:logs_pa55@logs-read.local:8123",
             "api" => "https://api_user@api-read.local:8443"
@@ -609,9 +612,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       assert changeset.valid?
       assert Ecto.Changeset.get_field(changeset, :url) == "http://ingest.local:8123"
-
-      assert Ecto.Changeset.get_field(changeset, :read_only_url) ==
-               "http://legacy-read.local:8123"
 
       assert Ecto.Changeset.get_field(changeset, :read_only_urls) == %{
                "dashboard_logs" => "http://logs-read.local:8123",
@@ -699,6 +699,57 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       refute changeset.valid?
       assert Keyword.has_key?(changeset.errors, :async_insert_max_rows)
+    end
+
+    test "use_async_inserts_only defaults to false" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :use_async_inserts_only) == false
+    end
+
+    test "casts use_async_inserts_only" do
+      changeset = cast_and_validate_config(use_async_inserts_only: true)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :use_async_inserts_only) == true
+    end
+
+    test "batch_size and batch_timeout default to the pipeline defaults" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :batch_size) == 60_000
+      assert Ecto.Changeset.get_field(changeset, :batch_timeout) == 5_000
+    end
+
+    test "accepts batch_size and batch_timeout at their bounds" do
+      for {batch_size, batch_timeout} <- [{1_000, 1_000}, {60_000, 30_000}] do
+        changeset =
+          cast_and_validate_config(batch_size: batch_size, batch_timeout: batch_timeout)
+
+        assert changeset.valid?
+        assert Ecto.Changeset.get_field(changeset, :batch_size) == batch_size
+        assert Ecto.Changeset.get_field(changeset, :batch_timeout) == batch_timeout
+      end
+    end
+
+    test "rejects batch_size outside 1,000..60,000" do
+      for batch_size <- [999, 60_001] do
+        changeset = cast_and_validate_config(batch_size: batch_size)
+
+        refute changeset.valid?
+        assert Keyword.has_key?(changeset.errors, :batch_size)
+      end
+    end
+
+    test "rejects batch_timeout outside 1,000..30,000 ms" do
+      for batch_timeout <- [999, 30_001] do
+        changeset = cast_and_validate_config(batch_timeout: batch_timeout)
+
+        refute changeset.valid?
+        assert Keyword.has_key?(changeset.errors, :batch_timeout)
+      end
     end
 
     test "async_insert_cluster_url defaults to nil when not provided" do
@@ -1019,50 +1070,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     Adaptor.cast_and_validate_config(ClickHouseAdaptor, Map.merge(default_attrs, Map.new(attrs)))
   end
 
-  describe "read_only_url fallback behavior" do
-    test "uses primary url when read_only_url is nil" do
-      config = %{
-        url: "http://primary.clickhouse.local",
-        read_only_url: nil,
-        port: 8123
-      }
-
-      assert resolve_read_url(config) == "http://primary.clickhouse.local"
-    end
-
-    test "uses primary url when read_only_url is empty string" do
-      config = %{
-        url: "http://primary.clickhouse.local",
-        read_only_url: "",
-        port: 8123
-      }
-
-      assert resolve_read_url(config) == "http://primary.clickhouse.local"
-    end
-
-    test "uses read_only_url when configured" do
-      config = %{
-        url: "http://primary.clickhouse.local",
-        read_only_url: "http://readonly.clickhouse.local",
-        port: 8123
-      }
-
-      assert resolve_read_url(config) == "http://readonly.clickhouse.local"
-    end
-  end
-
-  defp resolve_read_url(config) do
-    import Logflare.Utils.Guards
-
-    read_only_url = Map.get(config, :read_only_url)
-    if is_non_empty_binary(read_only_url), do: read_only_url, else: Map.get(config, :url)
-  end
-
   describe "resolve_read_cluster_label/2" do
     setup do
       config = %{
         url: "http://ingest.local:8123",
-        read_only_url: "http://legacy-read.local:8123",
         read_only_urls: %{
           "dashboard_metrics" => "http://metrics-read.local:8123",
           "dashboard_logs" => "http://logs-read.local:8123",
@@ -1089,8 +1100,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert ClickHouseAdaptor.resolve_read_cluster_label(config, nil) == "dashboard_logs"
     end
 
-    test "returns nil (legacy path) when no labels are configured" do
-      config = %{url: "http://ingest.local:8123", read_only_url: "http://legacy.local:8123"}
+    test "returns nil when no labels are configured" do
+      config = %{url: "http://ingest.local:8123"}
 
       assert ClickHouseAdaptor.resolve_read_cluster_label(config, "api") == nil
       assert ClickHouseAdaptor.resolve_read_cluster_label(config, nil) == nil
@@ -1119,25 +1130,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert ClickHouseAdaptor.read_cluster_tag("api") == "api"
     end
 
-    test "returns a stable tag for the legacy pool" do
+    test "returns a stable tag for the unlabeled pool" do
       assert ClickHouseAdaptor.read_cluster_tag(nil) == "(unlabeled)"
       assert ClickHouseAdaptor.read_cluster_tag("") == "(unlabeled)"
     end
 
-    test "keeps the legacy pool distinct from a cluster labeled \"default\"" do
+    test "keeps the unlabeled pool distinct from a cluster labeled \"default\"" do
       config = %{
         url: "http://ingest.local:8123",
-        read_only_url: "http://legacy-read.local:8123",
         read_only_urls: %{"default" => "http://named-default-read.local:8123"}
       }
 
-      legacy_label = ClickHouseAdaptor.resolve_read_cluster_label(config, nil)
+      unlabeled_label = ClickHouseAdaptor.resolve_read_cluster_label(config, nil)
       named_label = ClickHouseAdaptor.resolve_read_cluster_label(config, "default")
 
-      assert legacy_label == nil
+      assert unlabeled_label == nil
       assert named_label == "default"
 
-      refute ClickHouseAdaptor.read_cluster_tag(legacy_label) ==
+      refute ClickHouseAdaptor.read_cluster_tag(unlabeled_label) ==
                ClickHouseAdaptor.read_cluster_tag(named_label)
     end
   end
@@ -1469,7 +1479,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       {_source, backend} =
         setup_clickhouse_test(
           config: %{
-            read_only_url: "http://legacy-read.local:8123",
             read_only_urls: %{"adhoc" => "http://adhoc-read.local:8123"},
             default_read_cluster: "adhoc"
           }
@@ -1491,7 +1500,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       assert log =~ "host=adhoc-read.local"
       assert log =~ "clickhouse_read_cluster=adhoc"
-      refute log =~ "legacy-read.local"
+      refute log =~ "host=localhost"
     end
   end
 
@@ -1499,14 +1508,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     setup do
       insert(:plan, name: "Free")
       :ok
-    end
-
-    test "passes when both ingest and read_only_url point to valid clusters" do
-      {_source, backend} =
-        setup_clickhouse_test(config: %{read_only_url: "http://localhost:8123"})
-
-      start_supervised!({ClickHouseAdaptor, backend})
-      assert :ok = ClickHouseAdaptor.test_connection(backend)
     end
 
     test "fails when the ingest cluster returns a connection error and logs the ingest URL" do
@@ -1529,7 +1530,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "fails when the read cluster returns a connection error" do
       {_source, backend} =
         setup_clickhouse_test(
-          config: %{read_only_url: "http://localhost:8123"},
+          config: %{read_only_urls: %{"reporting" => "http://localhost:8123"}},
           cleanup?: false
         )
 
@@ -1633,6 +1634,31 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
+  describe "test_connection/1 async insert grants" do
+    test "checks the async cluster grants when async-only inserts are enabled" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            use_async_inserts_only: true,
+            async_insert_cluster_url: "http://localhost:8123"
+          },
+          cleanup?: false
+        )
+
+      assert {:ok, true} = test_connection_running?(backend, async_grant_statement())
+    end
+
+    test "skips the async cluster grant check when async inserts are disabled" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{async_insert_cluster_url: "http://localhost:8123"},
+          cleanup?: false
+        )
+
+      assert {:ok, false} = test_connection_running?(backend, async_grant_statement())
+    end
+  end
+
   describe "test_connection/1 with a dedicated query user" do
     setup do
       insert(:plan, name: "Free")
@@ -1643,7 +1669,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       {_source, backend} =
         setup_clickhouse_test(
           config: %{
-            read_only_url: "http://localhost:8123",
+            read_only_urls: %{"reporting" => "http://localhost:8123"},
             query_user: "ch_reader",
             query_password: "reader_pa55"
           },
@@ -1719,7 +1745,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "falls back to the default credentials when only query_user is set" do
       {_source, backend} =
         setup_clickhouse_test(
-          config: %{read_only_url: "http://localhost:8123", query_user: "ch_reader"},
+          config: %{
+            read_only_urls: %{"reporting" => "http://localhost:8123"},
+            query_user: "ch_reader"
+          },
           cleanup?: false
         )
 
@@ -3314,6 +3343,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
+  describe "init/1" do
+    test "gives ingest pipelines a 30 second shutdown to drain in-flight inserts" do
+      backend = %Backend{id: System.unique_integer([:positive]), type: :clickhouse}
+
+      {:ok, {_flags, children}} = ClickHouseAdaptor.init(backend)
+
+      assert %{start: {DynamicPipeline, :start_link, [opts]}} =
+               Enum.find(children, &(&1.id == DynamicPipeline))
+
+      assert Keyword.fetch!(opts, :shutdown) == 30_000
+    end
+  end
+
   describe "resolve_pipeline_count/2" do
     test "scales up when every queue is above the scaling threshold" do
       state = %{pipeline_count: 3, last_count_decrease: nil}
@@ -3528,6 +3570,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       backend
       | token: long_token
     }
+  end
+
+  defp async_grant_statement, do: QueryTemplates.async_insert_grant_check_statement()
+
+  defp test_connection_running?(backend, statement) do
+    test_pid = self()
+
+    stub(Ch, :query, fn pool, query_statement, params, opts ->
+      if query_statement == statement, do: send(test_pid, :statement_ran)
+
+      Mimic.call_original(Ch, :query, [pool, query_statement, params, opts])
+    end)
+
+    with :ok <- ClickHouseAdaptor.test_connection(backend) do
+      receive do
+        :statement_ran -> {:ok, true}
+      after
+        0 -> {:ok, false}
+      end
+    end
   end
 
   defp random_string(length) do

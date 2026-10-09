@@ -33,6 +33,27 @@ defmodule Env do
         end
     end
   end
+
+  @spec aws_rds_credentials(map()) :: keyword(String.t())
+  def aws_rds_credentials(env) when is_map(env) do
+    credentials = [
+      access_key_id: env["AWS_ACCESS_KEY_ID"],
+      secret_access_key: env["AWS_SECRET_ACCESS_KEY"],
+      security_token: env["AWS_SESSION_TOKEN"]
+    ]
+
+    if Enum.all?(credentials, fn {_key, value} -> is_binary(value) and value != "" end),
+      do: credentials,
+      else: []
+  end
+
+  @spec aws_region(map()) :: String.t() | nil
+  def aws_region(env) when is_map(env) do
+    case env["AWS_REGION"] || env["AWS_DEFAULT_REGION"] do
+      region when is_binary(region) and region != "" -> region
+      _ -> nil
+    end
+  end
 end
 
 if config_env() == :test and Env.get_boolean("E2E") do
@@ -80,6 +101,8 @@ http_connection_pools =
       |> Enum.map(&String.trim/1)
       |> Enum.map(&String.downcase/1)
   end
+
+db_schema = System.get_env("DB_SCHEMA")
 
 config :logflare,
        Logflare.PubSub,
@@ -179,6 +202,11 @@ config :logflare,
          live_dashboard: Env.get_boolean("LOGFLARE_ENABLE_LIVE_DASHBOARD")
        )
 
+case Env.aws_rds_credentials(System.get_env()) do
+  [] -> :ok
+  credentials -> config :ex_aws, :rds, credentials
+end
+
 db_auth_options =
   case System.get_env("DB_AUTH") do
     auth when auth in [nil, "", "password"] ->
@@ -212,9 +240,10 @@ config :logflare,
                version when version in [:inet, :inet6] -> [version]
                error -> raise "Failed to detect IP version for DB_HOSTNAME: #{error}"
              end,
+           schema: db_schema,
            after_connect:
-             if(System.get_env("DB_SCHEMA"),
-               do: {Postgrex, :query!, ["set search_path=#{System.get_env("DB_SCHEMA")}", []]},
+             if(db_schema,
+               do: {Postgrex, :query!, ["set search_path=#{db_schema}", []]},
                else: nil
              ),
            port:
@@ -545,6 +574,7 @@ config :syn,
 enable_alerting? = Env.get_boolean("LOGFLARE_ALERTS_ENABLED", true)
 
 config :logflare, Oban,
+  prefix: db_schema || "public",
   queues: [default: 10] ++ if(enable_alerting?, do: [alerts: 5], else: []),
   plugins: [
     {Oban.Plugins.Pruner, max_age: 86_400},
@@ -684,8 +714,11 @@ spool_buffer_override =
     v when v in [nil, ""] ->
       []
 
-    buffer when buffer in ["wal", "mem"] ->
-      [buffer: String.to_existing_atom(buffer)]
+    "wal" ->
+      [buffer: :wal]
+
+    "mem" ->
+      [buffer: :mem]
 
     other ->
       raise ArgumentError, "Invalid SPOOL_BUFFER=#{other}. Must be wal or mem."
@@ -744,4 +777,16 @@ if spool_overrides != [] do
   config :logflare,
          :spool,
          Keyword.merge(Application.get_env(:logflare, :spool, []), spool_overrides)
+end
+
+spool_ack_stale? =
+  case System.get_env("SPOOL_ACK_STALE") do
+    v when v in [nil, ""] -> true
+    v -> String.downcase(v) == "true"
+  end
+
+config :logflare, Logflare.Backends.Spool.SpoolAck, ack_stale: spool_ack_stale?
+
+if region = Env.aws_region(System.get_env()) do
+  config :ex_aws, region: region
 end
