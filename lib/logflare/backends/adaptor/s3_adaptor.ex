@@ -104,44 +104,45 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   end
 
   defp endpoint_validator(field, endpoint) do
-    host = URI.parse(endpoint).host
+    case parse_endpoint(endpoint) do
+      {:ok, %URI{host: host}} ->
+        if ssrf_check_disabled?() or trusted_endpoint_host?(host) do
+          []
+        else
+          [
+            {field,
+             {"Endpoint host is not on the list of trusted S3-compatible providers",
+              validation: :endpoint_not_allowed}}
+          ]
+        end
 
-    cond do
-      String.trim(endpoint) != endpoint ->
+      {:error, :invalid_endpoint} ->
         [
           {field,
-           {"Endpoint must not have leading or trailing whitespace",
+           {"Endpoint must include a valid HTTP(S) scheme and host",
             validation: :endpoint_malformed}}
-        ]
-
-      malformed_host?(host) ->
-        [
-          {field, {"Endpoint host is malformed", validation: :endpoint_malformed}}
-        ]
-
-      ssrf_check_disabled?() ->
-        []
-
-      trusted_endpoint_host?(host) ->
-        []
-
-      true ->
-        [
-          {field,
-           {"Endpoint host is not on the list of trusted S3-compatible providers",
-            validation: :endpoint_not_allowed}}
         ]
     end
   end
 
-  defp malformed_host?(nil), do: false
-  defp malformed_host?(host), do: String.match?(host, ~r/\s/)
+  @spec parse_endpoint(term()) :: {:ok, URI.t()} | {:error, :invalid_endpoint}
+  defp parse_endpoint(endpoint) when is_binary(endpoint) do
+    case URI.new(endpoint) do
+      {:ok, %URI{scheme: scheme, host: host, port: port} = uri}
+      when scheme in ["http", "https"] and is_non_empty_binary(host) and
+             is_integer(port) and port > 0 and port <= 65_535 ->
+        {:ok, uri}
+
+      _ ->
+        {:error, :invalid_endpoint}
+    end
+  end
+
+  defp parse_endpoint(_endpoint), do: {:error, :invalid_endpoint}
 
   defp ssrf_check_disabled? do
     !!Application.get_env(:logflare, :unsafe_disable_ssrf_s3_endpoint_check)
   end
-
-  defp trusted_endpoint_host?(nil), do: false
 
   defp trusted_endpoint_host?(host) do
     Enum.any?(@trusted_endpoint_suffixes, fn suffix ->
@@ -323,7 +324,8 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   @spec put_parquet(DataFrame.t(), map(), key :: String.t(), keyword()) ::
           :ok | {:error, term()}
   defp put_parquet(%DataFrame{} = df, config, key, opts \\ []) when is_non_empty_binary(key) do
-    with {:ok, body} <- DataFrame.dump_parquet(df),
+    with {:ok, endpoint_opts} <- endpoint_opts(config[:endpoint]),
+         {:ok, body} <- DataFrame.dump_parquet(df),
          content_md5 <- Base.encode64(:crypto.hash(:md5, body)),
          {:ok, _resp} <-
            config
@@ -332,7 +334,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
              content_type: @parquet_content_type,
              content_md5: content_md5
            )
-           |> ExAws.request(request_opts(config, opts)) do
+           |> ExAws.request(request_opts(config, opts) ++ endpoint_opts) do
       :ok
     end
   end
@@ -363,14 +365,15 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
       http_client: HttpClient,
       http_opts: http_opts,
       retries: retries
-    ] ++ endpoint_opts(config[:endpoint])
+    ]
   end
 
-  @spec endpoint_opts(String.t() | nil) :: keyword()
-  defp endpoint_opts(nil), do: []
+  @spec endpoint_opts(String.t() | nil) :: {:ok, keyword()} | {:error, :invalid_endpoint}
+  defp endpoint_opts(nil), do: {:ok, []}
 
-  defp endpoint_opts(endpoint) when is_non_empty_binary(endpoint) do
-    %URI{scheme: scheme, host: host, port: port} = URI.parse(endpoint)
-    [scheme: "#{scheme}://", host: host, port: port]
+  defp endpoint_opts(endpoint) do
+    with {:ok, %URI{scheme: scheme, host: host, port: port}} <- parse_endpoint(endpoint) do
+      {:ok, [scheme: "#{scheme}://", host: host, port: port]}
+    end
   end
 end
