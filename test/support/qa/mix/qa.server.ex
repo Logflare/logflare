@@ -27,7 +27,7 @@ defmodule Mix.Tasks.Qa.Server do
     })
 
     {_, 0} = System.cmd("epmd", ["-daemon"])
-    {:ok, _} = Node.start(Config.node_name(), :shortnames)
+    {:ok, _} = Node.start(Config.node_name(), name_domain: :shortnames)
     Node.set_cookie(Config.cookie())
 
     Mix.Task.run("ecto.create", ["--quiet"])
