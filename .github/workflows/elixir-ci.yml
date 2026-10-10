@@ -333,6 +333,15 @@ jobs:
           --cpus="1.0"
           --shm-size="256m"
           --tmpfs /var/lib/clickhouse:rw,size=1G
+      vm:
+        image: victoriametrics/victoria-metrics:v1.106.1
+        ports:
+          - 8428:8428
+        options: >-
+          --health-cmd "wget -q -O /dev/null http://127.0.0.1:8428/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     env:
       MIX_ENV: test
       SHELL: /bin/bash

@@ -23,12 +23,16 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     * `source` - the source name
     * `job` and `instance` - from the `service.namespace`/`service.name` and
       `service.instance.id` resource attributes, when present
+    * `logflare_resource_id` and `logflare_scope_id` - stable IDs for the normalized
+      resource and scope maps, including nested attributes
+    * `otel_scope_name`, `otel_scope_version` and `otel_scope_schema_url` - readable
+      scope metadata, when present
     * data point attributes with non-empty string, number or boolean values; list
       and map values are skipped. Names are as stored by Logflare, which normalizes
       keys at ingest (e.g. `http.route` becomes `_http_route`)
     * the optional `labels` config map, which wins over attributes on collision
 
-  Labels the adaptor sets (`__name__`, `le`, `source`, `job`, `instance`) always win.
+  Labels the adaptor sets, including `__name__` and `le`, always win.
   An attribute or config label with one of those names is kept as `exported_<name>`.
   """
 
@@ -37,7 +41,9 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   require Logger
 
   alias Logflare.Backends.Adaptor.HttpBased.Headers
+  alias Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.Query
   alias Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.RemoteWrite
+  alias Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.SeriesIdentity
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
@@ -45,7 +51,10 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   alias Logflare.Sources.Source
   alias Logflare.Utils
 
-  @reserved_labels ["__name__", "le", "source", "job", "instance"]
+  @reserved_labels ~w(
+    __name__ le source job instance logflare_resource_id logflare_scope_id
+    otel_scope_name otel_scope_version otel_scope_schema_url
+  )
   @redacted_value Headers.redacted_value()
   @max_float 1.7_976_931_348_623_157e308
   # Snappy encoding of an empty WriteRequest. snappyer returns "" for empty input,
@@ -123,17 +132,31 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   def cast_config(params, existing_config \\ %{}) do
     changeset =
       {existing_config,
-       %{url: :string, headers: :map, username: :string, password: :string, labels: :map}}
-      |> Ecto.Changeset.cast(params, [:url, :headers, :username, :password, :labels])
+       %{
+         url: :string,
+         query_url: :string,
+         headers: :map,
+         username: :string,
+         password: :string,
+         labels: :map
+       }}
+      |> Ecto.Changeset.cast(params, [:url, :query_url, :headers, :username, :password, :labels])
 
-    if destination_changed?(changeset, existing_config) do
-      changeset
-      |> WebhookAdaptor.unredact_credentials(Map.drop(existing_config, [:headers, "headers"]))
-      |> require_new_credentials(existing_config)
-    else
-      changeset
-      |> WebhookAdaptor.unredact_credentials(existing_config)
-      |> unredact_password()
+    cond do
+      destination_changed?(changeset, existing_config) ->
+        changeset
+        |> WebhookAdaptor.unredact_credentials(Map.drop(existing_config, [:headers, "headers"]))
+        |> require_new_credentials(existing_config)
+
+      query_destination_changed?(changeset, existing_config) ->
+        changeset
+        |> WebhookAdaptor.unredact_credentials(existing_config)
+        |> require_new_password()
+
+      true ->
+        changeset
+        |> WebhookAdaptor.unredact_credentials(existing_config)
+        |> unredact_password()
     end
   end
 
@@ -143,6 +166,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     changeset
     |> Ecto.Changeset.validate_required([:url])
     |> Ecto.Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
+    |> Ecto.Changeset.validate_change(:query_url, &validate_query_url/2)
     |> validate_user_pass()
     |> WebhookAdaptor.validate_no_ssrf()
   end
@@ -162,6 +186,18 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     WebhookAdaptor.test_connection(backend, @empty_write_request)
   end
 
+  @spec execute_promql(Backend.t(), String.t(), map()) ::
+          {:ok, map()} | {:error, {pos_integer(), map()}}
+  defdelegate execute_promql(backend, query, params), to: Query, as: :execute
+
+  @spec validate_query_url(:query_url, String.t()) :: keyword(String.t())
+  defp validate_query_url(:query_url, url) do
+    case Query.validate_url(url) do
+      :ok -> []
+      {:error, message} -> [query_url: message]
+    end
+  end
+
   defp put_basic_auth(headers, nil), do: headers
   defp put_basic_auth(headers, encoded), do: Map.put(headers, "authorization", "Basic #{encoded}")
 
@@ -177,23 +213,54 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   # Stored credentials only ever go to the destination they were entered for. When the
   # URL moves to another origin, the password and credential headers must be entered
   # again rather than restored from the redacted form or kept from storage.
+  @spec require_new_credentials(Ecto.Changeset.t(), map()) :: Ecto.Changeset.t()
   defp require_new_credentials(changeset, existing_config) do
-    changeset =
-      if Ecto.Changeset.get_change(changeset, :password) in [nil, @redacted_value],
-        do: Ecto.Changeset.put_change(changeset, :password, nil),
-        else: changeset
+    headers =
+      case Map.fetch(changeset.params, "headers") do
+        {:ok, submitted} when is_map(submitted) ->
+          for {key, value} <- submitted,
+              value != @redacted_value,
+              into: %{},
+              do: {Headers.normalize_key(key), value}
 
-    case Ecto.Changeset.get_change(changeset, :headers) do
-      nil ->
-        stored = Map.get(existing_config, :headers) || Map.get(existing_config, "headers") || %{}
+        {:ok, nil} ->
+          nil
 
-        kept =
-          for {key, value} <- stored, not Headers.sensitive?(key), into: %{}, do: {key, value}
+        _ ->
+          stored =
+            Map.get(existing_config, :headers) || Map.get(existing_config, "headers") || %{}
 
-        Ecto.Changeset.put_change(changeset, :headers, kept)
+          for {key, value} <- stored,
+              not Headers.sensitive?(key),
+              into: %{},
+              do: {Headers.normalize_key(key), value}
+      end
 
-      _submitted ->
-        changeset
+    changeset
+    |> require_new_password()
+    |> Ecto.Changeset.put_change(:headers, headers)
+  end
+
+  @spec require_new_password(Ecto.Changeset.t()) :: Ecto.Changeset.t()
+  defp require_new_password(changeset) do
+    case changeset.params["password"] do
+      password when is_binary(password) and password not in ["", @redacted_value] ->
+        Ecto.Changeset.put_change(changeset, :password, password)
+
+      _ ->
+        Ecto.Changeset.put_change(changeset, :password, nil)
+    end
+  end
+
+  @spec query_destination_changed?(Ecto.Changeset.t(), map()) :: boolean()
+  defp query_destination_changed?(changeset, existing_config) do
+    previous_url =
+      existing_config[:query_url] || existing_config["query_url"] ||
+        existing_config[:url] || existing_config["url"]
+
+    case Ecto.Changeset.get_change(changeset, :query_url) do
+      url when is_binary(url) and is_binary(previous_url) -> origin(url) != origin(previous_url)
+      _ -> false
     end
   end
 
@@ -206,9 +273,13 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     end
   end
 
+  @spec origin(String.t()) ::
+          {String.t() | nil, String.t() | nil, non_neg_integer() | nil} | :invalid
   defp origin(url) do
-    uri = URI.parse(url)
-    {uri.scheme, uri.host && String.downcase(uri.host), uri.port}
+    case URI.new(url) do
+      {:ok, uri} -> {uri.scheme, uri.host && String.downcase(uri.host), uri.port}
+      {:error, _reason} -> :invalid
+    end
   end
 
   defp encode_write_request(series) do
@@ -239,9 +310,13 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   defp labeled_samples(%{event_type: :metric, body: body} = event, context) do
     with {:ok, kind} <- series_kind(body),
          {:ok, name} <- metric_name(body["event_message"]),
-         {:ok, point} <- data_point(kind, body) do
-      labels = series_labels(body, Map.get(context.source_names, event.source_id), context)
+         {:ok, point} <- data_point(kind, body),
+         labels when is_list(labels) <-
+           series_labels(body, Map.get(context.source_names, event.source_id), context) do
       {:ok, samples(point, name, labels, micro_to_ms(body["timestamp"]))}
+    else
+      :error -> {:drop, :invalid}
+      {:drop, _reason} = drop -> drop
     end
   end
 
@@ -362,17 +437,20 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   defp integer_value(_value), do: :negative_infinity
 
   defp series_labels(body, source_name, context) do
-    adaptor_labels =
-      body["resource"]
-      |> resource_labels()
-      |> Map.put("source", source_name || "unknown")
+    with %{} = identity_labels <- SeriesIdentity.labels(body) do
+      adaptor_labels =
+        body["resource"]
+        |> resource_labels()
+        |> Map.merge(identity_labels)
+        |> Map.put("source", source_name || "unknown")
 
-    body["attributes"]
-    |> flat_labels()
-    |> Map.merge(context.static_labels)
-    |> export_reserved()
-    |> Map.merge(adaptor_labels)
-    |> Enum.sort()
+      body["attributes"]
+      |> flat_labels()
+      |> Map.merge(context.static_labels)
+      |> export_reserved()
+      |> Map.merge(adaptor_labels)
+      |> Enum.sort()
+    end
   end
 
   # LogEvent.make/2 stores keys in BigQuery column form, so `service.name` arrives as
