@@ -734,6 +734,14 @@ spool_blocking_override =
     v -> [blocking: v == "true"]
   end
 
+# In :both mode, spools every event regardless of source.enable_spooling.
+# Off by default.
+spool_force_spooling_override =
+  case System.get_env("SPOOL_FORCE_SPOOLING") do
+    v when v in [nil, ""] -> []
+    v -> [force_spooling: v == "true"]
+  end
+
 # How much accumulates before the spool's local commit tier flushes (see
 # Logflare.Backends.Spool.DurableBuffer.Supervisor's max_batch_bytes,
 # default 64KiB) — applies in both :wal and :mem buffer mode, since it
@@ -767,6 +775,7 @@ spool_overrides =
     spool_provider_override ++
     spool_buffer_override ++
     spool_blocking_override ++
+    spool_force_spooling_override ++
     spool_max_batch_bytes_override ++
     if((q = System.get_env("SPOOL_QUEUE_NAME")) && q != "", do: [queue_name: q], else: []) ++
     if((t = System.get_env("SPOOL_PUBSUB_TOPIC")) && t != "", do: [pubsub_topic: t], else: []) ++
