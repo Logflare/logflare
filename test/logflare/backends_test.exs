@@ -2329,6 +2329,36 @@ defmodule Logflare.BackendsTest do
       assert pending_entry_count() == 0
     end
 
+    test "in :both mode, dispatches to the spool producer when force_spooling is true, even if source.enable_spooling is false",
+         %{source: source} do
+      # source.enable_spooling is false (the setup default)
+      stop_supervised!(SpoolDurableBufferSup)
+      test_pid = self()
+
+      Application.put_env(:logflare, :spool,
+        mode: :both,
+        force_spooling: true,
+        buffer: :mem,
+        partitions: 1,
+        bucket: "test-bucket",
+        storage_mod: SpoolStorageMod,
+        queue_mod: SpoolQueueMod
+      )
+
+      stub(SpoolStorageMod, :put, fn _b, key, _body, _opts ->
+        send(test_pid, :put_called)
+        {:ok, key}
+      end)
+
+      start_supervised!(SpoolDurableBufferSup)
+
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      assert_receive :put_called, 1000
+      assert pending_entry_count() == 0
+    end
+
     test "in :producer mode, dispatches to the spool producer for every source, regardless of source.enable_spooling",
          %{source: source} do
       # source.enable_spooling is false (the setup default)

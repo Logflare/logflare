@@ -734,7 +734,7 @@ defmodule Logflare.Backends do
           true
 
         :both ->
-          spool_write_healthy?() and source.enable_spooling and
+          spool_write_healthy?() and (force_spooling?() or source.enable_spooling) and
             Enum.all?(log_events, &(&1.via_rule_id == nil))
 
         _ ->
@@ -903,6 +903,9 @@ defmodule Logflare.Backends do
 
   defp spool_mode,
     do: :logflare |> Application.get_env(:spool, []) |> Keyword.get(:mode, :disable)
+
+  defp force_spooling?,
+    do: :logflare |> Application.get_env(:spool, []) |> Keyword.get(:force_spooling, false)
 
   @broadcast_rate_ceiling 2
 
