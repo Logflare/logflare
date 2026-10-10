@@ -367,6 +367,13 @@ defmodule Logflare.Telemetry do
         description:
           "Sum of events dropped by a backend (timestamp older than its configured max event age)"
       ),
+      sum("logflare.backends.victoria_metrics.drop",
+        event_name: [:logflare, :backends, :victoria_metrics, :drop],
+        measurement: :count,
+        tags: [:reason],
+        description:
+          "Sum of events dropped by VictoriaMetrics backends (not a metric, or not representable in remote write)"
+      ),
       distribution("logflare.clickhouse.read_pool.checkout.pool_time",
         event_name: [:logflare, :clickhouse, :read_pool, :checkout],
         measurement: :pool_time,

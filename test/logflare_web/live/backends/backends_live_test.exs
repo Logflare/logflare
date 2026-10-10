@@ -591,6 +591,36 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert backend.config.ingestion_key == "some-key"
     end
 
+    test "can create victoria_metrics backend", %{conn: conn, user: user} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      assert view
+             |> element("select#type")
+             |> render_change(%{backend: %{type: "victoria_metrics"}}) =~ "Remote Write URL"
+
+      html =
+        view
+        |> form("form", %{
+          backend: %{
+            name: "my vm",
+            type: "victoria_metrics",
+            config: %{
+              url: "https://example.com/api/v1/write",
+              username: "user",
+              password: "pass"
+            }
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Successfully created backend"
+      assert html =~ "my vm"
+
+      [backend] = Backends.list_backends_by_user_access(user, type: :victoria_metrics)
+      assert backend.config.url == "https://example.com/api/v1/write"
+      assert backend.config.username == "user"
+    end
+
     test "can create a clickhouse backend with a read cluster URL", %{conn: conn, user: user} do
       {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
 
