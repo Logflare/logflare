@@ -29,6 +29,18 @@ defmodule Logflare.System do
   """
   @spec total_memory_bytes() :: non_neg_integer() | nil
   def total_memory_bytes do
+    case :persistent_term.get({__MODULE__, :total_memory_bytes}, nil) do
+      nil ->
+        bytes = compute_total_memory_bytes()
+        :persistent_term.put({__MODULE__, :total_memory_bytes}, bytes)
+        bytes
+
+      bytes ->
+        bytes
+    end
+  end
+
+  defp compute_total_memory_bytes do
     if System.get_env("LOGFLARE_CGROUP_MEMORY_LIMIT") == "true" do
       cgroup_memory_limit_bytes() || host_memory_bytes()
     else
