@@ -6,6 +6,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.QueryTest do
   alias Logflare.Backends.Backend
   alias Logflare.Utils.SSRF
 
+  @pool __MODULE__.Pool
   @url "https://8.8.8.8/select/42/prometheus"
 
   setup :verify_on_exit!
@@ -129,6 +130,78 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.QueryTest do
     expect(Tesla.Adapter.Finch, :call, fn _env, _ -> {:error, {:connection_failed, "secret"}} end)
     assert {:error, {502, body}} = Query.execute(backend(), "up", %{})
     refute inspect(body) =~ "secret"
+  end
+
+  test "returns a native capacity error when the HTTP/1 connection pool is exhausted" do
+    start_supervised!(
+      {Finch, name: @pool, pools: %{default: [protocols: [:http1], size: 1, count: 1]}}
+    )
+
+    {:ok, listener} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
+    {:ok, port} = :inet.port(listener)
+    parent = self()
+
+    server =
+      Task.async(fn ->
+        {:ok, socket} = :gen_tcp.accept(listener)
+        {:ok, _request} = :gen_tcp.recv(socket, 0, 5_000)
+        send(parent, :pool_busy)
+
+        receive do
+          :release -> :gen_tcp.close(socket)
+        end
+      end)
+
+    holder =
+      Task.async(fn ->
+        request = Mimic.call_original(Finch, :build, [:get, "http://127.0.0.1:#{port}/", [], nil])
+        Mimic.call_original(Finch, :request, [request, @pool, [receive_timeout: 5_000]])
+      end)
+
+    try do
+      assert_receive :pool_busy, 1_000
+
+      stub(SSRF, :safe_resolve, fn "victoriametrics.test" -> {:ok, {127, 0, 0, 1}} end)
+
+      stub(Finch, :build, fn method, url, headers, body ->
+        Mimic.call_original(Finch, :build, [method, url, headers, body])
+      end)
+
+      stub(Finch, :request, fn request, pool, options ->
+        Mimic.call_original(Finch, :request, [request, pool, options])
+      end)
+
+      expect(Tesla.Adapter.Finch, :call, fn env, options ->
+        options = Keyword.merge(options, name: @pool, pool_timeout: 50)
+        Mimic.call_original(Tesla.Adapter.Finch, :call, [env, options])
+      end)
+
+      assert {:error,
+              {503,
+               %{
+                 "status" => "error",
+                 "errorType" => "unavailable",
+                 "error" => "VictoriaMetrics query capacity is temporarily unavailable"
+               }}} =
+               Query.execute(
+                 backend(%{query_url: "http://victoriametrics.test:#{port}"}),
+                 "up",
+                 %{}
+               )
+    after
+      send(server.pid, :release)
+      Task.shutdown(holder, :brutal_kill)
+      Task.shutdown(server, :brutal_kill)
+      :gen_tcp.close(listener)
+    end
+  end
+
+  test "does not normalize unrelated runtime errors" do
+    expect(Tesla.Adapter.Finch, :call, fn _env, _options -> raise "unrelated boom" end)
+
+    assert_raise RuntimeError, "unrelated boom", fn ->
+      Query.execute(backend(), "up", %{})
+    end
   end
 
   test "requires an explicitly configured safe read URL before sending requests" do

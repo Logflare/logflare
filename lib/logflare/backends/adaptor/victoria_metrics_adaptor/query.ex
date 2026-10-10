@@ -6,6 +6,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.Query do
   parsing or result conversion. Only stored basic authentication is used.
   """
 
+  alias Logflare.Backends.Adaptor.HttpBased.FinchPoolTimeoutNormalizer
   alias Logflare.Backends.Adaptor.HttpBased.SSRFProtection
   alias Logflare.Backends.Backend
   alias Logflare.Utils
@@ -26,7 +27,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.Query do
 
       client =
         Tesla.client(
-          [Tesla.Middleware.Telemetry, SSRFProtection],
+          [Tesla.Middleware.Telemetry, SSRFProtection, FinchPoolTimeoutNormalizer],
           {Tesla.Adapter.Finch,
            name: Logflare.FinchDefaultHttp1, receive_timeout: @receive_timeout}
         )
@@ -156,6 +157,9 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.Query do
 
   defp response({:ok, %Tesla.Env{status: status}}) when status in 400..599,
     do: error(status, "upstream_error", "VictoriaMetrics returned HTTP #{status}")
+
+  defp response({:error, :pool_timeout}),
+    do: error(503, "unavailable", "VictoriaMetrics query capacity is temporarily unavailable")
 
   defp response({:error, :timeout}),
     do: error(504, "timeout", "VictoriaMetrics query timed out")

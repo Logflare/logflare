@@ -493,6 +493,26 @@ defmodule LogflareWeb.Api.QueryControllerTest do
       end
     end
 
+    test "returns a native capacity error when Finch cannot check out a connection", %{
+      conn: conn,
+      user: user,
+      backend: backend
+    } do
+      for options <- [%{}, %{start: "1", end: "2", step: "1s"}] do
+        expect(Tesla.Adapter.Finch, :call, fn _env, _options ->
+          raise "Finch was unable to provide a connection within the timeout due to excess queuing for connections"
+        end)
+
+        params = Map.merge(%{promql: "up", backend_id: backend.id}, options)
+
+        assert promql_response(conn, user, params, 503) == %{
+                 "status" => "error",
+                 "errorType" => "unavailable",
+                 "error" => "VictoriaMetrics query capacity is temporarily unavailable"
+               }
+      end
+    end
+
     test "requires an explicit valid backend ID", %{conn: conn, user: user} do
       for params <- [%{promql: "up"}, %{promql: "up", backend_id: ""}] do
         assert %{
