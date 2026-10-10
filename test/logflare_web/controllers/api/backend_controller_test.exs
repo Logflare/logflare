@@ -612,8 +612,8 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       |> response(204)
 
       stored_config = Logflare.Backends.get_backend(backend.id).config_encrypted
-      stored_url = Map.get(stored_config, :url) || Map.get(stored_config, "url")
-      stored_headers = Map.get(stored_config, :headers) || Map.get(stored_config, "headers")
+      stored_url = Map.get(stored_config, :url)
+      stored_headers = Map.get(stored_config, :headers)
 
       assert stored_url == original_url
       assert Map.get(stored_headers, "x-webhook-secret") == original_header

@@ -5,6 +5,7 @@ defmodule Logflare.KeyValues do
 
   alias Logflare.KeyValues.KeyValue
   alias Logflare.Repo
+  alias Logflare.Utils
 
   @list_limit 500
 
@@ -110,10 +111,12 @@ defmodule Logflare.KeyValues do
 
     rows =
       Enum.map(entries, fn entry ->
+        entry = Utils.Map.stringify_top_level_keys(entry)
+
         %{
           user_id: user_id,
-          key: entry[:key] || entry["key"],
-          value: entry[:value] || entry["value"],
+          key: entry["key"],
+          value: entry["value"],
           updated_at: now,
           inserted_at: now
         }

@@ -55,7 +55,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
 
   @impl Adaptor
   def redact_config(config) do
-    case Map.get(config, :dsn) || Map.get(config, "dsn") do
+    case Map.get(config, :dsn) do
       nil ->
         config
 

@@ -123,7 +123,7 @@ defmodule Logflare.Factory do
   end
 
   def rule_factory(attrs) do
-    lql = Map.get(attrs, :lql_string) || Map.get(attrs, "lql_string", "testing")
+    lql = Map.get(attrs, :lql_string) || "testing"
     {:ok, lql_filters} = Lql.Parser.parse(lql, TestUtils.default_bq_schema())
 
     %Rule{
@@ -156,9 +156,8 @@ defmodule Logflare.Factory do
           "message" =>
             params["message"] || params["event_message"] ||
               Map.get(params, "event_message", "test-msg"),
-          "timestamp" =>
-            params["timestamp"] || params[:timestamp] || DateTime.utc_now() |> to_string,
-          "metadata" => params["metadata"] || params[:metadata] || %{}
+          "timestamp" => params["timestamp"] || DateTime.utc_now() |> to_string,
+          "metadata" => params["metadata"] || %{}
         }
       )
       |> Map.drop([:metadata, :event_message, :message, :timestamp])
