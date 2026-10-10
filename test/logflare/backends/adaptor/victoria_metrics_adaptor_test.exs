@@ -871,16 +871,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
     end
   end
 
-  # End-to-end tests against the docker-compose `vm` service.
-  #
-  # Requires `docker compose up -d vm`. Excluded by default via the
-  # :integration tag (see test/test_helper.exs).
-  #
-  # Run with:
-  #   mix test test/logflare/backends/adaptor/victoria_metrics_adaptor_test.exs --include integration
   describe "victoriametrics e2e" do
-    @describetag :integration
-
     # The vm service is on loopback, which SSRFProtection blocks. The pipeline sends
     # from its own processes, so the stub has to be global.
     setup :set_mimic_global

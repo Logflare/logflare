@@ -21,8 +21,6 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsQueryIntegrationTest do
   alias Opentelemetry.Proto.Metrics.V1.ScopeMetrics
   alias Opentelemetry.Proto.Resource.V1.Resource
 
-  @moduletag :integration
-
   @receiver_url "http://victoriametrics.test:8428"
   @retry [sleep: 250, duration: 30_000]
 

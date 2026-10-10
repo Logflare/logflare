@@ -18,7 +18,6 @@ on:
       - "Dockerfile.base"
       - "Dockerfile.runner"
       - "Dockerfile.multi-step"
-      - "docker-compose.yml"
       - "docs/docs.logflare.com/docs/**"
       - "native/**"
       - "priv/**"
@@ -94,9 +93,6 @@ jobs:
                 .tool-versions|Cargo.toml|Cargo.lock|native/mapper_ex/*)
                   backend=true
                   rust=true
-                  ;;
-                docker-compose.yml)
-                  backend=true
                   ;;
                 test/e2e/features/*)
                   quality=true
@@ -405,13 +401,6 @@ jobs:
 
       - name: Run tests
         run: epmd -daemon; mix do ecto.create + ecto.migrate + test.coverage.ci
-
-      - name: Run VictoriaMetrics receiver integration tests
-        run: >-
-          mix test
-          test/logflare/backends/adaptor/victoria_metrics_adaptor_test.exs
-          test/logflare/backends/adaptor/victoria_metrics_query_integration_test.exs
-          --include integration
 
       - name: Upload coverage
         uses: coverallsapp/github-action@v2
