@@ -19,6 +19,7 @@ defmodule Logflare.BigQuery.PipelineTest do
   alias Logflare.Repo
   alias Logflare.Sources.Source.BigQuery.Pipeline
   alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.BigQuery.SchemaMetrics
   alias Logflare.Sources.Source.RateSampler
   alias Logflare.User
 
@@ -968,8 +969,61 @@ defmodule Logflare.BigQuery.PipelineTest do
         :ok
       end)
 
+      SchemaMetrics.reset()
+      handler_id = "pipeline-schema-sample-#{System.unique_integer()}"
+
+      :telemetry.attach(
+        handler_id,
+        [:logflare, :bigquery, :schema, :report],
+        fn _, counts, _, pid ->
+          send(pid, {:sample_counts, counts})
+        end,
+        self()
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
       assert ^le = Pipeline.process_data(le, context, source)
       assert_received :schema_updated
+      assert :ok = SchemaMetrics.report()
+      assert_receive {:sample_counts, %{samples_selected: 1, samples_selected_zero_rate: 1}}
+    end
+
+    test "caps pending sampled updates across processor calls", %{
+      user: user,
+      context: context
+    } do
+      source = insert(:source, user_id: user.id, lock_schema: false)
+      schema_name = Backends.via_source(source, {Schema, nil})
+
+      schema_pid =
+        start_supervised!(
+          {Schema,
+           [
+             source: source,
+             max_pending_samples: 1,
+             plan: %{limit_source_fields_limit: 500},
+             bigquery_project_id: "some-id",
+             bigquery_dataset_id: "some-id",
+             name: schema_name
+           ]}
+        )
+
+      :ok = :sys.suspend(schema_pid)
+      on_exit(fn -> if Process.alive?(schema_pid), do: :sys.resume(schema_pid) end)
+
+      le = build(:log_event, source: source)
+
+      le =
+        %{le | body: %{"event_message" => "test", "id" => le.id, "timestamp" => 0}}
+
+      assert ^le = Pipeline.process_data(le, context, source)
+      assert ^le = Pipeline.process_data(le, context, source)
+
+      {:via, Registry, {registry, key}} = schema_name
+      assert [{^schema_pid, {:schema_admission, counter, 1}}] = Registry.lookup(registry, key)
+      assert Schema.pending_update_slots(counter) == 1
+      assert {:message_queue_len, 1} = Process.info(schema_pid, :message_queue_len)
     end
 
     test "does not crash when the passed source is nil", %{context: context} do
