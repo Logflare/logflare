@@ -48,13 +48,19 @@ defmodule Logflare.System do
     end
   end
 
-  @cgroup_paths [
+  @default_cgroup_paths [
     "/sys/fs/cgroup/memory.max",
     "/sys/fs/cgroup/memory/memory.limit_in_bytes"
   ]
 
   defp cgroup_memory_limit_bytes do
-    Enum.find_value(@cgroup_paths, fn path ->
+    paths =
+      case System.get_env("LOGFLARE_CGROUP_MEMORY_PATH") do
+        nil -> @default_cgroup_paths
+        path -> [path]
+      end
+
+    Enum.find_value(paths, fn path ->
       with {:ok, content} <- File.read(path),
            {bytes, _} <- Integer.parse(String.trim(content)) do
         bytes
