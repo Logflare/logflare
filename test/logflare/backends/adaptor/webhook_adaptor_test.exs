@@ -87,6 +87,7 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
     test "ingest through the full source supervision tree", %{source: source} do
       this = self()
       ref = make_ref()
+      TestUtils.attach_forwarder([:logflare, :backends, :pipeline, :handle_batch])
 
       @subject.Client
       |> expect(:send, fn req ->
@@ -100,6 +101,11 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
 
       assert {:ok, _} = Backends.ingest_logs([le], source)
       assert_receive ^ref, 2000
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :pipeline, :handle_batch],
+                      %{batch_size: 1}, metadata}
+
+      assert metadata == %{backend_type: :webhook}
     end
 
     test "logs the batch size when JSON encoding fails", %{source: source} do

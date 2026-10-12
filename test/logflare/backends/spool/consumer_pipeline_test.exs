@@ -38,17 +38,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
     end)
   end
 
-  test "emits spool batch telemetry with explicit pipeline tags" do
-    TestUtils.attach_forwarder([:logflare, :backends, :pipeline, :handle_batch])
-
-    assert [] = ConsumerPipeline.handle_batch(:default, [], %{size: 0, trigger: :timeout}, %{})
-
-    assert_receive {:telemetry_event, [:logflare, :backends, :pipeline, :handle_batch],
-                    %{batch_size: 0, batch_trigger: :timeout}, metadata}
-
-    assert metadata == %{pipeline: :spool_consumer, batch_trigger: :timeout}
-  end
-
   defp record(source_id, event_id, extra_body \\ %{}) do
     body =
       Map.merge(%{"id" => event_id, "timestamp" => System.system_time(:microsecond)}, extra_body)
@@ -161,6 +150,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
     end
 
     test "dispatches events to the correct source by integer source_id", %{source: source} do
+      TestUtils.attach_forwarder([:logflare, :backends, :pipeline, :handle_batch])
       event_id = Ecto.UUID.generate()
       messages = [line_message(source.id, event_id, %{"message" => "hello"})]
 
@@ -171,8 +161,18 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
         {:ok, length(event_params)}
       end)
 
-      ConsumerPipeline.handle_batch(:default, messages, %{}, %{})
+      assert ^messages =
+               ConsumerPipeline.handle_batch(
+                 :default,
+                 messages,
+                 %{size: 1, trigger: :timeout},
+                 %{}
+               )
 
+      assert_receive {:telemetry_event, [:logflare, :backends, :pipeline, :handle_batch],
+                      %{batch_size: 1, batch_trigger: :timeout}, metadata}
+
+      assert metadata == %{pipeline: :spool_consumer, batch_trigger: :timeout}
       assert_receive {:dispatched, [params], source_id}
       assert source_id == source.id
       assert params["id"] == event_id
