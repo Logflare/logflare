@@ -29,6 +29,48 @@ defmodule Logflare.System do
   """
   @spec total_memory_bytes() :: non_neg_integer() | nil
   def total_memory_bytes do
+    case :persistent_term.get({__MODULE__, :total_memory_bytes}, nil) do
+      nil ->
+        bytes = compute_total_memory_bytes()
+        :persistent_term.put({__MODULE__, :total_memory_bytes}, bytes)
+        bytes
+
+      bytes ->
+        bytes
+    end
+  end
+
+  defp compute_total_memory_bytes do
+    if System.get_env("LOGFLARE_CGROUP_MEMORY_LIMIT") == "true" do
+      cgroup_memory_limit_bytes() || host_memory_bytes()
+    else
+      host_memory_bytes()
+    end
+  end
+
+  @default_cgroup_paths [
+    "/sys/fs/cgroup/memory.max",
+    "/sys/fs/cgroup/memory/memory.limit_in_bytes"
+  ]
+
+  defp cgroup_memory_limit_bytes do
+    paths =
+      case System.get_env("LOGFLARE_CGROUP_MEMORY_PATH") do
+        nil -> @default_cgroup_paths
+        path -> [path]
+      end
+
+    Enum.find_value(paths, fn path ->
+      with {:ok, content} <- File.read(path),
+           {bytes, _} <- Integer.parse(String.trim(content)) do
+        bytes
+      else
+        _ -> nil
+      end
+    end)
+  end
+
+  defp host_memory_bytes do
     :memsup.get_system_memory_data()[:system_total_memory]
   catch
     :exit, _reason -> nil

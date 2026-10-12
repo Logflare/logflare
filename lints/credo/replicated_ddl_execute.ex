@@ -39,13 +39,18 @@ defmodule Logflare.CredoChecks.ReplicatedDdlExecute do
             modify(:user_id, references(:users, on_delete: :delete_all))
           end
 
+      Both the up and down SQL of `execute/2` are checked, and leading SQL comments or
+      preceding statements (`SET ...; CREATE ...`) do not hide a DDL statement. Quoted
+      strings, quoted identifiers and dollar-quoted bodies are skipped, so their contents
+      never count as DDL or as a node-local keyword.
+
       Statements matching `:node_local_patterns` (publications, subscriptions, replica
       identity, `ALTER SYSTEM`, role changes) are ignored: those configure the node or
       cluster itself and must not be replicated.
       """,
       params: [
         ddl_prefixes: "Leading SQL keywords that mark a statement as replicable DDL.",
-        node_local_patterns: "Statements containing these are node-local and exempt."
+        node_local_patterns: "Statements containing these whole words are node-local and exempt."
       ]
     ]
 
@@ -55,53 +60,143 @@ defmodule Logflare.CredoChecks.ReplicatedDdlExecute do
   def run(%SourceFile{} = source_file, params) do
     issue_meta = IssueMeta.for(source_file, params)
     ddl_prefixes = Params.get(params, :ddl_prefixes, __MODULE__)
-    node_local_patterns = Params.get(params, :node_local_patterns, __MODULE__)
-    ast = Credo.Code.ast(source_file)
-    scopes = ReplicatedExecuteScope.line_ranges(ast)
 
-    ast
-    |> Macro.prewalk([], fn node, issues ->
-      traverse(node, issues, issue_meta, scopes, ddl_prefixes, node_local_patterns)
-    end)
-    |> elem(1)
+    node_local_regexes =
+      params
+      |> Params.get(:node_local_patterns, __MODULE__)
+      |> Enum.map(&Regex.compile!("\\b" <> Regex.escape(String.downcase(&1)) <> "\\b"))
+
+    rules = %{
+      issue_meta: issue_meta,
+      ddl_prefixes: ddl_prefixes,
+      node_local_regexes: node_local_regexes
+    }
+
+    source_file
+    |> SourceFile.ast()
+    |> ReplicatedExecuteScope.walk([], &collect_issues(&1, &2, &3, rules))
     |> Enum.reverse()
   end
 
-  defp traverse(
-         {:execute, meta, [argument | _]} = ast,
+  defp collect_issues(
+         {:execute, meta, arguments},
+         %ReplicatedExecuteScope{replicated?: false},
          issues,
-         issue_meta,
-         scopes,
-         ddl_prefixes,
-         node_local_patterns
-       ) do
-    with sql when is_binary(sql) <- leading_sql(argument),
-         true <- ddl?(sql, ddl_prefixes),
-         false <- node_local?(sql, node_local_patterns),
-         false <- ReplicatedExecuteScope.within?(scopes, meta[:line]) do
-      {ast, [issue_for(issue_meta, meta, sql) | issues]}
-    else
-      _ -> {ast, issues}
+         rules
+       )
+       when is_list(arguments) do
+    for sql when is_binary(sql) <- Enum.map(arguments, &sql_text/1),
+        replicable_ddl?(sql, rules.ddl_prefixes, rules.node_local_regexes),
+        reduce: issues do
+      issues -> [issue_for(rules.issue_meta, meta, sql) | issues]
     end
   end
 
-  defp traverse(ast, issues, _issue_meta, _scopes, _ddl_prefixes, _node_local_patterns),
-    do: {ast, issues}
+  defp collect_issues(_node, _env, issues, _rules), do: issues
 
-  defp leading_sql(sql) when is_binary(sql), do: sql
-  defp leading_sql({:<<>>, _meta, [sql | _rest]}) when is_binary(sql), do: sql
-  defp leading_sql(_argument), do: nil
+  defp sql_text(sql) when is_binary(sql), do: sql
+  defp sql_text({:<<>>, _meta, parts}), do: Enum.map_join(parts, &sql_part/1)
 
-  defp ddl?(sql, ddl_prefixes) do
-    normalized = normalize(sql)
+  defp sql_text({sigil, _meta, [sql, _mods]}) when sigil in [:sigil_s, :sigil_S],
+    do: sql_text(sql)
 
-    Enum.any?(ddl_prefixes, &String.starts_with?(normalized, &1 <> " "))
+  defp sql_text(_argument), do: nil
+
+  defp sql_part(part) when is_binary(part), do: part
+  defp sql_part(_interpolation), do: "..."
+
+  defp replicable_ddl?(sql, ddl_prefixes, node_local_regexes) do
+    sql
+    |> sql_statements()
+    |> Enum.map(&normalize/1)
+    |> Enum.any?(fn statement ->
+      Enum.any?(ddl_prefixes, &String.starts_with?(statement, &1 <> " ")) and
+        not Enum.any?(node_local_regexes, &Regex.match?(&1, statement))
+    end)
   end
 
-  defp node_local?(sql, node_local_patterns) do
-    normalized = normalize(sql)
+  defp sql_statements(sql), do: scan(sql, [], [])
 
-    Enum.any?(node_local_patterns, &String.contains?(normalized, &1))
+  defp scan(<<>>, current, statements),
+    do: Enum.reverse([IO.iodata_to_binary(current) | statements])
+
+  defp scan(<<?;, rest::binary>>, current, statements),
+    do: scan(rest, [], [IO.iodata_to_binary(current) | statements])
+
+  defp scan(<<"--", rest::binary>>, current, statements),
+    do: rest |> skip_line_comment() |> scan([current, ?\s], statements)
+
+  defp scan(<<"/*", rest::binary>>, current, statements),
+    do: rest |> skip_block_comment(1) |> scan([current, ?\s], statements)
+
+  defp scan(<<?', rest::binary>>, current, statements),
+    do: rest |> skip_quoted(?', false) |> scan([current, "''"], statements)
+
+  defp scan(<<?", rest::binary>>, current, statements),
+    do: rest |> skip_quoted(?", false) |> scan([current, ~s("")], statements)
+
+  defp scan(<<?$, rest::binary>> = sql, current, statements) do
+    case Regex.run(~r/\A\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/, sql) do
+      [delimiter] ->
+        sql
+        |> binary_part(byte_size(delimiter), byte_size(sql) - byte_size(delimiter))
+        |> skip_dollar_quoted(delimiter)
+        |> scan([current, "''"], statements)
+
+      nil ->
+        scan(rest, [current, ?$], statements)
+    end
+  end
+
+  defp scan(<<char, _::binary>> = sql, current, statements)
+       when char in ?a..?z or char in ?A..?Z or char == ?_ do
+    [word] = Regex.run(~r/\A[A-Za-z0-9_$]+/, sql)
+
+    case binary_part(sql, byte_size(word), byte_size(sql) - byte_size(word)) do
+      <<?', rest::binary>> when word in ["e", "E"] ->
+        rest |> skip_quoted(?', true) |> scan([current, "''"], statements)
+
+      rest ->
+        scan(rest, [current, word], statements)
+    end
+  end
+
+  defp scan(<<char, rest::binary>>, current, statements),
+    do: scan(rest, [current, char], statements)
+
+  defp skip_line_comment(sql) do
+    case :binary.split(sql, "\n") do
+      [_comment, rest] -> rest
+      [_comment] -> ""
+    end
+  end
+
+  defp skip_block_comment(sql, 0), do: sql
+  defp skip_block_comment(<<>>, _depth), do: ""
+  defp skip_block_comment(<<"/*", rest::binary>>, depth), do: skip_block_comment(rest, depth + 1)
+  defp skip_block_comment(<<"*/", rest::binary>>, depth), do: skip_block_comment(rest, depth - 1)
+  defp skip_block_comment(<<_char, rest::binary>>, depth), do: skip_block_comment(rest, depth)
+
+  defp skip_quoted(<<>>, _quote, _backslash_escapes?), do: ""
+
+  defp skip_quoted(<<?\\, _escaped, rest::binary>>, quote, true),
+    do: skip_quoted(rest, quote, true)
+
+  defp skip_quoted(<<char, next, rest::binary>>, quote, backslash_escapes?)
+       when char == quote and next == quote,
+       do: skip_quoted(rest, quote, backslash_escapes?)
+
+  defp skip_quoted(<<char, rest::binary>>, quote, _backslash_escapes?) when char == quote,
+    do: rest
+
+  defp skip_quoted(<<_char, rest::binary>>, quote, backslash_escapes?),
+    do: skip_quoted(rest, quote, backslash_escapes?)
+
+  defp skip_dollar_quoted(sql, delimiter) do
+    case :binary.split(sql, delimiter) do
+      [_body, rest] -> rest
+      [_body] -> ""
+    end
   end
 
   defp normalize(sql) do

@@ -50,6 +50,32 @@ defmodule Logflare.Sources.Cache do
   def get_by_id_and_preload(arg) when is_atom(arg), do: get_by_and_preload(token: arg)
 
   def get_by(kv), do: apply_repo_fun(__ENV__.function, [kv])
+
+  @doc """
+  Returns the source for the id. Reads the primary database when the cache holds `nil`.
+
+  The cache can hold `nil` for a source that exists, for example after a read from a replica that
+  lags behind. The cache buster does not remove a cached `nil`. When the primary has the source,
+  this function also puts it in the cache entry, so later cache reads get it.
+  """
+  @spec get_by_id_or_primary(pos_integer()) :: Source.t() | nil
+  def get_by_id_or_primary(id) when is_integer(id) do
+    with nil <- get_by_id(id),
+         %Source{} = source <- Sources.get(id) do
+      update_by_id(source)
+      source
+    end
+  end
+
+  @doc """
+  Replaces the cached `get_by(id: id)` entry of the source with the given struct.
+
+  The entry must exist. A cached `nil` counts as an entry.
+  """
+  @spec update_by_id(Source.t()) :: {:ok, boolean()} | {:error, term()}
+  def update_by_id(%Source{id: id} = source),
+    do: Logflare.ContextCache.update(Sources, :get_by, [[id: id]], source)
+
   def get_by_id(arg) when is_integer(arg), do: get_by(id: arg)
   def get_by_id(arg) when is_atom(arg), do: get_by(token: arg)
   def get_source_by_token(arg) when is_atom(arg), do: get_by(token: arg)

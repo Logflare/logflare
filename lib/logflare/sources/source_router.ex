@@ -24,11 +24,25 @@ defmodule Logflare.Sources.SourceRouter do
 
   def route_to_sinks_and_ingest(%LE{via_rule_id: nil} = le, source, router) do
     for %Rule{} = rule <- router.matching_rules(le, source) do
-      do_routing(rule, le, source)
+      rule
+      |> do_routing(le, source)
+      |> maybe_emit_dropped(rule, source)
     end
 
     le
   end
+
+  @spec maybe_emit_dropped(term(), Rule.t(), Source.t()) :: :ok
+  defp maybe_emit_dropped({:error, reason}, rule, source)
+       when reason in [:source_unavailable, :source_not_found] do
+    :telemetry.execute(
+      [:logflare, :sources, :source_router, :dropped],
+      %{count: 1},
+      %{reason: reason, source_id: source.id, rule_id: rule.id}
+    )
+  end
+
+  defp maybe_emit_dropped(_result, _rule, _source), do: :ok
 
   defp do_routing(%Rule{backend_id: backend_id} = rule, %LE{} = le, source)
        when backend_id != nil do
@@ -47,7 +61,6 @@ defmodule Logflare.Sources.SourceRouter do
 
     le = %{le | source_id: sink_source.id, via_rule_id: rule.id}
 
-    Backends.ensure_source_sup_started(sink_source)
     Backends.ingest_logs([le], sink_source)
   end
 
