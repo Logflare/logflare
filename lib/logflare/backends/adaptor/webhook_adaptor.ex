@@ -403,10 +403,10 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     require Logger
 
     alias Broadway.Message
+    alias Logflare.Backends.Adaptor.WebhookAdaptor
     alias Logflare.Backends.Adaptor.WebhookAdaptor.Client
     alias Logflare.Backends.Backend
     alias Logflare.Backends.BufferProducer
-    alias Logflare.Backends.Adaptor.WebhookAdaptor
 
     @batch_timeout if Application.compile_env(:logflare, :env) == :test, do: 10, else: 1_000
     @producer_interval if Application.compile_env(:logflare, :env) == :test, do: 10, else: 1_000

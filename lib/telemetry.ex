@@ -3,7 +3,8 @@ defmodule Logflare.Telemetry do
 
   import Telemetry.Metrics
   import Logflare.Utils, only: [ets_info: 1]
-  import Logflare.Utils.Guards, only: [is_atom_value: 1, is_non_empty_binary: 1, is_pos_integer: 1]
+  import Logflare.Utils.Guards,
+    only: [is_atom_value: 1, is_non_empty_binary: 1, is_pos_integer: 1]
 
   require Logger
 
@@ -292,25 +293,11 @@ defmodule Logflare.Telemetry do
 
     broadway_metrics =
       [
-        distribution("broadway.batcher.stop.duration",
-          tags: [:backend_type, :pipeline],
-          tag_values: &broadway_tags/1,
-          unit: {:native, :millisecond}
-        ),
-        distribution("broadway.batch_processor.stop.duration",
-          tags: [:backend_type, :pipeline],
-          tag_values: &broadway_tags/1,
-          unit: {:native, :millisecond}
-        )
+        distribution("broadway.batcher.stop.duration", tags: [:backend_type, :pipeline], tag_values: &broadway_tags/1, unit: {:native, :millisecond}),
+        distribution("broadway.batch_processor.stop.duration", tags: [:backend_type, :pipeline], tag_values: &broadway_tags/1, unit: {:native, :millisecond})
       ] ++
         broadway_processor_message_metrics ++
-        [
-          distribution("broadway.processor.stop.duration",
-            tags: [:backend_type, :pipeline],
-            tag_values: &broadway_tags/1,
-            unit: {:native, :millisecond}
-          )
-        ]
+        [distribution("broadway.processor.stop.duration", tags: [:backend_type, :pipeline], tag_values: &broadway_tags/1, unit: {:native, :millisecond})]
 
     application_metrics = [
       distribution("logflare.goth.fetch.stop.duration",
