@@ -644,7 +644,7 @@ defmodule Logflare.Backends do
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil, boolean()) ::
           {:ok, count :: pos_integer()} | {:error, term()}
   def ingest_logs(event_params, source, backend \\ nil, allow_spooling \\ false) do
-    ensure_source_sup_started(source)
+    if spool_mode() != :producer, do: ensure_source_sup_started(source)
     {log_events, errors} = split_valid_events(source, event_params)
     count = Enum.count(log_events)
     increment_counters(source, count)

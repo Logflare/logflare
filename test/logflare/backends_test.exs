@@ -2702,6 +2702,81 @@ defmodule Logflare.BackendsTest do
     end
   end
 
+  describe "ingest_logs/4 SourceSup gating by spool mode" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      prev_spool_config = Application.get_env(:logflare, :spool)
+
+      on_exit(fn ->
+        if prev_spool_config do
+          Application.put_env(:logflare, :spool, prev_spool_config)
+        else
+          Application.delete_env(:logflare, :spool)
+        end
+      end)
+
+      wal_dir =
+        Path.join(
+          System.tmp_dir!(),
+          "backends_test_spool_wal_#{System.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(wal_dir)
+      on_exit(fn -> File.rm_rf!(wal_dir) end)
+
+      stub(SpoolStorageMod, :put, fn _b, key, _body, _opts -> {:ok, key} end)
+      stub(SpoolQueueMod, :publish, fn _ref, _body -> :ok end)
+
+      Application.put_env(:logflare, :spool,
+        mode: :producer,
+        buffer: :wal,
+        partitions: 1,
+        flush_delay_ms: 10,
+        wal_max_rotation_interval_ms: 10,
+        max_commit_attempts: 1,
+        retry_delay_ms: 1,
+        bucket: "test-bucket",
+        storage_mod: SpoolStorageMod,
+        queue_mod: SpoolQueueMod,
+        wal_dir: wal_dir
+      )
+
+      start_supervised!(SpoolDurableBufferSup)
+
+      {:ok, source: source}
+    end
+
+    setup :set_mimic_global
+
+    test "in :producer mode, does not start SourceSup", %{source: source} do
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      refute Backends.source_sup_started?(source)
+    end
+
+    test "in :both mode, starts SourceSup", %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :both)
+
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      assert Backends.source_sup_started?(source)
+    end
+
+    test "in :disable mode, starts SourceSup", %{source: source} do
+      Application.put_env(:logflare, :spool, mode: :disable)
+
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      assert {:ok, 1} = Backends.ingest_logs(params, source, nil, true)
+
+      assert Backends.source_sup_started?(source)
+    end
+  end
+
   describe "maybe_broadcast_and_route/2 broadcast rate gating" do
     setup do
       insert(:plan)
