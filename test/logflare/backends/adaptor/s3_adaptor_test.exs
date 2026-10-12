@@ -60,6 +60,8 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
 
       for endpoint <- [
             "http://bucket.s3.amazonaws.com:9000/prefix",
+            "HTTP://bucket.s3.amazonaws.com:1/prefix",
+            "HTTPS://bucket.s3.amazonaws.com:65535/prefix",
             "https://project-ref.supabase.co/storage/v1/s3"
           ] do
         assert %Ecto.Changeset{valid?: true} =
@@ -314,6 +316,47 @@ defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
              ]
 
       assert opts[:retries] == [max_attempts: 1]
+    end
+
+    test "preserves custom endpoint paths, uppercase schemes and boundary ports", %{
+      backend: backend
+    } do
+      previous = Application.fetch_env(:logflare, :unsafe_disable_ssrf_s3_endpoint_check)
+      Application.put_env(:logflare, :unsafe_disable_ssrf_s3_endpoint_check, true)
+
+      on_exit(fn ->
+        case previous do
+          {:ok, value} ->
+            Application.put_env(:logflare, :unsafe_disable_ssrf_s3_endpoint_check, value)
+
+          :error ->
+            Application.delete_env(:logflare, :unsafe_disable_ssrf_s3_endpoint_check)
+        end
+      end)
+
+      for {endpoint, scheme, port} <- [
+            {"HTTP://custom-minio.internal:1/prefix/", "http://", 1},
+            {"HTTPS://custom-minio.internal:65535/prefix/", "https://", 65_535}
+          ] do
+        config = Map.put(backend.config, :endpoint, endpoint)
+        assert Adaptor.cast_and_validate_config(S3Adaptor, config).valid?
+
+        expect(ExAws, :request, fn op, opts ->
+          assert op.bucket == "prefix/my-bucket"
+          assert op.path == "_connection_test.parquet"
+          assert opts[:scheme] == scheme
+          assert opts[:host] == "custom-minio.internal"
+          assert opts[:port] == port
+          assert opts[:access_key_id] == config.access_key_id
+          assert opts[:secret_access_key] == config.secret_access_key
+          assert opts[:region] == config.storage_region
+          assert opts[:http_client] == HttpClient
+          assert opts[:retries] == [max_attempts: 1]
+          {:ok, %{status_code: 200}}
+        end)
+
+        assert :ok = S3Adaptor.test_connection(%{backend | config: config})
+      end
     end
 
     test "rejects malformed stored endpoints without uploading or raising", %{backend: backend} do
