@@ -1,10 +1,12 @@
-defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
+defmodule Logflare.Mapper.OtelDefaults do
   @moduledoc """
-  Default OTEL-aligned mapping configurations for ClickHouse event types.
+  Default OTEL-aligned mapping configurations for each event type.
 
-  Defines how raw log event bodies are transformed into structured schemas
-  before RowBinary encoding. Each event type (log, metric, trace) has its own
-  field mapping with coalesced path resolution, defaults, and transforms.
+  Defines how raw log event bodies are transformed into the OTEL column
+  schema consumed by backends. Each event type (log, metric, trace) has its
+  own field mapping with coalesced path resolution, defaults, and transforms.
+  The configs default to ClickHouse RowBinary output; callers can swap the
+  `output` for another format over the same fields.
 
   ## `resource_attributes` contract
 
@@ -53,6 +55,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
   alias Logflare.Mapper.MappingConfig.InferRule
   alias Logflare.Mapper.MappingConfig.OutputFormat
 
+  @type output_format() :: :ch_row_binary | :ndjson | :map
+
   @log_config_id "00000000-0000-0000-0001-000000000005"
   @metric_config_id "00000000-0000-0000-0002-000000000005"
   @trace_config_id "00000000-0000-0000-0003-000000000006"
@@ -68,6 +72,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
   def for_type(:log), do: for_log()
   def for_type(:metric), do: for_metric()
   def for_type(:trace), do: for_trace()
+
+  @doc """
+  Returns the default config for `event_type` targeting `output_format`.
+
+  `:ndjson` narrows the timestamp fields to microseconds (the unit its
+  consumers store, e.g. Iceberg `timestamptz`), so every emitted timestamp
+  integer, including derived spans such as trace `duration`, is in that
+  unit. `:map` drops the output so the compiled mapping returns a plain map.
+  """
+  @spec for_type(TypeDetection.event_type(), output_format()) :: MappingConfig.t()
+  def for_type(event_type, :ch_row_binary), do: for_type(event_type)
+
+  def for_type(event_type, :ndjson) do
+    event_type
+    |> for_type()
+    |> MappingConfig.with_timestamp_precision(6)
+    |> Map.put(:output, OutputFormat.ndjson(event_type))
+  end
+
+  def for_type(event_type, :map), do: %{for_type(event_type) | output: nil}
 
   @spec for_log() :: MappingConfig.t()
   def for_log do
@@ -179,7 +203,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
     ]
 
-    MappingConfig.new(fields, output: OutputFormat.clickhouse_row_binary(:log))
+    MappingConfig.new(fields, output: OutputFormat.ch_row_binary(:log))
   end
 
   @spec for_metric() :: MappingConfig.t()
@@ -404,7 +428,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
     ]
 
-    MappingConfig.new(fields, output: OutputFormat.clickhouse_row_binary(:metric))
+    MappingConfig.new(fields, output: OutputFormat.ch_row_binary(:metric))
   end
 
   @spec for_trace() :: MappingConfig.t()
@@ -546,7 +570,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
       Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
     ]
 
-    MappingConfig.new(fields, output: OutputFormat.clickhouse_row_binary(:trace))
+    MappingConfig.new(fields, output: OutputFormat.ch_row_binary(:trace))
   end
 
   @spec resource_attributes_field(TypeDetection.event_type()) :: Field.t()

@@ -25,6 +25,11 @@ defmodule LogflareWeb.BertParser do
     {:ok, %{}, conn}
   end
 
+  def decode({:ok, <<131, 80, _uncompressed_size::32, _::binary>>, _conn}) do
+    raise Plug.Parsers.ParseError,
+      exception: %ArgumentError{message: "compressed BERT payloads are not supported"}
+  end
+
   def decode({:ok, body, conn}) do
     {:ok, Bertex.safe_decode(body), conn}
   rescue

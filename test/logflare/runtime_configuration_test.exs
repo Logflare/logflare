@@ -31,4 +31,18 @@ defmodule Logflare.RuntimeConfigurationTest do
              security_token: "session-token"
            ]
   end
+
+  test "aws_region/1 prefers AWS_REGION over AWS_DEFAULT_REGION" do
+    assert Env.aws_region(%{"AWS_REGION" => "eu-west-1", "AWS_DEFAULT_REGION" => "us-east-1"}) ==
+             "eu-west-1"
+  end
+
+  test "aws_region/1 falls back to AWS_DEFAULT_REGION" do
+    assert Env.aws_region(%{"AWS_DEFAULT_REGION" => "us-west-2"}) == "us-west-2"
+  end
+
+  test "aws_region/1 returns nil when neither is set or both are empty" do
+    assert Env.aws_region(%{}) == nil
+    assert Env.aws_region(%{"AWS_REGION" => "", "AWS_DEFAULT_REGION" => ""}) == nil
+  end
 end

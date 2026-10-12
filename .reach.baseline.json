@@ -781,10 +781,10 @@
     {
       "source": "smells",
       "kind": "redundant_computation",
-      "fingerprint": "sha256:c11a818553aa555ded1547fd77cc839db246a2b0fd33218a890f793d4056839f",
-      "message": "Logflare.Auth.list_valid_access_tokens called twice with same args (line 139 and 169)",
+      "fingerprint": "sha256:def6b8334cb5e0de59e58e669a16f009f819b7a3f280e81d65b6cf75216d3646",
+      "message": "Logflare.Auth.list_valid_access_tokens called twice with same args (line 138 and 168)",
       "file": "lib/logflare/single_tenant.ex",
-      "line": 169
+      "line": 168
     },
     {
       "source": "smells",
@@ -1221,8 +1221,8 @@
     {
       "source": "smells",
       "kind": "behaviour_candidate",
-      "fingerprint": "sha256:43d5d7cea65a0acc84a9477a203efbc0e5a491f977a6216ac04e0a22525f95c5",
-      "message": "4 modules expose the same 5 public callbacks; consider extracting a behaviour if these modules are interchangeable implementations",
+      "fingerprint": "sha256:7af484b68168d6d089973247cfe765e0ed7d7c61aad9e3736c07775496e2f480",
+      "message": "3 modules expose the same 5 public callbacks; consider extracting a behaviour if these modules are interchangeable implementations",
       "file": "lib/logflare_web/live/alerts/alerts_live.ex",
       "line": 1
     },

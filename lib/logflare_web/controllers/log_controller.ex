@@ -41,6 +41,9 @@ defmodule LogflareWeb.LogController do
   plug(LogflareWeb.Plugs.BlockSystemSource)
 
   @message "Logged!"
+  @source_unavailable_message "Source is unavailable. Send the batch again."
+  @source_unavailable_retry_after "5"
+  @source_not_found_message "Source not found."
 
   operation(:create,
     summary: "Create log event",
@@ -242,6 +245,28 @@ defmodule LogflareWeb.LogController do
   defp handle({:ok, _}, conn), do: render(conn, "index.json", message: @message)
   defp handle(:ok, conn), do: render(conn, "index.json", message: @message)
 
+  defp handle({:error, :spool_unavailable}, conn) do
+    conn
+    |> put_status(500)
+    |> put_view(LogflareWeb.LogView)
+    |> render("index.json", message: "Internal server error")
+  end
+
+  defp handle({:error, :source_not_found}, conn) do
+    conn
+    |> put_status(404)
+    |> put_view(LogflareWeb.LogView)
+    |> render("index.json", message: @source_not_found_message)
+  end
+
+  defp handle({:error, :source_unavailable}, conn) do
+    conn
+    |> put_status(503)
+    |> put_resp_header("retry-after", @source_unavailable_retry_after)
+    |> put_view(LogflareWeb.LogView)
+    |> render("index.json", message: @source_unavailable_message)
+  end
+
   defp handle({:error, errors}, conn) do
     conn
     |> put_status(406)
@@ -299,6 +324,20 @@ defmodule LogflareWeb.LogController do
     exception ->
       send_proto_error(conn, 500, "Internal server error")
       reraise exception, __STACKTRACE__
+  end
+
+  defp protobuf_response({:error, :source_not_found}, conn, _success_response) do
+    send_proto_error(conn, 404, @source_not_found_message)
+  end
+
+  defp protobuf_response({:error, :source_unavailable}, conn, _success_response) do
+    conn
+    |> put_resp_header("retry-after", @source_unavailable_retry_after)
+    |> send_proto_error(503, @source_unavailable_message)
+  end
+
+  defp protobuf_response({:error, :spool_unavailable}, conn, _success_response) do
+    send_proto_error(conn, 500, "Internal server error")
   end
 
   defp protobuf_response({:error, errors}, conn, success_response) when is_list(errors) do

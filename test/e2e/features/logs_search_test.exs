@@ -73,6 +73,42 @@ defmodule E2e.Features.LogsSearchTest do
       |> refute_has("#logs-list-container", text: non_matching_message)
     end
 
+    test "filters timezone options, remembers a selection, and resets to UTC", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      conn
+      |> visit(~p"/auth/login/single_tenant")
+      |> visit(~p"/sources/#{source.id}/search?#{%{tz: "Etc/UTC"}}")
+      |> assert_has("#results-actions_search_timezone-combobox input",
+        label: "Display timezone",
+        value: "Etc/UTC (+00:00)"
+      )
+      |> fill_in("#results-actions_search_timezone-combobox input", "Display timezone",
+        with: "Brisbane"
+      )
+      |> assert_has("[role='option']", text: "Australia/Brisbane (+10:00)")
+      |> refute_has("[role='option']", text: "Europe/London")
+      |> click("[role='option']", "Australia/Brisbane (+10:00)")
+      |> assert_search_timezone("Australia/Brisbane")
+      |> assert_has("#results-actions_search_timezone-combobox input",
+        label: "Display timezone",
+        value: "Australia/Brisbane (+10:00)"
+      )
+      |> check("Remember")
+      |> assert_has("*", text: "Timezone preference saved")
+      |> refute_has("#results-actions_remember_timezone")
+      |> click_button("UTC")
+      |> assert_search_timezone("Etc/UTC")
+      |> assert_has("#results-actions_search_timezone-combobox input",
+        label: "Display timezone",
+        value: "Etc/UTC (+00:00)"
+      )
+
+      assert Repo.reload!(user).preferences.timezone == "Australia/Brisbane"
+    end
+
     test "Cmd/Ctrl+Enter submits the editor value to AI Assist", %{
       conn: conn,
       source: source
@@ -362,6 +398,24 @@ defmodule E2e.Features.LogsSearchTest do
 
       assert querystring =~ ~r/t:\S+\.\.\S+/
     end
+  end
+
+  @spec assert_search_timezone(map(), String.t()) :: map()
+  defp assert_search_timezone(conn, timezone) do
+    conn
+    |> unwrap(fn %{frame_id: frame_id} ->
+      {:ok, _} =
+        Frame.wait_for_function(frame_id,
+          expression: """
+          (timezone) =>
+            new URL(window.location.href).searchParams.get("tz") === timezone &&
+            document.querySelector("#results-actions_search_timezone").value === timezone
+          """,
+          is_function: true,
+          arg: timezone,
+          timeout: 5_000
+        )
+    end)
   end
 
   defp scroll_top_button_into_view(conn) do

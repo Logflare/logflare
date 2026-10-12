@@ -283,7 +283,7 @@ defmodule Logflare.Mixfile do
       "test.compile": ["compile --warnings-as-errors"],
       "test.format": ["format --check-formatted"],
       "test.security": ["sobelow --threshold high --ignore Config.HTTPS"],
-      "test.slop": ["ex_dna --max-clones 26"],
+      "test.slop": ["ex_dna --max-clones 25"],
       "test.structure": [
         "reach.check --smells --strict --baseline .reach.baseline.json"
       ],
@@ -294,7 +294,7 @@ defmodule Logflare.Mixfile do
       "test.e2e": ["ecto.create --quiet", &migrate_quiet/1, "test --only feature"],
       lint: ["credo"],
       "lint.diff": ["credo diff main"],
-      "lint.all": ["credo --strict"],
+      "lint.all": ["credo --strict", &lint_migrations/1],
       ci: [
         "test.compile",
         "test.format",
@@ -332,6 +332,8 @@ defmodule Logflare.Mixfile do
   end
 
   defp migrate_quiet(args), do: migrate(["--quiet" | args])
+
+  defp lint_migrations(args), do: Mix.Task.rerun("credo", ["-C", "migrations" | args])
 
   defp version,
     do: File.read!(Path.join(__DIR__, "VERSION")) |> String.replace("\n", "") |> String.trim()

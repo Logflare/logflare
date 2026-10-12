@@ -148,6 +148,130 @@ defmodule Logflare.Backends.UserMonitoringTest do
     end
   end
 
+  describe "log interceptor and the system source SourceSup" do
+    setup :set_mimic_global
+
+    setup do
+      :ok =
+        :logger.add_primary_filter(
+          :user_log_intercetor,
+          {&UserMonitoring.log_interceptor/2, []}
+        )
+
+      on_exit(fn -> :logger.remove_primary_filter(:user_log_intercetor) end)
+
+      start_supervised!(AllLogsLogged)
+      insert(:plan)
+      user = insert(:user, system_monitoring: true)
+      Sources.create_user_system_sources(user.id)
+      system_source = Sources.get_by(user_id: user.id, system_source_type: :logs)
+      partitions = PartitionSupervisor.partitions(Backends.SourcesSup)
+      source = insert(:source, user: user, id: system_source.id + partitions * 1_000_000)
+
+      on_exit(fn ->
+        Backends.stop_source_sup(source)
+        Backends.stop_source_sup(system_source)
+      end)
+
+      [user: user, source: source, system_source: system_source]
+    end
+
+    test "drops the system log event while the SourceSup is down and requests a start", %{
+      user: user,
+      system_source: system_source
+    } do
+      attach_system_log_drops()
+      refute Backends.source_sup_started?(system_source)
+
+      capture_log(fn -> Logger.error("system source down", user_id: user.id) end)
+
+      system_source_id = system_source.id
+
+      assert_receive {:dropped, %{count: 1},
+                      %{source_id: ^system_source_id, reason: :source_not_started}}
+
+      TestUtils.retry_assert(fn -> assert Backends.source_sup_started?(system_source) end)
+      assert Backends.list_recent_logs_local(system_source) == []
+    end
+
+    test "drops the system log event when the ingest finds the SourceSup down after the check",
+         %{user: user, system_source: system_source} do
+      :ok = Backends.ensure_source_sup_started(system_source)
+      attach_system_log_drops()
+      stub(Backends, :start_for_ingest, fn _source -> {:error, :source_unavailable} end)
+
+      capture_log(fn -> Logger.error("source stopped after the check", user_id: user.id) end)
+
+      system_source_id = system_source.id
+
+      assert_receive {:dropped, %{count: 1},
+                      %{source_id: ^system_source_id, reason: :source_unavailable}}
+    end
+
+    test "ignores a log line that the ingest emits in the same process", %{
+      user: user,
+      system_source: system_source
+    } do
+      :ok = Backends.ensure_source_sup_started(system_source)
+      calls = :counters.new(1, [])
+      user_id = user.id
+
+      stub(Backends, :ingest_logs, fn _batch, _source, _backend, _allow_spooling ->
+        :counters.add(calls, 1, 1)
+
+        if :counters.get(calls, 1) < 10 do
+          Logger.error("spool dispatch failed inside the ingest", user_id: user_id)
+        end
+
+        {:error, :spool_unavailable}
+      end)
+
+      capture_log(fn -> Logger.error("first line", user_id: user_id) end)
+
+      assert :counters.get(calls, 1) == 1
+    end
+
+    test "a log during a SourceSup start on the system source's partition does not deadlock it",
+         %{user: user, source: source, system_source: system_source} do
+      source_id = source.id
+      user_id = user.id
+
+      stub(SourceSup, :init, fn
+        ^source_id = id ->
+          Logger.metadata(user_id: user_id)
+          Logger.error("log during SourceSup start")
+          call_original(SourceSup, :init, [id])
+
+        id ->
+          call_original(SourceSup, :init, [id])
+      end)
+
+      task = Task.async(fn -> Backends.ensure_source_sup_started(source) end)
+
+      capture_log(fn -> assert {:ok, :ok} = Task.yield(task, 5_000) end)
+      assert Backends.source_sup_started?(source)
+
+      TestUtils.retry_assert(fn -> assert Backends.source_sup_started?(system_source) end)
+    end
+  end
+
+  defp attach_system_log_drops do
+    test_pid = self()
+    ref = make_ref()
+    event = [:logflare, :user_monitoring, :system_logs, :dropped]
+
+    :telemetry.attach(
+      ref,
+      event,
+      fn ^event, measurements, metadata, _ ->
+        send(test_pid, {:dropped, measurements, metadata})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(ref) end)
+  end
+
   defp query_error_log_event?(%{
          body: %{
            "event_message" => "Backend query error",
