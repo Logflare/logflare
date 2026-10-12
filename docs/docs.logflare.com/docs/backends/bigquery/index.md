@@ -21,7 +21,9 @@ Due to this streaming requirement, BYOB GCP projects **must have billing enabled
 
 ### Testing the Connection
 
-Click **Test connection** on the backend page to insert one real event into an associated source's existing table in the backend's configured project and dataset. The source must belong to the same account as the backend. Logflare uses a directly attached source when available, or a source connected through a drain rule otherwise. The test requires the table to exist and does not create datasets or tables.
+Click **Test connection** on the backend page to insert a test event into the existing table of a source configured to send events to this backend. The test uses the backend's configured project and dataset. The source must belong to the same account as the backend.
+
+Logflare first chooses a source that has this backend attached. If there are none, it chooses a source with a [drain rule](/concepts/rules#drain-rules) targeting this backend. The test requires the table to exist and does not create datasets or tables.
 
 The event's `event_message` is `Logflare BigQuery connection test. No action required.` It remains in the table under the normal retention policy.
 
