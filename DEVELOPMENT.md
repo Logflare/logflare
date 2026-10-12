@@ -48,7 +48,7 @@ make start.pink
 
 ```bash
 # start local databases
-docker-compose up -d db clickhouse telegraf
+docker-compose up -d db clickhouse telegraf vm
 
 # install dependencies
 make setup
