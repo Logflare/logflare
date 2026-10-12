@@ -469,6 +469,74 @@ defmodule Logflare.Logs.IngestTransformerTest do
       assert transform(input, :clean_to_bigquery_column_spec) == expected
     end
 
+    test "propagates changes through deeply nested maps and lists" do
+      for depth <- [1, 8, 64, 512], list? <- [false, true] do
+        wrap = fn child -> if list?, do: %{"nested" => [child]}, else: %{"nested" => child} end
+
+        input =
+          Enum.reduce(1..depth, %{"keep" => false, "drop" => nil}, fn _, acc -> wrap.(acc) end)
+
+        expected = Enum.reduce(1..depth, %{"keep" => false}, fn _, acc -> wrap.(acc) end)
+
+        assert transform(input, :clean_to_bigquery_column_spec) === expected
+      end
+    end
+
+    test "shares unchanged maps and subtrees when a sibling changes" do
+      shared = Map.new(1..64, &{"field_#{&1}", &1})
+      input = %{"shared" => shared, "items" => [%{"id" => 1}, false]}
+
+      assert :erts_debug.same(input, transform(input, :clean_to_bigquery_column_spec))
+
+      result = transform(Map.put(input, "drop", nil), :clean_to_bigquery_column_spec)
+      assert result === input
+      assert :erts_debug.same(shared, result["shared"])
+    end
+
+    test "propagates list removals, key renames and struct rebuilds" do
+      inputs = [
+        %{"items" => [%{"id" => 1}, nil, false]},
+        %{"items" => [%{"id" => 1}, %{"drop" => nil}, false]},
+        %{"items" => [%{"id" => 1}, %{"bad-key" => 2}]},
+        %{"items" => [%{"id" => 1}, ~D[2026-10-09]]},
+        %{"items" => [[nil, []], [false, %{"bad-key" => 2}]]}
+      ]
+
+      for input <- inputs do
+        expected =
+          input
+          |> MetadataCleaner.deep_reject_nil_and_empty()
+          |> transform(:to_bigquery_column_spec)
+
+        assert transform(input, :clean_to_bigquery_column_spec) === expected
+      end
+    end
+
+    test "retains sequential behavior at map-size and mutation-density boundaries" do
+      for size <- [1, 4, 8, 15, 16, 17, 31, 32, 33, 64] do
+        clean = Map.new(1..size, &{"field_#{&1}", &1})
+
+        inputs = [
+          clean,
+          Map.new(1..size, &{"field_#{&1}", nil}),
+          Map.new(1..size, &{"field-#{&1}", &1}),
+          Map.new(1..size, &{"field_#{&1}", if(rem(&1, 2) == 0, do: nil, else: &1)}),
+          Map.merge(clean, %{"a!b" => 1, "a?b" => 2, "_a_b" => nil}),
+          Map.merge(clean, %{"bad-key" => 1, "_bad_key" => 2}),
+          Map.merge(clean, %{1 => false, 1.0 => true, :atom => [nil, 0]})
+        ]
+
+        for input <- inputs do
+          expected =
+            input
+            |> MetadataCleaner.deep_reject_nil_and_empty()
+            |> transform(:to_bigquery_column_spec)
+
+          assert transform(input, :clean_to_bigquery_column_spec) === expected
+        end
+      end
+    end
+
     property "matches sequential cleaning and key normalization" do
       check all input <- log_params_generator() do
         assert transform(input, :clean_to_bigquery_column_spec) ==
