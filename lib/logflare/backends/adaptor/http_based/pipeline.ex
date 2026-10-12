@@ -68,9 +68,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Pipeline do
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
       %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
-      %{
-        backend_type: context.telemetry_tags.backend_type
-      }
+      context.telemetry_tags
     )
 
     backend = Backends.Cache.get_backend(context.backend_id)

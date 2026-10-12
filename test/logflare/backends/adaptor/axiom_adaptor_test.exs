@@ -188,18 +188,39 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
                       _measurements, %{backend_type: :axiom}}
 
       metrics = Logflare.Telemetry.metrics()
-      deadline = System.monotonic_time(:millisecond) + 5_000
+
+      TestUtils.retry_assert(fn ->
+        {:messages, messages} = Process.info(self(), :messages)
+
+        for event <- broadway_duration_events do
+          assert Enum.any?(messages, fn
+                   {:telemetry_event, ^event, %{duration: duration},
+                    %{context: %{telemetry_tags: %{backend_type: :axiom}}}} ->
+                     is_integer(duration)
+
+                   _message ->
+                     false
+                 end)
+        end
+      end)
 
       for event <- broadway_duration_events do
-        timeout = max(deadline - System.monotonic_time(:millisecond), 0)
-
         assert_receive {:telemetry_event, ^event, %{duration: duration},
                         %{context: %{telemetry_tags: %{backend_type: :axiom}}} = metadata},
-                       timeout
+                       0
 
         assert is_integer(duration)
-        assert %{tag_values: tag_values} = Enum.find(metrics, &(&1.event_name == event))
-        assert tag_values.(metadata) == %{backend_type: :axiom}
+
+        metric = Enum.find(metrics, &(&1.event_name == event))
+
+        if metric do
+          assert metric.tag_values.(metadata) == %{backend_type: :axiom}
+        else
+          assert event == [:broadway, :processor, :message, :stop]
+
+          assert Application.fetch_env!(:logflare, :broadway_message_sample_denominator) ==
+                   :disabled
+        end
       end
 
       assert json = :zlib.gunzip(gzipped)

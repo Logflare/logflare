@@ -38,7 +38,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
       end
     end)
 
-    TestUtils.assert_broadway_telemetry_tags(%{pipeline: ConsumerPipeline}, fn ->
+    TestUtils.assert_broadway_telemetry_tags(%{pipeline: :spool_consumer}, fn ->
       ConsumerPipeline.start_link(name: :spool_consumer_telemetry_tags_test)
     end)
   end

@@ -9,7 +9,7 @@ defmodule Logflare.Backends.UserMonitoringPipelineTelemetryTest do
   setup :verify_on_exit!
 
   test "configures user-monitoring telemetry tags" do
-    TestUtils.assert_broadway_telemetry_tags(%{pipeline: IngestPipeline}, fn ->
+    TestUtils.assert_broadway_telemetry_tags(%{pipeline: :user_monitoring}, fn ->
       IngestPipeline.start_link(metric_store_name: :user_monitoring_telemetry_tags_test)
     end)
   end

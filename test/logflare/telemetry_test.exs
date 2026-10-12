@@ -194,8 +194,8 @@ defmodule Logflare.TelemetryTest do
                }) == %{backend_type: :clickhouse}
 
         assert metric.tag_values.(%{
-                 context: %{telemetry_tags: %{pipeline: Logflare.Backends.Spool.ProducerPipeline}}
-               }) == %{pipeline: Logflare.Backends.Spool.ProducerPipeline}
+                 context: %{telemetry_tags: %{pipeline: :spool_consumer}}
+               }) == %{pipeline: :spool_consumer}
 
         for invalid_value <- [nil, true, false] do
           assert metric.tag_values.(%{
@@ -238,7 +238,7 @@ defmodule Logflare.TelemetryTest do
 
       :telemetry.execute(event, %{duration: duration}, %{
         context: %{
-          telemetry_tags: %{pipeline: Logflare.Backends.UserMonitoring.IngestPipeline}
+          telemetry_tags: %{pipeline: :user_monitoring}
         }
       })
 
@@ -253,7 +253,7 @@ defmodule Logflare.TelemetryTest do
         MapSet.new([
           %{backend_type: :clickhouse},
           %{backend_type: :bigquery},
-          %{pipeline: Logflare.Backends.UserMonitoring.IngestPipeline},
+          %{pipeline: :user_monitoring},
           %{pipeline: :unknown}
         ])
 
@@ -560,7 +560,7 @@ defmodule Logflare.TelemetryTest do
 
             distributions ->
               distributions
-              |> Map.fetch!(%{})
+              |> Map.fetch!(%{pipeline: :unknown})
               |> Map.values()
               |> Enum.sum_by(fn {count, _sum} -> count end)
           end

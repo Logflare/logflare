@@ -142,7 +142,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         ]
       ],
       context:
-        Map.put(build_processor_context(backend.id), :telemetry_tags, %{backend_type: backend.type})
+        Map.put(build_processor_context(backend.id), :telemetry_tags, %{
+          backend_type: backend.type
+        })
     )
   end
 

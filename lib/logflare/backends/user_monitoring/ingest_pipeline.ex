@@ -36,7 +36,7 @@ defmodule Logflare.Backends.UserMonitoring.IngestPipeline do
           batch_timeout: batch_timeout
         ]
       ],
-      context: %{telemetry_tags: %{pipeline: __MODULE__}}
+      context: %{telemetry_tags: %{pipeline: :user_monitoring}}
     )
   end
 

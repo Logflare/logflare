@@ -63,7 +63,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
           concurrency: concurrency
         ]
       ],
-      context: %{telemetry_tags: %{pipeline: __MODULE__}}
+      context: %{telemetry_tags: %{pipeline: :spool_consumer}}
     )
   end
 
