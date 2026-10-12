@@ -694,22 +694,28 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
     end
   end
 
-  # End-to-end tests against the docker-compose `vm` service.
-  #
-  # Requires `docker compose up -d vm`. Excluded by default via the
-  # :integration tag (see test/test_helper.exs).
-  #
-  # Run with:
-  #   mix test test/logflare/backends/adaptor/victoria_metrics_adaptor_test.exs --include integration
   describe "victoriametrics e2e" do
-    @describetag :integration
-
     # The vm service is on loopback, which SSRFProtection blocks. The pipeline sends
     # from its own processes, so the stub has to be global.
     setup :set_mimic_global
 
     setup do
-      stub(Logflare.Utils.SSRF, :safe_resolve, fn _ -> {:ok, {127, 0, 0, 1}} end)
+      stub(Logflare.Utils.SSRF, :safe_resolve, fn
+        "localhost" -> {:ok, {127, 0, 0, 1}}
+        host -> Mimic.call_original(Logflare.Utils.SSRF, :safe_resolve, [host])
+      end)
+
+      stub(Finch, :build, fn method, url, headers, body ->
+        Mimic.call_original(Finch, :build, [method, url, headers, body])
+      end)
+
+      stub(Finch, :request, fn
+        %Finch.Request{host: "127.0.0.1", port: 8428} = request, pool, opts ->
+          Mimic.call_original(Finch, :request, [request, pool, opts])
+
+        _request, _pool, _opts ->
+          {:error, :unexpected_external_request}
+      end)
 
       insert(:plan)
       user = insert(:user)

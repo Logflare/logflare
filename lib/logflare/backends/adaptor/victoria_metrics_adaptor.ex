@@ -23,12 +23,16 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     * `source` - the source name
     * `job` and `instance` - from the `service.namespace`/`service.name` and
       `service.instance.id` resource attributes, when present
+    * `logflare_resource_id` and `logflare_scope_id` - stable IDs for the normalized
+      resource and scope maps, including nested attributes
+    * `otel_scope_name`, `otel_scope_version` and `otel_scope_schema_url` - readable
+      scope metadata, when present
     * data point attributes with non-empty string, number or boolean values; list
       and map values are skipped. Names are as stored by Logflare, which normalizes
       keys at ingest (e.g. `http.route` becomes `_http_route`)
     * the optional `labels` config map, which wins over attributes on collision
 
-  Labels the adaptor sets (`__name__`, `le`, `source`, `job`, `instance`) always win.
+  Labels the adaptor sets, including `__name__` and `le`, always win.
   An attribute or config label with one of those names is kept as `exported_<name>`.
   """
 
@@ -38,6 +42,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
 
   alias Logflare.Backends.Adaptor.HttpBased.Headers
   alias Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.RemoteWrite
+  alias Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.SeriesIdentity
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
@@ -45,7 +50,10 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   alias Logflare.Sources.Source
   alias Logflare.Utils
 
-  @reserved_labels ["__name__", "le", "source", "job", "instance"]
+  @reserved_labels ~w(
+    __name__ le source job instance logflare_resource_id logflare_scope_id
+    otel_scope_name otel_scope_version otel_scope_schema_url
+  )
   @redacted_value Headers.redacted_value()
   @max_float 1.7_976_931_348_623_157e308
   # Snappy encoding of an empty WriteRequest. snappyer returns "" for empty input,
@@ -239,9 +247,13 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   defp labeled_samples(%{event_type: :metric, body: body} = event, context) do
     with {:ok, kind} <- series_kind(body),
          {:ok, name} <- metric_name(body["event_message"]),
-         {:ok, point} <- data_point(kind, body) do
-      labels = series_labels(body, Map.get(context.source_names, event.source_id), context)
+         {:ok, point} <- data_point(kind, body),
+         labels when is_list(labels) <-
+           series_labels(body, Map.get(context.source_names, event.source_id), context) do
       {:ok, samples(point, name, labels, micro_to_ms(body["timestamp"]))}
+    else
+      :error -> {:drop, :invalid}
+      {:drop, _reason} = drop -> drop
     end
   end
 
@@ -362,17 +374,20 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   defp integer_value(_value), do: :negative_infinity
 
   defp series_labels(body, source_name, context) do
-    adaptor_labels =
-      body["resource"]
-      |> resource_labels()
-      |> Map.put("source", source_name || "unknown")
+    with %{} = identity_labels <- SeriesIdentity.labels(body) do
+      adaptor_labels =
+        body["resource"]
+        |> resource_labels()
+        |> Map.merge(identity_labels)
+        |> Map.put("source", source_name || "unknown")
 
-    body["attributes"]
-    |> flat_labels()
-    |> Map.merge(context.static_labels)
-    |> export_reserved()
-    |> Map.merge(adaptor_labels)
-    |> Enum.sort()
+      body["attributes"]
+      |> flat_labels()
+      |> Map.merge(context.static_labels)
+      |> export_reserved()
+      |> Map.merge(adaptor_labels)
+      |> Enum.sort()
+    end
   end
 
   # LogEvent.make/2 stores keys in BigQuery column form, so `service.name` arrives as
