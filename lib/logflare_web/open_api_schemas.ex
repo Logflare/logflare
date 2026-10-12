@@ -507,7 +507,13 @@ defmodule LogflareWeb.OpenApiSchemas do
   defmodule VictoriaMetricsConfigSchema do
     @properties %{
       url: %Schema{type: :string},
-      headers: %Schema{type: :object},
+      query_url: %Schema{
+        type: :string,
+        nullable: true,
+        description:
+          "Optional HTTP(S) read base URL, including tenant or proxy paths, without /api/v1/query. Enables raw PromQL queries."
+      },
+      headers: %Schema{type: :object, description: "Additional headers for metric writes only."},
       username: %Schema{type: :string, nullable: true},
       password: %Schema{type: :string, nullable: true},
       labels: %Schema{type: :object, nullable: true}

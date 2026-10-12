@@ -37,6 +37,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   require Logger
 
   alias Logflare.Backends.Adaptor.HttpBased.Headers
+  alias Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.Query
   alias Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.RemoteWrite
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Backend
@@ -123,17 +124,31 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   def cast_config(params, existing_config \\ %{}) do
     changeset =
       {existing_config,
-       %{url: :string, headers: :map, username: :string, password: :string, labels: :map}}
-      |> Ecto.Changeset.cast(params, [:url, :headers, :username, :password, :labels])
+       %{
+         url: :string,
+         query_url: :string,
+         headers: :map,
+         username: :string,
+         password: :string,
+         labels: :map
+       }}
+      |> Ecto.Changeset.cast(params, [:url, :query_url, :headers, :username, :password, :labels])
 
-    if destination_changed?(changeset, existing_config) do
-      changeset
-      |> WebhookAdaptor.unredact_credentials(Map.drop(existing_config, [:headers, "headers"]))
-      |> require_new_credentials(existing_config)
-    else
-      changeset
-      |> WebhookAdaptor.unredact_credentials(existing_config)
-      |> unredact_password()
+    cond do
+      destination_changed?(changeset, existing_config) ->
+        changeset
+        |> WebhookAdaptor.unredact_credentials(Map.drop(existing_config, [:headers, "headers"]))
+        |> require_new_credentials(existing_config)
+
+      query_destination_changed?(changeset, existing_config) ->
+        changeset
+        |> WebhookAdaptor.unredact_credentials(existing_config)
+        |> require_new_password()
+
+      true ->
+        changeset
+        |> WebhookAdaptor.unredact_credentials(existing_config)
+        |> unredact_password()
     end
   end
 
@@ -143,6 +158,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     changeset
     |> Ecto.Changeset.validate_required([:url])
     |> Ecto.Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
+    |> Ecto.Changeset.validate_change(:query_url, &validate_query_url/2)
     |> validate_user_pass()
     |> WebhookAdaptor.validate_no_ssrf()
   end
@@ -160,6 +176,18 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   def test_connection(%Backend{} = backend) do
     backend = %{backend | config: transform_config(backend)}
     WebhookAdaptor.test_connection(backend, @empty_write_request)
+  end
+
+  @spec execute_promql(Backend.t(), String.t(), map()) ::
+          {:ok, map()} | {:error, {pos_integer(), map()}}
+  defdelegate execute_promql(backend, query, params), to: Query, as: :execute
+
+  @spec validate_query_url(:query_url, String.t()) :: keyword(String.t())
+  defp validate_query_url(:query_url, url) do
+    case Query.validate_url(url) do
+      :ok -> []
+      {:error, message} -> [query_url: message]
+    end
   end
 
   defp put_basic_auth(headers, nil), do: headers
@@ -216,6 +244,18 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     end
   end
 
+  @spec query_destination_changed?(Ecto.Changeset.t(), map()) :: boolean()
+  defp query_destination_changed?(changeset, existing_config) do
+    previous_url =
+      existing_config[:query_url] || existing_config["query_url"] ||
+        existing_config[:url] || existing_config["url"]
+
+    case Ecto.Changeset.get_change(changeset, :query_url) do
+      url when is_binary(url) and is_binary(previous_url) -> origin(url) != origin(previous_url)
+      _ -> false
+    end
+  end
+
   defp destination_changed?(changeset, existing_config) do
     existing_url = Map.get(existing_config, :url) || Map.get(existing_config, "url")
 
@@ -225,9 +265,13 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     end
   end
 
+  @spec origin(String.t()) ::
+          {String.t() | nil, String.t() | nil, non_neg_integer() | nil} | :invalid
   defp origin(url) do
-    uri = URI.parse(url)
-    {uri.scheme, uri.host && String.downcase(uri.host), uri.port}
+    case URI.new(url) do
+      {:ok, uri} -> {uri.scheme, uri.host && String.downcase(uri.host), uri.port}
+      {:error, _reason} -> :invalid
+    end
   end
 
   defp encode_write_request(series) do

@@ -6,9 +6,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   import Logflare.Utils.Guards
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.EndpointUtils
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.FinchPoolTimeoutNormalizer
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder
+  alias Logflare.Backends.Adaptor.HttpBased.FinchPoolTimeoutNormalizer
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
   alias Logflare.LogEvent.TypeDetection
