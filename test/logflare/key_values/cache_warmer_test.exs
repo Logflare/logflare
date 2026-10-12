@@ -15,7 +15,7 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
     [user: user]
   end
 
-  describe "initial warm (full table stream)" do
+  describe "initial warm (top-N by recency)" do
     test "populates cache with all key_values", %{user: user} do
       kv1 = insert(:key_value, user: user, key: "k1", value: %{"v" => "1"})
       kv2 = insert(:key_value, user: user, key: "k2", value: %{"v" => "2"})
@@ -24,6 +24,45 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
 
       assert {:cached, kv1.value} == Cachex.get!(Cache, {:lookup, [user.id, "k1", nil]})
       assert {:cached, kv2.value} == Cachex.get!(Cache, {:lookup, [user.id, "k2", nil]})
+    end
+
+    test "warms only the top-N rows ordered by recency of use", %{user: user} do
+      kv_used = insert(:key_value, user: user, key: "used", value: %{"v" => "used"})
+      insert(:key_value, user: user, key: "unused", value: %{"v" => "unused"})
+
+      insert(:key_value_usage, key_value: kv_used, last_used_at: DateTime.utc_now())
+
+      prev = Application.get_env(:logflare, CacheWarmer, [])
+      Application.put_env(:logflare, CacheWarmer, Keyword.put(prev, :warm_limit, 1))
+      on_exit(fn -> Application.put_env(:logflare, CacheWarmer, prev) end)
+
+      CacheWarmer.execute(nil)
+
+      assert {:cached, kv_used.value} == Cachex.get!(Cache, {:lookup, [user.id, "used", nil]})
+      assert is_nil(Cachex.get!(Cache, {:lookup, [user.id, "unused", nil]}))
+    end
+
+    test "falls back to updated_at recency when no usage rows exist", %{user: user} do
+      old_time = DateTime.add(DateTime.utc_now(), -2, :hour)
+
+      Repo.insert!(%Logflare.KeyValues.KeyValue{
+        user_id: user.id,
+        key: "old",
+        value: %{"v" => "old"},
+        inserted_at: old_time,
+        updated_at: old_time
+      })
+
+      kv_new = insert(:key_value, user: user, key: "new", value: %{"v" => "new"})
+
+      prev = Application.get_env(:logflare, CacheWarmer, [])
+      Application.put_env(:logflare, CacheWarmer, Keyword.put(prev, :warm_limit, 1))
+      on_exit(fn -> Application.put_env(:logflare, CacheWarmer, prev) end)
+
+      CacheWarmer.execute(nil)
+
+      assert {:cached, kv_new.value} == Cachex.get!(Cache, {:lookup, [user.id, "new", nil]})
+      assert is_nil(Cachex.get!(Cache, {:lookup, [user.id, "old", nil]}))
     end
 
     test "marks itself as initialized after first run" do
@@ -35,7 +74,7 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
     end
 
     test "if cache warmer fails, does not mark itself as initialized" do
-      stub(Logflare.KeyValues.CacheWarmer, :warm_full, fn ->
+      stub(Logflare.KeyValues.CacheWarmer, :warm_top_n, fn ->
         raise RuntimeError, "test"
       end)
 
