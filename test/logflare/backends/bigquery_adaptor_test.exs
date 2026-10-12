@@ -3,6 +3,9 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
   use Logflare.DataCase
   use ExUnitProperties
 
+  alias Google.Cloud.Bigquery.Storage.V1.AppendRowsRequest.ArrowData
+  alias Google.Cloud.Bigquery.Storage.V1.ArrowRecordBatch
+  alias Google.Cloud.Bigquery.Storage.V1.ArrowSchema
   alias Logflare.Backends
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
@@ -36,7 +39,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
         assert_receive :streamed, 2500
       end)
 
-      :timer.sleep(1000)
+      assert_buffers_empty(source.id)
     end
 
     test "does not use LF managed BQ if legacy user BQ config is set" do
@@ -64,7 +67,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
         assert_receive :ok, 2500
       end)
 
-      :timer.sleep(1000)
+      assert_buffers_empty(source.id)
     end
 
     test "can query with parameters" do
@@ -78,10 +81,6 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
         {:ok, TestUtils.gen_bq_response([%{"test" => value}])}
       end)
-
-      user = insert(:user)
-      source = insert(:source, user: user)
-      start_supervised!({SourceSup, source})
 
       assert {:ok, %QueryResult{rows: [%{"test" => "input_data"}]}} =
                BigQueryAdaptor.execute_query(
@@ -102,10 +101,6 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
         {:ok, TestUtils.gen_bq_response([%{"test" => "1"}])}
       end)
-
-      user = insert(:user)
-      source = insert(:source, user: user)
-      start_supervised!({SourceSup, source})
 
       assert {:ok, %QueryResult{rows: [%{"test" => "1"}]}} =
                BigQueryAdaptor.execute_query(backend, "SELECT 1", [])
@@ -146,7 +141,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       assert {:ok, _} = Backends.ingest_logs([log_event], source)
 
       assert_receive :streamed, 2500
-      :timer.sleep(1000)
+      assert_buffers_empty(source.id)
     end
 
     test "update table", %{source: source} do
@@ -173,8 +168,9 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
       assert {:ok, _} = Backends.ingest_logs([log_event], source)
 
-      assert_receive :patched, 2500
-      :timer.sleep(1000)
+      # Allow for the 1 second producer poll, 1.5 second batch timeout, and CI scheduling delays.
+      assert_receive :patched, to_timeout(second: 5)
+      assert_buffers_empty(source.id)
     end
 
     test "bug: invalid json encode update table", %{
@@ -209,30 +205,22 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
       assert {:ok, %{len: 1}} = Backends.cache_local_buffer_lens(source_id, nil)
       assert {:ok, %{len: 1}} = Backends.cache_local_buffer_lens(source_id, backend_id)
-      :timer.sleep(2000)
 
       TestUtils.retry_assert(fn ->
         assert_receive ^ref
       end)
 
-      {:ok, %{queues: queues}} = Backends.cache_local_buffer_lens(source_id, nil)
-
-      assert Enum.find_value(queues, fn
-               {{^source_id, nil, nil}, count} -> count
-               _ -> nil
-             end) == 0
-
-      {:ok, %{queues: queues}} = Backends.cache_local_buffer_lens(source_id, backend_id)
-
-      assert Enum.find_value(queues, fn
-               {{^source_id, ^backend_id, nil}, count} -> count
-               _ -> nil
-             end) == 0
+      assert_buffers_empty(source_id, backend_id)
     end
   end
 
   describe "default bigquery backend - storage write api" do
     test "can ingest into source without creating a BQ backend" do
+      # The client call precedes batch completion; subscribe to its final acknowledgement.
+      telemetry_event = [:logflare, :backends, :pipeline, :ack]
+      telemetry_ref = :telemetry_test.attach_event_handlers(self(), [telemetry_event])
+      on_exit(fn -> :telemetry.detach(telemetry_ref) end)
+
       user = insert(:user)
       source = insert(:source, user: user, bq_storage_write_api: true)
       start_supervised!({SourceSup, source})
@@ -240,24 +228,26 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       pid = self()
 
       Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
-      |> expect(:append_rows, fn {:arrow, dataframe}, _context, _table_id ->
-        send(pid, :streamed)
-
-        {_arrow_schema, _batch_msgs} =
-          dataframe
-          |> Jason.encode!()
-          |> String.slice(1..-2//1)
-          |> String.replace("},{", "}\n{")
-          |> BigQueryAdaptor.ArrowIPC.get_ipc_bytes()
-
-        {:ok, %Google.Cloud.Bigquery.Storage.V1.AppendRowsResponse{}}
+      |> expect(:append_rows, fn arrow_data, _context, _table_id ->
+        # Forward the payload unchanged so assertions inspect what ingestion actually produced.
+        send(pid, {:streamed, arrow_data})
+        :ok
       end)
 
       assert {:ok, 1} = Backends.ingest_logs([log_event], source)
 
-      TestUtils.retry_assert(fn ->
-        assert_receive :streamed, 2500
-      end)
+      # Check the Arrow payload shape and require non-empty schema and record-batch bytes.
+      assert_receive {:streamed, {:arrow, [%ArrowData{} = arrow_data]}}, to_timeout(second: 5)
+      assert %ArrowSchema{serialized_schema: schema} = arrow_data.writer_schema
+      assert %ArrowRecordBatch{serialized_record_batch: batch} = arrow_data.rows
+      assert byte_size(schema) > 0
+      assert byte_size(batch) > 0
+
+      # Wait for successful completion before test cleanup removes mocks and fixtures.
+      assert_receive {^telemetry_event, ^telemetry_ref, %{successful: 1, failed: 0}, %{}},
+                     to_timeout(second: 5)
+
+      assert_buffers_empty(source.id)
     end
 
     test "can ingest logs with different schemas" do
@@ -330,8 +320,18 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
         assert_receive :ok, 2500
       end)
 
-      :timer.sleep(1000)
+      assert_buffers_empty(source.id)
     end
+  end
+
+  defp assert_buffers_empty(source_id, backend_id \\ nil) do
+    TestUtils.retry_assert(fn ->
+      assert {:ok, %{len: 0}} = Backends.cache_local_buffer_lens(source_id)
+
+      if backend_id do
+        assert {:ok, %{len: 0}} = Backends.cache_local_buffer_lens(source_id, backend_id)
+      end
+    end)
   end
 
   describe "bq storage api benchmark" do

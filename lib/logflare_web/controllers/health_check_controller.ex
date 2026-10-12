@@ -1,6 +1,8 @@
 defmodule LogflareWeb.HealthCheckController do
   use LogflareWeb, :controller
 
+  alias Logflare.Backends
+  alias Logflare.Backends.Spool.Health, as: SpoolHealth
   alias Logflare.JSON
   alias Logflare.Cluster
   alias Logflare.Readiness
@@ -32,7 +34,8 @@ defmodule LogflareWeb.HealthCheckController do
         # checks that db can execute query and that repo is connected and up
         repo_uptime > 0,
         Enum.all?(Map.values(caches), &(&1 == :ok)),
-        memory_utilization < max_memory_ratio
+        memory_utilization < max_memory_ratio,
+        Backends.spool_healthcheck_ok?()
       ]
       |> Enum.all?()
 
@@ -60,7 +63,11 @@ defmodule LogflareWeb.HealthCheckController do
       |> build_payload(
         repo_uptime: repo_uptime,
         caches: caches,
-        memory_utilization: if(memory_utilization < max_memory_ratio, do: :ok, else: :critical)
+        memory_utilization: if(memory_utilization < max_memory_ratio, do: :ok, else: :critical),
+        spool_write_healthy: %{
+          disk: SpoolHealth.healthy?(:disk),
+          upload: SpoolHealth.healthy?(:upload)
+        }
       )
       |> JSON.encode!()
 
@@ -72,7 +79,8 @@ defmodule LogflareWeb.HealthCheckController do
   defp build_payload(status,
          repo_uptime: repo_uptime,
          caches: caches,
-         memory_utilization: memory_utilization
+         memory_utilization: memory_utilization,
+         spool_write_healthy: spool_write_healthy
        )
        when status in [:ok, :coming_up] do
     nodes = Cluster.Utils.node_list_all()
@@ -84,6 +92,7 @@ defmodule LogflareWeb.HealthCheckController do
       this_node: Node.self(),
       nodes: nodes,
       nodes_count: Enum.count(nodes),
+      spool_write_healthy: spool_write_healthy,
       repo_uptime: repo_uptime,
       caches: caches,
       memory_utilization: memory_utilization

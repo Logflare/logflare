@@ -464,7 +464,7 @@ defmodule Logflare.Sql do
     dialect = Keyword.get(opts, :dialect, "bigquery")
 
     with {:ok, ast} <- Parser.parse(dialect, query) do
-      {:ok, extract_all_parameters(ast)}
+      {:ok, AstUtils.extract_parameters(ast)}
     end
   end
 
@@ -567,14 +567,8 @@ defmodule Logflare.Sql do
        when is_list(table_name_values) and is_map(data) do
     table_name =
       case table_name_values do
-        [%{"value" => table_name}] ->
-          table_name
-
-        [%{"value" => _} | _] ->
-          Enum.map_join(table_name_values, ".", & &1["value"])
-
-        _ ->
-          raise "Invalid table name"
+        [_ | _] -> table_name_values |> AstUtils.object_name_values() |> Enum.join(".")
+        _ -> raise "Invalid table name"
       end
 
     query = Enum.find(data.queries, &(&1.name == table_name))
@@ -654,8 +648,7 @@ defmodule Logflare.Sql do
     sandboxed_cte_names =
       if sandboxed_query_ast, do: do_extract_cte_aliases(sandboxed_query_ast), else: []
 
-    qualified_name =
-      Enum.map_join(name, ".", fn %{"value" => part} -> part end)
+    qualified_name = name |> AstUtils.object_name_values() |> Enum.join(".")
 
     [qualified_name]
     # remove known names
@@ -758,7 +751,7 @@ defmodule Logflare.Sql do
   end
 
   defp has_restricted_functions(
-         {"Table", %{"args" => %{"args" => args}, "name" => [%{"value" => _} | _] = names}},
+         {"Table", %{"args" => %{"args" => args}, "name" => [%{"Identifier" => _} | _] = names}},
          :ok,
          %{dialect: dialect} = data
        )
@@ -767,6 +760,8 @@ defmodule Logflare.Sql do
       has_restricted_functions(args, :ok, data)
     end
   end
+
+  defp has_restricted_functions({"name", [%{"Identifier" => _} | _]}, :ok = acc, _data), do: acc
 
   defp has_restricted_functions(kv, :ok = acc, data) when is_list_or_map(kv) do
     Enum.reduce(kv, acc, fn kv, nested_acc -> has_restricted_functions(kv, nested_acc, data) end)
@@ -780,8 +775,8 @@ defmodule Logflare.Sql do
 
   defp check_names_against_dialect(names, dialect) do
     found_restricted =
-      for name <- names,
-          normalized = String.downcase(name["value"]),
+      for name <- AstUtils.object_name_values(names),
+          normalized = String.downcase(name),
           function_restricted?(normalized, dialect) do
         normalized
       end
@@ -854,7 +849,8 @@ defmodule Logflare.Sql do
     unknown_table_names =
       for statement <- ast,
           from <- extract_all_from(statement),
-          %{"value" => table_name} <- get_in(from, ["relation", "Table", "name"]) || [],
+          %{"Identifier" => %{"value" => table_name}} <-
+            get_in(from, ["relation", "Table", "name"]) || [],
           table_name not in aliases,
           table_name not in sandboxed_cte_names do
         table_name
@@ -933,13 +929,13 @@ defmodule Logflare.Sql do
     transformer = DialectTransformer.for_dialect(data.dialect)
     dialect_quote_style = transformer.quote_style()
 
-    qualified_name = Enum.map_join(names, ".", fn %{"value" => part} -> part end)
+    qualified_name = names |> AstUtils.object_name_values() |> Enum.join(".")
 
     new_name_list =
       if qualified_name in data.source_names do
         transformed_name = transformer.transform_source_name(qualified_name, data)
 
-        [AstUtils.build_identifier(transformed_name, dialect_quote_style)]
+        [AstUtils.build_object_name_part(transformed_name, dialect_quote_style)]
       else
         names
       end
@@ -1028,8 +1024,7 @@ defmodule Logflare.Sql do
        when is_list(name) do
     cte_names = do_extract_cte_aliases(ast)
 
-    # Join qualified table name parts back together (e.g., ["a", "b", "c"] -> "a.b.c")
-    qualified_name = Enum.map_join(name, ".", fn %{"value" => part} -> part end)
+    qualified_name = name |> AstUtils.object_name_values() |> Enum.join(".")
 
     new_names =
       if qualified_name not in prev and qualified_name not in cte_names do
@@ -1066,14 +1061,15 @@ defmodule Logflare.Sql do
          mapping: mapping
        }) do
     new_name_list =
-      for %{"value" => name_value} = name_map <- names do
-        if name_value in Map.keys(mapping) do
+      Enum.map(names, fn
+        %{"Identifier" => %{"value" => name_value} = identifier} = part
+        when is_map_key(mapping, name_value) ->
           new_name = get_updated_source_name(name_value, mapping, sources)
-          %{name_map | "value" => new_name}
-        else
-          name_map
-        end
-      end
+          %{part | "Identifier" => %{identifier | "value" => new_name}}
+
+        part ->
+          part
+      end)
 
     {k, %{v | "name" => new_name_list}}
   end
@@ -1113,13 +1109,6 @@ defmodule Logflare.Sql do
     source = Enum.find(sources, fn s -> "#{s.token}" == mapping[old_name] end)
     source.name
   end
-
-  defp extract_all_parameters(ast) do
-    AstUtils.collect_from_ast(ast, &do_extract_parameters/1) |> Enum.uniq()
-  end
-
-  defp do_extract_parameters({"Placeholder", "@" <> value}), do: {:collect, value}
-  defp do_extract_parameters(_ast_node), do: :skip
 
   defp extract_all_from(ast) do
     AstUtils.collect_from_ast(ast, &do_extract_from/1)

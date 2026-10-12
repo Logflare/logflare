@@ -1,5 +1,5 @@
 defmodule LogflareWeb.Api.FallbackController do
-  use Phoenix.Controller
+  use Phoenix.Controller, formats: []
 
   alias Ecto.Changeset
   alias Logflare.Backends.QueryError
@@ -46,6 +46,12 @@ defmodule LogflareWeb.Api.FallbackController do
     conn
     |> put_status(:not_found)
     |> json(%{error: "Not Found"})
+  end
+
+  def call(conn, {:error, :not_found, message}) when is_binary(message) do
+    conn
+    |> put_status(:not_found)
+    |> json(%{error: message})
   end
 
   def call(conn, {:error, %QueryError{}}) do

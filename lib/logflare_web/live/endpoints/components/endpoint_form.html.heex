@@ -182,7 +182,7 @@
     </section>
   </.form>
   <aside class="tw-w-1/2">
-    <.run_query_form {assigns} />
-    <.run_query_result {assigns} />
+    <RunQuery.query_form form={@params_form} endpoint_changeset={@endpoint_changeset} declared_params={@declared_params} />
+    <RunQuery.query_result result={@test_result} />
   </aside>
 </div>

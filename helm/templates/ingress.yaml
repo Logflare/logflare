@@ -1,0 +1,63 @@
+{{/*
+One Ingress object, rendered once for `ingress` and once per `extraIngresses` entry. Both take
+the same shape, so a release needing several Ingresses describes each of them identically.
+*/}}
+{{- define "logflare.ingressObject" -}}
+{{- $root := .root -}}
+{{- $ingress := .ingress -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "logflare.fullname" $root }}{{ with $ingress.nameSuffix }}-{{ . }}{{ end }}
+  labels:
+    {{- include "logflare.labels" $root | nindent 4 }}
+  {{- with $ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with $ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- if $ingress.tls }}
+  tls:
+    {{- range $ingress.tls }}
+    - hosts:
+        {{- range .hosts }}
+        - {{ . | quote }}
+        {{- end }}
+      secretName: {{ .secretName }}
+    {{- end }}
+  {{- end }}
+  rules:
+    {{- range $ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            {{- with .pathType }}
+            pathType: {{ . }}
+            {{- end }}
+            backend:
+              service:
+                name: {{ .serviceName | default (include "logflare.fullname" $root) }}
+                port:
+                  {{- if .servicePortName }}
+                  name: {{ .servicePortName }}
+                  {{- else }}
+                  number: {{ $root.Values.service.port }}
+                  {{- end }}
+          {{- end }}
+    {{- end }}
+{{- end }}
+{{- if .Values.ingress.enabled }}
+{{ include "logflare.ingressObject" (dict "root" $ "ingress" .Values.ingress) }}
+{{- end }}
+{{- range $index, $extra := .Values.extraIngresses }}
+{{- if not $extra.nameSuffix }}
+{{- fail (printf "extraIngresses[%d] has an empty nameSuffix: each extra Ingress needs one so its name stays distinct from the chart's own Ingress" $index) }}
+{{- end }}
+---
+{{ include "logflare.ingressObject" (dict "root" $ "ingress" $extra) }}
+{{- end }}

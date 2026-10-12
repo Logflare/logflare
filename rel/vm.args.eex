@@ -7,6 +7,12 @@
 ## Increase number of concurrent ports/sockets
 ##+Q 65536
 
+## Poll sockets with 4 threads over 4 pollsets instead of 1, so one thread does not handle all connections.
+## https://www.erlang.org/doc/apps/erts/erl_cmd.html#%2BIOt
+## https://www.erlang.org/doc/apps/erts/erl_cmd.html#%2BIOp
++IOt 4
++IOp 4
+
 ## Tweak GC to run more often
 ##-env ERL_FULLSWEEP_AFTER 10
 
@@ -15,7 +21,10 @@
 -env ERL_MAX_ETS_TABLES 250000
 
 ## Set busy-wait. Options are: none|very_short|short|medium|long|very_long
-+sbwt none
+## Normal schedulers spin briefly before sleeping, which cuts wake-up latency on bursty ingest.
+## Dirty schedulers stay at none.
+## https://www.erlang.org/doc/apps/erts/erl_cmd.html#%2Bsbwt
++sbwt very_short
 +sbwtdcpu none
 +sbwtdio none
 

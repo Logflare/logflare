@@ -13,11 +13,8 @@ defmodule LogflareWeb.BillingAccountLive.EditTest do
       assert has_element?(view, "h1,h2,h3,h4", "Billing Account")
       assert has_element?(view, "p", "You're currently on the Free plan")
 
-      view
-      |> form("#usage-form", %{"usage" => %{"days" => "60"}})
-      |> render_change()
-
-      assert has_element?(view, "#usage-form")
+      refute has_element?(view, "#usage-form")
+      refute has_element?(view, "#billing-chart")
     end
 
     test "handles Stripe webhook events", %{conn: conn} do
@@ -50,7 +47,7 @@ defmodule LogflareWeb.BillingAccountLive.EditTest do
       assert conn
              |> put_req_header("content-type", "application/json")
              |> put_req_header("stripe-signature", stripe_sign(payload_json))
-             |> post(~p"/webhooks/stripe", payload_json)
+             |> post("/webhooks/stripe", payload_json)
              |> response(200)
 
       TestUtils.retry_assert(fn ->
@@ -93,7 +90,7 @@ defmodule LogflareWeb.BillingAccountLive.EditTest do
       assert conn
              |> put_req_header("content-type", "application/json")
              |> put_req_header("stripe-signature", stripe_sign(payload_json))
-             |> post(~p"/webhooks/stripe", payload_json)
+             |> post("/webhooks/stripe", payload_json)
              |> response(200)
 
       TestUtils.retry_assert(fn ->

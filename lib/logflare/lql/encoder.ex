@@ -90,6 +90,9 @@ defmodule Logflare.Lql.Encoder do
     "t:#{to_datetime_with_range(lv, rv)}"
   end
 
+  defp to_fragment(%FilterRule{path: "timestamp", operator: :=, value: v}),
+    do: "t:#{format_filter_value(v)}"
+
   defp to_fragment(%FilterRule{path: "timestamp", operator: op, value: %Date{} = v}),
     do: "t:#{op}#{v}"
 

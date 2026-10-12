@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::num::IntErrorKind;
 
 use chrono::DateTime as ChronoDateTime;
 use rustler::types::list::ListIterator;
@@ -27,6 +28,31 @@ pub fn case_insensitive_get<'b, V>(map: &'b HashMap<String, V>, term: Term<'_>) 
         let s = std::str::from_utf8(bytes).ok()?;
         map.get(&s.to_lowercase())
     }
+}
+
+/// True when `value` is an integer term (of any magnitude) or a binary holding a
+/// decimal integer literal — the only inputs `coerce_uint` can convert without
+/// changing the producer's meaning. Floats and booleans are rejected. Range is
+/// not checked here; `coerce_uint` saturates. Backs `coercion: :strict`.
+#[inline]
+pub fn is_integer_term(value: Term<'_>) -> bool {
+    if value.is_integer() {
+        return true;
+    }
+    match value.decode::<Binary>() {
+        Ok(binary) => std::str::from_utf8(binary.as_slice())
+            .map(is_decimal_integer)
+            .unwrap_or(false),
+        Err(_) => false,
+    }
+}
+
+fn is_decimal_integer(s: &str) -> bool {
+    let digits = s
+        .strip_prefix('-')
+        .or_else(|| s.strip_prefix('+'))
+        .unwrap_or(s);
+    !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
 }
 
 /// Coerce a BEAM term to the target field type.
@@ -299,6 +325,10 @@ fn coerce_string<'a>(env: Env<'a>, value: Term<'a>) -> Term<'a> {
     crate::encode_string(env, "")
 }
 
+/// Integers saturate to `[0, max]` at any magnitude: `i64`/`u64` decode covers
+/// the machine range, and a bignum outside it is clamped by sign rather than
+/// falling through to `0`. Numeric strings follow the same rule, including
+/// overflow.
 fn coerce_uint<'a>(env: Env<'a>, value: Term<'a>, max: u64) -> Term<'a> {
     if let Ok(i) = value.decode::<i64>() {
         if i < 0 {
@@ -306,6 +336,15 @@ fn coerce_uint<'a>(env: Env<'a>, value: Term<'a>, max: u64) -> Term<'a> {
         }
         let u = i as u64;
         return u.min(max).encode(env);
+    }
+
+    if let Ok(u) = value.decode::<u64>() {
+        return u.min(max).encode(env);
+    }
+
+    if value.is_integer() {
+        let positive = value > 0i64.encode(env);
+        return if positive { max } else { 0u64 }.encode(env);
     }
 
     if let Ok(f) = value.decode::<f64>() {
@@ -318,9 +357,12 @@ fn coerce_uint<'a>(env: Env<'a>, value: Term<'a>, max: u64) -> Term<'a> {
 
     if let Ok(binary) = value.decode::<Binary>() {
         if let Ok(s) = std::str::from_utf8(binary.as_slice()) {
-            if let Ok(u) = s.parse::<u64>() {
-                return u.min(max).encode(env);
+            return match s.parse::<u64>() {
+                Ok(u) => u.min(max),
+                Err(e) if *e.kind() == IntErrorKind::PosOverflow => max,
+                Err(_) => 0u64,
             }
+            .encode(env);
         }
     }
 
@@ -391,9 +433,13 @@ fn coerce_bool<'a>(env: Env<'a>, value: Term<'a>) -> Term<'a> {
 }
 
 fn coerce_enum8<'a>(env: Env<'a>, value: Term<'a>) -> Term<'a> {
-    // Enum8 values should already be resolved to integers by the mapper
+    // Enum8 values should already be resolved to integers by the mapper, and
+    // `enum_values` is range-checked at compile time. Clamp rather than cast so
+    // an unexpected out-of-range value saturates instead of wrapping to the
+    // wrong variant.
     if let Ok(i) = value.decode::<i64>() {
-        return (i as i8).encode(env);
+        let clamped = i.clamp(i64::from(i8::MIN), i64::from(i8::MAX));
+        return (clamped as i8).encode(env);
     }
 
     0i8.encode(env)

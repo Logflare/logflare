@@ -1,0 +1,110 @@
+suite: test backend wiring
+templates:
+  - configmap.yaml
+tests:
+  - it: should render bigquery vars and omit postgres vars by default
+    asserts:
+      - equal:
+          path: data.GOOGLE_PROJECT_ID
+          value: ""
+        template: configmap.yaml
+      - isNotNull:
+          path: data.GOOGLE_DATASET_LOCATION
+        template: configmap.yaml
+      - isNull:
+          path: data.POSTGRES_BACKEND_SCHEMA
+        template: configmap.yaml
+
+  - it: should render postgres vars and omit bigquery vars when backend.type is postgres
+    set:
+      logflare.backend.type: postgres
+    asserts:
+      - isNotNull:
+          path: data.POSTGRES_BACKEND_SCHEMA
+        template: configmap.yaml
+      - isNull:
+          path: data.GOOGLE_PROJECT_ID
+        template: configmap.yaml
+      - isNull:
+          path: data.GOOGLE_PROJECT_NUMBER
+        template: configmap.yaml
+
+  - it: should omit empty optional configmap keys
+    asserts:
+      - notExists:
+          path: data.LOGFLARE_FEATURE_FLAG_OVERRIDE
+        template: configmap.yaml
+      - notExists:
+          path: data.PHX_URL_HOST
+        template: configmap.yaml
+
+  - it: should render optional configmap keys when set
+    set:
+      logflare.featureFlagOverride: "some-flag"
+      logflare.phx.urlHost: "example.com"
+    asserts:
+      - equal:
+          path: data.LOGFLARE_FEATURE_FLAG_OVERRIDE
+          value: "some-flag"
+        template: configmap.yaml
+      - equal:
+          path: data.PHX_URL_HOST
+          value: "example.com"
+        template: configmap.yaml
+
+  - it: should render extraConfig entries verbatim into the ConfigMap
+    set:
+      logflare.extraConfig:
+        LOGFLARE_LOG_LEVEL: info
+        SPOOL_MODE: enabled
+    asserts:
+      - equal:
+          path: data.LOGFLARE_LOG_LEVEL
+          value: "info"
+        template: configmap.yaml
+      - equal:
+          path: data.SPOOL_MODE
+          value: "enabled"
+        template: configmap.yaml
+
+  # A key set in both places was previously emitted twice, leaving the winner up to whatever
+  # parsed the manifest.
+  - it: should let extraConfig override a derived key rather than duplicating it
+    set:
+      logflare:
+        backend:
+          type: bigquery
+          bigquery:
+            datasetIdAppend: _prod
+        extraConfig:
+          GOOGLE_DATASET_ID_APPEND: _staging
+    asserts:
+      - equal:
+          path: data.GOOGLE_DATASET_ID_APPEND
+          value: _staging
+        template: configmap.yaml
+
+  # Mounting the cert files does nothing on its own; without this key Logflare serves gRPC
+  # in plaintext even when cert.pem and cert.key are present.
+  - it: should enable gRPC TLS only when grpcSsl is set
+    asserts:
+      - notExists:
+          path: data.LOGFLARE_ENABLE_GRPC_SSL
+        template: configmap.yaml
+
+  - it: should render LOGFLARE_ENABLE_GRPC_SSL when grpcSsl is set
+    set:
+      logflare.grpcSsl: true
+      logflare.certFilesSecret: logflare-cert-files
+    asserts:
+      - equal:
+          path: data.LOGFLARE_ENABLE_GRPC_SSL
+          value: "true"
+        template: configmap.yaml
+
+  - it: should fail when grpcSsl is set without a cert files secret
+    set:
+      logflare.grpcSsl: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "logflare.grpcSsl requires logflare.certFilesSecret, which supplies cert.pem and cert.key"

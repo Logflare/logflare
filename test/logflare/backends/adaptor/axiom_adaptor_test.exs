@@ -51,6 +51,8 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
   end
 
   setup do
+    # SourceSup's rate counter reads BigQuery at startup; stub it before starting the tree.
+    stub(Logflare.Google.BigQuery, :get_table, fn _ -> {:error, :not_found} end)
     start_supervised!(AllLogsLogged)
     insert(:plan)
     :ok
@@ -226,6 +228,15 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
       assert_receive {^ref, gzipped}, 5000
       assert json = :zlib.gunzip(gzipped)
       assert [_, _, _] = Jason.decode!(json)
+    end
+  end
+
+  describe "sanitize_config_for_display/1" do
+    test "masks api_token while preserving displayable keys" do
+      config = %{api_token: "AN_API_TOKEN", domain: "api.axiom.co", dataset_name: "logflare"}
+
+      assert %{api_token: "**********", domain: "api.axiom.co", dataset_name: "logflare"} ==
+               @subject.sanitize_config_for_display(config)
     end
   end
 

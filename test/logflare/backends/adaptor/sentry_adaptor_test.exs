@@ -15,6 +15,8 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
   doctest @subject
 
   setup do
+    # SourceSup's rate counter reads BigQuery at startup; stub it before starting the tree.
+    stub(Logflare.Google.BigQuery, :get_table, fn _ -> {:error, :not_found} end)
     start_supervised!(AllLogsLogged)
     insert(:plan)
     :ok
@@ -388,6 +390,15 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       item = Enum.at(items, 0)
 
       assert item["level"] == "error"
+    end
+  end
+
+  describe "sanitize_config_for_display/1" do
+    test "shows the dsn with its secret redacted" do
+      config = %{dsn: "https://public_key:secret_key@o123456.ingest.sentry.io/123456"}
+
+      assert %{dsn: "https://public_key:REDACTED@o123456.ingest.sentry.io/123456"} ==
+               @subject.sanitize_config_for_display(config)
     end
   end
 

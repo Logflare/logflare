@@ -10,8 +10,11 @@ defmodule Logflare.ClickHouseMappedEvents do
   import Logflare.Factory
   import Logflare.Utils.Guards, only: [is_empty_map: 1]
 
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingConfigStore
+  alias Logflare.LogEvent.TypeDetection
   alias Logflare.Mapper
+  alias Logflare.Mapper.OtelDefaults
+
+  @compiled_mapping_key {__MODULE__, :compiled_mapping}
 
   @doc """
   Builds a log event with a semi-realistic OTEL-style input body, then maps it
@@ -46,13 +49,12 @@ defmodule Logflare.ClickHouseMappedEvents do
       }
       |> deep_merge_opts(opts[:body] || %{})
 
-    {:ok, compiled, config_id} = MappingConfigStore.get_compiled(:log)
+    {mapped_body, config_id} = map_body(input_body, :log)
 
     mapped_body =
-      input_body
-      |> Mapper.map(compiled)
+      mapped_body
       |> Map.put("mapping_config_id", config_id)
-      |> resolve_severity_number()
+      |> apply_derived_fields(:log)
 
     %{event | body: mapped_body}
   end
@@ -86,12 +88,8 @@ defmodule Logflare.ClickHouseMappedEvents do
       }
       |> deep_merge_opts(opts[:body] || %{})
 
-    {:ok, compiled, config_id} = MappingConfigStore.get_compiled(:metric)
-
-    mapped_body =
-      input_body
-      |> Mapper.map(compiled)
-      |> Map.put("mapping_config_id", config_id)
+    {mapped_body, config_id} = map_body(input_body, :metric)
+    mapped_body = Map.put(mapped_body, "mapping_config_id", config_id)
 
     %{event | body: mapped_body}
   end
@@ -127,25 +125,63 @@ defmodule Logflare.ClickHouseMappedEvents do
       }
       |> deep_merge_opts(opts[:body] || %{})
 
-    {:ok, compiled, config_id} = MappingConfigStore.get_compiled(:trace)
+    {mapped_body, config_id} = map_body(input_body, :trace)
 
     mapped_body =
-      input_body
-      |> Mapper.map(compiled)
+      mapped_body
       |> Map.put("mapping_config_id", config_id)
+      |> apply_derived_fields(:trace)
 
     %{event | body: mapped_body}
   end
 
-  @spec deep_merge_opts(map(), map()) :: map()
-  @spec resolve_severity_number(map()) :: map()
-  defp resolve_severity_number(%{"severity_number_alt" => alt} = body)
-       when is_integer(alt) and alt > 0 do
+  @doc """
+  Reference implementation of the derived-field rules the mapper output
+  writers apply in Rust (`native/mapper_ex/src/derive.rs`): log
+  `severity_number` falls back to `severity_number_alt`, and a zero trace
+  `duration` is computed from `end_time - start_time`.
+  """
+  @spec apply_derived_fields(map(), TypeDetection.event_type()) :: map()
+  def apply_derived_fields(%{"severity_number_alt" => alt} = body, :log)
+      when is_integer(alt) and alt in 1..24 do
     %{body | "severity_number" => alt}
   end
 
-  defp resolve_severity_number(body), do: body
+  def apply_derived_fields(
+        %{"start_time" => start_time, "end_time" => end_time, "duration" => 0} = body,
+        :trace
+      )
+      when is_integer(start_time) and is_integer(end_time) and end_time > start_time do
+    %{body | "duration" => end_time - start_time}
+  end
 
+  def apply_derived_fields(body, _event_type), do: body
+
+  @spec map_body(map(), TypeDetection.event_type()) :: {map(), String.t()}
+  defp map_body(input_body, event_type) do
+    {compiled, config_id} = compiled_mapping(event_type)
+    {Mapper.map(input_body, compiled), config_id}
+  end
+
+  @spec compiled_mapping(TypeDetection.event_type()) :: {reference(), String.t()}
+  defp compiled_mapping(event_type) do
+    key = {@compiled_mapping_key, event_type}
+
+    case :persistent_term.get(key, nil) do
+      nil ->
+        cached =
+          {Mapper.compile!(OtelDefaults.for_type(event_type, :map)),
+           OtelDefaults.config_id(event_type)}
+
+        :persistent_term.put(key, cached)
+        cached
+
+      cached ->
+        cached
+    end
+  end
+
+  @spec deep_merge_opts(map(), map()) :: map()
   defp deep_merge_opts(base, overrides) when is_empty_map(overrides), do: base
 
   defp deep_merge_opts(base, overrides) do

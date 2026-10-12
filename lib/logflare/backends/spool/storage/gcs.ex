@@ -30,7 +30,7 @@ defmodule Logflare.Backends.Spool.Storage.GCS do
              method: :post,
              url: url,
              query: [uploadType: "media", name: key],
-             headers: [{"Content-Type", content_type}],
+             headers: request_headers(content_type, headers),
              body: body
            ) do
         {:ok, %Tesla.Env{status: status}} when status in 200..299 -> {:ok, key}
@@ -48,6 +48,16 @@ defmodule Logflare.Backends.Spool.Storage.GCS do
         {:error, %Tesla.Env{status: 404}} -> {:error, :not_found}
         {:error, reason} -> {:error, reason}
       end
+    end
+  end
+
+  @spec request_headers(String.t(), map()) :: [{String.t(), String.t()}]
+  defp request_headers(content_type, headers) do
+    base = [{"Content-Type", content_type}]
+
+    case Map.get(headers, "content-encoding") do
+      nil -> base
+      encoding -> [{"Content-Encoding", encoding} | base]
     end
   end
 

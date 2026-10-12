@@ -28,6 +28,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
 
     matching_rule_ids(event, rule_set)
     |> Rules.Cache.get_rules()
+    |> Enum.reject(&is_nil/1)
   end
 
   @doc """
@@ -116,7 +117,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
         |> Enum.any?(&(stringify(&1) =~ expected))
 
       :string_contains ->
-        String.contains?(stringify(le_value), stringify(expected))
+        String.contains?(stringify(le_value), expected)
 
       := ->
         le_value == expected
@@ -242,6 +243,10 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   defp to_operator(%FilterRule{operator: op, value: value})
        when op in [:"~", :list_includes_regex] do
     {op, Regex.compile!(value, "u")}
+  end
+
+  defp to_operator(%FilterRule{operator: :string_contains, value: value}) do
+    {:string_contains, stringify(value)}
   end
 
   defp to_operator(%FilterRule{operator: op, value: value}) do

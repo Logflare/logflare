@@ -46,34 +46,63 @@ defmodule LogflareWeb.Utils do
       iex> stringify_changeset_errors(changeset, "No errors")
       "No errors"
 
+      iex> profile = %Ecto.Changeset{
+      ...>   errors: [email: {"is invalid", []}],
+      ...>   data: %{},
+      ...>   types: %{email: :string}
+      ...> }
+      iex> changeset = %Ecto.Changeset{
+      ...>   changes: %{profile: profile},
+      ...>   data: %{},
+      ...>   types: %{profile: {:embed, %Ecto.Embedded{cardinality: :one}}}
+      ...> }
+      iex> stringify_changeset_errors(changeset, "Validation failed")
+      "Validation failed: profile: email: is invalid"
+
   """
+  @spec stringify_changeset_errors(Ecto.Changeset.t()) :: String.t()
   def stringify_changeset_errors(%Ecto.Changeset{} = changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
-      Enum.reduce(opts, msg, fn {key, value}, acc ->
-        String.replace(acc, "%{#{key}}", _to_string(value))
-      end)
-    end)
-    |> Enum.reduce([], fn {k, v}, acc ->
-      ["#{k}: #{Enum.join(v, " & ")}" | acc]
+    changeset
+    |> changeset_errors()
+    |> Enum.reduce([], fn
+      {:base, errors}, acc -> [Enum.join(errors, " & ") | acc]
+      {field, errors}, acc -> ["#{field}: #{Enum.join(errors, " & ")}" | acc]
     end)
     |> Enum.reverse()
     |> Enum.join("\n")
   end
 
+  @spec stringify_changeset_errors(Ecto.Changeset.t(), String.t()) :: String.t()
   def stringify_changeset_errors(%Ecto.Changeset{} = changeset, default_message) do
     changeset
-    |> Ecto.Changeset.traverse_errors(fn {msg, _opts} -> msg end)
-    |> Enum.map(fn {field, errors} -> "#{field}: #{_to_string(errors)}" end)
-    |> Enum.join("; ")
+    |> changeset_errors()
+    |> Enum.map_join("; ", fn
+      {:base, errors} -> format_nested_errors(errors)
+      {field, errors} -> "#{field}: #{format_nested_errors(errors)}"
+    end)
     |> case do
       "" -> default_message
       errors -> "#{default_message}: #{errors}"
     end
   end
 
-  defp _to_string(val) when is_list(val), do: Enum.join(val, ", ")
-  defp _to_string(val) when is_binary(val) or is_atom(val) or is_number(val), do: to_string(val)
-  defp _to_string(val), do: inspect(val)
+  @spec format_nested_errors([String.t()] | map()) :: String.t()
+  defp format_nested_errors(errors) when is_list(errors), do: Enum.join(errors, ", ")
+
+  defp format_nested_errors(errors) when is_map(errors) do
+    Enum.map_join(errors, ", ", fn {field, nested} ->
+      "#{field}: #{format_nested_errors(nested)}"
+    end)
+  end
+
+  @spec changeset_errors(Ecto.Changeset.t()) :: Ecto.Changeset.traverse_result()
+  def changeset_errors(%Ecto.Changeset{} = changeset) do
+    Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->
+      Regex.replace(~r"%{(\w+)}", message, fn _, key ->
+        opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
+      end)
+    end)
+  end
 
   @spec time_ago(DateTime.t() | NaiveDateTime.t()) :: String.t()
   def time_ago(datetime) do
@@ -132,32 +161,35 @@ defmodule LogflareWeb.Utils do
   end
 
   @spec sql_params_to_sql(String.t(), list()) :: String.t()
-  def sql_params_to_sql(sql, params) when is_binary(sql) and is_list(params) do
-    Enum.reduce(params, sql, fn param, acc_sql ->
-      type = Map.get(param.parameterType, :type)
-      value = Map.get(param.parameterValue, :value)
+  def sql_params_to_sql(sql, []) when is_binary(sql), do: sql
 
-      replacement =
-        case type do
-          "STRING" ->
-            escaped = value |> String.replace("\\", "\\\\") |> String.replace("'", "''")
-            "'#{escaped}'"
+  def sql_params_to_sql(sql, [param | params]) when is_binary(sql) do
+    type = Map.get(param.parameterType, :type)
+    value = Map.get(param.parameterValue, :value)
 
-          num when num in ["INTEGER", "FLOAT"] ->
-            inspect(value)
+    replacement =
+      case type do
+        "STRING" ->
+          escaped = value |> String.replace("\\", "\\\\") |> String.replace("'", "''")
+          "'#{escaped}'"
 
-          "BOOL" ->
-            to_string(value)
+        num when num in ["INTEGER", "FLOAT"] ->
+          inspect(value)
 
-          _ ->
-            escaped =
-              value |> to_string() |> String.replace("\\", "\\\\") |> String.replace("'", "''")
+        "BOOL" ->
+          to_string(value)
 
-            "'#{escaped}'"
-        end
+        _ ->
+          escaped =
+            value |> to_string() |> String.replace("\\", "\\\\") |> String.replace("'", "''")
 
-      String.replace(acc_sql, "?", replacement, global: false)
-    end)
+          "'#{escaped}'"
+      end
+
+    case String.split(sql, "?", parts: 2) do
+      [before, after_sql] -> before <> replacement <> sql_params_to_sql(after_sql, params)
+      [_] -> sql
+    end
   end
 
   @spec replace_table_with_source_name(String.t(), %{

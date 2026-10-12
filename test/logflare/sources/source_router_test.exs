@@ -5,6 +5,7 @@ defmodule Logflare.Sources.SourceRouterTest do
   alias Logflare.LogEvent
   alias Logflare.Lql.Parser
   alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Rules
   alias Logflare.Rules.Rule
   alias Logflare.Sources.SourceRouter
   alias Logflare.SystemMetrics.AllLogsLogged
@@ -39,6 +40,20 @@ defmodule Logflare.Sources.SourceRouterTest do
                    | via_rule_id: rule.id
                  }
                ]
+      end
+
+      test "routes when rules are not loaded on the source", %{user: user, backend: backend} do
+        rule = build(:rule, backend: backend, lql_string: "testing")
+        source = insert(:source, user: user, rules: [rule]) |> Ecto.reset_fields([:rules])
+
+        start_supervised!({SourceSup, source})
+
+        le = build(:log_event, source: source, message: "testing123")
+
+        assert %LogEvent{via_rule_id: rule_id} =
+                 SourceRouter.route_to_sinks_and_ingest(le, source, unquote(router))
+
+        assert rule_id == rule.id
       end
 
       test "list_includes operator", %{user: user} do
@@ -755,6 +770,18 @@ defmodule Logflare.Sources.SourceRouterTest do
         {le, source} = build_data.(metadata, "value")
         assert unquote(router).matching_rules(le, source) == source.rules
       end
+    end
+  end
+
+  describe "RulesTree with an unresolvable rule id" do
+    test "does not raise when a matched rule no longer exists", %{user: user, backend: backend} do
+      rule = build(:rule, backend: backend, lql_string: "testing")
+      source = insert(:source, user: user, rules: [rule])
+      le = build(:log_event, source: source, message: "testing123")
+
+      expect(Rules, :get_rule, fn _id -> nil end)
+
+      assert SourceRouter.route_to_sinks_and_ingest(le, source, SourceRouter.RulesTree) == le
     end
   end
 end

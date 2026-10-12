@@ -103,20 +103,16 @@ defmodule Logflare.DataCase do
   end
 
   @doc """
-  A helper that transform changeset errors to a map of messages.
+  A helper that transforms changeset errors to a map of messages.
+
+  Delegates to `LogflareWeb.Utils.changeset_errors/1`.
 
       assert {:error, changeset} = Accounts.create_user(%{password: "short"})
       assert "password is too short" in errors_on(changeset).password
       assert %{password: ["password is too short"]} = errors_on(changeset)
 
   """
-  def errors_on(changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->
-      Regex.replace(~r"%{(\w+)}", message, fn _, key ->
-        opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
-      end)
-    end)
-  end
+  defdelegate errors_on(changeset), to: LogflareWeb.Utils, as: :changeset_errors
 
   @doc """
   Sets up a ClickHouse test environment with automatic cleanup.
@@ -133,6 +129,10 @@ defmodule Logflare.DataCase do
   def setup_clickhouse_test(opts \\ []) do
     config = Keyword.get(opts, :config, %{})
     default_ingest_backend? = Keyword.get(opts, :default_ingest_backend?, false)
+
+    if not (is_map_key(config, :url) or is_map_key(config, :port)) do
+      ensure_clickhouse_reachable!()
+    end
 
     user =
       case Keyword.get(opts, :user) do
@@ -169,6 +169,18 @@ defmodule Logflare.DataCase do
     end
 
     {source, backend}
+  end
+
+  @spec ensure_clickhouse_reachable!() :: :ok
+  defp ensure_clickhouse_reachable! do
+    case :gen_tcp.connect(~c"localhost", 8123, [:binary, active: false], 500) do
+      {:ok, socket} ->
+        :gen_tcp.close(socket)
+
+      {:error, reason} ->
+        raise "ClickHouse is not reachable on localhost:8123 (#{inspect(reason)}). " <>
+                "Start it with `docker compose up -d clickhouse`."
+    end
   end
 
   @doc """

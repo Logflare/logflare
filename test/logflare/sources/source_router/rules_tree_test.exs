@@ -3,6 +3,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
 
   alias Logflare.LogEvent
   alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Rules
   alias Logflare.Rules.Rule
   alias Logflare.Sources.SourceRouter.RulesTree
 
@@ -389,6 +390,28 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
 
       # Name  Reduction count
       # build        172.99 K
+    end
+  end
+
+  describe "matching_rules/2" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      backend = insert(:backend, user: user)
+      rule = build(:rule, backend: backend, lql_string: "testing")
+      source = insert(:source, user: user, rules: [rule])
+
+      [source: source, log_event: build(:log_event, source: source, message: "testing123")]
+    end
+
+    test "returns the rules matching the event", %{source: source, log_event: le} do
+      assert [%Rule{}] = @subject.matching_rules(le, source)
+    end
+
+    test "drops matched ids whose rule no longer exists", %{source: source, log_event: le} do
+      stub(Rules, :get_rule, fn _id -> nil end)
+
+      assert @subject.matching_rules(le, source) == []
     end
   end
 

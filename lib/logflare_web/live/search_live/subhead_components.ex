@@ -31,10 +31,10 @@ defmodule LogflareWeb.SearchLive.SubheadComponents do
           </.link>
         </li>
         <li>
-          <a href="javascript:Source.scrollOverflowBottom();">
+          <.link href="#" phx-click={JS.dispatch("logflare:scroll-to-bottom")}>
             <span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span>
             <span class="hide-on-mobile">scroll down</span>
-          </a>
+          </.link>
         </li>
         <li>
           <.modal_link component={LogflareWeb.SearchLive.SavedSearchesModalComponent} modal_id={:saved_searches_link} title="Saved Searches" phx-value-source-id={@source.id}>
@@ -84,14 +84,18 @@ defmodule LogflareWeb.SearchLive.SubheadComponents do
   attr :user_preferences, :map, required: true
 
   def timezone(assigns) do
+    assigns = assign(assigns, :timezone_options, build_timezones_select_form_options())
+
     ~H"""
     <.form :let={f} for={build_form(assigns)} phx-change="results-action-change" id="results-actions">
-      <label class="sr-only" for="display_timezone">Display Timezone</label>
+      <label class="sr-only" for={f[:search_timezone].id}>Display Timezone</label>
       <div class="input-group input-group-sm ">
         <div class="input-group-prepend tw-grow">
           <div class="input-group-text tw-py-0 tw-bg-transparent tw-text-black tw-text-xs">display timezone</div>
         </div>
-        {select(f, :search_timezone, build_timezones_select_form_options(), selected: @search_timezone, class: "form-control form-control-sm tw-w-64 tw-text-xs")}
+        <div class="tw-w-64 tw-text-xs">
+          <.combobox field={f[:search_timezone]} options={@timezone_options} class="form-control form-control-sm" empty_text="No timezones found." aria-label="Display timezone" />
+        </div>
         <button type="button" class="btn btn-link tw-text-xs tw-py-0" phx-click="results-action-change" phx-value-search_timezone="Etc/UTC">UTC</button>
         <span :if={show_checkbox?(assigns)} class="tw-relative tw-align-text-bottom">
           {checkbox(f, :remember_timezone, class: "tw-align-middle")}

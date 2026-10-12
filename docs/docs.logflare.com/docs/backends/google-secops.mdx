@@ -1,0 +1,40 @@
+---
+sidebar_position: 13
+---
+
+# Google SecOps
+
+The Google SecOps backend is **ingest-only**, and sends logs to a [Google SecOps](https://cloud.google.com/chronicle/docs) (formerly Chronicle) SIEM webhook feed.
+
+## Setting up the webhook feed
+
+Follow Google's [Set up a SIEM HTTPS webhook feed](https://cloud.google.com/chronicle/docs/ingestion/setup-siem-webhook) guide:
+
+1. In Google SecOps, go to **SIEM Settings > Feeds** and create a feed with source type **Webhook**.
+2. Pick the log type for the feed. A feed carries exactly one log type — to drain logs under multiple log types, create one feed (and one Logflare backend) per log type.
+3. Set the **split delimiter** to `\n`. Logflare batches multiple events into a single request as newline-delimited JSON; without the delimiter, a whole batch would be ingested as a single log entry.
+4. Click **Generate Secret Key** and store the secret — it cannot be viewed again.
+5. In the Google Cloud console, [create an API key](https://cloud.google.com/docs/authentication/api-keys) restricted to the **Chronicle API**.
+
+## Behaviour and configurations
+
+### Configuration
+
+- `:region` (string, required) - The region of your Google SecOps instance, e.g. `us`, `europe` or `europe-west3`.
+- `:project_number` (string, required) - The number of the Google Cloud project bound to the SecOps instance.
+- `:instance_id` (string, required) - The customer ID (UUID) of the SecOps instance.
+- `:feed_id` (string, required) - The ID (UUID) of the webhook feed.
+- `:api_key` (string, required) - The Google Cloud API key restricted to the Chronicle API.
+- `:secret` (string, required) - The secret key generated for the webhook feed.
+
+All identifiers can be read from the endpoint URL shown in the feed's **Endpoint Information**:
+
+```
+https://<region>-chronicle.googleapis.com/v1/projects/<project_number>/locations/<region>/instances/<instance_id>/feeds/<feed_id>:importPushLogs
+```
+
+### Implementation Details
+
+- Log events are batched into `POST` requests to the feed's `:importPushLogs` endpoint, targeting the stable `v1` Chronicle API regardless of the version shown in the console's URL.
+- Each request body contains newline-delimited JSON, one event per line, parsed by SecOps according to the feed's log type.
+- Authentication uses the `X-goog-api-key` and `X-Webhook-Access-Key` headers.
