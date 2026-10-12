@@ -31,7 +31,7 @@ defmodule LogflareWeb.Live.Dev.DashboardLive do
         "dev-dashboard-write-#{pid}",
         [:logflare, :backends, :pipeline, :handle_batch],
         fn _event, %{batch_size: size}, meta, refs ->
-          accumulate_batch(meta, size, {:pipeline, @pipeline}, refs)
+          accumulate_batch(meta, size, {:pipeline, :spool_producer}, refs)
         end,
         {write_rate_atomic, write_total_atomic}
       )
