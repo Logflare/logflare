@@ -1,37 +1,27 @@
 defmodule Logflare.Logs.LogEvents.Cache do
   @moduledoc false
-  alias Logflare.Logs.LogEvents
+
+  @behaviour Logflare.Cache
+  @behaviour Logflare.ContextCache
+
+  alias Logflare.Cache.CachexOps
   alias Logflare.ContextCache
   alias Logflare.LogEvent, as: LE
-  alias Logflare.Utils
+  alias Logflare.Logs.LogEvents
 
   @cache __MODULE__
 
   def child_spec(_) do
-    stats = Application.get_env(:logflare, :cache_stats, false)
-
-    %{
-      id: __MODULE__,
-      name: __MODULE__,
-      start: {
-        Cachex,
-        :start_link,
-        [
-          @cache,
-          [
-            hooks:
-              [
-                if(stats, do: Utils.cache_stats()),
-                Utils.cache_limit(15_000)
-              ]
-              |> Enum.filter(& &1),
-            expiration: Utils.cache_expiration_min(10),
-            compressed: true
-          ]
-        ]
-      }
-    }
+    CachexOps.child_spec(@cache,
+      limit: 15_000,
+      ttl: to_timeout(minute: 10),
+      purge_interval: to_timeout(minute: 5),
+      compressed: true
+    )
   end
+
+  @impl Logflare.Cache
+  def healthy?, do: CachexOps.healthy?(__MODULE__)
 
   @fetch_event_by_id {:fetch_event_by_id, 2}
   @spec fetch_event_by_id(atom, binary(), Keyword.t()) :: {:ok, LE.t() | nil} | {:error, map()}

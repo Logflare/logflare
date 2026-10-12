@@ -39,6 +39,21 @@ defmodule LogflareWeb.HealthCheckControllerTest do
            } = json_response(conn, 200)
   end
 
+  test "cache reporting unhealthy", %{conn: conn} do
+    start_supervised!(Source.Supervisor)
+    stub(Logflare.Partners.Cache, :healthy?, fn -> false end)
+
+    conn = get(conn, "/health")
+
+    assert %{
+             "status" => "coming_up",
+             "caches" => %{
+               "Elixir.Logflare.Partners.Cache" => "unhealthy",
+               "Elixir.Logflare.Auth.Cache" => "ok"
+             }
+           } = json_response(conn, 503)
+  end
+
   test "readiness check", %{conn: conn} do
     start_supervised!(Source.Supervisor)
     :timer.sleep(1000)

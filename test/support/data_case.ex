@@ -45,7 +45,7 @@ defmodule Logflare.DataCase do
         end)
 
         caches = Logflare.ContextCache.Supervisor.list_caches()
-        Enum.each(caches, &Cachex.reset(&1, hooks: [Cachex.Stats]))
+        Enum.each(caches, &Logflare.Cache.reset/1)
 
         on_exit(fn ->
           # Deterministic, not timer-based: IngestEventQueue's generation-store
