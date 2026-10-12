@@ -3,6 +3,7 @@ defmodule Logflare.Rules.Cache do
 
   alias Logflare.Backends.Backend
   alias Logflare.ContextCache
+  alias Logflare.Repo
   alias Logflare.Rules
   alias Logflare.Sources.Source
   alias Logflare.Utils
@@ -77,7 +78,9 @@ defmodule Logflare.Rules.Cache do
   end
 
   defp fetch_rule(cache, id) do
-    ContextCache.fetch(cache, {:get_rule, [id]}, fn -> Rules.get_rule(id) end)
+    ContextCache.fetch(cache, {:get_rule, [id]}, fn ->
+      Repo.with_replica(fn -> Rules.get_rule(id) end)
+    end)
   end
 
   defp delete_and_count(cache, key) do

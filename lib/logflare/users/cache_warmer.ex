@@ -1,9 +1,13 @@
 defmodule Logflare.Users.CacheWarmer do
+  alias Logflare.Repo
   alias Logflare.Users
 
   use Cachex.Warmer
+
   @impl true
-  def execute(_state) do
+  def execute(_state), do: Repo.with_replica(&warm/0)
+
+  defp warm do
     users = Users.list_ingesting_users(limit: 1_000)
 
     get_kv =

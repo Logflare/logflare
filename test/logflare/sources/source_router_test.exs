@@ -42,6 +42,20 @@ defmodule Logflare.Sources.SourceRouterTest do
                ]
       end
 
+      test "routes when rules are not loaded on the source", %{user: user, backend: backend} do
+        rule = build(:rule, backend: backend, lql_string: "testing")
+        source = insert(:source, user: user, rules: [rule]) |> Ecto.reset_fields([:rules])
+
+        start_supervised!({SourceSup, source})
+
+        le = build(:log_event, source: source, message: "testing123")
+
+        assert %LogEvent{via_rule_id: rule_id} =
+                 SourceRouter.route_to_sinks_and_ingest(le, source, unquote(router))
+
+        assert rule_id == rule.id
+      end
+
       test "list_includes operator", %{user: user} do
         build_data = fn metadata_val, filter_val ->
           rule = %Rule{

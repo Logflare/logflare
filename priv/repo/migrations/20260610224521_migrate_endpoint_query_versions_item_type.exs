@@ -1,6 +1,8 @@
 defmodule Logflare.Repo.Migrations.MigrateEndpointQueryVersionsItemType do
   use Ecto.Migration
 
+  alias Logflare.Repo.Migrator
+
   @index_name :versions_queries_item_id_version_number_index
 
   def up do
@@ -16,7 +18,9 @@ defmodule Logflare.Repo.Migrations.MigrateEndpointQueryVersionsItemType do
   end
 
   defp drop_version_number_index do
-    execute("DROP INDEX IF EXISTS #{@index_name}")
+    Migrator.with_replicated_execute(fn ->
+      execute("DROP INDEX IF EXISTS #{@index_name}")
+    end)
   end
 
   defp create_version_number_index do

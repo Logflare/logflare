@@ -4,6 +4,7 @@ defmodule LogflareWeb.HealthCheckControllerTest do
   """
   use LogflareWeb.ConnCase
 
+  alias Logflare.Backends.Spool.Health
   alias Logflare.Readiness
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source
@@ -11,6 +12,11 @@ defmodule LogflareWeb.HealthCheckControllerTest do
   setup do
     reset_readiness()
     on_exit(&reset_readiness/0)
+
+    on_exit(fn ->
+      Health.report_recovery!(:disk)
+      Health.report_recovery!(:upload)
+    end)
 
     Logflare.Google.BigQuery
     |> stub(:init_table!, fn _, _, _, _, _, _ -> :ok end)
@@ -59,6 +65,150 @@ defmodule LogflareWeb.HealthCheckControllerTest do
       |> get("/health")
 
     assert %{"memory_utilization" => "ok"} = json_response(conn, 200)
+  end
+
+  test "outside :producer mode, spool write health is reported but does not gate the node's own health check",
+       %{
+         conn: conn
+       } do
+    insert(:user)
+    insert(:plan)
+    start_supervised!(Source.Supervisor)
+
+    prev_spool_config = Application.get_env(:logflare, :spool)
+    Application.put_env(:logflare, :spool, mode: :both, max_spool_health_failures: 1)
+
+    on_exit(fn ->
+      if prev_spool_config do
+        Application.put_env(:logflare, :spool, prev_spool_config)
+      else
+        Application.delete_env(:logflare, :spool)
+      end
+    end)
+
+    assert %{"status" => "ok", "spool_write_healthy" => %{"disk" => true, "upload" => true}} =
+             conn |> get("/health") |> json_response(200)
+
+    Health.report_failure!(:disk)
+
+    # In :both mode, an unhealthy spool falls back to direct backend
+    # dispatch (Backends.ingest_logs/4) instead of failing ingest, so this
+    # node's own /health check isn't gated on it — see
+    # Backends.spool_healthcheck_ok?/0.
+    assert %{"status" => "ok", "spool_write_healthy" => %{"disk" => false, "upload" => true}} =
+             conn |> get("/health") |> json_response(200)
+
+    Health.report_recovery!(:disk)
+
+    assert %{"status" => "ok", "spool_write_healthy" => %{"disk" => true, "upload" => true}} =
+             conn |> get("/health") |> json_response(200)
+  end
+
+  test "in :producer mode, an unhealthy disk fails the node's own health check", %{conn: conn} do
+    insert(:user)
+    insert(:plan)
+    start_supervised!(Source.Supervisor)
+
+    prev_spool_config = Application.get_env(:logflare, :spool)
+    Application.put_env(:logflare, :spool, mode: :producer, max_spool_health_failures: 1)
+
+    on_exit(fn ->
+      if prev_spool_config do
+        Application.put_env(:logflare, :spool, prev_spool_config)
+      else
+        Application.delete_env(:logflare, :spool)
+      end
+    end)
+
+    assert %{"status" => "ok", "spool_write_healthy" => %{"disk" => true, "upload" => true}} =
+             conn |> get("/health") |> json_response(200)
+
+    Health.report_failure!(:disk)
+
+    # :producer-only mode has no backend adaptors to fall back to, so a
+    # failing spool must take the node out of rotation instead — see
+    # Backends.spool_healthcheck_ok?/0.
+    assert %{
+             "status" => "coming_up",
+             "spool_write_healthy" => %{"disk" => false, "upload" => true}
+           } =
+             conn |> get("/health") |> json_response(503)
+
+    Health.report_recovery!(:disk)
+
+    assert %{"status" => "ok", "spool_write_healthy" => %{"disk" => true, "upload" => true}} =
+             conn |> get("/health") |> json_response(200)
+  end
+
+  test "in :producer mode with :wal buffer, an unhealthy upload also fails the node's own health check",
+       %{conn: conn} do
+    insert(:user)
+    insert(:plan)
+    start_supervised!(Source.Supervisor)
+
+    prev_spool_config = Application.get_env(:logflare, :spool)
+
+    Application.put_env(:logflare, :spool,
+      mode: :producer,
+      buffer: :wal,
+      max_spool_health_failures: 1
+    )
+
+    on_exit(fn ->
+      if prev_spool_config do
+        Application.put_env(:logflare, :spool, prev_spool_config)
+      else
+        Application.delete_env(:logflare, :spool)
+      end
+    end)
+
+    Health.report_failure!(:upload)
+
+    # A WAL that's still absorbing writes locally doesn't mean the spool is
+    # actually reaching its durable home — :wal mode writes to both tiers,
+    # so both scopes must be healthy, see Backends.spool_healthcheck_ok?/0.
+    assert %{
+             "status" => "coming_up",
+             "spool_write_healthy" => %{"disk" => true, "upload" => false}
+           } =
+             conn |> get("/health") |> json_response(503)
+
+    Health.report_recovery!(:upload)
+
+    assert %{"status" => "ok", "spool_write_healthy" => %{"disk" => true, "upload" => true}} =
+             conn |> get("/health") |> json_response(200)
+  end
+
+  test "in :producer mode with :mem buffer, an unhealthy disk does not fail the node's own health check",
+       %{conn: conn} do
+    insert(:user)
+    insert(:plan)
+    start_supervised!(Source.Supervisor)
+
+    prev_spool_config = Application.get_env(:logflare, :spool)
+
+    Application.put_env(:logflare, :spool,
+      mode: :producer,
+      buffer: :mem,
+      max_spool_health_failures: 1
+    )
+
+    on_exit(fn ->
+      if prev_spool_config do
+        Application.put_env(:logflare, :spool, prev_spool_config)
+      else
+        Application.delete_env(:logflare, :spool)
+      end
+    end)
+
+    Health.report_failure!(:disk)
+
+    # :mem mode has no local disk tier at all, so :disk health doesn't gate
+    # it — see Backends.spool_healthcheck_ok?/0.
+    assert %{"status" => "ok", "spool_write_healthy" => %{"disk" => false, "upload" => true}} =
+             conn |> get("/health") |> json_response(200)
+
+    Health.report_recovery!(:disk)
   end
 
   describe "Supabase mode - without seed" do

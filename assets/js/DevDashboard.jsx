@@ -160,6 +160,7 @@ const GC_LINES = [
 const WINDOW_METRICS = [
   { key: "write_rate", label: "Written /s", unit: "/s" },
   { key: "read_rate", label: "Read /s", unit: "/s" },
+  { key: "parse_rate", label: "Parsed /s", unit: "/s" },
   { key: "ch_batch_rate", label: "CH events/s", unit: "/s" },
   { key: "bq_batch_rate", label: "BQ events/s", unit: "/s" },
   { key: "ets_mb", label: "ETS Memory", unit: "MB" },
@@ -354,6 +355,7 @@ function GcChart({ data, xKey, snapshot }) {
 const PIPELINE_LINES = [
   { key: "write_rate", name: "Spool Producer", color: "#89b4fa" },
   { key: "read_rate", name: "Spool Consumer", color: "#f9e2af" },
+  { key: "parse_rate", name: "Spool Parsed", color: "#f38ba8" },
   { key: "ch_batch_rate", name: "ClickHouse", color: "#a6e3a1" },
   { key: "bq_batch_rate", name: "BigQuery", color: "#cba6f7" },
 ];
@@ -498,6 +500,8 @@ export default function DevDashboard({ data = [], current = {}, producer_paused 
   const writtenTotal = current.written_total ?? 0;
   const readRate = current.read_rate ?? 0;
   const readTotal = current.read_total ?? 0;
+  const parseRate = current.parse_rate ?? 0;
+  const parseTotal = current.parse_total ?? 0;
   const procMb = current.proc_mb ?? 0;
   const chProcMb = current.ch_proc_mb ?? 0;
   const bqProcMb = current.bq_proc_mb ?? 0;
@@ -681,6 +685,8 @@ export default function DevDashboard({ data = [], current = {}, producer_paused 
         <StatCard label="Total Written" value={writtenTotal} color="#a6e3a1" />
         <StatCard label="Read /s" value={readRate} color="#94e2d5" unit="/s" />
         <StatCard label="Total Read" value={readTotal} color="#94e2d5" />
+        <StatCard label="Parsed /s" value={parseRate} color="#f38ba8" unit="/s" />
+        <StatCard label="Total Parsed" value={parseTotal} color="#f38ba8" />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: 20 }}>
         <StatCard label="Process Memory" value={procMb} color="#cba6f7" unit="MB" />

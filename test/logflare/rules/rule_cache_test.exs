@@ -3,7 +3,6 @@ defmodule Logflare.Rules.CacheTest do
   use Logflare.DataCase
 
   alias Logflare.Rules
-  alias Logflare.Sources
 
   @subject Rules.Cache
 
@@ -19,7 +18,15 @@ defmodule Logflare.Rules.CacheTest do
 
   describe "rules cache" do
     test "get rules", %{rule_ids: rule_ids} do
+      ref = :telemetry_test.attach_event_handlers(self(), [[:logflare, :repo, :replica_route]])
+      on_exit(fn -> :telemetry.detach(ref) end)
+
       assert rules = @subject.get_rules(rule_ids)
+
+      for _id <- rule_ids do
+        assert_receive {[:logflare, :repo, :replica_route], ^ref, %{count: 1},
+                        %{role: :primary, reason: :not_configured}}
+      end
 
       for %Rule{id: id} <- rules do
         assert id in rule_ids
@@ -55,18 +62,6 @@ defmodule Logflare.Rules.CacheTest do
 
       assert [_r1, _r2] = @subject.list_rules(source)
       assert %{hits: 2} = Cachex.stats!(@subject)
-    end
-
-    test "is used on source preload", %{source: source} do
-      assert [_r1, _r2] = @subject.list_by_source_id(source.id)
-      assert Cachex.size(@subject) == {:ok, 1}
-      assert %{hits: 0, writes: 1} = Cachex.stats!(@subject)
-
-      source = Ecto.reset_fields(source, [:rules])
-      Mimic.reject(Rules, :list_by_source_id, 1)
-
-      assert Sources.Cache.preload_rules(source)
-      assert %{hits: 1} = Cachex.stats!(@subject)
     end
 
     test "list by backend", %{backend: backend, rule_ids: expected_rule_ids} do

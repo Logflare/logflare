@@ -329,7 +329,7 @@ test('receives logs from PostgREST', async ({ page }) => {
 
 test('receives logs from Auth', async ({ page }) => {
   await page.goto('/project/default/logs/auth-logs');
-  await searchLogs(page, `example_${uniqueId}@email.com`);
+  await searchLogs(page, `example_${uniqueId}@email.com`, '/signup | request completed');
 
   await expect(page.getByRole('table')).toContainText('/signup | request completed');
 });

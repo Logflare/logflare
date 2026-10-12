@@ -5,6 +5,7 @@ defmodule LogflareWeb.SourceBackendsLive do
   import LogflareWeb.Utils, only: [stringify_changeset_errors: 1]
 
   alias Logflare.Backends
+  alias Logflare.Backends.Backend
 
   def render(assigns) do
     ~H"""
@@ -14,19 +15,9 @@ defmodule LogflareWeb.SourceBackendsLive do
         <small class="badge badge-pill badge-success">connected: {Enum.count(@attached_backend_ids)}</small>
         <.form :let={f} as={:source} for={%{}} action="#" phx-submit="save">
           <% grouped = Enum.group_by(@backends, & &1.type) %>
-          <%= for type <- [:bigquery, :postgres, :syslog, :webhook, :datadog, :sentry],
-             backends = Map.get(grouped, type, []) do %>
+          <%= for type <- backend_types(grouped), backends = Map.get(grouped, type, []) do %>
             <div class="form-group">
-              <strong>
-                {case type do
-                  :bigquery -> "BigQuery"
-                  :postgres -> "PostgreSQL"
-                  :syslog -> "Syslog"
-                  :webhook -> "Webhook"
-                  :datadog -> "Datadog"
-                  :sentry -> "Sentry"
-                end}
-              </strong>
+              <strong>{Backend.type_label(type)}</strong>
 
               <div :if={type == :bigquery} class="form-row custom-control custom-switch">
                 {text_input(f, :backends, type: "checkbox", class: "custom-control-input", id: "backends-default", disabled: true, checked: true)}
@@ -35,9 +26,6 @@ defmodule LogflareWeb.SourceBackendsLive do
               <div :for={backend <- backends} class="form-row custom-control custom-switch">
                 {text_input(f, :backends, type: "checkbox", class: "custom-control-input", id: "backends-#{backend.id}", name: "source[backends][]", checked: backend.id in @attached_backend_ids, value: backend.id)}
                 {label(f, :backends, backend.name, class: "custom-control-label", for: "backends-#{backend.id}")}
-              </div>
-              <div :if={Enum.empty?(backends) and type !== :bigquery}>
-                <small class="text-muted">No backend created yet!</small>
               </div>
             </div>
           <% end %>
@@ -81,6 +69,16 @@ defmodule LogflareWeb.SourceBackendsLive do
       end
 
     {:noreply, socket}
+  end
+
+  defp backend_types(grouped) do
+    other_types =
+      grouped
+      |> Map.keys()
+      |> List.delete(:bigquery)
+      |> Enum.sort_by(&Backend.type_label/1)
+
+    [:bigquery | other_types]
   end
 
   defp refresh_data(%{assigns: %{source_id: source_id}} = socket) do

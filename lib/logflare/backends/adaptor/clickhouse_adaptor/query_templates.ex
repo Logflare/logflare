@@ -88,7 +88,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
   @doc """
   Generates a `CHECK GRANT` statement for read-only permissions (`SELECT` only).
 
-  Used to validate read-only cluster connectivity when a separate `read_only_url` is configured.
+  Used to validate connectivity and `SELECT` access for the configured read clusters.
 
   ## Options
 

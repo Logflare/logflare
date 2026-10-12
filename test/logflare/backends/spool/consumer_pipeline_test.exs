@@ -6,18 +6,114 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
   alias Broadway.Message
   alias Logflare.Backends.Spool.ConsumerPipeline
+  alias Logflare.Backends.Spool.MemoryMonitor
+  alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
+  alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.TestUtils
 
   setup :set_mimic_global
 
-  # Build a Broadway.Message as the pipeline's transform/2 would produce it —
-  # data is a parsed NDJSON line map, acknowledger is the pipeline no-op.
-  defp line_message(source_id, event_id, extra_body \\ %{}) do
+  defp record(source_id, event_id, extra_body \\ %{}) do
     body =
       Map.merge(%{"id" => event_id, "timestamp" => System.system_time(:microsecond)}, extra_body)
 
-    line = %{"source_id" => source_id, "body" => body, "id" => event_id, "event_type" => "log"}
-    %Message{data: line, acknowledger: {ConsumerPipeline, :noop, nil}}
+    %{"source_id" => source_id, "body" => body, "id" => event_id, "event_type" => "log"}
+  end
+
+  # Build a Broadway.Message as it looks *after* handle_message/3 has parsed
+  # its segment: data is the list of records the segment decoded into (one
+  # segment is one original ingest request's chunk, so usually more than one),
+  # acknowledger is the pipeline no-op.
+  defp segment_message(records) when is_list(records) do
+    %Message{data: records, acknowledger: {ConsumerPipeline, :noop, nil}}
+  end
+
+  defp line_message(source_id, event_id, extra_body \\ %{}) do
+    segment_message([record(source_id, event_id, extra_body)])
+  end
+
+  defp unparsed_message(segment) do
+    %Message{
+      data: %{segment: segment},
+      acknowledger: {ConsumerPipeline, :noop, %{in_flight_ref: nil, bytes: byte_size(segment)}}
+    }
+  end
+
+  describe "transform/2" do
+    test "wraps the producer's raw segment and stashes its byte size for the in-flight counter" do
+      segment = :erlang.term_to_binary([%{"id" => "e1"}, %{"id" => "e2"}])
+      unparsed = %{segment: segment, handle: "receipt-1"}
+
+      assert %Message{data: ^unparsed, acknowledger: {ConsumerPipeline, :noop, ack_data}} =
+               ConsumerPipeline.transform(unparsed, [])
+
+      # max_in_flight is a byte budget, so the acknowledger carries the bytes
+      # to give back rather than a message count.
+      assert ack_data.bytes == byte_size(segment)
+      assert Map.has_key?(ack_data, :in_flight_ref)
+      assert ack_data.handle == "receipt-1"
+    end
+  end
+
+  describe "handle_message/3" do
+    test "parses an etf segment into its records" do
+      records = [%{"id" => "e1", "source_id" => 1}, %{"id" => "e2", "source_id" => 2}]
+      message = unparsed_message(:erlang.term_to_binary(records))
+
+      assert %Message{status: :ok, data: ^records} =
+               ConsumerPipeline.handle_message(:default, message, %{})
+    end
+
+    test "fails only this message when a segment's content cannot be parsed at all" do
+      # Well-formed bytes that passed framing/CRC upstream, but not a valid
+      # Erlang external term — exactly the ArgumentError :erlang.binary_to_term/1
+      # raises on corrupt or format-mismatched spool content. Broadway routes a
+      # failed message straight to ack/3 without it ever reaching handle_batch/4.
+      message = unparsed_message("this is not valid etf")
+
+      assert %Message{status: {:failed, _reason}} =
+               ConsumerPipeline.handle_message(:default, message, %{})
+    end
+
+    test "emits parse telemetry with the segment's event count" do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :consumer, :parse])
+
+      records = [%{"id" => "e1"}, %{"id" => "e2"}, %{"id" => "e3"}]
+      message = unparsed_message(:erlang.term_to_binary(records))
+
+      ConsumerPipeline.handle_message(:default, message, %{})
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :consumer, :parse],
+                      %{segment_count: 1, event_count: 3, duration: _}, %{}}
+    end
+
+    test "registers each parsed record's source with MemoryMonitor" do
+      test_pid = self()
+      stub(MemoryMonitor, :register_source, fn sid -> send(test_pid, {:registered, sid}) end)
+
+      records = [
+        %{"id" => "e1", "source_id" => 1},
+        %{"id" => "e2", "source_id" => 2}
+      ]
+
+      message = unparsed_message(:erlang.term_to_binary(records))
+
+      ConsumerPipeline.handle_message(:default, message, %{})
+
+      assert_receive {:registered, 1}
+      assert_receive {:registered, 2}
+    end
+
+    test "does not register anything for records with no source_id" do
+      test_pid = self()
+      stub(MemoryMonitor, :register_source, fn sid -> send(test_pid, {:registered, sid}) end)
+
+      message = unparsed_message(:erlang.term_to_binary([%{"id" => "e1"}]))
+
+      ConsumerPipeline.handle_message(:default, message, %{})
+
+      refute_receive {:registered, _}
+    end
   end
 
   describe "handle_batch/4" do
@@ -34,7 +130,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, dispatched_source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, dispatched_source, _handle ->
         send(pid, {:dispatched, event_params, dispatched_source.id})
         {:ok, length(event_params)}
       end)
@@ -46,6 +142,25 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
       assert params["id"] == event_id
     end
 
+    test "dispatches every record of a multi-record message, not just the first", %{
+      source: source
+    } do
+      ids = Enum.map(1..3, fn _ -> Ecto.UUID.generate() end)
+      messages = [segment_message(Enum.map(ids, &record(source.id, &1)))]
+
+      pid = self()
+
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, _source, _handle ->
+        send(pid, {:dispatched, Enum.map(event_params, & &1["id"])})
+        {:ok, length(event_params)}
+      end)
+
+      ConsumerPipeline.handle_batch(:default, messages, %{}, %{})
+
+      assert_receive {:dispatched, dispatched_ids}
+      assert MapSet.new(dispatched_ids) == MapSet.new(ids)
+    end
+
     test "preserves original event IDs from the body field", %{source: source} do
       id1 = Ecto.UUID.generate()
       id2 = Ecto.UUID.generate()
@@ -53,7 +168,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, _source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, _source, _handle ->
         send(pid, {:dispatched, Enum.map(event_params, & &1["id"])})
         {:ok, length(event_params)}
       end)
@@ -74,7 +189,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, source, _handle ->
         send(pid, {:dispatched, source.id, Enum.map(event_params, & &1["id"])})
         {:ok, length(event_params)}
       end)
@@ -102,7 +217,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, source, _handle ->
         send(pid, {:dispatched, event_params, source.id})
         {:ok, length(event_params)}
       end)
@@ -118,18 +233,18 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
     test "skips events with a nil source_id, emitting skipped telemetry", %{source: _source} do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :consumer, :skipped])
 
-      message = %Message{
-        data: %{
-          "source_id" => nil,
-          "body" => %{"id" => Ecto.UUID.generate()},
-          "event_type" => "log"
-        },
-        acknowledger: {ConsumerPipeline, :noop, nil}
-      }
+      message =
+        segment_message([
+          %{
+            "source_id" => nil,
+            "body" => %{"id" => Ecto.UUID.generate()},
+            "event_type" => "log"
+          }
+        ])
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, source, _handle ->
         send(pid, {:dispatched, event_params, source.id})
         {:ok, length(event_params)}
       end)
@@ -153,7 +268,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
       pid = self()
 
-      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, dispatched_source ->
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, dispatched_source, _handle ->
         if dispatched_source.id == source.id do
           raise FunctionClauseError
         end
@@ -174,6 +289,41 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :consumer, :skipped],
                       %{count: 1}, %{reason: :dispatch_error}}
     end
+
+    test "does not fail a handle's message when only a different handle's dispatch for the same source fails" do
+      source = insert(:source, user: insert(:user))
+      failing_handle = "spool-handle-failing-#{System.unique_integer([:positive])}"
+      healthy_handle = "spool-handle-healthy-#{System.unique_integer([:positive])}"
+
+      failing = %Message{
+        data: [record(source.id, Ecto.UUID.generate())],
+        acknowledger: {ConsumerPipeline, :noop, %{handle: failing_handle}}
+      }
+
+      healthy = %Message{
+        data: [record(source.id, Ecto.UUID.generate())],
+        acknowledger: {ConsumerPipeline, :noop, %{handle: healthy_handle}}
+      }
+
+      pid = self()
+
+      stub(Logflare.Backends, :dispatch_from_spool, fn event_params, _source, handle ->
+        if handle == failing_handle do
+          raise FunctionClauseError
+        end
+
+        send(pid, {:dispatched, handle})
+        {:ok, length(event_params)}
+      end)
+
+      assert [returned_failing, returned_healthy] =
+               ConsumerPipeline.handle_batch(:default, [failing, healthy], %{}, %{})
+
+      assert returned_failing.status == {:failed, :dispatch_error}
+      assert returned_healthy.status == :ok
+
+      assert_receive {:dispatched, ^healthy_handle}
+    end
   end
 
   describe "ack/3" do
@@ -182,7 +332,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
 
       failed = [
         %Message{
-          data: %{},
+          data: [],
           acknowledger: {ConsumerPipeline, :noop, nil},
           status: {:failed, :boom}
         }
@@ -198,10 +348,75 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
     test "emits no telemetry when there are no failed messages" do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :consumer, :messages_failed])
 
-      assert ConsumerPipeline.ack(:ref, [%Message{data: %{}, acknowledger: nil}], []) == :ok
+      assert ConsumerPipeline.ack(:ref, [%Message{data: [], acknowledger: nil}], []) == :ok
 
       refute_receive {:telemetry_event,
                       [:logflare, :backends, :spool, :consumer, :messages_failed], _, _}
     end
+
+    test "releases a segment's bump only when it succeeds, not when dispatch fails" do
+      success_handle = "spool-handle-#{System.unique_integer([:positive])}"
+      failed_handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(success_handle, QueueMod, "queue-url")
+      SpoolAck.bump(success_handle, 1)
+      SpoolAck.register(failed_handle, QueueMod, "queue-url")
+      SpoolAck.bump(failed_handle, 1)
+
+      test_pid = self()
+      stub(QueueMod, :ack, fn url, h -> send(test_pid, {:acked, url, h}) end)
+
+      successful = [
+        %Message{data: [], acknowledger: {ConsumerPipeline, :noop, %{handle: success_handle}}}
+      ]
+
+      failed = [
+        %Message{
+          data: [],
+          acknowledger: {ConsumerPipeline, :noop, %{handle: failed_handle}},
+          status: {:failed, :dispatch_error}
+        }
+      ]
+
+      assert ConsumerPipeline.ack(:ref, successful, failed) == :ok
+
+      assert_receive {:acked, "queue-url", ^success_handle}
+      assert :ets.lookup(:spool_ack, success_handle) == []
+
+      # a dispatch_error never reached any pipeline's own ack/3, so releasing
+      # its bump here would ack a segment that was never actually delivered
+      refute_receive {:acked, "queue-url", ^failed_handle}
+
+      assert [{^failed_handle, 1, QueueMod, "queue-url", _registered_at}] =
+               :ets.lookup(:spool_ack, failed_handle)
+    end
+
+    test "returns each message's bytes (not its count) to the producer's in-flight budget" do
+      ref = :atomics.new(1, signed: true)
+      :atomics.add(ref, 1, 300)
+
+      successful = [byte_message(ref, 100)]
+      failed = [%{byte_message(ref, 200) | status: {:failed, :boom}}]
+
+      assert ConsumerPipeline.ack(:ref, successful, failed) == :ok
+
+      # Both successful and failed messages give their bytes back, or the
+      # producer's budget would leak until it stopped emitting entirely.
+      assert :atomics.get(ref, 1) == 0
+    end
+
+    test "tolerates messages with no in-flight ref" do
+      assert ConsumerPipeline.ack(
+               :ref,
+               [%Message{data: [], acknowledger: {ConsumerPipeline, :noop, nil}}],
+               []
+             ) == :ok
+    end
+  end
+
+  defp byte_message(ref, bytes) do
+    %Message{
+      data: [],
+      acknowledger: {ConsumerPipeline, :noop, %{in_flight_ref: ref, bytes: bytes}}
+    }
   end
 end

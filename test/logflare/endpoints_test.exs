@@ -5,10 +5,12 @@ defmodule Logflare.EndpointsTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryErrorNormalizer
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Endpoints
   alias Logflare.Endpoints.EndpointQuery
+  alias Logflare.Endpoints.ResultsCache
   alias PaperTrail.Version
 
   @endpoint_query_attrs %{
@@ -463,6 +465,68 @@ defmodule Logflare.EndpointsTest do
       assert nil == Endpoints.get_endpoint_query_version(endpoint.id, 3)
       assert nil == Endpoints.get_endpoint_query_version(endpoint.id + 1, 1)
     end
+
+    test "get_endpoint_query_at_version/2 returns the endpoint snapshot", %{
+      user: user
+    } do
+      source = insert(:source, user: user, name: "old_table")
+
+      assert {:ok, endpoint} =
+               Endpoints.create_query(
+                 user,
+                 %{
+                   name: "versioned-runnable",
+                   query: "select a from old_table",
+                   language: :bq_sql,
+                   labels: "environment",
+                   redact_pii: true,
+                   enable_dynamic_reservation: true,
+                   cache_duration_seconds: 123,
+                   proactive_requerying_seconds: 45
+                 },
+                 user
+               )
+
+      assert {:ok, updated_endpoint} =
+               Endpoints.update_query(user, endpoint, %{query: "select b from old_table"}, user)
+
+      source
+      |> Ecto.Changeset.change(name: "new_table")
+      |> Logflare.Repo.update!()
+
+      endpoint_id = updated_endpoint.id
+      token = updated_endpoint.token
+      user_id = user.id
+
+      assert {:ok,
+              %EndpointQuery{
+                id: ^endpoint_id,
+                user_id: ^user_id,
+                token: ^token,
+                version_number: 1,
+                labels: "environment",
+                redact_pii: true,
+                enable_dynamic_reservation: true,
+                cache_duration_seconds: 123,
+                proactive_requerying_seconds: 45,
+                query: query
+              }} =
+               Endpoints.get_endpoint_query_at_version(updated_endpoint, 1)
+
+      assert String.downcase(query) == "select a from new_table"
+    end
+
+    test "get_endpoint_query_at_version/2 rejects invalid version numbers", %{
+      user: user,
+      endpoint_params: endpoint_params
+    } do
+      assert {:ok, endpoint} = Endpoints.create_query(user, endpoint_params, user)
+
+      for version <- [0, -1, "1", nil] do
+        assert {:error, :invalid_version} =
+                 Endpoints.get_endpoint_query_at_version(endpoint, version)
+      end
+    end
   end
 
   test "parse_query_string/1" do
@@ -620,9 +684,9 @@ defmodule Logflare.EndpointsTest do
 
       endpoint_id_label_value = Integer.to_string(endpoint_id)
 
-      assert_received %{
-        "endpoint_id" => ^endpoint_id_label_value
-      }
+      assert_received labels
+      assert labels["endpoint_id"] == endpoint_id_label_value
+      refute Map.has_key?(labels, "endpoint_version")
     end
 
     test "run_query/3 uses a 60s timeout when a custom reservation is provided" do
@@ -698,7 +762,9 @@ defmodule Logflare.EndpointsTest do
         )
 
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
-      assert_received %{"my_label" => "my_value"}
+      assert_received labels
+      assert labels["my_label"] == "my_value"
+      refute Map.has_key?(labels, "endpoint_version")
     end
 
     test "run_query_string/3" do
@@ -847,6 +913,62 @@ defmodule Logflare.EndpointsTest do
                Endpoints.run_query(endpoint)
     end
 
+    test "run_query_string/3 applies PII redaction to ClickHouse error descriptions" do
+      user = insert(:user)
+      insert(:source, user: user, name: "c")
+      insert(:backend, user: user, type: :clickhouse)
+
+      stub(ClickHouseAdaptor, :execute_query, fn _backend, _query, _opts ->
+        {:error,
+         QueryErrorNormalizer.normalize(%Ch.Error{
+           code: 6,
+           message:
+             "Code: 6. DB::Exception: Cannot parse string '203.0.113.5' as UInt8: syntax error at position 3 (parsed just '203'). (CANNOT_PARSE_TEXT)"
+         })}
+      end)
+
+      query = {:ch_sql, "SELECT toUInt8(ip) FROM c"}
+
+      assert {:error, %{description: redacted}} =
+               Endpoints.run_query_string(user, query, redact_pii: true)
+
+      assert redacted ==
+               "Cannot parse string 'REDACTED' as UInt8: syntax error at position 3 (parsed just '203'). (CANNOT_PARSE_TEXT)"
+
+      assert {:error, %{description: unredacted}} =
+               Endpoints.run_query_string(user, query, redact_pii: false)
+
+      assert unredacted =~ "'203.0.113.5'"
+    end
+
+    test "run_query_string/3 applies PII redaction to IPv6 values in ClickHouse error descriptions" do
+      user = insert(:user)
+      insert(:source, user: user, name: "c")
+      insert(:backend, user: user, type: :clickhouse)
+
+      stub(ClickHouseAdaptor, :execute_query, fn _backend, _query, _opts ->
+        {:error,
+         QueryErrorNormalizer.normalize(%Ch.Error{
+           code: 6,
+           message:
+             "Code: 6. DB::Exception: Cannot parse string '2001:db8::1' as UInt8: syntax error at position 4 (parsed just '2001'). (CANNOT_PARSE_TEXT)"
+         })}
+      end)
+
+      query = {:ch_sql, "SELECT toUInt8(ip) FROM c"}
+
+      assert {:error, %{description: redacted}} =
+               Endpoints.run_query_string(user, query, redact_pii: true)
+
+      assert redacted ==
+               "Cannot parse string 'REDACTED' as UInt8: syntax error at position 4 (parsed just '2001'). (CANNOT_PARSE_TEXT)"
+
+      assert {:error, %{description: unredacted}} =
+               Endpoints.run_query_string(user, query, redact_pii: false)
+
+      assert unredacted =~ "'2001:db8::1'"
+    end
+
     test "run_cached_query/2 applies PII redaction" do
       expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response([%{"ip" => "192.168.1.1"}])}
@@ -955,10 +1077,20 @@ defmodule Logflare.EndpointsTest do
             key -> Map.new([{key, 123}])
           end
 
+        monitor_ref = Process.monitor(cache_pid)
         assert {:ok, updated} = Endpoints.update_query(user, endpoint, params, user)
-        # should kill the cache process
-        :timer.sleep(500)
-        refute Process.alive?(cache_pid)
+        assert_receive {:DOWN, ^monitor_ref, :process, ^cache_pid, :normal}
+
+        TestUtils.retry_assert(fn ->
+          assert GenServer.whereis(ResultsCache.name(endpoint, %{})) == nil
+        end)
+
+        # run_cached_query would create a cache that outlives this test.
+        # Start it under ExUnit so it stops before the endpoint fixture is rolled back.
+        start_supervised!({Logflare.Endpoints.ResultsCache, {updated, %{}, []}},
+          id: :replacement_cache
+        )
+
         # 2nd query should not hit cache
         assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(updated)
       end

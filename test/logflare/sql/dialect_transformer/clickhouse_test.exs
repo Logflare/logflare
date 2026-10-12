@@ -37,6 +37,27 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouseTest do
                )
     end
 
+    test "keeps FINAL when adding a limit" do
+      assert {:ok, "SELECT a FROM t FINAL WHERE b = 1 LIMIT 10"} =
+               ClickHouse.apply_limit("SELECT a FROM t FINAL WHERE b = 1", 10)
+    end
+
+    test "keeps ARRAY JOIN when adding a limit" do
+      assert {:ok, "SELECT a, x FROM t LEFT ARRAY JOIN arr AS x LIMIT 10"} =
+               ClickHouse.apply_limit("SELECT a, x FROM t LEFT ARRAY JOIN arr AS x", 10)
+    end
+
+    test "adds a limit while keeping an existing offset" do
+      assert {:ok, "SELECT number FROM numbers(100) LIMIT 10 OFFSET 2"} =
+               ClickHouse.apply_limit("SELECT number FROM numbers(100) OFFSET 2", 10)
+    end
+
+    test "wraps the offset-comma-limit form before adding a global limit" do
+      query = "SELECT number FROM numbers(100) LIMIT 2, 5"
+
+      assert ClickHouse.apply_limit(query, 10) == {:ok, "SELECT * FROM (#{query}) LIMIT 10"}
+    end
+
     test "wraps OFFSET ROWS before adding a global limit" do
       for row_keyword <- ["ROW", "ROWS"] do
         query = "SELECT number FROM numbers(10) ORDER BY number OFFSET 2 #{row_keyword}"

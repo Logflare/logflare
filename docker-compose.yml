@@ -70,6 +70,14 @@ services:
     # - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-changeme}
     # disable strict permission checks
     command: ["--strict.perms=false"]
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.13.3
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./test/logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+    environment:
+      - xpack.monitoring.enabled=false
   loki:
     image: grafana/loki:3.1.0
     ports:
@@ -122,10 +130,12 @@ services:
       # Only mount config files, no data persistence
       - ./priv/clickhouse/clickhouse-config.xml:/etc/clickhouse-server/config.d/memory-settings.xml:ro
       - ./priv/clickhouse/clickhouse-users.xml:/etc/clickhouse-server/users.d/memory-profiles.xml:ro
+      # Log to the container console at warning level instead of files. A full log
+      # volume sends the ClickHouse async logger into a CPU spin loop.
+      - ./priv/clickhouse/clickhouse-logging.xml:/etc/clickhouse-server/config.d/logging.xml:ro
     tmpfs:
       # Use tmpfs (RAM) for data - automatically cleaned on container restart
       - /var/lib/clickhouse:size=1G
-      - /var/log/clickhouse-server:size=100M
     environment:
       CLICKHOUSE_DB: logflare_test
       CLICKHOUSE_USER: logflare

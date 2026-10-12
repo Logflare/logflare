@@ -613,6 +613,30 @@ defmodule Logflare.Lql.RulesTest do
     end
   end
 
+  describe "timestamp_filter_bounds/1" do
+    test "returns the tightest bound on each side and nil for an open side" do
+      lower = %FilterRule{path: "timestamp", operator: :>, value: ~N[2026-01-31 00:00:00]}
+
+      tighter_lower = %FilterRule{
+        path: "timestamp",
+        operator: :>=,
+        value: ~N[2026-01-31 06:00:00]
+      }
+
+      upper = %FilterRule{path: "timestamp", operator: :<, value: ~N[2026-02-01 00:00:00]}
+
+      assert Rules.timestamp_filter_bounds([]) == %{min: nil, max: nil}
+
+      assert Rules.timestamp_filter_bounds([lower, tighter_lower]) ==
+               %{min: ~N[2026-01-31 06:00:00], max: nil}
+
+      assert Rules.timestamp_filter_bounds([upper]) == %{min: nil, max: ~N[2026-02-01 00:00:00]}
+
+      assert Rules.timestamp_filter_bounds([lower, upper]) ==
+               %{min: ~N[2026-01-31 00:00:00], max: ~N[2026-02-01 00:00:00]}
+    end
+  end
+
   describe "jump_timestamp/2" do
     test "creates new timestamp range by jumping forwards" do
       timestamp_filter = %FilterRule{

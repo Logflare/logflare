@@ -73,6 +73,19 @@ Chart aggregations rules will display the aggregated trends in the chart. Chart 
 | c     | `p95`                       | `c:p95(m.latency)` |
 | c     | `p99`                       | `c:p99(m.latency)` |
 
+#### AI-assisted search
+
+AI assist can turn a natural-language request into an LQL query and run the search.
+Enter a request in the query field and click the AI Assist button (or press **Ctrl+Enter**/**⌘+Enter**).
+The generated LQL replaces the request in the editor so you can review or refine it.
+
+![An LQL query generated with AI Assist](./ai-assisted-search.png)
+
+AI assist is available on paid plans.
+
+To generate the query, Logflare sends your request and the source schema field names and types
+to the AI model provider. Logflare does not send event messages or query results to the provider.
+
 ## Beyond LQL
 
 Should you need to more powerful operators and aggregation capabilities, you can drop down to your backend querying engine.
