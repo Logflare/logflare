@@ -177,23 +177,42 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   # Stored credentials only ever go to the destination they were entered for. When the
   # URL moves to another origin, the password and credential headers must be entered
   # again rather than restored from the redacted form or kept from storage.
+  @spec require_new_credentials(Ecto.Changeset.t(), map()) :: Ecto.Changeset.t()
   defp require_new_credentials(changeset, existing_config) do
-    changeset =
-      if Ecto.Changeset.get_change(changeset, :password) in [nil, @redacted_value],
-        do: Ecto.Changeset.put_change(changeset, :password, nil),
-        else: changeset
+    headers =
+      case Map.fetch(changeset.params, "headers") do
+        {:ok, submitted} when is_map(submitted) ->
+          for {key, value} <- submitted,
+              value != @redacted_value,
+              into: %{},
+              do: {Headers.normalize_key(key), value}
 
-    case Ecto.Changeset.get_change(changeset, :headers) do
-      nil ->
-        stored = Map.get(existing_config, :headers) || Map.get(existing_config, "headers") || %{}
+        {:ok, nil} ->
+          nil
 
-        kept =
-          for {key, value} <- stored, not Headers.sensitive?(key), into: %{}, do: {key, value}
+        _ ->
+          stored =
+            Map.get(existing_config, :headers) || Map.get(existing_config, "headers") || %{}
 
-        Ecto.Changeset.put_change(changeset, :headers, kept)
+          for {key, value} <- stored,
+              not Headers.sensitive?(key),
+              into: %{},
+              do: {Headers.normalize_key(key), value}
+      end
 
-      _submitted ->
-        changeset
+    changeset
+    |> require_new_password()
+    |> Ecto.Changeset.put_change(:headers, headers)
+  end
+
+  @spec require_new_password(Ecto.Changeset.t()) :: Ecto.Changeset.t()
+  defp require_new_password(changeset) do
+    case changeset.params["password"] do
+      password when is_binary(password) and password not in ["", @redacted_value] ->
+        Ecto.Changeset.put_change(changeset, :password, password)
+
+      _ ->
+        Ecto.Changeset.put_change(changeset, :password, nil)
     end
   end
 
