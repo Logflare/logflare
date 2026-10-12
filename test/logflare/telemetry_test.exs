@@ -123,6 +123,38 @@ defmodule Logflare.TelemetryTest do
       end
     end
 
+    test "aggregates Finch idle expiry without endpoint-derived attributes" do
+      event = [:finch, :conn_max_idle_time_exceeded]
+      name = "finch.conn_max_idle_time_exceeded.idle_time"
+      metric = Enum.find(Telemetry.metrics(), &(&1.event_name == event))
+      exporter = :logflare_finch_idle_expiry_metrics_test
+
+      assert metric
+      assert to_string(metric.__struct__) == "Elixir.Telemetry.Metrics.Counter"
+
+      start_supervised!(
+        {OtelMetricExporter,
+         name: exporter,
+         metrics: [metric],
+         export_period: :timer.minutes(5),
+         otlp_protocol: :http_protobuf,
+         otlp_endpoint: "http://127.0.0.1:4318",
+         otlp_headers: %{},
+         otlp_compression: nil}
+      )
+
+      for metadata <- [
+            %{scheme: :https, host: "private-bucket.s3.amazonaws.com", port: 443},
+            %{scheme: :https, host: "private-project.supabase.co", port: 443},
+            %{scheme: :http, host: "private-minio.internal", port: 9000}
+          ] do
+        :telemetry.execute(event, %{idle_time: 123_456}, metadata)
+      end
+
+      assert %{%{} => 3} == MetricStore.get_metrics(exporter)[{:counter, name}]
+      assert metric.tags == []
+    end
+
     test "includes the spool telemetry metrics added for throttling/storage/queue observability" do
       names = Telemetry.metrics() |> Enum.map(& &1.name)
 

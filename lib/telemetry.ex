@@ -741,8 +741,8 @@ defmodule Logflare.Telemetry do
         description: "Finch pool checkout queue duration"
       ),
       counter("finch.conn_max_idle_time_exceeded.idle_time",
-        tags: [:host, :port],
-        description: "Count of connections discarded due to exceeding max idle time"
+        description:
+          "Count of idle-expired connections across all Finch pools, without endpoint attributes"
       )
     ]
 
