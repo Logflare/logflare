@@ -349,18 +349,17 @@ defmodule Logflare.Telemetry do
       distribution("logflare.backends.spool.pipeline.handle_batch.batch_size",
         event_name: [:logflare, :backends, :pipeline, :handle_batch],
         measurement: :batch_size,
-        tags: [:backend_type, :batch_trigger],
+        tags: [:pipeline, :batch_trigger],
         keep: &spool_batch?/1,
         reporter_options: batch_size_reporter_opts(),
-        description:
-          "Distribution of spool producer/consumer batch sizes by backend type and trigger"
+        description: "Distribution of spool producer/consumer batch sizes by pipeline and trigger"
       ),
       sum("logflare.backends.spool.pipeline.handle_batch.batch_size",
         event_name: [:logflare, :backends, :pipeline, :handle_batch],
         measurement: :batch_size,
-        tags: [:backend_type, :batch_trigger],
+        tags: [:pipeline, :batch_trigger],
         keep: &spool_batch?/1,
-        description: "Sum of spool producer/consumer batch sizes by backend type and trigger"
+        description: "Sum of spool producer/consumer batch sizes by pipeline and trigger"
       ),
       distribution("logflare.backends.spool.queue.poll_backoff.backoff_ms",
         reporter_options: [buckets: [100, 200, 400, 800, 1_000]],
@@ -1039,7 +1038,7 @@ defmodule Logflare.Telemetry do
   defp clickhouse_batch?(%{backend_type: :clickhouse}), do: true
   defp clickhouse_batch?(_metadata), do: false
 
-  defp spool_batch?(%{backend_type: type}) when type in [:spool_producer, :spool_consumer],
+  defp spool_batch?(%{pipeline: type}) when type in [:spool_producer, :spool_consumer],
     do: true
 
   defp spool_batch?(_metadata), do: false

@@ -575,6 +575,53 @@ defmodule Logflare.TelemetryTest do
       assert [{_bucket, {1, 125}}] = distributions |> Map.fetch!(trace_tags) |> Map.to_list()
     end
 
+    test "aggregates spool batches by explicit pipeline tags" do
+      name = [:logflare, :backends, :spool, :pipeline, :handle_batch, :batch_size]
+      metrics = Enum.filter(Telemetry.metrics(), &(&1.name == name))
+      assert length(metrics) == 2
+
+      for metric <- metrics do
+        assert metric.tags == [:pipeline, :batch_trigger]
+        assert metric.keep.(%{pipeline: :spool_producer})
+        assert metric.keep.(%{pipeline: :spool_consumer})
+        refute metric.keep.(%{backend_type: :clickhouse})
+        refute metric.keep.(%{pipeline: :user_monitoring})
+      end
+
+      exporter = :logflare_spool_pipeline_metrics_test
+
+      start_supervised!(
+        {OtelMetricExporter,
+         name: exporter,
+         metrics: metrics,
+         export_period: :timer.minutes(5),
+         otlp_protocol: :http_protobuf,
+         otlp_endpoint: "http://localhost:4318",
+         otlp_headers: %{},
+         otlp_compression: nil}
+      )
+
+      event = [:logflare, :backends, :pipeline, :handle_batch]
+      producer_tags = %{pipeline: :spool_producer, batch_trigger: nil}
+      consumer_tags = %{pipeline: :spool_consumer, batch_trigger: :timeout}
+
+      :telemetry.execute(event, %{batch_size: 3}, producer_tags)
+      :telemetry.execute(event, %{batch_size: 5}, consumer_tags)
+      :telemetry.execute(event, %{batch_size: 999}, %{backend_type: :clickhouse})
+
+      metric_name = "logflare.backends.spool.pipeline.handle_batch.batch_size"
+
+      assert %{
+               {:distribution, ^metric_name} => distributions,
+               {:sum, ^metric_name} => sums
+             } = MetricStore.get_metrics(exporter)
+
+      assert sums == %{producer_tags => 3, consumer_tags => 5}
+      assert MapSet.new(Map.keys(distributions)) == MapSet.new([producer_tags, consumer_tags])
+      assert [{_bucket, {1, 3}}] = distributions |> Map.fetch!(producer_tags) |> Map.to_list()
+      assert [{_bucket, {1, 5}}] = distributions |> Map.fetch!(consumer_tags) |> Map.to_list()
+    end
+
     test "tags stale event drops by backend" do
       [metric] = drop_stale_metrics()
 
