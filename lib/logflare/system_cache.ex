@@ -1,51 +1,36 @@
 defmodule Logflare.SystemCache do
   @moduledoc false
 
-  import Cachex.Spec
+  @behaviour Logflare.Cache
 
   require Logger
 
-  alias Logflare.Utils
+  alias Logflare.Cache.CachexOps
 
   @cache __MODULE__
 
   def child_spec(_) do
-    stats = Application.get_env(:logflare, :cache_stats, false)
-    env = Application.get_env(:logflare, :env)
-
-    warmers =
-      if env == :test do
-        []
-      else
-        [
-          warmer(
-            required: false,
-            module: __MODULE__.Warmer,
-            name: __MODULE__.Warmer,
-            interval: :timer.seconds(3)
-          )
-        ]
+    warmer =
+      if Application.get_env(:logflare, :env) != :test do
+        {__MODULE__.Warmer, interval: :timer.seconds(3)}
       end
 
-    %{
-      id: __MODULE__,
-      start:
-        {Cachex, :start_link,
-         [
-           @cache,
-           [
-             warmers: warmers,
-             hooks:
-               [
-                 if(stats, do: Utils.cache_stats()),
-                 Utils.cache_limit(100)
-               ]
-               |> Enum.filter(& &1),
-             expiration: Utils.cache_expiration_sec(5, 5)
-           ]
-         ]}
-    }
+    CachexOps.child_spec(@cache,
+      limit: 100,
+      ttl: to_timeout(second: 5),
+      purge_interval: to_timeout(second: 5),
+      warmer: warmer
+    )
   end
+
+  @impl Logflare.Cache
+  def healthy?, do: CachexOps.healthy?(__MODULE__)
+
+  @impl Logflare.Cache
+  def stats, do: CachexOps.stats(__MODULE__)
+
+  @impl Logflare.Cache
+  def reset, do: CachexOps.reset(__MODULE__)
 
   @spec memory_utilization() :: float()
   def memory_utilization do

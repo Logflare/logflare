@@ -4,53 +4,49 @@ defmodule Logflare.ContextCacheTest do
   alias Ecto.Adapters.SQL
   alias Logflare.ContextCache
   alias Logflare.ContextCache.TransactionBroadcaster
-  alias Logflare.Sources
-  alias Logflare.Sources.Source
-  alias Logflare.Backends
-  alias Logflare.Backends.Backend
-  alias Logflare.Auth
 
-  describe "ContextCache" do
-    setup do
-      insert(:plan, name: "Free")
-      user = insert(:user)
-      source = insert(:source, user: user)
-      %{source: source, user: user}
+  defmodule Recording.Cache do
+    @behaviour Logflare.ContextCache
+
+    @impl true
+    def keys_to_bust(kw), do: record({:keys_to_bust, kw}, [:key])
+    @impl true
+    def delete_keys(keys), do: record({:delete_keys, keys}, {:ok, 1})
+    @impl true
+    def fetch(key, _getter), do: record({:fetch, key}, :fetched)
+    @impl true
+    def update(key, value), do: record({:update, key, value}, :ok)
+
+    defp record(call, result) do
+      send(self(), call)
+      result
+    end
+  end
+
+  test "bust_keys/1 with an empty list" do
+    assert {:ok, 0} = ContextCache.bust_keys([])
+  end
+
+  describe "context cache recording its callback calls" do
+    test "apply_fun/3" do
+      assert :fetched = ContextCache.apply_fun(Recording, :get, [1])
+      assert_received {:fetch, {:get, [1]}}
     end
 
-    test "bust_keys/1, does nothing for empty list" do
-      assert {:ok, 0} = ContextCache.bust_keys([])
+    test "update/4" do
+      assert :ok = ContextCache.update(Recording, :get, [1], :value)
+      assert_received {:update, {:get, [1]}, :value}
     end
 
-    test "apply_fun/3,  bust_keys/1 by :id field of value", %{source: source} do
-      Sources.Cache.get_by(token: source.token)
-      cache_key = {:get_by, [[token: source.token]]}
-      assert {:cached, %Source{}} = Cachex.get!(Sources.Cache, cache_key)
-
-      assert {:ok, 1} = ContextCache.bust_keys([{Sources, source.id}])
-      assert is_nil(Cachex.get!(Sources.Cache, cache_key))
-    end
-
-    test "apply_fun/3,  bust_keys/1 by :id field of value for :ok tuple", %{user: user} do
-      {:ok, key} = Auth.create_access_token(user)
-      assert {:ok, _token, _user} = Auth.Cache.verify_access_token(key.token)
-      cache_key = {:verify_access_token, [key.token]}
-      assert {:cached, {:ok, %_{}, _user}} = Cachex.get!(Auth.Cache, cache_key)
-
-      assert {:ok, 1} = ContextCache.bust_keys([{Auth, key.id}])
-      assert is_nil(Cachex.get!(Auth.Cache, cache_key))
-    end
-
-    test "apply_fun/3, bust_keys/1 if primary key is in list of returned structs", %{
-      source: source
-    } do
-      backend = insert(:backend, sources: [source])
-      Backends.Cache.list_backends(source_id: source.id)
-      cache_key = {:list_backends, [[source_id: source.id]]}
-      assert {:cached, [%Backend{}]} = Cachex.get!(Backends.Cache, cache_key)
-
-      assert {:ok, 1} = ContextCache.bust_keys([{Backends, backend.id}])
-      assert is_nil(Cachex.get!(Backends.Cache, cache_key))
+    for {name, bust, expected_kw} <- [
+          {"primary key", 5, [id: 5]},
+          {"keyword", [source_id: 5], [source_id: 5]}
+        ] do
+      test "bust_keys/1 with a #{name}" do
+        assert {:ok, 1} = ContextCache.bust_keys([{Recording, unquote(bust)}])
+        assert_received {:keys_to_bust, unquote(expected_kw)}
+        assert_received {:delete_keys, [:key]}
+      end
     end
   end
 
