@@ -1,16 +1,10 @@
-defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.FinchPoolTimeoutNormalizer do
+defmodule Logflare.Backends.Adaptor.HttpBased.FinchPoolTimeoutNormalizer do
   @moduledoc """
   Tesla middleware that turns a Finch HTTP/1 pool checkout timeout into `{:error, :pool_timeout}`.
 
-  Finch only returns `%Finch.Error{reason: :pool_timeout}` for HTTP/2 pools. On an
-  HTTP/1 pool — which both ClickHouse ingest pools are — a checkout timeout surfaces
-  as a `NimblePool` exit that `Finch.HTTP1.Pool` catches and re-raises as a
-  `RuntimeError`. An exception is invisible to `Tesla.Middleware.Retry`, which only
-  inspects the return value of the stack below it, so a saturated pool would neither
-  be retried nor counted as an insert failure.
-
-  Must sit *after* `Tesla.Middleware.Retry` in the middleware list so it runs inside
-  the retry loop and its `{:error, :pool_timeout}` is visible to `should_retry`.
+  Finch raises a `RuntimeError` when an HTTP/1 connection cannot be checked out in
+  time. Place this middleware before the adapter and after any retry middleware
+  so callers can handle the timeout as an ordinary transport error.
 
   Finch gives no structured way to tell this exception apart from any other
   `RuntimeError`, so it is matched on a stable fragment of the message and anything
