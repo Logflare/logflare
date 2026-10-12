@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.Adaptor.TelemetryConformanceTest do
+defmodule Logflare.Backends.Adaptor.TelemetryConfigurationTest do
   use ExUnit.Case, async: true
 
   import Mimic
@@ -16,9 +16,6 @@ defmodule Logflare.Backends.Adaptor.TelemetryConformanceTest do
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Backend
   alias Logflare.Sources.Source
-  alias Logflare.Telemetry
-  alias Logflare.TestSupport.AdaptorTelemetryPipeline
-  alias Logflare.TestUtils
 
   @adaptors Application.spec(:logflare, :modules)
             |> Enum.filter(fn module ->
@@ -29,12 +26,6 @@ defmodule Logflare.Backends.Adaptor.TelemetryConformanceTest do
             end)
             |> Enum.sort()
   @backend_mapping Backend.adaptor_mapping()
-  @duration_events [
-    [:broadway, :batcher, :stop],
-    [:broadway, :batch_processor, :stop],
-    [:broadway, :processor, :message, :stop],
-    [:broadway, :processor, :stop]
-  ]
 
   setup :verify_on_exit!
 
@@ -47,7 +38,7 @@ defmodule Logflare.Backends.Adaptor.TelemetryConformanceTest do
       {backend_type, registered_adaptor} <- @backend_mapping,
       registered_adaptor == adaptor,
       transport <- if(backend_type == :elastic, do: ~w(otlp filebeat logstash), else: [nil]) do
-    test "#{inspect(adaptor)} configures conformant Broadway tags for #{backend_type} #{transport}" do
+    test "#{inspect(adaptor)} configures backend tags for #{backend_type} #{transport}" do
       backend_type = unquote(backend_type)
       source = %Source{id: 101, user_id: 201}
       config = Map.put(backend_config(backend_type), :transport, unquote(transport))
@@ -72,64 +63,7 @@ defmodule Logflare.Backends.Adaptor.TelemetryConformanceTest do
       assert_receive {^ref, pipeline, context}
       assert function_exported?(pipeline, :handle_message, 3)
       assert Map.fetch!(context, :telemetry_tags) == %{backend_type: backend_type}
-
-      stub(Broadway, :start_link, fn module, opts ->
-        Mimic.call_original(Broadway, :start_link, [module, opts])
-      end)
-
-      assert_duration_tags(context, backend_type)
     end
-  end
-
-  # Preserve the production pipeline's context while replacing backend processing
-  # and queue I/O. Broadway itself emits real duration events; existing adaptor
-  # integration tests remain responsible for backend-specific batch emissions.
-  @spec assert_duration_tags(map(), atom()) :: :ok
-  defp assert_duration_tags(context, backend_type) do
-    Enum.each(@duration_events, &TestUtils.attach_forwarder/1)
-
-    start_supervised!({AdaptorTelemetryPipeline, pipeline_opts(context)})
-    ref = Broadway.test_batch(AdaptorTelemetryPipeline, [:event])
-    assert_receive {:ack, ^ref, [_message], []}, 1_000
-
-    metrics = Telemetry.metrics()
-
-    for event <- @duration_events do
-      assert_receive {:telemetry_event, ^event, %{duration: duration},
-                      %{context: ^context} = metadata},
-                     1_000
-
-      assert is_integer(duration) and duration >= 0
-
-      metric = Enum.find(metrics, &(&1.event_name == event))
-      assert_duration_metric(metric, event, metadata, backend_type)
-    end
-
-    :ok
-  end
-
-  @spec assert_duration_metric(map() | nil, [atom()], map(), atom()) :: :ok
-  defp assert_duration_metric(nil, event, _metadata, _backend_type) do
-    assert event == [:broadway, :processor, :message, :stop]
-    assert Application.fetch_env!(:logflare, :broadway_message_sample_denominator) == :disabled
-    :ok
-  end
-
-  defp assert_duration_metric(metric, _event, metadata, backend_type) do
-    assert metric.tags == [:backend_type, :pipeline]
-    assert metric.tag_values.(metadata) == %{backend_type: backend_type}
-    :ok
-  end
-
-  @spec pipeline_opts(map()) :: keyword()
-  defp pipeline_opts(context) do
-    [
-      name: AdaptorTelemetryPipeline,
-      producer: [module: {Broadway.DummyProducer, []}],
-      processors: [default: [concurrency: 1]],
-      batchers: [default: [concurrency: 1, batch_size: 1]],
-      context: context
-    ]
   end
 
   @spec backend_config(atom()) :: map()

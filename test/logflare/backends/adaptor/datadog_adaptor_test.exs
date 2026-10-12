@@ -128,6 +128,8 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
       this = self()
       ref = make_ref()
 
+      duration_event = [:broadway, :batch_processor, :stop]
+      TestUtils.attach_forwarder(duration_event)
       TestUtils.attach_forwarder([:logflare, :backends, :pipeline, :handle_batch])
 
       @client
@@ -142,7 +144,16 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
       assert_receive ^ref, 2000
 
       assert_receive {:telemetry_event, [:logflare, :backends, :pipeline, :handle_batch],
-                      _measurements, %{backend_type: :datadog}}
+                      %{batch_size: 1}, metadata}
+
+      assert metadata == %{backend_type: :datadog}
+
+      assert_receive {:telemetry_event, ^duration_event, %{duration: duration},
+                      %{context: %{telemetry_tags: tags}}},
+                     1_000
+
+      assert tags == %{backend_type: :datadog}
+      assert is_integer(duration) and duration >= 0
     end
 
     test "bug: nil event_message is still handled correctly ", %{source: source} do

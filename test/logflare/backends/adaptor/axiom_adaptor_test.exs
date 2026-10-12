@@ -185,7 +185,9 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
       assert_receive {^ref, gzipped}, 5000
 
       assert_receive {:telemetry_event, [:logflare, :backends, :pipeline, :handle_batch],
-                      _measurements, %{backend_type: :axiom}}
+                      %{batch_size: 1}, batch_metadata}
+
+      assert batch_metadata == %{backend_type: :axiom}
 
       metrics = Logflare.Telemetry.metrics()
 
