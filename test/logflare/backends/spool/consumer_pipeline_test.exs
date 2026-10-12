@@ -9,25 +9,20 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
   alias Logflare.Backends.Spool.MemoryMonitor
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.SpoolAck
+  alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
   alias Logflare.TestUtils
-
-  defmodule QueueStub do
-    def resolve(name), do: {:ok, name}
-  end
-
-  defmodule StorageStub do
-  end
 
   setup :verify_on_exit!
 
   test "configures spool-consumer telemetry tags" do
     previous_spool_config = Application.get_env(:logflare, :spool)
+    expect(QueueMod, :resolve, fn "test-queue" -> {:ok, "test-queue"} end)
 
     Application.put_env(:logflare, :spool,
       bucket: "test-bucket",
       queue_name: "test-queue",
-      queue_mod: QueueStub,
-      storage_mod: StorageStub
+      queue_mod: QueueMod,
+      storage_mod: StorageMod
     )
 
     on_exit(fn ->
@@ -41,6 +36,17 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
     TestUtils.assert_broadway_telemetry_tags(%{pipeline: :spool_consumer}, fn ->
       ConsumerPipeline.start_link(name: :spool_consumer_telemetry_tags_test)
     end)
+  end
+
+  test "emits spool batch telemetry with explicit pipeline tags" do
+    TestUtils.attach_forwarder([:logflare, :backends, :pipeline, :handle_batch])
+
+    assert [] = ConsumerPipeline.handle_batch(:default, [], %{size: 0, trigger: :timeout}, %{})
+
+    assert_receive {:telemetry_event, [:logflare, :backends, :pipeline, :handle_batch],
+                    %{batch_size: 0, batch_trigger: :timeout}, metadata}
+
+    assert metadata == %{pipeline: :spool_consumer, batch_trigger: :timeout}
   end
 
   defp record(source_id, event_id, extra_body \\ %{}) do
