@@ -56,7 +56,7 @@ defmodule Logflare.Sources.Cache do
 
   The entry must exist. A cached `nil` counts as an entry.
   """
-  @spec update_by_id(Source.t()) :: {:ok, boolean()} | {:error, term()}
+  @spec update_by_id(Source.t()) :: :ok
   def update_by_id(%Source{id: id} = source),
     do: Logflare.ContextCache.update(Sources, :get_by, [[id: id]], source)
 
