@@ -6,6 +6,7 @@ defmodule LogflareWeb.HealthCheckControllerTest do
 
   alias Logflare.Backends.Spool.Health
   alias Logflare.Readiness
+  alias Logflare.Repo
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source
 
@@ -36,7 +37,40 @@ defmodule LogflareWeb.HealthCheckControllerTest do
              "caches" => %{
                "Elixir.Logflare.Auth.Cache" => "ok"
              }
-           } = json_response(conn, 200)
+           } = response = json_response(conn, 200)
+
+    assert Decimal.compare(Decimal.new(response["repo_uptime"]), Decimal.new(0)) == :gt
+  end
+
+  test "a dropped Repo checkout makes the health check unhealthy", %{conn: conn} do
+    start_supervised!(Source.Supervisor)
+    repo = start_uptime_repo(queue_target: 1, queue_interval: 10)
+    event = [:db_connection, :connection_error]
+    ref = :telemetry_test.attach_event_handlers(self(), [event])
+    on_exit(fn -> :telemetry.detach(ref) end)
+
+    with_held_connection(repo, fn ->
+      assert %{"status" => "coming_up", "repo_uptime" => 0} =
+               conn |> get("/health") |> json_response(503)
+
+      assert_receive {^event, ^ref, %{count: 1},
+                      %{error: %DBConnection.ConnectionError{reason: :queue_timeout}}}
+    end)
+  end
+
+  test "a stalled Repo checkout is bounded independently of queue shedding", %{conn: conn} do
+    start_supervised!(Source.Supervisor)
+    repo = start_uptime_repo(queue_target: 500, queue_interval: 2_000)
+
+    with_held_connection(repo, fn ->
+      started_at = System.monotonic_time(:millisecond)
+      response = conn |> get("/health") |> json_response(503)
+      elapsed = System.monotonic_time(:millisecond) - started_at
+
+      assert %{"status" => "coming_up", "repo_uptime" => 0} = response
+      assert elapsed >= 900
+      assert elapsed < 2_000
+    end)
   end
 
   test "cache reporting unhealthy", %{conn: conn} do
@@ -252,6 +286,46 @@ defmodule LogflareWeb.HealthCheckControllerTest do
   defp reset_readiness do
     Readiness.initialize()
     Readiness.mark_ready()
+  end
+
+  defp start_uptime_repo(opts) do
+    opts =
+      Keyword.merge(
+        [name: nil, pool: DBConnection.ConnectionPool, pool_size: 1, timeout: 30_000],
+        opts
+      )
+
+    start_supervised!({Repo, opts})
+  end
+
+  defp with_held_connection(repo, fun) do
+    previous_repo = Repo.put_dynamic_repo(repo)
+    caller = self()
+
+    holder =
+      Task.async(fn ->
+        Repo.put_dynamic_repo(repo)
+
+        Repo.checkout(
+          fn ->
+            send(caller, :connection_held)
+
+            receive do
+              :release_connection -> :ok
+            end
+          end,
+          timeout: 10_000
+        )
+      end)
+
+    try do
+      assert_receive :connection_held, 1_000
+      fun.()
+    after
+      Repo.put_dynamic_repo(previous_repo)
+      send(holder.pid, :release_connection)
+      Task.await(holder, 1_000)
+    end
   end
 
   describe "Supabase mode - with seed" do
