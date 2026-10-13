@@ -325,8 +325,11 @@ defmodule LogflareWeb.HealthCheckControllerTest do
       :ok
     end
 
-    test "not ok", %{conn: conn} do
-      assert %{"status" => "coming_up"} = conn |> get("/health") |> json_response(503)
+    test "incomplete seeding prevents the startup latch", %{conn: conn} do
+      assert %{"status" => "coming_up", "checks" => "full"} =
+               conn |> get("/health") |> json_response(503)
+
+      refute Readiness.startup_checks_passed?()
     end
 
     test "not ready even when the application is accepting traffic", %{conn: conn} do
@@ -393,12 +396,39 @@ defmodule LogflareWeb.HealthCheckControllerTest do
       :ok
     end
 
-    test "ok", %{conn: conn} do
-      # :timer.sleep(500)
+    test "successful seeding latches health and skips database-dependent seed checks", %{
+      conn: conn
+    } do
       SingleTenant.create_supabase_sources()
       SingleTenant.create_supabase_endpoints()
 
-      assert %{"status" => "ok"} = conn |> get("/health") |> json_response(200)
+      assert %{"status" => "ok", "checks" => "full"} =
+               conn |> get("/health") |> json_response(200)
+
+      assert Readiness.startup_checks_passed?()
+      stub(SingleTenant, :supabase_mode_status, fn -> raise "unexpected seed status query" end)
+      repo = start_uptime_repo(queue_target: 500, queue_interval: 2_000)
+
+      with_held_connection(repo, fn ->
+        assert %{"status" => "ok", "checks" => "liveness", "repo_uptime" => nil} =
+                 conn |> get("/health") |> json_response(200)
+      end)
+    end
+
+    test "/ready still validates seed status after health has latched", %{conn: conn} do
+      SingleTenant.create_supabase_sources()
+      SingleTenant.create_supabase_endpoints()
+
+      assert %{"status" => "ok", "checks" => "full"} =
+               conn |> get("/health") |> json_response(200)
+
+      assert Readiness.startup_checks_passed?()
+      expect(SingleTenant, :supabase_mode_status, fn -> %{seed_user: nil} end)
+
+      assert %{"status" => "coming_up", "checks" => "full"} =
+               conn |> get("/ready") |> json_response(503)
+
+      assert Readiness.startup_checks_passed?()
     end
   end
 end
