@@ -148,7 +148,7 @@ defmodule Logflare.Sources.Source.Supervisor do
         {:error, reason}
 
       {:error, :start_timeout} = err ->
-        init_table(source.token)
+        SystemBackend.on_source_start(source)
         err
 
       {:error, _reason} = err ->
