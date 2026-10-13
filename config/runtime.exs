@@ -737,7 +737,7 @@ spool_blocking_override =
 # In :both mode, spools every event regardless of source.enable_spooling.
 # Off by default.
 spool_force_spooling_override =
-  case System.get_env("SPOOL_FORCE_SPOOLING") do
+  case System.get_env("SPOOL_BOTH_MODE_FORCE_SPOOLING") do
     v when v in [nil, ""] -> []
     v -> [force_spooling: v == "true"]
   end
