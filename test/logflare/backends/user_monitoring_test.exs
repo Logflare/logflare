@@ -633,6 +633,137 @@ defmodule Logflare.Backends.UserMonitoringTest do
     end
   end
 
+  defp start_traces_source(user) do
+    source = insert(:source, user: user, system_source: true, system_source_type: :traces)
+    start_supervised!({SourceSup, source}, id: :traces_source)
+    source
+  end
+
+  describe "endpoint query traces" do
+    setup do
+      start_supervised!(AllLogsLogged)
+      insert(:plan)
+      pid = self()
+
+      GoogleApi.BigQuery.V2.Api.Tabledata
+      |> stub(:bigquery_tabledata_insert_all, fn _conn,
+                                                 _project_id,
+                                                 _dataset_id,
+                                                 _table_name,
+                                                 opts ->
+        send(pid, {:insert_all, opts[:body].rows})
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      backend = insert(:backend, type: :clickhouse)
+      [backend: backend]
+    end
+
+    test "are routed to user's system.traces source with bytes read and labels", %{
+      backend: backend
+    } do
+      user = insert(:user, system_monitoring: true)
+      start_traces_source(user)
+
+      expect(ClickHouseAdaptor, :execute_query, fn _backend, _query, _opts ->
+        {:ok, QueryResult.new([%{"result" => "1"}], %{total_bytes_processed: 2_500_000_000})}
+      end)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          language: :ch_sql,
+          query: "SELECT 1 as result",
+          backend: backend,
+          labels: "my_label=some_value",
+          parsed_labels: %{"my_label" => "some_value"}
+        )
+
+      assert {:ok, _} = Endpoints.run_query(endpoint)
+      endpoint_id = endpoint.id
+      backend_id = backend.id
+
+      assert_receive {:insert_all,
+                      [
+                        %{
+                          json: %{
+                            "event_message" => "logflare.endpoints.query",
+                            "trace_id" => trace_id,
+                            "span_id" => span_id,
+                            "attributes" => [
+                              %{
+                                "my_label" => "some_value",
+                                "endpoint_id" => ^endpoint_id,
+                                "backend_id" => ^backend_id,
+                                "backend_type" => "clickhouse",
+                                "language" => "ch_sql",
+                                "status" => "ok",
+                                "total_bytes_processed" => 2_500_000_000,
+                                "total_gb_processed" => 2.5
+                              }
+                            ]
+                          }
+                        }
+                      ]},
+                     5_000
+
+      assert String.length(trace_id) == 32
+      assert String.length(span_id) == 16
+    end
+
+    test "include failed queries", %{backend: backend} do
+      user = insert(:user, system_monitoring: true)
+      start_traces_source(user)
+
+      expect(ClickHouseAdaptor, :execute_query, fn _backend, _query, _opts ->
+        {:error,
+         %QueryError{
+           kind: :backend_error,
+           raw_error: :boom,
+           backend: ClickHouseAdaptor,
+           description: "query failed"
+         }}
+      end)
+
+      endpoint =
+        insert(:endpoint, user: user, language: :ch_sql, query: "SELECT 1", backend: backend)
+
+      assert {:error, _} = Endpoints.run_query(endpoint)
+
+      assert_receive {:insert_all,
+                      [
+                        %{
+                          json: %{
+                            "attributes" => [
+                              %{
+                                "status" => "error",
+                                "error" => "query failed",
+                                "error_kind" => "backend_error",
+                                "total_bytes_processed" => 0
+                              }
+                            ]
+                          }
+                        }
+                      ]},
+                     5_000
+    end
+
+    test "are not routed when system monitoring is off", %{backend: backend} do
+      user = insert(:user, system_monitoring: false)
+      start_traces_source(user)
+
+      expect(ClickHouseAdaptor, :execute_query, fn _backend, _query, _opts ->
+        {:ok, QueryResult.new([%{"result" => "1"}], %{total_bytes_processed: 100})}
+      end)
+
+      endpoint =
+        insert(:endpoint, user: user, language: :ch_sql, query: "SELECT 1", backend: backend)
+
+      assert {:ok, _} = Endpoints.run_query(endpoint)
+      refute_receive {:insert_all, _}, 1_000
+    end
+  end
+
   describe "IngestPipeline flat-map format" do
     # Verifies that the flat-map events emitted by PullProducer (one map per ETS row)
     # are grouped and routed correctly by handle_batch — matching what the old

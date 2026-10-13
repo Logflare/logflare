@@ -5,7 +5,10 @@ defmodule Logflare.Backends.UserMonitoring do
 
   import Telemetry.Metrics
 
+  require OpenTelemetry.Tracer
+
   alias Logflare.Backends
+  alias Logflare.Backends.QueryError
   alias Logflare.Backends.UserMonitoring.IngestPipeline
   alias Logflare.Backends.UserMonitoring.SystemSourceStarter
   alias Logflare.Logs
@@ -15,6 +18,7 @@ defmodule Logflare.Backends.UserMonitoring do
 
   @store_name :user_metrics_store
   @delivering_key {__MODULE__, :delivering}
+  @bytes_per_gb 1_000_000_000
 
   def metrics do
     [
@@ -171,6 +175,105 @@ defmodule Logflare.Backends.UserMonitoring do
 
     SystemSourceStarter.request_start(source.id)
   end
+
+  @doc """
+  Sends a span for an endpoint query run to the system traces source of the user.
+
+  It acts only when the user has turned on system monitoring. The span attributes hold the query
+  metadata, the query labels, and the bytes that the query read. When the query runs in a traced
+  request, the span joins that trace.
+
+  The ingest runs in a separate task, so it does not add latency to the query and a failed
+  ingest can not fail the query.
+  """
+  @spec ingest_endpoint_query_trace(
+          {:ok, map()} | {:error, term()},
+          metadata :: map(),
+          start_time :: integer()
+        ) :: :ok
+  def ingest_endpoint_query_trace(result, %{"user_id" => user_id} = metadata, start_time)
+      when is_integer(user_id) do
+    with %{system_monitoring: true} <- Users.Cache.get(user_id),
+         %Sources.Source{} = source <-
+           Sources.Cache.get_by_for_ingest(user_id: user_id, system_source_type: :traces) do
+      span = endpoint_query_span(result, metadata, start_time, System.system_time(:nanosecond))
+
+      Task.Supervisor.start_child(
+        {:via, PartitionSupervisor, {Logflare.TaskSupervisors, source.id}},
+        fn ->
+          source
+          |> Sources.refresh_source_metrics_for_ingest()
+          |> then(&Processor.ingest([span], Logs.Raw, &1))
+        end
+      )
+    end
+
+    :ok
+  end
+
+  def ingest_endpoint_query_trace(_result, _metadata, _start_time), do: :ok
+
+  @spec endpoint_query_span(
+          {:ok, map()} | {:error, term()},
+          map(),
+          integer(),
+          integer()
+        ) :: map()
+  defp endpoint_query_span(result, metadata, start_time, end_time) do
+    {trace_id, parent_span_id} = current_trace_ids()
+    total_bytes_processed = total_bytes_processed(result)
+
+    attributes =
+      metadata
+      |> Map.merge(%{
+        "total_bytes_processed" => total_bytes_processed,
+        "total_gb_processed" => total_bytes_processed / @bytes_per_gb,
+        "duration_ms" => (end_time - start_time) / 1_000_000,
+        "status" => if(match?({:ok, _}, result), do: "ok", else: "error")
+      })
+      |> Map.merge(query_error_attributes(result))
+      |> Map.reject(fn {_key, value} -> is_nil(value) end)
+
+    %{
+      "event_message" => "logflare.endpoints.query",
+      "metadata" => %{"type" => "span"},
+      "trace_id" => trace_id,
+      "span_id" => random_hex_id(8),
+      "parent_span_id" => parent_span_id,
+      "kind" => "Internal",
+      "start_time" => start_time,
+      "end_time" => end_time,
+      "timestamp" => start_time,
+      "attributes" => attributes
+    }
+  end
+
+  @spec current_trace_ids() :: {String.t(), String.t()}
+  defp current_trace_ids do
+    span_ctx = OpenTelemetry.Tracer.current_span_ctx()
+
+    if span_ctx != :undefined and OpenTelemetry.Span.is_valid(span_ctx) do
+      {OpenTelemetry.Span.hex_trace_id(span_ctx), OpenTelemetry.Span.hex_span_id(span_ctx)}
+    else
+      {random_hex_id(16), ""}
+    end
+  end
+
+  defp random_hex_id(bytes),
+    do: bytes |> :crypto.strong_rand_bytes() |> Base.encode16(case: :lower)
+
+  defp total_bytes_processed({:ok, %{total_bytes_processed: bytes}}) when is_integer(bytes),
+    do: bytes
+
+  defp total_bytes_processed(_result), do: 0
+
+  defp query_error_attributes({:error, %QueryError{kind: kind, description: description}}),
+    do: %{"error_kind" => to_string(kind), "error" => description}
+
+  defp query_error_attributes({:error, error}) when is_binary(error) or is_atom(error),
+    do: %{"error" => to_string(error)}
+
+  defp query_error_attributes(_result), do: %{}
 
   defp get_system_source_logs(user_id) do
     Sources.Cache.get_by_for_ingest(user_id: user_id, system_source_type: :logs)

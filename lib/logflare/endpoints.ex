@@ -12,6 +12,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.Backend
   alias Logflare.Backends.QueryError
+  alias Logflare.Backends.UserMonitoring
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Endpoints.PiiRedactor
   alias Logflare.Endpoints.Resolver
@@ -633,14 +634,27 @@ defmodule Logflare.Endpoints do
         [:logflare, :endpoints, :run_query, :exec_query_on_backend],
         %{endpoint_id: endpoint_query.id, language: query_language},
         fn ->
-          exec_query_on_backend(
-            endpoint_query,
-            transformed_query,
-            declared_params,
-            params,
-            opts
+          start_time = System.system_time(:nanosecond)
+
+          result =
+            exec_query_on_backend(
+              endpoint_query,
+              transformed_query,
+              declared_params,
+              params,
+              opts
+            )
+
+          metadata = query_telemetry_metadata(endpoint_query)
+          emit_query_telemetry(result, metadata)
+
+          UserMonitoring.ingest_endpoint_query_trace(
+            result,
+            Map.put(metadata, "language", to_string(query_language)),
+            start_time
           )
-          |> emit_query_telemetry(endpoint_query)
+
+          {result, %{}}
         end
       )
     end
@@ -658,34 +672,31 @@ defmodule Logflare.Endpoints do
 
   defp put_endpoint_version_label(%EndpointQuery{} = endpoint_query), do: endpoint_query
 
-  @spec emit_query_telemetry(result :: run_query_return(), endpoint_query :: EndpointQuery.t()) ::
-          {run_query_return(), map()}
-  defp emit_query_telemetry({:ok, data} = result, endpoint_query) do
+  @spec query_telemetry_metadata(EndpointQuery.t()) :: map()
+  defp query_telemetry_metadata(endpoint_query) do
+    backend =
+      endpoint_query.backend_id && Backends.Cache.get_backend(endpoint_query.backend_id)
+
+    Map.merge(endpoint_query.parsed_labels || %{}, %{
+      "endpoint_id" => endpoint_query.id,
+      "endpoint_uuid" => Utils.stringify(endpoint_query.token),
+      "user_id" => endpoint_query.user_id,
+      "backend_id" => endpoint_query.backend_id,
+      "backend_type" => backend && to_string(backend.type)
+    })
+  end
+
+  @spec emit_query_telemetry(result :: run_query_return(), metadata :: map()) :: :ok
+  defp emit_query_telemetry({:ok, data}, metadata) do
     measurements = %{
       total_bytes_processed:
         if(is_integer(data.total_bytes_processed), do: data.total_bytes_processed, else: 0)
     }
 
-    backend =
-      endpoint_query.backend_id && Backends.Cache.get_backend(endpoint_query.backend_id)
-
-    metadata =
-      Map.merge(endpoint_query.parsed_labels || %{}, %{
-        "endpoint_id" => endpoint_query.id,
-        "endpoint_uuid" => Utils.stringify(endpoint_query.token),
-        "user_id" => endpoint_query.user_id,
-        "backend_id" => endpoint_query.backend_id,
-        "backend_type" => backend && to_string(backend.type)
-      })
-
     :telemetry.execute([:logflare, :endpoints, :query], measurements, metadata)
-
-    {result, %{}}
   end
 
-  defp emit_query_telemetry(result, _endpoint_query) do
-    {result, %{}}
-  end
+  defp emit_query_telemetry(_result, _metadata), do: :ok
 
   @doc """
   Runs a query string
