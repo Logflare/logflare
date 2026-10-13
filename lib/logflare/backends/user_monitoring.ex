@@ -255,7 +255,7 @@ defmodule Logflare.Backends.UserMonitoring do
   defp query_error_attributes({:error, error}) when is_binary(error) or is_atom(error),
     do: %{"error" => to_string(error)}
 
-  defp query_error_attributes(_result), do: %{}
+  defp query_error_attributes(_result), do: %{"error" => nil, "error_kind" => nil}
 
   defp get_system_source_logs(user_id) do
     Sources.Cache.get_by_for_ingest(user_id: user_id, system_source_type: :logs)

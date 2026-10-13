@@ -675,8 +675,8 @@ defmodule Logflare.Backends.UserMonitoringTest do
           language: :ch_sql,
           query: "SELECT 1 as result",
           backend: backend,
-          labels: "my_label=some_value",
-          parsed_labels: %{"my_label" => "some_value"}
+          labels: "my_label=some_value,error=forged",
+          parsed_labels: %{"my_label" => "some_value", "error" => "forged"}
         )
 
       assert {:ok, _} = Endpoints.run_query(endpoint)
@@ -699,7 +699,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
                                 "status" => "ok",
                                 "total_bytes_processed" => 2_500_000_000,
                                 "total_gb_processed" => 2.5
-                              }
+                              } = attributes
                             ]
                           }
                         }
@@ -708,6 +708,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
 
       assert String.length(trace_id) == 32
       assert String.length(span_id) == 16
+      refute Map.has_key?(attributes, "error")
     end
 
     test "include failed queries", %{backend: backend} do
