@@ -679,7 +679,7 @@ defmodule Logflare.Endpoints do
 
     Map.merge(endpoint_query.parsed_labels || %{}, %{
       "endpoint_id" => endpoint_query.id,
-      "endpoint_uuid" => Utils.stringify(endpoint_query.token),
+      "endpoint_uuid" => endpoint_query.token && Utils.stringify(endpoint_query.token),
       "user_id" => endpoint_query.user_id,
       "backend_id" => endpoint_query.backend_id,
       "backend_type" => backend && to_string(backend.type)

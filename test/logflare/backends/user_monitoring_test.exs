@@ -748,6 +748,23 @@ defmodule Logflare.Backends.UserMonitoringTest do
                      5_000
     end
 
+    test "omit endpoint identifiers for ad-hoc queries", %{backend: backend} do
+      user = insert(:user, system_monitoring: true)
+      start_traces_source(user)
+
+      expect(ClickHouseAdaptor, :execute_query, fn _backend, _query, _opts ->
+        {:ok, QueryResult.new([%{"result" => "1"}], %{total_bytes_processed: 100})}
+      end)
+
+      assert {:ok, _} =
+               Endpoints.run_query_string(user, {:ch_sql, "SELECT 1"}, backend_id: backend.id)
+
+      assert_receive {:insert_all, [%{json: %{"attributes" => [attributes]}}]}, 5_000
+      assert %{"total_bytes_processed" => 100, "status" => "ok"} = attributes
+      refute Map.has_key?(attributes, "endpoint_uuid")
+      refute Map.has_key?(attributes, "endpoint_id")
+    end
+
     test "are not routed when system monitoring is off", %{backend: backend} do
       user = insert(:user, system_monitoring: false)
       start_traces_source(user)
