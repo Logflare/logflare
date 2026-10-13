@@ -73,6 +73,59 @@ defmodule LogflareWeb.HealthCheckControllerTest do
     end)
   end
 
+  describe "startup latch" do
+    test "a full pass latches /health to node-local checks", %{conn: conn} do
+      start_supervised!(Source.Supervisor)
+      refute Readiness.startup_checks_passed?()
+
+      assert %{"status" => "ok", "checks" => "full"} =
+               conn |> get("/health") |> json_response(200)
+
+      assert Readiness.startup_checks_passed?()
+
+      assert %{"status" => "ok", "checks" => "liveness", "repo_uptime" => nil} =
+               conn |> get("/health") |> json_response(200)
+    end
+
+    test "a failed full check does not latch", %{conn: conn} do
+      start_supervised!(Source.Supervisor)
+      repo = start_uptime_repo(queue_target: 1, queue_interval: 10)
+
+      with_held_connection(repo, fn ->
+        assert %{"status" => "coming_up", "checks" => "full"} =
+                 conn |> get("/health") |> json_response(503)
+      end)
+
+      refute Readiness.startup_checks_passed?()
+    end
+
+    test "a latched node stays healthy while the Repo is unavailable", %{conn: conn} do
+      start_supervised!(Source.Supervisor)
+      Readiness.mark_startup_checks_passed()
+      repo = start_uptime_repo(queue_target: 500, queue_interval: 2_000)
+
+      with_held_connection(repo, fn ->
+        started_at = System.monotonic_time(:millisecond)
+
+        assert %{"status" => "ok", "checks" => "liveness", "repo_uptime" => nil} =
+                 conn |> get("/health") |> json_response(200)
+
+        assert System.monotonic_time(:millisecond) - started_at < 500
+      end)
+    end
+
+    test "/ready keeps checking the Repo after the latch", %{conn: conn} do
+      start_supervised!(Source.Supervisor)
+      Readiness.mark_startup_checks_passed()
+      repo = start_uptime_repo(queue_target: 1, queue_interval: 10)
+
+      with_held_connection(repo, fn ->
+        assert %{"status" => "coming_up", "checks" => "full", "repo_uptime" => 0} =
+                 conn |> get("/ready") |> json_response(503)
+      end)
+    end
+  end
+
   test "cache reporting unhealthy", %{conn: conn} do
     start_supervised!(Source.Supervisor)
     stub(Logflare.Partners.Cache, :healthy?, fn -> false end)
@@ -272,8 +325,11 @@ defmodule LogflareWeb.HealthCheckControllerTest do
       :ok
     end
 
-    test "not ok", %{conn: conn} do
-      assert %{"status" => "coming_up"} = conn |> get("/health") |> json_response(503)
+    test "incomplete seeding prevents the startup latch", %{conn: conn} do
+      assert %{"status" => "coming_up", "checks" => "full"} =
+               conn |> get("/health") |> json_response(503)
+
+      refute Readiness.startup_checks_passed?()
     end
 
     test "not ready even when the application is accepting traffic", %{conn: conn} do
@@ -340,12 +396,39 @@ defmodule LogflareWeb.HealthCheckControllerTest do
       :ok
     end
 
-    test "ok", %{conn: conn} do
-      # :timer.sleep(500)
+    test "successful seeding latches health and skips database-dependent seed checks", %{
+      conn: conn
+    } do
       SingleTenant.create_supabase_sources()
       SingleTenant.create_supabase_endpoints()
 
-      assert %{"status" => "ok"} = conn |> get("/health") |> json_response(200)
+      assert %{"status" => "ok", "checks" => "full"} =
+               conn |> get("/health") |> json_response(200)
+
+      assert Readiness.startup_checks_passed?()
+      stub(SingleTenant, :supabase_mode_status, fn -> raise "unexpected seed status query" end)
+      repo = start_uptime_repo(queue_target: 500, queue_interval: 2_000)
+
+      with_held_connection(repo, fn ->
+        assert %{"status" => "ok", "checks" => "liveness", "repo_uptime" => nil} =
+                 conn |> get("/health") |> json_response(200)
+      end)
+    end
+
+    test "/ready still validates seed status after health has latched", %{conn: conn} do
+      SingleTenant.create_supabase_sources()
+      SingleTenant.create_supabase_endpoints()
+
+      assert %{"status" => "ok", "checks" => "full"} =
+               conn |> get("/health") |> json_response(200)
+
+      assert Readiness.startup_checks_passed?()
+      expect(SingleTenant, :supabase_mode_status, fn -> %{seed_user: nil} end)
+
+      assert %{"status" => "coming_up", "checks" => "full"} =
+               conn |> get("/ready") |> json_response(503)
+
+      assert Readiness.startup_checks_passed?()
     end
   end
 end

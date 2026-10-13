@@ -308,9 +308,10 @@ livenessProbe:
   httpGet:
     path: /health
     port: http
-# `/ready` runs the same checks as `/health`, and additionally fails as soon as SIGTERM starts
-# the shutdown grace period, so a draining pod leaves the Service endpoints instead of taking
-# new traffic. Logflare drains for 15 seconds, so detection has to land well inside that.
+# `/health` skips database checks after the instance passes every check once; `/ready`
+# always includes them and fails as soon as SIGTERM starts the shutdown grace period,
+# so a draining pod leaves the Service endpoints instead of taking new traffic.
+# Logflare drains for 15 seconds, so detection has to land well inside that.
 readinessProbe:
   httpGet:
     path: /ready
