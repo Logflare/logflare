@@ -41,15 +41,7 @@ Contains application logs related to your sources, backends, and endpoints.
 
 ### system.traces
 
-Contains one span per endpoint query run, named `logflare.endpoints.query`. Each span includes `trace_id`, `span_id`, `start_time` and `end_time`, and these `attributes`:
-
-- **`total_bytes_processed`** and **`total_gb_processed`** - Bytes read by the query, and the same value in GB (10^9 bytes)
-- **`duration_ms`** - Query execution time
-- **`status`** - `ok` or `error`, with `error` and `error_kind` for failed queries
-- **`endpoint_id`**, **`endpoint_uuid`**, **`language`**, **`backend_id`**, **`backend_type`**
-- Query tags from the endpoint labels. See [Query Tagging with Labels](/concepts/endpoints#query-tagging-with-labels).
-
-When the query runs inside a traced request, the span joins the trace of that request.
+Contains one span per endpoint query run, named `logflare.endpoints.query`, with `start_time` and `end_time`. The `attributes` hold the bytes read by the query (`total_bytes_processed` and `total_gb_processed`), the query `status` (with `error` and `error_kind` on failure), the endpoint and backend identifiers, and the endpoint's [query labels](/concepts/endpoints#query-tagging-with-labels).
 
 ## Metrics Collected
 

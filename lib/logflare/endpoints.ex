@@ -645,14 +645,10 @@ defmodule Logflare.Endpoints do
               opts
             )
 
+          end_time = System.system_time(:nanosecond)
           metadata = query_telemetry_metadata(endpoint_query)
           emit_query_telemetry(result, metadata)
-
-          UserMonitoring.ingest_endpoint_query_trace(
-            result,
-            Map.put(metadata, "language", to_string(query_language)),
-            start_time
-          )
+          UserMonitoring.ingest_endpoint_query_trace(result, metadata, start_time, end_time)
 
           {result, %{}}
         end

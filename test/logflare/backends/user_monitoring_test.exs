@@ -696,7 +696,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
                                 "endpoint_id" => ^endpoint_id,
                                 "backend_id" => ^backend_id,
                                 "backend_type" => "clickhouse",
-                                "language" => "ch_sql",
                                 "status" => "ok",
                                 "total_bytes_processed" => 2_500_000_000,
                                 "total_gb_processed" => 2.5
