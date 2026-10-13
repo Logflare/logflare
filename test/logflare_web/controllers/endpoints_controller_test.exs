@@ -384,7 +384,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
   end
 
   describe "lf-endpoint-version" do
-    setup do
+    setup context do
       insert(:plan, name: "Free")
       user = insert(:user)
       {_source, backend} = Logflare.DataCase.setup_clickhouse_test(user: user)
@@ -394,11 +394,12 @@ defmodule LogflareWeb.EndpointsControllerTest do
                  user,
                  %{
                    name: "versioned-clickhouse-endpoint",
-                   query: "select 'historical' as versioned_value",
+                   query:
+                     "with data as (select 'historical' as versioned_value) select versioned_value from data",
                    backend_id: backend.id,
-                   cache_duration_seconds: 0,
+                   cache_duration_seconds: context[:cache_duration_seconds] || 0,
                    enable_auth: false,
-                   sandboxable: false,
+                   sandboxable: true,
                    labels: "endpoint_version=caller"
                  },
                  user
@@ -409,7 +410,8 @@ defmodule LogflareWeb.EndpointsControllerTest do
                  user,
                  endpoint,
                  %{
-                   query: "select 'current' as versioned_value",
+                   query:
+                     "with data as (select 'current' as versioned_value) select versioned_value from data",
                    sandboxable: true
                  },
                  user
@@ -447,21 +449,50 @@ defmodule LogflareWeb.EndpointsControllerTest do
       assert %{"result" => [%{"versioned_value" => "historical"}]} = json_response(conn, 200)
     end
 
-    test "uses version sandboxability when deciding whether to parse body", %{
+    @tag cache_duration_seconds: 60
+    test "current sandboxing controls cached overrides for a sandboxable historical version", %{
       conn: init_conn,
-      endpoint: endpoint
+      endpoint: endpoint,
+      user: user
     } do
+      assert {:ok, %{sandboxable: true} = versioned} =
+               Endpoints.get_endpoint_query_at_version(endpoint, 1)
+
       conn =
         init_conn
+        |> put_req_header("x-api-key", user.api_key)
         |> put_req_header("content-type", "application/json")
         |> put_req_header("lf-endpoint-version", "1")
-        |> get(
-          ~p"/endpoints/query/#{endpoint.token}",
-          Jason.encode!(%{sql: "select 'override' as versioned_value"})
+
+      path = ~p"/api/endpoints/query/#{endpoint.name}"
+      params = %{"sql" => "SELECT 'override' AS versioned_value"}
+      body = Jason.encode!(params)
+
+      cache_pid =
+        start_supervised!(
+          {Endpoints.ResultsCache,
+           {versioned, Map.put(params, "token_or_name", endpoint.name), []}}
         )
 
-      assert %{"result" => [%{"versioned_value" => "historical"}]} = json_response(conn, 200)
-      refute conn.halted
+      response = get(conn, path, body)
+
+      assert %{"result" => [%{"versioned_value" => "override"}]} = json_response(response, 200)
+
+      reject(&ClickHouseAdaptor.execute_query/3)
+
+      assert %{"result" => [%{"versioned_value" => "override"}]} =
+               conn |> get(path, body) |> json_response(200)
+
+      assert {:ok, endpoint} =
+               Endpoints.update_query(user, endpoint, %{sandboxable: false}, user)
+
+      Logflare.ContextCache.bust_keys([{Endpoints, endpoint.id}])
+
+      assert {:ok, %{rows: [%{"versioned_value" => "override"}]}} =
+               Endpoints.ResultsCache.query(cache_pid)
+
+      assert %{"error" => "SQL and LQL overrides are disabled for this endpoint"} =
+               conn |> get(path, body) |> json_response(400)
     end
 
     test "returns version not found for a missing version", %{
@@ -558,6 +589,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
         insert(:endpoint,
           user: user,
           enable_auth: true,
+          sandboxable: true,
           query: "with a as (select 1 as b) select b from a",
           labels: ",my_label=@my_param,other_value,my=value,"
         )

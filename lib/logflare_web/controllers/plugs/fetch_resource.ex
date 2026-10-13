@@ -28,7 +28,7 @@ defmodule LogflareWeb.Plugs.FetchResource do
     name = params["source_name"] || params["collection_name"]
 
     source =
-      Sources.Cache.get_by_and_preload_rules(name: name, user_id: user.id)
+      Sources.Cache.get_by_for_ingest(name: name, user_id: user.id)
       |> Sources.refresh_source_metrics_for_ingest()
 
     assign(conn, :source, source)
@@ -43,7 +43,7 @@ defmodule LogflareWeb.Plugs.FetchResource do
     source =
       case uuid?(token) do
         true ->
-          Sources.Cache.get_by_and_preload_rules(token: token)
+          Sources.Cache.get_by_for_ingest(token: token)
           |> Sources.refresh_source_metrics_for_ingest()
 
         _ ->

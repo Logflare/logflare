@@ -1,29 +1,17 @@
 defmodule Logflare.Billing.Cache do
   @moduledoc false
 
+  use Logflare.ContextCache
+
   alias Logflare.Billing
-  alias Logflare.Utils
+  alias Logflare.Cache.CachexOps
 
   def child_spec(_) do
-    stats = Application.get_env(:logflare, :cache_stats, false)
-
-    %{
-      id: __MODULE__,
-      start:
-        {Cachex, :start_link,
-         [
-           __MODULE__,
-           [
-             hooks:
-               [
-                 if(stats, do: Utils.cache_stats()),
-                 Utils.cache_limit(100_000)
-               ]
-               |> Enum.filter(& &1),
-             expiration: Utils.cache_expiration_min(180, 10)
-           ]
-         ]}
-    }
+    CachexOps.child_spec(__MODULE__,
+      limit: 100_000,
+      ttl: to_timeout(hour: 3),
+      purge_interval: to_timeout(minute: 10)
+    )
   end
 
   def get_billing_account_by(keyword) do

@@ -190,6 +190,100 @@ externalSecrets:
 
 Per-entry `refreshInterval` and `creationPolicy` overrides are also supported; see `values.yaml` for the full set of fields. This block is ESO-specific by design, so support for other providers (for example a HashiCorp Vault Agent integration) can be added as a sibling block without disturbing it.
 
+## Ingress
+
+`ingress` renders one Ingress in front of the release's Service, with `annotations` passed through
+verbatim so any controller's conventions work.
+
+A path can name its own backend. Leave `serviceName` and `servicePortName` empty and the path is
+backed by the release's own Service on `service.port`, which is the default. `serviceName` points
+the path at another Service in the release's namespace, and `servicePortName` selects a port by
+name rather than by number:
+
+```yaml
+ingress:
+  enabled: true
+  hosts:
+    - host: logflare.example.com
+      paths:
+        # The release's own Service on service.port.
+        - path: /
+          pathType: Prefix
+        # The Rollout's preview Service, so an incoming version can be reached by path.
+        - path: /preview
+          pathType: Prefix
+          serviceName: logflare-preview
+        # The chart's named gRPC port instead of service.port.
+        - path: /opentelemetry.proto.collector
+          pathType: Prefix
+          servicePortName: grpc
+```
+
+`extraIngresses` renders further Ingress objects, each taking the same shape as `ingress` plus a
+required `nameSuffix`. Reach for it when a release's routes cannot share one object, either because
+they belong on different ingress classes or because an annotation applies per Ingress rather than
+per rule. gRPC needs the second: a backend protocol version set on a Service covers every port that
+Service serves, including its HTTP one.
+
+```yaml
+extraIngresses:
+  - nameSuffix: grpc
+    className: alb
+    annotations:
+      alb.ingress.kubernetes.io/backend-protocol-version: GRPC
+    hosts:
+      - host: otel.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+            servicePortName: grpc
+```
+
+`ingress.enabled` does not gate these. An entry present in the list is rendered.
+
+### Several releases behind one load balancer
+
+One cluster often runs several releases with distinct jobs, one serving the query UI and one or
+more taking ingest, so that each updates on its own schedule. Where the ingress controller merges
+Ingresses onto a single load balancer, values describe that whole topology one release at a time.
+
+With the [AWS Load Balancer
+Controller](https://kubernetes-sigs.github.io/aws-load-balancer-controller/) the merge is an
+IngressGroup. Every release names the same group and sets an explicit evaluation order. The
+controller evaluates rules in that order rather than by path specificity, so without one a `/` rule
+swallows a more specific sibling from another release.
+
+The ingest release:
+
+```yaml
+ingress:
+  annotations:
+    alb.ingress.kubernetes.io/group.name: logflare.public
+    alb.ingress.kubernetes.io/group.order: "10"
+  hosts:
+    - host: logflare.example.com
+      paths:
+        - path: /logs
+          pathType: Prefix
+```
+
+The query release, evaluated after it:
+
+```yaml
+ingress:
+  annotations:
+    alb.ingress.kubernetes.io/group.name: logflare.public
+    alb.ingress.kubernetes.io/group.order: "100"
+  hosts:
+    - host: logflare.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+```
+
+A rule only names a Service in its own Ingress's namespace, so each release owns the rules that
+reach it and no release describes another's routes.
+
 ## Progressive delivery with Argo Rollouts
 
 Set `rollout.enabled` and the chart renders an [Argo Rollouts](https://argo-rollouts.readthedocs.io/)
@@ -223,6 +317,48 @@ kubectl argo rollouts promote logflare
 
 A canary strategy goes in the same place. If you route canary traffic through an ingress controller
 or a service mesh, add the matching `trafficRouting` block and the Services it names.
+
+Some traffic routers take the backend from an annotation the controller writes rather than from the
+rule itself, which is what `servicePortName` is for. Argo Rollouts' ALB router is one: it rewrites
+an `alb.ingress.kubernetes.io/actions.<service>` annotation on each step, and the rule has to defer
+to it.
+
+```yaml
+ingress:
+  enabled: true
+  annotations:
+    # Seeded so the rule resolves before the first rollout, then owned by Argo Rollouts.
+    alb.ingress.kubernetes.io/actions.logflare: >
+      {"type":"forward","forwardConfig":{"targetGroups":[
+        {"serviceName":"logflare","servicePort":"4000","weight":100}]}}
+  hosts:
+    - host: logflare.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          servicePortName: use-annotation
+
+rollout:
+  enabled: true
+  strategy:
+    canary:
+      stableService: logflare
+      canaryService: logflare-preview
+      trafficRouting:
+        alb:
+          ingress: logflare
+          servicePort: 4000
+      steps:
+        - setWeight: 5
+        - pause: {}
+```
+
+Two things to check when the Rollout is reconciled by a GitOps controller. It must not revert the
+action annotation mid step, so exclude that annotation from drift detection. And a strategy that
+sizes the canary from the traffic weight can land on a single pod, which is below
+`LOGFLARE_MIN_CLUSTER_SIZE` once `RELEASE_COOKIE` is bound per ReplicaSet (see [Configuration that
+differs per version](#configuration-that-differs-per-version)), so set `minPodsPerReplicaSet` to at
+least that.
 
 When `autoscaling.enabled` is also set, the HorizontalPodAutoscaler targets the `Rollout` rather
 than the `Deployment` automatically.
@@ -289,6 +425,9 @@ empty string, so the same values stay safe with the `Deployment`.
 | `deploymentAnnotations` | — | Annotations on the Deployment object. Set `reloader.stakater.com/auto: "true"` to roll pods on ConfigMap/Secret changes (requires Stakater Reloader) |
 | `logflare.extraConfig` | (any) | Map of non-secret env vars rendered verbatim into the ConfigMap |
 | `extraEnv` | (any) | Env vars appended to the container, rendered verbatim so `valueFrom` works. For values that must differ per version rather than per release. See [Progressive delivery](#progressive-delivery-with-argo-rollouts) |
+| `ingress.hosts[].paths[].serviceName` | — | Service this path routes to, in the release's namespace. Defaults to the release's own Service. See [Ingress](#ingress) |
+| `ingress.hosts[].paths[].servicePortName` | — | Port name on that Service, instead of the `service.port` number. See [Ingress](#ingress) |
+| `extraIngresses` | — | Further Ingress objects, each shaped like `ingress` plus a required `nameSuffix`. See [Ingress](#ingress) |
 | `rollout.enabled` | — | Render an Argo Rollouts `Rollout` in place of the `Deployment`, plus a `<fullname>-preview` Service |
 | `rollout.strategy` | — | Passed to the `Rollout` verbatim. Required when `rollout.enabled` is set |
 | `rollout.progressDeadlineSeconds` | — | Must cover a full pod start, which `startupProbe` alone allows `failureThreshold` x `periodSeconds` seconds for |
