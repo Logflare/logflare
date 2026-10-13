@@ -17,7 +17,7 @@ config :phoenix, :serve_endpoints, true
 config :logflare, Logflare.Repo,
   prepare: :unnamed,
   timeout: 30_000,
-  queue_target: 500,
+  queue_target: 2_000,
   port: 5432
 
 config :logger,
