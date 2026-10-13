@@ -471,9 +471,11 @@ helm install logflare ./helm -f my-values.yaml --dry-run
 
 All three probes hit the service port (default `4000`).
 
-- `livenessProbe` and `startupProbe` use `/health`, which reports node health.
-- `readinessProbe` uses `/ready`, which runs the same checks and additionally
-  fails as soon as a `SIGTERM` starts Logflare's 15 second shutdown grace
+- `livenessProbe` and `startupProbe` use `/health`, which runs every check,
+  database included, until the instance passes once. After that it checks only
+  node-local health, so database outages do not trigger liveness restarts.
+- `readinessProbe` uses `/ready`, which always runs every check, database included,
+  and fails as soon as a `SIGTERM` starts Logflare's 15 second shutdown grace
   period, so Kubernetes drops the pod from the Service while it drains.
 - Keep `readinessProbe.periodSeconds` x `readinessProbe.failureThreshold` well
   under that grace period, and leave liveness on `/health` so a draining pod is
