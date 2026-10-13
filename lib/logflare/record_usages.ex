@@ -2,8 +2,9 @@ defmodule Logflare.RecordUsages do
   @moduledoc """
   Tracks recent usage separately from resource records without invalidating their caches.
 
-  Usage is buffered locally and persisted every five minutes. Unflushed usage may be lost
-  on node failure; missing usage means unknown, not never used.
+  Usage is buffered locally and persisted every five minutes, with a best-effort final
+  flush during graceful shutdown. Unflushed usage may still be lost on node failure or
+  if the shutdown flush fails or times out. Missing usage means unknown, not never used.
 
   Each resource type has a unique foreign key in `record_usages` with cascading deletes.
   Adding a resource requires a nullable foreign key, a unique index, extending the
