@@ -744,6 +744,22 @@ defmodule Logflare.Backends.UserMonitoringTest do
                      5_000
     end
 
+    test "a failed ingest does not fail the query", %{backend: backend} do
+      user = insert(:user, system_monitoring: true)
+
+      expect(ClickHouseAdaptor, :execute_query, fn _backend, _query, _opts ->
+        {:ok, QueryResult.new([%{"result" => "1"}], %{total_bytes_processed: 100})}
+      end)
+
+      stub(Sources.Cache, :get_by_for_ingest, fn _kv -> raise "cache down" end)
+
+      endpoint =
+        insert(:endpoint, user: user, language: :ch_sql, query: "SELECT 1", backend: backend)
+
+      assert capture_log(fn -> assert {:ok, _} = Endpoints.run_query(endpoint) end) =~
+               "Failed to ingest endpoint query span"
+    end
+
     test "omit endpoint identifiers for ad-hoc queries", %{backend: backend} do
       user = insert(:user, system_monitoring: true)
       start_traces_source(user)

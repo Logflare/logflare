@@ -161,6 +161,25 @@ defmodule Logflare.Sources do
     {:ok, source}
   end
 
+  @doc """
+  Provisions the missing system sources of users with system monitoring turned on.
+  """
+  @spec reconcile_system_sources() :: :ok
+  def reconcile_system_sources do
+    types = Source.system_source_types()
+
+    from(u in User,
+      left_join: s in Source,
+      on: s.user_id == u.id and s.system_source_type in ^types,
+      where: u.system_monitoring,
+      group_by: u.id,
+      having: count(s.id) < ^length(types),
+      select: u.id
+    )
+    |> Repo.all()
+    |> Enum.each(&create_user_system_sources/1)
+  end
+
   @doc "
   Create system sources for the user, if they don't exist yet
   "

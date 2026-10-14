@@ -58,6 +58,7 @@ defmodule Logflare.Application do
     opts = [strategy: :one_for_one, name: Logflare.Supervisor]
 
     with {:ok, supervisor} <- Supervisor.start_link(children, opts) do
+      reconcile_system_sources(env)
       Logflare.Readiness.mark_ready()
       {:ok, supervisor}
     end
@@ -177,6 +178,9 @@ defmodule Logflare.Application do
   defp set_global_logger_metadata do
     :logger.update_primary_config(%{metadata: global_logger_metadata()})
   end
+
+  defp reconcile_system_sources(:test), do: :ok
+  defp reconcile_system_sources(_env), do: Logflare.Sources.reconcile_system_sources()
 
   defp start_user_log_interceptor do
     if Application.get_env(:logflare, :env) == :test do

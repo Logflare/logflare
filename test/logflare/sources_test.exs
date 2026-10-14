@@ -737,6 +737,37 @@ defmodule Logflare.SourcesTest do
     end
   end
 
+  describe "reconcile_system_sources/0" do
+    setup do
+      insert(:plan)
+      :ok
+    end
+
+    test "provisions missing system sources of users with system monitoring only" do
+      unprovisioned = insert(:user, system_monitoring: true)
+      partial = insert(:user, system_monitoring: true)
+      provisioned = insert(:user, system_monitoring: true)
+      unmonitored = insert(:user, system_monitoring: false)
+
+      insert(:source, user: partial, system_source: true, system_source_type: :metrics)
+      existing = Sources.create_user_system_sources(provisioned.id)
+
+      assert :ok = Sources.reconcile_system_sources()
+
+      for user <- [unprovisioned, partial, provisioned] do
+        assert user.id
+               |> Sources.list_system_sources_by_user()
+               |> Enum.map(& &1.system_source_type)
+               |> Enum.sort() == Enum.sort(Source.system_source_types())
+      end
+
+      assert Enum.map(Sources.list_system_sources_by_user(provisioned.id), & &1.id) ==
+               Enum.map(existing, & &1.id)
+
+      assert Sources.list_system_sources_by_user(unmonitored.id) == []
+    end
+  end
+
   describe "labels validation and normalization" do
     setup do
       insert(:plan)

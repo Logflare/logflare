@@ -553,7 +553,8 @@ if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
             %{
               probability: default_sample_ratio
             }},
-         local_parent_not_sampled: {LogflareWeb.OpenTelemetrySampler, %{probability: 0.0}}
+         local_parent_not_sampled: {LogflareWeb.OpenTelemetrySampler, %{probability: 0.0}},
+         remote_parent_not_sampled: {LogflareWeb.OpenTelemetrySampler, %{probability: 0.0}}
        }}
 
   config :opentelemetry_exporter,

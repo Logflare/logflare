@@ -188,7 +188,8 @@ config :opentelemetry,
     {:parent_based,
      %{
        root: {LogflareWeb.OpenTelemetrySampler, %{probability: 0.0}},
-       local_parent_not_sampled: {LogflareWeb.OpenTelemetrySampler, %{probability: 0.0}}
+       local_parent_not_sampled: {LogflareWeb.OpenTelemetrySampler, %{probability: 0.0}},
+       remote_parent_not_sampled: {LogflareWeb.OpenTelemetrySampler, %{probability: 0.0}}
      }}
 
 config :logflare, Logflare.Vault, json_library: Jason

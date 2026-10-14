@@ -4,11 +4,12 @@ defmodule Logflare.Backends.UserMonitoring.SpanProcessor do
   `system.traces` source of users with system monitoring.
 
   `LogflareWeb.OpenTelemetrySampler` samples these spans for such users. The ingest runs in the
-  process that ends the span.
+  process that ends the span. A failed ingest is logged and never fails the query.
   """
 
   @behaviour :otel_span_processor
 
+  require Logger
   require Record
 
   alias Logflare.Logs
@@ -27,7 +28,18 @@ defmodule Logflare.Backends.UserMonitoring.SpanProcessor do
   def on_start(_ctx, span, _config), do: span
 
   @impl :otel_span_processor
-  def on_end(span(name: @span_name, attributes: attributes) = span, _config) do
+  def on_end(span(name: @span_name) = span, _config) do
+    ingest(span)
+    true
+  end
+
+  def on_end(_span, _config), do: true
+
+  @impl :otel_span_processor
+  def force_flush(_config), do: :ok
+
+  @spec ingest(tuple()) :: term()
+  defp ingest(span(attributes: attributes) = span) do
     attributes = :otel_attributes.map(attributes)
 
     with user_id when is_integer(user_id) <- attributes["user_id"],
@@ -40,14 +52,12 @@ defmodule Logflare.Backends.UserMonitoring.SpanProcessor do
         Sources.refresh_source_metrics_for_ingest(source)
       )
     end
-
-    true
+  catch
+    kind, reason ->
+      Logger.warning("Failed to ingest endpoint query span",
+        error_string: Exception.format(kind, reason)
+      )
   end
-
-  def on_end(_span, _config), do: true
-
-  @impl :otel_span_processor
-  def force_flush(_config), do: :ok
 
   @spec to_event(tuple(), map()) :: map()
   defp to_event(span, attributes) do
