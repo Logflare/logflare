@@ -92,7 +92,6 @@ defmodule Logflare.NetworkingTest do
                   :default => [
                     protocols: [:http1],
                     conn_max_idle_time: 5_000,
-                    start_pool_metrics?: true,
                     conn_opts: [
                       transport_opts: [
                         timeout: 5_000,
@@ -174,7 +173,7 @@ defmodule Logflare.NetworkingTest do
   end
 
   describe "S3 drain pool" do
-    test "expires idle drain connections and enables pool metrics without tuning spool pools" do
+    test "expires idle drain connections without enabling pool metrics or tuning spool pools" do
       previous = Application.get_env(:logflare, :spool, [])
       Application.put_env(:logflare, :spool, provider: :aws, mode: :both)
       on_exit(fn -> Application.put_env(:logflare, :spool, previous) end)
@@ -186,7 +185,7 @@ defmodule Logflare.NetworkingTest do
 
       drain_config = pools[Logflare.FinchS3].default
       assert Keyword.fetch!(drain_config, :conn_max_idle_time) == 5_000
-      assert Keyword.fetch!(drain_config, :start_pool_metrics?) == true
+      refute Keyword.get(drain_config, :start_pool_metrics?, false)
       assert Keyword.fetch!(drain_config, :protocols) == [:http1]
 
       for name <- [Logflare.FinchSpoolS3, Logflare.FinchSpoolSQS] do

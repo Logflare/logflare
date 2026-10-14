@@ -108,21 +108,6 @@ defmodule Logflare.TelemetryTest do
              end)
     end
 
-    test "exports Finch occupancy and capacity as last-value gauges" do
-      metrics = Telemetry.metrics()
-
-      for measurement <- [:in_flight_requests, :in_use_connections, :available_connections] do
-        name = [:logflare, :system, :finch, measurement]
-        metric = Enum.find(metrics, &(&1.name == name))
-
-        assert metric
-        assert to_string(metric.__struct__) == "Elixir.Telemetry.Metrics.LastValue"
-        assert metric.event_name == [:logflare, :system, :finch]
-        assert metric.measurement == measurement
-        assert metric.tags == [:pool, :url]
-      end
-    end
-
     test "aggregates Finch idle expiry without endpoint-derived attributes" do
       event = [:finch, :conn_max_idle_time_exceeded]
       name = "finch.conn_max_idle_time_exceeded.idle_time"
