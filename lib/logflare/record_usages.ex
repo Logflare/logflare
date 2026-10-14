@@ -22,7 +22,7 @@ defmodule Logflare.RecordUsages do
 
   @spec record(resource_type(), pos_integer()) :: :ok
   def record(OauthAccessToken = resource_type, id) do
-    Cache.record({resource_type, id}, DateTime.utc_now())
+    Cache.record({resource_type, id}, System.system_time(:second))
   end
 
   @spec persist(Cache.snapshot()) :: :ok
@@ -38,7 +38,10 @@ defmodule Logflare.RecordUsages do
 
     rows =
       Enum.map(entries, fn {{_type, id}, timestamp} ->
-        %{foreign_key => id, :last_used_at => timestamp}
+        %{
+          foreign_key => id,
+          :last_used_at => DateTime.from_unix!(timestamp, :second)
+        }
       end)
 
     query =

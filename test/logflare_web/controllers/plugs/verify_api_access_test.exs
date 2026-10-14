@@ -26,7 +26,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
 
   describe "access token usage" do
     test "records requests on both cache misses and hits", %{access_token: token, user: user} do
-      before_request = DateTime.utc_now()
+      before_request = System.system_time(:second)
 
       build_conn(:post, "/logs")
       |> put_req_header("authorization", "Bearer #{token.token}")
@@ -36,7 +36,11 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       first_use =
         RecordUsages.Cache.snapshot() |> Map.new() |> Map.fetch!({OauthAccessToken, token.id})
 
-      assert DateTime.compare(first_use, before_request) in [:eq, :gt]
+      assert is_integer(first_use)
+      assert first_use >= before_request
+
+      RecordUsages.Cache.acknowledge([{{OauthAccessToken, token.id}, first_use}])
+      assert RecordUsages.Cache.snapshot() == []
 
       reject(&Auth.verify_access_token/2)
 
@@ -48,7 +52,8 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       last_use =
         RecordUsages.Cache.snapshot() |> Map.new() |> Map.fetch!({OauthAccessToken, token.id})
 
-      assert DateTime.compare(last_use, first_use) == :gt
+      assert is_integer(last_use)
+      assert last_use >= first_use
     end
 
     test "authenticates partners without recording usage", %{conn: conn} do
