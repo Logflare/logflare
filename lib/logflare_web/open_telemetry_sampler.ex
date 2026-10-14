@@ -1,6 +1,8 @@
 defmodule LogflareWeb.OpenTelemetrySampler do
   @behaviour :otel_sampler
 
+  alias Logflare.Users
+
   @impl :otel_sampler
   def setup(opts) do
     :otel_sampler_trace_id_ratio_based.setup(opts.probability)
@@ -60,6 +62,7 @@ defmodule LogflareWeb.OpenTelemetrySampler do
       ) do
     config =
       case {span_name, Map.get(attributes, :"url.path")} do
+        {"logflare.endpoints.query", _} -> endpoint_query_config(attributes, sampler_config)
         {"ingest." <> _, _} -> ingest_config()
         {_, "/logs" <> _} -> ingest_config()
         {_, "/api/logs" <> _} -> ingest_config()
@@ -99,13 +102,22 @@ defmodule LogflareWeb.OpenTelemetrySampler do
     end
   end
 
+  defp endpoint_query_config(%{"user_id" => user_id}, sampler_config) when is_integer(user_id) do
+    case Users.Cache.get(user_id) do
+      %{system_monitoring: true} -> :otel_sampler_trace_id_ratio_based.setup(1.0)
+      _ -> sampler_config
+    end
+  end
+
+  defp endpoint_query_config(_attributes, sampler_config), do: sampler_config
+
   defp ingest_config do
-    prob = Application.get_env(:logflare, :ingest_sample_ratio)
+    prob = Application.get_env(:logflare, :ingest_sample_ratio, 0.0)
     :otel_sampler_trace_id_ratio_based.setup(prob)
   end
 
   defp endpoint_config do
-    prob = Application.get_env(:logflare, :endpoint_sample_ratio)
+    prob = Application.get_env(:logflare, :endpoint_sample_ratio, 0.0)
     :otel_sampler_trace_id_ratio_based.setup(prob)
   end
 end

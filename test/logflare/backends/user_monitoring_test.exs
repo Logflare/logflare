@@ -2,6 +2,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
   use Logflare.DataCase, async: false
 
   require Logger
+  require OpenTelemetry.Tracer
 
   import ExUnit.CaptureLog
 
@@ -675,11 +676,18 @@ defmodule Logflare.Backends.UserMonitoringTest do
           language: :ch_sql,
           query: "SELECT 1 as result",
           backend: backend,
-          labels: "my_label=some_value,error=forged",
-          parsed_labels: %{"my_label" => "some_value", "error" => "forged"}
+          labels: "my_label=some_value",
+          parsed_labels: %{"my_label" => "some_value"}
         )
 
-      assert {:ok, _} = Endpoints.run_query(endpoint)
+      parent_ctx =
+        OpenTelemetry.Tracer.with_span "request" do
+          assert {:ok, _} = Endpoints.run_query(endpoint)
+          OpenTelemetry.Tracer.current_span_ctx()
+        end
+
+      trace_id = OpenTelemetry.Span.hex_trace_id(parent_ctx)
+      parent_span_id = OpenTelemetry.Span.hex_span_id(parent_ctx)
       endpoint_id = endpoint.id
       backend_id = backend.id
 
@@ -688,27 +696,22 @@ defmodule Logflare.Backends.UserMonitoringTest do
                         %{
                           json: %{
                             "event_message" => "logflare.endpoints.query",
-                            "trace_id" => trace_id,
-                            "span_id" => span_id,
+                            "trace_id" => ^trace_id,
+                            "parent_span_id" => ^parent_span_id,
+                            "status" => [%{"code" => "ok"}],
                             "attributes" => [
                               %{
                                 "my_label" => "some_value",
                                 "endpoint_id" => ^endpoint_id,
                                 "backend_id" => ^backend_id,
                                 "backend_type" => "clickhouse",
-                                "status" => "ok",
-                                "total_bytes_processed" => 2_500_000_000,
-                                "total_gb_processed" => 2.5
-                              } = attributes
+                                "total_bytes_processed" => 2_500_000_000
+                              }
                             ]
                           }
                         }
                       ]},
                      5_000
-
-      assert String.length(trace_id) == 32
-      assert String.length(span_id) == 16
-      refute Map.has_key?(attributes, "error")
     end
 
     test "include failed queries", %{backend: backend} do
@@ -734,14 +737,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
                       [
                         %{
                           json: %{
-                            "attributes" => [
-                              %{
-                                "status" => "error",
-                                "error" => "query failed",
-                                "error_kind" => "backend_error",
-                                "total_bytes_processed" => 0
-                              }
-                            ]
+                            "status" => [%{"code" => "error", "message" => "query failed"}]
                           }
                         }
                       ]},
@@ -760,7 +756,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
                Endpoints.run_query_string(user, {:ch_sql, "SELECT 1"}, backend_id: backend.id)
 
       assert_receive {:insert_all, [%{json: %{"attributes" => [attributes]}}]}, 5_000
-      assert %{"total_bytes_processed" => 100, "status" => "ok"} = attributes
+      assert %{"total_bytes_processed" => 100} = attributes
       refute Map.has_key?(attributes, "endpoint_uuid")
       refute Map.has_key?(attributes, "endpoint_id")
     end

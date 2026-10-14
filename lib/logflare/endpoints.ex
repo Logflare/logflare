@@ -5,6 +5,7 @@ defmodule Logflare.Endpoints do
   import Logflare.Utils.Guards
 
   require Logger
+  require OpenTelemetry.Tracer
 
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
@@ -12,7 +13,6 @@ defmodule Logflare.Endpoints do
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.Backend
   alias Logflare.Backends.QueryError
-  alias Logflare.Backends.UserMonitoring
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Endpoints.PiiRedactor
   alias Logflare.Endpoints.Resolver
@@ -634,23 +634,22 @@ defmodule Logflare.Endpoints do
         [:logflare, :endpoints, :run_query, :exec_query_on_backend],
         %{endpoint_id: endpoint_query.id, language: query_language},
         fn ->
-          start_time = System.system_time(:nanosecond)
-
-          result =
-            exec_query_on_backend(
-              endpoint_query,
-              transformed_query,
-              declared_params,
-              params,
-              opts
-            )
-
-          end_time = System.system_time(:nanosecond)
           metadata = query_telemetry_metadata(endpoint_query)
-          emit_query_telemetry(result, metadata)
-          UserMonitoring.ingest_endpoint_query_trace(result, metadata, start_time, end_time)
 
-          {result, %{}}
+          OpenTelemetry.Tracer.with_span "logflare.endpoints.query", %{attributes: metadata} do
+            result =
+              exec_query_on_backend(
+                endpoint_query,
+                transformed_query,
+                declared_params,
+                params,
+                opts
+              )
+
+            put_query_span_result(result)
+            emit_query_telemetry(result, metadata)
+            {result, %{}}
+          end
         end
       )
     end
@@ -681,6 +680,25 @@ defmodule Logflare.Endpoints do
       "backend_type" => backend && to_string(backend.type)
     })
   end
+
+  @spec put_query_span_result(run_query_return()) :: boolean()
+  defp put_query_span_result({:ok, %{total_bytes_processed: bytes}}) do
+    OpenTelemetry.Tracer.set_attribute(
+      "total_bytes_processed",
+      if(is_integer(bytes), do: bytes, else: 0)
+    )
+
+    OpenTelemetry.Tracer.set_status(:ok, "")
+  end
+
+  defp put_query_span_result({:error, %QueryError{description: description}}),
+    do: OpenTelemetry.Tracer.set_status(:error, description || "")
+
+  defp put_query_span_result({:error, error}) when is_binary(error),
+    do: OpenTelemetry.Tracer.set_status(:error, error)
+
+  defp put_query_span_result({:error, error}),
+    do: OpenTelemetry.Tracer.set_status(:error, inspect(error))
 
   @spec emit_query_telemetry(result :: run_query_return(), metadata :: map()) :: :ok
   defp emit_query_telemetry({:ok, data}, metadata) do

@@ -41,7 +41,7 @@ Contains application logs related to your sources, backends, and endpoints.
 
 ### system.traces
 
-Contains one span per endpoint query run, named `logflare.endpoints.query`, with `start_time` and `end_time`. The `attributes` hold the bytes read by the query (`total_bytes_processed` and `total_gb_processed`), the query `status` (with `error` and `error_kind` on failure), the endpoint and backend identifiers, and the endpoint's [query labels](/concepts/endpoints#query-tagging-with-labels).
+Contains the OpenTelemetry span of each endpoint query run, named `logflare.endpoints.query`, with its `trace_id`, `span_id`, `parent_span_id`, `start_time`, `end_time` and `status`. The `attributes` hold the bytes read by the query (`total_bytes_processed`), the endpoint and backend identifiers, and the endpoint's [query labels](/concepts/endpoints#query-tagging-with-labels).
 
 ## Metrics Collected
 

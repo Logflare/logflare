@@ -79,6 +79,8 @@ config :logflare, Oban, testing: :manual
 config :phoenix_test, otp_app: :logflare, endpoint: LogflareWeb.Endpoint
 
 config :opentelemetry,
-  sdk_disabled: false,
-  span_processor: :simple,
-  traces_exporter: :none
+  processors: [
+    {Logflare.Backends.UserMonitoring.SpanProcessor, %{}},
+    {:otel_simple_processor, %{name: :global}}
+  ],
+  sampler: {:parent_based, %{root: :always_on}}

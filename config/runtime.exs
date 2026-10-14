@@ -539,8 +539,11 @@ if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
     |> filter_nil_kv_pairs.()
 
   config :opentelemetry,
-    sdk_disabled: false,
     traces_exporter: :otlp,
+    processors: [
+      {Logflare.Backends.UserMonitoring.SpanProcessor, %{}},
+      {:otel_batch_processor, %{name: :global}}
+    ],
     resource: logflare_trace_metadata,
     sampler:
       {:parent_based,
@@ -549,7 +552,8 @@ if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
            {LogflareWeb.OpenTelemetrySampler,
             %{
               probability: default_sample_ratio
-            }}
+            }},
+         local_parent_not_sampled: {LogflareWeb.OpenTelemetrySampler, %{probability: 0.0}}
        }}
 
   config :opentelemetry_exporter,

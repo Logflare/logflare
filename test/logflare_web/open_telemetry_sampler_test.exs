@@ -76,6 +76,29 @@ defmodule LogflareWeb.OpenTelemetrySamplerTest do
       end
     end
 
+    test "samples endpoint query spans of users with system monitoring", %{
+      ctx: ctx,
+      trace_id: trace_id,
+      links: links
+    } do
+      sampler_config = OpenTelemetrySampler.setup(%{probability: 0.0})
+
+      for {system_monitoring, decision} <- [{true, :record_and_sample}, {false, :drop}] do
+        user = insert(:user, system_monitoring: system_monitoring)
+
+        assert {^decision, _attrs, _state} =
+                 OpenTelemetrySampler.should_sample(
+                   ctx,
+                   trace_id,
+                   links,
+                   "logflare.endpoints.query",
+                   :internal,
+                   %{"user_id" => user.id},
+                   sampler_config
+                 )
+      end
+    end
+
     test "samples endpoint routes with endpoint sample ratio", %{
       ctx: ctx,
       trace_id: trace_id,

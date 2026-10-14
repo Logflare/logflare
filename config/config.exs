@@ -182,9 +182,14 @@ config :logflare, Oban,
   repo: Logflare.Repo
 
 config :opentelemetry,
-  sdk_disabled: true,
-  span_processor: :batch,
-  traces_exporter: :none
+  traces_exporter: :none,
+  processors: [{Logflare.Backends.UserMonitoring.SpanProcessor, %{}}],
+  sampler:
+    {:parent_based,
+     %{
+       root: {LogflareWeb.OpenTelemetrySampler, %{probability: 0.0}},
+       local_parent_not_sampled: {LogflareWeb.OpenTelemetrySampler, %{probability: 0.0}}
+     }}
 
 config :logflare, Logflare.Vault, json_library: Jason
 
