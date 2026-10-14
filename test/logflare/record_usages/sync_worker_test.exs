@@ -14,12 +14,12 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
     user = insert(:user)
     {:ok, token} = Auth.create_access_token(user)
     original = Repo.reload!(token)
-    timestamp = ~U[2026-01-01 00:00:00.000000Z]
+    timestamp = ~U[2026-01-01 00:00:00Z]
 
     assert {:ok, cached_token, _} = Auth.Cache.verify_access_token(token.token, [])
 
     refute Ecto.assoc_loaded?(cached_token.usage)
-    Cache.record({OauthAccessToken, token.id}, timestamp)
+    Cache.record({OauthAccessToken, token.id}, DateTime.to_unix(timestamp, :second))
 
     assert :ok = perform_job(SyncWorker, %{})
     assert [%{usage: %{last_used_at: ^timestamp}}] = Auth.list_valid_access_tokens(user)
@@ -33,15 +33,19 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
   test "flushing older usage does not overwrite a newer persisted timestamp" do
     user = insert(:user)
     token = insert(:access_token, resource_owner: user)
-    old = ~U[2025-12-31 23:59:59.000000Z]
-    latest = ~U[2026-01-01 00:00:00.000000Z]
+    old = ~U[2025-12-31 23:59:59Z]
+    latest = ~U[2026-01-01 00:00:00Z]
 
-    Cache.record({OauthAccessToken, token.id}, latest)
+    Cache.record({OauthAccessToken, token.id}, DateTime.to_unix(latest, :second))
     assert :ok = perform_job(SyncWorker, %{})
     assert [%{usage: %{last_used_at: ^latest}}] = Auth.list_valid_access_tokens(user)
 
-    Cache.record({OauthAccessToken, token.id}, old)
-    assert Cache.snapshot() == [{{OauthAccessToken, token.id}, old}]
+    Cache.record({OauthAccessToken, token.id}, DateTime.to_unix(old, :second))
+
+    assert Cache.snapshot() == [
+             {{OauthAccessToken, token.id}, DateTime.to_unix(old, :second)}
+           ]
+
     assert :ok = perform_job(SyncWorker, %{})
     assert [%{usage: %{last_used_at: ^latest}}] = Auth.list_valid_access_tokens(user)
   end
@@ -66,20 +70,23 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
   test "acknowledgement preserves newer usage received during persistence" do
     user = insert(:user)
     token = insert(:access_token, resource_owner: user)
-    old = ~U[2025-12-31 23:59:59.000000Z]
-    latest = ~U[2026-01-01 00:00:00.000000Z]
-    Cache.record({OauthAccessToken, token.id}, old)
+    old = ~U[2025-12-31 23:59:59Z]
+    latest = ~U[2026-01-01 00:00:00Z]
+    Cache.record({OauthAccessToken, token.id}, DateTime.to_unix(old, :second))
 
     stub(RecordUsages, :persist, fn entries ->
       result = call_original(RecordUsages, :persist, [entries])
-      Cache.record({OauthAccessToken, token.id}, latest)
-      Cache.record({OauthAccessToken, token.id}, old)
+      Cache.record({OauthAccessToken, token.id}, DateTime.to_unix(latest, :second))
+      Cache.record({OauthAccessToken, token.id}, DateTime.to_unix(old, :second))
       result
     end)
 
     assert :ok = perform_job(SyncWorker, %{})
     assert [%{usage: %{last_used_at: ^old}}] = Auth.list_valid_access_tokens(user)
-    assert Cache.snapshot() == [{{OauthAccessToken, token.id}, latest}]
+
+    assert Cache.snapshot() == [
+             {{OauthAccessToken, token.id}, DateTime.to_unix(latest, :second)}
+           ]
 
     stub(RecordUsages, :persist, &call_original(RecordUsages, :persist, [&1]))
 
@@ -114,14 +121,16 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
     user = insert(:user)
     remote_token = insert(:access_token, resource_owner: user)
     local_token = insert(:access_token, resource_owner: user)
-    timestamp = ~U[2026-01-01 00:00:00.000000Z]
-    Cache.record({OauthAccessToken, local_token.id}, timestamp)
+    timestamp = ~U[2026-01-01 00:00:00Z]
+    timestamp_seconds = DateTime.to_unix(timestamp, :second)
+    Cache.record({OauthAccessToken, local_token.id}, timestamp_seconds)
 
     stub(Utils, :erpc_multicall, fn
       _nodes, Cache, :snapshot, [] ->
         [
           {:"offline@127.0.0.1", {:error, {:erpc, :noconnection}}},
-          {:"unreachable@127.0.0.1", {:ok, [{{OauthAccessToken, remote_token.id}, timestamp}]}},
+          {:"unreachable@127.0.0.1",
+           {:ok, [{{OauthAccessToken, remote_token.id}, timestamp_seconds}]}},
           {node(), {:ok, Cache.snapshot()}}
         ]
 

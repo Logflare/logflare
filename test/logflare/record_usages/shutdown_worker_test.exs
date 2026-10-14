@@ -17,8 +17,8 @@ defmodule Logflare.RecordUsages.ShutdownWorkerTest do
 
   test "supervised shutdown persists local usage" do
     token = insert(:access_token)
-    timestamp = ~U[2026-01-01 00:00:00.000000Z]
-    Cache.record({OauthAccessToken, token.id}, timestamp)
+    timestamp = ~U[2026-01-01 00:00:00Z]
+    Cache.record({OauthAccessToken, token.id}, DateTime.to_unix(timestamp, :second))
 
     assert :ok = Supervisor.terminate_child(Logflare.Supervisor, ShutdownWorker)
 
