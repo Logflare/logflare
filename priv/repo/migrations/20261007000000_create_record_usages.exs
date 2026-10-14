@@ -4,7 +4,7 @@ defmodule Logflare.Repo.Migrations.CreateRecordUsages do
   def change do
     create table(:record_usages) do
       add :oauth_access_token_id, references(:oauth_access_tokens, on_delete: :delete_all)
-      add :last_used_at, :utc_datetime_usec, null: false
+      add :last_used_at, :utc_datetime, null: false
     end
 
     create unique_index(:record_usages, [:oauth_access_token_id])

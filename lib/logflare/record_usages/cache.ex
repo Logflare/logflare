@@ -1,6 +1,7 @@
 defmodule Logflare.RecordUsages.Cache do
   @moduledoc """
   Node-local cache to buffer record usage.
+  Timestamps are UTC Unix seconds.
   Entries are retained until persisted (see `Logflare.RecordUsages.SyncWorker` and `Logflare.RecordUsages.ShutdownWorker`).
   """
 
@@ -11,7 +12,7 @@ defmodule Logflare.RecordUsages.Cache do
   alias Logflare.Cache.CachexOps
 
   @type key :: {module(), pos_integer()}
-  @type snapshot :: [{key(), DateTime.t()}]
+  @type snapshot :: [{key(), integer()}]
 
   @spec child_spec(term()) :: Supervisor.child_spec()
   def child_spec(_options) do
@@ -20,11 +21,11 @@ defmodule Logflare.RecordUsages.Cache do
     Supervisor.child_spec({Cachex, name: __MODULE__, ordered: true, hooks: hooks}, id: __MODULE__)
   end
 
-  @spec record(key(), DateTime.t()) :: :ok
+  @spec record(key(), integer()) :: :ok
   def record(key, timestamp) do
     Cachex.get_and_update!(__MODULE__, key, fn
       nil -> {:commit, timestamp}
-      previous -> {:commit, Enum.max([previous, timestamp], DateTime)}
+      previous -> {:commit, max(previous, timestamp)}
     end)
 
     :ok
@@ -42,7 +43,7 @@ defmodule Logflare.RecordUsages.Cache do
     Enum.each(entries, &acknowledge_entry/1)
   end
 
-  @spec acknowledge_entry({key(), DateTime.t()}) :: :ok
+  @spec acknowledge_entry({key(), integer()}) :: :ok
   defp acknowledge_entry({key, timestamp}) do
     {:ok, _} =
       Cachex.transaction(__MODULE__, [key], fn cache ->
