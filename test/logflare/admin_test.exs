@@ -8,6 +8,149 @@ defmodule Logflare.AdminTest do
     :ok
   end
 
+  test "grant_admin/2 sets admin flag on a regular user and is idempotent" do
+    granter = insert(:user, admin: true)
+    user = insert(:user, admin: false)
+
+    assert {:ok, updated} = Admin.grant_admin(granter, user)
+    assert updated.admin == true
+
+    already_admin = insert(:user, admin: true)
+    assert {:ok, still_admin} = Admin.grant_admin(granter, already_admin)
+    assert still_admin.admin == true
+  end
+
+  test "grant_admin/2 returns not_found when target user does not exist" do
+    granter = insert(:user, admin: true)
+    assert {:error, :not_found} = Admin.grant_admin(granter, nil)
+  end
+
+  test "grant_admin/2 returns unauthorized when granter is not an admin" do
+    non_admin = insert(:user, admin: false)
+    target = insert(:user, admin: false)
+
+    assert {:error, :unauthorized} = Admin.grant_admin(non_admin, target)
+    refute Logflare.Users.get(target.id).admin
+  end
+
+  test "grant_admin/2 rejects a stale granter whose admin was revoked in the DB" do
+    granter = insert(:user, admin: true)
+    target = insert(:user, admin: false)
+
+    # Revoke granter's admin in DB while holding the stale in-memory struct.
+    Logflare.Repo.update!(Ecto.Changeset.change(granter, admin: false))
+
+    assert {:error, :unauthorized} = Admin.grant_admin(granter, target)
+    refute Logflare.Users.get(target.id).admin
+  end
+
+  test "grant_admin/2 does not propagate admin access to the target's team members" do
+    granter = insert(:user, admin: true)
+    target = insert(:user, admin: false)
+    target_team = insert(:team, user: target)
+    team_member = insert(:team_user, email: "member@example.com", team: target_team)
+
+    assert {:ok, updated} = Admin.grant_admin(granter, target)
+    assert updated.admin == true
+
+    refute Admin.admin?(team_member.email)
+  end
+
+  test "admin?/1 does not return true for team members of a non-admin user" do
+    owner = insert(:user, admin: false)
+    team = insert(:team, user: owner)
+    team_member = insert(:team_user, email: "member@example.com", team: team)
+
+    refute Admin.admin?(owner.email)
+    refute Admin.admin?(team_member.email)
+  end
+
+  test "admin?/1 is based solely on the user's own admin flag, not team membership" do
+    owner = insert(:user, admin: false)
+    team = insert(:team, user: owner)
+
+    non_admin_user = insert(:user, admin: false)
+    admin_user = insert(:user, admin: true)
+
+    insert(:team_user, email: non_admin_user.email, team: team)
+    insert(:team_user, email: admin_user.email, team: team)
+
+    refute Admin.admin?(non_admin_user.email)
+    assert Admin.admin?(admin_user.email)
+  end
+
+  test "revoke_admin/2 removes admin flag from an admin user" do
+    granter = insert(:user, admin: true)
+    target = insert(:user, admin: true)
+
+    assert {:ok, updated} = Admin.revoke_admin(granter, target)
+    refute updated.admin
+    refute Admin.admin?(target.email)
+  end
+
+  test "revoke_admin/2 prevents revoking the last admin" do
+    granter = insert(:user, admin: true)
+    # granter is the only admin — revoking target would leave zero admins
+    target = insert(:user, admin: true)
+    Logflare.Repo.update!(Ecto.Changeset.change(granter, admin: false))
+
+    assert {:error, :last_admin} = Admin.revoke_admin(granter, target)
+    assert Logflare.Users.get(target.id).admin
+  end
+
+  test "revoke_admin/2 succeeds when at least one other admin remains" do
+    _other_admin = insert(:user, admin: true)
+    granter = insert(:user, admin: true)
+    target = insert(:user, admin: true)
+
+    assert {:ok, updated} = Admin.revoke_admin(granter, target)
+    refute updated.admin
+  end
+
+  test "revoke_admin/2 prevents an admin from revoking their own privileges" do
+    admin = insert(:user, admin: true)
+    assert {:error, :self_revocation} = Admin.revoke_admin(admin, admin)
+    assert Admin.admin?(admin.email)
+  end
+
+  test "revoke_admin/2 returns not_found when target user does not exist" do
+    granter = insert(:user, admin: true)
+    assert {:error, :not_found} = Admin.revoke_admin(granter, nil)
+  end
+
+  test "revoke_admin/2 returns unauthorized when granter is not an admin" do
+    non_admin = insert(:user, admin: false)
+    target = insert(:user, admin: true)
+
+    assert {:error, :unauthorized} = Admin.revoke_admin(non_admin, target)
+    assert Admin.admin?(target.email)
+  end
+
+  test "grant_admin/2 returns not_found when granter is nil" do
+    target = insert(:user, admin: false)
+    assert {:error, :not_found} = Admin.grant_admin(nil, target)
+    refute Logflare.Users.get(target.id).admin
+  end
+
+  test "revoke_admin/2 returns not_found when granter is nil" do
+    target = insert(:user, admin: true)
+    assert {:error, :not_found} = Admin.revoke_admin(nil, target)
+    assert Logflare.Users.get(target.id).admin
+  end
+
+  test "revoke_admin/2 rejects a stale granter whose admin was revoked in the DB" do
+    granter = insert(:user, admin: true)
+    target = insert(:user, admin: true)
+    # Third admin so the last-admin guard doesn't fire.
+    _other_admin = insert(:user, admin: true)
+
+    # Revoke granter's admin in DB while holding the stale in-memory struct.
+    Logflare.Repo.update!(Ecto.Changeset.change(granter, admin: false))
+
+    assert {:error, :unauthorized} = Admin.revoke_admin(granter, target)
+    assert Logflare.Users.get(target.id).admin
+  end
+
   test "admin?/1" do
     user = insert(:user, admin: true)
     home_team = insert(:team, user: user)
@@ -16,10 +159,11 @@ defmodule Logflare.AdminTest do
     other_team_user = insert(:team_user)
 
     assert Admin.admin?(user.email)
-    assert Admin.admin?(team_user.email)
 
     refute Admin.admin?("invalid@email.com")
     refute Admin.admin?(other_user.email)
+    # team members of an admin user must not inherit admin privileges
+    refute Admin.admin?(team_user.email)
     refute Admin.admin?(other_team_user.email)
   end
 end
