@@ -5,6 +5,8 @@ defmodule Logflare.Logs.IngestTransformers do
   alias Logflare.Logs.Ingest.MetadataCleaner
 
   @alphanumeric_regex ~r/\W/
+  # Above this size, scanning an all-empty map allocates less than deleting every key.
+  @all_empty_map_threshold 16
   @max_field_length 128
 
   @typep direct_transform :: :clean_to_bigquery_column_spec | :to_bigquery_column_spec
@@ -22,7 +24,8 @@ defmodule Logflare.Logs.IngestTransformers do
 
   @spec transform(map(), direct_transform() | [transform_rule()]) :: map()
   def transform(log_params, :clean_to_bigquery_column_spec) when is_map(log_params) do
-    clean_and_to_bigquery_column_spec(log_params)
+    {cleaned, _changed?} = clean_and_to_bigquery_column_spec(log_params)
+    cleaned
   catch
     :throw, :normalized_bigquery_column_collision ->
       log_params
@@ -38,46 +41,104 @@ defmodule Logflare.Logs.IngestTransformers do
     Enum.reduce(rules, log_params, &do_transform(&2, &1))
   end
 
+  @spec clean_and_to_bigquery_column_spec(map() | list()) :: {map() | list(), boolean()}
+  defp clean_and_to_bigquery_column_spec(%_{} = data), do: {rebuild_clean_map(data), true}
+
   defp clean_and_to_bigquery_column_spec(data) when is_map(data) do
+    if map_size(data) >= @all_empty_map_threshold and all_empty_map?(data) do
+      {%{}, true}
+    else
+      copy_on_write_clean_map(data)
+    end
+  end
+
+  defp clean_and_to_bigquery_column_spec(data) when is_list(data) do
+    clean_list(data, [], false)
+  end
+
+  @spec clean_list(list(), list(), boolean()) :: {list(), boolean()}
+  defp clean_list([], acc, changed?), do: {Enum.reverse(acc), changed?}
+
+  defp clean_list([value | rest], acc, _changed?) when is_nil_or_empty(value) do
+    clean_list(rest, acc, true)
+  end
+
+  defp clean_list([value | rest], acc, changed?) when is_map(value) or is_list(value) do
+    {cleaned, value_changed?} = clean_and_to_bigquery_column_spec(value)
+
+    if is_nil_or_empty(cleaned) do
+      clean_list(rest, acc, true)
+    else
+      clean_list(rest, [cleaned | acc], changed? or value_changed?)
+    end
+  end
+
+  defp clean_list([value | rest], acc, changed?), do: clean_list(rest, [value | acc], changed?)
+
+  @spec copy_on_write_clean_map(map()) :: {map(), boolean()}
+  defp copy_on_write_clean_map(data) do
     :maps.fold(
       fn
-        _k, v, acc when is_nil_or_empty(v) ->
+        key, value, {acc, _changed?} when is_nil_or_empty(value) ->
+          {Map.delete(acc, key), true}
+
+        key, value, {acc, _changed?} = state when is_map(value) or is_list(value) ->
+          {cleaned, value_changed?} = clean_and_to_bigquery_column_spec(value)
+
+          if is_nil_or_empty(cleaned) do
+            {Map.delete(acc, key), true}
+          else
+            update_bigquery_column(state, key, cleaned, value_changed?)
+          end
+
+        key, value, state ->
+          update_bigquery_column(state, key, value, false)
+      end,
+      {data, false},
+      data
+    )
+  end
+
+  @spec rebuild_clean_map(map()) :: map()
+  defp rebuild_clean_map(data) do
+    :maps.fold(
+      fn
+        _key, value, acc when is_nil_or_empty(value) ->
           acc
 
-        k, v, acc when is_map(v) or is_list(v) ->
-          cleaned = clean_and_to_bigquery_column_spec(v)
+        key, value, acc when is_map(value) or is_list(value) ->
+          {cleaned, _changed?} = clean_and_to_bigquery_column_spec(value)
 
           if is_nil_or_empty(cleaned) do
             acc
           else
-            put_bigquery_column(acc, k, cleaned)
+            put_bigquery_column(acc, key, cleaned)
           end
 
-        k, v, acc ->
-          put_bigquery_column(acc, k, v)
+        key, value, acc ->
+          put_bigquery_column(acc, key, value)
       end,
       %{},
       data
     )
   end
 
-  defp clean_and_to_bigquery_column_spec(data) when is_list(data) do
-    data
-    |> Enum.reduce([], fn
-      x, acc when is_nil_or_empty(x) ->
-        acc
+  defp all_empty_map?(data), do: all_empty_map_iterator?(:maps.iterator(data))
 
-      x, acc when is_map(x) or is_list(x) ->
-        cleaned = clean_and_to_bigquery_column_spec(x)
-        if is_nil_or_empty(cleaned), do: acc, else: [cleaned | acc]
+  defp all_empty_map_iterator?(iterator) do
+    case :maps.next(iterator) do
+      {_key, value, next_iterator} when is_nil_or_empty(value) ->
+        all_empty_map_iterator?(next_iterator)
 
-      x, acc ->
-        [x | acc]
-    end)
-    |> Enum.reverse()
+      :none ->
+        true
+
+      _entry ->
+        false
+    end
   end
 
-  @compile {:inline, put_bigquery_column: 3}
+  @compile {:inline, put_bigquery_column: 3, update_bigquery_column: 4}
   @spec put_bigquery_column(map(), term(), term()) :: map()
   defp put_bigquery_column(acc, key, value) do
     result = Map.put(acc, to_bigquery_column_spec(key), value)
@@ -85,6 +146,27 @@ defmodule Logflare.Logs.IngestTransformers do
     if map_size(result) == map_size(acc), do: throw(:normalized_bigquery_column_collision)
 
     result
+  end
+
+  @spec update_bigquery_column({map(), boolean()}, term(), term(), boolean()) ::
+          {map(), boolean()}
+  defp update_bigquery_column({acc, _changed?} = state, key, cleaned_value, value_changed?) do
+    case to_bigquery_column_spec(key) do
+      ^key when not value_changed? ->
+        state
+
+      ^key ->
+        {Map.put(acc, key, cleaned_value), true}
+
+      normalized_key ->
+        acc = Map.delete(acc, key)
+
+        if Map.has_key?(acc, normalized_key) do
+          throw(:normalized_bigquery_column_collision)
+        end
+
+        {Map.put(acc, normalized_key, cleaned_value), true}
+    end
   end
 
   # Rewrites a map key into a valid BigQuery standard column name in a single
