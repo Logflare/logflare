@@ -53,8 +53,9 @@ defmodule Logflare.RecordUsages do
 
     on_conflict =
       from(usage in RecordUsage,
+        where: fragment("EXCLUDED.last_used_at > ?", usage.last_used_at),
         update: [
-          set: [last_used_at: fragment("GREATEST(?, EXCLUDED.last_used_at)", usage.last_used_at)]
+          set: [last_used_at: fragment("EXCLUDED.last_used_at")]
         ]
       )
 
