@@ -689,7 +689,7 @@ defmodule LogflareWeb.AccessTokensLiveTest do
       )
 
     Logflare.RecordUsages.persist([
-      {{OauthAccessToken, token.id}, ~U[2026-10-08 18:24:56.123456Z]}
+      {{OauthAccessToken, token.id}, DateTime.to_unix(~U[2026-10-08 18:24:56Z], :second)}
     ])
 
     undescribed_tokens =
