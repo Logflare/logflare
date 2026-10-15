@@ -275,8 +275,10 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     bounds = Map.get(body, "explicit_bounds", [])
 
     with true <- valid_buckets?(counts, bounds),
-         count = Map.get(body, "count", Enum.sum(counts)),
+         bucket_total = Enum.sum(counts),
+         count = Map.get(body, "count", bucket_total),
          true <- is_integer(count) and count >= 0,
+         true <- counts == [] or count == bucket_total,
          {:ok, sum} <- optional_sample_value(body["sum"]) do
       {:ok, {:histogram, count, sum, cumulative_buckets(counts, bounds)}}
     else
@@ -286,7 +288,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
 
   # OTLP requires one more count than bounds (the overflow bucket), or no buckets.
   defp valid_buckets?(counts, bounds) when is_list(counts) and is_list(bounds) do
-    (counts == [] or length(counts) == length(bounds) + 1) and
+    ((counts == [] and bounds == []) or length(counts) == length(bounds) + 1) and
       Enum.all?(counts, &(is_integer(&1) and &1 >= 0)) and
       strictly_increasing?(bounds)
   end

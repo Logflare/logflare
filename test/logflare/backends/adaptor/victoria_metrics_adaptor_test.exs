@@ -489,6 +489,16 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
         ],
         [metric_type: "histogram", count: 3, bucket_counts: [1, 1, 1], explicit_bounds: [1.0, 1]],
         [metric_type: "histogram", count: 5, bucket_counts: [2, 3], explicit_bounds: [1.0, 2.0]],
+        [metric_type: "histogram", count: 1, explicit_bounds: [1.0]],
+        [metric_type: "histogram", count: 1, bucket_counts: [5, 0], explicit_bounds: [1.0]],
+        [
+          metric_type: "histogram",
+          count: 9,
+          bucket_counts: [1, 2, 3],
+          explicit_bounds: [1.0, 2.0]
+        ],
+        [metric_type: "histogram", count: 1, bucket_counts: [0]],
+        [metric_type: "histogram", count: 1, bucket_counts: [-1, 2], explicit_bounds: [1.0]],
         [metric_type: "histogram", count: -1]
       ]
 
@@ -496,10 +506,15 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
         Enum.map(malformed, &metric_event(source, &1)) ++
           [metric_event(source, event_message: "kept", metric_type: "gauge", value: 1.0)]
 
-      log = capture_log(fn -> assert [_ts] = decode(events) end)
+      log =
+        capture_log(fn ->
+          assert [ts] = decode(events)
+          assert label_map(ts)["__name__"] == "kept"
+          assert [%{value: 1.0}] = ts.samples
+        end)
 
-      assert log =~ "Dropping 9 of 10"
-      assert_received {:drop, %{count: 9}, %{reason: :invalid}}
+      assert log =~ "Dropping 14 of 15"
+      assert_received {:drop, %{count: 14}, %{reason: :invalid}}
     end
 
     test "sends NaN, infinite and out-of-range values as IEEE specials", %{source: source} do
@@ -537,21 +552,45 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       without_buckets =
         metric_event(source, event_message: "no_buckets", metric_type: "histogram", count: 4)
 
-      inconsistent_overflow =
+      with_overflow =
         metric_event(source,
           event_message: "overflow",
           metric_type: "histogram",
           count: 9,
-          bucket_counts: [1, 2, 3],
+          bucket_counts: [1, 2, 6],
           explicit_bounds: [1.0, 2.0]
         )
 
-      timeseries = decode([without_buckets, inconsistent_overflow])
+      timeseries = decode([without_buckets, with_overflow])
 
       assert %{"+Inf" => [%{value: 4.0}]} = buckets(timeseries, "no_buckets_bucket")
 
       assert %{"1" => [%{value: 1.0}], "2" => [%{value: 3.0}], "+Inf" => [%{value: 9.0}]} =
                buckets(timeseries, "overflow_bucket")
+    end
+
+    test "derives a missing histogram count from buckets with negative observations", %{
+      source: source
+    } do
+      le =
+        metric_event(source,
+          event_message: "temperature",
+          metric_type: "histogram",
+          sum: -5.0,
+          bucket_counts: [2, 1],
+          explicit_bounds: [-1.0]
+        )
+
+      timeseries = decode([le])
+
+      assert %{"-1" => [%{value: 2.0}], "+Inf" => [%{value: 3.0}]} =
+               buckets(timeseries, "temperature_bucket")
+
+      assert [%{samples: [%{value: 3.0}]}] =
+               Enum.filter(timeseries, &(label_map(&1)["__name__"] == "temperature_count"))
+
+      assert [%{samples: [%{value: -5.0}]}] =
+               Enum.filter(timeseries, &(label_map(&1)["__name__"] == "temperature_sum"))
     end
 
     test "does not warn for log and trace events", %{source: source} do
