@@ -106,7 +106,17 @@ defmodule Logflare.ContextCache do
 
   defmacro __using__(opts) do
     impl = Keyword.get(opts, :impl, CachexOps)
-    refresh_ahead? = Keyword.get(opts, :refresh_ahead, false)
+
+    fetch_body =
+      if Keyword.get(opts, :refresh_ahead, false) do
+        quote do
+          value = unquote(impl).fetch(__MODULE__, key, getter)
+          unquote(RefreshAhead).maybe_refresh(__MODULE__, key, getter)
+          value
+        end
+      else
+        quote do: unquote(impl).fetch(__MODULE__, key, getter)
+      end
 
     quote do
       use Logflare.Cache, unquote(opts)
@@ -120,14 +130,7 @@ defmodule Logflare.ContextCache do
       def delete_keys(keys), do: unquote(impl).delete_keys(__MODULE__, keys)
 
       @impl Logflare.ContextCache
-      def fetch(key, getter) do
-        value = unquote(impl).fetch(__MODULE__, key, getter)
-
-        if unquote(refresh_ahead?),
-          do: unquote(RefreshAhead).maybe_refresh(__MODULE__, key, getter)
-
-        value
-      end
+      def fetch(key, getter), do: unquote(fetch_body)
 
       @impl Logflare.ContextCache
       def update(key, value), do: unquote(impl).update(__MODULE__, key, value)
