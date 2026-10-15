@@ -20,6 +20,29 @@ defmodule Logflare.LogEvent.TypeDetectionTest do
       assert TypeDetection.detect(%{"metadata" => %{"type" => "otel_log"}}) == :log
     end
 
+    test "vector_metric -> :metric" do
+      assert TypeDetection.detect(%{"metadata" => %{"type" => "vector_metric"}}) == :metric
+    end
+
+    test "vector_trace -> :trace" do
+      assert TypeDetection.detect(%{"metadata" => %{"type" => "vector_trace"}}) == :trace
+    end
+
+    test "vector_log -> :log" do
+      assert TypeDetection.detect(%{"metadata" => %{"type" => "vector_log"}}) == :log
+    end
+
+    test "vector_log marker wins over the trace heuristic" do
+      params = %{
+        "metadata" => %{"type" => "vector_log"},
+        "trace_id" => "abc123",
+        "span_id" => "def456",
+        "start_time" => "2025-12-22T20:04:25.369201Z"
+      }
+
+      assert TypeDetection.detect(params) == :log
+    end
+
     test "unknown metadata.type falls through to heuristics" do
       assert TypeDetection.detect(%{"metadata" => %{"type" => "unknown"}}) == :log
     end
