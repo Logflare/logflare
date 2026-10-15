@@ -44,8 +44,7 @@ defmodule Logflare.Backends.UserMonitoring.SpanProcessor do
 
     with user_id when is_integer(user_id) <- attributes["user_id"],
          %{system_monitoring: true} <- Users.Cache.get(user_id),
-         %Sources.Source{} = source <-
-           Sources.Cache.get_by_for_ingest(user_id: user_id, system_source_type: :traces) do
+         %Sources.Source{} = source <- Sources.ensure_system_traces_source(user_id) do
       Processor.ingest(
         [to_event(span, attributes)],
         Logs.Raw,

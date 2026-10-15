@@ -744,6 +744,25 @@ defmodule Logflare.Backends.UserMonitoringTest do
                      5_000
     end
 
+    test "create the system.traces source on the first span", %{backend: backend} do
+      user = insert(:user, system_monitoring: true)
+
+      expect(ClickHouseAdaptor, :execute_query, fn _backend, _query, _opts ->
+        {:ok, QueryResult.new([%{"result" => "1"}], %{total_bytes_processed: 100})}
+      end)
+
+      endpoint =
+        insert(:endpoint, user: user, language: :ch_sql, query: "SELECT 1", backend: backend)
+
+      assert {:ok, _} = Endpoints.run_query(endpoint)
+
+      assert %Sources.Source{} =
+               Sources.get_by(user_id: user.id, system_source_type: :traces)
+
+      assert_receive {:insert_all, [%{json: %{"event_message" => "logflare.endpoints.query"}}]},
+                     5_000
+    end
+
     test "a failed ingest does not fail the query", %{backend: backend} do
       user = insert(:user, system_monitoring: true)
 

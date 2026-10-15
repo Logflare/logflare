@@ -162,22 +162,21 @@ defmodule Logflare.Sources do
   end
 
   @doc """
-  Provisions the missing system sources of users with system monitoring turned on.
+  Returns the `system.traces` source of the user for ingest. When it does not exist yet, creates the
+  missing system sources of the user and replaces the cached `nil` with the new source.
   """
-  @spec reconcile_system_sources() :: :ok
-  def reconcile_system_sources do
-    types = Source.system_source_types()
+  @spec ensure_system_traces_source(pos_integer()) :: Source.t() | nil
+  def ensure_system_traces_source(user_id) do
+    kv = [user_id: user_id, system_source_type: :traces]
 
-    from(u in User,
-      left_join: s in Source,
-      on: s.user_id == u.id and s.system_source_type in ^types,
-      where: u.system_monitoring,
-      group_by: u.id,
-      having: count(s.id) < ^length(types),
-      select: u.id
-    )
-    |> Repo.all()
-    |> Enum.each(&create_user_system_sources/1)
+    with nil <- Sources.Cache.get_by_for_ingest(kv),
+         %Source{} = source <-
+           user_id
+           |> create_user_system_sources()
+           |> Enum.find(&(&1.system_source_type == :traces)) do
+      Logflare.ContextCache.update(Sources, :get_by, [kv], source)
+      Sources.Cache.get_by_for_ingest(kv)
+    end
   end
 
   @doc "

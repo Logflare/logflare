@@ -737,34 +737,35 @@ defmodule Logflare.SourcesTest do
     end
   end
 
-  describe "reconcile_system_sources/0" do
+  describe "ensure_system_traces_source/1" do
     setup do
       insert(:plan)
-      :ok
+      [user: insert(:user, system_monitoring: true)]
     end
 
-    test "provisions missing system sources of users with system monitoring only" do
-      unprovisioned = insert(:user, system_monitoring: true)
-      partial = insert(:user, system_monitoring: true)
-      provisioned = insert(:user, system_monitoring: true)
-      unmonitored = insert(:user, system_monitoring: false)
+    test "creates the missing system sources and replaces a cached nil", %{user: user} do
+      kv = [user_id: user.id, system_source_type: :traces]
+      assert Sources.Cache.get_by_for_ingest(kv) == nil
 
-      insert(:source, user: partial, system_source: true, system_source_type: :metrics)
-      existing = Sources.create_user_system_sources(provisioned.id)
+      assert %Source{system_source_type: :traces, user_id: user_id} =
+               Sources.ensure_system_traces_source(user.id)
 
-      assert :ok = Sources.reconcile_system_sources()
+      assert user_id == user.id
 
-      for user <- [unprovisioned, partial, provisioned] do
-        assert user.id
-               |> Sources.list_system_sources_by_user()
-               |> Enum.map(& &1.system_source_type)
-               |> Enum.sort() == Enum.sort(Source.system_source_types())
-      end
+      assert user.id
+             |> Sources.list_system_sources_by_user()
+             |> Enum.map(& &1.system_source_type)
+             |> Enum.sort() == Enum.sort(Source.system_source_types())
 
-      assert Enum.map(Sources.list_system_sources_by_user(provisioned.id), & &1.id) ==
-               Enum.map(existing, & &1.id)
+      assert %Source{system_source_type: :traces} = Sources.Cache.get_by_for_ingest(kv)
+    end
 
-      assert Sources.list_system_sources_by_user(unmonitored.id) == []
+    test "returns the existing source", %{user: user} do
+      existing = insert(:source, user: user, system_source: true, system_source_type: :traces)
+
+      assert %Source{id: id} = Sources.ensure_system_traces_source(user.id)
+      assert id == existing.id
+      assert [_] = Sources.list_system_sources_by_user(user.id)
     end
   end
 
