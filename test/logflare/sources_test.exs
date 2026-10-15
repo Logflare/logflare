@@ -760,12 +760,11 @@ defmodule Logflare.SourcesTest do
       assert %Source{system_source_type: :traces} = Sources.Cache.get_by_for_ingest(kv)
     end
 
-    test "returns the existing source", %{user: user} do
+    test "keeps the existing source", %{user: user} do
       existing = insert(:source, user: user, system_source: true, system_source_type: :traces)
 
       assert %Source{id: id} = Sources.ensure_system_traces_source(user.id)
       assert id == existing.id
-      assert [_] = Sources.list_system_sources_by_user(user.id)
     end
   end
 

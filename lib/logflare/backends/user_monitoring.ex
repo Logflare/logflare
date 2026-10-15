@@ -123,7 +123,7 @@ defmodule Logflare.Backends.UserMonitoring do
       when is_integer(user_id) do
     with nil <- Process.get(@delivering_key),
          %{system_monitoring: true} <- Users.Cache.get(user_id),
-         %Sources.Source{} = source <- get_system_source_logs(user_id) do
+         %Sources.Source{} = source <- get_system_source(user_id, :logs) do
       events =
         log_event.level
         |> LogflareLogger.Formatter.format(format_message(log_event), get_datetime(), meta)
@@ -172,8 +172,17 @@ defmodule Logflare.Backends.UserMonitoring do
     SystemSourceStarter.request_start(source.id)
   end
 
-  defp get_system_source_logs(user_id) do
-    Sources.Cache.get_by_for_ingest(user_id: user_id, system_source_type: :logs)
+  @doc """
+  Returns the system source of the given type of the user for ingest, from the cache.
+
+  On a cache miss for `:traces`, creates the missing system sources of the user.
+  """
+  @spec get_system_source(pos_integer(), :logs | :traces) :: Sources.Source.t() | nil
+  def get_system_source(user_id, type) do
+    case Sources.Cache.get_by_for_ingest(user_id: user_id, system_source_type: type) do
+      nil when type == :traces -> Sources.ensure_system_traces_source(user_id)
+      source -> source
+    end
     |> Sources.refresh_source_metrics_for_ingest()
   end
 

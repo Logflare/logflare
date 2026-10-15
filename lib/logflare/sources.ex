@@ -162,15 +162,14 @@ defmodule Logflare.Sources do
   end
 
   @doc """
-  Returns the `system.traces` source of the user for ingest. When it does not exist yet, creates the
-  missing system sources of the user and replaces the cached `nil` with the new source.
+  Creates the missing system sources of the user and returns the `system.traces` source for
+  ingest. Replaces a cached `nil` with the new source.
   """
   @spec ensure_system_traces_source(pos_integer()) :: Source.t() | nil
   def ensure_system_traces_source(user_id) do
     kv = [user_id: user_id, system_source_type: :traces]
 
-    with nil <- Sources.Cache.get_by_for_ingest(kv),
-         %Source{} = source <-
+    with %Source{} = source <-
            user_id
            |> create_user_system_sources()
            |> Enum.find(&(&1.system_source_type == :traces)) do

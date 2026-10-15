@@ -640,6 +640,32 @@ defmodule Logflare.Backends.UserMonitoringTest do
     source
   end
 
+  describe "get_system_source/2" do
+    setup do
+      insert(:plan)
+      [user: insert(:user, system_monitoring: true)]
+    end
+
+    test "returns the cached source without creating sources", %{user: user} do
+      existing = insert(:source, user: user, system_source: true, system_source_type: :traces)
+
+      assert %Sources.Source{id: id} = UserMonitoring.get_system_source(user.id, :traces)
+      assert id == existing.id
+      assert [_] = Sources.list_system_sources_by_user(user.id)
+    end
+
+    test "creates the missing system sources only for traces", %{user: user} do
+      assert UserMonitoring.get_system_source(user.id, :logs) == nil
+      assert Sources.list_system_sources_by_user(user.id) == []
+
+      assert %Sources.Source{system_source_type: :traces} =
+               UserMonitoring.get_system_source(user.id, :traces)
+
+      assert %Sources.Source{system_source_type: :logs} =
+               Sources.get_by(user_id: user.id, system_source_type: :logs)
+    end
+  end
+
   describe "endpoint query traces" do
     setup do
       start_supervised!(AllLogsLogged)
