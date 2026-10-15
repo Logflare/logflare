@@ -5,6 +5,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
+  alias Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.SystemMetrics.AllLogsLogged
 
@@ -302,6 +303,77 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       assert [ts] = decode([le])
       assert label_map(ts)["__name__"] == "requests_total"
       assert [%{value: 100.0}] = ts.samples
+    end
+
+    test "groups matching series and sorts samples without changing their values", %{
+      source: source
+    } do
+      events =
+        for {timestamp, value} <- [
+              {1_700_000_002_000_000, 30},
+              {1_700_000_000_000_000, 10},
+              {1_700_000_001_000_000, 20}
+            ] do
+          metric_event(source,
+            event_message: "queue_depth",
+            metric_type: "gauge",
+            value: value,
+            timestamp: timestamp,
+            attributes: %{"queue" => "default"}
+          )
+        end
+
+      assert [series] = decode(events)
+
+      assert Enum.map(series.samples, &{&1.timestamp, &1.value}) == [
+               {1_700_000_000_000, 10.0},
+               {1_700_000_001_000, 20.0},
+               {1_700_000_002_000, 30.0}
+             ]
+    end
+
+    test "keeps different service instances in separate series", %{source: source} do
+      events =
+        for {instance, value} <- [{"checkout-1", 10}, {"checkout-2", 20}] do
+          metric_event(source,
+            event_message: "queue_depth",
+            metric_type: "gauge",
+            value: value,
+            timestamp: 1_700_000_000_000_000,
+            resource: %{"service.name" => "checkout", "service.instance.id" => instance}
+          )
+        end
+
+      series = decode(events)
+      assert length(series) == 2
+
+      assert Map.new(series, fn series ->
+               assert label_map(series)["job"] == "checkout"
+               {label_map(series)["instance"], Enum.map(series.samples, & &1.value)}
+             end) == %{"checkout-1" => [10.0], "checkout-2" => [20.0]}
+    end
+
+    test "currently retains identical and conflicting samples at the same millisecond",
+         %{source: source} do
+      events =
+        for {timestamp, value} <- [
+              {1_700_000_000_000_100, 1},
+              {1_700_000_000_000_200, 1},
+              {1_700_000_000_000_300, 2}
+            ] do
+          metric_event(source,
+            metric_type: "gauge",
+            value: value,
+            timestamp: timestamp
+          )
+        end
+
+      assert [series] = decode(events)
+
+      assert Enum.frequencies_by(series.samples, &{&1.timestamp, &1.value}) == %{
+               {1_700_000_000_000, 1.0} => 2,
+               {1_700_000_000_000, 2.0} => 1
+             }
     end
 
     test "histogram event produces _count, _sum, and cumulative _bucket series",
@@ -696,7 +768,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
         )
 
       start_supervised!({AdaptorSupervisor, {source, backend}})
-      [source: source]
+      [source: source, backend: backend]
     end
 
     test "sends metric batches as snappy remote write requests", %{source: source} do
@@ -730,6 +802,28 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
                "queue" => "default",
                "env" => "test"
              } = label_map(ts)
+    end
+
+    test "acknowledges an entirely dropped batch without making an HTTP request", %{
+      source: source,
+      backend: backend
+    } do
+      reject(@client, :send, 1)
+
+      event =
+        metric_event(source,
+          metric_type: "sum",
+          aggregation_temporality: "delta",
+          value: 1
+        )
+
+      log =
+        capture_log(fn ->
+          ref = Broadway.test_batch(Backends.via_source(source, Pipeline, backend), [event])
+          assert_receive {:ack, ^ref, [_message], []}, 5_000
+        end)
+
+      assert log =~ "Skipped webhook batch: all 1 log events were dropped"
     end
   end
 
@@ -796,6 +890,72 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
 
         assert src == source.name
       end)
+    end
+
+    test "exports every histogram observation and omits absent sums", %{source: source} do
+      older = System.system_time(:millisecond) - 60_000
+      newer = older + 1_000
+      timestamps = [older, newer]
+
+      for {first_sum, second_sum} <- [{1.7, 3.3}, {nil, nil}] do
+        metric_name = "logflare_e2e_histogram_#{System.system_time(:nanosecond)}"
+
+        events =
+          for {timestamp, counts, count, sum} <- [
+                {newer, [4, 4, 2], 10, second_sum},
+                {older, [2, 3, 1], 6, first_sum}
+              ] do
+            metric_event(source,
+              event_message: metric_name,
+              metric_type: "histogram",
+              aggregation_temporality: "cumulative",
+              count: count,
+              sum: sum,
+              bucket_counts: counts,
+              explicit_bounds: [0.1, 0.5],
+              timestamp: timestamp * 1_000_000,
+              resource: %{
+                "service.name" => "checkout",
+                "service.namespace" => "shop",
+                "service.instance.id" => "checkout-1"
+              },
+              attributes: %{"http.route" => "/checkout"}
+            )
+          end
+
+        definitions = [
+          {"_count", %{}, [6, 10]},
+          {"_bucket", %{"le" => "0.1"}, [2, 4]},
+          {"_bucket", %{"le" => "0.5"}, [5, 8]},
+          {"_bucket", %{"le" => "+Inf"}, [6, 10]}
+        ]
+
+        definitions =
+          if first_sum != nil,
+            do: [{"_sum", %{}, [first_sum, second_sum]} | definitions],
+            else: definitions
+
+        labels = %{
+          "source" => source.name,
+          "job" => "shop/checkout",
+          "instance" => "checkout-1",
+          "_http_route" => "/checkout"
+        }
+
+        expected =
+          for {suffix, extra_labels, values} <- definitions, into: %{} do
+            series_labels =
+              labels |> Map.put("__name__", metric_name <> suffix) |> Map.merge(extra_labels)
+
+            {series_labels, Enum.zip(timestamps, values)}
+          end
+
+        assert {:ok, 2} = Backends.ingest_logs(events, source)
+
+        TestUtils.retry_assert(@vm_retry, fn ->
+          assert export_vm("{__name__=~\"#{metric_name}_(count|sum|bucket)\"}") == expected
+        end)
+      end
     end
 
     # The adaptor sanitizes Prometheus identifiers (replacing `.`, `/`, `-`
@@ -921,5 +1081,23 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       {value, ""} = Float.parse(value)
       Map.put(labels, "value", value)
     end
+  end
+
+  @spec export_vm(String.t()) :: %{map() => [{integer(), number()}]}
+  defp export_vm(selector) do
+    params = URI.encode_query(%{"match[]" => selector})
+
+    {:ok, %{status_code: 200, body: body}} =
+      HTTPoison.get(@vm_base_url <> "/api/v1/export?" <> params)
+
+    body
+    |> String.split("\n", trim: true)
+    |> Enum.map(&Jason.decode!/1)
+    |> Enum.reduce(%{}, fn %{"metric" => labels, "values" => values, "timestamps" => timestamps},
+                           series ->
+      samples = Enum.zip(timestamps, values)
+      Map.update(series, labels, samples, &(samples ++ &1))
+    end)
+    |> Map.new(fn {labels, samples} -> {labels, Enum.sort(samples)} end)
   end
 end
