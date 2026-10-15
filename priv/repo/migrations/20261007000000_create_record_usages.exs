@@ -2,7 +2,7 @@ defmodule Logflare.Repo.Migrations.CreateRecordUsages do
   use Ecto.Migration
 
   def change do
-    create table(:record_usages) do
+    create table(:record_usages, options: "WITH (fillfactor=70)") do
       add :oauth_access_token_id, references(:oauth_access_tokens, on_delete: :delete_all)
       add :last_used_at, :utc_datetime, null: false
     end
