@@ -21,7 +21,9 @@ defmodule Logflare.ContextCache.RefreshAheadTest do
     def reset(_cache), do: :ok
 
     @impl Logflare.ContextCache.Ops
-    def bust_by(_cache, _kw), do: {:ok, 0}
+    def keys_to_bust(_cache, _kw), do: []
+    @impl Logflare.ContextCache.Ops
+    def delete_keys(_cache, _keys), do: {:ok, 0}
     @impl Logflare.ContextCache.Ops
     def fetch(_cache, _key, _getter), do: :stale
     @impl Logflare.ContextCache.Ops
