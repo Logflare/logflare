@@ -1197,11 +1197,11 @@ defmodule Logflare.BackendsTest do
       assert {:ok, {:cached, %Source{id: ^source_id}}} =
                Cachex.get(Logflare.Sources.Cache, {:get_by, [[id: source_id]]})
 
-      assert {:ok, {:cached, %User{id: ^user_id} = cached_user}} =
+      assert {:ok, {:cached, %User{id: ^user_id}}} =
                Cachex.get(Logflare.Users.Cache, {:get, [user_id]})
 
       assert {:ok, {:cached, %{}}} =
-               Cachex.get(Logflare.Billing.Cache, {:get_plan_by_user, [cached_user]})
+               Cachex.get(Logflare.Billing.Cache, {:get_plan_by_user, [user_id]})
 
       assert {:ok, {:cached, %{id: ^source_schema_id}}} =
                Cachex.get(Logflare.SourceSchemas.Cache, {
