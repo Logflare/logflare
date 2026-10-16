@@ -6,9 +6,6 @@ drift apart. Rendered with `nindent 4` under a `template:` key.
 metadata:
   annotations:
     checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-    {{- if .Values.vmArgs }}
-    checksum/vm-args: {{ include (print $.Template.BasePath "/vm-args-configmap.yaml") . | sha256sum }}
-    {{- end }}
     {{- with .Values.podAnnotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
@@ -72,10 +69,6 @@ spec:
         - name: LOGFLARE_TLS_KEY_PATH
           value: {{ printf "%s/cert.key" $mount | quote }}
         {{- end }}
-        {{- if .Values.vmArgs }}
-        - name: RELEASE_VM_ARGS
-          value: /etc/logflare/vm.args
-        {{- end }}
         {{- with .Values.extraEnv }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -102,14 +95,8 @@ spec:
       resources:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if or .Values.vmArgs .Values.logflare.certFilesSecret .Values.volumeMounts }}
+      {{- if or .Values.logflare.certFilesSecret .Values.volumeMounts }}
       volumeMounts:
-        {{- if .Values.vmArgs }}
-        - name: vm-args
-          mountPath: /etc/logflare/vm.args
-          subPath: vm.args
-          readOnly: true
-        {{- end }}
         {{- if .Values.logflare.certFilesSecret }}
         - name: cert-files
           mountPath: {{ .Values.logflare.certFilesMountPath }}
@@ -119,13 +106,8 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       {{- end }}
-  {{- if or .Values.vmArgs .Values.logflare.certFilesSecret .Values.volumes }}
+  {{- if or .Values.logflare.certFilesSecret .Values.volumes }}
   volumes:
-    {{- if .Values.vmArgs }}
-    - name: vm-args
-      configMap:
-        name: {{ include "logflare.fullname" . }}-vm-args
-    {{- end }}
     {{- if .Values.logflare.certFilesSecret }}
     - name: cert-files
       secret:

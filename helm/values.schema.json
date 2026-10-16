@@ -446,9 +446,6 @@
         "topologySpreadConstraints": {
             "type": "array"
         },
-        "vmArgs": {
-            "type": "string"
-        },
         "volumeMounts": {
             "type": "array"
         },
