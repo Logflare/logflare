@@ -10,7 +10,123 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
   alias Logflare.RecordUsages.RecordUsage
   alias Logflare.RecordUsages.SyncWorker
 
-  test "persists usage without changing tokens or evicting authentication" do
+  for {count, offsets} <- [
+        {1, [0]},
+        {7, [0, 42_857, 85_714, 128_571, 171_428, 214_285, 257_142]},
+        {100, Enum.to_list(0..297_000//3_000)}
+      ] do
+    test "parent durably schedules #{count} sorted nodes across five minutes" do
+      nodes = for index <- 1..unquote(count), do: :"usage-#{index}@localhost"
+      stub(Utils, :node_list_all, fn -> Enum.reverse(nodes) end)
+      reject(&RecordUsages.flush/0)
+      before = DateTime.utc_now()
+
+      assert :ok = perform_job(SyncWorker, %{})
+
+      after_scheduling = DateTime.utc_now()
+      jobs = Repo.all(from(job in Oban.Job, order_by: job.scheduled_at))
+      assert length(jobs) == unquote(count)
+      [first | _] = jobs
+      assert DateTime.compare(first.scheduled_at, before) in [:eq, :gt]
+      assert DateTime.compare(first.scheduled_at, after_scheduling) in [:eq, :lt]
+
+      assert Enum.map(jobs, & &1.args) ==
+               nodes |> Enum.sort() |> Enum.map(&%{"node" => Atom.to_string(&1)})
+
+      assert Enum.map(jobs, & &1.scheduled_at) ==
+               Enum.map(unquote(offsets), &DateTime.add(first.scheduled_at, &1, :millisecond))
+
+      assert Enum.all?(jobs, &(&1.queue == "default" and &1.max_attempts == 1))
+      assert Enum.all?(jobs, &(&1.state == "scheduled"))
+    end
+  end
+
+  test "parent insertion suppresses duplicates for 60 seconds, including after completion" do
+    stub(Utils, :node_list_all, fn -> [node()] end)
+    assert {:ok, parent} = %{} |> SyncWorker.new() |> Oban.insert()
+    assert {:ok, duplicate} = %{} |> SyncWorker.new() |> Oban.insert()
+    assert duplicate.conflict?
+    assert duplicate.id == parent.id
+
+    assert %{success: 1, failure: 0} = Oban.drain_queue(queue: :default)
+    assert Repo.reload!(parent).state == "completed"
+    assert {:ok, completed_duplicate} = %{} |> SyncWorker.new() |> Oban.insert()
+    assert completed_duplicate.conflict?
+    assert completed_duplicate.id == parent.id
+    assert length(all_enqueued(worker: SyncWorker)) == 1
+
+    parent
+    |> Ecto.Changeset.change(inserted_at: DateTime.add(DateTime.utc_now(), -61, :second))
+    |> Repo.update!()
+
+    assert {:ok, next_parent} = %{} |> SyncWorker.new() |> Oban.insert()
+    refute next_parent.conflict?
+    refute next_parent.id == parent.id
+  end
+
+  test "child dispatches only a flush command to the named connected node" do
+    target = :remote@localhost
+    stub(Utils, :node_list_all, fn -> [node(), target] end)
+
+    expect(Utils, :rpc_call, fn ^target, flush, 60_000 ->
+      assert flush == (&RecordUsages.flush/0)
+      :ok
+    end)
+
+    assert :ok = perform_job(SyncWorker, %{"node" => Atom.to_string(target)})
+    refute_enqueued(worker: SyncWorker)
+  end
+
+  test "an unavailable target cancels without flushing locally or creating an atom" do
+    name = "missing-#{System.unique_integer([:positive])}@localhost"
+    stub(Utils, :node_list_all, fn -> [node()] end)
+    reject(&RecordUsages.flush/0)
+
+    assert {:cancel, :node_unavailable} = perform_job(SyncWorker, %{"node" => name})
+    assert_raise ArgumentError, fn -> String.to_existing_atom(name) end
+    refute_enqueued(worker: SyncWorker)
+  end
+
+  test "an RPC connection error discards the child without retrying" do
+    token = insert(:access_token)
+    RecordUsages.record(OauthAccessToken, token.id)
+    snapshot = Cache.snapshot()
+
+    stub(Utils, :rpc_call, fn _node, _flush, _timeout ->
+      :erlang.error({:erpc, :noconnection})
+    end)
+
+    assert {:ok, job} = %{"node" => Atom.to_string(node())} |> SyncWorker.new() |> Oban.insert()
+    assert %{success: 0, discard: 1} = Oban.drain_queue(queue: :default, with_safety: true)
+    assert %{state: "discarded", attempt: 1} = Repo.reload!(job)
+    assert Cache.snapshot() == snapshot
+    assert Repo.get_by(RecordUsage, oauth_access_token_id: token.id) == nil
+    refute_enqueued(worker: SyncWorker)
+  end
+
+  test "a persistence error discards a child and a later cycle can flush the retained usage" do
+    token = insert(:access_token)
+    Cache.record({OauthAccessToken, token.id}, 1_767_225_600)
+    snapshot = Cache.snapshot()
+    args = %{"node" => Atom.to_string(node())}
+    stub(RecordUsages, :persist, fn _entries -> raise "database unavailable" end)
+
+    assert {:ok, job} = args |> SyncWorker.new() |> Oban.insert()
+    assert %{discard: 1} = Oban.drain_queue(queue: :default, with_safety: true)
+    assert %{state: "discarded", attempt: 1} = Repo.reload!(job)
+    assert Cache.snapshot() == snapshot
+
+    stub(RecordUsages, :persist, &call_original(RecordUsages, :persist, [&1]))
+
+    assert {:ok, _job} = args |> SyncWorker.new() |> Oban.insert()
+    assert %{success: 1} = Oban.drain_queue(queue: :default)
+    assert Cache.snapshot() == []
+
+    assert Repo.get_by!(RecordUsage, oauth_access_token_id: token.id).last_used_at ==
+             ~U[2026-01-01 00:00:00Z]
+  end
+
+  test "local child persists usage without changing tokens or evicting authentication" do
     user = insert(:user)
     {:ok, token} = Auth.create_access_token(user)
     original = Repo.reload!(token)
@@ -21,7 +137,7 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
     refute Ecto.assoc_loaded?(cached_token.usage)
     Cache.record({OauthAccessToken, token.id}, DateTime.to_unix(timestamp, :second))
 
-    assert :ok = perform_job(SyncWorker, %{})
+    assert :ok = perform_job(SyncWorker, %{"node" => Atom.to_string(node())})
     assert [%{usage: %{last_used_at: ^timestamp}}] = Auth.list_valid_access_tokens(user)
     assert Repo.reload!(token) == original
     assert Cache.snapshot() == []
@@ -30,7 +146,7 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
     assert {:ok, ^cached_token, _} = Auth.Cache.verify_access_token(token.token, [])
   end
 
-  test "equal and older usage do not rewrite rows, while newer usage advances the timestamp" do
+  test "flush of equal and older usage does not rewrite rows, while newer usage advances the timestamp" do
     user = insert(:user)
     token = insert(:access_token, resource_owner: user)
     old = ~U[2025-12-31 23:59:59Z]
@@ -38,7 +154,7 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
     newer = ~U[2026-01-01 00:00:01Z]
 
     Cache.record({OauthAccessToken, token.id}, DateTime.to_unix(latest, :second))
-    assert :ok = perform_job(SyncWorker, %{})
+    assert :ok = RecordUsages.flush()
 
     row_query =
       from(usage in RecordUsage,
@@ -51,17 +167,17 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
 
     for timestamp <- [latest, old] do
       Cache.record({OauthAccessToken, token.id}, DateTime.to_unix(timestamp, :second))
-      assert :ok = perform_job(SyncWorker, %{})
+      assert :ok = RecordUsages.flush()
       assert Repo.one!(row_query) == original_row
       assert Cache.snapshot() == []
     end
 
     Cache.record({OauthAccessToken, token.id}, DateTime.to_unix(newer, :second))
-    assert :ok = perform_job(SyncWorker, %{})
+    assert :ok = RecordUsages.flush()
     assert {^newer, _version} = Repo.one!(row_query)
   end
 
-  test "merges overlapping nodes once per resource and acknowledges original snapshots" do
+  test "flush acknowledges only its original snapshot, retaining newer arrivals" do
     user = insert(:user)
     first = insert(:access_token, resource_owner: user)
     second = insert(:access_token, resource_owner: user)
@@ -71,39 +187,30 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
     Cache.record(first_key, timestamp)
     Cache.record(second_key, timestamp + 10)
 
-    remote_snapshot = [{first_key, timestamp + 2}, {second_key, timestamp + 3}]
-
-    stub(Utils, :erpc_multicall, fn
-      _nodes, Cache, :snapshot, [] ->
-        [{node(), {:ok, Cache.snapshot()}}, {:"remote@127.0.0.1", {:ok, remote_snapshot}}]
-
-      [remote], Cache, :acknowledge, [entries] when remote != node() ->
-        assert entries == remote_snapshot
-        [{remote, {:ok, :ok}}]
-
-      nodes, mod, function, args ->
-        call_original(Utils, :erpc_multicall, [nodes, mod, function, args])
-    end)
-
     expect(RecordUsages, :persist, fn entries ->
-      assert Enum.sort(entries) ==
-               Enum.sort([{first_key, timestamp + 2}, {second_key, timestamp + 10}])
-
       result = call_original(RecordUsages, :persist, [entries])
       Cache.record(first_key, timestamp + 2)
       Cache.record(first_key, timestamp)
       result
     end)
 
-    assert :ok = perform_job(SyncWorker, %{})
+    assert :ok = RecordUsages.flush()
 
     assert Repo.get_by!(RecordUsage, oauth_access_token_id: first.id).last_used_at ==
-             ~U[2026-01-01 00:00:02Z]
+             ~U[2026-01-01 00:00:00Z]
 
     assert Repo.get_by!(RecordUsage, oauth_access_token_id: second.id).last_used_at ==
              ~U[2026-01-01 00:00:10Z]
 
     assert Cache.snapshot() == [{first_key, timestamp + 2}]
+
+    stub(RecordUsages, :persist, &call_original(RecordUsages, :persist, [&1]))
+
+    assert :ok = RecordUsages.flush()
+    assert Cache.snapshot() == []
+
+    assert Repo.get_by!(RecordUsage, oauth_access_token_id: first.id).last_used_at ==
+             ~U[2026-01-01 00:00:02Z]
   end
 
   test "ignores deleted tokens and cascades persisted usage when a token is deleted" do
@@ -114,7 +221,7 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
     RecordUsages.record(OauthAccessToken, deleted_token.id)
     Repo.delete!(deleted_token)
 
-    assert :ok = perform_job(SyncWorker, %{})
+    assert :ok = RecordUsages.flush()
     assert Cache.snapshot() == []
     assert Repo.get_by(RecordUsage, oauth_access_token_id: deleted_token.id) == nil
     assert Repo.get_by!(RecordUsage, oauth_access_token_id: token.id).last_used_at != nil
@@ -123,23 +230,12 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
     assert Repo.get_by(RecordUsage, oauth_access_token_id: token.id) == nil
   end
 
-  test "a later merged batch failure retains all original usage for retry" do
+  test "a later flush batch failure retains all original usage for replay" do
     user = insert(:user)
     tokens = insert_list(1_001, :access_token, resource_owner: user)
     timestamp = 1_767_225_600
     Enum.each(tokens, &Cache.record({OauthAccessToken, &1.id}, timestamp))
     snapshot = Enum.sort(Cache.snapshot())
-
-    stub(Utils, :erpc_multicall, fn
-      _nodes, Cache, :snapshot, [] ->
-        [{node(), {:ok, Cache.snapshot()}}, {:"remote@127.0.0.1", {:ok, snapshot}}]
-
-      [remote], Cache, :acknowledge, [_entries] when remote != node() ->
-        [{remote, {:ok, :ok}}]
-
-      nodes, mod, function, args ->
-        call_original(Utils, :erpc_multicall, [nodes, mod, function, args])
-    end)
 
     stub(RecordUsages, :persist, fn entries ->
       if Repo.aggregate(RecordUsage, :count) == 0 do
@@ -152,7 +248,7 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
     end)
 
     assert_raise RuntimeError, "second batch unavailable", fn ->
-      perform_job(SyncWorker, %{})
+      RecordUsages.flush()
     end
 
     assert Enum.sort(Cache.snapshot()) == snapshot
@@ -160,73 +256,14 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
 
     stub(RecordUsages, :persist, &call_original(RecordUsages, :persist, [&1]))
 
-    assert :ok = perform_job(SyncWorker, %{})
+    assert :ok = RecordUsages.flush()
     assert Cache.snapshot() == []
     assert Repo.aggregate(RecordUsage, :count) == 1_001
   end
 
-  test "failed acknowledgement retains persisted usage until a successful retry" do
-    token = insert(:access_token)
-    Cache.record({OauthAccessToken, token.id}, 1_767_225_600)
-    snapshot = Cache.snapshot()
-
-    stub(Utils, :erpc_multicall, fn
-      [local], Cache, :acknowledge, [_entries] when local == node() ->
-        [{local, {:error, {:erpc, :timeout}}}]
-
-      nodes, mod, function, args ->
-        call_original(Utils, :erpc_multicall, [nodes, mod, function, args])
-    end)
-
-    assert {:error, [{:error, {local, {:error, {:erpc, :timeout}}}}]} =
-             perform_job(SyncWorker, %{})
-
-    assert local == node()
-    assert Cache.snapshot() == snapshot
-
-    row_version = from(usage in RecordUsage, select: {usage.last_used_at, fragment("ctid::text")})
-    persisted = Repo.one!(row_version)
-    assert {~U[2026-01-01 00:00:00Z], _version} = persisted
-
-    stub(Utils, :erpc_multicall, &call_original(Utils, :erpc_multicall, [&1, &2, &3, &4]))
-
-    assert :ok = perform_job(SyncWorker, %{})
-    assert Cache.snapshot() == []
-    assert Repo.one!(row_version) == persisted
-  end
-
-  test "snapshot and acknowledgement failures do not prevent flushing remaining nodes" do
-    user = insert(:user)
-    remote_token = insert(:access_token, resource_owner: user)
-    local_token = insert(:access_token, resource_owner: user)
-    timestamp = ~U[2026-01-01 00:00:00Z]
-    timestamp_seconds = DateTime.to_unix(timestamp, :second)
-    Cache.record({OauthAccessToken, local_token.id}, timestamp_seconds)
-
-    stub(Utils, :erpc_multicall, fn
-      _nodes, Cache, :snapshot, [] ->
-        [
-          {:"offline@127.0.0.1", {:error, {:erpc, :noconnection}}},
-          {:"unreachable@127.0.0.1",
-           {:ok, [{{OauthAccessToken, remote_token.id}, timestamp_seconds}]}},
-          {node(), {:ok, Cache.snapshot()}}
-        ]
-
-      nodes, mod, function, args ->
-        call_original(Utils, :erpc_multicall, [nodes, mod, function, args])
-    end)
-
-    assert {:error,
-            [
-              {:error, {:"offline@127.0.0.1", _}},
-              {:error, {:"unreachable@127.0.0.1", _}}
-            ]} = perform_job(SyncWorker, %{})
-
-    assert Enum.map(Auth.list_valid_access_tokens(user), & &1.usage.last_used_at) == [
-             timestamp,
-             timestamp
-           ]
-
+  test "flush with no buffered usage succeeds without persisting anything" do
+    reject(&RecordUsages.persist/1)
+    assert :ok = RecordUsages.flush()
     assert Cache.snapshot() == []
   end
 end
