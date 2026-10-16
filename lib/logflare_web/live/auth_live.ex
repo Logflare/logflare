@@ -22,12 +22,13 @@ defmodule LogflareWeb.AuthLive do
     team_id = Map.get(params, "t") || session["last_switched_team_id"]
 
     case TeamContext.resolve(team_id, email) do
-      {:ok, %TeamContext{team: team, user: user, team_user: team_user}} ->
+      {:ok, %TeamContext{team: team, user: user, team_user: team_user} = team_context} ->
         {:cont,
          assign(socket,
            user: Logflare.Users.preload_defaults(user),
            team: Logflare.Teams.preload_team_users(team),
-           team_user: team_user
+           team_user: team_user,
+           team_context: team_context
          )}
 
       {:error, _reason} = error ->
@@ -85,11 +86,12 @@ defmodule LogflareWeb.AuthLive do
 
   def assign_context_by_team_id(socket, team_id, user_email) do
     case TeamContext.resolve(team_id, user_email) do
-      {:ok, %TeamContext{team: team, user: user, team_user: team_user}} ->
+      {:ok, %TeamContext{team: team, user: user, team_user: team_user} = team_context} ->
         assign(socket,
           user: Logflare.Users.preload_defaults(user),
           team: Logflare.Teams.preload_team_users(team),
-          team_user: team_user
+          team_user: team_user,
+          team_context: team_context
         )
 
       {:error, reason} ->
