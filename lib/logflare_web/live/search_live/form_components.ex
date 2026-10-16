@@ -146,7 +146,19 @@ defmodule LogflareWeb.SearchLive.FormComponents do
       |> assign(:upgrade_prompt, upgrade_prompt |> Safe.to_iodata() |> IO.iodata_to_binary())
 
     ~H"""
-    <div id="ai-search-upgrade-prompt" class="tw-relative tw-shrink-0" tabindex="0" aria-label="AI search assistant (upgrade required)" data-toggle="tooltip" data-title={@upgrade_prompt} data-html="true" data-placement="top" data-boundary="viewport" data-container="#ai-search-upgrade-prompt">
+    <div
+      id="ai-search-upgrade-prompt"
+      class="tw-relative tw-shrink-0"
+      tabindex="0"
+      aria-label="AI search assistant (upgrade required)"
+      data-toggle="tooltip"
+      data-custom-class="tw-text-left tw-w-max"
+      data-title={@upgrade_prompt}
+      data-html="true"
+      data-placement="top"
+      data-boundary="viewport"
+      data-container="#ai-search-upgrade-prompt"
+    >
       <.ai_assist_button disabled class="tw-pointer-events-none" />
     </div>
     """
@@ -160,6 +172,7 @@ defmodule LogflareWeb.SearchLive.FormComponents do
         disabled={@ai_assist.loading?}
         data-title={"AI search assistant<br>#{if(@ai_assist.macintosh?, do: "⌘ Enter", else: "Ctrl+Enter")}"}
         data-toggle="tooltip"
+        data-custom-class="tw-text-left"
         data-html="true"
         data-placement="top"
         aria-busy={to_string(@ai_assist.loading?)}

@@ -819,7 +819,7 @@ defmodule Logflare.Backends do
               {events, errors, total + 1, bump(tally, :drop_future)}
 
             le ->
-              {[le | events], errors, total + 1, tally}
+              {[LogEvent.cache_sizes(le) | events], errors, total + 1, tally}
           end
       end
 
