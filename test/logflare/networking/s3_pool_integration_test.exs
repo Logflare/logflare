@@ -5,10 +5,29 @@ defmodule Logflare.Networking.S3PoolIntegrationTest do
 
   alias Logflare.Backends.Adaptor.S3Adaptor.HttpClient
   alias Logflare.Networking
+  alias Logflare.Telemetry
   alias Logflare.TestUtils
+  alias OtelMetricExporter.MetricStore
+
+  @exporter :logflare_s3_pool_idle_expiry_metrics_test
 
   setup do
     TestUtils.attach_forwarder([:finch, :conn_max_idle_time_exceeded])
+
+    metric =
+      Enum.find(Telemetry.metrics(), &(&1.event_name == [:finch, :conn_max_idle_time_exceeded]))
+
+    start_supervised!(
+      {OtelMetricExporter,
+       name: @exporter,
+       metrics: [metric],
+       export_period: :timer.minutes(5),
+       otlp_protocol: :http_protobuf,
+       otlp_endpoint: "http://127.0.0.1:4318",
+       otlp_headers: %{},
+       otlp_compression: nil}
+    )
+
     :ok
   end
 
@@ -34,6 +53,11 @@ defmodule Logflare.Networking.S3PoolIntegrationTest do
                     %{idle_time: idle_time}, %{scheme: :http, host: "127.0.0.1", port: ^port}}
 
     assert System.convert_time_unit(idle_time, :native, :millisecond) > idle_limit
+
+    # Emitted from the drain pool's process, so the endpoint-tagged counter leaves it out.
+    assert MetricStore.get_metrics(@exporter)[
+             {:counter, "finch.conn_max_idle_time_exceeded.idle_time"}
+           ] in [nil, %{}]
   end
 
   @impl Plug

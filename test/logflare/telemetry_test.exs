@@ -108,14 +108,13 @@ defmodule Logflare.TelemetryTest do
              end)
     end
 
-    test "aggregates Finch idle expiry without endpoint-derived attributes" do
+    test "tags Finch idle expiry by endpoint, except for S3 drain pools" do
       event = [:finch, :conn_max_idle_time_exceeded]
       name = "finch.conn_max_idle_time_exceeded.idle_time"
       metric = Enum.find(Telemetry.metrics(), &(&1.event_name == event))
       exporter = :logflare_finch_idle_expiry_metrics_test
 
-      assert metric
-      assert to_string(metric.__struct__) == "Elixir.Telemetry.Metrics.Counter"
+      assert %Elixir.Telemetry.Metrics.Counter{tags: [:host, :port]} = metric
 
       start_supervised!(
         {OtelMetricExporter,
@@ -128,16 +127,29 @@ defmodule Logflare.TelemetryTest do
          otlp_compression: nil}
       )
 
-      for metadata <- [
-            %{scheme: :https, host: "private-bucket.s3.amazonaws.com", port: 443},
-            %{scheme: :https, host: "private-project.supabase.co", port: 443},
-            %{scheme: :http, host: "private-minio.internal", port: 9000}
-          ] do
-        :telemetry.execute(event, %{idle_time: 123_456}, metadata)
-      end
+      :telemetry.execute(event, %{idle_time: 123_456}, %{
+        scheme: :https,
+        host: "clickhouse.internal",
+        port: 8443
+      })
 
-      assert %{%{} => 3} == MetricStore.get_metrics(exporter)[{:counter, name}]
-      assert metric.tags == []
+      # Stands in for a drain pool: Finch emits the event from a pool process registered in
+      # Logflare.FinchS3's Registry.
+      drain_shp = {:https, "private-bucket.s3.amazonaws.com", 443}
+
+      Task.async(fn ->
+        {:ok, _} = Registry.register(Logflare.FinchS3, drain_shp, Finch.HTTP1.Pool)
+
+        :telemetry.execute(event, %{idle_time: 123_456}, %{
+          scheme: :https,
+          host: elem(drain_shp, 1),
+          port: 443
+        })
+      end)
+      |> Task.await()
+
+      assert %{%{host: "clickhouse.internal", port: 8443} => 1} ==
+               MetricStore.get_metrics(exporter)[{:counter, name}]
     end
 
     test "includes the spool telemetry metrics added for throttling/storage/queue observability" do

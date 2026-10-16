@@ -736,8 +736,10 @@ defmodule Logflare.Telemetry do
         description: "Finch pool checkout queue duration"
       ),
       counter("finch.conn_max_idle_time_exceeded.idle_time",
-        description:
-          "Count of idle-expired connections across all Finch pools, without endpoint attributes"
+        tags: [:host, :port],
+        # S3 drain endpoints are customer-supplied, so they are left out rather than tagged.
+        keep: &(not s3_drain_pool?(&1)),
+        description: "Count of connections discarded due to exceeding max idle time"
       )
     ]
 
@@ -1005,6 +1007,14 @@ defmodule Logflare.Telemetry do
     do: true
 
   defp spool_batch?(_metadata), do: false
+
+  # Finch's idle-expiry metadata carries no pool name, but Finch emits it from the pool process,
+  # which registers itself in its Finch instance's Registry.
+  defp s3_drain_pool?(_metadata) do
+    Registry.keys(Logflare.FinchS3, self()) != []
+  rescue
+    ArgumentError -> false
+  end
 
   defp backend_scoped_drop?(%{backend_id: _, backend_type: _}), do: true
   defp backend_scoped_drop?(_metadata), do: false
