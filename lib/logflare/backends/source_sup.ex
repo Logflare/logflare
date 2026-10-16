@@ -202,9 +202,12 @@ defmodule Logflare.Backends.SourceSup do
   @spec start_backend_child_by_id(non_neg_integer(), non_neg_integer()) ::
           Supervisor.on_start_child() | :noop
   def start_backend_child_by_id(backend_id, source_id) do
-    backend = Backends.Cache.get_backend(backend_id) |> Map.put(:register_for_ingest, false)
-    source = Sources.Cache.get_by_id(source_id)
-    start_backend_child(source, backend)
+    with %Backend{} = backend <- Backends.Cache.get_backend(backend_id),
+         %Source{} = source <- Sources.Cache.get_by_id(source_id) do
+      start_backend_child(source, %{backend | register_for_ingest: false})
+    else
+      nil -> :noop
+    end
   end
 
   @doc """

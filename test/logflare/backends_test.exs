@@ -1457,6 +1457,12 @@ defmodule Logflare.BackendsTest do
 
       assert :noop = SourceSup.start_backend_child(source, backend)
     end
+
+    test "start_backend_child_by_id/2 returns :noop for a missing backend", %{source: source} do
+      start_supervised!({SourceSup, source})
+
+      assert :noop = SourceSup.start_backend_child_by_id(-1, source.id)
+    end
   end
 
   describe "ingestion" do
