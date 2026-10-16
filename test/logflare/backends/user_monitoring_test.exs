@@ -231,6 +231,40 @@ defmodule Logflare.Backends.UserMonitoringTest do
       assert :counters.get(calls, 1) == 1
     end
 
+    test "ignores OTP domain events", %{user: user, system_source: system_source} do
+      :ok = Backends.ensure_source_sup_started(system_source)
+      test_pid = self()
+
+      stub(Backends, :ingest_logs, fn _batch, _source, _backend, _allow_spooling ->
+        send(test_pid, :ingested)
+        :ok
+      end)
+
+      for domain <- [[:otp], [:otp, :sasl]] do
+        assert :ignore ==
+                 UserMonitoring.log_interceptor(
+                   %{
+                     level: :info,
+                     msg: {:report, %{label: {:supervisor, :progress}, report: []}},
+                     meta: %{user_id: user.id, domain: domain}
+                   },
+                   []
+                 )
+      end
+
+      refute_received :ingested
+    end
+
+    test "a BigQueryAdaptor progress report during a SourceSup start does not deadlock its partition",
+         %{source: source, system_source: system_source} do
+      refute Backends.source_sup_started?(system_source)
+
+      task = Task.async(fn -> Backends.ensure_source_sup_started(source) end)
+
+      assert {:ok, :ok} = Task.yield(task, 5_000) || Task.shutdown(task, :brutal_kill)
+      assert Backends.source_sup_started?(source)
+    end
+
     test "a log during a SourceSup start on the system source's partition does not deadlock it",
          %{user: user, source: source, system_source: system_source} do
       source_id = source.id
