@@ -37,6 +37,15 @@ defmodule LogflareWeb.Backends.ComponentsTest do
       refute html =~ "fa-check"
     end
 
+    test "explains that BigQuery connection tests require a source" do
+      result = AsyncResult.failed(AsyncResult.loading(), :source_required)
+      html = render_component(&Components.status_indicator/1, %{status: result})
+
+      assert html =~ "fa-times"
+      assert html =~ "Attach a source or add a drain rule before testing this connection."
+      refute html =~ "Backend error!"
+    end
+
     test "renders a check icon when the async result is ok" do
       result = AsyncResult.ok(AsyncResult.loading(), :connected)
       html = render_component(&Components.status_indicator/1, %{status: result})
