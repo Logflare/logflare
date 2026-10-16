@@ -23,18 +23,21 @@ defmodule Logflare.RecordUsages.ShutdownWorkerTest do
     assert :ok = Supervisor.terminate_child(Logflare.Supervisor, ShutdownWorker)
 
     assert Repo.get_by!(RecordUsage, oauth_access_token_id: token.id).last_used_at == timestamp
+    assert Cache.snapshot() == []
   end
 
-  test "failed persistence logs the failure without blocking shutdown" do
+  test "failed shared flush logs the failure without blocking shutdown" do
     token = insert(:access_token)
     RecordUsages.record(OauthAccessToken, token.id)
-    stub(RecordUsages, :persist, fn _entries -> raise "database unavailable" end)
+    snapshot = Cache.snapshot()
+    stub(RecordUsages, :flush, fn -> raise "database unavailable" end)
 
     assert capture_log(fn ->
              assert :ok = Supervisor.terminate_child(Logflare.Supervisor, ShutdownWorker)
            end) =~ "Record usage shutdown flush failed"
 
     assert Repo.get_by(RecordUsage, oauth_access_token_id: token.id) == nil
+    assert Cache.snapshot() == snapshot
   end
 
   test "a stalled flush times out and stops its task" do
@@ -42,7 +45,7 @@ defmodule Logflare.RecordUsages.ShutdownWorkerTest do
     RecordUsages.record(OauthAccessToken, token.id)
     test_pid = self()
 
-    stub(RecordUsages, :persist, fn _entries ->
+    stub(RecordUsages, :flush, fn ->
       send(test_pid, {:flush_started, self()})
       Process.sleep(:infinity)
     end)
