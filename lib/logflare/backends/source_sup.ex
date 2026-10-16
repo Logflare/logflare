@@ -230,10 +230,11 @@ defmodule Logflare.Backends.SourceSup do
   Stops a given backend child on SourceSup that is associated with the given Rule.
   """
   @spec stop_rule_child(Rule.t()) :: :ok | {:error, :not_found}
-  def stop_rule_child(%Rule{backend_id: backend_id} = rule) do
-    backend = Backends.Cache.get_backend(backend_id) |> Map.put(:register_for_ingest, false)
-    source = Sources.Cache.get_by_id(rule.source_id)
-    stop_backend_child(source, backend)
+  def stop_rule_child(%Rule{backend_id: backend_id, source_id: source_id}) do
+    case Sources.Cache.get_by_id(source_id) do
+      %Source{} = source -> stop_backend_child(source, backend_id)
+      nil -> {:error, :not_found}
+    end
   end
 
   @doc """
