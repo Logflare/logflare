@@ -1,5 +1,10 @@
 defmodule Logflare.RecordUsages.RecordUsage do
-  @moduledoc false
+  @moduledoc """
+  Schema for the latest persisted usage timestamp of each tracked resource.
+
+  Usage is stored separately from resource records to avoid invalidating their caches.
+  """
+
   use TypedEctoSchema
 
   typed_schema "record_usages" do

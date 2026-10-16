@@ -9,7 +9,6 @@ defmodule Logflare.RecordUsages.ShutdownWorker do
   require Logger
 
   alias Logflare.RecordUsages
-  alias Logflare.RecordUsages.Cache
 
   @flush_timeout 10_000
 
@@ -28,7 +27,7 @@ defmodule Logflare.RecordUsages.ShutdownWorker do
   @impl GenServer
   @spec terminate(term(), nil) :: :ok
   def terminate(_reason, nil) do
-    task = Task.async(&flush/0)
+    task = Task.async(&RecordUsages.flush/0)
 
     case Task.yield(task, @flush_timeout) || Task.shutdown(task, :brutal_kill) do
       {:ok, :ok} ->
@@ -40,12 +39,5 @@ defmodule Logflare.RecordUsages.ShutdownWorker do
       nil ->
         Logger.warning("Record usage shutdown flush timed out after #{@flush_timeout}ms")
     end
-  end
-
-  @spec flush() :: :ok
-  defp flush do
-    Cache.snapshot()
-    |> Enum.chunk_every(1_000)
-    |> Enum.each(&RecordUsages.persist/1)
   end
 end

@@ -2,9 +2,12 @@ defmodule Logflare.RecordUsages do
   @moduledoc """
   Tracks recent usage separately from resource records without invalidating their caches.
 
-  Usage is buffered locally and persisted every five minutes, with a best-effort final
-  flush during graceful shutdown. Unflushed usage may still be lost on node failure or
-  if the shutdown flush fails or times out. Missing usage means unknown, not never used.
+  Usage is buffered locally. `Logflare.RecordUsages.SyncWorker` schedules nodes
+  to periodically flush their usage to the database.
+  `Logflare.RecordUsages.ShutdownWorker` handles best-effort final flush during
+  graceful shutdown. Unflushed usage may still be lost on node failure or if the
+  shutdown flush fails or times out. Missing usage means unknown, not never
+  used.
 
   Each resource type has a unique foreign key in `record_usages` with cascading deletes.
   Adding a resource requires a nullable foreign key, a unique index, extending the
@@ -23,6 +26,17 @@ defmodule Logflare.RecordUsages do
   @spec record(resource_type(), pos_integer()) :: :ok
   def record(OauthAccessToken = resource_type, id) do
     Cache.record({resource_type, id}, System.system_time(:second))
+  end
+
+  @spec flush() :: :ok
+  def flush do
+    snapshot = Cache.snapshot()
+
+    snapshot
+    |> Enum.chunk_every(1_000)
+    |> Enum.each(fn batch -> :ok = __MODULE__.persist(batch) end)
+
+    Cache.acknowledge(snapshot)
   end
 
   @spec persist(Cache.snapshot()) :: :ok

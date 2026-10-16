@@ -1,57 +1,47 @@
 defmodule Logflare.RecordUsages.SyncWorker do
-  @moduledoc false
-  use Oban.Worker, queue: :default
+  @moduledoc """
+  Parent job schedules one child job per node to write cached usage to the database.
+  It spaces the scheduled start times across the next five minutes.
+
+  Keep `@sync_interval_ms` no greater than the cron interval in `config/runtime.exs`.
+  Cron parents have up to three attempts. Child jobs have one attempt.
+  A retry can create duplicate child jobs if the database accepted the previous insert
+  but did not confirm it.
+
+  The RPC timeout ends the child's wait. It does not stop the node's flush.
+  The node can still write and acknowledge usage after Oban discards the child job.
+  """
+
+  use Oban.Worker, queue: :default, max_attempts: 1, unique: [period: 60]
 
   alias Logflare.Cluster.Utils
   alias Logflare.RecordUsages
-  alias Logflare.RecordUsages.Cache
+
+  @sync_interval_ms 300_000
+  @rpc_timeout_ms 60_000
 
   @impl Oban.Worker
-  @spec perform(Oban.Job.t()) :: :ok | {:error, term()}
-  def perform(_job) do
-    {snapshots, unavailable} =
-      Utils.node_list_all()
-      |> Utils.erpc_multicall(Cache, :snapshot, [])
-      |> Enum.split_with(fn {_node, result} -> match?({:ok, _entries}, result) end)
-
-    snapshots
-    |> merge_snapshots()
-    |> Enum.chunk_every(1_000)
-    |> Enum.each(fn batch -> :ok = RecordUsages.persist(batch) end)
-
-    snapshot_failures = Enum.map(unavailable, &{:error, &1})
-
-    acknowledgement_failures =
-      snapshots
-      |> Enum.map(&acknowledge_node/1)
-      |> Enum.reject(&(&1 == :ok))
-
-    case snapshot_failures ++ acknowledgement_failures do
-      [] -> :ok
-      failures -> {:error, failures}
+  @spec perform(Oban.Job.t()) :: :ok | {:cancel, :node_unavailable}
+  def perform(%Oban.Job{args: %{"node" => name}}) do
+    case Enum.find(Utils.node_list_all(), &(Atom.to_string(&1) == name)) do
+      nil -> {:cancel, :node_unavailable}
+      node -> Utils.rpc_call(node, &RecordUsages.flush/0, @rpc_timeout_ms)
     end
   end
 
-  @spec merge_snapshots([{node(), {:ok, Cache.snapshot()}}]) :: Cache.snapshot()
-  defp merge_snapshots(snapshots) do
-    snapshots
-    |> Enum.reduce(%{}, fn {_node, {:ok, entries}}, merged ->
-      Enum.reduce(entries, merged, fn {key, timestamp}, acc ->
-        Map.update(acc, key, timestamp, &max(&1, timestamp))
-      end)
-    end)
-    |> Map.to_list()
-  end
+  def perform(%Oban.Job{}) do
+    now = DateTime.utc_now()
+    nodes = Enum.sort(Utils.node_list_all())
+    node_count = length(nodes)
 
-  @spec acknowledge_node({node(), {:ok, Cache.snapshot()}}) :: :ok | {:error, term()}
-  defp acknowledge_node({node, {:ok, entries}}) do
-    entries
-    |> Enum.chunk_every(1_000)
-    |> Enum.reduce_while(:ok, fn batch, :ok ->
-      case Utils.erpc_multicall([node], Cache, :acknowledge, [batch]) do
-        [{^node, {:ok, :ok}}] -> {:cont, :ok}
-        [{^node, error}] -> {:halt, {:error, {node, error}}}
-      end
+    nodes
+    |> Enum.with_index()
+    |> Enum.map(fn {node, index} ->
+      scheduled_at = DateTime.add(now, div(index * @sync_interval_ms, node_count), :millisecond)
+      new(%{"node" => Atom.to_string(node)}, scheduled_at: scheduled_at)
     end)
+    |> Oban.insert_all()
+
+    :ok
   end
 end
