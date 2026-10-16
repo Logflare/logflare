@@ -118,6 +118,39 @@ defmodule Logflare.SourcesTest do
       assert Backends.get_backend(backend.id)
     end
 
+    test "preserves a shared backend and its other source association", %{user: user} do
+      backend = insert(:backend, user: user)
+      source = insert(:source, user: user, backends: [backend])
+      other_source = insert(:source, user: user, backends: [backend])
+
+      assert {:ok, %Source{}} = Sources.delete_source(source)
+      refute Repo.get(Source, source.id)
+      assert Backends.get_backend(backend.id)
+
+      backend_id = backend.id
+      other_source = Repo.get!(Source, other_source.id) |> Repo.preload(:backends)
+      assert [%{id: ^backend_id}] = other_source.backends
+    end
+
+    test "restores backend links when another foreign key prevents deletion", %{user: user} do
+      backend = insert(:backend, user: user)
+      source = insert(:source, user: user, backends: [backend])
+      now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+
+      Repo.insert_all("source_backends", [
+        %{source_id: source.id, inserted_at: now, updated_at: now}
+      ])
+
+      assert_raise Ecto.ConstraintError, ~r/source_backends_source_id_fkey/, fn ->
+        Sources.delete_source(source)
+      end
+
+      backend_id = backend.id
+      source = Repo.get!(Source, source.id) |> Repo.preload(:backends)
+      assert [%{id: ^backend_id}] = source.backends
+      assert Backends.get_backend(backend.id)
+    end
+
     test "deletes a source with no backends", %{user: user} do
       source = insert(:source, user: user)
 
