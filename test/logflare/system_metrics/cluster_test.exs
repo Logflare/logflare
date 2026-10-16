@@ -2,7 +2,6 @@ defmodule Logflare.SystemMetrics.ClusterTest do
   use ExUnit.Case, async: false
 
   import ExUnit.CaptureLog
-
   alias Logflare.SystemMetrics.Cluster
 
   describe "finch/0" do
