@@ -6,6 +6,15 @@ defmodule Logflare.Sources.Source.RateSamplerTest do
   defp unique_token,
     do: String.to_atom("rate_sampler_test_#{System.unique_integer([:positive])}")
 
+  describe "sample_mode/1" do
+    test "classifies zero, normal, and floor rates without changing probability bounds" do
+      assert RateSampler.sample_mode(unique_token()) == :zero_rate
+      assert RateSampler.sampling_probability(100) == {0.01, :normal}
+      assert RateSampler.sampling_probability(0) == {1.0, :zero_rate}
+      assert RateSampler.sampling_probability(200_000) == {0.00001, :floor}
+    end
+  end
+
   describe "sample?/1" do
     test "a source never bumped before samples on its first call" do
       assert RateSampler.sample?(unique_token())
