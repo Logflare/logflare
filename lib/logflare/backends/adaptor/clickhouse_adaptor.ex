@@ -65,6 +65,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @insert_max_execution_time_seconds 10
   @max_read_pool_size 4096
   @ch_slow_pool_checkout_ms 1_000
+  @endpoint_response_buffer_size 1_048_576
   @us_per_hour 3_600 * 1_000_000
   @default_max_event_age_hours 24
   @unlabeled_read_cluster_tag "(unlabeled)"
@@ -750,11 +751,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
     warn_on_unconfigured_read_cluster(backend, requested, label)
     headers = Keyword.get(opts, :headers, [])
+    settings = Keyword.get(opts, :settings, [])
 
     {result, queried_label} =
-      case do_ch_query_on_label(backend, statement, params, label, headers) do
+      case do_ch_query_on_label(backend, statement, params, label, headers, settings) do
         {:error, %QueryError{kind: :connection_error}} = error ->
-          maybe_retry_on_default_cluster(backend, statement, params, label, headers, error)
+          maybe_retry_on_default_cluster(
+            backend,
+            statement,
+            params,
+            label,
+            headers,
+            settings,
+            error
+          )
 
         result ->
           {result, label}
@@ -773,10 +783,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           iodata(),
           term(),
           String.t() | nil,
-          MintTypes.headers()
+          MintTypes.headers(),
+          Keyword.t()
         ) ::
           {:ok, {[map()], non_neg_integer() | :not_supported}} | {:error, term()}
-  defp do_ch_query_on_label(%Backend{} = backend, statement, params, label, headers) do
+  defp do_ch_query_on_label(%Backend{} = backend, statement, params, label, headers, settings) do
     with :ok <- ensure_query_connection_manager_started(backend, label) do
       pool_via = connection_pool_via(backend, label)
 
@@ -785,7 +796,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       backend_id = backend.id
       log_fun = fn entry -> handle_read_pool_log(entry, backend_id, label) end
 
-      ch_opts = [decode: false, timeout: timeout, log: log_fun, headers: headers]
+      ch_opts = [
+        decode: false,
+        timeout: timeout,
+        log: log_fun,
+        headers: headers,
+        settings: settings
+      ]
 
       case Ch.query(pool_via, statement, params, ch_opts) do
         {:ok, %Ch.Result{} = result} ->
@@ -835,6 +852,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           term(),
           String.t() | nil,
           MintTypes.headers(),
+          Keyword.t(),
           {:error, term()}
         ) ::
           {{:ok, {[map()], non_neg_integer() | :not_supported}} | {:error, term()},
@@ -845,6 +863,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
          params,
          label,
          headers,
+         settings,
          error
        ) do
     default = default_read_cluster_label(backend)
@@ -864,7 +883,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         %{backend_id: backend.id, read_cluster: read_cluster_tag(label)}
       )
 
-      {do_ch_query_on_label(backend, statement, params, default, headers), default}
+      {do_ch_query_on_label(backend, statement, params, default, headers, settings), default}
     else
       {error, label}
     end
@@ -1529,6 +1548,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     converted_query = convert_query_params(query_string, declared_params)
     ch_params = Map.take(input_params, declared_params)
     query_opts = put_replica_tag_header(opts, backend, input_params)
+
+    query_opts =
+      if is_pos_integer(max_rows) do
+        settings =
+          Keyword.merge(Keyword.get(query_opts, :settings, []),
+            wait_end_of_query: 1,
+            http_response_buffer_size: @endpoint_response_buffer_size
+          )
+
+        Keyword.put(query_opts, :settings, settings)
+      else
+        query_opts
+      end
 
     case execute_ch_query(backend, converted_query, ch_params, query_opts) do
       {:ok, {rows, bytes}} ->
