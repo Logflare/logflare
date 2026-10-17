@@ -2,19 +2,28 @@ defmodule Logflare.Endpoints.Resolver do
   @moduledoc """
   Finds or spawns Endpoint.Cache processes across the cluster. Unique process for query plus query params.
   """
+  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Endpoints.ResultsCache
 
   require Logger
   require OpenTelemetry.Tracer
 
   @doc """
-  Lists all caches for an endpoint across all paritions
+  Lists caches across partitions for the selected endpoint version or all versions.
   """
-  def list_caches(%Logflare.Endpoints.EndpointQuery{} = query) do
-    {query_id, version_key} = ResultsCache.endpoint_cache_key(query)
-    endpoints_partition = ResultsCache.endpoints_part(query_id, version_key)
+  @spec list_caches(EndpointQuery.t(), :selected_version | :all_versions) :: [pid()]
+  def list_caches(query, scope \\ :selected_version)
 
-    :syn.members(endpoints_partition, {query_id, version_key})
+  def list_caches(%EndpointQuery{id: query_id}, :all_versions),
+    do: members({query_id, :all_versions})
+
+  def list_caches(%EndpointQuery{} = query, :selected_version),
+    do: members(ResultsCache.endpoint_cache_key(query))
+
+  defp members({query_id, version_key} = cache_key) do
+    query_id
+    |> ResultsCache.endpoints_part(version_key)
+    |> :syn.members(cache_key)
     |> Enum.map(fn {pid, _} -> pid end)
   end
 

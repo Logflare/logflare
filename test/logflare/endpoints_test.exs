@@ -8,6 +8,7 @@ defmodule Logflare.EndpointsTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryErrorNormalizer
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
   alias Logflare.Endpoints
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Endpoints.ResultsCache
@@ -74,6 +75,182 @@ defmodule Logflare.EndpointsTest do
   test "get_by/1" do
     endpoint = insert(:endpoint, name: "some endpoint")
     assert endpoint.id == Endpoints.get_by(name: "some endpoint").id
+  end
+
+  describe "enforced ClickHouse endpoint settings" do
+    setup do
+      owner = insert(:user)
+      admin = insert(:user, admin: true)
+      insert(:source, user: owner, name: "settings_source")
+      backend = insert(:backend, user: owner, type: :clickhouse)
+
+      endpoint =
+        insert(:endpoint,
+          user: owner,
+          backend: backend,
+          language: :ch_sql,
+          sandboxable: true,
+          query: "WITH src AS (SELECT a FROM settings_source) SELECT a FROM src"
+        )
+
+      [owner: owner, admin: admin, endpoint: endpoint]
+    end
+
+    test "only an administrator can configure validated limits; user updates cannot change them",
+         %{
+           owner: owner,
+           admin: admin,
+           endpoint: endpoint
+         } do
+      limits = %{"max_bytes_to_read" => 1024}
+
+      assert {:error, :forbidden} =
+               Endpoints.configure_enforced_clickhouse_settings(owner, endpoint, limits)
+
+      assert {:error, _} =
+               Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, %{
+                 "allow_introspection_functions" => 1
+               })
+
+      assert {:ok, updated} =
+               Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, limits)
+
+      assert updated.enforced_clickhouse_settings == %{
+               "max_bytes_to_read" => 1024,
+               "read_overflow_mode" => "throw"
+             }
+
+      assert {:ok, user_updated} =
+               Endpoints.update_query(owner, updated, %{enforced_clickhouse_settings: %{}}, owner)
+
+      assert user_updated.enforced_clickhouse_settings == updated.enforced_clickhouse_settings
+    end
+
+    test "historical queries use current operator limits instead of snapshot settings", %{
+      admin: admin,
+      endpoint: endpoint
+    } do
+      insert(:endpoint_version,
+        endpoint: endpoint,
+        version_number: 1,
+        snapshot_overrides: %{
+          "query" => "WITH src AS (SELECT b FROM settings_source) SELECT b FROM src",
+          "enforced_clickhouse_settings" => %{"max_execution_time" => 100}
+        }
+      )
+
+      for settings <- [%{"max_execution_time" => 5}, %{"max_execution_time" => 3}, %{}] do
+        assert {:ok, current} =
+                 Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, settings)
+
+        assert {:ok, historical} = Endpoints.get_endpoint_query_at_version(current.id, 1)
+        assert historical.enforced_clickhouse_settings == current.enforced_clickhouse_settings
+        assert {:ok, sql} = Endpoints.get_transformed_query(historical)
+        assert sql =~ "SELECT b FROM settings_source"
+
+        if settings == %{} do
+          refute sql =~ "max_execution_time"
+        else
+          assert sql =~ "max_execution_time = #{settings["max_execution_time"]}"
+        end
+      end
+    end
+
+    test "applies limits to default and caller SQL, rejects overrides", %{
+      admin: admin,
+      endpoint: endpoint
+    } do
+      {:ok, endpoint} =
+        Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, %{
+          "max_execution_time" => 5
+        })
+
+      assert {:ok, default_sql} = Endpoints.get_transformed_query(endpoint)
+      assert default_sql =~ "SETTINGS max_execution_time = 5"
+
+      assert {:ok, custom_sql} =
+               Endpoints.get_transformed_query(endpoint, %{
+                 "sql" => "SELECT a FROM src SETTINGS optimize_read_in_order = 1"
+               })
+
+      assert custom_sql =~ "optimize_read_in_order = 1"
+      assert custom_sql =~ "max_execution_time = 5"
+
+      assert {:error, "Restricted setting max_execution_time"} =
+               Endpoints.get_transformed_query(endpoint, %{
+                 "sql" => "SELECT a FROM src SETTINGS max_execution_time = 100"
+               })
+    end
+  end
+
+  test "EXPLAIN endpoint queries execute with enforced limits" do
+    owner = insert(:user)
+    admin = insert(:user, admin: true)
+    {_source, backend} = setup_clickhouse_test(user: owner)
+    start_supervised!({ClickHouseAdaptor, backend})
+
+    endpoint =
+      insert(:endpoint,
+        user: owner,
+        backend: backend,
+        language: :ch_sql,
+        query: "EXPLAIN SELECT 1 AS n"
+      )
+
+    assert {:ok, endpoint} =
+             Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, %{
+               "max_execution_time" => 5
+             })
+
+    assert {:ok, transformed} = Endpoints.get_transformed_query(endpoint)
+    assert transformed =~ "EXPLAIN SELECT 1 AS n SETTINGS max_execution_time = 5"
+    assert {:ok, %{rows: [_ | _]}} = Endpoints.run_query(endpoint)
+  end
+
+  test "enforced read limits are observed by ClickHouse execution" do
+    owner = insert(:user)
+    admin = insert(:user, admin: true)
+    source = insert(:source, user: owner, name: "bounded_source")
+    {_source, backend} = setup_clickhouse_test(user: owner, source: source)
+    start_supervised!({ClickHouseAdaptor, backend})
+    assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+
+    events =
+      for i <- 1..5 do
+        build_mapped_log_event(source: source, message: "bounded #{i}")
+      end
+
+    assert :ok = ClickHouseAdaptor.insert_log_events(backend, events, :log)
+    table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+
+    TestUtils.retry_assert(fn ->
+      assert {:ok, {[%{"total" => 5}], _bytes}} =
+               ClickHouseAdaptor.execute_ch_query(
+                 backend,
+                 "SELECT count() AS total FROM #{table_name} WHERE source_name = '#{source.name}'"
+               )
+    end)
+
+    endpoint =
+      insert(:endpoint,
+        user: owner,
+        backend: backend,
+        language: :ch_sql,
+        sandboxable: true,
+        query:
+          "WITH src AS (SELECT event_message FROM #{table_name} WHERE source_name = '#{source.name}') " <>
+            "SELECT count() FROM src"
+      )
+
+    {:ok, endpoint} =
+      Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, %{
+        "max_rows_to_read" => 1
+      })
+
+    assert {:error, %QueryError{} = error} =
+             Endpoints.run_query(endpoint, %{"sql" => "SELECT count() FROM src"})
+
+    assert inspect(error.raw_error) =~ "max_rows_to_read"
   end
 
   test "get_mapped_query_by_token/1 transforms renamed source names correctly" do
