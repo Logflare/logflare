@@ -14,6 +14,7 @@ defmodule Logflare.ContextCache.Supervisor do
   alias Logflare.GenSingleton
   alias Logflare.KeyValues
   alias Logflare.Partners
+  alias Logflare.RecordUsages
   alias Logflare.Repo
   alias Logflare.Repo.ConnectionOptions
   alias Logflare.Rules
@@ -76,6 +77,7 @@ defmodule Logflare.ContextCache.Supervisor do
       {Billing.Cache, :billing},
       {SourceSchemas.Cache, :source_schemas},
       {Auth.Cache, :auth},
+      {RecordUsages.Cache, :record_usages},
       {Endpoints.Cache, :endpoints},
       {Rules.Cache, :rules},
       {KeyValues.Cache, :key_values},
