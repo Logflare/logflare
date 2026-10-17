@@ -9,6 +9,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.Backend
   alias Logflare.Backends.QueryError
@@ -672,8 +673,7 @@ defmodule Logflare.Endpoints do
              else: expanded_query
            ),
          {:ok, transformed_query} <-
-           Sql.transform(query_language, transform_input, user_id),
-         {:ok, transformed_query} <- apply_enforced_settings(endpoint_query, transformed_query) do
+           Sql.transform(query_language, transform_input, user_id) do
       :telemetry.span(
         [:logflare, :endpoints, :run_query, :exec_query_on_backend],
         %{endpoint_id: endpoint_query.id, language: query_language},
@@ -822,10 +822,10 @@ defmodule Logflare.Endpoints do
 
   Useful for debugging and UI display of merged sandbox queries.
   """
-  @spec get_transformed_query(EndpointQuery.t(), params :: map()) ::
+  @spec get_transformed_query(EndpointQuery.t(), map(), Keyword.t()) ::
           {:ok, String.t()} | {:error, String.t()}
-  def get_transformed_query(%EndpointQuery{} = endpoint_query, params \\ %{})
-      when is_map(params) do
+  def get_transformed_query(%EndpointQuery{} = endpoint_query, params \\ %{}, opts \\ [])
+      when is_map(params) and is_list(opts) do
     %EndpointQuery{
       query: query_string,
       user_id: user_id,
@@ -863,19 +863,24 @@ defmodule Logflare.Endpoints do
              else: expanded_query
            ),
          {:ok, transformed_query} <- Sql.transform(query_language, transform_input, user_id),
-         {:ok, transformed_query} <- apply_enforced_settings(endpoint_query, transformed_query) do
+         {:ok, transformed_query} <- preview_query_policy(endpoint_query, transformed_query, opts) do
       {:ok, transformed_query}
     end
   end
 
-  defp apply_enforced_settings(
-         %EndpointQuery{language: :ch_sql, enforced_clickhouse_settings: settings},
-         transformed_query
-       )
-       when is_map(settings),
-       do: ClickHouseSettings.enforce(transformed_query, settings)
+  @spec preview_query_policy(EndpointQuery.t(), String.t(), Keyword.t()) ::
+          {:ok, String.t()} | {:error, term()}
+  defp preview_query_policy(%EndpointQuery{language: :ch_sql} = endpoint, query, opts) do
+    with {:ok, backend} <- get_backend_for_query(endpoint) do
+      ClickHouseAdaptor.prepare_query(
+        backend,
+        query,
+        Keyword.put(opts, :enforced_clickhouse_settings, endpoint.enforced_clickhouse_settings)
+      )
+    end
+  end
 
-  defp apply_enforced_settings(_endpoint_query, transformed_query), do: {:ok, transformed_query}
+  defp preview_query_policy(_endpoint_query, query, _opts), do: {:ok, query}
 
   @spec maybe_convert_lql_to_sql(
           lql_param :: String.t() | nil,
@@ -975,7 +980,11 @@ defmodule Logflare.Endpoints do
         end
 
       redact_pii = Keyword.get(opts, :redact_pii, endpoint_query.redact_pii)
-      query_opts = Keyword.put(opts, :query_type, :endpoint)
+
+      query_opts =
+        opts
+        |> Keyword.put(:query_type, :endpoint)
+        |> Keyword.put(:enforced_clickhouse_settings, endpoint_query.enforced_clickhouse_settings)
 
       case adaptor.execute_query(backend, query_args, query_opts) do
         {:ok, %QueryResult{rows: rows} = result} ->

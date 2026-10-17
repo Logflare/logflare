@@ -72,7 +72,7 @@ defmodule Logflare.Endpoints.ClickHouseSettingsTest do
           "EXPLAIN SELECT a FROM t SETTINGS max_execution_time = 10",
           "EXPLAIN WITH src AS (SELECT a FROM t SETTINGS max_execution_time = 10) SELECT a FROM src"
         ] do
-      assert {:error, "ClickHouse setting max_execution_time is enforced by this endpoint"} =
+      assert {:error, "ClickHouse setting max_execution_time is enforced by query policy"} =
                ClickHouseSettings.enforce(query, settings)
     end
   end
