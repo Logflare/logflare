@@ -26,7 +26,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker do
   @block_ms :timer.seconds(30)
 
   typedstruct do
-    field :backend_id, pos_integer(), enforce: true
+    field :backend_id, non_neg_integer(), enforce: true
     field :table, :ets.table(), enforce: true
     field :failures, [integer()], default: []
   end
@@ -52,10 +52,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker do
   Reads the breaker's ETS table directly via the backend registry, so a missing
   or crashed breaker reads as allowed.
   """
-  @spec check(Backend.t() | pos_integer()) :: :ok | {:error, :circuit_open, integer()}
+  @spec check(Backend.t() | non_neg_integer()) :: :ok | {:error, :circuit_open, integer()}
   def check(%Backend{id: backend_id}), do: check(backend_id)
 
-  def check(backend_id) when is_pos_integer(backend_id) do
+  def check(backend_id) when is_non_negative_integer(backend_id) do
     with [{_pid, table}] when not is_nil(table) <-
            Registry.lookup(BackendRegistry, {__MODULE__, backend_id}),
          [{@blocked_key, blocked_until}] <- safe_lookup(table, @blocked_key),
@@ -112,10 +112,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker do
 
   Useful for introspection (_and tests_).
   """
-  @spec get_state(Backend.t() | pos_integer()) :: t() | nil
+  @spec get_state(Backend.t() | non_neg_integer()) :: t() | nil
   def get_state(%Backend{id: backend_id}), do: get_state(backend_id)
 
-  def get_state(backend_id) when is_pos_integer(backend_id) do
+  def get_state(backend_id) when is_non_negative_integer(backend_id) do
     case Registry.lookup(BackendRegistry, {__MODULE__, backend_id}) do
       [{pid, _table}] -> GenServer.call(pid, :get_state)
       [] -> nil
