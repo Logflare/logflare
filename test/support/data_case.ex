@@ -16,6 +16,8 @@ defmodule Logflare.DataCase do
 
   alias Ecto.Adapters.SQL
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.EndpointUtils
+  alias Logflare.Backends.Backend
   alias Logflare.Backends.ConsolidatedSup
 
   using do
@@ -152,7 +154,8 @@ defmodule Logflare.DataCase do
       password: "logflare",
       port: 8123,
       ingest_pool_size: 5,
-      query_pool_size: 3
+      read_pool_size: 3,
+      labeled_read_pool_size: 3
     }
 
     backend =
@@ -218,29 +221,36 @@ defmodule Logflare.DataCase do
 
   Drops all type-specific tables (`_logs`, `_metrics`, `_traces`).
   """
-  def cleanup_clickhouse_tables(backend) do
-    tables =
-      Enum.map([:log, :metric, :trace], fn type ->
-        ClickHouseAdaptor.clickhouse_ingest_table_name(backend, type)
-      end)
+  @spec cleanup_clickhouse_tables(Backend.t()) :: :ok
+  def cleanup_clickhouse_tables(%Backend{config: config} = backend) do
+    # Stop ingestion before dropping tables to avoid writes racing with cleanup.
+    ConsolidatedSup.stop_pipeline(backend.id)
 
-    drop_query =
-      tables
-      |> Enum.map_join("; ", fn table_name -> "DROP TABLE IF EXISTS #{table_name}" end)
+    {scheme, hostname, port} = EndpointUtils.origin(config.url, Map.get(config, :port))
 
+    connection_opts = [
+      scheme: scheme,
+      hostname: hostname,
+      port: port,
+      database: config.database,
+      username: config.username,
+      password: config.password,
+      pool_size: 1
+    ]
+
+    {:ok, conn} = DBConnection.start_link(Ch.Connection, connection_opts)
+
+    # Normal caller exits do not stop this linked pool, so close it explicitly.
     try do
-      ClickHouseAdaptor.execute_ch_query(
-        backend,
-        drop_query,
-        [],
-        pool_timeout: 1_000
-      )
+      Enum.each([:log, :metric, :trace], fn type ->
+        table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, type)
 
-      ConsolidatedSup.stop_pipeline(backend.id)
-    rescue
-      _ -> :ok
-    catch
-      :exit, _ -> :ok
+        Ch.query!(conn, "DROP TABLE IF EXISTS {table:Identifier}", %{"table" => table_name},
+          timeout: to_timeout(second: 1)
+        )
+      end)
+    after
+      GenServer.stop(conn)
     end
   end
 

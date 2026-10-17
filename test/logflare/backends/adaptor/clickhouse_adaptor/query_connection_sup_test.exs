@@ -63,8 +63,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSupTest do
 
       pools = QueryConnectionSup.list_read_pools()
 
-      assert {backend.id, nil, default_pool, 50} in pools
-      assert {backend.id, "api", api_pool, 32} in pools
+      assert {backend.id, nil, default_pool, backend.config.read_pool_size} in pools
+      assert {backend.id, "api", api_pool, backend.config.labeled_read_pool_size} in pools
 
       refute Enum.any?(pools, fn {backend_id, _label, _pid, _pool_size} ->
                backend_id == other_backend.id
@@ -98,7 +98,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSupTest do
 
       assert :ok == ConnectionManager.ensure_pool_started(backend, "api")
       api_pool = ConnectionManager.get_pool_pid(backend, "api")
-      assert {backend.id, "api", api_pool, 32} in QueryConnectionSup.list_read_pools()
+
+      assert {backend.id, "api", api_pool, backend.config.labeled_read_pool_size} in QueryConnectionSup.list_read_pools()
 
       assert :ok == QueryConnectionSup.refresh_backend_local(backend.id)
 
