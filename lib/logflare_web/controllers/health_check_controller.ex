@@ -11,12 +11,16 @@ defmodule LogflareWeb.HealthCheckController do
   alias Logflare.System
 
   @doc """
-  Readiness: runs every check, database included, on every request, and fails
-  once graceful shutdown begins.
+  Readiness: runs every check until the node has passed once, then only the
+  node-local ones, and fails once graceful shutdown begins.
+
+  Ingest resolves everything it needs from the context caches, so a node that has
+  already passed stays in rotation through a database outage rather than being
+  pulled out while it is still serving.
   """
   def ready(conn, _params) do
     if Readiness.ready?() do
-      respond(conn, :full)
+      respond(conn, startup_mode())
     else
       response = JSON.encode!(%{status: :not_ready})
 
@@ -33,11 +37,11 @@ defmodule LogflareWeb.HealthCheckController do
   dropping or recreating a running node when the database is slow.
   """
   def check(conn, _params) do
-    if Readiness.startup_checks_passed?() do
-      respond(conn, :liveness)
-    else
-      respond(conn, :full)
-    end
+    respond(conn, startup_mode())
+  end
+
+  defp startup_mode do
+    if Readiness.startup_checks_passed?(), do: :liveness, else: :full
   end
 
   defp respond(conn, mode) do

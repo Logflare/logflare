@@ -2,6 +2,8 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
   @moduledoc false
   use GenServer
 
+  require Logger
+
   alias Logflare.Repo
   alias Logflare.SystemMetric
   alias Logflare.Cluster
@@ -14,24 +16,49 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
   end
 
+  @doc """
+  Creates the counter table, then seeds it from the database.
+
+  This process owns `#{inspect(@table)}`, so the table is created before anything
+  that can raise: a crash here takes the table with it, and every ingest then
+  fails in `increment/2` until the table is recreated. Seeding is best effort for
+  the same reason - an unreachable database must not stop the counter working.
+  """
   def init(state) do
-    case Repo.get_by(SystemMetric, node: node_name()) do
-      nil ->
-        create(@total_logs, 0)
-
-      total_logs ->
-        create(@total_logs, total_logs.all_logs_logged)
-    end
-
+    create(@total_logs, 0)
     persist()
 
-    {:ok, state}
+    {:ok, state, {:continue, :seed_log_count}}
+  end
+
+  def handle_continue(:seed_log_count, state) do
+    case with_repo(fn -> Repo.get_by(SystemMetric, node: node_name()) end) do
+      {:ok, %SystemMetric{all_logs_logged: count}} ->
+        :ets.update_counter(@table, @total_logs, {3, count}, {@total_logs, 0, 0})
+
+      {:ok, nil} ->
+        :ok
+
+      {:error, error} ->
+        Logger.warning(
+          "Could not seed #{@total_logs} from the database, counting from 0: " <>
+            Exception.message(error)
+        )
+    end
+
+    {:noreply, state}
   end
 
   def handle_info(:persist, state) do
     {:ok, log_count} = log_count(@total_logs)
 
-    insert_or_update_node_metric(%{all_logs_logged: log_count, node: node_name()})
+    with {:error, error} <-
+           with_repo(fn ->
+             insert_or_update_node_metric(%{all_logs_logged: log_count, node: node_name()})
+           end) do
+      Logger.warning("Could not persist #{@total_logs}: " <> Exception.message(error))
+    end
+
     persist(@persist_every * Cluster.Utils.actual_cluster_size())
     {:noreply, state}
   end
@@ -99,5 +126,13 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
 
   defp persist(every \\ @persist_every) do
     Process.send_after(self(), :persist, every)
+  end
+
+  # this process owns the counter table, so a raise here would destroy it and break
+  # every subsequent `increment/2` until the database recovers
+  defp with_repo(fun) do
+    {:ok, fun.()}
+  rescue
+    error in [DBConnection.ConnectionError] -> {:error, error}
   end
 end
