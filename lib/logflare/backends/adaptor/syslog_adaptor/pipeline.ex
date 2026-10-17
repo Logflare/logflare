@@ -29,6 +29,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
       context: %{
         source_id: source.id,
         backend_id: backend.id,
+        telemetry_tags: %{backend_type: backend.type},
         pool: pool
       }
     )
