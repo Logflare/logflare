@@ -12,10 +12,12 @@ The VictoriaMetrics backend is **ingest-only**, and sends metric events to [Vict
 
 The backend can be configured with the following options:
 
-- `url` (`string`, required) - The remote write endpoint, such as `https://victoriametrics.example.com/api/v1/write`. Private and reserved addresses are rejected.
+- `url` (`string`, required) - The VictoriaMetrics write base URL, such as `https://victoriametrics.example.com`. Logflare appends `/api/v1/write`, so omit that suffix. Private and reserved addresses are rejected.
 - `username` and `password` (`string`, optional) - Basic auth credentials. Both must be provided together.
 - `headers` (`map`, optional) - Extra headers attached to each request. Credential headers such as `authorization` are redacted when the backend is read back.
 - `labels` (`map`, optional) - Static labels added to every time series. These take precedence over event attributes with the same name. Labels can be set through the management API.
+
+For a [VictoriaMetrics cluster](https://docs.victoriametrics.com/victoriametrics/url-examples/#apiv1write), include the tenant's write prefix, for example `https://vminsert.example.com/insert/0/prometheus`. Logflare sends requests to `https://vminsert.example.com/insert/0/prometheus/api/v1/write`. Any proxy path prefix and query parameters are preserved.
 
 Stored credentials are only sent to the host they were entered for. Changing the URL to another host clears the password and credential headers, so they need to be entered again.
 

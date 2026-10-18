@@ -33,7 +33,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
     end
 
     test "valid with url only" do
-      assert Adaptor.cast_and_validate_config(@subject, %{"url" => @vm_remote_write_url}).valid?
+      assert Adaptor.cast_and_validate_config(@subject, %{"url" => @vm_base_url}).valid?
     end
 
     test "rejects invalid url" do
@@ -42,17 +42,17 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
 
     test "requires both username and password when either provided" do
       refute Adaptor.cast_and_validate_config(@subject, %{
-               "url" => "http://vm:8428/api/v1/write",
+               "url" => "http://vm:8428",
                "username" => "user"
              }).valid?
 
       refute Adaptor.cast_and_validate_config(@subject, %{
-               "url" => "http://vm:8428/api/v1/write",
+               "url" => "http://vm:8428",
                "password" => "pass"
              }).valid?
 
       assert Adaptor.cast_and_validate_config(@subject, %{
-               "url" => "http://vm:8428/api/v1/write",
+               "url" => "http://vm:8428",
                "username" => "user",
                "password" => "pass"
              }).valid?
@@ -60,14 +60,14 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
 
     test "accepts optional labels map" do
       assert Adaptor.cast_and_validate_config(@subject, %{
-               "url" => "http://vm:8428/api/v1/write",
+               "url" => "http://vm:8428",
                "labels" => %{"env" => "prod"}
              }).valid?
     end
 
     test "keeps stored credentials submitted back in redacted form" do
       existing = %{
-        url: "https://user:secret@vm.example.com/api/v1/write",
+        url: "https://user:secret@vm.example.com",
         username: "user",
         password: "pass",
         headers: %{"authorization" => "Bearer token", "x-tenant" => "acme"}
@@ -89,7 +89,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
 
     test "does not carry stored credentials to a different host" do
       existing = %{
-        url: "https://vm.example.com/api/v1/write",
+        url: "https://vm.example.com",
         username: "user",
         password: "pass",
         headers: %{"authorization" => "Bearer token", "x-tenant" => "acme"}
@@ -100,7 +100,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       moved =
         Adaptor.cast_and_validate_config(
           @subject,
-          %{redacted | url: "https://other.example.com/api/v1/write"},
+          %{redacted | url: "https://other.example.com"},
           existing
         )
 
@@ -113,7 +113,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       url_only =
         Adaptor.cast_and_validate_config(
           @subject,
-          %{url: "https://other.example.com/api/v1/write"},
+          %{url: "https://other.example.com"},
           existing
         )
 
@@ -124,7 +124,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       reentered =
         Adaptor.cast_and_validate_config(
           @subject,
-          %{redacted | url: "https://other.example.com/api/v1/write", password: "new"},
+          %{redacted | url: "https://other.example.com", password: "new"},
           existing
         )
 
@@ -140,7 +140,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
           name: "vm",
           type: :victoria_metrics,
           config: %{
-            url: "https://vm.example.com/api/v1/write",
+            url: "https://vm.example.com",
             username: "user",
             password: "pass",
             headers: %{"authorization" => "Bearer token"},
@@ -163,7 +163,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
     test "rejects private destinations" do
       changeset =
         Adaptor.cast_and_validate_config(@subject, %{
-          "url" => "http://127.0.0.1:8428/api/v1/write"
+          "url" => "http://127.0.0.1:8428"
         })
 
       refute changeset.valid?
@@ -175,7 +175,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
     test "redacts the password, credential headers and url userinfo" do
       redacted =
         @subject.redact_config(%{
-          url: "https://user:secret@vm.example.com/api/v1/write",
+          url: "https://user:secret@vm.example.com",
           username: "user",
           password: "secret",
           headers: %{"authorization" => "Bearer token", "x-tenant" => "acme"}
@@ -183,25 +183,45 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
 
       assert redacted.password == "REDACTED"
       assert redacted.username == "user"
-      assert redacted.url == "https://REDACTED@vm.example.com/api/v1/write"
+      assert redacted.url == "https://REDACTED@vm.example.com"
       assert redacted.headers == %{"authorization" => "REDACTED", "x-tenant" => "acme"}
     end
 
     test "leaves a config without secrets readable" do
-      assert %{url: "http://vm:8428/api/v1/write", headers: %{}} =
-               redacted = @subject.redact_config(%{url: "http://vm:8428/api/v1/write"})
+      assert %{url: "http://vm:8428", headers: %{}} =
+               redacted = @subject.redact_config(%{url: "http://vm:8428"})
 
       refute Map.has_key?(redacted, :password)
     end
   end
 
   describe "transform_config/1" do
+    test "appends the remote write path to the configured base URL" do
+      urls = [
+        {"https://vm.example.com", "https://vm.example.com/api/v1/write"},
+        {"https://vm.example.com/", "https://vm.example.com/api/v1/write"},
+        {"https://vminsert.example.com:8480/insert/42/prometheus",
+         "https://vminsert.example.com:8480/insert/42/prometheus/api/v1/write"},
+        {"https://vminsert.example.com/insert/42/prometheus/",
+         "https://vminsert.example.com/insert/42/prometheus/api/v1/write"},
+        {"https://proxy.example.com/metrics?tenant=acme",
+         "https://proxy.example.com/metrics/api/v1/write?tenant=acme"},
+        {"https://user:secret@proxy.example.com/metrics/?tenant=acme",
+         "https://user:secret@proxy.example.com/metrics/api/v1/write?tenant=acme"}
+      ]
+
+      for {base_url, write_url} <- urls do
+        backend = build(:backend, type: :victoria_metrics, config: %{url: base_url})
+        assert @subject.transform_config(backend).url == write_url
+      end
+    end
+
     test "sends one canonical copy of each protocol header" do
       backend =
         build(:backend,
           type: :victoria_metrics,
           config: %{
-            url: @vm_remote_write_url,
+            url: @vm_base_url,
             username: "user",
             password: "pass",
             headers: %{"Content-Type" => "text/plain", "X-Tenant" => "acme"}
@@ -230,7 +250,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
         insert(:backend,
           type: :victoria_metrics,
           sources: [source],
-          config: %{url: "http://vm:8428/api/v1/write"}
+          config: %{url: "http://vm:8428"}
         )
 
       [backend: backend]
@@ -248,6 +268,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
 
       @client
       |> expect(:send, fn opts ->
+        assert opts[:url] == "http://vm:8428/api/v1/write"
         send(test_pid, {:body, opts[:body]})
         {:ok, %Tesla.Env{status: 204}}
       end)
@@ -653,7 +674,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
         insert(:backend,
           type: :victoria_metrics,
           sources: [source],
-          config: %{url: @vm_remote_write_url, labels: %{"env" => "test"}}
+          config: %{url: @vm_base_url, labels: %{"env" => "test"}}
         )
 
       start_supervised!({AdaptorSupervisor, {source, backend}})
@@ -721,7 +742,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
         insert(:backend,
           type: :victoria_metrics,
           sources: [source],
-          config: %{url: @vm_remote_write_url}
+          config: %{url: @vm_base_url}
         )
 
       start_supervised!({AdaptorSupervisor, {source, backend}})

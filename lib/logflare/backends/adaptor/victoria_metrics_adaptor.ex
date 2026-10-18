@@ -3,8 +3,9 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   Backend adaptor for VictoriaMetrics using Prometheus remote write protocol (v0.1.0).
 
   The payload is protobuf-encoded and snappy block-compressed before POST. The URL
-  should point to the VictoriaMetrics remote-write endpoint, e.g.
-  https://victoriametrics.example.com/api/v1/write.
+  should be the VictoriaMetrics write base URL, e.g.
+  https://victoriametrics.example.com. The adaptor appends /api/v1/write, preserving
+  any cluster or proxy path prefix.
 
   Only metric events (`LogEvent.event_type == :metric`) are sent. Gauges, cumulative
   sums and cumulative explicit-bucket histograms are supported. Everything else is
@@ -110,7 +111,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     batch_config = %{labels: Map.get(config, :labels), backend_id: Map.get(backend, :id)}
 
     %{
-      url: config.url,
+      url: remote_write_url(config.url),
       headers: headers,
       format_batch: &format_batch(&1, batch_config),
       gzip: false,
@@ -160,6 +161,13 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   def test_connection(%Backend{} = backend) do
     backend = %{backend | config: transform_config(backend)}
     WebhookAdaptor.test_connection(backend, @empty_write_request)
+  end
+
+  @spec remote_write_url(String.t()) :: String.t()
+  defp remote_write_url(url) do
+    uri = URI.parse(url)
+    path = String.trim_trailing(uri.path || "", "/") <> "/api/v1/write"
+    URI.to_string(%{uri | path: path})
   end
 
   defp put_basic_auth(headers, nil), do: headers

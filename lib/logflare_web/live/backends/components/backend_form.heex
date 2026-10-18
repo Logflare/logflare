@@ -526,10 +526,12 @@
           </div>
         <% "victoria_metrics" -> %>
           <div class="form-group">
-            {label(f_config, :url, "Remote Write URL (Required)")}
+            {label(f_config, :url, "Write Base URL (Required)")}
             {text_input(f_config, :url, class: "form-control")}
             <small class="form-text text-muted">
-              The Prometheus remote write endpoint, e.g. <code>https://victoriametrics.example.com/api/v1/write</code>. Only metric events are sent
+              The VictoriaMetrics write base URL, e.g. <code>https://victoriametrics.example.com</code>.
+              Include any cluster or proxy path prefix. Logflare appends <code>/api/v1/write</code>.
+              Only metric events are sent
             </small>
           </div>
           <div class="form-group">
