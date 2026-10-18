@@ -70,13 +70,15 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsIdentityIntegrationTest do
     metric_name = prefix <> "_identity"
 
     context = [
+      service_name: prefix,
+      scope_schema_url: "https://opentelemetry.io/schemas/1.31.0",
       resource_attributes: [attribute("host.name", "host-a")],
       scope_attributes: [attribute("build.flags", ["alpha", "beta"])]
     ]
 
     variants = [
       {10.0, []},
-      {20.0, resource_attributes: [attribute("host.name", "host-b")]},
+      {20.0, instance: "replica-b", resource_attributes: [attribute("host.name", "host-b")]},
       {30.0, scope_name: "vm.query.other"},
       {40.0, scope_version: "2.0"},
       {50.0, scope_attributes: [attribute("build.flags", ["alpha", "gamma"])]},
@@ -110,35 +112,41 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsIdentityIntegrationTest do
           assert sample_time == timestamp
           assert labels["__name__"] == metric_name
           assert labels["source"] == source.name
-          assert labels["job"] == "integration/metrics-api"
-          assert labels["instance"] == "replica-a"
+          assert labels["job"] == "integration/" <> prefix
           assert labels["env"] == "integration"
           assert labels["_http_route"] == "/metrics"
-          assert labels["logflare_resource_id"] =~ ~r/\A[0-9a-f]{64}\z/
-          assert labels["logflare_scope_id"] =~ ~r/\A[0-9a-f]{64}\z/
+          refute Map.has_key?(labels, "logflare_resource_id")
+          refute Map.has_key?(labels, "logflare_scope_id")
+          refute Map.has_key?(labels, "_host_name")
+          assert labels["otel_scope_schema_url"] == "https://opentelemetry.io/schemas/1.31.0"
           {value, labels}
         end)
 
       assert Enum.sort(Map.keys(by_value)) == ~w(10 20 30 40 50 60)
-      baseline = by_value["10"]
-
-      assert by_value["20"]["logflare_resource_id"] != baseline["logflare_resource_id"]
-      assert by_value["20"]["logflare_scope_id"] == baseline["logflare_scope_id"]
+      assert by_value["10"]["instance"] == "replica-a"
+      assert by_value["20"]["instance"] == "replica-b"
       assert by_value["30"]["otel_scope_name"] == "vm.query.other"
       assert by_value["40"]["otel_scope_version"] == "2.0"
-
-      scope_variants = Enum.map(~w(10 30 40 50 60), &Map.fetch!(by_value, &1))
-
-      assert scope_variants |> Enum.map(& &1["logflare_scope_id"]) |> Enum.uniq() |> length() == 5
-
-      assert Enum.all?(scope_variants, fn labels ->
-               labels["logflare_resource_id"] == baseline["logflare_resource_id"]
-             end)
+      assert by_value["10"]["otel_scope_build_flags"] == ~s(["alpha","beta"])
+      assert by_value["50"]["otel_scope_build_flags"] == ~s(["alpha","gamma"])
+      assert by_value["60"]["otel_scope_build_flags"] == ~s(["beta","alpha"])
 
       for value <- ~w(10 20 50 60) do
         assert by_value[value]["otel_scope_name"] == "vm.query.integration"
         assert by_value[value]["otel_scope_version"] == "1.0"
       end
+
+      assert {:ok, %{"data" => %{"result" => targets}}} =
+               query_receiver(~s(target_info{job="integration/#{prefix}"}), %{"time" => timestamp})
+
+      assert length(targets) == 2
+
+      assert Map.new(targets, fn %{"metric" => labels, "value" => [^timestamp, "1"]} ->
+               refute Map.has_key?(labels, "source")
+               refute Map.has_key?(labels, "env")
+               refute Map.has_key?(labels, "otel_scope_name")
+               {labels["instance"], labels["_host_name"]}
+             end) == %{"replica-a" => "host-a", "replica-b" => "host-b"}
     end)
   end
 
@@ -156,13 +164,14 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsIdentityIntegrationTest do
       resource: %Resource{
         attributes:
           [
-            attribute("service.name", "metrics-api"),
+            attribute("service.name", Keyword.get(context, :service_name, "metrics-api")),
             attribute("service.namespace", "integration"),
-            attribute("service.instance.id", "replica-a")
+            attribute("service.instance.id", Keyword.get(context, :instance, "replica-a"))
           ] ++ Keyword.get(context, :resource_attributes, [])
       },
       scope_metrics: [
         %ScopeMetrics{
+          schema_url: Keyword.get(context, :scope_schema_url, ""),
           scope: %InstrumentationScope{
             name: Keyword.get(context, :scope_name, "vm.query.integration"),
             version: Keyword.get(context, :scope_version, "1.0"),
