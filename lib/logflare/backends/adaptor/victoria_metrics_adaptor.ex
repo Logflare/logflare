@@ -317,26 +317,26 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   end
 
   defp samples({:value, value}, name, labels, ts_ms) do
-    [{[{"__name__", name} | labels], {value, ts_ms}}]
+    [{Map.put(labels, "__name__", name), {value, ts_ms}}]
   end
 
   defp samples({:histogram, count, sum, buckets}, name, labels, ts_ms) do
-    bucket_labels = [{"__name__", name <> "_bucket"} | labels]
+    bucket_labels = Map.put(labels, "__name__", name <> "_bucket")
     count_value = integer_value(count)
 
     bucket_samples =
       for {le, cumulative} <- buckets do
-        {[{"le", le} | bucket_labels], {integer_value(cumulative), ts_ms}}
+        {Map.put(bucket_labels, "le", le), {integer_value(cumulative), ts_ms}}
       end
 
     sum_samples =
       if sum == nil,
         do: [],
-        else: [{[{"__name__", name <> "_sum"} | labels], {sum, ts_ms}}]
+        else: [{Map.put(labels, "__name__", name <> "_sum"), {sum, ts_ms}}]
 
     [
-      {[{"__name__", name <> "_count"} | labels], {count_value, ts_ms}},
-      {[{"le", "+Inf"} | bucket_labels], {count_value, ts_ms}}
+      {Map.put(labels, "__name__", name <> "_count"), {count_value, ts_ms}},
+      {Map.put(bucket_labels, "le", "+Inf"), {count_value, ts_ms}}
       | sum_samples ++ bucket_samples
     ]
   end
@@ -365,7 +365,6 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     |> Map.merge(context.static_labels)
     |> export_reserved()
     |> Map.merge(adaptor_labels)
-    |> Enum.sort()
   end
 
   # LogEvent.make/2 stores keys in BigQuery column form, so `service.name` arrives as

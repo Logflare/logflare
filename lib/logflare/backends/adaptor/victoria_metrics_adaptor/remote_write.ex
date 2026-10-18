@@ -16,9 +16,10 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.RemoteWrite do
   import Bitwise
 
   @type label :: {name :: String.t(), value :: String.t()}
+  @type labels :: [label()] | %{String.t() => String.t()}
   @type sample_value :: float() | :nan | :infinity | :negative_infinity
   @type sample :: {value :: sample_value(), timestamp_ms :: integer()}
-  @type series :: {[label()], [sample()]}
+  @type series :: {labels(), [sample()]}
 
   @spec encode([series()]) :: binary()
   def encode(series) do
@@ -28,7 +29,11 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.RemoteWrite do
   end
 
   defp encode_series({labels, samples}) do
-    body = [Enum.map(Enum.sort(labels), &encode_label/1) | Enum.map(samples, &encode_sample/1)]
+    body = [
+      Enum.map(Enum.sort(Enum.to_list(labels)), &encode_label/1)
+      | Enum.map(samples, &encode_sample/1)
+    ]
+
     [0x0A, varint(IO.iodata_length(body)) | body]
   end
 

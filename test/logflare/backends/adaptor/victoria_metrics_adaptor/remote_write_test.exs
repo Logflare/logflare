@@ -13,11 +13,15 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.RemoteWriteTest do
       labels = [{"z", "last"}, {"__name__", "metric"}, {"a", "first"}]
       samples = [{1.0, 7}]
 
-      request = RemoteWrite.encode([{labels, samples}]) |> Prometheus.WriteRequest.decode()
+      for labels <- [labels, Map.new(labels)] do
+        series = [{labels, samples}]
+        encoded = RemoteWrite.encode(series)
+        assert encoded == series |> to_write_request() |> Protobuf.encode()
 
-      assert [series] = request.timeseries
-      assert Enum.map(series.labels, & &1.name) == ["__name__", "a", "z"]
-      assert [%{value: 1.0, timestamp: 7}] = series.samples
+        assert [series] = Prometheus.WriteRequest.decode(encoded).timeseries
+        assert Enum.map(series.labels, & &1.name) == ["__name__", "a", "z"]
+        assert [%{value: 1.0, timestamp: 7}] = series.samples
+      end
     end
 
     test "encodes label lengths across protobuf varint boundaries" do
@@ -46,8 +50,9 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.RemoteWriteTest do
 
   defp series do
     gen all labels <- list_of(label(), max_length: 6),
+            labels_as_map? <- boolean(),
             samples <- list_of(sample(), max_length: 4) do
-      {labels, samples}
+      {if(labels_as_map?, do: Map.new(labels), else: labels), samples}
     end
   end
 
