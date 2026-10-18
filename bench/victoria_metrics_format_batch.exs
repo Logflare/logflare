@@ -91,7 +91,8 @@ benchee_opts =
     inputs: inputs,
     time: String.to_integer(System.get_env("BENCH_TIME", "5")),
     warmup: String.to_integer(System.get_env("BENCH_WARMUP", "2")),
-    memory_time: 1
+    memory_time: 1,
+    profile_after: String.to_existing_atom(System.get_env("BENCH_PROFILE_AFTER", "false"))
   ]
   |> then(fn opts ->
     case System.get_env("BENCH_SAVE") do
