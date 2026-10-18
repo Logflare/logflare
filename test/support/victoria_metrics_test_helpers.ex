@@ -19,6 +19,22 @@ defmodule Logflare.VictoriaMetricsTestHelpers do
   @vm_retry [sleep: 250, duration: 30_000]
   @drop_event [:logflare, :backends, :victoria_metrics, :drop]
 
+  @spec ensure_vm_available(map()) :: :ok
+  def ensure_vm_available(_context) do
+    url = vm_base_url() <> "/health"
+    response = HTTPoison.get(url, [], timeout: 1_000, recv_timeout: 1_000)
+
+    assert match?({:ok, %{status_code: 200}}, response),
+           """
+           VictoriaMetrics is unavailable at #{url}.
+           Start it with: docker compose up -d vm
+           For a custom instance, set VICTORIA_METRICS_URL to its base URL.
+           Health check returned: #{inspect(response, limit: 5, printable_limit: 200)}
+           """
+
+    :ok
+  end
+
   @spec setup_vm(map()) :: keyword()
   def setup_vm(context) do
     stub(Logflare.Utils.SSRF, :safe_resolve, fn

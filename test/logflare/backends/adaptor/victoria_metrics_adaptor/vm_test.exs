@@ -9,6 +9,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
   @moduletag :victoria_metrics
   @vm_retry [sleep: 250, duration: 30_000]
 
+  setup_all :ensure_vm_available
   setup :setup_vm
 
   test "connection check sends a valid empty remote write request", %{backend: backend} do

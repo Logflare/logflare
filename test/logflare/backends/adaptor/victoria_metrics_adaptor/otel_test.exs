@@ -24,6 +24,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.OtelTest do
   @moduletag :victoria_metrics
   @vm_retry [sleep: 250, duration: 30_000]
 
+  setup_all :ensure_vm_available
   setup :setup_vm
 
   setup do

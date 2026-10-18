@@ -10,6 +10,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.EdgeCasesTest do
   @moduletag :victoria_metrics
   @vm_retry [sleep: 250, duration: 30_000]
 
+  setup_all :ensure_vm_available
   setup :setup_vm
 
   test "UTF-8 and escaped label values survive remote write and JSON export", %{source: source} do
