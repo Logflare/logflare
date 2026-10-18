@@ -316,37 +316,30 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     buckets
   end
 
-  # `labels` is sorted by name and never holds `__name__` or `le`, so inserting them
-  # keeps every series' label list in the order remote write requires.
   defp samples({:value, value}, name, labels, ts_ms) do
-    [{insert_label(labels, "__name__", name), {value, ts_ms}}]
+    [{[{"__name__", name} | labels], {value, ts_ms}}]
   end
 
   defp samples({:histogram, count, sum, buckets}, name, labels, ts_ms) do
-    bucket_labels = insert_label(labels, "__name__", name <> "_bucket")
+    bucket_labels = [{"__name__", name <> "_bucket"} | labels]
     count_value = integer_value(count)
 
     bucket_samples =
       for {le, cumulative} <- buckets do
-        {insert_label(bucket_labels, "le", le), {integer_value(cumulative), ts_ms}}
+        {[{"le", le} | bucket_labels], {integer_value(cumulative), ts_ms}}
       end
 
     sum_samples =
       if sum == nil,
         do: [],
-        else: [{insert_label(labels, "__name__", name <> "_sum"), {sum, ts_ms}}]
+        else: [{[{"__name__", name <> "_sum"} | labels], {sum, ts_ms}}]
 
     [
-      {insert_label(labels, "__name__", name <> "_count"), {count_value, ts_ms}},
-      {insert_label(bucket_labels, "le", "+Inf"), {count_value, ts_ms}}
+      {[{"__name__", name <> "_count"} | labels], {count_value, ts_ms}},
+      {[{"le", "+Inf"} | bucket_labels], {count_value, ts_ms}}
       | sum_samples ++ bucket_samples
     ]
   end
-
-  defp insert_label([{key, _value} = label | rest], name, value) when key < name,
-    do: [label | insert_label(rest, name, value)]
-
-  defp insert_label(labels, name, value), do: [{name, value} | labels]
 
   # protobuf decodes IEEE special values to atoms, which RemoteWrite encodes back.
   defp sample_value(value) when is_float(value), do: {:ok, value}
@@ -372,7 +365,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     |> Map.merge(context.static_labels)
     |> export_reserved()
     |> Map.merge(adaptor_labels)
-    |> Enum.sort()
+    |> Map.to_list()
   end
 
   # LogEvent.make/2 stores keys in BigQuery column form, so `service.name` arrives as
