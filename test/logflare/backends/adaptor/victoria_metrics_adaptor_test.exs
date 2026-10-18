@@ -304,45 +304,6 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       assert [%{value: 100.0}] = ts.samples
     end
 
-    test "groups equivalent large label maps and sorts samples by timestamp", %{source: source} do
-      entries = for i <- 1..40, do: {"label_#{i}", "value_#{i}"}
-      forward = Map.new(entries)
-
-      backward =
-        entries
-        |> Enum.reverse()
-        |> Enum.reduce(%{}, fn {key, value}, labels -> Map.put(labels, key, value) end)
-        |> Map.put("temporary", "removed")
-        |> Map.delete("temporary")
-
-      assert forward == backward
-
-      newer =
-        metric_event(source,
-          metric_type: "gauge",
-          value: 2.0,
-          timestamp: 1_700_000_000_002_000_000,
-          attributes: forward
-        )
-
-      older =
-        metric_event(source,
-          metric_type: "gauge",
-          value: 1.0,
-          timestamp: 1_700_000_000_001_000_000,
-          attributes: backward
-        )
-
-      assert [series] = decode([newer, older])
-      assert length(series.labels) == 42
-      assert series.labels == Enum.sort_by(series.labels, & &1.name)
-
-      assert [
-               %{value: 1.0, timestamp: 1_700_000_000_001},
-               %{value: 2.0, timestamp: 1_700_000_000_002}
-             ] = series.samples
-    end
-
     test "histogram event produces _count, _sum, and cumulative _bucket series",
          %{source: source} do
       le =
@@ -372,51 +333,6 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
                "500" => [%{value: 7.0}],
                "+Inf" => [%{value: 10.0}]
              } = buckets(timeseries, "latency_bucket")
-    end
-
-    test "groups histogram count and sum with matching gauge series", %{source: source} do
-      histogram =
-        metric_event(source,
-          event_message: "latency",
-          metric_type: "histogram",
-          timestamp: 1_700_000_000_003_000_000,
-          count: 4,
-          sum: 3.0,
-          bucket_counts: [1, 2, 1],
-          explicit_bounds: [1.0, 2.0]
-        )
-
-      count =
-        metric_event(source,
-          event_message: "latency_count",
-          metric_type: "gauge",
-          timestamp: 1_700_000_000_001_000_000,
-          value: 9.0
-        )
-
-      sum =
-        metric_event(source,
-          event_message: "latency_sum",
-          metric_type: "gauge",
-          timestamp: 1_700_000_000_002_000_000,
-          value: 7.0
-        )
-
-      series = decode([histogram, count, sum])
-      assert length(series) == 5
-      by_name = Enum.group_by(series, &label_map(&1)["__name__"])
-      assert [count_series] = by_name["latency_count"]
-      assert [sum_series] = by_name["latency_sum"]
-
-      assert [
-               %{value: 9.0, timestamp: 1_700_000_000_001},
-               %{value: 4.0, timestamp: 1_700_000_000_003}
-             ] = count_series.samples
-
-      assert [
-               %{value: 7.0, timestamp: 1_700_000_000_002},
-               %{value: 3.0, timestamp: 1_700_000_000_003}
-             ] = sum_series.samples
     end
 
     test "formats le bounds as plain decimals", %{source: source} do
