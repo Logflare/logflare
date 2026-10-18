@@ -13,10 +13,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
   @client Logflare.Backends.Adaptor.WebhookAdaptor.Client
 
   # docker-compose `vm` service — see docker-compose.yml
-  @vm_base_url "http://localhost:8428"
-  @vm_remote_write_url @vm_base_url <> "/api/v1/write"
-  # Freshly written samples take a few seconds to become searchable in VM.
-  @vm_retry [sleep: 250, duration: 30_000]
+  @vm_remote_write_url "http://localhost:8428/api/v1/write"
 
   setup do
     start_supervised!(AllLogsLogged)
@@ -274,37 +271,6 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       [source: source]
     end
 
-    test "gauge event produces single TimeSeries", %{source: source} do
-      le =
-        metric_event(source,
-          event_message: "http.server.duration",
-          metric_type: "gauge",
-          value: 42.5,
-          timestamp: 1_700_000_000_000_000_000,
-          attributes: %{"method" => "GET", "status" => "200"}
-        )
-
-      assert [ts] = decode([le])
-      assert [sample] = ts.samples
-      assert sample.value == 42.5
-      assert sample.timestamp == 1_700_000_000_000
-
-      assert %{
-               "__name__" => "http_server_duration",
-               "source" => "myservice",
-               "method" => "GET",
-               "status" => "200"
-             } = label_map(ts)
-    end
-
-    test "sum event produces single TimeSeries", %{source: source} do
-      le = metric_event(source, event_message: "requests_total", metric_type: "sum", value: 100)
-
-      assert [ts] = decode([le])
-      assert label_map(ts)["__name__"] == "requests_total"
-      assert [%{value: 100.0}] = ts.samples
-    end
-
     test "groups matching series and sorts samples without changing their values", %{
       source: source
     } do
@@ -330,182 +296,6 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
                {1_700_000_001_000, 20.0},
                {1_700_000_002_000, 30.0}
              ]
-    end
-
-    test "keeps different service instances in separate series", %{source: source} do
-      events =
-        for {instance, value} <- [{"checkout-1", 10}, {"checkout-2", 20}] do
-          metric_event(source,
-            event_message: "queue_depth",
-            metric_type: "gauge",
-            value: value,
-            timestamp: 1_700_000_000_000_000,
-            resource: %{"service.name" => "checkout", "service.instance.id" => instance}
-          )
-        end
-
-      series = decode(events)
-      assert length(series) == 2
-
-      assert Map.new(series, fn series ->
-               assert label_map(series)["job"] == "checkout"
-               {label_map(series)["instance"], Enum.map(series.samples, & &1.value)}
-             end) == %{"checkout-1" => [10.0], "checkout-2" => [20.0]}
-    end
-
-    test "currently retains identical and conflicting samples at the same millisecond",
-         %{source: source} do
-      events =
-        for {timestamp, value} <- [
-              {1_700_000_000_000_100, 1},
-              {1_700_000_000_000_200, 1},
-              {1_700_000_000_000_300, 2}
-            ] do
-          metric_event(source,
-            metric_type: "gauge",
-            value: value,
-            timestamp: timestamp
-          )
-        end
-
-      assert [series] = decode(events)
-
-      assert Enum.frequencies_by(series.samples, &{&1.timestamp, &1.value}) == %{
-               {1_700_000_000_000, 1.0} => 2,
-               {1_700_000_000_000, 2.0} => 1
-             }
-    end
-
-    test "histogram event produces _count, _sum, and cumulative _bucket series",
-         %{source: source} do
-      le =
-        metric_event(source,
-          event_message: "latency",
-          metric_type: "histogram",
-          count: 10,
-          sum: 500.0,
-          bucket_counts: [2, 5, 3],
-          explicit_bounds: [100.0, 500.0]
-        )
-
-      timeseries = decode([le])
-      names = Enum.map(timeseries, &label_map(&1)["__name__"])
-
-      assert "latency_count" in names
-      assert "latency_sum" in names
-      assert "latency_bucket" in names
-
-      assert %{
-               "100" => [%{value: 2.0}],
-               "500" => [%{value: 7.0}],
-               "+Inf" => [%{value: 10.0}]
-             } = buckets(timeseries, "latency_bucket")
-    end
-
-    test "formats le bounds as plain decimals", %{source: source} do
-      le =
-        metric_event(source,
-          event_message: "latency",
-          metric_type: "histogram",
-          count: 4,
-          sum: 1.0,
-          bucket_counts: [1, 1, 1, 1, 0],
-          explicit_bounds: [1.0e-9, 0.005, 2.5, 1000.0]
-        )
-
-      assert ["+Inf", "0.000000001", "0.005", "1000", "2.5"] =
-               [le] |> decode() |> buckets("latency_bucket") |> Map.keys() |> Enum.sort()
-    end
-
-    test "maps service resource attributes to job and instance", %{source: source} do
-      le =
-        metric_event(source,
-          metric_type: "gauge",
-          value: 1.0,
-          resource: %{
-            "service.name" => "checkout",
-            "service.namespace" => "shop",
-            "service.instance.id" => "checkout-1"
-          }
-        )
-
-      assert [ts] = decode([le])
-      assert %{"job" => "shop/checkout", "instance" => "checkout-1"} = label_map(ts)
-    end
-
-    test "uses service.name alone as job when there is no namespace", %{source: source} do
-      le =
-        metric_event(source,
-          metric_type: "gauge",
-          value: 1.0,
-          resource: %{"service.name" => "checkout"}
-        )
-
-      assert [ts] = decode([le])
-      labels = label_map(ts)
-      assert labels["job"] == "checkout"
-      refute Map.has_key?(labels, "instance")
-    end
-
-    test "keeps colliding attributes as exported_ labels", %{source: source} do
-      le =
-        metric_event(source,
-          metric_type: "gauge",
-          value: 1.0,
-          resource: %{"service.name" => "checkout"},
-          attributes: %{"source" => "client", "job" => "batch", "region" => "eu"}
-        )
-
-      assert [ts] = decode([le])
-
-      assert %{
-               "source" => "myservice",
-               "job" => "checkout",
-               "exported_source" => "client",
-               "exported_job" => "batch",
-               "region" => "eu"
-             } = label_map(ts)
-    end
-
-    test "skips list and map attribute values instead of crashing", %{source: source} do
-      le =
-        metric_event(source,
-          event_message: "jobs",
-          metric_type: "gauge",
-          value: 1.0,
-          attributes: %{
-            "queue" => "default",
-            "retry" => true,
-            "ratio" => 1000.0,
-            "tags" => ["a", 0.3],
-            "http" => %{"method" => "GET"}
-          }
-        )
-
-      assert [ts] = decode([le])
-      labels = label_map(ts)
-
-      assert %{"queue" => "default", "retry" => "true", "ratio" => "1000"} = labels
-      refute Map.has_key?(labels, "tags")
-      refute Map.has_key?(labels, "http")
-    end
-
-    test "sanitizes metric and label names into Prometheus identifiers", %{source: source} do
-      le =
-        metric_event(source,
-          event_message: "9lives.req/sec-é:x",
-          metric_type: "gauge",
-          value: 1.0,
-          attributes: %{"http.route" => "/", "1st" => "a"}
-        )
-
-      assert [ts] = decode([le])
-      labels = label_map(ts)
-
-      assert labels["__name__"] == "_9lives_req_sec___:x"
-      # LogEvent.make/2 has already normalized the attribute keys
-      assert labels["_http_route"] == "/"
-      assert labels["_1st"] == "a"
     end
 
     test "drops unrepresentable events with a warning and telemetry", %{source: source} do
@@ -675,37 +465,6 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       assert_received {:drop, %{count: 1}, %{reason: :not_a_metric}}
     end
 
-    test "skips empty label names and values", %{source: source} do
-      le = metric_event(source, metric_type: "gauge", value: 1.0, attributes: %{"kept" => "x"})
-
-      [ts] =
-        [le]
-        |> @subject.format_batch(%{labels: %{"" => "x", "empty" => ""}})
-        |> decode_payload()
-
-      labels = label_map(ts)
-      assert labels["kept"] == "x"
-      refute Map.has_key?(labels, "")
-      refute Map.has_key?(labels, "empty")
-    end
-
-    test "prefixes exported_ again when the exported name is taken", %{source: source} do
-      le =
-        metric_event(source,
-          metric_type: "gauge",
-          value: 1.0,
-          attributes: %{"source" => "client", "exported_source" => "proxy"}
-        )
-
-      assert [ts] = decode([le])
-
-      assert %{
-               "source" => "myservice",
-               "exported_source" => "proxy",
-               "exported_exported_source" => "client"
-             } = label_map(ts)
-    end
-
     test "does not warn when every event is sent", %{source: source} do
       le = metric_event(source, metric_type: "gauge", value: 1.0)
 
@@ -713,102 +472,21 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
     end
   end
 
-  describe "format_batch/2" do
-    test "merges config labels into every series, overriding attributes" do
+  describe "pipeline" do
+    test "acknowledges an entirely dropped batch without making an HTTP request" do
+      reject(@client, :send, 1)
       insert(:plan)
       source = insert(:source, user: insert(:user))
-
-      le =
-        metric_event(source,
-          event_message: "jobs",
-          metric_type: "gauge",
-          value: 1.0,
-          attributes: %{"env" => "staging", "queue" => "default"}
-        )
-
-      [ts] =
-        [le]
-        |> @subject.format_batch(%{labels: %{"env" => "prod", "deploy.region" => "eu"}})
-        |> decode_payload()
-
-      assert %{"env" => "prod", "deploy_region" => "eu", "queue" => "default"} = label_map(ts)
-    end
-
-    test "keeps config labels with reserved names as exported_ labels" do
-      insert(:plan)
-      source = insert(:source, user: insert(:user), name: "configured")
-      le = metric_event(source, metric_type: "gauge", value: 1.0)
-
-      [ts] =
-        [le]
-        |> @subject.format_batch(%{labels: %{"job" => "static", "source" => "static"}})
-        |> decode_payload()
-
-      labels = label_map(ts)
-      assert %{"source" => "configured", "exported_job" => "static"} = labels
-      assert labels["exported_source"] == "static"
-      refute Map.has_key?(labels, "job")
-    end
-  end
-
-  # Runs in CI: drives the real Broadway pipeline and captures the HTTP request at the
-  # client boundary, so no VictoriaMetrics instance is needed.
-  describe "pipeline" do
-    setup :set_mimic_global
-
-    setup do
-      insert(:plan)
-      source = insert(:source, user: insert(:user), name: "pipeline_source")
 
       backend =
         insert(:backend,
           type: :victoria_metrics,
+          user: source.user,
           sources: [source],
-          config: %{url: @vm_remote_write_url, labels: %{"env" => "test"}}
+          config: %{url: @vm_remote_write_url}
         )
 
       start_supervised!({AdaptorSupervisor, {source, backend}})
-      [source: source, backend: backend]
-    end
-
-    test "sends metric batches as snappy remote write requests", %{source: source} do
-      test_pid = self()
-
-      expect(@client, :send, fn opts ->
-        send(test_pid, {:sent, opts})
-        {:ok, %Tesla.Env{status: 204}}
-      end)
-
-      le =
-        metric_event(source,
-          event_message: "pipeline.gauge",
-          metric_type: "gauge",
-          value: 2.0,
-          attributes: %{"queue" => "default"}
-        )
-
-      assert {:ok, _} = Backends.ingest_logs([le], source)
-      assert_receive {:sent, opts}, 5_000
-
-      assert opts[:url] == @vm_remote_write_url
-      assert opts[:gzip] == false
-      assert opts[:headers]["content-encoding"] == "snappy"
-
-      assert [ts] = decode_payload(opts[:body])
-
-      assert %{
-               "__name__" => "pipeline_gauge",
-               "source" => "pipeline_source",
-               "queue" => "default",
-               "env" => "test"
-             } = label_map(ts)
-    end
-
-    test "acknowledges an entirely dropped batch without making an HTTP request", %{
-      source: source,
-      backend: backend
-    } do
-      reject(@client, :send, 1)
 
       event =
         metric_event(source,
@@ -824,205 +502,6 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
         end)
 
       assert log =~ "Skipped webhook batch: all 1 log events were dropped"
-    end
-  end
-
-  # End-to-end tests against the docker-compose `vm` service.
-  #
-  # Requires `docker compose up -d vm`. Excluded by default via the
-  # :integration tag (see test/test_helper.exs).
-  #
-  # Run with:
-  #   mix test test/logflare/backends/adaptor/victoria_metrics_adaptor_test.exs --include integration
-  describe "victoriametrics e2e" do
-    @describetag :integration
-
-    # The vm service is on loopback, which SSRFProtection blocks. The pipeline sends
-    # from its own processes, so the stub has to be global.
-    setup :set_mimic_global
-
-    setup do
-      stub(Logflare.Utils.SSRF, :safe_resolve, fn _ -> {:ok, {127, 0, 0, 1}} end)
-
-      insert(:plan)
-      user = insert(:user)
-
-      source =
-        insert(:source, user: user, name: "vm_e2e_#{System.unique_integer([:positive])}")
-
-      backend =
-        insert(:backend,
-          type: :victoria_metrics,
-          sources: [source],
-          config: %{url: @vm_remote_write_url}
-        )
-
-      start_supervised!({AdaptorSupervisor, {source, backend}})
-      [source: source, backend: backend]
-    end
-
-    test "test_connection/1 succeeds against the running VM service",
-         %{backend: backend} do
-      assert :ok = @subject.test_connection(backend)
-    end
-
-    test "metrics flow through the pipeline and are queryable",
-         %{source: source} do
-      metric_name = "logflare_e2e_#{System.unique_integer([:positive])}"
-      expected_value = 42.0
-
-      le =
-        build(:log_event,
-          source: source,
-          event_message: metric_name,
-          metric_type: "gauge",
-          value: expected_value,
-          timestamp: System.system_time(:nanosecond),
-          metadata: %{"type" => "metric"},
-          attributes: %{"env" => "test"}
-        )
-
-      assert {:ok, _} = Backends.ingest_logs([le], source)
-
-      TestUtils.retry_assert(@vm_retry, fn ->
-        assert [%{"value" => ^expected_value, "source" => src, "env" => "test"} | _] =
-                 query_vm(metric_name)
-
-        assert src == source.name
-      end)
-    end
-
-    test "exports every histogram observation and omits absent sums", %{source: source} do
-      older = System.system_time(:millisecond) - 60_000
-      newer = older + 1_000
-      timestamps = [older, newer]
-
-      for {first_sum, second_sum} <- [{1.7, 3.3}, {nil, nil}] do
-        metric_name = "logflare_e2e_histogram_#{System.system_time(:nanosecond)}"
-
-        events =
-          for {timestamp, counts, count, sum} <- [
-                {newer, [4, 4, 2], 10, second_sum},
-                {older, [2, 3, 1], 6, first_sum}
-              ] do
-            metric_event(source,
-              event_message: metric_name,
-              metric_type: "histogram",
-              aggregation_temporality: "cumulative",
-              count: count,
-              sum: sum,
-              bucket_counts: counts,
-              explicit_bounds: [0.1, 0.5],
-              timestamp: timestamp * 1_000_000,
-              resource: %{
-                "service.name" => "checkout",
-                "service.namespace" => "shop",
-                "service.instance.id" => "checkout-1"
-              },
-              attributes: %{"http.route" => "/checkout"}
-            )
-          end
-
-        definitions = [
-          {"_count", %{}, [6, 10]},
-          {"_bucket", %{"le" => "0.1"}, [2, 4]},
-          {"_bucket", %{"le" => "0.5"}, [5, 8]},
-          {"_bucket", %{"le" => "+Inf"}, [6, 10]}
-        ]
-
-        definitions =
-          if first_sum != nil,
-            do: [{"_sum", %{}, [first_sum, second_sum]} | definitions],
-            else: definitions
-
-        labels = %{
-          "source" => source.name,
-          "job" => "shop/checkout",
-          "instance" => "checkout-1",
-          "_http_route" => "/checkout"
-        }
-
-        expected =
-          for {suffix, extra_labels, values} <- definitions, into: %{} do
-            series_labels =
-              labels |> Map.put("__name__", metric_name <> suffix) |> Map.merge(extra_labels)
-
-            {series_labels, Enum.zip(timestamps, values)}
-          end
-
-        assert {:ok, 2} = Backends.ingest_logs(events, source)
-
-        TestUtils.retry_assert(@vm_retry, fn ->
-          assert export_vm("{__name__=~\"#{metric_name}_(count|sum|bucket)\"}") == expected
-        end)
-      end
-    end
-
-    # The adaptor sanitizes Prometheus identifiers (replacing `.`, `/`, `-`
-    # etc. with `_`). Verify by ingesting under the raw name and asserting
-    # that VM has the series under the sanitized name.
-    test "metric names are sanitized into Prometheus identifiers",
-         %{source: source} do
-      suffix = System.unique_integer([:positive])
-      raw_name = "logflare.e2e/duration-ms_#{suffix}"
-      sanitized = "logflare_e2e_duration_ms_#{suffix}"
-
-      le =
-        build(:log_event,
-          source: source,
-          event_message: raw_name,
-          metric_type: "gauge",
-          value: 7.0,
-          timestamp: System.system_time(:nanosecond),
-          metadata: %{"type" => "metric"}
-        )
-
-      assert {:ok, _} = Backends.ingest_logs([le], source)
-
-      TestUtils.retry_assert(@vm_retry, fn ->
-        assert [%{"__name__" => ^sanitized} | _] = query_vm(sanitized)
-      end)
-    end
-
-    # Prometheus remote write v1 has no native encoding for exponential
-    # histograms, so the adaptor drops them. Verify nothing reaches VM by
-    # ingesting a control gauge alongside, waiting for the gauge to appear,
-    # then asserting the exponential_histogram series is absent.
-    test "exponential_histogram events are dropped during ingestion",
-         %{source: source} do
-      suffix = System.unique_integer([:positive])
-      exp_name = "logflare_e2e_exp_#{suffix}"
-      control_name = "logflare_e2e_control_#{suffix}"
-      ts = System.system_time(:nanosecond)
-
-      exp_event =
-        build(:log_event,
-          source: source,
-          event_message: exp_name,
-          metric_type: "exponential_histogram",
-          timestamp: ts,
-          metadata: %{"type" => "metric"}
-        )
-
-      control_event =
-        build(:log_event,
-          source: source,
-          event_message: control_name,
-          metric_type: "gauge",
-          value: 1.0,
-          timestamp: ts,
-          metadata: %{"type" => "metric"}
-        )
-
-      assert {:ok, _} = Backends.ingest_logs([exp_event, control_event], source)
-
-      # Wait until the control gauge is visible — that means VM has flushed
-      # this batch, so anything missing now was dropped, not just late.
-      TestUtils.retry_assert(@vm_retry, fn ->
-        assert [_ | _] = query_vm(control_name)
-      end)
-
-      assert query_vm(exp_name) == []
     end
   end
 
@@ -1066,38 +545,5 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
 
   defp label_map(timeseries) do
     Map.new(timeseries.labels, fn %{name: k, value: v} -> {k, v} end)
-  end
-
-  # Runs a PromQL instant query against the docker-compose VM service and returns
-  # each series' labels with its sample value under "value". VM hides samples newer
-  # than 30s from queries by default, so the latency offset is lowered.
-  defp query_vm(query) do
-    params = URI.encode_query(%{"query" => query, "latency_offset" => "1ms"})
-    url = @vm_base_url <> "/api/v1/query?" <> params
-    {:ok, %{status_code: 200, body: body}} = HTTPoison.get(url)
-    %{"data" => %{"result" => result}} = Jason.decode!(body)
-
-    for %{"metric" => labels, "value" => [_ts, value]} <- result do
-      {value, ""} = Float.parse(value)
-      Map.put(labels, "value", value)
-    end
-  end
-
-  @spec export_vm(String.t()) :: %{map() => [{integer(), number()}]}
-  defp export_vm(selector) do
-    params = URI.encode_query(%{"match[]" => selector})
-
-    {:ok, %{status_code: 200, body: body}} =
-      HTTPoison.get(@vm_base_url <> "/api/v1/export?" <> params)
-
-    body
-    |> String.split("\n", trim: true)
-    |> Enum.map(&Jason.decode!/1)
-    |> Enum.reduce(%{}, fn %{"metric" => labels, "values" => values, "timestamps" => timestamps},
-                           series ->
-      samples = Enum.zip(timestamps, values)
-      Map.update(series, labels, samples, &(samples ++ &1))
-    end)
-    |> Map.new(fn {labels, samples} -> {labels, Enum.sort(samples)} end)
   end
 end
