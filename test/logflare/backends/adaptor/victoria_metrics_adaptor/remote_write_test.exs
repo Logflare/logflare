@@ -20,7 +20,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.RemoteWriteTest do
       assert [%{value: 1.0, timestamp: 7}] = series.samples
     end
 
-    property "produces the same bytes as the generic protobuf encoder with sorted labels" do
+    property "produces the same bytes as the generic protobuf encoder" do
       check all series <- list_of(series(), max_length: 5), max_runs: 300 do
         assert RemoteWrite.encode(series) == series |> to_write_request() |> Protobuf.encode()
       end
