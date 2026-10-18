@@ -90,7 +90,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     report_drops(drops, length(log_events), Map.get(config, :backend_id))
 
     series
-    |> Enum.map(fn {labels, samples} -> {labels, Enum.sort_by(samples, &elem(&1, 1))} end)
+    |> Enum.map(fn {labels, samples} -> {labels, List.keysort(samples, 1)} end)
     |> encode_write_request()
   end
 
