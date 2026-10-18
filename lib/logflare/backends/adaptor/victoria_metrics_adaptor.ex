@@ -365,7 +365,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     |> Map.merge(context.static_labels)
     |> export_reserved()
     |> Map.merge(adaptor_labels)
-    |> Enum.sort()
+    |> Map.to_list()
   end
 
   # LogEvent.make/2 stores keys in BigQuery column form, so `service.name` arrives as
