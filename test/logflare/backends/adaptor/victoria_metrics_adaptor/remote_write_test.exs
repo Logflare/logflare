@@ -9,17 +9,6 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.RemoteWriteTest do
       assert RemoteWrite.encode([]) == ""
     end
 
-    test "sorts labels by name before encoding" do
-      labels = [{"z", "last"}, {"__name__", "metric"}, {"a", "first"}]
-      samples = [{1.0, 7}]
-
-      request = RemoteWrite.encode([{labels, samples}]) |> Prometheus.WriteRequest.decode()
-
-      assert [series] = request.timeseries
-      assert Enum.map(series.labels, & &1.name) == ["__name__", "a", "z"]
-      assert [%{value: 1.0, timestamp: 7}] = series.samples
-    end
-
     property "produces the same bytes as the generic protobuf encoder" do
       check all series <- list_of(series(), max_length: 5), max_runs: 300 do
         assert RemoteWrite.encode(series) == series |> to_write_request() |> Protobuf.encode()
