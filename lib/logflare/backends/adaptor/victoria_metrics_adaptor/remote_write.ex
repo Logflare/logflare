@@ -10,7 +10,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.RemoteWrite do
       Label        { string name = 1; string value = 2; }
       Sample       { double value = 1; int64 timestamp = 2; }
 
-  Labels must already be sorted by name, as remote write requires.
+  Labels are sorted by name at encoding, as remote write requires.
   """
 
   import Bitwise
@@ -28,7 +28,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.RemoteWrite do
   end
 
   defp encode_series({labels, samples}) do
-    body = Enum.map(labels, &encode_label/1) ++ Enum.map(samples, &encode_sample/1)
+    body = Enum.map(Enum.sort(labels), &encode_label/1) ++ Enum.map(samples, &encode_sample/1)
     [0x0A, varint(IO.iodata_length(body)) | body]
   end
 

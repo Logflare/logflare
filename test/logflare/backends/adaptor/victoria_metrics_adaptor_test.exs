@@ -313,7 +313,8 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
           count: 10,
           sum: 500.0,
           bucket_counts: [2, 5, 3],
-          explicit_bounds: [100.0, 500.0]
+          explicit_bounds: [100.0, 500.0],
+          attributes: %{"a" => "before_le", "z" => "after_le"}
         )
 
       timeseries = decode([le])
@@ -322,6 +323,10 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       assert "latency_count" in names
       assert "latency_sum" in names
       assert "latency_bucket" in names
+
+      for series <- timeseries do
+        assert series.labels == Enum.sort_by(series.labels, & &1.name)
+      end
 
       assert %{
                "100" => [%{value: 2.0}],
