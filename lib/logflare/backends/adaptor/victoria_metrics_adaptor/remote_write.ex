@@ -28,13 +28,14 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.RemoteWrite do
   end
 
   defp encode_series({labels, samples}) do
-    body = Enum.map(Enum.sort(labels), &encode_label/1) ++ Enum.map(samples, &encode_sample/1)
+    body = [Enum.map(Enum.sort(labels), &encode_label/1) | Enum.map(samples, &encode_sample/1)]
     [0x0A, varint(IO.iodata_length(body)) | body]
   end
 
   defp encode_label({name, value}) do
-    body = <<string_field(0x0A, name)::binary, string_field(0x12, value)::binary>>
-    <<0x0A, varint(byte_size(body))::binary, body::binary>>
+    name_field = string_field(0x0A, name)
+    value_field = string_field(0x12, value)
+    [0x0A, varint(byte_size(name_field) + byte_size(value_field)), name_field, value_field]
   end
 
   defp encode_sample({value, timestamp}) do
