@@ -69,9 +69,9 @@ spec:
         - name: LOGFLARE_TLS_KEY_PATH
           value: {{ printf "%s/cert.key" $mount | quote }}
         {{- end }}
-        {{- /* The appVersion image predates these flags in rel/vm.args.eex. Drop them once it ships them. */}}
+        {{- /* The appVersion image predates +Q in rel/vm.args.eex. Drop this once it ships it. */}}
         - name: ERL_FLAGS
-          value: {{ printf "+Q 1048576 +sbwt none +sbwtdcpu none +sbwtdio none %s" (dig "ERL_FLAGS" "" (.Values.logflare.extraConfig | default dict)) | trim | quote }}
+          value: {{ printf "+Q 1048576 %s" (dig "ERL_FLAGS" "" (.Values.logflare.extraConfig | default dict)) | trim | quote }}
         {{- with .Values.extraEnv }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
