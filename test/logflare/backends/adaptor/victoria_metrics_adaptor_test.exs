@@ -167,6 +167,41 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       end
     end
 
+    test "requires credential reentry when both write and read origins change" do
+      existing = %{
+        url: "https://vm.example.com/api/v1/write",
+        query_url: "https://reader.example.com/select/0/prometheus",
+        username: "user",
+        password: "pass",
+        headers: %{"authorization" => "Bearer token", "x-tenant" => "acme"}
+      }
+
+      params =
+        existing
+        |> @subject.redact_config()
+        |> Map.merge(%{
+          url: "https://new-vm.example.com/api/v1/write",
+          query_url: "https://new-reader.example.com/select/0/prometheus"
+        })
+
+      changeset = Adaptor.cast_and_validate_config(@subject, params, existing)
+      refute changeset.valid?
+      assert changeset.errors[:password]
+      assert Ecto.Changeset.get_field(changeset, :password) == nil
+      assert Ecto.Changeset.get_field(changeset, :headers) == %{"x-tenant" => "acme"}
+
+      reentered =
+        params
+        |> Map.merge(%{password: existing.password, headers: existing.headers})
+        |> then(&Adaptor.cast_and_validate_config(@subject, &1, existing))
+
+      assert reentered.valid?
+      assert Ecto.Changeset.get_field(reentered, :password) == existing.password
+      assert Ecto.Changeset.get_field(reentered, :headers) == existing.headers
+      assert Ecto.Changeset.get_field(reentered, :url) == params.url
+      assert Ecto.Changeset.get_field(reentered, :query_url) == params.query_url
+    end
+
     test "treats query URL scheme and port changes as a new destination" do
       existing = %{
         url: "https://vm.example.com/api/v1/write",

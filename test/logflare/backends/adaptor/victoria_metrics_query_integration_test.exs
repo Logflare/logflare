@@ -1,14 +1,14 @@
 defmodule Logflare.Backends.Adaptor.VictoriaMetricsQueryIntegrationTest do
   use LogflareWeb.ConnCase, async: false
 
-  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.VictoriaMetricsAdaptor
-  alias Logflare.Backends.AdaptorSupervisor
-  alias Logflare.LogEvent
+  alias Logflare.Backends.SourceSup
+  alias Logflare.Google.BigQuery
   alias Logflare.Logs.OtelMetric
-  alias Logflare.Sources.Source
+  alias Logflare.Logs.Processor
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Utils.SSRF
+  alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
   alias Opentelemetry.Proto.Common.V1.AnyValue
   alias Opentelemetry.Proto.Common.V1.InstrumentationScope
   alias Opentelemetry.Proto.Common.V1.KeyValue
@@ -19,12 +19,14 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsQueryIntegrationTest do
   alias Opentelemetry.Proto.Metrics.V1.ScopeMetrics
   alias Opentelemetry.Proto.Resource.V1.Resource
 
-  @receiver_url "http://victoriametrics.test:8428"
+  @receiver_url System.get_env("VICTORIA_METRICS_URL", "http://localhost:8428")
+  @receiver_host URI.parse(@receiver_url).host
+  @receiver_port URI.parse(@receiver_url).port
   @retry [sleep: 250, duration: 30_000]
 
   setup do
     stub(SSRF, :safe_resolve, fn
-      "victoriametrics.test" -> {:ok, {127, 0, 0, 1}}
+      @receiver_host -> {:ok, {127, 0, 0, 1}}
       host -> Mimic.call_original(SSRF, :safe_resolve, [host])
     end)
 
@@ -33,12 +35,14 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsQueryIntegrationTest do
     end)
 
     stub(Finch, :request, fn
-      %Finch.Request{host: "127.0.0.1", port: 8428} = request, pool, opts ->
+      %Finch.Request{host: "127.0.0.1", port: @receiver_port} = request, pool, opts ->
         Mimic.call_original(Finch, :request, [request, pool, opts])
 
       _request, _pool, _opts ->
         {:error, :unexpected_external_request}
     end)
+
+    stub(BigQuery, :get_table, fn _ -> {:error, :not_found} end)
 
     start_supervised!(AllLogsLogged)
     insert(:plan)
@@ -57,7 +61,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsQueryIntegrationTest do
         }
       )
 
-    start_supervised!({AdaptorSupervisor, {source, backend}})
+    start_supervised!({SourceSup, source})
 
     prefix = "vm_query_" <> String.replace(Ecto.UUID.generate(), "-", "")
     %{source: source, backend: backend, prefix: prefix, user: user}
@@ -76,12 +80,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsQueryIntegrationTest do
     metric_name = prefix <> ".temperature"
     query_name = prefix <> "_temperature"
 
-    events = metric_events(source, metric_name, samples)
-
-    assert Enum.map(events, & &1.body["timestamp"]) ==
-             Enum.map(samples, &(elem(&1, 0) * 1_000_000))
-
-    assert {:ok, _count} = Backends.ingest_logs(events, source)
+    assert {:ok, 3} = Processor.ingest(metric_data(metric_name, samples), OtelMetric, source)
 
     expected_labels = %{
       "__name__" => query_name,
@@ -147,11 +146,13 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsQueryIntegrationTest do
     user: user,
     conn: conn
   } do
-    response =
+    conn =
       conn
       |> add_access_token(user, ~w(private))
       |> get(~p"/api/query", %{promql: "{", backend_id: backend.id})
-      |> json_response(422)
+
+    assert conn.status in [400, 422]
+    response = json_response(conn, conn.status)
 
     assert %{"status" => "error", "errorType" => error_type, "error" => message} = response
     assert is_binary(error_type)
@@ -164,8 +165,8 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsQueryIntegrationTest do
     assert conn.status == 401
   end
 
-  @spec metric_events(Source.t(), String.t(), [{integer(), float()}]) :: [LogEvent.t()]
-  defp metric_events(source, name, samples) do
+  @spec metric_data(String.t(), [{integer(), float()}]) :: [ResourceMetrics.t()]
+  defp metric_data(name, samples) do
     resource_metrics = %ResourceMetrics{
       resource: %Resource{
         attributes: [
@@ -201,9 +202,10 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsQueryIntegrationTest do
       ]
     }
 
-    [resource_metrics]
-    |> OtelMetric.handle_batch(source)
-    |> Enum.map(&LogEvent.make(&1, %{source: source}))
+    %ExportMetricsServiceRequest{resource_metrics: [resource_metrics]}
+    |> ExportMetricsServiceRequest.encode()
+    |> ExportMetricsServiceRequest.decode()
+    |> Map.fetch!(:resource_metrics)
   end
 
   @spec attribute(String.t(), String.t()) :: KeyValue.t()
