@@ -17,14 +17,8 @@ defmodule LogflareWeb.Plugs.RateLimiter do
         _opts
       )
       when map_size(declared) > 0 do
-    sources =
-      case Map.get(conn.assigns, :source) do
-        nil -> Map.values(declared)
-        source -> [source | Map.values(declared)]
-      end
-
-    sources
-    |> Enum.uniq_by(& &1.id)
+    declared
+    |> Map.values()
     |> Enum.reduce_while(conn, fn source, acc ->
       case Users.API.verify_api_rates_quotas(%{
              user: user,

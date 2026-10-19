@@ -3,14 +3,18 @@ defmodule LogflareWeb.Plugs.VerifyDeclaredSources do
   Resolves and authorizes sources declared per-event via the `__LF_SOURCE`
   body field for multi-source ingestion.
 
+  Multi-source mode only applies when no source was given via query params or
+  headers; otherwise the request ingests into that source and `__LF_SOURCE` is
+  dropped from every event.
+
   Multi-source mode is detected by pattern matching on the first event in the
   batch: if the first event has `__LF_SOURCE`, every unique UUID across the
   batch is resolved and ownership/scope is verified for each. The resolved
   sources are stored in `conn.assigns.declared_sources` as
   `%{uuid_string => %Source{}}` for the controller to dispatch against.
 
-  If the first event lacks `__LF_SOURCE`, the plug is a no-op and the
-  existing single-source ingest flow handles the request.
+  If the first event lacks `__LF_SOURCE`, the plug is a no-op and the request
+  is rejected for having no source.
   """
 
   import Plug.Conn
@@ -26,7 +30,7 @@ defmodule LogflareWeb.Plugs.VerifyDeclaredSources do
 
   def init(_opts), do: nil
 
-  def call(%{assigns: %{resource_type: :source, user: %User{} = user}} = conn, _opts) do
+  def call(%{assigns: %{resource_type: :source, source: nil, user: %User{} = user}} = conn, _opts) do
     case extract_events(conn.body_params) do
       [first | _] = events
       when is_map(first) and (is_map_key(first, :__LF_SOURCE) or is_map_key(first, "__LF_SOURCE")) ->

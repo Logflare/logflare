@@ -14,6 +14,7 @@ defmodule LogflareWeb.Plugs.VerifyDeclaredSourcesTest do
     build_conn(:post, "/logs", body)
     |> assign(:user, user)
     |> assign(:resource_type, :source)
+    |> assign(:source, nil)
   end
 
   describe "passthrough" do
@@ -30,6 +31,22 @@ defmodule LogflareWeb.Plugs.VerifyDeclaredSourcesTest do
         refute conn.halted
         refute Map.get(conn.assigns, :declared_sources)
       end
+    end
+
+    test "query-param source takes precedence over __LF_SOURCE", %{user: user} do
+      source = insert(:source, user: user)
+      other_source = insert(:source, user: insert(:user))
+
+      conn =
+        build_ingest_conn(
+          %{"batch" => [%{"__LF_SOURCE" => Atom.to_string(other_source.token)}]},
+          user
+        )
+        |> assign(:source, source)
+        |> VerifyDeclaredSources.call(%{})
+
+      refute conn.halted
+      refute Map.get(conn.assigns, :declared_sources)
     end
 
     test "missing resource_type", %{user: user} do

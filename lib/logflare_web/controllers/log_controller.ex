@@ -86,40 +86,35 @@ defmodule LogflareWeb.LogController do
 
   @lf_source_key "__LF_SOURCE"
 
-  defp dispatch(events, conn, processor) when is_list(events) do
-    default_source = Map.get(conn.assigns, :source)
-    multi_source? = Map.has_key?(conn.assigns, :declared_sources)
+  defp dispatch(events, conn, processor) when is_list(events),
+    do: dispatch(events, conn, conn.assigns, processor)
 
-    if not multi_source? and default_source != nil do
-      events
-      |> Enum.map(&drop_source_key/1)
-      |> Processor.ingest(processor, default_source)
-      |> handle(conn)
-    else
-      declared = Map.get(conn.assigns, :declared_sources, %{})
-      {grouped, errors} = group_events_by_source(events, declared, default_source)
+  defp dispatch(events, conn, %{declared_sources: declared}, processor) do
+    {grouped, errors} = group_events_by_source(events, declared)
 
-      results =
-        for {source, batch} <- grouped do
-          Processor.ingest(batch, processor, source)
-        end
-
-      results
-      |> aggregate_results(errors)
-      |> handle(conn)
-    end
+    grouped
+    |> Enum.map(fn {source, batch} -> Processor.ingest(batch, processor, source) end)
+    |> aggregate_results(errors)
+    |> handle(conn)
   end
 
-  defp group_events_by_source(events, declared, default_source) do
+  defp dispatch(events, conn, %{source: source}, processor) do
+    events
+    |> Enum.map(&drop_source_key/1)
+    |> Processor.ingest(processor, source)
+    |> handle(conn)
+  end
+
+  defp group_events_by_source(events, declared) do
     {groups, errors} =
       for event <- events, reduce: {%{}, []} do
         {groups, errors} ->
           token = event_source_token(event)
-          stripped = drop_source_key(event)
 
           cond do
             is_binary(token) and is_map_key(declared, token) ->
               source = Map.fetch!(declared, token)
+              stripped = drop_source_key(event)
               {Map.update(groups, source, [stripped], &[stripped | &1]), errors}
 
             is_binary(token) ->
@@ -128,11 +123,8 @@ defmodule LogflareWeb.LogController do
             token != nil ->
               {groups, ["invalid __LF_SOURCE value" | errors]}
 
-            default_source != nil ->
-              {Map.update(groups, default_source, [stripped], &[stripped | &1]), errors}
-
             true ->
-              {groups, ["event missing __LF_SOURCE and no source query param" | errors]}
+              {groups, ["event missing __LF_SOURCE" | errors]}
           end
       end
 

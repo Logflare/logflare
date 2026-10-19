@@ -988,7 +988,7 @@ defmodule LogflareWeb.LogControllerTest do
           }
         )
 
-      assert json_response(conn, 406)
+      assert %{"message" => ["event missing __LF_SOURCE"]} = json_response(conn, 406)
     end
 
     test "first event lacks __LF_SOURCE falls back to single-source query param flow",
@@ -1006,8 +1006,9 @@ defmodule LogflareWeb.LogControllerTest do
       assert_eventually_received(ref)
     end
 
-    test "single-source flow strips __LF_SOURCE from events",
+    test "query-param source takes precedence and __LF_SOURCE is dropped",
          %{conn: conn, source_a: source_a} do
+      other_source = insert(:source, user: insert(:user))
       this = self()
 
       WebhookAdaptor.Client
@@ -1022,8 +1023,8 @@ defmodule LogflareWeb.LogControllerTest do
           Routes.log_path(conn, :create, source: source_a.token),
           %{
             "batch" => [
-              %{"event_message" => "a"},
-              %{"__LF_SOURCE" => Atom.to_string(source_a.token), "event_message" => "b"}
+              %{"__LF_SOURCE" => Atom.to_string(other_source.token), "event_message" => "a"},
+              %{"event_message" => "b"}
             ]
           }
         )

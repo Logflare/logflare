@@ -123,9 +123,10 @@ The same routing applies when POSTing a **bare JSON array** (array root with `ap
 `__LF_SOURCE` routing is supported on all JSON ingestion endpoints (for example `/api/logs/json` and `/api/logs/vector`), not only `/api/logs`.
 
 :::note
-Multi-source mode is detected from the **first** event in the batch. If the first event omits `__LF_SOURCE`, the whole batch is ingested into the source from the **`source`** or **`source_name`** query string and `__LF_SOURCE` is stripped from every event.
+Route a request **either** with the `source`/`source_name` query parameter **or** with `__LF_SOURCE` on every event, not both:
 
-In multi-source batches, events that omit `__LF_SOURCE` fall back to the query-string source. If some events omit `__LF_SOURCE` and no query-string source is given, the request returns **406** with ingestion errors. If no event declares `__LF_SOURCE` and no query-string source is given, the request returns **401**.
+- If a query-parameter source is given, every event is ingested into that source and `__LF_SOURCE` is dropped from each event as a reserved key.
+- Without a query-parameter source, every event must declare `__LF_SOURCE`. Multi-source mode is detected from the **first** event: if it omits `__LF_SOURCE`, the request returns **401**. If a later event omits it, the request returns **406** with ingestion errors.
 :::
 
 ## Pipeline Transformations
