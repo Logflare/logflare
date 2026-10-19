@@ -150,6 +150,13 @@ defmodule LogflareWeb.LogController do
   defp event_source_token(_), do: nil
 
   defp aggregate_results(results, errors) do
+    case Enum.find(results, &match?({:error, reason} when is_atom(reason), &1)) do
+      nil -> merge_results(results, errors)
+      error -> error
+    end
+  end
+
+  defp merge_results(results, errors) do
     {count, all_errors} =
       for result <- results, reduce: {0, errors} do
         {acc, errs} ->

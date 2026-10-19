@@ -927,6 +927,21 @@ defmodule LogflareWeb.LogControllerTest do
       end
     end
 
+    test "multi-source batch returns 503 when a source is unavailable",
+         %{conn: conn, source_a: source_a} do
+      Mimic.stub(Logflare.Backends, :start_for_ingest, fn _source ->
+        {:error, :source_unavailable}
+      end)
+
+      conn =
+        post(conn, Routes.log_path(conn, :create), %{
+          "batch" => [%{"__LF_SOURCE" => Atom.to_string(source_a.token), "event_message" => "x"}]
+        })
+
+      assert ["5"] = get_resp_header(conn, "retry-after")
+      assert json_response(conn, 503)
+    end
+
     test "batch referencing an unowned source returns 401 from the plug",
          %{conn: conn} do
       other_source = insert(:source, user: insert(:user))

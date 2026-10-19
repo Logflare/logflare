@@ -69,7 +69,7 @@ defmodule LogflareWeb.Plugs.VerifyDeclaredSources do
 
   defp resolve_sources(tokens, user, access_token) do
     Enum.reduce_while(tokens, {:ok, %{}}, fn token, {:ok, acc} ->
-      case Sources.Cache.get_by_and_preload_rules(token: token) do
+      case Sources.Cache.get_by_for_ingest(token: token) do
         %Source{} = source ->
           put_verified_declared(acc, token, source, user, access_token)
 
