@@ -116,11 +116,21 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
 
   defp handle_legacy_api_key({:ok, api_key}, err, is_private_route?) do
     case Users.Cache.get_by(api_key: api_key) do
-      %_{} = user when is_private_route? == false -> {:ok, nil, user}
-      {:error, :database_unavailable} = db_err -> db_err
-      _ when is_private_route? == false -> {:error, :no_token}
-      _ when is_private_route? == true -> {:error, :unauthorized}
-      _ -> err
+      %User{} = user when is_private_route? == false ->
+        RecordUsages.record(User, user.id)
+        {:ok, nil, user}
+
+      {:error, :database_unavailable} = db_err ->
+        db_err
+
+      _ when is_private_route? == false ->
+        {:error, :no_token}
+
+      _ when is_private_route? == true ->
+        {:error, :unauthorized}
+
+      _ ->
+        err
     end
   end
 
