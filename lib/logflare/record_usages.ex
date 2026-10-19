@@ -9,6 +9,9 @@ defmodule Logflare.RecordUsages do
   shutdown flush fails or times out. Missing usage means unknown, not never
   used.
 
+  Legacy API key usage is tracked by user, across key rotations and restorations.
+  Partner access tokens are not tracked.
+
   Each resource type has a unique foreign key in `record_usages` with cascading deletes.
   Adding a resource requires a nullable foreign key, a unique index, extending the
   exactly-one-resource constraint, and registering its schema and foreign key here.
@@ -20,11 +23,17 @@ defmodule Logflare.RecordUsages do
   alias Logflare.RecordUsages.Cache
   alias Logflare.RecordUsages.RecordUsage
   alias Logflare.Repo
+  alias Logflare.User
 
-  @type resource_type :: OauthAccessToken
+  @type resource_type :: OauthAccessToken | User
+
+  @spec get(resource_type(), pos_integer()) :: RecordUsage.t() | nil
+  def get(resource_type, id) do
+    Repo.get_by(RecordUsage, [{foreign_key(resource_type), id}])
+  end
 
   @spec record(resource_type(), pos_integer()) :: :ok
-  def record(OauthAccessToken = resource_type, id) do
+  def record(resource_type, id) when resource_type in [OauthAccessToken, User] do
     Cache.record({resource_type, id}, System.system_time(:second))
   end
 
@@ -83,4 +92,5 @@ defmodule Logflare.RecordUsages do
 
   @spec foreign_key(resource_type()) :: atom()
   defp foreign_key(OauthAccessToken), do: :oauth_access_token_id
+  defp foreign_key(User), do: :legacy_api_key_user_id
 end

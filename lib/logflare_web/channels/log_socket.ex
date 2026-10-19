@@ -2,6 +2,8 @@ defmodule LogflareWeb.LogSocket do
   use Phoenix.Socket
 
   alias Logflare.Auth
+  alias Logflare.RecordUsages
+  alias Logflare.User
   alias Logflare.Users
 
   channel "logs:*", LogflareWeb.LogChannel
@@ -23,6 +25,7 @@ defmodule LogflareWeb.LogSocket do
     user = Users.get_by(api_key: api_key)
 
     if user do
+      RecordUsages.record(User, user.id)
       {:ok, assign(socket, :user, user)}
     else
       :error

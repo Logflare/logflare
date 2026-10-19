@@ -2,6 +2,8 @@ defmodule LogflareWeb.LogSocketTest do
   use LogflareWeb.ChannelCase
 
   alias Logflare.Backends
+  alias Logflare.RecordUsages.Cache
+  alias Logflare.User
   alias LogflareWeb.LogChannel
   alias LogflareWeb.LogSocket
 
@@ -104,8 +106,14 @@ defmodule LogflareWeb.LogSocketTest do
     test "owner can ingest into their own source using legacy api key" do
       user = insert(:user)
       source = insert(:source, user: user)
+      before_connect = System.system_time(:second)
 
       {:ok, socket} = Phoenix.ChannelTest.connect(LogSocket, %{"api_key" => user.api_key})
+
+      timestamp = Cache.snapshot() |> Map.new() |> Map.fetch!({User, user.id})
+      assert timestamp >= before_connect
+      assert timestamp <= System.system_time(:second)
+
       {:ok, _, socket} = subscribe_and_join(socket, LogChannel, "logs:#{source.token}")
 
       stub(Backends, :start_for_ingest, fn _source -> :ok end)
@@ -121,6 +129,12 @@ defmodule LogflareWeb.LogSocketTest do
       Phoenix.ChannelTest.assert_push("batch", %{message: "Handled batch"})
 
       leave(socket)
+    end
+
+    test "invalid legacy API keys do not record usage" do
+      snapshot = Cache.snapshot()
+      assert :error = Phoenix.ChannelTest.connect(LogSocket, %{"api_key" => "invalid-key"})
+      assert Cache.snapshot() == snapshot
     end
 
     test "legacy log socket api key cannot ingest into another user's source" do
