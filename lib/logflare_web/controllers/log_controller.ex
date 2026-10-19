@@ -91,6 +91,7 @@ defmodule LogflareWeb.LogController do
 
     if not multi_source? and default_source != nil do
       events
+      |> Enum.map(&drop_source_key/1)
       |> Processor.ingest(Logs.Raw, default_source)
       |> handle(conn)
     else
@@ -113,7 +114,7 @@ defmodule LogflareWeb.LogController do
       for event <- events, reduce: {%{}, []} do
         {groups, errors} ->
           token = event_source_token(event)
-          stripped = Map.drop(event, [@lf_source_key, :"#{@lf_source_key}"])
+          stripped = drop_source_key(event)
 
           cond do
             is_binary(token) and is_map_key(declared, token) ->
@@ -137,6 +138,8 @@ defmodule LogflareWeb.LogController do
     grouped = for {source, batch} <- groups, do: {source, Enum.reverse(batch)}
     {grouped, Enum.reverse(errors)}
   end
+
+  defp drop_source_key(event), do: Map.drop(event, [@lf_source_key, :"#{@lf_source_key}"])
 
   defp event_source_token(%{@lf_source_key => token}), do: token
   defp event_source_token(%{:__LF_SOURCE => token}), do: token

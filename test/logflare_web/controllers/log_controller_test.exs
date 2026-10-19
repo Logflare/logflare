@@ -811,6 +811,39 @@ defmodule LogflareWeb.LogControllerTest do
       assert_eventually_received(ref)
     end
 
+    test "single-source flow strips __LF_SOURCE from events",
+         %{conn: conn, source_a: source_a} do
+      this = self()
+
+      WebhookAdaptor.Client
+      |> stub(:send, fn req ->
+        send(this, {:webhook, req[:body]})
+        %Tesla.Env{status: 200, body: ""}
+      end)
+
+      conn =
+        conn
+        |> post(
+          Routes.log_path(conn, :create, source: source_a.token),
+          %{
+            "batch" => [
+              %{"event_message" => "a"},
+              %{"__LF_SOURCE" => Atom.to_string(source_a.token), "event_message" => "b"}
+            ]
+          }
+        )
+
+      assert_logged_successfully(conn)
+
+      events = [] |> collect_webhook_messages(3000) |> Enum.flat_map(& &1)
+
+      assert length(events) == 2
+
+      for event <- events do
+        refute Map.has_key?(event, "__LF_SOURCE")
+      end
+    end
+
     defp collect_webhook_messages(acc, timeout) do
       receive do
         {:webhook, body} -> collect_webhook_messages([body | acc], timeout)
