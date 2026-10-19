@@ -747,6 +747,44 @@ defmodule LogflareWeb.LogControllerTest do
       assert Enum.any?(all_events, &(&1["event_message"] == "to_b"))
     end
 
+    test "generic_json _json batch with __LF_SOURCE per event fans out to multiple sources",
+         %{conn: conn, source_a: source_a, user: user} do
+      source_b = insert(:source, user: user)
+      backend_b = insert(:backend, sources: [source_b], type: :webhook, config: %{url: "some-b3"})
+      start_supervised!({SourceSup, source_b})
+
+      TestUtils.retry_assert(fn ->
+        assert Logflare.Backends.SourceSup.backend_child_started?(backend_b.id, source_b.id)
+      end)
+
+      this = self()
+
+      Logflare.Backends.Adaptor.WebhookAdaptor.Client
+      |> stub(:send, fn req ->
+        send(this, {:webhook, req[:body]})
+        %Tesla.Env{status: 200, body: ""}
+      end)
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post(
+          ~p"/api/logs/json",
+          Jason.encode!([
+            %{"__LF_SOURCE" => Atom.to_string(source_a.token), "message" => "to_a"},
+            %{"__LF_SOURCE" => Atom.to_string(source_b.token), "message" => "to_b"}
+          ])
+        )
+
+      assert_logged_successfully(conn)
+      all_events = [] |> collect_webhook_messages(3000) |> Enum.flat_map(& &1)
+      assert length(all_events) == 2
+
+      for event <- all_events do
+        refute Jason.encode!(event) =~ "__LF_SOURCE"
+      end
+    end
+
     test "batch referencing an unowned source returns 401 from the plug",
          %{conn: conn} do
       other_source = insert(:source, user: insert(:user))
