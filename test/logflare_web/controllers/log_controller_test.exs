@@ -754,12 +754,12 @@ defmodule LogflareWeb.LogControllerTest do
       start_supervised!({SourceSup, source_b})
 
       TestUtils.retry_assert(fn ->
-        assert Logflare.Backends.SourceSup.backend_child_started?(backend_b.id, source_b.id)
+        assert SourceSup.backend_child_started?(backend_b.id, source_b.id)
       end)
 
       this = self()
 
-      Logflare.Backends.Adaptor.WebhookAdaptor.Client
+      WebhookAdaptor.Client
       |> stub(:send, fn req ->
         send(this, {:webhook, req[:body]})
         %Tesla.Env{status: 200, body: ""}
