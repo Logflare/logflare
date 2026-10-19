@@ -10,6 +10,7 @@ defmodule LogflareWeb.Plugs.VerifyResourceAccess do
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.User
   alias Logflare.Auth
+  alias Logflare.OauthAccessTokens.OauthAccessToken
   alias LogflareWeb.Api.FallbackController
   def init(_opts), do: nil
 
@@ -85,7 +86,7 @@ defmodule LogflareWeb.Plugs.VerifyResourceAccess do
   Checks that a user owns a source and (if an access token is present) that
   the token's scopes cover ingestion for that source.
   """
-  @spec verify_source_access(Source.t(), User.t(), String.t() | nil) :: boolean()
+  @spec verify_source_access(Source.t(), User.t(), OauthAccessToken.t() | nil) :: boolean()
   def verify_source_access(%Source{user_id: source_user_id} = source, %User{id: user_id}, token)
       when source_user_id == user_id do
     check_resource(source, token)

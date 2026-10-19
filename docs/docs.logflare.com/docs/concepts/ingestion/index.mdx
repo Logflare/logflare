@@ -108,11 +108,11 @@ Example — two sources in one `batch`:
   "batch": [
     {
       "__LF_SOURCE": "9dd9a6f6-8e9b-4fa4-b682-4f2f5cd99da3",
-      "message": "to source A",
+      "message": "to source A"
     },
     {
       "__LF_SOURCE": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-      "message": "to source B",
+      "message": "to source B"
     }
   ]
 }
@@ -123,7 +123,9 @@ The same routing applies when POSTing a **bare JSON array** (array root with `ap
 `__LF_SOURCE` routing is supported on all JSON ingestion endpoints (for example `/api/logs/json` and `/api/logs/vector`), not only `/api/logs`.
 
 :::note
-In multi-source batches, events that omit `__LF_SOURCE` fall back to the source from the **`source`** or **`source_name`** query string. Omitting both per-event routing and a query-parameter default returns **400** with ingestion errors.
+Multi-source mode is detected from the **first** event in the batch. If the first event omits `__LF_SOURCE`, the whole batch is ingested into the source from the **`source`** or **`source_name`** query string and `__LF_SOURCE` is stripped from every event.
+
+In multi-source batches, events that omit `__LF_SOURCE` fall back to the query-string source. If some events omit `__LF_SOURCE` and no query-string source is given, the request returns **406** with ingestion errors. If no event declares `__LF_SOURCE` and no query-string source is given, the request returns **401**.
 :::
 
 ## Pipeline Transformations

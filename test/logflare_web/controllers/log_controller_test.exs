@@ -814,7 +814,7 @@ defmodule LogflareWeb.LogControllerTest do
       assert json_response(conn, 401)
     end
 
-    test "batch with __LF_SOURCE on first event but later events lack it returns 400",
+    test "batch with __LF_SOURCE on first event but later events lack it returns 406",
          %{conn: conn, source_a: source_a} do
       Logflare.Backends.Adaptor.WebhookAdaptor.Client
       |> stub(:send, fn _req -> %Tesla.Env{status: 200, body: ""} end)
@@ -831,7 +831,7 @@ defmodule LogflareWeb.LogControllerTest do
           }
         )
 
-      assert json_response(conn, 400)
+      assert json_response(conn, 406)
     end
 
     test "first event lacks __LF_SOURCE falls back to single-source query param flow",
