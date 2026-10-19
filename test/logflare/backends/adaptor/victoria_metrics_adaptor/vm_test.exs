@@ -3,7 +3,6 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
 
   import Logflare.VictoriaMetricsTestHelpers
 
-  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.VictoriaMetricsAdaptor
 
   @moduletag :victoria_metrics
@@ -20,7 +19,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
     timestamp_ms = System.system_time(:millisecond) - 1_000
 
     event =
-      metric_event(source,
+      metric_params(
         event_message: "http.server.duration",
         metric_type: "gauge",
         value: 42.5,
@@ -40,13 +39,49 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
            }
   end
 
+  test "raw JSON metric fields are classified and cleaned during ingestion", %{source: source} do
+    params = %{
+      "event_message" => "raw.duration",
+      "metric_type" => "gauge",
+      "value" => 2.5,
+      "attributes" => %{"http.route" => "/checkout"}
+    }
+
+    assert [series] = ingest([params], source)
+    assert series["values"] == [2.5]
+
+    assert series["metric"] == %{
+             "__name__" => "raw_duration",
+             "_http_route" => "/checkout",
+             "source" => source.name
+           }
+  end
+
+  test "missing histogram counts are derived from buckets with negative observations", %{
+    source: source
+  } do
+    event =
+      metric_params(
+        event_message: "temperature",
+        metric_type: "histogram",
+        sum: -5.0,
+        bucket_counts: [2, 1],
+        explicit_bounds: [-1.0]
+      )
+
+    series = ingest([event], source, 4)
+    assert buckets(series, "temperature_bucket") == %{"-1" => [2], "+Inf" => [3]}
+    assert values_by_name(series)["temperature_count"] == [3]
+    assert values_by_name(series)["temperature_sum"] == [-5]
+  end
+
   test "cumulative sums support monotonic and non-monotonic values", %{source: source} do
     events =
       for {name, value, monotonic} <- [
             {"requests_total", 100, true},
             {"queue_change", -3, false}
           ] do
-        metric_event(source,
+        metric_params(
           event_message: name,
           metric_type: "sum",
           aggregation_temporality: "cumulative",
@@ -61,7 +96,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
 
   test "explicit histograms become cumulative buckets, count and sum", %{source: source} do
     event =
-      metric_event(source,
+      metric_params(
         event_message: "latency",
         metric_type: "histogram",
         aggregation_temporality: "cumulative",
@@ -89,7 +124,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
             {newer, [4, 4, 2], 10, second_sum},
             {older, [2, 3, 1], 6, first_sum}
           ] do
-        metric_event(source,
+        metric_params(
           event_message: name,
           metric_type: "histogram",
           aggregation_temporality: "cumulative",
@@ -132,7 +167,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
         {labels, Enum.zip([older, newer], values)}
       end
 
-    assert {:ok, 4} = Backends.ingest_logs(events, source)
+    assert {:ok, 4} = submit(events, source)
 
     TestUtils.retry_assert(@vm_retry, fn ->
       actual =
@@ -146,8 +181,8 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
 
   test "missing temporality remains cumulative for sums and histograms", %{source: source} do
     events = [
-      metric_event(source, event_message: "legacy_total", metric_type: "sum", value: 12),
-      metric_event(source,
+      metric_params(event_message: "legacy_total", metric_type: "sum", value: 12),
+      metric_params(
         event_message: "legacy_latency",
         metric_type: "histogram",
         count: 3,
@@ -166,7 +201,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
 
   test "histogram bounds retain plain decimal labels", %{source: source} do
     event =
-      metric_event(source,
+      metric_params(
         event_message: "latency",
         metric_type: "histogram",
         aggregation_temporality: "cumulative",
@@ -187,7 +222,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
 
   test "resource service attributes become job and instance labels", %{source: source} do
     event =
-      metric_event(source,
+      metric_params(
         metric_type: "gauge",
         value: 1,
         resource: %{
@@ -208,7 +243,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
 
     events =
       for {instance, value} <- [{"checkout-1", 10}, {"checkout-2", 20}] do
-        metric_event(source,
+        metric_params(
           event_message: "queue_depth",
           metric_type: "gauge",
           value: value,
@@ -228,7 +263,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
 
   test "service name alone becomes job without an instance", %{source: source} do
     event =
-      metric_event(source,
+      metric_params(
         metric_type: "gauge",
         value: 1,
         resource: %{"service.name" => "checkout"}
@@ -241,7 +276,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
 
   test "reserved attribute labels survive under exported names", %{source: source} do
     event =
-      metric_event(source,
+      metric_params(
         metric_type: "gauge",
         value: 1,
         resource: %{"service.name" => "checkout"},
@@ -262,7 +297,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
 
   test "scalar attributes become strings while list and map values are skipped", %{source: source} do
     event =
-      metric_event(source,
+      metric_params(
         metric_type: "gauge",
         value: 1,
         attributes: %{
@@ -284,7 +319,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
     source: source
   } do
     event =
-      metric_event(source,
+      metric_params(
         event_message: "9lives.req/sec-é:x",
         metric_type: "gauge",
         value: 1,
@@ -305,35 +340,35 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
     backend: backend
   } do
     events = [
-      build(:log_event, source: source, event_message: "a_log"),
-      %{build(:log_event, source: source, event_message: "a_trace") | event_type: :trace},
-      metric_event(source,
+      %{"event_message" => "a_log"},
+      %{"event_message" => "a_trace", "metadata" => %{"type" => "span"}},
+      metric_params(
         event_message: "exponential",
         metric_type: "exponential_histogram",
         count: 1
       ),
-      metric_event(source, event_message: "summary", metric_type: "summary", value: 1),
-      metric_event(source,
+      metric_params(event_message: "summary", metric_type: "summary", value: 1),
+      metric_params(
         event_message: "monotonic_delta",
         metric_type: "sum",
         is_monotonic: true,
         aggregation_temporality: "delta",
         value: 1
       ),
-      metric_event(source,
+      metric_params(
         event_message: "non_monotonic_delta",
         metric_type: "sum",
         is_monotonic: false,
         aggregation_temporality: "delta",
         value: 3
       ),
-      metric_event(source,
+      metric_params(
         event_message: "unspecified_sum",
         metric_type: "sum",
         aggregation_temporality: "unspecified",
         value: 1
       ),
-      metric_event(source,
+      metric_params(
         event_message: "delta_histogram",
         metric_type: "histogram",
         aggregation_temporality: "delta",
@@ -341,7 +376,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
         bucket_counts: [1],
         explicit_bounds: []
       ),
-      metric_event(source, event_message: "kept", metric_type: "gauge", value: 1)
+      metric_params(event_message: "kept", metric_type: "gauge", value: 1)
     ]
 
     ingest(events, source)
@@ -364,16 +399,21 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
       [metric_type: "histogram", count: 3, bucket_counts: [1, 1, 1], explicit_bounds: [2.0, 1.0]],
       [metric_type: "histogram", count: 3, bucket_counts: [1, 1, 1], explicit_bounds: [1.0, 1]],
       [metric_type: "histogram", count: 5, bucket_counts: [2, 3], explicit_bounds: [1.0, 2.0]],
+      [metric_type: "histogram", count: 1, explicit_bounds: [1.0]],
+      [metric_type: "histogram", count: 1, bucket_counts: [5, 0], explicit_bounds: [1.0]],
+      [metric_type: "histogram", count: 9, bucket_counts: [1, 2, 3], explicit_bounds: [1.0, 2.0]],
+      [metric_type: "histogram", count: 1, bucket_counts: [0]],
+      [metric_type: "histogram", count: 1, bucket_counts: [-1, 2], explicit_bounds: [1.0]],
       [metric_type: "histogram", count: -1]
     ]
 
     events =
       Enum.map(malformed, fn attrs ->
-        metric_event(source, Keyword.put(attrs, :aggregation_temporality, "cumulative"))
-      end) ++ [metric_event(source, event_message: "kept", metric_type: "gauge", value: 1)]
+        metric_params(Keyword.put(attrs, :aggregation_temporality, "cumulative"))
+      end) ++ [metric_params(event_message: "kept", metric_type: "gauge", value: 1)]
 
     ingest(events, source)
-    assert_drops(backend, %{invalid: 9})
+    assert_drops(backend, %{invalid: 14})
     assert [series] = export(source)
     assert series["metric"]["__name__"] == "kept"
     assert series["values"] == [1]
@@ -381,7 +421,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
 
   test "histograms without a sum retain their count and buckets", %{source: source} do
     event =
-      metric_event(source,
+      metric_params(
         event_message: "latency",
         metric_type: "histogram",
         aggregation_temporality: "cumulative",
@@ -398,13 +438,13 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
 
   test "the positive infinity bucket always holds the histogram count", %{source: source} do
     events = [
-      metric_event(source,
+      metric_params(
         event_message: "no_buckets",
         metric_type: "histogram",
         aggregation_temporality: "cumulative",
         count: 4
       ),
-      metric_event(source,
+      metric_params(
         event_message: "overflow",
         metric_type: "histogram",
         aggregation_temporality: "cumulative",
@@ -421,7 +461,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
 
   @tag config_labels: %{"" => "x", "empty" => ""}
   test "empty config label names and values are omitted", %{source: source} do
-    event = metric_event(source, metric_type: "gauge", value: 1, attributes: %{"kept" => "x"})
+    event = metric_params(metric_type: "gauge", value: 1, attributes: %{"kept" => "x"})
     assert [series] = ingest([event], source)
     assert series["metric"]["kept"] == "x"
     refute Map.has_key?(series["metric"], "")
@@ -430,7 +470,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
 
   test "exported labels do not overwrite existing exported attribute names", %{source: source} do
     event =
-      metric_event(source,
+      metric_params(
         metric_type: "gauge",
         value: 1,
         attributes: %{"source" => "client", "exported_source" => "proxy"}
@@ -449,13 +489,13 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
   @tag config_labels: %{"env" => "prod", "deploy.region" => "eu"}
   test "config labels override attributes and apply to every histogram series", %{source: source} do
     events = [
-      metric_event(source,
+      metric_params(
         event_message: "jobs",
         metric_type: "gauge",
         value: 1,
         attributes: %{"env" => "staging", "queue" => "default"}
       ),
-      metric_event(source,
+      metric_params(
         event_message: "latency",
         metric_type: "histogram",
         aggregation_temporality: "cumulative",
@@ -478,7 +518,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
 
   @tag config_labels: %{"job" => "static", "source" => "static"}
   test "reserved config labels survive under exported names", %{source: source} do
-    event = metric_event(source, metric_type: "gauge", value: 1)
+    event = metric_params(metric_type: "gauge", value: 1)
     assert [series] = ingest([event], source)
     assert %{"exported_job" => "static", "exported_source" => "static"} = series["metric"]
     assert series["metric"]["source"] == source.name
@@ -490,7 +530,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
 
     events =
       for offset <- [3_000, 1_000, 2_000] do
-        metric_event(source,
+        metric_params(
           event_message: "ordered",
           metric_type: "gauge",
           value: div(offset, 1_000),
@@ -498,7 +538,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
         )
       end
 
-    assert {:ok, _} = Backends.ingest_logs(events, source)
+    assert {:ok, _} = submit(events, source)
 
     TestUtils.retry_assert(@vm_retry, fn ->
       assert [series] = export(source)
@@ -513,25 +553,8 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.VMTest do
     end)
   end
 
-  test "VM drops NaN samples and preserves infinities alongside a finite control", %{
-    source: source
-  } do
-    events =
-      for {name, value} <- [
-            {"finite", 1},
-            {"nan", :nan},
-            {"inf", :infinity},
-            {"neg", :negative_infinity},
-            {"big", 10 ** 400}
-          ] do
-        metric_event(source, event_message: name, metric_type: "gauge", value: value)
-      end
-
-    assert ingest(events, source, 4) |> values_by_name() == %{
-             "finite" => [1],
-             "inf" => ["Infinity"],
-             "neg" => ["-Infinity"],
-             "big" => ["Infinity"]
-           }
+  test "JSON integers outside the float range reach VM as infinity", %{source: source} do
+    event = metric_params(metric_type: "gauge", value: 10 ** 400)
+    assert [%{"values" => ["Infinity"]}] = ingest([event], source)
   end
 end

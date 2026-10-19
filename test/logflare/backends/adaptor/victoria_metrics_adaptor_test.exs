@@ -395,66 +395,6 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
              }
     end
 
-    test "leaves out _sum when the histogram has no sum", %{source: source} do
-      le =
-        metric_event(source,
-          event_message: "latency",
-          metric_type: "histogram",
-          count: 3,
-          bucket_counts: [1, 2],
-          explicit_bounds: [1.0]
-        )
-
-      names = [le] |> decode() |> Enum.map(&label_map(&1)["__name__"]) |> Enum.uniq()
-
-      assert Enum.sort(names) == ["latency_bucket", "latency_count"]
-    end
-
-    test "always sends a +Inf bucket holding the count", %{source: source} do
-      without_buckets =
-        metric_event(source, event_message: "no_buckets", metric_type: "histogram", count: 4)
-
-      with_overflow =
-        metric_event(source,
-          event_message: "overflow",
-          metric_type: "histogram",
-          count: 9,
-          bucket_counts: [1, 2, 6],
-          explicit_bounds: [1.0, 2.0]
-        )
-
-      timeseries = decode([without_buckets, with_overflow])
-
-      assert %{"+Inf" => [%{value: 4.0}]} = buckets(timeseries, "no_buckets_bucket")
-
-      assert %{"1" => [%{value: 1.0}], "2" => [%{value: 3.0}], "+Inf" => [%{value: 9.0}]} =
-               buckets(timeseries, "overflow_bucket")
-    end
-
-    test "derives a missing histogram count from buckets with negative observations", %{
-      source: source
-    } do
-      le =
-        metric_event(source,
-          event_message: "temperature",
-          metric_type: "histogram",
-          sum: -5.0,
-          bucket_counts: [2, 1],
-          explicit_bounds: [-1.0]
-        )
-
-      timeseries = decode([le])
-
-      assert %{"-1" => [%{value: 2.0}], "+Inf" => [%{value: 3.0}]} =
-               buckets(timeseries, "temperature_bucket")
-
-      assert [%{samples: [%{value: 3.0}]}] =
-               Enum.filter(timeseries, &(label_map(&1)["__name__"] == "temperature_count"))
-
-      assert [%{samples: [%{value: -5.0}]}] =
-               Enum.filter(timeseries, &(label_map(&1)["__name__"] == "temperature_sum"))
-    end
-
     test "does not warn for log and trace events", %{source: source} do
       attach_drop_handler()
       le = build(:log_event, source: source, event_message: "hello")
@@ -519,12 +459,6 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
   defp metric_event(source, attrs) do
     defaults = %{source: source, event_message: "metric", metadata: %{"type" => "metric"}}
     build(:log_event, Map.merge(defaults, Map.new(attrs)))
-  end
-
-  defp buckets(timeseries, name) do
-    for ts <- timeseries, labels = label_map(ts), labels["__name__"] == name, into: %{} do
-      {labels["le"], ts.samples}
-    end
   end
 
   defp attach_drop_handler do

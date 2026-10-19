@@ -8,10 +8,10 @@ defmodule Logflare.VictoriaMetricsTestHelpers do
 
   require Logflare.TestUtils
 
-  alias Logflare.Backends
-  alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Backends.Backend
-  alias Logflare.LogEvent
+  alias Logflare.Backends.SourceSup
+  alias Logflare.Logs.Processor
+  alias Logflare.Logs.Raw
   alias Logflare.Sources.Source
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.TestUtils
@@ -42,6 +42,18 @@ defmodule Logflare.VictoriaMetricsTestHelpers do
       host -> Mimic.call_original(Logflare.Utils.SSRF, :safe_resolve, [host])
     end)
 
+    vm_uri = URI.parse(vm_base_url())
+
+    stub(Finch, :request, fn request, pool, opts ->
+      if request.port == vm_uri.port and
+           (request.host == vm_uri.host or {"host", vm_uri.host} in request.headers) do
+        Mimic.call_original(Finch, :request, [request, pool, opts])
+      else
+        {:error, :unexpected_external_request}
+      end
+    end)
+
+    stub(Logflare.Google.BigQuery, :get_table, fn _ -> {:error, :not_found} end)
     start_supervised!(AllLogsLogged)
     insert(:plan)
     source = insert(:source, user: insert(:user), name: "vm_#{Ecto.UUID.generate()}")
@@ -58,29 +70,35 @@ defmodule Logflare.VictoriaMetricsTestHelpers do
       )
 
     TestUtils.attach_forwarder(@drop_event)
-    start_supervised!({AdaptorSupervisor, {source, backend}})
+    start_supervised!({SourceSup, source})
     [source: source, backend: backend]
   end
 
   @spec vm_base_url() :: String.t()
   def vm_base_url, do: System.get_env("VICTORIA_METRICS_URL", "http://localhost:8428")
 
-  @spec metric_event(Source.t(), keyword()) :: LogEvent.t()
-  def metric_event(source, attrs) do
+  @spec metric_params(keyword()) :: map()
+  def metric_params(attrs) do
     defaults = %{
-      source: source,
-      event_message: "metric",
-      metadata: %{"type" => "metric"},
-      timestamp: System.system_time(:nanosecond)
+      "event_message" => "metric",
+      "metadata" => %{"type" => "metric"},
+      "timestamp" => System.system_time(:nanosecond)
     }
 
-    build(:log_event, Map.merge(defaults, Map.new(attrs)))
+    Map.merge(defaults, Map.new(attrs, fn {key, value} -> {Atom.to_string(key), value} end))
   end
 
-  @spec ingest([LogEvent.t()], Source.t(), pos_integer()) :: [map()]
-  def ingest(events, source, count \\ 1) do
-    assert {:ok, _} = Backends.ingest_logs(events, source)
+  @spec submit([map()], Source.t()) :: {:ok, non_neg_integer()} | {:error, term()}
+  def submit(params, source), do: Processor.ingest(params, Raw, source)
 
+  @spec ingest([map()], Source.t(), pos_integer()) :: [map()]
+  def ingest(params, source, count \\ 1) do
+    assert {:ok, _} = submit(params, source)
+    wait_for_series(source, count)
+  end
+
+  @spec wait_for_series(Source.t(), pos_integer()) :: [map()]
+  def wait_for_series(source, count) do
     TestUtils.retry_assert(@vm_retry, fn ->
       series = export(source)
       assert length(series) == count

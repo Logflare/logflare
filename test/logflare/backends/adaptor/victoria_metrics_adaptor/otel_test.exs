@@ -3,9 +3,8 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.OtelTest do
 
   import Logflare.VictoriaMetricsTestHelpers
 
-  alias Logflare.Backends
-  alias Logflare.LogEvent
   alias Logflare.Logs.OtelMetric
+  alias Logflare.Logs.Processor
   alias Logflare.Sources.Source
   alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
   alias Opentelemetry.Proto.Common.V1.AnyValue
@@ -61,9 +60,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.OtelTest do
       )
     ]
 
-    events = otlp_events(resources, source)
-    assert length(events) == 5
-    assert {:ok, _} = Backends.ingest_logs(events, source)
+    assert {:ok, 5} = submit_otlp(resources, source)
 
     TestUtils.retry_assert(@vm_retry, fn ->
       series = export(source)
@@ -97,8 +94,8 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.OtelTest do
       number_point(-0.125, timestamp_ns + 1_123_456, %{"kind" => "double"})
     ]
 
-    events = otlp_events([resource([scope("numbers", [gauge("signed", points)])])], source)
-    series = ingest(events, source, 2)
+    resources = [resource([scope("numbers", [gauge("signed", points)])])]
+    series = ingest_otlp(resources, source, 2)
     by_kind = Map.new(series, &{&1["metric"]["kind"], &1})
 
     assert by_kind["integer"]["values"] == [-7]
@@ -122,8 +119,8 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.OtelTest do
     first_request = [resource([scope("counter", [sum_metric("requests_total", [first])])])]
     reset_request = [resource([scope("counter", [sum_metric("requests_total", [reset])])])]
 
-    assert [%{"values" => [50]}] = ingest(otlp_events(first_request, source), source)
-    assert {:ok, _} = Backends.ingest_logs(otlp_events(reset_request, source), source)
+    assert [%{"values" => [50]}] = ingest_otlp(first_request, source)
+    assert {:ok, _} = submit_otlp(reset_request, source)
 
     TestUtils.retry_assert(@vm_retry, fn ->
       assert [series] = export(source)
@@ -149,7 +146,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.OtelTest do
     }
 
     resources = [resource([scope("histograms", [histogram("empty", [point])])])]
-    series = ingest(otlp_events(resources, source), source, 5)
+    series = ingest_otlp(resources, source, 5)
 
     assert values_by_name(series)["empty_count"] == [0]
     assert values_by_name(series)["empty_sum"] == [0]
@@ -162,7 +159,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.OtelTest do
   } do
     point = %HistogramDataPoint{time_unix_nano: timestamp_ns, count: 4, min: 2.0, max: 9.0}
     resources = [resource([scope("histograms", [histogram("unbucketed", [point])])])]
-    series = ingest(otlp_events(resources, source), source, 2)
+    series = ingest_otlp(resources, source, 2)
 
     assert values_by_name(series) == %{"unbucketed_count" => [4], "unbucketed_bucket" => [4]}
     assert buckets(series, "unbucketed_bucket") == %{"+Inf" => [4]}
@@ -191,7 +188,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.OtelTest do
     ]
 
     resources = [resource([scope("histograms", [histogram("latency", points)])])]
-    series = ingest(otlp_events(resources, source), source, 7)
+    series = ingest_otlp(resources, source, 7)
     by_queue = Enum.group_by(series, & &1["metric"]["queue"])
 
     assert values_by_name(by_queue["default"])["latency_sum"] == [2.5]
@@ -217,7 +214,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.OtelTest do
 
     resources = [resource([scope("temporalities", metrics)])]
 
-    series = ingest(otlp_events(resources, source), source)
+    series = ingest_otlp(resources, source)
     assert_drops(backend, %{non_cumulative: 2})
 
     assert values_by_name(series) == %{
@@ -225,20 +222,39 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.OtelTest do
            }
   end
 
-  @spec otlp_events([ResourceMetrics.t()], Source.t()) :: [LogEvent.t()]
-  defp otlp_events(resources, source) do
+  test "VM drops protobuf NaN samples and retains infinities beside a finite control", %{
+    source: source,
+    timestamp_ns: timestamp_ns
+  } do
+    metrics =
+      for {name, value} <- [finite: 1, nan: :nan, inf: :infinity, neg: :negative_infinity] do
+        gauge(Atom.to_string(name), [number_point(value, timestamp_ns)])
+      end
+
+    resources = [resource([scope("specials", metrics)])]
+
+    assert ingest_otlp(resources, source, 3) |> values_by_name() == %{
+             "finite" => [1],
+             "inf" => ["Infinity"],
+             "neg" => ["-Infinity"]
+           }
+  end
+
+  @spec ingest_otlp([ResourceMetrics.t()], Source.t(), pos_integer()) :: [map()]
+  defp ingest_otlp(resources, source, count \\ 1) do
+    assert {:ok, _} = submit_otlp(resources, source)
+    wait_for_series(source, count)
+  end
+
+  @spec submit_otlp([ResourceMetrics.t()], Source.t()) ::
+          {:ok, non_neg_integer()} | {:error, term()}
+  defp submit_otlp(resources, source) do
     request =
       %ExportMetricsServiceRequest{resource_metrics: resources}
       |> ExportMetricsServiceRequest.encode()
       |> ExportMetricsServiceRequest.decode()
 
-    events =
-      request.resource_metrics
-      |> OtelMetric.handle_batch(source)
-      |> Enum.map(&LogEvent.make(&1, %{source: source}))
-
-    assert Enum.all?(events, &(&1.valid and &1.event_type == :metric))
-    events
+    Processor.ingest(request.resource_metrics, OtelMetric, source)
   end
 
   @spec resource([ScopeMetrics.t()], map()) :: ResourceMetrics.t()
@@ -285,7 +301,13 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.OtelTest do
     }
   end
 
-  @spec number_point(number(), non_neg_integer(), map(), keyword()) :: NumberDataPoint.t()
+  @spec number_point(
+          number() | :nan | :infinity | :negative_infinity,
+          non_neg_integer(),
+          map(),
+          keyword()
+        ) ::
+          NumberDataPoint.t()
   defp number_point(value, timestamp_ns, attrs \\ %{}, opts \\ []) do
     value = if is_integer(value), do: {:as_int, value}, else: {:as_double, value}
 

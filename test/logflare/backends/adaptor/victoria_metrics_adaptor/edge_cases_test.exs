@@ -20,7 +20,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.EdgeCasesTest do
       "selector" => "{job=\"other\"}"
     }
 
-    event = metric_event(source, metric_type: "gauge", value: 1, attributes: attributes)
+    event = metric_params(metric_type: "gauge", value: 1, attributes: attributes)
 
     assert [series] = ingest([event], source)
     assert Map.take(series["metric"], Map.keys(attributes)) == attributes
@@ -33,7 +33,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.EdgeCasesTest do
     label_name = "label_" <> String.duplicate("x", 100)
 
     event =
-      metric_event(source,
+      metric_params(
         event_message: name,
         metric_type: "gauge",
         value: 12.5,
@@ -52,16 +52,16 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.EdgeCasesTest do
     ignored_before = oversized_label_drops()
 
     oversized =
-      metric_event(source,
+      metric_params(
         event_message: "over_limit",
         metric_type: "gauge",
         value: 1,
         attributes: %{"oversized" => String.duplicate("x", 8_192)}
       )
 
-    control = metric_event(source, event_message: "kept", metric_type: "gauge", value: 9)
+    control = metric_params(event_message: "kept", metric_type: "gauge", value: 9)
 
-    assert {:ok, _} = Backends.ingest_logs([oversized, control], source)
+    assert {:ok, _} = submit([oversized, control], source)
 
     TestUtils.retry_assert(@vm_retry, fn ->
       assert oversized_label_drops() > ignored_before
@@ -77,10 +77,10 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.EdgeCasesTest do
   } do
     events =
       for name <- ["", 123, %{"name" => "invalid"}, ["invalid"]] do
-        metric_event(source, event_message: name, metric_type: "gauge", value: 7)
+        metric_params(event_message: name, metric_type: "gauge", value: 7)
       end
 
-    control = metric_event(source, event_message: "kept", metric_type: "gauge", value: 9)
+    control = metric_params(event_message: "kept", metric_type: "gauge", value: 9)
 
     assert [series] = ingest(events ++ [control], source)
     assert_drops(backend, %{invalid: 4})
@@ -91,7 +91,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.EdgeCasesTest do
   test "valid metric colons and leading underscores retain their identity", %{source: source} do
     events =
       for {name, value} <- [{"service:requests:rate", 2}, {"_private", 3}] do
-        metric_event(source, event_message: name, metric_type: "gauge", value: value)
+        metric_params(event_message: name, metric_type: "gauge", value: value)
       end
 
     assert ingest(events, source, 2) |> values_by_name() == %{
@@ -104,7 +104,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.EdgeCasesTest do
   test "configured names support a single underscore and normalize digits and punctuation", %{
     source: source
   } do
-    event = metric_event(source, metric_type: "gauge", value: 1)
+    event = metric_params(metric_type: "gauge", value: 1)
 
     assert [series] = ingest([event], source)
 
@@ -119,7 +119,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.EdgeCasesTest do
             {%{"queue" => "b"}, 2},
             {%{"queue" => "a", "worker" => "1"}, 3}
           ] do
-        metric_event(source,
+        metric_params(
           event_message: "queue_depth",
           metric_type: "gauge",
           value: value,
@@ -141,7 +141,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.EdgeCasesTest do
 
     events =
       for value <- [7, 9, 7] do
-        metric_event(source,
+        metric_params(
           event_message: "duplicates",
           metric_type: "gauge",
           value: value,
@@ -149,7 +149,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.EdgeCasesTest do
         )
       end
 
-    assert {:ok, _} = Backends.ingest_logs(events, source)
+    assert {:ok, _} = submit(events, source)
 
     TestUtils.retry_assert(@vm_retry, fn ->
       assert [series] = export(source)
@@ -165,7 +165,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.EdgeCasesTest do
 
     events =
       for {offset_ns, value} <- [{123_456, 1}, {987_654, 2}, {1_123_456, 3}] do
-        metric_event(source,
+        metric_params(
           event_message: "precision",
           metric_type: "gauge",
           value: value,
@@ -173,7 +173,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.EdgeCasesTest do
         )
       end
 
-    assert {:ok, _} = Backends.ingest_logs(events, source)
+    assert {:ok, _} = submit(events, source)
 
     TestUtils.retry_assert(@vm_retry, fn ->
       assert [series] = export(source)
@@ -189,7 +189,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.EdgeCasesTest do
   test "more than 250 events retain every gauge and an expanded histogram", %{source: source} do
     gauges =
       for index <- 1..251 do
-        metric_event(source,
+        metric_params(
           event_message: "gauge_#{index}",
           metric_type: "gauge",
           value: index
@@ -197,7 +197,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.EdgeCasesTest do
       end
 
     histogram =
-      metric_event(source,
+      metric_params(
         event_message: "latency",
         metric_type: "histogram",
         aggregation_temporality: "cumulative",
@@ -222,13 +222,13 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.EdgeCasesTest do
   test "renaming a source starts a new series while preserving its previous samples", %{
     source: source
   } do
-    first = metric_event(source, event_message: "renamed", metric_type: "gauge", value: 1)
+    first = metric_params(event_message: "renamed", metric_type: "gauge", value: 1)
     assert [%{"values" => [1]}] = ingest([first], source)
 
     assert {:ok, renamed} = Sources.update_source(source, %{name: "vm_#{Ecto.UUID.generate()}"})
     assert {:ok, _} = ContextCache.bust_keys([{Sources, source.id}])
 
-    second = metric_event(renamed, event_message: "renamed", metric_type: "gauge", value: 2)
+    second = metric_params(event_message: "renamed", metric_type: "gauge", value: 2)
     assert [series] = ingest([second], renamed)
     assert series["metric"]["source"] == renamed.name
     assert series["values"] == [2]
@@ -237,7 +237,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.EdgeCasesTest do
 
   @tag config_labels: %{"deployment" => "before"}
   test "updated backend labels apply to subsequent batches", %{source: source, backend: backend} do
-    first = metric_event(source, event_message: "configured", metric_type: "gauge", value: 1)
+    first = metric_params(event_message: "configured", metric_type: "gauge", value: 1)
     assert [before] = ingest([first], source)
     assert before["metric"]["deployment"] == "before"
 
@@ -250,7 +250,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.EdgeCasesTest do
              })
 
     assert {:ok, _} = ContextCache.bust_keys([{Backends, backend.id}])
-    second = metric_event(source, event_message: "configured", metric_type: "gauge", value: 2)
+    second = metric_params(event_message: "configured", metric_type: "gauge", value: 2)
     series = ingest([second], source, 2)
 
     assert Map.new(series, &{&1["metric"]["deployment"], &1["values"]}) == %{
