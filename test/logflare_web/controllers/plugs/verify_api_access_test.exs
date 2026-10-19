@@ -5,6 +5,8 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
   alias Logflare.OauthAccessTokens.OauthAccessToken
   alias Logflare.RecordUsages
   alias Logflare.Repo
+  alias Logflare.User
+  alias Logflare.Users
   alias LogflareWeb.Plugs.VerifyApiAccess
 
   setup do
@@ -69,7 +71,31 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       assert RecordUsages.Cache.snapshot() == []
     end
 
-    test "does not record rejected tokens or legacy API keys", %{access_token: token, user: user} do
+    test "records legacy key usage on cache misses and hits", %{user: user} do
+      before_request = System.system_time(:second)
+
+      for {header, value} <- [
+            {"authorization", "Bearer #{user.api_key}"},
+            {"x-api-key", user.api_key}
+          ] do
+        RecordUsages.Cache.record({User, user.id}, 0)
+
+        build_conn(:post, "/logs")
+        |> put_req_header(header, value)
+        |> VerifyApiAccess.call(%{})
+        |> assert_authorized(user)
+
+        assert [{{User, id}, timestamp}] = RecordUsages.Cache.snapshot()
+        assert id == user.id
+        assert timestamp >= before_request
+        assert timestamp <= System.system_time(:second)
+
+        RecordUsages.Cache.acknowledge([{{User, user.id}, timestamp}])
+        reject(&Users.get_by/1)
+      end
+    end
+
+    test "does not record rejected credentials", %{access_token: token, user: user} do
       expired_token =
         insert(:access_token,
           resource_owner: user,
@@ -84,6 +110,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
 
       for {value, scopes} <- [
             {token.token, ["private"]},
+            {user.api_key, ["private"]},
             {expired_token.token, []},
             {revoked_token.token, []},
             {"invalid-token", []}
@@ -93,11 +120,6 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
         |> VerifyApiAccess.call(%{scopes: scopes})
         |> assert_unauthorized()
       end
-
-      build_conn(:post, "/logs")
-      |> put_req_header("x-api-key", user.api_key)
-      |> VerifyApiAccess.call(%{})
-      |> assert_authorized(user)
 
       for unused_token <- [token, expired_token, revoked_token] do
         assert Repo.preload(unused_token, :usage).usage == nil
