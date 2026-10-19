@@ -126,7 +126,7 @@ services:
       - loki
       - vm
   vm:
-    image: victoriametrics/victoria-metrics:v1.106.1
+    image: victoriametrics/victoria-metrics:v1.154.0
     ports:
       - "8428:8428"
     command:

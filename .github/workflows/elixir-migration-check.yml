@@ -81,8 +81,10 @@ jobs:
           touch db/telegraf_output/metrics.out
           chmod 666 db/telegraf_output/metrics.out
 
-      - name: Start Telegraf
-        run: docker compose up -d telegraf
+      - name: Start Telegraf and VictoriaMetrics
+        run: |
+          docker compose up -d telegraf vm
+          curl --fail --retry 30 --retry-all-errors --retry-delay 1 http://localhost:8428/health
 
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
