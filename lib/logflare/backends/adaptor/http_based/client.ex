@@ -14,6 +14,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
   alias Logflare.Backends.Adaptor.HttpBased.EgressTracer
   alias Logflare.Backends.Adaptor.HttpBased.Headers
   alias Logflare.Backends.Adaptor.HttpBased.LogEventTransformer
+  alias Logflare.Backends.Adaptor.HttpBased.SSRFProtection
   alias Logflare.Backends.Backend
   alias Logflare.Sources.Source
 
@@ -30,8 +31,10 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
           | {:headers, %{String.t() => String.t()} | Tesla.Env.headers()}
           | {:basic_auth, [username: binary(), password: binary()]}
           | {:formatter, Tesla.Client.middleware()}
+          | {:formatter_opts, keyword()}
           | {:pool_name, atom()}
           | {:http2, boolean()}
+          | {:ssrf, boolean()}
 
   defguardp is_possible_pool(value)
             when not is_nil(value) and not is_boolean(value) and is_atom(value)
@@ -55,8 +58,13 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
     Formatters that set request headers should export `reserved_headers/0` so
     user-supplied copies are removed. In particular, a formatter that owns
     `content-type` should return `["content-type"]`.
+  * `:formatter_opts` - Options passed to the formatter middleware. Omitted when unset,
+    so a formatter that takes no options stays a bare module.
   * `:pool_name` - An override for the name of the Finch pool to use for requests.
   * `:http2` - Whether to use HTTP/2. Defaults to `true`.
+  * `:ssrf` - Whether to resolve the destination host through
+    `#{inspect(SSRFProtection)}`, rejecting private or reserved addresses.
+    Defaults to `false`, and should be enabled for user-supplied URLs.
   """
   @spec new(opts()) :: t()
   def new(opts \\ []) do
@@ -70,14 +78,25 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
         opts[:token] && {Tesla.Middleware.BearerAuth, token: opts[:token]},
         opts[:basic_auth] && {Tesla.Middleware.BasicAuth, opts[:basic_auth]},
         headers_middleware(headers),
-        Keyword.get(opts, :formatter, LogEventTransformer),
+        formatter_middleware(opts),
         Keyword.get(opts, :json, true) && Tesla.Middleware.JSON,
         opts[:gzip] && {Tesla.Middleware.CompressRequest, format: "gzip"},
+        opts[:ssrf] && SSRFProtection,
         EgressTracer
       ]
       |> Enum.filter(& &1),
       adapter_config(Keyword.get(opts, :http2, true), opts[:pool_name])
     )
+  end
+
+  @spec formatter_middleware(opts()) :: module() | {module(), keyword()}
+  defp formatter_middleware(opts) do
+    formatter = Keyword.get(opts, :formatter, LogEventTransformer)
+
+    case Keyword.get(opts, :formatter_opts) do
+      nil -> formatter
+      formatter_opts -> {formatter, formatter_opts}
+    end
   end
 
   # Header names the middleware will set, so they must be dropped from

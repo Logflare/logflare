@@ -129,6 +129,9 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
     end
   end
 
+  @spec default_open_interval_length() :: pos_integer()
+  def default_open_interval_length, do: @default_open_interval_length
+
   def convert_timestamp_timezone(row, user_timezone) do
     Map.update!(row, "timestamp", &Timex.Timezone.convert(&1, user_timezone))
   end

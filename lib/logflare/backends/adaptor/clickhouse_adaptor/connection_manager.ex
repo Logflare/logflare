@@ -11,6 +11,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
 
   Pools capture backend configuration when they start. `refresh_pool/1` stops an
   active pool so that the next query restarts it with freshly loaded configuration.
+
+  Pools authenticate with the credentials resolved by
+  `ClickHouseAdaptor.query_credentials/1`, which prefers a
+  dedicated query user when one is configured.
+
+  Managers are registered through `Registry`, so they carry no registered name.
+  Each labels itself `{:ch_read_pool_manager, backend_id, read_cluster_tag}` with
+  `Process.set_label/1` so that `observer`, `:recon`, crash reports, and the
+  `Logflare.Telemetry` top-process metrics can attribute it to a backend and read
+  cluster. The third element matches the `read_cluster` telemetry tag.
   """
 
   use GenServer
@@ -21,6 +31,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   require Logger
 
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Backend
 
   @inactivity_timeout :timer.minutes(5)
@@ -29,6 +40,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   @ch_queue_target :timer.seconds(5)
   @recycle_interval :timer.minutes(10)
   @recycle_spread :timer.seconds(60)
+  @ch_idle_interval :timer.seconds(3)
+  @default_read_pool_size 50
+  @default_labeled_read_pool_size 32
+  @telemetry_listener __MODULE__.TelemetryListener
 
   typedstruct do
     field :backend_id, pos_integer(), enforce: true
@@ -60,6 +75,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
       start: {__MODULE__, :start_link, [backend, label]}
     }
   end
+
+  @doc """
+  Registered name of the `DBConnection.TelemetryListener` that read pools report
+  connect and disconnect events to.
+
+  The listener is supervised by `QueryConnectionSup` so that it outlives the pools,
+  which are stopped and restarted on config refresh, inactivity, and recycle.
+  """
+  @spec telemetry_listener_name() :: atom()
+  def telemetry_listener_name, do: @telemetry_listener
 
   @doc """
   Generates a unique ClickHouse connection pool via tuple based on a `Backend` and
@@ -198,8 +223,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   @doc """
   Resolves the host for a given `label`.
 
-  Falls back to the `default_read_cluster` entry, then to the deprecated
-  `read_only_url`, and finally to the primary `url`.
+  Falls back to the `default_read_cluster` entry, then to the primary `url`.
   """
   @spec read_host(Backend.t() | nil, String.t() | nil) :: String.t() | nil
   def read_host(%Backend{config: config}, label) do
@@ -211,8 +235,30 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
 
   def read_host(_backend, _label), do: nil
 
+  @doc """
+  Resolves the read connection pool size for a labeled read cluster.
+
+  The unlabeled pool and the pool for the cluster named by `default_read_cluster`
+  are sized by `read_pool_size`. Both act as the catch-all for callers that do not
+  resolve to a read cluster of their own, and the default cluster additionally
+  absorbs failover traffic, so they need more capacity than a single caller's
+  cluster. Every other labeled pool is sized by `labeled_read_pool_size`.
+
+  A backend-wide value wins over the application default.
+  """
+  @spec read_pool_size(map(), String.t() | nil) :: pos_integer()
+  def read_pool_size(config, label) when is_map(config) do
+    config
+    |> pool_size_key(label)
+    |> resolve_pool_size(config)
+  end
+
   @impl true
   def init({backend_id, label}) do
+    Process.set_label(
+      {:ch_read_pool_manager, backend_id, ClickHouseAdaptor.read_cluster_tag(label)}
+    )
+
     resolve_timer_ref = resolve_timer_send_after()
 
     initial_state = %__MODULE__{
@@ -462,46 +508,72 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
 
   defp build_ch_opts(%Backend{} = backend, label) do
     config = backend.config
-
-    default_pool_size =
-      Application.fetch_env!(:logflare, :clickhouse_backend_adaptor)[:pool_size]
-
-    pool_size =
-      config
-      |> Map.get(:pool_size, default_pool_size)
-      |> div(2)
-      |> max(default_pool_size)
-
+    pool_size = read_pool_size(config, label)
     url = read_url(config, label)
 
     with {:ok, {scheme, hostname, url_port}} <- extract_url_components(url) do
-      pool_via = connection_pool_via(backend, label)
       port = get_read_port(config, url_port)
+      {username, password} = ClickHouseAdaptor.query_credentials(config)
 
       ch_opts = [
-        name: pool_via,
+        name: pool_registration_name(backend, label, pool_size),
         scheme: scheme,
         hostname: hostname,
         port: port,
         database: config.database,
-        username: config.username,
-        password: config.password,
+        username: username,
+        password: password,
         pool_size: pool_size,
         settings: [],
         timeout: @ch_query_conn_timeout,
-        queue_target: @ch_queue_target
+        queue_target: @ch_queue_target,
+        idle_interval: @ch_idle_interval,
+        idle_limit: pool_size,
+        connection_listeners: {[@telemetry_listener], {backend.id, label}}
       ]
 
       {:ok, ch_opts}
     end
   end
 
+  @spec pool_registration_name(Backend.t(), String.t() | nil, pos_integer()) :: tuple()
+  defp pool_registration_name(%Backend{} = backend, label, pool_size) do
+    {:via, Registry, {registry, key}} = connection_pool_via(backend, label)
+    {:via, Registry, {registry, key, %{pool_size: pool_size}}}
+  end
+
+  @spec pool_size_key(map(), String.t() | nil) :: :read_pool_size | :labeled_read_pool_size
+  defp pool_size_key(_config, label) when not is_non_empty_binary(label), do: :read_pool_size
+
+  defp pool_size_key(config, label) do
+    case Map.get(config, :default_read_cluster) do
+      ^label -> :read_pool_size
+      _ -> :labeled_read_pool_size
+    end
+  end
+
+  @spec resolve_pool_size(atom(), map()) :: pos_integer()
+  defp resolve_pool_size(key, config) do
+    case validate_pool_size(Map.get(config, key)) do
+      nil -> default_pool_size(key)
+      size -> size
+    end
+  end
+
+  @spec default_pool_size(atom()) :: pos_integer()
+  defp default_pool_size(:read_pool_size), do: @default_read_pool_size
+  defp default_pool_size(:labeled_read_pool_size), do: @default_labeled_read_pool_size
+
+  @spec validate_pool_size(term()) :: pos_integer() | nil
+  defp validate_pool_size(size) when is_pos_integer(size), do: size
+  defp validate_pool_size(_size), do: nil
+
   @spec read_url(map(), String.t() | nil) :: String.t() | nil
   defp read_url(config, label) do
     urls = Map.get(config, :read_only_urls) || %{}
     default = Map.get(config, :default_read_cluster)
 
-    labeled_url(urls, label) || labeled_url(urls, default) || legacy_read_url(config)
+    labeled_url(urls, label) || labeled_url(urls, default) || Map.get(config, :url)
   end
 
   @spec labeled_url(map(), String.t() | nil) :: String.t() | nil
@@ -513,12 +585,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   end
 
   defp labeled_url(_urls, _label), do: nil
-
-  @spec legacy_read_url(map()) :: String.t() | nil
-  defp legacy_read_url(config) do
-    read_only_url = Map.get(config, :read_only_url)
-    if is_non_empty_binary(read_only_url), do: read_only_url, else: Map.get(config, :url)
-  end
 
   @spec connection_host(pos_integer(), String.t() | nil) :: String.t() | nil
   defp connection_host(backend_id, label) do

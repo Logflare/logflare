@@ -121,6 +121,12 @@ defmodule Logflare.Lql.EncoderTest do
       assert result == "t:>=2026-03-17T12:47:02.123"
     end
 
+    test "equality date timestamp can be parsed after encoding" do
+      assert {:ok, lql_rules} = Parser.parse("t:2026-08-19")
+
+      assert "t:2026-08-19" = Encoder.to_querystring(lql_rules)
+    end
+
     test "encodes quoted string filter" do
       lql_rules = [
         %FilterRule{

@@ -4,6 +4,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   for DataDog logs ingestion endpoint.
   """
 
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Backend
   alias Logflare.Sources.Source
@@ -88,6 +89,11 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
+  def sanitize_config_for_display(config) do
+    Adaptor.mask_config_values(config, except: [:region])
+  end
+
+  @impl Logflare.Backends.Adaptor
   @spec test_connection(Backend.t()) :: :ok | {:error, term()}
   def test_connection(%Backend{} = backend) do
     backend = %{backend | config: transform_config(backend)}
@@ -100,14 +106,11 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
 
     formatted_message = "#{formatted_ts} #{le.body["message"] || le.body["event_message"] || ""}"
 
-    %Logflare.LogEvent{
-      le
-      | body: %{
-          "message" => formatted_message,
-          "ddsource" => "Supabase",
-          "service" => source.service_name || source.name,
-          "data" => le.body
-        }
-    }
+    Logflare.LogEvent.replace_body(le, %{
+      "message" => formatted_message,
+      "ddsource" => "Supabase",
+      "service" => source.service_name || source.name,
+      "data" => le.body
+    })
   end
 end

@@ -6,6 +6,7 @@ defmodule LogflareWeb.LogControllerTest do
   alias Logflare.SingleTenant
   alias Logflare.Users
   alias Logflare.Sources
+  alias Logflare.Backends
   alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
 
@@ -196,6 +197,145 @@ defmodule LogflareWeb.LogControllerTest do
                  "timestamp" => _
                } = log
       end)
+    end
+
+    test "returns 500 when the spool producer is unavailable", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch, _source, _backend, _allow_spooling ->
+        {:error, :spool_unavailable}
+      end)
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> post(Routes.log_path(conn, :create, source: source.token), @valid)
+
+      assert json_response(conn, 500)
+    end
+
+    for {path, request_module, _response_module} <- [
+          {:otel_metrics, ExportMetricsServiceRequest, ExportMetricsServiceResponse},
+          {:otel_traces, ExportTraceServiceRequest, ExportTraceServiceResponse},
+          {:otel_logs, ExportLogsServiceRequest, ExportLogsServiceResponse}
+        ] do
+      test "#{path} returns 500 when the spool producer is unavailable", %{
+        conn: conn,
+        source: source,
+        user: user
+      } do
+        Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch,
+                                                       _source,
+                                                       _backend,
+                                                       _allow_spooling ->
+          {:error, :spool_unavailable}
+        end)
+
+        body =
+          case unquote(path) do
+            :otel_metrics -> TestUtilsGrpc.random_otel_metrics_request()
+            :otel_traces -> TestUtilsGrpc.random_export_service_request()
+            :otel_logs -> TestUtilsGrpc.random_otel_logs_request()
+          end
+          |> unquote(request_module).encode()
+
+        conn =
+          conn
+          |> put_req_header("x-api-key", user.api_key)
+          |> put_req_header("x-source", Atom.to_string(source.token))
+          |> put_req_header("content-type", "application/x-protobuf")
+          |> post(Routes.log_path(conn, unquote(path)), body)
+
+        assert conn.status == 500
+      end
+    end
+
+    test "returns 503 with retry-after when the SourceSup does not start in time", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      Mimic.stub(Logflare.Backends, :start_for_ingest, fn _source ->
+        {:error, :source_unavailable}
+      end)
+
+      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> post(Routes.log_path(conn, :create, source: source.token), @valid)
+
+      assert %{"message" => "Source is unavailable. Send the batch again."} =
+               json_response(conn, 503)
+
+      assert get_resp_header(conn, "retry-after") == ["5"]
+    end
+
+    test "otel_logs returns 503 with retry-after when the SourceSup does not start in time", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      Mimic.stub(Logflare.Backends, :start_for_ingest, fn _source ->
+        {:error, :source_unavailable}
+      end)
+
+      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+      body = TestUtilsGrpc.random_otel_logs_request() |> ExportLogsServiceRequest.encode()
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> put_req_header("x-source", Atom.to_string(source.token))
+        |> put_req_header("content-type", "application/x-protobuf")
+        |> post(Routes.log_path(conn, :otel_logs), body)
+
+      assert conn.status == 503
+      assert get_resp_header(conn, "retry-after") == ["5"]
+    end
+
+    test "returns 404 when the source was deleted after the plug loaded it", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      Mimic.stub(Logflare.Backends, :start_for_ingest, fn _source ->
+        {:error, :source_not_found}
+      end)
+
+      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> post(Routes.log_path(conn, :create, source: source.token), @valid)
+
+      assert %{"message" => "Source not found."} = json_response(conn, 404)
+    end
+
+    test "otel_logs returns 404 when the source was deleted after the plug loaded it", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      Mimic.stub(Logflare.Backends, :start_for_ingest, fn _source ->
+        {:error, :source_not_found}
+      end)
+
+      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+      body = TestUtilsGrpc.random_otel_logs_request() |> ExportLogsServiceRequest.encode()
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> put_req_header("x-source", Atom.to_string(source.token))
+        |> put_req_header("content-type", "application/x-protobuf")
+        |> post(Routes.log_path(conn, :otel_logs), body)
+
+      assert conn.status == 404
     end
 
     test "invaild source token uuid checks", %{conn: conn, user: user} do
@@ -633,7 +773,6 @@ defmodule LogflareWeb.LogControllerTest do
 
       # ingestion setup
       start_supervised!({SourceSup, source})
-      :timer.sleep(500)
 
       conn =
         conn
@@ -649,7 +788,10 @@ defmodule LogflareWeb.LogControllerTest do
 
       assert_logged_successfully(conn)
 
-      :timer.sleep(3000)
+      TestUtils.retry_assert(fn ->
+        assert [_event] = Backends.list_recent_logs_local(source)
+        assert {:ok, %{len: 0}} = Backends.cache_local_buffer_lens(source.id)
+      end)
     end
   end
 
@@ -906,15 +1048,14 @@ defmodule LogflareWeb.LogControllerTest do
     user = insert(:user)
     source = insert(:source, user: user)
     start_supervised!({SourceSup, source})
-    :timer.sleep(500)
 
     {:ok, source: source, user: user, conn: conn}
   end
 
   defp warm_caches(%{user: user, source: source}) do
     # hit the caches
-    Sources.Cache.get_by_and_preload_rules(token: Atom.to_string(source.token))
-    Sources.Cache.get_by_and_preload_rules(name: source.name, user_id: user.id)
+    Sources.Cache.get_by_for_ingest(token: Atom.to_string(source.token))
+    Sources.Cache.get_by_for_ingest(name: source.name, user_id: user.id)
     Sources.Cache.get_source_by_token(source.token)
     Sources.Cache.get_by_id(source.id)
     Users.Cache.get(user.id)
@@ -937,7 +1078,6 @@ defmodule LogflareWeb.LogControllerTest do
     # Allow Sources.get_by/1 to be called by background processes (like the SourceSupWorker)
     # but stub it to return nil to avoid actual database calls
     stub(Sources, :get_by, fn _ -> nil end)
-    reject(&Sources.get_by_and_preload_rules/1)
     reject(&Sources.preload_defaults/1)
     reject(&Users.get/1)
     reject(&Users.get_by/1)

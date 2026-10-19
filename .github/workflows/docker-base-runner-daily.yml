@@ -14,7 +14,7 @@ jobs:
     outputs:
       short_sha: ${{steps.env.outputs.short_sha}}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
       - name: Setup outputs
         id: env
         run: |
@@ -32,9 +32,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
       - run: docker context create builders
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
         with:
           endpoint: builders
       - name: Login to DockerHub
@@ -43,7 +43,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           file: ./Dockerfile.base
           push: true
@@ -51,8 +51,8 @@ jobs:
             supabase/logflare:base-${{ needs.settings.outputs.short_sha }}-${{ matrix.arch }}
             supabase/logflare:base-${{ matrix.arch }}
           platforms: linux/${{ matrix.arch }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=base-${{ matrix.arch }}
+          cache-to: type=gha,scope=base-${{ matrix.arch }},mode=max
 
   build_runner:
     needs: settings
@@ -66,9 +66,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
       - run: docker context create builders
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
         with:
           endpoint: builders
       - name: Login to DockerHub
@@ -77,7 +77,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           file: ./Dockerfile.runner
           push: true
@@ -85,8 +85,8 @@ jobs:
             supabase/logflare:runner-${{ needs.settings.outputs.short_sha }}-${{ matrix.arch }}
             supabase/logflare:runner-${{ matrix.arch }}
           platforms: linux/${{ matrix.arch }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=runner-${{ matrix.arch }}
+          cache-to: type=gha,scope=runner-${{ matrix.arch }},mode=max
 
   merge_publish:
     needs:

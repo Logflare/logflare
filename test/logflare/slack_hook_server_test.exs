@@ -48,10 +48,8 @@ defmodule Logflare.SlackHookServerTest do
 
       start_supervised!({SlackHookServer, source: source})
 
-      :timer.sleep(500)
       Counters.increment(source.token)
       Counters.increment(source.token)
-      :timer.sleep(500)
 
       assert_receive {^ref, %{blocks: [_section, rtf]}}, 2_000
       assert inspect(rtf) =~ "new event"

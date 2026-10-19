@@ -1,0 +1,50 @@
+defmodule Logflare.Mapper.OutputContext do
+  @moduledoc """
+  Builds runtime context required by configured mapper output formats.
+
+  Output selection remains part of the compiled mapping configuration. Context
+  supplies only per-document values that cannot be serialized into that
+  configuration.
+  """
+
+  alias Logflare.LogEvent
+
+  @opaque t() :: {:ch_row_binary | :ndjson, binary(), envelope()}
+
+  @typep envelope() :: {binary(), binary(), binary(), integer()}
+
+  @doc """
+  Builds the per-row context required by ClickHouse RowBinary output.
+
+  `mapping_config_id` is the 16-byte RowBinary UUID encoding (see
+  `Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester.encode_mapping_config_id/1`),
+  pre-encoded once by the caller rather than per row.
+  """
+  @spec ch_row_binary(LogEvent.t(), <<_::128>>) :: t()
+  def ch_row_binary(%LogEvent{} = event, <<_::128>> = mapping_config_id) do
+    {:ch_row_binary, mapping_config_id, envelope(event)}
+  end
+
+  @doc """
+  Builds the per-row context required by NDJSON output.
+
+  `mapping_config_id` is the 36-character UUID string and is emitted as-is.
+  `ingested_at` is emitted as Unix **microseconds**, matching the microsecond
+  precision of the default NDJSON timestamp fields.
+  """
+  @spec ndjson(LogEvent.t(), <<_::288>>) :: t()
+  def ndjson(%LogEvent{} = event, <<_::288>> = mapping_config_id) do
+    {:ndjson, mapping_config_id, envelope(event)}
+  end
+
+  @spec envelope(LogEvent.t()) :: envelope()
+  defp envelope(%LogEvent{
+         id: id,
+         source_uuid: source_uuid,
+         source_name: source_name,
+         ingested_at: %DateTime{} = ingested_at
+       }) do
+    source_uuid = if is_atom(source_uuid), do: Atom.to_string(source_uuid), else: source_uuid
+    {id, source_uuid, source_name || "", DateTime.to_unix(ingested_at, :microsecond)}
+  end
+end

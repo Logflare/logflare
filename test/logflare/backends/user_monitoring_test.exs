@@ -28,11 +28,12 @@ defmodule Logflare.Backends.UserMonitoringTest do
     start_supervised!({SourceSup, source}, id: :source)
     start_supervised!({SourceSup, source_b}, id: :source_b)
 
-    :timer.sleep(250)
     [source: source, source_b: source_b, user: user]
   end
 
-  def start_otel_exporter(_context) do
+  def start_user_monitoring_pipeline(_context) do
+    start_supervised!(AllLogsLogged)
+
     UserMonitoring.get_otel_exporter()
     |> Enum.each(&start_supervised!/1)
 
@@ -147,6 +148,154 @@ defmodule Logflare.Backends.UserMonitoringTest do
     end
   end
 
+  describe "log interceptor and the system source SourceSup" do
+    setup :set_mimic_global
+
+    setup do
+      :ok =
+        :logger.add_primary_filter(
+          :user_log_intercetor,
+          {&UserMonitoring.log_interceptor/2, []}
+        )
+
+      on_exit(fn -> :logger.remove_primary_filter(:user_log_intercetor) end)
+
+      start_supervised!(AllLogsLogged)
+      insert(:plan)
+      user = insert(:user, system_monitoring: true)
+      Sources.create_user_system_sources(user.id)
+      system_source = Sources.get_by(user_id: user.id, system_source_type: :logs)
+      partitions = PartitionSupervisor.partitions(Backends.SourcesSup)
+      source = insert(:source, user: user, id: system_source.id + partitions * 1_000_000)
+
+      on_exit(fn ->
+        Backends.stop_source_sup(source)
+        Backends.stop_source_sup(system_source)
+      end)
+
+      [user: user, source: source, system_source: system_source]
+    end
+
+    test "drops the system log event while the SourceSup is down and requests a start", %{
+      user: user,
+      system_source: system_source
+    } do
+      attach_system_log_drops()
+      refute Backends.source_sup_started?(system_source)
+
+      capture_log(fn -> Logger.error("system source down", user_id: user.id) end)
+
+      system_source_id = system_source.id
+
+      assert_receive {:dropped, %{count: 1},
+                      %{source_id: ^system_source_id, reason: :source_not_started}}
+
+      TestUtils.retry_assert(fn -> assert Backends.source_sup_started?(system_source) end)
+      assert Backends.list_recent_logs_local(system_source) == []
+    end
+
+    test "drops the system log event when the ingest finds the SourceSup down after the check",
+         %{user: user, system_source: system_source} do
+      :ok = Backends.ensure_source_sup_started(system_source)
+      attach_system_log_drops()
+      stub(Backends, :start_for_ingest, fn _source -> {:error, :source_unavailable} end)
+
+      capture_log(fn -> Logger.error("source stopped after the check", user_id: user.id) end)
+
+      system_source_id = system_source.id
+
+      assert_receive {:dropped, %{count: 1},
+                      %{source_id: ^system_source_id, reason: :source_unavailable}}
+    end
+
+    test "ignores a log line that the ingest emits in the same process", %{
+      user: user,
+      system_source: system_source
+    } do
+      :ok = Backends.ensure_source_sup_started(system_source)
+      calls = :counters.new(1, [])
+      user_id = user.id
+
+      stub(Backends, :ingest_logs, fn _batch, _source, _backend, _allow_spooling ->
+        :counters.add(calls, 1, 1)
+
+        if :counters.get(calls, 1) < 10 do
+          Logger.error("spool dispatch failed inside the ingest", user_id: user_id)
+        end
+
+        {:error, :spool_unavailable}
+      end)
+
+      capture_log(fn -> Logger.error("first line", user_id: user_id) end)
+
+      assert :counters.get(calls, 1) == 1
+    end
+
+    test "ignores OTP domain events", %{user: user, system_source: system_source} do
+      :ok = Backends.ensure_source_sup_started(system_source)
+      test_pid = self()
+
+      stub(Backends, :ingest_logs, fn _batch, _source, _backend, _allow_spooling ->
+        send(test_pid, :ingested)
+        :ok
+      end)
+
+      for domain <- [[:otp], [:otp, :sasl]] do
+        assert :ignore ==
+                 UserMonitoring.log_interceptor(
+                   %{
+                     level: :info,
+                     msg: {:report, %{label: {:supervisor, :progress}, report: []}},
+                     meta: %{user_id: user.id, domain: domain}
+                   },
+                   []
+                 )
+      end
+
+      refute_received :ingested
+    end
+
+    test "a log during a SourceSup start on the system source's partition does not deadlock it",
+         %{user: user, source: source, system_source: system_source} do
+      source_id = source.id
+      user_id = user.id
+
+      stub(SourceSup, :init, fn
+        ^source_id = id ->
+          Logger.metadata(user_id: user_id)
+          Logger.error("log during SourceSup start")
+          call_original(SourceSup, :init, [id])
+
+        id ->
+          call_original(SourceSup, :init, [id])
+      end)
+
+      task = Task.async(fn -> Backends.ensure_source_sup_started(source) end)
+
+      capture_log(fn -> assert {:ok, :ok} = Task.yield(task, 5_000) end)
+      assert Backends.source_sup_started?(source)
+
+      TestUtils.retry_assert(fn -> assert Backends.source_sup_started?(system_source) end)
+    end
+  end
+
+  defp attach_system_log_drops do
+    test_pid = self()
+    ref = make_ref()
+    event = [:logflare, :user_monitoring, :system_logs, :dropped]
+
+    :telemetry.attach(
+      ref,
+      event,
+      fn ^event, measurements, metadata, _ ->
+        send(test_pid, {:dropped, measurements, metadata})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(ref) end)
+  end
+
   defp query_error_log_event?(%{
          body: %{
            "event_message" => "Backend query error",
@@ -180,10 +329,9 @@ defmodule Logflare.Backends.UserMonitoringTest do
   defp invalid_query_error_log_event?(_event), do: false
 
   describe "system monitoring labels" do
-    setup :start_otel_exporter
+    setup :start_user_monitoring_pipeline
 
     setup do
-      start_supervised!(AllLogsLogged)
       insert(:plan)
       :ok
     end
@@ -205,8 +353,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
       metrics_source = insert(:source, user: user, system_source_type: :metrics)
       start_supervised!({SourceSup, metrics_source}, id: :metrics_source)
       start_supervised!({SourceSup, source}, id: :source)
-
-      :timer.sleep(1000)
 
       assert {:ok, _} = Backends.ingest_logs([%{"metadata" => %{"value" => "test"}}], source)
 
@@ -337,12 +483,11 @@ defmodule Logflare.Backends.UserMonitoringTest do
   end
 
   describe "egress" do
-    setup :start_otel_exporter
+    setup :start_user_monitoring_pipeline
     setup :set_mimic_global
 
     setup do
       Mimic.stub(Logflare.Utils.SSRF, :safe_resolve, fn _ -> {:ok, {127, 0, 0, 1}} end)
-      start_supervised!(AllLogsLogged)
       insert(:plan)
       :ok
     end
@@ -375,8 +520,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
       {:ok, _} = Backends.update_source_backends(source, [webhook_backend])
       Backends.Cache.get_backend(webhook_backend.id)
 
-      :timer.sleep(1000)
-
       assert {:ok, _} = Backends.ingest_logs([%{"message" => "test webhook egress"}], source)
 
       assert_receive {:insert_all, [%{json: %{"attributes" => _}} | _] = rows}, 15_000
@@ -403,10 +546,9 @@ defmodule Logflare.Backends.UserMonitoringTest do
   end
 
   describe "endpoints" do
-    setup :start_otel_exporter
+    setup :start_user_monitoring_pipeline
 
     setup do
-      start_supervised!(AllLogsLogged)
       insert(:plan)
       :ok
     end
@@ -441,7 +583,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
         )
 
       assert {:ok, _} = Endpoints.run_query(endpoint)
-      :timer.sleep(1000)
       endpoint_id = endpoint.id
 
       assert_receive {:insert_all,
@@ -495,7 +636,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
         )
 
       assert {:ok, _} = Endpoints.run_query(endpoint)
-      :timer.sleep(1000)
 
       backend_id = backend.id
 

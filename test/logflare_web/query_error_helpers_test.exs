@@ -9,6 +9,38 @@ defmodule LogflareWeb.QueryErrorHelpersTest do
 
   doctest LogflareWeb.QueryErrorHelpers
 
+  describe "sandbox_query_error_message/1" do
+    for message <- [
+          "sql parser error: Expected: an expression, found: EOF",
+          "Only SELECT queries allowed",
+          "Only SELECT queries allowed in sandboxed queries",
+          "Only singular query allowed",
+          "Restricted function url",
+          "Restricted setting max_threads",
+          "restricted wildcard (*) in a result column"
+        ] do
+      @message message
+
+      test "passes through #{inspect(message)}" do
+        assert QueryErrorHelpers.sandbox_query_error_message(@message) == @message
+      end
+    end
+
+    for message <- [
+          "Multiple CTEs available (a, b). You must specify which one to query using `f:name`",
+          "No CTEs found in query",
+          "Table 'x' not found in available CTEs: a, b",
+          "can't find source otel_logs_abc123def"
+        ] do
+      @message message
+
+      test "hides #{inspect(message)}" do
+        assert QueryErrorHelpers.sandbox_query_error_message(@message) ==
+                 QueryErrorHelpers.generic_query_error_message()
+      end
+    end
+  end
+
   describe "query_error_message/1" do
     test "returns a generic message for unclassified BigQuery errors" do
       error =
@@ -29,6 +61,31 @@ defmodule LogflareWeb.QueryErrorHelpersTest do
         query_error(
           backend: ClickHouseAdaptor,
           raw_error: %{message: "backend internal detail"}
+        )
+
+      assert QueryErrorHelpers.query_error_message(error) ==
+               QueryErrorHelpers.generic_query_error_message()
+    end
+
+    test "returns the adaptor-provided description for invalid queries" do
+      error =
+        query_error(
+          backend: ClickHouseAdaptor,
+          raw_error: %Ch.Error{code: 215, message: "raw ClickHouse message"},
+          description: "Column 'a' is not under aggregate function. (NOT_AN_AGGREGATE)"
+        )
+
+      assert QueryErrorHelpers.query_error_message(error) ==
+               "Column 'a' is not under aggregate function. (NOT_AN_AGGREGATE)"
+    end
+
+    test "ignores a description on errors that are not invalid queries" do
+      error =
+        query_error(
+          kind: :backend_error,
+          backend: ClickHouseAdaptor,
+          raw_error: %Ch.Error{code: 60, message: "raw ClickHouse message"},
+          description: "internal detail"
         )
 
       assert QueryErrorHelpers.query_error_message(error) ==

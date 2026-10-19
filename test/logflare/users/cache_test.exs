@@ -44,7 +44,13 @@ defmodule Logflare.Users.CacheTest do
 
     Users
     |> reject(:get, 1)
+    |> reject(:get_by, 1)
+    |> reject(:get_by_and_preload, 1)
+    |> reject(:preload_defaults, 1)
 
     assert Users.Cache.get(user.id)
+    assert Users.Cache.get_by(api_key: user.api_key)
+    assert Users.Cache.get_by_and_preload(api_key: user.api_key)
+    assert Users.Cache.preload_defaults(user)
   end
 end

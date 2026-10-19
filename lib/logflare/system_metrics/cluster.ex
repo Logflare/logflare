@@ -40,9 +40,11 @@ defmodule Logflare.SystemMetrics.Cluster do
           metrics,
           %{in_flight_requests: 0, in_use_connections: 0, available_connections: 0},
           fn metric, acc ->
+            in_flight_requests =
+              Map.get(metric, :in_flight_requests) || Map.get(metric, :in_use_connections) || 0
+
             %{
-              in_flight_requests:
-                acc.in_flight_requests + (Map.get(metric, :in_flight_requests) || 0),
+              in_flight_requests: acc.in_flight_requests + in_flight_requests,
               in_use_connections:
                 acc.in_use_connections + (Map.get(metric, :in_use_connections) || 0),
               available_connections:

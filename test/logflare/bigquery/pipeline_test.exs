@@ -13,10 +13,13 @@ defmodule Logflare.BigQuery.PipelineTest do
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
+  alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.LogEvent
   alias Logflare.Repo
   alias Logflare.Sources.Source.BigQuery.Pipeline
   alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.RateSampler
   alias Logflare.User
 
   @pipeline_name :test_pipeline
@@ -51,6 +54,33 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       {:ok, [requeued], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
       assert requeued.retries == 1
+    end
+
+    test "ack acks the old pointer's spool handle when successfully requeuing a retriable event",
+         %{source: source} do
+      Mimic.set_mimic_global()
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = %{build(:log_event, source: source) | spool_handle: handle}
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
+
+      assert [{^handle, count_before, _, _, _}] = :ets.lookup(:spool_ack, handle)
+
+      ref = {sid_bid_pid, %{max_retries: 1}}
+      message = Pipeline.transform(pointer, ref: ref)
+      {mod, ref, _data} = message.acknowledger
+
+      mod.ack(ref, [], [message])
+
+      # the old pointer's unit is acked, and the requeued replacement bumps a
+      # fresh one of its own -- net count is unchanged, not leaked upward
+      assert [{^handle, count_after, _, _, _}] = :ets.lookup(:spool_ack, handle)
+      assert count_after == count_before
     end
 
     test "ack emits telemetry and logs a warning when a retriable event's generation is already gone",
@@ -89,6 +119,39 @@ defmodule Logflare.BigQuery.PipelineTest do
       assert IngestEventQueue.total_pending(sid_bid_pid) == 0
     end
 
+    test "ack does not ack the pointer's spool handle when a retriable event's generation is already gone",
+         %{source: source} do
+      Mimic.set_mimic_global()
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+
+      test_pid = self()
+      stub(QueueMod, :ack, fn url, h -> send(test_pid, {:acked, url, h}) end)
+
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = %{build(:log_event, source: source) | spool_handle: handle}
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
+
+      # simulate GenerationJanitor dropping the generation before retry lookup
+      queues_key = Tuple.delete_at(sid_bid_pid, 2)
+      assert [{gen_tid, _created_at}] = IngestEventQueue.list_generations(queues_key)
+      :ok = IngestEventQueue.drop_generation(queues_key, gen_tid)
+
+      ack_ref = {sid_bid_pid, %{max_retries: 1}}
+      message = Pipeline.transform(pointer, ref: ack_ref)
+      {mod, ack_ref, _data} = message.acknowledger
+
+      capture_log(fn -> mod.ack(ack_ref, [], [message]) end)
+
+      refute_receive {:acked, "queue-url", ^handle}
+
+      assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] =
+               :ets.lookup(:spool_ack, handle)
+    end
+
     test "ack will not requeue failed events that have exhausted retries", %{source: source} do
       sid_bid_pid = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(sid_bid_pid)
@@ -107,6 +170,81 @@ defmodule Logflare.BigQuery.PipelineTest do
       # Event is NOT requeued (retries == max_retries); its event row is deleted
       # from the generation store since nothing will ever ack it
       assert IngestEventQueue.total_pending(sid_bid_pid) == 0
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) == nil
+    end
+
+    test "ack acks the pointer's spool handle on success, performing the real queue ack once its count reaches zero",
+         %{source: source} do
+      Mimic.set_mimic_global()
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+
+      test_pid = self()
+      stub(QueueMod, :ack, fn url, h -> send(test_pid, {:acked, url, h}) end)
+
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = %{build(:log_event, source: source) | spool_handle: handle}
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
+
+      ref = {sid_bid_pid, %{max_retries: 0}}
+      message = Pipeline.transform(pointer, ref: ref)
+      {mod, ref, _} = message.acknowledger
+
+      mod.ack(ref, [message], [])
+
+      assert_receive {:acked, "queue-url", ^handle}
+      assert :ets.lookup(:spool_ack, handle) == []
+    end
+
+    test "ack acks the pointer's spool handle when dropped after exhausting retries", %{
+      source: source
+    } do
+      Mimic.set_mimic_global()
+      handle = "spool-handle-#{System.unique_integer([:positive])}"
+      SpoolAck.register(handle, QueueMod, "queue-url")
+
+      test_pid = self()
+      stub(QueueMod, :ack, fn url, h -> send(test_pid, {:acked, url, h}) end)
+
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = %{build(:log_event, source: source) | spool_handle: handle}
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
+      pointer = %{pointer | retries: 1}
+
+      ref = {sid_bid_pid, %{max_retries: 1}}
+      message = Pipeline.transform(pointer, ref: ref)
+      {mod, ref, _data} = message.acknowledger
+
+      capture_log(fn -> mod.ack(ref, [], [message]) end)
+
+      assert_receive {:acked, "queue-url", ^handle}
+      assert :ets.lookup(:spool_ack, handle) == []
+    end
+
+    test "a nil spool handle (an event that never came from the spool) is untouched by ack", %{
+      source: source
+    } do
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = build(:log_event, source: source)
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+
+      {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sid_bid_pid, 1)
+
+      ref = {sid_bid_pid, %{max_retries: 0}}
+      message = Pipeline.transform(pointer, ref: ref)
+      {mod, ref, _} = message.acknowledger
+
+      # No SpoolAck.register/3 call for anything here -- if ack tried to touch
+      # a real handle, this would crash instead of silently no-op'ing.
+      mod.ack(ref, [message], [])
+
       assert IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) == nil
     end
 
@@ -199,6 +337,43 @@ defmodule Logflare.BigQuery.PipelineTest do
       assert IngestEventQueue.list_recent_events({source.id, nil}, 10) == []
     end
 
+    test "ack decrements each producer's in-flight count without requiring grouped messages", %{
+      source: source
+    } do
+      backend = insert(:backend, user_id: source.user_id, type: :bigquery)
+      ack_ref = {{source.id, backend.id, self()}, %{max_retries: 0}}
+      generation_tid = :ets.new(:bq_ack_in_flight, [:set])
+      first_ref = :atomics.new(1, signed: false)
+      second_ref = :atomics.new(1, signed: false)
+      :atomics.put(first_ref, 1, 2)
+      :atomics.put(second_ref, 1, 2)
+
+      messages =
+        build_ack_messages(
+          ack_ref,
+          generation_tid,
+          [first_ref, first_ref, second_ref, nil, second_ref]
+        )
+
+      Pipeline.ack(ack_ref, messages, [])
+
+      assert :atomics.get(first_ref, 1) == 0
+      assert :atomics.get(second_ref, 1) == 0
+    end
+
+    test "ack decrements in-flight counts for failed messages", %{source: source} do
+      backend = insert(:backend, user_id: source.user_id, type: :bigquery)
+      ack_ref = {{source.id, backend.id, self()}, %{max_retries: 0}}
+      generation_tid = :ets.new(:bq_failed_ack_in_flight, [:set])
+      in_flight_ref = :atomics.new(1, signed: false)
+      :atomics.put(in_flight_ref, 1, 2)
+      messages = build_ack_messages(ack_ref, generation_tid, [in_flight_ref, in_flight_ref])
+
+      capture_log(fn -> Pipeline.ack(ack_ref, [], messages) end)
+
+      assert :atomics.get(in_flight_ref, 1) == 0
+    end
+
     test "handle_batch emits ingest telemetry with resolved labels when source has labels", %{
       source: source
     } do
@@ -210,8 +385,12 @@ defmodule Logflare.BigQuery.PipelineTest do
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
-      le = build(:log_event, source: source, metadata: %{"level" => "error"})
+      le =
+        build(:log_event, source: source, metadata: %{"level" => "error"})
+        |> LogEvent.cache_sizes()
+
       {messages, _tid} = setup_queue(source, [le])
+      assert hd(messages).data.size == :erlang.external_size(le.body)
 
       test_pid = self()
       handler = "test-ingest-labels-#{inspect(make_ref())}"
@@ -230,7 +409,9 @@ defmodule Logflare.BigQuery.PipelineTest do
       Pipeline.handle_batch(:bq, messages, batch_info, context)
 
       assert_receive {:ingest, %{ingested_bytes: bytes}, metadata}
-      assert bytes > 0
+      assert bytes == le.accounted_bytes
+      assert bytes == LogEvent.body_byte_size(le.body)
+      assert bytes < hd(messages).data.size
       # labels resolved from the event body, no per-event ETS lookup in ack
       assert metadata["lvl"] == "error"
     end
@@ -245,7 +426,7 @@ defmodule Logflare.BigQuery.PipelineTest do
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
-      le = build(:log_event, source: source)
+      le = %{build(:log_event, source: source) | accounted_bytes: nil, batch_bytes: nil}
       {messages, _tid} = setup_queue(source, [le])
 
       test_pid = self()
@@ -266,7 +447,8 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       source_id = source.id
       assert_receive {:ingest, %{ingested_bytes: bytes}, %{"source_id" => ^source_id}}
-      assert bytes > 0
+      assert bytes == LogEvent.body_byte_size(le.body)
+      assert bytes < hd(messages).data.size
     end
 
     test "le_to_bq_row/1 generates TableDataInsertAllRequestRows struct correctly", %{
@@ -644,6 +826,25 @@ defmodule Logflare.BigQuery.PipelineTest do
       assert is_integer(size) and size > 0
     end
 
+    test "bumps the BQ-specific schema-check rate by the batch size, not per event", %{
+      source: source,
+      context: context
+    } do
+      stub(Logflare.Google.BigQuery, :stream_batch!, fn _ctx, _rows ->
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      events = for _ <- 1..5, do: build(:log_event, source: source)
+      {messages, _queue_tid} = setup_queue(source, events)
+      batch_info = %Broadway.BatchInfo{batcher: :bq, batch_key: :bq, size: 5, trigger: :flush}
+
+      assert RateSampler.rate({source.token, :bq_schema_check}) == 0.0
+
+      Pipeline.handle_batch(:bq, messages, batch_info, context)
+
+      assert RateSampler.rate({source.token, :bq_schema_check}) > 0.0
+    end
+
     test "excludes missing IDs and emits telemetry", %{
       source: source,
       context: context,
@@ -784,6 +985,94 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       assert ^le = Pipeline.process_data(le, context, nil)
     end
+
+    test "always runs the schema update when the source has no schema yet, regardless of rate",
+         %{user: user, context: context} do
+      source = insert(:source, user_id: user.id, lock_schema: false)
+      le = build(:log_event, source: source)
+      test_pid = self()
+
+      RateSampler.bump({source.token, :bq_schema_check}, 100_000)
+
+      expect(Schema, :update, fn _via, ^le, ^source ->
+        send(test_pid, :schema_updated)
+        :ok
+      end)
+
+      assert ^le = Pipeline.process_data(le, context, source)
+      assert_received :schema_updated
+    end
+
+    test "samples against the BQ-specific rate once a schema exists, not the dispatch rate", %{
+      user: user,
+      context: context
+    } do
+      source = insert(:source, user_id: user.id, lock_schema: false)
+      insert(:source_schema, source: source)
+      le = build(:log_event, source: source)
+      test_pid = self()
+
+      RateSampler.bump(source.token, 100_000)
+
+      expect(Schema, :update, fn _via, ^le, ^source ->
+        send(test_pid, :schema_updated)
+        :ok
+      end)
+
+      assert ^le = Pipeline.process_data(le, context, source)
+      assert_received :schema_updated
+    end
+
+    test "a high BQ processing rate suppresses most schema checks once a schema exists", %{
+      user: user,
+      context: context
+    } do
+      source = insert(:source, user_id: user.id, lock_schema: false)
+      insert(:source_schema, source: source)
+      test_pid = self()
+
+      RateSampler.bump({source.token, :bq_schema_check}, 100_000)
+      stub(Schema, :update, fn _via, _le, _source -> send(test_pid, :schema_updated) end)
+
+      for _ <- 1..200 do
+        le = build(:log_event, source: source)
+        Pipeline.process_data(le, context, source)
+      end
+
+      updated_count =
+        Enum.count(1..200, fn _ ->
+          receive do
+            :schema_updated -> true
+          after
+            0 -> false
+          end
+        end)
+
+      assert updated_count < 20,
+             "expected sampling to suppress most checks, got #{updated_count}/200"
+    end
+  end
+
+  defp build_ack_messages(ack_ref, generation_tid, in_flight_refs) do
+    in_flight_refs
+    |> Enum.with_index()
+    |> Enum.map(fn {in_flight_ref, index} ->
+      pointer = %LogEventPointer{
+        id: index,
+        tid: generation_tid,
+        gen_event_id: make_ref(),
+        queue_tid: generation_tid,
+        size: 1,
+        retries: 0,
+        event_type: :log,
+        day_bucket: 0
+      }
+
+      %Message{
+        data: pointer,
+        acknowledger: {Pipeline, ack_ref, %{in_flight_ref: in_flight_ref}}
+      }
+    end)
   end
 
   defp run_pipeline_benchmark(name, batch) do

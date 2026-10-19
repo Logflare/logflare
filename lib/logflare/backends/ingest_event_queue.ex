@@ -7,10 +7,12 @@ defmodule Logflare.Backends.IngestEventQueue do
   Every queue uses the same storage model: a small per-pipeline "pointer" table (this
   module's main tables, one per `{sid,bid,pid}` / `{:consolidated,bid,pid}` /
   `{:spool_producer,nil,pid}`) holding lightweight pointer rows, plus a shared,
-  generationally-rotated event store per `queues_key` holding the actual `LogEvent`
-  bodies (see `current_generation_tid/1`, `new_generations/1`,
-  `Logflare.Backends.IngestEventQueue.GenerationJanitor`). `add_to_table/3` always
-  writes both; which read function a caller uses decides whether it gets back
+  generationally-rotated event store per `queues_key` initially holding the actual
+  `LogEvent` bodies (see `current_generation_tid/1`, `new_generations/1`,
+  `Logflare.Backends.IngestEventQueue.GenerationJanitor`). A consumer may replace a
+  claimed value with a backend-specific encoded representation, then transfer that
+  value into the current generation when retrying. `add_to_table/3` always writes both;
+  which read function a caller uses decides whether it gets back
   lightweight pointers (`pop_pending_pointers/2` — ID-passing pipelines: ClickHouse,
   BigQuery, spool) or fully-resolved `LogEvent` structs (`pop_pending/2` — every other
   adaptor).
@@ -20,6 +22,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   alias Logflare.Sources.Source
   alias Logflare.Backends.Backend
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
+  alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.LogEvent
 
   require Ex2ms
@@ -31,8 +34,9 @@ defmodule Logflare.Backends.IngestEventQueue do
   @ets_recent_events :ingest_event_queue_recent_events
   @max_queue_size 30_000
   @consolidated_max_queue_size 120_000
+  @requeue_pointer_collision_retries 2
   @pointer_batch_key_match_spec (for event_type <- [:log, :metric, :trace] do
-                                   {{:_, :_, :_, :_, :_, event_type, :"$1"},
+                                   {{:_, :_, :_, :_, :_, event_type, :"$1", :_},
                                     [{:is_integer, :"$1"}], [{{event_type, :"$1"}}]}
                                  end)
 
@@ -186,7 +190,7 @@ defmodule Logflare.Backends.IngestEventQueue do
       :ets.new(@ets_table, [
         :public,
         :set,
-        {:decentralized_counters, false},
+        {:decentralized_counters, true},
         {:write_concurrency, :auto},
         {:read_concurrency, true}
       ])
@@ -275,7 +279,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
-  Looks up a single event directly in a generation table.
+  Looks up a single event or its encoded replacement directly in a generation table.
 
   `tid` here is a generation's tid (e.g. a claimed `LogEventPointer.tid`) — a direct
   `:ets.lookup_element/4`, no separate id-to-table resolution needed. Returns `nil` on a miss,
@@ -283,13 +287,30 @@ defmodule Logflare.Backends.IngestEventQueue do
   `drop_generation/2`) — callers should treat that the same as any other lookup miss,
   not as an error.
   """
-  @spec lookup_event(:ets.tid(), term()) :: LogEvent.t() | nil
+  @spec lookup_event(:ets.tid(), term()) :: term() | nil
   def lookup_event(tid, id) do
     :ets.lookup_element(tid, id, 2, nil)
   rescue
     ArgumentError ->
       emit_stale_ets_table_telemetry()
       nil
+  end
+
+  @doc """
+  Replaces an existing generation-store value without recreating a row that was
+  concurrently removed or whose generation was dropped.
+  """
+  @spec replace_event(:ets.tid(), term(), term()) :: :ok | {:error, :not_found}
+  def replace_event(tid, id, replacement) do
+    if :ets.update_element(tid, id, {2, replacement}) do
+      :ok
+    else
+      {:error, :not_found}
+    end
+  rescue
+    ArgumentError ->
+      emit_stale_ets_table_telemetry()
+      {:error, :not_found}
   end
 
   # --- recent-events cache ---
@@ -410,13 +431,51 @@ defmodule Logflare.Backends.IngestEventQueue do
     do: do_get_tid({sid, bid}, pid)
 
   defp do_get_tid(key, pid) do
-    :ets.match(@ets_table_mapper, {key, pid, :"$1"}, 1)
-    |> case do
-      {[[tid]], _cont} ->
-        if :ets.info(tid, :name) != :undefined, do: tid
+    @ets_table_mapper
+    |> :ets.match({key, pid, :"$1", :_})
+    |> Enum.find_value(fn [tid] ->
+      if :ets.info(tid, :name) != :undefined, do: tid
+    end)
+  end
 
-      _ ->
-        nil
+  @doc """
+  Flags a queue as draining, in place. `get_tid/1` still resolves it;
+  `list_counts_with_tids/1` (used by `add_to_table/3`) no longer does.
+  """
+  @spec mark_draining(table_key() | consolidated_table_key()) :: :ok
+  def mark_draining({:consolidated, bid, pid}) when is_integer(bid),
+    do: do_mark_draining({:consolidated, bid}, pid)
+
+  def mark_draining({sid, bid, pid}) when is_integer(sid),
+    do: do_mark_draining({sid, bid}, pid)
+
+  defp do_mark_draining(key, pid) do
+    case :ets.match(@ets_table_mapper, {key, pid, :"$1", :"$2"}) do
+      [[tid, status] | _] ->
+        :ets.delete_object(@ets_table_mapper, {key, pid, tid, status})
+        :ets.insert(@ets_table_mapper, {key, pid, tid, :draining})
+
+      [] ->
+        :ok
+    end
+
+    :ok
+  end
+
+  @doc """
+  Returns whether a queue is currently flagged draining (see `mark_draining/1`).
+  """
+  @spec draining?(table_key() | consolidated_table_key()) :: boolean()
+  def draining?({:consolidated, bid, pid}) when is_integer(bid),
+    do: do_draining?({:consolidated, bid}, pid)
+
+  def draining?({sid, bid, pid}) when is_integer(sid),
+    do: do_draining?({sid, bid}, pid)
+
+  defp do_draining?(key, pid) do
+    case :ets.match(@ets_table_mapper, {key, pid, :_, :"$1"}) do
+      [[:draining] | _] -> true
+      _ -> false
     end
   end
 
@@ -450,7 +509,7 @@ defmodule Logflare.Backends.IngestEventQueue do
             {:read_concurrency, true}
           ])
 
-        :ets.insert(@ets_table_mapper, {mapper_key, pid, tid})
+        :ets.insert(@ets_table_mapper, {mapper_key, pid, tid, :active})
         {:ok, tid}
 
       tid ->
@@ -679,30 +738,18 @@ defmodule Logflare.Backends.IngestEventQueue do
   # `gen_event_id` makes this row independent from any duplicate event id. If insert_new/2
   # rejects the pointer or the queue disappears during publication, only this insertion's
   # generation row is removed.
-  # Pointer row shape: {event_id, generation_tid, gen_event_id, size, retries, event_type, day_bucket}.
+  # Pointer row shape:
+  # {event_id, generation_tid, gen_event_id, size, retries, event_type, day_bucket, spool_handle}.
   defp insert_pointer_batch(sid_bid_pid, queue_tid, batch) do
     queues_key = pointer_queues_key(sid_bid_pid)
     gen_tid = current_generation_tid(queues_key)
 
-    for %{id: id} = event <- batch do
-      gen_event_id = make_ref()
-
-      row =
-        {id, gen_tid, gen_event_id, :erlang.external_size(event.body), event.retries || 0,
-         event.event_type, event.day_bucket}
-
-      :ets.insert(gen_tid, {gen_event_id, event})
-
-      try do
-        if not :ets.insert_new(queue_tid, row) do
-          :ets.delete(gen_tid, gen_event_id)
-        end
-      rescue
-        error in ArgumentError ->
-          delete_id(gen_tid, gen_event_id)
-          reraise error, __STACKTRACE__
-      end
-    end
+    batch
+    |> Enum.group_by(& &1.spool_handle)
+    |> Enum.each(fn {handle, events} ->
+      SpoolAck.bump(handle, length(events))
+      insert_reserved_rows(gen_tid, queue_tid, handle, events)
+    end)
 
     :ok
   rescue
@@ -713,6 +760,34 @@ defmodule Logflare.Backends.IngestEventQueue do
         {_, _, nil} -> {:error, :not_initialized}
         _ -> add_to_table(put_elem(sid_bid_pid, 2, nil), batch)
       end
+  end
+
+  defp insert_reserved_rows(_gen_tid, _queue_tid, _handle, []), do: :ok
+
+  defp insert_reserved_rows(gen_tid, queue_tid, handle, [%{id: id} = event | rest]) do
+    gen_event_id = make_ref()
+
+    row =
+      {id, gen_tid, gen_event_id, LogEvent.batch_byte_size(event), event.retries || 0,
+       event.event_type, event.day_bucket, handle}
+
+    try do
+      :ets.insert(gen_tid, {gen_event_id, event})
+
+      if :ets.insert_new(queue_tid, row) do
+        :ok
+      else
+        :ets.delete(gen_tid, gen_event_id)
+        SpoolAck.ack(handle, 1)
+      end
+    rescue
+      error in ArgumentError ->
+        delete_id(gen_tid, gen_event_id)
+        SpoolAck.ack(handle, length(rest) + 1)
+        reraise error, __STACKTRACE__
+    end
+
+    insert_reserved_rows(gen_tid, queue_tid, handle, rest)
   end
 
   @spec pointer_queues_key(consolidated_table_key() | table_key() | spool_producer_table_key()) ::
@@ -735,13 +810,18 @@ defmodule Logflare.Backends.IngestEventQueue do
   empty and we skip it, instead of recreating an already-claimed pointer in `to_tid`
   and risking both sides processing (and acking) the same event
   (github.com/Logflare/logflare/pull/3690#discussion_r3598370787).
+
+  Event IDs can collide across two source queues (client-suppliable, not guaranteed
+  globally unique), so `to_tid` may already hold an unrelated row for the same ID.
+  That row is claimed and acked before the incoming one is inserted in its place,
+  rather than silently overwritten with its spool handle left to leak.
   """
   def move(from, to) when is_tuple(from) and is_tuple(to) do
     with from_tid when from_tid != nil <- get_tid(from),
          to_tid when to_tid != nil <- get_tid(to) do
       moved =
         :ets.foldl(
-          fn {id, _, _, _, _, _, _}, acc -> acc + take_and_insert(from_tid, to_tid, id) end,
+          fn {id, _, _, _, _, _, _, _}, acc -> acc + take_and_insert(from_tid, to_tid, id) end,
           0,
           from_tid
         )
@@ -755,11 +835,19 @@ defmodule Logflare.Backends.IngestEventQueue do
   defp take_and_insert(from_tid, to_tid, id) do
     case :ets.take(from_tid, id) do
       [row] ->
+        ack_conflicting_row(to_tid, id)
         :ets.insert(to_tid, row)
         1
 
       [] ->
         0
+    end
+  end
+
+  defp ack_conflicting_row(to_tid, id) do
+    case :ets.take(to_tid, id) do
+      [{^id, _, _, _, _, _, _, spool_handle}] -> SpoolAck.ack(spool_handle, 1)
+      [] -> :ok
     end
   end
 
@@ -770,7 +858,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def delete_queue({sid, bid, pid} = sid_bid_pid) do
     with tid when tid != nil <- get_tid(sid_bid_pid) do
       :ets.delete(tid)
-      :ets.delete_object(@ets_table_mapper, {{sid, bid}, pid, tid})
+      :ets.select_delete(@ets_table_mapper, [{{{sid, bid}, pid, tid, :_}, [], [true]}])
       :ok
     else
       nil -> {:error, :not_initialized}
@@ -826,7 +914,7 @@ defmodule Logflare.Backends.IngestEventQueue do
              non_neg_integer()}
           ]
   def list_counts_with_tids(key) do
-    for {table_key, tid} <- list_queues_with_tids(key),
+    for {table_key, tid} <- list_active_queues_with_tids(key),
         size = :ets.info(tid, :size),
         is_integer(size) do
       {table_key, size}
@@ -905,9 +993,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def pop_pending_pointers(_, 0), do: {:ok, [], nil}
 
   def pop_pending_pointers(sid_bid_pid, n) when is_integer(n) do
-    ms = [
-      {{:"$1", :_, :_, :_, :_, :_, :_}, [], [:"$1"]}
-    ]
+    ms = [{{:"$1", :_, :_, :_, :_, :_, :_, :_}, [], [:"$1"]}]
 
     pop_selected_pointers(sid_bid_pid, n, ms)
   end
@@ -961,28 +1047,42 @@ defmodule Logflare.Backends.IngestEventQueue do
       )
       when event_type in [:log, :metric, :trace] and is_integer(day_bucket) and
              is_integer(n) and n > 0 do
-    ms = [
-      {{:"$1", :_, :_, :_, :_, event_type, day_bucket}, [], [:"$1"]}
-    ]
+    ms = [{{:"$1", :_, :_, :_, :_, event_type, day_bucket, :_}, [], [:"$1"]}]
 
     pop_selected_pointers(sid_bid_pid, n, ms)
   end
 
   defp pop_selected_pointers(sid_bid_pid, n, ms) do
     with tid when tid != nil <- get_tid(sid_bid_pid),
-         {selected_ids, _cont} <- :ets.select(tid, ms, n) do
-      {:ok, take_selected_pointers(selected_ids, tid, []), tid}
+         {:ok, ids} <- select_pointer_ids(tid, ms, n) do
+      case ids do
+        [] -> {:ok, [], nil}
+        ids -> pointer_claim_result(claim_pointers(tid, ids), tid)
+      end
     else
       nil -> {:error, :not_initialized}
-      :"$end_of_table" -> {:ok, [], nil}
+      {:error, :not_initialized} = error -> error
     end
   end
 
-  defp take_selected_pointers([], _tid, pointers), do: :lists.reverse(pointers)
+  defp select_pointer_ids(tid, ms, n) do
+    case :ets.select(tid, ms, n) do
+      {ids, _cont} -> {:ok, ids}
+      :"$end_of_table" -> {:ok, []}
+    end
+  rescue
+    ArgumentError ->
+      emit_stale_ets_table_telemetry()
+      {:error, :not_initialized}
+  end
 
-  defp take_selected_pointers([id | selected_ids], tid, pointers) do
-    case :ets.take(tid, id) do
-      [{^id, gen_tid, gen_event_id, size, retries, event_type, day_bucket}] ->
+  defp claim_pointers(tid, ids), do: claim_pointers(ids, tid, [])
+
+  defp claim_pointers([], _tid, pointers), do: {:lists.reverse(pointers), false}
+
+  defp claim_pointers([id | ids], tid, pointers) do
+    case take_pointer_row(tid, id) do
+      {:ok, {^id, gen_tid, gen_event_id, size, retries, event_type, day_bucket, spool_handle}} ->
         pointer = %LogEventPointer{
           id: id,
           tid: gen_tid,
@@ -991,14 +1091,188 @@ defmodule Logflare.Backends.IngestEventQueue do
           size: size,
           retries: retries,
           event_type: event_type,
-          day_bucket: day_bucket
+          day_bucket: day_bucket,
+          spool_handle: spool_handle
         }
 
-        take_selected_pointers(selected_ids, tid, [pointer | pointers])
+        claim_pointers(ids, tid, [pointer | pointers])
+
+      :missing ->
+        claim_pointers(ids, tid, pointers)
+
+      :stale ->
+        {:lists.reverse(pointers), true}
+    end
+  end
+
+  defp pointer_claim_result({[], true}, _tid), do: {:error, :not_initialized}
+  defp pointer_claim_result({pointers, _stale?}, tid), do: {:ok, pointers, tid}
+
+  @spec take_pointer_row(:ets.tid(), term()) :: {:ok, tuple()} | :missing | :stale
+  defp take_pointer_row(tid, id) do
+    case :ets.take(tid, id) do
+      [row] -> {:ok, row}
+      [] -> :missing
+    end
+  rescue
+    ArgumentError ->
+      emit_stale_ets_table_telemetry()
+      :stale
+  end
+
+  @doc """
+  Transfers a claimed payload into the current generation and publishes its new pointer.
+
+  The payload is staged before its pointer, so a consumer cannot claim a pointer whose
+  backing value is missing. The original queue is tried first, followed by the other
+  live queues for `queues_key`. A stale destination rolls back only the staged row and
+  tries the next queue. Once a new pointer is published, or an existing same-ID pointer
+  with a resolvable payload wins, the old generation row is deleted because the caller's
+  claim no longer owns it. A dangling same-ID pointer is replaced instead of causing the
+  valid retry payload to be discarded. If no queue remains, both rows are removed and
+  `{:error, :not_initialized}` reports that the caller must account for the payload as
+  dropped.
+
+  `payload_builder` receives the final pointer so payloads that embed their pointer can
+  store the new generation and destination queue identifiers consistently.
+  """
+  @spec requeue_payload(
+          queues_key() | consolidated_queues_key() | spool_producer_queues_key(),
+          LogEventPointer.t(),
+          (LogEventPointer.t() -> term())
+        ) ::
+          {:ok, LogEventPointer.t()} | {:error, :already_exists | :not_initialized}
+  def requeue_payload(queues_key, %LogEventPointer{} = pointer, payload_builder)
+      when is_function(payload_builder, 1) do
+    candidate_tids =
+      queues_key
+      |> list_queues_with_tids()
+      |> Enum.sort_by(&reinsert_queue_priority/1)
+      |> Enum.map(&elem(&1, 1))
+      |> then(&Enum.uniq([pointer.queue_tid | &1]))
+
+    result =
+      requeue_payload_to_candidate(candidate_tids, queues_key, pointer, payload_builder)
+
+    delete_id(pointer.tid, pointer.gen_event_id)
+    SpoolAck.ack(pointer.spool_handle, 1)
+
+    result
+  end
+
+  defp requeue_payload_to_candidate([], _queues_key, _pointer, _payload_builder),
+    do: {:error, :not_initialized}
+
+  defp requeue_payload_to_candidate(
+         [queue_tid | candidate_tids],
+         queues_key,
+         pointer,
+         payload_builder
+       ) do
+    case stage_and_publish_requeued_payload(queues_key, queue_tid, pointer, payload_builder, 1) do
+      {:error, :not_initialized} ->
+        requeue_payload_to_candidate(candidate_tids, queues_key, pointer, payload_builder)
+
+      result ->
+        result
+    end
+  end
+
+  defp stage_and_publish_requeued_payload(
+         queues_key,
+         queue_tid,
+         pointer,
+         payload_builder,
+         generation_retries
+       ) do
+    gen_tid = current_generation_tid(queues_key)
+    gen_event_id = make_ref()
+
+    new_pointer = %{
+      pointer
+      | tid: gen_tid,
+        gen_event_id: gen_event_id,
+        queue_tid: queue_tid
+    }
+
+    payload = payload_builder.(new_pointer)
+
+    case insert_generation_payload(gen_tid, gen_event_id, payload) do
+      :ok ->
+        SpoolAck.bump(new_pointer.spool_handle, 1)
+
+        case publish_requeued_pointer(new_pointer, @requeue_pointer_collision_retries) do
+          :ok ->
+            {:ok, new_pointer}
+
+          {:error, reason} = error when reason in [:already_exists, :not_initialized] ->
+            SpoolAck.ack(new_pointer.spool_handle, 1)
+            delete_id(gen_tid, gen_event_id)
+            error
+        end
+
+      {:error, :not_initialized} when generation_retries > 0 ->
+        :ok = new_generations([queues_key])
+
+        stage_and_publish_requeued_payload(
+          queues_key,
+          queue_tid,
+          pointer,
+          payload_builder,
+          generation_retries - 1
+        )
+
+      {:error, :not_initialized} = error ->
+        error
+    end
+  end
+
+  defp insert_generation_payload(gen_tid, gen_event_id, payload) do
+    :ets.insert(gen_tid, {gen_event_id, payload})
+    :ok
+  rescue
+    ArgumentError ->
+      emit_stale_ets_table_telemetry()
+      {:error, :not_initialized}
+  end
+
+  defp publish_requeued_pointer(pointer, collision_retries) do
+    case insert_new_pointer(pointer) do
+      {:error, :already_exists} when collision_retries > 0 ->
+        case remove_dangling_pointer(pointer.queue_tid, pointer.id) do
+          :retry -> publish_requeued_pointer(pointer, collision_retries - 1)
+          :resolvable -> {:error, :already_exists}
+          {:error, :not_initialized} = error -> error
+        end
+
+      result ->
+        result
+    end
+  end
+
+  defp remove_dangling_pointer(queue_tid, id) do
+    case :ets.lookup(queue_tid, id) do
+      [{^id, gen_tid, gen_event_id, _, _, _, _, spool_handle} = row] ->
+        case lookup_event(gen_tid, gen_event_id) do
+          nil -> reclaim_dangling_pointer(queue_tid, row, spool_handle)
+          _payload -> :resolvable
+        end
 
       [] ->
-        take_selected_pointers(selected_ids, tid, pointers)
+        :retry
     end
+  rescue
+    ArgumentError ->
+      emit_stale_ets_table_telemetry()
+      {:error, :not_initialized}
+  end
+
+  defp reclaim_dangling_pointer(queue_tid, row, spool_handle) do
+    if :ets.select_delete(queue_tid, [{row, [], [true]}]) == 1 do
+      SpoolAck.ack(spool_handle, 1)
+    end
+
+    :retry
   end
 
   @doc """
@@ -1007,21 +1281,53 @@ defmodule Logflare.Backends.IngestEventQueue do
   itself alive by claiming this in the first place. Bump `pointer.retries` before
   calling this if the caller is retrying after a failure.
 
-  If `queue_tid` has since gone stale (its owning producer died), the retry is dropped —
-  same stale-table telemetry/rescue pattern used everywhere else in this module.
+  This preserves the historical overwrite behavior required by startup seeding and
+  spool retries: if the destination already contains the same event ID, this claimed
+  pointer replaces it instead of being silently stranded. Call `insert_new_pointer/1`
+  when an existing pointer must remain authoritative.
   """
   @spec reinsert_pointer(LogEventPointer.t()) :: :ok
   def reinsert_pointer(%LogEventPointer{} = pointer) do
-    row =
-      {pointer.id, pointer.tid, pointer.gen_event_id, pointer.size, pointer.retries,
-       pointer.event_type, pointer.day_bucket}
-
-    :ets.insert(pointer.queue_tid, row)
+    :ets.insert(pointer.queue_tid, pointer_row(pointer))
     :ok
   rescue
     ArgumentError ->
       emit_stale_ets_table_telemetry()
       :ok
+  end
+
+  @doc """
+  Inserts a claimed pointer only when the destination does not already contain its ID.
+
+  Returns `{:error, :not_initialized}` if `queue_tid` has since gone stale, allowing a
+  caller that retains the payload to try another queue. Returns
+  `{:error, :already_exists}` without overwriting the existing same-ID pointer.
+  """
+  @spec insert_new_pointer(LogEventPointer.t()) ::
+          :ok | {:error, :already_exists | :not_initialized}
+  def insert_new_pointer(%LogEventPointer{} = pointer) do
+    if :ets.insert_new(pointer.queue_tid, pointer_row(pointer)) do
+      :ok
+    else
+      {:error, :already_exists}
+    end
+  rescue
+    ArgumentError ->
+      emit_stale_ets_table_telemetry()
+      {:error, :not_initialized}
+  end
+
+  defp pointer_row(pointer) do
+    {pointer.id, pointer.tid, pointer.gen_event_id, pointer.size, pointer.retries,
+     pointer.event_type, pointer.day_bucket, pointer.spool_handle}
+  end
+
+  defp reinsert_queue_priority({{_, _, pid}, tid}) do
+    case :ets.info(tid, :size) do
+      size when is_integer(size) and is_nil(pid) -> {1, size}
+      size when is_integer(size) -> {0, size}
+      _ -> {2, 0}
+    end
   end
 
   @doc """
@@ -1035,26 +1341,49 @@ defmodule Logflare.Backends.IngestEventQueue do
   def pop_pending(_, 0), do: {:ok, []}
 
   def pop_pending(sid_bid_pid, n) when is_integer(n) do
-    ms = [{{:"$1", :"$2", :"$3", :_, :_, :_, :_}, [], [{{:"$1", :"$2", :"$3"}}]}]
+    ms = [{{:"$1", :_, :_, :_, :_, :_, :_, :_}, [], [:"$1"]}]
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
-         size when is_integer(size) <- :ets.info(tid, :size),
-         {selected, _cont} <- :ets.select(tid, ms, min(n, max(size, 1))) do
-      events =
-        selected
-        |> Enum.map(&resolve_and_delete_pending(tid, &1))
-        |> Enum.reject(&is_nil/1)
+         {:ok, ids} <- select_pointer_ids(tid, ms, n) do
+      {events, claimed, stale?, handles} = claim_events(ids, tid, [], 0, [])
 
-      {:ok, events}
+      handles
+      |> Enum.frequencies()
+      |> Enum.each(fn {handle, count} -> SpoolAck.ack(handle, count) end)
+
+      if stale? and claimed == 0 do
+        {:error, :not_initialized}
+      else
+        {:ok, events}
+      end
     else
       nil -> {:error, :not_initialized}
-      :"$end_of_table" -> {:ok, []}
+      {:error, :not_initialized} = error -> error
     end
   end
 
-  defp resolve_and_delete_pending(tid, {id, gen_tid, gen_event_id}) do
-    :ets.delete(tid, id)
+  defp claim_events([], _tid, events, claimed, handles),
+    do: {:lists.reverse(events), claimed, false, handles}
 
+  defp claim_events([id | ids], tid, events, claimed, handles) do
+    case take_pointer_row(tid, id) do
+      {:ok, {^id, gen_tid, gen_event_id, _, _, _, _, spool_handle}} ->
+        handles = [spool_handle | handles]
+
+        case take_pointer_event({gen_tid, gen_event_id}) do
+          nil -> claim_events(ids, tid, events, claimed + 1, handles)
+          event -> claim_events(ids, tid, [event | events], claimed + 1, handles)
+        end
+
+      :missing ->
+        claim_events(ids, tid, events, claimed, handles)
+
+      :stale ->
+        {:lists.reverse(events), claimed, true, handles}
+    end
+  end
+
+  defp take_pointer_event({gen_tid, gen_event_id}) do
     case :ets.take(gen_tid, gen_event_id) do
       [{^gen_event_id, event}] -> event
       [] -> nil
@@ -1096,15 +1425,19 @@ defmodule Logflare.Backends.IngestEventQueue do
     {:ok, from_generations ++ list_recent_events(sid_bid, n)}
   end
 
+  defp select_generation_events(_tid, n) when n <= 0, do: []
+
   defp select_generation_events(tid, n) do
     ms = [{{:_, :"$1"}, [], [:"$1"]}]
 
-    with size when is_integer(size) <- :ets.info(tid, :size),
-         {events, _cont} <- :ets.select(tid, ms, min(n, max(size, 1))) do
-      events
-    else
-      _ -> []
+    case :ets.select(tid, ms, n) do
+      {events, _cont} -> Enum.filter(events, &match?(%LogEvent{}, &1))
+      :"$end_of_table" -> []
     end
+  rescue
+    ArgumentError ->
+      emit_stale_ets_table_telemetry()
+      []
   end
 
   @doc """
@@ -1153,7 +1486,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   def truncate_tid(tid, status, n) when status in [:all, :pending] do
-    ms = [{{:"$1", :_, :_, :_, :_, :_, :_}, [], [:"$_"]}]
+    ms = [{{:"$1", :_, :_, :_, :_, :_, :_, :_}, [], [:"$_"]}]
 
     with size when is_integer(size) <- :ets.info(tid, :size) do
       to_keep = select_to_insert(tid, ms, size, n)
@@ -1268,13 +1601,13 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec drop_pending(source_backend_pid(), non_neg_integer()) :: :ok
 
+  def drop_pending({_, _}, 0), do: :ok
+
   def drop_pending({_, _} = sid_bid, n) when is_integer(n) do
     traverse_queues(sid_bid, fn objs, acc ->
       num =
         for {sid_bid_pid, _tid} <- objs, reduce: 0 do
-          acc ->
-            {:ok, num} = drop_pending(sid_bid_pid, n)
-            acc + num
+          acc -> add_dropped_count(sid_bid_pid, n, acc)
         end
 
       num + acc
@@ -1285,20 +1618,50 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   @spec drop_pending(source_backend_pid() | consolidated_table_key(), non_neg_integer()) ::
           {:ok, non_neg_integer()} | {:error, :not_initialized}
+  def drop_pending({_, _, _}, 0), do: {:ok, 0}
+
   def drop_pending({_, _, _} = sid_bid_pid, n) when is_integer(n) do
-    ms = [{{:"$1", :"$2", :"$3", :_, :_, :_, :_}, [], [{{:"$1", :"$2", :"$3"}}]}]
+    ms = [{{:"$1", :_, :_, :_, :_, :_, :_, :_}, [], [:"$1"]}]
 
     with tid when tid != nil <- get_tid(sid_bid_pid),
-         {taken, _cont} <- :ets.select(tid, ms, n) do
-      for {id, gen_tid, gen_event_id} <- taken do
-        :ets.delete(tid, id)
-        delete_id(gen_tid, gen_event_id)
-      end
+         {:ok, ids} <- select_pointer_ids(tid, ms, n) do
+      {dropped, stale?, handles} = drop_claimed(ids, tid, 0, [])
 
-      {:ok, Enum.count(taken)}
+      handles
+      |> Enum.frequencies()
+      |> Enum.each(fn {handle, count} -> SpoolAck.ack(handle, count) end)
+
+      if stale? and dropped == 0 do
+        {:error, :not_initialized}
+      else
+        {:ok, dropped}
+      end
     else
       nil -> {:error, :not_initialized}
-      :"$end_of_table" -> {:ok, 0}
+      {:error, :not_initialized} = error -> error
+    end
+  end
+
+  defp add_dropped_count(sid_bid_pid, n, acc) do
+    case drop_pending(sid_bid_pid, n) do
+      {:ok, num} -> acc + num
+      {:error, :not_initialized} -> acc
+    end
+  end
+
+  defp drop_claimed([], _tid, dropped, handles), do: {dropped, false, handles}
+
+  defp drop_claimed([id | ids], tid, dropped, handles) do
+    case take_pointer_row(tid, id) do
+      {:ok, {^id, gen_tid, gen_event_id, _, _, _, _, spool_handle}} ->
+        delete_id(gen_tid, gen_event_id)
+        drop_claimed(ids, tid, dropped + 1, [spool_handle | handles])
+
+      :missing ->
+        drop_claimed(ids, tid, dropped, handles)
+
+      :stale ->
+        {dropped, true, handles}
     end
   end
 
@@ -1329,9 +1692,9 @@ defmodule Logflare.Backends.IngestEventQueue do
   defp next_and_cleanup(:"$end_of_table"), do: :ok
 
   defp next_and_cleanup({to_check, cont}) do
-    for {{sid, bid}, pid, tid} <- to_check do
+    for {{sid, bid}, pid, tid, status} <- to_check do
       if :ets.info(tid, :name) == :undefined do
-        :ets.delete_object(@ets_table_mapper, {{sid, bid}, pid, tid})
+        :ets.delete_object(@ets_table_mapper, {{sid, bid}, pid, tid, status})
       end
     end
 
@@ -1347,7 +1710,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def list_queues({:consolidated, bid}) when is_integer(bid) do
     ms =
       Ex2ms.fun do
-        {{:consolidated, ^bid}, pid, _tid} -> {:consolidated, ^bid, pid}
+        {{:consolidated, ^bid}, pid, _tid, _status} -> {:consolidated, ^bid, pid}
       end
 
     with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
@@ -1360,7 +1723,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def list_queues({sid, bid}) do
     ms =
       Ex2ms.fun do
-        {{^sid, ^bid}, pid, _tid} -> {^sid, ^bid, pid}
+        {{^sid, ^bid}, pid, _tid, _status} -> {^sid, ^bid, pid}
       end
 
     with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
@@ -1382,7 +1745,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def list_queues_with_tids({:consolidated, bid}) when is_integer(bid) do
     ms =
       Ex2ms.fun do
-        {{:consolidated, ^bid}, pid, tid} -> {{:consolidated, ^bid, pid}, tid}
+        {{:consolidated, ^bid}, pid, tid, _status} -> {{:consolidated, ^bid, pid}, tid}
       end
 
     with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
@@ -1395,7 +1758,33 @@ defmodule Logflare.Backends.IngestEventQueue do
   def list_queues_with_tids({sid, bid}) do
     ms =
       Ex2ms.fun do
-        {{^sid, ^bid}, pid, tid} -> {{^sid, ^bid, pid}, tid}
+        {{^sid, ^bid}, pid, tid, _status} -> {{^sid, ^bid, pid}, tid}
+      end
+
+    with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
+      queues
+    else
+      :"$end_of_table" -> []
+    end
+  end
+
+  defp list_active_queues_with_tids({:consolidated, bid}) when is_integer(bid) do
+    ms =
+      Ex2ms.fun do
+        {{:consolidated, ^bid}, pid, tid, :active} -> {{:consolidated, ^bid, pid}, tid}
+      end
+
+    with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
+      queues
+    else
+      :"$end_of_table" -> []
+    end
+  end
+
+  defp list_active_queues_with_tids({sid, bid}) do
+    ms =
+      Ex2ms.fun do
+        {{^sid, ^bid}, pid, tid, :active} -> {{^sid, ^bid, pid}, tid}
       end
 
     with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
@@ -1418,7 +1807,7 @@ defmodule Logflare.Backends.IngestEventQueue do
 
     ms =
       Ex2ms.fun do
-        {{:consolidated, ^bid}, pid, tid} -> {{:consolidated, ^bid, pid}, tid}
+        {{:consolidated, ^bid}, pid, tid, _status} -> {{:consolidated, ^bid, pid}, tid}
       end
 
     res =
@@ -1434,7 +1823,7 @@ defmodule Logflare.Backends.IngestEventQueue do
 
     ms =
       Ex2ms.fun do
-        {{^sid, ^bid}, pid, tid} -> {{^sid, ^bid, pid}, tid}
+        {{^sid, ^bid}, pid, tid, _status} -> {{^sid, ^bid, pid}, tid}
       end
 
     res =

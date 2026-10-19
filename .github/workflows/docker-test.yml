@@ -6,6 +6,11 @@ on:
     branches: [main]
     paths:
       - 'native/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'mix.exs'
+      - 'mix.lock'
+      - 'VERSION'
       - 'priv/**'
       - 'rel/**'
       - 'config/**'
@@ -14,7 +19,7 @@ on:
       - 'Dockerfile.multi-step'
       - 'Dockerfile.base'
       - 'Dockerfile.runner'
-      - '!assets/**'
+      - '.dockerignore'
       - '*.sh'
       - '.tool-versions'
       # Run suite when this file is changed
@@ -26,15 +31,17 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v6
       - uses: docker/setup-buildx-action@v4
       - uses: docker/build-push-action@v7
         with:
-          file: ./Dockerfile.multi-step
+          file: ./Dockerfile
           push: false
           platforms: linux/amd64
-          # caching
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # PRs can read the production cache populated on the default branch.
+          cache-from: |
+            type=gha,scope=docker-build-check
+            type=gha,scope=app-amd64
+          cache-to: type=gha,scope=docker-build-check,mode=max

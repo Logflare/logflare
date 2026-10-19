@@ -84,7 +84,7 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccess do
 
   defp fetch_source(user, source_token) do
     if Sources.valid_source_token_param?(source_token) do
-      case Sources.Cache.get_by_and_preload_rules(user_id: user.id, token: source_token) do
+      case Sources.Cache.get_by_for_ingest(user_id: user.id, token: source_token) do
         %Source{} = source ->
           source = Sources.refresh_source_metrics_for_ingest(source)
           {:ok, source}

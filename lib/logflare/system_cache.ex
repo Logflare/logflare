@@ -1,56 +1,32 @@
 defmodule Logflare.SystemCache do
   @moduledoc false
 
-  import Cachex.Spec
+  use Logflare.Cache
 
   require Logger
 
-  alias Logflare.Utils
+  alias Logflare.Cache.CachexOps
 
   @cache __MODULE__
 
   def child_spec(_) do
-    stats = Application.get_env(:logflare, :cache_stats, false)
-    env = Application.get_env(:logflare, :env)
-
-    warmers =
-      if env == :test do
-        []
-      else
-        [
-          warmer(
-            required: true,
-            module: __MODULE__.Warmer,
-            name: __MODULE__.Warmer,
-            interval: :timer.seconds(3)
-          )
-        ]
+    warmer =
+      if Application.get_env(:logflare, :env) != :test do
+        {__MODULE__.Warmer, interval: :timer.seconds(3)}
       end
 
-    %{
-      id: __MODULE__,
-      start:
-        {Cachex, :start_link,
-         [
-           @cache,
-           [
-             warmers: warmers,
-             hooks:
-               [
-                 if(stats, do: Utils.cache_stats()),
-                 Utils.cache_limit(100)
-               ]
-               |> Enum.filter(& &1),
-             expiration: Utils.cache_expiration_sec(5, 5)
-           ]
-         ]}
-    }
+    CachexOps.child_spec(@cache,
+      limit: 100,
+      ttl: to_timeout(second: 5),
+      purge_interval: to_timeout(second: 5),
+      warmer: warmer
+    )
   end
 
   @spec memory_utilization() :: float()
   def memory_utilization do
     case Cachex.fetch(@cache, :memory_utilization, fn _ ->
-           {:commit, Logflare.System.memory_utilization()}
+           {:commit, read_memory_utilization()}
          end) do
       {:ok, value} ->
         value
@@ -60,7 +36,22 @@ defmodule Logflare.SystemCache do
 
       {:error, err} ->
         Logger.warning("SystemCache.memory_utilization cache error: #{inspect(err)}")
-        Logflare.System.memory_utilization()
+        read_memory_utilization()
     end
+  end
+
+  defp read_memory_utilization do
+    Logflare.System.memory_utilization()
+  rescue
+    error ->
+      Logger.warning("SystemCache.memory_utilization read failed: #{Exception.message(error)}")
+      0.0
+  catch
+    kind, reason ->
+      Logger.warning(
+        "SystemCache.memory_utilization read failed: #{Exception.format(kind, reason, __STACKTRACE__)}"
+      )
+
+      0.0
   end
 end

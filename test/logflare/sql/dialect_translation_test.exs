@@ -277,6 +277,14 @@ defmodule Logflare.Sql.DialectTranslationTest do
              String.contains?(pg_query, "metadata ->> 'msg'")
   end
 
+  test "drops a CROSS JOIN against a plain table" do
+    bq_query = "SELECT t.id FROM `c.d.e` t CROSS JOIN `c.d.f` u"
+
+    assert {:ok, pg_query} = DialectTranslation.translate_bq_to_pg(bq_query)
+    refute String.contains?(String.upcase(pg_query), "CROSS JOIN")
+    refute String.contains?(pg_query, ~s("c.d.f"))
+  end
+
   test "handles CROSS JOIN UNNEST being dropped from AST" do
     bq_query = """
     WITH data AS (

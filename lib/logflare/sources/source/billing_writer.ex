@@ -2,7 +2,6 @@ defmodule Logflare.Sources.Source.BillingWriter do
   @moduledoc false
   use GenServer
 
-  alias Logflare.Billing.BillingCounts
   alias Logflare.Billing
   alias Logflare.Sources.Source.Data
   alias Logflare.Backends
@@ -36,12 +35,8 @@ defmodule Logflare.Sources.Source.BillingWriter do
     node_count = Data.get_node_inserts(state.source.token)
     count = node_count - last_count
 
-    if count > 0 do
-      record_to_db(state, count)
-
-      if state.plan_type == "metered" do
-        record_to_stripe(state, count)
-      end
+    if count > 0 and state.plan_type == "metered" do
+      record_to_stripe(state, count)
     end
 
     write()
@@ -73,23 +68,6 @@ defmodule Logflare.Sources.Source.BillingWriter do
         Logger.error("Error recording usage with Stripe. #{inspect(resp)}",
           source_id: state.source.token,
           error_string: inspect(resp)
-        )
-    end
-  end
-
-  defp record_to_db(state, count) do
-    user = Users.Cache.get(state.user_id)
-
-    case BillingCounts.insert(user, state.source, %{
-           node: Atom.to_string(Node.self()),
-           count: count
-         }) do
-      {:ok, _resp} ->
-        :noop
-
-      {:error, _resp} ->
-        Logger.error("Error inserting billing count!",
-          source_id: state.source.token
         )
     end
   end
