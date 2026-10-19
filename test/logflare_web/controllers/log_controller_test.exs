@@ -199,6 +199,23 @@ defmodule LogflareWeb.LogControllerTest do
       end)
     end
 
+    test "returns 400 when ingestion returns errors", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch, _source, _backend, _allow_spooling ->
+        {:error, ["invalid event"]}
+      end)
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> post(Routes.log_path(conn, :create, source: source.token), @valid)
+
+      assert %{"message" => ["invalid event"]} = json_response(conn, 400)
+    end
+
     test "returns 500 when the spool producer is unavailable", %{
       conn: conn,
       source: source,
