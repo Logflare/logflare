@@ -92,12 +92,16 @@ defmodule LogflareWeb.LogController do
     do: dispatch(events, conn, conn.assigns, processor)
 
   defp dispatch(events, conn, %{declared_sources: declared}, processor) do
-    {grouped, errors} = group_events_by_source(events, declared)
+    case group_events_by_source(events, declared) do
+      {grouped, []} ->
+        grouped
+        |> Enum.map(fn {source, batch} -> Processor.ingest(batch, processor, source) end)
+        |> aggregate_results()
+        |> handle(conn)
 
-    grouped
-    |> Enum.map(fn {source, batch} -> Processor.ingest(batch, processor, source) end)
-    |> aggregate_results(errors)
-    |> handle(conn)
+      {_grouped, errors} ->
+        handle({:error, errors}, conn)
+    end
   end
 
   defp dispatch(events, conn, %{source: source}, processor) do
@@ -143,16 +147,16 @@ defmodule LogflareWeb.LogController do
   defp event_source_token(%{:__LF_SOURCE => token}), do: token
   defp event_source_token(_), do: nil
 
-  defp aggregate_results(results, errors) do
+  defp aggregate_results(results) do
     case Enum.find(results, &match?({:error, reason} when is_atom(reason), &1)) do
-      nil -> merge_results(results, errors)
+      nil -> merge_results(results)
       error -> error
     end
   end
 
-  defp merge_results(results, errors) do
+  defp merge_results(results) do
     {count, all_errors} =
-      for result <- results, reduce: {0, errors} do
+      for result <- results, reduce: {0, []} do
         {acc, errs} ->
           case result do
             {:ok, n} -> {acc + n, errs}

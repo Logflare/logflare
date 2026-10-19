@@ -988,10 +988,9 @@ defmodule LogflareWeb.LogControllerTest do
       assert json_response(conn, 401)
     end
 
-    test "batch with __LF_SOURCE on first event but later events lack it returns 406",
+    test "batch with __LF_SOURCE on first event but later events lack it returns 400 without ingesting",
          %{conn: conn, source_a: source_a} do
-      WebhookAdaptor.Client
-      |> stub(:send, fn _req -> %Tesla.Env{status: 200, body: ""} end)
+      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
 
       conn =
         conn
@@ -1005,7 +1004,7 @@ defmodule LogflareWeb.LogControllerTest do
           }
         )
 
-      assert %{"message" => ["event missing __LF_SOURCE"]} = json_response(conn, 406)
+      assert %{"message" => ["event missing __LF_SOURCE"]} = json_response(conn, 400)
     end
 
     test "first event lacks __LF_SOURCE falls back to single-source query param flow",
