@@ -163,7 +163,7 @@ defmodule LogflareWeb.LogController do
           case result do
             {:ok, n} -> {acc + n, errs}
             :ok -> {acc, errs}
-            {:error, more} when is_list(more) -> {acc, Enum.reverse(more) ++ errs}
+            {:error, more} when is_list(more) -> {acc, Enum.reverse(more, errs)}
             {:error, err} -> {acc, [err | errs]}
           end
       end
