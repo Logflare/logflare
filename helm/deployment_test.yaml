@@ -209,6 +209,26 @@ tests:
                 app.kubernetes.io/name: logflare
         template: deployment.yaml
 
+  - it: should set ERL_FLAGS with +Q and scheduler busy-wait off by default
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ERL_FLAGS
+            value: "+Q 1048576 +sbwt none +sbwtdcpu none +sbwtdio none"
+        template: deployment.yaml
+
+  - it: should append logflare.extraConfig.ERL_FLAGS so its flags win
+    set:
+      logflare.extraConfig.ERL_FLAGS: "+S 4:4"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ERL_FLAGS
+            value: "+Q 1048576 +sbwt none +sbwtdcpu none +sbwtdio none +S 4:4"
+        template: deployment.yaml
+
   - it: should append extraEnv after the env vars the chart sets
     set:
       extraEnv:
