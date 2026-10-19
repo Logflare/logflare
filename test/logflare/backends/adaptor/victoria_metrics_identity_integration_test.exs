@@ -1,12 +1,10 @@
 defmodule Logflare.Backends.Adaptor.VictoriaMetricsIdentityIntegrationTest do
   use Logflare.DataCase, async: false
 
-  alias Logflare.Backends.SourceSup
-  alias Logflare.Google.BigQuery
+  import Logflare.VictoriaMetricsTestHelpers
+
   alias Logflare.Logs.OtelMetric
   alias Logflare.Logs.Processor
-  alias Logflare.SystemMetrics.AllLogsLogged
-  alias Logflare.Utils.SSRF
   alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
   alias Opentelemetry.Proto.Common.V1.AnyValue
   alias Opentelemetry.Proto.Common.V1.ArrayValue
@@ -20,50 +18,15 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsIdentityIntegrationTest do
   alias Opentelemetry.Proto.Metrics.V1.ScopeMetrics
   alias Opentelemetry.Proto.Resource.V1.Resource
 
-  @receiver_url System.get_env("VICTORIA_METRICS_URL", "http://127.0.0.1:8428")
-  @receiver_port URI.parse(@receiver_url).port
+  @moduletag :victoria_metrics
+  @moduletag config_labels: %{"env" => "integration"}
   @retry [sleep: 250, duration: 30_000]
 
+  setup_all :ensure_vm_available
+  setup :setup_vm
+
   setup do
-    stub(BigQuery, :get_table, fn _ -> {:error, :not_found} end)
-
-    stub(SSRF, :safe_resolve, fn
-      "victoriametrics.test" -> {:ok, {127, 0, 0, 1}}
-      host -> Mimic.call_original(SSRF, :safe_resolve, [host])
-    end)
-
-    stub(Finch, :build, fn method, url, headers, body ->
-      Mimic.call_original(Finch, :build, [method, url, headers, body])
-    end)
-
-    stub(Finch, :request, fn
-      %Finch.Request{host: "127.0.0.1", port: @receiver_port} = request, pool, opts ->
-        Mimic.call_original(Finch, :request, [request, pool, opts])
-
-      _request, _pool, _opts ->
-        {:error, :unexpected_external_request}
-    end)
-
-    start_supervised!(AllLogsLogged)
-    insert(:plan)
-    user = insert(:user)
-    source = insert(:source, user: user)
-
-    backend =
-      insert(:backend,
-        type: :victoria_metrics,
-        user: user,
-        sources: [source],
-        config: %{
-          url: "http://victoriametrics.test:#{@receiver_port}/api/v1/write",
-          labels: %{"env" => "integration"}
-        }
-      )
-
-    start_supervised!({SourceSup, source})
-
-    prefix = "vm_query_" <> String.replace(Ecto.UUID.generate(), "-", "")
-    %{source: source, backend: backend, prefix: prefix, user: user}
+    [prefix: "vm_query_" <> String.replace(Ecto.UUID.generate(), "-", "")]
   end
 
   test "keeps resource and scope variants separate at the same timestamp", %{
@@ -186,7 +149,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsIdentityIntegrationTest do
   @spec query_receiver(String.t(), map()) :: {:ok, term()} | {:error, Jason.DecodeError.t()}
   defp query_receiver(query, params) do
     encoded = URI.encode_query(Map.put(params, "query", query))
-    url = @receiver_url <> "/api/v1/query?" <> encoded
+    url = vm_base_url() <> "/api/v1/query?" <> encoded
     {:ok, %{status_code: 200, body: body}} = HTTPoison.get(url)
     Jason.decode(body)
   end
