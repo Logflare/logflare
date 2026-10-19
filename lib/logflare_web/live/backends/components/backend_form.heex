@@ -533,6 +533,14 @@
             </small>
           </div>
           <div class="form-group">
+            {label(f_config, :query_url, "Query Base URL")}
+            {text_input(f_config, :query_url, class: "form-control")}
+            <small class="form-text text-muted">
+              Optional read URL for the query API, e.g. <code>https://victoriametrics.example.com</code> or <code>https://vmselect.example.com/select/0/prometheus</code>.
+              Include any tenant or proxy path, but omit <code>/api/v1/query</code>. Leave blank to disable querying.
+            </small>
+          </div>
+          <div class="form-group">
             {label(f_config, :username, "Basic Auth Username")}
             {text_input(f_config, :username, class: "form-control")}
             {label(f_config, :password, "Basic Auth Password")}
@@ -542,7 +550,7 @@
               value: Logflare.Backends.Adaptor.HttpBased.Headers.mask_value(input_value(f_config, :password))
             )}
             <small class="form-text text-muted">
-              For basic auth, both username and password must be provided. Changing the URL to another host requires entering the password again.
+              Both fields are required for basic authentication and are shared by writes and queries. Changing the scheme, host or port of either URL requires entering the password again. Custom headers apply only to writes.
             </small>
           </div>
           <.header_inputs form={f_config} />

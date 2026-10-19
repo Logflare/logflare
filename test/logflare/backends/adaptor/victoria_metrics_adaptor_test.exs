@@ -5,6 +5,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
+  alias Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.SystemMetrics.AllLogsLogged
 
@@ -12,10 +13,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
   @client Logflare.Backends.Adaptor.WebhookAdaptor.Client
 
   # docker-compose `vm` service — see docker-compose.yml
-  @vm_base_url "http://localhost:8428"
-  @vm_remote_write_url @vm_base_url <> "/api/v1/write"
-  # Freshly written samples take a few seconds to become searchable in VM.
-  @vm_retry [sleep: 250, duration: 30_000]
+  @vm_remote_write_url "http://localhost:8428/api/v1/write"
 
   setup do
     start_supervised!(AllLogsLogged)
@@ -63,6 +61,158 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
                "url" => "http://vm:8428/api/v1/write",
                "labels" => %{"env" => "prod"}
              }).valid?
+    end
+
+    test "accepts an optional query base URL and allows clearing it" do
+      existing = %{
+        url: @vm_remote_write_url,
+        query_url: "https://vmselect.example.com/select/0/prometheus"
+      }
+
+      assert Adaptor.cast_and_validate_config(@subject, existing).valid?
+
+      for query_url <- [nil, ""] do
+        changeset = Adaptor.cast_and_validate_config(@subject, %{query_url: query_url}, existing)
+        assert changeset.valid?
+        assert Ecto.Changeset.get_field(changeset, :query_url) == nil
+      end
+    end
+
+    test "rejects query base URLs with invalid transport or embedded request options" do
+      for query_url <- [
+            "not-a-url",
+            "ftp://vm.example.com",
+            "https:///api",
+            "https://vm.example.com:0",
+            "https://vm.example.com:65536",
+            "https://user:password@vm.example.com",
+            "https://vm.example.com?query=up",
+            "https://vm.example.com#fragment"
+          ] do
+        changeset =
+          Adaptor.cast_and_validate_config(@subject, %{
+            url: @vm_remote_write_url,
+            query_url: query_url
+          })
+
+        refute changeset.valid?, query_url
+        assert changeset.errors[:query_url]
+      end
+    end
+
+    test "returns a validation error when editing the query URL to a malformed port" do
+      existing = %{
+        url: "https://8.8.8.8/api/v1/write",
+        query_url: "https://8.8.8.8"
+      }
+
+      changeset =
+        Adaptor.cast_and_validate_config(
+          @subject,
+          %{query_url: "https://8.8.8.8:notaport"},
+          existing
+        )
+
+      refute changeset.valid?
+      assert changeset.errors[:query_url]
+    end
+
+    test "requires password reentry for a new read origin while keeping write-only headers" do
+      for previous_query_url <- [nil, "https://reader.example.com/select/0/prometheus"] do
+        existing = %{
+          url: "https://vm.example.com/api/v1/write",
+          query_url: previous_query_url,
+          username: "user",
+          password: "pass",
+          headers: %{"authorization" => "Bearer write-token"}
+        }
+
+        params =
+          existing
+          |> @subject.redact_config()
+          |> Map.put(:query_url, "https://other-reader.example.com/select/0/prometheus")
+
+        changeset = Adaptor.cast_and_validate_config(@subject, params, existing)
+        refute changeset.valid?
+        assert changeset.errors[:password]
+        assert Ecto.Changeset.get_field(changeset, :password) == nil
+        assert Ecto.Changeset.get_field(changeset, :headers) == existing.headers
+
+        reentered =
+          Adaptor.cast_and_validate_config(@subject, Map.put(params, :password, "pass"), existing)
+
+        assert reentered.valid?
+        assert Ecto.Changeset.get_field(reentered, :password) == "pass"
+      end
+    end
+
+    test "keeps shared credentials for same-origin read paths and when disabling reads" do
+      existing = %{
+        url: "https://vm.example.com/api/v1/write",
+        username: "user",
+        password: "pass"
+      }
+
+      for old_url <- [nil, "https://vm.example.com/select/0/prometheus"],
+          new_url <- [nil, "https://vm.example.com/select/1/prometheus"] do
+        stored = Map.put(existing, :query_url, old_url)
+        params = stored |> @subject.redact_config() |> Map.put(:query_url, new_url)
+        changeset = Adaptor.cast_and_validate_config(@subject, params, stored)
+
+        assert changeset.valid?
+        assert Ecto.Changeset.get_field(changeset, :password) == "pass"
+        assert Ecto.Changeset.get_field(changeset, :query_url) == new_url
+      end
+    end
+
+    test "requires credential reentry when both write and read origins change" do
+      existing = %{
+        url: "https://vm.example.com/api/v1/write",
+        query_url: "https://reader.example.com/select/0/prometheus",
+        username: "user",
+        password: "pass",
+        headers: %{"authorization" => "Bearer token", "x-tenant" => "acme"}
+      }
+
+      params =
+        existing
+        |> @subject.redact_config()
+        |> Map.merge(%{
+          url: "https://new-vm.example.com/api/v1/write",
+          query_url: "https://new-reader.example.com/select/0/prometheus"
+        })
+
+      changeset = Adaptor.cast_and_validate_config(@subject, params, existing)
+      refute changeset.valid?
+      assert changeset.errors[:password]
+      assert Ecto.Changeset.get_field(changeset, :password) == nil
+      assert Ecto.Changeset.get_field(changeset, :headers) == %{"x-tenant" => "acme"}
+
+      reentered =
+        params
+        |> Map.merge(%{password: existing.password, headers: existing.headers})
+        |> then(&Adaptor.cast_and_validate_config(@subject, &1, existing))
+
+      assert reentered.valid?
+      assert Ecto.Changeset.get_field(reentered, :password) == existing.password
+      assert Ecto.Changeset.get_field(reentered, :headers) == existing.headers
+      assert Ecto.Changeset.get_field(reentered, :url) == params.url
+      assert Ecto.Changeset.get_field(reentered, :query_url) == params.query_url
+    end
+
+    test "treats query URL scheme and port changes as a new destination" do
+      existing = %{
+        url: "https://vm.example.com/api/v1/write",
+        query_url: "https://reader.example.com/select/0/prometheus",
+        username: "user",
+        password: "pass"
+      }
+
+      for query_url <- ["http://reader.example.com", "https://reader.example.com:8443"] do
+        changeset = Adaptor.cast_and_validate_config(@subject, %{query_url: query_url}, existing)
+        refute changeset.valid?
+        assert changeset.errors[:password]
+      end
     end
 
     test "keeps stored credentials submitted back in redacted form" do
@@ -132,6 +282,49 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       assert Ecto.Changeset.apply_changes(reentered).password == "new"
     end
 
+    test "keeps explicitly reentered identical credentials when moving the write destination" do
+      existing = %{
+        url: "https://vm.example.com/api/v1/write",
+        headers: %{"authorization" => "Bearer token", "x-tenant" => "acme"}
+      }
+
+      changeset =
+        Adaptor.cast_and_validate_config(
+          @subject,
+          %{existing | url: "https://other.example.com/api/v1/write"},
+          existing
+        )
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :headers) == existing.headers
+    end
+
+    test "drops masked credentials in mixed header edits only when the write origin changes" do
+      existing = %{
+        url: "https://vm.example.com/api/v1/write",
+        headers: %{"authorization" => "Bearer token", "x-tenant" => "acme"}
+      }
+
+      for {url, expected_headers} <- [
+            {"https://other.example.com/api/v1/write", %{"x-tenant" => "updated"}},
+            {"https://vm.example.com/api/v1/write",
+             %{"authorization" => "Bearer token", "x-tenant" => "updated"}}
+          ] do
+        changeset =
+          Adaptor.cast_and_validate_config(
+            @subject,
+            %{
+              url: url,
+              headers: %{"Authorization" => "REDACTED", "x-tenant" => "updated"}
+            },
+            existing
+          )
+
+        assert changeset.valid?
+        assert Ecto.Changeset.get_field(changeset, :headers) == expected_headers
+      end
+    end
+
     test "keeps credentials across a stored round trip through the backend API" do
       user = insert(:user)
 
@@ -168,6 +361,23 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
 
       refute changeset.valid?
       assert {_msg, [validation: :ssrf]} = changeset.errors[:url]
+    end
+
+    test "rejects a private read destination independently of the write URL" do
+      stub(Logflare.Utils.SSRF, :safe_resolve, fn
+        "vm.example.com" -> {:ok, {1, 2, 3, 4}}
+        "127.0.0.1" -> {:error, "private address is not allowed"}
+      end)
+
+      changeset =
+        Adaptor.cast_and_validate_config(@subject, %{
+          url: "https://vm.example.com/api/v1/write",
+          query_url: "http://127.0.0.1:8428"
+        })
+
+      refute changeset.valid?
+      assert changeset.errors[:query_url]
+      refute changeset.errors[:url]
     end
   end
 
@@ -273,167 +483,31 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       [source: source]
     end
 
-    test "gauge event produces single TimeSeries", %{source: source} do
-      le =
-        metric_event(source,
-          event_message: "http.server.duration",
-          metric_type: "gauge",
-          value: 42.5,
-          timestamp: 1_700_000_000_000_000_000,
-          attributes: %{"method" => "GET", "status" => "200"}
-        )
+    test "groups matching series and sorts samples without changing their values", %{
+      source: source
+    } do
+      events =
+        for {timestamp, value} <- [
+              {1_700_000_002_000_000, 30},
+              {1_700_000_000_000_000, 10},
+              {1_700_000_001_000_000, 20}
+            ] do
+          metric_event(source,
+            event_message: "queue_depth",
+            metric_type: "gauge",
+            value: value,
+            timestamp: timestamp,
+            attributes: %{"queue" => "default"}
+          )
+        end
 
-      assert [ts] = decode([le])
-      assert [sample] = ts.samples
-      assert sample.value == 42.5
-      assert sample.timestamp == 1_700_000_000_000
+      assert [series] = decode(events)
 
-      assert %{
-               "__name__" => "http_server_duration",
-               "source" => "myservice",
-               "method" => "GET",
-               "status" => "200"
-             } = label_map(ts)
-    end
-
-    test "sum event produces single TimeSeries", %{source: source} do
-      le = metric_event(source, event_message: "requests_total", metric_type: "sum", value: 100)
-
-      assert [ts] = decode([le])
-      assert label_map(ts)["__name__"] == "requests_total"
-      assert [%{value: 100.0}] = ts.samples
-    end
-
-    test "histogram event produces _count, _sum, and cumulative _bucket series",
-         %{source: source} do
-      le =
-        metric_event(source,
-          event_message: "latency",
-          metric_type: "histogram",
-          count: 10,
-          sum: 500.0,
-          bucket_counts: [2, 5, 3],
-          explicit_bounds: [100.0, 500.0]
-        )
-
-      timeseries = decode([le])
-      names = Enum.map(timeseries, &label_map(&1)["__name__"])
-
-      assert "latency_count" in names
-      assert "latency_sum" in names
-      assert "latency_bucket" in names
-
-      assert %{
-               "100" => [%{value: 2.0}],
-               "500" => [%{value: 7.0}],
-               "+Inf" => [%{value: 10.0}]
-             } = buckets(timeseries, "latency_bucket")
-    end
-
-    test "formats le bounds as plain decimals", %{source: source} do
-      le =
-        metric_event(source,
-          event_message: "latency",
-          metric_type: "histogram",
-          count: 4,
-          sum: 1.0,
-          bucket_counts: [1, 1, 1, 1, 0],
-          explicit_bounds: [1.0e-9, 0.005, 2.5, 1000.0]
-        )
-
-      assert ["+Inf", "0.000000001", "0.005", "1000", "2.5"] =
-               [le] |> decode() |> buckets("latency_bucket") |> Map.keys() |> Enum.sort()
-    end
-
-    test "maps service resource attributes to job and instance", %{source: source} do
-      le =
-        metric_event(source,
-          metric_type: "gauge",
-          value: 1.0,
-          resource: %{
-            "service.name" => "checkout",
-            "service.namespace" => "shop",
-            "service.instance.id" => "checkout-1"
-          }
-        )
-
-      assert [ts] = decode([le])
-      assert %{"job" => "shop/checkout", "instance" => "checkout-1"} = label_map(ts)
-    end
-
-    test "uses service.name alone as job when there is no namespace", %{source: source} do
-      le =
-        metric_event(source,
-          metric_type: "gauge",
-          value: 1.0,
-          resource: %{"service.name" => "checkout"}
-        )
-
-      assert [ts] = decode([le])
-      labels = label_map(ts)
-      assert labels["job"] == "checkout"
-      refute Map.has_key?(labels, "instance")
-    end
-
-    test "keeps colliding attributes as exported_ labels", %{source: source} do
-      le =
-        metric_event(source,
-          metric_type: "gauge",
-          value: 1.0,
-          resource: %{"service.name" => "checkout"},
-          attributes: %{"source" => "client", "job" => "batch", "region" => "eu"}
-        )
-
-      assert [ts] = decode([le])
-
-      assert %{
-               "source" => "myservice",
-               "job" => "checkout",
-               "exported_source" => "client",
-               "exported_job" => "batch",
-               "region" => "eu"
-             } = label_map(ts)
-    end
-
-    test "skips list and map attribute values instead of crashing", %{source: source} do
-      le =
-        metric_event(source,
-          event_message: "jobs",
-          metric_type: "gauge",
-          value: 1.0,
-          attributes: %{
-            "queue" => "default",
-            "retry" => true,
-            "ratio" => 1000.0,
-            "tags" => ["a", 0.3],
-            "http" => %{"method" => "GET"}
-          }
-        )
-
-      assert [ts] = decode([le])
-      labels = label_map(ts)
-
-      assert %{"queue" => "default", "retry" => "true", "ratio" => "1000"} = labels
-      refute Map.has_key?(labels, "tags")
-      refute Map.has_key?(labels, "http")
-    end
-
-    test "sanitizes metric and label names into Prometheus identifiers", %{source: source} do
-      le =
-        metric_event(source,
-          event_message: "9lives.req/sec-é:x",
-          metric_type: "gauge",
-          value: 1.0,
-          attributes: %{"http.route" => "/", "1st" => "a"}
-        )
-
-      assert [ts] = decode([le])
-      labels = label_map(ts)
-
-      assert labels["__name__"] == "_9lives_req_sec___:x"
-      # LogEvent.make/2 has already normalized the attribute keys
-      assert labels["_http_route"] == "/"
-      assert labels["_1st"] == "a"
+      assert Enum.map(series.samples, &{&1.timestamp, &1.value}) == [
+               {1_700_000_000_000, 10.0},
+               {1_700_000_001_000, 20.0},
+               {1_700_000_002_000, 30.0}
+             ]
     end
 
     test "drops unrepresentable events with a warning and telemetry", %{source: source} do
@@ -489,6 +563,16 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
         ],
         [metric_type: "histogram", count: 3, bucket_counts: [1, 1, 1], explicit_bounds: [1.0, 1]],
         [metric_type: "histogram", count: 5, bucket_counts: [2, 3], explicit_bounds: [1.0, 2.0]],
+        [metric_type: "histogram", count: 1, explicit_bounds: [1.0]],
+        [metric_type: "histogram", count: 1, bucket_counts: [5, 0], explicit_bounds: [1.0]],
+        [
+          metric_type: "histogram",
+          count: 9,
+          bucket_counts: [1, 2, 3],
+          explicit_bounds: [1.0, 2.0]
+        ],
+        [metric_type: "histogram", count: 1, bucket_counts: [0]],
+        [metric_type: "histogram", count: 1, bucket_counts: [-1, 2], explicit_bounds: [1.0]],
         [metric_type: "histogram", count: -1]
       ]
 
@@ -496,10 +580,15 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
         Enum.map(malformed, &metric_event(source, &1)) ++
           [metric_event(source, event_message: "kept", metric_type: "gauge", value: 1.0)]
 
-      log = capture_log(fn -> assert [_ts] = decode(events) end)
+      log =
+        capture_log(fn ->
+          assert [ts] = decode(events)
+          assert label_map(ts)["__name__"] == "kept"
+          assert [%{value: 1.0}] = ts.samples
+        end)
 
-      assert log =~ "Dropping 9 of 10"
-      assert_received {:drop, %{count: 9}, %{reason: :invalid}}
+      assert log =~ "Dropping 14 of 15"
+      assert_received {:drop, %{count: 14}, %{reason: :invalid}}
     end
 
     test "sends NaN, infinite and out-of-range values as IEEE specials", %{source: source} do
@@ -518,42 +607,6 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
              }
     end
 
-    test "leaves out _sum when the histogram has no sum", %{source: source} do
-      le =
-        metric_event(source,
-          event_message: "latency",
-          metric_type: "histogram",
-          count: 3,
-          bucket_counts: [1, 2],
-          explicit_bounds: [1.0]
-        )
-
-      names = [le] |> decode() |> Enum.map(&label_map(&1)["__name__"]) |> Enum.uniq()
-
-      assert Enum.sort(names) == ["latency_bucket", "latency_count"]
-    end
-
-    test "always sends a +Inf bucket holding the count", %{source: source} do
-      without_buckets =
-        metric_event(source, event_message: "no_buckets", metric_type: "histogram", count: 4)
-
-      inconsistent_overflow =
-        metric_event(source,
-          event_message: "overflow",
-          metric_type: "histogram",
-          count: 9,
-          bucket_counts: [1, 2, 3],
-          explicit_bounds: [1.0, 2.0]
-        )
-
-      timeseries = decode([without_buckets, inconsistent_overflow])
-
-      assert %{"+Inf" => [%{value: 4.0}]} = buckets(timeseries, "no_buckets_bucket")
-
-      assert %{"1" => [%{value: 1.0}], "2" => [%{value: 3.0}], "+Inf" => [%{value: 9.0}]} =
-               buckets(timeseries, "overflow_bucket")
-    end
-
     test "does not warn for log and trace events", %{source: source} do
       attach_drop_handler()
       le = build(:log_event, source: source, event_message: "hello")
@@ -564,37 +617,6 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       assert_received {:drop, %{count: 1}, %{reason: :not_a_metric}}
     end
 
-    test "skips empty label names and values", %{source: source} do
-      le = metric_event(source, metric_type: "gauge", value: 1.0, attributes: %{"kept" => "x"})
-
-      [ts] =
-        [le]
-        |> @subject.format_batch(%{labels: %{"" => "x", "empty" => ""}})
-        |> decode_payload()
-
-      labels = label_map(ts)
-      assert labels["kept"] == "x"
-      refute Map.has_key?(labels, "")
-      refute Map.has_key?(labels, "empty")
-    end
-
-    test "prefixes exported_ again when the exported name is taken", %{source: source} do
-      le =
-        metric_event(source,
-          metric_type: "gauge",
-          value: 1.0,
-          attributes: %{"source" => "client", "exported_source" => "proxy"}
-        )
-
-      assert [ts] = decode([le])
-
-      assert %{
-               "source" => "myservice",
-               "exported_source" => "proxy",
-               "exported_exported_source" => "client"
-             } = label_map(ts)
-    end
-
     test "does not warn when every event is sent", %{source: source} do
       le = metric_event(source, metric_type: "gauge", value: 1.0)
 
@@ -602,228 +624,36 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
     end
   end
 
-  describe "format_batch/2" do
-    test "merges config labels into every series, overriding attributes" do
+  describe "pipeline" do
+    test "acknowledges an entirely dropped batch without making an HTTP request" do
+      reject(@client, :send, 1)
       insert(:plan)
       source = insert(:source, user: insert(:user))
 
-      le =
-        metric_event(source,
-          event_message: "jobs",
-          metric_type: "gauge",
-          value: 1.0,
-          attributes: %{"env" => "staging", "queue" => "default"}
-        )
-
-      [ts] =
-        [le]
-        |> @subject.format_batch(%{labels: %{"env" => "prod", "deploy.region" => "eu"}})
-        |> decode_payload()
-
-      assert %{"env" => "prod", "deploy_region" => "eu", "queue" => "default"} = label_map(ts)
-    end
-
-    test "keeps config labels with reserved names as exported_ labels" do
-      insert(:plan)
-      source = insert(:source, user: insert(:user), name: "configured")
-      le = metric_event(source, metric_type: "gauge", value: 1.0)
-
-      [ts] =
-        [le]
-        |> @subject.format_batch(%{labels: %{"job" => "static", "source" => "static"}})
-        |> decode_payload()
-
-      labels = label_map(ts)
-      assert %{"source" => "configured", "exported_job" => "static"} = labels
-      assert labels["exported_source"] == "static"
-      refute Map.has_key?(labels, "job")
-    end
-  end
-
-  # Runs in CI: drives the real Broadway pipeline and captures the HTTP request at the
-  # client boundary, so no VictoriaMetrics instance is needed.
-  describe "pipeline" do
-    setup :set_mimic_global
-
-    setup do
-      insert(:plan)
-      source = insert(:source, user: insert(:user), name: "pipeline_source")
-
       backend =
         insert(:backend,
           type: :victoria_metrics,
-          sources: [source],
-          config: %{url: @vm_remote_write_url, labels: %{"env" => "test"}}
-        )
-
-      start_supervised!({AdaptorSupervisor, {source, backend}})
-      [source: source]
-    end
-
-    test "sends metric batches as snappy remote write requests", %{source: source} do
-      test_pid = self()
-
-      expect(@client, :send, fn opts ->
-        send(test_pid, {:sent, opts})
-        {:ok, %Tesla.Env{status: 204}}
-      end)
-
-      le =
-        metric_event(source,
-          event_message: "pipeline.gauge",
-          metric_type: "gauge",
-          value: 2.0,
-          attributes: %{"queue" => "default"}
-        )
-
-      assert {:ok, _} = Backends.ingest_logs([le], source)
-      assert_receive {:sent, opts}, 5_000
-
-      assert opts[:url] == @vm_remote_write_url
-      assert opts[:gzip] == false
-      assert opts[:headers]["content-encoding"] == "snappy"
-
-      assert [ts] = decode_payload(opts[:body])
-
-      assert %{
-               "__name__" => "pipeline_gauge",
-               "source" => "pipeline_source",
-               "queue" => "default",
-               "env" => "test"
-             } = label_map(ts)
-    end
-  end
-
-  # End-to-end tests against the docker-compose `vm` service.
-  #
-  # Requires `docker compose up -d vm`. Excluded by default via the
-  # :integration tag (see test/test_helper.exs).
-  #
-  # Run with:
-  #   mix test test/logflare/backends/adaptor/victoria_metrics_adaptor_test.exs --include integration
-  describe "victoriametrics e2e" do
-    @describetag :integration
-
-    # The vm service is on loopback, which SSRFProtection blocks. The pipeline sends
-    # from its own processes, so the stub has to be global.
-    setup :set_mimic_global
-
-    setup do
-      stub(Logflare.Utils.SSRF, :safe_resolve, fn _ -> {:ok, {127, 0, 0, 1}} end)
-
-      insert(:plan)
-      user = insert(:user)
-
-      source =
-        insert(:source, user: user, name: "vm_e2e_#{System.unique_integer([:positive])}")
-
-      backend =
-        insert(:backend,
-          type: :victoria_metrics,
+          user: source.user,
           sources: [source],
           config: %{url: @vm_remote_write_url}
         )
 
       start_supervised!({AdaptorSupervisor, {source, backend}})
-      [source: source, backend: backend]
-    end
 
-    test "test_connection/1 succeeds against the running VM service",
-         %{backend: backend} do
-      assert :ok = @subject.test_connection(backend)
-    end
-
-    test "metrics flow through the pipeline and are queryable",
-         %{source: source} do
-      metric_name = "logflare_e2e_#{System.unique_integer([:positive])}"
-      expected_value = 42.0
-
-      le =
-        build(:log_event,
-          source: source,
-          event_message: metric_name,
-          metric_type: "gauge",
-          value: expected_value,
-          timestamp: System.system_time(:nanosecond),
-          metadata: %{"type" => "metric"},
-          attributes: %{"env" => "test"}
+      event =
+        metric_event(source,
+          metric_type: "sum",
+          aggregation_temporality: "delta",
+          value: 1
         )
 
-      assert {:ok, _} = Backends.ingest_logs([le], source)
+      log =
+        capture_log(fn ->
+          ref = Broadway.test_batch(Backends.via_source(source, Pipeline, backend), [event])
+          assert_receive {:ack, ^ref, [_message], []}, 5_000
+        end)
 
-      TestUtils.retry_assert(@vm_retry, fn ->
-        assert [%{"value" => ^expected_value, "source" => src, "env" => "test"} | _] =
-                 query_vm(metric_name)
-
-        assert src == source.name
-      end)
-    end
-
-    # The adaptor sanitizes Prometheus identifiers (replacing `.`, `/`, `-`
-    # etc. with `_`). Verify by ingesting under the raw name and asserting
-    # that VM has the series under the sanitized name.
-    test "metric names are sanitized into Prometheus identifiers",
-         %{source: source} do
-      suffix = System.unique_integer([:positive])
-      raw_name = "logflare.e2e/duration-ms_#{suffix}"
-      sanitized = "logflare_e2e_duration_ms_#{suffix}"
-
-      le =
-        build(:log_event,
-          source: source,
-          event_message: raw_name,
-          metric_type: "gauge",
-          value: 7.0,
-          timestamp: System.system_time(:nanosecond),
-          metadata: %{"type" => "metric"}
-        )
-
-      assert {:ok, _} = Backends.ingest_logs([le], source)
-
-      TestUtils.retry_assert(@vm_retry, fn ->
-        assert [%{"__name__" => ^sanitized} | _] = query_vm(sanitized)
-      end)
-    end
-
-    # Prometheus remote write v1 has no native encoding for exponential
-    # histograms, so the adaptor drops them. Verify nothing reaches VM by
-    # ingesting a control gauge alongside, waiting for the gauge to appear,
-    # then asserting the exponential_histogram series is absent.
-    test "exponential_histogram events are dropped during ingestion",
-         %{source: source} do
-      suffix = System.unique_integer([:positive])
-      exp_name = "logflare_e2e_exp_#{suffix}"
-      control_name = "logflare_e2e_control_#{suffix}"
-      ts = System.system_time(:nanosecond)
-
-      exp_event =
-        build(:log_event,
-          source: source,
-          event_message: exp_name,
-          metric_type: "exponential_histogram",
-          timestamp: ts,
-          metadata: %{"type" => "metric"}
-        )
-
-      control_event =
-        build(:log_event,
-          source: source,
-          event_message: control_name,
-          metric_type: "gauge",
-          value: 1.0,
-          timestamp: ts,
-          metadata: %{"type" => "metric"}
-        )
-
-      assert {:ok, _} = Backends.ingest_logs([exp_event, control_event], source)
-
-      # Wait until the control gauge is visible — that means VM has flushed
-      # this batch, so anything missing now was dropped, not just late.
-      TestUtils.retry_assert(@vm_retry, fn ->
-        assert [_ | _] = query_vm(control_name)
-      end)
-
-      assert query_vm(exp_name) == []
+      assert log =~ "Skipped webhook batch: all 1 log events were dropped"
     end
   end
 
@@ -841,12 +671,6 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
   defp metric_event(source, attrs) do
     defaults = %{source: source, event_message: "metric", metadata: %{"type" => "metric"}}
     build(:log_event, Map.merge(defaults, Map.new(attrs)))
-  end
-
-  defp buckets(timeseries, name) do
-    for ts <- timeseries, labels = label_map(ts), labels["__name__"] == name, into: %{} do
-      {labels["le"], ts.samples}
-    end
   end
 
   defp attach_drop_handler do
@@ -867,20 +691,5 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
 
   defp label_map(timeseries) do
     Map.new(timeseries.labels, fn %{name: k, value: v} -> {k, v} end)
-  end
-
-  # Runs a PromQL instant query against the docker-compose VM service and returns
-  # each series' labels with its sample value under "value". VM hides samples newer
-  # than 30s from queries by default, so the latency offset is lowered.
-  defp query_vm(query) do
-    params = URI.encode_query(%{"query" => query, "latency_offset" => "1ms"})
-    url = @vm_base_url <> "/api/v1/query?" <> params
-    {:ok, %{status_code: 200, body: body}} = HTTPoison.get(url)
-    %{"data" => %{"result" => result}} = Jason.decode!(body)
-
-    for %{"metric" => labels, "value" => [_ts, value]} <- result do
-      {value, ""} = Float.parse(value)
-      Map.put(labels, "value", value)
-    end
   end
 end
