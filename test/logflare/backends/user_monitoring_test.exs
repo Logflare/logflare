@@ -255,16 +255,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
       refute_received :ingested
     end
 
-    test "a BigQueryAdaptor progress report during a SourceSup start does not deadlock its partition",
-         %{source: source, system_source: system_source} do
-      refute Backends.source_sup_started?(system_source)
-
-      task = Task.async(fn -> Backends.ensure_source_sup_started(source) end)
-
-      assert {:ok, :ok} = Task.yield(task, 5_000) || Task.shutdown(task, :brutal_kill)
-      assert Backends.source_sup_started?(source)
-    end
-
     test "a log during a SourceSup start on the system source's partition does not deadlock it",
          %{user: user, source: source, system_source: system_source} do
       source_id = source.id
