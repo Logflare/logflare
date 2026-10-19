@@ -6,7 +6,9 @@ defmodule LogflareWeb.AccessTokensLive do
   require Logger
   alias Logflare.Auth
   alias Logflare.Endpoints
+  alias Logflare.RecordUsages
   alias Logflare.Sources
+  alias Logflare.User
   alias LogflareWeb.AccessTokensLive.Form
   alias LogflareWeb.Utils
 
@@ -50,12 +52,6 @@ defmodule LogflareWeb.AccessTokensLive do
         </.alert>
       </div>
 
-      <.alert :if={@access_tokens == []} variant="dark" class="tw-max-w-md">
-        <h5>Legacy Ingest API Key</h5>
-        <p><strong>Deprecated</strong>, use access tokens instead.</p>
-        <.clipboard_button text={@user.api_key} class="btn-sm" />
-      </.alert>
-
       <.table :if={@access_tokens != []} id="access-tokens" rows={@access_tokens} row_id={&"access-token-#{&1.id}"}>
         <:col :let={token} label="Description">
           <span :if={is_non_empty_binary(token.description)} class="tw-text-sm">{token.description}</span>
@@ -67,19 +63,20 @@ defmodule LogflareWeb.AccessTokensLive do
           </span>
         </:col>
         <:col :let={token} label="Created on">
-          <.formatted_timestamp value={token.inserted_at} timezone={@user_timezone} format={@timestamp_format} class="tw-text-sm" />
+          <.formatted_timestamp :if={token.inserted_at} value={token.inserted_at} timezone={@user_timezone} format={@timestamp_format} class="tw-text-sm" />
+          <span :if={is_nil(token.inserted_at)} class="tw-text-sm tw-italic">Unknown</span>
         </:col>
         <:col :let={token} label="Last used">
           <.formatted_timestamp :if={token.usage} value={token.usage.last_used_at} timezone={@user_timezone} format={@timestamp_format} class="tw-text-sm" />
           <span :if={is_nil(token.usage)} class="tw-text-sm tw-italic">Unknown</span>
         </:col>
         <:action :let={token}>
-          <.clipboard_button :if={!(token.scopes =~ "private")} text={token.token} class="btn-sm" />
-        </:action>
-        <:action :let={token}>
-          <.button class="text-danger btn-sm" data-confirm="Are you sure? This cannot be undone." phx-click="revoke-token" phx-value-token-id={token.id} data-toggle="tooltip" data-placement="top" title="Revoke access token forever">
-            <i class="fa fa-trash" aria-hidden="true"></i> Revoke
-          </.button>
+          <div class="tw-grid tw-grid-cols-[5rem_6rem] tw-gap-2 tw-items-center tw-justify-items-end tw-whitespace-nowrap">
+            <.clipboard_button :if={token.id != :legacy and not (token.scopes =~ "private")} text={token.token} class="btn-sm tw-col-start-1" />
+            <.button :if={token.id != :legacy} class="text-danger btn-sm tw-col-start-2" data-confirm="Are you sure? This cannot be undone." phx-click="revoke-token" phx-value-token-id={token.id} data-toggle="tooltip" data-placement="top" title="Revoke access token forever">
+              <i class="fa fa-trash" aria-hidden="true"></i> Revoke
+            </.button>
+          </div>
         </:action>
       </.table>
     </section>
@@ -304,6 +301,25 @@ defmodule LogflareWeb.AccessTokensLive do
           endpoint = Endpoints.get_endpoint_query(str_id),
           into: socket.assigns.scopes_query_endpoints do
         {str_id, endpoint}
+      end
+
+    tokens =
+      case RecordUsages.get(User, user.id) do
+        %{last_used_at: %DateTime{}} = usage ->
+          tokens ++
+            [
+              %{
+                id: :legacy,
+                description: "Legacy Account API key",
+                scopes: "ingest query",
+                inserted_at: nil,
+                token: user.api_key,
+                usage: usage
+              }
+            ]
+
+        nil ->
+          tokens
       end
 
     socket

@@ -9,6 +9,8 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
   alias Logflare.RecordUsages.Cache
   alias Logflare.RecordUsages.RecordUsage
   alias Logflare.RecordUsages.SyncWorker
+  alias Logflare.User
+  alias Logflare.Users
 
   for {count, offsets} <- [
         {1, [0]},
@@ -126,24 +128,34 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
              ~U[2026-01-01 00:00:00Z]
   end
 
-  test "local child persists usage without changing tokens or evicting authentication" do
+  test "local child persists token and legacy key usage without changing or evicting either resource" do
     user = insert(:user)
-    {:ok, token} = Auth.create_access_token(user)
+    token = insert(:access_token, id: user.id, resource_owner: user)
     original = Repo.reload!(token)
+    original_user = Repo.reload!(user)
     timestamp = ~U[2026-01-01 00:00:00Z]
 
     assert {:ok, cached_token, _} = Auth.Cache.verify_access_token(token.token, [])
+    cached_user = Users.Cache.get_by(api_key: user.api_key)
 
     refute Ecto.assoc_loaded?(cached_token.usage)
     Cache.record({OauthAccessToken, token.id}, DateTime.to_unix(timestamp, :second))
+    Cache.record({User, user.id}, DateTime.to_unix(timestamp, :second) + 10)
 
     assert :ok = perform_job(SyncWorker, %{"node" => Atom.to_string(node())})
     assert [%{usage: %{last_used_at: ^timestamp}}] = Auth.list_valid_access_tokens(user)
+
+    assert Repo.get_by!(RecordUsage, legacy_api_key_user_id: user.id).last_used_at ==
+             ~U[2026-01-01 00:00:10Z]
+
     assert Repo.reload!(token) == original
+    assert Repo.reload!(user) == original_user
     assert Cache.snapshot() == []
 
     reject(&Auth.verify_access_token/2)
+    reject(&Users.get_by/1)
     assert {:ok, ^cached_token, _} = Auth.Cache.verify_access_token(token.token, [])
+    assert Users.Cache.get_by(api_key: user.api_key) == cached_user
   end
 
   test "flush of equal and older usage does not rewrite rows, while newer usage advances the timestamp" do
@@ -213,21 +225,40 @@ defmodule Logflare.RecordUsages.SyncWorkerTest do
              ~U[2026-01-01 00:00:02Z]
   end
 
-  test "ignores deleted tokens and cascades persisted usage when a token is deleted" do
+  test "ignores deleted resources and cascades persisted usage when a resource is deleted" do
+    for {schema, foreign_key, factory} <- [
+          {OauthAccessToken, :oauth_access_token_id, :access_token},
+          {User, :legacy_api_key_user_id, :user}
+        ] do
+      resource = insert(factory)
+      deleted_resource = insert(factory)
+      RecordUsages.record(schema, resource.id)
+      RecordUsages.record(schema, deleted_resource.id)
+      Repo.delete!(deleted_resource)
+
+      assert :ok = RecordUsages.flush()
+      assert Cache.snapshot() == []
+      assert Repo.get_by(RecordUsage, [{foreign_key, deleted_resource.id}]) == nil
+      assert Repo.get_by!(RecordUsage, [{foreign_key, resource.id}]).last_used_at != nil
+
+      Repo.delete!(resource)
+      assert Repo.get_by(RecordUsage, [{foreign_key, resource.id}]) == nil
+    end
+  end
+
+  test "legacy usage survives key rotation and an older buffered timestamp" do
     user = insert(:user)
-    token = insert(:access_token, resource_owner: user)
-    deleted_token = insert(:access_token, resource_owner: user)
-    RecordUsages.record(OauthAccessToken, token.id)
-    RecordUsages.record(OauthAccessToken, deleted_token.id)
-    Repo.delete!(deleted_token)
+    timestamp = 1_767_225_600
+    Cache.record({User, user.id}, timestamp)
+    {:ok, user} = Users.update_user_all_fields(user, %{api_key: "rotated-legacy-key"})
 
     assert :ok = RecordUsages.flush()
-    assert Cache.snapshot() == []
-    assert Repo.get_by(RecordUsage, oauth_access_token_id: deleted_token.id) == nil
-    assert Repo.get_by!(RecordUsage, oauth_access_token_id: token.id).last_used_at != nil
+    usage = Repo.get_by!(RecordUsage, legacy_api_key_user_id: user.id)
+    assert usage.last_used_at == ~U[2026-01-01 00:00:00Z]
 
-    Repo.delete!(token)
-    assert Repo.get_by(RecordUsage, oauth_access_token_id: token.id) == nil
+    Cache.record({User, user.id}, timestamp - 10)
+    assert :ok = RecordUsages.flush()
+    assert Repo.get_by!(RecordUsage, legacy_api_key_user_id: user.id) == usage
   end
 
   test "a later flush batch failure retains all original usage for replay" do
