@@ -2,6 +2,7 @@ defmodule LogflareWeb.LogSocketTest do
   use LogflareWeb.ChannelCase
 
   alias Logflare.Backends
+  alias Logflare.OauthAccessTokens.OauthAccessToken
   alias Logflare.RecordUsages.Cache
   alias Logflare.User
   alias LogflareWeb.LogChannel
@@ -17,8 +18,14 @@ defmodule LogflareWeb.LogSocketTest do
       user = insert(:user)
       source = insert(:source, user: user)
       token = insert(:access_token, resource_owner: user)
+      before_connect = System.system_time(:second)
 
       {:ok, socket} = Phoenix.ChannelTest.connect(LogSocket, %{"access_token" => token.token})
+
+      timestamp = Cache.snapshot() |> Map.new() |> Map.fetch!({OauthAccessToken, token.id})
+      assert timestamp >= before_connect
+      assert timestamp <= System.system_time(:second)
+
       {:ok, _, socket} = subscribe_and_join(socket, LogChannel, "logs:#{source.token}")
 
       stub(Backends, :start_for_ingest, fn _source -> :ok end)
