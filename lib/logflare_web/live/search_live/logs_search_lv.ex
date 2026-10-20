@@ -663,9 +663,9 @@ defmodule LogflareWeb.Source.SearchLV do
 
     %Billing.Plan{limit_saved_search_limit: limit} = Billing.get_plan_by_user(user)
 
-    if SavedSearches.Cache.list_saved_searches_by_source(source.id) |> length() < limit do
+    if SavedSearches.Cache.list_by_sources([source.id]) |> length() < limit do
       case SavedSearches.save_by_user(qs, lql_rules, source, tailing?) do
-        {:ok, _saved_search} ->
+        {:ok, saved_search} ->
           saved_searches =
             [qs | saved_searches(source)]
             |> Enum.uniq()
@@ -677,7 +677,18 @@ defmodule LogflareWeb.Source.SearchLV do
             |> assign(:source, Sources.get_source_for_lv_param(source.id))
             |> assign(:saved_searches, saved_searches)
 
-          {:noreply, socket}
+          handle_event(
+            "show_live_modal",
+            %{
+              "module-or-template" => "Elixir.LogflareWeb.SearchLive.SavedSearchesModalComponent",
+              "type" => "component",
+              "id" => "saved_searches_link",
+              "title" => "Saved Searches",
+              "source-id" => to_string(source.id),
+              "edit-search-id" => to_string(saved_search.id)
+            },
+            socket
+          )
 
         {:error, changeset} ->
           {message, _} = changeset.errors[:querystring]
@@ -1237,6 +1248,17 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, put_flash(socket, type, message)}
   end
 
+  def handle_info({:saved_searches_updated, source_id, saved_searches}, socket) do
+    socket =
+      if source_id == socket.assigns.source.id do
+        assign(socket, :saved_searches, Enum.map(saved_searches, & &1.querystring))
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
   def handle_info({:put_flash, type, message}, socket) do
     {:noreply, put_flash(socket, type, message)}
   end
@@ -1716,8 +1738,8 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   defp saved_searches(source) do
-    source.id
-    |> SavedSearches.Cache.list_saved_searches_by_source()
+    [source.id]
+    |> SavedSearches.Cache.list_by_sources()
     |> Enum.map(& &1.querystring)
   end
 end

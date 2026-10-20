@@ -67,14 +67,6 @@ defmodule Logflare.SavedSearches do
     |> Repo.insert()
   end
 
-  @doc """
-  Marks a SavedSearch as not saved (i.e. user will not see in dashboard)
-  """
-  @spec delete_by_user(SavedSearch.t()) :: {:ok, SavedSearch.t()}
-  def delete_by_user(search) do
-    update(search, %{saved_by_user: false})
-  end
-
   @spec update(SavedSearch.t(), map()) ::
           {:ok, SavedSearch.t()} | {:error, Ecto.Changeset.t()}
   def update(search, params) do
