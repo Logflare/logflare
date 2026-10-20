@@ -120,7 +120,7 @@ Example — two sources in one `batch`:
 
 The same routing applies when POSTing a **bare JSON array** (array root with `application/json`), which maps to `_json`-style ingestion.
 
-`__LF_SOURCE` routing is supported on all JSON ingestion endpoints (for example `/api/logs/json` and `/api/logs/vector`), not only `/api/logs`.
+`__LF_SOURCE` routing is supported on all ingestion endpoints.
 
 :::note
 Route a request **either** with the `source`/`source_name` query parameter **or** with `__LF_SOURCE` on every event, not both:
