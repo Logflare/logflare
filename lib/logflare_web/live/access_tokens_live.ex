@@ -71,9 +71,9 @@ defmodule LogflareWeb.AccessTokensLive do
           <span :if={is_nil(token.usage)} class="tw-text-sm tw-italic">Unknown</span>
         </:col>
         <:action :let={token}>
-          <div class="tw-grid tw-grid-cols-[5rem_6rem] tw-gap-2 tw-items-center tw-justify-items-end tw-whitespace-nowrap">
+          <div class="tw-flex tw-w-full tw-justify-between tw-gap-2 tw-items-center tw-whitespace-nowrap md:tw-grid md:tw-w-auto md:tw-grid-cols-[5rem_6rem] md:tw-justify-items-end">
             <.clipboard_button :if={token.id != :legacy and not (token.scopes =~ "private")} text={token.token} class="btn-sm tw-col-start-1" />
-            <.button :if={token.id != :legacy} class="text-danger btn-sm tw-col-start-2" data-confirm="Are you sure? This cannot be undone." phx-click="revoke-token" phx-value-token-id={token.id} data-toggle="tooltip" data-placement="top" title="Revoke access token forever">
+            <.button :if={token.id != :legacy} class="text-danger btn-sm tw-col-start-2 tw-ml-auto md:tw-ml-0" data-confirm="Are you sure? This cannot be undone." phx-click="revoke-token" phx-value-token-id={token.id} data-toggle="tooltip" data-placement="top" title="Revoke access token forever">
               <i class="fa fa-trash" aria-hidden="true"></i> Revoke
             </.button>
           </div>
