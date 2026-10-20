@@ -190,9 +190,23 @@ defmodule LogflareWeb.CoreComponentsTest do
       assert html |> Floki.find("thead th .tw-sr-only") |> Floki.text() == "Actions"
 
       assert [_] = Floki.find(html, "tbody#items")
+
+      assert html |> Floki.find("#items td > div[aria-hidden='true']") |> Enum.map(&Floki.text/1) ==
+               [
+                 "Name",
+                 "Name"
+               ]
+
       assert html |> Floki.find("tbody tr") |> Floki.attribute("id") == ["item-1", "item-2"]
       assert html |> Floki.find("#item-1 td.p-2") |> length() == 2
-      assert html |> Floki.find("#item-2 td") |> hd() |> Floki.text() |> String.trim() == "SECOND"
+
+      assert html
+             |> Floki.find("#item-2 td")
+             |> hd()
+             |> Floki.filter_out("[aria-hidden='true']")
+             |> Floki.text()
+             |> String.trim() == "SECOND"
+
       assert html |> Floki.find("#item-2 #edit-2") |> Floki.text() == "Edit SECOND"
       assert [_] = Floki.find(html, "#item-2 #delete-2")
     end

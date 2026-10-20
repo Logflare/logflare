@@ -761,7 +761,11 @@ defmodule LogflareWeb.AccessTokensLiveTest do
         html
         |> Floki.find("#access-tokens #access-token-#{id} > td")
         |> Enum.map(fn cell ->
-          cell |> Floki.text(sep: " ") |> String.split() |> Enum.join(" ")
+          cell
+          |> Floki.filter_out("[aria-hidden='true']")
+          |> Floki.text(sep: " ")
+          |> String.split()
+          |> Enum.join(" ")
         end)
 
       assert columns == expected_columns
