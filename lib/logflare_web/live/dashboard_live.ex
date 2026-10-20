@@ -130,6 +130,7 @@ defmodule LogflareWeb.DashboardLive do
         title: @modal.body.title,
         params: @modal.params,
         user: @user,
+        team_user: @team_user,
         team: @team,
         close: @modal.body[:close],
         return_to: @modal.body.return_to
