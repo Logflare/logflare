@@ -83,6 +83,9 @@ defmodule LogflareWeb.Plugs.VerifyDeclaredSources do
     end)
   end
 
+  defp put_verified_declared(_acc, _token, %Source{system_source: true}, _user, _access_token),
+    do: {:halt, :error}
+
   defp put_verified_declared(acc, token, source, user, access_token) do
     source = Sources.refresh_source_metrics_for_ingest(source)
 
