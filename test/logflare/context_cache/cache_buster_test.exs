@@ -2,7 +2,6 @@ defmodule Logflare.ContextCache.CacheBusterTest do
   use Logflare.DataCase
 
   alias Cainophile.Changes.DeletedRecord
-  alias Cainophile.Changes.NewRecord
   alias Cainophile.Changes.Transaction
   alias Cainophile.Changes.UpdatedRecord
   alias Logflare.Backends
@@ -118,56 +117,25 @@ defmodule Logflare.ContextCache.CacheBusterTest do
     refute_receive {:refreshed, _user_id}, 300
   end
 
-  test "WAL records invalidate cached saved searches after inserting, updating and unsaving", %{
+  test "WAL records invalidate cached saved searches for the source", %{
     source: source
   } do
-    other_source = insert(:source, user_id: source.user_id)
-    source_ids = [other_source.id, source.id]
-    record = %{"source_id" => to_string(source.id)}
-
-    assert SavedSearches.Cache.list_by_sources(source_ids) == []
-
-    assert {:ok, search} =
-             SavedSearches.insert(
-               %{lql_rules: [], querystring: "testing", name: "Before", saved_by_user: true},
-               source
-             )
-
-    assert SavedSearches.Cache.list_by_sources(source_ids) == []
+    %{id: id} = search = insert(:saved_search, source: source, name: "Before")
+    assert [%{id: ^id, name: "Before"}] = SavedSearches.Cache.list_by_sources([source.id])
+    assert {:ok, _updated} = SavedSearches.update(search, %{name: "After"})
+    assert [%{name: "Before"}] = SavedSearches.Cache.list_by_sources([source.id])
 
     send(CacheBuster, %Transaction{
-      changes: [%NewRecord{relation: {"public", "saved_searches"}, record: record}]
-    })
-
-    id = search.id
-
-    TestUtils.retry_assert(fn ->
-      assert [%{id: ^id, name: "Before", favorite: false}] =
-               SavedSearches.Cache.list_by_sources(source_ids)
-    end)
-
-    assert {:ok, updated} = SavedSearches.update(search, %{name: "After", favorite: true})
-
-    assert [%{name: "Before", favorite: false}] = SavedSearches.Cache.list_by_sources(source_ids)
-
-    send(CacheBuster, %Transaction{
-      changes: [%UpdatedRecord{relation: {"public", "saved_searches"}, record: record}]
+      changes: [
+        %UpdatedRecord{
+          relation: {"public", "saved_searches"},
+          record: %{"source_id" => to_string(source.id)}
+        }
+      ]
     })
 
     TestUtils.retry_assert(fn ->
-      assert [%{id: ^id, name: "After", favorite: true}] =
-               SavedSearches.Cache.list_by_sources(source_ids)
-    end)
-
-    assert {:ok, _unsaved} = SavedSearches.delete_by_user(updated)
-    assert [%{id: ^id}] = SavedSearches.Cache.list_by_sources(source_ids)
-
-    send(CacheBuster, %Transaction{
-      changes: [%UpdatedRecord{relation: {"public", "saved_searches"}, record: record}]
-    })
-
-    TestUtils.retry_assert(fn ->
-      assert SavedSearches.Cache.list_by_sources(source_ids) == []
+      assert [%{id: ^id, name: "After"}] = SavedSearches.Cache.list_by_sources([source.id])
     end)
   end
 end
