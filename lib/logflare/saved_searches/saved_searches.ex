@@ -1,7 +1,7 @@
 defmodule Logflare.SavedSearches do
   @moduledoc false
 
-  import Ecto.Query
+  import Ecto.Query, except: [update: 2]
 
   alias Logflare.Lql
   alias Logflare.Lql.Rules.ChartRule
@@ -26,6 +26,8 @@ defmodule Logflare.SavedSearches do
   @typep insert_params :: %{
            :lql_rules => list(lql_rule()),
            :querystring => String.t(),
+           optional(:name) => String.t() | nil,
+           optional(:favorite) => boolean(),
            optional(:saved_by_user) => boolean(),
            optional(:tailing) => boolean()
          }
@@ -53,8 +55,14 @@ defmodule Logflare.SavedSearches do
   """
   @spec delete_by_user(SavedSearch.t()) :: {:ok, SavedSearch.t()}
   def delete_by_user(search) do
+    update(search, %{saved_by_user: false})
+  end
+
+  @spec update(SavedSearch.t(), map()) ::
+          {:ok, SavedSearch.t()} | {:error, Ecto.Changeset.t()}
+  def update(search, params) do
     search
-    |> SavedSearch.changeset(%{saved_by_user: false})
+    |> SavedSearch.changeset(params)
     |> Repo.update()
   end
 
@@ -67,9 +75,7 @@ defmodule Logflare.SavedSearches do
     search = get_by_qs_source_id(querystring, source.id)
 
     if search do
-      search
-      |> SavedSearch.changeset(%{saved_by_user: true, tailing: tailing?})
-      |> Repo.update()
+      update(search, %{saved_by_user: true, tailing: tailing?})
     else
       insert(
         %{
@@ -109,12 +115,19 @@ defmodule Logflare.SavedSearches do
     |> Repo.all()
   end
 
-  @spec list_saved_searches_by_source(number()) :: [SavedSearch.t()]
-  def list_saved_searches_by_source(source_id) do
+  @spec list_by_sources([pos_integer()]) :: [SavedSearch.t()]
+  def list_by_sources([]), do: []
+
+  def list_by_sources(source_ids) do
     SavedSearch
     |> where([s], s.saved_by_user == true)
-    |> where([s], s.source_id == ^source_id)
-    |> order_by([s], asc: fragment("lower(?)", s.querystring))
+    |> where([s], s.source_id in ^source_ids)
+    |> order_by([s],
+      asc: s.source_id,
+      desc: s.favorite,
+      asc: fragment("lower(coalesce(nullif(?, ''), ?))", s.name, s.querystring),
+      asc: s.id
+    )
     |> Repo.all()
   end
 end
