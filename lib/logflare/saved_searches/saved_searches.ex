@@ -9,6 +9,9 @@ defmodule Logflare.SavedSearches do
   alias Logflare.Repo
   alias Logflare.SavedSearch
   alias Logflare.Sources.Source
+  alias Logflare.Teams
+  alias Logflare.TeamUsers.TeamUser
+  alias Logflare.User
 
   @type lql_rule :: ChartRule.t() | FilterRule.t()
 
@@ -18,6 +21,20 @@ defmodule Logflare.SavedSearches do
   @spec get(number()) :: SavedSearch.t() | nil
   def get(id) do
     Repo.get(SavedSearch, id)
+  end
+
+  @spec get_by_user_access(User.t() | TeamUser.t(), integer() | String.t()) ::
+          SavedSearch.t() | nil
+  def get_by_user_access(user, id) do
+    sources =
+      Source
+      |> Teams.filter_by_user_access(user)
+      |> select([source], source.id)
+
+    SavedSearch
+    |> where([search], search.id == ^id and search.saved_by_user == true)
+    |> where([search], search.source_id in subquery(sources))
+    |> Repo.one()
   end
 
   @doc """
