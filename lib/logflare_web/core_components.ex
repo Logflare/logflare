@@ -455,7 +455,7 @@ defmodule LogflareWeb.CoreComponents do
   end
 
   @doc """
-  Renders a table with generic styling.
+  Renders a table with generic styling and labeled, stacked cells on small screens.
 
   ## Examples
 
@@ -486,21 +486,22 @@ defmodule LogflareWeb.CoreComponents do
       end
 
     ~H"""
-    <table class="table-dark table-auto w-full flex-grow">
-      <thead>
-        <tr>
-          <th :for={col <- @col} class="p-2">{col[:label]}</th>
-          <th :if={@action != []} class="p-2">
+    <table class="table-dark table-auto w-full flex-grow tw-block md:tw-table" role="table">
+      <thead class="tw-sr-only md:tw-not-sr-only" role="rowgroup">
+        <tr role="row">
+          <th :for={col <- @col} class="p-2" role="columnheader">{col[:label]}</th>
+          <th :if={@action != []} class="p-2" role="columnheader">
             <span class="tw-sr-only">Actions</span>
           </th>
         </tr>
       </thead>
-      <tbody id={@id} phx-update={is_struct(@rows, Phoenix.LiveView.LiveStream) && "stream"}>
-        <tr :for={row <- @rows} id={@row_id && @row_id.(row)}>
-          <td :for={col <- @col} class="p-2">
+      <tbody id={@id} class="tw-block md:tw-table-row-group" role="rowgroup" phx-update={is_struct(@rows, Phoenix.LiveView.LiveStream) && "stream"}>
+        <tr :for={row <- @rows} id={@row_id && @row_id.(row)} class="tw-block tw-border-0 tw-border-b tw-border-solid tw-border-gray-600 md:tw-table-row md:tw-border-0" role="row">
+          <td :for={col <- @col} class="p-2 tw-block tw-break-words md:tw-table-cell" role="cell">
+            <div class="tw-mb-1 tw-text-xs tw-font-semibold tw-text-gray-400 md:tw-hidden" aria-hidden="true">{col[:label]}</div>
             {render_slot(col, @row_item.(row))}
           </td>
-          <td :if={@action != []} class="p-2">
+          <td :if={@action != []} class="p-2 tw-block md:tw-table-cell" role="cell">
             <div class="tw-flex tw-items-center tw-justify-end tw-gap-2">
               <%= for action <- @action do %>
                 {render_slot(action, @row_item.(row))}
