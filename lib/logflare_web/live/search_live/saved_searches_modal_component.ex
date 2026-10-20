@@ -16,7 +16,8 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
     socket =
       socket
       |> assign(source_id: source_id)
-      |> assign(user: assigns.user)
+      |> assign(user: assigns[:team_user] || assigns.user)
+      |> assign(team: assigns[:team])
 
     {:ok, assign_saved_searches(socket)}
   end
@@ -28,6 +29,7 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
 
     socket =
       with %Logflare.SavedSearch{} = saved_search <- SavedSearches.get(saved_search_id),
+           true <- saved_search.source_id == source_id and saved_search.saved_by_user,
            true <- Sources.get_by_user_access(user, saved_search.source_id) |> is_struct(),
            {:ok, _response} <- SavedSearches.delete_by_user(saved_search) do
         send(self(), {:set_flash, {:info, "Saved search deleted"}})
@@ -40,12 +42,15 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
       else
         nil ->
           send(self(), {:set_flash, {:error, "Saved search not found"}})
+          socket
 
         false ->
           send(
             self(),
             {:set_flash, {:error, "You don't have permission to delete this saved search"}}
           )
+
+          socket
       end
 
     {:noreply, socket}
@@ -120,17 +125,18 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
 
   @spec assign_saved_searches(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
   defp assign_saved_searches(socket) do
-    source_id =
-      socket.assigns.source_id
+    %{user: user, source_id: source_id} = socket.assigns
 
     socket
     |> assign_async(
       :saved_searches,
       fn ->
-        saved_searches =
-          SavedSearches.Cache.list_saved_searches_by_source(source_id)
-
-        {:ok, %{saved_searches: saved_searches}}
+        if Sources.get_by_user_access(user, source_id) do
+          saved_searches = SavedSearches.Cache.list_saved_searches_by_source(source_id)
+          {:ok, %{saved_searches: saved_searches}}
+        else
+          {:error, :not_found}
+        end
       end
     )
   end

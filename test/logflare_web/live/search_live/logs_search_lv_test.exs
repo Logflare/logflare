@@ -3436,6 +3436,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       source: source,
       team_user: team_user
     } do
+      search = insert(:saved_search, source: source)
+
       {:ok, view, html} =
         live_with_redirect(
           conn,
@@ -3444,6 +3446,18 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert html =~ source.name
       assert view |> has_element?(~s|a[href="/sources/#{source.id}?t=#{team_user.team_id}"]|)
+
+      view |> element(".subhead a", "saved") |> render_click()
+      TestUtils.wait_for_render(view, "#saved-search-#{search.id}")
+
+      [href] =
+        view
+        |> element("#saved-search-#{search.id} a")
+        |> render()
+        |> Floki.parse_fragment!()
+        |> Floki.attribute("href")
+
+      assert URI.decode_query(URI.parse(href).query)["t"] == to_string(team_user.team_id)
     end
   end
 

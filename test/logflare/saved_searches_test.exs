@@ -43,6 +43,43 @@ defmodule Logflare.SavedSearchesTest do
     end
   end
 
+  test "get_by_user_access/2 returns only saved searches on accessible sources", %{
+    user: user,
+    source: source
+  } do
+    saved_search = insert(:saved_search, source: source)
+    unsaved_search = insert(:saved_search, source: source, saved_by_user: false)
+    other_search = insert(:saved_search)
+
+    assert %SavedSearch{id: id} = SavedSearches.get_by_user_access(user, saved_search.id)
+    assert id == saved_search.id
+    assert %SavedSearch{id: ^id} = SavedSearches.get_by_user_access(user, to_string(id))
+    assert SavedSearches.get_by_user_access(user, unsaved_search.id) == nil
+    assert SavedSearches.get_by_user_access(user, other_search.id) == nil
+
+    Repo.delete!(saved_search)
+    assert SavedSearches.get_by_user_access(user, id) == nil
+  end
+
+  test "get_by_user_access/2 supports team members as users and team users", %{
+    user: owner,
+    source: source
+  } do
+    team = insert(:team, user: owner)
+    team_user = insert(:team_user, team: team)
+    member = insert(:user, email: team_user.email)
+    saved_search = insert(:saved_search, source: source)
+    unsaved_search = insert(:saved_search, source: source, saved_by_user: false)
+    other_search = insert(:saved_search)
+
+    for user <- [member, team_user] do
+      assert %SavedSearch{id: id} = SavedSearches.get_by_user_access(user, saved_search.id)
+      assert id == saved_search.id
+      assert SavedSearches.get_by_user_access(user, unsaved_search.id) == nil
+      assert SavedSearches.get_by_user_access(user, other_search.id) == nil
+    end
+  end
+
   test "save_by_user/4, delete_by_user/1 marks search as saved & unsaved", %{source: source} do
     assert [] == SavedSearches.list_by_sources([source.id])
 
