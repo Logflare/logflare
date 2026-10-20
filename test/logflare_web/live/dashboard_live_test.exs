@@ -73,6 +73,84 @@ defmodule LogflareWeb.DashboardLiveTest do
 
       assert view |> has_element?(".modal-title", "Saved Searches")
     end
+
+    test "rejects a forged source ID even when its saved searches are cached", %{
+      conn: conn,
+      source: source
+    } do
+      own_search = insert(:saved_search, source: source, name: "My search")
+      foreign_source = insert(:source, user: insert(:user))
+      foreign_search = insert(:saved_search, source: foreign_source, name: "Private search")
+
+      Logflare.SavedSearches.Cache.list_saved_searches_by_source(foreign_source.id)
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/dashboard")
+
+      view
+      |> element("#source-#{source.token} a[phx-click='show_live_modal']")
+      |> render_click(%{"source-id" => to_string(foreign_source.id)})
+
+      TestUtils.retry_assert(fn ->
+        assert has_element?(view, "#saved-searches-modal", "Failed to load saved searches")
+        refute render(view) =~ foreign_search.querystring
+      end)
+
+      for event <- ["delete_saved_search"],
+          search <- [own_search, foreign_search] do
+        view
+        |> with_target("#saved-searches-modal")
+        |> render_click(event, %{
+          "id" => to_string(search.id),
+          "saved_search" => %{"name" => "Forbidden rename"}
+        })
+      end
+
+      for search <- [own_search, foreign_search] do
+        assert %{saved_by_user: true, favorite: false, name: name} =
+                 Logflare.SavedSearches.get(search.id)
+
+        assert name == search.name
+      end
+
+      refute has_element?(view, "#saved-searches-list form")
+    end
+
+    test "authorizes saved searches as the signed-in member, not the team owner", %{
+      conn: conn,
+      user: user,
+      team: team,
+      source: source
+    } do
+      member = insert(:team_user, team: team)
+      own_search = insert(:saved_search, source: source, name: "Team search")
+      other_team = insert(:team)
+      insert(:team_user, team: other_team, email: user.email)
+      foreign_source = insert(:source, user: other_team.user)
+      foreign_search = insert(:saved_search, source: foreign_source, name: "Owner-only search")
+      conn = login_user(conn, user, member)
+
+      {:ok, view, _html} = live(conn, ~p"/dashboard?t=#{team.id}")
+
+      view
+      |> element("#source-#{source.token} a[phx-click='show_live_modal']")
+      |> render_click()
+
+      TestUtils.wait_for_render(view, "#saved-search-#{own_search.id}")
+
+      view
+      |> element("#logflare-modal .phx-modal-close")
+      |> render_click()
+
+      view
+      |> element("#source-#{source.token} a[phx-click='show_live_modal']")
+      |> render_click(%{"source-id" => to_string(foreign_source.id)})
+
+      TestUtils.retry_assert(fn ->
+        assert has_element?(view, "#saved-searches-modal", "Failed to load saved searches")
+        refute has_element?(view, "#saved-search-#{foreign_search.id}")
+        refute render(view) =~ foreign_search.querystring
+      end)
+    end
   end
 
   describe "dashboard single tenant" do
