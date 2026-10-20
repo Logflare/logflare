@@ -270,11 +270,26 @@
             {text_input(f_config, :header1_value, class: "form-control")}
           </div>
         <% "clickhouse" -> %>
+          <h5 class="header-margin">Connection</h5>
           <div class="form-group">
             {label(f_config, :url, "ClickHouse URL")}
             {text_input(f_config, :url, class: "form-control")}
             <small class="form-text text-muted">
               Provide the ClickHouse hostname URL with the following format, for example: <code>https://hostname</code>
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :port, "HTTP Port")}
+            {text_input(f_config, :port, class: "form-control", value: input_value(f_config, "port") || 8443)}
+            <small class="form-text text-muted">
+              The port number for the ClickHouse server.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :database, "Database Name")}
+            {text_input(f_config, :database, class: "form-control", value: input_value(f_config, "database") || "default")}
+            <small class="form-text text-muted">
+              The ClickHouse database name where events will be stored.
             </small>
           </div>
           <div class="form-group">
@@ -286,34 +301,39 @@
               Both username and password must be provided.
             </small>
           </div>
+          <h5 class="header-margin">Ingestion</h5>
           <div class="form-group">
-            {label(f_config, :database, "Database Name")}
-            {text_input(f_config, :database, class: "form-control", value: input_value(f_config, "database") || "default")}
+            {label(f_config, :batch_size, "Batch Size (Rows)")}
+            {text_input(f_config, :batch_size,
+              class: "form-control",
+              value: input_value(f_config, "batch_size") || 60_000
+            )}
             <small class="form-text text-muted">
-              The ClickHouse database name where events will be stored.
+              Maximum rows per insert, between 1,000 and 60,000. Changes are applied without restarting ingestion.
             </small>
           </div>
           <div class="form-group">
-            {label(f_config, :query_user, "ClickHouse Query Username (Optional)")}
-            {text_input(f_config, :query_user, class: "form-control")}
-            {label(f_config, :query_password, "ClickHouse Query Password (Optional)")}
-            {text_input(f_config, :query_password, class: "form-control", type: "password", value: "")}
+            {label(f_config, :batch_timeout, "Batch Timeout (ms)")}
+            {text_input(f_config, :batch_timeout,
+              class: "form-control",
+              value: input_value(f_config, "batch_timeout") || 5_000
+            )}
             <small class="form-text text-muted">
-              Dedicated credentials used for read queries. Both must be provided; when left empty, the username and password above are used for reads. Leave blank when editing to keep the existing password unchanged; changing the username requires re-entering the password.
+              Longest a partial batch waits before being inserted, between 1,000 and 30,000 ms. Changes are applied without restarting ingestion.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :use_async_inserts_only, "Async Inserts Only")}
+            {checkbox(f_config, :use_async_inserts_only, id: "use_async_inserts_only")}
+            <small class="form-text text-muted">
+              When enabled, every batch is sent to ClickHouse as an async insert, regardless of size.
             </small>
           </div>
           <div class="form-group">
             {label(f_config, :use_async_inserts_for_small_batches, "Async Inserts for Small Batches")}
             {checkbox(f_config, :use_async_inserts_for_small_batches, id: "use_async_inserts_for_small_batches")}
             <small class="form-text text-muted">
-              When enabled, small batches are sent to ClickHouse as async inserts.
-            </small>
-          </div>
-          <div class="form-group">
-            {label(f_config, :async_insert_cluster_url, "Async Insert Cluster URL (Optional)")}
-            {text_input(f_config, :async_insert_cluster_url, class: "form-control")}
-            <small class="form-text text-muted">
-              Optional dedicated cluster endpoint to handle async inserts. When empty, async inserts go to the primary URL.
+              When enabled, small batches are sent to ClickHouse as async inserts. Ignored when Async Inserts Only is enabled.
             </small>
           </div>
           <div class="form-group">
@@ -323,7 +343,14 @@
               value: input_value(f_config, "async_insert_max_rows") || 1000
             )}
             <small class="form-text text-muted">
-              Batches with fewer than this many rows are sent as async inserts (when enabled above).
+              Batches with fewer than this many rows are sent as async inserts (when small-batch async inserts are enabled above). Ignored when Async Inserts Only is enabled.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :async_insert_cluster_url, "Async Insert Cluster URL (Optional)")}
+            {text_input(f_config, :async_insert_cluster_url, class: "form-control")}
+            <small class="form-text text-muted">
+              Optional dedicated cluster endpoint to handle async inserts. When empty, async inserts go to the primary URL.
             </small>
           </div>
           <div class="form-group">
@@ -336,20 +363,17 @@
               Events with a timestamp older than this are not sent to ClickHouse. Set to <code>0</code> to disable the check.
             </small>
           </div>
+          <h5 class="header-margin">Query Credentials (Optional)</h5>
           <div class="form-group">
-            {label(f_config, :replica_routing_param, "Replica Routing Parameter (Optional)")}
-            {text_input(f_config, :replica_routing_param, class: "form-control")}
+            {label(f_config, :query_user, "ClickHouse Query Username (Optional)")}
+            {text_input(f_config, :query_user, class: "form-control")}
+            {label(f_config, :query_password, "ClickHouse Query Password (Optional)")}
+            {text_input(f_config, :query_password, class: "form-control", type: "password", value: "")}
             <small class="form-text text-muted">
-              Name of an endpoint query parameter whose value is sent as the <code>X-ClickHouse-Replica-Tag</code> header, so queries for the same value stick to the same replica. Ignored by ClickHouse services without replica-aware routing.
+              Dedicated credentials used for read queries. Both must be provided; when left empty, the username and password above are used for reads. Leave blank when editing to keep the existing password unchanged; changing the username requires re-entering the password.
             </small>
           </div>
-          <div class="form-group">
-            {label(f_config, :port, "HTTP Port")}
-            {text_input(f_config, :port, class: "form-control", value: input_value(f_config, "port") || 8443)}
-            <small class="form-text text-muted">
-              The port number for the ClickHouse server.
-            </small>
-          </div>
+          <h5 class="header-margin">Reads</h5>
           <div class="form-group">
             {label(f_config, :read_pool_size, "Read Pool Size")}
             {text_input(f_config, :read_pool_size, class: "form-control", value: input_value(f_config, "read_pool_size") || 50)}
@@ -358,6 +382,13 @@
             </small>
           </div>
           <.live_component module={LogflareWeb.Backends.ReadClusterUrlsComponent} id={read_cluster_component_id(@backend)} form={f_config} backend={@backend} />
+          <div class="form-group">
+            {label(f_config, :replica_routing_param, "Replica Routing Parameter (Optional)")}
+            {text_input(f_config, :replica_routing_param, class: "form-control")}
+            <small class="form-text text-muted">
+              Name of an endpoint query parameter whose value is sent as the <code>X-ClickHouse-Replica-Tag</code> header, so queries for the same value stick to the same replica. Ignored by ClickHouse services without replica-aware routing.
+            </small>
+          </div>
         <% "incidentio" -> %>
           <div class="form-group">
             {label(f_config, :api_token, "API Token")}

@@ -178,7 +178,42 @@ make ssl.{prod|staging|telegraf}
 
 ## Release Management
 
-Logflare's `VERSION` file is bumped on each release.
+Use the standalone Elixir script `scripts/bump_release.exs` to prepare a release.
+It uses only the standard library and does not compile or start Logflare, fetch
+dependencies, or require database services.
+
+```bash
+# Preview, then update VERSION and helm/Chart.yaml appVersion.
+# The chart version receives a patch bump by default.
+elixir scripts/bump_release.exs 1.54.0 --dry-run
+elixir scripts/bump_release.exs 1.54.0
+
+# Override the chart version when a minor or major chart release is needed.
+elixir scripts/bump_release.exs 1.54.0 --chart-version 0.7.0
+
+# Release chart changes without changing the application version.
+elixir scripts/bump_release.exs --chart-only
+elixir scripts/bump_release.exs --chart-only --chart-version 0.7.0 --dry-run
+
+# Validate the current versions without writing files (also run in Helm CI).
+elixir scripts/bump_release.exs --check
+```
+
+The bump examples are alternatives, not a sequence. Versions must be stable
+`X.Y.Z` with no leading zeros; prerelease and build suffixes are not supported.
+Application and chart bumps must increase their respective versions. Existing
+`VERSION` / `appVersion` drift or malformed version fields fail before any
+writes; resolve the mismatch before bumping. The script works from any working
+directory when invoked by its path and preserves chart comments and unrelated
+fields. It does not modify `helm/values.yaml`: the default image tag already
+uses `appVersion`. Review the diff and commit the changes through the usual PR
+workflow; the script does not commit, tag, push, or publish a release.
+
+Run the dependency-free CLI tests with:
+
+```bash
+elixir scripts/bump_release_test.exs
+```
 
 The `master` branch reflects what is on production on <https://logflare.app>
 

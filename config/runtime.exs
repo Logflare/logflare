@@ -102,6 +102,8 @@ http_connection_pools =
       |> Enum.map(&String.downcase/1)
   end
 
+db_schema = System.get_env("DB_SCHEMA")
+
 config :logflare,
        Logflare.PubSub,
        [
@@ -238,9 +240,10 @@ config :logflare,
                version when version in [:inet, :inet6] -> [version]
                error -> raise "Failed to detect IP version for DB_HOSTNAME: #{error}"
              end,
+           schema: db_schema,
            after_connect:
-             if(System.get_env("DB_SCHEMA"),
-               do: {Postgrex, :query!, ["set search_path=#{System.get_env("DB_SCHEMA")}", []]},
+             if(db_schema,
+               do: {Postgrex, :query!, ["set search_path=#{db_schema}", []]},
                else: nil
              ),
            port:
@@ -571,6 +574,7 @@ config :syn,
 enable_alerting? = Env.get_boolean("LOGFLARE_ALERTS_ENABLED", true)
 
 config :logflare, Oban,
+  prefix: db_schema || "public",
   queues: [default: 10] ++ if(enable_alerting?, do: [alerts: 5], else: []),
   plugins: [
     {Oban.Plugins.Pruner, max_age: 86_400},
@@ -710,8 +714,11 @@ spool_buffer_override =
     v when v in [nil, ""] ->
       []
 
-    buffer when buffer in ["wal", "mem"] ->
-      [buffer: String.to_existing_atom(buffer)]
+    "wal" ->
+      [buffer: :wal]
+
+    "mem" ->
+      [buffer: :mem]
 
     other ->
       raise ArgumentError, "Invalid SPOOL_BUFFER=#{other}. Must be wal or mem."
@@ -725,6 +732,14 @@ spool_blocking_override =
   case System.get_env("SPOOL_BLOCKING") do
     v when v in [nil, ""] -> []
     v -> [blocking: v == "true"]
+  end
+
+# In :both mode, spools every event regardless of source.enable_spooling.
+# Off by default.
+spool_force_spooling_override =
+  case System.get_env("SPOOL_BOTH_MODE_FORCE_SPOOLING") do
+    v when v in [nil, ""] -> []
+    v -> [force_spooling: v == "true"]
   end
 
 # How much accumulates before the spool's local commit tier flushes (see
@@ -760,6 +775,7 @@ spool_overrides =
     spool_provider_override ++
     spool_buffer_override ++
     spool_blocking_override ++
+    spool_force_spooling_override ++
     spool_max_batch_bytes_override ++
     if((q = System.get_env("SPOOL_QUEUE_NAME")) && q != "", do: [queue_name: q], else: []) ++
     if((t = System.get_env("SPOOL_PUBSUB_TOPIC")) && t != "", do: [pubsub_topic: t], else: []) ++

@@ -13,6 +13,7 @@ defmodule LogflareWeb.LogController do
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceRequest
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceResponse
 
+  alias LogflareWeb.OpenApi.BadRequest
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.ServerError
   alias LogflareWeb.OpenApiSchemas.LogsCreated
@@ -41,6 +42,9 @@ defmodule LogflareWeb.LogController do
   plug(LogflareWeb.Plugs.BlockSystemSource)
 
   @message "Logged!"
+  @source_unavailable_message "Source is unavailable. Send the batch again."
+  @source_unavailable_retry_after "5"
+  @source_not_found_message "Source not found."
 
   operation(:create,
     summary: "Create log event",
@@ -64,6 +68,7 @@ defmodule LogflareWeb.LogController do
     ],
     responses: %{
       200 => Created.response(LogsCreated),
+      400 => BadRequest.response(),
       500 => ServerError.response()
     }
   )
@@ -249,9 +254,24 @@ defmodule LogflareWeb.LogController do
     |> render("index.json", message: "Internal server error")
   end
 
+  defp handle({:error, :source_not_found}, conn) do
+    conn
+    |> put_status(404)
+    |> put_view(LogflareWeb.LogView)
+    |> render("index.json", message: @source_not_found_message)
+  end
+
+  defp handle({:error, :source_unavailable}, conn) do
+    conn
+    |> put_status(503)
+    |> put_resp_header("retry-after", @source_unavailable_retry_after)
+    |> put_view(LogflareWeb.LogView)
+    |> render("index.json", message: @source_unavailable_message)
+  end
+
   defp handle({:error, errors}, conn) do
     conn
-    |> put_status(406)
+    |> put_status(400)
     |> put_view(LogflareWeb.LogView)
     |> render("index.json", message: errors)
   end
@@ -306,6 +326,16 @@ defmodule LogflareWeb.LogController do
     exception ->
       send_proto_error(conn, 500, "Internal server error")
       reraise exception, __STACKTRACE__
+  end
+
+  defp protobuf_response({:error, :source_not_found}, conn, _success_response) do
+    send_proto_error(conn, 404, @source_not_found_message)
+  end
+
+  defp protobuf_response({:error, :source_unavailable}, conn, _success_response) do
+    conn
+    |> put_resp_header("retry-after", @source_unavailable_retry_after)
+    |> send_proto_error(503, @source_unavailable_message)
   end
 
   defp protobuf_response({:error, :spool_unavailable}, conn, _success_response) do

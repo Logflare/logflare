@@ -55,7 +55,6 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
 
   @default_max_batch_bytes 32 * 1024 * 1024
   @default_max_rotation_interval_ms 1_000
-  @default_worker_count 4
 
   @impl true
   def init_config(opts) do
@@ -65,7 +64,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
       max_rotation_interval_ms:
         Keyword.get(opts, :max_rotation_interval_ms, @default_max_rotation_interval_ms),
       fsync: Keyword.get(opts, :fsync, true),
-      worker_count: Keyword.get(opts, :worker_count, @default_worker_count),
+      worker_count: Keyword.get(opts, :worker_count, System.schedulers_online()),
       inner_backend: DurableBuffer.Backend.normalize(Keyword.fetch!(opts, :inner_backend))
     }
   end

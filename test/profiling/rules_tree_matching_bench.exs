@@ -22,7 +22,7 @@ alias Logflare.Sources.SourceRouter.RulesTree
 
 import Logflare.Factory
 
-# Sources.Cache.get_by_and_preload_rules/1 transitively hits Billing.get_plan_by/1
+# Sources.Cache.get_by_for_ingest/1 transitively hits Billing.get_plan_by/1
 # (via Sources.put_retention_days/1), which uses Repo.get_by and raises if there's
 # more than one Free plan. mix run isn't sandboxed like ExUnit, so insert only when
 # no Free plan exists yet — that keeps repeated bench runs from accumulating
@@ -32,7 +32,7 @@ Logflare.Repo.get_by(Logflare.Billing.Plan, name: "Free") || insert(:plan)
 user = insert(:user)
 
 source_record = insert(:source, user: user)
-source = Cache.get_by_and_preload_rules(token: source_record.token)
+source = Cache.get_by_for_ingest(token: source_record.token)
 
 # ---------------------------------------------------------------------------
 # Payloads — kept identical to log_event_make_bench.exs so that the

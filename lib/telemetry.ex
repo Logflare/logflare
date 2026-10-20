@@ -9,6 +9,7 @@ defmodule Logflare.Telemetry do
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
+  alias Logflare.Cache.CachexOps
 
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
@@ -174,14 +175,12 @@ defmodule Logflare.Telemetry do
   # isn't the case in dev/test, so there'd otherwise be no way to exercise it.
   @doc false
   def metrics do
-    cache_stats? = Application.get_env(:logflare, :cache_stats, false)
+    cache_stats? = CachexOps.stats_enabled?()
 
     cache_metrics =
       if cache_stats? do
         Enum.flat_map(@caches, fn {_cache, metric} ->
           [
-            last_value("cachex.#{metric}.purge"),
-            last_value("cachex.#{metric}.stats"),
             last_value("cachex.#{metric}.evictions"),
             last_value("cachex.#{metric}.expirations"),
             last_value("cachex.#{metric}.operations"),
@@ -478,6 +477,20 @@ defmodule Logflare.Telemetry do
         measurement: :count,
         description: "Sum of events dropped (timestamp more than 1h in the future)"
       ),
+      sum("logflare.sources.source_router.dropped.count",
+        event_name: [:logflare, :sources, :source_router, :dropped],
+        measurement: :count,
+        tags: [:reason],
+        description:
+          "Count of routed event copies that a rule could not write, because the SourceSup of the target did not start. These are copies of user logs; the original event is written to its own source. Tagged `:source_unavailable` when the start failed or timed out, or `:source_not_found` when the target was deleted"
+      ),
+      sum("logflare.user_monitoring.system_logs.dropped.count",
+        event_name: [:logflare, :user_monitoring, :system_logs, :dropped],
+        measurement: :count,
+        tags: [:reason],
+        description:
+          "Count of async system log events that the log interceptor dropped. A system log event is an internal Logflare log line copied to a user's system.logs source; logs that users ingest never count here. Tagged `:source_not_started` when the system logs source was down, `:source_unavailable` when its start did not finish in time, or `:source_not_found` when it was deleted"
+      ),
       sum("logflare.logs.ingest_logs.rejected",
         event_name: [:logflare, :logs, :ingest_logs, :rejected],
         measurement: :count,
@@ -737,6 +750,8 @@ defmodule Logflare.Telemetry do
       ),
       counter("finch.conn_max_idle_time_exceeded.idle_time",
         tags: [:host, :port],
+        # S3 drain endpoints are customer-supplied, so they are left out rather than tagged.
+        keep: &(not s3_drain_pool?(&1)),
         description: "Count of connections discarded due to exceeding max idle time"
       )
     ]
@@ -753,7 +768,7 @@ defmodule Logflare.Telemetry do
   end
 
   defp periodic_measurements do
-    cache_stats? = Application.get_env(:logflare, :cache_stats, false)
+    cache_stats? = CachexOps.stats_enabled?()
 
     cachex_metrics =
       if cache_stats? do
@@ -864,27 +879,7 @@ defmodule Logflare.Telemetry do
 
   def cachex_metrics do
     Enum.each(@caches, fn {cache, metric} ->
-      {:ok, stats} = Cachex.stats(cache)
-
-      {:total_heap_size, total_heap_size} =
-        cache
-        |> Process.whereis()
-        |> Process.info(:total_heap_size)
-
-      metrics = %{
-        purge: Map.get(stats, :purge, 0),
-        stats: Map.get(stats, :stats, 0),
-        evictions: Map.get(stats, :evictions, 0),
-        expirations: Map.get(stats, :expirations, 0),
-        operations: Map.get(stats, :operations, 0),
-        hits: Map.get(stats, :hits, 0),
-        misses: Map.get(stats, :misses, 0),
-        hit_rate: Map.get(stats, :hit_rate, 0),
-        miss_rate: Map.get(stats, :miss_rate, 0),
-        total_heap_size: total_heap_size
-      }
-
-      :telemetry.execute([:cachex, metric], metrics)
+      :telemetry.execute([:cachex, metric], cache.stats())
     end)
   end
 
@@ -1005,6 +1000,14 @@ defmodule Logflare.Telemetry do
     do: true
 
   defp spool_batch?(_metadata), do: false
+
+  # Finch's idle-expiry metadata carries no pool name, but Finch emits it from the pool process,
+  # which registers itself in its Finch instance's Registry.
+  defp s3_drain_pool?(_metadata) do
+    Registry.keys(Logflare.FinchS3, self()) != []
+  rescue
+    ArgumentError -> false
+  end
 
   defp backend_scoped_drop?(%{backend_id: _, backend_type: _}), do: true
   defp backend_scoped_drop?(_metadata), do: false

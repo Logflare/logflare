@@ -290,6 +290,38 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
                       %{count: 1}, %{reason: :dispatch_error}}
     end
 
+    test "fails a message for redelivery when the SourceSup of its source does not start", %{
+      source: source
+    } do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :consumer, :skipped])
+      message = line_message(source.id, Ecto.UUID.generate())
+
+      stub(Logflare.Backends, :dispatch_from_spool, fn _params, _source, _handle ->
+        {:error, :source_unavailable}
+      end)
+
+      assert [returned] = ConsumerPipeline.handle_batch(:default, [message], %{}, %{})
+      assert returned.status == {:failed, :dispatch_error}
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :consumer, :skipped],
+                      %{count: 1}, %{reason: :source_unavailable}}
+    end
+
+    test "skips a message without redelivery when its source was deleted", %{source: source} do
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :consumer, :skipped])
+      message = line_message(source.id, Ecto.UUID.generate())
+
+      stub(Logflare.Backends, :dispatch_from_spool, fn _params, _source, _handle ->
+        {:error, :source_not_found}
+      end)
+
+      assert [returned] = ConsumerPipeline.handle_batch(:default, [message], %{}, %{})
+      assert returned.status == :ok
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :consumer, :skipped],
+                      %{count: 1}, %{reason: :unknown_source_id}}
+    end
+
     test "does not fail a handle's message when only a different handle's dispatch for the same source fails" do
       source = insert(:source, user: insert(:user))
       failing_handle = "spool-handle-failing-#{System.unique_integer([:positive])}"

@@ -166,6 +166,8 @@ curl "https://api.logflare.app/api/endpoints/query/my-endpoint" \
 
 If the header is omitted the current endpoint definition is used. If the requested version does not exist for the resolved endpoint the response contains `version not found`.
 
+The current endpoint's sandboxing setting applies to every version. When sandboxing is disabled, requests containing non-empty `sql` or `lql` overrides return HTTP 400.
+
 Versioned endpoint requests are tagged in query execution logs. For example, `LF-ENDPOINT-VERSION: 1` produces `endpoint_version=1`. See [Query tagging with labels](#query-tagging-with-labels) for more details on labels.
 
 ## Subquery Expansion with Other Endpoints
