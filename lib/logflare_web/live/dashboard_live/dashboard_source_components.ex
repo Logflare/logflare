@@ -42,6 +42,19 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
         </div>
       </div>
       <.source_metadata source={@source} metrics={@metrics} plan={@plan} team={@team} />
+      <div :if={@source.saved_searches != []} id={"source-#{@source.id}-saved-searches"} class="tw-ml-8 tw-mt-3 tw-flex tw-flex-wrap tw-gap-1.5" role="group" aria-label={"Favorite searches for #{@source.name}"}>
+        <.team_link
+          :for={saved_search <- @source.saved_searches}
+          id={"saved-search-shortcut-#{saved_search.id}"}
+          navigate={~p"/sources/#{@source.id}/search?#{%{querystring: saved_search.querystring, tailing?: saved_search.tailing}}"}
+          team={@team}
+          title={saved_search.name}
+          class="tw-inline-flex tw-items-center tw-gap-1.5 tw-max-w-[200px] tw-min-w-0 tw-px-2 tw-py-1 tw-rounded tw-border tw-border-solid tw-border-[#454545] tw-text-white tw-text-[13px] tw-leading-5 hover:tw-bg-[#303030] hover:tw-border-gray-400 hover:tw-no-underline focus-visible:tw-outline focus-visible:tw-outline-2 focus-visible:tw-outline-offset-2"
+        >
+          <i class="far fa-bookmark tw-text-xs tw-shrink-0" aria-hidden="true"></i>
+          <span class="tw-truncate">{SavedSearchesModalComponent.display_name(saved_search)}</span>
+        </.team_link>
+      </div>
     </li>
     """
   end

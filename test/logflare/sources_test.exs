@@ -280,8 +280,28 @@ defmodule Logflare.SourcesTest do
       assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.backends))
       assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.user.team))
       assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.source_schema))
+      assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.saved_searches))
 
       refute Enum.any?(sources, &Ecto.assoc_loaded?(&1.rules))
+    end
+
+    test "preloads only favorite saved searches for each source", %{
+      user: user
+    } do
+      source = insert(:source, user: user)
+      other_source = insert(:source, user: user)
+      favorite = insert(:saved_search, source: source, favorite: true)
+      other = insert(:saved_search, source: other_source, favorite: true)
+      insert(:saved_search, source: source, favorite: false)
+      insert(:saved_search, source: other_source, favorite: false)
+
+      sources = Sources.preload_for_dashboard([source, other_source])
+
+      assert Enum.find(sources, &(&1.id == source.id)).saved_searches |> Enum.map(& &1.id) ==
+               [favorite.id]
+
+      assert Enum.find(sources, &(&1.id == other_source.id)).saved_searches |> Enum.map(& &1.id) ==
+               [other.id]
     end
 
     test "sorts data by name and favorite flag", %{user: user} do
@@ -307,7 +327,13 @@ defmodule Logflare.SourcesTest do
           handler_id,
           [:logflare, :repo, :query],
           fn _event, _measurements, metadata, _config ->
-            if metadata.source in ["users", "teams", "backends", "source_schemas"] do
+            if metadata.source in [
+                 "users",
+                 "teams",
+                 "backends",
+                 "source_schemas",
+                 "saved_searches"
+               ] do
               Agent.update(counter, &(&1 + 1))
             end
           end,

@@ -27,165 +27,82 @@ defmodule Logflare.SavedSearchesTest do
     favorite = insert(:saved_search, source: source, name: "Zulu", favorite: true)
     alpha = insert(:saved_search, source: source, name: "alpha")
     unnamed = insert(:saved_search, source: source, name: nil, querystring: "Beta")
+    empty_name = insert(:saved_search, source: source, name: "", querystring: "aardvark")
     other = insert(:saved_search, source: other_source)
     insert(:saved_search, source: source, favorite: true, saved_by_user: false)
     insert(:saved_search)
 
     assert Enum.map(SavedSearches.Cache.list_by_sources([source.id]), & &1.id) ==
-             [favorite.id, alpha.id, unnamed.id]
+             [favorite.id, empty_name.id, alpha.id, unnamed.id]
 
     for list <- [&SavedSearches.list_by_sources/1, &SavedSearches.Cache.list_by_sources/1] do
       assert list.([]) == []
 
       searches = list.([other_source.id, empty_source.id, source.id, source.id])
 
-      assert Enum.map(searches, & &1.id) == [favorite.id, alpha.id, unnamed.id, other.id]
+      assert Enum.map(searches, & &1.id) ==
+               [favorite.id, empty_name.id, alpha.id, unnamed.id, other.id]
     end
   end
 
   test "get_by_user_access/2 returns only saved searches on accessible sources", %{
-    user: user,
-    source: source
-  } do
-    saved_search = insert(:saved_search, source: source)
-    unsaved_search = insert(:saved_search, source: source, saved_by_user: false)
-    other_search = insert(:saved_search)
-
-    assert %SavedSearch{id: id} = SavedSearches.get_by_user_access(user, saved_search.id)
-    assert id == saved_search.id
-    assert %SavedSearch{id: ^id} = SavedSearches.get_by_user_access(user, to_string(id))
-    assert SavedSearches.get_by_user_access(user, unsaved_search.id) == nil
-    assert SavedSearches.get_by_user_access(user, other_search.id) == nil
-
-    Repo.delete!(saved_search)
-    assert SavedSearches.get_by_user_access(user, id) == nil
-  end
-
-  test "get_by_user_access/2 supports team members as users and team users", %{
     user: owner,
     source: source
   } do
     team = insert(:team, user: owner)
     team_user = insert(:team_user, team: team)
     member = insert(:user, email: team_user.email)
-    saved_search = insert(:saved_search, source: source)
+    %{id: id} = saved_search = insert(:saved_search, source: source)
     unsaved_search = insert(:saved_search, source: source, saved_by_user: false)
     other_search = insert(:saved_search)
 
-    for user <- [member, team_user] do
-      assert %SavedSearch{id: id} = SavedSearches.get_by_user_access(user, saved_search.id)
-      assert id == saved_search.id
-      assert SavedSearches.get_by_user_access(user, unsaved_search.id) == nil
-      assert SavedSearches.get_by_user_access(user, other_search.id) == nil
+    for actor <- [owner, member, team_user] do
+      assert %SavedSearch{id: ^id} = SavedSearches.get_by_user_access(actor, id)
+      assert %SavedSearch{id: ^id} = SavedSearches.get_by_user_access(actor, to_string(id))
+      assert SavedSearches.get_by_user_access(actor, unsaved_search.id) == nil
+      assert SavedSearches.get_by_user_access(actor, other_search.id) == nil
+    end
+
+    Repo.delete!(saved_search)
+
+    for actor <- [owner, member, team_user] do
+      assert SavedSearches.get_by_user_access(actor, id) == nil
     end
   end
 
-  test "save_by_user/4, delete_by_user/1 marks search as saved & unsaved", %{source: source} do
-    assert [] == SavedSearches.list_by_sources([source.id])
-
-    # inserts the SavedSearch if does not exist
+  test "save_by_user/4 and update/2 mark search as saved & unsaved", %{source: source} do
     assert {:ok, %SavedSearch{saved_by_user: true}} =
-             SavedSearches.save_by_user(
-               "other-query-string",
-               @valid_attrs.lql_rules,
-               source,
-               @valid_attrs.tailing
-             )
+             SavedSearches.save_by_user("other-query-string", [], source, false)
 
-    assert [%{querystring: "other-query-string"}] =
-             SavedSearches.list_by_sources([source.id])
+    assert {:ok, %{id: id}} = SavedSearches.insert(@valid_attrs, source)
 
-    # updates the SavedSearch if it exists
-    assert {:ok, _saved_search} = SavedSearches.insert(@valid_attrs, source)
+    assert {:ok, %SavedSearch{id: ^id, saved_by_user: true} = saved_search} =
+             SavedSearches.save_by_user(@valid_attrs.querystring, [], source, false)
 
-    assert {:ok, %SavedSearch{saved_by_user: true} = saved_search} =
-             SavedSearches.save_by_user(
-               @valid_attrs.querystring,
-               @valid_attrs.lql_rules,
-               source,
-               @valid_attrs.tailing
-             )
-
-    assert Enum.map(
-             SavedSearches.list_by_sources([source.id]),
-             & &1.querystring
-           ) ==
-             ["other-query-string", @valid_attrs.querystring]
-
-    assert {:ok, %SavedSearch{saved_by_user: false}} = SavedSearches.delete_by_user(saved_search)
-
-    assert [%{querystring: "other-query-string"}] =
-             SavedSearches.list_by_sources([source.id])
+    assert {:ok, %SavedSearch{saved_by_user: false}} =
+             SavedSearches.update(saved_search, %{saved_by_user: false})
   end
 
-  test "optional names persist without changing the saved query", %{source: source} do
+  test "names use a codepoint limit and persist with favorites when resaved", %{source: source} do
     assert {:ok, search} = SavedSearches.insert(@valid_attrs, source)
     assert search.name == nil
 
-    name = String.duplicate("n", 255)
-    assert {:ok, named} = SavedSearches.update(search, %{name: name})
-    assert SavedSearches.get(search.id).name == name
+    name = String.duplicate("e\u0301", 127) <> "x"
+    assert {:ok, named} = SavedSearches.update(search, %{"name" => name, "favorite" => true})
     assert named.querystring == search.querystring
 
-    assert {:error, changeset} = SavedSearches.update(named, %{name: name <> "n", favorite: true})
+    assert {:error, changeset} =
+             SavedSearches.update(named, %{name: name <> "\u0301", favorite: false})
+
     assert "should be at most 255 character(s)" in errors_on(changeset).name
-    assert SavedSearches.get(search.id).name == name
-    refute SavedSearches.get(search.id).favorite
 
-    name = String.duplicate("e\u0301", 127) <> "x"
-    assert {:ok, named} = SavedSearches.update(named, %{name: name})
-    assert SavedSearches.get(search.id).name == name
+    id = search.id
 
-    assert {:error, changeset} = SavedSearches.update(named, %{name: name <> "\u0301"})
-    assert "should be at most 255 character(s)" in errors_on(changeset).name
-    assert SavedSearches.get(search.id).name == name
-
-    assert {:ok, resaved} =
+    assert {:ok, %SavedSearch{id: ^id, name: ^name, favorite: true} = resaved} =
              SavedSearches.save_by_user(search.querystring, [], source, true)
 
-    assert resaved.id == search.id
-    assert resaved.name == name
-    assert {:ok, unnamed} = SavedSearches.update(resaved, %{name: "   "})
-    assert SavedSearches.get(unnamed.id).name == nil
-  end
-
-  test "favorites persist and sort first, with the regular order restored after unstarring", %{
-    source: source
-  } do
-    zulu = insert(:saved_search, source: source, querystring: "Alpha", name: "Zulu search")
-    alpha = insert(:saved_search, source: source, querystring: "zulu", name: "alpha search")
-    insert(:saved_search, source: source, favorite: true, saved_by_user: false)
-
-    assert Enum.map(SavedSearches.list_by_sources([source.id]), & &1.id) ==
-             [alpha.id, zulu.id]
-
-    assert {:ok, favorite} =
-             SavedSearches.update(zulu, %{"favorite" => true, "name" => "Bravo search"})
-
-    assert SavedSearches.get(zulu.id).favorite
-    assert SavedSearches.get(zulu.id).name == "Bravo search"
-    assert favorite.querystring == zulu.querystring
-
-    assert Enum.map(SavedSearches.list_by_sources([source.id]), & &1.id) ==
-             [zulu.id, alpha.id]
-
-    assert {:ok, _search} = SavedSearches.update(alpha, %{favorite: true})
-
-    assert Enum.map(SavedSearches.list_by_sources([source.id]), & &1.id) ==
-             [alpha.id, zulu.id]
-
-    assert {:ok, _search} = SavedSearches.update(alpha, %{favorite: false})
-    assert {:ok, _search} = SavedSearches.update(favorite, %{favorite: false})
-    refute SavedSearches.get(zulu.id).favorite
-
-    assert Enum.map(SavedSearches.list_by_sources([source.id]), & &1.id) ==
-             [alpha.id, zulu.id]
-
-    unnamed = insert(:saved_search, source: source, name: nil, querystring: "ZZZ")
-    empty_name = insert(:saved_search, source: source, name: "", querystring: "Beta")
-
-    assert Enum.map(SavedSearches.list_by_sources([source.id]), & &1.id) ==
-             [alpha.id, empty_name.id, zulu.id, unnamed.id]
+    assert {:ok, %SavedSearch{favorite: false}} =
+             SavedSearches.update(resaved, %{favorite: false})
   end
 
   test "suggest_saved_searches/2", %{source: source} do

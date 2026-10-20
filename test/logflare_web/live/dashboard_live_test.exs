@@ -83,7 +83,7 @@ defmodule LogflareWeb.DashboardLiveTest do
       foreign_search = insert(:saved_search, source: foreign_source, name: "Private search")
 
       assert [cached_search] =
-               Logflare.SavedSearches.Cache.list_saved_searches_by_source(foreign_source.id)
+               Logflare.SavedSearches.Cache.list_by_sources([foreign_source.id])
 
       assert cached_search.id == foreign_search.id
 
@@ -103,13 +103,17 @@ defmodule LogflareWeb.DashboardLiveTest do
         refute render(view) =~ foreign_search.querystring
       end)
 
-      for event <- ["delete_saved_search"],
+      for {event, attrs} <- [
+            {"edit_name", %{}},
+            {"update_saved_search",
+             %{"saved_by_user" => false, "favorite" => true, "name" => "Forbidden rename"}}
+          ],
           search <- [own_search, foreign_search] do
         view
         |> with_target("#saved-searches-modal")
         |> render_click(event, %{
           "id" => to_string(search.id),
-          "saved_search" => %{"name" => "Forbidden rename"}
+          "saved_search" => attrs
         })
       end
 
@@ -157,6 +161,79 @@ defmodule LogflareWeb.DashboardLiveTest do
         assert has_element?(view, "#saved-searches-modal", "Failed to load saved searches")
         refute has_element?(view, "#saved-search-#{foreign_search.id}")
         refute render(view) =~ foreign_search.querystring
+      end)
+    end
+
+    test "favorite shortcuts reflect starring, renaming, and deleting in the modal", %{
+      conn: conn,
+      source: source
+    } do
+      searches =
+        for name <- ["Errors", "Slow API requests", "Failed sign-ins", "Timeouts", "Rate limits"] do
+          insert(:saved_search, source: source, name: name)
+        end
+
+      unnamed = insert(:saved_search, source: source)
+      unstarred = insert(:saved_search, source: source, name: "Not starred")
+      deleted = insert(:saved_search, source: source, favorite: true, saved_by_user: false)
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/dashboard")
+
+      refute has_element?(view, "#source-#{source.id}-saved-searches")
+
+      view
+      |> element("#source-#{source.token} a[phx-click='show_live_modal']")
+      |> render_click()
+
+      TestUtils.wait_for_render(view, "#saved-searches-list")
+
+      for search <- searches do
+        view |> element("#favorite-saved-search-#{search.id}") |> render_click()
+        TestUtils.wait_for_render(view, "#saved-search-shortcut-#{search.id}")
+        assert has_element?(view, "#saved-search-shortcut-#{search.id}", search.name)
+      end
+
+      html = view |> render() |> Floki.parse_document!()
+
+      assert html
+             |> Floki.find("#source-#{source.id}-saved-searches a")
+             |> Enum.map(&Floki.text/1)
+             |> Enum.map(&String.trim/1) ==
+               ["Errors", "Failed sign-ins", "Rate limits", "Slow API requests", "Timeouts"]
+
+      for search <- searches ++ [unnamed, unstarred] do
+        assert has_element?(view, "#saved-search-#{search.id}")
+      end
+
+      refute has_element?(view, "#saved-search-shortcut-#{unstarred.id}")
+      refute has_element?(view, "#saved-search-#{deleted.id}")
+
+      search = hd(searches)
+      view |> element("#edit-saved-search-name-#{search.id}") |> render_click()
+
+      view
+      |> form("#rename-saved-search-#{search.id}", saved_search: %{name: "Aardvark"})
+      |> render_submit()
+
+      TestUtils.retry_assert(fn ->
+        assert has_element?(view, "#saved-search-shortcut-#{search.id}", "Aardvark")
+      end)
+
+      view |> element("#favorite-saved-search-#{search.id}") |> render_click()
+
+      TestUtils.retry_assert(fn ->
+        refute has_element?(view, "#saved-search-shortcut-#{search.id}")
+      end)
+
+      view |> element("#favorite-saved-search-#{unnamed.id}") |> render_click()
+      TestUtils.wait_for_render(view, "#saved-search-shortcut-#{unnamed.id}")
+      assert has_element?(view, "#saved-search-shortcut-#{unnamed.id}", "untitled")
+
+      view |> element("#delete-saved-search-#{unnamed.id}") |> render_click()
+
+      TestUtils.retry_assert(fn ->
+        refute has_element?(view, "#saved-search-shortcut-#{unnamed.id}")
+        assert has_element?(view, "#saved-search-shortcut-#{List.last(searches).id}")
       end)
     end
   end
@@ -452,7 +529,15 @@ defmodule LogflareWeb.DashboardLiveTest do
       team = insert(:team, user: user)
       team_user = insert(:team_user, team: team, email: user.email)
       source = insert(:source, user: user)
-      saved_search = insert(:saved_search, source: source)
+
+      saved_search =
+        insert(:saved_search,
+          source: source,
+          name: "Errors and warnings",
+          querystring: "error OR warning",
+          favorite: true,
+          tailing: false
+        )
 
       conn = login_user(conn, user, team_user)
 
@@ -482,9 +567,10 @@ defmodule LogflareWeb.DashboardLiveTest do
     test "dashboard links preserve team param", %{
       conn: conn,
       team_user: team_user,
-      source: source
+      source: source,
+      saved_search: search
     } do
-      {:ok, _view, html} = live(conn, ~p"/dashboard?t=#{team_user.team_id}")
+      {:ok, view, html} = live(conn, ~p"/dashboard?t=#{team_user.team_id}")
 
       for path <- [
             "sources/#{source.id}",
@@ -493,6 +579,31 @@ defmodule LogflareWeb.DashboardLiveTest do
             "account"
           ] do
         assert html =~ ~r/#{path}[^"<]*t=#{team_user.team_id}/
+      end
+
+      view
+      |> element("#source-#{source.token} a[phx-click='show_live_modal']")
+      |> render_click()
+
+      TestUtils.wait_for_render(view, "#saved-search-#{search.id}")
+
+      for selector <- ["#saved-search-shortcut-#{search.id}", "#saved-search-#{search.id} a"] do
+        href =
+          view
+          |> element(selector)
+          |> render()
+          |> Floki.parse_fragment!()
+          |> Floki.attribute("href")
+          |> hd()
+
+        uri = URI.parse(href)
+        assert uri.path == "/sources/#{source.id}/search"
+
+        assert URI.decode_query(uri.query) == %{
+                 "querystring" => "error OR warning",
+                 "tailing?" => "false",
+                 "t" => to_string(team_user.team_id)
+               }
       end
     end
   end
