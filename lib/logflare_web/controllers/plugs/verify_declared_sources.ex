@@ -53,6 +53,7 @@ defmodule LogflareWeb.Plugs.VerifyDeclaredSources do
 
     tokens =
       for event <- events,
+          is_map(event),
           token = Utils.Map.get(event, :"#{@lf_source_key}"),
           is_binary(token),
           uuid?(token),

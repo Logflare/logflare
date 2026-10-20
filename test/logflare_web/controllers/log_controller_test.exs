@@ -944,6 +944,24 @@ defmodule LogflareWeb.LogControllerTest do
       end
     end
 
+    test "multi-source batch with a non-object entry returns 400 without ingesting",
+         %{conn: conn, source_a: source_a} do
+      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post(
+          Routes.log_path(conn, :create),
+          Jason.encode!([
+            %{"__LF_SOURCE" => Atom.to_string(source_a.token), "event_message" => "ok"},
+            nil
+          ])
+        )
+
+      assert %{"message" => ["event missing __LF_SOURCE"]} = json_response(conn, 400)
+    end
+
     test "multi-source batch returns 503 when a source is unavailable",
          %{conn: conn, source_a: source_a} do
       Mimic.stub(Logflare.Backends, :start_for_ingest, fn _source ->

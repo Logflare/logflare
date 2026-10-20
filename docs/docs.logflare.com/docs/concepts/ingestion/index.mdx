@@ -126,7 +126,7 @@ The same routing applies when POSTing a **bare JSON array** (array root with `ap
 Route a request **either** with the `source`/`source_name` query parameter **or** with `__LF_SOURCE` on every event, not both:
 
 - If a query-parameter source is given, every event is ingested into that source and `__LF_SOURCE` is dropped from each event as a reserved key.
-- Without a query-parameter source, every event must declare `__LF_SOURCE`. Multi-source mode is detected from the **first** event: if it omits `__LF_SOURCE`, the request returns **401**. If any event omits `__LF_SOURCE` or references an unknown source, the whole request is rejected with **400** and no events are ingested.
+- Without a query-parameter source, every event must declare `__LF_SOURCE`. Multi-source mode is detected from the **first** event: if it omits `__LF_SOURCE`, the request returns **401**. If any event omits `__LF_SOURCE` or its value is not a source UUID, the whole request is rejected with **400** and no events are ingested. If a declared source does not exist or you do not have access to it, the request returns **401**.
 :::
 
 ## Pipeline Transformations
