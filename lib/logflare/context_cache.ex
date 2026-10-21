@@ -9,13 +9,26 @@ defmodule Logflare.ContextCache do
   ## Implementation
 
   `use Logflare.ContextCache` makes the module a `Logflare.Cache` and injects overridable defaults
-  for `c:fetch/2`, `c:update/2` and `c:bust_by/1`. They delegate to a `Logflare.ContextCache.Ops`
-  module, `Logflare.Cache.CachexOps` unless `impl: module` is given.
+  for every callback. They delegate to a `Logflare.ContextCache.Ops` module,
+  `Logflare.Cache.CachexOps` unless `impl: module` is given.
+
+  ## Entries
+
+  `c:entries/0` and `c:put_entries/1` read and write entries as `t:entry/0`, independent of the
+  storage backend, so a cache can be copied between nodes running different backends.
+
+  ## Refresh-ahead
+
+  With `refresh_ahead: true`, `c:fetch/2` also hands the key to `Logflare.ContextCache.RefreshAhead`,
+  which reloads entries close to expiry in the background, so reads don't block on the getter
+  when a hot entry expires. It relies on `c:expiry/1`, `c:entry/1`, `c:cached?/1`,
+  `c:put_entries/1` and `c:stale_entry?/2` only.
 
   ## Busting
 
   `bust_keys/1` busts entries by primary key or by a keyword of fields. Caches that need busting
-  keys other than `id:` override `c:keys_to_bust/1`.
+  keys other than `id:` override `c:keys_to_bust/1`, and `c:tombstones/1` with `c:stale_entry?/2`
+  when entries received from other nodes should be checked against those keys.
 
   ## Memoization
 
@@ -25,6 +38,13 @@ defmodule Logflare.ContextCache do
   """
 
   alias Logflare.Cache.CachexOps
+  alias Logflare.ContextCache.Gossip
+  alias Logflare.ContextCache.RefreshAhead
+
+  @typedoc """
+  A cached value under `key`, with its remaining time-to-live in ms, `nil` when it does not expire.
+  """
+  @type entry() :: {key :: term(), value :: term(), ttl :: pos_integer() | nil}
 
   @doc """
   Returns the keys of the entries to bust for a keyword of values.
@@ -46,8 +66,57 @@ defmodule Logflare.ContextCache do
   """
   @callback update(key :: term(), value :: term()) :: :ok
 
+  @doc """
+  Streams the unexpired entries. The stream must be consumed in the process that created it.
+  """
+  @callback entries() :: Enumerable.t(entry())
+
+  @doc """
+  Writes `entries`, replacing values cached under the same keys.
+  """
+  @callback put_entries([entry()]) :: :ok
+
+  @callback cached?(key :: term()) :: boolean()
+
+  @doc """
+  The unexpired entry cached under `key`, without calling a getter on a miss.
+  """
+  @callback entry(key :: term()) :: entry() | nil
+
+  @doc """
+  Remaining and total time-to-live in ms of the entry cached under `key`, `nil` when it is not
+  cached or does not expire.
+  """
+  @callback expiry(key :: term()) ::
+              {remaining :: non_neg_integer(), total :: pos_integer()} | nil
+
+  @callback size() :: non_neg_integer()
+
+  @doc """
+  Tombstones to record when a record of this cache changes, given the primary key or keyword passed
+  to `bust_keys/1`. See `Logflare.ContextCache.Gossip`.
+  """
+  @callback tombstones(pkey_or_kw :: term()) :: [term()]
+
+  @doc """
+  Whether `value` cached under `key` on another node must not be cached on this one, because its
+  record changed recently or there is no tombstone to check it against.
+  """
+  @callback stale_entry?(key :: term(), value :: term()) :: boolean()
+
   defmacro __using__(opts) do
     impl = Keyword.get(opts, :impl, CachexOps)
+
+    fetch_body =
+      if Keyword.get(opts, :refresh_ahead, false) do
+        quote do
+          value = unquote(impl).fetch(__MODULE__, key, getter)
+          unquote(RefreshAhead).maybe_refresh(__MODULE__, key, getter)
+          value
+        end
+      else
+        quote do: unquote(impl).fetch(__MODULE__, key, getter)
+      end
 
     quote do
       use Logflare.Cache, unquote(opts)
@@ -61,12 +130,47 @@ defmodule Logflare.ContextCache do
       def delete_keys(keys), do: unquote(impl).delete_keys(__MODULE__, keys)
 
       @impl Logflare.ContextCache
-      def fetch(key, getter), do: unquote(impl).fetch(__MODULE__, key, getter)
+      def fetch(key, getter), do: unquote(fetch_body)
 
       @impl Logflare.ContextCache
       def update(key, value), do: unquote(impl).update(__MODULE__, key, value)
 
-      defoverridable keys_to_bust: 1, delete_keys: 1, fetch: 2, update: 2
+      @impl Logflare.ContextCache
+      def entries, do: unquote(impl).entries(__MODULE__)
+
+      @impl Logflare.ContextCache
+      def put_entries(entries), do: unquote(impl).put_entries(__MODULE__, entries)
+
+      @impl Logflare.ContextCache
+      def cached?(key), do: unquote(impl).cached?(__MODULE__, key)
+
+      @impl Logflare.ContextCache
+      def entry(key), do: unquote(impl).entry(__MODULE__, key)
+
+      @impl Logflare.ContextCache
+      def expiry(key), do: unquote(impl).expiry(__MODULE__, key)
+
+      @impl Logflare.ContextCache
+      def size, do: unquote(impl).size(__MODULE__)
+
+      @impl Logflare.ContextCache
+      def tombstones(pkey_or_kw), do: unquote(Gossip).pkey_tombstones(pkey_or_kw)
+
+      @impl Logflare.ContextCache
+      def stale_entry?(_key, value), do: unquote(Gossip).stale_value?(__MODULE__, value)
+
+      defoverridable keys_to_bust: 1,
+                     delete_keys: 1,
+                     fetch: 2,
+                     update: 2,
+                     entries: 0,
+                     put_entries: 1,
+                     cached?: 1,
+                     entry: 1,
+                     expiry: 1,
+                     size: 0,
+                     tombstones: 1,
+                     stale_entry?: 2
     end
   end
 
