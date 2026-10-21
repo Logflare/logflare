@@ -19,7 +19,7 @@ defmodule Logflare.Backends.Spool.SpoolAck do
   `config :logflare, #{inspect(__MODULE__)}, ack_stale: true`) to also ack
   those rows instead of just discarding them — off by default.
 
-  On shutdown, `Logflare.Backends.Spool.ConsumerDrain` waits for
+  On shutdown, `Logflare.ShutdownDrain` waits for
   `pending_count/0` to reach zero, nacks whatever is left with
   `nack_pending/0` so it redelivers straight away, then calls `flush/0` so
   queued acks are sent before the node stops.

@@ -1494,6 +1494,27 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
   end
 
+  describe "total_size/0" do
+    test "counts events queued across every queue on the node" do
+      backend_queue = {:spool_producer, nil, :erlang.list_to_pid(~c"<0.120.1>")}
+      other_queue = {:spool_producer, nil, :erlang.list_to_pid(~c"<0.120.2>")}
+      on_exit(fn -> Enum.each([backend_queue, other_queue], &IngestEventQueue.delete_queue/1) end)
+
+      before = IngestEventQueue.total_size()
+
+      IngestEventQueue.upsert_tid(backend_queue)
+      IngestEventQueue.upsert_tid(other_queue)
+      :ok = IngestEventQueue.add_to_table(backend_queue, build_list(3, :log_event))
+      :ok = IngestEventQueue.add_to_table(other_queue, build_list(2, :log_event))
+
+      assert IngestEventQueue.total_size() == before + 5
+
+      IngestEventQueue.delete_queue(backend_queue)
+
+      assert IngestEventQueue.total_size() == before + 2
+    end
+  end
+
   describe "`add_to_table/3` distribution with consolidated queues_key" do
     setup do
       user = insert(:user)

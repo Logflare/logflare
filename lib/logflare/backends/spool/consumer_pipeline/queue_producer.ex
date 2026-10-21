@@ -43,7 +43,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   ## Stopping fetches
 
-  `stop_fetching/1` is the gentler, earlier step `ConsumerDrain` takes on
+  `stop_fetching/1` is the gentler, earlier step `Logflare.ShutdownDrain` takes on
   SIGTERM: no new queue message is received, a landed prefetch is nacked, and
   the file already loaded keeps emitting so it can finish and be acked before
   the node stops. `drained?/1` reports when nothing is left to emit.

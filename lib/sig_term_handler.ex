@@ -3,9 +3,8 @@ defmodule Logflare.SigtermHandler do
   @behaviour :gen_event
   require Logger
 
-  alias Logflare.Backends
-  alias Logflare.Backends.Spool.ConsumerDrain
   alias Logflare.Readiness
+  alias Logflare.ShutdownDrain
 
   defp env_grace_period,
     do:
@@ -57,11 +56,18 @@ defmodule Logflare.SigtermHandler do
     {:ok, state}
   end
 
+  defp drain_timeout_ms do
+    case Application.get_env(:logflare, :shutdown_drain_timeout_ms) do
+      ms when is_integer(ms) -> max(ms, env_grace_period())
+      nil -> nil
+    end
+  end
+
   defp log_received(signal) do
-    if Backends.spool_consumer_mode?() do
+    if timeout_ms = drain_timeout_ms() do
       Logger.warning(
-        "#{__MODULE__}: #{signal} received: draining spool consumer for up to " <>
-          "#{ConsumerDrain.timeout_ms() / 1_000} seconds before stopping"
+        "#{__MODULE__}: #{signal} received: draining for up to #{timeout_ms / 1_000} seconds " <>
+          "before stopping"
       )
     else
       Logger.warning(
@@ -70,26 +76,22 @@ defmodule Logflare.SigtermHandler do
     end
   end
 
-  # A spool consumer drains its in-flight files before stopping, and still
-  # waits out the grace period if it finishes sooner.
+  # With a drain timeout configured, the node drains what it holds before
+  # stopping; the drain itself waits out the grace period first.
   defp schedule_stop do
     grace_period = env_grace_period()
 
-    if Backends.spool_consumer_mode?() do
+    if timeout_ms = drain_timeout_ms() do
       handler = self()
 
       Task.start(fn ->
-        started_at = System.monotonic_time(:millisecond)
-
         try do
-          result = ConsumerDrain.run()
+          result = ShutdownDrain.run(timeout_ms: timeout_ms, min_wait_ms: grace_period)
 
           Logger.warning(
-            "#{__MODULE__}: spool consumer drain ended with #{inspect(result)}, stopping the app"
+            "#{__MODULE__}: shutdown drain ended with #{inspect(result)}, stopping the app"
           )
         after
-          elapsed = System.monotonic_time(:millisecond) - started_at
-          Process.sleep(max(grace_period - elapsed, 0))
           send(handler, :proceed_with_sigterm)
         end
       end)
