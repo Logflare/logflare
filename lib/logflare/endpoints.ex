@@ -180,32 +180,7 @@ defmodule Logflare.Endpoints do
   @spec configure_enforced_clickhouse_settings(User.t() | TeamUser.t(), EndpointQuery.t(), map()) ::
           {:ok, EndpointQuery.t()} | {:error, term()}
   def configure_enforced_clickhouse_settings(actor, %EndpointQuery{id: id}, settings) do
-    Repo.with_primary(fn ->
-      Repo.transact(fn ->
-        with {:ok, admin} <- authorize_settings_admin(actor),
-             %EndpointQuery{} = query <-
-               Repo.one(from(query in EndpointQuery, where: query.id == ^id, lock: "FOR UPDATE")),
-             :ok <- require_clickhouse_endpoint(query, settings),
-             {:ok, settings} <- ClickHouseSettings.normalize(settings) do
-          opts = [
-            origin: admin.email,
-            meta: %{
-              kind: "endpoint_policy",
-              operator_id: admin.id,
-              previous_settings: query.enforced_clickhouse_settings,
-              settings: settings
-            }
-          ]
-
-          query
-          |> Ecto.Changeset.change(enforced_clickhouse_settings: settings)
-          |> PaperTrail.update(opts)
-        else
-          nil -> {:error, :not_found}
-          error -> error
-        end
-      end)
-    end)
+    Repo.with_primary(fn -> persist_endpoint_settings(actor, id, settings) end)
     |> case do
       {:ok, %{model: updated}} ->
         ContextCache.bust_keys([{__MODULE__, updated.id}])
@@ -218,6 +193,35 @@ defmodule Logflare.Endpoints do
       error ->
         error
     end
+  end
+
+  @spec persist_endpoint_settings(User.t() | TeamUser.t(), integer(), map()) ::
+          {:ok, map()} | {:error, term()}
+  defp persist_endpoint_settings(actor, id, settings) do
+    Repo.transact(fn ->
+      with {:ok, admin} <- authorize_settings_admin(actor),
+           %EndpointQuery{} = query <-
+             Repo.one(from(query in EndpointQuery, where: query.id == ^id, lock: "FOR UPDATE")),
+           :ok <- require_clickhouse_endpoint(query, settings),
+           {:ok, settings} <- ClickHouseSettings.normalize(settings) do
+        opts = [
+          origin: admin.email,
+          meta: %{
+            kind: "endpoint_policy",
+            operator_id: admin.id,
+            previous_settings: query.enforced_clickhouse_settings,
+            settings: settings
+          }
+        ]
+
+        query
+        |> Ecto.Changeset.change(enforced_clickhouse_settings: settings)
+        |> PaperTrail.update(opts)
+      else
+        nil -> {:error, :not_found}
+        error -> error
+      end
+    end)
   end
 
   @spec authorize_settings_admin(User.t() | TeamUser.t()) ::
