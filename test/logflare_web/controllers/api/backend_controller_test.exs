@@ -581,15 +581,15 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       conn
       |> patch(path, %{
         config: %{
-          async_insert_busy_timeout_max_ms: 5_000,
-          async_insert_max_data_size: 1_073_741_824
+          async_insert_busy_timeout_max_ms: 4_000,
+          async_insert_max_data_size: 268_435_456
         }
       })
       |> response(204)
 
       response = conn |> get(path) |> json_response(200)
-      assert response["config"]["async_insert_busy_timeout_max_ms"] == 5_000
-      assert response["config"]["async_insert_max_data_size"] == 1_073_741_824
+      assert response["config"]["async_insert_busy_timeout_max_ms"] == 4_000
+      assert response["config"]["async_insert_max_data_size"] == 268_435_456
 
       conn
       |> patch(path, %{config: %{async_insert_busy_timeout_max_ms: 200}})
@@ -597,13 +597,15 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       response = conn |> get(path) |> json_response(200)
       assert response["config"]["async_insert_busy_timeout_max_ms"] == 200
-      assert response["config"]["async_insert_max_data_size"] == 1_073_741_824
+      assert response["config"]["async_insert_max_data_size"] == 268_435_456
 
       for {key, value} <- [
             async_insert_busy_timeout_max_ms: 199,
-            async_insert_busy_timeout_max_ms: 5_001,
+            async_insert_busy_timeout_max_ms: 4_001,
+            async_insert_busy_timeout_max_ms: 5_000,
             async_insert_max_data_size: 52_428_799,
-            async_insert_max_data_size: 1_073_741_825
+            async_insert_max_data_size: 268_435_457,
+            async_insert_max_data_size: 1_073_741_824
           ] do
         response = conn |> patch(path, %{config: %{key => value}}) |> json_response(422)
         assert Map.has_key?(response["errors"], "config.#{key}")

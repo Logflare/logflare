@@ -65,8 +65,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   ]
   @default_async_insert_busy_timeout_max_ms 3_000
   @async_insert_flush_bounds %{
-    async_insert_busy_timeout_max_ms: %{min: 200, max: 5_000},
-    async_insert_max_data_size: %{min: 52_428_800, max: 1_073_741_824}
+    async_insert_busy_timeout_max_ms: %{min: 200, max: 4_000},
+    async_insert_max_data_size: %{min: 52_428_800, max: 268_435_456}
   }
   @insert_max_execution_time_seconds 10
 
@@ -1200,15 +1200,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @spec async_insert_busy_timeout_max_ms(map()) :: pos_integer()
   defp async_insert_busy_timeout_max_ms(%{async_insert_busy_timeout_max_ms: timeout_ms})
-       when is_pos_integer(timeout_ms),
-       do: timeout_ms
+       when is_integer(timeout_ms) do
+    bounds = @async_insert_flush_bounds.async_insert_busy_timeout_max_ms
+    timeout_ms |> max(bounds.min) |> min(bounds.max)
+  end
 
   defp async_insert_busy_timeout_max_ms(_config), do: @default_async_insert_busy_timeout_max_ms
 
   @spec async_insert_max_data_size_opts(map()) :: keyword()
   defp async_insert_max_data_size_opts(%{async_insert_max_data_size: max_bytes})
-       when is_pos_integer(max_bytes),
-       do: [async_insert_max_data_size: max_bytes]
+       when is_integer(max_bytes) do
+    bounds = @async_insert_flush_bounds.async_insert_max_data_size
+    [async_insert_max_data_size: max_bytes |> max(bounds.min) |> min(bounds.max)]
+  end
 
   defp async_insert_max_data_size_opts(_config), do: []
 

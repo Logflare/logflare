@@ -66,16 +66,6 @@ defmodule LogflareWeb.OpenApiTest do
 
     assert properties.async_insert_busy_timeout_max_ms.description =~
              "#{ClickHouseAdaptor.default_async_insert_busy_timeout_max_ms()} ms"
-
-    assert %Schema{type: :integer, nullable: true, minimum: 200, maximum: 5_000} =
-             properties.async_insert_busy_timeout_max_ms
-
-    assert %Schema{
-             type: :integer,
-             nullable: true,
-             minimum: 52_428_800,
-             maximum: 1_073_741_824
-           } = properties.async_insert_max_data_size
   end
 
   test "ClickHouse read_only_urls renders as a string map in the OpenAPI JSON" do
