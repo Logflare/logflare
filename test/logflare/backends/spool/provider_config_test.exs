@@ -1,8 +1,9 @@
 defmodule Logflare.Backends.Spool.ProviderConfigTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   import Mimic
 
+  alias Logflare.Backends.Spool.Health
   alias Logflare.Backends.Spool.ProviderConfig
   alias Logflare.Backends.Spool.Queue.PubSub
   alias Logflare.Backends.Spool.Queue.SQS
@@ -59,10 +60,12 @@ defmodule Logflare.Backends.Spool.ProviderConfigTest do
       assert ProviderConfig.resolve_queue_ref([], SQS) == nil
     end
 
-    test "returns nil when resolution fails" do
+    test "returns nil and marks the queue unhealthy when resolution fails" do
+      on_exit(fn -> Health.report_recovery!(:queue) end)
       stub(ExAws, :request, fn _op, _opts -> {:error, {:http_error, 404, "not found"}} end)
 
       assert ProviderConfig.resolve_queue_ref([queue_name: "logflare-spool"], SQS) == nil
+      refute Health.healthy?(:queue)
     end
   end
 end

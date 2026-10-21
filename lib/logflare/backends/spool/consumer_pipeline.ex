@@ -8,6 +8,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
   alias Broadway.Message
   alias Logflare.Backends
   alias Logflare.Backends.Spool.ConsumerPipeline.QueueProducer
+  alias Logflare.Backends.Spool.Health
   alias Logflare.Backends.Spool.MemoryMonitor
   alias Logflare.Backends.Spool.ProviderConfig
   alias Logflare.Backends.Spool.SpoolAck
@@ -287,6 +288,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
         ref
 
       {:error, reason} ->
+        Health.mark_unhealthy!(:queue)
         raise "spool_consumer: failed to resolve queue ref for #{queue_name}: #{inspect(reason)}"
     end
   end

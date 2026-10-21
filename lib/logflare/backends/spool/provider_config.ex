@@ -5,6 +5,7 @@ defmodule Logflare.Backends.Spool.ProviderConfig do
   (`DurableBuffer.Supervisor`) and the consumer side (`ConsumerPipeline`).
   """
 
+  alias Logflare.Backends.Spool.Health
   alias Logflare.Backends.Spool.Queue
   alias Logflare.Backends.Spool.Storage
 
@@ -30,6 +31,8 @@ defmodule Logflare.Backends.Spool.ProviderConfig do
             ref
 
           {:error, reason} ->
+            Health.mark_unhealthy!(:queue)
+
             Logger.warning(
               "spool_provider_config: could not resolve queue ref for #{queue_name}: #{inspect(reason)}"
             )

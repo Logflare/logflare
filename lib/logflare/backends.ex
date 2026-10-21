@@ -906,6 +906,18 @@ defmodule Logflare.Backends do
   end
 
   @doc """
+  Whether this node can reach its spool queue, for readiness only. Gates
+  `:producer`-only and `:consumer`-only nodes, which do nothing useful
+  without the queue; `:both` falls back to direct dispatch, as in
+  `spool_healthcheck_ok?/0`. Liveness stays off it so a regional DNS or
+  queue blip pulls nodes out of rotation instead of restarting them all.
+  """
+  @spec spool_queue_ready?() :: boolean()
+  def spool_queue_ready? do
+    spool_mode() not in [:producer, :consumer] or SpoolHealth.healthy?(:queue)
+  end
+
+  @doc """
   Which backend the node's spool `DurableBuffer` instance commits
   through — `:wal` (`Backends.RotatingWal`, local-disk-durable, wrapping
   `Backends.Cloud`, default) or `:mem` (`Backends.Cloud`, straight to

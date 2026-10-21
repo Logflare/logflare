@@ -17,6 +17,7 @@ defmodule LogflareWeb.HealthCheckControllerTest do
     on_exit(fn ->
       Health.report_recovery!(:disk)
       Health.report_recovery!(:upload)
+      Health.report_recovery!(:queue)
     end)
 
     Logflare.Google.BigQuery
@@ -166,6 +167,67 @@ defmodule LogflareWeb.HealthCheckControllerTest do
 
     assert %{"status" => "not_ready"} = conn |> get("/ready") |> json_response(503)
     assert %{"status" => "ok"} = conn |> get("/health") |> json_response(200)
+  end
+
+  describe "spool queue reachability" do
+    setup do
+      insert(:user)
+      insert(:plan)
+      start_supervised!(Source.Supervisor)
+
+      prev_spool_config = Application.get_env(:logflare, :spool)
+
+      on_exit(fn ->
+        if prev_spool_config do
+          Application.put_env(:logflare, :spool, prev_spool_config)
+        else
+          Application.delete_env(:logflare, :spool)
+        end
+      end)
+
+      :ok
+    end
+
+    for mode <- [:producer, :consumer] do
+      test "in #{inspect(mode)} mode, an unreachable queue fails /ready but not /health", %{
+        conn: conn
+      } do
+        Application.put_env(:logflare, :spool, mode: unquote(mode), max_spool_health_failures: 1)
+
+        assert %{"status" => "ok", "spool_write_healthy" => %{"queue" => true}} =
+                 conn |> get("/ready") |> json_response(200)
+
+        Health.report_failure!(:queue)
+
+        assert %{"status" => "coming_up", "spool_write_healthy" => %{"queue" => false}} =
+                 conn |> get("/ready") |> json_response(503)
+
+        assert %{"status" => "ok", "spool_write_healthy" => %{"queue" => false}} =
+                 conn |> get("/health") |> json_response(200)
+
+        Health.report_recovery!(:queue)
+
+        assert %{"status" => "ok", "spool_write_healthy" => %{"queue" => true}} =
+                 conn |> get("/ready") |> json_response(200)
+      end
+    end
+
+    test "in :both mode, an unreachable queue is reported but does not fail /ready", %{conn: conn} do
+      Application.put_env(:logflare, :spool, mode: :both, max_spool_health_failures: 1)
+
+      Health.report_failure!(:queue)
+
+      assert %{"status" => "ok", "spool_write_healthy" => %{"queue" => false}} =
+               conn |> get("/ready") |> json_response(200)
+    end
+
+    test "outside spool mode, queue health does not gate /ready", %{conn: conn} do
+      Application.delete_env(:logflare, :spool)
+
+      Health.mark_unhealthy!(:queue)
+
+      assert %{"status" => "ok"} = conn |> get("/ready") |> json_response(200)
+    end
   end
 
   test "memory check", %{conn: conn} do

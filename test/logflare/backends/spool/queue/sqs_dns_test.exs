@@ -3,6 +3,7 @@ defmodule Logflare.Backends.Spool.Queue.SQSDnsTest do
 
   import ExUnit.CaptureLog
 
+  alias Logflare.Backends.Spool.Health
   alias Logflare.Backends.Spool.Queue.SQS
 
   @queue_url "https://sqs.eu-west-1.amazonaws.com/123456789012/logflare-spool-prod-a-euw1-az1"
@@ -14,6 +15,8 @@ defmodule Logflare.Backends.Spool.Queue.SQSDnsTest do
     end
 
     ex_aws_env = Application.get_all_env(:ex_aws)
+    spool_config = Application.get_env(:logflare, :spool)
+    Application.put_env(:logflare, :spool, max_spool_health_failures: 1)
 
     Application.put_env(:ex_aws, :region, "eu-west-1")
     Application.put_env(:ex_aws, :access_key_id, "AKIDEXAMPLE")
@@ -40,6 +43,12 @@ defmodule Logflare.Backends.Spool.Queue.SQSDnsTest do
 
       for {key, _} <- Application.get_all_env(:ex_aws), do: Application.delete_env(:ex_aws, key)
       for {key, value} <- ex_aws_env, do: Application.put_env(:ex_aws, key, value)
+
+      Health.report_recovery!(:queue)
+
+      if spool_config,
+        do: Application.put_env(:logflare, :spool, spool_config),
+        else: Application.delete_env(:logflare, :spool)
     end)
 
     :ok
@@ -63,6 +72,7 @@ defmodule Logflare.Backends.Spool.Queue.SQSDnsTest do
 
       assert log =~ @log_line
       assert_received {:dns_query, ~c"sqs.eu-west-1.amazonaws.com"}
+      refute Health.healthy?(:queue)
     end
   end
 
@@ -79,6 +89,7 @@ defmodule Logflare.Backends.Spool.Queue.SQSDnsTest do
       end)
 
     assert log =~ @log_line
+    refute Health.healthy?(:queue)
   end
 
   defp use_resolver(port) do

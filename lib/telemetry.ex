@@ -556,7 +556,7 @@ defmodule Logflare.Telemetry do
       last_value("logflare.backends.spool.write_health.healthy",
         tags: [:scope],
         description:
-          "Spool health by scope (:disk local WAL fsync, :upload Cloud backend commit) — 1=healthy, 0=unhealthy (spool routing disabled on this node if it's the active buffer mode's gating scope)"
+          "Spool health by scope (:disk local WAL fsync, :upload Cloud backend commit, :queue SQS/PubSub reachability) — 1=healthy, 0=unhealthy (spool routing disabled on this node if it's the active buffer mode's gating scope)"
       ),
       last_value("logflare.backends.spool.write_health.failure_count",
         tags: [:scope],
