@@ -92,11 +92,11 @@ defmodule Logflare.Utils.SSRFTest do
       assert SSRF.url_host({1, 2, 3, 4}) == "1.2.3.4"
     end
 
-    test "formats IPv6 with brackets" do
-      assert SSRF.url_host({0, 0, 0, 0, 0, 0, 0, 1}) == "[::1]"
+    test "formats IPv6 without brackets for URI.host" do
+      assert SSRF.url_host({0, 0, 0, 0, 0, 0, 0, 1}) == "::1"
 
       assert SSRF.url_host({0x2001, 0x4860, 0x4860, 0, 0, 0, 0, 0x8888}) ==
-               "[2001:4860:4860::8888]"
+               "2001:4860:4860::8888"
     end
   end
 end

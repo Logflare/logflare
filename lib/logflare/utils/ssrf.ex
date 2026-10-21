@@ -68,11 +68,9 @@ defmodule Logflare.Utils.SSRF do
 
   def safe_resolve(_), do: {:error, "invalid host"}
 
-  @doc "Formats an IP address tuple as a URL host component (IPv6 wrapped in brackets)."
+  # URI hosts store IPv6 addresses without brackets; URI.to_string/1 adds them when serializing.
+  @doc "Formats an IP address tuple for use as a `URI.host` value."
   @spec url_host(:inet.ip_address()) :: String.t()
-  def url_host(addr) when tuple_size(addr) == 8,
-    do: "[#{addr |> :inet.ntoa() |> List.to_string()}]"
-
   def url_host(addr), do: addr |> :inet.ntoa() |> List.to_string()
 
   defp resolve_hostname(charlist) do
