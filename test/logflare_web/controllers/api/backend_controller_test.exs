@@ -558,6 +558,68 @@ defmodule LogflareWeb.Api.BackendControllerTest do
              }
     end
 
+    test "ClickHouse flush settings round-trip, preserve omitted values, and clear with null", %{
+      conn: conn,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          type: :clickhouse,
+          user: user,
+          config: %{
+            url: "http://localhost:8123",
+            port: 8123,
+            database: "logflare_test",
+            username: "logflare",
+            password: "logflare"
+          }
+        )
+
+      conn = add_access_token(conn, user, "private")
+      path = "/api/backends/#{backend.token}"
+
+      conn
+      |> patch(path, %{
+        config: %{
+          async_insert_busy_timeout_max_ms: 5_000,
+          async_insert_max_data_size: 1_073_741_824
+        }
+      })
+      |> response(204)
+
+      response = conn |> get(path) |> json_response(200)
+      assert response["config"]["async_insert_busy_timeout_max_ms"] == 5_000
+      assert response["config"]["async_insert_max_data_size"] == 1_073_741_824
+
+      conn
+      |> patch(path, %{config: %{async_insert_busy_timeout_max_ms: 200}})
+      |> response(204)
+
+      response = conn |> get(path) |> json_response(200)
+      assert response["config"]["async_insert_busy_timeout_max_ms"] == 200
+      assert response["config"]["async_insert_max_data_size"] == 1_073_741_824
+
+      for {key, value} <- [
+            async_insert_busy_timeout_max_ms: 199,
+            async_insert_busy_timeout_max_ms: 5_001,
+            async_insert_max_data_size: 52_428_799,
+            async_insert_max_data_size: 1_073_741_825
+          ] do
+        response = conn |> patch(path, %{config: %{key => value}}) |> json_response(422)
+        assert Map.has_key?(response["errors"], "config.#{key}")
+      end
+
+      conn
+      |> patch(path, %{
+        config: %{async_insert_busy_timeout_max_ms: nil, async_insert_max_data_size: nil}
+      })
+      |> response(204)
+
+      response = conn |> get(path) |> json_response(200)
+      assert response["config"]["async_insert_busy_timeout_max_ms"] == 3_000
+      assert response["config"]["async_insert_max_data_size"] == nil
+    end
+
     test "partial config update preserves existing fields", %{conn: conn, user: user} do
       backend =
         insert(:backend,

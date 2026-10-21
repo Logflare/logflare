@@ -412,10 +412,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> Changeset.validate_format(:async_insert_cluster_url, ~r/https?\:\/\/.+/)
     |> validate_number(:async_insert_max_rows, greater_than: 0)
     |> validate_number(:async_insert_busy_timeout_max_ms,
-      greater_than: 0,
-      less_than: @insert_max_execution_time_seconds * 1_000
+      greater_than_or_equal_to: 200,
+      less_than_or_equal_to: 5_000
     )
-    |> validate_number(:async_insert_max_data_size, greater_than: 0)
+    |> validate_number(:async_insert_max_data_size,
+      greater_than_or_equal_to: 52_428_800,
+      less_than_or_equal_to: 1_073_741_824
+    )
     |> validate_number(:batch_size,
       greater_than_or_equal_to: @min_batch_size,
       less_than_or_equal_to: Pipeline.max_batch_size()

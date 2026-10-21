@@ -353,14 +353,14 @@
               value: input_value(f_config, "async_insert_busy_timeout_max_ms") || 3000
             )}
             <small class="form-text text-muted">
-              Longest ClickHouse buffers async inserts before flushing them, below 10,000 ms. Sent as <code>async_insert_busy_timeout_max_ms</code>. Changes are applied without restarting ingestion.
+              Longest ClickHouse buffers async inserts before flushing them, between 200 and 5,000 ms. Leaves headroom for flushing within the 10-second insert timeout. Sent as <code>async_insert_busy_timeout_max_ms</code>. Changes are applied without restarting ingestion.
             </small>
           </div>
           <div class="form-group">
             {label(f_config, :async_insert_max_data_size, "Async Insert Max Data Size (bytes, Optional)")}
             {text_input(f_config, :async_insert_max_data_size, class: "form-control")}
             <small class="form-text text-muted">
-              Buffered bytes that trigger an async insert flush. Sent as <code>async_insert_max_data_size</code>. When empty, the ClickHouse user's settings profile applies. Changes are applied without restarting ingestion.
+              Buffered bytes that trigger an async insert flush, between 50 MiB and 1 GiB (52,428,800–1,073,741,824 bytes). Sent as <code>async_insert_max_data_size</code>. When empty, the ClickHouse user's settings profile applies. Changes are applied without restarting ingestion.
             </small>
           </div>
           <div class="form-group">

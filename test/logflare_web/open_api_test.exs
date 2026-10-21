@@ -55,6 +55,20 @@ defmodule LogflareWeb.OpenApiTest do
     refute Map.has_key?(properties, :read_only_url)
   end
 
+  test "ClickHouse async flush settings document inclusive safety bounds" do
+    properties = ClickhouseConfigSchema.schema().properties
+
+    assert %Schema{type: :integer, nullable: true, minimum: 200, maximum: 5_000} =
+             properties.async_insert_busy_timeout_max_ms
+
+    assert %Schema{
+             type: :integer,
+             nullable: true,
+             minimum: 52_428_800,
+             maximum: 1_073_741_824
+           } = properties.async_insert_max_data_size
+  end
+
   test "ClickHouse read_only_urls renders as a string map in the OpenAPI JSON" do
     schema =
       ApiSpec.spec()

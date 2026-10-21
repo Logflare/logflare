@@ -708,15 +708,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert Ecto.Changeset.get_field(changeset, :async_insert_busy_timeout_max_ms) == 3_000
     end
 
-    test "casts a custom async_insert_busy_timeout_max_ms" do
-      changeset = cast_and_validate_config(async_insert_busy_timeout_max_ms: 5_000)
+    test "casts both inclusive async_insert_busy_timeout_max_ms boundaries" do
+      for timeout_ms <- [200, 5_000] do
+        changeset =
+          cast_and_validate_config(async_insert_busy_timeout_max_ms: to_string(timeout_ms))
 
-      assert changeset.valid?
-      assert Ecto.Changeset.get_field(changeset, :async_insert_busy_timeout_max_ms) == 5_000
+        assert changeset.valid?
+
+        assert Ecto.Changeset.get_field(changeset, :async_insert_busy_timeout_max_ms) ==
+                 timeout_ms
+      end
     end
 
-    test "rejects an async_insert_busy_timeout_max_ms outside (0, 10_000)" do
-      for timeout_ms <- [0, 10_000] do
+    test "rejects an async_insert_busy_timeout_max_ms outside 200–5,000 ms" do
+      for timeout_ms <- [-1, 0, 1, 199, 5_001, 9_999, 10_000, "invalid", "200.5"] do
         changeset = cast_and_validate_config(async_insert_busy_timeout_max_ms: timeout_ms)
 
         refute changeset.valid?
@@ -731,18 +736,45 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert Ecto.Changeset.get_field(changeset, :async_insert_max_data_size) == nil
     end
 
-    test "casts a custom async_insert_max_data_size" do
-      changeset = cast_and_validate_config(async_insert_max_data_size: 314_572_800)
+    test "casts both inclusive async_insert_max_data_size boundaries" do
+      for max_bytes <- [52_428_800, 1_073_741_824] do
+        changeset = cast_and_validate_config(async_insert_max_data_size: to_string(max_bytes))
 
-      assert changeset.valid?
-      assert Ecto.Changeset.get_field(changeset, :async_insert_max_data_size) == 314_572_800
+        assert changeset.valid?
+        assert Ecto.Changeset.get_field(changeset, :async_insert_max_data_size) == max_bytes
+      end
     end
 
-    test "rejects a non-positive async_insert_max_data_size" do
-      changeset = cast_and_validate_config(async_insert_max_data_size: 0)
+    test "rejects an async_insert_max_data_size outside 50 MiB–1 GiB" do
+      for max_bytes <- [-1, 0, 1, 52_428_799, 1_073_741_825, "invalid", "52428800.5"] do
+        changeset = cast_and_validate_config(async_insert_max_data_size: max_bytes)
 
-      refute changeset.valid?
-      assert Keyword.has_key?(changeset.errors, :async_insert_max_data_size)
+        refute changeset.valid?
+        assert Keyword.has_key?(changeset.errors, :async_insert_max_data_size)
+      end
+    end
+
+    test "clearing async flush settings restores their defaults" do
+      existing_config = %{
+        url: "http://localhost",
+        database: "logflare_test",
+        port: 8123,
+        async_insert_busy_timeout_max_ms: 5_000,
+        async_insert_max_data_size: 314_572_800
+      }
+
+      for blank <- [nil, ""] do
+        changeset =
+          Adaptor.cast_and_validate_config(
+            ClickHouseAdaptor,
+            %{async_insert_busy_timeout_max_ms: blank, async_insert_max_data_size: blank},
+            existing_config
+          )
+
+        assert changeset.valid?
+        assert Ecto.Changeset.get_field(changeset, :async_insert_busy_timeout_max_ms) == 3_000
+        assert Ecto.Changeset.get_field(changeset, :async_insert_max_data_size) == nil
+      end
     end
 
     test "use_async_inserts_only defaults to false" do
@@ -1857,9 +1889,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   describe "insert settings" do
     setup do
       insert(:plan, name: "Free")
-      {_source, backend} = setup_clickhouse_test()
+      {source, backend} = setup_clickhouse_test()
 
-      [backend: backend]
+      [source: source, backend: backend]
     end
 
     test "sync inserts set max_execution_time and no async settings", %{backend: backend} do
@@ -1925,54 +1957,51 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                )
     end
 
-    test "async inserts use the configured flush timeout and data size", %{backend: backend} do
-      backend = %{
-        backend
-        | config:
-            Map.merge(backend.config, %{
-              async_insert_busy_timeout_max_ms: 5_000,
-              async_insert_max_data_size: 314_572_800
-            })
-      }
+    for mode <- [:compressed, :uncompressed], async? <- [true, false] do
+      test "#{mode} inserts apply flush settings only when async=#{async?}", %{
+        backend: backend,
+        source: source
+      } do
+        backend = %{
+          backend
+          | config:
+              Map.merge(backend.config, %{
+                async_insert_busy_timeout_max_ms: 5_000,
+                async_insert_max_data_size: 314_572_800
+              })
+        }
 
-      Mimic.expect(Finch, :request, fn request, _pool, _opts ->
-        params = URI.decode_query(request.query)
+        Mimic.expect(Finch, :request, fn request, _pool, _opts ->
+          params = URI.decode_query(request.query)
 
-        assert params["async_insert_busy_timeout_max_ms"] == "5000"
-        assert params["async_insert_max_data_size"] == "314572800"
+          assert params["max_execution_time"] == "10"
 
-        {:ok, %Finch.Response{status: 200, body: ""}}
-      end)
+          if unquote(async?) do
+            assert params["async_insert_busy_timeout_max_ms"] == "5000"
+            assert params["async_insert_max_data_size"] == "314572800"
+            assert params["wait_for_async_insert_timeout"] == "10"
+          else
+            refute Map.has_key?(params, "async_insert_busy_timeout_max_ms")
+            refute Map.has_key?(params, "async_insert_max_data_size")
+          end
 
-      assert :ok =
-               ClickHouseAdaptor.insert_log_events_compressed(
-                 backend,
-                 :log,
-                 :zlib.gzip(""),
-                 async: true
-               )
-    end
+          {:ok, %Finch.Response{status: 200, body: ""}}
+        end)
 
-    test "sync inserts ignore the configured async settings", %{backend: backend} do
-      backend = %{
-        backend
-        | config:
-            Map.merge(backend.config, %{
-              async_insert_busy_timeout_max_ms: 5_000,
-              async_insert_max_data_size: 314_572_800
-            })
-      }
+        result =
+          case unquote(mode) do
+            :compressed ->
+              ClickHouseAdaptor.insert_log_events_compressed(backend, :log, :zlib.gzip(""),
+                async: unquote(async?)
+              )
 
-      Mimic.expect(Finch, :request, fn request, _pool, _opts ->
-        params = URI.decode_query(request.query)
+            :uncompressed ->
+              event = build_mapped_log_event(source: source, message: "configured flush settings")
+              ClickHouseAdaptor.insert_log_events(backend, [event], :log, async: unquote(async?))
+          end
 
-        refute Map.has_key?(params, "async_insert_busy_timeout_max_ms")
-        refute Map.has_key?(params, "async_insert_max_data_size")
-
-        {:ok, %Finch.Response{status: 200, body: ""}}
-      end)
-
-      assert :ok = ClickHouseAdaptor.insert_log_events_compressed(backend, :log, :zlib.gzip(""))
+        assert :ok = result
+      end
     end
   end
 

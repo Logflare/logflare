@@ -418,16 +418,18 @@ defmodule LogflareWeb.OpenApiSchemas do
       async_insert_busy_timeout_max_ms: %Schema{
         type: :integer,
         nullable: true,
-        minimum: 1,
-        maximum: 9_999,
-        description: "Longest ClickHouse buffers async inserts before flushing, in milliseconds"
+        minimum: 200,
+        maximum: 5_000,
+        description:
+          "Longest ClickHouse buffers async inserts before flushing, in milliseconds; 200–5,000 ms leaves headroom within the 10-second insert timeout"
       },
       async_insert_max_data_size: %Schema{
         type: :integer,
         nullable: true,
-        minimum: 1,
+        minimum: 52_428_800,
+        maximum: 1_073_741_824,
         description:
-          "Buffered bytes that trigger an async insert flush; when unset, the ClickHouse settings profile applies"
+          "Buffered bytes that trigger an async insert flush; 50 MiB–1 GiB; when unset, the ClickHouse settings profile applies"
       },
       batch_size: %Schema{
         type: :integer,
