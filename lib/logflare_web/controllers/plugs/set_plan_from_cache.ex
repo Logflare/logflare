@@ -4,13 +4,17 @@ defmodule LogflareWeb.Plugs.SetPlanFromCache do
   """
   import Plug.Conn
 
-  alias Logflare.User
   alias Logflare.Billing
+  alias Logflare.User
+  alias LogflareWeb.Api.FallbackController
 
   def init(_), do: nil
 
   def call(%{assigns: %{user: %User{} = user}} = conn, _opts) do
-    assign(conn, :plan, Billing.Cache.get_plan_by_user(user))
+    case Billing.Cache.get_plan_by_user(user) do
+      {:error, :database_unavailable} = err -> FallbackController.call(conn, err)
+      plan -> assign(conn, :plan, plan)
+    end
   end
 
   def call(conn, _opts), do: conn

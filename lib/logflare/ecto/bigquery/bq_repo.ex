@@ -29,7 +29,11 @@ defmodule Logflare.BqRepo do
         ) :: query_result()
   def query_with_sql_and_params(%User{} = user, project_id, sql, params, opts \\ [])
       when not is_nil(project_id) and is_binary(sql) and is_list(params) and is_list(opts) do
-    %Plan{name: plan} = Billing.Cache.get_plan_by_user(user)
+    plan =
+      case Billing.Cache.get_plan_by_user(user) do
+        %Plan{name: name} -> name
+        _other -> "unknown"
+      end
 
     override = Map.new(opts)
     override_labels = Map.get(override, :labels, %{}) |> Map.to_list()

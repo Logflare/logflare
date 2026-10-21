@@ -2,6 +2,8 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
   @moduledoc false
   use GenServer
 
+  require Logger
+
   alias Logflare.Repo
   alias Logflare.SystemMetric
   alias Logflare.Cluster
@@ -14,24 +16,36 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
   end
 
-  def init(state) do
-    case Repo.get_by(SystemMetric, node: node_name()) do
-      nil ->
-        create(@total_logs, 0)
+  @doc """
+  Creates the counter table, then seeds it from the database.
 
-      total_logs ->
-        create(@total_logs, total_logs.all_logs_logged)
-    end
-
+  This process owns `#{inspect(@table)}`, so the table is created before anything
+  that can raise: a crash here takes the table with it, and every ingest then
+  fails in `increment/2` until the table is recreated. Seeding is best effort for
+  the same reason - an unreachable database must not stop the counter working.
+  """
+  def init(_init_args) do
+    create(@total_logs, 0)
     persist()
 
-    {:ok, state}
+    {:ok, %{seeded?: false}, {:continue, :seed_log_count}}
   end
 
-  def handle_info(:persist, state) do
-    {:ok, log_count} = log_count(@total_logs)
+  def handle_continue(:seed_log_count, state) do
+    {:noreply, seed(state)}
+  end
 
-    insert_or_update_node_metric(%{all_logs_logged: log_count, node: node_name()})
+  @doc """
+  Persists the counter, seeding it first if an earlier attempt could not reach the
+  database.
+
+  The counter is only written once seeded: until then it holds the events counted
+  since boot, and writing that would overwrite the larger persisted total.
+  """
+  def handle_info(:persist, state) do
+    state = seed(state)
+    if state.seeded?, do: persist_log_count()
+
     persist(@persist_every * Cluster.Utils.actual_cluster_size())
     {:noreply, state}
   end
@@ -97,7 +111,45 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
     end
   end
 
+  defp seed(%{seeded?: true} = state), do: state
+
+  defp seed(state) do
+    case try_repo_call(fn -> Repo.get_by(SystemMetric, node: node_name()) end) do
+      {:ok, %SystemMetric{all_logs_logged: count}} ->
+        :ets.update_counter(@table, @total_logs, {3, count}, {@total_logs, 0, 0})
+        %{state | seeded?: true}
+
+      {:ok, nil} ->
+        %{state | seeded?: true}
+
+      {:error, error} ->
+        Logger.warning(
+          "Could not seed #{@total_logs} from the database, retrying on the next tick: " <>
+            Exception.message(error)
+        )
+
+        state
+    end
+  end
+
+  defp persist_log_count do
+    {:ok, log_count} = log_count(@total_logs)
+
+    with {:error, error} <-
+           try_repo_call(fn ->
+             insert_or_update_node_metric(%{all_logs_logged: log_count, node: node_name()})
+           end) do
+      Logger.warning("Could not persist #{@total_logs}: " <> Exception.message(error))
+    end
+  end
+
   defp persist(every \\ @persist_every) do
     Process.send_after(self(), :persist, every)
+  end
+
+  defp try_repo_call(fun) do
+    {:ok, fun.()}
+  rescue
+    error in [DBConnection.ConnectionError] -> {:error, error}
   end
 end

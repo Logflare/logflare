@@ -1,41 +1,28 @@
 defmodule Logflare.Sources.Cache do
   @moduledoc false
 
+  use Logflare.ContextCache
+
+  alias Logflare.Cache.CachexOps
   alias Logflare.Sources
   alias Logflare.Sources.Source
-  alias Logflare.Utils
-
-  import Cachex.Spec
 
   def child_spec(_) do
-    stats = Application.get_env(:logflare, :cache_stats, false)
-
-    %{
-      id: __MODULE__,
-      start:
-        {Cachex, :start_link,
-         [
-           __MODULE__,
-           [
-             warmers: [
-               warmer(required: false, module: Sources.CacheWarmer, name: Sources.CacheWarmer)
-             ],
-             hooks:
-               [
-                 if(stats, do: Utils.cache_stats()),
-                 Utils.cache_limit(100_000)
-               ]
-               |> Enum.filter(& &1),
-             expiration: Utils.cache_expiration_min(60, 5)
-           ]
-         ]}
-    }
+    CachexOps.child_spec(__MODULE__,
+      limit: 100_000,
+      ttl: to_timeout(hour: 1),
+      purge_interval: to_timeout(minute: 5),
+      warmer: Sources.CacheWarmer
+    )
   end
 
   def get_by_for_ingest(kv) do
     case get_by(kv) do
       nil ->
         nil
+
+      {:error, :database_unavailable} = err ->
+        err
 
       %Source{} = source ->
         source
@@ -72,7 +59,7 @@ defmodule Logflare.Sources.Cache do
 
   The entry must exist. A cached `nil` counts as an entry.
   """
-  @spec update_by_id(Source.t()) :: {:ok, boolean()} | {:error, term()}
+  @spec update_by_id(Source.t()) :: :ok
   def update_by_id(%Source{id: id} = source),
     do: Logflare.ContextCache.update(Sources, :get_by, [[id: id]], source)
 

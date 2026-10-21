@@ -108,6 +108,50 @@ defmodule Logflare.TelemetryTest do
              end)
     end
 
+    test "tags Finch idle expiry by endpoint, except for S3 drain pools" do
+      event = [:finch, :conn_max_idle_time_exceeded]
+      name = "finch.conn_max_idle_time_exceeded.idle_time"
+      metric = Enum.find(Telemetry.metrics(), &(&1.event_name == event))
+      exporter = :logflare_finch_idle_expiry_metrics_test
+
+      assert %Elixir.Telemetry.Metrics.Counter{tags: [:host, :port]} = metric
+
+      start_supervised!(
+        {OtelMetricExporter,
+         name: exporter,
+         metrics: [metric],
+         export_period: :timer.minutes(5),
+         otlp_protocol: :http_protobuf,
+         otlp_endpoint: "http://127.0.0.1:4318",
+         otlp_headers: %{},
+         otlp_compression: nil}
+      )
+
+      :telemetry.execute(event, %{idle_time: 123_456}, %{
+        scheme: :https,
+        host: "clickhouse.internal",
+        port: 8443
+      })
+
+      # Stands in for a drain pool: Finch emits the event from a pool process registered in
+      # Logflare.FinchS3's Registry.
+      drain_shp = {:https, "private-bucket.s3.amazonaws.com", 443}
+
+      Task.async(fn ->
+        {:ok, _} = Registry.register(Logflare.FinchS3, drain_shp, Finch.HTTP1.Pool)
+
+        :telemetry.execute(event, %{idle_time: 123_456}, %{
+          scheme: :https,
+          host: elem(drain_shp, 1),
+          port: 443
+        })
+      end)
+      |> Task.await()
+
+      assert %{%{host: "clickhouse.internal", port: 8443} => 1} ==
+               MetricStore.get_metrics(exporter)[{:counter, name}]
+    end
+
     test "includes the spool telemetry metrics added for throttling/storage/queue observability" do
       names = Telemetry.metrics() |> Enum.map(& &1.name)
 
@@ -907,8 +951,6 @@ defmodule Logflare.TelemetryTest do
                  :miss_rate,
                  :misses,
                  :operations,
-                 :purge,
-                 :stats,
                  :total_heap_size
                ]
 

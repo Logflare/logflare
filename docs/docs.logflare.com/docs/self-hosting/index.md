@@ -76,7 +76,9 @@ When upgrading an existing installation, Oban structures are created in the conf
 
 Logflare has a health check endpoint `/health`, which is used to ensure that the system is functioning correctly with sufficient resources for normal functions.
 
-Use `/ready` for readiness probes. It performs the health checks and returns `503` as soon as graceful shutdown begins so load balancers can stop routing new traffic to the instance.
+Until an instance has passed every check once, `/health` includes the database check. After that it checks only the instance itself (ingest tables, caches, memory and spool health), so a slow or unavailable database does not make a running instance fail liveness probes or get restarted. The response's `checks` field is `full` or `liveness` accordingly.
+
+Use `/ready` for readiness probes. It always performs every check, database included, and returns `503` as soon as graceful shutdown begins so load balancers can stop routing new traffic to the instance.
 
 Environment variables that influence the logic are prefixed with `LOGFLARE_HEALTH_*`. Refer to above table for customizing the values.
 

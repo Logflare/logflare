@@ -91,23 +91,6 @@ logflare:
     postgres:
       schema: "public" # POSTGRES_BACKEND_SCHEMA; url (POSTGRES_BACKEND_URL) comes from a Secret in logflare.secretRefs
 
-# Erlang VM flags. When set, rendered into a ConfigMap, mounted at
-# /etc/logflare/vm.args, and pointed at via RELEASE_VM_ARGS (overriding the
-# image's baked-in vm.args). Set to "" to use the image default instead.
-#
-# `+Q` caps the BEAM's preallocated port table and is effectively REQUIRED on
-# Kubernetes: containerd commonly runs pods with nofile=infinity, and without
-# +Q the VM sizes the table from that limit — ~2GB RSS at boot. Keep +Q set.
-vmArgs: |
-  +Q 1048576
-  +sbwt none
-  +sbwtdcpu none
-  +sbwtdio none
-  +swt very_low
-  +P 8000000
-  -kernel prevent_overlapping_partitions false
-  -kernel net_ticktime 45
-
 # External Secrets Operator (ESO) integration. When enabled, the chart renders
 # ExternalSecret resources so ESO syncs secrets from your backend (AWS SSM,
 # Vault, GCP Secret Manager, etc., resolved via the referenced SecretStore) into
@@ -308,9 +291,10 @@ livenessProbe:
   httpGet:
     path: /health
     port: http
-# `/ready` runs the same checks as `/health`, and additionally fails as soon as SIGTERM starts
-# the shutdown grace period, so a draining pod leaves the Service endpoints instead of taking
-# new traffic. Logflare drains for 15 seconds, so detection has to land well inside that.
+# `/health` skips database checks after the instance passes every check once; `/ready`
+# always includes them and fails as soon as SIGTERM starts the shutdown grace period,
+# so a draining pod leaves the Service endpoints instead of taking new traffic.
+# Logflare drains for 15 seconds, so detection has to land well inside that.
 readinessProbe:
   httpGet:
     path: /ready
