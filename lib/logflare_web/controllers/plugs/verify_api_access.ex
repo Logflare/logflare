@@ -69,7 +69,6 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
       {:error, :no_token} when resource_type != nil and not opts.require_token ->
         conn
 
-      # credentials may well be valid - we cannot tell, so ask the client to retry
       {:error, :database_unavailable} = err ->
         FallbackController.call(conn, err)
 

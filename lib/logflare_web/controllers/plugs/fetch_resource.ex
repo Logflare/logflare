@@ -88,8 +88,6 @@ defmodule LogflareWeb.Plugs.FetchResource do
 
   def call(conn, _), do: conn
 
-  # the source is not cached and the primary database is unreachable, so we cannot
-  # tell whether it exists - ask the client to retry instead of rejecting outright
   defp assign_source({:error, :database_unavailable} = err, conn),
     do: FallbackController.call(conn, err)
 
