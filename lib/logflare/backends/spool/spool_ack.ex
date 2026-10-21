@@ -18,11 +18,6 @@ defmodule Logflare.Backends.Spool.SpoolAck do
   `@stale_after_ms`. Set `SPOOL_ACK_STALE=true` (or
   `config :logflare, #{inspect(__MODULE__)}, ack_stale: true`) to also ack
   those rows instead of just discarding them — off by default.
-
-  On shutdown, `Logflare.ShutdownDrain` waits for
-  `pending_count/0` to reach zero, nacks whatever is left with
-  `nack_pending/0` so it redelivers straight away, then calls `flush/0` so
-  queued acks are sent before the node stops.
   """
 
   use GenServer
@@ -107,13 +102,7 @@ defmodule Logflare.Backends.Spool.SpoolAck do
   defp nack_taken(handle) do
     case :ets.take(@table, handle) do
       [{^handle, _count, queue_mod, queue_url, _registered_at}] ->
-        result = queue_mod.nack(queue_url, handle)
-
-        :telemetry.execute([:logflare, :backends, :spool, :queue, :nack], %{}, %{
-          reason: :drain_timeout,
-          result: if(result == :ok, do: :ok, else: :error)
-        })
-
+        queue_mod.nack(queue_url, handle)
         true
 
       [] ->
@@ -122,8 +111,8 @@ defmodule Logflare.Backends.Spool.SpoolAck do
   end
 
   @doc "Returns once every queue ack already handed to this process has been sent."
-  @spec flush(timeout()) :: :ok
-  def flush(timeout \\ :timer.seconds(30)), do: GenServer.call(__MODULE__, :flush, timeout)
+  @spec flush() :: :ok
+  def flush, do: GenServer.call(__MODULE__, :flush, :timer.seconds(30))
 
   defp emit_missing_handle_telemetry(op) do
     :telemetry.execute([:logflare, :backends, :spool, :ack, :missing_handle], %{}, %{op: op})

@@ -1091,20 +1091,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       assert empty_state.prefetch == nil
     end
 
-    test "drained? is true only once the current file is emitted and no prefetch is outstanding" do
-      from = {self(), make_ref()}
-
-      for {overrides, expected} <- [
-            {%{current: %{handle: "h1", segments: ["seg"]}}, false},
-            {%{prefetch: :running}, false},
-            {%{current: %{handle: "h1", segments: []}}, true},
-            {%{current: nil, prefetch: nil}, true}
-          ] do
-        assert {:reply, ^expected, [], _state} =
-                 QueueProducer.handle_call(:drained?, from, stopped_state(overrides))
-      end
-    end
-
     test "a running producer stops receiving from the queue once told to stop fetching" do
       test_pid = self()
 
@@ -1120,7 +1106,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       task = Task.async(fn -> GenStage.stream([{pid, max_demand: 10}]) |> Enum.take(1) end)
 
       refute_receive :receive_called, 500
-      assert QueueProducer.drained?(pid)
 
       Task.shutdown(task, :brutal_kill)
     end

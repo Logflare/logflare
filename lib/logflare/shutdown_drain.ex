@@ -10,9 +10,10 @@ defmodule Logflare.ShutdownDrain do
   1. Every spool `ConsumerPipeline` producer stops receiving queue messages
      (`QueueProducer.stop_fetching/1`); files already loaded keep flowing.
   2. Waits at least `:min_wait_ms` (the SIGTERM grace period, so load
-     balancers stop sending first), then until every spool producer is
-     drained, `SpoolAck` has no pending handles and `IngestEventQueue` holds
-     no events, i.e. everything reached its backends or the spool.
+     balancers stop sending first), then until `SpoolAck` has no pending
+     handles and `IngestEventQueue` holds no events, i.e. everything reached
+     its backends or the spool. A loaded spool file is registered with
+     `SpoolAck` before it emits, so pending handles cover the producers too.
   3. At `:timeout_ms`, nacks spool files still pending so another consumer
      picks them up straight away.
   4. Flushes `SpoolAck` so queued acks reach the queue before shutdown.
@@ -46,21 +47,12 @@ defmodule Logflare.ShutdownDrain do
         "waiting at least #{min_wait_ms}ms and up to #{timeout_ms}ms for in-flight events"
     )
 
-    result =
-      await_drained(
-        producers,
-        started_at + min_wait_ms,
-        started_at + timeout_ms,
-        poll_interval_ms
-      )
+    result = await_drained(started_at + min_wait_ms, started_at + timeout_ms, poll_interval_ms)
 
     spool_pending = SpoolAck.pending_count()
     queued_events = IngestEventQueue.total_size()
 
-    if result == :timeout and spool_pending > 0 do
-      Logger.warning("shutdown_drain: timed out, nacking #{spool_pending} in-flight spool files")
-      SpoolAck.nack_pending()
-    end
+    if result == :timeout, do: SpoolAck.nack_pending()
 
     SpoolAck.flush()
 
@@ -69,12 +61,6 @@ defmodule Logflare.ShutdownDrain do
     Logger.warning(
       "shutdown_drain: finished result=#{result} spool_pending=#{spool_pending} " <>
         "queued_events=#{queued_events} duration_ms=#{duration}"
-    )
-
-    :telemetry.execute(
-      [:logflare, :shutdown, :drain],
-      %{duration: duration, spool_pending: spool_pending, queued_events: queued_events},
-      %{result: result}
     )
 
     result
@@ -86,11 +72,11 @@ defmodule Logflare.ShutdownDrain do
       else: []
   end
 
-  defp await_drained(producers, earliest, deadline, poll_interval_ms) do
+  defp await_drained(earliest, deadline, poll_interval_ms) do
     now = System.monotonic_time(:millisecond)
 
     cond do
-      now >= earliest and drained?(producers) ->
+      now >= earliest and drained?() ->
         :drained
 
       now >= deadline ->
@@ -98,26 +84,17 @@ defmodule Logflare.ShutdownDrain do
 
       true ->
         Process.sleep(poll_interval_ms)
-        await_drained(producers, earliest, deadline, poll_interval_ms)
+        await_drained(earliest, deadline, poll_interval_ms)
     end
   end
 
-  defp drained?(producers) do
-    Enum.all?(producers, &producer_drained?/1) and SpoolAck.pending_count() == 0 and
-      IngestEventQueue.total_size() == 0
-  end
+  defp drained?, do: SpoolAck.pending_count() == 0 and IngestEventQueue.total_size() == 0
 
   # A producer that has already exited settles its own prefetch (see
-  # QueueProducer's deliver_or_settle/5), so it has nothing left to drain.
+  # QueueProducer's deliver_or_settle/5), so there is nothing to stop.
   defp stop_fetching(producer) do
     QueueProducer.stop_fetching(producer)
   catch
     :exit, _reason -> :ok
-  end
-
-  defp producer_drained?(producer) do
-    QueueProducer.drained?(producer)
-  catch
-    :exit, _reason -> true
   end
 end

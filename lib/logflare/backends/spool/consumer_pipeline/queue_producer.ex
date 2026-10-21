@@ -43,10 +43,9 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   ## Stopping fetches
 
-  `stop_fetching/1` is the gentler, earlier step `Logflare.ShutdownDrain` takes on
-  SIGTERM: no new queue message is received, a landed prefetch is nacked, and
-  the file already loaded keeps emitting so it can finish and be acked before
-  the node stops. `drained?/1` reports when nothing is left to emit.
+  `stop_fetching/1` (called by `Logflare.ShutdownDrain` on SIGTERM) stops new
+  queue receives and nacks a landed prefetch; the file already loaded keeps
+  emitting so it can finish and be acked before the node stops.
 
   ## Queue acking
 
@@ -95,10 +94,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   @doc "Stops receiving queue messages, letting the already-loaded file finish emitting."
   @spec stop_fetching(GenServer.server()) :: :ok
   def stop_fetching(producer), do: GenStage.call(producer, :stop_fetching)
-
-  @doc "True once fetching has stopped and nothing loaded or prefetched is left to emit."
-  @spec drained?(GenServer.server()) :: boolean()
-  def drained?(producer), do: GenStage.call(producer, :drained?)
 
   @impl GenStage
   def init(opts) do
@@ -166,11 +161,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     prefetch = if match?({:ready, _}, state.prefetch), do: nil, else: state.prefetch
 
     {:reply, :ok, [], %{state | fetching: false, prefetch: prefetch}}
-  end
-
-  def handle_call(:drained?, _from, state) do
-    drained? = not state.fetching and state.prefetch == nil and not buffered?(state)
-    {:reply, drained?, [], state}
   end
 
   @impl GenStage

@@ -5,7 +5,6 @@ defmodule Logflare.Backends.Spool.SpoolAckTest do
 
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.SpoolAck
-  alias Logflare.TestUtils
 
   setup :set_mimic_global
 
@@ -203,7 +202,6 @@ defmodule Logflare.Backends.Spool.SpoolAckTest do
     test "nacks every pending handle through its own queue and forgets it" do
       test_pid = self()
       [h1, h2] = [unique_handle(), unique_handle()]
-      TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :nack])
 
       stub(QueueMod, :nack, fn url, h ->
         send(test_pid, {:nacked, url, h})
@@ -220,9 +218,6 @@ defmodule Logflare.Backends.Spool.SpoolAckTest do
 
       assert_receive {:nacked, "queue-1", ^h1}
       assert_receive {:nacked, "queue-2", ^h2}
-
-      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :nack], _,
-                      %{reason: :drain_timeout, result: :ok}}
 
       assert SpoolAck.pending_count() == 0
 
