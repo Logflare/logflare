@@ -616,7 +616,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       |> response(204)
 
       response = conn |> get(path) |> json_response(200)
-      assert response["config"]["async_insert_busy_timeout_max_ms"] == 3_000
+      assert response["config"]["async_insert_busy_timeout_max_ms"] == nil
       assert response["config"]["async_insert_max_data_size"] == nil
     end
 

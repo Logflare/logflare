@@ -701,11 +701,46 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert Keyword.has_key?(changeset.errors, :async_insert_max_rows)
     end
 
-    test "async_insert_busy_timeout_max_ms defaults to 3000 when not provided" do
+    test "async flush metadata defines the supported defaults and bounds" do
+      assert ClickHouseAdaptor.default_async_insert_busy_timeout_max_ms() == 3_000
+
+      assert ClickHouseAdaptor.async_insert_flush_bounds() == %{
+               async_insert_busy_timeout_max_ms: %{min: 200, max: 5_000},
+               async_insert_max_data_size: %{min: 52_428_800, max: 1_073_741_824}
+             }
+    end
+
+    test "async_insert_busy_timeout_max_ms stays unset when not provided" do
       changeset = cast_and_validate_config()
 
       assert changeset.valid?
-      assert Ecto.Changeset.get_field(changeset, :async_insert_busy_timeout_max_ms) == 3_000
+      assert Ecto.Changeset.get_field(changeset, :async_insert_busy_timeout_max_ms) == nil
+    end
+
+    test "partial updates preserve explicit async flush overrides, including the default" do
+      for timeout_ms <- [3_000, 5_000] do
+        existing_config = %{
+          url: "http://localhost",
+          database: "logflare_test",
+          port: 8123,
+          async_insert_busy_timeout_max_ms: timeout_ms,
+          async_insert_max_data_size: 314_572_800
+        }
+
+        changeset =
+          Adaptor.cast_and_validate_config(
+            ClickHouseAdaptor,
+            %{use_async_inserts_only: true},
+            existing_config
+          )
+
+        assert changeset.valid?
+
+        assert Ecto.Changeset.get_field(changeset, :async_insert_busy_timeout_max_ms) ==
+                 timeout_ms
+
+        assert Ecto.Changeset.get_field(changeset, :async_insert_max_data_size) == 314_572_800
+      end
     end
 
     test "casts both inclusive async_insert_busy_timeout_max_ms boundaries" do
@@ -754,7 +789,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       end
     end
 
-    test "clearing async flush settings restores their defaults" do
+    test "clearing async flush settings removes stored overrides" do
       existing_config = %{
         url: "http://localhost",
         database: "logflare_test",
@@ -772,7 +807,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
           )
 
         assert changeset.valid?
-        assert Ecto.Changeset.get_field(changeset, :async_insert_busy_timeout_max_ms) == 3_000
+        assert Ecto.Changeset.get_field(changeset, :async_insert_busy_timeout_max_ms) == nil
         assert Ecto.Changeset.get_field(changeset, :async_insert_max_data_size) == nil
       end
     end
@@ -1928,33 +1963,61 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                )
     end
 
-    test "async inserts default the flush timeout and leave the data size to the server profile",
-         %{backend: backend} do
-      backend = %{
-        backend
-        | config:
-            Map.drop(backend.config, [
-              :async_insert_busy_timeout_max_ms,
-              :async_insert_max_data_size
-            ])
-      }
+    for mode <- [:compressed, :uncompressed], config_state <- [:missing, :cleared] do
+      test "#{mode} async inserts use default flush settings when #{config_state}",
+           %{backend: backend, source: source} do
+        config =
+          case unquote(config_state) do
+            :missing ->
+              Map.drop(backend.config, [
+                :async_insert_busy_timeout_max_ms,
+                :async_insert_max_data_size
+              ])
 
-      Mimic.expect(Finch, :request, fn request, _pool, _opts ->
-        params = URI.decode_query(request.query)
+            :cleared ->
+              backend.config
+              |> Map.merge(%{
+                async_insert_busy_timeout_max_ms: 5_000,
+                async_insert_max_data_size: 314_572_800
+              })
+              |> then(fn existing_config ->
+                ClickHouseAdaptor
+                |> Adaptor.cast_and_validate_config(
+                  %{async_insert_busy_timeout_max_ms: nil, async_insert_max_data_size: nil},
+                  existing_config
+                )
+                |> Ecto.Changeset.apply_changes()
+              end)
+          end
 
-        assert params["async_insert_busy_timeout_max_ms"] == "3000"
-        refute Map.has_key?(params, "async_insert_max_data_size")
+        backend = %{backend | config: config}
 
-        {:ok, %Finch.Response{status: 200, body: ""}}
-      end)
+        Mimic.expect(Finch, :request, fn request, _pool, _opts ->
+          params = URI.decode_query(request.query)
 
-      assert :ok =
-               ClickHouseAdaptor.insert_log_events_compressed(
-                 backend,
-                 :log,
-                 :zlib.gzip(""),
-                 async: true
-               )
+          assert params["async_insert_busy_timeout_max_ms"] == "3000"
+          refute Map.has_key?(params, "async_insert_max_data_size")
+
+          {:ok, %Finch.Response{status: 200, body: ""}}
+        end)
+
+        result =
+          case unquote(mode) do
+            :compressed ->
+              ClickHouseAdaptor.insert_log_events_compressed(
+                backend,
+                :log,
+                :zlib.gzip(""),
+                async: true
+              )
+
+            :uncompressed ->
+              event = build_mapped_log_event(source: source, message: "default flush settings")
+              ClickHouseAdaptor.insert_log_events(backend, [event], :log, async: true)
+          end
+
+        assert :ok = result
+      end
     end
 
     for mode <- [:compressed, :uncompressed], async? <- [true, false] do

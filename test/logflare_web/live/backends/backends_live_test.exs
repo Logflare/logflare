@@ -2,6 +2,7 @@ defmodule LogflareWeb.BackendsLiveTest do
   use LogflareWeb.ConnCase
 
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline, as: ClickHousePipeline
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Rules
@@ -1261,12 +1262,24 @@ defmodule LogflareWeb.BackendsLiveTest do
       pipeline_sup = Backends.via_backend(backend, ClickHousePipeline)
       pipelines = DynamicPipeline.list_pipelines(pipeline_sup)
 
-      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+      {:ok, view, html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      for {_field, %{min: min, max: max}} <- ClickHouseAdaptor.async_insert_flush_bounds() do
+        assert html =~ "between #{min} and #{max}"
+      end
 
       assert has_element?(
                view,
-               "input[name='backend[config][async_insert_busy_timeout_max_ms]'][value='3000']"
+               "input[name='backend[config][async_insert_busy_timeout_max_ms]'][placeholder='3000']:not([value])"
              )
+
+      view
+      |> form("form", %{backend: %{config: %{use_async_inserts_only: true}}})
+      |> render_submit()
+
+      assert Backends.get_backend(backend.id).config[:async_insert_busy_timeout_max_ms] == nil
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
 
       html =
         view
@@ -1307,10 +1320,17 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       assert html =~ "Successfully updated backend"
       updated = Backends.get_backend(backend.id)
-      assert updated.config.async_insert_busy_timeout_max_ms == 3_000
+      assert updated.config[:async_insert_busy_timeout_max_ms] == nil
       assert updated.config[:async_insert_max_data_size] == nil
       assert TestUtils.consolidated_sup_pid(backend) == adaptor_sup
       assert DynamicPipeline.list_pipelines(pipeline_sup) == pipelines
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      assert has_element?(
+               view,
+               "input[name='backend[config][async_insert_busy_timeout_max_ms]'][placeholder='3000']:not([value])"
+             )
     end
 
     test "does not require a default read cluster when none is configured", %{

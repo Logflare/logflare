@@ -1,6 +1,7 @@
 defmodule LogflareWeb.OpenApiTest do
   use ExUnit.Case, async: true
 
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias LogflareWeb.Api.AccessTokenController
   alias LogflareWeb.Api.QueryController
   alias LogflareWeb.Api.TeamController
@@ -57,6 +58,14 @@ defmodule LogflareWeb.OpenApiTest do
 
   test "ClickHouse async flush settings document inclusive safety bounds" do
     properties = ClickhouseConfigSchema.schema().properties
+
+    for {field, %{min: min, max: max}} <- ClickHouseAdaptor.async_insert_flush_bounds() do
+      assert %Schema{type: :integer, nullable: true, minimum: ^min, maximum: ^max} =
+               Map.fetch!(properties, field)
+    end
+
+    assert properties.async_insert_busy_timeout_max_ms.description =~
+             "#{ClickHouseAdaptor.default_async_insert_busy_timeout_max_ms()} ms"
 
     assert %Schema{type: :integer, nullable: true, minimum: 200, maximum: 5_000} =
              properties.async_insert_busy_timeout_max_ms
