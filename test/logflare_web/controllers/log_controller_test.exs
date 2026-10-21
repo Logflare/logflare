@@ -199,6 +199,162 @@ defmodule LogflareWeb.LogControllerTest do
       end)
     end
 
+    test "returns 400 when ingestion returns errors", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch, _source, _backend, _allow_spooling ->
+        {:error, ["invalid event"]}
+      end)
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> post(Routes.log_path(conn, :create, source: source.token), @valid)
+
+      assert %{"message" => ["invalid event"]} = json_response(conn, 400)
+    end
+
+    test "returns 500 when the spool producer is unavailable", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch, _source, _backend, _allow_spooling ->
+        {:error, :spool_unavailable}
+      end)
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> post(Routes.log_path(conn, :create, source: source.token), @valid)
+
+      assert json_response(conn, 500)
+    end
+
+    for {path, request_module, _response_module} <- [
+          {:otel_metrics, ExportMetricsServiceRequest, ExportMetricsServiceResponse},
+          {:otel_traces, ExportTraceServiceRequest, ExportTraceServiceResponse},
+          {:otel_logs, ExportLogsServiceRequest, ExportLogsServiceResponse}
+        ] do
+      test "#{path} returns 500 when the spool producer is unavailable", %{
+        conn: conn,
+        source: source,
+        user: user
+      } do
+        Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch,
+                                                       _source,
+                                                       _backend,
+                                                       _allow_spooling ->
+          {:error, :spool_unavailable}
+        end)
+
+        body =
+          case unquote(path) do
+            :otel_metrics -> TestUtilsGrpc.random_otel_metrics_request()
+            :otel_traces -> TestUtilsGrpc.random_export_service_request()
+            :otel_logs -> TestUtilsGrpc.random_otel_logs_request()
+          end
+          |> unquote(request_module).encode()
+
+        conn =
+          conn
+          |> put_req_header("x-api-key", user.api_key)
+          |> put_req_header("x-source", Atom.to_string(source.token))
+          |> put_req_header("content-type", "application/x-protobuf")
+          |> post(Routes.log_path(conn, unquote(path)), body)
+
+        assert conn.status == 500
+      end
+    end
+
+    test "returns 503 with retry-after when the SourceSup does not start in time", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      Mimic.stub(Logflare.Backends, :start_for_ingest, fn _source ->
+        {:error, :source_unavailable}
+      end)
+
+      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> post(Routes.log_path(conn, :create, source: source.token), @valid)
+
+      assert %{"message" => "Source is unavailable. Send the batch again."} =
+               json_response(conn, 503)
+
+      assert get_resp_header(conn, "retry-after") == ["5"]
+    end
+
+    test "otel_logs returns 503 with retry-after when the SourceSup does not start in time", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      Mimic.stub(Logflare.Backends, :start_for_ingest, fn _source ->
+        {:error, :source_unavailable}
+      end)
+
+      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+      body = TestUtilsGrpc.random_otel_logs_request() |> ExportLogsServiceRequest.encode()
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> put_req_header("x-source", Atom.to_string(source.token))
+        |> put_req_header("content-type", "application/x-protobuf")
+        |> post(Routes.log_path(conn, :otel_logs), body)
+
+      assert conn.status == 503
+      assert get_resp_header(conn, "retry-after") == ["5"]
+    end
+
+    test "returns 404 when the source was deleted after the plug loaded it", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      Mimic.stub(Logflare.Backends, :start_for_ingest, fn _source ->
+        {:error, :source_not_found}
+      end)
+
+      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> post(Routes.log_path(conn, :create, source: source.token), @valid)
+
+      assert %{"message" => "Source not found."} = json_response(conn, 404)
+    end
+
+    test "otel_logs returns 404 when the source was deleted after the plug loaded it", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      Mimic.stub(Logflare.Backends, :start_for_ingest, fn _source ->
+        {:error, :source_not_found}
+      end)
+
+      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+      body = TestUtilsGrpc.random_otel_logs_request() |> ExportLogsServiceRequest.encode()
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> put_req_header("x-source", Atom.to_string(source.token))
+        |> put_req_header("content-type", "application/x-protobuf")
+        |> post(Routes.log_path(conn, :otel_logs), body)
+
+      assert conn.status == 404
+    end
+
     test "invaild source token uuid checks", %{conn: conn, user: user} do
       conn =
         conn
@@ -656,6 +812,287 @@ defmodule LogflareWeb.LogControllerTest do
     end
   end
 
+  describe "create with __LF_SOURCE multi-source ingestion" do
+    setup [:multi_source_setup, :warm_caches]
+
+    setup %{user: user, conn: conn} do
+      conn = put_req_header(conn, "x-api-key", user.api_key)
+      {:ok, conn: conn}
+    end
+
+    test "batch with __LF_SOURCE per event fans out to multiple sources",
+         %{conn: conn, source_a: source_a, user: user} do
+      source_b = insert(:source, user: user)
+      insert(:backend, sources: [source_b], type: :webhook, config: %{url: "some-b"})
+      start_supervised!({SourceSup, source_b})
+      :timer.sleep(200)
+
+      this = self()
+
+      WebhookAdaptor.Client
+      |> stub(:send, fn req ->
+        send(this, {:webhook, req[:body]})
+        %Tesla.Env{status: 200, body: ""}
+      end)
+
+      conn =
+        conn
+        |> post(
+          Routes.log_path(conn, :create),
+          %{
+            "batch" => [
+              %{"__LF_SOURCE" => Atom.to_string(source_a.token), "event_message" => "to_a_1"},
+              %{"__LF_SOURCE" => Atom.to_string(source_b.token), "event_message" => "to_b"},
+              %{"__LF_SOURCE" => Atom.to_string(source_a.token), "event_message" => "to_a_2"}
+            ]
+          }
+        )
+
+      assert_logged_successfully(conn)
+
+      received = collect_webhook_messages([], 3000)
+
+      a_events =
+        received
+        |> Enum.flat_map(& &1)
+        |> Enum.filter(&String.starts_with?(&1["event_message"], "to_a"))
+
+      b_events =
+        received
+        |> Enum.flat_map(& &1)
+        |> Enum.filter(&(&1["event_message"] == "to_b"))
+
+      assert length(a_events) == 2
+      assert length(b_events) == 1
+
+      for event <- a_events ++ b_events do
+        refute Map.has_key?(event, "__LF_SOURCE")
+      end
+    end
+
+    test "_json batch with __LF_SOURCE per event fans out to multiple sources",
+         %{conn: conn, source_a: source_a, user: user} do
+      source_b = insert(:source, user: user)
+      backend_b = insert(:backend, sources: [source_b], type: :webhook, config: %{url: "some-b2"})
+      start_supervised!({SourceSup, source_b})
+
+      TestUtils.retry_assert(fn ->
+        assert SourceSup.backend_child_started?(backend_b.id, source_b.id)
+      end)
+
+      this = self()
+
+      WebhookAdaptor.Client
+      |> stub(:send, fn req ->
+        send(this, {:webhook, req[:body]})
+        %Tesla.Env{status: 200, body: ""}
+      end)
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post(
+          Routes.log_path(conn, :create),
+          Jason.encode!([
+            %{"__LF_SOURCE" => Atom.to_string(source_a.token), "event_message" => "to_a"},
+            %{"__LF_SOURCE" => Atom.to_string(source_b.token), "event_message" => "to_b"}
+          ])
+        )
+
+      assert_logged_successfully(conn)
+      received = collect_webhook_messages([], 3000)
+      all_events = Enum.flat_map(received, & &1)
+      assert Enum.any?(all_events, &(&1["event_message"] == "to_a"))
+      assert Enum.any?(all_events, &(&1["event_message"] == "to_b"))
+    end
+
+    test "generic_json _json batch with __LF_SOURCE per event fans out to multiple sources",
+         %{conn: conn, source_a: source_a, user: user} do
+      source_b = insert(:source, user: user)
+      backend_b = insert(:backend, sources: [source_b], type: :webhook, config: %{url: "some-b3"})
+      start_supervised!({SourceSup, source_b})
+
+      TestUtils.retry_assert(fn ->
+        assert SourceSup.backend_child_started?(backend_b.id, source_b.id)
+      end)
+
+      this = self()
+
+      WebhookAdaptor.Client
+      |> stub(:send, fn req ->
+        send(this, {:webhook, req[:body]})
+        %Tesla.Env{status: 200, body: ""}
+      end)
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post(
+          ~p"/api/logs/json",
+          Jason.encode!([
+            %{"__LF_SOURCE" => Atom.to_string(source_a.token), "message" => "to_a"},
+            %{"__LF_SOURCE" => Atom.to_string(source_b.token), "message" => "to_b"}
+          ])
+        )
+
+      assert_logged_successfully(conn)
+      all_events = [] |> collect_webhook_messages(3000) |> Enum.flat_map(& &1)
+      assert length(all_events) == 2
+
+      for event <- all_events do
+        refute Jason.encode!(event) =~ "__LF_SOURCE"
+      end
+    end
+
+    test "multi-source batch with a non-object entry returns 400 without ingesting",
+         %{conn: conn, source_a: source_a} do
+      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post(
+          Routes.log_path(conn, :create),
+          Jason.encode!([
+            %{"__LF_SOURCE" => Atom.to_string(source_a.token), "event_message" => "ok"},
+            nil
+          ])
+        )
+
+      assert %{"message" => ["event missing __LF_SOURCE"]} = json_response(conn, 400)
+    end
+
+    test "multi-source batch returns 503 when a source is unavailable",
+         %{conn: conn, source_a: source_a} do
+      Mimic.stub(Logflare.Backends, :start_for_ingest, fn _source ->
+        {:error, :source_unavailable}
+      end)
+
+      conn =
+        post(conn, Routes.log_path(conn, :create), %{
+          "batch" => [%{"__LF_SOURCE" => Atom.to_string(source_a.token), "event_message" => "x"}]
+        })
+
+      assert ["5"] = get_resp_header(conn, "retry-after")
+      assert json_response(conn, 503)
+    end
+
+    test "batch referencing an unowned source returns 401 from the plug",
+         %{conn: conn} do
+      other_source = insert(:source, user: insert(:user))
+
+      conn =
+        conn
+        |> post(
+          Routes.log_path(conn, :create),
+          %{
+            "batch" => [
+              %{"__LF_SOURCE" => Atom.to_string(other_source.token), "event_message" => "x"}
+            ]
+          }
+        )
+
+      assert json_response(conn, 401)
+    end
+
+    test "batch with no __LF_SOURCE and no query-param source returns 401",
+         %{conn: conn} do
+      conn =
+        conn
+        |> post(Routes.log_path(conn, :create), %{
+          "batch" => [%{"event_message" => "no source"}]
+        })
+
+      assert json_response(conn, 401)
+    end
+
+    test "batch with __LF_SOURCE on first event but later events lack it returns 400 without ingesting",
+         %{conn: conn, source_a: source_a} do
+      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+
+      conn =
+        conn
+        |> post(
+          Routes.log_path(conn, :create),
+          %{
+            "batch" => [
+              %{"__LF_SOURCE" => Atom.to_string(source_a.token), "event_message" => "with"},
+              %{"event_message" => "without"}
+            ]
+          }
+        )
+
+      assert %{"message" => ["event missing __LF_SOURCE"]} = json_response(conn, 400)
+    end
+
+    test "first event lacks __LF_SOURCE falls back to single-source query param flow",
+         %{conn: conn, source_a: source_a} do
+      {_pid, ref} = expect_webhook_success()
+
+      conn =
+        conn
+        |> post(
+          Routes.log_path(conn, :create, source: source_a.token),
+          %{"batch" => [%{"event_message" => "a"}, %{"event_message" => "b"}]}
+        )
+
+      assert_logged_successfully(conn)
+      assert_eventually_received(ref)
+    end
+
+    test "query-param source takes precedence and __LF_SOURCE is dropped",
+         %{conn: conn, source_a: source_a} do
+      other_source = insert(:source, user: insert(:user))
+      this = self()
+
+      WebhookAdaptor.Client
+      |> stub(:send, fn req ->
+        send(this, {:webhook, req[:body]})
+        %Tesla.Env{status: 200, body: ""}
+      end)
+
+      conn =
+        conn
+        |> post(
+          Routes.log_path(conn, :create, source: source_a.token),
+          %{
+            "batch" => [
+              %{"__LF_SOURCE" => Atom.to_string(other_source.token), "event_message" => "a"},
+              %{"event_message" => "b"}
+            ]
+          }
+        )
+
+      assert_logged_successfully(conn)
+
+      events = [] |> collect_webhook_messages(3000) |> Enum.flat_map(& &1)
+
+      assert length(events) == 2
+
+      for event <- events do
+        refute Map.has_key?(event, "__LF_SOURCE")
+      end
+    end
+
+    defp collect_webhook_messages(acc, timeout) do
+      receive do
+        {:webhook, body} -> collect_webhook_messages([body | acc], timeout)
+      after
+        timeout -> acc
+      end
+    end
+  end
+
+  defp multi_source_setup(%{conn: conn}) do
+    insert(:plan, name: "Free")
+    user = insert(:user)
+    source_a = insert(:source, user: user)
+    insert(:backend, sources: [source_a], type: :webhook, config: %{url: "some-a"})
+    start_supervised!({SourceSup, source_a})
+
+    {:ok, user: user, source: source_a, source_a: source_a, conn: conn}
+  end
+
   defp pipeline_setup(%{conn: conn}) do
     insert(:plan, name: "Free")
     user = insert(:user)
@@ -667,8 +1104,8 @@ defmodule LogflareWeb.LogControllerTest do
 
   defp warm_caches(%{user: user, source: source}) do
     # hit the caches
-    Sources.Cache.get_by_and_preload_rules(token: Atom.to_string(source.token))
-    Sources.Cache.get_by_and_preload_rules(name: source.name, user_id: user.id)
+    Sources.Cache.get_by_for_ingest(token: Atom.to_string(source.token))
+    Sources.Cache.get_by_for_ingest(name: source.name, user_id: user.id)
     Sources.Cache.get_source_by_token(source.token)
     Sources.Cache.get_by_id(source.id)
     Users.Cache.get(user.id)
@@ -691,7 +1128,6 @@ defmodule LogflareWeb.LogControllerTest do
     # Allow Sources.get_by/1 to be called by background processes (like the SourceSupWorker)
     # but stub it to return nil to avoid actual database calls
     stub(Sources, :get_by, fn _ -> nil end)
-    reject(&Sources.get_by_and_preload_rules/1)
     reject(&Sources.preload_defaults/1)
     reject(&Users.get/1)
     reject(&Users.get_by/1)

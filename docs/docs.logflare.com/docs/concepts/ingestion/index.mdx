@@ -95,6 +95,40 @@ To ingest by batch, send your request with the following JSON body:
 
 Note that if you have multiple sources with the same name, it will result in an error on ingestion and the log event will be discarded.
 
+### Multi-source batching (`__LF_SOURCE`)
+
+A single ingestion request can write different events from the same payload into **different sources** by setting the reserved field `__LF_SOURCE` on each event you want to route explicitly.
+
+- **Value**: The **source UUID** (the same identifier you use for the `source` query parameter or in the dashboard). It must be a valid UUID string.
+
+Example — two sources in one `batch`:
+
+```json
+{
+  "batch": [
+    {
+      "__LF_SOURCE": "9dd9a6f6-8e9b-4fa4-b682-4f2f5cd99da3",
+      "message": "to source A"
+    },
+    {
+      "__LF_SOURCE": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "message": "to source B"
+    }
+  ]
+}
+```
+
+The same routing applies when POSTing a **bare JSON array** (array root with `application/json`), which maps to `_json`-style ingestion.
+
+`__LF_SOURCE` routing is supported on all ingestion endpoints.
+
+:::note
+Route a request **either** with the `source`/`source_name` query parameter **or** with `__LF_SOURCE` on every event, not both:
+
+- If a query-parameter source is given, every event is ingested into that source and `__LF_SOURCE` is dropped from each event as a reserved key.
+- Without a query-parameter source, every event must declare `__LF_SOURCE`. Multi-source mode is detected from the **first** event: if it omits `__LF_SOURCE`, the request returns **401**. If any event omits `__LF_SOURCE` or its value is not a source UUID, the whole request is rejected with **400** and no events are ingested. If a declared source does not exist or you do not have access to it, the request returns **401**.
+:::
+
 ## Pipeline Transformations
 
 At ingestion, the pipeline will perform the following in sequence:

@@ -40,7 +40,7 @@ defmodule Logflare.Bench.ClickHouseMapperRowBinaryFusion do
   def encode_fused(events, _type, compiled, mapping_config_id) do
     events
     |> Enum.map(fn event ->
-      output_context = OutputContext.clickhouse_row_binary(event, mapping_config_id)
+      output_context = OutputContext.ch_row_binary(event, mapping_config_id)
       Mapper.map(event.body, compiled, output_context: output_context)
     end)
     |> IO.iodata_to_binary()
@@ -82,7 +82,7 @@ defmodule Logflare.Bench.ClickHouseMapperRowBinaryFusion do
     Enum.map(id_tid_pairs, fn {id, tid} ->
       case IngestEventQueue.lookup_event(tid, id) do
         %LogEvent{} = event ->
-          output_context = OutputContext.clickhouse_row_binary(event, mapping_config_id)
+          output_context = OutputContext.ch_row_binary(event, mapping_config_id)
           row = Mapper.map(event.body, compiled, output_context: output_context)
           :zlib.deflate(z, row)
 

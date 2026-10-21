@@ -1,5 +1,8 @@
 defmodule LogflareWeb.Api.Partner.UserControllerTest do
   use LogflareWeb.ConnCase
+
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Google.BigQuery
   alias Logflare.Partners
 
   setup do
@@ -161,6 +164,10 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
 
   describe "DELETE user" do
     test "returns 204 and deletes the user", %{conn: conn, partner: partner} do
+      # Avoid real Google dataset and IAM cleanup during account deletion.
+      stub(BigQuery, :delete_dataset, fn _user -> {:ok, nil} end)
+      stub(BigQueryAdaptor, :update_iam_policy, fn -> :ok end)
+
       {:ok, user} = Partners.create_user(partner, %{"email" => TestUtils.gen_email()})
 
       assert response =

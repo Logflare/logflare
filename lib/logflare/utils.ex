@@ -8,7 +8,6 @@ defmodule Logflare.Utils do
   alias Logflare.Backends.Backend
   alias Logflare.OauthAccessTokens.OauthAccessToken
   alias Logflare.OauthAccessTokens.PartnerOauthAccessToken
-  import Cachex.Spec
   import Logflare.Utils.Guards, only: [is_atom_value: 1]
 
   @sensitive_header_names ["authorization", "x-api-key", "Authorization", "X-API-Key"]
@@ -66,49 +65,6 @@ defmodule Logflare.Utils do
 
   @original_to_string String.Chars.impl_for(%Tesla.Env{})
   def tesla_env_to_string, do: @original_to_string
-
-  def cache_stats do
-    hook(module: Cachex.Stats)
-  end
-
-  def cache_limit(n) when is_integer(n) do
-    hook(
-      module: Cachex.Limit.Scheduled,
-      args: {
-        # setting cache max size
-        n,
-        # options for `Cachex.prune/3`
-        [],
-        # options for `Cachex.Limit.Scheduled`
-        []
-      }
-    )
-  end
-
-  @doc """
-  Builds a long Cachex expiration spec
-  Defaults to 20 min with 5 min cleanup intervals
-  """
-  @spec cache_expiration_min(non_neg_integer(), non_neg_integer()) :: Cachex.Spec.expiration()
-  def cache_expiration_min(default \\ 20, interval \\ 5) do
-    cache_expiration_sec(default * 60, interval * 60)
-  end
-
-  @doc """
-  Builds a short Cachex expiration spec
-  Defaults to 60 sec with 20 sec cleanup intervals
-  """
-  @spec cache_expiration_sec(non_neg_integer(), non_neg_integer()) :: Cachex.Spec.expiration()
-  def cache_expiration_sec(default \\ 60, interval \\ 20) do
-    expiration(
-      # default record expiration of 20 mins
-      default: :timer.seconds(default),
-      # how often cleanup should occur, 5 mins
-      interval: :timer.seconds(interval),
-      # whether to enable lazy checking
-      lazy: true
-    )
-  end
 
   @doc """
   Stringifies an atom map to a string map.

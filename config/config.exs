@@ -29,6 +29,8 @@ config :logflare, Logflare.Logs.Validators.BigQuerySchemaChange, enabled: false
 
 config :logflare, Logflare.Google, dataset_id_append: "_default"
 
+config :logflare, Logflare.Backends.Spool.SpoolAck, ack_stale: true
+
 config :logflare, :postgres_backend_adapter, pool_size: 3
 
 config :logflare, :bigquery_backend_adaptor, managed_service_account_pool_size: 0

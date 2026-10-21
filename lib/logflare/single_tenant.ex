@@ -9,7 +9,6 @@ defmodule Logflare.SingleTenant do
   alias Logflare.Sources.Source
   alias Logflare.Sources
   alias Logflare.Endpoints
-  alias Logflare.Repo
   alias Logflare.Sources.Source.Supervisor
   alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.LogEvent
@@ -316,7 +315,6 @@ defmodule Logflare.SingleTenant do
       tasks =
         get_default_user()
         |> Sources.list_sources_by_user()
-        |> Repo.preload(:rules)
         |> Enum.map(&async_update_source_schema/1)
 
       Task.await_many(tasks)

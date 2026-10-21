@@ -6,6 +6,9 @@ defmodule Logflare.Backends.Spool.HealthTest do
   alias Logflare.Backends.Spool.Health
 
   setup do
+    # Guards against a straggler async health report from an unrelated test
+    # landing between runs and leaving this shared state dirty.
+    Health.initialize()
     prev_spool_config = Application.get_env(:logflare, :spool)
 
     on_exit(fn ->

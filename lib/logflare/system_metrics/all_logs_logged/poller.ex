@@ -63,8 +63,16 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
 
   def handle_info(:poll_per_second, state) do
     {:ok, metrics} = AllLogsLogged.all_metrics(:total_logs_logged)
-    logs_last_second = metrics.total - state.last_total
-    state = %{state | last_second: logs_last_second, last_total: metrics.total}
+
+    seeded = metrics.init_log_count - state.init_total
+    logs_last_second = metrics.total - state.last_total - seeded
+
+    state = %{
+      state
+      | init_total: metrics.init_log_count,
+        last_second: logs_last_second,
+        last_total: metrics.total
+    }
 
     log_stuff(logs_last_second)
 

@@ -4,6 +4,9 @@ defmodule LogflareWeb.AdminControllerTest do
 
   import ExUnit.CaptureLog
 
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Google.BigQuery
+
   setup do
     prior = Application.get_env(:logflare, :node_shutdown_code)
     Application.delete_env(:logflare, :node_shutdown_code)
@@ -110,6 +113,9 @@ defmodule LogflareWeb.AdminControllerTest do
     end
 
     test "become functionality lets an admin turn into a google user", %{conn: conn, admin: admin} do
+      # Avoid real Google IAM updates during impersonation.
+      stub(BigQueryAdaptor, :update_iam_policy, fn _user -> :ok end)
+
       user = insert(:user, provider_uid: "google", team: insert(:team))
 
       conn =
@@ -130,6 +136,9 @@ defmodule LogflareWeb.AdminControllerTest do
       conn: conn,
       admin: admin
     } do
+      # Avoid real Google IAM updates during impersonation.
+      stub(BigQueryAdaptor, :update_iam_policy, fn _user -> :ok end)
+
       user = insert(:user, provider_uid: "google-123")
       user_team = insert(:team, user: user)
 
@@ -171,6 +180,10 @@ defmodule LogflareWeb.AdminControllerTest do
     end
 
     test "admin can delete an account", %{conn: conn, admin: admin} do
+      # Avoid real Google dataset and IAM cleanup during account deletion.
+      stub(BigQuery, :delete_dataset, fn _user -> {:ok, nil} end)
+      stub(BigQueryAdaptor, :update_iam_policy, fn -> :ok end)
+
       target = insert(:user)
 
       conn =
@@ -200,6 +213,9 @@ defmodule LogflareWeb.AdminControllerTest do
       conn: conn,
       admin: admin
     } do
+      # Avoid real Google IAM updates during impersonation.
+      stub(BigQueryAdaptor, :update_iam_policy, fn _user -> :ok end)
+
       user = insert(:user, provider_uid: "google-456")
       user_team = insert(:team, user: user)
 

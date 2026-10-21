@@ -17,6 +17,29 @@ defmodule LogflareWeb.BillingAccountLive.EditTest do
       refute has_element?(view, "#billing-chart")
     end
 
+    test "pricing comparison identifies AI-assisted queries and their paid-plan availability", %{
+      conn: conn
+    } do
+      {:ok, _view, html} = live(conn, ~p"/billing/edit")
+      cards = html |> Floki.parse_document!() |> Floki.find(".card")
+
+      for {plan, availability} <- [
+            {"Project", "None"},
+            {"Metered", "Included"},
+            {"Metered BYOB", "Included"}
+          ] do
+        assert [card] =
+                 Enum.filter(cards, fn card ->
+                   card |> Floki.find("h3") |> Floki.text() |> String.trim() == plan
+                 end)
+
+        assert Enum.any?(Floki.find(card, "li"), fn feature ->
+                 feature |> Floki.text() |> String.trim() ==
+                   "AI-assisted queries: #{availability}"
+               end)
+      end
+    end
+
     test "handles Stripe webhook events", %{conn: conn} do
       billing_account = insert(:billing_account)
 
@@ -47,7 +70,7 @@ defmodule LogflareWeb.BillingAccountLive.EditTest do
       assert conn
              |> put_req_header("content-type", "application/json")
              |> put_req_header("stripe-signature", stripe_sign(payload_json))
-             |> post(~p"/webhooks/stripe", payload_json)
+             |> post("/webhooks/stripe", payload_json)
              |> response(200)
 
       TestUtils.retry_assert(fn ->
@@ -90,7 +113,7 @@ defmodule LogflareWeb.BillingAccountLive.EditTest do
       assert conn
              |> put_req_header("content-type", "application/json")
              |> put_req_header("stripe-signature", stripe_sign(payload_json))
-             |> post(~p"/webhooks/stripe", payload_json)
+             |> post("/webhooks/stripe", payload_json)
              |> response(200)
 
       TestUtils.retry_assert(fn ->

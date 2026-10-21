@@ -62,6 +62,9 @@ defmodule Logflare.Utils.FlagTest do
   alias Logflare.User
   alias Logflare.Utils
 
+  # Let cache callbacks use this test's mocks and reset any previous global owner.
+  setup :set_mimic_global
+
   setup do
     start_supervised!(ConfigCatCache)
 

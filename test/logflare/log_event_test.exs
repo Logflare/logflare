@@ -945,6 +945,158 @@ defmodule Logflare.LogEventTest do
     end
   end
 
+  describe "values-only byte accounting" do
+    property "allocation-free integer sizing matches decimal text" do
+      check all value <- integer() do
+        assert LogEvent.body_byte_size(value) == byte_size(Integer.to_string(value))
+      end
+
+      for value <- [Integer.pow(10, 200) - 1, Integer.pow(10, 200), -Integer.pow(10, 200)] do
+        assert LogEvent.body_byte_size(value) == byte_size(Integer.to_string(value))
+      end
+    end
+
+    test "uses explicit scalar sizes without Erlang serialization overhead" do
+      for {value, bytes} <- [
+            {"hello", 5},
+            {"hé🌍", 7},
+            {<<0, 255>>, 2},
+            {0, 1},
+            {-123, 4},
+            {1_000_000_000_000_000_000, 19},
+            {1.0, 3},
+            {-1.5, 4},
+            {true, 1},
+            {false, 1},
+            {nil, 0},
+            {:info, 4}
+          ] do
+        assert LogEvent.body_byte_size(value) == bytes
+      end
+
+      assert LogEvent.body_byte_size({:unsupported, 1}) ==
+               :erlang.external_size({:unsupported, 1})
+    end
+
+    test "excludes keys and container overhead, including integer-list encoding" do
+      assert LogEvent.body_byte_size(%{}) == 0
+      assert LogEvent.body_byte_size([]) == 0
+      assert LogEvent.body_byte_size(Enum.to_list(1..100)) == 192
+
+      assert LogEvent.body_byte_size(%{"short" => [%{"key" => "hello"}, true, nil, -12]}) == 9
+
+      assert LogEvent.body_byte_size(%{
+               "a much longer key" => [%{"a different key" => "hello"}, true, nil, -12]
+             }) == 9
+    end
+
+    test "fused count includes generated fields and removes duplicate messages", %{source: source} do
+      params = %{
+        "message" => "hello",
+        "id" => "fixed-id",
+        "timestamp" => "2026-09-01T00:00:00Z",
+        "metadata" => %{"long-key" => [1, 2, "hé"]}
+      }
+
+      le = LogEvent.make(params, %{source: source})
+      assert le.body["message"] == nil
+      assert le.body["event_message"] == "hello"
+      assert is_integer(le.body["timestamp"])
+      assert le.accounted_bytes == LogEvent.body_byte_size(le.body)
+      assert le.batch_bytes == nil
+
+      cached = LogEvent.cache_sizes(le)
+      assert cached.accounted_bytes == le.accounted_bytes
+      assert cached.batch_bytes == :erlang.external_size(le.body)
+      assert LogEvent.cache_sizes(cached) == cached
+    end
+
+    test "body replacement invalidates both caches, including zero-sized bodies" do
+      le = LogEvent.cache_sizes(%LogEvent{body: %{}})
+      assert le.accounted_bytes == 0
+      assert LogEvent.replace_body(le, %{}) == le
+
+      changed = LogEvent.replace_body(le, %{"long-key" => "hello"})
+      assert changed.accounted_bytes == nil
+      assert changed.batch_bytes == nil
+      assert LogEvent.accounted_byte_size(changed) == 5
+      assert LogEvent.batch_byte_size(changed) == :erlang.external_size(changed.body)
+    end
+
+    test "custom messages update the value count without recounting the body", %{source: source} do
+      le =
+        LogEvent.make(%{"event_message" => "old", "metadata" => %{"extra" => "new"}}, %{
+          source: source
+        })
+        |> LogEvent.cache_sizes()
+
+      assert LogEvent.apply_custom_event_message(le, source) == le
+
+      changed =
+        LogEvent.apply_custom_event_message(le, %{source | custom_event_message_keys: "m.extra"})
+
+      assert changed.accounted_bytes ==
+               le.accounted_bytes - 3 + byte_size(changed.body["event_message"])
+
+      assert changed.accounted_bytes == LogEvent.body_byte_size(changed.body)
+      assert changed.batch_bytes == nil
+    end
+
+    test "copy, enrichment and drop transformations invalidate the fused count", %{
+      source: source,
+      user: user
+    } do
+      insert(:key_value, user: user, key: "router", value: %{"org_id" => "acme"})
+
+      source =
+        %{
+          source
+          | transform_copy_fields: "service:metadata.original",
+            transform_key_values: "service:enriched",
+            transform_drop_fields: "service"
+        }
+        |> Source.parse_copy_fields_config()
+        |> Source.parse_key_values_config()
+        |> Source.parse_drop_fields_config()
+
+      le = LogEvent.make(%{"service" => "router"}, %{source: source})
+      assert le.body["metadata"]["original"] == "router"
+      assert le.body["enriched"] == %{"org_id" => "acme"}
+      refute Map.has_key?(le.body, "service")
+      assert le.accounted_bytes == nil
+      cached = LogEvent.cache_sizes(le)
+      assert cached.accounted_bytes == LogEvent.body_byte_size(le.body)
+      assert cached.batch_bytes == :erlang.external_size(le.body)
+    end
+
+    test "spool reconstruction ignores stale persisted counters", %{source: source} do
+      for record <- [
+            %{
+              id: "spooled",
+              body: %{"long-key" => "hello"},
+              event_type: :log,
+              ingested_at: System.system_time(:microsecond),
+              accounted_bytes: 999,
+              batch_bytes: 999
+            },
+            %{
+              "id" => "spooled",
+              "body" => %{"long-key" => "hello"},
+              "event_type" => "log",
+              "ingested_at" => DateTime.to_iso8601(DateTime.utc_now()),
+              "accounted_bytes" => 999,
+              "batch_bytes" => 999
+            }
+          ] do
+        le = LogEvent.make_from_spool(record, source)
+        assert le.accounted_bytes == nil
+        assert le.batch_bytes == nil
+        assert LogEvent.cache_sizes(le).accounted_bytes == 5
+        assert LogEvent.cache_sizes(le).batch_bytes == :erlang.external_size(le.body)
+      end
+    end
+  end
+
   describe "make_from_spool/2" do
     test "preserves via_rule_id from an etf-decoded (atom-key) spool record", %{source: source} do
       record = %{

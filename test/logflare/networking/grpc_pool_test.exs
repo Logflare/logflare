@@ -26,6 +26,15 @@ defmodule Logflare.Networking.GrpcPoolTest do
 
   defp registry_name(name), do: Module.concat(name, Registry)
 
+  test "silences info logs from GRPC.Client.Connection", %{name: name} do
+    Logger.delete_module_level(GRPC.Client.Connection)
+    on_exit(fn -> Logger.delete_module_level(GRPC.Client.Connection) end)
+
+    start_pool(name)
+
+    assert [{GRPC.Client.Connection, :warning}] = Logger.get_module_level(GRPC.Client.Connection)
+  end
+
   describe "get_channel/1" do
     test "returns {:error, :not_connected} when no channels registered", %{name: name} do
       start_pool(name)

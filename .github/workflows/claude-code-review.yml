@@ -23,6 +23,9 @@ jobs:
       github.event.pull_request.draft == false &&
       github.event.pull_request.user.type != 'Bot'
 
+    # Reviews are advisory: an action, model, or authentication failure must
+    # remain visible in this job's logs without blocking other CI or merging.
+    continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
