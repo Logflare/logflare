@@ -1,6 +1,7 @@
 defmodule Logflare.Backends.Spool.ConsumerDrainTest do
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
   import Mimic
 
   alias Logflare.Backends.Spool.ConsumerDrain
@@ -117,5 +118,34 @@ defmodule Logflare.Backends.Spool.ConsumerDrainTest do
 
   test "drains straight away when no consumer pipeline is running" do
     assert ConsumerDrain.run(timeout_ms: 100) == :drained
+  end
+
+  describe "verification logging" do
+    test "logs when the drain starts and how many producers stopped fetching" do
+      stub_producers(fn -> true end)
+
+      log = capture_log([level: :warning], fn -> run(producers: [:p0, :p1]) end)
+
+      assert log =~ "spool_consumer: drain started, stopped fetching on 2 producer(s)"
+      assert log =~ "waiting up to 1000ms"
+    end
+
+    test "logs a drained result with nothing left pending" do
+      stub_producers(fn -> true end)
+
+      log = capture_log([level: :warning], fn -> run(producers: [:p0]) end)
+
+      assert log =~ ~r/spool_consumer: drain finished result=drained pending=0 duration_ms=\d+/
+    end
+
+    test "logs a timed out result with how many files were nacked" do
+      stub_producers(fn -> true end)
+      SpoolAck.register("stuck", QueueMod, "queue-url")
+      SpoolAck.bump("stuck", 1)
+
+      log = capture_log([level: :warning], fn -> run(producers: [:p0], timeout_ms: 50) end)
+
+      assert log =~ ~r/spool_consumer: drain finished result=timeout pending=1 duration_ms=\d+/
+    end
   end
 end
