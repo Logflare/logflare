@@ -1,6 +1,12 @@
 defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
   @moduledoc false
   use LogflareWeb.ConnCase
+  alias Logflare.Auth
+  alias Logflare.OauthAccessTokens.OauthAccessToken
+  alias Logflare.RecordUsages
+  alias Logflare.Repo
+  alias Logflare.User
+  alias Logflare.Users
   alias LogflareWeb.Plugs.VerifyApiAccess
 
   setup do
@@ -18,6 +24,109 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       source: source,
       access_token: access_token
     ]
+  end
+
+  describe "access token usage" do
+    test "records requests on both cache misses and hits", %{access_token: token, user: user} do
+      before_request = System.system_time(:second)
+
+      build_conn(:post, "/logs")
+      |> put_req_header("authorization", "Bearer #{token.token}")
+      |> VerifyApiAccess.call(%{})
+      |> assert_authorized(user)
+
+      first_use =
+        RecordUsages.Cache.snapshot() |> Map.new() |> Map.fetch!({OauthAccessToken, token.id})
+
+      assert is_integer(first_use)
+      assert first_use >= before_request
+
+      RecordUsages.Cache.acknowledge([{{OauthAccessToken, token.id}, first_use}])
+      assert RecordUsages.Cache.snapshot() == []
+
+      reject(&Auth.verify_access_token/2)
+
+      build_conn(:post, "/logs")
+      |> put_req_header("x-api-key", token.token)
+      |> VerifyApiAccess.call(%{})
+      |> assert_authorized(user)
+
+      last_use =
+        RecordUsages.Cache.snapshot() |> Map.new() |> Map.fetch!({OauthAccessToken, token.id})
+
+      assert is_integer(last_use)
+      assert last_use >= first_use
+    end
+
+    test "authenticates partners without recording usage", %{conn: conn} do
+      partner = insert(:partner)
+      {:ok, token} = Auth.create_access_token(partner)
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer #{token.token}")
+        |> VerifyApiAccess.call(%{scopes: ["partner"]})
+
+      assert conn.assigns.partner.id == partner.id
+      assert RecordUsages.Cache.snapshot() == []
+    end
+
+    test "records legacy key usage on cache misses and hits", %{user: user} do
+      before_request = System.system_time(:second)
+
+      for {header, value} <- [
+            {"authorization", "Bearer #{user.api_key}"},
+            {"x-api-key", user.api_key}
+          ] do
+        RecordUsages.Cache.record({User, user.id}, 0)
+
+        build_conn(:post, "/logs")
+        |> put_req_header(header, value)
+        |> VerifyApiAccess.call(%{})
+        |> assert_authorized(user)
+
+        assert [{{User, id}, timestamp}] = RecordUsages.Cache.snapshot()
+        assert id == user.id
+        assert timestamp >= before_request
+        assert timestamp <= System.system_time(:second)
+
+        RecordUsages.Cache.acknowledge([{{User, user.id}, timestamp}])
+        reject(&Users.get_by/1)
+      end
+    end
+
+    test "does not record rejected credentials", %{access_token: token, user: user} do
+      expired_token =
+        insert(:access_token,
+          resource_owner: user,
+          expires_in: 1,
+          inserted_at: ~N[2000-01-01 00:00:00]
+        )
+
+      {:ok, revoked_token} = Auth.create_access_token(user)
+      :ok = Auth.revoke_access_token(revoked_token)
+
+      reject(&RecordUsages.record/2)
+
+      for {value, scopes} <- [
+            {token.token, ["private"]},
+            {user.api_key, ["private"]},
+            {expired_token.token, []},
+            {revoked_token.token, []},
+            {"invalid-token", []}
+          ] do
+        build_conn(:post, "/logs")
+        |> put_req_header("x-api-key", value)
+        |> VerifyApiAccess.call(%{scopes: scopes})
+        |> assert_unauthorized()
+      end
+
+      for unused_token <- [token, expired_token, revoked_token] do
+        assert Repo.preload(unused_token, :usage).usage == nil
+      end
+
+      assert RecordUsages.Cache.snapshot() == []
+    end
   end
 
   describe "partner impersonation" do

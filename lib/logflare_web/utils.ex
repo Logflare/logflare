@@ -1,6 +1,10 @@
 defmodule LogflareWeb.Utils do
   @moduledoc false
 
+  @timestamp_format "%a %b %d %Y %H:%M:%S"
+
+  @type timestamp_format_opts :: [format: String.t()]
+
   @doc """
   Converts changeset errors to a human-readable string format. There's an optional prefix message you can provide as the second argument.
 
@@ -103,6 +107,45 @@ defmodule LogflareWeb.Utils do
       end)
     end)
   end
+
+  @spec format_timestamp(
+          integer() | DateTime.t() | NaiveDateTime.t(),
+          String.t() | nil,
+          timestamp_format_opts()
+        ) :: String.t()
+  def format_timestamp(timestamp, timezone \\ nil, opts \\ [])
+
+  def format_timestamp(timestamp, timezone, opts) when is_integer(timestamp) do
+    timestamp
+    |> Logflare.Utils.to_microseconds()
+    |> DateTime.from_unix!(:microsecond)
+    |> format_timestamp(timezone, opts)
+  end
+
+  def format_timestamp(%NaiveDateTime{} = timestamp, timezone, opts) do
+    timestamp
+    |> DateTime.from_naive!("Etc/UTC")
+    |> format_timestamp(timezone, opts)
+  end
+
+  def format_timestamp(%DateTime{} = timestamp, timezone, opts) do
+    format = Keyword.get(opts, :format, @timestamp_format)
+
+    timestamp
+    |> DateTime.shift_zone!("Etc/UTC")
+    |> convert_timezone(timezone)
+    |> Timex.format!(format, :strftime)
+  end
+
+  defp convert_timezone(%DateTime{} = datetime, timezone) when is_binary(timezone) do
+    with %DateTime{} = converted <- Timex.Timezone.convert(datetime, timezone) do
+      converted
+    else
+      _ -> datetime
+    end
+  end
+
+  defp convert_timezone(%DateTime{} = datetime, _timezone), do: datetime
 
   @spec time_ago(DateTime.t() | NaiveDateTime.t()) :: String.t()
   def time_ago(datetime) do

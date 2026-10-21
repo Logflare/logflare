@@ -2,6 +2,9 @@ defmodule LogflareWeb.LogSocket do
   use Phoenix.Socket
 
   alias Logflare.Auth
+  alias Logflare.OauthAccessTokens.OauthAccessToken
+  alias Logflare.RecordUsages
+  alias Logflare.User
   alias Logflare.Users
 
   channel "logs:*", LogflareWeb.LogChannel
@@ -14,8 +17,12 @@ defmodule LogflareWeb.LogSocket do
 
   def connect(%{"access_token" => access_token}, socket) do
     case Auth.Cache.verify_access_token(access_token) do
-      {:ok, _token, user} -> {:ok, assign(socket, :user, user)}
-      {:error, _reason} -> :error
+      {:ok, token, user} ->
+        RecordUsages.record(OauthAccessToken, token.id)
+        {:ok, assign(socket, :user, user)}
+
+      {:error, _reason} ->
+        :error
     end
   end
 
@@ -23,6 +30,7 @@ defmodule LogflareWeb.LogSocket do
     user = Users.get_by(api_key: api_key)
 
     if user do
+      RecordUsages.record(User, user.id)
       {:ok, assign(socket, :user, user)}
     else
       :error
