@@ -105,7 +105,7 @@ defmodule Logflare.Endpoints.ResultsCache do
     endpoint_cache_key = {query_id, version_key} = endpoint_cache_key(query)
     endpoints = endpoints_part(query_id, version_key)
     :syn.join(endpoints, endpoint_cache_key, self())
-    :syn.join(endpoints_part(query_id, :all_versions), {query_id, :all_versions}, self())
+    :syn.join(:core, {__MODULE__, query_id, :all_versions}, self())
 
     timer = query |> cache_duration_ms() |> shutdown()
     refresh_timer = if disable_cache?(query), do: nil, else: refresh(proactive_querying_ms(query))

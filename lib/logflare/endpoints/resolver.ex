@@ -15,14 +15,16 @@ defmodule Logflare.Endpoints.Resolver do
   def list_caches(query, scope \\ :selected_version)
 
   def list_caches(%EndpointQuery{id: query_id}, :all_versions),
-    do: members({query_id, :all_versions})
+    do: members(:core, {ResultsCache, query_id, :all_versions})
 
-  def list_caches(%EndpointQuery{} = query, :selected_version),
-    do: members(ResultsCache.endpoint_cache_key(query))
+  def list_caches(%EndpointQuery{} = query, :selected_version) do
+    {query_id, version_key} = cache_key = ResultsCache.endpoint_cache_key(query)
+    members(ResultsCache.endpoints_part(query_id, version_key), cache_key)
+  end
 
-  defp members({query_id, version_key} = cache_key) do
-    query_id
-    |> ResultsCache.endpoints_part(version_key)
+  @spec members(atom(), tuple()) :: [pid()]
+  defp members(scope, cache_key) do
+    scope
     |> :syn.members(cache_key)
     |> Enum.map(fn {pid, _} -> pid end)
   end
