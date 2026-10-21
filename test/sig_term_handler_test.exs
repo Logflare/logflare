@@ -1,6 +1,7 @@
 defmodule Logflare.SigtermHandlerTest do
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
   import Mimic
 
   alias Logflare.Application
@@ -44,6 +45,55 @@ defmodule Logflare.SigtermHandlerTest do
     Readiness.mark_ready()
 
     refute Readiness.ready?()
+  end
+
+  describe "verification logging" do
+    setup do
+      put_grace_period(0)
+      stub(ConsumerDrain, :run, fn -> :drained end)
+      stub(ConsumerDrain, :timeout_ms, fn -> 60_000 end)
+      :ok
+    end
+
+    test "logs that SIGTERM was received" do
+      stub(Backends, :spool_consumer_mode?, fn -> false end)
+
+      log = capture_warning(fn -> SigtermHandler.handle_event(:sigterm, %{}) end)
+
+      assert log =~ "SIGTERM received"
+    end
+
+    test "logs that a spool consumer received SIGTERM and is draining before it stops" do
+      stub(Backends, :spool_consumer_mode?, fn -> true end)
+
+      log = capture_warning(fn -> SigtermHandler.handle_event(:sigterm, %{}) end)
+
+      assert log =~ "SIGTERM received: draining spool consumer for up to 60.0 seconds"
+    end
+
+    test "logs that a spool consumer received SIGQUIT and is draining before it stops" do
+      stub(Backends, :spool_consumer_mode?, fn -> true end)
+
+      log = capture_warning(fn -> SigtermHandler.handle_event(:sigquit, %{}) end)
+
+      assert log =~ "SIGQUIT received: draining spool consumer for up to 60.0 seconds"
+    end
+
+    test "logs the drain result once the spool consumer is ready to stop" do
+      stub(Backends, :spool_consumer_mode?, fn -> true end)
+      stub(ConsumerDrain, :run, fn -> :timeout end)
+
+      log = capture_warning(fn -> SigtermHandler.handle_event(:sigterm, %{}) end)
+
+      assert log =~ "spool consumer drain ended with :timeout, stopping the app"
+    end
+
+    defp capture_warning(fun) do
+      capture_log([level: :warning], fn ->
+        fun.()
+        assert_receive :proceed_with_sigterm
+      end)
+    end
   end
 
   describe "spool consumer drain" do

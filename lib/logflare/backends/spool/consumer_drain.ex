@@ -37,9 +37,12 @@ defmodule Logflare.Backends.Spool.ConsumerDrain do
     producers = Keyword.get_lazy(opts, :producers, &producers/0)
     started_at = System.monotonic_time(:millisecond)
 
-    Logger.warning("spool_consumer: draining, waiting up to #{timeout_ms}ms for in-flight files")
-
     Enum.each(producers, &stop_fetching/1)
+
+    Logger.warning(
+      "spool_consumer: drain started, stopped fetching on #{length(producers)} producer(s), " <>
+        "waiting up to #{timeout_ms}ms for in-flight files"
+    )
 
     result = await_drained(producers, started_at + timeout_ms, poll_interval_ms)
     pending = SpoolAck.pending_count()
@@ -51,9 +54,15 @@ defmodule Logflare.Backends.Spool.ConsumerDrain do
 
     SpoolAck.flush()
 
+    duration = System.monotonic_time(:millisecond) - started_at
+
+    Logger.warning(
+      "spool_consumer: drain finished result=#{result} pending=#{pending} duration_ms=#{duration}"
+    )
+
     :telemetry.execute(
       [:logflare, :backends, :spool, :consumer, :drain],
-      %{duration: System.monotonic_time(:millisecond) - started_at, pending: pending},
+      %{duration: duration, pending: pending},
       %{result: result}
     )
 

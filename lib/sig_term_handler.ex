@@ -30,9 +30,7 @@ defmodule Logflare.SigtermHandler do
   def handle_event(:sigterm, state) do
     Readiness.begin_draining()
 
-    Logger.warning(
-      "#{__MODULE__}: SIGTERM received: waiting for #{env_grace_period() / 1_000} seconds"
-    )
+    log_received("SIGTERM")
 
     # Not sure something is causing the cluster to have issues when an instance gets shutdown
     :rpc.eval_everywhere(Node.list(), :erlang, :disconnect_node, [Node.self()])
@@ -45,9 +43,7 @@ defmodule Logflare.SigtermHandler do
   def handle_event(:sigquit, state) do
     Readiness.begin_draining()
 
-    Logger.warning(
-      "#{__MODULE__}: SIGQUIT received: waiting for #{env_grace_period() / 1_000} seconds"
-    )
+    log_received("SIGQUIT")
 
     schedule_stop()
 
@@ -59,6 +55,19 @@ defmodule Logflare.SigtermHandler do
     Logger.warning("#{__MODULE__}: has received a system signal: #{ev} and is ignoring it")
 
     {:ok, state}
+  end
+
+  defp log_received(signal) do
+    if Backends.spool_consumer_mode?() do
+      Logger.warning(
+        "#{__MODULE__}: #{signal} received: draining spool consumer for up to " <>
+          "#{ConsumerDrain.timeout_ms() / 1_000} seconds before stopping"
+      )
+    else
+      Logger.warning(
+        "#{__MODULE__}: #{signal} received: waiting for #{env_grace_period() / 1_000} seconds"
+      )
+    end
   end
 
   # A spool consumer drains its in-flight files before stopping, and still
@@ -73,7 +82,11 @@ defmodule Logflare.SigtermHandler do
         started_at = System.monotonic_time(:millisecond)
 
         try do
-          ConsumerDrain.run()
+          result = ConsumerDrain.run()
+
+          Logger.warning(
+            "#{__MODULE__}: spool consumer drain ended with #{inspect(result)}, stopping the app"
+          )
         after
           elapsed = System.monotonic_time(:millisecond) - started_at
           Process.sleep(max(grace_period - elapsed, 0))
