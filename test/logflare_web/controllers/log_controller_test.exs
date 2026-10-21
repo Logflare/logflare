@@ -962,6 +962,30 @@ defmodule LogflareWeb.LogControllerTest do
       assert %{"message" => ["event missing __LF_SOURCE"]} = json_response(conn, 400)
     end
 
+    test "multi-source batch ingests nothing when any declared source is unavailable",
+         %{conn: conn, source_a: source_a, user: user} do
+      source_b = insert(:source, user: user)
+      source_b_id = source_b.id
+
+      Mimic.stub(Logflare.Backends, :start_for_ingest, fn
+        %{id: ^source_b_id} -> {:error, :source_unavailable}
+        _source -> :ok
+      end)
+
+      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+
+      conn =
+        post(conn, Routes.log_path(conn, :create), %{
+          "batch" => [
+            %{"__LF_SOURCE" => Atom.to_string(source_a.token), "event_message" => "a"},
+            %{"__LF_SOURCE" => Atom.to_string(source_b.token), "event_message" => "b"}
+          ]
+        })
+
+      assert ["5"] = get_resp_header(conn, "retry-after")
+      assert json_response(conn, 503)
+    end
+
     test "multi-source batch returns 503 when a source is unavailable",
          %{conn: conn, source_a: source_a} do
       Mimic.stub(Logflare.Backends, :start_for_ingest, fn _source ->
