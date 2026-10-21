@@ -999,4 +999,130 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       refute_received {:acked, "h1"}
     end
   end
+
+  describe "stop_fetching" do
+    defp producer_state(overrides) do
+      {:producer, state} =
+        QueueProducer.init(
+          queue_url: "q",
+          bucket: "test-bucket",
+          storage_mod: StorageMod,
+          queue_mod: QueueMod
+        )
+
+      Map.merge(state, overrides)
+    end
+
+    defp stopped_state(overrides) do
+      {:reply, :ok, [], state} =
+        QueueProducer.handle_call(:stop_fetching, {self(), make_ref()}, producer_state(%{}))
+
+      Map.merge(state, overrides)
+    end
+
+    test "nacks a landed prefetch but keeps the current file to finish emitting" do
+      stub_ack_nack(self())
+      current = %{handle: "h1", segments: [etf_body([%{"id" => "e1"}])]}
+
+      state =
+        producer_state(%{
+          current: current,
+          prefetch: {:ready, {:ok, "h2", [etf_body([%{"id" => "e2"}])]}}
+        })
+
+      assert {:reply, :ok, [], new_state} =
+               QueueProducer.handle_call(:stop_fetching, {self(), make_ref()}, state)
+
+      assert_receive {:nacked, "h2"}
+      refute_received {:nacked, "h1"}
+      assert new_state.current == current
+      assert new_state.prefetch == nil
+      assert new_state.fetching == false
+    end
+
+    test "keeps emitting the current file's segments but starts no new fetch" do
+      test_pid = self()
+
+      stub(QueueMod, :receive, fn _url, _opts ->
+        send(test_pid, :receive_called)
+        {:ok, []}
+      end)
+
+      state =
+        stopped_state(%{
+          current: %{handle: "h1", segments: [etf_body([%{"id" => "e1"}])]},
+          demand: 5
+        })
+
+      assert {:noreply, [event], new_state} = QueueProducer.handle_info(:poll, state)
+
+      assert segment_records(event) == [%{"id" => "e1"}]
+      assert new_state.prefetch == nil
+      refute_receive :receive_called, 200
+    end
+
+    test "nacks a prefetch that lands after fetching stopped instead of loading it" do
+      stub_ack_nack(self())
+
+      ok_state = stopped_state(%{prefetch: :running, demand: 5})
+
+      assert {:noreply, [], new_state} =
+               QueueProducer.handle_info({:prefetch_result, {:ok, "h3", ["seg"]}}, ok_state)
+
+      assert_receive {:nacked, "h3"}
+      assert new_state.prefetch == nil
+      assert new_state.current == nil
+
+      assert {:noreply, [], error_state} =
+               QueueProducer.handle_info(
+                 {:prefetch_result, {:error, "h4", :timeout}},
+                 stopped_state(%{prefetch: :running})
+               )
+
+      assert_receive {:nacked, "h4"}
+      assert error_state.prefetch == nil
+
+      assert {:noreply, [], empty_state} =
+               QueueProducer.handle_info(
+                 {:prefetch_result, :empty},
+                 stopped_state(%{prefetch: :running})
+               )
+
+      assert empty_state.prefetch == nil
+    end
+
+    test "drained? is true only once the current file is emitted and no prefetch is outstanding" do
+      from = {self(), make_ref()}
+
+      for {overrides, expected} <- [
+            {%{current: %{handle: "h1", segments: ["seg"]}}, false},
+            {%{prefetch: :running}, false},
+            {%{current: %{handle: "h1", segments: []}}, true},
+            {%{current: nil, prefetch: nil}, true}
+          ] do
+        assert {:reply, ^expected, [], _state} =
+                 QueueProducer.handle_call(:drained?, from, stopped_state(overrides))
+      end
+    end
+
+    test "a running producer stops receiving from the queue once told to stop fetching" do
+      test_pid = self()
+
+      stub(QueueMod, :receive, fn _url, _opts ->
+        send(test_pid, :receive_called)
+        {:ok, []}
+      end)
+
+      pid = start_producer()
+
+      assert QueueProducer.stop_fetching(pid) == :ok
+
+      task = Task.async(fn -> GenStage.stream([{pid, max_demand: 10}]) |> Enum.take(1) end)
+
+      refute_receive :receive_called, 500
+      assert QueueProducer.drained?(pid)
+
+      Task.shutdown(task, :brutal_kill)
+    end
+  end
 end

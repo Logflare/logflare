@@ -649,6 +649,15 @@ defmodule Logflare.Telemetry do
       sum("logflare.backends.spool.consumer.messages_failed.count",
         description: "Spool consumer: Broadway messages marked failed during processing"
       ),
+      distribution("logflare.backends.spool.consumer.drain.duration",
+        tags: [:result],
+        unit: :millisecond,
+        description: "Spool consumer: time spent draining in-flight files on shutdown, by result"
+      ),
+      sum("logflare.backends.spool.consumer.drain.pending",
+        tags: [:result],
+        description: "Spool consumer: in-flight files still pending when the shutdown drain ended"
+      ),
       counter("thousand_island.acceptor.spawn_error",
         description: "Count of client connection spawn errors"
       ),

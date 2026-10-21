@@ -5,6 +5,7 @@ defmodule Logflare.Backends.Spool.SpoolAckTest do
 
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.SpoolAck
+  alias Logflare.TestUtils
 
   setup :set_mimic_global
 
@@ -184,6 +185,69 @@ defmodule Logflare.Backends.Spool.SpoolAckTest do
 
       assert [{^handle, 1, QueueMod, "queue-url", _registered_at}] =
                :ets.lookup(:spool_ack, handle)
+    end
+  end
+
+  describe "pending_count/0" do
+    test "counts handles still waiting on outstanding work" do
+      assert SpoolAck.pending_count() == 0
+
+      SpoolAck.register(unique_handle(), QueueMod, "queue-url")
+      SpoolAck.register(unique_handle(), QueueMod, "queue-url")
+
+      assert SpoolAck.pending_count() == 2
+    end
+  end
+
+  describe "nack_pending/0" do
+    test "nacks every pending handle through its own queue and forgets it" do
+      test_pid = self()
+      [h1, h2] = [unique_handle(), unique_handle()]
+      TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :nack])
+
+      stub(QueueMod, :nack, fn url, h ->
+        send(test_pid, {:nacked, url, h})
+        :ok
+      end)
+
+      stub(QueueMod, :ack, fn _url, h -> send(test_pid, {:acked, h}) end)
+
+      SpoolAck.register(h1, QueueMod, "queue-1")
+      SpoolAck.bump(h1, 2)
+      SpoolAck.register(h2, QueueMod, "queue-2")
+
+      assert SpoolAck.nack_pending() == 2
+
+      assert_receive {:nacked, "queue-1", ^h1}
+      assert_receive {:nacked, "queue-2", ^h2}
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :spool, :queue, :nack], _,
+                      %{reason: :drain_timeout, result: :ok}}
+
+      assert SpoolAck.pending_count() == 0
+
+      SpoolAck.ack(h1, 2)
+      refute_receive {:acked, ^h1}, 200
+    end
+  end
+
+  describe "flush/0" do
+    test "returns only after queue acks already handed to SpoolAck have been sent" do
+      handle = unique_handle()
+      test_pid = self()
+
+      stub(QueueMod, :ack, fn _url, h ->
+        Process.sleep(200)
+        send(test_pid, {:acked, h})
+        :ok
+      end)
+
+      SpoolAck.register(handle, QueueMod, "queue-url")
+      SpoolAck.bump(handle, 1)
+      SpoolAck.ack(handle, 1)
+
+      assert SpoolAck.flush() == :ok
+      assert_received {:acked, ^handle}
     end
   end
 end
