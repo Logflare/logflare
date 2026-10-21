@@ -555,6 +555,8 @@ defmodule Logflare.Sources do
     %{source | retention_days: source_ttl_to_days(source, plan)}
   end
 
+  def put_retention_days(source, _plan), do: source
+
   @doc """
   Formats a source TTL to the specified unit
   """
