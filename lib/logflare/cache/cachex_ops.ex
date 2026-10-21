@@ -11,6 +11,8 @@ defmodule Logflare.Cache.CachexOps do
 
   import Cachex.Spec
 
+  require Logger
+
   alias Logflare.ContextCache.Gossip
 
   @stat_keys [
@@ -148,19 +150,51 @@ defmodule Logflare.Cache.CachexOps do
 
   A miss is also multicast to peer nodes, see `Logflare.ContextCache.Gossip`. Accepts a Cachex
   worker, so calls can be batched in `Cachex.execute/2`.
+
+  A miss whose getter cannot reach the database returns `{:error, :database_unavailable}` and
+  commits nothing, so the next call retries. Any other exception is re-raised: Cachex would
+  otherwise rescue it into an indistinguishable error tuple, hiding genuine bugs behind a
+  retryable status.
   """
   @impl Logflare.ContextCache.Ops
-  @spec fetch(Cachex.t(), term(), (-> term())) :: term()
+  @spec fetch(Cachex.t(), term(), (-> term())) :: term() | {:error, :database_unavailable}
   def fetch(cache, key, getter) do
-    case Cachex.fetch(cache, key, fn _key -> {:commit, {:cached, getter.()}} end) do
+    case Cachex.fetch(cache, key, fn _key -> commit_or_ignore(getter) end) do
       {:commit, {:cached, value}} ->
         Gossip.multicast(cache, key, value)
         value
 
       {:ok, {:cached, value}} ->
         value
+
+      {:ignore, {:unavailable, reason}} ->
+        Logger.warning("#{inspect(cache)} could not load #{key_label(key)}: #{inspect(reason)}")
+
+        {:error, :database_unavailable}
+
+      {:ignore, {:raised, error, stacktrace}} ->
+        reraise(error, stacktrace)
+
+      {:error, %Cachex.Error{} = error} ->
+        raise error
     end
   end
+
+  # `:ignore` returns the value to the caller without committing it, so neither an outage nor a
+  # bug poisons the entry and the next call retries the getter.
+  defp commit_or_ignore(getter) do
+    {:commit, {:cached, getter.()}}
+  rescue
+    error in [DBConnection.ConnectionError] -> {:ignore, {:unavailable, error}}
+    error -> {:ignore, {:raised, error, __STACKTRACE__}}
+  catch
+    :exit, {reason, _} when reason in [:noproc, :killed] -> {:ignore, {:unavailable, reason}}
+  end
+
+  # cache keys carry call arguments, which include raw api keys and bearer tokens on the ingest
+  # path, so only the function name is safe to log
+  defp key_label({fun, args}) when is_atom(fun) and is_list(args), do: "#{fun}/#{length(args)}"
+  defp key_label(_key), do: "entry"
 
   @impl Logflare.ContextCache.Ops
   @spec update(Cachex.t(), term(), term()) :: :ok
