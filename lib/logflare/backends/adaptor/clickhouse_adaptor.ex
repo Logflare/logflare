@@ -52,6 +52,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     :use_async_inserts_for_small_batches,
     :use_async_inserts_only,
     :async_insert_max_rows,
+    :async_insert_busy_timeout_max_ms,
+    :async_insert_max_data_size,
     :async_insert_cluster_url,
     :read_pool_size,
     :labeled_read_pool_size,
@@ -162,6 +164,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         :use_async_inserts_only,
         :async_insert_cluster_url,
         :async_insert_max_rows,
+        :async_insert_busy_timeout_max_ms,
+        :async_insert_max_data_size,
         :batch_size,
         :batch_timeout,
         :max_event_age_hours,
@@ -318,6 +322,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        use_async_inserts_only: :boolean,
        async_insert_cluster_url: :string,
        async_insert_max_rows: :integer,
+       async_insert_busy_timeout_max_ms: :integer,
+       async_insert_max_data_size: :integer,
        batch_size: :integer,
        batch_timeout: :integer,
        max_event_age_hours: :integer,
@@ -339,6 +345,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :use_async_inserts_only,
       :async_insert_cluster_url,
       :async_insert_max_rows,
+      :async_insert_busy_timeout_max_ms,
+      :async_insert_max_data_size,
       :batch_size,
       :batch_timeout,
       :max_event_age_hours,
@@ -348,6 +356,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> Logflare.Utils.default_field_value(:use_async_inserts_for_small_batches, false)
     |> Logflare.Utils.default_field_value(:use_async_inserts_only, false)
     |> Logflare.Utils.default_field_value(:async_insert_max_rows, 1_000)
+    |> Logflare.Utils.default_field_value(
+      :async_insert_busy_timeout_max_ms,
+      @async_insert_busy_timeout_max_ms
+    )
     |> Logflare.Utils.default_field_value(:batch_size, Pipeline.max_batch_size())
     |> Logflare.Utils.default_field_value(:batch_timeout, Pipeline.default_batch_timeout())
     |> Logflare.Utils.default_field_value(
@@ -399,6 +411,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
     |> Changeset.validate_format(:async_insert_cluster_url, ~r/https?\:\/\/.+/)
     |> validate_number(:async_insert_max_rows, greater_than: 0)
+    |> validate_number(:async_insert_busy_timeout_max_ms,
+      greater_than: 0,
+      less_than: @insert_max_execution_time_seconds * 1_000
+    )
+    |> validate_number(:async_insert_max_data_size, greater_than: 0)
     |> validate_number(:batch_size,
       greater_than_or_equal_to: @min_batch_size,
       less_than_or_equal_to: Pipeline.max_batch_size()
@@ -1047,7 +1064,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     Logger.metadata(backend_id: backend.id)
     table_name = clickhouse_ingest_table_name(backend, event_type)
     async? = Keyword.get(opts, :async, false)
-    insert_opts = [{:async, async?} | build_insert_opts(opts)]
+    insert_opts = [{:async, async?} | build_insert_opts(backend, opts)]
 
     backend
     |> Ingester.insert(table_name, events, event_type, insert_opts)
@@ -1070,7 +1087,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     Logger.metadata(backend_id: backend.id)
     table_name = clickhouse_ingest_table_name(backend, event_type)
     async? = Keyword.get(opts, :async, false)
-    insert_opts = [{:async, async?} | build_insert_opts(opts)]
+    insert_opts = [{:async, async?} | build_insert_opts(backend, opts)]
 
     backend
     |> Ingester.insert_compressed(table_name, event_type, compressed, insert_opts)
@@ -1120,16 +1137,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     )
   end
 
-  @spec build_insert_opts(keyword()) :: keyword()
-  defp build_insert_opts(opts) do
-    opts
-    |> Keyword.get(:async, false)
-    |> insert_settings()
+  @spec build_insert_opts(Backend.t(), keyword()) :: keyword()
+  defp build_insert_opts(%Backend{config: config}, opts) do
+    insert_settings(Keyword.get(opts, :async, false), config || %{})
   end
 
-  @spec insert_settings(boolean()) :: keyword()
-  defp insert_settings(true), do: base_insert_opts() ++ async_insert_opts()
-  defp insert_settings(false), do: base_insert_opts()
+  @spec insert_settings(boolean(), map()) :: keyword()
+  defp insert_settings(true, config), do: base_insert_opts() ++ async_insert_opts(config)
+  defp insert_settings(false, _config), do: base_insert_opts()
 
   @spec base_insert_opts() :: keyword()
   defp base_insert_opts do
@@ -1151,15 +1166,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   defp insert_host(_config, _async?), do: nil
 
-  @spec async_insert_opts() :: keyword()
-  defp async_insert_opts do
+  @spec async_insert_opts(map()) :: keyword()
+  defp async_insert_opts(config) do
     [
       async_insert: 1,
       wait_for_async_insert: 1,
       wait_for_async_insert_timeout: @insert_max_execution_time_seconds,
-      async_insert_busy_timeout_max_ms: @async_insert_busy_timeout_max_ms
-    ]
+      async_insert_busy_timeout_max_ms: async_insert_busy_timeout_max_ms(config)
+    ] ++ async_insert_max_data_size_opts(config)
   end
+
+  @spec async_insert_busy_timeout_max_ms(map()) :: pos_integer()
+  defp async_insert_busy_timeout_max_ms(%{async_insert_busy_timeout_max_ms: timeout_ms})
+       when is_pos_integer(timeout_ms),
+       do: timeout_ms
+
+  defp async_insert_busy_timeout_max_ms(_config), do: @async_insert_busy_timeout_max_ms
+
+  @spec async_insert_max_data_size_opts(map()) :: keyword()
+  defp async_insert_max_data_size_opts(%{async_insert_max_data_size: max_bytes})
+       when is_pos_integer(max_bytes),
+       do: [async_insert_max_data_size: max_bytes]
+
+  defp async_insert_max_data_size_opts(_config), do: []
 
   @doc """
   Provisions all type-specific ingest tables for the backend, if they do not already exist.

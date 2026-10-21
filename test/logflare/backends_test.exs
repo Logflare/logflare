@@ -220,6 +220,8 @@ defmodule Logflare.BackendsTest do
           use_async_inserts_only: true,
           use_async_inserts_for_small_batches: true,
           async_insert_max_rows: 500,
+          async_insert_busy_timeout_max_ms: 5_000,
+          async_insert_max_data_size: 314_572_800,
           async_insert_cluster_url: "http://localhost:8124"
         })
 
