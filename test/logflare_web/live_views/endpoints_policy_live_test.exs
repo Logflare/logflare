@@ -128,6 +128,42 @@ defmodule LogflareWeb.EndpointsPolicyLiveTest do
     end
   end
 
+  test "policy audit rows do not enter or paginate restorable SQL history", context do
+    admin = insert(:user, admin: true)
+
+    assert {:ok, endpoint} =
+             Endpoints.update_query(
+               context.owner,
+               context.endpoint,
+               %{description: "SQL version"},
+               context.owner
+             )
+
+    version = Endpoints.get_endpoint_query_version(endpoint.id, 1)
+
+    for limit <- 1..26 do
+      assert {:ok, _} =
+               Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, %{
+                 "max_execution_time" => limit
+               })
+    end
+
+    {:ok, view, _} =
+      context.conn
+      |> login_user(context.owner)
+      |> live_with_redirect("/endpoints/#{endpoint.id}/versions")
+
+    assert has_element?(view, "#versions-#{version.id}", "current")
+    assert view |> element("#versions-#{version.id}") |> render() =~ "SQL version"
+    refute has_element?(view, "button[phx-click='load-more']")
+
+    assert view
+           |> render()
+           |> Floki.parse_document!()
+           |> Floki.find("#endpoint-versions button[phx-click='show-version']")
+           |> length() == 1
+  end
+
   defp save_settings(view) do
     view
     |> element("#enforced-settings-form")

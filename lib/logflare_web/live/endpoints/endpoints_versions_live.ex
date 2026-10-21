@@ -323,6 +323,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
   defp fetch_versions(endpoint_id, after_version_id) do
     Version
     |> where([version], version.item_type == "EndpointQuery" and version.item_id == ^endpoint_id)
+    |> where([version], fragment("COALESCE(?->>'kind', '')", version.meta) != "endpoint_policy")
     |> maybe_filter_after_version(after_version_id)
     |> order_by([version], desc: version.id)
     |> limit(^(@page_size + 1))

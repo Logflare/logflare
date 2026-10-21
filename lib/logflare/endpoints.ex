@@ -180,24 +180,43 @@ defmodule Logflare.Endpoints do
   @spec configure_enforced_clickhouse_settings(User.t() | TeamUser.t(), EndpointQuery.t(), map()) ::
           {:ok, EndpointQuery.t()} | {:error, term()}
   def configure_enforced_clickhouse_settings(actor, %EndpointQuery{id: id}, settings) do
-    with {:ok, _admin} <- authorize_settings_admin(actor),
-         %EndpointQuery{language: :ch_sql} = query <- Repo.get(EndpointQuery, id),
-         :ok <- require_clickhouse_backend(query),
-         {:ok, settings} <- ClickHouseSettings.normalize(settings),
-         {:ok, updated} <-
-           query
-           |> Ecto.Changeset.change(enforced_clickhouse_settings: settings)
-           |> Repo.update() do
-      ContextCache.bust_keys([{__MODULE__, updated.id}])
+    Repo.with_primary(fn ->
+      Repo.transact(fn ->
+        with {:ok, admin} <- authorize_settings_admin(actor),
+             %EndpointQuery{} = query <-
+               Repo.one(from(query in EndpointQuery, where: query.id == ^id, lock: "FOR UPDATE")),
+             :ok <- require_clickhouse_endpoint(query, settings),
+             {:ok, settings} <- ClickHouseSettings.normalize(settings) do
+          opts = [
+            origin: admin.email,
+            meta: %{
+              kind: "endpoint_policy",
+              operator_id: admin.id,
+              previous_settings: query.enforced_clickhouse_settings,
+              settings: settings
+            }
+          ]
 
-      case maybe_kill_endpoint_caches(updated, %{enforced_clickhouse_settings: settings}) do
-        :ok -> {:ok, updated}
-        {:error, reason} -> {:error, {:settings_saved, updated, reason}}
-      end
-    else
-      nil -> {:error, :not_found}
-      %EndpointQuery{} -> {:error, :not_clickhouse_endpoint}
-      error -> error
+          query
+          |> Ecto.Changeset.change(enforced_clickhouse_settings: settings)
+          |> PaperTrail.update(opts)
+        else
+          nil -> {:error, :not_found}
+          error -> error
+        end
+      end)
+    end)
+    |> case do
+      {:ok, %{model: updated}} ->
+        ContextCache.bust_keys([{__MODULE__, updated.id}])
+
+        case maybe_kill_endpoint_caches(updated, %{enforced_clickhouse_settings: settings}) do
+          :ok -> {:ok, updated}
+          {:error, reason} -> {:error, {:settings_saved, updated, reason}}
+        end
+
+      error ->
+        error
     end
   end
 
@@ -213,6 +232,15 @@ defmodule Logflare.Endpoints do
   @spec settings_user(User.t() | TeamUser.t()) :: User.t() | nil
   defp settings_user(%User{id: id}), do: Repo.get(User, id)
   defp settings_user(%TeamUser{email: email}), do: Repo.get_by(User, email: email)
+
+  @spec require_clickhouse_endpoint(EndpointQuery.t(), map()) ::
+          :ok | {:error, :not_clickhouse_endpoint}
+  defp require_clickhouse_endpoint(_query, settings) when settings == %{}, do: :ok
+
+  defp require_clickhouse_endpoint(%EndpointQuery{language: :ch_sql} = query, _settings),
+    do: require_clickhouse_backend(query)
+
+  defp require_clickhouse_endpoint(_query, _settings), do: {:error, :not_clickhouse_endpoint}
 
   @spec require_clickhouse_backend(EndpointQuery.t()) :: :ok | {:error, :not_clickhouse_endpoint}
   defp require_clickhouse_backend(%EndpointQuery{backend_id: nil}), do: :ok
@@ -454,6 +482,7 @@ defmodule Logflare.Endpoints do
   defp current_endpoint_version_id(endpoint_id) do
     from(version in Version,
       where: version.item_type == "EndpointQuery" and version.item_id == ^endpoint_id,
+      where: fragment("COALESCE(?->>'kind', '')", version.meta) != "endpoint_policy",
       order_by: [desc: version.id],
       limit: 1,
       select: version.id
