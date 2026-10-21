@@ -649,19 +649,6 @@ defmodule Logflare.Telemetry do
       sum("logflare.backends.spool.consumer.messages_failed.count",
         description: "Spool consumer: Broadway messages marked failed during processing"
       ),
-      distribution("logflare.shutdown.drain.duration",
-        tags: [:result],
-        unit: :millisecond,
-        description: "Time spent draining in-flight events on SIGTERM, by result"
-      ),
-      sum("logflare.shutdown.drain.spool_pending",
-        tags: [:result],
-        description: "Spool files still unacked when the shutdown drain ended (nacked on timeout)"
-      ),
-      sum("logflare.shutdown.drain.queued_events",
-        tags: [:result],
-        description: "Events still queued for backends or the spool when the shutdown drain ended"
-      ),
       counter("thousand_island.acceptor.spawn_error",
         description: "Count of client connection spawn errors"
       ),

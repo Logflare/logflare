@@ -9,7 +9,6 @@ defmodule Logflare.ShutdownDrainTest do
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.ShutdownDrain
-  alias Logflare.TestUtils
 
   setup :set_mimic_global
 
@@ -40,15 +39,13 @@ defmodule Logflare.ShutdownDrainTest do
     )
   end
 
-  defp stub_producers(drained?) do
+  defp stub_producers do
     test_pid = self()
 
     stub(QueueProducer, :stop_fetching, fn producer ->
       send(test_pid, {:stop_fetching, producer})
       :ok
     end)
-
-    stub(QueueProducer, :drained?, fn _producer -> drained?.() end)
   end
 
   defp stub_queued_events(initial) do
@@ -58,21 +55,17 @@ defmodule Logflare.ShutdownDrainTest do
   end
 
   test "stops every spool producer fetching and returns :drained once nothing is pending" do
-    stub_producers(fn -> true end)
-    TestUtils.attach_forwarder([:logflare, :shutdown, :drain])
+    stub_producers()
 
     assert run(producers: [:p0, :p1]) == :drained
 
     assert_received {:stop_fetching, :p0}
     assert_received {:stop_fetching, :p1}
     refute_received {:nacked, _}
-
-    assert_receive {:telemetry_event, [:logflare, :shutdown, :drain],
-                    %{duration: _, spool_pending: 0, queued_events: 0}, %{result: :drained}}
   end
 
   test "waits for in-flight spool files to be fully processed and acked" do
-    stub_producers(fn -> true end)
+    stub_producers()
     handle = "h1"
     SpoolAck.register(handle, QueueMod, "queue-url")
     SpoolAck.bump(handle, 1)
@@ -86,19 +79,6 @@ defmodule Logflare.ShutdownDrainTest do
     assert Task.await(task) == :drained
     assert_received {:acked, ^handle}
     refute_received {:nacked, ^handle}
-  end
-
-  test "waits for a spool producer that still has an unemitted file" do
-    {:ok, drained} = Agent.start_link(fn -> false end)
-    stub_producers(fn -> Agent.get(drained, & &1) end)
-
-    task = Task.async(fn -> run(producers: [:p0]) end)
-
-    refute Task.yield(task, 100)
-
-    Agent.update(drained, fn _ -> true end)
-
-    assert Task.await(task) == :drained
   end
 
   test "waits for events queued for backends or the spool to be delivered" do
@@ -122,8 +102,7 @@ defmodule Logflare.ShutdownDrainTest do
   end
 
   test "nacks spool files still pending at the deadline so they redeliver immediately" do
-    stub_producers(fn -> true end)
-    TestUtils.attach_forwarder([:logflare, :shutdown, :drain])
+    stub_producers()
     SpoolAck.register("stuck", QueueMod, "queue-url")
     SpoolAck.bump("stuck", 1)
 
@@ -134,22 +113,15 @@ defmodule Logflare.ShutdownDrainTest do
     assert System.monotonic_time(:millisecond) - started >= 200
     assert_received {:nacked, "stuck"}
     assert SpoolAck.pending_count() == 0
-
-    assert_receive {:telemetry_event, [:logflare, :shutdown, :drain], %{spool_pending: 1},
-                    %{result: :timeout}}
   end
 
   test "times out on queued events that never drain" do
     stub_queued_events(7)
-    TestUtils.attach_forwarder([:logflare, :shutdown, :drain])
 
     assert run(producers: [], timeout_ms: 100) == :timeout
-
-    assert_receive {:telemetry_event, [:logflare, :shutdown, :drain], %{queued_events: 7},
-                    %{result: :timeout}}
   end
 
-  test "treats a spool producer that is already gone as drained" do
+  test "skips a spool producer that is already gone" do
     dead = spawn(fn -> :ok end)
     ref = Process.monitor(dead)
     assert_receive {:DOWN, ^ref, :process, ^dead, _}
@@ -163,7 +135,7 @@ defmodule Logflare.ShutdownDrainTest do
 
   describe "verification logging" do
     test "logs when the drain starts and how many spool producers stopped fetching" do
-      stub_producers(fn -> true end)
+      stub_producers()
 
       log = capture_log([level: :warning], fn -> run(producers: [:p0, :p1], min_wait_ms: 10) end)
 
