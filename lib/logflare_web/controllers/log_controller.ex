@@ -73,147 +73,200 @@ defmodule LogflareWeb.LogController do
     }
   )
 
-  def create(%{assigns: %{source: source}} = conn, %{"batch" => batch}) when is_list(batch) do
-    batch
-    |> Processor.ingest(Logs.Raw, source)
+  def create(conn, %{"batch" => batch}) when is_list(batch) do
+    dispatch(batch, conn, Logs.Raw)
+  end
+
+  def create(conn, %{"_json" => batch}) when is_list(batch) do
+    dispatch(batch, conn, Logs.Raw)
+  end
+
+  def create(conn, _slog_params) do
+    event = Map.drop(conn.body_params, ~w[timestamp id])
+    dispatch([event], conn, Logs.Raw)
+  end
+
+  @lf_source_key "__LF_SOURCE"
+
+  defp dispatch(events, conn, processor) when is_list(events),
+    do: dispatch(events, conn, conn.assigns, processor)
+
+  defp dispatch(events, conn, %{declared_sources: declared}, processor) do
+    case group_events_by_source(events, declared) do
+      {grouped, []} ->
+        grouped
+        |> Enum.map(fn {source, batch} -> Processor.ingest(batch, processor, source) end)
+        |> aggregate_results()
+        |> handle(conn)
+
+      {_grouped, errors} ->
+        handle({:error, errors}, conn)
+    end
+  end
+
+  defp dispatch(events, conn, %{source: source}, processor) do
+    events
+    |> Enum.map(&drop_source_key/1)
+    |> Processor.ingest(processor, source)
     |> handle(conn)
   end
 
-  def create(%{assigns: %{source: source}} = conn, %{"_json" => batch})
-      when is_list(batch) do
-    batch
-    |> Processor.ingest(Logs.Raw, source)
-    |> handle(conn)
+  defp group_events_by_source(events, declared) do
+    {groups, errors} =
+      for event <- events, reduce: {%{}, []} do
+        {groups, errors} ->
+          token = event_source_token(event)
+
+          cond do
+            is_binary(token) and is_map_key(declared, token) ->
+              source = Map.fetch!(declared, token)
+              stripped = drop_source_key(event)
+              {Map.update(groups, source, [stripped], &[stripped | &1]), errors}
+
+            is_binary(token) ->
+              {groups, ["event references unknown or unauthorized source #{token}" | errors]}
+
+            token != nil ->
+              {groups, ["invalid __LF_SOURCE value" | errors]}
+
+            true ->
+              {groups, ["event missing __LF_SOURCE" | errors]}
+          end
+      end
+
+    grouped = for {source, batch} <- groups, do: {source, Enum.reverse(batch)}
+    {grouped, Enum.reverse(errors)}
   end
 
-  def create(%{assigns: %{source: source}} = conn, _slog_params) do
-    conn.body_params
-    |> Map.drop(~w[timestamp id])
-    |> List.wrap()
-    |> Processor.ingest(Logs.Raw, source)
-    |> handle(conn)
+  defp drop_source_key(event) when is_map(event),
+    do: Map.drop(event, [@lf_source_key, :"#{@lf_source_key}"])
+
+  defp drop_source_key(event), do: event
+
+  defp event_source_token(%{@lf_source_key => token}), do: token
+  defp event_source_token(%{:__LF_SOURCE => token}), do: token
+  defp event_source_token(_), do: nil
+
+  defp aggregate_results(results) do
+    case Enum.find(results, &match?({:error, reason} when is_atom(reason), &1)) do
+      nil -> merge_results(results)
+      error -> error
+    end
+  end
+
+  defp merge_results(results) do
+    {count, all_errors} =
+      for result <- results, reduce: {0, []} do
+        {acc, errs} ->
+          case result do
+            {:ok, n} -> {acc + n, errs}
+            :ok -> {acc, errs}
+            {:error, more} when is_list(more) -> {acc, Enum.reverse(more, errs)}
+            {:error, err} -> {acc, [err | errs]}
+          end
+      end
+
+    if all_errors == [], do: {:ok, count}, else: {:error, all_errors}
   end
 
   operation :cloudflare, false
 
-  def cloudflare(%{assigns: %{source: source}} = conn, %{"batch" => batch}) when is_list(batch) do
+  def cloudflare(conn, %{"batch" => batch}) when is_list(batch) do
     batch
-    |> Processor.ingest(Logs.Raw, source)
-    |> handle(conn)
+    |> dispatch(conn, Logs.Raw)
   end
 
-  def cloudflare(%{assigns: %{source: source}} = conn, log_params) when is_map(log_params) do
+  def cloudflare(conn, log_params) when is_map(log_params) do
     log_params
     |> Map.drop(["source", "timestamp", "id"])
     |> List.wrap()
-    |> Processor.ingest(Logs.Raw, source)
-    |> handle(conn)
+    |> dispatch(conn, Logs.Raw)
   end
 
   operation :syslog, false
 
-  def syslog(%{assigns: %{source: source}} = conn, %{"batch" => batch}) when is_list(batch) do
+  def syslog(conn, %{"batch" => batch}) when is_list(batch) do
     batch
-    |> Processor.ingest(Logs.Raw, source)
-    |> handle(conn)
+    |> dispatch(conn, Logs.Raw)
   end
 
   operation :generic_json, false
 
-  def generic_json(%{assigns: %{source: source}} = conn, %{"_json" => batch})
-      when is_list(batch) do
+  def generic_json(conn, %{"_json" => batch}) when is_list(batch) do
     batch
-    |> Processor.ingest(Logs.GenericJson, source)
-    |> handle(conn)
+    |> dispatch(conn, Logs.GenericJson)
   end
 
-  def generic_json(%{assigns: %{source: source}, body_params: event} = conn, _log_params) do
+  def generic_json(%{body_params: event} = conn, _log_params) do
     event
     |> List.wrap()
-    |> Processor.ingest(Logs.GenericJson, source)
-    |> handle(conn)
+    |> dispatch(conn, Logs.GenericJson)
   end
 
   operation :vector, false
 
-  def vector(%{assigns: %{source: source}} = conn, %{"_json" => batch})
-      when is_list(batch) do
+  def vector(conn, %{"_json" => batch}) when is_list(batch) do
     batch
-    |> Processor.ingest(Logs.Vector, source)
-    |> handle(conn)
+    |> dispatch(conn, Logs.Vector)
   end
 
-  def vector(%{assigns: %{source: source}, body_params: event} = conn, _log_params) do
+  def vector(%{body_params: event} = conn, _log_params) do
     event
     |> List.wrap()
-    |> Processor.ingest(Logs.Vector, source)
-    |> handle(conn)
+    |> dispatch(conn, Logs.Vector)
   end
 
   operation :browser_reports, false
 
-  def browser_reports(%{assigns: %{source: source}} = conn, %{"_json" => batch})
-      when is_list(batch) do
+  def browser_reports(conn, %{"_json" => batch}) when is_list(batch) do
     batch
-    |> Processor.ingest(Logs.BrowserReport, source)
-    |> handle(conn)
+    |> dispatch(conn, Logs.BrowserReport)
   end
 
-  def browser_reports(%{assigns: %{source: source}, body_params: event} = conn, _log_params) do
+  def browser_reports(%{body_params: event} = conn, _log_params) do
     event
     |> List.wrap()
-    |> Processor.ingest(Logs.BrowserReport, source)
-    |> handle(conn)
+    |> dispatch(conn, Logs.BrowserReport)
   end
 
   operation :elixir_logger, false
 
-  def elixir_logger(%{assigns: %{source: source}} = conn, %{"batch" => batch})
-      when is_list(batch) do
+  def elixir_logger(conn, %{"batch" => batch}) when is_list(batch) do
     batch
-    |> Processor.ingest(Logs.Raw, source)
-    |> handle(conn)
+    |> dispatch(conn, Logs.Raw)
   end
 
   operation :create_with_typecasts, false
 
-  def create_with_typecasts(%{assigns: %{source: source}} = conn, %{"batch" => batch})
-      when is_list(batch) do
+  def create_with_typecasts(conn, %{"batch" => batch}) when is_list(batch) do
     batch
-    |> Processor.ingest(Logs.IngestTypecasting, source)
-    |> handle(conn)
+    |> dispatch(conn, Logs.IngestTypecasting)
   end
 
   operation :vercel_ingest, false
 
-  def vercel_ingest(%{assigns: %{source: source}} = conn, %{"_json" => batch})
-      when is_list(batch) do
+  def vercel_ingest(conn, %{"_json" => batch}) when is_list(batch) do
     batch
-    |> Processor.ingest(Logs.Vercel, source)
-    |> handle(conn)
+    |> dispatch(conn, Logs.Vercel)
   end
 
   operation :netlify, false
 
-  def netlify(%{assigns: %{source: source}} = conn, %{"_json" => batch}) when is_list(batch) do
+  def netlify(conn, %{"_json" => batch}) when is_list(batch) do
     batch
-    |> Processor.ingest(Logs.Netlify, source)
-    |> handle(conn)
+    |> dispatch(conn, Logs.Netlify)
   end
 
-  def netlify(%{assigns: %{source: source}, body_params: params} = conn, _params)
-      when is_map(params) do
+  def netlify(%{body_params: params} = conn, _params) when is_map(params) do
     [params]
-    |> Processor.ingest(Logs.Netlify, source)
-    |> handle(conn)
+    |> dispatch(conn, Logs.Netlify)
   end
 
   operation :github, false
 
-  def github(%{assigns: %{source: source}, body_params: params} = conn, _params) do
+  def github(%{body_params: params} = conn, _params) do
     [params]
-    |> Processor.ingest(Logs.Github, source)
-    |> handle(conn)
+    |> dispatch(conn, Logs.Github)
   end
 
   operation :cloud_event, false
@@ -227,7 +280,7 @@ defmodule LogflareWeb.LogController do
     do_cloud_event(conn, event)
   end
 
-  defp do_cloud_event(%Plug.Conn{assigns: %{source: source}} = conn, data) do
+  defp do_cloud_event(%Plug.Conn{} = conn, data) do
     cloud_event = extract_cloud_events(conn)
 
     timestamp = cloud_event["time"]
@@ -240,8 +293,7 @@ defmodule LogflareWeb.LogController do
         "cloud_event" => cloud_event
       })
     )
-    |> Processor.ingest(Logs.Raw, source)
-    |> handle(conn)
+    |> dispatch(conn, Logs.Raw)
   end
 
   defp handle({:ok, _}, conn), do: render(conn, "index.json", message: @message)
