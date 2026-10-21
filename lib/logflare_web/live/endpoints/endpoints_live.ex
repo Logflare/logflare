@@ -16,7 +16,6 @@ defmodule LogflareWeb.EndpointsLive do
   alias Logflare.SingleTenant
   alias Logflare.Sql
   alias Logflare.User
-  alias Logflare.Users
   alias LogflareWeb.Endpoints.Components
   alias LogflareWeb.Endpoints.RunQuery
   alias LogflareWeb.QueryErrorHelpers
@@ -53,7 +52,7 @@ defmodule LogflareWeb.EndpointsLive do
   def mount(%{}, _session, socket) do
     %{assigns: %{user: user}} = socket
 
-    admin? = match?(%User{admin: true}, Users.get(user.id))
+    admin? = Endpoints.enforced_settings_admin?(socket.assigns.team_user || user)
     allow_access = Enum.any?([Utils.flag("endpointsOpenBeta"), user.endpoints_beta, admin?])
 
     alerts = Endpoints.list_endpoints_by(user_id: user.id)
@@ -110,7 +109,8 @@ defmodule LogflareWeb.EndpointsLive do
     accessible_endpoint = Endpoints.get_endpoint_query_by_user_access(user, id)
 
     endpoint =
-      accessible_endpoint || if(socket.assigns.admin?, do: Endpoints.get_endpoint_query(id))
+      accessible_endpoint ||
+        if(action == :edit and socket.assigns.admin?, do: Endpoints.get_endpoint_query(id))
 
     case endpoint do
       nil ->
@@ -189,7 +189,9 @@ defmodule LogflareWeb.EndpointsLive do
       when is_map(params) do
     settings = parse_enforced_settings(params)
 
-    case Endpoints.configure_enforced_clickhouse_settings(user, endpoint, settings) do
+    actor = socket.assigns.team_user || user
+
+    case Endpoints.configure_enforced_clickhouse_settings(actor, endpoint, settings) do
       {:ok, updated} ->
         {:noreply,
          socket
@@ -248,17 +250,21 @@ defmodule LogflareWeb.EndpointsLive do
         %{"run" => payload},
         socket
       ) do
-    payload = Map.put_new(payload, "query", socket.assigns.params_form[:query].value)
-    socket = assign(socket, :params_form, test_form(payload))
+    if can_run_query?(socket) do
+      payload = Map.put_new(payload, "query", socket.assigns.params_form[:query].value)
+      socket = assign(socket, :params_form, test_form(payload))
 
-    socket =
-      if sandbox_query?(socket, payload) do
-        run_sandbox_query(socket, payload)
-      else
-        run_endpoint_query(socket, payload)
-      end
+      socket =
+        if sandbox_query?(socket, payload) do
+          run_sandbox_query(socket, payload)
+        else
+          run_endpoint_query(socket, payload)
+        end
 
-    {:noreply, socket}
+      {:noreply, socket}
+    else
+      {:noreply, put_flash(socket, :error, "Not authorized to run this endpoint")}
+    end
   end
 
   def handle_event("apply-beta", _params, %{assigns: %{user: user}} = socket) do
@@ -348,8 +354,18 @@ defmodule LogflareWeb.EndpointsLive do
     |> assign(:params_form, test_form(values))
   end
 
+  @spec can_run_query?(Phoenix.LiveView.Socket.t()) :: boolean()
+  defp can_run_query?(%{assigns: %{live_action: :new}}), do: true
+
+  defp can_run_query?(%{assigns: %{show_endpoint: %EndpointQuery{id: id}}} = socket) do
+    actor = socket.assigns.team_user || socket.assigns.user
+    not is_nil(Endpoints.get_endpoint_query_by_user_access(actor, id))
+  end
+
+  defp can_run_query?(_socket), do: false
+
   defp run_endpoint_query(
-         %{assigns: %{user: %Logflare.User{} = user}} = socket,
+         %{assigns: %{user: %User{} = user}} = socket,
          %{"query" => query_string} = payload
        )
        when is_binary(query_string) do
@@ -550,6 +566,7 @@ defmodule LogflareWeb.EndpointsLive do
     |> assign(:enforced_settings_error, nil)
   end
 
+  @spec enforced_settings_form(map()) :: Phoenix.HTML.Form.t()
   defp enforced_settings_form(settings) do
     values =
       Map.new(@resource_settings, fn {key, _label} ->
@@ -559,6 +576,7 @@ defmodule LogflareWeb.EndpointsLive do
     to_form(values, as: :settings)
   end
 
+  @spec parse_enforced_settings(map()) :: map()
   defp parse_enforced_settings(params) do
     @resource_settings
     |> Enum.reduce(%{}, fn {key, _label}, settings ->
@@ -569,6 +587,7 @@ defmodule LogflareWeb.EndpointsLive do
     end)
   end
 
+  @spec parse_limit(term()) :: term()
   defp parse_limit(value) when is_binary(value) do
     case Integer.parse(String.trim(value)) do
       {number, ""} -> number
@@ -578,6 +597,7 @@ defmodule LogflareWeb.EndpointsLive do
 
   defp parse_limit(value), do: value
 
+  @spec settings_error(term()) :: String.t()
   defp settings_error(reason) when is_binary(reason), do: reason
   defp settings_error(_reason), do: "Unable to configure ClickHouse settings"
 
