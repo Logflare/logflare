@@ -187,6 +187,40 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
                     %{source_id: ^source_id, source_token: ^source_token}}
   end
 
+  describe "single-tenant ClickHouse system default" do
+    TestUtils.setup_single_tenant(backend_type: :clickhouse)
+
+    test "uses the consolidated default cache", %{
+      conn: conn,
+      source: source
+    } do
+      backend = Backends.get_default_backend(%Logflare.User{id: source.user_id})
+
+      over_limit = Backends.max_buffer_queue_len() + 1
+
+      Logflare.PubSubRates.Cache.cache_buffers(source.id, nil, %{
+        Node.self() => %{len: over_limit, queues: [{{source.id, nil, self()}, over_limit}]}
+      })
+
+      conn = conn |> assign(:source, source) |> BufferLimiter.call(%{})
+      refute conn.halted
+
+      assert Backends.system_default_ingest_queue_key(source) == {:consolidated, backend.id}
+
+      Logflare.PubSubRates.Cache.cache_buffers(:consolidated, backend.id, %{
+        Node.self() => %{
+          len: over_limit,
+          queues: [{{:consolidated, backend.id, self()}, over_limit}]
+        }
+      })
+
+      conn = conn |> recycle() |> assign(:source, source) |> BufferLimiter.call(%{})
+
+      assert conn.halted
+      assert json_response(conn, 429)
+    end
+  end
+
   describe "default ingest feature" do
     setup do
       user = insert(:user)
@@ -511,14 +545,14 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       end
 
       # Fill CH backend queue over the limit
-      clickhouse_queue_key = {source.id, clickhouse_backend.id, self()}
+      clickhouse_queue_key = {:consolidated, clickhouse_backend.id, self()}
       IngestEventQueue.upsert_tid(clickhouse_queue_key)
 
       fill_queue(clickhouse_queue_key, source)
 
       # Cache buffer stats for both backends
       Backends.cache_local_buffer_lens(source.id, nil)
-      Backends.cache_local_buffer_lens(source.id, clickhouse_backend.id)
+      Backends.cache_local_buffer_lens(:consolidated, clickhouse_backend.id)
 
       conn =
         conn

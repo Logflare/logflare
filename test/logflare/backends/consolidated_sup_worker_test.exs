@@ -1,8 +1,10 @@
 defmodule Logflare.Backends.ConsolidatedSupWorkerTest do
   use Logflare.DataCase, async: false
 
+  alias Logflare.Backends
   alias Logflare.Backends.ConsolidatedSup
   alias Logflare.Backends.ConsolidatedSupWorker
+  alias Logflare.SingleTenant
 
   describe "ConsolidatedSupWorker" do
     setup do
@@ -75,6 +77,28 @@ defmodule Logflare.Backends.ConsolidatedSupWorkerTest do
       assert {:ok, _} = Logflare.Backends.delete_backend(backend)
 
       refute ConsolidatedSup.pipeline_running?(backend.id)
+    end
+  end
+
+  describe "ConsolidatedSupWorker single-tenant default" do
+    TestUtils.setup_single_tenant(seed_user: true, backend_type: :clickhouse)
+
+    test "starts the synthetic consolidated backend without sources or rules" do
+      backend = SingleTenant.get_default_clickhouse_backend()
+      assert backend.id == 0
+
+      on_exit(fn -> ConsolidatedSup.stop_pipeline(backend.id) end)
+
+      refute ConsolidatedSup.pipeline_running?(backend.id)
+      worker = start_supervised!({ConsolidatedSupWorker, [interval: 10_000]})
+
+      send(worker, :check)
+
+      TestUtils.retry_assert(fn ->
+        assert ConsolidatedSup.pipeline_running?(backend.id)
+      end)
+
+      assert Backends.list_backends(user_id: backend.user_id) == []
     end
   end
 end
