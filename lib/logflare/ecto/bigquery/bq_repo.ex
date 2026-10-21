@@ -29,7 +29,6 @@ defmodule Logflare.BqRepo do
         ) :: query_result()
   def query_with_sql_and_params(%User{} = user, project_id, sql, params, opts \\ [])
       when not is_nil(project_id) and is_binary(sql) and is_list(params) and is_list(opts) do
-    # the plan is only a query label, so an unresolvable one must not fail the query
     plan =
       case Billing.Cache.get_plan_by_user(user) do
         %Plan{name: name} -> name

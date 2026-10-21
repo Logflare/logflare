@@ -8,25 +8,23 @@ defmodule Logflare.DbOutageTest do
   alias Logflare.Repo
   alias Logflare.Sources.Source
   alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.SystemMetrics.AllLogsLogged.Poller
 
-  # A repo pool pointed at a closed port. Queries against it fail the same way
-  # they do when the primary database is unreachable, without touching the
-  # sandbox-owned connection the rest of the suite depends on.
-  #
-  # The queue settings mirror `config/prod.exs` on purpose: with them, a checkout
-  # on an empty pool blocks for ~12s regardless of any per-call `:timeout`, so
-  # anything asserting that a caller fails fast has to opt out of queueing.
+  defp unreachable_config(overrides \\ []) do
+    Repo.config()
+    |> Keyword.merge(
+      hostname: "127.0.0.1",
+      port: 1,
+      pool: DBConnection.ConnectionPool,
+      pool_size: 1,
+      queue_target: 10,
+      queue_interval: 10
+    )
+    |> Keyword.merge(overrides)
+  end
+
   defp start_unreachable_repo!(_context) do
-    {:ok, pid} =
-      Repo.start_link(
-        name: nil,
-        hostname: "127.0.0.1",
-        port: 1,
-        pool: DBConnection.ConnectionPool,
-        pool_size: 1,
-        queue_target: 5_000,
-        queue_interval: 2_000
-      )
+    {:ok, pid} = Repo.start_link(unreachable_config(name: nil))
 
     [unreachable_repo: pid]
   end
@@ -48,17 +46,7 @@ defmodule Logflare.DbOutageTest do
   defp cut_database_connections(pid) do
     simulate_outage(pid)
 
-    entries = [
-      {"unreachable",
-       [
-         hostname: "127.0.0.1",
-         port: 1,
-         pool: DBConnection.ConnectionPool,
-         pool_size: 1,
-         queue_target: 10,
-         queue_interval: 10
-       ]}
-    ]
+    entries = [{"unreachable", unreachable_config()}]
 
     start_supervised!({Repo.Replicas, entries: entries})
 
@@ -171,17 +159,7 @@ defmodule Logflare.DbOutageTest do
     # configured replicas at a closed port makes every context cache miss fail the
     # way it does when the primary is unreachable.
     setup do
-      entries = [
-        {"unreachable",
-         [
-           hostname: "127.0.0.1",
-           port: 1,
-           pool: DBConnection.ConnectionPool,
-           pool_size: 1,
-           queue_target: 10,
-           queue_interval: 10
-         ]}
-      ]
+      entries = [{"unreachable", unreachable_config()}]
 
       start_supervised!({Repo.Replicas, entries: entries})
 
@@ -259,6 +237,72 @@ defmodule Logflare.DbOutageTest do
       assert {:noreply, ^state} = AllLogsLogged.handle_info(:persist, state)
       assert {:ok, _} = AllLogsLogged.increment(:total_logs_logged)
     end
+
+    test "a persisted count is not overwritten by the events seen during the outage",
+         %{unreachable_repo: pid} do
+      node = Atom.to_string(node())
+      Repo.insert!(%Logflare.SystemMetric{node: node, all_logs_logged: 1_000})
+
+      healthy = Repo.get_dynamic_repo()
+      Repo.put_dynamic_repo(pid)
+      on_exit(fn -> Repo.put_dynamic_repo(healthy) end)
+
+      {:ok, state, _continue} = AllLogsLogged.init([])
+      {:noreply, state} = AllLogsLogged.handle_continue(:seed_log_count, state)
+      refute state.seeded?
+
+      for _ <- 1..10, do: AllLogsLogged.increment(:total_logs_logged)
+
+      Repo.put_dynamic_repo(healthy)
+      {:noreply, state} = AllLogsLogged.handle_info(:persist, state)
+
+      assert state.seeded?
+      assert Repo.get_by(Logflare.SystemMetric, node: node).all_logs_logged == 1_010
+    end
+
+    test "a late seed is not reported as logs ingested in that second",
+         %{unreachable_repo: pid} do
+      node = Atom.to_string(node())
+      Repo.insert!(%Logflare.SystemMetric{node: node, all_logs_logged: 1_000})
+
+      healthy = Repo.get_dynamic_repo()
+      Repo.put_dynamic_repo(pid)
+      on_exit(fn -> Repo.put_dynamic_repo(healthy) end)
+
+      # boot both while the database is unreachable, so the counter is unseeded
+      {:ok, counter_state, _continue} = AllLogsLogged.init([])
+      {:noreply, counter_state} = AllLogsLogged.handle_continue(:seed_log_count, counter_state)
+      {:ok, poller_state} = Poller.init([])
+
+      for _ <- 1..3, do: AllLogsLogged.increment(:total_logs_logged)
+
+      # the seed lands on a later tick, adding 1_000 to the persisted total
+      Repo.put_dynamic_repo(healthy)
+      {:noreply, _} = AllLogsLogged.handle_info(:persist, counter_state)
+
+      {:noreply, poller_state} = Poller.handle_info(:poll_per_second, poller_state)
+
+      assert poller_state.last_second == 3
+    end
+
+    test "a query the database refuses is not rescued" do
+      {:ok, refusing} =
+        unreachable_config(
+          name: nil,
+          hostname: Keyword.fetch!(Repo.config(), :hostname),
+          port: Keyword.fetch!(Repo.config(), :port),
+          after_connect: {Postgrex, :query!, ["set search_path=does_not_exist", []]}
+        )
+        |> Repo.start_link()
+
+      simulate_outage(refusing)
+
+      {:ok, state, _continue} = AllLogsLogged.init([])
+
+      assert_raise Postgrex.Error, ~r/undefined_table/, fn ->
+        AllLogsLogged.handle_continue(:seed_log_count, state)
+      end
+    end
   end
 
   describe "full ingestion flow while the database is unreachable" do
@@ -328,6 +372,47 @@ defmodule Logflare.DbOutageTest do
     end
   end
 
+  describe "an uncached plan when the database is unreachable" do
+    test "ingest answers 503 rather than raising in the rate limiter", %{conn: conn} do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      Logflare.Billing.Cache
+      |> stub(:get_plan_by_user, fn _user -> {:error, :database_unavailable} end)
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> post("/logs?source=#{source.token}", %{"message" => "during outage"})
+
+      assert conn.status == 503
+      assert get_resp_header(conn, "retry-after") == ["5"]
+    end
+  end
+
+  describe "nested cache calls when the database is unreachable" do
+    test "Auth propagates an unavailable owner lookup instead of wrapping it in :ok" do
+      user = insert(:user)
+      {:ok, access_token} = Logflare.Auth.create_access_token(user)
+
+      Logflare.Users.Cache
+      |> stub(:get, fn _id -> {:error, :database_unavailable} end)
+
+      assert Logflare.Auth.verify_access_token(access_token.token, []) ==
+               {:error, :database_unavailable}
+    end
+
+    test "a getter returning the error is not committed", %{} do
+      cache = Logflare.Users.Cache
+      key = {:get, [System.unique_integer([:positive])]}
+
+      assert CachexOps.fetch(cache, key, fn -> {:error, :database_unavailable} end) ==
+               {:error, :database_unavailable}
+
+      assert CachexOps.fetch(cache, key, fn -> :recovered end) == :recovered
+    end
+  end
+
   describe "CachexOps.fetch/3 when the getter cannot reach the database" do
     setup do
       [cache: Logflare.Users.Cache, key: {:get, [System.unique_integer([:positive])]}]
@@ -341,7 +426,7 @@ defmodule Logflare.DbOutageTest do
 
     test "lets unrelated exceptions propagate instead of reporting them as an outage",
          %{cache: cache, key: key} do
-      assert_raise FunctionClauseError, fn ->
+      assert_raise Cachex.Error, ~r/no function clause matching/, fn ->
         CachexOps.fetch(cache, key, fn -> Integer.parse(:not_a_binary) end)
       end
     end
@@ -351,6 +436,12 @@ defmodule Logflare.DbOutageTest do
                exit({:noproc, {DBConnection, :checkout, []}})
              end) ==
                {:error, :database_unavailable}
+    end
+
+    test "raises when the cache is not running", %{key: key} do
+      assert_raise RuntimeError, ~r/is not running/, fn ->
+        CachexOps.fetch(:no_such_cache, key, fn -> :value end)
+      end
     end
 
     test "does not log call arguments, which carry raw credentials", %{cache: cache} do

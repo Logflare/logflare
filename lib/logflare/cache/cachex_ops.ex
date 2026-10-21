@@ -172,27 +172,34 @@ defmodule Logflare.Cache.CachexOps do
 
         {:error, :database_unavailable}
 
-      {:ignore, {:raised, error, stacktrace}} ->
-        reraise(error, stacktrace)
+      {:ignore, {:error, :database_unavailable} = err} ->
+        err
+
+      {:error, %Cachex.Error{stack: stack} = error} when is_list(stack) ->
+        reraise error, stack
 
       {:error, %Cachex.Error{} = error} ->
         raise error
+
+      {:error, :no_cache} ->
+        raise "cache #{inspect(cache)} is not running"
+
+      {:error, reason} ->
+        exit(reason)
     end
   end
 
-  # `:ignore` returns the value to the caller without committing it, so neither an outage nor a
-  # bug poisons the entry and the next call retries the getter.
   defp commit_or_ignore(getter) do
-    {:commit, {:cached, getter.()}}
+    case getter.() do
+      {:error, :database_unavailable} = err -> {:ignore, err}
+      value -> {:commit, {:cached, value}}
+    end
   rescue
     error in [DBConnection.ConnectionError] -> {:ignore, {:unavailable, error}}
-    error -> {:ignore, {:raised, error, __STACKTRACE__}}
   catch
     :exit, {reason, _} when reason in [:noproc, :killed] -> {:ignore, {:unavailable, reason}}
   end
 
-  # cache keys carry call arguments, which include raw api keys and bearer tokens on the ingest
-  # path, so only the function name is safe to log
   defp key_label({fun, args}) when is_atom(fun) and is_list(args), do: "#{fun}/#{length(args)}"
   defp key_label(_key), do: "entry"
 

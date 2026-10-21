@@ -53,10 +53,6 @@ defmodule Logflare.Repo do
         Logger.warning("Could not get Postgres uptime within #{@uptime_timeout}ms")
         0
     end
-  rescue
-    err ->
-      Logger.warning("Could not get Postgres uptime, error: #{inspect(err)}")
-      0
   end
 
   @doc """

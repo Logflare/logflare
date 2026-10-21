@@ -253,8 +253,10 @@ defmodule Logflare.Auth do
 
     with {:ok, access_token} <- ExOauth2Provider.authenticate_token(str_token, config),
          :ok <- check_scopes(access_token, required_scopes) do
-      owner = get_resource_owner_by_id(resource_owner, access_token.resource_owner_id)
-      {:ok, access_token, owner}
+      case get_resource_owner_by_id(resource_owner, access_token.resource_owner_id) do
+        {:error, _reason} = err -> err
+        owner -> {:ok, access_token, owner}
+      end
     end
   end
 
