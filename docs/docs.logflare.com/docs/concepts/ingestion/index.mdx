@@ -118,9 +118,14 @@ Example — two sources in one `batch`:
 }
 ```
 
-The same routing applies when POSTing a **bare JSON array** (array root with `application/json`), which maps to `_json`-style ingestion.
+The same routing applies when POSTing a **bare JSON array** (array root with `application/json`).
 
-`__LF_SOURCE` routing is supported on ingestion endpoints that accept JSON request bodies. It is not supported for NDJSON payloads (such as Cloudflare Logpush), syslog, or the OpenTelemetry (`/v1/*`) endpoints.
+`__LF_SOURCE` routing is supported on ingestion endpoints that accept JSON request bodies, and on NDJSON payloads such as Cloudflare Logpush (`/logs/cloudflare`), where `__LF_SOURCE` is read from the top level of each line. It is not supported for syslog or the OpenTelemetry (`/v1/*`) endpoints.
+
+```text
+{"__LF_SOURCE": "9dd9a6f6-8e9b-4fa4-b682-4f2f5cd99da3", "ClientIP": "203.0.113.1"}
+{"__LF_SOURCE": "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "ClientIP": "203.0.113.2"}
+```
 
 :::note
 Route a request **either** with the `source`/`source_name` query parameter **or** with `__LF_SOURCE` on every event, not both:

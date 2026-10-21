@@ -6,6 +6,8 @@ defmodule LogflareWeb.NdjsonParser do
 
   @behaviour Plug.Parsers
 
+  @lf_source_key "__LF_SOURCE"
+
   def init(opts) do
     {body_reader, opts} = Keyword.pop(opts, :body_reader, {Plug.Conn, :read_body, []})
     {body_reader, opts}
@@ -33,11 +35,7 @@ defmodule LogflareWeb.NdjsonParser do
       for line <- body do
         case Jason.decode(line) do
           {:ok, log_event} ->
-            %{
-              "timestamp" => log_event["EdgeStartTimestamp"],
-              "event_message" => line,
-              "metadata" => log_event
-            }
+            wrap_event(log_event, line)
 
           {:error, error} ->
             Logger.error("NDJSON parser error: #{redact_decode_error(error)}")
@@ -69,4 +67,19 @@ defmodule LogflareWeb.NdjsonParser do
   # don't log either of those, only the offset.
   defp redact_decode_error(%Jason.DecodeError{position: position}),
     do: "decode error at position #{position}"
+
+  defp wrap_event(%{@lf_source_key => source} = log_event, line) do
+    log_event
+    |> Map.delete(@lf_source_key)
+    |> wrap_event(line)
+    |> Map.put(@lf_source_key, source)
+  end
+
+  defp wrap_event(log_event, line) do
+    %{
+      "timestamp" => log_event["EdgeStartTimestamp"],
+      "event_message" => line,
+      "metadata" => log_event
+    }
+  end
 end
