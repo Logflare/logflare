@@ -168,14 +168,19 @@ defmodule Logflare.Endpoints do
     end
   end
 
+  @spec enforced_settings_admin?(User.t() | TeamUser.t()) :: boolean()
+  def enforced_settings_admin?(actor) do
+    Repo.with_primary(fn -> match?({:ok, %User{}}, authorize_settings_admin(actor)) end)
+  end
+
   @doc """
   Configure ClickHouse resource limits from an internal operator context.
   This field is intentionally not cast by user-facing endpoint changesets.
   """
-  @spec configure_enforced_clickhouse_settings(User.t(), EndpointQuery.t(), map()) ::
+  @spec configure_enforced_clickhouse_settings(User.t() | TeamUser.t(), EndpointQuery.t(), map()) ::
           {:ok, EndpointQuery.t()} | {:error, term()}
-  def configure_enforced_clickhouse_settings(%User{id: user_id}, %EndpointQuery{id: id}, settings) do
-    with %User{admin: true} <- Repo.get(User, user_id),
+  def configure_enforced_clickhouse_settings(actor, %EndpointQuery{id: id}, settings) do
+    with {:ok, _admin} <- authorize_settings_admin(actor),
          %EndpointQuery{language: :ch_sql} = query <- Repo.get(EndpointQuery, id),
          :ok <- require_clickhouse_backend(query),
          {:ok, settings} <- ClickHouseSettings.normalize(settings),
@@ -191,12 +196,25 @@ defmodule Logflare.Endpoints do
       end
     else
       nil -> {:error, :not_found}
-      %User{} -> {:error, :forbidden}
       %EndpointQuery{} -> {:error, :not_clickhouse_endpoint}
       error -> error
     end
   end
 
+  @spec authorize_settings_admin(User.t() | TeamUser.t()) ::
+          {:ok, User.t()} | {:error, :forbidden}
+  defp authorize_settings_admin(actor) do
+    case settings_user(actor) do
+      %User{admin: true} = admin -> {:ok, admin}
+      _ -> {:error, :forbidden}
+    end
+  end
+
+  @spec settings_user(User.t() | TeamUser.t()) :: User.t() | nil
+  defp settings_user(%User{id: id}), do: Repo.get(User, id)
+  defp settings_user(%TeamUser{email: email}), do: Repo.get_by(User, email: email)
+
+  @spec require_clickhouse_backend(EndpointQuery.t()) :: :ok | {:error, :not_clickhouse_endpoint}
   defp require_clickhouse_backend(%EndpointQuery{backend_id: nil}), do: :ok
 
   defp require_clickhouse_backend(%EndpointQuery{backend_id: backend_id}) do

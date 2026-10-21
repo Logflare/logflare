@@ -1,0 +1,136 @@
+defmodule LogflareWeb.EndpointsPolicyLiveTest do
+  use LogflareWeb.ConnCase
+
+  alias Logflare.Endpoints
+  alias Logflare.Repo
+
+  setup do
+    insert(:plan)
+    owner = insert(:user, endpoints_beta: true)
+    team = insert(:team, user: owner)
+    backend = insert(:backend, user: owner, type: :clickhouse)
+
+    endpoint =
+      insert(:endpoint,
+        user: owner,
+        backend: backend,
+        language: :ch_sql,
+        sandboxable: true,
+        query: "WITH data AS (SELECT 1 AS n) SELECT n FROM data"
+      )
+
+    %{owner: owner, team: team, endpoint: endpoint}
+  end
+
+  test "members do not inherit their owner's admin flag, even with a colliding user ID",
+       context do
+    owner = context.owner |> Ecto.Changeset.change(admin: true) |> Repo.update!()
+    member = insert(:team_user, id: owner.id, team: context.team)
+    assert Logflare.Users.get_by(email: member.email) == nil
+
+    {:ok, view, _} =
+      context.conn
+      |> login_user(owner, member)
+      |> live_with_redirect("/endpoints/#{context.endpoint.id}/edit?t=#{context.team.id}",
+        bypass_team_param: true
+      )
+
+    refute has_element?(view, "#enforced-settings-form")
+
+    assert render_hook(view, "save-enforced-settings", %{
+             "settings" => %{"max_execution_time" => "7"}
+           }) =~ "Not authorized to configure ClickHouse settings"
+
+    assert Endpoints.get_endpoint_query(context.endpoint.id).enforced_clickhouse_settings == %{}
+
+    other = insert(:endpoint, language: :ch_sql)
+
+    {:ok, _view, html} =
+      context.conn
+      |> login_user(owner, member)
+      |> live_with_redirect("/endpoints/#{other.id}/edit?t=#{context.team.id}",
+        bypass_team_param: true
+      )
+
+    assert html =~ "Endpoint Not Found"
+  end
+
+  test "admins retain their own privileges inside a non-admin customer's team", context do
+    admin = insert(:user, admin: true)
+    member = insert(:team_user, team: context.team, email: admin.email)
+
+    {:ok, view, _} =
+      context.conn
+      |> login_user(context.owner, member)
+      |> live_with_redirect("/endpoints/#{context.endpoint.id}/edit?t=#{context.team.id}",
+        bypass_team_param: true
+      )
+
+    assert has_element?(view, "#enforced-settings-form")
+    save_settings(view)
+
+    assert Endpoints.get_endpoint_query(context.endpoint.id).enforced_clickhouse_settings == %{
+             "max_execution_time" => 7
+           }
+
+    admin |> Ecto.Changeset.change(admin: false) |> Repo.update!()
+
+    assert render_hook(view, "save-enforced-settings", %{
+             "settings" => %{"max_execution_time" => "9"}
+           }) =~ "Not authorized to configure ClickHouse settings"
+
+    assert Endpoints.get_endpoint_query(context.endpoint.id).enforced_clickhouse_settings == %{
+             "max_execution_time" => 7
+           }
+  end
+
+  test "an unrelated admin cannot open the customer query test page", context do
+    admin = insert(:user, admin: true)
+
+    {:ok, view, html} =
+      context.conn |> login_user(admin) |> live_with_redirect("/endpoints/#{context.endpoint.id}")
+
+    assert html =~ "Endpoint Not Found"
+    reject(ClickHouseAdaptor, :execute_query, 3)
+
+    assert render_hook(view, "run-query", %{"run" => %{"query" => "SELECT 1"}}) =~
+             "Not authorized to run this endpoint"
+  end
+
+  for sandbox? <- [false, true] do
+    @tag sandbox?: sandbox?
+    test "an unrelated admin cannot forge query execution from edit (sandbox: #{sandbox?})",
+         context do
+      admin = insert(:user, admin: true)
+
+      {:ok, view, _} =
+        context.conn
+        |> login_user(admin)
+        |> live_with_redirect("/endpoints/#{context.endpoint.id}/edit")
+
+      assert has_element?(view, "#enforced-settings-form")
+      refute has_element?(view, "form#endpoint")
+      reject(ClickHouseAdaptor, :execute_query, 3)
+
+      payload =
+        if context.sandbox?,
+          do: %{"sandbox_query" => "SELECT n FROM data", "query_mode" => "sql"},
+          else: %{"query" => "SELECT 1 AS n"}
+
+      assert render_hook(view, "run-query", %{"run" => payload}) =~
+               "Not authorized to run this endpoint"
+
+      save_settings(view)
+
+      assert Endpoints.get_endpoint_query(context.endpoint.id).enforced_clickhouse_settings == %{
+               "max_execution_time" => 7
+             }
+    end
+  end
+
+  defp save_settings(view) do
+    view
+    |> element("#enforced-settings-form")
+    |> render_submit(%{settings: %{max_execution_time: "7"}})
+  end
+end
