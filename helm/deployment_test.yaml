@@ -299,3 +299,24 @@ tests:
       - notExists:
           path: spec.template.spec.terminationGracePeriodSeconds
         template: deployment.yaml
+
+  - it: should render no dnsConfig by default
+    asserts:
+      - notExists:
+          path: spec.template.spec.dnsConfig
+        template: deployment.yaml
+
+  - it: should pass dnsConfig through to the pod
+    set:
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "2"
+    asserts:
+      - equal:
+          path: spec.template.spec.dnsConfig
+          value:
+            options:
+              - name: ndots
+                value: "2"
+        template: deployment.yaml

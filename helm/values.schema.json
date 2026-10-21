@@ -25,6 +25,9 @@
         "deploymentAnnotations": {
             "type": "object"
         },
+        "dnsConfig": {
+            "type": "object"
+        },
         "externalSecrets": {
             "type": "object",
             "properties": {
