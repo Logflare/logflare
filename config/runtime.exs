@@ -763,25 +763,6 @@ spool_max_batch_bytes_override =
       end
   end
 
-# How long a spool consumer waits on SIGTERM for in-flight files to be acked
-# before nacking the rest (see Logflare.Backends.Spool.ConsumerDrain). Keep the
-# pod's termination grace period above it.
-spool_consumer_drain_timeout_override =
-  case System.get_env("SPOOL_CONSUMER_DRAIN_TIMEOUT_MS") do
-    v when v in [nil, ""] ->
-      []
-
-    v ->
-      case Integer.parse(v) do
-        {ms, ""} when ms >= 0 ->
-          [consumer_drain_timeout_ms: ms]
-
-        _ ->
-          raise ArgumentError,
-                "Invalid SPOOL_CONSUMER_DRAIN_TIMEOUT_MS=#{v}. Must be a non-negative integer."
-      end
-  end
-
 # Local disk directory for the producer's durable WAL segments (see
 # Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal) — only used
 # when SPOOL_BUFFER is :wal. Falls back to a tmp dir so a plain
@@ -796,7 +777,6 @@ spool_overrides =
     spool_blocking_override ++
     spool_force_spooling_override ++
     spool_max_batch_bytes_override ++
-    spool_consumer_drain_timeout_override ++
     if((q = System.get_env("SPOOL_QUEUE_NAME")) && q != "", do: [queue_name: q], else: []) ++
     if((t = System.get_env("SPOOL_PUBSUB_TOPIC")) && t != "", do: [pubsub_topic: t], else: []) ++
     if((b = System.get_env("SPOOL_BUCKET")) && b != "", do: [bucket: b], else: []) ++
@@ -806,6 +786,25 @@ if spool_overrides != [] do
   config :logflare,
          :spool,
          Keyword.merge(Application.get_env(:logflare, :spool, []), spool_overrides)
+end
+
+# How long a node drains on SIGTERM before stopping: it stops spool fetching,
+# waits out the grace period, then for queued events and spool acks (see
+# Logflare.ShutdownDrain). Unset keeps the plain grace period. Keep the pod's
+# termination grace period above it.
+case System.get_env("LOGFLARE_SHUTDOWN_DRAIN_TIMEOUT_MS") do
+  v when v in [nil, ""] ->
+    :ok
+
+  v ->
+    case Integer.parse(v) do
+      {ms, ""} when ms >= 0 ->
+        config :logflare, shutdown_drain_timeout_ms: ms
+
+      _ ->
+        raise ArgumentError,
+              "Invalid LOGFLARE_SHUTDOWN_DRAIN_TIMEOUT_MS=#{v}. Must be a non-negative integer."
+    end
 end
 
 spool_ack_stale? =

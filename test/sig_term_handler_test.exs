@@ -5,9 +5,8 @@ defmodule Logflare.SigtermHandlerTest do
   import Mimic
 
   alias Logflare.Application
-  alias Logflare.Backends
-  alias Logflare.Backends.Spool.ConsumerDrain
   alias Logflare.Readiness
+  alias Logflare.ShutdownDrain
   alias Logflare.SigtermHandler
 
   setup :set_mimic_global
@@ -17,9 +16,11 @@ defmodule Logflare.SigtermHandlerTest do
     on_exit(&reset_readiness/0)
 
     grace = Elixir.Application.get_env(:logflare, :sigterm_shutdown_grace_period_ms)
+    drain_timeout = Elixir.Application.get_env(:logflare, :shutdown_drain_timeout_ms)
 
     on_exit(fn ->
       Elixir.Application.put_env(:logflare, :sigterm_shutdown_grace_period_ms, grace)
+      Elixir.Application.put_env(:logflare, :shutdown_drain_timeout_ms, drain_timeout)
     end)
   end
 
@@ -50,42 +51,41 @@ defmodule Logflare.SigtermHandlerTest do
   describe "verification logging" do
     setup do
       put_grace_period(0)
-      stub(ConsumerDrain, :run, fn -> :drained end)
-      stub(ConsumerDrain, :timeout_ms, fn -> 60_000 end)
+      stub(ShutdownDrain, :run, fn _opts -> :drained end)
       :ok
     end
 
     test "logs that SIGTERM was received" do
-      stub(Backends, :spool_consumer_mode?, fn -> false end)
+      put_drain_timeout(nil)
 
       log = capture_warning(fn -> SigtermHandler.handle_event(:sigterm, %{}) end)
 
-      assert log =~ "SIGTERM received"
+      assert log =~ "SIGTERM received: waiting for 0.0 seconds"
     end
 
-    test "logs that a spool consumer received SIGTERM and is draining before it stops" do
-      stub(Backends, :spool_consumer_mode?, fn -> true end)
+    test "logs that SIGTERM was received and the node is draining before it stops" do
+      put_drain_timeout(60_000)
 
       log = capture_warning(fn -> SigtermHandler.handle_event(:sigterm, %{}) end)
 
-      assert log =~ "SIGTERM received: draining spool consumer for up to 60.0 seconds"
+      assert log =~ "SIGTERM received: draining for up to 60.0 seconds before stopping"
     end
 
-    test "logs that a spool consumer received SIGQUIT and is draining before it stops" do
-      stub(Backends, :spool_consumer_mode?, fn -> true end)
+    test "logs that SIGQUIT was received and the node is draining before it stops" do
+      put_drain_timeout(60_000)
 
       log = capture_warning(fn -> SigtermHandler.handle_event(:sigquit, %{}) end)
 
-      assert log =~ "SIGQUIT received: draining spool consumer for up to 60.0 seconds"
+      assert log =~ "SIGQUIT received: draining for up to 60.0 seconds before stopping"
     end
 
-    test "logs the drain result once the spool consumer is ready to stop" do
-      stub(Backends, :spool_consumer_mode?, fn -> true end)
-      stub(ConsumerDrain, :run, fn -> :timeout end)
+    test "logs the drain result once the node is ready to stop" do
+      put_drain_timeout(60_000)
+      stub(ShutdownDrain, :run, fn _opts -> :timeout end)
 
       log = capture_warning(fn -> SigtermHandler.handle_event(:sigterm, %{}) end)
 
-      assert log =~ "spool consumer drain ended with :timeout, stopping the app"
+      assert log =~ "shutdown drain ended with :timeout, stopping the app"
     end
 
     defp capture_warning(fun) do
@@ -96,43 +96,53 @@ defmodule Logflare.SigtermHandlerTest do
     end
   end
 
-  describe "spool consumer drain" do
+  describe "shutdown drain" do
     setup do
       test_pid = self()
 
-      stub(ConsumerDrain, :run, fn ->
-        send(test_pid, :drain_ran)
+      stub(ShutdownDrain, :run, fn opts ->
+        send(test_pid, {:drain_ran, opts})
         :drained
       end)
 
       :ok
     end
 
-    test "drains the spool consumer before stopping the app" do
+    test "drains every node before stopping the app when a drain timeout is configured" do
       put_grace_period(0)
-      stub(Backends, :spool_consumer_mode?, fn -> true end)
+      put_drain_timeout(60_000)
 
       assert {:ok, %{}} = SigtermHandler.handle_event(:sigterm, %{})
 
-      assert_receive :drain_ran
+      assert_receive {:drain_ran, opts}
+      assert opts[:timeout_ms] == 60_000
       assert_receive :proceed_with_sigterm
     end
 
-    test "still waits out the grace period when the drain finishes sooner" do
-      put_grace_period(400)
-      stub(Backends, :spool_consumer_mode?, fn -> true end)
+    test "has the drain wait out the grace period first, so load balancers stop sending" do
+      put_grace_period(15_000)
+      put_drain_timeout(60_000)
 
       SigtermHandler.handle_event(:sigterm, %{})
 
-      assert_receive :drain_ran
-      refute_receive :proceed_with_sigterm, 200
-      assert_receive :proceed_with_sigterm, 500
+      assert_receive {:drain_ran, opts}
+      assert opts[:min_wait_ms] == 15_000
+    end
+
+    test "never drains for less than the grace period" do
+      put_grace_period(15_000)
+      put_drain_timeout(5_000)
+
+      SigtermHandler.handle_event(:sigterm, %{})
+
+      assert_receive {:drain_ran, opts}
+      assert opts[:timeout_ms] == 15_000
     end
 
     test "stops the app even if the drain crashes" do
       put_grace_period(0)
-      stub(Backends, :spool_consumer_mode?, fn -> true end)
-      stub(ConsumerDrain, :run, fn -> raise "boom" end)
+      put_drain_timeout(60_000)
+      stub(ShutdownDrain, :run, fn _opts -> raise "boom" end)
 
       SigtermHandler.handle_event(:sigterm, %{})
 
@@ -141,23 +151,27 @@ defmodule Logflare.SigtermHandlerTest do
 
     test "drains on SIGQUIT too" do
       put_grace_period(0)
-      stub(Backends, :spool_consumer_mode?, fn -> true end)
+      put_drain_timeout(60_000)
 
       SigtermHandler.handle_event(:sigquit, %{})
 
-      assert_receive :drain_ran
+      assert_receive {:drain_ran, _opts}
       assert_receive :proceed_with_sigterm
     end
 
-    test "skips the drain outside spool consumer mode" do
+    test "keeps the plain grace period when no drain timeout is configured" do
       put_grace_period(0)
-      stub(Backends, :spool_consumer_mode?, fn -> false end)
+      put_drain_timeout(nil)
 
       SigtermHandler.handle_event(:sigterm, %{})
 
       assert_receive :proceed_with_sigterm
-      refute_received :drain_ran
+      refute_received {:drain_ran, _opts}
     end
+  end
+
+  defp put_drain_timeout(ms) do
+    Elixir.Application.put_env(:logflare, :shutdown_drain_timeout_ms, ms)
   end
 
   defp put_grace_period(ms) do
