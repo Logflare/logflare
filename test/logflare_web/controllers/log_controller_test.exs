@@ -954,7 +954,7 @@ defmodule LogflareWeb.LogControllerTest do
 
       WebhookAdaptor.Client
       |> stub(:send, fn req ->
-        send(this, {:webhook, req[:body]})
+        send(this, {:webhook, req[:url], req[:body]})
         %Tesla.Env{status: 200, body: ""}
       end)
 
@@ -975,15 +975,16 @@ defmodule LogflareWeb.LogControllerTest do
       received =
         Logflare.TestUtils.retry_assert(fn ->
           {:messages, messages} = Process.info(self(), :messages)
-          received = for {:webhook, body} <- messages, event <- body, do: event
+          received = for {:webhook, url, body} <- messages, event <- body, do: {url, event}
           assert length(received) == 2
           received
         end)
 
-      assert Enum.any?(received, &(&1["metadata"]["ClientIP"] == "to_a"))
-      assert Enum.any?(received, &(&1["metadata"]["ClientIP"] == "to_b"))
+      assert [{"some-a", event_a}, {"some-b", event_b}] = Enum.sort_by(received, &elem(&1, 0))
+      assert event_a["metadata"]["ClientIP"] == "to_a"
+      assert event_b["metadata"]["ClientIP"] == "to_b"
 
-      for event <- received do
+      for {_url, event} <- received do
         refute Map.has_key?(event, "__LF_SOURCE")
         refute Map.has_key?(event["metadata"], "__LF_SOURCE")
       end

@@ -132,7 +132,7 @@ Route a request **either** with the `source`/`source_name` query parameter **or*
 
 - If a query-parameter source is given, every event is ingested into that source and `__LF_SOURCE` is dropped from each event as a reserved key.
 - Without a query-parameter source, every event must declare `__LF_SOURCE`. Multi-source mode is detected from the **first** event: if it omits `__LF_SOURCE`, the request returns **401**. If any event omits `__LF_SOURCE` or its value is not a source UUID, the whole request is rejected with **400** and no events are ingested. If a declared source does not exist or you do not have access to it, the request returns **401**.
-- Every declared source is checked to be available before any events are written, so a **503** for an unavailable source means nothing was ingested. A failure that happens after writing has started can still leave some sources written, so retrying the whole batch is at-least-once and may duplicate those events.
+- Every declared source is checked to be available before any events are written, so a source that is already unavailable is rejected without ingesting anything. A source can still become unavailable after writing has started, so a **503** does not guarantee that nothing was ingested: retrying the whole batch is at-least-once and may duplicate events.
 :::
 
 ## Pipeline Transformations
