@@ -101,6 +101,82 @@ defmodule Logflare.Endpoints.EndpointPolicyTest do
     assert Endpoints.get_endpoint_query_version(restored.id, 4) == nil
   end
 
+  test "ordinary backend changes preserve dormant policy and reactivate it on ClickHouse",
+       context do
+    postgres = insert(:postgres_backend, user: context.owner)
+
+    assert {:ok, limited} =
+             Endpoints.configure_enforced_clickhouse_settings(context.admin, context.endpoint, %{
+               "max_execution_time" => 7
+             })
+
+    assert {:ok, dormant} =
+             Endpoints.update_query(
+               context.owner,
+               limited,
+               %{backend_id: postgres.id},
+               context.owner
+             )
+
+    assert dormant.language == :pg_sql
+    assert dormant.enforced_clickhouse_settings == %{"max_execution_time" => 7}
+    assert {:ok, sql} = Endpoints.get_transformed_query(dormant)
+    refute sql =~ "max_execution_time"
+
+    assert {:ok, returned} =
+             Endpoints.update_query(
+               context.owner,
+               dormant,
+               %{backend_id: limited.backend_id},
+               context.owner
+             )
+
+    assert {:ok, sql} = Endpoints.get_transformed_query(returned)
+    assert sql =~ "max_execution_time = 7"
+  end
+
+  test "only admins can clear dormant policy and nonempty settings still require ClickHouse",
+       context do
+    postgres = insert(:postgres_backend, user: context.owner)
+
+    assert {:ok, limited} =
+             Endpoints.configure_enforced_clickhouse_settings(context.admin, context.endpoint, %{
+               "max_execution_time" => 7
+             })
+
+    assert {:ok, dormant} =
+             Endpoints.update_query(
+               context.owner,
+               limited,
+               %{backend_id: postgres.id},
+               context.owner
+             )
+
+    assert {:error, :forbidden} =
+             Endpoints.configure_enforced_clickhouse_settings(context.owner, dormant, %{})
+
+    assert {:error, :not_clickhouse_endpoint} =
+             Endpoints.configure_enforced_clickhouse_settings(context.admin, dormant, %{
+               "max_execution_time" => 9
+             })
+
+    assert {:ok, cleared} =
+             Endpoints.configure_enforced_clickhouse_settings(context.admin, dormant, %{})
+
+    assert cleared.enforced_clickhouse_settings == %{}
+
+    assert {:ok, returned} =
+             Endpoints.update_query(
+               context.owner,
+               cleared,
+               %{backend_id: limited.backend_id},
+               context.owner
+             )
+
+    assert {:ok, sql} = Endpoints.get_transformed_query(returned)
+    refute sql =~ "max_execution_time"
+  end
+
   test "invalid and unauthorized changes do not create policy audit records", context do
     assert {:error, :forbidden} =
              Endpoints.configure_enforced_clickhouse_settings(

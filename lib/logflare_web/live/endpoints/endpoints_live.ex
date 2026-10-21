@@ -566,6 +566,7 @@ defmodule LogflareWeb.EndpointsLive do
     |> assign(:enforced_settings_error, nil)
   end
 
+  @spec enforced_settings_form(map()) :: Phoenix.HTML.Form.t()
   defp enforced_settings_form(settings) do
     values =
       Map.new(@resource_settings, fn {key, _label} ->
@@ -575,6 +576,7 @@ defmodule LogflareWeb.EndpointsLive do
     to_form(values, as: :settings)
   end
 
+  @spec parse_enforced_settings(map()) :: map()
   defp parse_enforced_settings(params) do
     @resource_settings
     |> Enum.reduce(%{}, fn {key, _label}, settings ->
@@ -585,6 +587,7 @@ defmodule LogflareWeb.EndpointsLive do
     end)
   end
 
+  @spec parse_limit(term()) :: term()
   defp parse_limit(value) when is_binary(value) do
     case Integer.parse(String.trim(value)) do
       {number, ""} -> number
@@ -594,6 +597,7 @@ defmodule LogflareWeb.EndpointsLive do
 
   defp parse_limit(value), do: value
 
+  @spec settings_error(term()) :: String.t()
   defp settings_error(reason) when is_binary(reason), do: reason
   defp settings_error(_reason), do: "Unable to configure ClickHouse settings"
 

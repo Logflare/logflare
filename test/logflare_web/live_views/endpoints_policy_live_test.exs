@@ -164,6 +164,47 @@ defmodule LogflareWeb.EndpointsPolicyLiveTest do
            |> length() == 1
   end
 
+  test "admins can inspect and clear inactive limits without giving ordinary users access",
+       context do
+    admin = insert(:user, admin: true)
+    postgres = insert(:postgres_backend, user: context.owner)
+
+    assert {:ok, limited} =
+             Endpoints.configure_enforced_clickhouse_settings(admin, context.endpoint, %{
+               "max_execution_time" => 7
+             })
+
+    assert {:ok, dormant} =
+             Endpoints.update_query(
+               context.owner,
+               limited,
+               %{backend_id: postgres.id},
+               context.owner
+             )
+
+    {:ok, owner_view, _} =
+      context.conn
+      |> login_user(context.owner)
+      |> live_with_redirect("/endpoints/#{dormant.id}/edit")
+
+    refute has_element?(owner_view, "#enforced-settings-panel")
+
+    assert render_hook(owner_view, "save-enforced-settings", %{"settings" => %{}}) =~
+             "Not authorized to configure ClickHouse settings"
+
+    {:ok, view, _} =
+      context.conn |> login_user(admin) |> live_with_redirect("/endpoints/#{dormant.id}/edit")
+
+    assert has_element?(view, "#inactive-enforced-settings", "inactive")
+    assert has_element?(view, "#enforced-settings-panel dd", "7")
+    refute has_element?(view, "#enforced-settings-form input[type='number']")
+
+    view |> element("#enforced-settings-form") |> render_submit()
+
+    refute has_element?(view, "#enforced-settings-panel")
+    assert Endpoints.get_endpoint_query(dormant.id).enforced_clickhouse_settings == %{}
+  end
+
   defp save_settings(view) do
     view
     |> element("#enforced-settings-form")

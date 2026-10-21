@@ -14,18 +14,30 @@
     <pre class="tw-overflow-auto">{@show_endpoint.query}</pre>
   </div>
 
-  <section :if={@admin? and @show_endpoint.language == :ch_sql} id="enforced-settings-panel" class="tw-mb-10 tw-max-w-xl">
+  <section :if={@admin? and (@show_endpoint.language == :ch_sql or @show_endpoint.enforced_clickhouse_settings != %{})} id="enforced-settings-panel" class="tw-mb-10 tw-max-w-xl">
     <.header_with_anchor text="Enforced ClickHouse settings" />
-    <p class="form-text text-muted">
+    <p :if={@show_endpoint.language == :ch_sql} class="form-text text-muted">
       These limits apply to the endpoint's default and custom SQL queries. Leave a field blank to remove its limit. Row and byte limits fail the query when exceeded.
     </p>
+    <p :if={@show_endpoint.language != :ch_sql} id="inactive-enforced-settings" class="form-text text-muted">
+      These limits are inactive because this endpoint is not using ClickHouse. They are retained and will apply again if the endpoint returns to ClickHouse.
+    </p>
     <.form :let={f} for={@enforced_settings_form} id="enforced-settings-form" phx-submit="save-enforced-settings">
-      <div :for={{key, text} <- @resource_settings} class="form-group">
+      <div :for={{key, text} <- @resource_settings} :if={@show_endpoint.language == :ch_sql} class="form-group">
         {label(f, Atom.to_string(key), text)}
         {number_input(f, Atom.to_string(key), min: 1, step: 1, class: "form-control")}
       </div>
+      <dl :if={@show_endpoint.language != :ch_sql}>
+        <div :for={{key, text} <- @resource_settings} :if={Map.has_key?(@show_endpoint.enforced_clickhouse_settings, Atom.to_string(key))}>
+          <dt>{text}</dt>
+          <dd>{Map.get(@show_endpoint.enforced_clickhouse_settings, Atom.to_string(key))}</dd>
+        </div>
+      </dl>
+      <input :if={@show_endpoint.language != :ch_sql} type="hidden" name="settings[clear]" value="true" />
       <p :if={@enforced_settings_error} class="text-danger" role="alert">{@enforced_settings_error}</p>
-      <button type="submit" class="btn btn-primary">Save enforced settings</button>
+      <button type="submit" class="btn btn-primary">
+        {if @show_endpoint.language == :ch_sql, do: "Save enforced settings", else: "Clear inactive limits"}
+      </button>
     </.form>
   </section>
 </section>
