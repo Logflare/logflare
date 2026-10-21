@@ -763,6 +763,25 @@ spool_max_batch_bytes_override =
       end
   end
 
+# How long a spool consumer waits on SIGTERM for in-flight files to be acked
+# before nacking the rest (see Logflare.Backends.Spool.ConsumerDrain). Keep the
+# pod's termination grace period above it.
+spool_consumer_drain_timeout_override =
+  case System.get_env("SPOOL_CONSUMER_DRAIN_TIMEOUT_MS") do
+    v when v in [nil, ""] ->
+      []
+
+    v ->
+      case Integer.parse(v) do
+        {ms, ""} when ms >= 0 ->
+          [consumer_drain_timeout_ms: ms]
+
+        _ ->
+          raise ArgumentError,
+                "Invalid SPOOL_CONSUMER_DRAIN_TIMEOUT_MS=#{v}. Must be a non-negative integer."
+      end
+  end
+
 # Local disk directory for the producer's durable WAL segments (see
 # Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal) — only used
 # when SPOOL_BUFFER is :wal. Falls back to a tmp dir so a plain
@@ -777,6 +796,7 @@ spool_overrides =
     spool_blocking_override ++
     spool_force_spooling_override ++
     spool_max_batch_bytes_override ++
+    spool_consumer_drain_timeout_override ++
     if((q = System.get_env("SPOOL_QUEUE_NAME")) && q != "", do: [queue_name: q], else: []) ++
     if((t = System.get_env("SPOOL_PUBSUB_TOPIC")) && t != "", do: [pubsub_topic: t], else: []) ++
     if((b = System.get_env("SPOOL_BUCKET")) && b != "", do: [bucket: b], else: []) ++
