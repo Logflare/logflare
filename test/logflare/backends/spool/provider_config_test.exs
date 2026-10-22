@@ -60,12 +60,54 @@ defmodule Logflare.Backends.Spool.ProviderConfigTest do
       assert ProviderConfig.resolve_queue_ref([], SQS) == nil
     end
 
-    test "returns nil and marks the queue unhealthy when resolution fails" do
+    test "returns nil and marks the queue unhealthy when every attempt fails" do
+      on_exit(fn -> Health.report_recovery!(:queue) end)
+      test_pid = self()
+
+      stub(ExAws, :request, fn _op, _opts ->
+        send(test_pid, :resolve_attempt)
+        {:error, {:http_error, 404, "not found"}}
+      end)
+
+      spool_config = [queue_name: "logflare-spool", queue_resolve_interval_ms: 0]
+
+      assert ProviderConfig.resolve_queue_ref(spool_config, SQS) == nil
+      refute Health.healthy?(:queue)
+
+      for _ <- 1..4, do: assert_received(:resolve_attempt)
+      refute_received :resolve_attempt
+    end
+  end
+
+  describe "resolve_queue/3" do
+    test "retries until the queue resolves" do
+      {:ok, attempts} = Agent.start_link(fn -> 0 end)
+
+      stub(ExAws, :request, fn _op, _opts ->
+        case Agent.get_and_update(attempts, &{&1 + 1, &1 + 1}) do
+          n when n < 3 -> {:error, %{reason: %Mint.TransportError{reason: :nxdomain}}}
+          _ -> {:ok, %{body: %{queue_url: "http://localhost:9324/0/logflare-spool"}}}
+        end
+      end)
+
+      assert {:ok, "http://localhost:9324/0/logflare-spool"} =
+               ProviderConfig.resolve_queue([queue_resolve_interval_ms: 0], SQS, "logflare-spool")
+
+      assert Agent.get(attempts, & &1) == 3
+      assert Health.healthy?(:queue)
+    end
+
+    test "waits the configured interval between attempts" do
       on_exit(fn -> Health.report_recovery!(:queue) end)
       stub(ExAws, :request, fn _op, _opts -> {:error, {:http_error, 404, "not found"}} end)
 
-      assert ProviderConfig.resolve_queue_ref([queue_name: "logflare-spool"], SQS) == nil
-      refute Health.healthy?(:queue)
+      spool_config = [queue_resolve_retries: 2, queue_resolve_interval_ms: 50]
+
+      {elapsed_us, result} =
+        :timer.tc(fn -> ProviderConfig.resolve_queue(spool_config, SQS, "logflare-spool") end)
+
+      assert {:error, {:http_error, 404, "not found"}} = result
+      assert elapsed_us >= 100_000
     end
   end
 end

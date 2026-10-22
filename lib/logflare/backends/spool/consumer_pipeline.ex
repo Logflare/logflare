@@ -8,7 +8,6 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
   alias Broadway.Message
   alias Logflare.Backends
   alias Logflare.Backends.Spool.ConsumerPipeline.QueueProducer
-  alias Logflare.Backends.Spool.Health
   alias Logflare.Backends.Spool.MemoryMonitor
   alias Logflare.Backends.Spool.ProviderConfig
   alias Logflare.Backends.Spool.SpoolAck
@@ -35,7 +34,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     batch_size = Keyword.get(spool_config, :consumer_batch_size, 20)
     queue_name = Keyword.fetch!(spool_config, :queue_name)
     {storage_mod, queue_mod} = ProviderConfig.resolve_mods(spool_config)
-    queue_url = resolve_queue_url!(queue_name, queue_mod)
+    queue_url = resolve_queue_url!(spool_config, queue_name, queue_mod)
 
     max_in_flight =
       Keyword.get(spool_config, :consumer_max_in_flight_bytes, @default_max_in_flight_bytes)
@@ -282,13 +281,12 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     )
   end
 
-  defp resolve_queue_url!(queue_name, queue_mod) do
-    case queue_mod.resolve(queue_name) do
+  defp resolve_queue_url!(spool_config, queue_name, queue_mod) do
+    case ProviderConfig.resolve_queue(spool_config, queue_mod, queue_name) do
       {:ok, ref} ->
         ref
 
       {:error, reason} ->
-        Health.mark_unhealthy!(:queue)
         raise "spool_consumer: failed to resolve queue ref for #{queue_name}: #{inspect(reason)}"
     end
   end
