@@ -944,6 +944,52 @@ defmodule LogflareWeb.LogControllerTest do
       end
     end
 
+    test "ndjson body with __LF_SOURCE per line fans out to multiple sources",
+         %{conn: conn, source_a: source_a, user: user} do
+      source_b = insert(:source, user: user)
+      insert(:backend, sources: [source_b], type: :webhook, config: %{url: "some-b"})
+      start_supervised!({SourceSup, source_b})
+
+      this = self()
+
+      WebhookAdaptor.Client
+      |> stub(:send, fn req ->
+        send(this, {:webhook, req[:url], req[:body]})
+        %Tesla.Env{status: 200, body: ""}
+      end)
+
+      body =
+        [
+          %{"__LF_SOURCE" => Atom.to_string(source_a.token), "ClientIP" => "to_a"},
+          %{"__LF_SOURCE" => Atom.to_string(source_b.token), "ClientIP" => "to_b"}
+        ]
+        |> Enum.map_join("\n", &Jason.encode!/1)
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/x-ndjson")
+        |> post(~p"/logs/cloudflare", body)
+
+      assert_logged_successfully(conn)
+
+      received =
+        Logflare.TestUtils.retry_assert(fn ->
+          {:messages, messages} = Process.info(self(), :messages)
+          received = for {:webhook, url, body} <- messages, event <- body, do: {url, event}
+          assert length(received) == 2
+          received
+        end)
+
+      assert [{"some-a", event_a}, {"some-b", event_b}] = Enum.sort_by(received, &elem(&1, 0))
+      assert event_a["metadata"]["ClientIP"] == "to_a"
+      assert event_b["metadata"]["ClientIP"] == "to_b"
+
+      for {_url, event} <- received do
+        refute Map.has_key?(event, "__LF_SOURCE")
+        refute Map.has_key?(event["metadata"], "__LF_SOURCE")
+      end
+    end
+
     test "multi-source batch with a non-object entry returns 400 without ingesting",
          %{conn: conn, source_a: source_a} do
       Mimic.reject(Logflare.Backends, :ingest_logs, 4)
@@ -960,6 +1006,30 @@ defmodule LogflareWeb.LogControllerTest do
         )
 
       assert %{"message" => ["event missing __LF_SOURCE"]} = json_response(conn, 400)
+    end
+
+    test "multi-source batch ingests nothing when any declared source is unavailable",
+         %{conn: conn, source_a: source_a, user: user} do
+      source_b = insert(:source, user: user)
+      source_b_id = source_b.id
+
+      Mimic.stub(Logflare.Backends, :start_for_ingest, fn
+        %{id: ^source_b_id} -> {:error, :source_unavailable}
+        _source -> :ok
+      end)
+
+      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+
+      conn =
+        post(conn, Routes.log_path(conn, :create), %{
+          "batch" => [
+            %{"__LF_SOURCE" => Atom.to_string(source_a.token), "event_message" => "a"},
+            %{"__LF_SOURCE" => Atom.to_string(source_b.token), "event_message" => "b"}
+          ]
+        })
+
+      assert ["5"] = get_resp_header(conn, "retry-after")
+      assert json_response(conn, 503)
     end
 
     test "multi-source batch returns 503 when a source is unavailable",

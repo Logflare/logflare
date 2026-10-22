@@ -4,6 +4,7 @@ defmodule LogflareWeb.LogController do
 
   require Logger
 
+  alias Logflare.Backends
   alias Logflare.Logs
   alias Logflare.Logs.Processor
   alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest
@@ -95,8 +96,7 @@ defmodule LogflareWeb.LogController do
     case group_events_by_source(events, declared) do
       {grouped, []} ->
         grouped
-        |> Enum.map(fn {source, batch} -> Processor.ingest(batch, processor, source) end)
-        |> aggregate_results()
+        |> ingest_grouped(processor)
         |> handle(conn)
 
       {_grouped, errors} ->
@@ -109,6 +109,23 @@ defmodule LogflareWeb.LogController do
     |> Enum.map(&drop_source_key/1)
     |> Processor.ingest(processor, source)
     |> handle(conn)
+  end
+
+  defp ingest_grouped(grouped, processor) do
+    with :ok <- start_sources(grouped) do
+      grouped
+      |> Enum.map(fn {source, batch} -> Processor.ingest(batch, processor, source) end)
+      |> aggregate_results()
+    end
+  end
+
+  defp start_sources(grouped) do
+    Enum.reduce_while(grouped, :ok, fn {source, _batch}, :ok ->
+      case Backends.start_for_ingest(source) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
   end
 
   defp group_events_by_source(events, declared) do
