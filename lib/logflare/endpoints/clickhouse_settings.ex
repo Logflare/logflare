@@ -97,6 +97,7 @@ defmodule Logflare.Endpoints.ClickHouseSettings do
   defp append_settings(_statement, _setting_nodes),
     do: {:error, "Expected one ClickHouse SELECT or EXPLAIN SELECT query"}
 
+  @spec validate_entries(map()) :: :ok | {:error, String.t()}
   defp validate_entries(settings) do
     Enum.reduce_while(settings, :ok, fn {key, value}, :ok ->
       if valid_value?(Map.get(@setting_types, key), value) do
@@ -117,6 +118,7 @@ defmodule Logflare.Endpoints.ClickHouseSettings do
   defp valid_value?({:enum, values}, value), do: value in values
   defp valid_value?(_type, _value), do: false
 
+  @spec settings_sql(map()) :: String.t()
   defp settings_sql(settings) do
     clauses =
       settings
@@ -129,6 +131,7 @@ defmodule Logflare.Endpoints.ClickHouseSettings do
     "SELECT 1 FROM t SETTINGS " <> clauses
   end
 
+  @spec reject_conflicts(term(), [String.t()]) :: :ok | {:error, String.t()}
   defp reject_conflicts(ast, keys) do
     case conflicting_setting(ast, keys) do
       nil -> :ok
@@ -136,6 +139,7 @@ defmodule Logflare.Endpoints.ClickHouseSettings do
     end
   end
 
+  @spec conflicting_setting(term(), [String.t()]) :: String.t() | nil
   defp conflicting_setting(%{"settings" => settings} = ast, keys) when is_list(settings) do
     Enum.find_value(settings, fn %{"key" => %{"value" => key}} ->
       if String.downcase(key) in keys, do: key
