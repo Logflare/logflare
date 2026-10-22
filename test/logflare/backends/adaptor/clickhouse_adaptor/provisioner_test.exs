@@ -97,9 +97,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
       # A real authentication failure only surfaces after a multi-second pool queue
       # timeout, which leaves no headroom for the provisioning wait below.
       read_grant_statement = QueryTemplates.read_grant_check_statement()
+      test_pid = self()
 
       stub(Ch, :query, fn
         _pool, ^read_grant_statement, _params, _opts ->
+          send(test_pid, :read_grant_checked)
           {:error, %Ch.Error{code: 516, message: "ch_reader: Authentication failed"}}
 
         pool, statement, params, opts ->
@@ -118,6 +120,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
       ref = Process.monitor(pid)
 
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5_000
+      assert_received :read_grant_checked
 
       {:ok, conn} =
         Ch.start_link(
