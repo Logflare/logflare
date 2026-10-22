@@ -3,6 +3,8 @@ defmodule Logflare.Networking.GrpcPool do
 
   use Supervisor
 
+  require Logger
+
   alias Logflare.Networking.GrpcChannelMonitor
 
   @spec start_link(keyword()) :: Supervisor.on_start()
@@ -17,6 +19,9 @@ defmodule Logflare.Networking.GrpcPool do
     url = Keyword.fetch!(opts, :url)
     size = Keyword.get(opts, :size, System.schedulers_online())
     registry = registry_name(name)
+
+    # Node-wide and persists after this pool stops, not pool-local configuration
+    Logger.put_module_level(GRPC.Client.Connection, :warning)
 
     ref = :atomics.new(1, signed: false)
     # To start from 0 on next add_get

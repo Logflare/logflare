@@ -2,8 +2,8 @@ defmodule Logflare.Rules.CacheTest do
   alias Logflare.Rules.Rule
   use Logflare.DataCase
 
+  alias Logflare.ContextCache
   alias Logflare.Rules
-  alias Logflare.Sources
 
   @subject Rules.Cache
 
@@ -19,7 +19,15 @@ defmodule Logflare.Rules.CacheTest do
 
   describe "rules cache" do
     test "get rules", %{rule_ids: rule_ids} do
+      ref = :telemetry_test.attach_event_handlers(self(), [[:logflare, :repo, :replica_route]])
+      on_exit(fn -> :telemetry.detach(ref) end)
+
       assert rules = @subject.get_rules(rule_ids)
+
+      for _id <- rule_ids do
+        assert_receive {[:logflare, :repo, :replica_route], ^ref, %{count: 1},
+                        %{role: :primary, reason: :not_configured}}
+      end
 
       for %Rule{id: id} <- rules do
         assert id in rule_ids
@@ -57,18 +65,6 @@ defmodule Logflare.Rules.CacheTest do
       assert %{hits: 2} = Cachex.stats!(@subject)
     end
 
-    test "is used on source preload", %{source: source} do
-      assert [_r1, _r2] = @subject.list_by_source_id(source.id)
-      assert Cachex.size(@subject) == {:ok, 1}
-      assert %{hits: 0, writes: 1} = Cachex.stats!(@subject)
-
-      source = Ecto.reset_fields(source, [:rules])
-      Mimic.reject(Rules, :list_by_source_id, 1)
-
-      assert Sources.Cache.preload_rules(source)
-      assert %{hits: 1} = Cachex.stats!(@subject)
-    end
-
     test "list by backend", %{backend: backend, rule_ids: expected_rule_ids} do
       assert rules = @subject.list_by_backend_id(backend.id)
 
@@ -93,7 +89,7 @@ defmodule Logflare.Rules.CacheTest do
       assert _ = @subject.rules_tree_by_source_id(source.id)
       assert %{misses: 2, writes: 2} = Cachex.stats!(@subject)
 
-      assert {:ok, 2} = @subject.bust_by(source_id: source.id)
+      assert {:ok, 2} = ContextCache.bust_keys([{Rules, source_id: source.id}])
       assert [_r1, _r2] = @subject.list_rules(source)
       assert %{misses: 3, writes: 3} = Cachex.stats!(@subject)
 
@@ -105,7 +101,7 @@ defmodule Logflare.Rules.CacheTest do
       assert [_r1, _r2] = @subject.list_rules(backend)
       assert %{misses: 1, writes: 1} = Cachex.stats!(@subject)
 
-      assert {:ok, 1} = @subject.bust_by(backend_id: backend.id)
+      assert {:ok, 1} = ContextCache.bust_keys([{Rules, backend_id: backend.id}])
       assert [_r1, _r2] = @subject.list_rules(backend)
       assert %{misses: 2, writes: 2} = Cachex.stats!(@subject)
     end
@@ -114,12 +110,12 @@ defmodule Logflare.Rules.CacheTest do
       assert _r1 = @subject.get_rule(rid1)
       assert %{misses: 1, writes: 1} = Cachex.stats!(@subject)
 
-      assert {:ok, 1} = @subject.bust_by(id: rid1)
+      assert {:ok, 1} = ContextCache.bust_keys([{Rules, rid1}])
       assert _r1 = @subject.get_rule(rid1)
       assert %{misses: 2, writes: 2} = Cachex.stats!(@subject)
 
       # Bust missing key
-      assert {:ok, 0} = @subject.bust_by(id: rid2)
+      assert {:ok, 0} = ContextCache.bust_keys([{Rules, rid2}])
     end
 
     test "cache warming" do

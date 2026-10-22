@@ -9,24 +9,42 @@ defmodule Logflare.Mapper.OutputContext do
 
   alias Logflare.LogEvent
 
-  @opaque t() ::
-            {:clickhouse_row_binary, binary(), {binary(), binary(), binary(), integer() | nil}}
+  @opaque t() :: {:ch_row_binary | :ndjson, binary(), envelope()}
 
-  @doc "Builds the per-row context required by ClickHouse RowBinary output."
-  @spec clickhouse_row_binary(LogEvent.t(), binary()) :: t()
-  def clickhouse_row_binary(
-        %LogEvent{
-          id: id,
-          source_uuid: source_uuid,
-          source_name: source_name,
-          ingested_at: ingested_at
-        },
-        mapping_config_id
-      )
-      when is_binary(mapping_config_id) do
-    ingested_at = if ingested_at, do: DateTime.to_unix(ingested_at, :microsecond)
+  @typep envelope() :: {binary(), binary(), binary(), integer()}
+
+  @doc """
+  Builds the per-row context required by ClickHouse RowBinary output.
+
+  `mapping_config_id` is the 16-byte RowBinary UUID encoding (see
+  `Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester.encode_mapping_config_id/1`),
+  pre-encoded once by the caller rather than per row.
+  """
+  @spec ch_row_binary(LogEvent.t(), <<_::128>>) :: t()
+  def ch_row_binary(%LogEvent{} = event, <<_::128>> = mapping_config_id) do
+    {:ch_row_binary, mapping_config_id, envelope(event)}
+  end
+
+  @doc """
+  Builds the per-row context required by NDJSON output.
+
+  `mapping_config_id` is the 36-character UUID string and is emitted as-is.
+  `ingested_at` is emitted as Unix **microseconds**, matching the microsecond
+  precision of the default NDJSON timestamp fields.
+  """
+  @spec ndjson(LogEvent.t(), <<_::288>>) :: t()
+  def ndjson(%LogEvent{} = event, <<_::288>> = mapping_config_id) do
+    {:ndjson, mapping_config_id, envelope(event)}
+  end
+
+  @spec envelope(LogEvent.t()) :: envelope()
+  defp envelope(%LogEvent{
+         id: id,
+         source_uuid: source_uuid,
+         source_name: source_name,
+         ingested_at: %DateTime{} = ingested_at
+       }) do
     source_uuid = if is_atom(source_uuid), do: Atom.to_string(source_uuid), else: source_uuid
-
-    {:clickhouse_row_binary, mapping_config_id, {id, source_uuid, source_name || "", ingested_at}}
+    {id, source_uuid, source_name || "", DateTime.to_unix(ingested_at, :microsecond)}
   end
 end

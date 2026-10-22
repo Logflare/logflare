@@ -130,7 +130,7 @@ defmodule Logflare.Mapper.OptimizedMapperTest do
             ),
             Field.enum8("kind",
               paths: ["$.root.kind"],
-              values: %{"fallback" => 1, "inferred" => 2},
+              values: %{"unknown" => 0, "fallback" => 1, "inferred" => 2},
               infer: [
                 %InferRule{
                   result: "inferred",
@@ -583,6 +583,14 @@ defmodule Logflare.Mapper.OptimizedMapperTest do
              }
     end
 
+    test "non-UTF-8 nested flat_map value" do
+      compiled = compile([Field.flat_map("attrs", path: "$.attributes")])
+      document = %{"attributes" => %{"top" => <<255>>, "nested" => %{"bad" => <<254>>}}}
+
+      assert %{"attrs" => %{"top" => <<255>>, "nested.bad" => <<254>>}} =
+               Mapper.map(document, compiled)
+    end
+
     test "streams compound values to the same JSON representation" do
       compiled = compile([Field.flat_map("attrs", path: "$.attributes")])
 
@@ -594,7 +602,7 @@ defmodule Logflare.Mapper.OptimizedMapperTest do
 
       assert Mapper.map(document, compiled) == %{
                "attrs" => %{
-                 "complex" => ~S([{"a":"quote\"","z":1},null,true,"ok",null])
+                 "complex" => ~S([{"a":"quote\"","z":1},null,true,"ok","�"])
                }
              }
     end

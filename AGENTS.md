@@ -1,115 +1,77 @@
 # Logflare
 
-Logflare is a real-time log aggregation platform built with Elixir/Phoenix. The codebase follows Phoenix context patterns with domain-driven design.
+Logflare is a real-time log aggregation platform built with Elixir/Phoenix. The codebase follows Phoenix context patterns. Setup and local-environment details live in `DEVELOPMENT.md`.
 
-## Core Contexts
+## Where Things Live
 
-- **`Logflare.Logs`** - Central log processing, validation, and routing
-- **`Logflare.Sources`** - Log source management and schema handling
-- **`Logflare.Backends`** - Pluggable backend adapters (BigQuery, ClickHouse, PostgreSQL, and others — see `lib/logflare/backends/adaptor/` for full list)
-- **`Logflare.Endpoints`** - Parameterized SQL endpoints for analytics
-- **`Logflare.Users`** - User management and authentication
-- **`Logflare.Teams`** - Multi-tenant team support
-- **`Logflare.Billing`** - Subscription and usage tracking with Stripe
-- **`Logflare.Alerting`** - Log-based alerting system
-- **`Logflare.Mapper`** - Data mapping/transformation system with Rust NIF backend
-- **`Logflare.Rules`** - Rule engine for log routing
-- **`Logflare.SourceSchemas`** - Source schema management
-- **`Logflare.Partners`** - Partner integrations (Vercel, etc.)
-
-## Important File Locations
-
-- **Backend Adapters**: `lib/logflare/backends/adaptor/` (note: "adaptor" spelling)
-- **SQL Parsing**: `lib/logflare/sql.ex`, `lib/logflare/sql/`
-- **LQL Parsing**: `lib/logflare/lql.ex`, `lib/logflare/lql/`
-- **Mapper**: `lib/logflare/mapper/`, `native/mapper_ex/`
-- **Test Support**: `test/support/factory.ex` (data factories), `test/test_helper.exs` (Mimic setup)
-- **Public-Facing Documentation**: `docs/docs.logflare.com/docs` directory
-
-## SQL Parsing
-
-SQL parsing is handled via a Rust NIF in `native/sqlparser_ex`, using the [`sqlparser`](https://crates.io/crates/sqlparser) crate. The Elixir interface is in `lib/logflare/sql/parser.ex` with higher-level functions in `lib/logflare/sql.ex`. Check `native/sqlparser_ex/Cargo.toml` for the crate version before making assumptions.
-
-## Configuration-Based Data Mapping
-
-Config-based data mapping/transformation (currently for ClickHouse backends only) is handled via a Rust NIF in `native/mapper_ex/`. The Elixir interface is in `lib/logflare/mapper/native.ex` with higher-level functions in `lib/logflare/mapper/`.
+- **Backend adaptors**: `lib/logflare/backends/adaptor/` (note: "adaptor" spelling). Each implements the `Logflare.Backends.Adaptor` behaviour; review it for required and optional callbacks.
+- **Log ingestion**: `lib/logflare/logs/` is a namespace, not a single context module (`Logflare.Logs.Processor`, `Logflare.Logs.Otel*`, source parsers, validators).
+- **Event type detection**: `Logflare.LogEvent.TypeDetection` (`lib/logflare/logs/log_event/type_detection.ex`)
+- **SQL parsing**: `lib/logflare/sql.ex`, `lib/logflare/sql/`
+- **LQL parsing**: `lib/logflare/lql.ex`, `lib/logflare/lql/`
+- **Mapper**: `lib/logflare/mapper/`
+- **Rust NIFs**: `native/sqlparser_ex`, `native/mapper_ex`, `native/arrowipc_ex`
+- **Custom Ecto types**: `lib/logflare/ecto/` - review existing types before creating new ones
+- **Custom credo checks**: `lints/credo/`
+- **Test support**: `test/support/factory.ex` (ExMachina factories), `test/test_helper.exs` (Mimic setup)
+- **Public docs**: `docs/docs.logflare.com/docs`
 
 ## Development Commands
 
 ```bash
-# Application
 make start                      # Start dev server (port 4000)
 
-# Database
 mix ecto.setup                  # Create and migrate local database
 mix ecto.reset                  # Drop and recreate local dev database
 MIX_ENV=test mix ecto.reset     # Reset local test database
 
 # Testing (full suite takes ~15 minutes - avoid unless asked)
-mix test path/to/test.exs       # Run specific test file
+mix test path/to/test.exs       # Run specific test file (creates and migrates the test DB first)
 mix test path/to/test.exs:42    # Run test at specific line
+mix test.only path/to/test.exs  # Skip DB create/migrate when the test DB is already current
 mix test --only focus           # Run tests tagged with @tag :focus
 
-# Code Quality
 mix format                      # Format code
-mix credo                       # Check style and correctness
-mix ci                          # Run every gate CI enforces
+mix lint.all                    # credo --strict plus migration checks
+MIX_ENV=test mix ci             # Run every gate CI enforces
 ```
 
-## Understanding the codebase & anti-slop tooling
+`mix ci` must run under `MIX_ENV=test`. The structure baseline is scoped to the test env, so a plain `mix ci` aborts on a scope mismatch. Check the exit code rather than grepping output.
 
-Before reading files one by one, use these static-analysis tools. They answer
-structural questions faster than grep, and they catch AI-generated slop the
-compiler does not. All support `--format json`.
+## Static Analysis and CI Gates
 
-- **Orient in an unfamiliar area** - `mix reach.map` gives the project map:
-  modules, coupling, `--hotspots`, `--boundaries`, `--effects`, `--depth`.
-  Prefer this over many reads just to learn the structure.
-- **Before editing a function** - `mix reach.inspect <Mod.fun/arity | file:line>
-  --impact --deps` shows the blast radius.
-- **Trace data flow** - `mix reach.trace --from params --to write!` for security
-  and refactor reasoning.
-- **OTP topology** - `mix reach.otp` shows GenServer state machines, missing
-  message handlers, and supervision trees.
-- **Find duplication before extracting a helper** - `mix ex_dna` lists clones;
-  `mix ex_dna.explain <n>` suggests the extraction.
+Before reading files one by one, use these tools. They answer structural questions faster than grep. All support `--format json`.
 
-`mix ci` runs every gate CI enforces: `test.compile`, `test.format`,
-`lint.all`, `test.security`, `test.slop`, `test.structure`. Do not disable a
-gate to go green - fix the code.
+- `mix reach.map` - project map: modules, coupling, `--hotspots`, `--boundaries`, `--effects`, `--depth`
+- `mix reach.inspect <Mod.fun/arity | file:line> --impact --deps` - blast radius before editing a function
+- `mix reach.trace --from params --to write!` - data flow for security and refactor reasoning
+- `mix reach.otp` - GenServer state machines, missing message handlers, supervision trees
+- `mix ex_dna` lists duplicated code; `mix ex_dna.explain <n>` suggests the extraction
 
-- `mix lint.all` runs `credo --strict` with the **ex_slop** plugin, which adds
-  checks for LLM patterns (blanket rescues, narrator comments, anti-idiomatic
-  `Enum`). The `ex_slop_backlog` list in `config/.credo.exs` holds the 10 checks
-  that have pre-existing findings. They are off so the gate is green on existing
-  code. Fixing a backlog check's findings and removing it from that list is a
-  welcome change on its own. Never add a check to the list to go green.
-- `mix test.slop` runs `ex_dna --max-clones 29`, a duplication ratchet. A new
-  clone fails CI. When you remove clones, lower the number. Never raise it.
-- `mix test.structure` runs `reach.check --smells` against
-  `.reach.baseline.json` (194 accepted findings), so only **new** structural
-  smells fail. To accept a
-  new smell, run `mix reach.check --smells --write-baseline
-  .reach.baseline.json`, pretty-print it with `jq . .reach.baseline.json > tmp
-  && mv tmp .reach.baseline.json`, and commit it. Keep the checked-in baseline
-  pretty-printed so diffs stay reviewable.
-- `mix test.deps` runs `hex.audit` and `deps.audit`. It is advisory in CI, not
-  a gate, because the lockfile carries pre-existing advisories.
+`mix ci` runs `test.compile`, `test.format`, `lint.all`, `test.security`, `test.slop`, and `test.structure` (see the `ci` alias in `mix.exs`). Do not disable a gate to go green - fix the code. CI also runs `mix test.typings` (dialyzer) as a separate job.
 
-Credo config lives in **`config/.credo.exs`**, not the repo root. `mix credo
-gen.config` writes a root `.credo.exs` that credo then ignores.
+- **`lint.all`**: credo with the **ex_slop** plugin (LLM patterns such as blanket rescues, narrator comments, anti-idiomatic `Enum`). Checks with pre-existing findings sit in `ex_slop_backlog` in `config/.credo.exs`. Fixing a backlog check's findings and removing it from the list is welcome. Never add a check to the list to go green.
+- **`test.slop`**: `ex_dna --max-clones N`, with `N` set in `mix.exs`. The number only goes down. If you remove clones, lower it. Never raise it.
+- **`test.structure`**: `reach.check --smells` against `.reach.baseline.json`, so only new smells fail. To accept a new smell, run `mix reach.check --smells --write-baseline .reach.baseline.json`, then `jq . .reach.baseline.json > tmp && mv tmp .reach.baseline.json` so the checked-in file stays pretty-printed.
+- **`test.deps`**: `hex.audit` and `deps.audit`. This is advisory in CI, not a gate.
+
+Credo config lives in **`config/.credo.exs`**, not the repo root. `mix credo gen.config` writes a root `.credo.exs` that credo ignores.
 
 ## Workflow
 
-- **Never** run the full `mix test` suite unless explicitly asked - it takes ~15 minutes
+- **Never** run the full `mix test` suite unless explicitly asked
 - **Never** run code coverage reports - ask the user to run these instead
-- **Always** run the entire test file (`mix test path/to/test.exs`) before considering work complete - single line tests are fine during iteration, but the full file must pass to ensure proper test setup and teardown
-- **Always** check dependency versions in `mix.exs` and `mix.lock` before making assumptions
+- **Always** run the entire test file before considering work complete - single-line runs are fine during iteration, but the full file must pass so setup and teardown are exercised
+- **Always** run `mix format` and `mix lint.all` after Elixir changes
+- **Always** check dependency versions in `mix.exs`, `mix.lock`, and `native/*/Cargo.toml` before making assumptions
 - **Always** ask before making refactoring changes beyond the immediate task
-- This project uses `Mimic` for mocking/stubbing
-- Leverage `Logflare.Utils.Guards` in new modules when appropriate
+- Bug fixes need a regression test that fails on the old code, plus a test pinning adjacent behaviour that must keep working
+- Commit messages use conventional prefixes: `fix:`, `feat:`, `chore:`, `refactor:`, optionally scoped (`fix(otel): ...`)
+- Update `docs/docs.logflare.com/docs` when a change alters user-visible behaviour, configuration, or API
 
 ## Code Style
+
+Several of these rules are not enforced by credo (`MultiAlias`, `AliasOrder`, `StrictModuleLayout`, and `Specs` are disabled), so follow them by hand.
 
 **Module organization** (in order, with blank lines between groups):
 1. `@moduledoc`
@@ -126,82 +88,50 @@ gen.config` writes a root `.credo.exs` that credo then ignores.
 12. `def`
 
 **General style**:
-- Create typespecs for new functions; prefer typespecs over verbose docs
-- Avoid inline comments; rely on clear logic and typespecs
+- Typespecs for new functions; prefer typespecs over verbose docs
+- No inline comments and no explanatory comments above function definitions; rely on clear names and typespecs
+- `alias` goes at the top of the module only - never inside `describe`, `setup`, or `test` blocks
+- Prefer multiple function heads with pattern matching over `if`/`else` on an argument's value
+- Name keyword-list arguments `opts`; qualify derived ones (`insert_opts`) instead of shadowing
 - No `@moduledoc` (or `@moduledoc false`) in test files
-- Predicate functions end with `?` (e.g., `valid?/1`); reserve `is_` prefix for guards
+- Predicate functions end with `?` (e.g., `valid?/1`); reserve the `is_` prefix for guards
+- Prefer `Logflare.Utils.Guards` (`is_non_empty_binary`, `is_pos_integer`, `is_atom_value`, `is_event_type`, ...) over hand-written guard expressions
+- Never put more than one module in a file
+- Avoid `String.to_atom/1` on user input
+- Name OTP primitives: `{DynamicSupervisor, name: Logflare.MySup}`
 
-## Elixir Pitfalls
-
-These are common mistakes - avoid them:
-
-**List access**: Lists don't support bracket access. Use `Enum.at/2`:
+**Block rebinding**: capture the result of `if`/`case`/`cond`; assignments inside the block are lost:
 ```elixir
-# Wrong: mylist[0]
-# Right: Enum.at(mylist, 0)
-```
-
-**Block rebinding**: Must capture the result of `if`/`case`/`cond`:
-```elixir
-# Wrong - assignment inside block is lost:
-if connected?(socket), do: socket = assign(socket, :val, val)
-
-# Right - capture the block result:
 socket = if connected?(socket), do: assign(socket, :val, val), else: socket
 ```
-
-**Struct access**: Structs don't implement Access. Use dot notation or specific APIs:
-```elixir
-# Wrong: changeset[:field]
-# Right: changeset.field or Ecto.Changeset.get_field(changeset, :field)
-```
-
-**Additional guidance**:
-- Never nest multiple modules in the same file (causes cyclic dependencies)
-- Avoid `String.to_atom/1` on user input (memory leak risk)
-- OTP primitives need names: `{DynamicSupervisor, name: Logflare.MySup}`
-- Use standard library for date/time (`DateTime`, `Date`, `Time`, `Calendar`)
 
 ## Project-Specific Patterns
 
 ### Web Layer
 
-Use the `LogflareWeb` macro system for controllers, views, and LiveViews:
-```elixir
-use LogflareWeb, :controller
-use LogflareWeb, :live_view
-use LogflareWeb, :live_component
-```
-These bundle standard imports, aliases, and helpers - don't manually import Phoenix modules.
-
-### Backend Adaptors
-
-Backend adaptors implement the `Logflare.Backends.Adaptor` behaviour. Review that module for required and optional callbacks. See existing adaptors in `lib/logflare/backends/adaptor/` for implementation patterns.
+Use the `LogflareWeb` macros (`use LogflareWeb, :controller`, `:live_view`, `:live_component`, `:html`, ...). They bundle the standard imports and aliases - don't import Phoenix modules by hand.
 
 ### Testing
 
-**ExMachina factories** for test data (defined in `test/support/factory.ex`):
-```elixir
-insert(:user)                    # Insert into database
-insert(:source, user: user)      # With associations
-build(:backend)                  # Build without inserting
-```
+- Mock with `Mimic`. A module must be listed with `Mimic.copy/1` in `test/test_helper.exs` before it can be stubbed.
+- ClickHouse adaptor tests need a local ClickHouse on port 8123 (`docker compose up clickhouse`). Without it they hang silently instead of failing.
 
-### Ecto Patterns
+### Ecto and Migrations
 
-Custom Ecto types are defined in `lib/logflare/ecto/` — review existing types before creating new ones.
-
-**Typed schemas**: This project uses `typed_ecto_schema` for type-safe embedded schemas:
-```elixir
-typed_embedded_schema do
-  field(:name, :string)
-end
-```
+- Embedded schemas use `typed_ecto_schema` (`typed_embedded_schema do ... end`).
+- Migrations are replicated to pglogical subscribers. Raw `execute/1` DDL and `Oban.Migration` calls must be wrapped in `Migrator.with_replicated_execute/1`; the custom checks in `lints/credo/` enforce this via `mix lint.all`.
+- Every migration needs a working `down`. CI migrates, rolls back, and runs tests (`.github/workflows/elixir-migration-check.yml`).
 
 ### Architecture
 
-**Single-tenant mode**: Check `Logflare.SingleTenant.single_tenant?()` - behavior differs between multi-tenant (SaaS) and single-tenant deployments.
+**Single-tenant mode**: Check `Logflare.SingleTenant.single_tenant?()` - behaviour differs between multi-tenant (SaaS) and single-tenant deployments.
 
-**Log processing**: Broadway pipelines handle log ingestion. `Logflare.Backends.DynamicPipeline` scales pipelines dynamically based on load. Incoming events are classified as `:log`, `:metric`, or `:trace` by `Logflare.LogEvent.TypeDetection`, which determines routing and table selection in backend adaptors. OpenTelemetry protobuf payloads are converted into `LogEvent` structs via modules in `lib/logflare/logs/`.
+**Log processing**: Broadway pipelines handle ingestion, and `Logflare.Backends.DynamicPipeline` scales them on queue depth. `Logflare.LogEvent.TypeDetection` classifies events as `:log`, `:metric`, or `:trace`, which drives routing and table selection in adaptors. OpenTelemetry protobuf payloads become `LogEvent` structs via the `Logflare.Logs.Otel*` modules.
 
-**ClickHouse consolidated pipeline**: The ClickHouse adaptor uses a single Broadway pipeline per backend. Messages are partitioned by `event_type` via `put_batch_key`, routing to type-specific OTEL tables (`otel_logs_*`, `otel_metrics_*`, `otel_traces_*`). See `lib/logflare/backends/adaptor/clickhouse_adaptor/` for internals.
+**ClickHouse pipeline**: One Broadway pipeline per backend. Messages are batched by `{event_type, day_bucket}` via `put_batch_key`, routing to the type-specific OTEL tables (`otel_logs_*`, `otel_metrics_*`, `otel_traces_*`). See `lib/logflare/backends/adaptor/clickhouse_adaptor/`.
+
+**Mapper** (ClickHouse only): Config-driven transformation through the `native/mapper_ex` NIF, with the Elixir interface in `lib/logflare/mapper/native.ex`.
+- The per-event mapping path runs on every ingested event and must never return an error. Clamp or default bad values per event, and surface errors only from `compile_mapping`.
+- Editing `for_log/0`, `for_metric/0`, or `for_trace/0` in `lib/logflare/mapper/otel_defaults.ex` requires bumping that type's `@*_config_id`. Never bump the IDs of unchanged types.
+
+**SQL parsing**: Rust NIF in `native/sqlparser_ex` using the [`sqlparser`](https://crates.io/crates/sqlparser) crate. The Elixir interface is `lib/logflare/sql/parser.ex`, with higher-level functions in `lib/logflare/sql.ex`.

@@ -402,13 +402,6 @@ defmodule Logflare.Sources do
     end
   end
 
-  def get_by_and_preload_rules(kv) do
-    case get_by(kv) do
-      nil -> nil
-      source -> Repo.preload(source, :rules)
-    end
-  end
-
   @spec preload_defaults(Source.t()) :: Source.t()
   def preload_defaults(source) do
     source
@@ -444,6 +437,8 @@ defmodule Logflare.Sources do
   end
 
   def refresh_source_metrics_for_ingest(nil), do: nil
+
+  def refresh_source_metrics_for_ingest({:error, :database_unavailable}), do: nil
 
   def refresh_source_metrics_for_ingest(%Source{token: token} = source) do
     rates = PubSubRates.Cache.get_cluster_rates(token)
@@ -559,6 +554,8 @@ defmodule Logflare.Sources do
   def put_retention_days(%Source{} = source, %Plan{} = plan) do
     %{source | retention_days: source_ttl_to_days(source, plan)}
   end
+
+  def put_retention_days(source, _plan), do: source
 
   @doc """
   Formats a source TTL to the specified unit

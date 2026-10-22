@@ -13,6 +13,7 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.ConsolidatedSup
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.SourceRegistry
+  alias Logflare.Backends.SourceSupStarts
   alias Logflare.Backends.SourcesSup
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.Spool.DurableBuffer.Supervisor, as: SpoolDurableBufferSup
@@ -39,6 +40,8 @@ defmodule Logflare.Backends do
 
   @max_future_event_us 1 * 3_600 * 1_000_000
   @max_pending_buffer_len_per_queue IngestEventQueue.max_queue_size()
+  @default_source_sup_start_timeout :timer.seconds(30)
+  @max_pipeline_swap_delay_ms 5_000
 
   @type one_or_list_or_nil :: Backend.t() | [Backend.t()] | nil
 
@@ -358,7 +361,7 @@ defmodule Logflare.Backends do
 
         Enum.each(updated.sources, &restart_source_sup(&1))
 
-        maybe_restart_consolidated_pipeline(updated)
+        apply_consolidated_pipeline_change(backend, updated, default_ingest_modified?)
 
         if config_modified?, do: Adaptor.on_backend_config_changed(updated)
 
@@ -463,7 +466,7 @@ defmodule Logflare.Backends do
       ContextCache.bust_keys(cache_keys)
       clear_list_backends_cache(source.id)
 
-      if source_sup_started?(source) do
+      if source_sup_registered?(source) do
         sync_backend_children(source, source_with_backends.backends, backends)
       else
         :ok
@@ -630,40 +633,68 @@ defmodule Logflare.Backends do
   `spoolable?/3`), this blocks the
   caller until the event's segment is durable in the buffer, or — in
   blocking mode (`spool_blocking_mode?/0`) — until its batch is actually
-  committed. If no spool partition is available, or spool dispatch fails,
-  this falls back to normal (non-spool) dispatch instead of failing the
-  request.
+  committed. If spool dispatch fails, `:both` mode falls back to normal
+  (non-spool) dispatch; `:producer`-only mode has no backend adaptors to
+  fall back to, so it fails the request with `{:error, :spool_unavailable}`
+  instead.
   """
   @type log_param :: map()
   @spec ingest_logs([log_param()], Source.t()) ::
-          {:ok, count :: pos_integer()} | {:error, [term()]}
+          {:ok, count :: pos_integer()} | {:error, term()}
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) ::
-          {:ok, count :: pos_integer()} | {:error, [term()]}
+          {:ok, count :: pos_integer()} | {:error, term()}
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil, boolean()) ::
           {:ok, count :: pos_integer()} | {:error, term()}
   def ingest_logs(event_params, source, backend \\ nil, allow_spooling \\ false) do
-    ensure_source_sup_started(source)
+    with :ok <- start_for_ingest(source) do
+      do_ingest_logs(event_params, source, backend, allow_spooling)
+    end
+  end
+
+  @doc """
+  Makes sure that the SourceSup of the source is up before an ingest writes events.
+
+  Returns `{:error, :source_not_found}` for a deleted source and `{:error, :source_unavailable}`
+  for any other failed start. The caller must not write the events then.
+  """
+  @spec start_for_ingest(Source.t()) :: :ok | {:error, :source_not_found | :source_unavailable}
+  def start_for_ingest(source) do
+    case ensure_source_sup_started(source) do
+      :ok -> :ok
+      {:error, :not_found} -> {:error, :source_not_found}
+      {:error, _reason} -> {:error, :source_unavailable}
+    end
+  end
+
+  defp do_ingest_logs(event_params, source, backend, allow_spooling) do
     {log_events, errors} = split_valid_events(source, event_params)
     count = Enum.count(log_events)
     increment_counters(source, count)
 
+    with :ok <- dispatch_logs(source, backend, log_events, allow_spooling) do
+      if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
+    end
+  end
+
+  defp dispatch_logs(source, backend, log_events, allow_spooling) do
     if spoolable?(log_events, source, allow_spooling) do
       case dispatch_to_spool_producer(log_events) do
-        {:error, reason} ->
-          Logger.error(
-            "backends: spool dispatch failed for source #{source.token}, falling back to normal dispatch: #{inspect(reason)}"
-          )
-
-          dispatch_to_backend_path(source, backend, log_events)
-
-        :ok ->
-          :ok
+        :ok -> :ok
+        {:error, reason} -> handle_spool_dispatch_error(source, backend, log_events, reason)
       end
     else
       dispatch_to_backend_path(source, backend, log_events)
     end
+  end
 
-    if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
+  defp handle_spool_dispatch_error(source, backend, log_events, reason) do
+    Logger.error("backends: spool dispatch failed for source #{source.token}: #{inspect(reason)}")
+
+    if spool_mode() == :both do
+      dispatch_to_backend_path(source, backend, log_events)
+    else
+      {:error, :spool_unavailable}
+    end
   end
 
   defp dispatch_to_backend_path(source, backend, log_events) do
@@ -720,10 +751,16 @@ defmodule Logflare.Backends do
   @spec spoolable?([LogEvent.t()], Source.t(), boolean()) :: boolean()
   defp spoolable?(log_events, source, allow_spooling) do
     allow_spooling and
-      spool_producer_mode?() and
       case spool_mode() do
-        :producer -> true
-        :both -> source.enable_spooling and Enum.all?(log_events, &(&1.via_rule_id == nil))
+        :producer ->
+          true
+
+        :both ->
+          spool_write_healthy?() and (force_spooling?() or source.enable_spooling) and
+            Enum.all?(log_events, &(&1.via_rule_id == nil))
+
+        _ ->
+          false
       end
   end
 
@@ -738,10 +775,15 @@ defmodule Logflare.Backends do
   before `Logflare.Backends.Spool.SpoolAck` acks it — see that module's
   moduledoc.
   """
-  @spec dispatch_from_spool([map()], Source.t(), term()) :: {:ok, non_neg_integer()}
+  @spec dispatch_from_spool([map()], Source.t(), term()) ::
+          {:ok, non_neg_integer()} | {:error, :source_not_found | :source_unavailable}
   def dispatch_from_spool(spool_records, source, handle \\ nil) do
-    ensure_source_sup_started(source)
+    with :ok <- start_for_ingest(source) do
+      do_dispatch_from_spool(spool_records, source, handle)
+    end
+  end
 
+  defp do_dispatch_from_spool(spool_records, source, handle) do
     log_events =
       Enum.map(spool_records, fn record ->
         LogEvent.make_from_spool(record, source, handle)
@@ -777,7 +819,7 @@ defmodule Logflare.Backends do
               {events, errors, total + 1, bump(tally, :drop_future)}
 
             le ->
-              {[le | events], errors, total + 1, tally}
+              {[LogEvent.cache_sizes(le) | events], errors, total + 1, tally}
           end
       end
 
@@ -834,26 +876,34 @@ defmodule Logflare.Backends do
     :ok
   end
 
-  # Stops routing ingest through the spool path once Health goes unhealthy,
-  # falling through to normal dispatch instead. Gated on the scope that
-  # actually backstops this mode: :wal mode's local WAL absorbs upload
-  # outages by design, so only a failing local disk should stop ingest;
-  # :mem mode has no local buffer at all, so a failing upload is the same
-  # thing as a failing commit.
   @spec spool_producer_mode?() :: boolean()
-  def spool_producer_mode? do
-    spool_mode() in [:producer, :both] and SpoolHealth.healthy?(spool_health_gate_scope())
-  end
+  def spool_producer_mode?, do: spool_mode() in [:producer, :both]
 
-  defp spool_health_gate_scope do
+  # :wal mode writes to both tiers, so both must be healthy — a WAL that's
+  # happily absorbing writes locally while GCS stays down still means the
+  # spool isn't actually getting data to its durable home. :mem mode has no
+  # local disk tier at all, so only :upload applies there.
+  defp spool_write_healthy? do
     case spool_buffer() do
-      :wal -> :disk
-      :mem -> :upload
+      :wal -> SpoolHealth.healthy?(:disk) and SpoolHealth.healthy?(:upload)
+      :mem -> SpoolHealth.healthy?(:upload)
     end
   end
 
   @spec spool_consumer_mode?() :: boolean()
   def spool_consumer_mode?, do: spool_mode() in [:consumer, :both]
+
+  @doc """
+  Whether spool health should gate this node's own healthcheck. Only
+  `:producer`-only mode gates on it — that's the only mode where a failing
+  spool has no working fallback (see `ingest_logs/4`); `:both` still falls
+  back to direct backend dispatch on spool failure, so it shouldn't be
+  pulled out of rotation for it.
+  """
+  @spec spool_healthcheck_ok?() :: boolean()
+  def spool_healthcheck_ok? do
+    spool_mode() != :producer or spool_write_healthy?()
+  end
 
   @doc """
   Which backend the node's spool `DurableBuffer` instance commits
@@ -881,6 +931,9 @@ defmodule Logflare.Backends do
   defp spool_mode,
     do: :logflare |> Application.get_env(:spool, []) |> Keyword.get(:mode, :disable)
 
+  defp force_spooling?,
+    do: :logflare |> Application.get_env(:spool, []) |> Keyword.get(:force_spooling, false)
+
   @broadcast_rate_ceiling 2
 
   defp maybe_broadcast_and_route(source, log_events) do
@@ -904,7 +957,7 @@ defmodule Logflare.Backends do
       IngestEventQueue.add_to_table({:consolidated, backend.id}, log_events)
 
       :telemetry.execute(
-        [:logflare, :backends, :ingest, :count],
+        [:logflare, :backends, :ingest, :dispatch],
         %{count: length(log_events)},
         %{backend_type: backend.type}
       )
@@ -927,7 +980,7 @@ defmodule Logflare.Backends do
       IngestEventQueue.add_to_table(queue_key, log_events)
 
       :telemetry.execute(
-        [:logflare, :backends, :ingest, :count],
+        [:logflare, :backends, :ingest, :dispatch],
         %{count: length(log_events)},
         %{backend_type: backend.type}
       )
@@ -1057,54 +1110,155 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Checks if the SourceSup for a given source has been started.
+  Checks if the SourceSup for a given source is up and all its initial children are started.
+
+  A `SourceSup` that is registered but still in its start returns `false`. See
+  `Logflare.Backends.SourceSup.mark_ready/1`.
   """
   @spec source_sup_started?(Source.t() | non_neg_integer()) :: boolean()
   def source_sup_started?(%Source{id: id}), do: source_sup_started?(id)
 
   def source_sup_started?(id) when is_number(id) do
+    match?([{_pid, :ready}], Registry.lookup(SourceRegistry, {id, SourceSup}))
+  end
+
+  @doc """
+  Checks if the SourceSup for a given source is registered. It can still be in its start.
+
+  Backend reconciliation uses this check. A child start or stop on a `SourceSup` in its start
+  waits until its `init/1` returns. Thus a backend change during the start still reaches the
+  `SourceSup`. Ingest must use `source_sup_started?/1`.
+  """
+  @spec source_sup_registered?(Source.t() | non_neg_integer()) :: boolean()
+  def source_sup_registered?(%Source{id: id}), do: source_sup_registered?(id)
+
+  def source_sup_registered?(id) when is_number(id) do
     Registry.lookup(SourceRegistry, {id, SourceSup}) != []
   end
 
   @doc """
-  Starts a given SourceSup for a source. If already started, will return an error tuple.
+  Starts the SourceSup of a source.
+
+  Returns `{:error, :already_started}` when the SourceSup is already up.
+
+  The start has two steps: `SourceSup.prefetch/1` warms the caches, then the `SourcesSup`
+  partition starts the `SourceSup`. The caller waits for both steps for at most the
+  `:source_sup_start_timeout` application environment value. The default is 30 seconds. After
+  that time, the caller gets `{:error, :start_timeout}`. A blocked cache or partition can delay
+  ingest, but it can not hold the callers forever. The partition still completes the start after
+  the timeout.
+
+  A failed start logs its reason, except for `:already_started` and `:not_found`.
   """
-  @spec start_source_sup(Source.t()) :: :ok | {:error, :already_started}
-  def start_source_sup(%Source{} = source) do
-    if not source_sup_started?(source), do: SourceSup.prefetch(source)
-    do_start_source_sup(source)
+  @spec start_source_sup(Source.t()) ::
+          :ok | {:error, :already_started | :not_found | :start_timeout | term()}
+  def start_source_sup(%Source{} = source), do: do_start_source_sup(source.id, fn -> source end)
+
+  @spec do_start_source_sup(pos_integer(), (-> Source.t() | nil)) ::
+          :ok | {:error, :already_started | :not_found | :start_timeout | term()}
+  defp do_start_source_sup(source_id, load_source) do
+    timeout =
+      Application.get_env(:logflare, :source_sup_start_timeout, @default_source_sup_start_timeout)
+
+    task =
+      Task.Supervisor.async_nolink(
+        {:via, PartitionSupervisor, {Logflare.TaskSupervisors, source_id}},
+        fn -> start_loaded_source_sup(load_source.()) end
+      )
+
+    case Task.yield(task, timeout) || Task.shutdown(task, :brutal_kill) do
+      {:ok, result} ->
+        result
+        |> handle_start_child_result()
+        |> log_start_failure(source_id)
+
+      {:exit, reason} ->
+        log_start_failure({:error, reason}, source_id)
+
+      nil ->
+        Logger.warning("SourceSup start timed out after #{timeout}ms", source_id: source_id)
+        {:error, :start_timeout}
+    end
   end
 
-  defp do_start_source_sup(source) do
-    case DynamicSupervisor.start_child(
-           {:via, PartitionSupervisor, {SourcesSup, source.id}},
-           SourceSup.child_spec(source)
-         ) do
+  defp start_loaded_source_sup(%Source{} = source) do
+    if not source_sup_started?(source), do: SourceSup.prefetch(source)
+
+    DynamicSupervisor.start_child(
+      {:via, PartitionSupervisor, {SourcesSup, source.id}},
+      SourceSup.child_spec(source)
+    )
+  end
+
+  defp start_loaded_source_sup(nil), do: :ignore
+
+  defp handle_start_child_result(result) do
+    case result do
       {:ok, _pid} ->
         :ok
+
+      :ignore ->
+        {:error, :not_found}
 
       {:error, {:already_started = reason, _pid}} ->
         {:error, reason}
 
       {:error, {:shutdown, {:failed_to_start_child, _mod, {:already_started = reason, _pid}}}} ->
         {:error, reason}
+
+      {:error, _reason} = error ->
+        error
     end
   end
 
+  defp log_start_failure({:error, reason} = error, source_id)
+       when reason not in [:already_started, :not_found] do
+    Logger.error("SourceSup start failed: #{inspect(reason)}", source_id: source_id)
+    error
+  end
+
+  defp log_start_failure(result, _source_id), do: result
+
   @doc """
-  Ensures that a the SourceSup is started.
+  Makes sure that the SourceSup of a source is up.
+
+  Every ingest batch calls this function. When the SourceSup is down, the first caller for the
+  source starts it. The other callers for that source wait for that start. Each caller gets the
+  result of the same start. Thus the `SourcesSup` partition gets one `start_child` call per source.
+
+  The start loads the source by id with `Sources.Cache.get_by_id_or_primary/1`. The lookup, the
+  prefetch and the `start_child` call share the deadline of `start_source_sup/1`. So a stalled
+  cache or primary read returns `{:error, :start_timeout}` to every caller.
+
+  The function also takes a source id. Then the caller does not need its own lookup, which would
+  run outside the deadline.
+
+  A failed start returns `{:error, reason}`. It does not raise.
   """
-  @spec ensure_source_sup_started(Source.t()) :: :ok
-  def ensure_source_sup_started(%Source{} = source) do
-    if source_sup_started?(source) == false do
-      case start_source_sup(source) do
-        :ok -> :ok
-        {:error, :already_started} -> :ok
-      end
-    else
+  @spec ensure_source_sup_started(Source.t() | pos_integer()) ::
+          :ok | {:error, :not_found | :start_timeout | term()}
+  def ensure_source_sup_started(%Source{id: id}), do: ensure_source_sup_started(id)
+
+  def ensure_source_sup_started(id) when is_integer(id) do
+    if source_sup_started?(id) do
       :ok
+    else
+      SourceSupStarts
+      |> Cachex.fetch(id, &start_source_sup_by_id/1)
+      |> handle_source_sup_start()
     end
   end
+
+  @spec start_source_sup_by_id(pos_integer()) :: {:ignore, :ok | {:error, term()}}
+  defp start_source_sup_by_id(source_id) do
+    {:ignore,
+     do_start_source_sup(source_id, fn -> Sources.Cache.get_by_id_or_primary(source_id) end)}
+  end
+
+  defp handle_source_sup_start({:ignore, :ok}), do: :ok
+  defp handle_source_sup_start({:ignore, {:error, :already_started}}), do: :ok
+  defp handle_source_sup_start({:ignore, {:error, _reason} = error}), do: error
+  defp handle_source_sup_start({:error, _reason} = error), do: error
 
   @doc """
   Stops a given SourceSup for a source. if not started, it will return an error tuple.
@@ -1127,7 +1281,7 @@ defmodule Logflare.Backends do
   Restarts a SourceSup of a given source.
   """
   @spec restart_source_sup(Source.t()) ::
-          :ok | {:error, :already_started} | {:error, :not_started}
+          :ok | {:error, :already_started | :not_started | :not_found | :start_timeout | term()}
   def restart_source_sup(%Source{} = source) do
     with :ok <- stop_source_sup(source),
          :ok <- start_source_sup(source) do
@@ -1156,6 +1310,58 @@ defmodule Logflare.Backends do
     end
 
     :ok
+  end
+
+  @spec apply_consolidated_pipeline_change(Backend.t(), Backend.t(), boolean()) :: :ok
+  defp apply_consolidated_pipeline_change(backend, updated, default_ingest_modified?) do
+    updated = typecast_config_string_map_to_atom_map(updated)
+    pipeline_keys = Adaptor.pipeline_config_keys(updated)
+    runtime_keys = Adaptor.runtime_config_keys(updated)
+
+    changes =
+      backend
+      |> typecast_config_string_map_to_atom_map()
+      |> changed_config_keys(updated)
+
+    pipeline_changes = Enum.filter(changes, &(&1 in pipeline_keys))
+    other_changes = Enum.reject(changes, &(&1 in pipeline_keys or &1 in runtime_keys))
+
+    if default_ingest_modified? or other_changes != [] or changes == [] do
+      maybe_restart_consolidated_pipeline(updated)
+    end
+
+    if pipeline_changes != [] do
+      Cluster.Utils.rpc_multicast(__MODULE__, :replace_pipelines_after_delay, [updated.id])
+    end
+
+    :ok
+  end
+
+  @doc false
+  @spec replace_pipelines_after_delay(pos_integer()) :: :ok | {:error, term()}
+  def replace_pipelines_after_delay(backend_id) when is_integer(backend_id) do
+    Process.sleep(pipeline_swap_delay_ms())
+    replace_pipelines_with_latest(backend_id)
+  end
+
+  @doc false
+  @spec replace_pipelines_with_latest(integer()) :: :ok | {:error, term()}
+  def replace_pipelines_with_latest(backend_id) when is_integer(backend_id) do
+    case get_backend(backend_id) do
+      nil -> :ok
+      backend -> Adaptor.replace_pipelines(backend)
+    end
+  end
+
+  @doc false
+  @spec pipeline_swap_delay_ms() :: non_neg_integer()
+  def pipeline_swap_delay_ms, do: :rand.uniform(@max_pipeline_swap_delay_ms + 1) - 1
+
+  @spec changed_config_keys(Backend.t(), Backend.t()) :: [atom()]
+  defp changed_config_keys(%Backend{config: before}, %Backend{config: after_update}) do
+    (Map.keys(before) ++ Map.keys(after_update))
+    |> Enum.uniq()
+    |> Enum.reject(&(Map.get(before, &1) == Map.get(after_update, &1)))
   end
 
   @doc """

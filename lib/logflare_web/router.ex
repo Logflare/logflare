@@ -109,6 +109,7 @@ defmodule LogflareWeb.Router do
     )
 
     plug(LogflareWeb.Plugs.FetchResource)
+    plug(LogflareWeb.Plugs.VerifyDeclaredSources)
     plug(LogflareWeb.Plugs.VerifyResourceAccess)
     plug(:accepts, ["json", "bert"])
     plug(LogflareWeb.Plugs.SetHeaders)
@@ -278,6 +279,7 @@ defmodule LogflareWeb.Router do
 
     live_session :without_team_param, on_mount: @common_on_mount_hooks ++ @auth_live_hooks do
       live("/access-tokens", AccessTokensLive, :index)
+      live("/access-tokens/new", AccessTokensLive, :new)
 
       scope "/integrations" do
         live("/vercel/edit", VercelLogDrainsLive, :edit)
