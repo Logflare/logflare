@@ -12,6 +12,8 @@ defmodule Logflare.Endpoints do
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.Backend
   alias Logflare.Backends.QueryError
+  alias Logflare.ContextCache
+  alias Logflare.Endpoints.ClickHouseSettings
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Endpoints.PiiRedactor
   alias Logflare.Endpoints.Resolver
@@ -163,6 +165,94 @@ defmodule Logflare.Endpoints do
     |> case do
       {:ok, %{model: endpoint}} -> {:ok, endpoint}
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @spec enforced_settings_admin?(User.t() | TeamUser.t()) :: boolean()
+  def enforced_settings_admin?(actor) do
+    Repo.with_primary(fn -> match?({:ok, %User{}}, authorize_settings_admin(actor)) end)
+  end
+
+  @doc """
+  Configure ClickHouse resource limits from an internal operator context.
+  This field is intentionally not cast by user-facing endpoint changesets.
+  """
+  @spec configure_enforced_clickhouse_settings(User.t() | TeamUser.t(), EndpointQuery.t(), map()) ::
+          {:ok, EndpointQuery.t()} | {:error, term()}
+  def configure_enforced_clickhouse_settings(actor, %EndpointQuery{id: id}, settings) do
+    Repo.with_primary(fn -> persist_endpoint_settings(actor, id, settings) end)
+    |> case do
+      {:ok, %{model: updated}} ->
+        ContextCache.bust_keys([{__MODULE__, updated.id}])
+
+        case maybe_kill_endpoint_caches(updated, %{enforced_clickhouse_settings: settings}) do
+          :ok -> {:ok, updated}
+          {:error, reason} -> {:error, {:settings_saved, updated, reason}}
+        end
+
+      error ->
+        error
+    end
+  end
+
+  @spec persist_endpoint_settings(User.t() | TeamUser.t(), integer(), map()) ::
+          {:ok, map()} | {:error, term()}
+  defp persist_endpoint_settings(actor, id, settings) do
+    Repo.transact(fn ->
+      with {:ok, admin} <- authorize_settings_admin(actor),
+           %EndpointQuery{} = query <-
+             Repo.one(from(query in EndpointQuery, where: query.id == ^id, lock: "FOR UPDATE")),
+           :ok <- require_clickhouse_endpoint(query, settings),
+           {:ok, settings} <- ClickHouseSettings.normalize(settings) do
+        opts = [
+          origin: admin.email,
+          meta: %{
+            kind: "endpoint_policy",
+            operator_id: admin.id,
+            previous_settings: query.enforced_clickhouse_settings,
+            settings: settings
+          }
+        ]
+
+        query
+        |> Ecto.Changeset.change(enforced_clickhouse_settings: settings)
+        |> PaperTrail.update(opts)
+      else
+        nil -> {:error, :not_found}
+        error -> error
+      end
+    end)
+  end
+
+  @spec authorize_settings_admin(User.t() | TeamUser.t()) ::
+          {:ok, User.t()} | {:error, :forbidden}
+  defp authorize_settings_admin(actor) do
+    case settings_user(actor) do
+      %User{admin: true} = admin -> {:ok, admin}
+      _ -> {:error, :forbidden}
+    end
+  end
+
+  @spec settings_user(User.t() | TeamUser.t()) :: User.t() | nil
+  defp settings_user(%User{id: id}), do: Repo.get(User, id)
+  defp settings_user(%TeamUser{email: email}), do: Repo.get_by(User, email: email)
+
+  @spec require_clickhouse_endpoint(EndpointQuery.t(), map()) ::
+          :ok | {:error, :not_clickhouse_endpoint}
+  defp require_clickhouse_endpoint(_query, settings) when settings == %{}, do: :ok
+
+  defp require_clickhouse_endpoint(%EndpointQuery{language: :ch_sql} = query, _settings),
+    do: require_clickhouse_backend(query)
+
+  defp require_clickhouse_endpoint(_query, _settings), do: {:error, :not_clickhouse_endpoint}
+
+  @spec require_clickhouse_backend(EndpointQuery.t()) :: :ok | {:error, :not_clickhouse_endpoint}
+  defp require_clickhouse_backend(%EndpointQuery{backend_id: nil}), do: :ok
+
+  defp require_clickhouse_backend(%EndpointQuery{backend_id: backend_id}) do
+    case Backends.get_backend(backend_id) do
+      %Backend{type: :clickhouse} -> :ok
+      _ -> {:error, :not_clickhouse_endpoint}
     end
   end
 
@@ -396,6 +486,7 @@ defmodule Logflare.Endpoints do
   defp current_endpoint_version_id(endpoint_id) do
     from(version in Version,
       where: version.item_type == "EndpointQuery" and version.item_id == ^endpoint_id,
+      where: fragment("COALESCE(?->>'kind', '')", version.meta) != "endpoint_policy",
       order_by: [desc: version.id],
       limit: 1,
       select: version.id
@@ -412,6 +503,7 @@ defmodule Logflare.Endpoints do
         :cache_duration_seconds,
         :proactive_requerying_seconds,
         :max_limit,
+        :enforced_clickhouse_settings,
         :enable_auth,
         :labels
       ],
@@ -419,21 +511,39 @@ defmodule Logflare.Endpoints do
     )
   end
 
-  @spec maybe_kill_endpoint_caches(EndpointQuery.t(), map()) :: :ok
+  @spec maybe_kill_endpoint_caches(EndpointQuery.t(), map()) ::
+          :ok | {:error, :cache_invalidation_failed}
   defp maybe_kill_endpoint_caches(endpoint, changes) do
     if should_kill_caches?(changes) do
       endpoint
-      |> Resolver.list_caches()
-      |> Enum.map(&invalidate_cache_async/1)
-      |> Task.await_many(30_000)
+      |> Resolver.list_caches(cache_scope(changes))
+      |> invalidate_caches()
+    else
+      :ok
     end
-
-    :ok
   end
 
-  @spec invalidate_cache_async(pid()) :: Task.t()
-  defp invalidate_cache_async(pid) do
-    Utils.Tasks.async(fn -> ResultsCache.invalidate(pid) end)
+  @spec cache_scope(map()) :: :all_versions | :selected_version
+  defp cache_scope(%{enforced_clickhouse_settings: _settings}), do: :all_versions
+  defp cache_scope(_changes), do: :selected_version
+
+  @spec invalidate_caches([pid()]) :: :ok | {:error, :cache_invalidation_failed}
+  defp invalidate_caches(pids) do
+    supervisor = {:via, PartitionSupervisor, {Logflare.TaskSupervisors, self()}}
+
+    supervisor
+    |> Task.Supervisor.async_stream_nolink(pids, ResultsCache, :invalidate, [],
+      timeout: 10_000,
+      on_timeout: :kill_task
+    )
+    |> Enum.reduce(:ok, fn
+      {:ok, {:ok, :stopped}}, status ->
+        status
+
+      failure, _status ->
+        Logger.warning("Endpoint cache invalidation failed", reason: inspect(failure))
+        {:error, :cache_invalidation_failed}
+    end)
   end
 
   @spec get_endpoint_query_version(integer(), integer()) :: Version.t() | nil
@@ -459,6 +569,7 @@ defmodule Logflare.Endpoints do
       id: endpoint.id,
       user_id: endpoint.user_id,
       token: endpoint.token,
+      enforced_clickhouse_settings: endpoint.enforced_clickhouse_settings,
       version_number: version_number
     })
     |> map_query_sources()
@@ -605,7 +716,8 @@ defmodule Logflare.Endpoints do
 
     alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
 
-    with :ok <- validate_query_override(endpoint_query, params),
+    with {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
+         :ok <- validate_query_override(endpoint_query, params),
          {:ok, declared_params} <-
            Sql.parameters(query_string, dialect: Sql.to_dialect(query_language)),
          {:ok, expanded_query} <-
@@ -628,7 +740,8 @@ defmodule Logflare.Endpoints do
              else: expanded_query
            ),
          {:ok, transformed_query} <-
-           Sql.transform(query_language, transform_input, user_id) do
+           Sql.transform(query_language, transform_input, user_id),
+         {:ok, transformed_query} <- apply_enforced_settings(endpoint_query, transformed_query) do
       :telemetry.span(
         [:logflare, :endpoints, :run_query, :exec_query_on_backend],
         %{endpoint_id: endpoint_query.id, language: query_language},
@@ -706,6 +819,7 @@ defmodule Logflare.Endpoints do
       |> Map.new(&{&1.name, &1.token})
 
     query = %EndpointQuery{
+      id: Keyword.get(opts, :endpoint_id),
       query: query_string,
       language: language,
       sandboxable: Keyword.get(opts, :sandboxable, false),
@@ -798,7 +912,8 @@ defmodule Logflare.Endpoints do
 
     alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
 
-    with {:ok, expanded_query} <-
+    with {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
+         {:ok, expanded_query} <-
            Sql.expand_subqueries(
              query_language,
              query_string,
@@ -817,10 +932,37 @@ defmodule Logflare.Endpoints do
              do: {expanded_query, consumer_query},
              else: expanded_query
            ),
-         {:ok, transformed_query} <- Sql.transform(query_language, transform_input, user_id) do
+         {:ok, transformed_query} <- Sql.transform(query_language, transform_input, user_id),
+         {:ok, transformed_query} <- apply_enforced_settings(endpoint_query, transformed_query) do
       {:ok, transformed_query}
     end
   end
+
+  @spec reload_enforced_settings(EndpointQuery.t()) ::
+          {:ok, EndpointQuery.t()} | {:error, String.t()}
+  defp reload_enforced_settings(%EndpointQuery{id: id, language: :ch_sql} = endpoint)
+       when is_integer(id) do
+    case Repo.with_primary(fn -> Repo.get(EndpointQuery, id) end) do
+      %EndpointQuery{enforced_clickhouse_settings: settings} ->
+        {:ok, %{endpoint | enforced_clickhouse_settings: settings}}
+
+      nil ->
+        {:error, "Endpoint not found"}
+    end
+  end
+
+  defp reload_enforced_settings(endpoint), do: {:ok, endpoint}
+
+  @spec apply_enforced_settings(EndpointQuery.t(), String.t()) ::
+          {:ok, String.t()} | {:error, String.t()}
+  defp apply_enforced_settings(
+         %EndpointQuery{language: :ch_sql, enforced_clickhouse_settings: settings},
+         transformed_query
+       )
+       when is_map(settings),
+       do: ClickHouseSettings.enforce(transformed_query, settings)
+
+  defp apply_enforced_settings(_endpoint_query, transformed_query), do: {:ok, transformed_query}
 
   @spec maybe_convert_lql_to_sql(
           lql_param :: String.t() | nil,
