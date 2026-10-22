@@ -19,6 +19,41 @@ defmodule Logflare.Endpoints.ClickHouseSettingsTest do
     end
   end
 
+  test "empty policy leaves SQL untouched without parsing" do
+    query = "not SQL; {$0:Int64}"
+    assert {:ok, ^query} = ClickHouseSettings.enforce(query, %{})
+  end
+
+  test "round-trips numeric bounds and overflow literals through the native serializer" do
+    for value <- [1, 9_223_372_036_854_775_807] do
+      settings = %{
+        "max_bytes_to_read" => value,
+        "max_rows_to_read" => value,
+        "max_memory_usage" => value,
+        "max_execution_time" => value
+      }
+
+      assert {:ok, sql} = ClickHouseSettings.enforce("SELECT a FROM t", settings)
+
+      assert sql ==
+               "SELECT a FROM t SETTINGS max_bytes_to_read = #{value}, " <>
+                 "max_execution_time = #{value}, max_memory_usage = #{value}, " <>
+                 "max_rows_to_read = #{value}, read_overflow_mode = 'throw'"
+
+      assert {:ok, [_statement]} = Parser.parse("clickhouse", sql)
+    end
+  end
+
+  test "rejects untrusted setting keys and literal types before AST construction" do
+    for settings <- [
+          %{"max_memory_usage" => "100; SELECT 1"},
+          %{"read_overflow_mode" => "throw' SETTINGS priority = 1"},
+          %{"max_memory_usage = 1, priority" => 1}
+        ] do
+      assert {:error, _reason} = ClickHouseSettings.enforce("SELECT a FROM t", settings)
+    end
+  end
+
   test "preserves caller settings and adds resource limits to the final query" do
     query = "WITH src AS (SELECT a FROM t) SELECT a FROM src SETTINGS optimize_read_in_order = 1"
     settings = %{"max_execution_time" => 5, "max_memory_usage" => 100}

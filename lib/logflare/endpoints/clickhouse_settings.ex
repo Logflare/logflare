@@ -14,6 +14,10 @@ defmodule Logflare.Endpoints.ClickHouseSettings do
 
   @resource_limits ~w(max_bytes_to_read max_rows_to_read max_memory_usage max_execution_time)
   @max_limit 9_223_372_036_854_775_807
+  @empty_span %{
+    "start" => %{"line" => 0, "column" => 0},
+    "end" => %{"line" => 0, "column" => 0}
+  }
 
   @spec normalize(map()) :: {:ok, map()} | {:error, String.t()}
   def normalize(settings) when is_map(settings) do
@@ -38,9 +42,7 @@ defmodule Logflare.Endpoints.ClickHouseSettings do
     with {:ok, settings} <- normalize(settings),
          {:ok, [statement]} <- Parser.parse("clickhouse", query),
          :ok <- reject_conflicts(statement, Map.keys(settings)),
-         {:ok, [%{"Query" => %{"settings" => setting_nodes}}]} <-
-           Parser.parse("clickhouse", settings_sql(settings)),
-         {:ok, statement} <- append_settings(statement, setting_nodes),
+         {:ok, statement} <- append_settings(statement, setting_nodes(settings)),
          {:ok, sql} <- Parser.to_string([statement]) do
       {:ok, sql}
     else
@@ -79,18 +81,21 @@ defmodule Logflare.Endpoints.ClickHouseSettings do
     end)
   end
 
-  @spec settings_sql(map()) :: String.t()
-  defp settings_sql(settings) do
-    clauses =
-      settings
-      |> Enum.sort()
-      |> Enum.map_join(", ", fn
-        {"read_overflow_mode", "throw"} -> "read_overflow_mode = 'throw'"
-        {key, value} -> "#{key} = #{value}"
-      end)
-
-    "SELECT 1 FROM t SETTINGS " <> clauses
+  @spec setting_nodes(map()) :: [map()]
+  defp setting_nodes(settings) do
+    settings
+    |> Enum.sort()
+    |> Enum.map(fn {key, value} ->
+      %{
+        "key" => %{"value" => key, "quote_style" => nil, "span" => @empty_span},
+        "value" => %{"Value" => %{"value" => setting_literal(value), "span" => @empty_span}}
+      }
+    end)
   end
+
+  @spec setting_literal(number() | String.t()) :: map()
+  defp setting_literal(value) when is_number(value), do: %{"Number" => [to_string(value), false]}
+  defp setting_literal("throw"), do: %{"SingleQuotedString" => "throw"}
 
   @spec reject_conflicts(term(), [String.t()]) :: :ok | {:error, String.t()}
   defp reject_conflicts(ast, keys) do
