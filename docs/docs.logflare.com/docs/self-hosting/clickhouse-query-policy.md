@@ -65,30 +65,11 @@ Historical endpoint versions retain current operator ceilings. Cached snapshot r
 
 Successful result caches remain class-agnostic: changing the class does not create a different result-cache key or run a query on a cache hit. Misses and background refreshes enforce policy at execution time. A refresh retains the class from the request that originally created the cache, but reads current backend policy. Backend class-policy changes invalidate backend metadata across the cluster, but do not evict reusable successful results, restart ingesters, or tear down active read connections.
 
-## Deployment preflight
+## Deployment and verification
 
-Before enabling this policy on a backend, connect using its actual query credentials, including any dedicated query user. Inspect the deployed settings and constraints:
+1. Using the backend's actual query credentials, test each configured setting with a small SELECT. Confirm intended values are accepted and values outside profile constraints are rejected. Keep query-user permissions restricted; do not weaken `readonly` or grant DDL to enable policy. See [ClickHouse setting constraints](https://clickhouse.com/docs/operations/settings/constraints-on-settings).
+2. Deploy support on every Logflare instance and drain older versions before enabling policy. Coordinate any ClickHouse profile changes with the backend policy; do not change profile defaults first. Use profile constraints for hard ceilings and consider `priority MIN 1` to prevent queries from opting out of prioritization.
+3. Enable query-setting logging and inspect `system.query_log.Settings` using query IDs. Verify priorities and limits for configured classes, missing or unknown labels, and requests routed to the default cluster.
+4. Load-test competing workloads in staging, then monitor latency, timeouts, query errors, memory, and connections during rollout. Lower-priority queries can retain resources while paused; priority does not provide tenant isolation or aggregate throttling.
 
-```sql
-SELECT name, type, value, min, max, readonly
-FROM system.settings
-WHERE name IN (
-  'readonly', 'priority', 'max_threads', 'max_execution_time',
-  'max_memory_usage', 'max_bytes_to_read', 'max_rows_to_read',
-  'read_overflow_mode', 'timeout_overflow_mode'
-);
-```
-
-For every newly used key, issue a small SELECT with the intended setting using those credentials. Verify both the accepted values and rejection of values outside profile constraints. `readonly = 1` can prohibit changes unless the setting is specifically changeable in readonly mode; `readonly = 2` allows settings changes subject to constraints. Do not weaken `readonly`, grant DDL, or make `readonly` itself changeable to make these probes pass. See [ClickHouse setting constraints](https://clickhouse.com/docs/operations/settings/constraints-on-settings).
-
-Local regression tests exercise every allowlisted key with a temporary `readonly = 2` user and profile ceilings. They do not establish that the production `logflare_prod` profile permits these values. Production verification is an operator rollout requirement.
-
-Deploy Logflare support on every instance and drain older versions before enabling the policy. Apply the backend class configuration and a matching `priority = 5` baseline in the ClickHouse `logflare` profile in the same coordinated rollout window, **not the profile change before Logflare class policy**. Consider `priority MIN 1` to prevent bypass paths from opting out with zero. Ensure configured limits fit the profile's constraints; use server-side MAX constraints where cluster-wide ceilings are required.
-
-## Verification and rollout monitoring
-
-Ensure query-setting logging is enabled for the verification queries. For actual API/MCP, dashboard, missing-label, and unknown-label requests, inspect `system.query_log.Settings` on Logflare Reads and verify priority and limits, including requests routed to the default cluster. Use the query ID to identify the request; a small local regression test verifies the recorded API values.
-
-In staging, compare dashboard p95 latency and timeout rates under competing API load. During rollout, monitor query errors, delayed concurrency slots, paused queries, memory, and connections. Lower-priority queries retain memory and connections while paused and may see more execution-time failures. Priority is not tenant isolation or aggregate admission control.
-
-Aggregate Management API throttling (O11Y-2662) and moving API/MCP classes to separately sized compute remain separate mitigations. Roll back class policy through the admin function with `%{}`; coordinate any profile rollback after accounting for requests and instances still using class policy.
+To roll back class policy, pass `%{}` to `Logflare.Backends.configure_query_class_settings/3`. Endpoint-owned limits remain active. Coordinate any profile rollback with requests and instances still using class policy.
