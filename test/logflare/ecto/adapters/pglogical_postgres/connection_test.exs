@@ -44,6 +44,40 @@ defmodule Logflare.Ecto.Adapters.PglogicalPostgres.ConnectionTest do
       assert sql =~ "CREATE TABLE"
     end
 
+    test "does not wrap Ecto's schema_migrations bootstrap" do
+      Application.put_env(:logflare, Migrator, replication_sets: ["my_set"])
+
+      [sql] =
+        Connection.execute_ddl(
+          {:create_if_not_exists, %Ecto.Migration.Table{name: :schema_migrations},
+           [
+             {:add, :version, :bigint, [primary_key: true]},
+             {:add, :inserted_at, :naive_datetime, []}
+           ]}
+        )
+
+      sql = IO.iodata_to_binary(sql)
+
+      refute sql =~ "pglogical.replicate_ddl_command"
+      assert sql =~ ~s(CREATE TABLE IF NOT EXISTS "schema_migrations")
+    end
+
+    test "wraps CREATE TABLE IF NOT EXISTS ddl for other tables" do
+      Application.put_env(:logflare, Migrator, replication_sets: ["my_set"])
+
+      [sql] =
+        Connection.execute_ddl(
+          {:create_if_not_exists, %Ecto.Migration.Table{name: :widgets},
+           [{:add, :id, :bigserial, [primary_key: true]}]}
+        )
+
+      sql = IO.iodata_to_binary(sql)
+
+      assert sql =~ "SELECT pglogical.replicate_ddl_command($lf_ddl$"
+      assert sql =~ ~s(CREATE TABLE IF NOT EXISTS "widgets")
+      assert sql =~ "ARRAY['my_set']::text[]"
+    end
+
     test "does not wrap raw execute/1 SQL strings" do
       Application.put_env(:logflare, Migrator, replication_sets: ["my_set"])
 

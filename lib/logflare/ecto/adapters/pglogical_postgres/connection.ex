@@ -5,6 +5,11 @@ defmodule Logflare.Ecto.Adapters.PglogicalPostgres.Connection do
 
   Replication-set names are validated in `config/runtime.exs` because DDL
   cannot use bind parameters.
+
+  Ecto's own `schema_migrations` bootstrap (`CREATE TABLE IF NOT EXISTS`) is
+  not wrapped. `Ecto.Migrator` issues it on every run, so every node boot would
+  otherwise queue one replicated DDL, and each queued DDL stalls the
+  subscriber's apply worker.
   """
   @behaviour Ecto.Adapters.SQL.Connection
 
@@ -53,7 +58,12 @@ defmodule Logflare.Ecto.Adapters.PglogicalPostgres.Connection do
     end
   end
 
-  @impl true
+  def execute_ddl(
+        {:create_if_not_exists, %Ecto.Migration.Table{name: :schema_migrations}, _columns} =
+          command
+      ),
+      do: PG.execute_ddl(command)
+
   def execute_ddl(command), do: wrap_ddl(command)
 
   defp wrap_ddl(command) do
