@@ -120,6 +120,10 @@ spec:
     {{- toYaml . | nindent 4 }}
     {{- end }}
   {{- end }}
+  {{- with .Values.dnsConfig }}
+  dnsConfig:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   {{- with .Values.nodeSelector }}
   nodeSelector:
     {{- toYaml . | nindent 4 }}
