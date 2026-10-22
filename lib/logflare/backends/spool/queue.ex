@@ -18,11 +18,8 @@ defmodule Logflare.Backends.Spool.Queue do
 
   @doc """
   Feeds a queue call's result into the `:queue` health scope and returns it
-  unchanged. Any HTTP answer below 500 proves the queue is reachable, even
-  a per-message 4xx like an expired receipt handle; transport failures
-  (DNS, connect, timeouts, pool checkout) and 5xx count against it. Other
-  errors (credentials, parse failures) say nothing about reachability and
-  are not reported.
+  unchanged. Transport failures and 5xx count against it; any other HTTP
+  answer proves reachability; other errors are ignored.
   """
   @spec track_health(result) :: result when result: term()
   def track_health(result) do

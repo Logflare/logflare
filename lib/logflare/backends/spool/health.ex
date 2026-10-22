@@ -4,9 +4,7 @@ defmodule Logflare.Backends.Spool.Health do
   as independently-tracked scopes: `:disk` (local WAL fsync, `:wal`
   buffer mode only), `:upload` (the Cloud backend's GCS/queue commit,
   used directly in `:mem` mode and via `RotatingWal`'s workers in `:wal`
-  mode) and `:queue` (whether SQS/Pub/Sub answers at all, fed by every
-  queue call on producer and consumer nodes, see
-  `Logflare.Backends.Spool.Queue.track_health/1`). Keeping them separate
+  mode) and `:queue` (SQS/Pub/Sub reachability). Keeping them separate
   means a `:wal`-mode node's frequent local fsync successes can't mask a
   persistently failing upload path.
 

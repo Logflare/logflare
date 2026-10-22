@@ -905,13 +905,7 @@ defmodule Logflare.Backends do
     spool_mode() != :producer or spool_write_healthy?()
   end
 
-  @doc """
-  Whether this node can reach its spool queue, for readiness only. Gates
-  `:producer`-only and `:consumer`-only nodes, which do nothing useful
-  without the queue; `:both` falls back to direct dispatch, as in
-  `spool_healthcheck_ok?/0`. Liveness stays off it so a regional DNS or
-  queue blip pulls nodes out of rotation instead of restarting them all.
-  """
+  @doc "Whether a `:producer` or `:consumer` node can reach its spool queue. Readiness only."
   @spec spool_queue_ready?() :: boolean()
   def spool_queue_ready? do
     spool_mode() not in [:producer, :consumer] or SpoolHealth.healthy?(:queue)
