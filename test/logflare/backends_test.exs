@@ -220,6 +220,8 @@ defmodule Logflare.BackendsTest do
           use_async_inserts_only: true,
           use_async_inserts_for_small_batches: true,
           async_insert_max_rows: 500,
+          async_insert_busy_timeout_max_ms: 4_000,
+          async_insert_max_data_size: 209_715_200,
           async_insert_cluster_url: "http://localhost:8124"
         })
 
@@ -229,6 +231,30 @@ defmodule Logflare.BackendsTest do
       assert DynamicPipeline.list_pipelines(pipeline_sup) == pipelines
 
       Backends.ConsolidatedSup.stop_pipeline(backend)
+    end
+
+    for {key, value} <- [
+          async_insert_busy_timeout_max_ms: 4_000,
+          async_insert_max_data_size: 209_715_200
+        ] do
+      test "updating only #{key} preserves pipelines and loads after WAL cache invalidation", %{
+        user: user
+      } do
+        assert {:ok, backend} = Backends.create_backend(user, clickhouse_backend_attrs())
+        on_exit(fn -> Backends.ConsolidatedSup.stop_pipeline(backend) end)
+        adaptor_sup = TestUtils.consolidated_sup_pid(backend)
+        pipeline_sup = Backends.via_backend(backend, ClickHousePipeline)
+        pipelines = DynamicPipeline.list_pipelines(pipeline_sup)
+        Backends.Cache.get_backend(backend.id)
+
+        assert {:ok, _updated} =
+                 Backends.update_backend(backend, %{config: %{unquote(key) => unquote(value)}})
+
+        assert TestUtils.consolidated_sup_pid(backend) == adaptor_sup
+        assert DynamicPipeline.list_pipelines(pipeline_sup) == pipelines
+        assert {:ok, _} = Logflare.ContextCache.bust_keys([{Backends, backend.id}])
+        assert Backends.Cache.get_backend(backend.id).config[unquote(key)] == unquote(value)
+      end
     end
 
     test "create_backend/2 starts the pipeline with the configured batch limits", %{user: user} do
