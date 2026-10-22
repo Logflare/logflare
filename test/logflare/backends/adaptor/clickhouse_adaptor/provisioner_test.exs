@@ -94,6 +94,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
       {_source, read_backend} =
         setup_clickhouse_test(config: %{query_user: "ch_reader", query_password: "reader_pa55"})
 
+      # A real authentication failure only surfaces after a multi-second pool queue
+      # timeout, which leaves no headroom for the provisioning wait below.
+      read_grant_statement = QueryTemplates.read_grant_check_statement()
+
+      stub(Ch, :query, fn
+        _pool, ^read_grant_statement, _params, _opts ->
+          {:error, %Ch.Error{code: 516, message: "ch_reader: Authentication failed"}}
+
+        pool, statement, params, opts ->
+          Mimic.call_original(Ch, :query, [pool, statement, params, opts])
+      end)
+
       {:ok, adaptor_pid} = ClickHouseAdaptor.start_link(read_backend)
 
       on_exit(fn ->
