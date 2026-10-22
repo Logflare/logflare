@@ -19,6 +19,22 @@ defmodule Logflare.Endpoints.ClickHouseSettingsTest do
     end
   end
 
+  test "native parameters retain their bindings without bypassing nested conflicts" do
+    sql = "WITH data AS (SELECT {$0:Int64} AS n) SELECT n, '{$0:Int64}' AS literal FROM data"
+    assert {:ok, prepared} = ClickHouseSettings.enforce(sql, %{"priority" => 5})
+    assert prepared =~ "{$0: Int64}"
+    assert prepared =~ "'{$0:Int64}' AS literal"
+    assert prepared =~ "priority = 5"
+
+    assert {:error, reason} =
+             ClickHouseSettings.enforce(
+               "WITH data AS (SELECT {$0:Int64} AS n SETTINGS priority = 1) SELECT n FROM data",
+               %{"priority" => 5}
+             )
+
+    assert reason =~ "priority is enforced"
+  end
+
   test "empty policy leaves SQL untouched without parsing" do
     query = "not SQL; {$0:Int64}"
     assert {:ok, ^query} = ClickHouseSettings.enforce(query, %{})
@@ -30,7 +46,9 @@ defmodule Logflare.Endpoints.ClickHouseSettingsTest do
         "max_bytes_to_read" => value,
         "max_rows_to_read" => value,
         "max_memory_usage" => value,
-        "max_execution_time" => value
+        "max_execution_time" => value,
+        "max_threads" => value,
+        "priority" => value
       }
 
       assert {:ok, sql} = ClickHouseSettings.enforce("SELECT a FROM t", settings)
@@ -38,7 +56,8 @@ defmodule Logflare.Endpoints.ClickHouseSettingsTest do
       assert sql ==
                "SELECT a FROM t SETTINGS max_bytes_to_read = #{value}, " <>
                  "max_execution_time = #{value}, max_memory_usage = #{value}, " <>
-                 "max_rows_to_read = #{value}, read_overflow_mode = 'throw'"
+                 "max_rows_to_read = #{value}, max_threads = #{value}, priority = #{value}, " <>
+                 "read_overflow_mode = 'throw', timeout_overflow_mode = 'throw'"
 
       assert {:ok, [_statement]} = Parser.parse("clickhouse", sql)
     end
@@ -51,6 +70,19 @@ defmodule Logflare.Endpoints.ClickHouseSettingsTest do
           %{"max_memory_usage = 1, priority" => 1}
         ] do
       assert {:error, _reason} = ClickHouseSettings.enforce("SELECT a FROM t", settings)
+    end
+  end
+
+  test "round-trips fractional timeout literals and their overflow mode" do
+    for value <- [0.25, 1.0, 1.0e-6, 1.0e15] do
+      assert {:ok, sql} =
+               ClickHouseSettings.enforce("SELECT a FROM t", %{"max_execution_time" => value})
+
+      assert sql ==
+               "SELECT a FROM t SETTINGS max_execution_time = #{value}, " <>
+                 "timeout_overflow_mode = 'throw'"
+
+      assert {:ok, [_statement]} = Parser.parse("clickhouse", sql)
     end
   end
 
@@ -107,7 +139,7 @@ defmodule Logflare.Endpoints.ClickHouseSettingsTest do
           "EXPLAIN SELECT a FROM t SETTINGS max_execution_time = 10",
           "EXPLAIN WITH src AS (SELECT a FROM t SETTINGS max_execution_time = 10) SELECT a FROM src"
         ] do
-      assert {:error, "ClickHouse setting max_execution_time is enforced by this endpoint"} =
+      assert {:error, "ClickHouse setting max_execution_time is enforced by query policy"} =
                ClickHouseSettings.enforce(query, settings)
     end
   end

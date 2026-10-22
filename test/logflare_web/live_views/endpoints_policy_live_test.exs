@@ -70,7 +70,8 @@ defmodule LogflareWeb.EndpointsPolicyLiveTest do
     save_settings(view)
 
     assert Endpoints.get_endpoint_query(context.endpoint.id).enforced_clickhouse_settings == %{
-             "max_execution_time" => 7
+             "max_execution_time" => 7,
+             "timeout_overflow_mode" => "throw"
            }
 
     admin |> Ecto.Changeset.change(admin: false) |> Repo.update!()
@@ -80,7 +81,8 @@ defmodule LogflareWeb.EndpointsPolicyLiveTest do
            }) =~ "Not authorized to configure ClickHouse settings"
 
     assert Endpoints.get_endpoint_query(context.endpoint.id).enforced_clickhouse_settings == %{
-             "max_execution_time" => 7
+             "max_execution_time" => 7,
+             "timeout_overflow_mode" => "throw"
            }
   end
 
@@ -123,7 +125,8 @@ defmodule LogflareWeb.EndpointsPolicyLiveTest do
       save_settings(view)
 
       assert Endpoints.get_endpoint_query(context.endpoint.id).enforced_clickhouse_settings == %{
-               "max_execution_time" => 7
+               "max_execution_time" => 7,
+               "timeout_overflow_mode" => "throw"
              }
     end
   end

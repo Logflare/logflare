@@ -122,8 +122,9 @@ defmodule LogflareWeb.EndpointsLiveTest do
                      settings
                    )
 
-          expect(ClickHouseAdaptor, :execute_query, fn _backend, {sql, _, _, query}, _opts ->
+          expect(ClickHouseAdaptor, :execute_query, fn backend, {sql, _, _, query}, opts ->
             assert query.enforced_clickhouse_settings == current.enforced_clickhouse_settings
+            assert {:ok, sql} = ClickHouseAdaptor.prepare_query(backend, sql, opts)
 
             if settings == %{} do
               refute sql =~ "max_execution_time"
@@ -172,7 +173,8 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert Logflare.Endpoints.get_endpoint_query(endpoint.id).enforced_clickhouse_settings == %{
                "max_rows_to_read" => 100,
                "max_execution_time" => 5,
-               "read_overflow_mode" => "throw"
+               "read_overflow_mode" => "throw",
+               "timeout_overflow_mode" => "throw"
              }
 
       html =

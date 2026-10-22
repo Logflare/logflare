@@ -28,7 +28,7 @@ defmodule Logflare.Endpoints.EndpointPolicyTest do
           {%{"max_rows_to_read" => 10}, %{}},
           {%{"max_execution_time" => 7},
            %{"max_rows_to_read" => 10, "read_overflow_mode" => "throw"}},
-          {%{}, %{"max_execution_time" => 7}}
+          {%{}, %{"max_execution_time" => 7, "timeout_overflow_mode" => "throw"}}
         ] do
       assert {:ok, current} =
                Endpoints.configure_enforced_clickhouse_settings(
@@ -96,7 +96,12 @@ defmodule Logflare.Endpoints.EndpointPolicyTest do
              Endpoints.restore_query_version(context.owner, second, 1, context.owner)
 
     assert restored.description == "first"
-    assert restored.enforced_clickhouse_settings == %{"max_execution_time" => 3}
+
+    assert restored.enforced_clickhouse_settings == %{
+             "max_execution_time" => 3,
+             "timeout_overflow_mode" => "throw"
+           }
+
     assert Endpoints.get_endpoint_query_version(restored.id, 3)
     assert Endpoints.get_endpoint_query_version(restored.id, 4) == nil
   end
@@ -119,7 +124,12 @@ defmodule Logflare.Endpoints.EndpointPolicyTest do
              )
 
     assert dormant.language == :pg_sql
-    assert dormant.enforced_clickhouse_settings == %{"max_execution_time" => 7}
+
+    assert dormant.enforced_clickhouse_settings == %{
+             "max_execution_time" => 7,
+             "timeout_overflow_mode" => "throw"
+           }
+
     assert {:ok, sql} = Endpoints.get_transformed_query(dormant)
     refute sql =~ "max_execution_time"
 
