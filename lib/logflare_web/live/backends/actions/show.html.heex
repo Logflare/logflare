@@ -32,55 +32,33 @@
   </div>
 </section>
 
-<section :if={@flag_multibackend == true and Logflare.Backends.Adaptor.supports_default_ingest?(@backend)} class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
-  <h4>Default Ingest Sources</h4>
+<section :if={@flag_multibackend == true and (@default_ingest_capable? or @backend.default_ingest?)} class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
+  <h4>Default Ingest</h4>
   <p>
-    Sources configured to use this backend as a default ingest destination.
+    A default ingest backend receives events from every source in this account that has default ingest enabled.
+    Only backends with a consolidated pipeline (currently ClickHouse) can be a default, and an account can have one default per backend type.
   </p>
 
-  <div :if={not Enum.empty?(@available_sources || [])}>
-    <.button phx-click="toggle_default_ingest_form" variant="secondary">
-      <%= if @show_default_ingest_form? do %>
-        Cancel
-      <% else %>
-        Add a Source
-      <% end %>
+  <div class="tw-flex tw-gap-2 tw-items-center">
+    <.button :if={@default_ingest_capable? and not @backend.default_ingest?} phx-click="enable_default_ingest" variant="primary" data-confirm="Route every opted-in source in this account to this backend?">
+      Enable default ingest
     </.button>
-    <.button :if={@backend.default_ingest? and not @show_default_ingest_form?} phx-click="add_all_default_ingest" variant="secondary" data-confirm={"Add all #{length(@available_sources)} sources as default ingest?"}>
-      Add All Sources
+    <.button :if={@backend.default_ingest?} phx-click="disable_default_ingest" variant="danger" data-confirm="Stop routing opted-in sources to this backend?">
+      Disable default ingest
     </.button>
   </div>
 
-  <.form :let={f} :if={@show_default_ingest_form?} id="default_ingest" for={%{}} as={:default_ingest} action="#" phx-submit="save_default_ingest">
-    <div class="form-group">
-      {label(f, :source_id, "Source")}
-      {select(f, :source_id, Enum.map(@available_sources || [], fn s -> {s.name, s.id} end),
-        class: "form-control",
-        prompt: [key: "Choose a source"]
-      )}
-      <small id="source_id" class="form-text text-muted">This source will use this backend as its default ingest destination. Only sources with default ingest backend support enabled are shown.</small>
-    </div>
-
-    {hidden_input(f, :backend_id, value: @backend.id)}
-    {submit("Save", class: "btn btn-primary")}
-  </.form>
-
-  <p :if={Enum.empty?(@default_ingest_sources || [])}>No sources configured for default ingest</p>
-  <ul :for={source <- @default_ingest_sources || []} class="tw-flex tw-flex-row tw-gap-4">
-    <li class="list-group-item tw-pointer-none tw-w-full tw-flex tw-flex-row tw-justify-between">
-      <span>
-        Source <code>{source.name}</code> uses this backend as default ingest
-      </span>
-
-      <.button phx-click="remove_default_ingest" phx-value-source_id={source.id} variant="danger">
-        Remove
+  <div :if={@default_ingest_capable? and @backend.default_ingest?} class="tw-flex tw-flex-col tw-gap-2">
+    <span>{@opted_in_count} of {@eligible_count} sources opted in</span>
+    <div class="tw-flex tw-gap-2">
+      <.button :if={@opted_in_count < @eligible_count} phx-click="opt_in_all_sources" variant="secondary" data-confirm={"Opt in all #{@eligible_count} sources? System sources are skipped."}>
+        Opt in all sources
       </.button>
-    </li>
-  </ul>
-  <div :if={length(@default_ingest_sources || []) > 1}>
-    <.button phx-click="remove_all_default_ingest" variant="danger" data-confirm={"Remove all #{length(@default_ingest_sources)} sources from default ingest?"}>
-      Remove All Sources
-    </.button>
+      <.button :if={@opted_in_count > 0} phx-click="opt_out_all_sources" variant="danger" data-confirm={"Opt out all #{@opted_in_count} sources?"}>
+        Opt out all sources
+      </.button>
+    </div>
+    <small class="text-muted">Individual sources can be opted in or out from each source's edit page.</small>
   </div>
 </section>
 
