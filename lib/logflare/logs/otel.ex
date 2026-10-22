@@ -80,6 +80,10 @@ defmodule Logflare.Logs.Otel do
     Enum.map(values, &extract_value/1)
   end
 
+  def extract_value(%{value: {:kvlist_value, %{values: values}}}) do
+    handle_attributes(values)
+  end
+
   def extract_value(%_{value: {_type, value}}), do: value
   def extract_value(%_{value: nil}), do: nil
   def extract_value(nil), do: nil

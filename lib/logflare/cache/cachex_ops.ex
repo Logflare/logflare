@@ -11,6 +11,8 @@ defmodule Logflare.Cache.CachexOps do
 
   import Cachex.Spec
 
+  require Logger
+
   alias Logflare.ContextCache.Gossip
 
   @stat_keys [
@@ -148,19 +150,58 @@ defmodule Logflare.Cache.CachexOps do
 
   A miss is also multicast to peer nodes, see `Logflare.ContextCache.Gossip`. Accepts a Cachex
   worker, so calls can be batched in `Cachex.execute/2`.
+
+  A miss whose getter cannot reach the database returns `{:error, :database_unavailable}` and
+  commits nothing, so the next call retries. Any other exception is re-raised: Cachex would
+  otherwise rescue it into an indistinguishable error tuple, hiding genuine bugs behind a
+  retryable status.
   """
   @impl Logflare.ContextCache.Ops
-  @spec fetch(Cachex.t(), term(), (-> term())) :: term()
+  @spec fetch(Cachex.t(), term(), (-> term())) :: term() | {:error, :database_unavailable}
   def fetch(cache, key, getter) do
-    case Cachex.fetch(cache, key, fn _key -> {:commit, {:cached, getter.()}} end) do
+    case Cachex.fetch(cache, key, fn _key -> commit_or_ignore(getter) end) do
       {:commit, {:cached, value}} ->
         Gossip.multicast(cache, key, value)
         value
 
       {:ok, {:cached, value}} ->
         value
+
+      {:ignore, {:unavailable, reason}} ->
+        Logger.warning("#{inspect(cache)} could not load #{key_label(key)}: #{inspect(reason)}")
+
+        {:error, :database_unavailable}
+
+      {:ignore, {:error, :database_unavailable} = err} ->
+        err
+
+      {:error, %Cachex.Error{stack: stack} = error} when is_list(stack) ->
+        reraise error, stack
+
+      {:error, %Cachex.Error{} = error} ->
+        raise error
+
+      {:error, :no_cache} ->
+        raise "cache #{inspect(cache)} is not running"
+
+      {:error, reason} ->
+        exit(reason)
     end
   end
+
+  defp commit_or_ignore(getter) do
+    case getter.() do
+      {:error, :database_unavailable} = err -> {:ignore, err}
+      value -> {:commit, {:cached, value}}
+    end
+  rescue
+    error in [DBConnection.ConnectionError] -> {:ignore, {:unavailable, error}}
+  catch
+    :exit, {reason, _} when reason in [:noproc, :killed] -> {:ignore, {:unavailable, reason}}
+  end
+
+  defp key_label({fun, args}) when is_atom(fun) and is_list(args), do: "#{fun}/#{length(args)}"
+  defp key_label(_key), do: "entry"
 
   @impl Logflare.ContextCache.Ops
   @spec update(Cachex.t(), term(), term()) :: :ok

@@ -424,6 +424,7 @@ empty string, so the same values stay safe with the `Deployment`.
 | `logflare.grpcSsl` | `LOGFLARE_ENABLE_GRPC_SSL` | Serve gRPC over TLS. Requires `certFilesSecret`. See [Certificate files](#certificate-files) |
 | `deploymentAnnotations` | — | Annotations on the Deployment object. Set `reloader.stakater.com/auto: "true"` to roll pods on ConfigMap/Secret changes (requires Stakater Reloader) |
 | `logflare.extraConfig` | (any) | Map of non-secret env vars rendered verbatim into the ConfigMap |
+| `logflare.extraConfig.ERL_FLAGS` | `ERL_FLAGS` | Extra VM flags, appended after the image's `vm.args` and the chart's `+Q 1048576`, so they win. Replaces the removed `vmArgs` value |
 | `extraEnv` | (any) | Env vars appended to the container, rendered verbatim so `valueFrom` works. For values that must differ per version rather than per release. See [Progressive delivery](#progressive-delivery-with-argo-rollouts) |
 | `ingress.hosts[].paths[].serviceName` | — | Service this path routes to, in the release's namespace. Defaults to the release's own Service. See [Ingress](#ingress) |
 | `ingress.hosts[].paths[].servicePortName` | — | Port name on that Service, instead of the `service.port` number. See [Ingress](#ingress) |
