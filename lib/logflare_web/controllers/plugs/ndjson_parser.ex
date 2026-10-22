@@ -68,10 +68,11 @@ defmodule LogflareWeb.NdjsonParser do
   defp redact_decode_error(%Jason.DecodeError{position: position}),
     do: "decode error at position #{position}"
 
-  defp wrap_event(%{@lf_source_key => source} = log_event, line) do
+  defp wrap_event(%{@lf_source_key => source} = log_event, _line) do
+    log_event = Map.delete(log_event, @lf_source_key)
+
     log_event
-    |> Map.delete(@lf_source_key)
-    |> wrap_event(line)
+    |> wrap_event(Jason.encode!(log_event))
     |> Map.put(@lf_source_key, source)
   end
 
