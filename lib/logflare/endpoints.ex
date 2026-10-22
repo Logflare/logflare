@@ -515,18 +515,17 @@ defmodule Logflare.Endpoints do
           :ok | {:error, :cache_invalidation_failed}
   defp maybe_kill_endpoint_caches(endpoint, changes) do
     if should_kill_caches?(changes) do
-      scope =
-        if is_map_key(changes, :enforced_clickhouse_settings),
-          do: :all_versions,
-          else: :selected_version
-
       endpoint
-      |> Resolver.list_caches(scope)
+      |> Resolver.list_caches(cache_scope(changes))
       |> invalidate_caches()
     else
       :ok
     end
   end
+
+  @spec cache_scope(map()) :: :all_versions | :selected_version
+  defp cache_scope(%{enforced_clickhouse_settings: _settings}), do: :all_versions
+  defp cache_scope(_changes), do: :selected_version
 
   @spec invalidate_caches([pid()]) :: :ok | {:error, :cache_invalidation_failed}
   defp invalidate_caches(pids) do
@@ -954,6 +953,8 @@ defmodule Logflare.Endpoints do
 
   defp reload_enforced_settings(endpoint), do: {:ok, endpoint}
 
+  @spec apply_enforced_settings(EndpointQuery.t(), String.t()) ::
+          {:ok, String.t()} | {:error, String.t()}
   defp apply_enforced_settings(
          %EndpointQuery{language: :ch_sql, enforced_clickhouse_settings: settings},
          transformed_query
