@@ -405,7 +405,7 @@ defmodule LogflareWeb.CoreComponents do
 
     ~H"""
     <li class="nav-item" id="team-switcher">
-      <span :if={not @has_multiple_teams} class="tw-font-bold tw-text-black/60">
+      <span :if={not @has_multiple_teams} class="nav-link tw-font-bold tw-text-black/60">
         {@team_context.team.name}
       </span>
       <a :if={@has_multiple_teams} class="tw-font-bold tw-text-neutral-900/60 nav-link dropdown-toggle" href="#" id="teamDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
