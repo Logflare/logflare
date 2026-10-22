@@ -1,5 +1,4 @@
 defmodule Logflare.Sources.Source.BigQuery.SchemaMetricsTest do
-  @moduledoc false
   use Logflare.DataCase
 
   alias Logflare.Backends

@@ -1,5 +1,4 @@
 defmodule Logflare.Backends.Adaptor.BigQueryAdaptorSupervisionTest do
-  @moduledoc false
   use Logflare.DataCase
 
   alias Logflare.Backends
@@ -42,8 +41,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorSupervisionTest do
         {restarted_schema_pid, restarted_counter}
       end)
 
-    # A producer that reserved immediately before the crash can only cast to the
-    # stale pid/counter pair; it cannot consume capacity from the replacement.
     event = build(:log_event, source: source)
     assert :ok = GenServer.cast(schema_pid, {:update, event, source, counter})
     :sys.get_state(restarted_schema_pid)
