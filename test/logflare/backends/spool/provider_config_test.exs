@@ -74,7 +74,7 @@ defmodule Logflare.Backends.Spool.ProviderConfigTest do
       assert ProviderConfig.resolve_queue_ref(spool_config, SQS) == nil
       refute Health.healthy?(:queue)
 
-      for _ <- 1..4, do: assert_received(:resolve_attempt)
+      for _ <- 1..6, do: assert_received(:resolve_attempt)
       refute_received :resolve_attempt
     end
   end

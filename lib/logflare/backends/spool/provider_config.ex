@@ -34,13 +34,13 @@ defmodule Logflare.Backends.Spool.ProviderConfig do
   end
 
   @doc """
-  Resolves the queue, retrying `:queue_resolve_retries` times (default 3)
+  Resolves the queue, retrying `:queue_resolve_retries` times (default 5)
   `:queue_resolve_interval_ms` apart (default 2s) so a node booting before
   DNS is ready still gets it. Marks `:queue` unhealthy if every attempt fails.
   """
   @spec resolve_queue(keyword(), module(), String.t()) :: {:ok, term()} | {:error, term()}
   def resolve_queue(spool_config, queue_mod, queue_name) do
-    retries = Keyword.get(spool_config, :queue_resolve_retries, 3)
+    retries = Keyword.get(spool_config, :queue_resolve_retries, 5)
     interval_ms = Keyword.get(spool_config, :queue_resolve_interval_ms, 2_000)
     do_resolve_queue(queue_mod, queue_name, retries, interval_ms)
   end

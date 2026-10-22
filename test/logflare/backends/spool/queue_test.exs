@@ -5,17 +5,13 @@ defmodule Logflare.Backends.Spool.QueueTest do
   alias Logflare.Backends.Spool.Queue
 
   setup do
-    prev_spool_config = Application.get_env(:logflare, :spool)
+    prev_spool_config = Application.get_env(:logflare, :spool, [])
     Application.put_env(:logflare, :spool, max_spool_health_failures: 1)
 
     on_exit(fn ->
       Health.report_recovery!(:queue)
 
-      if prev_spool_config do
-        Application.put_env(:logflare, :spool, prev_spool_config)
-      else
-        Application.delete_env(:logflare, :spool)
-      end
+      Application.put_env(:logflare, :spool, prev_spool_config)
     end)
 
     Health.report_recovery!(:queue)

@@ -175,20 +175,14 @@ defmodule LogflareWeb.HealthCheckControllerTest do
       insert(:plan)
       start_supervised!(Source.Supervisor)
 
-      prev_spool_config = Application.get_env(:logflare, :spool)
+      prev_spool_config = Application.get_env(:logflare, :spool, [])
 
-      on_exit(fn ->
-        if prev_spool_config do
-          Application.put_env(:logflare, :spool, prev_spool_config)
-        else
-          Application.delete_env(:logflare, :spool)
-        end
-      end)
+      on_exit(fn -> Application.put_env(:logflare, :spool, prev_spool_config) end)
 
       :ok
     end
 
-    for mode <- [:producer, :consumer] do
+    for mode <- [:producer, :consumer, :both] do
       test "in #{inspect(mode)} mode, an unreachable queue fails /ready but not /health", %{
         conn: conn
       } do
@@ -210,15 +204,6 @@ defmodule LogflareWeb.HealthCheckControllerTest do
         assert %{"status" => "ok", "spool_write_healthy" => %{"queue" => true}} =
                  conn |> get("/ready") |> json_response(200)
       end
-    end
-
-    test "in :both mode, an unreachable queue is reported but does not fail /ready", %{conn: conn} do
-      Application.put_env(:logflare, :spool, mode: :both, max_spool_health_failures: 1)
-
-      Health.report_failure!(:queue)
-
-      assert %{"status" => "ok", "spool_write_healthy" => %{"queue" => false}} =
-               conn |> get("/ready") |> json_response(200)
     end
 
     test "outside spool mode, queue health does not gate /ready", %{conn: conn} do
