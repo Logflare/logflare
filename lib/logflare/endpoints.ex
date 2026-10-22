@@ -13,6 +13,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Backends.Backend
   alias Logflare.Backends.QueryError
   alias Logflare.ContextCache
+  alias Logflare.Endpoints.Cache
   alias Logflare.Endpoints.ClickHouseSettings
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Endpoints.PiiRedactor
@@ -185,9 +186,14 @@ defmodule Logflare.Endpoints do
       {:ok, %{model: updated}} ->
         ContextCache.bust_keys([{__MODULE__, updated.id}])
 
-        case maybe_kill_endpoint_caches(updated, %{enforced_clickhouse_settings: settings}) do
-          :ok -> {:ok, updated}
-          {:error, reason} -> {:error, {:settings_saved, updated, reason}}
+        policy_status = Cache.invalidate_endpoint_policy_cluster(updated.id)
+
+        results_status =
+          maybe_kill_endpoint_caches(updated, %{enforced_clickhouse_settings: settings})
+
+        case {policy_status, results_status} do
+          {:ok, :ok} -> {:ok, updated}
+          _failure -> {:error, {:settings_saved, updated, :cache_invalidation_failed}}
         end
 
       error ->
@@ -265,7 +271,8 @@ defmodule Logflare.Endpoints do
   end
 
   @spec update_query(User.t() | TeamUser.t(), EndpointQuery.t(), map(), origin()) ::
-          {:ok, EndpointQuery.t()} | {:error, Ecto.Changeset.t()}
+          {:ok, EndpointQuery.t()}
+          | {:error, Ecto.Changeset.t() | {:saved, EndpointQuery.t(), :cache_invalidation_failed}}
   def update_query(user_or_team_user, %EndpointQuery{} = query, params, origin)
       when is_map(params) do
     Repo.transact(fn ->
@@ -283,8 +290,12 @@ defmodule Logflare.Endpoints do
         changeset =
           query |> Repo.preload(:user) |> EndpointQuery.update_by_user_changeset(params)
 
-        maybe_kill_endpoint_caches(updated_query, changeset.changes)
-        {:ok, updated_query}
+        ContextCache.bust_keys([{__MODULE__, updated_query.id}])
+
+        case maybe_kill_endpoint_caches(updated_query, changeset.changes) do
+          :ok -> {:ok, updated_query}
+          {:error, reason} -> {:error, {:saved, updated_query, reason}}
+        end
 
       {:error, changeset} ->
         {:error, changeset}
@@ -293,7 +304,7 @@ defmodule Logflare.Endpoints do
 
   @spec restore_query_version(User.t() | TeamUser.t(), EndpointQuery.t(), integer(), origin()) ::
           {:ok, EndpointQuery.t(), integer()}
-          | {:error, Ecto.Changeset.t()}
+          | {:error, Ecto.Changeset.t() | {:saved, EndpointQuery.t(), :cache_invalidation_failed}}
   def restore_query_version(
         user_or_team_user,
         %EndpointQuery{id: endpoint_id} = query,
@@ -311,7 +322,7 @@ defmodule Logflare.Endpoints do
          {:ok, endpoint} <- update_query(user_or_team_user, query, attrs, origin) do
       {:ok, endpoint, version_number}
     else
-      {:error, %Ecto.Changeset{}} = error ->
+      {:error, _reason} = error ->
         error
 
       {:restorable, false} ->
@@ -537,7 +548,7 @@ defmodule Logflare.Endpoints do
       on_timeout: :kill_task
     )
     |> Enum.reduce(:ok, fn
-      {:ok, {:ok, :stopped}}, status ->
+      {:ok, {:ok, result}}, status when result in [:stopped, :draining] ->
         status
 
       failure, _status ->
@@ -842,9 +853,7 @@ defmodule Logflare.Endpoints do
       when is_map(params) and is_list(opts) do
     with :ok <- validate_query_override(query, params),
          true <- query.cache_duration_seconds > 0 do
-      query
-      |> Resolver.resolve(params, opts)
-      |> ResultsCache.query()
+      query_results_cache(query, params, opts, 3, node())
     else
       false ->
         run_query(query, params, opts)
@@ -852,6 +861,37 @@ defmodule Logflare.Endpoints do
       {:error, _reason} = error ->
         error
     end
+  end
+
+  @spec query_results_cache(EndpointQuery.t(), map(), keyword(), non_neg_integer(), node()) ::
+          run_query_return()
+  defp query_results_cache(_query, _params, _opts, 0, _resolver_node) do
+    {:error,
+     %{
+       "code" => 503,
+       "errors" => [],
+       "status" => "CACHE_REPLACED",
+       "message" => "Query cache repeatedly replaced during execution. Retry the request."
+     }}
+  end
+
+  defp query_results_cache(query, params, opts, attempts, resolver_node) do
+    cache =
+      if resolver_node == node() do
+        Resolver.resolve(query, params, opts)
+      else
+        :erpc.call(resolver_node, Resolver, :resolve, [query, params, opts], 5_000)
+      end
+
+    case ResultsCache.query(cache) do
+      {:error, :stale_cache} ->
+        query_results_cache(query, params, opts, attempts - 1, node(cache))
+
+      response ->
+        response
+    end
+  catch
+    :error, {:erpc, _reason} -> query_results_cache(query, params, opts, 0, resolver_node)
   end
 
   @spec validate_query_override(EndpointQuery.t(), map()) ::
@@ -942,7 +982,7 @@ defmodule Logflare.Endpoints do
           {:ok, EndpointQuery.t()} | {:error, String.t()}
   defp reload_enforced_settings(%EndpointQuery{id: id, language: :ch_sql} = endpoint)
        when is_integer(id) do
-    case Repo.with_primary(fn -> Repo.get(EndpointQuery, id) end) do
+    case Cache.get_endpoint_policy(id) do
       %EndpointQuery{enforced_clickhouse_settings: settings} ->
         {:ok, %{endpoint | enforced_clickhouse_settings: settings}}
 

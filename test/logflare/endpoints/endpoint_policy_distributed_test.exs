@@ -5,6 +5,7 @@ defmodule Logflare.Endpoints.EndpointPolicyDistributedTest do
   import Logflare.ClickHouseMappedEvents, only: [build_mapped_log_event: 1]
   import Logflare.DataCase
   import Logflare.Factory
+  import Mimic
 
   alias Ecto.Adapters.SQL.Sandbox
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
@@ -17,6 +18,9 @@ defmodule Logflare.Endpoints.EndpointPolicyDistributedTest do
   alias PaperTrail.Version
 
   @moduletag :cluster
+
+  setup :set_mimic_global
+  setup :verify_on_exit!
 
   setup_all do
     unless Node.alive?() do
@@ -103,6 +107,10 @@ defmodule Logflare.Endpoints.EndpointPolicyDistributedTest do
              :erpc.call(peer_node, Endpoints, :run_cached_query, [endpoint])
 
     assert length(rows) == 5
+
+    assert %{enforced_clickhouse_settings: %{"max_rows_to_read" => 100}} =
+             :erpc.call(peer_node, Endpoints.Cache, :get_endpoint_policy, [endpoint.id])
+
     [cache] = :erpc.call(peer_node, Endpoints.Resolver, :list_caches, [endpoint, :all_versions])
     assert node(cache) == peer_node
     monitor = Process.monitor(cache)
@@ -117,6 +125,12 @@ defmodule Logflare.Endpoints.EndpointPolicyDistributedTest do
              })
 
     assert_receive {:DOWN, ^monitor, :process, ^cache, :normal}, 5_000
+
+    assert {:ok, nil} =
+             :erpc.call(peer_node, Cachex, :get, [
+               Endpoints.Cache,
+               {:get_endpoint_policy, [endpoint.id]}
+             ])
 
     assert {:ok, true} =
              :erpc.call(peer_node, Cachex, :put, [
@@ -135,6 +149,10 @@ defmodule Logflare.Endpoints.EndpointPolicyDistributedTest do
              :erpc.call(peer_node, Endpoints, :run_cached_query, [endpoint])
 
     assert inspect(error.raw_error) =~ "max_rows_to_read"
+
+    expect(Endpoints.Resolver, :resolve, fn _, _, _ -> cache end)
+    assert {:error, %QueryError{} = retried_error} = Endpoints.run_cached_query(endpoint)
+    assert inspect(retried_error.raw_error) =~ "max_rows_to_read"
 
     refute cache in :erpc.call(peer_node, Endpoints.Resolver, :list_caches, [
              endpoint,

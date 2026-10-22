@@ -18,6 +18,8 @@ defmodule Logflare.Endpoints.ResultsCache do
             params: %{},
             opts: [],
             cached_result: nil,
+            cache_name: nil,
+            draining?: false,
             shutdown_timer: nil,
             refresh_timer: nil,
             endpoint_query_id: nil,
@@ -34,14 +36,15 @@ defmodule Logflare.Endpoints.ResultsCache do
           params: map(),
           opts: list(),
           cached_result: map() | nil,
+          cache_name: tuple(),
+          draining?: boolean(),
           shutdown_timer: reference() | nil,
           refresh_timer: reference() | nil,
           parsed_labels: map()
         }
 
   def start_link({query, params, opts}) do
-    name = name(query, params)
-    GenServer.start_link(__MODULE__, {query, params, opts}, name: name, hibernate_after: 5_000)
+    GenServer.start_link(__MODULE__, {query, params, opts}, hibernate_after: 5_000)
   end
 
   @doc """
@@ -74,6 +77,9 @@ defmodule Logflare.Endpoints.ResultsCache do
 
       {:error, err}
 
+    :exit, {reason, _call} when reason in [:noproc, :normal] ->
+      {:error, :stale_cache}
+
     :exit, reason ->
       Logger.error("Endpoint query exited for an unknown reason", error_string: inspect(reason))
 
@@ -89,9 +95,9 @@ defmodule Logflare.Endpoints.ResultsCache do
   end
 
   @doc """
-  Invalidates the cache by stopping the cache process.
+  Removes the cache from lookup, allowing pending foreground responses to finish before stopping.
   """
-  @spec invalidate(pid()) :: {:ok, :stopped} | {:error, term()}
+  @spec invalidate(pid()) :: {:ok, :stopped | :draining} | {:error, term()}
   def invalidate(cache) when is_pid(cache) do
     GenServer.call(cache, :invalidate)
   catch
@@ -102,6 +108,16 @@ defmodule Logflare.Endpoints.ResultsCache do
 
   @impl true
   def init({query, params, opts}) do
+    {:via, :syn, {scope, key}} = name(query, params)
+
+    case :syn.register(scope, key, self()) do
+      :ok -> init_cache(query, params, opts)
+      {:error, :taken} -> {:stop, {:already_started, GenServer.whereis(name(query, params))}}
+    end
+  end
+
+  @spec init_cache(EndpointQuery.t(), map(), keyword()) :: {:ok, t()}
+  defp init_cache(query, params, opts) do
     endpoint_cache_key = {query_id, version_key} = endpoint_cache_key(query)
     endpoints = endpoints_part(query_id, version_key)
     :syn.join(endpoints, endpoint_cache_key, self())
@@ -112,6 +128,7 @@ defmodule Logflare.Endpoints.ResultsCache do
 
     state =
       %__MODULE__{
+        cache_name: name(query, params),
         endpoint_query_id: query.id,
         endpoint_query_token: query.token,
         endpoint_version_number: query.version_number,
@@ -126,6 +143,9 @@ defmodule Logflare.Endpoints.ResultsCache do
   end
 
   @impl true
+  def handle_call(:query, _from, %__MODULE__{draining?: true} = state),
+    do: {:reply, {:error, :stale_cache}, state}
+
   def handle_call(:query, from, %__MODULE__{cached_result: nil} = state) do
     state = %{state | waiting_callers: [from | state.waiting_callers]}
     {:noreply, start_query(state)}
@@ -135,11 +155,38 @@ defmodule Logflare.Endpoints.ResultsCache do
     {:reply, {:ok, cached_result}, state}
   end
 
+  def handle_call(:invalidate, _from, %__MODULE__{draining?: true} = state),
+    do: {:reply, {:ok, :draining}, state}
+
   def handle_call(:invalidate, _from, state) do
-    {:stop, :normal, {:ok, :stopped}, state}
+    {:via, :syn, {scope, key}} = state.cache_name
+    :ok = :syn.unregister(scope, key)
+
+    {query_id, version_key} =
+      cache_key = {state.endpoint_query_id, version_cache_key(state.endpoint_version_number)}
+
+    :syn.leave(endpoints_part(query_id, version_key), cache_key, self())
+    :syn.leave(:core, {__MODULE__, query_id, :all_versions}, self())
+    cancel_timer(state.refresh_timer)
+    cancel_timer(state.shutdown_timer)
+
+    state = %{
+      state
+      | draining?: true,
+        cached_result: nil,
+        refresh_timer: nil,
+        shutdown_timer: nil
+    }
+
+    if state.waiting_callers == [] do
+      {:stop, :normal, {:ok, :stopped}, state}
+    else
+      {:reply, {:ok, :draining}, state}
+    end
   end
 
   @impl true
+  def handle_info(:refresh, %__MODULE__{draining?: true} = state), do: {:noreply, state}
   def handle_info(:refresh, state), do: {:noreply, start_query(state)}
 
   def handle_info(:shutdown, %__MODULE__{cached_result: nil, waiting_callers: [_ | _]} = state),
@@ -153,17 +200,13 @@ defmodule Logflare.Endpoints.ResultsCache do
   def handle_info({ref, {:ok, results, query}}, state) when is_reference(ref) do
     state = complete_query(state, ref, {:ok, results})
 
-    if is_reference(state.refresh_timer) do
-      Process.cancel_timer(state.refresh_timer)
-    end
+    cancel_timer(state.refresh_timer)
 
-    timer = refresh(proactive_querying_ms(query))
-    new_state = %{state | cached_result: results, refresh_timer: timer}
-
-    if disable_cache?(query) or is_nil(state.shutdown_timer) do
-      {:stop, :normal, new_state}
+    if state.draining? or disable_cache?(query) or is_nil(state.shutdown_timer) do
+      {:stop, :normal, state}
     else
-      {:noreply, new_state}
+      timer = refresh(proactive_querying_ms(query))
+      {:noreply, %{state | cached_result: results, refresh_timer: timer}}
     end
   end
 
@@ -180,6 +223,12 @@ defmodule Logflare.Endpoints.ResultsCache do
   def terminate(_reason, state) do
     Enum.each(state.query_tasks, &Task.shutdown(&1, :brutal_kill))
     reply_waiting_callers(state, {:error, stopped_error()})
+  end
+
+  @spec cancel_timer(reference() | nil) :: :ok
+  defp cancel_timer(timer) do
+    if is_reference(timer), do: Process.cancel_timer(timer)
+    :ok
   end
 
   @spec start_query(t()) :: t()
