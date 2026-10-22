@@ -391,8 +391,7 @@ initContainers: []
   #   image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
   #   args: ["--structured-logs", "<instance-connection-name>"]
 
-# Pod DNS settings, e.g. a lower ndots so external hostnames (cloud storage and queue
-# endpoints) resolve directly instead of first walking every cluster search domain.
+# Pod dnsConfig, e.g. a lower ndots so external hostnames skip the cluster search domains.
 dnsConfig: {}
   # options:
   #   - name: ndots
