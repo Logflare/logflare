@@ -94,6 +94,19 @@ defmodule Logflare.Repo.ReplicaReconcilerTest do
       assert ReplicaReconciler.disabled_replicas() == MapSet.new([key])
       assert Enum.all?(1..20, fn _ -> Repo.with_replica(&Repo.get_dynamic_repo/0) == Repo end)
     end
+
+    test "detects an out-of-sync users table" do
+      key = start_unsandboxed_replica()
+      stale = NaiveDateTime.add(NaiveDateTime.utc_now(), -1, :hour)
+      insert(:user, updated_at: stale, inserted_at: stale)
+
+      capture_log(fn ->
+        assert %{^key => {:mismatch, [%{table: "users"}]}} =
+                 ReplicaReconciler.reconcile(@check_opts)
+      end)
+
+      assert ReplicaReconciler.disabled?(key)
+    end
   end
 
   describe "GenServer" do
