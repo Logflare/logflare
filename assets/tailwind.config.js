@@ -18,7 +18,6 @@ module.exports = {
       },
     },
   },
-  plugins: [],
   prefix: "tw-",
   // TODO: remove when sass is reduced.
   important: true,

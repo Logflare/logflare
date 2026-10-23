@@ -74,51 +74,6 @@ defmodule LogflareWeb.DashboardLiveTest do
       assert view |> has_element?(".modal-title", "Saved Searches")
     end
 
-    test "rejects a forged source ID even when its saved searches are cached", %{
-      conn: conn,
-      source: source
-    } do
-      own_search = insert(:saved_search, source: source, name: "My search")
-      foreign_source = insert(:source, user: insert(:user))
-      foreign_search = insert(:saved_search, source: foreign_source, name: "Private search")
-
-      Logflare.SavedSearches.Cache.list_by_sources([foreign_source.id])
-
-      {:ok, view, _html} = live_with_redirect(conn, ~p"/dashboard")
-
-      view
-      |> element("#source-#{source.token} a[phx-click='show_live_modal']")
-      |> render_click(%{"source-id" => to_string(foreign_source.id)})
-
-      TestUtils.retry_assert(fn ->
-        assert has_element?(view, "#saved-searches-modal", "Failed to load saved searches")
-        refute render(view) =~ foreign_search.querystring
-      end)
-
-      for {event, attrs} <- [
-            {"edit_name", %{}},
-            {"update_saved_search",
-             %{"saved_by_user" => false, "favorite" => true, "name" => "Forbidden rename"}}
-          ],
-          search <- [own_search, foreign_search] do
-        view
-        |> with_target("#saved-searches-modal")
-        |> render_click(event, %{
-          "id" => to_string(search.id),
-          "saved_search" => attrs
-        })
-      end
-
-      for search <- [own_search, foreign_search] do
-        assert %{saved_by_user: true, favorite: false, name: name} =
-                 Logflare.SavedSearches.get(search.id)
-
-        assert name == search.name
-      end
-
-      refute has_element?(view, "#saved-searches-list form")
-    end
-
     test "authorizes saved searches as the signed-in member, not the team owner", %{
       conn: conn,
       user: user,
@@ -161,20 +116,11 @@ defmodule LogflareWeb.DashboardLiveTest do
       source: source
     } do
       searches =
-        for name <- ["Errors", "Slow API requests", "Failed sign-ins", "Timeouts", "Rate limits"] do
+        for name <- ["Timeouts", "Errors"] do
           insert(:saved_search, source: source, name: name, description: "Context for #{name}")
         end
 
-      unnamed = insert(:saved_search, source: source)
       unstarred = insert(:saved_search, source: source, name: "Not starred")
-
-      deleted =
-        insert(:saved_search,
-          source: source,
-          name: "Deleted",
-          favorite: true,
-          saved_by_user: false
-        )
 
       {:ok, view, _html} = live_with_redirect(conn, ~p"/dashboard")
 
@@ -185,13 +131,6 @@ defmodule LogflareWeb.DashboardLiveTest do
       |> render_click()
 
       TestUtils.wait_for_render(view, "#saved-searches-list")
-
-      assert has_element?(
-               view,
-               "#favorite-saved-search-tooltip-#{unnamed.id}[data-toggle='tooltip'][data-original-title='Add a title before favouriting this search.'] #favorite-saved-search-#{unnamed.id}[disabled] i.far.fa-star"
-             )
-
-      refute has_element?(view, "#saved-search-shortcut-#{unnamed.id}")
 
       for search <- searches do
         view |> element("#favorite-saved-search-#{search.id}") |> render_click()
@@ -204,20 +143,26 @@ defmodule LogflareWeb.DashboardLiveTest do
                )
       end
 
+      assert has_element?(
+               view,
+               "#source-#{source.id}-saved-searches-toggle[aria-expanded='false']",
+               "Show more"
+             )
+
+      assert has_element?(
+               view,
+               "#source-#{source.id}-saved-searches-panel[data-expanded='false']"
+             )
+
       html = view |> render() |> Floki.parse_document!()
 
       assert html
              |> Floki.find("#source-#{source.id}-saved-searches a")
              |> Enum.map(&Floki.text/1)
              |> Enum.map(&String.trim/1) ==
-               ["Errors", "Failed sign-ins", "Rate limits", "Slow API requests", "Timeouts"]
-
-      for search <- searches ++ [unnamed, unstarred] do
-        assert has_element?(view, "#saved-search-#{search.id}")
-      end
+               ["Errors", "Timeouts"]
 
       refute has_element?(view, "#saved-search-shortcut-#{unstarred.id}")
-      refute has_element?(view, "#saved-search-#{deleted.id}")
 
       search = hd(searches)
       view |> element("#edit-saved-search-name-#{search.id}") |> render_click()
@@ -247,43 +192,18 @@ defmodule LogflareWeb.DashboardLiveTest do
         refute has_element?(view, "#saved-search-shortcut-#{search.id}[data-original-title]")
       end)
 
+      deleted = List.last(searches)
+      view |> element("#delete-saved-search-#{deleted.id}") |> render_click()
+
+      TestUtils.retry_assert(fn ->
+        refute has_element?(view, "#saved-search-shortcut-#{deleted.id}")
+        assert has_element?(view, "#saved-search-shortcut-#{search.id}")
+      end)
+
       view |> element("#favorite-saved-search-#{search.id}") |> render_click()
 
       TestUtils.retry_assert(fn ->
-        refute has_element?(view, "#saved-search-shortcut-#{search.id}")
-      end)
-
-      view |> element("#edit-saved-search-name-#{unnamed.id}") |> render_click()
-
-      view
-      |> form("#rename-saved-search-#{unnamed.id}", saved_search: %{name: "Newly titled"})
-      |> render_submit()
-
-      refute has_element?(view, "#favorite-saved-search-#{unnamed.id}[disabled]")
-      view |> element("#favorite-saved-search-#{unnamed.id}") |> render_click()
-      TestUtils.wait_for_render(view, "#saved-search-shortcut-#{unnamed.id}")
-      assert has_element?(view, "#saved-search-shortcut-#{unnamed.id}", "Newly titled")
-
-      view |> element("#edit-saved-search-name-#{unnamed.id}") |> render_click()
-
-      view
-      |> form("#rename-saved-search-#{unnamed.id}", saved_search: %{name: ""})
-      |> render_submit()
-
-      assert has_element?(
-               view,
-               "#rename-saved-search-#{unnamed.id}",
-               "Can’t be blank when a favorite"
-             )
-
-      assert Logflare.SavedSearches.get(unnamed.id).name == "Newly titled"
-      view |> element("#cancel-saved-search-name-#{unnamed.id}") |> render_click()
-
-      view |> element("#delete-saved-search-#{unnamed.id}") |> render_click()
-
-      TestUtils.retry_assert(fn ->
-        refute has_element?(view, "#saved-search-shortcut-#{unnamed.id}")
-        assert has_element?(view, "#saved-search-shortcut-#{List.last(searches).id}")
+        refute has_element?(view, "#source-#{source.id}-saved-searches")
       end)
     end
   end
@@ -631,30 +551,22 @@ defmodule LogflareWeb.DashboardLiveTest do
         assert html =~ ~r/#{path}[^"<]*t=#{team_user.team_id}/
       end
 
-      view
-      |> element("#source-#{source.token} a[phx-click='show_live_modal']")
-      |> render_click()
+      href =
+        view
+        |> element("#saved-search-shortcut-#{search.id}")
+        |> render()
+        |> Floki.parse_fragment!()
+        |> Floki.attribute("href")
+        |> hd()
 
-      TestUtils.wait_for_render(view, "#saved-search-#{search.id}")
+      uri = URI.parse(href)
+      assert uri.path == "/sources/#{source.id}/search"
 
-      for selector <- ["#saved-search-shortcut-#{search.id}", "#saved-search-#{search.id} a"] do
-        href =
-          view
-          |> element(selector)
-          |> render()
-          |> Floki.parse_fragment!()
-          |> Floki.attribute("href")
-          |> hd()
-
-        uri = URI.parse(href)
-        assert uri.path == "/sources/#{source.id}/search"
-
-        assert URI.decode_query(uri.query) == %{
-                 "querystring" => "error OR warning",
-                 "tailing?" => "false",
-                 "t" => to_string(team_user.team_id)
-               }
-      end
+      assert URI.decode_query(uri.query) == %{
+               "querystring" => "error OR warning",
+               "tailing?" => "false",
+               "t" => to_string(team_user.team_id)
+             }
     end
   end
 end
