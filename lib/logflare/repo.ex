@@ -8,6 +8,7 @@ defmodule Logflare.Repo do
   require Logger
 
   alias Logflare.Repo.ConnectionOptions
+  alias Logflare.Repo.ReplicaReconciler
   alias Logflare.Repo.Replicas
 
   @uptime_timeout 1_000
@@ -60,7 +61,8 @@ defmodule Logflare.Repo do
 
   The current dynamic repo is preserved for nested calls and transactions. This
   keeps a multi-query read on one pool and prevents replica routing from escaping
-  an existing transaction. When no replicas are configured, the primary is used.
+  an existing transaction. When no replicas are configured, or every replica has
+  been disabled on this node by `Logflare.Repo.ReplicaReconciler`, the primary is used.
   """
   @spec with_replica((-> result)) :: result when result: term()
   def with_replica(fun) when is_function(fun, 0) do
@@ -97,7 +99,15 @@ defmodule Logflare.Repo do
   end
 
   defp pick_replica_repo([]), do: {__MODULE__, :not_configured}
-  defp pick_replica_repo(replicas), do: {replicas |> Enum.random() |> resolve_repo(), :selected}
+
+  defp pick_replica_repo(replicas) do
+    disabled = ReplicaReconciler.disabled_replicas()
+
+    case Enum.reject(replicas, &MapSet.member?(disabled, ReplicaReconciler.replica_key(&1))) do
+      [] -> {__MODULE__, :disabled}
+      enabled -> {enabled |> Enum.random() |> resolve_repo(), :selected}
+    end
+  end
 
   defp repo_role(__MODULE__), do: :primary
   defp repo_role(_repo), do: :replica
