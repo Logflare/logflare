@@ -3,6 +3,16 @@ defmodule LogflareWeb.CoreComponentsTest do
 
   alias LogflareWeb.CoreComponents
 
+  test "clipboard button allows tooltip placement to be overridden" do
+    for {rest, expected} <- [{%{}, "top"}, {%{"data-placement": "left"}, "left"}] do
+      html =
+        render_component(&CoreComponents.clipboard_button/1, Map.merge(%{text: "query"}, rest))
+        |> Floki.parse_fragment!()
+
+      assert Floki.attribute(html, "button", "data-placement") == [expected]
+    end
+  end
+
   test "button defaults to a non-submit button and accepts a submit type" do
     inner_block = [%{inner_block: fn _, _ -> "Run query" end}]
 

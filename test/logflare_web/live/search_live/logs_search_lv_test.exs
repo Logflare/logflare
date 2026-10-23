@@ -449,6 +449,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert has_element?(
                view,
+               "#saved-search-actions-#{search.id} #copy-saved-search-#{search.id}"
+             )
+
+      assert has_element?(
+               view,
                "#saved-searches-list > li:nth-child(2)#saved-search-#{first.id}"
              )
 
@@ -473,19 +478,41 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       view
       |> form("#rename-saved-search-#{search.id}",
-        saved_search: %{name: String.duplicate("e\u0301", 128)}
+        saved_search: %{
+          name: String.duplicate("e\u0301", 128),
+          description: "Errors in production\nExclude health checks."
+        }
       )
       |> render_submit()
 
       assert has_element?(view, "#rename-saved-search-#{search.id}", "should be at most 255")
       assert has_element?(view, "#saved-searches-list > li:first-child#saved-search-#{search.id}")
 
+      assert has_element?(
+               view,
+               "textarea#saved-search-description-#{search.id}",
+               "Errors in production"
+             )
+
       view
-      |> form("#rename-saved-search-#{search.id}", saved_search: %{name: "Production errors"})
+      |> form("#rename-saved-search-#{search.id}",
+        saved_search: %{
+          name: "Production errors",
+          description: "Errors in production\nExclude health checks."
+        }
+      )
       |> render_submit()
 
       refute has_element?(view, "#rename-saved-search-#{search.id}")
       assert has_element?(view, "#saved-search-#{search.id} a", "Production errors")
+      assert has_element?(view, "p#saved-search-description-#{search.id}", "Errors in production")
+
+      assert has_element?(
+               view,
+               "#saved-search-#{search.id} code",
+               "naming-test #{@default_querystring}"
+             )
+
       assert has_element?(view, "#saved-searches-list > li:first-child#saved-search-#{first.id}")
       assert has_element?(view, "#saved-searches-list > li:nth-child(2)#saved-search-#{last.id}")
       assert has_element?(view, "#saved-searches-list > li:last-child#saved-search-#{search.id}")
@@ -499,10 +526,21 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       view |> element("#edit-saved-search-name-#{search.id}") |> render_click()
       assert has_element?(view, "#saved-search-name-#{search.id}")
+
+      assert has_element?(
+               view,
+               "textarea#saved-search-description-#{search.id}",
+               "Exclude health checks."
+             )
+
       assert has_element?(view, "#saved-searches-list > li:last-child#saved-search-#{search.id}")
       view |> element("#cancel-saved-search-name-#{search.id}") |> render_click()
 
-      assert %{name: "Production errors", tailing: false} =
+      assert %{
+               name: "Production errors",
+               description: "Errors in production\nExclude health checks.",
+               tailing: false
+             } =
                Logflare.SavedSearches.get(search.id)
 
       assert Logflare.SavedSearches.get(search.id).querystring ==
@@ -648,7 +686,15 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert view
              |> has_element?("#logflare-modal #saved-searches-empty")
 
-      named_search = insert(:saved_search, %{source: source, name: "Errors by status"})
+      assert has_element?(view, "#saved-searches-modal", "Star a saved search")
+
+      named_search =
+        insert(:saved_search, %{
+          source: source,
+          name: "Errors by status",
+          description: "Investigate server errors"
+        })
+
       unnamed_search = insert(:saved_search, %{source: source})
 
       _ =
@@ -669,17 +715,46 @@ defmodule LogflareWeb.Source.SearchLVTest do
       |> TestUtils.wait_for_render("#logflare-modal #saved-searches-list")
 
       assert view
-             |> has_element?("#saved-search-#{named_search.id} a", "Errors by status")
+             |> has_element?("#run-saved-search-#{named_search.id} span", "Errors by status")
+
+      assert has_element?(
+               view,
+               "#run-saved-search-#{named_search.id} p",
+               "Investigate server errors"
+             )
 
       assert view
-             |> has_element?("#saved-search-#{named_search.id} span", named_search.querystring)
+             |> has_element?(
+               "#run-saved-search-#{named_search.id} code",
+               named_search.querystring
+             )
+
+      assert has_element?(
+               view,
+               "#saved-search-actions-#{named_search.id} #copy-saved-search-#{named_search.id}[aria-label='Copy search query'][title='Copy query']",
+               "Copy"
+             )
+
+      assert has_element?(
+               view,
+               "#saved-search-actions-#{named_search.id} #edit-saved-search-name-#{named_search.id}[data-toggle='tooltip'][data-original-title='Edit saved search'][aria-label='Edit saved search']",
+               "Edit"
+             )
+
+      assert has_element?(
+               view,
+               "#saved-search-actions-#{named_search.id} #delete-saved-search-#{named_search.id}[data-confirm='Delete saved search?'][data-toggle='tooltip'][data-original-title='Delete saved search'][aria-label='Delete saved search']",
+               "Delete"
+             )
+
+      refute has_element?(view, "#run-saved-search-#{named_search.id} button")
 
       assert view
              |> has_element?("#saved-search-#{unnamed_search.id} a", "untitled")
 
       assert view
              |> has_element?(
-               "#saved-search-#{unnamed_search.id} span",
+               "#saved-search-#{unnamed_search.id} code",
                unnamed_search.querystring
              )
     end
