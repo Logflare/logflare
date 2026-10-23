@@ -547,6 +547,10 @@ defmodule Logflare.Telemetry do
         event_name: [:logflare, :bigquery, :schema, :report],
         measurement: :samples_rejected
       ),
+      sum("logflare.bigquery.schema.samples.unavailable",
+        event_name: [:logflare, :bigquery, :schema, :report],
+        measurement: :samples_unavailable
+      ),
       sum("logflare.bigquery.schema.samples.handled",
         event_name: [:logflare, :bigquery, :schema, :report],
         measurement: :samples_handled
@@ -562,18 +566,6 @@ defmodule Logflare.Telemetry do
       last_value("logflare.bigquery.schema.queues.queue_length_sum",
         event_name: [:logflare, :bigquery, :schema, :queues],
         measurement: :queue_length_sum
-      ),
-      last_value("logflare.bigquery.schema.queues.above_32",
-        event_name: [:logflare, :bigquery, :schema, :queues],
-        measurement: :queues_above_32
-      ),
-      last_value("logflare.bigquery.schema.queues.above_100",
-        event_name: [:logflare, :bigquery, :schema, :queues],
-        measurement: :queues_above_100
-      ),
-      last_value("logflare.bigquery.schema.queues.above_1000",
-        event_name: [:logflare, :bigquery, :schema, :queues],
-        measurement: :queues_above_1000
       ),
       distribution("logflare.bigquery.schema.operation.stop.duration",
         tags: [:phase, :result],
@@ -979,10 +971,7 @@ defmodule Logflare.Telemetry do
     counts = %{
       observed_process_count: 0,
       queue_length_max: 0,
-      queue_length_sum: 0,
-      queues_above_32: 0,
-      queues_above_100: 0,
-      queues_above_1000: 0
+      queue_length_sum: 0
     }
 
     counts =
@@ -993,10 +982,7 @@ defmodule Logflare.Telemetry do
           %{
             observed_process_count: counts.observed_process_count + 1,
             queue_length_max: max(counts.queue_length_max, queue_length),
-            queue_length_sum: counts.queue_length_sum + queue_length,
-            queues_above_32: counts.queues_above_32 + if(queue_length > 32, do: 1, else: 0),
-            queues_above_100: counts.queues_above_100 + if(queue_length > 100, do: 1, else: 0),
-            queues_above_1000: counts.queues_above_1000 + if(queue_length > 1_000, do: 1, else: 0)
+            queue_length_sum: counts.queue_length_sum + queue_length
           }
         else
           counts

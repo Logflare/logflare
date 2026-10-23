@@ -4,7 +4,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaMetrics do
   use GenServer
 
   @counter_key {__MODULE__, :counters}
-  @counter_count 7
+  @counter_count 8
   @selected 1
   @selected_zero_rate 2
   @selected_floor 3
@@ -12,6 +12,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaMetrics do
   @rejected 5
   @handled 6
   @selected_bootstrap 7
+  @unavailable 8
 
   def start_link(_args) do
     GenServer.start_link(__MODULE__, nil, name: __MODULE__)
@@ -29,19 +30,19 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaMetrics do
     end
   end
 
-  @spec record_admission(:admitted | :rejected) :: :ok
+  @spec record_admission(:admitted | :rejected | :unavailable) :: :ok
   def record_admission(:admitted), do: increment(@admitted)
   def record_admission(:rejected), do: increment(@rejected)
+  def record_admission(:unavailable), do: increment(@unavailable)
 
   @spec record_handled() :: :ok
   def record_handled, do: increment(@handled)
 
   @spec report() :: :ok
   def report do
-    case Process.whereis(__MODULE__) do
-      nil -> :ok
-      _pid -> GenServer.call(__MODULE__, :report)
-    end
+    GenServer.call(__MODULE__, :report)
+  catch
+    :exit, _reason -> :ok
   end
 
   @doc false
@@ -51,6 +52,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaMetrics do
 
   @impl GenServer
   def init(_args) do
+    Process.flag(:trap_exit, true)
     counters = :counters.new(@counter_count, [:write_concurrency])
     :persistent_term.put(@counter_key, counters)
     {:ok, %{counters: counters, previous: zero_counts()}}
@@ -105,7 +107,8 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaMetrics do
          admitted,
          rejected,
          handled,
-         selected_bootstrap
+         selected_bootstrap,
+         unavailable
        ]) do
     %{
       samples_selected: selected,
@@ -114,6 +117,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaMetrics do
       samples_selected_bootstrap: selected_bootstrap,
       samples_admitted: admitted,
       samples_rejected: rejected,
+      samples_unavailable: unavailable,
       samples_handled: handled
     }
   end

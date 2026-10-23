@@ -7,6 +7,8 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   """
   use GenServer
 
+  import Logflare.Utils.Guards, only: [is_pos_integer: 1]
+
   require Logger
 
   alias Logflare.Google.BigQuery
@@ -53,7 +55,8 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
       SchemaMetrics.record_admission(:admitted)
       GenServer.cast(pid, {:update, log_event, source, sample_counter})
     else
-      _reason -> SchemaMetrics.record_admission(:rejected)
+      :full -> SchemaMetrics.record_admission(:rejected)
+      _unavailable -> SchemaMetrics.record_admission(:unavailable)
     end
 
     :ok
@@ -66,7 +69,7 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
 
   @doc false
   @spec reserve_update_slot(admission_counter(), pos_integer()) :: :ok | :full
-  def reserve_update_slot(sample_counter, limit) when is_integer(limit) and limit > 0 do
+  def reserve_update_slot(sample_counter, limit) when is_pos_integer(limit) do
     current = :atomics.get(sample_counter, 1)
 
     if current >= limit do
@@ -100,7 +103,7 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
          {:via, Registry, {registry, key}},
          max_pending_samples
        )
-       when is_integer(max_pending_samples) and max_pending_samples > 0 do
+       when is_pos_integer(max_pending_samples) do
     sample_counter = :atomics.new(1, signed: false)
 
     {:via, Registry, {registry, key, {@admission_value_tag, sample_counter, max_pending_samples}}}
