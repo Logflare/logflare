@@ -62,7 +62,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
           batch_timeout: 200,
           concurrency: concurrency
         ]
-      ]
+      ],
+      context: %{telemetry_tags: %{pipeline: :spool_consumer}}
     )
   end
 
@@ -175,7 +176,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline do
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
       %{batch_size: batch_size, batch_trigger: batch_trigger},
-      %{backend_type: :spool_consumer, batch_trigger: batch_trigger}
+      %{pipeline: :spool_consumer, batch_trigger: batch_trigger}
     )
 
     failed_keys =

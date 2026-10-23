@@ -1,3 +1,25 @@
+defmodule Logflare.Backends.Adaptor.S3AdaptorPipelineTelemetryTest do
+  use ExUnit.Case, async: true
+
+  import Mimic
+
+  alias Logflare.Backends.Adaptor.S3Adaptor.Pipeline
+  alias Logflare.TestUtils
+
+  setup :verify_on_exit!
+
+  test "configures S3 telemetry tags" do
+    TestUtils.assert_broadway_telemetry_tags(%{backend_type: :s3}, fn ->
+      Pipeline.start_link(
+        pipeline_name: :s3_telemetry_tags_test,
+        source_id: 101,
+        backend_id: 301,
+        batch_timeout: 1_000
+      )
+    end)
+  end
+end
+
 defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
   use Logflare.DataCase, async: false
 
