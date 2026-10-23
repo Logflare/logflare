@@ -981,7 +981,7 @@ defmodule Logflare.SqlTest do
       refute result =~ "LIMIT 100"
     end
 
-    test "merges sandboxed query settings with owner query settings" do
+    test "appends only owner-only settings to the sandboxed query settings" do
       user = insert(:user)
       _source = insert(:source, user: user, name: "my_ch_table")
 
@@ -997,12 +997,25 @@ defmodule Logflare.SqlTest do
       assert {:ok, result} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
 
       assert result =~
-               "SETTINGS use_skip_indexes = 1, move_primary_key_columns_to_end_of_prewhere = 0, use_query_condition_cache = 0"
+               ~r/SETTINGS use_query_condition_cache = 1, use_skip_indexes = 1, move_primary_key_columns_to_end_of_prewhere = 0$/
 
-      refute result =~ "use_query_condition_cache = 1"
+      refute result =~ "use_query_condition_cache = 0"
     end
 
-    test "keeps owner query settings when the sandboxed query has its own CTEs" do
+    test "does not carry other owner settings to the sandboxed query" do
+      user = insert(:user)
+      _source = insert(:source, user: user, name: "my_ch_table")
+
+      cte_query =
+        "with src as (select a from my_ch_table) select a from src SETTINGS force_primary_key = 1"
+
+      consumer_query = "select a from src where a > 5"
+
+      assert {:ok, result} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
+      assert result == "WITH src AS (SELECT a FROM my_ch_table) SELECT a FROM src WHERE a > 5"
+    end
+
+    test "appends owner-only settings after a sandboxed set operation without wrapping it" do
       user = insert(:user)
       _source = insert(:source, user: user, name: "my_ch_table")
 
@@ -1012,18 +1025,12 @@ defmodule Logflare.SqlTest do
       SETTINGS move_primary_key_columns_to_end_of_prewhere = 0
       """
 
-      consumer_query = """
-      with big as (select a from src where a > 5)
-      select a from big SETTINGS use_skip_indexes = 1
-      """
+      consumer_query = "select a from src where a > 5 union all select a from src where a < 2"
 
       assert {:ok, result} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
-      assert result =~ "big AS (SELECT a FROM src WHERE a > 5)"
 
-      assert result =~
-               ~r/SETTINGS use_skip_indexes = 1, move_primary_key_columns_to_end_of_prewhere = 0$/
-
-      assert length(Regex.scan(~r/SETTINGS/, result)) == 1
+      assert result ==
+               "WITH src AS (SELECT a FROM my_ch_table) SELECT a FROM src WHERE a > 5 UNION ALL SELECT a FROM src WHERE a < 2 SETTINGS move_primary_key_columns_to_end_of_prewhere = 0"
     end
   end
 

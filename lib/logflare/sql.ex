@@ -156,10 +156,8 @@ defmodule Logflare.Sql do
     "use_skip_indexes_if_final"
   ]
 
-  @owner_only_clickhouse_settings [
-    "move_primary_key_columns_to_end_of_prewhere",
-    "query_plan_max_limit_for_lazy_materialization"
-  ]
+  @owner_clickhouse_settings @allowed_clickhouse_settings ++
+                               DialectTransformer.ClickHouse.owner_only_settings()
 
   @doc """
   Formats a SQL query string for display.
@@ -233,7 +231,8 @@ defmodule Logflare.Sql do
   - No wildcard selects (`SELECT *`)
   - No restricted functions (managed using module attributes `@bq_restricted_functions` and `@ch_restricted_functions`)
   - ClickHouse `SETTINGS` only from `@allowed_clickhouse_settings`. The owner query (a plain query, or the CTE
-    query of a sandboxed pair) may also use `@owner_only_clickhouse_settings`. The consumer query may not.
+    query of a sandboxed pair) may also use `DialectTransformer.ClickHouse.owner_only_settings/0`. The consumer
+    query may not.
   - All referenced tables/sources exist
 
   ## Sandboxed Queries
@@ -244,8 +243,8 @@ defmodule Logflare.Sql do
 
   PostgreSQL does not currently support sandboxed queries.
 
-  For ClickHouse, top-level `SETTINGS` on the CTE query's final `SELECT` apply to the transformed query.
-  They are merged with the consumer query's `SETTINGS`, and the CTE query's value wins for a setting in both.
+  For ClickHouse, owner-only `SETTINGS` on the CTE query's final `SELECT` apply to the transformed query. They are
+  appended to the consumer query's `SETTINGS`. Other settings on that `SELECT` are replaced with the consumer query.
 
   ## Examples
 
@@ -625,14 +624,15 @@ defmodule Logflare.Sql do
 
   defp maybe_check_restricted_functions(_ast, _dialect, _data), do: :ok
 
+  @spec maybe_check_restricted_settings(list(), String.t(), :owner | :sandboxed) ::
+          :ok | {:error, String.t()}
   defp maybe_check_restricted_settings(ast, "clickhouse", role),
     do: has_restricted_settings(ast, :ok, clickhouse_settings_allowlist(role))
 
   defp maybe_check_restricted_settings(_ast, _dialect, _role), do: :ok
 
-  defp clickhouse_settings_allowlist(:owner),
-    do: @allowed_clickhouse_settings ++ @owner_only_clickhouse_settings
-
+  @spec clickhouse_settings_allowlist(:owner | :sandboxed) :: [String.t()]
+  defp clickhouse_settings_allowlist(:owner), do: @owner_clickhouse_settings
   defp clickhouse_settings_allowlist(:sandboxed), do: @allowed_clickhouse_settings
 
   # applies only to the sandboed query
@@ -821,6 +821,8 @@ defmodule Logflare.Sql do
   defp function_restricted?(name, "clickhouse"), do: name in @ch_restricted_functions
   defp function_restricted?(_name, _dialect), do: false
 
+  @spec has_restricted_settings(term(), :ok | {:error, String.t()}, [String.t()]) ::
+          :ok | {:error, String.t()}
   defp has_restricted_settings({"settings", settings}, :ok, allowlist) when is_list(settings) do
     check_settings_allowed(settings, allowlist)
   end
@@ -837,6 +839,7 @@ defmodule Logflare.Sql do
 
   defp has_restricted_settings(_kv, acc, _allowlist), do: acc
 
+  @spec check_settings_allowed([map()], [String.t()]) :: :ok | {:error, String.t()}
   defp check_settings_allowed(settings, allowlist) do
     found_restricted =
       for %{"key" => %{"value" => key}} <- settings,
@@ -1013,19 +1016,11 @@ defmodule Logflare.Sql do
        when is_non_empty_binary(sandboxed_query) do
     case extract_replacement_query_from_ast(ast, data) do
       {:ok, %{"with" => with_clause} = replacement_query} when not is_nil(with_clause) ->
-        settings = merge_settings(sandbox_query["settings"], replacement_query["settings"])
-        body = %{"Query" => Map.put(replacement_query, "settings", nil)}
-        {k, Map.merge(sandbox_query, %{"body" => body, "settings" => settings})}
+        {k, Map.merge(sandbox_query, %{"body" => %{"Query" => replacement_query}})}
 
       {:ok, replacement_query} ->
-        settings = merge_settings(sandbox_query["settings"], replacement_query["settings"])
-
-        replacement_query =
-          replacement_query
-          |> Map.drop(["with"])
-          |> Map.put("settings", settings)
-
-        {k, Map.merge(sandbox_query, replacement_query)}
+        query = Map.merge(sandbox_query, Map.drop(replacement_query, ["with"]))
+        {k, maybe_carry_owner_settings(query, sandbox_query, data)}
 
       {:error, transformed_statements} ->
         Logger.warning(
@@ -1039,21 +1034,11 @@ defmodule Logflare.Sql do
 
   defp do_replace_sandboxed_query(ast_node, _data), do: {:recurse, ast_node}
 
-  defp merge_settings(owner_settings, sandboxed_settings) do
-    owner_settings = owner_settings || []
-    owner_keys = MapSet.new(owner_settings, &setting_key/1)
+  @spec maybe_carry_owner_settings(map(), map(), map()) :: map()
+  defp maybe_carry_owner_settings(query, owner_query, %{dialect: "clickhouse"}),
+    do: DialectTransformer.ClickHouse.carry_owner_settings(query, owner_query)
 
-    sandboxed_settings
-    |> List.wrap()
-    |> Enum.reject(&(setting_key(&1) in owner_keys))
-    |> Enum.concat(owner_settings)
-    |> case do
-      [] -> nil
-      settings -> settings
-    end
-  end
-
-  defp setting_key(%{"key" => %{"value" => key}}), do: String.downcase(key)
+  defp maybe_carry_owner_settings(query, _owner_query, _data), do: query
 
   defp find_all_source_names(ast),
     do: find_all_source_names(ast, [], %{ast: ast})

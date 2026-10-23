@@ -11,6 +11,10 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
   alias Logflare.User
 
   @terminal_modifiers ~w(format_clause settings)
+  @owner_only_settings ~w(
+    move_primary_key_columns_to_end_of_prewhere
+    query_plan_max_limit_for_lazy_materialization
+  )
 
   @impl true
   def quote_style, do: nil
@@ -20,6 +24,27 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouse do
 
   @impl true
   def transform_source_name(source_name, _data), do: source_name
+
+  @doc """
+  Returns the settings that only the owner query of a sandboxed endpoint may use.
+  """
+  @spec owner_only_settings() :: [String.t()]
+  def owner_only_settings, do: @owner_only_settings
+
+  @doc """
+  Appends the owner-only `SETTINGS` of a sandboxed endpoint's owner query to the consumer query that replaced its
+  final `SELECT`. ClickHouse applies trailing `SETTINGS` to every branch of a set operation.
+  """
+  @spec carry_owner_settings(map(), map()) :: map()
+  def carry_owner_settings(query_ast, owner_query_ast) do
+    owner_settings = Enum.filter(owner_query_ast["settings"] || [], &owner_only_setting?/1)
+    settings = merge_terminal_modifier("settings", query_ast["settings"], owner_settings)
+    Map.put(query_ast, "settings", settings)
+  end
+
+  @spec owner_only_setting?(map()) :: boolean()
+  defp owner_only_setting?(%{"key" => %{"value" => key}}),
+    do: String.downcase(key) in @owner_only_settings
 
   @doc """
   Applies an exact upper bound to the top-level result while preserving any
