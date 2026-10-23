@@ -89,3 +89,29 @@ ORDER BY count DESC
 ```
 
 See the [Endpoints documentation](/concepts/endpoints) for more details on sandboxed queries and security features.
+
+#### Query settings for sandboxed endpoints
+
+An Endpoint query can end with a `SETTINGS` clause. A consumer query that you pass with `sql=` replaces the final `SELECT` of the Endpoint query. Most settings on that `SELECT` are replaced too.
+
+These settings stay on the query after the replacement:
+
+| Setting | Use |
+| --- | --- |
+| `move_primary_key_columns_to_end_of_prewhere` | Set it to `0` so that `PREWHERE` checks primary key columns, such as a project column, before expensive conditions. |
+| `query_plan_max_limit_for_lazy_materialization` | Raise it above the consumer's `LIMIT`, for example to `1000`. Then ClickHouse reads large columns only for the rows that it returns. |
+
+Only the Endpoint query can use these two settings. A consumer query that sets them is rejected. Logflare appends them after the consumer query's own `SETTINGS`.
+
+```sql
+WITH filtered_logs AS (
+    SELECT id, event_message, timestamp
+    FROM my_clickhouse_source
+    WHERE project = @project AND timestamp > now() - interval 1 day
+)
+SELECT id, event_message, timestamp FROM filtered_logs
+LIMIT 100
+SETTINGS
+  move_primary_key_columns_to_end_of_prewhere = 0,
+  query_plan_max_limit_for_lazy_materialization = 1000
+```
