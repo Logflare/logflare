@@ -788,6 +788,25 @@ if spool_overrides != [] do
          Keyword.merge(Application.get_env(:logflare, :spool, []), spool_overrides)
 end
 
+# How long a node drains on SIGTERM before stopping: it stops spool fetching,
+# waits out the grace period, then for queued events and spool acks (see
+# Logflare.ShutdownDrain). Unset keeps the plain grace period. Keep the pod's
+# termination grace period above it.
+case System.get_env("LOGFLARE_SHUTDOWN_DRAIN_TIMEOUT_MS") do
+  v when v in [nil, ""] ->
+    :ok
+
+  v ->
+    case Integer.parse(v) do
+      {ms, ""} when ms >= 0 ->
+        config :logflare, shutdown_drain_timeout_ms: ms
+
+      _ ->
+        raise ArgumentError,
+              "Invalid LOGFLARE_SHUTDOWN_DRAIN_TIMEOUT_MS=#{v}. Must be a non-negative integer."
+    end
+end
+
 spool_ack_stale? =
   case System.get_env("SPOOL_ACK_STALE") do
     v when v in [nil, ""] -> true
