@@ -108,6 +108,14 @@
     },
     {
       "source": "smells",
+      "kind": "fixed_shape_map",
+      "fingerprint": "sha256:129f24a61052ad10cccde47d110a0a22bbc7c545a9df09464bf0376890e7cfb0",
+      "message": "map shape [:format_batch, :gzip, :headers, :http, :url] appears 3 times; consider a struct or explicit contract if it is domain data",
+      "file": "lib/logflare/backends/adaptor/incidentio_adaptor.ex",
+      "line": 86
+    },
+    {
+      "source": "smells",
       "kind": "behaviour_candidate",
       "fingerprint": "sha256:d8760deccf1c1818a02d87fd380e1fbfce0677ccd82d5df4ee98ccfd1f8e26f3",
       "message": "3 modules expose the same 6 public callbacks; consider extracting a behaviour if these modules are interchangeable implementations",
