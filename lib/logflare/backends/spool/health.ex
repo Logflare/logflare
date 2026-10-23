@@ -74,20 +74,6 @@ defmodule Logflare.Backends.Spool.Health do
     end
   end
 
-  @doc "Marks the scope unhealthy right away, without waiting for a run of failures."
-  @spec mark_unhealthy!(scope()) :: :ok
-  def mark_unhealthy!(scope) do
-    case :persistent_term.get(key(scope), nil) do
-      nil ->
-        :ok
-
-      state ->
-        :atomics.put(state, @healthy_index, @unhealthy)
-        emit_telemetry(scope, state)
-        :ok
-    end
-  end
-
   defp key(scope), do: {__MODULE__, :state, scope}
 
   defp max_spool_health_failures do

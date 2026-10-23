@@ -1,6 +1,7 @@
 defmodule Logflare.Backends.Spool.ProviderConfigTest do
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
   import Mimic
 
   alias Logflare.Backends.Spool.Health
@@ -60,19 +61,23 @@ defmodule Logflare.Backends.Spool.ProviderConfigTest do
       assert ProviderConfig.resolve_queue_ref([], SQS) == nil
     end
 
-    test "returns nil and marks the queue unhealthy when every attempt fails" do
-      on_exit(fn -> Health.report_recovery!(:queue) end)
+    test "returns nil after logging each failed attempt, leaving readiness ungated" do
       test_pid = self()
 
       stub(ExAws, :request, fn _op, _opts ->
         send(test_pid, :resolve_attempt)
-        {:error, {:http_error, 404, "not found"}}
+        {:error, %{reason: %Mint.TransportError{reason: :nxdomain}}}
       end)
 
       spool_config = [queue_name: "logflare-spool", queue_resolve_interval_ms: 0]
 
-      assert ProviderConfig.resolve_queue_ref(spool_config, SQS) == nil
-      refute Health.healthy?(:queue)
+      log =
+        capture_log(fn ->
+          assert ProviderConfig.resolve_queue_ref(spool_config, SQS) == nil
+        end)
+
+      assert length(String.split(log, "could not resolve queue ref for logflare-spool")) == 7
+      assert Health.healthy?(:queue)
 
       for _ <- 1..6, do: assert_received(:resolve_attempt)
       refute_received :resolve_attempt

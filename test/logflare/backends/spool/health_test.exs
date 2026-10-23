@@ -32,19 +32,6 @@ defmodule Logflare.Backends.Spool.HealthTest do
     assert Health.healthy?(:queue) == true
   end
 
-  test "mark_unhealthy!/1 flips the scope without waiting for a run of failures" do
-    Application.put_env(:logflare, :spool, max_spool_health_failures: 3)
-
-    Health.mark_unhealthy!(:queue)
-
-    assert Health.healthy?(:queue) == false
-    assert Health.healthy?(:upload) == true
-
-    Health.report_recovery!(:queue)
-
-    assert Health.healthy?(:queue) == true
-  end
-
   test "report_failure!/1 marks only the reported scope unhealthy once max_spool_health_failures is reached" do
     Application.put_env(:logflare, :spool, max_spool_health_failures: 3)
 

@@ -5,7 +5,6 @@ defmodule Logflare.Backends.Spool.ProviderConfig do
   (`DurableBuffer.Supervisor`) and the consumer side (`ConsumerPipeline`).
   """
 
-  alias Logflare.Backends.Spool.Health
   alias Logflare.Backends.Spool.Queue
   alias Logflare.Backends.Spool.Storage
 
@@ -36,7 +35,8 @@ defmodule Logflare.Backends.Spool.ProviderConfig do
   @doc """
   Resolves the queue, retrying `:queue_resolve_retries` times (default 5)
   `:queue_resolve_interval_ms` apart (default 2s) so a node booting before
-  DNS is ready still gets it. Marks `:queue` unhealthy if every attempt fails.
+  DNS is ready still gets it. Logs a warning per failed attempt. Lookups never
+  feed the `:queue` health scope, so exhausting them does not hold `/ready`.
   """
   @spec resolve_queue(keyword(), module(), String.t()) :: {:ok, term()} | {:error, term()}
   def resolve_queue(spool_config, queue_mod, queue_name) do
@@ -55,7 +55,6 @@ defmodule Logflare.Backends.Spool.ProviderConfig do
         Process.sleep(interval_ms)
         do_resolve_queue(queue_mod, queue_name, retries_left - 1, interval_ms)
       else
-        Health.mark_unhealthy!(:queue)
         {:error, reason}
       end
     end

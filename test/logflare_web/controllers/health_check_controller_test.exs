@@ -207,9 +207,9 @@ defmodule LogflareWeb.HealthCheckControllerTest do
     end
 
     test "outside spool mode, queue health does not gate /ready", %{conn: conn} do
-      Application.delete_env(:logflare, :spool)
+      Application.put_env(:logflare, :spool, max_spool_health_failures: 1)
 
-      Health.mark_unhealthy!(:queue)
+      Health.report_failure!(:queue)
 
       assert %{"status" => "ok"} = conn |> get("/ready") |> json_response(200)
     end

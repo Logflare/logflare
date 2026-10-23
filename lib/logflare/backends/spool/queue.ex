@@ -3,6 +3,17 @@ defmodule Logflare.Backends.Spool.Queue do
 
   alias Logflare.Backends.Spool.Health
 
+  @transport_errors [
+    :nxdomain,
+    :timeout,
+    :econnrefused,
+    :econnreset,
+    :ehostunreach,
+    :enetunreach,
+    :closed,
+    :pool_timeout
+  ]
+
   @type message :: %{id: String.t(), body: String.t()}
 
   @callback resolve(queue_name :: String.t()) :: {:ok, queue_ref :: String.t()} | {:error, term()}
@@ -40,6 +51,6 @@ defmodule Logflare.Backends.Spool.Queue do
   defp reachability({:error, %Tesla.Env{}}), do: :unreachable
   defp reachability({:error, %Mint.TransportError{}}), do: :unreachable
   defp reachability({:error, %Mint.HTTPError{}}), do: :unreachable
-  defp reachability({:error, :pool_timeout}), do: :unreachable
+  defp reachability({:error, reason}) when reason in @transport_errors, do: :unreachable
   defp reachability(_result), do: :unknown
 end

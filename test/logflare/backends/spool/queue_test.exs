@@ -1,8 +1,11 @@
 defmodule Logflare.Backends.Spool.QueueTest do
   use ExUnit.Case, async: false
 
+  import Mimic
+
   alias Logflare.Backends.Spool.Health
   alias Logflare.Backends.Spool.Queue
+  alias Logflare.Backends.Spool.Queue.PubSub
 
   setup do
     prev_spool_config = Application.get_env(:logflare, :spool, [])
@@ -43,15 +46,28 @@ defmodule Logflare.Backends.Spool.QueueTest do
         ] do
       test "#{inspect(result)} proves the queue is reachable" do
         result = unquote(Macro.escape(result))
-        Health.mark_unhealthy!(:queue)
+        Health.report_failure!(:queue)
 
         assert Queue.track_health(result) == result
         assert Health.healthy?(:queue)
       end
     end
 
+    for reason <- [:nxdomain, :timeout, :econnrefused] do
+      test "Pub/Sub's #{inspect(reason)} transport error through Tesla counts against the queue" do
+        reason = unquote(reason)
+
+        stub(Finch, :request, fn _req, _name, _opts ->
+          {:error, %Mint.TransportError{reason: reason}}
+        end)
+
+        assert {:error, ^reason} = PubSub.publish("projects/p/topics/t", "body")
+        refute Health.healthy?(:queue)
+      end
+    end
+
     test "errors that say nothing about reachability leave the state alone" do
-      Health.mark_unhealthy!(:queue)
+      Health.report_failure!(:queue)
 
       assert Queue.track_health({:error, "boom"}) == {:error, "boom"}
       refute Health.healthy?(:queue)
