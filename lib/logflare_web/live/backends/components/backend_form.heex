@@ -138,7 +138,7 @@
               Schema name, for example: <code>analytics</code>
             </small>
           </div>
-        <% "bigquery" -> %>
+        <% type when type in ["bigquery", "bigquery_v2"] -> %>
           <div class="form-group">
             {label(f_config, :project_id, "Google Cloud Project ID")}
             {text_input(f_config, :project_id, class: "form-control")}
@@ -154,6 +154,9 @@
             {text_input(f_config, :dataset_id, class: "form-control")}
             <small class="form-text text-muted">
               A BigQuery Dataset ID where data will be stored.
+              <%= if type == "bigquery_v2" do %>
+                The dataset must already exist. Logflare creates the <code>otel_logs</code>, <code>otel_metrics</code> and <code>otel_traces</code> tables in it. This backend is ingest-only: querying is not supported yet.
+              <% end %>
             </small>
           </div>
         <% "datadog" -> %>

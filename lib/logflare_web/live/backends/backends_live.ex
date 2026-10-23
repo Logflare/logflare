@@ -399,7 +399,14 @@ defmodule LogflareWeb.BackendsLive do
   end
 
   defp assign_backend_types(socket) do
-    assign(socket, :backend_types, Backend.types_with_labels())
+    show_bigquery_v2? = Logflare.Utils.flag("bigquery_v2", socket.assigns.user)
+
+    backend_types =
+      Enum.reject(Backend.types_with_labels(), fn {_label, type} ->
+        type == :bigquery_v2 and not show_bigquery_v2?
+      end)
+
+    assign(socket, :backend_types, backend_types)
   end
 
   defp refresh_backends(socket) do
