@@ -16,6 +16,7 @@ defmodule Logflare.ContextCache.Supervisor do
   alias Logflare.Partners
   alias Logflare.Repo
   alias Logflare.Repo.ConnectionOptions
+  alias Logflare.Repo.Replicas
   alias Logflare.Rules
   alias Logflare.SavedSearches
   alias Logflare.Sources
@@ -97,10 +98,27 @@ defmodule Logflare.ContextCache.Supervisor do
     # {:global, Logflare.PgPublisher}
   end
 
+  @doc """
+  Returns the connection configuration used to follow the WAL for cache busting.
+
+  With `prefer_read_replica` enabled and at least one read replica configured, the first
+  configured replica is used. Otherwise the primary is used.
+  """
+  @spec wal_connection_config() :: keyword()
+  def wal_connection_config do
+    prefer_read_replica? = Application.get_env(:logflare, CacheBuster)[:prefer_read_replica]
+
+    wal_connection_config(
+      prefer_read_replica?,
+      Application.get_env(:logflare, :read_replicas, [])
+    )
+  end
+
+  defp wal_connection_config(true, [replica | _]), do: Replicas.connection_config(replica)
+  defp wal_connection_config(_prefer_read_replica?, _replicas), do: Repo.config()
+
   defp cainophile_child_spec do
-    epgsql =
-      Repo.config()
-      |> ConnectionOptions.prepare_epgsql()
+    epgsql = ConnectionOptions.prepare_epgsql(wal_connection_config())
 
     slot = Application.get_env(:logflare, CacheBuster)[:replication_slot]
     publications = Application.get_env(:logflare, CacheBuster)[:publications]
