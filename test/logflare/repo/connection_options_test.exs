@@ -346,8 +346,8 @@ defmodule Logflare.Repo.ConnectionOptionsTest do
 
     assert %{start: {GenSingleton, :start_link, [[child_spec: cainophile_spec]]}} = singleton
 
-    assert {Cainophile.Adapters.Postgres, :start_link, [cainophile_options]} =
-             cainophile_spec.start
+    assert {ContextCacheSupervisor, :start_cainophile, []} = cainophile_spec.start
+    assert {nil, cainophile_options} = ContextCacheSupervisor.cainophile_options()
 
     Keyword.fetch!(cainophile_options, :epgsql)
   end
