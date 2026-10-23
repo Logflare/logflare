@@ -3,6 +3,21 @@ defmodule LogflareWeb.CoreComponentsTest do
 
   alias LogflareWeb.CoreComponents
 
+  test "clipboard button supports tooltip placement and icon-only labels" do
+    for {attrs, placement, label} <- [
+          {%{}, "top", "Copy"},
+          {%{placement: "left"}, "left", "Copy"},
+          {%{label: nil, "aria-label": "Copy query"}, "top", ""}
+        ] do
+      html =
+        render_component(&CoreComponents.clipboard_button/1, Map.merge(%{text: "query"}, attrs))
+        |> Floki.parse_fragment!()
+
+      assert Floki.attribute(html, "button", "data-placement") == [placement]
+      assert html |> Floki.find("button") |> Floki.text() |> String.trim() == label
+    end
+  end
+
   test "button defaults to a non-submit button and accepts a submit type" do
     inner_block = [%{inner_block: fn _, _ -> "Run query" end}]
 

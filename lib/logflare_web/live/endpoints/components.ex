@@ -204,7 +204,7 @@ defmodule LogflareWeb.Endpoints.Components do
       <div class="tw-text-sm tw-font-semibold tw-text-zinc-100">{format_label(@label)}:</div>
       <div class="tw-group tw-flex tw-min-w-0 tw-items-start tw-gap-2">
         <span class="tw-min-w-0 tw-break-words tw-text-sm tw-text-zinc-300">{@value}</span>
-        <.clipboard_button :if={@copyable} text={@value} label="" class="btn-sm tw-ml-auto tw-shrink-0 tw-invisible group-hover:tw-visible group-focus-within:tw-visible" title={"Copy #{format_label(@label)}"} aria-label={"Copy #{format_label(@label)}"} />
+        <.clipboard_button :if={@copyable} text={@value} label={nil} class="btn-sm tw-ml-auto tw-shrink-0 tw-invisible group-hover:tw-visible group-focus-within:tw-visible" title={"Copy #{format_label(@label)}"} aria-label={"Copy #{format_label(@label)}"} />
       </div>
     </div>
     """

@@ -231,7 +231,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
     <div class="tw-group tw-rounded tw-bg-zinc-800 tw-p-4">
       <div class="tw-mb-2 tw-flex tw-items-center tw-justify-between tw-gap-3">
         <h4 class="tw-mb-0 tw-text-sm tw-font-semibold tw-text-zinc-300">{@title}</h4>
-        <.clipboard_button text={@command} label="" class="btn-sm tw-ml-auto tw-shrink-0 tw-invisible group-hover:tw-visible group-focus-within:tw-visible" title={"Copy #{@title} request"} aria-label={"Copy #{@title} request"} />
+        <.clipboard_button text={@command} label={nil} class="btn-sm tw-ml-auto tw-shrink-0 tw-invisible group-hover:tw-visible group-focus-within:tw-visible" title={"Copy #{@title} request"} aria-label={"Copy #{@title} request"} />
       </div>
       <pre class="tw-mb-0 tw-overflow-x-auto tw-whitespace-pre-wrap tw-break-words"><code class="tw-text-xs tw-text-zinc-200">{@command}</code></pre>
     </div>

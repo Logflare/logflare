@@ -44,6 +44,7 @@ defmodule Logflare.SavedSearches do
            :lql_rules => list(lql_rule()),
            :querystring => String.t(),
            optional(:name) => String.t() | nil,
+           optional(:description) => String.t() | nil,
            optional(:favorite) => boolean(),
            optional(:saved_by_user) => boolean(),
            optional(:tailing) => boolean()
@@ -134,7 +135,7 @@ defmodule Logflare.SavedSearches do
     |> order_by([s],
       asc: s.source_id,
       desc: s.favorite,
-      asc: fragment("lower(coalesce(nullif(?, ''), ?))", s.name, s.querystring),
+      asc: fragment("lower(coalesce(nullif(?, ''), 'untitled'))", s.name),
       asc: s.id
     )
     |> Repo.all()
