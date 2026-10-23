@@ -646,7 +646,7 @@ read_replicas =
 config :logflare, :read_replicas, read_replicas
 
 # LOGFLARE_CACHE_WAL_PREFER_READ_REPLICA: when "true" and LOGFLARE_READ_REPLICAS is set,
-# context cache busting follows the WAL of the first read replica instead of the primary.
+# context cache busting follows the WAL of the first read replica that passes reconciliation.
 config :logflare, Logflare.ContextCache.CacheBuster,
   prefer_read_replica: Env.get_boolean("LOGFLARE_CACHE_WAL_PREFER_READ_REPLICA")
 

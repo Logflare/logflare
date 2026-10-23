@@ -85,6 +85,13 @@ defmodule Logflare.Repo.Replicas do
   end
 
   @doc """
+  Returns the repo or replica pool PID that serves a `:read_replicas` entry.
+  """
+  @spec repo({String.t(), keyword()} | module()) :: module() | pid()
+  def repo(repo) when is_atom(repo), do: repo
+  def repo({key, _config}), do: lookup!(key)
+
+  @doc """
   Looks up the PID of the replica connection pool for the given key.
   Raises if no such replica is found.
   """
