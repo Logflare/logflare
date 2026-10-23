@@ -18,6 +18,7 @@ defmodule Logflare.Sources do
   alias Logflare.SingleTenant
   alias Logflare.SourceSchemas
   alias Logflare.Sources
+  alias Logflare.Sources.CleanupWorker
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.TeamUsers.TeamUser
@@ -372,22 +373,62 @@ defmodule Logflare.Sources do
   end
 
   @doc """
-  Deletes a source along with its `sources_backends` join rows.
+  Deletes a source and its backend links, atomically scheduling external cleanup.
 
-  The `sources_backends.source_id` foreign key has no `ON DELETE` action, so the
-  join rows must go first or the delete raises `Ecto.ConstraintError`.
+  The source row is locked before removing links to serialize concurrent backend
+  attachment. Cleanup runs after commit using a snapshot, without looking up the
+  deleted source. Unhandled database constraints still raise and roll back.
   """
-  @spec delete_source(Source.t()) :: {:ok, Source.t()} | {:error, Ecto.Changeset.t()}
-  def delete_source(%Source{} = source) do
+  @spec delete_source(Source.t()) ::
+          {:ok, Source.t()} | {:error, Ecto.Changeset.t() | :not_found}
+  def delete_source(%Source{id: id}) do
     Repo.transaction(fn ->
-      from(sb in "sources_backends", where: sb.source_id == ^source.id)
+      source =
+        Repo.one(from s in Source, where: s.id == ^id, lock: "FOR UPDATE") ||
+          Repo.rollback(:not_found)
+
+      args = source_cleanup_args(source)
+
+      from(sb in "sources_backends", where: sb.source_id == ^id)
       |> Repo.delete_all()
 
-      case Repo.delete(source) do
-        {:ok, deleted} -> deleted
-        {:error, changeset} -> Repo.rollback(changeset)
+      with {:ok, deleted} <- Repo.delete(source),
+           {:ok, _job} <- args |> CleanupWorker.new() |> Oban.insert() do
+        deleted
+      else
+        {:error, reason} -> Repo.rollback(reason)
       end
     end)
+  end
+
+  @spec source_cleanup_args(Source.t()) :: map()
+  defp source_cleanup_args(source) do
+    schema_id =
+      Repo.one(
+        from s in SourceSchemas.SourceSchema,
+          where: s.source_id == ^source.id,
+          select: s.id
+      )
+
+    %{
+      source_id: source.id,
+      source_token: Atom.to_string(source.token),
+      source_schema_id: schema_id,
+      bigquery: source_cleanup_table(source)
+    }
+  end
+
+  @spec source_cleanup_table(Source.t()) :: map() | nil
+  defp source_cleanup_table(source) do
+    unless SingleTenant.postgres_backend?() do
+      user = Repo.get!(User, source.user_id)
+
+      %{
+        project_id: user.bigquery_project_id || User.bq_project_id(),
+        dataset_id: user.bigquery_dataset_id || User.generate_bq_dataset_id(user.id),
+        table_id: GenUtils.format_table_name(source.token)
+      }
+    end
   end
 
   def node_rate_limiter_failsafe(node_metrics, cluster_size) do
