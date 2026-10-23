@@ -122,12 +122,25 @@ main.app {
   }
 }
 
+.modal-body:has(#saved-searches-modal) {
+  padding-inline: 0;
+
+  > .container {
+    max-width: none;
+    padding-inline: 0;
+  }
+}
+
 #login {
   max-width: 300px;
 }
 
 .login-icon {
   padding-right: 10px;
+}
+
+.saved-search-shortcuts > [hidden] {
+  display: none !important;
 }
 
 .source-link {

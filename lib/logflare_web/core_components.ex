@@ -180,8 +180,8 @@ defmodule LogflareWeb.CoreComponents do
 
   def clipboard_button(assigns) do
     ~H"""
-    <.button variant={@variant} class={@class} phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @text})} data-toggle="tooltip" data-placement="top" title={@title} {@rest}>
-      <i class="fa fa-clone" aria-hidden="true"></i> {@label}
+    <.button variant={@variant} class={@class} phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @text})} data-toggle="tooltip" data-placement={Map.get(@rest, :"data-placement", "top")} title={@title} {@rest}>
+      <i class="fa fa-clone" aria-hidden="true"></i> <span :if={@label != ""}>{@label}</span>
     </.button>
     """
   end

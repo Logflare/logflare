@@ -339,4 +339,49 @@ hooks.LiveTooltips = {
   },
 };
 
+hooks.SavedSearchShortcuts = {
+  mounted() {
+    this.expanded = false;
+    this.handleToggle = (event) => {
+      if (event.target.closest("[data-expand-shortcuts]")) {
+        this.expanded = !this.expanded;
+        this.refreshShortcuts();
+      }
+    };
+    this.el.addEventListener("click", this.handleToggle);
+    this.resizeObserver = new ResizeObserver(() => this.refreshShortcuts());
+    this.resizeObserver.observe(this.el);
+    this.refreshShortcuts();
+  },
+
+  updated() {
+    this.refreshShortcuts();
+  },
+
+  destroyed() {
+    this.resizeObserver.disconnect();
+    this.el.removeEventListener("click", this.handleToggle);
+  },
+
+  refreshShortcuts() {
+    const shortcuts = Array.from(this.el.querySelectorAll("a"));
+    const toggle = this.el.querySelector("[data-expand-shortcuts]");
+    shortcuts.forEach((shortcut) => { shortcut.hidden = false; });
+    toggle.hidden = true;
+    toggle.textContent = this.expanded ? "Show less" : "Show more";
+    toggle.setAttribute("aria-expanded", String(this.expanded));
+
+    const rowTops = [...new Set(shortcuts.map((shortcut) => shortcut.offsetTop))];
+    if (rowTops.length <= 2) return;
+
+    toggle.hidden = false;
+    if (this.expanded) return;
+
+    let visibleCount = shortcuts.length;
+    while (toggle.offsetTop > rowTops[1] && visibleCount > 0) {
+      shortcuts[--visibleCount].hidden = true;
+    }
+  },
+};
+
 export default hooks;

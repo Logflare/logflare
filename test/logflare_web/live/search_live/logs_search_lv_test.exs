@@ -18,6 +18,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.Lql.Rules
   alias Logflare.NaturalLanguageLql.AnthropicClient
+  alias Logflare.SavedSearches
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
@@ -412,6 +413,168 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     setup [:setup_mocks, :setup_user_session]
 
+    test "saving pins the search for initial naming, then restores normal ordering", %{
+      conn: conn,
+      source: source,
+      plan: plan
+    } do
+      stub(Logflare.Billing, :get_plan_by_user, fn _user ->
+        %{plan | limit_saved_search_limit: 3}
+      end)
+
+      first = insert(:saved_search, source: source, name: "Alpha", favorite: true)
+      last = insert(:saved_search, source: source, name: "Beta")
+      assert length(SavedSearches.Cache.list_by_sources([source.id])) == 2
+
+      {:ok, view, _html} =
+        live_with_redirect(
+          conn,
+          ~p"/sources/#{source.id}/search?#{%{querystring: "naming-test", tailing?: false}}"
+        )
+
+      refute has_element?(view, "#saved-searches-modal")
+      view |> element("#save-search") |> render_click()
+
+      assert has_element?(view, "#logflare-modal .modal-title", "Saved Searches")
+
+      assert %{saved_by_user: true, name: nil, tailing: false} =
+               search =
+               Logflare.SavedSearches.get_by_qs_source_id(
+                 "naming-test #{@default_querystring}",
+                 source.id
+               )
+
+      TestUtils.wait_for_render(view, "#saved-search-name-#{search.id}")
+      assert has_element?(view, "#saved-searches-list > li:first-child#saved-search-#{search.id}")
+
+      assert has_element?(
+               view,
+               "#saved-search-actions-#{search.id} #copy-saved-search-#{search.id}"
+             )
+
+      assert has_element?(
+               view,
+               "#saved-searches-list > li:nth-child(2)#saved-search-#{first.id}"
+             )
+
+      assert has_element?(view, "#saved-searches-list > li:last-child#saved-search-#{last.id}")
+      refute has_element?(view, "#rename-saved-search-#{first.id}")
+      refute has_element?(view, "#rename-saved-search-#{last.id}")
+
+      view |> element("#cancel-saved-search-name-#{search.id}") |> render_click()
+      send(view.pid, {:search_result, %{aggregates: struct(Logflare.Logs.SearchOperation)}})
+      render(view)
+      render_async(view)
+
+      refute has_element?(view, "#saved-search-name-#{search.id}")
+      assert has_element?(view, "#saved-search-#{search.id} a", "untitled")
+      assert has_element?(view, "#saved-searches-list > li:first-child#saved-search-#{first.id}")
+      assert has_element?(view, "#saved-searches-list > li:last-child#saved-search-#{search.id}")
+      assert %{saved_by_user: true, name: nil} = SavedSearches.get(search.id)
+
+      view |> element("#logflare-modal .phx-modal-close") |> render_click()
+      view |> element("#save-search") |> render_click()
+      TestUtils.wait_for_render(view, "#saved-search-name-#{search.id}")
+
+      view
+      |> form("#rename-saved-search-#{search.id}",
+        saved_search: %{
+          name: String.duplicate("e\u0301", 128),
+          description: "Errors in production\nExclude health checks."
+        }
+      )
+      |> render_submit()
+
+      assert has_element?(view, "#rename-saved-search-#{search.id}", "should be at most 255")
+      assert has_element?(view, "#saved-searches-list > li:first-child#saved-search-#{search.id}")
+
+      assert has_element?(
+               view,
+               "textarea#saved-search-description-#{search.id}",
+               "Errors in production"
+             )
+
+      view
+      |> form("#rename-saved-search-#{search.id}",
+        saved_search: %{
+          name: "Production errors",
+          description: "Errors in production\nExclude health checks."
+        }
+      )
+      |> render_submit()
+
+      refute has_element?(view, "#rename-saved-search-#{search.id}")
+      assert has_element?(view, "#saved-search-#{search.id} a", "Production errors")
+      assert has_element?(view, "p#saved-search-description-#{search.id}", "Errors in production")
+
+      assert has_element?(
+               view,
+               "#saved-search-#{search.id} code",
+               "naming-test #{@default_querystring}"
+             )
+
+      assert has_element?(view, "#saved-searches-list > li:first-child#saved-search-#{first.id}")
+      assert has_element?(view, "#saved-searches-list > li:nth-child(2)#saved-search-#{last.id}")
+      assert has_element?(view, "#saved-searches-list > li:last-child#saved-search-#{search.id}")
+
+      refute Enum.any?(SavedSearches.Cache.list_by_sources([source.id]), &(&1.id == search.id))
+      send(view.pid, {:search_result, %{aggregates: struct(Logflare.Logs.SearchOperation)}})
+      render(view)
+      render_async(view)
+      assert has_element?(view, "#saved-search-#{search.id} a", "Production errors")
+      refute has_element?(view, "#saved-searches-list form")
+
+      view |> element("#edit-saved-search-name-#{search.id}") |> render_click()
+      assert has_element?(view, "#saved-search-name-#{search.id}")
+
+      assert has_element?(
+               view,
+               "textarea#saved-search-description-#{search.id}",
+               "Exclude health checks."
+             )
+
+      assert has_element?(view, "#saved-searches-list > li:last-child#saved-search-#{search.id}")
+      view |> element("#cancel-saved-search-name-#{search.id}") |> render_click()
+
+      assert %{
+               name: "Production errors",
+               description: "Errors in production\nExclude health checks.",
+               tailing: false
+             } =
+               Logflare.SavedSearches.get(search.id)
+
+      assert Logflare.SavedSearches.get(search.id).querystring ==
+               "naming-test #{@default_querystring}"
+
+      Logflare.ContextCache.bust_keys([{Logflare.SavedSearches, source_id: source.id}])
+      view |> element("#logflare-modal .phx-modal-close") |> render_click()
+      view |> element(".subhead a", "saved") |> render_click()
+      TestUtils.wait_for_render(view, "#saved-search-#{search.id}")
+      assert has_element?(view, "#saved-search-#{search.id} a", "Production errors")
+      refute has_element?(view, "#saved-searches-list form")
+
+      assert view |> element("#saved-search-#{search.id} a") |> render() =~
+               "querystring=naming-test"
+    end
+
+    test "the saved search limit does not open the saved searches modal", %{
+      conn: conn,
+      source: source,
+      plan: plan
+    } do
+      stub(Logflare.Billing, :get_plan_by_user, fn _user ->
+        %{plan | limit_saved_search_limit: 0}
+      end)
+
+      {:ok, view, _html} =
+        live_with_redirect(conn, ~p"/sources/#{source.id}/search?querystring=over-limit")
+
+      view |> element("#save-search") |> render_click()
+      refute has_element?(view, "#saved-searches-modal")
+      assert render(view) =~ "saved search limit"
+      assert Logflare.SavedSearches.list_by_sources([source.id]) == []
+    end
+
     test "subheader - lql docs", %{conn: conn, source: source} do
       {:ok, view, _html} =
         live_with_redirect(conn, ~p"/sources/#{source.id}/search?querystring=something123")
@@ -523,11 +686,20 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert view
              |> has_element?("#logflare-modal #saved-searches-empty")
 
-      saved_search = insert(:saved_search, %{source: source})
+      assert has_element?(view, "#saved-searches-modal", "Star a saved search")
+
+      named_search =
+        insert(:saved_search, %{
+          source: source,
+          name: "Errors by status",
+          description: "Investigate server errors"
+        })
+
+      unnamed_search = insert(:saved_search, %{source: source})
 
       _ =
         Logflare.ContextCache.bust_keys([
-          {Logflare.SavedSearches, source_id: saved_search.source_id}
+          {Logflare.SavedSearches, source_id: named_search.source_id}
         ])
 
       {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
@@ -543,7 +715,48 @@ defmodule LogflareWeb.Source.SearchLVTest do
       |> TestUtils.wait_for_render("#logflare-modal #saved-searches-list")
 
       assert view
-             |> has_element?("#logflare-modal #saved-searches-list", saved_search.querystring)
+             |> has_element?("#run-saved-search-#{named_search.id} span", "Errors by status")
+
+      assert has_element?(
+               view,
+               "#run-saved-search-#{named_search.id} p",
+               "Investigate server errors"
+             )
+
+      assert view
+             |> has_element?(
+               "#run-saved-search-#{named_search.id} code",
+               named_search.querystring
+             )
+
+      assert has_element?(
+               view,
+               "#saved-search-actions-#{named_search.id} #copy-saved-search-#{named_search.id}[aria-label='Copy search query'][title='Copy query']",
+               "Copy"
+             )
+
+      assert has_element?(
+               view,
+               "#saved-search-actions-#{named_search.id} #edit-saved-search-name-#{named_search.id}[data-toggle='tooltip'][data-original-title='Edit saved search'][aria-label='Edit saved search']",
+               "Edit"
+             )
+
+      assert has_element?(
+               view,
+               "#saved-search-actions-#{named_search.id} #delete-saved-search-#{named_search.id}[data-confirm='Delete saved search?'][data-toggle='tooltip'][data-original-title='Delete saved search'][aria-label='Delete saved search']",
+               "Delete"
+             )
+
+      refute has_element?(view, "#run-saved-search-#{named_search.id} button")
+
+      assert view
+             |> has_element?("#saved-search-#{unnamed_search.id} a", "untitled")
+
+      assert view
+             |> has_element?(
+               "#saved-search-#{unnamed_search.id} code",
+               unnamed_search.querystring
+             )
     end
 
     test "load page", %{conn: conn, source: source} do
