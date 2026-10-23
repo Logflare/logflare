@@ -55,7 +55,12 @@ defmodule Logflare.Backends.QueryClassSettingsTest do
                })
     end
 
-    changeset = Backend.changeset(configured, %{type: :postgres})
+    changeset =
+      Backend.changeset(configured, %{
+        type: :postgres,
+        config: %{url: "postgresql://localhost/logflare"}
+      })
+
     assert Keyword.has_key?(changeset.errors, :"config.query_class_settings")
 
     assert {:ok, updated} = Backends.update_backend(backend, %{config: %{read_pool_size: 4}})
@@ -70,6 +75,38 @@ defmodule Logflare.Backends.QueryClassSettingsTest do
     assert Backends.get_backend(backend.id).config.query_class_settings == @policy
     assert {:ok, cleared} = Backends.configure_query_class_settings(admin, backend, %{})
     assert cleared.config.query_class_settings == %{}
+  end
+
+  test "invalid ordinary saves do not add a misleading policy authorization error", context do
+    assert {:ok, configured} =
+             Backends.configure_query_class_settings(context.admin, context.backend, @policy)
+
+    for attrs <- [%{name: ""}, %{config: %{url: "not a URL"}}] do
+      assert {:error, changeset} = Backends.update_backend(configured, attrs)
+      refute changeset.valid?
+      refute Keyword.has_key?(changeset.errors, :"config.query_class_settings")
+      assert Backends.get_backend(configured.id).config.query_class_settings == @policy
+    end
+  end
+
+  test "configuration checks the locked backend and returns changeset validation errors",
+       context do
+    reject(Backends, :get_backend, 1)
+
+    assert {:ok, configured} =
+             Backends.configure_query_class_settings(context.admin, context.backend, @policy)
+
+    assert {:error, %Ecto.Changeset{} = changeset} =
+             Backends.configure_query_class_settings(context.admin, configured, %{
+               "default" => %{"priority" => 0}
+             })
+
+    assert Keyword.has_key?(changeset.errors, :"config.query_class_settings")
+
+    Repo.delete!(context.backend)
+
+    assert {:error, :not_found} =
+             Backends.configure_query_class_settings(context.admin, configured, @policy)
   end
 
   test "create and schema changesets cannot introduce operator policy", %{

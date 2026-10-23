@@ -58,6 +58,41 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
              )
   end
 
+  test "policy rejections emit one low-cardinality error event before querying", context do
+    TestUtils.attach_forwarder([:logflare, :clickhouse, :read_pool, :query_error])
+    reject(Ch, :query, 4)
+
+    assert {:error, %QueryError{kind: :invalid_query}} =
+             ClickHouseAdaptor.execute_ch_query(
+               context.backend,
+               "SELECT 1 SETTINGS priority = 0",
+               [], read_cluster: "api_paid")
+
+    assert_receive {:telemetry_event, [:logflare, :clickhouse, :read_pool, :query_error],
+                    %{count: 1}, metadata}
+
+    assert metadata == %{
+             backend_id: context.backend.id,
+             read_cluster: "dashboard_logs_paid",
+             error_kind: :policy_rejection
+           }
+
+    refute_received {:telemetry_event, [:logflare, :clickhouse, :read_pool, :query_error], _, _}
+  end
+
+  test "tuple endpoint execution preserves enforced settings supplied through opts", context do
+    endpoint = %{max_limit: 10, enforced_clickhouse_settings: %{"max_threads" => 8}}
+
+    for endpoint_arg <- [endpoint, nil] do
+      assert {:ok, %{rows: [%{"threads" => 2}]}} =
+               ClickHouseAdaptor.execute_query(
+                 context.backend,
+                 {"SELECT toUInt64(getSetting('max_threads')) AS threads", [], %{}, endpoint_arg},
+                 enforced_clickhouse_settings: %{"max_threads" => 2}
+               )
+    end
+  end
+
   test "generated Ecto parameters work before and after enabling policy", context do
     assert :ok = ClickHouseAdaptor.provision_ingest_tables(context.backend)
     event = build_mapped_log_event(source: context.source, message: "parameter-policy")
@@ -190,7 +225,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
     TestUtils.retry_assert(fn -> assert :sys.get_state(pid).query_tasks == [] end)
   end
 
-  test "endpoint policy merges once, handles converted parameters and matches previews",
+  test "endpoint previews omit class policy while execution merges it with endpoint policy",
        context do
     backend = context.backend
 
@@ -208,7 +243,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
                read_cluster: "api_paid"
              )
 
-    assert preview =~ "priority = 10"
+    refute preview =~ "priority"
+    assert {:ok, ^preview} = Endpoints.get_transformed_query(endpoint, %{"value" => "hello"})
     assert preview =~ "max_threads = 2"
     assert preview =~ "max_execution_time = 0.5"
 

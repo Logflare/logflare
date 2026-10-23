@@ -202,13 +202,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       )
       when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) and
              is_list(opts) do
-    endpoint_settings =
-      if is_map(endpoint_query),
-        do: Map.get(endpoint_query, :enforced_clickhouse_settings, %{}),
-        else: %{}
-
-    opts = Keyword.put(opts, :enforced_clickhouse_settings, endpoint_settings)
-
     with {:ok, {limited_query, max_rows}} <- limit_endpoint_query(query_string, endpoint_query) do
       execute_query_with_params(
         backend,
@@ -783,6 +776,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       result
     else
       {:error, reason} ->
+        :telemetry.execute(
+          [:logflare, :clickhouse, :read_pool, :query_error],
+          %{count: 1},
+          %{
+            backend_id: backend.id,
+            read_cluster:
+              read_cluster_tag(
+                resolve_read_cluster_label(backend, Keyword.get(opts, :read_cluster))
+              ),
+            error_kind: :policy_rejection
+          }
+        )
+
         {:error, %{query_error(:invalid_query, reason) | description: reason}}
     end
   end

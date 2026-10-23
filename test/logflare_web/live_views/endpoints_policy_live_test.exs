@@ -22,6 +22,60 @@ defmodule LogflareWeb.EndpointsPolicyLiveTest do
     %{owner: owner, team: team, endpoint: endpoint}
   end
 
+  test "ordinary saves display committed data and warn when invalidation fails", context do
+    {:ok, view, _} =
+      context.conn
+      |> login_user(context.owner)
+      |> live_with_redirect(~p"/endpoints/#{context.endpoint.id}/edit")
+
+    expect(Endpoints, :update_query, fn actor, endpoint, params, origin ->
+      {:ok, updated} =
+        Mimic.call_original(Endpoints, :update_query, [actor, endpoint, params, origin])
+
+      {:error, {:saved, updated, :cache_invalidation_failed}}
+    end)
+
+    html =
+      view
+      |> element("form#endpoint")
+      |> render_submit(%{endpoint: %{name: "saved despite cache failure"}})
+
+    assert html =~ "Changes saved, but cached results could not be invalidated."
+    assert html =~ "saved despite cache failure"
+    refute html =~ "Successfully updated"
+    assert Endpoints.get_endpoint_query(context.endpoint.id).name == "saved despite cache failure"
+  end
+
+  test "restores refresh version history and warn when invalidation fails", context do
+    insert(:endpoint_version,
+      endpoint: context.endpoint,
+      version_number: 1,
+      snapshot_overrides: %{"query" => "SELECT 2 AS n"}
+    )
+
+    insert(:endpoint_version, endpoint: context.endpoint, version_number: 2)
+
+    {:ok, view, _} =
+      context.conn
+      |> login_user(context.owner)
+      |> live(~p"/endpoints/#{context.endpoint.id}/versions?t=#{context.team}")
+
+    expect(Endpoints, :restore_query_version, fn actor, endpoint, version, origin ->
+      {:ok, updated, _version} =
+        Mimic.call_original(Endpoints, :restore_query_version, [actor, endpoint, version, origin])
+
+      {:error, {:saved, updated, :cache_invalidation_failed}}
+    end)
+
+    render_click(view, "restore-version", %{"version-number" => "1"})
+    html = render_async(view, 5_000)
+    assert html =~ "Version restored, but cached results could not be invalidated."
+    refute html =~ "Unable to restore endpoint version."
+    assert Endpoints.get_endpoint_query(context.endpoint.id).query == "SELECT 2 AS n"
+    assert Endpoints.get_endpoint_query_version(context.endpoint.id, 3)
+    assert html =~ "Show version 3"
+  end
+
   test "members do not inherit their owner's admin flag, even with a colliding user ID",
        context do
     owner = context.owner |> Ecto.Changeset.change(admin: true) |> Repo.update!()

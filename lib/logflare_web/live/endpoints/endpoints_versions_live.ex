@@ -288,6 +288,18 @@ defmodule LogflareWeb.EndpointsVersionsLive do
      )}
   end
 
+  def handle_async(
+        :version_restored,
+        {:ok, {:error, {:saved, endpoint, :cache_invalidation_failed}}},
+        socket
+      ) do
+    {:noreply,
+     socket
+     |> assign(:endpoint, endpoint)
+     |> assign_versions(endpoint)
+     |> put_flash(:error, "Version restored, but cached results could not be invalidated.")}
+  end
+
   def handle_async(:version_restored, _, socket) do
     {:noreply,
      socket

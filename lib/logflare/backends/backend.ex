@@ -117,6 +117,8 @@ defmodule Logflare.Backends.Backend do
   end
 
   @spec protect_query_class_settings(Changeset.t(), Keyword.t()) :: Changeset.t()
+  defp protect_query_class_settings(%Changeset{valid?: false} = changeset, _opts), do: changeset
+
   defp protect_query_class_settings(changeset, opts) do
     current = query_class_policy(changeset.data.config_encrypted)
 

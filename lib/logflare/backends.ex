@@ -8,7 +8,6 @@ defmodule Logflare.Backends do
 
   alias Ecto.Changeset
   alias Logflare.Backends.Adaptor
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassSettings
   alias Logflare.Backends.Backend
   alias Logflare.Backends.BackendRegistry
   alias Logflare.Backends.ConsolidatedSup
@@ -318,15 +317,14 @@ defmodule Logflare.Backends do
   @doc """
   Updates the config of a Backend.
   """
-  @spec update_backend(Backend.t(), map()) :: {:ok, Backend.t()} | {:error, Changeset.t()}
+  @spec update_backend(Backend.t(), map()) ::
+          {:ok, Backend.t()} | {:error, Changeset.t() | :not_found | :not_clickhouse_backend}
   def update_backend(%Backend{} = backend, attrs), do: update_backend_config(backend, attrs, [])
 
   @spec configure_query_class_settings(User.t(), Backend.t(), map()) ::
           {:ok, Backend.t()} | {:error, term()}
-  def configure_query_class_settings(%User{id: user_id}, %Backend{id: id}, settings) do
-    with %User{admin: true} <- Repo.get(User, user_id),
-         %Backend{type: :clickhouse} = backend <- get_backend(id),
-         {:ok, settings} <- QueryClassSettings.normalize(settings) do
+  def configure_query_class_settings(%User{id: user_id}, %Backend{} = backend, settings) do
+    with %User{admin: true} <- Repo.get(User, user_id) do
       update_backend_config(backend, %{config: %{query_class_settings: settings}},
         allow_query_class_settings: true,
         query_policy_only: true
@@ -334,14 +332,12 @@ defmodule Logflare.Backends do
     else
       nil -> {:error, :not_found}
       %User{} -> {:error, :forbidden}
-      %Backend{} -> {:error, :not_clickhouse_backend}
-      error -> error
     end
   end
 
+  @spec update_backend_config(Backend.t(), map(), keyword()) ::
+          {:ok, Backend.t()} | {:error, Changeset.t() | :not_found | :not_clickhouse_backend}
   defp update_backend_config(%Backend{} = backend, attrs, opts) do
-    alerts_modified = Map.has_key?(attrs, :alert_queries)
-
     default_ingest_modified? =
       Map.has_key?(attrs, "default_ingest?") or Map.has_key?(attrs, :default_ingest?)
 
@@ -351,22 +347,9 @@ defmodule Logflare.Backends do
 
     result =
       Repo.transact(fn ->
-        current =
-          from(b in Backend, where: b.id == ^backend.id, lock: "FOR UPDATE")
-          |> Repo.one!()
-          |> typecast_config_string_map_to_atom_map()
-
-        current = if alerts_modified, do: Repo.preload(current, :alert_queries), else: current
-
-        changeset =
-          current
-          |> Backend.changeset(attrs, opts)
-          |> validate_default_ingest_source(source_id)
-          |> maybe_put_backend_alerts(attrs, alerts_modified)
-
-        with :ok <- validate_query_policy_backend(current, opts),
-             {:ok, updated} <- Repo.update(changeset) do
-          {:ok, {current, updated}}
+        with {:ok, current} <- lock_backend(backend.id),
+             :ok <- validate_query_policy_backend(current, opts) do
+          persist_backend_config(current, attrs, opts)
         end
       end)
 
@@ -402,6 +385,30 @@ defmodule Logflare.Backends do
       error ->
         error
     end
+  end
+
+  @spec lock_backend(integer()) :: {:ok, Backend.t()} | {:error, :not_found}
+  defp lock_backend(id) do
+    case Repo.one(from(b in Backend, where: b.id == ^id, lock: "FOR UPDATE")) do
+      nil -> {:error, :not_found}
+      backend -> {:ok, typecast_config_string_map_to_atom_map(backend)}
+    end
+  end
+
+  @spec persist_backend_config(Backend.t(), map(), keyword()) ::
+          {:ok, {Backend.t(), Backend.t()}} | {:error, Changeset.t()}
+  defp persist_backend_config(current, attrs, opts) do
+    alerts_modified? = Map.has_key?(attrs, :alert_queries)
+    current = if alerts_modified?, do: Repo.preload(current, :alert_queries), else: current
+    source_id = Map.get(attrs, "source_id") || Map.get(attrs, :source_id)
+
+    changeset =
+      current
+      |> Backend.changeset(attrs, opts)
+      |> validate_default_ingest_source(source_id)
+      |> maybe_put_backend_alerts(attrs, alerts_modified?)
+
+    with {:ok, updated} <- Repo.update(changeset), do: {:ok, {current, updated}}
   end
 
   @spec maybe_put_backend_alerts(Changeset.t(), map(), boolean()) :: Changeset.t()

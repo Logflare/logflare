@@ -165,6 +165,14 @@ defmodule LogflareWeb.EndpointsLive do
        |> assign(:show_endpoint, endpoint)
        |> assign(:test_result, nil)}
     else
+      {:error, {:saved, endpoint, :cache_invalidation_failed}} ->
+        {:noreply,
+         socket
+         |> assign(:show_endpoint, endpoint)
+         |> assign(:endpoint_changeset, Endpoints.change_query(endpoint))
+         |> assign(:test_result, nil)
+         |> put_flash(:error, "Changes saved, but cached results could not be invalidated.")}
+
       {:error, %Ecto.Changeset{} = changeset} ->
         verb = if(show_endpoint, do: "update", else: "create")
         message = "Could not #{verb} endpoint. Please fix the errors before trying again."

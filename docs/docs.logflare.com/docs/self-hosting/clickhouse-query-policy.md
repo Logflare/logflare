@@ -36,7 +36,7 @@ A nonempty configuration must include a `default` with a positive integer `prior
 
 The class is selected from the original `LF-ENDPOINT-CLICKHOUSE-READ-CLUSTER-LABEL` request header, even when routing resolves to another cluster or retries on the default cluster. Known query-class labels do not generate unconfigured-routing warnings; unknown routing labels still do.
 
-The header is a scheduling hint, not an authorization boundary. Preserve the existing endpoint authentication, and ensure the trusted Management API classifier supplies the header rather than forwarding an untrusted client's value. Selecting a label does not grant access to another tenant's data.
+The header is a scheduling hint, not an authorization boundary. Selecting a label does not grant access to another tenant's data.
 
 ## Allowed settings and precedence
 
@@ -55,13 +55,9 @@ Zero (unlimited or no priority), negative values, wrong types, unknown keys, and
 
 ClickHouse profile defaults supply settings not specified by Logflare. Logflare combines class default, selected class, and endpoint-owned settings. Resource limits use the smallest configured value across all three policies; non-limit settings such as priority use the later policy. Hard profile ceilings must be ClickHouse constraints, not merely default values. The server still enforces those constraints after merging.
 
-Endpoint-owned policy is passed separately from consumer SQL. The adaptor checks for consumer overrides anywhere in the final AST, then injects the combined policy once. Supported `EXPLAIN SELECT` wrappers are preserved. Previews use the same policy builder:
+Endpoint-owned policy is passed separately from consumer SQL. The adaptor checks for consumer overrides anywhere in the final AST, then injects the combined policy once. Supported `EXPLAIN SELECT` wrappers are preserved. Previews show only endpoint-owned settings, not operator class policy. The actual request class and current backend policy are applied at execution time.
 
-```elixir
-Logflare.Endpoints.get_transformed_query(endpoint, params, read_cluster: "api_paid")
-```
-
-Historical endpoint versions retain current operator ceilings. Cached snapshot reloads also overlay current endpoint policy. Saving endpoint-owned limits invalidates caches for all endpoint versions and stops their active refresh tasks.
+Historical endpoint versions retain current operator ceilings. Cached snapshot reloads also overlay current endpoint policy. Saving endpoint-owned limits invalidates caches for all endpoint versions and stops their active refresh tasks. Already-running foreground queries finish for their existing callers; new callers use replacement caches with current settings.
 
 Successful result caches remain class-agnostic: changing the class does not create a different result-cache key or run a query on a cache hit. Misses and background refreshes enforce policy at execution time. A refresh retains the class from the request that originally created the cache, but reads current backend policy. Backend class-policy changes invalidate backend metadata across the cluster, but do not evict reusable successful results, restart ingesters, or tear down active read connections.
 

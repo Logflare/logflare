@@ -4,6 +4,8 @@ defmodule Logflare.Endpoints.Cache do
   """
 
   alias Logflare.Endpoints
+  alias Logflare.Endpoints.EndpointQuery
+  alias Logflare.Repo
   alias Logflare.Utils
 
   def child_spec(_) do
@@ -16,6 +18,7 @@ defmodule Logflare.Endpoints.Cache do
          [
            __MODULE__,
            [
+             transactions: true,
              hooks:
                [
                  if(stats, do: Utils.cache_stats()),
@@ -26,6 +29,50 @@ defmodule Logflare.Endpoints.Cache do
            ]
          ]}
     }
+  end
+
+  @spec get_endpoint_policy(integer()) :: EndpointQuery.t() | nil
+  def get_endpoint_policy(id) do
+    key = {:get_endpoint_policy, [id]}
+
+    {:ok, endpoint} =
+      Cachex.transaction(__MODULE__, [key], &fetch_endpoint_policy(&1, key, id))
+
+    endpoint
+  end
+
+  @spec fetch_endpoint_policy(Cachex.t(), tuple(), integer()) :: EndpointQuery.t() | nil
+  defp fetch_endpoint_policy(cache, key, id) do
+    case Cachex.get(cache, key) do
+      {:ok, {:cached, endpoint}} ->
+        endpoint
+
+      {:ok, nil} ->
+        endpoint = Repo.with_primary(fn -> Endpoints.get_endpoint_query(id) end)
+        {:ok, true} = Cachex.put(cache, key, {:cached, endpoint})
+        endpoint
+    end
+  end
+
+  @spec invalidate_endpoint_policy(integer()) :: :ok | {:error, term()}
+  def invalidate_endpoint_policy(id) do
+    key = {:get_endpoint_policy, [id]}
+
+    case Cachex.transaction(__MODULE__, [key], &Cachex.del(&1, key)) do
+      {:ok, {:ok, true}} -> :ok
+      error -> {:error, error}
+    end
+  end
+
+  @spec invalidate_endpoint_policy_cluster(integer()) ::
+          :ok | {:error, :cache_invalidation_failed}
+  def invalidate_endpoint_policy_cluster(id) do
+    [node() | Node.list()]
+    |> :erpc.multicall(__MODULE__, :invalidate_endpoint_policy, [id], 5_000)
+    |> Enum.reduce(:ok, fn
+      {:ok, :ok}, status -> status
+      _failure, _status -> {:error, :cache_invalidation_failed}
+    end)
   end
 
   def get_endpoint_query(kw), do: apply_repo_fun(:get_endpoint_query, [kw])
