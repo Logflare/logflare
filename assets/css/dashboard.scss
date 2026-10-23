@@ -138,3 +138,119 @@
   color: $brand-gray;
   font-variant-numeric: tabular-nums;
 }
+
+/* Collapse saved-search shortcuts to four links on mobile or two rows on desktop. */
+@supports (container-type: inline-size) {
+  @container saved-search-shortcuts (0rem <= width < 20.375rem) {
+    .saved-search-shortcuts {
+      grid-template-columns: repeat(1, minmax(0, 10rem)) !important;
+    }
+    @media (min-width: 640px) {
+      [data-expanded="false"] > .saved-search-shortcuts:has(> a:nth-of-type(3)) > a:nth-of-type(n + 2) {
+        display: none !important;
+      }
+      [data-expanded="false"] > .saved-search-shortcuts:has(> a:nth-of-type(3)) > button {
+        display: block !important;
+      }
+    }
+  }
+  @container saved-search-shortcuts (20.375rem <= width < 30.75rem) {
+    .saved-search-shortcuts {
+      grid-template-columns: repeat(2, minmax(0, 10rem)) !important;
+    }
+    @media (min-width: 640px) {
+      [data-expanded="false"] > .saved-search-shortcuts:has(> a:nth-of-type(5)) > a:nth-of-type(n + 4) {
+        display: none !important;
+      }
+      [data-expanded="false"] > .saved-search-shortcuts:has(> a:nth-of-type(5)) > button {
+        display: block !important;
+      }
+    }
+  }
+  @container saved-search-shortcuts (30.75rem <= width < 41.125rem) {
+    .saved-search-shortcuts {
+      grid-template-columns: repeat(3, minmax(0, 10rem)) !important;
+    }
+    @media (min-width: 640px) {
+      [data-expanded="false"] > .saved-search-shortcuts:has(> a:nth-of-type(7)) > a:nth-of-type(n + 6) {
+        display: none !important;
+      }
+      [data-expanded="false"] > .saved-search-shortcuts:has(> a:nth-of-type(7)) > button {
+        display: block !important;
+      }
+    }
+  }
+  @container saved-search-shortcuts (41.125rem <= width < 51.5rem) {
+    .saved-search-shortcuts {
+      grid-template-columns: repeat(4, minmax(0, 10rem)) !important;
+    }
+    @media (min-width: 640px) {
+      [data-expanded="false"] > .saved-search-shortcuts:has(> a:nth-of-type(9)) > a:nth-of-type(n + 8) {
+        display: none !important;
+      }
+      [data-expanded="false"] > .saved-search-shortcuts:has(> a:nth-of-type(9)) > button {
+        display: block !important;
+      }
+    }
+  }
+  @container saved-search-shortcuts (51.5rem <= width < 61.875rem) {
+    .saved-search-shortcuts {
+      grid-template-columns: repeat(5, minmax(0, 10rem)) !important;
+    }
+    @media (min-width: 640px) {
+      [data-expanded="false"] > .saved-search-shortcuts:has(> a:nth-of-type(11)) > a:nth-of-type(n + 10) {
+        display: none !important;
+      }
+      [data-expanded="false"] > .saved-search-shortcuts:has(> a:nth-of-type(11)) > button {
+        display: block !important;
+      }
+    }
+  }
+  @container saved-search-shortcuts (61.875rem <= width < 72.25rem) {
+    .saved-search-shortcuts {
+      grid-template-columns: repeat(6, minmax(0, 10rem)) !important;
+    }
+    @media (min-width: 640px) {
+      [data-expanded="false"] > .saved-search-shortcuts:has(> a:nth-of-type(13)) > a:nth-of-type(n + 12) {
+        display: none !important;
+      }
+      [data-expanded="false"] > .saved-search-shortcuts:has(> a:nth-of-type(13)) > button {
+        display: block !important;
+      }
+    }
+  }
+  @container saved-search-shortcuts (72.25rem <= width < 82.625rem) {
+    .saved-search-shortcuts {
+      grid-template-columns: repeat(7, minmax(0, 10rem)) !important;
+    }
+    @media (min-width: 640px) {
+      [data-expanded="false"] > .saved-search-shortcuts:has(> a:nth-of-type(15)) > a:nth-of-type(n + 14) {
+        display: none !important;
+      }
+      [data-expanded="false"] > .saved-search-shortcuts:has(> a:nth-of-type(15)) > button {
+        display: block !important;
+      }
+    }
+  }
+  @container saved-search-shortcuts (width >= 82.625rem) {
+    .saved-search-shortcuts {
+      grid-template-columns: repeat(8, minmax(0, 10rem)) !important;
+    }
+    @media (min-width: 640px) {
+      [data-expanded="false"] > .saved-search-shortcuts:has(> a:nth-of-type(17)) > a:nth-of-type(n + 16) {
+        display: none !important;
+      }
+      [data-expanded="false"] > .saved-search-shortcuts:has(> a:nth-of-type(17)) > button {
+        display: block !important;
+      }
+    }
+  }
+  @media not all and (min-width: 640px) {
+    [data-expanded="false"] > .saved-search-shortcuts:has(> a:nth-of-type(5)) > a:nth-of-type(n + 5) {
+      display: none !important;
+    }
+    [data-expanded="false"] > .saved-search-shortcuts:has(> a:nth-of-type(5)) > button {
+      display: block !important;
+    }
+  }
+}
