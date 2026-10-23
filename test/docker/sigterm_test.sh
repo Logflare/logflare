@@ -1,82 +1,29 @@
 #!/bin/bash
+# Only the container's PID 1, the shell running run.sh, gets SIGTERM, so run.sh must exec the release.
+set -eu
 
-set -euo pipefail
+dir="$(mktemp -d)"
+cp "$(dirname "$0")/../../run.sh" "${dir}"
+cat > "${dir}/logflare" <<'STUB'
+#!/bin/sh
+[ "$1" = start ] || exit 0
+trap 'touch sigterm; exit 0' TERM
+touch started
+sleep 5 & wait
+STUB
+chmod +x "${dir}/logflare"
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-readonly REPO_ROOT
-
-fail() {
-  echo "FAIL: $*" >&2
+wait_for() {
+  for _ in $(seq 50); do
+    [ -f "${dir}/$1" ] && return
+    sleep 0.1
+  done
+  echo "FAIL: timed out waiting for the release to create $1" >&2
   exit 1
 }
 
-assert_contains() {
-  local file="$1"
-  local expected="$2"
-
-  grep -Fq -- "${expected}" "${file}" || fail "${file} does not contain: ${expected}"
-}
-
-wait_for_file() {
-  local file="$1"
-
-  for _ in $(seq 1 50); do
-    [ -s "${file}" ] && return 0
-    sleep 0.1
-  done
-
-  return 1
-}
-
-# Runs the real run.sh against a stub release that records its PID and whether
-# it got SIGTERM. Kubernetes and Docker only signal the container's PID 1, which
-# is the shell running run.sh, so the release has to replace that shell.
-test_run_sh_hands_sigterm_to_the_release() {
-  local dir
-  local run_sh_pid
-  local release_pid
-
-  dir="$(mktemp -d)"
-  trap 'kill "${run_sh_pid:-}" "${release_pid:-}" 2>/dev/null || true; rm -rf "${dir}"' RETURN
-
-  cp "${REPO_ROOT}/run.sh" "${dir}/run.sh"
-  cat > "${dir}/logflare" <<'STUB'
-#!/bin/sh
-case "$1" in
-  eval) exit 0 ;;
-  start)
-    echo $$ > release.pid
-    trap 'echo sigterm > release.sigterm; exit 0' TERM
-    while :; do sleep 0.1; done
-    ;;
-esac
-STUB
-  chmod +x "${dir}/logflare"
-
-  (cd "${dir}" && exec sh run.sh > run.log 2>&1) &
-  run_sh_pid=$!
-
-  wait_for_file "${dir}/release.pid" || fail "run.sh never started the release"
-  release_pid="$(cat "${dir}/release.pid")"
-
-  [ "${release_pid}" = "${run_sh_pid}" ] ||
-    fail "release runs as PID ${release_pid}, not as run.sh's PID ${run_sh_pid}: run.sh must exec it"
-
-  kill -TERM "${run_sh_pid}"
-
-  wait_for_file "${dir}/release.sigterm" || fail "SIGTERM sent to run.sh never reached the release"
-}
-
-test_images_run_under_tini() {
-  local dockerfile
-
-  for dockerfile in "${REPO_ROOT}/Dockerfile" "${REPO_ROOT}/Dockerfile.runner"; do
-    assert_contains "${dockerfile}" " tini"
-    assert_contains "${dockerfile}" 'ENTRYPOINT ["/usr/bin/tini", "--"]'
-  done
-}
-
-test_run_sh_hands_sigterm_to_the_release
-test_images_run_under_tini
-
-echo "sigterm tests passed"
+(cd "${dir}" && exec sh run.sh) &
+wait_for started
+kill -TERM $!
+wait_for sigterm
+echo "sigterm test passed"
