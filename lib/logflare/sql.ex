@@ -157,7 +157,8 @@ defmodule Logflare.Sql do
   ]
 
   @owner_only_clickhouse_settings [
-    "move_primary_key_columns_to_end_of_prewhere"
+    "move_primary_key_columns_to_end_of_prewhere",
+    "query_plan_max_limit_for_lazy_materialization"
   ]
 
   @doc """

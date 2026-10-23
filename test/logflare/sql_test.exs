@@ -879,10 +879,13 @@ defmodule Logflare.SqlTest do
       user = insert(:user)
       _source = insert(:source, user: user, name: "my_ch_table")
 
-      query = "select a from my_ch_table SETTINGS move_primary_key_columns_to_end_of_prewhere = 0"
+      query =
+        "select a from my_ch_table SETTINGS move_primary_key_columns_to_end_of_prewhere = 0, query_plan_max_limit_for_lazy_materialization = 1000"
 
       assert {:ok, result} = Sql.transform(:ch_sql, query, user)
-      assert result =~ "move_primary_key_columns_to_end_of_prewhere = 0"
+
+      assert result =~
+               "SETTINGS move_primary_key_columns_to_end_of_prewhere = 0, query_plan_max_limit_for_lazy_materialization = 1000"
     end
 
     test "rejects owner-only settings in sandboxed queries" do
@@ -896,6 +899,19 @@ defmodule Logflare.SqlTest do
 
       assert {:error, err} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
       assert err =~ "Restricted setting move_primary_key_columns_to_end_of_prewhere"
+    end
+
+    test "rejects the lazy materialization limit in sandboxed queries" do
+      user = insert(:user)
+      _source = insert(:source, user: user, name: "my_ch_table")
+
+      cte_query = "with src as (select a from my_ch_table) select a from src"
+
+      consumer_query =
+        "select a from src SETTINGS query_plan_max_limit_for_lazy_materialization = 0"
+
+      assert {:error, err} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
+      assert err =~ "Restricted setting query_plan_max_limit_for_lazy_materialization"
     end
 
     test "keeps owner query settings when the sandboxed query replaces the final select" do
