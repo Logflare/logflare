@@ -139,6 +139,10 @@ main.app {
   padding-right: 10px;
 }
 
+.saved-search-shortcuts > [hidden] {
+  display: none !important;
+}
+
 .source-link {
   margin-left: 2em;
   width: 65%;

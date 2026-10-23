@@ -13,6 +13,68 @@ vi.mock("../vendor/idle", () => ({ default: vi.fn() }));
 const { scrollToPageBottom } = await import("../utils");
 const { default: hooks } = await import("../source_lv_hooks.js");
 
+describe("SavedSearchShortcuts", () => {
+  it("reserves room for Show more, expands inline, and reflows when resized or updated", () => {
+    let resize;
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback) { resize = callback; }
+      observe() {}
+      disconnect() {}
+    });
+    document.body.innerHTML = `
+      <div id="shortcuts">
+        <a href="#errors">Errors</a><a href="#latency">Slow API requests</a>
+        <a href="#sign-ins">Failed sign-ins</a><a href="#timeouts">Timeouts</a>
+        <a href="#limits">Rate limits</a>
+        <button type="button" data-expand-shortcuts hidden>Show more</button>
+      </div>`;
+    const el = document.getElementById("shortcuts");
+    const shortcuts = Array.from(el.querySelectorAll("a"));
+    const toggle = el.querySelector("button");
+    let tops = [0, 0, 36, 36, 72];
+    let toggleTops = [0, 0, 36, 36, 72, 72];
+    shortcuts.forEach((shortcut, index) => {
+      Object.defineProperty(shortcut, "offsetTop", { get: () => tops[index] });
+    });
+    Object.defineProperty(toggle, "offsetTop", {
+      get: () => toggleTops[shortcuts.filter((shortcut) => !shortcut.hidden).length],
+    });
+    const visibleNames = () => shortcuts.filter((shortcut) => !shortcut.hidden).map((shortcut) => shortcut.textContent);
+    const hook = Object.assign(Object.create(hooks.SavedSearchShortcuts), { el });
+    hook.mounted();
+
+    expect(visibleNames()).toEqual(["Errors", "Slow API requests", "Failed sign-ins"]);
+    expect(toggle.hidden).toBe(false);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+
+    toggle.click();
+    expect(visibleNames()).toHaveLength(5);
+    expect(toggle.textContent).toBe("Show less");
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+
+    tops = [0, 36, 72, 108, 144];
+    toggleTops = [0, 36, 72, 108, 144, 180];
+    resize();
+    expect(visibleNames()).toHaveLength(5);
+    toggle.click();
+    expect(visibleNames()).toEqual(["Errors"]);
+
+    tops = [0, 0, 0, 36, 36];
+    resize();
+    expect(visibleNames()).toHaveLength(5);
+    expect(toggle.hidden).toBe(true);
+
+    tops = [0, 0, 36, 36, 72];
+    toggleTops = [0, 0, 36, 36, 72, 72];
+    hook.updated();
+    expect(visibleNames()).toEqual(["Errors", "Slow API requests", "Failed sign-ins"]);
+    expect(toggle.textContent).toBe("Show more");
+    expect(toggle.hidden).toBe(false);
+    hook.destroyed();
+    vi.unstubAllGlobals();
+  });
+});
+
 const mountSearchList = () => {
   const hook = Object.create(hooks.SourceLogsSearchList);
   const handlers = {};

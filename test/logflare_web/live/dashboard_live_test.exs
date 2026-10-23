@@ -212,6 +212,17 @@ defmodule LogflareWeb.DashboardLiveTest do
                )
       end
 
+      assert has_element?(
+               view,
+               "#source-#{source.id}-saved-searches[phx-hook='SavedSearchShortcuts']"
+             )
+
+      assert has_element?(
+               view,
+               "#source-#{source.id}-saved-searches-toggle[hidden][aria-expanded='false']",
+               "Show more"
+             )
+
       html = view |> render() |> Floki.parse_document!()
 
       assert html
