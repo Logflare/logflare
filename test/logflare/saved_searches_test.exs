@@ -10,8 +10,12 @@ defmodule Logflare.SavedSearchesTest do
 
   @valid_attrs %{lql_rules: [], querystring: "testing", saved_by_user: false, tailing: false}
   test "insert/2, get/1, delete/1, get_by_qs_source_id/1", %{source: source} do
-    assert {:ok, %SavedSearch{name: "My saved search"} = saved_search} =
-             SavedSearches.insert(Map.put(@valid_attrs, :name, "My saved search"), source)
+    attrs = Map.merge(@valid_attrs, %{name: "My saved search", description: "Investigate errors"})
+
+    assert {:ok,
+            %SavedSearch{name: "My saved search", description: "Investigate errors"} =
+              saved_search} =
+             SavedSearches.insert(attrs, source)
 
     assert saved_search == SavedSearches.get(saved_search.id)
     assert saved_search == SavedSearches.get_by_qs_source_id(saved_search.querystring, source.id)
@@ -28,21 +32,40 @@ defmodule Logflare.SavedSearchesTest do
     alpha = insert(:saved_search, source: source, name: "alpha")
     unnamed = insert(:saved_search, source: source, name: nil, querystring: "Beta")
     empty_name = insert(:saved_search, source: source, name: "", querystring: "aardvark")
+    victor = insert(:saved_search, source: source, name: "Victor")
     other = insert(:saved_search, source: other_source)
-    insert(:saved_search, source: source, favorite: true, saved_by_user: false)
+    insert(:saved_search, source: source, name: "Deleted", favorite: true, saved_by_user: false)
     insert(:saved_search)
 
+    assert SavedSearches.list_by_sources([]) == []
+
+    searches = SavedSearches.list_by_sources([other_source.id, empty_source.id, source.id])
+
+    assert Enum.map(searches, & &1.id) ==
+             [favorite.id, alpha.id, unnamed.id, empty_name.id, victor.id, other.id]
+  end
+
+  test "Cache.list_by_sources/1 merges cached and uncached sources without duplicates", %{
+    source: source
+  } do
+    [first, second] = insert_pair(:saved_search, source: source)
+    other = insert(:saved_search)
+    empty_source = insert(:source, user_id: source.user_id)
+
+    assert SavedSearches.Cache.list_by_sources([]) == []
+
     assert Enum.map(SavedSearches.Cache.list_by_sources([source.id]), & &1.id) ==
-             [favorite.id, empty_name.id, alpha.id, unnamed.id]
+             [first.id, second.id]
 
-    for list <- [&SavedSearches.list_by_sources/1, &SavedSearches.Cache.list_by_sources/1] do
-      assert list.([]) == []
+    searches =
+      SavedSearches.Cache.list_by_sources([
+        other.source_id,
+        empty_source.id,
+        source.id,
+        source.id
+      ])
 
-      searches = list.([other_source.id, empty_source.id, source.id, source.id])
-
-      assert Enum.map(searches, & &1.id) ==
-               [favorite.id, empty_name.id, alpha.id, unnamed.id, other.id]
-    end
+    assert Enum.map(searches, & &1.id) == [first.id, second.id, other.id]
   end
 
   test "get_by_user_access/2 returns only saved searches on accessible sources", %{
@@ -83,26 +106,36 @@ defmodule Logflare.SavedSearchesTest do
              SavedSearches.update(saved_search, %{saved_by_user: false})
   end
 
-  test "names use a codepoint limit and persist with favorites when resaved", %{source: source} do
-    assert {:ok, search} = SavedSearches.insert(@valid_attrs, source)
-    assert search.name == nil
-
-    name = String.duplicate("e\u0301", 127) <> "x"
-    assert {:ok, named} = SavedSearches.update(search, %{"name" => name, "favorite" => true})
-    assert named.querystring == search.querystring
+  test "names are limited to 255 codepoints", %{source: source} do
+    search = insert(:saved_search, source: source)
+    name = String.duplicate("e\u0301", 128)
 
     assert {:error, changeset} =
-             SavedSearches.update(named, %{name: name <> "\u0301", favorite: false})
+             SavedSearches.update(search, %{name: name})
 
     assert "should be at most 255 character(s)" in errors_on(changeset).name
+  end
 
-    id = search.id
+  test "favorites require a nonblank title", %{source: source} do
+    assert {:ok, search} = SavedSearches.insert(@valid_attrs, source)
 
-    assert {:ok, %SavedSearch{id: ^id, name: ^name, favorite: true} = resaved} =
-             SavedSearches.save_by_user(search.querystring, [], source, true)
+    for name <- [nil, "", " \t\n"] do
+      attrs = Map.merge(@valid_attrs, %{name: name, favorite: true})
+      assert {:error, changeset} = SavedSearches.insert(attrs, source)
+      assert "Can’t be blank when a favorite" in errors_on(changeset).name
 
-    assert {:ok, %SavedSearch{favorite: false}} =
-             SavedSearches.update(resaved, %{favorite: false})
+      assert {:error, changeset} = SavedSearches.update(search, %{name: name, favorite: true})
+      assert "Can’t be blank when a favorite" in errors_on(changeset).name
+      refute SavedSearches.get(search.id).favorite
+    end
+
+    assert {:ok, favorite} = SavedSearches.update(search, %{name: "Errors", favorite: true})
+    assert {:error, changeset} = SavedSearches.update(favorite, %{name: ""})
+    assert "Can’t be blank when a favorite" in errors_on(changeset).name
+    assert SavedSearches.get(search.id).name == "Errors"
+
+    assert {:ok, %SavedSearch{name: nil, favorite: false}} =
+             SavedSearches.update(favorite, %{name: "", favorite: false})
   end
 
   test "suggest_saved_searches/2", %{source: source} do

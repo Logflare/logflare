@@ -36,7 +36,7 @@ defmodule LogflareWeb.ModalComponent do
               )}
             </span>
           </div>
-          <div class="modal-body">
+          <div class="modal-body has-[#saved-searches-modal]:tw-px-0 [&:has(#saved-searches-modal)>.container]:tw-max-w-none [&:has(#saved-searches-modal)>.container]:tw-px-0">
             <div class="container">
               <%= if @is_template? do %>
                 {render(@view, @template, assigns)}

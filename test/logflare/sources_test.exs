@@ -405,8 +405,8 @@ defmodule Logflare.SourcesTest do
     } do
       source = insert(:source, user: user)
       other_source = insert(:source, user: user)
-      favorite = insert(:saved_search, source: source, favorite: true)
-      other = insert(:saved_search, source: other_source, favorite: true)
+      favorite = insert(:saved_search, source: source, name: "Errors", favorite: true)
+      other = insert(:saved_search, source: other_source, name: "Warnings", favorite: true)
       insert(:saved_search, source: source, favorite: false)
       insert(:saved_search, source: other_source, favorite: false)
 
