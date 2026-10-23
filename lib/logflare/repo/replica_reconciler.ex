@@ -5,7 +5,7 @@ defmodule Logflare.Repo.ReplicaReconciler do
   A dedicated, locally registered worker runs on every node, because the disabled state is
   node-local. With no replicas configured, each run is a no-op.
 
-  For each of `sources`, `backends` and `rules`, the row count and `max(updated_at)` of rows
+  For each of `users`, `sources`, `backends` and `rules`, the row count and `max(updated_at)` of rows
   last updated before a lag cutoff are compared between the primary and each replica. Rows
   touched inside the lag window are ignored so in-flight pglogical writes do not trigger a
   mismatch, and a mismatch is re-checked once before acting on it.
@@ -23,7 +23,7 @@ defmodule Logflare.Repo.ReplicaReconciler do
   alias Logflare.Repo
   alias Logflare.Repo.Replicas
 
-  @tables ~w(sources backends rules)
+  @tables ~w(users sources backends rules)
   @disabled_key {__MODULE__, :disabled}
   @default_interval :timer.minutes(30)
   @default_jitter :timer.minutes(5)
