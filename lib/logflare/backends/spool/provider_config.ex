@@ -25,17 +25,38 @@ defmodule Logflare.Backends.Spool.ProviderConfig do
         nil
 
       queue_name ->
-        case queue_mod.resolve(queue_name) do
-          {:ok, ref} ->
-            ref
-
-          {:error, reason} ->
-            Logger.warning(
-              "spool_provider_config: could not resolve queue ref for #{queue_name}: #{inspect(reason)}"
-            )
-
-            nil
+        case resolve_queue(spool_config, queue_mod, queue_name) do
+          {:ok, ref} -> ref
+          {:error, _reason} -> nil
         end
+    end
+  end
+
+  @doc """
+  Resolves the queue, retrying `:queue_resolve_retries` times (default 5)
+  `:queue_resolve_interval_ms` apart (default 2s) so a node booting before
+  DNS is ready still gets it. Logs a warning per failed attempt. Lookups never
+  feed the `:queue` health scope, so exhausting them does not hold `/ready`.
+  """
+  @spec resolve_queue(keyword(), module(), String.t()) :: {:ok, term()} | {:error, term()}
+  def resolve_queue(spool_config, queue_mod, queue_name) do
+    retries = Keyword.get(spool_config, :queue_resolve_retries, 5)
+    interval_ms = Keyword.get(spool_config, :queue_resolve_interval_ms, 2_000)
+    do_resolve_queue(queue_mod, queue_name, retries, interval_ms)
+  end
+
+  defp do_resolve_queue(queue_mod, queue_name, retries_left, interval_ms) do
+    with {:error, reason} <- queue_mod.resolve(queue_name) do
+      Logger.warning(
+        "spool_provider_config: could not resolve queue ref for #{queue_name} (#{retries_left} retries left): #{inspect(reason)}"
+      )
+
+      if retries_left > 0 do
+        Process.sleep(interval_ms)
+        do_resolve_queue(queue_mod, queue_name, retries_left - 1, interval_ms)
+      else
+        {:error, reason}
+      end
     end
   end
 

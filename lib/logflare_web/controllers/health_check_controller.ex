@@ -12,7 +12,8 @@ defmodule LogflareWeb.HealthCheckController do
 
   @doc """
   Readiness: runs every check until the node has passed once, then only the
-  node-local ones, and fails once graceful shutdown begins.
+  node-local ones, and fails once graceful shutdown begins. Spool nodes also
+  need their queue to be reachable.
 
   Ingest resolves everything it needs from the context caches, so a node that has
   already passed stays in rotation through a database outage rather than being
@@ -20,7 +21,7 @@ defmodule LogflareWeb.HealthCheckController do
   """
   def ready(conn, _params) do
     if Readiness.ready?() do
-      respond(conn, startup_mode())
+      respond(conn, startup_mode(), [Backends.spool_queue_ready?()])
     else
       response = JSON.encode!(%{status: :not_ready})
 
@@ -37,14 +38,14 @@ defmodule LogflareWeb.HealthCheckController do
   dropping or recreating a running node when the database is slow.
   """
   def check(conn, _params) do
-    respond(conn, startup_mode())
+    respond(conn, startup_mode(), [])
   end
 
   defp startup_mode do
     if Readiness.startup_checks_passed?(), do: :liveness, else: :full
   end
 
-  defp respond(conn, mode) do
+  defp respond(conn, mode, extra_checks) do
     repo_uptime = if mode == :full, do: Logflare.Repo.get_uptime()
     caches = check_caches()
     memory_utilization = System.memory_utilization()
@@ -58,6 +59,7 @@ defmodule LogflareWeb.HealthCheckController do
         Enum.all?(Map.values(caches), &(&1 == :ok)),
         memory_utilization < max_memory_ratio,
         Backends.spool_healthcheck_ok?()
+        | extra_checks
       ]
       |> Enum.all?()
 
@@ -92,7 +94,8 @@ defmodule LogflareWeb.HealthCheckController do
         memory_utilization: if(memory_utilization < max_memory_ratio, do: :ok, else: :critical),
         spool_write_healthy: %{
           disk: SpoolHealth.healthy?(:disk),
-          upload: SpoolHealth.healthy?(:upload)
+          upload: SpoolHealth.healthy?(:upload),
+          queue: SpoolHealth.healthy?(:queue)
         }
       )
       |> JSON.encode!()
