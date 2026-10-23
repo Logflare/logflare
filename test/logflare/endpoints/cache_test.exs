@@ -431,6 +431,19 @@ defmodule Logflare.Endpoints.CacheTest do
     end
   end
 
+  describe "ResultsCache.name/3" do
+    test "execution opts are part of the cache name" do
+      user = insert(:user)
+      endpoint = insert(:endpoint, user: user)
+
+      refute Endpoints.ResultsCache.name(endpoint, %{}, redact_pii: true) ==
+               Endpoints.ResultsCache.name(endpoint, %{}, redact_pii: false)
+
+      assert Endpoints.ResultsCache.name(endpoint, %{}) ==
+               Endpoints.ResultsCache.name(endpoint, %{}, [])
+    end
+  end
+
   defp insert_versioned_endpoint(user, backend, attrs \\ [], snapshot_overrides \\ %{}) do
     endpoint =
       insert(

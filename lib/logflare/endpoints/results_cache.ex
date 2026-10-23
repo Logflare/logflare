@@ -39,7 +39,7 @@ defmodule Logflare.Endpoints.ResultsCache do
         }
 
   def start_link({query, params, opts}) do
-    name = name(query, params)
+    name = name(query, params, opts)
     GenServer.start_link(__MODULE__, {query, params, opts}, name: name, hibernate_after: 5_000)
   end
 
@@ -222,11 +222,14 @@ defmodule Logflare.Endpoints.ResultsCache do
     "endpoints_#{part}" |> String.to_existing_atom()
   end
 
-  def name(%EndpointQuery{} = query, params) do
+  def name(query, params, opts \\ [])
+
+  def name(%EndpointQuery{} = query, params, opts) do
     param_hash = :erlang.phash2(params)
+    opts_hash = :erlang.phash2(opts)
     {query_id, version_key} = endpoint_cache_key(query)
 
-    key = {query_id, version_key, param_hash}
+    key = {query_id, version_key, param_hash, opts_hash}
 
     {:via, :syn, {endpoints_part(query_id, version_key, params), key}}
   end
