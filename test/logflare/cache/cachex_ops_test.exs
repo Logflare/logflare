@@ -88,8 +88,7 @@ defmodule Logflare.Cache.CachexOpsTest do
       Cachex.get(@cache, :key)
       Cachex.get(@cache, :missing)
 
-      assert %{hits: 1, misses: 1, total_heap_size: heap} = stats = CachexOps.stats(@cache)
-      assert heap > 0
+      assert %{hits: 1, misses: 1} = stats = CachexOps.stats(@cache)
 
       assert stats |> Map.keys() |> Enum.sort() == [
                :evictions,
@@ -98,8 +97,7 @@ defmodule Logflare.Cache.CachexOpsTest do
                :hits,
                :miss_rate,
                :misses,
-               :operations,
-               :total_heap_size
+               :operations
              ]
     end
   end
