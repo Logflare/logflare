@@ -72,6 +72,14 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     )
 
     children = [
+      {Schema,
+       [
+         plan: plan,
+         source: source,
+         bigquery_project_id: project_id,
+         bigquery_dataset_id: dataset_id,
+         name: Backends.via_source(source, Schema, backend.id)
+       ]},
       {
         DynamicPipeline,
         # soft limit before a new pipeline is created
@@ -94,15 +102,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
           Backends.handle_resolve_count(state, lens, source.metrics.avg)
         end
-      },
-      {Schema,
-       [
-         plan: plan,
-         source: source,
-         bigquery_project_id: project_id,
-         bigquery_dataset_id: dataset_id,
-         name: Backends.via_source(source, Schema, backend.id)
-       ]}
+      }
     ]
 
     Supervisor.init(children, strategy: :one_for_one, max_restarts: 10)
