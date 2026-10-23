@@ -265,7 +265,7 @@ defmodule Logflare.Bench.BroadwayMetricSampling do
 
   alias Broadway.Message
   alias Broadway.Topology.ProcessorStage
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingConfigStore
+  alias Logflare.Mapper.ConfigStore
   alias Logflare.Backends.BufferProducer
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Bench.BroadwayMetricSampling.Acknowledger
@@ -425,7 +425,7 @@ defmodule Logflare.Bench.BroadwayMetricSampling do
        ) do
     {:ok, _registry} = Registry.start_link(keys: :unique, name: BufferProducer.InFlightRegistry)
     {:ok, _queue_manager} = IngestEventQueue.start_link([])
-    {:ok, _mapping_config_store} = MappingConfigStore.start_link([])
+    {:ok, _mapping_config_store} = ConfigStore.start_link([])
     sink = ClickHouseSink.new()
 
     {:ok, _pipeline} =

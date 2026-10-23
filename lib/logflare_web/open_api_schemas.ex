@@ -383,6 +383,9 @@ defmodule LogflareWeb.OpenApiSchemas do
   end
 
   defmodule ClickhouseConfigSchema do
+    alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+
+    @async_insert_flush_bounds ClickHouseAdaptor.async_insert_flush_bounds()
     @properties %{
       url: %Schema{type: :string},
       database: %Schema{type: :string},
@@ -407,8 +410,44 @@ defmodule LogflareWeb.OpenApiSchemas do
         example: "prod-a"
       },
       use_async_inserts_for_small_batches: %Schema{type: :boolean, nullable: true},
+      use_async_inserts_only: %Schema{
+        type: :boolean,
+        nullable: true,
+        description:
+          "Send every batch as an async insert; overrides use_async_inserts_for_small_batches"
+      },
       async_insert_cluster_url: %Schema{type: :string, nullable: true},
       async_insert_max_rows: %Schema{type: :integer, nullable: true},
+      async_insert_busy_timeout_max_ms: %Schema{
+        type: :integer,
+        nullable: true,
+        minimum: @async_insert_flush_bounds.async_insert_busy_timeout_max_ms.min,
+        maximum: @async_insert_flush_bounds.async_insert_busy_timeout_max_ms.max,
+        description:
+          "Longest ClickHouse buffers async inserts before flushing, in milliseconds; when unset, Logflare sends #{ClickHouseAdaptor.default_async_insert_busy_timeout_max_ms()} ms. The maximum leaves at least half the insert execution timeout for flushing."
+      },
+      async_insert_max_data_size: %Schema{
+        type: :integer,
+        nullable: true,
+        minimum: @async_insert_flush_bounds.async_insert_max_data_size.min,
+        maximum: @async_insert_flush_bounds.async_insert_max_data_size.max,
+        description:
+          "Buffered bytes that trigger an async insert flush; when unset, the ClickHouse settings profile applies"
+      },
+      batch_size: %Schema{
+        type: :integer,
+        nullable: true,
+        minimum: 1_000,
+        maximum: 60_000,
+        description: "Maximum rows per insert"
+      },
+      batch_timeout: %Schema{
+        type: :integer,
+        nullable: true,
+        minimum: 1_000,
+        maximum: 30_000,
+        description: "Milliseconds a partial batch waits before being inserted"
+      },
       max_event_age_hours: %Schema{type: :integer, nullable: true},
       replica_routing_param: %Schema{type: :string, nullable: true}
     }

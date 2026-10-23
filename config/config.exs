@@ -29,6 +29,8 @@ config :logflare, Logflare.Logs.Validators.BigQuerySchemaChange, enabled: false
 
 config :logflare, Logflare.Google, dataset_id_append: "_default"
 
+config :logflare, Logflare.Backends.Spool.SpoolAck, ack_stale: true
+
 config :logflare, :postgres_backend_adapter, pool_size: 3
 
 config :logflare, :bigquery_backend_adaptor, managed_service_account_pool_size: 0
@@ -37,7 +39,9 @@ config :logflare, :bigquery_pipeline, max_retries: 0
 
 config :logflare, :clickhouse_backend_adaptor, engine: "MergeTree"
 
-config :logflare, Logflare.Sources.Source.BigQuery.Schema, updates_per_minute: 6
+config :logflare, Logflare.Sources.Source.BigQuery.Schema,
+  updates_per_minute: 6,
+  max_pending_samples: 8
 
 # Configures the endpoint
 config :logflare, LogflareWeb.Endpoint,

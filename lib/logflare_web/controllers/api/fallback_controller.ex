@@ -20,6 +20,14 @@ defmodule LogflareWeb.Api.FallbackController do
     |> halt()
   end
 
+  def call(conn, {:error, :database_unavailable}) do
+    conn
+    |> put_status(503)
+    |> put_resp_header("retry-after", "5")
+    |> json(%{error: "Service Unavailable: credentials could not be verified"})
+    |> halt()
+  end
+
   def call(conn, {:error, :buffer_full}) do
     conn
     |> put_status(429)
@@ -46,6 +54,12 @@ defmodule LogflareWeb.Api.FallbackController do
     conn
     |> put_status(:not_found)
     |> json(%{error: "Not Found"})
+  end
+
+  def call(conn, {:error, :not_found, message}) when is_binary(message) do
+    conn
+    |> put_status(:not_found)
+    |> json(%{error: message})
   end
 
   def call(conn, {:error, %QueryError{}}) do

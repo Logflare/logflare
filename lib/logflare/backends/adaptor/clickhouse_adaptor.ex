@@ -43,8 +43,42 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @min_pipelines 1
   @resolve_interval 10_000
   @scaling_threshold 15_000
-  @async_insert_busy_timeout_max_ms 3_000
+  @pipeline_shutdown_ms 30_000
+  @min_batch_size 1_000
+  @min_batch_timeout_ms 1_000
+  @max_batch_timeout_ms 30_000
+  @pipeline_config_keys [:batch_size, :batch_timeout]
+  @runtime_config_keys [
+    :use_async_inserts_for_small_batches,
+    :use_async_inserts_only,
+    :async_insert_max_rows,
+    :async_insert_busy_timeout_max_ms,
+    :async_insert_max_data_size,
+    :async_insert_cluster_url,
+    :read_pool_size,
+    :labeled_read_pool_size,
+    :read_only_urls,
+    :default_read_cluster,
+    :query_user,
+    :query_password,
+    :replica_routing_param
+  ]
+  @default_async_insert_busy_timeout_max_ms 3_000
+  @async_insert_flush_bounds %{
+    async_insert_busy_timeout_max_ms: %{min: 200, max: 4_000},
+    async_insert_max_data_size: %{min: 52_428_800, max: 268_435_456}
+  }
   @insert_max_execution_time_seconds 10
+
+  if @async_insert_flush_bounds.async_insert_busy_timeout_max_ms.max >
+       div(@insert_max_execution_time_seconds * 1_000, 2) do
+    raise "async insert flush timeout maximum must not exceed half the insert execution timeout"
+  end
+
+  unless @default_async_insert_busy_timeout_max_ms in @async_insert_flush_bounds.async_insert_busy_timeout_max_ms.min..@async_insert_flush_bounds.async_insert_busy_timeout_max_ms.max do
+    raise "default async insert flush timeout must be within its bounds"
+  end
+
   @max_read_pool_size 4096
   @ch_slow_pool_checkout_ms 1_000
   @us_per_hour 3_600 * 1_000_000
@@ -54,6 +88,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @replica_tag_max_bytes 256
   @replica_tag_value_pattern ~r/\A[\x21-\x7E]+\z/
   @param_name_pattern ~r/\A\w+\z/
+
+  @spec async_insert_flush_bounds() :: %{
+          async_insert_busy_timeout_max_ms: %{min: pos_integer(), max: pos_integer()},
+          async_insert_max_data_size: %{min: pos_integer(), max: pos_integer()}
+        }
+  def async_insert_flush_bounds, do: @async_insert_flush_bounds
+
+  @spec default_async_insert_busy_timeout_max_ms() :: pos_integer()
+  def default_async_insert_busy_timeout_max_ms, do: @default_async_insert_busy_timeout_max_ms
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
   defdelegate connection_pool_via(arg, label), to: ConnectionManager
@@ -77,6 +120,30 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @impl Logflare.Backends.Adaptor
   def on_backend_deleted(%Backend{id: backend_id}) do
     QueryConnectionSup.terminate_backend(backend_id)
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def pipeline_config_keys, do: @pipeline_config_keys
+
+  @impl Logflare.Backends.Adaptor
+  def runtime_config_keys, do: @runtime_config_keys
+
+  @impl Logflare.Backends.Adaptor
+  def replace_pipelines(%Backend{id: backend_id} = backend) do
+    name = Backends.via_backend(backend, Pipeline)
+
+    case GenServer.whereis(name) do
+      nil -> :ok
+      _pid -> DynamicPipeline.replace_pipelines(name, fn -> latest_pipeline_args(backend_id) end)
+    end
+  end
+
+  @spec latest_pipeline_args(pos_integer()) :: keyword() | nil
+  defp latest_pipeline_args(backend_id) do
+    case Backends.get_backend(backend_id) do
+      nil -> nil
+      backend -> [backend: backend]
+    end
   end
 
   @doc false
@@ -117,8 +184,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         :read_only_urls,
         :default_read_cluster,
         :use_async_inserts_for_small_batches,
+        :use_async_inserts_only,
         :async_insert_cluster_url,
         :async_insert_max_rows,
+        :async_insert_busy_timeout_max_ms,
+        :async_insert_max_data_size,
+        :batch_size,
+        :batch_timeout,
         :max_event_age_hours,
         :replica_routing_param
       ]
@@ -270,8 +342,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        read_only_urls: {:map, :string},
        default_read_cluster: :string,
        use_async_inserts_for_small_batches: :boolean,
+       use_async_inserts_only: :boolean,
        async_insert_cluster_url: :string,
        async_insert_max_rows: :integer,
+       async_insert_busy_timeout_max_ms: :integer,
+       async_insert_max_data_size: :integer,
+       batch_size: :integer,
+       batch_timeout: :integer,
        max_event_age_hours: :integer,
        replica_routing_param: :string
      }}
@@ -288,14 +365,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :read_only_urls,
       :default_read_cluster,
       :use_async_inserts_for_small_batches,
+      :use_async_inserts_only,
       :async_insert_cluster_url,
       :async_insert_max_rows,
+      :async_insert_busy_timeout_max_ms,
+      :async_insert_max_data_size,
+      :batch_size,
+      :batch_timeout,
       :max_event_age_hours,
       :replica_routing_param
     ])
     |> preserve_blank_query_password()
     |> Logflare.Utils.default_field_value(:use_async_inserts_for_small_batches, false)
+    |> Logflare.Utils.default_field_value(:use_async_inserts_only, false)
     |> Logflare.Utils.default_field_value(:async_insert_max_rows, 1_000)
+    |> Logflare.Utils.default_field_value(:batch_size, Pipeline.max_batch_size())
+    |> Logflare.Utils.default_field_value(:batch_timeout, Pipeline.default_batch_timeout())
     |> Logflare.Utils.default_field_value(
       :max_event_age_hours,
       @default_max_event_age_hours
@@ -345,6 +430,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
     |> Changeset.validate_format(:async_insert_cluster_url, ~r/https?\:\/\/.+/)
     |> validate_number(:async_insert_max_rows, greater_than: 0)
+    |> validate_number(:async_insert_busy_timeout_max_ms,
+      greater_than_or_equal_to: @async_insert_flush_bounds.async_insert_busy_timeout_max_ms.min,
+      less_than_or_equal_to: @async_insert_flush_bounds.async_insert_busy_timeout_max_ms.max
+    )
+    |> validate_number(:async_insert_max_data_size,
+      greater_than_or_equal_to: @async_insert_flush_bounds.async_insert_max_data_size.min,
+      less_than_or_equal_to: @async_insert_flush_bounds.async_insert_max_data_size.max
+    )
+    |> validate_number(:batch_size,
+      greater_than_or_equal_to: @min_batch_size,
+      less_than_or_equal_to: Pipeline.max_batch_size()
+    )
+    |> validate_number(:batch_timeout,
+      greater_than_or_equal_to: @min_batch_timeout_ms,
+      less_than_or_equal_to: @max_batch_timeout_ms
+    )
     |> validate_number(:max_event_age_hours, greater_than_or_equal_to: 0)
     |> validate_format(:replica_routing_param, @param_name_pattern,
       message: "must be a parameter name using only letters, numbers, and underscores"
@@ -593,18 +694,23 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   # The dedicated async endpoint is only checked when async routing is enabled and a
   # set, parsable `async_insert_cluster_url` is configured.
   @spec async_grant_check_url(map()) :: String.t() | nil
-  defp async_grant_check_url(%{
-         use_async_inserts_for_small_batches: true,
-         async_insert_cluster_url: url
-       })
-       when is_non_empty_binary(url) do
+  defp async_grant_check_url(%{use_async_inserts_only: true} = config),
+    do: parsable_async_url(config)
+
+  defp async_grant_check_url(%{use_async_inserts_for_small_batches: true} = config),
+    do: parsable_async_url(config)
+
+  defp async_grant_check_url(_config), do: nil
+
+  @spec parsable_async_url(map()) :: String.t() | nil
+  defp parsable_async_url(%{async_insert_cluster_url: url}) when is_non_empty_binary(url) do
     case EndpointUtils.host(url) do
       host when is_non_empty_binary(host) -> url
       _ -> nil
     end
   end
 
-  defp async_grant_check_url(_config), do: nil
+  defp parsable_async_url(_config), do: nil
 
   @spec check_async_grants(Backend.t(), map(), String.t()) ::
           :ok | {:error, :async_permissions_missing} | {:error, :grant_check_unknown_failure}
@@ -980,7 +1086,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     Logger.metadata(backend_id: backend.id)
     table_name = clickhouse_ingest_table_name(backend, event_type)
     async? = Keyword.get(opts, :async, false)
-    insert_opts = [{:async, async?} | build_insert_opts(opts)]
+    insert_opts = [{:async, async?} | build_insert_opts(backend, opts)]
 
     backend
     |> Ingester.insert(table_name, events, event_type, insert_opts)
@@ -1003,7 +1109,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     Logger.metadata(backend_id: backend.id)
     table_name = clickhouse_ingest_table_name(backend, event_type)
     async? = Keyword.get(opts, :async, false)
-    insert_opts = [{:async, async?} | build_insert_opts(opts)]
+    insert_opts = [{:async, async?} | build_insert_opts(backend, opts)]
 
     backend
     |> Ingester.insert_compressed(table_name, event_type, compressed, insert_opts)
@@ -1053,16 +1159,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     )
   end
 
-  @spec build_insert_opts(keyword()) :: keyword()
-  defp build_insert_opts(opts) do
-    opts
-    |> Keyword.get(:async, false)
-    |> insert_settings()
+  @spec build_insert_opts(Backend.t(), keyword()) :: keyword()
+  defp build_insert_opts(%Backend{config: config}, opts) do
+    insert_settings(Keyword.get(opts, :async, false), config || %{})
   end
 
-  @spec insert_settings(boolean()) :: keyword()
-  defp insert_settings(true), do: base_insert_opts() ++ async_insert_opts()
-  defp insert_settings(false), do: base_insert_opts()
+  @spec insert_settings(boolean(), map()) :: keyword()
+  defp insert_settings(true, config), do: base_insert_opts() ++ async_insert_opts(config)
+  defp insert_settings(false, _config), do: base_insert_opts()
 
   @spec base_insert_opts() :: keyword()
   defp base_insert_opts do
@@ -1084,15 +1188,33 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   defp insert_host(_config, _async?), do: nil
 
-  @spec async_insert_opts() :: keyword()
-  defp async_insert_opts do
+  @spec async_insert_opts(map()) :: keyword()
+  defp async_insert_opts(config) do
     [
       async_insert: 1,
       wait_for_async_insert: 1,
       wait_for_async_insert_timeout: @insert_max_execution_time_seconds,
-      async_insert_busy_timeout_max_ms: @async_insert_busy_timeout_max_ms
-    ]
+      async_insert_busy_timeout_max_ms: async_insert_busy_timeout_max_ms(config)
+    ] ++ async_insert_max_data_size_opts(config)
   end
+
+  @spec async_insert_busy_timeout_max_ms(map()) :: pos_integer()
+  defp async_insert_busy_timeout_max_ms(%{async_insert_busy_timeout_max_ms: timeout_ms})
+       when is_integer(timeout_ms) do
+    bounds = @async_insert_flush_bounds.async_insert_busy_timeout_max_ms
+    timeout_ms |> max(bounds.min) |> min(bounds.max)
+  end
+
+  defp async_insert_busy_timeout_max_ms(_config), do: @default_async_insert_busy_timeout_max_ms
+
+  @spec async_insert_max_data_size_opts(map()) :: keyword()
+  defp async_insert_max_data_size_opts(%{async_insert_max_data_size: max_bytes})
+       when is_integer(max_bytes) do
+    bounds = @async_insert_flush_bounds.async_insert_max_data_size
+    [async_insert_max_data_size: max_bytes |> max(bounds.min) |> min(bounds.max)]
+  end
+
+  defp async_insert_max_data_size_opts(_config), do: []
 
   @doc """
   Provisions all type-specific ingest tables for the backend, if they do not already exist.
@@ -1125,6 +1247,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @doc false
   @impl Supervisor
   def init(%Backend{} = backend) do
+    backend = Backends.typecast_config_string_map_to_atom_map(backend)
+
     # create the startup queue and its generation, before any producer/traffic exists
     # for this queues_key — avoids racing concurrent first-time inserts against each
 
@@ -1149,6 +1273,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
             max_pipelines: 1,
             initial_count: @min_pipelines,
             resolve_interval: @resolve_interval,
+            shutdown: @pipeline_shutdown_ms,
             resolve_count: fn state ->
               lens = IngestEventQueue.list_pending_counts({:consolidated, backend.id})
 

@@ -7,6 +7,7 @@ defmodule LogflareWeb.BackendsLive do
   import LogflareWeb.Utils, only: [stringify_changeset_errors: 1, with_team_param: 2]
 
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.HttpBased.Headers
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Backend

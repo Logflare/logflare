@@ -12,6 +12,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
@@ -698,6 +699,168 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       refute changeset.valid?
       assert Keyword.has_key?(changeset.errors, :async_insert_max_rows)
+    end
+
+    test "async flush metadata defines the supported defaults and bounds" do
+      assert ClickHouseAdaptor.default_async_insert_busy_timeout_max_ms() == 3_000
+
+      assert ClickHouseAdaptor.async_insert_flush_bounds() == %{
+               async_insert_busy_timeout_max_ms: %{min: 200, max: 4_000},
+               async_insert_max_data_size: %{min: 52_428_800, max: 268_435_456}
+             }
+    end
+
+    test "async_insert_busy_timeout_max_ms stays unset when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :async_insert_busy_timeout_max_ms) == nil
+    end
+
+    test "partial updates preserve explicit async flush overrides, including the default" do
+      for timeout_ms <- [3_000, 4_000] do
+        existing_config = %{
+          url: "http://localhost",
+          database: "logflare_test",
+          port: 8123,
+          async_insert_busy_timeout_max_ms: timeout_ms,
+          async_insert_max_data_size: 209_715_200
+        }
+
+        changeset =
+          Adaptor.cast_and_validate_config(
+            ClickHouseAdaptor,
+            %{use_async_inserts_only: true},
+            existing_config
+          )
+
+        assert changeset.valid?
+
+        assert Ecto.Changeset.get_field(changeset, :async_insert_busy_timeout_max_ms) ==
+                 timeout_ms
+
+        assert Ecto.Changeset.get_field(changeset, :async_insert_max_data_size) == 209_715_200
+      end
+    end
+
+    test "casts both inclusive async_insert_busy_timeout_max_ms boundaries" do
+      for timeout_ms <- [200, 4_000] do
+        changeset =
+          cast_and_validate_config(async_insert_busy_timeout_max_ms: to_string(timeout_ms))
+
+        assert changeset.valid?
+
+        assert Ecto.Changeset.get_field(changeset, :async_insert_busy_timeout_max_ms) ==
+                 timeout_ms
+      end
+    end
+
+    test "rejects an async_insert_busy_timeout_max_ms outside 200–4,000 ms" do
+      for timeout_ms <- [-1, 0, 1, 199, 4_001, 5_000, 9_999, 10_000, "invalid", "200.5"] do
+        changeset = cast_and_validate_config(async_insert_busy_timeout_max_ms: timeout_ms)
+
+        refute changeset.valid?
+        assert Keyword.has_key?(changeset.errors, :async_insert_busy_timeout_max_ms)
+      end
+    end
+
+    test "async_insert_max_data_size is unset when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :async_insert_max_data_size) == nil
+    end
+
+    test "casts both inclusive async_insert_max_data_size boundaries" do
+      for max_bytes <- [52_428_800, 268_435_456] do
+        changeset = cast_and_validate_config(async_insert_max_data_size: to_string(max_bytes))
+
+        assert changeset.valid?
+        assert Ecto.Changeset.get_field(changeset, :async_insert_max_data_size) == max_bytes
+      end
+    end
+
+    test "rejects an async_insert_max_data_size outside 50–256 MiB" do
+      for max_bytes <- [-1, 0, 1, 52_428_799, 268_435_457, 1_073_741_824, "invalid", "52428800.5"] do
+        changeset = cast_and_validate_config(async_insert_max_data_size: max_bytes)
+
+        refute changeset.valid?
+        assert Keyword.has_key?(changeset.errors, :async_insert_max_data_size)
+      end
+    end
+
+    test "clearing async flush settings removes stored overrides" do
+      existing_config = %{
+        url: "http://localhost",
+        database: "logflare_test",
+        port: 8123,
+        async_insert_busy_timeout_max_ms: 4_000,
+        async_insert_max_data_size: 209_715_200
+      }
+
+      for blank <- [nil, ""] do
+        changeset =
+          Adaptor.cast_and_validate_config(
+            ClickHouseAdaptor,
+            %{async_insert_busy_timeout_max_ms: blank, async_insert_max_data_size: blank},
+            existing_config
+          )
+
+        assert changeset.valid?
+        assert Ecto.Changeset.get_field(changeset, :async_insert_busy_timeout_max_ms) == nil
+        assert Ecto.Changeset.get_field(changeset, :async_insert_max_data_size) == nil
+      end
+    end
+
+    test "use_async_inserts_only defaults to false" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :use_async_inserts_only) == false
+    end
+
+    test "casts use_async_inserts_only" do
+      changeset = cast_and_validate_config(use_async_inserts_only: true)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :use_async_inserts_only) == true
+    end
+
+    test "batch_size and batch_timeout default to the pipeline defaults" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :batch_size) == 60_000
+      assert Ecto.Changeset.get_field(changeset, :batch_timeout) == 5_000
+    end
+
+    test "accepts batch_size and batch_timeout at their bounds" do
+      for {batch_size, batch_timeout} <- [{1_000, 1_000}, {60_000, 30_000}] do
+        changeset =
+          cast_and_validate_config(batch_size: batch_size, batch_timeout: batch_timeout)
+
+        assert changeset.valid?
+        assert Ecto.Changeset.get_field(changeset, :batch_size) == batch_size
+        assert Ecto.Changeset.get_field(changeset, :batch_timeout) == batch_timeout
+      end
+    end
+
+    test "rejects batch_size outside 1,000..60,000" do
+      for batch_size <- [999, 60_001] do
+        changeset = cast_and_validate_config(batch_size: batch_size)
+
+        refute changeset.valid?
+        assert Keyword.has_key?(changeset.errors, :batch_size)
+      end
+    end
+
+    test "rejects batch_timeout outside 1,000..30,000 ms" do
+      for batch_timeout <- [999, 30_001] do
+        changeset = cast_and_validate_config(batch_timeout: batch_timeout)
+
+        refute changeset.valid?
+        assert Keyword.has_key?(changeset.errors, :batch_timeout)
+      end
     end
 
     test "async_insert_cluster_url defaults to nil when not provided" do
@@ -1582,6 +1745,31 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
+  describe "test_connection/1 async insert grants" do
+    test "checks the async cluster grants when async-only inserts are enabled" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{
+            use_async_inserts_only: true,
+            async_insert_cluster_url: "http://localhost:8123"
+          },
+          cleanup?: false
+        )
+
+      assert {:ok, true} = test_connection_running?(backend, async_grant_statement())
+    end
+
+    test "skips the async cluster grant check when async inserts are disabled" do
+      {_source, backend} =
+        setup_clickhouse_test(
+          config: %{async_insert_cluster_url: "http://localhost:8123"},
+          cleanup?: false
+        )
+
+      assert {:ok, false} = test_connection_running?(backend, async_grant_statement())
+    end
+  end
+
   describe "test_connection/1 with a dedicated query user" do
     setup do
       insert(:plan, name: "Free")
@@ -1736,9 +1924,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   describe "insert settings" do
     setup do
       insert(:plan, name: "Free")
-      {_source, backend} = setup_clickhouse_test()
+      {source, backend} = setup_clickhouse_test()
 
-      [backend: backend]
+      [source: source, backend: backend]
     end
 
     test "sync inserts set max_execution_time and no async settings", %{backend: backend} do
@@ -1773,6 +1961,127 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                  :zlib.gzip(""),
                  async: true
                )
+    end
+
+    for mode <- [:compressed, :uncompressed], config_state <- [:missing, :cleared, :invalid] do
+      test "#{mode} async inserts use default flush settings when #{config_state}",
+           %{backend: backend, source: source} do
+        config =
+          case unquote(config_state) do
+            :missing ->
+              Map.drop(backend.config, [
+                :async_insert_busy_timeout_max_ms,
+                :async_insert_max_data_size
+              ])
+
+            :cleared ->
+              backend.config
+              |> Map.merge(%{
+                async_insert_busy_timeout_max_ms: 4_000,
+                async_insert_max_data_size: 209_715_200
+              })
+              |> then(fn existing_config ->
+                ClickHouseAdaptor
+                |> Adaptor.cast_and_validate_config(
+                  %{async_insert_busy_timeout_max_ms: nil, async_insert_max_data_size: nil},
+                  existing_config
+                )
+                |> Ecto.Changeset.apply_changes()
+              end)
+
+            :invalid ->
+              Map.merge(backend.config, %{
+                async_insert_busy_timeout_max_ms: "invalid",
+                async_insert_max_data_size: "invalid"
+              })
+          end
+
+        backend = %{backend | config: config}
+
+        Mimic.expect(Finch, :request, fn request, _pool, _opts ->
+          params = URI.decode_query(request.query)
+
+          assert params["async_insert_busy_timeout_max_ms"] == "3000"
+          refute Map.has_key?(params, "async_insert_max_data_size")
+
+          {:ok, %Finch.Response{status: 200, body: ""}}
+        end)
+
+        result =
+          case unquote(mode) do
+            :compressed ->
+              ClickHouseAdaptor.insert_log_events_compressed(
+                backend,
+                :log,
+                :zlib.gzip(""),
+                async: true
+              )
+
+            :uncompressed ->
+              event = build_mapped_log_event(source: source, message: "default flush settings")
+              ClickHouseAdaptor.insert_log_events(backend, [event], :log, async: true)
+          end
+
+        assert :ok = result
+      end
+    end
+
+    for mode <- [:compressed, :uncompressed],
+        async? <- [true, false],
+        {timeout_ms, max_bytes, expected_timeout_ms, expected_max_bytes} <- [
+          {200, 52_428_800, 200, 52_428_800},
+          {3_500, 209_715_200, 3_500, 209_715_200},
+          {4_000, 268_435_456, 4_000, 268_435_456},
+          {199, 52_428_799, 200, 52_428_800},
+          {4_001, 268_435_457, 4_000, 268_435_456},
+          {5_000, 1_073_741_824, 4_000, 268_435_456},
+          {0, 0, 200, 52_428_800},
+          {-1, -1, 200, 52_428_800}
+        ] do
+      test "#{mode} inserts clamp stored flush settings #{timeout_ms}/#{max_bytes} only when async=#{async?}",
+           %{backend: backend, source: source} do
+        backend = %{
+          backend
+          | config:
+              Map.merge(backend.config, %{
+                async_insert_busy_timeout_max_ms: unquote(timeout_ms),
+                async_insert_max_data_size: unquote(max_bytes)
+              })
+        }
+
+        Mimic.expect(Finch, :request, fn request, _pool, _opts ->
+          params = URI.decode_query(request.query)
+
+          assert params["max_execution_time"] == "10"
+
+          if unquote(async?) do
+            assert params["async_insert_busy_timeout_max_ms"] ==
+                     to_string(unquote(expected_timeout_ms))
+
+            assert params["async_insert_max_data_size"] == to_string(unquote(expected_max_bytes))
+            assert params["wait_for_async_insert_timeout"] == "10"
+          else
+            refute Map.has_key?(params, "async_insert_busy_timeout_max_ms")
+            refute Map.has_key?(params, "async_insert_max_data_size")
+          end
+
+          {:ok, %Finch.Response{status: 200, body: ""}}
+        end)
+
+        result =
+          case unquote(mode) do
+            :compressed ->
+              ClickHouseAdaptor.insert_log_events_compressed(backend, :log, :zlib.gzip(""),
+                async: unquote(async?)
+              )
+
+            :uncompressed ->
+              event = build_mapped_log_event(source: source, message: "configured flush settings")
+              ClickHouseAdaptor.insert_log_events(backend, [event], :log, async: unquote(async?))
+          end
+
+        assert :ok = result
+      end
     end
   end
 
@@ -3266,6 +3575,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
+  describe "init/1" do
+    test "gives ingest pipelines a 30 second shutdown to drain in-flight inserts" do
+      backend = %Backend{id: System.unique_integer([:positive]), type: :clickhouse}
+
+      {:ok, {_flags, children}} = ClickHouseAdaptor.init(backend)
+
+      assert %{start: {DynamicPipeline, :start_link, [opts]}} =
+               Enum.find(children, &(&1.id == DynamicPipeline))
+
+      assert Keyword.fetch!(opts, :shutdown) == 30_000
+    end
+  end
+
   describe "resolve_pipeline_count/2" do
     test "scales up when every queue is above the scaling threshold" do
       state = %{pipeline_count: 3, last_count_decrease: nil}
@@ -3480,6 +3802,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       backend
       | token: long_token
     }
+  end
+
+  defp async_grant_statement, do: QueryTemplates.async_insert_grant_check_statement()
+
+  defp test_connection_running?(backend, statement) do
+    test_pid = self()
+
+    stub(Ch, :query, fn pool, query_statement, params, opts ->
+      if query_statement == statement, do: send(test_pid, :statement_ran)
+
+      Mimic.call_original(Ch, :query, [pool, query_statement, params, opts])
+    end)
+
+    with :ok <- ClickHouseAdaptor.test_connection(backend) do
+      receive do
+        :statement_ran -> {:ok, true}
+      after
+        0 -> {:ok, false}
+      end
+    end
   end
 
   defp random_string(length) do

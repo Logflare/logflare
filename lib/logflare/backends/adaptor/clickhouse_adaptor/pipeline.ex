@@ -30,7 +30,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.EncodedRow
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingConfigStore
   alias Logflare.Backends.Backend
   alias Logflare.Backends.BufferProducer
   alias Logflare.Backends.IngestEventQueue
@@ -39,6 +38,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   alias Logflare.LogEvent
   alias Logflare.LogEvent.TypeDetection
   alias Logflare.Mapper
+  alias Logflare.Mapper.ConfigStore
   alias Logflare.Mapper.OutputContext
   alias Logflare.Utils
 
@@ -84,6 +84,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   def max_batch_size, do: @batch_size
 
   @doc false
+  @spec default_batch_timeout() :: pos_integer()
+  def default_batch_timeout, do: @batch_timeout
+
+  @doc false
   @spec max_in_flight() :: pos_integer()
   def max_in_flight, do: @max_in_flight
 
@@ -103,6 +107,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     {name, args} = Keyword.pop(args, :name)
     backend = Keyword.fetch!(args, :backend)
     processor_concurrency = processor_concurrency()
+    batch_size = config_value(backend, :batch_size, @batch_size)
+    batch_timeout = config_value(backend, :batch_timeout, @batch_timeout)
 
     Broadway.start_link(__MODULE__,
       name: name,
@@ -116,7 +122,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
              consolidated: true,
              id_passing: true,
              max_in_flight: @max_in_flight,
-             seed_batch_size: @batch_size
+             seed_batch_size: batch_size
            ]},
         transformer: {__MODULE__, :transform, [backend_id: backend.id]},
         concurrency: @producer_concurrency
@@ -131,20 +137,30 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       batchers: [
         ch: [
           concurrency: @batcher_concurrency,
-          batch_size: @batch_size,
-          batch_timeout: @batch_timeout
+          batch_size: batch_size,
+          batch_timeout: batch_timeout
         ]
       ],
       context: build_processor_context(backend.id)
     )
   end
 
+  @spec config_value(Backend.t(), atom(), pos_integer()) :: pos_integer()
+  defp config_value(%Backend{config: %{} = config}, key, default) do
+    case Map.get(config, key) do
+      value when is_pos_integer(value) -> value
+      _ -> default
+    end
+  end
+
+  defp config_value(_backend, _key, default), do: default
+
   @doc false
   @spec build_processor_context(pos_integer()) :: map()
   def build_processor_context(backend_id) do
     mapper_configs =
       Map.new(@event_types, fn event_type ->
-        {:ok, compiled, config_id} = MappingConfigStore.get_compiled(event_type)
+        {:ok, compiled, config_id} = ConfigStore.get_compiled(event_type, :ch_row_binary)
 
         {event_type,
          %{
@@ -197,7 +213,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         %{compiled: compiled, mapping_config_id: mapping_config_id} =
           Map.fetch!(mapper_configs, event_type)
 
-        output_context = OutputContext.clickhouse_row_binary(event, mapping_config_id)
+        output_context = OutputContext.ch_row_binary(event, mapping_config_id)
 
         case Mapper.map_result(event.body, compiled, output_context: output_context) do
           {:ok, row} ->
@@ -493,6 +509,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   end
 
   @spec async_insert?(Backend.t(), non_neg_integer()) :: boolean()
+  defp async_insert?(%Backend{config: %{use_async_inserts_only: true}}, _row_count), do: true
+
   defp async_insert?(
          %Backend{
            config: %{use_async_inserts_for_small_batches: true, async_insert_max_rows: max_rows}

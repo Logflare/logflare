@@ -93,7 +93,9 @@ defmodule Logflare.Mapper.MappingConfig do
   use TypedEctoSchema
 
   import Ecto.Changeset
-  import Logflare.Utils.Guards, only: [is_empty_map: 1, is_non_empty_binary: 1]
+
+  import Logflare.Utils.Guards,
+    only: [is_empty_map: 1, is_non_empty_binary: 1, is_non_negative_integer: 1]
 
   alias __MODULE__.FieldConfig
   alias __MODULE__.InferCondition
@@ -136,13 +138,31 @@ defmodule Logflare.Mapper.MappingConfig do
 
   @spec to_nif_map(t()) :: map()
   def to_nif_map(%__MODULE__{fields: fields, output: output}) do
-    config = %{"fields" => Enum.map(fields, &field_to_nif_map/1)}
+    nif_config = %{"fields" => Enum.map(fields, &field_to_nif_map/1)}
 
     case output do
-      %OutputFormat{} -> Map.put(config, "output", OutputFormat.to_nif_map(output))
-      nil -> config
+      %OutputFormat{} -> Map.put(nif_config, "output", OutputFormat.to_nif_map(output))
+      nil -> nif_config
     end
   end
+
+  @doc """
+  Rewrites every `datetime64`/`array_datetime64` field to `precision`, so a
+  field list authored for one timestamp unit can target another.
+  """
+  @spec with_timestamp_precision(t(), 0..9) :: t()
+  def with_timestamp_precision(%__MODULE__{fields: fields} = config, precision)
+      when is_non_negative_integer(precision) and precision <= 9 do
+    %{config | fields: Enum.map(fields, &put_timestamp_precision(&1, precision))}
+  end
+
+  @spec put_timestamp_precision(FieldConfig.t(), non_neg_integer()) :: FieldConfig.t()
+  defp put_timestamp_precision(%FieldConfig{type: type} = field, precision)
+       when type in ["datetime64", "array_datetime64"] do
+    %{field | precision: precision}
+  end
+
+  defp put_timestamp_precision(%FieldConfig{} = field, _precision), do: field
 
   @spec field_to_nif_map(FieldConfig.t()) :: map()
   defp field_to_nif_map(%FieldConfig{} = f) do
@@ -176,6 +196,14 @@ defmodule Logflare.Mapper.MappingConfig do
     do: []
 
   defp encode_nif_default(%FieldConfig{default: nil}), do: nil
+
+  defp encode_nif_default(%FieldConfig{default: default, type: "enum8"})
+       when is_non_empty_binary(default) do
+    case Integer.parse(default) do
+      {value, ""} -> value
+      _label -> default
+    end
+  end
 
   defp encode_nif_default(%FieldConfig{default: val, type: type})
        when type in ["uint8", "uint32", "uint64", "int32", "float64", "enum8", "datetime64"] do
