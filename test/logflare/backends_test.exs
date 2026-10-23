@@ -1458,7 +1458,7 @@ defmodule Logflare.BackendsTest do
       assert :noop = SourceSup.start_backend_child(source, backend)
     end
 
-    test "SourceSupWorker check skips a rule whose backend is missing from cache", %{
+    test "SourceSupWorker check warns on a rule whose backend is missing from cache", %{
       source: source,
       user: user
     } do
@@ -1468,7 +1468,12 @@ defmodule Logflare.BackendsTest do
       stub(Backends.Cache, :get_backend, fn _id -> nil end)
       state = %{source_id: source.id, interval: :timer.minutes(10)}
 
-      assert {:noreply, ^state} = SourceSupWorker.handle_info(:check, state)
+      log =
+        capture_log([level: :warning], fn ->
+          assert {:noreply, ^state} = SourceSupWorker.handle_info(:check, state)
+        end)
+
+      assert log =~ "Cannot start rule backend child: backend not found"
     end
 
     test "stop_rule_child/1 stops the rule child when its backend is missing from cache", %{

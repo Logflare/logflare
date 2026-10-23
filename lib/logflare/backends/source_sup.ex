@@ -2,6 +2,8 @@ defmodule Logflare.Backends.SourceSup do
   @moduledoc false
   use Supervisor
 
+  require Logger
+
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourceSupWorker
@@ -202,11 +204,19 @@ defmodule Logflare.Backends.SourceSup do
   @spec start_backend_child_by_id(non_neg_integer(), non_neg_integer()) ::
           Supervisor.on_start_child() | :noop
   def start_backend_child_by_id(backend_id, source_id) do
-    with %Backend{} = backend <- Backends.Cache.get_backend(backend_id),
-         %Source{} = source <- Sources.Cache.get_by_id(source_id) do
-      start_backend_child(source, %{backend | register_for_ingest: false})
-    else
-      nil -> :noop
+    case {Backends.Cache.get_backend(backend_id), Sources.Cache.get_by_id(source_id)} do
+      {%Backend{} = backend, %Source{} = source} ->
+        start_backend_child(source, %{backend | register_for_ingest: false})
+
+      {backend, _source} ->
+        missing = if backend, do: "source", else: "backend"
+
+        Logger.warning("Cannot start rule backend child: #{missing} not found",
+          backend_id: backend_id,
+          source_id: source_id
+        )
+
+        :noop
     end
   end
 
