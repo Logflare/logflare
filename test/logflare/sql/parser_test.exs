@@ -42,19 +42,25 @@ defmodule Logflare.Sql.ParserTest do
     end
   end
 
-  describe "parse/2 with ClickHouse positional parameters" do
+  describe "internal converted ClickHouse SQL" do
+    test "customer SQL does not accept converter-only positional bindings" do
+      for sql <- ["SELECT {$0:String}", "SELECT a FROM {$0:Identifier}"] do
+        assert {:error, _} = Parser.parse("clickhouse", sql)
+      end
+    end
+
     test "round-trips native types, repeated names and parameter-shaped literals" do
       sql =
         "SELECT {$0:String}, {$1:Array(UInt64)}, {$0:String}, '{$0:String}' AS literal " <>
           "FROM t WHERE ts = {$2:DateTime64(6, 'UTC')}"
 
-      assert {:ok, ast} = Parser.parse("clickhouse", sql)
+      assert {:ok, ast} = Parser.parse_clickhouse_converted(sql)
       assert {:ok, formatted} = Parser.to_string(ast)
       assert formatted =~ "{$0: String}"
       assert formatted =~ "{$1: Array(UInt64)}"
       assert formatted =~ "{$2: DateTime64(6, 'UTC')}"
       assert formatted =~ "'{$0:String}' AS literal"
-      assert {:ok, reparsed} = Parser.parse("clickhouse", formatted)
+      assert {:ok, reparsed} = Parser.parse_clickhouse_converted(formatted)
       assert {:ok, ^formatted} = Parser.to_string(reparsed)
     end
   end

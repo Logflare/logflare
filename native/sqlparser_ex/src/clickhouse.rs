@@ -72,6 +72,19 @@ mod tests {
     }
 
     #[test]
+    fn customer_parser_stays_strict_while_converted_sql_accepts_native_bindings() {
+        for sql in ["SELECT {$0:String}", "SELECT a FROM {$0:Identifier}"] {
+            assert!(sqlparser::parser::Parser::parse_sql(
+                &sqlparser::dialect::ClickHouseDialect {},
+                sql
+            )
+            .is_err());
+        }
+        assert!(parse("SELECT {$0:String}").is_ok());
+        assert!(parse("SELECT a FROM {$0:Identifier}").is_err());
+    }
+
+    #[test]
     fn malformed_positional_parameters_are_rejected() {
         for sql in ["SELECT {$0:}", "SELECT {$0:String", "SELECT {$0 String}"] {
             assert!(parse(sql).is_err(), "unexpectedly accepted {sql}");

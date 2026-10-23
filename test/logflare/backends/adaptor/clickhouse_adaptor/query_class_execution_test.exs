@@ -66,7 +66,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
              ClickHouseAdaptor.execute_ch_query(
                context.backend,
                "SELECT 1 SETTINGS priority = 0",
-               [], read_cluster: "api_paid")
+               [],
+               read_cluster: "api_paid"
+             )
 
     assert_receive {:telemetry_event, [:logflare, :clickhouse, :read_pool, :query_error],
                     %{count: 1}, metadata}

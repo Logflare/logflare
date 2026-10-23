@@ -55,7 +55,7 @@ Zero (unlimited or no priority), negative values, wrong types, unknown keys, and
 
 ClickHouse profile defaults supply settings not specified by Logflare. Logflare combines class default, selected class, and endpoint-owned settings. Resource limits use the smallest configured value across all three policies; non-limit settings such as priority use the later policy. Hard profile ceilings must be ClickHouse constraints, not merely default values. The server still enforces those constraints after merging.
 
-Endpoint-owned policy is passed separately from consumer SQL. The adaptor checks for consumer overrides anywhere in the final AST, then injects the combined policy once. Supported `EXPLAIN SELECT` wrappers are preserved. Previews show only endpoint-owned settings, not operator class policy. The actual request class and current backend policy are applied at execution time.
+Endpoint-owned policy is passed separately from consumer SQL. Consumer SQL cannot override enforced keys, including in nested SETTINGS clauses. The adaptor injects the combined policy once. Supported `EXPLAIN SELECT` wrappers are preserved. Previews show only endpoint-owned settings, not operator class policy. The actual request class and current backend policy are applied at execution time.
 
 Historical endpoint versions retain current operator ceilings. Cached snapshot reloads also overlay current endpoint policy. Saving endpoint-owned limits invalidates caches for all endpoint versions and stops their active refresh tasks. Already-running foreground queries finish for their existing callers; new callers use replacement caches with current settings.
 

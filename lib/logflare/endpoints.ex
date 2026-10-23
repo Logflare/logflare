@@ -1103,6 +1103,7 @@ defmodule Logflare.Endpoints do
         opts
         |> Keyword.put(:query_type, :endpoint)
         |> Keyword.put(:enforced_clickhouse_settings, endpoint_query.enforced_clickhouse_settings)
+        |> Keyword.put(:validated_clickhouse_sql, endpoint_query.language == :ch_sql)
 
       case adaptor.execute_query(backend, query_args, query_opts) do
         {:ok, %QueryResult{rows: rows} = result} ->

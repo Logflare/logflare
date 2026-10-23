@@ -216,7 +216,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   def execute_query(%Backend{} = backend, %Ecto.Query{} = query, opts) when is_list(opts) do
     with {:ok, {ch_sql, ch_params}} <- ecto_to_sql(query, opts) do
-      execute_query(backend, {ch_sql, ch_params}, opts)
+      execute_query(
+        backend,
+        {ch_sql, ch_params},
+        Keyword.put(opts, :validated_clickhouse_sql, true)
+      )
     end
   end
 
@@ -805,7 +809,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
              Keyword.get(opts, :read_cluster),
              endpoint_settings
            ) do
-      ClickHouseSettings.enforce(IO.iodata_to_binary(statement), settings)
+      statement = IO.iodata_to_binary(statement)
+
+      if Keyword.get(opts, :validated_clickhouse_sql, false) do
+        ClickHouseSettings.enforce_validated(statement, settings)
+      else
+        ClickHouseSettings.enforce(statement, settings)
+      end
     end
   end
 

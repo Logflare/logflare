@@ -2,6 +2,7 @@ use rustler::Atom;
 use rustler::NifResult;
 use rustler::NifTuple;
 use sqlparser::dialect::BigQueryDialect;
+use sqlparser::dialect::ClickHouseDialect;
 use sqlparser::dialect::PostgreSqlDialect;
 use sqlparser::parser::Parser;
 use sqlparser::parser::ParserError::ParserError;
@@ -25,12 +26,23 @@ struct Response {
 fn parse(dialect_str: &str, query: &str) -> NifResult<Response> {
     let result = match dialect_str {
         "bigquery" => Parser::parse_sql(&BigQueryDialect {}, query),
-        "clickhouse" => clickhouse::parse(query),
+        "clickhouse" => Parser::parse_sql(&ClickHouseDialect {}, query),
         "postgres" => Parser::parse_sql(&PostgreSqlDialect {}, query),
         _ => Err(ParserError(
             "Parser for this dialect is not supported.".to_string(),
         )),
     };
+    encode_parse_result(result)
+}
+
+#[rustler::nif]
+fn parse_clickhouse_converted(query: &str) -> NifResult<Response> {
+    encode_parse_result(clickhouse::parse(query))
+}
+
+fn encode_parse_result(
+    result: Result<Vec<sqlparser::ast::Statement>, sqlparser::parser::ParserError>,
+) -> NifResult<Response> {
     match result {
         Ok(v) => Ok(Response {
             status: atoms::ok(),

@@ -26,14 +26,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassSettings do
 
   def normalize(_), do: {:error, "Query class settings must be a map"}
 
-  @spec resolve(term(), term(), map()) :: {:ok, map()} | {:error, String.t()}
+  @spec resolve(map(), term(), map()) :: {:ok, map()} | {:error, String.t()}
   def resolve(classes, requested, endpoint_settings) do
-    with {:ok, classes} <- normalize(classes) do
-      ClickHouseSettings.merge([
-        Map.get(classes, "default", %{}),
-        Map.get(classes, requested, %{}),
-        endpoint_settings
-      ])
+    with {:ok, endpoint_settings} <- ClickHouseSettings.normalize(endpoint_settings) do
+      {:ok,
+       ClickHouseSettings.merge_normalized([
+         Map.get(classes, "default", %{}),
+         Map.get(classes, requested, %{}),
+         endpoint_settings
+       ])}
     end
   end
 

@@ -86,6 +86,55 @@ defmodule Logflare.Endpoints.ClickHouseSettingsTest do
     end
   end
 
+  test "validated SQL without policy syntax avoids the AST round trip" do
+    for query <- [
+          "SELECT  a FROM t",
+          "WITH data AS (SELECT {$0:Int64} AS n) SELECT n FROM data",
+          "EXPLAIN ANALYZE SELECT a FROM t",
+          "SELECT a FROM t UNION ALL SELECT b FROM s"
+        ] do
+      assert {:ok, prepared} = ClickHouseSettings.enforce_validated(query, %{"priority" => 5})
+      assert prepared == query <> " SETTINGS priority = 5"
+      assert {:ok, ast} = Parser.parse_clickhouse_converted(prepared)
+      assert {:ok, canonical_fast} = Parser.to_string(ast)
+      assert {:ok, ^canonical_fast} = ClickHouseSettings.enforce(query, %{"priority" => 5})
+    end
+  end
+
+  test "validated enforcement retains AST checks for conflicting or ambiguous syntax" do
+    for query <- [
+          "SELECT a FROM t SETTINGS PRIORITY = 0",
+          "WITH data AS (SELECT a FROM t SETTINGS priority = 0) SELECT a FROM data",
+          "EXPLAIN SELECT a FROM t SETTINGS priority = 0",
+          "SELECT 1; SELECT 2",
+          "EXPLAIN TABLE t"
+        ] do
+      assert {:error, _} = ClickHouseSettings.enforce_validated(query, %{"priority" => 5})
+    end
+
+    for query <- [
+          "SELECT 1 -- trailing comment",
+          "SELECT 1 /* comment */",
+          "SELECT 1;",
+          "SELECT a FROM t SETTINGS optimize_read_in_order = 1"
+        ] do
+      assert ClickHouseSettings.enforce_validated(query, %{"priority" => 5}) ==
+               ClickHouseSettings.enforce(query, %{"priority" => 5})
+    end
+
+    assert {:error, _} =
+             ClickHouseSettings.enforce_validated("SELECT 1", %{"priority" => "5; SELECT 2"})
+  end
+
+  test "validated policy literals match AST enforcement at numeric bounds" do
+    for limit <- [1, 9_223_372_036_854_775_807, 0.25, 1.0e-6] do
+      settings = %{"max_execution_time" => limit, "max_rows_to_read" => 1, "priority" => 5}
+
+      assert ClickHouseSettings.enforce_validated("SELECT a FROM t", settings) ==
+               ClickHouseSettings.enforce("SELECT a FROM t", settings)
+    end
+  end
+
   test "preserves caller settings and adds resource limits to the final query" do
     query = "WITH src AS (SELECT a FROM t) SELECT a FROM src SETTINGS optimize_read_in_order = 1"
     settings = %{"max_execution_time" => 5, "max_memory_usage" => 100}

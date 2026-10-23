@@ -46,6 +46,23 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassSettingsTest do
     assert settings["timeout_overflow_mode"] == "throw"
   end
 
+  test "resolution preserves normalized default and class overflow modes" do
+    assert {:ok, classes} =
+             QueryClassSettings.normalize(%{
+               "default" => %{"priority" => 5, "max_execution_time" => 2},
+               "api_paid" => %{"max_rows_to_read" => 10}
+             })
+
+    assert {:ok,
+            %{
+              "priority" => 5,
+              "max_execution_time" => 2,
+              "max_rows_to_read" => 10,
+              "read_overflow_mode" => "throw",
+              "timeout_overflow_mode" => "throw"
+            }} = QueryClassSettings.resolve(classes, "api_paid", %{})
+  end
+
   test "rejects unknown classes, missing defaults, wrong types and unsafe settings" do
     for config <- [
           nil,
