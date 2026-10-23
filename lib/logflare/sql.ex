@@ -156,6 +156,10 @@ defmodule Logflare.Sql do
     "use_skip_indexes_if_final"
   ]
 
+  @owner_only_clickhouse_settings [
+    "move_primary_key_columns_to_end_of_prewhere"
+  ]
+
   @doc """
   Formats a SQL query string for display.
 
@@ -227,6 +231,8 @@ defmodule Logflare.Sql do
   - Single query only (no multiple statements)
   - No wildcard selects (`SELECT *`)
   - No restricted functions (managed using module attributes `@bq_restricted_functions` and `@ch_restricted_functions`)
+  - ClickHouse `SETTINGS` only from `@allowed_clickhouse_settings`. The owner query (a plain query, or the CTE
+    query of a sandboxed pair) may also use `@owner_only_clickhouse_settings`. The consumer query may not.
   - All referenced tables/sources exist
 
   ## Sandboxed Queries
@@ -236,6 +242,9 @@ defmodule Logflare.Sql do
   being restricted to pre-defined data subsets via CTEs.
 
   PostgreSQL does not currently support sandboxed queries.
+
+  For ClickHouse, top-level `SETTINGS` on the CTE query's final `SELECT` apply to the transformed query.
+  They are merged with the consumer query's `SETTINGS`, and the CTE query's value wins for a setting in both.
 
   ## Examples
 
@@ -598,11 +607,11 @@ defmodule Logflare.Sql do
   defp sandboxed_ast(_, _), do: {:ok, nil}
 
   # applies to both ctes, sandboxed queries, and non-ctes
-  defp validate_query(ast, %{dialect: dialect} = data) when is_list(ast) do
+  defp validate_query(ast, %{dialect: dialect} = data, role \\ :owner) when is_list(ast) do
     with :ok <- check_single_query_only(ast),
          :ok <- check_select_statement_only(ast, dialect),
          :ok <- maybe_check_restricted_functions(ast, dialect, data),
-         :ok <- maybe_check_restricted_settings(ast, dialect),
+         :ok <- maybe_check_restricted_settings(ast, dialect, role),
          :ok <- has_wildcard_in_select(ast),
          :ok <- check_all_sources_allowed(ast, data) do
       :ok
@@ -615,13 +624,19 @@ defmodule Logflare.Sql do
 
   defp maybe_check_restricted_functions(_ast, _dialect, _data), do: :ok
 
-  defp maybe_check_restricted_settings(ast, "clickhouse"), do: has_restricted_settings(ast)
+  defp maybe_check_restricted_settings(ast, "clickhouse", role),
+    do: has_restricted_settings(ast, :ok, clickhouse_settings_allowlist(role))
 
-  defp maybe_check_restricted_settings(_ast, _dialect), do: :ok
+  defp maybe_check_restricted_settings(_ast, _dialect, _role), do: :ok
+
+  defp clickhouse_settings_allowlist(:owner),
+    do: @allowed_clickhouse_settings ++ @owner_only_clickhouse_settings
+
+  defp clickhouse_settings_allowlist(:sandboxed), do: @allowed_clickhouse_settings
 
   # applies only to the sandboed query
   defp maybe_validate_sandboxed_query_ast({cte_ast, ast}, data) when is_list(ast) do
-    with :ok <- validate_query(ast, data),
+    with :ok <- validate_query(ast, data, :sandboxed),
          :ok <- has_restricted_sources(cte_ast, ast),
          :ok <- validate_sandboxed_query_ast(ast, data) do
       :ok
@@ -805,28 +820,27 @@ defmodule Logflare.Sql do
   defp function_restricted?(name, "clickhouse"), do: name in @ch_restricted_functions
   defp function_restricted?(_name, _dialect), do: false
 
-  defp has_restricted_settings(ast) when is_list(ast),
-    do: has_restricted_settings(ast, :ok)
-
-  defp has_restricted_settings({"settings", settings}, :ok) when is_list(settings) do
-    check_settings_allowed(settings)
+  defp has_restricted_settings({"settings", settings}, :ok, allowlist) when is_list(settings) do
+    check_settings_allowed(settings, allowlist)
   end
 
-  defp has_restricted_settings(kv, :ok = acc) when is_list_or_map(kv) do
-    Enum.reduce(kv, acc, fn kv, nested_acc -> has_restricted_settings(kv, nested_acc) end)
+  defp has_restricted_settings(kv, :ok = acc, allowlist) when is_list_or_map(kv) do
+    Enum.reduce(kv, acc, fn kv, nested_acc ->
+      has_restricted_settings(kv, nested_acc, allowlist)
+    end)
   end
 
-  defp has_restricted_settings({_k, v}, :ok = acc) when is_list_or_map(v) do
-    has_restricted_settings(v, acc)
+  defp has_restricted_settings({_k, v}, :ok = acc, allowlist) when is_list_or_map(v) do
+    has_restricted_settings(v, acc, allowlist)
   end
 
-  defp has_restricted_settings(_kv, acc), do: acc
+  defp has_restricted_settings(_kv, acc, _allowlist), do: acc
 
-  defp check_settings_allowed(settings) do
+  defp check_settings_allowed(settings, allowlist) do
     found_restricted =
       for %{"key" => %{"value" => key}} <- settings,
           normalized = String.downcase(key),
-          normalized not in @allowed_clickhouse_settings do
+          normalized not in allowlist do
         normalized
       end
 
@@ -998,10 +1012,19 @@ defmodule Logflare.Sql do
        when is_non_empty_binary(sandboxed_query) do
     case extract_replacement_query_from_ast(ast, data) do
       {:ok, %{"with" => with_clause} = replacement_query} when not is_nil(with_clause) ->
-        {k, Map.merge(sandbox_query, %{"body" => %{"Query" => replacement_query}})}
+        settings = merge_settings(sandbox_query["settings"], replacement_query["settings"])
+        body = %{"Query" => Map.put(replacement_query, "settings", nil)}
+        {k, Map.merge(sandbox_query, %{"body" => body, "settings" => settings})}
 
       {:ok, replacement_query} ->
-        {k, Map.merge(sandbox_query, Map.drop(replacement_query, ["with"]))}
+        settings = merge_settings(sandbox_query["settings"], replacement_query["settings"])
+
+        replacement_query =
+          replacement_query
+          |> Map.drop(["with"])
+          |> Map.put("settings", settings)
+
+        {k, Map.merge(sandbox_query, replacement_query)}
 
       {:error, transformed_statements} ->
         Logger.warning(
@@ -1014,6 +1037,22 @@ defmodule Logflare.Sql do
   end
 
   defp do_replace_sandboxed_query(ast_node, _data), do: {:recurse, ast_node}
+
+  defp merge_settings(owner_settings, sandboxed_settings) do
+    owner_settings = owner_settings || []
+    owner_keys = MapSet.new(owner_settings, &setting_key/1)
+
+    sandboxed_settings
+    |> List.wrap()
+    |> Enum.reject(&(setting_key(&1) in owner_keys))
+    |> Enum.concat(owner_settings)
+    |> case do
+      [] -> nil
+      settings -> settings
+    end
+  end
+
+  defp setting_key(%{"key" => %{"value" => key}}), do: String.downcase(key)
 
   defp find_all_source_names(ast),
     do: find_all_source_names(ast, [], %{ast: ast})
