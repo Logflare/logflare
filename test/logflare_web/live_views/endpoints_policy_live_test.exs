@@ -109,7 +109,7 @@ defmodule LogflareWeb.EndpointsPolicyLiveTest do
     assert html =~ "Endpoint Not Found"
   end
 
-  test "admins retain their own privileges inside a non-admin customer's team", context do
+  test "team actors cannot configure policy even when their email belongs to an admin", context do
     admin = insert(:user, admin: true)
     member = insert(:team_user, team: context.team, email: admin.email)
 
@@ -119,6 +119,41 @@ defmodule LogflareWeb.EndpointsPolicyLiveTest do
       |> live_with_redirect("/endpoints/#{context.endpoint.id}/edit?t=#{context.team.id}",
         bypass_team_param: true
       )
+
+    refute has_element?(view, "#enforced-settings-form")
+
+    assert render_hook(view, "save-enforced-settings", %{
+             "settings" => %{"max_execution_time" => "7"}
+           }) =~ "Not authorized to configure ClickHouse settings"
+
+    assert Repo.reload!(context.endpoint).enforced_clickhouse_settings == %{}
+  end
+
+  test "team actors with admin emails cannot inspect unrelated customer SQL", context do
+    admin = insert(:user, admin: true)
+    member = insert(:team_user, team: context.team, email: admin.email)
+    other = insert(:endpoint, language: :ch_sql, query: "SELECT 1 AS private_customer_sql")
+
+    {:ok, view, html} =
+      context.conn
+      |> login_user(context.owner, member)
+      |> live_with_redirect("/endpoints/#{other.id}/edit?t=#{context.team.id}",
+        bypass_team_param: true
+      )
+
+    assert html =~ "Endpoint Not Found"
+    refute html =~ "private_customer_sql"
+    refute has_element?(view, "#enforced-settings-form")
+    assert Repo.reload!(other).enforced_clickhouse_settings == %{}
+  end
+
+  test "admins use their own account context and lose access when revoked", context do
+    admin = insert(:user, admin: true)
+
+    {:ok, view, _} =
+      context.conn
+      |> login_user(admin)
+      |> live_with_redirect("/endpoints/#{context.endpoint.id}/edit")
 
     assert has_element?(view, "#enforced-settings-form")
     save_settings(view)

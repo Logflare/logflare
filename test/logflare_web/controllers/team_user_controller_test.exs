@@ -1,6 +1,7 @@
 defmodule LogflareWeb.TeamUserControllerTest do
   use LogflareWeb.ConnCase
 
+  alias Logflare.Repo
   alias Logflare.TeamUsers
 
   setup do
@@ -36,6 +37,53 @@ defmodule LogflareWeb.TeamUserControllerTest do
     assert team_user.name == new_name
     assert team_user.email_preferred == new_email
     assert team_user.phone == new_phone
+  end
+
+  test "profile updates ignore authentication and membership attributes", %{conn: conn} do
+    owner = insert(:user)
+    member = insert(:user, email: "profile-member@example.test")
+    admin = insert(:user, admin: true, email: "profile-operator@example.test")
+    team = insert(:team, user: owner)
+    other_team = insert(:team)
+    team_user = insert(:team_user, team: team, email: member.email) |> Repo.reload!()
+
+    identity_fields = [
+      :id,
+      :team_id,
+      :email,
+      :provider,
+      :provider_uid,
+      :token,
+      :valid_google_account
+    ]
+
+    response =
+      conn
+      |> login_user(member, team_user)
+      |> put(~p"/profile/edit?t=#{team.id}", %{
+        "team_user" => %{
+          "id" => admin.id,
+          "team_id" => other_team.id,
+          "email" => admin.email,
+          "provider" => "email",
+          "provider_uid" => admin.email,
+          "token" => Ecto.UUID.generate(),
+          "valid_google_account" => true,
+          "name" => "Safe profile edit",
+          "email_preferred" => "CONTACT@EXAMPLE.TEST"
+        }
+      })
+
+    assert redirected_to(response) == ~p"/profile/edit?t=#{team.id}"
+    updated = Repo.reload!(team_user)
+    assert Map.take(updated, identity_fields) == Map.take(team_user, identity_fields)
+    assert updated.name == "Safe profile edit"
+    assert updated.email_preferred == "contact@example.test"
+    assert get_session(response, :current_email) == member.email
+
+    next_response = get(recycle(response), ~p"/profile/edit?t=#{team.id}")
+    assert next_response.status == 200
+    assert next_response.resp_body =~ "Safe profile edit"
   end
 
   test "not authenticated user is redirected to login page", %{conn: conn} do
@@ -145,10 +193,10 @@ defmodule LogflareWeb.TeamUserControllerTest do
     team = insert(:team, user: owner)
     team_user = insert(:team_user, team: team)
 
-    expect(TeamUsers, :update_team_user, fn tu, params ->
+    expect(TeamUsers, :update_team_user_profile, fn tu, params ->
       changeset =
         tu
-        |> TeamUsers.TeamUser.changeset(params)
+        |> TeamUsers.TeamUser.profile_changeset(params)
         |> Ecto.Changeset.add_error(:email_preferred, "is invalid")
 
       {:error, changeset}

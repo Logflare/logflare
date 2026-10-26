@@ -3,6 +3,7 @@ defmodule Logflare.Endpoints.EndpointPolicyTest do
 
   alias Logflare.Endpoints
   alias Logflare.Repo
+  alias Logflare.TeamUsers
   alias PaperTrail.Version
 
   setup do
@@ -22,8 +23,6 @@ defmodule Logflare.Endpoints.EndpointPolicyTest do
   end
 
   test "policy changes audit the actual operator and authoritative previous settings", context do
-    member = insert(:team_user, team: context.owner.team, email: context.admin.email)
-
     for {settings, previous} <- [
           {%{"max_rows_to_read" => 10}, %{}},
           {%{"max_execution_time" => 7},
@@ -32,7 +31,7 @@ defmodule Logflare.Endpoints.EndpointPolicyTest do
         ] do
       assert {:ok, current} =
                Endpoints.configure_enforced_clickhouse_settings(
-                 member,
+                 context.admin,
                  context.endpoint,
                  settings
                )
@@ -249,6 +248,54 @@ defmodule Logflare.Endpoints.EndpointPolicyTest do
 
     assert {:ok, sql} = Endpoints.get_transformed_query(returned)
     refute sql =~ "max_execution_time"
+  end
+
+  test "team actors cannot acquire operator access by editing email or colliding user IDs",
+       context do
+    admin =
+      context.admin
+      |> Ecto.Changeset.change(email: "endpoint-policy-operator@example.test")
+      |> Repo.update!()
+
+    member = insert(:team_user, id: admin.id, team: context.owner.team)
+    assert {:ok, member} = TeamUsers.update_team_user(member, %{email: admin.email})
+    refute Endpoints.enforced_settings_admin?(member)
+
+    for settings <- [%{}, %{"max_rows_to_read" => 1}] do
+      assert {:error, :forbidden} =
+               Endpoints.configure_enforced_clickhouse_settings(
+                 member,
+                 context.endpoint,
+                 settings
+               )
+    end
+
+    assert Repo.reload!(context.endpoint).enforced_clickhouse_settings == %{}
+    assert Repo.aggregate(Version, :count) == 0
+  end
+
+  test "user operator privileges are reloaded rather than trusted from the actor", context do
+    assert Endpoints.enforced_settings_admin?(%{context.admin | admin: false})
+
+    assert {:ok, updated} =
+             Endpoints.configure_enforced_clickhouse_settings(
+               %{context.admin | admin: false},
+               context.endpoint,
+               %{"max_execution_time" => 7}
+             )
+
+    context.admin |> Ecto.Changeset.change(admin: false) |> Repo.update!()
+    refute Endpoints.enforced_settings_admin?(context.admin)
+
+    assert {:error, :forbidden} =
+             Endpoints.configure_enforced_clickhouse_settings(context.admin, updated, %{})
+
+    assert Repo.reload!(updated).enforced_clickhouse_settings == %{
+             "max_execution_time" => 7,
+             "timeout_overflow_mode" => "throw"
+           }
+
+    assert Repo.aggregate(Version, :count) == 1
   end
 
   test "invalid and unauthorized changes do not create policy audit records", context do
