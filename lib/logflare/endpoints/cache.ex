@@ -19,27 +19,47 @@ defmodule Logflare.Endpoints.Cache do
     )
   end
 
-  @spec get_endpoint_policy(integer()) :: EndpointQuery.t() | nil
+  @spec get_endpoint_policy(integer()) ::
+          EndpointQuery.t() | nil | {:error, :database_unavailable}
   def get_endpoint_policy(id) do
     key = {:get_endpoint_policy, [id]}
 
-    {:ok, endpoint} =
-      Cachex.transaction(__MODULE__, [key], &fetch_endpoint_policy(&1, key, id))
+    case Cachex.get(__MODULE__, key) do
+      {:ok, {:cached, endpoint}} ->
+        endpoint
 
-    endpoint
+      {:ok, nil} ->
+        {:ok, result} =
+          Cachex.transaction(__MODULE__, [key], &fetch_endpoint_policy(&1, key, id))
+
+        result
+    end
   end
 
-  @spec fetch_endpoint_policy(Cachex.t(), tuple(), integer()) :: EndpointQuery.t() | nil
+  @spec fetch_endpoint_policy(Cachex.t(), tuple(), integer()) ::
+          EndpointQuery.t() | nil | {:error, :database_unavailable}
   defp fetch_endpoint_policy(cache, key, id) do
     case Cachex.get(cache, key) do
       {:ok, {:cached, endpoint}} ->
         endpoint
 
       {:ok, nil} ->
-        endpoint = Repo.with_primary(fn -> Endpoints.get_endpoint_query(id) end)
-        {:ok, true} = Cachex.put(cache, key, {:cached, endpoint})
-        endpoint
+        with {:ok, endpoint} <- read_endpoint_policy(id) do
+          {:ok, true} = Cachex.put(cache, key, {:cached, endpoint})
+          endpoint
+        end
     end
+  end
+
+  @spec read_endpoint_policy(integer()) ::
+          {:ok, EndpointQuery.t() | nil} | {:error, :database_unavailable}
+  defp read_endpoint_policy(id) do
+    {:ok, Repo.with_primary(fn -> Endpoints.get_endpoint_query(id) end)}
+  rescue
+    _error in DBConnection.ConnectionError -> {:error, :database_unavailable}
+  catch
+    :exit, {reason, _call} when reason in [:noproc, :killed] ->
+      {:error, :database_unavailable}
   end
 
   @spec invalidate_endpoint_policy(integer()) :: :ok | {:error, term()}
@@ -52,14 +72,25 @@ defmodule Logflare.Endpoints.Cache do
     end
   end
 
+  @doc """
+  Invalidates policy entries on connected nodes. Nodes predating this API have no
+  entries to evict, but must still be upgraded before enabling endpoint policy.
+  """
   @spec invalidate_endpoint_policy_cluster(integer()) ::
           :ok | {:error, :cache_invalidation_failed}
   def invalidate_endpoint_policy_cluster(id) do
     [node() | Node.list()]
     |> :erpc.multicall(__MODULE__, :invalidate_endpoint_policy, [id], 5_000)
     |> Enum.reduce(:ok, fn
-      {:ok, :ok}, status -> status
-      _failure, _status -> {:error, :cache_invalidation_failed}
+      {:ok, :ok}, status ->
+        status
+
+      {:error, {:exception, :undef, [{__MODULE__, :invalidate_endpoint_policy, [^id], []}]}},
+      status ->
+        status
+
+      _failure, _status ->
+        {:error, :cache_invalidation_failed}
     end)
   end
 

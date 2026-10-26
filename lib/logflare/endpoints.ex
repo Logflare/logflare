@@ -41,7 +41,7 @@ defmodule Logflare.Endpoints do
   @typep origin :: User.t() | TeamUser.t() | OauthAccessToken.t()
   @typep run_query_return ::
            {:ok, %{required(:rows) => [term()], optional(atom()) => any()}}
-           | {:error, String.t() | QueryError.t() | :sandboxing_disabled}
+           | {:error, String.t() | QueryError.t() | :sandboxing_disabled | :database_unavailable}
 
   defguardp is_integer_or_string(value) when is_integer(value) or is_non_empty_binary(value)
 
@@ -900,12 +900,18 @@ defmodule Logflare.Endpoints do
         :erpc.call(resolver_node, Resolver, :resolve, [query, params, opts], 5_000)
       end
 
-    case ResultsCache.query(cache) do
-      {:error, :stale_cache} ->
-        query_results_cache(query, params, opts, attempts - 1, node(cache))
+    case cache do
+      {:error, :cache_replaced} ->
+        query_results_cache(query, params, opts, 0, resolver_node)
 
-      response ->
-        response
+      pid when is_pid(pid) ->
+        case ResultsCache.query(pid) do
+          {:error, :stale_cache} ->
+            query_results_cache(query, params, opts, attempts - 1, node(pid))
+
+          response ->
+            response
+        end
     end
   catch
     :error, {:erpc, _reason} -> query_results_cache(query, params, opts, 0, resolver_node)
@@ -949,7 +955,7 @@ defmodule Logflare.Endpoints do
   Useful for debugging and UI display of merged sandbox queries.
   """
   @spec get_transformed_query(EndpointQuery.t(), map(), Keyword.t()) ::
-          {:ok, String.t()} | {:error, String.t()}
+          {:ok, String.t()} | {:error, String.t() | :database_unavailable}
   def get_transformed_query(%EndpointQuery{} = endpoint_query, params \\ %{}, opts \\ [])
       when is_map(params) and is_list(opts) do
     %EndpointQuery{
@@ -996,7 +1002,7 @@ defmodule Logflare.Endpoints do
   end
 
   @spec reload_enforced_settings(EndpointQuery.t()) ::
-          {:ok, EndpointQuery.t()} | {:error, String.t()}
+          {:ok, EndpointQuery.t()} | {:error, String.t() | :database_unavailable}
   defp reload_enforced_settings(%EndpointQuery{id: id, language: :ch_sql} = endpoint)
        when is_integer(id) do
     case Cache.get_endpoint_policy(id) do
@@ -1005,6 +1011,9 @@ defmodule Logflare.Endpoints do
 
       nil ->
         {:error, "Endpoint not found"}
+
+      {:error, :database_unavailable} = error ->
+        error
     end
   end
 
