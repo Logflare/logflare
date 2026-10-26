@@ -836,9 +836,25 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end
   end
 
+  @doc """
+  Applies policy to reads. Recognized raw maintenance statements pass through
+  unchanged; endpoint and validated SQL paths always retain policy enforcement.
+  """
   @spec prepare_query(Backend.t(), iodata(), Keyword.t()) ::
           {:ok, String.t()} | {:error, String.t()}
   def prepare_query(%Backend{config: config}, statement, opts \\ []) do
+    statement = IO.iodata_to_binary(statement)
+
+    if raw_maintenance_query?(statement, opts) do
+      {:ok, statement}
+    else
+      prepare_read_query(config, statement, opts)
+    end
+  end
+
+  @spec prepare_read_query(map(), String.t(), keyword()) ::
+          {:ok, String.t()} | {:error, String.t()}
+  defp prepare_read_query(config, statement, opts) do
     classes = Map.get(config, :query_class_settings) || %{}
     endpoint_settings = Keyword.get(opts, :enforced_clickhouse_settings, %{})
 
@@ -848,14 +864,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
              Keyword.get(opts, :read_cluster),
              endpoint_settings
            ) do
-      statement = IO.iodata_to_binary(statement)
-
       if Keyword.get(opts, :validated_clickhouse_sql, false) do
         ClickHouseSettings.enforce_validated(statement, settings)
       else
         ClickHouseSettings.enforce(statement, settings)
       end
     end
+  end
+
+  @spec raw_maintenance_query?(String.t(), keyword()) :: boolean()
+  defp raw_maintenance_query?(statement, opts) do
+    Keyword.get(opts, :query_type) != :endpoint and
+      not Keyword.get(opts, :validated_clickhouse_sql, false) and
+      Keyword.get(opts, :enforced_clickhouse_settings, %{}) == %{} and
+      Regex.match?(
+        ~r/\A\s*(?:ALTER|ATTACH|CHECK|CREATE|DESCRIBE|DETACH|DROP|EXISTS|GRANT|KILL|OPTIMIZE|RENAME|REVOKE|SHOW|SYSTEM|TRUNCATE)\b/i,
+        statement
+      ) and
+      not Regex.match?(~r/;\s*\S/, statement)
   end
 
   @spec validate_query_class_settings(Changeset.t()) :: Changeset.t()

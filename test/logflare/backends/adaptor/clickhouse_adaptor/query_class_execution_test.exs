@@ -37,6 +37,35 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
     %{backend: backend, original: original, admin: admin, source: source}
   end
 
+  test "raw DDL and metadata operations work with the configured backend", context do
+    table = "maintenance_#{Ecto.UUID.generate() |> String.replace("-", "")}"
+
+    try do
+      assert {:ok, _} =
+               ClickHouseAdaptor.execute_ch_query(
+                 context.backend,
+                 "CREATE TABLE #{table} (n UInt64) ENGINE = Memory"
+               )
+
+      assert {:ok, {[%{"result" => 1}], _}} =
+               ClickHouseAdaptor.execute_ch_query(context.backend, "EXISTS TABLE #{table}")
+
+      assert {:ok, {[%{"priority" => 10}], _}} =
+               ClickHouseAdaptor.execute_ch_query(
+                 context.backend,
+                 "SELECT toInt64(getSetting('priority')) AS priority",
+                 [],
+                 read_cluster: "api_paid"
+               )
+    after
+      assert {:ok, _} =
+               ClickHouseAdaptor.execute_ch_query(
+                 context.backend,
+                 "DROP TABLE IF EXISTS #{table}"
+               )
+    end
+  end
+
   test "native positional parameters preserve values and enforce policy", %{backend: backend} do
     sql =
       "SELECT {$0:Int64} + {$0:Int64} AS n, {$1:Array(String)} AS values, " <>
@@ -279,7 +308,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
                headers: [{"x-clickhouse-query-id", id}]
              )
 
-    assert {:ok, _} = ClickHouseAdaptor.execute_ch_query(context.original, "SYSTEM FLUSH LOGS")
+    assert {:ok, _} = ClickHouseAdaptor.execute_ch_query(context.backend, "SYSTEM FLUSH LOGS")
 
     TestUtils.retry_assert(fn ->
       assert {:ok, {[%{"priority" => "10", "threads" => "4"}], _}} =
@@ -293,7 +322,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
 
   test "all allowed keys work under readonly=2 and profile ceilings remain enforced", context do
     name = "query_class_reader_#{Ecto.UUID.generate() |> String.replace("-", "")}"
-    admin_backend = context.original
+    admin_backend = context.backend
 
     assert {:ok, _} =
              ClickHouseAdaptor.execute_ch_query(
