@@ -10,9 +10,13 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.Pipeline do
   event and encodes its body to JSON one time. The batch processor only joins the
   encoded bodies and sends the request.
 
-  A failed request drops the events of its batch. The drop telemetry separates a
-  transient failure (`:request_failed`) from a payload that the receiver rejects
-  (`:rejected`).
+  A failed request is requeued when the failure is transient. All other failures drop
+  the affected events. Each transient failure counts toward the circuit breaker of the
+  backend. The pipeline drops retries while the breaker is open.
+
+  An event can wait in the queue until its generation is dropped. The processor then
+  finds no event for the pointer. The pipeline counts these pointers in the
+  `missing_ids` telemetry.
   """
 
   @behaviour Broadway.Acknowledger
@@ -28,6 +32,7 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.Pipeline do
   alias Logflare.Backends.Adaptor.WebhookAdaptor.Client
   alias Logflare.Backends.Backend
   alias Logflare.Backends.BufferProducer
+  alias Logflare.Backends.CircuitBreaker
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.IngestEventQueue.LogEventPointer
   alias Logflare.LogEvent
@@ -38,11 +43,17 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.Pipeline do
   @batch_timeout if Application.compile_env(:logflare, :env) == :test, do: 10, else: 1_000
   @producer_interval if Application.compile_env(:logflare, :env) == :test, do: 10, else: 1_000
   @max_in_flight_batches 16
+  @max_retries 1
   @retriable_statuses [408, 429]
   @content_types %{"json" => "application/json", "ndjson" => "application/x-ndjson"}
   @drop_log_interval_ms 5_000
 
-  @typep drop_reason :: :request_failed | :rejected
+  @typep drop_reason ::
+           :retries_exhausted | :rejected | :queue_unavailable | :circuit_breaker_open
+
+  @doc false
+  @spec max_retries() :: non_neg_integer()
+  def max_retries, do: @max_retries
 
   @doc false
   @spec processor_concurrency() :: pos_integer()
@@ -209,7 +220,17 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.Pipeline do
     ]
     |> Client.send()
     |> classify_response()
+    |> record_failure(backend)
   end
+
+  @spec record_failure(result, Backend.t()) :: result
+        when result: :ok | {:error, {:retriable | :rejected, term()}}
+  defp record_failure({:error, {:retriable, _reason}} = result, backend) do
+    CircuitBreaker.record_failure(backend)
+    result
+  end
+
+  defp record_failure(result, _backend), do: result
 
   @doc """
   Joins JSON-encoded event bodies into one request body for the format of the config.
@@ -296,15 +317,79 @@ defmodule Logflare.Backends.Adaptor.ConsolidatedWebhookAdaptor.Pipeline do
     messages
     |> Enum.group_by(&failure_action/1, & &1.data)
     |> Enum.each(fn
-      {:not_found, _payloads} -> :ok
+      {:requeue, payloads} -> requeue_or_shed(backend_id, payloads)
+      {:not_found, payloads} -> emit_missing_ids(backend_id, length(payloads))
       {reason, payloads} -> drop(backend_id, payloads, reason)
     end)
   end
 
-  @spec failure_action(Message.t()) :: :not_found | drop_reason()
+  @spec failure_action(Message.t()) :: :requeue | :not_found | drop_reason()
   defp failure_action(%Message{status: {:failed, :not_found}}), do: :not_found
-  defp failure_action(%Message{status: {:failed, {:retriable, _reason}}}), do: :request_failed
+
+  defp failure_action(%Message{status: {:failed, {:retriable, _reason}}, data: data}) do
+    if pointer(data).retries < @max_retries, do: :requeue, else: :retries_exhausted
+  end
+
   defp failure_action(_message), do: :rejected
+
+  @spec requeue_or_shed(pos_integer(), [EncodedEvent.t()]) :: :ok
+  defp requeue_or_shed(backend_id, encoded_events) do
+    case CircuitBreaker.check(backend_id) do
+      :ok ->
+        requeue(backend_id, encoded_events)
+
+      {:error, :circuit_open, _blocked_until} ->
+        drop(backend_id, encoded_events, :circuit_breaker_open)
+    end
+  end
+
+  @spec requeue(pos_integer(), [EncodedEvent.t()]) :: :ok
+  defp requeue(backend_id, encoded_events) do
+    Logger.info("Requeuing #{length(encoded_events)} webhook events for retry",
+      backend_id: backend_id
+    )
+
+    results = Enum.frequencies_by(encoded_events, &requeue_encoded(backend_id, &1))
+
+    emit_dropped(backend_id, Map.get(results, :queue_unavailable, 0), :queue_unavailable)
+    emit_deduplicated(backend_id, Map.get(results, :deduplicated, 0))
+  end
+
+  @spec emit_deduplicated(pos_integer(), non_neg_integer()) :: :ok
+  defp emit_deduplicated(_backend_id, 0), do: :ok
+
+  defp emit_deduplicated(backend_id, count) do
+    :telemetry.execute(
+      [:logflare, :ingest_event_queue, :requeue_deduplicated],
+      %{count: count},
+      %{backend_type: :consolidated_webhook, backend_id: backend_id}
+    )
+  end
+
+  @spec requeue_encoded(pos_integer(), EncodedEvent.t()) ::
+          :requeued | :deduplicated | :queue_unavailable
+  defp requeue_encoded(backend_id, %EncodedEvent{pointer: pointer} = encoded) do
+    retried = %{pointer | retries: pointer.retries + 1}
+
+    case IngestEventQueue.requeue_payload(
+           {:consolidated, backend_id},
+           retried,
+           &%{encoded | pointer: &1}
+         ) do
+      {:ok, _pointer} -> :requeued
+      {:error, :already_exists} -> :deduplicated
+      {:error, :not_initialized} -> :queue_unavailable
+    end
+  end
+
+  @spec emit_missing_ids(pos_integer(), pos_integer()) :: :ok
+  defp emit_missing_ids(backend_id, count) do
+    :telemetry.execute(
+      [:logflare, :ingest_event_queue, :missing_ids],
+      %{count: count},
+      %{backend_type: :consolidated_webhook, backend_id: backend_id}
+    )
+  end
 
   @spec drop(pos_integer(), [EncodedEvent.t() | LogEventPointer.t()], drop_reason()) :: :ok
   defp drop(backend_id, payloads, reason) do
