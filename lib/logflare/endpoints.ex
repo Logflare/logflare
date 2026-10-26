@@ -176,6 +176,7 @@ defmodule Logflare.Endpoints do
 
   @doc """
   Configure ClickHouse resource limits from an internal operator context.
+  Only persisted admin User accounts are authorized, not TeamUser actors.
   This field is intentionally not cast by user-facing endpoint changesets.
   """
   @spec configure_enforced_clickhouse_settings(User.t() | TeamUser.t(), EndpointQuery.t(), map()) ::
@@ -232,16 +233,14 @@ defmodule Logflare.Endpoints do
 
   @spec authorize_settings_admin(User.t() | TeamUser.t()) ::
           {:ok, User.t()} | {:error, :forbidden}
-  defp authorize_settings_admin(actor) do
-    case settings_user(actor) do
+  defp authorize_settings_admin(%User{id: id}) do
+    case Repo.get(User, id) do
       %User{admin: true} = admin -> {:ok, admin}
       _ -> {:error, :forbidden}
     end
   end
 
-  @spec settings_user(User.t() | TeamUser.t()) :: User.t() | nil
-  defp settings_user(%User{id: id}), do: Repo.get(User, id)
-  defp settings_user(%TeamUser{email: email}), do: Repo.get_by(User, email: email)
+  defp authorize_settings_admin(_actor), do: {:error, :forbidden}
 
   @spec require_clickhouse_endpoint(EndpointQuery.t(), map()) ::
           :ok | {:error, :not_clickhouse_endpoint}
