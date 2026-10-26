@@ -52,6 +52,18 @@ defmodule Logflare.KeyValues.CacheL2Test do
     assert @value = KeyValues.Cache.lookup(user.id, "proj1")
   end
 
+  test "fill read before a busted change of its key-value", %{user: user} do
+    for {key, stale} <- [{"updated", %{"v" => "old"}}, {"inserted", nil}] do
+      expect(KeyValues, :lookup, fn _user_id, ^key, _accessor_path ->
+        bust(user.id, key)
+        stale
+      end)
+
+      assert KeyValues.Cache.lookup(user.id, key) == stale
+      assert {:error, %Nebulex.KeyError{}} = L2.fetch(lookup_key(user.id, key))
+    end
+  end
+
   test "busting lookups and accessor variants cached only in L2", %{user: user} do
     for l2_enabled? <- [true, false] do
       key = "proj:#{l2_enabled?}"
@@ -90,7 +102,7 @@ defmodule Logflare.KeyValues.CacheL2Test do
 
   test "lookup while L2 is failing", %{user: user} do
     insert(:key_value, user: user, key: "proj1", value: @value)
-    reject(&L2.put/3)
+    reject(&L2.find_node/1)
 
     for {failure, accessor_path, expected} <- [
           {:timeout, nil, @value},
