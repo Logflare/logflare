@@ -1,6 +1,8 @@
 defmodule Logflare.KeyValues.CacheL2Test do
   use Logflare.DataCase, async: false
 
+  alias Logflare.ContextCache
+  alias Logflare.ContextCache.CacheBusterWorker
   alias Logflare.KeyValues
   alias Logflare.KeyValues.Cache.L2
 
@@ -35,6 +37,39 @@ defmodule Logflare.KeyValues.CacheL2Test do
     end
   end
 
+  test "lookup served from L2 while its key-value changes", %{user: user} do
+    insert(:key_value, user: user, key: "proj1", value: @value)
+    :ok = L2.put(lookup_key(user.id, "proj1"), %{"stale" => true})
+    stub(L2, :fetch, &Mimic.call_original(L2, :fetch, [&1, &2]))
+
+    expect(L2, :fetch, fn cache_key, opts ->
+      hit = Mimic.call_original(L2, :fetch, [cache_key, opts])
+      bust(user.id, "proj1")
+      hit
+    end)
+
+    assert %{"stale" => true} = KeyValues.Cache.lookup(user.id, "proj1")
+    assert @value = KeyValues.Cache.lookup(user.id, "proj1")
+  end
+
+  test "busting lookups and accessor variants cached only in L2", %{user: user} do
+    for l2_enabled? <- [true, false] do
+      key = "proj:#{l2_enabled?}"
+      insert(:key_value, user: user, key: key, value: @value)
+
+      for accessor_path <- [nil, "org.id"] do
+        :ok = L2.put(lookup_key(user.id, key, accessor_path), :stale)
+      end
+
+      put_l2_enabled(l2_enabled?)
+
+      assert {:ok, 2} = ContextCache.bust_keys([{KeyValues, user_id: user.id, key: key}])
+      put_l2_enabled(true)
+      assert @value = KeyValues.Cache.lookup(user.id, key)
+      assert "abc" = KeyValues.Cache.lookup(user.id, key, "org.id")
+    end
+  end
+
   test "lookup while L2 is failing", %{user: user} do
     insert(:key_value, user: user, key: "proj1", value: @value)
     reject(&L2.put/3)
@@ -60,6 +95,14 @@ defmodule Logflare.KeyValues.CacheL2Test do
     put_l2_enabled(false)
 
     assert @value = KeyValues.Cache.lookup(user.id, "proj1")
+  end
+
+  defp bust(user_id, key) do
+    {:noreply, _state} =
+      CacheBusterWorker.handle_cast(
+        {:to_bust, [{KeyValues, user_id: user_id, key: key}], []},
+        %{}
+      )
   end
 
   defp fail(:timeout),
