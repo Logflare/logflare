@@ -177,6 +177,10 @@ defmodule Logflare.Logs.OtelTraceTest do
       assert mapped["events.name"] == ["exception"]
       assert mapped["events.timestamp"] == [1_761_200_000_000_000_001]
       assert mapped["events.attributes"] == [%{"exception.message" => "timeout"}]
+
+      for key <- ["status.code", "status.message", "events"] do
+        refute Map.has_key?(mapped["span_attributes"], key)
+      end
     end
 
     test "json parsable log event body", %{

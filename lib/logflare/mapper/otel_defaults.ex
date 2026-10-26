@@ -59,7 +59,7 @@ defmodule Logflare.Mapper.OtelDefaults do
 
   @log_config_id "00000000-0000-0000-0001-000000000005"
   @metric_config_id "00000000-0000-0000-0002-000000000005"
-  @trace_config_id "00000000-0000-0000-0003-000000000006"
+  @trace_config_id "00000000-0000-0000-0003-000000000007"
 
   @attributes_exclude_keys ["id", "event_message", "source", "timestamp"]
 
@@ -542,7 +542,7 @@ defmodule Logflare.Mapper.OtelDefaults do
       # scope.attributes.*. Adding "scope" here would drop them entirely.
       Field.flat_map("span_attributes",
         path: "$",
-        exclude_keys: @attributes_exclude_keys ++ ["resource"],
+        exclude_keys: @attributes_exclude_keys ++ ["resource", "events", "status"],
         elevate_keys: ["metadata", "attributes"]
       ),
       Field.array_datetime64("events.timestamp",
