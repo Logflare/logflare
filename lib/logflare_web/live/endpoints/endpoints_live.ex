@@ -199,7 +199,12 @@ defmodule LogflareWeb.EndpointsLive do
 
     actor = socket.assigns.team_user || user
 
-    case Endpoints.configure_enforced_clickhouse_settings(actor, endpoint, settings) do
+    case Endpoints.configure_enforced_clickhouse_settings(
+           actor,
+           endpoint,
+           settings,
+           enforced_settings_save_opts(endpoint)
+         ) do
       {:ok, updated} ->
         {:noreply,
          socket
@@ -584,6 +589,14 @@ defmodule LogflareWeb.EndpointsLive do
     to_form(values, as: :settings)
   end
 
+  @spec enforced_settings_save_opts(EndpointQuery.t()) :: keyword()
+  defp enforced_settings_save_opts(%EndpointQuery{language: :ch_sql}) do
+    keys = Enum.map(@resource_settings, fn {key, _label} -> Atom.to_string(key) end)
+    [replace_keys: keys ++ ~w(read_overflow_mode timeout_overflow_mode)]
+  end
+
+  defp enforced_settings_save_opts(_endpoint), do: []
+
   @spec parse_enforced_settings(map()) :: map()
   defp parse_enforced_settings(params) do
     @resource_settings
@@ -591,19 +604,31 @@ defmodule LogflareWeb.EndpointsLive do
       name = Atom.to_string(key)
 
       value = Map.get(params, name)
-      if value in [nil, ""], do: settings, else: Map.put(settings, name, parse_limit(value))
+      if value in [nil, ""], do: settings, else: Map.put(settings, name, parse_limit(key, value))
     end)
   end
 
-  @spec parse_limit(term()) :: term()
-  defp parse_limit(value) when is_binary(value) do
-    case Integer.parse(String.trim(value)) do
+  @spec parse_limit(atom(), term()) :: term()
+  defp parse_limit(key, value) when is_binary(value) do
+    value = String.trim(value)
+
+    case Integer.parse(value) do
+      {number, ""} -> number
+      _ -> parse_fractional_limit(key, value)
+    end
+  end
+
+  defp parse_limit(_key, value), do: value
+
+  @spec parse_fractional_limit(atom(), String.t()) :: number() | String.t()
+  defp parse_fractional_limit(:max_execution_time, value) do
+    case Float.parse(value) do
       {number, ""} -> number
       _ -> value
     end
   end
 
-  defp parse_limit(value), do: value
+  defp parse_fractional_limit(_key, value), do: value
 
   @spec settings_error(term()) :: String.t()
   defp settings_error(reason) when is_binary(reason), do: reason

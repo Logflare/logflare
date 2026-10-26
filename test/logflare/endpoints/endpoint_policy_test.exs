@@ -59,6 +59,70 @@ defmodule Logflare.Endpoints.EndpointPolicyTest do
     end
   end
 
+  test "scoped replacements preserve authoritative settings and audit the merged policy",
+       context do
+    previous = %{"priority" => 9, "max_threads" => 1, "max_memory_usage" => 1000}
+
+    assert {:ok, _} =
+             Endpoints.configure_enforced_clickhouse_settings(
+               context.admin,
+               context.endpoint,
+               previous
+             )
+
+    assert {:ok, updated} =
+             Endpoints.configure_enforced_clickhouse_settings(
+               context.admin,
+               context.endpoint,
+               %{"max_memory_usage" => 500},
+               replace_keys: ["max_memory_usage"]
+             )
+
+    assert updated.enforced_clickhouse_settings == Map.put(previous, "max_memory_usage", 500)
+
+    audit =
+      Version
+      |> where([v], v.item_type == "EndpointQuery" and v.item_id == ^updated.id)
+      |> order_by([v], desc: v.id)
+      |> limit(1)
+      |> Repo.one!()
+
+    assert audit.meta["previous_settings"] == previous
+    assert audit.meta["settings"] == updated.enforced_clickhouse_settings
+
+    assert {:ok, cleared} =
+             Endpoints.configure_enforced_clickhouse_settings(context.admin, updated, %{})
+
+    assert cleared.enforced_clickhouse_settings == %{}
+  end
+
+  test "scoped replacements still require persisted admin access and valid settings", context do
+    settings = %{"priority" => 3, "max_threads" => 2}
+
+    assert {:ok, endpoint} =
+             Endpoints.configure_enforced_clickhouse_settings(
+               context.admin,
+               context.endpoint,
+               settings
+             )
+
+    opts = [replace_keys: ["max_memory_usage"]]
+
+    assert {:error, :forbidden} =
+             Endpoints.configure_enforced_clickhouse_settings(context.owner, endpoint, %{}, opts)
+
+    assert {:error, _} =
+             Endpoints.configure_enforced_clickhouse_settings(
+               context.admin,
+               endpoint,
+               %{"max_memory_usage" => 0.5},
+               opts
+             )
+
+    assert Endpoints.get_endpoint_query(endpoint.id).enforced_clickhouse_settings == settings
+    assert Repo.aggregate(Version, :count) == 1
+  end
+
   test "policy audits neither advance SQL versions nor make the current SQL restorable",
        context do
     assert {:ok, first} =

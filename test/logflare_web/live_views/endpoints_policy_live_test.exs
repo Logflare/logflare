@@ -228,7 +228,9 @@ defmodule LogflareWeb.EndpointsPolicyLiveTest do
 
     assert {:ok, limited} =
              Endpoints.configure_enforced_clickhouse_settings(admin, context.endpoint, %{
-               "max_execution_time" => 7
+               "max_execution_time" => 7,
+               "priority" => 3,
+               "max_threads" => 2
              })
 
     assert {:ok, dormant} =
@@ -260,6 +262,143 @@ defmodule LogflareWeb.EndpointsPolicyLiveTest do
 
     refute has_element?(view, "#enforced-settings-panel")
     assert Endpoints.get_endpoint_query(dormant.id).enforced_clickhouse_settings == %{}
+  end
+
+  test "fractional execution times round-trip through the resource form", context do
+    admin = insert(:user, admin: true)
+
+    assert {:ok, endpoint} =
+             Endpoints.configure_enforced_clickhouse_settings(admin, context.endpoint, %{
+               "max_execution_time" => 0.5
+             })
+
+    {:ok, view, _} =
+      context.conn |> login_user(admin) |> live_with_redirect("/endpoints/#{endpoint.id}/edit")
+
+    assert has_element?(
+             view,
+             ~s(input[name="settings[max_execution_time]"][min="0"][step="any"][value="0.5"])
+           )
+
+    for key <- ~w(max_bytes_to_read max_rows_to_read max_memory_usage) do
+      assert has_element?(view, ~s(input[name="settings[#{key}]"][min="1"][step="1"]))
+    end
+
+    for {value, expected} <- [{"0.5", 0.5}, {"1.25", 1.25}, {"1.0e-6", 1.0e-6}, {"7", 7}] do
+      html =
+        view
+        |> element("#enforced-settings-form")
+        |> render_submit(%{
+          settings: %{max_execution_time: value, max_memory_usage: "1000000"}
+        })
+
+      assert html =~ "Enforced ClickHouse settings saved"
+
+      assert Endpoints.get_endpoint_query(endpoint.id).enforced_clickhouse_settings == %{
+               "max_execution_time" => expected,
+               "max_memory_usage" => 1_000_000,
+               "timeout_overflow_mode" => "throw"
+             }
+    end
+  end
+
+  test "resource saves preserve current scheduling settings outside the stale form", context do
+    admin = insert(:user, admin: true)
+
+    assert {:ok, endpoint} =
+             Endpoints.configure_enforced_clickhouse_settings(admin, context.endpoint, %{
+               "priority" => 3,
+               "max_threads" => 2,
+               "max_execution_time" => 7
+             })
+
+    {:ok, view, _} =
+      context.conn |> login_user(admin) |> live_with_redirect("/endpoints/#{endpoint.id}/edit")
+
+    assert {:ok, _} =
+             Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, %{
+               "priority" => 9,
+               "max_threads" => 1,
+               "max_execution_time" => 7
+             })
+
+    html =
+      render_hook(view, "save-enforced-settings", %{
+        "settings" => %{
+          "max_execution_time" => "7",
+          "max_memory_usage" => "1000000",
+          "priority" => "1",
+          "max_threads" => "99"
+        }
+      })
+
+    assert html =~ "Enforced ClickHouse settings saved"
+
+    assert Endpoints.get_endpoint_query(endpoint.id).enforced_clickhouse_settings == %{
+             "priority" => 9,
+             "max_threads" => 1,
+             "max_execution_time" => 7,
+             "max_memory_usage" => 1_000_000,
+             "timeout_overflow_mode" => "throw"
+           }
+  end
+
+  test "blank resource fields clear limits and overflow modes without clearing scheduling",
+       context do
+    admin = insert(:user, admin: true)
+
+    assert {:ok, endpoint} =
+             Endpoints.configure_enforced_clickhouse_settings(admin, context.endpoint, %{
+               "priority" => 3,
+               "max_threads" => 2,
+               "max_execution_time" => 0.5,
+               "max_rows_to_read" => 10,
+               "max_bytes_to_read" => 100,
+               "max_memory_usage" => 1000
+             })
+
+    {:ok, view, _} =
+      context.conn |> login_user(admin) |> live_with_redirect("/endpoints/#{endpoint.id}/edit")
+
+    view
+    |> element("#enforced-settings-form")
+    |> render_submit(%{
+      settings: %{
+        max_execution_time: "",
+        max_rows_to_read: "",
+        max_bytes_to_read: "",
+        max_memory_usage: ""
+      }
+    })
+
+    assert Endpoints.get_endpoint_query(endpoint.id).enforced_clickhouse_settings == %{
+             "priority" => 3,
+             "max_threads" => 2
+           }
+  end
+
+  test "the resource form rejects fractional counts and invalid execution times", context do
+    admin = insert(:user, admin: true)
+
+    {:ok, view, _} =
+      context.conn
+      |> login_user(admin)
+      |> live_with_redirect("/endpoints/#{context.endpoint.id}/edit")
+
+    for {key, value} <- [
+          {"max_bytes_to_read", "0.5"},
+          {"max_rows_to_read", "1.5"},
+          {"max_memory_usage", "2.5"},
+          {"max_execution_time", "0"},
+          {"max_execution_time", "-0.5"},
+          {"max_execution_time", "0.5junk"},
+          {"max_execution_time", "1.0e9999"}
+        ] do
+      html = render_hook(view, "save-enforced-settings", %{"settings" => %{key => value}})
+      assert html =~ "Invalid enforced ClickHouse setting"
+      assert html =~ key
+      assert Endpoints.get_endpoint_query(context.endpoint.id).enforced_clickhouse_settings == %{}
+    end
   end
 
   defp save_settings(view) do

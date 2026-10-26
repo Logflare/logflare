@@ -177,11 +177,17 @@ defmodule Logflare.Endpoints do
   @doc """
   Configure ClickHouse resource limits from an internal operator context.
   This field is intentionally not cast by user-facing endpoint changesets.
+  With `:replace_keys`, those keys are cleared before merging the supplied settings
+  into current policy under the endpoint row lock. Otherwise, the entire policy is replaced.
   """
-  @spec configure_enforced_clickhouse_settings(User.t() | TeamUser.t(), EndpointQuery.t(), map()) ::
-          {:ok, EndpointQuery.t()} | {:error, term()}
-  def configure_enforced_clickhouse_settings(actor, %EndpointQuery{id: id}, settings) do
-    Repo.with_primary(fn -> persist_endpoint_settings(actor, id, settings) end)
+  @spec configure_enforced_clickhouse_settings(
+          User.t() | TeamUser.t(),
+          EndpointQuery.t(),
+          map(),
+          keyword()
+        ) :: {:ok, EndpointQuery.t()} | {:error, term()}
+  def configure_enforced_clickhouse_settings(actor, %EndpointQuery{id: id}, settings, opts \\ []) do
+    Repo.with_primary(fn -> persist_endpoint_settings(actor, id, settings, opts) end)
     |> case do
       {:ok, %{model: updated}} ->
         ContextCache.bust_keys([{__MODULE__, updated.id}])
@@ -201,13 +207,15 @@ defmodule Logflare.Endpoints do
     end
   end
 
-  @spec persist_endpoint_settings(User.t() | TeamUser.t(), integer(), map()) ::
+  @spec persist_endpoint_settings(User.t() | TeamUser.t(), integer(), map(), keyword()) ::
           {:ok, map()} | {:error, term()}
-  defp persist_endpoint_settings(actor, id, settings) do
+  defp persist_endpoint_settings(actor, id, settings, opts) do
     Repo.transact(fn ->
       with {:ok, admin} <- authorize_settings_admin(actor),
            %EndpointQuery{} = query <-
              Repo.one(from(query in EndpointQuery, where: query.id == ^id, lock: "FOR UPDATE")),
+           settings =
+             replace_endpoint_settings(query.enforced_clickhouse_settings, settings, opts),
            :ok <- require_clickhouse_endpoint(query, settings),
            {:ok, settings} <- ClickHouseSettings.normalize(settings) do
         opts = [
@@ -229,6 +237,16 @@ defmodule Logflare.Endpoints do
       end
     end)
   end
+
+  @spec replace_endpoint_settings(map(), term(), keyword()) :: term()
+  defp replace_endpoint_settings(current, settings, opts) when is_map(settings) do
+    case Keyword.fetch(opts, :replace_keys) do
+      {:ok, keys} -> Map.merge(Map.drop(current, keys), settings)
+      :error -> settings
+    end
+  end
+
+  defp replace_endpoint_settings(_current, settings, _opts), do: settings
 
   @spec authorize_settings_admin(User.t() | TeamUser.t()) ::
           {:ok, User.t()} | {:error, :forbidden}
