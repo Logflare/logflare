@@ -20,6 +20,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   alias Logflare.Backends.BufferProducer
   alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.BigQuery.SchemaMetrics
   alias Logflare.Sources.Source.RateSampler
   alias Logflare.Sources.Source.Supervisor
   alias Logflare.Sources
@@ -500,19 +501,32 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     # Send those events through the pipeline again, but run them through our schema process this time. Do all
     # these things a max of like 5 times and after that send them to the rejected pile.
 
-    if source && not source.lock_schema && schema_check_sample?(source) do
-      :ok =
-        Backends.via_source(source, {Schema, Map.get(context, :backend_id)})
-        |> Schema.update(log_event, source)
+    if source && not source.lock_schema do
+      case schema_check_sample_mode(source) do
+        :skip ->
+          :ok
+
+        mode ->
+          SchemaMetrics.record_sample(mode)
+          schema_server = Backends.via_source(source, {Schema, Map.get(context, :backend_id)})
+          Schema.update(schema_server, log_event, source)
+      end
     end
 
     log_event
   end
 
-  # Never sampled away: a source's very first schema check always runs.
-  defp schema_check_sample?(source) do
-    RateSampler.sample?(schema_check_rate_key(source)) or
-      is_nil(SourceSchemas.Cache.get_source_schema_by(source_id: source.id))
+  # Never sample away a source's first schema check.
+  defp schema_check_sample_mode(source) do
+    case RateSampler.sample_mode(schema_check_rate_key(source)) do
+      :skip ->
+        if is_nil(SourceSchemas.Cache.get_source_schema_by(source_id: source.id)),
+          do: :bootstrap,
+          else: :skip
+
+      mode ->
+        mode
+    end
   end
 
   defp schema_check_rate_key(source), do: {source.token, :bq_schema_check}

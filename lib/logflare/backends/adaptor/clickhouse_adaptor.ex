@@ -52,6 +52,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     :use_async_inserts_for_small_batches,
     :use_async_inserts_only,
     :async_insert_max_rows,
+    :async_insert_busy_timeout_max_ms,
+    :async_insert_max_data_size,
     :async_insert_cluster_url,
     :read_pool_size,
     :labeled_read_pool_size,
@@ -61,8 +63,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     :query_password,
     :replica_routing_param
   ]
-  @async_insert_busy_timeout_max_ms 3_000
+  @default_async_insert_busy_timeout_max_ms 3_000
+  @async_insert_flush_bounds %{
+    async_insert_busy_timeout_max_ms: %{min: 200, max: 4_000},
+    async_insert_max_data_size: %{min: 52_428_800, max: 268_435_456}
+  }
   @insert_max_execution_time_seconds 10
+
+  if @async_insert_flush_bounds.async_insert_busy_timeout_max_ms.max >
+       div(@insert_max_execution_time_seconds * 1_000, 2) do
+    raise "async insert flush timeout maximum must not exceed half the insert execution timeout"
+  end
+
+  unless @default_async_insert_busy_timeout_max_ms in @async_insert_flush_bounds.async_insert_busy_timeout_max_ms.min..@async_insert_flush_bounds.async_insert_busy_timeout_max_ms.max do
+    raise "default async insert flush timeout must be within its bounds"
+  end
+
   @max_read_pool_size 4096
   @ch_slow_pool_checkout_ms 1_000
   @us_per_hour 3_600 * 1_000_000
@@ -72,6 +88,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @replica_tag_max_bytes 256
   @replica_tag_value_pattern ~r/\A[\x21-\x7E]+\z/
   @param_name_pattern ~r/\A\w+\z/
+
+  @spec async_insert_flush_bounds() :: %{
+          async_insert_busy_timeout_max_ms: %{min: pos_integer(), max: pos_integer()},
+          async_insert_max_data_size: %{min: pos_integer(), max: pos_integer()}
+        }
+  def async_insert_flush_bounds, do: @async_insert_flush_bounds
+
+  @spec default_async_insert_busy_timeout_max_ms() :: pos_integer()
+  def default_async_insert_busy_timeout_max_ms, do: @default_async_insert_busy_timeout_max_ms
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
   defdelegate connection_pool_via(arg, label), to: ConnectionManager
@@ -162,6 +187,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         :use_async_inserts_only,
         :async_insert_cluster_url,
         :async_insert_max_rows,
+        :async_insert_busy_timeout_max_ms,
+        :async_insert_max_data_size,
         :batch_size,
         :batch_timeout,
         :max_event_age_hours,
@@ -318,6 +345,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        use_async_inserts_only: :boolean,
        async_insert_cluster_url: :string,
        async_insert_max_rows: :integer,
+       async_insert_busy_timeout_max_ms: :integer,
+       async_insert_max_data_size: :integer,
        batch_size: :integer,
        batch_timeout: :integer,
        max_event_age_hours: :integer,
@@ -339,6 +368,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :use_async_inserts_only,
       :async_insert_cluster_url,
       :async_insert_max_rows,
+      :async_insert_busy_timeout_max_ms,
+      :async_insert_max_data_size,
       :batch_size,
       :batch_timeout,
       :max_event_age_hours,
@@ -399,6 +430,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     |> Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
     |> Changeset.validate_format(:async_insert_cluster_url, ~r/https?\:\/\/.+/)
     |> validate_number(:async_insert_max_rows, greater_than: 0)
+    |> validate_number(:async_insert_busy_timeout_max_ms,
+      greater_than_or_equal_to: @async_insert_flush_bounds.async_insert_busy_timeout_max_ms.min,
+      less_than_or_equal_to: @async_insert_flush_bounds.async_insert_busy_timeout_max_ms.max
+    )
+    |> validate_number(:async_insert_max_data_size,
+      greater_than_or_equal_to: @async_insert_flush_bounds.async_insert_max_data_size.min,
+      less_than_or_equal_to: @async_insert_flush_bounds.async_insert_max_data_size.max
+    )
     |> validate_number(:batch_size,
       greater_than_or_equal_to: @min_batch_size,
       less_than_or_equal_to: Pipeline.max_batch_size()
@@ -1047,7 +1086,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     Logger.metadata(backend_id: backend.id)
     table_name = clickhouse_ingest_table_name(backend, event_type)
     async? = Keyword.get(opts, :async, false)
-    insert_opts = [{:async, async?} | build_insert_opts(opts)]
+    insert_opts = [{:async, async?} | build_insert_opts(backend, opts)]
 
     backend
     |> Ingester.insert(table_name, events, event_type, insert_opts)
@@ -1070,7 +1109,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     Logger.metadata(backend_id: backend.id)
     table_name = clickhouse_ingest_table_name(backend, event_type)
     async? = Keyword.get(opts, :async, false)
-    insert_opts = [{:async, async?} | build_insert_opts(opts)]
+    insert_opts = [{:async, async?} | build_insert_opts(backend, opts)]
 
     backend
     |> Ingester.insert_compressed(table_name, event_type, compressed, insert_opts)
@@ -1120,16 +1159,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     )
   end
 
-  @spec build_insert_opts(keyword()) :: keyword()
-  defp build_insert_opts(opts) do
-    opts
-    |> Keyword.get(:async, false)
-    |> insert_settings()
+  @spec build_insert_opts(Backend.t(), keyword()) :: keyword()
+  defp build_insert_opts(%Backend{config: config}, opts) do
+    insert_settings(Keyword.get(opts, :async, false), config || %{})
   end
 
-  @spec insert_settings(boolean()) :: keyword()
-  defp insert_settings(true), do: base_insert_opts() ++ async_insert_opts()
-  defp insert_settings(false), do: base_insert_opts()
+  @spec insert_settings(boolean(), map()) :: keyword()
+  defp insert_settings(true, config), do: base_insert_opts() ++ async_insert_opts(config)
+  defp insert_settings(false, _config), do: base_insert_opts()
 
   @spec base_insert_opts() :: keyword()
   defp base_insert_opts do
@@ -1151,15 +1188,33 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   defp insert_host(_config, _async?), do: nil
 
-  @spec async_insert_opts() :: keyword()
-  defp async_insert_opts do
+  @spec async_insert_opts(map()) :: keyword()
+  defp async_insert_opts(config) do
     [
       async_insert: 1,
       wait_for_async_insert: 1,
       wait_for_async_insert_timeout: @insert_max_execution_time_seconds,
-      async_insert_busy_timeout_max_ms: @async_insert_busy_timeout_max_ms
-    ]
+      async_insert_busy_timeout_max_ms: async_insert_busy_timeout_max_ms(config)
+    ] ++ async_insert_max_data_size_opts(config)
   end
+
+  @spec async_insert_busy_timeout_max_ms(map()) :: pos_integer()
+  defp async_insert_busy_timeout_max_ms(%{async_insert_busy_timeout_max_ms: timeout_ms})
+       when is_integer(timeout_ms) do
+    bounds = @async_insert_flush_bounds.async_insert_busy_timeout_max_ms
+    timeout_ms |> max(bounds.min) |> min(bounds.max)
+  end
+
+  defp async_insert_busy_timeout_max_ms(_config), do: @default_async_insert_busy_timeout_max_ms
+
+  @spec async_insert_max_data_size_opts(map()) :: keyword()
+  defp async_insert_max_data_size_opts(%{async_insert_max_data_size: max_bytes})
+       when is_integer(max_bytes) do
+    bounds = @async_insert_flush_bounds.async_insert_max_data_size
+    [async_insert_max_data_size: max_bytes |> max(bounds.min) |> min(bounds.max)]
+  end
+
+  defp async_insert_max_data_size_opts(_config), do: []
 
   @doc """
   Provisions all type-specific ingest tables for the backend, if they do not already exist.
