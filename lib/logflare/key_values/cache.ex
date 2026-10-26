@@ -1,5 +1,13 @@
 defmodule Logflare.KeyValues.Cache do
-  @moduledoc false
+  @moduledoc """
+  Read-through cache for `Logflare.KeyValues` lookups and counts.
+
+  A lookup reads this node's Cachex L1, then, when `Logflare.KeyValues.Cache.L2.enabled?/0`,
+  the cluster-partitioned `Logflare.KeyValues.Cache.L2`, then the database. L2 and the
+  database are read in the `Cachex.fetch/4` fallback, so concurrent misses for a key on one
+  node share a single L2 call and database read. An L2 error or timeout falls back to the
+  database once per lookup and skips writing the value to L2. Counts and warming stay in L1.
+  """
 
   use Logflare.ContextCache
 
@@ -14,6 +22,8 @@ defmodule Logflare.KeyValues.Cache do
   @supervisor Logflare.KeyValues.Cache.Supervisor
   @usage_touch_window :timer.minutes(20)
   @usage_touch_chunk 1_000
+
+  @typep l2_result() :: {:ok, term()} | :miss | :l2_error | :l2_skipped
 
   @doc """
   Starts L1 and, when `Logflare.KeyValues.Cache.L2.enabled?/0`, L2 under a `one_for_one`
@@ -59,12 +69,12 @@ defmodule Logflare.KeyValues.Cache do
   @doc """
   Returns the value of a key-value, or the value at `accessor_path` within it.
 
-  A value read before a change to the key-value, from a lagging replica or from a cached full
-  value, is returned but not kept. The change records a `{user_id, key}` tombstone before its
-  bust deletes the entries, and a fill is deleted again if its key-value is tombstoned after
-  the write, so no interleaving with the bust leaves a stale entry. A fill that starts while its
-  key-value is tombstoned is not kept either. A tombstone lasts for the `:tombstone_ttl` setting,
-  which must outlast the replica lag plus the duration of a fill.
+  A value read before a change to the key-value, from a lagging replica, from L2 or from a
+  cached full value, is returned but not kept. The change records a `{user_id, key}`
+  tombstone before its bust deletes the entries, and a fill is deleted again if its key-value
+  is tombstoned after the write, so no interleaving with the bust leaves a stale entry. A fill
+  that starts while its key-value is tombstoned is not kept either. A tombstone lasts for the
+  `:tombstone_ttl` setting, which must outlast the replica lag plus the duration of a fill.
   """
   @spec lookup(integer(), String.t(), String.t() | nil) :: term() | nil
   def lookup(user_id, key, accessor_path) do
@@ -103,9 +113,59 @@ defmodule Logflare.KeyValues.Cache do
         {action, {:cached, KeyValues.extract_value(full_value, accessor_path)}}
 
       {:ok, nil} ->
-        {action, {:cached, Repo.apply_with_replica(KeyValues, :lookup, key_args)}}
+        {action, {:cached, read_through(key_args)}}
     end
   end
+
+  defp read_through(key_args) do
+    cache_key = {:lookup, key_args}
+
+    case fetch_l2(cache_key) do
+      {:ok, value} ->
+        value
+
+      l2_miss ->
+        {value, fill_l2?} = full_value_from_l2_or_db(l2_miss, key_args)
+        if fill_l2?, do: put_l2(cache_key, value)
+        value
+    end
+  end
+
+  defp full_value_from_l2_or_db(:miss, [user_id, key, accessor_path] = key_args)
+       when accessor_path != nil do
+    case fetch_l2({:lookup, [user_id, key, nil]}) do
+      {:ok, full_value} -> {KeyValues.extract_value(full_value, accessor_path), true}
+      l2_miss -> {from_db(key_args), l2_miss == :miss}
+    end
+  end
+
+  defp full_value_from_l2_or_db(l2_miss, key_args), do: {from_db(key_args), l2_miss == :miss}
+
+  defp from_db(key_args), do: Repo.apply_with_replica(KeyValues, :lookup, key_args)
+
+  @spec fetch_l2(term()) :: l2_result()
+  defp fetch_l2(cache_key) do
+    if L2.enabled?() and l2_running?() do
+      case L2.fetch(cache_key, timeout: L2.timeout()) do
+        {:ok, _value} = hit -> hit
+        {:error, %Nebulex.KeyError{}} -> :miss
+        {:error, _reason} -> :l2_error
+      end
+    else
+      :l2_skipped
+    end
+  rescue
+    _ in [Nebulex.CacheNotFoundError, RuntimeError] -> :l2_error
+  end
+
+  defp put_l2(cache_key, value) do
+    _ = L2.put(cache_key, value, ttl: L2.ttl(), timeout: L2.timeout())
+    :ok
+  rescue
+    _ in [Nebulex.CacheNotFoundError, RuntimeError] -> :ok
+  end
+
+  defp l2_running?, do: Process.whereis(L2) != nil
 
   defp tombstoned?(user_id, key), do: Tombstones.Cache.tombstoned?(__MODULE__, {user_id, key})
 
