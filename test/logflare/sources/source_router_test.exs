@@ -791,6 +791,34 @@ defmodule Logflare.Sources.SourceRouterTest do
     end
   end
 
+  describe "batch routing" do
+    test "ingests all matching events of a rule in one call", %{user: user, backend: backend} do
+      rule = build(:rule, backend: backend, lql_string: "testing")
+      source = insert(:source, user: user, rules: [rule])
+      [%{id: rule_id}] = source.rules
+      start_supervised!({SourceSup, source})
+      pid = self()
+
+      expect(Logflare.Backends, :ingest_logs, fn les, _source, _backend ->
+        send(pid, {:ingested, les})
+        {:ok, length(les)}
+      end)
+
+      les =
+        for message <- ["testing1", "other", "testing2", "testing3"],
+            do: build(:log_event, source: source, message: message)
+
+      assert SourceRouter.route_to_sinks_and_ingest(les, source) == les
+
+      assert_received {:ingested,
+                       [
+                         %LogEvent{via_rule_id: ^rule_id, body: %{"event_message" => "testing1"}},
+                         %LogEvent{via_rule_id: ^rule_id, body: %{"event_message" => "testing2"}},
+                         %LogEvent{via_rule_id: ^rule_id, body: %{"event_message" => "testing3"}}
+                       ]}
+    end
+  end
+
   describe "routing to a sink whose SourceSup does not start" do
     test "emits a dropped event for the routed copy", %{user: user} do
       TestUtils.attach_forwarder([:logflare, :sources, :source_router, :dropped])
@@ -813,6 +841,31 @@ defmodule Logflare.Sources.SourceRouterTest do
 
       assert_receive {:telemetry_event, [:logflare, :sources, :source_router, :dropped],
                       %{count: 1}, %{reason: :source_unavailable, source_id: ^source_id}}
+    end
+
+    test "emits one dropped event counting every routed copy in a batch", %{user: user} do
+      TestUtils.attach_forwarder([:logflare, :sources, :source_router, :dropped])
+      sink = insert(:source, user: user)
+      rule = build(:rule, sink: sink.token, lql_string: "testing")
+      source = insert(:source, user: user, rules: [rule])
+      start_supervised!({SourceSup, source})
+
+      stub(SourceSup, :child_spec, fn received_source ->
+        %{
+          call_original(SourceSup, :child_spec, [received_source])
+          | start: {Function, :identity, [{:error, :boom}]}
+        }
+      end)
+
+      les = for _ <- 1..3, do: build(:log_event, source: source, message: "testing123")
+      SourceRouter.route_to_sinks_and_ingest(les, source, SourceRouter.RulesTree)
+
+      source_id = source.id
+
+      assert_receive {:telemetry_event, [:logflare, :sources, :source_router, :dropped],
+                      %{count: 3}, %{reason: :source_unavailable, source_id: ^source_id}}
+
+      refute_receive {:telemetry_event, [:logflare, :sources, :source_router, :dropped], _, _}
     end
   end
 end
