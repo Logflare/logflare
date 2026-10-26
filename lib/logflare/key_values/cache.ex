@@ -7,6 +7,11 @@ defmodule Logflare.KeyValues.Cache do
   database are read in the `Cachex.fetch/4` fallback, so concurrent misses for a key on one
   node share a single L2 call and database read. An L2 error or timeout falls back to the
   database once per lookup and skips writing the value to L2. Counts and warming stay in L1.
+
+  A value reaches L2 only if its key-value did not change within the `:tombstone_ttl` setting.
+  The key's L2 owner writes the value to its share and deletes it again if the key-value is
+  tombstoned, as a lookup does for L1, so a value read from a lagging replica, `nil` included,
+  cannot spread to other nodes once its change has been busted.
   """
 
   use Logflare.ContextCache
@@ -18,6 +23,7 @@ defmodule Logflare.KeyValues.Cache do
   alias Logflare.KeyValues.Cache.L2
   alias Logflare.KeyValues.CacheWarmer
   alias Logflare.Repo
+  alias Nebulex.Distributed.RPC
 
   @supervisor Logflare.KeyValues.Cache.Supervisor
   @usage_touch_window :timer.minutes(20)
@@ -159,10 +165,27 @@ defmodule Logflare.KeyValues.Cache do
   end
 
   defp put_l2(cache_key, value) do
-    _ = L2.put(cache_key, value, ttl: L2.ttl(), timeout: L2.timeout())
+    with {:ok, owner} <- L2.find_node(cache_key) do
+      RPC.call(owner, __MODULE__, :fill_l2_share, [cache_key, value, L2.ttl()], L2.timeout())
+    end
+
     :ok
   rescue
     _ in [Nebulex.CacheNotFoundError, RuntimeError] -> :ok
+  end
+
+  @doc false
+  @spec fill_l2_share(term(), term(), timeout()) :: :put | :dropped_stale
+  def fill_l2_share({:lookup, [user_id, key, _accessor_path]} = cache_key, value, ttl) do
+    primary = L2.__primary__()
+    :ok = primary.put(cache_key, value, ttl: ttl)
+
+    if Tombstones.Cache.tombstoned?(__MODULE__, {user_id, key}) do
+      :ok = primary.delete(cache_key)
+      :dropped_stale
+    else
+      :put
+    end
   end
 
   defp l2_running?, do: Process.whereis(L2) != nil
