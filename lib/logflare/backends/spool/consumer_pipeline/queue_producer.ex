@@ -43,7 +43,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   ## Stopping fetches
 
-  `stop_fetching/1` (called by `Logflare.ShutdownDrain` on SIGTERM) stops new
+  `stop_receiving/1` is used for graceful shutdowns. It stops new
   queue receives and nacks a landed prefetch; the file already loaded keeps
   emitting so it can finish and be acked before the node stops.
 
@@ -92,8 +92,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   end
 
   @doc "Stops receiving queue messages, letting the already-loaded file finish emitting."
-  @spec stop_fetching(GenServer.server()) :: :ok
-  def stop_fetching(producer), do: GenStage.call(producer, :stop_fetching)
+  @spec stop_receiving(GenServer.server()) :: :ok
+  def stop_receiving(producer), do: GenStage.call(producer, :stop_receiving)
 
   @impl GenStage
   def init(opts) do
@@ -121,9 +121,9 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       # Set by prepare_for_draining/1 — stops new fetches while letting
       # anything already in flight drain out and ack normally.
       draining: false,
-      # Cleared by stop_fetching/1 — no new queue receives, but the current
+      # Set to false by stop_receiving/1 on graceful shutdown — no new queue receives, but the current
       # file keeps emitting.
-      fetching: true
+      receiving: true
     }
 
     Process.put(@in_flight_key, in_flight_ref)
@@ -153,14 +153,14 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   defp prefetch_handle(_), do: nil
 
   @impl GenStage
-  def handle_call(:stop_fetching, _from, state) do
+  def handle_call(:stop_receiving, _from, state) do
     if handle = prefetch_handle(state.prefetch) do
-      nack_and_notify(state.queue_mod, state.queue_url, handle, :stop_fetching)
+      nack_and_notify(state.queue_mod, state.queue_url, handle, :stop_receiving)
     end
 
     prefetch = if match?({:ready, _}, state.prefetch), do: nil, else: state.prefetch
 
-    {:reply, :ok, [], %{state | fetching: false, prefetch: prefetch}}
+    {:reply, :ok, [], %{state | receiving: false, prefetch: prefetch}}
   end
 
   @impl GenStage
@@ -223,12 +223,12 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   @impl GenStage
   def handle_info({:prefetch_result, result}, %{draining: true} = state) do
-    nack_unwanted_result(result, state, :draining)
+    nack_predraining_result(result, state, :draining)
     {:noreply, [], state}
   end
 
-  def handle_info({:prefetch_result, result}, %{fetching: false} = state) do
-    nack_unwanted_result(result, state, :stop_fetching)
+  def handle_info({:prefetch_result, result}, %{receiving: false} = state) do
+    nack_predraining_result(result, state, :stop_receiving)
     {:noreply, [], %{state | prefetch: nil}}
   end
 
@@ -306,17 +306,17 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   defp maybe_load_next(state), do: state
 
-  defp nack_unwanted_result({:ok, handle, _segments}, state, reason),
+  defp nack_predraining_result({:ok, handle, _segments}, state, reason),
     do: nack_and_notify(state.queue_mod, state.queue_url, handle, reason)
 
-  defp nack_unwanted_result({:error, handle, _reason}, state, reason) when not is_nil(handle),
+  defp nack_predraining_result({:error, handle, _reason}, state, reason) when not is_nil(handle),
     do: nack_and_notify(state.queue_mod, state.queue_url, handle, reason)
 
-  defp nack_unwanted_result(_result, _state, _reason), do: :ok
+  defp nack_predraining_result(_result, _state, _reason), do: :ok
 
   # The only place safe_fetch_next runs — always in a background Task,
   # never inline in this process.
-  defp maybe_start_prefetch(%{prefetch: nil, fetching: true} = state) do
+  defp maybe_start_prefetch(%{prefetch: nil, receiving: true} = state) do
     if over_limit?() do
       state
     else

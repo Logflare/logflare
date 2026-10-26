@@ -1000,7 +1000,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
     end
   end
 
-  describe "stop_fetching" do
+  describe "stop_receiving" do
     defp producer_state(overrides) do
       {:producer, state} =
         QueueProducer.init(
@@ -1015,7 +1015,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
     defp stopped_state(overrides) do
       {:reply, :ok, [], state} =
-        QueueProducer.handle_call(:stop_fetching, {self(), make_ref()}, producer_state(%{}))
+        QueueProducer.handle_call(:stop_receiving, {self(), make_ref()}, producer_state(%{}))
 
       Map.merge(state, overrides)
     end
@@ -1031,13 +1031,13 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
         })
 
       assert {:reply, :ok, [], new_state} =
-               QueueProducer.handle_call(:stop_fetching, {self(), make_ref()}, state)
+               QueueProducer.handle_call(:stop_receiving, {self(), make_ref()}, state)
 
       assert_receive {:nacked, "h2"}
       refute_received {:nacked, "h1"}
       assert new_state.current == current
       assert new_state.prefetch == nil
-      assert new_state.fetching == false
+      assert new_state.receiving == false
     end
 
     test "keeps emitting the current file's segments but starts no new fetch" do
@@ -1061,7 +1061,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       refute_receive :receive_called, 200
     end
 
-    test "nacks a prefetch that lands after fetching stopped instead of loading it" do
+    test "nacks a prefetch that lands after receiving stopped instead of loading it" do
       stub_ack_nack(self())
 
       ok_state = stopped_state(%{prefetch: :running, demand: 5})
@@ -1091,7 +1091,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       assert empty_state.prefetch == nil
     end
 
-    test "a running producer stops receiving from the queue once told to stop fetching" do
+    test "a running producer stops receiving from the queue once told to stop receiving" do
       test_pid = self()
 
       stub(QueueMod, :receive, fn _url, _opts ->
@@ -1101,7 +1101,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       pid = start_producer()
 
-      assert QueueProducer.stop_fetching(pid) == :ok
+      assert QueueProducer.stop_receiving(pid) == :ok
 
       task = Task.async(fn -> GenStage.stream([{pid, max_demand: 10}]) |> Enum.take(1) end)
 

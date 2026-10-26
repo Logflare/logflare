@@ -3,20 +3,9 @@ defmodule Logflare.ShutdownDrain do
   Drains a node before it stops, so a pod shutdown doesn't drop the events it
   still holds or strand spool queue messages until their visibility timeout.
 
-  Run by `Logflare.SigtermHandler` before `System.stop/0`, while every
-  pipeline is still running, when `:shutdown_drain_timeout_ms` is configured
-  (`LOGFLARE_SHUTDOWN_DRAIN_TIMEOUT_MS`):
-
-  1. Every spool `ConsumerPipeline` producer stops receiving queue messages
-     (`QueueProducer.stop_fetching/1`); files already loaded keep flowing.
-  2. Waits at least `:min_wait_ms` (the SIGTERM grace period, so load
-     balancers stop sending first), then until `SpoolAck` has no pending
-     handles and `IngestEventQueue` holds no events, i.e. everything reached
-     its backends or the spool. A loaded spool file is registered with
-     `SpoolAck` before it emits, so pending handles cover the producers too.
-  3. At `:timeout_ms`, nacks spool files still pending so another consumer
-     picks them up straight away.
-  4. Flushes `SpoolAck` so queued acks reach the queue before shutdown.
+  Spool producers stop receiving new queue messages, then the node waits for
+  queued events and pending spool acks to clear. Anything still pending at the
+  timeout is nacked so another consumer can pick it up.
 
   Keep the pod's termination grace period comfortably above the timeout.
   """
@@ -32,7 +21,25 @@ defmodule Logflare.ShutdownDrain do
 
   @type result :: :drained | :timeout
 
-  @spec run(keyword()) :: result()
+  @type opts :: [
+          timeout_ms: non_neg_integer(),
+          min_wait_ms: non_neg_integer(),
+          poll_interval_ms: pos_integer(),
+          producers: [GenServer.server()]
+        ]
+
+  @doc """
+  Drains the node and returns `:drained` or `:timeout`.
+
+  Options:
+
+    * `:timeout_ms` - required. Maximum time to wait before nacking pending spool files.
+    * `:min_wait_ms` - minimum time to wait before checking for drain completion, so load
+      balancers stop sending traffic first. Defaults to `0`.
+    * `:poll_interval_ms` - how often to check whether the node has drained. Defaults to `100`.
+    * `:producers` - spool producers to stop receiving on. Defaults to every `ConsumerPipeline` producer.
+  """
+  @spec run(opts()) :: result()
   def run(opts) do
     timeout_ms = Keyword.fetch!(opts, :timeout_ms)
     min_wait_ms = Keyword.get(opts, :min_wait_ms, 0)
@@ -40,10 +47,10 @@ defmodule Logflare.ShutdownDrain do
     producers = Keyword.get_lazy(opts, :producers, &spool_producers/0)
     started_at = System.monotonic_time(:millisecond)
 
-    Enum.each(producers, &stop_fetching/1)
+    Enum.each(producers, &stop_receiving/1)
 
     Logger.warning(
-      "shutdown_drain: started, stopped fetching on #{length(producers)} spool producer(s), " <>
+      "shutdown_drain: started, stopped receiving on #{length(producers)} spool producer(s), " <>
         "waiting at least #{min_wait_ms}ms and up to #{timeout_ms}ms for in-flight events"
     )
 
@@ -92,8 +99,8 @@ defmodule Logflare.ShutdownDrain do
 
   # A producer that has already exited settles its own prefetch (see
   # QueueProducer's deliver_or_settle/5), so there is nothing to stop.
-  defp stop_fetching(producer) do
-    QueueProducer.stop_fetching(producer)
+  defp stop_receiving(producer) do
+    QueueProducer.stop_receiving(producer)
   catch
     :exit, _reason -> :ok
   end

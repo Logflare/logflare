@@ -42,8 +42,8 @@ defmodule Logflare.ShutdownDrainTest do
   defp stub_producers do
     test_pid = self()
 
-    stub(QueueProducer, :stop_fetching, fn producer ->
-      send(test_pid, {:stop_fetching, producer})
+    stub(QueueProducer, :stop_receiving, fn producer ->
+      send(test_pid, {:stop_receiving, producer})
       :ok
     end)
   end
@@ -54,13 +54,13 @@ defmodule Logflare.ShutdownDrainTest do
     queued
   end
 
-  test "stops every spool producer fetching and returns :drained once nothing is pending" do
+  test "stops every spool producer receiving and returns :drained once nothing is pending" do
     stub_producers()
 
     assert run(producers: [:p0, :p1]) == :drained
 
-    assert_received {:stop_fetching, :p0}
-    assert_received {:stop_fetching, :p1}
+    assert_received {:stop_receiving, :p0}
+    assert_received {:stop_receiving, :p1}
     refute_received {:nacked, _}
   end
 
@@ -134,12 +134,12 @@ defmodule Logflare.ShutdownDrainTest do
   end
 
   describe "verification logging" do
-    test "logs when the drain starts and how many spool producers stopped fetching" do
+    test "logs when the drain starts and how many spool producers stopped receiving" do
       stub_producers()
 
       log = capture_log([level: :warning], fn -> run(producers: [:p0, :p1], min_wait_ms: 10) end)
 
-      assert log =~ "shutdown_drain: started, stopped fetching on 2 spool producer(s)"
+      assert log =~ "shutdown_drain: started, stopped receiving on 2 spool producer(s)"
       assert log =~ "waiting at least 10ms and up to 1000ms"
     end
 

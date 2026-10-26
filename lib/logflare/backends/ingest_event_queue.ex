@@ -536,14 +536,14 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec total_size() :: non_neg_integer()
   def total_size do
-    @ets_table_mapper
-    |> :ets.select([{{:_, :_, :"$1", :_}, [], [:"$1"]}])
-    |> Enum.reduce(0, fn tid, acc ->
-      case :ets.info(tid, :size) do
-        size when is_integer(size) -> acc + size
-        :undefined -> acc
+    ms =
+      Ex2ms.fun do
+        {_key, _pid, tid, _status} -> tid
       end
-    end)
+
+    @ets_table_mapper
+    |> :ets.select(ms)
+    |> Enum.sum_by(&table_size/1)
   end
 
   @doc """

@@ -94,8 +94,13 @@ defmodule Logflare.Backends.Spool.SpoolAck do
   """
   @spec nack_pending() :: non_neg_integer()
   def nack_pending do
+    ms =
+      Ex2ms.fun do
+        {handle, _count, _queue_mod, _queue_url, _registered_at} -> handle
+      end
+
     @table
-    |> :ets.select([{{:"$1", :_, :_, :_, :_}, [], [:"$1"]}])
+    |> :ets.select(ms)
     |> Enum.count(&nack_taken/1)
   end
 

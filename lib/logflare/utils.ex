@@ -150,6 +150,24 @@ defmodule Logflare.Utils do
   def parse_float!(v) when is_float(v), do: v
   def parse_float!(v), do: raise("Could not parse to float: #{inspect(v)}")
 
+  @doc """
+  Parses a binary into a non-negative integer. Raises on anything else.
+
+  ## Examples
+
+    iex> Logflare.Utils.parse_non_neg_integer!("30000")
+    30000
+    iex> Logflare.Utils.parse_non_neg_integer!(" 0 ")
+    0
+  """
+  @spec parse_non_neg_integer!(binary()) :: non_neg_integer()
+  def parse_non_neg_integer!(v) when is_binary(v) do
+    case v |> String.trim() |> Integer.parse() do
+      {int, ""} when int >= 0 -> int
+      _ -> raise ArgumentError, "Could not parse to non-negative integer: #{inspect(v)}"
+    end
+  end
+
   defp pad_leading_dot("." <> _rest = v), do: "0" <> v
   defp pad_leading_dot("-." <> rest), do: "-0." <> rest
   defp pad_leading_dot(v), do: v
