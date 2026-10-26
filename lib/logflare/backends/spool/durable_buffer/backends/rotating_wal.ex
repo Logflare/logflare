@@ -55,7 +55,6 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
 
   @default_max_batch_bytes 32 * 1024 * 1024
   @default_max_rotation_interval_ms 1_000
-  @default_worker_count 4
 
   @impl true
   def init_config(opts) do
@@ -65,7 +64,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
       max_rotation_interval_ms:
         Keyword.get(opts, :max_rotation_interval_ms, @default_max_rotation_interval_ms),
       fsync: Keyword.get(opts, :fsync, true),
-      worker_count: Keyword.get(opts, :worker_count, @default_worker_count),
+      worker_count: Keyword.get(opts, :worker_count, System.schedulers_online()),
       inner_backend: DurableBuffer.Backend.normalize(Keyword.fetch!(opts, :inner_backend))
     }
   end
@@ -76,6 +75,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
     path = WalPaths.active(config.wal_dir, partition_index)
     {offset, _entry_count} = WAL.recover!(path)
     {:ok, fd} = :file.open(path, [:append, :raw, :binary])
+    last_rotation_at = System.monotonic_time(:millisecond)
 
     {:ok, flush_timer} =
       :timer.send_interval(config.max_rotation_interval_ms, {:backend, :flush_tick})
@@ -87,7 +87,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal do
       path: path,
       offset: offset,
       pending_bytes: 0,
-      last_rotation_at: System.monotonic_time(:millisecond),
+      last_rotation_at: last_rotation_at,
       flush_timer: flush_timer,
       workers: start_workers(config, partition_index)
     }

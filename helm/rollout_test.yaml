@@ -6,7 +6,6 @@ templates:
   - service-preview.yaml
   - hpa.yaml
   - configmap.yaml
-  - vm-args-configmap.yaml
 tests:
   - it: should render a Deployment and no Rollout by default
     asserts:

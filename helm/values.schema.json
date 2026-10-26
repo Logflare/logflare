@@ -25,6 +25,9 @@
         "deploymentAnnotations": {
             "type": "object"
         },
+        "dnsConfig": {
+            "type": "object"
+        },
         "externalSecrets": {
             "type": "object",
             "properties": {
@@ -445,9 +448,6 @@
         },
         "topologySpreadConstraints": {
             "type": "array"
-        },
-        "vmArgs": {
-            "type": "string"
         },
         "volumeMounts": {
             "type": "array"

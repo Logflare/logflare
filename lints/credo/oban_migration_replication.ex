@@ -25,48 +25,40 @@ defmodule Logflare.CredoChecks.ObanMigrationReplication do
       """
     ]
 
+  alias Logflare.CredoChecks.ModuleAliases
   alias Logflare.CredoChecks.ReplicatedExecuteScope
 
   @oban_migration_funs [:up, :down]
+  @oban_migration_modules [[:Oban, :Migration], [:Oban, :Migrations]]
 
   @impl true
   def run(%SourceFile{} = source_file, params) do
     issue_meta = IssueMeta.for(source_file, params)
-    ast = Credo.Code.ast(source_file)
-    scopes = ReplicatedExecuteScope.line_ranges(ast)
 
-    ast
-    |> Macro.prewalk([], &traverse(&1, &2, issue_meta, scopes))
-    |> elem(1)
+    source_file
+    |> SourceFile.ast()
+    |> ReplicatedExecuteScope.walk([], &collect_issue(&1, &2, &3, issue_meta))
     |> Enum.reverse()
   end
 
-  defp traverse(
-         {{:., _, [{:__aliases__, _, aliases}, fun]}, meta, _args} = ast,
+  defp collect_issue(
+         {{:., _, [{:__aliases__, _, segments}, fun]}, meta, _args},
+         %ReplicatedExecuteScope{replicated?: false} = env,
          issues,
-         issue_meta,
-         scopes
+         issue_meta
        )
        when fun in @oban_migration_funs do
-    if oban_migration_alias?(aliases) and not ReplicatedExecuteScope.within?(scopes, meta[:line]) do
-      {ast, [issue_for(issue_meta, meta, aliases, fun) | issues]}
-    else
-      {ast, issues}
-    end
+    module = ModuleAliases.resolve(segments, env.aliases)
+
+    if module in @oban_migration_modules,
+      do: [issue_for(issue_meta, meta, module, fun) | issues],
+      else: issues
   end
 
-  defp traverse(ast, issues, _issue_meta, _scopes), do: {ast, issues}
+  defp collect_issue(_node, _env, issues, _issue_meta), do: issues
 
-  defp oban_migration_alias?(aliases) do
-    case Enum.take(aliases, -2) do
-      [:Oban, :Migration] -> true
-      [:Oban, :Migrations] -> true
-      _ -> false
-    end
-  end
-
-  defp issue_for(issue_meta, meta, aliases, fun) do
-    trigger = Enum.map_join(aliases, ".", &Atom.to_string/1) <> ".#{fun}"
+  defp issue_for(issue_meta, meta, module, fun) do
+    trigger = Enum.map_join(module, ".", &Atom.to_string/1) <> ".#{fun}"
 
     format_issue(
       issue_meta,

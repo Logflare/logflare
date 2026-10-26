@@ -9,6 +9,7 @@ defmodule Logflare.Telemetry do
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
+  alias Logflare.Cache.CachexOps
 
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
@@ -174,14 +175,12 @@ defmodule Logflare.Telemetry do
   # isn't the case in dev/test, so there'd otherwise be no way to exercise it.
   @doc false
   def metrics do
-    cache_stats? = Application.get_env(:logflare, :cache_stats, false)
+    cache_stats? = CachexOps.stats_enabled?()
 
     cache_metrics =
       if cache_stats? do
         Enum.flat_map(@caches, fn {_cache, metric} ->
           [
-            last_value("cachex.#{metric}.purge"),
-            last_value("cachex.#{metric}.stats"),
             last_value("cachex.#{metric}.evictions"),
             last_value("cachex.#{metric}.expirations"),
             last_value("cachex.#{metric}.operations"),
@@ -478,6 +477,20 @@ defmodule Logflare.Telemetry do
         measurement: :count,
         description: "Sum of events dropped (timestamp more than 1h in the future)"
       ),
+      sum("logflare.sources.source_router.dropped.count",
+        event_name: [:logflare, :sources, :source_router, :dropped],
+        measurement: :count,
+        tags: [:reason],
+        description:
+          "Count of routed event copies that a rule could not write, because the SourceSup of the target did not start. These are copies of user logs; the original event is written to its own source. Tagged `:source_unavailable` when the start failed or timed out, or `:source_not_found` when the target was deleted"
+      ),
+      sum("logflare.user_monitoring.system_logs.dropped.count",
+        event_name: [:logflare, :user_monitoring, :system_logs, :dropped],
+        measurement: :count,
+        tags: [:reason],
+        description:
+          "Count of async system log events that the log interceptor dropped. A system log event is an internal Logflare log line copied to a user's system.logs source; logs that users ingest never count here. Tagged `:source_not_started` when the system logs source was down, `:source_unavailable` when its start did not finish in time, or `:source_not_found` when it was deleted"
+      ),
       sum("logflare.logs.ingest_logs.rejected",
         event_name: [:logflare, :logs, :ingest_logs, :rejected],
         measurement: :count,
@@ -509,6 +522,57 @@ defmodule Logflare.Telemetry do
         tags: [:name],
         description: "Top processes by memory usage",
         unit: {:byte, :megabyte}
+      ),
+      sum("logflare.bigquery.schema.samples.selected",
+        event_name: [:logflare, :bigquery, :schema, :report],
+        measurement: :samples_selected
+      ),
+      sum("logflare.bigquery.schema.samples.selected_zero_rate",
+        event_name: [:logflare, :bigquery, :schema, :report],
+        measurement: :samples_selected_zero_rate
+      ),
+      sum("logflare.bigquery.schema.samples.selected_floor",
+        event_name: [:logflare, :bigquery, :schema, :report],
+        measurement: :samples_selected_floor
+      ),
+      sum("logflare.bigquery.schema.samples.selected_bootstrap",
+        event_name: [:logflare, :bigquery, :schema, :report],
+        measurement: :samples_selected_bootstrap
+      ),
+      sum("logflare.bigquery.schema.samples.admitted",
+        event_name: [:logflare, :bigquery, :schema, :report],
+        measurement: :samples_admitted
+      ),
+      sum("logflare.bigquery.schema.samples.rejected",
+        event_name: [:logflare, :bigquery, :schema, :report],
+        measurement: :samples_rejected
+      ),
+      sum("logflare.bigquery.schema.samples.unavailable",
+        event_name: [:logflare, :bigquery, :schema, :report],
+        measurement: :samples_unavailable
+      ),
+      sum("logflare.bigquery.schema.samples.handled",
+        event_name: [:logflare, :bigquery, :schema, :report],
+        measurement: :samples_handled
+      ),
+      last_value("logflare.bigquery.schema.queues.observed_process_count",
+        event_name: [:logflare, :bigquery, :schema, :queues],
+        measurement: :observed_process_count
+      ),
+      last_value("logflare.bigquery.schema.queues.queue_length_max",
+        event_name: [:logflare, :bigquery, :schema, :queues],
+        measurement: :queue_length_max
+      ),
+      last_value("logflare.bigquery.schema.queues.queue_length_sum",
+        event_name: [:logflare, :bigquery, :schema, :queues],
+        measurement: :queue_length_sum
+      ),
+      distribution("logflare.bigquery.schema.operation.stop.duration",
+        tags: [:phase, :result],
+        unit: {:native, :millisecond}
+      ),
+      counter("logflare.bigquery.schema.operation.exception.count",
+        tags: [:phase]
       ),
       last_value("logflare.system.top_ets_tables.individual.memory",
         tags: [:name],
@@ -737,6 +801,8 @@ defmodule Logflare.Telemetry do
       ),
       counter("finch.conn_max_idle_time_exceeded.idle_time",
         tags: [:host, :port],
+        # S3 drain endpoints are customer-supplied, so they are left out rather than tagged.
+        keep: &(not s3_drain_pool?(&1)),
         description: "Count of connections discarded due to exceeding max idle time"
       )
     ]
@@ -753,7 +819,7 @@ defmodule Logflare.Telemetry do
   end
 
   defp periodic_measurements do
-    cache_stats? = Application.get_env(:logflare, :cache_stats, false)
+    cache_stats? = CachexOps.stats_enabled?()
 
     cachex_metrics =
       if cache_stats? do
@@ -767,7 +833,8 @@ defmodule Logflare.Telemetry do
         {__MODULE__, :process_message_queue_metrics, []},
         {__MODULE__, :process_memory_metrics, []},
         {__MODULE__, :ets_table_metrics, []},
-        {__MODULE__, :clickhouse_read_pool_metrics, []}
+        {__MODULE__, :clickhouse_read_pool_metrics, []},
+        {Logflare.Sources.Source.BigQuery.SchemaMetrics, :report, []}
       ]
 
     cachex_metrics ++ process_metrics
@@ -864,41 +931,24 @@ defmodule Logflare.Telemetry do
 
   def cachex_metrics do
     Enum.each(@caches, fn {cache, metric} ->
-      {:ok, stats} = Cachex.stats(cache)
-
-      {:total_heap_size, total_heap_size} =
-        cache
-        |> Process.whereis()
-        |> Process.info(:total_heap_size)
-
-      metrics = %{
-        purge: Map.get(stats, :purge, 0),
-        stats: Map.get(stats, :stats, 0),
-        evictions: Map.get(stats, :evictions, 0),
-        expirations: Map.get(stats, :expirations, 0),
-        operations: Map.get(stats, :operations, 0),
-        hits: Map.get(stats, :hits, 0),
-        misses: Map.get(stats, :misses, 0),
-        hit_rate: Map.get(stats, :hit_rate, 0),
-        miss_rate: Map.get(stats, :miss_rate, 0),
-        total_heap_size: total_heap_size
-      }
-
-      :telemetry.execute([:cachex, metric], metrics)
+      :telemetry.execute([:cachex, metric], cache.stats())
     end)
   end
 
-  def process_message_queue_metrics,
-    do: process_attribute_metrics(:message_queue)
+  def process_message_queue_metrics do
+    :message_queue
+    |> process_attribute_metrics()
+    |> emit_schema_queue_metrics()
+  end
 
   def process_memory_metrics,
     do: process_attribute_metrics(:memory)
 
   defp process_attribute_metrics(type) do
     metric_params = @process_metrics[type]
+    processes = :recon.proc_count(metric_params.process_attribute, 10)
 
-    :recon.proc_count(metric_params.process_attribute, 10)
-    |> Enum.each(fn {pid, val, call_info} ->
+    Enum.each(processes, fn {pid, val, call_info} ->
       [current_function, initial_call] = get_current_and_initial_call(call_info)
       name = get_display_flag(call_info, initial_call, pid)
 
@@ -907,13 +957,50 @@ defmodule Logflare.Telemetry do
       metadata = %{
         pid: inspect(pid),
         name: name,
-        current_fuction: mfa_to_string(current_function),
+        current_function: mfa_to_string(current_function),
         initial_call: mfa_to_string(initial_call)
       }
 
       :telemetry.execute([:logflare, :system, :top_processes, type], metrics, metadata)
     end)
+
+    processes
   end
+
+  defp emit_schema_queue_metrics(processes) do
+    counts = %{
+      observed_process_count: 0,
+      queue_length_max: 0,
+      queue_length_sum: 0
+    }
+
+    counts =
+      Enum.reduce(processes, counts, fn {pid, queue_length, call_info}, counts ->
+        [_, initial_call] = get_current_and_initial_call(call_info)
+
+        if schema_process?(pid, initial_call) do
+          %{
+            observed_process_count: counts.observed_process_count + 1,
+            queue_length_max: max(counts.queue_length_max, queue_length),
+            queue_length_sum: counts.queue_length_sum + queue_length
+          }
+        else
+          counts
+        end
+      end)
+
+    :telemetry.execute([:logflare, :bigquery, :schema, :queues], counts, %{})
+  end
+
+  defp schema_process?(pid, {:proc_lib, :init_p, 5}) do
+    :proc_lib.translate_initial_call(pid) ==
+      {Logflare.Sources.Source.BigQuery.Schema, :init, 1}
+  catch
+    :exit, _reason -> false
+  end
+
+  defp schema_process?(_pid, initial_call),
+    do: initial_call == {Logflare.Sources.Source.BigQuery.Schema, :init, 1}
 
   defp get_current_and_initial_call(call_info) do
     [:current_function, :initial_call]
@@ -1005,6 +1092,14 @@ defmodule Logflare.Telemetry do
     do: true
 
   defp spool_batch?(_metadata), do: false
+
+  # Finch's idle-expiry metadata carries no pool name, but Finch emits it from the pool process,
+  # which registers itself in its Finch instance's Registry.
+  defp s3_drain_pool?(_metadata) do
+    Registry.keys(Logflare.FinchS3, self()) != []
+  rescue
+    ArgumentError -> false
+  end
 
   defp backend_scoped_drop?(%{backend_id: _, backend_type: _}), do: true
   defp backend_scoped_drop?(_metadata), do: false
