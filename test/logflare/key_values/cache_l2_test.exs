@@ -180,6 +180,18 @@ defmodule Logflare.KeyValues.CacheL2Test do
     end
   end
 
+  test "reset with entries in L1 and L2", %{user: user} do
+    insert(:key_value, user: user, key: "proj1", value: @value)
+    ref = attach_l2_fill()
+    assert @value = KeyValues.Cache.lookup(user.id, "proj1")
+    assert_receive {_event, ^ref, _measurements, %{result: :put}}
+
+    assert :ok = KeyValues.Cache.reset()
+
+    assert {:ok, nil} = Cachex.get(KeyValues.Cache, lookup_key(user.id, "proj1"))
+    assert {:error, %Nebulex.KeyError{}} = L2.fetch(lookup_key(user.id, "proj1"))
+  end
+
   test "lookup with L2 disabled at runtime", %{user: user} do
     insert(:key_value, user: user, key: "proj1", value: @value)
     :ok = L2.put(lookup_key(user.id, "proj1"), %{"stale" => true})

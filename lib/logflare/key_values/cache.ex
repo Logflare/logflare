@@ -228,6 +228,24 @@ defmodule Logflare.KeyValues.Cache do
   defp tombstoned?(user_id, key), do: Tombstones.Cache.tombstoned?(__MODULE__, {user_id, key})
 
   @doc """
+  Clears this node's L1, its Cachex stats and its share of L2.
+  """
+  @impl Logflare.Cache
+  def reset do
+    :ok = CachexOps.reset(__MODULE__)
+    _ = clear_l2_local()
+    :ok
+  end
+
+  defp clear_l2_local do
+    if l2_running?(), do: L2.__primary__().delete_all()
+  rescue
+    _exception -> :error
+  catch
+    :exit, _reason -> :error
+  end
+
+  @doc """
   Records which key-values were recently in use so the next full warm can
   prioritise them.
 
