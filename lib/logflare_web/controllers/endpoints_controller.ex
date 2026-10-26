@@ -112,6 +112,14 @@ defmodule LogflareWeb.EndpointsController do
       {:error, :database_unavailable} = error ->
         FallbackController.call(conn, error)
 
+      {:error, :policy_unavailable} ->
+        conn
+        |> put_status(:service_unavailable)
+        |> put_resp_header("retry-after", "5")
+        |> json(%{
+          error: "Service Unavailable: endpoint policy could not be verified. Retry the request."
+        })
+
       {:error, :sandboxing_disabled} ->
         conn
         |> put_status(:bad_request)

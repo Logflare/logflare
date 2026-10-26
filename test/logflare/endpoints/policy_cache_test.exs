@@ -1,6 +1,9 @@
 defmodule Logflare.Endpoints.PolicyCacheTest do
   use Logflare.DataCase
 
+  require Cachex.Spec
+
+  alias Cachex.Services.Locksmith
   alias Logflare.Endpoints
   alias Logflare.Endpoints.Cache
 
@@ -79,7 +82,10 @@ defmodule Logflare.Endpoints.PolicyCacheTest do
 
   test "unexpected getter exceptions are not reported as database unavailability", context do
     expect(Endpoints, :get_endpoint_query, fn _id -> raise "unexpected policy bug" end)
-    assert_raise MatchError, fn -> Cache.get_endpoint_policy(context.endpoint.id) end
+
+    assert_raise Cachex.Error, ~r/unexpected policy bug/, fn ->
+      Cache.get_endpoint_policy(context.endpoint.id)
+    end
   end
 
   test "policy reads ignore stale replica-backed endpoint entries", %{endpoint: endpoint} do
@@ -94,7 +100,9 @@ defmodule Logflare.Endpoints.PolicyCacheTest do
            }
   end
 
-  test "eviction waits for an old in-flight fill before acknowledging", %{endpoint: endpoint} do
+  test "eviction acknowledges without waiting for a fill and fences its old result", %{
+    endpoint: endpoint
+  } do
     test_pid = self()
 
     stub(Endpoints, :get_endpoint_query, fn id ->
@@ -109,7 +117,11 @@ defmodule Logflare.Endpoints.PolicyCacheTest do
       end
     end)
 
-    reader = Task.async(fn -> Cache.get_endpoint_policy(endpoint.id) end)
+    reader =
+      Task.async(fn ->
+        send(test_pid, {:policy_read_done, Cache.get_endpoint_policy(endpoint.id)})
+      end)
+
     assert_receive {:policy_read_started, reader_pid}
 
     updated =
@@ -117,15 +129,132 @@ defmodule Logflare.Endpoints.PolicyCacheTest do
       |> Ecto.Changeset.change(enforced_clickhouse_settings: %{"max_execution_time" => 1})
       |> Repo.update!()
 
-    invalidator = Task.async(fn -> Cache.invalidate_endpoint_policy_cluster(endpoint.id) end)
-    assert Task.yield(invalidator, 100) == nil
-    send(reader_pid, :finish)
+    invalidator =
+      Task.async(fn ->
+        send(test_pid, {:policy_evicted, Cache.invalidate_endpoint_policy_cluster(endpoint.id)})
+      end)
 
-    assert Task.await(reader) == endpoint
-    assert Task.await(invalidator) == :ok
+    try do
+      assert_receive {:policy_evicted, :ok}, 1_000
+      assert Cachex.get(Cache, {:get_endpoint_policy, [endpoint.id]}) == {:ok, nil}
+      send(reader_pid, :finish)
+      assert_receive {:policy_read_done, current}, 1_000
+      assert current.enforced_clickhouse_settings == updated.enforced_clickhouse_settings
 
-    assert Cache.get_endpoint_policy(endpoint.id).enforced_clickhouse_settings ==
-             updated.enforced_clickhouse_settings
+      assert Cache.get_endpoint_policy(endpoint.id).enforced_clickhouse_settings ==
+               updated.enforced_clickhouse_settings
+    after
+      send(reader_pid, :finish)
+      Task.await(reader)
+      Task.await(invalidator)
+    end
+  end
+
+  test "unrelated cold fills and operator saves proceed while one primary read stalls", context do
+    other = insert(:endpoint, language: :ch_sql)
+    admin = insert(:user, admin: true)
+    test_pid = self()
+
+    stub(Endpoints, :get_endpoint_query, fn id ->
+      Mimic.call_original(Endpoints, :get_endpoint_query, [id])
+    end)
+
+    expect(Endpoints, :get_endpoint_query, fn _id ->
+      refute Locksmith.transaction?()
+      send(test_pid, {:blocked_fill, self()})
+
+      receive do
+        :finish -> context.endpoint
+      end
+    end)
+
+    first = Task.async(fn -> Cache.get_endpoint_policy(context.endpoint.id) end)
+    assert_receive {:blocked_fill, getter}
+
+    second =
+      Task.async(fn -> send(test_pid, {:other_policy, Cache.get_endpoint_policy(other.id)}) end)
+
+    save =
+      Task.async(fn ->
+        result =
+          Endpoints.configure_enforced_clickhouse_settings(admin, other, %{
+            "max_execution_time" => 1
+          })
+
+        send(test_pid, {:saved, result})
+      end)
+
+    try do
+      assert_receive {:other_policy, %{id: id}}, 1_000
+      assert id == other.id
+      assert_receive {:saved, {:ok, updated}}, 1_000
+      assert updated.enforced_clickhouse_settings["max_execution_time"] == 1
+    after
+      send(getter, :finish)
+      Task.await(first)
+      Task.await(second)
+      Task.await(save)
+    end
+  end
+
+  test "concurrent misses for one endpoint share a primary read", context do
+    test_pid = self()
+
+    expect(Endpoints, :get_endpoint_query, fn _id ->
+      send(test_pid, {:shared_fill, self()})
+
+      receive do
+        :finish -> context.endpoint
+      end
+    end)
+
+    readers =
+      for _ <- 1..4, do: Task.async(fn -> Cache.get_endpoint_policy(context.endpoint.id) end)
+
+    assert_receive {:shared_fill, getter}
+
+    try do
+      TestUtils.retry_assert(fn ->
+        {_cache, tasks} = :sys.get_state(Cachex.Spec.name(Cache, :courier))
+
+        assert {_worker, listeners} =
+                 Map.get(tasks, {:get_endpoint_policy, [context.endpoint.id]})
+
+        assert length(listeners) == 4
+      end)
+    after
+      send(getter, :finish)
+      for reader <- readers, do: assert(Task.await(reader) == context.endpoint)
+    end
+  end
+
+  test "evicted generation markers cannot validate an old fill", context do
+    stub(Endpoints, :get_endpoint_query, fn id ->
+      Mimic.call_original(Endpoints, :get_endpoint_query, [id])
+    end)
+
+    expect(Endpoints, :get_endpoint_query, fn _id ->
+      Cachex.del(Cache, {:endpoint_policy_generation, [context.endpoint.id]})
+
+      context.endpoint
+      |> Ecto.Changeset.change(enforced_clickhouse_settings: %{"max_execution_time" => 1})
+      |> Repo.update!()
+
+      context.endpoint
+    end)
+
+    current = Cache.get_endpoint_policy(context.endpoint.id)
+    assert current.enforced_clickhouse_settings == %{"max_execution_time" => 1}
+  end
+
+  test "repeated generation changes fail closed after bounded reads", context do
+    expect(Endpoints, :get_endpoint_query, 3, fn id ->
+      :ok = Cache.invalidate_endpoint_policy(id)
+      context.endpoint
+    end)
+
+    assert Cache.get_endpoint_policy(context.endpoint.id) == {:error, :policy_unavailable}
+    assert Cachex.get(Cache, {:get_endpoint_policy, [context.endpoint.id]}) == {:ok, nil}
   end
 
   test "missing endpoints remain missing instead of using a caller's stale policy" do

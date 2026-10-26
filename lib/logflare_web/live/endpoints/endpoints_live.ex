@@ -11,6 +11,7 @@ defmodule LogflareWeb.EndpointsLive do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.QueryError
   alias Logflare.Endpoints
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.SingleTenant
@@ -412,11 +413,22 @@ defmodule LogflareWeb.EndpointsLive do
         |> put_flash(:info, "Ran query successfully")
         |> assign(:test_result, successful_test_result(:endpoint, result, nil))
 
-      {:error, err} ->
-        message = if is_binary(err), do: err, else: QueryErrorHelpers.query_error_message(err)
+      {:error, error} ->
+        message = endpoint_query_error_message(error)
         assign(socket, :test_result, %{kind: :endpoint, status: :error, error: message})
     end
   end
+
+  @spec endpoint_query_error_message(term()) :: String.t()
+  defp endpoint_query_error_message(error)
+       when error in [:database_unavailable, :policy_unavailable],
+       do: "Endpoint policy is temporarily unavailable. Retry the query."
+
+  defp endpoint_query_error_message(%QueryError{} = error),
+    do: QueryErrorHelpers.query_error_message(error)
+
+  defp endpoint_query_error_message(message) when is_binary(message), do: message
+  defp endpoint_query_error_message(_error), do: QueryErrorHelpers.generic_query_error_message()
 
   defp run_sandbox_query(%{assigns: %{show_endpoint: endpoint}} = socket, payload) do
     show_transformed? = Map.get(payload, "show_transformed") == "true"
