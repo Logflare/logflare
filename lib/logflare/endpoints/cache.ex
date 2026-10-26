@@ -72,14 +72,25 @@ defmodule Logflare.Endpoints.Cache do
     end
   end
 
+  @doc """
+  Invalidates policy entries on connected nodes. Nodes predating this API have no
+  entries to evict, but must still be upgraded before enabling endpoint policy.
+  """
   @spec invalidate_endpoint_policy_cluster(integer()) ::
           :ok | {:error, :cache_invalidation_failed}
   def invalidate_endpoint_policy_cluster(id) do
     [node() | Node.list()]
     |> :erpc.multicall(__MODULE__, :invalidate_endpoint_policy, [id], 5_000)
     |> Enum.reduce(:ok, fn
-      {:ok, :ok}, status -> status
-      _failure, _status -> {:error, :cache_invalidation_failed}
+      {:ok, :ok}, status ->
+        status
+
+      {:error, {:exception, :undef, [{__MODULE__, :invalidate_endpoint_policy, [^id], []}]}},
+      status ->
+        status
+
+      _failure, _status ->
+        {:error, :cache_invalidation_failed}
     end)
   end
 
