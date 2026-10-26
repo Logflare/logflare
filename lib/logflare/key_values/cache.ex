@@ -285,7 +285,7 @@ defmodule Logflare.KeyValues.Cache do
 
   @doc """
   Deletes `keys` from L1 and from this node's share of L2, without RPC, and returns the number
-  of entries deleted from both.
+  of keys deleted from either level.
 
   Every node busts every change, so the owner of an L2 entry deletes it locally. L2 entries are
   deleted while L2 runs even if it is disabled, so re-enabling it serves no entry that missed a
@@ -293,8 +293,13 @@ defmodule Logflare.KeyValues.Cache do
   """
   @impl ContextCache
   def delete_keys(keys) do
-    {:ok, l1_deleted} = CachexOps.delete_keys(__MODULE__, keys)
-    {:ok, l1_deleted + Enum.count(keys, &delete_l2_local/1)}
+    Cachex.execute(__MODULE__, fn worker ->
+      Enum.count(keys, fn cache_key ->
+        in_l1? = not match?({:ok, nil}, Cachex.take(worker, cache_key))
+        in_l2? = delete_l2_local(cache_key)
+        in_l1? or in_l2?
+      end)
+    end)
   end
 
   defp delete_l2_local(cache_key) do

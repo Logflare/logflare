@@ -166,6 +166,15 @@ defmodule Logflare.KeyValues.CacheL2Test do
     assert @value = KeyValues.Cache.lookup(user.id, "proj1")
   end
 
+  test "busting a key-value cached in L1 and L2", %{user: user} do
+    insert(:key_value, user: user, key: "proj1", value: @value)
+    ref = attach_l2_fill()
+    assert @value = KeyValues.Cache.lookup(user.id, "proj1")
+    assert_receive {_event, ^ref, _measurements, %{result: :put}}
+
+    assert {:ok, 1} = ContextCache.bust_keys([{KeyValues, user_id: user.id, key: "proj1"}])
+  end
+
   test "busting while L2 fails", %{user: user} do
     insert(:key_value, user: user, key: "proj1", value: @value)
     assert @value = KeyValues.Cache.lookup(user.id, "proj1")
