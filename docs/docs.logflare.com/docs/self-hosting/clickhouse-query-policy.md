@@ -69,7 +69,9 @@ Backend query-class policy updates are eventually consistent across Logflare ins
 
 Do not rely on these updates for immediate emergency throttling or hard resource guarantees. Use ClickHouse query-user profile constraints for hard ceilings. During rollout or rollback, verify effective settings using `system.query_log.Settings` across the relevant workloads and read clusters. Cache expiry is not a guaranteed propagation deadline. This limitation concerns backend class-policy updates, not the endpoint-owned limit invalidation described above.
 
-If an endpoint-owned policy is not cached and the primary database is unavailable, endpoint execution returns a retryable HTTP 503 instead of running without verified limits. Already-cached policies remain usable. During rolling deploys, eviction skips nodes predating the endpoint-policy invalidation API because they cannot hold those cache entries; this does not make it safe to enable policy before all instances support enforcement.
+Endpoint-owned policy misses share a fill per endpoint, with primary reads outside the shared cache transaction queue. Invalidation advances a generation and evicts the entry without waiting for primary reads. Superseded fills retry instead of republishing old settings.
+
+If an endpoint-owned policy is not cached and its primary read fails, or a current policy cannot be established within three attempts, execution fails closed with a retryable HTTP 503. Editor Run displays retry guidance instead of disconnecting. Already-cached policies remain usable. During rolling deploys, eviction skips nodes predating the endpoint-policy invalidation API because they cannot hold those cache entries; this does not make it safe to enable policy before all instances support enforcement.
 
 ## Deployment and verification
 
