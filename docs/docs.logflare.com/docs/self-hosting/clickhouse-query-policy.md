@@ -55,11 +55,17 @@ Zero (unlimited or no priority), negative values, wrong types, unknown keys, and
 
 ClickHouse profile defaults supply settings not specified by Logflare. Logflare combines class default, selected class, and endpoint-owned settings. Resource limits use the smallest configured value across all three policies; non-limit settings such as priority use the later policy. Hard profile ceilings must be ClickHouse constraints, not merely default values. The server still enforces those constraints after merging.
 
-Endpoint-owned policy is passed separately from consumer SQL. Consumer SQL cannot override enforced keys, including in nested SETTINGS clauses. The adaptor injects the combined policy once. Supported `EXPLAIN SELECT` wrappers are preserved. Previews show only endpoint-owned settings, not operator class policy. The actual request class and current backend policy are applied at execution time.
+Endpoint-owned policy is passed separately from consumer SQL. Consumer SQL cannot override enforced keys, including in nested SETTINGS clauses. The adaptor injects the combined policy once. Supported `EXPLAIN SELECT` wrappers are preserved. Previews show only endpoint-owned settings, not operator class policy. The actual request class and backend policy obtained through the metadata cache are applied at execution time, subject to the consistency limitations below.
 
-Historical endpoint versions retain current operator ceilings. Cached snapshot reloads also overlay current endpoint policy. Saving endpoint-owned limits invalidates caches for all endpoint versions and stops their active refresh tasks. Already-running foreground queries finish for their existing callers; new callers use replacement caches with current settings.
+Historical endpoint versions retain current endpoint-owned limits. Cached snapshot reloads also overlay current endpoint policy. Saving endpoint-owned limits invalidates caches for all endpoint versions and stops their active refresh tasks. Already-running foreground queries finish for their existing callers; new callers use replacement caches with current settings.
 
-Successful result caches remain class-agnostic: changing the class does not create a different result-cache key or run a query on a cache hit. Misses and background refreshes enforce policy at execution time. A refresh retains the class from the request that originally created the cache, but reads current backend policy. Backend class-policy changes invalidate backend metadata across the cluster, but do not evict reusable successful results, restart ingesters, or tear down active read connections.
+Successful result caches remain class-agnostic: changing the class does not create a different result-cache key or run a query on a cache hit. Misses and background refreshes enforce policy at execution time. A refresh retains the class from the request that originally created the cache and uses backend policy obtained through the metadata cache, subject to the consistency limitations below. Backend class-policy changes invalidate backend metadata across the cluster, but do not evict reusable successful results, restart ingesters, or tear down active read connections.
+
+## Policy update consistency
+
+Backend query-class policy updates are eventually consistent across Logflare instances. A successful save confirms that the configuration was persisted, but does not guarantee that every subsequent query immediately uses it. In-flight cache fills and read-replica lag can temporarily preserve the previous policy, including after limits are tightened, relaxed, or removed.
+
+Do not rely on these updates for immediate emergency throttling or hard resource guarantees. Use ClickHouse query-user profile constraints for hard ceilings. During rollout or rollback, verify effective settings using `system.query_log.Settings` across the relevant workloads and read clusters. Cache expiry is not a guaranteed propagation deadline. This limitation concerns backend class-policy updates, not the endpoint-owned limit invalidation described above.
 
 ## Deployment and verification
 

@@ -321,6 +321,10 @@ defmodule Logflare.Backends do
           {:ok, Backend.t()} | {:error, Changeset.t() | :not_found | :not_clickhouse_backend}
   def update_backend(%Backend{} = backend, attrs), do: update_backend_config(backend, attrs, [])
 
+  @doc """
+  Persists backend query-class policy. Successful saves do not guarantee
+  immediate cluster-wide application; metadata cache propagation is eventual.
+  """
   @spec configure_query_class_settings(User.t(), Backend.t(), map()) ::
           {:ok, Backend.t()} | {:error, term()}
   def configure_query_class_settings(%User{id: user_id}, %Backend{} = backend, settings) do
@@ -371,6 +375,8 @@ defmodule Logflare.Backends do
           end
 
         if Keyword.get(opts, :query_policy_only, false) do
+          # Class policy intentionally uses eventually consistent backend metadata.
+          # These evictions do not fence in-flight fills or guarantee immediate propagation.
           keys = [{__MODULE__, updated.id}]
           Logflare.ContextCache.bust_keys(keys)
           Cluster.Utils.rpc_multicast(Logflare.ContextCache, :bust_keys, [keys])
