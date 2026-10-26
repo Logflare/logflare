@@ -7,20 +7,35 @@ defmodule Logflare.KeyValues.Cache do
   alias Logflare.ContextCache
   alias Logflare.ContextCache.Tombstones
   alias Logflare.KeyValues
+  alias Logflare.KeyValues.Cache.L2
   alias Logflare.KeyValues.CacheWarmer
   alias Logflare.Repo
 
+  @supervisor Logflare.KeyValues.Cache.Supervisor
   @usage_touch_window :timer.minutes(20)
   @usage_touch_chunk 1_000
 
+  @doc """
+  Starts L1 and, when `Logflare.KeyValues.Cache.L2.enabled?/0`, L2 under a `one_for_one`
+  supervisor, so an L2 crash does not drop the warmed L1.
+  """
   def child_spec(_) do
-    CachexOps.child_spec(__MODULE__,
-      limit: 10_000_000,
-      ttl: to_timeout(day: 1),
-      purge_interval: to_timeout(hour: 1),
-      compressed: true,
-      warmer: {KeyValues.CacheWarmer, interval: :timer.hours(1)}
-    )
+    l1 =
+      CachexOps.child_spec(__MODULE__,
+        limit: 10_000_000,
+        ttl: to_timeout(day: 1),
+        purge_interval: to_timeout(hour: 1),
+        compressed: true,
+        warmer: {KeyValues.CacheWarmer, interval: :timer.hours(1)}
+      )
+
+    children = if L2.enabled?(), do: [l1, L2], else: [l1]
+
+    %{
+      id: __MODULE__,
+      type: :supervisor,
+      start: {Supervisor, :start_link, [children, [strategy: :one_for_one, name: @supervisor]]}
+    }
   end
 
   @spec count(integer()) :: non_neg_integer()
