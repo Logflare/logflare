@@ -317,11 +317,23 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Updates the config of a Backend.
+  Updates the config of a Backend. Returns a changeset error if the backend no longer exists.
   """
-  @spec update_backend(Backend.t(), map()) ::
-          {:ok, Backend.t()} | {:error, Changeset.t() | :not_found | :not_clickhouse_backend}
-  def update_backend(%Backend{} = backend, attrs), do: update_backend_config(backend, attrs, [])
+  @spec update_backend(Backend.t(), map()) :: {:ok, Backend.t()} | {:error, Changeset.t()}
+  def update_backend(%Backend{} = backend, attrs) do
+    case update_backend_config(backend, attrs, []) do
+      {:error, :not_found} ->
+        changeset =
+          backend
+          |> Changeset.change()
+          |> Changeset.add_error(:base, "Backend no longer exists")
+
+        {:error, changeset}
+
+      result ->
+        result
+    end
+  end
 
   @doc """
   Persists backend query-class policy. Successful saves do not guarantee

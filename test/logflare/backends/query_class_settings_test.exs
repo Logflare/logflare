@@ -77,6 +77,24 @@ defmodule Logflare.Backends.QueryClassSettingsTest do
     assert cleared.config.query_class_settings == %{}
   end
 
+  for {kind, attrs} <- [
+        {"name", %{name: "renamed"}},
+        {"config", %{config: %{read_pool_size: 4}}},
+        {"default ingest", %{default_ingest?: true}},
+        {"alerts", %{alert_queries: []}}
+      ] do
+    @tag update_attrs: attrs
+    test "deleted backends return changeset errors for #{kind} updates", context do
+      Repo.delete!(context.backend)
+
+      assert {:error, %Ecto.Changeset{} = changeset} =
+               Backends.update_backend(context.backend, context.update_attrs)
+
+      assert changeset.data.id == context.backend.id
+      assert errors_on(changeset).base == ["Backend no longer exists"]
+    end
+  end
+
   test "invalid ordinary saves do not add a misleading policy authorization error", context do
     assert {:ok, configured} =
              Backends.configure_query_class_settings(context.admin, context.backend, @policy)
