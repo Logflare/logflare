@@ -1356,6 +1356,14 @@
     },
     {
       "source": "smells",
+      "kind": "behaviour_candidate",
+      "fingerprint": "sha256:76cec429a164236117b96ca869e455c66541c17451b03ea4cf5b7a969d81a070",
+      "message": "4 modules expose the same 3 public callbacks; consider extracting a behaviour if these modules are interchangeable implementations",
+      "file": "lib/logflare_web/live/global_log_metrics_lv.ex",
+      "line": 1
+    },
+    {
+      "source": "smells",
       "kind": "suboptimal",
       "fingerprint": "sha256:b3025f24cb933e321186afb31047f13bb61d1e2004504c304f7faec7db85f6d3",
       "message": "guard compares parameter to literal with ==; use pattern matching in the function head",
@@ -1564,7 +1572,7 @@
         "src",
         "test/support"
       ],
-      "file_count": 579
+      "file_count": 615
     }
   }
 }
