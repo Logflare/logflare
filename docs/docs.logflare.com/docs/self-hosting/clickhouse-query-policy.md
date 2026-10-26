@@ -10,6 +10,8 @@ Operators can configure scheduling and resource limits independently of ClickHou
 
 Use the internal operator function with a persisted admin user. The admin flag is provisioned out of band and rechecked on every save. Customer backend changesets, the backend API, and customer forms cannot introduce, change, or clear this configuration. Public backend JSON omits it. An operator must clear this policy before changing backend type. Ordinary saves merge under a row lock so stale customer snapshots cannot erase newer operator policy. No new customer-supplied ClickHouse settings are enabled.
 
+Endpoint-owned policy also requires a persisted admin `User`. Use the administrator's own account context, not a team-member context: matching email addresses or an admin team owner grant no operator privileges. Team profile edits can change display/contact preferences, not authentication identity.
+
 ```elixir
 admin = Logflare.Users.get(admin_id)
 backend = Logflare.Backends.get_backend(backend_id)
