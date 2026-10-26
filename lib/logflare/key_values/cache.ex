@@ -6,7 +6,9 @@ defmodule Logflare.KeyValues.Cache do
   the cluster-partitioned `Logflare.KeyValues.Cache.L2`, then the database. L2 and the
   database are read in the `Cachex.fetch/4` fallback, so concurrent misses for a key on one
   node share a single L2 call and database read. An L2 error or timeout falls back to the
-  database once per lookup and skips writing the value to L2. Counts and warming stay in L1.
+  database once per lookup and skips writing the value to L2. A database value is written to L2
+  in a separate task, so the lookup and other callers waiting on the same miss don't wait for it.
+  Counts and warming stay in L1.
 
   A value reaches L2 only if its key-value did not change within the `:tombstone_ttl` setting.
   The key's L2 owner writes the value to its share and deletes it again if the key-value is
@@ -36,6 +38,7 @@ defmodule Logflare.KeyValues.Cache do
   alias Logflare.KeyValues.Cache.L2
   alias Logflare.KeyValues.CacheWarmer
   alias Logflare.Repo
+  alias Logflare.Utils.Tasks
   alias Nebulex.Distributed.RPC
 
   @db_fallback_event [:logflare, :key_values, :cache, :db_fallback]
@@ -147,7 +150,7 @@ defmodule Logflare.KeyValues.Cache do
 
       l2_miss ->
         {value, fill_l2?} = full_value_from_l2_or_db(l2_miss, key_args)
-        if fill_l2?, do: put_l2(cache_key, value)
+        if fill_l2?, do: fill_l2_async(cache_key, value)
         value
     end
   end
@@ -181,6 +184,11 @@ defmodule Logflare.KeyValues.Cache do
     end
   rescue
     _ in [Nebulex.CacheNotFoundError, RuntimeError] -> :l2_error
+  end
+
+  defp fill_l2_async(cache_key, value) do
+    _ = Tasks.start_child(fn -> put_l2(cache_key, value) end)
+    :ok
   end
 
   defp put_l2(cache_key, value) do

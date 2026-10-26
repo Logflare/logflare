@@ -34,7 +34,9 @@ defmodule Logflare.KeyValues.CacheClusterTest do
   test "fill on one node, lookup on another", %{peers: [a, b], user: user, key: key} do
     kv = unboxed(fn -> insert(:key_value, user: user, key: key, value: %{"v" => "cached"}) end)
 
+    ref = attach_l2_fill(a)
     assert %{"v" => "cached"} = lookup(a, user.id, key)
+    assert_receive {_event, ^ref, _measurements, %{result: :put}}
     put_value(kv, %{"v" => "unbusted"})
 
     assert %{"v" => "cached"} = lookup(b, user.id, key)
@@ -52,16 +54,26 @@ defmodule Logflare.KeyValues.CacheClusterTest do
   end
 
   test "fill racing a change busted on every node", %{peers: [a, b] = peers, user: user} do
+    ref = attach_l2_fill(a)
+
     for {stale, fresh} <- [{%{"v" => "old"}, %{"v" => "new"}}, {nil, %{"v" => "inserted"}}] do
       key = TestUtils.random_string()
       kv = stale && unboxed(fn -> insert(:key_value, user: user, key: key, value: stale) end)
 
       bust_everywhere(peers, user.id, key)
       assert lookup(a, user.id, key) == stale
+      assert_receive {_event, ^ref, _measurements, %{result: :dropped_stale}}
       put_value(kv || %KeyValue{user_id: user.id, key: key}, fresh)
 
       assert lookup(b, user.id, key) == fresh
     end
+  end
+
+  defp attach_l2_fill(peer) do
+    event = [:logflare, :key_values, :cache, :l2_fill, :stop]
+    ref = :erpc.call(peer, :telemetry_test, :attach_event_handlers, [self(), [event]])
+    on_exit(fn -> :erpc.call(peer, :telemetry, :detach, [ref]) end)
+    ref
   end
 
   defp lookup(peer, user_id, key), do: :erpc.call(peer, KeyValues.Cache, :lookup, [user_id, key])

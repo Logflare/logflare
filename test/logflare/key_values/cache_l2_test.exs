@@ -33,11 +33,14 @@ defmodule Logflare.KeyValues.CacheL2Test do
   end
 
   test "lookup filled from the database", %{user: user} do
+    ref = attach_l2_fill()
+
     for {accessor_path, expected} <- [{nil, @value}, {"org.id", "abc"}] do
       key = "proj:#{accessor_path}"
       insert(:key_value, user: user, key: key, value: @value)
 
       assert KeyValues.Cache.lookup(user.id, key, accessor_path) == expected
+      assert_receive {_event, ^ref, _measurements, %{result: :put}}
       assert {:ok, ^expected} = L2.fetch(lookup_key(user.id, key, accessor_path))
     end
   end
@@ -57,7 +60,25 @@ defmodule Logflare.KeyValues.CacheL2Test do
     assert @value = KeyValues.Cache.lookup(user.id, "proj1")
   end
 
+  test "lookup filled from the database while writing to L2 is slow", %{user: user} do
+    insert(:key_value, user: user, key: "proj1", value: @value)
+    ref = attach_l2_fill()
+
+    expect(L2, :find_node, fn cache_key ->
+      Process.sleep(500)
+      Mimic.call_original(L2, :find_node, [cache_key])
+    end)
+
+    {elapsed_us, value} = :timer.tc(fn -> KeyValues.Cache.lookup(user.id, "proj1") end)
+
+    assert @value = value
+    assert elapsed_us < 250_000
+    assert_receive {_event, ^ref, _measurements, %{result: :put}}, 1_000
+  end
+
   test "fill read before a busted change of its key-value", %{user: user} do
+    ref = attach_l2_fill()
+
     for {key, stale} <- [{"updated", %{"v" => "old"}}, {"inserted", nil}] do
       expect(KeyValues, :lookup, fn _user_id, ^key, _accessor_path ->
         bust(user.id, key)
@@ -65,6 +86,7 @@ defmodule Logflare.KeyValues.CacheL2Test do
       end)
 
       assert KeyValues.Cache.lookup(user.id, key) == stale
+      assert_receive {_event, ^ref, _measurements, %{result: :dropped_stale}}
       assert {:error, %Nebulex.KeyError{}} = L2.fetch(lookup_key(user.id, key))
     end
   end
@@ -167,6 +189,12 @@ defmodule Logflare.KeyValues.CacheL2Test do
 
   defp fail(:remote_raise), do: raise(RuntimeError, "RPC runtime error")
   defp fail(:stopped), do: raise(Nebulex.CacheNotFoundError, cache: L2)
+
+  defp attach_l2_fill do
+    ref = :telemetry_test.attach_event_handlers(self(), [Enum.at(@telemetry_events, 1)])
+    on_exit(fn -> :telemetry.detach(ref) end)
+    ref
+  end
 
   defp lookup_key(user_id, key, accessor_path \\ nil),
     do: {:lookup, [user_id, key, accessor_path]}
