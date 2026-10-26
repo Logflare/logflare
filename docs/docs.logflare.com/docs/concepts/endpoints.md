@@ -61,6 +61,8 @@ You can create sandboxed queries by using a CTE within the query. It allows the 
 
 :::note
 Sandboxed queries are supported for BigQuery and ClickHouse backends. PostgreSQL backends do not currently support this feature.
+
+For ClickHouse, some query settings on the Endpoint query also apply to the consumer query. See [ClickHouse sandboxed queries](/backends/clickhouse#query-settings-for-sandboxed-endpoints).
 :::
 
 For example, this sandboxed query creates a temporary result called `errors`, which limits the results to containing the `"ERROR"` string as well as being before the year `2020` .

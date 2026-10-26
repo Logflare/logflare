@@ -874,6 +874,164 @@ defmodule Logflare.SqlTest do
       assert {:error, err} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
       assert String.downcase(err) =~ "restricted setting allow_introspection_functions"
     end
+
+    test "allows owner-only settings in the owner query" do
+      user = insert(:user)
+      _source = insert(:source, user: user, name: "my_ch_table")
+
+      query =
+        "select a from my_ch_table SETTINGS move_primary_key_columns_to_end_of_prewhere = 0, query_plan_max_limit_for_lazy_materialization = 1000"
+
+      assert {:ok, result} = Sql.transform(:ch_sql, query, user)
+
+      assert result =~
+               "SETTINGS move_primary_key_columns_to_end_of_prewhere = 0, query_plan_max_limit_for_lazy_materialization = 1000"
+    end
+
+    test "rejects owner-only settings in sandboxed queries" do
+      user = insert(:user)
+      _source = insert(:source, user: user, name: "my_ch_table")
+
+      cte_query = "with src as (select a from my_ch_table) select a from src"
+
+      consumer_query =
+        "select a from src SETTINGS move_primary_key_columns_to_end_of_prewhere = 0"
+
+      assert {:error, err} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
+      assert err =~ "Restricted setting move_primary_key_columns_to_end_of_prewhere"
+    end
+
+    test "rejects the lazy materialization limit in sandboxed queries" do
+      user = insert(:user)
+      _source = insert(:source, user: user, name: "my_ch_table")
+
+      cte_query = "with src as (select a from my_ch_table) select a from src"
+
+      consumer_query =
+        "select a from src SETTINGS query_plan_max_limit_for_lazy_materialization = 0"
+
+      assert {:error, err} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
+      assert err =~ "Restricted setting query_plan_max_limit_for_lazy_materialization"
+    end
+
+    test "keeps owner query settings when the sandboxed query replaces the final select" do
+      user = insert(:user)
+      _source = insert(:source, user: user, name: "my_ch_table")
+
+      cte_query = """
+      with src as (select a from my_ch_table where a = @a)
+      select a from src limit 100
+      SETTINGS move_primary_key_columns_to_end_of_prewhere = 0
+      """
+
+      consumer_query = "select a from src where a > 5 order by a desc limit 50"
+
+      assert {:ok, result} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
+
+      assert result ==
+               "WITH src AS (SELECT a FROM my_ch_table WHERE a = @a) SELECT a FROM src WHERE a > 5 ORDER BY a DESC LIMIT 50 SETTINGS move_primary_key_columns_to_end_of_prewhere = 0"
+    end
+
+    test "keeps owner query settings for a parameterized endpoint CTE" do
+      user = insert(:user)
+      _source = insert(:source, user: user, name: "my_ch_table")
+
+      cte_query = """
+      with
+      filters as (
+        select
+          parseDateTime64BestEffortOrNull(@iso_timestamp_start, 9) as start_ts,
+          parseDateTime64BestEffortOrNull(@iso_timestamp_end, 9) as end_ts
+      ),
+      logs as (
+        select
+          id,
+          timestamp,
+          multiIf(source_name = 'postgres.logs', 'postgres_logs', '') as source,
+          log_attributes,
+          severity_text
+        from my_ch_table
+        where
+          project = @project
+          and timestamp >= coalesce((select start_ts from filters), now() - interval 1 minute)
+          and timestamp <= coalesce((select end_ts from filters), now())
+      )
+      select id, timestamp, source from logs
+      limit 100
+      settings move_primary_key_columns_to_end_of_prewhere = 0
+      """
+
+      consumer_query = """
+      select id, timestamp, log_attributes['subservice'] as subservice
+      from logs
+      where source = 'postgres_logs'
+        and multiIf(severity_text in ('ERROR', 'FATAL'), 'error', 'success') in ('error', 'warning')
+      order by timestamp desc, toString(id) desc
+      limit least(50, 1000)
+      """
+
+      assert {:ok, result} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
+      assert result =~ "project = @project"
+      assert result =~ "(SELECT start_ts FROM filters)"
+      assert result =~ "WHERE source = 'postgres_logs'"
+
+      assert result =~
+               ~r/LIMIT least\(50, 1000\) SETTINGS move_primary_key_columns_to_end_of_prewhere = 0$/
+
+      refute result =~ "LIMIT 100"
+    end
+
+    test "appends only owner-only settings to the sandboxed query settings" do
+      user = insert(:user)
+      _source = insert(:source, user: user, name: "my_ch_table")
+
+      cte_query = """
+      with src as (select a from my_ch_table)
+      select a from src
+      SETTINGS move_primary_key_columns_to_end_of_prewhere = 0, use_query_condition_cache = 0
+      """
+
+      consumer_query =
+        "select a from src SETTINGS use_query_condition_cache = 1, use_skip_indexes = 1"
+
+      assert {:ok, result} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
+
+      assert result =~
+               ~r/SETTINGS use_query_condition_cache = 1, use_skip_indexes = 1, move_primary_key_columns_to_end_of_prewhere = 0$/
+
+      refute result =~ "use_query_condition_cache = 0"
+    end
+
+    test "does not carry other owner settings to the sandboxed query" do
+      user = insert(:user)
+      _source = insert(:source, user: user, name: "my_ch_table")
+
+      cte_query =
+        "with src as (select a from my_ch_table) select a from src SETTINGS force_primary_key = 1"
+
+      consumer_query = "select a from src where a > 5"
+
+      assert {:ok, result} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
+      assert result == "WITH src AS (SELECT a FROM my_ch_table) SELECT a FROM src WHERE a > 5"
+    end
+
+    test "appends owner-only settings after a sandboxed set operation without wrapping it" do
+      user = insert(:user)
+      _source = insert(:source, user: user, name: "my_ch_table")
+
+      cte_query = """
+      with src as (select a from my_ch_table)
+      select a from src
+      SETTINGS move_primary_key_columns_to_end_of_prewhere = 0
+      """
+
+      consumer_query = "select a from src where a > 5 union all select a from src where a < 2"
+
+      assert {:ok, result} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
+
+      assert result ==
+               "WITH src AS (SELECT a FROM my_ch_table) SELECT a FROM src WHERE a > 5 UNION ALL SELECT a FROM src WHERE a < 2 SETTINGS move_primary_key_columns_to_end_of_prewhere = 0"
+    end
   end
 
   test "sources/2 creates a source mapping present for sources present in the query" do
