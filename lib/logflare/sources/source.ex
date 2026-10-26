@@ -140,6 +140,7 @@ defmodule Logflare.Sources.Source do
     field :bq_table_partition_type, Ecto.Enum, values: [:pseudo, :timestamp], default: :timestamp
     field :bq_storage_write_api, :boolean, default: false
     field :custom_event_message_keys, :string
+    field :custom_event_message_keys_parsed, {:array, :any}, virtual: true
     field :log_events_updated_at, :naive_datetime
     field :notifications_every, :integer, default: :timer.hours(4)
     field :lock_schema, :boolean, default: false
@@ -418,6 +419,35 @@ defmodule Logflare.Sources.Source do
     source_token
     |> Atom.to_string()
     |> String.replace("-", "_")
+  end
+
+  @type custom_event_message_key ::
+          :id | :message | {:query, {:ok, Warpath.Expression.t()} | {:error, term()}}
+
+  @spec parse_custom_event_message_keys(%__MODULE__{}) :: %__MODULE__{}
+  def parse_custom_event_message_keys(%__MODULE__{custom_event_message_keys: keys} = source)
+      when is_binary(keys) do
+    parsed =
+      keys
+      |> String.split(",", trim: true)
+      |> Enum.map(&parse_custom_event_message_key/1)
+
+    %{source | custom_event_message_keys_parsed: parsed}
+  end
+
+  def parse_custom_event_message_keys(%__MODULE__{} = source) do
+    %{source | custom_event_message_keys_parsed: nil}
+  end
+
+  @spec parse_custom_event_message_key(String.t()) :: custom_event_message_key()
+  defp parse_custom_event_message_key(key) do
+    case String.trim(key) do
+      "id" -> :id
+      "message" -> :message
+      "event_message" -> :message
+      "m." <> rest -> {:query, Warpath.Expression.compile("$.metadata.#{rest}")}
+      path -> {:query, Warpath.Expression.compile("$.#{path}")}
+    end
   end
 
   @spec parse_key_values_config(%__MODULE__{}) :: %__MODULE__{}
