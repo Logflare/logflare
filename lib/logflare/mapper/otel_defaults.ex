@@ -515,7 +515,7 @@ defmodule Logflare.Mapper.OtelDefaults do
         default: 0
       ),
       Field.string("status_code",
-        paths: ["$.status.code", "$.status_code", "$.statusCode"]
+        paths: ["$.status.code", "$.status_code", "$.statusCode", "$.status"]
       ),
       Field.string("status_message",
         paths: ["$.status.message", "$.status_message", "$.statusMessage"]
