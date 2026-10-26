@@ -1,6 +1,12 @@
 defmodule Logflare.Logs.OtelTraceTest do
   use Logflare.DataCase
   alias Logflare.Logs.OtelTrace
+  alias Logflare.Mapper
+  alias Logflare.Mapper.OtelDefaults
+  alias Opentelemetry.Proto.Common.V1.AnyValue
+  alias Opentelemetry.Proto.Common.V1.KeyValue
+  alias Opentelemetry.Proto.Trace.V1.Span.Event
+  alias Opentelemetry.Proto.Trace.V1.Status
 
   describe "handle_batch/1" do
     setup do
@@ -75,6 +81,102 @@ defmodule Logflare.Logs.OtelTraceTest do
 
         assert le_span["kind"] == expected
       end
+    end
+
+    test "maps span status code and message", %{
+      resource_spans: resource_spans,
+      source: source
+    } do
+      statuses = [
+        {%Status{code: :STATUS_CODE_ERROR, message: "connection timeout"},
+         %{"code" => "Error", "message" => "connection timeout"}},
+        {%Status{code: :STATUS_CODE_OK, message: ""}, %{"code" => "Ok", "message" => ""}},
+        {%Status{code: :STATUS_CODE_UNSET, message: ""}, %{"code" => "Unset", "message" => ""}},
+        {nil, %{"code" => "Unset", "message" => ""}}
+      ]
+
+      for {status, expected} <- statuses do
+        le_span =
+          resource_spans
+          |> update_span(&%{&1 | status: status})
+          |> OtelTrace.handle_batch(source)
+          |> find_type("span")
+
+        assert le_span["status"] == expected
+      end
+    end
+
+    test "nests span events on the span and keeps the separate event rows", %{
+      resource_spans: resource_spans,
+      source: source
+    } do
+      event = %Event{
+        name: "exception",
+        time_unix_nano: 1_761_200_000_000_000_001,
+        attributes: [
+          %KeyValue{
+            key: "exception.message",
+            value: %AnyValue{value: {:string_value, "Connection terminated"}}
+          }
+        ]
+      }
+
+      batch =
+        resource_spans
+        |> update_span(&%{&1 | events: [event]})
+        |> OtelTrace.handle_batch(source)
+
+      assert find_type(batch, "span")["events"] == [
+               %{
+                 "time_unix_nano" => 1_761_200_000_000_000_001,
+                 "name" => "exception",
+                 "attributes" => %{"exception.message" => "Connection terminated"}
+               }
+             ]
+
+      le_event = find_type(batch, "event")
+      assert le_event["event_message"] == "exception"
+      assert le_event["timestamp"] == 1_761_200_000_000_000_001
+      assert le_event["attributes"] == %{"exception.message" => "Connection terminated"}
+    end
+
+    test "omits events from spans without events", %{source: source} do
+      le_span =
+        :SPAN_KIND_SERVER
+        |> TestUtilsGrpc.resource_span_with_kind()
+        |> OtelTrace.handle_batch(source)
+        |> find_type("span")
+
+      refute Map.has_key?(le_span, "events")
+    end
+
+    test "span status and events fill the ClickHouse trace columns", %{
+      resource_spans: resource_spans,
+      source: source
+    } do
+      event = %Event{
+        name: "exception",
+        time_unix_nano: 1_761_200_000_000_000_001,
+        attributes: [
+          %KeyValue{key: "exception.message", value: %AnyValue{value: {:string_value, "timeout"}}}
+        ]
+      }
+
+      status = %Status{code: :STATUS_CODE_ERROR, message: "connection timeout"}
+      compiled = Mapper.compile!(OtelDefaults.for_type(:trace, :map))
+
+      mapped =
+        resource_spans
+        |> update_span(&%{&1 | status: status, events: [event]})
+        |> OtelTrace.handle_batch(source)
+        |> find_type("span")
+        |> Mapper.map(compiled)
+
+      assert mapped["status_code"] == "Error"
+      assert mapped["status_message"] == "connection timeout"
+      assert mapped["events.name"] == ["exception"]
+      assert mapped["events.timestamp"] == [1_761_200_000_000_000_001]
+      assert mapped["events.attributes"] == [%{"exception.message" => "timeout"}]
     end
 
     test "json parsable log event body", %{
@@ -363,4 +465,10 @@ defmodule Logflare.Logs.OtelTraceTest do
              )
     end
   end
+
+  defp update_span([%{scope_spans: [%{spans: [span]} = scope_span]} = resource_span], fun) do
+    [%{resource_span | scope_spans: [%{scope_span | spans: [fun.(span)]}]}]
+  end
+
+  defp find_type(batch, type), do: Enum.find(batch, &(&1["metadata"]["type"] == type))
 end

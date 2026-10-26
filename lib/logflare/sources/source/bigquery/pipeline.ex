@@ -376,13 +376,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     {:ok, bq_timestamp} = DateTime.from_unix(body["timestamp"], :microsecond)
 
     body =
-      for {k, v} <- body, into: %{} do
-        if is_map(v) do
-          {k, EventUtils.prepare_for_ingest(v)}
-        else
-          {k, v}
-        end
-      end
+      body
+      |> EventUtils.wrap_body_fields()
       |> Map.put("timestamp", bq_timestamp)
       |> Map.put("event_message", body["event_message"])
       |> case do
