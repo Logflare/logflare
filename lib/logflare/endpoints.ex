@@ -41,7 +41,7 @@ defmodule Logflare.Endpoints do
   @typep origin :: User.t() | TeamUser.t() | OauthAccessToken.t()
   @typep run_query_return ::
            {:ok, %{required(:rows) => [term()], optional(atom()) => any()}}
-           | {:error, String.t() | QueryError.t() | :sandboxing_disabled | :database_unavailable}
+           | {:error, String.t() | QueryError.t() | :sandboxing_disabled | Cache.policy_error()}
 
   defguardp is_integer_or_string(value) when is_integer(value) or is_non_empty_binary(value)
 
@@ -938,7 +938,7 @@ defmodule Logflare.Endpoints do
   Useful for debugging and UI display of merged sandbox queries.
   """
   @spec get_transformed_query(EndpointQuery.t(), params :: map()) ::
-          {:ok, String.t()} | {:error, String.t() | :database_unavailable}
+          {:ok, String.t()} | {:error, String.t() | Cache.policy_error()}
   def get_transformed_query(%EndpointQuery{} = endpoint_query, params \\ %{})
       when is_map(params) do
     %EndpointQuery{
@@ -985,7 +985,7 @@ defmodule Logflare.Endpoints do
   end
 
   @spec reload_enforced_settings(EndpointQuery.t()) ::
-          {:ok, EndpointQuery.t()} | {:error, String.t() | :database_unavailable}
+          {:ok, EndpointQuery.t()} | {:error, String.t() | Cache.policy_error()}
   defp reload_enforced_settings(%EndpointQuery{id: id, language: :ch_sql} = endpoint)
        when is_integer(id) do
     case Cache.get_endpoint_policy(id) do
@@ -995,7 +995,7 @@ defmodule Logflare.Endpoints do
       nil ->
         {:error, "Endpoint not found"}
 
-      {:error, :database_unavailable} = error ->
+      {:error, _reason} = error ->
         error
     end
   end
