@@ -883,12 +883,18 @@ defmodule Logflare.Endpoints do
         :erpc.call(resolver_node, Resolver, :resolve, [query, params, opts], 5_000)
       end
 
-    case ResultsCache.query(cache) do
-      {:error, :stale_cache} ->
-        query_results_cache(query, params, opts, attempts - 1, node(cache))
+    case cache do
+      {:error, :cache_replaced} ->
+        query_results_cache(query, params, opts, 0, resolver_node)
 
-      response ->
-        response
+      pid when is_pid(pid) ->
+        case ResultsCache.query(pid) do
+          {:error, :stale_cache} ->
+            query_results_cache(query, params, opts, attempts - 1, node(pid))
+
+          response ->
+            response
+        end
     end
   catch
     :error, {:erpc, _reason} -> query_results_cache(query, params, opts, 0, resolver_node)

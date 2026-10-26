@@ -31,9 +31,16 @@ defmodule Logflare.Endpoints.Resolver do
 
   @doc """
   Starts up or performs a lookup for an Endpoint.Cache process.
-  Returns the resolved pid.
+  Returns the resolved pid or an error after repeated registration races.
   """
-  def resolve(%Logflare.Endpoints.EndpointQuery{id: id} = query, params, opts) do
+  @spec resolve(EndpointQuery.t(), map(), keyword()) :: pid() | {:error, :cache_replaced}
+  def resolve(%EndpointQuery{} = query, params, opts), do: resolve(query, params, opts, 3)
+
+  @spec resolve(EndpointQuery.t(), map(), keyword(), non_neg_integer()) ::
+          pid() | {:error, :cache_replaced}
+  defp resolve(_query, _params, _opts, 0), do: {:error, :cache_replaced}
+
+  defp resolve(%EndpointQuery{id: id} = query, params, opts, attempts) do
     attributes = %{
       "endpoint.id" => id,
       "endpoint.token" => query.token,
@@ -69,7 +76,13 @@ defmodule Logflare.Endpoints.Resolver do
 
               pid
 
-            {:error, {:already_started, pid}} ->
+            :ignore ->
+              resolve(query, params, opts, attempts - 1)
+
+            {:error, {:already_started, nil}} ->
+              resolve(query, params, opts, attempts - 1)
+
+            {:error, {:already_started, pid}} when is_pid(pid) ->
               OpenTelemetry.Tracer.add_event(
                 "logflare.endpoints.results_cache.already_existed",
                 attributes

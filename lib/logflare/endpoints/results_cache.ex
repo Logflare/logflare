@@ -112,7 +112,7 @@ defmodule Logflare.Endpoints.ResultsCache do
 
     case :syn.register(scope, key, self()) do
       :ok -> init_cache(query, params, opts)
-      {:error, :taken} -> {:stop, {:already_started, GenServer.whereis(name(query, params))}}
+      {:error, :taken} -> :ignore
     end
   end
 
