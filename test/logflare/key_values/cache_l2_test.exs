@@ -7,6 +7,11 @@ defmodule Logflare.KeyValues.CacheL2Test do
   alias Logflare.KeyValues.Cache.L2
 
   @value %{"org" => %{"id" => "abc"}}
+  @telemetry_events [
+    [:logflare, :key_values, :cache, :l2, :command, :stop],
+    [:logflare, :key_values, :cache, :l2_fill, :stop],
+    [:logflare, :key_values, :cache, :db_fallback]
+  ]
 
   setup [:set_mimic_global, :verify_on_exit!]
 
@@ -125,6 +130,21 @@ defmodule Logflare.KeyValues.CacheL2Test do
     put_l2_enabled(false)
 
     assert @value = KeyValues.Cache.lookup(user.id, "proj1")
+  end
+
+  test "telemetry of lookups", %{user: user} do
+    insert(:key_value, user: user, key: "proj1", value: @value)
+    ref = :telemetry_test.attach_event_handlers(self(), @telemetry_events)
+    on_exit(fn -> :telemetry.detach(ref) end)
+
+    assert @value = KeyValues.Cache.lookup(user.id, "proj1")
+    assert @value = KeyValues.Cache.lookup(user.id, "proj1")
+
+    assert_receive {[_, _, _, :l2, :command, :stop], ^ref, _, %{command: :fetch, result: miss}}
+    assert :miss = L2.outcome(miss)
+    assert_receive {[_, _, _, :db_fallback], ^ref, %{count: 1}, %{reason: :miss}}
+    assert_receive {[_, _, _, :l2_fill, :stop], ^ref, %{duration: _}, %{result: :put}}
+    refute_receive {_event, ^ref, _measurements, _metadata}
   end
 
   test "count with L2 enabled", %{user: user} do

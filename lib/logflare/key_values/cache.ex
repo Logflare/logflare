@@ -12,6 +12,19 @@ defmodule Logflare.KeyValues.Cache do
   The key's L2 owner writes the value to its share and deletes it again if the key-value is
   tombstoned, as a lookup does for L1, so a value read from a lagging replica, `nil` included,
   cannot spread to other nodes once its change has been busted.
+
+  ## Telemetry
+
+    * `[:logflare, :key_values, :cache, :l2, :command, :start | :stop | :exception]` - Nebulex
+      command spans of L2 on the calling node, and `[..., :l2, :primary, :command, ...]` on the
+      node owning the entry
+    * `[:logflare, :key_values, :cache, :l2_fill, :start | :stop | :exception]` - a value
+      written to L2, with `:result` from `Logflare.KeyValues.Cache.L2.outcome/1`
+    * `[:logflare, :key_values, :cache, :db_fallback]` - a lookup read from the database, with
+      `:reason` `:miss` (L2 missed), `:l2_error` (L2 failed or timed out) or `:l2_skipped`
+      (L2 disabled or stopped)
+
+  L1 hits and misses are in the Cachex stats of the cache.
   """
 
   use Logflare.ContextCache
@@ -25,6 +38,8 @@ defmodule Logflare.KeyValues.Cache do
   alias Logflare.Repo
   alias Nebulex.Distributed.RPC
 
+  @db_fallback_event [:logflare, :key_values, :cache, :db_fallback]
+  @l2_fill_event [:logflare, :key_values, :cache, :l2_fill]
   @supervisor Logflare.KeyValues.Cache.Supervisor
   @usage_touch_window :timer.minutes(20)
   @usage_touch_chunk 1_000
@@ -141,13 +156,17 @@ defmodule Logflare.KeyValues.Cache do
        when accessor_path != nil do
     case fetch_l2({:lookup, [user_id, key, nil]}) do
       {:ok, full_value} -> {KeyValues.extract_value(full_value, accessor_path), true}
-      l2_miss -> {from_db(key_args), l2_miss == :miss}
+      l2_miss -> {from_db(l2_miss, key_args), l2_miss == :miss}
     end
   end
 
-  defp full_value_from_l2_or_db(l2_miss, key_args), do: {from_db(key_args), l2_miss == :miss}
+  defp full_value_from_l2_or_db(l2_miss, key_args),
+    do: {from_db(l2_miss, key_args), l2_miss == :miss}
 
-  defp from_db(key_args), do: Repo.apply_with_replica(KeyValues, :lookup, key_args)
+  defp from_db(l2_miss, key_args) do
+    :telemetry.execute(@db_fallback_event, %{count: 1}, %{reason: l2_miss})
+    Repo.apply_with_replica(KeyValues, :lookup, key_args)
+  end
 
   @spec fetch_l2(term()) :: l2_result()
   defp fetch_l2(cache_key) do
@@ -165,11 +184,14 @@ defmodule Logflare.KeyValues.Cache do
   end
 
   defp put_l2(cache_key, value) do
-    with {:ok, owner} <- L2.find_node(cache_key) do
-      RPC.call(owner, __MODULE__, :fill_l2_share, [cache_key, value, L2.ttl()], L2.timeout())
-    end
+    :telemetry.span(@l2_fill_event, %{}, fn ->
+      result =
+        with {:ok, owner} <- L2.find_node(cache_key) do
+          RPC.call(owner, __MODULE__, :fill_l2_share, [cache_key, value, L2.ttl()], L2.timeout())
+        end
 
-    :ok
+      {:ok, %{result: L2.outcome(result)}}
+    end)
   rescue
     _ in [Nebulex.CacheNotFoundError, RuntimeError] -> :ok
   end

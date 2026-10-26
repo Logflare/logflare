@@ -3,6 +3,7 @@ defmodule Logflare.TelemetryTest do
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
+  alias Logflare.KeyValues.Cache.L2
   alias Logflare.SystemMetrics.Observer
   alias Logflare.SystemMetrics.Schedulers
   alias Logflare.Telemetry
@@ -23,6 +24,8 @@ defmodule Logflare.TelemetryTest do
   @broadway_processor_message_exporter :logflare_broadway_processor_message_metrics_test
   @broadway_processor_message_metric_name [:broadway, :processor, :message, :stop, :duration]
   @broadway_processor_message_metric_string "broadway.processor.message.stop.duration"
+
+  @key_values_l2_primary_event [:logflare, :key_values, :cache, :l2, :primary]
 
   @drop_stale_exporter :logflare_drop_stale_metrics_test
   @drop_stale_metric_name [:logflare, :logs, :ingest_logs, :drop_stale]
@@ -910,6 +913,30 @@ defmodule Logflare.TelemetryTest do
     for id <- (dirty_io_offset + 1)..(dirty_io_offset + :erlang.system_info(:dirty_io_schedulers)) do
       id = Integer.to_string(id)
       assert_receive {^event, ^ref, %{utilization: _}, %{name: ^id, type: "dirty (io)"}}
+    end
+  end
+
+  describe "key_values_l2_metrics/0" do
+    setup do
+      ref = :telemetry_test.attach_event_handlers(self(), [@key_values_l2_primary_event])
+      on_exit(fn -> :telemetry.detach(ref) end)
+      [ref: ref]
+    end
+
+    test "with L2 running", %{ref: ref} do
+      start_supervised!(L2)
+      :ok = L2.put({:lookup, [1, "proj1", nil]}, %{"org" => "abc"})
+
+      Telemetry.key_values_l2_metrics()
+
+      assert_receive {@key_values_l2_primary_event, ^ref, %{size: 1, memory: memory}, _metadata}
+      assert memory > 0
+    end
+
+    test "with L2 not running", %{ref: ref} do
+      Telemetry.key_values_l2_metrics()
+
+      refute_receive {@key_values_l2_primary_event, ^ref, _measurements, _metadata}
     end
   end
 

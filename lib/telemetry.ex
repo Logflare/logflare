@@ -10,6 +10,7 @@ defmodule Logflare.Telemetry do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
   alias Logflare.Cache.CachexOps
+  alias Logflare.KeyValues.Cache.L2
 
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
@@ -37,6 +38,21 @@ defmodule Logflare.Telemetry do
   @ch_read_pool_status_event [:logflare, :clickhouse, :read_pool, :pool_status]
   @ch_read_pool_poll_failure_event [:logflare, :clickhouse, :read_pool, :poll_failure]
   @max_phash2_range 4_294_967_296
+
+  @key_values_l2_duration_buckets_us [
+    50,
+    100,
+    250,
+    500,
+    1_000,
+    2_500,
+    5_000,
+    10_000,
+    25_000,
+    50_000,
+    100_000,
+    250_000
+  ]
 
   @ch_read_pool_time_buckets_ms [
     5,
@@ -807,7 +823,68 @@ defmodule Logflare.Telemetry do
       )
     ]
 
+    key_values_cache_metrics = [
+      counter("logflare.key_values.cache.l2.command.count",
+        event_name: "logflare.key_values.cache.l2.command.stop",
+        tags: [:command, :result],
+        tag_values: &key_values_l2_command_tags/1,
+        description:
+          "KeyValues.Cache L2 commands issued by this node, by command and result (hit, miss, ok, timeout, error)"
+      ),
+      distribution("logflare.key_values.cache.l2.command.stop.duration",
+        tags: [:command],
+        unit: {:native, :microsecond},
+        reporter_options: [buckets: @key_values_l2_duration_buckets_us],
+        description:
+          "Latency of KeyValues.Cache L2 commands issued by this node, RPC included (µs)"
+      ),
+      counter("logflare.key_values.cache.l2.command.exception.count",
+        event_name: "logflare.key_values.cache.l2.command.exception",
+        tags: [:command, :kind],
+        description: "KeyValues.Cache L2 commands that raised on this node"
+      ),
+      counter("logflare.key_values.cache.l2_fill.count",
+        event_name: "logflare.key_values.cache.l2_fill.stop",
+        tags: [:result],
+        description:
+          "Database fills written to KeyValues.Cache L2, by result (put, dropped_stale, timeout, error)"
+      ),
+      distribution("logflare.key_values.cache.l2_fill.stop.duration",
+        tags: [:result],
+        unit: {:native, :microsecond},
+        reporter_options: [buckets: @key_values_l2_duration_buckets_us],
+        description: "Latency of writing a database fill to its KeyValues.Cache L2 owner (µs)"
+      ),
+      counter("logflare.key_values.cache.l2_fill.exception.count",
+        event_name: "logflare.key_values.cache.l2_fill.exception",
+        tags: [:kind],
+        description: "Database fills to KeyValues.Cache L2 that raised"
+      ),
+      counter("logflare.key_values.cache.db_fallback.count",
+        event_name: "logflare.key_values.cache.db_fallback",
+        tags: [:reason],
+        description:
+          "KeyValues.Cache lookups served by the database, by reason (miss, l2_error, l2_skipped)"
+      ),
+      counter("logflare.key_values.cache.l2.ring_monitor.nodes_added.count",
+        event_name: "logflare.key_values.cache.l2.ring_monitor.nodes_added",
+        description: "KeyValues.Cache L2 hash ring changes adding nodes, as seen by this node"
+      ),
+      counter("logflare.key_values.cache.l2.ring_monitor.nodes_removed.count",
+        event_name: "logflare.key_values.cache.l2.ring_monitor.nodes_removed",
+        description: "KeyValues.Cache L2 hash ring changes removing nodes, as seen by this node"
+      ),
+      last_value("logflare.key_values.cache.l2.primary.size",
+        description: "Entries in this node's share of KeyValues.Cache L2"
+      ),
+      last_value("logflare.key_values.cache.l2.primary.memory",
+        unit: {:byte, :megabyte},
+        description: "Memory used by this node's share of KeyValues.Cache L2"
+      )
+    ]
+
     Enum.concat([
+      key_values_cache_metrics,
       phoenix_metrics,
       database_metrics,
       vm_metrics,
@@ -834,7 +911,8 @@ defmodule Logflare.Telemetry do
         {__MODULE__, :process_memory_metrics, []},
         {__MODULE__, :ets_table_metrics, []},
         {__MODULE__, :clickhouse_read_pool_metrics, []},
-        {Logflare.Sources.Source.BigQuery.SchemaMetrics, :report, []}
+        {Logflare.Sources.Source.BigQuery.SchemaMetrics, :report, []},
+        {__MODULE__, :key_values_l2_metrics, []}
       ]
 
     cachex_metrics ++ process_metrics
@@ -933,6 +1011,26 @@ defmodule Logflare.Telemetry do
     Enum.each(@caches, fn {cache, metric} ->
       :telemetry.execute([:cachex, metric], cache.stats())
     end)
+  end
+
+  @doc """
+  Emits the size and memory of this node's share of `Logflare.KeyValues.Cache.L2`, when it runs.
+  """
+  @spec key_values_l2_metrics() :: :ok
+  def key_values_l2_metrics do
+    if Process.whereis(L2) do
+      primary = L2.__primary__()
+      %{used: memory} = primary.info!(:memory)
+
+      :telemetry.execute([:logflare, :key_values, :cache, :l2, :primary], %{
+        size: primary.count_all!(),
+        memory: memory
+      })
+    end
+
+    :ok
+  rescue
+    Nebulex.CacheNotFoundError -> :ok
   end
 
   def process_message_queue_metrics do
@@ -1112,6 +1210,10 @@ defmodule Logflare.Telemetry do
 
   defp ch_read_pool_connection_tags(%{tag: {backend_id, label}}) do
     %{backend_id: backend_id, read_cluster: ClickHouseAdaptor.read_cluster_tag(label)}
+  end
+
+  defp key_values_l2_command_tags(%{command: command, result: result}) do
+    %{command: command, result: L2.outcome(result)}
   end
 
   defp batch_size_reporter_opts do

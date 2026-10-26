@@ -37,5 +37,17 @@ defmodule Logflare.KeyValues.Cache.L2 do
   @spec ttl() :: timeout()
   def ttl, do: Keyword.get(settings(), :l2_ttl, to_timeout(hour: 1))
 
+  @doc """
+  Classifies the result of an L2 command for telemetry.
+
+  `:hit` and `:miss` are fetch results; `:timeout` is an RPC that ran out of `timeout/0`.
+  """
+  @spec outcome(term()) :: atom()
+  def outcome({:ok, _value}), do: :hit
+  def outcome({:error, %Nebulex.KeyError{}}), do: :miss
+  def outcome({:error, %Nebulex.Error{reason: {:rpc, {:error, :timeout}}}}), do: :timeout
+  def outcome({:error, _reason}), do: :error
+  def outcome(result) when is_atom(result), do: result
+
   defp settings, do: Application.get_env(:logflare, Logflare.KeyValues.Cache, [])
 end
