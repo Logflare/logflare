@@ -68,7 +68,8 @@ defmodule LogflareWeb.EndpointsController do
       400 => BadRequest.response(),
       401 => Unauthorized.response(),
       404 => NotFound.response(),
-      500 => ServerError.response()
+      500 => ServerError.response(),
+      503 => ServerError.response()
     }
   )
 
@@ -107,6 +108,9 @@ defmodule LogflareWeb.EndpointsController do
       {:ok, result} ->
         Logger.debug("Endpoint cache result, #{inspect(result, pretty: true)}")
         render(conn, "query.json", result: result.rows)
+
+      {:error, :database_unavailable} = error ->
+        FallbackController.call(conn, error)
 
       {:error, :sandboxing_disabled} ->
         conn

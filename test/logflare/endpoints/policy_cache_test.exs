@@ -34,6 +34,54 @@ defmodule Logflare.Endpoints.PolicyCacheTest do
     end
   end
 
+  test "cached hits do not wait behind an unrelated primary read", %{endpoint: warm} do
+    cached = Cache.get_endpoint_policy(warm.id)
+    cold = insert(:endpoint, language: :ch_sql)
+    test_pid = self()
+
+    expect(Endpoints, :get_endpoint_query, fn id ->
+      assert id == cold.id
+      send(test_pid, {:blocked_policy_read, self()})
+
+      receive do
+        :finish -> cold
+      end
+    end)
+
+    reader = Task.async(fn -> Cache.get_endpoint_policy(cold.id) end)
+    assert_receive {:blocked_policy_read, getter}
+    hit = Task.async(fn -> send(test_pid, {:cached_hit, Cache.get_endpoint_policy(warm.id)}) end)
+
+    try do
+      assert_receive {:cached_hit, ^cached}, 500
+    after
+      send(getter, :finish)
+      Task.await(reader)
+      Task.await(hit)
+    end
+  end
+
+  test "recoverable primary failures propagate without caching the error", %{endpoint: endpoint} do
+    for failure <- [
+          fn -> raise DBConnection.ConnectionError, message: "primary unavailable" end,
+          fn -> exit({:noproc, {Repo, :query, []}}) end
+        ] do
+      stub(Endpoints, :get_endpoint_query, fn _id -> failure.() end)
+      assert Cache.get_endpoint_policy(endpoint.id) == {:error, :database_unavailable}
+      assert Endpoints.run_query(endpoint) == {:error, :database_unavailable}
+      assert Endpoints.get_transformed_query(endpoint) == {:error, :database_unavailable}
+      assert Cachex.get(Cache, {:get_endpoint_policy, [endpoint.id]}) == {:ok, nil}
+    end
+
+    expect(Endpoints, :get_endpoint_query, fn _id -> endpoint end)
+    assert Cache.get_endpoint_policy(endpoint.id) == endpoint
+  end
+
+  test "unexpected getter exceptions are not reported as database unavailability", context do
+    expect(Endpoints, :get_endpoint_query, fn _id -> raise "unexpected policy bug" end)
+    assert_raise MatchError, fn -> Cache.get_endpoint_policy(context.endpoint.id) end
+  end
+
   test "policy reads ignore stale replica-backed endpoint entries", %{endpoint: endpoint} do
     stale = %{endpoint | enforced_clickhouse_settings: %{}}
     Cachex.put(Cache, {:get_endpoint_query, [endpoint.id]}, {:cached, stale})
