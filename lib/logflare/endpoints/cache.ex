@@ -3,32 +3,20 @@ defmodule Logflare.Endpoints.Cache do
   Cachex for Endpoints context.
   """
 
+  use Logflare.ContextCache
+
+  alias Logflare.Cache.CachexOps
   alias Logflare.Endpoints
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Repo
-  alias Logflare.Utils
 
   def child_spec(_) do
-    stats = Application.get_env(:logflare, :cache_stats, false)
-
-    %{
-      id: __MODULE__,
-      start:
-        {Cachex, :start_link,
-         [
-           __MODULE__,
-           [
-             transactions: true,
-             hooks:
-               [
-                 if(stats, do: Utils.cache_stats()),
-                 Utils.cache_limit(100_000)
-               ]
-               |> Enum.reject(&is_nil/1),
-             expiration: Utils.cache_expiration_min(2, 1)
-           ]
-         ]}
-    }
+    CachexOps.child_spec(__MODULE__,
+      limit: 100_000,
+      ttl: to_timeout(minute: 2),
+      purge_interval: to_timeout(minute: 1),
+      transactions: true
+    )
   end
 
   @spec get_endpoint_policy(integer()) :: EndpointQuery.t() | nil

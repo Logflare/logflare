@@ -5,6 +5,7 @@ defmodule Logflare.SystemCacheTest do
   import ExUnit.CaptureLog
   import Mimic
 
+  setup :set_mimic_private
   setup :verify_on_exit!
 
   alias Logflare.SystemCache
@@ -44,8 +45,7 @@ defmodule Logflare.SystemCacheTest do
     Application.put_env(:logflare, :env, :prod)
     on_exit(fn -> Application.put_env(:logflare, :env, previous_env) end)
 
-    assert %{start: {Cachex, :start_link, [SystemCache, options]}} = SystemCache.child_spec(nil)
-    assert [warmer_spec] = Keyword.fetch!(options, :warmers)
+    assert [warmer_spec] = Keyword.fetch!(cachex_options(), :warmers)
     refute warmer(warmer_spec, :required)
   end
 
@@ -55,7 +55,7 @@ defmodule Logflare.SystemCacheTest do
     on_exit(fn -> Application.put_env(:logflare, :env, previous_env) end)
     set_mimic_global()
 
-    assert %{start: {Cachex, :start_link, [SystemCache, options]}} = SystemCache.child_spec(nil)
+    options = cachex_options()
     assert [warmer_spec] = Keyword.fetch!(options, :warmers)
 
     cache_name = Module.concat(__MODULE__, IntegrationCache)
@@ -91,5 +91,10 @@ defmodule Logflare.SystemCacheTest do
 
     assert log =~ "SystemCache warmer failed"
     assert log =~ "monitor_unavailable"
+  end
+
+  defp cachex_options do
+    %{start: {Cachex, :start_link, [[_name, options]]}} = SystemCache.child_spec(nil)
+    options
   end
 end

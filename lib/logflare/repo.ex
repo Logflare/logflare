@@ -10,23 +10,30 @@ defmodule Logflare.Repo do
   alias Logflare.Repo.ConnectionOptions
   alias Logflare.Repo.Replicas
 
+  @uptime_timeout 1_000
+
   @impl true
   def init(_context, config) do
     {role, config} = Keyword.pop(config, :logflare_connection_role, :primary)
     {:ok, ConnectionOptions.prepare(config, role)}
   end
 
+  @spec get_uptime() :: non_neg_integer() | Decimal.t()
   def get_uptime do
+    repo = get_dynamic_repo()
     query = "SELECT EXTRACT(epoch FROM (current_timestamp - pg_postmaster_start_time()));"
 
-    __MODULE__.query(query, [])
-    |> case do
-      {:ok,
-       %{
-         rows: [
-           [uptime]
-         ]
-       }} ->
+    task =
+      Task.Supervisor.async_nolink(
+        {:via, PartitionSupervisor, {Logflare.TaskSupervisors, self()}},
+        fn ->
+          put_dynamic_repo(repo)
+          __MODULE__.query(query, [], timeout: @uptime_timeout)
+        end
+      )
+
+    case Task.yield(task, @uptime_timeout) || Task.shutdown(task, :brutal_kill) do
+      {:ok, {:ok, %{rows: [[uptime]]}}} ->
         if is_number(uptime) do
           ceil(uptime)
         else
@@ -34,8 +41,16 @@ defmodule Logflare.Repo do
           Decimal.round(uptime, 0, :ceiling)
         end
 
-      {:error, err} ->
-        Logger.warning("Could not get Postgres uptime, error: #{err}")
+      {:ok, {:error, err}} ->
+        Logger.warning("Could not get Postgres uptime, error: #{Exception.message(err)}")
+        0
+
+      {:exit, reason} ->
+        Logger.warning("Could not get Postgres uptime, task exited: #{inspect(reason)}")
+        0
+
+      nil ->
+        Logger.warning("Could not get Postgres uptime within #{@uptime_timeout}ms")
         0
     end
   end

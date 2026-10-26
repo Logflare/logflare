@@ -1,28 +1,18 @@
 defmodule Logflare.ContextCache.Tombstones.Cache do
   @moduledoc false
-  require Cachex.Spec
+
+  use Logflare.Cache
+
+  alias Logflare.Cache.CachexOps
 
   @name __MODULE__
 
   def child_spec(_options) do
-    expiration =
-      Cachex.Spec.expiration(
-        interval: to_timeout(second: 30),
-        default: to_timeout(minute: 1),
-        lazy: true
-      )
-
-    hooks =
-      if Application.get_env(:logflare, :cache_stats, false) do
-        [Cachex.Spec.hook(module: Cachex.Stats)]
-      end
-
-    options = [
-      expiration: expiration,
-      hooks: List.wrap(hooks)
-    ]
-
-    Supervisor.child_spec({Cachex, [@name, options]}, id: @name)
+    CachexOps.child_spec(@name,
+      limit: nil,
+      ttl: to_timeout(minute: 1),
+      purge_interval: to_timeout(second: 30)
+    )
   end
 
   def put_tombstone(cache, tombstone) do

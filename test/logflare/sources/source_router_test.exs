@@ -42,6 +42,20 @@ defmodule Logflare.Sources.SourceRouterTest do
                ]
       end
 
+      test "routes when rules are not loaded on the source", %{user: user, backend: backend} do
+        rule = build(:rule, backend: backend, lql_string: "testing")
+        source = insert(:source, user: user, rules: [rule]) |> Ecto.reset_fields([:rules])
+
+        start_supervised!({SourceSup, source})
+
+        le = build(:log_event, source: source, message: "testing123")
+
+        assert %LogEvent{via_rule_id: rule_id} =
+                 SourceRouter.route_to_sinks_and_ingest(le, source, unquote(router))
+
+        assert rule_id == rule.id
+      end
+
       test "list_includes operator", %{user: user} do
         build_data = fn metadata_val, filter_val ->
           rule = %Rule{
@@ -768,6 +782,31 @@ defmodule Logflare.Sources.SourceRouterTest do
       expect(Rules, :get_rule, fn _id -> nil end)
 
       assert SourceRouter.route_to_sinks_and_ingest(le, source, SourceRouter.RulesTree) == le
+    end
+  end
+
+  describe "routing to a sink whose SourceSup does not start" do
+    test "emits a dropped event for the routed copy", %{user: user} do
+      TestUtils.attach_forwarder([:logflare, :sources, :source_router, :dropped])
+      sink = insert(:source, user: user)
+      rule = build(:rule, sink: sink.token, lql_string: "testing")
+      source = insert(:source, user: user, rules: [rule])
+      start_supervised!({SourceSup, source})
+
+      stub(SourceSup, :child_spec, fn received_source ->
+        %{
+          call_original(SourceSup, :child_spec, [received_source])
+          | start: {Function, :identity, [{:error, :boom}]}
+        }
+      end)
+
+      le = build(:log_event, source: source, message: "testing123")
+      SourceRouter.route_to_sinks_and_ingest(le, source, SourceRouter.RulesTree)
+
+      source_id = source.id
+
+      assert_receive {:telemetry_event, [:logflare, :sources, :source_router, :dropped],
+                      %{count: 1}, %{reason: :source_unavailable, source_id: ^source_id}}
     end
   end
 end

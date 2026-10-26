@@ -76,7 +76,9 @@ When upgrading an existing installation, Oban structures are created in the conf
 
 Logflare has a health check endpoint `/health`, which is used to ensure that the system is functioning correctly with sufficient resources for normal functions.
 
-Use `/ready` for readiness probes. It performs the health checks and returns `503` as soon as graceful shutdown begins so load balancers can stop routing new traffic to the instance.
+Until an instance has passed every check once, `/health` includes the database check. After that it checks only the instance itself (ingest tables, caches, memory and spool health), so a slow or unavailable database does not make a running instance fail liveness probes or get restarted. The response's `checks` field is `full` or `liveness` accordingly.
+
+Use `/ready` for readiness probes. It always performs every check, database included, and returns `503` as soon as graceful shutdown begins so load balancers can stop routing new traffic to the instance.
 
 Environment variables that influence the logic are prefixed with `LOGFLARE_HEALTH_*`. Refer to above table for customizing the values.
 
@@ -136,6 +138,23 @@ Managed service accounts will be provisioned automatically by the server, hence 
 - `roles/iam.serviceAccountTokenCreator`
 
 Without these two additional permissions, the managed service accounts feature will not work.
+
+#### Schema Sampling Metrics
+
+BigQuery schema discovery admits at most eight pending event samples per source/backend by default, plus one sample being processed. Samples selected while the queue is full are dropped without blocking ingestion; this does not drop the ingested events themselves.
+
+Server-level telemetry exposes these node-wide counters without source or backend dimensions:
+
+| Metric | Meaning |
+| --- | --- |
+| `logflare.bigquery.schema.samples.admitted` | Samples admitted to a Schema worker. |
+| `logflare.bigquery.schema.samples.rejected` | Samples rejected because the pending-sample limit was reached. |
+| `logflare.bigquery.schema.samples.unavailable` | Samples not admitted because no usable Schema registration was found, such as during a restart. |
+| `logflare.bigquery.schema.samples.handled` | Samples dequeued by a Schema worker, including samples skipped during the update cooldown. |
+
+Use `samples.rejected`, rather than `samples.unavailable`, to evaluate admission capacity pressure. A worker restart can still lose samples cast to its old PID after a successful lookup.
+
+Queue gauges under `logflare.bigquery.schema.queues` report `observed_process_count`, `queue_length_max`, and `queue_length_sum` for Schema workers in the node's top-ten message-queue sample. They do not cover every Schema worker; a zero maximum can mean no Schema worker was observed. Sampling counters reset when the metrics worker restarts, and reporting resumes on subsequent polls.
 
 ### PostgreSQL Backend Configuration
 

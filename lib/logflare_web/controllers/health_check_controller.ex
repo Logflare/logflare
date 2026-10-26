@@ -10,9 +10,17 @@ defmodule LogflareWeb.HealthCheckController do
   alias Logflare.Sources
   alias Logflare.System
 
-  def ready(conn, params) do
+  @doc """
+  Readiness: runs every check until the node has passed once, then only the
+  node-local ones, and fails once graceful shutdown begins.
+
+  Ingest resolves everything it needs from the context caches, so a node that has
+  already passed stays in rotation through a database outage rather than being
+  pulled out while it is still serving.
+  """
+  def ready(conn, _params) do
     if Readiness.ready?() do
-      check(conn, params)
+      respond(conn, startup_mode())
     else
       response = JSON.encode!(%{status: :not_ready})
 
@@ -22,8 +30,22 @@ defmodule LogflareWeb.HealthCheckController do
     end
   end
 
+  @doc """
+  Health: runs every check until the node has passed once, then only the
+  node-local ones. Load balancers that have a single health check (GCP) then
+  hold a booting node out of rotation until it can reach the database, without
+  dropping or recreating a running node when the database is slow.
+  """
   def check(conn, _params) do
-    repo_uptime = Logflare.Repo.get_uptime()
+    respond(conn, startup_mode())
+  end
+
+  defp startup_mode do
+    if Readiness.startup_checks_passed?(), do: :liveness, else: :full
+  end
+
+  defp respond(conn, mode) do
+    repo_uptime = if mode == :full, do: Logflare.Repo.get_uptime()
     caches = check_caches()
     memory_utilization = System.memory_utilization()
     max_memory_ratio = Application.get_env(:logflare, :health) |> Keyword.get(:memory_utilization)
@@ -32,7 +54,7 @@ defmodule LogflareWeb.HealthCheckController do
       [
         Sources.ingest_ets_tables_started?(),
         # checks that db can execute query and that repo is connected and up
-        repo_uptime > 0,
+        mode == :liveness or repo_uptime > 0,
         Enum.all?(Map.values(caches), &(&1 == :ok)),
         memory_utilization < max_memory_ratio,
         Backends.spool_healthcheck_ok?()
@@ -41,7 +63,8 @@ defmodule LogflareWeb.HealthCheckController do
 
     {status, code} =
       cond do
-        SingleTenant.supabase_mode?() and common_checks_ok? ->
+        # Supabase mode's seed status reads the database, so it is a startup check.
+        mode == :full and SingleTenant.supabase_mode?() and common_checks_ok? ->
           status = SingleTenant.supabase_mode_status()
           values = Map.values(status)
 
@@ -58,9 +81,12 @@ defmodule LogflareWeb.HealthCheckController do
           {:ok, 200}
       end
 
+    if mode == :full and code == 200, do: Readiness.mark_startup_checks_passed()
+
     response =
       status
       |> build_payload(
+        checks: mode,
         repo_uptime: repo_uptime,
         caches: caches,
         memory_utilization: if(memory_utilization < max_memory_ratio, do: :ok, else: :critical),
@@ -77,6 +103,7 @@ defmodule LogflareWeb.HealthCheckController do
   end
 
   defp build_payload(status,
+         checks: checks,
          repo_uptime: repo_uptime,
          caches: caches,
          memory_utilization: memory_utilization,
@@ -88,6 +115,7 @@ defmodule LogflareWeb.HealthCheckController do
 
     %{
       status: status,
+      checks: checks,
       proc_count: proc_count,
       this_node: Node.self(),
       nodes: nodes,
@@ -106,11 +134,7 @@ defmodule LogflareWeb.HealthCheckController do
               Logflare.Logs.LogEvents.Cache
             ],
         into: %{} do
-      # call is O(1)
-      case Cachex.size(cache) do
-        {:ok, _} -> {cache, :ok}
-        {:error, :no_cache} -> {cache, :no_cache}
-      end
+      {cache, if(cache.healthy?(), do: :ok, else: :unhealthy)}
     end
   end
 end

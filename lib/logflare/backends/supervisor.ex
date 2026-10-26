@@ -7,6 +7,7 @@ defmodule Logflare.Backends.Supervisor do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Sources.Source.BigQuery.SchemaMetrics
 
   def start_link(_) do
     Supervisor.start_link(__MODULE__, [])
@@ -41,6 +42,7 @@ defmodule Logflare.Backends.Supervisor do
 
     children =
       [
+        SchemaMetrics,
         Backends.IngestEventQueue,
         Backends.IngestEventQueue.BufferCacheWorker,
         Backends.IngestEventQueue.MapperJanitor,
@@ -49,6 +51,10 @@ defmodule Logflare.Backends.Supervisor do
         Backends.Adaptor.PostgresAdaptor.Supervisor,
         Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup,
         Backends.ConsolidatedSup,
+        %{
+          id: Backends.SourceSupStarts,
+          start: {Cachex, :start_link, [Backends.SourceSupStarts, []]}
+        },
         {PartitionSupervisor, child_spec: DynamicSupervisor, name: Backends.SourcesSup},
         {Registry,
          name: Backends.SourceRegistry, keys: :unique, partitions: max(round(base / 8), 1)},
@@ -57,7 +63,8 @@ defmodule Logflare.Backends.Supervisor do
         {Registry,
          name: Backends.BufferProducer.InFlightRegistry,
          keys: :unique,
-         partitions: max(round(base / 8), 1)}
+         partitions: max(round(base / 8), 1)},
+        Backends.UserMonitoring.SystemSourceStarter
       ] ++
         spool_goth_children ++
         spool_memory_monitor_children ++ producer_children ++ consumer_children
