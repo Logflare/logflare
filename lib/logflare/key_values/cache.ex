@@ -207,6 +207,26 @@ defmodule Logflare.KeyValues.Cache do
     end
   end
 
+  @doc """
+  Deletes `keys` from L1 and from this node's share of L2, without RPC, and returns the number
+  of entries deleted from both.
+
+  Every node busts every change, so the owner of an L2 entry deletes it locally. L2 entries are
+  deleted while L2 runs even if it is disabled, so re-enabling it serves no entry that missed a
+  bust.
+  """
+  @impl ContextCache
+  def delete_keys(keys) do
+    {:ok, l1_deleted} = CachexOps.delete_keys(__MODULE__, keys)
+    {:ok, l1_deleted + Enum.count(keys, &delete_l2_local/1)}
+  end
+
+  defp delete_l2_local(cache_key) do
+    l2_running?() and match?({:ok, _value}, L2.__primary__().take(cache_key))
+  rescue
+    Nebulex.CacheNotFoundError -> false
+  end
+
   @impl ContextCache
   def keys_to_bust(kw) do
     user_id = Keyword.get(kw, :user_id)
@@ -241,9 +261,27 @@ defmodule Logflare.KeyValues.Cache do
   defp find_lookup_keys(user_id, key) do
     {:ok, keys} = Cachex.keys(__MODULE__)
 
-    Enum.filter(keys, fn
-      {:lookup, [^user_id, ^key | _]} -> true
-      _ -> false
-    end)
+    l1_keys =
+      Enum.filter(keys, fn
+        {:lookup, [^user_id, ^key | _]} -> true
+        _ -> false
+      end)
+
+    Enum.uniq(l1_keys ++ l2_local_lookup_keys(user_id, key))
+  end
+
+  defp l2_local_lookup_keys(user_id, key) do
+    if l2_running?() do
+      accessor_paths =
+        L2.__primary__().get_all!(
+          query: [{{:entry, {:lookup, [user_id, key, :"$1"]}, :_, :_, :_, :_}, [], [:"$1"]}]
+        )
+
+      Enum.map(accessor_paths, &{:lookup, [user_id, key, &1]})
+    else
+      []
+    end
+  rescue
+    Nebulex.CacheNotFoundError -> []
   end
 end
