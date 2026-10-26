@@ -22,7 +22,20 @@ config :logflare,
 
 config :logflare, Logflare.Alerting, enabled: true
 
-config :logflare, Logflare.KeyValues.Cache, tombstone_ttl: :timer.seconds(30)
+config :logflare, Logflare.KeyValues.Cache,
+  l2_enabled: false,
+  l2_timeout: 50,
+  l2_ttl: :timer.hours(1),
+  tombstone_ttl: :timer.seconds(30)
+
+config :logflare, Logflare.KeyValues.Cache.L2,
+  rejoin_interval: :timer.seconds(30),
+  primary: [
+    compressed: true,
+    gc_interval: :timer.hours(1),
+    max_size: 2_000_000,
+    allocated_memory: 1_073_741_824
+  ]
 
 # Schema type verification on the ingest path. The verification logic was
 # silently broken for years (see #3489) and is being re-enabled gradually:
