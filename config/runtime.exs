@@ -630,6 +630,14 @@ config :logflare, :context_cache_gossip, %{
   max_nodes: cache_gossip_max_nodes
 }
 
+# LOGFLARE_KEY_VALUES_CACHE_TOMBSTONE_TTL_MS: How long a changed key-value is kept out of the cache; must exceed replica lag plus fill duration
+config :logflare,
+       Logflare.KeyValues.Cache,
+       [
+         tombstone_ttl: Env.get_integer("LOGFLARE_KEY_VALUES_CACHE_TOMBSTONE_TTL_MS")
+       ]
+       |> filter_nil_kv_pairs.()
+
 # LOGFLARE_READ_REPLICAS: PostgreSQL read replicas for selected cache queries.
 # An empty list uses the primary database. Entries are bare host names, IP literals, or URIs
 # whose omitted options inherit the primary.

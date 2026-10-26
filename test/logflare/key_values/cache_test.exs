@@ -3,8 +3,12 @@ defmodule Logflare.KeyValues.CacheTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.ContextCache
+  alias Logflare.ContextCache.CacheBusterWorker
   alias Logflare.KeyValues
   alias Logflare.KeyValues.CacheWarmer
+
+  @old_value %{"org" => %{"id" => "old"}}
+  @new_value %{"org" => %{"id" => "new"}}
 
   setup do
     :persistent_term.erase({CacheWarmer, :initialized})
@@ -68,6 +72,49 @@ defmodule Logflare.KeyValues.CacheTest do
 
   test "busting a key that is not cached", %{user: user} do
     assert {:ok, 0} = ContextCache.bust_keys([{KeyValues, user_id: user.id, key: "nonexistent"}])
+  end
+
+  test "lookup filled while its key-value changes", %{user: user} do
+    for {change, accessor_path, filled, expected} <- [
+          {:update, nil, @old_value, @new_value},
+          {:update, "org.id", "old", "new"},
+          {:delete, nil, @old_value, nil},
+          {:delete, "org.id", "old", nil},
+          {:insert, nil, nil, @new_value},
+          {:insert, "org.id", nil, "new"}
+        ] do
+      key = "#{change}:#{accessor_path}"
+      if change != :insert, do: insert(:key_value, user: user, key: key, value: @old_value)
+      change_mid_fill(user, key, key, change)
+
+      assert KeyValues.Cache.lookup(user.id, key, accessor_path) == filled
+      assert KeyValues.Cache.lookup(user.id, key, accessor_path) == expected
+    end
+  end
+
+  test "lookup filled while another key-value of the user changes", %{user: user} do
+    insert(:key_value, user: user, key: "proj1", value: @old_value)
+    insert(:key_value, user: user, key: "proj2", value: @old_value)
+    change_mid_fill(user, "proj1", "proj2", :update)
+
+    assert @old_value = KeyValues.Cache.lookup(user.id, "proj1")
+    reject(&KeyValues.lookup/3)
+    assert @old_value = KeyValues.Cache.lookup(user.id, "proj1")
+  end
+
+  test "lookup of a key-value changed longer than the tombstone ttl ago", %{user: user} do
+    original = Application.fetch_env!(:logflare, KeyValues.Cache)
+    Application.put_env(:logflare, KeyValues.Cache, Keyword.put(original, :tombstone_ttl, 1))
+    on_exit(fn -> Application.put_env(:logflare, KeyValues.Cache, original) end)
+
+    insert(:key_value, user: user, key: "proj1", value: @old_value)
+    apply_change(user, "proj1", :update)
+    bust(user.id, "proj1")
+    Process.sleep(10)
+
+    assert @new_value = KeyValues.Cache.lookup(user.id, "proj1")
+    reject(&KeyValues.lookup/3)
+    assert @new_value = KeyValues.Cache.lookup(user.id, "proj1")
   end
 
   describe "touch_recent_usages/1" do
@@ -154,5 +201,37 @@ defmodule Logflare.KeyValues.CacheTest do
       cache_key = {:count, user.id}
       assert is_nil(Cachex.get!(KeyValues.Cache, cache_key))
     end
+  end
+
+  defp change_mid_fill(%{id: user_id} = user, filled_key, changed_key, change) do
+    stub(KeyValues, :lookup, &Mimic.call_original(KeyValues, :lookup, [&1, &2, &3]))
+
+    expect(KeyValues, :lookup, fn ^user_id, ^filled_key, accessor_path ->
+      filled = Mimic.call_original(KeyValues, :lookup, [user_id, filled_key, accessor_path])
+      apply_change(user, changed_key, change)
+      bust(user_id, changed_key)
+      filled
+    end)
+  end
+
+  defp bust(user_id, key) do
+    {:noreply, _state} =
+      CacheBusterWorker.handle_cast(
+        {:to_bust, [{KeyValues, user_id: user_id, key: key}], []},
+        %{}
+      )
+  end
+
+  defp apply_change(user, key, :insert),
+    do: insert(:key_value, user: user, key: key, value: @new_value)
+
+  defp apply_change(user, key, :update) do
+    {:ok, kv} = KeyValues.fetch_key_value_by(user_id: user.id, key: key)
+    {:ok, _kv} = KeyValues.update_key_value(kv, %{value: @new_value})
+  end
+
+  defp apply_change(user, key, :delete) do
+    {:ok, kv} = KeyValues.fetch_key_value_by(user_id: user.id, key: key)
+    {:ok, _kv} = KeyValues.delete_key_value(kv)
   end
 end

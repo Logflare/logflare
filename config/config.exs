@@ -22,6 +22,8 @@ config :logflare,
 
 config :logflare, Logflare.Alerting, enabled: true
 
+config :logflare, Logflare.KeyValues.Cache, tombstone_ttl: :timer.seconds(30)
+
 # Schema type verification on the ingest path. The verification logic was
 # silently broken for years (see #3489) and is being re-enabled gradually:
 # disabled by default until validated in production.
