@@ -137,12 +137,46 @@ defmodule Logflare.KeyValues.CacheL2Test do
           {:remote_raise, nil, @value},
           {:remote_raise, "org.id", "abc"},
           {:stopped, nil, @value},
-          {:stopped, "org.id", "abc"}
+          {:stopped, "org.id", "abc"},
+          {:local_raise, nil, @value},
+          {:local_raise, "org.id", "abc"},
+          {:exit, nil, @value},
+          {:exit, "org.id", "abc"}
         ] do
       KeyValues.Cache.reset()
       expect(L2, :fetch, fn _cache_key, _opts -> fail(failure) end)
 
       assert KeyValues.Cache.lookup(user.id, "proj1", accessor_path) == expected
+    end
+  end
+
+  test "lookup while writing to L2 fails", %{user: user} do
+    insert(:key_value, user: user, key: "proj1", value: @value)
+
+    ref =
+      :telemetry_test.attach_event_handlers(self(), [
+        [:logflare, :key_values, :cache, :l2_fill, :exception]
+      ])
+
+    on_exit(fn -> :telemetry.detach(ref) end)
+    expect(L2, :find_node, fn _cache_key -> fail(:local_raise) end)
+
+    assert @value = KeyValues.Cache.lookup(user.id, "proj1")
+    assert_receive {_event, ^ref, _measurements, %{kind: :error}}
+    assert @value = KeyValues.Cache.lookup(user.id, "proj1")
+  end
+
+  test "busting while L2 fails", %{user: user} do
+    insert(:key_value, user: user, key: "proj1", value: @value)
+    assert @value = KeyValues.Cache.lookup(user.id, "proj1")
+
+    for failure <- [:local_raise, :exit] do
+      stub(L2, :__primary__, fn -> fail(failure) end)
+
+      assert {:ok, _busted} =
+               ContextCache.bust_keys([{KeyValues, user_id: user.id, key: "proj1"}])
+
+      assert {:ok, nil} = Cachex.get(KeyValues.Cache, lookup_key(user.id, "proj1"))
     end
   end
 
@@ -189,6 +223,11 @@ defmodule Logflare.KeyValues.CacheL2Test do
 
   defp fail(:remote_raise), do: raise(RuntimeError, "RPC runtime error")
   defp fail(:stopped), do: raise(Nebulex.CacheNotFoundError, cache: L2)
+
+  defp fail(:local_raise),
+    do: raise(ArgumentError, "table identifier does not refer to an existing ETS table")
+
+  defp fail(:exit), do: exit(:noproc)
 
   defp attach_l2_fill do
     ref = :telemetry_test.attach_event_handlers(self(), [Enum.at(@telemetry_events, 1)])

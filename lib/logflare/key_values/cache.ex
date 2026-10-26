@@ -6,7 +6,8 @@ defmodule Logflare.KeyValues.Cache do
   the cluster-partitioned `Logflare.KeyValues.Cache.L2`, then the database. L2 and the
   database are read in the `Cachex.fetch/4` fallback, so concurrent misses for a key on one
   node share a single L2 call and database read. An L2 error or timeout falls back to the
-  database once per lookup and skips writing the value to L2. A database value is written to L2
+  database once per lookup and skips writing the value to L2; so does any exception or exit
+  raised by an L2 call, and busting skips an L2 that fails. A database value is written to L2
   in a separate task, so the lookup and other callers waiting on the same miss don't wait for it.
   Counts and warming stay in L1.
 
@@ -183,7 +184,9 @@ defmodule Logflare.KeyValues.Cache do
       :l2_skipped
     end
   rescue
-    _ in [Nebulex.CacheNotFoundError, RuntimeError] -> :l2_error
+    _exception -> :l2_error
+  catch
+    :exit, _reason -> :l2_error
   end
 
   defp fill_l2_async(cache_key, value) do
@@ -201,7 +204,9 @@ defmodule Logflare.KeyValues.Cache do
       {:ok, %{result: L2.outcome(result)}}
     end)
   rescue
-    _ in [Nebulex.CacheNotFoundError, RuntimeError] -> :ok
+    _exception -> :ok
+  catch
+    :exit, _reason -> :ok
   end
 
   @doc false
@@ -277,7 +282,9 @@ defmodule Logflare.KeyValues.Cache do
   defp delete_l2_local(cache_key) do
     l2_running?() and match?({:ok, _value}, L2.__primary__().take(cache_key))
   rescue
-    Nebulex.CacheNotFoundError -> false
+    _exception -> false
+  catch
+    :exit, _reason -> false
   end
 
   @impl ContextCache
@@ -335,6 +342,8 @@ defmodule Logflare.KeyValues.Cache do
       []
     end
   rescue
-    Nebulex.CacheNotFoundError -> []
+    _exception -> []
+  catch
+    :exit, _reason -> []
   end
 end
