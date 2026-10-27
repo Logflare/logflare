@@ -25,16 +25,12 @@ defmodule LogflareWeb.BackendsDeletedBackendTest do
 
   test "setting default ingest on a deleted backend shows an error", context do
     backend = insert(:backend, user: context.user, type: :clickhouse)
-    source = insert(:source, user: context.user, default_ingest_backend_enabled?: true)
     {:ok, view, _html} = live_with_redirect(context.conn, ~p"/backends/#{backend.id}")
     Repo.delete!(backend)
 
-    html =
-      render_hook(view, "save_default_ingest", %{
-        "default_ingest" => %{"source_id" => to_string(source.id)}
-      })
+    html = render_hook(view, "enable_default_ingest", %{})
 
-    assert html =~ "Error setting default ingest"
+    assert html =~ "Error updating default ingest"
     assert html =~ "Backend no longer exists"
     assert Process.alive?(view.pid)
   end
