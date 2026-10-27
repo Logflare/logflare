@@ -3036,6 +3036,17 @@ defmodule Logflare.BackendsTest do
       Application.put_env(:logflare, :spool, Keyword.merge(config, overrides))
     end
 
+    defp stall_with_backlog(partition, count) do
+      :ok = :sys.suspend(partition)
+      for _ <- 1..count, do: send(partition, :backlog)
+      message_queue_len(partition)
+    end
+
+    defp message_queue_len(pid) do
+      {:message_queue_len, len} = Process.info(pid, :message_queue_len)
+      len
+    end
+
     defp pending_entry_count do
       [partition_pid] = SpoolDurableBufferSup.partitions()
       :sys.get_state(partition_pid).pending_count
@@ -3336,6 +3347,52 @@ defmodule Logflare.BackendsTest do
         end)
 
       assert log =~ "spool dispatch failed"
+    end
+
+    test "in :producer mode, fails fast without queueing another append when every partition's backlog is at max_partition_queue_len",
+         %{source: source} do
+      merge_spool_config!(mode: :producer, max_partition_queue_len: 3)
+      [partition] = SpoolDurableBufferSup.partitions()
+      backlog = stall_with_backlog(partition, 3)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      task = Task.async(fn -> Backends.ingest_logs(params, source, nil, true) end)
+
+      assert {:ok, {:error, :spool_unavailable}} = Task.yield(task, 1_000)
+      assert message_queue_len(partition) == backlog
+
+      :ok = :sys.resume(partition)
+    end
+
+    test "in :both mode, falls back to normal dispatch without queueing another append when every partition's backlog is at max_partition_queue_len",
+         %{source: source} do
+      merge_spool_config!(mode: :both, max_partition_queue_len: 3)
+      [partition] = SpoolDurableBufferSup.partitions()
+      backlog = stall_with_backlog(partition, 3)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      task = Task.async(fn -> Backends.ingest_logs(params, source, nil, true) end)
+
+      assert {:ok, {:ok, 1}} = Task.yield(task, 1_000)
+      assert message_queue_len(partition) == backlog
+
+      :ok = :sys.resume(partition)
+    end
+
+    test "still spools when a partition's backlog is below max_partition_queue_len",
+         %{source: source} do
+      merge_spool_config!(mode: :producer, max_partition_queue_len: 3)
+      [partition] = SpoolDurableBufferSup.partitions()
+      stall_with_backlog(partition, 1)
+
+      source = %{source | enable_spooling: true}
+      params = [%{"message" => "hello", "timestamp" => System.system_time(:microsecond)}]
+      task = Task.async(fn -> Backends.ingest_logs(params, source, nil, true) end)
+
+      :ok = :sys.resume(partition)
+      assert {:ok, 1} = Task.await(task)
     end
 
     test "does not dispatch to the spool producer when the global mode is off, even if source.enable_spooling and allow_spooling are true",

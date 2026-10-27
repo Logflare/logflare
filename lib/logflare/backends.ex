@@ -6,6 +6,7 @@ defmodule Logflare.Backends do
 
   require Logger
 
+  alias DurableBuffer.Partition, as: SpoolPartition
   alias Ecto.Changeset
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
@@ -752,49 +753,74 @@ defmodule Logflare.Backends do
   end
 
   @default_spool_append_timeout 15_000
+  @default_spool_max_partition_queue_len 1_000
 
-  # No source/partition affinity needed — any partition will do, so a fresh
-  # unique term per call spreads load across them the same way random
-  # selection did.
   @spec dispatch_to_spool_producer([LogEvent.t()]) :: :ok | {:error, term()}
   defp dispatch_to_spool_producer([]), do: :ok
 
   defp dispatch_to_spool_producer(log_events) do
-    payload = SpoolEncoder.encode_raw_chunk(log_events)
-    partition_key = :erlang.unique_integer()
+    with {:ok, partition} <- pick_spool_partition() do
+      payload = SpoolEncoder.encode_raw_chunk(log_events)
 
-    result =
-      case {spool_buffer(), spool_blocking_mode?()} do
-        {:mem, false} ->
-          DurableBuffer.append_async(SpoolDurableBufferSup.name(), partition_key, payload)
+      result =
+        case {spool_buffer(), spool_blocking_mode?()} do
+          {:mem, false} ->
+            SpoolPartition.append_async(partition, payload)
 
-        _ ->
-          # WAL mode always blocks on the local fsync tier (that IS its
-          # durability guarantee — there's no non-durable ack to skip to);
-          # mem mode blocks on the real upload only when spool_blocking_mode?.
-          DurableBuffer.append(
-            SpoolDurableBufferSup.name(),
-            partition_key,
-            payload,
-            @default_spool_append_timeout
-          )
+          _ ->
+            # WAL mode always blocks on the local fsync tier (that IS its
+            # durability guarantee — there's no non-durable ack to skip to);
+            # mem mode blocks on the real upload only when spool_blocking_mode?.
+            SpoolPartition.append(partition, payload, @default_spool_append_timeout)
+        end
+
+      case result do
+        :ok -> :ok
+        {:ok, _offset} -> :ok
+        {:error, reason} -> {:error, reason}
       end
-
-    case result do
-      :ok -> :ok
-      {:ok, _offset} -> :ok
-      {:error, reason} -> {:error, reason}
     end
-  rescue
-    # The buffer was never started (fresh boot, spool disabled) —
-    # DurableBuffer.config/1's :persistent_term lookup has nothing to find.
-    ArgumentError -> {:error, :no_spool_partition_available}
   catch
-    # The buffer's config is registered but its partition process is gone
-    # (subtree crashed and is mid-restart) — the registry lookup resolves
-    # to a via-tuple with no live process behind it.
+    # The partition died between being picked and answering (subtree
+    # crashed and is mid-restart), or the append timed out.
     :exit, _reason -> {:error, :no_spool_partition_available}
   end
+
+  # A timed-out append stays in the partition's mailbox and is still
+  # written, so admitting appends into a backlog only grows it. Picks the
+  # shorter queue of two random partitions and sheds load once even that
+  # one is at :max_partition_queue_len.
+  @spec pick_spool_partition() :: {:ok, pid()} | {:error, term()}
+  defp pick_spool_partition do
+    case SpoolDurableBufferSup.partitions() do
+      [] ->
+        {:error, :no_spool_partition_available}
+
+      partitions ->
+        {partition, queue_len} =
+          partitions
+          |> Enum.take_random(2)
+          |> Enum.map(&{&1, message_queue_len(&1)})
+          |> Enum.min_by(&elem(&1, 1))
+
+        if queue_len < spool_max_partition_queue_len(),
+          do: {:ok, partition},
+          else: {:error, :spool_overloaded}
+    end
+  end
+
+  defp message_queue_len(pid) do
+    case Process.info(pid, :message_queue_len) do
+      {:message_queue_len, len} -> len
+      nil -> :infinity
+    end
+  end
+
+  defp spool_max_partition_queue_len,
+    do:
+      :logflare
+      |> Application.get_env(:spool, [])
+      |> Keyword.get(:max_partition_queue_len, @default_spool_max_partition_queue_len)
 
   @spec spoolable?([LogEvent.t()], Source.t(), boolean()) :: boolean()
   defp spoolable?(log_events, source, allow_spooling) do
