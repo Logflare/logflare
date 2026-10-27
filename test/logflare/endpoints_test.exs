@@ -892,7 +892,10 @@ defmodule Logflare.EndpointsTest do
       %{id: endpoint_id} =
         endpoint = insert(:endpoint, user: user, query: "select current_datetime() as testing")
 
-      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
+      assert {:ok, %{rows: [%{"testing" => _}]} = result} =
+               Endpoints.run_query(endpoint, %{}, prepare_query_plan: true)
+
+      refute Map.has_key?(result, :query_plan_request)
 
       endpoint_id_label_value = Integer.to_string(endpoint_id)
 
@@ -1309,6 +1312,42 @@ defmodule Logflare.EndpointsTest do
     end
   end
 
+  describe "query plans" do
+    test "ClickHouse plans use endpoint parameters and are not truncated by the row limit" do
+      {source, backend} = setup_clickhouse_test()
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+
+      events =
+        for message <- ["match", "other", "match"] do
+          build_mapped_log_event(source: source, message: message)
+        end
+
+      assert :ok = ClickHouseAdaptor.insert_log_events(backend, events, :log)
+      table = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+
+      endpoint =
+        insert(:endpoint,
+          user: source.user,
+          backend: backend,
+          language: :ch_sql,
+          max_limit: 1,
+          query: "SELECT event_message FROM #{table} WHERE event_message = @message"
+        )
+
+      assert {:ok, %{rows: [%{"event_message" => "match"}]} = result} =
+               Endpoints.run_query(endpoint, %{"message" => "match"}, prepare_query_plan: true)
+
+      assert {:ok, plan} = Endpoints.explain_query(result.query_plan_request)
+      assert plan =~ "ReadFromMergeTree"
+      assert plan =~ "Indexes:"
+      assert length(String.split(plan, "\n")) > 1
+
+      assert {:ok, result_without_plan} = Endpoints.run_query(endpoint, %{"message" => "match"})
+      refute Map.has_key?(result_without_plan, :query_plan_request)
+    end
+  end
+
   describe "running queries in postgres backends" do
     setup do
       cfg = Application.get_env(:logflare, Logflare.Repo)
@@ -1345,6 +1384,22 @@ defmodule Logflare.EndpointsTest do
     test "run_query_string/3", %{source: source, user: user} do
       query = "select body from #{source.name}"
       assert {:ok, %{rows: []}} = Endpoints.run_query_string(user, {:pg_sql, query})
+    end
+
+    test "query plans use transformed PostgreSQL source names", %{source: source, user: user} do
+      query = "SELECT body FROM #{source.name} WHERE body ->> 'ip' = '203.0.113.5'"
+
+      assert {:ok, %{rows: [], query_plan_request: request}} =
+               Endpoints.run_query_string(user, {:pg_sql, query},
+                 prepare_query_plan: true,
+                 redact_pii: true
+               )
+
+      assert {:ok, plan} = Endpoints.explain_query(request)
+      assert plan =~ PostgresAdaptor.table_name(source)
+      assert plan =~ "Filter:"
+      assert plan =~ "REDACTED"
+      refute plan =~ "203.0.113.5"
     end
 
     test "run_cached_query/1", %{source: source, user: user} do
