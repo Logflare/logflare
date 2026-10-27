@@ -21,6 +21,7 @@ defmodule LogflareWeb.EndpointsLive do
   alias LogflareWeb.Endpoints.RunQuery
   alias LogflareWeb.QueryErrorHelpers
   alias Logflare.Utils
+  alias Phoenix.LiveView.AsyncResult
 
   @resource_settings [
     max_bytes_to_read: "Max bytes to read",
@@ -76,6 +77,7 @@ defmodule LogflareWeb.EndpointsLive do
   def handle_params(params, _uri, socket) do
     socket =
       socket
+      |> cancel_query_plan()
       |> assign(
         show_endpoint: nil,
         endpoint_changeset: nil,
@@ -266,7 +268,7 @@ defmodule LogflareWeb.EndpointsLive do
       ) do
     if can_run_query?(socket) do
       payload = Map.put_new(payload, "query", socket.assigns.params_form[:query].value)
-      socket = assign(socket, :params_form, test_form(payload))
+      socket = socket |> cancel_query_plan() |> assign(:params_form, test_form(payload))
 
       socket =
         if sandbox_query?(socket, payload) do
@@ -279,6 +281,10 @@ defmodule LogflareWeb.EndpointsLive do
     else
       {:noreply, put_flash(socket, :error, "Not authorized to run this endpoint")}
     end
+  end
+
+  def handle_event("load-query-plan", _params, socket) do
+    {:noreply, load_query_plan(socket)}
   end
 
   def handle_event("apply-beta", _params, %{assigns: %{user: user}} = socket) do
@@ -317,6 +323,35 @@ defmodule LogflareWeb.EndpointsLive do
 
   def handle_event("validate", _params, socket) do
     # noop for other validation events
+    {:noreply, socket}
+  end
+
+  def handle_async({:query_plan, run_id}, outcome, socket) do
+    result = socket.assigns.test_result
+
+    socket =
+      with %{run_id: ^run_id} <- result,
+           {:ok, {:ok, text}} <- outcome do
+        assign(socket, :test_result, %{result | query_plan: AsyncResult.ok(text)})
+      else
+        {:ok, {:error, error}} ->
+          plan = AsyncResult.failed(result.query_plan, error)
+          assign(socket, :test_result, %{result | query_plan: plan})
+
+        {:exit, _reason} ->
+          error = %QueryError{
+            kind: :backend_error,
+            raw_error: nil,
+            backend: Adaptor.get_adaptor(result.query_plan_request.backend)
+          }
+
+          plan = AsyncResult.failed(result.query_plan, error)
+          assign(socket, :test_result, %{result | query_plan: plan})
+
+        _ ->
+          socket
+      end
+
     {:noreply, socket}
   end
 
@@ -409,12 +444,13 @@ defmodule LogflareWeb.EndpointsLive do
              Ecto.Changeset.get_field(socket.assigns.endpoint_changeset, :filesystem_cache_policy),
            redact_pii: redact_pii,
            backend_id: backend_id,
-           reservation: reservation
+           reservation: reservation,
+           prepare_query_plan: true
          ) do
       {:ok, result} ->
         socket
         |> put_flash(:info, "Ran query successfully")
-        |> assign(:test_result, successful_test_result(:endpoint, result, nil))
+        |> assign_successful_test_result(:endpoint, result, nil)
 
       {:error, error} ->
         message = query_error_message(error, :endpoint)
@@ -462,16 +498,16 @@ defmodule LogflareWeb.EndpointsLive do
       user_id: endpoint.user_id
     )
 
-    case Endpoints.run_query(endpoint, sandbox_params, reservation: reservation) do
+    case Endpoints.run_query(endpoint, sandbox_params,
+           reservation: reservation,
+           prepare_query_plan: true
+         ) do
       {:ok, result} ->
         transformed_query = maybe_transformed_query(show_transformed?, endpoint, sandbox_params)
 
         socket
         |> put_flash(:info, "Ran sandbox query successfully")
-        |> assign(
-          :test_result,
-          successful_test_result(:sandboxed_endpoint, result, transformed_query)
-        )
+        |> assign_successful_test_result(:sandboxed_endpoint, result, transformed_query)
 
       {:error, error} ->
         Logger.error(
@@ -503,19 +539,45 @@ defmodule LogflareWeb.EndpointsLive do
     |> to_form(as: "run")
   end
 
-  @spec successful_test_result(
-          :endpoint | :sandboxed_endpoint,
-          %{required(:rows) => [term()], optional(atom()) => term()},
-          String.t() | nil
-        ) :: map()
-  defp successful_test_result(kind, %{rows: rows} = result, transformed_query) do
-    %{
+  defp assign_successful_test_result(socket, kind, %{rows: rows} = result, transformed_query) do
+    request = Map.get(result, :query_plan_request)
+
+    test_result = %{
       kind: kind,
       status: :ok,
       rows: rows,
       total_bytes_processed: Map.get(result, :total_bytes_processed),
+      run_id: System.unique_integer([:positive]),
+      query_plan_request: request,
+      query_plan: if(request, do: %AsyncResult{}),
       transformed_query: transformed_query
     }
+
+    assign(socket, :test_result, test_result)
+  end
+
+  defp load_query_plan(
+         %{
+           assigns: %{
+             test_result:
+               %{query_plan: %AsyncResult{ok?: false, loading: nil, failed: nil}} = result
+           }
+         } = socket
+       ) do
+    request = result.query_plan_request
+
+    socket
+    |> assign(:test_result, %{result | query_plan: AsyncResult.loading()})
+    |> start_async({:query_plan, result.run_id}, fn -> Endpoints.explain_query(request) end)
+  end
+
+  defp load_query_plan(socket), do: socket
+
+  defp cancel_query_plan(socket) do
+    case socket.assigns[:test_result] do
+      %{run_id: run_id} -> cancel_async(socket, {:query_plan, run_id})
+      _ -> socket
+    end
   end
 
   defp refresh_endpoints(%{assigns: assigns} = socket) do
