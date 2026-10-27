@@ -426,8 +426,9 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
-      refute has_element?(view, "#expanded-endpoint-query-link")
+      refute has_element?(view, "#endpoint-query-nav")
       refute has_element?(view, "#expanded-endpoint-query")
+      assert has_element?(view, "#endpoint-query-nav-panels #endpoint-query", "75")
     end
 
     test "show endpoint -> edit endpoint", %{conn: conn, endpoint: endpoint} do
