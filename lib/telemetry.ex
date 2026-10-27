@@ -3,7 +3,9 @@ defmodule Logflare.Telemetry do
 
   import Telemetry.Metrics
   import Logflare.Utils, only: [ets_info: 1]
-  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1, is_pos_integer: 1]
+
+  import Logflare.Utils.Guards,
+    only: [is_non_empty_binary: 1, is_non_negative_integer: 1, is_pos_integer: 1]
 
   require Logger
 
@@ -1105,7 +1107,7 @@ defmodule Logflare.Telemetry do
   defp backend_scoped_drop?(_metadata), do: false
 
   defp ch_read_pool_connection_event?(%{tag: {backend_id, label}})
-       when is_pos_integer(backend_id) and (is_binary(label) or is_nil(label)),
+       when is_non_negative_integer(backend_id) and (is_binary(label) or is_nil(label)),
        do: true
 
   defp ch_read_pool_connection_event?(_metadata), do: false
