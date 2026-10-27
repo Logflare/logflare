@@ -32,6 +32,7 @@ defmodule Logflare.Cache.CachexOps do
           | {:purge_interval, pos_integer()}
           | {:warmer, warmer() | nil}
           | {:compressed, boolean()}
+          | {:transactions, boolean()}
 
   @doc """
   Child spec for a Cachex cache registered as `name`, with the stats hook when `stats_enabled?/0`.
@@ -42,6 +43,7 @@ defmodule Logflare.Cache.CachexOps do
     * `:purge_interval` - timeout in ms between purges of expired entries, defaults to 5 minutes
     * `:warmer` - a non-required warmer module, or `{module, interval: ms}`, registered under the module name
     * `:compressed` - defaults to `false`
+    * `:transactions` - enables transactional locking from startup, defaults to `false`
   """
   @spec child_spec(atom(), [cache_opt()]) :: Supervisor.child_spec()
   def child_spec(name, opts) do
@@ -63,7 +65,8 @@ defmodule Logflare.Cache.CachexOps do
           lazy: true
         ),
       warmers: warmers(opts[:warmer]),
-      compressed: Keyword.get(opts, :compressed, false)
+      compressed: Keyword.get(opts, :compressed, false),
+      transactions: Keyword.get(opts, :transactions, false)
     ]
   end
 

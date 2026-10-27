@@ -101,6 +101,23 @@ defmodule Logflare.RepoTest do
     end
   end
 
+  describe "with_primary/1" do
+    test "reads on the primary inside replica scope and restores that scope" do
+      start_read_replicas(["127.0.0.1"])
+
+      Repo.with_replica(fn ->
+        replica = Repo.get_dynamic_repo()
+        refute replica == Repo
+        assert Repo.with_primary(&Repo.get_dynamic_repo/0) == Repo
+        assert Repo.get_dynamic_repo() == replica
+        assert_raise ArithmeticError, fn -> Repo.with_primary(fn -> raise ArithmeticError end) end
+        assert Repo.get_dynamic_repo() == replica
+      end)
+
+      assert Repo.get_dynamic_repo() == Repo
+    end
+  end
+
   describe "apply_with_replica/3" do
     test "delegates to scoped replica routing" do
       start_read_replicas(["127.0.0.1"])
