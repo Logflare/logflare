@@ -21,8 +21,9 @@ defmodule Logflare.ContextCache do
 
   With `refresh_ahead: true`, `c:fetch/2` also hands the key to `Logflare.ContextCache.RefreshAhead`,
   which reloads entries close to expiry in the background, so reads don't block on the getter
-  when a hot entry expires. It relies on `c:expiry/1`, `c:entry/1`, `c:cached?/1`,
-  `c:put_entries/1` and `c:stale_entry?/2` only.
+  when a hot entry expires. It relies on `c:expiry/1`, `c:entry/1`, `c:put_entries/1`,
+  `c:delete_keys/1` and `c:stale_entry?/2` only. `bust_keys/1` marks busted keys for it before
+  deleting them, so a refresh running during a bust never writes the busted value back.
 
   ## Busting
 
@@ -213,7 +214,9 @@ defmodule Logflare.ContextCache do
 
   defp bust_key(context, kw) when is_list(kw) do
     cache = cache_name(context)
-    cache.delete_keys(cache.keys_to_bust(kw))
+    keys = Enum.to_list(cache.keys_to_bust(kw))
+    RefreshAhead.mark_busted(cache, keys)
+    cache.delete_keys(keys)
   end
 
   defp bust_key(context, pkey), do: bust_key(context, id: pkey)

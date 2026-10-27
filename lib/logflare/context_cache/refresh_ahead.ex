@@ -17,8 +17,9 @@ defmodule Logflare.ContextCache.RefreshAhead do
   never cached for longer than one TTL after it was loaded from the database. The remaining keys
   are reloaded with their getters and written with their total TTL.
 
-  Refreshed values are only written if the entry still exists, so a WAL bust that deletes the
-  entry while it is queued or being refreshed isn't undone.
+  A refreshed value is only written if the entry still holds the value it had when the refresh
+  started, and is evicted again when `Logflare.ContextCache.bust_keys/1` busted the key in the
+  meantime, so a WAL bust during a refresh is never undone.
 
   Only `Logflare.ContextCache` callbacks are used, so it works with any
   `Logflare.ContextCache.Ops` implementation.
@@ -50,6 +51,17 @@ defmodule Logflare.ContextCache.RefreshAhead do
     end
 
     :ok
+  end
+
+  @doc """
+  Marks queued and in-flight refreshes of `keys` as busted, so their results are discarded.
+  Must be called before the keys are deleted.
+  """
+  @spec mark_busted(module(), Enumerable.t()) :: :ok
+  def mark_busted(cache, keys) do
+    Enum.each(keys, &:ets.update_element(@table, {cache, &1}, {4, true}))
+  rescue
+    ArgumentError -> :ok
   end
 
   @doc """
@@ -88,7 +100,7 @@ defmodule Logflare.ContextCache.RefreshAhead do
 
   defp enqueue(cache, key, getter, total, max_queue) do
     :ets.info(@table, :size) < max_queue and
-      :ets.insert_new(@table, {{cache, key}, getter, total})
+      :ets.insert_new(@table, {{cache, key}, getter, total, false})
   rescue
     ArgumentError -> false
   end
@@ -97,7 +109,7 @@ defmodule Logflare.ContextCache.RefreshAhead do
     case :ets.match_object(@table, :_, config[:batch_size]) do
       {queued, _continuation} ->
         queued
-        |> Enum.group_by(fn {{cache, _key}, _getter, _total} -> cache end)
+        |> Enum.group_by(fn {{cache, _key}, _getter, _total, _busted?} -> cache end)
         |> Enum.each(fn {cache, queued} -> refresh_cache(cache, queued, config) end)
 
       :"$end_of_table" ->
@@ -106,10 +118,14 @@ defmodule Logflare.ContextCache.RefreshAhead do
   end
 
   defp refresh_cache(cache, queued, config) do
-    keys = Enum.map(queued, fn {{_cache, key}, _getter, _total} -> key end)
+    Enum.each(queued, fn {id, _getter, _total, _busted?} ->
+      :ets.update_element(@table, id, {4, false})
+    end)
+
+    keys = Enum.map(queued, fn {{_cache, key}, _getter, _total, _busted?} -> key end)
     peer_entries = fetch_peer_entries(cache, keys, config)
 
-    for {{_cache, key} = id, getter, total} <- queued do
+    for {{_cache, key} = id, getter, total, _busted?} <- queued do
       started_at = System.monotonic_time()
       result = refresh(cache, key, getter, total, Map.get(peer_entries, key), config[:threshold])
       :ets.delete(@table, id)
@@ -156,17 +172,17 @@ defmodule Logflare.ContextCache.RefreshAhead do
         ) ::
           result()
   defp refresh(cache, key, getter, total, peer_entry, threshold) do
-    cond do
-      not cache.cached?(key) ->
+    case cached_value(cache, key) do
+      :missing ->
         :skipped
 
-      copyable?(cache, key, peer_entry, total * threshold) ->
-        {value, ttl} = peer_entry
-        :ok = cache.put_entries([{key, value, ttl}])
-        :copied
-
-      true ->
-        reload(cache, key, getter, total)
+      snapshot ->
+        if copyable?(cache, key, peer_entry, total * threshold) do
+          {value, ttl} = peer_entry
+          write(cache, key, snapshot, {value, ttl}, :copied)
+        else
+          write(cache, key, snapshot, {getter.(), total}, :refreshed)
+        end
     end
   rescue
     e ->
@@ -184,14 +200,29 @@ defmodule Logflare.ContextCache.RefreshAhead do
     ttl > min_ttl and not cache.stale_entry?(key, value)
   end
 
-  defp reload(cache, key, getter, total) do
-    value = getter.()
+  defp cached_value(cache, key) do
+    case cache.entry(key) do
+      {_key, value, _ttl} -> {:cached, value}
+      nil -> :missing
+    end
+  end
 
-    if cache.cached?(key) do
-      :ok = cache.put_entries([{key, value, total}])
-      :refreshed
+  @spec write(module(), term(), {:cached, term()}, {term(), pos_integer()}, result()) :: result()
+  defp write(cache, key, snapshot, {value, ttl}, result) do
+    if cached_value(cache, key) == snapshot do
+      :ok = cache.put_entries([{key, value, ttl}])
+      discard_if_busted(cache, key, result)
     else
       :skipped
+    end
+  end
+
+  defp discard_if_busted(cache, key, result) do
+    if :ets.lookup_element(@table, {cache, key}, 4, false) do
+      {:ok, _deleted} = cache.delete_keys([key])
+      :skipped
+    else
+      result
     end
   end
 end
