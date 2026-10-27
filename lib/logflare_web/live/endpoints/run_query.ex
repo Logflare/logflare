@@ -3,6 +3,8 @@ defmodule LogflareWeb.Endpoints.RunQuery do
   use Phoenix.Component
 
   alias LogflareWeb.QueryComponents
+  alias LogflareWeb.QueryErrorHelpers
+  alias Phoenix.LiveView.JS
 
   attr :form, :map, required: true
   attr :endpoint_changeset, :map, required: true
@@ -10,7 +12,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
 
   def query_form(assigns) do
     ~H"""
-    <.form :let={f} for={@form} phx-submit="run-query" class="tw-min-h-[80px]">
+    <.form :let={f} for={@form} phx-submit="run-query" phx-change="validate" class="tw-min-h-[80px]">
       {hidden_input(f, :query)}
 
       <.inputs_for :let={params_f} field={f[:params]}>
@@ -31,15 +33,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
 
   def query_result(%{result: %{kind: :endpoint, status: :ok}} = assigns) do
     ~H"""
-    <div>
-      <div class="tw-flex tw-justify-between">
-        <h5 class="tw-text-white">Results</h5>
-
-        <QueryComponents.query_cost :if={is_integer(@result.total_bytes_processed)} bytes={@result.total_bytes_processed} />
-      </div>
-
-      <code class="tw-whitespace-pre-wrap tw-overflow-x-auto tw-block tw-text-white tw-bg-zinc-800 tw-rounded tw-p-2 tw-text-xs">{Jason.encode!(@result.rows) |> Jason.Formatter.pretty_print()}</code>
-    </div>
+    <.query_output result={@result} />
     """
   end
 
@@ -56,6 +50,51 @@ defmodule LogflareWeb.Endpoints.RunQuery do
   end
 
   def query_result(assigns), do: ~H""
+
+  attr :result, :map, required: true
+
+  defp query_output(assigns) do
+    assigns =
+      assigns
+      |> assign(:plan, Map.get(assigns.result, :query_plan))
+      |> assign(
+        :formatted_rows,
+        Jason.encode!(assigns.result.rows) |> Jason.Formatter.pretty_print()
+      )
+
+    ~H"""
+    <section id="endpoint-test-output">
+      <.tabs id="endpoint-test-output-tabs" aria-label="Test query output" class="tw-mb-3 tw-border-0 tw-border-b tw-border-solid tw-border-zinc-700" tab_class="tw-border-b-2 tw-border-solid tw-border-transparent tw-text-zinc-400 [&.active]:tw-border-blue-500 [&.active]:tw-text-white">
+        <:tab id={if @plan, do: "endpoint-test-results", else: "endpoint-test-results-only"} label="Results" active>
+          <h5 class={["tw-text-white", @plan && "tw-sr-only"]}>
+            {if @result.kind == :sandboxed_endpoint, do: "Sandbox Query Results", else: "Results"}
+          </h5>
+          <code id={"endpoint-test-rows-#{@result.run_id}"} phx-mounted={@plan && JS.exec("phx-click", to: "#endpoint-test-results-tab")} class="tw-block tw-overflow-x-auto tw-whitespace-pre-wrap tw-rounded tw-bg-zinc-800 tw-p-2 tw-text-xs tw-text-white">{@formatted_rows}</code>
+          <div :if={is_integer(@result.total_bytes_processed)} class="tw-mt-2 tw-text-right">
+            <QueryComponents.query_cost bytes={@result.total_bytes_processed} />
+          </div>
+        </:tab>
+
+        <:tab :if={@plan} id="endpoint-test-plan" label="Query plan" on_select={JS.push("load-query-plan")} busy={@plan.loading == true}>
+          <div :if={@plan.loading} id="endpoint-test-plan-loading" role="status">
+            {live_react_component("Components.Loader", %{}, id: "endpoint-test-plan-loader")}
+            <span class="tw-sr-only">Loading query plan…</span>
+          </div>
+          <pre :if={@plan.ok?} class="tw-mb-2 tw-overflow-x-auto tw-whitespace-pre tw-rounded tw-bg-zinc-800 tw-p-2 tw-text-xs tw-text-white"><code>{@plan.result}</code></pre>
+          <.alert :if={@plan.failed} variant="warning">
+            <strong>Could not generate query plan.</strong>
+            <br />
+            {QueryErrorHelpers.query_error_message(@plan.failed)}
+          </.alert>
+        </:tab>
+
+        <:actions>
+          <.clipboard_button id="endpoint-test-output-copy" to="#endpoint-test-output-tabs-panels > .tab-pane.active code" label="" class="btn-sm" title="Copy selected output" aria-label="Copy selected output" />
+        </:actions>
+      </.tabs>
+    </section>
+    """
+  end
 
   attr :endpoint, :map, required: true
   attr :form, :map, required: true
@@ -258,13 +297,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
       </div>
 
       <div :if={@result.status == :ok} class="tw-mt-5">
-        <div class="tw-mb-2 tw-flex tw-justify-between">
-          <h5 class="tw-text-white">
-            {if @result.kind == :sandboxed_endpoint, do: "Sandbox Query Results", else: "Results"}
-          </h5>
-          <QueryComponents.query_cost :if={is_integer(@result.total_bytes_processed)} bytes={@result.total_bytes_processed} />
-        </div>
-        <code class="tw-block tw-overflow-x-auto tw-whitespace-pre-wrap tw-rounded tw-bg-zinc-800 tw-p-2 tw-text-xs tw-text-white">{Jason.encode!(@result.rows) |> Jason.Formatter.pretty_print()}</code>
+        <.query_output result={@result} />
         <details :if={@result.transformed_query} class="tw-mt-4">
           <summary class="tw-cursor-pointer tw-text-sm tw-font-semibold tw-text-white">
             Show Transformed Query

@@ -7,6 +7,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
   import Logflare.DataCase, only: [setup_clickhouse_test: 1]
 
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
 
   setup %{conn: conn} do
     insert(:plan)
@@ -758,6 +759,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert has_element?(view, "label", "Enable query sandboxing")
       assert has_element?(view, "label", "Max limit")
       assert has_element?(view, "label", "Enable authentication")
+      refute has_element?(view, "#endpoint-test-plan-tab")
 
       assert view |> render() =~ ~r/1 .+ processed/
 
@@ -854,6 +856,202 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       assert html =~ LogflareWeb.QueryErrorHelpers.generic_query_error_message()
       refute html =~ "raw backend detail"
+    end
+  end
+
+  describe "query plans" do
+    test "PostgreSQL test runs show results and a plain-text estimated plan", %{
+      conn: conn,
+      user: user
+    } do
+      backend =
+        insert(:backend, user: user, type: :postgres, config: postgres_backend_config())
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :pg_sql,
+          query: "SELECT 19 - 7 AS difference"
+        )
+
+      for path <- ["/endpoints/#{endpoint.id}/edit", "/endpoints/#{endpoint.id}"] do
+        {:ok, view, _html} = live_with_redirect(conn, path)
+        refute has_element?(view, "#endpoint-test-plan-tab")
+
+        view
+        |> element("form[phx-submit='run-query']")
+        |> render_submit(%{run: %{query: endpoint.query, params: %{}}})
+
+        assert has_element?(view, "#endpoint-test-results", ~s("difference": 12))
+        assert has_element?(view, "#endpoint-test-results-tab[aria-selected='true']")
+        assert has_element?(view, "#endpoint-test-plan-tab", "Query plan")
+        refute has_element?(view, "#endpoint-test-plan pre")
+
+        html = view |> render() |> Floki.parse_fragment!()
+        expected_rows = "[\n  {\n    \"difference\": 12\n  }\n]"
+        assert html |> Floki.find("#endpoint-test-results code") |> Floki.text() == expected_rows
+
+        assert [
+                 [
+                   "dispatch",
+                   %{"to" => "#endpoint-test-output-tabs-panels > .tab-pane.active code"}
+                 ]
+               ] =
+                 html
+                 |> Floki.attribute(
+                   "#endpoint-test-output-tabs #endpoint-test-output-copy",
+                   "phx-click"
+                 )
+                 |> hd()
+                 |> Jason.decode!()
+
+        view |> element("#endpoint-test-plan-tab") |> render_click()
+        render_async(view)
+
+        assert has_element?(view, "#endpoint-test-plan pre code", "Result")
+        html = view |> render() |> Floki.parse_fragment!()
+        assert [copy] = Floki.find(html, "#endpoint-test-output-tabs button[title]")
+        assert copy |> List.wrap() |> Floki.text() |> String.trim() == ""
+
+        refute has_element?(view, "#endpoint-test-plan code span")
+        refute has_element?(view, "#endpoint-test-plan", "actual time")
+      end
+    end
+
+    test "a plan error preserves successful query results", %{conn: conn, user: user} do
+      backend = insert(:backend, user: user, type: :clickhouse)
+      endpoint = insert(:endpoint, user: user, backend: backend, language: :ch_sql)
+
+      stub(ClickHouseAdaptor, :execute_query, fn _backend, _query, _opts ->
+        {:ok, QueryResult.new([%{"difference" => 12}])}
+      end)
+
+      stub(ClickHouseAdaptor, :explain_query, fn _backend, _query, _opts ->
+        {:error,
+         %QueryError{
+           kind: :backend_error,
+           backend: ClickHouseAdaptor,
+           raw_error: "private connection details"
+         }}
+      end)
+
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}/edit")
+
+      view
+      |> element("form[phx-submit='run-query']")
+      |> render_submit(%{run: %{query: "SELECT 19 - 7 AS difference", params: %{}}})
+
+      assert has_element?(view, "#endpoint-test-results", ~s("difference": 12))
+
+      view |> element("#endpoint-test-plan-tab") |> render_click()
+      render_async(view)
+
+      assert has_element?(
+               view,
+               "#endpoint-test-plan .alert-warning",
+               "Could not generate query plan"
+             )
+
+      refute has_element?(view, "#endpoint-test-plan code")
+      refute render(view) =~ "private connection details"
+    end
+
+    test "plans load on demand, use the last run, and reset on every query", %{
+      conn: conn,
+      user: user
+    } do
+      backend = insert(:backend, user: user, type: :clickhouse)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :ch_sql,
+          query: "SELECT @value AS value"
+        )
+
+      test_pid = self()
+
+      stub(ClickHouseAdaptor, :execute_query, fn _backend,
+                                                 {_sql, _declared, params, _endpoint},
+                                                 _opts ->
+        {:ok, QueryResult.new([%{"value" => params["value"]}])}
+      end)
+
+      stub(ClickHouseAdaptor, :explain_query, fn _backend,
+                                                 {sql, _declared, params, _endpoint},
+                                                 _opts ->
+        if params["value"] == "7" do
+          Process.flag(:trap_exit, true)
+          send(test_pid, {:plan_pending, self(), sql})
+
+          receive do
+            :finish_plan -> :ok
+          end
+        end
+
+        send(test_pid, {:explained, params["value"]})
+        {:ok, "Plan for #{params["value"]}"}
+      end)
+
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}/edit")
+      form = element(view, "form[phx-submit='run-query']")
+      render_submit(form, %{run: %{query: endpoint.query, params: %{value: "7"}}})
+      refute_receive {:explained, _}
+      refute_receive {:plan_pending, _, _}
+      refute has_element?(view, "#endpoint-test-plan pre")
+
+      render_change(form, %{run: %{params: %{value: "11"}}})
+      change_editor_query(view, "SELECT @value + 1 AS edited_value")
+      view |> element("#endpoint-test-plan-tab") |> render_click()
+      assert_receive {:plan_pending, pending_plan, sql}
+      on_exit(fn -> send(pending_plan, :finish_plan) end)
+      refute sql =~ "edited_value"
+      assert has_element?(view, "#endpoint-test-plan-loading")
+      assert has_element?(view, "#run_params_0_value[value='11']")
+
+      render_submit(form, %{run: %{query: endpoint.query, params: %{value: "11"}}})
+      refute_receive {:explained, _}
+      assert has_element?(view, "#endpoint-test-results", ~s("value": "11"))
+      assert has_element?(view, "#endpoint-test-results-tab[aria-selected='true']")
+      refute has_element?(view, "#endpoint-test-plan pre")
+      pending_ref = Process.monitor(pending_plan)
+      send(pending_plan, :finish_plan)
+      assert_receive {:explained, "7"}
+      assert_receive {:DOWN, ^pending_ref, :process, ^pending_plan, _reason}
+      render_async(view)
+      refute has_element?(view, "#endpoint-test-plan pre")
+
+      view |> element("#endpoint-test-plan-tab") |> render_click()
+      render_async(view)
+      assert_receive {:explained, "11"}
+      assert has_element?(view, "#endpoint-test-plan pre", "Plan for 11")
+      refute has_element?(view, "#endpoint-test-plan pre", "Plan for 7")
+
+      view |> element("#endpoint-test-plan-tab") |> render_click()
+      render_async(view)
+      refute_receive {:explained, _}
+
+      render_submit(form, %{run: %{query: endpoint.query, params: %{value: "11"}}})
+      render_async(view)
+      refute_receive {:explained, _}
+      assert has_element?(view, "#endpoint-test-results-tab[aria-selected='true']")
+      refute has_element?(view, "#endpoint-test-plan pre")
+
+      view |> element("#endpoint-test-plan-tab") |> render_click()
+      render_async(view)
+      assert_receive {:explained, "11"}
+      assert has_element?(view, "#endpoint-test-plan pre", "Plan for 11")
+
+      render_submit(form, %{run: %{query: endpoint.query, params: %{value: "13"}}})
+      refute_receive {:explained, _}
+      refute has_element?(view, "#endpoint-test-plan pre")
+      assert has_element?(view, "#endpoint-test-results", ~s("value": "13"))
+      view |> element("#endpoint-test-plan-tab") |> render_click()
+      render_async(view)
+      assert_receive {:explained, "13"}
+      assert has_element?(view, "#endpoint-test-plan pre", "Plan for 13")
     end
   end
 
