@@ -208,8 +208,10 @@ defmodule Logflare.Backends.SourceSup do
       {%Backend{} = backend, %Source{} = source} ->
         start_backend_child(source, %{backend | register_for_ingest: false})
 
-      {backend, _source} ->
-        missing = if backend, do: "source", else: "backend"
+      {backend, source} ->
+        missing =
+          for({name, nil} <- [backend: backend, source: source], do: name)
+          |> Enum.join(" and ")
 
         Logger.warning("Cannot start rule backend child: #{missing} not found",
           backend_id: backend_id,

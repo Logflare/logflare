@@ -1458,6 +1458,18 @@ defmodule Logflare.BackendsTest do
       assert :noop = SourceSup.start_backend_child(source, backend)
     end
 
+    test "start_backend_child_by_id/2 warns when both backend and source are missing" do
+      stub(Backends.Cache, :get_backend, fn _id -> nil end)
+      stub(Sources.Cache, :get_by_id, fn _id -> nil end)
+
+      log =
+        capture_log([level: :warning], fn ->
+          assert :noop = SourceSup.start_backend_child_by_id(1, 1)
+        end)
+
+      assert log =~ "Cannot start rule backend child: backend and source not found"
+    end
+
     test "SourceSupWorker check warns on a rule whose backend is missing from cache", %{
       source: source,
       user: user
