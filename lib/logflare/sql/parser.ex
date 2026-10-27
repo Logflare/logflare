@@ -16,6 +16,7 @@ defmodule Logflare.Sql.Parser do
 
     # When your NIF is loaded, it will override this function.
     def parse(_dialect, _query), do: :erlang.nif_error(:nif_not_loaded)
+    def parse_clickhouse_converted(_query), do: :erlang.nif_error(:nif_not_loaded)
     def to_string(_query), do: :erlang.nif_error(:nif_not_loaded)
   end
 
@@ -28,6 +29,15 @@ defmodule Logflare.Sql.Parser do
     with {:ok, json} <- Native.parse(dialect, query) do
       Jason.decode(json)
     end
+  end
+
+  @doc """
+  Parses final internal ClickHouse SQL after parameter conversion, including native positional bindings.
+  Customer SQL must use `parse/2` before conversion.
+  """
+  @spec parse_clickhouse_converted(String.t()) :: {:ok, [map()]} | {:error, String.t()}
+  def parse_clickhouse_converted(query) when is_non_empty_binary(query) do
+    with {:ok, json} <- Native.parse_clickhouse_converted(query), do: Jason.decode(json)
   end
 
   @doc """
