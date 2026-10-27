@@ -86,6 +86,33 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert is_integer(bytes)
     end
 
+    test "explain_query/3 returns text and normalizes transformation and backend failures", %{
+      backend: backend
+    } do
+      endpoint = build(:endpoint, max_limit: 1)
+
+      assert {:ok, plan} =
+               ClickHouseAdaptor.explain_query(
+                 backend,
+                 {"SELECT @value AS value", ["value"], %{"value" => "19"}, endpoint},
+                 []
+               )
+
+      assert is_binary(plan)
+      assert plan =~ "ReadFromSystemOne"
+      assert length(String.split(plan, "\n")) > 1
+
+      assert {:error, %QueryError{kind: :invalid_query, backend: ClickHouseAdaptor}} =
+               ClickHouseAdaptor.explain_query(backend, {"SELECT FROM", [], %{}, endpoint}, [])
+
+      assert {:error, %QueryError{kind: :invalid_query, backend: ClickHouseAdaptor}} =
+               ClickHouseAdaptor.explain_query(
+                 backend,
+                 {"SELECT missing_column FROM system.one", [], %{}, endpoint},
+                 []
+               )
+    end
+
     test "handles query errors", %{backend: backend} do
       result =
         ClickHouseAdaptor.execute_ch_query(backend, "INVALID SQL QUERY")

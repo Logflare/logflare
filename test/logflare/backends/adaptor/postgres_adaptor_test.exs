@@ -139,6 +139,20 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       :ok
     end
 
+    test "explain_query/3 returns text for positional parameters and normalizes failures", %{
+      backend: backend
+    } do
+      assert {:ok, plan} =
+               PostgresAdaptor.explain_query(backend, {"SELECT $1::integer - 7", [19]}, [])
+
+      assert is_binary(plan)
+      assert plan =~ "Result"
+      refute plan =~ "actual time"
+
+      assert {:error, %QueryError{kind: :invalid_query, backend: PostgresAdaptor}} =
+               PostgresAdaptor.explain_query(backend, {"SELECT FROM", []}, [])
+    end
+
     test "ingest/2 and execute_query/2 dispatched message", %{
       backend: backend,
       source: source

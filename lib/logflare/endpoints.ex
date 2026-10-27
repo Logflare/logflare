@@ -1134,11 +1134,62 @@ defmodule Logflare.Endpoints do
       case adaptor.execute_query(backend, query_args, query_opts) do
         {:ok, %QueryResult{rows: rows} = result} ->
           redacted_rows = PiiRedactor.redact_query_result(rows, redact_pii)
-          {:ok, result |> Map.put(:rows, redacted_rows) |> Map.from_struct()}
+
+          result =
+            result
+            |> Map.put(:rows, redacted_rows)
+            |> Map.from_struct()
+            |> maybe_put_query_plan_request(backend, query_args, query_opts, redact_pii)
+
+          {:ok, result}
 
         {:error, error} ->
           {:error, redact_query_error(error, redact_pii)}
       end
+    end
+  end
+
+  @spec maybe_put_query_plan_request(map(), Backend.t(), tuple(), Keyword.t(), boolean()) :: map()
+  defp maybe_put_query_plan_request(
+         result,
+         backend,
+         query_args,
+         opts,
+         redact_pii
+       ) do
+    if Keyword.get(opts, :prepare_query_plan, false) and
+         Backends.Adaptor.can_explain_query?(backend) do
+      Map.put(result, :query_plan_request, %{
+        backend: backend,
+        query_args: query_args,
+        opts: opts,
+        redact_pii: redact_pii
+      })
+    else
+      result
+    end
+  end
+
+  @spec explain_query(%{
+          backend: Backend.t(),
+          query_args: Backends.Adaptor.explain_query_args(),
+          opts: Keyword.t(),
+          redact_pii: boolean()
+        }) :: {:ok, String.t()} | {:error, QueryError.t()}
+  def explain_query(%{
+        backend: backend,
+        query_args: query_args,
+        opts: opts,
+        redact_pii: redact_pii
+      }) do
+    adaptor = Backends.Adaptor.get_adaptor(backend)
+
+    case adaptor.explain_query(backend, query_args, opts) do
+      {:ok, plan} ->
+        {:ok, PiiRedactor.redact_query_result(plan, redact_pii)}
+
+      {:error, error} ->
+        {:error, redact_query_error(error, redact_pii)}
     end
   end
 
