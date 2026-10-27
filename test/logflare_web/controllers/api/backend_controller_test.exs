@@ -641,6 +641,40 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       assert response["config"]["async_insert_max_data_size"] == nil
     end
 
+    test "returns error when another backend of the same type is already the account default", %{
+      conn: conn,
+      user: user
+    } do
+      insert(:backend,
+        user: user,
+        type: :clickhouse,
+        config: %{url: "http://localhost:8123", database: "default", port: 8123},
+        default_ingest?: true
+      )
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://localhost:8123", database: "default", port: 8123},
+          default_ingest?: false
+        )
+
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> patch("/api/backends/#{backend.token}", %{default_ingest?: true})
+        |> json_response(422)
+
+      assert response == %{
+               "errors" => %{
+                 "default_ingest?" => [
+                   "another backend of this type is already the default ingest backend for this account"
+                 ]
+               }
+             }
+    end
+
     test "partial config update preserves existing fields", %{conn: conn, user: user} do
       backend =
         insert(:backend,
