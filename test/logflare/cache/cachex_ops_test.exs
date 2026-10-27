@@ -31,7 +31,8 @@ defmodule Logflare.Cache.CachexOpsTest do
              hooks: [],
              expiration: expiration(default: :timer.minutes(20), interval: :timer.minutes(5)),
              warmers: [],
-             compressed: false
+             compressed: false,
+             transactions: false
            ]},
           {"an integer limit", [limit: 10],
            [hooks: [hook(module: Cachex.Limit.Scheduled, args: {10, [], []})]]},
@@ -54,7 +55,8 @@ defmodule Logflare.Cache.CachexOpsTest do
            ]},
           {"ttl and purge interval", [limit: nil, ttl: 10_000, purge_interval: 2_000],
            [expiration: expiration(default: 10_000, interval: 2_000, lazy: true)]},
-          {"compression", [limit: nil, compressed: true], [compressed: true]}
+          {"compression", [limit: nil, compressed: true], [compressed: true]},
+          {"transactions", [limit: nil, transactions: true], [transactions: true]}
         ] do
       test name do
         opts = CachexOps.cachex_opts(unquote(Macro.escape(opts)))

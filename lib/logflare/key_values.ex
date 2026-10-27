@@ -4,9 +4,11 @@ defmodule Logflare.KeyValues do
   import Ecto.Query
 
   alias Logflare.KeyValues.KeyValue
+  alias Logflare.KeyValues.KeyValueUsage
   alias Logflare.Repo
 
   @list_limit 500
+  @usage_retention_days 30
 
   @spec list_key_values_query(keyword()) :: Ecto.Query.t()
   def list_key_values_query(kw) do
@@ -123,6 +125,32 @@ defmodule Logflare.KeyValues do
       on_conflict: {:replace, [:value, :updated_at]},
       conflict_target: [:user_id, :key]
     )
+  end
+
+  @spec bump_usages([{integer(), String.t()}], DateTime.t()) :: :ok
+  def bump_usages(pairs, now) when is_list(pairs) do
+    pairs
+    |> Enum.group_by(fn {uid, _} -> uid end, fn {_, k} -> k end)
+    |> Enum.each(fn {user_id, keys} ->
+      src =
+        KeyValue
+        |> where(user_id: ^user_id)
+        |> where([kv], kv.key in ^keys)
+        |> select([kv], %{key_value_id: kv.id, last_used_at: type(^now, :utc_datetime_usec)})
+
+      Repo.insert_all(KeyValueUsage, src,
+        on_conflict: {:replace, [:last_used_at]},
+        conflict_target: [:key_value_id]
+      )
+    end)
+
+    :ok
+  end
+
+  @spec prune_usages(DateTime.t()) :: {non_neg_integer(), nil}
+  def prune_usages(now \\ DateTime.utc_now()) do
+    cutoff = DateTime.add(now, -@usage_retention_days, :day)
+    KeyValueUsage |> where([u], u.last_used_at < ^cutoff) |> Repo.delete_all()
   end
 
   @spec bulk_delete_by_keys(integer(), [String.t()]) :: {non_neg_integer(), nil}
