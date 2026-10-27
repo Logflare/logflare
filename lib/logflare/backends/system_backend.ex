@@ -1,6 +1,6 @@
 defmodule Logflare.Backends.SystemBackend do
   @moduledoc """
-  Lifecycle hooks for the system backend, distinct from user-configured backends.
+  Lookup and lifecycle hooks for the system backend, distinct from user-configured backends.
 
   Hooks are optional; adaptors without a hook require no additional setup.
   """
@@ -9,6 +9,7 @@ defmodule Logflare.Backends.SystemBackend do
   alias Logflare.Backends.Backend
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source
+  alias Logflare.User
 
   @doc "Runs before single-tenant users and sources are seeded."
   @callback on_system_start() :: :ok
@@ -20,6 +21,12 @@ defmodule Logflare.Backends.SystemBackend do
   @callback on_supabase_start() :: :ok
 
   @optional_callbacks on_system_start: 0, on_source_start: 1, on_supabase_start: 0
+
+  @doc "Returns a source's synthetic ClickHouse backend, or nil for legacy per-source defaults."
+  @spec lookup_system_default_backend(Source.t()) :: Backend.t() | nil
+  def lookup_system_default_backend(%Source{user_id: user_id}) do
+    SingleTenant.get_default_clickhouse_backend(%User{id: user_id})
+  end
 
   @spec on_system_start() :: :ok
   def on_system_start, do: invoke(:on_system_start, [])
