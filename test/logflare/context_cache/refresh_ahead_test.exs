@@ -4,6 +4,7 @@ defmodule Logflare.ContextCache.RefreshAheadTest do
   import ExUnit.CaptureLog
 
   alias Logflare.Cluster.Utils, as: ClusterUtils
+  alias Logflare.ContextCache
   alias Logflare.ContextCache.RefreshAhead
   alias Logflare.Endpoints
   alias Logflare.Sources
@@ -21,9 +22,15 @@ defmodule Logflare.ContextCache.RefreshAheadTest do
     def reset(_cache), do: :ok
 
     @impl Logflare.ContextCache.Ops
-    def keys_to_bust(_cache, _kw), do: []
+    def keys_to_bust(_cache, kw), do: [Keyword.fetch!(kw, :key)]
+
     @impl Logflare.ContextCache.Ops
-    def delete_keys(_cache, _keys), do: {:ok, 0}
+    def delete_keys(cache, keys) do
+      keys = Enum.to_list(keys)
+      notify({:delete_keys, cache, keys})
+      {:ok, length(keys)}
+    end
+
     @impl Logflare.ContextCache.Ops
     def fetch(_cache, _key, _getter), do: :stale
     @impl Logflare.ContextCache.Ops
@@ -33,7 +40,7 @@ defmodule Logflare.ContextCache.RefreshAheadTest do
     @impl Logflare.ContextCache.Ops
     def cached?(_cache, _key), do: true
     @impl Logflare.ContextCache.Ops
-    def entry(_cache, _key), do: nil
+    def entry(_cache, key), do: {key, :stale, 1}
     @impl Logflare.ContextCache.Ops
     def expiry(_cache, _key), do: {0, 1_000}
     @impl Logflare.ContextCache.Ops
@@ -41,9 +48,17 @@ defmodule Logflare.ContextCache.RefreshAheadTest do
 
     @impl Logflare.ContextCache.Ops
     def put_entries(cache, entries) do
-      send(:persistent_term.get(__MODULE__), {:put_entries, cache, entries})
+      notify({:put_entries, cache, entries})
+
+      case :persistent_term.get({__MODULE__, :bust_on_write}, nil) do
+        nil -> :ok
+        key -> {:ok, _busted} = Logflare.ContextCache.bust_keys([{__MODULE__, [key: key]}])
+      end
+
       :ok
     end
+
+    defp notify(message), do: send(:persistent_term.get(__MODULE__), message)
   end
 
   defmodule FakeOps.Cache do
@@ -62,10 +77,13 @@ defmodule Logflare.ContextCache.RefreshAheadTest do
     :ets.delete_all_objects(RefreshAhead)
     Sources.Cache.reset()
     Endpoints.Cache.reset()
+    :persistent_term.put(FakeOps, self())
     telemetry_ref = :telemetry_test.attach_event_handlers(self(), [@event])
 
     on_exit(fn ->
       :ets.delete_all_objects(RefreshAhead)
+      :persistent_term.erase(FakeOps)
+      :persistent_term.erase({FakeOps, :bust_on_write})
       Application.put_env(:logflare, RefreshAhead, original_config)
       :telemetry.detach(telemetry_ref)
     end)
@@ -103,9 +121,6 @@ defmodule Logflare.ContextCache.RefreshAheadTest do
   end
 
   test "works with any context cache ops implementation" do
-    :persistent_term.put(FakeOps, self())
-    on_exit(fn -> :persistent_term.erase(FakeOps) end)
-
     assert :stale = FakeOps.Cache.fetch(@key, fn -> :fresh end)
 
     assert_receive {:put_entries, FakeOps.Cache, [{@key, :fresh, 1_000}]}, 1_000
@@ -176,6 +191,44 @@ defmodule Logflare.ContextCache.RefreshAheadTest do
 
     assert_receive {@event, ^ref, _measurements, %{result: :skipped}}, 1_000
     refute Sources.Cache.cached?(@key)
+  end
+
+  test "does not overwrite an entry busted and reloaded while refreshing", %{telemetry_ref: ref} do
+    put_expiring(Sources.Cache, @key, %{id: 1, name: "old"})
+
+    Sources.Cache.fetch(@key, blocking_getter(%{id: 1, name: "read before the update"}))
+    assert_receive {:getter_called, worker}, 1_000
+    assert {:ok, 1} = ContextCache.bust_keys([{Sources, 1}])
+    assert %{name: "new"} = Sources.Cache.fetch(@key, fn -> %{id: 1, name: "new"} end)
+    send(worker, :continue)
+
+    assert_receive {@event, ^ref, _measurements, %{result: :skipped}}, 1_000
+    assert {%{name: "new"}, _ttl} = cached(Sources.Cache, @key)
+  end
+
+  test "evicts its write when the key is busted between the check and the write", %{
+    telemetry_ref: ref
+  } do
+    :persistent_term.put({FakeOps, :bust_on_write}, @key)
+
+    FakeOps.Cache.fetch(@key, fn -> :fresh end)
+
+    assert_receive {@event, ^ref, _measurements, %{cache: FakeOps.Cache, result: :skipped}}, 1_000
+    assert_received {:put_entries, FakeOps.Cache, [{@key, :fresh, 1_000}]}
+    assert_received {:delete_keys, FakeOps.Cache, [@key]}
+    assert_received {:delete_keys, FakeOps.Cache, [@key]}
+  end
+
+  test "keeps its write when another key is busted meanwhile", %{telemetry_ref: ref} do
+    :persistent_term.put({FakeOps, :bust_on_write}, :other_key)
+
+    FakeOps.Cache.fetch(@key, fn -> :fresh end)
+
+    assert_receive {@event, ^ref, _measurements, %{cache: FakeOps.Cache, result: :refreshed}},
+                   1_000
+
+    assert_received {:delete_keys, FakeOps.Cache, [:other_key]}
+    refute_received {:delete_keys, FakeOps.Cache, [@key]}
   end
 
   test "keeps the cached value when the refresh fails", %{telemetry_ref: ref} do
