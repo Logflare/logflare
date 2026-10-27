@@ -442,6 +442,23 @@ defmodule Logflare.SqlTest do
   end
 
   describe "clickhouse dialect" do
+    test "rejects converter-only native positional parameters in customer SQL" do
+      user = insert(:user)
+      insert(:source, user: user, name: "my_ch_table")
+
+      for sql <- ["select {$0:String} as v from my_ch_table", "select v from {$0:Identifier}"] do
+        assert {:error, _reason} = Sql.transform(:ch_sql, sql, user)
+      end
+
+      assert {:error, _reason} =
+               Sql.transform(
+                 :ch_sql,
+                 {"WITH data AS (SELECT a FROM my_ch_table) SELECT a FROM data",
+                  "SELECT {$0:String} AS v FROM data"},
+                 user
+               )
+    end
+
     test "preserves FINAL on a source table" do
       user = insert(:user)
       insert(:source, user: user, name: "my_ch_table")

@@ -57,7 +57,9 @@ defmodule Logflare.Endpoints.ResultsCacheConcurrencyTest do
     assert {:ok, :draining} = ResultsCache.invalidate(context.cache)
     assert Endpoints.Resolver.list_caches(context.endpoint, :all_versions) == []
 
-    expect(ClickHouseAdaptor, :execute_query, fn _, {sql, _, _, _}, _ ->
+    expect(ClickHouseAdaptor, :execute_query, fn backend, {sql, _, _, query}, opts ->
+      assert opts[:enforced_clickhouse_settings] == query.enforced_clickhouse_settings
+      assert {:ok, sql} = ClickHouseAdaptor.prepare_query(backend, sql, opts)
       assert sql =~ "max_execution_time = 1"
       {:ok, QueryResult.new([%{"n" => 2}], %{total_bytes_processed: 0})}
     end)
