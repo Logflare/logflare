@@ -114,7 +114,6 @@ defmodule Logflare.SingleTenantTest do
       assert %Backend{type: :bigquery} = SingleTenant.get_default_backend()
       assert %Backend{type: :bigquery} = Backends.get_default_backend(user)
       assert SingleTenant.get_default_clickhouse_backend() == nil
-      assert SingleTenant.lookup_system_default_backend(%Source{user_id: user.id}) == nil
     end
 
     test "single_tenant? returns true when in single tenant mode" do
@@ -272,10 +271,9 @@ defmodule Logflare.SingleTenantTest do
 
     test "does not return a synthetic ClickHouse backend" do
       assert {:ok, _plan} = SingleTenant.create_default_plan()
-      assert {:ok, user} = SingleTenant.create_default_user()
+      assert {:ok, _user} = SingleTenant.create_default_user()
 
       assert SingleTenant.get_default_clickhouse_backend() == nil
-      assert SingleTenant.lookup_system_default_backend(%Source{user_id: user.id}) == nil
     end
 
     test "create_default_plan/0 creates default enterprise plan if not present" do
@@ -343,18 +341,6 @@ defmodule Logflare.SingleTenantTest do
       assert_raise FunctionClauseError, fn ->
         apply(SingleTenant, :get_default_clickhouse_backend, [%{id: 123}])
       end
-    end
-
-    test "source lookup uses the source owner rather than the default user" do
-      assert {:ok, _plan} = SingleTenant.create_default_plan()
-      assert {:ok, default_user} = SingleTenant.create_default_user()
-      source = %Source{user_id: default_user.id + 1}
-
-      assert %Backend{id: 0, token: nil, user_id: user_id, consolidated_ingest?: true} =
-               SingleTenant.lookup_system_default_backend(source)
-
-      assert user_id == source.user_id
-      assert SingleTenant.get_default_clickhouse_backend().user_id == default_user.id
     end
 
     test "startup uses a synthetic ClickHouse backend" do

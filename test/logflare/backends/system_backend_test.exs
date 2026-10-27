@@ -2,10 +2,39 @@ defmodule Logflare.Backends.SystemBackendTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Backend
   alias Logflare.Backends.SystemBackend
+  alias Logflare.SingleTenant
   alias Logflare.Sources.Source
 
   TestUtils.setup_single_tenant(backend_type: :bigquery)
+
+  test "BigQuery and PostgreSQL source lookups do not return a synthetic ClickHouse backend" do
+    assert {:ok, _plan} = SingleTenant.create_default_plan()
+    assert {:ok, user} = SingleTenant.create_default_user()
+
+    for type <- [:bigquery, :postgres] do
+      Application.put_env(:logflare, :single_tenant_backend, type)
+
+      assert SystemBackend.lookup_system_default_backend(%Source{user_id: user.id}) == nil
+    end
+  end
+
+  describe "single tenant mode using ClickHouse" do
+    TestUtils.setup_single_tenant(backend_type: :clickhouse)
+
+    test "source lookup uses the source owner rather than the default user" do
+      assert {:ok, _plan} = SingleTenant.create_default_plan()
+      assert {:ok, default_user} = SingleTenant.create_default_user()
+      source = %Source{user_id: default_user.id + 1}
+
+      assert %Backend{id: 0, token: nil, user_id: user_id, consolidated_ingest?: true} =
+               SystemBackend.lookup_system_default_backend(source)
+
+      assert user_id == source.user_id
+      assert SingleTenant.get_default_clickhouse_backend().user_id == default_user.id
+    end
+  end
 
   test "dispatches lifecycle hooks to the single-tenant BigQuery adaptor" do
     assert_bigquery_hooks_dispatched(build(:source))

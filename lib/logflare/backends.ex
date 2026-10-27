@@ -19,6 +19,7 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.Spool.DurableBuffer.Supervisor, as: SpoolDurableBufferSup
   alias Logflare.Backends.Spool.Encoder, as: SpoolEncoder
   alias Logflare.Backends.Spool.Health, as: SpoolHealth
+  alias Logflare.Backends.SystemBackend
   alias Logflare.ContextCache
   alias Logflare.Cluster
   alias Logflare.LogEvent
@@ -84,7 +85,7 @@ defmodule Logflare.Backends do
   """
   @spec system_default_ingest_queue_key(Source.t()) :: ingest_queue_key()
   def system_default_ingest_queue_key(%Source{} = source) do
-    ingest_queue_key(source, SingleTenant.lookup_system_default_backend(source))
+    ingest_queue_key(source, SystemBackend.lookup_system_default_backend(source))
   end
 
   @doc """
@@ -1033,7 +1034,7 @@ defmodule Logflare.Backends do
   defp dispatch_to_backends(source, nil, log_events) do
     backends = __MODULE__.Cache.list_backends(source_id: source.id)
 
-    for backend <- [SingleTenant.lookup_system_default_backend(source) | backends] do
+    for backend <- [SystemBackend.lookup_system_default_backend(source) | backends] do
       dispatch_to_default_backend(source, backend, log_events)
     end
   end

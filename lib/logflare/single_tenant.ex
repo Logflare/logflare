@@ -141,12 +141,6 @@ defmodule Logflare.SingleTenant do
     end
   end
 
-  @doc "Returns a source's synthetic ClickHouse backend, or nil for legacy per-source defaults."
-  @spec lookup_system_default_backend(Source.t()) :: Backend.t() | nil
-  def lookup_system_default_backend(%Source{user_id: user_id}) do
-    get_default_clickhouse_backend(%User{id: user_id})
-  end
-
   @doc """
   Creates an enterprise user
   """
