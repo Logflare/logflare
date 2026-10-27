@@ -466,7 +466,15 @@ defmodule LogflareWeb.EndpointsLive do
   defp endpoint_query_error_message(message) when is_binary(message), do: message
   defp endpoint_query_error_message(_error), do: QueryErrorHelpers.generic_query_error_message()
 
-  defp run_sandbox_query(%{assigns: %{show_endpoint: endpoint}} = socket, payload) do
+  defp run_sandbox_query(socket, payload) do
+    endpoint = Ecto.Changeset.apply_changes(socket.assigns.endpoint_changeset)
+
+    endpoint = %{
+      endpoint
+      | user_id: endpoint.user_id || socket.assigns.user_id,
+        language: get_current_endpoint_language(socket)
+    }
+
     show_transformed? = Map.get(payload, "show_transformed") == "true"
     sandbox_query = Map.get(payload, "sandbox_query")
     query_params = Map.get(payload, "params", %{})
@@ -489,6 +497,7 @@ defmodule LogflareWeb.EndpointsLive do
 
     case Endpoints.run_query(endpoint, sandbox_params,
            reservation: reservation,
+           use_query_cache: false,
            prepare_query_plan: true
          ) do
       {:ok, result} ->
@@ -514,11 +523,12 @@ defmodule LogflareWeb.EndpointsLive do
   end
 
   defp sandbox_query?(
-         %{assigns: %{show_endpoint: %{sandboxable: true}}},
+         %{assigns: %{endpoint_changeset: changeset}},
          %{"sandbox_query" => sandbox_query}
        )
-       when is_binary(sandbox_query),
-       do: String.trim(sandbox_query) != ""
+       when is_binary(sandbox_query) do
+    Ecto.Changeset.get_field(changeset, :sandboxable) == true and String.trim(sandbox_query) != ""
+  end
 
   defp sandbox_query?(_socket, _payload), do: false
 

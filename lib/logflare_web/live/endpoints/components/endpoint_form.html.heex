@@ -1,46 +1,45 @@
-<div class="tw-flex tw-my-10 tw-gap-2">
-  <.form :let={f} for={@endpoint_changeset} as={:endpoint} id="endpoint" phx-change="validate" phx-submit="save-endpoint" class="tw-w-1/2 tw-border-r-1 pr-2 tw-border-l-0 tw-border-t-0 tw-border-b-0 tw-border-solid tw-border-gray-600">
-    {hidden_input(f, :language)}
-    <div class="tw-sticky tw-flex tw-justify-between tw-gap-4">
+<div id="endpoint-edit" class="tw-grid tw-grid-cols-1 tw-gap-8 tw-py-5 lg:tw-grid-cols-2">
+  <.form :let={f} for={@endpoint_changeset} as={:endpoint} id="endpoint" phx-change="validate" phx-submit="save-endpoint" class="tw-flex tw-min-w-0 tw-flex-col tw-gap-5">
+    <.input field={f[:language]} type="hidden" />
+    <div class="tw-flex tw-items-center tw-justify-between tw-gap-4">
       <button :if={@show_endpoint} data-confirm="Are you sure? This cannot be undone" phx-click="delete-endpoint" phx-value-endpoint_id={@show_endpoint.id} class="btn btn-outline-danger" type="button">
         <i class="fas fa-trash"></i> Delete
       </button>
-      {submit("Save changes", class: "btn btn-primary")}
+      <.button type="submit" variant="primary" class="tw-ml-auto">Save changes</.button>
     </div>
 
-    <.header_with_anchor text="Endpoint Name" />
-    <div class="form-group">
-      {text_input(f, :name,
-        placeholder: "YourApp.EndpointName",
-        class: "form-control form-control-margin",
-        "phx-update": "ignore"
-      )}
-      {error_tag(f, :name)}
-      <small class="form-text text-muted">
-        This endpoint will can be queried at:<br />
-        <code>{url(~p"/api/endpoints/query/YourApp.EndpointName")}</code>
-      </small>
-    </div>
-
-    <div class="form-group">
-      {label(f, :description, "Description")}
-      <div class="input-group">
-        {textarea(f, :description, class: "form-control", "phx-update": "ignore")}
-      </div>
-      {error_tag(f, :description)}
-      <small class="form-text text-muted">
-        Add a helpful description for what this endpoint is used for.
-      </small>
-    </div>
-
-    <QueryComponents.backend_select :if={@show_backend_selection} backends={@backends} form={f} label="Backend (optional)" default_backend={@default_backend}>
-      <:help>Choose which backend to execute this endpoint query against.</:help>
-    </QueryComponents.backend_select>
-
-    <.header_with_anchor text="Query" />
-    <section class="tw-flex tw-flex-col">
+    <section class="tw-rounded tw-border tw-bg-dashboard-grey tw-p-5">
+      <h3 class="tw-mb-4 tw-text-xl tw-font-semibold tw-text-white">Endpoint details</h3>
       <div class="form-group">
-        <p>
+        {label(f, :name, "Name")}
+        <.input field={f[:name]} placeholder="YourApp.EndpointName" class="form-control form-control-margin" phx-update="ignore" />
+        {error_tag(f, :name)}
+        <small class="form-text text-muted">
+          This endpoint will can be queried at:<br />
+          <code>{url(~p"/api/endpoints/query/YourApp.EndpointName")}</code>
+        </small>
+      </div>
+
+      <div class="form-group">
+        {label(f, :description, "Description")}
+        <div class="input-group">
+          {textarea(f, :description, class: "form-control", "phx-update": "ignore")}
+        </div>
+        {error_tag(f, :description)}
+        <small class="form-text text-muted">
+          Add a helpful description for what this endpoint is used for.
+        </small>
+      </div>
+
+      <QueryComponents.backend_select :if={@show_backend_selection} backends={@backends} form={f} label="Backend (optional)" default_backend={@default_backend}>
+        <:help>Choose which backend to execute this endpoint query against.</:help>
+      </QueryComponents.backend_select>
+    </section>
+
+    <section class="tw-min-w-0 tw-rounded tw-border tw-bg-dashboard-grey tw-p-5">
+      <h3 class="tw-mb-4 tw-text-xl tw-font-semibold tw-text-white">Query</h3>
+      <div>
+        <p class="tw-text-sm tw-text-zinc-400">
           This endpoint will execute this query on each <code>GET</code> request.
           Declare parameters using <code>@parameter_name</code> and pass it to the endpoint via query parameters <code>?parameter_name=some-value</code>
         </p>
@@ -59,14 +58,14 @@
           }
         />
       </div>
+    </section>
 
+    <section class="tw-rounded tw-border tw-bg-dashboard-grey tw-p-5">
+      <h3 class="tw-mb-4 tw-text-xl tw-font-semibold tw-text-white">Settings</h3>
       <div class="form-group">
-        {label(f, :max_limit, "Max limit")}
+        {label(f, :max_limit, "Max rows")}
         <div class="input-group">
-          {text_input(f, :max_limit,
-            placeholder: if(@show_endpoint, do: nil, else: 1000),
-            class: "form-control"
-          )}
+          <.input field={f[:max_limit]} placeholder={if @show_endpoint, do: nil, else: 1000} />
           <div class="input-group-append">
             <span class="input-group-text">rows</span>
           </div>
@@ -77,8 +76,8 @@
         </small>
       </div>
 
-      <div class="form-group">
-        {checkbox(f, :enable_auth, id: "auth-checkbox", class: "form-check-input")}
+      <div class="form-group form-check">
+        <.input field={f[:enable_auth]} type="checkbox" id="auth-checkbox" />
         {label(f, :enable_auth, "Enable authentication",
           for: "auth-checkbox",
           class: "form-check-label"
@@ -89,8 +88,8 @@
         </small>
       </div>
 
-      <div class="">
-        {checkbox(f, :sandboxable, id: "sandboxable-checkbox", class: "form-check-input")}
+      <div class="form-group form-check">
+        <.input field={f[:sandboxable]} type="checkbox" id="sandboxable-checkbox" />
         {label(f, :sandboxable, "Enable query sandboxing",
           for: "sandboxable-checkbox",
           class: "form-check-label"
@@ -102,8 +101,8 @@
         </small>
       </div>
 
-      <div class="">
-        {checkbox(f, :redact_pii, id: "redact-pii-checkbox", class: "form-check-input")}
+      <div class="form-group form-check">
+        <.input field={f[:redact_pii]} type="checkbox" id="redact-pii-checkbox" />
         {label(f, :redact_pii, "Redact PII from query results",
           for: "redact-pii-checkbox",
           class: "form-check-label"
@@ -114,11 +113,8 @@
         </small>
       </div>
 
-      <div class="">
-        {checkbox(f, :enable_dynamic_reservation,
-          id: "dynamic-reservation-checkbox",
-          class: "form-check-input"
-        )}
+      <div class="form-check">
+        <.input field={f[:enable_dynamic_reservation]} type="checkbox" id="dynamic-reservation-checkbox" />
         {label(f, :enable_dynamic_reservation, "Enable dynamic BigQuery reservation",
           for: "dynamic-reservation-checkbox",
           class: "form-check-label"
@@ -131,15 +127,12 @@
       </div>
     </section>
 
-    <.header_with_anchor text="Caching" />
-    <section class="tw-flex tw-flex-col tw-gap-2 tw-w-full">
+    <section class="tw-flex tw-flex-col tw-gap-4 tw-rounded tw-border tw-bg-dashboard-grey tw-p-5">
+      <h3 class="tw-mb-0 tw-text-xl tw-font-semibold tw-text-white">Caching</h3>
       <div>
         {label(f, :cache_duration_seconds, "Cache TTL")}
         <div class="input-group">
-          {text_input(f, :cache_duration_seconds,
-            placeholder: if(@show_endpoint, do: nil, else: 3600),
-            class: "form-control"
-          )}
+          <.input field={f[:cache_duration_seconds]} placeholder={if @show_endpoint, do: nil, else: 3600} />
           <div class="input-group-append">
             <span class="input-group-text">seconds</span>
           </div>
@@ -152,10 +145,7 @@
       <div>
         {label(f, :proactive_requerying_seconds, "Proactive Re-querying")}
         <div class="input-group">
-          {text_input(f, :proactive_requerying_seconds,
-            placeholder: if(@show_endpoint, do: nil, else: 1800),
-            class: "form-control"
-          )}
+          <.input field={f[:proactive_requerying_seconds]} placeholder={if @show_endpoint, do: nil, else: 1800} />
           <div class="input-group-append">
             <span class="input-group-text">seconds</span>
           </div>
@@ -165,13 +155,13 @@
           Cached results will be refreshed at this interval. Ignored if caching is disabled.
         </small>
       </div>
+    </section>
+    <section class="tw-rounded tw-border tw-bg-dashboard-grey tw-p-5">
+      <h3 class="tw-mb-4 tw-text-xl tw-font-semibold tw-text-white">Query execution labels</h3>
       <div>
-        {label(f, :labels, "Query Execution Labels")}
+        {label(f, :labels, "Query execution labels", class: "tw-sr-only")}
         <div class="input-group">
-          {text_input(f, :labels,
-            placeholder: if(@show_endpoint, do: nil, else: ""),
-            class: "form-control"
-          )}
+          <.input field={f[:labels]} placeholder={if @show_endpoint, do: nil, else: ""} />
         </div>
         {error_tag(f, :labels)}
         <small class="form-text text-muted">
@@ -181,8 +171,5 @@
       </div>
     </section>
   </.form>
-  <aside class="tw-w-1/2">
-    <RunQuery.query_form form={@params_form} endpoint_changeset={@endpoint_changeset} declared_params={@declared_params} />
-    <RunQuery.query_result result={@test_result} />
-  </aside>
+  <RunQuery.endpoint_test endpoint={Ecto.Changeset.apply_changes(@endpoint_changeset)} form={@params_form} declared_params={@declared_params} result={@test_result} editing />
 </div>
