@@ -225,7 +225,7 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
           "phx-mounted": JS.focus()
         )}
         {error_tag(@name_form, :name)}
-        <code class="tw-block tw-mt-2 tw-font-mono tw-text-sm tw-font-bold tw-text-gray-400 tw-whitespace-pre-wrap tw-break-words">{@saved_search.querystring}</code>
+        <.saved_search_query querystring={@saved_search.querystring} />
         <label for={"saved-search-description-#{@saved_search.id}"} class="tw-text-sm tw-mt-2 tw-mb-1">Description</label>
         {textarea(@name_form, :description,
           id: "saved-search-description-#{@saved_search.id}",
@@ -256,10 +256,18 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
         class="stretched-link tw-block tw-cursor-pointer tw-text-white tw-text-sm hover:tw-no-underline focus-visible:tw-outline focus-visible:tw-outline-2 focus-visible:tw-outline-offset-2"
       >
         <span class="tw-block tw-truncate tw-text-base">{display_name(@saved_search)}</span>
-        <code class="tw-block tw-mt-2 tw-font-mono tw-text-sm tw-font-bold tw-text-gray-400 tw-truncate">{@saved_search.querystring}</code>
+        <.saved_search_query querystring={@saved_search.querystring} />
         <p id={"saved-search-description-#{@saved_search.id}"} class="tw-h-5 tw-text-sm tw-truncate tw-mt-2 tw-mb-0">{@saved_search.description}</p>
       </.link>
     </div>
+    """
+  end
+
+  attr :querystring, :string, required: true
+
+  defp saved_search_query(assigns) do
+    ~H"""
+    <code class="tw-block tw-mt-2 tw-font-mono tw-text-sm tw-text-gray-400 tw-whitespace-pre-wrap tw-break-words">{@querystring}</code>
     """
   end
 
