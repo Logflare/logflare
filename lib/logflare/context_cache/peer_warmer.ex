@@ -7,8 +7,8 @@ defmodule Logflare.ContextCache.PeerWarmer do
   was last loaded from the database (`warmed_at`). On startup, a cache warmer calls
   `copy_from_peer/1`, which:
 
-    1. Waits up to `:peer_wait` for cluster peers and the local `CacheBuster`, so that no
-       invalidations are missed while copying.
+    1. Waits up to `:peer_wait` for cluster peers and the local `CacheBuster`. Without a running
+       `CacheBuster`, invalidations during the copy would be missed, so it does not copy.
     2. Asks a random subset of at most `:max_peers` peers for their status and picks the one
        with the most recent `warmed_at` among the ready peers running the same release, with
        at least one entry and, when the cache has a max age, fresh enough data.
@@ -45,7 +45,13 @@ defmodule Logflare.ContextCache.PeerWarmer do
         }
   @type copy_result :: %{node: node(), warmed_at: DateTime.t(), count: non_neg_integer()}
   @type fallback_reason ::
-          :no_peers | :no_eligible_peer | :rpc_failed | :timeout | :peer_down | :crashed
+          :cache_buster_not_started
+          | :no_peers
+          | :no_eligible_peer
+          | :rpc_failed
+          | :timeout
+          | :peer_down
+          | :crashed
 
   @spec copy_from_peer(module()) :: {:ok, copy_result()} | :fallback
   def copy_from_peer(cache) when is_map_key(@max_age_config, cache) do
@@ -88,7 +94,8 @@ defmodule Logflare.ContextCache.PeerWarmer do
   defp do_copy(cache) do
     await_ready(System.monotonic_time(:millisecond) + config(:peer_wait))
 
-    with {:ok, node, peer_status} <- select_peer(cache),
+    with :ok <- ensure_cache_buster_started(),
+         {:ok, node, peer_status} <- select_peer(cache),
          {:ok, count} <-
            Transfer.run(node, cache, &import_entries(cache, &1), config(:copy_timeout)) do
       Logger.info("Warmed #{inspect(cache)} with #{count} entries copied from #{node}")
@@ -138,7 +145,11 @@ defmodule Logflare.ContextCache.PeerWarmer do
   end
 
   defp cache_buster_started? do
-    Application.get_env(:logflare, :env) == :test or Process.whereis(CacheBuster) != nil
+    not config(:await_cache_buster) or Process.whereis(CacheBuster) != nil
+  end
+
+  defp ensure_cache_buster_started do
+    if cache_buster_started?(), do: :ok, else: {:error, :cache_buster_not_started}
   end
 
   defp select_peer(cache) do

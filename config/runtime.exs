@@ -650,7 +650,8 @@ config :logflare, Logflare.ContextCache.PeerWarmer,
   peer_wait: cache_peer_warm_integer.("LOGFLARE_CACHE_PEER_WARM_PEER_WAIT_MS", "5000"),
   copy_timeout: cache_peer_warm_integer.("LOGFLARE_CACHE_PEER_WARM_COPY_TIMEOUT_MS", "30000"),
   key_values_max_age:
-    to_timeout(minute: cache_peer_warm_integer.("LOGFLARE_CACHE_PEER_WARM_KV_MAX_AGE_MIN", "70"))
+    to_timeout(minute: cache_peer_warm_integer.("LOGFLARE_CACHE_PEER_WARM_KV_MAX_AGE_MIN", "70")),
+  await_cache_buster: config_env() != :test
 
 # LOGFLARE_READ_REPLICAS: PostgreSQL read replicas for selected cache queries.
 # An empty list uses the primary database. Entries are bare host names, IP literals, or URIs

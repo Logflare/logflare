@@ -58,6 +58,22 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
       assert_outcome(ref, Sources.Cache, :no_peers)
     end
 
+    test "falls back without contacting peers when the CacheBuster is not running", %{
+      telemetry_ref: ref
+    } do
+      Application.put_env(
+        :logflare,
+        PeerWarmer,
+        Keyword.put(Application.fetch_env!(:logflare, PeerWarmer), :await_cache_buster, true)
+      )
+
+      refute Process.whereis(Logflare.ContextCache.CacheBuster)
+      reject(ClusterUtils, :peer_list_partial, 2)
+
+      assert :fallback = PeerWarmer.copy_from_peer(Sources.Cache)
+      assert_outcome(ref, Sources.Cache, :cache_buster_not_started)
+    end
+
     test "copies from the ready peer with the most recent warmed_at", %{telemetry_ref: ref} do
       now = DateTime.utc_now()
       newest = DateTime.add(now, -1, :minute)
