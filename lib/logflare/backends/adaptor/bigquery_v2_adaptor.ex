@@ -21,7 +21,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryV2Adaptor do
   alias __MODULE__.Provisioner
   alias __MODULE__.TableSchema
   alias GoogleApi.BigQuery.V2.Api
-  alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.ArrowIPC
@@ -50,8 +49,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryV2Adaptor do
   def init(%Backend{} = backend) do
     backend = Backends.typecast_config_string_map_to_atom_map(backend)
 
-    # the producer polls the shared startup queue when its own queue cannot meet demand;
-    # the non-id-passing fetch logs a warning on every poll if it does not exist
     IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
     IngestEventQueue.current_generation_tid({:consolidated, backend.id})
 
@@ -93,12 +90,24 @@ defmodule Logflare.Backends.Adaptor.BigQueryV2Adaptor do
   Checks that the configured dataset exists and is readable with Logflare's credentials.
   """
   @impl Logflare.Backends.Adaptor
-  @spec test_connection(Backend.t()) :: :ok | {:error, term()}
-  def test_connection(%Backend{config: %{project_id: project_id, dataset_id: dataset_id}}) do
+  @spec test_connection(Backend.t()) :: :ok | {:error, :dataset_unavailable}
+  def test_connection(%Backend{} = backend) do
+    case check_dataset(backend) do
+      :ok -> :ok
+      {:error, _message} -> {:error, :dataset_unavailable}
+    end
+  end
+
+  @doc """
+  Like `test_connection/1`, but returns the Google API error message when the dataset is
+  missing or not readable.
+  """
+  @spec check_dataset(Backend.t()) :: :ok | {:error, String.t()}
+  def check_dataset(%Backend{config: %{project_id: project_id, dataset_id: dataset_id}}) do
     GenUtils.get_conn()
     |> Api.Datasets.bigquery_datasets_get(project_id, dataset_id)
     |> case do
-      {:ok, %Model.Dataset{}} -> :ok
+      {:ok, _dataset} -> :ok
       {:error, reason} -> {:error, GenUtils.get_tesla_error_message(reason)}
     end
   end
@@ -154,7 +163,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryV2Adaptor do
     GenUtils.get_conn()
     |> Api.Tables.bigquery_tables_insert(project_id, dataset_id, body: table)
     |> case do
-      {:ok, %Model.Table{}} ->
+      {:ok, _table} ->
         Logger.info("BigQuery v2 table created",
           backend_id: backend.id,
           table_name: TableSchema.table_name(event_type)
@@ -185,7 +194,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryV2Adaptor do
     GenUtils.get_conn()
     |> Api.Tables.bigquery_tables_get(config.project_id, config.dataset_id, table_name)
     |> case do
-      {:ok, %Model.Table{labels: %{} = labels} = table} ->
+      {:ok, %{labels: %{} = labels} = table} ->
         if labels[TableSchema.schema_version_label()] != expected_version do
           expected_columns = Enum.map(TableSchema.fields(event_type), & &1.name)
           actual_columns = Enum.map(table.schema.fields, & &1.name)
@@ -200,7 +209,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryV2Adaptor do
           )
         end
 
-      {:ok, %Model.Table{}} ->
+      {:ok, _table} ->
         Logger.warning("BigQuery v2 table has no schema version label", metadata)
 
       {:error, reason} ->

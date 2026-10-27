@@ -20,7 +20,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryV2Adaptor.Provisioner do
   @doc false
   @spec run(Backend.t()) :: :ok
   def run(%Backend{} = backend) do
-    with {:test_connection, :ok} <- {:test_connection, BigQueryV2Adaptor.test_connection(backend)},
+    with {:check_dataset, :ok} <- {:check_dataset, BigQueryV2Adaptor.check_dataset(backend)},
          {:provision_tables, :ok} <-
            {:provision_tables, BigQueryV2Adaptor.provision_tables(backend)} do
       :ok

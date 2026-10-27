@@ -178,13 +178,31 @@ defmodule Logflare.Backends.Adaptor.BigQueryV2AdaptorTest do
       assert :ok = BigQueryV2Adaptor.test_connection(backend)
     end
 
+    test "returns an error when the dataset is missing", %{backend: backend} do
+      stub(Datasets, :bigquery_datasets_get, fn _conn, _project_id, _dataset_id ->
+        {:error, google_error(404, "Not found: Dataset my-project-id:my_dataset")}
+      end)
+
+      assert {:error, :dataset_unavailable} = BigQueryV2Adaptor.test_connection(backend)
+    end
+  end
+
+  describe "check_dataset/1" do
+    test "returns :ok when the dataset exists", %{backend: backend} do
+      expect(Datasets, :bigquery_datasets_get, fn _conn, "my-project-id", "my_dataset" ->
+        {:ok, %Model.Dataset{}}
+      end)
+
+      assert :ok = BigQueryV2Adaptor.check_dataset(backend)
+    end
+
     test "returns the Google API error message when the dataset is missing", %{backend: backend} do
       stub(Datasets, :bigquery_datasets_get, fn _conn, _project_id, _dataset_id ->
         {:error, google_error(404, "Not found: Dataset my-project-id:my_dataset")}
       end)
 
       assert {:error, "Not found: Dataset my-project-id:my_dataset"} =
-               BigQueryV2Adaptor.test_connection(backend)
+               BigQueryV2Adaptor.check_dataset(backend)
     end
   end
 
@@ -341,14 +359,13 @@ defmodule Logflare.Backends.Adaptor.BigQueryV2AdaptorTest do
 
     test "creates the startup queue the pipeline producer polls", %{backend: backend} do
       log =
-        capture_log(fn ->
+        capture_log([metadata: [:backend_id]], fn ->
           start_supervised!({BigQueryV2Adaptor, backend})
           assert IngestEventQueue.get_tid({:consolidated, backend.id, nil})
-          # longer than the producer's poll interval
           Process.sleep(1_500)
         end)
 
-      refute log =~ "IngestEventQueue not initialized"
+      refute log =~ ~r/backend_id=#{backend.id} \[warning\] IngestEventQueue not initialized/
     end
   end
 

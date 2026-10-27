@@ -4,7 +4,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.ArrowIPCTest do
   alias Explorer.DataFrame
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.ArrowIPC
 
-  # timestamp columns are left out: Polars cannot parse the "+00" timezone BigQuery expects
   @fields [
     {"id", :string, true},
     {"severity_number", :integer, false},
