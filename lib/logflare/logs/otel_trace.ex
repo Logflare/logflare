@@ -11,6 +11,8 @@ defmodule Logflare.Logs.OtelTrace do
   alias Logflare.Logs.Otel
 
   alias Opentelemetry.Proto.Trace.V1.ResourceSpans
+  alias Opentelemetry.Proto.Trace.V1.Span
+  alias Opentelemetry.Proto.Trace.V1.Status
   @behaviour Logflare.Logs.Processor
 
   def handle_batch(resource_spans, _source) when is_list(resource_spans) do
@@ -31,7 +33,7 @@ defmodule Logflare.Logs.OtelTrace do
     metadata = %{"type" => "span"}
     events = Enum.map(span.events, &handle_event(&1, span, resource, scope))
 
-    [
+    le_span =
       %{
         "event_message" => span.name,
         "metadata" => metadata,
@@ -41,13 +43,32 @@ defmodule Logflare.Logs.OtelTrace do
         "parent_span_id" => Base.encode16(span.parent_span_id, case: :lower),
         "trace_id" => Base.encode16(span.trace_id, case: :lower),
         "kind" => span_kind(span.kind),
+        "status" => span_status(span.status),
         "start_time" => span.start_time_unix_nano,
         "end_time" => span.end_time_unix_nano,
         "attributes" => Otel.handle_attributes(span.attributes),
         "timestamp" => span.start_time_unix_nano,
         "project" => Otel.resource_project(resource)
       }
-    ] ++ events
+      |> put_span_events(span.events)
+
+    [le_span | events]
+  end
+
+  @spec put_span_events(map(), [Span.Event.t()]) :: map()
+  defp put_span_events(le_span, []), do: le_span
+
+  defp put_span_events(le_span, events) do
+    Map.put(le_span, "events", Enum.map(events, &span_event/1))
+  end
+
+  @spec span_event(Span.Event.t()) :: map()
+  defp span_event(event) do
+    %{
+      "time_unix_nano" => event.time_unix_nano,
+      "name" => event.name,
+      "attributes" => Otel.handle_attributes(event.attributes)
+    }
   end
 
   defp handle_event(event, %{span_id: span_id, trace_id: trace_id}, resource, scope) do
@@ -65,6 +86,17 @@ defmodule Logflare.Logs.OtelTrace do
       "project" => Otel.resource_project(resource)
     }
   end
+
+  @spec span_status(Status.t() | nil) :: %{String.t() => String.t()}
+  defp span_status(%Status{code: code, message: message}),
+    do: %{"code" => status_code(code), "message" => message}
+
+  defp span_status(nil), do: %{"code" => "Unset", "message" => ""}
+
+  @spec status_code(Status.StatusCode.t()) :: String.t()
+  defp status_code(:STATUS_CODE_OK), do: "Ok"
+  defp status_code(:STATUS_CODE_ERROR), do: "Error"
+  defp status_code(_code), do: "Unset"
 
   @spec span_kind(Opentelemetry.Proto.Trace.V1.Span.SpanKind.t()) :: String.t()
   defp span_kind(:SPAN_KIND_INTERNAL), do: "Internal"
