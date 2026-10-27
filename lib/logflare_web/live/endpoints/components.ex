@@ -139,27 +139,14 @@ defmodule LogflareWeb.Endpoints.Components do
 
     ~H"""
     <section>
-      <ul class="nav d-flex tw-mb-3" id="endpoint-query-nav" role="tablist">
-        <li class="nav-item">
-          <a class="nav-link active tw-rounded [&.active]:tw-bg-dashboard-grey [&.active]:tw-text-white" id="endpoint-query-link" data-toggle="tab" href="#endpoint-query" role="tab" aria-controls="endpoint-query" aria-selected="true">
-            Query
-          </a>
-        </li>
-        <li :if={show_expanded_query?(@endpoint, @expanded_query)} class="nav-item">
-          <a class="nav-link tw-rounded [&.active]:tw-bg-dashboard-grey [&.active]:tw-text-white" id="expanded-endpoint-query-link" data-toggle="tab" href="#expanded-endpoint-query" role="tab" aria-controls="expanded-endpoint-query" aria-selected="false">
-            Expanded query
-          </a>
-        </li>
-      </ul>
-
-      <div class="tab-content" id="endpoint-query-tabs">
-        <div class="tab-pane active" id="endpoint-query" role="tabpanel" aria-labelledby="endpoint-query-link">
+      <.tabs id="endpoint-query-nav" aria-label="Endpoint query" class="tw-mb-3" tab_class="tw-rounded [&.active]:tw-bg-dashboard-grey [&.active]:tw-text-white">
+        <:tab id="endpoint-query" label="Query" active>
           <.query_panel language={@endpoint.language} query={@endpoint.query} />
-        </div>
-        <div :if={show_expanded_query?(@endpoint, @expanded_query)} class="tab-pane" id="expanded-endpoint-query" role="tabpanel" aria-labelledby="expanded-endpoint-query-link">
+        </:tab>
+        <:tab :if={show_expanded_query?(@endpoint, @expanded_query)} id="expanded-endpoint-query" label="Expanded query">
           <.query_panel language={@endpoint.language} query={@expanded_query} />
-        </div>
-      </div>
+        </:tab>
+      </.tabs>
     </section>
     """
   end
