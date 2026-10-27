@@ -374,9 +374,32 @@ defmodule Logflare.Backends do
 
   @spec validate_default_ingest_source(Changeset.t(), String.t() | integer() | nil) ::
           Changeset.t()
-  defp validate_default_ingest_source(%{changes: %{default_ingest?: true}} = changeset, source_id)
+  defp validate_default_ingest_source(%Changeset{} = changeset, source_id)
        when is_non_empty_binary(source_id) or is_integer(source_id) do
-    case Sources.get(source_id) do
+    validate_default_ingest_source(
+      changeset,
+      Changeset.get_field(changeset, :default_ingest?),
+      source_id
+    )
+  end
+
+  defp validate_default_ingest_source(
+         %Changeset{changes: %{default_ingest?: true}} = changeset,
+         _source_id
+       ) do
+    Changeset.add_error(
+      changeset,
+      :default_ingest?,
+      "Please select a source when enabling default ingest"
+    )
+  end
+
+  defp validate_default_ingest_source(changeset, _source_id), do: changeset
+
+  @spec validate_default_ingest_source(Changeset.t(), boolean() | nil, String.t() | integer()) ::
+          Changeset.t()
+  defp validate_default_ingest_source(changeset, true, source_id) do
+    case get_owned_source(changeset.data, source_id) do
       %Source{default_ingest_backend_enabled?: true} ->
         changeset
 
@@ -396,18 +419,14 @@ defmodule Logflare.Backends do
     end
   end
 
-  defp validate_default_ingest_source(
-         %Changeset{changes: %{default_ingest?: true}} = changeset,
-         _source_id
-       ) do
-    Changeset.add_error(
-      changeset,
-      :default_ingest?,
-      "Please select a source when enabling default ingest"
-    )
+  defp validate_default_ingest_source(changeset, _default_ingest?, _source_id), do: changeset
+
+  @spec get_owned_source(Backend.t(), String.t() | integer()) :: Source.t() | nil
+  defp get_owned_source(%Backend{user_id: user_id}, source_id) when is_integer(user_id) do
+    Sources.get_by(id: source_id, user_id: user_id)
   end
 
-  defp validate_default_ingest_source(changeset, _source_id), do: changeset
+  defp get_owned_source(_backend, _source_id), do: nil
 
   @spec handle_default_ingest_associations(
           Backend.t(),
@@ -417,10 +436,16 @@ defmodule Logflare.Backends do
         ) :: :ok
   defp handle_default_ingest_associations(backend, source_id, _was_enabled, true)
        when is_non_empty_binary(source_id) or is_integer(source_id) do
-    source = Sources.get(source_id) |> Sources.preload_backends()
+    case get_owned_source(backend, source_id) do
+      %Source{default_ingest_backend_enabled?: true} = source ->
+        source = Sources.preload_backends(source)
 
-    if not Enum.any?(source.backends, &(&1.id == backend.id)) do
-      update_source_backends(source, source.backends ++ [backend])
+        if not Enum.any?(source.backends, &(&1.id == backend.id)) do
+          update_source_backends(source, source.backends ++ [backend])
+        end
+
+      _ ->
+        :ok
     end
 
     :ok

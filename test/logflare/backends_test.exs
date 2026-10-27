@@ -933,6 +933,44 @@ defmodule Logflare.BackendsTest do
 
       assert "Source must have default ingest backend support enabled" in errors_on(changeset).default_ingest?
     end
+
+    test "rejects a source owned by another user", %{backend: backend} do
+      other_source =
+        insert(:source, user: insert(:user), default_ingest_backend_enabled?: true)
+
+      assert {:error, changeset} =
+               Backends.update_backend(backend, %{
+                 "default_ingest?" => true,
+                 "source_id" => to_string(other_source.id)
+               })
+
+      assert "Source not found" in errors_on(changeset).default_ingest?
+
+      other_source = Sources.get(other_source.id) |> Sources.preload_backends()
+      assert other_source.backends == []
+    end
+
+    test "rejects a source owned by another user when default_ingest? is already enabled", %{
+      user: user,
+      config: config
+    } do
+      backend =
+        insert(:backend, user: user, type: :clickhouse, default_ingest?: true, config: config)
+
+      other_source =
+        insert(:source, user: insert(:user), default_ingest_backend_enabled?: true)
+
+      assert {:error, changeset} =
+               Backends.update_backend(backend, %{
+                 default_ingest?: true,
+                 source_id: other_source.id
+               })
+
+      assert "Source not found" in errors_on(changeset).default_ingest?
+
+      other_source = Sources.get(other_source.id) |> Sources.preload_backends()
+      assert other_source.backends == []
+    end
   end
 
   describe "SourceSup readiness" do
