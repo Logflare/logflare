@@ -177,6 +177,57 @@ defmodule Logflare.RulesTest do
       assert changeset.valid? == false
       assert errors_on(changeset).lql_string == ["can't be blank"]
     end
+
+    test "ignores a source_id param and scopes the rule to the given source" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      victim_source = insert(:source, user: insert(:user))
+      insert(:source_schema, source: source)
+
+      params = %{"lql_string" => "testing", "source_id" => victim_source.id}
+
+      assert {:ok, %Rule{} = rule} = Rules.create_rule(params, source)
+      assert rule.source_id == source.id
+      assert [] = Rules.list_rules(victim_source)
+    end
+
+    test "rejects a backend_id not owned by the source owner" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      victim_backend = insert(:backend, user: insert(:user))
+      insert(:source_schema, source: source)
+
+      params = %{"lql_string" => "testing", "backend_id" => victim_backend.id}
+
+      assert {:error, %Ecto.Changeset{} = changeset} = Rules.create_rule(params, source)
+      assert errors_on(changeset).backend_id == ["does not exist"]
+      assert [] = Rules.list_rules(source)
+    end
+
+    test "rejects a sink not owned by the source owner" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      victim_source = insert(:source, user: insert(:user))
+      insert(:source_schema, source: source)
+
+      params = %{"lql_string" => "testing", "sink" => Atom.to_string(victim_source.token)}
+
+      assert {:error, %Ecto.Changeset{} = changeset} = Rules.create_rule(params, source)
+      assert errors_on(changeset).sink == ["does not exist"]
+      assert [] = Rules.list_rules(source)
+    end
+
+    test "accepts a sink owned by the source owner" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      sink_source = insert(:source, user: user)
+      insert(:source_schema, source: source)
+
+      params = %{"lql_string" => "testing", "sink" => Atom.to_string(sink_source.token)}
+
+      assert {:ok, %Rule{} = rule} = Rules.create_rule(params, source)
+      assert rule.sink == sink_source.token
+    end
   end
 
   test "update_rule" do
