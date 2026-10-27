@@ -935,6 +935,76 @@ defmodule Logflare.BackendsTest do
     end
   end
 
+  describe "one default ingest backend per account and type" do
+    @message "another backend of this type is already the default ingest backend for this account"
+
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      config = %{url: "http://localhost", database: "test", port: 8123}
+
+      existing =
+        insert(:backend, user: user, type: :clickhouse, default_ingest?: true, config: config)
+
+      {:ok, user: user, existing: existing, config: config}
+    end
+
+    test "create_backend/2 returns a changeset error for a second default of the same type", %{
+      user: user,
+      config: config
+    } do
+      assert {:error, changeset} =
+               Backends.create_backend(user, %{
+                 name: "second",
+                 type: :clickhouse,
+                 config: config,
+                 default_ingest?: true
+               })
+
+      assert @message in errors_on(changeset).default_ingest?
+    end
+
+    test "update_backend/2 returns a changeset error when enabling a second default", %{
+      user: user,
+      config: config
+    } do
+      second =
+        insert(:backend, user: user, type: :clickhouse, default_ingest?: false, config: config)
+
+      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+
+      assert {:error, changeset} =
+               Backends.update_backend(second, %{
+                 default_ingest?: true,
+                 source_id: to_string(source.id)
+               })
+
+      assert @message in errors_on(changeset).default_ingest?
+    end
+
+    test "a default of a different type is allowed", %{user: user} do
+      assert {:ok, %Backend{default_ingest?: true}} =
+               Backends.create_backend(user, %{
+                 name: "pg default",
+                 type: :postgres,
+                 config: %{url: "postgresql://user:pass@localhost:5432/db"},
+                 default_ingest?: true
+               })
+    end
+
+    test "a default of the same type for a different user is allowed", %{config: config} do
+      other = insert(:user)
+
+      assert {:ok, %Backend{default_ingest?: true}} =
+               Backends.create_backend(other, %{
+                 name: "other user default",
+                 type: :clickhouse,
+                 config: config,
+                 default_ingest?: true
+               })
+    end
+  end
+
   describe "SourceSup readiness" do
     setup :set_mimic_global
 

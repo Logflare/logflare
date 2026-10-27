@@ -113,6 +113,11 @@ defmodule Logflare.Backends.Backend do
     |> validate_config()
     |> protect_query_class_settings(opts)
     |> validate_default_ingest()
+    |> unique_constraint(:default_ingest?,
+      name: :idx_backends_default_ingest_per_user_type,
+      message:
+        "another backend of this type is already the default ingest backend for this account"
+    )
     |> do_config_change()
   end
 
