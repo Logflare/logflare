@@ -1016,6 +1016,59 @@ defmodule Logflare.EndpointsTest do
       assert backend_id == backend2.id
     end
 
+    test "run_query_string/3 rejects a backend_id owned by another user" do
+      user = insert(:user)
+      insert(:source, user: user, name: "c")
+      insert(:backend, user: user, type: :clickhouse)
+      other_backend = insert(:backend, user: insert(:user), type: :clickhouse)
+
+      reject(ClickHouseAdaptor, :execute_query, 3)
+
+      assert {:error, "Backend not found"} =
+               Endpoints.run_query_string(user, {:ch_sql, "SELECT 1 as testing"},
+                 backend_id: other_backend.id
+               )
+    end
+
+    test "run_query/3 rejects an endpoint whose backend is owned by another user" do
+      user = insert(:user)
+      other_backend = insert(:backend, user: insert(:user), type: :clickhouse)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          language: :ch_sql,
+          query: "SELECT 1 as testing",
+          backend: other_backend
+        )
+
+      reject(ClickHouseAdaptor, :execute_query, 3)
+
+      assert {:error, "Backend not found"} = Endpoints.run_query(endpoint)
+    end
+
+    test "run_query_string/3 allows a backend_id owned by a team the user belongs to" do
+      user = insert(:user)
+      insert(:source, user: user, name: "c")
+      team_user = insert(:team_user, email: user.email)
+      team_backend = insert(:backend, user: team_user.team.user, type: :clickhouse)
+
+      test_pid = self()
+
+      expect(ClickHouseAdaptor, :execute_query, fn backend, _query, _opts ->
+        send(test_pid, {:backend_used, backend.id})
+        {:ok, QueryResult.new([%{"testing" => "123"}])}
+      end)
+
+      assert {:ok, %{rows: [%{"testing" => "123"}]}} =
+               Endpoints.run_query_string(user, {:ch_sql, "SELECT 1 as testing"},
+                 backend_id: team_backend.id
+               )
+
+      assert_received {:backend_used, backend_id}
+      assert backend_id == team_backend.id
+    end
+
     test "run_query_string/3 falls back to first backend of type when backend_id is nil" do
       user = insert(:user)
       insert(:source, user: user, name: "c")
