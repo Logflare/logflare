@@ -847,12 +847,10 @@ defmodule Logflare.Sql do
     sandboxed_cte_names = do_extract_cte_aliases(ast)
 
     unknown_table_names =
-      for statement <- ast,
-          from <- extract_all_from(statement),
-          %{"Identifier" => %{"value" => table_name}} <-
-            get_in(from, ["relation", "Table", "name"]) || [],
+      for table_name <- extract_all_table_names(ast),
           table_name not in aliases,
-          table_name not in sandboxed_cte_names do
+          table_name not in sandboxed_cte_names,
+          uniq: true do
         table_name
       end
 
@@ -1110,14 +1108,19 @@ defmodule Logflare.Sql do
     source.name
   end
 
-  defp extract_all_from(ast) do
-    AstUtils.collect_from_ast(ast, &do_extract_from/1)
-    |> List.flatten()
-    |> Enum.reject(&is_nil/1)
+  @spec extract_all_table_names(ast :: list()) :: [String.t()]
+  defp extract_all_table_names(ast) do
+    AstUtils.collect_from_ast(ast, &do_extract_table_name/1)
   end
 
-  defp do_extract_from({"from", from}) when is_list(from), do: {:collect, from}
-  defp do_extract_from(_ast_node), do: :skip
+  defp do_extract_table_name({"Table", %{"name" => name}}) when is_list(name) do
+    {:collect, name |> AstUtils.object_name_values() |> Enum.join(".")}
+  end
+
+  defp do_extract_table_name({"Table", %{"table_name" => name}}) when is_binary(name),
+    do: {:collect, name}
+
+  defp do_extract_table_name(_ast_node), do: :skip
 
   # returns true if the name is fully qualified and has the project id prefix.
   @spec project_fully_qualified_name?(table_name :: String.t(), project_id :: String.t()) ::
