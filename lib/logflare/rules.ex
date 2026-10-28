@@ -176,6 +176,7 @@ defmodule Logflare.Rules do
     :ok
   end
 
+  @doc false
   @spec sync_rules_local([pos_integer()]) :: :ok
   def sync_rules_local(source_ids) do
     source_ids
