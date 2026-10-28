@@ -421,19 +421,21 @@ defmodule Logflare.Backends do
           default_ingest_flag_changed(updated)
         end
 
-        if Keyword.get(opts, :query_policy_only, false) do
-          # Class policy intentionally uses eventually consistent backend metadata.
-          # These evictions do not fence in-flight fills or guarantee immediate propagation.
-          keys = [{__MODULE__, updated.id}]
-          Logflare.ContextCache.bust_keys(keys)
-          Cluster.Utils.rpc_multicast(Logflare.ContextCache, :bust_keys, [keys])
-        else
-          if not enabled_only? do
+        cond do
+          Keyword.get(opts, :query_policy_only, false) ->
+            # Class policy intentionally uses eventually consistent backend metadata.
+            # These evictions do not fence in-flight fills or guarantee immediate propagation.
+            keys = [{__MODULE__, updated.id}]
+            Logflare.ContextCache.bust_keys(keys)
+            Cluster.Utils.rpc_multicast(Logflare.ContextCache, :bust_keys, [keys])
+
+          enabled_only? ->
+            notify_backend_config_change(updated, config_modified?)
+
+          true ->
             Enum.each(updated.sources, &restart_source_sup(&1))
             apply_consolidated_pipeline_change(backend, updated, default_ingest_modified?)
-          end
-
-          notify_backend_config_change(updated, config_modified?)
+            notify_backend_config_change(updated, config_modified?)
         end
 
         {:ok, typecast_config_string_map_to_atom_map(updated)}
