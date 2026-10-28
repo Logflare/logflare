@@ -23,7 +23,6 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.SourceSupWorker
-  alias Logflare.ContextCache
   alias Logflare.LogEvent
   alias Logflare.LogEvent.PipelineError
   alias Logflare.Lql
@@ -2993,12 +2992,12 @@ defmodule Logflare.BackendsTest do
       assert Rules.Cache.rules_tree_by_source_id(source.id) == []
       assert Rules.Cache.rules_tree_by_source_id(other.id) == []
       unrelated_tree = Rules.Cache.rules_tree_by_source_id(unrelated.id)
-      expected = MapSet.new([{Rules, source_id: source.id}, {Rules, source_id: other.id}])
+      expected = MapSet.new([source.id, other.id])
 
-      expect(ClusterUtils, :rpc_multicast, 2, fn ContextCache, :bust_keys, [keys] ->
-        assert MapSet.new(keys) == expected
-        assert length(keys) == 2
-        ContextCache.bust_keys(keys)
+      expect(ClusterUtils, :rpc_multicast, 2, fn Backends, :sync_rules_local, [source_ids] ->
+        assert MapSet.new(source_ids) == expected
+        assert length(source_ids) == 2
+        Backends.sync_rules_local(source_ids)
       end)
 
       for enabled <- [true, false] do

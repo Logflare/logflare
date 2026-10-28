@@ -655,13 +655,14 @@ defmodule Logflare.Backends do
         Cluster.Utils.rpc_multicast(__MODULE__, :sync_backends_local, [backend, sources])
       end
 
-      rule_keys =
-        for rule <- Rules.list_by_backend_id(backend_id),
-            uniq: true,
-            do: {Rules, source_id: rule.source_id}
+      # Query once on the sending node so receiving nodes only evict cached entries.
+      source_ids =
+        for rule <- Rules.list_by_backend_id(backend_id), uniq: true do
+          rule.source_id
+        end
 
-      if rule_keys != [] do
-        Cluster.Utils.rpc_multicast(ContextCache, :bust_keys, [rule_keys])
+      if source_ids != [] do
+        Cluster.Utils.rpc_multicast(__MODULE__, :sync_rules_local, [source_ids])
       end
     end
 
@@ -678,6 +679,15 @@ defmodule Logflare.Backends do
       SourceSup.start_backend_child(source, backend)
       clear_list_backends_cache(source.id)
     end
+
+    :ok
+  end
+
+  @spec sync_rules_local([pos_integer()]) :: :ok
+  def sync_rules_local(source_ids) do
+    source_ids
+    |> Enum.map(&{Rules, source_id: &1})
+    |> ContextCache.bust_keys()
 
     :ok
   end
