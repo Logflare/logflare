@@ -64,7 +64,7 @@ defmodule Logflare.Rules do
       left_join: b in Backend,
       on: r.backend_id == b.id,
       where: r.source_id == ^id,
-      where: is_nil(r.backend_id) or b.enabled == true
+      where: is_nil(r.backend_id) or b.enabled
     )
     |> Repo.all()
     |> RulesTree.build()
