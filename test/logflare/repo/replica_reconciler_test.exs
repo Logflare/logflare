@@ -6,8 +6,6 @@ defmodule Logflare.Repo.ReplicaReconcilerTest do
   alias Logflare.Repo.ReplicaReconciler
   alias Logflare.Repo.Replicas
 
-  @check_opts [lag: :timer.minutes(1), recheck_delay: 0]
-
   setup do
     on_exit(fn -> :persistent_term.erase({ReplicaReconciler, :disabled}) end)
     :ok
@@ -32,11 +30,11 @@ defmodule Logflare.Repo.ReplicaReconcilerTest do
     insert(:source, user: user, updated_at: stale, inserted_at: stale)
   end
 
-  describe "reconcile/1" do
+  describe "reconcile/0" do
     test "keeps an in-sync replica enabled" do
       key = start_unsandboxed_replica()
 
-      assert %{^key => :ok} = ReplicaReconciler.reconcile(@check_opts)
+      assert %{^key => :ok} = ReplicaReconciler.reconcile()
       refute ReplicaReconciler.disabled?(key)
       refute Repo.with_replica(&Repo.get_dynamic_repo/0) == Repo
     end
@@ -45,7 +43,7 @@ defmodule Logflare.Repo.ReplicaReconcilerTest do
       key = start_unsandboxed_replica()
       insert(:source, user: insert(:user))
 
-      assert %{^key => :ok} = ReplicaReconciler.reconcile(@check_opts)
+      assert %{^key => :ok} = ReplicaReconciler.reconcile()
       refute ReplicaReconciler.disabled?(key)
     end
 
@@ -53,7 +51,7 @@ defmodule Logflare.Repo.ReplicaReconcilerTest do
       key = start_unsandboxed_replica()
       source = insert_stale_source()
 
-      {result, log} = with_log(fn -> ReplicaReconciler.reconcile(@check_opts) end)
+      {result, log} = with_log(fn -> ReplicaReconciler.reconcile() end)
 
       assert %{
                ^key =>
@@ -62,7 +60,6 @@ defmodule Logflare.Repo.ReplicaReconcilerTest do
                result
 
       assert p_count == r_count + 1
-      assert log =~ "re-checking"
       assert log =~ "Read replica out of sync with primary"
       assert ReplicaReconciler.disabled?(key)
 
@@ -76,7 +73,7 @@ defmodule Logflare.Repo.ReplicaReconcilerTest do
 
       Repo.delete!(source)
 
-      assert %{^key => :ok} = ReplicaReconciler.reconcile(@check_opts)
+      assert %{^key => :ok} = ReplicaReconciler.reconcile()
       refute ReplicaReconciler.disabled?(key)
       refute Repo.with_replica(&Repo.get_dynamic_repo/0) == Repo
     end
@@ -88,48 +85,20 @@ defmodule Logflare.Repo.ReplicaReconcilerTest do
       insert_stale_source()
 
       capture_log(fn ->
-        assert %{^key => {:mismatch, _}, Repo => :ok} = ReplicaReconciler.reconcile(@check_opts)
+        assert %{^key => {:mismatch, _}, Repo => :ok} = ReplicaReconciler.reconcile()
       end)
 
       assert ReplicaReconciler.disabled_replicas() == MapSet.new([key])
       assert Enum.all?(1..20, fn _ -> Repo.with_replica(&Repo.get_dynamic_repo/0) == Repo end)
     end
-
-    test "detects an out-of-sync users table" do
-      key = start_unsandboxed_replica()
-      stale = NaiveDateTime.add(NaiveDateTime.utc_now(), -1, :hour)
-      insert(:user, updated_at: stale, inserted_at: stale)
-
-      capture_log(fn ->
-        assert %{^key => {:mismatch, [%{table: "users"}]}} =
-                 ReplicaReconciler.reconcile(@check_opts)
-      end)
-
-      assert ReplicaReconciler.disabled?(key)
-    end
   end
 
   describe "GenServer" do
-    test "runs as a no-op when no replicas are configured" do
-      configure_replicas([])
-
-      pid = start_supervised!({ReplicaReconciler, name: nil, initial_delay: 0, jitter: 0})
-      :sys.get_state(pid)
-
-      assert Process.alive?(pid)
-      assert ReplicaReconciler.reconcile(@check_opts) == %{}
-      assert ReplicaReconciler.disabled_replicas() == MapSet.new()
-    end
-
     test "disables an out-of-sync replica on a scheduled run" do
       key = start_unsandboxed_replica()
       insert_stale_source()
 
-      pid =
-        start_supervised!(
-          {ReplicaReconciler,
-           name: nil, initial_delay: :timer.hours(1), jitter: 0, recheck_delay: 0}
-        )
+      pid = start_supervised!(ReplicaReconciler)
 
       capture_log(fn ->
         send(pid, :reconcile)
