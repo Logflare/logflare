@@ -60,8 +60,9 @@ defmodule Logflare.Backends.Spool.ProviderConfig do
     end
   end
 
-  defp queue_name(spool_config, Queue.PubSub), do: Keyword.get(spool_config, :pubsub_topic)
-  defp queue_name(spool_config, _queue_mod), do: Keyword.get(spool_config, :queue_name)
+  @spec queue_name(keyword(), module()) :: String.t() | nil
+  def queue_name(spool_config, Queue.PubSub), do: Keyword.get(spool_config, :pubsub_topic)
+  def queue_name(spool_config, _queue_mod), do: Keyword.get(spool_config, :queue_name)
 
   defp default_storage_mod(:gcp), do: Storage.GCS
   defp default_storage_mod(_), do: Storage.S3

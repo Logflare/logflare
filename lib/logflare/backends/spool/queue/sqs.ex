@@ -8,7 +8,7 @@ defmodule Logflare.Backends.Spool.Queue.SQS do
 
   @impl Logflare.Backends.Spool.Queue
   def resolve(queue_name) do
-    case request(ExAws.SQS.get_queue_url(queue_name)) do
+    case request(ExAws.SQS.get_queue_url(queue_name), retries: [max_attempts: 1]) do
       {:ok, %{body: %{queue_url: url}}} -> {:ok, url}
       {:error, reason} -> {:error, reason}
     end
@@ -69,8 +69,8 @@ defmodule Logflare.Backends.Spool.Queue.SQS do
 
   defp tracked_request(operation), do: operation |> request() |> Queue.track_health()
 
-  defp request(operation) do
-    ExAws.request(operation, http_client: HttpClient)
+  defp request(operation, opts \\ []) do
+    ExAws.request(operation, [http_client: HttpClient] ++ opts)
   rescue
     e -> {:error, Exception.message(e)}
   catch
