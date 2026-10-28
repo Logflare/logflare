@@ -74,6 +74,8 @@ config :logger,
 
 config :tesla, Logflare.Backends.Adaptor.WebhookAdaptor.Client, adapter: Tesla.Mock
 
+config :tesla, GoogleApi.BigQuery.V2.Connection, adapter: Logflare.Tesla.GoogleApi401Stub
+
 config :logflare, Oban, testing: :manual
 
 config :phoenix_test, otp_app: :logflare, endpoint: LogflareWeb.Endpoint
