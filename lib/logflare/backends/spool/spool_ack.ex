@@ -32,6 +32,7 @@ defmodule Logflare.Backends.Spool.SpoolAck do
   @sweep_interval_ms :timer.minutes(1)
   @stale_after_ms :timer.minutes(10)
   @nack_concurrency 16
+  @nack_timeout_ms 5_000
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
@@ -94,10 +95,13 @@ defmodule Logflare.Backends.Spool.SpoolAck do
   @doc """
   Nacks every pending handle so its message redelivers immediately instead of
   after the queue's visibility timeout, and forgets it. Nacks run concurrently,
-  and any still running after `timeout_ms` are abandoned.
+  each is killed if it takes longer than `:nack_timeout_ms` (default 5s), and
+  any still running after `timeout_ms` are abandoned.
   """
-  @spec nack_pending(timeout()) :: :ok | :timeout
-  def nack_pending(timeout_ms) do
+  @spec nack_pending(timeout(), keyword()) :: :ok | :timeout
+  def nack_pending(timeout_ms, opts \\ []) do
+    nack_timeout_ms = Keyword.get(opts, :nack_timeout_ms, @nack_timeout_ms)
+
     ms =
       Ex2ms.fun do
         {handle, _count, _queue_mod, _queue_url, _registered_at} -> handle
@@ -109,7 +113,8 @@ defmodule Logflare.Backends.Spool.SpoolAck do
       handles
       |> Task.async_stream(&nack_taken/1,
         max_concurrency: @nack_concurrency,
-        timeout: :infinity,
+        timeout: nack_timeout_ms,
+        on_timeout: :kill_task,
         ordered: false
       )
       |> Stream.run()

@@ -238,6 +238,28 @@ defmodule Logflare.Backends.Spool.SpoolAckTest do
       assert elapsed_us < 600_000
     end
 
+    test "a nack that hangs is killed after its own timeout, freeing its slot for the rest" do
+      test_pid = self()
+      blocked = for _ <- 1..16, do: unique_handle()
+      other = unique_handle()
+
+      stub(QueueMod, :nack, fn _url, h ->
+        if h in blocked, do: Process.sleep(:infinity)
+        send(test_pid, {:nacked, h})
+        :ok
+      end)
+
+      for h <- blocked, do: SpoolAck.register(h, QueueMod, "queue-url")
+      SpoolAck.register(other, QueueMod, "queue-url")
+
+      {elapsed_us, result} =
+        :timer.tc(fn -> SpoolAck.nack_pending(5_000, nack_timeout_ms: 100) end)
+
+      assert result == :ok
+      assert elapsed_us < 1_000_000
+      assert_received {:nacked, ^other}
+    end
+
     test "a blocked nack cannot hold shutdown past the deadline" do
       test_pid = self()
       [blocked, other] = [unique_handle(), unique_handle()]
