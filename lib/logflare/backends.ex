@@ -25,7 +25,6 @@ defmodule Logflare.Backends do
   alias Logflare.LogEvent
   alias Logflare.PubSubRates
   alias Logflare.Repo
-  alias Logflare.Rules
   alias Logflare.Rules.Rule
   alias Logflare.SingleTenant
   alias Logflare.Sources
@@ -643,8 +642,6 @@ defmodule Logflare.Backends do
   instances of its explicitly linked sources are updated immediately without waiting for
   the periodic `SourceSupWorker` check. Account default ingest dispatch does not use links
   and is not affected.
-
-  Routing trees for sources with drain rules targeting this backend are also invalidated.
   """
   @spec sync_backend_across_cluster(integer()) :: :ok
   def sync_backend_across_cluster(backend_id) when is_integer(backend_id) do
@@ -654,8 +651,6 @@ defmodule Logflare.Backends do
       if sources != [] do
         Cluster.Utils.rpc_multicast(__MODULE__, :sync_backends_local, [backend, sources])
       end
-
-      Rules.sync_rules_across_cluster(backend)
     end
 
     :ok

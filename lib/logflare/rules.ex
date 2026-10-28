@@ -161,8 +161,14 @@ defmodule Logflare.Rules do
     :ok
   end
 
-  @spec sync_rules_across_cluster(Backend.t()) :: :ok
-  def sync_rules_across_cluster(%Backend{id: backend_id}) do
+  @doc """
+  Syncs rules across all cluster nodes for sources with drain rules targeting this backend.
+
+  This invalidates cached rule lists and routing trees when the backend changes,
+  including trees cached as empty while the backend was disabled.
+  """
+  @spec sync_rules_across_cluster(pos_integer()) :: :ok
+  def sync_rules_across_cluster(backend_id) do
     # Query once on the sending node so receiving nodes only evict cached entries.
     source_ids =
       for rule <- list_by_backend_id(backend_id), uniq: true do
