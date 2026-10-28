@@ -6,7 +6,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryV2Adaptor do
 
   Uses consolidated ingestion: one adaptor tree per backend across all sources
   (see `Logflare.Backends.ConsolidatedSup`). Table layout lives in
-  `BigQueryV2Adaptor.TableSchema`.
+  `BigQueryV2Adaptor.TableSchema`, ingestion in `BigQueryV2Adaptor.Pipeline`.
 
   Ingest-only: querying (Endpoints, LQL, search) is not supported.
   """
@@ -17,12 +17,16 @@ defmodule Logflare.Backends.Adaptor.BigQueryV2Adaptor do
 
   require Logger
 
+  alias __MODULE__.Pipeline
   alias __MODULE__.Provisioner
   alias __MODULE__.TableSchema
   alias GoogleApi.BigQuery.V2.Api
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor.ArrowIPC
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.IngestEventQueue
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.LogEvent.TypeDetection
 
@@ -45,12 +49,17 @@ defmodule Logflare.Backends.Adaptor.BigQueryV2Adaptor do
   def init(%Backend{} = backend) do
     backend = Backends.typecast_config_string_map_to_atom_map(backend)
 
-    children =
+    IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
+    IngestEventQueue.current_generation_tid({:consolidated, backend.id})
+
+    provisioner =
       if Application.get_env(:logflare, :env) != :test,
         do: [Provisioner.child_spec(backend)],
         else: []
 
-    Supervisor.init(children, strategy: :one_for_one)
+    pipeline = {Pipeline, name: Backends.via_backend(backend, Pipeline), backend: backend}
+
+    Supervisor.init(provisioner ++ [pipeline], strategy: :one_for_one)
   end
 
   @impl Logflare.Backends.Adaptor
@@ -100,6 +109,35 @@ defmodule Logflare.Backends.Adaptor.BigQueryV2Adaptor do
     |> case do
       {:ok, _dataset} -> :ok
       {:error, reason} -> {:error, GenUtils.get_tesla_error_message(reason)}
+    end
+  end
+
+  @doc """
+  Appends pre-encoded NDJSON rows to the event type's table through the Storage Write API.
+  Rows are encoded to Arrow against the table's fixed schema, never an inferred one.
+  """
+  @spec insert_rows(Backend.t(), TypeDetection.event_type(), iodata()) :: :ok | {:error, term()}
+  def insert_rows(%Backend{config: config}, event_type, ndjson) do
+    compression = Application.get_env(:logflare, :arrow_ipc_compression, :zstd)
+    fields = TableSchema.arrow_fields(event_type)
+
+    case ArrowIPC.get_ipc_bytes_with_schema(IO.iodata_to_binary(ndjson), fields, compression) do
+      {:ok, arrow_schema, batch_msgs} ->
+        context = [project_id: config.project_id, dataset_id: config.dataset_id]
+        arrow_data = GoogleApiClient.to_arrow_data(arrow_schema, batch_msgs)
+
+        case GoogleApiClient.append_rows(
+               {:arrow, arrow_data},
+               context,
+               TableSchema.table_name(event_type)
+             ) do
+          :ok -> :ok
+          {:error, _reason} = error -> error
+          _failed_requests -> {:error, :append_failed}
+        end
+
+      {:error, message} ->
+        {:error, {:encode_failed, message}}
     end
   end
 

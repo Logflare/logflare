@@ -32,19 +32,10 @@ defmodule Logflare.Backends.Adaptor.BigQueryV2Adaptor.TableSchema do
   """
 
   alias GoogleApi.BigQuery.V2.Model
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor.ArrowIPC
   alias Logflare.LogEvent.TypeDetection
 
-  @type field_type ::
-          :string
-          | :integer
-          | :float
-          | :boolean
-          | :timestamp
-          | :string_map
-          | :integer_array
-          | :float_array
-          | :string_array
-          | :json_array
+  @type field_type :: ArrowIPC.field_type()
   @type field :: %{name: String.t(), type: field_type(), required: boolean()}
   @type layout :: %{partition_field: String.t(), clustering: [String.t()]}
 
@@ -208,6 +199,15 @@ defmodule Logflare.Backends.Adaptor.BigQueryV2Adaptor.TableSchema do
   def fields(:log), do: @log_fields
   def fields(:metric), do: @metric_fields
   def fields(:trace), do: @trace_fields
+
+  @doc """
+  Returns a table's columns as `{name, type, required}` tuples, the schema format
+  `BigQueryAdaptor.ArrowIPC.get_ipc_bytes_with_schema/3` encodes rows against.
+  """
+  @spec arrow_fields(TypeDetection.event_type()) :: [ArrowIPC.field_spec()]
+  def arrow_fields(event_type) do
+    Enum.map(fields(event_type), &{&1.name, &1.type, &1.required})
+  end
 
   @doc """
   Returns the partitioning and clustering applied to a table at creation.

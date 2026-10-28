@@ -7,11 +7,17 @@ defmodule Logflare.Backends.Adaptor.BigQueryV2AdaptorTest do
   alias GoogleApi.BigQuery.V2.Api.Tables
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Backends.Adaptor
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
   alias Logflare.Backends.Adaptor.BigQueryV2Adaptor
   alias Logflare.Backends.Adaptor.BigQueryV2Adaptor.Provisioner
   alias Logflare.Backends.Adaptor.BigQueryV2Adaptor.TableSchema
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.IngestEventQueue
+  alias Logflare.LogEvent
+  alias Logflare.Mapper
+  alias Logflare.Mapper.ConfigStore
+  alias Logflare.Mapper.OutputContext
 
   @config %{project_id: "my-project-id", dataset_id: "my_dataset"}
 
@@ -262,6 +268,53 @@ defmodule Logflare.Backends.Adaptor.BigQueryV2AdaptorTest do
     end
   end
 
+  describe "insert_rows/3" do
+    setup do
+      {:ok, compiled, config_id} = ConfigStore.get_compiled(:log, :ndjson)
+      [compiled: compiled, config_id: config_id]
+    end
+
+    test "appends mapper output to otel_logs against the fixed schema", %{
+      backend: backend,
+      compiled: compiled,
+      config_id: config_id
+    } do
+      source = insert(:source, user: backend.user)
+      rows = for message <- ["a", "b"], do: map_row(source, message, compiled, config_id)
+
+      expect(GoogleApiClient, :append_rows, fn {:arrow, [arrow_data]}, context, "otel_logs" ->
+        assert context == [project_id: "my-project-id", dataset_id: "my_dataset"]
+        assert byte_size(arrow_data.writer_schema.serialized_schema) > 0
+        :ok
+      end)
+
+      assert :ok = BigQueryV2Adaptor.insert_rows(backend, :log, rows)
+    end
+
+    test "does not append rows that do not fit the schema", %{backend: backend} do
+      reject(GoogleApiClient, :append_rows, 3)
+
+      assert {:error, {:encode_failed, message}} =
+               BigQueryV2Adaptor.insert_rows(backend, :log, [~s({"event_message":"a"}\n)])
+
+      assert message =~ "id"
+    end
+
+    test "returns an error when requests still fail after retries", %{
+      backend: backend,
+      compiled: compiled,
+      config_id: config_id
+    } do
+      source = insert(:source, user: backend.user)
+      stub(GoogleApiClient, :append_rows, fn _rows, _context, _table -> [:failed_request] end)
+
+      assert {:error, :append_failed} =
+               BigQueryV2Adaptor.insert_rows(backend, :log, [
+                 map_row(source, "a", compiled, config_id)
+               ])
+    end
+  end
+
   describe "Provisioner" do
     test "is a transient child", %{backend: backend} do
       assert %{restart: :transient, start: {Provisioner, :start_link, [^backend]}} =
@@ -303,6 +356,26 @@ defmodule Logflare.Backends.Adaptor.BigQueryV2AdaptorTest do
       pid = start_supervised!({BigQueryV2Adaptor, backend})
       assert Process.alive?(pid)
     end
+
+    test "creates the startup queue the pipeline producer polls", %{backend: backend} do
+      log =
+        capture_log([metadata: [:backend_id]], fn ->
+          start_supervised!({BigQueryV2Adaptor, backend})
+          assert IngestEventQueue.get_tid({:consolidated, backend.id, nil})
+          Process.sleep(1_500)
+        end)
+
+      refute log =~ ~r/backend_id=#{backend.id} \[warning\] IngestEventQueue not initialized/
+    end
+  end
+
+  defp map_row(source, message, compiled, config_id) do
+    %LogEvent{body: body} = event = build(:log_event, source: source, message: message)
+
+    {:ok, row} =
+      Mapper.map_result(body, compiled, output_context: OutputContext.ndjson(event, config_id))
+
+    row
   end
 
   defp google_error(status, message) do
