@@ -23,6 +23,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.SourceSupWorker
+  alias Logflare.ContextCache
   alias Logflare.LogEvent
   alias Logflare.LogEvent.PipelineError
   alias Logflare.Lql
@@ -2962,7 +2963,7 @@ defmodule Logflare.BackendsTest do
       assert :ok = Backends.sync_backend_across_cluster(non_existent_id)
     end
 
-    test "does not multicast when the backend has no explicit links", %{user: user} do
+    test "does not multicast when the backend has no source links or rules", %{user: user} do
       backend =
         insert(:backend,
           user: user,
@@ -2975,6 +2976,47 @@ defmodule Logflare.BackendsTest do
       reject(&ClusterUtils.rpc_multicast/3)
 
       assert :ok = Backends.sync_backend_across_cluster(backend.id)
+    end
+
+    test "toggles invalidate empty rule trees without explicit backend links", %{
+      source: source,
+      user: user
+    } do
+      backend = insert(:backend, user: user, enabled: false)
+      other = insert(:source, user: user)
+      unrelated = insert(:source, user: user)
+      first_rule = insert(:rule, source: source, backend: backend)
+      insert(:rule, source: source, backend: backend)
+      second_rule = insert(:rule, source: other, backend: backend)
+      insert(:rule, source: unrelated)
+
+      assert Rules.Cache.rules_tree_by_source_id(source.id) == []
+      assert Rules.Cache.rules_tree_by_source_id(other.id) == []
+      unrelated_tree = Rules.Cache.rules_tree_by_source_id(unrelated.id)
+      expected = MapSet.new([{Rules, source_id: source.id}, {Rules, source_id: other.id}])
+
+      expect(ClusterUtils, :rpc_multicast, 2, fn ContextCache, :bust_keys, [keys] ->
+        assert MapSet.new(keys) == expected
+        assert length(keys) == 2
+        ContextCache.bust_keys(keys)
+      end)
+
+      for enabled <- [true, false] do
+        Backends.get_backend(backend.id)
+        |> Ecto.Changeset.change(enabled: enabled)
+        |> Repo.update!()
+
+        assert :ok = Backends.sync_backend_across_cluster(backend.id)
+
+        for {drain_source, rule} <- [{source, first_rule}, {other, second_rule}] do
+          event = build(:log_event, source: drain_source, message: "testing")
+          tree = Rules.Cache.rules_tree_by_source_id(drain_source.id)
+          assert rule.id in SourceRouter.RulesTree.matching_rule_ids(event, tree) == enabled
+        end
+
+        assert {:cached, ^unrelated_tree} =
+                 Cachex.get!(Rules.Cache, {:rules_tree_by_source_id, [unrelated.id]})
+      end
     end
   end
 

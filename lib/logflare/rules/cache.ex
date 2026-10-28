@@ -9,7 +9,6 @@ defmodule Logflare.Rules.Cache do
   alias Logflare.Repo
   alias Logflare.Rules
   alias Logflare.Sources.Source
-  alias Logflare.Sources.SourceRouter.RulesTree
 
   def child_spec(_) do
     CachexOps.child_spec(__MODULE__,
@@ -35,13 +34,7 @@ defmodule Logflare.Rules.Cache do
   def list_by_source_id(id), do: apply_repo_fun(__ENV__.function, [id])
   def list_by_backend_id(id), do: apply_repo_fun(__ENV__.function, [id])
 
-  @spec rules_tree_by_source_id(pos_integer()) ::
-          RulesTree.t() | {:error, :database_unavailable}
-  def rules_tree_by_source_id(id) do
-    fetch({:rules_tree_by_source_id, [id]}, fn ->
-      Repo.with_primary(fn -> Rules.rules_tree_by_source_id(id) end)
-    end)
-  end
+  def rules_tree_by_source_id(id), do: apply_repo_fun(__ENV__.function, [id])
 
   @impl ContextCache
   def keys_to_bust(kw) do

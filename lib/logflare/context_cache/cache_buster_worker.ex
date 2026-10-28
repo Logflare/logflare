@@ -9,7 +9,6 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
 
   alias Logflare.Backends
   alias Logflare.ContextCache
-  alias Logflare.Repo
   alias Logflare.Rules
   alias Logflare.Utils
 
@@ -41,28 +40,21 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
   @impl true
   def handle_cast({:to_bust, context_pkeys, backend_owner_ids}, state) do
     ContextCache.Gossip.record_tombstones(context_pkeys)
-    backend_ids = backend_ids(context_pkeys)
 
     default_ingest_user_ids =
-      backend_ids
+      context_pkeys
+      |> backend_ids()
       |> Backends.cached_default_ingest_user_ids()
       |> Enum.concat(backend_owner_ids)
       |> Enum.uniq()
 
     ContextCache.bust_keys(context_pkeys)
     refresh_default_ingest_caches(default_ingest_user_ids)
-    bust_rules_trees(backend_ids)
 
     for record <- context_pkeys do
       maybe_do_cross_cluster_syncing(record)
     end
 
-    {:noreply, state}
-  end
-
-  @impl true
-  def handle_info({:bust_rules_trees, backend_ids}, state) do
-    bust_rules_trees(backend_ids)
     {:noreply, state}
   end
 
@@ -85,36 +77,6 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
 
   defp backend_ids(context_pkeys) do
     for {Backends, backend_id} when is_integer(backend_id) <- context_pkeys, do: backend_id
-  end
-
-  @spec bust_rules_trees([pos_integer()]) :: :ok
-  defp bust_rules_trees([]), do: :ok
-
-  defp bust_rules_trees(backend_ids) do
-    case Repo.with_primary(fn -> Rules.list_source_ids_by_backend_ids(backend_ids) end) do
-      [] ->
-        :ok
-
-      source_ids ->
-        source_ids
-        |> Enum.map(&{Rules, [source_id: &1]})
-        |> ContextCache.bust_keys()
-
-        :ok
-    end
-  rescue
-    error in [DBConnection.ConnectionError, Postgrex.Error] ->
-      retry_rules_tree_bust(backend_ids, error)
-  catch
-    :exit, {reason, _call} when reason in [:noproc, :killed] ->
-      retry_rules_tree_bust(backend_ids, reason)
-  end
-
-  @spec retry_rules_tree_bust([pos_integer()], term()) :: :ok
-  defp retry_rules_tree_bust(backend_ids, reason) do
-    Logger.warning("Rule cache invalidation failed: #{inspect(reason)}")
-    Process.send_after(self(), {:bust_rules_trees, backend_ids}, to_timeout(second: 1))
-    :ok
   end
 
   defp maybe_do_cross_cluster_syncing({Backends, backend_id})

@@ -117,28 +117,6 @@ defmodule Logflare.Rules.CacheTest do
       assert id == disabled_rule.id
     end
 
-    test "tree misses use the primary and hits avoid database reads", %{source: source} do
-      expect(Rules, :rules_tree_by_source_id, fn id ->
-        assert id == source.id
-        assert Repo.get_dynamic_repo() == Repo
-        Mimic.call_original(Rules, :rules_tree_by_source_id, [id])
-      end)
-
-      previous_repo = Repo.put_dynamic_repo(:unavailable_replica)
-      previous_replicas = Application.fetch_env!(:logflare, :read_replicas)
-      Application.put_env(:logflare, :read_replicas, [:unavailable_replica])
-
-      try do
-        assert [_entry | _rest] = tree = @subject.rules_tree_by_source_id(source.id)
-        assert Repo.get_dynamic_repo() == :unavailable_replica
-        reject(Rules, :rules_tree_by_source_id, 1)
-        assert @subject.rules_tree_by_source_id(source.id) == tree
-      after
-        Repo.put_dynamic_repo(previous_repo)
-        Application.put_env(:logflare, :read_replicas, previous_replicas)
-      end
-    end
-
     test "backend id key busting", %{backend: backend} do
       assert [_r1, _r2] = @subject.list_rules(backend)
       assert %{misses: 1, writes: 1} = Cachex.stats!(@subject)

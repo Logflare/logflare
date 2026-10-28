@@ -30,16 +30,6 @@ defmodule Logflare.Rules do
     |> Repo.all()
   end
 
-  @spec list_source_ids_by_backend_ids([pos_integer()]) :: [pos_integer()]
-  def list_source_ids_by_backend_ids(backend_ids) do
-    from(r in Rule,
-      where: r.backend_id in ^backend_ids,
-      select: r.source_id,
-      distinct: true
-    )
-    |> Repo.all()
-  end
-
   @doc "Lists rules owned by a user through their source."
   @spec list_rules_by_user_id(pos_integer(), non_neg_integer() | nil) :: [Rule.t()]
   def list_rules_by_user_id(user_id, backend_id \\ nil) do
