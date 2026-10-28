@@ -148,7 +148,11 @@ defmodule LogflareWeb.OpenApiSchemas do
       transform_key_values: %Schema{type: :string, nullable: true},
       transform_drop_fields: %Schema{type: :string, nullable: true},
       bigquery_clustering_fields: %Schema{type: :string, nullable: true},
-      default_ingest_backend_enabled?: %Schema{type: :boolean},
+      default_ingest_backend_enabled?: %Schema{
+        type: :boolean,
+        description:
+          "Whether this source sends events to the account's default ingest backends. Defaults to false."
+      },
       notifications_every: %Schema{type: :integer},
       lock_schema: %Schema{type: :boolean},
       validate_schema: %Schema{type: :boolean},
@@ -179,7 +183,11 @@ defmodule LogflareWeb.OpenApiSchemas do
       transform_key_values: %Schema{type: :string, nullable: true},
       transform_drop_fields: %Schema{type: :string, nullable: true},
       bigquery_clustering_fields: %Schema{type: :string, nullable: true},
-      default_ingest_backend_enabled?: %Schema{type: :boolean},
+      default_ingest_backend_enabled?: %Schema{
+        type: :boolean,
+        description:
+          "Whether this source sends events to the account's default ingest backends. Defaults to false."
+      },
       notifications_every: %Schema{type: :integer},
       lock_schema: %Schema{type: :boolean},
       validate_schema: %Schema{type: :boolean},
@@ -383,6 +391,9 @@ defmodule LogflareWeb.OpenApiSchemas do
   end
 
   defmodule ClickhouseConfigSchema do
+    alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+
+    @async_insert_flush_bounds ClickHouseAdaptor.async_insert_flush_bounds()
     @properties %{
       url: %Schema{type: :string},
       database: %Schema{type: :string},
@@ -393,11 +404,60 @@ defmodule LogflareWeb.OpenApiSchemas do
       query_password: %Schema{type: :string, nullable: true},
       read_pool_size: %Schema{type: :integer, nullable: true},
       labeled_read_pool_size: %Schema{type: :integer, nullable: true},
-      read_only_url: %Schema{type: :string, nullable: true},
+      read_only_urls: %Schema{
+        type: :object,
+        additionalProperties: %Schema{type: :string, format: :uri},
+        nullable: true,
+        description: "Read cluster label to ClickHouse HTTP URL",
+        example: %{"prod-a" => "https://reads-a.example.com:8443"}
+      },
+      default_read_cluster: %Schema{
+        type: :string,
+        nullable: true,
+        description: "Label from read_only_urls used when a query names no cluster",
+        example: "prod-a"
+      },
       use_async_inserts_for_small_batches: %Schema{type: :boolean, nullable: true},
+      use_async_inserts_only: %Schema{
+        type: :boolean,
+        nullable: true,
+        description:
+          "Send every batch as an async insert; overrides use_async_inserts_for_small_batches"
+      },
       async_insert_cluster_url: %Schema{type: :string, nullable: true},
       async_insert_max_rows: %Schema{type: :integer, nullable: true},
-      max_event_age_hours: %Schema{type: :integer, nullable: true}
+      async_insert_busy_timeout_max_ms: %Schema{
+        type: :integer,
+        nullable: true,
+        minimum: @async_insert_flush_bounds.async_insert_busy_timeout_max_ms.min,
+        maximum: @async_insert_flush_bounds.async_insert_busy_timeout_max_ms.max,
+        description:
+          "Longest ClickHouse buffers async inserts before flushing, in milliseconds; when unset, Logflare sends #{ClickHouseAdaptor.default_async_insert_busy_timeout_max_ms()} ms. The maximum leaves at least half the insert execution timeout for flushing."
+      },
+      async_insert_max_data_size: %Schema{
+        type: :integer,
+        nullable: true,
+        minimum: @async_insert_flush_bounds.async_insert_max_data_size.min,
+        maximum: @async_insert_flush_bounds.async_insert_max_data_size.max,
+        description:
+          "Buffered bytes that trigger an async insert flush; when unset, the ClickHouse settings profile applies"
+      },
+      batch_size: %Schema{
+        type: :integer,
+        nullable: true,
+        minimum: 1_000,
+        maximum: 60_000,
+        description: "Maximum rows per insert"
+      },
+      batch_timeout: %Schema{
+        type: :integer,
+        nullable: true,
+        minimum: 1_000,
+        maximum: 30_000,
+        description: "Milliseconds a partial batch waits before being inserted"
+      },
+      max_event_age_hours: %Schema{type: :integer, nullable: true},
+      replica_routing_param: %Schema{type: :string, nullable: true}
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:url, :database, :port]
@@ -469,6 +529,19 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: [:region, :username, :password]
   end
 
+  defmodule SplunkConfigSchema do
+    @properties %{
+      url: %Schema{type: :string},
+      token: %Schema{type: :string},
+      index: %Schema{type: :string, nullable: true},
+      source: %Schema{type: :string, nullable: true},
+      sourcetype: %Schema{type: :string, nullable: true},
+      host: %Schema{type: :string, nullable: true}
+    }
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:url, :token]
+  end
+
   defmodule SigNozConfigSchema do
     @properties %{
       endpoint: %Schema{type: :string},
@@ -532,11 +605,16 @@ defmodule LogflareWeb.OpenApiSchemas do
           LogflareWeb.OpenApiSchemas.Last9ConfigSchema,
           LogflareWeb.OpenApiSchemas.SigNozConfigSchema,
           LogflareWeb.OpenApiSchemas.SyslogConfigSchema,
+          LogflareWeb.OpenApiSchemas.SplunkConfigSchema,
           LogflareWeb.OpenApiSchemas.GoogleSecOpsConfigSchema
         ]
       },
       metadata: %Schema{type: :object, nullable: true},
-      default_ingest?: %Schema{type: :boolean},
+      default_ingest?: %Schema{
+        type: :boolean,
+        description:
+          "When true, every source in the account with default ingest enabled sends events to this backend. Only backends with a consolidated ingest pipeline can be the default, one per backend type per account."
+      },
       inserted_at: %Schema{type: :string},
       updated_at: %Schema{type: :string}
     }
@@ -551,7 +629,11 @@ defmodule LogflareWeb.OpenApiSchemas do
       description: %Schema{type: :string, nullable: true},
       config: BackendApiSchema.schema().properties.config,
       metadata: %Schema{type: :object, nullable: true},
-      default_ingest?: %Schema{type: :boolean}
+      default_ingest?: %Schema{
+        type: :boolean,
+        description:
+          "When true, every source in the account with default ingest enabled sends events to this backend. Only backends with a consolidated ingest pipeline can be the default, one per backend type per account."
+      }
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:name, :type, :config]

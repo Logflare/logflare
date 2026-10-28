@@ -518,8 +518,18 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       assert resp == %{"errors" => %{"name" => ["is invalid"]}}
     end
 
-    test "updates `default_ingest?` field", %{conn: conn, user: user} do
-      backend = insert(:backend, user: user, type: :bigquery, default_ingest?: false)
+    test "enabling `default_ingest?` sets the flag without linking any source", %{
+      conn: conn,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://localhost:8123", database: "default", port: 8123},
+          default_ingest?: false
+        )
+
       source = insert(:source, user: user, default_ingest_backend_enabled?: true)
 
       conn
@@ -527,19 +537,28 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       |> patch("/api/backends/#{backend.token}", %{default_ingest?: true, source_id: source.id})
       |> response(204)
 
-      response =
-        conn
-        |> add_access_token(user, "private")
-        |> get("/api/backends/#{backend.token}")
-        |> json_response(200)
-
-      assert response["default_ingest?"] == true
-
-      updated_source = Logflare.Sources.get(source.id) |> Logflare.Sources.preload_backends()
-      assert Enum.any?(updated_source.backends, &(&1.id == backend.id))
+      assert %{default_ingest?: true} = Logflare.Backends.get_backend(backend.id)
+      assert [] = Logflare.Sources.list_sources(backend_id: backend.id)
     end
 
-    test "returns error when enabling default_ingest? without source_id", %{
+    test "enabling `default_ingest?` without source_id succeeds", %{conn: conn, user: user} do
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://localhost:8123", database: "default", port: 8123},
+          default_ingest?: false
+        )
+
+      conn
+      |> add_access_token(user, "private")
+      |> patch("/api/backends/#{backend.token}", %{default_ingest?: true})
+      |> response(204)
+
+      assert %{default_ingest?: true} = Logflare.Backends.get_backend(backend.id)
+    end
+
+    test "enabling `default_ingest?` on a backend without a consolidated pipeline returns 422", %{
       conn: conn,
       user: user
     } do
@@ -553,7 +572,105 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       assert response == %{
                "errors" => %{
-                 "default_ingest?" => ["Please select a source when enabling default ingest"]
+                 "default_ingest?" => ["Backend type bigquery does not support default ingest"]
+               }
+             }
+    end
+
+    test "ClickHouse flush settings round-trip, preserve omitted values, and clear with null", %{
+      conn: conn,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          type: :clickhouse,
+          user: user,
+          config: %{
+            url: "http://localhost:8123",
+            port: 8123,
+            database: "logflare_test",
+            username: "logflare",
+            password: "logflare"
+          }
+        )
+
+      conn = add_access_token(conn, user, "private")
+      path = "/api/backends/#{backend.token}"
+
+      conn
+      |> patch(path, %{
+        config: %{
+          async_insert_busy_timeout_max_ms: 4_000,
+          async_insert_max_data_size: 268_435_456
+        }
+      })
+      |> response(204)
+
+      response = conn |> get(path) |> json_response(200)
+      assert response["config"]["async_insert_busy_timeout_max_ms"] == 4_000
+      assert response["config"]["async_insert_max_data_size"] == 268_435_456
+
+      conn
+      |> patch(path, %{config: %{async_insert_busy_timeout_max_ms: 200}})
+      |> response(204)
+
+      response = conn |> get(path) |> json_response(200)
+      assert response["config"]["async_insert_busy_timeout_max_ms"] == 200
+      assert response["config"]["async_insert_max_data_size"] == 268_435_456
+
+      for {key, value} <- [
+            async_insert_busy_timeout_max_ms: 199,
+            async_insert_busy_timeout_max_ms: 4_001,
+            async_insert_busy_timeout_max_ms: 5_000,
+            async_insert_max_data_size: 52_428_799,
+            async_insert_max_data_size: 268_435_457,
+            async_insert_max_data_size: 1_073_741_824
+          ] do
+        response = conn |> patch(path, %{config: %{key => value}}) |> json_response(422)
+        assert Map.has_key?(response["errors"], "config.#{key}")
+      end
+
+      conn
+      |> patch(path, %{
+        config: %{async_insert_busy_timeout_max_ms: nil, async_insert_max_data_size: nil}
+      })
+      |> response(204)
+
+      response = conn |> get(path) |> json_response(200)
+      assert response["config"]["async_insert_busy_timeout_max_ms"] == nil
+      assert response["config"]["async_insert_max_data_size"] == nil
+    end
+
+    test "returns error when another backend of the same type is already the account default", %{
+      conn: conn,
+      user: user
+    } do
+      insert(:backend,
+        user: user,
+        type: :clickhouse,
+        config: %{url: "http://localhost:8123", database: "default", port: 8123},
+        default_ingest?: true
+      )
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://localhost:8123", database: "default", port: 8123},
+          default_ingest?: false
+        )
+
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> patch("/api/backends/#{backend.token}", %{default_ingest?: true})
+        |> json_response(422)
+
+      assert response == %{
+               "errors" => %{
+                 "default_ingest?" => [
+                   "another backend of this type is already the default ingest backend for this account"
+                 ]
                }
              }
     end
@@ -696,6 +813,36 @@ defmodule LogflareWeb.Api.BackendControllerTest do
         |> json_response(200)
 
       assert response == %{"connected?" => false, "reason" => "some_reason"}
+    end
+
+    test "returns a documented error when an S3 connection test fails", %{
+      conn: conn,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          user: user,
+          type: :s3,
+          config: %{
+            s3_bucket: "my-bucket",
+            storage_region: "us-east-1",
+            access_key_id: "AKID",
+            secret_access_key: "SECRET",
+            batch_timeout: 1_000
+          }
+        )
+
+      Mimic.expect(ExAws, :request, fn _operation, _opts ->
+        {:error, {:http_error, 403, %{body: "AccessDenied"}}}
+      end)
+
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> post("/api/backends/#{backend.token}/test")
+        |> json_response(200)
+
+      assert response == %{"connected?" => false, "reason" => "s3_write_failed"}
     end
 
     test "returns 404 if backend doesn't exist or doesn't belong to user", %{

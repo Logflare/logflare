@@ -19,6 +19,8 @@ defmodule LogflareWeb.LogSocketTest do
       {:ok, socket} = Phoenix.ChannelTest.connect(LogSocket, %{"access_token" => token.token})
       {:ok, _, socket} = subscribe_and_join(socket, LogChannel, "logs:#{source.token}")
 
+      stub(Backends, :start_for_ingest, fn _source -> :ok end)
+
       Backends
       |> expect(:ingest_logs, fn batch, ingest_source, _backend, _allow_spooling ->
         assert [%{"message" => "access-token-log"}] = batch
@@ -29,6 +31,50 @@ defmodule LogflareWeb.LogSocketTest do
       Phoenix.ChannelTest.push(socket, "batch", %{"batch" => [%{"message" => "access-token-log"}]})
 
       Phoenix.ChannelTest.assert_push("batch", %{message: "Handled batch"})
+
+      leave(socket)
+    end
+
+    test "replies with an error when the SourceSup does not start in time" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      token = insert(:access_token, resource_owner: user)
+
+      {:ok, socket} = Phoenix.ChannelTest.connect(LogSocket, %{"access_token" => token.token})
+      {:ok, _, socket} = subscribe_and_join(socket, LogChannel, "logs:#{source.token}")
+
+      stub(Backends, :start_for_ingest, fn _source -> {:error, :source_unavailable} end)
+      reject(Backends, :ingest_logs, 4)
+
+      Phoenix.ChannelTest.push(socket, "batch", %{"batch" => [%{"message" => "early-log"}]})
+
+      Phoenix.ChannelTest.assert_push(
+        "batch",
+        %{message: "Batch error", errors: ["Source is unavailable. Send the batch again."]},
+        1_000
+      )
+
+      leave(socket)
+    end
+
+    test "replies with an error when the source was deleted after the join" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      token = insert(:access_token, resource_owner: user)
+
+      {:ok, socket} = Phoenix.ChannelTest.connect(LogSocket, %{"access_token" => token.token})
+      {:ok, _, socket} = subscribe_and_join(socket, LogChannel, "logs:#{source.token}")
+
+      stub(Backends, :start_for_ingest, fn _source -> {:error, :source_not_found} end)
+      reject(Backends, :ingest_logs, 4)
+
+      Phoenix.ChannelTest.push(socket, "batch", %{"batch" => [%{"message" => "late-log"}]})
+
+      Phoenix.ChannelTest.assert_push(
+        "batch",
+        %{message: "Batch error", errors: ["Source not found."]},
+        1_000
+      )
 
       leave(socket)
     end
@@ -61,6 +107,8 @@ defmodule LogflareWeb.LogSocketTest do
 
       {:ok, socket} = Phoenix.ChannelTest.connect(LogSocket, %{"api_key" => user.api_key})
       {:ok, _, socket} = subscribe_and_join(socket, LogChannel, "logs:#{source.token}")
+
+      stub(Backends, :start_for_ingest, fn _source -> :ok end)
 
       Backends
       |> expect(:ingest_logs, fn batch, ingest_source, _backend, _allow_spooling ->

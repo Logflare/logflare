@@ -40,7 +40,7 @@ defmodule Logflare.Bench.ClickHouseMapperRowBinaryFusion do
   def encode_fused(events, _type, compiled, mapping_config_id) do
     events
     |> Enum.map(fn event ->
-      output_context = OutputContext.clickhouse_row_binary(event, mapping_config_id)
+      output_context = OutputContext.ch_row_binary(event, mapping_config_id)
       Mapper.map(event.body, compiled, output_context: output_context)
     end)
     |> IO.iodata_to_binary()
@@ -82,7 +82,7 @@ defmodule Logflare.Bench.ClickHouseMapperRowBinaryFusion do
     Enum.map(id_tid_pairs, fn {id, tid} ->
       case IngestEventQueue.lookup_event(tid, id) do
         %LogEvent{} = event ->
-          output_context = OutputContext.clickhouse_row_binary(event, mapping_config_id)
+          output_context = OutputContext.ch_row_binary(event, mapping_config_id)
           row = Mapper.map(event.body, compiled, output_context: output_context)
           :zlib.deflate(z, row)
 
@@ -91,6 +91,13 @@ defmodule Logflare.Bench.ClickHouseMapperRowBinaryFusion do
       end
     end)
   end
+
+  @spec with_out_of_range_severity([LogEvent.t()], atom()) :: [LogEvent.t()]
+  def with_out_of_range_severity(events, :log) do
+    Enum.map(events, &%{&1 | body: Map.put(&1.body, "severity_number", 25)})
+  end
+
+  def with_out_of_range_severity(events, _type), do: events
 
   defp maybe_compute_duration(
          %{"start_time" => start_time, "end_time" => end_time, "duration" => 0} = body,
@@ -103,7 +110,7 @@ defmodule Logflare.Bench.ClickHouseMapperRowBinaryFusion do
   defp maybe_compute_duration(body, _type), do: body
 
   defp resolve_severity_number(%{"severity_number_alt" => alt} = body, :log)
-       when is_integer(alt) and alt > 0 do
+       when is_integer(alt) and alt in 1..24 do
     %{body | "severity_number" => alt}
   end
 
@@ -140,6 +147,13 @@ inputs =
 
     if actual != expected do
       raise "fused RowBinary differs for #{type}/batch=#{batch_size}"
+    end
+
+    out_of_range = Fusion.with_out_of_range_severity(events, type)
+
+    if Fusion.encode_fused(out_of_range, type, output_compiled, mapping_config_id) !=
+         Fusion.encode_separate(out_of_range, type, map_compiled, mapping_config_id) do
+      raise "fused RowBinary differs for #{type}/batch=#{batch_size} with an out-of-range severity"
     end
 
     IO.puts("#{type}/batch=#{batch_size}: validation=ok bytes=#{byte_size(expected)}")

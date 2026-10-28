@@ -92,10 +92,11 @@ defmodule Logflare.Backends.Adaptor.GoogleSecOpsAdaptor do
   end
 
   @impl HttpBased.Client
-  def client_opts(%Backend{config: config}) do
+  def client_opts(%Backend{config: config} = backend) do
     [
       url: endpoint_url(config),
       formatter: HttpBased.NdjsonFormatter,
+      formatter_opts: [metadata: [backend_id: backend.id]],
       json: false,
       headers: %{
         "x-goog-api-key" => config.api_key,

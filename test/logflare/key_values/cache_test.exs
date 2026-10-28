@@ -2,9 +2,13 @@ defmodule Logflare.KeyValues.CacheTest do
   @moduledoc false
   use Logflare.DataCase, async: false
 
+  alias Logflare.ContextCache
   alias Logflare.KeyValues
+  alias Logflare.KeyValues.CacheWarmer
 
   setup do
+    :persistent_term.erase({CacheWarmer, :initialized})
+    :persistent_term.erase({CacheWarmer, :warmed_at})
     user = insert(:user)
     [user: user]
   end
@@ -28,27 +32,104 @@ defmodule Logflare.KeyValues.CacheTest do
     assert {:cached, "abc"} = Cachex.get!(KeyValues.Cache, cache_key)
   end
 
+  test "lookup/3 on a warmed entry", %{user: user} do
+    value = %{"org" => %{"id" => "abc", "name" => "Acme"}}
+    insert(:key_value, user: user, key: "proj1", value: value)
+    KeyValues.CacheWarmer.warm_recent()
+    reject(&KeyValues.lookup/2)
+    reject(&KeyValues.lookup/3)
+
+    for {accessor_path, expected} <- [
+          {"org.id", "abc"},
+          {"$.org.name", "Acme"},
+          {"org.missing", nil}
+        ] do
+      assert KeyValues.Cache.lookup(user.id, "proj1", accessor_path) == expected
+    end
+  end
+
   test "lookup/2 returns nil for missing keys", %{user: user} do
     assert nil == KeyValues.Cache.lookup(user.id, "nonexistent")
   end
 
-  test "bust_by/1 clears cached lookup and all accessor variants", %{user: user} do
-    value = %{"org" => %{"id" => "abc"}}
-    insert(:key_value, user: user, key: "proj1", value: value)
+  test "busting a cached lookup and its accessor variants", %{user: user} do
+    kv = insert(:key_value, user: user, key: "proj1", value: %{"org" => %{"id" => "abc"}})
 
-    # populate cache with different accessor paths
-    assert ^value = KeyValues.Cache.lookup(user.id, "proj1")
     assert "abc" = KeyValues.Cache.lookup(user.id, "proj1", "org.id")
+    assert %{"org" => %{"id" => "abc"}} = KeyValues.Cache.lookup(user.id, "proj1")
 
-    # bust clears both lookups + count entry (if cached)
-    assert {:ok, busted} = KeyValues.Cache.bust_by(user_id: user.id, key: "proj1")
-    assert busted >= 2
-    assert is_nil(Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "proj1", nil]}))
-    assert is_nil(Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "proj1", "org.id"]}))
+    new_value = %{"org" => %{"id" => "xyz"}}
+    kv |> Ecto.Changeset.change(value: new_value) |> Repo.update!()
+    assert {:ok, _} = ContextCache.bust_keys([{KeyValues, user_id: user.id, key: "proj1"}])
+
+    assert "xyz" = KeyValues.Cache.lookup(user.id, "proj1", "org.id")
+    assert ^new_value = KeyValues.Cache.lookup(user.id, "proj1")
   end
 
-  test "bust_by/1 returns 0 when key not cached", %{user: user} do
-    assert {:ok, 0} = KeyValues.Cache.bust_by(user_id: user.id, key: "nonexistent")
+  test "busting a key that is not cached", %{user: user} do
+    assert {:ok, 0} = ContextCache.bust_keys([{KeyValues, user_id: user.id, key: "nonexistent"}])
+  end
+
+  describe "touch_recent_usages/1" do
+    alias Logflare.KeyValues.KeyValueUsage
+
+    setup %{user: user} do
+      kv1 = insert(:key_value, user: user, key: "k1")
+      kv2 = insert(:key_value, user: user, key: "k2")
+      [kv1: kv1, kv2: kv2]
+    end
+
+    test "duplicated accessor-path", %{user: user, kv1: %{id: kv1_id}} do
+      for path <- [nil, "org.id", "$.org.id"] do
+        {:ok, true} =
+          Cachex.put(KeyValues.Cache, {:lookup, [user.id, "k1", path]}, {:cached, "v"})
+      end
+
+      assert {:ok, 1} = KeyValues.Cache.touch_recent_usages(DateTime.utc_now())
+      assert [%KeyValueUsage{key_value_id: ^kv1_id}] = Repo.all(KeyValueUsage)
+    end
+
+    test "count key", %{user: user} do
+      {:ok, true} = Cachex.put(KeyValues.Cache, {:count, user.id}, {:cached, 5})
+
+      assert {:ok, 0} = KeyValues.Cache.touch_recent_usages(DateTime.utc_now())
+      assert [] = Repo.all(KeyValueUsage)
+    end
+
+    test "outside window", %{user: user} do
+      {:ok, true} = Cachex.put(KeyValues.Cache, {:lookup, [user.id, "k1", nil]}, {:cached, "v"})
+
+      # Passing a future `now` makes cutoff = future - 20min, which is after the
+      # entry's modified time (≈ real now), so the entry falls outside the window.
+      future = DateTime.add(DateTime.utc_now(), 25, :minute)
+      assert {:ok, 0} = KeyValues.Cache.touch_recent_usages(future)
+      assert [] = Repo.all(KeyValueUsage)
+    end
+
+    test "entries written by the initial warm", %{user: user, kv1: %{id: kv1_id, key: key}} do
+      CacheWarmer.execute(nil)
+      assert {:ok, 0} = KeyValues.Cache.touch_recent_usages(DateTime.utc_now())
+
+      Process.sleep(2)
+      {:ok, true} = Cachex.put(KeyValues.Cache, {:lookup, [user.id, key, nil]}, {:cached, "v"})
+
+      assert {:ok, 1} = KeyValues.Cache.touch_recent_usages(DateTime.utc_now())
+      assert [%KeyValueUsage{key_value_id: ^kv1_id}] = Repo.all(KeyValueUsage)
+    end
+
+    test "multiple users", %{user: user, kv1: kv1, kv2: kv2} do
+      other = insert(:user)
+      kv_other = insert(:key_value, user: other, key: "k3")
+
+      for {uid, key} <- [{user.id, "k1"}, {user.id, "k2"}, {other.id, "k3"}] do
+        {:ok, true} = Cachex.put(KeyValues.Cache, {:lookup, [uid, key, nil]}, {:cached, "v"})
+      end
+
+      assert {:ok, 3} = KeyValues.Cache.touch_recent_usages(DateTime.utc_now())
+
+      ids = Repo.all(KeyValueUsage) |> MapSet.new(& &1.key_value_id)
+      assert ids == MapSet.new([kv1.id, kv2.id, kv_other.id])
+    end
   end
 
   describe "count/1" do
@@ -61,14 +142,14 @@ defmodule Logflare.KeyValues.CacheTest do
       assert KeyValues.Cache.count(user.id) == 2
     end
 
-    test "bust_by/1 clears cached count", %{user: user} do
+    test "busting a cached count", %{user: user} do
       insert(:key_value, user: user, key: "k1")
 
       # populate cache
       assert 1 = KeyValues.Cache.count(user.id)
 
       # bust clears it
-      KeyValues.Cache.bust_by(user_id: user.id, key: "k1")
+      ContextCache.bust_keys([{KeyValues, user_id: user.id, key: "k1"}])
 
       cache_key = {:count, user.id}
       assert is_nil(Cachex.get!(KeyValues.Cache, cache_key))

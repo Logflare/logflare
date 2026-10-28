@@ -16,6 +16,7 @@ defmodule Logflare.Sql.Parser do
 
     # When your NIF is loaded, it will override this function.
     def parse(_dialect, _query), do: :erlang.nif_error(:nif_not_loaded)
+    def parse_clickhouse_converted(_query), do: :erlang.nif_error(:nif_not_loaded)
     def to_string(_query), do: :erlang.nif_error(:nif_not_loaded)
   end
 
@@ -31,9 +32,21 @@ defmodule Logflare.Sql.Parser do
   end
 
   @doc """
-  Converts an AST or list of ASTs back into a SQL string.
+  Parses final internal ClickHouse SQL after parameter conversion, including native positional bindings.
+  Customer SQL must use `parse/2` before conversion.
   """
-  @spec to_string(map() | [map()]) :: {:ok, String.t()}
+  @spec parse_clickhouse_converted(String.t()) :: {:ok, [map()]} | {:error, String.t()}
+  def parse_clickhouse_converted(query) when is_non_empty_binary(query) do
+    with {:ok, json} <- Native.parse_clickhouse_converted(query), do: Jason.decode(json)
+  end
+
+  @doc """
+  Converts an AST or list of ASTs back into a SQL string.
+
+  Returns an error when the AST cannot be deserialized by the parser crate, for
+  example when a hand-built node is missing a required field.
+  """
+  @spec to_string(map() | [map()]) :: {:ok, String.t()} | {:error, String.t()}
   def to_string(ast) when is_map(ast), do: __MODULE__.to_string([ast])
 
   def to_string(asts) when is_list(asts) do

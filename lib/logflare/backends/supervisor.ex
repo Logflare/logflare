@@ -7,6 +7,7 @@ defmodule Logflare.Backends.Supervisor do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Sources.Source.BigQuery.SchemaMetrics
 
   def start_link(_) do
     Supervisor.start_link(__MODULE__, [])
@@ -20,7 +21,9 @@ defmodule Logflare.Backends.Supervisor do
     spool_provider = Keyword.get(spool_config, :provider, :aws)
 
     producer_children =
-      if Backends.spool_producer_mode?(), do: [Backends.Spool.ProducerSup], else: []
+      if Backends.spool_producer_mode?(),
+        do: [Backends.Spool.DurableBuffer.Supervisor],
+        else: []
 
     consumer_children =
       if Backends.spool_consumer_mode?(), do: [Backends.Spool.ConsumerSup], else: []
@@ -28,10 +31,10 @@ defmodule Logflare.Backends.Supervisor do
     spool_goth_children =
       if spool_provider == :gcp, do: List.wrap(spool_goth_child_spec()), else: []
 
-    # Shared by both Spool.ProducerSup (batch splitter early-flush decision)
-    # and Spool.ConsumerPipeline.QueueProducer (fetch throttling) — started
-    # here rather than under either sup, since a node can run producer-only,
-    # consumer-only, or both.
+    # Used by Spool.ConsumerPipeline.QueueProducer (fetch throttling) —
+    # started here rather than under ConsumerSup, since a node can run
+    # producer-only, consumer-only, or both, and this only matters when
+    # consuming.
     spool_memory_monitor_children =
       if producer_children != [] or consumer_children != [],
         do: [Backends.Spool.MemoryMonitor],
@@ -39,14 +42,20 @@ defmodule Logflare.Backends.Supervisor do
 
     children =
       [
+        SchemaMetrics,
         Backends.IngestEventQueue,
         Backends.IngestEventQueue.BufferCacheWorker,
         Backends.IngestEventQueue.MapperJanitor,
         Backends.IngestEventQueue.GenerationJanitor,
+        Logflare.Mapper.ConfigStore,
         Backends.Adaptor.PostgresAdaptor.Supervisor,
-        Backends.Adaptor.ClickHouseAdaptor.MappingConfigStore,
         Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup,
         Backends.ConsolidatedSup,
+        Backends.DefaultIngestRefresher.supervisor_spec(),
+        %{
+          id: Backends.SourceSupStarts,
+          start: {Cachex, :start_link, [Backends.SourceSupStarts, []]}
+        },
         {PartitionSupervisor, child_spec: DynamicSupervisor, name: Backends.SourcesSup},
         {Registry,
          name: Backends.SourceRegistry, keys: :unique, partitions: max(round(base / 8), 1)},
@@ -55,7 +64,8 @@ defmodule Logflare.Backends.Supervisor do
         {Registry,
          name: Backends.BufferProducer.InFlightRegistry,
          keys: :unique,
-         partitions: max(round(base / 8), 1)}
+         partitions: max(round(base / 8), 1)},
+        Backends.UserMonitoring.SystemSourceStarter
       ] ++
         spool_goth_children ++
         spool_memory_monitor_children ++ producer_children ++ consumer_children

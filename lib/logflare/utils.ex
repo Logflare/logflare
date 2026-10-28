@@ -8,7 +8,6 @@ defmodule Logflare.Utils do
   alias Logflare.Backends.Backend
   alias Logflare.OauthAccessTokens.OauthAccessToken
   alias Logflare.OauthAccessTokens.PartnerOauthAccessToken
-  import Cachex.Spec
   import Logflare.Utils.Guards, only: [is_atom_value: 1]
 
   @sensitive_header_names ["authorization", "x-api-key", "Authorization", "X-API-Key"]
@@ -67,49 +66,6 @@ defmodule Logflare.Utils do
   @original_to_string String.Chars.impl_for(%Tesla.Env{})
   def tesla_env_to_string, do: @original_to_string
 
-  def cache_stats do
-    hook(module: Cachex.Stats)
-  end
-
-  def cache_limit(n) when is_integer(n) do
-    hook(
-      module: Cachex.Limit.Scheduled,
-      args: {
-        # setting cache max size
-        n,
-        # options for `Cachex.prune/3`
-        [],
-        # options for `Cachex.Limit.Scheduled`
-        []
-      }
-    )
-  end
-
-  @doc """
-  Builds a long Cachex expiration spec
-  Defaults to 20 min with 5 min cleanup intervals
-  """
-  @spec cache_expiration_min(non_neg_integer(), non_neg_integer()) :: Cachex.Spec.expiration()
-  def cache_expiration_min(default \\ 20, interval \\ 5) do
-    cache_expiration_sec(default * 60, interval * 60)
-  end
-
-  @doc """
-  Builds a short Cachex expiration spec
-  Defaults to 60 sec with 20 sec cleanup intervals
-  """
-  @spec cache_expiration_sec(non_neg_integer(), non_neg_integer()) :: Cachex.Spec.expiration()
-  def cache_expiration_sec(default \\ 60, interval \\ 20) do
-    expiration(
-      # default record expiration of 20 mins
-      default: :timer.seconds(default),
-      # how often cleanup should occur, 5 mins
-      interval: :timer.seconds(interval),
-      # whether to enable lazy checking
-      lazy: true
-    )
-  end
-
   @doc """
   Stringifies an atom map to a string map.
 
@@ -154,6 +110,75 @@ defmodule Logflare.Utils do
   def stringify(v) when is_float(v), do: Float.to_string(v)
   def stringify(v) when is_integer(v), do: Integer.to_string(v)
   def stringify(v), do: inspect(v)
+
+  @doc """
+  Parses a value into a float.
+
+  Accepts binaries, integers, and floats. Raises on unsupported types or
+  unparseable binaries.
+
+  ## Examples
+
+    iex> Logflare.Utils.parse_float!("1.5")
+    1.5
+    iex> Logflare.Utils.parse_float!("1")
+    1.0
+    iex> Logflare.Utils.parse_float!("1e-4")
+    1.0e-4
+    iex> Logflare.Utils.parse_float!(" 0.95\\n")
+    0.95
+    iex> Logflare.Utils.parse_float!(".95")
+    0.95
+    iex> Logflare.Utils.parse_float!(2)
+    2.0
+    iex> Logflare.Utils.parse_float!(3.14)
+    3.14
+  """
+  @spec parse_float!(binary() | integer() | float()) :: float()
+  def parse_float!(v) when is_binary(v) do
+    v
+    |> String.trim()
+    |> pad_leading_dot()
+    |> Float.parse()
+    |> case do
+      {float, ""} -> float
+      _ -> raise ArgumentError, "Could not parse to float: #{inspect(v)}"
+    end
+  end
+
+  def parse_float!(v) when is_integer(v), do: v / 1
+  def parse_float!(v) when is_float(v), do: v
+  def parse_float!(v), do: raise("Could not parse to float: #{inspect(v)}")
+
+  defp pad_leading_dot("." <> _rest = v), do: "0" <> v
+  defp pad_leading_dot("-." <> rest), do: "-0." <> rest
+  defp pad_leading_dot(v), do: v
+
+  @doc """
+  Parses a value into a float bounded to the `0.0..1.0` range, raising if it
+  falls outside that range. Intended for ratio/ratio-like configuration values
+  (e.g. sampling ratios) where an out-of-range value would otherwise crash
+  later at the point of use instead of at boot.
+
+  ## Examples
+
+    iex> Logflare.Utils.parse_ratio!("0.5")
+    0.5
+    iex> Logflare.Utils.parse_ratio!(1)
+    1.0
+    iex> Logflare.Utils.parse_ratio!("2")
+    ** (ArgumentError) Ratio must be between 0.0 and 1.0, got: "2"
+  """
+  @spec parse_ratio!(binary() | integer() | float()) :: float()
+  def parse_ratio!(v) do
+    case parse_float!(v) do
+      float when float >= 0.0 and float <= 1.0 ->
+        float
+
+      _float ->
+        raise ArgumentError, "Ratio must be between 0.0 and 1.0, got: #{inspect(v)}"
+    end
+  end
 
   @doc """
   Appends a value to the end of a tuple.

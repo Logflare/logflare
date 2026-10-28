@@ -219,9 +219,16 @@ defmodule Logflare.Backends.Spool.MemoryMonitorTest do
       # This is the exact bug the earlier cached_local_pending_buffer_full?/1
       # based check missed: it only ever looks at the system default (nil)
       # queue plus backends explicitly flagged default_ingest?: true — a
-      # perfectly normal, non-default-ingest backend (e.g. ClickHouse) can be
+      # perfectly normal, non-default-ingest backend (e.g. a webhook) can be
       # completely backlogged and it would report "not full" regardless.
-      backend = insert(:backend, user: user, type: :clickhouse, default_ingest?: false)
+      backend =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://example.com"},
+          default_ingest?: false
+        )
+
       {:ok, _source} = Backends.update_source_backends(source, [backend])
       backend_table_key = {source.id, backend.id, self()}
       IngestEventQueue.upsert_tid(backend_table_key)

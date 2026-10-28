@@ -5,10 +5,13 @@ defmodule Logflare.EndpointsTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryErrorNormalizer
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
   alias Logflare.Endpoints
   alias Logflare.Endpoints.EndpointQuery
+  alias Logflare.Endpoints.ResultsCache
   alias PaperTrail.Version
 
   @endpoint_query_attrs %{
@@ -72,6 +75,217 @@ defmodule Logflare.EndpointsTest do
   test "get_by/1" do
     endpoint = insert(:endpoint, name: "some endpoint")
     assert endpoint.id == Endpoints.get_by(name: "some endpoint").id
+  end
+
+  describe "enforced ClickHouse endpoint settings" do
+    setup do
+      owner = insert(:user)
+      admin = insert(:user, admin: true)
+      insert(:source, user: owner, name: "settings_source")
+      backend = insert(:backend, user: owner, type: :clickhouse)
+
+      endpoint =
+        insert(:endpoint,
+          user: owner,
+          backend: backend,
+          language: :ch_sql,
+          sandboxable: true,
+          query: "WITH src AS (SELECT a FROM settings_source) SELECT a FROM src"
+        )
+
+      [owner: owner, admin: admin, endpoint: endpoint]
+    end
+
+    test "only an administrator can configure validated limits; user updates cannot change them",
+         %{
+           owner: owner,
+           admin: admin,
+           endpoint: endpoint
+         } do
+      limits = %{"max_bytes_to_read" => 1024}
+
+      assert {:error, :forbidden} =
+               Endpoints.configure_enforced_clickhouse_settings(owner, endpoint, limits)
+
+      assert {:error, _} =
+               Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, %{
+                 "allow_introspection_functions" => 1
+               })
+
+      assert {:ok, updated} =
+               Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, limits)
+
+      assert updated.enforced_clickhouse_settings == %{
+               "max_bytes_to_read" => 1024,
+               "read_overflow_mode" => "throw"
+             }
+
+      assert {:ok, user_updated} =
+               Endpoints.update_query(owner, updated, %{enforced_clickhouse_settings: %{}}, owner)
+
+      assert user_updated.enforced_clickhouse_settings == updated.enforced_clickhouse_settings
+    end
+
+    test "historical queries use current operator limits instead of snapshot settings", %{
+      admin: admin,
+      endpoint: endpoint
+    } do
+      insert(:endpoint_version,
+        endpoint: endpoint,
+        version_number: 1,
+        snapshot_overrides: %{
+          "query" => "WITH src AS (SELECT b FROM settings_source) SELECT b FROM src",
+          "enforced_clickhouse_settings" => %{"max_execution_time" => 100}
+        }
+      )
+
+      for settings <- [%{"max_execution_time" => 5}, %{"max_execution_time" => 3}, %{}] do
+        assert {:ok, current} =
+                 Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, settings)
+
+        assert {:ok, historical} = Endpoints.get_endpoint_query_at_version(current.id, 1)
+        assert historical.enforced_clickhouse_settings == current.enforced_clickhouse_settings
+        assert {:ok, sql} = Endpoints.get_transformed_query(historical)
+        assert sql =~ "SELECT b FROM settings_source"
+
+        if settings == %{} do
+          refute sql =~ "max_execution_time"
+        else
+          assert sql =~ "max_execution_time = #{settings["max_execution_time"]}"
+        end
+      end
+    end
+
+    test "previews reload current policy while preserving unsaved and historical SQL", %{
+      admin: admin,
+      endpoint: endpoint
+    } do
+      insert(:endpoint_version,
+        endpoint: endpoint,
+        version_number: 1,
+        snapshot_overrides: %{
+          "query" => "WITH src AS (SELECT b FROM settings_source) SELECT b FROM src"
+        }
+      )
+
+      assert {:ok, historical} = Endpoints.get_endpoint_query_at_version(endpoint.id, 1)
+
+      unsaved = %{
+        endpoint
+        | query: "SELECT 42 AS edited",
+          enforced_clickhouse_settings: %{"max_execution_time" => 100}
+      }
+
+      for settings <- [%{"max_execution_time" => 5}, %{}] do
+        assert {:ok, _} =
+                 Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, settings)
+
+        for {query, expected} <- [{historical, "SELECT b"}, {unsaved, "SELECT 42 AS edited"}] do
+          assert {:ok, sql} = Endpoints.get_transformed_query(query)
+          assert sql =~ expected
+
+          if settings == %{},
+            do: refute(sql =~ "max_execution_time"),
+            else: assert(sql =~ "max_execution_time = 5")
+        end
+      end
+    end
+
+    test "applies limits to default and caller SQL, rejects overrides", %{
+      admin: admin,
+      endpoint: endpoint
+    } do
+      {:ok, endpoint} =
+        Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, %{
+          "max_execution_time" => 5
+        })
+
+      assert {:ok, default_sql} = Endpoints.get_transformed_query(endpoint)
+      assert default_sql =~ "SETTINGS max_execution_time = 5"
+
+      assert {:ok, custom_sql} =
+               Endpoints.get_transformed_query(endpoint, %{
+                 "sql" => "SELECT a FROM src SETTINGS optimize_read_in_order = 1"
+               })
+
+      assert custom_sql =~ "optimize_read_in_order = 1"
+      assert custom_sql =~ "max_execution_time = 5"
+
+      assert {:error, "Restricted setting max_execution_time"} =
+               Endpoints.get_transformed_query(endpoint, %{
+                 "sql" => "SELECT a FROM src SETTINGS max_execution_time = 100"
+               })
+    end
+  end
+
+  test "EXPLAIN endpoint queries execute with enforced limits" do
+    owner = insert(:user)
+    admin = insert(:user, admin: true)
+    {_source, backend} = setup_clickhouse_test(user: owner)
+    start_supervised!({ClickHouseAdaptor, backend})
+
+    endpoint =
+      insert(:endpoint,
+        user: owner,
+        backend: backend,
+        language: :ch_sql,
+        query: "EXPLAIN SELECT 1 AS n"
+      )
+
+    assert {:ok, endpoint} =
+             Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, %{
+               "max_execution_time" => 5
+             })
+
+    assert {:ok, transformed} = Endpoints.get_transformed_query(endpoint)
+    assert transformed =~ "EXPLAIN SELECT 1 AS n SETTINGS max_execution_time = 5"
+    assert {:ok, %{rows: [_ | _]}} = Endpoints.run_query(endpoint)
+  end
+
+  test "enforced read limits are observed by ClickHouse execution" do
+    owner = insert(:user)
+    admin = insert(:user, admin: true)
+    source = insert(:source, user: owner, name: "bounded_source")
+    {_source, backend} = setup_clickhouse_test(user: owner, source: source)
+    start_supervised!({ClickHouseAdaptor, backend})
+    assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
+
+    events =
+      for i <- 1..5 do
+        build_mapped_log_event(source: source, message: "bounded #{i}")
+      end
+
+    assert :ok = ClickHouseAdaptor.insert_log_events(backend, events, :log)
+    table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+
+    TestUtils.retry_assert(fn ->
+      assert {:ok, {[%{"total" => 5}], _bytes}} =
+               ClickHouseAdaptor.execute_ch_query(
+                 backend,
+                 "SELECT count() AS total FROM #{table_name} WHERE source_name = '#{source.name}'"
+               )
+    end)
+
+    endpoint =
+      insert(:endpoint,
+        user: owner,
+        backend: backend,
+        language: :ch_sql,
+        sandboxable: true,
+        query:
+          "WITH src AS (SELECT event_message FROM #{table_name} WHERE source_name = '#{source.name}') " <>
+            "SELECT count() FROM src"
+      )
+
+    {:ok, endpoint} =
+      Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, %{
+        "max_rows_to_read" => 1
+      })
+
+    assert {:error, %QueryError{} = error} =
+             Endpoints.run_query(endpoint, %{"sql" => "SELECT count() FROM src"})
+
+    assert inspect(error.raw_error) =~ "max_rows_to_read"
   end
 
   test "get_mapped_query_by_token/1 transforms renamed source names correctly" do
@@ -463,6 +677,68 @@ defmodule Logflare.EndpointsTest do
       assert nil == Endpoints.get_endpoint_query_version(endpoint.id, 3)
       assert nil == Endpoints.get_endpoint_query_version(endpoint.id + 1, 1)
     end
+
+    test "get_endpoint_query_at_version/2 returns the endpoint snapshot", %{
+      user: user
+    } do
+      source = insert(:source, user: user, name: "old_table")
+
+      assert {:ok, endpoint} =
+               Endpoints.create_query(
+                 user,
+                 %{
+                   name: "versioned-runnable",
+                   query: "select a from old_table",
+                   language: :bq_sql,
+                   labels: "environment",
+                   redact_pii: true,
+                   enable_dynamic_reservation: true,
+                   cache_duration_seconds: 123,
+                   proactive_requerying_seconds: 45
+                 },
+                 user
+               )
+
+      assert {:ok, updated_endpoint} =
+               Endpoints.update_query(user, endpoint, %{query: "select b from old_table"}, user)
+
+      source
+      |> Ecto.Changeset.change(name: "new_table")
+      |> Logflare.Repo.update!()
+
+      endpoint_id = updated_endpoint.id
+      token = updated_endpoint.token
+      user_id = user.id
+
+      assert {:ok,
+              %EndpointQuery{
+                id: ^endpoint_id,
+                user_id: ^user_id,
+                token: ^token,
+                version_number: 1,
+                labels: "environment",
+                redact_pii: true,
+                enable_dynamic_reservation: true,
+                cache_duration_seconds: 123,
+                proactive_requerying_seconds: 45,
+                query: query
+              }} =
+               Endpoints.get_endpoint_query_at_version(updated_endpoint, 1)
+
+      assert String.downcase(query) == "select a from new_table"
+    end
+
+    test "get_endpoint_query_at_version/2 rejects invalid version numbers", %{
+      user: user,
+      endpoint_params: endpoint_params
+    } do
+      assert {:ok, endpoint} = Endpoints.create_query(user, endpoint_params, user)
+
+      for version <- [0, -1, "1", nil] do
+        assert {:error, :invalid_version} =
+                 Endpoints.get_endpoint_query_at_version(endpoint, version)
+      end
+    end
   end
 
   test "parse_query_string/1" do
@@ -620,9 +896,9 @@ defmodule Logflare.EndpointsTest do
 
       endpoint_id_label_value = Integer.to_string(endpoint_id)
 
-      assert_received %{
-        "endpoint_id" => ^endpoint_id_label_value
-      }
+      assert_received labels
+      assert labels["endpoint_id"] == endpoint_id_label_value
+      refute Map.has_key?(labels, "endpoint_version")
     end
 
     test "run_query/3 uses a 60s timeout when a custom reservation is provided" do
@@ -698,7 +974,9 @@ defmodule Logflare.EndpointsTest do
         )
 
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
-      assert_received %{"my_label" => "my_value"}
+      assert_received labels
+      assert labels["my_label"] == "my_value"
+      refute Map.has_key?(labels, "endpoint_version")
     end
 
     test "run_query_string/3" do
@@ -847,6 +1125,62 @@ defmodule Logflare.EndpointsTest do
                Endpoints.run_query(endpoint)
     end
 
+    test "run_query_string/3 applies PII redaction to ClickHouse error descriptions" do
+      user = insert(:user)
+      insert(:source, user: user, name: "c")
+      insert(:backend, user: user, type: :clickhouse)
+
+      stub(ClickHouseAdaptor, :execute_query, fn _backend, _query, _opts ->
+        {:error,
+         QueryErrorNormalizer.normalize(%Ch.Error{
+           code: 6,
+           message:
+             "Code: 6. DB::Exception: Cannot parse string '203.0.113.5' as UInt8: syntax error at position 3 (parsed just '203'). (CANNOT_PARSE_TEXT)"
+         })}
+      end)
+
+      query = {:ch_sql, "SELECT toUInt8(ip) FROM c"}
+
+      assert {:error, %{description: redacted}} =
+               Endpoints.run_query_string(user, query, redact_pii: true)
+
+      assert redacted ==
+               "Cannot parse string 'REDACTED' as UInt8: syntax error at position 3 (parsed just '203'). (CANNOT_PARSE_TEXT)"
+
+      assert {:error, %{description: unredacted}} =
+               Endpoints.run_query_string(user, query, redact_pii: false)
+
+      assert unredacted =~ "'203.0.113.5'"
+    end
+
+    test "run_query_string/3 applies PII redaction to IPv6 values in ClickHouse error descriptions" do
+      user = insert(:user)
+      insert(:source, user: user, name: "c")
+      insert(:backend, user: user, type: :clickhouse)
+
+      stub(ClickHouseAdaptor, :execute_query, fn _backend, _query, _opts ->
+        {:error,
+         QueryErrorNormalizer.normalize(%Ch.Error{
+           code: 6,
+           message:
+             "Code: 6. DB::Exception: Cannot parse string '2001:db8::1' as UInt8: syntax error at position 4 (parsed just '2001'). (CANNOT_PARSE_TEXT)"
+         })}
+      end)
+
+      query = {:ch_sql, "SELECT toUInt8(ip) FROM c"}
+
+      assert {:error, %{description: redacted}} =
+               Endpoints.run_query_string(user, query, redact_pii: true)
+
+      assert redacted ==
+               "Cannot parse string 'REDACTED' as UInt8: syntax error at position 4 (parsed just '2001'). (CANNOT_PARSE_TEXT)"
+
+      assert {:error, %{description: unredacted}} =
+               Endpoints.run_query_string(user, query, redact_pii: false)
+
+      assert unredacted =~ "'2001:db8::1'"
+    end
+
     test "run_cached_query/2 applies PII redaction" do
       expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response([%{"ip" => "192.168.1.1"}])}
@@ -955,10 +1289,20 @@ defmodule Logflare.EndpointsTest do
             key -> Map.new([{key, 123}])
           end
 
+        monitor_ref = Process.monitor(cache_pid)
         assert {:ok, updated} = Endpoints.update_query(user, endpoint, params, user)
-        # should kill the cache process
-        :timer.sleep(500)
-        refute Process.alive?(cache_pid)
+        assert_receive {:DOWN, ^monitor_ref, :process, ^cache_pid, :normal}
+
+        TestUtils.retry_assert(fn ->
+          assert GenServer.whereis(ResultsCache.name(endpoint, %{})) == nil
+        end)
+
+        # run_cached_query would create a cache that outlives this test.
+        # Start it under ExUnit so it stops before the endpoint fixture is rolled back.
+        start_supervised!({Logflare.Endpoints.ResultsCache, {updated, %{}, []}},
+          id: :replacement_cache
+        )
+
         # 2nd query should not hit cache
         assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(updated)
       end

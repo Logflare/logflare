@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<clickhouse>
+    <logger>
+        <level>warning</level>
+        <console>1</console>
+        <log>/dev/null</log>
+        <errorlog>/dev/null</errorlog>
+    </logger>
+</clickhouse>

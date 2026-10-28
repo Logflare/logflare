@@ -29,8 +29,35 @@ defmodule Logflare.Backends.Backend do
     last9: Adaptor.Last9Adaptor,
     signoz: Adaptor.SigNozAdaptor,
     syslog: Adaptor.SyslogAdaptor,
+    splunk: Adaptor.SplunkAdaptor,
     google_secops: Adaptor.GoogleSecOpsAdaptor
   }
+
+  @type_labels %{
+    axiom: "Axiom",
+    bigquery: "BigQuery",
+    clickhouse: "ClickHouse",
+    datadog: "Datadog",
+    elastic: "Elastic",
+    google_secops: "Google SecOps",
+    incidentio: "Incident.io",
+    last9: "Last9",
+    loki: "Loki",
+    otlp: "OTLP",
+    postgres: "Postgres",
+    s3: "S3",
+    sentry: "Sentry",
+    signoz: "SigNoz",
+    syslog: "Syslog",
+    splunk: "Splunk",
+    webhook: "Webhook"
+  }
+
+  @missing_type_labels Map.keys(@adaptor_mapping) -- Map.keys(@type_labels)
+
+  if @missing_type_labels != [] do
+    raise "missing @type_labels entries for backend types: #{inspect(@missing_type_labels)}"
+  end
 
   typed_schema "backends" do
     field :name, :string
@@ -62,15 +89,66 @@ defmodule Logflare.Backends.Backend do
 
   def adaptor_mapping, do: @adaptor_mapping
 
-  def changeset(backend, attrs) do
+  @doc """
+  Human-readable label for a backend type.
+  """
+  @spec type_label(atom()) :: String.t()
+  def type_label(type) when is_atom(type), do: Map.fetch!(@type_labels, type)
+
+  @doc """
+  All backend types with their labels, sorted by label. Suitable for form selects.
+  """
+  @spec types_with_labels() :: [{String.t(), atom()}]
+  def types_with_labels do
+    @type_labels
+    |> Enum.map(fn {type, label} -> {label, type} end)
+    |> Enum.sort()
+  end
+
+  def changeset(backend, attrs, opts \\ []) do
     backend
     |> cast(attrs, [:type, :config, :name, :description, :metadata, :default_ingest?])
     |> validate_required([:user_id, :type, :config, :name])
     |> validate_inclusion(:type, Map.keys(@adaptor_mapping))
     |> validate_config()
+    |> protect_query_class_settings(opts)
     |> validate_default_ingest()
+    |> unique_constraint(:default_ingest?,
+      name: :idx_backends_default_ingest_per_user_type,
+      message:
+        "another backend of this type is already the default ingest backend for this account"
+    )
     |> do_config_change()
   end
+
+  @spec protect_query_class_settings(Changeset.t(), Keyword.t()) :: Changeset.t()
+  defp protect_query_class_settings(%Changeset{valid?: false} = changeset, _opts), do: changeset
+
+  defp protect_query_class_settings(changeset, opts) do
+    current = query_class_policy(changeset.data.config_encrypted)
+
+    proposed =
+      query_class_policy(get_field(changeset, :config) || changeset.data.config_encrypted)
+
+    changing_type? = get_field(changeset, :type) != changeset.data.type
+    changing_policy? = current != proposed or (current != %{} and changing_type?)
+
+    if changing_policy? and not Keyword.get(opts, :allow_query_class_settings, false) do
+      add_error(
+        changeset,
+        :"config.query_class_settings",
+        "can only be configured by an administrator"
+      )
+    else
+      changeset
+    end
+  end
+
+  @spec query_class_policy(term()) :: term()
+  defp query_class_policy(config) when is_map(config),
+    do: Map.get(config, :query_class_settings) || Map.get(config, "query_class_settings") || %{}
+
+  defp query_class_policy(_config), do: %{}
 
   # temp function
   defp do_config_change(%Changeset{changes: %{config: config}} = changeset) do
@@ -108,7 +186,7 @@ defmodule Logflare.Backends.Backend do
     type = get_field(changeset, :type)
     backend = %Backend{type: type}
 
-    if Adaptor.supports_default_ingest?(backend) do
+    if Adaptor.default_ingest_capable?(backend) do
       changeset
     else
       add_error(

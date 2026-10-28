@@ -5,12 +5,12 @@ defmodule Logflare.Google.BigQuery.EventUtilsTest do
 
   doctest EventUtils
 
-  describe "prepare_for_ingest/1" do
-    test "wraps event in list and nested maps in lists" do
+  describe "wrap_body_fields/1" do
+    test "wraps nested maps in lists" do
       event = %{"message" => "hello", "metadata" => %{"user_id" => "123"}}
 
-      result = EventUtils.prepare_for_ingest(event)
-      expected = [%{"message" => "hello", "metadata" => [%{"user_id" => "123"}]}]
+      result = EventUtils.wrap_body_fields(event)
+      expected = %{"message" => "hello", "metadata" => [%{"user_id" => "123"}]}
 
       assert result == expected
     end
@@ -18,9 +18,23 @@ defmodule Logflare.Google.BigQuery.EventUtilsTest do
     test "handles lists of maps unchanged" do
       event = %{"tags" => [%{"key" => "env", "value" => "prod"}]}
 
-      result = EventUtils.prepare_for_ingest(event)
+      result = EventUtils.wrap_body_fields(event)
 
-      assert result == [event]
+      assert result == event
+    end
+
+    test "wraps maps nested in top-level lists of maps" do
+      event = %{
+        "events" => [
+          %{"name" => "exception", "attributes" => %{"exception.message" => "timeout"}}
+        ]
+      }
+
+      assert EventUtils.wrap_body_fields(event) == %{
+               "events" => [
+                 %{"name" => "exception", "attributes" => [%{"exception.message" => "timeout"}]}
+               ]
+             }
     end
 
     test "handles nested list-of-lists (e.g. a serialized stacktrace)" do
@@ -31,7 +45,7 @@ defmodule Logflare.Google.BigQuery.EventUtilsTest do
         ]
       }
 
-      assert EventUtils.prepare_for_ingest(event) == [event]
+      assert EventUtils.wrap_body_fields(event) == event
     end
 
     test "handles a list whose head is a map but tail contains lists and scalars" do
@@ -43,17 +57,15 @@ defmodule Logflare.Google.BigQuery.EventUtilsTest do
         ]
       }
 
-      result = EventUtils.prepare_for_ingest(event)
+      result = EventUtils.wrap_body_fields(event)
 
-      expected = [
-        %{
-          "mixed" => [
-            %{"a" => [%{"b" => 1}]},
-            ["nested", "list"],
-            "scalar"
-          ]
-        }
-      ]
+      expected = %{
+        "mixed" => [
+          %{"a" => [%{"b" => 1}]},
+          ["nested", "list"],
+          "scalar"
+        ]
+      }
 
       assert result == expected
     end

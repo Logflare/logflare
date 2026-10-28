@@ -6,7 +6,6 @@ defmodule Logflare.Factory do
 
   alias Logflare.Backends.Backend
   alias Logflare.Billing.BillingAccount
-  alias Logflare.Billing.BillingCount
   alias Logflare.Billing.PaymentMethod
   alias Logflare.Billing.Plan
   alias Logflare.Endpoints.EndpointQuery
@@ -24,6 +23,7 @@ defmodule Logflare.Factory do
   alias Logflare.Users.UserPreferences
   alias Logflare.Alerting.AlertQuery
   alias Logflare.KeyValues.KeyValue
+  alias Logflare.KeyValues.KeyValueUsage
   alias Logflare.Google.BigQuery.SchemaUtils
   alias PaperTrail.Version
 
@@ -410,18 +410,6 @@ defmodule Logflare.Factory do
     )
   end
 
-  def billing_counts_factory do
-    user = insert(:user)
-    source = build(:source, user: user)
-
-    %BillingCount{
-      count: TestUtils.random_pos_integer(),
-      node: TestUtils.random_string(8),
-      user: user,
-      source: source
-    }
-  end
-
   def partner_factory do
     %Partner{
       name: TestUtils.random_string()
@@ -445,6 +433,13 @@ defmodule Logflare.Factory do
       user: build(:user),
       key: TestUtils.random_string(),
       value: %{"value" => TestUtils.random_string()}
+    }
+  end
+
+  def key_value_usage_factory do
+    %KeyValueUsage{
+      key_value: build(:key_value),
+      last_used_at: DateTime.utc_now()
     }
   end
 

@@ -2,8 +2,10 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
   @moduledoc false
   use Logflare.DataCase
 
-  alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Backends
   alias Logflare.Google.BigQuery.SchemaUtils
+  alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
 
   setup do
     insert(:plan)
@@ -18,7 +20,133 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
     assert seconds > 9
   end
 
+  test "plan_update/3 skips schema building during the update cooldown" do
+    schema =
+      %{}
+      |> SchemaBuilder.build_table_schema(SchemaBuilder.initial_table_schema())
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert :noop =
+                 Schema.plan_update(%{"invalid" => []}, schema, %{
+                   next_update: System.system_time(:millisecond) + 60_000
+                 })
+      end)
+
+    refute log =~ "Field schema type change error"
+  end
+
+  test "plan_update/3 compares schemas without changing update behavior" do
+    schema =
+      %{}
+      |> SchemaBuilder.build_table_schema(SchemaBuilder.initial_table_schema())
+
+    state = %{next_update: 0}
+
+    assert :noop = Schema.plan_update(%{}, schema, state)
+    assert {:update, updated_schema} = Schema.plan_update(%{"new_field" => 1}, schema, state)
+
+    assert %_{name: "new_field", type: "INTEGER"} =
+             TestUtils.get_bq_field_schema(updated_schema, "new_field")
+  end
+
+  test "reserve_update_slot/2 caps pending updates" do
+    counter = :atomics.new(1, [])
+
+    assert :ok = Schema.reserve_update_slot(counter, 2)
+    assert :ok = Schema.reserve_update_slot(counter, 2)
+    assert :full = Schema.reserve_update_slot(counter, 2)
+    assert Schema.pending_update_slots(counter) == 2
+  end
+
+  test "reserve_update_slot/2 caps concurrent callers" do
+    counter = :atomics.new(1, [])
+    limit = 32
+
+    results =
+      1..1_000
+      |> Task.async_stream(
+        fn _index -> Schema.reserve_update_slot(counter, limit) end,
+        max_concurrency: 64,
+        ordered: false
+      )
+      |> Enum.map(fn {:ok, result} -> result end)
+      |> Enum.frequencies()
+
+    assert results == %{ok: limit, full: 1_000 - limit}
+    assert Schema.pending_update_slots(counter) == limit
+  end
+
+  test "requires a Registry name for admission" do
+    user = insert(:user)
+    source = insert(:source, user: user)
+    log_event = build(:log_event, source: source)
+
+    assert_raise ArgumentError, ~r/expected :name to be a Registry name/, fn ->
+      Schema.start_link(
+        source: source,
+        plan: %{limit_source_fields_limit: 500},
+        bigquery_project_id: "some-id",
+        bigquery_dataset_id: "some-id"
+      )
+    end
+
+    assert_raise ArgumentError, ~r/expected the Schema server to use a Registry name/, fn ->
+      Schema.update(self(), log_event, source)
+    end
+  end
+
+  test "rejects invalid admission limits instead of starting ungated" do
+    user = insert(:user)
+    source = insert(:source, user: user)
+
+    assert_raise ArgumentError, ~r/expected :max_pending_samples to be a positive integer/, fn ->
+      Schema.start_link(
+        source: source,
+        max_pending_samples: 0,
+        plan: %{limit_source_fields_limit: 500},
+        bigquery_project_id: "some-id",
+        bigquery_dataset_id: "some-id",
+        name: Backends.via_source(source, Schema, nil)
+      )
+    end
+  end
+
+  test "registered updates release their slot when handling starts" do
+    user = insert(:user)
+    source = insert(:source, user: user, lock_schema: true)
+    name = Backends.via_source(source, Schema, nil)
+
+    pid =
+      start_supervised!(
+        {Schema,
+         [
+           source: source,
+           max_pending_samples: 1,
+           plan: %{limit_source_fields_limit: 500},
+           bigquery_project_id: "some-id",
+           bigquery_dataset_id: "some-id",
+           name: name
+         ]}
+      )
+
+    {:via, Registry, {registry, key}} = name
+    assert [{^pid, {:schema_admission, counter, 1}}] = Registry.lookup(registry, key)
+
+    assert :ok = Schema.update(name, build(:log_event, source: source), source)
+    :sys.get_state(pid)
+
+    assert Schema.pending_update_slots(counter) == 0
+    assert :ok = Schema.reserve_update_slot(counter, 1)
+  end
+
   test "updates correctly" do
+    # The suite allows 900,000 updates per minute, so both updates could patch BigQuery.
+    # Use one update per minute here to throttle the second, and restore the config on exit.
+    schema_config = Application.fetch_env!(:logflare, Schema)
+    on_exit(fn -> Application.put_env(:logflare, Schema, schema_config) end)
+    Application.put_env(:logflare, Schema, Keyword.put(schema_config, :updates_per_minute, 1))
+
     user = insert(:user)
     source = insert(:source, user: user)
     schema = TestUtils.default_bq_schema()
@@ -29,8 +157,6 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
       bigquery_schema: schema,
       schema_flat_map: SchemaUtils.bq_schema_to_flat_typemap(schema)
     )
-
-    test_pid = self()
 
     GoogleApi.BigQuery.V2.Api.Tables
     |> expect(:bigquery_tables_patch, 1, fn _conn,
@@ -43,12 +169,24 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
       assert %_{name: "test", type: "INTEGER"} =
                TestUtils.get_bq_field_schema(schema, "metadata.test")
 
-      send(test_pid, :ok)
       {:ok, %{}}
     end)
 
     Logflare.Mailer
     |> expect(:deliver, 1, fn _ -> :ok end)
+
+    handler_id = "schema-operation-#{System.unique_integer()}"
+
+    :telemetry.attach(
+      handler_id,
+      [:logflare, :bigquery, :schema, :operation, :stop],
+      fn _event, _measurements, metadata, pid -> send(pid, {:schema_phase, metadata}) end,
+      self()
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    name = Backends.via_source(source, Schema, nil)
 
     pid =
       start_supervised!(
@@ -57,20 +195,23 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
            source: source,
            plan: %{limit_source_fields_limit: 500},
            bigquery_project_id: "some-id",
-           bigquery_dataset_id: "some-id"
+           bigquery_dataset_id: "some-id",
+           name: name
          ]}
       )
 
     le = build(:log_event, source: source, metadata: %{"test" => 123})
-    assert :ok = Schema.update(pid, le, source)
+    assert :ok = Schema.update(name, le, source)
 
-    TestUtils.retry_assert(fn ->
-      assert_received :ok
-    end)
+    :sys.get_state(pid)
+    assert_receive {:schema_phase, %{phase: :patch, result: :ok}}
+    assert_receive {:schema_phase, %{phase: :persist}}
+    assert_receive {:schema_phase, %{phase: :notify, result: :ok}}
 
-    # subsequent updates do not increase mock count
+    # A subsequent update during cooldown does not patch BigQuery again.
     le = build(:log_event, source: source, metadata: %{"change" => 123})
-    assert :ok = Schema.update(pid, le, source)
+    assert :ok = Schema.update(name, le, source)
+    :sys.get_state(pid)
   end
 
   test "default notifications config" do

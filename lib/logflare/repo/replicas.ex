@@ -6,24 +6,33 @@ defmodule Logflare.Repo.Replicas do
   `Logflare.Repo` connection pool for each replica, registered under a local
   `Registry`. If no replicas are configured, the supervisor is skipped entirely.
 
-  Each `LOGFLARE_READ_REPLICAS` entry is either a bare hostname or a Postgres URI
-  (`postgres://user:pass@host:port/database?ssl=true&pool_size=5`). In both
-  cases, only the parts explicitly given override the primary `Logflare.Repo`
-  config - anything not specified (host, port, database, credentials, ssl, ...) is
-  inherited from the primary's `DB_*` settings, without ever baking the primary's
-  actual values into the parsed result. URIs are parsed and validated entirely by
-  `Ecto.Repo.Supervisor.parse_url/1`.
+  Each `LOGFLARE_READ_REPLICAS` entry is either a bare host name or IP literal, or a Postgres URI
+  (`postgres://user:pass@host:port/database?ssl=true&pool_size=5`). Supplied
+  connection settings override the primary `Logflare.Repo` configuration; omitted
+  settings inherit the primary's `DB_*` values without copying them into the parsed
+  result. IP literal hosts also derive the matching socket address family. URIs are
+  parsed and validated by `Ecto.Repo.Supervisor.parse_url/1`.
 
-  Replica pools are identified by a key derived from the entry (host/port/database
-  plus a `:erlang.phash2/2` hash of the raw entry, to avoid collisions between
-  entries that only differ by credentials or query params) that never contains
-  credentials, so it is safe to include in log or error messages.
+  Replica pools are identified by the parsed hostname plus an `:erlang.phash2/2`
+  hash of the parsed configuration. The key never contains credentials, so it is
+  safe to include in log or error messages.
+
   Callers can temporarily redirect Ecto queries to a replica for the duration of
   a function call using `apply_with_replica/3` on `Logflare.Repo`, which swaps
   the dynamic repo and restores it afterwards.
+
+  Every replica connection opens its session read-only. URI query parameters
+  `auth=password|aws_iam` and `aws_region` use the same authentication semantics
+  as the primary database URL.
   """
 
+  alias Logflare.Repo.ConnectionOptions
+
   @registry __MODULE__.Registry
+
+  # Physical standbys already reject writes. Logical subscribers do not, so a
+  # read-only default turns accidental writes into immediate errors.
+  @read_only_statement "SET default_transaction_read_only = on"
 
   def child_spec(options) do
     %{
@@ -40,9 +49,22 @@ defmodule Logflare.Repo.Replicas do
     if entries == [] do
       :ignore
     else
+      primary_config =
+        :logflare
+        |> Application.get_env(Logflare.Repo, [])
+        |> ConnectionOptions.resolve_url!()
+        |> Keyword.put(:url, nil)
+
+      primary_ssl = Logflare.Repo.config()[:ssl]
+
       replicas =
         Enum.map(entries, fn {key, config} ->
-          config = [name: {:via, Registry, {@registry, key}}] ++ resolve_ssl(config)
+          config =
+            primary_config
+            |> Keyword.merge(resolve_ssl(config, primary_ssl))
+            |> Keyword.put(:name, {:via, Registry, {@registry, key}})
+            |> Keyword.put(:logflare_connection_role, :replica)
+
           Supervisor.child_spec({Logflare.Repo, config}, id: key)
         end)
 
@@ -65,6 +87,30 @@ defmodule Logflare.Repo.Replicas do
       [] -> raise "unknown replica: #{inspect(key)}"
     end
   end
+
+  @doc """
+  Runs the primary repository's `:after_connect` hook, then makes the replica session
+  read-only.
+
+  Replica pools inherit the primary configuration. Replacing `:after_connect` without
+  composition would discard settings such as the `search_path` configured by `DB_SCHEMA`.
+  The inherited hook runs first so it can perform any required writes.
+  """
+  @spec after_connect(
+          DBConnection.conn(),
+          {module(), atom(), [term()]} | (DBConnection.t() -> any()) | nil
+        ) :: Postgrex.Result.t()
+  def after_connect(conn, primary_after_connect) do
+    run_after_connect(conn, primary_after_connect)
+    Postgrex.query!(conn, @read_only_statement, [])
+  end
+
+  defp run_after_connect(_conn, nil), do: :ok
+
+  defp run_after_connect(conn, {module, function, args}),
+    do: apply(module, function, [conn | args])
+
+  defp run_after_connect(conn, fun) when is_function(fun, 1), do: fun.(conn)
 
   @doc """
   Parses a single `LOGFLARE_READ_REPLICAS` entry into a `{key, config}` pair.
@@ -101,26 +147,30 @@ defmodule Logflare.Repo.Replicas do
   defp parse_uri(entry) do
     uri = URI.parse(entry)
 
+    {url, inherit_database?} =
+      case uri.path do
+        v when v not in [nil, "", "/"] ->
+          {entry, false}
+
+        _ ->
+          # no database set - use a placeholder to satisfy Ecto's URL parser,
+          # then drop it so the primary's database is inherited instead
+          {URI.to_string(%{uri | path: "/placeholder"}), true}
+      end
+
     try do
       config =
-        case uri.path do
-          v when v not in [nil, "", "/"] ->
-            entry
-            |> Ecto.Repo.Supervisor.parse_url()
-
-          _ ->
-            # no database set - use a placeholder to satisfy Ecto's URL parser,
-            # then drop it so the primary's database is inherited instead
-            URI.to_string(%{uri | path: "/placeholder"})
-            |> Ecto.Repo.Supervisor.parse_url()
-            |> Keyword.delete(:database)
-        end
+        url
+        |> Ecto.Repo.Supervisor.parse_url()
+        |> then(&if(inherit_database?, do: Keyword.delete(&1, :database), else: &1))
         |> Keyword.delete(:scheme)
         |> maybe_put_socket_options()
 
-      {:ok, {build_key(config), config}}
+      with {:ok, config} <- ConnectionOptions.normalize_url_options(config) do
+        {:ok, {build_key(config), config}}
+      end
     rescue
-      e in Ecto.InvalidURLError -> {:error, redact(e.message, uri.userinfo)}
+      e in Ecto.InvalidURLError -> {:error, ConnectionOptions.redact_url_error(e.message, url)}
     end
   end
 
@@ -136,36 +186,42 @@ defmodule Logflare.Repo.Replicas do
   end
 
   defp redact(entry) do
-    if String.contains?(entry, "://") do
-      uri = URI.parse(entry)
-      URI.to_string(%{uri | userinfo: if(uri.userinfo, do: "REDACTED")})
-    else
-      entry
+    if String.contains?(entry, "://"), do: ConnectionOptions.redact_url(entry), else: entry
+  end
+
+  defp resolve_ssl(config, primary_ssl) when is_list(primary_ssl) do
+    case Keyword.fetch(config, :ssl) do
+      :error -> inherit_ssl(config, primary_ssl)
+      {:ok, true} -> inherit_ssl(config, primary_ssl)
+      {:ok, _ssl} -> config
     end
   end
 
-  defp redact(message, nil), do: message
-  defp redact(message, userinfo), do: String.replace(message, userinfo, "REDACTED")
+  defp resolve_ssl(config, _primary_ssl), do: config
 
-  defp resolve_ssl(config) do
-    case Keyword.get(config, :ssl) do
-      true -> Keyword.put(config, :ssl, primary_ssl_opts(config[:hostname]))
-      _ -> config
+  defp inherit_ssl(config, primary_ssl) do
+    ssl =
+      case config[:hostname] do
+        nil ->
+          primary_ssl
+
+        hostname ->
+          primary_ssl
+          |> Keyword.delete(:server_name_indication)
+          |> maybe_disable_sni(hostname)
+      end
+
+    Keyword.put(config, :ssl, ssl)
+  end
+
+  defp maybe_disable_sni(opts, hostname) when is_binary(hostname) do
+    case :inet.parse_address(String.to_charlist(hostname)) do
+      {:ok, _address} -> Keyword.put(opts, :server_name_indication, :disable)
+      {:error, _reason} -> opts
     end
   end
 
-  defp primary_ssl_opts(hostname) do
-    case Keyword.get(Logflare.Repo.config(), :ssl) do
-      opts when is_list(opts) ->
-        case :inet.parse_address(String.to_charlist(hostname || "")) do
-          {:ok, _ip} -> Keyword.put(opts, :server_name_indication, :disable)
-          {:error, _} -> opts
-        end
-
-      _ ->
-        true
-    end
-  end
+  defp maybe_disable_sni(opts, _hostname), do: opts
 
   defp ensure_unique_keys!(entries) do
     duplicate =

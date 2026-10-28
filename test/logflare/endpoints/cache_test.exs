@@ -1,6 +1,8 @@
 defmodule Logflare.Endpoints.CacheTest do
   use Logflare.DataCase
 
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
   alias Logflare.Endpoints
 
@@ -29,6 +31,17 @@ defmodule Logflare.Endpoints.CacheTest do
       %{user: user, endpoint: endpoint, endpoint_2: endpoint_2}
     end
 
+    setup context do
+      if context[:clickhouse_cache] do
+        {_source, backend} = setup_clickhouse_test(user: context.user)
+        start_supervised!({ClickHouseAdaptor, backend})
+
+        %{clickhouse_backend: backend}
+      else
+        :ok
+      end
+    end
+
     test "cache starts and serves cached results", %{endpoint: endpoint} do
       # Mock response by setting up test backend
       test_response = [%{"testing" => "123"}]
@@ -47,6 +60,282 @@ defmodule Logflare.Endpoints.CacheTest do
 
       # Second query should hit cache without calling backend again
       assert {:ok, %{rows: [%{"testing" => "123"}]}} = Endpoints.run_cached_query(endpoint)
+    end
+
+    @tag :clickhouse_cache
+    test "cache separates current and versioned endpoint results", %{
+      user: user,
+      clickhouse_backend: backend
+    } do
+      endpoint = insert_versioned_endpoint(user, backend)
+
+      assert {:ok, versioned_endpoint} = Endpoints.get_endpoint_query_at_version(endpoint, 1)
+
+      assert {:ok, %{rows: [%{"testing" => "current"}]}} = Endpoints.run_cached_query(endpoint)
+
+      assert {:ok, %{rows: [%{"testing" => "historical"}]}} =
+               Endpoints.run_cached_query(versioned_endpoint)
+
+      assert {:ok, %{rows: [%{"testing" => "current"}]}} = Endpoints.run_cached_query(endpoint)
+
+      assert {:ok, %{rows: [%{"testing" => "historical"}]}} =
+               Endpoints.run_cached_query(versioned_endpoint)
+    end
+
+    @tag :clickhouse_cache
+    test "versioned cache refresh keeps running the selected snapshot", %{
+      user: user,
+      clickhouse_backend: backend
+    } do
+      endpoint =
+        insert_versioned_endpoint(
+          user,
+          backend,
+          [proactive_requerying_seconds: 1],
+          %{"query" => "SELECT concat('historical-', toString(generateUUIDv4())) AS testing"}
+        )
+
+      assert {:ok, versioned_endpoint} = Endpoints.get_endpoint_query_at_version(endpoint, 1)
+
+      assert {:ok, %{rows: [%{"testing" => first_value}]}} =
+               Endpoints.run_cached_query(versioned_endpoint)
+
+      assert String.starts_with?(first_value, "historical-")
+
+      endpoint_id = endpoint.id
+
+      Logflare.Repo.update_all(
+        from(endpoint_query in Endpoints.EndpointQuery, where: endpoint_query.id == ^endpoint_id),
+        set: [query: "SELECT 'current updated' AS testing"]
+      )
+
+      Process.sleep(versioned_endpoint.proactive_requerying_seconds * 1000 + 100)
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, %{rows: [%{"testing" => second_value}]}} =
+                 Endpoints.run_cached_query(versioned_endpoint)
+
+        assert String.starts_with?(second_value, "historical-")
+        assert second_value != first_value
+      end)
+
+      versioned_endpoint
+      |> Endpoints.ResultsCache.name(%{})
+      |> GenServer.whereis()
+      |> Endpoints.ResultsCache.invalidate()
+    end
+
+    @tag :clickhouse_cache
+    test "endpoint updates invalidate latest caches without touching versioned caches", %{
+      user: user,
+      clickhouse_backend: backend
+    } do
+      endpoint = insert_versioned_endpoint(user, backend)
+
+      assert {:ok, versioned_endpoint} = Endpoints.get_endpoint_query_at_version(endpoint, 1)
+
+      assert {:ok, %{rows: [%{"testing" => "current"}]}} = Endpoints.run_cached_query(endpoint)
+
+      assert {:ok, %{rows: [%{"testing" => "historical"}]}} =
+               Endpoints.run_cached_query(versioned_endpoint)
+
+      latest_cache_pid =
+        endpoint
+        |> Endpoints.ResultsCache.name(%{})
+        |> GenServer.whereis()
+
+      versioned_cache_pid =
+        versioned_endpoint
+        |> Endpoints.ResultsCache.name(%{})
+        |> GenServer.whereis()
+
+      assert is_pid(latest_cache_pid)
+      assert is_pid(versioned_cache_pid)
+
+      assert {:ok, _updated_endpoint} =
+               Endpoints.update_query(
+                 user,
+                 endpoint,
+                 %{query: "select 'updated' as testing"},
+                 user
+               )
+
+      TestUtils.retry_assert(fn ->
+        refute Process.alive?(latest_cache_pid)
+      end)
+
+      assert Process.alive?(versioned_cache_pid)
+      Endpoints.ResultsCache.invalidate(versioned_cache_pid)
+    end
+
+    test "operator limit changes stop every version cache and active refresh", %{user: user} do
+      backend = insert(:backend, user: user, type: :clickhouse)
+      endpoint = insert_versioned_endpoint(user, backend)
+      insert(:endpoint_version, endpoint: endpoint, version_number: 2)
+      admin = insert(:user, admin: true)
+      test_pid = self()
+
+      other_endpoint = insert_versioned_endpoint(user, backend)
+
+      other_pid =
+        start_supervised!({Endpoints.ResultsCache, {other_endpoint, %{}, []}},
+          id: :other_endpoint
+        )
+
+      for settings <- [%{"max_execution_time" => 5}, %{}] do
+        assert {:ok, first_version} = Endpoints.get_endpoint_query_at_version(endpoint.id, 1)
+        assert {:ok, second_version} = Endpoints.get_endpoint_query_at_version(endpoint.id, 2)
+        Endpoints.Cache.get_endpoint_query(endpoint.id)
+
+        caches =
+          for {query, params} <- [
+                {endpoint, %{}},
+                {first_version, %{}},
+                {first_version, %{"variant" => "another"}},
+                {second_version, %{}}
+              ] do
+            pid =
+              start_supervised!({Endpoints.ResultsCache, {query, params, []}},
+                id: {query.version_number, params, settings}
+              )
+
+            {pid, Process.monitor(pid)}
+          end
+
+        cache_pids = Enum.map(caches, &elem(&1, 0))
+
+        assert Enum.sort(Endpoints.Resolver.list_caches(endpoint, :all_versions)) ==
+                 Enum.sort(cache_pids)
+
+        expect(ClickHouseAdaptor, :execute_query, fn _backend, _query_args, _opts ->
+          send(test_pid, {:refresh_started, self()})
+
+          receive do
+            :finish -> {:ok, QueryResult.new([], %{total_bytes_processed: 0})}
+          end
+        end)
+
+        {refresh_cache, _} = Enum.at(caches, 1)
+        send(refresh_cache, :refresh)
+        assert_receive {:refresh_started, task_pid}, 5_000
+        task_monitor = Process.monitor(task_pid)
+
+        assert {:ok, current} =
+                 Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, settings)
+
+        for {pid, monitor} <- caches do
+          assert_receive {:DOWN, ^monitor, :process, ^pid, :normal}
+        end
+
+        assert_receive {:DOWN, ^task_monitor, :process, ^task_pid, :killed}
+
+        TestUtils.retry_assert(fn ->
+          assert Endpoints.Resolver.list_caches(endpoint, :all_versions) == []
+        end)
+
+        assert Endpoints.Cache.get_endpoint_query(endpoint.id).enforced_clickhouse_settings ==
+                 current.enforced_clickhouse_settings
+
+        assert Process.alive?(other_pid)
+      end
+    end
+
+    test "versioned cache queries overlay current limits on a memoized snapshot", %{user: user} do
+      backend = insert(:backend, user: user, type: :clickhouse)
+      endpoint = insert_versioned_endpoint(user, backend)
+      assert {:ok, snapshot} = Endpoints.Cache.get_endpoint_query_at_version(endpoint.id, 1)
+      assert snapshot.enforced_clickhouse_settings == %{}
+
+      admin = insert(:user, admin: true)
+
+      assert {:ok, current} =
+               Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, %{
+                 "max_execution_time" => 5
+               })
+
+      Logflare.ContextCache.bust_keys([{Endpoints, endpoint.id}])
+
+      Cachex.put(
+        Endpoints.Cache,
+        {:get_endpoint_query_at_version, [endpoint.id, 1]},
+        {:cached, {:ok, snapshot}}
+      )
+
+      expect(ClickHouseAdaptor, :execute_query, fn backend, query_args, opts ->
+        assert opts[:enforced_clickhouse_settings]["max_execution_time"] == 5
+        assert {:ok, sql} = ClickHouseAdaptor.prepare_query(backend, elem(query_args, 0), opts)
+        assert sql =~ "'historical'"
+        assert sql =~ "max_execution_time = 5"
+        {:ok, QueryResult.new([%{"testing" => "historical"}], %{total_bytes_processed: 0})}
+      end)
+
+      state = %Endpoints.ResultsCache{
+        endpoint_query_id: endpoint.id,
+        endpoint_version_number: 1,
+        params: %{},
+        opts: []
+      }
+
+      assert {:ok, %{rows: [%{"testing" => "historical"}]}, query} =
+               Endpoints.ResultsCache.do_query(state)
+
+      assert query.enforced_clickhouse_settings == current.enforced_clickhouse_settings
+    end
+
+    @tag :clickhouse_cache
+    test "refreshed versioned caches use current sandboxable setting", %{
+      user: user,
+      clickhouse_backend: backend
+    } do
+      test_pid = self()
+
+      for {params, historical_sandboxable, expected} <- [
+            {%{"sql" => "select 'override' as testing"}, true, "override"},
+            {%{"lql" => "testing:historical s:testing"}, false, "historical"}
+          ] do
+        endpoint =
+          insert_versioned_endpoint(
+            user,
+            backend,
+            [
+              sandboxable: true,
+              query: "WITH data AS (SELECT 'current' AS testing) SELECT testing FROM data"
+            ],
+            %{
+              "query" =>
+                "WITH data AS (SELECT 'historical' AS testing UNION ALL SELECT 'discard' AS testing) SELECT testing FROM data",
+              "sandboxable" => historical_sandboxable
+            }
+          )
+
+        assert {:ok, snapshot} = Endpoints.get_endpoint_query_at_version(endpoint, 1)
+        assert snapshot.sandboxable == historical_sandboxable
+        query = %{snapshot | sandboxable: endpoint.sandboxable}
+        endpoint_id = endpoint.id
+
+        stub(ClickHouseAdaptor, :execute_query, fn backend, sql, opts ->
+          send(test_pid, {:backend_query, endpoint_id})
+          Mimic.call_original(ClickHouseAdaptor, :execute_query, [backend, sql, opts])
+        end)
+
+        assert {:ok, %{rows: [%{"testing" => ^expected}]}} =
+                 Endpoints.run_cached_query(query, params)
+
+        assert_received {:backend_query, ^endpoint_id}
+
+        cache_pid = query |> Endpoints.ResultsCache.name(params) |> GenServer.whereis()
+        monitor = Process.monitor(cache_pid)
+
+        assert {:ok, endpoint} =
+                 Endpoints.update_query(user, endpoint, %{sandboxable: false}, user)
+
+        Logflare.ContextCache.bust_keys([{Endpoints, endpoint.id}])
+        assert Process.alive?(cache_pid)
+
+        send(cache_pid, :refresh)
+        assert_receive {:DOWN, ^monitor, :process, ^cache_pid, :normal}, 5_000
+        refute_received {:backend_query, ^endpoint_id}
+      end
     end
 
     test "cache dies on timeout error from query", %{endpoint: endpoint} do
@@ -255,5 +544,32 @@ defmodule Logflare.Endpoints.CacheTest do
       assert_receive {:DOWN, ^monitor_ref, :process, ^cache_pid, :normal},
                      endpoint.cache_duration_seconds * 1000 + 500
     end
+  end
+
+  defp insert_versioned_endpoint(user, backend, attrs \\ [], snapshot_overrides \\ %{}) do
+    endpoint =
+      insert(
+        :endpoint,
+        Keyword.merge(
+          [
+            user: user,
+            backend: backend,
+            language: :ch_sql,
+            query: "SELECT 'current' AS testing",
+            cache_duration_seconds: 60,
+            proactive_requerying_seconds: 60
+          ],
+          attrs
+        )
+      )
+
+    insert(:endpoint_version,
+      endpoint: endpoint,
+      version_number: 1,
+      snapshot_overrides:
+        Map.merge(%{"query" => "SELECT 'historical' AS testing"}, snapshot_overrides)
+    )
+
+    endpoint
   end
 end

@@ -42,6 +42,29 @@ defmodule Logflare.Sql.ParserTest do
     end
   end
 
+  describe "internal converted ClickHouse SQL" do
+    test "customer SQL does not accept converter-only positional bindings" do
+      for sql <- ["SELECT {$0:String}", "SELECT a FROM {$0:Identifier}"] do
+        assert {:error, _} = Parser.parse("clickhouse", sql)
+      end
+    end
+
+    test "round-trips native types, repeated names and parameter-shaped literals" do
+      sql =
+        "SELECT {$0:String}, {$1:Array(UInt64)}, {$0:String}, '{$0:String}' AS literal " <>
+          "FROM t WHERE ts = {$2:DateTime64(6, 'UTC')}"
+
+      assert {:ok, ast} = Parser.parse_clickhouse_converted(sql)
+      assert {:ok, formatted} = Parser.to_string(ast)
+      assert formatted =~ "{$0: String}"
+      assert formatted =~ "{$1: Array(UInt64)}"
+      assert formatted =~ "{$2: DateTime64(6, 'UTC')}"
+      assert formatted =~ "'{$0:String}' AS literal"
+      assert {:ok, reparsed} = Parser.parse_clickhouse_converted(formatted)
+      assert {:ok, ^formatted} = Parser.to_string(reparsed)
+    end
+  end
+
   describe "parse/2 with clickhouse SAMPLE clause" do
     test "Parses and round-trips a SAMPLE ratio" do
       query = "SELECT a FROM default.otel_logs SAMPLE 0.1"
@@ -62,6 +85,34 @@ defmodule Logflare.Sql.ParserTest do
 
       assert {:ok, ast} = Parser.parse("clickhouse", query)
       assert {:ok, ^query} = Parser.to_string(ast)
+    end
+  end
+
+  describe "parse/2 with clickhouse FINAL and ARRAY JOIN" do
+    test "round-trips FINAL on an unaliased table" do
+      for query <- [
+            "SELECT a FROM t FINAL",
+            "SELECT a FROM db.t FINAL WHERE b = 1",
+            "SELECT count() FROM t FINAL GROUP BY a"
+          ] do
+        assert {:ok, ast} = Parser.parse("clickhouse", query)
+        assert {:ok, ^query} = Parser.to_string(ast)
+      end
+    end
+
+    test "round-trips ARRAY JOIN" do
+      for query <- [
+            "SELECT a, arr FROM t ARRAY JOIN arr",
+            "SELECT a, x FROM t LEFT ARRAY JOIN arr AS x WHERE x > 1",
+            "SELECT a FROM t FINAL ARRAY JOIN arr AS x, other AS y"
+          ] do
+        assert {:ok, ast} = Parser.parse("clickhouse", query)
+        assert {:ok, ^query} = Parser.to_string(ast)
+      end
+    end
+
+    test "rejects FINAL after an explicit alias" do
+      assert {:error, _reason} = Parser.parse("clickhouse", "SELECT a FROM t AS x FINAL")
     end
   end
 
@@ -89,6 +140,11 @@ defmodule Logflare.Sql.ParserTest do
       assert {:ok, parsed_query} = Parser.parse("bigquery", bq_query)
       assert {:ok, bq_query} == Parser.to_string(parsed_query)
     end
+
+    test "returns an error instead of raising when the AST is malformed" do
+      assert {:error, message} = Parser.to_string(%{"Query" => %{}})
+      assert message =~ "missing field"
+    end
   end
 
   defp extract_table_name_parts_from_ast([%{} = ast]) do
@@ -101,5 +157,6 @@ defmodule Logflare.Sql.ParserTest do
     |> Map.get("relation")
     |> Map.get("Table")
     |> Map.get("name")
+    |> Enum.map(&Map.fetch!(&1, "Identifier"))
   end
 end

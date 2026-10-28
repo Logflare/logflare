@@ -427,6 +427,31 @@ defmodule Logflare.Logs.IngestTransformerTest do
       end
     end
 
+    property "counts exactly the retained values during transformation" do
+      check all input <- log_params_generator() do
+        {body, bytes} = transform_with_byte_size(input)
+        assert body == transform(input, :clean_to_bigquery_column_spec)
+        assert bytes == Logflare.LogEvent.body_byte_size(body)
+      end
+    end
+
+    test "counts nested arrays and removes empty values without counting keys" do
+      input = %{
+        "ignored-long-key" => nil,
+        "nested" => [%{"bad-key" => "hé", "empty" => []}, [1, -12, true, false, nil]]
+      }
+
+      assert {%{"nested" => [%{"_bad_key" => "hé"}, [1, -12, true, false]]}, 9} =
+               transform_with_byte_size(input)
+    end
+
+    test "counts the surviving values after normalized keys collide" do
+      input = %{"a!b" => "short", "a?b" => "a much longer value"}
+      expected = transform(input, :to_bigquery_column_spec)
+      assert {^expected, bytes} = transform_with_byte_size(input)
+      assert bytes == Logflare.LogEvent.body_byte_size(expected)
+    end
+
     test "preserves sequential behavior when cleaned keys collide" do
       input =
         1..33

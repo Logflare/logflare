@@ -2,6 +2,7 @@ defmodule Logflare.TeamUsersTest do
   @moduledoc false
   use Logflare.DataCase, async: true
 
+  alias Logflare.Repo
   alias Logflare.TeamUsers
   alias Logflare.Teams.Team
   alias Logflare.TeamUsers.TeamUser
@@ -138,6 +139,94 @@ defmodule Logflare.TeamUsersTest do
 
       assert {:error, %Ecto.Changeset{}} = TeamUsers.update_team_user(team_user, %{email: nil})
     end
+  end
+
+  describe "update_team_user_profile/2" do
+    test "updates display and contact preferences" do
+      team_user = insert(:team_user)
+
+      assert {:ok, updated} =
+               TeamUsers.update_team_user_profile(team_user, %{
+                 name: "Profile name",
+                 email_preferred: "CONTACT@EXAMPLE.TEST",
+                 phone: "+1 (555) 123-4567",
+                 image: "https://example.test/avatar.png",
+                 email_me_product: false
+               })
+
+      updated = Repo.reload!(updated)
+      assert updated.name == "Profile name"
+      assert updated.email_preferred == "contact@example.test"
+      assert updated.phone == "+1 (555) 123-4567"
+      assert updated.image == "https://example.test/avatar.png"
+      refute updated.email_me_product
+    end
+
+    test "ignores identity fields with atom and string keys" do
+      team_user = insert(:team_user) |> Repo.reload!()
+      other_team = insert(:team)
+
+      identity_fields = [
+        :id,
+        :team_id,
+        :email,
+        :provider,
+        :provider_uid,
+        :token,
+        :valid_google_account
+      ]
+
+      attrs = %{
+        id: 0,
+        team_id: other_team.id,
+        email: "operator@example.test",
+        provider: "email",
+        provider_uid: "forged-identity",
+        token: Ecto.UUID.generate(),
+        valid_google_account: true,
+        name: "Safe profile name"
+      }
+
+      string_attrs = Map.new(attrs, fn {key, value} -> {Atom.to_string(key), value} end)
+
+      for params <- [attrs, string_attrs] do
+        assert {:ok, updated} = TeamUsers.update_team_user_profile(team_user, params)
+
+        assert Map.take(Repo.reload!(updated), identity_fields) ==
+                 Map.take(team_user, identity_fields)
+
+        assert updated.name == "Safe profile name"
+      end
+    end
+
+    test "rejects invalid editable fields without writing them" do
+      team_user = insert(:team_user)
+
+      assert {:error, %Ecto.Changeset{valid?: false}} =
+               TeamUsers.update_team_user_profile(team_user, %{name: %{invalid: true}})
+
+      assert Repo.reload!(team_user).name == team_user.name
+    end
+  end
+
+  test "trusted authentication updates retain identity synchronization" do
+    team_user = insert(:team_user)
+    token = Ecto.UUID.generate()
+
+    assert {:ok, updated} =
+             TeamUsers.update_team_user(team_user, %{
+               email: "TRUSTED@EXAMPLE.TEST",
+               provider: "github",
+               provider_uid: "trusted-provider-identity",
+               token: token,
+               valid_google_account: true
+             })
+
+    assert updated.email == "trusted@example.test"
+    assert updated.provider == "github"
+    assert updated.provider_uid == "trusted-provider-identity"
+    assert updated.token == token
+    assert updated.valid_google_account
   end
 
   describe "delete_team_user/1" do

@@ -56,6 +56,28 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
       Example: `filters: %{len_eq: 20, char_class: "alpha"}` ensures the resolved
       value is exactly 20 ASCII alphabetic characters.
 
+      Filter keys may be atoms or strings and are stored in canonical string form, so a
+      config survives a `MappingConfig.to_json/1` / `from_json/1` round trip unchanged. An
+      unrecognized key, a non-integer length, or an unsupported character class is rejected
+      when the config is built rather than dropped.
+
+  ### `uint8/2`, `uint32/2`, `uint64/2`
+
+    * `:coercion` — `:lenient` (default) or `:strict`. Lenient coercion converts whatever
+      it is given: floats truncate (`13.9` → `13`), booleans become `1`/`0`, numeric
+      strings are parsed, and anything else becomes `0`. Strict coercion only accepts an
+      integer term or a string that parses as an integer; any other type is treated as
+      unresolved, so coalesce moves on to the next path and the field's `:default` applies
+      when nothing resolves. Range handling is the same in both modes: negative values
+      clamp to `0` and values above the type's maximum saturate, at any magnitude, so a
+      BEAM bignum or an overflowing numeric string lands on the maximum rather than `0`.
+      The check applies to every source: `:path`, `:paths`, `:from_output`, and the root
+      document. Strict cannot be combined with `:value_map`, since the
+      map's string keys would never pass the integer check; the compiler rejects it.
+
+      Use `:strict` when a truncated or converted value would be misread downstream, e.g.
+      an OTEL `severity_number` where `true` must not silently become `TRACE` (`1`).
+
   ### `datetime64/2`
 
     * `:precision` — target precision 0-9 (default `9` for nanoseconds). Integer inputs are
@@ -79,6 +101,28 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
       coalesce paths; resolved entries are included in the output, unresolved are omitted.
       If pick produces a non-empty map, it becomes the field value. If empty, falls back
       to `:path`/`:paths`.
+    * `:pick_mode` — `:replace` (default) or `:merge`. Controls what a non-empty pick map
+      does to the `:path`/`:paths` value. `:replace` discards the source, so `:pick` and
+      `:paths` are effectively either/or. `:merge` unions the two, pick entries winning on
+      key collision, so curated keys and the raw source map both reach the output.
+      `:exclude_keys` and `:elevate_keys` apply to the merged result. Note `:paths` remains
+      a coalesce in both modes — only the first resolving path contributes.
+
+      `:merge` is lossy by design when the pick and the source disagree: the source value
+      under a colliding key is dropped, not preserved under another name. Because
+      `:exclude_keys` runs after the merge, an alias key can be consumed as a pick fallback
+      and then removed so only the canonical key remains:
+
+          Field.flat_map("resource_attributes",
+            paths: ["$.resource"],
+            pick_mode: :merge,
+            pick: [{"region", ["$.metadata.region", "$.resource._project_region"]}],
+            exclude_keys: ["_project_region"]
+          )
+
+      Given `%{"resource" => %{"_project_region" => "us-east-1", "zone" => "a"}}` this
+      yields `%{"region" => "us-east-1", "zone" => "a"}`; `_project_region` does not
+      reach the output.
 
   ### `flat_map/2`
 
@@ -93,7 +137,8 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
     * Lists: JSON-encoded as strings (e.g. `[1, 2]` → `"[1,2]"`)
     * Scalars: coerced to string (`42` → `"42"`, `true` → `"true"`)
     * nil values: omitted from the output map
-    * Accepts the same options as `json/2`: `:exclude_keys`, `:elevate_keys`, `:pick`
+    * Accepts the same options as `json/2`: `:exclude_keys`, `:elevate_keys`, `:pick`,
+      `:pick_mode`
 
   ## Array Types
 
@@ -187,6 +232,10 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
   @valid_types ~w(string uint8 uint32 uint64 int32 float64 bool enum8 datetime64 json flat_map array_string array_uint64 array_float64 array_datetime64 array_json array_map array_flat_map)
   @valid_transforms ~w(upcase downcase)
   @valid_value_types ~w(string)
+  @valid_coercions ~w(lenient strict)
+  @default_datetime_precision 9
+  @length_filters ~w(len_eq len_gt len_gte len_lt len_lte)
+  @char_classes ~w(alpha numeric alphanumeric)
 
   @type common_opts :: [
           path: String.t(),
@@ -215,6 +264,8 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
     field(:filters, :map)
     field(:filter_nil, :boolean, default: false)
     field(:value_type, :string)
+    field(:pick_mode, :string)
+    field(:coercion, :string)
     embeds_many(:pick, PickEntry)
     embeds_many(:infer, InferRule)
   end
@@ -240,7 +291,9 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
         :elevate_keys,
         :filters,
         :filter_nil,
-        :value_type
+        :value_type,
+        :pick_mode,
+        :coercion
       ],
       empty_values: []
     )
@@ -248,6 +301,8 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
     |> validate_inclusion(:type, @valid_types)
     |> validate_inclusion(:transform, @valid_transforms)
     |> validate_inclusion(:value_type, @valid_value_types)
+    |> validate_inclusion(:coercion, @valid_coercions)
+    |> normalize_filters()
     |> cast_embed(:pick, with: &PickEntry.changeset/2)
     |> cast_embed(:infer, with: &InferRule.changeset/2)
   end
@@ -259,17 +314,17 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
 
   @spec uint8(String.t(), keyword()) :: t()
   def uint8(name, opts \\ []) do
-    build(name, "uint8", opts)
+    build(name, "uint8", opts, [:coercion])
   end
 
   @spec uint32(String.t(), keyword()) :: t()
   def uint32(name, opts \\ []) do
-    build(name, "uint32", opts)
+    build(name, "uint32", opts, [:coercion])
   end
 
   @spec uint64(String.t(), keyword()) :: t()
   def uint64(name, opts \\ []) do
-    build(name, "uint64", opts)
+    build(name, "uint64", opts, [:coercion])
   end
 
   @spec int32(String.t(), keyword()) :: t()
@@ -299,7 +354,7 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
   @spec datetime64(String.t(), keyword()) :: t()
   def datetime64(name, opts \\ []) do
     base = build(name, "datetime64", opts)
-    %{base | precision: opts[:precision] || 9}
+    %{base | precision: Keyword.get(opts, :precision, @default_datetime_precision)}
   end
 
   @spec json(String.t(), keyword()) :: t()
@@ -308,6 +363,7 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
 
     base
     |> maybe_put_pick(opts[:pick])
+    |> maybe_put_pick_mode(opts[:pick_mode])
   end
 
   @spec array_string(String.t(), keyword()) :: t()
@@ -328,7 +384,7 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
   @spec array_datetime64(String.t(), keyword()) :: t()
   def array_datetime64(name, opts \\ []) do
     base = build(name, "array_datetime64", opts, [:filter_nil])
-    %{base | precision: opts[:precision] || 9}
+    %{base | precision: Keyword.get(opts, :precision, @default_datetime_precision)}
   end
 
   @spec array_json(String.t(), keyword()) :: t()
@@ -345,7 +401,10 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
   def flat_map(name, opts \\ []) do
     opts = Keyword.put_new(opts, :value_type, "string")
     base = build(name, "flat_map", opts, [:exclude_keys, :elevate_keys, :value_type])
-    maybe_put_pick(base, opts[:pick])
+
+    base
+    |> maybe_put_pick(opts[:pick])
+    |> maybe_put_pick_mode(opts[:pick_mode])
   end
 
   @spec array_flat_map(String.t(), keyword()) :: t()
@@ -380,7 +439,77 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
   defp encode_default(val) when is_list(val), do: "[]"
 
   defp maybe_put(struct, _key, nil), do: struct
+
+  defp maybe_put(struct, :filters, filters) do
+    case canonicalize_filters(filters) do
+      {:ok, canonical} -> Map.put(struct, :filters, canonical)
+      {:error, reason} -> raise ArgumentError, reason
+    end
+  end
+
+  defp maybe_put(struct, :coercion, mode) when mode in [:lenient, "lenient"], do: struct
+
+  defp maybe_put(struct, :coercion, mode) when mode in [:strict, "strict"],
+    do: %{struct | coercion: "strict"}
+
+  defp maybe_put(_struct, :coercion, mode),
+    do: raise(ArgumentError, "coercion must be :lenient or :strict, got #{inspect(mode)}")
+
   defp maybe_put(struct, key, value), do: Map.put(struct, key, value)
+
+  defp normalize_filters(changeset) do
+    case fetch_change(changeset, :filters) do
+      {:ok, nil} ->
+        changeset
+
+      {:ok, filters} ->
+        case canonicalize_filters(filters) do
+          {:ok, canonical} -> put_change(changeset, :filters, canonical)
+          {:error, reason} -> add_error(changeset, :filters, reason)
+        end
+
+      :error ->
+        changeset
+    end
+  end
+
+  @spec canonicalize_filters(map()) :: {:ok, map()} | {:error, String.t()}
+  defp canonicalize_filters(filters) when is_map(filters) do
+    Enum.reduce_while(filters, {:ok, %{}}, fn {key, value}, {:ok, acc} ->
+      case canonicalize_filter(to_string(key), value) do
+        {:ok, canonical_key} -> {:cont, {:ok, Map.put(acc, canonical_key, value)}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp canonicalize_filters(filters),
+    do: {:error, "filters must be a map, got #{inspect(filters)}"}
+
+  @spec canonicalize_filter(String.t(), term()) :: {:ok, String.t()} | {:error, String.t()}
+  defp canonicalize_filter(key, value) when key in @length_filters and is_integer(value),
+    do: {:ok, key}
+
+  defp canonicalize_filter(key, value) when key in @length_filters,
+    do: {:error, "string filter \"#{key}\" must be an integer, got #{inspect(value)}"}
+
+  defp canonicalize_filter("char_class", value) when value in @char_classes,
+    do: {:ok, "char_class"}
+
+  defp canonicalize_filter("char_class", value) do
+    {:error,
+     "string filter \"char_class\" must be one of #{Enum.join(@char_classes, ", ")}, " <>
+       "got #{inspect(value)}"}
+  end
+
+  defp canonicalize_filter(key, _value),
+    do: {:error, "unknown string filter \"#{key}\""}
+
+  defp maybe_put_pick_mode(struct, nil), do: struct
+  defp maybe_put_pick_mode(struct, :replace), do: struct
+  defp maybe_put_pick_mode(struct, "replace"), do: struct
+  defp maybe_put_pick_mode(struct, :merge), do: %{struct | pick_mode: "merge"}
+  defp maybe_put_pick_mode(struct, "merge"), do: %{struct | pick_mode: "merge"}
 
   defp maybe_put_pick(struct, nil), do: struct
 

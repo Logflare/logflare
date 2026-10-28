@@ -1,6 +1,8 @@
 defmodule Logflare.SourcesTest do
   use Logflare.DataCase
 
+  import ExUnit.CaptureLog
+
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Sources.Source
@@ -13,6 +15,121 @@ defmodule Logflare.SourcesTest do
   alias Logflare.Sources.Source.RateCounterServer
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourceSup
+
+  describe "default ingest opt-in" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      {:ok, user: user}
+    end
+
+    test "new sources are opted out by default", %{user: user} do
+      assert {:ok, %Source{default_ingest_backend_enabled?: false}} =
+               Sources.create_source(%{name: "opted-out"}, user)
+    end
+
+    test "new sources can be created opted in", %{user: user} do
+      assert {:ok, %Source{default_ingest_backend_enabled?: true}} =
+               Sources.create_source(
+                 %{name: "opted-in", default_ingest_backend_enabled?: true},
+                 user
+               )
+    end
+
+    test "system sources are created opted out", %{user: user} do
+      sources = Sources.create_user_system_sources(user.id)
+
+      assert sources != []
+      assert Enum.all?(sources, &(&1.default_ingest_backend_enabled? == false))
+    end
+
+    test "set_default_ingest_opt_in/2 flips every non-system source of the user", %{user: user} do
+      opted_out = insert(:source, user: user, default_ingest_backend_enabled?: false)
+      already_in = insert(:source, user: user, default_ingest_backend_enabled?: true)
+
+      other_user_source =
+        insert(:source, user: insert(:user), default_ingest_backend_enabled?: false)
+
+      [system | _] = Sources.create_user_system_sources(user.id)
+
+      assert {:ok, 1} = Sources.set_default_ingest_opt_in(user.id, true)
+
+      assert Sources.get(opted_out.id).default_ingest_backend_enabled? == true
+      assert Sources.get(already_in.id).default_ingest_backend_enabled? == true
+      assert Sources.get(other_user_source.id).default_ingest_backend_enabled? == false
+      assert Sources.get(system.id).default_ingest_backend_enabled? == false
+
+      assert {:ok, 2} = Sources.set_default_ingest_opt_in(user.id, false)
+      assert Sources.get(opted_out.id).default_ingest_backend_enabled? == false
+      assert Sources.get(already_in.id).default_ingest_backend_enabled? == false
+    end
+
+    test "set_default_ingest_opt_in/2 busts the cached source", %{user: user} do
+      source = insert(:source, user: user, default_ingest_backend_enabled?: false)
+      assert Sources.Cache.get_by_id(source.id).default_ingest_backend_enabled? == false
+
+      assert {:ok, 1} = Sources.set_default_ingest_opt_in(user.id, true)
+
+      assert Sources.Cache.get_by_id(source.id).default_ingest_backend_enabled? == true
+    end
+
+    test "set_default_ingest_opt_in/2 treats a NULL flag as not opted in", %{user: user} do
+      source = insert(:source, user: user)
+      null_column!(source, :default_ingest_backend_enabled)
+
+      assert {:ok, 1} = Sources.set_default_ingest_opt_in(user.id, true)
+      assert Sources.get(source.id).default_ingest_backend_enabled? == true
+    end
+
+    test "set_default_ingest_opt_in/2 treats a NULL system_source as a regular source", %{
+      user: user
+    } do
+      source = insert(:source, user: user, default_ingest_backend_enabled?: false)
+      null_column!(source, :system_source)
+
+      assert {:ok, 1} = Sources.set_default_ingest_opt_in(user.id, true)
+      assert Sources.get(source.id).default_ingest_backend_enabled? == true
+    end
+
+    test "set_default_ingest_opt_in/2 still skips real system sources", %{user: user} do
+      system =
+        insert(:source,
+          user: user,
+          system_source: true,
+          system_source_type: :logs,
+          default_ingest_backend_enabled?: false
+        )
+
+      assert {:ok, 0} = Sources.set_default_ingest_opt_in(user.id, true)
+      assert Sources.get(system.id).default_ingest_backend_enabled? == false
+    end
+
+    test "count_default_ingest_opt_in/1 counts the sources set_default_ingest_opt_in/2 updates",
+         %{user: user} do
+      insert(:source, user: user, default_ingest_backend_enabled?: true)
+      null_system = insert(:source, user: user, default_ingest_backend_enabled?: false)
+      null_column!(null_system, :system_source)
+      null_flag = insert(:source, user: user)
+      null_column!(null_flag, :default_ingest_backend_enabled)
+      insert(:source, user: insert(:user), default_ingest_backend_enabled?: true)
+      Sources.create_user_system_sources(user.id)
+
+      assert %{eligible: 3, opted_in: 1} = Sources.count_default_ingest_opt_in(user.id)
+
+      assert {:ok, 2} = Sources.set_default_ingest_opt_in(user.id, true)
+      assert %{eligible: 3, opted_in: 3} = Sources.count_default_ingest_opt_in(user.id)
+    end
+  end
+
+  defp null_column!(source, column) do
+    {1, _} =
+      Logflare.Repo.update_all(
+        Ecto.Query.from(s in "sources", where: s.id == ^source.id),
+        set: [{column, nil}]
+      )
+
+    :ok
+  end
 
   describe "changesets" do
     setup do
@@ -679,17 +796,36 @@ defmodule Logflare.SourcesTest do
     end
 
     test "abnormal exit restarts SourceSup", %{source: source} do
+      # SourceSup's rate counter reads BigQuery at startup; stub it before starting the tree.
+      stub(BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
+
+      # Also clean up if an assertion fails before the explicit stop below.
+      on_exit(fn -> Backends.stop_source_sup(source) end)
+
       assert :ok = Backends.start_source_sup(source)
       assert {:ok, pid} = Backends.lookup(SourceSup, source)
 
-      Logflare.Utils.try_to_stop_process(pid, :abnormal)
+      # The crash is deliberate; verify its log without printing it in passing runs.
+      assert capture_log(fn ->
+               Logflare.Utils.try_to_stop_process(pid, :abnormal)
+             end) =~ "** (stop) :abnormal"
 
       refute Process.alive?(pid)
 
-      TestUtils.retry_assert(fn ->
-        assert {:ok, pid2} = Backends.lookup(SourceSup, source)
-        assert pid != pid2
-      end)
+      pid2 =
+        TestUtils.retry_assert(fn ->
+          assert {:ok, pid2} = Backends.lookup(SourceSup, source)
+          assert pid != pid2
+          pid2
+        end)
+
+      # Registration precedes initialization; wait for the supervisor to start its children.
+      assert [_ | _] = Supervisor.which_children(pid2)
+
+      # Stop the restarted tree before its database fixtures and stubs are cleaned up.
+      assert :ok = Backends.stop_source_sup(source)
+      refute Process.alive?(pid2)
+      assert {:error, :not_started} = Backends.lookup(SourceSup, source)
     end
   end
 

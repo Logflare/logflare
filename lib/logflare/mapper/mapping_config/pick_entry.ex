@@ -4,6 +4,11 @@ defmodule Logflare.Mapper.MappingConfig.PickEntry do
 
   Each entry defines an output `:key` and coalesce `:paths` to try. If any path
   resolves, the key is included in the output map; otherwise it's omitted (sparse).
+
+  Only the first resolving path contributes. When the parent field uses
+  `pick_mode: :merge`, a resolved entry also overrides any same-named key from the
+  field's raw `:path`/`:paths` source map. See `Logflare.Mapper.MappingConfig` for
+  the full merge semantics.
   """
 
   use TypedEctoSchema

@@ -4,20 +4,36 @@ defmodule Logflare.Repo do
     adapter: Ecto.Adapters.Postgres
 
   use Scrivener
+
   require Logger
+
+  alias Logflare.Repo.ConnectionOptions
   alias Logflare.Repo.Replicas
 
+  @uptime_timeout 1_000
+
+  @impl true
+  def init(_context, config) do
+    {role, config} = Keyword.pop(config, :logflare_connection_role, :primary)
+    {:ok, ConnectionOptions.prepare(config, role)}
+  end
+
+  @spec get_uptime() :: non_neg_integer() | Decimal.t()
   def get_uptime do
+    repo = get_dynamic_repo()
     query = "SELECT EXTRACT(epoch FROM (current_timestamp - pg_postmaster_start_time()));"
 
-    __MODULE__.query(query, [])
-    |> case do
-      {:ok,
-       %{
-         rows: [
-           [uptime]
-         ]
-       }} ->
+    task =
+      Task.Supervisor.async_nolink(
+        {:via, PartitionSupervisor, {Logflare.TaskSupervisors, self()}},
+        fn ->
+          put_dynamic_repo(repo)
+          __MODULE__.query(query, [], timeout: @uptime_timeout)
+        end
+      )
+
+    case Task.yield(task, @uptime_timeout) || Task.shutdown(task, :brutal_kill) do
+      {:ok, {:ok, %{rows: [[uptime]]}}} ->
         if is_number(uptime) do
           ceil(uptime)
         else
@@ -25,27 +41,74 @@ defmodule Logflare.Repo do
           Decimal.round(uptime, 0, :ceiling)
         end
 
-      {:error, err} ->
-        Logger.warning("Could not get Postgres uptime, error: #{err}")
+      {:ok, {:error, err}} ->
+        Logger.warning("Could not get Postgres uptime, error: #{Exception.message(err)}")
+        0
+
+      {:exit, reason} ->
+        Logger.warning("Could not get Postgres uptime, task exited: #{inspect(reason)}")
+        0
+
+      nil ->
+        Logger.warning("Could not get Postgres uptime within #{@uptime_timeout}ms")
         0
     end
   end
 
   @doc """
-  Applies the given MFA on a randomly selected read replica when replicas are
-  configured. Always uses a replica when any are set; falls back to the primary
-  repo only when no replicas are configured.
+  Runs a function on a randomly selected read replica when replicas are configured.
+
+  The current dynamic repo is preserved for nested calls and transactions. This
+  keeps a multi-query read on one pool and prevents replica routing from escaping
+  an existing transaction. When no replicas are configured, the primary is used.
+  """
+  @spec with_replica((-> result)) :: result when result: term()
+  def with_replica(fun) when is_function(fun, 0) do
+    current_repo = get_dynamic_repo()
+
+    cond do
+      in_transaction?() ->
+        emit_replica_route(repo_role(current_repo), :transaction)
+        fun.()
+
+      current_repo != __MODULE__ ->
+        emit_replica_route(repo_role(current_repo), :nested)
+        fun.()
+
+      true ->
+        {repo, reason} = pick_replica_repo(Application.fetch_env!(:logflare, :read_replicas))
+        emit_replica_route(repo_role(repo), reason)
+        with_dynamic_repo(repo, fun)
+    end
+  end
+
+  @doc """
+  Reads authoritative state on the primary, restoring the caller's dynamic repo afterwards.
+  """
+  @spec with_primary((-> result)) :: result when result: term()
+  def with_primary(fun) when is_function(fun, 0), do: with_dynamic_repo(__MODULE__, fun)
+
+  @doc """
+  Applies the given MFA using `with_replica/1`.
   """
   @spec apply_with_replica(module(), atom(), list()) :: term()
   def apply_with_replica(m, f, a) do
-    :logflare
-    |> Application.fetch_env!(:read_replicas)
-    |> pick_replica_repo()
-    |> with_dynamic_repo(fn -> apply(m, f, a) end)
+    with_replica(fn -> apply(m, f, a) end)
   end
 
-  defp pick_replica_repo([]), do: __MODULE__
-  defp pick_replica_repo(replicas), do: replicas |> Enum.random() |> resolve_repo()
+  defp pick_replica_repo([]), do: {__MODULE__, :not_configured}
+  defp pick_replica_repo(replicas), do: {replicas |> Enum.random() |> resolve_repo(), :selected}
+
+  defp repo_role(__MODULE__), do: :primary
+  defp repo_role(_repo), do: :replica
+
+  defp emit_replica_route(role, reason) do
+    :telemetry.execute(
+      [:logflare, :repo, :replica_route],
+      %{count: 1},
+      %{role: role, reason: reason}
+    )
+  end
 
   defp resolve_repo(repo) when is_atom(repo), do: repo
   defp resolve_repo({key, _config}), do: Replicas.lookup!(key)

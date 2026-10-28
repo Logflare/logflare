@@ -1,5 +1,5 @@
 defmodule LogflareWeb.Api.FallbackController do
-  use Phoenix.Controller
+  use Phoenix.Controller, formats: []
 
   alias Ecto.Changeset
   alias Logflare.Backends.QueryError
@@ -17,6 +17,14 @@ defmodule LogflareWeb.Api.FallbackController do
     conn
     |> put_status(401)
     |> json(%{error: "Unauthorized"})
+    |> halt()
+  end
+
+  def call(conn, {:error, :database_unavailable}) do
+    conn
+    |> put_status(503)
+    |> put_resp_header("retry-after", "5")
+    |> json(%{error: "Service Unavailable: credentials could not be verified"})
     |> halt()
   end
 
@@ -46,6 +54,12 @@ defmodule LogflareWeb.Api.FallbackController do
     conn
     |> put_status(:not_found)
     |> json(%{error: "Not Found"})
+  end
+
+  def call(conn, {:error, :not_found, message}) when is_binary(message) do
+    conn
+    |> put_status(:not_found)
+    |> json(%{error: message})
   end
 
   def call(conn, {:error, %QueryError{}}) do

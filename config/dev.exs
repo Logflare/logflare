@@ -86,17 +86,19 @@ config :logflare, :spool,
   mode: :disable,
   provider: :gcp,
   bucket: "logflare-spool",
-  partitions: 4,
-  batch_timeout: 5_000,
+  partitions: 1,
+  flush_delay_ms: 100,
+  wal_max_rotation_interval_ms: 1_000,
   compress: true,
-  # Serialization format for spool files. Options: :ndjson | :etf
-  # :etf encodes the whole batch as a single Erlang term — ~10x faster decode,
-  # but files are binary (use IEx to inspect, not cat/jq).
-  format: :etf,
   # Matches the resources created by `make setup.gcp` against the local
   # GCS/PubSub emulators (docker-compose.gcp.yml).
   pubsub_topic: "projects/logflare/topics/logflare-spool",
-  queue_name: "projects/logflare/subscriptions/logflare-spool-sub"
+  queue_name: "projects/logflare/subscriptions/logflare-spool-sub",
+  # Local disk WAL for the producer (see
+  # Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal) — a plain
+  # project-relative dir is fine for dev; it doesn't need to survive
+  # anything more than a `mix phx.server` restart here.
+  wal_dir: "priv/spool_wal"
 
 config :ex_aws,
   access_key_id: "minioadmin",

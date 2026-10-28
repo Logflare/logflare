@@ -3,11 +3,14 @@ defmodule Logflare.Backends.Spool.Storage.S3 do
 
   @behaviour Logflare.Backends.Spool.Storage
 
+  alias Logflare.Backends.Spool.Storage.S3.HttpClient
+
   @impl Logflare.Backends.Spool.Storage
   def put(bucket, key, body, opts) do
     headers = Keyword.get(opts, :headers, %{})
 
-    case ExAws.S3.put_object(bucket, key, body, headers: headers) |> ExAws.request() do
+    case ExAws.S3.put_object(bucket, key, body, put_object_opts(headers))
+         |> ExAws.request(http_client: HttpClient) do
       {:ok, result} -> {:ok, result}
       {:error, reason} -> {:error, reason}
     end
@@ -17,12 +20,21 @@ defmodule Logflare.Backends.Spool.Storage.S3 do
 
   @impl Logflare.Backends.Spool.Storage
   def get(bucket, key) do
-    case ExAws.S3.get_object(bucket, key) |> ExAws.request() do
+    case ExAws.S3.get_object(bucket, key) |> ExAws.request(http_client: HttpClient) do
       {:ok, %{body: raw}} -> {:ok, raw}
       {:error, {:http_error, 404, _}} -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
     end
   rescue
     e -> {:error, Exception.message(e)}
+  end
+
+  @spec put_object_opts(map()) :: keyword()
+  defp put_object_opts(headers) do
+    [content_type: Map.get(headers, "content-type", "application/octet-stream")] ++
+      case Map.get(headers, "content-encoding") do
+        nil -> []
+        encoding -> [content_encoding: encoding]
+      end
   end
 end

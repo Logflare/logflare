@@ -3,6 +3,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
   use LogflareWeb.ConnCase
   alias Logflare.Backends
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.ContextCache
   alias Logflare.SystemCache
   alias LogflareWeb.Plugs.BufferLimiter
 
@@ -20,6 +21,13 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       build_queue_saturation_events(Backends.max_buffer_queue_len() + 500, source: source)
 
     IngestEventQueue.add_to_table(table_key, events)
+  end
+
+  defp fill_consolidated_queue(backend, source, count) do
+    table_key = {:consolidated, backend.id, self()}
+    IngestEventQueue.upsert_tid(table_key)
+    IngestEventQueue.add_to_table(table_key, build_queue_saturation_events(count, source: source))
+    Backends.cache_local_buffer_lens(:consolidated, backend.id)
   end
 
   test "returns 429 when memory utilization is at or over 85%", %{conn: conn, source: source} do
@@ -515,6 +523,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
 
     test "returns 429 when user-configured ClickHouse default backend is full but system default is not",
          %{conn: conn} do
+      stub(IngestEventQueue, :max_consolidated_queue_size, fn -> 50 end)
       user = insert(:user)
       source = insert(:source, user: user, default_ingest_backend_enabled?: true)
 
@@ -542,15 +551,9 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
         IngestEventQueue.add_to_table(system_queue_key, [le])
       end
 
-      # Fill CH backend queue over the limit
-      clickhouse_queue_key = {source.id, clickhouse_backend.id, self()}
-      IngestEventQueue.upsert_tid(clickhouse_queue_key)
+      fill_consolidated_queue(clickhouse_backend, source, 51)
 
-      fill_queue(clickhouse_queue_key, source)
-
-      # Cache buffer stats for both backends
       Backends.cache_local_buffer_lens(source.id, nil)
-      Backends.cache_local_buffer_lens(source.id, clickhouse_backend.id)
 
       conn =
         conn
@@ -559,6 +562,122 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
 
       assert conn.halted
       assert json_response(conn, 429)
+    end
+  end
+
+  describe "account default ingest backend" do
+    setup do
+      user = insert(:user)
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://localhost:8123", database: "test_db"},
+          default_ingest?: true
+        )
+
+      conn = build_conn(:post, "/api/logs", %{"message" => "some text"})
+
+      {:ok, conn: conn, user: user, backend: backend}
+    end
+
+    test "returns 429 for an opted-in unlinked source when the default's consolidated queue is full",
+         %{conn: conn, user: user, backend: backend} do
+      stub(IngestEventQueue, :max_consolidated_queue_size, fn -> 50 end)
+      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+
+      fill_consolidated_queue(backend, source, 51)
+
+      conn =
+        conn
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      assert conn.halted
+      assert json_response(conn, 429)
+    end
+
+    test "allows an opted-in unlinked source when the default's consolidated queue is below the limit",
+         %{conn: conn, user: user, backend: backend} do
+      stub(IngestEventQueue, :max_consolidated_queue_size, fn -> 50 end)
+      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+
+      fill_consolidated_queue(backend, source, 50)
+
+      conn =
+        conn
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      refute conn.halted
+    end
+
+    test "ignores a full unlinked default's consolidated queue while the backend is disabled",
+         %{conn: conn, user: user, backend: backend} do
+      stub(IngestEventQueue, :max_consolidated_queue_size, fn -> 50 end)
+      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+
+      fill_consolidated_queue(backend, source, 51)
+
+      limited_conn =
+        conn
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      assert limited_conn.halted
+
+      backend = backend |> Ecto.Changeset.change(enabled: false) |> Logflare.Repo.update!()
+      assert {:ok, _} = ContextCache.bust_keys([{Backends, backend.id}])
+
+      allowed_conn =
+        conn
+        |> recycle()
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      refute allowed_conn.halted
+
+      backend |> Ecto.Changeset.change(enabled: true) |> Logflare.Repo.update!()
+      assert {:ok, _} = ContextCache.bust_keys([{Backends, backend.id}])
+
+      limited_conn =
+        conn
+        |> recycle()
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      assert limited_conn.halted
+      assert json_response(limited_conn, 429)
+    end
+
+    test "checks the default's consolidated queue against the consolidated limit, not the per-source one",
+         %{conn: conn, user: user, backend: backend} do
+      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+
+      fill_consolidated_queue(backend, source, Backends.max_buffer_queue_len() + 500)
+
+      conn =
+        conn
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      refute conn.halted
+    end
+
+    test "does not gate an opted-out source on the default's consolidated queue",
+         %{conn: conn, user: user, backend: backend} do
+      stub(IngestEventQueue, :max_consolidated_queue_size, fn -> 50 end)
+      source = insert(:source, user: user, default_ingest_backend_enabled?: false)
+
+      fill_consolidated_queue(backend, source, 51)
+
+      conn =
+        conn
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      refute conn.halted
     end
   end
 end

@@ -7,6 +7,8 @@ use sqlparser::dialect::PostgreSqlDialect;
 use sqlparser::parser::Parser;
 use sqlparser::parser::ParserError::ParserError;
 
+mod clickhouse;
+
 mod atoms {
     rustler::atoms! {
       ok,
@@ -30,6 +32,17 @@ fn parse(dialect_str: &str, query: &str) -> NifResult<Response> {
             "Parser for this dialect is not supported.".to_string(),
         )),
     };
+    encode_parse_result(result)
+}
+
+#[rustler::nif]
+fn parse_clickhouse_converted(query: &str) -> NifResult<Response> {
+    encode_parse_result(clickhouse::parse(query))
+}
+
+fn encode_parse_result(
+    result: Result<Vec<sqlparser::ast::Statement>, sqlparser::parser::ParserError>,
+) -> NifResult<Response> {
     match result {
         Ok(v) => Ok(Response {
             status: atoms::ok(),
@@ -44,7 +57,15 @@ fn parse(dialect_str: &str, query: &str) -> NifResult<Response> {
 
 #[rustler::nif]
 fn to_string(json: &str) -> NifResult<Response> {
-    let nodes: Vec<sqlparser::ast::Statement> = serde_json::from_str(json).unwrap();
+    let nodes: Vec<sqlparser::ast::Statement> = match serde_json::from_str(json) {
+        Ok(nodes) => nodes,
+        Err(e) => {
+            return Ok(Response {
+                status: atoms::error(),
+                message: e.to_string(),
+            })
+        }
+    };
 
     let mut parts = vec![];
     for node in nodes {
