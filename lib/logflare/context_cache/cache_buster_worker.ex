@@ -84,6 +84,7 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
     # sync backend across cluster for v2 sources
     Utils.Tasks.start_child(fn ->
       Backends.sync_backend_across_cluster(backend_id)
+      Rules.sync_rules_across_cluster(backend_id)
     end)
   end
 
