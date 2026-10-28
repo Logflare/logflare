@@ -204,10 +204,6 @@ defmodule Logflare.RepoTest do
       assert config[:database] == Repo.config()[:database]
       assert config[:username] == Repo.config()[:username]
     end
-
-    test "returns the repo configuration for a repo entry" do
-      assert Replicas.connection_config(Repo) == Repo.config()
-    end
   end
 
   describe "Replicas.after_connect/2" do

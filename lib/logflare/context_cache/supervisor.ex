@@ -113,9 +113,7 @@ defmodule Logflare.ContextCache.Supervisor do
   end
 
   @doc """
-  Starts the Cainophile WAL subscriber used for cache busting.
-
-  The WAL source is selected on every start, so a restart re-evaluates which replica to follow.
+  Starts the Cainophile WAL subscriber, selecting its WAL source on every start.
   """
   @spec start_cainophile() :: GenServer.on_start()
   def start_cainophile do
@@ -125,11 +123,10 @@ defmodule Logflare.ContextCache.Supervisor do
   end
 
   @doc """
-  Returns the replica key the WAL is followed from, with the Cainophile options to follow it.
+  Returns the followed replica key (`nil` for the primary) and the Cainophile options.
 
-  With `prefer_read_replica` enabled, the first configured read replica that is not disabled
-  and passes a reconciliation check against the primary is used. Otherwise the primary is used
-  and the replica key is `nil`.
+  With `prefer_read_replica`, the first read replica that is not disabled and passes
+  `ReplicaReconciler.compare/1` is followed.
   """
   @spec cainophile_options() :: {ReplicaReconciler.replica_key() | nil, keyword()}
   def cainophile_options do
@@ -151,7 +148,7 @@ defmodule Logflare.ContextCache.Supervisor do
   end
 
   @doc """
-  Returns the replica key the running WAL subscriber on this node follows, or `nil` for the primary.
+  Returns the replica key the WAL subscriber on this node follows, or `nil` for the primary.
   """
   @spec wal_replica() :: ReplicaReconciler.replica_key() | nil
   def wal_replica, do: :persistent_term.get(@wal_replica_key, nil)

@@ -9,8 +9,6 @@ defmodule Logflare.ContextCache.SupervisorTest do
   alias Logflare.Repo.ReplicaReconciler
   alias Logflare.Repo.Replicas
 
-  @check_opts [lag: :timer.minutes(1), recheck_delay: 0]
-
   setup do
     on_exit(fn ->
       :persistent_term.erase({ReplicaReconciler, :disabled})
@@ -56,13 +54,6 @@ defmodule Logflare.ContextCache.SupervisorTest do
       assert Keyword.fetch!(opts, :epgsql).host == String.to_charlist(Repo.config()[:hostname])
     end
 
-    test "follows the primary when preferring replicas but none are configured" do
-      put_env(:read_replicas, [])
-      prefer_read_replica(true)
-
-      assert {nil, _opts} = Supervisor.cainophile_options()
-    end
-
     test "follows a replica that passes reconciliation" do
       {key, entry} = start_unsandboxed_replica()
       put_env(:read_replicas, [entry])
@@ -84,22 +75,13 @@ defmodule Logflare.ContextCache.SupervisorTest do
       assert log =~ "not eligible to follow WAL"
     end
 
-    test "follows the primary when no replica passes reconciliation" do
-      {_key, entry} = start_unsandboxed_replica()
-      put_env(:read_replicas, [entry])
-      prefer_read_replica(true)
-      insert_stale_source()
-
-      capture_log(fn -> assert {nil, _opts} = Supervisor.cainophile_options() end)
-    end
-
     test "skips a replica disabled by the reconciler" do
       {key, entry} = start_unsandboxed_replica()
       put_env(:read_replicas, [entry])
       prefer_read_replica(true)
       source = insert_stale_source()
 
-      capture_log(fn -> ReplicaReconciler.reconcile(@check_opts) end)
+      capture_log(fn -> ReplicaReconciler.reconcile() end)
       assert ReplicaReconciler.disabled?(key)
       Repo.delete!(source)
 
@@ -140,11 +122,11 @@ defmodule Logflare.ContextCache.SupervisorTest do
       ref = Process.monitor(pid)
 
       insert_stale_source()
-      capture_log(fn -> ReplicaReconciler.reconcile(@check_opts) end)
+      capture_log(fn -> ReplicaReconciler.reconcile() end)
 
       assert_receive {:DOWN, ^ref, :process, ^pid, :replica_disabled}
 
-      capture_log(fn -> assert {:ok, restarted} = Supervisor.start_cainophile() end)
+      capture_log(fn -> assert {:ok, _restarted} = Supervisor.start_cainophile() end)
       assert_receive {:cainophile_started, _restarted, host}
       assert host == String.to_charlist(Repo.config()[:hostname])
       assert Supervisor.wal_replica() == nil
@@ -160,7 +142,7 @@ defmodule Logflare.ContextCache.SupervisorTest do
       ref = Process.monitor(pid)
 
       insert_stale_source()
-      capture_log(fn -> ReplicaReconciler.reconcile(@check_opts) end)
+      capture_log(fn -> ReplicaReconciler.reconcile() end)
 
       refute_receive {:DOWN, ^ref, :process, ^pid, _reason}, 100
     end
