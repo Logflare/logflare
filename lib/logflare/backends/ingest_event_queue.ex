@@ -531,6 +531,22 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
+  Number of events queued across every queue on this node, claimed or not, i.e. not yet
+  delivered to a backend or handed to the spool.
+  """
+  @spec total_size() :: non_neg_integer()
+  def total_size do
+    ms =
+      Ex2ms.fun do
+        {_key, _pid, tid, _status} -> tid
+      end
+
+    @ets_table_mapper
+    |> :ets.select(ms)
+    |> Enum.sum_by(&table_size/1)
+  end
+
+  @doc """
   Returns the sum of all pending events across all queues of a source-backend combination or consolidated queue.
   """
   @spec queues_pending_size(queues_key() | consolidated_queues_key()) :: integer() | nil

@@ -790,6 +790,14 @@ if spool_overrides != [] do
          Keyword.merge(Application.get_env(:logflare, :spool, []), spool_overrides)
 end
 
+case System.get_env("LOGFLARE_SHUTDOWN_DRAIN_TIMEOUT_MS") do
+  v when v in [nil, ""] ->
+    :ok
+
+  v ->
+    config :logflare, shutdown_drain_timeout_ms: Utils.parse_non_neg_integer!(v)
+end
+
 spool_ack_stale? =
   case System.get_env("SPOOL_ACK_STALE") do
     v when v in [nil, ""] -> true
