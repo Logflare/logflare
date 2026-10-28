@@ -2994,10 +2994,10 @@ defmodule Logflare.BackendsTest do
       unrelated_tree = Rules.Cache.rules_tree_by_source_id(unrelated.id)
       expected = MapSet.new([source.id, other.id])
 
-      expect(ClusterUtils, :rpc_multicast, 2, fn Backends, :sync_rules_local, [source_ids] ->
+      expect(ClusterUtils, :rpc_multicast, 2, fn Rules, :sync_rules_local, [source_ids] ->
         assert MapSet.new(source_ids) == expected
         assert length(source_ids) == 2
-        Backends.sync_rules_local(source_ids)
+        Rules.sync_rules_local(source_ids)
       end)
 
       for enabled <- [true, false] do

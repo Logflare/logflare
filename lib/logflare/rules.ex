@@ -2,15 +2,16 @@ defmodule Logflare.Rules do
   @moduledoc false
   import Ecto.Query
 
-  alias Logflare.Backends.Backend
-  alias Logflare.Backends.SourceSup
-  alias Logflare.Cluster
   alias Logflare.Lql
   alias Logflare.Repo
   alias Logflare.Rules.Rule
-  alias Logflare.SourceSchemas
   alias Logflare.Sources.Source
   alias Logflare.Sources.SourceRouter.RulesTree
+  alias Logflare.SourceSchemas
+  alias Logflare.Backends.Backend
+  alias Logflare.Backends.SourceSup
+  alias Logflare.Cluster
+  alias Logflare.ContextCache
 
   @doc """
   Lists rules for a given Source or Backend
@@ -53,8 +54,7 @@ defmodule Logflare.Rules do
     from(r in Rule,
       left_join: b in Backend,
       on: r.backend_id == b.id,
-      where: r.source_id == ^id,
-      where: is_nil(r.backend_id) or b.enabled
+      where: r.source_id == ^id and (is_nil(r.backend_id) or b.enabled)
     )
     |> Repo.all()
     |> RulesTree.build()
@@ -157,6 +157,30 @@ defmodule Logflare.Rules do
         SourceSup.start_rule_child(rule)
       end
     end
+
+    :ok
+  end
+
+  @spec sync_rules_across_cluster(Backend.t()) :: :ok
+  def sync_rules_across_cluster(%Backend{id: backend_id}) do
+    # Query once on the sending node so receiving nodes only evict cached entries.
+    source_ids =
+      for rule <- list_by_backend_id(backend_id), uniq: true do
+        rule.source_id
+      end
+
+    if source_ids != [] do
+      Cluster.Utils.rpc_multicast(__MODULE__, :sync_rules_local, [source_ids])
+    end
+
+    :ok
+  end
+
+  @spec sync_rules_local([pos_integer()]) :: :ok
+  def sync_rules_local(source_ids) do
+    source_ids
+    |> Enum.map(&{__MODULE__, source_id: &1})
+    |> ContextCache.bust_keys()
 
     :ok
   end

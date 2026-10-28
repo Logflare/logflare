@@ -1,9 +1,9 @@
 defmodule Logflare.Rules.CacheTest do
+  alias Logflare.Rules.Rule
   use Logflare.DataCase
 
   alias Logflare.ContextCache
   alias Logflare.Rules
-  alias Logflare.Rules.Rule
   alias Logflare.Sources.SourceRouter.RulesTree
 
   @subject Rules.Cache
