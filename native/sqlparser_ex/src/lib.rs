@@ -7,6 +7,8 @@ use sqlparser::dialect::PostgreSqlDialect;
 use sqlparser::parser::Parser;
 use sqlparser::parser::ParserError::ParserError;
 
+mod clickhouse;
+
 mod atoms {
     rustler::atoms! {
       ok,
@@ -30,6 +32,17 @@ fn parse(dialect_str: &str, query: &str) -> NifResult<Response> {
             "Parser for this dialect is not supported.".to_string(),
         )),
     };
+    encode_parse_result(result)
+}
+
+#[rustler::nif]
+fn parse_clickhouse_converted(query: &str) -> NifResult<Response> {
+    encode_parse_result(clickhouse::parse(query))
+}
+
+fn encode_parse_result(
+    result: Result<Vec<sqlparser::ast::Statement>, sqlparser::parser::ParserError>,
+) -> NifResult<Response> {
     match result {
         Ok(v) => Ok(Response {
             status: atoms::ok(),
