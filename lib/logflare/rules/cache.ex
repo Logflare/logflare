@@ -38,24 +38,9 @@ defmodule Logflare.Rules.Cache do
   @spec rules_tree_by_source_id(pos_integer()) ::
           RulesTree.t() | {:error, :database_unavailable}
   def rules_tree_by_source_id(id) do
-    key = {:rules_tree_by_source_id, [id]}
-    loader = fn -> {:ignore, with_tree_lock(key, fn -> load_rules_tree(id, key) end)} end
-
-    case Cachex.fetch!(__MODULE__, key, loader) do
-      {:cached, tree} -> tree
-      :loaded -> rules_tree_by_source_id(id)
-      {:error, :database_unavailable} = error -> error
-    end
-  end
-
-  @impl ContextCache
-  @spec delete_keys(Enumerable.t()) :: {:ok, non_neg_integer()}
-  def delete_keys(keys) do
-    for key <- keys, reduce: {:ok, 0} do
-      {:ok, total} ->
-        {:ok, count} = delete_key(key)
-        {:ok, total + count}
-    end
+    fetch({:rules_tree_by_source_id, [id]}, fn ->
+      Repo.with_primary(fn -> Rules.rules_tree_by_source_id(id) end)
+    end)
   end
 
   @impl ContextCache
@@ -77,36 +62,6 @@ defmodule Logflare.Rules.Cache do
       Repo.with_replica(fn -> Rules.get_rule(id) end)
     end)
   end
-
-  @spec load_rules_tree(pos_integer(), tuple()) ::
-          :loaded | {:error, :database_unavailable}
-  defp load_rules_tree(id, key) do
-    case Cachex.get!(__MODULE__, key) do
-      {:cached, _tree} ->
-        :loaded
-
-      nil ->
-        tree = Repo.with_primary(fn -> Rules.rules_tree_by_source_id(id) end)
-        Cachex.put!(__MODULE__, key, {:cached, tree})
-        :loaded
-    end
-  rescue
-    _error in DBConnection.ConnectionError -> {:error, :database_unavailable}
-  catch
-    :exit, {reason, _call} when reason in [:noproc, :killed] ->
-      {:error, :database_unavailable}
-  end
-
-  @spec delete_key(tuple()) :: {:ok, non_neg_integer()}
-  defp delete_key({:rules_tree_by_source_id, [_id]} = key) do
-    with_tree_lock(key, fn -> CachexOps.delete_keys(__MODULE__, [key]) end)
-  end
-
-  defp delete_key(key), do: CachexOps.delete_keys(__MODULE__, [key])
-
-  @spec with_tree_lock(tuple(), (-> result)) :: result when result: term()
-  defp with_tree_lock(key, fun),
-    do: :global.trans({{__MODULE__, key}, self()}, fun, [node()])
 
   defp apply_repo_fun(fun, args) do
     Logflare.ContextCache.apply_fun(Rules, fun, args)

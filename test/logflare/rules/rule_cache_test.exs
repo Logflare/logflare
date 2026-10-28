@@ -88,14 +88,14 @@ defmodule Logflare.Rules.CacheTest do
     test "source id key busting", %{source: source} do
       assert [_r1, _r2] = @subject.list_rules(source)
       assert _ = @subject.rules_tree_by_source_id(source.id)
-      assert %{writes: 2} = Cachex.stats!(@subject)
+      assert %{misses: 2, writes: 2} = Cachex.stats!(@subject)
 
       assert {:ok, 2} = ContextCache.bust_keys([{Rules, source_id: source.id}])
       assert [_r1, _r2] = @subject.list_rules(source)
-      assert %{writes: 3} = Cachex.stats!(@subject)
+      assert %{misses: 3, writes: 3} = Cachex.stats!(@subject)
 
       assert _ = @subject.rules_tree_by_source_id(source.id)
-      assert %{writes: 4} = Cachex.stats!(@subject)
+      assert %{misses: 4, writes: 4} = Cachex.stats!(@subject)
     end
 
     test "trees omit disabled destinations while raw lists retain them", %{
@@ -137,83 +137,6 @@ defmodule Logflare.Rules.CacheTest do
         Repo.put_dynamic_repo(previous_repo)
         Application.put_env(:logflare, :read_replicas, previous_replicas)
       end
-    end
-
-    test "failed tree reads leave the cache free to retry", %{source: source} do
-      stub(Rules, :rules_tree_by_source_id, fn id ->
-        Mimic.call_original(Rules, :rules_tree_by_source_id, [id])
-      end)
-
-      expect(Rules, :rules_tree_by_source_id, fn _id ->
-        raise DBConnection.ConnectionError, message: "primary unavailable"
-      end)
-
-      assert @subject.rules_tree_by_source_id(source.id) == {:error, :database_unavailable}
-      assert Cachex.get(@subject, {:rules_tree_by_source_id, [source.id]}) == {:ok, nil}
-      assert [_entry | _rest] = @subject.rules_tree_by_source_id(source.id)
-    end
-
-    test "unexpected tree read errors remain visible", %{source: source} do
-      expect(Rules, :rules_tree_by_source_id, fn _id -> raise "unexpected tree read" end)
-
-      assert_raise Cachex.Error, ~r/unexpected tree read/, fn ->
-        @subject.rules_tree_by_source_id(source.id)
-      end
-    end
-
-    test "eviction waits for an old fill while unrelated trees keep loading", %{
-      source: source,
-      backend: backend,
-      rule_ids: rule_ids
-    } do
-      backend = backend |> Ecto.Changeset.change(enabled: false) |> Repo.update!()
-      other = insert(:source, user_id: source.user_id)
-      insert(:rule, source: other)
-      test_pid = self()
-
-      stub(Rules, :rules_tree_by_source_id, fn id ->
-        Mimic.call_original(Rules, :rules_tree_by_source_id, [id])
-      end)
-
-      expect(Rules, :rules_tree_by_source_id, fn id ->
-        assert id == source.id
-        assert [] = tree = Mimic.call_original(Rules, :rules_tree_by_source_id, [id])
-        send(test_pid, {:tree_read_started, self()})
-
-        receive do
-          :finish -> tree
-        end
-      end)
-
-      reader = Task.async(fn -> @subject.rules_tree_by_source_id(source.id) end)
-      assert_receive {:tree_read_started, getter}
-      backend |> Ecto.Changeset.change(enabled: true) |> Repo.update!()
-
-      invalidator =
-        Task.async(fn ->
-          result = ContextCache.bust_keys([{Rules, source_id: source.id}])
-          send(test_pid, {:tree_busted, result})
-        end)
-
-      unrelated =
-        Task.async(fn ->
-          send(test_pid, {:other_tree, @subject.rules_tree_by_source_id(other.id)})
-        end)
-
-      try do
-        assert_receive {:other_tree, [_entry | _rest]}, 500
-        refute_receive {:tree_busted, _result}, 50
-      after
-        send(getter, :finish)
-        Task.await(reader)
-        Task.await(invalidator)
-        Task.await(unrelated)
-      end
-
-      assert_receive {:tree_busted, {:ok, 1}}
-      event = build(:log_event, source: source, message: "testing")
-      tree = @subject.rules_tree_by_source_id(source.id)
-      assert MapSet.new(RulesTree.matching_rule_ids(event, tree)) == MapSet.new(rule_ids)
     end
 
     test "backend id key busting", %{backend: backend} do
