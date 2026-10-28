@@ -1733,6 +1733,50 @@ defmodule Logflare.BackendsTest do
 
       assert :noop = SourceSup.start_backend_child(source, backend)
     end
+
+    test "start_backend_child_by_id/2 warns when both backend and source are missing" do
+      stub(Backends.Cache, :get_backend, fn _id -> nil end)
+      stub(Sources.Cache, :get_by_id, fn _id -> nil end)
+
+      log =
+        capture_log([level: :warning], fn ->
+          assert :noop = SourceSup.start_backend_child_by_id(1, 1)
+        end)
+
+      assert log =~ "Cannot start rule backend child: backend and source not found"
+    end
+
+    test "SourceSupWorker check warns on a rule whose backend is missing from cache", %{
+      source: source,
+      user: user
+    } do
+      backend = insert(:backend, user: user)
+      insert(:rule, source: source, backend: backend)
+      start_supervised!({SourceSup, source})
+      stub(Backends.Cache, :get_backend, fn _id -> nil end)
+      state = %{source_id: source.id, interval: :timer.minutes(10)}
+
+      log =
+        capture_log([level: :warning], fn ->
+          assert {:noreply, ^state} = SourceSupWorker.handle_info(:check, state)
+        end)
+
+      assert log =~ "Cannot start rule backend child: backend not found"
+    end
+
+    test "stop_rule_child/1 stops the rule child when its backend is missing from cache", %{
+      source: source,
+      user: user
+    } do
+      backend = insert(:backend, user: user)
+      rule = insert(:rule, source: source, backend: backend)
+      start_supervised!({SourceSup, source})
+      assert SourceSup.rule_child_started?(rule)
+      stub(Backends.Cache, :get_backend, fn _id -> nil end)
+
+      assert :ok = SourceSup.stop_rule_child(rule)
+      refute SourceSup.rule_child_started?(rule)
+    end
   end
 
   describe "ingestion" do
