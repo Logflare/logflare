@@ -507,9 +507,23 @@ defmodule LogflareWeb.OpenApiSchemas do
   defmodule VictoriaMetricsConfigSchema do
     @properties %{
       url: %Schema{type: :string},
-      headers: %Schema{type: :object},
-      username: %Schema{type: :string, nullable: true},
-      password: %Schema{type: :string, nullable: true},
+      headers: %Schema{
+        type: :object,
+        description:
+          "Request headers, including authorization. Credential values are redacted on read."
+      },
+      username: %Schema{
+        type: :string,
+        nullable: true,
+        writeOnly: true,
+        description: "Provide with password to set or replace the Basic authorization header."
+      },
+      password: %Schema{
+        type: :string,
+        nullable: true,
+        writeOnly: true,
+        description: "Provide with username to set or replace the Basic authorization header."
+      },
       labels: %Schema{type: :object, nullable: true}
     }
 

@@ -616,7 +616,13 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       [backend] = Backends.list_backends_by_user_access(user, type: :victoria_metrics)
       assert backend.config.url == "https://example.com/api/v1/write"
-      assert backend.config.username == "user"
+
+      assert backend.config.headers == %{
+               "authorization" => "Basic " <> Base.encode64("user:pass")
+             }
+
+      refute Map.has_key?(backend.config, :username)
+      refute Map.has_key?(backend.config, :password)
     end
 
     test "can create a clickhouse backend with a read cluster URL", %{conn: conn, user: user} do
@@ -837,6 +843,121 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert html =~ "example.org"
       assert html =~ "some other name"
       assert html =~ "some description"
+    end
+
+    test "victoria_metrics keeps stored Basic auth when convenience inputs are blank", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      authorization = "Basic " <> Base.encode64("stored-user:stored-password")
+
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :victoria_metrics,
+          config: %{
+            url: "https://example.com/api/v1/write",
+            headers: %{"authorization" => authorization}
+          }
+        )
+
+      {:ok, view, html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      refute html =~ "stored-user"
+      refute html =~ "stored-password"
+      refute html =~ authorization
+      assert has_element?(view, "input[name='backend[config][username]'][value='']")
+      assert has_element?(view, "input[name='backend[config][password]'][value='']")
+      assert has_element?(view, "input[name='backend[config][header1_value]'][value='REDACTED']")
+
+      html =
+        view
+        |> form("form", %{backend: %{description: "updated"}})
+        |> render_submit()
+
+      assert html =~ "Successfully updated backend"
+      updated = Backends.get_backend(backend.id)
+      assert updated.description == "updated"
+      assert updated.config.headers == %{"authorization" => authorization}
+      refute Map.has_key?(updated.config, :username)
+      refute Map.has_key?(updated.config, :password)
+    end
+
+    test "victoria_metrics replaces masked authorization through the Basic auth inputs", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :victoria_metrics,
+          config: %{
+            url: "https://example.com/api/v1/write",
+            headers: %{"authorization" => "Bearer stored-token", "x-tenant" => "acme"}
+          }
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      html =
+        view
+        |> form("form", %{
+          backend: %{config: %{username: "replacement-user", password: "replacement-password"}}
+        })
+        |> render_submit()
+
+      assert html =~ "Successfully updated backend"
+      updated = Backends.get_backend(backend.id)
+
+      assert updated.config.headers == %{
+               "authorization" =>
+                 "Basic " <> Base.encode64("replacement-user:replacement-password"),
+               "x-tenant" => "acme"
+             }
+
+      refute Map.has_key?(updated.config, :username)
+      refute Map.has_key?(updated.config, :password)
+      refute html =~ "replacement-password"
+      refute html =~ "stored-token"
+    end
+
+    test "victoria_metrics rejects newly entered authorization combined with Basic auth inputs",
+         %{
+           conn: conn,
+           source: source,
+           user: user
+         } do
+      headers = %{"authorization" => "Bearer stored-token"}
+
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :victoria_metrics,
+          config: %{url: "https://example.com/api/v1/write", headers: headers}
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      html =
+        view
+        |> form("form", %{
+          backend: %{
+            config: %{
+              username: "replacement-user",
+              password: "replacement-password",
+              header1_value: "Bearer replacement-token"
+            }
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Encountered error when updating backend"
+      assert Backends.get_backend(backend.id).config.headers == headers
     end
 
     test "webhook edit renders stored headers and preserves them on submit", %{

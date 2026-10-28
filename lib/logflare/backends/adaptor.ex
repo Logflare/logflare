@@ -69,6 +69,14 @@ defmodule Logflare.Backends.Adaptor do
     |> mod.validate_config()
   end
 
+  @spec apply_config_changes(Ecto.Changeset.t()) :: map()
+  def apply_config_changes(changeset) do
+    case Ecto.Changeset.apply_changes(changeset) do
+      %schema{} = config -> Map.take(config, schema.__schema__(:fields))
+      config -> config
+    end
+  end
+
   @doc """
   Returns true if a given `Backend` supports being used for default ingest.
 
