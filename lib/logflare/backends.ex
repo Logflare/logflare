@@ -521,7 +521,7 @@ defmodule Logflare.Backends do
       Map.update!(backend, :config_encrypted, fn config ->
         (config || %{})
         |> mod.cast_config()
-        |> Changeset.apply_changes()
+        |> Adaptor.apply_config_changes()
       end)
 
     updated

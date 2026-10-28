@@ -13,11 +13,13 @@ The VictoriaMetrics backend is **ingest-only**, and sends metric events to [Vict
 The backend can be configured with the following options:
 
 - `url` (`string`, required) - The remote write endpoint, such as `https://victoriametrics.example.com/api/v1/write`. Private and reserved addresses are rejected.
-- `username` and `password` (`string`, optional) - Basic auth credentials. Both must be provided together.
-- `headers` (`map`, optional) - Extra headers attached to each request. Credential headers such as `authorization` are redacted when the backend is read back.
+- `username` and `password` (`string`, optional, write-only) - Convenience inputs for Basic auth. Provide both together to set or replace the `authorization` header. The individual fields are not stored or returned by the API. Leave both blank or omit both to keep the configured authorization header.
+- `headers` (`map`, optional) - Headers attached to each request, including authentication. Credential headers such as `authorization` are returned as `REDACTED` when the backend is read back. Leave masked values unchanged to preserve them. A newly supplied authorization header cannot be combined with `username` and `password` in the same request.
 - `labels` (`map`, optional) - Static labels added to every time series. These take precedence over event attributes with the same name. Labels can be set through the management API.
 
-Stored credentials are only sent to the host they were entered for. Changing the URL to another host clears the password and credential headers, so they need to be entered again.
+Basic credentials are stored only as an `authorization: Basic ...` header. For bearer auth, configure `authorization: Bearer <token>` directly in `headers`. To remove authentication in the form, clear the authorization header's key; through the API, submit a `headers` map without that entry.
+
+Stored credentials are only sent to the origin they were entered for. Changing the URL scheme, host, or port clears stored credential headers, so credentials need to be entered again.
 
 ### Implementation Details
 
