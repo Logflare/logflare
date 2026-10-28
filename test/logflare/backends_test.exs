@@ -2092,7 +2092,7 @@ defmodule Logflare.BackendsTest do
       assert {:ok, []} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
     end
 
-    test "re-enabled drain destination resumes through the rule tree cached while disabled", %{
+    test "re-enabled drain destination resumes after busting the tree cached while disabled", %{
       source: source
     } do
       backend =
@@ -2126,14 +2126,18 @@ defmodule Logflare.BackendsTest do
       tree_key = {:rules_tree_by_source_id, [source.id]}
       assert {:cached, cached_tree} = Cachex.get!(Rules.Cache, tree_key)
       event = build(:log_event, source: source, message: "testing after resume")
-      assert rule.id in SourceRouter.RulesTree.matching_rule_ids(event, cached_tree)
-      reject(&Rules.rules_tree_by_source_id/1)
+      refute rule.id in SourceRouter.RulesTree.matching_rule_ids(event, cached_tree)
 
       backend |> Ecto.Changeset.change(enabled: true) |> Repo.update!()
-      Logflare.ContextCache.bust_keys([{Backends, backend.id}])
+
+      Logflare.ContextCache.bust_keys([
+        {Backends, backend.id},
+        {Rules, source_id: source.id}
+      ])
 
       assert {:ok, 1} = Backends.ingest_logs([event], source)
-      assert {:cached, ^cached_tree} = Cachex.get!(Rules.Cache, tree_key)
+      assert {:cached, resumed_tree} = Cachex.get!(Rules.Cache, tree_key)
+      assert rule.id in SourceRouter.RulesTree.matching_rule_ids(event, resumed_tree)
       assert {:ok, resumed_events} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
 
       messages = Enum.map(resumed_events, & &1.body["event_message"])

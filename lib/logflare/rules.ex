@@ -2,15 +2,15 @@ defmodule Logflare.Rules do
   @moduledoc false
   import Ecto.Query
 
-  alias Logflare.Lql
-  alias Logflare.Repo
-  alias Logflare.Rules.Rule
-  alias Logflare.Sources.Source
-  alias Logflare.Sources.SourceRouter.RulesTree
-  alias Logflare.SourceSchemas
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceSup
   alias Logflare.Cluster
+  alias Logflare.Lql
+  alias Logflare.Repo
+  alias Logflare.Rules.Rule
+  alias Logflare.SourceSchemas
+  alias Logflare.Sources.Source
+  alias Logflare.Sources.SourceRouter.RulesTree
 
   @doc """
   Lists rules for a given Source or Backend
@@ -27,6 +27,16 @@ defmodule Logflare.Rules do
 
   def list_by_backend_id(backend_id) do
     from(r in Rule, where: r.backend_id == ^backend_id)
+    |> Repo.all()
+  end
+
+  @spec list_source_ids_by_backend_ids([pos_integer()]) :: [pos_integer()]
+  def list_source_ids_by_backend_ids(backend_ids) do
+    from(r in Rule,
+      where: r.backend_id in ^backend_ids,
+      select: r.source_id,
+      distinct: true
+    )
     |> Repo.all()
   end
 
@@ -48,9 +58,16 @@ defmodule Logflare.Rules do
     where(query, [r], r.backend_id == ^backend_id)
   end
 
+  @spec rules_tree_by_source_id(pos_integer()) :: RulesTree.t()
   def rules_tree_by_source_id(id) do
-    rules = list_by_source_id(id)
-    RulesTree.build(rules)
+    from(r in Rule,
+      left_join: b in Backend,
+      on: r.backend_id == b.id,
+      where: r.source_id == ^id,
+      where: is_nil(r.backend_id) or b.enabled == true
+    )
+    |> Repo.all()
+    |> RulesTree.build()
   end
 
   @doc """

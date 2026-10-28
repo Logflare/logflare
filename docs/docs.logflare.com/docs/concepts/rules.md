@@ -18,4 +18,6 @@ Drain rules and multi-backends are a private alpha only feature for the Logflare
 
 On drain creation, data ingested into the source will automatically be routed to the selected backend.
 
+Disabling a destination backend pauses new deliveries through its drain rules. Re-enabling the backend restores those rules after the change propagates to the ingestion nodes. Events already queued for that backend can continue draining while it is disabled.
+
 If the backend is a supported fully-featured managed backend (such as BigQuery or Postgres), tables will automatically be created and managed as if the source had been attached to the backend. If an associated source table already exists, it would insert into the existing table.
