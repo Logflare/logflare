@@ -10,7 +10,7 @@ defmodule Logflare.Cache do
   alias Logflare.Cache.CachexOps
 
   @typedoc """
-  Counters since the last `c:reset/0`. Rates are percentages (0-100); `total_heap_size` is in bytes.
+  Counters since the last `c:reset/0`. Rates are percentages (0-100).
   """
   @type stats() :: %{
           evictions: non_neg_integer(),
@@ -19,8 +19,7 @@ defmodule Logflare.Cache do
           hits: non_neg_integer(),
           misses: non_neg_integer(),
           hit_rate: number(),
-          miss_rate: number(),
-          total_heap_size: non_neg_integer()
+          miss_rate: number()
         }
 
   @doc "Whether the cache on this node can serve requests."
