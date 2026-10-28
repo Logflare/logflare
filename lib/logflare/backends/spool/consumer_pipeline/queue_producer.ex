@@ -95,6 +95,10 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   @spec stop_receiving(GenServer.server()) :: :ok
   def stop_receiving(producer), do: GenStage.call(producer, :stop_receiving)
 
+  @doc "True once receiving has stopped and nothing loaded or prefetched is left, a running prefetch included."
+  @spec drained?(GenServer.server()) :: boolean()
+  def drained?(producer), do: GenStage.call(producer, :drained?)
+
   @impl GenStage
   def init(opts) do
     queue_url = Keyword.fetch!(opts, :queue_url)
@@ -161,6 +165,11 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     prefetch = if match?({:ready, _}, state.prefetch), do: nil, else: state.prefetch
 
     {:reply, :ok, [], %{state | receiving: false, prefetch: prefetch}}
+  end
+
+  def handle_call(:drained?, _from, state) do
+    drained? = not state.receiving and state.prefetch == nil and not buffered?(state)
+    {:reply, drained?, [], state}
   end
 
   @impl GenStage

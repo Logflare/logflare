@@ -1091,6 +1091,23 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       assert empty_state.prefetch == nil
     end
 
+    test "drained? is true only once nothing loaded or prefetched is left, a running prefetch included" do
+      from = {self(), make_ref()}
+
+      for {overrides, expected} <- [
+            {%{prefetch: :running}, false},
+            {%{current: %{handle: "h1", segments: ["seg"]}}, false},
+            {%{current: %{handle: "h1", segments: []}}, true},
+            {%{current: nil, prefetch: nil}, true}
+          ] do
+        assert {:reply, ^expected, [], _state} =
+                 QueueProducer.handle_call(:drained?, from, stopped_state(overrides))
+      end
+
+      assert {:reply, false, [], _state} =
+               QueueProducer.handle_call(:drained?, from, producer_state(%{}))
+    end
+
     test "a running producer stops receiving from the queue once told to stop receiving" do
       test_pid = self()
 

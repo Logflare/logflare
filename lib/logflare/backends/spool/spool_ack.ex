@@ -26,9 +26,12 @@ defmodule Logflare.Backends.Spool.SpoolAck do
 
   require Ex2ms
 
+  alias Logflare.Utils.Tasks
+
   @table :spool_ack
   @sweep_interval_ms :timer.minutes(1)
   @stale_after_ms :timer.minutes(10)
+  @nack_concurrency 16
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
@@ -90,18 +93,32 @@ defmodule Logflare.Backends.Spool.SpoolAck do
 
   @doc """
   Nacks every pending handle so its message redelivers immediately instead of
-  after the queue's visibility timeout, and forgets it. Returns how many were nacked.
+  after the queue's visibility timeout, and forgets it. Nacks run concurrently,
+  and any still running after `timeout_ms` are abandoned.
   """
-  @spec nack_pending() :: non_neg_integer()
-  def nack_pending do
+  @spec nack_pending(timeout()) :: :ok | :timeout
+  def nack_pending(timeout_ms) do
     ms =
       Ex2ms.fun do
         {handle, _count, _queue_mod, _queue_url, _registered_at} -> handle
       end
 
-    @table
-    |> :ets.select(ms)
-    |> Enum.count(&nack_taken/1)
+    handles = :ets.select(@table, ms)
+
+    nack_all = fn ->
+      handles
+      |> Task.async_stream(&nack_taken/1,
+        max_concurrency: @nack_concurrency,
+        timeout: :infinity,
+        ordered: false
+      )
+      |> Stream.run()
+    end
+
+    case Tasks.run_within(nack_all, timeout_ms) do
+      {:ok, :ok} -> :ok
+      _ -> :timeout
+    end
   end
 
   defp nack_taken(handle) do
@@ -115,9 +132,16 @@ defmodule Logflare.Backends.Spool.SpoolAck do
     end
   end
 
-  @doc "Returns once every queue ack already handed to this process has been sent."
-  @spec flush() :: :ok
-  def flush, do: GenServer.call(__MODULE__, :flush, :timer.seconds(30))
+  @doc """
+  Returns once every queue ack already handed to this process has been sent,
+  or `:timeout` if that takes longer than `timeout_ms`.
+  """
+  @spec flush(timeout()) :: :ok | :timeout
+  def flush(timeout_ms) do
+    GenServer.call(__MODULE__, :flush, timeout_ms)
+  catch
+    :exit, {:timeout, _call} -> :timeout
+  end
 
   defp emit_missing_handle_telemetry(op) do
     :telemetry.execute([:logflare, :backends, :spool, :ack, :missing_handle], %{}, %{op: op})
