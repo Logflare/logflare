@@ -21,6 +21,7 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.Spool.DurableBuffer.Supervisor, as: SpoolDurableBufferSup
   alias Logflare.Backends.Spool.Encoder, as: SpoolEncoder
   alias Logflare.Backends.Spool.Health, as: SpoolHealth
+  alias Logflare.Backends.Spool.OverloadLog, as: SpoolOverloadLog
   alias Logflare.ContextCache
   alias Logflare.Cluster
   alias Logflare.LogEvent
@@ -736,13 +737,21 @@ defmodule Logflare.Backends do
     end
   end
 
+  defp handle_spool_dispatch_error(source, backend, log_events, :spool_overloaded) do
+    SpoolOverloadLog.record(source_token: source.token)
+    fall_back_or_fail(source, backend, log_events, :spool_overloaded)
+  end
+
   defp handle_spool_dispatch_error(source, backend, log_events, reason) do
     Logger.error("backends: spool dispatch failed for source #{source.token}: #{inspect(reason)}")
+    fall_back_or_fail(source, backend, log_events, :spool_unavailable)
+  end
 
+  defp fall_back_or_fail(source, backend, log_events, error) do
     if spool_mode() == :both do
       dispatch_to_backend_path(source, backend, log_events)
     else
-      {:error, :spool_unavailable}
+      {:error, error}
     end
   end
 
@@ -753,7 +762,7 @@ defmodule Logflare.Backends do
   end
 
   @default_spool_append_timeout 15_000
-  @default_spool_max_partition_queue_len 1_000
+  @default_spool_max_partition_queue_len 5_000
 
   @spec dispatch_to_spool_producer([LogEvent.t()]) :: :ok | {:error, term()}
   defp dispatch_to_spool_producer([]), do: :ok

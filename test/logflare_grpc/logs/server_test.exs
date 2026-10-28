@@ -77,6 +77,24 @@ defmodule LogflareGrpc.Logs.ServerTest do
       assert {:error, %GRPC.RPCError{status: ^unavailable}} =
                emulate_request(channel, TestUtilsGrpc.random_otel_logs_request())
     end
+
+    test "returns UNAVAILABLE when the spool is overloaded", %{
+      source: source,
+      user: user,
+      port: port
+    } do
+      Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch, _source, _backend, _allow_spooling ->
+        {:error, :spool_overloaded}
+      end)
+
+      access_token = insert(:access_token, resource_owner: user, scopes: "ingest")
+      headers = [{"x-api-key", access_token.token}, {"x-source", source.token}]
+      {:ok, channel} = GRPC.Stub.connect("localhost:#{port}", headers: headers)
+      unavailable = GRPC.Status.unavailable()
+
+      assert {:error, %GRPC.RPCError{status: ^unavailable}} =
+               emulate_request(channel, TestUtilsGrpc.random_otel_logs_request())
+    end
   end
 
   defp emulate_request(channel, request) do
