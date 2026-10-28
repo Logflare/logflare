@@ -10,6 +10,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline, as: ClickHousePipeline
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
+  alias Logflare.Backends.Adaptor.WebhookAdaptor.Client, as: WebhookClient
   alias Logflare.Backends.Backend
   alias Logflare.Cluster.Utils, as: ClusterUtils
   alias Logflare.Backends.DynamicPipeline
@@ -2024,6 +2025,51 @@ defmodule Logflare.BackendsTest do
       assert {:ok, []} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
     end
 
+    test "attached backend admission resumes after backend-ID cache invalidation", %{
+      source: source
+    } do
+      backend =
+        insert(:backend,
+          user_id: source.user_id,
+          sources: [source],
+          type: :webhook,
+          config: %{url: "https://toggle.example.com"}
+        )
+
+      reject(&WebhookClient.send/1)
+      Backends.clear_list_backends_cache(source.id)
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+      {:ok, initial_count} = Counters.get_inserts(source.token)
+
+      assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "before pause"}], source)
+
+      assert {:ok, [queued_event]} =
+               IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+
+      backend = backend |> Ecto.Changeset.change(enabled: false) |> Repo.update!()
+      Logflare.ContextCache.bust_keys([{Backends, backend.id}])
+
+      assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "during pause"}], source)
+
+      assert {:ok, [^queued_event]} =
+               IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+
+      assert {:ok, paused_count} = Counters.get_inserts(source.token)
+      assert paused_count == initial_count + 2
+
+      backend |> Ecto.Changeset.change(enabled: true) |> Repo.update!()
+      Logflare.ContextCache.bust_keys([{Backends, backend.id}])
+
+      assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "after resume"}], source)
+      assert {:ok, resumed_events} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+      assert queued_event in resumed_events
+
+      messages = Enum.map(resumed_events, & &1.body["event_message"])
+      assert Enum.sort(messages) == ["after resume", "before pause"]
+      assert {:ok, resumed_count} = Counters.get_inserts(source.token)
+      assert resumed_count == initial_count + 3
+    end
+
     test "does not route or bill events for a disabled drain destination", %{source: source} do
       user = Repo.get(User, source.user_id)
 
@@ -2044,6 +2090,56 @@ defmodule Logflare.BackendsTest do
       assert {:ok, count} = Counters.get_inserts(source.token)
       assert count == initial_count + 1
       assert {:ok, []} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+    end
+
+    test "re-enabled drain destination resumes through the rule tree cached while disabled", %{
+      source: source
+    } do
+      backend =
+        insert(:backend,
+          user_id: source.user_id,
+          type: :webhook,
+          config: %{url: "https://drain-toggle.example.com"}
+        )
+
+      rule = insert(:rule, source: source, backend: backend, lql_string: "testing")
+      Logflare.ContextCache.bust_keys([{Rules, [source_id: source.id]}])
+      stub(SourceSup, :rule_child_started?, fn _rule -> true end)
+      reject(&WebhookClient.send/1)
+      queue_key = {source.id, backend.id, nil}
+      IngestEventQueue.upsert_tid(queue_key)
+      queued_event = build(:log_event, source: source, message: "queued before pause")
+      IngestEventQueue.add_to_table(queue_key, [queued_event])
+      {:ok, initial_count} = Counters.get_inserts(source.token)
+
+      backend = backend |> Ecto.Changeset.change(enabled: false) |> Repo.update!()
+      Logflare.ContextCache.bust_keys([{Backends, backend.id}])
+
+      assert {:ok, 1} =
+               Backends.ingest_logs([%{"event_message" => "testing while paused"}], source)
+
+      assert {:ok, [%{body: %{"event_message" => "queued before pause"}}]} =
+               IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+
+      assert {:ok, paused_count} = Counters.get_inserts(source.token)
+      assert paused_count == initial_count + 1
+      tree_key = {:rules_tree_by_source_id, [source.id]}
+      assert {:cached, cached_tree} = Cachex.get!(Rules.Cache, tree_key)
+      event = build(:log_event, source: source, message: "testing after resume")
+      assert rule.id in SourceRouter.RulesTree.matching_rule_ids(event, cached_tree)
+      reject(&Rules.rules_tree_by_source_id/1)
+
+      backend |> Ecto.Changeset.change(enabled: true) |> Repo.update!()
+      Logflare.ContextCache.bust_keys([{Backends, backend.id}])
+
+      assert {:ok, 1} = Backends.ingest_logs([event], source)
+      assert {:cached, ^cached_tree} = Cachex.get!(Rules.Cache, tree_key)
+      assert {:ok, resumed_events} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+
+      messages = Enum.map(resumed_events, & &1.body["event_message"])
+      assert Enum.sort(messages) == ["queued before pause", "testing after resume"]
+      assert {:ok, resumed_count} = Counters.get_inserts(source.token)
+      assert resumed_count == paused_count + 2
     end
   end
 
