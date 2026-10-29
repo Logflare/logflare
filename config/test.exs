@@ -14,6 +14,8 @@ config :logflare, LogflareWeb.Endpoint,
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
+config :logflare, Logflare.ContextCache.PeerWarmer, enabled: false, await_cache_buster: false
+
 config :logflare, Logflare.Sources.Source.BigQuery.Schema, updates_per_minute: 900_000
 
 config :logflare, Logflare.Google,
