@@ -22,6 +22,9 @@ config :logflare,
 
 config :logflare, Logflare.Alerting, enabled: true
 
+config :logflare, Logflare.KeyValues.Telemetry,
+  sample_denominators: [lookup: 1024, extraction: 128, database_fetch: 16]
+
 # Schema type verification on the ingest path. The verification logic was
 # silently broken for years (see #3489) and is being re-enabled gradually:
 # disabled by default until validated in production.

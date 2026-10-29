@@ -10,6 +10,8 @@ defmodule Logflare.Telemetry do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
   alias Logflare.Cache.CachexOps
+  alias Logflare.KeyValues.Cache
+  alias Logflare.KeyValues.Telemetry, as: KeyValuesTelemetry
 
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
@@ -37,6 +39,31 @@ defmodule Logflare.Telemetry do
   @ch_read_pool_status_event [:logflare, :clickhouse, :read_pool, :pool_status]
   @ch_read_pool_poll_failure_event [:logflare, :clickhouse, :read_pool, :poll_failure]
   @max_phash2_range 4_294_967_296
+  @key_values_tags [:implementation, :accessor_kind, :result]
+  @key_values_duration_buckets_ns [
+    100,
+    250,
+    500,
+    1_000,
+    2_500,
+    5_000,
+    10_000,
+    25_000,
+    50_000,
+    100_000,
+    250_000,
+    500_000,
+    1_000_000,
+    2_500_000,
+    5_000_000,
+    10_000_000,
+    25_000_000,
+    50_000_000,
+    100_000_000,
+    250_000_000,
+    500_000_000,
+    1_000_000_000
+  ]
 
   @ch_read_pool_time_buckets_ms [
     5,
@@ -194,6 +221,36 @@ defmodule Logflare.Telemetry do
       else
         []
       end
+
+    key_values_metrics =
+      [
+        last_value("logflare.key_values.cache.bytes",
+          unit: :byte,
+          description:
+            "KeyValues cache ETS allocation, excluding shared binaries and process heaps"
+        ),
+        last_value("logflare.key_values.cache.entries",
+          description: "Number of entries in the KeyValues cache ETS table"
+        ),
+        sum("logflare.key_values.fill.count",
+          tags: [:implementation, :accessor_kind, :source],
+          description: "KeyValues cache fills from a resident full value or database"
+        )
+      ] ++
+        Enum.flat_map([:lookup, :extraction, :database_fetch], fn operation ->
+          [
+            sum("logflare.key_values.#{operation}.count",
+              tags: @key_values_tags,
+              description: "Unsampled KeyValues #{operation} count, aggregated between polls"
+            ),
+            distribution("logflare.key_values.#{operation}.stop.duration",
+              tags: @key_values_tags ++ [:sample_denominator],
+              unit: {:native, :nanosecond},
+              reporter_options: [buckets: @key_values_duration_buckets_ns],
+              description: "Randomly sampled KeyValues #{operation} duration"
+            )
+          ]
+        end)
 
     phoenix_metrics = [
       distribution("phoenix.endpoint.stop.duration", unit: {:native, :millisecond}),
@@ -812,6 +869,7 @@ defmodule Logflare.Telemetry do
       database_metrics,
       vm_metrics,
       cache_metrics,
+      key_values_metrics,
       broadway_metrics,
       application_metrics,
       finch_metrics
@@ -833,6 +891,7 @@ defmodule Logflare.Telemetry do
         {__MODULE__, :process_message_queue_metrics, []},
         {__MODULE__, :process_memory_metrics, []},
         {__MODULE__, :ets_table_metrics, []},
+        {__MODULE__, :key_values_metrics, []},
         {__MODULE__, :clickhouse_read_pool_metrics, []},
         {Logflare.Sources.Source.BigQuery.SchemaMetrics, :report, []}
       ]
@@ -933,6 +992,26 @@ defmodule Logflare.Telemetry do
     Enum.each(@caches, fn {cache, metric} ->
       :telemetry.execute([:cachex, metric], cache.stats())
     end)
+  end
+
+  @spec key_values_metrics() :: :ok
+  def key_values_metrics do
+    KeyValuesTelemetry.poll()
+
+    case ets_info(Cache) do
+      :undefined ->
+        :ok
+
+      info when is_list(info) ->
+        :telemetry.execute(
+          [:logflare, :key_values, :cache],
+          %{
+            bytes: Keyword.fetch!(info, :memory) * :erlang.system_info(:wordsize),
+            entries: Keyword.fetch!(info, :size)
+          },
+          %{}
+        )
+    end
   end
 
   def process_message_queue_metrics do

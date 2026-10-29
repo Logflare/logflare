@@ -5,6 +5,7 @@ defmodule Logflare.KeyValues.CacheTest do
   alias Logflare.ContextCache
   alias Logflare.KeyValues
   alias Logflare.KeyValues.CacheWarmer
+  alias Logflare.KeyValues.Telemetry
 
   setup do
     :persistent_term.erase({CacheWarmer, :initialized})
@@ -50,6 +51,88 @@ defmodule Logflare.KeyValues.CacheTest do
 
   test "lookup/2 returns nil for missing keys", %{user: user} do
     assert nil == KeyValues.Cache.lookup(user.id, "nonexistent")
+  end
+
+  describe "lookup telemetry" do
+    setup do
+      Telemetry.poll()
+
+      for operation <- [:lookup, :extraction, :database_fetch, :fill] do
+        TestUtils.attach_forwarder([:logflare, :key_values, operation])
+      end
+
+      :ok
+    end
+
+    test "a warmed accessor fill and later scalar hit do not fetch PostgreSQL", %{user: user} do
+      value = %{"org" => %{"id" => "abc"}}
+      Cachex.put!(KeyValues.Cache, {:lookup, [user.id, "warm", nil]}, {:cached, value})
+
+      assert "abc" = KeyValues.Cache.lookup(user.id, "warm", "org.id")
+      assert "abc" = KeyValues.Cache.lookup(user.id, "warm", "org.id")
+      Telemetry.poll()
+
+      assert_receive {:telemetry_event, [:logflare, :key_values, :lookup], %{count: 2},
+                      %{accessor_kind: :dot, result: :value}}
+
+      assert_receive {:telemetry_event, [:logflare, :key_values, :fill], %{count: 1},
+                      %{accessor_kind: :dot, source: :warmed}}
+
+      assert_receive {:telemetry_event, [:logflare, :key_values, :extraction], %{count: 1},
+                      %{accessor_kind: :dot, result: :value}}
+
+      refute_receive {:telemetry_event, [:logflare, :key_values, :database_fetch], _, _}
+    end
+
+    test "missing accessor values are distinct from missing database rows", %{user: user} do
+      insert(:key_value, user: user, key: "known", value: %{"org" => %{"id" => "abc"}})
+
+      assert nil == KeyValues.Cache.lookup(user.id, "known", "org.missing")
+      assert nil == KeyValues.Cache.lookup(user.id, "absent", "org.missing")
+      Telemetry.poll()
+
+      assert_receive {:telemetry_event, [:logflare, :key_values, :lookup], %{count: 2},
+                      %{result: :nil_value}}
+
+      for result <- [:value, :nil_value] do
+        assert_receive {:telemetry_event, [:logflare, :key_values, :database_fetch], %{count: 1},
+                        %{result: ^result}}
+      end
+
+      assert_receive {:telemetry_event, [:logflare, :key_values, :extraction], %{count: 1},
+                      %{result: :nil_value}}
+
+      assert_receive {:telemetry_event, [:logflare, :key_values, :fill], %{count: 2},
+                      %{source: :database}}
+    end
+
+    test "concurrent callers count as separate lookups and one fill", %{user: user} do
+      parent = self()
+      user_id = user.id
+      value = %{"org_id" => "abc"}
+
+      expect(KeyValues, :lookup, fn ^user_id, "coalesced", nil ->
+        send(parent, {:loading, self()})
+
+        receive do
+          :release -> value
+        end
+      end)
+
+      tasks =
+        for _ <- 1..16, do: Task.async(fn -> KeyValues.Cache.lookup(user_id, "coalesced") end)
+
+      assert_receive {:loading, loader}
+      send(loader, :release)
+      assert Enum.map(tasks, &Task.await/1) == List.duplicate(value, 16)
+      Telemetry.poll()
+
+      assert_receive {:telemetry_event, [:logflare, :key_values, :lookup], %{count: 16},
+                      %{accessor_kind: :whole, result: :value}}
+
+      assert_receive {:telemetry_event, [:logflare, :key_values, :fill], %{count: 1},
+                      %{source: :database}}
+    end
   end
 
   test "busting a cached lookup and its accessor variants", %{user: user} do
