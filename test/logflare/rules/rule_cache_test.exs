@@ -4,6 +4,7 @@ defmodule Logflare.Rules.CacheTest do
 
   alias Logflare.ContextCache
   alias Logflare.Rules
+  alias Logflare.Sources.SourceRouter.RulesTree
 
   @subject Rules.Cache
 
@@ -95,6 +96,25 @@ defmodule Logflare.Rules.CacheTest do
 
       assert _ = @subject.rules_tree_by_source_id(source.id)
       assert %{misses: 4, writes: 4} = Cachex.stats!(@subject)
+    end
+
+    test "trees omit disabled destinations while raw lists retain them", %{
+      source: source,
+      rule_ids: rule_ids
+    } do
+      disabled = insert(:backend, enabled: false)
+      disabled_rule = insert(:rule, source: source, backend: disabled)
+      sink = insert(:source, user_id: source.user_id)
+      source_rule = insert(:rule, source: source, sink: sink.token)
+      event = build(:log_event, source: source, message: "testing")
+
+      matching_ids =
+        RulesTree.matching_rule_ids(event, @subject.rules_tree_by_source_id(source.id))
+
+      assert MapSet.new(matching_ids) == MapSet.new([source_rule.id | rule_ids])
+      assert Enum.any?(@subject.list_rules(source), &(&1.id == disabled_rule.id))
+      assert [%{id: id}] = @subject.list_rules(disabled)
+      assert id == disabled_rule.id
     end
 
     test "backend id key busting", %{backend: backend} do

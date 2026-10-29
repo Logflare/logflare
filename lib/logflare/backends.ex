@@ -688,12 +688,16 @@ defmodule Logflare.Backends do
   """
   @type log_param :: map()
   @spec ingest_logs([log_param()], Source.t()) ::
-          {:ok, count :: pos_integer()} | {:error, term()}
+          {:ok, count :: non_neg_integer()} | {:error, term()}
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) ::
-          {:ok, count :: pos_integer()} | {:error, term()}
+          {:ok, count :: non_neg_integer()} | {:error, term()}
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil, boolean()) ::
-          {:ok, count :: pos_integer()} | {:error, term()}
-  def ingest_logs(event_params, source, backend \\ nil, allow_spooling \\ false) do
+          {:ok, count :: non_neg_integer()} | {:error, term()}
+  def ingest_logs(event_params, source, backend \\ nil, allow_spooling \\ false)
+
+  def ingest_logs(_params, _source, %Backend{enabled: false}, _spooling), do: {:ok, 0}
+
+  def ingest_logs(event_params, source, backend, allow_spooling) do
     with :ok <- start_for_ingest(source) do
       do_ingest_logs(event_params, source, backend, allow_spooling)
     end
@@ -1050,6 +1054,8 @@ defmodule Logflare.Backends do
           backend :: Backend.t() | nil,
           log_events :: [LogEvent.t()]
         ) :: any()
+  defp dispatch_to_default_backend(_source, %Backend{enabled: false}, _log_events), do: :ok
+
   defp dispatch_to_default_backend(source, backend, log_events) do
     {queue_key, backend_type} =
       case backend do
@@ -1443,7 +1449,7 @@ defmodule Logflare.Backends do
   is full on this node. A buffer is full when every one of its queues is over its limit.
 
   For sources with `default_ingest_backend_enabled? = true`, returns true if the system
-  default backend buffer is full or the buffer of any `default_ingest?` backend among
+  default backend buffer is full or the buffer of any enabled `default_ingest?` backend among
   `list_dispatch_backends/1` is full. That covers both explicitly linked backends flagged
   `default_ingest?` and the account default ingest backends the source receives without a
   link. A consolidated backend is checked against its shared `{:consolidated, backend_id}`
@@ -1460,8 +1466,10 @@ defmodule Logflare.Backends do
     buffer_full_for_backend?(source_id, nil) or
       source
       |> list_dispatch_backends()
-      |> Enum.filter(& &1.default_ingest?)
-      |> Enum.any?(&buffer_full_for_backend?(source_id, &1))
+      |> Enum.any?(fn backend ->
+        backend.enabled && backend.default_ingest? &&
+          buffer_full_for_backend?(source_id, backend)
+      end)
   end
 
   def cached_local_pending_buffer_full?(%Source{id: source_id}) do
@@ -1492,7 +1500,7 @@ defmodule Logflare.Backends do
 
   @doc """
   Returns true if ANY of a source's ingest queues on this node currently exceeds its limit:
-  the system default queue plus every backend in `list_dispatch_backends/1`, regardless of
+  the system default queue plus every enabled backend in `list_dispatch_backends/1`, regardless of
   `default_ingest?` flags. A consolidated backend is checked through its shared
   `{:consolidated, backend_id}` queues against
   `IngestEventQueue.max_consolidated_queue_size/0`; any other backend through its
@@ -1500,15 +1508,17 @@ defmodule Logflare.Backends do
   `cached_local_pending_buffer_full?/1` (scoped to the system default and `default_ingest?`
   backends for the HTTP 429 gate), this reads live `IngestEventQueue` sizes directly rather
   than a separately-cadenced cache, matching `QueueJanitor`'s own `get_table_size/1`-based
-  overflow check. When the source is not cached, only its explicitly linked backends are
-  checked.
+  overflow check. When the source is not cached, only its enabled, explicitly linked backends
+  are checked. Disabled backend queues can keep draining without blocking new spool work.
   """
   @spec any_ingest_queue_over_limit?(pos_integer()) :: boolean()
   def any_ingest_queue_over_limit?(source_id) when is_pos_integer(source_id) do
     queue_over_limit_for_backend?(source_id, nil) or
       source_id
       |> backends_for_queue_limit()
-      |> Enum.any?(&queue_over_limit_for_backend?(source_id, &1))
+      |> Enum.any?(fn backend ->
+        backend.enabled and queue_over_limit_for_backend?(source_id, backend)
+      end)
   end
 
   defp backends_for_queue_limit(source_id) do
