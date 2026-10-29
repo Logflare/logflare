@@ -3,11 +3,12 @@ defmodule Logflare.Backends.Spool.Queue.SQS do
 
   @behaviour Logflare.Backends.Spool.Queue
 
+  alias Logflare.Backends.Spool.Queue
   alias Logflare.Backends.Spool.Queue.SQS.HttpClient
 
   @impl Logflare.Backends.Spool.Queue
   def resolve(queue_name) do
-    case request(ExAws.SQS.get_queue_url(queue_name)) do
+    case request(ExAws.SQS.get_queue_url(queue_name), retries: [max_attempts: 1]) do
       {:ok, %{body: %{queue_url: url}}} -> {:ok, url}
       {:error, reason} -> {:error, reason}
     end
@@ -17,7 +18,7 @@ defmodule Logflare.Backends.Spool.Queue.SQS do
   def receive(queue_url, opts) do
     max = Keyword.get(opts, :max_number_of_messages, 1)
 
-    case request(ExAws.SQS.receive_message(queue_url, max_number_of_messages: max)) do
+    case tracked_request(ExAws.SQS.receive_message(queue_url, max_number_of_messages: max)) do
       {:ok, %{body: %{messages: messages}}} ->
         normalized =
           Enum.map(messages, fn %{body: body, receipt_handle: handle} ->
@@ -33,7 +34,7 @@ defmodule Logflare.Backends.Spool.Queue.SQS do
 
   @impl Logflare.Backends.Spool.Queue
   def ack(queue_url, handle) do
-    case request(ExAws.SQS.delete_message(queue_url, handle)) do
+    case tracked_request(ExAws.SQS.delete_message(queue_url, handle)) do
       {:ok, _} ->
         :ok
 
@@ -52,7 +53,7 @@ defmodule Logflare.Backends.Spool.Queue.SQS do
 
   @impl Logflare.Backends.Spool.Queue
   def nack(queue_url, handle) do
-    case request(ExAws.SQS.change_message_visibility(queue_url, handle, 0)) do
+    case tracked_request(ExAws.SQS.change_message_visibility(queue_url, handle, 0)) do
       {:ok, _} -> :ok
       {:error, reason} -> {:error, reason}
     end
@@ -60,14 +61,16 @@ defmodule Logflare.Backends.Spool.Queue.SQS do
 
   @impl Logflare.Backends.Spool.Queue
   def publish(queue_url, body) do
-    case request(ExAws.SQS.send_message(queue_url, body)) do
+    case tracked_request(ExAws.SQS.send_message(queue_url, body)) do
       {:ok, _} -> :ok
       {:error, reason} -> {:error, reason}
     end
   end
 
-  defp request(operation) do
-    ExAws.request(operation, http_client: HttpClient)
+  defp tracked_request(operation), do: operation |> request() |> Queue.track_health()
+
+  defp request(operation, opts \\ []) do
+    ExAws.request(operation, [http_client: HttpClient] ++ opts)
   rescue
     e -> {:error, Exception.message(e)}
   catch

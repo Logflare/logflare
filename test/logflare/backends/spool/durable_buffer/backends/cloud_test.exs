@@ -24,6 +24,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.CloudTest do
         storage_mod: StorageMod,
         queue_mod: QueueMod,
         queue_ref: nil,
+        queue_name: nil,
         compress: false,
         max_commit_attempts: 3,
         retry_delay_ms: 1
@@ -116,6 +117,47 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.CloudTest do
       refute_receive {:publish, _, _}
       send(test_pid, :done)
       assert_receive :done
+    end
+
+    test "resolves a queue the boot lookup missed on commit, then reuses it" do
+      test_pid = self()
+      topic = "projects/p/topics/late-#{System.unique_integer([:positive])}"
+      on_exit(fn -> :persistent_term.erase({Backend, :queue_ref, topic}) end)
+      {:ok, resolves} = Agent.start_link(fn -> 0 end)
+
+      stub(StorageMod, :put, fn _b, _k, _body, _opts -> {:ok, %{}} end)
+
+      stub(QueueMod, :resolve, fn ^topic ->
+        case Agent.get_and_update(resolves, &{&1 + 1, &1 + 1}) do
+          1 -> {:error, :nxdomain}
+          _ -> {:ok, topic}
+        end
+      end)
+
+      stub(QueueMod, :publish, fn ref, _body ->
+        send(test_pid, {:publish, ref})
+        :ok
+      end)
+
+      {:ok, state} = Backend.open(config(%{queue_ref: nil, queue_name: topic}), 0)
+
+      assert {:ok, _state} = Backend.commit(state, batch(["one"]), 0, {0, 1})
+      assert {:ok, _state} = Backend.commit(state, batch(["two"]), 0, {1, 2})
+
+      assert_receive {:publish, ^topic}
+      assert_receive {:publish, ^topic}
+      assert Agent.get(resolves, & &1) == 2
+    end
+
+    test "fails the commit while the queue still cannot be resolved" do
+      topic = "projects/p/topics/down-#{System.unique_integer([:positive])}"
+      stub(StorageMod, :put, fn _b, _k, _body, _opts -> {:ok, %{}} end)
+      stub(QueueMod, :resolve, fn ^topic -> {:error, :nxdomain} end)
+      reject(&QueueMod.publish/2)
+
+      {:ok, state} = Backend.open(config(%{queue_ref: nil, queue_name: topic}), 0)
+
+      assert {:error, :nxdomain, _state} = Backend.commit(state, batch(["one"]), 0, {0, 1})
     end
 
     test "retries on failure up to max_commit_attempts, then gives up" do

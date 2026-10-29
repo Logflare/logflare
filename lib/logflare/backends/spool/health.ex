@@ -1,11 +1,12 @@
 defmodule Logflare.Backends.Spool.Health do
   @moduledoc """
   Tracks whether this node's spool can currently write and commit data,
-  as two independently-tracked scopes: `:disk` (local WAL fsync, `:wal`
-  buffer mode only) and `:upload` (the Cloud backend's GCS/queue commit,
+  as independently-tracked scopes: `:disk` (local WAL fsync, `:wal`
+  buffer mode only), `:upload` (the Cloud backend's GCS/queue commit,
   used directly in `:mem` mode and via `RotatingWal`'s workers in `:wal`
-  mode). Keeping them separate means a `:wal`-mode node's frequent local
-  fsync successes can't mask a persistently failing upload path.
+  mode) and `:queue` (SQS/Pub/Sub reachability). Keeping them separate
+  means a `:wal`-mode node's frequent local fsync successes can't mask a
+  persistently failing upload path.
 
   Self-healing per scope: a scope flips unhealthy after a run of
   consecutive failures (config `max_spool_health_failures`, default 3),
@@ -14,12 +15,14 @@ defmodule Logflare.Backends.Spool.Health do
   telemetry, tagged with `scope`, on every change.
   """
 
-  @scopes [:disk, :upload]
+  @scopes [:disk, :upload, :queue]
   @healthy 1
   @unhealthy 0
   @healthy_index 1
   @failure_count_index 2
   @default_max_spool_health_failures 3
+
+  @type scope :: :disk | :upload | :queue
 
   @spec initialize() :: :ok
   def initialize do
@@ -33,7 +36,7 @@ defmodule Logflare.Backends.Spool.Health do
   end
 
   @doc "Defaults to healthy if initialize/0 was never called (e.g. a node not running the spool producer at all)."
-  @spec healthy?(:disk | :upload) :: boolean()
+  @spec healthy?(scope()) :: boolean()
   def healthy?(scope) do
     case :persistent_term.get(key(scope), nil) do
       nil -> true
@@ -41,7 +44,7 @@ defmodule Logflare.Backends.Spool.Health do
     end
   end
 
-  @spec report_failure!(:disk | :upload) :: :ok
+  @spec report_failure!(scope()) :: :ok
   def report_failure!(scope) do
     case :persistent_term.get(key(scope), nil) do
       nil ->
@@ -57,7 +60,7 @@ defmodule Logflare.Backends.Spool.Health do
     end
   end
 
-  @spec report_recovery!(:disk | :upload) :: :ok
+  @spec report_recovery!(scope()) :: :ok
   def report_recovery!(scope) do
     case :persistent_term.get(key(scope), nil) do
       nil ->
