@@ -1,6 +1,9 @@
 defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWalTest do
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureLog
+  import Mimic
+
   alias DurableBuffer.WAL
   alias Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal, as: Backend
   alias Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal.Worker
@@ -14,6 +17,8 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWalTest do
   # file's own Health assertions (this module runs async, i.e. before any
   # sync test module starts, so whatever it leaves behind is what the
   # first sync test to touch :disk would otherwise see).
+  setup :verify_on_exit!
+
   setup do
     on_exit(fn -> Health.report_recovery!(:disk) end)
   end
@@ -221,6 +226,93 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWalTest do
     assert {:ok, truncated} = Backend.truncate(state, 0)
     assert File.read!(truncated.path) == ""
     assert truncated.pending_bytes == 0
+  end
+
+  describe "disk errors" do
+    test "commit/4 survives a rotation that cannot reopen the active file, and recovers once the disk does" do
+      config = config(max_batch_bytes: 15, worker_count: 1)
+      {:ok, state} = Backend.open(config, 0)
+      File.rm_rf!(config.wal_dir)
+      expect(Health, :report_failure!, 2, fn :disk -> :ok end)
+
+      {entry, size} = framed("hello world")
+
+      capture_log(fn ->
+        assert {:ok, state} = Backend.commit(state, entry, size, {0, 1})
+        assert {:error, :enoent, state} = Backend.commit(state, entry, size, {1, 1})
+
+        File.mkdir_p!(config.wal_dir)
+        {entry, size} = framed("ok")
+        assert {:ok, state} = Backend.commit(state, entry, size, {2, 1})
+
+        {payloads, _valid, _rest} = state.path |> File.read!() |> WAL.decode_all()
+        assert payloads == ["ok"]
+        assert :ok = Backend.close(state)
+      end)
+    end
+
+    test "handle_message/2 flush_tick survives a rotation that cannot reopen the active file" do
+      config =
+        config(
+          max_batch_bytes: 1_000_000,
+          max_rotation_interval_ms: @interval_ms,
+          worker_count: 1
+        )
+
+      {:ok, state} = Backend.open(config, 0)
+      {entry, size} = framed("tail")
+      {:ok, state} = Backend.commit(state, entry, size, {0, 1})
+      File.rm_rf!(config.wal_dir)
+      expect(Health, :report_failure!, fn :disk -> :ok end)
+
+      assert_receive {:backend, :flush_tick}, @interval_ms * 5
+
+      capture_log(fn ->
+        assert {[], _state} = Backend.handle_message(:flush_tick, state)
+      end)
+    end
+
+    test "close/1 returns :ok and stops its workers when the pending tail cannot be rotated" do
+      config = config(max_batch_bytes: 1_000_000, worker_count: 1)
+      {:ok, state} = Backend.open(config, 0)
+      {entry, size} = framed("tail")
+      {:ok, state} = Backend.commit(state, entry, size, {0, 1})
+      File.rm_rf!(config.wal_dir)
+      expect(Health, :report_failure!, fn :disk -> :ok end)
+
+      capture_log(fn -> assert :ok = Backend.close(state) end)
+
+      for worker <- state.workers, do: refute(Process.alive?(worker.pid))
+    end
+
+    test "truncate/2 returns {:ok, state} when the active file cannot be reopened" do
+      config = config()
+      {:ok, state} = Backend.open(config, 0)
+      File.rm_rf!(config.wal_dir)
+      expect(Health, :report_failure!, fn :disk -> :ok end)
+
+      capture_log(fn ->
+        assert {:ok, truncated} = Backend.truncate(state, 0)
+        assert truncated.pending_bytes == 0
+      end)
+    end
+
+    test "a failed rename still reopens the active file so later commits land in it" do
+      config = config(max_batch_bytes: 15, worker_count: 1)
+      {:ok, state} = Backend.open(config, 0)
+      File.rm!(state.path)
+
+      {entry, size} = framed("hello world")
+
+      capture_log(fn ->
+        assert {:ok, state} = Backend.commit(state, entry, size, {0, 1})
+
+        {entry, size} = framed("next")
+        assert {:ok, state} = Backend.commit(state, entry, size, {1, 1})
+        {payloads, _valid, _rest} = state.path |> File.read!() |> WAL.decode_all()
+        assert payloads == ["next"]
+      end)
+    end
   end
 
   test "stream/2 is not supported" do
