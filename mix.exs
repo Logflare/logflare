@@ -144,18 +144,18 @@ defmodule Logflare.Mixfile do
       # Outbound Requests
       {:inet_cidr, "~> 1.0"},
       {:castore, "~> 1.0"},
-      {:finch, "~> 0.20.0"},
+      {:finch, "~> 0.24"},
       {:mint, "~> 1.0"},
       {:httpoison, "~> 1.4"},
       {:poison, "~> 5.0.0", override: true},
       {:swoosh, "~> 1.0"},
       {:ex_twilio, "~> 0.8.1"},
-      {:tesla, "~> 1.6"},
+      {:tesla, "~> 1.21"},
 
       # Concurrency and pipelines
       {:broadway, "~> 1.3"},
       {:syn, github: "Logflare/syn"},
-      {:durable_buffer, github: "chasers/durable_buffer", tag: "v0.5.0"},
+      {:durable_buffer, github: "chasers/durable_buffer", tag: "v0.6.1"},
 
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
@@ -176,7 +176,8 @@ defmodule Logflare.Mixfile do
       {:google_api_storage, "~> 0.46"},
       {:google_api_pub_sub, "~> 0.42"},
       {:goth, github: "Logflare/goth", branch: "feat/service-account-impersonation"},
-      {:google_gax, github: "Logflare/elixir-google-gax", ref: "6772193", override: true},
+      {:google_gax,
+       github: "bblaszkow06/elixir-google-gax", branch: "bb/bump-deps", override: true},
 
       # Ecto
       {:ecto, "~> 3.13"},
