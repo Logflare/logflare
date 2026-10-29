@@ -66,14 +66,6 @@ All browser authentication will be disabled when in single-tenant mode.
 
 Additional environment variable configurations for the OpenTelemetry libraries used can be found [here](https://hexdocs.pm/opentelemetry_exporter/readme.html).perf/bq-pipeline-sharding
 
-### KeyValues cache metrics
-
-The server OpenTelemetry exporter reports KeyValues ETS bytes and entries every 30 seconds, independently of Cachex statistics. Bytes cover the cache table allocation, excluding process heaps and shared binary backing.
-
-The `logflare.key_values` metrics also count lookups, extractions, warmed-value fills, database fills, database fetches and missing database rows. Counts accumulate locally and are reported every 30 seconds. A missing accessor does not count as a missing database row.
-
-Successful lookup, extraction and database-fetch durations are sampled at 1/1024, 1/128 and 1/16 respectively. Samples are selected per call before timing and include standard telemetry span overhead. Histograms use nanoseconds and label the accessor kind and sampling rate; their observation counts are not traffic totals. No keys, paths, users or sources are exported. Compare similarly warmed nodes and traffic when evaluating a cache change.
-
 ### Upgrading
 
 #### v1.51.0
