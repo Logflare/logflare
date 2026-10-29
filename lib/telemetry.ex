@@ -33,6 +33,8 @@ defmodule Logflare.Telemetry do
   }
 
   @metrics_interval 30_000
+  @key_values_state {__MODULE__, :key_values_counts}
+  @key_values_indexes %{lookup: 1, warmed_fill: 2, database_fill: 3, database_fetch: 4}
   @ch_read_pool_poll_timeout :timer.seconds(5)
   @ch_read_pool_status_event [:logflare, :clickhouse, :read_pool, :pool_status]
   @ch_read_pool_poll_failure_event [:logflare, :clickhouse, :read_pool, :poll_failure]
@@ -353,6 +355,22 @@ defmodule Logflare.Telemetry do
           "Total events dispatched from the spool consumer to their destination backends"
       ),
       counter("logflare.cache_buster.to_bust.count", tags: []),
+      sum("logflare.key_values.lookup.count",
+        event_name: [:logflare, :key_values, :counts],
+        measurement: :lookup
+      ),
+      sum("logflare.key_values.fill.warmed.count",
+        event_name: [:logflare, :key_values, :counts],
+        measurement: :warmed_fill
+      ),
+      sum("logflare.key_values.fill.database.count",
+        event_name: [:logflare, :key_values, :counts],
+        measurement: :database_fill
+      ),
+      sum("logflare.key_values.database_fetch.count",
+        event_name: [:logflare, :key_values, :counts],
+        measurement: :database_fetch
+      ),
       sum("logflare.logs.ingest_logs.drop_lql",
         event_name: [:logflare, :logs, :ingest_logs, :drop_lql],
         measurement: :count,
@@ -832,6 +850,7 @@ defmodule Logflare.Telemetry do
       [
         {__MODULE__, :process_message_queue_metrics, []},
         {__MODULE__, :process_memory_metrics, []},
+        {__MODULE__, :key_values_counts, []},
         {__MODULE__, :ets_table_metrics, []},
         {__MODULE__, :clickhouse_read_pool_metrics, []},
         {Logflare.Sources.Source.BigQuery.SchemaMetrics, :report, []}
@@ -933,6 +952,56 @@ defmodule Logflare.Telemetry do
     Enum.each(@caches, fn {cache, metric} ->
       :telemetry.execute([:cachex, metric], cache.stats())
     end)
+  end
+
+  @spec initialize_key_values_counts() :: :ok
+  def initialize_key_values_counts do
+    if :persistent_term.get(@key_values_state, nil) == nil do
+      :persistent_term.put(
+        @key_values_state,
+        {:counters.new(4, [:write_concurrency]), :atomics.new(4, signed: false)}
+      )
+    end
+
+    :ok
+  end
+
+  @spec key_values_count(:lookup | :warmed_fill | :database_fill | :database_fetch) :: :ok
+  def key_values_count(counter) do
+    case :persistent_term.get(@key_values_state, nil) do
+      {counters, _previous} ->
+        :counters.add(counters, Map.fetch!(@key_values_indexes, counter), 1)
+
+      nil ->
+        :ok
+    end
+  end
+
+  @spec key_values_counts() :: :ok
+  def key_values_counts do
+    case :persistent_term.get(@key_values_state, nil) do
+      {counters, previous} ->
+        counts =
+          Map.new(@key_values_indexes, fn {counter, index} ->
+            {counter, key_values_count_delta(counters, previous, index)}
+          end)
+
+        :telemetry.execute([:logflare, :key_values, :counts], counts, %{})
+
+      nil ->
+        :ok
+    end
+  end
+
+  @spec key_values_count_delta(:counters.counters_ref(), :atomics.atomics_ref(), pos_integer()) ::
+          non_neg_integer()
+  defp key_values_count_delta(counters, previous, index) do
+    total = :counters.get(counters, index)
+    seen = :atomics.get(previous, index)
+
+    if total > seen and :atomics.compare_exchange(previous, index, seen, total) == :ok,
+      do: total - seen,
+      else: 0
   end
 
   def process_message_queue_metrics do
