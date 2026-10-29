@@ -28,6 +28,11 @@ defmodule LogflareGrpc.Metrics.Server do
           status: :unavailable,
           message: "Source is unavailable. Send the batch again."
 
+      {:error, :spool_overloaded} ->
+        raise GRPC.RPCError,
+          status: :unavailable,
+          message: "Ingest is overloaded. Send the batch again."
+
       {:error, errors} when is_list(errors) ->
         Logger.warning("OTLP gRPC ingest rejected #{length(errors)} event(s) at validation",
           source_token: source.token,

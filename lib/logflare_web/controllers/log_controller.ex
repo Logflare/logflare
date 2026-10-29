@@ -45,6 +45,8 @@ defmodule LogflareWeb.LogController do
   @message "Logged!"
   @source_unavailable_message "Source is unavailable. Send the batch again."
   @source_unavailable_retry_after "5"
+  @spool_overloaded_retry_after "5"
+  @spool_overloaded_message "Ingest is overloaded. Send the batch again."
   @source_not_found_message "Source not found."
 
   operation(:create,
@@ -323,6 +325,14 @@ defmodule LogflareWeb.LogController do
     |> render("index.json", message: "Internal server error")
   end
 
+  defp handle({:error, :spool_overloaded}, conn) do
+    conn
+    |> put_status(503)
+    |> put_resp_header("retry-after", @spool_overloaded_retry_after)
+    |> put_view(LogflareWeb.LogView)
+    |> render("index.json", message: @spool_overloaded_message)
+  end
+
   defp handle({:error, :source_not_found}, conn) do
     conn
     |> put_status(404)
@@ -405,6 +415,12 @@ defmodule LogflareWeb.LogController do
     conn
     |> put_resp_header("retry-after", @source_unavailable_retry_after)
     |> send_proto_error(503, @source_unavailable_message)
+  end
+
+  defp protobuf_response({:error, :spool_overloaded}, conn, _success_response) do
+    conn
+    |> put_resp_header("retry-after", @spool_overloaded_retry_after)
+    |> send_proto_error(503, @spool_overloaded_message)
   end
 
   defp protobuf_response({:error, :spool_unavailable}, conn, _success_response) do
