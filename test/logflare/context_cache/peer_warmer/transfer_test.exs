@@ -16,6 +16,21 @@ defmodule Logflare.ContextCache.PeerWarmer.TransferTest do
     use Logflare.ContextCache
   end
 
+  defmodule StallingCache do
+    use Logflare.ContextCache
+
+    @impl Logflare.ContextCache
+    def entries do
+      Stream.concat(
+        Enum.map(1..500, &{&1, &1, nil}),
+        Stream.map([:late], fn key ->
+          Process.sleep(5_000)
+          {key, key, nil}
+        end)
+      )
+    end
+  end
+
   setup do
     start_supervised!(CachexOps.child_spec(TestCache, limit: nil))
     :ok
@@ -91,6 +106,27 @@ defmodule Logflare.ContextCache.PeerWarmer.TransferTest do
 
     assert {:error, :rpc_failed} =
              Transfer.run(node(), TestCache, missing_guard, &length/1, 5_000)
+  end
+
+  test "gives up when the exporter stalls, well before the deadline" do
+    started_at = System.monotonic_time(:millisecond)
+
+    assert {:error, :timeout} =
+             Transfer.run(node(), StallingCache, @accept, &length/1, to_timeout(second: 30))
+
+    assert System.monotonic_time(:millisecond) - started_at < to_timeout(second: 3)
+  end
+
+  test "the exporter stops when the requester doesn't ack a chunk" do
+    put_entries(1..1_000)
+    ref = make_ref()
+
+    assert {:ok, exporter, :meta} = Transfer.start_export(TestCache, @accept, self(), ref)
+    monitor = Process.monitor(exporter)
+
+    assert_receive {^ref, :chunk, _entries}
+    assert_receive {:DOWN, ^monitor, :process, ^exporter, :normal}, to_timeout(second: 3)
+    refute_received {^ref, :chunk, _entries}
   end
 
   test "fails when the exporter goes down" do

@@ -5,8 +5,9 @@ defmodule Logflare.ContextCache.PeerWarmer.Transfer do
   The requesting process asks the peer to start an exporter. The peer first applies the `guard`
   MFA, which decides whether it may serve the copy and returns metadata for the requester. The
   exporter then streams `c:Logflare.ContextCache.entries/0` and sends one chunk at a time, waiting
-  for an ack before sending the next. The exporter stops when the requester goes down or stops
-  acking, and the requester gives up at the deadline.
+  for an ack before sending the next. Neither side waits long for the other: the exporter stops
+  when the requester goes down or doesn't ack a chunk within 2 seconds, and the requester gives
+  up when no chunk arrives within 2 seconds or at the deadline.
   """
 
   alias Logflare.Cluster.Utils, as: ClusterUtils
@@ -14,8 +15,9 @@ defmodule Logflare.ContextCache.PeerWarmer.Transfer do
   alias Logflare.Utils.Tasks
 
   @chunk_size 500
-  @ack_timeout to_timeout(second: 10)
-  @rpc_timeout to_timeout(second: 5)
+  @ack_timeout to_timeout(second: 2)
+  @chunk_timeout to_timeout(second: 2)
+  @rpc_timeout to_timeout(second: 2)
 
   @type import_fun :: ([ContextCache.entry()] -> non_neg_integer())
   @type guard :: {module(), atom(), list()}
@@ -98,7 +100,7 @@ defmodule Logflare.ContextCache.PeerWarmer.Transfer do
       {:DOWN, ^monitor, :process, _pid, _reason} ->
         {:error, :peer_down}
     after
-      remaining -> time_out(transfer)
+      min(remaining, @chunk_timeout) -> time_out(transfer)
     end
   end
 
