@@ -183,6 +183,29 @@ defmodule Logflare.RepoTest do
     end
   end
 
+  describe "Replicas.connection_config/1" do
+    test "uses the settings given in a replica URI" do
+      config =
+        Replicas.connection_config(
+          Replicas.parse!("postgres://wal:secret@replica1.example.com:5433/replica_db")
+        )
+
+      assert config[:hostname] == "replica1.example.com"
+      assert config[:port] == 5433
+      assert config[:database] == "replica_db"
+      assert config[:username] == "wal"
+      assert config[:password] == "secret"
+    end
+
+    test "inherits omitted settings from the primary" do
+      config = Replicas.connection_config(Replicas.parse!("replica.example.com"))
+
+      assert config[:hostname] == "replica.example.com"
+      assert config[:database] == Repo.config()[:database]
+      assert config[:username] == Repo.config()[:username]
+    end
+  end
+
   describe "Replicas.after_connect/2" do
     setup do
       opts = Keyword.take(Repo.config(), [:hostname, :port, :username, :password, :database])

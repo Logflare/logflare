@@ -49,19 +49,11 @@ defmodule Logflare.Repo.Replicas do
     if entries == [] do
       :ignore
     else
-      primary_config =
-        :logflare
-        |> Application.get_env(Logflare.Repo, [])
-        |> ConnectionOptions.resolve_url!()
-        |> Keyword.put(:url, nil)
-
-      primary_ssl = Logflare.Repo.config()[:ssl]
-
       replicas =
-        Enum.map(entries, fn {key, config} ->
+        Enum.map(entries, fn {key, _config} = entry ->
           config =
-            primary_config
-            |> Keyword.merge(resolve_ssl(config, primary_ssl))
+            entry
+            |> connection_config()
             |> Keyword.put(:name, {:via, Registry, {@registry, key}})
             |> Keyword.put(:logflare_connection_role, :replica)
 
@@ -76,6 +68,28 @@ defmodule Logflare.Repo.Replicas do
       Supervisor.start_link(children, strategy: :one_for_one)
     end
   end
+
+  @doc """
+  Returns the connection configuration for a `:read_replicas` entry, with omitted settings
+  inherited from the primary `Logflare.Repo` configuration.
+  """
+  @spec connection_config({String.t(), keyword()} | module()) :: keyword()
+  def connection_config(repo) when is_atom(repo), do: repo.config()
+
+  def connection_config({_key, config}) do
+    :logflare
+    |> Application.get_env(Logflare.Repo, [])
+    |> ConnectionOptions.resolve_url!()
+    |> Keyword.put(:url, nil)
+    |> Keyword.merge(resolve_ssl(config, Logflare.Repo.config()[:ssl]))
+  end
+
+  @doc """
+  Returns the repo or replica pool PID that serves a `:read_replicas` entry.
+  """
+  @spec repo({String.t(), keyword()} | module()) :: module() | pid()
+  def repo(repo) when is_atom(repo), do: repo
+  def repo({key, _config}), do: lookup!(key)
 
   @doc """
   Looks up the PID of the replica connection pool for the given key.
