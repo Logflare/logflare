@@ -407,37 +407,24 @@ defmodule Logflare.LogEvent do
   end
 
   @spec make_message(LE.t(), Source.t()) :: String.t() | nil
-  defp make_message(log_event, source) do
-    if keys = source.custom_event_message_keys do
-      keys
-      |> String.split(",", trim: true)
-      |> Enum.map_join(" | ", fn key -> build_message(key, log_event) end)
-    else
-      get_default_message(log_event)
-    end
-  end
+  defp make_message(log_event, %Source{custom_event_message_keys: nil}),
+    do: get_default_message(log_event)
 
-  @spec build_message(String.t(), LE.t()) :: String.t() | nil
-  defp build_message(key, log_event) do
-    message = get_default_message(log_event)
+  defp make_message(log_event, %Source{custom_event_message_keys_parsed: parsed})
+       when is_list(parsed),
+       do: Enum.map_join(parsed, " | ", &build_message(&1, log_event))
 
-    case String.trim(key) do
-      "id" ->
-        to_string(log_event.id)
+  defp make_message(log_event, %Source{} = source),
+    do: make_message(log_event, Source.parse_custom_event_message_keys(source))
 
-      "message" ->
-        message
+  @spec build_message(Source.custom_event_message_key(), LE.t()) :: String.t() | nil
+  defp build_message(:id, log_event), do: to_string(log_event.id)
+  defp build_message(:message, log_event), do: get_default_message(log_event)
 
-      "event_message" ->
-        message
+  defp build_message({:query, {:ok, expression}}, log_event),
+    do: query_json(log_event.body, expression)
 
-      "m." <> rest ->
-        query_json(log_event.body, "$.metadata.#{rest}")
-
-      keys ->
-        query_json(log_event.body, "$.#{keys}")
-    end
-  end
+  defp build_message({:query, {:error, _}}, _log_event), do: "json_path_query_error"
 
   @spec get_default_message(LE.t()) :: String.t() | nil
   defp get_default_message(log_event) do
@@ -486,7 +473,7 @@ defmodule Logflare.LogEvent do
   defp adjust_byte_size(bytes, old_value, new_value),
     do: bytes - body_byte_size(old_value) + body_byte_size(new_value)
 
-  @spec query_json(map(), String.t()) :: String.t()
+  @spec query_json(map(), Warpath.Expression.t()) :: String.t()
   defp query_json(metadata, query) do
     case Warpath.query(metadata, query) do
       {:ok, v} ->
