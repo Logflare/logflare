@@ -4,6 +4,7 @@ defmodule Logflare.SigtermHandler do
   require Logger
 
   alias Logflare.Readiness
+  alias Logflare.ShutdownDrain
 
   defp env_grace_period,
     do:
@@ -28,14 +29,12 @@ defmodule Logflare.SigtermHandler do
   def handle_event(:sigterm, state) do
     Readiness.begin_draining()
 
-    Logger.warning(
-      "#{__MODULE__}: SIGTERM received: waiting for #{env_grace_period() / 1_000} seconds"
-    )
+    log_received("SIGTERM")
 
     # Not sure something is causing the cluster to have issues when an instance gets shutdown
     :rpc.eval_everywhere(Node.list(), :erlang, :disconnect_node, [Node.self()])
 
-    Process.send_after(self(), :proceed_with_sigterm, env_grace_period())
+    schedule_stop()
 
     {:ok, state}
   end
@@ -43,11 +42,9 @@ defmodule Logflare.SigtermHandler do
   def handle_event(:sigquit, state) do
     Readiness.begin_draining()
 
-    Logger.warning(
-      "#{__MODULE__}: SIGQUIT received: waiting for #{env_grace_period() / 1_000} seconds"
-    )
+    log_received("SIGQUIT")
 
-    Process.send_after(self(), :proceed_with_sigterm, env_grace_period())
+    schedule_stop()
 
     {:ok, state}
   end
@@ -57,6 +54,50 @@ defmodule Logflare.SigtermHandler do
     Logger.warning("#{__MODULE__}: has received a system signal: #{ev} and is ignoring it")
 
     {:ok, state}
+  end
+
+  defp drain_timeout_ms do
+    case Application.get_env(:logflare, :shutdown_drain_timeout_ms) do
+      ms when is_integer(ms) -> max(ms, env_grace_period())
+      nil -> nil
+    end
+  end
+
+  defp log_received(signal) do
+    if timeout_ms = drain_timeout_ms() do
+      Logger.warning(
+        "#{__MODULE__}: #{signal} received: draining for up to #{timeout_ms / 1_000} seconds " <>
+          "before stopping"
+      )
+    else
+      Logger.warning(
+        "#{__MODULE__}: #{signal} received: waiting for #{env_grace_period() / 1_000} seconds"
+      )
+    end
+  end
+
+  # With a drain timeout configured, the node drains what it holds before
+  # stopping; the drain itself waits out the grace period first.
+  defp schedule_stop do
+    grace_period = env_grace_period()
+
+    if timeout_ms = drain_timeout_ms() do
+      handler = self()
+
+      Task.start(fn ->
+        try do
+          result = ShutdownDrain.run(timeout_ms: timeout_ms, min_wait_ms: grace_period)
+
+          Logger.warning(
+            "#{__MODULE__}: shutdown drain ended with #{inspect(result)}, stopping the app"
+          )
+        after
+          send(handler, :proceed_with_sigterm)
+        end
+      end)
+    else
+      Process.send_after(self(), :proceed_with_sigterm, grace_period)
+    end
   end
 
   @impl true

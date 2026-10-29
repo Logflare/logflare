@@ -21,6 +21,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias __MODULE__.Ingester
   alias __MODULE__.Pipeline
   alias __MODULE__.Provisioner
+  alias __MODULE__.QueryClassSettings
   alias __MODULE__.QueryConnectionSup
   alias __MODULE__.QueryErrorNormalizer
   alias __MODULE__.QueryTemplates
@@ -34,6 +35,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
+  alias Logflare.Endpoints.ClickHouseSettings
   alias Logflare.LogEvent
   alias Logflare.LogEvent.TypeDetection
   alias Logflare.SingleTenant
@@ -60,6 +62,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     :labeled_read_pool_size,
     :read_only_urls,
     :default_read_cluster,
+    :query_class_settings,
     :query_user,
     :query_password,
     :replica_routing_param
@@ -170,6 +173,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   def redact_config(config) do
     config
     |> Map.put(:password, "REDACTED")
+    |> Map.delete(:query_class_settings)
     |> redact_query_password()
   end
 
@@ -240,7 +244,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   def execute_query(%Backend{} = backend, %Ecto.Query{} = query, opts) when is_list(opts) do
     with {:ok, {ch_sql, ch_params}} <- ecto_to_sql(query, opts) do
-      execute_query(backend, {ch_sql, ch_params}, opts)
+      execute_query(
+        backend,
+        {ch_sql, ch_params},
+        Keyword.put(opts, :validated_clickhouse_sql, true)
+      )
     end
   end
 
@@ -342,6 +350,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        labeled_read_pool_size: :integer,
        read_only_urls: {:map, :string},
        default_read_cluster: :string,
+       query_class_settings: :map,
        use_async_inserts_for_small_batches: :boolean,
        use_async_inserts_only: :boolean,
        async_insert_cluster_url: :string,
@@ -365,6 +374,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :labeled_read_pool_size,
       :read_only_urls,
       :default_read_cluster,
+      :query_class_settings,
       :use_async_inserts_for_small_batches,
       :use_async_inserts_only,
       :async_insert_cluster_url,
@@ -453,6 +463,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     )
     |> validate_read_only_urls()
     |> validate_default_read_cluster()
+    |> validate_query_class_settings()
     |> validate_user_pass()
     |> validate_query_user_pass()
     |> validate_number(:read_pool_size,
@@ -792,27 +803,107 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   def execute_ch_query(%Backend{} = backend, statement, params, opts)
       when is_list_or_map(params) and is_list(opts) do
-    requested = Keyword.get(opts, :read_cluster)
-    label = resolve_read_cluster_label(backend, requested)
+    with {:ok, statement} <- prepare_query(backend, statement, opts) do
+      requested = Keyword.get(opts, :read_cluster)
+      label = resolve_read_cluster_label(backend, requested)
 
-    warn_on_unconfigured_read_cluster(backend, requested, label)
-    headers = Keyword.get(opts, :headers, [])
+      warn_on_unconfigured_read_cluster(backend, requested, label)
+      headers = Keyword.get(opts, :headers, [])
 
-    {result, queried_label} =
-      case do_ch_query_on_label(backend, statement, params, label, headers) do
-        {:error, %QueryError{kind: :connection_error}} = error ->
-          maybe_retry_on_default_cluster(backend, statement, params, label, headers, error)
+      {result, queried_label} =
+        case do_ch_query_on_label(backend, statement, params, label, headers) do
+          {:error, %QueryError{kind: :connection_error}} = error ->
+            maybe_retry_on_default_cluster(backend, statement, params, label, headers, error)
 
-        result ->
-          {result, label}
+          result ->
+            {result, label}
+        end
+
+      emit_query_error_telemetry(result, %{
+        backend_id: backend.id,
+        read_cluster: read_cluster_tag(queried_label)
+      })
+
+      result
+    else
+      {:error, reason} ->
+        :telemetry.execute(
+          [:logflare, :clickhouse, :read_pool, :query_error],
+          %{count: 1},
+          %{
+            backend_id: backend.id,
+            read_cluster:
+              read_cluster_tag(
+                resolve_read_cluster_label(backend, Keyword.get(opts, :read_cluster))
+              ),
+            error_kind: :policy_rejection
+          }
+        )
+
+        {:error, %{query_error(:invalid_query, reason) | description: reason}}
+    end
+  end
+
+  @doc """
+  Applies policy to reads. Recognized raw maintenance statements pass through
+  unchanged; endpoint and validated SQL paths always retain policy enforcement.
+  """
+  @spec prepare_query(Backend.t(), iodata(), Keyword.t()) ::
+          {:ok, String.t()} | {:error, String.t()}
+  def prepare_query(%Backend{config: config}, statement, opts \\ []) do
+    statement = IO.iodata_to_binary(statement)
+
+    if raw_maintenance_query?(statement, opts) do
+      {:ok, statement}
+    else
+      prepare_read_query(config, statement, opts)
+    end
+  end
+
+  @spec prepare_read_query(map(), String.t(), keyword()) ::
+          {:ok, String.t()} | {:error, String.t()}
+  defp prepare_read_query(config, statement, opts) do
+    classes = Map.get(config, :query_class_settings) || %{}
+    endpoint_settings = Keyword.get(opts, :enforced_clickhouse_settings, %{})
+
+    with {:ok, settings} <-
+           QueryClassSettings.resolve(
+             classes,
+             Keyword.get(opts, :read_cluster),
+             endpoint_settings
+           ) do
+      if Keyword.get(opts, :validated_clickhouse_sql, false) do
+        ClickHouseSettings.enforce_validated(statement, settings)
+      else
+        ClickHouseSettings.enforce(statement, settings)
       end
+    end
+  end
 
-    emit_query_error_telemetry(result, %{
-      backend_id: backend.id,
-      read_cluster: read_cluster_tag(queried_label)
-    })
+  @spec raw_maintenance_query?(String.t(), keyword()) :: boolean()
+  defp raw_maintenance_query?(statement, opts) do
+    Keyword.get(opts, :query_type) != :endpoint and
+      not Keyword.get(opts, :validated_clickhouse_sql, false) and
+      Keyword.get(opts, :enforced_clickhouse_settings, %{}) == %{} and
+      Regex.match?(
+        ~r/\A\s*(?:ALTER|ATTACH|CHECK|CREATE|DESCRIBE|DETACH|DROP|EXISTS|GRANT|KILL|OPTIMIZE|RENAME|REVOKE|SHOW|SYSTEM|TRUNCATE)\b/i,
+        statement
+      ) and
+      not Regex.match?(~r/;\s*\S/, statement)
+  end
 
-    result
+  @spec validate_query_class_settings(Changeset.t()) :: Changeset.t()
+  defp validate_query_class_settings(changeset) do
+    case Changeset.get_field(changeset, :query_class_settings) do
+      nil ->
+        changeset
+
+      settings ->
+        case QueryClassSettings.normalize(settings) do
+          {:ok, settings} -> Changeset.put_change(changeset, :query_class_settings, settings)
+          {:error, reason} -> Changeset.add_error(changeset, :query_class_settings, reason)
+        end
+    end
   end
 
   @spec do_ch_query_on_label(
@@ -863,7 +954,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @spec warn_on_unconfigured_read_cluster(Backend.t(), String.t() | nil, String.t() | nil) :: :ok
   defp warn_on_unconfigured_read_cluster(%Backend{} = backend, requested, label)
        when is_non_empty_binary(requested) and requested != label do
-    Logger.warning(
+    level = if QueryClassSettings.class_label?(requested), do: :debug, else: :warning
+
+    Logger.log(
+      level,
       "ClickHouse read cluster not configured, falling back to resolved read cluster",
       user_id: backend.user_id,
       backend_id: backend.id,
