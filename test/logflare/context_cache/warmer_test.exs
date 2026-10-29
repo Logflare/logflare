@@ -20,6 +20,12 @@ defmodule Logflare.ContextCache.WarmerTest do
       on_exit(fn -> Application.put_env(:logflare, Warmer, original_config) end)
     end
 
+    test "refreshes by default" do
+      Application.delete_env(:logflare, Warmer)
+
+      assert is_integer(Warmer.interval(to_timeout(hour: 1)))
+    end
+
     test "returns nil when refreshing is disabled" do
       Application.put_env(:logflare, Warmer, refresh_enabled: false)
 

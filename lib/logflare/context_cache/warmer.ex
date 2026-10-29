@@ -4,8 +4,8 @@ defmodule Logflare.ContextCache.Warmer do
   records, so their entries are refreshed before they expire instead of on the request path.
 
   Warmers run every third of the cache TTL, with a jitter so that nodes started together
-  don't query the database at the same time. Set `LOGFLARE_CACHE_WARMER_REFRESH_ENABLED=false`
-  to run them only once, on startup.
+  don't query the database at the same time. Tests set `refresh_enabled: false`, so warmers
+  only run once, on startup.
 
   Entries whose records were invalidated while being loaded are dropped (see
   `Logflare.ContextCache.Gossip.recently_busted?/2`), so a warmer doesn't write back data
@@ -58,6 +58,6 @@ defmodule Logflare.ContextCache.Warmer do
   defp refresh_enabled? do
     :logflare
     |> Application.get_env(__MODULE__, [])
-    |> Keyword.get(:refresh_enabled, false)
+    |> Keyword.get(:refresh_enabled, true)
   end
 end
