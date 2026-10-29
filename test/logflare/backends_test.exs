@@ -42,7 +42,6 @@ defmodule Logflare.BackendsTest do
   alias Logflare.User
 
   setup do
-    stub(Logflare.Google.BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
     start_supervised!(AllLogsLogged)
     :ok
   end
@@ -928,6 +927,7 @@ defmodule Logflare.BackendsTest do
 
     test "a consolidated default flag change refreshes the account lookup without per-source work",
          %{user: user, backend: backend} do
+      stub(Logflare.Google.BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
       source = insert(:source, user: user, default_ingest_backend_enabled?: true)
       start_supervised!({SourceSup, source})
       reject(&SourceSup.start_backend_child/2)
@@ -1191,6 +1191,7 @@ defmodule Logflare.BackendsTest do
     setup :set_mimic_global
 
     setup do
+      stub(Logflare.Google.BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user_id: user.id)
@@ -1246,6 +1247,7 @@ defmodule Logflare.BackendsTest do
 
   describe "SourceSup management" do
     setup do
+      stub(Logflare.Google.BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user_id: user.id)
@@ -1739,6 +1741,7 @@ defmodule Logflare.BackendsTest do
 
   describe "ingestion" do
     setup do
+      stub(Logflare.Google.BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user_id: user.id)
@@ -2092,6 +2095,39 @@ defmodule Logflare.BackendsTest do
       assert {:ok, []} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
     end
 
+    test "does not route to a disabled drain destination through a stale rule tree", %{
+      source: source
+    } do
+      backend =
+        insert(:backend,
+          user_id: source.user_id,
+          type: :webhook,
+          config: %{url: "https://disabled.example.com"}
+        )
+
+      rule = insert(:rule, source: source, backend: backend, lql_string: "testing")
+      event = build(:log_event, source: source, message: "testing")
+      Logflare.ContextCache.bust_keys([{Rules, source_id: source.id}])
+      tree = Rules.Cache.rules_tree_by_source_id(source.id)
+      assert rule.id in SourceRouter.RulesTree.matching_rule_ids(event, tree)
+      assert %{enabled: true} = Backends.Cache.get_backend(backend.id)
+
+      backend |> Ecto.Changeset.change(enabled: false) |> Repo.update!()
+      Logflare.ContextCache.bust_keys([{Backends, backend.id}])
+
+      stub(SourceSup, :rule_child_started?, fn _rule -> false end)
+      reject(&SourceSup.start_rule_child/1)
+      reject(&Backends.ingest_logs/3)
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+      {:ok, initial_count} = Counters.get_inserts(source.token)
+
+      assert {:ok, 1} = Backends.ingest_logs([event], source)
+      assert {:ok, count} = Counters.get_inserts(source.token)
+      assert count == initial_count + 1
+      assert {:ok, []} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+      assert {:cached, ^tree} = Cachex.get!(Rules.Cache, {:rules_tree_by_source_id, [source.id]})
+    end
+
     test "re-enabled drain destination resumes after busting the tree cached while disabled", %{
       source: source
     } do
@@ -2149,6 +2185,7 @@ defmodule Logflare.BackendsTest do
 
   describe "ingest filters" do
     setup do
+      stub(Logflare.Google.BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
       insert(:plan)
       [user: insert(:user)]
     end
@@ -2730,6 +2767,7 @@ defmodule Logflare.BackendsTest do
     setup :set_mimic_global
 
     setup do
+      stub(Logflare.Google.BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user_id: user.id)
@@ -2765,6 +2803,7 @@ defmodule Logflare.BackendsTest do
 
   describe "benchmarks" do
     setup do
+      stub(Logflare.Google.BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
       insert(:plan)
       start_supervised!(BencheeAsync.Reporter)
 
@@ -2911,6 +2950,7 @@ defmodule Logflare.BackendsTest do
       source: source,
       user: user
     } do
+      stub(Logflare.Google.BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
       # Start actual SourceSup process
       start_supervised!({SourceSup, source})
 
@@ -2980,6 +3020,7 @@ defmodule Logflare.BackendsTest do
 
   describe "ingest_logs/2 event timestamp filtering" do
     setup do
+      stub(Logflare.Google.BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user: user)
@@ -3152,6 +3193,7 @@ defmodule Logflare.BackendsTest do
     setup :set_mimic_global
 
     setup do
+      stub(Logflare.Google.BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user: user, enable_spooling: false)
@@ -3643,6 +3685,7 @@ defmodule Logflare.BackendsTest do
 
   describe "maybe_broadcast_and_route/2 broadcast rate gating" do
     setup do
+      stub(Logflare.Google.BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user: user)

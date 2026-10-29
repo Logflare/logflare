@@ -8,6 +8,7 @@ defmodule Logflare.AlertingTest do
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Alerting.AlertWorker
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.Adaptor.WebhookAdaptor.Client, as: WebhookClient
   alias Logflare.Backends.QueryError
   alias Logflare.Utils.Tasks
 
@@ -419,6 +420,42 @@ defmodule Logflare.AlertingTest do
                 fired: false,
                 rows: []
               }} = Alerting.run_alert(alert_query)
+    end
+
+    test "run_alert/1 sends results only to enabled destinations", %{user: user} do
+      enabled_backend =
+        insert(:backend,
+          user: user,
+          type: :incidentio,
+          config: %{api_token: "token", alert_source_config_id: "enabled"}
+        )
+
+      disabled_backend =
+        insert(:backend,
+          user: user,
+          type: :incidentio,
+          enabled: false,
+          config: %{api_token: "token", alert_source_config_id: "disabled"}
+        )
+
+      alert_query =
+        insert(:alert,
+          user: user,
+          slack_hook_url: nil,
+          webhook_notification_url: nil,
+          backends: [disabled_backend, enabled_backend]
+        )
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      expect(WebhookClient, :send, fn req ->
+        assert req[:url] == "https://api.incident.io/v2/alert_events/http/enabled"
+        {:ok, %Tesla.Env{status: 202, body: ""}}
+      end)
+
+      assert {:ok, %{fired: true}} = Alerting.run_alert(alert_query)
     end
   end
 

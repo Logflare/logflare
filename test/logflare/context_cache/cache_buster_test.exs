@@ -139,17 +139,17 @@ defmodule Logflare.ContextCache.CacheBusterTest do
 
     backend = insert(:backend, user: user, enabled: false)
     backend_id = backend.id
-    other = insert(:source, user: user)
-    unrelated = insert(:source, user: user)
+    second_source = insert(:source, user: user)
+    unrelated_source = insert(:source, user: user)
     first_rule = insert(:rule, source: source, backend: backend)
     insert(:rule, source: source, backend: backend)
-    second_rule = insert(:rule, source: other, backend: backend)
-    insert(:rule, source: unrelated)
+    second_rule = insert(:rule, source: second_source, backend: backend)
+    insert(:rule, source: unrelated_source)
 
     assert Rules.Cache.rules_tree_by_source_id(source.id) == []
-    assert Rules.Cache.rules_tree_by_source_id(other.id) == []
-    unrelated_tree = Rules.Cache.rules_tree_by_source_id(unrelated.id)
-    expected = MapSet.new([source.id, other.id])
+    assert Rules.Cache.rules_tree_by_source_id(second_source.id) == []
+    unrelated_tree = Rules.Cache.rules_tree_by_source_id(unrelated_source.id)
+    expected = MapSet.new([source.id, second_source.id])
     test_pid = self()
 
     expect(Backends, :sync_backend_across_cluster, 2, fn ^backend_id -> :ok end)
@@ -174,14 +174,15 @@ defmodule Logflare.ContextCache.CacheBusterTest do
       send(CacheBuster, %Transaction{changes: [change]})
       assert_receive {:rules_synced, ^backend_id}, 500
 
-      for {drain_source, rule} <- [{source, first_rule}, {other, second_rule}] do
+      for {drain_source, rule} <- [{source, first_rule}, {second_source, second_rule}] do
         event = build(:log_event, source: drain_source, message: "testing")
         tree = Rules.Cache.rules_tree_by_source_id(drain_source.id)
-        assert rule.id in RulesTree.matching_rule_ids(event, tree) == enabled
+        matching? = rule.id in RulesTree.matching_rule_ids(event, tree)
+        assert matching? == enabled
       end
 
       assert {:cached, ^unrelated_tree} =
-               Cachex.get!(Rules.Cache, {:rules_tree_by_source_id, [unrelated.id]})
+               Cachex.get!(Rules.Cache, {:rules_tree_by_source_id, [unrelated_source.id]})
     end
   end
 end
