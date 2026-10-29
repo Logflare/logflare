@@ -1,5 +1,5 @@
-<div class="tw-flex tw-my-10 tw-gap-2">
-  <.form :let={f} for={@changeset} as={:alert} id="alert" phx-submit="save" class="tw-w-1/2 tw-border-r-1 pr-2 tw-border-l-0 tw-border-t-0 tw-border-b-0 tw-border-solid tw-border-gray-600">
+<.form :let={f} for={@changeset} as={:alert} id="alert" phx-change="validate" phx-submit="save" class="tw-flex tw-my-10 tw-gap-2">
+  <div class="tw-w-1/2 tw-border-r-1 pr-2 tw-border-l-0 tw-border-t-0 tw-border-b-0 tw-border-solid tw-border-gray-600">
     {hidden_input(f, :language)}
     <div class="tw-sticky tw-flex tw-justify-between tw-gap-4">
       <button :if={@alert} data-confirm="Are you sure? This cannot be undone" phx-click="delete" phx-value-alert_id={@alert.id} class="btn btn-outline-danger" type="button">
@@ -43,19 +43,26 @@
         <p>
           This alert will execute this query periodically. If a non-zero number of rows are returned from this query, the notification will be triggered.
         </p>
-        <.live_component
-          module={LogflareWeb.MonacoEditorComponent}
+        <LogflareWeb.MonacoEditorComponentNew.code_editor
           id="alert_query_editor"
           field={f[:query]}
-          endpoints={@endpoints}
-          alerts={@alerts}
-          sources={@sources}
-          on_query_change={
-            fn query_string ->
-              send(self(), {:query_string_updated, query_string})
-            end
-          }
+          language="sql"
+          opts={LogflareWeb.MonacoEditorComponentNew.default_opts(%{"minHeight" => 240})}
+          completions={alert_query_completions(@sources, @endpoints, @alerts)}
+          class="tw-mb-0"
+          editor_class="tw-w-full tw-min-h-[240px]"
         />
+        <div class="tw-flex tw-justify-end tw-mb-3">
+          <button type="submit" name="action" value="format" class="btn btn-secondary tw-mr-0 tw-mt-2">
+            Format
+          </button>
+        </div>
+        {error_tag(f, :query)}
+        <.alert :if={@parse_error_message} variant="warning">
+          <strong>SQL Parse error!</strong>
+          <br />
+          <span>{@parse_error_message}</span>
+        </.alert>
       </div>
 
       <.header_with_anchor text="Query Schedule" />
@@ -84,12 +91,9 @@
         {error_tag(f, :webhook_notification_url)}
       </div>
     </section>
-  </.form>
+  </div>
   <aside class="tw-w-1/2">
-    <.form :let={f} for={to_form(%{"query" => @query_string})} phx-submit="run-query" class="tw-min-h-[80px]">
-      {hidden_input(f, :query, id: "run-query-input")}
-      {submit("Test query", class: "btn btn-secondary")}
-    </.form>
+    <button type="submit" name="action" value="test-query" class="btn btn-secondary">Test query</button>
     <.run_query_result {assigns} />
   </aside>
-</div>
+</.form>

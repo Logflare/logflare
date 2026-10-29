@@ -82,6 +82,7 @@ defmodule LogflareWeb.EndpointsLive do
         parsed_result: nil,
         params_form: test_form(),
         declared_params: [],
+        parse_error_message: nil,
         test_result: nil,
         can_edit_endpoint?: false,
         enforced_settings_form: nil,
@@ -145,6 +146,20 @@ defmodule LogflareWeb.EndpointsLive do
         |> assign(:endpoint_changeset, Endpoints.change_query(endpoint, %{}))
         |> assign(:parsed_result, parsed_result)
     end
+  end
+
+  def handle_event("save-endpoint", %{"action" => "format", "endpoint" => params}, socket) do
+    {:ok, formatted} = Sql.format(Map.get(params, "query", ""))
+
+    changeset =
+      socket.assigns.endpoint_changeset.data
+      |> Endpoints.change_query(params)
+      |> Ecto.Changeset.change(query: formatted)
+
+    {:noreply,
+     socket
+     |> assign(:endpoint_changeset, changeset)
+     |> maybe_parse_endpoint_query(Map.put(params, "query", formatted))}
   end
 
   def handle_event(
@@ -288,11 +303,6 @@ defmodule LogflareWeb.EndpointsLive do
     {:noreply, put_flash(socket, :info, message)}
   end
 
-  def handle_event("validate", %{"_target" => ["live_monaco_editor", _]}, socket) do
-    # ignore change events from the editor field
-    {:noreply, socket}
-  end
-
   def handle_event("validate", %{"run" => payload}, socket) do
     values = Map.merge(socket.assigns.params_form.params, payload)
     {:noreply, assign(socket, :params_form, test_form(values))}
@@ -307,7 +317,10 @@ defmodule LogflareWeb.EndpointsLive do
         |> Endpoints.change_query(endpoint_params)
         |> Map.put(:action, :validate)
 
-      {:noreply, assign(socket, :endpoint_changeset, changeset)}
+      {:noreply,
+       socket
+       |> assign(:endpoint_changeset, changeset)
+       |> maybe_parse_endpoint_query(endpoint_params)}
     else
       {:error, :backend_not_found} ->
         {:noreply, put_flash(socket, :error, "Backend not found")}
@@ -319,19 +332,13 @@ defmodule LogflareWeb.EndpointsLive do
     {:noreply, socket}
   end
 
-  def handle_info({:query_string_updated, query_string}, socket) do
-    changeset = socket.assigns.endpoint_changeset
-    params = Map.put(changeset.params || %{}, "query", query_string)
-
-    changeset =
-      changeset.data
-      |> Endpoints.change_query(params)
-      |> Map.put(:action, :validate)
-
-    socket = assign(socket, :endpoint_changeset, changeset)
-
+  @spec maybe_parse_endpoint_query(Phoenix.LiveView.Socket.t(), map()) ::
+          Phoenix.LiveView.Socket.t()
+  defp maybe_parse_endpoint_query(socket, %{"query" => query_string}) do
     parsed_result =
-      if query_string != "" do
+      if query_string == "" do
+        {:ok, %{parameters: [], expanded_query: ""}}
+      else
         socket
         |> get_current_endpoint_language()
         |> Endpoints.parse_query_string(
@@ -341,22 +348,22 @@ defmodule LogflareWeb.EndpointsLive do
         )
       end
 
-    socket =
-      case parsed_result do
-        {:ok, %{parameters: parameters, expanded_query: expanded_query}} ->
-          socket
-          |> assign_updated_params_form(
-            parameters,
-            expanded_query,
-            socket.assigns.params_form.params
-          )
+    case parsed_result do
+      {:ok, %{parameters: parameters, expanded_query: expanded_query}} ->
+        socket
+        |> assign(:parse_error_message, nil)
+        |> assign_updated_params_form(
+          parameters,
+          expanded_query,
+          socket.assigns.params_form.params
+        )
 
-        _error ->
-          socket
-      end
-
-    {:noreply, socket}
+      {:error, message} ->
+        assign(socket, :parse_error_message, message)
+    end
   end
+
+  defp maybe_parse_endpoint_query(socket, _params), do: socket
 
   defp assign_updated_params_form(socket, parameters, query_string, values \\ %{}) do
     previous_params = Map.get(values, "params", %{})
