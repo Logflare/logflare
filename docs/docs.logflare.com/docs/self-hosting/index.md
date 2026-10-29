@@ -225,6 +225,8 @@ The `auth` and `aws_region` query parameters are Logflare configuration and are 
 
 Example: `LOGFLARE_READ_REPLICAS=replica1.example.com,postgres://user:pass@replica2.example.com:5432/logflare`
 
+Every 30 minutes, each node compares the row count and latest `updated_at` of the `users`, `sources`, `backends`, and `rules` tables on each replica against the primary, ignoring rows changed in the last minute. If a replica differs, the node logs an error and stops reading from it until a later check passes. Other nodes are not affected.
+
 ### AWS IAM database authentication
 
 AWS IAM authentication is supported for both the primary database and read replicas. Logflare generates a fresh token before each connection attempt. The runtime role needs `rds-db:connect` permission for the database user.
