@@ -108,7 +108,7 @@ defmodule Logflare.Endpoints.ResultsCache do
 
   @impl true
   def init({query, params, opts}) do
-    {:via, :syn, {scope, key}} = name(query, params)
+    {:via, :syn, {scope, key}} = name(query, params, opts)
 
     case :syn.register(scope, key, self()) do
       :ok -> init_cache(query, params, opts)
@@ -128,7 +128,7 @@ defmodule Logflare.Endpoints.ResultsCache do
 
     state =
       %__MODULE__{
-        cache_name: name(query, params),
+        cache_name: name(query, params, opts),
         endpoint_query_id: query.id,
         endpoint_query_token: query.token,
         endpoint_version_number: query.version_number,
@@ -295,11 +295,14 @@ defmodule Logflare.Endpoints.ResultsCache do
     "endpoints_#{part}" |> String.to_existing_atom()
   end
 
-  def name(%EndpointQuery{} = query, params) do
+  def name(query, params, opts \\ [])
+
+  def name(%EndpointQuery{} = query, params, opts) do
     param_hash = :erlang.phash2(params)
+    opts_hash = :erlang.phash2(opts)
     {query_id, version_key} = endpoint_cache_key(query)
 
-    key = {query_id, version_key, param_hash}
+    key = {query_id, version_key, param_hash, opts_hash}
 
     {:via, :syn, {endpoints_part(query_id, version_key, params), key}}
   end
