@@ -226,6 +226,12 @@ hooks.SourceLogsSearch = {
   reconnected() { },
   mounted() {
     const hook = this
+    this._handleFieldFocusOut = (event) => {
+      if (event.target.matches('#recommended_fields input[name^="fields["]')) {
+        event.target.value = event.target.value.trim()
+      }
+    }
+    this.el.addEventListener("focusout", this._handleFieldFocusOut)
     this._handleSearchControlChange = (event) => {
       if (
         event.target.id === "search_chart_period" ||
@@ -234,26 +240,7 @@ hooks.SourceLogsSearch = {
         this.pushChartControlsUpdate()
       }
     }
-    this._handleSearchControlKeydown = (event) => {
-      if (
-        event.key !== "Enter" ||
-        event.isComposing ||
-        !event.target.matches('#recommended_fields input[name^="fields["]')
-      ) {
-        return
-      }
-
-      const editorHook = this.el.querySelector("#lql-editor-hook")
-
-      if (!editorHook) {
-        return
-      }
-
-      event.preventDefault()
-      editorHook.dispatchEvent(new CustomEvent("lql:submit"))
-    }
     this.el.addEventListener("change", this._handleSearchControlChange)
-    this.el.addEventListener("keydown", this._handleSearchControlKeydown)
 
     this.configureDateRangePicker()
 
@@ -283,6 +270,10 @@ hooks.SourceLogsSearch = {
         $("#last-query-completed-at span").text(elapsed.toFixed(1))
       }
     }, 250);
+  },
+  destroyed() {
+    this.el.removeEventListener("focusout", this._handleFieldFocusOut)
+    this.el.removeEventListener("change", this._handleSearchControlChange)
   },
 };
 
