@@ -40,13 +40,21 @@ defmodule Logflare.KeyValues.Cache do
     lookup(user_id, key, nil)
   end
 
-  @spec lookup(integer(), String.t(), String.t() | nil) :: term() | nil
+  @spec lookup(integer(), String.t(), KeyValues.accessor() | nil) :: term() | nil
   def lookup(user_id, key, accessor_path) do
-    key_args = [user_id, key, accessor_path]
+    cache_path =
+      case accessor_path do
+        {path, _prepared} -> path
+        path -> path
+      end
+
+    key_args = [user_id, key, cache_path]
     cache_key = {:lookup, key_args}
 
     Cachex.execute!(__MODULE__, fn worker ->
-      Cachex.fetch(worker, cache_key, fn _key -> lookup_fallback(worker, key_args) end)
+      Cachex.fetch(worker, cache_key, fn _key ->
+        lookup_fallback(worker, [user_id, key, accessor_path])
+      end)
     end)
     |> case do
       {:commit, {:cached, v}} -> v

@@ -58,6 +58,48 @@ defmodule Logflare.KeyValuesTest do
     assert nil == KeyValues.lookup(user.id, "nonexistent")
   end
 
+  describe "prepared accessors" do
+    test "prepares dot paths and JSONPath expressions" do
+      assert KeyValues.prepare_accessor(nil) == nil
+      assert KeyValues.prepare_accessor("org.id") == {"org.id", ["org", "id"]}
+      assert {"$.org.id", %Warpath.Expression{}} = KeyValues.prepare_accessor("$.org.id")
+      assert KeyValues.prepare_accessor("$.[") == {"$.[", :invalid}
+    end
+
+    test "preserves extraction results" do
+      value = %{
+        "org" => %{"id" => "abc", "enabled" => false, "count" => 0, "items" => []},
+        "items" => [%{"id" => 1}, %{"id" => 2}]
+      }
+
+      for {path, expected} <- [
+            {"org.id", "abc"},
+            {"org.enabled", false},
+            {"org.count", 0},
+            {"org.items", []},
+            {"org.missing", nil},
+            {"$.org.id", "abc"},
+            {"$.items[*].id", [1, 2]},
+            {"$.items[?(@.id > 1)].id", [2]},
+            {"$.missing", nil},
+            {"$.[", nil},
+            {"$", value}
+          ] do
+        prepared = KeyValues.prepare_accessor(path)
+        assert KeyValues.extract_value(value, prepared) == expected
+        assert KeyValues.extract_value(value, path) == expected
+        assert KeyValues.extract_value(nil, prepared) == nil
+      end
+    end
+
+    test "preserves empty dot-path segments" do
+      value = %{"" => "root", "org" => %{"" => %{"id" => "abc"}}}
+
+      assert KeyValues.extract_value(value, KeyValues.prepare_accessor("")) == "root"
+      assert KeyValues.extract_value(value, KeyValues.prepare_accessor("org..id")) == "abc"
+    end
+  end
+
   test "bulk_upsert_key_values/2 inserts and upserts", %{user: user} do
     entries = [%{key: "a", value: %{"n" => "1"}}, %{key: "b", value: %{"n" => "2"}}]
     assert {2, _} = KeyValues.bulk_upsert_key_values(user.id, entries)
