@@ -5,16 +5,9 @@ defmodule Logflare.Backends.Cache do
 
   alias Logflare.Backends
   alias Logflare.Cache.CachexOps
-  alias Logflare.ContextCache.Warmer
 
   def child_spec(_) do
-    ttl = to_timeout(minute: 20)
-
-    CachexOps.child_spec(__MODULE__,
-      limit: 100_000,
-      ttl: ttl,
-      warmer: {Backends.CacheWarmer, interval: Warmer.interval(ttl)}
-    )
+    CachexOps.child_spec(__MODULE__, limit: 100_000, warmer: Backends.CacheWarmer)
   end
 
   def list_backends(arg), do: apply_repo_fun(__ENV__.function, [arg])

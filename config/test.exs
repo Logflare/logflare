@@ -44,7 +44,7 @@ config :logflare, Logflare.Repo.Migrator, replication_sets: []
 
 config :logflare, Logflare.PubSub, pool_size: 10
 
-config :logflare, Logflare.ContextCache.Warmer, refresh_enabled: false
+config :logflare, Logflare.Cache.CachexOps, warmer_refresh_enabled: false
 
 config :logflare, :stripe_webhook_secret, "whsec_test_only_secret_for_testing"
 

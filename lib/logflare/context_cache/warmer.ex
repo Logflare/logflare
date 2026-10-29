@@ -1,11 +1,8 @@
 defmodule Logflare.ContextCache.Warmer do
   @moduledoc """
-  Shared helpers for context cache warmers that periodically reload the most active
-  records, so their entries are refreshed before they expire instead of on the request path.
-
-  Warmers run every third of the cache TTL, with a jitter so that nodes started together
-  don't query the database at the same time. Tests set `refresh_enabled: false`, so warmers
-  only run once, on startup.
+  Shared loading logic for context cache warmers. `Logflare.Cache.CachexOps` re-runs warmers
+  every third of the cache TTL, so their entries are refreshed before they expire instead of on
+  the request path.
 
   Entries whose records were invalidated while being loaded are dropped (see
   `Logflare.ContextCache.Gossip.recently_busted?/2`), so a warmer doesn't write back data
@@ -17,22 +14,7 @@ defmodule Logflare.ContextCache.Warmer do
   alias Logflare.ContextCache.Gossip
   alias Logflare.Repo
 
-  @jitter_ratio 0.1
-
   @type pairs :: [{term(), term()}]
-
-  @doc """
-  Returns the refresh interval for a cache with the given TTL in milliseconds, or `nil` when
-  refreshing is disabled. The jitter is picked once, when the cache starts.
-  """
-  @spec interval(pos_integer()) :: pos_integer() | nil
-  def interval(ttl) when is_integer(ttl) and ttl > 0 do
-    if refresh_enabled?() do
-      base = div(ttl, 3)
-      jitter = round(base * @jitter_ratio)
-      base + Enum.random(-jitter..jitter)
-    end
-  end
 
   @doc """
   Loads entries with `load` on a read replica and drops the ones whose records were recently
@@ -53,11 +35,5 @@ defmodule Logflare.ContextCache.Warmer do
     e ->
       Logger.error("Error warming #{inspect(cache)}: #{Exception.message(e)}")
       :ignore
-  end
-
-  defp refresh_enabled? do
-    :logflare
-    |> Application.get_env(__MODULE__, [])
-    |> Keyword.get(:refresh_enabled, true)
   end
 end
