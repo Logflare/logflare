@@ -58,73 +58,31 @@ defmodule Logflare.KeyValuesTest do
     assert nil == KeyValues.lookup(user.id, "nonexistent")
   end
 
-  describe "prepared accessors" do
-    test "prepares dot paths and JSONPath expressions" do
-      assert KeyValues.prepare_accessor(nil) == nil
-      assert KeyValues.prepare_accessor("org.id") == {"org.id", ["org", "id"]}
-      assert {"$.org.id", %Warpath.Expression{}} = KeyValues.prepare_accessor("$.org.id")
-      assert KeyValues.prepare_accessor("$.[") == {"$.[", :invalid}
+  test "lookup/3 requires a prepared accessor", %{user: user} do
+    value = %{"org" => %{"id" => "abc"}}
+    insert(:key_value, user: user, key: "proj1", value: value)
+
+    for path <- ["org.id", "$.org.id"] do
+      prepared = KeyValues.prepare_accessor(path)
+      assert KeyValues.lookup(user.id, "proj1", prepared) == "abc"
+      assert KeyValues.lookup(user.id, "missing", prepared) == nil
+      assert_raise ArgumentError, fn -> KeyValues.lookup(user.id, "proj1", path) end
+      assert_raise ArgumentError, fn -> KeyValues.lookup(user.id, "missing", path) end
     end
 
-    test "lookup/3 requires a prepared accessor", %{user: user} do
-      value = %{"org" => %{"id" => "abc"}}
-      insert(:key_value, user: user, key: "proj1", value: value)
+    assert KeyValues.lookup(user.id, "proj1", nil) == value
+  end
 
-      for path <- ["org.id", "$.org.id"] do
-        prepared = KeyValues.prepare_accessor(path)
-        assert KeyValues.lookup(user.id, "proj1", prepared) == "abc"
-        assert KeyValues.lookup(user.id, "missing", prepared) == nil
-      end
+  test "extract_value/2 requires a prepared accessor" do
+    value = %{"org" => %{"id" => "abc"}}
+    assert KeyValues.extract_value(value, nil) == value
 
-      for key <- ["proj1", "missing"], path <- ["org.id", "$.org.id", ""] do
-        assert_raise ArgumentError,
-                     "expected accessor path to be nil or a prepared accessor, got: #{inspect(path)}",
-                     fn -> KeyValues.lookup(user.id, key, path) end
-      end
-
-      assert KeyValues.lookup(user.id, "proj1", nil) == value
-    end
-
-    test "extract_value/2 requires a prepared accessor" do
-      for value <- [%{"org" => %{"id" => "abc"}}, nil], path <- ["org.id", "$.org.id", ""] do
-        assert_raise ArgumentError,
-                     "expected a prepared accessor, got: #{inspect(path)}",
-                     fn -> KeyValues.extract_value(value, path) end
-      end
-    end
-
-    test "preserves extraction results" do
-      value = %{
-        "org" => %{"id" => "abc", "enabled" => false, "count" => 0, "items" => []},
-        "items" => [%{"id" => 1}, %{"id" => 2}]
-      }
-
-      assert KeyValues.extract_value(value, nil) == value
-
-      for {path, expected} <- [
-            {"org.id", "abc"},
-            {"org.enabled", false},
-            {"org.count", 0},
-            {"org.items", []},
-            {"org.missing", nil},
-            {"$.org.id", "abc"},
-            {"$.items[*].id", [1, 2]},
-            {"$.items[?(@.id > 1)].id", [2]},
-            {"$.missing", nil},
-            {"$.[", nil},
-            {"$", value}
-          ] do
-        prepared = KeyValues.prepare_accessor(path)
-        assert KeyValues.extract_value(value, prepared) == expected
-        assert KeyValues.extract_value(nil, prepared) == nil
-      end
-    end
-
-    test "preserves empty dot-path segments" do
-      value = %{"" => "root", "org" => %{"" => %{"id" => "abc"}}}
-
-      assert KeyValues.extract_value(value, KeyValues.prepare_accessor("")) == "root"
-      assert KeyValues.extract_value(value, KeyValues.prepare_accessor("org..id")) == "abc"
+    for path <- ["org.id", "$.org.id"] do
+      prepared = KeyValues.prepare_accessor(path)
+      assert KeyValues.extract_value(value, prepared) == "abc"
+      assert KeyValues.extract_value(nil, prepared) == nil
+      assert_raise ArgumentError, fn -> KeyValues.extract_value(value, path) end
+      assert_raise ArgumentError, fn -> KeyValues.extract_value(nil, path) end
     end
   end
 

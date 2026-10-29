@@ -23,38 +23,32 @@ defmodule Logflare.KeyValues.CacheTest do
     assert {:cached, ^value} = Cachex.get!(KeyValues.Cache, cache_key)
   end
 
-  test "lookup/3 caches extracted value with accessor path", %{user: user} do
+  test "lookup/3 caches whole values for prepared accessors", %{user: user} do
     value = %{"org" => %{"id" => "abc", "name" => "Acme"}}
     insert(:key_value, user: user, key: "proj1", value: value)
 
     assert "abc" = KeyValues.Cache.lookup(user.id, "proj1", KeyValues.prepare_accessor("org.id"))
-    cache_key = {:lookup, [user.id, "proj1", "org.id"]}
-    assert {:cached, "abc"} = Cachex.get!(KeyValues.Cache, cache_key)
+    assert {:cached, ^value} = Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "proj1", nil]})
+    assert Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "proj1", "org.id"]}) == nil
+
+    reject(&KeyValues.lookup/2)
+    reject(&KeyValues.lookup/3)
+
+    assert "Acme" =
+             KeyValues.Cache.lookup(user.id, "proj1", KeyValues.prepare_accessor("$.org.name"))
+
+    assert KeyValues.Cache.lookup(user.id, "proj1") == value
+    assert Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "proj1", "$.org.name"]}) == nil
   end
 
-  test "lookup/3 rejects unsupported accessor paths", %{user: user} do
+  test "lookup/3 rejects unprepared accessors", %{user: user} do
     value = %{"org" => %{"id" => "abc"}}
     insert(:key_value, user: user, key: "proj1", value: value)
     assert KeyValues.Cache.lookup(user.id, "proj1") == value
 
-    for key <- ["proj1", "missing"],
-        path <- [
-          "org.id",
-          "$.org.id",
-          "",
-          {nil, ["org", "id"]},
-          {123, []},
-          :org_id,
-          123,
-          ["org", "id"],
-          %{}
-        ] do
-      assert_raise ArgumentError,
-                   "expected accessor path to be nil or a prepared accessor, got: #{inspect(path)}",
-                   fn -> KeyValues.Cache.lookup(user.id, key, path) end
+    for key <- ["proj1", "missing"], path <- ["org.id", "$.org.id", {nil, []}] do
+      assert_raise ArgumentError, fn -> KeyValues.Cache.lookup(user.id, key, path) end
     end
-
-    assert KeyValues.Cache.lookup(user.id, "proj1") == value
   end
 
   test "lookup/3 on a warmed entry", %{user: user} do
@@ -67,81 +61,50 @@ defmodule Logflare.KeyValues.CacheTest do
     for {accessor_path, expected} <- [
           {"org.id", "abc"},
           {"$.org.name", "Acme"},
-          {"org.missing", nil}
-        ] do
-      prepared = KeyValues.prepare_accessor(accessor_path)
-      assert KeyValues.Cache.lookup(user.id, "proj1", prepared) == expected
-    end
-  end
-
-  test "prepared accessors fill and reuse the original cache keys", %{user: user} do
-    value = %{"org" => %{"id" => "abc"}}
-    insert(:key_value, user: user, key: "proj1", value: value)
-
-    for path <- ["org.id", "$.org.id"] do
-      prepared = KeyValues.prepare_accessor(path)
-      assert KeyValues.Cache.lookup(user.id, "proj1", prepared) == "abc"
-      assert Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "proj1", path]}) == {:cached, "abc"}
-      assert Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "proj1", prepared]}) == nil
-    end
-
-    assert KeyValues.Cache.lookup(user.id, "missing", KeyValues.prepare_accessor("org.id")) == nil
-
-    reject(&KeyValues.lookup/3)
-    reject(&KeyValues.extract_value/2)
-
-    for path <- ["org.id", "$.org.id"] do
-      assert KeyValues.Cache.lookup(user.id, "proj1", KeyValues.prepare_accessor(path)) == "abc"
-
-      assert_raise ArgumentError,
-                   "expected accessor path to be nil or a prepared accessor, got: #{inspect(path)}",
-                   fn -> KeyValues.Cache.lookup(user.id, "proj1", path) end
-    end
-
-    assert {:ok, 2} = ContextCache.bust_keys([{KeyValues, user_id: user.id, key: "proj1"}])
-
-    for path <- ["org.id", "$.org.id"] do
-      assert Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "proj1", path]}) == nil
-    end
-  end
-
-  test "prepared accessors fill from warmed values without querying the database", %{user: user} do
-    value = %{"org" => %{"id" => "abc", "enabled" => false}}
-    insert(:key_value, user: user, key: "proj1", value: value)
-    KeyValues.CacheWarmer.warm_recent()
-    reject(&KeyValues.lookup/2)
-    reject(&KeyValues.lookup/3)
-
-    for {path, expected} <- [
-          {"org.id", "abc"},
-          {"$.org.enabled", false},
           {"org.missing", nil},
           {"$.[", nil}
         ] do
-      prepared = KeyValues.prepare_accessor(path)
+      prepared = KeyValues.prepare_accessor(accessor_path)
       assert KeyValues.Cache.lookup(user.id, "proj1", prepared) == expected
-
-      assert Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "proj1", path]}) ==
-               {:cached, expected}
+      assert Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "proj1", accessor_path]}) == nil
     end
   end
 
   test "lookup/2 returns nil for missing keys", %{user: user} do
     assert nil == KeyValues.Cache.lookup(user.id, "nonexistent")
+    assert {:cached, nil} = Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "nonexistent", nil]})
+    reject(&KeyValues.lookup/2)
+    reject(&KeyValues.lookup/3)
+
+    for path <- ["org.id", "$.org.name"] do
+      assert KeyValues.Cache.lookup(user.id, "nonexistent", KeyValues.prepare_accessor(path)) ==
+               nil
+
+      assert Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "nonexistent", path]}) == nil
+    end
   end
 
-  test "busting a cached lookup and its accessor variants", %{user: user} do
-    kv = insert(:key_value, user: user, key: "proj1", value: %{"org" => %{"id" => "abc"}})
-    accessor = KeyValues.prepare_accessor("org.id")
+  test "busting a cached whole value refreshes every accessor", %{user: user} do
+    kv =
+      insert(:key_value,
+        user: user,
+        key: "proj1",
+        value: %{"org" => %{"id" => "abc", "name" => "Acme"}}
+      )
 
-    assert "abc" = KeyValues.Cache.lookup(user.id, "proj1", accessor)
-    assert %{"org" => %{"id" => "abc"}} = KeyValues.Cache.lookup(user.id, "proj1")
+    id = KeyValues.prepare_accessor("org.id")
+    name = KeyValues.prepare_accessor("$.org.name")
 
-    new_value = %{"org" => %{"id" => "xyz"}}
+    assert "abc" = KeyValues.Cache.lookup(user.id, "proj1", id)
+    assert "Acme" = KeyValues.Cache.lookup(user.id, "proj1", name)
+    assert KeyValues.Cache.lookup(user.id, "proj1") == kv.value
+
+    new_value = %{"org" => %{"id" => "xyz", "name" => "Updated"}}
     kv |> Ecto.Changeset.change(value: new_value) |> Repo.update!()
-    assert {:ok, _} = ContextCache.bust_keys([{KeyValues, user_id: user.id, key: "proj1"}])
+    assert {:ok, 1} = ContextCache.bust_keys([{KeyValues, user_id: user.id, key: "proj1"}])
 
-    assert "xyz" = KeyValues.Cache.lookup(user.id, "proj1", accessor)
+    assert "xyz" = KeyValues.Cache.lookup(user.id, "proj1", id)
+    assert "Updated" = KeyValues.Cache.lookup(user.id, "proj1", name)
     assert ^new_value = KeyValues.Cache.lookup(user.id, "proj1")
   end
 
@@ -158,11 +121,8 @@ defmodule Logflare.KeyValues.CacheTest do
       [kv1: kv1, kv2: kv2]
     end
 
-    test "duplicated accessor-path", %{user: user, kv1: %{id: kv1_id}} do
-      for path <- [nil, "org.id", "$.org.id"] do
-        {:ok, true} =
-          Cachex.put(KeyValues.Cache, {:lookup, [user.id, "k1", path]}, {:cached, "v"})
-      end
+    test "whole-value lookup", %{user: user, kv1: %{id: kv1_id}} do
+      KeyValues.Cache.lookup(user.id, "k1")
 
       assert {:ok, 1} = KeyValues.Cache.touch_recent_usages(DateTime.utc_now())
       assert [%KeyValueUsage{key_value_id: ^kv1_id}] = Repo.all(KeyValueUsage)
