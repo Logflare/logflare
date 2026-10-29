@@ -71,6 +71,35 @@ mix lint
 
 To configure the BigQuery backend, please follow the [BigQuery setup documentation](https://docs.logflare.app/self-hosting/#bigquery-setup).
 
+### Testing network failures with Toxiproxy
+
+Install the native `toxiproxy-server` binary from the
+[Toxiproxy v2.12.0 release](https://github.com/Shopify/toxiproxy/releases/tag/v2.12.0)
+and start it in a separate terminal:
+
+```bash
+toxiproxy-server -host 127.0.0.1
+```
+
+With the usual test databases running, enable the otherwise excluded tests:
+
+```bash
+mix test --include toxiproxy \
+  test/logflare/test_utils/toxiproxy_test.exs \
+  test/logflare/db_outage_toxiproxy_test.exs
+```
+
+The helper uses `TOXIPROXY_URL` (default `http://127.0.0.1:8474`). Each test creates
+its own named proxy on an OS-assigned port and removes it afterward. CI starts
+Toxiproxy and includes these tests automatically. Run Toxiproxy on the same host
+as the tests: Docker bridge networking does not expose newly assigned proxy ports.
+
+The database outage tests start a separate BEAM instance with Logflare's test
+supervision tree and a normal connection pool routed through the proxy. The
+parent test runner keeps its direct database connections for fixture setup and
+cleanup. These examples cover context caches and Repo recovery; the test tree
+does not include the production metrics workers or WAL consumer.
+
 ### Developing for Single Tenant
 
 Use the single tenant `make start.*` variations. This works by switching out the `LOGFLARE_SINGLE_TENANT` env var.

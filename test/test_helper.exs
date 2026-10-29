@@ -115,6 +115,7 @@ ExUnit.configure(
     integration: true,
     failing: true,
     benchmark: true,
+    toxiproxy: true,
     pglogical_replica: true
   ]
 )
