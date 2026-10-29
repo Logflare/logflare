@@ -9,9 +9,9 @@ defmodule Logflare.ContextCache.PeerWarmer do
 
     1. Waits up to `:peer_wait` for cluster peers and the local `CacheBuster`. Without a running
        `CacheBuster`, invalidations during the copy would be missed, so it does not copy.
-    2. Asks a random subset of at most `:max_peers` peers for their status and picks the one
-       with the most recent `warmed_at` among the ready peers running the same release, with
-       at least one entry and, when the cache has a max age, fresh enough data.
+    2. Asks a random subset of at most `:max_peers` peers for their status and picks a random one
+       among the ready peers running the same release, with at least one entry and, when the
+       cache has a max age, fresh enough data. Picking randomly spreads the copy load across peers.
     3. Copies `c:Logflare.ContextCache.entries/0` in acknowledged chunks within `:copy_timeout`,
        skipping negative lookups, entries for which `c:Logflare.ContextCache.stale_entry?/2`
        holds and keys already cached locally.
@@ -161,11 +161,13 @@ defmodule Logflare.ContextCache.PeerWarmer do
         peers
         |> ClusterUtils.erpc_multicall(__MODULE__, :status, [cache], Transfer.rpc_timeout())
         |> Enum.filter(&eligible?(&1, Map.fetch!(@max_age_config, cache)))
-        |> Enum.shuffle()
-        |> Enum.max_by(fn {_node, {:ok, status}} -> status.warmed_at end, DateTime, fn -> nil end)
         |> case do
-          nil -> {:error, :no_eligible_peer}
-          {node, {:ok, status}} -> {:ok, node, status}
+          [] ->
+            {:error, :no_eligible_peer}
+
+          eligible ->
+            {node, {:ok, status}} = Enum.random(eligible)
+            {:ok, node, status}
         end
     end
   end

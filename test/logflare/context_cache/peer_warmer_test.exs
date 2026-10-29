@@ -74,27 +74,32 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
       assert_outcome(ref, Sources.Cache, :cache_buster_not_started)
     end
 
-    test "copies from the ready peer with the most recent warmed_at", %{telemetry_ref: ref} do
+    test "copies from a random eligible peer, inheriting its warmed_at", %{telemetry_ref: ref} do
       now = DateTime.utc_now()
-      newest = DateTime.add(now, -1, :minute)
+
+      warmed_at_by_node = %{
+        old@host: DateTime.add(now, -30, :minute),
+        new@host: DateTime.add(now, -1, :minute)
+      }
 
       stub_peers([
-        {:old@host, {:ok, peer_status(warmed_at: DateTime.add(now, -30, :minute))}},
-        {:new@host, {:ok, peer_status(warmed_at: newest)}},
+        {:old@host, {:ok, peer_status(warmed_at: warmed_at_by_node[:old@host])}},
+        {:new@host, {:ok, peer_status(warmed_at: warmed_at_by_node[:new@host])}},
         {:booting@host, {:ok, peer_status(state: :warming, warmed_at: nil)}}
       ])
 
-      test_pid = self()
+      stub(Transfer, :run, fn _node, Sources.Cache, _import_fun, _timeout -> {:ok, 5} end)
 
-      stub(Transfer, :run, fn node, Sources.Cache, _import_fun, _timeout ->
-        send(test_pid, {:transfer_from, node})
-        {:ok, 5}
-      end)
+      picked =
+        for _attempt <- 1..30 do
+          assert {:ok, %{node: node, warmed_at: warmed_at, count: 5}} =
+                   PeerWarmer.copy_from_peer(Sources.Cache)
 
-      assert {:ok, %{node: :new@host, warmed_at: ^newest, count: 5}} =
-               PeerWarmer.copy_from_peer(Sources.Cache)
+          assert warmed_at == warmed_at_by_node[node]
+          node
+        end
 
-      assert_received {:transfer_from, :new@host}
+      assert picked |> Enum.uniq() |> Enum.sort() == [:new@host, :old@host]
       assert_outcome(ref, Sources.Cache, :copied)
     end
 
