@@ -74,79 +74,130 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
       assert_outcome(ref, Sources.Cache, :cache_buster_not_started)
     end
 
-    test "copies from a random eligible peer, inheriting its warmed_at", %{telemetry_ref: ref} do
-      now = DateTime.utc_now()
+    test "asks peers one after another and copies from the first that accepts", %{
+      telemetry_ref: ref
+    } do
+      warmed_at = DateTime.add(DateTime.utc_now(), -10, :minute)
+      expected_guard = {PeerWarmer, :source_status, [Sources.Cache, release_version()]}
 
-      warmed_at_by_node = %{
-        old@host: DateTime.add(now, -30, :minute),
-        new@host: DateTime.add(now, -1, :minute)
-      }
+      stub_attempts(
+        refusing@host: {:error, :not_eligible},
+        accepting@host: {:ok, 5, %{warmed_at: warmed_at}},
+        unused@host: {:error, :not_eligible}
+      )
 
-      stub_peers([
-        {:old@host, {:ok, peer_status(warmed_at: warmed_at_by_node[:old@host])}},
-        {:new@host, {:ok, peer_status(warmed_at: warmed_at_by_node[:new@host])}},
-        {:booting@host, {:ok, peer_status(state: :warming, warmed_at: nil)}}
-      ])
+      assert {:ok, %{node: :accepting@host, warmed_at: ^warmed_at, count: 5}} =
+               PeerWarmer.copy_from_peer(Sources.Cache)
 
-      stub(Transfer, :run, fn _node, Sources.Cache, _import_fun, _timeout -> {:ok, 5} end)
-
-      picked =
-        for _attempt <- 1..30 do
-          assert {:ok, %{node: node, warmed_at: warmed_at, count: 5}} =
-                   PeerWarmer.copy_from_peer(Sources.Cache)
-
-          assert warmed_at == warmed_at_by_node[node]
-          node
-        end
-
-      assert picked |> Enum.uniq() |> Enum.sort() == [:new@host, :old@host]
+      assert_received {:asked, :refusing@host, ^expected_guard}
+      assert_received {:asked, :accepting@host, ^expected_guard}
+      refute_received {:asked, :unused@host, _guard}
       assert_outcome(ref, Sources.Cache, :copied)
     end
 
-    test "falls back when no peer is eligible", %{telemetry_ref: ref} do
-      now = DateTime.utc_now()
+    test "tries the next peer after a failed transfer" do
+      stub_attempts(
+        down@host: {:error, :peer_down},
+        accepting@host: {:ok, 1, %{warmed_at: DateTime.utc_now()}}
+      )
 
-      stub_peers([
-        {:warming@host, {:ok, peer_status(state: :warming, warmed_at: nil)}},
-        {:other_release@host, {:ok, peer_status(version: ~c"0.0.0")}},
-        {:empty@host, {:ok, peer_status(size: 0)}},
-        {:stale@host, {:ok, peer_status(warmed_at: DateTime.add(now, -2, :hour))}},
-        {:not_warmed@host, {:ok, nil}},
-        {:old_code@host, {:error, {:exception, :undef, []}}},
-        {:down@host, {:error, {:erpc, :noconnection}}}
-      ])
+      assert {:ok, %{node: :accepting@host}} = PeerWarmer.copy_from_peer(Sources.Cache)
+    end
 
-      reject(Transfer, :run, 4)
+    test "falls back when every peer refuses", %{telemetry_ref: ref} do
+      stub_attempts(a@host: {:error, :not_eligible}, b@host: {:error, :not_eligible})
 
       assert :fallback = PeerWarmer.copy_from_peer(KeyValues.Cache)
       assert_outcome(ref, KeyValues.Cache, :no_eligible_peer)
     end
 
-    test "does not apply a max age to Sources" do
-      old = DateTime.add(DateTime.utc_now(), -2, :day)
-      stub_peers([{:old@host, {:ok, peer_status(warmed_at: old)}}])
-      stub(Transfer, :run, fn _node, _cache, _import_fun, _timeout -> {:ok, 1} end)
-
-      assert {:ok, %{warmed_at: ^old}} = PeerWarmer.copy_from_peer(Sources.Cache)
-    end
-
-    test "falls back when the transfer fails", %{telemetry_ref: ref} do
-      stub_peers([{:peer@host, {:ok, peer_status([])}}])
-      stub(Transfer, :run, fn _node, _cache, _import_fun, _timeout -> {:error, :peer_down} end)
+    test "reports the last transfer failure when no peer could be copied", %{telemetry_ref: ref} do
+      stub_attempts(down@host: {:error, :peer_down}, refusing@host: {:error, :not_eligible})
 
       assert :fallback = PeerWarmer.copy_from_peer(Sources.Cache)
       assert_outcome(ref, Sources.Cache, :peer_down)
     end
 
+    test "shares one copy timeout across all attempts", %{telemetry_ref: ref} do
+      Application.put_env(
+        :logflare,
+        PeerWarmer,
+        Keyword.put(Application.fetch_env!(:logflare, PeerWarmer), :copy_timeout, 50)
+      )
+
+      stub(ClusterUtils, :peer_list_partial, fn 1.0, _max_nodes -> [:slow@host, :next@host] end)
+      test_pid = self()
+
+      stub(Transfer, :run, fn node, _cache, _guard, _import_fun, timeout ->
+        send(test_pid, {:asked, node, timeout})
+        Process.sleep(60)
+        {:error, :timeout}
+      end)
+
+      assert :fallback = PeerWarmer.copy_from_peer(Sources.Cache)
+      assert_received {:asked, :slow@host, timeout} when timeout <= 50
+      refute_received {:asked, :next@host, _timeout}
+      assert_outcome(ref, Sources.Cache, :timeout)
+    end
+
     test "falls back when the copy crashes", %{telemetry_ref: ref} do
-      stub_peers([{:peer@host, {:ok, peer_status([])}}])
-      stub(Transfer, :run, fn _node, _cache, _import_fun, _timeout -> raise "boom" end)
+      stub(ClusterUtils, :peer_list_partial, fn 1.0, _max_nodes -> [:peer@host] end)
+      stub(Transfer, :run, fn _node, _cache, _guard, _import_fun, _timeout -> raise "boom" end)
 
       capture_log(fn ->
         assert :fallback = PeerWarmer.copy_from_peer(Sources.Cache)
       end)
 
       assert_outcome(ref, Sources.Cache, :crashed)
+    end
+  end
+
+  describe "source_status/2" do
+    test "accepts a ready cache with entries, on the same release" do
+      warmed_at = DateTime.utc_now()
+      Cachex.put!(Sources.Cache, :key, {:cached, %{id: 1}})
+      PeerWarmer.mark_ready(Sources.Cache, warmed_at)
+
+      assert {:ok, %{warmed_at: ^warmed_at}} =
+               PeerWarmer.source_status(Sources.Cache, release_version())
+    end
+
+    test "refuses before the cache started warming and while it is warming" do
+      Cachex.put!(Sources.Cache, :key, {:cached, %{id: 1}})
+      assert {:error, :not_eligible} = PeerWarmer.source_status(Sources.Cache, release_version())
+
+      PeerWarmer.mark_warming(Sources.Cache)
+      assert {:error, :not_eligible} = PeerWarmer.source_status(Sources.Cache, release_version())
+    end
+
+    test "refuses a node on another release" do
+      Cachex.put!(Sources.Cache, :key, {:cached, %{id: 1}})
+      PeerWarmer.mark_ready(Sources.Cache, DateTime.utc_now())
+
+      assert {:error, :not_eligible} = PeerWarmer.source_status(Sources.Cache, ~c"0.0.0")
+    end
+
+    test "refuses an empty cache" do
+      PeerWarmer.mark_ready(Sources.Cache, DateTime.utc_now())
+
+      assert {:error, :not_eligible} = PeerWarmer.source_status(Sources.Cache, release_version())
+    end
+
+    test "refuses KeyValues data older than the max age" do
+      Cachex.put!(KeyValues.Cache, :key, {:cached, %{}})
+      PeerWarmer.mark_ready(KeyValues.Cache, DateTime.add(DateTime.utc_now(), -2, :hour))
+
+      assert {:error, :not_eligible} =
+               PeerWarmer.source_status(KeyValues.Cache, release_version())
+    end
+
+    test "does not apply a max age to Sources" do
+      old = DateTime.add(DateTime.utc_now(), -2, :day)
+      Cachex.put!(Sources.Cache, :key, {:cached, %{id: 1}})
+      PeerWarmer.mark_ready(Sources.Cache, old)
+
+      assert {:ok, %{warmed_at: ^old}} =
+               PeerWarmer.source_status(Sources.Cache, release_version())
     end
   end
 
@@ -233,35 +284,25 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
     end
   end
 
-  defp stub_peers(results) do
-    stub(ClusterUtils, :peer_list_partial, fn 1.0, _max_nodes ->
-      Enum.map(results, &elem(&1, 0))
-    end)
+  defp stub_attempts(attempts) do
+    test_pid = self()
+    stub(ClusterUtils, :peer_list_partial, fn 1.0, _max_nodes -> Keyword.keys(attempts) end)
 
-    stub(ClusterUtils, :erpc_multicall, fn _nodes, PeerWarmer, :status, [_cache], _timeout ->
-      results
+    stub(Transfer, :run, fn node, _cache, guard, _import_fun, _timeout ->
+      send(test_pid, {:asked, node, guard})
+      Keyword.fetch!(attempts, node)
     end)
   end
 
   defp stub_transfer_of(entries) do
-    stub_peers([{:peer@host, {:ok, peer_status([])}}])
+    stub(ClusterUtils, :peer_list_partial, fn 1.0, _max_nodes -> [:peer@host] end)
 
-    stub(Transfer, :run, fn _node, _cache, import_fun, _timeout ->
-      {:ok, import_fun.(entries)}
+    stub(Transfer, :run, fn _node, _cache, _guard, import_fun, _timeout ->
+      {:ok, import_fun.(entries), %{warmed_at: DateTime.utc_now()}}
     end)
   end
 
-  defp peer_status(overrides) do
-    Map.merge(
-      %{
-        state: :ready,
-        warmed_at: DateTime.utc_now(),
-        version: Application.spec(:logflare, :vsn),
-        size: 10
-      },
-      Map.new(overrides)
-    )
-  end
+  defp release_version, do: Application.spec(:logflare, :vsn)
 
   defp get_by_key(source), do: {:get_by, [[id: source.id]]}
 

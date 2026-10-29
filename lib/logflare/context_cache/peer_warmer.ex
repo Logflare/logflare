@@ -9,16 +9,17 @@ defmodule Logflare.ContextCache.PeerWarmer do
 
     1. Waits up to `:peer_wait` for cluster peers and the local `CacheBuster`. Without a running
        `CacheBuster`, invalidations during the copy would be missed, so it does not copy.
-    2. Asks a random subset of at most `:max_peers` peers for their status and picks a random one
-       among the ready peers running the same release, with at least one entry and, when the
-       cache has a max age, fresh enough data. Picking randomly spreads the copy load across peers.
-    3. Copies `c:Logflare.ContextCache.entries/0` in acknowledged chunks within `:copy_timeout`,
-       skipping negative lookups, entries for which `c:Logflare.ContextCache.stale_entry?/2`
-       holds and keys already cached locally.
+    2. Asks up to `:max_peers` random peers, one after another, to send the cache. Each peer
+       decides itself with `source_status/2` whether it may serve the copy: it must be ready, run
+       the same release, hold at least one entry and, when the cache has a max age, have fresh
+       enough data. Picking peers randomly spreads the copy load.
+    3. Copies `c:Logflare.ContextCache.entries/0` in acknowledged chunks, skipping negative
+       lookups, entries for which `c:Logflare.ContextCache.stale_entry?/2` holds and keys already
+       cached locally. All attempts share one `:copy_timeout`.
 
-  When no peer qualifies or the copy fails, it returns `:fallback` and the warmer loads
-  from the database as before. A copy inherits the peer's `warmed_at`, so a copy of a copy
-  never looks fresher than the data it holds.
+  When every peer refuses or fails, it returns `:fallback` and the warmer loads from the
+  database as before. A copy inherits the peer's `warmed_at`, so a copy of a copy never looks
+  fresher than the data it holds.
   """
 
   require Logger
@@ -75,7 +76,7 @@ defmodule Logflare.ContextCache.PeerWarmer do
   end
 
   @doc """
-  Returns this node's status for the given cache. Called by peers over RPC.
+  Returns this node's status for the given cache.
   """
   @spec status(module()) :: status() | nil
   def status(cache) when is_map_key(@max_age_config, cache) do
@@ -86,6 +87,24 @@ defmodule Logflare.ContextCache.PeerWarmer do
 
   def status(_cache), do: nil
 
+  @doc """
+  Whether this node may send `cache` to a node running release `version`. Called on the peer
+  right before it starts sending, so the check and the copy see the same state.
+  """
+  @spec source_status(module(), charlist() | nil) ::
+          {:ok, %{warmed_at: DateTime.t()}} | {:error, :not_eligible}
+  def source_status(cache, version) do
+    case status(cache) do
+      %{state: :ready, version: ^version, size: size, warmed_at: warmed_at} when size > 0 ->
+        if fresh?(warmed_at, Map.fetch!(@max_age_config, cache)),
+          do: {:ok, %{warmed_at: warmed_at}},
+          else: {:error, :not_eligible}
+
+      _not_eligible ->
+        {:error, :not_eligible}
+    end
+  end
+
   defp traced_copy(cache) do
     result = run_isolated(fn -> do_copy(cache) end)
     {public_result(result), %{cache: cache, outcome: outcome(result)}}
@@ -95,11 +114,10 @@ defmodule Logflare.ContextCache.PeerWarmer do
     await_ready(System.monotonic_time(:millisecond) + config(:peer_wait))
 
     with :ok <- ensure_cache_buster_started(),
-         {:ok, node, peer_status} <- select_peer(cache),
-         {:ok, count} <-
-           Transfer.run(node, cache, &import_entries(cache, &1), config(:copy_timeout)) do
+         {:ok, peers} <- pick_peers(),
+         {:ok, node, count, warmed_at} <- copy_from_first_available(peers, cache) do
       Logger.info("Warmed #{inspect(cache)} with #{count} entries copied from #{node}")
-      {:ok, %{node: node, warmed_at: peer_status.warmed_at, count: count}}
+      {:ok, %{node: node, warmed_at: warmed_at, count: count}}
     else
       {:error, reason} = error ->
         Logger.info(
@@ -118,7 +136,8 @@ defmodule Logflare.ContextCache.PeerWarmer do
         fun
       )
 
-    timeout = config(:peer_wait) + config(:copy_timeout) + 2 * Transfer.rpc_timeout()
+    timeout =
+      config(:peer_wait) + config(:copy_timeout) + config(:max_peers) * Transfer.rpc_timeout()
 
     case Task.yield(task, timeout) || Task.shutdown(task, :brutal_kill) do
       {:ok, result} -> result
@@ -152,32 +171,35 @@ defmodule Logflare.ContextCache.PeerWarmer do
     if cache_buster_started?(), do: :ok, else: {:error, :cache_buster_not_started}
   end
 
-  defp select_peer(cache) do
+  defp pick_peers do
     case ClusterUtils.peer_list_partial(1.0, config(:max_peers)) do
-      [] ->
-        {:error, :no_peers}
-
-      peers ->
-        peers
-        |> ClusterUtils.erpc_multicall(__MODULE__, :status, [cache], Transfer.rpc_timeout())
-        |> Enum.filter(&eligible?(&1, Map.fetch!(@max_age_config, cache)))
-        |> case do
-          [] ->
-            {:error, :no_eligible_peer}
-
-          eligible ->
-            {node, {:ok, status}} = Enum.random(eligible)
-            {:ok, node, status}
-        end
+      [] -> {:error, :no_peers}
+      peers -> {:ok, peers}
     end
   end
 
-  defp eligible?({_node, {:ok, %{state: :ready} = status}}, max_age_key) do
-    status.version == release_version() and status.size > 0 and
-      fresh?(status.warmed_at, max_age_key)
+  defp copy_from_first_available(peers, cache) do
+    deadline = System.monotonic_time(:millisecond) + config(:copy_timeout)
+    guard = {__MODULE__, :source_status, [cache, release_version()]}
+
+    Enum.reduce_while(peers, {:error, :no_eligible_peer}, fn node, last_error ->
+      case deadline - System.monotonic_time(:millisecond) do
+        remaining when remaining > 0 ->
+          node
+          |> Transfer.run(cache, guard, &import_entries(cache, &1), remaining)
+          |> attempt_result(node, last_error)
+
+        _deadline_passed ->
+          {:halt, {:error, :timeout}}
+      end
+    end)
   end
 
-  defp eligible?(_result, _max_age_key), do: false
+  defp attempt_result({:ok, count, %{warmed_at: warmed_at}}, node, _last_error),
+    do: {:halt, {:ok, node, count, warmed_at}}
+
+  defp attempt_result({:error, :not_eligible}, _node, last_error), do: {:cont, last_error}
+  defp attempt_result({:error, _reason} = error, _node, _last_error), do: {:cont, error}
 
   defp fresh?(_warmed_at, nil), do: true
 

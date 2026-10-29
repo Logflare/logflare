@@ -2,9 +2,11 @@ defmodule Logflare.ContextCache.PeerWarmer.Transfer do
   @moduledoc """
   Acknowledged, chunked transfer of a context cache's entries from a peer node.
 
-  The requesting process starts an exporter on the peer, which streams `c:Logflare.ContextCache.entries/0`
-  and sends one chunk at a time, waiting for an ack before sending the next. The exporter stops when
-  the requester goes down or stops acking, and the requester gives up at the deadline.
+  The requesting process asks the peer to start an exporter. The peer first applies the `guard`
+  MFA, which decides whether it may serve the copy and returns metadata for the requester. The
+  exporter then streams `c:Logflare.ContextCache.entries/0` and sends one chunk at a time, waiting
+  for an ack before sending the next. The exporter stops when the requester goes down or stops
+  acking, and the requester gives up at the deadline.
   """
 
   alias Logflare.Cluster.Utils, as: ClusterUtils
@@ -16,27 +18,32 @@ defmodule Logflare.ContextCache.PeerWarmer.Transfer do
   @rpc_timeout to_timeout(second: 5)
 
   @type import_fun :: ([ContextCache.entry()] -> non_neg_integer())
-  @type error :: :rpc_failed | :timeout | :peer_down
+  @type guard :: {module(), atom(), list()}
+  @type error :: :rpc_failed | :timeout | :peer_down | term()
 
   @spec rpc_timeout() :: timeout()
   def rpc_timeout, do: @rpc_timeout
 
-  @spec run(node(), module(), import_fun(), timeout()) ::
-          {:ok, non_neg_integer()} | {:error, error()}
-  def run(node, cache, import_fun, timeout) do
+  @doc """
+  Copies `cache` from `node`, returning the number of imported entries and the guard's metadata.
+  A guard refusal is returned as is.
+  """
+  @spec run(node(), module(), guard(), import_fun(), timeout()) ::
+          {:ok, non_neg_integer(), term()} | {:error, error()}
+  def run(node, cache, guard, import_fun, timeout) do
     ref = make_ref()
     deadline = System.monotonic_time(:millisecond) + timeout
-    args = [cache, self(), ref]
+    args = [cache, guard, self(), ref]
 
     case ClusterUtils.erpc_multicall([node], __MODULE__, :start_export, args, @rpc_timeout) do
-      [{^node, {:ok, {:ok, exporter}}}] ->
+      [{^node, {:ok, {:ok, exporter, meta}}}] ->
         monitor = Process.monitor(exporter)
+        transfer = %{ref: ref, exporter: exporter, monitor: monitor, deadline: deadline}
 
-        receive_chunks(
-          %{ref: ref, exporter: exporter, monitor: monitor, deadline: deadline},
-          import_fun,
-          0
-        )
+        with {:ok, count} <- receive_chunks(transfer, import_fun, 0), do: {:ok, count, meta}
+
+      [{^node, {:ok, {:error, _reason} = refused}}] ->
+        refused
 
       _error ->
         {:error, :rpc_failed}
@@ -44,9 +51,13 @@ defmodule Logflare.ContextCache.PeerWarmer.Transfer do
   end
 
   @doc false
-  @spec start_export(module(), pid(), reference()) :: DynamicSupervisor.on_start_child()
-  def start_export(cache, requester, ref) do
-    Tasks.start_child(fn -> export(cache, requester, ref) end)
+  @spec start_export(module(), guard(), pid(), reference()) ::
+          {:ok, pid(), term()} | {:error, term()}
+  def start_export(cache, {module, fun, args}, requester, ref) do
+    with {:ok, meta} <- apply(module, fun, args),
+         {:ok, exporter} <- Tasks.start_child(fn -> export(cache, requester, ref) end) do
+      {:ok, exporter, meta}
+    end
   end
 
   defp export(cache, requester, ref) do
