@@ -37,8 +37,9 @@ defmodule Logflare.KeyValues.Cache do
 
   @spec lookup(integer(), String.t()) :: map() | nil
   def lookup(user_id, key) do
-    Cachex.fetch(__MODULE__, {:lookup, [user_id, key, nil]}, fn _key ->
-      {:commit, {:cached, Repo.apply_with_replica(KeyValues, :lookup, [user_id, key])}}
+    Cachex.fetch(__MODULE__, {:lookup, [user_id, key]}, fn _key ->
+      whole_value = Repo.apply_with_replica(KeyValues, :lookup, [user_id, key])
+      {:commit, {:cached, whole_value}}
     end)
     |> case do
       {:commit, {:cached, v}} -> v
@@ -50,8 +51,8 @@ defmodule Logflare.KeyValues.Cache do
   def lookup(user_id, key, nil), do: lookup(user_id, key)
 
   def lookup(user_id, key, {raw_path, _prepared} = accessor_path) when is_binary(raw_path) do
-    lookup(user_id, key)
-    |> KeyValues.extract_value(accessor_path)
+    whole_value = lookup(user_id, key)
+    KeyValues.extract_value(whole_value, accessor_path)
   end
 
   def lookup(_user_id, _key, other) do
@@ -76,7 +77,7 @@ defmodule Logflare.KeyValues.Cache do
     __MODULE__
     |> Cachex.stream!(query)
     |> Stream.flat_map(fn
-      {:lookup, [user_id, key, nil]} -> [{user_id, key}]
+      {:lookup, [user_id, key]} -> [{user_id, key}]
       _ -> []
     end)
     |> Stream.chunk_every(@usage_touch_chunk)
@@ -104,7 +105,7 @@ defmodule Logflare.KeyValues.Cache do
     entries = if user_id, do: [{:count, user_id}], else: []
 
     if user_id && key do
-      [{:lookup, [user_id, key, nil]} | entries]
+      [{:lookup, [user_id, key]} | entries]
     else
       entries
     end

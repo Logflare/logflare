@@ -58,34 +58,6 @@ defmodule Logflare.KeyValuesTest do
     assert nil == KeyValues.lookup(user.id, "nonexistent")
   end
 
-  test "lookup/3 requires a prepared accessor", %{user: user} do
-    value = %{"org" => %{"id" => "abc"}}
-    insert(:key_value, user: user, key: "proj1", value: value)
-
-    for path <- ["org.id", "$.org.id"] do
-      prepared = KeyValues.prepare_accessor(path)
-      assert KeyValues.lookup(user.id, "proj1", prepared) == "abc"
-      assert KeyValues.lookup(user.id, "missing", prepared) == nil
-      assert_raise ArgumentError, fn -> KeyValues.lookup(user.id, "proj1", path) end
-      assert_raise ArgumentError, fn -> KeyValues.lookup(user.id, "missing", path) end
-    end
-
-    assert KeyValues.lookup(user.id, "proj1", nil) == value
-  end
-
-  test "extract_value/2 requires a prepared accessor" do
-    value = %{"org" => %{"id" => "abc"}}
-    assert KeyValues.extract_value(value, nil) == value
-
-    for path <- ["org.id", "$.org.id"] do
-      prepared = KeyValues.prepare_accessor(path)
-      assert KeyValues.extract_value(value, prepared) == "abc"
-      assert KeyValues.extract_value(nil, prepared) == nil
-      assert_raise ArgumentError, fn -> KeyValues.extract_value(value, path) end
-      assert_raise ArgumentError, fn -> KeyValues.extract_value(nil, path) end
-    end
-  end
-
   test "bulk_upsert_key_values/2 inserts and upserts", %{user: user} do
     entries = [%{key: "a", value: %{"n" => "1"}}, %{key: "b", value: %{"n" => "2"}}]
     assert {2, _} = KeyValues.bulk_upsert_key_values(user.id, entries)

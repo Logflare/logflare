@@ -1,10 +1,10 @@
 defmodule Logflare.KeyValues.CacheTest do
-  @moduledoc false
   use Logflare.DataCase, async: false
 
   alias Logflare.ContextCache
   alias Logflare.KeyValues
   alias Logflare.KeyValues.CacheWarmer
+  alias Logflare.KeyValues.KeyValueUsage
 
   setup do
     :persistent_term.erase({CacheWarmer, :initialized})
@@ -19,8 +19,11 @@ defmodule Logflare.KeyValues.CacheTest do
 
     # first call populates cache
     assert ^value = KeyValues.Cache.lookup(user.id, "proj1")
-    cache_key = {:lookup, [user.id, "proj1", nil]}
+    cache_key = {:lookup, [user.id, "proj1"]}
     assert {:cached, ^value} = Cachex.get!(KeyValues.Cache, cache_key)
+
+    reject(&KeyValues.lookup/2)
+    assert ^value = KeyValues.Cache.lookup(user.id, "proj1", nil)
   end
 
   test "lookup/3 caches whole values for prepared accessors", %{user: user} do
@@ -28,7 +31,7 @@ defmodule Logflare.KeyValues.CacheTest do
     insert(:key_value, user: user, key: "proj1", value: value)
 
     assert "abc" = KeyValues.Cache.lookup(user.id, "proj1", KeyValues.prepare_accessor("org.id"))
-    assert {:cached, ^value} = Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "proj1", nil]})
+    assert {:cached, ^value} = Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "proj1"]})
     assert Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "proj1", "org.id"]}) == nil
 
     reject(&KeyValues.lookup/2)
@@ -72,7 +75,7 @@ defmodule Logflare.KeyValues.CacheTest do
 
   test "lookup/2 returns nil for missing keys", %{user: user} do
     assert nil == KeyValues.Cache.lookup(user.id, "nonexistent")
-    assert {:cached, nil} = Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "nonexistent", nil]})
+    assert {:cached, nil} = Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "nonexistent"]})
     reject(&KeyValues.lookup/2)
     reject(&KeyValues.lookup/3)
 
@@ -113,8 +116,6 @@ defmodule Logflare.KeyValues.CacheTest do
   end
 
   describe "touch_recent_usages/1" do
-    alias Logflare.KeyValues.KeyValueUsage
-
     setup %{user: user} do
       kv1 = insert(:key_value, user: user, key: "k1")
       kv2 = insert(:key_value, user: user, key: "k2")
@@ -136,7 +137,7 @@ defmodule Logflare.KeyValues.CacheTest do
     end
 
     test "outside window", %{user: user} do
-      {:ok, true} = Cachex.put(KeyValues.Cache, {:lookup, [user.id, "k1", nil]}, {:cached, "v"})
+      {:ok, true} = Cachex.put(KeyValues.Cache, {:lookup, [user.id, "k1"]}, {:cached, "v"})
 
       # Passing a future `now` makes cutoff = future - 20min, which is after the
       # entry's modified time (≈ real now), so the entry falls outside the window.
@@ -150,7 +151,7 @@ defmodule Logflare.KeyValues.CacheTest do
       assert {:ok, 0} = KeyValues.Cache.touch_recent_usages(DateTime.utc_now())
 
       Process.sleep(2)
-      {:ok, true} = Cachex.put(KeyValues.Cache, {:lookup, [user.id, key, nil]}, {:cached, "v"})
+      {:ok, true} = Cachex.put(KeyValues.Cache, {:lookup, [user.id, key]}, {:cached, "v"})
 
       assert {:ok, 1} = KeyValues.Cache.touch_recent_usages(DateTime.utc_now())
       assert [%KeyValueUsage{key_value_id: ^kv1_id}] = Repo.all(KeyValueUsage)
@@ -161,7 +162,7 @@ defmodule Logflare.KeyValues.CacheTest do
       kv_other = insert(:key_value, user: other, key: "k3")
 
       for {uid, key} <- [{user.id, "k1"}, {user.id, "k2"}, {other.id, "k3"}] do
-        {:ok, true} = Cachex.put(KeyValues.Cache, {:lookup, [uid, key, nil]}, {:cached, "v"})
+        {:ok, true} = Cachex.put(KeyValues.Cache, {:lookup, [uid, key]}, {:cached, "v"})
       end
 
       assert {:ok, 3} = KeyValues.Cache.touch_recent_usages(DateTime.utc_now())

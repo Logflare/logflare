@@ -13,24 +13,36 @@ defmodule Logflare.Sources.SourceTest do
   end
 
   test "parse_key_values_config/1 prepares accessor paths" do
-    source =
-      %Source{
-        transform_key_values:
-          "m.project:m.id: org.id \nproject:name:$.org.name\nproject:full\nproject:invalid:$.["
-      }
-      |> Source.parse_key_values_config()
+    source = %Source{
+      transform_key_values:
+        "m.project:m.id: org.id \nproject:name:$.org.name\nproject:full\nproject:invalid:$.["
+    }
 
-    assert [dot, jsonpath, full, invalid] = source.transform_key_values_parsed
+    source = Source.parse_key_values_config(source)
+    {:ok, expected_jsonpath} = Warpath.Expression.compile("$.org.name")
 
-    assert dot == %{
-             from_path: ["metadata", "project"],
-             to_path: ["metadata", "id"],
-             accessor_path: {"org.id", ["org", "id"]}
-           }
-
-    assert {"$.org.name", %Warpath.Expression{}} = jsonpath.accessor_path
-    assert full.accessor_path == nil
-    assert invalid.accessor_path == {"$.[", :invalid}
+    assert source.transform_key_values_parsed == [
+             %{
+               from_path: ["metadata", "project"],
+               to_path: ["metadata", "id"],
+               accessor_path: {"org.id", ["org", "id"]}
+             },
+             %{
+               from_path: ["project"],
+               to_path: ["name"],
+               accessor_path: {"$.org.name", expected_jsonpath}
+             },
+             %{
+               from_path: ["project"],
+               to_path: ["full"],
+               accessor_path: nil
+             },
+             %{
+               from_path: ["project"],
+               to_path: ["invalid"],
+               accessor_path: {"$.[", :invalid}
+             }
+           ]
   end
 
   describe "default_search_lql" do
