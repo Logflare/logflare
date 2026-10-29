@@ -298,8 +298,8 @@ defmodule Logflare.Endpoints.ResultsCache do
   def name(query, params, opts \\ [])
 
   def name(%EndpointQuery{} = query, params, opts) do
-    param_hash = :erlang.phash2(params)
-    opts_hash = :erlang.phash2(opts)
+    param_hash = :crypto.hash(:sha256, :erlang.term_to_binary(params))
+    opts_hash = :crypto.hash(:sha256, :erlang.term_to_binary(opts))
     {query_id, version_key} = endpoint_cache_key(query)
 
     key = {query_id, version_key, param_hash, opts_hash}
