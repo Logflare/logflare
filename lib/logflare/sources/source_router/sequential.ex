@@ -20,49 +20,56 @@ defmodule Logflare.Sources.SourceRouter.Sequential do
   @spec route_with_lql_rules?(LE.t(), Rule.t()) :: boolean()
   def route_with_lql_rules?(%LE{body: le_body}, %Rule{lql_filters: lql_filters})
       when lql_filters != [] do
-    Enum.all?(lql_filters, fn lql_filter ->
-      le_body
-      |> collect_by_path(lql_filter.path)
-      |> Enum.any?(fn le_value ->
-        evaluate_filter_condition(lql_filter, le_value)
-      end)
-    end)
+    Enum.all?(lql_filters, &filter_matches?(le_body, &1))
   end
 
-  defp evaluate_filter_condition(lql_filter, le_value) do
-    %FilterRule{value: value, operator: operator, modifiers: modifiers} = lql_filter
-    le_str_value = stringify(le_value)
+  @spec filter_matches?(map(), FilterRule.t()) :: boolean()
+  defp filter_matches?(le_body, %FilterRule{path: path, modifiers: modifiers} = lql_filter) do
+    negate? = modifiers[:negate] == true
 
-    matches? =
-      cond do
-        is_nil(le_value) ->
-          false
-
-        operator == :range ->
-          [lvalue, rvalue] = lql_filter.values
-          le_value >= lvalue and le_value <= rvalue
-
-        operator == :list_includes ->
-          le_value == value
-
-        operator == :list_includes_regexp ->
-          le_str_value =~ ~r/#{value}/u
-
-        operator == :string_contains ->
-          String.contains?(le_str_value, stringify(value))
-
-        operator == := ->
-          le_value == value
-
-        operator == :"~" ->
-          le_str_value =~ ~r/#{value}/u
-
-        operator in [:<=, :<, :>=, :>] ->
-          apply(Kernel, operator, [le_value, value])
-      end
-
-    if modifiers[:negate], do: not matches?, else: matches?
+    le_body
+    |> collect_by_path(path)
+    |> any_value_matches?(lql_filter, negate?, nil)
   end
+
+  @spec any_value_matches?(list(), FilterRule.t(), boolean(), (term() -> boolean()) | nil) ::
+          boolean()
+  defp any_value_matches?([], _lql_filter, _negate?, _matcher), do: false
+  defp any_value_matches?([nil | _], _lql_filter, true, _matcher), do: true
+
+  defp any_value_matches?([nil | rest], lql_filter, false, matcher),
+    do: any_value_matches?(rest, lql_filter, false, matcher)
+
+  defp any_value_matches?(values, lql_filter, negate?, nil),
+    do: any_value_matches?(values, lql_filter, negate?, build_matcher(lql_filter))
+
+  defp any_value_matches?([le_value | rest], lql_filter, negate?, matcher) do
+    matcher.(le_value) != negate? or any_value_matches?(rest, lql_filter, negate?, matcher)
+  end
+
+  @spec build_matcher(FilterRule.t()) :: (term() -> boolean())
+  defp build_matcher(%FilterRule{operator: :range, values: [lvalue, rvalue]}),
+    do: &(&1 >= lvalue and &1 <= rvalue)
+
+  defp build_matcher(%FilterRule{operator: operator, value: value})
+       when operator in [:list_includes, :=],
+       do: &(&1 == value)
+
+  defp build_matcher(%FilterRule{operator: operator, value: value})
+       when operator in [:list_includes_regexp, :"~"] do
+    regex = ~r/#{value}/u
+    &(stringify(&1) =~ regex)
+  end
+
+  defp build_matcher(%FilterRule{operator: :string_contains, value: value}) do
+    pattern = stringify(value)
+    &String.contains?(stringify(&1), pattern)
+  end
+
+  defp build_matcher(%FilterRule{operator: :<=, value: value}), do: &(&1 <= value)
+  defp build_matcher(%FilterRule{operator: :<, value: value}), do: &(&1 < value)
+  defp build_matcher(%FilterRule{operator: :>=, value: value}), do: &(&1 >= value)
+  defp build_matcher(%FilterRule{operator: :>, value: value}), do: &(&1 > value)
 
   defp collect_by_path(params, path) when is_binary(path) do
     collect_by_path(params, String.split(path, "."))
