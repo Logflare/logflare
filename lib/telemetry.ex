@@ -201,6 +201,14 @@ defmodule Logflare.Telemetry do
     ]
 
     database_metrics = [
+      distribution("logflare.key_values.database_fetch.duration",
+        event_name: [:logflare, :repo, :query],
+        measurement: :total_time,
+        unit: {:native, :microsecond},
+        keep: &sample_key_values_query?/1,
+        reporter_options: [buckets: [50, 100, 250, 500, 1_000, 5_000, 25_000, 100_000, 1_000_000]],
+        description: "Duration of a random 1/16 sample of KeyValues point queries"
+      ),
       distribution("logflare.repo.query.total_time", unit: {:native, :millisecond}),
       # decode_time and queue_time/idle_time can be nil for certain query types
       # (e.g. Oban internal queries that bypass the pool). OtelMetricExporter crashes on
@@ -817,6 +825,13 @@ defmodule Logflare.Telemetry do
       finch_metrics
     ])
   end
+
+  @spec sample_key_values_query?(map()) :: boolean()
+  defp sample_key_values_query?(%{options: opts}) when is_list(opts) do
+    Keyword.get(opts, :key_values_lookup) == true and :rand.uniform(16) == 1
+  end
+
+  defp sample_key_values_query?(_metadata), do: false
 
   defp periodic_measurements do
     cache_stats? = CachexOps.stats_enabled?()
