@@ -5,31 +5,6 @@ defmodule Logflare.ContextCache.GossipTest do
   alias Logflare.ContextCache.Tombstones
   alias Logflare.Sources
 
-  describe "record_tombstones/1" do
-    setup do
-      Cachex.clear!(Tombstones.Cache)
-      :ok
-    end
-
-    test "writes primary keys to the tombstone cache" do
-      ContextCache.Gossip.record_tombstones([
-        {Sources, 123},
-        {Sources, id: 234, other: :info},
-        {Sources, %{id: 345, other: :info}},
-        {Sources, "uuid-456"}
-      ])
-
-      assert Tombstones.Cache.tombstoned?(Sources.Cache, 123)
-      assert Tombstones.Cache.tombstoned?(Sources.Cache, 234)
-      assert Tombstones.Cache.tombstoned?(Sources.Cache, 345)
-      assert Tombstones.Cache.tombstoned?(Sources.Cache, "uuid-456")
-    end
-
-    test "ignores unsupported types gracefully" do
-      ContextCache.Gossip.record_tombstones([{Sources, make_ref()}])
-    end
-  end
-
   describe "multicast/3" do
     setup do
       telemetry_ref =
@@ -96,7 +71,7 @@ defmodule Logflare.ContextCache.GossipTest do
       cache_key = {:get, [222]}
       value = %{id: 222, name: "stale_data"}
 
-      ContextCache.Gossip.record_tombstones([{Sources, 222}])
+      Tombstones.record([{Sources, 222}])
       ContextCache.Gossip.receive(Sources.Cache, cache_key, value)
 
       assert_receive {[:logflare, :context_cache_gossip, :receive, :stop], ^telemetry_ref,
