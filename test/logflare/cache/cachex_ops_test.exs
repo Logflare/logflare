@@ -65,6 +65,24 @@ defmodule Logflare.Cache.CachexOpsTest do
       end
     end
 
+    test "re-runs a warmer without an interval every third of the ttl" do
+      original = Application.get_env(:logflare, CachexOps)
+      on_exit(fn -> Application.put_env(:logflare, CachexOps, original) end)
+      Application.delete_env(:logflare, CachexOps)
+      base = div(:timer.minutes(60), 3)
+
+      for _ <- 1..50 do
+        opts =
+          CachexOps.cachex_opts(limit: nil, ttl: :timer.minutes(60), warmer: __MODULE__.Warmer)
+
+        assert [warmer(interval: interval)] = opts[:warmers]
+        assert interval >= base * 0.9 and interval <= base * 1.1
+      end
+
+      opts = CachexOps.cachex_opts(limit: nil, warmer: {__MODULE__.Warmer, interval: nil})
+      assert [warmer(interval: nil)] = opts[:warmers]
+    end
+
     test "missing limit" do
       assert_raise KeyError, fn -> CachexOps.cachex_opts(compressed: true) end
     end

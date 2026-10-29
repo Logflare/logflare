@@ -6,19 +6,16 @@ defmodule Logflare.Rules.Cache do
   alias Logflare.Backends.Backend
   alias Logflare.Cache.CachexOps
   alias Logflare.ContextCache
-  alias Logflare.ContextCache.Warmer
   alias Logflare.Repo
   alias Logflare.Rules
   alias Logflare.Sources.Source
 
   def child_spec(_) do
-    ttl = to_timeout(hour: 1)
-
     CachexOps.child_spec(__MODULE__,
       limit: 100_000,
-      ttl: ttl,
+      ttl: to_timeout(hour: 1),
       purge_interval: to_timeout(minute: 5),
-      warmer: {Rules.CacheWarmer, interval: Warmer.interval(ttl)}
+      warmer: Rules.CacheWarmer
     )
   end
 

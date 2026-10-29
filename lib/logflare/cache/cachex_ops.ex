@@ -23,7 +23,9 @@ defmodule Logflare.Cache.CachexOps do
     :miss_rate
   ]
 
-  @type warmer() :: module() | {module(), interval: pos_integer()}
+  @refresh_jitter_ratio 0.1
+
+  @type warmer() :: module() | {module(), interval: pos_integer() | nil}
   @type cache_opt() ::
           {:limit, pos_integer() | nil}
           | {:ttl, pos_integer()}
@@ -38,7 +40,10 @@ defmodule Logflare.Cache.CachexOps do
     * `:limit` (required) - maximum number of entries, `nil` for no limit
     * `:ttl` - default entry time-to-live, a timeout in ms, defaults to 20 minutes
     * `:purge_interval` - timeout in ms between purges of expired entries, defaults to 5 minutes
-    * `:warmer` - a non-required warmer module, or `{module, interval: ms}`, registered under the module name
+    * `:warmer` - a non-required warmer module, or `{module, interval: ms}`, registered under the module name.
+      Without an `:interval`, it re-runs every third of `:ttl`, with a 10% jitter picked when the cache
+      starts, so entries are refreshed before they expire. `interval: nil` runs it only on startup, as does
+      `warmer_refresh_enabled: false` in the `Logflare.Cache.CachexOps` config.
     * `:compressed` - defaults to `false`
   """
   @spec child_spec(atom(), [cache_opt()]) :: Supervisor.child_spec()
@@ -52,15 +57,17 @@ defmodule Logflare.Cache.CachexOps do
   """
   @spec cachex_opts([cache_opt()]) :: keyword()
   def cachex_opts(opts) do
+    ttl = Keyword.get(opts, :ttl, to_timeout(minute: 20))
+
     [
       hooks: limit_hooks(Keyword.fetch!(opts, :limit)),
       expiration:
         expiration(
-          default: Keyword.get(opts, :ttl, to_timeout(minute: 20)),
+          default: ttl,
           interval: Keyword.get(opts, :purge_interval, to_timeout(minute: 5)),
           lazy: true
         ),
-      warmers: warmers(opts[:warmer]),
+      warmers: warmers(opts[:warmer], ttl),
       compressed: Keyword.get(opts, :compressed, false)
     ]
   end
@@ -195,12 +202,26 @@ defmodule Logflare.Cache.CachexOps do
     [hook(module: Cachex.Limit.Scheduled, args: {limit, [], []})]
   end
 
-  defp warmers(nil), do: []
+  defp warmers(nil, _ttl), do: []
 
-  defp warmers({module, opts}) do
-    [interval: interval] = Keyword.validate!(opts, interval: nil)
+  defp warmers({module, opts}, ttl) do
+    [interval: interval] = Keyword.validate!(opts, interval: refresh_interval(ttl))
     [warmer(module: module, name: module, required: false, interval: interval)]
   end
 
-  defp warmers(module), do: warmers({module, []})
+  defp warmers(module, ttl), do: warmers({module, []}, ttl)
+
+  defp refresh_interval(ttl) do
+    if warmer_refresh_enabled?() do
+      base = div(ttl, 3)
+      jitter = round(base * @refresh_jitter_ratio)
+      base + Enum.random(-jitter..jitter)
+    end
+  end
+
+  defp warmer_refresh_enabled? do
+    :logflare
+    |> Application.get_env(__MODULE__, [])
+    |> Keyword.get(:warmer_refresh_enabled, true)
+  end
 end
