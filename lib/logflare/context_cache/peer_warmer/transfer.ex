@@ -35,14 +35,14 @@ defmodule Logflare.ContextCache.PeerWarmer.Transfer do
     deadline = System.monotonic_time(:millisecond) + timeout
     args = [cache, guard, self(), ref]
 
-    case ClusterUtils.erpc_multicall([node], __MODULE__, :start_export, args, @rpc_timeout) do
-      [{^node, {:ok, {:ok, exporter, meta}}}] ->
+    case ClusterUtils.erpc_call(node, __MODULE__, :start_export, args, @rpc_timeout) do
+      {:ok, {:ok, exporter, meta}} ->
         monitor = Process.monitor(exporter)
         transfer = %{ref: ref, exporter: exporter, monitor: monitor, deadline: deadline}
 
         with {:ok, count} <- receive_chunks(transfer, import_fun, 0), do: {:ok, count, meta}
 
-      [{^node, {:ok, {:error, _reason} = refused}}] ->
+      {:ok, {:error, _reason} = refused} ->
         refused
 
       _error ->
