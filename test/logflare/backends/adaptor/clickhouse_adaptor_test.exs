@@ -3503,6 +3503,47 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
+  describe "read pool refresh during a query" do
+    setup do
+      insert(:plan, name: "Free")
+      {_source, backend} = setup_clickhouse_test(config: %{read_pool_size: 1})
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      [backend: backend]
+    end
+
+    test "query waiting for a connection when the pool is refreshed", %{backend: backend} do
+      task_sup = start_supervised!(Task.Supervisor)
+      {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1")
+
+      {:ok, _blocker} =
+        Task.Supervisor.start_child(task_sup, fn ->
+          ClickHouseAdaptor.execute_ch_query(backend, "SELECT sleep(0.5)")
+        end)
+
+      await_pool_queue(backend, 0, 0)
+
+      waiter =
+        Task.Supervisor.async(task_sup, fn ->
+          ClickHouseAdaptor.execute_ch_query(backend, "SELECT 2 AS result")
+        end)
+
+      await_pool_queue(backend, 0, 1)
+
+      assert :ok == ConnectionManager.refresh_pool(backend)
+      assert {:ok, {[%{"result" => 2}], _bytes}} = Task.await(waiter)
+    end
+
+    test "pool that stops on every checkout", %{backend: backend} do
+      stub(Ch, :query, fn pool, _statement, _params, opts ->
+        exit({:normal, {DBConnection.Holder, :checkout, [pool, opts]}})
+      end)
+
+      assert {:error, %QueryError{kind: :connection_error}} =
+               ClickHouseAdaptor.execute_ch_query(backend, "SELECT 1")
+    end
+  end
+
   describe "ConnectionManager process reuse" do
     setup do
       insert(:plan, name: "Free")
@@ -3822,6 +3863,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         0 -> {:ok, false}
       end
     end
+  end
+
+  defp await_pool_queue(backend, ready, queued) do
+    TestUtils.retry_assert(fn ->
+      assert [%{ready_conn_count: ^ready, checkout_queue_length: ^queued}] =
+               backend
+               |> ConnectionManager.connection_pool_via()
+               |> DBConnection.get_connection_metrics()
+    end)
   end
 
   defp random_string(length) do
