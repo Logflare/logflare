@@ -414,23 +414,28 @@ defmodule Logflare.Backends do
       end)
 
     case result do
-      {:ok, {backend, updated}} ->
+      {:ok, {backend, updated, enabled_only?}} ->
         updated = preload_sources(updated)
 
         if backend.default_ingest? != updated.default_ingest? do
           default_ingest_flag_changed(updated)
         end
 
-        if Keyword.get(opts, :query_policy_only, false) do
-          # Class policy intentionally uses eventually consistent backend metadata.
-          # These evictions do not fence in-flight fills or guarantee immediate propagation.
-          keys = [{__MODULE__, updated.id}]
-          Logflare.ContextCache.bust_keys(keys)
-          Cluster.Utils.rpc_multicast(Logflare.ContextCache, :bust_keys, [keys])
-        else
-          Enum.each(updated.sources, &restart_source_sup(&1))
-          apply_consolidated_pipeline_change(backend, updated, default_ingest_modified?)
-          notify_backend_config_change(updated, config_modified?)
+        cond do
+          Keyword.get(opts, :query_policy_only, false) ->
+            # Class policy intentionally uses eventually consistent backend metadata.
+            # These evictions do not fence in-flight fills or guarantee immediate propagation.
+            keys = [{__MODULE__, updated.id}]
+            Logflare.ContextCache.bust_keys(keys)
+            Cluster.Utils.rpc_multicast(Logflare.ContextCache, :bust_keys, [keys])
+
+          enabled_only? ->
+            notify_backend_config_change(updated, config_modified?)
+
+          true ->
+            Enum.each(updated.sources, &restart_source_sup(&1))
+            apply_consolidated_pipeline_change(backend, updated, default_ingest_modified?)
+            notify_backend_config_change(updated, config_modified?)
         end
 
         {:ok, typecast_config_string_map_to_atom_map(updated)}
@@ -449,7 +454,7 @@ defmodule Logflare.Backends do
   end
 
   @spec persist_backend_config(Backend.t(), map(), keyword()) ::
-          {:ok, {Backend.t(), Backend.t()}} | {:error, Changeset.t()}
+          {:ok, {Backend.t(), Backend.t(), boolean()}} | {:error, Changeset.t()}
   defp persist_backend_config(current, attrs, opts) do
     alerts_modified? = Map.has_key?(attrs, :alert_queries)
     current = if alerts_modified?, do: Repo.preload(current, :alert_queries), else: current
@@ -459,7 +464,11 @@ defmodule Logflare.Backends do
       |> Backend.changeset(attrs, opts)
       |> maybe_put_backend_alerts(attrs, alerts_modified?)
 
-    with {:ok, updated} <- Repo.update(changeset), do: {:ok, {current, updated}}
+    enabled_only? =
+      Map.has_key?(changeset.changes, :enabled) and map_size(changeset.changes) == 1 and
+        not Map.has_key?(attrs, :default_ingest?) and not Map.has_key?(attrs, "default_ingest?")
+
+    with {:ok, updated} <- Repo.update(changeset), do: {:ok, {current, updated, enabled_only?}}
   end
 
   @spec maybe_put_backend_alerts(Changeset.t(), map(), boolean()) :: Changeset.t()
@@ -688,12 +697,16 @@ defmodule Logflare.Backends do
   """
   @type log_param :: map()
   @spec ingest_logs([log_param()], Source.t()) ::
-          {:ok, count :: pos_integer()} | {:error, term()}
+          {:ok, count :: non_neg_integer()} | {:error, term()}
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) ::
-          {:ok, count :: pos_integer()} | {:error, term()}
+          {:ok, count :: non_neg_integer()} | {:error, term()}
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil, boolean()) ::
-          {:ok, count :: pos_integer()} | {:error, term()}
-  def ingest_logs(event_params, source, backend \\ nil, allow_spooling \\ false) do
+          {:ok, count :: non_neg_integer()} | {:error, term()}
+  def ingest_logs(event_params, source, backend \\ nil, allow_spooling \\ false)
+
+  def ingest_logs(_params, _source, %Backend{enabled: false}, _spooling), do: {:ok, 0}
+
+  def ingest_logs(event_params, source, backend, allow_spooling) do
     with :ok <- start_for_ingest(source) do
       do_ingest_logs(event_params, source, backend, allow_spooling)
     end
@@ -1050,6 +1063,8 @@ defmodule Logflare.Backends do
           backend :: Backend.t() | nil,
           log_events :: [LogEvent.t()]
         ) :: any()
+  defp dispatch_to_default_backend(_source, %Backend{enabled: false}, _log_events), do: :ok
+
   defp dispatch_to_default_backend(source, backend, log_events) do
     {queue_key, backend_type} =
       case backend do
@@ -1443,13 +1458,13 @@ defmodule Logflare.Backends do
   is full on this node. A buffer is full when every one of its queues is over its limit.
 
   For sources with `default_ingest_backend_enabled? = true`, returns true if the system
-  default backend buffer is full or the buffer of any `default_ingest?` backend among
+  default backend buffer is full or the buffer of any enabled `default_ingest?` backend among
   `list_dispatch_backends/1` is full. That covers both explicitly linked backends flagged
   `default_ingest?` and the account default ingest backends the source receives without a
   link. A consolidated backend is checked against its shared `{:consolidated, backend_id}`
   buffer and `IngestEventQueue.max_consolidated_queue_size/0`; any other backend against
-  its per-source buffer and `max_buffer_queue_len/0`. Backends not flagged
-  `default_ingest?` are ignored.
+  its per-source buffer and `max_buffer_queue_len/0`. Disabled backends and backends not
+  flagged `default_ingest?` are ignored.
 
   For other sources, only the system default backend buffer is checked.
   """
@@ -1460,7 +1475,7 @@ defmodule Logflare.Backends do
     buffer_full_for_backend?(source_id, nil) or
       source
       |> list_dispatch_backends()
-      |> Enum.filter(& &1.default_ingest?)
+      |> Enum.filter(&(&1.enabled and &1.default_ingest?))
       |> Enum.any?(&buffer_full_for_backend?(source_id, &1))
   end
 
@@ -1492,7 +1507,7 @@ defmodule Logflare.Backends do
 
   @doc """
   Returns true if ANY of a source's ingest queues on this node currently exceeds its limit:
-  the system default queue plus every backend in `list_dispatch_backends/1`, regardless of
+  the system default queue plus every enabled backend in `list_dispatch_backends/1`, regardless of
   `default_ingest?` flags. A consolidated backend is checked through its shared
   `{:consolidated, backend_id}` queues against
   `IngestEventQueue.max_consolidated_queue_size/0`; any other backend through its
@@ -1501,7 +1516,8 @@ defmodule Logflare.Backends do
   backends for the HTTP 429 gate), this reads live `IngestEventQueue` sizes directly rather
   than a separately-cadenced cache, matching `QueueJanitor`'s own `get_table_size/1`-based
   overflow check. When the source is not cached, only its explicitly linked backends are
-  checked.
+  checked. Disabled backend pipelines may keep draining queued work; the spool memory
+  monitor independently protects node memory.
   """
   @spec any_ingest_queue_over_limit?(pos_integer()) :: boolean()
   def any_ingest_queue_over_limit?(source_id) when is_pos_integer(source_id) do
@@ -1517,6 +1533,8 @@ defmodule Logflare.Backends do
       nil -> __MODULE__.Cache.list_backends(source_id: source_id)
     end
   end
+
+  defp queue_over_limit_for_backend?(_source_id, %Backend{enabled: false}), do: false
 
   defp queue_over_limit_for_backend?(_source_id, %Backend{consolidated_ingest?: true, id: bid}),
     do: any_queue_over?({:consolidated, bid}, IngestEventQueue.max_consolidated_queue_size())

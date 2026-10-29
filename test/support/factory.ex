@@ -107,6 +107,7 @@ defmodule Logflare.Factory do
       user: attrs[:user],
       metadata: attrs[:metadata] || nil,
       default_ingest?: attrs[:default_ingest?] || false,
+      enabled: Map.get(attrs, :enabled, true),
       updated_at: attrs[:updated_at],
       inserted_at: attrs[:inserted_at],
       alert_queries: attrs[:alert_queries] || []
