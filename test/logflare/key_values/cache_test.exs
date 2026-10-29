@@ -5,7 +5,6 @@ defmodule Logflare.KeyValues.CacheTest do
   alias Logflare.ContextCache
   alias Logflare.KeyValues
   alias Logflare.KeyValues.CacheWarmer
-  alias Logflare.Telemetry
 
   setup do
     :persistent_term.erase({CacheWarmer, :initialized})
@@ -51,81 +50,6 @@ defmodule Logflare.KeyValues.CacheTest do
 
   test "lookup/2 returns nil for missing keys", %{user: user} do
     assert nil == KeyValues.Cache.lookup(user.id, "nonexistent")
-  end
-
-  describe "lookup telemetry" do
-    setup do
-      Telemetry.key_values_metrics()
-      TestUtils.attach_forwarder([:logflare, :key_values, :counts])
-      :ok
-    end
-
-    test "warmed fills and scalar hits avoid PostgreSQL", %{user: user} do
-      Cachex.put!(
-        KeyValues.Cache,
-        {:lookup, [user.id, "warm", nil]},
-        {:cached, %{"org_id" => "abc"}}
-      )
-
-      assert "abc" = KeyValues.Cache.lookup(user.id, "warm", "org_id")
-      assert "abc" = KeyValues.Cache.lookup(user.id, "warm", "org_id")
-      Telemetry.key_values_metrics()
-
-      assert_receive {:telemetry_event, [:logflare, :key_values, :counts],
-                      %{lookup: 2, extraction: 1, warmed_fill: 1, database_fetch: 0}, %{}}
-    end
-
-    test "missing accessors do not count as missing database rows", %{user: user} do
-      insert(:key_value, user: user, key: "known", value: %{"org_id" => "abc"})
-      assert nil == KeyValues.Cache.lookup(user.id, "known", "missing")
-      assert nil == KeyValues.Cache.lookup(user.id, "absent", "missing")
-      Telemetry.key_values_metrics()
-
-      assert_receive {:telemetry_event, [:logflare, :key_values, :counts],
-                      %{lookup: 2, database_fetch: 2, missing_row: 1}, %{}}
-    end
-
-    test "a stored JSON null is not a missing row", %{user: user} do
-      entry = insert(:key_value, user: user, key: "json_null", value: %{"org_id" => "abc"})
-
-      from(kv in KeyValues.KeyValue,
-        where: kv.id == ^entry.id,
-        update: [set: [value: fragment("'null'::jsonb")]]
-      )
-      |> Repo.update_all([])
-
-      assert nil == KeyValues.Cache.lookup(user.id, "json_null")
-      Telemetry.key_values_metrics()
-
-      assert_receive {:telemetry_event, [:logflare, :key_values, :counts],
-                      %{database_fetch: 1, missing_row: 0}, %{}}
-    end
-
-    test "concurrent callers count separately while sharing a fill", %{user: user} do
-      parent = self()
-      value = %{"org_id" => "abc"}
-
-      expect(KeyValues, :lookup, fn _, "coalesced", nil ->
-        send(parent, {:loading, self()})
-
-        receive do
-          :release -> value
-        after
-          5000 -> flunk("cache fill was not released")
-        end
-      end)
-
-      tasks =
-        for _ <- 1..16, do: Task.async(fn -> KeyValues.Cache.lookup(user.id, "coalesced") end)
-
-      assert_receive {:loading, loader}
-      send(loader, :release)
-      assert Enum.map(tasks, &Task.await/1) == List.duplicate(value, 16)
-      Telemetry.key_values_metrics()
-
-      assert_receive {:telemetry_event, [:logflare, :key_values, :counts],
-                      %{lookup: 16, database_fill: 1}, %{}}
-    end
   end
 
   test "busting a cached lookup and its accessor variants", %{user: user} do

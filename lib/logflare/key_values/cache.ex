@@ -8,14 +8,11 @@ defmodule Logflare.KeyValues.Cache do
   alias Logflare.KeyValues
   alias Logflare.KeyValues.CacheWarmer
   alias Logflare.Repo
-  alias Logflare.Telemetry
 
   @usage_touch_window :timer.minutes(20)
   @usage_touch_chunk 1_000
 
   def child_spec(_) do
-    Telemetry.initialize_key_values_metrics()
-
     CachexOps.child_spec(__MODULE__,
       limit: 10_000_000,
       ttl: to_timeout(day: 1),
@@ -45,13 +42,6 @@ defmodule Logflare.KeyValues.Cache do
 
   @spec lookup(integer(), String.t(), String.t() | nil) :: term() | nil
   def lookup(user_id, key, accessor_path) do
-    Telemetry.key_values_span(:lookup, accessor_path, fn ->
-      cached_lookup(user_id, key, accessor_path)
-    end)
-  end
-
-  @spec cached_lookup(integer(), String.t(), String.t() | nil) :: term() | nil
-  defp cached_lookup(user_id, key, accessor_path) do
     key_args = [user_id, key, accessor_path]
     cache_key = {:lookup, key_args}
 
@@ -67,11 +57,9 @@ defmodule Logflare.KeyValues.Cache do
   defp lookup_fallback(worker, [user_id, key, accessor_path] = key_args) do
     case Cachex.get(worker, {:lookup, [user_id, key, nil]}) do
       {:ok, {:cached, full_value}} ->
-        Telemetry.key_values_count(:warmed_fill)
         {:commit, {:cached, KeyValues.extract_value(full_value, accessor_path)}}
 
       {:ok, nil} ->
-        Telemetry.key_values_count(:database_fill)
         {:commit, {:cached, Repo.apply_with_replica(KeyValues, :lookup, key_args)}}
     end
   end

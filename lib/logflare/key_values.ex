@@ -6,7 +6,6 @@ defmodule Logflare.KeyValues do
   alias Logflare.KeyValues.KeyValue
   alias Logflare.KeyValues.KeyValueUsage
   alias Logflare.Repo
-  alias Logflare.Telemetry
 
   @list_limit 500
   @usage_retention_days 30
@@ -77,22 +76,10 @@ defmodule Logflare.KeyValues do
 
   @spec lookup(integer(), String.t()) :: map() | nil
   def lookup(user_id, key) do
-    row =
-      Telemetry.key_values_span(:database_fetch, nil, fn ->
-        KeyValue
-        |> where(user_id: ^user_id, key: ^key)
-        |> select([kv], %{value: kv.value})
-        |> Repo.one()
-      end)
-
-    case row do
-      nil ->
-        Telemetry.key_values_count(:missing_row)
-        nil
-
-      %{value: value} ->
-        value
-    end
+    KeyValue
+    |> where(user_id: ^user_id, key: ^key)
+    |> select([kv], kv.value)
+    |> Repo.one()
   end
 
   @spec lookup(integer(), String.t(), String.t() | nil) :: term() | nil
@@ -106,25 +93,18 @@ defmodule Logflare.KeyValues do
   end
 
   @spec extract_value(map(), String.t()) :: term() | nil
-  def extract_value(value, accessor_path) do
-    Telemetry.key_values_span(:extraction, accessor_path, fn ->
-      do_extract_value(value, accessor_path)
-    end)
-  end
-
-  @spec do_extract_value(map() | nil, String.t()) :: term() | nil
-  defp do_extract_value(value, "$" <> _ = jsonpath) when is_map(value) do
+  def extract_value(value, "$" <> _ = jsonpath) when is_map(value) do
     case Warpath.query(value, jsonpath) do
       {:ok, result} -> result
       {:error, _} -> nil
     end
   end
 
-  defp do_extract_value(value, dot_path) when is_map(value) do
+  def extract_value(value, dot_path) when is_map(value) do
     get_in(value, String.split(dot_path, "."))
   end
 
-  defp do_extract_value(_value, _accessor_path), do: nil
+  def extract_value(_value, _accessor_path), do: nil
 
   @spec bulk_upsert_key_values(integer(), [map()]) :: {non_neg_integer(), nil | [KeyValue.t()]}
   def bulk_upsert_key_values(user_id, entries) do
