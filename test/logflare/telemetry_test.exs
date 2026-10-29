@@ -108,6 +108,61 @@ defmodule Logflare.TelemetryTest do
              end)
     end
 
+    test "samples only tagged KeyValues point queries" do
+      metric =
+        Enum.find(
+          Telemetry.metrics(),
+          &(&1.name == [:logflare, :key_values, :database_fetch, :duration])
+        )
+
+      assert metric.event_name == [:logflare, :repo, :query]
+      assert metric.unit == :microsecond
+      assert metric.tags == []
+
+      for metadata <- [
+            %{},
+            %{options: nil},
+            %{options: []},
+            %{options: [key_values_lookup: false]}
+          ] do
+        refute metric.keep.(metadata)
+      end
+
+      :rand.seed(:exsss, {11, 22, 33})
+      samples = for _ <- 1..1000, do: metric.keep.(%{options: [key_values_lookup: true]})
+      assert Enum.count(samples, & &1) in 40..90
+    end
+
+    test "exports sampled KeyValues query durations in microseconds" do
+      metric =
+        Enum.find(
+          Telemetry.metrics(),
+          &(&1.name == [:logflare, :key_values, :database_fetch, :duration])
+        )
+
+      exporter = :logflare_key_values_query_metrics_test
+
+      start_supervised!(
+        {OtelMetricExporter,
+         name: exporter,
+         metrics: [metric],
+         export_period: :timer.minutes(5),
+         export_callback: fn _, _ -> :ok end,
+         resource: %{name: "KeyValues query metrics test"}}
+      )
+
+      measurements = %{total_time: System.convert_time_unit(500, :microsecond, :native)}
+      :rand.seed(:exsss, {1328, 1329, 1330})
+      :telemetry.execute(metric.event_name, measurements, %{options: []})
+      :rand.seed(:exsss, {1328, 1329, 1330})
+      :telemetry.execute(metric.event_name, measurements, %{options: [key_values_lookup: true]})
+
+      assert MetricStore.get_metrics(exporter)[
+               {:distribution, "logflare.key_values.database_fetch.duration"}
+             ] ==
+               %{%{} => %{3 => {1, 500}}}
+    end
+
     test "tags Finch idle expiry by endpoint, except for S3 drain pools" do
       event = [:finch, :conn_max_idle_time_exceeded]
       name = "finch.conn_max_idle_time_exceeded.idle_time"

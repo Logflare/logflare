@@ -51,11 +51,17 @@ defmodule Logflare.KeyValuesTest do
   end
 
   test "lookup/2 returns map or nil", %{user: user} do
+    TestUtils.attach_forwarder([:logflare, :repo, :query])
     value = %{"org_id" => "org_abc", "name" => "Acme"}
     insert(:key_value, user: user, key: "proj1", value: value)
 
     assert ^value = KeyValues.lookup(user.id, "proj1")
     assert nil == KeyValues.lookup(user.id, "nonexistent")
+
+    assert_receive {:telemetry_event, [:logflare, :repo, :query], %{total_time: duration},
+                    %{options: [key_values_lookup: true]}}
+
+    assert duration >= 0
   end
 
   test "bulk_upsert_key_values/2 inserts and upserts", %{user: user} do
