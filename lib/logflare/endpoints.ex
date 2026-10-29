@@ -1178,13 +1178,19 @@ defmodule Logflare.Endpoints do
   end
 
   @spec get_backend_for_query(EndpointQuery.t()) :: {:ok, Backend.t()} | {:error, String.t()}
-  defp get_backend_for_query(%EndpointQuery{backend_id: backend_id})
-       when is_integer(backend_id) do
-    case Backends.get_backend(backend_id) do
-      %Backend{} = backend -> {:ok, backend}
+  defp get_backend_for_query(%EndpointQuery{backend_id: backend_id, user_id: user_id})
+       when is_integer(backend_id) and is_integer(user_id) do
+    with %User{} = user <- Users.Cache.get(user_id),
+         %Backend{} = backend <- Backends.get_backend_by_user_access(user, backend_id) do
+      {:ok, backend}
+    else
       nil -> {:error, "Backend not found"}
     end
   end
+
+  defp get_backend_for_query(%EndpointQuery{backend_id: backend_id})
+       when is_integer(backend_id),
+       do: {:error, "Backend not found"}
 
   defp get_backend_for_query(%EndpointQuery{user_id: user_id, language: language}) do
     backend_type = language_to_backend_type(language)
