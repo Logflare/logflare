@@ -287,14 +287,6 @@ For AWS IAM authentication (`auth=aws_iam`), also do these steps:
 2. Set `rds.iam_auth_for_replication = 1` in the DB cluster parameter group. This parameter is dynamic, so no reboot is necessary. See [IAM authentication for logical replication connections](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/AuroraPostgreSQL.Replication.Logical.IAM-auth.html).
 3. Give the application identity `rds-db:connect` permission on the cluster resource (`arn:aws:rds-db:<region>:<account>:dbuser:cluster-<resource-id>/<user>`). A permission on the proxy resource (`prx-<id>`) does not apply to a direct connection.
 
-## Cluster Cache Warming
-
-When Logflare runs as a cluster (for example with `LIBCLUSTER_TOPOLOGY=postgres`), a starting node warms the key-value and source caches by copying them from a node that is already running, instead of loading them from the database. This reduces database load when many nodes start at once, such as during rolling deploys or scaling up.
-
-On startup, a node waits a few seconds to join the cluster, asks a few random nodes about their caches, and copies from the node that most recently loaded its data from the database. Nodes that are still starting, run a different Logflare release, or hold an outdated key-value cache are skipped. Entries changed while copying are not copied, and the key-value cache additionally reloads rows updated since the copied node's last database load.
-
-If no node qualifies or the copy fails, the cache is warmed from the database as usual. During a rolling deploy, the first node on a new release therefore warms from the database, and later ones copy from it. Single-node deployments are not affected.
-
 ## pglogical DDL Replication
 
 `LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS` is a comma-separated list of [pglogical](https://github.com/2ndQuadrant/pglogical) replication set names, for example `my_set` or `my_set,other_set`. Each name must be a valid Postgres identifier (letters, digits, underscores; not starting with a digit).
