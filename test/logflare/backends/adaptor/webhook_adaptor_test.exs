@@ -4,8 +4,9 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
 
   doctest Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline
 
-  alias Logflare.Backends.Adaptor
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor
+  alias Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
@@ -62,13 +63,138 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
         body = req[:body]
         assert is_list(body)
         send(this, ref)
-        %Tesla.Env{}
+        {:ok, %Tesla.Env{status: 204, body: ""}}
       end)
 
       le = build(:log_event, source: source)
 
       assert {:ok, _} = Backends.ingest_logs([le], source)
       assert_receive ^ref, 2000
+    end
+
+    test "retries a 503 with the same compressed payload before acknowledging", %{
+      source: source,
+      backend: backend
+    } do
+      stub(Logflare.Utils.SSRF, :safe_resolve, fn _host -> {:ok, {172, 32, 0, 1}} end)
+      test_pid = self()
+
+      Tesla.Adapter.Finch
+      |> expect(:call, fn env, _opts ->
+        send(test_pid, {:attempt, 1, env})
+        {:ok, %Tesla.Env{status: 503, body: "unavailable"}}
+      end)
+      |> expect(:call, fn env, _opts ->
+        send(test_pid, {:attempt, 2, env, self()})
+
+        receive do
+          :accept -> {:ok, %Tesla.Env{status: 204, body: ""}}
+        after
+          5_000 -> flunk("retry was not released")
+        end
+      end)
+
+      event = build(:log_event, source: source, event_message: "retry me")
+      started_at = System.monotonic_time(:millisecond)
+      ref = Broadway.test_batch(Backends.via_source(source, Pipeline, backend), [event])
+
+      assert_receive {:attempt, 1, first}, 2_000
+      assert_receive {:attempt, 2, second, batcher}, 2_000
+      assert System.monotonic_time(:millisecond) - started_at >= 350
+      assert first.body == second.body
+      assert first.headers == second.headers
+      assert first.url == second.url
+      assert {"content-encoding", "gzip"} in first.headers
+      assert [body] = first.body |> :zlib.gunzip() |> Jason.decode!()
+      assert body["event_message"] == "retry me"
+      refute_receive {:ack, ^ref, _successful, _failed}, 50
+
+      send(batcher, :accept)
+      assert_receive {:ack, ^ref, [_message], []}, 2_000
+    end
+
+    test "fails the batch after exhausting retries without logging response secrets", %{
+      source: source,
+      backend: backend
+    } do
+      stub(Logflare.Utils.SSRF, :safe_resolve, fn _host -> {:ok, {172, 32, 0, 1}} end)
+      test_pid = self()
+
+      expect(Tesla.Adapter.Finch, :call, 4, fn _env, _opts ->
+        send(test_pid, :attempt)
+        {:ok, %Tesla.Env{status: 503, body: "receiver-secret-value"}}
+      end)
+
+      events = for _ <- 1..2, do: build(:log_event, source: source)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          ref = Broadway.test_batch(Backends.via_source(source, Pipeline, backend), events)
+          assert_receive {:ack, ^ref, [], failed}, 6_000
+          assert length(failed) == 2
+          assert Enum.all?(failed, &(&1.status == {:failed, {:http, 503}}))
+        end)
+
+      for _ <- 1..4, do: assert_received(:attempt)
+      refute_received :attempt
+      assert log =~ "2 log events"
+      assert log =~ "503"
+      refute log =~ "receiver-secret-value"
+      refute log =~ "https://example.com"
+    end
+
+    test "does not retry permanent HTTP errors or redirects", %{source: source, backend: backend} do
+      stub(Logflare.Utils.SSRF, :safe_resolve, fn _host -> {:ok, {172, 32, 0, 1}} end)
+      event = build(:log_event, source: source)
+
+      for status <- [400, 401, 403, 302] do
+        expect(Tesla.Adapter.Finch, :call, fn _env, _opts ->
+          {:ok, %Tesla.Env{status: status, body: "rejected"}}
+        end)
+
+        ExUnit.CaptureLog.capture_log(fn ->
+          ref = Broadway.test_batch(Backends.via_source(source, Pipeline, backend), [event])
+          assert_receive {:ack, ^ref, [], [failed]}, 2_000
+          assert failed.status == {:failed, {:http, status}}
+        end)
+      end
+    end
+
+    test "acknowledges a successful response even when its JSON body is malformed", %{
+      source: source,
+      backend: backend
+    } do
+      stub(Logflare.Utils.SSRF, :safe_resolve, fn _host -> {:ok, {172, 32, 0, 1}} end)
+
+      expect(Tesla.Adapter.Finch, :call, fn _env, _opts ->
+        {:ok,
+         %Tesla.Env{
+           status: 202,
+           headers: [{"content-type", "application/json"}],
+           body: "{malformed"
+         }}
+      end)
+
+      event = build(:log_event, source: source)
+      ref = Broadway.test_batch(Backends.via_source(source, Pipeline, backend), [event])
+      assert_receive {:ack, ^ref, [_message], []}, 2_000
+    end
+
+    test "reports JSON encoding failure without retrying or sending a request", %{
+      source: source,
+      backend: backend
+    } do
+      reject(Tesla.Adapter.Finch, :call, 2)
+      event = build(:log_event, source: source, invalid: <<0xFF>>)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          ref = Broadway.test_batch(Backends.via_source(source, Pipeline, backend), [event])
+          assert_receive {:ack, ^ref, [], [failed]}, 2_000
+          assert {:failed, {Tesla.Middleware.JSON, :encode, _reason}} = failed.status
+        end)
+
+      assert log =~ "Dropped 1 log events from webhook batch: JSON encoding failed"
     end
 
     test "logs the batch size when JSON encoding fails", %{source: source} do
@@ -107,7 +233,7 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
         body = req[:body]
         assert is_list(body)
         send(this, ref)
-        %Tesla.Env{}
+        {:ok, %Tesla.Env{status: 204, body: ""}}
       end)
 
       le = build(:log_event, source: source)
@@ -139,7 +265,7 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       @subject.Client
       |> expect(:send, fn req ->
         send(this, {ref, req[:body], req[:headers]})
-        %Tesla.Env{}
+        {:ok, %Tesla.Env{status: 204, body: ""}}
       end)
 
       les = for _ <- 1..2, do: build(:log_event, source: source)
@@ -205,7 +331,7 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       @subject.Client
       |> expect(:send, fn req ->
         send(this, {ref, req[:headers]})
-        %Tesla.Env{}
+        {:ok, %Tesla.Env{status: 204, body: ""}}
       end)
 
       le = build(:log_event, source: source)
@@ -406,6 +532,41 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       cs = Adaptor.cast_and_validate_config(@subject, %{url: "http://localhost/"})
       assert %Ecto.Changeset{valid?: false} = cs
       assert cs.errors[:url] != []
+    end
+  end
+
+  describe "Client.send/1 retries" do
+    test "retries server errors, rate limits, and transient transport failures" do
+      responses = [
+        {:ok, %Tesla.Env{status: 500}},
+        {:ok, %Tesla.Env{status: 502}},
+        {:ok, %Tesla.Env{status: 504}},
+        {:ok, %Tesla.Env{status: 429}},
+        {:error, :timeout},
+        {:error, %Finch.Error{reason: :request_timeout}},
+        {:error, %Finch.Error{reason: :read_only}},
+        {:error, %Finch.Error{reason: :connection_closed}}
+      ]
+
+      for response <- responses do
+        Tesla.Adapter.Finch
+        |> expect(:call, fn _env, _opts -> response end)
+        |> expect(:call, fn _env, _opts -> {:ok, %Tesla.Env{status: 204, body: ""}} end)
+
+        assert {:ok, %Tesla.Env{status: 204}} =
+                 @subject.Client.send(url: "https://172.32.0.1/", body: "payload", gzip: false)
+      end
+    end
+
+    test "does not retry SSRF rejection" do
+      reject(Tesla.Adapter.Finch, :call, 2)
+
+      expect(Logflare.Utils.SSRF, :safe_resolve, fn "private.example.com" ->
+        {:error, "private destination"}
+      end)
+
+      assert {:error, "private destination"} =
+               @subject.Client.send(url: "https://private.example.com/", body: "payload")
     end
   end
 
@@ -847,7 +1008,7 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
         BencheeAsync.Reporter.record(n)
         # simulate latency
         :timer.sleep(100)
-        %Tesla.Env{}
+        {:ok, %Tesla.Env{status: 204, body: ""}}
       end)
 
       user = insert(:user)
