@@ -10,7 +10,8 @@ defmodule Logflare.KeyValues do
   @list_limit 500
   @usage_retention_days 30
 
-  @type prepared_accessor :: {String.t(), [String.t()] | Warpath.Expression.t() | :invalid}
+  @type prepared_accessor ::
+          {path :: String.t(), prepared :: [String.t()] | Warpath.Expression.t() | :invalid}
   @type accessor :: String.t() | prepared_accessor()
 
   @spec list_key_values_query(keyword()) :: Ecto.Query.t()
