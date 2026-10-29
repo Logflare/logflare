@@ -11,4 +11,8 @@ defmodule Logflare.ContextCache.Ops do
   @callback fetch(cache :: module(), key :: term(), getter :: (-> term())) ::
               term() | {:error, :database_unavailable}
   @callback update(cache :: module(), key :: term(), value :: term()) :: :ok
+  @callback entries(cache :: module()) :: Enumerable.t(Logflare.ContextCache.entry())
+  @callback put_entries(cache :: module(), [Logflare.ContextCache.entry()]) :: :ok
+  @callback cached?(cache :: module(), key :: term()) :: boolean()
+  @callback size(cache :: module()) :: non_neg_integer()
 end
