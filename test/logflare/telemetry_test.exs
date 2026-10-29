@@ -4,7 +4,6 @@ defmodule Logflare.TelemetryTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
   alias Logflare.KeyValues.Cache
-  alias Logflare.KeyValues.Telemetry, as: KeyValuesTelemetry
   alias Logflare.SystemMetrics.Observer
   alias Logflare.SystemMetrics.Schedulers
   alias Logflare.Telemetry
@@ -580,145 +579,107 @@ defmodule Logflare.TelemetryTest do
   end
 
   describe "KeyValues metrics" do
-    test "registers byte and entry gauges independently of Cachex statistics" do
+    setup do
+      Telemetry.key_values_metrics()
+      :ok
+    end
+
+    test "polls KeyValues every 30 seconds with Cachex statistics disabled" do
       original = Application.fetch_env!(:logflare, :cache_stats)
       Application.put_env(:logflare, :cache_stats, false)
       on_exit(fn -> Application.put_env(:logflare, :cache_stats, original) end)
-
-      bytes = key_values_metric([:cache, :bytes])
-      entries = key_values_metric([:cache, :entries])
-
-      assert %Elixir.Telemetry.Metrics.LastValue{unit: :byte, measurement: :bytes} = bytes
-      assert %Elixir.Telemetry.Metrics.LastValue{measurement: :entries} = entries
-      assert bytes.event_name == [:logflare, :key_values, :cache]
-      assert entries.event_name == bytes.event_name
-
-      for operation <- [:lookup, :extraction, :database_fetch, :fill] do
-        assert %Elixir.Telemetry.Metrics.Sum{} = key_values_metric([operation, :count])
-      end
-
+      assert key_values_metric([:cache, :bytes]).unit == :byte
+      assert %Elixir.Telemetry.Metrics.Sum{} = key_values_metric([:lookup, :count])
       {:ok, {_flags, children}} = Telemetry.init([])
-      poller = Enum.find(children, &(&1.id == :telemetry_poller))
-      {:telemetry_poller, :start_link, [opts]} = poller.start
+
+      {:telemetry_poller, :start_link, [opts]} =
+        Enum.find(children, &(&1.id == :telemetry_poller)).start
 
       assert opts[:period] == 30_000
       assert {Telemetry, :key_values_metrics, []} in opts[:measurements]
-      refute {Telemetry, :cachex_metrics, []} in opts[:measurements]
     end
 
-    test "converts ETS words to bytes and includes an empty cache" do
-      event = [:logflare, :key_values, :cache]
-      test_pid = self()
-      TestUtils.attach_forwarder(event)
-      stub(KeyValuesTelemetry, :poll, fn -> send(test_pid, {:key_values_polled, self()}) end)
+    test "reports byte allocation for empty tables and counts even when the table disappears" do
+      TestUtils.attach_forwarder([:logflare, :key_values, :cache])
+      TestUtils.attach_forwarder([:logflare, :key_values, :counts])
+      stub(Logflare.Utils, :ets_info, fn Cache -> [memory: 417, size: 0] end)
+      Telemetry.key_values_count(:lookup)
+      Telemetry.key_values_metrics()
+      bytes = 417 * :erlang.system_info(:wordsize)
+      assert key_values_metric([:cache, :bytes]).unit == :byte
 
-      stub(Logflare.Utils, :ets_info, fn
-        Cache -> [memory: 417, size: 0]
-        table -> Mimic.call_original(Logflare.Utils, :ets_info, [table])
-      end)
+      assert_receive {:telemetry_event, [:logflare, :key_values, :cache],
+                      %{bytes: ^bytes, entries: 0}, %{}}
 
-      assert :ok = Telemetry.key_values_metrics()
-      assert_receive {:key_values_polled, ^test_pid}
-      expected_bytes = 417 * :erlang.system_info(:wordsize)
-
-      assert_receive {:telemetry_event, ^event, %{bytes: ^expected_bytes, entries: 0}, %{}}
+      assert_receive {:telemetry_event, [:logflare, :key_values, :counts], %{lookup: 1}, %{}}
+      stub(Logflare.Utils, :ets_info, fn Cache -> :undefined end)
+      Telemetry.key_values_metrics()
+      assert_receive {:telemetry_event, [:logflare, :key_values, :counts], %{lookup: 0}, %{}}
+      refute_received {:telemetry_event, [:logflare, :key_values, :cache], _, _}
     end
 
-    test "still polls operation counters when the cache table is unavailable" do
-      event = [:logflare, :key_values, :cache]
-      test_pid = self()
-      TestUtils.attach_forwarder(event)
-      stub(KeyValuesTelemetry, :poll, fn -> send(test_pid, {:key_values_polled, self()}) end)
+    test "selected spans preserve false, nil and exceptions" do
+      TestUtils.attach_forwarder([:logflare, :key_values, :lookup, :stop])
+      TestUtils.attach_forwarder([:logflare, :key_values, :lookup, :exception])
 
-      stub(Logflare.Utils, :ets_info, fn
-        Cache -> :undefined
-        table -> Mimic.call_original(Logflare.Utils, :ets_info, [table])
-      end)
+      for {value, result} <- [{false, :value}, {nil, :nil_value}] do
+        :rand.seed(:exsss, {1328, 1329, 1330})
+        assert Telemetry.key_values_span(:lookup, "$.org.id", fn -> value end) === value
 
-      assert :ok = Telemetry.key_values_metrics()
-      assert_receive {:key_values_polled, ^test_pid}
-      refute_received {:telemetry_event, ^event, _, _}
+        assert_receive {:telemetry_event, [:logflare, :key_values, :lookup, :stop],
+                        %{duration: duration},
+                        %{accessor_kind: :jsonpath, result: ^result, sample_denominator: 1024}}
+
+        assert duration >= 0
+      end
+
+      :rand.seed(:exsss, {1328, 1329, 1330})
+
+      assert catch_throw(Telemetry.key_values_span(:lookup, nil, fn -> throw(:unchanged) end)) ==
+               :unchanged
+
+      assert_receive {:telemetry_event, [:logflare, :key_values, :lookup, :exception], _,
+                      %{kind: :throw, reason: :unchanged}}
     end
 
-    test "records aggregate counts and sub-microsecond durations through the OTel exporter" do
-      operations = [:lookup, :extraction, :database_fetch]
-
-      metrics =
-        for operation <- operations,
-            suffix <- [[:count], [:stop, :duration]] do
-          key_values_metric([operation | suffix])
-        end
-
-      fill_metric = key_values_metric([:fill, :count])
-      cache_metrics = Enum.map([:bytes, :entries], &key_values_metric([:cache, &1]))
+    test "exports exact lookup counts and sub-microsecond duration sums" do
+      count = key_values_metric([:lookup, :count])
+      histogram = key_values_metric([:lookup, :stop, :duration])
       exporter = :logflare_key_values_metrics_test
 
       start_supervised!(
         {OtelMetricExporter,
          name: exporter,
-         metrics: [fill_metric | metrics] ++ cache_metrics,
+         metrics: [count, histogram],
          export_period: :timer.minutes(5),
-         otlp_protocol: :http_protobuf,
-         otlp_endpoint: "http://127.0.0.1:4318",
-         otlp_headers: %{},
-         otlp_compression: nil}
+         export_callback: fn _, _ -> :ok end,
+         resource: %{name: "KeyValues metrics test"}}
       )
 
-      tags = %{implementation: :accessor_cache, accessor_kind: :jsonpath, result: :nil_value}
-      sample_tags = Map.put(tags, :sample_denominator, 1024)
+      assert histogram.unit == :nanosecond
 
-      metadata =
-        Map.merge(sample_tags, %{user_id: 123, key: "private", accessor_path: "$.org.id"})
+      tags = %{
+        implementation: :accessor_cache,
+        accessor_kind: :jsonpath,
+        result: :nil_value,
+        sample_denominator: 1024
+      }
 
       duration = System.convert_time_unit(400, :nanosecond, :native)
+      :telemetry.execute([:logflare, :key_values, :counts], %{lookup: 7}, %{})
 
-      for operation <- operations do
-        count = key_values_metric([operation, :count])
-        histogram = key_values_metric([operation, :stop, :duration])
+      :telemetry.execute(
+        [:logflare, :key_values, :lookup, :stop],
+        %{duration: duration},
+        Map.put(tags, :key, "private")
+      )
 
-        assert count.tags == [:implementation, :accessor_kind, :result]
-        assert histogram.tags == count.tags ++ [:sample_denominator]
-        assert histogram.unit == :nanosecond
-        assert histogram.keep == nil
-        assert histogram.reporter_options[:buckets] |> hd() == 100
-        assert List.last(histogram.reporter_options[:buckets]) == 1_000_000_000
-
-        measured =
-          case histogram.measurement do
-            measurement when is_function(measurement) -> measurement.(%{duration: duration})
-            :duration -> duration
-          end
-
-        assert_in_delta measured, 400, 1
-
-        :telemetry.execute([:logflare, :key_values, operation], %{count: 7}, metadata)
-        :telemetry.execute([:logflare, :key_values, operation], %{count: 2}, metadata)
-
-        :telemetry.execute(
-          [:logflare, :key_values, operation, :stop],
-          %{duration: duration},
-          metadata
-        )
-      end
-
-      fill_tags = %{implementation: :accessor_cache, accessor_kind: :dot, source: :warmed}
-      :telemetry.execute([:logflare, :key_values, :fill], %{count: 3}, fill_tags)
-      :telemetry.execute([:logflare, :key_values, :cache], %{bytes: 1024, entries: 12}, %{})
-      :telemetry.execute([:logflare, :key_values, :cache], %{bytes: 512, entries: 6}, %{})
       recorded = MetricStore.get_metrics(exporter)
+      assert recorded[{:sum, "logflare.key_values.lookup.count"}] == %{%{} => 7}
 
-      for operation <- operations do
-        name = "logflare.key_values.#{operation}"
-        assert recorded[{:sum, name <> ".count"}] == %{tags => 9}
-
-        assert recorded[{:distribution, name <> ".stop.duration"}] == %{
-                 sample_tags => %{2 => {1, 400}}
-               }
-      end
-
-      assert recorded[{:sum, "logflare.key_values.fill.count"}] == %{fill_tags => 3}
-      assert recorded[{:last_value, "logflare.key_values.cache.bytes"}] == %{%{} => 512}
-      assert recorded[{:last_value, "logflare.key_values.cache.entries"}] == %{%{} => 6}
+      assert recorded[{:distribution, "logflare.key_values.lookup.stop.duration"}] == %{
+               tags => %{2 => {1, 400}}
+             }
     end
   end
 

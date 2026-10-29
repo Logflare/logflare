@@ -5,8 +5,8 @@ defmodule Logflare.KeyValues do
 
   alias Logflare.KeyValues.KeyValue
   alias Logflare.KeyValues.KeyValueUsage
-  alias Logflare.KeyValues.Telemetry
   alias Logflare.Repo
+  alias Logflare.Telemetry
 
   @list_limit 500
   @usage_retention_days 30
@@ -77,12 +77,22 @@ defmodule Logflare.KeyValues do
 
   @spec lookup(integer(), String.t()) :: map() | nil
   def lookup(user_id, key) do
-    Telemetry.observe(:database_fetch, nil, fn ->
-      KeyValue
-      |> where(user_id: ^user_id, key: ^key)
-      |> select([kv], kv.value)
-      |> Repo.one()
-    end)
+    row =
+      Telemetry.key_values_span(:database_fetch, nil, fn ->
+        KeyValue
+        |> where(user_id: ^user_id, key: ^key)
+        |> select([kv], %{value: kv.value})
+        |> Repo.one()
+      end)
+
+    case row do
+      nil ->
+        Telemetry.key_values_count(:missing_row)
+        nil
+
+      %{value: value} ->
+        value
+    end
   end
 
   @spec lookup(integer(), String.t(), String.t() | nil) :: term() | nil
@@ -97,7 +107,9 @@ defmodule Logflare.KeyValues do
 
   @spec extract_value(map(), String.t()) :: term() | nil
   def extract_value(value, accessor_path) do
-    Telemetry.observe(:extraction, accessor_path, fn -> do_extract_value(value, accessor_path) end)
+    Telemetry.key_values_span(:extraction, accessor_path, fn ->
+      do_extract_value(value, accessor_path)
+    end)
   end
 
   @spec do_extract_value(map() | nil, String.t()) :: term() | nil

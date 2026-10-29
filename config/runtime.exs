@@ -140,13 +140,6 @@ cache_stats =
     val -> val |> String.downcase() |> String.to_existing_atom()
   end
 
-config :logflare, Logflare.KeyValues.Telemetry,
-  sample_denominators: [
-    lookup: Env.get_integer("LOGFLARE_KEY_VALUES_LOOKUP_SAMPLE_DENOMINATOR", 1024),
-    extraction: Env.get_integer("LOGFLARE_KEY_VALUES_EXTRACTION_SAMPLE_DENOMINATOR", 128),
-    database_fetch: Env.get_integer("LOGFLARE_KEY_VALUES_DATABASE_FETCH_SAMPLE_DENOMINATOR", 16)
-  ]
-
 case Env.parse_broadway_message_sample_denominator(
        System.get_env("LOGFLARE_BROADWAY_MESSAGE_SAMPLE_DENOMINATOR")
      ) do

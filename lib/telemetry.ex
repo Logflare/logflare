@@ -11,7 +11,6 @@ defmodule Logflare.Telemetry do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
   alias Logflare.Cache.CachexOps
   alias Logflare.KeyValues.Cache
-  alias Logflare.KeyValues.Telemetry, as: KeyValuesTelemetry
 
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
@@ -39,29 +38,29 @@ defmodule Logflare.Telemetry do
   @ch_read_pool_status_event [:logflare, :clickhouse, :read_pool, :pool_status]
   @ch_read_pool_poll_failure_event [:logflare, :clickhouse, :read_pool, :poll_failure]
   @max_phash2_range 4_294_967_296
-  @key_values_tags [:implementation, :accessor_kind, :result]
-  @key_values_duration_buckets_ns [
+  @key_values_state {__MODULE__, :key_values_counters}
+  @key_values_counters [
+    lookup: "lookup.count",
+    extraction: "extraction.count",
+    database_fetch: "database_fetch.count",
+    warmed_fill: "fill.warmed.count",
+    database_fill: "fill.database.count",
+    missing_row: "database_fetch.missing.count"
+  ]
+  @key_values_indexes @key_values_counters |> Keyword.keys() |> Enum.with_index(1) |> Map.new()
+  @key_values_sampling %{lookup: 1024, extraction: 128, database_fetch: 16}
+  @key_values_buckets [
     100,
     250,
     500,
     1_000,
-    2_500,
+    2_000,
     5_000,
     10_000,
-    25_000,
-    50_000,
     100_000,
-    250_000,
-    500_000,
     1_000_000,
-    2_500_000,
-    5_000_000,
     10_000_000,
-    25_000_000,
-    50_000_000,
     100_000_000,
-    250_000_000,
-    500_000_000,
     1_000_000_000
   ]
 
@@ -224,32 +223,21 @@ defmodule Logflare.Telemetry do
 
     key_values_metrics =
       [
-        last_value("logflare.key_values.cache.bytes",
-          unit: :byte,
-          description:
-            "KeyValues cache ETS allocation, excluding shared binaries and process heaps"
-        ),
-        last_value("logflare.key_values.cache.entries",
-          description: "Number of entries in the KeyValues cache ETS table"
-        ),
-        sum("logflare.key_values.fill.count",
-          tags: [:implementation, :accessor_kind, :source],
-          description: "KeyValues cache fills from a resident full value or database"
-        )
+        last_value("logflare.key_values.cache.bytes", unit: :byte),
+        last_value("logflare.key_values.cache.entries")
       ] ++
-        Enum.flat_map([:lookup, :extraction, :database_fetch], fn operation ->
-          [
-            sum("logflare.key_values.#{operation}.count",
-              tags: @key_values_tags,
-              description: "Unsampled KeyValues #{operation} count, aggregated between polls"
-            ),
-            distribution("logflare.key_values.#{operation}.stop.duration",
-              tags: @key_values_tags ++ [:sample_denominator],
-              unit: {:native, :nanosecond},
-              reporter_options: [buckets: @key_values_duration_buckets_ns],
-              description: "Randomly sampled KeyValues #{operation} duration"
-            )
-          ]
+        Enum.map(@key_values_counters, fn {counter, name} ->
+          sum("logflare.key_values.#{name}",
+            event_name: [:logflare, :key_values, :counts],
+            measurement: counter
+          )
+        end) ++
+        Enum.map(@key_values_sampling, fn {operation, _denominator} ->
+          distribution("logflare.key_values.#{operation}.stop.duration",
+            tags: [:implementation, :accessor_kind, :result, :sample_denominator],
+            unit: {:native, :nanosecond},
+            reporter_options: [buckets: @key_values_buckets]
+          )
         end)
 
     phoenix_metrics = [
@@ -994,25 +982,96 @@ defmodule Logflare.Telemetry do
     end)
   end
 
+  @spec initialize_key_values_metrics() :: :ok
+  def initialize_key_values_metrics do
+    if :persistent_term.get(@key_values_state, nil) == nil do
+      :persistent_term.put(
+        @key_values_state,
+        {:counters.new(6, [:write_concurrency]), :atomics.new(6, signed: false)}
+      )
+    end
+
+    :ok
+  end
+
+  @spec key_values_count(atom()) :: :ok
+  def key_values_count(counter) do
+    case :persistent_term.get(@key_values_state, nil) do
+      {counters, _previous} ->
+        :counters.add(counters, Map.fetch!(@key_values_indexes, counter), 1)
+
+      nil ->
+        :ok
+    end
+  end
+
+  @spec key_values_span(atom(), String.t() | nil, (-> result)) :: result when result: term()
+  def key_values_span(operation, accessor, fun) do
+    key_values_count(operation)
+    denominator = Map.fetch!(@key_values_sampling, operation)
+
+    if :rand.uniform(denominator) == 1 do
+      metadata = %{
+        implementation: :accessor_cache,
+        accessor_kind: key_values_accessor_kind(accessor),
+        sample_denominator: denominator
+      }
+
+      :telemetry.span([:logflare, :key_values, operation], metadata, fn ->
+        value = fun.()
+        {value, Map.put(metadata, :result, key_values_result(value))}
+      end)
+    else
+      fun.()
+    end
+  end
+
   @spec key_values_metrics() :: :ok
   def key_values_metrics do
-    KeyValuesTelemetry.poll()
+    case :persistent_term.get(@key_values_state, nil) do
+      {counters, previous} ->
+        counts =
+          Map.new(@key_values_indexes, fn {counter, index} ->
+            {counter, key_values_delta(counters, previous, index)}
+          end)
+
+        :telemetry.execute([:logflare, :key_values, :counts], counts, %{})
+
+      nil ->
+        :ok
+    end
 
     case ets_info(Cache) do
       :undefined ->
         :ok
 
-      info when is_list(info) ->
-        :telemetry.execute(
-          [:logflare, :key_values, :cache],
-          %{
-            bytes: Keyword.fetch!(info, :memory) * :erlang.system_info(:wordsize),
-            entries: Keyword.fetch!(info, :size)
-          },
-          %{}
-        )
+      info ->
+        :telemetry.execute([:logflare, :key_values, :cache], %{
+          bytes: info[:memory] * :erlang.system_info(:wordsize),
+          entries: info[:size]
+        })
     end
   end
+
+  @spec key_values_delta(:counters.counters_ref(), :atomics.atomics_ref(), pos_integer()) ::
+          non_neg_integer()
+  defp key_values_delta(counters, previous, index) do
+    total = :counters.get(counters, index)
+    seen = :atomics.get(previous, index)
+
+    if total > seen and :atomics.compare_exchange(previous, index, seen, total) == :ok,
+      do: total - seen,
+      else: 0
+  end
+
+  @spec key_values_accessor_kind(String.t() | nil) :: :whole | :dot | :jsonpath
+  defp key_values_accessor_kind(nil), do: :whole
+  defp key_values_accessor_kind("$" <> _rest), do: :jsonpath
+  defp key_values_accessor_kind(_accessor), do: :dot
+
+  @spec key_values_result(term()) :: :nil_value | :value
+  defp key_values_result(nil), do: :nil_value
+  defp key_values_result(_value), do: :value
 
   def process_message_queue_metrics do
     :message_queue
