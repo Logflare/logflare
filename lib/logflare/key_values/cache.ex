@@ -37,28 +37,8 @@ defmodule Logflare.KeyValues.Cache do
 
   @spec lookup(integer(), String.t()) :: map() | nil
   def lookup(user_id, key) do
-    lookup(user_id, key, nil)
-  end
-
-  @spec lookup(integer(), String.t(), KeyValues.prepared_accessor() | nil) :: term() | nil
-  def lookup(user_id, key, accessor_path) do
-    cache_path =
-      case accessor_path do
-        {path, _prepared} when is_binary(path) ->
-          path
-
-        nil ->
-          nil
-
-        path ->
-          raise ArgumentError,
-                "expected accessor path to be nil or a prepared accessor, got: #{inspect(path)}"
-      end
-
-    Cachex.execute!(__MODULE__, fn worker ->
-      Cachex.fetch(worker, {:lookup, [user_id, key, cache_path]}, fn _key ->
-        lookup_fallback(worker, [user_id, key, accessor_path])
-      end)
+    Cachex.fetch(__MODULE__, {:lookup, [user_id, key, nil]}, fn _key ->
+      {:commit, {:cached, Repo.apply_with_replica(KeyValues, :lookup, [user_id, key])}}
     end)
     |> case do
       {:commit, {:cached, v}} -> v
@@ -66,14 +46,17 @@ defmodule Logflare.KeyValues.Cache do
     end
   end
 
-  defp lookup_fallback(worker, [user_id, key, accessor_path] = key_args) do
-    case Cachex.get(worker, {:lookup, [user_id, key, nil]}) do
-      {:ok, {:cached, full_value}} ->
-        {:commit, {:cached, KeyValues.extract_value(full_value, accessor_path)}}
+  @spec lookup(integer(), String.t(), KeyValues.prepared_accessor() | nil) :: term() | nil
+  def lookup(user_id, key, nil), do: lookup(user_id, key)
 
-      {:ok, nil} ->
-        {:commit, {:cached, Repo.apply_with_replica(KeyValues, :lookup, key_args)}}
-    end
+  def lookup(user_id, key, {raw_path, _prepared} = accessor_path) when is_binary(raw_path) do
+    lookup(user_id, key)
+    |> KeyValues.extract_value(accessor_path)
+  end
+
+  def lookup(_user_id, _key, other) do
+    raise ArgumentError,
+          "expected accessor path to be nil or a prepared accessor, got: #{inspect(other)}"
   end
 
   @doc """
@@ -93,10 +76,9 @@ defmodule Logflare.KeyValues.Cache do
     __MODULE__
     |> Cachex.stream!(query)
     |> Stream.flat_map(fn
-      {:lookup, [user_id, key, _accessor]} -> [{user_id, key}]
+      {:lookup, [user_id, key, nil]} -> [{user_id, key}]
       _ -> []
     end)
-    |> Stream.uniq()
     |> Stream.chunk_every(@usage_touch_chunk)
     |> Enum.reduce(0, fn pairs, acc ->
       KeyValues.bump_usages(pairs, now)
@@ -122,19 +104,9 @@ defmodule Logflare.KeyValues.Cache do
     entries = if user_id, do: [{:count, user_id}], else: []
 
     if user_id && key do
-      lookup_keys = find_lookup_keys(user_id, key)
-      lookup_keys ++ entries
+      [{:lookup, [user_id, key, nil]} | entries]
     else
       entries
     end
-  end
-
-  defp find_lookup_keys(user_id, key) do
-    {:ok, keys} = Cachex.keys(__MODULE__)
-
-    Enum.filter(keys, fn
-      {:lookup, [^user_id, ^key | _]} -> true
-      _ -> false
-    end)
   end
 end

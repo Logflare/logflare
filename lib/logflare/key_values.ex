@@ -11,7 +11,7 @@ defmodule Logflare.KeyValues do
   @usage_retention_days 30
 
   @type prepared_accessor ::
-          {path :: String.t(), prepared :: [String.t()] | Warpath.Expression.t() | :invalid}
+          {raw_path :: String.t(), prepared :: [String.t()] | Warpath.Expression.t() | :invalid}
 
   @spec list_key_values_query(keyword()) :: Ecto.Query.t()
   def list_key_values_query(kw) do
