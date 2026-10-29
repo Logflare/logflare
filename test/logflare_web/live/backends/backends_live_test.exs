@@ -911,6 +911,26 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert html =~ "some description"
     end
 
+    test "can rename a Postgres backend without changing its URL", %{
+      conn: conn,
+      user: user
+    } do
+      url = "postgresql://localhost:5432/db"
+      backend = insert(:backend, user: user, type: :postgres, config: %{url: url})
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
+
+      html =
+        view
+        |> form("form", %{backend: %{name: "Renamed Postgres", config: %{url: url}}})
+        |> render_submit()
+
+      assert html =~ "Successfully updated backend"
+
+      updated = Backends.get_backend_by_user_access(user, backend.id)
+      assert updated.name == "Renamed Postgres"
+      assert updated.config.url == url
+    end
+
     test "webhook edit renders stored headers and preserves them on submit", %{
       conn: conn,
       source: source,
