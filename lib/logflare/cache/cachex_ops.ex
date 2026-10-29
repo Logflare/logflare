@@ -13,6 +13,7 @@ defmodule Logflare.Cache.CachexOps do
 
   require Logger
 
+  alias Logflare.ContextCache
   alias Logflare.ContextCache.Gossip
 
   @stat_keys [
@@ -214,6 +215,97 @@ defmodule Logflare.Cache.CachexOps do
   end
 
   @doc """
+  Streams unexpired entries with values unwrapped from `{:cached, value}`. Entries not written as
+  `{:cached, value}` are skipped.
+  """
+  @impl Logflare.ContextCache.Ops
+  @spec entries(Cachex.t()) :: Enumerable.t(ContextCache.entry())
+  def entries(cache) do
+    query =
+      Cachex.Query.build(
+        where: Cachex.Query.unexpired(),
+        output: {:key, :value, :modified, :expiration}
+      )
+
+    cache
+    |> Cachex.stream!(query)
+    |> Stream.flat_map(fn
+      {key, {:cached, value}, modified, expiration} ->
+        [{key, value, remaining_ttl(modified, expiration)}]
+
+      _not_cached_value ->
+        []
+    end)
+  end
+
+  @doc """
+  Writes `entries` keeping their remaining time-to-live. Entries that do not expire get the
+  cache's default expiration.
+  """
+  @impl Logflare.ContextCache.Ops
+  @spec put_entries(Cachex.t(), [ContextCache.entry()]) :: :ok
+  def put_entries(_cache, []), do: :ok
+
+  def put_entries(cache, entries) do
+    modified = now()
+
+    records =
+      for {key, value, ttl} <- entries do
+        entry(key: key, value: {:cached, value}, modified: modified, expiration: ttl)
+      end
+
+    {:ok, _imported} = Cachex.import(cache, records)
+    :ok
+  end
+
+  @impl Logflare.ContextCache.Ops
+  @spec cached?(Cachex.t(), term()) :: boolean()
+  def cached?(cache, key), do: Cachex.exists?(cache, key) == {:ok, true}
+
+  @doc """
+  Reads the entry without expiring it or calling a getter. Entries past their TTL but not yet
+  purged, and entries not written as `{:cached, value}`, are `nil`.
+  """
+  @impl Logflare.ContextCache.Ops
+  @spec entry(Cachex.t(), term()) :: ContextCache.entry() | nil
+  def entry(cache, key) do
+    case Cachex.inspect(cache, {:entry, key}) do
+      {:ok, entry(value: {:cached, value}, expiration: nil)} ->
+        {key, value, nil}
+
+      {:ok, entry(value: {:cached, value}, modified: modified, expiration: expiration)} ->
+        ttl = modified + expiration - now()
+        if ttl > 0, do: {key, value, ttl}
+
+      _not_cached ->
+        nil
+    end
+  end
+
+  @doc """
+  Reads the entry's expiration without expiring it, so an entry past its TTL but not yet purged
+  reports a remaining time-to-live of `0`.
+  """
+  @impl Logflare.ContextCache.Ops
+  @spec expiry(Cachex.t(), term()) :: {non_neg_integer(), pos_integer()} | nil
+  def expiry(cache, key) do
+    case Cachex.inspect(cache, {:entry, key}) do
+      {:ok, entry(modified: modified, expiration: expiration)} when is_integer(expiration) ->
+        {max(modified + expiration - now(), 0), expiration}
+
+      _not_cached_or_not_expiring ->
+        nil
+    end
+  end
+
+  @impl Logflare.ContextCache.Ops
+  @spec size(Cachex.t()) :: non_neg_integer()
+  def size(cache) do
+    {:ok, size} = Cachex.size(cache)
+    size
+  end
+
+  @doc """
   Deletes `keys` and returns how many of them were present.
   """
   @impl Logflare.ContextCache.Ops
@@ -230,6 +322,9 @@ defmodule Logflare.Cache.CachexOps do
       {:ok, _value} -> 1
     end
   end
+
+  defp remaining_ttl(_modified, nil), do: nil
+  defp remaining_ttl(modified, expiration), do: max(modified + expiration - now(), 1)
 
   defp stats_hooks, do: if(stats_enabled?(), do: [hook(module: Cachex.Stats)], else: [])
 

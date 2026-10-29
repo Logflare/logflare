@@ -6,14 +6,30 @@ defmodule Logflare.Sources.CacheWarmer do
   require Logger
 
   alias Logflare.Billing
+  alias Logflare.ContextCache.PeerWarmer
   alias Logflare.Repo
   alias Logflare.Sources
+  alias Logflare.Sources.Cache
   alias Logflare.Sources.Source
   alias Logflare.User
   @impl true
-  def execute(_state), do: Repo.with_replica(&warm/0)
+  def execute(_state) do
+    PeerWarmer.mark_warming(Cache)
 
-  defp warm do
+    case PeerWarmer.copy_from_peer(Cache) do
+      {:ok, %{warmed_at: peer_warmed_at}} ->
+        PeerWarmer.mark_ready(Cache, peer_warmed_at)
+        :ignore
+
+      :fallback ->
+        warmed_at = DateTime.utc_now()
+        pairs = Repo.with_replica(&warm_from_db/0)
+        PeerWarmer.mark_ready(Cache, warmed_at)
+        {:ok, pairs}
+    end
+  end
+
+  defp warm_from_db do
     # Get sources that have been active in the last day, similar to ingesting users pattern
     sources =
       from(s in Source,
@@ -35,7 +51,7 @@ defmodule Logflare.Sources.CacheWarmer do
         ]
       end
 
-    {:ok, List.flatten(get_kv)}
+    List.flatten(get_kv)
   end
 
   defp put_retention_days([]), do: []
