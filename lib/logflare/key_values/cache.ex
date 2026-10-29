@@ -44,15 +44,19 @@ defmodule Logflare.KeyValues.Cache do
   def lookup(user_id, key, accessor_path) do
     cache_path =
       case accessor_path do
-        {path, _prepared} -> path
-        path -> path
+        {path, _prepared} when is_binary(path) ->
+          path
+
+        path when is_binary(path) or is_nil(path) ->
+          path
+
+        path ->
+          raise ArgumentError,
+                "expected accessor path to be a string, nil, or a prepared accessor, got: #{inspect(path)}"
       end
 
-    key_args = [user_id, key, cache_path]
-    cache_key = {:lookup, key_args}
-
     Cachex.execute!(__MODULE__, fn worker ->
-      Cachex.fetch(worker, cache_key, fn _key ->
+      Cachex.fetch(worker, {:lookup, [user_id, key, cache_path]}, fn _key ->
         lookup_fallback(worker, [user_id, key, accessor_path])
       end)
     end)

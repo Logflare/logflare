@@ -32,6 +32,20 @@ defmodule Logflare.KeyValues.CacheTest do
     assert {:cached, "abc"} = Cachex.get!(KeyValues.Cache, cache_key)
   end
 
+  test "lookup/3 rejects unsupported accessor paths", %{user: user} do
+    value = %{"org" => %{"id" => "abc"}}
+    insert(:key_value, user: user, key: "proj1", value: value)
+    assert KeyValues.Cache.lookup(user.id, "proj1") == value
+
+    for path <- [{nil, ["org", "id"]}, {123, []}, :org_id, 123, ["org", "id"], %{}] do
+      assert_raise ArgumentError,
+                   "expected accessor path to be a string, nil, or a prepared accessor, got: #{inspect(path)}",
+                   fn -> KeyValues.Cache.lookup(user.id, "proj1", path) end
+    end
+
+    assert KeyValues.Cache.lookup(user.id, "proj1") == value
+  end
+
   test "lookup/3 on a warmed entry", %{user: user} do
     value = %{"org" => %{"id" => "abc", "name" => "Acme"}}
     insert(:key_value, user: user, key: "proj1", value: value)
