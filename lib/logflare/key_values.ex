@@ -10,6 +10,9 @@ defmodule Logflare.KeyValues do
   @list_limit 500
   @usage_retention_days 30
 
+  @type prepared_accessor :: {String.t(), [String.t()] | Warpath.Expression.t() | :invalid}
+  @type accessor :: String.t() | prepared_accessor()
+
   @spec list_key_values_query(keyword()) :: Ecto.Query.t()
   def list_key_values_query(kw) do
     user_id = Keyword.fetch!(kw, :user_id)
@@ -82,7 +85,7 @@ defmodule Logflare.KeyValues do
     |> Repo.one()
   end
 
-  @spec lookup(integer(), String.t(), String.t() | nil) :: term() | nil
+  @spec lookup(integer(), String.t(), accessor() | nil) :: term() | nil
   def lookup(user_id, key, nil), do: lookup(user_id, key)
 
   def lookup(user_id, key, accessor_path) do
@@ -92,12 +95,34 @@ defmodule Logflare.KeyValues do
     end
   end
 
-  @spec extract_value(map(), String.t()) :: term() | nil
-  def extract_value(value, "$" <> _ = jsonpath) when is_map(value) do
+  @spec prepare_accessor(String.t() | nil) :: prepared_accessor() | nil
+  def prepare_accessor(nil), do: nil
+
+  def prepare_accessor("$" <> _ = jsonpath) do
+    case Warpath.Expression.compile(jsonpath) do
+      {:ok, expression} -> {jsonpath, expression}
+      {:error, _} -> {jsonpath, :invalid}
+    end
+  end
+
+  def prepare_accessor(dot_path), do: {dot_path, String.split(dot_path, ".")}
+
+  @spec extract_value(term(), accessor()) :: term() | nil
+  def extract_value(value, {_path, %Warpath.Expression{} = jsonpath}) when is_map(value) do
     case Warpath.query(value, jsonpath) do
       {:ok, result} -> result
       {:error, _} -> nil
     end
+  end
+
+  def extract_value(value, {_path, keys}) when is_map(value) and is_list(keys) do
+    get_in(value, keys)
+  end
+
+  def extract_value(_value, {_path, :invalid}), do: nil
+
+  def extract_value(value, "$" <> _ = jsonpath) when is_map(value) do
+    extract_value(value, prepare_accessor(jsonpath))
   end
 
   def extract_value(value, dot_path) when is_map(value) do

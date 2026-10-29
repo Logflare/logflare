@@ -48,6 +48,55 @@ defmodule Logflare.KeyValues.CacheTest do
     end
   end
 
+  test "prepared accessors fill and reuse the original cache keys", %{user: user} do
+    value = %{"org" => %{"id" => "abc"}}
+    insert(:key_value, user: user, key: "proj1", value: value)
+
+    for path <- ["org.id", "$.org.id"] do
+      prepared = KeyValues.prepare_accessor(path)
+      assert KeyValues.Cache.lookup(user.id, "proj1", prepared) == "abc"
+      assert Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "proj1", path]}) == {:cached, "abc"}
+      assert Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "proj1", prepared]}) == nil
+    end
+
+    assert KeyValues.Cache.lookup(user.id, "missing", KeyValues.prepare_accessor("org.id")) == nil
+
+    reject(&KeyValues.lookup/3)
+    reject(&KeyValues.extract_value/2)
+
+    for path <- ["org.id", "$.org.id"] do
+      assert KeyValues.Cache.lookup(user.id, "proj1", path) == "abc"
+      assert KeyValues.Cache.lookup(user.id, "proj1", KeyValues.prepare_accessor(path)) == "abc"
+    end
+
+    assert {:ok, 2} = ContextCache.bust_keys([{KeyValues, user_id: user.id, key: "proj1"}])
+
+    for path <- ["org.id", "$.org.id"] do
+      assert Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "proj1", path]}) == nil
+    end
+  end
+
+  test "prepared accessors fill from warmed values without querying the database", %{user: user} do
+    value = %{"org" => %{"id" => "abc", "enabled" => false}}
+    insert(:key_value, user: user, key: "proj1", value: value)
+    KeyValues.CacheWarmer.warm_recent()
+    reject(&KeyValues.lookup/2)
+    reject(&KeyValues.lookup/3)
+
+    for {path, expected} <- [
+          {"org.id", "abc"},
+          {"$.org.enabled", false},
+          {"org.missing", nil},
+          {"$.[", nil}
+        ] do
+      prepared = KeyValues.prepare_accessor(path)
+      assert KeyValues.Cache.lookup(user.id, "proj1", prepared) == expected
+
+      assert Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "proj1", path]}) ==
+               {:cached, expected}
+    end
+  end
+
   test "lookup/2 returns nil for missing keys", %{user: user} do
     assert nil == KeyValues.Cache.lookup(user.id, "nonexistent")
   end
