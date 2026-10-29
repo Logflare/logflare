@@ -255,6 +255,29 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       assert conn.halted == false
     end
 
+    test "ignores a full backend queue when default_ingest? is nil", %{
+      conn: conn,
+      source: source,
+      backend2: backend
+    } do
+      backend
+      |> Ecto.Changeset.change(default_ingest?: nil)
+      |> Logflare.Repo.update!()
+
+      Backends.clear_list_backends_cache(source.id)
+      table_key = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(table_key)
+      fill_queue(table_key, source)
+      Backends.cache_local_buffer_lens(source.id, backend.id)
+
+      conn =
+        conn
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      refute conn.halted
+    end
+
     test "returns 429 when default ingest backend is full", %{
       conn: conn,
       source: source

@@ -1466,8 +1466,10 @@ defmodule Logflare.Backends do
     buffer_full_for_backend?(source_id, nil) or
       source
       |> list_dispatch_backends()
-      |> Enum.filter(&(&1.enabled and &1.default_ingest?))
-      |> Enum.any?(&buffer_full_for_backend?(source_id, &1))
+      |> Enum.any?(fn backend ->
+        backend.enabled && backend.default_ingest? &&
+          buffer_full_for_backend?(source_id, backend)
+      end)
   end
 
   def cached_local_pending_buffer_full?(%Source{id: source_id}) do
@@ -1514,8 +1516,9 @@ defmodule Logflare.Backends do
     queue_over_limit_for_backend?(source_id, nil) or
       source_id
       |> backends_for_queue_limit()
-      |> Enum.filter(& &1.enabled)
-      |> Enum.any?(&queue_over_limit_for_backend?(source_id, &1))
+      |> Enum.any?(fn backend ->
+        backend.enabled and queue_over_limit_for_backend?(source_id, backend)
+      end)
   end
 
   defp backends_for_queue_limit(source_id) do
