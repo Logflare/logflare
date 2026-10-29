@@ -12,7 +12,6 @@ defmodule Logflare.KeyValues do
 
   @type prepared_accessor ::
           {path :: String.t(), prepared :: [String.t()] | Warpath.Expression.t() | :invalid}
-  @type accessor :: String.t() | prepared_accessor()
 
   @spec list_key_values_query(keyword()) :: Ecto.Query.t()
   def list_key_values_query(kw) do
@@ -86,14 +85,19 @@ defmodule Logflare.KeyValues do
     |> Repo.one()
   end
 
-  @spec lookup(integer(), String.t(), accessor() | nil) :: term() | nil
+  @spec lookup(integer(), String.t(), prepared_accessor() | nil) :: term() | nil
   def lookup(user_id, key, nil), do: lookup(user_id, key)
 
-  def lookup(user_id, key, accessor_path) do
+  def lookup(user_id, key, {path, _prepared} = accessor_path) when is_binary(path) do
     case lookup(user_id, key) do
       nil -> nil
       value -> extract_value(value, accessor_path)
     end
+  end
+
+  def lookup(_user_id, _key, accessor_path) do
+    raise ArgumentError,
+          "expected accessor path to be nil or a prepared accessor, got: #{inspect(accessor_path)}"
   end
 
   @spec prepare_accessor(String.t() | nil) :: prepared_accessor() | nil
@@ -108,7 +112,9 @@ defmodule Logflare.KeyValues do
 
   def prepare_accessor(dot_path), do: {dot_path, String.split(dot_path, ".")}
 
-  @spec extract_value(term(), accessor()) :: term() | nil
+  @spec extract_value(term(), prepared_accessor() | nil) :: term() | nil
+  def extract_value(value, nil), do: value
+
   def extract_value(value, {_path, %Warpath.Expression{} = jsonpath}) when is_map(value) do
     case Warpath.query(value, jsonpath) do
       {:ok, result} -> result
@@ -122,15 +128,12 @@ defmodule Logflare.KeyValues do
 
   def extract_value(_value, {_path, :invalid}), do: nil
 
-  def extract_value(value, "$" <> _ = jsonpath) when is_map(value) do
-    extract_value(value, prepare_accessor(jsonpath))
-  end
+  def extract_value(value, {path, _prepared}) when not is_map(value) and is_binary(path),
+    do: nil
 
-  def extract_value(value, dot_path) when is_map(value) do
-    get_in(value, String.split(dot_path, "."))
+  def extract_value(_value, accessor_path) do
+    raise ArgumentError, "expected a prepared accessor, got: #{inspect(accessor_path)}"
   end
-
-  def extract_value(_value, _accessor_path), do: nil
 
   @spec bulk_upsert_key_values(integer(), [map()]) :: {non_neg_integer(), nil | [KeyValue.t()]}
   def bulk_upsert_key_values(user_id, entries) do

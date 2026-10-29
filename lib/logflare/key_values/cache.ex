@@ -40,19 +40,19 @@ defmodule Logflare.KeyValues.Cache do
     lookup(user_id, key, nil)
   end
 
-  @spec lookup(integer(), String.t(), KeyValues.accessor() | nil) :: term() | nil
+  @spec lookup(integer(), String.t(), KeyValues.prepared_accessor() | nil) :: term() | nil
   def lookup(user_id, key, accessor_path) do
     cache_path =
       case accessor_path do
         {path, _prepared} when is_binary(path) ->
           path
 
-        path when is_binary(path) or is_nil(path) ->
-          path
+        nil ->
+          nil
 
         path ->
           raise ArgumentError,
-                "expected accessor path to be a string, nil, or a prepared accessor, got: #{inspect(path)}"
+                "expected accessor path to be nil or a prepared accessor, got: #{inspect(path)}"
       end
 
     Cachex.execute!(__MODULE__, fn worker ->

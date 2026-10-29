@@ -66,11 +66,40 @@ defmodule Logflare.KeyValuesTest do
       assert KeyValues.prepare_accessor("$.[") == {"$.[", :invalid}
     end
 
+    test "lookup/3 requires a prepared accessor", %{user: user} do
+      value = %{"org" => %{"id" => "abc"}}
+      insert(:key_value, user: user, key: "proj1", value: value)
+
+      for path <- ["org.id", "$.org.id"] do
+        prepared = KeyValues.prepare_accessor(path)
+        assert KeyValues.lookup(user.id, "proj1", prepared) == "abc"
+        assert KeyValues.lookup(user.id, "missing", prepared) == nil
+      end
+
+      for key <- ["proj1", "missing"], path <- ["org.id", "$.org.id", ""] do
+        assert_raise ArgumentError,
+                     "expected accessor path to be nil or a prepared accessor, got: #{inspect(path)}",
+                     fn -> KeyValues.lookup(user.id, key, path) end
+      end
+
+      assert KeyValues.lookup(user.id, "proj1", nil) == value
+    end
+
+    test "extract_value/2 requires a prepared accessor" do
+      for value <- [%{"org" => %{"id" => "abc"}}, nil], path <- ["org.id", "$.org.id", ""] do
+        assert_raise ArgumentError,
+                     "expected a prepared accessor, got: #{inspect(path)}",
+                     fn -> KeyValues.extract_value(value, path) end
+      end
+    end
+
     test "preserves extraction results" do
       value = %{
         "org" => %{"id" => "abc", "enabled" => false, "count" => 0, "items" => []},
         "items" => [%{"id" => 1}, %{"id" => 2}]
       }
+
+      assert KeyValues.extract_value(value, nil) == value
 
       for {path, expected} <- [
             {"org.id", "abc"},
@@ -87,7 +116,6 @@ defmodule Logflare.KeyValuesTest do
           ] do
         prepared = KeyValues.prepare_accessor(path)
         assert KeyValues.extract_value(value, prepared) == expected
-        assert KeyValues.extract_value(value, path) == expected
         assert KeyValues.extract_value(nil, prepared) == nil
       end
     end
