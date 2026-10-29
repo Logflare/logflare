@@ -12,6 +12,7 @@ defmodule Logflare.Cache.CachexOps do
   import Cachex.Spec
 
   alias Logflare.ContextCache.Gossip
+  alias Logflare.Utils
 
   @stat_keys [
     :evictions,
@@ -213,9 +214,7 @@ defmodule Logflare.Cache.CachexOps do
 
   defp refresh_interval(ttl) do
     if warmer_refresh_enabled?() do
-      base = div(ttl, 3)
-      jitter = round(base * @refresh_jitter_ratio)
-      base + Enum.random(-jitter..jitter)
+      ttl |> div(3) |> Utils.jitter(@refresh_jitter_ratio)
     end
   end
 

@@ -8,9 +8,10 @@ defmodule Logflare.Utils do
   alias Logflare.Backends.Backend
   alias Logflare.OauthAccessTokens.OauthAccessToken
   alias Logflare.OauthAccessTokens.PartnerOauthAccessToken
-  import Logflare.Utils.Guards, only: [is_atom_value: 1]
+  import Logflare.Utils.Guards, only: [is_atom_value: 1, is_non_negative_integer: 1]
 
   @sensitive_header_names ["authorization", "x-api-key", "Authorization", "X-API-Key"]
+  @max_jitter_ratio 0.5
 
   @doc """
   Checks if a feature flag is enabled.
@@ -178,6 +179,34 @@ defmodule Logflare.Utils do
       _float ->
         raise ArgumentError, "Ratio must be between 0.0 and 1.0, got: #{inspect(v)}"
     end
+  end
+
+  @doc """
+  Shifts `value` randomly by up to `ratio` of itself in either direction, e.g. a ratio of `0.1`
+  turns `1_000` into a value between `900` and `1_100`. Use it to spread out periodic work, so
+  that processes started together don't run it at the same time.
+
+  The ratio is capped at `0.5`, so the jittered windows of consecutive runs of a periodic job
+  (`n * value ± ratio * value`) don't overlap.
+
+  ## Examples
+
+    iex> Logflare.Utils.jitter(1_000, 0.0)
+    1000
+    iex> Logflare.Utils.jitter(1_000, 0.6)
+    ** (ArgumentError) Jitter ratio must be between 0.0 and 0.5, got: 0.6
+  """
+  @spec jitter(non_neg_integer(), number()) :: non_neg_integer()
+  def jitter(value, ratio)
+      when is_non_negative_integer(value) and is_number(ratio) and ratio >= 0 and
+             ratio <= @max_jitter_ratio do
+    max_shift = round(value * ratio)
+    value + Enum.random(-max_shift..max_shift)
+  end
+
+  def jitter(_value, ratio) when is_number(ratio) and (ratio < 0 or ratio > @max_jitter_ratio) do
+    raise ArgumentError,
+          "Jitter ratio must be between 0.0 and #{@max_jitter_ratio}, got: #{inspect(ratio)}"
   end
 
   @doc """
