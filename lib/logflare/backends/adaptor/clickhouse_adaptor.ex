@@ -49,23 +49,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @min_batch_size 1_000
   @min_batch_timeout_ms 1_000
   @max_batch_timeout_ms 30_000
-  @pipeline_config_keys [:batch_size, :batch_timeout]
-  @runtime_config_keys [
-    :use_async_inserts_for_small_batches,
-    :use_async_inserts_only,
-    :async_insert_max_rows,
-    :async_insert_busy_timeout_max_ms,
-    :async_insert_max_data_size,
-    :async_insert_cluster_url,
-    :read_pool_size,
-    :labeled_read_pool_size,
-    :read_only_urls,
-    :default_read_cluster,
-    :query_class_settings,
-    :query_user,
-    :query_password,
-    :replica_routing_param
-  ]
   @default_async_insert_busy_timeout_max_ms 3_000
   @async_insert_flush_bounds %{
     async_insert_busy_timeout_max_ms: %{min: 200, max: 4_000},
@@ -125,12 +108,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   def on_backend_deleted(backend_id) do
     QueryConnectionSup.terminate_backend_local(backend_id)
   end
-
-  @impl Logflare.Backends.Adaptor
-  def pipeline_config_keys, do: @pipeline_config_keys
-
-  @impl Logflare.Backends.Adaptor
-  def runtime_config_keys, do: @runtime_config_keys
 
   @impl Logflare.Backends.Adaptor
   def replace_pipelines(%Backend{id: backend_id} = backend) do
