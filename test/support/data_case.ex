@@ -15,6 +15,7 @@ defmodule Logflare.DataCase do
   use ExUnit.CaseTemplate
 
   alias Ecto.Adapters.SQL
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.ConsolidatedSup
 
@@ -216,31 +217,32 @@ defmodule Logflare.DataCase do
   @doc """
   Cleanup ClickHouse tables for a given `Backend`.
 
-  Drops all type-specific tables (`_logs`, `_metrics`, `_traces`).
+  Stops ingestion before dropping each type table on the shared test instance.
+  A dedicated connection bypasses per-test read routes, credentials and query mocks.
   """
+  @spec cleanup_clickhouse_tables(Logflare.Backends.Backend.t()) :: :ok
   def cleanup_clickhouse_tables(backend) do
-    tables =
-      Enum.map([:log, :metric, :trace], fn type ->
-        ClickHouseAdaptor.clickhouse_ingest_table_name(backend, type)
-      end)
+    case ConsolidatedSup.stop_pipeline(backend.id) do
+      :ok -> :ok
+      {:error, :not_found} -> :ok
+    end
 
-    drop_query =
-      tables
-      |> Enum.map_join("; ", fn table_name -> "DROP TABLE IF EXISTS #{table_name}" end)
+    opts =
+      build_clickhouse_connection_opts(nil, backend, :query)
+      |> Keyword.merge(pool_size: 1, name: Backends.via_backend(backend, __MODULE__))
+
+    driver = if Mimic.Module.copied?(Ch), do: Mimic.Module.original(Ch), else: Ch
+    {:ok, conn} = driver.start_link(opts)
 
     try do
-      ClickHouseAdaptor.execute_ch_query(
-        backend,
-        drop_query,
-        [],
-        pool_timeout: 1_000
-      )
+      Enum.each([:log, :metric, :trace], fn type ->
+        table = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, type)
 
-      ConsolidatedSup.stop_pipeline(backend.id)
-    rescue
-      _ -> :ok
-    catch
-      :exit, _ -> :ok
+        {:ok, _result} =
+          driver.query(conn, "DROP TABLE IF EXISTS #{table} SYNC", [], decode: false)
+      end)
+    after
+      GenServer.stop(conn)
     end
   end
 
