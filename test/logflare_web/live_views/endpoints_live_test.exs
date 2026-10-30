@@ -595,8 +595,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
   end
 
   describe "parse queries on change" do
-    setup %{user: user} do
-      insert(:endpoint, user: user, query: "select 1")
+    setup do
       [valid_query: "select current_timestamp() as my_time", invalid_query: "bad_query"]
     end
 
@@ -668,6 +667,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       user: user,
       team: team
     } do
+      insert(:endpoint, user: user, query: "select 1")
       endpoint = insert(:endpoint, user: user, query: "select @other as initial")
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}/edit")
 
@@ -702,6 +702,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       conn: conn,
       user: user
     } do
+      insert(:endpoint, user: user, query: "select 1")
       endpoint = insert(:endpoint, user: user, query: "select 1")
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}/edit")
 
