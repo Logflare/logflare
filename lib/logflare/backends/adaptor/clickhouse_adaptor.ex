@@ -1341,7 +1341,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @doc false
   @impl Supervisor
   def init(%Backend{} = backend) do
-    backend = Backends.typecast_config_string_map_to_atom_map(backend)
+    backend =
+      backend
+      |> current_backend()
+      |> Backends.typecast_config_string_map_to_atom_map()
 
     # create the startup queue and its generation, before any producer/traffic exists
     # for this queues_key — avoids racing concurrent first-time inserts against each
@@ -1378,6 +1381,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
     Supervisor.init(children, strategy: :one_for_one)
   end
+
+  @doc """
+  Returns the cached copy of `backend` if it was saved later, otherwise `backend`.
+
+  Supervisors restart children with the backend they were first started with, while the
+  cache can still hold the previous config right after a save.
+  """
+  @spec current_backend(Backend.t()) :: Backend.t()
+  def current_backend(%Backend{id: backend_id} = backend) do
+    backend_id
+    |> Backends.Cache.get_backend()
+    |> newer_backend(backend)
+  end
+
+  @spec newer_backend(Backend.t() | nil, Backend.t()) :: Backend.t()
+  defp newer_backend(
+         %Backend{updated_at: %NaiveDateTime{} = cached_at} = cached,
+         %Backend{updated_at: %NaiveDateTime{} = captured_at} = captured
+       ) do
+    if NaiveDateTime.after?(cached_at, captured_at), do: cached, else: captured
+  end
+
+  defp newer_backend(_cached, captured), do: captured
 
   # produce fewer, larger batches for ClickHouse efficiency
   #

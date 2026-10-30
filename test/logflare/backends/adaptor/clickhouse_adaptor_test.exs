@@ -16,6 +16,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
+  alias Logflare.ContextCache
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.LogEvent
   alias Logflare.Lql.BackendTransformer.ClickHouse, as: ClickHouseLQLTransformer
@@ -3585,6 +3586,41 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                Enum.find(children, &(&1.id == DynamicPipeline))
 
       assert Keyword.fetch!(opts, :shutdown) == 30_000
+    end
+
+    for {context, wal_busted_cache?, started_with} <- [
+          {"supervisor restarted with the backend it was first started with", true, :previous},
+          {"supervisor started with a save the cache has not seen yet", false, :saved}
+        ] do
+      test context do
+        previous =
+          insert(:backend,
+            type: :clickhouse,
+            user: insert(:user),
+            config: %{url: "http://localhost", port: 8123, database: "db", batch_size: 1_000},
+            updated_at: ~N[2020-01-01 00:00:00]
+          )
+
+        Backends.Cache.get_backend(previous.id)
+
+        {:ok, saved} =
+          previous
+          |> Backend.changeset(%{config: %{previous.config | batch_size: 2_000}})
+          |> Repo.update()
+
+        if unquote(wal_busted_cache?) do
+          {:ok, _} = ContextCache.bust_keys([{Backends, previous.id}])
+        end
+
+        started_with = Map.fetch!(%{previous: previous, saved: saved}, unquote(started_with))
+        {:ok, {_flags, children}} = ClickHouseAdaptor.init(started_with)
+
+        assert %{start: {DynamicPipeline, :start_link, [opts]}} =
+                 Enum.find(children, &(&1.id == DynamicPipeline))
+
+        assert %Backend{config: %{batch_size: 2_000}} =
+                 opts |> Keyword.fetch!(:pipeline_args) |> Keyword.fetch!(:backend)
+      end
     end
   end
 

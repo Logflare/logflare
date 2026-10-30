@@ -22,6 +22,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.SourceSupWorker
+  alias Logflare.ContextCache
   alias Logflare.LogEvent
   alias Logflare.LogEvent.PipelineError
   alias Logflare.Lql
@@ -330,6 +331,31 @@ defmodule Logflare.BackendsTest do
 
     test "replace_pipelines_with_latest/1 is a no-op for a deleted backend" do
       assert :ok = Backends.replace_pipelines_with_latest(-1)
+    end
+
+    for {context, crashed} <- [
+          {"adaptor supervisor restarted after a batch config update", ClickHouseAdaptor}
+        ] do
+      @tag :capture_log
+      test context, %{user: user} do
+        backend = start_pipeline_for_backend_saved_long_ago(user)
+
+        {:ok, _saved} =
+          backend
+          |> Backend.changeset(%{
+            config: Map.merge(backend.config, %{batch_size: 2_000, batch_timeout: 1_500})
+          })
+          |> Repo.update()
+
+        {:ok, _} = ContextCache.bust_keys([{Backends, backend.id}])
+
+        backend
+        |> Backends.via_backend(unquote(crashed))
+        |> kill_and_await_restart()
+
+        assert %{batch_size: 2_000, batch_timeout: 1_500} =
+                 TestUtils.clickhouse_batcher_state(backend)
+      end
     end
 
     test "update_backend/2 restarts the consolidated pipeline when other config changes", %{
@@ -3526,6 +3552,32 @@ defmodule Logflare.BackendsTest do
         | start: {Function, :identity, [{:error, :boom}]}
       }
     end)
+  end
+
+  defp start_pipeline_for_backend_saved_long_ago(user) do
+    backend =
+      insert(:backend,
+        type: :clickhouse,
+        user: user,
+        config: clickhouse_backend_attrs().config,
+        updated_at: ~N[2020-01-01 00:00:00]
+      )
+
+    {:ok, _pid} = Backends.ConsolidatedSup.start_pipeline(backend)
+    on_exit(fn -> Backends.ConsolidatedSup.stop_pipeline(backend) end)
+    backend
+  end
+
+  defp kill_and_await_restart(name) do
+    pid = GenServer.whereis(name)
+    Process.exit(pid, :kill)
+
+    TestUtils.retry_assert(fn ->
+      assert restarted = GenServer.whereis(name)
+      refute restarted == pid
+    end)
+
+    Supervisor.which_children(name)
   end
 
   defp clickhouse_backend_attrs do
