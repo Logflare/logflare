@@ -2,6 +2,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
   use LogflareWeb, :html
   use Phoenix.Component
 
+  alias Logflare.Endpoints.FilesystemCachePolicy
   alias LogflareWeb.QueryComponents
 
   attr :form, :map, required: true
@@ -10,7 +11,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
 
   def query_form(assigns) do
     ~H"""
-    <.form :let={f} for={@form} phx-submit="run-query" class="tw-min-h-[80px]">
+    <.form :let={f} for={@form} phx-change="validate" phx-submit="run-query" class="tw-min-h-[80px]">
       {hidden_input(f, :query)}
 
       <.inputs_for :let={params_f} field={f[:params]}>
@@ -22,6 +23,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
 
       <.dynamic_reservation_field :if={Ecto.Changeset.get_field(@endpoint_changeset, :enable_dynamic_reservation)} form={f} class="form-group tw-mt-2" />
 
+      <.filesystem_cache_preview policy={Ecto.Changeset.get_field(@endpoint_changeset, :filesystem_cache_policy)} params={f[:params].value || %{}} />
       {submit("Test query", class: "btn btn-secondary")}
     </.form>
     """
@@ -93,10 +95,40 @@ defmodule LogflareWeb.Endpoints.RunQuery do
 
       <.parameter_fields form={f} declared_params={@declared_params} dynamic_reservation?={@endpoint.enable_dynamic_reservation} />
       <.sandbox_query_fields :if={@endpoint.sandboxable} form={f} />
+      <.filesystem_cache_preview policy={@endpoint.filesystem_cache_policy} params={f[:params].value || %{}} />
 
       {submit("Test endpoint", class: "btn btn-secondary")}
     </.form>
     """
+  end
+
+  attr :policy, :map, default: nil
+  attr :params, :map, required: true
+
+  @spec filesystem_cache_preview(map()) :: Phoenix.LiveView.Rendered.t()
+  def filesystem_cache_preview(assigns) do
+    assigns =
+      assign(assigns, :decision, FilesystemCachePolicy.resolve(assigns.policy, assigns.params))
+
+    ~H"""
+    <p :if={@policy} id="filesystem-cache-preview" class="tw-my-3 tw-text-sm tw-text-zinc-400">
+      <%= case @decision do %>
+        <% {:ok, decision} -> %>
+          Requested window: {format_window(decision.window_seconds)} seconds · {if decision.settings == %{}, do: "Normal filesystem-cache behavior", else: "Existing cache entries only (no cache population)"}
+          <span>Fixed backend/endpoint settings take precedence.</span>
+        <% {:error, message} -> %>
+          {message}
+      <% end %>
+    </p>
+    """
+  end
+
+  @spec format_window(float()) :: String.t()
+  defp format_window(seconds) do
+    seconds
+    |> :erlang.float_to_binary(decimals: 6)
+    |> String.trim_trailing("0")
+    |> String.trim_trailing(".")
   end
 
   attr :form, :map, required: true

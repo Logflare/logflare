@@ -179,6 +179,7 @@
           Key value pairs will be added to the query execution backend using the <code>LF-ENDPOINT-LABELS: my_other_field=some-val,meta=123</code> request header.
         </small>
       </div>
+      <.filesystem_cache_policy_form :if={Ecto.Changeset.get_field(@endpoint_changeset, :language) == :ch_sql} form={f} declared_params={@declared_params} />
     </section>
   </.form>
   <aside class="tw-w-1/2">

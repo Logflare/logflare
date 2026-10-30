@@ -3,6 +3,7 @@ defmodule LogflareWeb.Endpoints.Components do
   use LogflareWeb, :routes
   use Phoenix.Component
 
+  alias Logflare.Endpoints.FilesystemCachePolicy
   alias Logflare.Sql
   alias LogflareWeb.Endpoints.RunQuery
   alias LogflareWeb.QueryComponents
@@ -19,6 +20,71 @@ defmodule LogflareWeb.Endpoints.Components do
     redact_pii: "Redact PII",
     enable_dynamic_reservation: "Dynamic reservation"
   ]
+
+  attr :form, :map, required: true
+  attr :declared_params, :list, default: []
+
+  @spec filesystem_cache_policy_form(map()) :: Phoenix.LiveView.Rendered.t()
+  def filesystem_cache_policy_form(assigns) do
+    values = FilesystemCachePolicy.form_values(assigns.form[:filesystem_cache_policy].value)
+
+    assigns =
+      assign(assigns,
+        policy_form:
+          to_form(values,
+            as: "#{assigns.form.name}[filesystem_cache_policy]",
+            id: "endpoint_filesystem_cache_policy"
+          )
+      )
+
+    ~H"""
+    <fieldset id="filesystem-cache-policy" class="tw-mt-4">
+      <legend class="tw-text-base">Filesystem cache policy</legend>
+      {checkbox(@policy_form, :enabled, class: "form-check-input")}
+      {label(@policy_form, :enabled, "Avoid populating cache for large time windows", class: "form-check-label")}
+      <p class="form-text text-muted">
+        Large-window queries read existing filesystem-cache entries without adding new entries.
+        This does not disable Logflare's endpoint result cache.
+      </p>
+      <div :if={@policy_form[:enabled].value not in [false, "false"]}>
+        {label(@policy_form, :start_param, "Start parameter")}
+        {select(@policy_form, :start_param, @declared_params, prompt: "Select start parameter", class: "form-control")}
+        {label(@policy_form, :end_param, "End parameter")}
+        {select(@policy_form, :end_param, @declared_params, prompt: "Select end parameter", class: "form-control")}
+        {label(@policy_form, :timestamp_format, "Timestamp format")}
+        {select(
+          @policy_form,
+          :timestamp_format,
+          [
+            {"ISO 8601 (with timezone)", "iso8601"},
+            {"Unix seconds", "unix_seconds"},
+            {"Unix milliseconds", "unix_milliseconds"}
+          ],
+          class: "form-control"
+        )}
+        {label(@policy_form, :window_threshold, "Window threshold")}
+        {number_input(@policy_form, :window_threshold, min: 1, step: 1, class: "form-control")}
+        {label(@policy_form, :window_unit, "Threshold unit")}
+        {select(
+          @policy_form,
+          :window_unit,
+          [
+            {"Seconds", "seconds"},
+            {"Minutes", "minutes"},
+            {"Hours", "hours"},
+            {"Days", "days"}
+          ],
+          class: "form-control"
+        )}
+        <p class="form-text text-muted">
+          Select parameters that bound the endpoint's time range. Missing, invalid, or reversed
+          timestamps cause a query error. Only windows strictly above the threshold trigger this policy.
+        </p>
+      </div>
+      {error_tag(@form, :filesystem_cache_policy)}
+    </fieldset>
+    """
+  end
 
   def docs_link(assigns) do
     ~H"""
