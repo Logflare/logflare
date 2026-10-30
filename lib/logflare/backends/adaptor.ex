@@ -121,7 +121,7 @@ defmodule Logflare.Backends.Adaptor do
     do: supports_default_ingest?(backend) and consolidated_ingest?(backend)
 
   @doc """
-  Notifies a backend's adaptor that the backend's configuration has changed.
+  Notifies a backend's adaptor on the local node that the backend's configuration has changed.
 
   No-op for adaptors that do not implement the optional callback.
   """
@@ -188,7 +188,7 @@ defmodule Logflare.Backends.Adaptor do
   end
 
   @doc """
-  Notifies a backend's adaptor that the backend has been deleted.
+  Notifies a backend's adaptor on the local node that the backend has been deleted.
 
   No-op for adaptors that do not implement the optional callback.
   """
@@ -375,17 +375,17 @@ defmodule Logflare.Backends.Adaptor do
   @callback consolidated_ingest?() :: boolean()
 
   @doc """
-  Optional callback invoked after a backend's configuration has changed.
+  Optional callback invoked on every node after a backend's configuration has changed.
 
-  Allows an adaptor to react to the new configuration, e.g. restarting
+  Allows an adaptor to react to the new configuration on the local node, e.g. restarting
   connection pools that captured the previous config when they started.
   """
   @callback on_backend_config_changed(Backend.t()) :: :ok
 
   @doc """
-  Optional callback invoked after a backend has been deleted.
+  Optional callback invoked on every node after a backend has been deleted.
 
-  Allows an adaptor to clean up any backend-related processes it manages.
+  Allows an adaptor to clean up the backend-related processes it manages on the local node.
   """
   @callback on_backend_deleted(Backend.t()) :: :ok
 
