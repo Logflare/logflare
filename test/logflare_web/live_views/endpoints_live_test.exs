@@ -595,7 +595,8 @@ defmodule LogflareWeb.EndpointsLiveTest do
   end
 
   describe "parse queries on change" do
-    setup do
+    setup %{user: user} do
+      insert(:endpoint, user: user, query: "select 1")
       [valid_query: "select current_timestamp() as my_time", invalid_query: "bad_query"]
     end
 
