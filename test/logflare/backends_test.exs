@@ -334,7 +334,8 @@ defmodule Logflare.BackendsTest do
     end
 
     for {context, crashed} <- [
-          {"adaptor supervisor restarted after a batch config update", ClickHouseAdaptor}
+          {"adaptor supervisor restarted after a batch config update", ClickHouseAdaptor},
+          {"ingest pipeline supervisor restarted after a batch config update", ClickHousePipeline}
         ] do
       @tag :capture_log
       test context, %{user: user} do

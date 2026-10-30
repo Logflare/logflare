@@ -105,7 +105,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           {:ok, pid()} | :ignore | {:error, {:already_started, pid()} | term()}
   def start_link(args) do
     {name, args} = Keyword.pop(args, :name)
-    backend = Keyword.fetch!(args, :backend)
+    backend = args |> Keyword.fetch!(:backend) |> ClickHouseAdaptor.current_backend()
     processor_concurrency = processor_concurrency()
     batch_size = config_value(backend, :batch_size, @batch_size)
     batch_timeout = config_value(backend, :batch_timeout, @batch_timeout)
