@@ -86,6 +86,52 @@ The Endpoint consumer can pass in the following query parameter to query across 
 
 Should large SQL queries need to be executed, the SQL query string can be placed in the GET JSON body. Logflare will read the body and use the `sql` field in the body payload. This will only occur if **no `?sql=` query parameter is present in the request's query parameters**. This behaviour does not extend to other declared parameters (such as `@my_param`), and only applies to the special `sql` query parameter for sandboxed endpoints.
 
+### ClickHouse filesystem cache policy
+
+Anyone who can edit a ClickHouse endpoint can configure its **Filesystem cache policy**
+in the endpoint editor. This policy uses the endpoint's existing time parameters;
+callers do not send an additional cache-control flag.
+
+1. Enable **Avoid populating cache for large time windows**.
+2. Select distinct start and end parameters declared in the endpoint SQL.
+3. Choose ISO 8601 (including a timezone), Unix seconds, or Unix milliseconds.
+4. Set a positive threshold in seconds, minutes, hours, or days.
+
+When the requested window is **strictly greater** than the threshold, Logflare adds
+`read_from_filesystem_cache_if_exists_otherwise_bypass_cache = 1` to the final query.
+ClickHouse can read existing filesystem-cache entries but will not populate that
+cache on misses. Shorter or equal windows leave existing cache settings unchanged.
+Fixed backend/endpoint settings take precedence over this derived hint.
+
+The endpoint author must ensure the selected parameters actually bound the SQL's
+time range, including any sandboxed query. This is a performance hint, not a
+security limit. Missing or invalid timestamps and reversed ranges return a query
+error. Unix timestamps must be integers; ISO 8601 timestamps must include a
+timezone. The editor's test panel shows the resolved window and derived behavior;
+fixed query policy can override the hint.
+
+The configuration is versioned with the endpoint SQL. Historical versions retain
+their own policy, and versions created before this feature have it disabled.
+Editing the policy invalidates the current endpoint's result caches. Historical
+versions continue using their own policy during cache refresh.
+
+The management API also accepts a nullable `filesystem_cache_policy` object:
+
+```json
+{
+  "filesystem_cache_policy": {
+    "start_param": "from",
+    "end_param": "to",
+    "timestamp_format": "iso8601",
+    "bypass_fill_above_seconds": 86400
+  }
+}
+```
+
+Use `null` to disable the policy. Supported formats are `iso8601`, `unix_seconds`,
+and `unix_milliseconds`. This controls ClickHouse's filesystem cache, **not**
+Logflare's endpoint result cache: a result-cache hit does not execute ClickHouse.
+
 ## HTTP Response
 
 The result of the query will be returned on the `result` key of the response payload.

@@ -1507,6 +1507,7 @@ defmodule Logflare.EndpointsTest do
       "description" => endpoint.description,
       "enable_auth" => endpoint.enable_auth,
       "enable_dynamic_reservation" => endpoint.enable_dynamic_reservation,
+      "filesystem_cache_policy" => endpoint.filesystem_cache_policy,
       "labels" => endpoint.labels,
       "language" => to_string(endpoint.language),
       "max_limit" => endpoint.max_limit,

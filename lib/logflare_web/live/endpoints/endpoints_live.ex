@@ -404,6 +404,8 @@ defmodule LogflareWeb.EndpointsLive do
            parsed_labels: parsed_labels,
            endpoint_id: socket.assigns.endpoint_changeset.data.id,
            use_query_cache: false,
+           filesystem_cache_policy:
+             Ecto.Changeset.get_field(socket.assigns.endpoint_changeset, :filesystem_cache_policy),
            redact_pii: redact_pii,
            backend_id: backend_id,
            reservation: reservation
