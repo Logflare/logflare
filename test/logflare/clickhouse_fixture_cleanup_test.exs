@@ -97,7 +97,43 @@ defmodule Logflare.ClickHouseFixtureCleanupTest do
   test "SQL cleanup errors fail visibly and still close the cleanup connection", context do
     invalid_backend = %{context.backend | token: "invalid token"}
 
-    assert_raise MatchError, fn -> cleanup_clickhouse_tables(invalid_backend) end
+    error =
+      assert_raise RuntimeError, ~r/SYNTAX_ERROR/, fn ->
+        cleanup_clickhouse_tables(invalid_backend)
+      end
+
+    for type <- [:log, :metric, :trace] do
+      assert error.message =~
+               ClickHouseAdaptor.clickhouse_ingest_table_name(invalid_backend, type)
+    end
+
+    assert GenServer.whereis(Backends.via_backend(context.backend, Logflare.DataCase)) == nil
+  end
+
+  test "a failed drop does not prevent the remaining tables from being removed", context do
+    stub(ClickHouseAdaptor, :clickhouse_ingest_table_name, fn backend, type ->
+      case type do
+        :log ->
+          "invalid token"
+
+        _ ->
+          Mimic.call_original(ClickHouseAdaptor, :clickhouse_ingest_table_name, [backend, type])
+      end
+    end)
+
+    assert_raise RuntimeError, ~r/SYNTAX_ERROR/, fn ->
+      cleanup_clickhouse_tables(context.backend)
+    end
+
+    with_connection(context.source, context.backend, fn conn ->
+      [log_table | remaining_tables] = context.tables
+      assert {:ok, %Ch.Result{rows: [[1]]}} = query(conn, "EXISTS TABLE #{log_table}")
+
+      for table <- remaining_tables do
+        assert {:ok, %Ch.Result{rows: [[0]]}} = query(conn, "EXISTS TABLE #{table}")
+      end
+    end)
+
     assert GenServer.whereis(Backends.via_backend(context.backend, Logflare.DataCase)) == nil
   end
 

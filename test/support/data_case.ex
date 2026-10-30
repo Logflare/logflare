@@ -235,12 +235,23 @@ defmodule Logflare.DataCase do
     {:ok, conn} = driver.start_link(opts)
 
     try do
-      Enum.each([:log, :metric, :trace], fn type ->
-        table = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, type)
+      failures =
+        [:log, :metric, :trace]
+        |> Enum.map(fn type ->
+          table = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, type)
 
-        {:ok, _result} =
-          driver.query(conn, "DROP TABLE IF EXISTS #{table} SYNC", [], decode: false)
-      end)
+          {table,
+           driver.query(conn, "DROP TABLE IF EXISTS #{table} SYNC", [],
+             decode: false,
+             timeout: 5_000
+           )}
+        end)
+        |> Enum.reject(&match?({_table, {:ok, _result}}, &1))
+
+      case failures do
+        [] -> :ok
+        failures -> raise "ClickHouse fixture cleanup failed: #{inspect(failures)}"
+      end
     after
       GenServer.stop(conn)
     end
