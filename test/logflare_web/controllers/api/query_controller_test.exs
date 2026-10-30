@@ -108,6 +108,7 @@ defmodule LogflareWeb.Api.QueryControllerTest do
       assert %{"result" => [%{"my_time" => "123"}]} = response
     end
 
+    @tag capture_log: true
     test "BQ errors return a generic response", %{
       conn: conn,
       user: user

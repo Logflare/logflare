@@ -831,6 +831,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
   end
 
   describe "run query errors" do
+    @tag capture_log: true
     test "backend errors display a generic message", %{conn: conn, user: user} do
       endpoint = insert(:endpoint, user: user, query: "select current_datetime() as ts")
 
@@ -1278,6 +1279,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
                has_element?(view, "h5", "Sandbox Query Error")
     end
 
+    @tag capture_log: true
     test "sandbox query section preserves inputs on error", %{conn: conn, user: user} do
       endpoint =
         insert(:endpoint,

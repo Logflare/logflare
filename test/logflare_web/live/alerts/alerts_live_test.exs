@@ -367,6 +367,7 @@ defmodule LogflareWeb.AlertsLiveTest do
       assert html =~ "No results from query. Alert will not fire."
     end
 
+    @tag capture_log: true
     test "unclassified BQ errors display a generic message", %{
       conn: conn,
       alert_query: alert_query
