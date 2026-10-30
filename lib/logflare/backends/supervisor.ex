@@ -42,7 +42,6 @@ defmodule Logflare.Backends.Supervisor do
 
     children =
       [
-        # Registries must start before their clients so they outlive them during shutdown.
         {Registry,
          name: Backends.SourceRegistry, keys: :unique, partitions: max(round(base / 8), 1)},
         {Registry,
