@@ -1,6 +1,7 @@
 defmodule Logflare.ContextCache.GossipTest do
   use Logflare.DataCase, async: false
   import Logflare.Factory
+  alias Logflare.Billing
   alias Logflare.ContextCache
   alias Logflare.ContextCache.Tombstones
   alias Logflare.Sources
@@ -51,6 +52,15 @@ defmodule Logflare.ContextCache.GossipTest do
 
       assert_receive {[:logflare, :context_cache_gossip, :multicast, :stop], ^telemetry_ref,
                       _measurements, %{cache: Sources.Cache, key: ^cache_key}}
+    end
+
+    test "does not multicast derived user plans", %{telemetry_ref: telemetry_ref} do
+      plan = insert(:plan, name: "Free")
+      user = insert(:user)
+      assert Billing.Cache.get_plan_by_user(user) == plan
+
+      assert_receive {[:logflare, :context_cache_gossip, :multicast, :stop], ^telemetry_ref,
+                      _measurements, %{cache: Billing.Cache, action: :ignore}}
     end
   end
 
