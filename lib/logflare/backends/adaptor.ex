@@ -6,6 +6,8 @@ defmodule Logflare.Backends.Adaptor do
   The Adaptor should consume events from the IngestedEventQueue.
   """
 
+  import Logflare.Utils.Guards
+
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Backends.Backend
@@ -188,16 +190,17 @@ defmodule Logflare.Backends.Adaptor do
   end
 
   @doc """
-  Notifies a backend's adaptor on the local node that the backend has been deleted.
+  Notifies adaptors on the local node that a backend has been deleted.
 
-  No-op for adaptors that do not implement the optional callback.
+  A deleted backend's type is no longer known, so every adaptor implementing the
+  optional callback is notified.
   """
-  @spec on_backend_deleted(Backend.t()) :: :ok
-  def on_backend_deleted(%Backend{} = backend) do
-    adaptor = get_adaptor(backend)
+  @spec on_backend_deleted(pos_integer()) :: :ok
+  def on_backend_deleted(backend_id) when is_pos_integer(backend_id) do
+    adaptors = Backend.adaptor_mapping() |> Map.values() |> Enum.uniq()
 
-    if exports?(adaptor, :on_backend_deleted, 1) do
-      adaptor.on_backend_deleted(backend)
+    for adaptor <- adaptors, exports?(adaptor, :on_backend_deleted, 1) do
+      adaptor.on_backend_deleted(backend_id)
     end
 
     :ok
@@ -387,7 +390,7 @@ defmodule Logflare.Backends.Adaptor do
 
   Allows an adaptor to clean up the backend-related processes it manages on the local node.
   """
-  @callback on_backend_deleted(Backend.t()) :: :ok
+  @callback on_backend_deleted(backend_id :: pos_integer()) :: :ok
 
   @doc """
   Optional callback listing config keys that only affect the ingest pipelines, so a change to
