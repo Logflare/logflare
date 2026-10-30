@@ -472,7 +472,7 @@ defmodule Logflare.Backends do
   defp notify_backend_config_change(_backend, false), do: :ok
 
   defp notify_backend_config_change(backend, true),
-    do: Adaptor.on_backend_config_changed(backend)
+    do: Cluster.Utils.rpc_multicast(Adaptor, :on_backend_config_changed, [backend])
 
   @spec validate_query_policy_backend(Backend.t(), Keyword.t()) ::
           :ok | {:error, :not_clickhouse_backend}
@@ -621,7 +621,7 @@ defmodule Logflare.Backends do
       if deleted.default_ingest?, do: default_ingest_flag_changed(deleted)
 
       maybe_stop_consolidated_pipeline(deleted)
-      Adaptor.on_backend_deleted(deleted)
+      Cluster.Utils.rpc_multicast(Adaptor, :on_backend_deleted, [deleted])
       {:ok, deleted}
     end
   end

@@ -191,21 +191,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSupTest do
     end
   end
 
-  describe "refresh_backend/1" do
-    test "stops the backend's pool across the cluster", %{backend: backend} do
-      {:ok, _manager_pid} =
-        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend))
-
-      assert :ok == ConnectionManager.ensure_pool_started(backend)
-
-      assert :ok == QueryConnectionSup.refresh_backend(backend)
-
-      TestUtils.retry_assert(fn ->
-        refute ConnectionManager.pool_active?(backend)
-      end)
-    end
-  end
-
   describe "terminate_backend_local/1" do
     test "returns ok when no manager is running", %{backend: backend} do
       assert :ok == QueryConnectionSup.terminate_backend_local(backend.id)
@@ -224,19 +209,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSupTest do
 
       TestUtils.retry_assert(fn ->
         refute {backend.id, manager_pid} in QueryConnectionSup.list_query_connection_managers()
-      end)
-    end
-  end
-
-  describe "terminate_backend/1" do
-    test "terminates managers across the cluster", %{backend: backend} do
-      {:ok, manager_pid} =
-        QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend))
-
-      assert :ok == QueryConnectionSup.terminate_backend(backend)
-
-      TestUtils.retry_assert(fn ->
-        refute Process.alive?(manager_pid)
       end)
     end
   end

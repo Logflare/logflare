@@ -118,12 +118,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @impl Logflare.Backends.Adaptor
   def on_backend_config_changed(%Backend{id: backend_id}) do
     _ = reprovision(backend_id)
-    QueryConnectionSup.refresh_backend(backend_id)
+    QueryConnectionSup.refresh_backend_local(backend_id)
   end
 
   @impl Logflare.Backends.Adaptor
   def on_backend_deleted(%Backend{id: backend_id}) do
-    QueryConnectionSup.terminate_backend(backend_id)
+    QueryConnectionSup.terminate_backend_local(backend_id)
   end
 
   @impl Logflare.Backends.Adaptor
