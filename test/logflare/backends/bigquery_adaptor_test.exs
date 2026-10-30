@@ -128,20 +128,22 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       {:ok, source: source, backend: backend}
     end
 
-    test "plain ingest", %{source: source} do
+    test "plain ingest", %{source: source, backend: backend} do
       log_event = build(:log_event, source: source)
       pid = self()
+      project_id = backend.config.project_id
+      source_id = source.id
 
       Logflare.Google.BigQuery
-      |> stub(:stream_batch!, fn _, _ ->
-        send(pid, :streamed)
+      |> stub(:stream_batch!, fn context, _ ->
+        send(pid, {:streamed, context.source_id, context.bigquery_project_id})
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
       assert {:ok, _} = Backends.ingest_logs([log_event], source)
 
-      assert_receive :streamed, 2500
-      assert_buffers_empty(source.id)
+      assert_receive {:streamed, ^source_id, ^project_id}, to_timeout(second: 5)
+      assert_buffers_empty(source.id, backend.id)
     end
 
     test "update table", %{source: source} do
