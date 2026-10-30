@@ -117,6 +117,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def on_backend_config_changed(%Backend{id: backend_id}) do
+    _ = reprovision(backend_id)
     QueryConnectionSup.refresh_backend(backend_id)
   end
 
@@ -138,6 +139,23 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     case GenServer.whereis(name) do
       nil -> :ok
       _pid -> DynamicPipeline.replace_pipelines(name, fn -> latest_pipeline_args(backend_id) end)
+    end
+  end
+
+  @spec reprovision(pos_integer()) :: :ok | {:error, term()}
+  defp reprovision(backend_id) do
+    sup = Backends.via_backend(backend_id, __MODULE__)
+
+    with pid when is_pid(pid) <- GenServer.whereis(sup),
+         %Backend{} = backend <- Backends.get_backend(backend_id),
+         :ok <- Supervisor.terminate_child(pid, Provisioner),
+         :ok <- Supervisor.delete_child(pid, Provisioner),
+         {:ok, _pid} <- Supervisor.start_child(pid, Provisioner.child_spec(backend)) do
+      :ok
+    else
+      nil -> :ok
+      {:error, :not_found} -> :ok
+      {:error, _reason} = error -> error
     end
   end
 
