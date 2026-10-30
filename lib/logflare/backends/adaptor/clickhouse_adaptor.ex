@@ -122,7 +122,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def on_backend_deleted(%Backend{id: backend_id}) do
+  def on_backend_deleted(backend_id) do
     QueryConnectionSup.terminate_backend_local(backend_id)
   end
 
