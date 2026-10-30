@@ -42,6 +42,18 @@ defmodule Logflare.Backends.Supervisor do
 
     children =
       [
+        # The registries come first so they stop last: a supervisor stops its children in
+        # reverse order, and the pipelines under ConsolidatedSup and SourcesSup are named in
+        # them. Stopped earlier, they took the pipelines down with `unknown registry` and
+        # killed exits on every shutdown.
+        {Registry,
+         name: Backends.SourceRegistry, keys: :unique, partitions: max(round(base / 8), 1)},
+        {Registry,
+         name: Backends.BackendRegistry, keys: :unique, partitions: max(round(base / 8), 1)},
+        {Registry,
+         name: Backends.BufferProducer.InFlightRegistry,
+         keys: :unique,
+         partitions: max(round(base / 8), 1)},
         SchemaMetrics,
         Backends.IngestEventQueue,
         Backends.IngestEventQueue.BufferCacheWorker,
@@ -57,14 +69,6 @@ defmodule Logflare.Backends.Supervisor do
           start: {Cachex, :start_link, [Backends.SourceSupStarts, []]}
         },
         {PartitionSupervisor, child_spec: DynamicSupervisor, name: Backends.SourcesSup},
-        {Registry,
-         name: Backends.SourceRegistry, keys: :unique, partitions: max(round(base / 8), 1)},
-        {Registry,
-         name: Backends.BackendRegistry, keys: :unique, partitions: max(round(base / 8), 1)},
-        {Registry,
-         name: Backends.BufferProducer.InFlightRegistry,
-         keys: :unique,
-         partitions: max(round(base / 8), 1)},
         Backends.UserMonitoring.SystemSourceStarter
       ] ++
         spool_goth_children ++
