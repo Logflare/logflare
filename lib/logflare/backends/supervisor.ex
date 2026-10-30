@@ -42,10 +42,7 @@ defmodule Logflare.Backends.Supervisor do
 
     children =
       [
-        # The registries come first so they stop last: a supervisor stops its children in
-        # reverse order, and the pipelines under ConsolidatedSup and SourcesSup are named in
-        # them. Stopped earlier, they took the pipelines down with `unknown registry` and
-        # killed exits on every shutdown.
+        # Registries must start before their clients so they outlive them during shutdown.
         {Registry,
          name: Backends.SourceRegistry, keys: :unique, partitions: max(round(base / 8), 1)},
         {Registry,
