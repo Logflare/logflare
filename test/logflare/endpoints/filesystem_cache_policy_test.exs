@@ -55,10 +55,25 @@ defmodule Logflare.Endpoints.FilesystemCachePolicyTest do
     end
   end
 
-  test "missing, malformed, timezone-free and reversed inputs fail explicitly" do
+  test "missing and null boundaries leave the cache hint unspecified" do
     for params <- [
           %{},
           %{"from" => "2026-10-01T00:00:00Z"},
+          %{"to" => "2026-10-03T00:00:00Z"},
+          %{"from" => nil, "to" => "2026-10-03T00:00:00Z"},
+          %{"from" => "2026-10-01T00:00:00Z", "to" => nil},
+          %{"from" => nil, "to" => nil}
+        ] do
+      assert {:ok, %{window_seconds: nil, settings: %{}}} =
+               FilesystemCachePolicy.resolve(@policy, params)
+    end
+  end
+
+  test "malformed, timezone-free and reversed inputs fail explicitly" do
+    for params <- [
+          %{"from" => "bad"},
+          %{"to" => "bad"},
+          %{"from" => "", "to" => nil},
           %{"from" => "2026-10-01", "to" => "2026-10-03"},
           %{"from" => "2026-10-01T00:00:00", "to" => "2026-10-03T00:00:00Z"},
           %{"from" => "2026-10-03T00:00:00Z", "to" => "2026-10-01T00:00:00Z"},

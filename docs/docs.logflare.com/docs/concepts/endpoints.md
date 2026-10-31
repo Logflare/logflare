@@ -105,10 +105,14 @@ Fixed backend/endpoint settings take precedence over this derived hint.
 
 The endpoint author must ensure the selected parameters actually bound the SQL's
 time range, including any sandboxed query. This is a performance hint, not a
-security limit. Missing or invalid timestamps and reversed ranges return an
-HTTP 400 query error describing the invalid window. Unix timestamps must be integers; ISO 8601 timestamps must include a
-timezone. The editor's test panel shows the resolved window and derived behavior;
-fixed query policy can override the hint.
+security limit. If either boundary is absent or null, no cache hint is derived.
+This does not supply missing SQL parameters or change the backend's parameter
+requirements. Supplied invalid timestamps and reversed ranges return an HTTP 400
+query error describing the invalid window. Unix timestamps must be integers;
+ISO 8601 timestamps must include a timezone. The editor's test panel labels the
+resolved window and derived behavior; fixed query policy can override the hint.
+The transformed-query preview includes the effective backend class and
+endpoint-enforced settings, using the same precedence as execution.
 
 The configuration is versioned with the endpoint SQL. Historical versions retain
 their own policy, and versions created before this feature have it disabled.

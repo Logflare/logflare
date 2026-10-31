@@ -65,6 +65,26 @@ defmodule LogflareWeb.EndpointFilesystemCacheControllerTest do
     end
   end
 
+  test "omitted or null boundaries do not produce a policy error", context do
+    for duration <- [0, 60],
+        params <- [%{}, %{"from" => "0"}, %{"from" => nil, "to" => "7200"}] do
+      endpoint = endpoint(context, duration)
+
+      expect(ClickHouseAdaptor, :execute_query, fn _backend, {_sql, _, actual_params, _}, opts ->
+        assert Map.take(actual_params, ["from", "to"]) == params
+        assert opts[:filesystem_cache_settings] == %{}
+        {:ok, QueryResult.new([%{"ok" => 1}])}
+      end)
+
+      conn =
+        context.conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/api/endpoints/query/#{endpoint.token}", Jason.encode!(params))
+
+      assert %{"result" => [%{"ok" => 1}]} = json_response(conn, 200)
+    end
+  end
+
   test "invalid saved configuration is not blamed on request timestamps", context do
     endpoint = endpoint(context, 0, Map.put(@policy, "bypass_fill_above_seconds", 0))
     reject(ClickHouseAdaptor, :execute_query, 3)

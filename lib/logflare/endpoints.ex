@@ -9,6 +9,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.Backend
   alias Logflare.Backends.QueryError
@@ -1005,7 +1006,7 @@ defmodule Logflare.Endpoints do
            ),
          {:ok, transformed_query} <- Sql.transform(query_language, transform_input, user_id),
          {:ok, transformed_query} <-
-           preview_query_policy(endpoint_query, transformed_query, params) do
+           preview_query_policy(endpoint_query, transformed_query, params, opts) do
       {:ok, transformed_query}
     end
   end
@@ -1028,18 +1029,21 @@ defmodule Logflare.Endpoints do
 
   defp reload_enforced_settings(endpoint), do: {:ok, endpoint}
 
-  @spec preview_query_policy(EndpointQuery.t(), String.t(), map()) ::
+  @spec preview_query_policy(EndpointQuery.t(), String.t(), map(), keyword()) ::
           {:ok, String.t()} | {:error, term()}
-  defp preview_query_policy(%EndpointQuery{language: :ch_sql} = endpoint, query, params) do
-    with {:ok, settings} <- endpoint_clickhouse_settings(endpoint, params) do
-      ClickHouseSettings.enforce(
-        query,
-        Map.merge(settings, endpoint.enforced_clickhouse_settings)
+  defp preview_query_policy(%EndpointQuery{language: :ch_sql} = endpoint, query, params, opts) do
+    with {:ok, backend} <- get_backend_for_query(endpoint),
+         {:ok, settings} <- endpoint_clickhouse_settings(endpoint, params) do
+      ClickHouseAdaptor.prepare_query(backend, query,
+        query_type: :endpoint,
+        read_cluster: Keyword.get(opts, :read_cluster),
+        filesystem_cache_settings: settings,
+        enforced_clickhouse_settings: endpoint.enforced_clickhouse_settings
       )
     end
   end
 
-  defp preview_query_policy(_endpoint_query, query, _params), do: {:ok, query}
+  defp preview_query_policy(_endpoint_query, query, _params, _opts), do: {:ok, query}
 
   @spec endpoint_clickhouse_settings(EndpointQuery.t(), map()) ::
           {:ok, map()} | {:error, FilesystemCachePolicy.error()}

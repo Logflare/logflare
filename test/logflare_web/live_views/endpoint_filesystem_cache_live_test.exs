@@ -229,11 +229,13 @@ defmodule LogflareWeb.EndpointFilesystemCacheLiveTest do
              )
 
     {:ok, view, _} = live_with_redirect(context.conn, ~p"/endpoints/#{endpoint.id}")
+    assert has_element?(view, "#filesystem-cache-preview", "No derived cache hint")
 
     view
     |> element("#endpoint-test-form")
     |> render_change(%{run: %{params: %{"from" => "0", "to" => "3600"}}})
 
     assert has_element?(view, "#filesystem-cache-preview", "Normal filesystem-cache behavior")
+    assert has_element?(view, "#filesystem-cache-preview", "Derived behavior")
   end
 end

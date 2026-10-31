@@ -113,8 +113,10 @@ defmodule LogflareWeb.Endpoints.RunQuery do
     ~H"""
     <p :if={@policy} id="filesystem-cache-preview" class="tw-my-3 tw-text-sm tw-text-zinc-400">
       <%= case @decision do %>
+        <% {:ok, %{window_seconds: nil}} -> %>
+          No derived cache hint: provide both time boundaries to calculate a window.
         <% {:ok, decision} -> %>
-          Requested window: {format_window(decision.window_seconds)} seconds · {if decision.settings == %{}, do: "Normal filesystem-cache behavior", else: "Existing cache entries only (no cache population)"}
+          Derived behavior · Requested window: {format_window(decision.window_seconds)} seconds · {if decision.settings == %{}, do: "Normal filesystem-cache behavior", else: "Existing cache entries only (no cache population)"}
           <span>Fixed backend/endpoint settings take precedence.</span>
         <% {:error, {_kind, message}} -> %>
           {message}

@@ -131,6 +131,66 @@ defmodule Logflare.Endpoints.FilesystemCacheExecutionTest do
     refute preview =~ @setting
   end
 
+  test "missing boundaries leave SQL fallbacks and query parameters unchanged", context do
+    endpoint = %{
+      context.endpoint
+      | filesystem_cache_policy: @policy,
+        query: "SELECT coalesce(@from, 0) AS start_time, coalesce(@to, 7200) AS end_time"
+    }
+
+    for params <- [%{}, %{"from" => "0"}, %{"from" => nil, "to" => "7200"}] do
+      expect(ClickHouseAdaptor, :execute_query, fn _backend, {sql, _, actual_params, _}, opts ->
+        assert sql =~ "coalesce"
+        assert actual_params == params
+        assert opts[:filesystem_cache_settings] == %{}
+        {:ok, QueryResult.new([%{"ok" => 1}])}
+      end)
+
+      assert {:ok, _} = Endpoints.run_query(endpoint, params)
+      assert {:ok, preview} = Endpoints.get_transformed_query(endpoint, params)
+      refute preview =~ @setting
+    end
+  end
+
+  test "transformed previews and execution agree on class and endpoint precedence", context do
+    backend =
+      insert(:backend,
+        user: context.owner,
+        type: :clickhouse,
+        config: %{
+          query_class_settings: %{
+            "default" => %{"priority" => 5, @setting => 0},
+            "api_paid" => %{"priority" => 2, @setting => 1}
+          }
+        }
+      )
+
+    endpoint = %{context.endpoint | backend_id: backend.id, filesystem_cache_policy: @policy}
+
+    for {opts, expected} <- [{[], 0}, {[read_cluster: "api_paid"], 1}] do
+      assert {:ok, preview} = Endpoints.get_transformed_query(endpoint, @params, opts)
+      assert preview =~ "#{@setting} = #{expected}"
+
+      expect(ClickHouseAdaptor, :execute_query, fn actual_backend, {sql, _, _, _}, actual_opts ->
+        assert {:ok, prepared} = ClickHouseAdaptor.prepare_query(actual_backend, sql, actual_opts)
+        assert prepared =~ "#{@setting} = #{expected}"
+        {:ok, QueryResult.new([%{"ok" => 1}])}
+      end)
+
+      assert {:ok, _} = Endpoints.run_query(endpoint, @params, opts)
+    end
+
+    admin = insert(:user, admin: true)
+
+    assert {:ok, endpoint} =
+             Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, %{@setting => 0})
+
+    assert {:ok, preview} =
+             Endpoints.get_transformed_query(endpoint, @params, read_cluster: "api_paid")
+
+    assert preview =~ "#{@setting} = 0"
+  end
+
   test "sandbox consumers receive one setting on the final outer query", context do
     endpoint = %{
       context.endpoint

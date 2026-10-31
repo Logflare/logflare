@@ -80,21 +80,29 @@ defmodule Logflare.Endpoints.FilesystemCachePolicy do
   defp resolve_window(policy, params) do
     with {:ok, start} <- timestamp(params[policy["start_param"]], policy["timestamp_format"]),
          {:ok, finish} <- timestamp(params[policy["end_param"]], policy["timestamp_format"]),
-         true <- finish >= start do
-      window = finish - start
-
-      settings =
-        if window > policy["bypass_fill_above_seconds"] * 1_000_000,
-          do: %{@setting => 1},
-          else: %{}
-
-      {:ok, %{window_seconds: window / 1_000_000, settings: settings}}
+         true <- is_nil(start) or is_nil(finish) or finish >= start do
+      {:ok, window_decision(policy, start, finish)}
     else
       _ ->
         {:error,
          {:invalid_filesystem_cache_window,
           "Filesystem cache policy requires valid start/end timestamps with end at or after start"}}
     end
+  end
+
+  @spec window_decision(map(), integer() | nil, integer() | nil) :: decision()
+  defp window_decision(_policy, start, finish) when is_nil(start) or is_nil(finish),
+    do: %{window_seconds: nil, settings: %{}}
+
+  defp window_decision(policy, start, finish) do
+    window = finish - start
+
+    settings =
+      if window > policy["bypass_fill_above_seconds"] * 1_000_000,
+        do: %{@setting => 1},
+        else: %{}
+
+    %{window_seconds: window / 1_000_000, settings: settings}
   end
 
   @spec form_values(map() | nil) :: map()
@@ -163,7 +171,9 @@ defmodule Logflare.Endpoints.FilesystemCachePolicy do
 
   defp positive_integer(_value), do: :error
 
-  @spec timestamp(term(), String.t()) :: {:ok, integer()} | :error
+  @spec timestamp(term(), String.t()) :: {:ok, integer() | nil} | :error
+  defp timestamp(nil, _format), do: {:ok, nil}
+
   defp timestamp(value, "iso8601") when is_binary(value) do
     case DateTime.from_iso8601(value) do
       {:ok, datetime, _offset} -> {:ok, DateTime.to_unix(datetime, :microsecond)}

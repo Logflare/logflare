@@ -77,8 +77,9 @@ defmodule LogflareWeb.Endpoints.Components do
           class: "form-control"
         )}
         <p class="form-text text-muted">
-          Select parameters that bound the endpoint's time range. Missing, invalid, or reversed
-          timestamps cause a query error. Only windows strictly above the threshold trigger this policy.
+          Select parameters that bound the endpoint's time range. Missing or null boundaries leave
+          the cache hint unspecified. Supplied invalid timestamps or reversed windows cause a query error.
+          Only windows strictly above the threshold trigger this policy.
         </p>
       </div>
       {error_tag(@form, :filesystem_cache_policy)}
