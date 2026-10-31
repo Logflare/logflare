@@ -97,10 +97,18 @@ defmodule Logflare.ContextCache.Supervisor do
     # {:global, Logflare.PgPublisher}
   end
 
+  @spec hide_epgsql_password(map()) :: map()
+  defp hide_epgsql_password(%{password: password} = options) when not is_function(password, 0) do
+    %{options | password: fn -> password end}
+  end
+
+  defp hide_epgsql_password(options), do: options
+
   defp cainophile_child_spec do
     epgsql =
       Repo.config()
       |> ConnectionOptions.prepare_epgsql()
+      |> hide_epgsql_password()
 
     slot = Application.get_env(:logflare, CacheBuster)[:replication_slot]
     publications = Application.get_env(:logflare, CacheBuster)[:publications]
