@@ -5,6 +5,7 @@ defmodule Logflare.Endpoints.FilesystemCachePolicy do
   """
 
   import Ecto.Changeset
+  import Logflare.Utils.Guards, only: [is_pos_integer: 1]
 
   alias Logflare.Sql
 
@@ -55,7 +56,11 @@ defmodule Logflare.Endpoints.FilesystemCachePolicy do
         put_change(changeset, :filesystem_cache_policy, nil)
 
       {:ok, policy} ->
-        validate_mapping(changeset, policy)
+        changeset = put_change(changeset, :filesystem_cache_policy, policy)
+
+        if Enum.any?([:query, :language, :filesystem_cache_policy], &changed?(changeset, &1)),
+          do: validate_mapping(changeset, policy),
+          else: changeset
 
       {:error, message} ->
         add_error(changeset, :filesystem_cache_policy, message)
@@ -116,13 +121,19 @@ defmodule Logflare.Endpoints.FilesystemCachePolicy do
   end
 
   def form_values(policy) when is_map(policy) do
-    policy
-    |> Map.put_new("enabled", true)
-    |> Map.put_new("window_threshold", policy["bypass_fill_above_seconds"])
-    |> Map.put_new("window_unit", "seconds")
+    form_values(nil)
+    |> Map.put("enabled", true)
+    |> Map.merge(threshold_form_values(policy))
+    |> Map.merge(policy)
   end
 
   def form_values(_policy), do: form_values(nil)
+
+  @spec threshold_form_values(map()) :: map()
+  defp threshold_form_values(%{"bypass_fill_above_seconds" => seconds}),
+    do: %{"window_threshold" => seconds, "window_unit" => "seconds"}
+
+  defp threshold_form_values(_policy), do: %{}
 
   @spec validate_mapping(Ecto.Changeset.t(), map()) :: Ecto.Changeset.t()
   defp validate_mapping(changeset, policy) do
@@ -159,14 +170,11 @@ defmodule Logflare.Endpoints.FilesystemCachePolicy do
   defp threshold(policy), do: positive_integer(policy["bypass_fill_above_seconds"])
 
   @spec positive_integer(term()) :: {:ok, pos_integer()} | :error
-  defp positive_integer(value) when is_integer(value) and value > 0 and value <= @max_threshold,
+  defp positive_integer(value) when is_pos_integer(value) and value <= @max_threshold,
     do: {:ok, value}
 
   defp positive_integer(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {integer, ""} -> positive_integer(integer)
-      _ -> :error
-    end
+    with {:ok, integer} <- unix_integer(value), do: positive_integer(integer)
   end
 
   defp positive_integer(_value), do: :error
@@ -181,9 +189,12 @@ defmodule Logflare.Endpoints.FilesystemCachePolicy do
     end
   end
 
-  defp timestamp(value, format) when format in ["unix_seconds", "unix_milliseconds"] do
-    unit = if format == "unix_seconds", do: :second, else: :millisecond
+  defp timestamp(value, "unix_seconds"), do: unix_timestamp(value, :second)
+  defp timestamp(value, "unix_milliseconds"), do: unix_timestamp(value, :millisecond)
+  defp timestamp(_value, _format), do: :error
 
+  @spec unix_timestamp(term(), :second | :millisecond) :: {:ok, integer()} | :error
+  defp unix_timestamp(value, unit) do
     with {:ok, integer} <- unix_integer(value),
          {:ok, datetime} <- DateTime.from_unix(integer, unit) do
       {:ok, DateTime.to_unix(datetime, :microsecond)}
@@ -191,8 +202,6 @@ defmodule Logflare.Endpoints.FilesystemCachePolicy do
       _ -> :error
     end
   end
-
-  defp timestamp(_value, _format), do: :error
 
   @spec unix_integer(term()) :: {:ok, integer()} | :error
   defp unix_integer(value) when is_integer(value), do: {:ok, value}

@@ -26,7 +26,14 @@ defmodule LogflareWeb.Endpoints.Components do
 
   @spec filesystem_cache_policy_form(map()) :: Phoenix.LiveView.Rendered.t()
   def filesystem_cache_policy_form(assigns) do
-    values = FilesystemCachePolicy.form_values(assigns.form[:filesystem_cache_policy].value)
+    policy =
+      Map.get(
+        assigns.form.params,
+        "filesystem_cache_policy",
+        assigns.form[:filesystem_cache_policy].value
+      )
+
+    values = FilesystemCachePolicy.form_values(policy)
 
     assigns =
       assign(assigns,

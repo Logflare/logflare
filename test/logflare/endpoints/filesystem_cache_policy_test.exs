@@ -136,6 +136,62 @@ defmodule Logflare.Endpoints.FilesystemCachePolicyTest do
     end
   end
 
+  test "newly enabled forms receive defaults without changing saved or edited thresholds" do
+    assert %{
+             "timestamp_format" => "iso8601",
+             "window_threshold" => 24,
+             "window_unit" => "hours",
+             "enabled" => "true"
+           } =
+             FilesystemCachePolicy.form_values(%{"enabled" => "true"})
+
+    assert %{"window_threshold" => 86_400, "window_unit" => "seconds"} =
+             FilesystemCachePolicy.form_values(@policy)
+
+    edited = Map.merge(@policy, %{"window_threshold" => "", "window_unit" => "days"})
+
+    assert %{"window_threshold" => "", "window_unit" => "days"} =
+             FilesystemCachePolicy.form_values(edited)
+
+    assert %{"enabled" => "false"} = FilesystemCachePolicy.form_values(%{"enabled" => "false"})
+  end
+
+  test "unchanged normalized mappings do not reparse SQL on unrelated updates" do
+    data = %Logflare.Endpoints.EndpointQuery{
+      language: :ch_sql,
+      query: "SELECT (",
+      filesystem_cache_policy: @policy
+    }
+
+    form =
+      @policy
+      |> Map.delete("bypass_fill_above_seconds")
+      |> Map.merge(%{"enabled" => "true", "window_threshold" => "24", "window_unit" => "hours"})
+
+    changeset =
+      data
+      |> Ecto.Changeset.cast(%{"description" => "edited", "filesystem_cache_policy" => form}, [
+        :description,
+        :filesystem_cache_policy
+      ])
+      |> FilesystemCachePolicy.validate()
+
+    assert changeset.valid?
+    assert Ecto.Changeset.get_change(changeset, :filesystem_cache_policy) == nil
+    assert Ecto.Changeset.get_field(changeset, :filesystem_cache_policy) == @policy
+
+    for attrs <- [
+          %{query: "SELECT (again"},
+          %{filesystem_cache_policy: Map.put(@policy, "start_param", "other")},
+          %{language: :ch_sql}
+        ] do
+      original = if Map.has_key?(attrs, :language), do: %{data | language: :bq_sql}, else: data
+      changed = original |> Ecto.Changeset.change(attrs) |> FilesystemCachePolicy.validate()
+      refute changed.valid?
+      assert changed.errors[:filesystem_cache_policy]
+    end
+  end
+
   test "trusted boolean values support 0/1 but not arbitrary literals" do
     for value <- [0, 1] do
       assert {:ok, sql} = ClickHouseSettings.enforce("SELECT 1", %{@setting => value})

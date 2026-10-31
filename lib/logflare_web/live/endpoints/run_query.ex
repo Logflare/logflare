@@ -17,7 +17,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
       <.inputs_for :let={params_f} field={f[:params]}>
         <div :for={key <- @declared_params}>
           {label(params_f, key, key)}
-          {text_input(params_f, key)}
+          {text_input(params_f, key, phx_debounce: "300")}
         </div>
       </.inputs_for>
 
@@ -147,7 +147,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
       <.inputs_for :let={params_f} field={@form[:params]}>
         <div :for={key <- @declared_params} class="tw-mb-3">
           {label(params_f, key, key, class: "tw-mb-1 tw-block tw-text-sm tw-text-white")}
-          {text_input(params_f, key, class: "form-control tw-w-full")}
+          {text_input(params_f, key, class: "form-control tw-w-full", phx_debounce: "300")}
         </div>
       </.inputs_for>
 
@@ -181,6 +181,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
       {textarea(@form, :sandbox_query,
         placeholder: "SELECT * FROM cte_name WHERE condition...",
         rows: 6,
+        phx_debounce: "300",
         class: "form-control tw-w-full tw-rounded tw-border-zinc-700 tw-bg-zinc-900 tw-p-2 tw-font-mono tw-text-sm tw-text-white"
       )}
 

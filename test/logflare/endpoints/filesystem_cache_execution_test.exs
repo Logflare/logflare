@@ -165,7 +165,14 @@ defmodule Logflare.Endpoints.FilesystemCacheExecutionTest do
         }
       )
 
-    endpoint = %{context.endpoint | backend_id: backend.id, filesystem_cache_policy: @policy}
+    endpoint =
+      insert(:endpoint,
+        user: context.owner,
+        backend: backend,
+        language: :ch_sql,
+        query: @query,
+        filesystem_cache_policy: @policy
+      )
 
     for {opts, expected} <- [{[], 0}, {[read_cluster: "api_paid"], 1}] do
       assert {:ok, preview} = Endpoints.get_transformed_query(endpoint, @params, opts)

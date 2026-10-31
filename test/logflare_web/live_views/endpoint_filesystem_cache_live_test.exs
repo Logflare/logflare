@@ -3,6 +3,7 @@ defmodule LogflareWeb.EndpointFilesystemCacheLiveTest do
 
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Endpoints
+  alias Logflare.Endpoints.FilesystemCachePolicy
   alias Logflare.Repo
 
   @query "SELECT @from AS start_time, @to AS end_time"
@@ -28,6 +29,23 @@ defmodule LogflareWeb.EndpointFilesystemCacheLiveTest do
     {:ok, view, _} = live_with_redirect(context.conn, ~p"/endpoints/#{context.endpoint.id}/edit")
     assert has_element?(view, "#filesystem-cache-policy")
     refute has_element?(view, "#enforced-settings-form")
+    assert has_element?(view, "input[name='run[params][from]'][phx-debounce='300']")
+
+    view
+    |> element("#endpoint")
+    |> render_change(%{endpoint: %{filesystem_cache_policy: %{"enabled" => "true"}}})
+
+    assert has_element?(view, "#endpoint_filesystem_cache_policy_window_threshold[value='24']")
+
+    assert has_element?(
+             view,
+             "#endpoint_filesystem_cache_policy_window_unit option[value='hours'][selected]"
+           )
+
+    assert has_element?(
+             view,
+             "#endpoint_filesystem_cache_policy_timestamp_format option[value='iso8601'][selected]"
+           )
 
     view
     |> element("#endpoint")
@@ -39,6 +57,12 @@ defmodule LogflareWeb.EndpointFilesystemCacheLiveTest do
            )
 
     assert has_element?(view, "#endpoint_filesystem_cache_policy_end_param option[value='to']")
+    assert has_element?(view, "#endpoint_filesystem_cache_policy_window_threshold[value='1']")
+
+    assert has_element?(
+             view,
+             "#endpoint_filesystem_cache_policy_window_unit option[value='hours'][selected]"
+           )
 
     view
     |> element("#endpoint")
@@ -48,6 +72,12 @@ defmodule LogflareWeb.EndpointFilesystemCacheLiveTest do
     assert saved.filesystem_cache_policy["bypass_fill_above_seconds"] == 3600
 
     {:ok, view, _} = live_with_redirect(context.conn, ~p"/endpoints/#{saved.id}/edit")
+    assert has_element?(view, "#endpoint_filesystem_cache_policy_window_threshold[value='3600']")
+
+    assert has_element?(
+             view,
+             "#endpoint_filesystem_cache_policy_window_unit option[value='seconds'][selected]"
+           )
 
     view
     |> element("#endpoint")
@@ -87,6 +117,12 @@ defmodule LogflareWeb.EndpointFilesystemCacheLiveTest do
     |> render_change(%{endpoint: %{filesystem_cache_policy: invalid}})
 
     assert render(view) =~ "positive threshold"
+    assert has_element?(view, "#endpoint_filesystem_cache_policy_window_threshold[value='0']")
+
+    assert has_element?(
+             view,
+             "#endpoint_filesystem_cache_policy_window_unit option[value='hours'][selected]"
+           )
 
     invalid = Map.put(@form_policy, "start_param", "missing")
 
@@ -140,7 +176,7 @@ defmodule LogflareWeb.EndpointFilesystemCacheLiveTest do
   end
 
   test "switching to a non-ClickHouse backend clears the policy and permits saving", context do
-    assert {:ok, policy} = Logflare.Endpoints.FilesystemCachePolicy.normalize(@form_policy)
+    assert {:ok, policy} = FilesystemCachePolicy.normalize(@form_policy)
 
     for type <- [:bigquery, :postgres] do
       backend = insert(:backend, user: context.owner, type: type)
@@ -230,6 +266,7 @@ defmodule LogflareWeb.EndpointFilesystemCacheLiveTest do
 
     {:ok, view, _} = live_with_redirect(context.conn, ~p"/endpoints/#{endpoint.id}")
     assert has_element?(view, "#filesystem-cache-preview", "No derived cache hint")
+    assert has_element?(view, "input[name='run[params][from]'][phx-debounce='300']")
 
     view
     |> element("#endpoint-test-form")
