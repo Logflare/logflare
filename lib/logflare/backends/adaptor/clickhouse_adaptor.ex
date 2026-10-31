@@ -907,29 +907,50 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         ) ::
           {:ok, {[map()], non_neg_integer() | :not_supported}} | {:error, term()}
   defp do_ch_query_on_label(%Backend{} = backend, statement, params, label, headers) do
-    with :ok <- ensure_query_connection_manager_started(backend, label) do
-      pool_via = connection_pool_via(backend, label)
+    pool_via = connection_pool_via(backend, label)
 
-      timeout = if Application.get_env(:logflare, :env) == :test, do: 1_000, else: 60_000
+    timeout = if Application.get_env(:logflare, :env) == :test, do: 1_000, else: 60_000
 
-      backend_id = backend.id
-      log_fun = fn entry -> handle_read_pool_log(entry, backend_id, label) end
+    backend_id = backend.id
+    log_fun = fn entry -> handle_read_pool_log(entry, backend_id, label) end
 
-      ch_opts = [decode: false, timeout: timeout, log: log_fun, headers: headers]
+    ch_opts = [decode: false, timeout: timeout, log: log_fun, headers: headers]
+    query = fn -> Ch.query(pool_via, statement, params, ch_opts) end
 
-      case Ch.query(pool_via, statement, params, ch_opts) do
-        {:ok, %Ch.Result{} = result} ->
-          rows = decode_ch_result(result)
-          bytes = parse_summary_read_bytes(result.headers)
-          {:ok, {rows, bytes}}
+    case query_pool(backend, label, query) do
+      {:ok, %Ch.Result{} = result} ->
+        rows = decode_ch_result(result)
+        bytes = parse_summary_read_bytes(result.headers)
+        {:ok, {rows, bytes}}
 
-        {:error, error} ->
-          {:error, error |> to_query_error() |> log_query_error(backend, label)}
-      end
-    else
-      {:error, reason} ->
+      {:error, error} ->
+        {:error, error |> to_query_error() |> log_query_error(backend, label)}
+
+      {:connection_error, reason} ->
         {:error, :connection_error |> query_error(reason) |> log_query_error(backend, label)}
     end
+  end
+
+  @spec query_pool(
+          Backend.t(),
+          String.t() | nil,
+          (-> {:ok, Ch.Result.t()} | {:error, Exception.t()}),
+          boolean()
+        ) :: {:ok, Ch.Result.t()} | {:error, Exception.t()} | {:connection_error, term()}
+  defp query_pool(%Backend{} = backend, label, query, retry? \\ true) do
+    case ensure_query_connection_manager_started(backend, label) do
+      :ok -> query.()
+      {:error, reason} -> {:connection_error, reason}
+    end
+  catch
+    # DBConnection exits the caller, rather than returning an error, when the
+    # pool stops mid-checkout (e.g. a refresh after a config change). The
+    # shape comes from the private DBConnection.Holder, so recheck on upgrades.
+    :exit, {_reason, {DBConnection.Holder, :checkout, _args}} when retry? ->
+      query_pool(backend, label, query, false)
+
+    :exit, {reason, {DBConnection.Holder, :checkout, _args}} ->
+      {:connection_error, reason}
   end
 
   @spec log_query_error(QueryError.t(), Backend.t(), String.t() | nil) :: QueryError.t()
