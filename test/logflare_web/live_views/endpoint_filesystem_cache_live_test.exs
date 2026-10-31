@@ -219,7 +219,7 @@ defmodule LogflareWeb.EndpointFilesystemCacheLiveTest do
                  filesystem_cache_policy: @form_policy,
                  sandboxable: true,
                  query:
-                   "WITH data AS (SELECT @from AS start_time, @to AS end_time) SELECT * FROM data"
+                   "WITH data AS (SELECT @from AS start_time, @to AS end_time) SELECT start_time, end_time FROM data"
                },
                context.owner
              )
@@ -240,7 +240,7 @@ defmodule LogflareWeb.EndpointFilesystemCacheLiveTest do
     |> render_submit(%{
       run: %{
         params: %{"from" => "bad", "to" => "7200"},
-        sandbox_query: "SELECT * FROM data",
+        sandbox_query: "SELECT start_time FROM data",
         query_mode: "sql"
       }
     })
