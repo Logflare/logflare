@@ -426,14 +426,17 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
 
-      refute has_element?(view, "#expanded-endpoint-query-link")
+      refute has_element?(view, "#endpoint-query-nav")
       refute has_element?(view, "#expanded-endpoint-query")
+      assert has_element?(view, "#endpoint-query-nav-panels #endpoint-query", "75")
     end
 
     test "show endpoint -> edit endpoint", %{conn: conn, endpoint: endpoint} do
       {:ok, view, html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}/edit")
       assert html =~ "/edit"
       assert has_element?(view, "h1,h2,h3,h4,h5", endpoint.name)
+
+      refute has_element?(view, "#endpoint-call-examples")
 
       new_query = "select current_timestamp() as my_time"
 
@@ -786,6 +789,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/new")
 
       refute render(view) =~ "results-123"
+      refute has_element?(view, "#endpoint-test-form legend", "Parameters")
 
       view
       |> element("form[phx-submit='run-query']")
@@ -803,12 +807,13 @@ defmodule LogflareWeb.EndpointsLiveTest do
                        }}
 
       assert has_element?(view, "label", "Description")
-      assert has_element?(view, "h5", "Caching")
+      assert has_element?(view, "h3", "Caching")
       assert has_element?(view, "label", "Cache TTL")
       assert has_element?(view, "label", "Proactive Re-querying")
       assert has_element?(view, "label", "Enable query sandboxing")
-      assert has_element?(view, "label", "Max limit")
+      assert has_element?(view, "label", "Max rows")
       assert has_element?(view, "label", "Enable authentication")
+      refute has_element?(view, "#endpoint-test-plan-tab")
 
       assert view |> render() =~ ~r/1 .+ processed/
 
@@ -856,9 +861,9 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
       refute render(view) =~ "results-123"
-      # sow declared params
+      assert has_element?(view, "#endpoint-test-form legend", "Parameters")
+      assert has_element?(view, "#endpoint-test-form input[name='run[params][test_param]']")
       html = render(view)
-      # assert html =~ "test_param"
       assert html =~ endpoint.token
       assert html =~ inspect(endpoint.max_limit)
       assert html =~ ~r/Caching\:.+#{endpoint.cache_duration_seconds} seconds/
@@ -905,6 +910,119 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       assert html =~ LogflareWeb.QueryErrorHelpers.generic_query_error_message()
       refute html =~ "raw backend detail"
+    end
+  end
+
+  describe "query plans" do
+    test "PostgreSQL test runs show results and a plain-text estimated plan", %{
+      conn: conn,
+      user: user
+    } do
+      backend =
+        insert(:backend, user: user, type: :postgres, config: postgres_backend_config())
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :pg_sql,
+          query: "SELECT 19 - 7 AS difference"
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
+
+      view
+      |> element("form[phx-submit='run-query']")
+      |> render_submit(%{run: %{query: endpoint.query, params: %{}}})
+
+      assert has_element?(view, "#endpoint-test-results", ~s("difference": 12))
+      assert has_element?(view, "#endpoint-test-results-tab[aria-selected='true']")
+      assert has_element?(view, "#endpoint-test-plan-tab", "Query plan")
+
+      html = view |> render() |> Floki.parse_fragment!()
+
+      assert [copy] =
+               Floki.find(
+                 html,
+                 ~s(#endpoint-test-output-copy[title="Copy results to clipboard"][aria-label="Copy results to clipboard"])
+               )
+
+      commands = copy |> Floki.attribute("phx-click") |> hd() |> Jason.decode!()
+
+      assert Enum.any?(commands, fn command ->
+               match?(
+                 [
+                   "dispatch",
+                   %{
+                     "event" => "logflare:copy-to-clipboard",
+                     "to" => "#endpoint-test-output-tabs-panels > .tab-pane.active code"
+                   }
+                 ],
+                 command
+               )
+             end)
+
+      view |> element("#endpoint-test-plan-tab") |> render_click()
+      render_async(view)
+
+      assert has_element?(view, "#endpoint-test-plan pre code", "Result")
+    end
+
+    test "switching to a backend without plans shows results", %{
+      conn: conn,
+      user: user
+    } do
+      backend =
+        insert(:backend, user: user, type: :postgres, config: postgres_backend_config())
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :pg_sql,
+          query: "SELECT 19 - 7 AS difference"
+        )
+
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _, _, _ ->
+        {:ok, TestUtils.gen_bq_response([%{"difference" => "12"}])}
+      end)
+
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}/edit")
+      form = element(view, "#endpoint-test-form")
+      render_submit(form, %{run: %{query: endpoint.query, params: %{}}})
+      view |> element("#endpoint-test-plan-tab") |> render_click()
+      render_async(view)
+
+      assert has_element?(view, "#endpoint-test-plan pre")
+
+      view |> element("#endpoint") |> render_change(%{endpoint: %{backend_id: ""}})
+      render_submit(form, %{run: %{query: endpoint.query, params: %{}}})
+
+      assert has_element?(view, "#endpoint-test-results-only.active", ~s("difference": "12"))
+      refute has_element?(view, "#endpoint-test-results")
+    end
+
+    test "ClickHouse test runs show a query plan", %{conn: conn, user: user} do
+      {_source, backend} = setup_clickhouse_test(user: user)
+      start_supervised!({ClickHouseAdaptor, backend})
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :ch_sql,
+          query: "SELECT @value AS value"
+        )
+
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}/edit")
+
+      view
+      |> element("#endpoint-test-form")
+      |> render_submit(%{run: %{query: endpoint.query, params: %{value: "7"}}})
+
+      view |> element("#endpoint-test-plan-tab") |> render_click()
+      render_async(view)
+      assert has_element?(view, "#endpoint-test-plan pre code", "ReadFromSystemOne")
     end
   end
 
@@ -1012,7 +1130,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       html = render(view)
       assert html =~ "Default PostgreSQL backend"
-      assert html =~ ~s(name="endpoint[language]" type="hidden" value="bq_sql")
+      assert has_element?(view, "input[name='endpoint[language]'][type='hidden'][value='bq_sql']")
     end
   end
 

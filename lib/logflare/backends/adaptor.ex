@@ -10,6 +10,7 @@ defmodule Logflare.Backends.Adaptor do
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Adaptor.QueryResult
+  alias Logflare.Backends.QueryError
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.LogEvent
   alias Logflare.Sources.Source
@@ -18,6 +19,9 @@ defmodule Logflare.Backends.Adaptor do
 
   @type t :: module()
   @type query :: EndpointQuery.t() | Ecto.Query.t() | String.t() | {String.t(), [term()]}
+  @type explain_query_args ::
+          {String.t(), [term()]}
+          | {String.t(), [String.t()], map(), EndpointQuery.t()}
   @type source_backend :: {Source.t(), Backend.t()}
   @type start_link_arg :: source_backend() | Backend.t()
   @type query_identifier :: identifier() | Backend.t() | tuple()
@@ -276,6 +280,13 @@ defmodule Logflare.Backends.Adaptor do
     |> exports?(:execute_query, 3)
   end
 
+  @spec can_explain_query?(Backend.t()) :: boolean()
+  def can_explain_query?(%Backend{} = backend) do
+    backend
+    |> get_adaptor()
+    |> exports?(:explain_query, 3)
+  end
+
   @callback start_link(start_link_arg()) ::
               {:ok, pid()} | :ignore | {:error, term()}
 
@@ -304,6 +315,12 @@ defmodule Logflare.Backends.Adaptor do
   """
   @callback execute_query(query_identifier(), query(), opts :: Keyword.t()) ::
               {:ok, QueryResult.t()} | {:error, :not_implemented} | {:error, term()}
+
+  @doc """
+  Returns a plain-text estimated plan without executing the query.
+  """
+  @callback explain_query(Backend.t(), explain_query_args(), opts :: Keyword.t()) ::
+              {:ok, String.t()} | {:error, QueryError.t()}
 
   @doc """
   This is useful for adaptors that need special parameter handling, such as PostgreSQL which needs
@@ -435,6 +452,7 @@ defmodule Logflare.Backends.Adaptor do
                       format_batch: 1,
                       format_batch: 2,
                       execute_query: 3,
+                      explain_query: 3,
                       map_query_parameters: 4,
                       pre_ingest: 3,
                       transform_config: 1,

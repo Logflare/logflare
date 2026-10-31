@@ -150,6 +150,17 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
+  @spec explain_query(Backend.t(), {String.t(), [term()]}, Keyword.t()) ::
+          {:ok, String.t()} | {:error, QueryError.t()}
+  def explain_query(%Backend{} = backend, {query_string, params}, opts)
+      when is_non_empty_binary(query_string) and is_list(params) and is_list(opts) do
+    with {:ok, %QueryResult{rows: rows}} <-
+           execute_query(backend, {"EXPLAIN (FORMAT TEXT) " <> query_string, params}, opts) do
+      {:ok, Enum.map_join(rows, "\n", fn %{"QUERY PLAN" => line} -> line end)}
+    end
+  end
+
+  @impl Logflare.Backends.Adaptor
   @spec test_connection(Backend.t()) :: :ok | {:error, term()}
   def test_connection(%Backend{} = backend) do
     case execute_query(backend, "SELECT 1 AS result", []) do

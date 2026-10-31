@@ -3,64 +3,73 @@ defmodule LogflareWeb.Endpoints.RunQuery do
   use Phoenix.Component
 
   alias LogflareWeb.QueryComponents
+  alias LogflareWeb.QueryErrorHelpers
+  alias Phoenix.LiveView.JS
 
-  attr :form, :map, required: true
-  attr :endpoint_changeset, :map, required: true
-  attr :declared_params, :list, default: []
+  attr :result, :map, required: true
 
-  def query_form(assigns) do
+  defp query_output(assigns) do
+    assigns =
+      assigns
+      |> assign(:plan, Map.get(assigns.result, :query_plan))
+      |> assign(
+        :results_title,
+        if(assigns.result.kind == :sandboxed_endpoint,
+          do: "Sandbox Query Results",
+          else: "Results"
+        )
+      )
+      |> assign(
+        :formatted_rows,
+        Jason.encode!(assigns.result.rows) |> Jason.Formatter.pretty_print()
+      )
+
     ~H"""
-    <.form :let={f} for={@form} phx-submit="run-query" class="tw-min-h-[80px]">
-      {hidden_input(f, :query)}
+    <section id="endpoint-test-output" phx-hook="LiveTooltips">
+      <.tabs id="endpoint-test-output-tabs" aria-label="Test query output" class="tw-mb-3 tw-border-0 tw-border-b tw-border-solid tw-border-zinc-700" tab_class="tw-border-b-2 tw-border-solid tw-border-transparent tw-text-zinc-400 [&.active]:tw-border-blue-500 [&.active]:tw-text-white">
+        <:tab id={if @plan, do: "endpoint-test-results", else: "endpoint-test-results-only"} label="Results" active on_select={copy_output_tooltip("Copy results to clipboard")}>
+          <h5 class={["tw-text-white", @plan && "tw-sr-only"]}>
+            {@results_title}
+          </h5>
+          <code id={"endpoint-test-rows-#{@result.run_id}"} phx-mounted={@plan && JS.exec("phx-click", to: "#endpoint-test-results-tab")} class="tw-block tw-overflow-x-auto tw-whitespace-pre-wrap tw-rounded tw-bg-zinc-800 tw-p-2 tw-text-xs tw-text-white">{@formatted_rows}</code>
+          <div :if={is_integer(@result.total_bytes_processed)} class="tw-mt-2 tw-text-right">
+            <QueryComponents.query_cost bytes={@result.total_bytes_processed} />
+          </div>
+        </:tab>
 
-      <.inputs_for :let={params_f} field={f[:params]}>
-        <div :for={key <- @declared_params}>
-          {label(params_f, key, key)}
-          {text_input(params_f, key)}
-        </div>
-      </.inputs_for>
+        <:tab :if={@plan} id="endpoint-test-plan" label="Query plan" on_select={copy_output_tooltip("Copy plan to clipboard") |> JS.push("load-query-plan")} busy={@plan.loading == true}>
+          <div :if={@plan.loading} id="endpoint-test-plan-loading" role="status">
+            {live_react_component("Components.Loader", %{}, id: "endpoint-test-plan-loader")}
+            <span class="tw-sr-only">Loading query plan…</span>
+          </div>
+          <pre :if={@plan.ok?} class="tw-mb-2 tw-overflow-x-auto tw-whitespace-pre tw-rounded tw-bg-zinc-800 tw-p-2 tw-text-xs tw-text-white"><code>{@plan.result}</code></pre>
+          <.alert :if={@plan.failed} variant="warning">
+            <strong>Could not generate query plan.</strong>
+            <br />
+            {QueryErrorHelpers.query_error_message(@plan.failed)}
+          </.alert>
+        </:tab>
 
-      <.dynamic_reservation_field :if={Ecto.Changeset.get_field(@endpoint_changeset, :enable_dynamic_reservation)} form={f} class="form-group tw-mt-2" />
-
-      {submit("Test query", class: "btn btn-secondary")}
-    </.form>
+        <:actions>
+          <.clipboard_button id="endpoint-test-output-copy" to="#endpoint-test-output-tabs-panels > .tab-pane.active code" label="" class="btn-sm logflare-tooltip" title="Copy results to clipboard" aria-label="Copy results to clipboard" />
+        </:actions>
+      </.tabs>
+    </section>
     """
   end
 
-  attr :result, :map, default: nil
-
-  def query_result(%{result: %{kind: :endpoint, status: :ok}} = assigns) do
-    ~H"""
-    <div>
-      <div class="tw-flex tw-justify-between">
-        <h5 class="tw-text-white">Results</h5>
-
-        <QueryComponents.query_cost :if={is_integer(@result.total_bytes_processed)} bytes={@result.total_bytes_processed} />
-      </div>
-
-      <code class="tw-whitespace-pre-wrap tw-overflow-x-auto tw-block tw-text-white tw-bg-zinc-800 tw-rounded tw-p-2 tw-text-xs">{Jason.encode!(@result.rows) |> Jason.Formatter.pretty_print()}</code>
-    </div>
-    """
+  @spec copy_output_tooltip(String.t()) :: JS.t()
+  defp copy_output_tooltip(text) do
+    JS.remove_attribute("title", to: "#endpoint-test-output-copy")
+    |> JS.set_attribute({"data-original-title", text}, to: "#endpoint-test-output-copy")
+    |> JS.set_attribute({"aria-label", text}, to: "#endpoint-test-output-copy")
   end
-
-  def query_result(%{result: %{error: error}} = assigns) when not is_nil(error) do
-    ~H"""
-    <div class="tw-mt-2">
-      <.alert variant="danger">
-        <strong>Query error!</strong>
-        <br />
-        <span>{@result.error}</span>
-      </.alert>
-    </div>
-    """
-  end
-
-  def query_result(assigns), do: ~H""
 
   attr :endpoint, :map, required: true
   attr :form, :map, required: true
   attr :declared_params, :list, default: []
   attr :result, :map, default: nil
+  attr :editing, :boolean, default: false
 
   def endpoint_test(assigns) do
     ~H"""
@@ -68,7 +77,9 @@ defmodule LogflareWeb.Endpoints.RunQuery do
       <div>
         <h3 class="tw-mb-2 tw-text-xl tw-font-semibold tw-text-white">Test your endpoint</h3>
         <p class="tw-mb-5 tw-text-sm tw-text-zinc-400">
-          Enter parameter values and optionally add a sandbox query before running the endpoint.
+          {if @editing,
+            do: "Test your current changes before saving.",
+            else: "Enter parameter values and optionally add a sandbox query before running the endpoint."}
         </p>
 
         <section class="tw-rounded tw-border tw-bg-dashboard-grey tw-p-5">
@@ -77,7 +88,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
         </section>
       </div>
 
-      <.endpoint_call_examples endpoint={@endpoint} form={@form} declared_params={@declared_params} />
+      <.endpoint_call_examples :if={not @editing} endpoint={@endpoint} form={@form} declared_params={@declared_params} />
     </aside>
     """
   end
@@ -89,35 +100,30 @@ defmodule LogflareWeb.Endpoints.RunQuery do
   def endpoint_test_form(assigns) do
     ~H"""
     <.form :let={f} for={@form} id="endpoint-test-form" phx-change="validate" phx-submit="run-query" aria-label="Test endpoint">
-      {hidden_input(f, :query)}
+      <.input field={f[:query]} type="hidden" class="" />
 
-      <.parameter_fields form={f} declared_params={@declared_params} dynamic_reservation?={@endpoint.enable_dynamic_reservation} />
+      <.parameter_fields :if={@declared_params != []} form={f} declared_params={@declared_params} />
+      <.dynamic_reservation_field :if={@endpoint.enable_dynamic_reservation} form={f} class="form-group tw-mb-5" />
       <.sandbox_query_fields :if={@endpoint.sandboxable} form={f} />
 
-      {submit("Test endpoint", class: "btn btn-secondary")}
+      <.button type="submit" variant="secondary">Test endpoint</.button>
     </.form>
     """
   end
 
   attr :form, :map, required: true
   attr :declared_params, :list, default: []
-  attr :dynamic_reservation?, :boolean, default: false
 
   defp parameter_fields(assigns) do
     ~H"""
     <fieldset class="tw-mb-5">
       <legend class="tw-mb-3 tw-text-base tw-font-semibold tw-text-white">Parameters</legend>
-      <p :if={@declared_params == []} class="tw-mb-0 tw-text-sm tw-text-zinc-500">
-        This endpoint has no parameters.
-      </p>
       <.inputs_for :let={params_f} field={@form[:params]}>
         <div :for={key <- @declared_params} class="tw-mb-3">
           {label(params_f, key, key, class: "tw-mb-1 tw-block tw-text-sm tw-text-white")}
-          {text_input(params_f, key, class: "form-control tw-w-full")}
+          <.input field={params_f[key]} class="form-control tw-w-full" />
         </div>
       </.inputs_for>
-
-      <.dynamic_reservation_field :if={@dynamic_reservation?} form={@form} class="form-group tw-mb-0 tw-mt-3" />
     </fieldset>
     """
   end
@@ -137,10 +143,10 @@ defmodule LogflareWeb.Endpoints.RunQuery do
 
       <div class="tw-mb-3 tw-flex tw-gap-4">
         <label class="tw-flex tw-items-center tw-gap-1 tw-text-sm tw-text-white">
-          {radio_button(@form, :query_mode, "sql")} SQL
+          <.input field={@form[:query_mode]} type="radio" id={"#{@form[:query_mode].id}_sql"} value="sql" checked={@form[:query_mode].value == "sql"} class="" /> SQL
         </label>
         <label class="tw-flex tw-items-center tw-gap-1 tw-text-sm tw-text-white">
-          {radio_button(@form, :query_mode, "lql")} LQL
+          <.input field={@form[:query_mode]} type="radio" id={"#{@form[:query_mode].id}_lql"} value="lql" checked={@form[:query_mode].value == "lql"} class="" /> LQL
         </label>
       </div>
 
@@ -151,7 +157,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
       )}
 
       <label class="tw-mt-3 tw-flex tw-items-center tw-text-sm tw-text-white">
-        {checkbox(@form, :show_transformed, class: "tw-mr-2")} Show transformed query
+        <.input field={@form[:show_transformed]} type="checkbox" class="tw-mr-2" /> Show transformed query
       </label>
     </fieldset>
     """
@@ -164,11 +170,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
     ~H"""
     <div class={@class}>
       {label(@form, :reservation, "BigQuery Reservation")}
-      {text_input(@form, :reservation,
-        class: "form-control",
-        phx_debounce: "300",
-        placeholder: "projects/{project}/locations/{location}/reservations/{reservation}"
-      )}
+      <.input field={@form[:reservation]} phx-debounce="300" placeholder="projects/{project}/locations/{location}/reservations/{reservation}" />
     </div>
     """
   end
@@ -258,13 +260,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
       </div>
 
       <div :if={@result.status == :ok} class="tw-mt-5">
-        <div class="tw-mb-2 tw-flex tw-justify-between">
-          <h5 class="tw-text-white">
-            {if @result.kind == :sandboxed_endpoint, do: "Sandbox Query Results", else: "Results"}
-          </h5>
-          <QueryComponents.query_cost :if={is_integer(@result.total_bytes_processed)} bytes={@result.total_bytes_processed} />
-        </div>
-        <code class="tw-block tw-overflow-x-auto tw-whitespace-pre-wrap tw-rounded tw-bg-zinc-800 tw-p-2 tw-text-xs tw-text-white">{Jason.encode!(@result.rows) |> Jason.Formatter.pretty_print()}</code>
+        <.query_output result={@result} />
         <details :if={@result.transformed_query} class="tw-mt-4">
           <summary class="tw-cursor-pointer tw-text-sm tw-font-semibold tw-text-white">
             Show Transformed Query
