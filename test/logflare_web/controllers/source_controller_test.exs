@@ -1,10 +1,12 @@
 defmodule LogflareWeb.SourceControllerTest do
   use LogflareWeb.ConnCase
+  use Oban.Testing, repo: Logflare.Repo
 
   alias Logflare.Backends
   alias Logflare.Backends.SourceSup
   alias Logflare.Repo
   alias Logflare.Sources
+  alias Logflare.Sources.CleanupWorker
   alias Logflare.Sources.Counters
   alias Logflare.Sources.Source.SlackHookServer
   alias Logflare.Sources.Source.Supervisor, as: SourceSupervisor
@@ -942,17 +944,35 @@ defmodule LogflareWeb.SourceControllerTest do
       flash = Phoenix.Flash.get(conn.assigns.flash, :error)
       assert is_list(flash)
       assert Enum.any?(flash, &(is_binary(&1) and &1 =~ "less than 24 hours"))
+      refute_enqueued(worker: CleanupWorker)
     end
 
     test "deletes source when events are older than 24h", %{conn: conn, source: source} do
       Counters.create(source.token)
-      expect(SourceSupervisor, :delete_source, fn _ -> {:ok, source.token} end)
+      stub(SourceSupervisor, :delete_source, fn _ -> flunk("cleanup must be deferred") end)
 
       conn = delete(conn, ~p"/sources/#{source}")
 
       assert redirected_to(conn, 302) =~ "/dashboard"
       assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source deleted!"
       refute Sources.get(source.id)
+      assert_enqueued(worker: CleanupWorker, args: %{source_id: source.id})
+    end
+
+    test "force deletion schedules cleanup for a source with attached backends", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      insert(:backend, user: user, sources: [source])
+      stub(SourceSupervisor, :delete_source, fn _ -> flunk("cleanup must be deferred") end)
+
+      conn = delete(conn, ~p"/sources/#{source}/force-delete")
+
+      assert redirected_to(conn, 302) =~ "/dashboard"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source deleted!"
+      refute Sources.get(source.id)
+      assert_enqueued(worker: CleanupWorker, args: %{source_id: source.id})
     end
   end
 

@@ -64,18 +64,21 @@ defmodule Logflare.Google.BigQuery do
 
   @spec delete_table(atom) :: {:error, Tesla.Env.t()} | {:ok, term}
   def delete_table(source_id) do
-    conn = GenUtils.get_conn()
-    table_name = GenUtils.format_table_name(source_id)
-
     %{user_id: user_id, bigquery_project_id: project_id, bigquery_dataset_id: dataset_id} =
       GenUtils.get_bq_user_info(source_id)
 
-    conn
-    |> Api.Tables.bigquery_tables_delete(
+    delete_table(
       project_id,
       dataset_id || Integer.to_string(user_id) <> GCPConfig.dataset_id_append(),
-      table_name
+      GenUtils.format_table_name(source_id)
     )
+  end
+
+  @spec delete_table(String.t(), String.t(), String.t()) :: ok_err_tup()
+  def delete_table(project_id, dataset_id, table_id)
+      when is_binary(project_id) and is_binary(dataset_id) and is_binary(table_id) do
+    GenUtils.get_conn()
+    |> Api.Tables.bigquery_tables_delete(project_id, dataset_id, table_id)
     |> GenUtils.maybe_parse_google_api_result()
   end
 
