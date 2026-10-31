@@ -324,6 +324,10 @@ defmodule Logflare.TelemetryTest do
 
         assert metric.keep.(%{tag: {123, "api_free"}})
         assert metric.keep.(%{tag: {123, nil}})
+        assert metric.keep.(%{tag: {0, "api_free"}})
+        assert metric.keep.(%{tag: {0, nil}})
+        refute metric.keep.(%{tag: {-1, nil}})
+        refute metric.keep.(%{tag: {"0", nil}})
         refute metric.keep.(%{tag: Logflare.Repo})
         refute metric.keep.(%{})
 

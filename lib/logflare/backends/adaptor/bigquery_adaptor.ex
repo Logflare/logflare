@@ -2,6 +2,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @moduledoc false
 
   @behaviour Logflare.Backends.Adaptor
+  @behaviour Logflare.Backends.SystemBackend
 
   use Supervisor
 
@@ -28,15 +29,19 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.BqRepo
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Google
+  alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.EventUtils
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.CloudResourceManager
+  alias Logflare.SingleTenant
   alias Logflare.Sources
+  alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.Pipeline
   alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.User
   alias Logflare.Users
+  alias Logflare.Utils.Tasks
   alias Model.QueryParameter, as: Param
   alias Model.QueryParameterType, as: Type
   alias Model.QueryParameterValue, as: Value
@@ -46,6 +51,47 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @timeout_error_regex ~r/timed out/i
   @search_query_timeout_ms 60_000
   @endpoint_query_timeout_ms 60_000
+
+  @impl Logflare.Backends.SystemBackend
+  @spec on_system_start() :: :ok
+  def on_system_start do
+    create_managed_service_accounts()
+    update_iam_policy()
+    :ok
+  end
+
+  @impl Logflare.Backends.SystemBackend
+  @spec on_source_start(Source.t()) :: :ok
+  def on_source_start(%Source{token: source_token}) do
+    %{
+      user_id: user_id,
+      bigquery_table_ttl: bigquery_table_ttl,
+      bigquery_project_id: bigquery_project_id,
+      bigquery_dataset_location: bigquery_dataset_location,
+      bigquery_dataset_id: bigquery_dataset_id
+    } = GenUtils.get_bq_user_info(source_token)
+
+    Tasks.start_child(fn ->
+      BigQuery.init_table!(
+        user_id,
+        source_token,
+        bigquery_project_id,
+        bigquery_table_ttl,
+        bigquery_dataset_location,
+        bigquery_dataset_id
+      )
+    end)
+
+    :ok
+  end
+
+  @impl Logflare.Backends.SystemBackend
+  @spec on_supabase_start() :: :ok
+  def on_supabase_start do
+    :timer.sleep(3_000)
+    SingleTenant.update_supabase_source_schemas()
+    :ok
+  end
 
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend} = source_backend) do
