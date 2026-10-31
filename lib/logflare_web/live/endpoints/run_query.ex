@@ -116,7 +116,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
         <% {:ok, decision} -> %>
           Requested window: {format_window(decision.window_seconds)} seconds · {if decision.settings == %{}, do: "Normal filesystem-cache behavior", else: "Existing cache entries only (no cache population)"}
           <span>Fixed backend/endpoint settings take precedence.</span>
-        <% {:error, message} -> %>
+        <% {:error, {_kind, message}} -> %>
           {message}
       <% end %>
     </p>

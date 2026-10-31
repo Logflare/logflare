@@ -139,6 +139,80 @@ defmodule LogflareWeb.EndpointFilesystemCacheLiveTest do
     assert Repo.reload!(context.endpoint).filesystem_cache_policy == nil
   end
 
+  test "switching to a non-ClickHouse backend clears the policy and permits saving", context do
+    assert {:ok, policy} = Logflare.Endpoints.FilesystemCachePolicy.normalize(@form_policy)
+
+    for type <- [:bigquery, :postgres] do
+      backend = insert(:backend, user: context.owner, type: type)
+
+      endpoint =
+        insert(:endpoint,
+          user: context.owner,
+          backend: context.endpoint.backend,
+          language: :ch_sql,
+          query: @query,
+          filesystem_cache_policy: policy
+        )
+
+      {:ok, view, _} = live_with_redirect(context.conn, ~p"/endpoints/#{endpoint.id}/edit")
+
+      view
+      |> element("#endpoint")
+      |> render_change(%{endpoint: %{backend_id: backend.id}})
+
+      refute has_element?(view, "#filesystem-cache-policy")
+
+      view
+      |> element("#endpoint")
+      |> render_submit(%{endpoint: %{backend_id: backend.id}})
+
+      saved = Repo.reload!(endpoint)
+      assert saved.backend_id == backend.id
+      assert saved.filesystem_cache_policy == nil
+      assert saved.language == if(type == :postgres, do: :pg_sql, else: :bq_sql)
+      assert render(view) =~ "Successfully updated endpoint"
+    end
+  end
+
+  test "policy errors remain actionable in the editor and sandbox test panel", context do
+    assert {:ok, endpoint} =
+             Endpoints.update_query(
+               context.owner,
+               context.endpoint,
+               %{
+                 filesystem_cache_policy: @form_policy,
+                 sandboxable: true,
+                 query:
+                   "WITH data AS (SELECT @from AS start_time, @to AS end_time) SELECT * FROM data"
+               },
+               context.owner
+             )
+
+    reject(ClickHouseAdaptor, :execute_query, 3)
+    {:ok, view, _} = live_with_redirect(context.conn, ~p"/endpoints/#{endpoint.id}/edit")
+
+    view
+    |> element("form[phx-submit='run-query']")
+    |> render_submit(%{run: %{params: %{"from" => "bad", "to" => "7200"}}})
+
+    assert render(view) =~ "valid start/end timestamps"
+
+    {:ok, view, _} = live_with_redirect(context.conn, ~p"/endpoints/#{endpoint.id}")
+
+    view
+    |> element("#endpoint-test-form")
+    |> render_submit(%{
+      run: %{
+        params: %{"from" => "bad", "to" => "7200"},
+        sandbox_query: "SELECT * FROM data",
+        query_mode: "sql"
+      }
+    })
+
+    assert render(view) =~ "valid start/end timestamps"
+    refute render(view) =~ "Please verify your query syntax."
+  end
+
   test "non-ClickHouse endpoints do not show the policy controls", context do
     endpoint = insert(:endpoint, user: context.owner)
     {:ok, view, _} = live_with_redirect(context.conn, ~p"/endpoints/#{endpoint.id}/edit")

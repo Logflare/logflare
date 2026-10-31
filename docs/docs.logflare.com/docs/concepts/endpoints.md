@@ -105,15 +105,16 @@ Fixed backend/endpoint settings take precedence over this derived hint.
 
 The endpoint author must ensure the selected parameters actually bound the SQL's
 time range, including any sandboxed query. This is a performance hint, not a
-security limit. Missing or invalid timestamps and reversed ranges return a query
-error. Unix timestamps must be integers; ISO 8601 timestamps must include a
+security limit. Missing or invalid timestamps and reversed ranges return an
+HTTP 400 query error describing the invalid window. Unix timestamps must be integers; ISO 8601 timestamps must include a
 timezone. The editor's test panel shows the resolved window and derived behavior;
 fixed query policy can override the hint.
 
 The configuration is versioned with the endpoint SQL. Historical versions retain
 their own policy, and versions created before this feature have it disabled.
 Editing the policy invalidates the current endpoint's result caches. Historical
-versions continue using their own policy during cache refresh.
+versions continue using their own policy during cache refresh. Changing an endpoint
+to a non-ClickHouse backend clears its filesystem-cache policy.
 
 The management API also accepts a nullable `filesystem_cache_policy` object:
 

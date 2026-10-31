@@ -15,6 +15,8 @@ defmodule Logflare.Endpoints.FilesystemCachePolicy do
   @max_threshold 9_223_372_036_854
 
   @type decision :: %{window_seconds: number() | nil, settings: map()}
+  @type error ::
+          {:invalid_filesystem_cache_policy | :invalid_filesystem_cache_window, String.t()}
 
   @spec normalize(term()) :: {:ok, map() | nil} | {:error, String.t()}
   def normalize(nil), do: {:ok, nil}
@@ -44,7 +46,11 @@ defmodule Logflare.Endpoints.FilesystemCachePolicy do
 
   @spec validate(Ecto.Changeset.t()) :: Ecto.Changeset.t()
   def validate(changeset) do
-    case normalize(get_field(changeset, :filesystem_cache_policy)) do
+    policy =
+      if get_field(changeset, :language) == :ch_sql,
+        do: get_field(changeset, :filesystem_cache_policy)
+
+    case normalize(policy) do
       {:ok, nil} ->
         put_change(changeset, :filesystem_cache_policy, nil)
 
@@ -56,12 +62,23 @@ defmodule Logflare.Endpoints.FilesystemCachePolicy do
     end
   end
 
-  @spec resolve(map() | nil, map()) :: {:ok, decision()} | {:error, String.t()}
-  def resolve(nil, _params), do: {:ok, %{window_seconds: nil, settings: %{}}}
-
+  @spec resolve(map() | nil, map()) :: {:ok, decision()} | {:error, error()}
   def resolve(policy, params) do
-    with {:ok, policy} when is_map(policy) <- normalize(policy),
-         {:ok, start} <- timestamp(params[policy["start_param"]], policy["timestamp_format"]),
+    case normalize(policy) do
+      {:ok, nil} ->
+        {:ok, %{window_seconds: nil, settings: %{}}}
+
+      {:ok, policy} ->
+        resolve_window(policy, params)
+
+      {:error, message} ->
+        {:error, {:invalid_filesystem_cache_policy, "Filesystem cache policy " <> message}}
+    end
+  end
+
+  @spec resolve_window(map(), map()) :: {:ok, decision()} | {:error, error()}
+  defp resolve_window(policy, params) do
+    with {:ok, start} <- timestamp(params[policy["start_param"]], policy["timestamp_format"]),
          {:ok, finish} <- timestamp(params[policy["end_param"]], policy["timestamp_format"]),
          true <- finish >= start do
       window = finish - start
@@ -75,7 +92,8 @@ defmodule Logflare.Endpoints.FilesystemCachePolicy do
     else
       _ ->
         {:error,
-         "Filesystem cache policy requires valid start/end timestamps with end at or after start"}
+         {:invalid_filesystem_cache_window,
+          "Filesystem cache policy requires valid start/end timestamps with end at or after start"}}
     end
   end
 

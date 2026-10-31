@@ -66,8 +66,7 @@ defmodule Logflare.Endpoints.FilesystemCacheExecutionTest do
        context do
     for attrs <- [
           %{filesystem_cache_policy: Map.put(@policy, "start_param", "missing")},
-          %{filesystem_cache_policy: Map.put(@policy, "bypass_fill_above_seconds", 0)},
-          %{filesystem_cache_policy: @policy, language: :bq_sql}
+          %{filesystem_cache_policy: Map.put(@policy, "bypass_fill_above_seconds", 0)}
         ] do
       changeset = Endpoints.change_query(context.endpoint, attrs)
       refute changeset.valid?
@@ -160,7 +159,10 @@ defmodule Logflare.Endpoints.FilesystemCacheExecutionTest do
   test "malformed request windows fail before backend execution", context do
     reject(ClickHouseAdaptor, :execute_query, 3)
     endpoint = %{context.endpoint | filesystem_cache_policy: @policy}
-    assert {:error, message} = Endpoints.run_query(endpoint, %{"from" => "wrong", "to" => "7200"})
+
+    assert {:error, {:invalid_filesystem_cache_window, message}} =
+             Endpoints.run_query(endpoint, %{"from" => "wrong", "to" => "7200"})
+
     assert message =~ "Filesystem cache policy"
   end
 

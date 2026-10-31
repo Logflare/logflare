@@ -64,7 +64,9 @@ defmodule Logflare.Endpoints.FilesystemCachePolicyTest do
           %{"from" => "2026-10-03T00:00:00Z", "to" => "2026-10-01T00:00:00Z"},
           %{"from" => %{}, "to" => []}
         ] do
-      assert {:error, message} = FilesystemCachePolicy.resolve(@policy, params)
+      assert {:error, {:invalid_filesystem_cache_window, message}} =
+               FilesystemCachePolicy.resolve(@policy, params)
+
       assert message =~ "valid start/end timestamps"
     end
 
@@ -94,6 +96,28 @@ defmodule Logflare.Endpoints.FilesystemCachePolicyTest do
           %{"arbitrary_setting" => 1}
         ] do
       assert {:error, _} = FilesystemCachePolicy.normalize(Map.merge(@policy, changes))
+    end
+  end
+
+  test "invalid policies retain their configuration error" do
+    policy = Map.put(@policy, "bypass_fill_above_seconds", 0)
+    assert {:error, expected} = FilesystemCachePolicy.normalize(policy)
+
+    assert {:error, {:invalid_filesystem_cache_policy, message}} =
+             FilesystemCachePolicy.resolve(policy, %{})
+
+    assert message == "Filesystem cache policy " <> expected
+  end
+
+  test "leaving ClickHouse clears a saved policy" do
+    for language <- [:bq_sql, :pg_sql] do
+      changeset =
+        %Logflare.Endpoints.EndpointQuery{language: :ch_sql, filesystem_cache_policy: @policy}
+        |> Ecto.Changeset.change(language: language)
+        |> FilesystemCachePolicy.validate()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :filesystem_cache_policy) == nil
     end
   end
 

@@ -429,6 +429,10 @@ defmodule LogflareWeb.EndpointsLive do
   defp endpoint_query_error_message(%QueryError{} = error),
     do: QueryErrorHelpers.query_error_message(error)
 
+  defp endpoint_query_error_message({kind, message})
+       when kind in [:invalid_filesystem_cache_window, :invalid_filesystem_cache_policy],
+       do: message
+
   defp endpoint_query_error_message(message) when is_binary(message), do: message
   defp endpoint_query_error_message(_error), do: QueryErrorHelpers.generic_query_error_message()
 
@@ -474,10 +478,17 @@ defmodule LogflareWeb.EndpointsLive do
         |> assign(:test_result, %{
           kind: :sandboxed_endpoint,
           status: :error,
-          error: "Please verify your query syntax."
+          error: sandbox_query_error_message(error)
         })
     end
   end
+
+  @spec sandbox_query_error_message(term()) :: String.t()
+  defp sandbox_query_error_message({kind, message})
+       when kind in [:invalid_filesystem_cache_window, :invalid_filesystem_cache_policy],
+       do: message
+
+  defp sandbox_query_error_message(_error), do: "Please verify your query syntax."
 
   defp sandbox_query?(
          %{assigns: %{show_endpoint: %{sandboxable: true}}},

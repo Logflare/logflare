@@ -42,7 +42,12 @@ defmodule Logflare.Endpoints do
   @typep origin :: User.t() | TeamUser.t() | OauthAccessToken.t()
   @typep run_query_return ::
            {:ok, %{required(:rows) => [term()], optional(atom()) => any()}}
-           | {:error, String.t() | QueryError.t() | :sandboxing_disabled | Cache.policy_error()}
+           | {:error,
+              String.t()
+              | QueryError.t()
+              | FilesystemCachePolicy.error()
+              | :sandboxing_disabled
+              | Cache.policy_error()}
 
   defguardp is_integer_or_string(value) when is_integer(value) or is_non_empty_binary(value)
 
@@ -957,7 +962,8 @@ defmodule Logflare.Endpoints do
   Useful for debugging and UI display of merged sandbox queries.
   """
   @spec get_transformed_query(EndpointQuery.t(), map(), Keyword.t()) ::
-          {:ok, String.t()} | {:error, String.t() | Cache.policy_error()}
+          {:ok, String.t()}
+          | {:error, String.t() | FilesystemCachePolicy.error() | Cache.policy_error()}
   def get_transformed_query(%EndpointQuery{} = endpoint_query, params \\ %{}, opts \\ [])
       when is_map(params) and is_list(opts) do
     %EndpointQuery{
@@ -1036,7 +1042,7 @@ defmodule Logflare.Endpoints do
   defp preview_query_policy(_endpoint_query, query, _params), do: {:ok, query}
 
   @spec endpoint_clickhouse_settings(EndpointQuery.t(), map()) ::
-          {:ok, map()} | {:error, String.t()}
+          {:ok, map()} | {:error, FilesystemCachePolicy.error()}
   defp endpoint_clickhouse_settings(%EndpointQuery{language: :ch_sql} = endpoint, params) do
     with {:ok, decision} <-
            FilesystemCachePolicy.resolve(endpoint.filesystem_cache_policy, params) do
