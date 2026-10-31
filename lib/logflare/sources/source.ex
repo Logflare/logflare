@@ -7,6 +7,7 @@ defmodule Logflare.Sources.Source do
 
   alias Logflare.Billing
   alias Logflare.Google.BigQuery.GCPConfig
+  alias Logflare.KeyValues
   alias Logflare.Users
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
 
@@ -441,7 +442,7 @@ defmodule Logflare.Sources.Source do
               %{
                 from_path: String.split(lookup_key, "."),
                 to_path: String.split(dest_key, "."),
-                accessor_path: String.trim(accessor_path)
+                accessor_path: accessor_path |> String.trim() |> KeyValues.prepare_accessor()
               }
             ]
 
