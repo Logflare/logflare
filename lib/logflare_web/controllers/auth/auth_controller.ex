@@ -83,6 +83,7 @@ defmodule LogflareWeb.AuthController do
         conn
         |> put_flash(:info, "Welcome to Logflare!")
         |> put_session(:current_email, team_user.email)
+        |> put_session(:last_switched_team_id, team.id)
         |> put_session(:invite_token, nil)
         |> redirect(to: ~p"/dashboard")
 
@@ -154,6 +155,7 @@ defmodule LogflareWeb.AuthController do
         conn
         |> put_flash(:info, "Welcome back!")
         |> put_session(:current_email, team_user.email)
+        |> put_session(:last_switched_team_id, team_user.team_id)
         |> redirect(to: ~p"/dashboard")
 
       {:error, _} ->
