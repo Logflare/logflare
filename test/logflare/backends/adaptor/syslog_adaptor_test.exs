@@ -1,3 +1,30 @@
+defmodule Logflare.Backends.Adaptor.SyslogAdaptorPipelineTelemetryTest do
+  use ExUnit.Case, async: true
+
+  import Mimic
+
+  alias Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline
+  alias Logflare.Backends.Backend
+  alias Logflare.Sources.Source
+  alias Logflare.TestUtils
+
+  setup :verify_on_exit!
+
+  test "configures Syslog telemetry tags" do
+    source = %Source{id: 101}
+    backend = %Backend{id: 301, type: :syslog}
+
+    TestUtils.assert_broadway_telemetry_tags(%{backend_type: :syslog}, fn ->
+      Pipeline.start_link(
+        name: :syslog_telemetry_tags_test,
+        source: source,
+        backend: backend,
+        pool: :test_pool
+      )
+    end)
+  end
+end
+
 defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
   use Logflare.DataCase, async: false
 
