@@ -71,6 +71,9 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
       {:error, :no_token} when resource_type != nil and not opts.require_token ->
         conn
 
+      {:error, :database_unavailable} = err ->
+        FallbackController.call(conn, err)
+
       _ ->
         FallbackController.call(conn, {:error, :unauthorized})
     end
@@ -91,9 +94,10 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
 
     with {:ok, access_token_or_api_key} <- extracted_token,
          {:ok, token, %User{id: user_id}} <-
-           Auth.Cache.verify_access_token(access_token_or_api_key, scopes) do
+           Auth.Cache.verify_access_token(access_token_or_api_key, scopes),
+         %User{} = user <- Users.Cache.get(user_id) do
       RecordUsages.record(OauthAccessToken, token.id)
-      {:ok, token, Users.Cache.get(user_id)}
+      {:ok, token, user}
     else
       # don't preload for partners
       {:ok, _token, %Partner{} = partner} ->
@@ -104,6 +108,9 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
 
       {:error, _} = err ->
         handle_legacy_api_key(extracted_token, err, is_private_route?)
+
+      nil ->
+        {:error, :unauthorized}
     end
   end
 
@@ -112,6 +119,9 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
       %User{} = user when is_private_route? == false ->
         RecordUsages.record(User, user.id)
         {:ok, nil, user}
+
+      {:error, :database_unavailable} = db_err ->
+        db_err
 
       _ when is_private_route? == false ->
         {:error, :no_token}

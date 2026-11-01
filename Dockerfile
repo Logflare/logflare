@@ -65,7 +65,7 @@ RUN find native Cargo.toml Cargo.lock -exec touch -h -d @1 {} + && \
 FROM ${RUNNER_IMAGE}
 
 # Install runtime dependencies and the commercial-region RDS CA bundle.
-RUN apt-get update -y && apt-get install -y --no-install-recommends ca-certificates curl libstdc++6 openssl \
+RUN apt-get update -y && apt-get install -y --no-install-recommends ca-certificates curl libstdc++6 openssl tini \
     && curl --fail --show-error --location --retry 3 \
       --output /tmp/aws-rds-global-bundle.pem \
       https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
@@ -80,6 +80,10 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends ca-certifica
 # C.UTF-8 ships with glibc, so no locales package or locale-gen is needed.
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
+
+# tini as PID 1 forwards SIGTERM to the release and reaps orphaned child processes,
+# which the BEAM does not do when it runs as PID 1 itself.
+ENTRYPOINT ["/usr/bin/tini", "--"]
 
 # Git commit SHA of the build, surfaced as an OTel resource attribute at runtime
 # (see Logflare.Telemetry). Passed in by CI; empty in local/ad-hoc builds.

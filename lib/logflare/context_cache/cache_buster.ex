@@ -72,11 +72,35 @@ defmodule Logflare.ContextCache.CacheBuster do
       records ->
         :telemetry.execute([:logflare, :cache_buster, :to_bust], %{count: length(records)})
 
-        CacheBusterWorker.cast_to_bust(records)
+        CacheBusterWorker.cast_to_bust(records, backend_owner_ids(changes))
     end)
 
     {:noreply, state}
   end
+
+  defp backend_owner_ids(changes) do
+    for change <- changes,
+        user_id = backend_owner_id(change),
+        is_integer(user_id),
+        uniq: true,
+        do: user_id
+  end
+
+  defp backend_owner_id(%UpdatedRecord{
+         relation: {_schema, "backends"},
+         record: %{"user_id" => user_id, "default_ingest" => "t"}
+       })
+       when is_binary(user_id),
+       do: String.to_integer(user_id)
+
+  defp backend_owner_id(%NewRecord{
+         relation: {_schema, "backends"},
+         record: %{"user_id" => user_id, "default_ingest" => "t"}
+       })
+       when is_binary(user_id),
+       do: String.to_integer(user_id)
+
+  defp backend_owner_id(_change), do: nil
 
   defp handle_record(%UpdatedRecord{
          relation: {_schema, "sources"},

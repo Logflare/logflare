@@ -174,6 +174,36 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
   end
 
   describe "update/2" do
+    for method <- [:put, :patch] do
+      @tag method: method
+      test "#{method} reports saved changes when cache invalidation fails", context do
+        endpoint = hd(context.endpoints)
+
+        expect(Endpoints, :update_query, fn actor, query, params, origin ->
+          {:ok, updated} =
+            Mimic.call_original(Endpoints, :update_query, [actor, query, params, origin])
+
+          {:error, {:saved, updated, :cache_invalidation_failed}}
+        end)
+
+        conn = add_access_token(context.conn, context.user, ~w(private))
+        path = ~p"/api/endpoints/#{endpoint.token}"
+        params = %{name: "saved despite invalidation failure"}
+
+        response =
+          case context.method do
+            :put -> put(conn, path, params)
+            :patch -> patch(conn, path, params)
+          end
+          |> json_response(503)
+
+        assert response["saved"] == true
+        assert response["endpoint"]["name"] == params.name
+        assert response["error"] =~ "Changes saved"
+        assert Endpoints.get_endpoint_query(endpoint.id).name == params.name
+      end
+    end
+
     test "updates an existing endpoint query from a user", %{
       conn: conn,
       user: user,

@@ -4,8 +4,9 @@
 ## Number of dirty schedulers doing IO work (file, sockets, etc)
 ##+SDio 5
 
-## Increase number of concurrent ports/sockets
-##+Q 65536
+## Cap the port table. Without it the VM sizes the table from the nofile limit, which is
+## often infinity on Kubernetes (containerd), costing ~2GB RSS at boot.
++Q 1048576
 
 ## Poll sockets with 4 threads over 4 pollsets instead of 1, so one thread does not handle all connections.
 ## https://www.erlang.org/doc/apps/erts/erl_cmd.html#%2BIOt

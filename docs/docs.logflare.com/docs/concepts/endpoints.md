@@ -106,6 +106,8 @@ Caching is performed on a query parameter basis. As such, if there are three API
 
 When querying a specific endpoint version with `LF-ENDPOINT-VERSION`, the version number also partitions the cache. A request for the current endpoint and a request for version `1` use separate caches even when the query parameters match.
 
+ClickHouse scheduling classes do not partition successful result caches. Operators can apply [query-class policy](../self-hosting/clickhouse-query-policy.md) on cache misses and refreshes without changing query results. Current operator-enforced endpoint limits also apply to historical versions.
+
 ### Proactive Requerying
 
 Logflare endpoints can be proactively requeried to ensure that the cache does not become stale throughout the cache lifetime.

@@ -409,7 +409,7 @@
     <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
       <div class="form-group">
         <%= label f, :default_ingest_backend_enabled? do %>
-          Toggle Default Ingest Mode
+          Send this source's events to the account's default ingest backend
         <% end %>
         <%= checkbox f, :default_ingest_backend_enabled?, checked: @source.default_ingest_backend_enabled?, value: @source.default_ingest_backend_enabled?  %>
         <%= error_tag f, :default_ingest_backend_enabled? %>

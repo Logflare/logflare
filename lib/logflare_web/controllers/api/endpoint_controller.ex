@@ -76,7 +76,18 @@ defmodule LogflareWeb.Api.EndpointController do
       200 => Accepted.response(EndpointApiSchema),
       204 => Accepted.response(),
       404 => NotFound.response(),
-      422 => UnprocessableEntity.response()
+      422 => UnprocessableEntity.response(),
+      503 =>
+        {"Changes saved, but cache invalidation failed", "application/json",
+         %OpenApiSpex.Schema{
+           type: :object,
+           required: [:saved, :endpoint, :error],
+           properties: %{
+             saved: %OpenApiSpex.Schema{type: :boolean},
+             endpoint: EndpointApiSchema,
+             error: %OpenApiSpex.Schema{type: :string}
+           }
+         }}
     }
   )
 
@@ -99,8 +110,20 @@ defmodule LogflareWeb.Api.EndpointController do
           |> text("")
       end
     else
-      nil -> {:error, :not_found}
-      err -> err
+      {:error, {:saved, query, :cache_invalidation_failed}} ->
+        conn
+        |> put_status(:service_unavailable)
+        |> json(%{
+          saved: true,
+          endpoint: query,
+          error: "Changes saved, but cached results could not be invalidated."
+        })
+
+      nil ->
+        {:error, :not_found}
+
+      err ->
+        err
     end
   end
 

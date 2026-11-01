@@ -41,6 +41,12 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   handed off (including any in-flight prefetch) so it's redelivered rather
   than silently lost.
 
+  ## Stopping fetches
+
+  `stop_receiving/1` is used for graceful shutdowns. It stops new
+  queue receives and nacks a landed prefetch; the file already loaded keeps
+  emitting so it can finish and be acked before the node stops.
+
   ## Queue acking
 
   This producer never acks a queue message directly. It registers each
@@ -85,6 +91,14 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     GenStage.start_link(__MODULE__, opts)
   end
 
+  @doc "Stops receiving queue messages, letting the already-loaded file finish emitting."
+  @spec stop_receiving(GenServer.server()) :: :ok
+  def stop_receiving(producer), do: GenStage.call(producer, :stop_receiving)
+
+  @doc "True once receiving has stopped and nothing loaded or prefetched is left, a running prefetch included."
+  @spec drained?(GenServer.server()) :: boolean()
+  def drained?(producer), do: GenStage.call(producer, :drained?)
+
   @impl GenStage
   def init(opts) do
     queue_url = Keyword.fetch!(opts, :queue_url)
@@ -110,7 +124,10 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       max_in_flight: Keyword.get(opts, :max_in_flight, :infinity),
       # Set by prepare_for_draining/1 — stops new fetches while letting
       # anything already in flight drain out and ack normally.
-      draining: false
+      draining: false,
+      # Set to false by stop_receiving/1 on graceful shutdown — no new queue receives, but the current
+      # file keeps emitting.
+      receiving: true
     }
 
     Process.put(@in_flight_key, in_flight_ref)
@@ -138,6 +155,22 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   defp prefetch_handle({:ready, {:ok, handle, _segments}}), do: handle
   defp prefetch_handle({:ready, {:error, handle, _reason}}), do: handle
   defp prefetch_handle(_), do: nil
+
+  @impl GenStage
+  def handle_call(:stop_receiving, _from, state) do
+    if handle = prefetch_handle(state.prefetch) do
+      nack_and_notify(state.queue_mod, state.queue_url, handle, :stop_receiving)
+    end
+
+    prefetch = if match?({:ready, _}, state.prefetch), do: nil, else: state.prefetch
+
+    {:reply, :ok, [], %{state | receiving: false, prefetch: prefetch}}
+  end
+
+  def handle_call(:drained?, _from, state) do
+    drained? = not state.receiving and state.prefetch == nil and not buffered?(state)
+    {:reply, drained?, [], state}
+  end
 
   @impl GenStage
   def handle_demand(_demand, %{draining: true} = state), do: {:noreply, [], state}
@@ -199,18 +232,13 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   @impl GenStage
   def handle_info({:prefetch_result, result}, %{draining: true} = state) do
-    case result do
-      {:ok, handle, _segments} ->
-        nack_and_notify(state.queue_mod, state.queue_url, handle, :draining)
-
-      {:error, handle, _reason} when not is_nil(handle) ->
-        nack_and_notify(state.queue_mod, state.queue_url, handle, :draining)
-
-      _ ->
-        :ok
-    end
-
+    nack_predraining_result(result, state, :draining)
     {:noreply, [], state}
+  end
+
+  def handle_info({:prefetch_result, result}, %{receiving: false} = state) do
+    nack_predraining_result(result, state, :stop_receiving)
+    {:noreply, [], %{state | prefetch: nil}}
   end
 
   def handle_info({:prefetch_result, result}, state) do
@@ -287,9 +315,17 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   defp maybe_load_next(state), do: state
 
+  defp nack_predraining_result({:ok, handle, _segments}, state, reason),
+    do: nack_and_notify(state.queue_mod, state.queue_url, handle, reason)
+
+  defp nack_predraining_result({:error, handle, _reason}, state, reason) when not is_nil(handle),
+    do: nack_and_notify(state.queue_mod, state.queue_url, handle, reason)
+
+  defp nack_predraining_result(_result, _state, _reason), do: :ok
+
   # The only place safe_fetch_next runs — always in a background Task,
   # never inline in this process.
-  defp maybe_start_prefetch(%{prefetch: nil} = state) do
+  defp maybe_start_prefetch(%{prefetch: nil, receiving: true} = state) do
     if over_limit?() do
       state
     else

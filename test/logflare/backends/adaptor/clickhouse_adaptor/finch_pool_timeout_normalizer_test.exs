@@ -13,22 +13,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.FinchPoolTimeoutNormalizer
 
       {:ok, listen_socket} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
       {:ok, port} = :inet.port(listen_socket)
-      spawn_link(fn -> accept_loop(listen_socket) end)
+      test_pid = self()
+      spawn_link(fn -> accept_loop(listen_socket, test_pid) end)
 
       url = "http://127.0.0.1:#{port}/"
 
-      # Occupies the pool's only connection for longer than the checkout timeout below,
-      # so the request under test has to wait for a connection that never frees up.
+      # Occupies the pool's only connection until the test ends, so the request under
+      # test has to wait for a connection that never frees up.
       # A bare process rather than a Task: on_exit runs outside the owner, and Task
       # shutdown is only legal from the owning process.
       holder =
         spawn(fn ->
-          Finch.build(:get, url) |> Finch.request(@pool, receive_timeout: 5_000)
+          Finch.build(:get, url) |> Finch.request(@pool, receive_timeout: :infinity)
         end)
 
       on_exit(fn -> Process.exit(holder, :kill) end)
 
-      wait_until_pool_busy(url)
+      # The server only sees a request once the holder has checked the connection out.
+      assert_receive :request_received, 5_000
 
       [url: url]
     end
@@ -83,38 +85,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.FinchPoolTimeoutNormalizer
     {Tesla.client(middleware, adapter), retry_calls}
   end
 
-  defp accept_loop(listen_socket) do
+  # Never responds: each connection stays busy until the client closes it.
+  defp accept_loop(listen_socket, test_pid) do
     {:ok, socket} = :gen_tcp.accept(listen_socket)
 
     spawn(fn ->
-      :gen_tcp.recv(socket, 0, 5_000)
-      Process.sleep(3_000)
-      :gen_tcp.send(socket, "HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok")
-      :gen_tcp.close(socket)
+      {:ok, _request} = :gen_tcp.recv(socket, 0)
+      send(test_pid, :request_received)
+      :gen_tcp.recv(socket, 0)
     end)
 
-    accept_loop(listen_socket)
-  end
-
-  # The holder task has to actually check the connection out before the pool is
-  # saturated; polling for the timeout beats sleeping on a guessed interval.
-  defp wait_until_pool_busy(url, attempts \\ 50) do
-    client =
-      Tesla.client(
-        [FinchPoolTimeoutNormalizer],
-        {Tesla.Adapter.Finch, name: @pool, pool_timeout: 50, receive_timeout: 5_000}
-      )
-
-    case {Tesla.get(client, url), attempts} do
-      {{:error, :pool_timeout}, _attempts} ->
-        :ok
-
-      {_other, 0} ->
-        flunk("pool never became saturated")
-
-      {_other, attempts} ->
-        Process.sleep(20)
-        wait_until_pool_busy(url, attempts - 1)
-    end
+    accept_loop(listen_socket, test_pid)
   end
 end

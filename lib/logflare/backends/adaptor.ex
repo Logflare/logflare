@@ -40,11 +40,20 @@ defmodule Logflare.Backends.Adaptor do
     mapping[type]
   end
 
+  @doc """
+  Returns true if the adaptor module exports `fun/arity`, loading the module first so an
+  optional callback is not missed when the module has not been loaded yet.
+  """
+  @spec exports?(module(), atom(), arity()) :: boolean()
+  def exports?(module, fun, arity) when is_atom(module) and is_atom(fun) and is_integer(arity) do
+    Code.ensure_loaded?(module) and function_exported?(module, fun, arity)
+  end
+
   @spec get_backend_config(Backend.t()) :: map()
   def get_backend_config(%Backend{config: config} = backend) do
     adaptor = get_adaptor(backend)
 
-    if function_exported?(adaptor, :transform_config, 1) do
+    if exports?(adaptor, :transform_config, 1) do
       adaptor.transform_config(backend)
     else
       config
@@ -70,7 +79,9 @@ defmodule Logflare.Backends.Adaptor do
   end
 
   @doc """
-  Returns true if a given `Backend` supports being used for default ingest.
+  Returns true if a given `Backend`'s adaptor declares default ingest support. This is a
+  prerequisite for default ingest; default ingest also requires a consolidated pipeline
+  (see `default_ingest_capable?/1`).
 
   Default to false.
   """
@@ -78,7 +89,7 @@ defmodule Logflare.Backends.Adaptor do
   def supports_default_ingest?(%Backend{} = backend) do
     adaptor = get_adaptor(backend)
 
-    if function_exported?(adaptor, :supports_default_ingest?, 0) do
+    if exports?(adaptor, :supports_default_ingest?, 0) do
       adaptor.supports_default_ingest?()
     else
       false
@@ -94,12 +105,20 @@ defmodule Logflare.Backends.Adaptor do
   def consolidated_ingest?(%Backend{} = backend) do
     adaptor = get_adaptor(backend)
 
-    if function_exported?(adaptor, :consolidated_ingest?, 0) do
+    if exports?(adaptor, :consolidated_ingest?, 0) do
       adaptor.consolidated_ingest?()
     else
       false
     end
   end
+
+  @doc """
+  Returns true if a given `Backend` can be an account default ingest backend: its adaptor
+  must both support default ingest and run a consolidated pipeline.
+  """
+  @spec default_ingest_capable?(Backend.t()) :: boolean()
+  def default_ingest_capable?(%Backend{} = backend),
+    do: supports_default_ingest?(backend) and consolidated_ingest?(backend)
 
   @doc """
   Notifies a backend's adaptor that the backend's configuration has changed.
@@ -110,7 +129,7 @@ defmodule Logflare.Backends.Adaptor do
   def on_backend_config_changed(%Backend{} = backend) do
     adaptor = get_adaptor(backend)
 
-    if function_exported?(adaptor, :on_backend_config_changed, 1) do
+    if exports?(adaptor, :on_backend_config_changed, 1) do
       adaptor.on_backend_config_changed(backend)
     end
 
@@ -127,7 +146,7 @@ defmodule Logflare.Backends.Adaptor do
   def pipeline_config_keys(%Backend{} = backend) do
     adaptor = get_adaptor(backend)
 
-    if function_exported?(adaptor, :pipeline_config_keys, 0) do
+    if exports?(adaptor, :pipeline_config_keys, 0) do
       adaptor.pipeline_config_keys()
     else
       []
@@ -144,7 +163,7 @@ defmodule Logflare.Backends.Adaptor do
   def runtime_config_keys(%Backend{} = backend) do
     adaptor = get_adaptor(backend)
 
-    if function_exported?(adaptor, :runtime_config_keys, 0) do
+    if exports?(adaptor, :runtime_config_keys, 0) do
       adaptor.runtime_config_keys()
     else
       []
@@ -161,7 +180,7 @@ defmodule Logflare.Backends.Adaptor do
   def replace_pipelines(%Backend{} = backend) do
     adaptor = get_adaptor(backend)
 
-    if function_exported?(adaptor, :replace_pipelines, 1) do
+    if exports?(adaptor, :replace_pipelines, 1) do
       adaptor.replace_pipelines(backend)
     else
       :ok
@@ -177,7 +196,7 @@ defmodule Logflare.Backends.Adaptor do
   def on_backend_deleted(%Backend{} = backend) do
     adaptor = get_adaptor(backend)
 
-    if function_exported?(adaptor, :on_backend_deleted, 1) do
+    if exports?(adaptor, :on_backend_deleted, 1) do
       adaptor.on_backend_deleted(backend)
     end
 
@@ -194,8 +213,7 @@ defmodule Logflare.Backends.Adaptor do
   def sanitize_config_for_display(%Backend{config: config} = backend) when is_map(config) do
     adaptor = get_adaptor(backend)
 
-    if Code.ensure_loaded?(adaptor) and
-         function_exported?(adaptor, :sanitize_config_for_display, 1) do
+    if exports?(adaptor, :sanitize_config_for_display, 1) do
       adaptor.sanitize_config_for_display(config)
     else
       mask_config_values(config, except: [])
@@ -233,7 +251,7 @@ defmodule Logflare.Backends.Adaptor do
   def can_transform_query?(%Backend{} = backend) do
     backend
     |> get_adaptor()
-    |> function_exported?(:transform_query, 3)
+    |> exports?(:transform_query, 3)
   end
 
   @doc """
@@ -245,7 +263,7 @@ defmodule Logflare.Backends.Adaptor do
   def can_map_query_parameters?(%Backend{} = backend) do
     backend
     |> get_adaptor()
-    |> function_exported?(:map_query_parameters, 4)
+    |> exports?(:map_query_parameters, 4)
   end
 
   @doc """
@@ -255,7 +273,7 @@ defmodule Logflare.Backends.Adaptor do
   def can_query?(%Backend{} = backend) do
     backend
     |> get_adaptor()
-    |> function_exported?(:execute_query, 3)
+    |> exports?(:execute_query, 3)
   end
 
   @callback start_link(start_link_arg()) ::

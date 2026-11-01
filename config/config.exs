@@ -39,7 +39,9 @@ config :logflare, :bigquery_pipeline, max_retries: 0
 
 config :logflare, :clickhouse_backend_adaptor, engine: "MergeTree"
 
-config :logflare, Logflare.Sources.Source.BigQuery.Schema, updates_per_minute: 6
+config :logflare, Logflare.Sources.Source.BigQuery.Schema,
+  updates_per_minute: 6,
+  max_pending_samples: 8
 
 # Configures the endpoint
 config :logflare, LogflareWeb.Endpoint,
@@ -172,6 +174,8 @@ config :number,
 config :logflare, Logflare.ContextCache.CacheBuster,
   replication_slot: :temporary,
   publications: ["logflare_pub"]
+
+config :logflare, Logflare.KeyValues.CacheWarmer, warm_limit: 500_000
 
 config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.PersistentTermCache
 
