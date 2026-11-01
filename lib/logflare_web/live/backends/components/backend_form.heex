@@ -572,6 +572,28 @@
               Required by SigNoz Cloud, and typically unset for self-managed deployments
             </small>
           </div>
+        <% "dash0" -> %>
+          <div class="form-group">
+            {label(f_config, :endpoint, "Endpoint (Required)")}
+            {text_input(f_config, :endpoint, class: "form-control")}
+            <small class="form-text text-muted">
+              OTLP/HTTP endpoint from <a href="https://www.dash0.com/docs/dash0/miscellaneous/glossary/endpoints">Settings &gt; Endpoints</a> in Dash0, e.g. <code>https://ingress.eu-west-1.aws.dash0.com</code>. The <code>/v1/logs</code> path is appended automatically
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :auth_token, "Auth Token (Required)")}
+            {text_input(f_config, :auth_token, class: "form-control", type: "password")}
+            <small class="form-text text-muted">
+              Auth token with ingestion permission, created in <a href="https://www.dash0.com/docs/dash0/miscellaneous/glossary/auth-tokens">Settings &gt; Auth Tokens</a>
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :dataset, "Dataset")}
+            {text_input(f_config, :dataset, class: "form-control")}
+            <small class="form-text text-muted">
+              Optional. Leave empty to use the auth token's default dataset
+            </small>
+          </div>
         <% "google_secops" -> %>
           <div class="form-group">
             {label(f_config, :region, "Region")}
