@@ -196,15 +196,10 @@ defmodule Logflare.Endpoints.EndpointQuery do
       end
 
     validate_change(changeset, field, fn field, value ->
-      {:ok, expanded_query} =
-        Sql.expand_subqueries(
-          language,
-          value,
-          queries
-        )
-
-      case Sql.transform(language, expanded_query, user) do
-        {:ok, _} -> []
+      with {:ok, expanded_query} <- Sql.expand_subqueries(language, value, queries),
+           {:ok, _} <- Sql.transform(language, expanded_query, user) do
+        []
+      else
         {:error, error} -> [{field, error}]
       end
     end)
