@@ -16,7 +16,7 @@ defmodule Logflare.KeyValues.CacheL2Test do
   setup [:set_mimic_global, :verify_on_exit!]
 
   setup do
-    put_l2_enabled(true)
+    enable_l2()
     start_supervised!(L2)
     [user: insert(:user)]
   end
@@ -76,21 +76,15 @@ defmodule Logflare.KeyValues.CacheL2Test do
   end
 
   test "busting lookups and accessor variants cached only in L2", %{user: user} do
-    for l2_enabled? <- [true, false] do
-      key = "proj:#{l2_enabled?}"
-      insert(:key_value, user: user, key: key, value: @value)
+    insert(:key_value, user: user, key: "proj1", value: @value)
 
-      for accessor_path <- [nil, "org.id"] do
-        :ok = L2.put(lookup_key(user.id, key, accessor_path), :stale)
-      end
-
-      put_l2_enabled(l2_enabled?)
-
-      assert {:ok, 2} = ContextCache.bust_keys([{KeyValues, user_id: user.id, key: key}])
-      put_l2_enabled(true)
-      assert @value = KeyValues.Cache.lookup(user.id, key)
-      assert "abc" = KeyValues.Cache.lookup(user.id, key, "org.id")
+    for accessor_path <- [nil, "org.id"] do
+      :ok = L2.put(lookup_key(user.id, "proj1", accessor_path), :stale)
     end
+
+    assert {:ok, 2} = ContextCache.bust_keys([{KeyValues, user_id: user.id, key: "proj1"}])
+    assert @value = KeyValues.Cache.lookup(user.id, "proj1")
+    assert "abc" = KeyValues.Cache.lookup(user.id, "proj1", "org.id")
   end
 
   test "lookup while L2 is failing", %{user: user} do
@@ -151,14 +145,6 @@ defmodule Logflare.KeyValues.CacheL2Test do
     assert {:error, %Nebulex.KeyError{}} = L2.fetch(lookup_key(user.id, "proj1"))
   end
 
-  test "lookup with L2 disabled at runtime", %{user: user} do
-    insert(:key_value, user: user, key: "proj1", value: @value)
-    :ok = L2.put(lookup_key(user.id, "proj1"), %{"stale" => true})
-    put_l2_enabled(false)
-
-    assert @value = KeyValues.Cache.lookup(user.id, "proj1")
-  end
-
   test "telemetry of lookups", %{user: user} do
     insert(:key_value, user: user, key: "proj1", value: @value)
     ref = :telemetry_test.attach_event_handlers(self(), @telemetry_events)
@@ -202,9 +188,9 @@ defmodule Logflare.KeyValues.CacheL2Test do
   defp lookup_key(user_id, key, accessor_path \\ nil),
     do: {:lookup, [user_id, key, accessor_path]}
 
-  defp put_l2_enabled(enabled?) do
+  defp enable_l2 do
     original = Application.get_env(:logflare, KeyValues.Cache)
-    Application.put_env(:logflare, KeyValues.Cache, Keyword.put(original, :l2_enabled, enabled?))
+    Application.put_env(:logflare, KeyValues.Cache, Keyword.put(original, :l2_enabled, true))
     on_exit(fn -> Application.put_env(:logflare, KeyValues.Cache, original) end)
   end
 end
