@@ -57,14 +57,18 @@ defmodule Logflare.KeyValues.Cache.L2 do
   """
   @spec lookup(term()) :: result()
   def lookup(cache_key) do
-    fetch = fn -> __MODULE__.fetch(cache_key, timeout: timeout()) end
-
-    if enabled?(), do: lookup_result(run_isolated(fetch)), else: :l2_skipped
+    if enabled?(), do: fetch_isolated(cache_key), else: :l2_skipped
   end
 
-  defp lookup_result({:ok, {:ok, _value} = hit}), do: hit
-  defp lookup_result({:ok, {:error, %Nebulex.KeyError{}}}), do: :miss
-  defp lookup_result(_failed), do: :l2_error
+  defp fetch_isolated(cache_key) do
+    fetch = fn -> __MODULE__.fetch(cache_key, timeout: timeout()) end
+
+    case Tasks.run_within(fetch, timeout()) do
+      {:ok, {:ok, _value} = hit} -> hit
+      {:ok, {:error, %Nebulex.KeyError{}}} -> :miss
+      _failed -> :l2_error
+    end
+  end
 
   @doc """
   Writes a full value to its owner's share in a separate task, and deletes it again if its
@@ -84,20 +88,21 @@ defmodule Logflare.KeyValues.Cache.L2 do
       result =
         with :ok <- __MODULE__.put(cache_key, value, ttl: ttl(), timeout: timeout()) do
           drop_if_tombstoned(cache_key, user_id, key)
+        else
+          {:error, _reason} -> :error
         end
 
-      {:ok, %{result: fill_result(result)}}
+      {:ok, %{result: result}}
     end)
   end
 
-  defp fill_result({:error, _reason}), do: :error
-  defp fill_result(put_or_dropped), do: put_or_dropped
-
   defp drop_if_tombstoned(cache_key, user_id, key) do
-    if Tombstones.Cache.tombstoned?(KeyValues.Cache, {user_id, key}) do
-      with :ok <- __MODULE__.delete(cache_key, timeout: timeout()), do: :dropped_stale
+    with true <- Tombstones.Cache.tombstoned?(KeyValues.Cache, {user_id, key}),
+         :ok <- __MODULE__.delete(cache_key, timeout: timeout()) do
+      :dropped_stale
     else
-      :put
+      false -> :put
+      {:error, _reason} -> :error
     end
   end
 
@@ -110,7 +115,7 @@ defmodule Logflare.KeyValues.Cache.L2 do
     delete = fn -> __MODULE__.delete_all([in: cache_keys], timeout: timeout()) end
 
     with true <- enabled?(),
-         {:ok, {:ok, count}} <- run_isolated(delete) do
+         {:ok, {:ok, count}} <- Tasks.run_within(delete, timeout()) do
       count
     else
       _disabled_or_failed -> 0
@@ -125,8 +130,6 @@ defmodule Logflare.KeyValues.Cache.L2 do
     if enabled?(), do: {:ok, _count} = __MODULE__.delete_all()
     :ok
   end
-
-  defp run_isolated(fun), do: Tasks.run_within(fun, timeout())
 
   defp settings, do: Application.get_env(:logflare, Logflare.KeyValues.Cache, [])
 end
