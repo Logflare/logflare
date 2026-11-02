@@ -298,6 +298,52 @@ defmodule LogflareWeb.EndpointFilesystemCacheLiveTest do
     refute render(view) =~ "Please verify your query syntax."
   end
 
+  test "shared error formatting preserves policy messages and context-specific fallbacks",
+       context do
+    endpoint =
+      insert(:endpoint,
+        user: context.owner,
+        backend: context.endpoint.backend,
+        language: :ch_sql,
+        sandboxable: true,
+        query: "WITH data AS (SELECT 1 AS n) SELECT n FROM data"
+      )
+
+    for {error, endpoint_message, sandbox_message} <- [
+          {{:invalid_filesystem_cache_policy, "Invalid cache configuration"},
+           "Invalid cache configuration", "Invalid cache configuration"},
+          {{:invalid_filesystem_cache_window, "Invalid cache window"}, "Invalid cache window",
+           "Invalid cache window"},
+          {:database_unavailable, "Endpoint policy is temporarily unavailable. Retry the query.",
+           "Please verify your query syntax."},
+          {{:unexpected, "private backend detail"},
+           LogflareWeb.QueryErrorHelpers.generic_query_error_message(),
+           "Please verify your query syntax."}
+        ] do
+      {:ok, view, _} = live_with_redirect(context.conn, ~p"/endpoints/#{endpoint.id}")
+
+      expect(Endpoints, :run_query_string, fn _user, _query, _opts -> {:error, error} end)
+
+      view
+      |> element("#endpoint-test-form")
+      |> render_submit(%{run: %{params: %{}}})
+
+      assert render(view) =~ endpoint_message
+      refute render(view) =~ "private backend detail"
+
+      expect(Endpoints, :run_query, fn _endpoint, _params, _opts -> {:error, error} end)
+
+      view
+      |> element("#endpoint-test-form")
+      |> render_submit(%{
+        run: %{params: %{}, sandbox_query: "SELECT n FROM data", query_mode: "sql"}
+      })
+
+      assert render(view) =~ sandbox_message
+      refute render(view) =~ "private backend detail"
+    end
+  end
+
   test "non-ClickHouse endpoints do not show the policy controls", context do
     endpoint = insert(:endpoint, user: context.owner)
     {:ok, view, _} = live_with_redirect(context.conn, ~p"/endpoints/#{endpoint.id}/edit")

@@ -416,25 +416,29 @@ defmodule LogflareWeb.EndpointsLive do
         |> assign(:test_result, successful_test_result(:endpoint, result, nil))
 
       {:error, error} ->
-        message = endpoint_query_error_message(error)
+        message = query_error_message(error, :endpoint)
         assign(socket, :test_result, %{kind: :endpoint, status: :error, error: message})
     end
   end
 
-  @spec endpoint_query_error_message(term()) :: String.t()
-  defp endpoint_query_error_message(error)
-       when error in [:database_unavailable, :policy_unavailable],
-       do: "Endpoint policy is temporarily unavailable. Retry the query."
-
-  defp endpoint_query_error_message(%QueryError{} = error),
-    do: QueryErrorHelpers.query_error_message(error)
-
-  defp endpoint_query_error_message({kind, message})
+  @spec query_error_message(term(), :endpoint | :sandbox) :: String.t()
+  defp query_error_message({kind, message}, _context)
        when kind in [:invalid_filesystem_cache_window, :invalid_filesystem_cache_policy],
        do: message
 
-  defp endpoint_query_error_message(message) when is_binary(message), do: message
-  defp endpoint_query_error_message(_error), do: QueryErrorHelpers.generic_query_error_message()
+  defp query_error_message(error, :endpoint)
+       when error in [:database_unavailable, :policy_unavailable],
+       do: "Endpoint policy is temporarily unavailable. Retry the query."
+
+  defp query_error_message(%QueryError{} = error, :endpoint),
+    do: QueryErrorHelpers.query_error_message(error)
+
+  defp query_error_message(message, :endpoint) when is_binary(message), do: message
+
+  defp query_error_message(_error, :endpoint),
+    do: QueryErrorHelpers.generic_query_error_message()
+
+  defp query_error_message(_error, :sandbox), do: "Please verify your query syntax."
 
   defp run_sandbox_query(%{assigns: %{show_endpoint: endpoint}} = socket, payload) do
     show_transformed? = Map.get(payload, "show_transformed") == "true"
@@ -478,17 +482,10 @@ defmodule LogflareWeb.EndpointsLive do
         |> assign(:test_result, %{
           kind: :sandboxed_endpoint,
           status: :error,
-          error: sandbox_query_error_message(error)
+          error: query_error_message(error, :sandbox)
         })
     end
   end
-
-  @spec sandbox_query_error_message(term()) :: String.t()
-  defp sandbox_query_error_message({kind, message})
-       when kind in [:invalid_filesystem_cache_window, :invalid_filesystem_cache_policy],
-       do: message
-
-  defp sandbox_query_error_message(_error), do: "Please verify your query syntax."
 
   defp sandbox_query?(
          %{assigns: %{show_endpoint: %{sandboxable: true}}},
