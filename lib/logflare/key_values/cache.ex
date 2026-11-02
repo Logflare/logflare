@@ -139,30 +139,27 @@ defmodule Logflare.KeyValues.Cache do
     end
   end
 
-  defp read_through(key_args) do
-    cache_key = {:lookup, key_args}
+  defp read_through([user_id, key, accessor_path] = key_args) do
+    full_key = {:lookup, [user_id, key, nil]}
 
-    case L2.lookup(cache_key) do
-      {:ok, value} ->
-        value
+    case L2.lookup(full_key) do
+      {:ok, full_value} ->
+        extract_value(full_value, accessor_path)
 
-      l2_miss ->
-        {value, fill_l2?} = full_value_from_l2_or_db(l2_miss, key_args)
-        if fill_l2?, do: L2.fill(cache_key, value)
-        value
+      :miss ->
+        full_value = from_db(:miss, [user_id, key, nil])
+        L2.fill(full_key, full_value)
+        extract_value(full_value, accessor_path)
+
+      l2_unavailable ->
+        from_db(l2_unavailable, key_args)
     end
   end
 
-  defp full_value_from_l2_or_db(:miss, [user_id, key, accessor_path] = key_args)
-       when accessor_path != nil do
-    case L2.lookup({:lookup, [user_id, key, nil]}) do
-      {:ok, full_value} -> {KeyValues.extract_value(full_value, accessor_path), true}
-      l2_miss -> {from_db(l2_miss, key_args), l2_miss == :miss}
-    end
-  end
+  defp extract_value(full_value, nil), do: full_value
 
-  defp full_value_from_l2_or_db(l2_miss, key_args),
-    do: {from_db(l2_miss, key_args), l2_miss == :miss}
+  defp extract_value(full_value, accessor_path),
+    do: KeyValues.extract_value(full_value, accessor_path)
 
   defp from_db(l2_miss, key_args) do
     :telemetry.execute(@db_fallback_event, %{count: 1}, %{reason: l2_miss})
@@ -220,21 +217,21 @@ defmodule Logflare.KeyValues.Cache do
   end
 
   @doc """
-  Deletes `keys` from L1 and from this node's share of L2, without RPC, and returns the number
-  of keys deleted from either level.
-
-  Every node busts every change, so the owner of an L2 entry deletes it locally.
+  Deletes `keys` from L1 and L2, and returns the number of keys deleted from either level.
   """
   @impl ContextCache
   def delete_keys(keys) do
     Cachex.execute(__MODULE__, fn worker ->
       Enum.count(keys, fn cache_key ->
         in_l1? = not match?({:ok, nil}, Cachex.take(worker, cache_key))
-        in_l2? = L2.delete_local(cache_key)
+        in_l2? = evict_l2(cache_key)
         in_l1? or in_l2?
       end)
     end)
   end
+
+  defp evict_l2({:lookup, [_user_id, _key, nil]} = full_key), do: L2.evict(full_key)
+  defp evict_l2(_cache_key), do: false
 
   @impl ContextCache
   def keys_to_bust(kw) do
@@ -276,6 +273,6 @@ defmodule Logflare.KeyValues.Cache do
         _ -> false
       end)
 
-    Enum.uniq(l1_keys ++ L2.local_lookup_keys(user_id, key))
+    Enum.uniq([{:lookup, [user_id, key, nil]} | l1_keys])
   end
 end

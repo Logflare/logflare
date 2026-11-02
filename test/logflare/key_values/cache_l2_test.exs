@@ -41,7 +41,7 @@ defmodule Logflare.KeyValues.CacheL2Test do
 
       assert KeyValues.Cache.lookup(user.id, key, accessor_path) == expected
       assert_receive {_event, ^ref, _measurements, %{result: :put}}
-      assert {:ok, ^expected} = L2.fetch(lookup_key(user.id, key, accessor_path))
+      assert {:ok, @value} = L2.fetch(lookup_key(user.id, key))
     end
   end
 
@@ -75,38 +75,24 @@ defmodule Logflare.KeyValues.CacheL2Test do
     end
   end
 
-  test "busting lookups and accessor variants cached only in L2", %{user: user} do
+  test "busting a key-value cached only in L2", %{user: user} do
     insert(:key_value, user: user, key: "proj1", value: @value)
+    :ok = L2.put(lookup_key(user.id, "proj1"), %{"org" => %{"id" => "stale"}})
 
-    for accessor_path <- [nil, "org.id"] do
-      :ok = L2.put(lookup_key(user.id, "proj1", accessor_path), :stale)
-    end
-
-    assert {:ok, 2} = ContextCache.bust_keys([{KeyValues, user_id: user.id, key: "proj1"}])
+    assert {:ok, 1} = ContextCache.bust_keys([{KeyValues, user_id: user.id, key: "proj1"}])
     assert @value = KeyValues.Cache.lookup(user.id, "proj1")
     assert "abc" = KeyValues.Cache.lookup(user.id, "proj1", "org.id")
   end
 
   test "lookup while L2 is failing", %{user: user} do
     insert(:key_value, user: user, key: "proj1", value: @value)
-    reject(&L2.find_node/1)
+    reject(&L2.put/3)
 
-    for {failure, accessor_path, expected} <- [
-          {:timeout, nil, @value},
-          {:timeout, "org.id", "abc"},
-          {:remote_raise, nil, @value},
-          {:remote_raise, "org.id", "abc"},
-          {:stopped, nil, @value},
-          {:stopped, "org.id", "abc"},
-          {:local_raise, nil, @value},
-          {:local_raise, "org.id", "abc"},
-          {:exit, nil, @value},
-          {:exit, "org.id", "abc"}
-        ] do
+    for failure <- [:timeout, :remote_raise, :stopped, :local_raise, :exit] do
       KeyValues.Cache.reset()
       expect(L2, :fetch, fn _cache_key, _opts -> fail(failure) end)
 
-      assert KeyValues.Cache.lookup(user.id, "proj1", accessor_path) == expected
+      assert @value = KeyValues.Cache.lookup(user.id, "proj1")
     end
   end
 
@@ -124,7 +110,7 @@ defmodule Logflare.KeyValues.CacheL2Test do
     assert @value = KeyValues.Cache.lookup(user.id, "proj1")
 
     for failure <- [:local_raise, :exit] do
-      stub(L2, :__primary__, fn -> fail(failure) end)
+      stub(L2, :take, fn _cache_key, _opts -> fail(failure) end)
 
       assert {:ok, _busted} =
                ContextCache.bust_keys([{KeyValues, user_id: user.id, key: "proj1"}])

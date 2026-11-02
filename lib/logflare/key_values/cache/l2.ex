@@ -1,7 +1,8 @@
 defmodule Logflare.KeyValues.Cache.L2 do
   @moduledoc """
   Distributed (L2) level of `Logflare.KeyValues.Cache`, consulted on an L1 miss before the
-  database.
+  database. It holds only full values, under the `{:lookup, [user_id, key, nil]}` keys of L1;
+  accessor lookups extract from them.
 
   Keys are partitioned across the cluster by a consistent hash ring; each node holds its
   share in a `Nebulex.Adapters.Local` primary storage, reachable through `__primary__/0`
@@ -32,7 +33,6 @@ defmodule Logflare.KeyValues.Cache.L2 do
   alias Logflare.ContextCache.Tombstones
   alias Logflare.KeyValues
   alias Logflare.Utils.Tasks
-  alias Nebulex.Distributed.RPC
 
   @fill_event [:logflare, :key_values, :cache, :l2_fill]
 
@@ -70,20 +70,23 @@ defmodule Logflare.KeyValues.Cache.L2 do
   end
 
   @doc """
-  Writes a value to its owner's share in a separate task, unless its key-value is tombstoned
-  there.
+  Writes a full value to its owner's share in a separate task, and deletes it again if its
+  key-value is tombstoned on this node once the write is done.
+
+  Every node records the tombstone of a change before busting it from L2, so either the check
+  sees the tombstone or this node's bust deletes the entry after the write.
   """
   @spec fill(term(), term()) :: :ok
   def fill(cache_key, value) do
-    _ = Tasks.start_child(fn -> fill_owner(cache_key, value) end)
+    _ = Tasks.start_child(fn -> put_unless_tombstoned(cache_key, value) end)
     :ok
   end
 
-  defp fill_owner(cache_key, value) do
+  defp put_unless_tombstoned({:lookup, [user_id, key, nil]} = cache_key, value) do
     :telemetry.span(@fill_event, %{}, fn ->
       result =
-        with {:ok, owner} <- __MODULE__.find_node(cache_key) do
-          RPC.call(owner, __MODULE__, :fill_share, [cache_key, value, ttl()], timeout())
+        with :ok <- __MODULE__.put(cache_key, value, ttl: ttl(), timeout: timeout()) do
+          drop_if_tombstoned(cache_key, user_id, key)
         end
 
       {:ok, %{result: fill_result(result)}}
@@ -97,51 +100,24 @@ defmodule Logflare.KeyValues.Cache.L2 do
   defp fill_result({:error, _reason}), do: :error
   defp fill_result(put_or_dropped), do: put_or_dropped
 
-  @doc false
-  @spec fill_share(term(), term(), timeout()) :: :put | :dropped_stale
-  def fill_share({:lookup, [user_id, key, _accessor_path]} = cache_key, value, ttl) do
-    primary = __MODULE__.__primary__()
-    :ok = primary.put(cache_key, value, ttl: ttl)
-
+  defp drop_if_tombstoned(cache_key, user_id, key) do
     if Tombstones.Cache.tombstoned?(KeyValues.Cache, {user_id, key}) do
-      :ok = primary.delete(cache_key)
-      :dropped_stale
+      with :ok <- __MODULE__.delete(cache_key, timeout: timeout()), do: :dropped_stale
     else
       :put
     end
   end
 
   @doc """
-  Deletes a key from this node's share, returning whether it was there.
+  Deletes a key from its owner's share, returning whether it was there.
   """
-  @spec delete_local(term()) :: boolean()
-  def delete_local(cache_key) do
-    enabled?() and match?({:ok, _value}, __MODULE__.__primary__().take(cache_key))
+  @spec evict(term()) :: boolean()
+  def evict(cache_key) do
+    enabled?() and match?({:ok, _value}, __MODULE__.take(cache_key, timeout: timeout()))
   rescue
     _exception -> false
   catch
     :exit, _reason -> false
-  end
-
-  @doc """
-  Returns the lookup keys of a key-value held in this node's share, accessor variants included.
-  """
-  @spec local_lookup_keys(integer(), String.t()) :: [term()]
-  def local_lookup_keys(user_id, key) do
-    if enabled?() do
-      accessor_paths =
-        __MODULE__.__primary__().get_all!(
-          query: [{{:entry, {:lookup, [user_id, key, :"$1"]}, :_, :_, :_, :_}, [], [:"$1"]}]
-        )
-
-      Enum.map(accessor_paths, &{:lookup, [user_id, key, &1]})
-    else
-      []
-    end
-  rescue
-    _exception -> []
-  catch
-    :exit, _reason -> []
   end
 
   @doc """
