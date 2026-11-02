@@ -62,6 +62,46 @@ defmodule Logflare.Endpoints.FilesystemCacheExecutionTest do
     assert Repo.get!(EndpointQuery, context.endpoint.id).filesystem_cache_policy == nil
   end
 
+  test "unsupported backends reject an explicitly supplied policy without persisting it",
+       context do
+    for {type, language} <- [{:bigquery, :bq_sql}, {:postgres, :pg_sql}] do
+      backend = insert(:backend, user: context.owner, type: type)
+
+      endpoint =
+        insert(:endpoint,
+          user: context.owner,
+          backend: backend,
+          language: language,
+          query: @query
+        )
+
+      assert {:error, changeset} =
+               Endpoints.update_query(
+                 context.owner,
+                 endpoint,
+                 %{filesystem_cache_policy: @policy},
+                 context.owner
+               )
+
+      assert errors_on(changeset).filesystem_cache_policy == [
+               "is only supported for ClickHouse endpoints"
+             ]
+
+      assert Repo.reload!(endpoint).filesystem_cache_policy == nil
+
+      assert {:ok, updated} =
+               Endpoints.update_query(
+                 context.owner,
+                 endpoint,
+                 %{description: "unrelated edit", filesystem_cache_policy: nil},
+                 context.owner
+               )
+
+      assert updated.description == "unrelated edit"
+      assert updated.filesystem_cache_policy == nil
+    end
+  end
+
   test "configuration validates endpoint type, declared names, query edits and thresholds",
        context do
     for attrs <- [

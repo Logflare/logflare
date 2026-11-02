@@ -47,20 +47,31 @@ defmodule Logflare.Endpoints.FilesystemCachePolicy do
 
   @spec validate(Ecto.Changeset.t()) :: Ecto.Changeset.t()
   def validate(changeset) do
-    policy =
-      if get_field(changeset, :language) == :ch_sql,
-        do: get_field(changeset, :filesystem_cache_policy)
-
-    case normalize(policy) do
+    case normalize(get_field(changeset, :filesystem_cache_policy)) do
       {:ok, nil} ->
         put_change(changeset, :filesystem_cache_policy, nil)
 
       {:ok, policy} ->
         changeset = put_change(changeset, :filesystem_cache_policy, policy)
 
-        if Enum.any?([:query, :language, :filesystem_cache_policy], &changed?(changeset, &1)),
-          do: validate_mapping(changeset, policy),
-          else: changeset
+        cond do
+          get_field(changeset, :language) != :ch_sql and
+              changed?(changeset, :filesystem_cache_policy) ->
+            add_error(
+              changeset,
+              :filesystem_cache_policy,
+              "is only supported for ClickHouse endpoints"
+            )
+
+          get_field(changeset, :language) != :ch_sql ->
+            put_change(changeset, :filesystem_cache_policy, nil)
+
+          Enum.any?([:query, :language, :filesystem_cache_policy], &changed?(changeset, &1)) ->
+            validate_mapping(changeset, policy)
+
+          true ->
+            changeset
+        end
 
       {:error, message} ->
         add_error(changeset, :filesystem_cache_policy, message)

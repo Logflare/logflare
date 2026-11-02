@@ -222,7 +222,9 @@ defmodule LogflareWeb.EndpointFilesystemCacheLiveTest do
 
       view
       |> element("#endpoint")
-      |> render_change(%{endpoint: %{backend_id: backend.id}})
+      |> render_change(%{
+        endpoint: %{backend_id: backend.id, filesystem_cache_policy: @form_policy}
+      })
 
       refute has_element?(view, "#filesystem-cache-policy")
 

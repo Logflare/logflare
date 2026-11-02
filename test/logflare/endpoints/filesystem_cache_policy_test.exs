@@ -158,6 +158,51 @@ defmodule Logflare.Endpoints.FilesystemCachePolicyTest do
     end
   end
 
+  test "non-ClickHouse endpoints reject new policies but allow disabled policies" do
+    for language <- [:bq_sql, :pg_sql] do
+      endpoint = %Logflare.Endpoints.EndpointQuery{language: language}
+
+      changeset =
+        endpoint
+        |> Ecto.Changeset.change(filesystem_cache_policy: @policy)
+        |> FilesystemCachePolicy.validate()
+
+      refute changeset.valid?
+
+      assert {"is only supported for ClickHouse endpoints", _} =
+               changeset.errors[:filesystem_cache_policy]
+
+      for policy <- [nil, %{"enabled" => "false"}] do
+        changeset =
+          endpoint
+          |> Ecto.Changeset.change(filesystem_cache_policy: policy)
+          |> FilesystemCachePolicy.validate()
+
+        assert changeset.valid?
+        assert Ecto.Changeset.get_field(changeset, :filesystem_cache_policy) == nil
+      end
+    end
+  end
+
+  test "backend switches clear unchanged normalized form policies" do
+    form =
+      Map.merge(@policy, %{
+        "enabled" => "true",
+        "window_threshold" => "24",
+        "window_unit" => "hours"
+      })
+
+    for language <- [:bq_sql, :pg_sql] do
+      changeset =
+        %Logflare.Endpoints.EndpointQuery{language: :ch_sql, filesystem_cache_policy: @policy}
+        |> Ecto.Changeset.change(language: language, filesystem_cache_policy: form)
+        |> FilesystemCachePolicy.validate()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :filesystem_cache_policy) == nil
+    end
+  end
+
   test "newly enabled forms receive defaults without changing saved or edited thresholds" do
     assert %{
              "timestamp_format" => "iso8601",

@@ -119,7 +119,8 @@ The configuration is versioned with the endpoint SQL. Historical versions retain
 their own policy, and versions created before this feature have it disabled.
 Editing the policy invalidates the current endpoint's result caches. Historical
 versions continue using their own policy during cache refresh. Changing an endpoint
-to a non-ClickHouse backend clears its filesystem-cache policy.
+to a non-ClickHouse backend clears its existing filesystem-cache policy. Supplying
+a new or changed policy for a non-ClickHouse endpoint returns a validation error.
 
 The management API also accepts a nullable `filesystem_cache_policy` object:
 
