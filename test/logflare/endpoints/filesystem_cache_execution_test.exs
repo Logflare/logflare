@@ -119,6 +119,19 @@ defmodule Logflare.Endpoints.FilesystemCacheExecutionTest do
     assert errors_on(changeset).filesystem_cache_policy
   end
 
+  test "SQL parse errors do not add a misleading mapping error", context do
+    for policy <- [nil, @policy] do
+      endpoint = %{context.endpoint | filesystem_cache_policy: policy}
+
+      changeset =
+        Endpoints.change_query(endpoint, %{query: "SELECT (", filesystem_cache_policy: @policy})
+
+      refute changeset.valid?
+      assert errors_on(changeset).query
+      refute Map.has_key?(errors_on(changeset), :filesystem_cache_policy)
+    end
+  end
+
   test "policy follows SQL versions and restoring old snapshots clears it", context do
     assert {:ok, first} =
              Endpoints.update_query(

@@ -170,8 +170,8 @@ defmodule Logflare.Endpoints.EndpointQuery do
       :labels
     ])
     |> infer_language_from_backend()
-    |> FilesystemCachePolicy.validate()
     |> validate_query(:query)
+    |> FilesystemCachePolicy.validate()
     |> default_validations()
     |> update_source_mapping()
   end

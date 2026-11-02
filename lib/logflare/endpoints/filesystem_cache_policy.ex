@@ -148,18 +148,21 @@ defmodule Logflare.Endpoints.FilesystemCachePolicy do
 
   @spec validate_mapping(Ecto.Changeset.t(), map()) :: Ecto.Changeset.t()
   defp validate_mapping(changeset, policy) do
-    with :ch_sql <- get_field(changeset, :language),
-         {:ok, params} <-
-           Sql.parameters(get_field(changeset, :query) || "", dialect: "clickhouse"),
-         true <- policy["start_param"] in params and policy["end_param"] in params do
-      put_change(changeset, :filesystem_cache_policy, policy)
+    if Keyword.has_key?(changeset.errors, :query) do
+      changeset
     else
-      _ ->
-        add_error(
-          changeset,
-          :filesystem_cache_policy,
-          "requires a ClickHouse endpoint with both time parameters declared in its SQL"
-        )
+      with {:ok, params} <-
+             Sql.parameters(get_field(changeset, :query) || "", dialect: "clickhouse"),
+           true <- policy["start_param"] in params and policy["end_param"] in params do
+        put_change(changeset, :filesystem_cache_policy, policy)
+      else
+        _ ->
+          add_error(
+            changeset,
+            :filesystem_cache_policy,
+            "requires a ClickHouse endpoint with both time parameters declared in its SQL"
+          )
+      end
     end
   end
 

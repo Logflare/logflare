@@ -259,6 +259,37 @@ defmodule Logflare.Endpoints.FilesystemCachePolicyTest do
     end
   end
 
+  test "query errors suppress SQL mapping validation without hiding policy errors" do
+    for policy <- [nil, @policy] do
+      endpoint = %Logflare.Endpoints.EndpointQuery{
+        language: :ch_sql,
+        query: "SELECT @from, @to",
+        filesystem_cache_policy: policy
+      }
+
+      changeset =
+        endpoint
+        |> Ecto.Changeset.change(query: "SELECT (", filesystem_cache_policy: @policy)
+        |> Ecto.Changeset.add_error(:query, "sql parser error")
+        |> FilesystemCachePolicy.validate()
+
+      assert changeset.errors == [query: {"sql parser error", []}]
+      assert Ecto.Changeset.get_field(changeset, :filesystem_cache_policy) == @policy
+
+      invalid =
+        endpoint
+        |> Ecto.Changeset.change(
+          query: "SELECT (",
+          filesystem_cache_policy: Map.put(@policy, "bypass_fill_above_seconds", 0)
+        )
+        |> Ecto.Changeset.add_error(:query, "sql parser error")
+        |> FilesystemCachePolicy.validate()
+
+      assert invalid.errors[:query]
+      assert invalid.errors[:filesystem_cache_policy]
+    end
+  end
+
   test "trusted boolean values support 0/1 but not arbitrary literals" do
     for value <- [0, 1] do
       assert {:ok, sql} = ClickHouseSettings.enforce("SELECT 1", %{@setting => value})

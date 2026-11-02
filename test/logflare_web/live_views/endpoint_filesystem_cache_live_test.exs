@@ -141,6 +141,25 @@ defmodule LogflareWeb.EndpointFilesystemCacheLiveTest do
     assert Repo.reload!(context.endpoint).filesystem_cache_policy == nil
   end
 
+  test "invalid SQL is reported without an unrelated time-parameter mapping error", context do
+    {:ok, view, _} = live_with_redirect(context.conn, ~p"/endpoints/#{context.endpoint.id}/edit")
+
+    view
+    |> element("#endpoint")
+    |> render_change(%{endpoint: %{query: "SELECT (", filesystem_cache_policy: @form_policy}})
+
+    assert has_element?(view, "#endpoint_query_editor > .help-block", "sql parser error")
+    refute render(view) =~ "both time parameters declared"
+
+    view
+    |> element("#endpoint")
+    |> render_submit(%{endpoint: %{query: "SELECT (", filesystem_cache_policy: @form_policy}})
+
+    assert has_element?(view, "#endpoint_query_editor > .help-block", "sql parser error")
+    refute render(view) =~ "both time parameters declared"
+    assert Repo.reload!(context.endpoint).query == @query
+  end
+
   test "unsaved editor policy is reflected in preview and test execution", context do
     {:ok, view, _} = live_with_redirect(context.conn, ~p"/endpoints/#{context.endpoint.id}/edit")
 
