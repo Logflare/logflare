@@ -5,6 +5,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
   import Ecto.Query
 
   alias GoogleApi.BigQuery.V2.Api.Jobs, as: BqJobs
+  alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
@@ -394,6 +395,102 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
                  {"select count(*) from logs", []},
                  []
                )
+    end
+  end
+
+  describe "execution details" do
+    setup context do
+      insert(:plan)
+      user = insert(:user, Map.get(context, :user_attrs, []))
+
+      [user: user]
+    end
+
+    test "ordinary queries keep optional job creation and do not retain diagnostics", %{
+      user: user
+    } do
+      test_pid = self()
+
+      expect(BqJobs, :bigquery_jobs_query, fn _, _, opts ->
+        send(test_pid, {:query_request, opts[:body]})
+        {:ok, TestUtils.gen_bq_response([])}
+      end)
+
+      assert {:ok, %QueryResult{execution_details: nil}} =
+               BigQueryAdaptor.execute_query(%Backend{user_id: user.id}, "SELECT 1", [])
+
+      assert_received {:query_request, request}
+      assert request.jobCreationMode == "JOB_CREATION_OPTIONAL"
+    end
+
+    @tag user_attrs: [
+           bigquery_project_id: "test-project",
+           bigquery_enable_managed_service_accounts: true
+         ]
+    test "a different process retrieves the submitted job using the same service account", %{
+      user: user
+    } do
+      submitting_pid = self()
+      pool_size = 101
+      partition_count = BigQueryAdaptor.managed_service_account_partition_count()
+
+      account =
+        {Logflare.GothQuery, :erlang.phash2(submitting_pid, pool_size),
+         :erlang.phash2(submitting_pid, partition_count)}
+
+      stub(BigQueryAdaptor, :managed_service_accounts_enabled?, fn -> true end)
+      stub(BigQueryAdaptor, :managed_service_account_pool_size, fn -> pool_size end)
+
+      stub(Goth, :fetch, fn name ->
+        send(submitting_pid, {:account, name})
+        {:ok, %Goth.Token{token: "job-creator"}}
+      end)
+
+      expect(BqJobs, :bigquery_jobs_query, fn _, _, opts ->
+        send(submitting_pid, {:query_request, opts[:body]})
+        response = TestUtils.gen_bq_response([%{"value" => "17"}])
+
+        {:ok,
+         %{
+           response
+           | cacheHit: false,
+             jobReference: %Model.JobReference{
+               projectId: "actual-job-project",
+               jobId: "same-test-job",
+               location: "australia-southeast1"
+             }
+         }}
+      end)
+
+      expect(BqJobs, :bigquery_jobs_get, fn _, project_id, job_id, opts ->
+        send(submitting_pid, {:job_request, project_id, job_id, opts})
+        {:ok, %Model.Job{}}
+      end)
+
+      assert {:ok, result} =
+               BigQueryAdaptor.execute_query(%Backend{user_id: user.id}, "SELECT 17 AS value",
+                 prepare_query_plan: true
+               )
+
+      assert_received {:account, ^account}
+      assert_received {:query_request, request}
+      assert request.jobCreationMode == "JOB_CREATION_REQUIRED"
+      assert result.execution_details.partition_key == submitting_pid
+
+      assert {:ok, %{details: details, statistics: nil}} =
+               Task.async(fn ->
+                 BigQueryAdaptor.explain_query(
+                   %Backend{user_id: user.id, type: :bigquery},
+                   result.execution_details,
+                   []
+                 )
+               end)
+               |> Task.await()
+
+      assert_received {:account, ^account}
+      assert_received {:job_request, "actual-job-project", "same-test-job", opts}
+      assert opts[:location] == "australia-southeast1"
+      assert details == result.execution_details
     end
   end
 

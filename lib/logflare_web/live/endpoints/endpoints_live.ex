@@ -578,7 +578,9 @@ defmodule LogflareWeb.EndpointsLive do
 
     socket
     |> assign(:test_result, %{result | query_plan: AsyncResult.loading()})
-    |> start_async({:query_plan, result.run_id}, fn -> Endpoints.explain_query(request) end)
+    |> start_async({:query_plan, result.run_id}, fn ->
+      Endpoints.explain_query(request)
+    end)
   end
 
   defp load_query_plan(socket), do: socket

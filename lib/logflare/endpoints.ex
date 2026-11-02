@@ -1190,16 +1190,18 @@ defmodule Logflare.Endpoints do
          opts,
          redact_pii
        ) do
-    if Keyword.get(opts, :prepare_query_plan, false) and
-         Backends.Adaptor.can_explain_query?(backend) do
+    with true <- Keyword.get(opts, :prepare_query_plan, false),
+         true <- Backends.Adaptor.can_explain_query?(backend) do
+      {execution_details, result} = Map.pop(result, :execution_details)
+
       Map.put(result, :query_plan_request, %{
         backend: backend,
-        query_args: query_args,
+        query_args: execution_details || query_args,
         opts: opts,
         redact_pii: redact_pii
       })
     else
-      result
+      false -> result
     end
   end
 
@@ -1208,7 +1210,7 @@ defmodule Logflare.Endpoints do
           query_args: Backends.Adaptor.explain_query_args(),
           opts: Keyword.t(),
           redact_pii: boolean()
-        }) :: {:ok, String.t()} | {:error, QueryError.t()}
+        }) :: {:ok, String.t() | map()} | {:error, QueryError.t()}
   def explain_query(%{
         backend: backend,
         query_args: query_args,

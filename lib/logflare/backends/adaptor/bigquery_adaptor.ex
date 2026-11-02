@@ -11,6 +11,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   require OpenTelemetry.Tracer
 
   alias Ecto.Changeset
+  alias GoogleApi.BigQuery.V2.Api.Jobs
   alias GoogleApi.IAM.V1.Api.Projects, as: IAMProjects
   alias GoogleApi.IAM.V1.Model.CreateServiceAccountRequest
   alias GoogleApi.BigQuery.V2.Model
@@ -242,6 +243,37 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     with {:ok, {bq_sql, bq_params}} <- ecto_to_sql(query, opts),
          %User{} = user <- Users.Cache.get(user_id) do
       execute_user_query(user, bq_sql, bq_params, build_base_query_opts(user, opts))
+    end
+  end
+
+  @impl Logflare.Backends.Adaptor
+  @spec explain_query(Backend.t(), map(), Keyword.t()) ::
+          {:ok, %{details: map(), statistics: map() | nil}} | {:error, QueryError.t()}
+  def explain_query(%Backend{}, %{cache_hit: true} = details, _opts) do
+    {:ok, %{details: details, statistics: nil}}
+  end
+
+  def explain_query(%Backend{}, %{job_reference: nil} = details, _opts) do
+    {:ok, %{details: details, statistics: nil}}
+  end
+
+  def explain_query(%Backend{}, %{job_reference: reference} = details, _opts) do
+    user = Users.Cache.get(details.user_id)
+    conn = GenUtils.get_conn({:query, user}, details.partition_key)
+
+    job_opts =
+      [
+        location: reference.location || details.location,
+        fields: "status,statistics,jobReference"
+      ]
+      |> Keyword.reject(fn {_key, value} -> is_nil(value) end)
+
+    case Jobs.bigquery_jobs_get(conn, reference.projectId, reference.jobId, job_opts) do
+      {:ok, job} ->
+        {:ok, %{details: details, statistics: job.statistics && job.statistics.query}}
+
+      {:error, error} ->
+        {:error, to_query_error(error, user.id, :endpoint)}
     end
   end
 
@@ -591,6 +623,12 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     [
       location: user.bigquery_dataset_location,
       use_query_cache: Keyword.get(opts, :use_query_cache, true),
+      prepare_query_plan: Keyword.get(opts, :prepare_query_plan, false),
+      jobCreationMode:
+        if(Keyword.get(opts, :prepare_query_plan, false),
+          do: "JOB_CREATION_REQUIRED",
+          else: "JOB_CREATION_OPTIONAL"
+        ),
       dryRun: Keyword.get(opts, :dry_run, false),
       query_type: query_type,
       reservation: reservation
@@ -722,7 +760,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
            total_bytes_processed: result.total_bytes_processed,
            total_rows: result.total_rows,
            query_string: query_string,
-           bq_params: bq_params
+           bq_params: bq_params,
+           execution_details: build_execution_details(result, user, query_opts)
          })}
 
       {:error, error} ->
@@ -737,6 +776,26 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           )
 
         {:error, query_error}
+    end
+  end
+
+  @spec build_execution_details(map(), User.t(), Keyword.t()) :: map() | nil
+  defp build_execution_details(result, user, opts) do
+    if Keyword.get(opts, :prepare_query_plan, false) do
+      result
+      |> Map.take([
+        :job_reference,
+        :location,
+        :cache_hit,
+        :query_id,
+        :total_bytes_processed,
+        :total_bytes_billed,
+        :total_slot_ms,
+        :creation_time,
+        :start_time,
+        :end_time
+      ])
+      |> Map.merge(%{user_id: user.id, partition_key: self()})
     end
   end
 

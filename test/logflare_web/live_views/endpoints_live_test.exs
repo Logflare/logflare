@@ -6,6 +6,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
   import Logflare.ClickHouseMappedEvents, only: [build_mapped_log_event: 1]
   import Logflare.DataCase, only: [setup_clickhouse_test: 1]
 
+  alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Backends.Adaptor.QueryResult
 
   setup %{conn: conn} do
@@ -813,7 +814,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert has_element?(view, "label", "Enable query sandboxing")
       assert has_element?(view, "label", "Max rows")
       assert has_element?(view, "label", "Enable authentication")
-      refute has_element?(view, "#endpoint-test-plan-tab")
+      assert has_element?(view, "#endpoint-test-plan-tab", "Execution details")
 
       assert view |> render() =~ ~r/1 .+ processed/
 
@@ -914,6 +915,177 @@ defmodule LogflareWeb.EndpointsLiveTest do
   end
 
   describe "query plans" do
+    test "BigQuery details load the same test job lazily and refresh per run", %{
+      conn: conn,
+      user: user
+    } do
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          language: :bq_sql,
+          query: "SELECT @value AS value",
+          redact_pii: true
+        )
+
+      test_pid = self()
+
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _, _, opts ->
+        request = opts[:body]
+        [param] = request.queryParameters
+        value = param.parameterValue.value
+        send(test_pid, {:executed, value, request})
+
+        response = TestUtils.gen_bq_response([%{"value" => value}])
+
+        {:ok,
+         %{
+           response
+           | cacheHit: false,
+             jobReference: %Model.JobReference{
+               projectId: "billing-project",
+               jobId: "test-#{value}",
+               location: "australia-southeast1"
+             },
+             totalBytesBilled: "10485760",
+             totalSlotMs: "73"
+         }}
+      end)
+
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_get, fn _, _, job, _ ->
+        send(test_pid, {:loaded, job})
+
+        {:ok,
+         %Model.Job{
+           statistics: %Model.JobStatistics{
+             query: %Model.JobStatistics2{
+               queryPlan: [
+                 %Model.ExplainQueryStage{
+                   name: "#{job}: Filter 203.0.113.5",
+                   recordsRead: "19"
+                 }
+               ]
+             }
+           }
+         }}
+      end)
+
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
+      form = element(view, "#endpoint-test-form")
+      render_submit(form, %{run: %{query: endpoint.query, params: %{value: "11"}}})
+      assert_receive {:executed, "11", request}
+      assert request.jobCreationMode == "JOB_CREATION_REQUIRED"
+      refute request.useQueryCache
+      refute_receive {:loaded, _}
+      assert has_element?(view, "#endpoint-test-results", ~s("value": "11"))
+
+      render_change(form, %{run: %{params: %{value: "99"}}})
+      view |> element("#endpoint-test-plan-tab") |> render_click()
+      render_async(view)
+      assert_receive {:loaded, "test-11"}
+      refute_received {:executed, _, _}
+
+      raw_details =
+        view
+        |> render()
+        |> Floki.parse_fragment!()
+        |> Floki.find("#endpoint-test-plan pre code")
+        |> Floki.text()
+        |> Jason.decode!()
+
+      assert raw_details["summary"]["total_bytes_billed"] == "10485760"
+
+      assert [%{"name" => "test-11: Filter REDACTED", "recordsRead" => "19"}] =
+               raw_details["stages"]
+
+      refute render(view) =~ "partition_key"
+      refute render(view) =~ "203.0.113.5"
+
+      view |> element("#endpoint-test-plan-tab") |> render_click()
+      render_async(view)
+      refute_received {:loaded, _}
+
+      render_submit(form, %{run: %{query: endpoint.query, params: %{value: "17"}}})
+      render_async(view)
+      assert_receive {:executed, "17", rerun_request}
+      assert rerun_request.jobCreationMode == "JOB_CREATION_REQUIRED"
+      refute rerun_request.useQueryCache
+      refute_received {:loaded, _}
+      refute has_element?(view, "#endpoint-test-plan pre")
+
+      view |> element("#endpoint-test-plan-tab") |> render_click()
+      render_async(view)
+      assert_receive {:loaded, "test-17"}
+      assert has_element?(view, "#endpoint-test-plan pre code", "test-17")
+      refute has_element?(view, "#endpoint-test-plan pre code", "test-11")
+    end
+
+    test "BigQuery jobs without statistics show metadata and empty stages", %{
+      conn: conn,
+      user: user
+    } do
+      endpoint = insert(:endpoint, user: user, query: "SELECT 12 AS difference")
+      response = TestUtils.gen_bq_response([%{"difference" => "12"}])
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _, _, _ ->
+        {:ok, %{response | cacheHit: false, totalBytesBilled: "4096"}}
+      end)
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_get, fn _, _, _, _ ->
+        {:ok, %Model.Job{}}
+      end)
+
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
+      view |> element("#endpoint-test-form") |> render_submit(%{run: %{query: endpoint.query}})
+      view |> element("#endpoint-test-plan-tab") |> render_click()
+      render_async(view)
+
+      details =
+        view
+        |> render()
+        |> Floki.parse_fragment!()
+        |> Floki.find("#endpoint-test-plan pre code")
+        |> Floki.text()
+        |> Jason.decode!()
+
+      assert %{
+               "summary" => %{"total_bytes_billed" => "4096"},
+               "stages" => [],
+               "timeline" => []
+             } = details
+
+      refute Map.has_key?(details, "note")
+    end
+
+    test "BigQuery details errors preserve query results", %{conn: conn, user: user} do
+      endpoint = insert(:endpoint, user: user, query: "SELECT 12 AS difference")
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _, _, _ ->
+        response = TestUtils.gen_bq_response([%{"difference" => "12"}])
+        {:ok, %{response | cacheHit: false}}
+      end)
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_get, fn _, _, _, _ ->
+        {:error, %Tesla.Env{status: 403, body: ~s({"error":{"message":"private credentials"}})}}
+      end)
+
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}")
+
+      view
+      |> element("#endpoint-test-form")
+      |> render_submit(%{run: %{query: endpoint.query}})
+
+      view |> element("#endpoint-test-plan-tab") |> render_click()
+      render_async(view)
+
+      assert has_element?(
+               view,
+               "#endpoint-test-plan .alert-warning",
+               "Could not load execution details"
+             )
+
+      assert has_element?(view, "#endpoint-test-results", ~s("difference": "12"))
+    end
+
     test "PostgreSQL test runs show results and a plain-text estimated plan", %{
       conn: conn,
       user: user
@@ -966,40 +1138,6 @@ defmodule LogflareWeb.EndpointsLiveTest do
       render_async(view)
 
       assert has_element?(view, "#endpoint-test-plan pre code", "Result")
-    end
-
-    test "switching to a backend without plans shows results", %{
-      conn: conn,
-      user: user
-    } do
-      backend =
-        insert(:backend, user: user, type: :postgres, config: postgres_backend_config())
-
-      endpoint =
-        insert(:endpoint,
-          user: user,
-          backend: backend,
-          language: :pg_sql,
-          query: "SELECT 19 - 7 AS difference"
-        )
-
-      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _, _, _ ->
-        {:ok, TestUtils.gen_bq_response([%{"difference" => "12"}])}
-      end)
-
-      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}/edit")
-      form = element(view, "#endpoint-test-form")
-      render_submit(form, %{run: %{query: endpoint.query, params: %{}}})
-      view |> element("#endpoint-test-plan-tab") |> render_click()
-      render_async(view)
-
-      assert has_element?(view, "#endpoint-test-plan pre")
-
-      view |> element("#endpoint") |> render_change(%{endpoint: %{backend_id: ""}})
-      render_submit(form, %{run: %{query: endpoint.query, params: %{}}})
-
-      assert has_element?(view, "#endpoint-test-results-only.active", ~s("difference": "12"))
-      refute has_element?(view, "#endpoint-test-results")
     end
 
     test "ClickHouse test runs show a query plan", %{conn: conn, user: user} do

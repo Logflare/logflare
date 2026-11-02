@@ -86,9 +86,10 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   """
   @typep conn_type :: :ingest | {:query, User.t()} | :default
   @spec get_conn(conn_type()) :: Tesla.Env.client()
-  def get_conn(conn_type \\ :default) do
+  @spec get_conn(conn_type(), term()) :: Tesla.Env.client()
+  def get_conn(conn_type \\ :default, partition_key \\ self()) do
     system_managed_sa_enabled = BigQueryAdaptor.managed_service_accounts_enabled?()
-    # use pid as the partition hash
+
     {use_managed_sa?, partition_count} =
       case conn_type do
         {:query,
@@ -104,13 +105,13 @@ defmodule Logflare.Google.BigQuery.GenUtils do
           {false, BigQueryAdaptor.ingest_service_account_partition_count()}
       end
 
-    partition = :erlang.phash2(self(), partition_count)
+    partition = :erlang.phash2(partition_key, partition_count)
 
     {name, metadata} =
       if use_managed_sa? == true do
         pool_size = BigQueryAdaptor.managed_service_account_pool_size()
 
-        sa_index = :erlang.phash2(self(), pool_size)
+        sa_index = :erlang.phash2(partition_key, pool_size)
 
         {{
            Logflare.GothQuery,

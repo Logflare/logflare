@@ -893,9 +893,10 @@ defmodule Logflare.EndpointsTest do
         endpoint = insert(:endpoint, user: user, query: "select current_datetime() as testing")
 
       assert {:ok, %{rows: [%{"testing" => _}]} = result} =
-               Endpoints.run_query(endpoint, %{}, prepare_query_plan: true)
+               Endpoints.run_query(endpoint)
 
       refute Map.has_key?(result, :query_plan_request)
+      assert result.execution_details == nil
 
       endpoint_id_label_value = Integer.to_string(endpoint_id)
 
