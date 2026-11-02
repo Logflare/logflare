@@ -175,9 +175,11 @@ defmodule LogflareWeb.AlertsLiveTest do
              |> render_hook("parse-query", %{"value" => valid_query}) =~ "SQL Parse error!"
     end
 
-    test "show for nonexistent query", %{conn: conn, team: team} do
-      {:error, {:live_redirect, %{flash: %{"info" => "Alert not found" <> _}}}} =
-        live(conn, ~p"/alerts/123?t=#{team.id}")
+    test "show for nonexistent query", %{conn: conn, team: team, alert_query: alert_query} do
+      assert {:ok, _} = Logflare.Alerting.delete_alert_query(alert_query)
+
+      assert {:error, {:live_redirect, %{flash: %{"info" => "Alert not found" <> _}}}} =
+               live(conn, ~p"/alerts/#{alert_query.id}?t=#{team.id}")
     end
 
     test "adds team param from alert resource", %{conn: conn, user: user} do

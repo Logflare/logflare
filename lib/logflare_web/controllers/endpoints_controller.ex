@@ -125,6 +125,16 @@ defmodule LogflareWeb.EndpointsController do
         |> put_status(:bad_request)
         |> json(%{error: "SQL and LQL overrides are disabled for this endpoint"})
 
+      {:error, {:invalid_filesystem_cache_window, message}} ->
+        conn
+        |> put_status(:bad_request)
+        |> json(%{error: message})
+
+      {:error, {:invalid_filesystem_cache_policy, message}} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{error: message})
+
       {:error, error = %QueryError{}} ->
         render(conn, "query.json", error: QueryErrorHelpers.query_error_message(error))
 

@@ -256,7 +256,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
     TestUtils.retry_assert(fn -> assert :sys.get_state(pid).query_tasks == [] end)
   end
 
-  test "endpoint previews omit class policy while execution merges it with endpoint policy",
+  test "endpoint previews and execution merge class policy with endpoint policy",
        context do
     backend = context.backend
 
@@ -265,7 +265,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
         user: Logflare.Users.get(backend.user_id),
         backend: backend,
         language: :ch_sql,
-        query: "SELECT @value AS value",
+        query:
+          "SELECT @value AS value, toInt64(getSetting('priority')) AS priority, toInt64(getSetting('max_threads')) AS threads",
         enforced_clickhouse_settings: %{"max_threads" => 2, "max_execution_time" => 0.5}
       )
 
@@ -274,12 +275,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
                read_cluster: "api_paid"
              )
 
-    refute preview =~ "priority"
-    assert {:ok, ^preview} = Endpoints.get_transformed_query(endpoint, %{"value" => "hello"})
-    assert preview =~ "max_threads = 2"
-    assert preview =~ "max_execution_time = 0.5"
+    assert preview =~ "priority = 10"
 
-    assert {:ok, %{rows: [%{"value" => "hello"}]}} =
+    assert {:ok, default_preview} =
+             Endpoints.get_transformed_query(endpoint, %{"value" => "hello"})
+
+    assert default_preview =~ "priority = 5"
+
+    for sql <- [preview, default_preview] do
+      assert sql =~ "max_threads = 2"
+      assert sql =~ "max_execution_time = 0.5"
+    end
+
+    assert {:ok, %{rows: [%{"value" => "hello", "priority" => 10, "threads" => 2}]}} =
              Endpoints.run_query(endpoint, %{"value" => "hello"},
                read_cluster: "api_paid",
                enforced_clickhouse_settings: %{"priority" => 1}

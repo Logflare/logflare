@@ -9,6 +9,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.Backend
   alias Logflare.Backends.QueryError
@@ -16,6 +17,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Endpoints.Cache
   alias Logflare.Endpoints.ClickHouseSettings
   alias Logflare.Endpoints.EndpointQuery
+  alias Logflare.Endpoints.FilesystemCachePolicy
   alias Logflare.Endpoints.PiiRedactor
   alias Logflare.Endpoints.Resolver
   alias Logflare.Endpoints.ResultsCache
@@ -41,7 +43,12 @@ defmodule Logflare.Endpoints do
   @typep origin :: User.t() | TeamUser.t() | OauthAccessToken.t()
   @typep run_query_return ::
            {:ok, %{required(:rows) => [term()], optional(atom()) => any()}}
-           | {:error, String.t() | QueryError.t() | :sandboxing_disabled | Cache.policy_error()}
+           | {:error,
+              String.t()
+              | QueryError.t()
+              | FilesystemCachePolicy.error()
+              | :sandboxing_disabled
+              | Cache.policy_error()}
 
   defguardp is_integer_or_string(value) when is_integer(value) or is_non_empty_binary(value)
 
@@ -532,6 +539,7 @@ defmodule Logflare.Endpoints do
         :proactive_requerying_seconds,
         :max_limit,
         :enforced_clickhouse_settings,
+        :filesystem_cache_policy,
         :enable_auth,
         :labels
       ],
@@ -855,6 +863,7 @@ defmodule Logflare.Endpoints do
       parsed_labels: Keyword.get(opts, :parsed_labels, %{}),
       source_mapping: source_mapping,
       redact_pii: Keyword.get(opts, :redact_pii, false),
+      filesystem_cache_policy: Keyword.get(opts, :filesystem_cache_policy),
       backend_id: Keyword.get(opts, :backend_id)
     }
 
@@ -954,7 +963,8 @@ defmodule Logflare.Endpoints do
   Useful for debugging and UI display of merged sandbox queries.
   """
   @spec get_transformed_query(EndpointQuery.t(), map(), Keyword.t()) ::
-          {:ok, String.t()} | {:error, String.t() | Cache.policy_error()}
+          {:ok, String.t()}
+          | {:error, String.t() | FilesystemCachePolicy.error() | Cache.policy_error()}
   def get_transformed_query(%EndpointQuery{} = endpoint_query, params \\ %{}, opts \\ [])
       when is_map(params) and is_list(opts) do
     %EndpointQuery{
@@ -995,7 +1005,8 @@ defmodule Logflare.Endpoints do
              else: expanded_query
            ),
          {:ok, transformed_query} <- Sql.transform(query_language, transform_input, user_id),
-         {:ok, transformed_query} <- preview_query_policy(endpoint_query, transformed_query, opts) do
+         {:ok, transformed_query} <-
+           preview_query_policy(endpoint_query, transformed_query, params, opts) do
       {:ok, transformed_query}
     end
   end
@@ -1018,13 +1029,33 @@ defmodule Logflare.Endpoints do
 
   defp reload_enforced_settings(endpoint), do: {:ok, endpoint}
 
-  @spec preview_query_policy(EndpointQuery.t(), String.t(), Keyword.t()) ::
+  @spec preview_query_policy(EndpointQuery.t(), String.t(), map(), keyword()) ::
           {:ok, String.t()} | {:error, term()}
-  defp preview_query_policy(%EndpointQuery{language: :ch_sql} = endpoint, query, _opts) do
-    ClickHouseSettings.enforce(query, endpoint.enforced_clickhouse_settings)
+  defp preview_query_policy(%EndpointQuery{language: :ch_sql} = endpoint, query, params, opts) do
+    with {:ok, backend} <- get_backend_for_query(endpoint),
+         {:ok, settings} <- endpoint_clickhouse_settings(endpoint, params) do
+      ClickHouseAdaptor.prepare_query(backend, query,
+        query_type: :endpoint,
+        read_cluster: Keyword.get(opts, :read_cluster),
+        filesystem_cache_settings: settings,
+        enforced_clickhouse_settings: endpoint.enforced_clickhouse_settings
+      )
+    end
   end
 
-  defp preview_query_policy(_endpoint_query, query, _opts), do: {:ok, query}
+  defp preview_query_policy(_endpoint_query, query, _params, _opts), do: {:ok, query}
+
+  @spec endpoint_clickhouse_settings(EndpointQuery.t(), map()) ::
+          {:ok, map()} | {:error, FilesystemCachePolicy.error()}
+  defp endpoint_clickhouse_settings(%EndpointQuery{language: :ch_sql} = endpoint, params) do
+    with {:ok, decision} <-
+           FilesystemCachePolicy.resolve(endpoint.filesystem_cache_policy, params) do
+      {:ok, decision.settings}
+    end
+  end
+
+  defp endpoint_clickhouse_settings(_endpoint, _params),
+    do: {:ok, %{}}
 
   @spec maybe_convert_lql_to_sql(
           lql_param :: String.t() | nil,
@@ -1103,7 +1134,8 @@ defmodule Logflare.Endpoints do
        when sql_language in @valid_sql_languages and is_binary(transformed_query) and
               is_list(declared_params) and is_map(input_params) and is_list(opts) do
     with {:ok, %Backend{} = backend} <- get_backend_for_query(endpoint_query),
-         adaptor <- Backends.Adaptor.get_adaptor(backend) do
+         adaptor <- Backends.Adaptor.get_adaptor(backend),
+         {:ok, settings} <- endpoint_clickhouse_settings(endpoint_query, input_params) do
       # let the adaptor transform the query if needed
       final_query = maybe_transform_query(backend, adaptor, transformed_query, sql_language)
 
@@ -1129,6 +1161,7 @@ defmodule Logflare.Endpoints do
         opts
         |> Keyword.put(:query_type, :endpoint)
         |> Keyword.put(:enforced_clickhouse_settings, endpoint_query.enforced_clickhouse_settings)
+        |> Keyword.put(:filesystem_cache_settings, settings)
         |> Keyword.put(:validated_clickhouse_sql, endpoint_query.language == :ch_sql)
 
       case adaptor.execute_query(backend, query_args, query_opts) do

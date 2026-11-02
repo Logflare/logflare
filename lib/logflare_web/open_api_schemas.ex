@@ -58,6 +58,7 @@ defmodule LogflareWeb.OpenApiSchemas do
       query: %Schema{type: :string},
       language: %Schema{type: :string},
       source_mapping: %Schema{type: :object, nullable: true},
+      filesystem_cache_policy: %Schema{type: :object, nullable: true, additionalProperties: true},
       sandboxable: %Schema{type: :boolean, nullable: true},
       cache_duration_seconds: %Schema{type: :integer},
       proactive_requerying_seconds: %Schema{type: :integer},
@@ -73,6 +74,7 @@ defmodule LogflareWeb.OpenApiSchemas do
 
   defmodule EndpointApiParams do
     @properties %{
+      filesystem_cache_policy: %Schema{type: :object, nullable: true, additionalProperties: true},
       description: %Schema{type: :string, nullable: true},
       name: %Schema{type: :string},
       query: %Schema{type: :string},
