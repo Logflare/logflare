@@ -85,6 +85,28 @@ defmodule LogflareWeb.EndpointFilesystemCacheControllerTest do
     end
   end
 
+  test "empty query-string boundaries reach the backend without a derived hint", context do
+    for duration <- [0, 60],
+        params <- [
+          %{"from" => "", "to" => "7200"},
+          %{"from" => "0", "to" => ""},
+          %{"from" => "", "to" => ""}
+        ] do
+      endpoint = endpoint(context, duration)
+
+      expect(ClickHouseAdaptor, :execute_query, fn _backend, {_sql, _, actual_params, _}, opts ->
+        assert Map.take(actual_params, ["from", "to"]) == params
+        assert opts[:filesystem_cache_settings] == %{}
+        {:ok, QueryResult.new([%{"ok" => 1}])}
+      end)
+
+      conn =
+        get(context.conn, "/api/endpoints/query/#{endpoint.token}?#{URI.encode_query(params)}")
+
+      assert %{"result" => [%{"ok" => 1}]} = json_response(conn, 200)
+    end
+  end
+
   test "invalid saved configuration is not blamed on request timestamps", context do
     endpoint = endpoint(context, 0, Map.put(@policy, "bypass_fill_above_seconds", 0))
     reject(ClickHouseAdaptor, :execute_query, 3)

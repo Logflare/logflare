@@ -175,6 +175,34 @@ defmodule LogflareWeb.EndpointFilesystemCacheLiveTest do
     assert Repo.reload!(context.endpoint).filesystem_cache_policy == nil
   end
 
+  test "blank boundaries in the test form leave the hint unspecified", context do
+    {:ok, view, _} = live_with_redirect(context.conn, ~p"/endpoints/#{context.endpoint.id}/edit")
+
+    view
+    |> element("#endpoint")
+    |> render_change(%{endpoint: %{filesystem_cache_policy: @form_policy}})
+
+    for params <- [%{"from" => "", "to" => "7200"}, %{"from" => "0", "to" => ""}] do
+      view
+      |> element("form[phx-submit='run-query']")
+      |> render_change(%{run: %{params: params}})
+
+      assert has_element?(view, "#filesystem-cache-preview", "No derived cache hint")
+
+      expect(ClickHouseAdaptor, :execute_query, fn _backend, {_sql, _, actual_params, _}, opts ->
+        assert actual_params == params
+        assert opts[:filesystem_cache_settings] == %{}
+        {:ok, QueryResult.new([%{"ok" => 1}])}
+      end)
+
+      view
+      |> element("form[phx-submit='run-query']")
+      |> render_submit(%{run: %{query: @query, params: params}})
+
+      assert render(view) =~ "Ran query successfully"
+    end
+  end
+
   test "switching to a non-ClickHouse backend clears the policy and permits saving", context do
     assert {:ok, policy} = FilesystemCachePolicy.normalize(@form_policy)
 

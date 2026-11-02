@@ -69,11 +69,33 @@ defmodule Logflare.Endpoints.FilesystemCachePolicyTest do
     end
   end
 
+  test "empty-string boundaries leave the cache hint unspecified in every format" do
+    for {format, value} <- [
+          {"iso8601", "2026-10-01T00:00:00Z"},
+          {"unix_seconds", "7200"},
+          {"unix_milliseconds", "7200000"}
+        ],
+        params <- [
+          %{"from" => "", "to" => value},
+          %{"from" => value, "to" => ""},
+          %{"from" => "", "to" => ""},
+          %{"from" => "", "to" => nil}
+        ] do
+      policy = Map.put(@policy, "timestamp_format", format)
+
+      assert {:ok, %{window_seconds: nil, settings: %{}}} =
+               FilesystemCachePolicy.resolve(policy, params)
+
+      assert {:error, {:invalid_filesystem_cache_window, _}} =
+               FilesystemCachePolicy.resolve(policy, %{"from" => "", "to" => "bad"})
+    end
+  end
+
   test "malformed, timezone-free and reversed inputs fail explicitly" do
     for params <- [
           %{"from" => "bad"},
           %{"to" => "bad"},
-          %{"from" => "", "to" => nil},
+          %{"from" => " ", "to" => nil},
           %{"from" => "2026-10-01", "to" => "2026-10-03"},
           %{"from" => "2026-10-01T00:00:00", "to" => "2026-10-03T00:00:00Z"},
           %{"from" => "2026-10-03T00:00:00Z", "to" => "2026-10-01T00:00:00Z"},

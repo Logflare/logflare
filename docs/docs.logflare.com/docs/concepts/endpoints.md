@@ -105,7 +105,8 @@ Fixed backend/endpoint settings take precedence over this derived hint.
 
 The endpoint author must ensure the selected parameters actually bound the SQL's
 time range, including any sandboxed query. This is a performance hint, not a
-security limit. If either boundary is absent or null, no cache hint is derived.
+security limit. If either boundary is absent, null, or an empty string, no cache
+hint is derived.
 This does not supply missing SQL parameters or change the backend's parameter
 requirements. Supplied invalid timestamps and reversed ranges return an HTTP 400
 query error describing the invalid window. Unix timestamps must be integers;

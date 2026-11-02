@@ -181,6 +181,7 @@ defmodule Logflare.Endpoints.FilesystemCachePolicy do
 
   @spec timestamp(term(), String.t()) :: {:ok, integer() | nil} | :error
   defp timestamp(nil, _format), do: {:ok, nil}
+  defp timestamp("", _format), do: {:ok, nil}
 
   defp timestamp(value, "iso8601") when is_binary(value) do
     case DateTime.from_iso8601(value) do
