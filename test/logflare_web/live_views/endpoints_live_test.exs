@@ -662,6 +662,58 @@ defmodule LogflareWeb.EndpointsLiveTest do
       refute render(view) =~ "initial"
     end
 
+    test "editing an existing endpoint tolerates incomplete SQL and recovers", %{
+      conn: conn,
+      user: user,
+      team: team
+    } do
+      insert(:endpoint, user: user, query: "select 1")
+      endpoint = insert(:endpoint, user: user, query: "select @other as initial")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}/edit")
+
+      for query <- ["select", "select * from", "select '"] do
+        change_editor_query(view, query)
+
+        assert has_element?(view, ~s|#endpoint_query[value="#{query}"]|)
+        assert has_element?(view, "#endpoint_query_editor > .help-block", "sql parser error")
+        assert render(view) =~ "SQL Parse error!"
+      end
+
+      assert Logflare.Endpoints.get_endpoint_query(endpoint.id).query == endpoint.query
+
+      query = "select @my_param as valid"
+      change_editor_query(view, query)
+
+      assert has_element?(view, ~s|#endpoint_query[value="#{query}"]|)
+      refute has_element?(view, "#endpoint_query_editor > .help-block")
+      refute render(view) =~ "SQL Parse error!"
+      assert has_element?(view, "input[name='run[params][my_param]']")
+      refute has_element?(view, "input[name='run[params][other]']")
+
+      view
+      |> form("#endpoint")
+      |> render_submit()
+
+      assert_patched(view, "/endpoints/#{endpoint.id}?t=#{team.id}")
+      assert Logflare.Endpoints.get_endpoint_query(endpoint.id).query == query
+    end
+
+    test "saving an existing endpoint with invalid SQL returns validation errors", %{
+      conn: conn,
+      user: user
+    } do
+      insert(:endpoint, user: user, query: "select 1")
+      endpoint = insert(:endpoint, user: user, query: "select 1")
+      {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}/edit")
+
+      view
+      |> element("form#endpoint")
+      |> render_submit(%{endpoint: %{query: "select * from"}})
+
+      assert has_element?(view, "#endpoint_query_editor > .help-block", "sql parser error")
+      assert Logflare.Endpoints.get_endpoint_query(endpoint.id).query == endpoint.query
+    end
+
     test "bug: edit query with validation errors do not affect saved values", %{
       conn: conn,
       user: user

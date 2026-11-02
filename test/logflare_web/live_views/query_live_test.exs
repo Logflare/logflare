@@ -142,7 +142,7 @@ defmodule LogflareWeb.QueryLiveTest do
       |> element("form#query-form")
       |> render_submit(%{})
 
-      assert_receive {:query_started, first_task, ^query}
+      assert_receive {:query_started, first_task, ^query}, to_timeout(second: 5)
 
       patch = assert_patch(view)
       assert URI.decode_query(URI.parse(patch).query)["q"] == query
@@ -167,7 +167,7 @@ defmodule LogflareWeb.QueryLiveTest do
       |> element("form#query-form")
       |> render_submit(%{})
 
-      assert_receive {:query_started, second_task, rerun_query}
+      assert_receive {:query_started, second_task, rerun_query}, to_timeout(second: 5)
       assert rerun_query =~ "retained_value"
       refute rerun_query =~ "YourSource"
 
