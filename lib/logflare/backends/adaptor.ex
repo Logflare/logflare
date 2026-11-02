@@ -22,6 +22,7 @@ defmodule Logflare.Backends.Adaptor do
   @type explain_query_args ::
           {String.t(), [term()]}
           | {String.t(), [String.t()], map(), EndpointQuery.t()}
+          | map()
   @type source_backend :: {Source.t(), Backend.t()}
   @type start_link_arg :: source_backend() | Backend.t()
   @type query_identifier :: identifier() | Backend.t() | tuple()
@@ -317,10 +318,14 @@ defmodule Logflare.Backends.Adaptor do
               {:ok, QueryResult.t()} | {:error, :not_implemented} | {:error, term()}
 
   @doc """
-  Returns a plain-text estimated plan without executing the query.
+  Returns query diagnostics without executing or rerunning the query.
+
+  PostgreSQL and ClickHouse accept SQL and parameters and return a plain-text estimated plan.
+  BigQuery accepts retained execution metadata from a completed query and returns structured
+  details and statistics for that same job.
   """
   @callback explain_query(Backend.t(), explain_query_args(), opts :: Keyword.t()) ::
-              {:ok, String.t()} | {:error, QueryError.t()}
+              {:ok, String.t() | map()} | {:error, QueryError.t()}
 
   @doc """
   This is useful for adaptors that need special parameter handling, such as PostgreSQL which needs

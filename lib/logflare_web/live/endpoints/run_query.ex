@@ -9,10 +9,21 @@ defmodule LogflareWeb.Endpoints.RunQuery do
 
   attr :result, :map, required: true
 
-  defp query_output(assigns) do
+  defp query_output(%{result: %{query_plan: plan, query_plan_request: request}} = assigns) do
+    execution_details? = match?(%{backend: %{type: :bigquery}}, request)
+
     assigns =
       assigns
-      |> assign(:plan, Map.get(assigns.result, :query_plan))
+      |> assign(:plan, plan)
+      |> assign(:execution_details?, execution_details?)
+      |> assign(:plan_label, if(execution_details?, do: "Execution details", else: "Query plan"))
+      |> assign(
+        :plan_copy_tooltip,
+        if(execution_details?,
+          do: "Copy execution details to clipboard",
+          else: "Copy plan to clipboard"
+        )
+      )
       |> assign(
         :results_title,
         if(assigns.result.kind == :sandboxed_endpoint,
@@ -38,14 +49,14 @@ defmodule LogflareWeb.Endpoints.RunQuery do
           </div>
         </:tab>
 
-        <:tab :if={@plan} id="endpoint-test-plan" label="Query plan" on_select={copy_output_tooltip("Copy plan to clipboard") |> JS.push("load-query-plan")} busy={@plan.loading == true}>
+        <:tab :if={@plan} id="endpoint-test-plan" label={@plan_label} on_select={copy_output_tooltip(@plan_copy_tooltip) |> JS.push("load-query-plan")} busy={@plan.loading == true}>
           <div :if={@plan.loading} id="endpoint-test-plan-loading" role="status">
             {live_react_component("Components.Loader", %{}, id: "endpoint-test-plan-loader")}
-            <span class="tw-sr-only">Loading query plan…</span>
+            <span class="tw-sr-only">Loading {String.downcase(@plan_label)}…</span>
           </div>
-          <pre :if={@plan.ok?} class="tw-mb-2 tw-overflow-x-auto tw-whitespace-pre tw-rounded tw-bg-zinc-800 tw-p-2 tw-text-xs tw-text-white"><code>{@plan.result}</code></pre>
+          <pre :if={@plan.ok?} class="tw-mb-2 tw-overflow-x-auto tw-whitespace-pre tw-rounded tw-bg-zinc-800 tw-p-2 tw-text-xs tw-text-white"><code>{format_query_plan(@plan.result)}</code></pre>
           <.alert :if={@plan.failed} variant="warning">
-            <strong>Could not generate query plan.</strong>
+            <strong>{if @execution_details?, do: "Could not load execution details.", else: "Could not generate query plan."}</strong>
             <br />
             {QueryErrorHelpers.query_error_message(@plan.failed)}
           </.alert>
@@ -58,6 +69,32 @@ defmodule LogflareWeb.Endpoints.RunQuery do
     </section>
     """
   end
+
+  @spec format_query_plan(map() | String.t()) :: String.t()
+  defp format_query_plan(%{details: details, statistics: statistics}) do
+    summary =
+      Map.take(details, [
+        :cache_hit,
+        :total_bytes_processed,
+        :total_bytes_billed,
+        :total_slot_ms,
+        :creation_time,
+        :start_time,
+        :end_time
+      ])
+
+    payload = %{
+      job: details.job_reference,
+      query_id: details.query_id,
+      summary: summary,
+      stages: if(statistics, do: statistics.queryPlan || [], else: []),
+      timeline: if(statistics, do: statistics.timeline || [], else: [])
+    }
+
+    Poison.encode!(payload, %{pretty: true})
+  end
+
+  defp format_query_plan(plan) when is_binary(plan), do: plan
 
   @spec copy_output_tooltip(String.t()) :: JS.t()
   defp copy_output_tooltip(text) do

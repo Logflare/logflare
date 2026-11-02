@@ -8,6 +8,7 @@ defmodule Logflare.Backends.Adaptor.QueryResult do
   defstruct [
     :rows,
     :total_rows,
+    :execution_details,
     total_bytes_processed: @not_supported,
     query_string: @not_supported,
     bq_params: @not_supported
@@ -17,6 +18,7 @@ defmodule Logflare.Backends.Adaptor.QueryResult do
           rows: [term()],
           total_bytes_processed: integer() | not_supported(),
           total_rows: integer(),
+          execution_details: map() | nil,
           query_string: String.t() | not_supported(),
           bq_params: [map()] | not_supported()
         }

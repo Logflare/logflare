@@ -44,7 +44,7 @@ defmodule Logflare.Endpoints.PiiRedactor do
   def redact_pii_from_value(%Stream{} = value), do: value
 
   def redact_pii_from_value(value) when is_map(value) do
-    Map.new(value, fn {key, val} -> {key, redact_pii_from_value(val)} end)
+    :maps.map(fn _key, val -> redact_pii_from_value(val) end, value)
   end
 
   def redact_pii_from_value(value) when is_list(value) do
