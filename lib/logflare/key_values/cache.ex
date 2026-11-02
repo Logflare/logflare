@@ -217,21 +217,18 @@ defmodule Logflare.KeyValues.Cache do
   end
 
   @doc """
-  Deletes `keys` from L1 and L2, and returns the number of keys deleted from either level.
+  Deletes `keys` from L1, then from L2 in one call, and returns the number of entries deleted
+  from both levels.
   """
   @impl ContextCache
   def delete_keys(keys) do
-    Cachex.execute(__MODULE__, fn worker ->
-      Enum.count(keys, fn cache_key ->
-        in_l1? = not match?({:ok, nil}, Cachex.take(worker, cache_key))
-        in_l2? = evict_l2(cache_key)
-        in_l1? or in_l2?
-      end)
-    end)
+    with {:ok, from_l1} <-
+           Cachex.execute(__MODULE__, fn worker ->
+             Enum.count(keys, &(not match?({:ok, nil}, Cachex.take(worker, &1))))
+           end) do
+      {:ok, from_l1 + L2.evict(Enum.filter(keys, &match?({:lookup, [_user_id, _key, nil]}, &1)))}
+    end
   end
-
-  defp evict_l2({:lookup, [_user_id, _key, nil]} = full_key), do: L2.evict(full_key)
-  defp evict_l2(_cache_key), do: false
 
   @impl ContextCache
   def keys_to_bust(kw) do
