@@ -41,16 +41,11 @@ defmodule Logflare.KeyValues.Cache do
   alias Logflare.KeyValues.Cache.L2
   alias Logflare.KeyValues.CacheWarmer
   alias Logflare.Repo
-  alias Logflare.Utils.Tasks
-  alias Nebulex.Distributed.RPC
 
   @db_fallback_event [:logflare, :key_values, :cache, :db_fallback]
-  @l2_fill_event [:logflare, :key_values, :cache, :l2_fill]
   @supervisor Logflare.KeyValues.Cache.Supervisor
   @usage_touch_window :timer.minutes(20)
   @usage_touch_chunk 1_000
-
-  @typep l2_result() :: {:ok, term()} | :miss | :l2_error | :l2_skipped
 
   @doc """
   Starts L1 and, when `Logflare.KeyValues.Cache.L2.enabled?/0`, L2 under a `one_for_one`
@@ -147,20 +142,20 @@ defmodule Logflare.KeyValues.Cache do
   defp read_through(key_args) do
     cache_key = {:lookup, key_args}
 
-    case fetch_l2(cache_key) do
+    case L2.lookup(cache_key) do
       {:ok, value} ->
         value
 
       l2_miss ->
         {value, fill_l2?} = full_value_from_l2_or_db(l2_miss, key_args)
-        if fill_l2?, do: fill_l2_async(cache_key, value)
+        if fill_l2?, do: L2.fill(cache_key, value)
         value
     end
   end
 
   defp full_value_from_l2_or_db(:miss, [user_id, key, accessor_path] = key_args)
        when accessor_path != nil do
-    case fetch_l2({:lookup, [user_id, key, nil]}) do
+    case L2.lookup({:lookup, [user_id, key, nil]}) do
       {:ok, full_value} -> {KeyValues.extract_value(full_value, accessor_path), true}
       l2_miss -> {from_db(l2_miss, key_args), l2_miss == :miss}
     end
@@ -174,60 +169,6 @@ defmodule Logflare.KeyValues.Cache do
     Repo.apply_with_replica(KeyValues, :lookup, key_args)
   end
 
-  @spec fetch_l2(term()) :: l2_result()
-  defp fetch_l2(cache_key) do
-    if L2.enabled?() do
-      case L2.fetch(cache_key, timeout: L2.timeout()) do
-        {:ok, _value} = hit -> hit
-        {:error, %Nebulex.KeyError{}} -> :miss
-        {:error, _reason} -> :l2_error
-      end
-    else
-      :l2_skipped
-    end
-  rescue
-    _exception -> :l2_error
-  catch
-    :exit, _reason -> :l2_error
-  end
-
-  defp fill_l2_async(cache_key, value) do
-    _ = Tasks.start_child(fn -> put_l2(cache_key, value) end)
-    :ok
-  end
-
-  defp put_l2(cache_key, value) do
-    :telemetry.span(@l2_fill_event, %{}, fn ->
-      result =
-        with {:ok, owner} <- L2.find_node(cache_key) do
-          RPC.call(owner, __MODULE__, :fill_l2_share, [cache_key, value, L2.ttl()], L2.timeout())
-        end
-
-      {:ok, %{result: fill_result(result)}}
-    end)
-  rescue
-    _exception -> :ok
-  catch
-    :exit, _reason -> :ok
-  end
-
-  defp fill_result({:error, _reason}), do: :error
-  defp fill_result(put_or_dropped), do: put_or_dropped
-
-  @doc false
-  @spec fill_l2_share(term(), term(), timeout()) :: :put | :dropped_stale
-  def fill_l2_share({:lookup, [user_id, key, _accessor_path]} = cache_key, value, ttl) do
-    primary = L2.__primary__()
-    :ok = primary.put(cache_key, value, ttl: ttl)
-
-    if Tombstones.Cache.tombstoned?(__MODULE__, {user_id, key}) do
-      :ok = primary.delete(cache_key)
-      :dropped_stale
-    else
-      :put
-    end
-  end
-
   defp tombstoned?(user_id, key), do: Tombstones.Cache.tombstoned?(__MODULE__, {user_id, key})
 
   @doc """
@@ -236,16 +177,8 @@ defmodule Logflare.KeyValues.Cache do
   @impl Logflare.Cache
   def reset do
     :ok = CachexOps.reset(__MODULE__)
-    _ = clear_l2()
+    _ = L2.clear()
     :ok
-  end
-
-  defp clear_l2 do
-    if L2.enabled?(), do: L2.delete_all()
-  rescue
-    _exception -> :error
-  catch
-    :exit, _reason -> :error
   end
 
   @doc """
@@ -297,18 +230,10 @@ defmodule Logflare.KeyValues.Cache do
     Cachex.execute(__MODULE__, fn worker ->
       Enum.count(keys, fn cache_key ->
         in_l1? = not match?({:ok, nil}, Cachex.take(worker, cache_key))
-        in_l2? = delete_l2_local(cache_key)
+        in_l2? = L2.delete_local(cache_key)
         in_l1? or in_l2?
       end)
     end)
-  end
-
-  defp delete_l2_local(cache_key) do
-    L2.enabled?() and match?({:ok, _value}, L2.__primary__().take(cache_key))
-  rescue
-    _exception -> false
-  catch
-    :exit, _reason -> false
   end
 
   @impl ContextCache
@@ -351,23 +276,6 @@ defmodule Logflare.KeyValues.Cache do
         _ -> false
       end)
 
-    Enum.uniq(l1_keys ++ l2_local_lookup_keys(user_id, key))
-  end
-
-  defp l2_local_lookup_keys(user_id, key) do
-    if L2.enabled?() do
-      accessor_paths =
-        L2.__primary__().get_all!(
-          query: [{{:entry, {:lookup, [user_id, key, :"$1"]}, :_, :_, :_, :_}, [], [:"$1"]}]
-        )
-
-      Enum.map(accessor_paths, &{:lookup, [user_id, key, &1]})
-    else
-      []
-    end
-  rescue
-    _exception -> []
-  catch
-    :exit, _reason -> []
+    Enum.uniq(l1_keys ++ L2.local_lookup_keys(user_id, key))
   end
 end
