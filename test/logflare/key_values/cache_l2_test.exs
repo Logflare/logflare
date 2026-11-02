@@ -75,13 +75,23 @@ defmodule Logflare.KeyValues.CacheL2Test do
     end
   end
 
-  test "busting a key-value cached only in L2", %{user: user} do
-    insert(:key_value, user: user, key: "proj1", value: @value)
-    :ok = L2.put(lookup_key(user.id, "proj1"), %{"org" => %{"id" => "stale"}})
+  test "busting key-values cached in L2 only and in both levels", %{user: user} do
+    keys = ["l2_only", "both_levels"]
 
-    assert {:ok, 1} = ContextCache.bust_keys([{KeyValues, user_id: user.id, key: "proj1"}])
-    assert @value = KeyValues.Cache.lookup(user.id, "proj1")
-    assert "abc" = KeyValues.Cache.lookup(user.id, "proj1", "org.id")
+    for key <- keys do
+      insert(:key_value, user: user, key: key, value: @value)
+      :ok = L2.put(lookup_key(user.id, key), %{"org" => %{"id" => "stale"}})
+    end
+
+    assert %{"org" => %{"id" => "stale"}} = KeyValues.Cache.lookup(user.id, "both_levels")
+
+    assert {:ok, 3} =
+             ContextCache.bust_keys(for key <- keys, do: {KeyValues, user_id: user.id, key: key})
+
+    for key <- keys do
+      assert @value = KeyValues.Cache.lookup(user.id, key)
+      assert "abc" = KeyValues.Cache.lookup(user.id, key, "org.id")
+    end
   end
 
   @tag :capture_log
@@ -97,22 +107,13 @@ defmodule Logflare.KeyValues.CacheL2Test do
     end
   end
 
-  test "busting a key-value cached in L1 and L2", %{user: user} do
-    insert(:key_value, user: user, key: "proj1", value: @value)
-    ref = attach_l2_fill()
-    assert @value = KeyValues.Cache.lookup(user.id, "proj1")
-    assert_receive {_event, ^ref, _measurements, %{result: :put}}
-
-    assert {:ok, 1} = ContextCache.bust_keys([{KeyValues, user_id: user.id, key: "proj1"}])
-  end
-
   @tag :capture_log
   test "busting while L2 fails", %{user: user} do
     insert(:key_value, user: user, key: "proj1", value: @value)
     assert @value = KeyValues.Cache.lookup(user.id, "proj1")
 
     for failure <- [:raise, :exit] do
-      stub(L2, :take, fn _cache_key, _opts -> fail(failure) end)
+      stub(L2, :delete_all, fn _query, _opts -> fail(failure) end)
 
       assert {:ok, _busted} =
                ContextCache.bust_keys([{KeyValues, user_id: user.id, key: "proj1"}])

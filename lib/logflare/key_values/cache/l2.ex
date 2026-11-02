@@ -102,15 +102,19 @@ defmodule Logflare.KeyValues.Cache.L2 do
   end
 
   @doc """
-  Deletes a key from its owner's share, returning whether it was there.
+  Deletes keys from their owners' shares, one call per owner node, and returns the number of
+  entries deleted.
   """
-  @spec evict(term()) :: boolean()
-  def evict(cache_key) do
-    enabled?() and
-      match?(
-        {:ok, {:ok, _value}},
-        run_isolated(fn -> __MODULE__.take(cache_key, timeout: timeout()) end)
-      )
+  @spec evict([term()]) :: non_neg_integer()
+  def evict(cache_keys) do
+    delete = fn -> __MODULE__.delete_all([in: cache_keys], timeout: timeout()) end
+
+    with true <- enabled?(),
+         {:ok, {:ok, count}} <- run_isolated(delete) do
+      count
+    else
+      _disabled_or_failed -> 0
+    end
   end
 
   @doc """
