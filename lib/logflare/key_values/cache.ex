@@ -29,7 +29,7 @@ defmodule Logflare.KeyValues.Cache do
       written to L2, with `:result` `:put`, `:dropped_stale` or `:error`
     * `[:logflare, :key_values, :cache, :db_fallback]` - a lookup read from the database, with
       `:reason` `:miss` (L2 missed), `:l2_error` (L2 failed or timed out) or `:l2_skipped`
-      (L2 disabled or stopped)
+      (L2 disabled)
   """
 
   use Logflare.ContextCache
@@ -176,7 +176,7 @@ defmodule Logflare.KeyValues.Cache do
 
   @spec fetch_l2(term()) :: l2_result()
   defp fetch_l2(cache_key) do
-    if L2.enabled?() and l2_running?() do
+    if L2.enabled?() do
       case L2.fetch(cache_key, timeout: L2.timeout()) do
         {:ok, _value} = hit -> hit
         {:error, %Nebulex.KeyError{}} -> :miss
@@ -228,8 +228,6 @@ defmodule Logflare.KeyValues.Cache do
     end
   end
 
-  defp l2_running?, do: Process.whereis(L2) != nil
-
   defp tombstoned?(user_id, key), do: Tombstones.Cache.tombstoned?(__MODULE__, {user_id, key})
 
   @doc """
@@ -243,7 +241,7 @@ defmodule Logflare.KeyValues.Cache do
   end
 
   defp clear_l2 do
-    if l2_running?(), do: L2.delete_all()
+    if L2.enabled?(), do: L2.delete_all()
   rescue
     _exception -> :error
   catch
@@ -292,9 +290,7 @@ defmodule Logflare.KeyValues.Cache do
   Deletes `keys` from L1 and from this node's share of L2, without RPC, and returns the number
   of keys deleted from either level.
 
-  Every node busts every change, so the owner of an L2 entry deletes it locally. L2 entries are
-  deleted while L2 runs even if it is disabled, so re-enabling it serves no entry that missed a
-  bust.
+  Every node busts every change, so the owner of an L2 entry deletes it locally.
   """
   @impl ContextCache
   def delete_keys(keys) do
@@ -308,7 +304,7 @@ defmodule Logflare.KeyValues.Cache do
   end
 
   defp delete_l2_local(cache_key) do
-    l2_running?() and match?({:ok, _value}, L2.__primary__().take(cache_key))
+    L2.enabled?() and match?({:ok, _value}, L2.__primary__().take(cache_key))
   rescue
     _exception -> false
   catch
@@ -359,7 +355,7 @@ defmodule Logflare.KeyValues.Cache do
   end
 
   defp l2_local_lookup_keys(user_id, key) do
-    if l2_running?() do
+    if L2.enabled?() do
       accessor_paths =
         L2.__primary__().get_all!(
           query: [{{:entry, {:lookup, [user_id, key, :"$1"]}, :_, :_, :_, :_}, [], [:"$1"]}]

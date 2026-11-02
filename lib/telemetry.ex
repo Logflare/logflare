@@ -1014,11 +1014,11 @@ defmodule Logflare.Telemetry do
   end
 
   @doc """
-  Emits the size and memory of this node's share of `Logflare.KeyValues.Cache.L2`, when it runs.
+  Emits the size and memory of this node's share of `Logflare.KeyValues.Cache.L2`, when enabled.
   """
   @spec key_values_l2_metrics() :: :ok
   def key_values_l2_metrics do
-    if Process.whereis(L2) do
+    if L2.enabled?() do
       primary = L2.__primary__()
       %{used: memory} = primary.info!(:memory)
 

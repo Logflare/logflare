@@ -3,6 +3,7 @@ defmodule Logflare.TelemetryTest do
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
+  alias Logflare.KeyValues
   alias Logflare.KeyValues.Cache.L2
   alias Logflare.SystemMetrics.Observer
   alias Logflare.SystemMetrics.Schedulers
@@ -945,7 +946,10 @@ defmodule Logflare.TelemetryTest do
       [ref: ref]
     end
 
-    test "with L2 running", %{ref: ref} do
+    test "with L2 enabled", %{ref: ref} do
+      original = Application.get_env(:logflare, KeyValues.Cache)
+      Application.put_env(:logflare, KeyValues.Cache, Keyword.put(original, :l2_enabled, true))
+      on_exit(fn -> Application.put_env(:logflare, KeyValues.Cache, original) end)
       start_supervised!(L2)
       :ok = L2.put({:lookup, [1, "proj1", nil]}, %{"org" => "abc"})
 
@@ -955,7 +959,7 @@ defmodule Logflare.TelemetryTest do
       assert memory > 0
     end
 
-    test "with L2 not running", %{ref: ref} do
+    test "with L2 disabled", %{ref: ref} do
       Telemetry.key_values_l2_metrics()
 
       refute_receive {@key_values_l2_primary_event, ^ref, _measurements, _metadata}
