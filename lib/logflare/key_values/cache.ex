@@ -2,32 +2,34 @@ defmodule Logflare.KeyValues.Cache do
   @moduledoc """
   Read-through cache for `Logflare.KeyValues` lookups and counts.
 
-  A lookup reads this node's Cachex L1, then, when `Logflare.KeyValues.Cache.L2.enabled?/0`,
-  the cluster-partitioned `Logflare.KeyValues.Cache.L2`, then the database. L2 and the
-  database are read in the `Cachex.fetch/4` fallback, so concurrent misses for a key on one
-  node share a single L2 call and database read. An L2 error or timeout falls back to the
-  database once per lookup and skips writing the value to L2; so does any exception or exit
-  raised by an L2 call, and busting skips an L2 that fails. A database value is written to L2
-  in a separate task, so the lookup and other callers waiting on the same miss don't wait for it.
-  Counts and warming stay in L1.
+  A lookup is served by the first of two levels that holds it, then by the database:
 
-  A value reaches L2 only if its key-value did not change within the `:tombstone_ttl` setting.
-  The key's L2 owner writes the value to its share and deletes it again if the key-value is
-  tombstoned, as a lookup does for L1, so a value read from a lagging replica, `nil` included,
-  cannot spread to other nodes once its change has been busted.
+    * L1 - a Cachex cache on each node, warmed with recently used key-values by
+      `Logflare.KeyValues.CacheWarmer`; counts are cached here only
+    * L2 - `Logflare.KeyValues.Cache.L2`, partitioned across the cluster, so a key-value read
+      from the database on one node is served to the others. It is off unless
+      `Logflare.KeyValues.Cache.L2.enabled?/0`, and a lookup falls back to the database while
+      it is unavailable
+
+  A change to a key-value is busted from both levels on every node. It also tombstones the
+  key-value for the `:tombstone_ttl` setting, during which values read for it are returned but
+  kept in neither level, so a value read before the change, e.g. from a lagging replica, is
+  not cached after the bust.
 
   ## Telemetry
 
-    * `[:logflare, :key_values, :cache, :l2, :command, :start | :stop | :exception]` - Nebulex
-      command spans of L2 on the calling node, and `[..., :l2, :primary, :command, ...]` on the
-      node owning the entry
+    * `[:cachex, :key_values]` - L1 stats (hits, misses, evictions, ...), polled by
+      `Logflare.Telemetry` when the `:cache_stats` setting is on
+    * `[:logflare, :key_values, :cache, :l2, ...]` - Nebulex events of L2: `:command` spans on
+      the calling node, `[:primary, :command]` spans on the node owning the entry and
+      `:ring_monitor` events when nodes join or leave the hash ring
+    * `[:logflare, :key_values, :cache, :l2, :primary]` - size and memory of this node's share
+      of L2, polled by `Logflare.Telemetry`
     * `[:logflare, :key_values, :cache, :l2_fill, :start | :stop | :exception]` - a value
       written to L2, with `:result` `:put`, `:dropped_stale` or `:error`
     * `[:logflare, :key_values, :cache, :db_fallback]` - a lookup read from the database, with
       `:reason` `:miss` (L2 missed), `:l2_error` (L2 failed or timed out) or `:l2_skipped`
       (L2 disabled or stopped)
-
-  L1 hits and misses are in the Cachex stats of the cache.
   """
 
   use Logflare.ContextCache
