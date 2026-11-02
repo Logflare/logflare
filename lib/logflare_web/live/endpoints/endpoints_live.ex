@@ -299,6 +299,7 @@ defmodule LogflareWeb.EndpointsLive do
   end
 
   def handle_event("validate", %{"endpoint" => endpoint_params}, socket) do
+    endpoint_params = drop_unused_policy_inputs(endpoint_params)
     origin = socket.assigns[:team_user] || socket.assigns.user
 
     with :ok <- authorize_backend_id(origin, endpoint_params) do
@@ -655,6 +656,20 @@ defmodule LogflareWeb.EndpointsLive do
   @spec settings_error(term()) :: String.t()
   defp settings_error(reason) when is_binary(reason), do: reason
   defp settings_error(_reason), do: "Unable to configure ClickHouse settings"
+
+  @spec drop_unused_policy_inputs(map()) :: map()
+  defp drop_unused_policy_inputs(%{"filesystem_cache_policy" => policy} = params)
+       when is_map(policy) do
+    policy =
+      Map.reject(policy, fn
+        {"_unused_" <> _field, _value} -> true
+        _ -> false
+      end)
+
+    Map.put(params, "filesystem_cache_policy", policy)
+  end
+
+  defp drop_unused_policy_inputs(params), do: params
 
   defp upsert_query(show_endpoint, user, origin, params) do
     case show_endpoint do

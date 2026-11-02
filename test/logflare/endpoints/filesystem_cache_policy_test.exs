@@ -130,7 +130,8 @@ defmodule Logflare.Endpoints.FilesystemCachePolicyTest do
           %{"bypass_fill_above_seconds" => -1},
           %{"bypass_fill_above_seconds" => "1.5"},
           %{"window_threshold" => 1, "window_unit" => "unknown"},
-          %{"arbitrary_setting" => 1}
+          %{"arbitrary_setting" => 1},
+          %{"_unused_timestamp_format" => ""}
         ] do
       assert {:error, _} = FilesystemCachePolicy.normalize(Map.merge(@policy, changes))
     end

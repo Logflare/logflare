@@ -124,6 +124,15 @@ defmodule LogflareWeb.EndpointFilesystemCacheLiveTest do
              "#endpoint_filesystem_cache_policy_window_unit option[value='hours'][selected]"
            )
 
+    for invalid <- [
+          Map.put(@form_policy, "window_threshold", "0"),
+          Map.put(@form_policy, "arbitrary_setting", 1)
+        ] do
+      policy = Map.put(invalid, "_unused_timestamp_format", "")
+      render_change(view, "validate", %{"endpoint" => %{"filesystem_cache_policy" => policy}})
+      assert has_element?(view, "#filesystem-cache-policy .help-block", "positive threshold")
+    end
+
     invalid = Map.put(@form_policy, "start_param", "missing")
 
     view
@@ -194,6 +203,122 @@ defmodule LogflareWeb.EndpointFilesystemCacheLiveTest do
     assert Repo.reload!(context.endpoint).filesystem_cache_policy == nil
   end
 
+  test "unused policy defaults remain valid during changes and unsaved test execution", context do
+    {:ok, view, _} = live_with_redirect(context.conn, ~p"/endpoints/#{context.endpoint.id}/edit")
+
+    policy =
+      Map.merge(@form_policy, %{
+        "timestamp_format" => "iso8601",
+        "window_threshold" => "24",
+        "_unused_timestamp_format" => "",
+        "_unused_window_threshold" => "",
+        "_unused_window_unit" => ""
+      })
+
+    render_change(view, "validate", %{"endpoint" => %{"filesystem_cache_policy" => policy}})
+
+    refute has_element?(view, "#filesystem-cache-policy .help-block")
+    assert has_element?(view, "#endpoint_filesystem_cache_policy_window_threshold[value='24']")
+
+    assert has_element?(
+             view,
+             "#endpoint_filesystem_cache_policy_timestamp_format option[value='iso8601'][selected]"
+           )
+
+    assert has_element?(
+             view,
+             "#endpoint_filesystem_cache_policy_window_unit option[value='hours'][selected]"
+           )
+
+    params = %{"from" => "2026-10-01T00:00:00Z", "to" => "2026-10-04T00:00:00Z"}
+
+    view
+    |> element("form[phx-submit='run-query']")
+    |> render_change(%{run: %{params: params}})
+
+    assert has_element?(view, "#filesystem-cache-preview", "Existing cache entries only")
+
+    expect(ClickHouseAdaptor, :execute_query, fn _backend, {_sql, _, actual_params, _}, opts ->
+      assert Map.take(actual_params, ["from", "to"]) == params
+
+      assert opts[:filesystem_cache_settings] == %{
+               "read_from_filesystem_cache_if_exists_otherwise_bypass_cache" => 1
+             }
+
+      {:ok, QueryResult.new([%{"ok" => 1}])}
+    end)
+
+    view
+    |> element("form[phx-submit='run-query']")
+    |> render_submit(%{run: %{query: @query, params: params}})
+
+    assert render(view) =~ "Ran query successfully"
+    assert Repo.reload!(context.endpoint).filesystem_cache_policy == nil
+  end
+
+  test "unused saved policy inputs survive unrelated edits and SQL editor updates", context do
+    assert {:ok, endpoint} =
+             Endpoints.update_query(
+               context.owner,
+               context.endpoint,
+               %{filesystem_cache_policy: @form_policy},
+               context.owner
+             )
+
+    {:ok, view, _} = live_with_redirect(context.conn, ~p"/endpoints/#{endpoint.id}/edit")
+
+    saved_form = %{@form_policy | "window_threshold" => "3600", "window_unit" => "seconds"}
+
+    policy =
+      Enum.reduce(saved_form, saved_form, fn {field, _value}, acc ->
+        Map.put(acc, "_unused_" <> field, "")
+      end)
+
+    render_change(view, "validate", %{
+      "endpoint" => %{"description" => "unrelated edit", "filesystem_cache_policy" => policy}
+    })
+
+    refute has_element?(view, "#filesystem-cache-policy .help-block")
+
+    query = @query <> " WHERE 1 = 1"
+    send(view.pid, {:query_string_updated, query})
+    refute render(view) =~ "positive threshold"
+
+    params = %{"from" => "0", "to" => "7200"}
+
+    view
+    |> element("form[phx-submit='run-query']")
+    |> render_change(%{run: %{params: params}})
+
+    assert has_element?(view, "#filesystem-cache-preview", "Existing cache entries only")
+
+    expect(ClickHouseAdaptor, :execute_query, fn _backend, {_sql, _, actual_params, _}, opts ->
+      assert Map.take(actual_params, ["from", "to"]) == params
+
+      assert opts[:filesystem_cache_settings] == %{
+               "read_from_filesystem_cache_if_exists_otherwise_bypass_cache" => 1
+             }
+
+      {:ok, QueryResult.new([%{"ok" => 1}])}
+    end)
+
+    view
+    |> element("form[phx-submit='run-query']")
+    |> render_submit(%{run: %{query: query, params: params}})
+
+    assert render(view) =~ "Ran query successfully"
+    assert Repo.reload!(endpoint).filesystem_cache_policy == endpoint.filesystem_cache_policy
+
+    render_change(view, "validate", %{"endpoint" => %{"description" => "another edit"}})
+    refute has_element?(view, "#filesystem-cache-policy .help-block")
+
+    view
+    |> element("form[phx-submit='run-query']")
+    |> render_change(%{run: %{params: params}})
+
+    assert has_element?(view, "#filesystem-cache-preview", "Existing cache entries only")
+  end
+
   test "blank boundaries in the test form leave the hint unspecified", context do
     {:ok, view, _} = live_with_redirect(context.conn, ~p"/endpoints/#{context.endpoint.id}/edit")
 
@@ -209,7 +334,7 @@ defmodule LogflareWeb.EndpointFilesystemCacheLiveTest do
       assert has_element?(view, "#filesystem-cache-preview", "No derived cache hint")
 
       expect(ClickHouseAdaptor, :execute_query, fn _backend, {_sql, _, actual_params, _}, opts ->
-        assert actual_params == params
+        assert Map.take(actual_params, ["from", "to"]) == params
         assert opts[:filesystem_cache_settings] == %{}
         {:ok, QueryResult.new([%{"ok" => 1}])}
       end)
