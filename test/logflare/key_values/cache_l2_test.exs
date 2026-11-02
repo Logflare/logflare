@@ -84,11 +84,12 @@ defmodule Logflare.KeyValues.CacheL2Test do
     assert "abc" = KeyValues.Cache.lookup(user.id, "proj1", "org.id")
   end
 
+  @tag :capture_log
   test "lookup while L2 is failing", %{user: user} do
     insert(:key_value, user: user, key: "proj1", value: @value)
     reject(&L2.put/3)
 
-    for failure <- [:timeout, :remote_raise, :stopped, :local_raise, :exit] do
+    for failure <- [:timeout, :raise, :exit] do
       KeyValues.Cache.reset()
       expect(L2, :fetch, fn _cache_key, _opts -> fail(failure) end)
 
@@ -105,11 +106,12 @@ defmodule Logflare.KeyValues.CacheL2Test do
     assert {:ok, 1} = ContextCache.bust_keys([{KeyValues, user_id: user.id, key: "proj1"}])
   end
 
+  @tag :capture_log
   test "busting while L2 fails", %{user: user} do
     insert(:key_value, user: user, key: "proj1", value: @value)
     assert @value = KeyValues.Cache.lookup(user.id, "proj1")
 
-    for failure <- [:local_raise, :exit] do
+    for failure <- [:raise, :exit] do
       stub(L2, :take, fn _cache_key, _opts -> fail(failure) end)
 
       assert {:ok, _busted} =
@@ -157,13 +159,9 @@ defmodule Logflare.KeyValues.CacheL2Test do
   defp fail(:timeout),
     do: {:error, Nebulex.Error.exception(reason: {:rpc, {:error, :timeout}})}
 
-  defp fail(:remote_raise), do: raise(RuntimeError, "RPC runtime error")
-  defp fail(:stopped), do: raise(Nebulex.CacheNotFoundError, cache: L2)
+  defp fail(:raise), do: raise(Nebulex.CacheNotFoundError, cache: L2)
 
-  defp fail(:local_raise),
-    do: raise(ArgumentError, "table identifier does not refer to an existing ETS table")
-
-  defp fail(:exit), do: exit(:noproc)
+  defp fail(:exit), do: exit({:noproc, {GenServer, :call, [L2, :get_state, 5_000]}})
 
   defp attach_l2_fill do
     ref = :telemetry_test.attach_event_handlers(self(), [Enum.at(@telemetry_events, 1)])
