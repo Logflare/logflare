@@ -8,7 +8,8 @@ defmodule Logflare.KeyValues.Cache.L2 do
   without RPC. It is off unless `enabled?/0`, and the settings below live under
   `config :logflare, Logflare.KeyValues.Cache`:
 
-    * `:l2_enabled` - starts the level at boot and gates its use at runtime
+    * `:l2_enabled` - starts the level at boot; the cache treats an enabled level as running,
+      so it is not meant to change at runtime
     * `:l2_timeout` - RPC timeout in ms; a slower L2 call counts as an error
     * `:l2_ttl` - time-to-live in ms of an entry written to L2
 
