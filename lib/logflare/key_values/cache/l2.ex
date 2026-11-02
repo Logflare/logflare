@@ -11,7 +11,7 @@ defmodule Logflare.KeyValues.Cache.L2 do
 
     * `:l2_enabled` - starts the level at boot; the cache treats an enabled level as running,
       so it is not meant to change at runtime
-    * `:l2_timeout` - RPC timeout in ms; a slower L2 call counts as an error
+    * `:l2_timeout` - timeout in ms of an L2 call; a slower call counts as an error
     * `:l2_ttl` - time-to-live in ms of an entry written to L2
 
   Adapter options come from `config :logflare, Logflare.KeyValues.Cache.L2`. The defaults:
@@ -24,6 +24,9 @@ defmodule Logflare.KeyValues.Cache.L2 do
     * `rejoin_interval: 30s` - the adapter default; a missed `:pg` join only routes keys to
       a different owner (a miss), never serves a wrong value, so faster convergence buys little
     * `hash_ring` - `ExHashRing` defaults (512 vnodes per node)
+
+  Lookups and busts run each L2 call in a separate task bounded by `:l2_timeout`, so a failing
+  or restarting L2 counts as unavailable instead of crashing the caller.
   """
 
   use Nebulex.Cache,
@@ -50,24 +53,18 @@ defmodule Logflare.KeyValues.Cache.L2 do
   @doc """
   Fetches a value from its owner's share, or returns why it could not.
 
-  `:l2_error` covers a failure or timeout of the owner, and `:l2_skipped` a disabled level.
+  `:l2_error` covers an error, crash or timeout of the call, and `:l2_skipped` a disabled level.
   """
   @spec lookup(term()) :: result()
   def lookup(cache_key) do
-    if enabled?() do
-      case __MODULE__.fetch(cache_key, timeout: timeout()) do
-        {:ok, _value} = hit -> hit
-        {:error, %Nebulex.KeyError{}} -> :miss
-        {:error, _reason} -> :l2_error
-      end
-    else
-      :l2_skipped
-    end
-  rescue
-    _exception -> :l2_error
-  catch
-    :exit, _reason -> :l2_error
+    fetch = fn -> __MODULE__.fetch(cache_key, timeout: timeout()) end
+
+    if enabled?(), do: lookup_result(run_isolated(fetch)), else: :l2_skipped
   end
+
+  defp lookup_result({:ok, {:ok, _value} = hit}), do: hit
+  defp lookup_result({:ok, {:error, %Nebulex.KeyError{}}}), do: :miss
+  defp lookup_result(_failed), do: :l2_error
 
   @doc """
   Writes a full value to its owner's share in a separate task, and deletes it again if its
@@ -91,10 +88,6 @@ defmodule Logflare.KeyValues.Cache.L2 do
 
       {:ok, %{result: fill_result(result)}}
     end)
-  rescue
-    _exception -> :ok
-  catch
-    :exit, _reason -> :ok
   end
 
   defp fill_result({:error, _reason}), do: :error
@@ -113,11 +106,11 @@ defmodule Logflare.KeyValues.Cache.L2 do
   """
   @spec evict(term()) :: boolean()
   def evict(cache_key) do
-    enabled?() and match?({:ok, _value}, __MODULE__.take(cache_key, timeout: timeout()))
-  rescue
-    _exception -> false
-  catch
-    :exit, _reason -> false
+    enabled?() and
+      match?(
+        {:ok, {:ok, _value}},
+        run_isolated(fn -> __MODULE__.take(cache_key, timeout: timeout()) end)
+      )
   end
 
   @doc """
@@ -125,13 +118,11 @@ defmodule Logflare.KeyValues.Cache.L2 do
   """
   @spec clear() :: :ok
   def clear do
-    if enabled?(), do: __MODULE__.delete_all()
+    if enabled?(), do: {:ok, _count} = __MODULE__.delete_all()
     :ok
-  rescue
-    _exception -> :ok
-  catch
-    :exit, _reason -> :ok
   end
+
+  defp run_isolated(fun), do: Tasks.run_within(fun, timeout())
 
   defp settings, do: Application.get_env(:logflare, Logflare.KeyValues.Cache, [])
 end
