@@ -299,6 +299,7 @@ defmodule LogflareWeb.EndpointsLive do
   end
 
   def handle_event("validate", %{"endpoint" => endpoint_params}, socket) do
+    endpoint_params = drop_unused_policy_inputs(endpoint_params)
     origin = socket.assigns[:team_user] || socket.assigns.user
 
     with :ok <- authorize_backend_id(origin, endpoint_params) do
@@ -404,6 +405,8 @@ defmodule LogflareWeb.EndpointsLive do
            parsed_labels: parsed_labels,
            endpoint_id: socket.assigns.endpoint_changeset.data.id,
            use_query_cache: false,
+           filesystem_cache_policy:
+             Ecto.Changeset.get_field(socket.assigns.endpoint_changeset, :filesystem_cache_policy),
            redact_pii: redact_pii,
            backend_id: backend_id,
            reservation: reservation
@@ -414,21 +417,29 @@ defmodule LogflareWeb.EndpointsLive do
         |> assign(:test_result, successful_test_result(:endpoint, result, nil))
 
       {:error, error} ->
-        message = endpoint_query_error_message(error)
+        message = query_error_message(error, :endpoint)
         assign(socket, :test_result, %{kind: :endpoint, status: :error, error: message})
     end
   end
 
-  @spec endpoint_query_error_message(term()) :: String.t()
-  defp endpoint_query_error_message(error)
+  @spec query_error_message(term(), :endpoint | :sandbox) :: String.t()
+  defp query_error_message({kind, message}, _context)
+       when kind in [:invalid_filesystem_cache_window, :invalid_filesystem_cache_policy],
+       do: message
+
+  defp query_error_message(error, :endpoint)
        when error in [:database_unavailable, :policy_unavailable],
        do: "Endpoint policy is temporarily unavailable. Retry the query."
 
-  defp endpoint_query_error_message(%QueryError{} = error),
+  defp query_error_message(%QueryError{} = error, :endpoint),
     do: QueryErrorHelpers.query_error_message(error)
 
-  defp endpoint_query_error_message(message) when is_binary(message), do: message
-  defp endpoint_query_error_message(_error), do: QueryErrorHelpers.generic_query_error_message()
+  defp query_error_message(message, :endpoint) when is_binary(message), do: message
+
+  defp query_error_message(_error, :endpoint),
+    do: QueryErrorHelpers.generic_query_error_message()
+
+  defp query_error_message(_error, :sandbox), do: "Please verify your query syntax."
 
   defp run_sandbox_query(%{assigns: %{show_endpoint: endpoint}} = socket, payload) do
     show_transformed? = Map.get(payload, "show_transformed") == "true"
@@ -472,7 +483,7 @@ defmodule LogflareWeb.EndpointsLive do
         |> assign(:test_result, %{
           kind: :sandboxed_endpoint,
           status: :error,
-          error: "Please verify your query syntax."
+          error: query_error_message(error, :sandbox)
         })
     end
   end
@@ -645,6 +656,20 @@ defmodule LogflareWeb.EndpointsLive do
   @spec settings_error(term()) :: String.t()
   defp settings_error(reason) when is_binary(reason), do: reason
   defp settings_error(_reason), do: "Unable to configure ClickHouse settings"
+
+  @spec drop_unused_policy_inputs(map()) :: map()
+  defp drop_unused_policy_inputs(%{"filesystem_cache_policy" => policy} = params)
+       when is_map(policy) do
+    policy =
+      Map.reject(policy, fn
+        {"_unused_" <> _field, _value} -> true
+        _ -> false
+      end)
+
+    Map.put(params, "filesystem_cache_policy", policy)
+  end
+
+  defp drop_unused_policy_inputs(params), do: params
 
   defp upsert_query(show_endpoint, user, origin, params) do
     case show_endpoint do
