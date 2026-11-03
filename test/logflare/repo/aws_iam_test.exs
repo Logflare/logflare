@@ -343,8 +343,8 @@ defmodule Logflare.Repo.AwsIamTest do
 
       assert %{start: {GenSingleton, :start_link, [[child_spec: cainophile_spec]]}} = singleton
 
-      assert {Cainophile.Adapters.Postgres, :start_link, [cainophile_options]} =
-               cainophile_spec.start
+      assert {ContextCacheSupervisor, :start_cainophile, []} = cainophile_spec.start
+      assert {nil, cainophile_options} = ContextCacheSupervisor.cainophile_options()
 
       epgsql = Keyword.fetch!(cainophile_options, :epgsql)
       assert epgsql.host == String.to_charlist(host)

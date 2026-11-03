@@ -105,7 +105,7 @@ defmodule Logflare.Repo do
 
     case Enum.reject(replicas, &MapSet.member?(disabled, ReplicaReconciler.replica_key(&1))) do
       [] -> {__MODULE__, :disabled}
-      enabled -> {enabled |> Enum.random() |> resolve_repo(), :selected}
+      enabled -> {enabled |> Enum.random() |> Replicas.repo(), :selected}
     end
   end
 
@@ -119,9 +119,6 @@ defmodule Logflare.Repo do
       %{role: role, reason: reason}
     )
   end
-
-  defp resolve_repo(repo) when is_atom(repo), do: repo
-  defp resolve_repo({key, _config}), do: Replicas.lookup!(key)
 
   defp with_dynamic_repo(new_repo, fun) do
     prev_repo = get_dynamic_repo()

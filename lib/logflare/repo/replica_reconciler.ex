@@ -5,7 +5,8 @@ defmodule Logflare.Repo.ReplicaReconciler do
   replication lag window.
 
   An out-of-sync replica is disabled on this node only, so `Logflare.Repo.with_replica/1` skips
-  it. A later passing check re-enables it. The disabled set is kept in `:persistent_term`.
+  it. A later passing check re-enables it. The disabled set is kept in `:persistent_term`, and
+  disabling a replica emits `[:logflare, :repo, :replica_reconciler, :disabled]`.
   """
 
   use GenServer
@@ -18,6 +19,7 @@ defmodule Logflare.Repo.ReplicaReconciler do
 
   @tables ~w(users sources backends rules)
   @disabled_key {__MODULE__, :disabled}
+  @disabled_event [:logflare, :repo, :replica_reconciler, :disabled]
   @interval :timer.minutes(30)
   @jitter :timer.minutes(5)
   @initial_delay :timer.minutes(1)
@@ -50,7 +52,7 @@ defmodule Logflare.Repo.ReplicaReconciler do
     |> Application.fetch_env!(:read_replicas)
     |> Map.new(fn entry ->
       key = replica_key(entry)
-      result = compare(resolve_repo(entry))
+      result = compare(Replicas.repo(entry))
       apply_result(key, result)
       {key, result}
     end)
@@ -121,7 +123,10 @@ defmodule Logflare.Repo.ReplicaReconciler do
       )
     end
 
-    unless disabled?(key), do: put_disabled(MapSet.put(disabled_replicas(), key))
+    unless disabled?(key) do
+      put_disabled(MapSet.put(disabled_replicas(), key))
+      :telemetry.execute(@disabled_event, %{count: 1}, %{replica: key})
+    end
   end
 
   defp apply_result(key, {:error, error}) do
@@ -131,7 +136,4 @@ defmodule Logflare.Repo.ReplicaReconciler do
   end
 
   defp put_disabled(disabled), do: :persistent_term.put(@disabled_key, disabled)
-
-  defp resolve_repo(repo) when is_atom(repo), do: repo
-  defp resolve_repo({key, _config}), do: Replicas.lookup!(key)
 end
