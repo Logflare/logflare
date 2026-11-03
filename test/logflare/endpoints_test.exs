@@ -211,10 +211,46 @@ defmodule Logflare.EndpointsTest do
       assert custom_sql =~ "optimize_read_in_order = 1"
       assert custom_sql =~ "max_execution_time = 5"
 
-      assert {:error, "Restricted setting max_execution_time"} =
+      assert {:error, "ClickHouse setting max_execution_time is not supported in sandboxed SQL"} =
                Endpoints.get_transformed_query(endpoint, %{
                  "sql" => "SELECT a FROM src SETTINGS max_execution_time = 100"
                })
+    end
+
+    test "saved SQL requests tighten current operator policy without changing it", %{
+      owner: owner,
+      admin: admin,
+      endpoint: endpoint
+    } do
+      baseline = %{"max_execution_time" => 10, "max_threads" => 4, "priority" => 5}
+
+      assert {:ok, endpoint} =
+               Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, baseline)
+
+      requested_sql =
+        endpoint.query <> " SETTINGS max_execution_time = 20, max_threads = 2, priority = 1"
+
+      assert {:ok, endpoint} =
+               Endpoints.update_query(owner, endpoint, %{query: requested_sql}, owner)
+
+      assert endpoint.enforced_clickhouse_settings["priority"] == 5
+      assert {:ok, sql} = Endpoints.get_transformed_query(endpoint)
+      assert sql =~ "max_execution_time = 10"
+      assert sql =~ "max_threads = 2"
+      assert sql =~ "priority = 5"
+
+      assert {:ok, _updated} =
+               Endpoints.configure_enforced_clickhouse_settings(admin, endpoint, %{
+                 "max_execution_time" => 5,
+                 "max_threads" => 1,
+                 "priority" => 10
+               })
+
+      assert {:ok, sql} = Endpoints.get_transformed_query(endpoint)
+      assert sql =~ "max_execution_time = 5"
+      assert sql =~ "max_threads = 1"
+      assert sql =~ "priority = 10"
+      assert Endpoints.get_endpoint_query(endpoint.id).query == requested_sql
     end
   end
 
