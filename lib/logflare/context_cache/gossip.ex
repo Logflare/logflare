@@ -160,24 +160,36 @@ defmodule Logflare.ContextCache.Gossip do
       Cachex.refresh(cache, key)
       :refreshed
     else
-      pkeys = pkeys_from_cached_value(value)
-
-      cond do
-        # if we can't extract any primary keys from the cache key/value,
-        # we have no way to detect staleness, so we drop it to be safe
-        pkeys == [] ->
+      case pkey_check(cache, value) do
+        :no_pkey ->
           :dropped_no_pkey
 
-        # do nothing if the WAL recently busted this specific record
-        Enum.any?(pkeys, fn pkey -> Tombstones.Cache.tombstoned?(cache, pkey) end) ->
+        :tombstoned ->
           :dropped_stale
 
-        true ->
+        :fresh ->
           Cachex.put(cache, key, {:cached, value})
           :cached
       end
     end
   end
+
+  @doc """
+  Whether `value` may be stale: it holds no primary key to check against tombstones, or one of its
+  primary keys was tombstoned. The default `c:Logflare.ContextCache.stale_entry?/2`.
+  """
+  @spec stale_value?(module(), term()) :: boolean()
+  def stale_value?(cache, value), do: pkey_check(cache, value) != :fresh
+
+  defp pkey_check(cache, value) do
+    case pkeys_from_cached_value(value) do
+      [] -> :no_pkey
+      pkeys -> if tombstoned_any?(cache, pkeys), do: :tombstoned, else: :fresh
+    end
+  end
+
+  defp tombstoned_any?(cache, pkeys),
+    do: Enum.any?(pkeys, &Tombstones.Cache.tombstoned?(cache, &1))
 
   defp pkeys_from_cached_value(values) when is_list(values) do
     Enum.flat_map(values, &pkeys_from_cached_value/1)
@@ -188,8 +200,9 @@ defmodule Logflare.ContextCache.Gossip do
   defp pkeys_from_cached_value(_value), do: []
 
   @doc """
-  Writes a short-lived marker for a primary key indicating it was recently updated or deleted.
-  Incoming cache multicasts check this tombstone cache to determine if their payload could be stale.
+  Writes short-lived markers, given by the context cache's `c:Logflare.ContextCache.tombstones/1`,
+  indicating a record was recently updated or deleted. Entries received from other nodes are checked
+  against them to determine if they could be stale.
   """
   def record_tombstones(context_pkeys) when is_list(context_pkeys) do
     Enum.each(context_pkeys, fn
@@ -197,13 +210,21 @@ defmodule Logflare.ContextCache.Gossip do
       {_context, :not_found} ->
         :ignore
 
-      {context, pkey} ->
-        if pkey = format_busted_pkey(pkey) do
-          cache = ContextCache.cache_name(context)
-          Tombstones.Cache.put_tombstone(cache, pkey)
-        end
+      {context, pkey_or_kw} ->
+        cache = ContextCache.cache_name(context)
+
+        pkey_or_kw
+        |> cache.tombstones()
+        |> Enum.each(&Tombstones.Cache.put_tombstone(cache, &1))
     end)
   end
+
+  @doc """
+  The primary key given as is, in an `:id` keyword or in a map with an `:id`. The default
+  `c:Logflare.ContextCache.tombstones/1`.
+  """
+  @spec pkey_tombstones(term()) :: [term()]
+  def pkey_tombstones(pkey_or_kw), do: pkey_or_kw |> format_busted_pkey() |> List.wrap()
 
   defp format_busted_pkey(pkey) when is_integer(pkey) or is_binary(pkey), do: pkey
 

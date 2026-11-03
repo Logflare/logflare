@@ -206,5 +206,171 @@ defmodule Logflare.Cache.CachexOpsTest do
     end
   end
 
+  describe "entries/1" do
+    setup do
+      start_cache(limit: nil, ttl: to_timeout(minute: 10))
+      :ok
+    end
+
+    test "unwrapped values with their remaining ttl" do
+      CachexOps.fetch(@cache, :a, fn -> :value end)
+      CachexOps.fetch(@cache, :b, fn -> nil end)
+
+      assert [{:a, :value, ttl}, {:b, nil, _ttl}] = @cache |> CachexOps.entries() |> Enum.sort()
+      assert ttl > to_timeout(minute: 9) and ttl <= to_timeout(minute: 10)
+    end
+
+    test "nil ttl for entries that do not expire" do
+      cache = __MODULE__.NoExpiration
+      start_supervised!(Supervisor.child_spec({Cachex, [cache, []]}, id: cache))
+      Cachex.put(cache, :key, {:cached, :value})
+
+      assert [{:key, :value, nil}] = cache |> CachexOps.entries() |> Enum.to_list()
+    end
+
+    test "skips expired entries and values not cached as {:cached, value}" do
+      Cachex.put(@cache, :expired, {:cached, :a}, expire: 1)
+      Cachex.put(@cache, :raw, :b)
+      Process.sleep(5)
+
+      assert @cache |> CachexOps.entries() |> Enum.to_list() == []
+    end
+  end
+
+  describe "put_entries/2" do
+    setup do
+      start_cache(limit: nil, ttl: to_timeout(minute: 10))
+      :ok
+    end
+
+    test "writes values readable by fetch/3, keeping their ttl" do
+      assert :ok =
+               CachexOps.put_entries(@cache, [
+                 {:expiring, :a, to_timeout(minute: 2)},
+                 {:not_expiring, nil, nil}
+               ])
+
+      assert :a = CachexOps.fetch(@cache, :expiring, fn -> flunk("getter called on a hit") end)
+
+      assert nil ==
+               CachexOps.fetch(@cache, :not_expiring, fn -> flunk("getter called on a hit") end)
+
+      assert {:ok, ttl} = Cachex.ttl(@cache, :expiring)
+      assert ttl > to_timeout(minute: 1) and ttl <= to_timeout(minute: 2)
+      assert {:ok, default_ttl} = Cachex.ttl(@cache, :not_expiring)
+      assert default_ttl > to_timeout(minute: 9)
+    end
+
+    test "replaces cached values" do
+      CachexOps.fetch(@cache, :key, fn -> :old end)
+
+      assert :ok = CachexOps.put_entries(@cache, [{:key, :new, nil}])
+      assert :new = CachexOps.fetch(@cache, :key, fn -> flunk("getter called on a hit") end)
+    end
+
+    test "no entries" do
+      assert :ok = CachexOps.put_entries(@cache, [])
+      assert CachexOps.size(@cache) == 0
+    end
+
+    test "round trip through entries/1" do
+      source = __MODULE__.Source
+      start_supervised!(CachexOps.child_spec(source, limit: nil))
+      CachexOps.fetch(source, :a, fn -> 1 end)
+      CachexOps.fetch(source, :b, fn -> nil end)
+
+      assert :ok = CachexOps.put_entries(@cache, Enum.to_list(CachexOps.entries(source)))
+
+      assert [{:a, 1, _ttl_a}, {:b, nil, _ttl_b}] =
+               @cache |> CachexOps.entries() |> Enum.sort()
+    end
+  end
+
+  describe "entry/2" do
+    setup do
+      start_cache(limit: nil, ttl: to_timeout(minute: 10))
+      :ok
+    end
+
+    test "value and remaining ttl, including nil values" do
+      CachexOps.put_entries(@cache, [{:a, :value, to_timeout(minute: 2)}, {:b, nil, nil}])
+
+      assert {:a, :value, ttl} = CachexOps.entry(@cache, :a)
+      assert ttl > to_timeout(minute: 1) and ttl <= to_timeout(minute: 2)
+      assert {:b, nil, _ttl} = CachexOps.entry(@cache, :b)
+    end
+
+    test "does not call a getter or cache anything on a miss" do
+      assert nil == CachexOps.entry(@cache, :missing)
+      refute CachexOps.cached?(@cache, :missing)
+    end
+
+    test "nil for an expired entry that wasn't purged yet" do
+      CachexOps.put_entries(@cache, [{:key, :value, 1}])
+      Process.sleep(5)
+
+      assert nil == CachexOps.entry(@cache, :key)
+    end
+
+    test "nil for values not written as {:cached, value}" do
+      Cachex.put(@cache, :raw, :value)
+
+      assert nil == CachexOps.entry(@cache, :raw)
+    end
+  end
+
+  describe "expiry/2" do
+    setup do
+      start_cache(limit: nil, ttl: to_timeout(minute: 10))
+      :ok
+    end
+
+    test "remaining and total ttl of an entry" do
+      CachexOps.put_entries(@cache, [{:key, :value, to_timeout(minute: 2)}])
+
+      assert {remaining, total} = CachexOps.expiry(@cache, :key)
+      assert total == to_timeout(minute: 2)
+      assert remaining > to_timeout(minute: 1) and remaining <= total
+    end
+
+    test "entries written by fetch/3 get the default ttl" do
+      CachexOps.fetch(@cache, :key, fn -> :value end)
+
+      assert {_remaining, total} = CachexOps.expiry(@cache, :key)
+      assert total == to_timeout(minute: 10)
+    end
+
+    test "zero remaining for an expired entry that wasn't purged yet" do
+      CachexOps.put_entries(@cache, [{:key, :value, 1}])
+      Process.sleep(5)
+
+      assert {0, 1} = CachexOps.expiry(@cache, :key)
+    end
+
+    test "nil when not cached" do
+      assert nil == CachexOps.expiry(@cache, :missing)
+    end
+  end
+
+  describe "cached?/2 and size/1" do
+    setup do
+      start_cache(limit: nil)
+      :ok
+    end
+
+    test "empty cache" do
+      refute CachexOps.cached?(@cache, :key)
+      assert CachexOps.size(@cache) == 0
+    end
+
+    test "cached value, including nil" do
+      CachexOps.fetch(@cache, :key, fn -> nil end)
+
+      assert CachexOps.cached?(@cache, :key)
+      refute CachexOps.cached?(@cache, :other)
+      assert CachexOps.size(@cache) == 1
+    end
+  end
+
   defp start_cache(opts), do: start_supervised!(CachexOps.child_spec(@cache, opts))
 end
