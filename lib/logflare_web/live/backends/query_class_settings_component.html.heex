@@ -1,0 +1,50 @@
+<section id={@id} class="tw-mt-10 tw-mb-10 tw-max-w-4xl">
+  <h2 class="tw-text-xl tw-font-semibold tw-mb-3">Query-class settings</h2>
+  <p class="form-text text-muted">
+    Configure scheduling and per-query resource limits for this ClickHouse backend.
+    These settings apply independently of read-cluster routing. Saving does not restart ingestion.
+  </p>
+  <p class="form-text text-muted">
+    Default priority is required when policy is enabled. Priority 1 is highest; larger numbers are lower priority.
+    Blank class fields inherit defaults. Resource limits use the smallest value across default, class, and endpoint policies.
+    ClickHouse profile constraints still apply.
+  </p>
+  <p class="form-text text-muted">
+    Updates propagate eventually across instances, not immediately. Use ClickHouse profile constraints for hard ceilings.
+  </p>
+
+  <.form for={to_form(%{}, as: :query_class_settings)} id="query-class-settings-form" phx-target={@myself} phx-change="change" phx-submit="save">
+    <details :for={class <- @classes} id={"query-class-#{class}"} open={class == "default"} class="tw-border tw-border-zinc-700 tw-rounded tw-p-4 tw-mb-3">
+      <summary class="tw-cursor-pointer tw-font-semibold">
+        {if class == "default", do: "Default policy", else: class}
+      </summary>
+      <p class="form-text text-muted">
+        {if class == "default",
+          do: "Fallback for missing, unknown, or unconfigured query-class labels.",
+          else: "Optional overrides for #{class}. Leave all fields blank to use the default policy."}
+      </p>
+      <% f = class_form(@params, class) %>
+      <div class="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-x-6">
+        <div :for={{key, label} <- @fields} class="form-group">
+          {label(f, key, label)}
+          {number_input(f, key,
+            class: "form-control",
+            min: if(key == "max_execution_time", do: "0", else: "1"),
+            step: if(key == "max_execution_time", do: "any", else: "1"),
+            placeholder: if(class == "default", do: "Not set", else: "Inherit default"),
+            "phx-debounce": "blur"
+          )}
+        </div>
+      </div>
+      <input :for={{key, value} <- retained_settings(@params, class)} type="hidden" name={"query_class_settings[#{class}][#{key}]"} value={value} />
+    </details>
+    <p :if={@error} id="query-class-settings-error" class="text-danger" role="alert">{@error}</p>
+    <p :if={@message} class="text-success" role="status">{@message}</p>
+    <div class="tw-flex tw-gap-3">
+      <button type="submit" class="btn btn-primary">Save query-class settings</button>
+      <button type="button" class="btn btn-outline-danger" phx-click="clear" phx-target={@myself} data-confirm="Disable query-class policy for this backend? Endpoint limits and ClickHouse profile constraints will remain active.">
+        Disable query-class policy
+      </button>
+    </div>
+  </.form>
+</section>

@@ -154,3 +154,12 @@ jobs:
 
       - name: Run Tests
         run: mix test.e2e
+
+      - name: Upload query-class UI demos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: query-class-ui-demos
+          path: screenshots/query-class-*.png
+          if-no-files-found: ignore
+          retention-days: 7

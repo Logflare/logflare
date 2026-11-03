@@ -4,13 +4,21 @@ title: ClickHouse query-class policy
 
 # ClickHouse query-class policy
 
-Operators can configure scheduling and resource limits independently of ClickHouse read-cluster routing. The backend configuration key is `query_class_settings`. It is disabled by default; an empty map removes the class policy without removing endpoint-owned limits.
+Backend owners and team members can configure scheduling and resource limits independently of ClickHouse read-cluster routing. The backend configuration key is `query_class_settings`. It is disabled by default; an empty map removes the class policy without removing endpoint-owned limits.
 
-## Operator configuration
+## Backend editor
 
-Use the internal operator function with a persisted admin user. The admin flag is provisioned out of band and rechecked on every save. Customer backend changesets, the backend API, and customer forms cannot introduce, change, or clear this configuration. Public backend JSON omits it. An operator must clear this policy before changing backend type. Ordinary saves merge under a row lock so stale customer snapshots cannot erase newer operator policy. No new customer-supplied ClickHouse settings are enabled.
+Open an existing ClickHouse backend's edit page and use **Query-class settings** below the connection form. Backend owners and team members with backend access can save or disable this policy. Each save rechecks the persisted actor and current backend ownership; a revoked membership cannot save through an already-open editor. Platform admins retain internal cross-account configuration access.
 
-Endpoint-owned policy also requires a persisted admin `User`. Use the administrator's own account context, not a team-member context: matching email addresses or an admin team owner grant no operator privileges. Team profile edits can change display/contact preferences, not authentication identity.
+Set a positive **Default policy** priority, then expand individual classes to configure overrides. Priority 1 is highest; larger numbers are lower priority. The form supports priority, maximum threads, memory usage in bytes, execution time in seconds (including fractions), and rows/bytes scanned. Blank class fields inherit defaults. A class cannot relax a stricter default resource limit. Existing filesystem-cache flags set through internal configuration are preserved by structured edits; overflow modes are derived automatically.
+
+Use **Save query-class settings** to update only this policy, without saving connection changes or restarting ingestion. **Disable query-class policy** clears class settings but leaves endpoint limits and ClickHouse profile constraints in place. Updates propagate eventually across instances, so this editor is not an immediate emergency-throttling control.
+
+This permission change applies only to backend query-class settings. Endpoint-owned policy still requires a persisted admin `User`. Use the administrator's own account context, not a team-member context: matching email addresses or an admin team owner grant no operator privileges. Team profile edits can change display/contact preferences, not authentication identity.
+
+## Internal configuration
+
+`configure_query_class_settings/3` accepts an owner, team-member actor, or persisted platform admin. The backend API and ordinary backend changesets still cannot introduce, change, or clear this configuration; use the dedicated editor or internal function. Public backend JSON continues to omit it. Clear the policy before changing backend type. Ordinary saves merge under a row lock so stale connection-form snapshots cannot erase newer query-class settings. The ClickHouse settings allowlist is unchanged.
 
 ```elixir
 admin = Logflare.Users.get(admin_id)
