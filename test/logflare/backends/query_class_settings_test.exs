@@ -26,18 +26,23 @@ defmodule Logflare.Backends.QueryClassSettingsTest do
     %{owner: owner, admin: admin, backend: backend}
   end
 
-  test "operator policy is validated, persisted and protected from customer changes", context do
+  test "policy is validated, persisted and protected from ordinary backend changes", context do
     %{owner: owner, admin: admin, backend: backend} = context
-
-    assert {:error, :forbidden} = Backends.configure_query_class_settings(owner, backend, @policy)
+    outsider = insert(:user)
 
     assert {:error, :forbidden} =
-             Backends.configure_query_class_settings(%{owner | admin: true}, backend, @policy)
+             Backends.configure_query_class_settings(outsider, backend, @policy)
+
+    assert {:error, :forbidden} =
+             Backends.configure_query_class_settings(%{outsider | admin: true}, backend, @policy)
 
     assert {:error, changeset} =
              Backends.update_backend(backend, %{config: %{query_class_settings: @policy}})
 
     assert Keyword.has_key?(changeset.errors, :"config.query_class_settings")
+
+    assert {:ok, configured} = Backends.configure_query_class_settings(owner, backend, @policy)
+    assert configured.config.query_class_settings == @policy
 
     assert {:ok, configured} = Backends.configure_query_class_settings(admin, backend, @policy)
     assert configured.config.query_class_settings == @policy
@@ -140,6 +145,61 @@ defmodule Logflare.Backends.QueryClassSettingsTest do
     assert {:error, changeset} = Backends.create_backend(owner, attrs)
     assert Keyword.has_key?(changeset.errors, :"config.query_class_settings")
     refute Backend.changeset(backend, %{config: %{query_class_settings: @policy}}).valid?
+  end
+
+  test "owners and team members can save and clear policy", context do
+    team = insert(:team, user: context.owner)
+    member = insert(:team_user, team: team)
+
+    for actor <- [context.owner, member] do
+      assert {:ok, configured} =
+               Backends.configure_query_class_settings(actor, context.backend, @policy)
+
+      assert configured.config.query_class_settings == @policy
+
+      assert {:ok, cleared} =
+               Backends.configure_query_class_settings(actor, configured, %{})
+
+      assert cleared.config.query_class_settings == %{}
+    end
+  end
+
+  test "deleted and moved team memberships are rechecked on every save", context do
+    team = insert(:team, user: context.owner)
+    member = insert(:team_user, team: team)
+    other_team = insert(:team)
+
+    member |> Ecto.Changeset.change(team_id: other_team.id) |> Repo.update!()
+
+    assert {:error, :forbidden} =
+             Backends.configure_query_class_settings(member, context.backend, @policy)
+
+    Repo.delete!(member)
+
+    assert {:error, :forbidden} =
+             Backends.configure_query_class_settings(member, context.backend, @policy)
+  end
+
+  test "team user ids cannot be interpreted as platform-admin ids", context do
+    team = insert(:team)
+    member = insert(:team_user, id: context.admin.id, team: team)
+
+    assert {:error, :forbidden} =
+             Backends.configure_query_class_settings(member, context.backend, @policy)
+  end
+
+  test "authorization uses the current backend owner rather than the caller's snapshot",
+       context do
+    next_owner = insert(:user)
+    context.backend |> Ecto.Changeset.change(user_id: next_owner.id) |> Repo.update!()
+
+    assert {:error, :forbidden} =
+             Backends.configure_query_class_settings(context.owner, context.backend, @policy)
+
+    assert {:ok, configured} =
+             Backends.configure_query_class_settings(next_owner, context.backend, @policy)
+
+    assert configured.config.query_class_settings == @policy
   end
 
   test "revoked administrators and non-ClickHouse backends cannot configure policy", context do
