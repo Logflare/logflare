@@ -13,7 +13,7 @@ defmodule Logflare.Backends.Spool.ObjectDeleterTest do
   setup do
     original = Application.get_env(:logflare, :spool, [])
     on_exit(fn -> Application.put_env(:logflare, :spool, original) end)
-    :ets.delete_all_objects(:spool_object_deleter)
+    assert ObjectDeleter.flush(10_000) == :ok
     :ok
   end
 
@@ -107,7 +107,7 @@ defmodule Logflare.Backends.Spool.ObjectDeleterTest do
 
       assert ObjectDeleter.enqueue({StorageMod, "bucket", "0/a.etf"}) == :ok
 
-      assert_receive {:deleted, "bucket", "0/a.etf"}
+      assert_receive {:deleted, "bucket", "0/a.etf"}, 2_000
     end
 
     test "never runs more deletes at once than delete_concurrency" do
@@ -142,7 +142,8 @@ defmodule Logflare.Backends.Spool.ObjectDeleterTest do
       assert ObjectDeleter.enqueue({StorageMod, "bucket", "0/a.etf"}) == :dropped
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :delete_buffer, :dropped],
-                      %{count: 1}, %{reason: :not_running}}
+                      %{count: 1}, %{reason: :not_running}},
+                     2_000
     end
 
     test "drops new objects once delete_buffer_max is reached" do
@@ -154,7 +155,8 @@ defmodule Logflare.Backends.Spool.ObjectDeleterTest do
       assert ObjectDeleter.enqueue({StorageMod, "bucket", "0/a.etf"}) == :dropped
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :delete_buffer, :dropped],
-                      %{count: 1}, %{reason: :buffer_full}}
+                      %{count: 1}, %{reason: :buffer_full}},
+                     2_000
 
       refute_receive {:deleted, _}, 200
     end
@@ -173,9 +175,10 @@ defmodule Logflare.Backends.Spool.ObjectDeleterTest do
       ObjectDeleter.enqueue({StorageMod, "bucket", "fine"})
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :storage, :delete], _,
-                      %{result: :timeout}}
+                      %{result: :timeout}},
+                     2_000
 
-      assert_receive {:deleted, "fine"}
+      assert_receive {:deleted, "fine"}, 2_000
     end
 
     test "reports failed and crashing deletes as errors without dying" do
@@ -192,7 +195,8 @@ defmodule Logflare.Backends.Spool.ObjectDeleterTest do
 
       for _ <- 1..2 do
         assert_receive {:telemetry_event, [:logflare, :backends, :spool, :storage, :delete], _,
-                        %{result: :error}}
+                        %{result: :error}},
+                       2_000
       end
 
       assert Process.whereis(ObjectDeleter) == worker

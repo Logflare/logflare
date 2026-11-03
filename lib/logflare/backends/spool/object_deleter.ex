@@ -4,7 +4,7 @@ defmodule Logflare.Backends.Spool.ObjectDeleter do
   without ever blocking the caller.
 
   `enqueue/1` is an ETS insert into a bounded FIFO buffer (plus a wake-up message
-  when the buffer was empty), so it is safe to call from latency-sensitive
+  when the insert made it non-empty), so it is safe to call from latency-sensitive
   processes. A single worker drains the buffer
   with at most `:delete_concurrency` storage requests in flight, each killed
   after `:delete_timeout_ms`.
@@ -55,13 +55,13 @@ defmodule Logflare.Backends.Spool.ObjectDeleter do
     case pending_count() do
       :undefined -> drop(:not_running)
       pending when pending >= max_pending -> drop(:buffer_full)
-      pending -> insert(object, pending)
+      _pending -> insert(object)
     end
   end
 
-  defp insert(object, pending) do
+  defp insert(object) do
     :ets.insert(@table, {System.unique_integer([:monotonic]), object})
-    if pending == 0, do: send(__MODULE__, :drain)
+    if pending_count() == 1, do: send(__MODULE__, :drain)
     :ok
   rescue
     ArgumentError -> drop(:not_running)

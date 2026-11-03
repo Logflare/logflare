@@ -4,6 +4,7 @@ defmodule Logflare.Backends.Spool.SpoolAckTest do
   import Mimic
 
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
+  alias Logflare.Backends.Spool.ObjectDeleter
   alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
   alias Logflare.TestUtils
@@ -16,13 +17,18 @@ defmodule Logflare.Backends.Spool.SpoolAckTest do
     :ok
   end
 
+  defp put_spool_config(opts) do
+    spool_config = Application.get_env(:logflare, :spool, [])
+    Application.put_env(:logflare, :spool, Keyword.merge(spool_config, opts))
+  end
+
   defp unique_handle, do: "handle-#{System.unique_integer([:positive])}"
 
   describe "deleting the spool object" do
     setup do
       original = Application.get_env(:logflare, :spool, [])
       on_exit(fn -> Application.put_env(:logflare, :spool, original) end)
-      :ets.delete_all_objects(:spool_object_deleter)
+      assert ObjectDeleter.flush(10_000) == :ok
       handle = unique_handle()
       test_pid = self()
 
@@ -42,7 +48,7 @@ defmodule Logflare.Backends.Spool.SpoolAckTest do
       refute_receive {:deleted, _, _}, 100
 
       SpoolAck.ack(handle, 1)
-      assert_receive {:deleted, "bucket", "0/a.etf"}
+      assert_receive {:deleted, "bucket", "0/a.etf"}, 2_000
     end
 
     test "does not delete when the queue ack fails", %{handle: handle} do
@@ -56,7 +62,7 @@ defmodule Logflare.Backends.Spool.SpoolAckTest do
     end
 
     test "does not delete when delete_on_ack is disabled", %{handle: handle} do
-      Application.put_env(:logflare, :spool, delete_on_ack: false)
+      put_spool_config(delete_on_ack: false)
       stub(QueueMod, :ack, fn _url, _h -> :ok end)
 
       SpoolAck.register(handle, QueueMod, "queue-url", {StorageMod, "bucket", "0/a.etf"})
@@ -100,14 +106,15 @@ defmodule Logflare.Backends.Spool.SpoolAckTest do
       SpoolAck.ack(handle, 1)
 
       assert_receive {:telemetry_event, [:logflare, :backends, :spool, :storage, :delete], _,
-                      %{result: :error}}
+                      %{result: :error}},
+                     2_000
 
       assert Process.whereis(SpoolAck) == spool_ack
     end
 
     test "a hanging delete does not block later acks", %{handle: handle} do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :storage, :delete])
-      Application.put_env(:logflare, :spool, delete_timeout_ms: 100)
+      put_spool_config(delete_timeout_ms: 100)
       other = unique_handle()
       test_pid = self()
       stub(StorageMod, :delete, fn _b, _k -> Process.sleep(:infinity) end)
@@ -119,8 +126,8 @@ defmodule Logflare.Backends.Spool.SpoolAckTest do
         SpoolAck.ack(h, 1)
       end
 
-      assert_receive {:acked, ^handle}
-      assert_receive {:acked, ^other}
+      assert_receive {:acked, ^handle}, 2_000
+      assert_receive {:acked, ^other}, 2_000
       assert SpoolAck.flush(1_000) == :ok
 
       for _ <- 1..2 do

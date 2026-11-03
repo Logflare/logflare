@@ -153,6 +153,11 @@ defmodule Logflare.ShutdownDrainTest do
   end
 
   describe "object deletes" do
+    setup do
+      assert ObjectDeleter.flush(10_000) == :ok
+      :ok
+    end
+
     test "waits for spool object deletes still buffered after the final acks" do
       test_pid = self()
 
