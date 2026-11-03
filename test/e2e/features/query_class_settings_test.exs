@@ -35,10 +35,12 @@ defmodule E2e.Features.QueryClassSettingsTest do
       conn
       |> visit(~p"/backends/#{backend.id}/edit")
       |> assert_has("#query-class-settings-form")
-      |> click("#query-class-api_paid summary")
+      |> click("#query-class-api_paid-toggle")
       |> fill_in("#query-class-api_paid_max_threads", "Max threads", with: "4")
       |> click_button("Save query-class settings")
       |> assert_has("#query-class-settings-error", text: "require a default")
+      |> assert_has("#query-class-api_paid-toggle[aria-expanded='true']")
+      |> assert_has("#query-class-api_paid_max_threads[value='4']")
       |> screenshot("query-class-01-validation.png")
 
     assert Backends.get_backend(backend.id).config[:query_class_settings] in [nil, %{}]
@@ -67,7 +69,7 @@ defmodule E2e.Features.QueryClassSettingsTest do
       session
       |> visit(~p"/backends/#{backend.id}/edit")
       |> assert_has("#query-class-default_priority[value='5']")
-      |> click("#query-class-api_paid summary")
+      |> click("#query-class-api_paid-toggle")
       |> assert_has("#query-class-api_paid_max_threads[value='4']")
       |> screenshot("query-class-03-reloaded.png")
       |> fill_in("#query-class-api_paid_priority", "Priority", with: "")

@@ -14,30 +14,39 @@
   </p>
 
   <.form for={to_form(%{}, as: :query_class_settings)} id="query-class-settings-form" phx-target={@myself} phx-change="change" phx-submit="save">
-    <details :for={class <- @classes} id={"query-class-#{class}"} open={class == "default"} class="tw-border tw-border-zinc-700 tw-rounded tw-p-4 tw-mb-3">
-      <summary class="tw-cursor-pointer tw-font-semibold">
+    <div :for={class <- @classes} id={"query-class-#{class}"} class="tw-border tw-border-zinc-700 tw-rounded tw-p-4 tw-mb-3">
+      <button
+        type="button"
+        id={"query-class-#{class}-toggle"}
+        aria-expanded={to_string(class == "default")}
+        aria-controls={"query-class-#{class}-fields"}
+        phx-click={JS.toggle(to: "#query-class-#{class}-fields", display: "block") |> JS.toggle_attribute({"aria-expanded", "true", "false"})}
+        class="tw-cursor-pointer tw-font-semibold"
+      >
         {if class == "default", do: "Default policy", else: class}
-      </summary>
-      <p class="form-text text-muted">
-        {if class == "default",
-          do: "Fallback for missing, unknown, or unconfigured query-class labels.",
-          else: "Optional overrides for #{class}. Leave all fields blank to use the default policy."}
-      </p>
-      <% f = class_form(@params, class) %>
-      <div class="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-x-6">
-        <div :for={{key, label} <- @fields} class="form-group">
-          {label(f, key, label)}
-          {number_input(f, key,
-            class: "form-control",
-            min: if(key == "max_execution_time", do: "0", else: "1"),
-            step: if(key == "max_execution_time", do: "any", else: "1"),
-            placeholder: if(class == "default", do: "Not set", else: "Inherit default"),
-            "phx-debounce": "blur"
-          )}
+      </button>
+      <div id={"query-class-#{class}-fields"} style={if class != "default", do: "display: none;"}>
+        <p class="form-text text-muted">
+          {if class == "default",
+            do: "Fallback for missing, unknown, or unconfigured query-class labels.",
+            else: "Optional overrides for #{class}. Leave all fields blank to use the default policy."}
+        </p>
+        <% f = class_form(@params, class) %>
+        <div class="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-x-6">
+          <div :for={{key, label} <- @fields} class="form-group">
+            {label(f, key, label)}
+            {number_input(f, key,
+              class: "form-control",
+              min: if(key == "max_execution_time", do: "0", else: "1"),
+              step: if(key == "max_execution_time", do: "any", else: "1"),
+              placeholder: if(class == "default", do: "Not set", else: "Inherit default"),
+              "phx-debounce": "blur"
+            )}
+          </div>
         </div>
+        <input :for={{key, value} <- retained_settings(@params, class)} type="hidden" name={"query_class_settings[#{class}][#{key}]"} value={value} />
       </div>
-      <input :for={{key, value} <- retained_settings(@params, class)} type="hidden" name={"query_class_settings[#{class}][#{key}]"} value={value} />
-    </details>
+    </div>
     <p :if={@error} id="query-class-settings-error" class="text-danger" role="alert">{@error}</p>
     <p :if={@message} class="text-success" role="status">{@message}</p>
     <div class="tw-flex tw-gap-3">
