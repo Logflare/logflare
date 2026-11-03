@@ -7,6 +7,7 @@ defmodule Logflare.BackendsTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline, as: ClickHousePipeline
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
@@ -22,6 +23,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.SourceSupWorker
+  alias Logflare.ContextCache
   alias Logflare.LogEvent
   alias Logflare.LogEvent.PipelineError
   alias Logflare.Lql
@@ -238,6 +240,33 @@ defmodule Logflare.BackendsTest do
 
     test "replace_pipelines_with_latest/1 is a no-op for a deleted backend" do
       assert :ok = Backends.replace_pipelines_with_latest(-1)
+    end
+
+    for {context, crashed} <- [
+          {"adaptor supervisor restarted after a batch config update", ClickHouseAdaptor}
+        ] do
+      @tag :capture_log
+      test context, %{user: user} do
+        {:ok, backend} = Backends.create_backend(user, clickhouse_backend_attrs())
+        on_exit(fn -> Backends.ConsolidatedSup.stop_pipeline(backend.id) end)
+
+        {:ok, _saved} =
+          backend
+          |> Repo.reload!()
+          |> Backend.changeset(%{
+            config: Map.merge(backend.config, %{batch_size: 2_000, batch_timeout: 1_500})
+          })
+          |> Repo.update()
+
+        {:ok, _} = ContextCache.bust_keys([{Backends, backend.id}])
+
+        backend
+        |> Backends.via_backend(unquote(crashed))
+        |> kill_and_await_restart()
+
+        assert %{batch_size: 2_000, batch_timeout: 1_500} =
+                 TestUtils.clickhouse_batcher_state(backend)
+      end
     end
   end
 
@@ -3408,6 +3437,16 @@ defmodule Logflare.BackendsTest do
         call_original(SourceSup, :child_spec, [received_source])
         | start: {Function, :identity, [{:error, :boom}]}
       }
+    end)
+  end
+
+  defp kill_and_await_restart(name) do
+    pid = GenServer.whereis(name)
+    Process.exit(pid, :kill)
+
+    TestUtils.retry_assert(fn ->
+      assert restarted = GenServer.whereis(name)
+      refute restarted == pid
     end)
   end
 

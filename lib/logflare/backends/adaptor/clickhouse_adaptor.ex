@@ -1362,7 +1362,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @doc false
   @impl Supervisor
-  def init(%Backend{} = backend) do
+  def init(%Backend{id: backend_id}) do
+    case Backends.Cache.get_backend(backend_id) do
+      nil -> :ignore
+      %Backend{} = backend -> init_children(backend)
+    end
+  end
+
+  @spec init_children(Backend.t()) :: {:ok, {Supervisor.sup_flags(), [Supervisor.child_spec()]}}
+  defp init_children(backend) do
     backend = Backends.typecast_config_string_map_to_atom_map(backend)
 
     # create the startup queue and its generation, before any producer/traffic exists
