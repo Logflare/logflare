@@ -160,6 +160,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: query-class-ui-demos
-          path: screenshots/query-class-*.png
+          path: |
+            screenshots/query-class-*.png
+            screenshots/query-class-videos/**/*.webm
           if-no-files-found: ignore
           retention-days: 7
