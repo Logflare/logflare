@@ -17,6 +17,7 @@ defmodule Logflare.ShutdownDrain do
   alias Logflare.Backends.Spool.ConsumerPipeline
   alias Logflare.Backends.Spool.ConsumerPipeline.QueueProducer
   alias Logflare.Backends.Spool.DurableBuffer.Supervisor, as: SpoolDurableBufferSup
+  alias Logflare.Backends.Spool.ObjectDeleter
   alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.Utils.Tasks
 
@@ -89,6 +90,9 @@ defmodule Logflare.ShutdownDrain do
 
     SpoolAck.flush(max(cleanup_deadline - System.monotonic_time(:millisecond), 0))
 
+    object_deletes =
+      ObjectDeleter.flush(max(cleanup_deadline - System.monotonic_time(:millisecond), 0))
+
     result =
       if wait_result == :drained and spool_buffer_result != :timeout, do: :drained, else: :timeout
 
@@ -96,7 +100,8 @@ defmodule Logflare.ShutdownDrain do
 
     Logger.warning(
       "shutdown_drain: finished result=#{result} spool_pending=#{spool_pending} " <>
-        "queued_events=#{queued_events} duration_ms=#{duration} spool_buffer=#{spool_buffer_result}"
+        "queued_events=#{queued_events} duration_ms=#{duration} spool_buffer=#{spool_buffer_result} " <>
+        "object_deletes=#{object_deletes}"
     )
 
     result

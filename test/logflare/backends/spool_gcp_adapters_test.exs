@@ -105,6 +105,32 @@ defmodule Logflare.Backends.SpoolGcpAdaptersTest do
     end
   end
 
+  describe "Storage.GCS.delete/2" do
+    test "returns :ok on success" do
+      stub(Objects, :storage_objects_delete, fn _conn, "test-bucket", "0/abc.etf" ->
+        {:ok, %Tesla.Env{status: 204}}
+      end)
+
+      assert :ok = GCS.delete("test-bucket", "0/abc.etf")
+    end
+
+    test "treats a missing object (404) as success" do
+      stub(Objects, :storage_objects_delete, fn _conn, _bucket, _key ->
+        {:error, %Tesla.Env{status: 404}}
+      end)
+
+      assert :ok = GCS.delete("b", "missing-key")
+    end
+
+    test "returns {:error, reason} on other failures" do
+      stub(Objects, :storage_objects_delete, fn _conn, _bucket, _key ->
+        {:error, %Tesla.Env{status: 403}}
+      end)
+
+      assert {:error, %Tesla.Env{status: 403}} = GCS.delete("b", "key")
+    end
+  end
+
   describe "Queue.PubSub.publish/2" do
     test "base64-encodes body and publishes to topic" do
       topic = "projects/logflare/topics/logflare-spool"

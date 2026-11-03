@@ -412,14 +412,14 @@ defmodule Logflare.Backends.Spool.ConsumerPipelineTest do
       assert ConsumerPipeline.ack(:ref, successful, failed) == :ok
 
       assert_receive {:acked, "queue-url", ^success_handle}
-      assert :ets.lookup(:spool_ack, success_handle) == []
+      assert SpoolAck.lookup(success_handle) == :error
 
       # a dispatch_error never reached any pipeline's own ack/3, so releasing
       # its bump here would ack a segment that was never actually delivered
       refute_receive {:acked, "queue-url", ^failed_handle}
 
-      assert [{^failed_handle, 1, QueueMod, "queue-url", _registered_at}] =
-               :ets.lookup(:spool_ack, failed_handle)
+      assert {:ok, %{count: 1, queue_mod: QueueMod, queue_url: "queue-url"}} =
+               SpoolAck.lookup(failed_handle)
     end
 
     test "returns each message's bytes (not its count) to the producer's in-flight budget" do
