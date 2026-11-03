@@ -114,9 +114,20 @@ defmodule LogflareWeb.HealthCheckControllerTest do
       end)
     end
 
-    test "/ready keeps checking the Repo after the latch", %{conn: conn} do
+    test "/ready stops checking the Repo after the latch", %{conn: conn} do
       start_supervised!(Source.Supervisor)
       Readiness.mark_startup_checks_passed()
+      repo = start_uptime_repo(queue_target: 500, queue_interval: 2_000)
+
+      with_held_connection(repo, fn ->
+        assert %{"status" => "ok", "checks" => "liveness", "repo_uptime" => nil} =
+                 conn |> get("/ready") |> json_response(200)
+      end)
+    end
+
+    test "/ready still checks the Repo before the latch", %{conn: conn} do
+      start_supervised!(Source.Supervisor)
+      refute Readiness.startup_checks_passed?()
       repo = start_uptime_repo(queue_target: 1, queue_interval: 10)
 
       with_held_connection(repo, fn ->
@@ -415,7 +426,9 @@ defmodule LogflareWeb.HealthCheckControllerTest do
       end)
     end
 
-    test "/ready still validates seed status after health has latched", %{conn: conn} do
+    # Seeding gates the latch, so a latched node was seeded; re-validating it on
+    # every readiness probe would only pull a serving node out during an outage.
+    test "/ready stops validating seed status after health has latched", %{conn: conn} do
       SingleTenant.create_supabase_sources()
       SingleTenant.create_supabase_endpoints()
 
@@ -423,10 +436,10 @@ defmodule LogflareWeb.HealthCheckControllerTest do
                conn |> get("/health") |> json_response(200)
 
       assert Readiness.startup_checks_passed?()
-      expect(SingleTenant, :supabase_mode_status, fn -> %{seed_user: nil} end)
+      stub(SingleTenant, :supabase_mode_status, fn -> %{seed_user: nil} end)
 
-      assert %{"status" => "coming_up", "checks" => "full"} =
-               conn |> get("/ready") |> json_response(503)
+      assert %{"status" => "ok", "checks" => "liveness"} =
+               conn |> get("/ready") |> json_response(200)
 
       assert Readiness.startup_checks_passed?()
     end

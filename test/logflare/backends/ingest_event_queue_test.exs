@@ -707,6 +707,30 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.total_pending(key) == 0
     end
 
+    test "cached sizes survive queue insertion and retry without changing the batch estimate", %{
+      source: source,
+      sbp: sbp
+    } do
+      event =
+        build(:log_event, source: source, metadata: %{"a-long-attribute-name" => "x"})
+        |> LogEvent.cache_sizes()
+
+      assert :ok = IngestEventQueue.add_to_table(sbp, [event])
+      assert {:ok, [pointer], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
+      assert pointer.size == :erlang.external_size(event.body)
+      assert pointer.size > event.accounted_bytes
+      assert IngestEventQueue.lookup_event(pointer.tid, pointer.gen_event_id) == event
+
+      retried = %{event | retries: 1}
+      assert :ok = IngestEventQueue.add_to_table(sbp, [retried])
+      assert {:ok, [retry_pointer], _tid} = IngestEventQueue.pop_pending_pointers(sbp, 1)
+      assert retry_pointer.size == pointer.size
+      assert retry_pointer.retries == 1
+
+      assert IngestEventQueue.lookup_event(retry_pointer.tid, retry_pointer.gen_event_id) ==
+               retried
+    end
+
     test "pointers carry routing metadata and can resolve the full event via lookup_event/2",
          %{source: source, sbp: sbp} do
       log_ev =
@@ -1467,6 +1491,27 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
       assert IngestEventQueue.get_table_size(loaded_queue) == 101
       assert IngestEventQueue.get_table_size(empty_queue) == 1
+    end
+  end
+
+  describe "total_size/0" do
+    test "counts events queued across every queue on the node" do
+      backend_queue = {:spool_producer, nil, :erlang.list_to_pid(~c"<0.120.1>")}
+      other_queue = {:spool_producer, nil, :erlang.list_to_pid(~c"<0.120.2>")}
+      on_exit(fn -> Enum.each([backend_queue, other_queue], &IngestEventQueue.delete_queue/1) end)
+
+      before = IngestEventQueue.total_size()
+
+      IngestEventQueue.upsert_tid(backend_queue)
+      IngestEventQueue.upsert_tid(other_queue)
+      :ok = IngestEventQueue.add_to_table(backend_queue, build_list(3, :log_event))
+      :ok = IngestEventQueue.add_to_table(other_queue, build_list(2, :log_event))
+
+      assert IngestEventQueue.total_size() == before + 5
+
+      IngestEventQueue.delete_queue(backend_queue)
+
+      assert IngestEventQueue.total_size() == before + 2
     end
   end
 

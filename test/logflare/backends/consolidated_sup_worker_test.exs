@@ -1,8 +1,12 @@
 defmodule Logflare.Backends.ConsolidatedSupWorkerTest do
   use Logflare.DataCase, async: false
 
+  import Ecto.Query
+
+  alias Logflare.Backends
   alias Logflare.Backends.ConsolidatedSup
   alias Logflare.Backends.ConsolidatedSupWorker
+  alias Logflare.Repo
 
   describe "ConsolidatedSupWorker" do
     setup do
@@ -23,6 +27,20 @@ defmodule Logflare.Backends.ConsolidatedSupWorkerTest do
 
     test "starts pipeline for consolidated backend on check", %{backend: backend} do
       refute ConsolidatedSup.pipeline_running?(backend)
+
+      TestUtils.retry_assert(fn ->
+        assert ConsolidatedSup.pipeline_running?(backend)
+      end)
+    end
+
+    test "starts a pipeline for a default ingest backend with no linked sources", %{
+      backend: backend
+    } do
+      {:ok, _} = Backends.update_backend(backend, %{default_ingest?: true})
+
+      Repo.delete_all(from(sb in "sources_backends", where: sb.backend_id == ^backend.id))
+
+      ConsolidatedSup.stop_pipeline(backend)
 
       TestUtils.retry_assert(fn ->
         assert ConsolidatedSup.pipeline_running?(backend)

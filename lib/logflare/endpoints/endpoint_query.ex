@@ -13,6 +13,7 @@ defmodule Logflare.Endpoints.EndpointQuery do
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Endpoints
+  alias Logflare.Endpoints.FilesystemCachePolicy
   alias Logflare.SingleTenant
   alias Logflare.Sql
   alias Logflare.User
@@ -23,6 +24,7 @@ defmodule Logflare.Endpoints.EndpointQuery do
     :description,
     :language,
     :source_mapping,
+    :filesystem_cache_policy,
     :sandboxable,
     :cache_duration_seconds,
     :proactive_requerying_seconds,
@@ -43,6 +45,7 @@ defmodule Logflare.Endpoints.EndpointQuery do
              :query,
              :language,
              :source_mapping,
+             :filesystem_cache_policy,
              :sandboxable,
              :cache_duration_seconds,
              :proactive_requerying_seconds,
@@ -64,6 +67,8 @@ defmodule Logflare.Endpoints.EndpointQuery do
     field(:cache_duration_seconds, :integer, default: 3_600)
     field(:proactive_requerying_seconds, :integer, default: 1_800)
     field(:max_limit, :integer, default: 1_000)
+    field(:enforced_clickhouse_settings, :map, default: %{})
+    field(:filesystem_cache_policy, :map)
     field(:enable_auth, :boolean, default: true)
     field(:redact_pii, :boolean, default: false)
     field(:enable_dynamic_reservation, :boolean, default: false)
@@ -110,7 +115,7 @@ defmodule Logflare.Endpoints.EndpointQuery do
 
     snapshot
     |> from_version_snapshot()
-    |> Map.take(fields)
+    |> Map.take([:filesystem_cache_policy | fields])
   end
 
   @spec from_version_snapshot(map()) :: t()
@@ -134,12 +139,14 @@ defmodule Logflare.Endpoints.EndpointQuery do
       :enable_auth,
       :redact_pii,
       :enable_dynamic_reservation,
+      :filesystem_cache_policy,
       :language,
       :description,
       :backend_id,
       :labels
     ])
     |> infer_language_from_backend()
+    |> FilesystemCachePolicy.validate()
     |> validate_required([:name, :query, :language])
   end
 
@@ -156,6 +163,7 @@ defmodule Logflare.Endpoints.EndpointQuery do
       :enable_auth,
       :redact_pii,
       :enable_dynamic_reservation,
+      :filesystem_cache_policy,
       :language,
       :description,
       :backend_id,
@@ -163,6 +171,7 @@ defmodule Logflare.Endpoints.EndpointQuery do
     ])
     |> infer_language_from_backend()
     |> validate_query(:query)
+    |> FilesystemCachePolicy.validate()
     |> default_validations()
     |> update_source_mapping()
   end
@@ -195,15 +204,10 @@ defmodule Logflare.Endpoints.EndpointQuery do
       end
 
     validate_change(changeset, field, fn field, value ->
-      {:ok, expanded_query} =
-        Sql.expand_subqueries(
-          language,
-          value,
-          queries
-        )
-
-      case Sql.transform(language, expanded_query, user) do
-        {:ok, _} -> []
+      with {:ok, expanded_query} <- Sql.expand_subqueries(language, value, queries),
+           {:ok, _} <- Sql.transform(language, expanded_query, user) do
+        []
+      else
         {:error, error} -> [{field, error}]
       end
     end)

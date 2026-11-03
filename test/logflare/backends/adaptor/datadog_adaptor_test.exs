@@ -18,6 +18,20 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
     :ok
   end
 
+  test "pre_ingest invalidates size caches when translating the event body" do
+    source = build(:source)
+    backend = build(:backend, type: :datadog)
+    event = build(:log_event, source: source) |> Logflare.LogEvent.cache_sizes()
+
+    assert [translated] = @subject.pre_ingest(source, backend, [event])
+    assert translated.body["data"] == event.body
+    assert translated.accounted_bytes == nil
+    assert translated.batch_bytes == nil
+    cached = Logflare.LogEvent.cache_sizes(translated)
+    assert cached.accounted_bytes == Logflare.LogEvent.body_byte_size(translated.body)
+    assert cached.batch_bytes == :erlang.external_size(translated.body)
+  end
+
   describe "cast and validate" do
     test "API key is required and region only accepts valid regions" do
       changeset = Adaptor.cast_and_validate_config(@subject, %{})

@@ -186,4 +186,138 @@ defmodule Logflare.Backends.Spool.SpoolAckTest do
                :ets.lookup(:spool_ack, handle)
     end
   end
+
+  describe "pending_count/0" do
+    test "counts handles still waiting on outstanding work" do
+      assert SpoolAck.pending_count() == 0
+
+      SpoolAck.register(unique_handle(), QueueMod, "queue-url")
+      SpoolAck.register(unique_handle(), QueueMod, "queue-url")
+
+      assert SpoolAck.pending_count() == 2
+    end
+  end
+
+  describe "nack_pending/1" do
+    test "nacks every pending handle through its own queue and forgets it" do
+      test_pid = self()
+      [h1, h2] = [unique_handle(), unique_handle()]
+
+      stub(QueueMod, :nack, fn url, h ->
+        send(test_pid, {:nacked, url, h})
+        :ok
+      end)
+
+      stub(QueueMod, :ack, fn _url, h -> send(test_pid, {:acked, h}) end)
+
+      SpoolAck.register(h1, QueueMod, "queue-1")
+      SpoolAck.bump(h1, 2)
+      SpoolAck.register(h2, QueueMod, "queue-2")
+
+      assert SpoolAck.nack_pending(1_000) == :ok
+
+      assert_received {:nacked, "queue-1", ^h1}
+      assert_received {:nacked, "queue-2", ^h2}
+
+      assert SpoolAck.pending_count() == 0
+
+      SpoolAck.ack(h1, 2)
+      refute_receive {:acked, ^h1}, 200
+    end
+
+    test "nacks pending handles concurrently rather than one request at a time" do
+      stub(QueueMod, :nack, fn _url, _h ->
+        Process.sleep(200)
+        :ok
+      end)
+
+      for _ <- 1..5, do: SpoolAck.register(unique_handle(), QueueMod, "queue-url")
+
+      {elapsed_us, :ok} = :timer.tc(fn -> SpoolAck.nack_pending(5_000) end)
+
+      assert elapsed_us < 600_000
+    end
+
+    test "a nack that hangs is killed after its own timeout, freeing its slot for the rest" do
+      test_pid = self()
+      blocked = for _ <- 1..16, do: unique_handle()
+      other = unique_handle()
+
+      stub(QueueMod, :nack, fn _url, h ->
+        if h in blocked, do: Process.sleep(:infinity)
+        send(test_pid, {:nacked, h})
+        :ok
+      end)
+
+      for h <- blocked, do: SpoolAck.register(h, QueueMod, "queue-url")
+      SpoolAck.register(other, QueueMod, "queue-url")
+
+      {elapsed_us, result} =
+        :timer.tc(fn -> SpoolAck.nack_pending(5_000, nack_timeout_ms: 100) end)
+
+      assert result == :ok
+      assert elapsed_us < 1_000_000
+      assert_received {:nacked, ^other}
+    end
+
+    test "a blocked nack cannot hold shutdown past the deadline" do
+      test_pid = self()
+      [blocked, other] = [unique_handle(), unique_handle()]
+
+      stub(QueueMod, :nack, fn
+        _url, ^blocked ->
+          Process.sleep(:infinity)
+
+        _url, h ->
+          send(test_pid, {:nacked, h})
+          :ok
+      end)
+
+      SpoolAck.register(blocked, QueueMod, "queue-url")
+      SpoolAck.register(other, QueueMod, "queue-url")
+
+      {elapsed_us, result} = :timer.tc(fn -> SpoolAck.nack_pending(200) end)
+
+      assert result == :timeout
+      assert elapsed_us < 500_000
+      assert_received {:nacked, ^other}
+    end
+  end
+
+  describe "flush/1" do
+    test "returns only after queue acks already handed to SpoolAck have been sent" do
+      handle = unique_handle()
+      test_pid = self()
+
+      stub(QueueMod, :ack, fn _url, h ->
+        Process.sleep(200)
+        send(test_pid, {:acked, h})
+        :ok
+      end)
+
+      SpoolAck.register(handle, QueueMod, "queue-url")
+      SpoolAck.bump(handle, 1)
+      SpoolAck.ack(handle, 1)
+
+      assert SpoolAck.flush(1_000) == :ok
+      assert_received {:acked, ^handle}
+    end
+
+    test "gives up at the deadline instead of exiting the caller" do
+      handle = unique_handle()
+
+      stub(QueueMod, :ack, fn _url, _h ->
+        Process.sleep(500)
+        :ok
+      end)
+
+      SpoolAck.register(handle, QueueMod, "queue-url")
+      SpoolAck.bump(handle, 1)
+      SpoolAck.ack(handle, 1)
+
+      assert SpoolAck.flush(100) == :timeout
+
+      SpoolAck.flush(1_000)
+    end
+  end
 end

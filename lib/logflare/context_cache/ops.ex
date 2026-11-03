@@ -8,6 +8,7 @@ defmodule Logflare.ContextCache.Ops do
 
   @callback keys_to_bust(cache :: module(), keyword()) :: Enumerable.t()
   @callback delete_keys(cache :: module(), Enumerable.t()) :: {:ok, non_neg_integer()}
-  @callback fetch(cache :: module(), key :: term(), getter :: (-> term())) :: term()
+  @callback fetch(cache :: module(), key :: term(), getter :: (-> term())) ::
+              term() | {:error, :database_unavailable}
   @callback update(cache :: module(), key :: term(), value :: term()) :: :ok
 end

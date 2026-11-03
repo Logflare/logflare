@@ -4,6 +4,7 @@ defmodule Logflare.TeamUsers do
   """
   import Ecto.Query, warn: false
 
+  alias Ecto.Changeset
   alias Logflare.Teams
   alias Logflare.Billing
   alias Logflare.Repo
@@ -139,6 +140,17 @@ defmodule Logflare.TeamUsers do
   def update_team_user(%TeamUser{} = team_user, attrs) do
     team_user
     |> TeamUser.changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
+  Updates editable profile fields without changing authentication identity.
+  """
+  @spec update_team_user_profile(TeamUser.t(), map()) ::
+          {:ok, TeamUser.t()} | {:error, Changeset.t()}
+  def update_team_user_profile(%TeamUser{} = team_user, attrs) do
+    team_user
+    |> TeamUser.profile_changeset(attrs)
     |> Repo.update()
   end
 

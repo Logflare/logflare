@@ -7,6 +7,7 @@ defmodule Logflare.Backends.Supervisor do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Sources.Source.BigQuery.SchemaMetrics
 
   def start_link(_) do
     Supervisor.start_link(__MODULE__, [])
@@ -41,19 +42,6 @@ defmodule Logflare.Backends.Supervisor do
 
     children =
       [
-        Backends.IngestEventQueue,
-        Backends.IngestEventQueue.BufferCacheWorker,
-        Backends.IngestEventQueue.MapperJanitor,
-        Backends.IngestEventQueue.GenerationJanitor,
-        Logflare.Mapper.ConfigStore,
-        Backends.Adaptor.PostgresAdaptor.Supervisor,
-        Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup,
-        Backends.ConsolidatedSup,
-        %{
-          id: Backends.SourceSupStarts,
-          start: {Cachex, :start_link, [Backends.SourceSupStarts, []]}
-        },
-        {PartitionSupervisor, child_spec: DynamicSupervisor, name: Backends.SourcesSup},
         {Registry,
          name: Backends.SourceRegistry, keys: :unique, partitions: max(round(base / 8), 1)},
         {Registry,
@@ -62,6 +50,21 @@ defmodule Logflare.Backends.Supervisor do
          name: Backends.BufferProducer.InFlightRegistry,
          keys: :unique,
          partitions: max(round(base / 8), 1)},
+        SchemaMetrics,
+        Backends.IngestEventQueue,
+        Backends.IngestEventQueue.BufferCacheWorker,
+        Backends.IngestEventQueue.MapperJanitor,
+        Backends.IngestEventQueue.GenerationJanitor,
+        Logflare.Mapper.ConfigStore,
+        Backends.Adaptor.PostgresAdaptor.Supervisor,
+        Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup,
+        Backends.ConsolidatedSup,
+        Backends.DefaultIngestRefresher.supervisor_spec(),
+        %{
+          id: Backends.SourceSupStarts,
+          start: {Cachex, :start_link, [Backends.SourceSupStarts, []]}
+        },
+        {PartitionSupervisor, child_spec: DynamicSupervisor, name: Backends.SourcesSup},
         Backends.UserMonitoring.SystemSourceStarter
       ] ++
         spool_goth_children ++

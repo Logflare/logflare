@@ -185,6 +185,9 @@ profile_after =
 suite =
   Benchee.run(
     %{
+      "cooldown" => fn %{update_body: body, schema: schema} ->
+        Schema.plan_update(body, schema, %{next_update: 9_999_999_999_999})
+      end,
       "noop" => fn %{body: body, schema: schema} ->
         Schema.plan_update(body, schema, %{next_update: 0})
       end,

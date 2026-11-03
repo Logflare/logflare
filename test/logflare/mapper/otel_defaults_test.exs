@@ -932,6 +932,16 @@ defmodule Logflare.Mapper.OtelDefaultsTest do
       assert result["status_message"] == "success"
     end
 
+    test "falls back to a plain status for status_code", %{trace: compiled} do
+      assert Mapper.map(%{"status" => "error"}, compiled)["status_code"] == "error"
+      assert Mapper.map(%{"status" => 500}, compiled)["status_code"] == "500"
+
+      assert Mapper.map(%{"status" => "error", "status_code" => "ERROR"}, compiled)["status_code"] ==
+               "ERROR"
+
+      assert Mapper.map(%{"status" => %{"message" => "boom"}}, compiled)["status_code"] == ""
+    end
+
     test "normalizes span_kind to canonical low-cardinality values", %{trace: compiled} do
       mappings = [
         # Title-case form emitted by OtelTrace passes through unchanged

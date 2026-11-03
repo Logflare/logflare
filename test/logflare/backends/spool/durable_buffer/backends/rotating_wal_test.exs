@@ -7,6 +7,8 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWalTest do
   alias Logflare.Backends.Spool.Health
   alias Logflare.Test.FakeDurableBufferBackend, as: FakeInnerBackend
 
+  @interval_ms 200
+
   # Backend.commit/4 reports to the real, global :disk Health scope on
   # every call — reset it so a failure here can't leak into another test
   # file's own Health assertions (this module runs async, i.e. before any
@@ -69,14 +71,16 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWalTest do
   end
 
   test "rotates once max_rotation_interval_ms elapses, even below max_batch_bytes" do
-    config = config(max_batch_bytes: 1_000_000, max_rotation_interval_ms: 20, worker_count: 1)
+    config =
+      config(max_batch_bytes: 1_000_000, max_rotation_interval_ms: @interval_ms, worker_count: 1)
+
     {:ok, state} = Backend.open(config, 0)
 
     {entry_a, size_a} = framed("a")
     assert {:ok, state} = Backend.commit(state, entry_a, size_a, {0, 1})
     refute_receive {:committed, _, _, _}, 10
 
-    Process.sleep(30)
+    Process.sleep(@interval_ms)
 
     {entry_b, size_b} = framed("b")
     assert {:ok, new_state} = Backend.commit(state, entry_b, size_b, {1, 1})
@@ -88,14 +92,16 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWalTest do
   end
 
   test "handle_message/2 flush_tick rotates a pending tail once idle past max_rotation_interval_ms" do
-    config = config(max_batch_bytes: 1_000_000, max_rotation_interval_ms: 20, worker_count: 1)
+    config =
+      config(max_batch_bytes: 1_000_000, max_rotation_interval_ms: @interval_ms, worker_count: 1)
+
     {:ok, state} = Backend.open(config, 0)
 
     {entry, size} = framed("idle tail")
     assert {:ok, state} = Backend.commit(state, entry, size, {0, 1})
     refute_receive {:committed, _, _, _}, 10
 
-    assert_receive {:backend, :flush_tick}, 100
+    assert_receive {:backend, :flush_tick}, @interval_ms * 5
     assert {[], new_state} = Backend.handle_message(:flush_tick, state)
 
     assert new_state.pending_bytes == 0
@@ -107,10 +113,12 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWalTest do
   end
 
   test "handle_message/2 flush_tick is a no-op when nothing is pending" do
-    config = config(max_batch_bytes: 1_000_000, max_rotation_interval_ms: 20, worker_count: 1)
+    config =
+      config(max_batch_bytes: 1_000_000, max_rotation_interval_ms: @interval_ms, worker_count: 1)
+
     {:ok, state} = Backend.open(config, 0)
 
-    assert_receive {:backend, :flush_tick}, 100
+    assert_receive {:backend, :flush_tick}, @interval_ms * 5
     assert {[], new_state} = Backend.handle_message(:flush_tick, state)
 
     assert new_state.pending_bytes == 0

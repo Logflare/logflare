@@ -62,8 +62,23 @@ defmodule Logflare.Sources.Source.RateSampler do
 
   @doc "Whether to sample the next rate-gated action for `key`."
   @spec sample?(term()) :: boolean()
-  def sample?(key) do
-    :rand.uniform() <= probability(key)
+  def sample?(key), do: sample_mode(key) != :skip
+
+  @doc "Sample a rate-gated action and return its rate mode or `:skip`."
+  @spec sample_mode(term()) :: :normal | :zero_rate | :floor | :skip
+  def sample_mode(key) do
+    {probability, mode} = sampling_probability(rate(key))
+    if :rand.uniform() <= probability, do: mode, else: :skip
+  end
+
+  @doc false
+  @spec sampling_probability(number()) :: {float(), :normal | :zero_rate | :floor}
+  def sampling_probability(rate) do
+    cond do
+      rate <= 0 -> {1.0, :zero_rate}
+      rate > 100_000 -> {0.00001, :floor}
+      true -> {min(1.0, 1.0 / rate), :normal}
+    end
   end
 
   @doc "Current estimated rate (events/sec) for `key`, or 0.0 if never bumped."
@@ -72,13 +87,6 @@ defmodule Logflare.Sources.Source.RateSampler do
     case :ets.lookup(@table, key) do
       [{^key, _window_start, _count, rate}] -> rate
       [] -> 0.0
-    end
-  end
-
-  defp probability(key) do
-    case rate(key) do
-      rate when rate > 0 -> min(1.0, max(0.00001, 1.0 / rate))
-      _ -> 1.0
     end
   end
 end

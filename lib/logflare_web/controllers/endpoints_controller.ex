@@ -68,7 +68,8 @@ defmodule LogflareWeb.EndpointsController do
       400 => BadRequest.response(),
       401 => Unauthorized.response(),
       404 => NotFound.response(),
-      500 => ServerError.response()
+      500 => ServerError.response(),
+      503 => ServerError.response()
     }
   )
 
@@ -108,10 +109,31 @@ defmodule LogflareWeb.EndpointsController do
         Logger.debug("Endpoint cache result, #{inspect(result, pretty: true)}")
         render(conn, "query.json", result: result.rows)
 
+      {:error, :database_unavailable} = error ->
+        FallbackController.call(conn, error)
+
+      {:error, :policy_unavailable} ->
+        conn
+        |> put_status(:service_unavailable)
+        |> put_resp_header("retry-after", "5")
+        |> json(%{
+          error: "Service Unavailable: endpoint policy could not be verified. Retry the request."
+        })
+
       {:error, :sandboxing_disabled} ->
         conn
         |> put_status(:bad_request)
         |> json(%{error: "SQL and LQL overrides are disabled for this endpoint"})
+
+      {:error, {:invalid_filesystem_cache_window, message}} ->
+        conn
+        |> put_status(:bad_request)
+        |> json(%{error: message})
+
+      {:error, {:invalid_filesystem_cache_policy, message}} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{error: message})
 
       {:error, error = %QueryError{}} ->
         render(conn, "query.json", error: QueryErrorHelpers.query_error_message(error))

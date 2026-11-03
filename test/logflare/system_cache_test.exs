@@ -5,6 +5,7 @@ defmodule Logflare.SystemCacheTest do
   import ExUnit.CaptureLog
   import Mimic
 
+  setup :set_mimic_private
   setup :verify_on_exit!
 
   alias Logflare.SystemCache

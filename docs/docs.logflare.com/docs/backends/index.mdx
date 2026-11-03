@@ -19,3 +19,13 @@ A backend can be any one of the following types:
 - **Ingest-only**: The backend only ingests data, and cannot be queried through any supported query languages.
 - **Query-only**: The backend can only be queried. Data storage is handled externally, outside of Logflare.
 - **Fully-featured**: The backend can ingest data, and can be queried by supported query languages.
+
+## Default ingest backend
+
+Backends with a consolidated ingest pipeline (_currently ClickHouse_) can be marked as the account's **default ingest** backend, one per backend type. Every source in the account that has *default ingest* enabled sends its events to that backend, without attaching the backend to each source.
+
+Sources are not opted in by default. Opt a source in from its edit page, with the `default_ingest_backend_enabled?` field in the API, or in bulk with **Opt in all sources** on the default backend's page. System sources (`system.logs` and `system.metrics`) are skipped by the bulk action.
+
+On the page of a backend that can be a default, an **Enable default ingest** or **Disable default ingest** button is shown. Once it is the default, the page also shows how many sources are opted in. **Opt in all sources** and **Opt out all sources** appear only when they would change at least one source.
+
+Opting a source out of default ingest does not stop events from reaching a backend attached to that source directly or through a rule.

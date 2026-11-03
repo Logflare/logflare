@@ -106,14 +106,11 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
 
     formatted_message = "#{formatted_ts} #{le.body["message"] || le.body["event_message"] || ""}"
 
-    %Logflare.LogEvent{
-      le
-      | body: %{
-          "message" => formatted_message,
-          "ddsource" => "Supabase",
-          "service" => source.service_name || source.name,
-          "data" => le.body
-        }
-    }
+    Logflare.LogEvent.replace_body(le, %{
+      "message" => formatted_message,
+      "ddsource" => "Supabase",
+      "service" => source.service_name || source.name,
+      "data" => le.body
+    })
   end
 end

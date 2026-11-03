@@ -83,6 +83,12 @@ defmodule Logflare.Repo do
   end
 
   @doc """
+  Reads authoritative state on the primary, restoring the caller's dynamic repo afterwards.
+  """
+  @spec with_primary((-> result)) :: result when result: term()
+  def with_primary(fun) when is_function(fun, 0), do: with_dynamic_repo(__MODULE__, fun)
+
+  @doc """
   Applies the given MFA using `with_replica/1`.
   """
   @spec apply_with_replica(module(), atom(), list()) :: term()

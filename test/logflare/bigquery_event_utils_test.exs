@@ -4,7 +4,7 @@ defmodule Logflare.BigQuery.EventUtilsTest do
 
   describe "event utils" do
     test "wraps maps with lists to be ingested by BigQuery" do
-      assert EventUtils.prepare_for_ingest(raw()) === [wrapped()]
+      assert EventUtils.wrap_body_fields(raw()) === wrapped()
     end
   end
 

@@ -21,6 +21,7 @@ on:
       - 'Dockerfile.runner'
       - '.dockerignore'
       - '*.sh'
+      - 'test/docker/**'
       - '.tool-versions'
       # Run suite when this file is changed
       - ".github/workflows/docker-test.yml"
@@ -34,14 +35,20 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v6
+      - name: SIGTERM reaches the release
+        run: bash test/docker/sigterm_test.sh
       - uses: docker/setup-buildx-action@v4
       - uses: docker/build-push-action@v7
         with:
           file: ./Dockerfile
           push: false
+          load: true
+          tags: logflare:docker-test
           platforms: linux/amd64
           # PRs can read the production cache populated on the default branch.
           cache-from: |
             type=gha,scope=docker-build-check
             type=gha,scope=app-amd64
           cache-to: type=gha,scope=docker-build-check,mode=max
+      - name: Image runs under tini
+        run: test "$(docker run --rm logflare:docker-test cat /proc/1/comm)" = tini

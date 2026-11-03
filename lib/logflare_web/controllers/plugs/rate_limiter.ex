@@ -10,7 +10,41 @@ defmodule LogflareWeb.Plugs.RateLimiter do
 
   def init(_opts), do: nil
 
-  def call(%{assigns: %{user: user, source: source, plan: plan}} = conn, _opts \\ []) do
+  def call(conn, opts \\ [])
+
+  def call(
+        %{assigns: %{user: user, plan: plan, declared_sources: declared}} = conn,
+        _opts
+      )
+      when map_size(declared) > 0 do
+    declared
+    |> Map.values()
+    |> Enum.reduce_while(conn, fn source, acc ->
+      case Users.API.verify_api_rates_quotas(%{
+             user: user,
+             source: source,
+             plan: plan,
+             type: {:api_call, :logs_post}
+           }) do
+        {:ok, _} ->
+          {:cont, acc}
+
+        {:error, %{message: message, metrics: metrics}} ->
+          :telemetry.execute(
+            [:logflare, :rate_limiter],
+            %{rejected: true},
+            %{user_id: user.id, source_id: source.id, source_token: source.token}
+          )
+
+          {:halt,
+           acc
+           |> put_x_rate_limit_headers(metrics)
+           |> FallbackController.call({:error, :too_many_requests, message})}
+      end
+    end)
+  end
+
+  def call(%{assigns: %{user: user, source: source, plan: plan}} = conn, _opts) do
     %{
       user: user,
       source: source,

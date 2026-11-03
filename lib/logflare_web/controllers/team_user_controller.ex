@@ -8,13 +8,13 @@ defmodule LogflareWeb.TeamUserController do
   alias Logflare.Users
 
   def edit(%{assigns: %{team_user: team_user}} = conn, _params) do
-    changeset = TeamUsers.TeamUser.changeset(team_user, %{})
+    changeset = TeamUsers.TeamUser.profile_changeset(team_user, %{})
 
     render(conn, "edit.html", changeset: changeset, team_user: team_user)
   end
 
   def update(%{assigns: %{team_user: team_user}} = conn, %{"team_user" => params}) do
-    case TeamUsers.update_team_user(team_user, params) do
+    case TeamUsers.update_team_user_profile(team_user, params) do
       {:ok, _team_user} ->
         conn
         |> put_flash(:info, "Profile updated!")

@@ -347,6 +347,23 @@
             </small>
           </div>
           <div class="form-group">
+            {label(f_config, :async_insert_busy_timeout_max_ms, "Async Insert Max Flush Timeout (ms)")}
+            {text_input(f_config, :async_insert_busy_timeout_max_ms,
+              class: "form-control",
+              placeholder: ClickHouseAdaptor.default_async_insert_busy_timeout_max_ms()
+            )}
+            <small class="form-text text-muted">
+              Longest ClickHouse buffers async inserts before flushing them, between {ClickHouseAdaptor.async_insert_flush_bounds().async_insert_busy_timeout_max_ms.min} and {ClickHouseAdaptor.async_insert_flush_bounds().async_insert_busy_timeout_max_ms.max} ms. The maximum leaves at least half the insert execution timeout for flushing. When empty, Logflare sends {ClickHouseAdaptor.default_async_insert_busy_timeout_max_ms()} ms. Sent as <code>async_insert_busy_timeout_max_ms</code>. Changes are applied without restarting ingestion.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :async_insert_max_data_size, "Async Insert Max Data Size (bytes, Optional)")}
+            {text_input(f_config, :async_insert_max_data_size, class: "form-control")}
+            <small class="form-text text-muted">
+              Buffered bytes that trigger an async insert flush, between {ClickHouseAdaptor.async_insert_flush_bounds().async_insert_max_data_size.min} and {ClickHouseAdaptor.async_insert_flush_bounds().async_insert_max_data_size.max} bytes. Sent as <code>async_insert_max_data_size</code>. When empty, the ClickHouse user's settings profile applies. Changes are applied without restarting ingestion.
+            </small>
+          </div>
+          <div class="form-group">
             {label(f_config, :async_insert_cluster_url, "Async Insert Cluster URL (Optional)")}
             {text_input(f_config, :async_insert_cluster_url, class: "form-control")}
             <small class="form-text text-muted">

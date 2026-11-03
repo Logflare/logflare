@@ -2,11 +2,14 @@ defmodule Logflare.Backends.SourceSup do
   @moduledoc false
   use Supervisor
 
+  require Logger
+
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourceSupWorker
   alias Logflare.Backends
   alias Logflare.Sources.Source
+  alias Logflare.User
   alias Logflare.Users
   alias Logflare.Billing
   alias Logflare.Sources.Source.RateCounterServer
@@ -72,15 +75,16 @@ defmodule Logflare.Backends.SourceSup do
       Backends.Cache.list_backends(rules_source_id: source.id)
       |> Enum.reject(& &1.consolidated_ingest?)
 
-    user = Users.Cache.get(source.user_id)
-    Billing.Cache.get_plan_by_user(user)
+    with %User{} = user <- Users.Cache.get(source.user_id) do
+      Billing.Cache.get_plan_by_user(user)
 
-    started_backends =
-      [Backends.get_default_backend(user) | source_backends]
-      |> Enum.concat(rules_backends)
+      started_backends =
+        [Backends.get_default_backend(user) | source_backends]
+        |> Enum.concat(rules_backends)
 
-    if Enum.any?(started_backends, &(&1.type == :bigquery)) do
-      SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
+      if Enum.any?(started_backends, &(&1.type == :bigquery)) do
+        SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
+      end
     end
 
     :ok
@@ -110,7 +114,7 @@ defmodule Logflare.Backends.SourceSup do
       |> Enum.reject(& &1.consolidated_ingest?)
       |> Enum.map(&%{&1 | register_for_ingest: false})
 
-    user = Users.Cache.get(source.user_id)
+    user = Users.Cache.get!(source.user_id)
 
     plan = Billing.Cache.get_plan_by_user(user)
 
@@ -202,9 +206,22 @@ defmodule Logflare.Backends.SourceSup do
   @spec start_backend_child_by_id(non_neg_integer(), non_neg_integer()) ::
           Supervisor.on_start_child() | :noop
   def start_backend_child_by_id(backend_id, source_id) do
-    backend = Backends.Cache.get_backend(backend_id) |> Map.put(:register_for_ingest, false)
-    source = Sources.Cache.get_by_id(source_id)
-    start_backend_child(source, backend)
+    case {Backends.Cache.get_backend(backend_id), Sources.Cache.get_by_id(source_id)} do
+      {%Backend{} = backend, %Source{} = source} ->
+        start_backend_child(source, %{backend | register_for_ingest: false})
+
+      {backend, source} ->
+        missing =
+          for({name, nil} <- [backend: backend, source: source], do: name)
+          |> Enum.join(" and ")
+
+        Logger.warning("Cannot start rule backend child: #{missing} not found",
+          backend_id: backend_id,
+          source_id: source_id
+        )
+
+        :noop
+    end
   end
 
   @doc """
@@ -227,10 +244,11 @@ defmodule Logflare.Backends.SourceSup do
   Stops a given backend child on SourceSup that is associated with the given Rule.
   """
   @spec stop_rule_child(Rule.t()) :: :ok | {:error, :not_found}
-  def stop_rule_child(%Rule{backend_id: backend_id} = rule) do
-    backend = Backends.Cache.get_backend(backend_id) |> Map.put(:register_for_ingest, false)
-    source = Sources.Cache.get_by_id(rule.source_id)
-    stop_backend_child(source, backend)
+  def stop_rule_child(%Rule{backend_id: backend_id, source_id: source_id}) do
+    case Sources.Cache.get_by_id(source_id) do
+      %Source{} = source -> stop_backend_child(source, backend_id)
+      nil -> {:error, :not_found}
+    end
   end
 
   @doc """

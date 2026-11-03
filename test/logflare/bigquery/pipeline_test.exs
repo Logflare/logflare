@@ -19,6 +19,7 @@ defmodule Logflare.BigQuery.PipelineTest do
   alias Logflare.Repo
   alias Logflare.Sources.Source.BigQuery.Pipeline
   alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.BigQuery.SchemaMetrics
   alias Logflare.Sources.Source.RateSampler
   alias Logflare.User
 
@@ -385,8 +386,12 @@ defmodule Logflare.BigQuery.PipelineTest do
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
-      le = build(:log_event, source: source, metadata: %{"level" => "error"})
+      le =
+        build(:log_event, source: source, metadata: %{"level" => "error"})
+        |> LogEvent.cache_sizes()
+
       {messages, _tid} = setup_queue(source, [le])
+      assert hd(messages).data.size == :erlang.external_size(le.body)
 
       test_pid = self()
       handler = "test-ingest-labels-#{inspect(make_ref())}"
@@ -405,7 +410,9 @@ defmodule Logflare.BigQuery.PipelineTest do
       Pipeline.handle_batch(:bq, messages, batch_info, context)
 
       assert_receive {:ingest, %{ingested_bytes: bytes}, metadata}
-      assert bytes > 0
+      assert bytes == le.accounted_bytes
+      assert bytes == LogEvent.body_byte_size(le.body)
+      assert bytes < hd(messages).data.size
       # labels resolved from the event body, no per-event ETS lookup in ack
       assert metadata["lvl"] == "error"
     end
@@ -420,7 +427,7 @@ defmodule Logflare.BigQuery.PipelineTest do
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
-      le = build(:log_event, source: source)
+      le = %{build(:log_event, source: source) | accounted_bytes: nil, batch_bytes: nil}
       {messages, _tid} = setup_queue(source, [le])
 
       test_pid = self()
@@ -441,7 +448,8 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       source_id = source.id
       assert_receive {:ingest, %{ingested_bytes: bytes}, %{"source_id" => ^source_id}}
-      assert bytes > 0
+      assert bytes == LogEvent.body_byte_size(le.body)
+      assert bytes < hd(messages).data.size
     end
 
     test "le_to_bq_row/1 generates TableDataInsertAllRequestRows struct correctly", %{
@@ -968,8 +976,61 @@ defmodule Logflare.BigQuery.PipelineTest do
         :ok
       end)
 
+      SchemaMetrics.reset()
+      handler_id = "pipeline-schema-sample-#{System.unique_integer()}"
+
+      :telemetry.attach(
+        handler_id,
+        [:logflare, :bigquery, :schema, :report],
+        fn _, counts, _, pid ->
+          send(pid, {:sample_counts, counts})
+        end,
+        self()
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
       assert ^le = Pipeline.process_data(le, context, source)
       assert_received :schema_updated
+      assert :ok = SchemaMetrics.report()
+      assert_receive {:sample_counts, %{samples_selected: 1, samples_selected_zero_rate: 1}}
+    end
+
+    test "caps pending sampled updates across processor calls", %{
+      user: user,
+      context: context
+    } do
+      source = insert(:source, user_id: user.id, lock_schema: false)
+      schema_name = Backends.via_source(source, {Schema, nil})
+
+      schema_pid =
+        start_supervised!(
+          {Schema,
+           [
+             source: source,
+             max_pending_samples: 1,
+             plan: %{limit_source_fields_limit: 500},
+             bigquery_project_id: "some-id",
+             bigquery_dataset_id: "some-id",
+             name: schema_name
+           ]}
+        )
+
+      :ok = :sys.suspend(schema_pid)
+      on_exit(fn -> if Process.alive?(schema_pid), do: :sys.resume(schema_pid) end)
+
+      le = build(:log_event, source: source)
+
+      le =
+        %{le | body: %{"event_message" => "test", "id" => le.id, "timestamp" => 0}}
+
+      assert ^le = Pipeline.process_data(le, context, source)
+      assert ^le = Pipeline.process_data(le, context, source)
+
+      {:via, Registry, {registry, key}} = schema_name
+      assert [{^schema_pid, {:schema_admission, counter, 1}}] = Registry.lookup(registry, key)
+      assert Schema.pending_update_slots(counter) == 1
+      assert {:message_queue_len, 1} = Process.info(schema_pid, :message_queue_len)
     end
 
     test "does not crash when the passed source is nil", %{context: context} do

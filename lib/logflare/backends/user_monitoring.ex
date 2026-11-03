@@ -113,11 +113,15 @@ defmodule Logflare.Backends.UserMonitoring do
   - The `SourceSup` of the system logs source stops between the check and the ingest. In that
     case, the filter drops the system log event after the wait.
 
+  The filter ignores OTP events, such as supervisor progress and crash reports. A supervisor
+  that sets `user_id` metadata in `init/1` emits them while it starts its children.
+
   A log line that the ingest emits in the same process does not go through the filter again. The
   filter ignores it, so a failed ingest can not log, intercept and ingest without end.
   """
   @spec log_interceptor(:logger.log_event(), term()) :: :ignore
   def log_interceptor(%{meta: %{system_source: true}}, _), do: :ignore
+  def log_interceptor(%{meta: %{domain: [:otp | _]}}, _), do: :ignore
 
   def log_interceptor(%{meta: %{user_id: user_id} = meta} = log_event, _)
       when is_integer(user_id) do
