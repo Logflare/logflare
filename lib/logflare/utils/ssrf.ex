@@ -5,6 +5,8 @@ defmodule Logflare.Utils.SSRF do
 
   import Logflare.Utils.Guards, only: [is_non_empty_binary: 1]
 
+  alias Ecto.Changeset
+
   @private_ranges Enum.map(
                     [
                       # IPv4
@@ -67,6 +69,26 @@ defmodule Logflare.Utils.SSRF do
   end
 
   def safe_resolve(_), do: {:error, "invalid host"}
+
+  @doc """
+  Adds an error to the `field` of `changeset` when its URL host is unsafe, as
+  decided by `safe_resolve/1`.
+
+  A missing or already invalid URL is left to the other validations.
+  """
+  @spec validate_url_host(Changeset.t(), atom()) :: Changeset.t()
+  def validate_url_host(changeset, field) do
+    url = Changeset.get_field(changeset, field)
+
+    if is_nil(url) or Keyword.has_key?(changeset.errors, field) do
+      changeset
+    else
+      case safe_resolve(URI.parse(url).host) do
+        {:ok, _addr} -> changeset
+        {:error, reason} -> Changeset.add_error(changeset, field, reason, validation: :ssrf)
+      end
+    end
+  end
 
   @doc "Formats an IP address tuple as a URL host component (IPv6 wrapped in brackets)."
   @spec url_host(:inet.ip_address()) :: String.t()

@@ -716,6 +716,21 @@
               Optional host. Defaults to the HEC input setting.
             </small>
           </div>
+        <% "dynatrace" -> %>
+          <div class="form-group">
+            {label(f_config, :url, "Environment URL (Required)")}
+            {text_input(f_config, :url, class: "form-control")}
+            <small class="form-text text-muted">
+              Dynatrace environment URL, e.g. <code>https://&lt;environment-id&gt;.live.dynatrace.com</code> for Dynatrace SaaS, or <code>https://&lt;activegate-host&gt;:9999/e/&lt;environment-id&gt;</code> for an ActiveGate. Logs are sent to <code>/api/v2/logs/ingest</code> under this URL.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :api_token, "Access token (Required)")}
+            {text_input(f_config, :api_token, class: "form-control", type: "password")}
+            <small class="form-text text-muted">
+              Access token with the <code>logs.ingest</code> scope
+            </small>
+          </div>
         <% _ -> %>
           <div>Select a Backend Type</div>
       <% end %>
