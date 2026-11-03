@@ -17,6 +17,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
+  alias Logflare.ContextCache
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.LogEvent
   alias Logflare.Lql.BackendTransformer.ClickHouse, as: ClickHouseLQLTransformer
@@ -3680,15 +3681,52 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   end
 
   describe "init/1" do
-    test "gives ingest pipelines a 30 second shutdown to drain in-flight inserts" do
-      backend = %Backend{id: System.unique_integer([:positive]), type: :clickhouse}
+    setup do
+      backend =
+        insert(:backend,
+          type: :clickhouse,
+          user: insert(:user),
+          config: %{url: "http://localhost", port: 8123, database: "db", batch_size: 1_000}
+        )
 
+      [backend: backend]
+    end
+
+    test "gives ingest pipelines a 30 second shutdown to drain in-flight inserts", %{
+      backend: backend
+    } do
       {:ok, {_flags, children}} = ClickHouseAdaptor.init(backend)
 
       assert %{start: {DynamicPipeline, :start_link, [opts]}} =
                Enum.find(children, &(&1.id == DynamicPipeline))
 
       assert Keyword.fetch!(opts, :shutdown) == 30_000
+    end
+
+    test "backend saved after its config was cached", %{backend: backend} do
+      Backends.Cache.get_backend(backend.id)
+
+      {:ok, _} =
+        backend
+        |> Backend.changeset(%{config: %{backend.config | batch_size: 2_000}})
+        |> Repo.update()
+
+      {:ok, _} = ContextCache.bust_keys([{Backends, backend.id}])
+
+      {:ok, {_flags, children}} = ClickHouseAdaptor.init(backend)
+
+      assert %{start: {DynamicPipeline, :start_link, [opts]}} =
+               Enum.find(children, &(&1.id == DynamicPipeline))
+
+      assert %Backend{config: %{batch_size: 2_000}} =
+               opts |> Keyword.fetch!(:pipeline_args) |> Keyword.fetch!(:backend)
+    end
+
+    test "deleted backend", %{backend: backend} do
+      Repo.delete!(backend)
+      {:ok, _} = ContextCache.bust_keys([{Backends, backend.id}])
+
+      assert :ignore = ClickHouseAdaptor.init(backend)
     end
   end
 
