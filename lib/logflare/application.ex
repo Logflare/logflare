@@ -107,6 +107,7 @@ defmodule Logflare.Application do
         {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
         Logflare.Repo,
         {Logflare.Repo.Replicas, entries: read_replicas},
+        Logflare.Repo.ReplicaReconciler,
         Logflare.Vault,
         {Oban, Application.fetch_env!(:logflare, Oban)},
         {Phoenix.PubSub, name: Logflare.PubSub, pool_size: pool_size},
