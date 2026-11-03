@@ -6,8 +6,10 @@ defmodule Logflare.Backends.Spool.ObjectDeleter do
   `enqueue/1` is an ETS insert into a bounded FIFO buffer (plus a wake-up message
   when the insert made it non-empty), so it is safe to call from latency-sensitive
   processes. A single worker drains the buffer
-  with at most `:delete_concurrency` storage requests in flight, each killed
-  after `:delete_timeout_ms`.
+  in passes, each limited to the entries pending when it starts so that a steady
+  stream of inserts cannot keep it from handling other messages. At most
+  `:delete_concurrency` storage requests are in flight, each killed after
+  `:delete_timeout_ms`.
 
   When the buffer already holds `:delete_buffer_max` entries, new objects are
   dropped rather than queued, which bounds memory. A dropped, timed-out or
@@ -81,8 +83,8 @@ defmodule Logflare.Backends.Spool.ObjectDeleter do
   def pending_count, do: :ets.info(@table, :size)
 
   @doc """
-  Returns once everything buffered when called, and anything added while it
-  waits, has been attempted, or `:timeout` if that takes longer than `timeout_ms`.
+  Returns once everything buffered when called has been attempted, or `:timeout`
+  if that takes longer than `timeout_ms`.
   """
   @spec flush(timeout()) :: :ok | :timeout
   def flush(timeout_ms) do
@@ -98,22 +100,30 @@ defmodule Logflare.Backends.Spool.ObjectDeleter do
   def handle_info(:drain, %{timer: timer} = state) do
     if timer, do: Process.cancel_timer(timer)
     state = drain_pass(state)
-    {:noreply, %{state | timer: Process.send_after(self(), :drain, @idle_interval_ms)}}
+    {:noreply, %{state | timer: Process.send_after(self(), :drain, next_drain_delay())}}
   end
 
   defp drain_pass(state) do
-    failed = if pending_count() > 0, do: drain(), else: %{}
+    failed =
+      case pending_count() do
+        0 -> %{}
+        limit -> drain(limit)
+      end
 
     state
     |> Map.update!(:failed, &Map.merge(&1, failed, fn _tag, a, b -> a + b end))
     |> maybe_log_failures()
   end
 
-  defp drain do
+  defp next_drain_delay do
+    if pending_count() > 0, do: 0, else: @idle_interval_ms
+  end
+
+  defp drain(limit) do
     results =
       {:via, PartitionSupervisor, {Logflare.TaskSupervisors, self()}}
       |> Task.Supervisor.async_stream_nolink(
-        Stream.repeatedly(&pop/0) |> Stream.take_while(& &1),
+        Stream.repeatedly(&pop/0) |> Stream.take_while(& &1) |> Stream.take(limit),
         fn {storage_mod, bucket, key} -> storage_mod.delete(bucket, key) end,
         max_concurrency: config(:delete_concurrency, @default_concurrency),
         timeout: config(:delete_timeout_ms, @default_timeout_ms),
