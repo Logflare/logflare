@@ -225,6 +225,7 @@ defmodule Logflare.BackendsTest do
         |> Backend.changeset(%{config: %{config | batch_size: 3_000, batch_timeout: 2_500}})
         |> Repo.update()
 
+      {:ok, _} = ContextCache.bust_keys([{Backends, backend.id}])
       :ok = :sys.resume(coordinator)
       assert :ok = Task.await(swap, 30_000)
 
@@ -243,7 +244,8 @@ defmodule Logflare.BackendsTest do
     end
 
     for {context, crashed} <- [
-          {"adaptor supervisor restarted after a batch config update", ClickHouseAdaptor}
+          {"adaptor supervisor restarted after a batch config update", ClickHouseAdaptor},
+          {"ingest pipeline supervisor restarted after a batch config update", ClickHousePipeline}
         ] do
       @tag :capture_log
       test context, %{user: user} do
