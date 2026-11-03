@@ -12,6 +12,7 @@ defmodule Logflare.Sql do
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Cache.CachexOps
   alias Logflare.Endpoints
+  alias Logflare.Endpoints.ClickHouseSqlSettings
   alias Logflare.QueryContext
   alias Logflare.Repo
   alias Logflare.SingleTenant
@@ -272,7 +273,7 @@ defmodule Logflare.Sql do
           language :: query_language(),
           query :: input(),
           user_or_user_id :: User.t() | pos_integer() | nil,
-          opts :: [consistency: :fresh | :cached]
+          opts :: [consistency: :fresh | :cached, allow_clickhouse_sql_settings: boolean()]
         ) ::
           {:ok, String.t()} | {:error, String.t() | :database_unavailable}
   def transform(lang, input, user_or_user_id, opts \\ [])
@@ -286,7 +287,7 @@ defmodule Logflare.Sql do
   end
 
   # clickhouse with sandboxed query support
-  def transform(:ch_sql = language, input, %User{} = user, _opts) do
+  def transform(:ch_sql = language, input, %User{} = user, opts) do
     {query, sandboxed_query} =
       case input do
         q when is_non_empty_binary(q) -> {q, nil}
@@ -307,10 +308,12 @@ defmodule Logflare.Sql do
            sandboxed_query: sandboxed_query,
            sandboxed_query_ast: sandboxed_query_ast,
            ast: statements,
-           dialect: sql_dialect
+           dialect: sql_dialect,
+           allow_clickhouse_sql_settings: Keyword.get(opts, :allow_clickhouse_sql_settings, false)
          },
          data = DialectTransformer.ClickHouse.build_transformation_data(user, base_data),
          :ok <- validate_query(statements, data),
+         :ok <- ClickHouseSqlSettings.validate_sandboxed(statements, sandboxed_query_ast),
          :ok <- maybe_validate_sandboxed_query_ast({statements, sandboxed_query_ast}, data) do
       data = %{data | sandboxed_query_ast: sandboxed_query_ast}
 
@@ -653,7 +656,7 @@ defmodule Logflare.Sql do
     with :ok <- check_single_query_only(ast),
          :ok <- check_select_statement_only(ast, dialect),
          :ok <- maybe_check_restricted_functions(ast, dialect, data),
-         :ok <- maybe_check_restricted_settings(ast, dialect),
+         :ok <- maybe_check_restricted_settings(ast, dialect, data),
          :ok <- has_wildcard_in_select(ast),
          :ok <- check_all_sources_allowed(ast, data) do
       :ok
@@ -666,9 +669,13 @@ defmodule Logflare.Sql do
 
   defp maybe_check_restricted_functions(_ast, _dialect, _data), do: :ok
 
-  defp maybe_check_restricted_settings(ast, "clickhouse"), do: has_restricted_settings(ast)
+  defp maybe_check_restricted_settings(ast, "clickhouse", %{allow_clickhouse_sql_settings: true}) do
+    with {:ok, stripped, _requests} <- ClickHouseSqlSettings.split_requests(ast),
+         do: has_restricted_settings(stripped)
+  end
 
-  defp maybe_check_restricted_settings(_ast, _dialect), do: :ok
+  defp maybe_check_restricted_settings(ast, "clickhouse", _data), do: has_restricted_settings(ast)
+  defp maybe_check_restricted_settings(_ast, _dialect, _data), do: :ok
 
   # applies only to the sandboed query
   defp maybe_validate_sandboxed_query_ast({cte_ast, ast}, data) when is_list(ast) do

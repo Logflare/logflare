@@ -203,7 +203,8 @@ defmodule Logflare.Endpoints.EndpointQuery do
 
     validate_change(changeset, field, fn field, value ->
       with {:ok, expanded_query} <- Sql.expand_subqueries(language, value, queries),
-           {:ok, _} <- Sql.transform(language, expanded_query, user) do
+           {:ok, _} <-
+             Sql.transform(language, expanded_query, user, allow_clickhouse_sql_settings: true) do
         []
       else
         {:error, :database_unavailable} -> [{field, "source catalog is temporarily unavailable"}]
@@ -215,7 +216,9 @@ defmodule Logflare.Endpoints.EndpointQuery do
   # Only update source mapping if there are no errors
   def update_source_mapping(%Changeset{errors: [], changes: %{query: query}} = changeset)
       when is_non_empty_binary(query) do
-    case Sql.sources(query, get_field(changeset, :user)) do
+    dialect = changeset |> get_field(:language) |> Sql.to_dialect()
+
+    case Sql.sources(query, get_field(changeset, :user), dialect: dialect) do
       {:ok, source_mapping} ->
         put_change(changeset, :source_mapping, source_mapping)
 

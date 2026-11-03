@@ -795,7 +795,10 @@ defmodule Logflare.Endpoints do
              else: expanded_query
            ),
          {:ok, transformed_query} <-
-           Sql.transform(query_language, transform_input, user_id, consistency: :cached) do
+           Sql.transform(query_language, transform_input, user_id,
+             consistency: :cached,
+             allow_clickhouse_sql_settings: true
+           ) do
       :telemetry.span(
         [:logflare, :endpoints, :run_query, :exec_query_on_backend],
         %{endpoint_id: endpoint_query.id, language: query_language},
@@ -1008,7 +1011,10 @@ defmodule Logflare.Endpoints do
              do: {expanded_query, consumer_query},
              else: expanded_query
            ),
-         {:ok, transformed_query} <- Sql.transform(query_language, transform_input, user_id),
+         {:ok, transformed_query} <-
+           Sql.transform(query_language, transform_input, user_id,
+             allow_clickhouse_sql_settings: true
+           ),
          {:ok, transformed_query} <-
            preview_query_policy(endpoint_query, transformed_query, params, opts) do
       {:ok, transformed_query}

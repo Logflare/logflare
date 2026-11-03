@@ -36,6 +36,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
   alias Logflare.Endpoints.ClickHouseSettings
+  alias Logflare.Endpoints.ClickHouseSqlSettings
   alias Logflare.LogEvent
   alias Logflare.LogEvent.TypeDetection
   alias Logflare.Sources.Source
@@ -866,10 +867,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
            ) do
       settings = Map.merge(Keyword.get(opts, :filesystem_cache_settings, %{}), settings)
 
-      if Keyword.get(opts, :validated_clickhouse_sql, false) do
-        ClickHouseSettings.enforce_validated(statement, settings)
-      else
-        ClickHouseSettings.enforce(statement, settings)
+      cond do
+        Keyword.get(opts, :query_type) == :endpoint ->
+          ClickHouseSqlSettings.enforce(statement, settings, opts)
+
+        Keyword.get(opts, :validated_clickhouse_sql, false) ->
+          ClickHouseSettings.enforce_validated(statement, settings)
+
+        true ->
+          ClickHouseSettings.enforce(statement, settings)
       end
     end
   end

@@ -57,13 +57,39 @@ Zero (unlimited or no priority), negative values, wrong types, unknown keys, and
 
 ClickHouse profile defaults supply settings not specified by Logflare. Logflare combines class default, selected class, and endpoint-owned settings. Resource limits use the smallest configured value across all three policies; non-limit settings such as priority use the later policy. Hard profile ceilings must be ClickHouse constraints, not merely default values. The server still enforces those constraints after merging.
 
-Endpoint-owned policy is passed separately from consumer SQL. Consumer SQL cannot override enforced keys, including in nested SETTINGS clauses. The adaptor injects the combined policy once. Supported `EXPLAIN SELECT` wrappers are preserved. Previews show only endpoint-owned settings, not operator class policy. The actual request class and backend policy obtained through the metadata cache are applied at execution time, subject to the consistency limitations below.
+Administrator-enforced endpoint policy is passed separately from consumer SQL. Endpoint SQL can request only the lower-only settings described below; all other conflicts with enforced keys remain rejected, including in nested SETTINGS clauses. The adaptor injects the combined policy once. Supported `EXPLAIN SELECT` wrappers are preserved. The actual request class and backend policy obtained through the metadata cache are applied at execution time, subject to the consistency limitations below.
 
 Recognized maintenance statements on the raw adaptor path, such as `SYSTEM FLUSH LOGS`, `EXISTS TABLE`, and DDL, pass through without class settings. They retain the connection's existing ClickHouse permissions; this does not grant additional privileges. Endpoint SQL remains SELECT-only, and endpoint and Ecto-generated read paths retain policy enforcement.
 
 Historical endpoint versions retain current endpoint-owned limits. Cached snapshot reloads also overlay current endpoint policy. Saving endpoint-owned limits invalidates caches for all endpoint versions and stops their active refresh tasks. Already-running foreground queries finish for their existing callers; new callers use replacement caches with current settings.
 
 Successful result caches remain class-agnostic: changing the class does not create a different result-cache key or run a query on a cache hit. Misses and background refreshes enforce policy at execution time. A refresh retains the class from the request that originally created the cache and uses backend policy obtained through the metadata cache, subject to the consistency limitations below. Backend class-policy changes invalidate backend metadata across the cluster, but do not evict reusable successful results, restart ingesters, or tear down active read connections.
+
+## Lower-only settings in endpoint SQL
+
+Endpoint queries can request tighter limits directly in the outer `SETTINGS` clause, without separate editor fields or permission to change administrator-enforced policy:
+
+```sql
+SELECT count() AS events
+FROM my_source
+SETTINGS max_execution_time = 2.5, max_threads = 2, priority = 10
+```
+
+The supported keys are `max_execution_time`, `max_memory_usage`, `max_rows_to_read`, `max_bytes_to_read`, `max_threads`, and `priority`. Requests must be positive numeric literals; only execution time accepts fractions. Zero, negative values, strings, parameter placeholders, expressions, and case-insensitive duplicate request keys are rejected. Existing allowlisted optimizer settings can remain in the same clause.
+
+At execution time, Logflare first resolves the backend default, original requested class, and administrator-enforced endpoint policy. SQL requests are applied last:
+
+- Resource limits use `min(inherited, requested)`.
+- Priority uses `max(inherited, requested)`: a larger positive number means lower urgency. Requesting priority 1 cannot elevate inherited priority 10.
+- A requested key without an explicit inherited Logflare policy value fails the query. An absent value does not prove that ClickHouse's profile default is unlimited. Configure the baseline through backend class policy or administrator-enforced endpoint policy first.
+
+Requests above resource ceilings, or requesting higher urgency, are clamped rather than granting additional resources. Class/default priority precedence and administrator policy remain unchanged. Baselines are resolved for each execution, not frozen when SQL is saved. The requested-class policy also remains in force when routing falls back to another physical cluster; use that cluster's ClickHouse profile constraints for hard ceilings.
+
+Only outer-query requests are supported, including on `EXPLAIN SELECT`. Requests in CTEs or subqueries are rejected. Referencing an endpoint that contains these settings as a subquery is also rejected. Sandboxed SQL cannot contain these requests on either side of its base/consumer query pair; Logflare rejects them rather than losing or changing their scope during assembly. Ordinary sandboxed queries and optimizer settings are unaffected.
+
+These requests are part of saved SQL and its versions. Restoring an older SQL version restores its requested values, while current administrator-enforced policy still applies. Result-cache hits do not execute SQL; misses and refreshes use the existing class/cache behavior above. Debug logs record requested/effective SQL settings; `system.query_log.Settings` can verify actual server settings when query-setting logging is enabled. Copying the SQL directly to ClickHouse does not apply Logflare's lower-only merge.
+
+Deploy support to every Logflare instance before enabling these SQL requests. No public policy fields, migrations, or new editor controls are introduced.
 
 ## Policy update consistency
 
