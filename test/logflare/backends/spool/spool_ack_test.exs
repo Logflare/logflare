@@ -103,6 +103,34 @@ defmodule Logflare.Backends.Spool.SpoolAckTest do
       refute_receive {:acked, ^handle}, 200
     end
 
+    test "a slow queue ack does not delay acking other handles" do
+      slow_handle = unique_handle()
+      fast_handle = unique_handle()
+      test_pid = self()
+
+      stub(QueueMod, :ack, fn
+        _url, ^slow_handle ->
+          Process.sleep(300)
+          send(test_pid, {:acked, slow_handle})
+          :ok
+
+        _url, ^fast_handle ->
+          send(test_pid, {:acked, fast_handle})
+          :ok
+      end)
+
+      SpoolAck.register(slow_handle, QueueMod, "queue-url")
+      SpoolAck.register(fast_handle, QueueMod, "queue-url")
+
+      SpoolAck.ack(slow_handle, 1)
+      SpoolAck.ack(fast_handle, 1)
+
+      assert_receive {:acked, ^fast_handle}, 100
+      refute_received {:acked, ^slow_handle}
+
+      assert_receive {:acked, ^slow_handle}, 500
+    end
+
     test "bump/2 against a never-registered handle does not raise" do
       assert SpoolAck.bump(unique_handle(), 1) == :ok
     end

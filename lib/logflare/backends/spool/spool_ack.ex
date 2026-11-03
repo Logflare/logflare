@@ -167,12 +167,14 @@ defmodule Logflare.Backends.Spool.SpoolAck do
 
   @impl GenServer
   def handle_cast({:perform_ack, queue_mod, queue_url, handle}, state) do
-    result = queue_mod.ack(queue_url, handle)
+    Task.start(fn ->
+      result = queue_mod.ack(queue_url, handle)
 
-    :telemetry.execute([:logflare, :backends, :spool, :queue, :ack], %{}, %{
-      reason: :events_processed,
-      result: if(result == :ok, do: :ok, else: :error)
-    })
+      :telemetry.execute([:logflare, :backends, :spool, :queue, :ack], %{}, %{
+        reason: :events_processed,
+        result: if(result == :ok, do: :ok, else: :error)
+      })
+    end)
 
     {:noreply, state}
   end
