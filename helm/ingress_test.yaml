@@ -126,3 +126,64 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: "extraIngresses[0] has an empty nameSuffix: each extra Ingress needs one so its name stays distinct from the chart's own Ingress"
+
+  - it: should render the host of a rule that names one
+    set:
+      ingress.enabled: true
+    asserts:
+      - equal:
+          path: spec.rules[0].host
+          value: chart-example.local
+
+  - it: should render a rule matching any host when host is empty or unset
+    set:
+      ingress.enabled: true
+      ingress.hosts:
+        - host: ""
+          paths:
+            - path: /logs
+              pathType: Prefix
+        - paths:
+            - path: /
+              pathType: Prefix
+    asserts:
+      - notExists:
+          path: spec.rules[0].host
+      - equal:
+          path: spec.rules[0].http.paths[0].path
+          value: /logs
+      - notExists:
+          path: spec.rules[1].host
+      - equal:
+          path: spec.rules[1].http.paths[0].path
+          value: /
+
+  - it: should render tls with its secretName
+    set:
+      ingress.enabled: true
+      ingress.tls:
+        - secretName: chart-example-tls
+          hosts:
+            - chart-example.local
+    asserts:
+      - equal:
+          path: spec.tls[0]
+          value:
+            hosts:
+              - chart-example.local
+            secretName: chart-example-tls
+
+  # Controllers that terminate TLS themselves, such as the AWS Load Balancer Controller with ACM,
+  # read only the hosts.
+  - it: should render tls hosts without a secretName when none is set
+    set:
+      ingress.enabled: true
+      ingress.tls:
+        - hosts:
+            - chart-example.local
+    asserts:
+      - equal:
+          path: spec.tls[0]
+          value:
+            hosts:
+              - chart-example.local
