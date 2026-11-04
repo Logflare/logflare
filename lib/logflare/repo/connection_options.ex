@@ -24,6 +24,8 @@ defmodule Logflare.Repo.ConnectionOptions do
     :telemetry_prefix
   ]
   @sensitive_url_query_params ~w(password url)
+  @replication_url_overrides [:url, :hostname, :port, :ssl]
+  @replication_url_auth_options [:password, :configure, :logflare_auth, :logflare_aws_region]
 
   @type role :: :primary | :replica
 
@@ -84,6 +86,64 @@ defmodule Logflare.Repo.ConnectionOptions do
     |> put_present(:password, password)
     |> put_present(:tcp_opts, config[:socket_options])
     |> put_epgsql_ssl(config[:ssl], hostname)
+  end
+
+  @doc """
+  Prepares epgsql connection options for a logical replication client.
+
+  Without a replication URL, this is `prepare_epgsql/1`. A replication URL uses the
+  `LOGFLARE_READ_REPLICAS` entry format. Its host, port and SSL settings replace the
+  primary's, so primary client certificates never reach the replication host. The
+  primary's authentication applies unless the URL sets `auth` or a password.
+
+  Raises `ArgumentError` for an RDS Proxy host, because RDS Proxy does not support
+  replication connections.
+  """
+  @spec prepare_replication_epgsql(keyword(), String.t() | nil) :: map()
+  def prepare_replication_epgsql(config, url) when url in [nil, ""], do: prepare_epgsql(config)
+
+  def prepare_replication_epgsql(config, url) when is_binary(url) do
+    url_options = parse_replication_url!(url)
+
+    config
+    |> Keyword.drop(@replication_url_overrides)
+    |> drop_replaced_auth(url_options)
+    |> merge_url_options(url_options)
+    |> ensure_replication_host!()
+    |> prepare_epgsql()
+  end
+
+  defp parse_replication_url!(url) do
+    case Replicas.parse(url) do
+      {:ok, {_key, url_options}} ->
+        url_options
+
+      {:error, reason} ->
+        raise ArgumentError,
+              "invalid replication database URL #{inspect(redact_replication_url(url))}: #{reason}"
+    end
+  end
+
+  defp redact_replication_url(url) do
+    if String.contains?(url, "://"), do: redact_url(url), else: url
+  end
+
+  defp drop_replaced_auth(config, url_options) do
+    if Keyword.has_key?(url_options, :logflare_auth),
+      do: Keyword.drop(config, @replication_url_auth_options),
+      else: config
+  end
+
+  defp ensure_replication_host!(config) do
+    hostname = config |> Keyword.fetch!(:hostname) |> String.downcase()
+
+    if String.contains?(hostname, ".proxy-") do
+      raise ArgumentError,
+            "replication database host #{inspect(hostname)} is an RDS Proxy endpoint; " <>
+              "RDS Proxy does not support replication connections, use the cluster writer endpoint"
+    else
+      config
+    end
   end
 
   defp prepare_epgsql_config(config) do

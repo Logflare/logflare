@@ -4,9 +4,11 @@ defmodule Logflare.Repo.ConnectionOptionsTest do
   import ExUnit.CaptureLog
 
   alias Logflare.Cluster.PostgresStrategy
+  alias Logflare.ContextCache.CacheBuster
   alias Logflare.ContextCache.Supervisor, as: ContextCacheSupervisor
   alias Logflare.GenSingleton
   alias Logflare.Repo
+  alias Logflare.Repo.AwsIam
   alias Logflare.Repo.ConnectionOptions
   alias Logflare.Repo.Replicas
 
@@ -334,6 +336,162 @@ defmodule Logflare.Repo.ConnectionOptionsTest do
     assert opts[:socket_options] == [:inet]
     refute Keyword.has_key?(opts, :url)
     refute Keyword.has_key?(opts, :auth)
+  end
+
+  describe "prepare_replication_epgsql/2" do
+    setup do
+      previous_path = Application.fetch_env(:logflare, :rds_ca_cert_path)
+      Application.put_env(:logflare, :rds_ca_cert_path, "/missing/rds-ca.pem")
+      on_exit(fn -> restore_application_env(:logflare, :rds_ca_cert_path, previous_path) end)
+
+      primary = [
+        hostname: "primary.example.com",
+        port: 6432,
+        username: "logflare",
+        password: "primary_secret",
+        database: "logflare",
+        ssl: [
+          verify: :verify_peer,
+          cacertfile: "/certs/db-server-ca.pem",
+          certfile: "/certs/db-client-cert.pem",
+          keyfile: "/certs/db-client-key.pem"
+        ]
+      ]
+
+      %{
+        primary: primary,
+        writer: "logflare.cluster-abc.eu-west-1.rds.amazonaws.com"
+      }
+    end
+
+    test "uses the primary connection without a replication URL", %{primary: primary} do
+      expected = ConnectionOptions.prepare_epgsql(primary)
+
+      assert ConnectionOptions.prepare_replication_epgsql(primary, nil) == expected
+      assert ConnectionOptions.prepare_replication_epgsql(primary, "") == expected
+    end
+
+    test "connects to the writer with AWS IAM authentication", context do
+      url =
+        "postgres://iam_user@#{context.writer}:5433/logflare?auth=aws_iam&aws_region=eu-west-1&ssl=true"
+
+      {epgsql, _log} =
+        with_log(fn -> ConnectionOptions.prepare_replication_epgsql(context.primary, url) end)
+
+      assert epgsql.host == String.to_charlist(context.writer)
+      assert epgsql.port == 5433
+      assert epgsql.username == "iam_user"
+      assert epgsql.database == "logflare"
+      assert is_function(epgsql.password, 0)
+      assert epgsql.ssl == :required
+      assert epgsql.ssl_opts[:verify] == :verify_peer
+      assert epgsql.ssl_opts[:server_name_indication] == String.to_charlist(context.writer)
+    end
+
+    test "does not send primary client certificates to the replication host", context do
+      url = "postgres://iam_user@#{context.writer}/logflare?auth=aws_iam&aws_region=eu-west-1"
+
+      {epgsql, _log} =
+        with_log(fn -> ConnectionOptions.prepare_replication_epgsql(context.primary, url) end)
+
+      for key <- [:certfile, :keyfile, :cacertfile] do
+        refute Keyword.has_key?(epgsql.ssl_opts, key)
+      end
+
+      password_url = "postgres://logflare:secret@#{context.writer}/logflare?ssl=true"
+      epgsql = ConnectionOptions.prepare_replication_epgsql(context.primary, password_url)
+
+      for key <- [:certfile, :keyfile, :cacertfile] do
+        refute Keyword.has_key?(epgsql.ssl_opts, key)
+      end
+    end
+
+    test "uses the password from the URL", context do
+      url = "postgres://replicator:replication_secret@#{context.writer}/logflare"
+
+      epgsql = ConnectionOptions.prepare_replication_epgsql(context.primary, url)
+
+      assert epgsql.host == String.to_charlist(context.writer)
+      assert epgsql.username == "replicator"
+      assert epgsql.password == "replication_secret"
+      refute Map.has_key?(epgsql, :ssl)
+    end
+
+    test "a URL password replaces primary AWS IAM authentication", context do
+      primary =
+        context.primary
+        |> Keyword.delete(:password)
+        |> Keyword.put(:configure, {AwsIam, :configure, ["eu-west-1", nil]})
+
+      url = "postgres://replicator:replication_secret@#{context.writer}/logflare"
+
+      epgsql = ConnectionOptions.prepare_replication_epgsql(primary, url)
+
+      assert epgsql.password == "replication_secret"
+    end
+
+    test "inherits primary authentication when the URL sets none", context do
+      epgsql = ConnectionOptions.prepare_replication_epgsql(context.primary, context.writer)
+
+      assert epgsql.host == String.to_charlist(context.writer)
+      refute Map.has_key?(epgsql, :port)
+      assert epgsql.username == "logflare"
+      assert epgsql.password == "primary_secret"
+      assert epgsql.database == "logflare"
+    end
+
+    test "rejects an RDS Proxy host", context do
+      url =
+        "postgres://logflare@logflare-proxy.proxy-abc.eu-west-1.rds.amazonaws.com/logflare?auth=aws_iam&aws_region=eu-west-1"
+
+      error =
+        assert_raise ArgumentError, fn ->
+          ConnectionOptions.prepare_replication_epgsql(context.primary, url)
+        end
+
+      assert Exception.message(error) =~ "RDS Proxy does not support replication connections"
+    end
+
+    test "redacts credentials from invalid URL errors", context do
+      error =
+        assert_raise ArgumentError, fn ->
+          ConnectionOptions.prepare_replication_epgsql(
+            context.primary,
+            "postgres://logflare:hunter2@#{context.writer}/logflare?auth=kerberos"
+          )
+        end
+
+      refute Exception.message(error) =~ "hunter2"
+      assert Exception.message(error) =~ "invalid replication database URL"
+    end
+
+    test "the cache buster connects with the configured replication URL", context do
+      previous_cache_buster = Application.fetch_env(:logflare, CacheBuster)
+      previous_enable_cainophile = Application.fetch_env(:logflare, :enable_cainophile)
+
+      Application.put_env(
+        :logflare,
+        CacheBuster,
+        Keyword.put(
+          Application.get_env(:logflare, CacheBuster, []),
+          :db_url,
+          "postgres://replicator:replication_secret@#{context.writer}/logflare"
+        )
+      )
+
+      Application.put_env(:logflare, :enable_cainophile, true)
+
+      on_exit(fn ->
+        restore_application_env(:logflare, CacheBuster, previous_cache_buster)
+        restore_application_env(:logflare, :enable_cainophile, previous_enable_cainophile)
+      end)
+
+      epgsql = cainophile_epgsql_options()
+
+      assert epgsql.host == String.to_charlist(context.writer)
+      assert epgsql.username == "replicator"
+      assert epgsql.password == "replication_secret"
+    end
   end
 
   defp cainophile_epgsql_options do
