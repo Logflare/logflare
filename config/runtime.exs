@@ -645,6 +645,14 @@ read_replicas =
 
 config :logflare, :read_replicas, read_replicas
 
+cache_buster_db_url_options =
+  case "LOGFLARE_CACHE_BUSTER_DB_URL" |> System.get_env("") |> String.trim() do
+    "" -> nil
+    url -> Logflare.Repo.ConnectionOptions.parse_replication_url!(url)
+  end
+
+config :logflare, Logflare.ContextCache.CacheBuster, db_url_options: cache_buster_db_url_options
+
 # LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS: Comma-separated list of pglogical
 # replication set names. When set to a non-empty value, Ecto migrations are routed
 # through `pglogical.replicate_ddl_command/2` so DDL propagates to replicas subscribed
