@@ -469,6 +469,24 @@ defmodule Logflare.Repo.ConnectionOptionsTest do
       assert length(epgsql.ssl_opts[:cacerts]) == length(:public_key.cacerts_get()) + 1
     end
 
+    test "ssl=true trusts the RDS CA bundle for IP literal hosts", context do
+      for {primary, url} <- [
+            {context.password_primary,
+             "postgres://replicator:replication_secret@10.0.0.5/logflare?ssl=true"},
+            {context.password_primary,
+             "postgres://replicator:replication_secret@[2001:db8::5]/logflare?ssl=true"},
+            {Keyword.put(context.password_primary, :ssl, true), "10.0.0.5"}
+          ] do
+        url_options = ConnectionOptions.parse_replication_url!(url)
+        epgsql = ConnectionOptions.prepare_replication_epgsql(primary, url_options)
+
+        assert epgsql.ssl == :required
+        assert epgsql.ssl_opts[:verify] == :verify_peer
+        assert epgsql.ssl_opts[:server_name_indication] == :disable
+        assert length(epgsql.ssl_opts[:cacerts]) == length(:public_key.cacerts_get()) + 1
+      end
+    end
+
     test "a URL password without ssl connects without TLS", context do
       url_options =
         ConnectionOptions.parse_replication_url!(

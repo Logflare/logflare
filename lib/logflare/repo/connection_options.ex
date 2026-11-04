@@ -118,8 +118,7 @@ defmodule Logflare.Repo.ConnectionOptions do
     |> resolve_url!()
     |> Keyword.drop([:hostname, :port])
     |> drop_replaced_auth(url_options)
-    |> merge_url_options(url_options)
-    |> put_replication_cacerts()
+    |> merge_replication_url_options(url_options)
     |> prepare_epgsql()
   end
 
@@ -129,10 +128,18 @@ defmodule Logflare.Repo.ConnectionOptions do
       else: config
   end
 
-  defp put_replication_cacerts(config) do
-    if config[:ssl] == true,
-      do: Keyword.put(config, :ssl, verify: :verify_peer, cacerts: AwsIam.trusted_cacerts()),
-      else: config
+  defp merge_replication_url_options(config, url_options) do
+    url_options = if is_list(config[:ssl]), do: url_options, else: trust_rds_ca(url_options)
+
+    config
+    |> trust_rds_ca()
+    |> merge_url_options(url_options)
+  end
+
+  defp trust_rds_ca(options) do
+    if options[:ssl] == true,
+      do: Keyword.put(options, :ssl, verify: :verify_peer, cacerts: AwsIam.trusted_cacerts()),
+      else: options
   end
 
   defp ensure_replication_host!(url_options) do

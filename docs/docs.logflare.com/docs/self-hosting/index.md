@@ -273,7 +273,19 @@ The value uses the same format as a `LOGFLARE_READ_REPLICAS` entry. Logflare che
 - An omitted `aws_region` comes from `DB_AWS_REGION`.
 - `ssl=true` verifies the server with the system CA certificates and the RDS CA bundle (see `RDS_CA_CERT_PATH`).
 
-Use the cluster writer endpoint, not an instance endpoint, so the connection follows the writer after a failover. The database user needs replication permission. On RDS and Aurora, run `GRANT rds_replication TO <user>;`. The cache buster uses a temporary replication slot, so no slot setup is necessary.
+Use the cluster writer endpoint, not an instance endpoint, so the connection follows the writer after a failover. The cache buster uses a temporary replication slot, so no slot setup is necessary.
+
+Before you set the variable, make sure that these prerequisites are in place:
+
+1. Set `rds.logical_replication = 1` in the DB cluster parameter group.
+2. Run `GRANT rds_replication TO <user>;` on the writer.
+3. Make sure that the application can reach the writer endpoint on the network. Access to the proxy alone is not sufficient.
+
+For AWS IAM authentication (`auth=aws_iam`), also do these steps:
+
+1. Turn on IAM database authentication for the cluster.
+2. Set `rds.iam_auth_for_replication = 1` in the DB cluster parameter group. This parameter is dynamic, so no reboot is necessary. See [IAM authentication for logical replication connections](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/AuroraPostgreSQL.Replication.Logical.IAM-auth.html).
+3. Give the application identity `rds-db:connect` permission on the cluster resource (`arn:aws:rds-db:<region>:<account>:dbuser:cluster-<resource-id>/<user>`). A permission on the proxy resource (`prx-<id>`) does not apply to a direct connection.
 
 ## pglogical DDL Replication
 
