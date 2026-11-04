@@ -676,6 +676,15 @@ defmodule Logflare.Telemetry do
         description:
           "Spool queue ack (delete) count by reason, and whether the underlying SQS/PubSub call itself succeeded"
       ),
+      counter("logflare.backends.spool.storage.delete.count",
+        tags: [:result],
+        description: "Spool object deletes after ack, by result (ok, error, timeout)"
+      ),
+      counter("logflare.backends.spool.delete_buffer.dropped.count",
+        tags: [:reason],
+        description:
+          "Spool object deletes dropped, by reason (buffer_full, or not_running when the deleter is down)"
+      ),
       counter("logflare.backends.spool.queue.nack.count",
         tags: [:reason, :result],
         description:

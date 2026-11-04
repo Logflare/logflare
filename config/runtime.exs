@@ -748,6 +748,38 @@ spool_force_spooling_override =
     v -> [force_spooling: v == "true"]
   end
 
+# Deletes each spool object from storage once its queue message is acked.
+# On by default; set to "false" to leave cleanup to the bucket lifecycle rule.
+spool_delete_on_ack_override =
+  case System.get_env("SPOOL_DELETE_ON_ACK") do
+    v when v in [nil, ""] ->
+      []
+
+    v when v in ["true", "false"] ->
+      [delete_on_ack: v == "true"]
+
+    other ->
+      raise ArgumentError, "Invalid SPOOL_DELETE_ON_ACK=#{other}. Must be true or false."
+  end
+
+# Bounds for the background spool object deleter (see
+# Logflare.Backends.Spool.ObjectDeleter): how many pending deletes are buffered
+# before new ones are dropped, how many storage requests run at once, and how
+# long each may take. Dropped deletes are left to the bucket lifecycle rule.
+spool_delete_tuning_overrides =
+  for {env, key} <- [
+        {"SPOOL_DELETE_BUFFER_MAX", :delete_buffer_max},
+        {"SPOOL_DELETE_CONCURRENCY", :delete_concurrency},
+        {"SPOOL_DELETE_TIMEOUT_MS", :delete_timeout_ms}
+      ],
+      value = Env.get_integer(env),
+      value != nil do
+    if value <= 0,
+      do: raise(ArgumentError, "Invalid #{env}=#{value}. Must be a positive integer.")
+
+    {key, value}
+  end
+
 # How much accumulates before the spool's local commit tier flushes (see
 # Logflare.Backends.Spool.DurableBuffer.Supervisor's max_batch_bytes,
 # default 64KiB) — applies in both :wal and :mem buffer mode, since it
@@ -778,6 +810,8 @@ spool_overrides =
     spool_buffer_override ++
     spool_blocking_override ++
     spool_force_spooling_override ++
+    spool_delete_on_ack_override ++
+    spool_delete_tuning_overrides ++
     spool_max_batch_bytes_override ++
     if((q = System.get_env("SPOOL_QUEUE_NAME")) && q != "", do: [queue_name: q], else: []) ++
     if((t = System.get_env("SPOOL_PUBSUB_TOPIC")) && t != "", do: [pubsub_topic: t], else: []) ++
