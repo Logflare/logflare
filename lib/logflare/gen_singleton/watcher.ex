@@ -104,7 +104,10 @@ defmodule Logflare.GenSingleton.Watcher do
           pid
 
         other ->
-          Logger.warning("GenSingleton unknown case | failed to start child: #{inspect(other)}")
+          Logger.warning(
+            "GenSingleton | failed to start child (reason: #{inspect(start_failure_reason(other))})"
+          )
+
           nil
       end
 
@@ -115,6 +118,17 @@ defmodule Logflare.GenSingleton.Watcher do
       state
     end
   end
+
+  @spec start_failure_reason(term()) :: atom()
+  defp start_failure_reason({:error, {:error, _severity, _code, reason, _message, _extra}})
+       when is_atom(reason),
+       do: reason
+
+  defp start_failure_reason({:error, {reason, _child}}),
+    do: start_failure_reason({:error, reason})
+
+  defp start_failure_reason({:error, reason}) when is_atom(reason), do: reason
+  defp start_failure_reason(_result), do: :unknown
 
   @impl true
   def handle_call(:get_pid, _from, state) do

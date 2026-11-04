@@ -298,7 +298,9 @@ defmodule Logflare.Repo.ConnectionOptionsTest do
     assert epgsql.host == ~c"localhost"
     assert epgsql.port == 5432
     assert epgsql.username == "postgres"
-    assert epgsql.password == "postgres"
+    assert is_function(epgsql.password, 0)
+    assert epgsql.password.() == "postgres"
+    refute inspect(epgsql) =~ "password: \"postgres\""
     assert epgsql.database == "logflare_test"
 
     assert {:ok, epgsql_conn} = :epgsql.connect(epgsql)
