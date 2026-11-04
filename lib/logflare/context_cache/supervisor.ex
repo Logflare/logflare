@@ -102,8 +102,8 @@ defmodule Logflare.ContextCache.Supervisor do
 
     epgsql =
       ConnectionOptions.prepare_replication_epgsql(
-        Repo.config(),
-        cache_buster_config[:db_url]
+        Application.get_env(:logflare, Repo, []),
+        cache_buster_config[:db_url_options]
       )
 
     slot = cache_buster_config[:replication_slot]

@@ -645,11 +645,13 @@ read_replicas =
 
 config :logflare, :read_replicas, read_replicas
 
-# LOGFLARE_CACHE_BUSTER_DB_URL: PostgreSQL connection for the cache buster's logical replication
-# stream. Unset uses the primary database. Set it when the primary is behind RDS Proxy, which does
-# not support replication. Same format as a LOGFLARE_READ_REPLICAS entry, but SSL is not inherited.
-config :logflare, Logflare.ContextCache.CacheBuster,
-  db_url: System.get_env("LOGFLARE_CACHE_BUSTER_DB_URL")
+cache_buster_db_url_options =
+  case "LOGFLARE_CACHE_BUSTER_DB_URL" |> System.get_env("") |> String.trim() do
+    "" -> nil
+    url -> Logflare.Repo.ConnectionOptions.parse_replication_url!(url)
+  end
+
+config :logflare, Logflare.ContextCache.CacheBuster, db_url_options: cache_buster_db_url_options
 
 # LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS: Comma-separated list of pglogical
 # replication set names. When set to a non-empty value, Ecto migrations are routed

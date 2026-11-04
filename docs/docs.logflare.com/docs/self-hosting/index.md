@@ -44,7 +44,7 @@ All browser authentication will be disabled when in single-tenant mode.
 | `LOGFLARE_READ_REPLICAS`                       | String, defaults to `nil`                                               | Comma-separated list of PostgreSQL read replicas. If unset, all queries go to the primary. See [Read Replicas](#read-replicas).                                                                                                                                     |
 | `LOGFLARE_CACHE_BUSTER_DB_URL`                 | String, defaults to `nil`                                               | PostgreSQL connection for the cache buster's logical replication stream. If unset, the cache buster uses the primary. Required when the primary is behind RDS Proxy. See [Cache Buster Replication Connection](#cache-buster-replication-connection). |
 | `LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS` | String, defaults to `nil`                                             | Comma-separated list of pglogical replication set names. If set, `mix ecto.migrate`/`mix ecto.rollback` route DDL through `pglogical.replicate_ddl_command/2` so it propagates to replicas subscribed to these sets. See [pglogical DDL Replication](#pglogical-ddl-replication).                                                                                                                                     |
-| `RDS_CA_CERT_PATH`                             | String, defaults to the container bundle path                           | Additional AWS RDS CA bundle for primary or replica IAM connections. Set it outside container images and for non-commercial AWS partitions.                                                                                                                          |
+| `RDS_CA_CERT_PATH`                             | String, defaults to the container bundle path                           | Additional AWS RDS CA bundle for primary or replica IAM connections, and for `LOGFLARE_CACHE_BUSTER_DB_URL` connections. Set it outside container images and for non-commercial AWS partitions.                                                                                                                          |
 | `LOGFLARE_LOG_LEVEL`                           | String, defaults to `info`. <br/>Options: `error`,`warning`, `info`     | Allows runtime configuration of log level.                                                                                                                                                                                                                           |
 | `LOGFLARE_NODE_HOST`                           | string, defaults to `127.0.0.1`                                         | Sets node host on startup, which affects the node name `logflare@<host>`                                                                                                                                                                                             |
 | `LOGFLARE_METADATA_CLUSTER`                    | string, defaults to `nil`                                               | Sets global logging/tracing metadata for the cluster name and affects the release node name (e.g., `logflare-production@<host>`). Useful for filtering logs by cluster name and distinguishing nodes in multi-cluster setups. See the [metadata](#Metadata) section. |
@@ -265,10 +265,13 @@ RDS Proxy does not support replication connections. When `DB_URL` or `DB_HOSTNAM
 LOGFLARE_CACHE_BUSTER_DB_URL=postgres://logflare@logflare.cluster-abc.eu-west-1.rds.amazonaws.com:5432/logflare?auth=aws_iam&aws_region=eu-west-1&ssl=true
 ```
 
-The value uses the same format as a `LOGFLARE_READ_REPLICAS` entry, with these differences:
+The value uses the same format as a `LOGFLARE_READ_REPLICAS` entry. Logflare checks the value at startup. These rules apply:
 
-- The host, port, and SSL settings never come from the primary. Primary `DB_SSL` client certificates are not sent to the replication host. Add `ssl=true` for TLS with password authentication. AWS IAM authentication always uses TLS.
-- The primary's authentication applies only when the URL sets no `auth` parameter and no password.
+- The host and port never come from the primary.
+- When the URL sets an `auth` parameter or a password, the primary's password and SSL settings do not apply. Primary `DB_SSL` client certificates are not sent to the replication host. Add `ssl=true` for TLS with password authentication. AWS IAM authentication always uses TLS.
+- When the URL sets no `auth` parameter and no password, the connection uses the primary's credentials, authentication, and SSL settings.
+- An omitted `aws_region` comes from `DB_AWS_REGION`.
+- `ssl=true` verifies the server with the system CA certificates and the RDS CA bundle (see `RDS_CA_CERT_PATH`).
 
 Use the cluster writer endpoint, not an instance endpoint, so the connection follows the writer after a failover. The database user needs replication permission. On RDS and Aurora, run `GRANT rds_replication TO <user>;`. The cache buster uses a temporary replication slot, so no slot setup is necessary.
 

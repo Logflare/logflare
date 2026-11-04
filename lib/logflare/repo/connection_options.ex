@@ -24,8 +24,7 @@ defmodule Logflare.Repo.ConnectionOptions do
     :telemetry_prefix
   ]
   @sensitive_url_query_params ~w(password url)
-  @replication_url_overrides [:url, :hostname, :port, :ssl]
-  @replication_url_auth_options [:password, :configure, :logflare_auth, :logflare_aws_region]
+  @replication_url_auth_options [:password, :configure, :logflare_auth, :ssl]
 
   @type role :: :primary | :replica
 
@@ -89,43 +88,39 @@ defmodule Logflare.Repo.ConnectionOptions do
   end
 
   @doc """
+  Parses a `LOGFLARE_CACHE_BUSTER_DB_URL` value into connection options.
+
+  The value uses the `LOGFLARE_READ_REPLICAS` entry format. Raises `ArgumentError` for an
+  invalid value, and for an RDS Proxy host, because RDS Proxy does not support replication
+  connections.
+  """
+  @spec parse_replication_url!(String.t()) :: keyword()
+  def parse_replication_url!(url) do
+    {_key, url_options} = Replicas.parse!(url, "LOGFLARE_CACHE_BUSTER_DB_URL")
+    ensure_replication_host!(url_options)
+  end
+
+  @doc """
   Prepares epgsql connection options for a logical replication client.
 
-  Without a replication URL, this is `prepare_epgsql/1`. A replication URL uses the
-  `LOGFLARE_READ_REPLICAS` entry format. Its host, port and SSL settings replace the
-  primary's, so primary client certificates never reach the replication host. The
-  primary's authentication applies unless the URL sets `auth` or a password.
-
-  Raises `ArgumentError` for an RDS Proxy host, because RDS Proxy does not support
-  replication connections.
+  `config` is the unprepared primary repository config. Without replication URL options,
+  this is `prepare_epgsql/1`. Replication URL options from `parse_replication_url!/1`
+  replace the primary host and port. When they set `auth` or a password, the primary
+  password, authentication and SSL options are dropped, so primary client certificates
+  never reach the replication host. Otherwise the replication connection inherits them.
+  `ssl=true` trusts the system CA certificates plus the AWS RDS CA bundle.
   """
-  @spec prepare_replication_epgsql(keyword(), String.t() | nil) :: map()
-  def prepare_replication_epgsql(config, url) when url in [nil, ""], do: prepare_epgsql(config)
+  @spec prepare_replication_epgsql(keyword(), keyword() | nil) :: map()
+  def prepare_replication_epgsql(config, nil), do: prepare_epgsql(config)
 
-  def prepare_replication_epgsql(config, url) when is_binary(url) do
-    url_options = parse_replication_url!(url)
-
+  def prepare_replication_epgsql(config, url_options) when is_list(url_options) do
     config
-    |> Keyword.drop(@replication_url_overrides)
+    |> resolve_url!()
+    |> Keyword.drop([:hostname, :port])
     |> drop_replaced_auth(url_options)
     |> merge_url_options(url_options)
-    |> ensure_replication_host!()
+    |> put_replication_cacerts()
     |> prepare_epgsql()
-  end
-
-  defp parse_replication_url!(url) do
-    case Replicas.parse(url) do
-      {:ok, {_key, url_options}} ->
-        url_options
-
-      {:error, reason} ->
-        raise ArgumentError,
-              "invalid replication database URL #{inspect(redact_replication_url(url))}: #{reason}"
-    end
-  end
-
-  defp redact_replication_url(url) do
-    if String.contains?(url, "://"), do: redact_url(url), else: url
   end
 
   defp drop_replaced_auth(config, url_options) do
@@ -134,15 +129,21 @@ defmodule Logflare.Repo.ConnectionOptions do
       else: config
   end
 
-  defp ensure_replication_host!(config) do
-    hostname = config |> Keyword.fetch!(:hostname) |> String.downcase()
+  defp put_replication_cacerts(config) do
+    if config[:ssl] == true,
+      do: Keyword.put(config, :ssl, verify: :verify_peer, cacerts: AwsIam.trusted_cacerts()),
+      else: config
+  end
+
+  defp ensure_replication_host!(url_options) do
+    hostname = url_options |> Keyword.fetch!(:hostname) |> String.downcase()
 
     if String.contains?(hostname, ".proxy-") do
       raise ArgumentError,
-            "replication database host #{inspect(hostname)} is an RDS Proxy endpoint; " <>
+            "LOGFLARE_CACHE_BUSTER_DB_URL host #{inspect(hostname)} is an RDS Proxy endpoint; " <>
               "RDS Proxy does not support replication connections, use the cluster writer endpoint"
     else
-      config
+      url_options
     end
   end
 
