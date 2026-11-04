@@ -25,6 +25,7 @@ defmodule Logflare.ContextCache do
   """
 
   alias Logflare.Cache.CachexOps
+  alias Logflare.ContextCache.Tombstones
 
   @doc """
   Returns the keys of the entries to bust for a keyword of values.
@@ -46,6 +47,14 @@ defmodule Logflare.ContextCache do
   """
   @callback update(key :: term(), value :: term()) :: :ok
 
+  @doc """
+  Returns the tombstones to record, each with its time-to-live in ms (`nil` for the default), for
+  a keyword of values of a busted change.
+
+  Defaults to `Logflare.ContextCache.Tombstones.pkey_tombstones/1`.
+  """
+  @callback tombstones(keyword()) :: [{tombstone :: term(), ttl :: non_neg_integer() | nil}]
+
   defmacro __using__(opts) do
     impl = Keyword.get(opts, :impl, CachexOps)
 
@@ -66,7 +75,10 @@ defmodule Logflare.ContextCache do
       @impl Logflare.ContextCache
       def update(key, value), do: unquote(impl).update(__MODULE__, key, value)
 
-      defoverridable keys_to_bust: 1, delete_keys: 1, fetch: 2, update: 2
+      @impl Logflare.ContextCache
+      def tombstones(kw), do: unquote(Tombstones).pkey_tombstones(kw)
+
+      defoverridable keys_to_bust: 1, delete_keys: 1, fetch: 2, update: 2, tombstones: 1
     end
   end
 
@@ -93,26 +105,28 @@ defmodule Logflare.ContextCache do
   It is intended for following a WAL for cache busting. When a new record comes in from the WAL,
   the CacheBuster process calls this function with either the primary keys extracted from those records
   or a keyword list with fields useful for busting. Both are passed to the context cache's
-  `c:keys_to_bust/1`, a primary key as `[id: pkey]`, and the returned keys to `c:delete_keys/1`.
+  `c:keys_to_bust/1`, a primary key as `[id: pkey]`, and the keys returned for all values of a
+  context to a single `c:delete_keys/1` call.
   """
   @spec bust_keys(list()) :: {:ok, non_neg_integer()}
   def bust_keys(values) when is_list(values) do
     busted =
-      for {context, pkey_or_kw} <- values, reduce: 0 do
-        acc ->
-          {:ok, n} = bust_key(context, pkey_or_kw)
-          acc + n
-      end
+      values
+      |> Enum.group_by(fn {context, _pkey_or_kw} -> context end, &to_kw/1)
+      |> Enum.reduce(0, fn {context, kws}, acc ->
+        cache = cache_name(context)
+
+        {:ok, n} =
+          kws |> Enum.flat_map(&cache.keys_to_bust/1) |> Enum.uniq() |> cache.delete_keys()
+
+        acc + n
+      end)
 
     {:ok, busted}
   end
 
-  defp bust_key(context, kw) when is_list(kw) do
-    cache = cache_name(context)
-    cache.delete_keys(cache.keys_to_bust(kw))
-  end
-
-  defp bust_key(context, pkey), do: bust_key(context, id: pkey)
+  defp to_kw({_context, kw}) when is_list(kw), do: kw
+  defp to_kw({_context, pkey}), do: [id: pkey]
 
   @spec cache_name(atom()) :: atom()
   def cache_name(context) do

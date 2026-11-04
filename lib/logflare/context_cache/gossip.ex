@@ -17,7 +17,6 @@ defmodule Logflare.ContextCache.Gossip do
   require Cachex.Spec
 
   alias Logflare.Cluster.Utils, as: ClusterUtils
-  alias Logflare.ContextCache
   alias Logflare.ContextCache.Tombstones
 
   @telemetry_handler_id "context-cache-gossip-logger"
@@ -186,31 +185,4 @@ defmodule Logflare.ContextCache.Gossip do
   defp pkeys_from_cached_value({:ok, value}), do: pkeys_from_cached_value(value)
   defp pkeys_from_cached_value(%{id: id}), do: [id]
   defp pkeys_from_cached_value(_value), do: []
-
-  @doc """
-  Writes a short-lived marker for a primary key indicating it was recently updated or deleted.
-  Incoming cache multicasts check this tombstone cache to determine if their payload could be stale.
-  """
-  def record_tombstones(context_pkeys) when is_list(context_pkeys) do
-    Enum.each(context_pkeys, fn
-      # don't need to tombstone new records
-      {_context, :not_found} ->
-        :ignore
-
-      {context, pkey} ->
-        if pkey = format_busted_pkey(pkey) do
-          cache = ContextCache.cache_name(context)
-          Tombstones.Cache.put_tombstone(cache, pkey)
-        end
-    end)
-  end
-
-  defp format_busted_pkey(pkey) when is_integer(pkey) or is_binary(pkey), do: pkey
-
-  defp format_busted_pkey(info) when is_list(info) do
-    info |> Keyword.get(:id) |> format_busted_pkey()
-  end
-
-  defp format_busted_pkey(%{id: id}), do: format_busted_pkey(id)
-  defp format_busted_pkey(_), do: nil
 end
