@@ -6,6 +6,7 @@ defmodule Logflare.Backends.CacheTest do
   alias Logflare.Backends.CacheWarmer
   alias Logflare.Cluster.Utils, as: ClusterUtils
   alias Logflare.ContextCache.CacheBusterWorker
+  alias Logflare.Rules
   use Logflare.DataCase
 
   setup do
@@ -187,6 +188,7 @@ defmodule Logflare.Backends.CacheTest do
     user: user
   } do
     stub(Backends, :sync_backend_across_cluster, fn _backend_id -> :ok end)
+    stub(Rules, :sync_rules_across_cluster, fn _backend_id -> :ok end)
 
     backend =
       insert(:backend,
@@ -219,6 +221,7 @@ defmodule Logflare.Backends.CacheTest do
   } do
     test_pid = self()
     stub(Backends, :sync_backend_across_cluster, fn _backend_id -> :ok end)
+    stub(Rules, :sync_rules_across_cluster, fn _backend_id -> :ok end)
 
     stub(Backends, :refresh_default_ingest_backends_cache, fn user_id ->
       send(test_pid, {:refreshed, user_id})
@@ -245,6 +248,7 @@ defmodule Logflare.Backends.CacheTest do
   test "a backend WAL bust refreshes the owner lookup cached before the backend became a default",
        %{user: user} do
     stub(Backends, :sync_backend_across_cluster, fn _backend_id -> :ok end)
+    stub(Rules, :sync_rules_across_cluster, fn _backend_id -> :ok end)
 
     backend =
       insert(:backend,
@@ -275,6 +279,7 @@ defmodule Logflare.Backends.CacheTest do
     failing_id = user.id
     other_id = other_user.id
     stub(Backends, :sync_backend_across_cluster, fn _backend_id -> :ok end)
+    stub(Rules, :sync_rules_across_cluster, fn _backend_id -> :ok end)
 
     stub(Backends, :refresh_default_ingest_backends_cache, fn
       ^failing_id -> exit(:timeout)

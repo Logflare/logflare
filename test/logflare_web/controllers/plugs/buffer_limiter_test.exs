@@ -3,6 +3,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
   use LogflareWeb.ConnCase
   alias Logflare.Backends
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.ContextCache
   alias Logflare.SystemCache
   alias LogflareWeb.Plugs.BufferLimiter
 
@@ -254,6 +255,29 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       assert conn.halted == false
     end
 
+    test "ignores a full backend queue when default_ingest? is nil", %{
+      conn: conn,
+      source: source,
+      backend2: backend
+    } do
+      backend
+      |> Ecto.Changeset.change(default_ingest?: nil)
+      |> Logflare.Repo.update!()
+
+      Backends.clear_list_backends_cache(source.id)
+      table_key = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(table_key)
+      fill_queue(table_key, source)
+      Backends.cache_local_buffer_lens(source.id, backend.id)
+
+      conn =
+        conn
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      refute conn.halted
+    end
+
     test "returns 429 when default ingest backend is full", %{
       conn: conn,
       source: source
@@ -355,6 +379,38 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
 
       assert conn.halted
       assert json_response(conn, 429)
+    end
+
+    test "ignores a full default ingest backend after it is disabled", %{
+      conn: conn,
+      source: source,
+      backend1: backend
+    } do
+      user_queue_key = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(user_queue_key)
+      fill_queue(user_queue_key, source)
+      Backends.cache_local_buffer_lens(source.id, backend.id)
+
+      limited_conn =
+        conn
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      assert limited_conn.halted
+
+      backend
+      |> Ecto.Changeset.change(enabled: false)
+      |> Logflare.Repo.update!()
+
+      Backends.clear_list_backends_cache(source.id)
+
+      conn =
+        conn
+        |> recycle()
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      refute conn.halted
     end
 
     test "allows request when both system and default ingest buffers have space", %{
@@ -578,6 +634,44 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
         |> BufferLimiter.call(%{})
 
       refute conn.halted
+    end
+
+    test "ignores a full unlinked default's consolidated queue while the backend is disabled",
+         %{conn: conn, user: user, backend: backend} do
+      stub(IngestEventQueue, :max_consolidated_queue_size, fn -> 50 end)
+      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+
+      fill_consolidated_queue(backend, source, 51)
+
+      limited_conn =
+        conn
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      assert limited_conn.halted
+
+      backend = backend |> Ecto.Changeset.change(enabled: false) |> Logflare.Repo.update!()
+      assert {:ok, _} = ContextCache.bust_keys([{Backends, backend.id}])
+
+      allowed_conn =
+        conn
+        |> recycle()
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      refute allowed_conn.halted
+
+      backend |> Ecto.Changeset.change(enabled: true) |> Logflare.Repo.update!()
+      assert {:ok, _} = ContextCache.bust_keys([{Backends, backend.id}])
+
+      limited_conn =
+        conn
+        |> recycle()
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      assert limited_conn.halted
+      assert json_response(limited_conn, 429)
     end
 
     test "checks the default's consolidated queue against the consolidated limit, not the per-source one",

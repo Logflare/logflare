@@ -11,6 +11,7 @@ defmodule Logflare.Rules do
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceSup
   alias Logflare.Cluster
+  alias Logflare.ContextCache
 
   @doc """
   Lists rules for a given Source or Backend
@@ -48,9 +49,15 @@ defmodule Logflare.Rules do
     where(query, [r], r.backend_id == ^backend_id)
   end
 
+  @spec rules_tree_by_source_id(pos_integer()) :: RulesTree.t()
   def rules_tree_by_source_id(id) do
-    rules = list_by_source_id(id)
-    RulesTree.build(rules)
+    from(r in Rule,
+      left_join: b in Backend,
+      on: r.backend_id == b.id,
+      where: r.source_id == ^id and (is_nil(r.backend_id) or b.enabled)
+    )
+    |> Repo.all()
+    |> RulesTree.build()
   end
 
   @doc """
@@ -150,6 +157,37 @@ defmodule Logflare.Rules do
         SourceSup.start_rule_child(rule)
       end
     end
+
+    :ok
+  end
+
+  @doc """
+  Syncs rules across all cluster nodes for sources with drain rules targeting this backend.
+
+  This invalidates cached rule lists and routing trees when the backend changes,
+  including trees cached as empty while the backend was disabled.
+  """
+  @spec sync_rules_across_cluster(pos_integer()) :: :ok
+  def sync_rules_across_cluster(backend_id) do
+    # Query once on the sending node so receiving nodes only evict cached entries.
+    source_ids =
+      for rule <- list_by_backend_id(backend_id), uniq: true do
+        rule.source_id
+      end
+
+    if source_ids != [] do
+      Cluster.Utils.rpc_multicast(__MODULE__, :sync_rules_local, [source_ids])
+    end
+
+    :ok
+  end
+
+  @doc false
+  @spec sync_rules_local([pos_integer()]) :: :ok
+  def sync_rules_local(source_ids) do
+    source_ids
+    |> Enum.map(&{__MODULE__, source_id: &1})
+    |> ContextCache.bust_keys()
 
     :ok
   end

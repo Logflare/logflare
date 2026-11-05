@@ -5,9 +5,12 @@ defmodule Logflare.ContextCache.CacheBusterTest do
   alias Cainophile.Changes.Transaction
   alias Cainophile.Changes.UpdatedRecord
   alias Logflare.Backends
+  alias Logflare.Cluster.Utils, as: ClusterUtils
   alias Logflare.ContextCache
   alias Logflare.ContextCache.CacheBuster
+  alias Logflare.Rules
   alias Logflare.Sources
+  alias Logflare.Sources.SourceRouter.RulesTree
 
   setup do
     insert(:plan, name: "Free")
@@ -50,6 +53,7 @@ defmodule Logflare.ContextCache.CacheBusterTest do
     end
 
     stub(Backends, :sync_backend_across_cluster, fn _backend_id -> :ok end)
+    stub(Rules, :sync_rules_across_cluster, fn _backend_id -> :ok end)
 
     backend =
       insert(:backend,
@@ -86,6 +90,7 @@ defmodule Logflare.ContextCache.CacheBusterTest do
     end
 
     stub(Backends, :sync_backend_across_cluster, fn _backend_id -> :ok end)
+    stub(Rules, :sync_rules_across_cluster, fn _backend_id -> :ok end)
 
     backend =
       insert(:backend,
@@ -122,5 +127,62 @@ defmodule Logflare.ContextCache.CacheBusterTest do
     backend_id = backend.id
     assert_receive {:busted, [{Backends, ^backend_id}]}, 500
     refute_receive {:refreshed, _user_id}, 300
+  end
+
+  test "backend updates invalidate empty rule trees without explicit source links", %{
+    source: source,
+    user: user
+  } do
+    for child_spec <- ContextCache.Supervisor.buster_specs() do
+      start_supervised!(child_spec)
+    end
+
+    backend = insert(:backend, user: user, enabled: false)
+    backend_id = backend.id
+    second_source = insert(:source, user: user)
+    unrelated_source = insert(:source, user: user)
+    first_rule = insert(:rule, source: source, backend: backend)
+    insert(:rule, source: source, backend: backend)
+    second_rule = insert(:rule, source: second_source, backend: backend)
+    insert(:rule, source: unrelated_source)
+
+    assert Rules.Cache.rules_tree_by_source_id(source.id) == []
+    assert Rules.Cache.rules_tree_by_source_id(second_source.id) == []
+    unrelated_tree = Rules.Cache.rules_tree_by_source_id(unrelated_source.id)
+    expected = MapSet.new([source.id, second_source.id])
+    test_pid = self()
+
+    expect(Backends, :sync_backend_across_cluster, 2, fn ^backend_id -> :ok end)
+
+    expect(ClusterUtils, :rpc_multicast, 2, fn Rules, :sync_rules_local, [source_ids] ->
+      assert MapSet.new(source_ids) == expected
+      assert length(source_ids) == 2
+      Rules.sync_rules_local(source_ids)
+      send(test_pid, {:rules_synced, backend_id})
+    end)
+
+    change = %UpdatedRecord{
+      relation: {"public", "backends"},
+      record: %{"id" => Integer.to_string(backend_id)}
+    }
+
+    for enabled <- [true, false] do
+      Backends.get_backend(backend_id)
+      |> Ecto.Changeset.change(enabled: enabled)
+      |> Repo.update!()
+
+      send(CacheBuster, %Transaction{changes: [change]})
+      assert_receive {:rules_synced, ^backend_id}, 500
+
+      for {drain_source, rule} <- [{source, first_rule}, {second_source, second_rule}] do
+        event = build(:log_event, source: drain_source, message: "testing")
+        tree = Rules.Cache.rules_tree_by_source_id(drain_source.id)
+        matching? = rule.id in RulesTree.matching_rule_ids(event, tree)
+        assert matching? == enabled
+      end
+
+      assert {:cached, ^unrelated_tree} =
+               Cachex.get!(Rules.Cache, {:rules_tree_by_source_id, [unrelated_source.id]})
+    end
   end
 end

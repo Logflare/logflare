@@ -10,6 +10,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline, as: ClickHousePipeline
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
+  alias Logflare.Backends.Adaptor.WebhookAdaptor.Client, as: WebhookClient
   alias Logflare.Backends.Backend
   alias Logflare.Cluster.Utils, as: ClusterUtils
   alias Logflare.Backends.DynamicPipeline
@@ -926,6 +927,7 @@ defmodule Logflare.BackendsTest do
 
     test "a consolidated default flag change refreshes the account lookup without per-source work",
          %{user: user, backend: backend} do
+      stub(Logflare.Google.BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
       source = insert(:source, user: user, default_ingest_backend_enabled?: true)
       start_supervised!({SourceSup, source})
       reject(&SourceSup.start_backend_child/2)
@@ -1189,6 +1191,7 @@ defmodule Logflare.BackendsTest do
     setup :set_mimic_global
 
     setup do
+      stub(Logflare.Google.BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user_id: user.id)
@@ -1244,6 +1247,7 @@ defmodule Logflare.BackendsTest do
 
   describe "SourceSup management" do
     setup do
+      stub(Logflare.Google.BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user_id: user.id)
@@ -1781,6 +1785,7 @@ defmodule Logflare.BackendsTest do
 
   describe "ingestion" do
     setup do
+      stub(Logflare.Google.BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user_id: user.id)
@@ -1931,6 +1936,45 @@ defmodule Logflare.BackendsTest do
       refute Backends.any_ingest_queue_over_limit?(source.id)
     end
 
+    test "any_ingest_queue_over_limit?/1 ignores a disabled unlinked account default's full consolidated queue",
+         %{source: source} do
+      stub(IngestEventQueue, :max_consolidated_queue_size, fn -> 50 end)
+      user = Repo.get(User, source.user_id)
+      opted_in = insert(:source, user: user, default_ingest_backend_enabled?: true)
+
+      disabled_backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          default_ingest?: true,
+          enabled: false
+        )
+
+      fill_consolidated_queue(disabled_backend, 51)
+
+      assert [%Backend{enabled: false}] = Backends.list_dispatch_backends(opted_in)
+      refute Backends.any_ingest_queue_over_limit?(opted_in.id)
+    end
+
+    test "any_ingest_queue_over_limit?/1 ignores a disabled linked backend when the source is not cached",
+         %{source: source} do
+      disabled_backend =
+        insert(:backend,
+          user_id: source.user_id,
+          sources: [source],
+          type: :webhook,
+          config: %{url: "http://example.com"},
+          enabled: false
+        )
+
+      table_key = {source.id, disabled_backend.id, self()}
+      IngestEventQueue.upsert_tid(table_key)
+      fill_queue_over_limit(table_key)
+      stub(Sources.Cache, :get_by_id, fn _source_id -> nil end)
+
+      refute Backends.any_ingest_queue_over_limit?(source.id)
+    end
+
     test "any_ingest_queue_over_limit?/1 is false when queues exist but are under the limit", %{
       source: source
     } do
@@ -1985,10 +2029,207 @@ defmodule Logflare.BackendsTest do
       assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch],
                       %{count: ^log_count}, %{backend_type: :bigquery}}
     end
+
+    test "does not ingest or increment counters for an explicitly disabled backend", %{
+      source: source
+    } do
+      user = Repo.get(User, source.user_id)
+
+      backend =
+        insert(:backend,
+          enabled: false,
+          type: :webhook,
+          config: %{url: "https://disabled.example.com"},
+          user: user
+        )
+
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+      {:ok, initial_count} = Counters.get_inserts(source.token)
+
+      assert {:ok, 0} =
+               Backends.ingest_logs([%{"event_message" => "do not send"}], source, backend)
+
+      assert {:ok, ^initial_count} = Counters.get_inserts(source.token)
+      assert {:ok, []} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+    end
+
+    test "does not fan out source ingestion to an attached disabled backend", %{source: source} do
+      user = Repo.get(User, source.user_id)
+
+      backend =
+        insert(:backend,
+          enabled: false,
+          sources: [source],
+          type: :webhook,
+          config: %{url: "https://disabled.example.com"},
+          user: user
+        )
+
+      Backends.clear_list_backends_cache(source.id)
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+
+      assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "keep local"}], source)
+      assert {:ok, []} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+    end
+
+    test "attached backend admission resumes after backend-ID cache invalidation", %{
+      source: source
+    } do
+      backend =
+        insert(:backend,
+          user_id: source.user_id,
+          sources: [source],
+          type: :webhook,
+          config: %{url: "https://toggle.example.com"}
+        )
+
+      reject(&WebhookClient.send/1)
+      Backends.clear_list_backends_cache(source.id)
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+      {:ok, initial_count} = Counters.get_inserts(source.token)
+
+      assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "before pause"}], source)
+
+      assert {:ok, [queued_event]} =
+               IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+
+      backend = backend |> Ecto.Changeset.change(enabled: false) |> Repo.update!()
+      Logflare.ContextCache.bust_keys([{Backends, backend.id}])
+
+      assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "during pause"}], source)
+
+      assert {:ok, [^queued_event]} =
+               IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+
+      assert {:ok, paused_count} = Counters.get_inserts(source.token)
+      assert paused_count == initial_count + 2
+
+      backend |> Ecto.Changeset.change(enabled: true) |> Repo.update!()
+      Logflare.ContextCache.bust_keys([{Backends, backend.id}])
+
+      assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "after resume"}], source)
+      assert {:ok, resumed_events} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+      assert queued_event in resumed_events
+
+      messages = Enum.map(resumed_events, & &1.body["event_message"])
+      assert Enum.sort(messages) == ["after resume", "before pause"]
+      assert {:ok, resumed_count} = Counters.get_inserts(source.token)
+      assert resumed_count == initial_count + 3
+    end
+
+    test "does not route or bill events for a disabled drain destination", %{source: source} do
+      user = Repo.get(User, source.user_id)
+
+      backend =
+        insert(:backend,
+          enabled: false,
+          type: :webhook,
+          config: %{url: "https://disabled.example.com"},
+          user: user
+        )
+
+      insert(:rule, lql_string: "testing", backend: backend, source_id: source.id)
+      Logflare.ContextCache.bust_keys([{Rules, [source_id: source.id]}])
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+      {:ok, initial_count} = Counters.get_inserts(source.token)
+
+      assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "testing"}], source)
+      assert {:ok, count} = Counters.get_inserts(source.token)
+      assert count == initial_count + 1
+      assert {:ok, []} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+    end
+
+    test "does not route to a disabled drain destination through a stale rule tree", %{
+      source: source
+    } do
+      backend =
+        insert(:backend,
+          user_id: source.user_id,
+          type: :webhook,
+          config: %{url: "https://disabled.example.com"}
+        )
+
+      rule = insert(:rule, source: source, backend: backend, lql_string: "testing")
+      event = build(:log_event, source: source, message: "testing")
+      Logflare.ContextCache.bust_keys([{Rules, source_id: source.id}])
+      tree = Rules.Cache.rules_tree_by_source_id(source.id)
+      assert rule.id in SourceRouter.RulesTree.matching_rule_ids(event, tree)
+      assert %{enabled: true} = Backends.Cache.get_backend(backend.id)
+
+      backend |> Ecto.Changeset.change(enabled: false) |> Repo.update!()
+      Logflare.ContextCache.bust_keys([{Backends, backend.id}])
+
+      stub(SourceSup, :rule_child_started?, fn _rule -> false end)
+      reject(&SourceSup.start_rule_child/1)
+      reject(&Backends.ingest_logs/3)
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+      {:ok, initial_count} = Counters.get_inserts(source.token)
+
+      assert {:ok, 1} = Backends.ingest_logs([event], source)
+      assert {:ok, count} = Counters.get_inserts(source.token)
+      assert count == initial_count + 1
+      assert {:ok, []} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+      assert {:cached, ^tree} = Cachex.get!(Rules.Cache, {:rules_tree_by_source_id, [source.id]})
+    end
+
+    test "re-enabled drain destination resumes after busting the tree cached while disabled", %{
+      source: source
+    } do
+      backend =
+        insert(:backend,
+          user_id: source.user_id,
+          type: :webhook,
+          config: %{url: "https://drain-toggle.example.com"}
+        )
+
+      rule = insert(:rule, source: source, backend: backend, lql_string: "testing")
+      Logflare.ContextCache.bust_keys([{Rules, [source_id: source.id]}])
+      stub(SourceSup, :rule_child_started?, fn _rule -> true end)
+      reject(&WebhookClient.send/1)
+      queue_key = {source.id, backend.id, nil}
+      IngestEventQueue.upsert_tid(queue_key)
+      queued_event = build(:log_event, source: source, message: "queued before pause")
+      IngestEventQueue.add_to_table(queue_key, [queued_event])
+      {:ok, initial_count} = Counters.get_inserts(source.token)
+
+      backend = backend |> Ecto.Changeset.change(enabled: false) |> Repo.update!()
+      Logflare.ContextCache.bust_keys([{Backends, backend.id}])
+
+      assert {:ok, 1} =
+               Backends.ingest_logs([%{"event_message" => "testing while paused"}], source)
+
+      assert {:ok, [%{body: %{"event_message" => "queued before pause"}}]} =
+               IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+
+      assert {:ok, paused_count} = Counters.get_inserts(source.token)
+      assert paused_count == initial_count + 1
+      tree_key = {:rules_tree_by_source_id, [source.id]}
+      assert {:cached, cached_tree} = Cachex.get!(Rules.Cache, tree_key)
+      event = build(:log_event, source: source, message: "testing after resume")
+      refute rule.id in SourceRouter.RulesTree.matching_rule_ids(event, cached_tree)
+
+      backend |> Ecto.Changeset.change(enabled: true) |> Repo.update!()
+
+      Logflare.ContextCache.bust_keys([
+        {Backends, backend.id},
+        {Rules, source_id: source.id}
+      ])
+
+      assert {:ok, 1} = Backends.ingest_logs([event], source)
+      assert {:cached, resumed_tree} = Cachex.get!(Rules.Cache, tree_key)
+      assert rule.id in SourceRouter.RulesTree.matching_rule_ids(event, resumed_tree)
+      assert {:ok, resumed_events} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+
+      messages = Enum.map(resumed_events, & &1.body["event_message"])
+      assert Enum.sort(messages) == ["queued before pause", "testing after resume"]
+      assert {:ok, resumed_count} = Counters.get_inserts(source.token)
+      assert resumed_count == paused_count + 2
+    end
   end
 
   describe "ingest filters" do
     setup do
+      stub(Logflare.Google.BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
       insert(:plan)
       [user: insert(:user)]
     end
@@ -2286,6 +2527,33 @@ defmodule Logflare.BackendsTest do
       assert {:ok, []} = IngestEventQueue.fetch_events({:consolidated, backend.id}, 10)
     end
 
+    test "source ingestion preserves queued events for a disabled unlinked account default",
+         %{user: user} do
+      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+      start_supervised!({SourceSup, source})
+
+      disabled_backend =
+        insert(:backend,
+          type: :clickhouse,
+          config: %{url: "http://localhost", database: "test", port: 8123},
+          user: user,
+          default_ingest?: true,
+          enabled: false
+        )
+
+      Backends.refresh_default_ingest_backends_cache(user.id)
+      queue_key = {:consolidated, disabled_backend.id, nil}
+      IngestEventQueue.upsert_tid(queue_key)
+      queued_event = build(:log_event, source: source, message: "already queued")
+      IngestEventQueue.add_to_table(queue_key, [queued_event])
+
+      assert {:ok, 1} =
+               Backends.ingest_logs([%{"event_message" => "new source event"}], source)
+
+      assert {:ok, [%{body: %{"event_message" => "already queued"}}]} =
+               IngestEventQueue.fetch_events({:consolidated, disabled_backend.id}, 10)
+    end
+
     test "dispatch_to_backends stops reaching the default backend once the flag is disabled",
          %{user: user} do
       stub(ClusterUtils, :rpc_multicast, fn mod, fun, args ->
@@ -2543,6 +2811,7 @@ defmodule Logflare.BackendsTest do
     setup :set_mimic_global
 
     setup do
+      stub(Logflare.Google.BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user_id: user.id)
@@ -2578,6 +2847,7 @@ defmodule Logflare.BackendsTest do
 
   describe "benchmarks" do
     setup do
+      stub(Logflare.Google.BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
       insert(:plan)
       start_supervised!(BencheeAsync.Reporter)
 
@@ -2724,6 +2994,7 @@ defmodule Logflare.BackendsTest do
       source: source,
       user: user
     } do
+      stub(Logflare.Google.BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
       # Start actual SourceSup process
       start_supervised!({SourceSup, source})
 
@@ -2793,6 +3064,7 @@ defmodule Logflare.BackendsTest do
 
   describe "ingest_logs/2 event timestamp filtering" do
     setup do
+      stub(Logflare.Google.BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user: user)
@@ -2965,6 +3237,7 @@ defmodule Logflare.BackendsTest do
     setup :set_mimic_global
 
     setup do
+      stub(Logflare.Google.BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user: user, enable_spooling: false)
@@ -3456,6 +3729,7 @@ defmodule Logflare.BackendsTest do
 
   describe "maybe_broadcast_and_route/2 broadcast rate gating" do
     setup do
+      stub(Logflare.Google.BigQuery, :get_table, fn _source_token -> {:error, :not_found} end)
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user: user)
