@@ -157,14 +157,14 @@ defmodule LogflareWeb.EndpointFilesystemCacheLiveTest do
     |> element("#endpoint")
     |> render_change(%{endpoint: %{query: "SELECT (", filesystem_cache_policy: @form_policy}})
 
-    assert has_element?(view, "#endpoint_query_editor > .help-block", "sql parser error")
+    assert has_element?(view, "#endpoint_query_editor ~ .help-block", "sql parser error")
     refute render(view) =~ "both time parameters declared"
 
     view
     |> element("#endpoint")
     |> render_submit(%{endpoint: %{query: "SELECT (", filesystem_cache_policy: @form_policy}})
 
-    assert has_element?(view, "#endpoint_query_editor > .help-block", "sql parser error")
+    assert has_element?(view, "#endpoint_query_editor ~ .help-block", "sql parser error")
     refute render(view) =~ "both time parameters declared"
     assert Repo.reload!(context.endpoint).query == @query
   end
@@ -281,7 +281,11 @@ defmodule LogflareWeb.EndpointFilesystemCacheLiveTest do
     refute has_element?(view, "#filesystem-cache-policy .help-block")
 
     query = @query <> " WHERE 1 = 1"
-    send(view.pid, {:query_string_updated, query})
+
+    view
+    |> element("#endpoint")
+    |> render_change(%{endpoint: %{query: query}})
+
     refute render(view) =~ "positive threshold"
 
     params = %{"from" => "0", "to" => "7200"}
