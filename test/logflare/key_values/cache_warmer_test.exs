@@ -4,6 +4,8 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
 
   import ExUnit.CaptureLog
 
+  alias Logflare.ContextCache.Tombstones
+  alias Logflare.KeyValues
   alias Logflare.KeyValues.Cache
   alias Logflare.KeyValues.CacheWarmer
 
@@ -95,6 +97,24 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
       insert(:key_value, user: user, key: "k1", value: %{"v" => "1"})
 
       assert :ignore = CacheWarmer.execute(nil)
+    end
+  end
+
+  describe "warm of a key-value changed within the tombstone ttl" do
+    for {context, initialized?} <- [{"initial warm", false}, {"subsequent warm", true}] do
+      test context, %{user: user} do
+        insert(:key_value, user: user, key: "changed", value: %{"v" => "1"})
+        insert(:key_value, user: user, key: "unchanged", value: %{"v" => "2"})
+        Tombstones.record([{KeyValues, [user_id: user.id, key: "changed"]}])
+        if unquote(initialized?), do: :persistent_term.put(@pt_key, true)
+
+        CacheWarmer.execute(nil)
+
+        assert is_nil(Cachex.get!(Cache, {:lookup, [user.id, "changed", nil]}))
+
+        assert {:cached, %{"v" => "2"}} =
+                 Cachex.get!(Cache, {:lookup, [user.id, "unchanged", nil]})
+      end
     end
   end
 
