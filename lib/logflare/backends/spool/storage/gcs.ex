@@ -51,6 +51,17 @@ defmodule Logflare.Backends.Spool.Storage.GCS do
     end
   end
 
+  @impl Logflare.Backends.Spool.Storage
+  def delete(bucket, key) do
+    with {:ok, conn} <- build_conn() do
+      case Objects.storage_objects_delete(conn, bucket, key) do
+        {:ok, _} -> :ok
+        {:error, %Tesla.Env{status: 404}} -> :ok
+        {:error, reason} -> {:error, reason}
+      end
+    end
+  end
+
   @spec request_headers(String.t(), map()) :: [{String.t(), String.t()}]
   defp request_headers(content_type, headers) do
     base = [{"Content-Type", content_type}]

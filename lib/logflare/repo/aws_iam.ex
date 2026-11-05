@@ -125,7 +125,11 @@ defmodule Logflare.Repo.AwsIam do
     end
   end
 
-  defp trusted_cacerts do
+  @doc """
+  Returns the system CA certificates plus the certificates in the configured AWS RDS CA bundle.
+  """
+  @spec trusted_cacerts() :: [:public_key.combined_cert()]
+  def trusted_cacerts do
     system_cacerts = :public_key.cacerts_get()
     path = Application.get_env(:logflare, :rds_ca_cert_path, @default_rds_ca_cert_path)
 
