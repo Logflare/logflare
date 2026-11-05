@@ -102,6 +102,24 @@ defmodule Logflare.KeyValues.CacheTest do
     assert @old_value = KeyValues.Cache.lookup(user.id, "proj1")
   end
 
+  test "lookup whose caller exits while its fill races a change", %{user: user} do
+    insert(:key_value, user: user, key: "proj1", value: @old_value)
+    test_pid = self()
+    caller = spawn(fn -> receive do: (:lookup -> KeyValues.Cache.lookup(user.id, "proj1")) end)
+
+    change_mid_fill(user, "proj1", "proj1", :update, fn ->
+      Process.exit(caller, :kill)
+      send(test_pid, {:caller_exited, self()})
+    end)
+
+    send(caller, :lookup)
+    assert_receive {:caller_exited, filler}
+    ref = Process.monitor(filler)
+    assert_receive {:DOWN, ^ref, :process, ^filler, _reason}
+
+    assert @new_value = KeyValues.Cache.lookup(user.id, "proj1")
+  end
+
   test "lookup of a key-value changed longer than the tombstone ttl ago", %{user: user} do
     original = Application.fetch_env!(:logflare, KeyValues.Cache)
     Application.put_env(:logflare, KeyValues.Cache, Keyword.put(original, :tombstone_ttl, 1))
@@ -203,13 +221,20 @@ defmodule Logflare.KeyValues.CacheTest do
     end
   end
 
-  defp change_mid_fill(%{id: user_id} = user, filled_key, changed_key, change) do
+  defp change_mid_fill(
+         %{id: user_id} = user,
+         filled_key,
+         changed_key,
+         change,
+         on_change \\ fn -> :ok end
+       ) do
     stub(KeyValues, :lookup, &Mimic.call_original(KeyValues, :lookup, [&1, &2, &3]))
 
     expect(KeyValues, :lookup, fn ^user_id, ^filled_key, accessor_path ->
       filled = Mimic.call_original(KeyValues, :lookup, [user_id, filled_key, accessor_path])
       apply_change(user, changed_key, change)
       bust(user_id, changed_key)
+      on_change.()
       filled
     end)
   end

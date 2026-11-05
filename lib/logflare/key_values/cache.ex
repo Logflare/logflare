@@ -60,36 +60,31 @@ defmodule Logflare.KeyValues.Cache do
       Cachex.fetch(worker, cache_key, fn _key -> lookup_fallback(worker, key_args) end)
     end)
     |> case do
-      {:commit, {:cached, v}} ->
-        drop_stale_fill(cache_key)
-        v
-
-      {:ignore, {:cached, v}} ->
-        v
-
-      {:ok, {:cached, v}} ->
-        v
-    end
-  end
-
-  # A bust between the fill's read and write deletes nothing, so the fill checks the tombstone
-  # the bust records before deleting, once its own write is done.
-  defp drop_stale_fill({:lookup, [user_id, key, _accessor_path]} = cache_key) do
-    if tombstoned?(user_id, key) do
-      Cachex.del(__MODULE__, cache_key)
+      {:ignore, {:cached, v}} -> v
+      {:ok, {:cached, v}} -> v
     end
   end
 
   defp lookup_fallback(worker, [user_id, key, accessor_path] = key_args) do
-    action = if tombstoned?(user_id, key), do: :ignore, else: :commit
+    tombstoned_before_read? = tombstoned?(user_id, key)
 
-    case Cachex.get(worker, {:lookup, [user_id, key, nil]}) do
-      {:ok, {:cached, full_value}} ->
-        {action, {:cached, KeyValues.extract_value(full_value, accessor_path)}}
+    value =
+      case Cachex.get(worker, {:lookup, [user_id, key, nil]}) do
+        {:ok, {:cached, full_value}} -> KeyValues.extract_value(full_value, accessor_path)
+        {:ok, nil} -> Repo.apply_with_replica(KeyValues, :lookup, key_args)
+      end
 
-      {:ok, nil} ->
-        {action, {:cached, Repo.apply_with_replica(KeyValues, :lookup, key_args)}}
+    if not tombstoned_before_read? do
+      cache_key = {:lookup, key_args}
+      Cachex.put(worker, cache_key, {:cached, value})
+      drop_if_tombstoned(worker, cache_key)
     end
+
+    {:ignore, {:cached, value}}
+  end
+
+  defp drop_if_tombstoned(cache, {:lookup, [user_id, key | _accessor_path]} = cache_key) do
+    if tombstoned?(user_id, key), do: Cachex.del(cache, cache_key)
   end
 
   defp tombstoned?(user_id, key), do: Tombstones.Cache.tombstoned?(__MODULE__, {user_id, key})
