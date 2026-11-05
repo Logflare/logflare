@@ -186,7 +186,7 @@ defmodule Logflare.Backends.CacheTest do
   test "a backend WAL bust re-puts the cached account default lookup from the primary", %{
     user: user
   } do
-    stub(Backends, :sync_backend_across_cluster, fn _backend_id -> :ok end)
+    stub(Backends, :apply_backend_change_local, fn _backend_id -> :ok end)
 
     backend =
       insert(:backend,
@@ -218,7 +218,7 @@ defmodule Logflare.Backends.CacheTest do
     user: user
   } do
     test_pid = self()
-    stub(Backends, :sync_backend_across_cluster, fn _backend_id -> :ok end)
+    stub(Backends, :apply_backend_change_local, fn _backend_id -> :ok end)
 
     stub(Backends, :refresh_default_ingest_backends_cache, fn user_id ->
       send(test_pid, {:refreshed, user_id})
@@ -244,7 +244,7 @@ defmodule Logflare.Backends.CacheTest do
 
   test "a backend WAL bust refreshes the owner lookup cached before the backend became a default",
        %{user: user} do
-    stub(Backends, :sync_backend_across_cluster, fn _backend_id -> :ok end)
+    stub(Backends, :apply_backend_change_local, fn _backend_id -> :ok end)
 
     backend =
       insert(:backend,
@@ -274,7 +274,7 @@ defmodule Logflare.Backends.CacheTest do
     other_user = insert(:user)
     failing_id = user.id
     other_id = other_user.id
-    stub(Backends, :sync_backend_across_cluster, fn _backend_id -> :ok end)
+    stub(Backends, :apply_backend_change_local, fn _backend_id -> :ok end)
 
     stub(Backends, :refresh_default_ingest_backends_cache, fn
       ^failing_id -> exit(:timeout)
