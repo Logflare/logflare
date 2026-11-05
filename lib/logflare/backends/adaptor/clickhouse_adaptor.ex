@@ -946,9 +946,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end
   catch
     # DBConnection exits the caller, rather than returning an error, when the
-    # pool stops mid-checkout (e.g. a refresh after a config change). The
-    # shape comes from the private DBConnection.Holder, so recheck on upgrades.
-    :exit, {_reason, {DBConnection.Holder, :checkout, _args}} when retry? ->
+    # pool stops mid-checkout. A refresh or idle stop exits with :normal, or
+    # :noproc if the pool is gone before checkout; both are worth one retry.
+    # Backend deletion exits with :shutdown and must not restart the pool.
+    # The shape comes from the private DBConnection.Holder, so recheck it
+    # on upgrades.
+    :exit, {reason, {DBConnection.Holder, :checkout, _args}}
+    when reason in [:normal, :noproc] and retry? ->
       query_pool(backend, label, query, false)
 
     :exit, {reason, {DBConnection.Holder, :checkout, _args}} ->
