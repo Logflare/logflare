@@ -108,13 +108,11 @@ defmodule Logflare.ContextCache.CacheBuster do
 
   defp handle_record(%UpdatedRecord{
          relation: {_schema, "sources"},
-         record: %{"id" => id, "user_id" => user_id}
+         record: %{"id" => id, "user_id" => user_id} = record,
+         old_record: old_record
        })
        when is_binary(id) and is_binary(user_id) do
-    [
-      {Sources, String.to_integer(id)},
-      {Catalog, [user_id: String.to_integer(user_id)]}
-    ]
+    [{Sources, String.to_integer(id)} | catalog_owners(Catalog, [record, old_record])]
   end
 
   defp handle_record(%UpdatedRecord{
@@ -412,6 +410,16 @@ defmodule Logflare.ContextCache.CacheBuster do
 
   defp handle_record(_record) do
     :noop
+  end
+
+  defp catalog_owners(context, records) do
+    records
+    |> Enum.flat_map(fn
+      %{"user_id" => user_id} when is_binary(user_id) -> [String.to_integer(user_id)]
+      _record -> []
+    end)
+    |> Enum.uniq()
+    |> Enum.map(&{context, [user_id: &1]})
   end
 
   def handle_rule_record(%{

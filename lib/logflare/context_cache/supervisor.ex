@@ -9,6 +9,7 @@ defmodule Logflare.ContextCache.Supervisor do
   alias Logflare.ContextCache
   alias Logflare.ContextCache.CacheBuster
   alias Logflare.ContextCache.CacheBusterWorker
+  alias Logflare.ContextCache.CatalogCache
   alias Logflare.ContextCache.Tombstones
   alias Logflare.Endpoints
   alias Logflare.GenSingleton
@@ -74,6 +75,7 @@ defmodule Logflare.ContextCache.Supervisor do
       {Users.Cache, :users},
       {Backends.Cache, :backends},
       {Sources.Cache, :sources},
+      {CatalogCache, :catalog_generations},
       {Catalog.Cache, :source_catalog},
       {Billing.Cache, :billing},
       {SourceSchemas.Cache, :source_schemas},
