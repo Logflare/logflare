@@ -13,6 +13,11 @@ defmodule Logflare.ContextCache.CatalogCacheTest do
     :ok
   end
 
+  test "generation metadata exposes the same statistics as other context caches" do
+    assert {:ok, stats} = Cachex.stats(CatalogCache)
+    assert is_map(stats)
+  end
+
   test "fills from the primary and reuses cached catalogs" do
     test_pid = self()
 
@@ -52,7 +57,7 @@ defmodule Logflare.ContextCache.CatalogCacheTest do
     end
 
     task = Task.async(fn -> CatalogCache.fetch(@cache, :owner, loader) end)
-    assert_receive {:snapshot_read, worker}
+    assert_receive {:snapshot_read, worker}, 1_000
     assert {:ok, 0} = CatalogCache.bust(@cache, [:owner])
     send(worker, :release)
 

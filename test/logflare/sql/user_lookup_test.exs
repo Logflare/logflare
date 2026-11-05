@@ -1,6 +1,7 @@
 defmodule Logflare.Sql.UserLookupTest do
   use Logflare.DataCase
 
+  alias Logflare.Sources
   alias Logflare.Sql
   alias Logflare.Users
 
@@ -9,6 +10,7 @@ defmodule Logflare.Sql.UserLookupTest do
     user = insert(:user, bigquery_project_id: "original-project", bigquery_dataset_id: "logs")
     insert(:source, user: user, name: "events")
     Cachex.put!(Users.Cache, {:get, [user.id]}, {:cached, user})
+    Sources.list_sources_by_user(user)
 
     %{user: user}
   end
