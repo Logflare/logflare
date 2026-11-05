@@ -11,7 +11,9 @@ defmodule Logflare.Sql do
 
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Endpoints
+  alias Logflare.Repo
   alias Logflare.SingleTenant
+  alias Logflare.Sources.Catalog
   alias Logflare.Sources.Catalog.Cache, as: SourceCatalog
   alias Logflare.Sql.AstUtils
   alias Logflare.Sql.DialectTransformer
@@ -267,7 +269,11 @@ defmodule Logflare.Sql do
         ) ::
           {:ok, String.t()} | {:error, String.t()}
   def transform(lang, input, user_id) when is_integer(user_id) do
-    user = Users.Cache.get(user_id)
+    user =
+      if Repo.in_transaction?(),
+        do: Users.get(user_id),
+        else: Users.Cache.get(user_id)
+
     transform(lang, input, user)
   end
 
@@ -544,9 +550,10 @@ defmodule Logflare.Sql do
 
   def source_mapping(query, user_id, mapping, opts) when is_list(opts) and is_integer(user_id) do
     dialect = Keyword.get(opts, :dialect, "bigquery")
-    sources = SourceCatalog.list_by_user(user_id)
 
-    with {:ok, ast} <- Parser.parse(dialect, query) do
+    with {:ok, ast} <- Parser.parse(dialect, query),
+         referenced_mapping = Map.take(mapping, find_all_source_names(ast)),
+         {:ok, sources} <- sources_for_mapping(user_id, referenced_mapping) do
       ast
       |> replace_old_source_names(%{
         sources: sources,
@@ -554,6 +561,26 @@ defmodule Logflare.Sql do
       })
       |> Parser.to_string()
     end
+  end
+
+  defp sources_for_mapping(user_id, mapping) do
+    sources = SourceCatalog.list_by_user(user_id)
+
+    if missing_mapped_source(mapping, sources) do
+      fresh_sources = Repo.with_primary(fn -> Catalog.list_by_user(user_id) end)
+
+      case missing_mapped_source(mapping, fresh_sources) do
+        nil -> {:ok, fresh_sources}
+        {name, _token} -> {:error, "can't find source #{name}"}
+      end
+    else
+      {:ok, sources}
+    end
+  end
+
+  defp missing_mapped_source(mapping, sources) do
+    tokens = MapSet.new(sources, &to_string(&1.token))
+    Enum.find(mapping, fn {_name, token} -> not MapSet.member?(tokens, token) end)
   end
 
   defp replace_names_with_subqueries(ast, data) do
