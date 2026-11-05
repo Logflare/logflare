@@ -120,23 +120,22 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.ArrowIPCTest do
       assert [%{"names" => []}] = DataFrame.to_rows(decode!(~s({"id":"a"}\n), fields))
     end
 
-    test "matches dotted row keys to underscored columns" do
+    test "matches row keys to columns as is, without renaming" do
       fields = [{"events_name", :string_array, false}]
 
       assert [%{"events_name" => ["exception"]}] =
+               DataFrame.to_rows(decode!(~s({"events_name":["exception"]}\n), fields))
+
+      assert [%{"events_name" => []}] =
                DataFrame.to_rows(decode!(~s({"events.name":["exception"]}\n), fields))
     end
 
-    test "writes json_array elements as JSON strings" do
+    test "writes json_array string elements as is" do
       fields = [{"events_attributes", :json_array, false}]
-      ndjson = ~s({"events.attributes":[{"exception.message":"boom"},{},"raw"]}\n)
+      ndjson = ~s({"events_attributes":["{\\"exception.message\\":\\"boom\\"}","{}"]}\n)
 
-      assert [%{"events_attributes" => [object, empty, raw]}] =
+      assert [%{"events_attributes" => [~s({"exception.message":"boom"}), "{}"]}] =
                DataFrame.to_rows(decode!(ndjson, fields))
-
-      assert Jason.decode!(object) == %{"exception.message" => "boom"}
-      assert empty == "{}"
-      assert raw == "raw"
     end
 
     test "has no timestamp array type" do
@@ -150,8 +149,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.ArrowIPCTest do
     end
 
     test "returns an error for a row that is not a JSON object" do
-      assert {:error, "row is not a JSON object"} =
-               ArrowIPC.get_ipc_bytes_with_schema("[1]\n", @fields, :none)
+      assert {:error, message} = ArrowIPC.get_ipc_bytes_with_schema("[1]\n", @fields, :none)
+      assert message =~ "expected {"
     end
 
     test "rejects unknown field types" do

@@ -20,7 +20,12 @@ defmodule Logflare.Mapper.ConfigStoreTest do
     end
 
     test "compiles other formats lazily and caches them" do
-      for event_type <- [:log, :metric, :trace], format <- [:ndjson, :map] do
+      for event_type <- [:log, :metric, :trace],
+          format <- [
+            :ndjson,
+            {:ndjson, column_names: :underscore, nested_arrays: :json_strings},
+            :map
+          ] do
         assert {:ok, ref, config_id} = ConfigStore.get_compiled(event_type, format)
         assert is_reference(ref)
         assert config_id == OtelDefaults.config_id(event_type)
@@ -39,6 +44,35 @@ defmodule Logflare.Mapper.ConfigStoreTest do
 
       assert rowbinary != ndjson
       assert ndjson != map
+    end
+
+    test "caches equivalent NDJSON options under one entry" do
+      {:ok, plain, _id} = ConfigStore.get_compiled(:trace, :ndjson)
+
+      {:ok, underscored, _id} =
+        ConfigStore.get_compiled(:trace, {:ndjson, column_names: :underscore})
+
+      assert {:ok, ^plain, _id} = ConfigStore.get_compiled(:trace, {:ndjson, []})
+
+      assert {:ok, ^plain, _id} =
+               ConfigStore.get_compiled(
+                 :trace,
+                 {:ndjson, nested_arrays: :native, column_names: :dotted}
+               )
+
+      assert {:ok, ^underscored, _id} =
+               ConfigStore.get_compiled(
+                 :trace,
+                 {:ndjson, nested_arrays: :native, column_names: :underscore}
+               )
+
+      assert underscored != plain
+    end
+
+    test "raises for unknown NDJSON options" do
+      assert_raise ArgumentError, fn ->
+        ConfigStore.get_compiled(:log, {:ndjson, column_case: :snake})
+      end
     end
 
     test "raises for unknown output format" do

@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::sync::Arc;
 
 use arrow::{
     array::{ArrayRef, AsArray, ListArray, RecordBatch},
@@ -11,7 +11,6 @@ use arrow::{
     json::{reader::infer_json_schema, ReaderBuilder},
 };
 use rustler::{Atom, Binary, Env, Error, NewBinary, NifResult, OwnedBinary};
-use serde_json::{Map, Value};
 
 rustler::atoms! {
     zstd,
@@ -175,55 +174,11 @@ fn arrow_error(error: ArrowError) -> Error {
     Error::Term(Box::new(error.to_string()))
 }
 
-fn message_error(message: String) -> Error {
-    Error::Term(Box::new(message))
-}
-
-/// Parses NDJSON rows and normalizes them to the BigQuery column layout:
-/// top-level keys have `.` replaced by `_` (BigQuery column names cannot
-/// contain `.`), and elements of `json_array_fields` columns are serialized
-/// to JSON strings, keeping attribute lists at one level of nesting.
-fn normalize_rows(
-    ndjson: &[u8],
-    json_array_fields: &HashSet<String>,
-) -> Result<Vec<Value>, String> {
+fn row_count(ndjson: &[u8]) -> usize {
     ndjson
         .split(|byte| *byte == b'\n')
         .filter(|line| !line.iter().all(u8::is_ascii_whitespace))
-        .map(|line| match serde_json::from_slice(line) {
-            Ok(Value::Object(object)) => Ok(Value::Object(
-                object
-                    .into_iter()
-                    .map(|(key, value)| {
-                        let key = key.replace('.', "_");
-
-                        if json_array_fields.contains(&key) {
-                            (key, stringify_elements(value))
-                        } else {
-                            (key, value)
-                        }
-                    })
-                    .collect::<Map<String, Value>>(),
-            )),
-            Ok(_) => Err("row is not a JSON object".to_string()),
-            Err(error) => Err(error.to_string()),
-        })
-        .collect()
-}
-
-fn stringify_elements(value: Value) -> Value {
-    match value {
-        Value::Array(items) => Value::Array(
-            items
-                .into_iter()
-                .map(|item| match item {
-                    Value::String(_) | Value::Null => item,
-                    other => Value::String(other.to_string()),
-                })
-                .collect(),
-        ),
-        other => other,
-    }
+        .count()
 }
 
 /// BigQuery REPEATED columns map to non-nullable Arrow lists with
@@ -297,9 +252,11 @@ fn bigquery_schema(read_schema: &Schema) -> SchemaRef {
 /// `{name, type, required}` tuples where `type` is one of `:string`,
 /// `:integer`, `:float`, `:boolean`, `:timestamp` (Unix microseconds),
 /// `:string_map`, or an array type (`:integer_array`, `:float_array`,
-/// `:string_array`, `:json_array`). Row keys are matched
-/// after replacing `.` with `_`. Returns `{:ok, schema, batches}`, or
-/// `{:error, message}` when a row does not fit the schema.
+/// `:string_array`, `:json_array`). The input is decoded as is: row keys must
+/// already be the column names and `:json_array` elements must already be JSON
+/// strings, as in the mapper's `:bigquery_ndjson` output. Returns
+/// `{:ok, schema, batches}`, or `{:error, message}` when a row does not fit the
+/// schema.
 #[rustler::nif(schedule = "DirtyCpu")]
 fn get_ipc_bytes_with_schema<'a>(
     env: Env<'a>,
@@ -308,12 +265,6 @@ fn get_ipc_bytes_with_schema<'a>(
     compression: Atom,
 ) -> NifResult<(Atom, Binary<'a>, Vec<Binary<'a>>)> {
     let write_options = build_write_options(atom_to_compression(compression)?);
-
-    let json_array_fields: HashSet<String> = fields
-        .iter()
-        .filter(|(_name, field_type, _required)| *field_type == json_array())
-        .map(|(name, _field_type, _required)| name.clone())
-        .collect();
 
     let read_fields = fields
         .into_iter()
@@ -338,16 +289,21 @@ fn get_ipc_bytes_with_schema<'a>(
         bytes
     };
 
-    let rows = normalize_rows(ndjson.as_slice(), &json_array_fields).map_err(message_error)?;
-
     // the decoder preallocates from the batch size, so size it to the row count
     // to get a single record batch without over-allocating
     let mut decoder = ReaderBuilder::new(read_schema)
-        .with_batch_size(rows.len().max(1))
+        .with_batch_size(row_count(ndjson.as_slice()).max(1))
         .build_decoder()
         .map_err(arrow_error)?;
 
-    decoder.serialize(&rows).map_err(arrow_error)?;
+    let mut remaining = ndjson.as_slice();
+    while !remaining.is_empty() {
+        let consumed = decoder.decode(remaining).map_err(arrow_error)?;
+        if consumed == 0 {
+            break;
+        }
+        remaining = &remaining[consumed..];
+    }
 
     let mut result = Vec::new();
 
