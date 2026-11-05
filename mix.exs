@@ -237,7 +237,7 @@ defmodule Logflare.Mixfile do
       {:excoveralls, "~> 0.10", only: :test},
 
       # Postgres Subscribe
-      {:cainophile, github: "Logflare/cainophile", ref: "e98b739"},
+      {:cainophile, github: "Logflare/cainophile", ref: "cddbf82"},
       {:open_api_spex, "~> 3.22"},
       # required for yaml open api generation
       {:ymlr, "~> 5.1"},
