@@ -83,6 +83,16 @@ defmodule Logflare.KeyValues.Cache do
     {:ignore, {:cached, value}}
   end
 
+  @doc """
+  Writes lookup entries, then deletes those whose key-value is tombstoned by then, so a change
+  busted between reading the values and this write leaves no stale entry.
+  """
+  @spec put_unless_tombstoned([{{:lookup, list()}, {:cached, term()}}]) :: :ok
+  def put_unless_tombstoned(entries) do
+    Cachex.put_many(__MODULE__, entries)
+    Enum.each(entries, fn {cache_key, _value} -> drop_if_tombstoned(__MODULE__, cache_key) end)
+  end
+
   defp drop_if_tombstoned(cache, {:lookup, [user_id, key | _accessor_path]} = cache_key) do
     if tombstoned?(user_id, key), do: Cachex.del(cache, cache_key)
   end
