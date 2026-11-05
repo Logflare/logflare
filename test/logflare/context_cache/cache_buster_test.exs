@@ -173,6 +173,35 @@ defmodule Logflare.ContextCache.CacheBusterTest do
     assert Cachex.size!(Catalog.Cache) == 0
   end
 
+  test "source transfers invalidate both owner catalogs", %{source: source, user: previous_owner} do
+    next_owner = insert(:user)
+    insert(:source, user: next_owner)
+    Catalog.Cache.list_by_user(previous_owner.id)
+    Catalog.Cache.list_by_user(next_owner.id)
+    source |> Ecto.Changeset.change(user_id: next_owner.id) |> Repo.update!()
+
+    change = %UpdatedRecord{
+      relation: {"public", "sources"},
+      record: %{"id" => to_string(source.id), "user_id" => to_string(next_owner.id)},
+      old_record: %{"id" => to_string(source.id), "user_id" => to_string(previous_owner.id)}
+    }
+
+    test_pid = self()
+
+    Mimic.expect(ContextCache, :bust_keys, fn records ->
+      result = Mimic.call_original(ContextCache, :bust_keys, [records])
+      send(test_pid, {:busted, records})
+      result
+    end)
+
+    send(CacheBuster, %Transaction{changes: [change]})
+    assert_receive {:busted, records}, 500
+    assert {Catalog, [user_id: previous_owner.id]} in records
+    assert {Catalog, [user_id: next_owner.id]} in records
+    assert [] = Catalog.Cache.list_by_user(previous_owner.id)
+    assert length(Catalog.Cache.list_by_user(next_owner.id)) == 2
+  end
+
   test "source inserts bust negative entity lookups and owner catalogs", %{
     source: %{id: source_id},
     user: %{id: user_id}
