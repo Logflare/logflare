@@ -241,7 +241,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   end
 
   defp to_operator(%FilterRule{operator: op, value: value})
-       when op in [:"~", :list_includes_regex] do
+       when op in [:"~", :list_includes_regexp] do
     {op, Regex.compile!(value, "u")}
   end
 
