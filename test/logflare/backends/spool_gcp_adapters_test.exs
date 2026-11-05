@@ -49,23 +49,24 @@ defmodule Logflare.Backends.SpoolGcpAdaptersTest do
       GCS.put("b", "k", "data", [])
     end
 
-    test "forwards content-encoding when provided" do
+    test "never sends content-encoding, since GCS rejects zstd uploads with a 415" do
+      test_pid = self()
+
       stub(Tesla, :request, fn _conn, opts ->
-        assert {"Content-Type", "application/octet-stream"} in opts[:headers]
-        assert {"Content-Encoding", "zstd"} in opts[:headers]
+        send(test_pid, {:request_headers, opts[:headers]})
         {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
-      GCS.put("b", "k", "data", headers: %{"content-encoding" => "zstd"})
-    end
+      assert {:ok, "k"} =
+               GCS.put("b", "k", "data",
+                 headers: %{
+                   "content-type" => "application/octet-stream",
+                   "content-encoding" => "zstd"
+                 }
+               )
 
-    test "omits content-encoding when not provided" do
-      stub(Tesla, :request, fn _conn, opts ->
-        refute Enum.any?(opts[:headers], fn {name, _} -> name == "Content-Encoding" end)
-        {:ok, %Tesla.Env{status: 200, body: ""}}
-      end)
-
-      GCS.put("b", "k", "data", [])
+      assert_received {:request_headers, headers}
+      assert headers == [{"Content-Type", "application/octet-stream"}]
     end
 
     test "returns {:error, {status, body}} on non-2xx response" do
