@@ -11,6 +11,7 @@ defmodule Logflare.Sql do
 
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Endpoints
+  alias Logflare.Repo
   alias Logflare.SingleTenant
   alias Logflare.Sources
   alias Logflare.Sql.AstUtils
@@ -267,7 +268,11 @@ defmodule Logflare.Sql do
         ) ::
           {:ok, String.t()} | {:error, String.t()}
   def transform(lang, input, user_id) when is_integer(user_id) do
-    user = Users.Cache.get(user_id)
+    user =
+      if Repo.in_transaction?(),
+        do: Users.get(user_id),
+        else: Users.Cache.get(user_id)
+
     transform(lang, input, user)
   end
 
