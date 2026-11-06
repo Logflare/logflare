@@ -363,26 +363,37 @@ defmodule Logflare.BackendsTest do
 
     test "backend linked to a running source", %{user: user, source: source} do
       [{source_sup, _}] = Registry.lookup(SourceRegistry, {source.id, SourceSup})
-
-      backend =
-        insert(:backend,
-          user: user,
-          sources: [source],
-          type: :webhook,
-          config: %{url: "http://test.com"}
-        )
+      backend = insert_webhook_backend(user, source)
 
       assert :ok = Backends.apply_backend_change_local(backend.id)
 
-      assert [{new_source_sup, _}] = Registry.lookup(SourceRegistry, {source.id, SourceSup})
-      refute new_source_sup == source_sup
+      refute source_sup_pid(source) == source_sup
+      assert {_pid, %Backend{config: %{url: "http://test.com"}}} = webhook_child(source)
+    end
 
-      assert [_webhook] =
-               for(
-                 {{Backends.Adaptor.WebhookAdaptor, _, _}, _pid, _type, _mods} = child <-
-                   Supervisor.which_children(new_source_sup),
-                 do: child
-               )
+    test "linked backend whose config changed", %{user: user, source: source} do
+      backend = insert_webhook_backend(user, source)
+      :ok = Backends.apply_backend_change_local(backend.id)
+      source_sup = source_sup_pid(source)
+      save_backend_config!(backend, %{url: "http://other.com"})
+
+      assert :ok = Backends.apply_backend_change_local(backend.id)
+
+      refute source_sup_pid(source) == source_sup
+      assert {_pid, %Backend{config: %{url: "http://other.com"}}} = webhook_child(source)
+    end
+
+    test "linked backend saved with an unchanged config", %{user: user, source: source} do
+      backend = insert_webhook_backend(user, source)
+      :ok = Backends.apply_backend_change_local(backend.id)
+      source_sup = source_sup_pid(source)
+      {pid, _backend} = webhook_child(source)
+      save_backend_config!(backend, %{})
+
+      assert :ok = Backends.apply_backend_change_local(backend.id)
+
+      assert source_sup_pid(source) == source_sup
+      assert {^pid, _backend} = webhook_child(source)
     end
 
     test "backend without linked sources", %{user: user, source: source} do
@@ -3424,6 +3435,36 @@ defmodule Logflare.BackendsTest do
         | start: {Function, :identity, [{:error, :boom}]}
       }
     end)
+  end
+
+  defp insert_webhook_backend(user, source) do
+    insert(:backend,
+      user: user,
+      sources: [source],
+      type: :webhook,
+      config: %{url: "http://test.com"}
+    )
+  end
+
+  defp source_sup_pid(source) do
+    TestUtils.retry_assert(fn ->
+      assert [{pid, _}] = Registry.lookup(SourceRegistry, {source.id, SourceSup})
+      pid
+    end)
+  end
+
+  defp webhook_child(source) do
+    source_sup = source_sup_pid(source)
+
+    [{child_id, pid}] =
+      for {{Backends.Adaptor.WebhookAdaptor, _, _} = child_id, pid, _type, _mods} <-
+            Supervisor.which_children(source_sup),
+          do: {child_id, pid}
+
+    {:ok, %{start: {_mod, _fun, [{_source, backend}]}}} =
+      :supervisor.get_childspec(source_sup, child_id)
+
+    {pid, backend}
   end
 
   defp clickhouse_backend_attrs do

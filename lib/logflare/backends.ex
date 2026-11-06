@@ -626,7 +626,8 @@ defmodule Logflare.Backends do
   A consolidated backend has its adaptor notified and, after `pipeline_swap_delay_ms/0`,
   its running pipelines replaced through `Adaptor.replace_pipelines/1`, which may skip
   pipelines already running with the saved settings; any other backend has the
-  `SourceSup` of each linked source restarted. A deleted backend has its consolidated
+  `SourceSup` of each linked source restarted, unless it already runs the backend with
+  its saved type and config. A deleted backend has its consolidated
   pipeline stopped and every adaptor notified.
   """
   @spec apply_backend_change_local(pos_integer()) :: :ok
@@ -663,8 +664,10 @@ defmodule Logflare.Backends do
     :ok
   end
 
-  defp apply_ingest_change_local(%Backend{}, sources) do
-    Enum.each(sources, &restart_source_sup/1)
+  defp apply_ingest_change_local(%Backend{} = backend, sources) do
+    sources
+    |> Enum.reject(&SourceSup.backend_child_current?(&1, backend))
+    |> Enum.each(&restart_source_sup/1)
   end
 
   @doc """
