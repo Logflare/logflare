@@ -139,9 +139,7 @@ defmodule LogflareWeb.KeyValuesLive do
   defp paginate(query, page_num, opts \\ []) do
     read = fn -> do_paginate(query, page_num) end
 
-    if Keyword.get(opts, :replica?, true),
-      do: Repo.with_replica(read),
-      else: Repo.with_primary(read)
+    Repo.with_read(read, Keyword.get(opts, :replica?, true))
   end
 
   defp do_paginate(query, page_num) do
