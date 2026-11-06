@@ -1672,6 +1672,22 @@ defmodule Logflare.BackendsTest do
       end)
     end
 
+    test "starts a non-shared default backend for the source", %{
+      source: source,
+      user: user
+    } do
+      default_backend = insert(:backend, type: :webhook, user: user)
+      default_backend = Backends.get_backend(default_backend.id)
+
+      stub(Backends, :get_default_backend, fn %User{id: user_id} when user_id == user.id ->
+        default_backend
+      end)
+
+      start_supervised!({SourceSup, source})
+
+      assert SourceSup.backend_child_started?(default_backend.id, source.id)
+    end
+
     test "SourceSup filters out consolidated backends", %{source: source, user: user} do
       consolidated_backend =
         insert(:backend,
@@ -1984,6 +2000,65 @@ defmodule Logflare.BackendsTest do
       # for system default
       assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch],
                       %{count: ^log_count}, %{backend_type: :bigquery}}
+    end
+  end
+
+  describe "single-tenant ClickHouse default backend" do
+    TestUtils.setup_single_tenant(backend_type: :clickhouse)
+
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = Backends.get_default_backend(user)
+
+      [backend: backend, source: source]
+    end
+
+    test "does not start ingestion separately for each source", %{
+      backend: backend,
+      source: source
+    } do
+      start_supervised!({SourceSup, source})
+
+      refute SourceSup.backend_child_started?(backend.id, source.id)
+    end
+
+    test "sends events only to shared queue", %{
+      backend: backend,
+      source: source
+    } do
+      {:ok, _} = Registry.register(Logflare.Backends.SourceRegistry, {source.id, SourceSup}, nil)
+      IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
+      IngestEventQueue.upsert_tid({source.id, nil, nil})
+
+      assert {:ok, 1} = Backends.ingest_logs([build(:log_event, source: source)], source)
+
+      assert {:ok, [_]} = IngestEventQueue.fetch_events({:consolidated, backend.id}, 10)
+
+      assert {:ok, []} = IngestEventQueue.fetch_events({source.id, nil}, 10)
+    end
+
+    test "checks only shared queue for overflow", %{
+      backend: backend,
+      source: source
+    } do
+      stub(IngestEventQueue, :max_consolidated_queue_size, fn -> 50 end)
+      legacy_table_key = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(legacy_table_key)
+      fill_queue_over_limit(legacy_table_key)
+
+      refute Backends.any_ingest_queue_over_limit?(source.id)
+
+      consolidated_table_key = {:consolidated, backend.id, self()}
+      IngestEventQueue.upsert_tid(consolidated_table_key)
+      IngestEventQueue.add_to_table(consolidated_table_key, build_queue_saturation_events(50))
+
+      refute Backends.any_ingest_queue_over_limit?(source.id)
+
+      IngestEventQueue.add_to_table(consolidated_table_key, build_queue_saturation_events(1))
+
+      assert Backends.any_ingest_queue_over_limit?(source.id)
     end
   end
 
