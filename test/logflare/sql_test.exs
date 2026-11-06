@@ -207,6 +207,12 @@ defmodule Logflare.SqlTest do
                "select c from src, unnest(src.col) as f"},
               "with src as (select a from #{table}) select c from src, unnest(src.col) as f"
             },
+            # sandboxed query joining CTEs
+            {
+              {"with src as (select a from my_table), src2 as (select a from src) select a from src",
+               "select c from src join src2 on src.a = src2.a"},
+              "with src as (select a from #{table}), src2 as (select a from src) select c from src join src2 on src.a = src2.a"
+            },
             # sandboxed CTEs with union all
             {
               {"with cte1 as (select a from my_table), cte2 as (select b from my_table) select a from cte1",
@@ -277,6 +283,41 @@ defmodule Logflare.SqlTest do
             {
               {"with src as (select a from my_table) select c from src",
                "select c from (select a from my_table) as sub"},
+              "Table not found in CTE: (my_table)"
+            },
+            # sandbox: disallowed table in a JOIN is caught
+            {
+              {"with src as (select a from my_table) select c from src",
+               "select c from src join my_table on true"},
+              "Table not found in CTE: (my_table)"
+            },
+            {
+              {"with src as (select a from my_table) select c from src",
+               "select c from src left join other_table on src.c = other_table.c"},
+              "Table not found in CTE: (other_table)"
+            },
+            # sandbox: disallowed table in a comma join after a CTE reference is caught
+            {
+              {"with src as (select a from my_table) select c from src",
+               "select c from src, my_table"},
+              "Table not found in CTE: (my_table)"
+            },
+            # sandbox: disallowed table in a nested join is caught
+            {
+              {"with src as (select a from my_table) select c from src",
+               "select c from (src join my_table on true)"},
+              "Table not found in CTE: (my_table)"
+            },
+            # sandbox: disallowed table in a PIVOT is caught
+            {
+              {"with src as (select a from my_table) select c from src",
+               "select c from my_table pivot (sum(a) for b in ('x'))"},
+              "Table not found in CTE: (my_table)"
+            },
+            # sandbox: disallowed table in a joined subquery is caught
+            {
+              {"with src as (select a from my_table) select c from src",
+               "select c from src join (select a from my_table) as sub on true"},
               "Table not found in CTE: (my_table)"
             },
             # sandbox: restricted functions
@@ -398,6 +439,27 @@ defmodule Logflare.SqlTest do
              "with a as (select b from #{bq_table_name(source_cxyz)}) select b from a"}
           ] do
         assert Sql.transform(:bq_sql, input, user) |> elem(1) |> String.downcase() == expected
+      end
+    end
+
+    test "sandboxed queries cannot join fully qualified user project tables outside of CTE" do
+      user =
+        insert(:user,
+          bigquery_project_id: @user_project_id,
+          bigquery_dataset_id: @user_dataset_id
+        )
+
+      insert(:source, user: user, name: "my_table")
+      cte_query = "with src as (select a from my_table) select a from src"
+      table = "#{@user_project_id}.#{@user_dataset_id}.mytable"
+
+      for consumer_query <- [
+            "select a from src join `#{table}` on true",
+            "select a from src, `#{table}`",
+            "select a from (src join `#{table}` on true)"
+          ] do
+        assert {:error, err} = Sql.transform(:bq_sql, {cte_query, consumer_query}, user)
+        assert err == "Table not found in CTE: (#{table})"
       end
     end
 
