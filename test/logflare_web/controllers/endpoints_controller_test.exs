@@ -48,7 +48,12 @@ defmodule LogflareWeb.EndpointsControllerTest do
             source_mapping: %{"reused_source" => Ecto.UUID.generate()}
           )
 
-        insert(:endpoint_version, endpoint: endpoint, version_number: 1)
+        insert(:endpoint_version,
+          endpoint: endpoint,
+          version_number: 1,
+          snapshot_overrides: %{"source_mapping" => endpoint.source_mapping}
+        )
+
         reject(&Endpoints.run_cached_query/3)
 
         conn = if @version, do: put_req_header(conn, "lf-endpoint-version", @version), else: conn
