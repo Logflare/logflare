@@ -116,6 +116,13 @@ defmodule Logflare.RepoTest do
 
       assert Repo.get_dynamic_repo() == Repo
     end
+
+    test "preserves an existing primary transaction" do
+      owner = Sandbox.start_owner!(Repo, shared: true)
+      on_exit(fn -> Sandbox.stop_owner(owner) end)
+
+      assert {:ok, true} = Repo.transaction(fn -> Repo.with_primary(&Repo.in_transaction?/0) end)
+    end
   end
 
   describe "apply_with_replica/3" do

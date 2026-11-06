@@ -49,12 +49,14 @@ defmodule Logflare.Sources.Catalog.CacheTest do
     assert [%Source{name: "original"}] = Catalog.Cache.list_by_user(user.id)
   end
 
-  test "does not cache empty catalogs", %{user: user} do
+  test "caches empty catalogs until owner invalidation", %{user: user} do
     assert [] = Catalog.Cache.list_by_user(user.id)
-    assert Cachex.size!(Catalog.Cache) == 0
+    assert Cachex.size!(Catalog.Cache) == 1
 
     source = insert(:source, user: user)
 
+    assert [] = Catalog.Cache.list_by_user(user.id)
+    assert {:ok, 1} = ContextCache.bust_keys([{Catalog, user_id: user.id}])
     assert [%Source{id: source_id}] = Catalog.Cache.list_by_user(user.id)
     assert source_id == source.id
   end

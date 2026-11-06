@@ -6,29 +6,19 @@ defmodule Logflare.ContextCache.CatalogCache do
   generation rather than making an older cached snapshot current again.
   """
 
+  use Logflare.Cache
+
+  alias Logflare.Cache.CachexOps
   alias Logflare.Repo
-  alias Logflare.Utils
 
+  @spec child_spec(term()) :: Supervisor.child_spec()
   def child_spec(_) do
-    stats = Application.get_env(:logflare, :cache_stats, false)
-
-    %{
-      id: __MODULE__,
-      start:
-        {Cachex, :start_link,
-         [
-           __MODULE__,
-           [
-             hooks:
-               [
-                 if(stats, do: Utils.cache_stats()),
-                 Utils.cache_limit(100_000)
-               ]
-               |> Enum.reject(&is_nil/1),
-             expiration: Utils.cache_expiration_min(60, 5)
-           ]
-         ]}
-    }
+    CachexOps.child_spec(__MODULE__,
+      limit: 100_000,
+      ttl: to_timeout(hour: 1),
+      purge_interval: to_timeout(minute: 5),
+      transactions: true
+    )
   end
 
   @spec fetch(atom(), term(), (-> list())) :: list()
@@ -38,23 +28,17 @@ defmodule Logflare.ContextCache.CatalogCache do
 
     {_status, {:cached, values}} =
       Cachex.fetch(cache, entry_key, fn ->
-        case Repo.with_primary(loader) do
-          [] -> {:ignore, {:cached, []}}
-          values -> {:commit, {:cached, values}}
-        end
+        {:commit, {:cached, Repo.with_primary(loader)}}
       end)
 
     if generation == generation(cache, key), do: values, else: Repo.with_primary(loader)
   end
 
-  @spec bust(atom(), [term()]) :: {:ok, non_neg_integer()}
-  def bust(cache, keys) do
-    count =
-      keys
-      |> Enum.uniq()
-      |> Enum.reduce(0, fn key, count -> count + bust_key(cache, key) end)
-
-    {:ok, count}
+  @spec keys_to_bust(atom(), [term()]) :: [term()]
+  def keys_to_bust(cache, keys) do
+    keys
+    |> Enum.uniq()
+    |> Enum.map(&advance_generation(cache, &1))
   end
 
   defp generation(cache, key) do
@@ -74,7 +58,7 @@ defmodule Logflare.ContextCache.CatalogCache do
     end
   end
 
-  defp bust_key(cache, key) do
+  defp advance_generation(cache, key) do
     metadata_key = {cache, key}
 
     {:ok, generation} =
@@ -84,9 +68,6 @@ defmodule Logflare.ContextCache.CatalogCache do
         previous
       end)
 
-    case Cachex.take!(cache, {:catalog, key, generation}) do
-      nil -> 0
-      _value -> 1
-    end
+    {:catalog, key, generation}
   end
 end
