@@ -4,8 +4,6 @@ defmodule Logflare.Mapper.ConfigStore do
   configs, one per `{event_type, output_format}`.
 
   NDJSON options are passed as `{:ndjson, opts}` (see `OutputFormat.ndjson/2`).
-  They are normalized before caching, so equivalent options share one entry and
-  options equal to the defaults share the `:ndjson` entry.
 
   Compiled NIF references are stored in a dedicated ETS table for fast,
   concurrent reads from pipeline processes. ClickHouse RowBinary configs are
@@ -23,7 +21,6 @@ defmodule Logflare.Mapper.ConfigStore do
 
   alias Logflare.LogEvent.TypeDetection
   alias Logflare.Mapper
-  alias Logflare.Mapper.MappingConfig.OutputFormat
   alias Logflare.Mapper.OtelDefaults
 
   @table :mapper_config_store
@@ -51,7 +48,7 @@ defmodule Logflare.Mapper.ConfigStore do
 
   def get_compiled(event_type, {:ndjson, opts})
       when is_event_type(event_type) and is_list(opts) do
-    fetch({event_type, ndjson_key(OutputFormat.normalize_ndjson_opts(opts))})
+    fetch({event_type, {:ndjson, opts}})
   end
 
   @impl GenServer
@@ -75,11 +72,6 @@ defmodule Logflare.Mapper.ConfigStore do
         {compiled, config_id} = compile_and_store(key)
         {:ok, compiled, config_id}
     end
-  end
-
-  @spec ndjson_key(OutputFormat.ndjson_opts()) :: OtelDefaults.output_format()
-  defp ndjson_key(opts) do
-    if opts == OutputFormat.ndjson_defaults(), do: :ndjson, else: {:ndjson, opts}
   end
 
   @spec compile_and_store({TypeDetection.event_type(), OtelDefaults.output_format()}) ::

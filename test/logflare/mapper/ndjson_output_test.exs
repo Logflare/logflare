@@ -294,35 +294,25 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
              } = decoded
     end
 
-    test "column names that collide after renaming are a compile error" do
-      fields = [Field.string("a.b", path: "$.x"), Field.string("a_b", path: "$.y")]
+    test "renaming collisions and unknown option values are compile errors" do
+      underscore = OutputFormat.ndjson(:metric, column_names: :underscore)
+      colliding = [Field.string("a.b", path: "$.x"), Field.string("a_b", path: "$.y")]
+      plain_field = [Field.string("a", path: "$.a")]
 
       assert {:ok, _compiled} =
-               Mapper.compile(MappingConfig.new(fields, output: OutputFormat.ndjson(:metric)))
+               Mapper.compile(MappingConfig.new(colliding, output: OutputFormat.ndjson(:metric)))
 
-      config =
-        MappingConfig.new(fields, output: OutputFormat.ndjson(:metric, column_names: :underscore))
-
-      assert {:error, "NDJSON column name 'a_b' is produced by more than one field"} =
-               Mapper.compile(config)
-    end
-
-    test "a field renamed to an envelope key is a compile error" do
-      config =
-        MappingConfig.new([Field.string("source.name", path: "$.source")],
-          output: OutputFormat.ndjson(:metric, column_names: :underscore)
-        )
-
-      assert {:error, "field name 'source_name' is reserved for the NDJSON envelope"} =
-               Mapper.compile(config)
-    end
-
-    test "unknown option values are a compile error" do
-      for {option, value} <- [column_names: :camel, nested_arrays: :flat] do
-        output = struct!(OutputFormat.ndjson(:metric), [{option, value}])
-        config = MappingConfig.new([Field.string("a", path: "$.a")], output: output)
-
-        assert {:error, "unsupported NDJSON #{option} '#{value}'"} == Mapper.compile(config)
+      for {fields, output, error} <- [
+            {colliding, underscore,
+             "NDJSON column name 'a_b' is produced by more than one field"},
+            {[Field.string("source.name", path: "$.source")], underscore,
+             "field name 'source_name' is reserved for the NDJSON envelope"},
+            {plain_field, struct!(OutputFormat.ndjson(:metric), column_names: :camel),
+             "unsupported NDJSON column_names 'camel'"},
+            {plain_field, struct!(OutputFormat.ndjson(:metric), nested_arrays: :flat),
+             "unsupported NDJSON nested_arrays 'flat'"}
+          ] do
+        assert {:error, ^error} = Mapper.compile(MappingConfig.new(fields, output: output))
       end
     end
   end

@@ -46,35 +46,6 @@ defmodule Logflare.Mapper.ConfigStoreTest do
       assert ndjson != map
     end
 
-    test "caches equivalent NDJSON options under one entry" do
-      {:ok, plain, _id} = ConfigStore.get_compiled(:trace, :ndjson)
-
-      {:ok, underscored, _id} =
-        ConfigStore.get_compiled(:trace, {:ndjson, column_names: :underscore})
-
-      assert {:ok, ^plain, _id} = ConfigStore.get_compiled(:trace, {:ndjson, []})
-
-      assert {:ok, ^plain, _id} =
-               ConfigStore.get_compiled(
-                 :trace,
-                 {:ndjson, nested_arrays: :native, column_names: :dotted}
-               )
-
-      assert {:ok, ^underscored, _id} =
-               ConfigStore.get_compiled(
-                 :trace,
-                 {:ndjson, nested_arrays: :native, column_names: :underscore}
-               )
-
-      assert underscored != plain
-    end
-
-    test "raises for unknown NDJSON options" do
-      assert_raise ArgumentError, fn ->
-        ConfigStore.get_compiled(:log, {:ndjson, column_case: :snake})
-      end
-    end
-
     test "raises for unknown output format" do
       assert_raise FunctionClauseError, fn ->
         ConfigStore.get_compiled(:log, :csv)

@@ -11,9 +11,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.ArrowIPCTest do
   ]
 
   describe "get_ipc_bytes_with_schema/3" do
-    test "encodes rows against the given schema" do
+    test "encodes rows against the given schema, ignoring fields not in it" do
       ndjson = """
-      {"id":"a","severity_number":9,"attributes":{"name":"bob","user.id":"5"}}
+      {"id":"a","severity_number":9,"attributes":{"name":"bob","user.id":"5"},"extra":1}
       {"id":"b","attributes":{}}
       """
 
@@ -38,13 +38,11 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.ArrowIPCTest do
              ]
     end
 
-    test "writes a missing attribute map as an empty list" do
-      assert [%{"attributes" => []}] = DataFrame.to_rows(decode!(~s({"id":"a"}\n)))
-    end
+    test "writes missing maps and arrays as empty lists" do
+      fields = @fields ++ [{"names", :string_array, false}]
 
-    test "ignores fields that are not in the schema" do
-      assert [%{"id" => "a"} = row] = DataFrame.to_rows(decode!(~s({"id":"a","extra":1}\n)))
-      refute Map.has_key?(row, "extra")
+      assert [%{"attributes" => [], "names" => []}] =
+               DataFrame.to_rows(decode!(~s({"id":"a"}\n), fields))
     end
 
     test "produces a single record batch" do
@@ -63,22 +61,15 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.ArrowIPCTest do
                )
     end
 
-    test "returns an error when a required field is missing" do
-      assert {:error, message} =
-               ArrowIPC.get_ipc_bytes_with_schema(~s({"severity_number":9}\n), @fields, :none)
-
-      assert message =~ "id"
-    end
-
-    test "returns an error when a value does not fit its column type" do
-      assert {:error, message} =
-               ArrowIPC.get_ipc_bytes_with_schema(
-                 ~s({"id":"a","severity_number":"high"}\n),
-                 @fields,
-                 :none
-               )
-
-      assert message =~ "severity_number"
+    test "returns an error for a row that does not fit the schema" do
+      for {ndjson, expected} <- [
+            {~s({"severity_number":9}\n), "id"},
+            {~s({"id":"a","severity_number":"high"}\n), "severity_number"},
+            {"[1]\n", "expected {"}
+          ] do
+        assert {:error, message} = ArrowIPC.get_ipc_bytes_with_schema(ndjson, @fields, :none)
+        assert message =~ expected
+      end
     end
 
     test "encodes float, boolean and array columns" do
@@ -114,12 +105,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.ArrowIPCTest do
              ]
     end
 
-    test "writes missing arrays as empty lists" do
-      fields = [{"id", :string, true}, {"names", :string_array, false}]
-
-      assert [%{"names" => []}] = DataFrame.to_rows(decode!(~s({"id":"a"}\n), fields))
-    end
-
     test "matches row keys to columns as is, without renaming" do
       fields = [{"events_name", :string_array, false}]
 
@@ -138,24 +123,11 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.ArrowIPCTest do
                DataFrame.to_rows(decode!(ndjson, fields))
     end
 
-    test "has no timestamp array type" do
-      assert_raise ArgumentError, fn ->
-        ArrowIPC.get_ipc_bytes_with_schema(
-          ~s({"events_timestamp":[1761200000123456]}\n),
-          [{"events_timestamp", :timestamp_array, false}],
-          :none
-        )
-      end
-    end
-
-    test "returns an error for a row that is not a JSON object" do
-      assert {:error, message} = ArrowIPC.get_ipc_bytes_with_schema("[1]\n", @fields, :none)
-      assert message =~ "expected {"
-    end
-
-    test "rejects unknown field types" do
-      assert_raise ArgumentError, fn ->
-        ArrowIPC.get_ipc_bytes_with_schema(~s({"id":"a"}\n), [{"id", :uuid, true}], :none)
+    test "rejects unknown field types, including timestamp arrays" do
+      for field_type <- [:uuid, :timestamp_array] do
+        assert_raise ArgumentError, fn ->
+          ArrowIPC.get_ipc_bytes_with_schema(~s({"c":1}\n), [{"c", field_type, false}], :none)
+        end
       end
     end
   end

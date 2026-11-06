@@ -57,23 +57,9 @@ defmodule Logflare.Mapper.MappingConfig.OutputFormat do
   """
   @spec ndjson(:log | :metric | :trace, ndjson_opts()) :: t()
   def ndjson(row_type, opts \\ []) when row_type in [:log, :metric, :trace] do
-    struct!(__MODULE__, [format: :ndjson, row_type: row_type] ++ normalize_ndjson_opts(opts))
+    opts = Keyword.validate!(opts, @ndjson_defaults)
+    struct!(__MODULE__, [format: :ndjson, row_type: row_type] ++ opts)
   end
-
-  @doc """
-  Returns NDJSON `opts` with defaults filled in, in a fixed order, so equivalent
-  options compare equal. Raises `ArgumentError` on an unknown option.
-  """
-  @spec normalize_ndjson_opts(keyword()) :: ndjson_opts()
-  def normalize_ndjson_opts(opts) do
-    opts |> Keyword.validate!(@ndjson_defaults) |> Enum.sort()
-  end
-
-  @doc """
-  Returns the NDJSON options used when none are given.
-  """
-  @spec ndjson_defaults() :: ndjson_opts()
-  def ndjson_defaults, do: normalize_ndjson_opts([])
 
   @spec to_nif_map(t()) :: map()
   def to_nif_map(%__MODULE__{format: :ndjson} = output) do
