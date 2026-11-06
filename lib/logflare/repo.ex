@@ -89,6 +89,16 @@ defmodule Logflare.Repo do
   def with_primary(fun) when is_function(fun, 0), do: with_dynamic_repo(__MODULE__, fun)
 
   @doc """
+  Routes a read to a replica when `replica?` is true, or to primary when false.
+
+  The boolean is explicit so callers retain their own consistency defaults.
+  A false value forces primary even within an existing replica scope.
+  """
+  @spec with_read((-> result), boolean()) :: result when result: term()
+  def with_read(fun, true), do: with_replica(fun)
+  def with_read(fun, false), do: with_primary(fun)
+
+  @doc """
   Applies the given MFA using `with_replica/1`.
   """
   @spec apply_with_replica(module(), atom(), list()) :: term()

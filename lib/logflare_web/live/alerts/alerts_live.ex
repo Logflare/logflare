@@ -552,8 +552,6 @@ defmodule LogflareWeb.AlertsLive do
       }
     end
 
-    if Keyword.get(opts, :replica?, true),
-      do: Repo.with_replica(read),
-      else: Repo.with_primary(read)
+    Repo.with_read(read, Keyword.get(opts, :replica?, true))
   end
 end
