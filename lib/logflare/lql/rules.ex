@@ -134,19 +134,14 @@ defmodule Logflare.Lql.Rules do
   end
 
   @doc """
-  Updates the period of the first chart rule in the collection.
+  Updates the shared period of all chart rules in the collection.
   """
   @spec put_chart_period(lql_rules(), atom()) :: lql_rules()
   def put_chart_period(lql_rules, period) when is_list(lql_rules) and is_atom_value(period) do
-    case Enum.find_index(lql_rules, &match?(%ChartRule{}, &1)) do
-      nil ->
-        lql_rules
-
-      index ->
-        chart = Enum.at(lql_rules, index)
-        updated_chart = ChartRule.update(chart, %{period: period})
-        List.replace_at(lql_rules, index, updated_chart)
-    end
+    Enum.map(lql_rules, fn
+      %ChartRule{} = chart -> ChartRule.update(chart, %{period: period})
+      rule -> rule
+    end)
   end
 
   @doc """

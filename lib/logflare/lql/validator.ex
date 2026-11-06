@@ -6,7 +6,6 @@ defmodule Logflare.Lql.Validator do
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.SelectRule
   alias Logflare.Utils.Chart
-  alias Logflare.Utils.List, as: ListUtils
 
   @timestamp_filter_with_tailing "Timestamp filters can't be used if live tail search is active"
   @default_max_n_chart_ticks 250
@@ -45,9 +44,6 @@ defmodule Logflare.Lql.Validator do
     cond do
       tailing? and not Enum.empty?(lql_ts_filters) ->
         @timestamp_filter_with_tailing
-
-      ListUtils.at_least?(chart_rules, 2) ->
-        "Only one chart rule can be used in a LQL query"
 
       invalid_chart ->
         invalid_chart
