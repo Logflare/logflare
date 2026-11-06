@@ -1,35 +1,22 @@
 defmodule Logflare.Alerting.Cache do
   @moduledoc false
 
-  @behaviour Logflare.ContextCache
+  use Logflare.ContextCache
 
   alias Logflare.Alerting
+  alias Logflare.Cache.CachexOps
   alias Logflare.ContextCache
   alias Logflare.ContextCache.CatalogCache
   alias Logflare.Repo
   alias Logflare.User
-  alias Logflare.Utils
 
+  @spec child_spec(term()) :: Supervisor.child_spec()
   def child_spec(_) do
-    stats = Application.get_env(:logflare, :cache_stats, false)
-
-    %{
-      id: __MODULE__,
-      start:
-        {Cachex, :start_link,
-         [
-           __MODULE__,
-           [
-             hooks:
-               [
-                 if(stats, do: Utils.cache_stats()),
-                 Utils.cache_limit(100_000)
-               ]
-               |> Enum.filter(& &1),
-             expiration: Utils.cache_expiration_min(5, 1)
-           ]
-         ]}
-    }
+    CachexOps.child_spec(__MODULE__,
+      limit: 100_000,
+      ttl: to_timeout(minute: 5),
+      purge_interval: to_timeout(minute: 1)
+    )
   end
 
   @spec list_by_user_id(User.t() | pos_integer()) :: [Logflare.Alerting.AlertQuery.t()]
@@ -44,13 +31,18 @@ defmodule Logflare.Alerting.Cache do
   end
 
   @impl ContextCache
-  def bust_by(kw) do
-    entries =
-      kw
-      |> Keyword.get_values(:user_id)
-      |> Enum.map(&{:list_alert_queries_by_user_id, [&1]})
+  @spec keys_to_bust(keyword()) :: Enumerable.t()
+  def keys_to_bust(kw) do
+    if Keyword.has_key?(kw, :user_id) do
+      entries =
+        kw
+        |> Keyword.get_values(:user_id)
+        |> Enum.map(&{:list_alert_queries_by_user_id, [&1]})
 
-    CatalogCache.bust(__MODULE__, entries)
+      CatalogCache.keys_to_bust(__MODULE__, entries)
+    else
+      CachexOps.keys_to_bust(__MODULE__, kw)
+    end
   end
 
   defp fetch_list_by_user_id(user_id) do

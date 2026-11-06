@@ -45,12 +45,14 @@ defmodule Logflare.Alerting.CacheTest do
            |> Enum.sort() == Enum.sort([first_alert.id, second_alert.id])
   end
 
-  test "does not cache empty alert catalogs", %{user: user} do
+  test "caches empty alert catalogs until owner invalidation", %{user: user} do
     assert [] = Alerting.Cache.list_by_user_id(user.id)
-    assert Cachex.size!(Alerting.Cache) == 0
+    assert Cachex.size!(Alerting.Cache) == 1
 
     alert = insert(:alert, user: user)
 
+    assert [] = Alerting.Cache.list_by_user_id(user.id)
+    assert {:ok, 1} = ContextCache.bust_keys([{Alerting, user_id: user.id}])
     assert [%AlertQuery{id: alert_id}] = Alerting.Cache.list_by_user_id(user.id)
     assert alert_id == alert.id
   end
