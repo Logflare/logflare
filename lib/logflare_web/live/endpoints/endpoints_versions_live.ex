@@ -297,7 +297,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
     {:noreply,
      socket
      |> assign(:endpoint, endpoint)
-     |> assign_versions(endpoint)
+     |> assign_versions(endpoint, replica?: false)
      |> put_flash(:error, "Version restored, but cached results could not be invalidated.")}
   end
 
