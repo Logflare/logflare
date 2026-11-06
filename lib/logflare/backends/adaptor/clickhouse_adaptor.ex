@@ -113,9 +113,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   def replace_pipelines(%Backend{id: backend_id} = backend) do
     name = Backends.via_backend(backend, Pipeline)
 
-    case GenServer.whereis(name) do
-      nil -> :ok
-      _pid -> DynamicPipeline.replace_pipelines(name, fn -> latest_pipeline_args(backend_id) end)
+    with pid when is_pid(pid) <- GenServer.whereis(name),
+         %{pipeline_args: running_args} <- DynamicPipeline.get_state(name),
+         false <- Pipeline.batch_opts(running_args[:backend]) == Pipeline.batch_opts(backend) do
+      DynamicPipeline.replace_pipelines(name, fn -> latest_pipeline_args(backend_id) end)
+    else
+      _unchanged_or_stopped -> :ok
     end
   end
 

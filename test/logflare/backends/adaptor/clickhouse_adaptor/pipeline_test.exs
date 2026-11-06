@@ -1282,7 +1282,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       add_spooled_event(backend, source, handle, "in flight")
       assert_receive {:insert_started, held_insert}, 5_000
 
-      assert :ok = ClickHouseAdaptor.replace_pipelines(backend)
+      save_backend_config!(backend, %{batch_timeout: 1_500})
+      assert :ok = ClickHouseAdaptor.replace_pipelines(Backends.Cache.get_backend(backend.id))
 
       add_spooled_event(backend, source, handle, "queued during swap")
       assert_receive {:insert_started, queued_insert}, 5_000
