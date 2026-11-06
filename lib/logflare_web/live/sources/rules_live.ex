@@ -64,6 +64,7 @@ defmodule LogflareWeb.Sources.RulesLive do
   @impl true
   def handle_event("fsubmit", %{"rule" => rule_params}, socket) do
     %{source: source, rules: rules} = socket.assigns
+    rule_params = Map.take(rule_params, ["lql_string", "sink"])
 
     lqlstring = rule_params["lql_string"]
 

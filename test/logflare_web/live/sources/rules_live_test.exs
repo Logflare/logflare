@@ -48,6 +48,43 @@ defmodule LogflareWeb.Sources.RulesLiveTest do
     assert Rules.get_rule(rule.id)
   end
 
+  test "attacker cannot plant a rule on another user's source or route to their resources",
+       %{conn: conn} do
+    attacker = insert(:user)
+    victim = insert(:user)
+
+    attacker_source = insert(:source, user: attacker)
+    attacker_backend = insert(:backend, user: attacker)
+    victim_source = insert(:source, user: victim)
+    victim_sink = insert(:source, user: victim)
+    insert(:source_schema, source: attacker_source)
+
+    {:ok, view, _html} =
+      conn
+      |> login_user(attacker)
+      |> live(~p"/sources/#{attacker_source.id}/rules")
+
+    render_hook(view, "fsubmit", %{
+      "rule" => %{
+        "lql_string" => "testing",
+        "source_id" => to_string(victim_source.id),
+        "backend_id" => to_string(attacker_backend.id)
+      }
+    })
+
+    assert [] = Rules.list_rules(victim_source)
+    assert [] = Rules.list_rules(attacker_backend)
+    assert [%{backend_id: nil}] = Rules.list_rules(attacker_source)
+
+    html =
+      render_hook(view, "fsubmit", %{
+        "rule" => %{"lql_string" => "testing", "sink" => Atom.to_string(victim_sink.token)}
+      })
+
+    assert html =~ "sink: does not exist"
+    assert [_] = Rules.list_rules(attacker_source)
+  end
+
   describe "Authenticated User" do
     setup %{conn: conn} do
       user = insert(:user)
