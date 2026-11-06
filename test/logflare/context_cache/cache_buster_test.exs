@@ -5,6 +5,8 @@ defmodule Logflare.ContextCache.CacheBusterTest do
   alias Cainophile.Changes.Transaction
   alias Cainophile.Changes.UpdatedRecord
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
   alias Logflare.ContextCache
   alias Logflare.ContextCache.CacheBuster
   alias Logflare.Sources
@@ -17,9 +19,7 @@ defmodule Logflare.ContextCache.CacheBusterTest do
   end
 
   test "cache buster", %{source: %{id: source_id, token: source_token}} do
-    for child_spec <- ContextCache.Supervisor.buster_specs() do
-      start_supervised!(child_spec)
-    end
+    start_busters()
 
     Sources.Cache.get_by(token: source_token)
     assert Cachex.size!(Sources.Cache) == 1
@@ -41,15 +41,87 @@ defmodule Logflare.ContextCache.CacheBusterTest do
     assert Cachex.size!(Sources.Cache) == 0
   end
 
+  for {scenario, record_type} <- [
+        {"backend update", UpdatedRecord},
+        {"backend delete", DeletedRecord}
+      ] do
+    test "#{scenario} from the WAL", %{user: user} do
+      start_busters()
+      test_pid = self()
+
+      stub(Backends, :apply_backend_change_local, fn backend_id ->
+        send(test_pid, {:applied, backend_id})
+        :ok
+      end)
+
+      %{id: backend_id} = insert(:backend, user: user)
+      record = %{"id" => Integer.to_string(backend_id), "user_id" => Integer.to_string(user.id)}
+
+      change =
+        struct(unquote(record_type),
+          relation: {"public", "backends"},
+          record: record,
+          old_record: record
+        )
+
+      send(CacheBuster, %Transaction{changes: [change]})
+
+      assert_receive {:applied, ^backend_id}, 1_000
+    end
+  end
+
+  test "running read pool after a backend config update from the WAL", %{user: user} do
+    start_busters()
+
+    backend =
+      insert(:backend,
+        type: :clickhouse,
+        user: user,
+        config: %{
+          url: "http://localhost:8123",
+          port: 8123,
+          database: "logflare_test",
+          username: "logflare",
+          password: "logflare",
+          read_pool_size: 2
+        }
+      )
+
+    on_exit(fn -> QueryConnectionSup.terminate_backend_local(backend.id) end)
+
+    {:ok, _pid} =
+      QueryConnectionSup.start_connection_manager(ConnectionManager.child_spec(backend))
+
+    :ok = ConnectionManager.ensure_pool_started(backend)
+    {:ok, _updated} = Backends.update_backend(backend, %{config: %{read_pool_size: 3}})
+
+    change = %UpdatedRecord{
+      relation: {"public", "backends"},
+      record: %{"id" => Integer.to_string(backend.id), "user_id" => Integer.to_string(user.id)}
+    }
+
+    send(CacheBuster, %Transaction{changes: [change]})
+    backend_id = backend.id
+
+    TestUtils.retry_assert(fn ->
+      :ok = ConnectionManager.ensure_pool_started(backend)
+
+      assert [{^backend_id, nil, _pool_pid, 3}] =
+               for(
+                 pool <- QueryConnectionSup.list_read_pools(),
+                 elem(pool, 0) == backend_id,
+                 do: pool
+               )
+    end)
+  end
+
   test "a default backend update refreshes the owner's default ingest lookup from the WAL user_id",
        %{
          user: user
        } do
-    for child_spec <- ContextCache.Supervisor.buster_specs() do
-      start_supervised!(child_spec)
-    end
+    start_busters()
 
-    stub(Backends, :sync_backend_across_cluster, fn _backend_id -> :ok end)
+    stub(Backends, :apply_backend_change_local, fn _backend_id -> :ok end)
 
     backend =
       insert(:backend,
@@ -81,11 +153,9 @@ defmodule Logflare.ContextCache.CacheBusterTest do
   test "a non-default backend update does not refresh the owner's default ingest lookup", %{
     user: user
   } do
-    for child_spec <- ContextCache.Supervisor.buster_specs() do
-      start_supervised!(child_spec)
-    end
+    start_busters()
 
-    stub(Backends, :sync_backend_across_cluster, fn _backend_id -> :ok end)
+    stub(Backends, :apply_backend_change_local, fn _backend_id -> :ok end)
 
     backend =
       insert(:backend,
@@ -122,5 +192,11 @@ defmodule Logflare.ContextCache.CacheBusterTest do
     backend_id = backend.id
     assert_receive {:busted, [{Backends, ^backend_id}]}, 500
     refute_receive {:refreshed, _user_id}, 300
+  end
+
+  defp start_busters do
+    for child_spec <- ContextCache.Supervisor.buster_specs() do
+      start_supervised!(child_spec)
+    end
   end
 end
