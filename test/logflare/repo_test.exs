@@ -125,6 +125,88 @@ defmodule Logflare.RepoTest do
     end
   end
 
+  describe "with_read/2" do
+    test "false selects primary even when replicas are configured" do
+      start_read_replicas(["127.0.0.1"])
+
+      assert Repo.with_read(fn -> {:primary, Repo.get_dynamic_repo()} end, false) ==
+               {:primary, Repo}
+
+      assert Repo.get_dynamic_repo() == Repo
+    end
+
+    test "true selects a replica and restores the caller's repo" do
+      start_read_replicas(["127.0.0.1"])
+
+      refute Repo.with_read(&Repo.get_dynamic_repo/0, true) == Repo
+      assert Repo.get_dynamic_repo() == Repo
+    end
+
+    test "true falls back to primary when no replicas are configured" do
+      start_read_replicas([])
+
+      assert Repo.with_read(&Repo.get_dynamic_repo/0, true) == Repo
+      assert Repo.get_dynamic_repo() == Repo
+    end
+
+    test "nested reads retain the replica while false forces primary and restores scope" do
+      start_read_replicas(["127.0.0.1"])
+
+      Repo.with_read(
+        fn ->
+          replica = Repo.get_dynamic_repo()
+          refute replica == Repo
+          assert Repo.with_read(&Repo.get_dynamic_repo/0, true) == replica
+          assert Repo.with_read(&Repo.get_dynamic_repo/0, false) == Repo
+          assert Repo.get_dynamic_repo() == replica
+
+          assert_raise ArithmeticError, fn ->
+            Repo.with_read(fn -> raise ArithmeticError end, false)
+          end
+
+          assert Repo.get_dynamic_repo() == replica
+        end,
+        true
+      )
+
+      assert Repo.get_dynamic_repo() == Repo
+    end
+
+    test "true restores the caller's repo when the read raises" do
+      start_read_replicas(["127.0.0.1"])
+
+      assert_raise ArithmeticError, fn ->
+        Repo.with_read(fn -> raise ArithmeticError end, true)
+      end
+
+      assert Repo.get_dynamic_repo() == Repo
+    end
+
+    for replica? <- [true, false] do
+      @use_replica replica?
+
+      test "#{replica?} preserves an existing primary transaction" do
+        start_read_replicas(["127.0.0.1"])
+        owner = Sandbox.start_owner!(Repo, shared: true)
+        on_exit(fn -> Sandbox.stop_owner(owner) end)
+
+        assert {:ok, {Repo, true}} =
+                 Repo.transaction(fn ->
+                   Repo.with_read(
+                     fn -> {Repo.get_dynamic_repo(), Repo.in_transaction?()} end,
+                     @use_replica
+                   )
+                 end)
+      end
+    end
+
+    test "requires an explicit boolean policy" do
+      for policy <- [nil, :replica, "true"] do
+        assert_raise FunctionClauseError, fn -> Repo.with_read(fn -> :ok end, policy) end
+      end
+    end
+  end
+
   describe "apply_with_replica/3" do
     test "delegates to scoped replica routing" do
       start_read_replicas(["127.0.0.1"])
