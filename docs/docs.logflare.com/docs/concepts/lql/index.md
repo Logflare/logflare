@@ -73,6 +73,20 @@ Chart aggregations rules will display the aggregated trends in the chart. Chart 
 | c     | `p95`                       | `c:p95(m.latency)` |
 | c     | `p99`                       | `c:p99(m.latency)` |
 
+Combine multiple aggregates in the LQL query to compare them as separate lines in one chart:
+
+```text
+c:p50(m.latency) c:p95(m.latency) c:p99(m.latency) c:group_by(t::minute)
+```
+
+You can also combine different functions or numeric fields, for example:
+
+```text
+s:m.latency c:sum(m.latency) c:avg(m.latency) c:group_by(t::minute)
+```
+
+All aggregates share the same chart period and filters.
+
 #### AI-assisted search
 
 AI assist can turn a natural-language request into an LQL query and run the search.
