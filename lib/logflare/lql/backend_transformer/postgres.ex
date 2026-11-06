@@ -122,312 +122,59 @@ defmodule Logflare.Lql.BackendTransformer.Postgres do
           period :: :second | :minute | :hour | :day,
           timestamp_field :: String.t()
         ) :: Ecto.Query.t()
-  def transform_chart_rule(query, :count, _field_path, :second, timestamp_field) do
-    query
-    |> select([t], %{
-      timestamp: pg_trunc_second(field(t, ^timestamp_field)),
-      count: count(field(t, ^timestamp_field))
-    })
-    |> group_by([t], pg_trunc_second(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_second(field(t, ^timestamp_field)))
+  def transform_chart_rule(query, aggregate, field_path, period, timestamp_field) do
+    rule = %ChartRule{aggregate: aggregate, path: field_path, period: period}
+    transform_chart_rules(query, [{rule, :count}], timestamp_field)
   end
 
-  def transform_chart_rule(query, :countd, field_path, :second, timestamp_field) do
-    field_name = get_field_name_for_aggregation(field_path)
+  @spec transform_chart_rules(Query.t(), [{ChartRule.t(), atom() | String.t()}], String.t()) ::
+          Query.t()
+  def transform_chart_rules(query, [{%ChartRule{period: period}, _} | _] = rules, timestamp_field) do
+    timestamp =
+      case period do
+        :second -> dynamic([t], pg_trunc_second(field(t, ^timestamp_field)))
+        :minute -> dynamic([t], pg_trunc_minute(field(t, ^timestamp_field)))
+        :hour -> dynamic([t], pg_trunc_hour(field(t, ^timestamp_field)))
+        :day -> dynamic([t], pg_trunc_day(field(t, ^timestamp_field)))
+      end
+
+    values =
+      Map.new(rules, fn {%ChartRule{aggregate: aggregate, path: path}, key} ->
+        column =
+          if aggregate == :count, do: timestamp_field, else: get_field_name_for_aggregation(path)
+
+        field = dynamic([t], field(t, ^column))
+        {key, aggregate_value(aggregate, field)}
+      end)
 
     query
-    |> select([t], %{
-      timestamp: pg_trunc_second(field(t, ^timestamp_field)),
-      count: count(field(t, ^field_name), :distinct)
-    })
-    |> group_by([t], pg_trunc_second(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_second(field(t, ^timestamp_field)))
+    |> select(^Map.put(values, :timestamp, timestamp))
+    |> group_by(^timestamp)
+    |> order_by(^timestamp)
   end
 
-  def transform_chart_rule(query, :count, _field_path, :minute, timestamp_field) do
-    query
-    |> select([t], %{
-      timestamp: pg_trunc_minute(field(t, ^timestamp_field)),
-      count: count(field(t, ^timestamp_field))
-    })
-    |> group_by([t], pg_trunc_minute(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_minute(field(t, ^timestamp_field)))
-  end
+  @spec aggregate_value(atom(), Ecto.Query.dynamic_expr()) :: Ecto.Query.dynamic_expr()
+  defp aggregate_value(aggregate, field) do
+    case aggregate do
+      :sum ->
+        dynamic(sum(^field))
 
-  def transform_chart_rule(query, :countd, field_path, :minute, timestamp_field) do
-    field_name = get_field_name_for_aggregation(field_path)
+      :avg ->
+        dynamic(avg(^field))
 
-    query
-    |> select([t], %{
-      timestamp: pg_trunc_minute(field(t, ^timestamp_field)),
-      count: count(field(t, ^field_name), :distinct)
-    })
-    |> group_by([t], pg_trunc_minute(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_minute(field(t, ^timestamp_field)))
-  end
+      :count ->
+        dynamic(count(^field))
 
-  def transform_chart_rule(query, :count, _field_path, :hour, timestamp_field) do
-    query
-    |> select([t], %{
-      timestamp: pg_trunc_hour(field(t, ^timestamp_field)),
-      count: count(field(t, ^timestamp_field))
-    })
-    |> group_by([t], pg_trunc_hour(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_hour(field(t, ^timestamp_field)))
-  end
+      :countd ->
+        dynamic(count(^field, :distinct))
 
-  def transform_chart_rule(query, :countd, field_path, :hour, timestamp_field) do
-    field_name = get_field_name_for_aggregation(field_path)
+      :max ->
+        dynamic(max(^field))
 
-    query
-    |> select([t], %{
-      timestamp: pg_trunc_hour(field(t, ^timestamp_field)),
-      count: count(field(t, ^field_name), :distinct)
-    })
-    |> group_by([t], pg_trunc_hour(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_hour(field(t, ^timestamp_field)))
-  end
-
-  def transform_chart_rule(query, :count, _field_path, :day, timestamp_field) do
-    query
-    |> select([t], %{
-      timestamp: pg_trunc_day(field(t, ^timestamp_field)),
-      count: count(field(t, ^timestamp_field))
-    })
-    |> group_by([t], pg_trunc_day(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_day(field(t, ^timestamp_field)))
-  end
-
-  def transform_chart_rule(query, :countd, field_path, :day, timestamp_field) do
-    field_name = get_field_name_for_aggregation(field_path)
-
-    query
-    |> select([t], %{
-      timestamp: pg_trunc_day(field(t, ^timestamp_field)),
-      count: count(field(t, ^field_name), :distinct)
-    })
-    |> group_by([t], pg_trunc_day(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_day(field(t, ^timestamp_field)))
-  end
-
-  def transform_chart_rule(query, :avg, field_path, :second, timestamp_field) do
-    field_name = get_field_name_for_aggregation(field_path)
-
-    query
-    |> select([t], %{
-      timestamp: pg_trunc_second(field(t, ^timestamp_field)),
-      count: avg(field(t, ^field_name))
-    })
-    |> group_by([t], pg_trunc_second(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_second(field(t, ^timestamp_field)))
-  end
-
-  def transform_chart_rule(query, :avg, field_path, :minute, timestamp_field) do
-    field_name = get_field_name_for_aggregation(field_path)
-
-    query
-    |> select([t], %{
-      timestamp: pg_trunc_minute(field(t, ^timestamp_field)),
-      count: avg(field(t, ^field_name))
-    })
-    |> group_by([t], pg_trunc_minute(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_minute(field(t, ^timestamp_field)))
-  end
-
-  def transform_chart_rule(query, :avg, field_path, :hour, timestamp_field) do
-    field_name = get_field_name_for_aggregation(field_path)
-
-    query
-    |> select([t], %{
-      timestamp: pg_trunc_hour(field(t, ^timestamp_field)),
-      count: avg(field(t, ^field_name))
-    })
-    |> group_by([t], pg_trunc_hour(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_hour(field(t, ^timestamp_field)))
-  end
-
-  def transform_chart_rule(query, :avg, field_path, :day, timestamp_field) do
-    field_name = get_field_name_for_aggregation(field_path)
-
-    query
-    |> select([t], %{
-      timestamp: pg_trunc_day(field(t, ^timestamp_field)),
-      count: avg(field(t, ^field_name))
-    })
-    |> group_by([t], pg_trunc_day(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_day(field(t, ^timestamp_field)))
-  end
-
-  def transform_chart_rule(query, :sum, field_path, :second, timestamp_field) do
-    field_name = get_field_name_for_aggregation(field_path)
-
-    query
-    |> select([t], %{
-      timestamp: pg_trunc_second(field(t, ^timestamp_field)),
-      count: sum(field(t, ^field_name))
-    })
-    |> group_by([t], pg_trunc_second(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_second(field(t, ^timestamp_field)))
-  end
-
-  def transform_chart_rule(query, :sum, field_path, :minute, timestamp_field) do
-    field_name = get_field_name_for_aggregation(field_path)
-
-    query
-    |> select([t], %{
-      timestamp: pg_trunc_minute(field(t, ^timestamp_field)),
-      count: sum(field(t, ^field_name))
-    })
-    |> group_by([t], pg_trunc_minute(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_minute(field(t, ^timestamp_field)))
-  end
-
-  def transform_chart_rule(query, :sum, field_path, :hour, timestamp_field) do
-    field_name = get_field_name_for_aggregation(field_path)
-
-    query
-    |> select([t], %{
-      timestamp: pg_trunc_hour(field(t, ^timestamp_field)),
-      count: sum(field(t, ^field_name))
-    })
-    |> group_by([t], pg_trunc_hour(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_hour(field(t, ^timestamp_field)))
-  end
-
-  def transform_chart_rule(query, :sum, field_path, :day, timestamp_field) do
-    field_name = get_field_name_for_aggregation(field_path)
-
-    query
-    |> select([t], %{
-      timestamp: pg_trunc_day(field(t, ^timestamp_field)),
-      count: sum(field(t, ^field_name))
-    })
-    |> group_by([t], pg_trunc_day(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_day(field(t, ^timestamp_field)))
-  end
-
-  def transform_chart_rule(query, :max, field_path, :second, timestamp_field) do
-    field_name = get_field_name_for_aggregation(field_path)
-
-    query
-    |> select([t], %{
-      timestamp: pg_trunc_second(field(t, ^timestamp_field)),
-      count: max(field(t, ^field_name))
-    })
-    |> group_by([t], pg_trunc_second(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_second(field(t, ^timestamp_field)))
-  end
-
-  def transform_chart_rule(query, :max, field_path, :minute, timestamp_field) do
-    field_name = get_field_name_for_aggregation(field_path)
-
-    query
-    |> select([t], %{
-      timestamp: pg_trunc_minute(field(t, ^timestamp_field)),
-      count: max(field(t, ^field_name))
-    })
-    |> group_by([t], pg_trunc_minute(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_minute(field(t, ^timestamp_field)))
-  end
-
-  def transform_chart_rule(query, :max, field_path, :hour, timestamp_field) do
-    field_name = get_field_name_for_aggregation(field_path)
-
-    query
-    |> select([t], %{
-      timestamp: pg_trunc_hour(field(t, ^timestamp_field)),
-      count: max(field(t, ^field_name))
-    })
-    |> group_by([t], pg_trunc_hour(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_hour(field(t, ^timestamp_field)))
-  end
-
-  def transform_chart_rule(query, :max, field_path, :day, timestamp_field) do
-    field_name = get_field_name_for_aggregation(field_path)
-
-    query
-    |> select([t], %{
-      timestamp: pg_trunc_day(field(t, ^timestamp_field)),
-      count: max(field(t, ^field_name))
-    })
-    |> group_by([t], pg_trunc_day(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_day(field(t, ^timestamp_field)))
-  end
-
-  def transform_chart_rule(query, percentile, field_path, :second, timestamp_field)
-      when is_percentile_aggregate(percentile) do
-    percentile_value = ChartRule.percentile_to_value(percentile)
-    field_name = get_field_name_for_aggregation(field_path)
-
-    query
-    |> select([t], %{
-      timestamp: pg_trunc_second(field(t, ^timestamp_field)),
-      count:
-        fragment(
-          "percentile_cont(?) WITHIN GROUP (ORDER BY ?)",
-          ^percentile_value,
-          field(t, ^field_name)
-        )
-    })
-    |> group_by([t], pg_trunc_second(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_second(field(t, ^timestamp_field)))
-  end
-
-  def transform_chart_rule(query, percentile, field_path, :minute, timestamp_field)
-      when is_percentile_aggregate(percentile) do
-    percentile_value = ChartRule.percentile_to_value(percentile)
-    field_name = get_field_name_for_aggregation(field_path)
-
-    query
-    |> select([t], %{
-      timestamp: pg_trunc_minute(field(t, ^timestamp_field)),
-      count:
-        fragment(
-          "percentile_cont(?) WITHIN GROUP (ORDER BY ?)",
-          ^percentile_value,
-          field(t, ^field_name)
-        )
-    })
-    |> group_by([t], pg_trunc_minute(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_minute(field(t, ^timestamp_field)))
-  end
-
-  def transform_chart_rule(query, percentile, field_path, :hour, timestamp_field)
-      when is_percentile_aggregate(percentile) do
-    percentile_value = ChartRule.percentile_to_value(percentile)
-    field_name = get_field_name_for_aggregation(field_path)
-
-    query
-    |> select([t], %{
-      timestamp: pg_trunc_hour(field(t, ^timestamp_field)),
-      count:
-        fragment(
-          "percentile_cont(?) WITHIN GROUP (ORDER BY ?)",
-          ^percentile_value,
-          field(t, ^field_name)
-        )
-    })
-    |> group_by([t], pg_trunc_hour(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_hour(field(t, ^timestamp_field)))
-  end
-
-  def transform_chart_rule(query, percentile, field_path, :day, timestamp_field)
-      when is_percentile_aggregate(percentile) do
-    percentile_value = ChartRule.percentile_to_value(percentile)
-    field_name = get_field_name_for_aggregation(field_path)
-
-    query
-    |> select([t], %{
-      timestamp: pg_trunc_day(field(t, ^timestamp_field)),
-      count:
-        fragment(
-          "percentile_cont(?) WITHIN GROUP (ORDER BY ?)",
-          ^percentile_value,
-          field(t, ^field_name)
-        )
-    })
-    |> group_by([t], pg_trunc_day(field(t, ^timestamp_field)))
-    |> order_by([t], pg_trunc_day(field(t, ^timestamp_field)))
+      percentile ->
+        value = ChartRule.percentile_to_value(percentile)
+        dynamic(fragment("percentile_cont(?) WITHIN GROUP (ORDER BY ?)", ^value, ^field))
+    end
   end
 
   @impl true

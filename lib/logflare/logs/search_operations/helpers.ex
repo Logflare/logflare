@@ -1,6 +1,7 @@
 defmodule Logflare.Logs.SearchOperations.Helpers do
   @moduledoc false
 
+  alias Logflare.DateTimeUtils
   alias Logflare.Logs.SearchOperations
   alias Logflare.Lql.Rules.FilterRule, as: FR
 
@@ -8,6 +9,17 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
   @type minmax :: %{min: timestamp(), max: timestamp(), message: nil | String.t()}
   @type bounds :: %{min: timestamp(), max: timestamp()}
   @default_open_interval_length 1_000
+
+  @spec aggregate_bucket_bounds(timestamp(), timestamp(), SearchOperations.chart_period()) ::
+          bounds()
+  def aggregate_bucket_bounds(min, max, period) do
+    min = DateTimeUtils.truncate(min, period)
+    max = DateTimeUtils.truncate(max, period)
+
+    max = if min == max and period == :second, do: Timex.shift(max, seconds: 1), else: max
+
+    %{min: min, max: max}
+  end
 
   @spec get_min_max_filter_timestamps([FR.t()], atom()) :: minmax()
   def get_min_max_filter_timestamps([], chart_period) do
