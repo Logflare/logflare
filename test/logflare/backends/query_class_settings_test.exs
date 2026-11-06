@@ -36,9 +36,13 @@ defmodule Logflare.Backends.QueryClassSettingsTest do
 
     test_pid = self()
 
-    expect(ClusterUtils, :rpc_multicast, fn ContextCache, :bust_keys, [keys] ->
-      send(test_pid, {:policy_evictions, keys})
-      ContextCache.bust_keys(keys)
+    stub(ClusterUtils, :rpc_multicast, fn
+      ContextCache, :bust_keys, [keys] ->
+        send(test_pid, {:policy_evictions, keys})
+        ContextCache.bust_keys(keys)
+
+      Backends, :apply_backend_change_local, [_backend_id] ->
+        :ok
     end)
 
     assert {:ok, _} =

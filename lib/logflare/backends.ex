@@ -423,6 +423,8 @@ defmodule Logflare.Backends do
           invalidate_query_policy(updated)
         end
 
+        apply_backend_change(updated.id)
+
         {:ok, typecast_config_string_map_to_atom_map(updated)}
 
       error ->
@@ -615,6 +617,7 @@ defmodule Logflare.Backends do
       QueryContext.invalidate_backend(deleted)
       if deleted.default_ingest?, do: default_ingest_flag_changed(deleted)
 
+      apply_backend_change(deleted.id)
       {:ok, deleted}
     end
   end
@@ -629,24 +632,39 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Applies the saved state of a backend to its processes on the local node.
+  Evicts the backend's cached entry on the local node and applies its saved state to
+  its processes there.
 
   Invoked on every node by `Logflare.ContextCache.CacheBusterWorker` when the backend's
-  row changes, so that running processes pick up changes made in any BEAM cluster.
-  A consolidated backend has its adaptor notified and, after `pipeline_swap_delay_ms/0`,
-  its running pipelines replaced through `Adaptor.replace_pipelines/1`, which may skip
-  pipelines already running with the saved settings, or its pipeline started if none
-  runs and it is a default ingest backend; any other backend has the
-  `SourceSup` of each linked source restarted, unless it already runs the backend with
-  its saved type and config. A deleted backend has its consolidated
-  pipeline stopped and every adaptor notified.
+  row changes, so that running processes pick up changes made in any BEAM cluster, and
+  in the cluster that saved the change by `update_backend/2`, `delete_backend/1` and
+  `configure_query_class_settings/3`. Processes already running with the saved state
+  are left as they are, so applying a change twice is safe.
+
+  - A consolidated backend has its adaptor notified and, after
+    `pipeline_swap_delay_ms/0`, its running pipelines replaced through
+    `Adaptor.replace_pipelines/1`. A default ingest backend with no running pipeline
+    has one started.
+  - Any other backend has the `SourceSup` of each linked source restarted, unless it
+    already runs the backend with its saved type and config.
+  - A deleted backend has its consolidated pipeline stopped and every adaptor notified.
   """
   @spec apply_backend_change_local(pos_integer()) :: :ok
   def apply_backend_change_local(backend_id) when is_pos_integer(backend_id) do
+    ContextCache.bust_keys([{__MODULE__, backend_id}])
+
     case get_backend(backend_id) do
       nil -> stop_backend_local(backend_id)
       backend -> apply_backend_config_local(backend)
     end
+  end
+
+  @spec apply_backend_change(pos_integer()) :: :ok
+  defp apply_backend_change(backend_id) do
+    Repo.after_commit(fn ->
+      ContextCache.bust_keys([{__MODULE__, backend_id}])
+      Cluster.Utils.rpc_multicast(__MODULE__, :apply_backend_change_local, [backend_id])
+    end)
   end
 
   @spec stop_backend_local(pos_integer()) :: :ok

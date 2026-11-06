@@ -325,7 +325,7 @@ defmodule Logflare.BackendsTest do
     end
   end
 
-  describe "apply_backend_change_local/1 with a running read pool" do
+  describe "backend changes with a running read pool" do
     setup do
       insert(:plan, name: "Free")
       user = insert(:user)
@@ -366,6 +366,29 @@ defmodule Logflare.BackendsTest do
       assert :ok = Backends.apply_backend_change_local(backend.id)
 
       refute Process.alive?(manager_pid)
+    end
+
+    test "backend saved with new query class settings", %{backend: backend} do
+      pool_pid = ConnectionManager.get_pool_pid(backend)
+      admin = insert(:user, admin: true)
+      policy = %{"default" => %{"priority" => 5}}
+      {:ok, _configured} = Backends.configure_query_class_settings(admin, backend, policy)
+
+      assert :ok = Backends.apply_backend_change_local(backend.id)
+
+      assert ^pool_pid = ConnectionManager.get_pool_pid(backend)
+    end
+
+    test "update_backend/2 with a new read pool size", %{backend: backend} do
+      {:ok, _updated} = Backends.update_backend(backend, %{config: %{read_pool_size: 2}})
+
+      TestUtils.retry_assert(fn -> refute ConnectionManager.pool_active?(backend) end)
+    end
+
+    test "delete_backend/1", %{backend: backend, manager_pid: manager_pid} do
+      {:ok, _deleted} = Backends.delete_backend(backend)
+
+      TestUtils.retry_assert(fn -> refute Process.alive?(manager_pid) end)
     end
   end
 
