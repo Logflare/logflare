@@ -152,7 +152,8 @@ defmodule Logflare.Endpoints.Cache do
 
   def get_by(kw), do: apply_repo_fun(:get_by, [kw])
 
-  @spec get_mapped_query_by_token(String.t()) :: EndpointQuery.t() | nil | {:error, String.t()}
+  @spec get_mapped_query_by_token(String.t()) ::
+          EndpointQuery.t() | nil | {:error, String.t() | :database_unavailable}
   def get_mapped_query_by_token(token) do
     with %EndpointQuery{} = query <- apply_repo_fun(:get_query_with_user_by_token, [token]) do
       Endpoints.map_query_sources(query)

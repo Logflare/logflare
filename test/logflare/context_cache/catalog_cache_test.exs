@@ -75,6 +75,73 @@ defmodule Logflare.ContextCache.CatalogCacheTest do
     end
   end
 
+  for failure <- [:connection_error, :noproc, :killed, :typed_error] do
+    @failure failure
+
+    test "#{failure} returns availability without caching it and the next load recovers" do
+      loader = fn ->
+        case @failure do
+          :connection_error -> raise DBConnection.ConnectionError, message: "primary unavailable"
+          :noproc -> exit({:noproc, {Repo, :query, []}})
+          :killed -> exit({:killed, {Repo, :query, []}})
+          :typed_error -> {:error, :database_unavailable}
+        end
+      end
+
+      assert {:error, :database_unavailable} = CatalogCache.fetch(@cache, :owner, loader)
+      assert Cachex.size!(@cache) == 0
+      assert [%{id: 1}] = CatalogCache.fetch(@cache, :owner, fn -> [%{id: 1}] end)
+    end
+  end
+
+  test "unexpected loader exceptions retain their original stack instead of becoming MatchError" do
+    error =
+      assert_raise Cachex.Error, ~r/catalog loader bug/, fn ->
+        CatalogCache.fetch(@cache, :owner, fn -> raise ArgumentError, "catalog loader bug" end)
+      end
+
+    assert Enum.any?(error.stack, fn {module, _function, _arity, _location} ->
+             module == __MODULE__
+           end)
+
+    assert Cachex.size!(@cache) == 0
+  end
+
+  test "a missing cache is not reported as database unavailability" do
+    assert_raise RuntimeError, ~r/is not running/, fn ->
+      CatalogCache.fetch(__MODULE__.Missing, :owner, fn -> [] end)
+    end
+  end
+
+  test "a primary failure during the post-invalidation reread is typed and retryable" do
+    test_pid = self()
+    counter = start_supervised!({Agent, fn -> 0 end})
+
+    loader = fn ->
+      case Agent.get_and_update(counter, &{&1, &1 + 1}) do
+        0 ->
+          send(test_pid, {:snapshot_read, self()})
+
+          receive do
+            :release -> [%{id: 1, name: "old"}]
+          end
+
+        _ ->
+          raise DBConnection.ConnectionError, message: "primary unavailable after invalidation"
+      end
+    end
+
+    task = Task.async(fn -> CatalogCache.fetch(@cache, :owner, loader) end)
+    assert_receive {:snapshot_read, worker}, 1_000
+    assert {:ok, 0} = CachexOps.delete_keys(@cache, CatalogCache.keys_to_bust(@cache, [:owner]))
+    send(worker, :release)
+
+    assert {:error, :database_unavailable} = Task.await(task)
+
+    assert [%{id: 1, name: "new"}] =
+             CatalogCache.fetch(@cache, :owner, fn -> [%{id: 1, name: "new"}] end)
+  end
+
   test "losing generation metadata never revives an older catalog" do
     assert [%{name: "old"}] =
              CatalogCache.fetch(@cache, :owner, fn -> [%{id: 1, name: "old"}] end)
