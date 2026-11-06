@@ -27,18 +27,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
     insert(:plan, name: "Free")
 
     {source, backend} = setup_clickhouse_test()
+    drop_clickhouse_tables_on_exit(backend)
 
-    {:ok, supervisor_pid} = ClickHouseAdaptor.start_link(backend)
+    start_supervised!({ClickHouseAdaptor, backend})
 
-    on_exit(fn ->
-      if Process.alive?(supervisor_pid) do
-        Process.exit(supervisor_pid, :shutdown)
-      end
-    end)
-
-    TestUtils.retry_assert(fn ->
-      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
-    end)
+    assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
 
     context = Pipeline.build_processor_context(backend.id)
 

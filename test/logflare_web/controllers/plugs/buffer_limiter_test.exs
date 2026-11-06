@@ -194,6 +194,48 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
                     %{source_id: ^source_id, source_token: ^source_token}}
   end
 
+  describe "single-tenant ClickHouse system default" do
+    TestUtils.setup_single_tenant(backend_type: :clickhouse)
+
+    test "uses the consolidated default cache", %{
+      conn: conn,
+      source: source
+    } do
+      stub(IngestEventQueue, :max_consolidated_queue_size, fn -> 50 end)
+      backend = Backends.get_default_backend(%Logflare.User{id: source.user_id})
+
+      over_limit = Backends.max_buffer_queue_len() + 1
+
+      Logflare.PubSubRates.Cache.cache_buffers(source.id, nil, %{
+        Node.self() => %{len: over_limit, queues: [{{source.id, nil, self()}, over_limit}]}
+      })
+
+      conn = conn |> assign(:source, source) |> BufferLimiter.call(%{})
+      refute conn.halted
+
+      assert Backends.system_default_ingest_queue_key(source) == {:consolidated, backend.id}
+
+      Logflare.PubSubRates.Cache.cache_buffers(:consolidated, backend.id, %{
+        Node.self() => %{len: 50, queues: [{{:consolidated, backend.id, self()}, 50}]}
+      })
+
+      conn = conn |> recycle() |> assign(:source, source) |> BufferLimiter.call(%{})
+      refute conn.halted
+
+      Logflare.PubSubRates.Cache.cache_buffers(:consolidated, backend.id, %{
+        Node.self() => %{
+          len: 51,
+          queues: [{{:consolidated, backend.id, self()}, 51}]
+        }
+      })
+
+      conn = conn |> recycle() |> assign(:source, source) |> BufferLimiter.call(%{})
+
+      assert conn.halted
+      assert json_response(conn, 429)
+    end
+  end
+
   describe "default ingest feature" do
     setup do
       user = insert(:user)
