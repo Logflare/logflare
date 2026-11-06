@@ -131,6 +131,8 @@ defmodule Logflare.ContextCache.Gossip do
   defp do_multicast(Logflare.Auth.Cache, _key, _value), do: :ignore
   defp do_multicast(Logflare.Rules.Cache, _key, _value), do: :ignore
 
+  defp do_multicast(Logflare.Billing.Cache, {:get_plan_by_user, _args}, _value), do: :ignore
+
   defp do_multicast(cache, key, value) when is_atom(cache) do
     %{enabled: enabled, ratio: ratio, max_nodes: max_nodes} =
       Application.fetch_env!(:logflare, :context_cache_gossip)
