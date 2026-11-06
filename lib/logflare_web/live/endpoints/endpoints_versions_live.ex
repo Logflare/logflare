@@ -347,9 +347,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
       |> Repo.all()
     end
 
-    if Keyword.get(opts, :replica?, true),
-      do: Repo.with_replica(query),
-      else: Repo.with_primary(query)
+    Repo.with_read(query, Keyword.get(opts, :replica?, true))
   end
 
   @spec assign_versions(Phoenix.LiveView.Socket.t(), EndpointQuery.t(), keyword()) ::
