@@ -16,7 +16,10 @@ defmodule LogflareWeb.SearchLive.FormComponents do
   attr :lql_rules, :list, required: true
   attr :chart_aggregate_enabled?, :boolean, required: true
 
-  def chart_controls(assigns) do
+  def chart_controls(%{lql_rules: lql_rules} = assigns) do
+    chart_rules = Rules.get_chart_rules(lql_rules)
+    assigns = assign(assigns, :multiple_aggregates?, length(chart_rules) > 1)
+
     ~H"""
     <div class="d-flex flex-wrap align-items-center form-text pt-2">
       <div class="pr-3 pt-1 pb-1  hide-on-mobile">
@@ -30,10 +33,10 @@ defmodule LogflareWeb.SearchLive.FormComponents do
           )}
         </select>
       </div>
-      <div class="pr-3 pt-1 pb-1 hide-on-mobile">
+      <div :if={!@multiple_aggregates?} class="pr-3 pt-1 pb-1 hide-on-mobile">
         Aggregate:
       </div>
-      <div class="pr-3 pt-1 pb-1">
+      <div :if={!@multiple_aggregates?} class="pr-3 pt-1 pb-1">
         <%= if @chart_aggregate_enabled? do %>
           <select id="search_chart_aggregate" name="chart_aggregate" class="form-control form-control-sm">
             {Phoenix.HTML.Form.options_for_select(
@@ -204,7 +207,6 @@ defmodule LogflareWeb.SearchLive.FormComponents do
   attr :uri_params, :map, required: true
   attr :lql_rules, :list, required: true
   attr :user, Logflare.User, required: true
-  attr :search_op_log_aggregates, :any, default: nil
   attr :has_results?, :boolean
   attr :source, Logflare.Sources.Source, required: true
   attr :last_query_completed_at, :any, default: nil

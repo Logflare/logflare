@@ -311,6 +311,7 @@ defmodule LogflareWeb.Source.SearchLV do
           "Components.LogEventsChart",
           %{
             data: if(@search_op_log_aggregates, do: @search_op_log_aggregates.rows, else: []),
+            series: if(@search_op_log_aggregates, do: @search_op_log_aggregates.series, else: []),
             loading: @chart_loading,
             display_timezone: @search_timezone || "Etc/UTC",
             chart_period: get_chart_period(@lql_rules, "minute"),
@@ -608,9 +609,16 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_event(
         "chart_controls_update",
-        %{"chart_aggregate" => new_chart_agg, "chart_period" => new_chart_period},
+        %{"chart_period" => new_chart_period} = params,
         socket
       ) do
+    new_chart_agg =
+      params
+      |> Map.get(
+        "chart_aggregate",
+        to_string(Rules.get_chart_aggregate(socket.assigns.lql_rules, :count))
+      )
+
     socket =
       maybe_update_chart_controls(
         socket,
@@ -758,11 +766,12 @@ defmodule LogflareWeb.Source.SearchLV do
     if new_chart_agg != prev_chart_rule.aggregate or
          new_chart_period != prev_chart_rule.period do
       lql_rules =
-        Lql.Rules.update_chart_rule(
-          socket.assigns.lql_rules,
+        socket.assigns.lql_rules
+        |> Lql.Rules.update_chart_rule(
           Lql.Rules.default_chart_rule(),
-          %{aggregate: new_chart_agg, period: new_chart_period}
+          %{aggregate: new_chart_agg}
         )
+        |> Lql.Rules.put_chart_period(new_chart_period)
 
       qs = Lql.encode!(lql_rules)
 

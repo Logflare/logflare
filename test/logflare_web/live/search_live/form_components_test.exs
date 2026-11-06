@@ -3,10 +3,37 @@ defmodule LogflareWeb.SearchLive.FormComponentsTest do
 
   import Phoenix.LiveViewTest
 
+  alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Sources.Source
   alias Logflare.User
   alias LogflareWeb.SearchLive.AiAssist
   alias LogflareWeb.SearchLive.FormComponents
+
+  describe "chart_controls/1" do
+    test "hides the aggregate label and dropdown only for multiple chart rules" do
+      sum = %ChartRule{aggregate: :sum, path: "metadata.latency"}
+      avg = %ChartRule{aggregate: :avg, path: "metadata.latency"}
+
+      for rules <- [[], [sum], [sum, avg]] do
+        document =
+          render_component(&FormComponents.chart_controls/1, %{
+            lql_rules: rules,
+            chart_aggregate_enabled?: rules != []
+          })
+          |> Floki.parse_document!()
+
+        assert [_period] = Floki.find(document, "#search_chart_period")
+
+        if length(rules) > 1 do
+          assert Floki.find(document, "#search_chart_aggregate") == []
+          refute Floki.text(document) =~ "Aggregate:"
+        else
+          assert [_aggregate] = Floki.find(document, "#search_chart_aggregate")
+          assert Floki.text(document) =~ "Aggregate:"
+        end
+      end
+    end
+  end
 
   describe "search_controls/1" do
     test "shows the platform shortcut when AI assist is enabled" do
