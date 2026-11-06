@@ -11,6 +11,7 @@ defmodule Logflare.Sql do
 
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Endpoints
+  alias Logflare.Endpoints.ClickHouseSqlSettings
   alias Logflare.SingleTenant
   alias Logflare.Sources
   alias Logflare.Sql.AstUtils
@@ -265,13 +266,17 @@ defmodule Logflare.Sql do
           user_or_user_id :: User.t() | pos_integer() | nil
         ) ::
           {:ok, String.t()} | {:error, String.t()}
-  def transform(lang, input, user_id) when is_integer(user_id) do
+  @spec transform(query_language(), input(), User.t() | pos_integer() | nil, keyword()) ::
+          {:ok, String.t()} | {:error, String.t()}
+  def transform(language, input, user_or_user_id, opts \\ [])
+
+  def transform(lang, input, user_id, opts) when is_integer(user_id) do
     user = Logflare.Users.get(user_id)
-    transform(lang, input, user)
+    transform(lang, input, user, opts)
   end
 
   # clickhouse with sandboxed query support
-  def transform(:ch_sql = language, input, %User{} = user) do
+  def transform(:ch_sql = language, input, %User{} = user, opts) do
     {query, sandboxed_query} =
       case input do
         q when is_non_empty_binary(q) -> {q, nil}
@@ -293,10 +298,12 @@ defmodule Logflare.Sql do
            sandboxed_query: sandboxed_query,
            sandboxed_query_ast: sandboxed_query_ast,
            ast: statements,
-           dialect: sql_dialect
+           dialect: sql_dialect,
+           allow_clickhouse_sql_settings: Keyword.get(opts, :allow_clickhouse_sql_settings, false)
          },
          data = DialectTransformer.ClickHouse.build_transformation_data(user, base_data),
          :ok <- validate_query(statements, data),
+         :ok <- ClickHouseSqlSettings.validate_sandboxed(statements, sandboxed_query_ast),
          :ok <- maybe_validate_sandboxed_query_ast({statements, sandboxed_query_ast}, data) do
       data = %{data | sandboxed_query_ast: sandboxed_query_ast}
 
@@ -307,7 +314,7 @@ defmodule Logflare.Sql do
   end
 
   # postgres (no sandboxed query support)
-  def transform(:pg_sql = language, query, %User{} = user) do
+  def transform(:pg_sql = language, query, %User{} = user, _opts) do
     sql_dialect = to_dialect(language)
     sources = Sources.list_sources_by_user(user)
     source_mapping = source_mapping(sources)
@@ -333,7 +340,7 @@ defmodule Logflare.Sql do
   end
 
   # default to bq_sql
-  def transform(lang, input, %User{} = user) when lang in [:bq_sql, nil] do
+  def transform(lang, input, %User{} = user, _opts) when lang in [:bq_sql, nil] do
     {query, sandboxed_query} =
       case input do
         q when is_non_empty_binary(q) -> {q, nil}
@@ -368,7 +375,7 @@ defmodule Logflare.Sql do
   end
 
   # Handle nil user case (e.g., during form validation)
-  def transform(language, query, nil) when language in [:ch_sql, :pg_sql, :bq_sql, nil] do
+  def transform(language, query, nil, _opts) when language in [:ch_sql, :pg_sql, :bq_sql, nil] do
     {:ok, query}
   end
 
@@ -602,7 +609,7 @@ defmodule Logflare.Sql do
     with :ok <- check_single_query_only(ast),
          :ok <- check_select_statement_only(ast, dialect),
          :ok <- maybe_check_restricted_functions(ast, dialect, data),
-         :ok <- maybe_check_restricted_settings(ast, dialect),
+         :ok <- maybe_check_restricted_settings(ast, dialect, data),
          :ok <- has_wildcard_in_select(ast),
          :ok <- check_all_sources_allowed(ast, data) do
       :ok
@@ -615,9 +622,13 @@ defmodule Logflare.Sql do
 
   defp maybe_check_restricted_functions(_ast, _dialect, _data), do: :ok
 
-  defp maybe_check_restricted_settings(ast, "clickhouse"), do: has_restricted_settings(ast)
+  defp maybe_check_restricted_settings(ast, "clickhouse", %{allow_clickhouse_sql_settings: true}) do
+    with {:ok, stripped, _requests} <- ClickHouseSqlSettings.split_requests(ast),
+         do: has_restricted_settings(stripped)
+  end
 
-  defp maybe_check_restricted_settings(_ast, _dialect), do: :ok
+  defp maybe_check_restricted_settings(ast, "clickhouse", _data), do: has_restricted_settings(ast)
+  defp maybe_check_restricted_settings(_ast, _dialect, _data), do: :ok
 
   # applies only to the sandboed query
   defp maybe_validate_sandboxed_query_ast({cte_ast, ast}, data) when is_list(ast) do

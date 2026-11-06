@@ -3,11 +3,12 @@ defmodule Logflare.Endpoints.ClickHouseSettings do
   Typed ClickHouse resource and scheduling policy. Consumer SQL is validated separately;
   trusted settings are combined before being applied to the final assembled query.
 
-  Only internal administrators can configure these limits; the public endpoint
-  editor and API do not accept them. The final outer SETTINGS clause is built
-  from parsed SQL, and a matching key anywhere in the query is rejected rather
-  than relying on ClickHouse precedence between nested/outer settings. For
-  hard cluster-wide ceilings, also use ClickHouse query-user profile constraints.
+  Only internal administrators can configure enforced endpoint policy. Endpoint
+  SQL can request stricter resource limits and lower scheduling priority through
+  `ClickHouseSqlSettings`, which removes and merges those requests first. This
+  module rejects any remaining conflicting SQL keys rather than relying on
+  nested/outer setting precedence. Hard cluster-wide ceilings also require
+  ClickHouse query-user profile constraints.
   """
 
   alias Logflare.Sql.Parser
