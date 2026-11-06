@@ -400,6 +400,9 @@ defmodule Logflare.Alerting do
 
   @doc """
   Lists future (upcoming) jobs for an alert query.
+
+  Reads from primary by default so schedule changes are immediately visible.
+  Pass `replica?: true` to opt into stale-tolerant reads.
   """
   @spec list_future_jobs(integer(), keyword()) :: [Oban.Job.t()]
   def list_future_jobs(alert_query_id, opts \\ []) do
@@ -413,7 +416,7 @@ defmodule Logflare.Alerting do
       |> Repo.all()
     end
 
-    if Keyword.get(opts, :replica?, true),
+    if Keyword.get(opts, :replica?, false),
       do: Repo.with_replica(read),
       else: Repo.with_primary(read)
   end
