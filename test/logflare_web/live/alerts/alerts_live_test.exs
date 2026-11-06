@@ -735,6 +735,8 @@ defmodule LogflareWeb.AlertsLiveTest do
         if jobs == [] do
           refute html =~ "Upcoming Jobs"
         else
+          html = view |> element("button[phx-click='toggle-execution-history']") |> render_click()
+
           for job <- jobs do
             assert html =~ Calendar.strftime(job.scheduled_at, "%Y-%m-%d %H:%M:%S UTC")
           end
