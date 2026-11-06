@@ -3581,6 +3581,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       await_pool_queue(backend, 0, 1)
 
+      backend = save_backend_config!(backend, %{read_pool_size: 2})
       assert :ok == ConnectionManager.refresh_pool(backend)
       assert {:ok, {[%{"result" => 2}], _bytes}} = Task.await(waiter)
     end

@@ -39,11 +39,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   `recycle_backend/1` triggers an immediate connection recycle of a backend's read pool
   on every node in the cluster. Useful after scaling an upstream ClickHouse service.
 
-  `refresh_backend/1` stops a backend's read pool on every node so the pools restart
-  with freshly loaded backend configuration.
+  `refresh_backend_local/1` stops the local node's read pools of a backend whose
+  connection options changed, so they restart with the current configuration.
 
-  `terminate_backend/1` terminates a backend's read `ConnectionManager` on every node,
-  e.g. after a backend is deleted.
+  `terminate_backend_local/1` terminates a backend's read `ConnectionManager` processes on the
+  local node, e.g. after a backend is deleted.
   """
 
   use Supervisor
@@ -206,23 +206,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   end
 
   @doc """
-  Busts the local backend cache and stops the backend's read pool on the local node, so
-  that the next query restarts it with freshly loaded backend configuration.
+  Busts the local backend cache and stops each of the backend's read pools on the local
+  node whose connection options differ from the ones built from `backend`, so that the
+  next query restarts it with the current configuration.
   """
-  @spec refresh_backend_local(pos_integer()) :: :ok
-  def refresh_backend_local(backend_id) when is_pos_integer(backend_id) do
+  @spec refresh_backend_local(Backend.t()) :: :ok
+  def refresh_backend_local(%Backend{id: backend_id} = backend) do
     ContextCache.bust_keys([{Backends, backend_id}])
 
     backend_id
     |> lookup_managers()
-    |> Enum.each(&safe_refresh/1)
+    |> Enum.each(&safe_refresh(&1, backend))
 
     :ok
   end
 
-  @spec safe_refresh(pid()) :: :ok
-  defp safe_refresh(manager_pid) do
-    ConnectionManager.refresh_pool(manager_pid)
+  @spec safe_refresh(pid(), Backend.t()) :: :ok
+  defp safe_refresh(manager_pid, backend) do
+    ConnectionManager.refresh_manager_pool(manager_pid, backend)
   catch
     :exit, _reason -> :ok
   end
