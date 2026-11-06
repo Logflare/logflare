@@ -153,7 +153,13 @@ defmodule Logflare.Endpoints.Cache do
     do: apply_repo_fun(:get_endpoint_query_at_version, [query_id, version_number])
 
   def get_by(kw), do: apply_repo_fun(:get_by, [kw])
-  def get_mapped_query_by_token(token), do: apply_repo_fun(:get_mapped_query_by_token, [token])
+
+  @spec get_mapped_query_by_token(String.t()) :: EndpointQuery.t() | nil | {:error, String.t()}
+  def get_mapped_query_by_token(token) do
+    with %EndpointQuery{} = query <- apply_repo_fun(:get_query_with_user_by_token, [token]) do
+      Endpoints.map_query_sources(query)
+    end
+  end
 
   @spec list_by_user_id(pos_integer()) :: [Endpoints.EndpointQuery.t()]
   def list_by_user_id(user_id) when is_integer(user_id) do

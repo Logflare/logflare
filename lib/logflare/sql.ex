@@ -536,7 +536,7 @@ defmodule Logflare.Sql do
   @spec source_mapping(
           query :: String.t(),
           user :: User.t() | pos_integer(),
-          mapping :: map(),
+          mapping :: map() | nil,
           opts :: Keyword.t()
         ) ::
           {:ok, String.t()} | {:error, String.t()}
@@ -544,6 +544,10 @@ defmodule Logflare.Sql do
 
   def source_mapping(query, %User{id: user_id}, mapping, opts) do
     source_mapping(query, user_id, mapping, opts)
+  end
+
+  def source_mapping(query, user_id, nil, opts) when is_list(opts) and is_integer(user_id) do
+    source_mapping(query, user_id, %{}, opts)
   end
 
   def source_mapping(query, user_id, mapping, opts) when is_list(opts) and is_integer(user_id) do

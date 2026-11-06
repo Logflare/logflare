@@ -205,6 +205,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
           |> assign(:selected_version, selected_version)
           |> assign(:endpoint_snapshot, endpoint_snapshot)
         else
+          {:error, message} when is_binary(message) -> put_flash(socket, :error, message)
           _ -> socket
         end
       end)
@@ -297,7 +298,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
     {:noreply,
      socket
      |> assign(:endpoint, endpoint)
-     |> assign_versions(endpoint)
+     |> assign_versions(endpoint, replica?: false)
      |> put_flash(:error, "Version restored, but cached results could not be invalidated.")}
   end
 

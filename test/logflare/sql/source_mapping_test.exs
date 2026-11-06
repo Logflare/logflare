@@ -11,6 +11,18 @@ defmodule Logflare.Sql.SourceMappingTest do
     %{user: user}
   end
 
+  for mapping <- [nil, %{}] do
+    test "accepts #{inspect(mapping)} mappings for queries without saved source identities", %{
+      user: user
+    } do
+      mapping = unquote(Macro.escape(mapping))
+      assert {:ok, "SELECT 1"} = Sql.source_mapping("SELECT 1", user.id, mapping)
+
+      assert {:ok, "SELECT id FROM existing"} =
+               Sql.source_mapping("SELECT id FROM existing", user, mapping)
+    end
+  end
+
   test "retries missing mapped tokens against the primary", %{user: user} do
     source = insert(:source, user: user, name: "new_source")
     mapping = %{"old_name" => to_string(source.token)}
