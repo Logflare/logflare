@@ -773,7 +773,12 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
         send(
           pid,
-          {:opts, %{useQueryCache: opts[:body].useQueryCache, labels: opts[:body].labels}}
+          {:opts,
+           %{
+             useQueryCache: opts[:body].useQueryCache,
+             labels: opts[:body].labels,
+             max_limit: opts[:body].maxResults
+           }}
         )
 
         {:ok, TestUtils.gen_bq_response([%{"testing" => "results-123"}])}
@@ -799,6 +804,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert_received {:opts,
                        %{
                          useQueryCache: false,
+                         max_limit: 1_000,
                          labels: %{"endpoint_id" => "nil", "managed_by" => "logflare"}
                        }}
 
@@ -826,13 +832,15 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
 
     test "edit endpoint", %{conn: conn, user: user} do
-      endpoint = insert(:endpoint, user: user)
+      endpoint = insert(:endpoint, user: user, max_limit: 2_000)
       {:ok, view, _html} = live_with_redirect(conn, "/endpoints/#{endpoint.id}/edit")
       refute render(view) =~ "results-123"
 
       view
       |> element("form[phx-submit='run-query']")
       |> render_submit(%{}) =~ "results-123"
+
+      assert_received {:opts, %{max_limit: 2_000}}
 
       assert view
              |> element("form#endpoint")
