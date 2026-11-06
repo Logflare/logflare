@@ -154,14 +154,15 @@ defmodule Logflare.Endpoints.Cache do
 
   def get_by(kw), do: apply_repo_fun(:get_by, [kw])
 
-  @spec get_mapped_query_by_token(String.t()) :: EndpointQuery.t() | nil | {:error, String.t()}
+  @spec get_mapped_query_by_token(String.t()) ::
+          EndpointQuery.t() | nil | {:error, String.t() | :database_unavailable}
   def get_mapped_query_by_token(token) do
     with %EndpointQuery{} = query <- apply_repo_fun(:get_query_with_user_by_token, [token]) do
       Endpoints.map_query_sources(query)
     end
   end
 
-  @spec list_by_user_id(pos_integer()) :: [Endpoints.EndpointQuery.t()]
+  @spec list_by_user_id(pos_integer()) :: [Endpoints.EndpointQuery.t()] | CatalogCache.error()
   def list_by_user_id(user_id) when is_integer(user_id) do
     if Repo.in_transaction?() do
       Endpoints.list_endpoints_by(user_id: user_id)

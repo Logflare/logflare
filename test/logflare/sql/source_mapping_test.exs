@@ -1,6 +1,8 @@
 defmodule Logflare.Sql.SourceMappingTest do
   use Logflare.DataCase
 
+  alias Logflare.Endpoints.EndpointQuery
+  alias Logflare.Sources
   alias Logflare.Sources.Catalog
   alias Logflare.Sql
 
@@ -21,6 +23,47 @@ defmodule Logflare.Sql.SourceMappingTest do
       assert {:ok, "SELECT id FROM existing"} =
                Sql.source_mapping("SELECT id FROM existing", user, mapping)
     end
+  end
+
+  test "catalog failures propagate through SQL consumers without list-processing crashes", %{
+    user: user
+  } do
+    Cachex.clear!(Catalog.Cache)
+
+    stub(Sources, :list_source_catalog_by_user, fn _ ->
+      raise DBConnection.ConnectionError, message: "primary unavailable"
+    end)
+
+    for language <- [:bq_sql, :ch_sql, :pg_sql] do
+      assert {:error, :database_unavailable} =
+               Sql.transform(language, "SELECT id FROM existing", user)
+    end
+
+    assert {:error, :database_unavailable} = Sql.sources("SELECT id FROM existing", user)
+
+    assert {:error, :database_unavailable} =
+             Sql.source_mapping("SELECT id FROM existing", user, %{})
+
+    assert {:error, :database_unavailable} =
+             Catalog.Cache.source_name_by_token(user.id, Ecto.UUID.generate())
+
+    changeset =
+      %EndpointQuery{user: user, user_id: user.id}
+      |> Ecto.Changeset.change(query: "SELECT id FROM existing")
+      |> EndpointQuery.update_source_mapping()
+
+    assert {"source catalog is temporarily unavailable", []} = changeset.errors[:query]
+  end
+
+  test "the primary retry also returns typed availability failures", %{user: user} do
+    stub(Sources, :list_source_catalog_by_user, fn _ ->
+      raise DBConnection.ConnectionError, message: "primary unavailable during retry"
+    end)
+
+    assert {:error, :database_unavailable} =
+             Sql.source_mapping("SELECT id FROM old_name", user, %{
+               "old_name" => Ecto.UUID.generate()
+             })
   end
 
   test "retries missing mapped tokens against the primary", %{user: user} do

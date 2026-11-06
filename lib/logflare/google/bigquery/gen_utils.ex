@@ -295,6 +295,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
         case SourceCatalog.source_name_by_token(user_id, uuid) do
           nil -> message
+          {:error, :database_unavailable} -> message
           source_name -> String.replace(message, regex, source_name)
         end
 

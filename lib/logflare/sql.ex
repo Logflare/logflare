@@ -10,6 +10,7 @@ defmodule Logflare.Sql do
   require Logger
 
   alias Logflare.Alerting.AlertQuery
+  alias Logflare.Cache.CachexOps
   alias Logflare.Endpoints
   alias Logflare.Repo
   alias Logflare.SingleTenant
@@ -267,7 +268,7 @@ defmodule Logflare.Sql do
           query :: input(),
           user_or_user_id :: User.t() | pos_integer() | nil
         ) ::
-          {:ok, String.t()} | {:error, String.t()}
+          {:ok, String.t()} | {:error, String.t() | :database_unavailable}
   def transform(lang, input, user_id) when is_integer(user_id) do
     case Users.get(user_id) do
       %User{} = user -> transform(lang, input, user)
@@ -284,12 +285,11 @@ defmodule Logflare.Sql do
       end
 
     sql_dialect = to_dialect(language)
-    sources = SourceCatalog.list_by_user(user)
-    source_mapping = source_mapping(sources)
-
     Logger.metadata(query_string: query, user_id: user.id)
 
-    with {:ok, statements} <- Parser.parse(sql_dialect, query),
+    with sources when is_list(sources) <- SourceCatalog.list_by_user(user),
+         source_mapping = source_mapping(sources),
+         {:ok, statements} <- Parser.parse(sql_dialect, query),
          {:ok, sandboxed_query_ast} <- sandboxed_ast(sandboxed_query, sql_dialect),
          base_data = %{
            sources: sources,
@@ -314,12 +314,11 @@ defmodule Logflare.Sql do
   # postgres (no sandboxed query support)
   def transform(:pg_sql = language, query, %User{} = user) do
     sql_dialect = to_dialect(language)
-    sources = SourceCatalog.list_by_user(user)
-    source_mapping = source_mapping(sources)
-
     Logger.metadata(query_string: query, user_id: user.id)
 
-    with {:ok, statements} <- Parser.parse(sql_dialect, query),
+    with sources when is_list(sources) <- SourceCatalog.list_by_user(user),
+         source_mapping = source_mapping(sources),
+         {:ok, statements} <- Parser.parse(sql_dialect, query),
          data = %{
            sources: sources,
            source_mapping: source_mapping,
@@ -345,12 +344,11 @@ defmodule Logflare.Sql do
         other when is_tuple(other) -> other
       end
 
-    sources = SourceCatalog.list_by_user(user)
-    source_mapping = source_mapping(sources)
-
     Logger.metadata(query_string: query, user_id: user.id)
 
-    with {:ok, statements} <- Parser.parse("bigquery", query),
+    with sources when is_list(sources) <- SourceCatalog.list_by_user(user),
+         source_mapping = source_mapping(sources),
+         {:ok, statements} <- Parser.parse("bigquery", query),
          {:ok, sandboxed_query_ast} <- sandboxed_ast(sandboxed_query, "bigquery"),
          base_data = %{
            sources: sources,
@@ -401,22 +399,20 @@ defmodule Logflare.Sql do
     {:ok, %{"my_table" => "abced-weqqwe-..."}}
   """
   @spec sources(query :: String.t(), user :: User.t(), opts :: Keyword.t()) ::
-          {:ok, %{String.t() => String.t()}} | {:error, String.t()}
+          {:ok, %{String.t() => String.t()}} | {:error, String.t() | :database_unavailable}
   def sources(query, user, opts \\ []) when is_list(opts) do
     dialect = Keyword.get(opts, :dialect, "bigquery")
-    sources = SourceCatalog.list_by_user(user)
-    source_names = for s <- sources, do: s.name
 
-    source_mapping =
-      for source <- sources, into: %{} do
-        {source.name, source}
-      end
+    with sources when is_list(sources) <- SourceCatalog.list_by_user(user),
+         {:ok, ast} <- Parser.parse(dialect, query) do
+      source_names = for s <- sources, do: s.name
+      source_mapping = Map.new(sources, &{&1.name, &1})
 
-    with {:ok, ast} <- Parser.parse(dialect, query),
-         names <-
-           ast
-           |> find_all_source_names()
-           |> Enum.filter(fn name -> name in source_names end) do
+      names =
+        ast
+        |> find_all_source_names()
+        |> Enum.filter(fn name -> name in source_names end)
+
       {:ok, build_source_token_map(names, source_mapping)}
     end
   end
@@ -539,7 +535,7 @@ defmodule Logflare.Sql do
           mapping :: map() | nil,
           opts :: Keyword.t()
         ) ::
-          {:ok, String.t()} | {:error, String.t()}
+          {:ok, String.t()} | {:error, String.t() | :database_unavailable}
   def source_mapping(query, user, mapping, opts \\ [])
 
   def source_mapping(query, %User{id: user_id}, mapping, opts) do
@@ -566,17 +562,27 @@ defmodule Logflare.Sql do
   end
 
   defp sources_for_mapping(user_id, mapping) do
-    sources = SourceCatalog.list_by_user(user_id)
+    with sources when is_list(sources) <- SourceCatalog.list_by_user(user_id) do
+      if missing_mapped_source(mapping, sources) do
+        fresh_sources_for_mapping(user_id, mapping)
+      else
+        {:ok, sources}
+      end
+    end
+  end
 
-    if missing_mapped_source(mapping, sources) do
-      fresh_sources = Repo.with_primary(fn -> Catalog.list_by_user(user_id) end)
+  defp fresh_sources_for_mapping(user_id, mapping) do
+    result =
+      CachexOps.commit_or_ignore(fn ->
+        Repo.with_primary(fn -> Catalog.list_by_user(user_id) end)
+      end)
 
-      case missing_mapped_source(mapping, fresh_sources) do
-        nil -> {:ok, fresh_sources}
+    with sources when is_list(sources) <-
+           CachexOps.fetch_value(SourceCatalog, {:list_by_user, [user_id]}, result) do
+      case missing_mapped_source(mapping, sources) do
+        nil -> {:ok, sources}
         {name, _token} -> {:error, "can't find source #{name}"}
       end
-    else
-      {:ok, sources}
     end
   end
 

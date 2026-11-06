@@ -206,6 +206,7 @@ defmodule Logflare.Endpoints.EndpointQuery do
            {:ok, _} <- Sql.transform(language, expanded_query, user) do
         []
       else
+        {:error, :database_unavailable} -> [{field, "source catalog is temporarily unavailable"}]
         {:error, error} -> [{field, error}]
       end
     end)
@@ -215,8 +216,14 @@ defmodule Logflare.Endpoints.EndpointQuery do
   def update_source_mapping(%Changeset{errors: [], changes: %{query: query}} = changeset)
       when is_non_empty_binary(query) do
     case Sql.sources(query, get_field(changeset, :user)) do
-      {:ok, source_mapping} -> put_change(changeset, :source_mapping, source_mapping)
-      {:error, error} -> add_error(changeset, :query, error)
+      {:ok, source_mapping} ->
+        put_change(changeset, :source_mapping, source_mapping)
+
+      {:error, :database_unavailable} ->
+        add_error(changeset, :query, "source catalog is temporarily unavailable")
+
+      {:error, error} ->
+        add_error(changeset, :query, error)
     end
   end
 
@@ -251,7 +258,8 @@ defmodule Logflare.Endpoints.EndpointQuery do
   @doc """
   Replaces a query with latest source names.
   """
-  @spec map_query_sources(__MODULE__.t()) :: __MODULE__.t() | {:error, String.t()}
+  @spec map_query_sources(__MODULE__.t()) ::
+          __MODULE__.t() | {:error, String.t() | :database_unavailable}
   def map_query_sources(
         %__MODULE__{query: query, source_mapping: source_mapping, user_id: user_id} = q
       ) do

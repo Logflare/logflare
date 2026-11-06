@@ -113,7 +113,8 @@ defmodule Logflare.Endpoints do
     do: Repo.get(EndpointQuery, query_id)
 
   @spec get_endpoint_query_at_version(EndpointQuery.t() | integer() | String.t(), integer()) ::
-          {:ok, EndpointQuery.t()} | {:error, :invalid_version | :version_not_found | String.t()}
+          {:ok, EndpointQuery.t()}
+          | {:error, :invalid_version | :version_not_found | String.t() | :database_unavailable}
   def get_endpoint_query_at_version(%EndpointQuery{} = endpoint, version_number)
       when is_integer(version_number) and version_number > 0 do
     case get_endpoint_query_version(endpoint.id, version_number) do
@@ -143,7 +144,7 @@ defmodule Logflare.Endpoints do
   Retrieves a mapped endpoint `EndpointQuery` by token
   """
   @spec get_mapped_query_by_token(token :: String.t()) ::
-          EndpointQuery.t() | nil | {:error, String.t()}
+          EndpointQuery.t() | nil | {:error, String.t() | :database_unavailable}
   def get_mapped_query_by_token(token) when is_non_empty_binary(token) do
     with %EndpointQuery{} = query <- get_query_with_user_by_token(token) do
       EndpointQuery.map_query_sources(query)
@@ -161,7 +162,7 @@ defmodule Logflare.Endpoints do
   This ensure that the query will have the latest source names (assuming a name change)
   """
   @spec map_query_sources(EndpointQuery.t() | nil) ::
-          EndpointQuery.t() | nil | {:error, String.t()}
+          EndpointQuery.t() | nil | {:error, String.t() | :database_unavailable}
   def map_query_sources(nil), do: nil
   def map_query_sources(%EndpointQuery{} = query), do: EndpointQuery.map_query_sources(query)
 
@@ -604,7 +605,7 @@ defmodule Logflare.Endpoints do
   end
 
   @spec endpoint_from_version(EndpointQuery.t(), Version.t(), pos_integer()) ::
-          EndpointQuery.t() | {:error, String.t()}
+          EndpointQuery.t() | {:error, String.t() | :database_unavailable}
   defp endpoint_from_version(%EndpointQuery{} = endpoint, %Version{meta: meta}, version_number)
        when is_map(meta) do
     snapshot = Map.get(meta, "endpoint_snapshot", %{})
@@ -757,13 +758,10 @@ defmodule Logflare.Endpoints do
     sql_param = Map.get(params, "sql")
     lql_param = Map.get(params, "lql")
 
-    endpoints =
-      Cache.list_by_user_id(user_id)
-      |> Enum.filter(&(&1.id != endpoint_query.id))
-
-    alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
-
-    with {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
+    with endpoints when is_list(endpoints) <- Cache.list_by_user_id(user_id),
+         alerts when is_list(alerts) <- Alerting.list_alert_queries_by_user_id(user_id),
+         endpoints = Enum.filter(endpoints, &(&1.id != endpoint_query.id)),
+         {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
          :ok <- validate_query_override(endpoint_query, params),
          {:ok, declared_params} <-
            Sql.parameters(query_string, dialect: Sql.to_dialect(query_language)),
@@ -982,13 +980,10 @@ defmodule Logflare.Endpoints do
     sql_param = Map.get(params, "sql")
     lql_param = Map.get(params, "lql")
 
-    endpoints =
-      Cache.list_by_user_id(user_id)
-      |> Enum.filter(&(&1.id != endpoint_query.id))
-
-    alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
-
-    with {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
+    with endpoints when is_list(endpoints) <- Cache.list_by_user_id(user_id),
+         alerts when is_list(alerts) <- Alerting.list_alert_queries_by_user_id(user_id),
+         endpoints = Enum.filter(endpoints, &(&1.id != endpoint_query.id)),
+         {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
          {:ok, expanded_query} <-
            Sql.expand_subqueries(
              query_language,

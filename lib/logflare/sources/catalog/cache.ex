@@ -19,7 +19,8 @@ defmodule Logflare.Sources.Catalog.Cache do
     )
   end
 
-  @spec list_by_user(User.t() | pos_integer()) :: [Logflare.Sources.Source.t()]
+  @spec list_by_user(User.t() | pos_integer()) ::
+          [Logflare.Sources.Source.t()] | CatalogCache.error()
   def list_by_user(%User{id: user_id}), do: list_by_user(user_id)
 
   def list_by_user(user_id) when is_integer(user_id) do
@@ -30,13 +31,12 @@ defmodule Logflare.Sources.Catalog.Cache do
     end
   end
 
-  @spec source_name_by_token(pos_integer(), String.t()) :: String.t() | nil
+  @spec source_name_by_token(pos_integer(), String.t()) :: String.t() | nil | CatalogCache.error()
   def source_name_by_token(user_id, token) when is_integer(user_id) and is_binary(token) do
-    user_id
-    |> list_by_user()
-    |> Enum.find_value(fn source ->
-      if to_string(source.token) == token, do: source.name
-    end)
+    with sources when is_list(sources) <- list_by_user(user_id),
+         %{name: name} <- Enum.find(sources, &(to_string(&1.token) == token)) do
+      name
+    end
   end
 
   defp fetch(user_id) do

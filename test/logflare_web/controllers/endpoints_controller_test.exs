@@ -64,6 +64,36 @@ defmodule LogflareWeb.EndpointsControllerTest do
       end
     end
 
+    for version <- [nil, "1"] do
+      @unavailable_version version
+
+      test "catalog outages return HTTP 503 for version #{inspect(version)}", %{
+        conn: conn,
+        user: user
+      } do
+        endpoint = insert(:endpoint, user: user, enable_auth: false, query: "SELECT 1")
+        insert(:endpoint_version, endpoint: endpoint, version_number: 1)
+        Cachex.clear!(Logflare.Sources.Catalog.Cache)
+
+        stub(Sources, :list_source_catalog_by_user, fn _ ->
+          raise DBConnection.ConnectionError, message: "primary unavailable"
+        end)
+
+        reject(&Endpoints.run_cached_query/3)
+
+        conn =
+          if @unavailable_version,
+            do: put_req_header(conn, "lf-endpoint-version", @unavailable_version),
+            else: conn
+
+        conn = get(conn, ~p"/endpoints/query/#{endpoint.token}")
+
+        assert %{"error" => _message} = json_response(conn, 503)
+        assert get_resp_header(conn, "retry-after") == ["5"]
+        assert conn.halted
+      end
+    end
+
     test "GET query", %{conn: init_conn, user: user} do
       endpoint = insert(:endpoint, user: user, enable_auth: false)
       pid = self()

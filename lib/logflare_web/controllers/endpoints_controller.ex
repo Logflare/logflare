@@ -163,6 +163,9 @@ defmodule LogflareWeb.EndpointsController do
       {:error, :version_not_found} ->
         halt_endpoint_error(conn, {:error, :not_found, "version not found"})
 
+      {:error, :database_unavailable} = error ->
+        halt_endpoint_error(conn, error)
+
       {:error, message} = error when is_binary(message) ->
         halt_endpoint_error(conn, error)
 
