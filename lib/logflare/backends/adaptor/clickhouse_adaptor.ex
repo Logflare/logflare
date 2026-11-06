@@ -99,9 +99,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   def consolidated_ingest?, do: true
 
   @impl Logflare.Backends.Adaptor
-  def on_backend_config_changed(%Backend{id: backend_id}) do
+  def on_backend_config_changed(%Backend{id: backend_id} = backend) do
     _ = reprovision(backend_id)
-    QueryConnectionSup.refresh_backend_local(backend_id)
+    QueryConnectionSup.refresh_backend_local(backend)
   end
 
   @impl Logflare.Backends.Adaptor

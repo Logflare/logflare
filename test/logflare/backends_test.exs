@@ -320,7 +320,9 @@ defmodule Logflare.BackendsTest do
       [backend: backend, manager_pid: manager_pid]
     end
 
-    test "saved backend", %{backend: backend} do
+    test "backend saved with a new read pool size", %{backend: backend} do
+      save_backend_config!(backend, %{read_pool_size: 2})
+
       assert :ok = Backends.apply_backend_change_local(backend.id)
 
       refute ConnectionManager.pool_active?(backend)
