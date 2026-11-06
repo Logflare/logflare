@@ -179,6 +179,7 @@ defmodule LogflareWeb.AuthController do
         BigQueryAdaptor.update_iam_policy(user)
         BigQueryAdaptor.patch_dataset_access(user)
 
+        conn = put_user_session(conn, user)
         oauth_params = get_session(conn, :oauth_params)
         vercel_setup_params = get_session(conn, :vercel_setup)
 
@@ -192,7 +193,6 @@ defmodule LogflareWeb.AuthController do
           true ->
             conn
             |> put_flash(:info, "Welcome back!")
-            |> put_session(:current_email, user.email)
             |> redirect(to: ~p"/dashboard")
         end
 

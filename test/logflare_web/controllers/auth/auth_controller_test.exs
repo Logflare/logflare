@@ -143,6 +143,7 @@ defmodule LogflareWeb.AuthControllerTest do
         |> get("/auth/email/callback/#{token}")
 
       assert redirected_to(conn, 302) =~ "client_id=test_client"
+      assert get_session(conn, :current_email) == user.email
     end
 
     test "with vercel_setup in session redirects externally", %{conn: conn} do
@@ -165,6 +166,7 @@ defmodule LogflareWeb.AuthControllerTest do
         |> get("/auth/email/callback/#{token}")
 
       assert redirected_to(conn, 302) == "https://vercel.com/callback"
+      assert get_session(conn, :current_email) == user.email
     end
   end
 
