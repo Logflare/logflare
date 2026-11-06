@@ -849,7 +849,7 @@ defmodule Logflare.Endpoints do
 
     source_mapping =
       user
-      |> Users.Cache.preload_sources()
+      |> Users.preload_sources()
       |> then(fn %{sources: sources} -> sources end)
       |> Map.new(&{&1.name, &1.token})
 
