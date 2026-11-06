@@ -625,7 +625,8 @@ defmodule Logflare.Backends do
   row changes, so that running processes pick up changes made in any BEAM cluster.
   A consolidated backend has its adaptor notified and, after `pipeline_swap_delay_ms/0`,
   its running pipelines replaced through `Adaptor.replace_pipelines/1`, which may skip
-  pipelines already running with the saved settings; any other backend has the
+  pipelines already running with the saved settings, or its pipeline started if none
+  runs and it is a default ingest backend; any other backend has the
   `SourceSup` of each linked source restarted, unless it already runs the backend with
   its saved type and config. A deleted backend has its consolidated
   pipeline stopped and every adaptor notified.
@@ -657,11 +658,17 @@ defmodule Logflare.Backends do
 
   @spec apply_ingest_change_local(Backend.t(), [Source.t()]) :: :ok
   defp apply_ingest_change_local(%Backend{consolidated_ingest?: true} = backend, _sources) do
-    if ConsolidatedSup.pipeline_running?(backend) do
-      _ = replace_pipelines_after_delay(backend.id)
-    end
+    cond do
+      ConsolidatedSup.pipeline_running?(backend) ->
+        _ = replace_pipelines_after_delay(backend.id)
+        :ok
 
-    :ok
+      backend.default_ingest? ->
+        maybe_start_consolidated_pipeline(backend)
+
+      true ->
+        :ok
+    end
   end
 
   defp apply_ingest_change_local(%Backend{} = backend, sources) do

@@ -304,6 +304,25 @@ defmodule Logflare.BackendsTest do
 
       refute Backends.ConsolidatedSup.pipeline_running?(backend.id)
     end
+
+    test "stopped backend with default ingest enabled", %{backend: backend} do
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+      backend |> Backend.changeset(%{default_ingest?: true}) |> Repo.update!()
+      save_backend_config!(backend, %{batch_size: 2_000, batch_timeout: 1_500})
+
+      assert :ok = Backends.apply_backend_change_local(backend.id)
+
+      assert %{batch_size: 2_000, batch_timeout: 1_500} =
+               TestUtils.clickhouse_batcher_state(backend)
+    end
+
+    test "stopped backend with default ingest disabled", %{backend: backend} do
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+
+      assert :ok = Backends.apply_backend_change_local(backend.id)
+
+      refute Backends.ConsolidatedSup.pipeline_running?(backend.id)
+    end
   end
 
   describe "apply_backend_change_local/1 with a running read pool" do
