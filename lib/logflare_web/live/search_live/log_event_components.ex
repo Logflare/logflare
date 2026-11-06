@@ -4,8 +4,8 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
 
   use Phoenix.Component
 
-  import LogflareWeb.Helpers.BqSchema
   import LogflareWeb.ModalLiveHelpers
+  import LogflareWeb.Utils, only: [format_timestamp: 2]
 
   alias Logflare.DateTimeUtils
   alias Logflare.Google.BigQuery.SchemaUtils
