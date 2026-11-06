@@ -17,4 +17,14 @@ defmodule LogflareWeb.AlertComponentTest do
 
     assert_received {:clear_flash, :info}
   end
+
+  test "close event with an unknown flash key does not create an atom" do
+    key = "unknown_flash_key_#{System.unique_integer([:positive])}"
+
+    {:noreply, _socket} =
+      AlertComponent.handle_event("close", %{"flash_key" => key}, %Phoenix.LiveView.Socket{})
+
+    refute_received {:clear_flash, _}
+    assert_raise ArgumentError, fn -> String.to_existing_atom(key) end
+  end
 end
