@@ -623,8 +623,9 @@ defmodule Logflare.Backends do
 
   Invoked on every node by `Logflare.ContextCache.CacheBusterWorker` when the backend's
   row changes, so that running processes pick up changes made in any BEAM cluster.
-  Changes are not diffed. A consolidated backend has its adaptor notified and, after
-  `pipeline_swap_delay_ms/0`, its running pipelines replaced; any other backend has the
+  A consolidated backend has its adaptor notified and, after `pipeline_swap_delay_ms/0`,
+  its running pipelines replaced through `Adaptor.replace_pipelines/1`, which may skip
+  pipelines already running with the saved settings; any other backend has the
   `SourceSup` of each linked source restarted. A deleted backend has its consolidated
   pipeline stopped and every adaptor notified.
   """

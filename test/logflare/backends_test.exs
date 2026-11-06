@@ -208,6 +208,7 @@ defmodule Logflare.BackendsTest do
 
       pipeline_sup = Backends.via_backend(backend, ClickHousePipeline)
       coordinator = DynamicPipeline.find_coordinator_name(pipeline_sup)
+      save_backend_config!(backend, %{batch_size: 2_500})
       :ok = :sys.suspend(coordinator)
 
       swap = Task.async(fn -> Backends.replace_pipelines_with_latest(backend.id) end)
@@ -251,36 +252,48 @@ defmodule Logflare.BackendsTest do
       [backend: backend]
     end
 
+    test "backend with new batch limits", %{backend: backend} do
+      config_changes = %{batch_size: 2_000, batch_timeout: 1_500}
+      adaptor_sup = TestUtils.consolidated_sup_pid(backend)
+      pipeline_sup = Backends.via_backend(backend, ClickHousePipeline)
+      [old_id] = DynamicPipeline.list_pipelines(pipeline_sup)
+
+      config = Map.merge(clickhouse_backend_attrs().config, config_changes)
+      {:ok, _updated} = Backends.update_backend(backend, %{name: "Updated", config: config})
+
+      assert :ok = Backends.apply_backend_change_local(backend.id)
+
+      new_id =
+        TestUtils.retry_assert(fn ->
+          assert [new_id] = DynamicPipeline.list_pipelines(pipeline_sup)
+          refute new_id == old_id
+          new_id
+        end)
+
+      assert TestUtils.consolidated_sup_pid(backend) == adaptor_sup
+
+      {:ok, %{start: {ClickHousePipeline, :start_link, [args]}}} =
+        :supervisor.get_childspec(pipeline_sup, new_id)
+
+      new_config = Keyword.fetch!(args, :backend).config
+      assert Map.take(new_config, Map.keys(config_changes)) == config_changes
+    end
+
     for {scenario, config_changes} <- [
-          {"new batch limits", %{batch_size: 2_000, batch_timeout: 1_500}},
           {"a changed database", %{database: "other_db"}},
           {"unchanged config", %{}}
         ] do
       test "backend with #{scenario}", %{backend: backend} do
         config_changes = unquote(Macro.escape(config_changes))
-        adaptor_sup = TestUtils.consolidated_sup_pid(backend)
         pipeline_sup = Backends.via_backend(backend, ClickHousePipeline)
-        [old_id] = DynamicPipeline.list_pipelines(pipeline_sup)
+        pipelines = DynamicPipeline.list_pipelines(pipeline_sup)
 
         config = Map.merge(clickhouse_backend_attrs().config, config_changes)
         {:ok, _updated} = Backends.update_backend(backend, %{name: "Updated", config: config})
 
         assert :ok = Backends.apply_backend_change_local(backend.id)
 
-        new_id =
-          TestUtils.retry_assert(fn ->
-            assert [new_id] = DynamicPipeline.list_pipelines(pipeline_sup)
-            refute new_id == old_id
-            new_id
-          end)
-
-        assert TestUtils.consolidated_sup_pid(backend) == adaptor_sup
-
-        {:ok, %{start: {ClickHousePipeline, :start_link, [args]}}} =
-          :supervisor.get_childspec(pipeline_sup, new_id)
-
-        new_config = Keyword.fetch!(args, :backend).config
-        assert Map.take(new_config, Map.keys(config_changes)) == config_changes
+        assert DynamicPipeline.list_pipelines(pipeline_sup) == pipelines
       end
     end
 
