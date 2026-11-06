@@ -9,6 +9,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
+  alias Logflare.Sql.Parser
 
   # Characters illegal in a BigQuery dataset identifier: SQL delimiters,
   # identifier-quoting characters, whitespace, and shell metacharacters.
@@ -121,6 +122,25 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
       assert %GoogleApi.BigQuery.V2.Model.QueryParameter{} = param
       assert param.parameterType.type == "STRING"
       assert is_binary(param.parameterValue.value)
+    end
+
+    test "converts joined CTEs and keeps their parameter order" do
+      first = from(t in "test_table", where: t.id > ^5, select: %{id: t.id})
+      second = from(t in "test_table", where: t.id < ^13, select: %{id: t.id})
+
+      query =
+        from(a in "first_cte",
+          left_join: b in "second_cte",
+          on: a.id == b.id,
+          select: %{first_id: a.id, second_id: b.id}
+        )
+        |> with_cte("first_cte", as: ^first)
+        |> with_cte("second_cte", as: ^second)
+
+      assert {:ok, {sql, params}} = BigQueryAdaptor.ecto_to_sql(query, [])
+      assert {:ok, [_statement]} = Parser.parse("bigquery", sql)
+      assert Enum.map(params, & &1.parameterValue.value) == [5, 13]
+      refute sql =~ ~r/"\w+"/
     end
 
     test "handles query with no parameters" do
