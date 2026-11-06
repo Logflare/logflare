@@ -29,6 +29,7 @@ defmodule Logflare.Sources.Cache do
         |> Source.parse_key_values_config()
         |> Source.parse_copy_fields_config()
         |> Source.parse_drop_fields_config()
+        |> Source.parse_custom_event_message_keys()
     end
   end
 

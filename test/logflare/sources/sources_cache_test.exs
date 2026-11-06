@@ -50,5 +50,19 @@ defmodule Logflare.SourcesCacheTest do
                transform_key_values_parsed: [_ | _]
              } = get_by_for_ingest(token: source.token)
     end
+
+    test "get_by_for_ingest/1 populates parsed custom event message keys" do
+      user = insert(:user)
+
+      source =
+        insert(:source,
+          user_id: user.id,
+          token: TestUtils.gen_uuid(),
+          custom_event_message_keys: "id, m.a"
+        )
+
+      assert %{custom_event_message_keys_parsed: [:id, {:query, {:ok, %Warpath.Expression{}}}]} =
+               get_by_for_ingest(token: source.token)
+    end
   end
 end

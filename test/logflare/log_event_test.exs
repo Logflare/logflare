@@ -928,6 +928,31 @@ defmodule Logflare.LogEventTest do
       end
     end
 
+    test "pre-parsed keys produce the same message as raw keys" do
+      le =
+        LogEvent.make(
+          %{"event_message" => "msg", "metadata" => %{"a" => %{"b" => [1, 2]}, "c" => "d"}},
+          %{source: %Source{}}
+        )
+
+      source = %Source{custom_event_message_keys: "id, message, m.a.b, metadata.c, event_message"}
+      parsed_source = Source.parse_custom_event_message_keys(source)
+
+      assert [:id, :message, {:query, {:ok, _}}, {:query, {:ok, _}}, :message] =
+               parsed_source.custom_event_message_keys_parsed
+
+      expected = "#{le.id} | msg | [1,2] | \"d\" | msg"
+      assert LogEvent.apply_custom_event_message(le, source).body["event_message"] == expected
+
+      assert LogEvent.apply_custom_event_message(le, parsed_source).body["event_message"] ==
+               expected
+    end
+
+    test "invalid paths render a query error placeholder" do
+      le = event_with_message("m.a b, message", %{"message" => "msg"})
+      assert le.body["event_message"] == "json_path_query_error | msg"
+    end
+
     defp event_with_message(pattern, %LogEvent{} = le) do
       @subject.apply_custom_event_message(
         le,
