@@ -173,6 +173,44 @@ defmodule Logflare.ContextCache.CacheBusterTest do
     assert Cachex.size!(Catalog.Cache) == 0
   end
 
+  for field <- ~w(log_events_updated_at updated_at description favorite) do
+    @field field
+
+    test "source #{@field} updates preserve the catalog", %{source: source, user: user} do
+      Catalog.Cache.list_by_user(user.id)
+      record = source_record(source)
+
+      change = %UpdatedRecord{
+        relation: {"public", "sources"},
+        old_record: Map.put(record, @field, "old"),
+        record: Map.put(record, @field, "new")
+      }
+
+      assert [{Sources, source_id}] = bust_records(change)
+      assert source_id == source.id
+      assert Cachex.size!(Catalog.Cache) == 1
+    end
+  end
+
+  for field <- ~w(name token user_id) do
+    @field field
+
+    test "source #{@field} updates invalidate the catalog", %{source: source, user: user} do
+      Catalog.Cache.list_by_user(user.id)
+      record = source_record(source)
+      changed = if @field == "user_id", do: to_string(user.id + 1), else: "changed"
+
+      change = %UpdatedRecord{
+        relation: {"public", "sources"},
+        old_record: record,
+        record: Map.put(record, @field, changed)
+      }
+
+      assert {Catalog, [user_id: user.id]} in bust_records(change)
+      assert Cachex.size!(Catalog.Cache) == 0
+    end
+  end
+
   test "source transfers invalidate both owner catalogs", %{source: source, user: previous_owner} do
     next_owner = insert(:user)
     insert(:source, user: next_owner)
@@ -224,6 +262,29 @@ defmodule Logflare.ContextCache.CacheBusterTest do
     }
 
     assert_source_catalog_bust(change, source_id, user_id)
+  end
+
+  defp source_record(source) do
+    %{
+      "id" => to_string(source.id),
+      "user_id" => to_string(source.user_id),
+      "name" => source.name,
+      "token" => to_string(source.token)
+    }
+  end
+
+  defp bust_records(change) do
+    test_pid = self()
+
+    expect(ContextCache, :bust_keys, fn records ->
+      result = Mimic.call_original(ContextCache, :bust_keys, [records])
+      send(test_pid, {:busted, records})
+      result
+    end)
+
+    send(CacheBuster, %Transaction{changes: [change]})
+    assert_receive {:busted, records}, 1_000
+    records
   end
 
   defp assert_source_catalog_bust(change, source_key, user_id) do

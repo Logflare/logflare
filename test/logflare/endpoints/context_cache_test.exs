@@ -31,12 +31,14 @@ defmodule Logflare.Endpoints.ContextCacheTest do
     assert [%EndpointQuery{name: "updated"}] = Endpoints.Cache.list_by_user_id(user.id)
   end
 
-  test "does not cache empty endpoint catalogs", %{user: user} do
+  test "caches empty endpoint catalogs until owner invalidation", %{user: user} do
     assert [] = Endpoints.Cache.list_by_user_id(user.id)
-    assert Cachex.size!(Endpoints.Cache) == 0
+    assert Cachex.size!(Endpoints.Cache) == 1
 
     endpoint = insert(:endpoint, user: user)
 
+    assert [] = Endpoints.Cache.list_by_user_id(user.id)
+    assert {:ok, 1} = ContextCache.bust_keys([{Endpoints, user_id: user.id}])
     assert [%EndpointQuery{id: endpoint_id}] = Endpoints.Cache.list_by_user_id(user.id)
     assert endpoint_id == endpoint.id
   end

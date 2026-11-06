@@ -269,12 +269,10 @@ defmodule Logflare.Sql do
         ) ::
           {:ok, String.t()} | {:error, String.t()}
   def transform(lang, input, user_id) when is_integer(user_id) do
-    user =
-      if Repo.in_transaction?(),
-        do: Users.get(user_id),
-        else: Users.Cache.get(user_id)
-
-    transform(lang, input, user)
+    case Users.get(user_id) do
+      %User{} = user -> transform(lang, input, user)
+      nil -> {:error, "User not found"}
+    end
   end
 
   # clickhouse with sandboxed query support

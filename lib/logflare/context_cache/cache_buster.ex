@@ -26,6 +26,8 @@ defmodule Logflare.ContextCache.CacheBuster do
 
   require Logger
 
+  @source_catalog_fields ~w(name token user_id)
+
   def start_link(init_args) do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
   end
@@ -112,7 +114,12 @@ defmodule Logflare.ContextCache.CacheBuster do
          old_record: old_record
        })
        when is_binary(id) and is_binary(user_id) do
-    [{Sources, String.to_integer(id)} | catalog_owners(Catalog, [record, old_record])]
+    catalogs =
+      if source_catalog_changed?(record, old_record),
+        do: catalog_owners(Catalog, [record, old_record]),
+        else: []
+
+    [{Sources, String.to_integer(id)} | catalogs]
   end
 
   defp handle_record(%UpdatedRecord{
@@ -423,6 +430,16 @@ defmodule Logflare.ContextCache.CacheBuster do
   defp handle_record(_record) do
     :noop
   end
+
+  @spec source_catalog_changed?(map(), term()) :: boolean()
+  defp source_catalog_changed?(record, old_record) when is_map(old_record) do
+    Enum.any?(@source_catalog_fields, fn field ->
+      not Map.has_key?(record, field) or not Map.has_key?(old_record, field) or
+        record[field] != old_record[field]
+    end)
+  end
+
+  defp source_catalog_changed?(_record, _old_record), do: true
 
   defp catalog_owners(context, records) do
     records

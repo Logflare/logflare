@@ -2,6 +2,7 @@ defmodule Logflare.ContextCache.CatalogWalTest do
   use Logflare.DataCase
 
   alias Cainophile.Changes.DeletedRecord
+  alias Cainophile.Changes.NewRecord
   alias Cainophile.Changes.Transaction
   alias Cainophile.Changes.UpdatedRecord
   alias Logflare.ContextCache
@@ -40,6 +41,20 @@ defmodule Logflare.ContextCache.CatalogWalTest do
                    @table
                  ]
                )
+    end
+
+    test "#{table} inserts invalidate cached empty catalogs", %{user: user} do
+      assert [] = apply(@cache, @getter, [user.id])
+      row = insert(@factory, user: user)
+      assert [] = apply(@cache, @getter, [user.id])
+
+      dispatch(%NewRecord{
+        relation: {"public", @table},
+        record: %{"id" => to_string(row.id), "user_id" => to_string(user.id)}
+      })
+
+      assert [%{id: id}] = apply(@cache, @getter, [user.id])
+      assert id == row.id
     end
 
     test "#{table} transfers invalidate the old and destination owner catalogs", %{user: owner} do

@@ -155,6 +155,7 @@ defmodule Logflare.Endpoints.Cache do
   def get_by(kw), do: apply_repo_fun(:get_by, [kw])
   def get_mapped_query_by_token(token), do: apply_repo_fun(:get_mapped_query_by_token, [token])
 
+  @spec list_by_user_id(pos_integer()) :: [Endpoints.EndpointQuery.t()]
   def list_by_user_id(user_id) when is_integer(user_id) do
     if Repo.in_transaction?() do
       Endpoints.list_endpoints_by(user_id: user_id)
@@ -164,13 +165,18 @@ defmodule Logflare.Endpoints.Cache do
   end
 
   @impl ContextCache
-  def bust_by(kw) do
-    entries =
-      kw
-      |> Keyword.get_values(:user_id)
-      |> Enum.map(&{:list_endpoints_by, [[user_id: &1]]})
+  @spec keys_to_bust(keyword()) :: Enumerable.t()
+  def keys_to_bust(kw) do
+    if Keyword.has_key?(kw, :user_id) do
+      entries =
+        kw
+        |> Keyword.get_values(:user_id)
+        |> Enum.map(&{:list_endpoints_by, [[user_id: &1]]})
 
-    CatalogCache.bust(__MODULE__, entries)
+      CatalogCache.keys_to_bust(__MODULE__, entries)
+    else
+      CachexOps.keys_to_bust(__MODULE__, kw)
+    end
   end
 
   defp fetch_list_by_user_id(user_id) do
