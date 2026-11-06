@@ -198,6 +198,31 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
       refute has_element?(view, "#endpoint-version-snapshot-modal")
     end
 
+    test "snapshot mapping failures display an error instead of unresolved SQL", %{
+      conn: conn,
+      endpoint: endpoint,
+      team: team,
+      user: user
+    } do
+      insert(:source, user: user, name: "reused_source")
+
+      version =
+        insert(:endpoint_version,
+          endpoint: endpoint,
+          version_number: 1,
+          snapshot_overrides: %{
+            "query" => "SELECT id FROM reused_source",
+            "source_mapping" => %{"reused_source" => Ecto.UUID.generate()}
+          }
+        )
+
+      {:ok, view, _html} = live(conn, ~p"/endpoints/#{endpoint.id}/versions?t=#{team}")
+      view |> element(endpoint_version_row_button(version)) |> render_click()
+
+      assert render(view) =~ "can&#39;t find source reused_source"
+      refute has_element?(view, "#endpoint-version-snapshot-modal")
+    end
+
     test "loads additional versions", %{
       conn: conn,
       endpoint: endpoint,

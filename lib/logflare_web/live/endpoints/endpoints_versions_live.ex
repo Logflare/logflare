@@ -205,6 +205,7 @@ defmodule LogflareWeb.EndpointsVersionsLive do
           |> assign(:selected_version, selected_version)
           |> assign(:endpoint_snapshot, endpoint_snapshot)
         else
+          {:error, message} when is_binary(message) -> put_flash(socket, :error, message)
           _ -> socket
         end
       end)
