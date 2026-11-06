@@ -12,6 +12,7 @@ defmodule Logflare.EndpointsTest do
   alias Logflare.Endpoints
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Endpoints.ResultsCache
+  alias Logflare.Sources.Catalog
   alias PaperTrail.Version
 
   @endpoint_query_attrs %{
@@ -333,7 +334,12 @@ defmodule Logflare.EndpointsTest do
         source_mapping: %{"reused_name" => Ecto.UUID.generate()}
       )
 
-    insert(:endpoint_version, endpoint: endpoint, version_number: 1)
+    insert(:endpoint_version,
+      endpoint: endpoint,
+      version_number: 1,
+      snapshot_overrides: %{"source_mapping" => endpoint.source_mapping}
+    )
+
     reject(&Endpoints.run_query/3)
 
     assert {:error, "can't find source reused_name"} = Endpoints.map_query_sources(endpoint)
@@ -761,6 +767,8 @@ defmodule Logflare.EndpointsTest do
       source
       |> Ecto.Changeset.change(name: "new_table")
       |> Logflare.Repo.update!()
+
+      assert {:ok, 1} = Logflare.ContextCache.bust_keys([{Catalog, user_id: user.id}])
 
       endpoint_id = updated_endpoint.id
       token = updated_endpoint.token
