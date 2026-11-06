@@ -728,6 +728,21 @@ defmodule Logflare.EndpointsTest do
       assert String.downcase(query) == "select a from new_table"
     end
 
+    test "get_endpoint_query_at_version/2 accepts snapshots with nil source mappings", %{
+      user: user
+    } do
+      endpoint = insert(:endpoint, user: user)
+
+      insert(:endpoint_version,
+        endpoint: endpoint,
+        version_number: 1,
+        snapshot_overrides: %{"query" => "SELECT 1", "source_mapping" => nil}
+      )
+
+      assert {:ok, %EndpointQuery{query: "SELECT 1", source_mapping: nil, version_number: 1}} =
+               Endpoints.get_endpoint_query_at_version(endpoint, 1)
+    end
+
     test "get_endpoint_query_at_version/2 rejects invalid version numbers", %{
       user: user,
       endpoint_params: endpoint_params
