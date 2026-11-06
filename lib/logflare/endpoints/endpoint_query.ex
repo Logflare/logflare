@@ -6,8 +6,6 @@ defmodule Logflare.Endpoints.EndpointQuery do
   import Ecto.Changeset
   import Logflare.Utils.Guards
 
-  require Logger
-
   alias Ecto.Changeset
   alias Logflare.Alerting
   alias Logflare.Backends
@@ -253,17 +251,16 @@ defmodule Logflare.Endpoints.EndpointQuery do
   @doc """
   Replaces a query with latest source names.
   """
-  @spec map_query_sources(__MODULE__.t()) :: __MODULE__.t()
+  @spec map_query_sources(__MODULE__.t()) :: __MODULE__.t() | {:error, String.t()}
   def map_query_sources(
         %__MODULE__{query: query, source_mapping: source_mapping, user_id: user_id} = q
       ) do
-    case Sql.source_mapping(query, user_id, source_mapping) do
+    case Sql.source_mapping(query, user_id, source_mapping, dialect: Sql.to_dialect(q.language)) do
       {:ok, query} ->
         Map.put(q, :query, query)
 
-      {:error, _} = err ->
-        Logger.error("Could not map source query, #{inspect(err)}", error_string: inspect(q))
-        q
+      {:error, _} = error ->
+        error
     end
   end
 end

@@ -31,6 +31,34 @@ defmodule LogflareWeb.EndpointsControllerTest do
       {:ok, user: user, source: source}
     end
 
+    for version <- [nil, "1"], cache_duration <- [0, 60] do
+      @version version
+      @cache_duration cache_duration
+
+      test "missing saved sources return HTTP 400 for version #{inspect(version)} with cache #{cache_duration}",
+           %{conn: conn, user: user} do
+        insert(:source, user: user, name: "reused_source")
+
+        endpoint =
+          insert(:endpoint,
+            user: user,
+            enable_auth: false,
+            cache_duration_seconds: @cache_duration,
+            query: "SELECT id FROM reused_source",
+            source_mapping: %{"reused_source" => Ecto.UUID.generate()}
+          )
+
+        insert(:endpoint_version, endpoint: endpoint, version_number: 1)
+        reject(&Endpoints.run_cached_query/3)
+
+        conn = if @version, do: put_req_header(conn, "lf-endpoint-version", @version), else: conn
+        conn = get(conn, ~p"/endpoints/query/#{endpoint.token}")
+
+        assert %{"error" => "can't find source reused_source"} = json_response(conn, 400)
+        assert conn.halted
+      end
+    end
+
     test "GET query", %{conn: init_conn, user: user} do
       endpoint = insert(:endpoint, user: user, enable_auth: false)
       pid = self()

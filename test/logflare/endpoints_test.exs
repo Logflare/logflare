@@ -310,6 +310,62 @@ defmodule Logflare.EndpointsTest do
     assert String.downcase(mapped_query) == "select a from new"
   end
 
+  test "source mapping preserves ClickHouse-specific query syntax" do
+    endpoint =
+      insert(:endpoint,
+        language: :ch_sql,
+        query: "SELECT id FROM events ARRAY JOIN items",
+        source_mapping: %{}
+      )
+
+    assert %EndpointQuery{query: query} = Endpoints.map_query_sources(endpoint)
+    assert query == "SELECT id FROM events ARRAY JOIN items"
+  end
+
+  test "missing saved source tokens fail closed for current and historical cached queries" do
+    user = insert(:user)
+    replacement = insert(:source, user: user, name: "reused_name")
+
+    endpoint =
+      insert(:endpoint,
+        user: user,
+        query: "SELECT id FROM reused_name",
+        source_mapping: %{"reused_name" => Ecto.UUID.generate()}
+      )
+
+    insert(:endpoint_version, endpoint: endpoint, version_number: 1)
+    reject(&Endpoints.run_query/3)
+
+    assert {:error, "can't find source reused_name"} = Endpoints.map_query_sources(endpoint)
+
+    assert {:error, "can't find source reused_name"} =
+             Endpoints.get_mapped_query_by_token(endpoint.token)
+
+    assert {:error, "can't find source reused_name"} =
+             Endpoints.get_endpoint_query_at_version(endpoint, 1)
+
+    for version_number <- [nil, 1] do
+      state = %ResultsCache{
+        endpoint_query_id: endpoint.id,
+        endpoint_query_token: endpoint.token,
+        endpoint_version_number: version_number
+      }
+
+      assert {:error, "can't find source reused_name", nil} = ResultsCache.do_query(state)
+    end
+
+    endpoint
+    |> Ecto.Changeset.change(source_mapping: %{"reused_name" => to_string(replacement.token)})
+    |> Repo.update!()
+
+    Logflare.ContextCache.bust_keys([{Endpoints, endpoint.id}])
+
+    assert %EndpointQuery{query: "SELECT id FROM reused_name"} =
+             Endpoints.Cache.get_mapped_query_by_token(endpoint.token)
+
+    assert nil == Endpoints.get_mapped_query_by_token(Ecto.UUID.generate())
+  end
+
   describe "version history" do
     setup do
       [user: insert(:user)]
@@ -726,6 +782,21 @@ defmodule Logflare.EndpointsTest do
                Endpoints.get_endpoint_query_at_version(updated_endpoint, 1)
 
       assert String.downcase(query) == "select a from new_table"
+    end
+
+    test "get_endpoint_query_at_version/2 accepts snapshots with nil source mappings", %{
+      user: user
+    } do
+      endpoint = insert(:endpoint, user: user)
+
+      insert(:endpoint_version,
+        endpoint: endpoint,
+        version_number: 1,
+        snapshot_overrides: %{"query" => "SELECT 1", "source_mapping" => nil}
+      )
+
+      assert {:ok, %EndpointQuery{query: "SELECT 1", source_mapping: nil, version_number: 1}} =
+               Endpoints.get_endpoint_query_at_version(endpoint, 1)
     end
 
     test "get_endpoint_query_at_version/2 rejects invalid version numbers", %{
