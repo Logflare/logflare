@@ -3,6 +3,8 @@ import { DateTime } from "luxon";
 import {
   BarChart,
   Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
@@ -31,6 +33,49 @@ const debugColor = "#8e6ddf";
 const noticeColor = "#03C03C";
 const infoColor = "#5eeb8f";
 const secondInfoColor = "#6286db";
+const aggregateColors = [
+  infoColor,
+  secondInfoColor,
+  debugColor,
+  warnColor,
+  errorColor,
+  noticeColor,
+  criticalColor,
+  emergencyColor,
+];
+
+const renderIsolatedAggregateDot = ({ cx, cy, index, points, stroke, value }) => {
+  if (value == null || points[index - 1]?.value != null || points[index + 1]?.value != null) {
+    return null;
+  }
+
+  return <circle cx={cx} cy={cy} r={2.5} fill={stroke} pointerEvents="none" />;
+};
+
+const AggregateTooltip = ({ active, payload, label, series, hiddenAggregates }) => {
+  if (!active || !payload?.length || series.every(({ label }) => hiddenAggregates.includes(label))) {
+    return null;
+  }
+  const data = payload[0].payload;
+
+  return (
+    <div style={{ backgroundColor: brandLightBlack, padding: "6px" }}>
+      {series.map(({ key, label: aggregateLabel }, index) =>
+        hiddenAggregates.includes(aggregateLabel) ? null : (
+          <div
+            key={key}
+            style={{ color: aggregateColors[index % aggregateColors.length] }}
+          >
+            <strong>
+              {aggregateLabel}: {data[key] == null ? "—" : data[key].toFixed(2).replace(/\.00$/, "")}
+            </strong>
+          </div>
+        ),
+      )}
+      <strong style={{ color: brandGray }}>{label}</strong>
+    </div>
+  );
+};
 
 const renderDefaultTooltip = ({ active, payload, label }) => {
   if (!active || !payload || !payload.length) return null;
@@ -38,9 +83,9 @@ const renderDefaultTooltip = ({ active, payload, label }) => {
   const color = payload[0].fill;
   return (
     <div style={{ backgroundColor: brandLightBlack, padding: "6px" }}>
-      <strong style={{ color }}>Timestamp: {label}</strong>
+      <strong style={{ color }}>Value: {value == null ? "—" : Number(value).toFixed(2).replace(/\.00$/, "")}</strong>
       <br />
-      <strong style={{ color }}>Value: {value}</strong>
+      <strong style={{ color }}>{label}</strong>
     </div>
   );
 };
@@ -51,8 +96,6 @@ const renderCfStatusCodeTooltip = ({ active, payload }) => {
   if (!data) return null;
   return (
     <div style={{ backgroundColor: brandLightBlack, padding: "6px" }}>
-      <strong style={{ color: brandGray }}>Timestamp: {data.timestamp}</strong>
-      <br />
       <strong style={{ color: brandGray }}>Total: {data.total}</strong>
       <br />
       <strong style={{ color: errorColor }}>5xx: {data.status_5xx}</strong>
@@ -66,6 +109,8 @@ const renderCfStatusCodeTooltip = ({ active, payload }) => {
       <strong style={{ color: debugColor }}>1xx: {data.status_1xx}</strong>
       <br />
       <strong style={{ color: brandGray }}>Other: {data.other}</strong>
+      <br />
+      <strong style={{ color: brandGray }}>{data.timestamp}</strong>
     </div>
   );
 };
@@ -75,7 +120,6 @@ const renderElixirLoggerTooltip = ({ active, payload }) => {
   const data = payload[0]?.payload;
   if (!data) return null;
   const tooltips = [
-    { c: brandGray, p: "timestamp", t: "Timestamp" },
     { c: brandGray, p: "total", t: "Total" },
     { c: emergencyColor, p: "level_emergency", t: "Emergency" },
     { c: criticalColor, p: "level_critical", t: "Critical" },
@@ -97,6 +141,8 @@ const renderElixirLoggerTooltip = ({ active, payload }) => {
           {index < tooltips.length - 1 && <br />}
         </React.Fragment>
       ))}
+      <br />
+      <strong style={{ color: brandGray }}>{data.timestamp}</strong>
     </div>
   );
 };
@@ -227,7 +273,7 @@ const activeChartPoint = (state, chartData = []) => {
 const activeDatetime = (state, chartData = []) =>
   activeChartPoint(state, chartData)?.datetime;
 
-const chartPointAtX = (clientX, bounds, chartData = []) => {
+const chartPointAtX = (clientX, bounds, chartData = [], scale = "band") => {
   if (!Number.isFinite(clientX) || !bounds || bounds.width <= 0 || chartData.length === 0) {
     return null;
   }
@@ -235,10 +281,12 @@ const chartPointAtX = (clientX, bounds, chartData = []) => {
   const relativeX = clientX - bounds.left;
   if (relativeX < 0 || relativeX > bounds.width) return null;
 
-  const index = Math.min(
-    chartData.length - 1,
-    Math.floor((relativeX / bounds.width) * chartData.length),
-  );
+  const index = scale === "point"
+    ? Math.max(0, Math.ceil((relativeX / bounds.width) * (chartData.length - 1) - 0.5))
+    : Math.min(
+        chartData.length - 1,
+        Math.floor((relativeX / bounds.width) * chartData.length),
+      );
   const point = chartData[index];
   const label = point?.timestamp || point?.datetime;
   const datetime = point?.datetime || point?.timestamp;
@@ -248,6 +296,7 @@ const chartPointAtX = (clientX, bounds, chartData = []) => {
 
 const LogEventsChart = ({
   data,
+  series = [],
   loading,
   chart_data_shape_id: chartDataShapeId,
   chart_period: chartPeriod,
@@ -257,6 +306,7 @@ const LogEventsChart = ({
   const tz = userTz || "Etc/UTC";
   const chartContainerRef = React.useRef(null);
   const [dragRange, setDragRange] = React.useState(null);
+  const [hiddenAggregates, setHiddenAggregates] = React.useState([]);
   const dragStartRef = React.useRef(null);
   const dragEndRef = React.useRef(null);
   const suppressClickRef = React.useRef(false);
@@ -308,6 +358,7 @@ const LogEventsChart = ({
       event?.clientX,
       chartContainerRef.current?.getBoundingClientRect(),
       chartData,
+      multipleAggregates ? "point" : "band",
     ) || activeChartPoint(state, chartData);
 
   const handleChartClick = (state, event) => {
@@ -363,10 +414,23 @@ const LogEventsChart = ({
 
   const TooltipContent = tooltipFactory(chartDataShapeId);
   const settings = chartSettings(chartDataShapeId);
+  const multipleAggregates = series.length > 1;
+  const Chart = multipleAggregates ? LineChart : BarChart;
   const topStackKey = settings.keys[settings.keys.length - 1];
   const chartData = React.useMemo(
     () =>
       data.map((entry) => {
+        if (multipleAggregates) {
+          return {
+            ...entry,
+            ...Object.fromEntries(
+              series.map(({ key }) => [
+                key,
+                entry[key] == null ? null : Number(entry[key]),
+              ]),
+            ),
+          };
+        }
         const total = barTotal(entry, settings.keys);
 
         return {
@@ -374,7 +438,7 @@ const LogEventsChart = ({
           hasHighlight: total >= highlightMinValue,
         };
       }),
-    [data, settings.keys],
+    [data, settings.keys, multipleAggregates, series],
   );
 
   const renderBarWithHighlight = ({
@@ -421,12 +485,71 @@ const LogEventsChart = ({
     <div
       ref={chartContainerRef}
       style={{
-        height: 100,
+        height: multipleAggregates && !loading ? "auto" : 100,
         display: "flex",
+        flexDirection: multipleAggregates ? "column" : "row",
         justifyContent: "center",
         alignItems: "center",
       }}
     >
+      {multipleAggregates && !loading && (
+        <ul
+          aria-label="Chart aggregates"
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "4px 16px",
+            alignSelf: "flex-start",
+            listStyle: "none",
+            margin: 0,
+            padding: 0,
+            fontSize: 12,
+            lineHeight: "16px",
+            transform: "translateY(12px)",
+            zIndex: 1,
+          }}
+        >
+          {series.map(({ key, label }, index) => (
+            <li key={key} style={{ display: "flex" }}>
+              <button
+                type="button"
+                className="tw-text-xs"
+                aria-pressed={!hiddenAggregates.includes(label)}
+                onClick={() =>
+                  setHiddenAggregates((hidden) =>
+                    hidden.includes(label)
+                      ? hidden.filter((aggregate) => aggregate !== label)
+                      : [...hidden, label],
+                  )
+                }
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  border: 0,
+                  padding: 0,
+                  background: "none",
+                  font: "inherit",
+                  cursor: "pointer",
+                }}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    backgroundColor: hiddenAggregates.includes(label)
+                      ? chartGridLineColor
+                      : aggregateColors[index % aggregateColors.length],
+                  }}
+                />
+                <span style={{ color: brandGray }}>{label}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       {loading ? (
         <div>
           <BarLoader
@@ -440,9 +563,10 @@ const LogEventsChart = ({
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={100}>
-          <BarChart
+          <Chart
             data={chartData}
-            margin={{ top: 20, right: 0, bottom: 0, left: 0 }}
+            margin={{ top: 20, right: 0, bottom: multipleAggregates ? 3 : 0, left: 0 }}
+            className={multipleAggregates ? "[&_.recharts-surface]:tw-overflow-visible" : undefined}
             style={{ cursor: dragRange ? "crosshair" : "pointer" }}
             onClick={handleChartClick}
             onMouseDown={handleMouseDown}
@@ -461,7 +585,14 @@ const LogEventsChart = ({
             <Tooltip
               isAnimationActive={false}
               wrapperStyle={{ zIndex: 500 }}
-              content={<TooltipContent />}
+              filterNull={!multipleAggregates}
+              content={
+                multipleAggregates ? (
+                  <AggregateTooltip series={series} hiddenAggregates={hiddenAggregates} />
+                ) : (
+                  <TooltipContent />
+                )
+              }
               cursor={{ fill: "rgba(255,255,255,0.05)" }}
             />
             {dragRange?.start !== dragRange?.end && (
@@ -476,19 +607,34 @@ const LogEventsChart = ({
                 style={{ pointerEvents: "none" }}
               />
             )}
-            {settings.keys.map((key) => (
-              <Bar
-                key={key}
-                dataKey={key}
-                stackId="stack"
-                fill={settings.colors[key]}
-                isAnimationActive={false}
-                minPointSize={minPointSizeForDataKey(chartData, key)}
-                pointerEvents="none"
-                shape={key === topStackKey ? renderBarWithHighlight : undefined}
-              />
-            ))}
-          </BarChart>
+            {multipleAggregates
+              ? series.map(({ key, label }, index) => (
+                  <Line
+                    key={key}
+                    dataKey={key}
+                    name={label}
+                    type="linear"
+                    stroke={aggregateColors[index % aggregateColors.length]}
+                    strokeWidth={2}
+                    dot={renderIsolatedAggregateDot}
+                    connectNulls={false}
+                    hide={hiddenAggregates.includes(label)}
+                    isAnimationActive={false}
+                  />
+                ))
+              : settings.keys.map((key) => (
+                  <Bar
+                    key={key}
+                    dataKey={key}
+                    stackId="stack"
+                    fill={settings.colors[key]}
+                    isAnimationActive={false}
+                    minPointSize={minPointSizeForDataKey(chartData, key)}
+                    pointerEvents="none"
+                    shape={key === topStackKey ? renderBarWithHighlight : undefined}
+                  />
+                ))}
+          </Chart>
         </ResponsiveContainer>
       )}
     </div>

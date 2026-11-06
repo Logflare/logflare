@@ -495,7 +495,13 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       html = render(view)
 
-      assert html =~ "Actual SQL query used when querying for results"
+      assert has_element?(
+               view,
+               "#search-query-debug p",
+               "Actual SQL query used when querying for results"
+             )
+
+      assert has_element?(view, "#search-query-debug a", "Edit as query")
 
       formatted_sql =
         """
@@ -1158,6 +1164,29 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       html = view |> element("#logs-list-container") |> render()
       assert html =~ "some event message"
+    end
+
+    @tag source_schema: TestUtils.build_bq_schema(%{"metadata" => %{"latency" => 42}})
+    test "chart controls preserve multiple aggregates and share the chart period", %{
+      conn: conn,
+      source: source
+    } do
+      query = "c:sum(m.latency) c:avg(m.latency) c:group_by(t::minute)"
+
+      {:ok, view, _html} =
+        live_with_redirect(
+          conn,
+          Routes.live_path(conn, SearchLV, source.id, querystring: query, tailing?: false)
+        )
+
+      render_change(view, :chart_controls_update, %{
+        "chart_period" => "hour"
+      })
+
+      assert find_querystring(render(view)) ==
+               "c:sum(m.latency) c:avg(m.latency) c:group_by(t::hour)"
+
+      refute has_element?(view, "#search_chart_aggregate")
     end
 
     test "date picker adjusts chart display interval", %{conn: conn, source: source} do
@@ -1934,6 +1963,67 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     setup [:setup_team_user_session]
+
+    test "multiple aggregates export one query through chart navigation and debug edit links", %{
+      conn: conn,
+      source: source,
+      team_user: team_user
+    } do
+      schema = TestUtils.build_bq_schema(%{"metadata" => %{"latency" => 42}})
+
+      insert(:source_schema,
+        source: source,
+        bigquery_schema: schema,
+        schema_flat_map: SchemaUtils.bq_schema_to_flat_typemap(schema)
+      )
+
+      querystring =
+        "something123 t:2026-11-04T04:18:00..2026-11-04T04:20:00 " <>
+          "c:sum(m.latency) c:avg(m.latency) c:count(*) c:group_by(t::minute)"
+
+      {:ok, view, _html} =
+        live(
+          conn,
+          ~p"/sources/#{source.id}/search?#{%{t: team_user.team_id, querystring: querystring, tailing?: false, tz: "Etc/UTC"}}"
+        )
+
+      TestUtils.wait_for_render(view, "#create-menu button:not([disabled])")
+
+      view
+      |> element(~s|.subhead a[phx-value-id="modal_debug_log_aggregates_link"]|)
+      |> render_click()
+
+      TestUtils.wait_for_render(view, "#search-query-debug a.btn-primary")
+
+      [debug_link] =
+        view
+        |> element("#search-query-debug a", "Edit as query")
+        |> render()
+        |> Floki.parse_fragment!()
+        |> Floki.attribute("href")
+
+      debug_uri = URI.new!(debug_link)
+      assert debug_uri.path == "/query"
+      debug_params = URI.decode_query(debug_uri.query)
+      assert debug_params["t"] == to_string(team_user.team_id)
+
+      view
+      |> element(~s|#create-menu a[phx-value-resource="query"][phx-value-kind="aggregates"]|)
+      |> render_click()
+
+      {redirect_path, _flash} = assert_redirect(view)
+      redirect_uri = URI.new!(redirect_path)
+      assert redirect_uri.path == "/query"
+
+      params = URI.decode_query(redirect_uri.query)
+      assert params["t"] == to_string(team_user.team_id)
+
+      sql = params["q"]
+      assert debug_params["q"] == sql
+      assert sql =~ "SUM("
+      assert sql =~ "AVG("
+      assert sql =~ "COUNT("
+    end
 
     test "create new query from search", %{conn: conn, source: source, team_user: team_user} do
       {:ok, view, _html} =
