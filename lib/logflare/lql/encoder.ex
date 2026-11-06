@@ -46,9 +46,8 @@ defmodule Logflare.Lql.Encoder do
               |> Enum.map_join(" ", &to_fragment/1)
 
             {:chart, chart_rules} ->
-              chart_rules
-              |> Enum.map_join(" ", &to_fragment/1)
-              |> String.replace("chart:timestamp", "")
+              aggregates = Enum.map_join(chart_rules, " ", &chart_aggregate_fragment/1)
+              aggregates <> " c:group_by(t::#{hd(chart_rules).period})"
 
             # `filter_rules` has at least 2 entries
             {"m.level", [_, _ | _] = filter_rules} ->
@@ -205,16 +204,6 @@ defmodule Logflare.Lql.Encoder do
     |> String.replace_leading("metadata.", "m.")
   end
 
-  defp to_fragment(%ChartRule{path: "timestamp", aggregate: agg, period: period}) do
-    qs = "c:#{agg}(*) c:group_by(t::#{period})"
-    Regex.replace(~r/(?<=sum|avg|count|countd|max|p50|p95|p99)\(metadata./, qs, "(m.")
-  end
-
-  defp to_fragment(%ChartRule{path: path, aggregate: agg, period: period}) do
-    qs = "c:#{agg}(#{path}) c:group_by(t::#{period})"
-    Regex.replace(~r/(?<=sum|avg|count|countd|max|p50|p95|p99)\(metadata./, qs, "(m.")
-  end
-
   defp to_fragment(%SelectRule{path: "*"}), do: "s:*"
 
   defp to_fragment(%SelectRule{path: path, alias: nil}),
@@ -224,6 +213,13 @@ defmodule Logflare.Lql.Encoder do
     do: "s:#{String.replace_leading(path, "metadata.", "m.")}@#{alias_name}"
 
   defp to_fragment(%FromRule{table: table}), do: "f:#{table}"
+
+  @spec chart_aggregate_fragment(ChartRule.t()) :: String.t()
+  defp chart_aggregate_fragment(%ChartRule{path: "timestamp", aggregate: aggregate}),
+    do: "c:#{aggregate}(*)"
+
+  defp chart_aggregate_fragment(%ChartRule{path: path, aggregate: aggregate}),
+    do: "c:#{aggregate}(#{String.replace_leading(path, "metadata.", "m.")})"
 
   @spec maybe_quote(term()) :: String.t()
   defp maybe_quote(v) when is_non_empty_binary(v) do

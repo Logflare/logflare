@@ -640,15 +640,15 @@
       "fingerprint": "sha256:f0489f36b5478ac70d87fabb0930d5978edf858281ef754b88786319da47f779",
       "message": "length/1 in guard is O(n); use list pattern matching instead",
       "file": "lib/logflare/lql/parser.ex",
-      "line": 204
+      "line": 203
     },
     {
       "source": "smells",
       "kind": "redundant_computation",
-      "fingerprint": "sha256:0ced04135aa2db79b8c963b89ac7743569d378f9d3da6ce6f1d4e66957e855a8",
-      "message": "length called twice with same args (line 204 and 206)",
+      "fingerprint": "sha256:f259178bd1d1319fdd7cd0d67bbbb33a0537fabe017274b0fdee72a489b5ff5d",
+      "message": "length called twice with same args (line 203 and 205)",
       "file": "lib/logflare/lql/parser.ex",
-      "line": 206
+      "line": 205
     },
     {
       "source": "smells",

@@ -82,7 +82,7 @@ defmodule Logflare.Lql.ValidatorTest do
                "The interval length between min and max timestamp is larger than 250 periods"
     end
 
-    test "returns error when multiple chart rules exist" do
+    test "accepts multiple numeric chart rules and validates every rule" do
       lql_rules = %{
         lql_ts_filters: [],
         chart_period: :minute,
@@ -104,7 +104,14 @@ defmodule Logflare.Lql.ValidatorTest do
       }
 
       result = Validator.validate(lql_rules, tailing?: false)
-      assert result == "Only one chart rule can be used in a LQL query"
+      assert is_nil(result)
+
+      [first, second] = lql_rules.chart_rules
+
+      assert Validator.validate(%{
+               lql_rules
+               | chart_rules: [first, %{second | value_type: :string}]
+             }) =~ "Can't aggregate on a non-numeric field type 'string' for path metadata.count"
     end
 
     test "returns error when exactly one chart rule uses non-numeric field type" do

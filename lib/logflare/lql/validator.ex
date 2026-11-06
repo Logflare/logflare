@@ -6,7 +6,6 @@ defmodule Logflare.Lql.Validator do
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.SelectRule
   alias Logflare.Utils.Chart
-  alias Logflare.Utils.List, as: ListUtils
 
   @timestamp_filter_with_tailing "Timestamp filters can't be used if live tail search is active"
   @default_max_n_chart_ticks 250
@@ -40,19 +39,17 @@ defmodule Logflare.Lql.Validator do
     %{min: min_ts, max: max_ts} =
       SearchOperationHelpers.get_min_max_filter_timestamps(lql_ts_filters, chart_period)
 
+    invalid_chart =
+      Enum.find(chart_rules, fn rule ->
+        rule.value_type not in [:integer, :float] and rule.path != "timestamp"
+      end)
+
     cond do
       tailing? and not Enum.empty?(lql_ts_filters) ->
         @timestamp_filter_with_tailing
 
-      ListUtils.at_least?(chart_rules, 2) ->
-        "Only one chart rule can be used in a LQL query"
-
-      ListUtils.exactly?(chart_rules, 1) and
-        hd(chart_rules).value_type not in ~w[integer float]a and
-          hd(chart_rules).path != "timestamp" ->
-        chart_rule = hd(chart_rules)
-
-        "Can't aggregate on a non-numeric field type '#{chart_rule.value_type}' for path #{chart_rule.path}. Check the source schema for the field used with chart operator."
+      invalid_chart ->
+        "Can't aggregate on a non-numeric field type '#{invalid_chart.value_type}' for path #{invalid_chart.path}. Check the source schema for the field used with chart operator."
 
       Timex.diff(max_ts, min_ts, chart_period) == 0 ->
         "Selected chart period #{chart_period} is longer than the timestamp filter interval. Please select a shorter chart period."

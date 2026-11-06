@@ -29,11 +29,12 @@ defmodule Logflare.Lql.Sandboxed do
           lql_string :: String.t(),
           cte_table_name :: String.t(),
           dialect :: dialect()
-        ) :: {:ok, String.t()} | {:error, String.t()}
+        ) :: {:ok, String.t()} | {:error, term()}
   def to_sandboxed_sql(lql_string, cte_table_name, dialect)
       when is_binary(lql_string) and is_non_empty_binary(cte_table_name) and
              dialect in [:bigquery, :clickhouse, :postgres] do
-    with {:ok, lql_rules} <- Parser.parse(lql_string) do
+    with {:ok, lql_rules} <- Parser.parse(lql_string),
+         true <- length(Rules.get_chart_rules(lql_rules)) <= 1 do
       # Determine table name: use FromRule if present, otherwise use cte_table_name parameter
       table_name =
         case Rules.get_from_rule(lql_rules) do
@@ -54,6 +55,9 @@ defmodule Logflare.Lql.Sandboxed do
         end
 
       ecto_query_to_sql_string(query, dialect)
+    else
+      false -> {:error, "Sandboxed SQL supports at most one chart rule"}
+      {:error, _reason} = error -> error
     end
   end
 
