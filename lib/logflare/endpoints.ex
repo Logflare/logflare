@@ -27,7 +27,6 @@ defmodule Logflare.Endpoints do
   alias Logflare.OauthAccessTokens.OauthAccessToken
   alias Logflare.Repo
   alias Logflare.SingleTenant
-  alias Logflare.Sources.Catalog.Cache, as: SourceCatalog
   alias Logflare.Sql
   alias Logflare.Teams
   alias Logflare.TeamUsers
@@ -848,11 +847,6 @@ defmodule Logflare.Endpoints do
   def run_query_string(user, {language, query_string}, opts \\ []) do
     params = Keyword.get(opts, :params, %{})
 
-    source_mapping =
-      user
-      |> SourceCatalog.list_by_user()
-      |> Map.new(&{&1.name, &1.token})
-
     query = %EndpointQuery{
       id: Keyword.get(opts, :endpoint_id),
       query: query_string,
@@ -861,7 +855,6 @@ defmodule Logflare.Endpoints do
       user: user,
       user_id: user.id,
       parsed_labels: Keyword.get(opts, :parsed_labels, %{}),
-      source_mapping: source_mapping,
       redact_pii: Keyword.get(opts, :redact_pii, false),
       filesystem_cache_policy: Keyword.get(opts, :filesystem_cache_policy),
       backend_id: Keyword.get(opts, :backend_id)
