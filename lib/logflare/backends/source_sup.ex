@@ -241,6 +241,22 @@ defmodule Logflare.Backends.SourceSup do
   end
 
   @doc """
+  Returns whether the source's `SourceSup` runs on this node with a child for the
+  backend that has the type and config of `backend`.
+  """
+  @spec backend_child_current?(Source.t(), Backend.t()) :: boolean()
+  def backend_child_current?(%Source{} = source, %Backend{} = backend) do
+    with pid when is_pid(pid) <- GenServer.whereis(Backends.via_source(source, __MODULE__)),
+         child_id when child_id != nil <- find_backend_child_id(pid, backend.id),
+         {:ok, %{start: {_mod, _fun, [{_source, running}]}}} <-
+           :supervisor.get_childspec(pid, child_id) do
+      Map.take(running, [:type, :config]) == Map.take(backend, [:type, :config])
+    else
+      _no_child -> false
+    end
+  end
+
+  @doc """
   Stops a given backend child on SourceSup that is associated with the given Rule.
   """
   @spec stop_rule_child(Rule.t()) :: :ok | {:error, :not_found}
@@ -259,21 +275,23 @@ defmodule Logflare.Backends.SourceSup do
 
   def stop_backend_child(%Source{} = source, backend_id) when backend_id != nil do
     via = Backends.via_source(source, __MODULE__)
-    # spec = Backend.child_spec(source, backend)
 
-    found_id =
-      Supervisor.which_children(via)
-      |> Enum.find_value(fn
-        {{_mod, _source_id, ^backend_id} = child_id, _pid, _type, _sup} -> child_id
-        _child -> nil
-      end)
-
-    if found_id do
+    if found_id = find_backend_child_id(via, backend_id) do
       Supervisor.terminate_child(via, found_id)
       Supervisor.delete_child(via, found_id)
       :ok
     else
       {:error, :not_found}
     end
+  end
+
+  @spec find_backend_child_id(Supervisor.supervisor(), pos_integer()) :: term() | nil
+  defp find_backend_child_id(via, backend_id) do
+    via
+    |> Supervisor.which_children()
+    |> Enum.find_value(fn
+      {{_mod, _source_id, ^backend_id} = child_id, _pid, _type, _sup} -> child_id
+      _child -> nil
+    end)
   end
 end
