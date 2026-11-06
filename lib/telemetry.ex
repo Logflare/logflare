@@ -187,8 +187,7 @@ defmodule Logflare.Telemetry do
             last_value("cachex.#{metric}.hits"),
             last_value("cachex.#{metric}.misses"),
             last_value("cachex.#{metric}.hit_rate"),
-            last_value("cachex.#{metric}.miss_rate"),
-            last_value("cachex.#{metric}.total_heap_size", unit: {:byte, :megabyte})
+            last_value("cachex.#{metric}.miss_rate")
           ]
         end)
       else

@@ -950,8 +950,7 @@ defmodule Logflare.TelemetryTest do
                  :hits,
                  :miss_rate,
                  :misses,
-                 :operations,
-                 :total_heap_size
+                 :operations
                ]
 
         for {key, value} <- measurements do
