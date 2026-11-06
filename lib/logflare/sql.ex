@@ -571,6 +571,8 @@ defmodule Logflare.Sql do
     end
   end
 
+  @spec fresh_sources_for_mapping(pos_integer(), map()) ::
+          {:ok, [Logflare.Sources.Source.t()]} | {:error, String.t() | :database_unavailable}
   defp fresh_sources_for_mapping(user_id, mapping) do
     result =
       CachexOps.commit_or_ignore(fn ->
