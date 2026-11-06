@@ -15,6 +15,18 @@ defmodule Logflare.Endpoints.ContextCacheTest do
     %{user: user}
   end
 
+  test "catalog availability errors propagate through execution and previews", %{user: user} do
+    endpoint = insert(:endpoint, user: user, query: "SELECT 1")
+
+    stub(Endpoints, :list_endpoints_by, fn _ ->
+      raise DBConnection.ConnectionError, message: "primary unavailable"
+    end)
+
+    assert {:error, :database_unavailable} = Endpoints.Cache.list_by_user_id(user.id)
+    assert {:error, :database_unavailable} = Endpoints.run_query(endpoint)
+    assert {:error, :database_unavailable} = Endpoints.get_transformed_query(endpoint)
+  end
+
   test "caches endpoint catalogs by user and busts them by endpoint id", %{user: user} do
     endpoint = insert(:endpoint, user: user, name: "original")
 

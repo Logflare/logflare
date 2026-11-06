@@ -179,32 +179,37 @@ defmodule Logflare.Cache.CachexOps do
         Gossip.multicast(cache, key, value)
         value
 
-      {:ok, {:cached, value}} ->
-        value
-
-      {:ignore, {:unavailable, reason}} ->
-        Logger.warning("#{inspect(cache)} could not load #{key_label(key)}: #{inspect(reason)}")
-
-        {:error, :database_unavailable}
-
-      {:ignore, {:error, :database_unavailable} = err} ->
-        err
-
-      {:error, %Cachex.Error{stack: stack} = error} when is_list(stack) ->
-        reraise error, stack
-
-      {:error, %Cachex.Error{} = error} ->
-        raise error
-
-      {:error, :no_cache} ->
-        raise "cache #{inspect(cache)} is not running"
-
-      {:error, reason} ->
-        exit(reason)
+      result ->
+        fetch_value(cache, key, result)
     end
   end
 
-  defp commit_or_ignore(getter) do
+  @doc false
+  @spec fetch_value(Cachex.t(), term(), term()) :: term() | {:error, :database_unavailable}
+  def fetch_value(_cache, _key, {status, {:cached, value}}) when status in [:ok, :commit],
+    do: value
+
+  def fetch_value(cache, key, {:ignore, {:unavailable, reason}}) do
+    Logger.warning("#{inspect(cache)} could not load #{key_label(key)}: #{inspect(reason)}")
+    {:error, :database_unavailable}
+  end
+
+  def fetch_value(_cache, _key, {:ignore, {:error, :database_unavailable} = error}), do: error
+
+  def fetch_value(_cache, _key, {:error, %Cachex.Error{stack: stack} = error})
+      when is_list(stack),
+      do: reraise(error, stack)
+
+  def fetch_value(_cache, _key, {:error, %Cachex.Error{} = error}), do: raise(error)
+
+  def fetch_value(cache, _key, {:error, :no_cache}),
+    do: raise("cache #{inspect(cache)} is not running")
+
+  def fetch_value(_cache, _key, {:error, reason}), do: exit(reason)
+
+  @doc false
+  @spec commit_or_ignore((-> term())) :: {:commit, {:cached, term()}} | {:ignore, term()}
+  def commit_or_ignore(getter) do
     case getter.() do
       {:error, :database_unavailable} = err -> {:ignore, err}
       value -> {:commit, {:cached, value}}

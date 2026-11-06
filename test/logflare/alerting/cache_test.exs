@@ -4,6 +4,7 @@ defmodule Logflare.Alerting.CacheTest do
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
   alias Logflare.ContextCache
+  alias Logflare.Endpoints
   alias Logflare.Repo
 
   setup do
@@ -13,6 +14,20 @@ defmodule Logflare.Alerting.CacheTest do
     on_exit(fn -> Cachex.clear!(Alerting.Cache) end)
 
     %{user: user}
+  end
+
+  test "catalog availability errors propagate through endpoint execution and previews", %{
+    user: user
+  } do
+    endpoint = insert(:endpoint, user: user, query: "SELECT 1")
+
+    stub(Alerting, :list_alert_queries_by_user_id, fn _ ->
+      raise DBConnection.ConnectionError, message: "primary unavailable"
+    end)
+
+    assert {:error, :database_unavailable} = Alerting.Cache.list_by_user_id(user.id)
+    assert {:error, :database_unavailable} = Endpoints.run_query(endpoint)
+    assert {:error, :database_unavailable} = Endpoints.get_transformed_query(endpoint)
   end
 
   test "caches alert catalogs by user and busts them by alert id", %{user: user} do

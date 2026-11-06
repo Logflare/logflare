@@ -11,6 +11,8 @@ defmodule Logflare.ContextCache.CatalogCache do
   alias Logflare.Cache.CachexOps
   alias Logflare.Repo
 
+  @type error :: {:error, :database_unavailable}
+
   @spec child_spec(term()) :: Supervisor.child_spec()
   def child_spec(_) do
     CachexOps.child_spec(__MODULE__,
@@ -21,17 +23,23 @@ defmodule Logflare.ContextCache.CatalogCache do
     )
   end
 
-  @spec fetch(atom(), term(), (-> list())) :: list()
+  @spec fetch(atom(), term(), (-> list() | error())) :: list() | error()
   def fetch(cache, key, loader) do
     generation = generation(cache, key)
     entry_key = {:catalog, key, generation}
 
-    {_status, {:cached, values}} =
-      Cachex.fetch(cache, entry_key, fn ->
-        {:commit, {:cached, Repo.with_primary(loader)}}
-      end)
+    read = fn -> Repo.with_primary(loader) end
+    result = Cachex.fetch(cache, entry_key, fn -> CachexOps.commit_or_ignore(read) end)
 
-    if generation == generation(cache, key), do: values, else: Repo.with_primary(loader)
+    case CachexOps.fetch_value(cache, entry_key, result) do
+      {:error, :database_unavailable} = error ->
+        error
+
+      values ->
+        if generation == generation(cache, key),
+          do: values,
+          else: CachexOps.fetch_value(cache, entry_key, CachexOps.commit_or_ignore(read))
+    end
   end
 
   @spec keys_to_bust(atom(), [term()]) :: [term()]

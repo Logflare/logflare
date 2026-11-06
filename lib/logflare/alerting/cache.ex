@@ -19,7 +19,8 @@ defmodule Logflare.Alerting.Cache do
     )
   end
 
-  @spec list_by_user_id(User.t() | pos_integer()) :: [Logflare.Alerting.AlertQuery.t()]
+  @spec list_by_user_id(User.t() | pos_integer()) ::
+          [Logflare.Alerting.AlertQuery.t()] | CatalogCache.error()
   def list_by_user_id(%User{id: user_id}), do: list_by_user_id(user_id)
 
   def list_by_user_id(user_id) when is_integer(user_id) do
