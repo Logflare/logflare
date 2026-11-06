@@ -303,6 +303,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       assert :ok = PostgresAdaptor.test_connection(backend)
     end
 
+    @tag capture_log: true
     test "returns error when connection fails", %{backend: backend} do
       Mimic.expect(SharedRepo, :with_repo, fn _backend, _func ->
         {:error, :cannot_connect}
@@ -311,6 +312,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       assert {:error, :connection_error} = PostgresAdaptor.test_connection(backend)
     end
 
+    @tag capture_log: true
     test "execute_query/3 returns error tuple on invalid query", %{backend: backend} do
       assert {:error, %QueryError{kind: :backend_error, raw_error: %Postgrex.Error{}}} =
                PostgresAdaptor.execute_query(backend, "select id from nonexistent_source", [])
