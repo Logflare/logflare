@@ -30,8 +30,9 @@ defmodule Logflare.Logs.SearchOperation do
     field :lql_ts_filters, [FilterRule.t()], default: []
     field :lql_rules, [ChartRule.t() | FilterRule.t() | SelectRule.t()]
     field :chart_rules, [ChartRule.t()], default: []
+    field :series, [%{key: String.t(), label: String.t()}], default: []
     field :error, term()
-    field :stats, :map
+    field :stats, map()
     field :search_timezone, String.t()
     field :chart_data_shape_id, atom(), default: nil, enforce: true
     field :type, :events | :aggregates

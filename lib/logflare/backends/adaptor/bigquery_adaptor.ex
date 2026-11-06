@@ -834,6 +834,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     |> SqlUtils.pg_params_to_question_marks()
     |> String.replace(~r/\."([\w\.]+)"/, ".\\1")
     |> String.replace(~r/FROM\s+"(.+?)"/, "FROM \\1")
+    |> String.replace(~r/JOIN\s+"(\w+)"/, "JOIN `\\1`")
+    |> String.replace(~r/"(\w+)" AS \(/, "`\\1` AS (")
     |> String.replace(~r/AS\s+"(\w+)"/, "AS \\1")
   end
 

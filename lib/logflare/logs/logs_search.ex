@@ -1,12 +1,15 @@
 defmodule Logflare.Logs.Search do
   @moduledoc false
 
-  alias Logflare.Logs.LogEvents
-  alias Logflare.Logs.SearchOperation, as: SO
-  alias Logflare.Lql.Rules, as: LqlRules
-  alias Logflare.Sources
   import Ecto.Query
   import Logflare.Logs.SearchOperations
+
+  alias Logflare.Logs.LogEvents
+  alias Logflare.Logs.SearchOperation, as: SO
+  alias Logflare.Logs.SearchOperations.Helpers, as: SearchOperationHelpers
+  alias Logflare.Lql.Rules, as: LqlRules
+  alias Logflare.Lql.Rules.ChartRule
+  alias Logflare.Sources
 
   @spec search(Logflare.Logs.SearchOperation.t()) :: {:error, any} | {:ok, %{events: any}}
   def search(%SO{} = so) do
@@ -22,6 +25,7 @@ defmodule Logflare.Logs.Search do
     end
   end
 
+  @spec aggs(SO.t()) :: {:ok, %{aggregates: SO.t()}} | {:error, SO.t()}
   def aggs(%SO{} = so) do
     so
     |> get_and_put_partition_by()
@@ -55,6 +59,7 @@ defmodule Logflare.Logs.Search do
     end
   end
 
+  @spec search_result_aggregates(SO.t()) :: {:ok, SO.t()} | {:error, SO.t()}
   def search_result_aggregates(%SO{} = so) do
     so = %{so | type: :aggregates} |> put_time_stats()
 
@@ -62,7 +67,7 @@ defmodule Logflare.Logs.Search do
          %{error: nil} = so <- put_chart_data_shape_id(so),
          %{error: nil} = so <- apply_local_timestamp_correction(so),
          %{error: nil} = so <- apply_timestamp_filter_rules(so),
-         %{error: nil} = so <- apply_numeric_aggs(so),
+         %{error: nil} = so <- prepare_aggregate_query(so),
          %{error: nil} = so <- do_query(so),
          %{error: nil} = so <- process_query_result(so),
          %{error: nil} = so <- add_missing_agg_timestamps(so),
@@ -72,6 +77,135 @@ defmodule Logflare.Logs.Search do
     else
       so -> {:error, so}
     end
+  end
+
+  @spec prepare_aggregate_query(SO.t()) :: SO.t()
+  defp prepare_aggregate_query(%SO{chart_rules: [_, _ | _] = chart_rules} = so) do
+    series =
+      chart_rules
+      |> Enum.with_index()
+      |> Enum.map(fn {%ChartRule{path: path, aggregate: aggregate}, index} ->
+        field =
+          if path == "timestamp", do: "*", else: String.replace_leading(path, "metadata.", "m.")
+
+        %{key: "aggregate_#{index}", label: "#{aggregate}(#{field})"}
+      end)
+
+    prepared_aggregates =
+      chart_rules
+      |> Enum.zip(series)
+      |> Enum.group_by(fn {rule, _series} -> {rule.path, rule.period, rule.value_type} end)
+      |> Enum.map(fn {_group_key, group} ->
+        {rules, series} = Enum.unzip(group)
+
+        apply_numeric_aggs(
+          %{so | chart_rules: rules, series: series},
+          Enum.map(rules, & &1.aggregate)
+        )
+      end)
+
+    %{
+      so
+      | query: combined_aggregate_query(so, prepared_aggregates),
+        series: series
+    }
+  end
+
+  defp prepare_aggregate_query(%SO{} = so), do: apply_numeric_aggs(so)
+
+  @spec combined_aggregate_query(SO.t(), [SO.t()]) :: Ecto.Query.t()
+  defp combined_aggregate_query(so, prepared_aggregates) do
+    %{chart_rules: [%{period: period} | _]} = so
+
+    %{min: min, max: max} =
+      SearchOperationHelpers.get_min_max_filter_timestamps(so.lql_ts_filters, period)
+
+    bounds = SearchOperationHelpers.aggregate_bucket_bounds(min, max, period)
+    seconds = %{second: 1, minute: 60, hour: 3_600, day: 86_400}[period]
+
+    timestamps =
+      aggregate_timestamp_padding(
+        so.backend_type,
+        Timex.to_naive_datetime(bounds.min),
+        Timex.to_naive_datetime(bounds.max),
+        seconds
+      )
+
+    timestamps = if min == max, do: where(timestamps, false), else: timestamps
+
+    query =
+      from(t in "chart_timestamps", select: %{})
+      |> with_cte("chart_timestamps", as: ^timestamps)
+
+    {query, timestamp} =
+      prepared_aggregates
+      |> Enum.with_index(1)
+      |> Enum.reduce({query, dynamic([t], t.timestamp)}, fn {aggregate, index},
+                                                            {query, timestamp} ->
+        key = hd(aggregate.series).key
+        on = dynamic([{a, index}], ^timestamp == a.timestamp)
+
+        query =
+          query
+          |> with_cte(^key, as: ^aggregate.query)
+          |> join(:full, [], a in ^key, on: ^on)
+
+        query =
+          aggregate.chart_rules
+          |> Enum.zip(aggregate.series)
+          |> Enum.reduce(query, fn {%ChartRule{aggregate: field}, %{key: key}}, query ->
+            select_merge(query, [..., a], %{
+              ^key =>
+                fragment(
+                  "CASE WHEN ? IS NULL THEN 0 ELSE ? END AS ?",
+                  a.timestamp,
+                  field(a, ^field),
+                  identifier(^key)
+                )
+            })
+          end)
+
+        {query, dynamic([{a, index}], coalesce(^timestamp, a.timestamp))}
+      end)
+
+    selected_timestamp = dynamic(selected_as(^timestamp, :timestamp))
+
+    query
+    |> select_merge(^%{timestamp: selected_timestamp})
+    |> order_by(^[desc: timestamp])
+  end
+
+  @spec aggregate_timestamp_padding(
+          :bigquery | :postgres,
+          NaiveDateTime.t(),
+          NaiveDateTime.t(),
+          pos_integer()
+        ) :: Ecto.Query.t()
+  defp aggregate_timestamp_padding(:bigquery, min, max, seconds) do
+    min = min |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_unix(:microsecond)
+    max = max |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_unix(:microsecond)
+
+    from(
+      t in fragment(
+        "(SELECT timestamp FROM UNNEST(GENERATE_TIMESTAMP_ARRAY(TIMESTAMP_MICROS(?), TIMESTAMP_MICROS(?), INTERVAL ? SECOND)) AS timestamp)",
+        ^min,
+        ^max,
+        ^seconds
+      ),
+      select: %{timestamp: t.timestamp}
+    )
+  end
+
+  defp aggregate_timestamp_padding(:postgres, min, max, seconds) do
+    from(
+      t in fragment(
+        "(SELECT generate_series(?::timestamp, ?::timestamp, ? * INTERVAL '1 second') AS timestamp)",
+        ^min,
+        ^max,
+        ^seconds
+      ),
+      select: %{timestamp: t.timestamp}
+    )
   end
 
   @doc """
