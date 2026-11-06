@@ -30,7 +30,8 @@ defmodule LogflareWeb.QueryErrorHelpersTest do
           "Multiple CTEs available (a, b). You must specify which one to query using `f:name`",
           "No CTEs found in query",
           "Table 'x' not found in available CTEs: a, b",
-          "can't find source otel_logs_abc123def"
+          "can't find source otel_logs_abc123def",
+          "Sandboxed SQL supports at most one chart rule: internal details"
         ] do
       @message message
 

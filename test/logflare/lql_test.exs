@@ -488,6 +488,23 @@ defmodule Logflare.LqlTest do
   end
 
   describe "to_sandboxed_sql/3" do
+    for dialect <- [:bigquery, :clickhouse, :postgres] do
+      test "preserves malformed timestamp errors for #{dialect}" do
+        assert {:error, :invalid_date} =
+                 Lql.to_sandboxed_sql("t:2026-13-04", "events", unquote(dialect))
+      end
+
+      test "rejects multiple chart rules for #{dialect}" do
+        for lql <- [
+              "c:count(*) c:avg(m.latency) c:group_by(t::minute)",
+              "c:count(*) c:avg(m.latency) c:max(m.latency) c:group_by(t::hour)"
+            ] do
+          assert {:error, "Sandboxed SQL supports at most one chart rule"} =
+                   Lql.to_sandboxed_sql(lql, "events", unquote(dialect))
+        end
+      end
+    end
+
     test "converts simple select LQL to BigQuery SQL" do
       lql = "s:field1 s:field2"
       {:ok, sql} = Lql.to_sandboxed_sql(lql, "my_cte", :bigquery)
