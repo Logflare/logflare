@@ -137,7 +137,7 @@ defmodule Logflare.Backends.Backend do
       add_error(
         changeset,
         :"config.query_class_settings",
-        "can only be configured by an administrator"
+        "must be configured through the query-class settings editor"
       )
     else
       changeset

@@ -1,12 +1,15 @@
 defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassSettings do
   @moduledoc """
-  Admin-owned ClickHouse scheduling policy, independent of read-cluster routing.
+  Backend-owned ClickHouse scheduling policy, independent of read-cluster routing.
   An empty map disables class policy. Configured policy requires a default priority.
   """
 
   alias Logflare.Endpoints.ClickHouseSettings
 
   @classes ~w(dashboard_logs_free dashboard_logs_paid dashboard_reports_free dashboard_reports_paid dashboard_observability mcp api_free api_paid)
+
+  @spec classes() :: [String.t()]
+  def classes, do: @classes
 
   @spec class_label?(term()) :: boolean()
   def class_label?(label), do: label in @classes

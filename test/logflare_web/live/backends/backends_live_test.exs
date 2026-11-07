@@ -1257,7 +1257,9 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       html =
         view
-        |> form("form", %{backend: %{config: %{batch_size: 3_000, batch_timeout: 2_500}}})
+        |> form("form[phx-submit=save_backend]", %{
+          backend: %{config: %{batch_size: 3_000, batch_timeout: 2_500}}
+        })
         |> render_submit()
 
       assert html =~ "Successfully updated backend"
@@ -1285,7 +1287,9 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       html =
         view
-        |> form("form", %{backend: %{config: %{use_async_inserts_only: true}}})
+        |> form("form[phx-submit=save_backend]", %{
+          backend: %{config: %{use_async_inserts_only: true}}
+        })
         |> render_submit()
 
       assert html =~ "Successfully updated backend"
@@ -1314,7 +1318,9 @@ defmodule LogflareWeb.BackendsLiveTest do
              )
 
       view
-      |> form("form", %{backend: %{config: %{use_async_inserts_only: true}}})
+      |> form("form[phx-submit=save_backend]", %{
+        backend: %{config: %{use_async_inserts_only: true}}
+      })
       |> render_submit()
 
       assert Backends.get_backend(backend.id).config[:async_insert_busy_timeout_max_ms] == nil
@@ -1323,7 +1329,7 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       html =
         view
-        |> form("form", %{
+        |> form("form[phx-submit=save_backend]", %{
           backend: %{
             config: %{
               async_insert_busy_timeout_max_ms: "200",
@@ -1351,7 +1357,7 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       html =
         view
-        |> form("form", %{
+        |> form("form[phx-submit=save_backend]", %{
           backend: %{
             config: %{async_insert_busy_timeout_max_ms: "", async_insert_max_data_size: ""}
           }
@@ -1446,7 +1452,7 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       html =
         view
-        |> form("form", %{backend: %{description: "updated description"}})
+        |> form("form[phx-submit=save_backend]", %{backend: %{description: "updated description"}})
         |> render_submit()
 
       assert html =~ "updated description"
@@ -1610,7 +1616,7 @@ defmodule LogflareWeb.BackendsLiveTest do
       |> element("#read-cluster-row-0 button[phx-click='remove_row']")
       |> render_click()
 
-      view |> form("form") |> render_submit()
+      view |> form("form[phx-submit=save_backend]") |> render_submit()
 
       read_only_urls = Backends.get_backend(backend.id).config.read_only_urls
 
