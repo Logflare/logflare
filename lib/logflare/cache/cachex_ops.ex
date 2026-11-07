@@ -109,10 +109,22 @@ defmodule Logflare.Cache.CachexOps do
   `{:ok, map}` with that `:id`, or a list containing such a map. Raises `ArgumentError` for any other
   keyword.
 
+  With `[id: :not_found]`, returns only keys containing cached nil values.
+
   It scans the cache with a match spec instead of keeping a reverse index of primary keys.
   """
   @impl Logflare.ContextCache.Ops
   @spec keys_to_bust(Cachex.t(), keyword()) :: Enumerable.t()
+  def keys_to_bust(cache, id: :not_found) do
+    query =
+      Cachex.Query.build(
+        where: {:==, :value, {:const, {:cached, nil}}},
+        output: :key
+      )
+
+    Cachex.stream!(cache, query)
+  end
+
   def keys_to_bust(cache, id: pkey) do
     filter =
       {

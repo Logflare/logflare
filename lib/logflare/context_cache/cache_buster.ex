@@ -196,10 +196,11 @@ defmodule Logflare.ContextCache.CacheBuster do
 
   defp handle_record(%UpdatedRecord{
          relation: {_schema, "endpoint_queries"},
-         record: %{"id" => id}
+         record: %{"id" => id} = record,
+         old_record: old_record
        })
        when is_binary(id) do
-    {Endpoints, String.to_integer(id)}
+    [{Endpoints, String.to_integer(id)} | catalog_owners(Endpoints, [record, old_record])]
   end
 
   defp handle_record(%UpdatedRecord{
@@ -215,6 +216,17 @@ defmodule Logflare.ContextCache.CacheBuster do
        }) do
     # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
     {Billing, :not_found}
+  end
+
+  defp handle_record(%NewRecord{
+         relation: {_schema, "endpoint_queries"},
+         record: %{"id" => _id, "user_id" => user_id}
+       })
+       when is_binary(user_id) do
+    [
+      {Endpoints, :not_found},
+      {Endpoints, [user_id: String.to_integer(user_id)]}
+    ]
   end
 
   defp handle_record(%NewRecord{
@@ -328,10 +340,10 @@ defmodule Logflare.ContextCache.CacheBuster do
 
   defp handle_record(%DeletedRecord{
          relation: {_schema, "endpoint_queries"},
-         old_record: %{"id" => id}
+         old_record: %{"id" => id} = record
        })
        when is_binary(id) do
-    {Endpoints, String.to_integer(id)}
+    [{Endpoints, String.to_integer(id)} | catalog_owners(Endpoints, [record])]
   end
 
   defp handle_record(%DeletedRecord{

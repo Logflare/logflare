@@ -758,13 +758,10 @@ defmodule Logflare.Endpoints do
     sql_param = Map.get(params, "sql")
     lql_param = Map.get(params, "lql")
 
-    endpoints =
-      list_endpoints_by(user_id: endpoint_query.user_id)
-      |> Enum.filter(&(&1.id != endpoint_query.id))
-
-    alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
-
-    with {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
+    with endpoints when is_list(endpoints) <- Cache.list_by_user_id(user_id),
+         alerts when is_list(alerts) <- Alerting.list_alert_queries_by_user_id(user_id),
+         endpoints = Enum.filter(endpoints, &(&1.id != endpoint_query.id)),
+         {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
          :ok <- validate_query_override(endpoint_query, params),
          {:ok, declared_params} <-
            Sql.parameters(query_string, dialect: Sql.to_dialect(query_language)),
@@ -983,13 +980,10 @@ defmodule Logflare.Endpoints do
     sql_param = Map.get(params, "sql")
     lql_param = Map.get(params, "lql")
 
-    endpoints =
-      list_endpoints_by(user_id: endpoint_query.user_id)
-      |> Enum.filter(&(&1.id != endpoint_query.id))
-
-    alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
-
-    with {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
+    with endpoints when is_list(endpoints) <- Cache.list_by_user_id(user_id),
+         alerts when is_list(alerts) <- Alerting.list_alert_queries_by_user_id(user_id),
+         endpoints = Enum.filter(endpoints, &(&1.id != endpoint_query.id)),
+         {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
          {:ok, expanded_query} <-
            Sql.expand_subqueries(
              query_language,

@@ -6,6 +6,8 @@ defmodule Logflare.Endpoints.Cache do
   use Logflare.ContextCache
 
   alias Logflare.Cache.CachexOps
+  alias Logflare.ContextCache
+  alias Logflare.ContextCache.CatalogCache
   alias Logflare.Endpoints
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Repo
@@ -160,7 +162,37 @@ defmodule Logflare.Endpoints.Cache do
     end
   end
 
+  @spec list_by_user_id(pos_integer()) :: [Endpoints.EndpointQuery.t()] | CatalogCache.error()
+  def list_by_user_id(user_id) when is_integer(user_id) do
+    if Repo.in_transaction?() do
+      Endpoints.list_endpoints_by(user_id: user_id)
+    else
+      fetch_list_by_user_id(user_id)
+    end
+  end
+
+  @impl ContextCache
+  @spec keys_to_bust(keyword()) :: Enumerable.t()
+  def keys_to_bust(kw) do
+    if Keyword.has_key?(kw, :user_id) do
+      entries =
+        kw
+        |> Keyword.get_values(:user_id)
+        |> Enum.map(&{:list_endpoints_by, [[user_id: &1]]})
+
+      CatalogCache.keys_to_bust(__MODULE__, entries)
+    else
+      CachexOps.keys_to_bust(__MODULE__, kw)
+    end
+  end
+
+  defp fetch_list_by_user_id(user_id) do
+    CatalogCache.fetch(__MODULE__, {:list_endpoints_by, [[user_id: user_id]]}, fn ->
+      Endpoints.list_endpoints_by(user_id: user_id)
+    end)
+  end
+
   defp apply_repo_fun(arg1, arg2) do
-    Logflare.ContextCache.apply_fun(Endpoints, arg1, arg2)
+    ContextCache.apply_fun(Endpoints, arg1, arg2)
   end
 end
