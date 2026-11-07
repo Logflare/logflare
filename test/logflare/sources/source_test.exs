@@ -12,6 +12,39 @@ defmodule Logflare.Sources.SourceTest do
     :ok
   end
 
+  test "parse_key_values_config/1 prepares accessor paths" do
+    source = %Source{
+      transform_key_values:
+        "m.project:m.id: org.id \nproject:name:$.org.name\nproject:full\nproject:invalid:$.["
+    }
+
+    source = Source.parse_key_values_config(source)
+    {:ok, expected_jsonpath} = Warpath.Expression.compile("$.org.name")
+
+    assert source.transform_key_values_parsed == [
+             %{
+               from_path: ["metadata", "project"],
+               to_path: ["metadata", "id"],
+               accessor_path: {"org.id", ["org", "id"]}
+             },
+             %{
+               from_path: ["project"],
+               to_path: ["name"],
+               accessor_path: {"$.org.name", expected_jsonpath}
+             },
+             %{
+               from_path: ["project"],
+               to_path: ["full"],
+               accessor_path: nil
+             },
+             %{
+               from_path: ["project"],
+               to_path: ["invalid"],
+               accessor_path: {"$.[", :invalid}
+             }
+           ]
+  end
+
   describe "default_search_lql" do
     test "allows clearing default search LQL" do
       source = %Source{name: "Test Source", default_search_lql: "s:m.level"}
