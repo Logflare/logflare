@@ -385,6 +385,7 @@ defmodule Logflare.Google.BigQuery do
   defp patch(dataset_id, emails, project_id, user_id) do
     conn = GenUtils.get_conn()
     dataset_id = dataset_id || Integer.to_string(user_id) <> GCPConfig.dataset_id_append()
+    project_id = project_id || GCPConfig.default_project_id()
 
     access_emails =
       Enum.map(emails, fn x ->
@@ -413,7 +414,15 @@ defmodule Logflare.Google.BigQuery do
       }
     ]
 
-    access = access_emails ++ access_defaults
+    {:ok, %Model.Dataset{access: current_access}} =
+      Api.Datasets.bigquery_datasets_get(conn, project_id, dataset_id)
+
+    # datasets.patch replaces the whole access list, so keep the entries Logflare does not
+    # manage, such as authorized views, datasets, routines and groups.
+    unmanaged_access =
+      Enum.filter(current_access || [], &(is_nil(&1.userByEmail) and is_nil(&1.specialGroup)))
+
+    access = access_emails ++ access_defaults ++ unmanaged_access
 
     %Plan{name: plan} =
       Users.Cache.get(user_id)
@@ -430,12 +439,7 @@ defmodule Logflare.Google.BigQuery do
     }
 
     {:ok, _response} =
-      Api.Datasets.bigquery_datasets_patch(
-        conn,
-        project_id || GCPConfig.default_project_id(),
-        dataset_id,
-        body: body
-      )
+      Api.Datasets.bigquery_datasets_patch(conn, project_id, dataset_id, body: body)
 
     Logger.info("Dataset patched: #{dataset_id} | #{inspect(emails)}")
   end
