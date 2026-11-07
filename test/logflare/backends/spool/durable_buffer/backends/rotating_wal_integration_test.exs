@@ -17,6 +17,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWalIntegrationT
   alias Logflare.Backends.Spool.Health
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
+  alias Logflare.Test.FakeDurableBufferBackend, as: FakeInnerBackend
 
   setup :set_mimic_global
 
@@ -139,5 +140,75 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWalIntegrationT
     assert_receive {:put, body}, 200
     assert {[^payload], _valid, ""} = DurableBuffer.WAL.decode_all(body)
     assert_receive {:publish, "projects/p/topics/t", _notify_body}, 200
+  end
+
+  test "a tail left behind by a killed committer ships after restart without new traffic" do
+    name = :"rotating_wal_crash_#{System.unique_integer([:positive])}"
+    interval_ms = 300
+
+    backend =
+      {RotatingWal,
+       wal_dir: wal_dir!(),
+       max_batch_bytes: 1_000_000,
+       max_rotation_interval_ms: interval_ms,
+       worker_count: 1,
+       inner_backend: {FakeInnerBackend, test_pid: self()}}
+
+    start_supervised!({DurableBuffer, name: name, backend: backend, partitions: 1})
+
+    payload = <<1::32-big, "crashed tail"::binary>>
+    assert {:ok, _offset} = DurableBuffer.append(name, :some_key, payload)
+
+    partition = GenServer.whereis(DurableBuffer.partition_name(name, 0))
+    ref = Process.monitor(partition)
+    Process.exit(:sys.get_state(partition).committer, :kill)
+    assert_receive {:DOWN, ^ref, :process, _, _}
+    refute_received {:committed, _, _, _}
+
+    assert_receive {:committed, 0, body, _size}, interval_ms * 5
+    assert {[^payload], _valid, ""} = DurableBuffer.WAL.decode_all(body)
+  end
+
+  test "a tail left behind by a killed committer ships on the next clean shutdown" do
+    name = :"rotating_wal_crash_close_#{System.unique_integer([:positive])}"
+
+    backend =
+      {RotatingWal,
+       wal_dir: wal_dir!(),
+       max_batch_bytes: 1_000_000,
+       max_rotation_interval_ms: 60_000,
+       worker_count: 1,
+       inner_backend: {FakeInnerBackend, test_pid: self()}}
+
+    start_supervised!(
+      Supervisor.child_spec({DurableBuffer, name: name, backend: backend, partitions: 1},
+        id: :buffer
+      )
+    )
+
+    payload = <<1::32-big, "crashed tail"::binary>>
+    assert {:ok, _offset} = DurableBuffer.append(name, :some_key, payload)
+
+    partition = GenServer.whereis(DurableBuffer.partition_name(name, 0))
+    ref = Process.monitor(partition)
+    Process.exit(:sys.get_state(partition).committer, :kill)
+    assert_receive {:DOWN, ^ref, :process, _, _}
+
+    wait_for_restart(name, partition)
+    stop_supervised!(:buffer)
+
+    assert_receive {:committed, 0, body, _size}
+    assert {[^payload], _valid, ""} = DurableBuffer.WAL.decode_all(body)
+  end
+
+  defp wait_for_restart(name, old_partition) do
+    case GenServer.whereis(DurableBuffer.partition_name(name, 0)) do
+      pid when is_pid(pid) and pid != old_partition ->
+        :sys.get_state(pid)
+
+      _ ->
+        Process.sleep(10)
+        wait_for_restart(name, old_partition)
+    end
   end
 end
