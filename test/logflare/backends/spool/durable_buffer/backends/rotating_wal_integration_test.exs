@@ -10,6 +10,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWalIntegrationT
 
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
   import Mimic
 
   alias Logflare.Backends.Spool.DurableBuffer.Backends.Cloud
@@ -17,6 +18,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWalIntegrationT
   alias Logflare.Backends.Spool.Health
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
+  alias Logflare.Test.FakeDurableBufferBackend, as: FakeInnerBackend
 
   setup :set_mimic_global
 
@@ -139,5 +141,32 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWalIntegrationT
     assert_receive {:put, body}, 200
     assert {[^payload], _valid, ""} = DurableBuffer.WAL.decode_all(body)
     assert_receive {:publish, "projects/p/topics/t", _notify_body}, 200
+  end
+
+  test "repeated rotation failures return errors instead of restarting the partition" do
+    name = :"rotating_wal_disk_errors_#{System.unique_integer([:positive])}"
+    wal_dir = wal_dir!()
+
+    backend =
+      {RotatingWal,
+       wal_dir: wal_dir,
+       max_batch_bytes: 4,
+       worker_count: 1,
+       inner_backend: {FakeInnerBackend, test_pid: self()}}
+
+    start_supervised!({DurableBuffer, name: name, backend: backend, partitions: 1})
+    partition = GenServer.whereis(DurableBuffer.partition_name(name, 0))
+    ref = Process.monitor(partition)
+    File.rm_rf!(wal_dir)
+
+    capture_log(fn ->
+      for _ <- 1..5 do
+        result = DurableBuffer.append(name, :some_key, <<1::32-big, "x"::binary>>, 1_000)
+        assert match?({:ok, _}, result) or match?({:error, _}, result)
+      end
+    end)
+
+    refute_received {:DOWN, ^ref, :process, _, _}
+    assert GenServer.whereis(DurableBuffer.partition_name(name, 0)) == partition
   end
 end
