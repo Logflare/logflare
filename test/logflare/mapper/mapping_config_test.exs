@@ -306,6 +306,16 @@ defmodule Logflare.Mapper.MappingConfigTest do
       assert restored.output == OutputFormat.ch_row_binary(:log)
     end
 
+    test "round-trip preserves NDJSON output options" do
+      output =
+        OutputFormat.ndjson(:trace, column_names: :underscore, nested_arrays: :json_strings)
+
+      config = MappingConfig.new([Field.string("project")], output: output)
+
+      assert {:ok, json} = MappingConfig.to_json(config)
+      assert {:ok, %MappingConfig{output: ^output}} = MappingConfig.from_json(json)
+    end
+
     test "round-trip preserves pick entries" do
       config =
         MappingConfig.new([
@@ -541,6 +551,28 @@ defmodule Logflare.Mapper.MappingConfigTest do
                "format" => "ch_row_binary",
                "row_type" => "trace"
              }
+    end
+
+    test "serializes NDJSON output options, defaulting to the plain layout" do
+      for {opts, column_names, nested_arrays} <- [
+            {[], "dotted", "native"},
+            {[column_names: :underscore, nested_arrays: :json_strings], "underscore",
+             "json_strings"}
+          ] do
+        config =
+          MappingConfig.new([Field.string("project")], output: OutputFormat.ndjson(:log, opts))
+
+        assert MappingConfig.to_nif_map(config)["output"] == %{
+                 "format" => "ndjson",
+                 "row_type" => "log",
+                 "column_names" => column_names,
+                 "nested_arrays" => nested_arrays
+               }
+      end
+    end
+
+    test "rejects unknown NDJSON output options" do
+      assert_raise ArgumentError, fn -> OutputFormat.ndjson(:log, column_case: :snake) end
     end
 
     test "serializes config with pick entries" do
