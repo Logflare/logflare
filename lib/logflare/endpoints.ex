@@ -860,6 +860,7 @@ defmodule Logflare.Endpoints do
       id: Keyword.get(opts, :endpoint_id),
       query: query_string,
       language: language,
+      max_limit: Keyword.get(opts, :max_limit, %EndpointQuery{}.max_limit),
       sandboxable: Keyword.get(opts, :sandboxable, false),
       user: user,
       user_id: user.id,
