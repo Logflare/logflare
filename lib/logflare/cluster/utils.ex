@@ -62,4 +62,16 @@ defmodule Logflare.Cluster.Utils do
   def erpc_multicall(nodes, mod, func, args, timeout \\ 5_000) do
     Enum.zip(nodes, :erpc.multicall(nodes, mod, func, args, timeout))
   end
+
+  @doc """
+  Convenience function for `:erpc.call/5` that returns failures instead of raising them.
+
+  The result has the same shape as one result of `erpc_multicall/5`.
+  """
+  @spec erpc_call(Node.t(), module(), atom(), [term()], non_neg_integer()) ::
+          {:ok, term()} | {:error, term()} | {:throw, term()} | {:exit, term()}
+  def erpc_call(node, mod, func, args, timeout \\ 5_000) do
+    [{^node, result}] = erpc_multicall([node], mod, func, args, timeout)
+    result
+  end
 end
