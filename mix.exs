@@ -73,7 +73,7 @@ defmodule Logflare.Mixfile do
       plt_local_path: "dialyzer",
       plt_core_path: "dialyzer",
       plt_add_deps: :apps_tree,
-      plt_add_apps: [:ex_unit, :mix],
+      plt_add_apps: [:ex_unit, :mix, :phoenix_test, :phoenix_test_playwright, :playwright_ex],
       ignore_warnings: ".dialyzer_ignore.exs"
     ]
   end
