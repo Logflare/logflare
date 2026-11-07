@@ -3,6 +3,7 @@ defmodule Logflare.ContextCache.Supervisor do
 
   use Supervisor
 
+  alias Logflare.Alerting
   alias Logflare.Auth
   alias Logflare.Backends
   alias Logflare.Billing
@@ -74,6 +75,7 @@ defmodule Logflare.ContextCache.Supervisor do
       {Partners.Cache, :partners},
       {Users.Cache, :users},
       {Backends.Cache, :backends},
+      {Alerting.Cache, :alerting},
       {Sources.Cache, :sources},
       {CatalogCache, :catalog_generations},
       {Catalog.Cache, :source_catalog},

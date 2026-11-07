@@ -5,6 +5,7 @@ defmodule Logflare.ContextCache.CatalogWalTest do
   alias Cainophile.Changes.NewRecord
   alias Cainophile.Changes.Transaction
   alias Cainophile.Changes.UpdatedRecord
+  alias Logflare.Alerting
   alias Logflare.ContextCache
   alias Logflare.ContextCache.CacheBuster
   alias Logflare.Endpoints
@@ -24,7 +25,9 @@ defmodule Logflare.ContextCache.CatalogWalTest do
   for {context, cache, getter, factory, table, loader} <- [
         {Sources, Catalog.Cache, :list_by_user, :source, "sources", :list_source_catalog_by_user},
         {Endpoints, Endpoints.Cache, :list_by_user_id, :endpoint, "endpoint_queries",
-         :list_endpoints_by}
+         :list_endpoints_by},
+        {Alerting, Alerting.Cache, :list_by_user_id, :alert, "alert_queries",
+         :list_alert_queries_by_user_id}
       ] do
     @context context
     @cache cache

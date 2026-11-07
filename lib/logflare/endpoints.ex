@@ -759,7 +759,7 @@ defmodule Logflare.Endpoints do
     lql_param = Map.get(params, "lql")
 
     with endpoints when is_list(endpoints) <- Cache.list_by_user_id(user_id),
-         alerts when is_list(alerts) <- Alerting.list_alert_queries_by_user_id(user_id),
+         alerts when is_list(alerts) <- Alerting.Cache.list_by_user_id(user_id),
          endpoints = Enum.filter(endpoints, &(&1.id != endpoint_query.id)),
          {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
          :ok <- validate_query_override(endpoint_query, params),
@@ -981,7 +981,7 @@ defmodule Logflare.Endpoints do
     lql_param = Map.get(params, "lql")
 
     with endpoints when is_list(endpoints) <- Cache.list_by_user_id(user_id),
-         alerts when is_list(alerts) <- Alerting.list_alert_queries_by_user_id(user_id),
+         alerts when is_list(alerts) <- Alerting.Cache.list_by_user_id(user_id),
          endpoints = Enum.filter(endpoints, &(&1.id != endpoint_query.id)),
          {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
          {:ok, expanded_query} <-
