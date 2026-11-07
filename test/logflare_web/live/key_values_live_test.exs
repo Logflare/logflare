@@ -123,6 +123,21 @@ defmodule LogflareWeb.KeyValuesLiveTest do
 
       kv = KeyValues.list_key_values(user_id: user.id, key: "del_key") |> hd()
 
+      liveview_pid = view.pid
+      telemetry_ref = make_ref()
+
+      :ok =
+        :telemetry.attach(
+          telemetry_ref,
+          [:logflare, :repo, :replica_route],
+          fn _event, _measurements, _metadata, observer ->
+            send(observer, {:replica_read, self()})
+          end,
+          self()
+        )
+
+      on_exit(fn -> :telemetry.detach(telemetry_ref) end)
+
       view
       |> element("button[phx-click='delete'][phx-value-id='#{kv.id}']")
       |> render_click()
@@ -130,6 +145,7 @@ defmodule LogflareWeb.KeyValuesLiveTest do
       html = render(view)
       assert html =~ "No results found"
       assert html =~ "Total: 1"
+      refute_received {:replica_read, ^liveview_pid}
     end
 
     test "clear search resets to initial state", %{conn: conn, user: user} do

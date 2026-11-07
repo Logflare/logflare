@@ -129,13 +129,20 @@ defmodule LogflareWeb.KeyValuesLive do
         |> maybe_put(:key, socket.assigns.filter_key)
 
       query = KeyValues.list_key_values_query(query_opts)
-      assign(socket, :page, paginate(query, 1))
+      assign(socket, :page, paginate(query, 1, replica?: false))
     else
       socket
     end
   end
 
-  defp paginate(query, page_num) do
+  @spec paginate(Ecto.Query.t(), pos_integer(), keyword()) :: map()
+  defp paginate(query, page_num, opts \\ []) do
+    read = fn -> do_paginate(query, page_num) end
+
+    Repo.with_read(read, Keyword.get(opts, :replica?, true))
+  end
+
+  defp do_paginate(query, page_num) do
     import Ecto.Query, only: [offset: 2, limit: 2]
 
     total = Repo.aggregate(query, :count)
