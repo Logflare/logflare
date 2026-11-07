@@ -19,11 +19,14 @@ defmodule Logflare.ContextCache.CacheBuster do
   alias Logflare.SavedSearches
   alias Logflare.SourceSchemas
   alias Logflare.Sources
+  alias Logflare.Sources.Catalog
   alias Logflare.TeamUsers
   alias Logflare.Users
   alias Logflare.ContextCache.CacheBusterWorker
 
   require Logger
+
+  @source_catalog_fields ~w(name token user_id)
 
   def start_link(init_args) do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
@@ -60,11 +63,14 @@ defmodule Logflare.ContextCache.CacheBuster do
   def handle_info(%Transaction{changes: changes} = transaction, state) do
     Logger.debug("WAL record received from pubsub: #{inspect(transaction)}")
 
-    for record <- changes,
-        record = handle_record(record),
-        record != :noop do
-      record
-    end
+    changes
+    |> Enum.flat_map(fn change ->
+      case handle_record(change) do
+        :noop -> []
+        records when is_list(records) -> records
+        record -> [record]
+      end
+    end)
     |> tap(fn
       [] ->
         nil
@@ -101,6 +107,20 @@ defmodule Logflare.ContextCache.CacheBuster do
        do: String.to_integer(user_id)
 
   defp backend_owner_id(_change), do: nil
+
+  defp handle_record(%UpdatedRecord{
+         relation: {_schema, "sources"},
+         record: %{"id" => id, "user_id" => user_id} = record,
+         old_record: old_record
+       })
+       when is_binary(id) and is_binary(user_id) do
+    catalogs =
+      if source_catalog_changed?(record, old_record),
+        do: catalog_owners(Catalog, [record, old_record]),
+        else: []
+
+    [{Sources, String.to_integer(id)} | catalogs]
+  end
 
   defp handle_record(%UpdatedRecord{
          relation: {_schema, "sources"},
@@ -226,9 +246,11 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"id" => _id, "user_id" => user_id}
        })
        when is_binary(user_id) do
-    # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
-    {Sources, :not_found}
-    # {Users, String.to_integer(user_id)}
+    # Bust both negative source lookups and the owner's cached catalog.
+    [
+      {Sources, :not_found},
+      {Catalog, [user_id: String.to_integer(user_id)]}
+    ]
   end
 
   defp handle_record(%NewRecord{
@@ -283,6 +305,17 @@ defmodule Logflare.ContextCache.CacheBuster do
        })
        when is_binary(id) do
     {Billing, String.to_integer(id)}
+  end
+
+  defp handle_record(%DeletedRecord{
+         relation: {_schema, "sources"},
+         old_record: %{"id" => id, "user_id" => user_id}
+       })
+       when is_binary(id) and is_binary(user_id) do
+    [
+      {Sources, String.to_integer(id)},
+      {Catalog, [user_id: String.to_integer(user_id)]}
+    ]
   end
 
   defp handle_record(%DeletedRecord{
@@ -384,6 +417,26 @@ defmodule Logflare.ContextCache.CacheBuster do
 
   defp handle_record(_record) do
     :noop
+  end
+
+  @spec source_catalog_changed?(map(), term()) :: boolean()
+  defp source_catalog_changed?(record, old_record) when is_map(old_record) do
+    Enum.any?(@source_catalog_fields, fn field ->
+      not Map.has_key?(record, field) or not Map.has_key?(old_record, field) or
+        record[field] != old_record[field]
+    end)
+  end
+
+  defp source_catalog_changed?(_record, _old_record), do: true
+
+  defp catalog_owners(context, records) do
+    records
+    |> Enum.flat_map(fn
+      %{"user_id" => user_id} when is_binary(user_id) -> [String.to_integer(user_id)]
+      _record -> []
+    end)
+    |> Enum.uniq()
+    |> Enum.map(&{context, [user_id: &1]})
   end
 
   def handle_rule_record(%{

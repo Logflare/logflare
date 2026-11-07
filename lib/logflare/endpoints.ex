@@ -113,12 +113,15 @@ defmodule Logflare.Endpoints do
     do: Repo.get(EndpointQuery, query_id)
 
   @spec get_endpoint_query_at_version(EndpointQuery.t() | integer() | String.t(), integer()) ::
-          {:ok, EndpointQuery.t()} | {:error, :invalid_version | :version_not_found}
+          {:ok, EndpointQuery.t()}
+          | {:error, :invalid_version | :version_not_found | String.t() | :database_unavailable}
   def get_endpoint_query_at_version(%EndpointQuery{} = endpoint, version_number)
       when is_integer(version_number) and version_number > 0 do
     case get_endpoint_query_version(endpoint.id, version_number) do
       %Version{} = version ->
-        {:ok, endpoint_from_version(endpoint, version, version_number)}
+        with %EndpointQuery{} = query <- endpoint_from_version(endpoint, version, version_number) do
+          {:ok, query}
+        end
 
       nil ->
         {:error, :version_not_found}
@@ -140,10 +143,17 @@ defmodule Logflare.Endpoints do
   @doc """
   Retrieves a mapped endpoint `EndpointQuery` by token
   """
-  @spec get_mapped_query_by_token(token :: String.t()) :: EndpointQuery.t() | nil
+  @spec get_mapped_query_by_token(token :: String.t()) ::
+          EndpointQuery.t() | nil | {:error, String.t() | :database_unavailable}
   def get_mapped_query_by_token(token) when is_non_empty_binary(token) do
+    with %EndpointQuery{} = query <- get_query_with_user_by_token(token) do
+      EndpointQuery.map_query_sources(query)
+    end
+  end
+
+  @spec get_query_with_user_by_token(String.t()) :: EndpointQuery.t() | nil
+  def get_query_with_user_by_token(token) when is_non_empty_binary(token) do
     get_by(token: token)
-    |> EndpointQuery.map_query_sources()
     |> Repo.preload(:user)
   end
 
@@ -151,7 +161,8 @@ defmodule Logflare.Endpoints do
   Puts the `:query` key of the `EndpointQuery` with the latest source mappings.
   This ensure that the query will have the latest source names (assuming a name change)
   """
-  @spec map_query_sources(EndpointQuery.t() | nil) :: EndpointQuery.t() | nil
+  @spec map_query_sources(EndpointQuery.t() | nil) ::
+          EndpointQuery.t() | nil | {:error, String.t() | :database_unavailable}
   def map_query_sources(nil), do: nil
   def map_query_sources(%EndpointQuery{} = query), do: EndpointQuery.map_query_sources(query)
 
@@ -593,7 +604,8 @@ defmodule Logflare.Endpoints do
     |> Repo.one()
   end
 
-  @spec endpoint_from_version(EndpointQuery.t(), Version.t(), pos_integer()) :: EndpointQuery.t()
+  @spec endpoint_from_version(EndpointQuery.t(), Version.t(), pos_integer()) ::
+          EndpointQuery.t() | {:error, String.t() | :database_unavailable}
   defp endpoint_from_version(%EndpointQuery{} = endpoint, %Version{meta: meta}, version_number)
        when is_map(meta) do
     snapshot = Map.get(meta, "endpoint_snapshot", %{})
@@ -847,12 +859,6 @@ defmodule Logflare.Endpoints do
   def run_query_string(user, {language, query_string}, opts \\ []) do
     params = Keyword.get(opts, :params, %{})
 
-    source_mapping =
-      user
-      |> Users.preload_sources()
-      |> then(fn %{sources: sources} -> sources end)
-      |> Map.new(&{&1.name, &1.token})
-
     query = %EndpointQuery{
       id: Keyword.get(opts, :endpoint_id),
       query: query_string,
@@ -861,7 +867,6 @@ defmodule Logflare.Endpoints do
       user: user,
       user_id: user.id,
       parsed_labels: Keyword.get(opts, :parsed_labels, %{}),
-      source_mapping: source_mapping,
       redact_pii: Keyword.get(opts, :redact_pii, false),
       filesystem_cache_policy: Keyword.get(opts, :filesystem_cache_policy),
       backend_id: Keyword.get(opts, :backend_id)

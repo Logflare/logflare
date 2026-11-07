@@ -221,6 +221,10 @@ curl "https://api.logflare.app/api/endpoints/query/my-endpoint" \
 
 If the header is omitted the current endpoint definition is used. If the requested version does not exist for the resolved endpoint the response contains `version not found`.
 
+Saved source mappings identify sources by token, including in historical endpoint versions. If a referenced source no longer exists, the request returns HTTP 400 with `can't find source <name>` instead of resolving a different source with the same name.
+
+If a required query catalog cannot be loaded because the database is unavailable, the request returns HTTP 503 with a `Retry-After: 5` header. Failed catalog loads are not cached, so a subsequent request retries the load.
+
 The current endpoint's sandboxing setting applies to every version. When sandboxing is disabled, requests containing non-empty `sql` or `lql` overrides return HTTP 400.
 
 Versioned endpoint requests are tagged in query execution logs. For example, `LF-ENDPOINT-VERSION: 1` produces `endpoint_version=1`. See [Query tagging with labels](#query-tagging-with-labels) for more details on labels.

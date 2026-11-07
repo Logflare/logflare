@@ -177,6 +177,22 @@ defmodule Logflare.Cache.CachexOpsTest do
       :ok
     end
 
+    test "typed database failures are not cached and the next fetch retries" do
+      assert {:error, :database_unavailable} =
+               CachexOps.fetch(@cache, :key, fn -> {:error, :database_unavailable} end)
+
+      assert {:ok, false} = Cachex.exists?(@cache, :key)
+      assert :recovered = CachexOps.fetch(@cache, :key, fn -> :recovered end)
+    end
+
+    test "unexpected getter failures are re-raised" do
+      assert_raise Cachex.Error, ~r/getter bug/, fn ->
+        CachexOps.fetch(@cache, :key, fn -> raise ArgumentError, "getter bug" end)
+      end
+
+      assert {:ok, false} = Cachex.exists?(@cache, :key)
+    end
+
     for value <- [:value, nil] do
       test "missing key with a getter returning #{inspect(value)}" do
         value = unquote(value)
