@@ -9,6 +9,53 @@ defmodule LogflareWeb.CoreComponents do
   alias Phoenix.HTML.Form
   alias Phoenix.LiveView.JS
 
+  @doc "Tabs with client-side LiveView.JS switching and optional on_select commands."
+  attr :id, :string, required: true
+  attr :class, :any, default: nil
+  attr :tab_class, :any, default: nil
+  attr :rest, :global
+
+  slot :tab, required: true do
+    attr :id, :string, required: true
+    attr :label, :string, required: true
+    attr :active, :boolean
+    attr :on_select, JS
+    attr :busy, :boolean
+  end
+
+  slot :actions
+
+  @spec tabs(map()) :: Phoenix.LiveView.Rendered.t()
+  def tabs(assigns) do
+    ~H"""
+    <ul :if={length(@tab) > 1} id={@id} class={["nav d-flex", @class]} role="tablist" {@rest}>
+      <li :for={tab <- @tab} class="nav-item">
+        <button type="button" id={"#{tab.id}-tab"} class={["nav-link tw-bg-transparent tw-border-0", @tab_class, tab[:active] && "active"]} phx-click={select_tab(@id, tab.id) |> JS.concat(tab[:on_select] || %JS{})} role="tab" aria-controls={tab.id} aria-selected={to_string(tab[:active] == true)}>
+          {tab.label}
+        </button>
+      </li>
+      <li :if={@actions != []} class="nav-item ml-auto">{render_slot(@actions)}</li>
+    </ul>
+    <div id={"#{@id}-panels"} class="tab-content">
+      <div :for={tab <- @tab} id={tab.id} class={["tab-pane", tab[:active] && "active"]} role="tabpanel" aria-labelledby={if length(@tab) > 1, do: "#{tab.id}-tab"} aria-busy={if is_boolean(tab[:busy]), do: to_string(tab.busy)} tabindex="0">
+        {render_slot(tab)}
+      </div>
+    </div>
+    """
+  end
+
+  @spec select_tab(String.t(), String.t()) :: JS.t()
+  defp select_tab(id, panel_id) do
+    tabs = "##{id} > .nav-item > [role=tab]"
+
+    JS.remove_class("active", to: tabs)
+    |> JS.set_attribute({"aria-selected", "false"}, to: tabs)
+    |> JS.remove_class("active", to: "##{id}-panels > [role=tabpanel]")
+    |> JS.add_class("active", to: "##{panel_id}-tab")
+    |> JS.set_attribute({"aria-selected", "true"}, to: "##{panel_id}-tab")
+    |> JS.add_class("active", to: "##{panel_id}")
+  end
+
   @doc """
   Render an input with id, name, and value from field.
 
@@ -166,8 +213,9 @@ defmodule LogflareWeb.CoreComponents do
     """
   end
 
-  @doc "Button that copies text to the clipboard"
-  attr :text, :string, required: true
+  @doc "Button that copies supplied text or a target element's text to the clipboard"
+  attr :text, :string, default: nil
+  attr :to, :string, default: nil
 
   attr :variant, :string,
     default: "secondary",
@@ -180,7 +228,7 @@ defmodule LogflareWeb.CoreComponents do
 
   def clipboard_button(assigns) do
     ~H"""
-    <.button variant={@variant} class={@class} phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @text})} data-toggle="tooltip" data-placement="top" title={@title} {@rest}>
+    <.button variant={@variant} class={@class} phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @text}, to: @to)} data-toggle="tooltip" data-placement="top" title={@title} {@rest}>
       <i class="fa fa-clone" aria-hidden="true"></i> {@label}
     </.button>
     """

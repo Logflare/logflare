@@ -1,7 +1,73 @@
 defmodule LogflareWeb.CoreComponentsTest do
   use LogflareWeb.ConnCase, async: true
 
+  import Phoenix.Component
+
   alias LogflareWeb.CoreComponents
+  alias Phoenix.LiveView.JS
+
+  test "tabs render results and loading plan states and compose optional commands" do
+    for plan_active? <- [false, true] do
+      assigns = %{plan_active?: plan_active?}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.tabs id="query-tabs" aria-label="Query output">
+          <:tab id="results" label="Results" active={not @plan_active?}>Rows</:tab>
+          <:tab id="plan" label="Query plan" active={@plan_active?} busy={@plan_active?} on_select={JS.push("load-plan")}>
+            {if @plan_active?, do: "Loading plan", else: "Plan"}
+          </:tab>
+        </CoreComponents.tabs>
+        """)
+        |> Floki.parse_fragment!()
+
+      assert [_] = Floki.find(html, ~s(#query-tabs[role="tablist"][aria-label="Query output"]))
+      active_id = if plan_active?, do: "plan", else: "results"
+      assert Floki.attribute(html, "#query-tabs .active", "id") == ["#{active_id}-tab"]
+      assert Floki.attribute(html, "#query-tabs-panels .active", "id") == [active_id]
+      assert Floki.text(Floki.find(html, "#results")) =~ "Rows"
+
+      assert Floki.text(Floki.find(html, "#plan")) =~
+               if(plan_active?, do: "Loading plan", else: "Plan")
+
+      assert Floki.attribute(html, "#plan", "aria-busy") == [to_string(plan_active?)]
+
+      for {id, label, active?} <- [
+            {"results", "Results", not plan_active?},
+            {"plan", "Query plan", plan_active?}
+          ] do
+        assert [button] =
+                 Floki.find(
+                   html,
+                   ~s(#query-tabs button##{id}-tab[type="button"][role="tab"][aria-controls="#{id}"][aria-selected="#{active?}"])
+                 )
+
+        assert Floki.text(button) =~ label
+
+        assert [_] =
+                 Floki.find(
+                   html,
+                   ~s(#query-tabs-panels > ##{id}[role="tabpanel"][aria-labelledby="#{id}-tab"][tabindex="0"])
+                 )
+
+        commands = button |> Floki.attribute("phx-click") |> hd() |> Jason.decode!()
+
+        assert Enum.any?(commands, fn
+                 ["add_class", %{"to" => target, "names" => ["active"]}] -> target == "##{id}"
+                 _ -> false
+               end)
+
+        pushes = Enum.filter(commands, fn [command, _opts] -> command == "push" end)
+
+        if id == "plan" do
+          assert [["push", %{"event" => "load-plan"}]] = pushes
+          assert List.last(commands) == hd(pushes)
+        else
+          assert pushes == []
+        end
+      end
+    end
+  end
 
   test "button defaults to a non-submit button and accepts a submit type" do
     inner_block = [%{inner_block: fn _, _ -> "Run query" end}]
