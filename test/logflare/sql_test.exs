@@ -1697,6 +1697,45 @@ defmodule Logflare.SqlTest do
       assert translated =~ ~s("c.d.e")
     end
 
+    test "IFNULL with a string fallback is translated and runs", %{backend: backend, user: user} do
+      bq_query = """
+      select ifnull(m.nested, '') as nested, ifnull(m.missing, '') as missing
+      from `c.d.e` t
+      cross join unnest(t.metadata) as m
+      """
+
+      pg_query = ~s"""
+      select coalesce((body #>> '{metadata,nested}'), '') as nested,
+        coalesce((body #>> '{metadata,missing}'), '') as missing
+      from "c.d.e" t
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert_semantically_equal(translated, pg_query)
+
+      assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
+
+      assert {:ok, %QueryResult{rows: [%{"nested" => "value", "missing" => ""}]}} =
+               PostgresAdaptor.execute_query(backend, transformed, [])
+    end
+
+    test "IFNULL with a numeric fallback is translated and runs", %{backend: backend, user: user} do
+      bq_query = """
+      select ifnull(safe_cast(m.num as int64), 0) as num,
+        ifnull(safe_cast(m.missing as int64), 0) as missing
+      from `c.d.e` t
+      cross join unnest(t.metadata) as m
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      refute translated =~ ~r/ifnull/i
+
+      assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
+
+      assert {:ok, %QueryResult{rows: [%{"num" => 123, "missing" => 0}]}} =
+               PostgresAdaptor.execute_query(backend, transformed, [])
+    end
+
     test "countif into count-filter" do
       bq_query = "select countif(test = '1') from my_table"
       pg_query = ~s|select count(*) filter (where (body ->> 'test') = '1') from my_table|
