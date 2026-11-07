@@ -15,6 +15,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   alias Logflare.Backends.QueryError
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Logs.EventPage
+  alias Logflare.Logs.LogEvents
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.Lql.Rules
   alias Logflare.NaturalLanguageLql.AnthropicClient
@@ -1487,6 +1488,46 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert %{"tailing?" => "false", "tz" => "Africa/Lagos"} =
                query |> URI.decode_query() |> Map.take(["tailing?", "tz"])
+    end
+
+    test "log event modal stops loading after errors", %{
+      conn: conn,
+      source: source
+    } do
+      for failure <- [:database_unavailable, :exit, :not_found] do
+        stub(LogEvents, :get_event_with_fallback, fn _token, _id, _opts ->
+          case failure do
+            :exit -> exit(:shutdown)
+            reason -> {:error, reason}
+          end
+        end)
+
+        {:ok, view, _html} =
+          live_with_redirect(conn, ~p"/sources/#{source.id}/search")
+
+        %{executor_pid: search_executor_pid} = get_view_assigns(view)
+        allow_sandbox(search_executor_pid)
+
+        TestUtils.wait_for_render(view, "#logs-list-container li[data-event-id]")
+
+        view
+        |> element("#logs-list-container a[phx-value-log-event-id]", "view")
+        |> render_click()
+
+        render_async(view)
+
+        title =
+          if failure == :not_found,
+            do: "Log Event Not Found",
+            else: "Unable to Load Log Event"
+
+        TestUtils.retry_assert(fn ->
+          assert has_element?(view, "#logflare-modal h4", title)
+          refute has_element?(view, "#logflare-modal #shared-loader")
+        end)
+
+        GenServer.stop(view.pid)
+      end
     end
 
     test "log event modal - loading from cache", %{conn: conn, user: user} do

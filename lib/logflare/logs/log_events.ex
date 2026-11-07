@@ -7,7 +7,9 @@ defmodule Logflare.Logs.LogEvents do
   import Logflare.Ecto.BQQueryAPI, only: [in_streaming_buffer: 0]
   import Logflare.Utils.Guards
 
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Billing
   alias Logflare.Google.BigQuery.GCPConfig
@@ -21,7 +23,7 @@ defmodule Logflare.Logs.LogEvents do
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
 
   @doc """
-  Fetches a log event from BigQuery by ID with partition and LQL filtering.
+  Fetches a log event from the default backend by ID with partition and LQL filtering.
   """
   @spec fetch_event_by_id(source_token :: atom(), id :: binary(), opts :: Keyword.t()) ::
           map() | {:error, any()}
@@ -30,7 +32,6 @@ defmodule Logflare.Logs.LogEvents do
     [min, max] = Keyword.get(opts, :partitions_range, [])
     source = Sources.Cache.get_by_and_preload(token: source_token)
     source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
-    partition_type = Sources.get_table_partition_type(source)
 
     lql = Keyword.get(opts, :lql, "")
 
@@ -48,21 +49,9 @@ defmodule Logflare.Logs.LogEvents do
         _ -> false
       end)
 
-    bq_table_id = source.bq_table_id
-    bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
-    %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(source.token)
+    backend = Backends.get_default_backend(source.user)
 
-    query =
-      from(bq_table_id)
-      |> partition_query([min, max], partition_type)
-      |> where([t], t.id == ^id)
-      |> Lql.apply_filter_rules(lql_rules)
-      |> select([t], fragment("?.*", t))
-
-    BigQueryAdaptor.execute_query({bq_project_id, dataset_id, source.user.id}, query,
-      query_type: :search
-    )
-    |> case do
+    case execute_event_query(source, backend, id, [min, max], lql_rules) do
       {:ok, %QueryResult{rows: []}} ->
         {:error, :not_found}
 
@@ -77,8 +66,37 @@ defmodule Logflare.Logs.LogEvents do
     end
   end
 
+  @spec execute_event_query(Sources.Source.t(), Backends.Backend.t(), binary(), list(), list()) ::
+          {:ok, QueryResult.t()} | {:error, term()}
+  defp execute_event_query(source, %{type: :postgres} = backend, id, [min, max], lql_rules) do
+    query =
+      from(PostgresAdaptor.table_name(source))
+      |> partition_query([Timex.to_datetime(min), Timex.to_datetime(max)], :timestamp)
+      |> where([t], t.id == ^id)
+      |> Lql.apply_filter_rules(lql_rules, dialect: :postgres)
+      |> select([t], t.body)
+
+    PostgresAdaptor.execute_query(backend, query, query_type: :search)
+  end
+
+  defp execute_event_query(source, _backend, id, range, lql_rules) do
+    bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
+    %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(source.token)
+
+    query =
+      from(source.bq_table_id)
+      |> partition_query(range, Sources.get_table_partition_type(source))
+      |> where([t], t.id == ^id)
+      |> Lql.apply_filter_rules(lql_rules)
+      |> select([t], fragment("?.*", t))
+
+    BigQueryAdaptor.execute_query({bq_project_id, dataset_id, source.user.id}, query,
+      query_type: :search
+    )
+  end
+
   @doc """
-  Retrieves a log event by ID from cache with fallback to BigQuery.
+  Retrieves a log event by ID from cache with fallback to the default backend.
 
   ## Options
 
@@ -102,11 +120,11 @@ defmodule Logflare.Logs.LogEvents do
                partitions_range: range,
                lql: Keyword.get(opts, :lql, "")
              ) do
-          %{} = bq_row ->
+          %{} = row ->
             source =
               Keyword.get(opts, :source) || Sources.Cache.get_by_and_preload(token: source_token)
 
-            le = LE.make_from_db(bq_row, %{source: source})
+            le = LE.make_from_db(row, %{source: source})
 
             LogEvents.Cache.put(source_token, le.id, le)
 
