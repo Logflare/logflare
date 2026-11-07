@@ -32,7 +32,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.CloudResourceManager
+  alias Logflare.Rules
   alias Logflare.Sources
+  alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.Pipeline
   alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.User
@@ -46,6 +48,16 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @timeout_error_regex ~r/timed out/i
   @search_query_timeout_ms 60_000
   @endpoint_query_timeout_ms 60_000
+  @connection_test_message "Logflare BigQuery connection test. No action required."
+
+  @type connection_test_error ::
+          :connection_error
+          | :http_client_error
+          | :http_server_error
+          | :insert_error
+          | :invalid_config
+          | :source_required
+          | :unknown_error
 
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend} = source_backend) do
@@ -162,8 +174,184 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     |> String.replace("-", "_")
   end
 
+  @doc """
+  Writes a labeled event through the REST ingestion path to an attached source's table.
+
+  Direct source attachments are preferred over rule sources.
+  """
   @impl Logflare.Backends.Adaptor
-  def test_connection(_), do: {:error, :not_implemented}
+  @spec test_connection(Backend.t()) :: :ok | {:error, connection_test_error()}
+  def test_connection(
+        %Backend{
+          id: backend_id,
+          user_id: user_id,
+          config: %{project_id: project_id, dataset_id: dataset_id}
+        } = backend
+      )
+      when is_integer(backend_id) and is_integer(user_id) and is_non_empty_binary(project_id) and
+             is_non_empty_binary(dataset_id) do
+    with {:ok, %Source{token: source_token}} <- connection_test_source(backend) do
+      Google.BigQuery.stream_batch!(
+        %{
+          bigquery_project_id: project_id,
+          bigquery_dataset_id: dataset_id,
+          source_token: source_token
+        },
+        [connection_test_row()]
+      )
+      |> handle_connection_test_response(backend, source_token)
+    end
+  end
+
+  def test_connection(%Backend{}), do: {:error, :invalid_config}
+
+  @spec connection_test_source(Backend.t()) :: {:ok, Source.t()} | {:error, :source_required}
+  defp connection_test_source(%Backend{id: backend_id, user_id: user_id}) do
+    direct_source =
+      [backend_id: backend_id, user_id: user_id]
+      |> Sources.list_sources()
+      |> Enum.min_by(& &1.id, fn -> nil end)
+
+    case direct_source do
+      %Source{} = source ->
+        {:ok, source}
+
+      nil ->
+        connection_test_rule_source(backend_id, user_id)
+    end
+  end
+
+  @spec connection_test_rule_source(pos_integer(), pos_integer()) ::
+          {:ok, Source.t()} | {:error, :source_required}
+  defp connection_test_rule_source(backend_id, user_id) do
+    rule =
+      user_id
+      |> Rules.list_rules_by_user_id(backend_id)
+      |> Enum.min_by(& &1.source_id, fn -> nil end)
+
+    case rule do
+      %{source_id: source_id} ->
+        case Sources.fetch_source_by(id: source_id, user_id: user_id) do
+          {:ok, %Source{} = source} -> {:ok, source}
+          {:error, :not_found} -> {:error, :source_required}
+        end
+
+      nil ->
+        {:error, :source_required}
+    end
+  end
+
+  @spec connection_test_row() :: Model.TableDataInsertAllRequestRows.t()
+  defp connection_test_row do
+    id = Ecto.UUID.generate()
+
+    %Model.TableDataInsertAllRequestRows{
+      insertId: id,
+      json: %{
+        "event_message" => @connection_test_message,
+        "id" => id,
+        "timestamp" => DateTime.utc_now()
+      }
+    }
+  end
+
+  @spec handle_connection_test_response(term(), Backend.t(), atom()) ::
+          :ok | {:error, connection_test_error()}
+  defp handle_connection_test_response(
+         {:ok, %Model.TableDataInsertAllResponse{insertErrors: insert_errors}},
+         _backend,
+         _source_token
+       )
+       when insert_errors in [nil, []],
+       do: :ok
+
+  defp handle_connection_test_response(
+         {:ok, %Model.TableDataInsertAllResponse{insertErrors: insert_errors}},
+         backend,
+         source_token
+       ) do
+    connection_test_failed(backend, source_token, :insert_error, insert_errors)
+  end
+
+  defp handle_connection_test_response(
+         {:error, %Tesla.Env{status: status, body: body}},
+         backend,
+         source_token
+       )
+       when status in 400..499 do
+    connection_test_failed(backend, source_token, :http_client_error, %{
+      status: status,
+      body: body
+    })
+  end
+
+  defp handle_connection_test_response(
+         {:error, %Tesla.Env{status: status, body: body}},
+         backend,
+         source_token
+       )
+       when status in 500..599 do
+    connection_test_failed(backend, source_token, :http_server_error, %{
+      status: status,
+      body: body
+    })
+  end
+
+  defp handle_connection_test_response(
+         {:error, %Tesla.Env{status: status, body: body}},
+         backend,
+         source_token
+       ) do
+    connection_test_failed(backend, source_token, :unknown_error, %{status: status, body: body})
+  end
+
+  defp handle_connection_test_response({:error, error}, backend, source_token)
+       when error in [:closed, :emfile, :timeout] do
+    connection_test_failed(backend, source_token, :connection_error, error)
+  end
+
+  defp handle_connection_test_response({:error, error}, backend, source_token) do
+    connection_test_failed(backend, source_token, :unknown_error, error)
+  end
+
+  defp handle_connection_test_response(response, backend, source_token) do
+    connection_test_failed(backend, source_token, :unknown_error, response)
+  end
+
+  @spec connection_test_failed(
+          Backend.t(),
+          atom(),
+          connection_test_error(),
+          term()
+        ) :: {:error, connection_test_error()}
+  defp connection_test_failed(backend, source_token, reason, error) do
+    Logger.warning("BigQuery connection test failed.",
+      backend_id: backend.id,
+      user_id: backend.user_id,
+      table_name: format_table_name(source_token),
+      reason: reason,
+      error_string: format_connection_test_error(error)
+    )
+
+    {:error, reason}
+  end
+
+  @spec format_connection_test_error(term()) :: String.t()
+  defp format_connection_test_error(%{status: status, body: body}) do
+    inspect(%{status: status, body: body}, limit: 20, printable_limit: 2_000)
+  end
+
+  defp format_connection_test_error(errors) when is_list(errors) do
+    inspect(errors, limit: 20, printable_limit: 2_000)
+  end
+
+  defp format_connection_test_error(error) when is_atom(error), do: inspect(error)
+
+  defp format_connection_test_error(%{__struct__: module}) do
+    "unexpected #{inspect(module)}"
+  end
+
+  defp format_connection_test_error(_error), do: "unexpected response"
 
   @impl Logflare.Backends.Adaptor
   def ecto_to_sql(%Ecto.Query{} = query, _opts) do
