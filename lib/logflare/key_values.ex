@@ -79,7 +79,7 @@ defmodule Logflare.KeyValues do
     KeyValue
     |> where(user_id: ^user_id, key: ^key)
     |> select([kv], kv.value)
-    |> Repo.one()
+    |> Repo.one(telemetry_options: [key_values_lookup: true])
   end
 
   @spec lookup(integer(), String.t(), String.t() | nil) :: term() | nil
