@@ -37,6 +37,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.Cloud do
       storage_mod: Keyword.fetch!(opts, :storage_mod),
       queue_mod: Keyword.fetch!(opts, :queue_mod),
       queue_ref: Keyword.get(opts, :queue_ref),
+      queue_name: Keyword.get(opts, :queue_name),
       compress: Keyword.get(opts, :compress, true),
       max_commit_attempts: Keyword.get(opts, :max_commit_attempts, @default_max_commit_attempts),
       retry_delay_ms: Keyword.get(opts, :retry_delay_ms, @default_retry_delay_ms)
@@ -187,16 +188,32 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.Cloud do
   defp maybe_compress(body, %{compress: true}), do: Encoder.compress_binary(body)
   defp maybe_compress(body, %{compress: false}), do: body
 
-  defp notify_queue(%{queue_ref: nil}, _file_key, _body), do: :ok
+  defp notify_queue(%{queue_ref: nil, queue_name: nil}, _file_key, _body), do: :ok
 
   defp notify_queue(config, file_key, body) do
     msg = Jason.encode!(%{file_key: file_key, event_count: Encoder.count_events(body)})
 
-    case config.queue_mod.publish(config.queue_ref, msg) do
-      :ok -> :ok
-      {:error, reason} -> {:error, reason}
+    with {:ok, queue_ref} <- queue_ref(config) do
+      config.queue_mod.publish(queue_ref, msg)
     end
   end
+
+  defp queue_ref(%{queue_ref: nil, queue_name: queue_name, queue_mod: queue_mod}) do
+    key = {__MODULE__, :queue_ref, queue_name}
+
+    case :persistent_term.get(key, nil) do
+      nil ->
+        with {:ok, queue_ref} <- queue_mod.resolve(queue_name) do
+          :persistent_term.put(key, queue_ref)
+          {:ok, queue_ref}
+        end
+
+      queue_ref ->
+        {:ok, queue_ref}
+    end
+  end
+
+  defp queue_ref(%{queue_ref: queue_ref}), do: {:ok, queue_ref}
 
   @impl true
   def stream(_config, _partition_index) do

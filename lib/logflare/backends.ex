@@ -953,6 +953,12 @@ defmodule Logflare.Backends do
     spool_mode() != :producer or spool_write_healthy?()
   end
 
+  @doc "Whether a spool node can reach its spool queue. Readiness only."
+  @spec spool_queue_ready?() :: boolean()
+  def spool_queue_ready? do
+    spool_mode() not in [:producer, :consumer, :both] or SpoolHealth.healthy?(:queue)
+  end
+
   @doc """
   Which backend the node's spool `DurableBuffer` instance commits
   through — `:wal` (`Backends.RotatingWal`, local-disk-durable, wrapping
