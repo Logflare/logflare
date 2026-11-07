@@ -132,7 +132,7 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
       @client
       |> expect(:send, fn req ->
         send(this, req[:body])
-        %Tesla.Env{status: 202, body: ""}
+        {:ok, %Tesla.Env{status: 202, body: ""}}
       end)
 
       %{body: %{"event_message" => message}} = le = build(:log_event, source: source)
@@ -199,7 +199,7 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
       @client
       |> expect(:send, fn req ->
         send(self, req[:body])
-        %Tesla.Env{status: 202, body: ""}
+        {:ok, %Tesla.Env{status: 202, body: ""}}
       end)
 
       assert {:ok, _} = Alerting.run_alert(alert_query)
