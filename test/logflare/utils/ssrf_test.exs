@@ -87,6 +87,34 @@ defmodule Logflare.Utils.SSRFTest do
     end
   end
 
+  describe "validate_url_host/2" do
+    test "accepts a url with a public host" do
+      assert %Ecto.Changeset{valid?: true} =
+               url_changeset("https://8.8.8.8/path") |> SSRF.validate_url_host(:url)
+    end
+
+    test "rejects a url with a private or reserved host" do
+      changeset = url_changeset("https://169.254.169.254/") |> SSRF.validate_url_host(:url)
+
+      assert [url: {"URL must not target private or reserved IP addresses", [validation: :ssrf]}] =
+               changeset.errors
+    end
+
+    test "skips a missing url" do
+      assert %Ecto.Changeset{valid?: true} =
+               url_changeset(nil) |> SSRF.validate_url_host(:url)
+    end
+
+    test "skips a url that already has an error" do
+      changeset =
+        url_changeset("https://127.0.0.1")
+        |> Ecto.Changeset.add_error(:url, "has invalid format")
+        |> SSRF.validate_url_host(:url)
+
+      assert [url: {"has invalid format", []}] = changeset.errors
+    end
+  end
+
   describe "url_host/1" do
     test "formats IPv4 as plain string" do
       assert SSRF.url_host({1, 2, 3, 4}) == "1.2.3.4"
@@ -98,5 +126,9 @@ defmodule Logflare.Utils.SSRFTest do
       assert SSRF.url_host({0x2001, 0x4860, 0x4860, 0, 0, 0, 0, 0x8888}) ==
                "[2001:4860:4860::8888]"
     end
+  end
+
+  defp url_changeset(url) do
+    Ecto.Changeset.cast({%{}, %{url: :string}}, %{url: url}, [:url])
   end
 end
