@@ -282,6 +282,8 @@ defmodule Logflare.Telemetry do
         [distribution("broadway.processor.stop.duration", unit: {:native, :millisecond})]
 
     application_metrics = [
+      last_value("logflare.key_values.cache.bytes", unit: :byte),
+      last_value("logflare.key_values.cache.entries"),
       distribution("logflare.goth.fetch.stop.duration",
         unit: {:native, :millisecond}
       ),
@@ -842,6 +844,7 @@ defmodule Logflare.Telemetry do
         {__MODULE__, :process_message_queue_metrics, []},
         {__MODULE__, :process_memory_metrics, []},
         {__MODULE__, :ets_table_metrics, []},
+        {__MODULE__, :key_values_cache_metrics, []},
         {__MODULE__, :clickhouse_read_pool_metrics, []},
         {Logflare.Sources.Source.BigQuery.SchemaMetrics, :report, []}
       ]
@@ -1045,6 +1048,20 @@ defmodule Logflare.Telemetry do
   defp choose_initial_call(call, _pid), do: mfa_to_string(call)
 
   defp mfa_to_string({m, f, a}), do: "#{inspect(m)}.#{f}/#{a}"
+
+  @spec key_values_cache_metrics() :: :ok
+  def key_values_cache_metrics do
+    case ets_info(Logflare.KeyValues.Cache) do
+      :undefined ->
+        :ok
+
+      info ->
+        :telemetry.execute([:logflare, :key_values, :cache], %{
+          bytes: info[:memory] * :erlang.system_info(:wordsize),
+          entries: info[:size]
+        })
+    end
+  end
 
   def ets_table_metrics do
     top_100_tables = get_top_100_ets_tables_info()
