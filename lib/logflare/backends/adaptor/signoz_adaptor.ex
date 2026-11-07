@@ -20,7 +20,6 @@ defmodule Logflare.Backends.Adaptor.SigNozAdaptor do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.Adaptor.OtlpAdaptor
-  alias Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter
   alias Logflare.Backends.Backend
 
   @ingestion_key_header "signoz-ingestion-key"
@@ -87,13 +86,7 @@ defmodule Logflare.Backends.Adaptor.SigNozAdaptor do
   # message would be dropped outright and nothing would be searchable.
   @impl HttpBased.Client
   def client_opts(%Backend{config: config}) do
-    [
-      url: Path.join(config.endpoint, @logs_path),
-      formatter: {ProtobufFormatter, %{flatten_to_attributes: true}},
-      headers: headers(config),
-      gzip: true,
-      json: false
-    ]
+    OtlpAdaptor.Common.flattened_logs_client_opts(config.endpoint, headers(config))
   end
 
   @spec headers(map()) :: %{String.t() => String.t()}
