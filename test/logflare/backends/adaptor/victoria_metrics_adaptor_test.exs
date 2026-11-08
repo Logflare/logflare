@@ -518,6 +518,12 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       response = loaded |> Jason.encode!() |> Jason.decode!()
       {:ok, _updated} = Backends.update_backend(loaded, %{"config" => response["config"]})
       assert Backends.get_backend(backend.id).config == loaded.config
+
+      {:ok, _updated} = Backends.update_backend(loaded, %{config: %{labels: %{"env" => "prod"}}})
+
+      assert Backends.get_backend(backend.id).config ==
+               Map.put(loaded.config, :labels, %{"env" => "prod"})
+
       stored = Repo.get!(Backend, backend.id).config_encrypted
       refute Map.has_key?(stored, "username")
       refute Map.has_key?(stored, "password")
