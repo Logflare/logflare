@@ -31,6 +31,8 @@ defmodule Logflare.BanditLoggerMetadata do
   end
 
   defp put_connection_id(ref) do
+    # Local M2 medians: ETF + Base64 ~0.21 us; ref_to_list + to_string ~0.25 us;
+    # inspect ~0.38 us. Base64 also allocated less.
     Logger.metadata(
       connection_id: ref |> :erlang.term_to_binary() |> Base.url_encode64(padding: false)
     )
