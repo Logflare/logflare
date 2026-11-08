@@ -213,8 +213,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     changeset
     |> validate_format(:url, ~r/(?:postgres|postgresql)\:\/\/.+/)
     |> then(fn changeset ->
-      url = get_change(changeset, :url)
-      hostname = get_change(changeset, :hostname)
+      url = get_field(changeset, :url)
+      hostname = get_field(changeset, :hostname)
 
       if url == nil and hostname == nil do
         msg = "either connection url or separate connection credentials must be provided"

@@ -44,6 +44,7 @@ Mimic.copy(Tesla)
 Mimic.copy(Tesla.Adapter.Finch)
 
 Mimic.copy(Logflare.Admin)
+Mimic.copy(Logflare.Alerting)
 Mimic.copy(Logflare.Auth)
 Mimic.copy(Logflare.Backends)
 Mimic.copy(Logflare.Sources.Source.ChannelTopics)

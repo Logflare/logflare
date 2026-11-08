@@ -9,6 +9,7 @@ defmodule Logflare.ShutdownDrainTest do
   alias Logflare.Backends.Spool.DurableBuffer.Backends.Cloud
   alias Logflare.Backends.Spool.Health
   alias Logflare.Backends.Spool.MemoryMonitor
+  alias Logflare.Backends.Spool.ObjectDeleter
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
@@ -149,6 +150,48 @@ defmodule Logflare.ShutdownDrainTest do
 
     assert result == :timeout
     assert elapsed_us < 1_000_000
+  end
+
+  describe "object deletes" do
+    setup do
+      assert ObjectDeleter.flush(10_000) == :ok
+      :ok
+    end
+
+    test "waits for spool object deletes still buffered after the final acks" do
+      test_pid = self()
+
+      stub(StorageMod, :delete, fn _bucket, key ->
+        Process.sleep(100)
+        send(test_pid, {:deleted, key})
+        :ok
+      end)
+
+      SpoolAck.register("h1", QueueMod, "queue-url", {StorageMod, "bucket", "0/a.etf"})
+      SpoolAck.bump("h1", 1)
+      SpoolAck.ack("h1", 1)
+
+      assert run(producers: []) == :drained
+
+      assert_received {:deleted, "0/a.etf"}
+    end
+
+    test "gives up on object deletes at the cleanup budget instead of holding the drain" do
+      stub(StorageMod, :delete, fn _bucket, _key ->
+        Process.sleep(400)
+        :ok
+      end)
+
+      ObjectDeleter.enqueue({StorageMod, "bucket", "0/slow.etf"})
+
+      started = System.monotonic_time(:millisecond)
+      log = capture_log([level: :warning], fn -> run(producers: [], cleanup_timeout_ms: 50) end)
+
+      assert System.monotonic_time(:millisecond) - started < 350
+      assert log =~ "object_deletes=timeout"
+
+      assert ObjectDeleter.flush(2_000) == :ok
+    end
   end
 
   describe "spool consumer prefetch" do

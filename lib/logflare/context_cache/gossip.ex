@@ -130,6 +130,7 @@ defmodule Logflare.ContextCache.Gossip do
   # Ignore caches with complicated or missing primary key structures, where staleness cannot be reliably detected
   defp do_multicast(Logflare.Auth.Cache, _key, _value), do: :ignore
   defp do_multicast(Logflare.Rules.Cache, _key, _value), do: :ignore
+  defp do_multicast(Logflare.Sources.Catalog.Cache, _key, _value), do: :ignore
 
   defp do_multicast(cache, key, value) when is_atom(cache) do
     %{enabled: enabled, ratio: ratio, max_nodes: max_nodes} =

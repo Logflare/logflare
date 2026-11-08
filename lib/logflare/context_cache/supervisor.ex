@@ -3,12 +3,14 @@ defmodule Logflare.ContextCache.Supervisor do
 
   use Supervisor
 
+  alias Logflare.Alerting
   alias Logflare.Auth
   alias Logflare.Backends
   alias Logflare.Billing
   alias Logflare.ContextCache
   alias Logflare.ContextCache.CacheBuster
   alias Logflare.ContextCache.CacheBusterWorker
+  alias Logflare.ContextCache.CatalogCache
   alias Logflare.ContextCache.Tombstones
   alias Logflare.Endpoints
   alias Logflare.GenSingleton
@@ -19,6 +21,7 @@ defmodule Logflare.ContextCache.Supervisor do
   alias Logflare.Rules
   alias Logflare.SavedSearches
   alias Logflare.Sources
+  alias Logflare.Sources.Catalog
   alias Logflare.SourceSchemas
   alias Logflare.SystemCache
   alias Logflare.TeamUsers
@@ -72,7 +75,10 @@ defmodule Logflare.ContextCache.Supervisor do
       {Partners.Cache, :partners},
       {Users.Cache, :users},
       {Backends.Cache, :backends},
+      {Alerting.Cache, :alerting},
       {Sources.Cache, :sources},
+      {CatalogCache, :catalog_generations},
+      {Catalog.Cache, :source_catalog},
       {Billing.Cache, :billing},
       {SourceSchemas.Cache, :source_schemas},
       {Auth.Cache, :auth},
@@ -98,12 +104,16 @@ defmodule Logflare.ContextCache.Supervisor do
   end
 
   defp cainophile_child_spec do
-    epgsql =
-      Repo.config()
-      |> ConnectionOptions.prepare_epgsql()
+    cache_buster_config = Application.get_env(:logflare, CacheBuster, [])
 
-    slot = Application.get_env(:logflare, CacheBuster)[:replication_slot]
-    publications = Application.get_env(:logflare, CacheBuster)[:publications]
+    epgsql =
+      ConnectionOptions.prepare_replication_epgsql(
+        Application.get_env(:logflare, Repo, []),
+        cache_buster_config[:db_url_options]
+      )
+
+    slot = cache_buster_config[:replication_slot]
+    publications = cache_buster_config[:publications]
 
     %{
       id: Cainophile.Adapters.Postgres,

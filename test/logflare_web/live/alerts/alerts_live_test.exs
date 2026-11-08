@@ -1,6 +1,7 @@
 defmodule LogflareWeb.AlertsLiveTest do
   use LogflareWeb.ConnCase
 
+  alias Logflare.Alerting
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Adaptor.SlackAdaptor
 
@@ -175,9 +176,11 @@ defmodule LogflareWeb.AlertsLiveTest do
              |> render_hook("parse-query", %{"value" => valid_query}) =~ "SQL Parse error!"
     end
 
-    test "show for nonexistent query", %{conn: conn, team: team} do
-      {:error, {:live_redirect, %{flash: %{"info" => "Alert not found" <> _}}}} =
-        live(conn, ~p"/alerts/123?t=#{team.id}")
+    test "show for nonexistent query", %{conn: conn, team: team, alert_query: alert_query} do
+      assert {:ok, _} = Logflare.Alerting.delete_alert_query(alert_query)
+
+      assert {:error, {:live_redirect, %{flash: %{"info" => "Alert not found" <> _}}}} =
+               live(conn, ~p"/alerts/#{alert_query.id}?t=#{team.id}")
     end
 
     test "adds team param from alert resource", %{conn: conn, user: user} do
@@ -685,6 +688,65 @@ defmodule LogflareWeb.AlertsLiveTest do
   describe "enabled field" do
     setup [:create_alert_query]
 
+    for {operation, attrs, expected_count} <- [
+          {:disable, %{"enabled" => "false"}, 0},
+          {:reschedule, %{"cron" => "7 */6 * * *"}, 5}
+        ] do
+      @save_attrs attrs
+      @expected_count expected_count
+
+      test "#{operation} saves read upcoming jobs from primary and past jobs from a replica", %{
+        conn: conn,
+        alert_query: alert_query
+      } do
+        :ok = Alerting.schedule_alert(alert_query)
+        old_jobs = Alerting.list_future_jobs(alert_query.id)
+        assert length(old_jobs) == 5
+        old_ids = MapSet.new(old_jobs, & &1.id)
+
+        {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}/edit")
+        observer = self()
+        liveview_pid = view.pid
+        telemetry_ref = make_ref()
+
+        :ok =
+          :telemetry.attach(
+            telemetry_ref,
+            [:logflare, :repo, :replica_route],
+            fn _event, _measurements, _metadata, _config ->
+              send(observer, {telemetry_ref, self()})
+            end,
+            nil
+          )
+
+        on_exit(fn -> :telemetry.detach(telemetry_ref) end)
+
+        view
+        |> element("form#alert")
+        |> render_submit(%{"alert" => @save_attrs})
+
+        assert_patch(view)
+        html = render(view)
+        assert html =~ "Successfully updated alert"
+        jobs = Alerting.list_future_jobs(alert_query.id)
+        assert length(jobs) == @expected_count
+        assert Enum.all?(jobs, fn job -> not MapSet.member?(old_ids, job.id) end)
+
+        if jobs == [] do
+          refute html =~ "Upcoming Jobs"
+        else
+          html = view |> element("button[phx-click='toggle-execution-history']") |> render_click()
+
+          for job <- jobs do
+            assert html =~ Calendar.strftime(job.scheduled_at, "%Y-%m-%d %H:%M:%S UTC")
+          end
+        end
+
+        assert_received {^telemetry_ref, ^liveview_pid}
+        refute_received {^telemetry_ref, ^liveview_pid}
+      end
+    end
+
     test "edit form shows enabled checkbox", %{conn: conn, alert_query: alert_query} do
       {:ok, _view, html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}/edit")
       assert html =~ "enabled-checkbox"
@@ -790,9 +852,25 @@ defmodule LogflareWeb.AlertsLiveTest do
       {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{alert_query.id}")
 
       job = insert_oban_job(alert_query, %{state: "completed"})
+      liveview_pid = view.pid
+      telemetry_ref = make_ref()
+
+      :ok =
+        :telemetry.attach(
+          telemetry_ref,
+          [:logflare, :repo, :replica_route],
+          fn _event, _measurements, _metadata, observer ->
+            send(observer, {:replica_read, self()})
+          end,
+          self()
+        )
+
+      on_exit(fn -> :telemetry.detach(telemetry_ref) end)
+
       send(view.pid, {:poll_job, job.id, 0})
 
       refute render(view) =~ "Running..."
+      refute_received {:replica_read, ^liveview_pid}
     end
 
     test "poll_job reschedules while the job is still pending", %{

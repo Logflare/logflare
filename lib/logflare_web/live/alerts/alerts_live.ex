@@ -427,8 +427,8 @@ defmodule LogflareWeb.AlertsLive do
        socket
        |> assign(:triggering_alert, false)
        |> assign(:pending_job_id, nil)
-       |> assign(:future_jobs, Alerting.list_future_jobs(alert.id))
-       |> assign(:past_jobs_page, paginate_past_jobs(alert.id, current_page))}
+       |> assign(:future_jobs, Alerting.list_future_jobs(alert.id, replica?: false))
+       |> assign(:past_jobs_page, paginate_past_jobs(alert.id, current_page, replica?: false))}
     else
       Process.send_after(self(), {:poll_job, job_id, attempt + 1}, @poll_interval)
       {:noreply, socket}
@@ -530,23 +530,28 @@ defmodule LogflareWeb.AlertsLive do
     end
   end
 
-  defp paginate_past_jobs(alert_query_id, page_num) do
-    query = Alerting.past_jobs_query(alert_query_id)
-    total = Repo.aggregate(query, :count)
-    total_pages = max(ceil(total / @past_jobs_page_size), 1)
-    offset_val = (page_num - 1) * @past_jobs_page_size
+  @spec paginate_past_jobs(integer(), pos_integer(), keyword()) :: map()
+  defp paginate_past_jobs(alert_query_id, page_num, opts \\ []) do
+    read = fn ->
+      query = Alerting.past_jobs_query(alert_query_id)
+      total = Repo.aggregate(query, :count)
+      total_pages = max(ceil(total / @past_jobs_page_size), 1)
+      offset_val = (page_num - 1) * @past_jobs_page_size
 
-    entries =
-      query
-      |> offset(^offset_val)
-      |> limit(^@past_jobs_page_size)
-      |> Repo.all()
+      entries =
+        query
+        |> offset(^offset_val)
+        |> limit(^@past_jobs_page_size)
+        |> Repo.all()
 
-    %{
-      entries: entries,
-      page_number: page_num,
-      total_pages: total_pages,
-      total_entries: total
-    }
+      %{
+        entries: entries,
+        page_number: page_num,
+        total_pages: total_pages,
+        total_entries: total
+      }
+    end
+
+    Repo.with_read(read, Keyword.get(opts, :replica?, true))
   end
 end

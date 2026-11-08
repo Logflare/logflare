@@ -86,6 +86,59 @@ The Endpoint consumer can pass in the following query parameter to query across 
 
 Should large SQL queries need to be executed, the SQL query string can be placed in the GET JSON body. Logflare will read the body and use the `sql` field in the body payload. This will only occur if **no `?sql=` query parameter is present in the request's query parameters**. This behaviour does not extend to other declared parameters (such as `@my_param`), and only applies to the special `sql` query parameter for sandboxed endpoints.
 
+### ClickHouse filesystem cache policy
+
+Anyone who can edit a ClickHouse endpoint can configure its **Filesystem cache policy**
+in the endpoint editor. This policy uses the endpoint's existing time parameters;
+callers do not send an additional cache-control flag.
+
+1. Enable **Avoid populating cache for large time windows**.
+2. Select distinct start and end parameters declared in the endpoint SQL.
+3. Choose ISO 8601 (including a timezone), Unix seconds, or Unix milliseconds.
+4. Set a positive threshold in seconds, minutes, hours, or days.
+
+When the requested window is **strictly greater** than the threshold, Logflare adds
+`read_from_filesystem_cache_if_exists_otherwise_bypass_cache = 1` to the final query.
+ClickHouse can read existing filesystem-cache entries but will not populate that
+cache on misses. Shorter or equal windows leave existing cache settings unchanged.
+Fixed backend/endpoint settings take precedence over this derived hint.
+
+The endpoint author must ensure the selected parameters actually bound the SQL's
+time range, including any sandboxed query. This is a performance hint, not a
+security limit. If either boundary is absent, null, or an empty string, no cache
+hint is derived.
+This does not supply missing SQL parameters or change the backend's parameter
+requirements. Supplied invalid timestamps and reversed ranges return an HTTP 400
+query error describing the invalid window. Unix timestamps must be integers;
+ISO 8601 timestamps must include a timezone. The editor's test panel labels the
+resolved window and derived behavior; fixed query policy can override the hint.
+The transformed-query preview includes the effective backend class and
+endpoint-enforced settings, using the same precedence as execution.
+
+The configuration is versioned with the endpoint SQL. Historical versions retain
+their own policy, and versions created before this feature have it disabled.
+Editing the policy invalidates the current endpoint's result caches. Historical
+versions continue using their own policy during cache refresh. Changing an endpoint
+to a non-ClickHouse backend clears its existing filesystem-cache policy. Supplying
+a new or changed policy for a non-ClickHouse endpoint returns a validation error.
+
+The management API also accepts a nullable `filesystem_cache_policy` object:
+
+```json
+{
+  "filesystem_cache_policy": {
+    "start_param": "from",
+    "end_param": "to",
+    "timestamp_format": "iso8601",
+    "bypass_fill_above_seconds": 86400
+  }
+}
+```
+
+Use `null` to disable the policy. Supported formats are `iso8601`, `unix_seconds`,
+and `unix_milliseconds`. This controls ClickHouse's filesystem cache, **not**
+Logflare's endpoint result cache: a result-cache hit does not execute ClickHouse.
+
 ## HTTP Response
 
 The result of the query will be returned on the `result` key of the response payload.
@@ -167,6 +220,10 @@ curl "https://api.logflare.app/api/endpoints/query/my-endpoint" \
 ```
 
 If the header is omitted the current endpoint definition is used. If the requested version does not exist for the resolved endpoint the response contains `version not found`.
+
+Saved source mappings identify sources by token, including in historical endpoint versions. If a referenced source no longer exists, the request returns HTTP 400 with `can't find source <name>` instead of resolving a different source with the same name.
+
+If a required query catalog cannot be loaded because the database is unavailable, the request returns HTTP 503 with a `Retry-After: 5` header. Failed catalog loads are not cached, so a subsequent request retries the load.
 
 The current endpoint's sandboxing setting applies to every version. When sandboxing is disabled, requests containing non-empty `sql` or `lql` overrides return HTTP 400.
 

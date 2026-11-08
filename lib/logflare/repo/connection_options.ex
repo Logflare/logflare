@@ -24,6 +24,7 @@ defmodule Logflare.Repo.ConnectionOptions do
     :telemetry_prefix
   ]
   @sensitive_url_query_params ~w(password url)
+  @replication_url_auth_options [:password, :configure, :logflare_auth, :ssl]
 
   @type role :: :primary | :replica
 
@@ -84,6 +85,73 @@ defmodule Logflare.Repo.ConnectionOptions do
     |> put_present(:password, password)
     |> put_present(:tcp_opts, config[:socket_options])
     |> put_epgsql_ssl(config[:ssl], hostname)
+  end
+
+  @doc """
+  Parses a `LOGFLARE_CACHE_BUSTER_DB_URL` value into connection options.
+
+  The value uses the `LOGFLARE_READ_REPLICAS` entry format. Raises `ArgumentError` for an
+  invalid value, and for an RDS Proxy host, because RDS Proxy does not support replication
+  connections.
+  """
+  @spec parse_replication_url!(String.t()) :: keyword()
+  def parse_replication_url!(url) do
+    {_key, url_options} = Replicas.parse!(url, "LOGFLARE_CACHE_BUSTER_DB_URL")
+    ensure_replication_host!(url_options)
+  end
+
+  @doc """
+  Prepares epgsql connection options for a logical replication client.
+
+  `config` is the unprepared primary repository config. Without replication URL options,
+  this is `prepare_epgsql/1`. Replication URL options from `parse_replication_url!/1`
+  replace the primary host and port. When they set `auth` or a password, the primary
+  password, authentication and SSL options are dropped, so primary client certificates
+  never reach the replication host. Otherwise the replication connection inherits them.
+  `ssl=true` trusts the system CA certificates plus the AWS RDS CA bundle.
+  """
+  @spec prepare_replication_epgsql(keyword(), keyword() | nil) :: map()
+  def prepare_replication_epgsql(config, nil), do: prepare_epgsql(config)
+
+  def prepare_replication_epgsql(config, url_options) when is_list(url_options) do
+    config
+    |> resolve_url!()
+    |> Keyword.drop([:hostname, :port])
+    |> drop_replaced_auth(url_options)
+    |> merge_replication_url_options(url_options)
+    |> prepare_epgsql()
+  end
+
+  defp drop_replaced_auth(config, url_options) do
+    if Keyword.has_key?(url_options, :logflare_auth),
+      do: Keyword.drop(config, @replication_url_auth_options),
+      else: config
+  end
+
+  defp merge_replication_url_options(config, url_options) do
+    url_options = if is_list(config[:ssl]), do: url_options, else: trust_rds_ca(url_options)
+
+    config
+    |> trust_rds_ca()
+    |> merge_url_options(url_options)
+  end
+
+  defp trust_rds_ca(options) do
+    if options[:ssl] == true,
+      do: Keyword.put(options, :ssl, verify: :verify_peer, cacerts: AwsIam.trusted_cacerts()),
+      else: options
+  end
+
+  defp ensure_replication_host!(url_options) do
+    hostname = url_options |> Keyword.fetch!(:hostname) |> String.downcase()
+
+    if String.contains?(hostname, ".proxy-") do
+      raise ArgumentError,
+            "LOGFLARE_CACHE_BUSTER_DB_URL host #{inspect(hostname)} is an RDS Proxy endpoint; " <>
+              "RDS Proxy does not support replication connections, use the cluster writer endpoint"
+    else
+      url_options
+    end
   end
 
   defp prepare_epgsql_config(config) do

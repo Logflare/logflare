@@ -125,6 +125,16 @@ defmodule LogflareWeb.EndpointsController do
         |> put_status(:bad_request)
         |> json(%{error: "SQL and LQL overrides are disabled for this endpoint"})
 
+      {:error, {:invalid_filesystem_cache_window, message}} ->
+        conn
+        |> put_status(:bad_request)
+        |> json(%{error: message})
+
+      {:error, {:invalid_filesystem_cache_policy, message}} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{error: message})
+
       {:error, error = %QueryError{}} ->
         render(conn, "query.json", error: QueryErrorHelpers.query_error_message(error))
 
@@ -145,18 +155,30 @@ defmodule LogflareWeb.EndpointsController do
       assign(conn, :endpoint_query, %{endpoint_query | sandboxable: endpoint.sandboxable})
     else
       [] ->
-        assign(conn, :endpoint_query, Endpoints.map_query_sources(endpoint))
+        case Endpoints.map_query_sources(endpoint) do
+          {:error, _} = error -> halt_endpoint_error(conn, error)
+          endpoint_query -> assign(conn, :endpoint_query, endpoint_query)
+        end
 
       {:error, :version_not_found} ->
-        conn
-        |> FallbackController.call({:error, :not_found, "version not found"})
-        |> halt()
+        halt_endpoint_error(conn, {:error, :not_found, "version not found"})
+
+      {:error, :database_unavailable} = error ->
+        halt_endpoint_error(conn, error)
+
+      {:error, message} = error when is_binary(message) ->
+        halt_endpoint_error(conn, error)
 
       _ ->
-        conn
-        |> FallbackController.call({:error, "invalid lf-endpoint-version"})
-        |> halt()
+        halt_endpoint_error(conn, {:error, "invalid lf-endpoint-version"})
     end
+  end
+
+  @spec halt_endpoint_error(Plug.Conn.t(), tuple()) :: Plug.Conn.t()
+  defp halt_endpoint_error(conn, error) do
+    conn
+    |> FallbackController.call(error)
+    |> halt()
   end
 
   # Parse the GET body only when the query string has neither a sql key nor an lql key.
