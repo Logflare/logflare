@@ -40,20 +40,18 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
 
   @behaviour Logflare.Backends.Adaptor
 
-  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1]
-
   require Logger
 
   alias Logflare.Backends.Adaptor.HttpBased.Headers
   alias Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.OtelContext
   alias Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.Query
-  alias Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.Config
   alias Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.RemoteWrite
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
   alias Logflare.Sources
   alias Logflare.Sources.Source
+  alias Logflare.Utils
 
   @reserved_labels ~w(__name__ le source job instance)
   @redacted_value Headers.redacted_value()
@@ -113,8 +111,6 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   @impl Logflare.Backends.Adaptor
   @spec transform_config(Backend.t()) :: map()
   def transform_config(%_{config: config} = backend) do
-    config = canonical_config(config)
-
     headers =
       (Map.get(config, :headers) || %{})
       |> Headers.normalize_keys()
@@ -123,6 +119,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
         "content-encoding" => "snappy",
         "x-prometheus-remote-write-version" => "0.1.0"
       })
+      |> put_basic_auth(Utils.encode_basic_auth(config))
 
     batch_config = %{labels: Map.get(config, :labels), backend_id: Map.get(backend, :id)}
 
@@ -138,35 +135,34 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   @impl Logflare.Backends.Adaptor
   @spec cast_config(map(), map()) :: Ecto.Changeset.t()
   def cast_config(params, existing_config \\ %{}) do
-    params = legacy_auth_params(params, existing_config)
-    existing_config = canonical_config(existing_config)
-
-    config =
-      %Config{}
-      |> Ecto.Changeset.cast(existing_config, Config.__schema__(:fields))
-      |> Ecto.Changeset.apply_changes()
-
     changeset =
-      Ecto.Changeset.cast(config, params, [
-        :url,
-        :query_url,
-        :headers,
-        :username,
-        :password,
-        :labels
-      ])
+      {existing_config,
+       %{
+         url: :string,
+         query_url: :string,
+         headers: :map,
+         username: :string,
+         password: :string,
+         labels: :map
+       }}
+      |> Ecto.Changeset.cast(params, [:url, :query_url, :headers, :username, :password, :labels])
 
-    changeset =
-      if destination_changed?(changeset, existing_config) or
-           query_destination_changed?(changeset, existing_config) do
+    cond do
+      destination_changed?(changeset, existing_config) ->
         changeset
-        |> WebhookAdaptor.unredact_credentials(Map.drop(existing_config, [:headers]))
+        |> WebhookAdaptor.unredact_credentials(Map.drop(existing_config, [:headers, "headers"]))
         |> require_new_credentials(existing_config)
-      else
-        WebhookAdaptor.unredact_credentials(changeset, existing_config)
-      end
 
-    cast_basic_auth(changeset)
+      query_destination_changed?(changeset, existing_config) ->
+        changeset
+        |> WebhookAdaptor.unredact_credentials(existing_config)
+        |> require_new_password()
+
+      true ->
+        changeset
+        |> WebhookAdaptor.unredact_credentials(existing_config)
+        |> unredact_password()
+    end
   end
 
   @impl Logflare.Backends.Adaptor
@@ -176,13 +172,16 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     |> Ecto.Changeset.validate_required([:url])
     |> Ecto.Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
     |> Ecto.Changeset.validate_change(:query_url, &validate_query_url/2)
+    |> validate_user_pass()
     |> WebhookAdaptor.validate_no_ssrf()
   end
 
   @impl Logflare.Backends.Adaptor
   @spec redact_config(map()) :: map()
   def redact_config(config) do
-    config |> canonical_config() |> WebhookAdaptor.redact_config()
+    config
+    |> WebhookAdaptor.redact_config()
+    |> Map.replace_lazy(:password, &Headers.mask_value/1)
   end
 
   @impl Logflare.Backends.Adaptor
@@ -204,45 +203,21 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     end
   end
 
-  # Existing backends may still store Basic credentials as separate fields.
-  defp canonical_config(config) do
-    canonical =
-      for field <- Config.__schema__(:fields),
-          Map.has_key?(config, field) or Map.has_key?(config, Atom.to_string(field)),
-          into: %{},
-          do: {field, Map.get(config, field, Map.get(config, Atom.to_string(field)))}
+  defp put_basic_auth(headers, nil), do: headers
+  defp put_basic_auth(headers, encoded), do: Map.put(headers, "authorization", "Basic #{encoded}")
 
-    headers = (canonical[:headers] || %{}) |> Headers.normalize_keys()
-    username = config[:username] || config["username"]
-    password = config[:password] || config["password"]
-
-    headers =
-      if is_non_empty_binary(username) and is_non_empty_binary(password) and
-           username != @redacted_value and password != @redacted_value do
-        Map.put(headers, "authorization", "Basic " <> Base.encode64(username <> ":" <> password))
-      else
-        headers
-      end
-
-    Map.put(canonical, :headers, headers)
-  end
-
-  defp legacy_auth_params(params, existing_config) do
-    username = existing_config[:username] || existing_config["username"]
-    password = existing_config[:password] || existing_config["password"]
-    submitted_username = params[:username] || params["username"]
-    submitted_password = params[:password] || params["password"]
-
-    if is_non_empty_binary(username) and is_non_empty_binary(password) and
-         submitted_password == @redacted_value and submitted_username in [nil, username] do
-      Map.drop(params, [:username, :password, "username", "password"])
+  # A client echoing the redacted password back on update keeps the stored one.
+  defp unredact_password(changeset) do
+    if Ecto.Changeset.get_change(changeset, :password) == @redacted_value do
+      Ecto.Changeset.delete_change(changeset, :password)
     else
-      params
+      changeset
     end
   end
 
-  # Read and write requests share authorization, so either origin change requires
-  # explicitly submitting credentials again, including when their values are unchanged.
+  # Stored credentials only ever go to the destination they were entered for. When the
+  # URL moves to another origin, the password and credential headers must be entered
+  # again rather than restored from the redacted form or kept from storage.
   @spec require_new_credentials(Ecto.Changeset.t(), map()) :: Ecto.Changeset.t()
   defp require_new_credentials(changeset, existing_config) do
     headers =
@@ -257,13 +232,29 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
           nil
 
         _ ->
-          for {key, value} <- existing_config[:headers] || %{},
+          stored =
+            Map.get(existing_config, :headers) || Map.get(existing_config, "headers") || %{}
+
+          for {key, value} <- stored,
               not Headers.sensitive?(key),
               into: %{},
               do: {Headers.normalize_key(key), value}
       end
 
-    Ecto.Changeset.put_change(changeset, :headers, headers)
+    changeset
+    |> require_new_password()
+    |> Ecto.Changeset.put_change(:headers, headers)
+  end
+
+  @spec require_new_password(Ecto.Changeset.t()) :: Ecto.Changeset.t()
+  defp require_new_password(changeset) do
+    case changeset.params["password"] do
+      password when is_binary(password) and password not in ["", @redacted_value] ->
+        Ecto.Changeset.put_change(changeset, :password, password)
+
+      _ ->
+        Ecto.Changeset.put_change(changeset, :password, nil)
+    end
   end
 
   @spec query_destination_changed?(Ecto.Changeset.t(), map()) :: boolean()
@@ -599,55 +590,18 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     :ok
   end
 
-  @spec cast_basic_auth(Ecto.Changeset.t()) :: Ecto.Changeset.t()
-  defp cast_basic_auth(changeset) do
-    put_basic_auth(
-      changeset,
-      Ecto.Changeset.get_field(changeset, :username),
-      Ecto.Changeset.get_field(changeset, :password)
-    )
-  end
+  defp validate_user_pass(changeset) do
+    user = Ecto.Changeset.get_field(changeset, :username)
+    pass = Ecto.Changeset.get_field(changeset, :password)
 
-  @spec put_basic_auth(Ecto.Changeset.t(), String.t() | nil, String.t() | nil) ::
-          Ecto.Changeset.t()
-  defp put_basic_auth(changeset, nil, nil), do: changeset
+    if [user, pass] != [nil, nil] and Enum.any?([user, pass], &is_nil/1) do
+      msg = "Both username and password must be provided for basic auth"
 
-  defp put_basic_auth(changeset, username, password)
-       when is_non_empty_binary(username) and is_non_empty_binary(password) and
-              username != @redacted_value and
-              password != @redacted_value do
-    if explicit_authorization?(changeset.params) do
-      Ecto.Changeset.add_error(
-        changeset,
-        :headers,
-        "cannot provide an authorization header together with basic auth credentials"
-      )
+      changeset
+      |> Ecto.Changeset.add_error(:username, msg)
+      |> Ecto.Changeset.add_error(:password, msg)
     else
-      headers = Ecto.Changeset.get_field(changeset, :headers) || %{}
-      authorization = "Basic " <> Base.encode64(username <> ":" <> password)
-
-      Ecto.Changeset.put_change(
-        changeset,
-        :headers,
-        Map.put(headers, "authorization", authorization)
-      )
+      changeset
     end
   end
-
-  defp put_basic_auth(changeset, _username, _password) do
-    message = "Both username and password must be provided for basic auth"
-
-    changeset
-    |> Ecto.Changeset.add_error(:username, message)
-    |> Ecto.Changeset.add_error(:password, message)
-  end
-
-  @spec explicit_authorization?(map()) :: boolean()
-  defp explicit_authorization?(%{"headers" => headers}) when is_map(headers) do
-    Enum.any?(headers, fn {key, value} ->
-      Headers.normalize_key(key) == "authorization" and value != @redacted_value
-    end)
-  end
-
-  defp explicit_authorization?(_params), do: false
 end

@@ -11,7 +11,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.QueryTest do
 
   setup :verify_on_exit!
 
-  test "sends raw PromQL to the explicit read endpoint with stored authorization only" do
+  test "sends raw PromQL to the explicit read endpoint with basic auth only" do
     query = ~S'sum(rate(requests_total{route="/a+b",env=~"prod|staging"}[5m]))'
     result = success("vector", [])
 
@@ -38,11 +38,9 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.QueryTest do
 
     backend =
       backend(%{
-        headers: %{
-          "Authorization" => "Basic " <> Base.encode64("user:secret"),
-          "x-write-only" => "ignored",
-          "content-encoding" => "snappy"
-        }
+        username: "user",
+        password: "secret",
+        headers: %{"authorization" => "Bearer ignored", "x-write-only" => "ignored"}
       })
 
     assert {:ok, ^result} =
@@ -52,25 +50,6 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.QueryTest do
                "backend_id" => 42,
                "query_url" => "https://other.example.com"
              })
-  end
-
-  test "uses stored bearer headers and legacy basic credentials without sending masked values" do
-    for {config, expected} <- [
-          {%{headers: %{"authorization" => "Bearer token"}}, "Bearer token"},
-          {%{username: "user", password: "secret", headers: %{"authorization" => "Bearer old"}},
-           "Basic " <> Base.encode64("user:secret")},
-          {%{headers: %{"authorization" => "REDACTED"}}, nil},
-          {%{username: "user", password: "REDACTED"}, nil}
-        ] do
-      result = success("vector", [])
-
-      expect(Tesla.Adapter.Finch, :call, fn env, _options ->
-        assert Map.new(env.headers)["authorization"] == expected
-        reply(env, 200, result)
-      end)
-
-      assert {:ok, ^result} = Query.execute(backend(config), "up", %{})
-    end
   end
 
   test "range requests preserve proxy paths and numeric timestamps" do

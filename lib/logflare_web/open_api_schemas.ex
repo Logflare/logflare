@@ -541,23 +541,9 @@ defmodule LogflareWeb.OpenApiSchemas do
         description:
           "Optional HTTP(S) read base URL, including tenant or proxy paths, without /api/v1/query. Enables raw PromQL queries."
       },
-      headers: %Schema{
-        type: :object,
-        description:
-          "Metric write headers. Authorization is shared with queries; credential values are redacted on read."
-      },
-      username: %Schema{
-        type: :string,
-        nullable: true,
-        writeOnly: true,
-        description: "Provide with password to set or replace the Basic authorization header."
-      },
-      password: %Schema{
-        type: :string,
-        nullable: true,
-        writeOnly: true,
-        description: "Provide with username to set or replace the Basic authorization header."
-      },
+      headers: %Schema{type: :object, description: "Additional headers for metric writes only."},
+      username: %Schema{type: :string, nullable: true},
+      password: %Schema{type: :string, nullable: true},
       labels: %Schema{type: :object, nullable: true}
     }
 

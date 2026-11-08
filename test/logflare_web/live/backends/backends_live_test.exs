@@ -618,13 +618,7 @@ defmodule LogflareWeb.BackendsLiveTest do
       [backend] = Backends.list_backends_by_user_access(user, type: :victoria_metrics)
       assert backend.config.url == "https://example.com/api/v1/write"
       assert backend.config.query_url == "https://example.com/select/0/prometheus"
-
-      assert backend.config.headers == %{
-               "authorization" => "Basic " <> Base.encode64("user:pass")
-             }
-
-      refute Map.has_key?(backend.config, :username)
-      refute Map.has_key?(backend.config, :password)
+      assert backend.config.username == "user"
     end
 
     test "can create a clickhouse backend with a read cluster URL", %{conn: conn, user: user} do
@@ -901,73 +895,11 @@ defmodule LogflareWeb.BackendsLiveTest do
       end
     end
 
-    test "victoria_metrics edit requires authorization reentry for a new query destination", %{
+    test "victoria_metrics edit requires password reentry for a new query destination", %{
       conn: conn,
       source: source,
       user: user
     } do
-      authorization = "Basic " <> Base.encode64("user:vm-secret")
-      replacement = "Basic " <> Base.encode64("replacement-user:replacement-password")
-
-      for {config, expected_headers} <- [
-            {%{query_url: "https://example.org/select/0/prometheus"}, %{"x-tenant" => "updated"}},
-            {%{query_url: "http://example.com/select/0/prometheus"}, %{"x-tenant" => "updated"}},
-            {%{query_url: "https://example.com:8443/select/0/prometheus"},
-             %{"x-tenant" => "updated"}},
-            {%{
-               query_url: "https://example.org/select/0/prometheus",
-               username: "replacement-user",
-               password: "replacement-password"
-             }, %{"authorization" => replacement, "x-tenant" => "updated"}},
-            {%{
-               query_url: "https://example.org/select/0/prometheus",
-               header1_value: "Bearer replacement-token"
-             }, %{"authorization" => "Bearer replacement-token", "x-tenant" => "updated"}},
-            {%{query_url: "https://example.com/select/1/prometheus"},
-             %{"authorization" => authorization, "x-tenant" => "updated"}}
-          ] do
-        backend =
-          insert(:backend,
-            sources: [source],
-            user: user,
-            type: :victoria_metrics,
-            config: %{
-              url: "https://example.com/api/v1/write",
-              query_url: "https://example.com/select/0/prometheus",
-              headers: %{"authorization" => authorization, "x-tenant" => "acme"}
-            }
-          )
-
-        {:ok, view, html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
-
-        refute html =~ "vm-secret"
-        refute html =~ authorization
-
-        assert view
-               |> element("input[name='backend[config][query_url]']")
-               |> render() =~ "https://example.com/select/0/prometheus"
-
-        html =
-          view
-          |> form("form", %{backend: %{config: Map.put(config, :header2_value, "updated")}})
-          |> render_submit()
-
-        assert html =~ "Successfully updated backend"
-        updated = Backends.get_backend(backend.id)
-        assert updated.config.query_url == config.query_url
-        assert updated.config.headers == expected_headers
-        refute Map.has_key?(updated.config, :username)
-        refute Map.has_key?(updated.config, :password)
-      end
-    end
-
-    test "victoria_metrics keeps stored Basic auth when convenience inputs are blank", %{
-      conn: conn,
-      source: source,
-      user: user
-    } do
-      authorization = "Basic " <> Base.encode64("stored-user:stored-password")
-
       backend =
         insert(:backend,
           sources: [source],
@@ -975,105 +907,47 @@ defmodule LogflareWeb.BackendsLiveTest do
           type: :victoria_metrics,
           config: %{
             url: "https://example.com/api/v1/write",
-            headers: %{"authorization" => authorization}
+            query_url: "https://example.com/select/0/prometheus",
+            username: "user",
+            password: "vm-secret",
+            headers: %{"authorization" => "Bearer write-token"}
           }
         )
 
       {:ok, view, html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
 
-      refute html =~ "stored-user"
-      refute html =~ "stored-password"
-      refute html =~ authorization
-      assert has_element?(view, "input[name='backend[config][username]'][value='']")
-      assert has_element?(view, "input[name='backend[config][password]'][value='']")
-      assert has_element?(view, "input[name='backend[config][header1_value]'][value='REDACTED']")
+      refute html =~ "vm-secret"
+      refute html =~ "write-token"
+
+      assert view
+             |> element("input[name='backend[config][query_url]']")
+             |> render() =~ "https://example.com/select/0/prometheus"
 
       html =
         view
-        |> form("form", %{backend: %{description: "updated"}})
+        |> form("form", %{
+          backend: %{config: %{query_url: "https://example.org/select/0/prometheus"}}
+        })
         |> render_submit()
 
-      assert html =~ "Successfully updated backend"
-      updated = Backends.get_backend(backend.id)
-      assert updated.description == "updated"
-      assert updated.config.headers == %{"authorization" => authorization}
-      refute Map.has_key?(updated.config, :username)
-      refute Map.has_key?(updated.config, :password)
-    end
+      assert html =~ "Both username and password must be provided for basic auth"
+      assert Backends.get_backend(backend.id).config.query_url == backend.config.query_url
 
-    test "victoria_metrics replaces masked authorization through the Basic auth inputs", %{
-      conn: conn,
-      source: source,
-      user: user
-    } do
-      backend =
-        insert(:backend,
-          sources: [source],
-          user: user,
-          type: :victoria_metrics,
+      view
+      |> form("form", %{
+        backend: %{
           config: %{
-            url: "https://example.com/api/v1/write",
-            headers: %{"authorization" => "Bearer stored-token", "x-tenant" => "acme"}
+            query_url: "https://example.org/select/0/prometheus",
+            password: "vm-secret"
           }
-        )
+        }
+      })
+      |> render_submit()
 
-      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
-
-      html =
-        view
-        |> form("form", %{
-          backend: %{config: %{username: "replacement-user", password: "replacement-password"}}
-        })
-        |> render_submit()
-
-      assert html =~ "Successfully updated backend"
       updated = Backends.get_backend(backend.id)
-
-      assert updated.config.headers == %{
-               "authorization" =>
-                 "Basic " <> Base.encode64("replacement-user:replacement-password"),
-               "x-tenant" => "acme"
-             }
-
-      refute Map.has_key?(updated.config, :username)
-      refute Map.has_key?(updated.config, :password)
-      refute html =~ "replacement-password"
-      refute html =~ "stored-token"
-    end
-
-    test "victoria_metrics rejects newly entered authorization combined with Basic auth inputs",
-         %{
-           conn: conn,
-           source: source,
-           user: user
-         } do
-      headers = %{"authorization" => "Bearer stored-token"}
-
-      backend =
-        insert(:backend,
-          sources: [source],
-          user: user,
-          type: :victoria_metrics,
-          config: %{url: "https://example.com/api/v1/write", headers: headers}
-        )
-
-      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}/edit")
-
-      html =
-        view
-        |> form("form", %{
-          backend: %{
-            config: %{
-              username: "replacement-user",
-              password: "replacement-password",
-              header1_value: "Bearer replacement-token"
-            }
-          }
-        })
-        |> render_submit()
-
-      assert html =~ "Encountered error when updating backend"
-      assert Backends.get_backend(backend.id).config.headers == headers
+      assert updated.config.query_url == "https://example.org/select/0/prometheus"
+      assert updated.config.password == "vm-secret"
+      assert updated.config.headers == %{"authorization" => "Bearer write-token"}
     end
 
     test "webhook edit renders stored headers and preserves them on submit", %{

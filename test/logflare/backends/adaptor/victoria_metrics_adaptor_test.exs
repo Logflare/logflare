@@ -7,7 +7,6 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline
   alias Logflare.Backends.AdaptorSupervisor
-  alias Logflare.Backends.Backend
   alias Logflare.SystemMetrics.AllLogsLogged
 
   @subject Logflare.Backends.Adaptor.VictoriaMetricsAdaptor
@@ -55,61 +54,6 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
                "username" => "user",
                "password" => "pass"
              }).valid?
-    end
-
-    test "converts a newly submitted basic auth pair into a canonical header" do
-      changeset =
-        Adaptor.cast_and_validate_config(@subject, %{
-          "url" => @vm_remote_write_url,
-          "username" => "user",
-          "password" => "pass:word",
-          "headers" => %{"X-Tenant" => "acme"}
-        })
-
-      assert changeset.valid?
-
-      assert Ecto.Changeset.get_field(changeset, :headers) == %{
-               "authorization" => "Basic " <> Base.encode64("user:pass:word"),
-               "x-tenant" => "acme"
-             }
-    end
-
-    test "rejects basic auth inputs together with an explicit authorization header" do
-      for headers <- [
-            %{"authorization" => "Bearer token"},
-            %{"Authorization" => "Bearer token"},
-            %{"AUTHORIZATION" => "Bearer token"},
-            %{"Authorization" => "Bearer token", "authorization" => "REDACTED"}
-          ] do
-        changeset =
-          Adaptor.cast_and_validate_config(@subject, %{
-            url: @vm_remote_write_url,
-            username: "user",
-            password: "pass",
-            headers: headers
-          })
-
-        refute changeset.valid?
-        assert {_msg, _opts} = changeset.errors[:headers]
-      end
-    end
-
-    test "does not encode redacted basic auth inputs as new credentials" do
-      for {username, password} <- [
-            {"user", "REDACTED"},
-            {"REDACTED", "pass"},
-            {"REDACTED", "REDACTED"}
-          ] do
-        changeset =
-          Adaptor.cast_and_validate_config(@subject, %{
-            url: @vm_remote_write_url,
-            username: username,
-            password: password
-          })
-
-        refute changeset.valid?
-        refute Map.has_key?(Ecto.Changeset.get_field(changeset, :headers) || %{}, "authorization")
-      end
     end
 
     test "accepts optional labels map" do
@@ -173,12 +117,14 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       assert changeset.errors[:query_url]
     end
 
-    test "requires authorization reentry for a new read origin and preserves custom headers" do
+    test "requires password reentry for a new read origin while keeping write-only headers" do
       for previous_query_url <- [nil, "https://reader.example.com/select/0/prometheus"] do
         existing = %{
           url: "https://vm.example.com/api/v1/write",
           query_url: previous_query_url,
-          headers: %{"authorization" => "Bearer token", "x-tenant" => "acme"}
+          username: "user",
+          password: "pass",
+          headers: %{"authorization" => "Bearer write-token"}
         }
 
         params =
@@ -187,25 +133,24 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
           |> Map.put(:query_url, "https://other-reader.example.com/select/0/prometheus")
 
         changeset = Adaptor.cast_and_validate_config(@subject, params, existing)
-        assert changeset.valid?
-        assert Ecto.Changeset.get_field(changeset, :headers) == %{"x-tenant" => "acme"}
+        refute changeset.valid?
+        assert changeset.errors[:password]
+        assert Ecto.Changeset.get_field(changeset, :password) == nil
+        assert Ecto.Changeset.get_field(changeset, :headers) == existing.headers
 
         reentered =
-          Adaptor.cast_and_validate_config(
-            @subject,
-            Map.put(params, :headers, existing.headers),
-            existing
-          )
+          Adaptor.cast_and_validate_config(@subject, Map.put(params, :password, "pass"), existing)
 
         assert reentered.valid?
-        assert Ecto.Changeset.get_field(reentered, :headers) == existing.headers
+        assert Ecto.Changeset.get_field(reentered, :password) == "pass"
       end
     end
 
     test "keeps shared credentials for same-origin read paths and when disabling reads" do
       existing = %{
         url: "https://vm.example.com/api/v1/write",
-        headers: %{"authorization" => "Basic " <> Base.encode64("user:pass")}
+        username: "user",
+        password: "pass"
       }
 
       for old_url <- [nil, "https://vm.example.com/select/0/prometheus"],
@@ -215,7 +160,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
         changeset = Adaptor.cast_and_validate_config(@subject, params, stored)
 
         assert changeset.valid?
-        assert Ecto.Changeset.get_field(changeset, :headers) == existing.headers
+        assert Ecto.Changeset.get_field(changeset, :password) == "pass"
         assert Ecto.Changeset.get_field(changeset, :query_url) == new_url
       end
     end
@@ -224,6 +169,8 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       existing = %{
         url: "https://vm.example.com/api/v1/write",
         query_url: "https://reader.example.com/select/0/prometheus",
+        username: "user",
+        password: "pass",
         headers: %{"authorization" => "Bearer token", "x-tenant" => "acme"}
       }
 
@@ -236,83 +183,43 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
         })
 
       changeset = Adaptor.cast_and_validate_config(@subject, params, existing)
-      assert changeset.valid?
+      refute changeset.valid?
+      assert changeset.errors[:password]
+      assert Ecto.Changeset.get_field(changeset, :password) == nil
       assert Ecto.Changeset.get_field(changeset, :headers) == %{"x-tenant" => "acme"}
 
       reentered =
         params
-        |> Map.put(:headers, existing.headers)
+        |> Map.merge(%{password: existing.password, headers: existing.headers})
         |> then(&Adaptor.cast_and_validate_config(@subject, &1, existing))
 
       assert reentered.valid?
+      assert Ecto.Changeset.get_field(reentered, :password) == existing.password
       assert Ecto.Changeset.get_field(reentered, :headers) == existing.headers
       assert Ecto.Changeset.get_field(reentered, :url) == params.url
       assert Ecto.Changeset.get_field(reentered, :query_url) == params.query_url
-
-      basic =
-        params
-        |> Map.merge(%{username: "user", password: "pass"})
-        |> then(&Adaptor.cast_and_validate_config(@subject, &1, existing))
-
-      assert basic.valid?
-
-      assert Ecto.Changeset.get_field(basic, :headers)["authorization"] ==
-               "Basic " <> Base.encode64("user:pass")
     end
 
     test "treats query URL scheme and port changes as a new destination" do
       existing = %{
         url: "https://vm.example.com/api/v1/write",
         query_url: "https://reader.example.com/select/0/prometheus",
-        headers: %{"authorization" => "Bearer token"}
+        username: "user",
+        password: "pass"
       }
 
       for query_url <- ["http://reader.example.com", "https://reader.example.com:8443"] do
         changeset = Adaptor.cast_and_validate_config(@subject, %{query_url: query_url}, existing)
-        assert changeset.valid?
-        assert Ecto.Changeset.get_field(changeset, :headers) == %{}
-      end
-    end
-
-    test "migrates stored basic credentials to a header without losing redacted API updates" do
-      existing = %{
-        url: "https://vm.example.com/api/v1/write",
-        query_url: "https://vm.example.com",
-        username: "user",
-        password: "pass",
-        headers: %{"x-tenant" => "acme"}
-      }
-
-      for stored <- [existing, Map.new(existing, fn {key, value} -> {to_string(key), value} end)] do
-        for params <- [%{labels: %{"env" => "prod"}}, %{username: "user", password: "REDACTED"}] do
-          changeset = Adaptor.cast_and_validate_config(@subject, params, stored)
-          assert changeset.valid?
-          config = Adaptor.apply_config_changes(changeset)
-
-          assert config.headers == %{
-                   "authorization" => "Basic " <> Base.encode64("user:pass"),
-                   "x-tenant" => "acme"
-                 }
-
-          refute Map.has_key?(config, :username)
-          refute Map.has_key?(config, :password)
-        end
-
-        moved =
-          Adaptor.cast_and_validate_config(
-            @subject,
-            %{query_url: "https://other-reader.example.com"},
-            stored
-          )
-
-        assert moved.valid?
-        assert Ecto.Changeset.get_field(moved, :headers) == %{"x-tenant" => "acme"}
+        refute changeset.valid?
+        assert changeset.errors[:password]
       end
     end
 
     test "keeps stored credentials submitted back in redacted form" do
       existing = %{
         url: "https://user:secret@vm.example.com/api/v1/write",
+        username: "user",
+        password: "pass",
         headers: %{"authorization" => "Bearer token", "x-tenant" => "acme"}
       }
 
@@ -326,86 +233,15 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       assert changeset.valid?
       config = Ecto.Changeset.apply_changes(changeset)
       assert config.url == existing.url
+      assert config.password == "pass"
       assert config.headers == %{"authorization" => "Bearer token", "x-tenant" => "acme"}
-    end
-
-    test "new basic auth inputs replace a stored header echoed back in redacted form" do
-      existing = %{
-        url: "https://vm.example.com/api/v1/write",
-        headers: %{"authorization" => "Bearer old-token", "x-tenant" => "acme"}
-      }
-
-      changeset =
-        Adaptor.cast_and_validate_config(
-          @subject,
-          %{
-            username: "new-user",
-            password: "new-pass",
-            headers: %{"Authorization" => "REDACTED", "x-tenant" => "updated"}
-          },
-          existing
-        )
-
-      assert changeset.valid?
-
-      assert Ecto.Changeset.get_field(changeset, :headers) == %{
-               "authorization" => "Basic " <> Base.encode64("new-user:new-pass"),
-               "x-tenant" => "updated"
-             }
-    end
-
-    test "blank basic auth inputs preserve the stored authorization header" do
-      existing = %{
-        url: "https://vm.example.com/api/v1/write",
-        headers: %{"authorization" => "Basic " <> Base.encode64("user:pass")}
-      }
-
-      changeset =
-        Adaptor.cast_and_validate_config(@subject, %{username: "", password: ""}, existing)
-
-      assert changeset.valid?
-      assert Ecto.Changeset.get_field(changeset, :headers) == existing.headers
-    end
-
-    test "replacing stored basic auth requires both input fields" do
-      existing = %{
-        url: "https://vm.example.com/api/v1/write",
-        headers: %{"authorization" => "Basic " <> Base.encode64("user:pass")}
-      }
-
-      for params <- [%{username: "new-user"}, %{password: "new-pass"}] do
-        refute Adaptor.cast_and_validate_config(@subject, params, existing).valid?
-      end
-
-      replacement =
-        Adaptor.cast_and_validate_config(
-          @subject,
-          %{username: "new-user", password: "new-pass"},
-          existing
-        )
-
-      assert replacement.valid?
-
-      assert Ecto.Changeset.get_field(replacement, :headers) == %{
-               "authorization" => "Basic " <> Base.encode64("new-user:new-pass")
-             }
-    end
-
-    test "an explicitly empty header map removes stored authorization" do
-      existing = %{
-        url: "https://vm.example.com/api/v1/write",
-        headers: %{"authorization" => "Basic " <> Base.encode64("user:pass")}
-      }
-
-      changeset = Adaptor.cast_and_validate_config(@subject, %{headers: %{}}, existing)
-
-      assert changeset.valid?
-      assert Ecto.Changeset.get_field(changeset, :headers) == %{}
     end
 
     test "does not carry stored credentials to a different host" do
       existing = %{
         url: "https://vm.example.com/api/v1/write",
+        username: "user",
+        password: "pass",
         headers: %{"authorization" => "Bearer token", "x-tenant" => "acme"}
       }
 
@@ -418,8 +254,10 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
           existing
         )
 
-      assert moved.valid?
+      refute moved.valid?
+      assert {_msg, _opts} = moved.errors[:password]
       config = Ecto.Changeset.apply_changes(moved)
+      assert config.password == nil
       assert config.headers == %{"x-tenant" => "acme"}
 
       url_only =
@@ -429,27 +267,19 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
           existing
         )
 
-      assert url_only.valid?
       config = Ecto.Changeset.apply_changes(url_only)
+      assert config.password == nil
       assert config.headers == %{"x-tenant" => "acme"}
 
       reentered =
         Adaptor.cast_and_validate_config(
           @subject,
-          %{
-            url: "https://other.example.com/api/v1/write",
-            username: "user",
-            password: "new"
-          },
+          %{redacted | url: "https://other.example.com/api/v1/write", password: "new"},
           existing
         )
 
       assert reentered.valid?
-
-      assert Ecto.Changeset.get_field(reentered, :headers) == %{
-               "authorization" => "Basic " <> Base.encode64("user:new"),
-               "x-tenant" => "acme"
-             }
+      assert Ecto.Changeset.apply_changes(reentered).password == "new"
     end
 
     test "keeps explicitly reentered identical credentials when moving the write destination" do
@@ -495,41 +325,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
       end
     end
 
-    test "loads legacy stored basic credentials with their original precedence over headers" do
-      legacy = %{
-        url: "https://vm.example.com/api/v1/write",
-        query_url: "https://vm.example.com",
-        username: "user",
-        password: "pass",
-        headers: %{"authorization" => "Bearer ignored", "x-tenant" => "acme"}
-      }
-
-      backend = insert(:backend, user: insert(:user), type: :victoria_metrics, config: legacy)
-      loaded = Backends.get_backend(backend.id)
-
-      assert loaded.config.headers == %{
-               "authorization" => "Basic " <> Base.encode64("user:pass"),
-               "x-tenant" => "acme"
-             }
-
-      refute Map.has_key?(loaded.config, :username)
-      refute Map.has_key?(loaded.config, :password)
-
-      response = loaded |> Jason.encode!() |> Jason.decode!()
-      {:ok, _updated} = Backends.update_backend(loaded, %{"config" => response["config"]})
-      assert Backends.get_backend(backend.id).config == loaded.config
-
-      {:ok, _updated} = Backends.update_backend(loaded, %{config: %{labels: %{"env" => "prod"}}})
-
-      assert Backends.get_backend(backend.id).config ==
-               Map.put(loaded.config, :labels, %{"env" => "prod"})
-
-      stored = Repo.get!(Backend, backend.id).config_encrypted
-      refute Map.has_key?(stored, "username")
-      refute Map.has_key?(stored, "password")
-    end
-
-    test "persists only canonical fields and keeps credentials across a backend API round trip" do
+    test "keeps credentials across a stored round trip through the backend API" do
       user = insert(:user)
 
       {:ok, backend} =
@@ -540,75 +336,19 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
             url: "https://vm.example.com/api/v1/write",
             username: "user",
             password: "pass",
-            headers: %{"x-tenant" => "acme"},
+            headers: %{"authorization" => "Bearer token"},
             labels: %{"env" => "prod"}
           }
         })
 
       loaded = Backends.get_backend(backend.id)
-      headers = %{"authorization" => "Basic " <> Base.encode64("user:pass"), "x-tenant" => "acme"}
-
-      assert loaded.config == %{
-               url: "https://vm.example.com/api/v1/write",
-               query_url: nil,
-               headers: headers,
-               labels: %{"env" => "prod"}
-             }
-
-      stored = Repo.get!(Backend, backend.id).config_encrypted
-
-      assert Enum.sort(Enum.map(Map.keys(stored), &to_string/1)) == [
-               "headers",
-               "labels",
-               "query_url",
-               "url"
-             ]
-
-      response = loaded |> Jason.encode!() |> Jason.decode!()
-
-      assert response["config"] == %{
-               "url" => "https://vm.example.com/api/v1/write",
-               "query_url" => nil,
-               "headers" => %{"authorization" => "REDACTED", "x-tenant" => "acme"},
-               "labels" => %{"env" => "prod"}
-             }
+      assert %{password: "pass", labels: %{"env" => "prod"}} = loaded.config
 
       {:ok, _updated} =
-        Backends.update_backend(loaded, %{"config" => response["config"]})
+        Backends.update_backend(loaded, %{config: @subject.redact_config(loaded.config)})
 
-      assert Backends.get_backend(backend.id).config == loaded.config
-    end
-
-    test "partial updates retain the canonical authorization header and existing labels" do
-      headers = %{"authorization" => "Basic " <> Base.encode64("user:pass")}
-
-      backend =
-        insert(:backend,
-          user: insert(:user),
-          type: :victoria_metrics,
-          config: %{
-            url: "https://vm.example.com/api/v1/write",
-            headers: headers,
-            labels: %{"env" => "prod"}
-          }
-        )
-
-      {:ok, _updated} =
-        Backends.update_backend(backend, %{config: %{labels: %{"env" => "staging"}}})
-
-      loaded = Backends.get_backend(backend.id)
-      assert loaded.config.headers == headers
-      assert loaded.config.labels == %{"env" => "staging"}
-
-      {:ok, _updated} =
-        Backends.update_backend(loaded, %{
-          config: %{url: "https://vm.example.com/another/api/v1/write"}
-        })
-
-      updated = Backends.get_backend(backend.id)
-      assert updated.config.url == "https://vm.example.com/another/api/v1/write"
-      assert updated.config.headers == headers
-      assert updated.config.labels == %{"env" => "staging"}
+      assert %{password: "pass", headers: %{"authorization" => "Bearer token"}} =
+               Backends.get_backend(backend.id).config
     end
   end
 
@@ -642,13 +382,17 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
   end
 
   describe "redact_config/1" do
-    test "redacts credential headers and url userinfo" do
+    test "redacts the password, credential headers and url userinfo" do
       redacted =
         @subject.redact_config(%{
           url: "https://user:secret@vm.example.com/api/v1/write",
+          username: "user",
+          password: "secret",
           headers: %{"authorization" => "Bearer token", "x-tenant" => "acme"}
         })
 
+      assert redacted.password == "REDACTED"
+      assert redacted.username == "user"
       assert redacted.url == "https://REDACTED@vm.example.com/api/v1/write"
       assert redacted.headers == %{"authorization" => "REDACTED", "x-tenant" => "acme"}
     end
@@ -662,7 +406,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
   end
 
   describe "transform_config/1" do
-    test "keeps legacy basic authentication working before the backend is updated" do
+    test "sends one canonical copy of each protocol header" do
       backend =
         build(:backend,
           type: :victoria_metrics,
@@ -670,31 +414,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
             url: @vm_remote_write_url,
             username: "user",
             password: "pass",
-            headers: %{"authorization" => "Bearer old", "x-tenant" => "acme"}
-          }
-        )
-
-      assert %{headers: headers} = @subject.transform_config(backend)
-      assert headers["authorization"] == "Basic " <> Base.encode64("user:pass")
-      assert headers["x-tenant"] == "acme"
-
-      assert @subject.redact_config(backend.config) == %{
-               url: @vm_remote_write_url,
-               headers: %{"authorization" => "REDACTED", "x-tenant" => "acme"}
-             }
-    end
-
-    test "sends one canonical copy of each protocol header" do
-      backend =
-        build(:backend,
-          type: :victoria_metrics,
-          config: %{
-            url: @vm_remote_write_url,
-            headers: %{
-              "Authorization" => "Basic " <> Base.encode64("user:pass"),
-              "Content-Type" => "text/plain",
-              "X-Tenant" => "acme"
-            }
+            headers: %{"Content-Type" => "text/plain", "X-Tenant" => "acme"}
           }
         )
 
