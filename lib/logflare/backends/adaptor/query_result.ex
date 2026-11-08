@@ -10,8 +10,7 @@ defmodule Logflare.Backends.Adaptor.QueryResult do
     :total_rows,
     total_bytes_processed: @not_supported,
     query_string: @not_supported,
-    bq_params: @not_supported,
-    warnings: []
+    bq_params: @not_supported
   ]
 
   @type t :: %__MODULE__{
@@ -19,8 +18,7 @@ defmodule Logflare.Backends.Adaptor.QueryResult do
           total_bytes_processed: integer() | not_supported(),
           total_rows: integer(),
           query_string: String.t() | not_supported(),
-          bq_params: [map()] | not_supported(),
-          warnings: [String.t()]
+          bq_params: [map()] | not_supported()
         }
 
   @spec new([term()], map()) :: t()

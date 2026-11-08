@@ -558,7 +558,7 @@ defmodule Logflare.Backends do
   @doc """
   Deletes a Backend
   """
-  @spec delete_backend(Backend.t()) :: {:ok, Backend.t()} | {:error, Changeset.t()}
+  @spec delete_backend(Backend.t()) :: {:ok, Backend.t()}
   def delete_backend(%Backend{} = backend) do
     result =
       backend
@@ -566,10 +566,6 @@ defmodule Logflare.Backends do
       |> Changeset.foreign_key_constraint(:sources,
         name: "sources_backends_backend_id_fkey",
         message: "There are still sources connected to this backend"
-      )
-      |> Changeset.foreign_key_constraint(:query_backend_id,
-        name: "alert_queries_query_backend_id_fkey",
-        message: "There are still alerts querying this backend"
       )
       |> Repo.delete()
 

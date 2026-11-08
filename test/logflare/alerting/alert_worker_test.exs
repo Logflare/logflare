@@ -2,7 +2,6 @@ defmodule Logflare.Alerting.AlertWorkerTest do
   use Logflare.DataCase, async: false
   use Oban.Testing, repo: Logflare.Repo
 
-  alias Logflare.Alerting
   alias Logflare.Alerting.AlertWorker
 
   setup do
@@ -49,72 +48,5 @@ defmodule Logflare.Alerting.AlertWorkerTest do
 
   test "perform/1 returns :error when alert not found (deleted)" do
     assert {:error, :not_found} = perform_job(AlertWorker, %{alert_query_id: -1})
-  end
-
-  test "evaluates PromQL at the job's scheduled time and persists warnings", %{user: user} do
-    alert = promql_alert(user)
-
-    expect(Tesla.Adapter.Finch, :call, fn env, _opts ->
-      assert URI.decode_query(env.body)["time"] == "2026-10-19T12:04:30Z"
-
-      response = %{
-        "status" => "success",
-        "data" => %{"resultType" => "vector", "result" => []},
-        "warnings" => ["partial data"]
-      }
-
-      {:ok, %{env | status: 200, body: Jason.encode!(response)}}
-    end)
-
-    job =
-      %{alert_query_id: alert.id, scheduled_at: "2026-10-19T12:05:00Z"}
-      |> AlertWorker.new()
-      |> Oban.insert!()
-
-    assert :ok = AlertWorker.perform(Repo.reload!(job))
-
-    assert %{"result" => %{"fired" => false, "warnings" => ["partial data"]}} =
-             Repo.reload!(job).meta
-  end
-
-  test "persists upstream PromQL errors in JSONB without turning them into healthy evaluations",
-       %{user: user} do
-    alert = promql_alert(user)
-
-    expect(Tesla.Adapter.Finch, :call, fn env, _opts ->
-      response = %{
-        "status" => "error",
-        "errorType" => "bad_data",
-        "error" => "invalid expression"
-      }
-
-      {:ok, %{env | status: 422, body: Jason.encode!(response)}}
-    end)
-
-    {:ok, job} = Alerting.trigger_alert_now(alert)
-
-    assert {:error, %{"errorType" => "bad_data"} = reason} =
-             AlertWorker.perform(Repo.reload!(job))
-
-    assert %{"reason" => ^reason} = Repo.reload!(job).meta
-    refute Map.has_key?(Repo.reload!(job).meta, "result")
-  end
-
-  defp promql_alert(user) do
-    backend =
-      insert(:backend,
-        user: user,
-        type: :victoria_metrics,
-        config: %{url: "https://8.8.8.8/api/v1/write", query_url: "https://8.8.8.8"}
-      )
-
-    insert(:alert,
-      user: user,
-      language: :promql,
-      query: "up == 0",
-      query_backend_id: backend.id,
-      slack_hook_url: nil,
-      webhook_notification_url: nil
-    )
   end
 end

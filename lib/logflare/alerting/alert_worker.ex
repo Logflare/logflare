@@ -18,10 +18,8 @@ defmodule Logflare.Alerting.AlertWorker do
 
   @impl Oban.Worker
   @spec perform(Oban.Job.t()) :: :ok | {:error, any()}
-  def perform(%Oban.Job{id: job_id, args: %{"alert_query_id" => alert_query_id} = args}) do
-    opts = [evaluation_time: evaluation_time(args)]
-
-    case Alerting.run_alert(alert_query_id, :scheduled, opts) do
+  def perform(%Oban.Job{id: job_id, args: %{"alert_query_id" => alert_query_id}}) do
+    case Alerting.run_alert(alert_query_id, :scheduled) do
       {:ok, result} ->
         meta = %{"result" => result}
         store_meta(job_id, meta)
@@ -33,13 +31,6 @@ defmodule Logflare.Alerting.AlertWorker do
         {:error, reason}
     end
   end
-
-  defp evaluation_time(%{"scheduled_at" => scheduled_at}) do
-    {:ok, datetime, _offset} = DateTime.from_iso8601(scheduled_at)
-    datetime
-  end
-
-  defp evaluation_time(_args), do: DateTime.utc_now()
 
   defp store_meta(job_id, meta) do
     from(j in Oban.Job, where: j.id == ^job_id)

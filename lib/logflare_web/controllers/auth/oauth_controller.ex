@@ -139,7 +139,7 @@ defmodule LogflareWeb.Auth.OauthController do
           |> put_flash(:error, "You do not have access to that alert.")
           |> redirect(to: ~p"/dashboard")
         else
-          alert_callback(conn, current_user, alert_query, url, id)
+          alert_callback(conn, alert_query, url, id)
         end
     end
   end
@@ -162,8 +162,8 @@ defmodule LogflareWeb.Auth.OauthController do
     end
   end
 
-  defp alert_callback(conn, current_user, alert_query, url, id) do
-    case Alerting.update_alert_query(alert_query, %{slack_hook_url: url}, actor: current_user) do
+  defp alert_callback(conn, alert_query, url, id) do
+    case Alerting.update_alert_query(alert_query, %{slack_hook_url: url}) do
       {:ok, _alert_query} ->
         conn
         |> put_flash(:info, "Alert connected to Slack!")

@@ -1,7 +1,7 @@
-defmodule Logflare.Backends.Adaptor.HttpBased.FinchPoolTimeoutNormalizerTest do
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.FinchPoolTimeoutNormalizerTest do
   use ExUnit.Case, async: false
 
-  alias Logflare.Backends.Adaptor.HttpBased.FinchPoolTimeoutNormalizer
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.FinchPoolTimeoutNormalizer
 
   @pool __MODULE__.Pool
 

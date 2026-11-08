@@ -49,14 +49,13 @@ defmodule LogflareWeb.AlertsLive do
       #  must be below user_id assign
       |> refresh()
       |> assign(:query_result_rows, nil)
-      |> assign(:query_result_warnings, [])
       |> assign(:total_bytes_processed, nil)
       |> assign(:alert, nil)
       |> assign(:future_jobs, [])
       |> assign(:past_jobs_page, nil)
       # to be lazy loaded
       |> assign(:backend_options, [])
-      |> assign(:changeset, Alerting.change_alert_query(%AlertQuery{}, %{}, actor: actor(socket)))
+      |> assign(:changeset, Alerting.change_alert_query(%AlertQuery{}))
       |> assign(:base_url, LogflareWeb.Endpoint.url())
       |> assign(:parse_error_message, nil)
       |> assign(:query_string, nil)
@@ -65,40 +64,25 @@ defmodule LogflareWeb.AlertsLive do
       |> assign(:triggering_alert, false)
       |> assign(:pending_job_id, nil)
       |> assign(:modal_results, nil)
-      |> assign(:modal_warnings, [])
       |> assign(:modal_job_id, nil)
       |> assign(:modal_node, nil)
-      |> assign_query_backend_options(user)
       |> assign_endpoints_and_sources()
 
     {:ok, socket}
   end
 
   def handle_params(params, _uri, %{assigns: %{live_action: :new}} = socket) do
-    query = Map.get(params, "query", "")
+    {:ok, formatted_query} =
+      params
+      |> Map.get("query", "")
+      |> Sql.format()
 
-    query =
-      if params["language"] == "promql" do
-        query
-      else
-        {:ok, formatted_query} = Sql.format(query)
-        formatted_query
-      end
+    params = Map.put(params, "query", formatted_query)
 
-    user = socket.assigns.user
-    alert = %AlertQuery{user: user, user_id: user.id}
-
-    changeset =
-      Alerting.change_alert_query(alert, Map.put(params, "query", query), actor: actor(socket))
+    changeset = Alerting.change_alert_query(%AlertQuery{}, params)
 
     verify_resource_access(socket)
-
-    {:noreply,
-     socket
-     |> assign(:alert, nil)
-     |> assign(:changeset, changeset)
-     |> assign(:query_string, query)
-     |> assign_query_backend_options(user)}
+    {:noreply, assign(socket, :changeset, changeset)}
   end
 
   def handle_params(%{"id" => id} = params, _uri, socket) do
@@ -113,9 +97,7 @@ defmodule LogflareWeb.AlertsLive do
         |> assign(:alert, alert)
         |> assign(:future_jobs, Alerting.list_future_jobs(alert.id))
         |> assign(:past_jobs_page, paginate_past_jobs(alert.id, page_num))
-        |> assign(:changeset, Alerting.change_alert_query(alert, %{}, actor: actor(socket)))
-        |> assign(:query_string, alert.query)
-        |> assign_query_backend_options(alert.user)
+        |> assign(:changeset, Alerting.change_alert_query(alert))
       else
         nil ->
           socket
@@ -139,27 +121,13 @@ defmodule LogflareWeb.AlertsLive do
   defp verify_resource_access(_socket), do: :ok
 
   def handle_event(
-        "validate",
-        %{"alert" => params},
-        %{assigns: %{user: user, alert: alert}} = socket
-      ) do
-    alert = alert || %AlertQuery{user: user, user_id: user.id}
-    changeset = Alerting.change_alert_query(alert, params, actor: actor(socket))
-
-    {:noreply,
-     socket
-     |> assign(:changeset, %{changeset | action: :validate})
-     |> assign(:query_string, Ecto.Changeset.get_field(changeset, :query))}
-  end
-
-  def handle_event(
         "save",
         %{"alert" => params},
         %{assigns: %{user: user, alert: alert}} = socket
       ) do
     Logger.debug("Saving alert", params: params)
 
-    case upsert_alert(alert, user, params, actor(socket)) do
+    case upsert_alert(alert, user, params) do
       {:ok, updated_alert} ->
         verb = if alert, do: "updated", else: "created"
 
@@ -213,8 +181,7 @@ defmodule LogflareWeb.AlertsLive do
       ) do
     alert = Alerting.get_alert_query!(alert_id)
 
-    with {:ok, alert} <-
-           Alerting.update_alert_query(alert, %{slack_hook_url: nil}, actor: actor(socket)) do
+    with {:ok, alert} <- Alerting.update_alert_query(alert, %{slack_hook_url: nil}) do
       alert = Alerting.preload_alert_query(alert)
 
       {:noreply,
@@ -234,29 +201,26 @@ defmodule LogflareWeb.AlertsLive do
     {:noreply,
      socket
      |> assign(:query_result_rows, nil)
-     |> assign(:query_result_warnings, [])
      |> put_flash(:info, "Query run results has been cleared")}
   end
 
   def handle_event(
         "run-query",
         params,
-        socket
+        %{assigns: %{alert: alert, user: user}} = socket
       ) do
-    test_alert = Ecto.Changeset.apply_changes(socket.assigns.changeset)
-    query = params["query"] || socket.assigns.query_string || test_alert.query
-    test_alert = %{test_alert | query: query}
+    query = get_in(params, ["query"]) || socket.assigns.query_string || (alert && alert.query)
 
-    with :ok <- validate_preview_fields(socket.assigns.changeset),
-         {:ok, %QueryResult{rows: [_ | _]} = result} <-
-           Alerting.execute_alert_query(test_alert,
-             use_query_cache: false,
-             actor: actor(socket)
-           ) do
+    test_alert =
+      if alert,
+        do: %{alert | query: query},
+        else: %AlertQuery{query: query, language: :bq_sql, user: user, user_id: user.id}
+
+    with {:ok, %QueryResult{rows: [_ | _]} = result} <-
+           Alerting.execute_alert_query(test_alert, use_query_cache: false) do
       {:noreply,
        socket
        |> assign(:query_result_rows, result.rows)
-       |> assign(:query_result_warnings, result.warnings)
        |> assign(:total_bytes_processed, result.total_bytes_processed)
        |> put_flash(:info, "Query executed successfully. Alert will fire.")}
     else
@@ -264,17 +228,47 @@ defmodule LogflareWeb.AlertsLive do
         {:noreply,
          socket
          |> assign(:query_result_rows, [])
-         |> assign(:query_result_warnings, result.warnings)
          |> assign(:total_bytes_processed, result.total_bytes_processed)
          |> put_flash(:info, "No results from query. Alert will not fire.")}
 
       {:error, err} ->
         {:noreply,
-         socket
-         |> assign(:query_result_rows, nil)
-         |> assign(:query_result_warnings, [])
-         |> clear_flash(:info)
-         |> put_flash(:error, "Error when running query: #{format_query_error(err)}")}
+         put_flash(
+           socket,
+           :error,
+           "Error when running query: #{format_query_error(err)}"
+         )}
+    end
+  end
+
+  def handle_event(
+        "run-query",
+        _params,
+        %{assigns: %{alert: %_{} = alert}} = socket
+      ) do
+    with {:ok, %QueryResult{} = result} <-
+           Alerting.execute_alert_query(alert, use_query_cache: false) do
+      {:noreply,
+       socket
+       |> assign(:query_result_rows, result.rows)
+       |> assign(:total_bytes_processed, result.total_bytes_processed)
+       |> put_flash(:info, "Alert has been triggered. Notifications sent!")}
+    else
+      {:error, :no_results} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Alert has been triggered. No results from query, notifications not sent!"
+         )}
+
+      {:error, err} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Error when running query: #{format_query_error(err)}"
+         )}
     end
   end
 
@@ -287,9 +281,7 @@ defmodule LogflareWeb.AlertsLive do
 
     socket =
       if backend do
-        case Alerting.update_alert_query(alert, %{backends: [backend | alert.backends]},
-               actor: actor(socket)
-             ) do
+        case Alerting.update_alert_query(alert, %{backends: [backend | alert.backends]}) do
           {:ok, updated_alert} ->
             updated_alert = Alerting.preload_alert_query(updated_alert)
 
@@ -318,11 +310,9 @@ defmodule LogflareWeb.AlertsLive do
 
     socket =
       if backend do
-        Alerting.update_alert_query(
-          alert,
-          %{backends: Enum.filter(alert.backends, &(&1.id != backend.id))},
-          actor: actor(socket)
-        )
+        Alerting.update_alert_query(alert, %{
+          backends: Enum.filter(alert.backends, &(&1.id != backend.id))
+        })
         |> case do
           {:ok, updated_alert} ->
             updated_alert = Alerting.preload_alert_query(updated_alert)
@@ -350,7 +340,7 @@ defmodule LogflareWeb.AlertsLive do
         _params,
         %{assigns: %{alert: %_{} = alert}} = socket
       ) do
-    case Alerting.trigger_alert_now(alert, actor: actor(socket)) do
+    case Alerting.trigger_alert_now(alert) do
       {:ok, job} ->
         Process.send_after(self(), {:poll_job, job.id, 0}, @poll_interval)
 
@@ -359,9 +349,8 @@ defmodule LogflareWeb.AlertsLive do
          |> assign(:triggering_alert, true)
          |> assign(:pending_job_id, job.id)}
 
-      {:error, reason} ->
-        {:noreply,
-         put_flash(socket, :error, "Failed to enqueue alert job: #{format_query_error(reason)}")}
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to enqueue alert job.")}
     end
   end
 
@@ -394,7 +383,6 @@ defmodule LogflareWeb.AlertsLive do
     {:noreply,
      socket
      |> assign(:modal_results, get_in(job.meta, ["result", "rows"]))
-     |> assign(:modal_warnings, get_in(job.meta, ["result", "warnings"]) || [])
      |> assign(:modal_job_id, job_id)
      |> assign(:modal_node, List.first(job.attempted_by || []))}
   end
@@ -412,7 +400,6 @@ defmodule LogflareWeb.AlertsLive do
     {:noreply,
      socket
      |> assign(:modal_results, nil)
-     |> assign(:modal_warnings, [])
      |> assign(:modal_job_id, nil)
      |> assign(:modal_node, nil)}
   end
@@ -423,13 +410,10 @@ defmodule LogflareWeb.AlertsLive do
 
   defp format_query_error(error) when is_binary(error), do: error
 
-  defp format_query_error(%{"error" => error}) when is_binary(error), do: error
-
   defp format_query_error(_error), do: QueryErrorHelpers.generic_query_error_message()
 
   def handle_info({:query_string_updated, query_string}, socket) do
-    changeset = Ecto.Changeset.put_change(socket.assigns.changeset, :query, query_string)
-    {:noreply, assign(socket, query_string: query_string, changeset: changeset)}
+    {:noreply, assign(socket, :query_string, query_string)}
   end
 
   def handle_info({:poll_job, job_id, attempt}, %{assigns: %{alert: alert}} = socket)
@@ -488,45 +472,6 @@ defmodule LogflareWeb.AlertsLive do
     )
   end
 
-  @spec assign_query_backend_options(Phoenix.LiveView.Socket.t(), Logflare.User.t()) ::
-          Phoenix.LiveView.Socket.t()
-  defp assign_query_backend_options(socket, user) do
-    actor = actor(socket)
-
-    options =
-      user
-      |> Backends.list_backends_by_user_access(types: [:victoria_metrics])
-      |> Enum.filter(fn backend ->
-        is_binary(backend.config[:query_url]) and String.trim(backend.config[:query_url]) != "" and
-          not is_nil(Backends.get_backend_by_user_access(actor, backend.id))
-      end)
-      |> Enum.map(&{&1.name, &1.id})
-
-    assign(socket, :query_backend_options, options)
-  end
-
-  @spec query_language_options(atom()) :: [{String.t(), atom()}]
-  defp query_language_options(language) do
-    options = [{"BigQuery SQL", :bq_sql}, {"PromQL", :promql}]
-
-    case language do
-      :pg_sql -> options ++ [{"Postgres SQL", :pg_sql}]
-      :lql -> options ++ [{"Logflare Query Language", :lql}]
-      _ -> options
-    end
-  end
-
-  @spec validate_preview_fields(Ecto.Changeset.t()) :: :ok | {:error, String.t()}
-  defp validate_preview_fields(changeset) do
-    if Enum.any?([:language, :query_backend_id, :evaluation_delay_seconds], fn field ->
-         Keyword.has_key?(changeset.errors, field)
-       end) do
-      {:error, "Fix the query settings before testing the query."}
-    else
-      :ok
-    end
-  end
-
   defp job_state_badge_class(state) do
     case to_string(state) do
       "completed" -> "success"
@@ -570,6 +515,7 @@ defmodule LogflareWeb.AlertsLive do
   end
 
   defp truncate_reason(reason, _max_length) when is_binary(reason), do: reason
+  defp truncate_reason(reason, max_length), do: truncate_reason(inspect(reason), max_length)
 
   defp current_page_number(socket) do
     if socket.assigns.past_jobs_page,
@@ -577,13 +523,10 @@ defmodule LogflareWeb.AlertsLive do
       else: 1
   end
 
-  @spec actor(Phoenix.LiveView.Socket.t()) :: Logflare.User.t() | Logflare.TeamUsers.TeamUser.t()
-  defp actor(socket), do: socket.assigns.team_user || socket.assigns.user
-
-  defp upsert_alert(alert, user, params, actor) do
+  defp upsert_alert(alert, user, params) do
     case alert do
-      nil -> Alerting.create_alert_query(user, params, actor: actor)
-      %_{} -> Alerting.update_alert_query(alert, params, actor: actor)
+      nil -> Alerting.create_alert_query(user, params)
+      %_{} -> Alerting.update_alert_query(alert, params)
     end
   end
 

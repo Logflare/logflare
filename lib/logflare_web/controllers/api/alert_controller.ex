@@ -60,7 +60,7 @@ defmodule LogflareWeb.Api.AlertController do
 
   def create(%{assigns: %{user: user}} = conn, params) do
     with {:ok, attrs} <- verify_backends_owner(params, user),
-         {:ok, alert} <- Alerting.create_alert_query(user, attrs, actor: user) do
+         {:ok, alert} <- Alerting.create_alert_query(user, attrs) do
       conn
       |> put_status(201)
       |> json(Alerting.preload_alert_query(alert))
@@ -83,7 +83,7 @@ defmodule LogflareWeb.Api.AlertController do
   def update(%{assigns: %{user: user}} = conn, %{"token" => token} = params) do
     with {:ok, alert} <- Alerting.fetch_alert_query_by_user_access(user, token: token),
          {:ok, attrs} <- verify_backends_owner(params, user),
-         {:ok, updated} <- Alerting.update_alert_query(alert, attrs, actor: user) do
+         {:ok, updated} <- Alerting.update_alert_query(alert, attrs) do
       conn
       |> case do
         %{method: "PATCH"} ->
@@ -100,10 +100,6 @@ defmodule LogflareWeb.Api.AlertController do
 
   defp verify_backends_owner(%{"backends" => _}, _user) do
     {:error, "backends is read-only; use backend_ids"}
-  end
-
-  defp verify_backends_owner(%{"query_backend" => _}, _user) do
-    {:error, "query_backend is read-only; use query_backend_id"}
   end
 
   defp verify_backends_owner(%{"backend_ids" => ids}, _user) when not is_list(ids) do

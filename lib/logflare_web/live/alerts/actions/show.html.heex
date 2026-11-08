@@ -25,7 +25,6 @@
         :bq_sql -> "BigQuery SQL"
         :pg_sql -> "Postgres SQL"
         :lql -> "Logflare Query Language"
-        :promql -> "PromQL"
       end}
     </span>
     <code class="tw-whitespace-pre-wrap tw-text-sm tw-text-white">{@alert.query}</code>
@@ -44,19 +43,9 @@
       <li class="list-group-item">
         <span><strong>cron:</strong> {@alert.cron}</span>
       </li>
-      <li :if={@alert.language == :promql} class="list-group-item">
-        <strong>Query backend:</strong>
-        <.team_link :if={@alert.query_backend} team={@team} patch={~p"/backends/#{@alert.query_backend.id}"}>
-          {@alert.query_backend.name}
-        </.team_link>
-        <span :if={is_nil(@alert.query_backend)}>Unavailable</span>
-      </li>
-      <li :if={@alert.language == :promql} class="list-group-item">
-        <strong>Evaluation delay:</strong> {@alert.evaluation_delay_seconds} seconds
-      </li>
     </ul>
 
-    <h3>Notification backends</h3>
+    <h3>Backends</h3>
 
     <div class="tw-flex tw-gap-3 tw-items-center">
       <button phx-click="toggle-add-backend" class="btn btn-outline-primary btn-sm">
@@ -180,7 +169,7 @@
                 <% nil -> %>
                   <span :if={job.state == "completed"} class="badge badge-success">completed</span>
               <% end %>
-              <% reason = if job.meta["reason"], do: format_query_error(job.meta["reason"]) %>
+              <% reason = job.meta["reason"] %>
               <%= if (job.state == "discarded" or get_in(job.meta, ["result", "fired"]) == false) and is_binary(reason) and reason != "" do %>
                 <%= if byte_size(reason) > 80 do %>
                   <span class="tw-text-red-400 tw-text-xs tw-ml-1 tw-cursor-pointer" data-toggle="popover" data-trigger="click" data-placement="top" data-content={reason}>
@@ -198,7 +187,6 @@
               <button :if={is_list(rows) and rows != []} phx-click="view-results" phx-value-job_id={job.id} class="btn btn-sm btn-outline-primary">
                 View Results
               </button>
-              <span :for={warning <- get_in(job.meta, ["result", "warnings"]) || []} class="tw-block tw-text-yellow-400 tw-text-xs">{warning}</span>
             </td>
           </tr>
         </tbody>
@@ -220,7 +208,6 @@
         </div>
         <div class="modal-body">
           <div class="container">
-            <.alert :for={warning <- @modal_warnings} variant="warning">{warning}</.alert>
             <div :if={@modal_results == []} class="tw-text-gray-400">
               No rows returned from query.
             </div>

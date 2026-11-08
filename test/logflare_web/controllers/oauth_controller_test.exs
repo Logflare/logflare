@@ -1,9 +1,6 @@
 defmodule LogflareWeb.OAuthControllerTest do
   use LogflareWeb.ConnCase
 
-  alias Logflare.Alerting
-  alias Logflare.Backends
-  alias Logflare.Repo
   alias Logflare.Sources
   alias LogflareWeb.Auth.OauthController
   alias LogflareWeb.Auth.SlackOauthState
@@ -122,62 +119,6 @@ defmodule LogflareWeb.OAuthControllerTest do
     assert html_response(conn, 302)
     assert conn.assigns.flash["info"] =~ "Slack connected!"
     assert Sources.get(source.id).slack_hook_url == slack_hook_url
-  end
-
-  test "slack oauth2 cannot redirect PromQL results from an inaccessible query backend", %{
-    conn: conn
-  } do
-    insert(:plan)
-    owner = insert(:user)
-    owner_membership = insert(:team_user, email: owner.email)
-    member = insert(:team_user, team: insert(:team, user: owner))
-
-    backend =
-      insert(:backend,
-        user: owner_membership.team.user,
-        type: :victoria_metrics,
-        config: %{url: "https://8.8.8.8/api/v1/write", query_url: "https://8.8.8.8"}
-      )
-
-    {:ok, alert} =
-      Alerting.create_alert_query(owner, %{
-        name: "Unavailable services",
-        language: :promql,
-        query: "up == 0",
-        cron: "*/5 * * * *",
-        query_backend_id: backend.id
-      })
-
-    assert Alerting.get_alert_query_by_user_access(member, alert.id).id == alert.id
-    assert Backends.get_backend_by_user_access(owner, backend.id).id == backend.id
-    refute Backends.get_backend_by_user_access(member, backend.id)
-
-    conn =
-      conn
-      |> login_user(owner, member)
-      |> bypass_through(LogflareWeb.Router, [:browser])
-      |> assign(:ueberauth_auth, %{
-        extra: %{
-          raw_info: %{
-            token: %{
-              other_params: %{"incoming_webhook" => %{"url" => "https://member.example/slack"}}
-            }
-          }
-        }
-      })
-      |> get(~p"/auth/slack/callback")
-      |> OauthController.callback(%{
-        "provider" => "slack",
-        "state" =>
-          SlackOauthState.sign(member, %{
-            "action" => "save_hook_url",
-            "alert_query_id" => alert.id
-          })
-      })
-
-    assert redirected_to(conn) == ~p"/alerts/#{alert.id}"
-    assert conn.assigns.flash["error"] == "Something went wrong!"
-    assert Repo.reload!(alert).slack_hook_url == nil
   end
 
   test "slack oauth2 rejects unsigned plain-JSON state", %{conn: conn} do

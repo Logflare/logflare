@@ -9,7 +9,6 @@ defmodule Logflare.Alerting do
   alias Crontab.Scheduler, as: CronScheduler
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Alerting.AlertWorker
-  alias Logflare.Alerting.Promql
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
@@ -122,13 +121,9 @@ defmodule Logflare.Alerting do
 
   def preload_alert_query(alert) do
     alert
-    |> Repo.preload([:user, :backends, :query_backend])
+    |> Repo.preload([:user, :backends])
     |> then(fn %AlertQuery{backends: backends} = alert ->
-      %{
-        alert
-        | backends: Enum.map(backends, &Backends.typecast_config_string_map_to_atom_map/1),
-          query_backend: Backends.typecast_config_string_map_to_atom_map(alert.query_backend)
-      }
+      %{alert | backends: Enum.map(backends, &Backends.typecast_config_string_map_to_atom_map/1)}
     end)
   end
 
@@ -144,15 +139,13 @@ defmodule Logflare.Alerting do
       {:error, %Ecto.Changeset{}}
 
   """
-  @spec create_alert_query(User.t(), map(), keyword()) ::
-          {:ok, AlertQuery.t()} | {:error, Ecto.Changeset.t()}
-  def create_alert_query(%User{} = user, attrs \\ %{}, opts \\ []) do
+  def create_alert_query(%User{} = user, attrs \\ %{}) do
     backends = Map.get(attrs, :backends) || Map.get(attrs, "backends")
 
     user
     |> Ecto.build_assoc(:alert_queries)
     |> Repo.preload(:user)
-    |> AlertQuery.changeset(attrs, opts)
+    |> AlertQuery.changeset(attrs)
     |> put_backends(backends)
     |> Repo.insert()
   end
@@ -169,32 +162,15 @@ defmodule Logflare.Alerting do
       {:error, %Ecto.Changeset{}}
 
   """
-  @spec update_alert_query(AlertQuery.t(), map(), keyword()) ::
-          {:ok, AlertQuery.t()} | {:error, Ecto.Changeset.t()}
-  def update_alert_query(%AlertQuery{} = alert_query, attrs, opts \\ []) do
+  def update_alert_query(%AlertQuery{} = alert_query, attrs) do
     backends = Map.get(attrs, :backends) || Map.get(attrs, "backends")
 
-    Repo.transaction(fn ->
-      current_alert =
-        from(alert in AlertQuery, where: alert.id == ^alert_query.id, lock: "FOR UPDATE")
-        |> Repo.one!()
-        |> preload_alert_query()
-
-      result =
-        current_alert
-        |> AlertQuery.changeset(attrs, opts)
-        |> put_backends(backends)
-        |> Repo.update()
-
-      case result do
-        {:ok, updated} ->
-          handle_schedule_change(result, current_alert)
-          updated
-
-        {:error, changeset} ->
-          Repo.rollback(changeset)
-      end
-    end)
+    alert_query
+    |> preload_alert_query()
+    |> AlertQuery.changeset(attrs)
+    |> put_backends(backends)
+    |> Repo.update()
+    |> handle_schedule_change(alert_query)
   end
 
   defp put_backends(changeset, nil), do: changeset
@@ -301,9 +277,9 @@ defmodule Logflare.Alerting do
       %Ecto.Changeset{data: %AlertQuery{}}
 
   """
-  @spec change_alert_query(AlertQuery.t(), map(), keyword()) :: Ecto.Changeset.t()
-  def change_alert_query(%AlertQuery{} = alert_query, attrs \\ %{}, opts \\ []) do
-    AlertQuery.changeset(alert_query, attrs, opts)
+  @spec change_alert_query(AlertQuery.t()) :: Ecto.Changeset.t()
+  def change_alert_query(%AlertQuery{} = alert_query, attrs \\ %{}) do
+    AlertQuery.changeset(alert_query, attrs)
   end
 
   @doc """
@@ -313,19 +289,15 @@ defmodule Logflare.Alerting do
   """
   @spec run_alert(AlertQuery.t() | integer(), :scheduled) ::
           {:ok, map()} | {:error, :not_found | :no_results | any}
-  def run_alert(alert_query, :scheduled), do: run_alert(alert_query, :scheduled, [])
-
-  @spec run_alert(AlertQuery.t() | integer(), :scheduled, keyword()) ::
-          {:ok, map()} | {:error, any()}
-  def run_alert(alert_id, :scheduled, opts) when is_integer(alert_id) do
+  def run_alert(alert_id, :scheduled) when is_integer(alert_id) do
     if alert_query = get_alert_query_by(id: alert_id) do
-      run_alert(alert_query, :scheduled, opts)
+      run_alert(alert_query, :scheduled)
     else
       {:error, :not_found}
     end
   end
 
-  def run_alert(%AlertQuery{} = alert_query, :scheduled, opts) do
+  def run_alert(%AlertQuery{} = alert_query, :scheduled) do
     cluster_size = Cluster.Utils.actual_cluster_size()
 
     OpenTelemetry.Tracer.with_span "alerting.run_alert", %{
@@ -334,17 +306,15 @@ defmodule Logflare.Alerting do
       "alert.user_id" => alert_query.user_id,
       "system.cluster_size" => cluster_size
     } do
-      do_run_alert(alert_query, opts)
+      run_alert(alert_query)
     end
   end
 
   @spec run_alert(AlertQuery.t()) :: {:ok, map()} | {:error, :no_results} | {:error, any()}
-  def run_alert(%AlertQuery{} = alert_query), do: do_run_alert(alert_query, [])
+  def run_alert(%AlertQuery{} = alert_query) do
+    alert_query = alert_query |> preload_alert_query()
 
-  defp do_run_alert(alert_query, opts) do
-    alert_query = preload_alert_query(alert_query)
-
-    case execute_alert_query(alert_query, opts) do
+    case execute_alert_query(alert_query) do
       {:ok, %QueryResult{rows: [_ | _] = results} = result} ->
         if alert_query.webhook_notification_url do
           send_webhook_notification(alert_query, results)
@@ -405,26 +375,12 @@ defmodule Logflare.Alerting do
   @doc """
   Inserts an immediate AlertWorker job for manual triggering.
   """
-  @spec trigger_alert_now(AlertQuery.t(), keyword()) ::
-          {:ok, Oban.Job.t()} | {:error, Oban.Job.changeset() | String.t()}
-  def trigger_alert_now(%AlertQuery{id: alert_query_id} = alert, opts \\ []) do
-    alert = Repo.reload!(alert)
-
-    with :ok <- authorize_trigger(alert, opts) do
-      %{alert_query_id: alert_query_id, scheduled_at: DateTime.to_iso8601(DateTime.utc_now())}
-      |> AlertWorker.new()
-      |> Oban.insert()
-    end
+  @spec trigger_alert_now(AlertQuery.t()) :: {:ok, Oban.Job.t()} | {:error, Oban.Job.changeset()}
+  def trigger_alert_now(%AlertQuery{id: alert_query_id}) do
+    %{alert_query_id: alert_query_id, scheduled_at: DateTime.to_iso8601(DateTime.utc_now())}
+    |> AlertWorker.new()
+    |> Oban.insert()
   end
-
-  defp authorize_trigger(%AlertQuery{language: :promql} = alert, opts) do
-    case Promql.fetch_backend(alert.user_id, alert.query_backend_id, opts) do
-      {:ok, _backend} -> :ok
-      {:error, _reason} = error -> error
-    end
-  end
-
-  defp authorize_trigger(_alert, _opts), do: :ok
 
   @doc """
   Lists recent execution history for an alert query from Oban jobs.
@@ -492,17 +448,9 @@ defmodule Logflare.Alerting do
   {:ok, %Logflare.Backends.Adaptor.QueryResult{rows: [%{"user_id" => "my-user-id"}]}}
   ```
   """
-  @spec execute_alert_query(AlertQuery.t(), keyword()) ::
+  @spec execute_alert_query(AlertQuery.t(), use_query_cache: boolean) ::
           {:ok, QueryResult.t()} | {:error, any()}
-  def execute_alert_query(alert_query, opts \\ [])
-
-  def execute_alert_query(%AlertQuery{language: :promql} = alert_query, opts) do
-    LoggerMetadata.with_metadata(alert_query_logger_metadata(alert_query), fn ->
-      Promql.execute(alert_query, opts)
-    end)
-  end
-
-  def execute_alert_query(%AlertQuery{user: %User{}} = alert_query, opts) do
+  def execute_alert_query(%AlertQuery{user: %User{}} = alert_query, opts \\ []) do
     LoggerMetadata.with_metadata(alert_query_logger_metadata(alert_query), fn ->
       Logger.debug("Executing AlertQuery | #{alert_query.name} | #{alert_query.id}")
 
@@ -511,7 +459,7 @@ defmodule Logflare.Alerting do
 
       alerts =
         list_alert_queries_by_user_id(alert_query.user_id)
-        |> Enum.filter(&(&1.id != alert_query.id and &1.language != :promql))
+        |> Enum.filter(&(&1.id != alert_query.id))
 
       with {:ok, expanded_query} <-
              Logflare.Sql.expand_subqueries(

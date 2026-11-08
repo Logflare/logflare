@@ -1,5 +1,6 @@
 <div class="tw-flex tw-my-10 tw-gap-2">
-  <.form :let={f} for={@changeset} as={:alert} id="alert" phx-change="validate" phx-submit="save" class="tw-w-1/2 tw-border-r-1 pr-2 tw-border-l-0 tw-border-t-0 tw-border-b-0 tw-border-solid tw-border-gray-600">
+  <.form :let={f} for={@changeset} as={:alert} id="alert" phx-submit="save" class="tw-w-1/2 tw-border-r-1 pr-2 tw-border-l-0 tw-border-t-0 tw-border-b-0 tw-border-solid tw-border-gray-600">
+    {hidden_input(f, :language)}
     <div class="tw-sticky tw-flex tw-justify-between tw-gap-4">
       <button :if={@alert} data-confirm="Are you sure? This cannot be undone" phx-click="delete" phx-value-alert_id={@alert.id} class="btn btn-outline-danger" type="button">
         <i class="fas fa-trash"></i> Delete
@@ -38,34 +39,13 @@
 
     <.header_with_anchor text="Query" />
     <section class="tw-flex tw-flex-col">
-      <% language = Ecto.Changeset.get_field(@changeset, :language) %>
       <div class="form-group">
-        {label(f, :language, "Query language")}
-        {select(f, :language, query_language_options(language), class: "form-control")}
-        {error_tag(f, :language)}
-      </div>
-      <div :if={language == :promql} class="form-group">
-        {label(f, :query_backend_id, "VictoriaMetrics query backend")}
-        {select(f, :query_backend_id, @query_backend_options, class: "form-control", prompt: "Choose a backend")}
-        {error_tag(f, :query_backend_id)}
-        <p class="tw-text-sm tw-mt-2">
-          Choose a backend with a read URL configured. Queries can access the metrics permitted by that backend's credentials and tenant URL.
-        </p>
-        <p :if={@query_backend_options == []} class="tw-text-sm">
-          Configure a VictoriaMetrics backend's query URL before creating a PromQL alert.
-        </p>
-      </div>
-      <div class="form-group">
-        <p :if={language != :promql}>
+        <p>
           This alert will execute this query periodically. If a non-zero number of rows are returned from this query, the notification will be triggered.
-        </p>
-        <p :if={language == :promql}>
-          Matching results trigger a notification on every scheduled run, including results with value 0. Use filtering comparisons such as <code>up == 0</code>; <code>bool</code> comparisons also return false matches. Empty results send no notification.
         </p>
         <.live_component
           module={LogflareWeb.MonacoEditorComponent}
           id="alert_query_editor"
-          language={language}
           field={f[:query]}
           endpoints={@endpoints}
           alerts={@alerts}
@@ -89,14 +69,6 @@
           class: "form-control"
         )}
         {error_tag(f, :cron)}
-      </div>
-      <div :if={language == :promql} class="form-group">
-        {label(f, :evaluation_delay_seconds, "Evaluation delay (seconds)")}
-        {number_input(f, :evaluation_delay_seconds, min: 0, max: 86_400, class: "form-control")}
-        {error_tag(f, :evaluation_delay_seconds)}
-        <p class="tw-text-sm tw-mt-2">
-          Evaluate this many seconds before the scheduled time to allow metrics to arrive. The default is 30 seconds. Test query and Trigger now apply the same delay to the current time.
-        </p>
       </div>
     </section>
 

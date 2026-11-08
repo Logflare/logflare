@@ -7,7 +7,6 @@ defmodule LogflareWeb.OpenApiTest do
   alias LogflareWeb.ApiSpec
   alias LogflareWeb.OpenApiSchemas.AccessToken
   alias LogflareWeb.OpenApiSchemas.ClickhouseConfigSchema
-  alias LogflareWeb.OpenApiSchemas.PromQLQueryResponse
   alias LogflareWeb.OpenApiSchemas.QueryResult
   alias OpenApiSpex.MediaType
   alias OpenApiSpex.Response
@@ -21,18 +20,14 @@ defmodule LogflareWeb.OpenApiTest do
   }
   @string_error_schema %Schema{type: :string}
 
-  test "Management API query success documents SQL rows and native PromQL responses" do
+  test "Management API query success is documented as an object containing result rows" do
     response =
       QueryController.open_api_operation(:query)
       |> Map.fetch!(:responses)
       |> Map.fetch!(200)
 
     assert %Response{
-             content: %{
-               "application/json" => %MediaType{
-                 schema: %Schema{oneOf: [QueryResult, PromQLQueryResponse]}
-               }
-             }
+             content: %{"application/json" => %MediaType{schema: QueryResult}}
            } = response
 
     assert %Schema{
@@ -40,22 +35,6 @@ defmodule LogflareWeb.OpenApiTest do
              properties: %{result: %Schema{type: :array, items: %Schema{type: :object}}},
              required: [:result]
            } = QueryResult.schema()
-
-    assert %Schema{
-             type: :object,
-             properties: %{
-               status: %Schema{type: :string, enum: ["success", "error"]},
-               data: %Schema{
-                 type: :object,
-                 properties: %{
-                   resultType: %Schema{enum: ["vector", "matrix", "scalar", "string"]},
-                   result: %Schema{type: :array}
-                 },
-                 required: [:resultType, :result]
-               }
-             },
-             required: [:status]
-           } = PromQLQueryResponse.schema()
   end
 
   test "Management API access token timestamps are documented as RFC3339" do
@@ -97,11 +76,7 @@ defmodule LogflareWeb.OpenApiTest do
       QueryController.open_api_operation(action)
       |> Map.fetch!(:responses)
       |> Map.fetch!(400)
-      |> assert_json_error_response(
-        "BadRequestResponse",
-        @bad_request_error_schema,
-        action == :query
-      )
+      |> assert_json_error_response("BadRequestResponse", @bad_request_error_schema)
     end
   end
 
@@ -115,11 +90,7 @@ defmodule LogflareWeb.OpenApiTest do
       QueryController.open_api_operation(action)
       |> Map.fetch!(:responses)
       |> Map.fetch!(401)
-      |> assert_json_error_response(
-        "UnauthorizedResponse",
-        @string_error_schema,
-        action == :query
-      )
+      |> assert_json_error_response("UnauthorizedResponse", @string_error_schema)
     end
   end
 
@@ -130,27 +101,18 @@ defmodule LogflareWeb.OpenApiTest do
     |> assert_json_error_response("NotFoundResponse", @string_error_schema)
   end
 
-  @spec assert_json_error_response(Response.t(), String.t(), Schema.t(), boolean()) :: Schema.t()
-  defp assert_json_error_response(response, schema_title, error_schema, promql? \\ false) do
+  defp assert_json_error_response(response, schema_title, error_schema) do
     assert %Response{
              content: %{
-               "application/json" => %MediaType{schema: schema}
+               "application/json" => %MediaType{
+                 schema: %Schema{
+                   title: ^schema_title,
+                   type: :object,
+                   properties: %{error: ^error_schema},
+                   required: [:error]
+                 }
+               }
              }
            } = response
-
-    schema =
-      if promql? do
-        assert %Schema{anyOf: [json_error_schema, PromQLQueryResponse]} = schema
-        json_error_schema
-      else
-        schema
-      end
-
-    assert %Schema{
-             title: ^schema_title,
-             type: :object,
-             properties: %{error: ^error_schema},
-             required: [:error]
-           } = schema
   end
 end
