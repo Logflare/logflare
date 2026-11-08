@@ -147,7 +147,14 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
       |> Ecto.Changeset.apply_changes()
 
     changeset =
-      Ecto.Changeset.cast(config, params, [:url, :query_url, :headers, :username, :password, :labels])
+      Ecto.Changeset.cast(config, params, [
+        :url,
+        :query_url,
+        :headers,
+        :username,
+        :password,
+        :labels
+      ])
 
     changeset =
       if destination_changed?(changeset, existing_config) or

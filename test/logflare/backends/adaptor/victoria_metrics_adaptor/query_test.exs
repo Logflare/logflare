@@ -63,6 +63,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.QueryTest do
           {%{username: "user", password: "REDACTED"}, nil}
         ] do
       result = success("vector", [])
+
       expect(Tesla.Adapter.Finch, :call, fn env, _options ->
         assert Map.new(env.headers)["authorization"] == expected
         reply(env, 200, result)

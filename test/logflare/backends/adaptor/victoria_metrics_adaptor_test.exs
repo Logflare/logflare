@@ -255,6 +255,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
         |> then(&Adaptor.cast_and_validate_config(@subject, &1, existing))
 
       assert basic.valid?
+
       assert Ecto.Changeset.get_field(basic, :headers)["authorization"] ==
                "Basic " <> Base.encode64("user:pass")
     end
@@ -287,10 +288,12 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
           changeset = Adaptor.cast_and_validate_config(@subject, params, stored)
           assert changeset.valid?
           config = Adaptor.apply_config_changes(changeset)
+
           assert config.headers == %{
                    "authorization" => "Basic " <> Base.encode64("user:pass"),
                    "x-tenant" => "acme"
                  }
+
           refute Map.has_key?(config, :username)
           refute Map.has_key?(config, :password)
         end
@@ -301,6 +304,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
             %{query_url: "https://other-reader.example.com"},
             stored
           )
+
         assert moved.valid?
         assert Ecto.Changeset.get_field(moved, :headers) == %{"x-tenant" => "acme"}
       end
@@ -502,10 +506,12 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
 
       backend = insert(:backend, user: insert(:user), type: :victoria_metrics, config: legacy)
       loaded = Backends.get_backend(backend.id)
+
       assert loaded.config.headers == %{
                "authorization" => "Basic " <> Base.encode64("user:pass"),
                "x-tenant" => "acme"
              }
+
       refute Map.has_key?(loaded.config, :username)
       refute Map.has_key?(loaded.config, :password)
 
@@ -544,7 +550,13 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptorTest do
              }
 
       stored = Repo.get!(Backend, backend.id).config_encrypted
-      assert Enum.sort(Enum.map(Map.keys(stored), &to_string/1)) == ["headers", "labels", "query_url", "url"]
+
+      assert Enum.sort(Enum.map(Map.keys(stored), &to_string/1)) == [
+               "headers",
+               "labels",
+               "query_url",
+               "url"
+             ]
 
       response = loaded |> Jason.encode!() |> Jason.decode!()
 
