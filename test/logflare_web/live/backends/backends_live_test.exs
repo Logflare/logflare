@@ -1,11 +1,13 @@
 defmodule LogflareWeb.BackendsLiveTest do
   use LogflareWeb.ConnCase
 
+  alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline, as: ClickHousePipeline
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Cluster.Utils, as: ClusterUtils
+  alias Logflare.Google.BigQuery
   alias Logflare.Rules
   alias Logflare.Sources
 
@@ -203,6 +205,65 @@ defmodule LogflareWeb.BackendsLiveTest do
       html = render(view)
       assert html =~ backend.name
       assert html =~ "#{backend.type}"
+    end
+
+    test "BigQuery connection tests explain the test event and missing source", %{
+      conn: conn,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          user: user,
+          type: :bigquery,
+          config: %{project_id: "test-project", dataset_id: "test_dataset"}
+        )
+
+      reject(BigQuery, :stream_batch!, 2)
+
+      {:ok, view, html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
+
+      assert html =~ "Sends a test event."
+
+      view
+      |> element("button", "Test connection")
+      |> render_click()
+
+      html = render_async(view)
+
+      assert html =~ "Attach a source or add a drain rule before testing this connection."
+      assert html =~ "fa-times"
+      refute html =~ "Backend error! Retry your query."
+    end
+
+    test "BigQuery connection tests display success after inserting an event", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          user: user,
+          type: :bigquery,
+          config: %{project_id: "test-project", dataset_id: "test_dataset"}
+        )
+
+      expect(BigQuery, :stream_batch!, fn %{source_token: source_token}, [_row] ->
+        assert source_token == source.token
+        {:ok, %Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/#{backend.id}")
+
+      view
+      |> element("button", "Test connection")
+      |> render_click()
+
+      html = render_async(view)
+
+      assert html =~ "fa-check"
+      refute html =~ "fa-times"
+      refute html =~ "Attach a source or add a drain rule before testing this connection."
     end
 
     test "redacts certain config attributes from display", %{
