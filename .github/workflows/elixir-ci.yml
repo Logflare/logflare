@@ -333,6 +333,15 @@ jobs:
           --cpus="1.0"
           --shm-size="256m"
           --tmpfs /var/lib/clickhouse:rw,size=1G
+      vm:
+        image: victoriametrics/victoria-metrics:v1.154.0
+        ports:
+          - 8428:8428
+        options: >-
+          --health-cmd "wget --no-verbose --tries=1 --spider http://127.0.0.1:8428/health"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     env:
       MIX_ENV: test
       SHELL: /bin/bash
@@ -345,10 +354,8 @@ jobs:
           touch db/telegraf_output/metrics.out
           chmod 666 db/telegraf_output/metrics.out
 
-      - name: Start Telegraf and VictoriaMetrics
-        run: |
-          docker compose up -d telegraf vm
-          curl --fail --retry 30 --retry-all-errors --retry-delay 1 http://localhost:8428/health
+      - name: Start Telegraf
+        run: docker compose up -d telegraf
 
       - name: Set up Elixir
         uses: erlef/setup-beam@v1

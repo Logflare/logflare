@@ -132,8 +132,8 @@ services:
     command:
       - "--storageDataPath=/storage"
       - "--retentionPeriod=1w"
-    volumes:
-      - vm-data:/storage
+    tmpfs:
+      - /storage:size=1G
   collector:
     image: otel/opentelemetry-collector-contrib:0.118.0
     volumes:
@@ -184,4 +184,3 @@ services:
       - 6515:6515
 volumes:
   pg-data:
-  vm-data:
