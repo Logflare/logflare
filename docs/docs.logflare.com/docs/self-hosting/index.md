@@ -119,8 +119,6 @@ Setting `LOGFLARE_METADATA_CLUSTER=production` will result the following payload
 
 The `LOGFLARE_METADATA_CLUSTER` environment variable is also set in the Erlang node name when set (e.g., `logflare-production@hostname` instead of `logflare@hostname`).
 
-Existing Bandit request logs and DelegatingHandler termination reports include `connection_id` metadata. Use this opaque string to correlate records from the same socket, including HTTP/1 keep-alive requests and HTTP/2 streams. Adding the ID emits no additional logs, so the available request history depends on the configured log level.
-
 ### BigQuery Backend Configuration
 
 | Env Var                             | Type                        | Description                                                                                                                                                                                                     |
