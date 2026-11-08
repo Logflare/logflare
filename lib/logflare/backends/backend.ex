@@ -135,7 +135,7 @@ defmodule Logflare.Backends.Backend do
     with %{} = config <- Changeset.get_change(changeset, :config),
          %{valid?: true} = merged_cs <-
            Adaptor.cast_and_validate_config(mod, config, existing_config) do
-      Changeset.put_change(changeset, :config, Ecto.Changeset.apply_changes(merged_cs))
+      Changeset.put_change(changeset, :config, Adaptor.apply_config_changes(merged_cs))
     else
       nil ->
         changeset

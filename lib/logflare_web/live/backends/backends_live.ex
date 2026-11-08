@@ -5,6 +5,7 @@ defmodule LogflareWeb.BackendsLive do
 
   import LogflareWeb.Backends.Components
   import LogflareWeb.Utils, only: [stringify_changeset_errors: 1, with_team_param: 2]
+  import Logflare.Utils.Guards, only: [is_non_empty_binary: 1]
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.HttpBased.Headers
@@ -501,7 +502,15 @@ defmodule LogflareWeb.BackendsLive do
       |> VictoriaMetricsAdaptor.cast_config(config)
       |> Ecto.Changeset.get_field(:headers)
 
-    Headers.normalize_keys(headers || %{})
+    headers = Headers.normalize_keys(headers || %{})
+
+    case {submitted_config["username"], submitted_config["password"]} do
+      {username, password} when is_non_empty_binary(username) or is_non_empty_binary(password) ->
+        Map.delete(headers, "authorization")
+
+      _ ->
+        headers
+    end
   end
 
   defp existing_headers(%Backend{config: config}, _params) when is_map(config) do

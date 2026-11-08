@@ -519,9 +519,13 @@ defmodule Logflare.Backends do
 
     updated =
       Map.update!(backend, :config_encrypted, fn config ->
-        (config || %{})
-        |> mod.cast_config()
-        |> Changeset.apply_changes()
+        changeset =
+          case type do
+            :victoria_metrics -> mod.cast_config(%{}, config || %{})
+            _ -> mod.cast_config(config || %{})
+          end
+
+        Adaptor.apply_config_changes(changeset)
       end)
 
     updated

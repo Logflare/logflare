@@ -3,9 +3,11 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.Query do
   Executes raw PromQL against a VictoriaMetrics read endpoint.
 
   Query expressions and Prometheus response data are forwarded without SQL
-  parsing or result conversion. Only stored basic authentication is used.
+  parsing or result conversion. Only the stored authorization header is shared
+  with metric writes.
   """
 
+  alias Logflare.Backends.Adaptor.HttpBased.Headers
   alias Logflare.Backends.Adaptor.HttpBased.FinchPoolTimeoutNormalizer
   alias Logflare.Backends.Adaptor.HttpBased.SSRFProtection
   alias Logflare.Backends.Backend
@@ -15,6 +17,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.Query do
   @parameters ~w(time start end step timeout)
   @range_parameters ~w(start end step)
   @receive_timeout 30_000
+  @redacted_value Headers.redacted_value()
 
   @type result :: {:ok, map()} | {:error, {pos_integer(), map()}}
 
@@ -125,9 +128,25 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.Query do
       {"content-type", "application/x-www-form-urlencoded"}
     ]
 
-    case Utils.encode_basic_auth(config) do
-      nil -> headers
-      encoded -> [{"authorization", "Basic " <> encoded} | headers]
+    authorization =
+      case config do
+        %{username: username, password: password}
+        when is_binary(username) and username != "" and username != @redacted_value and
+               is_binary(password) and password != "" and password != @redacted_value ->
+          "Basic " <> Utils.encode_basic_auth(config)
+
+        _ ->
+          (config[:headers] || %{})
+          |> Headers.normalize_keys()
+          |> Map.get("authorization")
+      end
+
+    case authorization do
+      value when is_binary(value) and value != @redacted_value ->
+        [{"authorization", value} | headers]
+
+      _ ->
+        headers
     end
   end
 
