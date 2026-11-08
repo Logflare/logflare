@@ -14,27 +14,21 @@ defmodule Logflare.BanditLoggerMetadata do
     :telemetry.attach_many(__MODULE__, @events, &__MODULE__.handle_event/4, [])
   end
 
-  def handle_event(
-        [:thousand_island, :connection, event],
-        _measurements,
-        %{handler: Bandit.DelegatingHandler, telemetry_span_context: ref},
-        _config
-      )
-      when event in [:start, :stop, :exception] and is_reference(ref) do
-    put_connection_id(ref)
-  end
+  def handle_event(event, _measurements, metadata, _config) do
+    case {event, metadata} do
+      {[:thousand_island, :connection, phase],
+       %{handler: Bandit.DelegatingHandler, telemetry_span_context: ref}}
+      when phase in [:start, :stop, :exception] and is_reference(ref) ->
+        put_connection_id(ref)
 
-  def handle_event(
-        [:bandit, :request, :start],
-        _measurements,
-        %{connection_telemetry_span_context: ref},
-        _config
-      )
-      when is_reference(ref) do
-    put_connection_id(ref)
-  end
+      {[:bandit, :request, :start], %{connection_telemetry_span_context: ref}}
+      when is_reference(ref) ->
+        put_connection_id(ref)
 
-  def handle_event(_event, _measurements, _metadata, _config), do: :ok
+      _event ->
+        :ok
+    end
+  end
 
   defp put_connection_id(ref) do
     Logger.metadata(
