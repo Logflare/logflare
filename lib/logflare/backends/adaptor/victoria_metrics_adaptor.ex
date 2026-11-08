@@ -47,6 +47,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   alias Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.Query
   alias Logflare.Backends.Adaptor.VictoriaMetricsAdaptor.RemoteWrite
   alias Logflare.Backends.Adaptor.WebhookAdaptor
+  alias Logflare.Backends.Adaptor.WebhookAdaptor.TransportConfig
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
   alias Logflare.Sources
@@ -123,13 +124,14 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
 
     batch_config = %{labels: Map.get(config, :labels), backend_id: Map.get(backend, :id)}
 
-    %{
+    %TransportConfig{
       url: config.url,
       headers: headers,
       format_batch: &format_batch(&1, batch_config),
       gzip: false,
       http: "http1"
     }
+    |> Map.from_struct()
   end
 
   @impl Logflare.Backends.Adaptor

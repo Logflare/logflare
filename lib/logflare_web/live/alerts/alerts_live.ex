@@ -570,7 +570,6 @@ defmodule LogflareWeb.AlertsLive do
   end
 
   defp truncate_reason(reason, _max_length) when is_binary(reason), do: reason
-  defp truncate_reason(reason, max_length), do: truncate_reason(inspect(reason), max_length)
 
   defp current_page_number(socket) do
     if socket.assigns.past_jobs_page,
