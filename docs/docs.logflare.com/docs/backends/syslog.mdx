@@ -14,6 +14,8 @@ The Syslog backend is **ingest-only**, and exports logs to a remote Syslog recei
 
 ## Behavior and Configuration
 
+Syslog connections send logs without expecting a response. Logflare treats unexpected TCP or TLS response data as a connection error, logs it, and closes the affected connection.
+
 ### Configuration
 
 The following values are required when creating a Syslog backend:

@@ -1,6 +1,8 @@
 defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Socket do
   @moduledoc false
 
+  require Logger
+
   @type socket :: :gen_tcp.socket() | :ssl.sslsocket()
 
   # see https://www.erlang.org/doc/apps/kernel/inet#setopts/2 for details
@@ -36,6 +38,12 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Socket do
   end
 
   def controlling_process(socket, pid), do: :ssl.controlling_process(socket, pid)
+
+  def stream(socket, {tag, socket, _data}) when tag in [:tcp, :ssl] do
+    close(socket)
+    Logger.error("Received unexpected data from Syslog backend; closing connection")
+    {:error, :unexpected_data}
+  end
 
   def stream(socket, {tag, socket}) when tag in [:tcp_closed, :ssl_closed], do: {:error, :closed}
 
