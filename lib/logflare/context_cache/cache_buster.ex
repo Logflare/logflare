@@ -332,7 +332,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          old_record: %{"id" => id}
        })
        when is_binary(id) do
-    [{Billing, String.to_integer(id)}, {Billing, [billing_accounts: :changed]}]
+    {Billing, [id: String.to_integer(id), billing_accounts: :changed]}
   end
 
   defp handle_record(%DeletedRecord{

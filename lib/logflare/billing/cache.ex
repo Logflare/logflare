@@ -23,9 +23,12 @@ defmodule Logflare.Billing.Cache do
   end
 
   @spec get_plan_by_user(User.t()) :: Plan.t() | {:error, :database_unavailable}
-  def get_plan_by_user(%User{id: id} = user) do
+  def get_plan_by_user(%User{id: id}) do
     fetch({:get_plan_by_user, [id]}, fn ->
-      Repo.apply_with_replica(Billing, :get_plan_by_user, [user])
+      Repo.with_primary(fn ->
+        user = Repo.get!(User, id)
+        Billing.get_plan_by_user(user)
+      end)
     end)
   end
 
@@ -36,7 +39,17 @@ defmodule Logflare.Billing.Cache do
     [{:get_plan_by_user, [id]}, {:get_billing_account_by, [[user_id: id]]}]
   end
 
-  def keys_to_bust(id: _id, user_id: user_id), do: keys_to_bust(user_id: user_id)
+  def keys_to_bust(id: id, user_id: user_id) do
+    account_keys =
+      __MODULE__
+      |> CachexOps.keys_to_bust(id: id)
+      |> Stream.filter(fn {fun, _args} -> fun == :get_billing_account_by end)
+
+    Stream.concat(keys_to_bust(user_id: user_id), account_keys)
+  end
+
+  def keys_to_bust(id: _id, billing_accounts: :changed),
+    do: keys_to_bust(billing_accounts: :changed)
 
   def keys_to_bust(billing_accounts: :changed) do
     filter =
@@ -50,6 +63,6 @@ defmodule Logflare.Billing.Cache do
   def keys_to_bust(kw), do: CachexOps.keys_to_bust(__MODULE__, kw)
 
   defp apply_fun(arg1, arg2) do
-    Logflare.ContextCache.apply_fun(Billing, arg1, arg2)
+    ContextCache.apply_fun(Billing, arg1, arg2)
   end
 end

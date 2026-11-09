@@ -63,12 +63,11 @@ defmodule Logflare.ContextCache.GossipTest do
     end
 
     test "does not multicast derived user plans", %{telemetry_ref: telemetry_ref} do
-      plan = insert(:plan, name: "Free")
-      user = insert(:user)
-      assert Billing.Cache.get_plan_by_user(user) == plan
+      cache_key = {:get_plan_by_user, [123]}
+      ContextCache.Gossip.multicast(Billing.Cache, cache_key, %{id: 456, name: "Free"})
 
       assert_receive {[:logflare, :context_cache_gossip, :multicast, :stop], ^telemetry_ref,
-                      _measurements, %{cache: Billing.Cache, action: :ignore}}
+                      _measurements, %{cache: Billing.Cache, key: ^cache_key, action: :ignore}}
     end
   end
 
