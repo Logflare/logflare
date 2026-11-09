@@ -7,15 +7,18 @@ defmodule Logflare.ContextCache.CacheBusterTest do
   alias Cainophile.Changes.UpdatedRecord
   alias Logflare.Alerting
   alias Logflare.Backends
+  alias Logflare.Billing
   alias Logflare.ContextCache
   alias Logflare.ContextCache.CacheBuster
+  alias Logflare.ContextCache.Tombstones
   alias Logflare.Endpoints
   alias Logflare.SavedSearches
   alias Logflare.Sources
   alias Logflare.Sources.Catalog
+  alias Logflare.Users
 
   setup do
-    insert(:plan, name: "Free")
+    plan = insert(:plan, name: "Free")
     user = insert(:user)
     source = insert(:source, user: user)
 
@@ -33,7 +36,7 @@ defmodule Logflare.ContextCache.CacheBusterTest do
       Cachex.clear!(Endpoints.Cache)
     end)
 
-    [source: source, user: user]
+    [plan: plan, source: source, user: user]
   end
 
   test "cache buster", %{source: %{id: source_id, token: source_token}} do
@@ -55,6 +58,195 @@ defmodule Logflare.ContextCache.CacheBusterTest do
     send(CacheBuster, %Transaction{changes: [change]})
     assert_receive [{Sources, ^source_id}], 500
     assert Cachex.size!(Sources.Cache) == 0
+  end
+
+  test "user WAL changes invalidate cached users and plans without stale snapshot refills", %{
+    user: user,
+    plan: plan
+  } do
+    enterprise = insert(:plan, name: "Enterprise")
+    other_user = insert(:user)
+    Billing.Cache.get_plan_by_user(other_user)
+    upgraded_user = Repo.update!(Ecto.Changeset.change(user, partner_upgraded: true))
+    assert Billing.Cache.get_plan_by_user(upgraded_user) == enterprise
+    Users.Cache.get(user.id)
+
+    current_user = Repo.update!(Ecto.Changeset.change(upgraded_user, partner_upgraded: false))
+
+    bust_records(%UpdatedRecord{
+      relation: {"public", "users"},
+      record: %{"id" => Integer.to_string(user.id)}
+    })
+
+    assert Cachex.get!(Users.Cache, {:get, [user.id]}) == nil
+    assert Billing.Cache.get_plan_by_user(upgraded_user) == plan
+    assert Billing.Cache.get_plan_by_user(current_user) == plan
+
+    Repo.update!(Ecto.Changeset.change(current_user, billing_enabled: false))
+
+    bust_records(%UpdatedRecord{
+      relation: {"public", "users"},
+      record: %{"id" => Integer.to_string(user.id)}
+    })
+
+    assert Billing.Cache.get_plan_by_user(current_user).name == "Legacy"
+    Users.Cache.get(user.id)
+
+    bust_records(%DeletedRecord{
+      relation: {"public", "users"},
+      old_record: %{"id" => Integer.to_string(user.id)}
+    })
+
+    assert Cachex.get!(Users.Cache, {:get, [user.id]}) == nil
+    assert Cachex.get!(Billing.Cache, {:get_plan_by_user, [user.id]}) == nil
+    assert Cachex.get!(Billing.Cache, {:get_plan_by_user, [other_user.id]}) == {:cached, plan}
+  end
+
+  test "user billing changes invalidate cached plans immediately", %{
+    user: user,
+    plan: plan
+  } do
+    enterprise = insert(:plan, name: "Enterprise")
+    Billing.Cache.get_plan_by_user(user)
+
+    {:ok, user} = Users.update_user_all_fields(user, %{partner_upgraded: true})
+    assert Billing.Cache.get_plan_by_user(user) == enterprise
+
+    {:ok, user} = Users.update_user_allowed(user, %{"partner_upgraded" => false})
+    assert Billing.Cache.get_plan_by_user(user) == plan
+
+    {:ok_found_user, user} =
+      Users.insert_or_update_user(%{
+        email: user.email,
+        provider_uid: user.provider_uid,
+        billing_enabled: false
+      })
+
+    assert Billing.Cache.get_plan_by_user(user).name == "Legacy"
+
+    {:ok_found_user, user} =
+      Users.insert_or_update_user(%{
+        email: user.email,
+        provider_uid: "new-#{user.provider_uid}",
+        billing_enabled: true
+      })
+
+    assert Billing.Cache.get_plan_by_user(user) == plan
+  end
+
+  test "billing account WAL changes invalidate account lookups and plans without ID collisions",
+       %{
+         user: user,
+         plan: plan
+       } do
+    lifetime = insert(:plan, name: "Lifetime")
+    other_user = insert(:user)
+    other_account = insert(:billing_account, user: other_user, lifetime_plan: true)
+    other_account_id = other_account.id
+    assert Billing.Cache.get_plan_by_user(other_user) == lifetime
+    assert Billing.Cache.get_billing_account_by(user_id: other_user.id).id == other_account_id
+    assert Billing.Cache.get_billing_account_by(user_id: user.id) == nil
+    assert Billing.Cache.get_plan_by_user(user) == plan
+    Billing.Cache.get_plan_by(name: "Free")
+
+    account = insert(:billing_account, id: plan.id, user: user, lifetime_plan: true)
+
+    account_filters = [
+      [user_id: user.id],
+      [id: account.id],
+      [stripe_customer: account.stripe_customer]
+    ]
+
+    bust_records(%NewRecord{
+      relation: {"public", "billing_accounts"},
+      record: %{
+        "id" => Integer.to_string(account.id),
+        "user_id" => Integer.to_string(user.id)
+      }
+    })
+
+    for filters <- account_filters do
+      assert Billing.Cache.get_billing_account_by(filters).lifetime_plan
+    end
+
+    assert Billing.Cache.get_plan_by_user(user) == lifetime
+
+    account =
+      Repo.update!(
+        Ecto.Changeset.change(account, lifetime_plan: false, stripe_subscriptions: nil)
+      )
+
+    bust_records(%UpdatedRecord{
+      relation: {"public", "billing_accounts"},
+      record: %{
+        "id" => Integer.to_string(account.id),
+        "user_id" => Integer.to_string(user.id)
+      }
+    })
+
+    for filters <- account_filters do
+      refute Billing.Cache.get_billing_account_by(filters).lifetime_plan
+    end
+
+    assert Billing.Cache.get_plan_by_user(user) == plan
+    assert Tombstones.Cache.tombstoned?(Billing.Cache, account.id)
+    assert Cachex.get!(Billing.Cache, {:get_plan_by_user, [other_user.id]}) == {:cached, lifetime}
+
+    assert {:cached, %{id: ^other_account_id}} =
+             Cachex.get!(Billing.Cache, {:get_billing_account_by, [[user_id: other_user.id]]})
+
+    Cachex.del!(Tombstones.Cache, {Billing.Cache, account.id})
+    Repo.delete!(account)
+
+    bust_records(%DeletedRecord{
+      relation: {"public", "billing_accounts"},
+      old_record: %{"id" => Integer.to_string(account.id)}
+    })
+
+    for filters <- account_filters do
+      assert Billing.Cache.get_billing_account_by(filters) == nil
+    end
+
+    assert Tombstones.Cache.tombstoned?(Billing.Cache, account.id)
+    assert Cachex.get!(Billing.Cache, {:get_plan_by_user, [user.id]}) == nil
+    assert Cachex.get!(Billing.Cache, {:get_plan_by_user, [other_user.id]}) == nil
+
+    assert Cachex.get!(Billing.Cache, {:get_billing_account_by, [[user_id: other_user.id]]}) ==
+             nil
+
+    assert Cachex.get!(Billing.Cache, {:get_plan_by, [[name: "Free"]]}) == {:cached, plan}
+  end
+
+  test "plan writes invalidate every user of that plan", %{user: user, plan: plan} do
+    other_user = insert(:user)
+    enterprise = insert(:plan, name: "Enterprise")
+    upgraded_user = insert(:user, partner_upgraded: true)
+    assert Billing.Cache.get_plan_by_user(user) == plan
+    assert Billing.Cache.get_plan_by_user(other_user) == plan
+    assert Billing.Cache.get_plan_by_user(upgraded_user) == enterprise
+
+    plan = Repo.update!(Ecto.Changeset.change(plan, limit_source_ttl: 123_456))
+
+    bust_records(%UpdatedRecord{
+      relation: {"public", "plans"},
+      record: %{"id" => Integer.to_string(plan.id)}
+    })
+
+    assert Billing.Cache.get_plan_by_user(user).limit_source_ttl == 123_456
+    assert Billing.Cache.get_plan_by_user(other_user).limit_source_ttl == 123_456
+
+    assert Cachex.get!(Billing.Cache, {:get_plan_by_user, [upgraded_user.id]}) ==
+             {:cached, enterprise}
+
+    Repo.delete!(plan)
+
+    bust_records(%DeletedRecord{
+      relation: {"public", "plans"},
+      old_record: %{"id" => Integer.to_string(plan.id)}
+    })
+
+    assert Cachex.get!(Billing.Cache, {:get_plan_by_user, [user.id]}) == nil
+    assert Cachex.get!(Billing.Cache, {:get_plan_by_user, [other_user.id]}) == nil
   end
 
   test "a default backend update refreshes the owner's default ingest lookup from the WAL user_id",
@@ -157,6 +349,7 @@ defmodule Logflare.ContextCache.CacheBusterTest do
   test "alert changes bust alert catalogs", %{user: %{id: user_id} = user} do
     alert = insert(:alert, user: user)
     Alerting.Cache.list_by_user_id(user_id)
+    assert [_] = Endpoints.Cache.list_query_names(user_id)
 
     alert_id = alert.id
     id = Integer.to_string(alert_id)
@@ -195,11 +388,13 @@ defmodule Logflare.ContextCache.CacheBusterTest do
                    500
 
     assert Cachex.size!(Alerting.Cache) == 0
+    assert Cachex.size!(Endpoints.Cache) == 0
   end
 
   test "endpoint inserts bust negative lookups and owner catalogs", %{user: %{id: user_id} = user} do
     endpoint = insert(:endpoint, user: user)
     Endpoints.Cache.list_by_user_id(user_id)
+    assert [_] = Endpoints.Cache.list_query_names(user_id)
 
     change = %NewRecord{
       relation: {"public", "endpoint_queries"},

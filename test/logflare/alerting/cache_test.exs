@@ -19,7 +19,8 @@ defmodule Logflare.Alerting.CacheTest do
   test "catalog availability errors propagate through endpoint execution and previews", %{
     user: user
   } do
-    endpoint = insert(:endpoint, user: user, query: "SELECT 1")
+    insert(:alert, user: user, name: "referenced", query: "SELECT 1")
+    endpoint = insert(:endpoint, user: user, query: "SELECT * FROM referenced")
 
     stub(Alerting, :list_alert_queries_by_user_id, fn _ ->
       raise DBConnection.ConnectionError, message: "primary unavailable"

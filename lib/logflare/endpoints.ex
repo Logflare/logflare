@@ -75,6 +75,24 @@ defmodule Logflare.Endpoints do
     |> Repo.all()
   end
 
+  @spec list_query_names(pos_integer()) :: [
+          %{id: pos_integer(), name: String.t(), language: atom(), kind: String.t()}
+        ]
+  def list_query_names(user_id) when is_integer(user_id) do
+    alerts =
+      from(a in AlertQuery,
+        where: a.user_id == ^user_id,
+        select: %{id: a.id, name: a.name, language: a.language, kind: type(^"alert", :string)}
+      )
+
+    from(e in EndpointQuery,
+      where: e.user_id == ^user_id,
+      select: %{id: e.id, name: e.name, language: e.language, kind: type(^"endpoint", :string)},
+      union_all: ^alerts
+    )
+    |> Repo.all()
+  end
+
   @doc """
   Lists all endpoints a user has access to, including where the user is a team member.
   """
@@ -758,19 +776,11 @@ defmodule Logflare.Endpoints do
     sql_param = Map.get(params, "sql")
     lql_param = Map.get(params, "lql")
 
-    with endpoints when is_list(endpoints) <- Cache.list_by_user_id(user_id),
-         alerts when is_list(alerts) <- Alerting.Cache.list_by_user_id(user_id),
-         endpoints = Enum.filter(endpoints, &(&1.id != endpoint_query.id)),
-         {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
+    with {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
          :ok <- validate_query_override(endpoint_query, params),
+         {:ok, expanded_query} <- expand_query_subqueries(endpoint_query),
          {:ok, declared_params} <-
            Sql.parameters(query_string, dialect: Sql.to_dialect(query_language)),
-         {:ok, expanded_query} <-
-           Sql.expand_subqueries(
-             query_language,
-             query_string,
-             endpoints ++ alerts
-           ),
          {:ok, consumer_query} <-
            maybe_convert_lql_to_sql(
              lql_param,
@@ -970,7 +980,6 @@ defmodule Logflare.Endpoints do
   def get_transformed_query(%EndpointQuery{} = endpoint_query, params \\ %{}, opts \\ [])
       when is_map(params) and is_list(opts) do
     %EndpointQuery{
-      query: query_string,
       user_id: user_id,
       sandboxable: sandboxable,
       language: query_language
@@ -980,16 +989,8 @@ defmodule Logflare.Endpoints do
     sql_param = Map.get(params, "sql")
     lql_param = Map.get(params, "lql")
 
-    with endpoints when is_list(endpoints) <- Cache.list_by_user_id(user_id),
-         alerts when is_list(alerts) <- Alerting.Cache.list_by_user_id(user_id),
-         endpoints = Enum.filter(endpoints, &(&1.id != endpoint_query.id)),
-         {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
-         {:ok, expanded_query} <-
-           Sql.expand_subqueries(
-             query_language,
-             query_string,
-             endpoints ++ alerts
-           ),
+    with {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
+         {:ok, expanded_query} <- expand_query_subqueries(endpoint_query),
          {:ok, consumer_query} <-
            maybe_convert_lql_to_sql(
              lql_param,
@@ -1007,6 +1008,50 @@ defmodule Logflare.Endpoints do
          {:ok, transformed_query} <-
            preview_query_policy(endpoint_query, transformed_query, params, opts) do
       {:ok, transformed_query}
+    end
+  end
+
+  @spec expand_query_subqueries(EndpointQuery.t()) ::
+          {:ok, String.t()} | {:error, String.t() | :database_unavailable}
+  defp expand_query_subqueries(%EndpointQuery{query: "", language: language}) do
+    Sql.expand_subqueries(language, "", [])
+  end
+
+  defp expand_query_subqueries(%EndpointQuery{query: query, language: language} = endpoint) do
+    with {:ok, names} <-
+           Sql.extract_table_names(query,
+             dialect: Sql.to_dialect(language),
+             include_cte_aliases: true
+           ),
+         {:ok, queries} <- queries_for_names(endpoint, names) do
+      Sql.expand_subqueries(language, query, queries)
+    end
+  end
+
+  @spec queries_for_names(EndpointQuery.t(), [String.t()]) ::
+          {:ok, [EndpointQuery.t() | AlertQuery.t()]} | {:error, :database_unavailable}
+  defp queries_for_names(_endpoint, []), do: {:ok, []}
+
+  defp queries_for_names(endpoint, names) do
+    with index when is_list(index) <- Cache.list_query_names(endpoint.user_id) do
+      references = MapSet.new(names)
+
+      referenced? =
+        Enum.any?(index, fn entry ->
+          MapSet.member?(references, entry.name) and entry.language == endpoint.language and
+            (entry.kind != "endpoint" or entry.id != endpoint.id)
+        end)
+
+      if referenced?, do: load_subquery_catalogs(endpoint), else: {:ok, []}
+    end
+  end
+
+  @spec load_subquery_catalogs(EndpointQuery.t()) ::
+          {:ok, [EndpointQuery.t() | AlertQuery.t()]} | {:error, :database_unavailable}
+  defp load_subquery_catalogs(endpoint) do
+    with endpoints when is_list(endpoints) <- Cache.list_by_user_id(endpoint.user_id),
+         alerts when is_list(alerts) <- Alerting.Cache.list_by_user_id(endpoint.user_id) do
+      {:ok, Enum.reject(endpoints, &(&1.id == endpoint.id)) ++ alerts}
     end
   end
 
@@ -1223,13 +1268,16 @@ defmodule Logflare.Endpoints do
     find_backend_by_type_or_default(user_id, backend_type)
   end
 
-  @spec language_to_backend_type(language()) :: atom() | nil
+  @spec language_to_backend_type(:bq_sql | :ch_sql | :pg_sql) ::
+          :bigquery | :clickhouse | :postgres
   defp language_to_backend_type(:pg_sql), do: :postgres
   defp language_to_backend_type(:ch_sql), do: :clickhouse
   defp language_to_backend_type(:bq_sql), do: :bigquery
-  defp language_to_backend_type(_), do: nil
 
-  @spec find_backend_by_type_or_default(user_id :: integer(), backend_type :: atom() | nil) ::
+  @spec find_backend_by_type_or_default(
+          user_id :: integer(),
+          backend_type :: :bigquery | :clickhouse | :postgres
+        ) ::
           {:ok, Backend.t()} | {:error, String.t()}
   defp find_backend_by_type_or_default(user_id, backend_type)
        when is_integer(user_id) and is_atom_value(backend_type) do
@@ -1239,10 +1287,6 @@ defmodule Logflare.Endpoints do
       nil -> get_default_backend_for_user(user_id)
       backend -> {:ok, backend}
     end
-  end
-
-  defp find_backend_by_type_or_default(user_id, nil) when is_integer(user_id) do
-    get_default_backend_for_user(user_id)
   end
 
   @spec get_default_backend_for_user(user_id :: integer()) ::

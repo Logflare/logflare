@@ -49,6 +49,7 @@ defmodule Logflare.Billing do
     |> Ecto.build_assoc(:billing_account)
     |> BillingAccount.changeset(attrs)
     |> Repo.insert()
+    |> invalidate_billing_account_cache()
     |> case do
       {:ok, _user} = res ->
         # move this to be the default on user create after launch
@@ -115,6 +116,7 @@ defmodule Logflare.Billing do
     billing_account
     |> BillingAccount.changeset(attrs)
     |> Repo.update()
+    |> invalidate_billing_account_cache()
   end
 
   @doc "Preloads the payment methods field"
@@ -126,10 +128,23 @@ defmodule Logflare.Billing do
           {:ok, BillingAccount.t()} | {:error, Ecto.Changeset.t()}
   def delete_billing_account(%User{billing_account: billing_account} = user) do
     with {:ok, _} = res <- Repo.delete(billing_account) do
+      invalidate_billing_account_cache(res)
       Source.Supervisor.reset_all_user_sources(user)
       res
     end
   end
+
+  @spec invalidate_billing_account_cache({:ok, BillingAccount.t()} | {:error, Ecto.Changeset.t()}) ::
+          {:ok, BillingAccount.t()} | {:error, Ecto.Changeset.t()}
+  defp invalidate_billing_account_cache({:ok, account} = result) do
+    [id: account.id, user_id: account.user_id]
+    |> Billing.Cache.keys_to_bust()
+    |> Billing.Cache.delete_keys()
+
+    result
+  end
+
+  defp invalidate_billing_account_cache({:error, _changeset} = result), do: result
 
   @doc "Returns an `%Ecto.Changeset{}` for tracking billing_account changes."
   @spec change_billing_account(BillingAccount.t()) :: Ecto.Changeset.t()
