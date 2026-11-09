@@ -1268,13 +1268,16 @@ defmodule Logflare.Endpoints do
     find_backend_by_type_or_default(user_id, backend_type)
   end
 
-  @spec language_to_backend_type(language()) :: atom() | nil
+  @spec language_to_backend_type(:bq_sql | :ch_sql | :pg_sql) ::
+          :bigquery | :clickhouse | :postgres
   defp language_to_backend_type(:pg_sql), do: :postgres
   defp language_to_backend_type(:ch_sql), do: :clickhouse
   defp language_to_backend_type(:bq_sql), do: :bigquery
-  defp language_to_backend_type(_), do: nil
 
-  @spec find_backend_by_type_or_default(user_id :: integer(), backend_type :: atom() | nil) ::
+  @spec find_backend_by_type_or_default(
+          user_id :: integer(),
+          backend_type :: :bigquery | :clickhouse | :postgres
+        ) ::
           {:ok, Backend.t()} | {:error, String.t()}
   defp find_backend_by_type_or_default(user_id, backend_type)
        when is_integer(user_id) and is_atom_value(backend_type) do
@@ -1284,10 +1287,6 @@ defmodule Logflare.Endpoints do
       nil -> get_default_backend_for_user(user_id)
       backend -> {:ok, backend}
     end
-  end
-
-  defp find_backend_by_type_or_default(user_id, nil) when is_integer(user_id) do
-    get_default_backend_for_user(user_id)
   end
 
   @spec get_default_backend_for_user(user_id :: integer()) ::
