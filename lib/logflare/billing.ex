@@ -52,6 +52,9 @@ defmodule Logflare.Billing do
     |> invalidate_billing_account_cache()
     |> case do
       {:ok, _user} = res ->
+        Billing.Cache.keys_to_bust(id: :not_found)
+        |> Billing.Cache.delete_keys()
+
         # move this to be the default on user create after launch
         Users.update_user_all_fields(user, %{billing_enabled: true})
 
