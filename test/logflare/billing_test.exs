@@ -27,19 +27,20 @@ defmodule Logflare.BillingTest do
       other_account = insert(:billing_account, user: other_user)
       stripe_customer = "cus_#{user.id}"
       filters = [[user_id: user.id], [stripe_customer: stripe_customer]]
+      missing_id_filter = [id: -user.id]
 
       assert Billing.Cache.get_plan_by_user(user) == free
       assert Billing.Cache.get_plan_by_user(other_user) == free
       cached_other_account = Billing.Cache.get_billing_account_by(id: other_account.id)
       assert cached_other_account.id == other_account.id
 
-      for filter <- filters do
+      for filter <- filters ++ [missing_id_filter] do
         assert Billing.Cache.get_billing_account_by(filter) == nil
       end
 
       assert {:error, %Ecto.Changeset{}} = Billing.create_billing_account(user, %{})
 
-      for filter <- filters do
+      for filter <- filters ++ [missing_id_filter] do
         assert Cachex.get!(Billing.Cache, {:get_billing_account_by, [filter]}) == {:cached, nil}
       end
 
@@ -50,6 +51,8 @@ defmodule Logflare.BillingTest do
                  stripe_customer: stripe_customer,
                  lifetime_plan: true
                })
+
+      assert Cachex.get!(Billing.Cache, {:get_billing_account_by, [missing_id_filter]}) == nil
 
       for filter <- filters do
         assert Billing.Cache.get_billing_account_by(filter) == account
