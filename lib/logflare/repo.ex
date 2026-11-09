@@ -59,6 +59,12 @@ defmodule Logflare.Repo do
   end
 
   @impl true
+  @spec default_options(atom()) :: keyword()
+  def default_options(_operation) do
+    [telemetry_options: [role: repo_role(get_dynamic_repo())]]
+  end
+
+  @impl true
   def init(_context, config) do
     {role, config} = Keyword.pop(config, :logflare_connection_role, :primary)
     {:ok, ConnectionOptions.prepare(config, role)}

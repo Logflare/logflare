@@ -219,6 +219,42 @@ defmodule Logflare.RepoTest do
     end
   end
 
+  test "parallel preloads retain the query role selected by their caller" do
+    start_read_replicas(["127.0.0.1"], pool: DBConnection.ConnectionPool, pool_size: 2)
+    owner = Sandbox.start_owner!(Repo, shared: true)
+    on_exit(fn -> Sandbox.stop_owner(owner) end)
+    user = %Logflare.User{id: -1}
+    test_pid = self()
+    handler_id = {__MODULE__, make_ref()}
+    metric = Enum.find(Telemetry.metrics(), &(&1.event_name == [:logflare, :repo, :query]))
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:logflare, :repo, :query],
+        fn _, _, metadata, _ ->
+          if metadata.source in ["sources", "backends"] do
+            send(test_pid, {:preload_role, metadata.source, self(), metric.tag_values.(metadata)})
+          end
+        end,
+        nil
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    for role <- [:primary, :replica] do
+      case role do
+        :primary -> Repo.preload(user, [:sources, :backends])
+        :replica -> Repo.with_replica(fn -> Repo.preload(user, [:sources, :backends]) end)
+      end
+
+      for source <- ["sources", "backends"] do
+        assert_receive {:preload_role, ^source, worker, %{role: ^role}}
+        refute worker == self()
+      end
+    end
+  end
+
   describe "with_replica/1" do
     test "uses default repo when replicas list is empty" do
       start_read_replicas(_no_replicas = [])

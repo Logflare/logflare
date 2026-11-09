@@ -840,8 +840,9 @@ defmodule Logflare.Telemetry do
   end
 
   @spec repo_query_tags(map()) :: %{role: :primary | :replica}
-  defp repo_query_tags(%{repo: repo}) do
-    %{role: if(repo.get_dynamic_repo() == repo, do: :primary, else: :replica)}
+  defp repo_query_tags(%{repo: repo} = metadata) do
+    fallback_role = if(repo.get_dynamic_repo() == repo, do: :primary, else: :replica)
+    %{role: Keyword.get(Map.get(metadata, :options, []), :role, fallback_role)}
   end
 
   defp periodic_measurements do
