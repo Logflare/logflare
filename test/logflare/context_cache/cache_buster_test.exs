@@ -143,18 +143,31 @@ defmodule Logflare.ContextCache.CacheBusterTest do
     other_account = insert(:billing_account, user: other_user, lifetime_plan: true)
     other_account_id = other_account.id
     assert Billing.Cache.get_plan_by_user(other_user) == lifetime
-    assert Billing.Cache.get_billing_account_by(user_id: other_user.id).id == other_account_id
+    cached_other_account = Billing.Cache.get_billing_account_by(user_id: other_user.id)
+    assert cached_other_account.id == other_account_id
     assert Billing.Cache.get_billing_account_by(user_id: user.id) == nil
     assert Billing.Cache.get_plan_by_user(user) == plan
     Billing.Cache.get_plan_by(name: "Free")
 
-    account = insert(:billing_account, id: plan.id, user: user, lifetime_plan: true)
+    stripe_customer = "cus_#{user.id}"
 
     account_filters = [
       [user_id: user.id],
-      [id: account.id],
-      [stripe_customer: account.stripe_customer]
+      [id: plan.id],
+      [stripe_customer: stripe_customer]
     ]
+
+    for filters <- account_filters do
+      assert Billing.Cache.get_billing_account_by(filters) == nil
+    end
+
+    account =
+      insert(:billing_account,
+        id: plan.id,
+        user: user,
+        stripe_customer: stripe_customer,
+        lifetime_plan: true
+      )
 
     bust_records(%NewRecord{
       relation: {"public", "billing_accounts"},
@@ -169,6 +182,12 @@ defmodule Logflare.ContextCache.CacheBusterTest do
     end
 
     assert Billing.Cache.get_plan_by_user(user) == lifetime
+    assert Cachex.get!(Billing.Cache, {:get_plan_by_user, [other_user.id]}) == {:cached, lifetime}
+
+    assert Cachex.get!(Billing.Cache, {:get_billing_account_by, [[user_id: other_user.id]]}) ==
+             {:cached, cached_other_account}
+
+    assert Cachex.get!(Billing.Cache, {:get_plan_by, [[name: "Free"]]}) == {:cached, plan}
 
     account =
       Repo.update!(
