@@ -326,6 +326,7 @@ defmodule Logflare.ContextCache.CacheBusterTest do
   test "alert changes bust alert catalogs", %{user: %{id: user_id} = user} do
     alert = insert(:alert, user: user)
     Alerting.Cache.list_by_user_id(user_id)
+    assert [_] = Endpoints.Cache.list_query_names(user_id)
 
     alert_id = alert.id
     id = Integer.to_string(alert_id)
@@ -364,11 +365,13 @@ defmodule Logflare.ContextCache.CacheBusterTest do
                    500
 
     assert Cachex.size!(Alerting.Cache) == 0
+    assert Cachex.size!(Endpoints.Cache) == 0
   end
 
   test "endpoint inserts bust negative lookups and owner catalogs", %{user: %{id: user_id} = user} do
     endpoint = insert(:endpoint, user: user)
     Endpoints.Cache.list_by_user_id(user_id)
+    assert [_] = Endpoints.Cache.list_query_names(user_id)
 
     change = %NewRecord{
       relation: {"public", "endpoint_queries"},
