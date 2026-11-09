@@ -21,23 +21,13 @@ defmodule Logflare.Backends.CacheTest do
     {:ok, backend: backend, source: source, user: user}
   end
 
-  test "backend inserts invalidate empty and populated owner lists", %{user: user} do
-    other_user = insert(:user)
-    assert [] = Backends.Cache.list_backends(user_id: user.id)
+  test "backend inserts still invalidate legacy negative row lookups", %{user: user} do
+    id = 1_000_000_000
+    assert nil == Backends.Cache.get_backend(id)
+    created = insert(%{build(:backend, user: user) | id: id})
 
-    first = insert(:backend, user: other_user, type: :postgres)
-    assert [cached] = Backends.Cache.list_backends(user_id: other_user.id)
-    assert cached.id == first.id
-
-    created = insert(:backend, user: user, type: :clickhouse)
-    second = insert(:backend, user: other_user, type: :clickhouse)
-
-    assert {:ok, 2} = Logflare.ContextCache.bust_keys([{Backends, :not_found}])
-    assert [cached] = Backends.Cache.list_backends(user_id: user.id)
-    assert cached.id == created.id
-
-    assert MapSet.new(Backends.Cache.list_backends(user_id: other_user.id), & &1.id) ==
-             MapSet.new([first.id, second.id])
+    assert {:ok, 1} = Logflare.ContextCache.bust_keys([{Backends, :not_found}])
+    assert Backends.Cache.get_backend(id).id == created.id
   end
 
   test "backend updates and deletes invalidate owner lists", %{user: user} do

@@ -20,18 +20,6 @@ defmodule Logflare.Backends.Cache do
 
   def get_backend(arg), do: apply_repo_fun(__ENV__.function, [arg])
 
-  @impl Logflare.ContextCache
-  def keys_to_bust(id: :not_found) do
-    owner_lists =
-      Cachex.stream!(__MODULE__)
-      |> Stream.map(fn {:entry, key, _, _, _} -> key end)
-      |> Stream.filter(&match?({:list_backends, [[user_id: _]]}, &1))
-
-    Stream.concat(super(id: :not_found), owner_lists)
-  end
-
-  def keys_to_bust(kw), do: super(kw)
-
   defp apply_repo_fun(arg1, arg2) do
     Logflare.ContextCache.apply_fun(Backends, arg1, arg2)
   end
