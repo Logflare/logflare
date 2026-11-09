@@ -108,6 +108,32 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.ArrowIPCTest do
       end
     end
 
+    test "fails the batch for values the mapper never produces" do
+      for {field, json} <- [
+            {{"c", :string, false}, ~s({"c":5})},
+            {{"c", :string, false}, ~s({"c":true})},
+            {{"c", :string_map, false}, ~s({"c":{"k":5}})},
+            {{"c", :string_array, false}, ~s({"c":["a",null]})}
+          ] do
+        assert {:error, _message} =
+                 ArrowIPC.get_ipc_bytes_with_schema(json <> "\n", [field], :none)
+      end
+    end
+
+    test "coerces floats and numeric strings" do
+      integer = [{"c", :integer, false}]
+
+      assert [%{"c" => 2}] = DataFrame.to_rows(decode!(~s({"c":2.9}\n), integer))
+      assert [%{"c" => 5}] = DataFrame.to_rows(decode!(~s({"c":"5"}\n), integer))
+
+      assert {:ok, _schema, [_batch]} =
+               ArrowIPC.get_ipc_bytes_with_schema(
+                 ~s({"t":1.5}\n),
+                 [{"t", :timestamp, false}],
+                 :none
+               )
+    end
+
     test "encodes float, boolean and array columns" do
       fields = [
         {"sum", :float, false},

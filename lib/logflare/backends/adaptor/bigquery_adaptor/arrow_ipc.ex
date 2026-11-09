@@ -28,20 +28,20 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.ArrowIPC do
 
   @doc """
   Encodes NDJSON rows into an Arrow IPC schema message and record batch messages,
-  using the given fields as the schema instead of inferring one from the rows.
+  using `fields` (`{name, type, required}`) as the schema.
 
-  Each field is `{name, type, required}`. Row keys must already be the column names,
-  and `:json_array` elements must already be JSON strings, as in the mapper's NDJSON
-  output with `column_names: :underscore, nested_arrays: :json_strings`. `:timestamp`
-  values are Unix microseconds, `:string_map` values are JSON objects written as lists
-  of `key`/`value` structs, and missing arrays and maps are written as empty lists.
+  Expects the mapper's NDJSON output with `column_names: :underscore` and
+  `nested_arrays: :json_strings`; keys are not renamed here. `:timestamp` values are
+  Unix microseconds, `:string_map` objects become `key`/`value` lists, and missing
+  lists and maps become empty lists.
 
-  Rows are split into one record batch per `max_batch_bytes` of input, so each batch
-  fits an AppendRows request (10 MB). The default of 5 MB leaves headroom because
-  Arrow can be larger than the input JSON, e.g. for many short attribute values. A
-  single row larger than `max_batch_bytes` gets a batch of its own.
+  Other input can fail the whole batch with `{:error, message}`: non-string values in
+  string columns or maps, `null` list items, missing required fields, non-object rows.
+  Floats in `:integer` and `:timestamp` columns are truncated, and numeric strings in
+  `:integer` columns are parsed.
 
-  Returns `{:error, message}` when a row does not fit the schema.
+  Batches hold at most `max_batch_bytes` of input (default 5 MB, half the 10 MB
+  AppendRows limit, since Arrow can be larger than its JSON input).
   """
   @spec get_ipc_bytes_with_schema(binary(), [field_spec()], compression(), pos_integer()) ::
           {:ok, binary(), [binary()]} | {:error, String.t()}

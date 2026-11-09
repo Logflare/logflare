@@ -276,18 +276,9 @@ fn bigquery_schema(read_schema: &Schema) -> SchemaRef {
     Arc::new(Schema::new(fields))
 }
 
-/// Encodes NDJSON rows into Arrow IPC messages against an explicit schema,
-/// instead of inferring one from the batch. `fields` is a list of
-/// `{name, type, required}` tuples where `type` is one of `:string`,
-/// `:integer`, `:float`, `:boolean`, `:timestamp` (Unix microseconds),
-/// `:string_map`, or an array type (`:integer_array`, `:float_array`,
-/// `:string_array`, `:json_array`). The input is decoded as is: row keys must
-/// already be the column names and `:json_array` elements must already be JSON
-/// strings, as in the mapper's NDJSON output with `column_names: :underscore`
-/// and `nested_arrays: :json_strings`. Rows are encoded into one record batch
-/// per `max_batch_bytes` of input (see `byte_bounded_chunks`). Returns
-/// `{:ok, schema, batches}`, or `{:error, message}` when a row does not fit the
-/// schema.
+/// Encodes NDJSON rows against an explicit schema, one record batch per
+/// `byte_bounded_chunks` chunk. Input contract and field types are documented on
+/// `Logflare.Backends.Adaptor.BigQueryAdaptor.ArrowIPC.get_ipc_bytes_with_schema/4`.
 #[rustler::nif(schedule = "DirtyCpu")]
 fn get_ipc_bytes_with_schema<'a>(
     env: Env<'a>,
