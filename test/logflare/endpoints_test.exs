@@ -12,6 +12,7 @@ defmodule Logflare.EndpointsTest do
   alias Logflare.Endpoints
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Endpoints.ResultsCache
+  alias Logflare.QueryContext
   alias Logflare.Sources.Catalog
   alias PaperTrail.Version
 
@@ -1116,6 +1117,41 @@ defmodule Logflare.EndpointsTest do
 
       assert_received {:backend_used, backend_id}
       assert backend_id == backend.id
+    end
+
+    for unavailable <- [nil, {:error, :database_unavailable}] do
+      @tag telemetry_backend: unavailable
+      test "successful queries survive a telemetry backend lookup returning #{inspect(unavailable)}",
+           %{telemetry_backend: unavailable} do
+        user = insert(:user)
+        backend = insert(:backend, user: user, type: :clickhouse)
+
+        expect(QueryContext, :get_backend, fn id ->
+          assert id == backend.id
+          backend
+        end)
+
+        expect(QueryContext, :get_backend, fn id ->
+          assert id == backend.id
+          unavailable
+        end)
+
+        expect(ClickHouseAdaptor, :execute_query, fn _, _, _ ->
+          {:ok, QueryResult.new([%{"testing" => "123"}])}
+        end)
+
+        ref = :telemetry_test.attach_event_handlers(self(), [[:logflare, :endpoints, :query]])
+        on_exit(fn -> :telemetry.detach(ref) end)
+
+        assert {:ok, %{rows: [%{"testing" => "123"}]}} =
+                 Endpoints.run_query_string(user, {:ch_sql, "SELECT 1 AS testing"},
+                   backend_id: backend.id
+                 )
+
+        assert_received {[:logflare, :endpoints, :query], ^ref, _, metadata}
+        assert metadata["backend_id"] == backend.id
+        assert metadata["backend_type"] == nil
+      end
     end
 
     test "emits total_bytes_processed in telemetry for ClickHouse backend" do

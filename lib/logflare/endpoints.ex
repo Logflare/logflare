@@ -823,8 +823,11 @@ defmodule Logflare.Endpoints do
         if(is_integer(data.total_bytes_processed), do: data.total_bytes_processed, else: 0)
     }
 
-    backend =
-      endpoint_query.backend_id && QueryContext.get_backend(endpoint_query.backend_id)
+    backend_type =
+      case endpoint_query.backend_id && QueryContext.get_backend(endpoint_query.backend_id) do
+        %Backend{type: type} -> to_string(type)
+        _ -> nil
+      end
 
     metadata =
       Map.merge(endpoint_query.parsed_labels || %{}, %{
@@ -832,7 +835,7 @@ defmodule Logflare.Endpoints do
         "endpoint_uuid" => Utils.stringify(endpoint_query.token),
         "user_id" => endpoint_query.user_id,
         "backend_id" => endpoint_query.backend_id,
-        "backend_type" => backend && to_string(backend.type)
+        "backend_type" => backend_type
       })
 
     :telemetry.execute([:logflare, :endpoints, :query], measurements, metadata)
