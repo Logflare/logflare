@@ -1,6 +1,8 @@
 defmodule Logflare.RepoTest do
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   alias Ecto.Adapters.SQL.Sandbox
   alias Logflare.QueryContext
   alias Logflare.Repo
@@ -80,6 +82,37 @@ defmodule Logflare.RepoTest do
       assert first == :first
       assert_receive {:committed, second}
       assert second == :second
+    end
+
+    test "callback failures preserve the commit result and do not skip later callbacks" do
+      log =
+        capture_log(fn ->
+          assert {:ok, :committed} =
+                   Repo.transact(fn ->
+                     Repo.after_commit(fn -> raise "cache restarting" end)
+                     Repo.after_commit(fn -> exit(:cache_restarting) end)
+                     Repo.after_commit(fn -> throw(:cache_restarting) end)
+                     Repo.after_commit(fn -> send(self(), :still_committed) end)
+                     {:ok, :committed}
+                   end)
+        end)
+
+      assert_received :still_committed
+      assert log =~ "After-commit callback failed"
+      assert log =~ "cache restarting"
+      assert log =~ "cache_restarting"
+      assert {:ok, :next} = Repo.transact(fn -> {:ok, :next} end)
+    end
+
+    test "immediate callbacks isolate failures without hiding the successful write" do
+      log =
+        capture_log(fn ->
+          assert :ok = Repo.after_commit(fn -> raise "cache restarting" end)
+          assert :ok = Repo.after_commit(fn -> send(self(), :next_callback) end)
+        end)
+
+      assert_received :next_callback
+      assert log =~ "After-commit callback failed"
     end
 
     test "rollback and exceptions discard callbacks without leaking into later transactions" do

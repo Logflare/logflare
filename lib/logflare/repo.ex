@@ -35,17 +35,27 @@ defmodule Logflare.Repo do
     result
   end
 
-  @doc "Runs a callback after the outer transaction commits, or immediately outside one."
+  @doc "Runs a callback after commit or immediately, logging failures without changing the write result."
   @spec after_commit((-> term())) :: :ok
   def after_commit(callback) when is_function(callback, 0) do
     if in_transaction?() do
       key = {__MODULE__, :after_commit, get_dynamic_repo()}
       Process.put(key, [callback | Process.get(key, [])])
     else
-      callback.()
+      run_after_commit(callback)
     end
 
     :ok
+  end
+
+  @spec run_after_commit((-> term())) :: term()
+  defp run_after_commit(callback) do
+    callback.()
+  catch
+    kind, reason ->
+      Logger.error(
+        "After-commit callback failed: " <> Exception.format(kind, reason, __STACKTRACE__)
+      )
   end
 
   @impl true
