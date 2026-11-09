@@ -2,6 +2,7 @@ defmodule Logflare.RepoTest do
   use ExUnit.Case, async: false
 
   alias Ecto.Adapters.SQL.Sandbox
+  alias Logflare.QueryContext
   alias Logflare.Repo
   alias Logflare.Repo.Replicas
   alias Logflare.Telemetry
@@ -48,6 +49,99 @@ defmodule Logflare.RepoTest do
     end
 
     start_result
+  end
+
+  describe "after_commit/1" do
+    setup do
+      owner = Sandbox.start_owner!(Repo, shared: true)
+      on_exit(fn -> Sandbox.stop_owner(owner) end)
+      :ok
+    end
+
+    test "runs immediately outside a transaction and in order after nested commits" do
+      Repo.after_commit(fn -> send(self(), :immediate) end)
+      assert_received :immediate
+
+      assert {:ok, :done} =
+               Repo.transaction(fn ->
+                 Repo.after_commit(fn -> send(self(), {:committed, :first}) end)
+
+                 assert {:ok, :ok} =
+                          Repo.transact(fn ->
+                            Repo.after_commit(fn -> send(self(), {:committed, :second}) end)
+                            {:ok, :ok}
+                          end)
+
+                 refute_received {:committed, _}
+                 :done
+               end)
+
+      assert_receive {:committed, first}
+      assert first == :first
+      assert_receive {:committed, second}
+      assert second == :second
+    end
+
+    test "rollback and exceptions discard callbacks without leaking into later transactions" do
+      assert {:error, :cancelled} =
+               Repo.transaction(fn ->
+                 Repo.after_commit(fn -> send(self(), :stale) end)
+                 Repo.rollback(:cancelled)
+               end)
+
+      assert_raise ArgumentError, "cancelled", fn ->
+        Repo.transact(fn ->
+          Repo.after_commit(fn -> send(self(), :stale) end)
+          raise ArgumentError, "cancelled"
+        end)
+      end
+
+      assert {:ok, :ok} = Repo.transact(fn -> {:ok, :ok} end)
+      refute_received :stale
+    end
+
+    test "Ecto.Multi callbacks run only after a successful commit" do
+      multi =
+        Ecto.Multi.new()
+        |> Ecto.Multi.run(:change, fn _, _ ->
+          Repo.after_commit(fn -> send(self(), :multi_committed) end)
+          refute_received :multi_committed
+          {:ok, :done}
+        end)
+
+      assert {:ok, %{change: :done}} = Repo.transact(multi)
+      assert_receive :multi_committed
+
+      failed =
+        Ecto.Multi.new()
+        |> Ecto.Multi.run(:change, fn _, _ ->
+          Repo.after_commit(fn -> send(self(), :multi_rolled_back) end)
+          {:error, :cancelled}
+        end)
+
+      assert {:error, :change, :cancelled, %{}} = Repo.transact(failed)
+      refute_received :multi_rolled_back
+    end
+  end
+
+  test "query-context cache fills read primary even inside a replica scope" do
+    start_read_replicas(["127.0.0.1"], pool: DBConnection.ConnectionPool, pool_size: 1)
+    owner = Sandbox.start_owner!(Repo, shared: true)
+    on_exit(fn -> Sandbox.stop_owner(owner) end)
+    Cachex.clear!(QueryContext.Cache)
+    on_exit(fn -> Cachex.clear!(QueryContext.Cache) end)
+    user = Logflare.Factory.insert(:user)
+    backend = Logflare.Factory.insert(:backend, user: user)
+
+    Repo.with_replica(fn ->
+      replica = Repo.get_dynamic_repo()
+      assert Repo.query!("SELECT id FROM backends WHERE id = $1", [backend.id]).rows == []
+      assert QueryContext.get_user(user.id).id == user.id
+      assert QueryContext.get_backend(backend.id).id == backend.id
+      assert [cached] = QueryContext.list_backends(user.id)
+      assert cached.id == backend.id
+      assert Repo.get_dynamic_repo() == replica
+    end)
   end
 
   test "query metrics distinguish primary and replica pools using the same repo module" do

@@ -24,6 +24,7 @@ defmodule Logflare.Backends do
   alias Logflare.Cluster
   alias Logflare.LogEvent
   alias Logflare.PubSubRates
+  alias Logflare.QueryContext
   alias Logflare.Repo
   alias Logflare.Rules.Rule
   alias Logflare.SingleTenant
@@ -237,6 +238,7 @@ defmodule Logflare.Backends do
       |> Repo.insert()
 
     with {:ok, updated} <- backend do
+      QueryContext.invalidate_backend(updated)
       backend = Repo.preload(updated, :sources)
       Enum.each(backend.sources, &restart_source_sup(&1))
 
@@ -415,6 +417,7 @@ defmodule Logflare.Backends do
 
     case result do
       {:ok, {backend, updated}} ->
+        QueryContext.invalidate_backend(updated)
         updated = preload_sources(updated)
 
         if backend.default_ingest? != updated.default_ingest? do
@@ -618,6 +621,7 @@ defmodule Logflare.Backends do
       |> Repo.delete()
 
     with {:ok, deleted} <- result do
+      QueryContext.invalidate_backend(deleted)
       if deleted.default_ingest?, do: default_ingest_flag_changed(deleted)
 
       maybe_stop_consolidated_pipeline(deleted)

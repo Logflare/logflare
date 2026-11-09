@@ -5,6 +5,7 @@ defmodule Logflare.Endpoints.QueryLookupCacheTest do
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Endpoints
+  alias Logflare.QueryContext
   alias Logflare.Sql
   alias Logflare.Users
 
@@ -38,6 +39,9 @@ defmodule Logflare.Endpoints.QueryLookupCacheTest do
         {:ok, QueryResult.new([%{"n" => 1}], %{total_bytes_processed: 0})}
       end)
 
+      Cachex.put!(Backends.Cache, {:get_backend, [context.backend.id]}, {:cached, nil})
+      Cachex.put!(Backends.Cache, {:list_backends, [[user_id: context.user.id]]}, {:cached, []})
+
       assert {:ok, %{rows: [%{"n" => 1}]}} = Endpoints.run_query(endpoint)
 
       reject(Backends, :get_backend, 1)
@@ -66,32 +70,37 @@ defmodule Logflare.Endpoints.QueryLookupCacheTest do
   end
 
   test "SQL transformation accepts a cached user id without reading the user again", context do
-    assert Users.Cache.get(context.user.id).id == context.user.id
+    assert QueryContext.get_user(context.user.id).id == context.user.id
     reject(Users, :get, 1)
-    assert {:ok, sql} = Sql.transform(:ch_sql, "SELECT 1 AS n", context.user.id)
+
+    assert {:ok, sql} =
+             Sql.transform(:ch_sql, "SELECT 1 AS n", context.user.id, consistency: :cached)
+
     assert sql == elem(Sql.transform(:ch_sql, "SELECT 1 AS n", context.user), 1)
   end
 
   test "SQL transformation preserves missing users and cache unavailability", context do
-    expect(Users.Cache, :get, fn _ -> nil end)
-    assert {:error, "User not found"} = Sql.transform(:ch_sql, "SELECT 1", context.user.id)
+    expect(QueryContext, :get_user, fn _ -> nil end)
 
-    expect(Users.Cache, :get, fn _ -> {:error, :database_unavailable} end)
+    assert {:error, "User not found"} =
+             Sql.transform(:ch_sql, "SELECT 1", context.user.id, consistency: :cached)
+
+    expect(QueryContext, :get_user, fn _ -> {:error, :database_unavailable} end)
 
     assert {:error, :database_unavailable} =
-             Sql.transform(:ch_sql, "SELECT 1", context.user.id)
+             Sql.transform(:ch_sql, "SELECT 1", context.user.id, consistency: :cached)
   end
 
   test "explicit backend misses and cache failures remain controlled errors", context do
-    expect(Backends.Cache, :get_backend, fn _ -> nil end)
+    expect(QueryContext, :get_backend, fn _ -> nil end)
     assert {:error, "Backend not found"} = Endpoints.run_query(context.endpoint)
 
-    expect(Backends.Cache, :get_backend, fn _ -> {:error, :database_unavailable} end)
+    expect(QueryContext, :get_backend, fn _ -> {:error, :database_unavailable} end)
     assert {:error, :database_unavailable} = Endpoints.run_query(context.endpoint)
   end
 
   test "backend list cache failures propagate rather than falling back", context do
-    expect(Backends.Cache, :list_backends, fn _ -> {:error, :database_unavailable} end)
+    expect(QueryContext, :list_backends, fn _ -> {:error, :database_unavailable} end)
 
     assert {:error, :database_unavailable} =
              Endpoints.run_query(%{context.endpoint | backend_id: nil})

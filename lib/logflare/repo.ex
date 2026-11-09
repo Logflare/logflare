@@ -12,6 +12,42 @@ defmodule Logflare.Repo do
 
   @uptime_timeout 1_000
 
+  defoverridable transact: 2
+
+  @impl true
+  def transact(fun_or_multi, opts) do
+    key = {__MODULE__, :after_commit, get_dynamic_repo()}
+    previous = Process.get(key)
+    Process.put(key, [])
+
+    {result, callbacks} =
+      try do
+        result = super(fun_or_multi, opts)
+        {result, Process.get(key)}
+      after
+        if previous == nil, do: Process.delete(key), else: Process.put(key, previous)
+      end
+
+    if match?({:ok, _}, result) do
+      callbacks |> Enum.reverse() |> Enum.each(&after_commit/1)
+    end
+
+    result
+  end
+
+  @doc "Runs a callback after the outer transaction commits, or immediately outside one."
+  @spec after_commit((-> term())) :: :ok
+  def after_commit(callback) when is_function(callback, 0) do
+    if in_transaction?() do
+      key = {__MODULE__, :after_commit, get_dynamic_repo()}
+      Process.put(key, [callback | Process.get(key, [])])
+    else
+      callback.()
+    end
+
+    :ok
+  end
+
   @impl true
   def init(_context, config) do
     {role, config} = Keyword.pop(config, :logflare_connection_role, :primary)

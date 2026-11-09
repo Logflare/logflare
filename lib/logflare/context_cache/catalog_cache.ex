@@ -23,7 +23,7 @@ defmodule Logflare.ContextCache.CatalogCache do
     )
   end
 
-  @spec fetch(atom(), term(), (-> list() | error())) :: list() | error()
+  @spec fetch(atom(), term(), (-> result | error())) :: result | error() when result: term()
   def fetch(cache, key, loader) do
     generation = generation(cache, key)
     entry_key = {:catalog, key, generation}
