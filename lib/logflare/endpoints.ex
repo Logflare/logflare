@@ -1011,47 +1011,58 @@ defmodule Logflare.Endpoints do
     end
   end
 
-  @spec expand_query_subqueries(EndpointQuery.t()) ::
+  @doc """
+  Expands endpoint or alert references, loading cached catalogs only when needed.
+  """
+  @spec expand_query_subqueries(EndpointQuery.t() | AlertQuery.t()) ::
           {:ok, String.t()} | {:error, String.t() | :database_unavailable}
-  defp expand_query_subqueries(%EndpointQuery{query: "", language: language}) do
+  def expand_query_subqueries(%{__struct__: kind, query: "", language: language})
+      when kind in [EndpointQuery, AlertQuery] do
     Sql.expand_subqueries(language, "", [])
   end
 
-  defp expand_query_subqueries(%EndpointQuery{query: query, language: language} = endpoint) do
+  def expand_query_subqueries(%{__struct__: kind, query: query, language: language} = caller)
+      when kind in [EndpointQuery, AlertQuery] do
     with {:ok, names} <-
            Sql.extract_table_names(query,
              dialect: Sql.to_dialect(language),
              include_cte_aliases: true
            ),
-         {:ok, queries} <- queries_for_names(endpoint, names) do
+         {:ok, queries} <- queries_for_names(caller, names) do
       Sql.expand_subqueries(language, query, queries)
     end
   end
 
-  @spec queries_for_names(EndpointQuery.t(), [String.t()]) ::
+  @spec queries_for_names(EndpointQuery.t() | AlertQuery.t(), [String.t()]) ::
           {:ok, [EndpointQuery.t() | AlertQuery.t()]} | {:error, :database_unavailable}
-  defp queries_for_names(_endpoint, []), do: {:ok, []}
+  defp queries_for_names(_caller, []), do: {:ok, []}
 
-  defp queries_for_names(endpoint, names) do
-    with index when is_list(index) <- Cache.list_query_names(endpoint.user_id) do
+  defp queries_for_names(caller, names) do
+    with index when is_list(index) <- Cache.list_query_names(caller.user_id) do
       references = MapSet.new(names)
+      caller_kind = if match?(%EndpointQuery{}, caller), do: "endpoint", else: "alert"
 
       referenced? =
         Enum.any?(index, fn entry ->
-          MapSet.member?(references, entry.name) and entry.language == endpoint.language and
-            (entry.kind != "endpoint" or entry.id != endpoint.id)
+          MapSet.member?(references, entry.name) and entry.language == caller.language and
+            (entry.kind != caller_kind or entry.id != caller.id)
         end)
 
-      if referenced?, do: load_subquery_catalogs(endpoint), else: {:ok, []}
+      if referenced?, do: load_subquery_catalogs(caller), else: {:ok, []}
     end
   end
 
-  @spec load_subquery_catalogs(EndpointQuery.t()) ::
+  @spec load_subquery_catalogs(EndpointQuery.t() | AlertQuery.t()) ::
           {:ok, [EndpointQuery.t() | AlertQuery.t()]} | {:error, :database_unavailable}
-  defp load_subquery_catalogs(endpoint) do
-    with endpoints when is_list(endpoints) <- Cache.list_by_user_id(endpoint.user_id),
-         alerts when is_list(alerts) <- Alerting.Cache.list_by_user_id(endpoint.user_id) do
-      {:ok, Enum.reject(endpoints, &(&1.id == endpoint.id)) ++ alerts}
+  defp load_subquery_catalogs(caller) do
+    with endpoints when is_list(endpoints) <- Cache.list_by_user_id(caller.user_id),
+         alerts when is_list(alerts) <- Alerting.Cache.list_by_user_id(caller.user_id) do
+      queries =
+        Enum.reject(endpoints ++ alerts, fn query ->
+          query.__struct__ == caller.__struct__ and query.id == caller.id
+        end)
+
+      {:ok, queries}
     end
   end
 
