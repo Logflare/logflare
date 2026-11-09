@@ -425,11 +425,7 @@ defmodule Logflare.Backends do
         end
 
         if Keyword.get(opts, :query_policy_only, false) do
-          # Class policy intentionally uses eventually consistent backend metadata.
-          # These evictions do not fence in-flight fills or guarantee immediate propagation.
-          keys = [{__MODULE__, updated.id}]
-          Logflare.ContextCache.bust_keys(keys)
-          Cluster.Utils.rpc_multicast(Logflare.ContextCache, :bust_keys, [keys])
+          invalidate_query_policy(updated)
         else
           Enum.each(updated.sources, &restart_source_sup(&1))
           apply_consolidated_pipeline_change(backend, updated, default_ingest_modified?)
@@ -441,6 +437,16 @@ defmodule Logflare.Backends do
       error ->
         error
     end
+  end
+
+  @spec invalidate_query_policy(Backend.t()) :: :ok
+  defp invalidate_query_policy(%Backend{id: id, user_id: user_id}) do
+    keys = [{__MODULE__, id}, {QueryContext, [backend_id: id, owner_id: user_id]}]
+
+    Repo.after_commit(fn ->
+      Logflare.ContextCache.bust_keys(keys)
+      Cluster.Utils.rpc_multicast(Logflare.ContextCache, :bust_keys, [keys])
+    end)
   end
 
   @spec lock_backend(integer()) :: {:ok, Backend.t()} | {:error, :not_found}
