@@ -285,10 +285,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
   describe "query pool credentials" do
     test "the pool authenticates with the dedicated query user when configured" do
       {_source, backend} =
-        setup_clickhouse_test(
-          config: %{query_user: "ch_reader", query_password: "reader_pa55"},
-          cleanup?: false
-        )
+        setup_clickhouse_test(config: %{query_user: "ch_reader", query_password: "reader_pa55"})
 
       assert {"ch_reader", "reader_pa55"} = start_pool_credentials(backend)
     end
@@ -301,7 +298,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
 
     test "the pool falls back to the default credentials when only query_user is configured" do
       {_source, backend} =
-        setup_clickhouse_test(config: %{query_user: "ch_reader"}, cleanup?: false)
+        setup_clickhouse_test(config: %{query_user: "ch_reader"})
 
       assert {"logflare", "logflare"} = start_pool_credentials(backend)
     end

@@ -57,7 +57,7 @@ defmodule Logflare.Backends.ConsolidatedSup do
   @doc """
   Stops a consolidated pipeline for a backend.
   """
-  @spec stop_pipeline(Backend.t() | pos_integer()) :: :ok | {:error, :not_found}
+  @spec stop_pipeline(Backend.t() | non_neg_integer()) :: :ok | {:error, :not_found}
   def stop_pipeline(%Backend{} = backend) do
     case find_pipeline_pid(backend) do
       nil ->
@@ -81,7 +81,7 @@ defmodule Logflare.Backends.ConsolidatedSup do
   @doc """
   Checks if a consolidated pipeline is running for a backend.
   """
-  @spec pipeline_running?(Backend.t() | pos_integer()) :: boolean()
+  @spec pipeline_running?(Backend.t() | non_neg_integer()) :: boolean()
   def pipeline_running?(%Backend{} = backend) do
     find_pipeline_pid(backend) != nil
   end

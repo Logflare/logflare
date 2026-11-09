@@ -49,7 +49,7 @@ defmodule Logflare.Endpoints.EndpointPolicyDistributedTest do
         plan = insert(:plan)
         owner = insert(:user)
         admin = insert(:user, admin: true)
-        {source, backend} = setup_clickhouse_test(user: owner, cleanup?: false)
+        {source, backend} = setup_clickhouse_test(user: owner)
         table = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
         endpoint =
