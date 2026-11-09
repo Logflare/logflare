@@ -337,6 +337,9 @@ defmodule Logflare.Endpoints.ResultsCache do
     Endpoints.Cache.get_mapped_query_by_token(state.endpoint_query_token)
   end
 
+  @spec refresh(integer()) :: reference() | nil
+  defp refresh(every) when every <= 0, do: nil
+
   defp refresh(every) do
     Process.send_after(self(), :refresh, every)
   end
