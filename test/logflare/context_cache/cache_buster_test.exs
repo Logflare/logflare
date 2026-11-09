@@ -105,6 +105,82 @@ defmodule Logflare.ContextCache.CacheBusterTest do
     assert [] = QueryContext.list_backends(user.id)
   end
 
+  test "backend WAL updates without old ownership leave unrelated owners warm", %{user: user} do
+    other = insert(:user)
+    backend = insert(:backend, user: user)
+    assert [_] = QueryContext.list_backends(user.id)
+    assert [] = QueryContext.list_backends(other.id)
+    Repo.update!(Ecto.Changeset.change(backend, name: "Updated"))
+
+    bust_records(%UpdatedRecord{
+      relation: {"public", "backends"},
+      record: %{"id" => to_string(backend.id), "user_id" => to_string(user.id)},
+      old_record: %{}
+    })
+
+    ref = :telemetry_test.attach_event_handlers(self(), [[:logflare, :repo, :query]])
+    on_exit(fn -> :telemetry.detach(ref) end)
+    assert [] = QueryContext.list_backends(other.id)
+    refute_received {_, ^ref, _, _}
+    assert [%{name: "Updated"}] = QueryContext.list_backends(user.id)
+  end
+
+  test "backend WAL deletes with full identity leave unrelated owners warm", %{user: user} do
+    other = insert(:user)
+    backend = insert(:backend, user: user)
+    assert [_] = QueryContext.list_backends(user.id)
+    assert [] = QueryContext.list_backends(other.id)
+    Repo.delete!(backend)
+
+    bust_records(%DeletedRecord{
+      relation: {"public", "backends"},
+      old_record: %{"id" => to_string(backend.id), "user_id" => to_string(user.id)}
+    })
+
+    ref = :telemetry_test.attach_event_handlers(self(), [[:logflare, :repo, :query]])
+    on_exit(fn -> :telemetry.detach(ref) end)
+    assert [] = QueryContext.list_backends(other.id)
+    refute_received {_, ^ref, _, _}
+    assert [] = QueryContext.list_backends(user.id)
+  end
+
+  test "backend replication includes old ownership for targeted WAL deletes" do
+    assert %{rows: [["f"]]} =
+             Repo.query!(
+               "SELECT relreplident::text FROM pg_class WHERE oid = 'backends'::regclass"
+             )
+  end
+
+  test "query-context invalidation runs in a worker without blocking WAL intake", %{user: user} do
+    user_id = user.id
+    test_pid = self()
+    buster = Process.whereis(CacheBuster)
+
+    expect(ContextCache, :bust_keys, fn records ->
+      assert {QueryContext, [user_id: user_id]} in records
+      refute self() == buster
+      send(test_pid, {:invalidating, self()})
+
+      receive do
+        :continue ->
+          result = Mimic.call_original(ContextCache, :bust_keys, [records])
+          send(test_pid, :invalidated)
+          result
+      end
+    end)
+
+    send(CacheBuster, %Transaction{
+      changes: [
+        %UpdatedRecord{relation: {"public", "users"}, record: %{"id" => to_string(user_id)}}
+      ]
+    })
+
+    assert_receive {:invalidating, worker}
+    assert :sys.get_state(buster) == %{}
+    send(worker, :continue)
+    assert_receive :invalidated
+  end
+
   test "backend ownership WAL changes invalidate both owners", %{user: user} do
     other = insert(:user)
     backend = insert(:backend, user: user)
@@ -406,7 +482,9 @@ defmodule Logflare.ContextCache.CacheBusterTest do
     send(CacheBuster, %Transaction{changes: [change]})
 
     backend_id = backend.id
-    assert_receive {:busted, [{Backends, ^backend_id}]}, 500
+    assert_receive {:busted, records}, 500
+    assert {Backends, backend_id} in records
+    assert {QueryContext, [backend_id: backend_id, owner_id: user.id]} in records
     refute_receive {:refreshed, _user_id}, 300
   end
 

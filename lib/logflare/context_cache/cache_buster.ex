@@ -4,7 +4,6 @@ defmodule Logflare.ContextCache.CacheBuster do
   """
   use GenServer
 
-  alias Logflare.ContextCache.CacheBusterWorker
   alias Cainophile.Changes.DeletedRecord
   alias Cainophile.Changes.NewRecord
   alias Cainophile.Changes.Transaction
@@ -13,6 +12,7 @@ defmodule Logflare.ContextCache.CacheBuster do
   alias Logflare.Auth
   alias Logflare.Backends
   alias Logflare.Billing
+  alias Logflare.ContextCache.CacheBusterWorker
   alias Logflare.Endpoints
   alias Logflare.KeyValues
   alias Logflare.PubSub
@@ -24,7 +24,6 @@ defmodule Logflare.ContextCache.CacheBuster do
   alias Logflare.Sources.Catalog
   alias Logflare.TeamUsers
   alias Logflare.Users
-  alias Logflare.ContextCache.CacheBusterWorker
 
   require Logger
 
@@ -65,14 +64,8 @@ defmodule Logflare.ContextCache.CacheBuster do
   def handle_info(%Transaction{changes: changes} = transaction, state) do
     Logger.debug("WAL record received from pubsub: #{inspect(transaction)}")
 
-    for change <- changes,
-        fields = query_context_fields(change),
-        fields != [] do
-      QueryContext.Cache.invalidate(fields)
-    end
-
     for record <- changes,
-        bust <- List.wrap(handle_record(record)),
+        bust <- query_context_records(record) ++ List.wrap(handle_record(record)),
         bust != :noop do
       bust
     end
@@ -87,6 +80,14 @@ defmodule Logflare.ContextCache.CacheBuster do
     end)
 
     {:noreply, state}
+  end
+
+  @spec query_context_records(struct()) :: [{module(), keyword()}]
+  defp query_context_records(record) do
+    case query_context_fields(record) do
+      [] -> []
+      fields -> [{QueryContext, fields}]
+    end
   end
 
   defp query_context_fields(%DeletedRecord{relation: relation, old_record: record}) do
@@ -105,13 +106,6 @@ defmodule Logflare.ContextCache.CacheBuster do
       owner_id: String.to_integer(old_owner_id)
     ]
   end
-
-  defp query_context_fields(%UpdatedRecord{
-         relation: {_schema, "backends"},
-         record: %{"id" => id}
-       })
-       when is_binary(id),
-       do: [backend_id: String.to_integer(id)]
 
   defp query_context_fields(%{relation: {_schema, "users"}, record: %{"id" => id}})
        when is_binary(id),
