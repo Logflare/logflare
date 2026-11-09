@@ -21,6 +21,40 @@ defmodule Logflare.Backends.CacheTest do
     {:ok, backend: backend, source: source, user: user}
   end
 
+  test "backend inserts invalidate empty and populated owner lists", %{user: user} do
+    other_user = insert(:user)
+    assert [] = Backends.Cache.list_backends(user_id: user.id)
+
+    first = insert(:backend, user: other_user, type: :postgres)
+    assert [cached] = Backends.Cache.list_backends(user_id: other_user.id)
+    assert cached.id == first.id
+
+    created = insert(:backend, user: user, type: :clickhouse)
+    second = insert(:backend, user: other_user, type: :clickhouse)
+
+    assert {:ok, 2} = Logflare.ContextCache.bust_keys([{Backends, :not_found}])
+    assert [cached] = Backends.Cache.list_backends(user_id: user.id)
+    assert cached.id == created.id
+
+    assert MapSet.new(Backends.Cache.list_backends(user_id: other_user.id), & &1.id) ==
+             MapSet.new([first.id, second.id])
+  end
+
+  test "backend updates and deletes invalidate owner lists", %{user: user} do
+    backend = insert(:backend, user: user)
+    assert [cached] = Backends.Cache.list_backends(user_id: user.id)
+    assert cached.id == backend.id
+
+    updated = Repo.update!(Ecto.Changeset.change(backend, name: "Updated"))
+    assert {:ok, 1} = Logflare.ContextCache.bust_keys([{Backends, backend.id}])
+    assert [cached] = Backends.Cache.list_backends(user_id: user.id)
+    assert cached.name == updated.name
+
+    Repo.delete!(updated)
+    assert {:ok, 1} = Logflare.ContextCache.bust_keys([{Backends, backend.id}])
+    assert [] = Backends.Cache.list_backends(user_id: user.id)
+  end
+
   test "clear_list_backends_cache/1 refreshes cached source backends", %{
     backend: backend,
     source: source

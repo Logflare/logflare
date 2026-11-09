@@ -1209,12 +1209,14 @@ defmodule Logflare.Endpoints do
     end
   end
 
-  @spec get_backend_for_query(EndpointQuery.t()) :: {:ok, Backend.t()} | {:error, String.t()}
+  @spec get_backend_for_query(EndpointQuery.t()) ::
+          {:ok, Backend.t()} | {:error, String.t() | :database_unavailable}
   defp get_backend_for_query(%EndpointQuery{backend_id: backend_id})
        when is_integer(backend_id) do
-    case Backends.get_backend(backend_id) do
+    case Backends.Cache.get_backend(backend_id) do
       %Backend{} = backend -> {:ok, backend}
       nil -> {:error, "Backend not found"}
+      {:error, :database_unavailable} = error -> error
     end
   end
 
@@ -1230,14 +1232,15 @@ defmodule Logflare.Endpoints do
   defp language_to_backend_type(_), do: nil
 
   @spec find_backend_by_type_or_default(user_id :: integer(), backend_type :: atom() | nil) ::
-          {:ok, Backend.t()} | {:error, String.t()}
+          {:ok, Backend.t()} | {:error, String.t() | :database_unavailable}
   defp find_backend_by_type_or_default(user_id, backend_type)
        when is_integer(user_id) and is_atom_value(backend_type) do
-    user_backends = Backends.list_backends_by_user_id(user_id)
-
-    case Enum.find(user_backends, &(&1.type == backend_type)) do
-      nil -> get_default_backend_for_user(user_id)
-      backend -> {:ok, backend}
+    with user_backends when is_list(user_backends) <-
+           Backends.Cache.list_backends(user_id: user_id) do
+      case Enum.find(user_backends, &(&1.type == backend_type)) do
+        nil -> get_default_backend_for_user(user_id)
+        backend -> {:ok, backend}
+      end
     end
   end
 
@@ -1246,10 +1249,13 @@ defmodule Logflare.Endpoints do
   end
 
   @spec get_default_backend_for_user(user_id :: integer()) ::
-          {:ok, Backend.t()} | {:error, String.t()}
+          {:ok, Backend.t()} | {:error, String.t() | :database_unavailable}
   defp get_default_backend_for_user(user_id) when is_integer(user_id) do
-    user = Users.Cache.get(user_id)
-    {:ok, Backends.get_default_backend(user)}
+    case Users.Cache.get(user_id) do
+      %User{} = user -> {:ok, Backends.get_default_backend(user)}
+      nil -> {:error, "User not found"}
+      {:error, :database_unavailable} = error -> error
+    end
   end
 
   @spec build_transformation_context(Backend.t()) :: map()

@@ -270,9 +270,10 @@ defmodule Logflare.Sql do
         ) ::
           {:ok, String.t()} | {:error, String.t() | :database_unavailable}
   def transform(lang, input, user_id) when is_integer(user_id) do
-    case Users.get(user_id) do
+    case Users.Cache.get(user_id) do
       %User{} = user -> transform(lang, input, user)
       nil -> {:error, "User not found"}
+      {:error, :database_unavailable} = error -> error
     end
   end
 

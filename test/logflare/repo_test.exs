@@ -4,6 +4,7 @@ defmodule Logflare.RepoTest do
   alias Ecto.Adapters.SQL.Sandbox
   alias Logflare.Repo
   alias Logflare.Repo.Replicas
+  alias Logflare.Telemetry
 
   defp start_read_replicas(raw_entries, entry_overrides \\ []) do
     primary_hostname = Keyword.fetch!(Repo.config(), :hostname)
@@ -47,6 +48,48 @@ defmodule Logflare.RepoTest do
     end
 
     start_result
+  end
+
+  test "query metrics distinguish primary and replica pools using the same repo module" do
+    start_read_replicas(["127.0.0.1"], pool: DBConnection.ConnectionPool, pool_size: 1)
+    owner = Sandbox.start_owner!(Repo, shared: true)
+    on_exit(fn -> Sandbox.stop_owner(owner) end)
+
+    metrics =
+      Enum.filter(Telemetry.metrics(), &(&1.event_name == [:logflare, :repo, :query]))
+
+    assert length(metrics) == 4
+    test_pid = self()
+    handler_id = {__MODULE__, make_ref()}
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:logflare, :repo, :query],
+        fn _, _, metadata, _ ->
+          if metadata.query == "SELECT 1" do
+            for metric <- metrics do
+              send(test_pid, {:query_role, metric.name, metric.tag_values.(metadata)})
+            end
+          end
+        end,
+        nil
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    for role <- [:primary, :replica] do
+      case role do
+        :primary -> Repo.query!("SELECT 1", [])
+        :replica -> Repo.with_replica(fn -> Repo.query!("SELECT 1", []) end)
+      end
+
+      for metric <- metrics do
+        assert metric.tags == [:role]
+        name = metric.name
+        assert_receive {:query_role, ^name, %{role: ^role}}
+      end
+    end
   end
 
   describe "with_replica/1" do
