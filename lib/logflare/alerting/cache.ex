@@ -7,6 +7,7 @@ defmodule Logflare.Alerting.Cache do
   alias Logflare.Cache.CachexOps
   alias Logflare.ContextCache
   alias Logflare.ContextCache.CatalogCache
+  alias Logflare.Endpoints
   alias Logflare.Repo
   alias Logflare.User
 
@@ -34,6 +35,8 @@ defmodule Logflare.Alerting.Cache do
   @impl ContextCache
   @spec keys_to_bust(keyword()) :: Enumerable.t()
   def keys_to_bust(kw) do
+    Endpoints.Cache.invalidate_query_names(kw)
+
     if Keyword.has_key?(kw, :user_id) do
       entries =
         kw
