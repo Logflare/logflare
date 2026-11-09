@@ -165,7 +165,7 @@ ClickHouse scheduling classes do not partition successful result caches. Operato
 
 Logflare endpoints can be proactively requeried to ensure that the cache does not become stale throughout the cache lifetime.
 
-When configured, the cache will be automatically updated at the set interval, performing only one query to update the cached data.
+When configured with a positive interval in seconds, the cache will be automatically updated at that interval, performing only one query to update the cached data. Set Proactive Re-querying to `0` to disable cache warming. Non-positive intervals do not schedule background queries; cached results are reused until the cache expires, and the next request runs the query again.
 
 ## Query Tagging with Labels
 
