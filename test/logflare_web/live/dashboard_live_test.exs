@@ -73,6 +73,139 @@ defmodule LogflareWeb.DashboardLiveTest do
 
       assert view |> has_element?(".modal-title", "Saved Searches")
     end
+
+    test "authorizes saved searches as the signed-in member, not the team owner", %{
+      conn: conn,
+      user: user,
+      team: team,
+      source: source
+    } do
+      member = insert(:team_user, team: team)
+      own_search = insert(:saved_search, source: source, name: "Team search")
+      other_team = insert(:team)
+      insert(:team_user, team: other_team, email: user.email)
+      foreign_source = insert(:source, user: other_team.user)
+      foreign_search = insert(:saved_search, source: foreign_source, name: "Owner-only search")
+      conn = login_user(conn, user, member)
+
+      {:ok, view, _html} = live(conn, ~p"/dashboard?t=#{team.id}")
+
+      view
+      |> element("#source-#{source.token} a[phx-click='show_live_modal']")
+      |> render_click()
+
+      TestUtils.wait_for_render(view, "#saved-search-#{own_search.id}")
+
+      view
+      |> element("#logflare-modal .phx-modal-close")
+      |> render_click()
+
+      view
+      |> element("#source-#{source.token} a[phx-click='show_live_modal']")
+      |> render_click(%{"source-id" => to_string(foreign_source.id)})
+
+      TestUtils.retry_assert(fn ->
+        assert has_element?(view, "#saved-searches-modal", "Failed to load saved searches")
+        refute has_element?(view, "#saved-search-#{foreign_search.id}")
+        refute render(view) =~ foreign_search.querystring
+      end)
+    end
+
+    test "favorite shortcuts reflect starring, renaming, and deleting in the modal", %{
+      conn: conn,
+      source: source
+    } do
+      searches =
+        for name <- ["Timeouts", "Errors"] do
+          insert(:saved_search, source: source, name: name, description: "Context for #{name}")
+        end
+
+      unstarred = insert(:saved_search, source: source, name: "Not starred")
+
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/dashboard")
+
+      refute has_element?(view, "#source-#{source.id}-saved-searches")
+
+      view
+      |> element("#source-#{source.token} a[phx-click='show_live_modal']")
+      |> render_click()
+
+      TestUtils.wait_for_render(view, "#saved-searches-list")
+
+      for search <- searches do
+        view |> element("#favorite-saved-search-#{search.id}") |> render_click()
+        TestUtils.wait_for_render(view, "#saved-search-shortcut-#{search.id}")
+        assert has_element?(view, "#saved-search-shortcut-#{search.id}", search.name)
+
+        assert has_element?(
+                 view,
+                 "#saved-search-shortcut-#{search.id}.logflare-tooltip[data-original-title='#{search.description}']"
+               )
+      end
+
+      assert has_element?(
+               view,
+               "#source-#{source.id}-saved-searches-toggle[aria-expanded='false']",
+               "Show more"
+             )
+
+      assert has_element?(
+               view,
+               "#source-#{source.id}-saved-searches-panel[data-expanded='false']"
+             )
+
+      html = view |> render() |> Floki.parse_document!()
+
+      assert html
+             |> Floki.find("#source-#{source.id}-saved-searches a")
+             |> Enum.map(&Floki.text/1)
+             |> Enum.map(&String.trim/1) ==
+               ["Errors", "Timeouts"]
+
+      refute has_element?(view, "#saved-search-shortcut-#{unstarred.id}")
+
+      search = hd(searches)
+      view |> element("#edit-saved-search-name-#{search.id}") |> render_click()
+
+      view
+      |> form("#rename-saved-search-#{search.id}",
+        saved_search: %{name: "Aardvark", description: "Updated context"}
+      )
+      |> render_submit()
+
+      TestUtils.retry_assert(fn ->
+        assert has_element?(view, "#saved-search-shortcut-#{search.id}", "Aardvark")
+
+        assert has_element?(
+                 view,
+                 "#saved-search-shortcut-#{search.id}[data-original-title='Updated context']"
+               )
+      end)
+
+      view |> element("#edit-saved-search-name-#{search.id}") |> render_click()
+
+      view
+      |> form("#rename-saved-search-#{search.id}", saved_search: %{description: ""})
+      |> render_submit()
+
+      TestUtils.retry_assert(fn ->
+        refute has_element?(view, "#saved-search-shortcut-#{search.id}[data-original-title]")
+      end)
+
+      deleted = List.last(searches)
+      view |> element("#delete-saved-search-#{deleted.id}") |> render_click()
+
+      TestUtils.retry_assert(fn ->
+        refute has_element?(view, "#saved-search-shortcut-#{deleted.id}")
+        assert has_element?(view, "#saved-search-shortcut-#{search.id}")
+      end)
+
+      view |> element("#favorite-saved-search-#{search.id}") |> render_click()
+
+      TestUtils.retry_assert(fn ->
+        refute has_element?(view, "#source-#{source.id}-saved-searches")
+      end)
+    end
   end
 
   describe "dashboard single tenant" do
@@ -366,7 +499,15 @@ defmodule LogflareWeb.DashboardLiveTest do
       team = insert(:team, user: user)
       team_user = insert(:team_user, team: team, email: user.email)
       source = insert(:source, user: user)
-      saved_search = insert(:saved_search, source: source)
+
+      saved_search =
+        insert(:saved_search,
+          source: source,
+          name: "Errors and warnings",
+          querystring: "error OR warning",
+          favorite: true,
+          tailing: false
+        )
 
       conn = login_user(conn, user, team_user)
 
@@ -396,9 +537,10 @@ defmodule LogflareWeb.DashboardLiveTest do
     test "dashboard links preserve team param", %{
       conn: conn,
       team_user: team_user,
-      source: source
+      source: source,
+      saved_search: search
     } do
-      {:ok, _view, html} = live(conn, ~p"/dashboard?t=#{team_user.team_id}")
+      {:ok, view, html} = live(conn, ~p"/dashboard?t=#{team_user.team_id}")
 
       for path <- [
             "sources/#{source.id}",
@@ -408,6 +550,23 @@ defmodule LogflareWeb.DashboardLiveTest do
           ] do
         assert html =~ ~r/#{path}[^"<]*t=#{team_user.team_id}/
       end
+
+      href =
+        view
+        |> element("#saved-search-shortcut-#{search.id}")
+        |> render()
+        |> Floki.parse_fragment!()
+        |> Floki.attribute("href")
+        |> hd()
+
+      uri = URI.parse(href)
+      assert uri.path == "/sources/#{source.id}/search"
+
+      assert URI.decode_query(uri.query) == %{
+               "querystring" => "error OR warning",
+               "tailing?" => "false",
+               "t" => to_string(team_user.team_id)
+             }
     end
   end
 end

@@ -99,6 +99,19 @@ defmodule LogflareWeb.DashboardLive do
     {:noreply, put_flash(socket, type, message)}
   end
 
+  def handle_info({:saved_searches_updated, source_id, saved_searches}, socket) do
+    sources =
+      Enum.map(socket.assigns.sources, fn
+        %{id: ^source_id} = source ->
+          %{source | saved_searches: Enum.filter(saved_searches, & &1.favorite)}
+
+        source ->
+          source
+      end)
+
+    {:noreply, assign(socket, :sources, sources)}
+  end
+
   @impl true
   def handle_info({:metrics_update, payload}, socket) do
     socket =
@@ -130,6 +143,7 @@ defmodule LogflareWeb.DashboardLive do
         title: @modal.body.title,
         params: @modal.params,
         user: @user,
+        team_user: @team_user,
         team: @team,
         close: @modal.body[:close],
         return_to: @modal.body.return_to

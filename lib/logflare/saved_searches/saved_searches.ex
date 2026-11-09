@@ -1,7 +1,7 @@
 defmodule Logflare.SavedSearches do
   @moduledoc false
 
-  import Ecto.Query
+  import Ecto.Query, except: [update: 2]
 
   alias Logflare.Lql
   alias Logflare.Lql.Rules.ChartRule
@@ -9,6 +9,9 @@ defmodule Logflare.SavedSearches do
   alias Logflare.Repo
   alias Logflare.SavedSearch
   alias Logflare.Sources.Source
+  alias Logflare.Teams
+  alias Logflare.TeamUsers.TeamUser
+  alias Logflare.User
 
   @type lql_rule :: ChartRule.t() | FilterRule.t()
 
@@ -20,12 +23,29 @@ defmodule Logflare.SavedSearches do
     Repo.get(SavedSearch, id)
   end
 
+  @spec get_by_user_access(User.t() | TeamUser.t(), integer() | String.t()) ::
+          SavedSearch.t() | nil
+  def get_by_user_access(user, id) do
+    sources =
+      Source
+      |> Teams.filter_by_user_access(user)
+      |> select([source], source.id)
+
+    SavedSearch
+    |> where([search], search.id == ^id and search.saved_by_user == true)
+    |> where([search], search.source_id in subquery(sources))
+    |> Repo.one()
+  end
+
   @doc """
   Inserts a SavedSearch.
   """
   @typep insert_params :: %{
            :lql_rules => list(lql_rule()),
            :querystring => String.t(),
+           optional(:name) => String.t() | nil,
+           optional(:description) => String.t() | nil,
+           optional(:favorite) => boolean(),
            optional(:saved_by_user) => boolean(),
            optional(:tailing) => boolean()
          }
@@ -48,13 +68,11 @@ defmodule Logflare.SavedSearches do
     |> Repo.insert()
   end
 
-  @doc """
-  Marks a SavedSearch as not saved (i.e. user will not see in dashboard)
-  """
-  @spec delete_by_user(SavedSearch.t()) :: {:ok, SavedSearch.t()}
-  def delete_by_user(search) do
+  @spec update(SavedSearch.t(), map()) ::
+          {:ok, SavedSearch.t()} | {:error, Ecto.Changeset.t()}
+  def update(search, params) do
     search
-    |> SavedSearch.changeset(%{saved_by_user: false})
+    |> SavedSearch.changeset(params)
     |> Repo.update()
   end
 
@@ -67,9 +85,7 @@ defmodule Logflare.SavedSearches do
     search = get_by_qs_source_id(querystring, source.id)
 
     if search do
-      search
-      |> SavedSearch.changeset(%{saved_by_user: true, tailing: tailing?})
-      |> Repo.update()
+      update(search, %{saved_by_user: true, tailing: tailing?})
     else
       insert(
         %{
@@ -109,12 +125,19 @@ defmodule Logflare.SavedSearches do
     |> Repo.all()
   end
 
-  @spec list_saved_searches_by_source(number()) :: [SavedSearch.t()]
-  def list_saved_searches_by_source(source_id) do
+  @spec list_by_sources([pos_integer()]) :: [SavedSearch.t()]
+  def list_by_sources([]), do: []
+
+  def list_by_sources(source_ids) do
     SavedSearch
     |> where([s], s.saved_by_user == true)
-    |> where([s], s.source_id == ^source_id)
-    |> order_by([s], asc: fragment("lower(?)", s.querystring))
+    |> where([s], s.source_id in ^source_ids)
+    |> order_by([s],
+      asc: s.source_id,
+      desc: s.favorite,
+      asc: fragment("lower(coalesce(nullif(?, ''), 'untitled'))", s.name),
+      asc: s.id
+    )
     |> Repo.all()
   end
 end

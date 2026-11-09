@@ -18,6 +18,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.Lql.Rules
   alias Logflare.NaturalLanguageLql.AnthropicClient
+  alias Logflare.SavedSearches
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
@@ -389,7 +390,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
   describe "search tasks" do
     setup context do
-      plan = insert(:plan, name: Map.get(context, :plan_name, "Free"))
+      plan_attrs =
+        [name: Map.get(context, :plan_name, "Free")]
+        |> Keyword.merge(Map.get(context, :plan_attrs, []))
+
+      plan = insert(:plan, plan_attrs)
       user = insert(:user, billing_enabled: plan.name != "Legacy")
 
       source_attrs =
@@ -411,6 +416,47 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     setup [:setup_mocks, :setup_user_session]
+
+    @tag plan_attrs: [limit_saved_search_limit: 2]
+    test "saving opens naming, and search results do not reopen it after cancel",
+         %{
+           conn: conn,
+           source: source
+         } do
+      {:ok, view, _html} =
+        live_with_redirect(
+          conn,
+          ~p"/sources/#{source.id}/search?#{%{querystring: "naming-test", tailing?: false}}"
+        )
+
+      view |> element("#save-search") |> render_click()
+
+      search =
+        SavedSearches.get_by_qs_source_id("naming-test #{@default_querystring}", source.id)
+
+      TestUtils.wait_for_render(view, "#saved-search-name-#{search.id}")
+
+      view |> element("#cancel-saved-search-name-#{search.id}") |> render_click()
+      send(view.pid, {:search_result, %{aggregates: struct(Logflare.Logs.SearchOperation)}})
+      render(view)
+
+      refute has_element?(view, "#rename-saved-search-#{search.id}")
+      assert has_element?(view, "#run-saved-search-#{search.id}", "untitled")
+    end
+
+    @tag plan_attrs: [limit_saved_search_limit: 0]
+    test "the saved search limit does not open the saved searches modal", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} =
+        live_with_redirect(conn, ~p"/sources/#{source.id}/search?querystring=over-limit")
+
+      view |> element("#save-search") |> render_click()
+      refute has_element?(view, "#saved-searches-modal")
+      assert render(view) =~ "saved search limit"
+      assert Logflare.SavedSearches.list_by_sources([source.id]) == []
+    end
 
     test "subheader - lql docs", %{conn: conn, source: source} do
       {:ok, view, _html} =
@@ -510,40 +556,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     test "subheader - saved searches", %{conn: conn, source: source} do
       {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
-      %{executor_pid: search_executor_pid} = get_view_assigns(view)
-      allow_sandbox(search_executor_pid)
 
-      assert view
-             |> element(".subhead a", "saved")
-             |> render_click()
-
-      view
-      |> TestUtils.wait_for_render("#logflare-modal")
-
-      assert view
-             |> has_element?("#logflare-modal #saved-searches-empty")
-
-      saved_search = insert(:saved_search, %{source: source})
-
-      _ =
-        Logflare.ContextCache.bust_keys([
-          {Logflare.SavedSearches, source_id: saved_search.source_id}
-        ])
-
-      {:ok, view, _html} = live_with_redirect(conn, ~p"/sources/#{source.id}/search")
-
-      assert view
-             |> element(".subhead a", "saved")
-             |> render_click()
-
-      view
-      |> TestUtils.wait_for_render("#logflare-modal")
-
-      view
-      |> TestUtils.wait_for_render("#logflare-modal #saved-searches-list")
-
-      assert view
-             |> has_element?("#logflare-modal #saved-searches-list", saved_search.querystring)
+      refute has_element?(view, "#saved-searches-modal")
+      view |> element(".subhead a", "saved") |> render_click()
+      assert has_element?(view, "#logflare-modal #saved-searches-modal")
     end
 
     test "load page", %{conn: conn, source: source} do
