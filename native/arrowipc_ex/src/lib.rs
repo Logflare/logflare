@@ -181,6 +181,35 @@ fn row_count(ndjson: &[u8]) -> usize {
         .count()
 }
 
+/// Splits NDJSON at row boundaries into chunks of at most `max_bytes`, so each
+/// chunk becomes one record batch that fits an AppendRows request. A single row
+/// longer than `max_bytes` becomes a chunk of its own.
+fn byte_bounded_chunks(ndjson: &[u8], max_bytes: usize) -> Vec<&[u8]> {
+    let mut chunks = Vec::new();
+    let mut chunk_start = 0;
+    let mut chunk_end = 0;
+
+    while chunk_end < ndjson.len() {
+        let row_end = ndjson[chunk_end..]
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .map_or(ndjson.len(), |newline| chunk_end + newline + 1);
+
+        if row_end - chunk_start > max_bytes && chunk_end > chunk_start {
+            chunks.push(&ndjson[chunk_start..chunk_end]);
+            chunk_start = chunk_end;
+        }
+
+        chunk_end = row_end;
+    }
+
+    if chunk_end > chunk_start {
+        chunks.push(&ndjson[chunk_start..chunk_end]);
+    }
+
+    chunks
+}
+
 /// BigQuery REPEATED columns map to non-nullable Arrow lists with
 /// non-nullable items. Attribute maps become lists of key/value structs: a
 /// map array has the same physical layout (offsets over a struct of
@@ -254,7 +283,9 @@ fn bigquery_schema(read_schema: &Schema) -> SchemaRef {
 /// `:string_map`, or an array type (`:integer_array`, `:float_array`,
 /// `:string_array`, `:json_array`). The input is decoded as is: row keys must
 /// already be the column names and `:json_array` elements must already be JSON
-/// strings, as in the mapper's `:bigquery_ndjson` output. Returns
+/// strings, as in the mapper's NDJSON output with `column_names: :underscore`
+/// and `nested_arrays: :json_strings`. Rows are encoded into one record batch
+/// per `max_batch_bytes` of input (see `byte_bounded_chunks`). Returns
 /// `{:ok, schema, batches}`, or `{:error, message}` when a row does not fit the
 /// schema.
 #[rustler::nif(schedule = "DirtyCpu")]
@@ -263,7 +294,12 @@ fn get_ipc_bytes_with_schema<'a>(
     ndjson: Binary<'a>,
     fields: Vec<(String, Atom, bool)>,
     compression: Atom,
+    max_batch_bytes: usize,
 ) -> NifResult<(Atom, Binary<'a>, Vec<Binary<'a>>)> {
+    if max_batch_bytes == 0 {
+        return Err(Error::BadArg);
+    }
+
     let write_options = build_write_options(atom_to_compression(compression)?);
 
     let read_fields = fields
@@ -289,25 +325,29 @@ fn get_ipc_bytes_with_schema<'a>(
         bytes
     };
 
-    // the decoder preallocates from the batch size, so size it to the row count
-    // to get a single record batch without over-allocating
-    let mut decoder = ReaderBuilder::new(read_schema)
-        .with_batch_size(row_count(ndjson.as_slice()).max(1))
-        .build_decoder()
-        .map_err(arrow_error)?;
-
-    let mut remaining = ndjson.as_slice();
-    while !remaining.is_empty() {
-        let consumed = decoder.decode(remaining).map_err(arrow_error)?;
-        if consumed == 0 {
-            break;
-        }
-        remaining = &remaining[consumed..];
-    }
-
     let mut result = Vec::new();
 
-    if let Some(batch) = decoder.flush().map_err(arrow_error)? {
+    for chunk in byte_bounded_chunks(ndjson.as_slice(), max_batch_bytes) {
+        // the decoder preallocates from the batch size, so size it to the chunk's
+        // row count to get one record batch per chunk without over-allocating
+        let mut decoder = ReaderBuilder::new(read_schema.clone())
+            .with_batch_size(row_count(chunk).max(1))
+            .build_decoder()
+            .map_err(arrow_error)?;
+
+        let mut remaining = chunk;
+        while !remaining.is_empty() {
+            let consumed = decoder.decode(remaining).map_err(arrow_error)?;
+            if consumed == 0 {
+                break;
+            }
+            remaining = &remaining[consumed..];
+        }
+
+        let Some(batch) = decoder.flush().map_err(arrow_error)? else {
+            continue;
+        };
+
         let batch = to_bigquery_batch(batch, &write_schema).map_err(arrow_error)?;
 
         let mut dictionary_tracker = DictionaryTracker::new(false);
@@ -330,3 +370,52 @@ fn get_ipc_bytes_with_schema<'a>(
 }
 
 rustler::init!("Elixir.Logflare.Backends.Adaptor.BigQueryAdaptor.ArrowIPC");
+
+#[cfg(test)]
+mod tests {
+    use super::byte_bounded_chunks;
+
+    #[test]
+    fn keeps_input_within_the_limit_in_one_chunk() {
+        assert_eq!(byte_bounded_chunks(b"ab\ncd\n", 6), vec![&b"ab\ncd\n"[..]]);
+    }
+
+    #[test]
+    fn splits_at_row_boundaries_when_the_limit_is_exceeded() {
+        assert_eq!(
+            byte_bounded_chunks(b"ab\ncd\nef\n", 6),
+            vec![&b"ab\ncd\n"[..], &b"ef\n"[..]]
+        );
+    }
+
+    #[test]
+    fn gives_a_row_longer_than_the_limit_its_own_chunk() {
+        assert_eq!(
+            byte_bounded_chunks(b"a\nlong-row\nb\n", 4),
+            vec![&b"a\n"[..], &b"long-row\n"[..], &b"b\n"[..]]
+        );
+    }
+
+    #[test]
+    fn keeps_a_final_row_without_a_trailing_newline() {
+        assert_eq!(
+            byte_bounded_chunks(b"ab\ncd", 3),
+            vec![&b"ab\n"[..], &b"cd"[..]]
+        );
+    }
+
+    #[test]
+    fn returns_no_chunks_for_empty_input() {
+        assert!(byte_bounded_chunks(b"", 10).is_empty());
+    }
+
+    #[test]
+    fn keeps_every_byte_in_order() {
+        let input = b"one\ntwo\nthree\nfour\nfive\n";
+
+        for max_bytes in 1..=input.len() + 1 {
+            let joined: Vec<u8> = byte_bounded_chunks(input, max_bytes).concat();
+            assert_eq!(joined, input, "max_bytes = {max_bytes}");
+        }
+    }
+}

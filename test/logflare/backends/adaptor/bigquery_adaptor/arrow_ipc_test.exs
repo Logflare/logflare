@@ -45,9 +45,45 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.ArrowIPCTest do
                DataFrame.to_rows(decode!(~s({"id":"a"}\n), fields))
     end
 
-    test "produces a single record batch" do
+    test "keeps an input below the default limit in one record batch" do
       ndjson = Enum.map_join(1..1_000, &~s({"id":"#{&1}"}\n))
       assert {:ok, _schema, [_batch]} = ArrowIPC.get_ipc_bytes_with_schema(ndjson, @fields, :zstd)
+    end
+
+    test "splits rows into record batches bounded by input bytes" do
+      rows = for n <- 1..100, do: ~s({"id":"#{String.pad_leading("#{n}", 3, "0")}"}\n)
+      row_bytes = byte_size(hd(rows))
+      max_batch_bytes = row_bytes * 7
+
+      assert {:ok, schema, batches} =
+               ArrowIPC.get_ipc_bytes_with_schema(
+                 Enum.join(rows),
+                 @fields,
+                 :none,
+                 max_batch_bytes
+               )
+
+      batch_ids = Enum.map(batches, &ids(schema, &1))
+
+      assert length(batches) == 15
+      assert Enum.all?(batch_ids, &(length(&1) * row_bytes <= max_batch_bytes))
+      assert List.flatten(batch_ids) == Enum.map(1..100, &String.pad_leading("#{&1}", 3, "0"))
+    end
+
+    test "gives a row larger than the limit a record batch of its own" do
+      long_id = String.duplicate("x", 100)
+      ndjson = ~s({"id":"a"}\n{"id":"#{long_id}"}\n{"id":"b"}\n)
+
+      assert {:ok, schema, batches} =
+               ArrowIPC.get_ipc_bytes_with_schema(ndjson, @fields, :none, 20)
+
+      assert Enum.map(batches, &ids(schema, &1)) == [["a"], [long_id], ["b"]]
+    end
+
+    test "rejects a non-positive batch limit" do
+      assert_raise ArgumentError, fn ->
+        ArrowIPC.get_ipc_bytes_with_schema(~s({"id":"a"}\n), @fields, :none, 0)
+      end
     end
 
     test "encodes timestamps given as Unix microseconds" do
@@ -130,6 +166,14 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.ArrowIPCTest do
         end
       end
     end
+  end
+
+  defp ids(schema, batch) do
+    [schema, batch]
+    |> IO.iodata_to_binary()
+    |> DataFrame.load_ipc_stream!()
+    |> DataFrame.pull("id")
+    |> Explorer.Series.to_list()
   end
 
   defp decode!(ndjson, fields \\ @fields) do
