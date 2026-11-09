@@ -307,7 +307,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
       new_state = recycle_pool_connections(state, System.system_time(:millisecond))
       {:reply, :ok, new_state}
     else
-      {:reply, {:error, :no_pool}, %__MODULE__{state | pool_pid: nil, next_recycle_at: nil}}
+      {:reply, {:error, :no_pool}, clear_pool(state)}
     end
   end
 
@@ -385,7 +385,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
       host: connection_host(state.backend_id, state.label)
     )
 
-    {:noreply, %{state | pool_pid: nil, next_recycle_at: nil}}
+    {:noreply, clear_pool(state)}
   end
 
   def handle_info({:DOWN, _ref, :process, _pid, _reason}, %__MODULE__{} = state) do
@@ -456,7 +456,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
 
       # Pool exists but not alive, clean up
       not Process.alive?(pool_pid) ->
-        %__MODULE__{state | pool_pid: nil, next_recycle_at: nil}
+        clear_pool(state)
 
       # No activity recorded yet, set activity to now
       is_nil(last_activity) ->
@@ -482,7 +482,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
       )
     end
 
-    %__MODULE__{state | pool_pid: nil, next_recycle_at: nil}
+    clear_pool(state)
   end
 
   @spec maybe_recycle_pool(__MODULE__.t(), integer()) :: __MODULE__.t()
