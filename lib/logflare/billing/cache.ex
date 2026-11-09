@@ -4,7 +4,11 @@ defmodule Logflare.Billing.Cache do
   use Logflare.ContextCache
 
   alias Logflare.Billing
+  alias Logflare.Billing.Plan
   alias Logflare.Cache.CachexOps
+  alias Logflare.ContextCache
+  alias Logflare.Repo
+  alias Logflare.User
 
   def child_spec(_) do
     CachexOps.child_spec(__MODULE__,
@@ -18,10 +22,47 @@ defmodule Logflare.Billing.Cache do
     apply_fun(__ENV__.function, [keyword])
   end
 
-  def get_plan_by_user(user), do: apply_fun(__ENV__.function, [user])
+  @spec get_plan_by_user(User.t()) :: Plan.t() | {:error, :database_unavailable}
+  def get_plan_by_user(%User{id: id}) do
+    fetch({:get_plan_by_user, [id]}, fn ->
+      Repo.with_primary(fn ->
+        user = Repo.get!(User, id)
+        Billing.get_plan_by_user(user)
+      end)
+    end)
+  end
+
   def get_plan_by(keyword), do: apply_fun(__ENV__.function, [keyword])
 
+  @impl ContextCache
+  def keys_to_bust(user_id: id) do
+    [{:get_plan_by_user, [id]}, {:get_billing_account_by, [[user_id: id]]}]
+  end
+
+  def keys_to_bust(id: id, user_id: user_id) do
+    account_keys =
+      __MODULE__
+      |> CachexOps.keys_to_bust(id: id)
+      |> Stream.filter(fn {fun, _args} -> fun == :get_billing_account_by end)
+
+    Stream.concat(keys_to_bust(user_id: user_id), account_keys)
+  end
+
+  def keys_to_bust(id: _id, billing_accounts: :changed),
+    do: keys_to_bust(billing_accounts: :changed)
+
+  def keys_to_bust(billing_accounts: :changed) do
+    filter =
+      {:orelse, {:==, {:element, 1, :key}, :get_plan_by_user},
+       {:==, {:element, 1, :key}, :get_billing_account_by}}
+
+    query = Cachex.Query.build(where: filter, output: :key)
+    Cachex.stream!(__MODULE__, query)
+  end
+
+  def keys_to_bust(kw), do: CachexOps.keys_to_bust(__MODULE__, kw)
+
   defp apply_fun(arg1, arg2) do
-    Logflare.ContextCache.apply_fun(Billing, arg1, arg2)
+    ContextCache.apply_fun(Billing, arg1, arg2)
   end
 end
