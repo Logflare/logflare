@@ -1672,6 +1672,35 @@ defmodule Logflare.BackendsTest do
       end)
     end
 
+    test "enabled-only updates preserve SourceSup while combined updates restart it", %{
+      source: source,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          sources: [source],
+          type: :webhook,
+          config: %{url: "https://example.com"},
+          user: user
+        )
+
+      assert :ok = Backends.start_source_sup(source)
+      on_exit(fn -> Backends.stop_source_sup(source) end)
+
+      assert {:ok, source_sup_pid} = Backends.lookup(SourceSup, source)
+      assert {:ok, disabled_backend} = Backends.update_backend(backend, %{enabled: false})
+      assert {:ok, ^source_sup_pid} = Backends.lookup(SourceSup, source)
+
+      assert {:ok, _enabled_backend} =
+               Backends.update_backend(disabled_backend, %{
+                 enabled: true,
+                 config: %{url: "http://changed.com"}
+               })
+
+      assert {:ok, restarted_source_sup_pid} = Backends.lookup(SourceSup, source)
+      refute restarted_source_sup_pid == source_sup_pid
+    end
+
     test "SourceSup filters out consolidated backends", %{source: source, user: user} do
       consolidated_backend =
         insert(:backend,
@@ -1908,16 +1937,29 @@ defmodule Logflare.BackendsTest do
       refute Backends.any_ingest_queue_over_limit?(source.id)
     end
 
-    test "any_ingest_queue_over_limit?/1 is true for an opted-in source when the unlinked account default's consolidated queue is over the limit",
-         %{source: source} do
-      stub(IngestEventQueue, :max_consolidated_queue_size, fn -> 50 end)
-      user = Repo.get(User, source.user_id)
-      opted_in = insert(:source, user: user, default_ingest_backend_enabled?: true)
-      backend = insert(:backend, user: user, type: :clickhouse, default_ingest?: true)
+    for enabled <- [true, false] do
+      test "unlinked account default with enabled=#{enabled} controls HTTP and spool backpressure",
+           %{source: source} do
+        stub(IngestEventQueue, :max_consolidated_queue_size, fn -> 50 end)
+        user = Repo.get(User, source.user_id)
+        opted_in = insert(:source, user: user, default_ingest_backend_enabled?: true)
 
-      fill_consolidated_queue(backend, 51)
+        backend =
+          insert(:backend,
+            user: user,
+            type: :clickhouse,
+            default_ingest?: true,
+            enabled: unquote(enabled)
+          )
 
-      assert Backends.any_ingest_queue_over_limit?(opted_in.id)
+        assert [] = Backends.list_backends(source_id: opted_in.id)
+        fill_consolidated_queue(backend, 51)
+        Backends.cache_local_buffer_lens(:consolidated, backend.id)
+
+        assert Backends.cached_local_pending_buffer_full?(opted_in) == unquote(enabled)
+        assert Backends.any_ingest_queue_over_limit?(opted_in.id) == unquote(enabled)
+        assert IngestEventQueue.get_table_size({:consolidated, backend.id, self()}) == 51
+      end
     end
 
     test "any_ingest_queue_over_limit?/1 ignores the account default's consolidated queue for an opted-out source",
@@ -1984,6 +2026,70 @@ defmodule Logflare.BackendsTest do
       # for system default
       assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch],
                       %{count: ^log_count}, %{backend_type: :bigquery}}
+    end
+
+    test "does not ingest or increment counters for an explicitly disabled backend", %{
+      source: source
+    } do
+      user = Repo.get(User, source.user_id)
+
+      backend =
+        insert(:backend,
+          enabled: false,
+          type: :webhook,
+          config: %{url: "https://disabled.example.com"},
+          user: user
+        )
+
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+      {:ok, initial_count} = Counters.get_inserts(source.token)
+
+      assert {:ok, 0} =
+               Backends.ingest_logs([%{"event_message" => "do not send"}], source, backend)
+
+      assert {:ok, ^initial_count} = Counters.get_inserts(source.token)
+      assert {:ok, []} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+    end
+
+    test "does not fan out source ingestion to an attached disabled backend", %{source: source} do
+      user = Repo.get(User, source.user_id)
+
+      backend =
+        insert(:backend,
+          enabled: false,
+          sources: [source],
+          type: :webhook,
+          config: %{url: "https://disabled.example.com"},
+          user: user
+        )
+
+      Backends.clear_list_backends_cache(source.id)
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+
+      assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "keep local"}], source)
+      assert {:ok, []} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+    end
+
+    test "does not route or bill events for a disabled drain destination", %{source: source} do
+      user = Repo.get(User, source.user_id)
+
+      backend =
+        insert(:backend,
+          enabled: false,
+          type: :webhook,
+          config: %{url: "https://disabled.example.com"},
+          user: user
+        )
+
+      insert(:rule, lql_string: "testing", backend: backend, source_id: source.id)
+      Logflare.ContextCache.bust_keys([{Rules, [source_id: source.id]}])
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+      {:ok, initial_count} = Counters.get_inserts(source.token)
+
+      assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "testing"}], source)
+      assert {:ok, count} = Counters.get_inserts(source.token)
+      assert count == initial_count + 1
+      assert {:ok, []} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
     end
   end
 
@@ -2239,28 +2345,33 @@ defmodule Logflare.BackendsTest do
       assert system_event.batch_bytes == consolidated_event.batch_bytes
     end
 
-    test "dispatch_to_backends with nil backend reaches the account default backend with no explicit link",
-         %{user: user} do
-      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
-      start_supervised!({SourceSup, source})
+    for {enabled, expected_count} <- [{true, 1}, {false, 0}] do
+      test "source fan-out to an unlinked account default with enabled=#{enabled}", %{user: user} do
+        source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+        start_supervised!({SourceSup, source})
 
-      backend =
-        insert(:backend,
-          type: :clickhouse,
-          config: %{url: "http://localhost", database: "test", port: 8123},
-          user: user,
-          default_ingest?: true
-        )
+        backend =
+          insert(:backend,
+            type: :clickhouse,
+            config: %{url: "http://localhost", database: "test", port: 8123},
+            user: user,
+            default_ingest?: true,
+            enabled: unquote(enabled)
+          )
 
-      Backends.refresh_default_ingest_backends_cache(user.id)
-      IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
-      IngestEventQueue.upsert_tid({source.id, nil, nil})
+        assert [] = Backends.list_backends(source_id: source.id)
+        assert [%Backend{id: backend_id}] = Backends.Cache.list_default_ingest_backends(user.id)
+        assert backend_id == backend.id
+        IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
+        IngestEventQueue.upsert_tid({source.id, nil, nil})
 
-      events = [build(:log_event, source: source, message: "auto opt-in")]
-      assert {:ok, 1} = Backends.ingest_logs(events, source)
+        events = [build(:log_event, source: source, message: "auto opt-in")]
+        assert {:ok, 1} = Backends.ingest_logs(events, source)
 
-      {:ok, queued} = IngestEventQueue.fetch_events({:consolidated, backend.id}, 10)
-      assert [%{body: %{"event_message" => "auto opt-in"}}] = queued
+        assert {:ok, queued} = IngestEventQueue.fetch_events({:consolidated, backend.id}, 10)
+        assert length(queued) == unquote(expected_count)
+        assert Enum.all?(queued, &(&1.body["event_message"] == "auto opt-in"))
+      end
     end
 
     test "dispatch_to_backends with nil backend skips the default backend for an opted-out source",

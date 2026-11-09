@@ -229,6 +229,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       assert response["name"] == name
       assert response["config"]["url"] =~ "example.com"
+      assert response["enabled"] == true
       assert response["inserted_at"]
       assert response["updated_at"]
     end
@@ -457,6 +458,60 @@ defmodule LogflareWeb.Api.BackendControllerTest do
   end
 
   describe "update/2" do
+    test "PATCH updates `enabled`", %{conn: conn, user: user} do
+      backend = insert(:backend, user: user)
+
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> patch("/api/backends/#{backend.token}", %{enabled: false})
+        |> response(204)
+
+      assert response == ""
+      refute Logflare.Backends.get_backend(backend.id).enabled
+    end
+
+    test "PATCH preserves `enabled` when it is omitted", %{conn: conn, user: user} do
+      backend = insert(:backend, user: user, enabled: false)
+      name = TestUtils.random_string()
+
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> patch("/api/backends/#{backend.token}", %{name: name})
+        |> response(204)
+
+      assert response == ""
+      updated_backend = Logflare.Backends.get_backend(backend.id)
+      assert updated_backend.name == name
+      refute updated_backend.enabled
+    end
+
+    test "updates `enabled` and returns it from PUT", %{conn: conn, user: user} do
+      backend = insert(:backend, user: user)
+
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> put("/api/backends/#{backend.token}", %{enabled: false})
+        |> json_response(200)
+
+      assert response["enabled"] == false
+      refute Logflare.Backends.get_backend(backend.id).enabled
+    end
+
+    test "rejects a null `enabled` value", %{conn: conn, user: user} do
+      backend = insert(:backend, user: user)
+
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> patch("/api/backends/#{backend.token}", %{enabled: nil})
+        |> json_response(422)
+
+      assert response == %{"errors" => %{"enabled" => ["can't be blank"]}}
+    end
+
     test "updates an existing backend from a user", %{
       conn: conn,
       user: user

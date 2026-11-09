@@ -107,8 +107,8 @@ defmodule Logflare.Backends.Backend do
 
   def changeset(backend, attrs, opts \\ []) do
     backend
-    |> cast(attrs, [:type, :config, :name, :description, :metadata, :default_ingest?])
-    |> validate_required([:user_id, :type, :config, :name])
+    |> cast(attrs, [:type, :config, :name, :description, :metadata, :default_ingest?, :enabled])
+    |> validate_required([:user_id, :type, :config, :name, :enabled])
     |> validate_inclusion(:type, Map.keys(@adaptor_mapping))
     |> validate_config()
     |> protect_query_class_settings(opts)
@@ -221,6 +221,7 @@ defmodule Logflare.Backends.Backend do
           :config,
           :metadata,
           :default_ingest?,
+          :enabled,
           :inserted_at,
           :updated_at
         ])
