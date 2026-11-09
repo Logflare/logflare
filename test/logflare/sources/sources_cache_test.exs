@@ -51,4 +51,36 @@ defmodule Logflare.SourcesCacheTest do
              } = get_by_for_ingest(token: source.token)
     end
   end
+
+  describe "get_by_token_or_primary/1" do
+    test "reads the primary and fills the entry when the cache holds nil", %{source: source} do
+      token = TestUtils.gen_uuid_atom()
+      assert get_by(token: token) == nil
+
+      %{id: id} = insert(:source, token: token, user_id: source.user_id)
+
+      assert get_by(token: token) == nil
+      assert %{id: ^id} = get_by_token_or_primary(token)
+      assert %{id: ^id} = get_by(token: token)
+    end
+
+    test "returns nil for a token that has no source" do
+      assert get_by_token_or_primary(TestUtils.gen_uuid_atom()) == nil
+    end
+
+    test "does not read the primary for a cached source", %{source: %{id: id, token: token}} do
+      assert %{id: ^id} = get_by(token: token)
+      reject(Logflare.Sources, :get_by, 1)
+
+      assert %{id: ^id} = get_by_token_or_primary(token)
+    end
+
+    test "returns the error and does not read the primary when the database is unavailable" do
+      stub(Logflare.ContextCache, :apply_fun, fn _, _, _ -> {:error, :database_unavailable} end)
+      reject(Logflare.Sources, :get_by, 1)
+
+      assert get_by_token_or_primary(TestUtils.gen_uuid_atom()) ==
+               {:error, :database_unavailable}
+    end
+  end
 end

@@ -4,6 +4,7 @@ defmodule Logflare.Sources.Cache do
   use Logflare.ContextCache
 
   alias Logflare.Cache.CachexOps
+  alias Logflare.Repo
   alias Logflare.Sources
   alias Logflare.Sources.Source
 
@@ -50,6 +51,21 @@ defmodule Logflare.Sources.Cache do
     with nil <- get_by_id(id),
          %Source{} = source <- Sources.get(id) do
       update_by_id(source)
+      source
+    end
+  end
+
+  @doc """
+  Returns the source for the token. Reads the primary database when the cache holds `nil`.
+
+  When the primary has the source, this function also puts it in the cache entry, so later cache
+  reads get it.
+  """
+  @spec get_by_token_or_primary(atom()) :: Source.t() | nil | {:error, :database_unavailable}
+  def get_by_token_or_primary(token) when is_atom(token) do
+    with nil <- get_by(token: token),
+         %Source{} = source <- Repo.with_primary(fn -> Sources.get_by(token: token) end) do
+      Logflare.ContextCache.update(Sources, :get_by, [[token: token]], source)
       source
     end
   end

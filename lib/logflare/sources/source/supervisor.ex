@@ -34,27 +34,18 @@ defmodule Logflare.Sources.Source.Supervisor do
   ## Server
 
   def handle_cast({:create, source_token}, state) do
-    source = Sources.Cache.get_by(token: source_token)
-
-    case create_source(source) do
-      {:error, :already_started} ->
-        :noop
-
-      {:error, _} = err ->
-        Logger.error(
-          "Source.Supervisor -  Failed to start SourceSup: #{source_token}, #{inspect(err)}"
-        )
-
-      _ ->
-        :noop
-    end
+    source_token
+    |> Sources.Cache.get_by_token_or_primary()
+    |> start_created_source(source_token)
 
     {:noreply, state}
   end
 
   def handle_cast({:stop, source_token}, state) do
-    source = Sources.Cache.get_by(token: source_token)
-    stop_source_local(source)
+    source_token
+    |> Sources.Cache.get_by_token_or_primary()
+    |> stop_found_source()
+
     Counters.delete(source_token)
     {:noreply, state}
   end
@@ -144,6 +135,41 @@ defmodule Logflare.Sources.Source.Supervisor do
     !!Application.get_env(:logflare, :single_tenant) &&
       !!Application.get_env(:logflare, :postgres_backend_adapter)
   end
+
+  @spec start_created_source(Source.t() | nil | {:error, :database_unavailable}, atom()) ::
+          :ok | :noop
+  defp start_created_source(nil, source_token) do
+    Logger.warning("Source.Supervisor - Source not found on create: #{source_token}")
+  end
+
+  defp start_created_source({:error, :database_unavailable} = err, source_token) do
+    log_start_failure(err, source_token)
+  end
+
+  defp start_created_source(%Source{} = source, source_token) do
+    case create_source(source) do
+      {:error, :already_started} ->
+        :noop
+
+      {:error, _} = err ->
+        log_start_failure(err, source_token)
+
+      _ ->
+        :noop
+    end
+  end
+
+  @spec log_start_failure(tuple(), atom()) :: :ok
+  defp log_start_failure(err, source_token) do
+    Logger.error(
+      "Source.Supervisor -  Failed to start SourceSup: #{source_token}, #{inspect(err)}"
+    )
+  end
+
+  @spec stop_found_source(Source.t() | nil | {:error, :database_unavailable}) :: :ok
+  defp stop_found_source(%Source{} = source), do: stop_source_local(source)
+  defp stop_found_source(nil), do: :ok
+  defp stop_found_source({:error, :database_unavailable}), do: :ok
 
   defp create_source(%Source{} = source) do
     with {:ok, _pid} = res <- do_start_source_sup(source),
