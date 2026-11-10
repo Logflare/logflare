@@ -5,7 +5,8 @@ config :logflare,
   cache_stats: true,
   sql_sandbox: true,
   static_gzip: false,
-  encryption_key_default: "Q+IS7ogkzRxsj+zAIB1u6jNFquxkFzSrBZXItN27K/Q="
+  encryption_key_default: "Q+IS7ogkzRxsj+zAIB1u6jNFquxkFzSrBZXItN27K/Q=",
+  max_pipeline_swap_delay_ms: 0
 
 config :logflare, LogflareWeb.Endpoint,
   url: [host: "localhost", scheme: "http", port: 4001],

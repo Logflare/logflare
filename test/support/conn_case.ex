@@ -78,6 +78,11 @@ defmodule LogflareWeb.ConnCase do
           func.()
         end)
 
+        stub(Logflare.Cluster.Utils, :rpc_multicast, fn mod, fun, args ->
+          apply(mod, fun, args)
+          :ok
+        end)
+
         caches = Logflare.ContextCache.Supervisor.list_caches()
         Enum.each(caches, & &1.reset())
 
