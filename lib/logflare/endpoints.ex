@@ -25,6 +25,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Lql.Rules
   alias Logflare.Lql.Rules.FromRule
   alias Logflare.OauthAccessTokens.OauthAccessToken
+  alias Logflare.QueryContext
   alias Logflare.Repo
   alias Logflare.SingleTenant
   alias Logflare.Sql
@@ -32,7 +33,6 @@ defmodule Logflare.Endpoints do
   alias Logflare.TeamUsers
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
-  alias Logflare.Users
   alias Logflare.Utils
   alias PaperTrail.Version
 
@@ -795,7 +795,7 @@ defmodule Logflare.Endpoints do
              else: expanded_query
            ),
          {:ok, transformed_query} <-
-           Sql.transform(query_language, transform_input, user_id) do
+           Sql.transform(query_language, transform_input, user_id, consistency: :cached) do
       :telemetry.span(
         [:logflare, :endpoints, :run_query, :exec_query_on_backend],
         %{endpoint_id: endpoint_query.id, language: query_language},
@@ -833,8 +833,11 @@ defmodule Logflare.Endpoints do
         if(is_integer(data.total_bytes_processed), do: data.total_bytes_processed, else: 0)
     }
 
-    backend =
-      endpoint_query.backend_id && Backends.Cache.get_backend(endpoint_query.backend_id)
+    backend_type =
+      case endpoint_query.backend_id && QueryContext.get_backend(endpoint_query.backend_id) do
+        %Backend{type: type} -> to_string(type)
+        _ -> nil
+      end
 
     metadata =
       Map.merge(endpoint_query.parsed_labels || %{}, %{
@@ -842,7 +845,7 @@ defmodule Logflare.Endpoints do
         "endpoint_uuid" => Utils.stringify(endpoint_query.token),
         "user_id" => endpoint_query.user_id,
         "backend_id" => endpoint_query.backend_id,
-        "backend_type" => backend && to_string(backend.type)
+        "backend_type" => backend_type
       })
 
     :telemetry.execute([:logflare, :endpoints, :query], measurements, metadata)
@@ -1265,12 +1268,14 @@ defmodule Logflare.Endpoints do
     end
   end
 
-  @spec get_backend_for_query(EndpointQuery.t()) :: {:ok, Backend.t()} | {:error, String.t()}
+  @spec get_backend_for_query(EndpointQuery.t()) ::
+          {:ok, Backend.t()} | {:error, String.t() | :database_unavailable}
   defp get_backend_for_query(%EndpointQuery{backend_id: backend_id})
        when is_integer(backend_id) do
-    case Backends.get_backend(backend_id) do
+    case QueryContext.get_backend(backend_id) do
       %Backend{} = backend -> {:ok, backend}
       nil -> {:error, "Backend not found"}
+      {:error, :database_unavailable} = error -> error
     end
   end
 
@@ -1289,22 +1294,26 @@ defmodule Logflare.Endpoints do
           user_id :: integer(),
           backend_type :: :bigquery | :clickhouse | :postgres
         ) ::
-          {:ok, Backend.t()} | {:error, String.t()}
+          {:ok, Backend.t()} | {:error, String.t() | :database_unavailable}
   defp find_backend_by_type_or_default(user_id, backend_type)
        when is_integer(user_id) and is_atom_value(backend_type) do
-    user_backends = Backends.list_backends_by_user_id(user_id)
-
-    case Enum.find(user_backends, &(&1.type == backend_type)) do
-      nil -> get_default_backend_for_user(user_id)
-      backend -> {:ok, backend}
+    with user_backends when is_list(user_backends) <-
+           QueryContext.list_backends(user_id) do
+      case Enum.find(user_backends, &(&1.type == backend_type)) do
+        nil -> get_default_backend_for_user(user_id)
+        backend -> {:ok, backend}
+      end
     end
   end
 
   @spec get_default_backend_for_user(user_id :: integer()) ::
-          {:ok, Backend.t()} | {:error, String.t()}
+          {:ok, Backend.t()} | {:error, String.t() | :database_unavailable}
   defp get_default_backend_for_user(user_id) when is_integer(user_id) do
-    user = Users.Cache.get(user_id)
-    {:ok, Backends.get_default_backend(user)}
+    case QueryContext.get_user(user_id) do
+      %User{} = user -> {:ok, Backends.get_default_backend(user)}
+      nil -> {:error, "User not found"}
+      {:error, :database_unavailable} = error -> error
+    end
   end
 
   @spec build_transformation_context(Backend.t()) :: map()

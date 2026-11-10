@@ -12,6 +12,58 @@ defmodule Logflare.Repo do
 
   @uptime_timeout 1_000
 
+  defoverridable transact: 2
+
+  @impl true
+  def transact(fun_or_multi, opts) do
+    key = {__MODULE__, :after_commit, get_dynamic_repo()}
+    previous = Process.get(key)
+    Process.put(key, [])
+
+    {result, callbacks} =
+      try do
+        result = super(fun_or_multi, opts)
+        {result, Process.get(key)}
+      after
+        if previous == nil, do: Process.delete(key), else: Process.put(key, previous)
+      end
+
+    if match?({:ok, _}, result) do
+      callbacks |> Enum.reverse() |> Enum.each(&after_commit/1)
+    end
+
+    result
+  end
+
+  @doc "Runs a callback after commit or immediately, logging failures without changing the write result."
+  @spec after_commit((-> term())) :: :ok
+  def after_commit(callback) when is_function(callback, 0) do
+    if in_transaction?() do
+      key = {__MODULE__, :after_commit, get_dynamic_repo()}
+      Process.put(key, [callback | Process.get(key, [])])
+    else
+      run_after_commit(callback)
+    end
+
+    :ok
+  end
+
+  @spec run_after_commit((-> term())) :: term()
+  defp run_after_commit(callback) do
+    callback.()
+  catch
+    kind, reason ->
+      Logger.error(
+        "After-commit callback failed: " <> Exception.format(kind, reason, __STACKTRACE__)
+      )
+  end
+
+  @impl true
+  @spec default_options(atom()) :: keyword()
+  def default_options(_operation) do
+    [telemetry_options: [role: repo_role(get_dynamic_repo())]]
+  end
+
   @impl true
   def init(_context, config) do
     {role, config} = Keyword.pop(config, :logflare_connection_role, :primary)

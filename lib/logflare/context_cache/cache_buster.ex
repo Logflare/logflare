@@ -4,7 +4,6 @@ defmodule Logflare.ContextCache.CacheBuster do
   """
   use GenServer
 
-  alias Logflare.ContextCache.CacheBusterWorker
   alias Cainophile.Changes.DeletedRecord
   alias Cainophile.Changes.NewRecord
   alias Cainophile.Changes.Transaction
@@ -13,9 +12,11 @@ defmodule Logflare.ContextCache.CacheBuster do
   alias Logflare.Auth
   alias Logflare.Backends
   alias Logflare.Billing
+  alias Logflare.ContextCache.CacheBusterWorker
   alias Logflare.Endpoints
   alias Logflare.KeyValues
   alias Logflare.PubSub
+  alias Logflare.QueryContext
   alias Logflare.Rules
   alias Logflare.SavedSearches
   alias Logflare.SourceSchemas
@@ -23,7 +24,6 @@ defmodule Logflare.ContextCache.CacheBuster do
   alias Logflare.Sources.Catalog
   alias Logflare.TeamUsers
   alias Logflare.Users
-  alias Logflare.ContextCache.CacheBusterWorker
 
   require Logger
 
@@ -65,7 +65,7 @@ defmodule Logflare.ContextCache.CacheBuster do
     Logger.debug("WAL record received from pubsub: #{inspect(transaction)}")
 
     for record <- changes,
-        bust <- List.wrap(handle_record(record)),
+        bust <- query_context_records(record) ++ List.wrap(handle_record(record)),
         bust != :noop do
       bust
     end
@@ -81,6 +81,48 @@ defmodule Logflare.ContextCache.CacheBuster do
 
     {:noreply, state}
   end
+
+  @spec query_context_records(struct()) :: [{module(), keyword()}]
+  defp query_context_records(record) do
+    case query_context_fields(record) do
+      [] -> []
+      fields -> [{QueryContext, fields}]
+    end
+  end
+
+  defp query_context_fields(%DeletedRecord{relation: relation, old_record: record}) do
+    query_context_fields(%{relation: relation, record: record})
+  end
+
+  defp query_context_fields(%UpdatedRecord{
+         relation: {_schema, "backends"},
+         record: %{"id" => id, "user_id" => owner_id},
+         old_record: %{"user_id" => old_owner_id}
+       })
+       when is_binary(id) and is_binary(owner_id) and is_binary(old_owner_id) do
+    [
+      backend_id: String.to_integer(id),
+      owner_id: String.to_integer(owner_id),
+      owner_id: String.to_integer(old_owner_id)
+    ]
+  end
+
+  defp query_context_fields(%{relation: {_schema, "users"}, record: %{"id" => id}})
+       when is_binary(id),
+       do: [user_id: String.to_integer(id)]
+
+  defp query_context_fields(%{
+         relation: {_schema, "backends"},
+         record: %{"id" => id, "user_id" => owner_id}
+       })
+       when is_binary(id) and is_binary(owner_id),
+       do: [backend_id: String.to_integer(id), owner_id: String.to_integer(owner_id)]
+
+  defp query_context_fields(%{relation: {_schema, "backends"}, record: %{"id" => id}})
+       when is_binary(id),
+       do: [backend_id: String.to_integer(id)]
+
+  defp query_context_fields(_change), do: []
 
   defp backend_owner_ids(changes) do
     for change <- changes,

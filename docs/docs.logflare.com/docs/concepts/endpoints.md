@@ -151,6 +151,15 @@ The result of the query will be returned on the `result` key of the response pay
 
 ## Cache
 
+Endpoint execution also caches user settings and backend lookups independently of
+query results. Disabling result caching does not disable these metadata caches.
+Metadata cache misses read the primary database, and application changes invalidate
+local metadata after their transaction commits. Other nodes and external database
+changes converge through WAL invalidation; this is not a guarantee of immediate
+cluster-wide visibility. Transactions bypass shared metadata snapshots. Backend
+query-class policy saves also multicast metadata evictions to peer nodes; this
+remains best effort and does not provide an immediate cluster-wide barrier.
+
 All endpoint queries by default are set to cache results for 3,600 seconds. The first API request that hits Logflare will create and set the results of the cache for the configured cache duration. Caching is recommended to keep querying costs down while ensuring the fastest possible return of results to the end user.
 
 To disable the cache, set the cached duration to `0`. However, it is not recommended to do so unless you absolutely need up-to-date results. To prevent stale data while keeping the cache warm, use the cache proactive requerying feature.
