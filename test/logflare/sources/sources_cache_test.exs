@@ -82,5 +82,25 @@ defmodule Logflare.SourcesCacheTest do
       assert get_by_token_or_primary(TestUtils.gen_uuid_atom()) ==
                {:error, :database_unavailable}
     end
+
+    test "returns the error when the primary read fails after a cached nil" do
+      token = TestUtils.gen_uuid_atom()
+      assert get_by(token: token) == nil
+
+      stub(Logflare.Sources, :get_by, fn _ ->
+        raise %DBConnection.ConnectionError{message: "primary is down"}
+      end)
+
+      assert get_by_token_or_primary(token) == {:error, :database_unavailable}
+    end
+
+    test "raises an unexpected exception from the primary read" do
+      token = TestUtils.gen_uuid_atom()
+      assert get_by(token: token) == nil
+
+      stub(Logflare.Sources, :get_by, fn _ -> raise ArgumentError, "unexpected" end)
+
+      assert_raise ArgumentError, "unexpected", fn -> get_by_token_or_primary(token) end
+    end
   end
 end

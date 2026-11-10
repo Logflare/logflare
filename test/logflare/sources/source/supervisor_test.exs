@@ -10,16 +10,11 @@ defmodule Logflare.Sources.Source.SupervisorTest do
   alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Logflare.Sources.Source
+  alias Logflare.Sources.Source.RateCounterServer
 
   setup do
     stub(BigQuery, :init_table!, fn _, _, _, _, _, _ -> :ok end)
     insert(:plan)
-
-    on_exit(fn ->
-      for {_id, child, _, _} <- DynamicSupervisor.which_children(Backends.SourcesSup) do
-        DynamicSupervisor.terminate_child(Backends.SourcesSup, child)
-      end
-    end)
 
     {:ok, user: insert(:user), token: TestUtils.gen_uuid_atom()}
   end
@@ -40,14 +35,60 @@ defmodule Logflare.Sources.Source.SupervisorTest do
     } do
       assert Sources.Cache.get_by(token: token) == nil
       source = insert(:source, token: token, user: user)
+      terminate_source_sup_on_exit(source)
 
       assert {:noreply, nil} = Source.Supervisor.handle_cast({:create, token}, nil)
 
       assert {:ok, _pid} = Backends.lookup(SourceSup, source)
     end
 
+    test "starts the source when the entry disappears during the primary read", %{
+      user: user,
+      token: token
+    } do
+      assert Sources.Cache.get_by(token: token) == nil
+      insert(:source, token: token, user: user)
+      source = Sources.get_by(token: token)
+      terminate_source_sup_on_exit(source)
+      test_pid = self()
+
+      stub(BigQuery, :init_table!, fn _, ^token, _, _, _, _ ->
+        send(test_pid, :init_table)
+        :ok
+      end)
+
+      stub(Sources, :get_by, fn
+        [token: ^token] -> nil
+        keyword -> call_original(Sources, :get_by, [keyword])
+      end)
+
+      expect(Sources, :get_by, fn [token: ^token] ->
+        {:ok, _busted} = ContextCache.bust_keys([{Sources, :not_found}])
+        source
+      end)
+
+      assert {:noreply, nil} = Source.Supervisor.handle_cast({:create, token}, nil)
+
+      assert_receive :init_table, 1_000
+      assert {:ok, _pid} = Backends.lookup(SourceSup, source)
+      assert :sys.get_state(Backends.via_source(source, RateCounterServer)) == token
+      assert Sources.Cache.get_by(token: token) == nil
+    end
+
     test "logs an error when the database is unavailable", %{token: token} do
       stub(ContextCache, :apply_fun, fn _, _, _ -> {:error, :database_unavailable} end)
+
+      log =
+        capture_log(fn ->
+          assert {:noreply, nil} = Source.Supervisor.handle_cast({:create, token}, nil)
+        end)
+
+      assert log =~ "Failed to start SourceSup: #{token}"
+    end
+
+    test "logs an error when the primary read fails after a cached nil", %{token: token} do
+      assert Sources.Cache.get_by(token: token) == nil
+      stub_primary_failure()
 
       log =
         capture_log(fn ->
@@ -74,6 +115,7 @@ defmodule Logflare.Sources.Source.SupervisorTest do
     } do
       assert Sources.Cache.get_by(token: token) == nil
       source = insert(:source, token: token, user: user)
+      terminate_source_sup_on_exit(source)
       assert :ok = Backends.start_source_sup(source)
       assert {:ok, _pid} = Backends.lookup(SourceSup, source)
 
@@ -92,5 +134,32 @@ defmodule Logflare.Sources.Source.SupervisorTest do
 
       assert {:ok, 0} = Counters.get_inserts(token)
     end
+
+    test "deletes the counters when the primary read fails after a cached nil", %{token: token} do
+      assert Sources.Cache.get_by(token: token) == nil
+      Counters.increment(token)
+      stub_primary_failure()
+
+      capture_log(fn ->
+        assert {:noreply, nil} = Source.Supervisor.handle_cast({:stop, token}, nil)
+      end)
+
+      assert {:ok, 0} = Counters.get_inserts(token)
+    end
+  end
+
+  defp stub_primary_failure do
+    stub(Sources, :get_by, fn _ ->
+      raise %DBConnection.ConnectionError{message: "primary is down"}
+    end)
+  end
+
+  defp terminate_source_sup_on_exit(%Source{id: id} = source) do
+    on_exit(fn ->
+      with {:ok, pid} <- Backends.lookup(SourceSup, source) do
+        partition = {:via, PartitionSupervisor, {Backends.SourcesSup, id}}
+        assert :ok = DynamicSupervisor.terminate_child(partition, pid)
+      end
+    end)
   end
 end

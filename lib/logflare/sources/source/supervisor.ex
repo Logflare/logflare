@@ -173,7 +173,7 @@ defmodule Logflare.Sources.Source.Supervisor do
 
   defp create_source(%Source{} = source) do
     with {:ok, _pid} = res <- do_start_source_sup(source),
-         :ok <- init_table(source.token) do
+         :ok <- init_table(source) do
       res
     else
       {:error, :already_started} = err ->
@@ -183,7 +183,7 @@ defmodule Logflare.Sources.Source.Supervisor do
         {:error, reason}
 
       {:error, :start_timeout} = err ->
-        init_table(source.token)
+        init_table(source)
         err
 
       {:error, _reason} = err ->
@@ -209,14 +209,15 @@ defmodule Logflare.Sources.Source.Supervisor do
     :ok
   end
 
-  def init_table(source_token) do
+  @spec init_table(Source.t()) :: :ok
+  def init_table(%Source{token: source_token} = source) do
     %{
       user_id: user_id,
       bigquery_table_ttl: bigquery_table_ttl,
       bigquery_project_id: bigquery_project_id,
       bigquery_dataset_location: bigquery_dataset_location,
       bigquery_dataset_id: bigquery_dataset_id
-    } = BigQuery.GenUtils.get_bq_user_info(source_token)
+    } = BigQuery.GenUtils.get_bq_user_info(source)
 
     Tasks.start_child(fn ->
       BigQuery.init_table!(
