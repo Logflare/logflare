@@ -226,6 +226,9 @@ defmodule Logflare.Backends.DynamicPipeline do
 
   Each outgoing pipeline is drained through the same path as `remove_pipeline/1`, so its
   pending events move to a replacement instead of being destroyed with its queue.
+
+  When a replacement fails to start, its pipeline keeps running and the previous
+  `pipeline_args` are kept, so a later swap with the same args replaces it again.
   """
   @spec replace_pipelines(tuple(), keyword() | (-> keyword() | nil)) ::
           :ok | {:error, [{tuple(), term()}]}
@@ -248,14 +251,22 @@ defmodule Logflare.Backends.DynamicPipeline do
   def do_replace_pipelines(name, pipeline_args) do
     state = get_state(name)
     new_state = %{state | pipeline_args: pipeline_args}
-    :ok = name |> find_agent() |> Agent.update(fn _ -> new_state end)
+    agent = find_agent(name)
+    :ok = Agent.update(agent, fn _ -> new_state end)
 
     failures =
       for id <- removal_candidates(name, state),
           {:error, reason} <- [replace_pipeline(name, id, state, new_state)],
           do: {id, reason}
 
-    if failures == [], do: :ok, else: {:error, failures}
+    case failures do
+      [] ->
+        :ok
+
+      failures ->
+        :ok = Agent.update(agent, &%{&1 | pipeline_args: state.pipeline_args})
+        {:error, failures}
+    end
   end
 
   @spec replace_pipeline(tuple(), tuple(), state(), state()) :: :ok | {:error, term()}
@@ -500,8 +511,10 @@ defmodule Logflare.Backends.DynamicPipeline do
           {:reply, :ok, state}
 
         resolved_args ->
-          res = DynamicPipeline.do_replace_pipelines(state.name, resolved_args)
-          {:reply, res, %{state | pipeline_args: resolved_args}}
+          case DynamicPipeline.do_replace_pipelines(state.name, resolved_args) do
+            :ok -> {:reply, :ok, %{state | pipeline_args: resolved_args}}
+            {:error, _failures} = error -> {:reply, error, state}
+          end
       end
     end
 

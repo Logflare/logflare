@@ -256,19 +256,19 @@ defmodule Logflare.Backends.DynamicPipelineTest do
       refute IngestEventQueue.draining?(ctx.old_key)
     end
 
-    test "keeps the old pipeline and returns an error when a replacement fails to start",
-         %{name: name, pipeline_args: pipeline_args} = ctx do
+    test "replacement that fails to start",
+         %{name: name, pipeline_args: pipeline_args, backend: backend} = ctx do
       stub(Broadway, :start_link, fn _module, _opts -> {:error, :boom} end)
+      new_args = Keyword.put(pipeline_args, :backend, %{backend | name: "replaced"})
 
       capture_log(fn ->
-        assert {:error, [{old_id, :boom}]} =
-                 DynamicPipeline.replace_pipelines(name, pipeline_args)
-
+        assert {:error, [{old_id, :boom}]} = DynamicPipeline.replace_pipelines(name, new_args)
         assert old_id == ctx.old_id
       end)
 
       assert DynamicPipeline.list_pipelines(name) == [ctx.old_id]
       refute IngestEventQueue.draining?(ctx.old_key)
+      assert DynamicPipeline.get_state(name).pipeline_args == pipeline_args
     end
   end
 
