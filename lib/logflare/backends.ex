@@ -434,7 +434,7 @@ defmodule Logflare.Backends do
 
   @spec invalidate_query_policy(Backend.t()) :: :ok
   defp invalidate_query_policy(%Backend{id: id, user_id: user_id}) do
-    keys = [{__MODULE__, id}, {QueryContext, [backend_id: id, owner_id: user_id]}]
+    keys = [{QueryContext, [backend_id: id, owner_id: user_id]}]
 
     Repo.after_commit(fn ->
       Logflare.ContextCache.bust_keys(keys)
