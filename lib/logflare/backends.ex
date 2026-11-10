@@ -632,8 +632,10 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Evicts the backend's cached entry on the local node and applies its saved state to
-  its processes there.
+  Reads the backend from the primary database and applies its saved state to its
+  processes on the local node. The saved backend replaces the node's cached entry, and
+  the backend lists of each restarted `SourceSup`, so that restarted processes do not
+  read an older row from a read replica.
 
   Invoked on every node by `Logflare.ContextCache.CacheBusterWorker` when the backend's
   row changes, so that running processes pick up changes made in any BEAM cluster, and
@@ -678,6 +680,7 @@ defmodule Logflare.Backends do
 
   @spec apply_backend_config_local(Backend.t()) :: :ok
   defp apply_backend_config_local(%Backend{} = backend) do
+    __MODULE__.Cache.put({:get_backend, [backend.id]}, backend)
     sources = Sources.list_sources(backend_id: backend.id)
     Enum.each(sources, &clear_list_backends_cache(&1.id))
     Adaptor.on_backend_config_changed(backend)
@@ -702,7 +705,19 @@ defmodule Logflare.Backends do
   defp apply_ingest_change_local(%Backend{} = backend, sources) do
     sources
     |> Enum.reject(&SourceSup.backend_child_current?(&1, backend))
-    |> Enum.each(&restart_source_sup/1)
+    |> Enum.each(fn source ->
+      cache_source_backends(source)
+      restart_source_sup(source)
+    end)
+  end
+
+  @spec cache_source_backends(Source.t()) :: :ok
+  defp cache_source_backends(%Source{id: source_id}) do
+    for filters <- [[source_id: source_id], [rules_source_id: source_id]] do
+      __MODULE__.Cache.put({:list_backends, [filters]}, list_backends(filters))
+    end
+
+    :ok
   end
 
   @doc """

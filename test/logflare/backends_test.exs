@@ -12,6 +12,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
   alias Logflare.Backends.Backend
   alias Logflare.Cluster.Utils, as: ClusterUtils
+  alias Logflare.ContextCache
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.RecentInsertsCacher
@@ -363,6 +364,21 @@ defmodule Logflare.BackendsTest do
       refute ConnectionManager.pool_active?(backend)
     end
 
+    test "backend saved with a new read pool size while the read replica lags", %{
+      backend: backend
+    } do
+      stub_lagging_replica(%{{:get_backend, [backend.id]} => backend})
+      save_backend_config!(backend, %{read_pool_size: 2})
+
+      assert :ok = Backends.apply_backend_change_local(backend.id)
+      assert :ok = ConnectionManager.ensure_pool_started(backend)
+
+      backend_id = backend.id
+
+      assert [{^backend_id, nil, _pool_pid, 2}] =
+               Enum.filter(QueryConnectionSup.list_read_pools(), &(elem(&1, 0) == backend_id))
+    end
+
     test "deleted backend", %{backend: backend, manager_pid: manager_pid} do
       Repo.delete!(backend)
 
@@ -425,6 +441,21 @@ defmodule Logflare.BackendsTest do
       assert :ok = Backends.apply_backend_change_local(backend.id)
 
       refute source_sup_pid(source) == source_sup
+      assert {_pid, %Backend{config: %{url: "http://other.com"}}} = webhook_child(source)
+    end
+
+    test "linked backend whose config changed while the read replica lags", %{
+      user: user,
+      source: source
+    } do
+      backend = insert_webhook_backend(user, source)
+      :ok = Backends.apply_backend_change_local(backend.id)
+      stale_backends = Backends.list_backends(source_id: source.id)
+      stub_lagging_replica(%{{:list_backends, [[source_id: source.id]]} => stale_backends})
+      save_backend_config!(backend, %{url: "http://other.com"})
+
+      assert :ok = Backends.apply_backend_change_local(backend.id)
+
       assert {_pid, %Backend{config: %{url: "http://other.com"}}} = webhook_child(source)
     end
 
@@ -3490,6 +3521,22 @@ defmodule Logflare.BackendsTest do
       config: %{url: "http://test.com"}
     )
   end
+
+  defp stub_lagging_replica(stale_results) do
+    stub(ContextCache, :apply_fun, &apply_fun_with_stale_results(stale_results, &1, &2, &3))
+  end
+
+  defp apply_fun_with_stale_results(stale_results, context, fun, args) do
+    key = {fun_name(fun), args}
+
+    case stale_results do
+      %{^key => stale} -> ContextCache.cache_name(context).fetch(key, fn -> stale end)
+      _fresh -> Mimic.call_original(ContextCache, :apply_fun, [context, fun, args])
+    end
+  end
+
+  defp fun_name({name, _arity}), do: name
+  defp fun_name(name), do: name
 
   defp source_sup_pid(source) do
     TestUtils.retry_assert(fn ->
