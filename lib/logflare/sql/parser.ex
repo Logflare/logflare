@@ -9,6 +9,11 @@ defmodule Logflare.Sql.Parser do
 
   @valid_dialects ~w(bigquery clickhouse postgres)
 
+  # The parser NIF runs on a worker thread with a fixed stack (see native/sqlparser_ex). A query
+  # this size cannot build an AST deep enough to overflow that stack. Larger queries are refused
+  # before they reach the NIF, because a stack overflow in a NIF kills the whole VM.
+  @max_query_bytes 1_048_576
+
   defmodule Native do
     @moduledoc false
 
@@ -22,9 +27,15 @@ defmodule Logflare.Sql.Parser do
 
   @doc """
   Attempts to parse a SQL query into AST based on the specified dialect.
+
+  Queries larger than #{@max_query_bytes} bytes are refused with an error.
   """
   @spec parse(dialect :: String.t(), query :: String.t()) ::
           {:ok, map() | [map()]} | {:error, String.t()}
+  def parse(_dialect, query) when is_binary(query) and byte_size(query) > @max_query_bytes do
+    {:error, too_large_error()}
+  end
+
   def parse(dialect, query) when dialect in @valid_dialects and is_non_empty_binary(query) do
     with {:ok, json} <- Native.parse(dialect, query) do
       Jason.decode(json)
@@ -36,9 +47,20 @@ defmodule Logflare.Sql.Parser do
   Customer SQL must use `parse/2` before conversion.
   """
   @spec parse_clickhouse_converted(String.t()) :: {:ok, [map()]} | {:error, String.t()}
+  def parse_clickhouse_converted(query)
+      when is_binary(query) and byte_size(query) > @max_query_bytes do
+    {:error, too_large_error()}
+  end
+
   def parse_clickhouse_converted(query) when is_non_empty_binary(query) do
     with {:ok, json} <- Native.parse_clickhouse_converted(query), do: Jason.decode(json)
   end
+
+  @doc false
+  @spec max_query_bytes() :: pos_integer()
+  def max_query_bytes, do: @max_query_bytes
+
+  defp too_large_error, do: "Query is too large to parse (limit #{@max_query_bytes} bytes)."
 
   @doc """
   Converts an AST or list of ASTs back into a SQL string.

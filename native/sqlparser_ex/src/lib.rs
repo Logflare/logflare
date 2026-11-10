@@ -22,9 +22,69 @@ struct Response {
     message: String,
 }
 
-#[rustler::nif]
+/// Stack size for the worker thread that runs each parse/format call.
+///
+/// sqlparser builds chains of binary operators (`a OR b OR c ...`) in a loop, so its recursion
+/// limit does not bound the depth of the AST. Serializing, formatting and dropping that AST all
+/// recurse once per level. On a BEAM scheduler thread (about 1 MiB of stack by default, 320 KiB on
+/// a dirty CPU scheduler) a deep enough query overflows the stack, and a stack overflow inside a
+/// NIF kills the whole VM. The worker thread gets a large stack instead; the memory is only
+/// reserved, and pages are committed as they are used. `Logflare.Sql.Parser` caps the query size,
+/// which bounds the AST depth well inside this stack.
+const WORKER_STACK_SIZE: usize = 512 * 1024 * 1024;
+
+type WorkResult = Result<String, String>;
+
+/// Runs `work` on a dedicated thread with `WORKER_STACK_SIZE` of stack and waits for it.
+/// A panic in `work` becomes an error response instead of unwinding into the VM.
+fn run_on_worker<F>(work: F) -> NifResult<Response>
+where
+    F: FnOnce() -> WorkResult + Send + 'static,
+{
+    let result = std::thread::Builder::new()
+        .name("sqlparser_ex".to_string())
+        .stack_size(WORKER_STACK_SIZE)
+        .spawn(work)
+        .map_err(|e| format!("could not start sqlparser worker: {e}"))
+        .and_then(|handle| {
+            handle
+                .join()
+                .unwrap_or_else(|_| Err("sqlparser worker panicked".to_string()))
+        });
+
+    Ok(match result {
+        Ok(message) => Response {
+            status: atoms::ok(),
+            message,
+        },
+        Err(message) => Response {
+            status: atoms::error(),
+            message,
+        },
+    })
+}
+
+#[rustler::nif(schedule = "DirtyCpu")]
 fn parse(dialect_str: &str, query: &str) -> NifResult<Response> {
-    let result = match dialect_str {
+    let dialect = dialect_str.to_owned();
+    let query = query.to_owned();
+    run_on_worker(move || parse_with_dialect(&dialect, &query))
+}
+
+#[rustler::nif(schedule = "DirtyCpu")]
+fn parse_clickhouse_converted(query: &str) -> NifResult<Response> {
+    let query = query.to_owned();
+    run_on_worker(move || encode_parse_result(clickhouse::parse(&query)))
+}
+
+#[rustler::nif(schedule = "DirtyCpu")]
+fn to_string(json: &str) -> NifResult<Response> {
+    let json = json.to_owned();
+    run_on_worker(move || format_statements(&json))
+}
+
+fn parse_with_dialect(dialect: &str, query: &str) -> WorkResult {
+    let result = match dialect {
         "bigquery" => Parser::parse_sql(&BigQueryDialect {}, query),
         "clickhouse" => Parser::parse_sql(&ClickHouseDialect {}, query),
         "postgres" => Parser::parse_sql(&PostgreSqlDialect {}, query),
@@ -35,47 +95,56 @@ fn parse(dialect_str: &str, query: &str) -> NifResult<Response> {
     encode_parse_result(result)
 }
 
-#[rustler::nif]
-fn parse_clickhouse_converted(query: &str) -> NifResult<Response> {
-    encode_parse_result(clickhouse::parse(query))
-}
-
 fn encode_parse_result(
     result: Result<Vec<sqlparser::ast::Statement>, sqlparser::parser::ParserError>,
-) -> NifResult<Response> {
-    match result {
-        Ok(v) => Ok(Response {
-            status: atoms::ok(),
-            message: serde_json::to_string(&v).unwrap(),
-        }),
-        Err(v) => Ok(Response {
-            status: atoms::error(),
-            message: v.to_string(),
-        }),
-    }
+) -> WorkResult {
+    let statements = result.map_err(|e| e.to_string())?;
+    serde_json::to_string(&statements).map_err(|e| e.to_string())
 }
 
-#[rustler::nif]
-fn to_string(json: &str) -> NifResult<Response> {
-    let nodes: Vec<sqlparser::ast::Statement> = match serde_json::from_str(json) {
-        Ok(nodes) => nodes,
-        Err(e) => {
-            return Ok(Response {
-                status: atoms::error(),
-                message: e.to_string(),
-            })
-        }
-    };
+fn format_statements(json: &str) -> WorkResult {
+    let nodes: Vec<sqlparser::ast::Statement> =
+        serde_json::from_str(json).map_err(|e| e.to_string())?;
 
-    let mut parts = vec![];
-    for node in nodes {
-        parts.push(format!("{}", node))
-    }
-
-    Ok(Response {
-        status: atoms::ok(),
-        message: parts.join("\n"),
-    })
+    let parts: Vec<String> = nodes.iter().map(|node| format!("{}", node)).collect();
+    Ok(parts.join("\n"))
 }
 
 rustler::init!("Elixir.Logflare.Sql.Parser.Native");
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn or_chain(terms: usize) -> String {
+        let mut query = String::from("select a from t where a = 0");
+        for i in 1..terms {
+            query.push_str(&format!(" or a = {i}"));
+        }
+        query
+    }
+
+    fn on_worker_stack(work: impl FnOnce() -> WorkResult + Send + 'static) -> WorkResult {
+        std::thread::Builder::new()
+            .stack_size(WORKER_STACK_SIZE)
+            .spawn(work)
+            .unwrap()
+            .join()
+            .unwrap()
+    }
+
+    // 20,000 terms overflow a 1 MiB thread (the BEAM scheduler default) in serde_json::to_string.
+    // On the worker stack a larger chain must parse and serialize.
+    #[test]
+    fn deep_or_chain_parses_on_worker_stack() {
+        let query = or_chain(50_000);
+        let result = on_worker_stack(move || parse_with_dialect("clickhouse", &query));
+        assert!(result.is_ok(), "{:?}", result.err());
+    }
+
+    #[test]
+    fn unsupported_dialect_is_an_error() {
+        let error = parse_with_dialect("mysql", "select 1").unwrap_err();
+        assert!(error.contains("not supported"), "{error}");
+    }
+}
