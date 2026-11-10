@@ -12,6 +12,8 @@ defmodule Logflare.EndpointsTest do
   alias Logflare.Endpoints
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Endpoints.ResultsCache
+  alias Logflare.QueryContext
+  alias Logflare.Sources.Catalog
   alias PaperTrail.Version
 
   @endpoint_query_attrs %{
@@ -308,6 +310,67 @@ defmodule Logflare.EndpointsTest do
              Endpoints.get_mapped_query_by_token(endpoint.token)
 
     assert String.downcase(mapped_query) == "select a from new"
+  end
+
+  test "source mapping preserves ClickHouse-specific query syntax" do
+    endpoint =
+      insert(:endpoint,
+        language: :ch_sql,
+        query: "SELECT id FROM events ARRAY JOIN items",
+        source_mapping: %{}
+      )
+
+    assert %EndpointQuery{query: query} = Endpoints.map_query_sources(endpoint)
+    assert query == "SELECT id FROM events ARRAY JOIN items"
+  end
+
+  test "missing saved source tokens fail closed for current and historical cached queries" do
+    user = insert(:user)
+    replacement = insert(:source, user: user, name: "reused_name")
+
+    endpoint =
+      insert(:endpoint,
+        user: user,
+        query: "SELECT id FROM reused_name",
+        source_mapping: %{"reused_name" => Ecto.UUID.generate()}
+      )
+
+    insert(:endpoint_version,
+      endpoint: endpoint,
+      version_number: 1,
+      snapshot_overrides: %{"source_mapping" => endpoint.source_mapping}
+    )
+
+    reject(&Endpoints.run_query/3)
+
+    assert {:error, "can't find source reused_name"} = Endpoints.map_query_sources(endpoint)
+
+    assert {:error, "can't find source reused_name"} =
+             Endpoints.get_mapped_query_by_token(endpoint.token)
+
+    assert {:error, "can't find source reused_name"} =
+             Endpoints.get_endpoint_query_at_version(endpoint, 1)
+
+    for version_number <- [nil, 1] do
+      state = %ResultsCache{
+        endpoint_query_id: endpoint.id,
+        endpoint_query_token: endpoint.token,
+        endpoint_version_number: version_number
+      }
+
+      assert {:error, "can't find source reused_name", nil} = ResultsCache.do_query(state)
+    end
+
+    endpoint
+    |> Ecto.Changeset.change(source_mapping: %{"reused_name" => to_string(replacement.token)})
+    |> Repo.update!()
+
+    Logflare.ContextCache.bust_keys([{Endpoints, endpoint.id}])
+
+    assert %EndpointQuery{query: "SELECT id FROM reused_name"} =
+             Endpoints.Cache.get_mapped_query_by_token(endpoint.token)
+
+    assert nil == Endpoints.get_mapped_query_by_token(Ecto.UUID.generate())
   end
 
   describe "version history" do
@@ -706,6 +769,8 @@ defmodule Logflare.EndpointsTest do
       |> Ecto.Changeset.change(name: "new_table")
       |> Logflare.Repo.update!()
 
+      assert {:ok, 1} = Logflare.ContextCache.bust_keys([{Catalog, user_id: user.id}])
+
       endpoint_id = updated_endpoint.id
       token = updated_endpoint.token
       user_id = user.id
@@ -726,6 +791,21 @@ defmodule Logflare.EndpointsTest do
                Endpoints.get_endpoint_query_at_version(updated_endpoint, 1)
 
       assert String.downcase(query) == "select a from new_table"
+    end
+
+    test "get_endpoint_query_at_version/2 accepts snapshots with nil source mappings", %{
+      user: user
+    } do
+      endpoint = insert(:endpoint, user: user)
+
+      insert(:endpoint_version,
+        endpoint: endpoint,
+        version_number: 1,
+        snapshot_overrides: %{"query" => "SELECT 1", "source_mapping" => nil}
+      )
+
+      assert {:ok, %EndpointQuery{query: "SELECT 1", source_mapping: nil, version_number: 1}} =
+               Endpoints.get_endpoint_query_at_version(endpoint, 1)
     end
 
     test "get_endpoint_query_at_version/2 rejects invalid version numbers", %{
@@ -1037,6 +1117,41 @@ defmodule Logflare.EndpointsTest do
 
       assert_received {:backend_used, backend_id}
       assert backend_id == backend.id
+    end
+
+    for unavailable <- [nil, {:error, :database_unavailable}] do
+      @tag telemetry_backend: unavailable
+      test "successful queries survive a telemetry backend lookup returning #{inspect(unavailable)}",
+           %{telemetry_backend: unavailable} do
+        user = insert(:user)
+        backend = insert(:backend, user: user, type: :clickhouse)
+
+        expect(QueryContext, :get_backend, fn id ->
+          assert id == backend.id
+          backend
+        end)
+
+        expect(QueryContext, :get_backend, fn id ->
+          assert id == backend.id
+          unavailable
+        end)
+
+        expect(ClickHouseAdaptor, :execute_query, fn _, _, _ ->
+          {:ok, QueryResult.new([%{"testing" => "123"}])}
+        end)
+
+        ref = :telemetry_test.attach_event_handlers(self(), [[:logflare, :endpoints, :query]])
+        on_exit(fn -> :telemetry.detach(ref) end)
+
+        assert {:ok, %{rows: [%{"testing" => "123"}]}} =
+                 Endpoints.run_query_string(user, {:ch_sql, "SELECT 1 AS testing"},
+                   backend_id: backend.id
+                 )
+
+        assert_received {[:logflare, :endpoints, :query], ^ref, _, metadata}
+        assert metadata["backend_id"] == backend.id
+        assert metadata["backend_type"] == nil
+      end
     end
 
     test "emits total_bytes_processed in telemetry for ClickHouse backend" do

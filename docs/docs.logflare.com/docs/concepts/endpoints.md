@@ -151,6 +151,15 @@ The result of the query will be returned on the `result` key of the response pay
 
 ## Cache
 
+Endpoint execution also caches user settings and backend lookups independently of
+query results. Disabling result caching does not disable these metadata caches.
+Metadata cache misses read the primary database, and application changes invalidate
+local metadata after their transaction commits. Other nodes and external database
+changes converge through WAL invalidation; this is not a guarantee of immediate
+cluster-wide visibility. Transactions bypass shared metadata snapshots. Backend
+query-class policy saves also multicast metadata evictions to peer nodes; this
+remains best effort and does not provide an immediate cluster-wide barrier.
+
 All endpoint queries by default are set to cache results for 3,600 seconds. The first API request that hits Logflare will create and set the results of the cache for the configured cache duration. Caching is recommended to keep querying costs down while ensuring the fastest possible return of results to the end user.
 
 To disable the cache, set the cached duration to `0`. However, it is not recommended to do so unless you absolutely need up-to-date results. To prevent stale data while keeping the cache warm, use the cache proactive requerying feature.
@@ -160,6 +169,8 @@ Caching is performed on a query parameter basis. As such, if there are three API
 When querying a specific endpoint version with `LF-ENDPOINT-VERSION`, the version number also partitions the cache. A request for the current endpoint and a request for version `1` use separate caches even when the query parameters match.
 
 ClickHouse scheduling classes do not partition successful result caches. Operators can apply [query-class policy](../self-hosting/clickhouse-query-policy.md) on cache misses and refreshes without changing query results. Current operator-enforced endpoint limits also apply to historical versions.
+
+Queries that do not reference another endpoint or alert skip loading those full query catalogs. Queries with table references use a compact name index cached for up to two minutes; its initial fill can still require a database read. Matching named queries retain the existing expansion behavior, including precedence over same-named sources.
 
 ### Proactive Requerying
 
@@ -220,6 +231,10 @@ curl "https://api.logflare.app/api/endpoints/query/my-endpoint" \
 ```
 
 If the header is omitted the current endpoint definition is used. If the requested version does not exist for the resolved endpoint the response contains `version not found`.
+
+Saved source mappings identify sources by token, including in historical endpoint versions. If a referenced source no longer exists, the request returns HTTP 400 with `can't find source <name>` instead of resolving a different source with the same name.
+
+If a required query catalog cannot be loaded because the database is unavailable, the request returns HTTP 503 with a `Retry-After: 5` header. Failed catalog loads are not cached, so a subsequent request retries the load.
 
 The current endpoint's sandboxing setting applies to every version. When sandboxing is disabled, requests containing non-empty `sql` or `lql` overrides return HTTP 400.
 

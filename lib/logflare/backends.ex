@@ -24,6 +24,7 @@ defmodule Logflare.Backends do
   alias Logflare.Cluster
   alias Logflare.LogEvent
   alias Logflare.PubSubRates
+  alias Logflare.QueryContext
   alias Logflare.Repo
   alias Logflare.Rules.Rule
   alias Logflare.SingleTenant
@@ -237,6 +238,7 @@ defmodule Logflare.Backends do
       |> Repo.insert()
 
     with {:ok, updated} <- backend do
+      QueryContext.invalidate_backend(updated)
       backend = Repo.preload(updated, :sources)
       Enum.each(backend.sources, &restart_source_sup(&1))
 
@@ -410,10 +412,15 @@ defmodule Logflare.Backends do
 
     case result do
       {:ok, {backend, updated}} ->
+        QueryContext.invalidate_backend(updated)
         updated = preload_sources(updated)
 
         if backend.default_ingest? != updated.default_ingest? do
           default_ingest_flag_changed(updated)
+        end
+
+        if Keyword.get(opts, :query_policy_only, false) do
+          invalidate_query_policy(updated)
         end
 
         apply_backend_change(updated.id)
@@ -423,6 +430,16 @@ defmodule Logflare.Backends do
       error ->
         error
     end
+  end
+
+  @spec invalidate_query_policy(Backend.t()) :: :ok
+  defp invalidate_query_policy(%Backend{id: id, user_id: user_id}) do
+    keys = [{__MODULE__, id}, {QueryContext, [backend_id: id, owner_id: user_id]}]
+
+    Repo.after_commit(fn ->
+      Logflare.ContextCache.bust_keys(keys)
+      Cluster.Utils.rpc_multicast(Logflare.ContextCache, :bust_keys, [keys])
+    end)
   end
 
   @spec lock_backend(integer()) :: {:ok, Backend.t()} | {:error, :not_found}
@@ -597,6 +614,7 @@ defmodule Logflare.Backends do
       |> Repo.delete()
 
     with {:ok, deleted} <- result do
+      QueryContext.invalidate_backend(deleted)
       if deleted.default_ingest?, do: default_ingest_flag_changed(deleted)
 
       apply_backend_change(deleted.id)
@@ -643,9 +661,10 @@ defmodule Logflare.Backends do
 
   @spec apply_backend_change(pos_integer()) :: :ok
   defp apply_backend_change(backend_id) do
-    ContextCache.bust_keys([{__MODULE__, backend_id}])
-    Cluster.Utils.rpc_multicast(__MODULE__, :apply_backend_change_local, [backend_id])
-    :ok
+    Repo.after_commit(fn ->
+      ContextCache.bust_keys([{__MODULE__, backend_id}])
+      Cluster.Utils.rpc_multicast(__MODULE__, :apply_backend_change_local, [backend_id])
+    end)
   end
 
   @spec stop_backend_local(pos_integer()) :: :ok
