@@ -153,7 +153,10 @@ defmodule Logflare.BackendsTest do
       Backends.ConsolidatedSup.stop_pipeline(updated)
     end
 
-    test "pipeline_swap_delay_ms/0 spreads swaps across 0..5 seconds" do
+    test "pipeline_swap_delay_ms/0 with the default maximum delay" do
+      Application.delete_env(:logflare, :max_pipeline_swap_delay_ms)
+      on_exit(fn -> Application.put_env(:logflare, :max_pipeline_swap_delay_ms, 0) end)
+
       delays = for _ <- 1..200, do: Backends.pipeline_swap_delay_ms()
 
       assert Enum.all?(delays, &(&1 in 0..5_000))

@@ -43,7 +43,7 @@ defmodule Logflare.Backends do
   @max_future_event_us 1 * 3_600 * 1_000_000
   @max_pending_buffer_len_per_queue IngestEventQueue.max_queue_size()
   @default_source_sup_start_timeout :timer.seconds(30)
-  @max_pipeline_swap_delay_ms 5_000
+  @default_max_pipeline_swap_delay_ms 5_000
 
   @type one_or_list_or_nil :: Backend.t() | [Backend.t()] | nil
 
@@ -1412,7 +1412,16 @@ defmodule Logflare.Backends do
 
   @doc false
   @spec pipeline_swap_delay_ms() :: non_neg_integer()
-  def pipeline_swap_delay_ms, do: :rand.uniform(@max_pipeline_swap_delay_ms + 1) - 1
+  def pipeline_swap_delay_ms do
+    max_delay_ms =
+      Application.get_env(
+        :logflare,
+        :max_pipeline_swap_delay_ms,
+        @default_max_pipeline_swap_delay_ms
+      )
+
+    :rand.uniform(max_delay_ms + 1) - 1
+  end
 
   @doc """
   Uses the buffers cache in `PubSubRates.Cache` to determine if a source's pending buffer
