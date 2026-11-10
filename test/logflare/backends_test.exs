@@ -302,11 +302,12 @@ defmodule Logflare.BackendsTest do
     end
 
     test "deleted backend", %{backend: backend} do
+      adaptor_sup = TestUtils.consolidated_sup_pid(backend)
       Repo.delete!(backend)
 
       assert :ok = Backends.apply_backend_change_local(backend.id)
 
-      refute Backends.ConsolidatedSup.pipeline_running?(backend.id)
+      refute Process.alive?(adaptor_sup)
     end
 
     test "stopped backend with default ingest enabled", %{backend: backend} do
