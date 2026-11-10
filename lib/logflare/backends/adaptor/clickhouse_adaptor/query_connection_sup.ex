@@ -53,12 +53,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   require Ex2ms
   require Logger
 
-  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
   alias Logflare.Backends.Backend
   alias Logflare.Backends.BackendRegistry
   alias Logflare.Cluster
-  alias Logflare.ContextCache
 
   @dynamic_sup_name __MODULE__.DynamicSupervisor
   @recycle_rpc_timeout :timer.seconds(15)
@@ -206,14 +204,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   end
 
   @doc """
-  Busts the local backend cache and stops each of the backend's read pools on the local
-  node whose connection options differ from the ones built from `backend`, so that the
-  next query restarts it with the current configuration.
+  Stops each of the backend's read pools on the local node whose connection options
+  differ from the ones built from `backend`, so that the next query restarts it with the
+  current configuration.
   """
   @spec refresh_backend_local(Backend.t()) :: :ok
   def refresh_backend_local(%Backend{id: backend_id} = backend) do
-    ContextCache.bust_keys([{Backends, backend_id}])
-
     backend_id
     |> lookup_managers()
     |> Enum.each(&safe_refresh(&1, backend))

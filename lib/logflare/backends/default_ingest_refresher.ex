@@ -75,7 +75,6 @@ defmodule Logflare.Backends.DefaultIngestRefresher do
     key = {:list_default_ingest_backends, [user_id]}
     Enum.each(fresh, &Backends.maybe_start_consolidated_pipeline/1)
 
-    Backends.Cache.fetch(key, fn -> fresh end)
-    Backends.Cache.update(key, fresh)
+    Backends.Cache.put(key, fresh)
   end
 end
