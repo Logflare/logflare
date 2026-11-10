@@ -3525,11 +3525,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, "CREATE DATABASE #{database}")
 
-      {:ok, _} =
-        backend
-        |> Repo.reload!()
-        |> Backend.changeset(%{config: %{backend.config | database: database}})
-        |> Repo.update()
+      backend = save_backend_config!(backend, %{database: database})
 
       assert :ok = ClickHouseAdaptor.on_backend_config_changed(backend)
 
@@ -3551,6 +3547,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       end
 
       {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend, "DROP DATABASE #{database}")
+    end
+
+    test "backend whose batch size changed since the adaptor started", %{backend: backend} do
+      test_pid = self()
+
+      stub(ClickHouseAdaptor, :test_ingest_connection, fn _backend ->
+        send(test_pid, :provisioning_started)
+        :ok
+      end)
+
+      backend = save_backend_config!(backend, %{batch_size: 2_000})
+
+      assert :ok = ClickHouseAdaptor.on_backend_config_changed(backend)
+
+      refute_receive :provisioning_started, 500
     end
   end
 
