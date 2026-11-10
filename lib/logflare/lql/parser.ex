@@ -18,6 +18,7 @@ defmodule Logflare.Lql.Parser do
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.FromRule
   alias Logflare.Lql.Rules.SelectRule
+  alias Logflare.Lql.Validator
 
   @type schema_flat_map :: %{optional(String.t()) => term()}
 
@@ -217,9 +218,14 @@ defmodule Logflare.Lql.Parser do
       chart_rule =
         chart_rule_tokens
         |> Enum.reduce(%{}, fn {:chart, fields}, acc -> Map.merge(acc, Map.new(fields)) end)
-        |> then(&Map.put(&1, :value_type, get_path_type(typemap, &1.path, querystring)))
 
-      ChartRule.build(Map.to_list(chart_rule))
+      rule = ChartRule.build(Map.to_list(chart_rule))
+      rule = %{rule | value_type: get_path_type(typemap, chart_rule.path, querystring)}
+
+      case Validator.validate_chart_rule(rule) do
+        nil -> rule
+        error -> throw(error)
+      end
     end
   end
 

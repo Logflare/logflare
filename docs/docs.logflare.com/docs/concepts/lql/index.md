@@ -73,6 +73,12 @@ Chart aggregations rules will display the aggregated trends in the chart. Chart 
 | c     | `p95`                       | `c:p95(m.latency)` |
 | c     | `p99`                       | `c:p99(m.latency)` |
 
+`sum` and `avg` require numeric fields. Incompatible fields are rejected before
+execution with an error naming the aggregate, field path, and schema type.
+This restriction does not apply to `count` or `countd`: for example,
+`c:countd(m.method)` can count distinct string values. Other aggregates retain
+their backend-specific input type support.
+
 #### AI-assisted search
 
 AI assist can turn a natural-language request into an LQL query and run the search.

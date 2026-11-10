@@ -124,8 +124,8 @@ defmodule Logflare.Lql.ValidatorTest do
 
       result = Validator.validate(lql_rules, tailing?: false)
 
-      assert result =~
-               "Can't aggregate on a non-numeric field type 'string' for path metadata.user_name"
+      assert result ==
+               "Chart aggregate 'avg' requires a numeric field, but path 'metadata.user_name' has type ':string'."
     end
 
     test "passes when exactly one chart rule uses numeric field type" do
@@ -329,7 +329,7 @@ defmodule Logflare.Lql.ValidatorTest do
       assert is_nil(result)
     end
 
-    test "validates exactly one chart rule condition for non-numeric type" do
+    test "allows counting non-numeric fields" do
       start_time = ~N[2023-01-01 00:00:00]
       end_time = ~N[2023-01-01 02:00:00]
 
@@ -355,8 +355,7 @@ defmodule Logflare.Lql.ValidatorTest do
 
       result = Validator.validate(lql_rules, tailing?: false)
 
-      assert result =~
-               "Can't aggregate on a non-numeric field type 'boolean' for path metadata.status"
+      assert is_nil(result)
     end
 
     test "passes with valid select rules" do

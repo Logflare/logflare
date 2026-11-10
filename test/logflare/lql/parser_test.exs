@@ -120,6 +120,53 @@ defmodule Logflare.Lql.ParserTest do
   setup :verify_on_exit!
 
   describe "LQL parsing" do
+    test "rejects incompatible numeric aggregates on the selected chart field" do
+      schema = build_schema(%{"metadata" => %{"method" => "GET", "response_bytes" => 42}})
+      range = "t:2026-11-04T04:40:00..2026-11-04T04:50:00"
+
+      for aggregate <- [:sum, :avg],
+          aggregates <- [
+            "c:#{aggregate}(m.method)",
+            "c:avg(m.response_bytes) c:#{aggregate}(m.method)"
+          ] do
+        assert Parser.parse("#{range} #{aggregates} c:group_by(t::minute)", schema) ==
+                 {:error,
+                  "Chart aggregate '#{aggregate}' requires a numeric field, but path 'metadata.method' has type ':string'."}
+      end
+
+      assert {:ok, [%ChartRule{aggregate: :avg, path: "metadata.response_bytes"}]} =
+               Parser.parse("c:sum(m.method) c:avg(m.response_bytes)", schema)
+    end
+
+    test "numeric aggregates reject boolean, timestamp, and array fields" do
+      schema = %{
+        "timestamp" => :datetime,
+        "metadata.enabled" => :boolean,
+        "metadata.bytes" => {:list, :integer}
+      }
+
+      for aggregate <- [:sum, :avg], path <- Map.keys(schema) do
+        assert {:error, error} = Parser.parse("c:#{aggregate}(#{path})", schema)
+        assert error =~ "Chart aggregate '#{aggregate}' requires a numeric field"
+        assert error =~ "path '#{path}'"
+      end
+    end
+
+    test "preserves non-numeric count, distinct count, max, and BigQuery percentile inputs" do
+      schema = build_schema(%{"metadata" => %{"method" => "GET", "enabled" => true}})
+
+      for aggregate <- [:count, :countd, :max, :p50, :p95, :p99] do
+        assert {:ok, [%ChartRule{aggregate: ^aggregate, value_type: :string}]} =
+                 Parser.parse("c:#{aggregate}(m.method)", schema)
+      end
+
+      assert {:ok, [%ChartRule{aggregate: :count, value_type: :boolean}]} =
+               Parser.parse("c:count(m.enabled)", schema)
+
+      assert {:ok, [%ChartRule{aggregate: :count, path: "timestamp"}]} =
+               Parser.parse("c:count(*)", schema)
+    end
+
     test "other top-level fields" do
       schema = build_schema(%{"a" => "t", "b" => %{"c" => %{"d" => "test"}}})
       qs = ~S|a:testing b.c.d:"nested"|
