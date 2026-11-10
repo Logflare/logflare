@@ -242,7 +242,8 @@ defmodule Logflare.Backends.SourceSup do
 
   @doc """
   Returns whether the source's `SourceSup` runs on this node with a child for the
-  backend that has the type and config of `backend`.
+  backend that has the type and config of `backend`. A `SourceSup` that exits while it
+  is checked, e.g. because it is being restarted, does not.
   """
   @spec backend_child_current?(Source.t(), Backend.t()) :: boolean()
   def backend_child_current?(%Source{} = source, %Backend{} = backend) do
@@ -254,6 +255,8 @@ defmodule Logflare.Backends.SourceSup do
     else
       _no_child -> false
     end
+  catch
+    :exit, _reason -> false
   end
 
   @doc """
