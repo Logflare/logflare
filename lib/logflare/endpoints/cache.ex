@@ -171,6 +171,35 @@ defmodule Logflare.Endpoints.Cache do
     end
   end
 
+  @spec list_query_names(pos_integer()) :: [map()] | CatalogCache.error()
+  def list_query_names(user_id) when is_integer(user_id) do
+    if Repo.in_transaction?() do
+      Endpoints.list_query_names(user_id)
+    else
+      CatalogCache.fetch(__MODULE__, {:list_query_names, [user_id]}, fn ->
+        Endpoints.list_query_names(user_id)
+      end)
+    end
+  end
+
+  @spec invalidate_query_names(keyword()) :: :ok
+  def invalidate_query_names(kw) do
+    keys =
+      if Keyword.has_key?(kw, :user_id) do
+        entries =
+          for user_id <- Keyword.get_values(kw, :user_id), do: {:list_query_names, [user_id]}
+
+        CatalogCache.keys_to_bust(__MODULE__, entries)
+      else
+        __MODULE__
+        |> CachexOps.keys_to_bust(kw)
+        |> Enum.filter(&match?({:catalog, {:list_query_names, _}, _}, &1))
+      end
+
+    {:ok, _} = delete_keys(keys)
+    :ok
+  end
+
   @impl ContextCache
   @spec keys_to_bust(keyword()) :: Enumerable.t()
   def keys_to_bust(kw) do
@@ -178,7 +207,12 @@ defmodule Logflare.Endpoints.Cache do
       entries =
         kw
         |> Keyword.get_values(:user_id)
-        |> Enum.map(&{:list_endpoints_by, [[user_id: &1]]})
+        |> Enum.flat_map(fn user_id ->
+          [
+            {:list_endpoints_by, [[user_id: user_id]]},
+            {:list_query_names, [user_id]}
+          ]
+        end)
 
       CatalogCache.keys_to_bust(__MODULE__, entries)
     else

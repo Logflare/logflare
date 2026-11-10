@@ -170,6 +170,8 @@ When querying a specific endpoint version with `LF-ENDPOINT-VERSION`, the versio
 
 ClickHouse scheduling classes do not partition successful result caches. Operators can apply [query-class policy](../self-hosting/clickhouse-query-policy.md) on cache misses and refreshes without changing query results. Current operator-enforced endpoint limits also apply to historical versions.
 
+Queries that do not reference another endpoint or alert skip loading those full query catalogs. Queries with table references use a compact name index cached for up to two minutes; its initial fill can still require a database read. Matching named queries retain the existing expansion behavior, including precedence over same-named sources.
+
 ### Proactive Requerying
 
 Logflare endpoints can be proactively requeried to ensure that the cache does not become stale throughout the cache lifetime.

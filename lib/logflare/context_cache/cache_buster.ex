@@ -265,7 +265,10 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"user_id" => user_id}
        })
        when is_binary(user_id) do
-    {Billing, [user_id: String.to_integer(user_id)]}
+    [
+      {Billing, :not_found},
+      {Billing, [user_id: String.to_integer(user_id)]}
+    ]
   end
 
   defp handle_record(%NewRecord{

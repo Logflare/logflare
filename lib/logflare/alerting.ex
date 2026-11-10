@@ -463,19 +463,9 @@ defmodule Logflare.Alerting do
     LoggerMetadata.with_metadata(alert_query_logger_metadata(alert_query), fn ->
       Logger.debug("Executing AlertQuery | #{alert_query.name} | #{alert_query.id}")
 
-      endpoints = Endpoints.list_endpoints_by(user_id: alert_query.user_id)
       use_query_cache = Keyword.get(opts, :use_query_cache, true)
 
-      alerts =
-        list_alert_queries_by_user_id(alert_query.user_id)
-        |> Enum.filter(&(&1.id != alert_query.id))
-
-      with {:ok, expanded_query} <-
-             Logflare.Sql.expand_subqueries(
-               alert_query.language,
-               alert_query.query,
-               endpoints ++ alerts
-             ),
+      with {:ok, expanded_query} <- Endpoints.expand_query_subqueries(alert_query),
            {:ok, transformed_query} <-
              Logflare.Sql.transform(alert_query.language, expanded_query, alert_query.user_id),
            {:ok, result} <-

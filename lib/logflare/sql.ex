@@ -448,6 +448,7 @@ defmodule Logflare.Sql do
   Extracts the raw table names found in a SQL query.
 
   Useful for determining which sources are referenced before having a full source mapping.
+  Set `:include_cte_aliases` to include CTE relation names when checking for named-query expansion.
 
   ### Example
 
@@ -459,7 +460,7 @@ defmodule Logflare.Sql do
     dialect = Keyword.get(opts, :dialect, "bigquery")
 
     with {:ok, ast} <- Parser.parse(dialect, query) do
-      {:ok, find_all_source_names(ast)}
+      {:ok, find_all_source_names(ast, opts)}
     end
   end
 
@@ -1065,14 +1066,13 @@ defmodule Logflare.Sql do
 
   defp do_replace_sandboxed_query(ast_node, _data), do: {:recurse, ast_node}
 
-  defp find_all_source_names(ast),
-    do: find_all_source_names(ast, [], %{ast: ast})
+  defp find_all_source_names(ast, opts \\ []),
+    do:
+      find_all_source_names(ast, [], %{ast: ast, include_cte_aliases: opts[:include_cte_aliases]})
 
-  defp find_all_source_names({"Table", %{"name" => name}}, prev, %{
-         ast: ast
-       })
+  defp find_all_source_names({"Table", %{"name" => name}}, prev, %{ast: ast} = data)
        when is_list(name) do
-    cte_names = do_extract_cte_aliases(ast)
+    cte_names = if data.include_cte_aliases, do: [], else: do_extract_cte_aliases(ast)
 
     qualified_name = name |> AstUtils.object_name_values() |> Enum.join(".")
 

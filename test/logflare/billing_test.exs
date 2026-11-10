@@ -19,6 +19,53 @@ defmodule Logflare.BillingTest do
       assert %BillingAccount{id: ^id} = Billing.get_billing_account!(ba.id)
     end
 
+    test "create_billing_account/2 clears cached misses only after a successful insert" do
+      free = insert(:plan, name: "Free")
+      lifetime = insert(:plan, name: "Lifetime")
+      user = insert(:user)
+      other_user = insert(:user)
+      other_account = insert(:billing_account, user: other_user)
+      stripe_customer = "cus_#{user.id}"
+      filters = [[user_id: user.id], [stripe_customer: stripe_customer]]
+      missing_id_filter = [id: -user.id]
+
+      assert Billing.Cache.get_plan_by_user(user) == free
+      assert Billing.Cache.get_plan_by_user(other_user) == free
+      cached_other_account = Billing.Cache.get_billing_account_by(id: other_account.id)
+      assert cached_other_account.id == other_account.id
+
+      for filter <- filters ++ [missing_id_filter] do
+        assert Billing.Cache.get_billing_account_by(filter) == nil
+      end
+
+      assert {:error, %Ecto.Changeset{}} = Billing.create_billing_account(user, %{})
+
+      for filter <- filters ++ [missing_id_filter] do
+        assert Cachex.get!(Billing.Cache, {:get_billing_account_by, [filter]}) == {:cached, nil}
+      end
+
+      assert Cachex.get!(Billing.Cache, {:get_plan_by_user, [user.id]}) == {:cached, free}
+
+      assert {:ok, account} =
+               Billing.create_billing_account(user, %{
+                 stripe_customer: stripe_customer,
+                 lifetime_plan: true
+               })
+
+      assert Cachex.get!(Billing.Cache, {:get_billing_account_by, [missing_id_filter]}) == nil
+
+      for filter <- filters do
+        assert Billing.Cache.get_billing_account_by(filter) == account
+      end
+
+      assert Billing.Cache.get_plan_by_user(user) == lifetime
+
+      assert Cachex.get!(Billing.Cache, {:get_billing_account_by, [[id: other_account.id]]}) ==
+               {:cached, cached_other_account}
+
+      assert Cachex.get!(Billing.Cache, {:get_plan_by_user, [other_user.id]}) == {:cached, free}
+    end
+
     test "create_billing_account/2, update_billing_account/2, delete_billing_account/1" do
       free = insert(:plan, name: "Free")
       lifetime = insert(:plan, name: "Lifetime")
