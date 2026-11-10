@@ -82,6 +82,31 @@ defmodule Logflare.Sql.ParserTest do
     end
   end
 
+  describe "nested UNION round trips" do
+    test "formats nested queries with 16 through 23 UNION ALLs without crashing" do
+      columns = Enum.map_join(0..11, ", ", &"c#{&1}")
+      first = "SELECT " <> Enum.map_join(0..11, ", ", &"'#{&1}' AS c#{&1}") <> " FROM t"
+
+      for unions <- [16, 19, 20, 21, 22, 23],
+          parse <- [&Parser.parse("clickhouse", &1), &Parser.parse_clickhouse_converted/1] do
+        rows =
+          Enum.map_join(1..unions, "", fn row ->
+            " UNION ALL SELECT " <> Enum.map_join(0..11, ", ", &"'r#{row}_#{&1}'")
+          end)
+
+        query =
+          Enum.reduce(1..5, first <> rows, fn _, inner ->
+            "SELECT #{columns} FROM (#{inner})"
+          end)
+
+        assert {:ok, ast} = parse.(query)
+        assert {:ok, formatted} = Parser.to_string(ast)
+        assert {:ok, reparsed} = parse.(formatted)
+        assert {:ok, ^formatted} = Parser.to_string(reparsed)
+      end
+    end
+  end
+
   describe "internal converted ClickHouse SQL" do
     test "customer SQL does not accept converter-only positional bindings" do
       for sql <- ["SELECT {$0:String}", "SELECT a FROM {$0:Identifier}"] do
