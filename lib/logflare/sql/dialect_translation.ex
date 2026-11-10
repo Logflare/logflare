@@ -64,7 +64,7 @@ defmodule Logflare.Sql.DialectTranslation do
     |> Map.to_list()
     |> Enum.sort_by(fn {i, _v} -> i end, :asc)
     |> Enum.reduce(string, fn {index, param}, acc ->
-      Regex.replace(~r/@#{param}(?!:\s|$)/, acc, "$#{index}::text", global: false)
+      Regex.replace(~r/@#{param}(?!:\s)/, acc, "$#{index}::text", global: false)
     end)
   end
 
@@ -395,7 +395,7 @@ defmodule Logflare.Sql.DialectTranslation do
         timestamp_identifier?(left) ->
           at_time_zone(left, :cast)
 
-        identifier?(left) and operator == "Eq" ->
+        identifier?(left) and not placeholder?(left) and operator == "Eq" ->
           left
           |> choose_cast_style()
           |> jsonb_to_text()
@@ -419,7 +419,7 @@ defmodule Logflare.Sql.DialectTranslation do
         timestamp_identifier?(right) ->
           at_time_zone(right, :cast)
 
-        identifier?(right) and operator == "Eq" ->
+        identifier?(right) and not placeholder?(right) and operator == "Eq" ->
           right
           |> choose_cast_style()
           |> jsonb_to_text()
@@ -1255,6 +1255,9 @@ defmodule Logflare.Sql.DialectTranslation do
 
   defp identifier?(identifier),
     do: is_map_key(identifier, "CompoundIdentifier") or is_map_key(identifier, "Identifier")
+
+  defp placeholder?(%{"Identifier" => %{"value" => "@" <> _, "quote_style" => nil}}), do: true
+  defp placeholder?(_), do: false
 
   defp numeric_value?(%{"Value" => %{"value" => %{"Number" => _}}}), do: true
   defp numeric_value?(_), do: false
