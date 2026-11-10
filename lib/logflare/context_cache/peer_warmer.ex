@@ -16,6 +16,9 @@ defmodule Logflare.ContextCache.PeerWarmer do
     3. Copies `c:Logflare.ContextCache.entries/0` in acknowledged chunks, skipping negative
        lookups, entries for which `c:Logflare.ContextCache.stale_entry?/2` holds and keys already
        cached locally. All attempts share one `:copy_timeout`.
+    4. Checks written entries against `c:Logflare.ContextCache.stale_entry?/2` again and deletes
+       the stale ones. A bust records its tombstones before deleting, so either this check sees
+       the tombstone or the bust's delete runs after the write.
 
   When every peer refuses or fails, it returns `:fallback` and the warmer loads from the
   database as before. A copy inherits the peer's `warmed_at`, so a copy of a copy never looks
@@ -210,7 +213,12 @@ defmodule Logflare.ContextCache.PeerWarmer do
   defp import_entries(cache, entries) do
     importable = Enum.filter(entries, &importable?(cache, &1))
     :ok = cache.put_entries(importable)
-    length(importable)
+    {:ok, dropped} = drop_invalidated(cache, importable)
+    length(importable) - dropped
+  end
+
+  defp drop_invalidated(cache, imported) do
+    cache.delete_keys(for {key, value, _ttl} <- imported, cache.stale_entry?(key, value), do: key)
   end
 
   defp importable?(cache, {key, value, _ttl}) do

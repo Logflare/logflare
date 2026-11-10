@@ -4,6 +4,7 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
   import ExUnit.CaptureLog
 
   alias Logflare.Cluster.Utils, as: ClusterUtils
+  alias Logflare.ContextCache
   alias Logflare.ContextCache.Gossip
   alias Logflare.ContextCache.PeerWarmer
   alias Logflare.ContextCache.PeerWarmer.Transfer
@@ -220,6 +221,28 @@ defmodule Logflare.ContextCache.PeerWarmerTest do
       assert fresh_id == fresh.id
       assert Cachex.get!(Sources.Cache, get_by_key(invalidated)) == nil
       assert Cachex.get!(Sources.Cache, get_by_key(cached)) == {:cached, :local_value}
+    end
+
+    test "does not keep an entry invalidated between the stale check and the write" do
+      [invalidated, unchanged] = insert_list(2, :source, user: insert(:user))
+
+      stub_transfer_of([
+        {get_by_key(invalidated), invalidated, nil},
+        {get_by_key(unchanged), unchanged, nil}
+      ])
+
+      stub(Sources.Cache, :put_entries, fn entries ->
+        Gossip.record_tombstones([{Sources, invalidated.id}])
+        ContextCache.bust_keys([{Sources, invalidated.id}])
+        call_original(Sources.Cache, :put_entries, [entries])
+      end)
+
+      result = PeerWarmer.copy_from_peer(Sources.Cache)
+
+      assert Cachex.get!(Sources.Cache, get_by_key(invalidated)) == nil
+      assert {:cached, %{id: unchanged_id}} = Cachex.get!(Sources.Cache, get_by_key(unchanged))
+      assert unchanged_id == unchanged.id
+      assert {:ok, %{count: 1}} = result
     end
 
     test "keeps the remaining ttl of copied entries" do
