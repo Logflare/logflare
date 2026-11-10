@@ -9,9 +9,6 @@ defmodule Logflare.Sql.Parser do
 
   @valid_dialects ~w(bigquery clickhouse postgres)
 
-  # The parser NIF runs on a worker thread with a fixed stack (see native/sqlparser_ex). A query
-  # this size cannot build an AST deep enough to overflow that stack. Larger queries are refused
-  # before they reach the NIF, because a stack overflow in a NIF kills the whole VM.
   @max_query_bytes 1_048_576
 
   defmodule Native do
@@ -28,7 +25,10 @@ defmodule Logflare.Sql.Parser do
   @doc """
   Attempts to parse a SQL query into AST based on the specified dialect.
 
-  Queries larger than #{@max_query_bytes} bytes are refused with an error.
+  Queries larger than #{@max_query_bytes} bytes are refused with an error. The native parser
+  also limits queries to 20,000 significant tokens and serialized ASTs to 16 MiB. AST JSON
+  must fit serde_json's 128-level recursion budget: at most 127 nested objects/arrays,
+  including the outer statement array. Exceeding a budget returns `{:error, reason}`.
   """
   @spec parse(dialect :: String.t(), query :: String.t()) ::
           {:ok, map() | [map()]} | {:error, String.t()}
@@ -44,7 +44,8 @@ defmodule Logflare.Sql.Parser do
 
   @doc """
   Parses final internal ClickHouse SQL after parameter conversion, including native positional bindings.
-  Customer SQL must use `parse/2` before conversion.
+  Customer SQL must use `parse/2` before conversion. The same byte, token, AST JSON size,
+  and nesting budgets apply.
   """
   @spec parse_clickhouse_converted(String.t()) :: {:ok, [map()]} | {:error, String.t()}
   def parse_clickhouse_converted(query)

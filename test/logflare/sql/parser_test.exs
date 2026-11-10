@@ -43,9 +43,6 @@ defmodule Logflare.Sql.ParserTest do
   end
 
   describe "deep ASTs do not crash the VM" do
-    # A long OR chain parses into an AST one level deeper per term. Before the parser NIF ran on
-    # its own large stack, 20,000 terms overflowed the BEAM scheduler stack while the NIF
-    # serialized the AST, and the VM died with a segfault. These tests then killed the test run.
     @terms 30_000
 
     defp or_chain(terms) do
@@ -53,23 +50,86 @@ defmodule Logflare.Sql.ParserTest do
       |> IO.iodata_to_binary()
     end
 
-    test "parse/2 handles a deep OR chain" do
+    test "parse/2 refuses a deep OR chain before constructing its AST" do
       query = or_chain(@terms)
       assert byte_size(query) < Parser.max_query_bytes()
 
       for dialect <- ~w(bigquery clickhouse postgres) do
-        assert {:ok, [_statement]} = Parser.parse(dialect, query)
+        assert {:error, message} = Parser.parse(dialect, query)
+        assert message =~ "20000 significant tokens"
       end
     end
 
-    test "parse_clickhouse_converted/1 handles a deep OR chain" do
-      assert {:ok, [_statement]} = Parser.parse_clickhouse_converted(or_chain(@terms))
+    test "parse_clickhouse_converted/1 refuses a deep OR chain" do
+      assert {:error, message} = Parser.parse_clickhouse_converted(or_chain(@terms))
+      assert message =~ "20000 significant tokens"
     end
 
-    test "to_string/1 returns an error for an AST too deep to deserialize" do
-      assert {:ok, ast} = Parser.parse("clickhouse", or_chain(@terms))
-      assert {:error, message} = Parser.to_string(ast)
+    test "queries below the token budget are still checked for AST depth" do
+      query = or_chain(100)
+
+      for parse <- [
+            &Parser.parse("bigquery", &1),
+            &Parser.parse("clickhouse", &1),
+            &Parser.parse("postgres", &1),
+            &Parser.parse_clickhouse_converted/1
+          ] do
+        assert {:error, message} = parse.(query)
+        assert message =~ "JSON recursion budget 128"
+      end
+    end
+
+    test "to_string/1 returns an error for a hand-built AST too deep to deserialize" do
+      assert {:ok, ast} = Parser.parse("clickhouse", "SELECT a FROM t WHERE a = 0")
+      path = [Access.at(0), "Query", "body", "Select", "selection"]
+      selection = Enum.reduce(1..200, get_in(ast, path), fn _, expr -> %{"Nested" => expr} end)
+      assert {:error, message} = Parser.to_string(put_in(ast, path, selection))
       assert message =~ "recursion limit"
+    end
+
+    test "a broad shallow query at the token limit is accepted" do
+      query = "SELECT " <> Enum.map_join(1..10_000, ",", fn _ -> "1" end)
+
+      for parse <- [
+            &Parser.parse("bigquery", &1),
+            &Parser.parse("clickhouse", &1),
+            &Parser.parse("postgres", &1),
+            &Parser.parse_clickhouse_converted/1
+          ] do
+        assert {:ok, ast} = parse.(query)
+        assert {:ok, _formatted} = Parser.to_string(ast)
+        assert {:error, message} = parse.(query <> ";")
+        assert message =~ "20000 significant tokens"
+      end
+    end
+
+    test "comments and large literals with JSON punctuation do not consume the depth budget" do
+      literal = String.duplicate(~s([{\\"\\\\}]), 3_000)
+      query = "SELECT '" <> literal <> "' AS \"[{column}]\" /* " <> literal <> " */"
+
+      for parse <- [
+            &Parser.parse("bigquery", &1),
+            &Parser.parse("clickhouse", &1),
+            &Parser.parse("postgres", &1),
+            &Parser.parse_clickhouse_converted/1
+          ] do
+        assert {:ok, ast} = parse.(query)
+        assert {:ok, _formatted} = Parser.to_string(ast)
+      end
+    end
+
+    test "large literals below and at the byte limit are accepted" do
+      for bytes <- [Parser.max_query_bytes() - 1, Parser.max_query_bytes()],
+          parse <- [
+            &Parser.parse("bigquery", &1),
+            &Parser.parse("clickhouse", &1),
+            &Parser.parse("postgres", &1),
+            &Parser.parse_clickhouse_converted/1
+          ] do
+        query = "SELECT '" <> String.duplicate("x", bytes - 9) <> "'"
+        assert byte_size(query) == bytes
+        assert {:ok, [_statement]} = parse.(query)
+      end
     end
 
     test "queries over the size limit are refused before parsing" do
