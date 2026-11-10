@@ -459,6 +459,35 @@ defmodule Logflare.BackendsTest do
       assert {_pid, %Backend{config: %{url: "http://other.com"}}} = webhook_child(source)
     end
 
+    test "linked sources whose source sups include one that exits when checked", %{
+      user: user,
+      source: source
+    } do
+      exiting_source = insert(:source, user: user)
+      later_source = insert(:source, user: user)
+      :ok = Backends.start_source_sup(later_source)
+      on_exit(fn -> Backends.stop_source_sup(later_source) end)
+
+      {:ok, _agent} =
+        Agent.start(fn -> nil end, name: Backends.via_source(exiting_source, SourceSup))
+
+      backend =
+        insert(:backend,
+          user: user,
+          sources: [source, exiting_source, later_source],
+          type: :webhook,
+          config: %{url: "http://test.com"}
+        )
+
+      capture_log(fn ->
+        assert :ok = Backends.apply_backend_change_local(backend.id)
+      end)
+
+      for linked_source <- [source, later_source] do
+        assert {_pid, %Backend{config: %{url: "http://test.com"}}} = webhook_child(linked_source)
+      end
+    end
+
     test "linked backend saved with an unchanged config", %{user: user, source: source} do
       backend = insert_webhook_backend(user, source)
       :ok = Backends.apply_backend_change_local(backend.id)
