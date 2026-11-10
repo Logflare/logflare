@@ -18,6 +18,7 @@ defmodule Logflare.Lql.Parser do
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.FromRule
   alias Logflare.Lql.Rules.SelectRule
+  alias Logflare.Lql.Validator
 
   @type schema_flat_map :: %{optional(String.t()) => term()}
 
@@ -201,7 +202,7 @@ defmodule Logflare.Lql.Parser do
   @spec build_from_rule([{:from, Keyword.t()}]) :: FromRule.t() | nil
   defp build_from_rule([]), do: nil
 
-  defp build_from_rule(from_tokens) when length(from_tokens) > 1 do
+  defp build_from_rule([_, _ | _] = from_tokens) do
     raise ArgumentError,
           "Only one from rule (f:table) is allowed per query, found #{length(from_tokens)}"
   end
@@ -212,14 +213,22 @@ defmodule Logflare.Lql.Parser do
 
   @spec build_chart_rule([{:chart, Keyword.t()}], schema_flat_map(), String.t()) ::
           ChartRule.t() | nil
-  defp build_chart_rule(chart_rule_tokens, typemap, querystring) do
-    if not Enum.empty?(chart_rule_tokens) do
-      chart_rule =
-        chart_rule_tokens
-        |> Enum.reduce(%{}, fn {:chart, fields}, acc -> Map.merge(acc, Map.new(fields)) end)
-        |> then(&Map.put(&1, :value_type, get_path_type(typemap, &1.path, querystring)))
+  defp build_chart_rule([], _typemap, _querystring), do: nil
 
-      ChartRule.build(Map.to_list(chart_rule))
+  defp build_chart_rule(chart_rule_tokens, typemap, querystring) do
+    fields =
+      Enum.reduce(chart_rule_tokens, [], fn {:chart, fields}, acc ->
+        Keyword.merge(acc, fields)
+      end)
+
+    rule =
+      fields
+      |> ChartRule.build()
+      |> Map.put(:value_type, get_path_type(typemap, Keyword.fetch!(fields, :path), querystring))
+
+    case Validator.validate_chart_rule(rule) do
+      nil -> rule
+      error -> throw(error)
     end
   end
 
