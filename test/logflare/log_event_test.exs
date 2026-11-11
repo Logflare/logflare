@@ -190,6 +190,29 @@ defmodule Logflare.LogEventTest do
       assert body["a"]["b"]["c"]["d"] == 123
     end
 
+    test "leaves body unchanged when destination path crosses a non-map", %{source: source} do
+      source =
+        %{source | transform_copy_fields: "food:dest.child"}
+        |> Source.parse_copy_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"food" => 123, "dest" => "str"}, %{source: source})
+
+      assert Map.drop(body, ["id", "timestamp"]) == %{"food" => 123, "dest" => "str"}
+    end
+
+    test "copies later rules after skipping one that crosses a non-map", %{source: source} do
+      source =
+        %{source | transform_copy_fields: "food:dest.child\nfood:other"}
+        |> Source.parse_copy_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"food" => 123, "dest" => "str"}, %{source: source})
+
+      assert body["dest"] == "str"
+      assert body["other"] == 123
+    end
+
     test "copies falsey-but-present source values", %{source: source} do
       source =
         %{source | transform_copy_fields: "flag:dest"}
@@ -299,6 +322,27 @@ defmodule Logflare.LogEventTest do
       assert body["metadata"]["flat"]["lookup"] == %{"org_id" => "456def", "name" => "Acme"}
       assert body["metadata"]["flat"]["existing_sibling"] == 1
       assert body["metadata"]["other"] == "kept"
+    end
+
+    test "creates missing intermediate maps at destination", %{source: source} do
+      source =
+        %{source | transform_key_values: "project:a.b.c:org_id"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} = LogEvent.make(%{"project" => "123abc"}, %{source: source})
+
+      assert body["a"]["b"]["c"] == "456def"
+    end
+
+    test "leaves body unchanged when destination path crosses a non-map", %{source: source} do
+      source =
+        %{source | transform_key_values: "project:dest.child"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "123abc", "dest" => "str"}, %{source: source})
+
+      assert Map.drop(body, ["id", "timestamp"]) == %{"project" => "123abc", "dest" => "str"}
     end
 
     test "3-part pattern with dot syntax accessor", %{source: source} do
