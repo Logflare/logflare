@@ -42,6 +42,131 @@ defmodule Logflare.Sql.ParserTest do
     end
   end
 
+  describe "deep ASTs do not crash the VM" do
+    @terms 30_000
+
+    defp or_chain(terms) do
+      ["SELECT a FROM t WHERE a = 0" | Enum.map(1..(terms - 1), &" OR a = #{&1}")]
+      |> IO.iodata_to_binary()
+    end
+
+    test "parse/2 refuses a deep OR chain before constructing its AST" do
+      query = or_chain(@terms)
+      assert byte_size(query) < Parser.max_query_bytes()
+
+      for dialect <- ~w(bigquery clickhouse postgres) do
+        assert {:error, message} = Parser.parse(dialect, query)
+        assert message =~ "20000 significant tokens"
+      end
+    end
+
+    test "parse_clickhouse_converted/1 refuses a deep OR chain" do
+      assert {:error, message} = Parser.parse_clickhouse_converted(or_chain(@terms))
+      assert message =~ "20000 significant tokens"
+    end
+
+    test "queries below the token budget are still checked for AST depth" do
+      query = or_chain(100)
+
+      for parse <- [
+            &Parser.parse("bigquery", &1),
+            &Parser.parse("clickhouse", &1),
+            &Parser.parse("postgres", &1),
+            &Parser.parse_clickhouse_converted/1
+          ] do
+        assert {:error, message} = parse.(query)
+        assert message =~ "JSON recursion budget 128"
+      end
+    end
+
+    test "to_string/1 returns an error for a hand-built AST too deep to deserialize" do
+      assert {:ok, ast} = Parser.parse("clickhouse", "SELECT a FROM t WHERE a = 0")
+      path = [Access.at(0), "Query", "body", "Select", "selection"]
+      selection = Enum.reduce(1..200, get_in(ast, path), fn _, expr -> %{"Nested" => expr} end)
+      assert {:error, message} = Parser.to_string(put_in(ast, path, selection))
+      assert message =~ "recursion limit"
+    end
+
+    test "a broad shallow query at the token limit is accepted" do
+      query = "SELECT " <> Enum.map_join(1..10_000, ",", fn _ -> "1" end)
+
+      for parse <- [
+            &Parser.parse("bigquery", &1),
+            &Parser.parse("clickhouse", &1),
+            &Parser.parse("postgres", &1),
+            &Parser.parse_clickhouse_converted/1
+          ] do
+        assert {:ok, ast} = parse.(query)
+        assert {:ok, _formatted} = Parser.to_string(ast)
+        assert {:error, message} = parse.(query <> ";")
+        assert message =~ "20000 significant tokens"
+      end
+    end
+
+    test "comments and large literals with JSON punctuation do not consume the depth budget" do
+      literal = String.duplicate(~s([{\\"\\\\}]), 3_000)
+      query = "SELECT '" <> literal <> "' AS \"[{column}]\" /* " <> literal <> " */"
+
+      for parse <- [
+            &Parser.parse("bigquery", &1),
+            &Parser.parse("clickhouse", &1),
+            &Parser.parse("postgres", &1),
+            &Parser.parse_clickhouse_converted/1
+          ] do
+        assert {:ok, ast} = parse.(query)
+        assert {:ok, _formatted} = Parser.to_string(ast)
+      end
+    end
+
+    test "large literals below and at the byte limit are accepted" do
+      for bytes <- [Parser.max_query_bytes() - 1, Parser.max_query_bytes()],
+          parse <- [
+            &Parser.parse("bigquery", &1),
+            &Parser.parse("clickhouse", &1),
+            &Parser.parse("postgres", &1),
+            &Parser.parse_clickhouse_converted/1
+          ] do
+        query = "SELECT '" <> String.duplicate("x", bytes - 9) <> "'"
+        assert byte_size(query) == bytes
+        assert {:ok, [_statement]} = parse.(query)
+      end
+    end
+
+    test "queries over the size limit are refused before parsing" do
+      query = "SELECT 1 " <> String.duplicate(" ", Parser.max_query_bytes())
+
+      assert {:error, "Query is too large to parse" <> _} = Parser.parse("clickhouse", query)
+
+      assert {:error, "Query is too large to parse" <> _} =
+               Parser.parse_clickhouse_converted(query)
+    end
+  end
+
+  describe "nested UNION round trips" do
+    test "formats nested queries with 16 through 23 UNION ALLs without crashing" do
+      columns = Enum.map_join(0..11, ", ", &"c#{&1}")
+      first = "SELECT " <> Enum.map_join(0..11, ", ", &"'#{&1}' AS c#{&1}") <> " FROM t"
+
+      for unions <- [16, 19, 20, 21, 22, 23],
+          parse <- [&Parser.parse("clickhouse", &1), &Parser.parse_clickhouse_converted/1] do
+        rows =
+          Enum.map_join(1..unions, "", fn row ->
+            " UNION ALL SELECT " <> Enum.map_join(0..11, ", ", &"'r#{row}_#{&1}'")
+          end)
+
+        query =
+          Enum.reduce(1..5, first <> rows, fn _, inner ->
+            "SELECT #{columns} FROM (#{inner})"
+          end)
+
+        assert {:ok, ast} = parse.(query)
+        assert {:ok, formatted} = Parser.to_string(ast)
+        assert {:ok, reparsed} = parse.(formatted)
+        assert {:ok, ^formatted} = Parser.to_string(reparsed)
+      end
+    end
+  end
+
   describe "internal converted ClickHouse SQL" do
     test "customer SQL does not accept converter-only positional bindings" do
       for sql <- ["SELECT {$0:String}", "SELECT a FROM {$0:Identifier}"] do
