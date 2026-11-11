@@ -72,6 +72,13 @@ defmodule Logflare.SqlTest do
       refute "cte" in names
     end
 
+    test "optionally includes CTE aliases for conservative named-query expansion" do
+      query = "WITH cte AS (SELECT * FROM source_table) SELECT * FROM cte"
+
+      assert {:ok, names} = Sql.extract_table_names(query, include_cte_aliases: true)
+      assert Enum.sort(names) == ["cte", "source_table"]
+    end
+
     test "returns error for invalid SQL" do
       assert {:error, _} = Sql.extract_table_names("INVALID SQL QUERY!!!")
     end

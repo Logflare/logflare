@@ -62,14 +62,14 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   @impl Logflare.Backends.SystemBackend
   @spec on_source_start(Source.t()) :: :ok
-  def on_source_start(%Source{token: source_token}) do
+  def on_source_start(%Source{token: source_token} = source) do
     %{
       user_id: user_id,
       bigquery_table_ttl: bigquery_table_ttl,
       bigquery_project_id: bigquery_project_id,
       bigquery_dataset_location: bigquery_dataset_location,
       bigquery_dataset_id: bigquery_dataset_id
-    } = GenUtils.get_bq_user_info(source_token)
+    } = GenUtils.get_bq_user_info(source)
 
     Tasks.start_child(fn ->
       BigQuery.init_table!(

@@ -48,6 +48,7 @@ defmodule E2e.Features.BackendsTest do
     test "edit can add and remove read cluster rows", %{backend: backend, conn: conn} do
       conn
       |> visit(~p"/backends/#{backend.id}/edit")
+      |> assert_has("[data-phx-main].phx-connected")
       |> refute_has("#read-cluster-row-1")
       |> click_button("Add read cluster")
       |> assert_has("#read-cluster-row-1")

@@ -135,7 +135,7 @@ defmodule Logflare.Endpoints.EndpointPolicyDistributedTest do
     assert {:ok, true} =
              :erpc.call(peer_node, Cachex, :put, [
                Endpoints.Cache,
-               {:get_mapped_query_by_token, [endpoint.token]},
+               {:get_query_with_user_by_token, [endpoint.token]},
                {:cached, endpoint}
              ])
 

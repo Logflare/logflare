@@ -81,6 +81,26 @@ defmodule Logflare.Backends.SpoolAwsAdaptersTest do
     end
   end
 
+  describe "Storage.S3.delete/2" do
+    test "returns :ok on success" do
+      stub(ExAws, :request, fn %{http_method: :delete, path: "0/abc.etf"}, _opts -> {:ok, %{}} end)
+
+      assert :ok = S3.delete("test-bucket", "0/abc.etf")
+    end
+
+    test "treats a missing object (404) as success" do
+      stub(ExAws, :request, fn _op, _opts -> {:error, {:http_error, 404, "Not Found"}} end)
+
+      assert :ok = S3.delete("test-bucket", "missing-key")
+    end
+
+    test "passes through other errors" do
+      stub(ExAws, :request, fn _op, _opts -> {:error, {:http_error, 403, "Forbidden"}} end)
+
+      assert {:error, {:http_error, 403, "Forbidden"}} = S3.delete("test-bucket", "key")
+    end
+  end
+
   describe "Queue.SQS.ack/2" do
     test "acknowledges successfully on a normal response" do
       stub(ExAws, :request, fn _op, _opts -> {:ok, %{body: %{}}} end)

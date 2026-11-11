@@ -203,19 +203,31 @@ defmodule Logflare.Telemetry do
     ]
 
     database_metrics = [
-      distribution("logflare.repo.query.total_time", unit: {:native, :millisecond}),
+      distribution("logflare.repo.query.total_time",
+        unit: {:native, :millisecond},
+        tags: [:role],
+        tag_values: &repo_query_tags/1
+      ),
       # decode_time and queue_time/idle_time can be nil for certain query types
       # (e.g. Oban internal queries that bypass the pool). OtelMetricExporter crashes on
       # round(nil) when converting native time units, detaching the whole event handler.
       # Default nil to 0: semantically correct (nil queue_time = no pool wait).
-      distribution("logflare.repo.query.query_time", unit: {:native, :millisecond}),
+      distribution("logflare.repo.query.query_time",
+        unit: {:native, :millisecond},
+        tags: [:role],
+        tag_values: &repo_query_tags/1
+      ),
       distribution("logflare.repo.query.queue_time",
         measurement: fn m -> m[:queue_time] || 0 end,
-        unit: {:native, :millisecond}
+        unit: {:native, :millisecond},
+        tags: [:role],
+        tag_values: &repo_query_tags/1
       ),
       distribution("logflare.repo.query.idle_time",
         measurement: fn m -> m[:idle_time] || 0 end,
-        unit: {:native, :millisecond}
+        unit: {:native, :millisecond},
+        tags: [:role],
+        tag_values: &repo_query_tags/1
       )
     ]
 
@@ -678,6 +690,15 @@ defmodule Logflare.Telemetry do
         description:
           "Spool queue ack (delete) count by reason, and whether the underlying SQS/PubSub call itself succeeded"
       ),
+      counter("logflare.backends.spool.storage.delete.count",
+        tags: [:result],
+        description: "Spool object deletes after ack, by result (ok, error, timeout)"
+      ),
+      counter("logflare.backends.spool.delete_buffer.dropped.count",
+        tags: [:reason],
+        description:
+          "Spool object deletes dropped, by reason (buffer_full, or not_running when the deleter is down)"
+      ),
       counter("logflare.backends.spool.queue.nack.count",
         tags: [:reason, :result],
         description:
@@ -818,6 +839,12 @@ defmodule Logflare.Telemetry do
       application_metrics,
       finch_metrics
     ])
+  end
+
+  @spec repo_query_tags(map()) :: %{role: :primary | :replica}
+  defp repo_query_tags(%{repo: repo} = metadata) do
+    fallback_role = if(repo.get_dynamic_repo() == repo, do: :primary, else: :replica)
+    %{role: Keyword.get(Map.get(metadata, :options, []), :role, fallback_role)}
   end
 
   defp periodic_measurements do
