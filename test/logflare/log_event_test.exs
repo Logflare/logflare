@@ -389,6 +389,32 @@ defmodule Logflare.LogEventTest do
 
       assert body["result"] == "found_it"
     end
+
+    test "boolean field values are stringified for key lookup", %{source: source, user: user} do
+      insert(:key_value, user: user, key: "true", value: %{"result" => "bool_hit"})
+
+      source =
+        %{source | transform_key_values: "flag:result:result"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"flag" => true}, %{source: source})
+
+      assert body["result"] == "bool_hit"
+    end
+
+    test "map and list field values skip enrichment without raising", %{source: source} do
+      source =
+        %{source | transform_key_values: "project:enriched"}
+        |> Source.parse_key_values_config()
+
+      for value <- [%{"id" => "123abc"}, ["123abc"], [49, 50, 51]] do
+        assert %LogEvent{body: body} =
+                 LogEvent.make(%{"project" => value}, %{source: source})
+
+        refute Map.has_key?(body, "enriched")
+      end
+    end
   end
 
   describe "drop_fields" do
