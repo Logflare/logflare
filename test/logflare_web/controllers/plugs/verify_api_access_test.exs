@@ -58,6 +58,39 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       assert last_use >= first_use
     end
 
+    test "rejects a missing token owner without recording usage", %{access_token: token} do
+      assert {:ok, _token, _user} = Auth.Cache.verify_access_token(token.token, [])
+      stub(Users.Cache, :get, fn _id -> nil end)
+
+      build_conn(:post, "/logs")
+      |> put_req_header("authorization", "Bearer #{token.token}")
+      |> VerifyApiAccess.call(%{})
+      |> assert_unauthorized()
+
+      assert RecordUsages.Cache.snapshot() == []
+    end
+
+    test "returns database outages without recording token or legacy key usage", %{
+      access_token: token,
+      user: user
+    } do
+      assert {:ok, _token, _user} = Auth.Cache.verify_access_token(token.token, [])
+      stub(Users.Cache, :get, fn _id -> {:error, :database_unavailable} end)
+      stub(Users.Cache, :get_by, fn _params -> {:error, :database_unavailable} end)
+
+      for credential <- [token.token, user.api_key], scopes <- [[], ["private"]] do
+        conn =
+          build_conn(:post, "/logs")
+          |> put_req_header("x-api-key", credential)
+          |> VerifyApiAccess.call(%{scopes: scopes})
+
+        assert conn.halted
+        assert conn.status == 503
+      end
+
+      assert RecordUsages.Cache.snapshot() == []
+    end
+
     test "authenticates partners without recording usage", %{conn: conn} do
       partner = insert(:partner)
       {:ok, token} = Auth.create_access_token(partner)
