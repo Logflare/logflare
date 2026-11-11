@@ -392,6 +392,35 @@ defmodule Logflare.Lql.ParserTest do
              ] = rules
     end
 
+    test "timestamp filters reject reversed bounds in both parser entry points" do
+      for query <- [
+            "t:2026-{11..10}-{04..31}",
+            "t:1710683822..1710683222",
+            "t:2026-11-04T04:40:00Z..2026-11-04T05:00:00+01:00",
+            "t:2026-11-04T04:40:00.000002..2026-11-04T04:40:00.000001"
+          ] do
+        assert {:error, "Timestamp range start must be before or equal to its end"} =
+                 Parser.parse(query)
+
+        assert {:error, "Timestamp range start must be before or equal to its end"} =
+                 Parser.parse(query, @default_schema)
+      end
+    end
+
+    test "timestamp ranges preserve forward and equal bounds after offset normalization" do
+      for {query, expected} <- [
+            {"t:2026-11-04T05:00:00+01:00..2026-11-04T04:40:00Z",
+             [~N[2026-11-04 04:00:00], ~N[2026-11-04 04:40:00]]},
+            {"t:2026-11-04T05:40:00+01:00..2026-11-04T04:40:00Z",
+             [~N[2026-11-04 04:40:00], ~N[2026-11-04 04:40:00]]}
+          ] do
+        assert {:ok, [%FilterRule{operator: :range, values: ^expected}]} = Parser.parse(query)
+
+        assert {:ok, [%FilterRule{operator: :range, values: ^expected}]} =
+                 Parser.parse(query, @default_schema)
+      end
+    end
+
     test "timestamp filters reject range with mixed timestamp origin" do
       assert {:error, "Timestamp range cannot mix timestamps with and without timezone offsets"} =
                Parser.parse(
