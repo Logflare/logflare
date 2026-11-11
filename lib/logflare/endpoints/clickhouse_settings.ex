@@ -14,6 +14,7 @@ defmodule Logflare.Endpoints.ClickHouseSettings do
 
   @resource_limits ~w(max_bytes_to_read max_rows_to_read max_memory_usage max_execution_time max_threads)
   @setting_types %{
+    "read_from_filesystem_cache_if_exists_otherwise_bypass_cache" => {:enum, [0, 1]},
     "priority" => :integer,
     "max_threads" => :integer,
     "max_bytes_to_read" => :integer,

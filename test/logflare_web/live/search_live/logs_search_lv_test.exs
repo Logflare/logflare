@@ -1532,16 +1532,22 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     test "shows flash error for malformed query", %{conn: conn, source: source} do
-      assert {:ok, view, _html} =
-               live_with_redirect(
-                 conn,
-                 Routes.live_path(conn, SearchLV, source, querystring: "t:20022")
-               )
+      for {query, expected_error} <- [
+            {"t:20022", "Error while parsing timestamp filter"},
+            {"t:2026-11-04T04:50:00..2026-11-04T04:40:00",
+             "Timestamp range start must be before or equal to its end"}
+          ] do
+        assert {:ok, view, _html} =
+                 live_with_redirect(
+                   conn,
+                   Routes.live_path(conn, SearchLV, source,
+                     querystring: query,
+                     tailing?: false
+                   )
+                 )
 
-      %{executor_pid: search_executor_pid} = get_view_assigns(view)
-      allow_sandbox(search_executor_pid)
-
-      assert render(view) =~ "Error while parsing timestamp filter"
+        assert has_element?(view, ".message [role='alert']", expected_error)
+      end
     end
 
     test "shows flash error for query exceeding processed bytes limit", %{

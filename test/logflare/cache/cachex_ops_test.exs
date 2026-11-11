@@ -166,6 +166,20 @@ defmodule Logflare.Cache.CachexOpsTest do
       end
     end
 
+    test "not-found invalidation selects only cached nil values" do
+      Cachex.put_many!(@cache,
+        missing: {:cached, nil},
+        positive: {:cached, %{id: 1}},
+        empty_catalog: {:cached, []}
+      )
+
+      keys = Enum.to_list(CachexOps.keys_to_bust(@cache, id: :not_found))
+      assert keys == [:missing]
+      assert {:ok, 1} = CachexOps.delete_keys(@cache, keys)
+      assert Cachex.get!(@cache, :positive) == {:cached, %{id: 1}}
+      assert Cachex.get!(@cache, :empty_catalog) == {:cached, []}
+    end
+
     test "keyword other than id" do
       assert_raise ArgumentError, fn -> CachexOps.keys_to_bust(@cache, source_id: 1) end
     end
@@ -175,6 +189,22 @@ defmodule Logflare.Cache.CachexOpsTest do
     setup do
       start_cache(limit: nil)
       :ok
+    end
+
+    test "typed database failures are not cached and the next fetch retries" do
+      assert {:error, :database_unavailable} =
+               CachexOps.fetch(@cache, :key, fn -> {:error, :database_unavailable} end)
+
+      assert {:ok, false} = Cachex.exists?(@cache, :key)
+      assert :recovered = CachexOps.fetch(@cache, :key, fn -> :recovered end)
+    end
+
+    test "unexpected getter failures are re-raised" do
+      assert_raise Cachex.Error, ~r/getter bug/, fn ->
+        CachexOps.fetch(@cache, :key, fn -> raise ArgumentError, "getter bug" end)
+      end
+
+      assert {:ok, false} = Cachex.exists?(@cache, :key)
     end
 
     for value <- [:value, nil] do

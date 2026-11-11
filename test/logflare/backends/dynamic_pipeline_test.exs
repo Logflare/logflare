@@ -311,11 +311,11 @@ defmodule Logflare.Backends.DynamicPipelineTest do
     # The migration itself must be invisible to SpoolAck -- no extra bump, no
     # premature ack -- for both the migrated pointer and the one already on
     # the surviving shard.
-    assert [{^removed_handle, 1, QueueMod, "queue-url", _registered_at}] =
-             :ets.lookup(:spool_ack, removed_handle)
+    assert {:ok, %{count: 1, queue_mod: QueueMod, queue_url: "queue-url"}} =
+             SpoolAck.lookup(removed_handle)
 
-    assert [{^surviving_handle, 1, QueueMod, "queue-url", _registered_at}] =
-             :ets.lookup(:spool_ack, surviving_handle)
+    assert {:ok, %{count: 1, queue_mod: QueueMod, queue_url: "queue-url"}} =
+             SpoolAck.lookup(surviving_handle)
 
     assert IngestEventQueue.total_pending(surviving_key) == 2
   end

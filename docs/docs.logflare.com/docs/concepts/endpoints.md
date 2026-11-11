@@ -31,6 +31,25 @@ OpenAPI documentation for querying Logflare Endpoints can be found [here](https:
 
 Queries will be passed to the underlying backend to perform the querying.
 
+### SQL parsing limits
+
+SQL parsed by Logflare, including sandbox queries and internally converted ClickHouse SQL,
+uses the following limits before the query reaches the database:
+
+| Budget | Limit |
+| --- | --- |
+| SQL text | 1 MiB (1,048,576 bytes) |
+| Significant SQL tokens | 20,000; whitespace and comments do not count |
+| Serialized internal AST JSON | 16 MiB (16,777,216 bytes), bounded while writing |
+| Internal AST JSON nesting | serde_json's 128-level recursion budget: at most 127 nested objects/arrays, including the outer statement array |
+
+A token, AST size, or nesting violation returns a `Query is too complex to parse`
+error identifying the exceeded budget. An oversized SQL string returns `Query is too
+large to parse`. AST nesting is not the same as SQL parenthesis nesting or the number
+of UNIONs. Reduce the query's expression nesting or split an oversized query into
+smaller queries when a limit is exceeded. These are parser resource limits, not
+limits on the rows returned by a query.
+
 ### Parameters
 
 Queries can contain parameters, which are declared with the `@` prefix. Matching query parameters are then interpolated into the query. Query parameters are decoded and interpolated as the decoded data type.
@@ -86,6 +105,59 @@ The Endpoint consumer can pass in the following query parameter to query across 
 
 Should large SQL queries need to be executed, the SQL query string can be placed in the GET JSON body. Logflare will read the body and use the `sql` field in the body payload. This will only occur if **no `?sql=` query parameter is present in the request's query parameters**. This behaviour does not extend to other declared parameters (such as `@my_param`), and only applies to the special `sql` query parameter for sandboxed endpoints.
 
+### ClickHouse filesystem cache policy
+
+Anyone who can edit a ClickHouse endpoint can configure its **Filesystem cache policy**
+in the endpoint editor. This policy uses the endpoint's existing time parameters;
+callers do not send an additional cache-control flag.
+
+1. Enable **Avoid populating cache for large time windows**.
+2. Select distinct start and end parameters declared in the endpoint SQL.
+3. Choose ISO 8601 (including a timezone), Unix seconds, or Unix milliseconds.
+4. Set a positive threshold in seconds, minutes, hours, or days.
+
+When the requested window is **strictly greater** than the threshold, Logflare adds
+`read_from_filesystem_cache_if_exists_otherwise_bypass_cache = 1` to the final query.
+ClickHouse can read existing filesystem-cache entries but will not populate that
+cache on misses. Shorter or equal windows leave existing cache settings unchanged.
+Fixed backend/endpoint settings take precedence over this derived hint.
+
+The endpoint author must ensure the selected parameters actually bound the SQL's
+time range, including any sandboxed query. This is a performance hint, not a
+security limit. If either boundary is absent, null, or an empty string, no cache
+hint is derived.
+This does not supply missing SQL parameters or change the backend's parameter
+requirements. Supplied invalid timestamps and reversed ranges return an HTTP 400
+query error describing the invalid window. Unix timestamps must be integers;
+ISO 8601 timestamps must include a timezone. The editor's test panel labels the
+resolved window and derived behavior; fixed query policy can override the hint.
+The transformed-query preview includes the effective backend class and
+endpoint-enforced settings, using the same precedence as execution.
+
+The configuration is versioned with the endpoint SQL. Historical versions retain
+their own policy, and versions created before this feature have it disabled.
+Editing the policy invalidates the current endpoint's result caches. Historical
+versions continue using their own policy during cache refresh. Changing an endpoint
+to a non-ClickHouse backend clears its existing filesystem-cache policy. Supplying
+a new or changed policy for a non-ClickHouse endpoint returns a validation error.
+
+The management API also accepts a nullable `filesystem_cache_policy` object:
+
+```json
+{
+  "filesystem_cache_policy": {
+    "start_param": "from",
+    "end_param": "to",
+    "timestamp_format": "iso8601",
+    "bypass_fill_above_seconds": 86400
+  }
+}
+```
+
+Use `null` to disable the policy. Supported formats are `iso8601`, `unix_seconds`,
+and `unix_milliseconds`. This controls ClickHouse's filesystem cache, **not**
+Logflare's endpoint result cache: a result-cache hit does not execute ClickHouse.
+
 ## HTTP Response
 
 The result of the query will be returned on the `result` key of the response payload.
@@ -98,6 +170,15 @@ The result of the query will be returned on the `result` key of the response pay
 
 ## Cache
 
+Endpoint execution also caches user settings and backend lookups independently of
+query results. Disabling result caching does not disable these metadata caches.
+Metadata cache misses read the primary database, and application changes invalidate
+local metadata after their transaction commits. Other nodes and external database
+changes converge through WAL invalidation; this is not a guarantee of immediate
+cluster-wide visibility. Transactions bypass shared metadata snapshots. Backend
+query-class policy saves also multicast metadata evictions to peer nodes; this
+remains best effort and does not provide an immediate cluster-wide barrier.
+
 All endpoint queries by default are set to cache results for 3,600 seconds. The first API request that hits Logflare will create and set the results of the cache for the configured cache duration. Caching is recommended to keep querying costs down while ensuring the fastest possible return of results to the end user.
 
 To disable the cache, set the cached duration to `0`. However, it is not recommended to do so unless you absolutely need up-to-date results. To prevent stale data while keeping the cache warm, use the cache proactive requerying feature.
@@ -107,6 +188,8 @@ Caching is performed on a query parameter basis. As such, if there are three API
 When querying a specific endpoint version with `LF-ENDPOINT-VERSION`, the version number also partitions the cache. A request for the current endpoint and a request for version `1` use separate caches even when the query parameters match.
 
 ClickHouse scheduling classes do not partition successful result caches. Operators can apply [query-class policy](../self-hosting/clickhouse-query-policy.md) on cache misses and refreshes without changing query results. Current operator-enforced endpoint limits also apply to historical versions.
+
+Queries that do not reference another endpoint or alert skip loading those full query catalogs. Queries with table references use a compact name index cached for up to two minutes; its initial fill can still require a database read. Matching named queries retain the existing expansion behavior, including precedence over same-named sources.
 
 ### Proactive Requerying
 
@@ -167,6 +250,10 @@ curl "https://api.logflare.app/api/endpoints/query/my-endpoint" \
 ```
 
 If the header is omitted the current endpoint definition is used. If the requested version does not exist for the resolved endpoint the response contains `version not found`.
+
+Saved source mappings identify sources by token, including in historical endpoint versions. If a referenced source no longer exists, the request returns HTTP 400 with `can't find source <name>` instead of resolving a different source with the same name.
+
+If a required query catalog cannot be loaded because the database is unavailable, the request returns HTTP 503 with a `Retry-After: 5` header. Failed catalog loads are not cached, so a subsequent request retries the load.
 
 The current endpoint's sandboxing setting applies to every version. When sandboxing is disabled, requests containing non-empty `sql` or `lql` overrides return HTTP 400.
 

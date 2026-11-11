@@ -864,6 +864,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
              Keyword.get(opts, :read_cluster),
              endpoint_settings
            ) do
+      settings = Map.merge(Keyword.get(opts, :filesystem_cache_settings, %{}), settings)
+
       if Keyword.get(opts, :validated_clickhouse_sql, false) do
         ClickHouseSettings.enforce_validated(statement, settings)
       else
