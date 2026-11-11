@@ -628,7 +628,8 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
     assert {:ok, :patch_attempted} = BigQueryAdaptor.patch_dataset_access(user)
     assert_receive {:patched_access, access}
-    assert Enum.any?(access, &(&1.dataset && &1.dataset.dataset.datasetId == "dbt"))
+    assert %{dataset: dataset, targetTypes: ["VIEWS"]} = Enum.find_value(access, & &1.dataset)
+    assert %{projectId: "supabase-etl-prod-eu", datasetId: "dbt"} = dataset
   end
 
   describe "fetch and update iam policy" do
