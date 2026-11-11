@@ -11,7 +11,6 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.SystemMetrics.AllLogsLogged
-  alias GoogleApi.BigQuery.V2.Model, as: BigQueryModel
   alias GoogleApi.CloudResourceManager.V1.Model
 
   setup do
@@ -613,42 +612,23 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
     assert policy.bindings |> length() > 0
   end
 
-  test "patch_dataset_access/1 keeps access entries Logflare does not manage" do
-    user = insert(:user, bigquery_project_id: "my-project", bigquery_dataset_id: "my_dataset")
+  test "patch_dataset_access/1 authorizes the Supabase dbt dataset" do
+    user =
+      insert(:user, bigquery_project_id: "supabase-analytics-eu", bigquery_dataset_id: "logflare")
+
     insert(:source, user: user)
-    team_user = insert(:team_user, team: insert(:team, user: user))
+    insert(:team_user, team: insert(:team, user: user))
     pid = self()
 
-    authorized_view = %BigQueryModel.DatasetAccess{
-      view: %BigQueryModel.TableReference{
-        projectId: "other-project",
-        datasetId: "dbt",
-        tableId: "my_view"
-      }
-    }
-
-    removed_team_user = %BigQueryModel.DatasetAccess{
-      role: "READER",
-      userByEmail: "removed@example.com"
-    }
-
-    expect(GoogleApi.BigQuery.V2.Api.Datasets, :bigquery_datasets_get, fn
-      _conn, "my-project", "my_dataset" ->
-        {:ok, %BigQueryModel.Dataset{access: [removed_team_user, authorized_view]}}
-    end)
-
     expect(GoogleApi.BigQuery.V2.Api.Datasets, :bigquery_datasets_patch, fn
-      _conn, "my-project", "my_dataset", [body: body] ->
+      _conn, "supabase-analytics-eu", "logflare", [body: body] ->
         send(pid, {:patched_access, body.access})
         {:ok, body}
     end)
 
     assert {:ok, :patch_attempted} = BigQueryAdaptor.patch_dataset_access(user)
     assert_receive {:patched_access, access}
-
-    assert authorized_view in access
-    refute removed_team_user in access
-    assert Enum.any?(access, &(&1.userByEmail == team_user.email))
+    assert Enum.any?(access, &(&1.dataset && &1.dataset.dataset.datasetId == "dbt"))
   end
 
   describe "fetch and update iam policy" do

@@ -385,7 +385,6 @@ defmodule Logflare.Google.BigQuery do
   defp patch(dataset_id, emails, project_id, user_id) do
     conn = GenUtils.get_conn()
     dataset_id = dataset_id || Integer.to_string(user_id) <> GCPConfig.dataset_id_append()
-    project_id = project_id || GCPConfig.default_project_id()
 
     access_emails =
       Enum.map(emails, fn x ->
@@ -414,15 +413,7 @@ defmodule Logflare.Google.BigQuery do
       }
     ]
 
-    {:ok, %Model.Dataset{access: current_access}} =
-      Api.Datasets.bigquery_datasets_get(conn, project_id, dataset_id)
-
-    # datasets.patch replaces the whole access list, so keep the entries Logflare does not
-    # manage, such as authorized views, datasets, routines and groups.
-    unmanaged_access =
-      Enum.filter(current_access || [], &(is_nil(&1.userByEmail) and is_nil(&1.specialGroup)))
-
-    access = access_emails ++ access_defaults ++ unmanaged_access
+    access = access_emails ++ access_defaults ++ authorized_datasets(project_id, dataset_id)
 
     %Plan{name: plan} =
       Users.Cache.get(user_id)
@@ -439,8 +430,32 @@ defmodule Logflare.Google.BigQuery do
     }
 
     {:ok, _response} =
-      Api.Datasets.bigquery_datasets_patch(conn, project_id, dataset_id, body: body)
+      Api.Datasets.bigquery_datasets_patch(
+        conn,
+        project_id || GCPConfig.default_project_id(),
+        dataset_id,
+        body: body
+      )
 
     Logger.info("Dataset patched: #{dataset_id} | #{inspect(emails)}")
+  end
+
+  # Supabase's dbt views read its logflare datasets. datasets.patch replaces the whole
+  # access list, so the authorized dataset has to be in it or every patch revokes it.
+  defp authorized_datasets("supabase-analytics-eu", "logflare"),
+    do: [authorized_dataset("supabase-etl-prod-eu", "dbt")]
+
+  defp authorized_datasets("supabase-analytics-staging-eu", "logflare"),
+    do: [authorized_dataset("supabase-etl-staging-eu", "dbt")]
+
+  defp authorized_datasets(_project_id, _dataset_id), do: []
+
+  defp authorized_dataset(project_id, dataset_id) do
+    %Model.DatasetAccess{
+      dataset: %Model.DatasetAccessEntry{
+        dataset: %Model.DatasetReference{projectId: project_id, datasetId: dataset_id},
+        targetTypes: ["VIEWS"]
+      }
+    }
   end
 end
