@@ -81,17 +81,38 @@ defmodule LogflareWeb.AuthControllerTest do
     end
 
     test "redirects to stored redirect_to path when single tenant", %{conn: conn} do
-      user = insert(:user)
+      user = insert(:user, provider: "default", provider_uid: "default")
 
       stub(SingleTenant, :single_tenant?, fn -> true end)
-      stub(SingleTenant, :get_default_user, fn -> user end)
 
-      conn =
-        conn
-        |> put_session(:redirect_to, "/some/path")
-        |> get("/auth/login/single_tenant")
+      conn = get(conn, "/sources/3/search")
+      assert redirected_to(conn, 302) == ~p"/auth/login/single_tenant"
 
-      assert redirected_to(conn, 302) == "/some/path"
+      conn = get(conn, redirected_to(conn, 302))
+
+      assert redirected_to(conn, 302) == "/sources/3/search"
+      assert get_session(conn, :current_email) == user.email
+      refute get_session(conn, :redirect_to)
+    end
+
+    test "preserves chart deep-link parameters through single-tenant login", %{conn: conn} do
+      user = insert(:user, provider: "default", provider_uid: "default")
+
+      stub(SingleTenant, :single_tenant?, fn -> true end)
+
+      query =
+        "t:2026-11-04T04:40:00..2026-11-04T04:50:00 c:sum(m.response_bytes) c:avg(m.response_bytes) c:group_by(t::minute)"
+
+      path =
+        "/sources/3/search?t=1&querystring=#{URI.encode_www_form(query)}&tailing?=false&tz=Australia%2FBrisbane"
+
+      conn = get(conn, path)
+      assert redirected_to(conn, 302) == ~p"/auth/login/single_tenant"
+
+      conn = get(conn, redirected_to(conn, 302))
+
+      assert redirected_to(conn, 302) == path
+      assert get_session(conn, :current_email) == user.email
       refute get_session(conn, :redirect_to)
     end
 
@@ -100,6 +121,18 @@ defmodule LogflareWeb.AuthControllerTest do
 
       conn = get(conn, "/auth/login/single_tenant")
       assert html_response(conn, 404)
+    end
+  end
+
+  describe "unauthenticated requests" do
+    test "redirects to ordinary login while preserving the requested query string", %{conn: conn} do
+      stub(SingleTenant, :single_tenant?, fn -> false end)
+
+      path = "/sources/3/search?t=1&tailing?=false&tz=Australia%2FBrisbane"
+      conn = get(conn, path)
+
+      assert redirected_to(conn, 302) == ~p"/auth/login"
+      assert get_session(conn, :redirect_to) == path
     end
   end
 

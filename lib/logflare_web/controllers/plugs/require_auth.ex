@@ -17,7 +17,7 @@ defmodule LogflareWeb.Plugs.RequireAuth do
     cond do
       is_nil(current_email) and is_single_tenant ->
         conn
-        |> put_session(:redirect_to, conn.request_path)
+        |> put_session(:redirect_to, current_path(conn))
         |> redirect(to: ~p"/auth/login/single_tenant")
         |> halt()
 
