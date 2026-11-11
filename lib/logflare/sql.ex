@@ -12,6 +12,7 @@ defmodule Logflare.Sql do
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Cache.CachexOps
   alias Logflare.Endpoints
+  alias Logflare.QueryContext
   alias Logflare.Repo
   alias Logflare.SingleTenant
   alias Logflare.Sources.Catalog
@@ -224,6 +225,10 @@ defmodule Logflare.Sql do
   The query is parsed, validated, and transformed to include fully-qualified table names
   appropriate for the target backend.
 
+  Integer user IDs use uncached settings by default. Endpoint execution opts into
+  `consistency: :cached`; these primary-backed snapshots are invalidated after
+  application commits and by WAL, and are always bypassed inside transactions.
+
   ## Validation Rules
 
   All queries are validated to ensure:
@@ -266,18 +271,22 @@ defmodule Logflare.Sql do
   @spec transform(
           language :: query_language(),
           query :: input(),
-          user_or_user_id :: User.t() | pos_integer() | nil
+          user_or_user_id :: User.t() | pos_integer() | nil,
+          opts :: [consistency: :fresh | :cached]
         ) ::
           {:ok, String.t()} | {:error, String.t() | :database_unavailable}
-  def transform(lang, input, user_id) when is_integer(user_id) do
-    case Users.get(user_id) do
-      %User{} = user -> transform(lang, input, user)
+  def transform(lang, input, user_or_user_id, opts \\ [])
+
+  def transform(lang, input, user_id, opts) when is_integer(user_id) do
+    case transformation_user(user_id, Keyword.get(opts, :consistency, :fresh)) do
+      %User{} = user -> transform(lang, input, user, opts)
       nil -> {:error, "User not found"}
+      {:error, :database_unavailable} = error -> error
     end
   end
 
   # clickhouse with sandboxed query support
-  def transform(:ch_sql = language, input, %User{} = user) do
+  def transform(:ch_sql = language, input, %User{} = user, _opts) do
     {query, sandboxed_query} =
       case input do
         q when is_non_empty_binary(q) -> {q, nil}
@@ -312,7 +321,7 @@ defmodule Logflare.Sql do
   end
 
   # postgres (no sandboxed query support)
-  def transform(:pg_sql = language, query, %User{} = user) do
+  def transform(:pg_sql = language, query, %User{} = user, _opts) do
     sql_dialect = to_dialect(language)
     Logger.metadata(query_string: query, user_id: user.id)
 
@@ -337,7 +346,7 @@ defmodule Logflare.Sql do
   end
 
   # default to bq_sql
-  def transform(lang, input, %User{} = user) when lang in [:bq_sql, nil] do
+  def transform(lang, input, %User{} = user, _opts) when lang in [:bq_sql, nil] do
     {query, sandboxed_query} =
       case input do
         q when is_non_empty_binary(q) -> {q, nil}
@@ -371,9 +380,12 @@ defmodule Logflare.Sql do
   end
 
   # Handle nil user case (e.g., during form validation)
-  def transform(language, query, nil) when language in [:ch_sql, :pg_sql, :bq_sql, nil] do
+  def transform(language, query, nil, _opts) when language in [:ch_sql, :pg_sql, :bq_sql, nil] do
     {:ok, query}
   end
+
+  defp transformation_user(user_id, :fresh), do: Users.get(user_id)
+  defp transformation_user(user_id, :cached), do: QueryContext.get_user(user_id)
 
   @doc """
   Translates BigQuery SQL to PostgreSQL SQL.
@@ -436,6 +448,7 @@ defmodule Logflare.Sql do
   Extracts the raw table names found in a SQL query.
 
   Useful for determining which sources are referenced before having a full source mapping.
+  Set `:include_cte_aliases` to include CTE relation names when checking for named-query expansion.
 
   ### Example
 
@@ -447,7 +460,7 @@ defmodule Logflare.Sql do
     dialect = Keyword.get(opts, :dialect, "bigquery")
 
     with {:ok, ast} <- Parser.parse(dialect, query) do
-      {:ok, find_all_source_names(ast)}
+      {:ok, find_all_source_names(ast, opts)}
     end
   end
 
@@ -1053,14 +1066,13 @@ defmodule Logflare.Sql do
 
   defp do_replace_sandboxed_query(ast_node, _data), do: {:recurse, ast_node}
 
-  defp find_all_source_names(ast),
-    do: find_all_source_names(ast, [], %{ast: ast})
+  defp find_all_source_names(ast, opts \\ []),
+    do:
+      find_all_source_names(ast, [], %{ast: ast, include_cte_aliases: opts[:include_cte_aliases]})
 
-  defp find_all_source_names({"Table", %{"name" => name}}, prev, %{
-         ast: ast
-       })
+  defp find_all_source_names({"Table", %{"name" => name}}, prev, %{ast: ast} = data)
        when is_list(name) do
-    cte_names = do_extract_cte_aliases(ast)
+    cte_names = if data.include_cte_aliases, do: [], else: do_extract_cte_aliases(ast)
 
     qualified_name = name |> AstUtils.object_name_values() |> Enum.join(".")
 

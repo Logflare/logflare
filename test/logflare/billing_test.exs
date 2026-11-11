@@ -3,6 +3,7 @@ defmodule Logflare.BillingTest do
   alias Logflare.{User, Billing, Billing.BillingAccount, Billing.PaymentMethod, Billing.Plan}
 
   alias Logflare.Partners
+  alias Logflare.Repo.Replicas
 
   describe "billing accounts" do
     @valid_attrs %{stripe_customer: "some stripe id"}
@@ -18,22 +19,101 @@ defmodule Logflare.BillingTest do
       assert %BillingAccount{id: ^id} = Billing.get_billing_account!(ba.id)
     end
 
+    test "create_billing_account/2 clears cached misses only after a successful insert" do
+      free = insert(:plan, name: "Free")
+      lifetime = insert(:plan, name: "Lifetime")
+      user = insert(:user)
+      other_user = insert(:user)
+      other_account = insert(:billing_account, user: other_user)
+      stripe_customer = "cus_#{user.id}"
+      filters = [[user_id: user.id], [stripe_customer: stripe_customer]]
+      missing_id_filter = [id: -user.id]
+
+      assert Billing.Cache.get_plan_by_user(user) == free
+      assert Billing.Cache.get_plan_by_user(other_user) == free
+      cached_other_account = Billing.Cache.get_billing_account_by(id: other_account.id)
+      assert cached_other_account.id == other_account.id
+
+      for filter <- filters ++ [missing_id_filter] do
+        assert Billing.Cache.get_billing_account_by(filter) == nil
+      end
+
+      assert {:error, %Ecto.Changeset{}} = Billing.create_billing_account(user, %{})
+
+      for filter <- filters ++ [missing_id_filter] do
+        assert Cachex.get!(Billing.Cache, {:get_billing_account_by, [filter]}) == {:cached, nil}
+      end
+
+      assert Cachex.get!(Billing.Cache, {:get_plan_by_user, [user.id]}) == {:cached, free}
+
+      assert {:ok, account} =
+               Billing.create_billing_account(user, %{
+                 stripe_customer: stripe_customer,
+                 lifetime_plan: true
+               })
+
+      assert Cachex.get!(Billing.Cache, {:get_billing_account_by, [missing_id_filter]}) == nil
+
+      for filter <- filters do
+        assert Billing.Cache.get_billing_account_by(filter) == account
+      end
+
+      assert Billing.Cache.get_plan_by_user(user) == lifetime
+
+      assert Cachex.get!(Billing.Cache, {:get_billing_account_by, [[id: other_account.id]]}) ==
+               {:cached, cached_other_account}
+
+      assert Cachex.get!(Billing.Cache, {:get_plan_by_user, [other_user.id]}) == {:cached, free}
+    end
+
     test "create_billing_account/2, update_billing_account/2, delete_billing_account/1" do
+      free = insert(:plan, name: "Free")
+      lifetime = insert(:plan, name: "Lifetime")
       user = insert(:user) |> Logflare.Repo.preload(:billing_account)
+      other_user = insert(:user)
+      assert Billing.Cache.get_plan_by_user(user) == free
+      assert Billing.Cache.get_plan_by_user(other_user) == free
+      assert Billing.Cache.get_billing_account_by(user_id: user.id) == nil
 
       assert {:error, %Ecto.Changeset{}} =
                Billing.create_billing_account(user, %{})
 
       assert {:ok, %BillingAccount{} = created} =
-               Billing.create_billing_account(user, @valid_attrs)
+               Billing.create_billing_account(user, Map.put(@valid_attrs, :lifetime_plan, true))
 
       assert created.stripe_customer == @valid_attrs.stripe_customer
+      assert Billing.Cache.get_plan_by_user(user) == lifetime
+      assert Billing.Cache.get_billing_account_by(user_id: user.id).id == created.id
+      assert Billing.Cache.get_billing_account_by(id: created.id).lifetime_plan
 
-      assert {:ok, updated} = Billing.update_billing_account(created, @update_attrs)
+      assert Billing.Cache.get_billing_account_by(stripe_customer: created.stripe_customer).id ==
+               created.id
+
+      assert {:error, %Ecto.Changeset{}} =
+               Billing.update_billing_account(created, %{stripe_customer: nil})
+
+      assert {:ok, updated} =
+               Billing.update_billing_account(
+                 created,
+                 Map.put(@update_attrs, :lifetime_plan, false)
+               )
+
       assert updated.stripe_customer == @update_attrs.stripe_customer
+      assert Billing.Cache.get_plan_by_user(user) == free
+      refute Billing.Cache.get_billing_account_by(id: created.id).lifetime_plan
+      assert Billing.Cache.get_billing_account_by(stripe_customer: created.stripe_customer) == nil
+
+      assert {:ok, updated} = Billing.update_billing_account(updated, %{lifetime_plan: true})
+      assert Billing.Cache.get_plan_by_user(user) == lifetime
+      assert Billing.Cache.get_billing_account_by(id: updated.id).lifetime_plan
+      assert Billing.Cache.get_billing_account_by(user_id: user.id).id == updated.id
 
       user = Logflare.Repo.get!(User, user.id) |> Logflare.Repo.preload(:billing_account)
       assert {:ok, _} = Billing.delete_billing_account(user)
+      assert Billing.Cache.get_plan_by_user(user) == free
+      assert Billing.Cache.get_billing_account_by(user_id: user.id) == nil
+      assert Billing.Cache.get_billing_account_by(id: updated.id) == nil
+      assert Cachex.get!(Billing.Cache, {:get_plan_by_user, [other_user.id]}) == {:cached, free}
 
       assert_raise Ecto.StaleEntryError, fn ->
         Billing.delete_billing_account(user)
@@ -414,6 +494,24 @@ defmodule Logflare.BillingTest do
       # billing not enabled for legacy users
       user = insert(:user, billing_enabled: false)
       assert %Plan{name: "Legacy"} = Billing.get_plan_by_user(user)
+    end
+
+    test "plan cache misses use primary when a replica cannot see the user" do
+      lifetime = insert(:plan, name: "Lifetime")
+      user = insert(:user)
+      insert(:billing_account, user: user, lifetime_plan: true)
+
+      replicas = [
+        {"billing-cache-test-replica", [pool: DBConnection.ConnectionPool, pool_size: 1]}
+      ]
+
+      original_replicas = Application.fetch_env!(:logflare, :read_replicas)
+      Application.put_env(:logflare, :read_replicas, replicas)
+      on_exit(fn -> Application.put_env(:logflare, :read_replicas, original_replicas) end)
+      start_supervised!({Replicas, entries: replicas})
+
+      assert Repo.with_replica(fn -> Repo.get(User, user.id) end) == nil
+      assert Billing.Cache.get_plan_by_user(user) == lifetime
     end
 
     test "get_plan_by_user/1 with partner upgrade/downgrade" do

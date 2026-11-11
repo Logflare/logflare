@@ -25,6 +25,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Lql.Rules
   alias Logflare.Lql.Rules.FromRule
   alias Logflare.OauthAccessTokens.OauthAccessToken
+  alias Logflare.QueryContext
   alias Logflare.Repo
   alias Logflare.SingleTenant
   alias Logflare.Sql
@@ -32,7 +33,6 @@ defmodule Logflare.Endpoints do
   alias Logflare.TeamUsers
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
-  alias Logflare.Users
   alias Logflare.Utils
   alias PaperTrail.Version
 
@@ -72,6 +72,24 @@ defmodule Logflare.Endpoints do
         :user_id -> where(q, [e], e.user_id == ^v)
       end
     end)
+    |> Repo.all()
+  end
+
+  @spec list_query_names(pos_integer()) :: [
+          %{id: pos_integer(), name: String.t(), language: atom(), kind: String.t()}
+        ]
+  def list_query_names(user_id) when is_integer(user_id) do
+    alerts =
+      from(a in AlertQuery,
+        where: a.user_id == ^user_id,
+        select: %{id: a.id, name: a.name, language: a.language, kind: type(^"alert", :string)}
+      )
+
+    from(e in EndpointQuery,
+      where: e.user_id == ^user_id,
+      select: %{id: e.id, name: e.name, language: e.language, kind: type(^"endpoint", :string)},
+      union_all: ^alerts
+    )
     |> Repo.all()
   end
 
@@ -758,19 +776,11 @@ defmodule Logflare.Endpoints do
     sql_param = Map.get(params, "sql")
     lql_param = Map.get(params, "lql")
 
-    with endpoints when is_list(endpoints) <- Cache.list_by_user_id(user_id),
-         alerts when is_list(alerts) <- Alerting.Cache.list_by_user_id(user_id),
-         endpoints = Enum.filter(endpoints, &(&1.id != endpoint_query.id)),
-         {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
+    with {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
          :ok <- validate_query_override(endpoint_query, params),
+         {:ok, expanded_query} <- expand_query_subqueries(endpoint_query),
          {:ok, declared_params} <-
            Sql.parameters(query_string, dialect: Sql.to_dialect(query_language)),
-         {:ok, expanded_query} <-
-           Sql.expand_subqueries(
-             query_language,
-             query_string,
-             endpoints ++ alerts
-           ),
          {:ok, consumer_query} <-
            maybe_convert_lql_to_sql(
              lql_param,
@@ -785,7 +795,7 @@ defmodule Logflare.Endpoints do
              else: expanded_query
            ),
          {:ok, transformed_query} <-
-           Sql.transform(query_language, transform_input, user_id) do
+           Sql.transform(query_language, transform_input, user_id, consistency: :cached) do
       :telemetry.span(
         [:logflare, :endpoints, :run_query, :exec_query_on_backend],
         %{endpoint_id: endpoint_query.id, language: query_language},
@@ -823,8 +833,11 @@ defmodule Logflare.Endpoints do
         if(is_integer(data.total_bytes_processed), do: data.total_bytes_processed, else: 0)
     }
 
-    backend =
-      endpoint_query.backend_id && Backends.Cache.get_backend(endpoint_query.backend_id)
+    backend_type =
+      case endpoint_query.backend_id && QueryContext.get_backend(endpoint_query.backend_id) do
+        %Backend{type: type} -> to_string(type)
+        _ -> nil
+      end
 
     metadata =
       Map.merge(endpoint_query.parsed_labels || %{}, %{
@@ -832,7 +845,7 @@ defmodule Logflare.Endpoints do
         "endpoint_uuid" => Utils.stringify(endpoint_query.token),
         "user_id" => endpoint_query.user_id,
         "backend_id" => endpoint_query.backend_id,
-        "backend_type" => backend && to_string(backend.type)
+        "backend_type" => backend_type
       })
 
     :telemetry.execute([:logflare, :endpoints, :query], measurements, metadata)
@@ -970,7 +983,6 @@ defmodule Logflare.Endpoints do
   def get_transformed_query(%EndpointQuery{} = endpoint_query, params \\ %{}, opts \\ [])
       when is_map(params) and is_list(opts) do
     %EndpointQuery{
-      query: query_string,
       user_id: user_id,
       sandboxable: sandboxable,
       language: query_language
@@ -980,16 +992,8 @@ defmodule Logflare.Endpoints do
     sql_param = Map.get(params, "sql")
     lql_param = Map.get(params, "lql")
 
-    with endpoints when is_list(endpoints) <- Cache.list_by_user_id(user_id),
-         alerts when is_list(alerts) <- Alerting.Cache.list_by_user_id(user_id),
-         endpoints = Enum.filter(endpoints, &(&1.id != endpoint_query.id)),
-         {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
-         {:ok, expanded_query} <-
-           Sql.expand_subqueries(
-             query_language,
-             query_string,
-             endpoints ++ alerts
-           ),
+    with {:ok, endpoint_query} <- reload_enforced_settings(endpoint_query),
+         {:ok, expanded_query} <- expand_query_subqueries(endpoint_query),
          {:ok, consumer_query} <-
            maybe_convert_lql_to_sql(
              lql_param,
@@ -1007,6 +1011,61 @@ defmodule Logflare.Endpoints do
          {:ok, transformed_query} <-
            preview_query_policy(endpoint_query, transformed_query, params, opts) do
       {:ok, transformed_query}
+    end
+  end
+
+  @doc """
+  Expands endpoint or alert references, loading cached catalogs only when needed.
+  """
+  @spec expand_query_subqueries(EndpointQuery.t() | AlertQuery.t()) ::
+          {:ok, String.t()} | {:error, String.t() | :database_unavailable}
+  def expand_query_subqueries(%{__struct__: kind, query: "", language: language})
+      when kind in [EndpointQuery, AlertQuery] do
+    Sql.expand_subqueries(language, "", [])
+  end
+
+  def expand_query_subqueries(%{__struct__: kind, query: query, language: language} = caller)
+      when kind in [EndpointQuery, AlertQuery] do
+    with {:ok, names} <-
+           Sql.extract_table_names(query,
+             dialect: Sql.to_dialect(language),
+             include_cte_aliases: true
+           ),
+         {:ok, queries} <- queries_for_names(caller, names) do
+      Sql.expand_subqueries(language, query, queries)
+    end
+  end
+
+  @spec queries_for_names(EndpointQuery.t() | AlertQuery.t(), [String.t()]) ::
+          {:ok, [EndpointQuery.t() | AlertQuery.t()]} | {:error, :database_unavailable}
+  defp queries_for_names(_caller, []), do: {:ok, []}
+
+  defp queries_for_names(caller, names) do
+    with index when is_list(index) <- Cache.list_query_names(caller.user_id) do
+      references = MapSet.new(names)
+      caller_kind = if match?(%EndpointQuery{}, caller), do: "endpoint", else: "alert"
+
+      referenced? =
+        Enum.any?(index, fn entry ->
+          MapSet.member?(references, entry.name) and entry.language == caller.language and
+            (entry.kind != caller_kind or entry.id != caller.id)
+        end)
+
+      if referenced?, do: load_subquery_catalogs(caller), else: {:ok, []}
+    end
+  end
+
+  @spec load_subquery_catalogs(EndpointQuery.t() | AlertQuery.t()) ::
+          {:ok, [EndpointQuery.t() | AlertQuery.t()]} | {:error, :database_unavailable}
+  defp load_subquery_catalogs(caller) do
+    with endpoints when is_list(endpoints) <- Cache.list_by_user_id(caller.user_id),
+         alerts when is_list(alerts) <- Alerting.Cache.list_by_user_id(caller.user_id) do
+      queries =
+        Enum.reject(endpoints ++ alerts, fn query ->
+          query.__struct__ == caller.__struct__ and query.id == caller.id
+        end)
+
+      {:ok, queries}
     end
   end
 
@@ -1209,12 +1268,14 @@ defmodule Logflare.Endpoints do
     end
   end
 
-  @spec get_backend_for_query(EndpointQuery.t()) :: {:ok, Backend.t()} | {:error, String.t()}
+  @spec get_backend_for_query(EndpointQuery.t()) ::
+          {:ok, Backend.t()} | {:error, String.t() | :database_unavailable}
   defp get_backend_for_query(%EndpointQuery{backend_id: backend_id})
        when is_integer(backend_id) do
-    case Backends.get_backend(backend_id) do
+    case QueryContext.get_backend(backend_id) do
       %Backend{} = backend -> {:ok, backend}
       nil -> {:error, "Backend not found"}
+      {:error, :database_unavailable} = error -> error
     end
   end
 
@@ -1223,33 +1284,36 @@ defmodule Logflare.Endpoints do
     find_backend_by_type_or_default(user_id, backend_type)
   end
 
-  @spec language_to_backend_type(language()) :: atom() | nil
+  @spec language_to_backend_type(:bq_sql | :ch_sql | :pg_sql) ::
+          :bigquery | :clickhouse | :postgres
   defp language_to_backend_type(:pg_sql), do: :postgres
   defp language_to_backend_type(:ch_sql), do: :clickhouse
   defp language_to_backend_type(:bq_sql), do: :bigquery
-  defp language_to_backend_type(_), do: nil
 
-  @spec find_backend_by_type_or_default(user_id :: integer(), backend_type :: atom() | nil) ::
-          {:ok, Backend.t()} | {:error, String.t()}
+  @spec find_backend_by_type_or_default(
+          user_id :: integer(),
+          backend_type :: :bigquery | :clickhouse | :postgres
+        ) ::
+          {:ok, Backend.t()} | {:error, String.t() | :database_unavailable}
   defp find_backend_by_type_or_default(user_id, backend_type)
        when is_integer(user_id) and is_atom_value(backend_type) do
-    user_backends = Backends.list_backends_by_user_id(user_id)
-
-    case Enum.find(user_backends, &(&1.type == backend_type)) do
-      nil -> get_default_backend_for_user(user_id)
-      backend -> {:ok, backend}
+    with user_backends when is_list(user_backends) <-
+           QueryContext.list_backends(user_id) do
+      case Enum.find(user_backends, &(&1.type == backend_type)) do
+        nil -> get_default_backend_for_user(user_id)
+        backend -> {:ok, backend}
+      end
     end
   end
 
-  defp find_backend_by_type_or_default(user_id, nil) when is_integer(user_id) do
-    get_default_backend_for_user(user_id)
-  end
-
   @spec get_default_backend_for_user(user_id :: integer()) ::
-          {:ok, Backend.t()} | {:error, String.t()}
+          {:ok, Backend.t()} | {:error, String.t() | :database_unavailable}
   defp get_default_backend_for_user(user_id) when is_integer(user_id) do
-    user = Users.Cache.get(user_id)
-    {:ok, Backends.get_default_backend(user)}
+    case QueryContext.get_user(user_id) do
+      %User{} = user -> {:ok, Backends.get_default_backend(user)}
+      nil -> {:error, "User not found"}
+      {:error, :database_unavailable} = error -> error
+    end
   end
 
   @spec build_transformation_context(Backend.t()) :: map()
