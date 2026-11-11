@@ -31,6 +31,25 @@ OpenAPI documentation for querying Logflare Endpoints can be found [here](https:
 
 Queries will be passed to the underlying backend to perform the querying.
 
+### SQL parsing limits
+
+SQL parsed by Logflare, including sandbox queries and internally converted ClickHouse SQL,
+uses the following limits before the query reaches the database:
+
+| Budget | Limit |
+| --- | --- |
+| SQL text | 1 MiB (1,048,576 bytes) |
+| Significant SQL tokens | 20,000; whitespace and comments do not count |
+| Serialized internal AST JSON | 16 MiB (16,777,216 bytes), bounded while writing |
+| Internal AST JSON nesting | serde_json's 128-level recursion budget: at most 127 nested objects/arrays, including the outer statement array |
+
+A token, AST size, or nesting violation returns a `Query is too complex to parse`
+error identifying the exceeded budget. An oversized SQL string returns `Query is too
+large to parse`. AST nesting is not the same as SQL parenthesis nesting or the number
+of UNIONs. Reduce the query's expression nesting or split an oversized query into
+smaller queries when a limit is exceeded. These are parser resource limits, not
+limits on the rows returned by a query.
+
 ### Parameters
 
 Queries can contain parameters, which are declared with the `@` prefix. Matching query parameters are then interpolated into the query. Query parameters are decoded and interpolated as the decoded data type.
