@@ -630,13 +630,8 @@ config :logflare, :context_cache_gossip, %{
   max_nodes: cache_gossip_max_nodes
 }
 
-# LOGFLARE_CACHE_REFRESH_AHEAD_ENABLED: Refresh hot cache entries in the background before they expire
-default_cache_refresh_ahead_enabled = if config_env() == :test, do: "false", else: "true"
-
 config :logflare, Logflare.ContextCache.RefreshAhead,
-  enabled:
-    System.get_env("LOGFLARE_CACHE_REFRESH_AHEAD_ENABLED", default_cache_refresh_ahead_enabled) ==
-      "true",
+  enabled: config_env() != :test,
   threshold: 0.05,
   interval: 100,
   batch_size: 10,
