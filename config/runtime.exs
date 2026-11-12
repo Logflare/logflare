@@ -630,6 +630,15 @@ config :logflare, :context_cache_gossip, %{
   max_nodes: cache_gossip_max_nodes
 }
 
+config :logflare, Logflare.ContextCache.RefreshAhead,
+  enabled: config_env() != :test,
+  threshold: 0.05,
+  interval: 100,
+  batch_size: 10,
+  max_queue: 10_000,
+  max_peers: 2,
+  peer_timeout: 200
+
 # LOGFLARE_READ_REPLICAS: PostgreSQL read replicas for selected cache queries.
 # An empty list uses the primary database. Entries are bare host names, IP literals, or URIs
 # whose omitted options inherit the primary.

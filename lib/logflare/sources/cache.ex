@@ -1,7 +1,7 @@
 defmodule Logflare.Sources.Cache do
   @moduledoc false
 
-  use Logflare.ContextCache
+  use Logflare.ContextCache, refresh_ahead: true
 
   alias Logflare.Cache.CachexOps
   alias Logflare.Repo
