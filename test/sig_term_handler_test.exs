@@ -4,182 +4,132 @@ defmodule Logflare.SigtermHandlerTest do
   import ExUnit.CaptureLog
   import Mimic
 
-  alias Logflare.Application
   alias Logflare.Readiness
-  alias Logflare.ShutdownDrain
+  alias Logflare.Shutdown
   alias Logflare.SigtermHandler
 
   setup :set_mimic_global
 
   setup do
-    reset_readiness()
-    on_exit(&reset_readiness/0)
+    keys = [
+      :sigterm_shutdown_grace_period_ms,
+      :shutdown_drain_timeout_ms,
+      :shutdown_timeout_ms,
+      :shutdown_request_timeout_ms
+    ]
 
-    grace = Elixir.Application.get_env(:logflare, :sigterm_shutdown_grace_period_ms)
-    drain_timeout = Elixir.Application.get_env(:logflare, :shutdown_drain_timeout_ms)
+    previous = Map.new(keys, &{&1, Application.get_env(:logflare, &1)})
+    Application.put_env(:logflare, :sigterm_shutdown_grace_period_ms, 0)
+    Application.put_env(:logflare, :shutdown_drain_timeout_ms, 60_000)
+    Application.put_env(:logflare, :shutdown_timeout_ms, 500)
+    Application.put_env(:logflare, :shutdown_request_timeout_ms, 100)
+    Readiness.initialize()
+    Readiness.mark_ready()
+    stub(Shutdown, :run, fn _opts -> :drained end)
 
     on_exit(fn ->
-      Elixir.Application.put_env(:logflare, :sigterm_shutdown_grace_period_ms, grace)
-      Elixir.Application.put_env(:logflare, :shutdown_drain_timeout_ms, drain_timeout)
+      for {key, value} <- previous do
+        if is_nil(value),
+          do: Application.delete_env(:logflare, key),
+          else: Application.put_env(:logflare, key, value)
+      end
+
+      Readiness.initialize()
+      Readiness.mark_ready()
     end)
   end
 
-  test "marks the node unready immediately after SIGTERM" do
-    assert {:ok, %{}} = SigtermHandler.handle_event(:sigterm, %{})
+  test "marks readiness false immediately and cannot become ready again" do
+    state = signal(:sigterm)
     refute Readiness.ready?()
-  end
-
-  test "marks the node unready immediately after SIGQUIT" do
-    assert {:ok, %{}} = SigtermHandler.handle_event(:sigquit, %{})
-    refute Readiness.ready?()
-  end
-
-  test "marks the node unready before application shutdown" do
-    state = %{test: :state}
-
-    assert Application.prep_stop(state) == state
-    refute Readiness.ready?()
-  end
-
-  test "cannot become ready after shutdown begins" do
-    Readiness.begin_draining()
     Readiness.mark_ready()
+    refute Readiness.ready?()
+    assert state.shutdown_started
+    assert_receive :proceed_with_sigterm
+  end
 
+  test "SIGQUIT uses the same shutdown lifecycle" do
+    signal(:sigquit)
+    refute Readiness.ready?()
+    assert_receive :proceed_with_sigterm
+  end
+
+  test "application stop still marks readiness false" do
+    assert Logflare.Application.prep_stop(:state) == :state
     refute Readiness.ready?()
   end
 
-  describe "verification logging" do
-    setup do
-      put_grace_period(0)
-      stub(ShutdownDrain, :run, fn _opts -> :drained end)
-      :ok
-    end
+  test "passes one fixed deadline and separate phase budgets to the coordinator" do
+    test_pid = self()
 
-    test "logs that SIGTERM was received" do
-      put_drain_timeout(nil)
+    stub(Shutdown, :run, fn opts ->
+      send(test_pid, {:shutdown_opts, opts})
+      :drained
+    end)
 
-      log = capture_warning(fn -> SigtermHandler.handle_event(:sigterm, %{}) end)
+    started = System.monotonic_time(:millisecond)
+    signal(:sigterm)
+    assert_receive {:shutdown_opts, opts}
+    assert opts[:deadline_ms] >= started + 500
+    assert opts[:deadline_ms] <= System.monotonic_time(:millisecond) + 500
+    assert opts[:withdrawal_ms] == 0
+    assert opts[:request_timeout_ms] == 100
+    assert opts[:drain_timeout_ms] == 60_000
+    assert_receive :proceed_with_sigterm
+  end
 
-      assert log =~ "SIGTERM received: waiting for 0.0 seconds"
-    end
+  test "repeated and mixed signals neither restart the worker nor reset its timer" do
+    test_pid = self()
 
-    test "logs that SIGTERM was received and the node is draining before it stops" do
-      put_drain_timeout(60_000)
+    stub(Shutdown, :run, fn _opts ->
+      send(test_pid, {:started, self()})
 
-      log = capture_warning(fn -> SigtermHandler.handle_event(:sigterm, %{}) end)
+      receive do
+        :release -> :drained
+      end
+    end)
 
-      assert log =~ "SIGTERM received: draining for up to 60.0 seconds before stopping"
-    end
+    state = signal(:sigterm)
+    assert_receive {:started, worker}
+    assert {:ok, ^state} = SigtermHandler.handle_event(:sigterm, state)
+    assert {:ok, ^state} = SigtermHandler.handle_event(:sigquit, state)
+    refute_receive {:started, _}
+    send(worker, :release)
+    assert_receive :proceed_with_sigterm
+  end
 
-    test "logs that SIGQUIT was received and the node is draining before it stops" do
-      put_drain_timeout(60_000)
+  test "a crashing coordinator still requests application shutdown" do
+    stub(Shutdown, :run, fn _opts -> raise "drain failed" end)
+    signal(:sigterm)
+    assert_receive :proceed_with_sigterm
+  end
 
-      log = capture_warning(fn -> SigtermHandler.handle_event(:sigquit, %{}) end)
+  test "logs shutdown completion and timeout outcomes" do
+    stub(Shutdown, :run, fn _opts -> :timeout end)
 
-      assert log =~ "SIGQUIT received: draining for up to 60.0 seconds before stopping"
-    end
-
-    test "logs the drain result once the node is ready to stop" do
-      put_drain_timeout(60_000)
-      stub(ShutdownDrain, :run, fn _opts -> :timeout end)
-
-      log = capture_warning(fn -> SigtermHandler.handle_event(:sigterm, %{}) end)
-
-      assert log =~ "shutdown drain ended with :timeout, stopping the app"
-    end
-
-    defp capture_warning(fun) do
-      capture_log([level: :warning], fn ->
-        fun.()
+    log =
+      capture_log(fn ->
+        signal(:sigterm)
         assert_receive :proceed_with_sigterm
       end)
-    end
+
+    assert log =~ "shutdown budget=500ms"
+    assert log =~ "shutdown ended with :timeout"
   end
 
-  describe "shutdown drain" do
-    setup do
-      test_pid = self()
-
-      stub(ShutdownDrain, :run, fn opts ->
-        send(test_pid, {:drain_ran, opts})
-        :drained
-      end)
-
-      :ok
-    end
-
-    test "drains every node before stopping the app when a drain timeout is configured" do
-      put_grace_period(0)
-      put_drain_timeout(60_000)
-
-      assert {:ok, %{}} = SigtermHandler.handle_event(:sigterm, %{})
-
-      assert_receive {:drain_ran, opts}
-      assert opts[:timeout_ms] == 60_000
-      assert_receive :proceed_with_sigterm
-    end
-
-    test "has the drain wait out the grace period first, so load balancers stop sending" do
-      put_grace_period(15_000)
-      put_drain_timeout(60_000)
-
-      SigtermHandler.handle_event(:sigterm, %{})
-
-      assert_receive {:drain_ran, opts}
-      assert opts[:min_wait_ms] == 15_000
-    end
-
-    test "never drains for less than the grace period" do
-      put_grace_period(15_000)
-      put_drain_timeout(5_000)
-
-      SigtermHandler.handle_event(:sigterm, %{})
-
-      assert_receive {:drain_ran, opts}
-      assert opts[:timeout_ms] == 15_000
-    end
-
-    test "stops the app even if the drain crashes" do
-      put_grace_period(0)
-      put_drain_timeout(60_000)
-      stub(ShutdownDrain, :run, fn _opts -> raise "boom" end)
-
-      SigtermHandler.handle_event(:sigterm, %{})
-
-      assert_receive :proceed_with_sigterm
-    end
-
-    test "drains on SIGQUIT too" do
-      put_grace_period(0)
-      put_drain_timeout(60_000)
-
-      SigtermHandler.handle_event(:sigquit, %{})
-
-      assert_receive {:drain_ran, _opts}
-      assert_receive :proceed_with_sigterm
-    end
-
-    test "keeps the plain grace period when no drain timeout is configured" do
-      put_grace_period(0)
-      put_drain_timeout(nil)
-
-      SigtermHandler.handle_event(:sigterm, %{})
-
-      assert_receive :proceed_with_sigterm
-      refute_received {:drain_ran, _opts}
-    end
+  test "ignores unrelated events without starting shutdown" do
+    assert {:ok, %{}} = SigtermHandler.handle_event(:other, %{})
+    assert {:ok, %{}} = SigtermHandler.handle_info(:other, %{})
   end
 
-  defp put_drain_timeout(ms) do
-    Elixir.Application.put_env(:logflare, :shutdown_drain_timeout_ms, ms)
-  end
+  defp signal(signal) do
+    assert {:ok, state} = SigtermHandler.handle_event(signal, %{})
 
-  defp put_grace_period(ms) do
-    Elixir.Application.put_env(:logflare, :sigterm_shutdown_grace_period_ms, ms)
-  end
+    on_exit(fn ->
+      Process.cancel_timer(state.timer)
+      if Process.alive?(state.worker), do: Process.exit(state.worker, :kill)
+    end)
 
-  defp reset_readiness do
-    Readiness.initialize()
-    Readiness.mark_ready()
+    state
   end
 end

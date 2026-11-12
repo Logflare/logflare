@@ -29,6 +29,7 @@ defmodule Logflare.ShutdownDrain do
 
   @type opts :: [
           timeout_ms: non_neg_integer(),
+          deadline_ms: integer(),
           min_wait_ms: non_neg_integer(),
           poll_interval_ms: pos_integer(),
           producers: [GenServer.server()],
@@ -43,6 +44,7 @@ defmodule Logflare.ShutdownDrain do
   Options:
 
     * `:timeout_ms` - required. Maximum time to wait before nacking pending spool files.
+    * `:deadline_ms` - optional absolute monotonic deadline shared by all shutdown phases.
     * `:min_wait_ms` - minimum time to wait before checking for drain completion, so load
       balancers stop sending traffic first. Defaults to `0`.
     * `:poll_interval_ms` - how often to check whether the node has drained. Defaults to `100`.
@@ -73,28 +75,45 @@ defmodule Logflare.ShutdownDrain do
         "waiting at least #{min_wait_ms}ms and up to #{timeout_ms}ms for in-flight events"
     )
 
+    deadline =
+      Keyword.get(
+        opts,
+        :deadline_ms,
+        started_at + timeout_ms + spool_sync_timeout_ms + cleanup_timeout_ms
+      )
+
+    wait_deadline =
+      min(started_at + timeout_ms, deadline - spool_sync_timeout_ms - cleanup_timeout_ms)
+
     wait_result =
       await_drained(
         producers,
         started_at + min_wait_ms,
-        started_at + timeout_ms,
+        wait_deadline,
         poll_interval_ms
       )
 
-    spool_buffer_result = sync_spool_buffer(spool_buffer, spool_sync_timeout_ms)
+    spool_buffer_result =
+      sync_spool_buffer(spool_buffer, remaining(deadline, spool_sync_timeout_ms))
+
     spool_pending = SpoolAck.pending_count()
     queued_events = IngestEventQueue.total_size()
-    cleanup_deadline = System.monotonic_time(:millisecond) + cleanup_timeout_ms
+    cleanup_deadline = min(deadline, System.monotonic_time(:millisecond) + cleanup_timeout_ms)
 
-    if wait_result == :timeout, do: SpoolAck.nack_pending(cleanup_timeout_ms)
+    if wait_result == :timeout,
+      do: SpoolAck.nack_pending(remaining(cleanup_deadline, cleanup_timeout_ms))
 
-    SpoolAck.flush(max(cleanup_deadline - System.monotonic_time(:millisecond), 0))
+    ack_result = SpoolAck.flush(max(cleanup_deadline - System.monotonic_time(:millisecond), 0))
 
     object_deletes =
       ObjectDeleter.flush(max(cleanup_deadline - System.monotonic_time(:millisecond), 0))
 
     result =
-      if wait_result == :drained and spool_buffer_result != :timeout, do: :drained, else: :timeout
+      if wait_result == :drained and spool_buffer_result != :timeout and ack_result == :ok and
+           object_deletes != :timeout and
+           System.monotonic_time(:millisecond) <= deadline,
+         do: :drained,
+         else: :timeout
 
     duration = System.monotonic_time(:millisecond) - started_at
 
@@ -106,6 +125,14 @@ defmodule Logflare.ShutdownDrain do
 
     result
   end
+
+  @spec stop_receiving() :: :ok
+  def stop_receiving do
+    Enum.each(spool_producers(), &stop_receiving/1)
+  end
+
+  defp remaining(deadline, budget),
+    do: min(budget, max(deadline - System.monotonic_time(:millisecond), 0))
 
   defp spool_buffer do
     if SpoolDurableBufferSup.partitions() != [], do: SpoolDurableBufferSup.name()
@@ -139,7 +166,7 @@ defmodule Logflare.ShutdownDrain do
         :timeout
 
       true ->
-        Process.sleep(poll_interval_ms)
+        Process.sleep(min(poll_interval_ms, max(deadline - now, 0)))
         await_drained(producers, earliest, deadline, poll_interval_ms)
     end
   end
