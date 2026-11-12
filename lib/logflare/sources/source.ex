@@ -277,8 +277,79 @@ defmodule Logflare.Sources.Source do
     |> put_source_ttl_change()
     |> validate_source_ttl(source)
     |> validate_drop_fields()
+    |> validate_transform_rules(:transform_copy_fields, &copy_rule_error/1)
+    |> validate_transform_rules(:transform_key_values, &key_value_rule_error/1)
     |> normalize_and_validate_labels()
   end
+
+  @spec validate_transform_rules(Ecto.Changeset.t(), atom(), (String.t() -> String.t() | nil)) ::
+          Ecto.Changeset.t()
+  defp validate_transform_rules(changeset, field, rule_error) do
+    validate_change(changeset, field, fn ^field, config ->
+      errors =
+        config
+        |> String.split("\n")
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
+        |> Enum.map(&{&1, rule_error.(&1)})
+        |> Enum.reject(fn {_rule, message} -> is_nil(message) end)
+        |> Enum.map(fn {rule, message} -> "#{message}: #{rule}" end)
+
+      Enum.map(errors, &{field, &1})
+    end)
+  end
+
+  @spec copy_rule_error(String.t()) :: String.t() | nil
+  defp copy_rule_error(rule) do
+    case String.split(rule, ":", parts: 2) do
+      [from, to] -> path_pair_error(from, to, false)
+      _ -> "expected from:to"
+    end
+  end
+
+  @spec key_value_rule_error(String.t()) :: String.t() | nil
+  defp key_value_rule_error(rule) do
+    case String.split(rule, ":", parts: 3) do
+      [from, to] -> path_pair_error(from, to, true)
+      [from, to, accessor] -> accessor_error(accessor) || path_pair_error(from, to, true)
+      _ -> "expected key:destination or key:destination:accessor"
+    end
+  end
+
+  @spec accessor_error(String.t()) :: String.t() | nil
+  defp accessor_error(accessor) do
+    if String.trim(accessor) == "", do: "accessor cannot be empty"
+  end
+
+  @spec path_pair_error(String.t(), String.t(), boolean()) :: String.t() | nil
+  defp path_pair_error(from, to, reject_nested?) do
+    from_path = rule_path(from)
+    to_path = rule_path(to)
+
+    cond do
+      not valid_rule_path?(from_path) or not valid_rule_path?(to_path) ->
+        "paths cannot be empty or contain empty segments"
+
+      from_path == to_path ->
+        "source and destination are the same field"
+
+      reject_nested? and List.starts_with?(to_path, from_path) ->
+        "destination cannot be nested under the lookup field"
+
+      true ->
+        nil
+    end
+  end
+
+  @spec rule_path(String.t()) :: [String.t()]
+  defp rule_path(path) do
+    path
+    |> String.replace_prefix("m.", "metadata.")
+    |> String.split(".")
+  end
+
+  @spec valid_rule_path?([String.t()]) :: boolean()
+  defp valid_rule_path?(path), do: Enum.all?(path, &(&1 != ""))
 
   defp validate_drop_fields(changeset) do
     validate_change(changeset, :transform_drop_fields, fn :transform_drop_fields, config ->
