@@ -1,6 +1,7 @@
 defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
   use Logflare.DataCase, async: false
 
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
 
@@ -235,22 +236,42 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
     end
   end
 
-  describe "connection pool refresh" do
+  describe "refresh_pool/1" do
     setup context do
       {:ok, _manager_pid} = ConnectionManager.start_link(context.backend)
+      assert :ok == ConnectionManager.ensure_pool_started(context.backend)
 
       context
     end
 
-    test "`refresh_pool` stops the pool so the next query restarts it", %{backend: backend} do
-      assert :ok == ConnectionManager.ensure_pool_started(backend)
-      assert ConnectionManager.pool_active?(backend)
+    test "backend whose read pool size changed since the pool started", %{backend: backend} do
+      backend = save_backend_config!(backend, %{read_pool_size: 2})
 
       assert :ok == ConnectionManager.refresh_pool(backend)
       refute ConnectionManager.pool_active?(backend)
 
       assert :ok == ConnectionManager.ensure_pool_started(backend)
       assert ConnectionManager.pool_active?(backend)
+    end
+
+    test "cache still holding the backend from before a read pool size change", %{
+      backend: backend
+    } do
+      stub(Backends.Cache, :get_backend, fn _backend_id -> backend end)
+      saved = save_backend_config!(backend, %{read_pool_size: 2})
+
+      assert :ok == ConnectionManager.refresh_pool(saved)
+      refute ConnectionManager.pool_active?(saved)
+    end
+
+    test "backend whose batch size changed since the pool started", %{backend: backend} do
+      pool_pid = ConnectionManager.get_pool_pid(backend)
+      backend = save_backend_config!(backend, %{batch_size: 1_000})
+
+      assert :ok == ConnectionManager.refresh_pool(backend)
+
+      assert ^pool_pid = ConnectionManager.get_pool_pid(backend)
+      assert Process.alive?(pool_pid)
     end
   end
 

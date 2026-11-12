@@ -39,11 +39,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   `recycle_backend/1` triggers an immediate connection recycle of a backend's read pool
   on every node in the cluster. Useful after scaling an upstream ClickHouse service.
 
-  `refresh_backend/1` stops a backend's read pool on every node so the pools restart
-  with freshly loaded backend configuration.
+  `refresh_backend_local/1` stops the local node's read pools of a backend whose
+  connection options changed, so they restart with the current configuration.
 
-  `terminate_backend/1` terminates a backend's read `ConnectionManager` on every node,
-  e.g. after a backend is deleted.
+  `terminate_backend_local/1` terminates a backend's read `ConnectionManager` processes on the
+  local node, e.g. after a backend is deleted.
   """
 
   use Supervisor
@@ -53,12 +53,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   require Ex2ms
   require Logger
 
-  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
   alias Logflare.Backends.Backend
   alias Logflare.Backends.BackendRegistry
   alias Logflare.Cluster
-  alias Logflare.ContextCache
 
   @dynamic_sup_name __MODULE__.DynamicSupervisor
   @recycle_rpc_timeout :timer.seconds(15)
@@ -206,66 +204,28 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   end
 
   @doc """
-  Stops the read connection pool for a backend on every node in the cluster so that
-  each node's next query restarts it with freshly loaded backend configuration.
-
-  Pools restart lazily on demand.
+  Stops each of the backend's read pools on the local node whose connection options
+  differ from the ones built from `backend`, so that the next query restarts it with the
+  current configuration.
   """
-  @spec refresh_backend(Backend.t() | pos_integer()) :: :ok
-  def refresh_backend(%Backend{id: backend_id}), do: refresh_backend(backend_id)
-
-  def refresh_backend(backend_id) when is_pos_integer(backend_id) do
-    Logger.info("Refreshing ClickHouse read pools across the cluster",
-      backend_id: backend_id
-    )
-
-    Cluster.Utils.rpc_multicast(__MODULE__, :refresh_backend_local, [backend_id])
-    :ok
-  end
-
-  @doc """
-  Busts the local backend cache and stops the backend's read pool on the local node.
-
-  Invoked on each node by `refresh_backend/1`.
-  """
-  @spec refresh_backend_local(pos_integer()) :: :ok
-  def refresh_backend_local(backend_id) when is_pos_integer(backend_id) do
-    ContextCache.bust_keys([{Backends, backend_id}])
-
+  @spec refresh_backend_local(Backend.t()) :: :ok
+  def refresh_backend_local(%Backend{id: backend_id} = backend) do
     backend_id
     |> lookup_managers()
-    |> Enum.each(&safe_refresh/1)
+    |> Enum.each(&safe_refresh(&1, backend))
 
     :ok
   end
 
-  @spec safe_refresh(pid()) :: :ok
-  defp safe_refresh(manager_pid) do
-    ConnectionManager.refresh_pool(manager_pid)
+  @spec safe_refresh(pid(), Backend.t()) :: :ok
+  defp safe_refresh(manager_pid, backend) do
+    ConnectionManager.refresh_manager_pool(manager_pid, backend)
   catch
     :exit, _reason -> :ok
   end
 
   @doc """
-  Terminates the read `ConnectionManager` and its pool for a backend on every node
-  in the cluster. Used when a backend is deleted. Fire-and-forget.
-  """
-  @spec terminate_backend(Backend.t() | pos_integer()) :: :ok
-  def terminate_backend(%Backend{id: backend_id}), do: terminate_backend(backend_id)
-
-  def terminate_backend(backend_id) when is_pos_integer(backend_id) do
-    Logger.info("Terminating ClickHouse read connection managers across the cluster",
-      backend_id: backend_id
-    )
-
-    Cluster.Utils.rpc_multicast(__MODULE__, :terminate_backend_local, [backend_id])
-    :ok
-  end
-
-  @doc """
   Terminates the backend's read `ConnectionManager` on the local node.
-
-  Invoked on each node by `terminate_backend/1`.
   """
   @spec terminate_backend_local(pos_integer()) :: :ok
   def terminate_backend_local(backend_id) when is_pos_integer(backend_id) do

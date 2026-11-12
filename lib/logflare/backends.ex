@@ -43,7 +43,7 @@ defmodule Logflare.Backends do
   @max_future_event_us 1 * 3_600 * 1_000_000
   @max_pending_buffer_len_per_queue IngestEventQueue.max_queue_size()
   @default_source_sup_start_timeout :timer.seconds(30)
-  @max_pipeline_swap_delay_ms 5_000
+  @default_max_pipeline_swap_delay_ms 5_000
 
   @type one_or_list_or_nil :: Backend.t() | [Backend.t()] | nil
 
@@ -402,11 +402,6 @@ defmodule Logflare.Backends do
   @spec update_backend_config(Backend.t(), map(), keyword()) ::
           {:ok, Backend.t()} | {:error, Changeset.t() | :not_found | :not_clickhouse_backend}
   defp update_backend_config(%Backend{} = backend, attrs, opts) do
-    default_ingest_modified? =
-      Map.has_key?(attrs, "default_ingest?") or Map.has_key?(attrs, :default_ingest?)
-
-    config_modified? = Map.has_key?(attrs, "config") or Map.has_key?(attrs, :config)
-
     result =
       Repo.transact(fn ->
         with {:ok, current} <- lock_backend(backend.id),
@@ -426,11 +421,9 @@ defmodule Logflare.Backends do
 
         if Keyword.get(opts, :query_policy_only, false) do
           invalidate_query_policy(updated)
-        else
-          Enum.each(updated.sources, &restart_source_sup(&1))
-          apply_consolidated_pipeline_change(backend, updated, default_ingest_modified?)
-          notify_backend_config_change(updated, config_modified?)
         end
+
+        apply_backend_change(updated.id)
 
         {:ok, typecast_config_string_map_to_atom_map(updated)}
 
@@ -441,7 +434,7 @@ defmodule Logflare.Backends do
 
   @spec invalidate_query_policy(Backend.t()) :: :ok
   defp invalidate_query_policy(%Backend{id: id, user_id: user_id}) do
-    keys = [{__MODULE__, id}, {QueryContext, [backend_id: id, owner_id: user_id]}]
+    keys = [{QueryContext, [backend_id: id, owner_id: user_id]}]
 
     Repo.after_commit(fn ->
       Logflare.ContextCache.bust_keys(keys)
@@ -476,12 +469,6 @@ defmodule Logflare.Backends do
     do: Changeset.put_assoc(changeset, :alert_queries, Map.get(attrs, :alert_queries))
 
   defp maybe_put_backend_alerts(changeset, _attrs, false), do: changeset
-
-  @spec notify_backend_config_change(Backend.t(), boolean()) :: term()
-  defp notify_backend_config_change(_backend, false), do: :ok
-
-  defp notify_backend_config_change(backend, true),
-    do: Adaptor.on_backend_config_changed(backend)
 
   @spec validate_query_policy_backend(Backend.t(), Keyword.t()) ::
           :ok | {:error, :not_clickhouse_backend}
@@ -630,8 +617,7 @@ defmodule Logflare.Backends do
       QueryContext.invalidate_backend(deleted)
       if deleted.default_ingest?, do: default_ingest_flag_changed(deleted)
 
-      maybe_stop_consolidated_pipeline(deleted)
-      Adaptor.on_backend_deleted(deleted)
+      apply_backend_change(deleted.id)
       {:ok, deleted}
     end
   end
@@ -646,35 +632,89 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Syncs backend across all cluster nodes for v2 pipeline sources explicitly linked to it.
+  Reads the backend from the primary database and applies its saved state to its
+  processes on the local node. The saved backend replaces the node's cached entry, and
+  the backend lists of each restarted `SourceSup`, so that restarted processes do not
+  read an older row from a read replica.
 
-  This ensures that when a backend's configuration changes, the running `SourceSup`
-  instances of its explicitly linked sources are updated immediately without waiting for
-  the periodic `SourceSupWorker` check. Account default ingest dispatch does not use links
-  and is not affected.
+  Invoked on every node by `Logflare.ContextCache.CacheBusterWorker` when the backend's
+  row changes, so that running processes pick up changes made in any BEAM cluster, and
+  in the cluster that saved the change by `update_backend/2`, `delete_backend/1` and
+  `configure_query_class_settings/3`. Processes already running with the saved state
+  are left as they are, so applying a change twice is safe.
+
+  - A consolidated backend has its adaptor notified and, after
+    `pipeline_swap_delay_ms/0`, its running pipelines replaced through
+    `Adaptor.replace_pipelines/1`. A default ingest backend with no running pipeline
+    has one started.
+  - Any other backend has the `SourceSup` of each linked source restarted, unless it
+    already runs the backend with its saved type and config.
+  - A deleted backend has its consolidated pipeline stopped and every adaptor notified.
   """
-  @spec sync_backend_across_cluster(integer()) :: :ok
-  def sync_backend_across_cluster(backend_id) when is_integer(backend_id) do
-    with %Backend{} = backend <- get_backend(backend_id) do
-      sources = Sources.list_sources(backend_id: backend_id)
+  @spec apply_backend_change_local(pos_integer()) :: :ok
+  def apply_backend_change_local(backend_id) when is_pos_integer(backend_id) do
+    ContextCache.bust_keys([{__MODULE__, backend_id}])
 
-      if sources != [] do
-        Cluster.Utils.rpc_multicast(__MODULE__, :sync_backends_local, [backend, sources])
-      end
+    case get_backend(backend_id) do
+      nil -> stop_backend_local(backend_id)
+      backend -> apply_backend_config_local(backend)
     end
-
-    :ok
   end
 
-  @doc """
-  Syncs a backend for local node for v2 pipeline sources.
-  expects the backend and sources to be loaded from the database.
-  """
-  @spec sync_backends_local(Backend.t(), [Source.t()]) :: :ok
-  def sync_backends_local(%Backend{} = backend, sources) do
-    for source <- sources do
-      SourceSup.start_backend_child(source, backend)
-      clear_list_backends_cache(source.id)
+  @spec apply_backend_change(pos_integer()) :: :ok
+  defp apply_backend_change(backend_id) do
+    Repo.after_commit(fn ->
+      ContextCache.bust_keys([{__MODULE__, backend_id}])
+      Cluster.Utils.rpc_multicast(__MODULE__, :apply_backend_change_local, [backend_id])
+    end)
+  end
+
+  @spec stop_backend_local(pos_integer()) :: :ok
+  defp stop_backend_local(backend_id) do
+    with :ok <- ConsolidatedSup.stop_pipeline(backend_id) do
+      Logger.info("Stopped consolidated pipeline", backend_id: backend_id)
+    end
+
+    Adaptor.on_backend_deleted(backend_id)
+  end
+
+  @spec apply_backend_config_local(Backend.t()) :: :ok
+  defp apply_backend_config_local(%Backend{} = backend) do
+    __MODULE__.Cache.put({:get_backend, [backend.id]}, backend)
+    sources = Sources.list_sources(backend_id: backend.id)
+    Enum.each(sources, &clear_list_backends_cache(&1.id))
+    Adaptor.on_backend_config_changed(backend)
+    apply_ingest_change_local(backend, sources)
+  end
+
+  @spec apply_ingest_change_local(Backend.t(), [Source.t()]) :: :ok
+  defp apply_ingest_change_local(%Backend{consolidated_ingest?: true} = backend, _sources) do
+    cond do
+      ConsolidatedSup.pipeline_running?(backend) ->
+        _ = replace_pipelines_after_delay(backend.id)
+        :ok
+
+      backend.default_ingest? ->
+        maybe_start_consolidated_pipeline(backend)
+
+      true ->
+        :ok
+    end
+  end
+
+  defp apply_ingest_change_local(%Backend{} = backend, sources) do
+    sources
+    |> Enum.reject(&SourceSup.backend_child_current?(&1, backend))
+    |> Enum.each(fn source ->
+      cache_source_backends(source)
+      restart_source_sup(source)
+    end)
+  end
+
+  @spec cache_source_backends(Source.t()) :: :ok
+  defp cache_source_backends(%Source{id: source_id}) do
+    for filters <- [[source_id: source_id], [rules_source_id: source_id]] do
+      __MODULE__.Cache.put({:list_backends, [filters]}, list_backends(filters))
     end
 
     :ok
@@ -1370,34 +1410,8 @@ defmodule Logflare.Backends do
     :ok
   end
 
-  @spec apply_consolidated_pipeline_change(Backend.t(), Backend.t(), boolean()) :: :ok
-  defp apply_consolidated_pipeline_change(backend, updated, default_ingest_modified?) do
-    updated = typecast_config_string_map_to_atom_map(updated)
-    pipeline_keys = Adaptor.pipeline_config_keys(updated)
-    runtime_keys = Adaptor.runtime_config_keys(updated)
-
-    changes =
-      backend
-      |> typecast_config_string_map_to_atom_map()
-      |> changed_config_keys(updated)
-
-    pipeline_changes = Enum.filter(changes, &(&1 in pipeline_keys))
-    other_changes = Enum.reject(changes, &(&1 in pipeline_keys or &1 in runtime_keys))
-
-    if default_ingest_modified? or other_changes != [] or changes == [] do
-      maybe_restart_consolidated_pipeline(updated)
-    end
-
-    if pipeline_changes != [] do
-      Cluster.Utils.rpc_multicast(__MODULE__, :replace_pipelines_after_delay, [updated.id])
-    end
-
-    :ok
-  end
-
-  @doc false
   @spec replace_pipelines_after_delay(pos_integer()) :: :ok | {:error, term()}
-  def replace_pipelines_after_delay(backend_id) when is_integer(backend_id) do
+  defp replace_pipelines_after_delay(backend_id) do
     Process.sleep(pipeline_swap_delay_ms())
     replace_pipelines_with_latest(backend_id)
   end
@@ -1413,39 +1427,15 @@ defmodule Logflare.Backends do
 
   @doc false
   @spec pipeline_swap_delay_ms() :: non_neg_integer()
-  def pipeline_swap_delay_ms, do: :rand.uniform(@max_pipeline_swap_delay_ms + 1) - 1
+  def pipeline_swap_delay_ms do
+    max_delay_ms =
+      Application.get_env(
+        :logflare,
+        :max_pipeline_swap_delay_ms,
+        @default_max_pipeline_swap_delay_ms
+      )
 
-  @spec changed_config_keys(Backend.t(), Backend.t()) :: [atom()]
-  defp changed_config_keys(%Backend{config: before}, %Backend{config: after_update}) do
-    (Map.keys(before) ++ Map.keys(after_update))
-    |> Enum.uniq()
-    |> Enum.reject(&(Map.get(before, &1) == Map.get(after_update, &1)))
-  end
-
-  @doc """
-  Restarts a consolidated pipeline for a backend if it supports consolidated ingestion.
-  """
-  @spec maybe_restart_consolidated_pipeline(Backend.t()) :: :ok
-  def maybe_restart_consolidated_pipeline(%Backend{} = backend) do
-    if Adaptor.consolidated_ingest?(backend) do
-      ConsolidatedSup.stop_pipeline(backend)
-      maybe_start_consolidated_pipeline(backend)
-    end
-
-    :ok
-  end
-
-  @doc """
-  Stops a consolidated pipeline for a backend if it supports consolidated ingestion.
-  """
-  @spec maybe_stop_consolidated_pipeline(Backend.t()) :: :ok
-  def maybe_stop_consolidated_pipeline(%Backend{} = backend) do
-    with true <- Adaptor.consolidated_ingest?(backend),
-         :ok <- ConsolidatedSup.stop_pipeline(backend) do
-      Logger.info("Stopped consolidated pipeline", backend_id: backend.id)
-    end
-
-    :ok
+    :rand.uniform(max_delay_ms + 1) - 1
   end
 
   @doc """

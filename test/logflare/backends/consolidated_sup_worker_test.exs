@@ -91,8 +91,11 @@ defmodule Logflare.Backends.ConsolidatedSupWorkerTest do
       assert ConsolidatedSup.pipeline_running?(backend)
 
       assert {:ok, _} = Logflare.Backends.delete_backend(backend)
+      start_supervised!({ConsolidatedSupWorker, [interval: 100]})
 
-      refute ConsolidatedSup.pipeline_running?(backend.id)
+      TestUtils.retry_assert(fn ->
+        refute List.keymember?(ConsolidatedSup.list_pipelines(), backend.id, 0)
+      end)
     end
   end
 end

@@ -407,6 +407,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
                config: %{query_user: name, query_password: "test-secret"}
              })
 
+    :ok = Backends.apply_backend_change_local(backend.id)
+
     keys =
       ~w(priority max_threads max_execution_time max_memory_usage max_bytes_to_read max_rows_to_read read_overflow_mode timeout_overflow_mode readonly)
 
@@ -436,6 +438,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
 
     assert {:ok, backend} =
              Backends.update_backend(backend, %{config: %{query_user: nil, query_password: nil}})
+
+    :ok = Backends.apply_backend_change_local(backend.id)
 
     TestUtils.retry_assert(fn ->
       assert {:ok, {[%{"readonly" => 0}], _}} =

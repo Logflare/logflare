@@ -49,24 +49,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @min_batch_size 1_000
   @min_batch_timeout_ms 1_000
   @max_batch_timeout_ms 30_000
-  @pipeline_config_keys [:batch_size, :batch_timeout]
-  @runtime_config_keys [
-    :use_async_inserts_for_small_batches,
-    :use_async_inserts_only,
-    :async_insert_max_rows,
-    :async_insert_busy_timeout_max_ms,
-    :async_insert_max_data_size,
-    :async_insert_cluster_url,
-    :read_pool_size,
-    :labeled_read_pool_size,
-    :read_only_urls,
-    :default_read_cluster,
-    :query_class_settings,
-    :query_user,
-    :query_password,
-    :replica_routing_param
-  ]
   @default_async_insert_busy_timeout_max_ms 3_000
+  @provisioning_config_keys [:url, :port, :database, :username, :password]
   @async_insert_flush_bounds %{
     async_insert_busy_timeout_max_ms: %{min: 200, max: 4_000},
     async_insert_max_data_size: %{min: 52_428_800, max: 268_435_456}
@@ -116,30 +100,52 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   def consolidated_ingest?, do: true
 
   @impl Logflare.Backends.Adaptor
-  def on_backend_config_changed(%Backend{id: backend_id}) do
-    QueryConnectionSup.refresh_backend(backend_id)
+  def on_backend_config_changed(%Backend{} = backend) do
+    _ = reprovision(backend)
+    QueryConnectionSup.refresh_backend_local(backend)
   end
 
   @impl Logflare.Backends.Adaptor
-  def on_backend_deleted(%Backend{id: backend_id}) do
-    QueryConnectionSup.terminate_backend(backend_id)
+  def on_backend_deleted(backend_id) do
+    QueryConnectionSup.terminate_backend_local(backend_id)
   end
-
-  @impl Logflare.Backends.Adaptor
-  def pipeline_config_keys, do: @pipeline_config_keys
-
-  @impl Logflare.Backends.Adaptor
-  def runtime_config_keys, do: @runtime_config_keys
 
   @impl Logflare.Backends.Adaptor
   def replace_pipelines(%Backend{id: backend_id} = backend) do
     name = Backends.via_backend(backend, Pipeline)
 
-    case GenServer.whereis(name) do
-      nil -> :ok
-      _pid -> DynamicPipeline.replace_pipelines(name, fn -> latest_pipeline_args(backend_id) end)
+    with pid when is_pid(pid) <- GenServer.whereis(name),
+         %{pipeline_args: running_args} <- DynamicPipeline.get_state(name),
+         false <- Pipeline.batch_opts(running_args[:backend]) == Pipeline.batch_opts(backend) do
+      DynamicPipeline.replace_pipelines(name, fn -> latest_pipeline_args(backend_id) end)
+    else
+      _unchanged_or_stopped -> :ok
     end
   end
+
+  @spec reprovision(Backend.t()) :: :ok | {:error, term()}
+  defp reprovision(%Backend{} = backend) do
+    sup = Backends.via_backend(backend, __MODULE__)
+
+    with pid when is_pid(pid) <- GenServer.whereis(sup),
+         {:ok, %{start: {_mod, _fun, [provisioned]}}} <-
+           :supervisor.get_childspec(pid, Provisioner),
+         false <- provisioning_config(provisioned) == provisioning_config(backend),
+         :ok <- Supervisor.terminate_child(pid, Provisioner),
+         :ok <- Supervisor.delete_child(pid, Provisioner),
+         {:ok, _pid} <- Supervisor.start_child(pid, Provisioner.child_spec(backend)) do
+      :ok
+    else
+      nil -> :ok
+      true -> :ok
+      {:error, :not_found} -> :ok
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @spec provisioning_config(Backend.t()) :: map()
+  defp provisioning_config(%Backend{config: config}),
+    do: Map.take(config, @provisioning_config_keys)
 
   @spec latest_pipeline_args(pos_integer()) :: keyword() | nil
   defp latest_pipeline_args(backend_id) do
@@ -909,29 +915,54 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         ) ::
           {:ok, {[map()], non_neg_integer() | :not_supported}} | {:error, term()}
   defp do_ch_query_on_label(%Backend{} = backend, statement, params, label, headers) do
-    with :ok <- ensure_query_connection_manager_started(backend, label) do
-      pool_via = connection_pool_via(backend, label)
+    pool_via = connection_pool_via(backend, label)
 
-      timeout = if Application.get_env(:logflare, :env) == :test, do: 1_000, else: 60_000
+    timeout = if Application.get_env(:logflare, :env) == :test, do: 1_000, else: 60_000
 
-      backend_id = backend.id
-      log_fun = fn entry -> handle_read_pool_log(entry, backend_id, label) end
+    backend_id = backend.id
+    log_fun = fn entry -> handle_read_pool_log(entry, backend_id, label) end
 
-      ch_opts = [decode: false, timeout: timeout, log: log_fun, headers: headers]
+    ch_opts = [decode: false, timeout: timeout, log: log_fun, headers: headers]
+    query = fn -> Ch.query(pool_via, statement, params, ch_opts) end
 
-      case Ch.query(pool_via, statement, params, ch_opts) do
-        {:ok, %Ch.Result{} = result} ->
-          rows = decode_ch_result(result)
-          bytes = parse_summary_read_bytes(result.headers)
-          {:ok, {rows, bytes}}
+    case query_pool(backend, label, query) do
+      {:ok, %Ch.Result{} = result} ->
+        rows = decode_ch_result(result)
+        bytes = parse_summary_read_bytes(result.headers)
+        {:ok, {rows, bytes}}
 
-        {:error, error} ->
-          {:error, error |> to_query_error() |> log_query_error(backend, label)}
-      end
-    else
-      {:error, reason} ->
+      {:error, error} ->
+        {:error, error |> to_query_error() |> log_query_error(backend, label)}
+
+      {:connection_error, reason} ->
         {:error, :connection_error |> query_error(reason) |> log_query_error(backend, label)}
     end
+  end
+
+  @spec query_pool(
+          Backend.t(),
+          String.t() | nil,
+          (-> {:ok, Ch.Result.t()} | {:error, Exception.t()}),
+          boolean()
+        ) :: {:ok, Ch.Result.t()} | {:error, Exception.t()} | {:connection_error, term()}
+  defp query_pool(%Backend{} = backend, label, query, retry? \\ true) do
+    case ensure_query_connection_manager_started(backend, label) do
+      :ok -> query.()
+      {:error, reason} -> {:connection_error, reason}
+    end
+  catch
+    # DBConnection exits the caller, rather than returning an error, when the
+    # pool stops mid-checkout. A refresh or idle stop exits with :normal, or
+    # :noproc if the pool is gone before checkout; both are worth one retry.
+    # Backend deletion exits with :shutdown and must not restart the pool.
+    # The shape comes from the private DBConnection.Holder, so recheck it
+    # on upgrades.
+    :exit, {reason, {DBConnection.Holder, :checkout, _args}}
+    when reason in [:normal, :noproc] and retry? ->
+      query_pool(backend, label, query, false)
+
+    :exit, {reason, {DBConnection.Holder, :checkout, _args}} ->
+      {:connection_error, reason}
   end
 
   @spec log_query_error(QueryError.t(), Backend.t(), String.t() | nil) :: QueryError.t()
@@ -1342,7 +1373,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @doc false
   @impl Supervisor
-  def init(%Backend{} = backend) do
+  def init(%Backend{id: backend_id}) do
+    case Backends.Cache.get_backend(backend_id) do
+      nil -> :ignore
+      %Backend{} = backend -> init_children(backend)
+    end
+  end
+
+  @spec init_children(Backend.t()) :: {:ok, {Supervisor.sup_flags(), [Supervisor.child_spec()]}}
+  defp init_children(backend) do
     backend = Backends.typecast_config_string_map_to_atom_map(backend)
 
     # create the startup queue and its generation, before any producer/traffic exists
