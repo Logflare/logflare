@@ -586,6 +586,37 @@ defmodule LogflareWeb.AccessTokensLiveTest do
     assert has_element?(view, "#scopes-query option[value='#{endpoint.id}'][selected]")
   end
 
+  test "create admin token", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+
+    do_ui_create_token(view, "private:admin")
+
+    html = view |> element("table") |> render()
+    assert html =~ "some description"
+    assert html =~ "private:admin"
+  end
+
+  test "create token - rejects admin scope from crafted team member payload", %{
+    conn: conn,
+    user: user
+  } do
+    team = insert(:team, user: user)
+    team_user = insert(:team_user, team: team)
+    conn = login_user(conn, user, team_user)
+
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+
+    assert view |> element("button", "Create access token") |> render_click()
+
+    html =
+      view
+      |> element("form")
+      |> render_submit(token_params(description: "crafted", admin: true))
+
+    assert html =~ "Could not create access token"
+    assert Logflare.Auth.list_valid_access_tokens(user) == []
+  end
+
   test "create token - rejects partner value from crafted form payload", %{conn: conn, user: user} do
     {:ok, view, _html} = live(conn, ~p"/access-tokens")
 
@@ -674,6 +705,57 @@ defmodule LogflareWeb.AccessTokensLiveTest do
     assert html =~ "private"
   end
 
+  describe "team_user with admin role" do
+    setup %{conn: conn} do
+      team = insert(:team)
+      team_user = insert(:team_user, team: team, role: :admin)
+      conn = conn |> login_user(team.user, team_user)
+
+      {:ok, team: team, team_user: team_user, conn: conn}
+    end
+
+    test "can create private:admin token", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/access-tokens")
+
+      assert view |> element("button", "Create access token") |> render_click()
+
+      html = render(view)
+      assert html =~ "Admin"
+      assert html =~ "Create and modify account resources and team users."
+
+      assert view
+             |> element("form")
+             |> render_submit(token_params(description: "some description", admin: true)) =~
+               "created successfully"
+
+      html = view |> element("table") |> render()
+      assert html =~ "some description"
+      assert html =~ "private:admin"
+    end
+  end
+
+  describe "team_user with user role" do
+    setup %{conn: conn} do
+      team = insert(:team)
+      team_user = insert(:team_user, team: team, role: :user)
+      conn = conn |> login_user(team.user, team_user)
+
+      {:ok, team: team, team_user: team_user, conn: conn}
+    end
+
+    test "cannot see admin scope option", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/access-tokens")
+
+      assert view
+             |> element("button", "Create access token")
+             |> render_click()
+
+      html = render(view)
+      refute html =~ "Admin"
+      refute html =~ "Create and modify account resources and team users."
+    end
+  end
+
   # returns the rendered table html
   defp do_ui_create_token(view, scopes) do
     assert view
@@ -685,6 +767,9 @@ defmodule LogflareWeb.AccessTokensLiveTest do
 
     form_options =
       cond do
+        scopes == "private:admin" ->
+          [description: "some description", admin: true]
+
         scopes == "private" ->
           [description: "some description", private: true]
 
@@ -731,6 +816,7 @@ defmodule LogflareWeb.AccessTokensLiveTest do
       "access_token" => %{
         "description" => Keyword.get(options, :description, ""),
         "private" => to_string(Keyword.get(options, :private, false)),
+        "admin" => to_string(Keyword.get(options, :admin, false)),
         "ingest" => ingest,
         "query" => query
       }

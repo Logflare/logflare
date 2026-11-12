@@ -222,6 +222,13 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
     |> VerifyApiAccess.call(%{scopes: ~w(private)})
     |> assert_authorized(user)
 
+    {:ok, admin_token} = Logflare.Auth.create_access_token(user, %{scopes: "private:admin"})
+
+    build_conn(:get, "/any", %{})
+    |> put_req_header("x-api-key", admin_token.token)
+    |> VerifyApiAccess.call(%{scopes: ~w(private)})
+    |> assert_authorized(user)
+
     # no scope set
     {:ok, access_token_empty} = Logflare.Auth.create_access_token(user)
 
