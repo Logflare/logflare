@@ -395,7 +395,7 @@ defmodule Logflare.Sql.DialectTranslationTest do
   test "translates IFNULL to COALESCE" do
     bq_query = """
     SELECT
-      IFNULL(metadata.level, '') AS level,
+      IFNULL(m.level, '') AS level,
       IFNULL(SAFE_CAST(m.status_code AS INT64), 0) AS status
     FROM `edge_logs` t
     CROSS JOIN UNNEST(t.metadata) AS m
@@ -404,7 +404,7 @@ defmodule Logflare.Sql.DialectTranslationTest do
     assert {:ok, pg_query} = DialectTranslation.translate_bq_to_pg(bq_query)
 
     refute pg_query =~ ~r/ifnull/i
-    assert pg_query =~ ~r/coalesce\(\(body ->> 'level'\), ''\)/i
+    assert pg_query =~ ~r/coalesce\(\(body #>> '\{metadata,level\}'\), ''\)/i
     assert pg_query =~ ~r/coalesce\(cast\(.+ as bigint\), 0\)/i
   end
 
@@ -420,9 +420,15 @@ defmodule Logflare.Sql.DialectTranslationTest do
   end
 
   test "keeps JSON access as jsonb in COALESCE without a string fallback" do
-    bq_query = "SELECT COALESCE(metadata.level, metadata.severity) AS level FROM `edge_logs`"
+    bq_query = """
+    SELECT COALESCE(m.level, m.severity) AS level
+    FROM `edge_logs` t
+    CROSS JOIN UNNEST(t.metadata) AS m
+    """
 
     assert {:ok, pg_query} = DialectTranslation.translate_bq_to_pg(bq_query)
-    assert pg_query =~ ~r/coalesce\(\(body -> 'level'\), \(body -> 'severity'\)\)/i
+
+    assert pg_query =~
+             ~r/coalesce\(\(body #> '\{metadata,level\}'\), \(body #> '\{metadata,severity\}'\)\)/i
   end
 end
