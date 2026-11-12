@@ -255,7 +255,7 @@ Using the same key-value entry above, the incoming event `{ "project": "123abc" 
 { "project": "123abc", "org_id": "456def", "metadata": {"org_name": "Acme"} }
 ```
 
-If no matching key is found, the event is left unchanged. Non-string field values (numbers, booleans, etc.) are stringified before lookup.
+If no matching key is found, the event is left unchanged. Numeric and boolean field values are stringified before lookup. Objects and arrays are not looked up, and the event is left unchanged.
 
 Key-value pairs can be managed via the [Management API](https://logflare.app/swaggerui).
 

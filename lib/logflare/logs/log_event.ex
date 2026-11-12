@@ -314,8 +314,8 @@ defmodule Logflare.LogEvent do
        ) do
     accessor_path = Map.get(instruction, :accessor_path)
 
-    with raw when not is_nil(raw) <- get_in(body, from_path),
-         raw_string <- to_string(raw),
+    with raw when is_binary(raw) or is_number(raw) or is_boolean(raw) <- get_in(body, from_path),
+         raw_string = to_string(raw),
          true <- Utils.flag("key_values", raw_string),
          value when not is_nil(value) <-
            KeyValues.Cache.lookup(user_id, raw_string, accessor_path) do
