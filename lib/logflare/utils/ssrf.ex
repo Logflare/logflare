@@ -53,6 +53,8 @@ defmodule Logflare.Utils.SSRF do
   Resolves `host` and returns the first safe IP address, or an error if the
   host resolves to any private/reserved address or cannot be resolved at all.
 
+  Both IPv4 and IPv6 records are checked, and IPv4 addresses are returned first.
+
   Used to obtain an IP to connect to directly, eliminating DNS re-resolution.
   """
   @spec safe_resolve(String.t() | nil) :: {:ok, :inet.ip_address()} | {:error, String.t()}
@@ -97,23 +99,24 @@ defmodule Logflare.Utils.SSRF do
 
   def url_host(addr), do: addr |> :inet.ntoa() |> List.to_string()
 
+  @doc false
+  @spec getaddrs(charlist(), :inet | :inet6) :: {:ok, [:inet.ip_address()]} | {:error, term()}
+  def getaddrs(charlist, family), do: :inet.getaddrs(charlist, family)
+
   defp resolve_hostname(charlist) do
-    with :unresolved <- resolve_hostname(charlist, :inet),
-         :unresolved <- resolve_hostname(charlist, :inet6) do
-      {:error, "could not resolve webhook destination host"}
-    else
-      other -> other
+    case resolved_addrs(charlist, :inet) ++ resolved_addrs(charlist, :inet6) do
+      [] ->
+        {:error, "could not resolve webhook destination host"}
+
+      [addr | _] = addrs ->
+        if Enum.any?(addrs, &private_ip?/1), do: {:error, @private_ip_error}, else: {:ok, addr}
     end
   end
 
-  defp resolve_hostname(charlist, family) do
-    with {:ok, [addr | _] = addrs} <- :inet.getaddrs(charlist, family),
-         {:private, false} <- {:private, Enum.any?(addrs, &private_ip?/1)} do
-      {:ok, addr}
-    else
-      {:private, true} -> {:error, @private_ip_error}
-      {:ok, []} -> :unresolved
-      {:error, _} -> :unresolved
+  defp resolved_addrs(charlist, family) do
+    case __MODULE__.getaddrs(charlist, family) do
+      {:ok, addrs} -> addrs
+      {:error, _} -> []
     end
   end
 end

@@ -1,6 +1,7 @@
 defmodule Logflare.Utils.SSRFTest do
   @moduledoc false
   use ExUnit.Case, async: true
+  use Mimic
 
   alias Logflare.Utils.SSRF
 
@@ -85,6 +86,48 @@ defmodule Logflare.Utils.SSRFTest do
     test "returns error for hostname resolving to loopback" do
       assert {:error, _} = SSRF.safe_resolve("localhost")
     end
+
+    test "returns error for hostname with public IPv4 and private IPv6 records" do
+      for private_ipv6 <- [
+            {0, 0, 0, 0, 0, 0, 0, 1},
+            {0xFC00, 0, 0, 0, 0, 0, 0, 1},
+            {0xFE80, 0, 0, 0, 0, 0, 0, 1}
+          ] do
+        stub_dns(inet: {:ok, [{8, 8, 8, 8}]}, inet6: {:ok, [private_ipv6]})
+
+        assert {:error, "URL must not target private or reserved IP addresses"} =
+                 SSRF.safe_resolve("rebind.example.com")
+      end
+    end
+
+    test "returns error for hostname with an IPv4-mapped private IPv6 record" do
+      stub_dns(inet: {:ok, [{8, 8, 8, 8}]}, inet6: {:ok, [{0, 0, 0, 0, 0, 0xFFFF, 0x7F00, 1}]})
+
+      assert {:error, _} = SSRF.safe_resolve("mapped.example.com")
+    end
+
+    test "returns the IPv4 address for hostname with public IPv4 and IPv6 records" do
+      stub_dns(
+        inet: {:ok, [{8, 8, 8, 8}]},
+        inet6: {:ok, [{0x2001, 0x4860, 0x4860, 0, 0, 0, 0, 0x8888}]}
+      )
+
+      assert {:ok, {8, 8, 8, 8}} = SSRF.safe_resolve("dual.example.com")
+    end
+
+    test "returns the IPv6 address for hostname with only public IPv6 records" do
+      ipv6 = {0x2001, 0x4860, 0x4860, 0, 0, 0, 0, 0x8888}
+      stub_dns(inet: {:error, :nxdomain}, inet6: {:ok, [ipv6]})
+
+      assert {:ok, ^ipv6} = SSRF.safe_resolve("v6only.example.com")
+    end
+
+    test "returns error for hostname without any records" do
+      stub_dns(inet: {:ok, []}, inet6: {:error, :nxdomain})
+
+      assert {:error, "could not resolve webhook destination host"} =
+               SSRF.safe_resolve("missing.example.com")
+    end
   end
 
   describe "validate_url_host/2" do
@@ -126,6 +169,10 @@ defmodule Logflare.Utils.SSRFTest do
       assert SSRF.url_host({0x2001, 0x4860, 0x4860, 0, 0, 0, 0, 0x8888}) ==
                "[2001:4860:4860::8888]"
     end
+  end
+
+  defp stub_dns(answers) do
+    stub(SSRF, :getaddrs, fn _charlist, family -> Keyword.fetch!(answers, family) end)
   end
 
   defp url_changeset(url) do
