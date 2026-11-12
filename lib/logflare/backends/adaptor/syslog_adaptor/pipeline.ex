@@ -6,32 +6,41 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
 
   alias Broadway.Message
   alias Logflare.Backends
-  alias Logflare.Backends.Adaptor.SyslogAdaptor.{Pool, Syslog}
+  alias Logflare.Backends.Adaptor.SyslogAdaptor.Pool
+  alias Logflare.Backends.Adaptor.SyslogAdaptor.Syslog
 
-  def start_link(opts) do
-    backend = Keyword.fetch!(opts, :backend)
-    source = Keyword.fetch!(opts, :source)
-    pool = Keyword.fetch!(opts, :pool)
-    name = Keyword.fetch!(opts, :name)
+  @spec start_link(keyword(), keyword()) :: GenServer.on_start()
+  def start_link(args, broadway_opts \\ []) do
+    backend = Keyword.fetch!(args, :backend)
+    source = Keyword.fetch!(args, :source)
+    pool = Keyword.fetch!(args, :pool)
+    name = Keyword.fetch!(args, :name)
+    {pipeline_module, broadway_opts} = Keyword.pop(broadway_opts, :pipeline_module, __MODULE__)
 
-    Broadway.start_link(__MODULE__,
-      name: name,
-      producer: [
-        module: {Backends.BufferProducer, backend_id: backend.id, source_id: source.id},
-        transformer: {__MODULE__, :transform, []}
-      ],
-      processors: [
-        default: [min_demand: 1]
-      ],
-      batchers: [
-        syslog: [concurrency: 5, batch_size: 50]
-      ],
-      context: %{
-        source_id: source.id,
-        backend_id: backend.id,
-        pool: pool
-      }
-    )
+    opts =
+      Keyword.merge(
+        [
+          name: name,
+          producer: [
+            module: {Backends.BufferProducer, backend_id: backend.id, source_id: source.id},
+            transformer: {__MODULE__, :transform, []}
+          ],
+          processors: [
+            default: [min_demand: 1]
+          ],
+          batchers: [
+            syslog: [concurrency: 5, batch_size: 50]
+          ],
+          context: %{
+            source_id: source.id,
+            backend_id: backend.id,
+            pool: pool
+          }
+        ],
+        broadway_opts
+      )
+
+    Broadway.start_link(pipeline_module, opts)
   end
 
   @impl Broadway
