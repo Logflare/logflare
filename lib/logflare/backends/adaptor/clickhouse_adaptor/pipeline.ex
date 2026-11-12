@@ -107,8 +107,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     {name, args} = Keyword.pop(args, :name)
     backend = Keyword.fetch!(args, :backend)
     processor_concurrency = processor_concurrency()
-    batch_size = config_value(backend, :batch_size, @batch_size)
-    batch_timeout = config_value(backend, :batch_timeout, @batch_timeout)
+    [batch_size: batch_size, batch_timeout: batch_timeout] = batch_opts(backend)
 
     Broadway.start_link(__MODULE__,
       name: name,
@@ -143,6 +142,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       ],
       context: build_processor_context(backend.id)
     )
+  end
+
+  @doc """
+  Returns the batch limits a pipeline started for `backend` uses.
+  """
+  @spec batch_opts(Backend.t()) :: [batch_size: pos_integer(), batch_timeout: pos_integer()]
+  def batch_opts(%Backend{} = backend) do
+    [
+      batch_size: config_value(backend, :batch_size, @batch_size),
+      batch_timeout: config_value(backend, :batch_timeout, @batch_timeout)
+    ]
   end
 
   @spec config_value(Backend.t(), atom(), pos_integer()) :: pos_integer()

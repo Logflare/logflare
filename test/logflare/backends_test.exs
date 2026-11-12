@@ -12,6 +12,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
   alias Logflare.Backends.Backend
   alias Logflare.Cluster.Utils, as: ClusterUtils
+  alias Logflare.ContextCache
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.RecentInsertsCacher
@@ -83,9 +84,12 @@ defmodule Logflare.BackendsTest do
   end
 
   describe "Adaptor lifecycle notifications" do
-    test "are no-ops for adaptors without the callbacks" do
+    test "backend of an adaptor without the callbacks" do
       assert :ok == Adaptor.on_backend_config_changed(%Backend{type: :webhook})
-      assert :ok == Adaptor.on_backend_deleted(%Backend{type: :webhook})
+    end
+
+    test "deleted backend without running processes" do
+      assert :ok == Adaptor.on_backend_deleted(System.unique_integer([:positive]))
     end
   end
 
@@ -128,26 +132,6 @@ defmodule Logflare.BackendsTest do
       refute Backends.ConsolidatedSup.pipeline_running?(backend)
     end
 
-    test "delete_backend/1 stops consolidated pipeline", %{user: user} do
-      attrs = %{
-        type: :clickhouse,
-        name: "Test ClickHouse",
-        config: %{
-          url: "http://localhost",
-          port: 8123,
-          database: "test_db",
-          username: "user",
-          password: "pass"
-        }
-      }
-
-      assert {:ok, backend} = Backends.create_backend(user, attrs)
-      assert Backends.ConsolidatedSup.pipeline_running?(backend)
-
-      assert {:ok, _} = Backends.delete_backend(backend)
-      refute Backends.ConsolidatedSup.pipeline_running?(backend.id)
-    end
-
     test "update_backend/2 keeps consolidated pipeline running", %{user: user} do
       attrs = %{
         type: :clickhouse,
@@ -170,67 +154,14 @@ defmodule Logflare.BackendsTest do
       Backends.ConsolidatedSup.stop_pipeline(updated)
     end
 
-    test "update_backend/2 swaps pipelines in place when only batch limits change", %{
-      user: user
-    } do
-      assert {:ok, backend} = Backends.create_backend(user, clickhouse_backend_attrs())
-      adaptor_sup = TestUtils.consolidated_sup_pid(backend)
-      pipeline_sup = Backends.via_backend(backend, ClickHousePipeline)
-      [old_id] = DynamicPipeline.list_pipelines(pipeline_sup)
+    test "pipeline_swap_delay_ms/0 with the default maximum delay" do
+      Application.delete_env(:logflare, :max_pipeline_swap_delay_ms)
+      on_exit(fn -> Application.put_env(:logflare, :max_pipeline_swap_delay_ms, 0) end)
 
-      config =
-        Map.merge(clickhouse_backend_attrs().config, %{batch_size: 2_000, batch_timeout: 1_500})
-
-      assert {:ok, _updated} = Backends.update_backend(backend, %{config: config})
-
-      new_id =
-        TestUtils.retry_assert([duration: 10_000], fn ->
-          assert [new_id] = DynamicPipeline.list_pipelines(pipeline_sup)
-          refute new_id == old_id
-          new_id
-        end)
-
-      assert TestUtils.consolidated_sup_pid(backend) == adaptor_sup
-
-      {:ok, %{start: {ClickHousePipeline, :start_link, [args]}}} =
-        :supervisor.get_childspec(pipeline_sup, new_id)
-
-      assert %{batch_size: 2_000, batch_timeout: 1_500} = Keyword.fetch!(args, :backend).config
-
-      Backends.ConsolidatedSup.stop_pipeline(backend)
-    end
-
-    test "pipeline_swap_delay_ms/0 spreads swaps across 0..5 seconds" do
       delays = for _ <- 1..200, do: Backends.pipeline_swap_delay_ms()
 
       assert Enum.all?(delays, &(&1 in 0..5_000))
       assert length(Enum.uniq(delays)) > 1
-    end
-
-    test "update_backend/2 leaves the pipeline alone when only per-batch settings change", %{
-      user: user
-    } do
-      assert {:ok, backend} = Backends.create_backend(user, clickhouse_backend_attrs())
-      adaptor_sup = TestUtils.consolidated_sup_pid(backend)
-      pipeline_sup = Backends.via_backend(backend, ClickHousePipeline)
-      pipelines = DynamicPipeline.list_pipelines(pipeline_sup)
-
-      config =
-        Map.merge(clickhouse_backend_attrs().config, %{
-          use_async_inserts_only: true,
-          use_async_inserts_for_small_batches: true,
-          async_insert_max_rows: 500,
-          async_insert_busy_timeout_max_ms: 4_000,
-          async_insert_max_data_size: 209_715_200,
-          async_insert_cluster_url: "http://localhost:8124"
-        })
-
-      assert {:ok, _updated} = Backends.update_backend(backend, %{config: config})
-
-      assert TestUtils.consolidated_sup_pid(backend) == adaptor_sup
-      assert DynamicPipeline.list_pipelines(pipeline_sup) == pipelines
-
-      Backends.ConsolidatedSup.stop_pipeline(backend)
     end
 
     for {key, value} <- [
@@ -271,25 +202,6 @@ defmodule Logflare.BackendsTest do
       Backends.ConsolidatedSup.stop_pipeline(backend)
     end
 
-    test "disabling default ingest restarts the pipeline with the configured batch limits",
-         %{user: user} do
-      config =
-        Map.merge(clickhouse_backend_attrs().config, %{batch_size: 2_000, batch_timeout: 1_500})
-
-      attrs =
-        clickhouse_backend_attrs()
-        |> Map.put(:config, config)
-        |> Map.put(:default_ingest?, true)
-
-      assert {:ok, backend} = Backends.create_backend(user, attrs)
-      assert {:ok, _updated} = Backends.update_backend(backend, %{default_ingest?: false})
-
-      assert %{batch_size: 2_000, batch_timeout: 1_500} =
-               TestUtils.clickhouse_batcher_state(backend)
-
-      Backends.ConsolidatedSup.stop_pipeline(backend)
-    end
-
     test "replace_pipelines_with_latest/1 uses limits saved while the swap waits for the coordinator",
          %{user: user} do
       config =
@@ -300,6 +212,7 @@ defmodule Logflare.BackendsTest do
 
       pipeline_sup = Backends.via_backend(backend, ClickHousePipeline)
       coordinator = DynamicPipeline.find_coordinator_name(pipeline_sup)
+      save_backend_config!(backend, %{batch_size: 2_500})
       :ok = :sys.suspend(coordinator)
 
       swap = Task.async(fn -> Backends.replace_pipelines_with_latest(backend.id) end)
@@ -331,23 +244,93 @@ defmodule Logflare.BackendsTest do
     test "replace_pipelines_with_latest/1 is a no-op for a deleted backend" do
       assert :ok = Backends.replace_pipelines_with_latest(-1)
     end
+  end
 
-    test "update_backend/2 restarts the consolidated pipeline when other config changes", %{
-      user: user
-    } do
-      assert {:ok, backend} = Backends.create_backend(user, clickhouse_backend_attrs())
+  describe "apply_backend_change_local/1 with a consolidated backend" do
+    setup do
+      insert(:plan, name: "Free")
+      user = insert(:user)
+      {:ok, backend} = Backends.create_backend(user, clickhouse_backend_attrs())
+      on_exit(fn -> Backends.ConsolidatedSup.stop_pipeline(backend.id) end)
+
+      [backend: backend]
+    end
+
+    test "backend with new batch limits", %{backend: backend} do
+      config_changes = %{batch_size: 2_000, batch_timeout: 1_500}
       adaptor_sup = TestUtils.consolidated_sup_pid(backend)
+      pipeline_sup = Backends.via_backend(backend, ClickHousePipeline)
+      [old_id] = DynamicPipeline.list_pipelines(pipeline_sup)
 
-      config = Map.put(clickhouse_backend_attrs().config, :database, "other_db")
-      assert {:ok, updated} = Backends.update_backend(backend, %{config: config})
+      config = Map.merge(clickhouse_backend_attrs().config, config_changes)
+      {:ok, _updated} = Backends.update_backend(backend, %{name: "Updated", config: config})
 
-      refute TestUtils.consolidated_sup_pid(updated) == adaptor_sup
+      assert :ok = Backends.apply_backend_change_local(backend.id)
 
-      Backends.ConsolidatedSup.stop_pipeline(updated)
+      new_id =
+        TestUtils.retry_assert(fn ->
+          assert [new_id] = DynamicPipeline.list_pipelines(pipeline_sup)
+          refute new_id == old_id
+          new_id
+        end)
+
+      assert TestUtils.consolidated_sup_pid(backend) == adaptor_sup
+
+      {:ok, %{start: {ClickHousePipeline, :start_link, [args]}}} =
+        :supervisor.get_childspec(pipeline_sup, new_id)
+
+      new_config = Keyword.fetch!(args, :backend).config
+      assert Map.take(new_config, Map.keys(config_changes)) == config_changes
+    end
+
+    for {scenario, config_changes} <- [
+          {"a changed database", %{database: "other_db"}},
+          {"unchanged config", %{}}
+        ] do
+      test "backend with #{scenario}", %{backend: backend} do
+        config_changes = unquote(Macro.escape(config_changes))
+        pipeline_sup = Backends.via_backend(backend, ClickHousePipeline)
+        pipelines = DynamicPipeline.list_pipelines(pipeline_sup)
+
+        config = Map.merge(clickhouse_backend_attrs().config, config_changes)
+        {:ok, _updated} = Backends.update_backend(backend, %{name: "Updated", config: config})
+
+        assert :ok = Backends.apply_backend_change_local(backend.id)
+
+        assert DynamicPipeline.list_pipelines(pipeline_sup) == pipelines
+      end
+    end
+
+    test "deleted backend", %{backend: backend} do
+      adaptor_sup = TestUtils.consolidated_sup_pid(backend)
+      Repo.delete!(backend)
+
+      assert :ok = Backends.apply_backend_change_local(backend.id)
+
+      refute Process.alive?(adaptor_sup)
+    end
+
+    test "stopped backend with default ingest enabled", %{backend: backend} do
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+      backend |> Backend.changeset(%{default_ingest?: true}) |> Repo.update!()
+      save_backend_config!(backend, %{batch_size: 2_000, batch_timeout: 1_500})
+
+      assert :ok = Backends.apply_backend_change_local(backend.id)
+
+      assert %{batch_size: 2_000, batch_timeout: 1_500} =
+               TestUtils.clickhouse_batcher_state(backend)
+    end
+
+    test "stopped backend with default ingest disabled", %{backend: backend} do
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+
+      assert :ok = Backends.apply_backend_change_local(backend.id)
+
+      refute Backends.ConsolidatedSup.pipeline_running?(backend.id)
     end
   end
 
-  describe "clickhouse read pool hooks" do
+  describe "backend changes with a running read pool" do
     setup do
       insert(:plan, name: "Free")
       user = insert(:user)
@@ -371,49 +354,161 @@ defmodule Logflare.BackendsTest do
       assert :ok == ConnectionManager.ensure_pool_started(backend)
       assert ConnectionManager.pool_active?(backend)
 
-      [user: user, backend: backend, manager_pid: manager_pid]
+      [backend: backend, manager_pid: manager_pid]
     end
 
-    test "update_backend/2 refreshes read pools when config changes", %{backend: backend} do
-      assert {:ok, updated} =
-               Backends.update_backend(backend, %{
-                 config: %{
-                   url: "http://localhost:8123",
-                   port: 8123,
-                   database: "logflare_test",
-                   username: "logflare",
-                   password: "logflare",
-                   pool_size: 5
-                 }
-               })
+    test "backend saved with a new read pool size", %{backend: backend} do
+      save_backend_config!(backend, %{read_pool_size: 2})
 
-      TestUtils.retry_assert(fn ->
-        refute ConnectionManager.pool_active?(backend)
-      end)
+      assert :ok = Backends.apply_backend_change_local(backend.id)
 
-      Backends.ConsolidatedSup.stop_pipeline(updated)
+      refute ConnectionManager.pool_active?(backend)
     end
 
-    test "update_backend/2 leaves read pools running when config is unchanged", %{
+    test "backend saved with a new read pool size while the read replica lags", %{
       backend: backend
     } do
-      assert {:ok, updated} = Backends.update_backend(backend, %{name: "Updated Name"})
+      stub_lagging_replica(%{{:get_backend, [backend.id]} => backend})
+      save_backend_config!(backend, %{read_pool_size: 2})
 
-      Process.sleep(200)
-      assert ConnectionManager.pool_active?(backend)
+      assert :ok = Backends.apply_backend_change_local(backend.id)
+      assert :ok = ConnectionManager.ensure_pool_started(backend)
 
-      Backends.ConsolidatedSup.stop_pipeline(updated)
+      backend_id = backend.id
+
+      assert [{^backend_id, nil, _pool_pid, 2}] =
+               Enum.filter(QueryConnectionSup.list_read_pools(), &(elem(&1, 0) == backend_id))
     end
 
-    test "delete_backend/1 terminates read connection managers", %{
-      backend: backend,
-      manager_pid: manager_pid
-    } do
-      assert {:ok, _deleted} = Backends.delete_backend(backend)
+    test "deleted backend", %{backend: backend, manager_pid: manager_pid} do
+      Repo.delete!(backend)
 
-      TestUtils.retry_assert(fn ->
-        refute Process.alive?(manager_pid)
+      assert :ok = Backends.apply_backend_change_local(backend.id)
+
+      refute Process.alive?(manager_pid)
+    end
+
+    test "backend saved with new query class settings", %{backend: backend} do
+      pool_pid = ConnectionManager.get_pool_pid(backend)
+      admin = insert(:user, admin: true)
+      policy = %{"default" => %{"priority" => 5}}
+      {:ok, _configured} = Backends.configure_query_class_settings(admin, backend, policy)
+
+      assert :ok = Backends.apply_backend_change_local(backend.id)
+
+      assert ^pool_pid = ConnectionManager.get_pool_pid(backend)
+    end
+
+    test "update_backend/2 with a new read pool size", %{backend: backend} do
+      {:ok, _updated} = Backends.update_backend(backend, %{config: %{read_pool_size: 2}})
+
+      TestUtils.retry_assert(fn -> refute ConnectionManager.pool_active?(backend) end)
+    end
+
+    test "delete_backend/1", %{backend: backend, manager_pid: manager_pid} do
+      {:ok, _deleted} = Backends.delete_backend(backend)
+
+      TestUtils.retry_assert(fn -> refute Process.alive?(manager_pid) end)
+    end
+  end
+
+  describe "apply_backend_change_local/1 with a non-consolidated backend" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user)
+      :ok = Backends.start_source_sup(source)
+      on_exit(fn -> Backends.stop_source_sup(source) end)
+
+      [user: user, source: source]
+    end
+
+    test "backend linked to a running source", %{user: user, source: source} do
+      [{source_sup, _}] = Registry.lookup(SourceRegistry, {source.id, SourceSup})
+      backend = insert_webhook_backend(user, source)
+
+      assert :ok = Backends.apply_backend_change_local(backend.id)
+
+      refute source_sup_pid(source) == source_sup
+      assert {_pid, %Backend{config: %{url: "http://test.com"}}} = webhook_child(source)
+    end
+
+    test "linked backend whose config changed", %{user: user, source: source} do
+      backend = insert_webhook_backend(user, source)
+      :ok = Backends.apply_backend_change_local(backend.id)
+      source_sup = source_sup_pid(source)
+      save_backend_config!(backend, %{url: "http://other.com"})
+
+      assert :ok = Backends.apply_backend_change_local(backend.id)
+
+      refute source_sup_pid(source) == source_sup
+      assert {_pid, %Backend{config: %{url: "http://other.com"}}} = webhook_child(source)
+    end
+
+    test "linked backend whose config changed while the read replica lags", %{
+      user: user,
+      source: source
+    } do
+      backend = insert_webhook_backend(user, source)
+      :ok = Backends.apply_backend_change_local(backend.id)
+      stale_backends = Backends.list_backends(source_id: source.id)
+      stub_lagging_replica(%{{:list_backends, [[source_id: source.id]]} => stale_backends})
+      save_backend_config!(backend, %{url: "http://other.com"})
+
+      assert :ok = Backends.apply_backend_change_local(backend.id)
+
+      assert {_pid, %Backend{config: %{url: "http://other.com"}}} = webhook_child(source)
+    end
+
+    test "linked sources whose source sups include one that exits when checked", %{
+      user: user,
+      source: source
+    } do
+      exiting_source = insert(:source, user: user)
+      later_source = insert(:source, user: user)
+      :ok = Backends.start_source_sup(later_source)
+      on_exit(fn -> Backends.stop_source_sup(later_source) end)
+
+      {:ok, _agent} =
+        Agent.start(fn -> nil end, name: Backends.via_source(exiting_source, SourceSup))
+
+      backend =
+        insert(:backend,
+          user: user,
+          sources: [source, exiting_source, later_source],
+          type: :webhook,
+          config: %{url: "http://test.com"}
+        )
+
+      capture_log(fn ->
+        assert :ok = Backends.apply_backend_change_local(backend.id)
       end)
+
+      for linked_source <- [source, later_source] do
+        assert {_pid, %Backend{config: %{url: "http://test.com"}}} = webhook_child(linked_source)
+      end
+    end
+
+    test "linked backend saved with an unchanged config", %{user: user, source: source} do
+      backend = insert_webhook_backend(user, source)
+      :ok = Backends.apply_backend_change_local(backend.id)
+      source_sup = source_sup_pid(source)
+      {pid, _backend} = webhook_child(source)
+      save_backend_config!(backend, %{})
+
+      assert :ok = Backends.apply_backend_change_local(backend.id)
+
+      assert source_sup_pid(source) == source_sup
+      assert {^pid, _backend} = webhook_child(source)
+    end
+
+    test "backend without linked sources", %{user: user, source: source} do
+      [{source_sup, _}] = Registry.lookup(SourceRegistry, {source.id, SourceSup})
+      backend = insert(:backend, user: user, type: :webhook, config: %{url: "http://test.com"})
+
+      assert :ok = Backends.apply_backend_change_local(backend.id)
+
+      assert [{^source_sup, _}] = Registry.lookup(SourceRegistry, {source.id, SourceSup})
     end
   end
 
@@ -2711,86 +2806,6 @@ defmodule Logflare.BackendsTest do
     )
   end
 
-  describe "sync_backend_across_cluster/1" do
-    setup do
-      insert(:plan)
-      user = insert(:user)
-      source = insert(:source, user: user)
-
-      {:ok, user: user, source: source}
-    end
-
-    test "syncs backend across cluster for all associated sources", %{
-      source: source,
-      user: user
-    } do
-      # Start actual SourceSup process
-      start_supervised!({SourceSup, source})
-
-      via = Backends.via_source(source, SourceSup)
-
-      children =
-        Supervisor.which_children(via)
-        |> Enum.filter(fn
-          {{mod, _, _}, _pid, _type, _sup} -> mod == Backends.Adaptor.WebhookAdaptor
-          _ -> false
-        end)
-
-      assert Enum.empty?(children)
-
-      backend =
-        insert(:backend,
-          user: user,
-          sources: [source],
-          type: :webhook,
-          config: %{url: "http://test.com"}
-        )
-
-      # Mock the cluster RPC calls
-      Logflare.Cluster.Utils
-      |> expect(:rpc_multicast, 1, fn
-        Backends, :sync_backends_local, [%_{}, [_]] = args ->
-          apply(Backends, :sync_backends_local, args)
-      end)
-
-      assert :ok = Backends.sync_backend_across_cluster(backend.id)
-
-      via = Backends.via_source(source, SourceSup)
-
-      children =
-        Supervisor.which_children(via)
-        |> Enum.filter(fn
-          {{mod, _, _}, _pid, _type, _sup} -> mod == Backends.Adaptor.WebhookAdaptor
-          _ -> false
-        end)
-
-      assert length(children) == 1
-    end
-
-    test "handles non-existent backend gracefully" do
-      non_existent_id = 99_999
-
-      reject(&ClusterUtils.rpc_multicast/3)
-
-      assert :ok = Backends.sync_backend_across_cluster(non_existent_id)
-    end
-
-    test "does not multicast when the backend has no explicit links", %{user: user} do
-      backend =
-        insert(:backend,
-          user: user,
-          sources: [],
-          default_ingest?: true,
-          type: :webhook,
-          config: %{url: "http://test.com"}
-        )
-
-      reject(&ClusterUtils.rpc_multicast/3)
-
-      assert :ok = Backends.sync_backend_across_cluster(backend.id)
-    end
-  end
-
   describe "ingest_logs/2 event timestamp filtering" do
     setup do
       insert(:plan)
@@ -3526,6 +3541,52 @@ defmodule Logflare.BackendsTest do
         | start: {Function, :identity, [{:error, :boom}]}
       }
     end)
+  end
+
+  defp insert_webhook_backend(user, source) do
+    insert(:backend,
+      user: user,
+      sources: [source],
+      type: :webhook,
+      config: %{url: "http://test.com"}
+    )
+  end
+
+  defp stub_lagging_replica(stale_results) do
+    stub(ContextCache, :apply_fun, &apply_fun_with_stale_results(stale_results, &1, &2, &3))
+  end
+
+  defp apply_fun_with_stale_results(stale_results, context, fun, args) do
+    key = {fun_name(fun), args}
+
+    case stale_results do
+      %{^key => stale} -> ContextCache.cache_name(context).fetch(key, fn -> stale end)
+      _fresh -> Mimic.call_original(ContextCache, :apply_fun, [context, fun, args])
+    end
+  end
+
+  defp fun_name({name, _arity}), do: name
+  defp fun_name(name), do: name
+
+  defp source_sup_pid(source) do
+    TestUtils.retry_assert(fn ->
+      assert [{pid, _}] = Registry.lookup(SourceRegistry, {source.id, SourceSup})
+      pid
+    end)
+  end
+
+  defp webhook_child(source) do
+    source_sup = source_sup_pid(source)
+
+    [{child_id, pid}] =
+      for {{Backends.Adaptor.WebhookAdaptor, _, _} = child_id, pid, _type, _mods} <-
+            Supervisor.which_children(source_sup),
+          do: {child_id, pid}
+
+    {:ok, %{start: {_mod, _fun, [{_source, backend}]}}} =
+      :supervisor.get_childspec(source_sup, child_id)
+
+    {pid, backend}
   end
 
   defp clickhouse_backend_attrs do

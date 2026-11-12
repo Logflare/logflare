@@ -17,7 +17,10 @@ defmodule Logflare.DataCase do
   alias Ecto.Adapters.SQL
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Backend
   alias Logflare.Backends.ConsolidatedSup
+  alias Logflare.ContextCache
+  alias Logflare.Repo
 
   using do
     quote do
@@ -43,6 +46,11 @@ defmodule Logflare.DataCase do
 
         stub(Logflare.Cluster.Utils, :rpc_call, fn _node, func ->
           func.()
+        end)
+
+        stub(Logflare.Cluster.Utils, :rpc_multicast, fn mod, fun, args ->
+          apply(mod, fun, args)
+          :ok
         end)
 
         caches = Logflare.ContextCache.Supervisor.list_caches()
@@ -170,6 +178,21 @@ defmodule Logflare.DataCase do
     end
 
     {source, backend}
+  end
+
+  @doc """
+  Merges `changes` into the saved config of `backend` and evicts its cached entry,
+  without the side effects of `Logflare.Backends.update_backend/2`. Returns the saved
+  backend.
+  """
+  @spec save_backend_config!(Backend.t(), map()) :: Backend.t()
+  def save_backend_config!(%Backend{} = backend, changes) do
+    backend
+    |> Backend.changeset(%{config: Map.merge(backend.config, changes)})
+    |> Repo.update!()
+
+    {:ok, _busted} = ContextCache.bust_keys([{Backends, backend.id}])
+    Backends.get_backend(backend.id)
   end
 
   @spec ensure_clickhouse_reachable!() :: :ok

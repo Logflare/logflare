@@ -7,6 +7,8 @@ defmodule Logflare.ContextCache.CacheBusterTest do
   alias Cainophile.Changes.UpdatedRecord
   alias Logflare.Alerting
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
   alias Logflare.Billing
   alias Logflare.ContextCache
   alias Logflare.ContextCache.CacheBuster
@@ -434,7 +436,7 @@ defmodule Logflare.ContextCache.CacheBusterTest do
        %{
          user: user
        } do
-    stub(Backends, :sync_backend_across_cluster, fn _backend_id -> :ok end)
+    stub(Backends, :apply_backend_change_local, fn _backend_id -> :ok end)
 
     backend =
       insert(:backend,
@@ -466,7 +468,7 @@ defmodule Logflare.ContextCache.CacheBusterTest do
   test "a non-default backend update does not refresh the owner's default ingest lookup", %{
     user: user
   } do
-    stub(Backends, :sync_backend_across_cluster, fn _backend_id -> :ok end)
+    stub(Backends, :apply_backend_change_local, fn _backend_id -> :ok end)
 
     backend =
       insert(:backend,
