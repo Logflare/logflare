@@ -10,6 +10,7 @@ defmodule Logflare.ContextCache.CacheBusterWalTest do
   alias Logflare.ContextCache.TransactionBroadcaster
   alias Logflare.KeyValues
   alias Logflare.Repo
+  alias Logflare.TestUtils
 
   setup do
     for child_spec <- ContextCache.Supervisor.buster_specs() do
@@ -17,7 +18,10 @@ defmodule Logflare.ContextCache.CacheBusterWalTest do
     end
 
     start_supervised!({TransactionBroadcaster, interval: 100})
-    assert eventually(fn -> :sys.get_state(TransactionBroadcaster).subscribed_pid != nil end)
+
+    TestUtils.retry_assert(fn ->
+      assert :sys.get_state(TransactionBroadcaster).subscribed_pid != nil
+    end)
 
     Phoenix.PubSub.subscribe(Logflare.PubSub, "wal_transactions")
 
@@ -46,23 +50,9 @@ defmodule Logflare.ContextCache.CacheBusterWalTest do
 
     Sandbox.unboxed_run(Repo, fn -> Repo.delete!(kv) end)
 
-    assert eventually(fn ->
-             Cachex.get!(KeyValues.Cache, {:lookup, [kv.user_id, "proj", nil]}) == nil and
-               Cachex.get!(KeyValues.Cache, {:lookup, [kv.user_id, "proj", "org"]}) == nil
-           end)
-  end
-
-  defp eventually(fun, attempts \\ 100) do
-    cond do
-      fun.() ->
-        true
-
-      attempts == 0 ->
-        false
-
-      true ->
-        Process.sleep(100)
-        eventually(fun, attempts - 1)
-    end
+    TestUtils.retry_assert(fn ->
+      assert Cachex.get!(KeyValues.Cache, {:lookup, [kv.user_id, "proj", nil]}) == nil
+      assert Cachex.get!(KeyValues.Cache, {:lookup, [kv.user_id, "proj", "org"]}) == nil
+    end)
   end
 end
