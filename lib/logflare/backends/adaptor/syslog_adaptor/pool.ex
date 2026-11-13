@@ -103,6 +103,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
 
   @impl NimblePool
   def handle_checkin(:keep, _from, conn, backend_id) do
+    :telemetry.execute([:logflare, :backends, :syslog, :checkin], %{}, %{backend_id: backend_id})
+
     {:ok, conn, backend_id}
   end
 
@@ -115,7 +117,9 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
     {:remove, :idle_timeout}
   end
 
-  # NOTE: handle_info is called for every socket in the pool for every message received.
+  # NOTE: handle_info is called for every socket (that is not checked out) for every message received.
+  # NimblePool does not dispatch messages to checked-out sockets, so data received during
+  # checkout is ignored.
   # Since Syslog is typically a "write-only" protocol where we don't expect return traffic, this is probably fine.
   # The only expected messages are tcp_closed / tcp_error, which are rare.
   @impl NimblePool

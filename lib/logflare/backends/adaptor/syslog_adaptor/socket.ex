@@ -6,9 +6,11 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Socket do
   @type socket :: :gen_tcp.socket() | :ssl.sslsocket()
 
   # see https://www.erlang.org/doc/apps/kernel/inet#setopts/2 for details
+  # Request a small receive buffer because Syslog does not expect response data.
   @default_transport_opts mode: :binary,
                           packet: :raw,
                           active: true,
+                          recbuf: 1_024,
                           nodelay: true,
                           send_timeout: to_timeout(second: 5),
                           send_timeout_close: true
@@ -40,8 +42,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Socket do
   def controlling_process(socket, pid), do: :ssl.controlling_process(socket, pid)
 
   def stream(socket, {tag, socket, _data}) when tag in [:tcp, :ssl] do
-    close(socket)
     Logger.error("Received unexpected data from Syslog backend; closing connection")
+    close(socket)
     {:error, :unexpected_data}
   end
 

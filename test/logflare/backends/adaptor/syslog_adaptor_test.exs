@@ -1,6 +1,8 @@
 defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
   use Logflare.DataCase, async: false
 
+  import ExUnit.CaptureLog
+
   alias Logflare.Backends.Adaptor.SyslogAdaptor
   alias Logflare.Backends.IngestEventQueue
 
@@ -295,6 +297,83 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
       :crypto.crypto_one_time_aead(:aes_256_gcm, key, iv, ciphertext, "syslog", tag, false)
 
     assert %{"event_message" => "three"} = Jason.decode!(plaintext)
+  end
+
+  describe "unexpected receiver data" do
+    @describetag telegraf: false
+
+    setup do
+      # Wait for checkin so unexpected data is not ignored while the socket is checked out.
+      telemetry_ref =
+        :telemetry_test.attach_event_handlers(self(), [[:logflare, :backends, :syslog, :checkin]])
+
+      on_exit(fn -> :telemetry.detach(telemetry_ref) end)
+
+      {:ok, telemetry_ref: telemetry_ref}
+    end
+
+    test "closes a TCP connection that is not checked out and logs unexpected data", %{
+      telemetry_ref: telemetry_ref
+    } do
+      {:ok, listener} = :gen_tcp.listen(0, mode: :binary, active: true)
+      {:ok, {_address, port}} = :inet.sockname(listener)
+      {source, _backend} = start_syslog(%{host: "localhost", port: port})
+
+      assert {:ok, 1} =
+               Logflare.Backends.ingest_logs([build(:log_event, message: "hello syslog")], source)
+
+      {:ok, bad_socket} = :gen_tcp.accept(listener, to_timeout(second: 5))
+      assert_receive {:tcp, ^bad_socket, _log_data}
+
+      assert_receive {[:logflare, :backends, :syslog, :checkin], ^telemetry_ref, %{}, _metadata}
+
+      log =
+        capture_log(fn ->
+          assert :gen_tcp.send(bad_socket, "unexpected data") == :ok
+          assert_receive {:tcp_closed, ^bad_socket}
+        end)
+
+      assert log =~ "Received unexpected data from Syslog backend"
+    end
+
+    test "closes a TLS connection that is not checked out and logs unexpected data", %{
+      telemetry_ref: telemetry_ref
+    } do
+      {:ok, listener} =
+        :ssl.listen(0,
+          mode: :binary,
+          active: true,
+          certfile: ~c"priv/telegraf/server.crt",
+          keyfile: ~c"priv/telegraf/server.key"
+        )
+
+      {:ok, {_address, port}} = :ssl.sockname(listener)
+
+      {source, _backend} =
+        start_syslog(%{
+          host: "localhost",
+          port: port,
+          tls: true,
+          ca_cert: File.read!("priv/telegraf/ca.crt")
+        })
+
+      assert {:ok, 1} =
+               Logflare.Backends.ingest_logs([build(:log_event, message: "hello syslog")], source)
+
+      {:ok, bad_socket} = :ssl.transport_accept(listener, to_timeout(second: 5))
+      {:ok, bad_socket} = :ssl.handshake(bad_socket, to_timeout(second: 5))
+      assert_receive {:ssl, ^bad_socket, _log_data}
+
+      assert_receive {[:logflare, :backends, :syslog, :checkin], ^telemetry_ref, %{}, _metadata}
+
+      log =
+        capture_log(fn ->
+          assert :ssl.send(bad_socket, "unexpected data") == :ok
+          assert_receive {:ssl_closed, ^bad_socket}
+        end)
+
+      assert log =~ "Received unexpected data from Syslog backend"
+    end
   end
 
   defp ingest_syslog(log_events, source, timeout \\ to_timeout(second: 5)) do
