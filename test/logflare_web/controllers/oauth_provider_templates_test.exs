@@ -106,6 +106,41 @@ defmodule LogflareWeb.OauthProviderTemplatesTest do
     refute query["code"]
   end
 
+  for action <- ["Authorize", "Deny"] do
+    @action action
+
+    test "#{@action} uses the registered callback when redirect_uri is omitted", %{conn: conn} do
+      application = create_application()
+      params = application |> authorization_params() |> Map.delete("redirect_uri")
+      conn = get(conn, "/oauth/authorize", params)
+      form_params = conn |> html_response(200) |> consent_form(@action) |> form_params()
+
+      conn =
+        conn
+        |> recycle()
+        |> put_private(:plug_skip_csrf_protection, false)
+        |> post("/oauth/authorize", form_params)
+
+      uri = conn |> redirected_to() |> URI.parse()
+      query = URI.decode_query(uri.query)
+
+      assert uri.scheme == "https"
+      assert uri.host == "example.com"
+      assert uri.path == "/callback"
+      assert query["state"] == params["state"]
+
+      if @action == "Authorize" do
+        assert Repo.get_by!(OauthAccessGrant, token: query["code"]).redirect_uri ==
+                 application.redirect_uri
+
+        refute query["error"]
+      else
+        assert query["error"] == "access_denied"
+        refute query["code"]
+      end
+    end
+  end
+
   test "an invalid client renders the OAuth error instead of crashing", %{conn: conn} do
     body =
       conn
@@ -181,7 +216,7 @@ defmodule LogflareWeb.OauthProviderTemplatesTest do
     |> Floki.find("input")
     |> Map.new(fn input ->
       [name] = Floki.attribute([input], "input", "name")
-      [value] = Floki.attribute([input], "input", "value")
+      value = List.first(Floki.attribute([input], "input", "value"), "")
       {name, value}
     end)
   end
