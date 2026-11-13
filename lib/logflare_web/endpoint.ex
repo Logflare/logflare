@@ -11,6 +11,8 @@ defmodule LogflareWeb.Endpoint do
     websocket: [connect_info: [:user_agent, session: @session_options], compress: true]
   )
 
+  @before_compile LogflareWeb.Plugs.Shutdown
+
   if Application.compile_env(:logflare, :sql_sandbox) do
     plug Phoenix.Ecto.SQL.Sandbox
   end

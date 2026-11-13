@@ -128,6 +128,26 @@ defmodule Logflare.ShutdownDrainTest do
     assert run(producers: [], timeout_ms: 100) == :timeout
   end
 
+  test "the shared deadline bounds queue waiting instead of adding another full phase budget" do
+    stub_queued_events(7)
+    started = System.monotonic_time(:millisecond)
+
+    assert run(
+             producers: [],
+             timeout_ms: 1_000,
+             deadline_ms: started + 50,
+             spool_sync_timeout_ms: 0,
+             cleanup_timeout_ms: 0
+           ) == :timeout
+
+    assert System.monotonic_time(:millisecond) - started < 500
+  end
+
+  test "acknowledgment flush timeouts are not reported as drained" do
+    stub(SpoolAck, :flush, fn _timeout -> :timeout end)
+    assert run(producers: []) == :timeout
+  end
+
   test "skips a spool producer that is already gone" do
     dead = spawn(fn -> :ok end)
     ref = Process.monitor(dead)

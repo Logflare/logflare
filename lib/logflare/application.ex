@@ -24,6 +24,7 @@ defmodule Logflare.Application do
 
   def start(_type, _args) do
     Logflare.Readiness.initialize()
+    Logflare.IngressGate.initialize()
     SpoolHealth.initialize()
 
     # set inspect function to redact sensitive information
@@ -132,7 +133,12 @@ defmodule Logflare.Application do
          endpoint: LogflareGrpc.Endpoint,
          port: grpc_port,
          start_server: true,
-         adapter_opts: [cred: grpc_creds],
+         adapter_opts: [
+           cred: grpc_creds,
+           goaway_initial_timeout: 0,
+           goaway_complete_timeout: Logflare.Shutdown.timeout_ms(),
+           shutdown_timeout: Logflare.Shutdown.timeout_ms()
+         ],
          exception_log_filter: {LogflareGrpc.ExceptionLogFilter, :emit_log?}},
         # Monitor system level metrics
         SystemMetricsSup,

@@ -3,6 +3,7 @@ defmodule LogflareWeb.LogChannel do
   use LogflareWeb, :channel
 
   alias Logflare.Backends
+  alias Logflare.IngressGate
   alias Logflare.Sources
   alias Logflare.Sources.Source
   alias LogflareWeb.Endpoint
@@ -65,14 +66,22 @@ defmodule LogflareWeb.LogChannel do
   end
 
   def handle_in("batch", %{"batch" => batch}, socket) when is_list(batch) do
-    source = socket.assigns.source |> Sources.refresh_source_metrics_for_ingest()
+    case IngressGate.enter() do
+      {:ok, token} ->
+        try do
+          source = socket.assigns.source |> Sources.refresh_source_metrics_for_ingest()
 
-    # allow_spooling: true — a genuine client-submitted entry point, same as
-    # the HTTP/gRPC controllers routed through Logflare.Logs.Processor.
-    with :ok <- Backends.start_for_ingest(source) do
-      ingest_batch(batch, source, socket)
-    else
-      {:error, reason} -> reply_start_error(socket, reason)
+          with :ok <- Backends.start_for_ingest(source) do
+            ingest_batch(batch, source, socket)
+          else
+            {:error, reason} -> reply_start_error(socket, reason)
+          end
+        after
+          IngressGate.leave(token)
+        end
+
+      :closed ->
+        reply_start_error(socket, :source_unavailable)
     end
   end
 

@@ -87,6 +87,23 @@ Use `/ready` for readiness probes. It always performs every check, database incl
 
 Environment variables that influence the logic are prefixed with `LOGFLARE_HEALTH_*`. Refer to above table for customizing the values.
 
+#### Graceful shutdown
+
+On SIGTERM or SIGQUIT, Logflare immediately fails readiness and stops fetching new spool messages. It continues serving during the withdrawal window so load balancers can remove the instance. It then closes application admission (including requests on existing HTTP/2 connections, RPCs, and websocket ingestion batches), suspends TCP listeners, waits for admitted work, and performs the final ingestion/spool flush before stopping the VM. Liveness remains independent of readiness.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `LOGFLARE_SHUTDOWN_WITHDRAWAL_TIMEOUT_MS` | `15000` | Minimum traffic withdrawal window, bounded by the overall deadline. |
+| `LOGFLARE_SHUTDOWN_REQUEST_TIMEOUT_MS` | `30000` | Maximum wait for admitted requests/RPC callbacks after closing admission. |
+| `LOGFLARE_SHUTDOWN_DRAIN_TIMEOUT_MS` | Unset | Enables final queue/spool draining and caps its queue-wait phase. |
+| `LOGFLARE_SHUTDOWN_TIMEOUT_MS` | Larger of withdrawal and configured drain timeout, plus `20000` | Shared pre-OTP deadline for withdrawal, request draining, spool synchronization, and cleanup. |
+
+After admission closes, new application requests receive HTTP 503 or gRPC UNAVAILABLE; websocket ingestion batches receive a retryable source-unavailable error. Already admitted HTTP requests remain tracked until Bandit completes their responses, avoiding interruption of active HTTP/2 streams at VM shutdown. RPC callback completion precedes the final ingestion flush; Cowboy subsequently completes wire-level shutdown. Repeated termination signals do not restart the sequence or extend its deadline.
+
+Set Kubernetes `terminationGracePeriodSeconds` above the overall deadline **plus** headroom for OTP supervision shutdown and any pre-stop hook. For example, a 60-second drain setting defaults to an 80-second pre-OTP budget; a 120-second Kubernetes grace period leaves 40 seconds for final VM shutdown. Protocol deadlines are separate from the Kubernetes grace period. Deadline exhaustion is logged as a timeout and can still interrupt unfinished work: this is not a durability guarantee under forced termination.
+
+These controls improve termination safety; they do not make Argo blue/green ALB target replacement atomic.
+
 #### Metadata
 
 Metadata allows passing in configuration values that will be merged into the logs and traces.
