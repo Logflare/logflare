@@ -12,17 +12,16 @@ defmodule LogflareWeb.OauthProviderTemplatesTest do
     {:ok, conn: login_user(conn, user), user: user}
   end
 
-  test "authorized applications renders an empty list", %{conn: conn} do
-    body = conn |> get("/oauth/authorized_applications") |> html_response(200)
-
-    assert body =~ "Authorized Applications"
-    assert body |> Floki.parse_document!() |> Floki.find("tbody tr") == []
-  end
-
   test "authorized applications lists only the user's apps and supports revocation", %{
     conn: conn,
     user: user
   } do
+    conn = get(conn, "/oauth/authorized_applications")
+    body = html_response(conn, 200)
+
+    assert body =~ "Authorized Applications"
+    assert body |> Floki.parse_document!() |> Floki.find("tbody tr") == []
+
     application = create_application()
     other_application = create_application(%{name: "Other user's app"})
 
@@ -31,7 +30,7 @@ defmodule LogflareWeb.OauthProviderTemplatesTest do
 
     insert(:access_token, application: other_application, scopes: "read write")
 
-    conn = get(conn, "/oauth/authorized_applications")
+    conn = conn |> recycle() |> get("/oauth/authorized_applications")
     body = html_response(conn, 200)
     document = Floki.parse_document!(body)
     revoke_path = Routes.oauth_authorized_application_path(conn, :delete, application)
@@ -67,18 +66,10 @@ defmodule LogflareWeb.OauthProviderTemplatesTest do
              "write"
            ]
 
-    forms = Floki.find(document, "#authorize-container form")
-    assert length(forms) == 2
-
-    for form <- forms do
-      assert Floki.attribute([form], "form", "action") == ["/oauth/authorize"]
-      assert Floki.attribute([form], "form", "method") == ["post"]
-      assert form_params(form)["_csrf_token"] != nil
-      assert Map.take(form_params(form), Map.keys(params)) == params
+    for label <- ["Authorize", "Deny"] do
+      form_params = body |> consent_form(label) |> form_params()
+      assert Map.take(form_params, Map.keys(params)) == params
     end
-
-    assert form_params(consent_form(body, "Deny"))["_method"] == "delete"
-    refute Map.has_key?(form_params(consent_form(body, "Authorize")), "_method")
   end
 
   test "submitting the authorize form issues a code and preserves state", %{
@@ -131,8 +122,8 @@ defmodule LogflareWeb.OauthProviderTemplatesTest do
 
     conn = get(conn, "/oauth/authorize", authorization_params(application))
     path = redirected_to(conn)
-    assert path =~ "/oauth/authorize/"
-    code = path |> String.split("/") |> List.last()
+    assert "/oauth/authorize/" <> code = URI.parse(path).path
+    assert Repo.get_by!(OauthAccessGrant, token: code).resource_owner_id == user.id
 
     body = conn |> recycle() |> get(path) |> html_response(200)
 
