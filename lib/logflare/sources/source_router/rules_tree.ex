@@ -36,24 +36,39 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
 
   The algorithm iterates over rules tree, traversing the log event along with tree nodes.
 
-  For a rule to match, all the filters must match, so the implementation
-  accumulates rule ids as keys in a map. As a value, an integer serving as bitwise flag registry
-  is stored (see `build_filter_flagset/1`).
+  Single-filter matches are collected directly as rule ids. Multi-filter matches
+  accumulate rule ids as keys in a map, with a bitwise flag registry as each value
+  (see `build_filter_flagset/1`).
+
+  Matches within multi-element lists use the map to avoid collecting repeats.
+  Outside those lists, each single-filter rule is visited at most once.
+
+  Each matching rule id is returned once. Result order is unspecified.
   """
   @spec matching_rule_ids(LogEvent.t(), t()) :: [Rule.id()]
   def matching_rule_ids(le, rules_tree) do
-    for {op, nested_ops} <- rules_tree, reduce: %{} do
-      acc -> find_matches(le.body, op, nested_ops, acc)
+    {multi_acc, single_acc} =
+      for {op, nested_ops} <- rules_tree, reduce: {%{}, []} do
+        acc -> find_matches(le.body, op, nested_ops, acc)
+      end
+
+    if map_size(multi_acc) == 0 do
+      single_acc
+    else
+      Enum.reduce(multi_acc, single_acc, fn
+        {id, matches_left}, ids when matches_left <= 0 -> [id | ids]
+        {_id, _matches_left}, ids -> ids
+      end)
     end
-    |> Enum.flat_map(fn
-      {id, matches_left} when matches_left <= 0 -> [id]
-      {_id, _matches_left} -> []
-    end)
   end
 
   # Find matches: find key in log event
   ## Handle maps nested in lists in log event
   defp find_matches([], <<_key::binary>>, _ops, acc), do: acc
+
+  defp find_matches([_, _ | _] = event_parts, <<key::binary>>, ops, {multi_acc, single_acc}) do
+    {find_matches(event_parts, key, ops, multi_acc), single_acc}
+  end
 
   defp find_matches([event_part | tail], <<key::binary>>, ops, acc) do
     # Find matches inside head entry
@@ -147,8 +162,16 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   defp accumulate([h | tail], acc), do: accumulate(tail, accumulate(h, acc))
 
   # Accumulate: single-filter rule without bitmask, use bare Rule.id()
+  defp accumulate(rule_id, {multi_acc, single_acc}) when is_integer(rule_id) do
+    {multi_acc, [rule_id | single_acc]}
+  end
+
   defp accumulate(rule_id, acc) when is_integer(rule_id),
     do: Map.put(acc, rule_id, 0)
+
+  defp accumulate({_rule_id, _bitmask} = target, {multi_acc, single_acc}) do
+    {accumulate(target, multi_acc), single_acc}
+  end
 
   # Accumulate: handle rule id already present in accumulator
   defp accumulate({rule_id, bitmask}, acc) when is_map_key(acc, rule_id),
@@ -225,8 +248,6 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
     |> deep_group_keys()
   end
 
-  # Single-filter rule: emit bare rule_id. The accumulate clause for integers
-  # puts straight to 0 (matched), bypassing apply_filter_bitmask entirely.
   defp build_target(rule_id, 1, 0), do: rule_id
 
   defp build_target(rule_id, filters_num, index),
