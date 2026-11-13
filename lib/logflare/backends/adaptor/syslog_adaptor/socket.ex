@@ -9,7 +9,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Socket do
   # We request a small receive buffer because Syslog does not expect response data.
   @default_transport_opts mode: :binary,
                           packet: :raw,
-                          active: true,
+                          active: false,
                           recbuf: 1_024,
                           nodelay: true,
                           send_timeout: to_timeout(second: 5),
@@ -35,22 +35,26 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Socket do
   def close(socket) when is_port(socket), do: :gen_tcp.close(socket)
   def close(socket), do: :ssl.close(socket)
 
+  def getopts(socket, opts) when is_port(socket), do: :inet.getopts(socket, opts)
+  def getopts(socket, opts), do: :ssl.getopts(socket, opts)
+
+  def setopts(socket, opts) when is_port(socket), do: :inet.setopts(socket, opts)
+  def setopts(socket, opts), do: :ssl.setopts(socket, opts)
+
   def controlling_process(socket, pid) when is_port(socket) do
     :gen_tcp.controlling_process(socket, pid)
   end
 
   def controlling_process(socket, pid), do: :ssl.controlling_process(socket, pid)
 
-  def stream(socket, {tag, socket, _data}) when tag in [:tcp, :ssl] do
-    Logger.error("Received unexpected data from Syslog backend; closing connection")
-    close(socket)
+  def stream(socket, {tag, socket, data}) when tag in [:tcp, :ssl] do
+    Logger.error("Syslog socket received an unexpected message (#{byte_size(data)} bytes)")
     {:error, :unexpected_data}
   end
 
   def stream(socket, {tag, socket}) when tag in [:tcp_closed, :ssl_closed], do: {:error, :closed}
 
   def stream(socket, {tag, socket, reason}) when tag in [:tcp_error, :ssl_error] do
-    close(socket)
     {:error, reason}
   end
 

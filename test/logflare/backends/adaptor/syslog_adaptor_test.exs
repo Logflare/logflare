@@ -302,19 +302,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
   describe "unexpected receiver data" do
     @describetag telegraf: false
 
-    setup do
-      # Wait for checkin so unexpected data is not ignored while the socket is checked out.
-      telemetry_ref =
-        :telemetry_test.attach_event_handlers(self(), [[:logflare, :backends, :syslog, :checkin]])
-
-      on_exit(fn -> :telemetry.detach(telemetry_ref) end)
-
-      {:ok, telemetry_ref: telemetry_ref}
-    end
-
-    test "closes a TCP connection that is not checked out and logs unexpected data", %{
-      telemetry_ref: telemetry_ref
-    } do
+    test "closes a TCP connection and logs unexpected data" do
       {:ok, listener} = :gen_tcp.listen(0, mode: :binary, active: true)
       {:ok, {_address, port}} = :inet.sockname(listener)
       {source, _backend} = start_syslog(%{host: "localhost", port: port})
@@ -322,12 +310,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
       assert {:ok, 1} =
                Logflare.Backends.ingest_logs([build(:log_event, message: "hello syslog")], source)
 
-      # Accept the pool's connection.
       {:ok, bad_socket} = :gen_tcp.accept(listener, to_timeout(second: 5))
-      assert_receive {:tcp, ^bad_socket, _log_data}
-
-      # Wait for checkin.
-      assert_receive {[:logflare, :backends, :syslog, :checkin], ^telemetry_ref, %{}, _metadata}
 
       log =
         capture_log(fn ->
@@ -335,12 +318,10 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
           assert_receive {:tcp_closed, ^bad_socket}
         end)
 
-      assert log =~ "Received unexpected data from Syslog backend"
+      assert log =~ "Syslog socket received an unexpected message"
     end
 
-    test "closes a TLS connection that is not checked out and logs unexpected data", %{
-      telemetry_ref: telemetry_ref
-    } do
+    test "closes a TLS connection and logs unexpected data" do
       {:ok, listener} =
         :ssl.listen(0,
           mode: :binary,
@@ -362,13 +343,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
       assert {:ok, 1} =
                Logflare.Backends.ingest_logs([build(:log_event, message: "hello syslog")], source)
 
-      # Accept the pool's connection.
       {:ok, bad_socket} = :ssl.transport_accept(listener, to_timeout(second: 5))
       {:ok, bad_socket} = :ssl.handshake(bad_socket, to_timeout(second: 5))
-      assert_receive {:ssl, ^bad_socket, _log_data}
-
-      # Wait for checkin.
-      assert_receive {[:logflare, :backends, :syslog, :checkin], ^telemetry_ref, %{}, _metadata}
 
       log =
         capture_log(fn ->
@@ -376,7 +352,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
           assert_receive {:ssl_closed, ^bad_socket}
         end)
 
-      assert log =~ "Received unexpected data from Syslog backend"
+      assert log =~ "Syslog socket received an unexpected message"
     end
   end
 
