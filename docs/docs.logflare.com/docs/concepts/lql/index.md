@@ -79,10 +79,18 @@ Combine multiple aggregates in the LQL query to compare them as separate lines i
 c:p50(m.latency) c:p95(m.latency) c:p99(m.latency) c:group_by(t::minute)
 ```
 
+For multiple functions on the same field a shorterhand syntax is available:
+
+```text
+c:{max,p95,p99}(m.response_bytes)
+```
+
+This is equivalent to `c:max(m.response_bytes) c:p95(m.response_bytes) c:p99(m.response_bytes)`.
+
 You can also combine different functions or numeric fields, for example:
 
 ```text
-s:m.latency c:sum(m.latency) c:avg(m.latency) c:group_by(t::minute)
+c:avg(m.latency) c:sum(m.response_bytes) c:group_by(t::minute)
 ```
 
 All aggregates share the same chart period and filters.

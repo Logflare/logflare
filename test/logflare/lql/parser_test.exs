@@ -24,7 +24,7 @@ defmodule Logflare.Lql.ParserTest do
               ]} = Parser.parse(query)
 
       assert Lql.encode!([sum, avg]) ==
-               "c:sum(m.latency) c:avg(m.latency) c:group_by(t::hour)"
+               "c:{sum,avg}(m.latency) c:group_by(t::hour)"
 
       assert {:ok, [^sum, ^avg]} = Parser.parse(Lql.encode!([sum, avg]))
 
@@ -39,6 +39,14 @@ defmodule Logflare.Lql.ParserTest do
                 %ChartRule{aggregate: :sum, path: "metadata.bytes", period: :minute}
               ]} =
                Parser.parse("c:sum(m.latency) c:sum(m.bytes) c:sum(m.latency)")
+
+      assert {:ok,
+              [
+                %ChartRule{aggregate: :max, path: "metadata.latency", period: :minute},
+                %ChartRule{aggregate: :p95, path: "metadata.latency", period: :minute},
+                %ChartRule{aggregate: :sum, path: "metadata.bytes", period: :minute}
+              ]} =
+               Parser.parse("c:max(m.latency) c:{p95, max}(m.latency) c:sum(m.bytes)")
     end
 
     test "parse empty string" do
@@ -147,35 +155,26 @@ defmodule Logflare.Lql.ParserTest do
   setup :verify_on_exit!
 
   describe "LQL parsing" do
-    test "rejects numeric aggregates on string fields" do
-      schema = build_schema(%{"metadata" => %{"method" => "GET"}})
+    test "expands grouped chart aggregates with whitespace around commas" do
+      schema = build_schema(%{"metadata" => %{"response_bytes" => 42}})
 
-      for aggregate <- [:sum, :avg] do
-        assert Parser.parse("c:#{aggregate}(m.method)", schema) ==
-                 {:error,
-                  "Chart aggregate '#{aggregate}' requires a numeric field, but path 'metadata.method' has type ':string'."}
-      end
-    end
+      rules =
+        for aggregate <- [:max, :p95, :p99] do
+          %ChartRule{aggregate: aggregate, path: "metadata.response_bytes", period: :hour}
+        end
 
-    test "rejects numeric aggregates on timestamp and array fields" do
-      schema = %{
-        "timestamp" => :datetime,
-        "metadata.bytes" => {:list, :integer}
-      }
+      encoded =
+        "c:{max,p95,p99}(m.response_bytes) " <>
+          "c:group_by(t::hour)"
 
-      for path <- Map.keys(schema) do
-        assert {:error, error} = Parser.parse("c:sum(#{path})", schema)
-        assert error =~ "Chart aggregate 'sum' requires a numeric field"
-        assert error =~ "path '#{path}'"
-      end
-    end
+      for prefix <- ["c", "chart"],
+          aggregates <- ["max,p95,p99", "max ,p95 , p99", " max, p95 , p99 "] do
+        query = "#{prefix}:{#{aggregates}}(m.response_bytes) c:group_by(t::hour)"
 
-    test "preserves non-numeric count, distinct count, max, and BigQuery percentile inputs" do
-      schema = build_schema(%{"metadata" => %{"method" => "GET"}})
-
-      for aggregate <- [:count, :countd, :max, :p50] do
-        assert {:ok, [%ChartRule{aggregate: ^aggregate, value_type: :string}]} =
-                 Parser.parse("c:#{aggregate}(m.method)", schema)
+        assert {:ok, ^rules} = Parser.parse(query)
+        assert {:ok, typed_rules} = Parser.parse(query, schema)
+        assert typed_rules == Enum.map(rules, &%{&1 | value_type: :integer})
+        assert Lql.encode!(typed_rules) == encoded
       end
     end
 
@@ -201,6 +200,45 @@ defmodule Logflare.Lql.ParserTest do
 
       for query <- ["c:sum(m.bytes) c:avg(m.missing)", "c:avg(m.missing) c:sum(m.bytes)"] do
         assert {:error, :field_not_found, _, _} = Parser.parse(query, schema)
+      end
+    end
+
+    test "rejects numeric aggregates on string fields" do
+      schema = build_schema(%{"metadata" => %{"method" => "GET", "bytes" => 42}})
+
+      for aggregate <- [:sum, :avg],
+          query <- [
+            "c:#{aggregate}(m.method)",
+            "c:#{aggregate}(m.method) c:max(m.bytes)",
+            "c:max(m.bytes) c:#{aggregate}(m.method)",
+            "c:{count,#{aggregate}}(m.method)",
+            "c:{#{aggregate},count}(m.method)"
+          ] do
+        assert Parser.parse(query, schema) ==
+                 {:error,
+                  "Chart aggregate '#{aggregate}' requires a numeric field, but path 'metadata.method' has type ':string'."}
+      end
+    end
+
+    test "rejects numeric aggregates on timestamp and array fields" do
+      schema = %{
+        "timestamp" => :datetime,
+        "metadata.bytes" => {:list, :integer}
+      }
+
+      for path <- Map.keys(schema) do
+        assert {:error, error} = Parser.parse("c:sum(#{path})", schema)
+        assert error =~ "Chart aggregate 'sum' requires a numeric field"
+        assert error =~ "path '#{path}'"
+      end
+    end
+
+    test "preserves non-numeric count, distinct count, max, and BigQuery percentile inputs" do
+      schema = build_schema(%{"metadata" => %{"method" => "GET"}})
+
+      for aggregate <- [:count, :countd, :max, :p50] do
+        assert {:ok, [%ChartRule{aggregate: ^aggregate, value_type: :string}]} =
+                 Parser.parse("c:#{aggregate}(m.method)", schema)
       end
     end
 

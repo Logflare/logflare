@@ -497,7 +497,8 @@ defmodule Logflare.LqlTest do
       test "rejects multiple chart rules for #{dialect}" do
         for lql <- [
               "c:count(*) c:avg(m.latency) c:group_by(t::minute)",
-              "c:count(*) c:avg(m.latency) c:max(m.latency) c:group_by(t::hour)"
+              "c:count(*) c:avg(m.latency) c:max(m.latency) c:group_by(t::hour)",
+              "c:{max, p95 , p99}(m.response_bytes)"
             ] do
           assert {:error, "Sandboxed SQL supports at most one chart rule"} =
                    Lql.to_sandboxed_sql(lql, "events", unquote(dialect))
