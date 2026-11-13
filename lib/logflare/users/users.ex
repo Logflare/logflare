@@ -346,7 +346,7 @@ defmodule Logflare.Users do
 
   def delete_user(user) do
     Supervisor.delete_all_user_sources(user)
-    delete_all_user_backends(user)
+    Backends.delete_user_backends(user)
 
     case Repo.delete(user) |> invalidate_query_context() do
       {:ok, _user} = response ->
@@ -357,21 +357,6 @@ defmodule Logflare.Users do
       {:error, _reason} = response ->
         response
     end
-  end
-
-  defp delete_all_user_backends(%User{id: user_id}) do
-    from(sb in "sources_backends",
-      join: b in Backends.Backend,
-      on: b.id == sb.backend_id,
-      join: s in Source,
-      on: s.id == sb.source_id,
-      where: b.user_id == ^user_id or s.user_id == ^user_id
-    )
-    |> Repo.delete_all()
-
-    user_id
-    |> Backends.list_backends_by_user_id()
-    |> Enum.each(&Backends.delete_backend/1)
   end
 
   defp update_user_by_email(user, auth_params) do

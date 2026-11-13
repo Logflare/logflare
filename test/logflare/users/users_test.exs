@@ -124,6 +124,41 @@ defmodule Logflare.UsersTest do
     refute Repo.reload(user)
   end
 
+  test "delete_user/1 deletes an account with every kind of resource" do
+    user = insert(:user)
+    team = insert(:team, user: user)
+    team_user = insert(:team_user, team: team)
+    [source, sink] = insert_pair(:source, user: user)
+    backend = insert(:backend, user: user, sources: [source])
+    endpoint = insert(:endpoint, user: user, backend: backend)
+
+    resources = [
+      team,
+      team_user,
+      source,
+      sink,
+      backend,
+      endpoint,
+      insert(:rule, source: source, sink: sink.token),
+      insert(:rule, source: source, backend: backend),
+      insert(:alert, user: user, backends: [backend]),
+      insert(:key_value_usage, key_value: build(:key_value, user: user)),
+      insert(:saved_search, source: source),
+      insert(:billing_account, user: user)
+    ]
+
+    stub(
+      GoogleApi.CloudResourceManager.V1.Api.Projects,
+      :cloudresourcemanager_projects_set_iam_policy,
+      fn _, _project_number, [body: _body] -> {:ok, %Tesla.Env{status: 200, body: ""}} end
+    )
+
+    assert {:ok, _} = Users.delete_user(user)
+
+    refute Repo.reload(user)
+    for resource <- resources, do: refute(Repo.reload(resource), inspect(resource.__struct__))
+  end
+
   test "users_count/0 returns user count" do
     assert Users.count_users() == 1
     insert(:user)

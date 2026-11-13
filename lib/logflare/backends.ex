@@ -627,13 +627,41 @@ defmodule Logflare.Backends do
       |> Repo.delete()
 
     with {:ok, deleted} <- result do
-      QueryContext.invalidate_backend(deleted)
-      if deleted.default_ingest?, do: default_ingest_flag_changed(deleted)
-
-      maybe_stop_consolidated_pipeline(deleted)
-      Adaptor.on_backend_deleted(deleted)
+      after_backend_deleted(deleted)
       {:ok, deleted}
     end
+  end
+
+  @doc """
+  Deletes all backends owned by a user, along with every source link to the user's backends or sources.
+  """
+  @spec delete_user_backends(User.t()) :: {non_neg_integer(), [Backend.t()]}
+  def delete_user_backends(%User{id: user_id}) do
+    from(sb in "sources_backends",
+      join: b in Backend,
+      on: b.id == sb.backend_id,
+      join: s in Source,
+      on: s.id == sb.source_id,
+      where: b.user_id == ^user_id or s.user_id == ^user_id
+    )
+    |> Repo.delete_all()
+
+    {count, deleted} =
+      from(b in Backend, where: b.user_id == ^user_id, select: b)
+      |> Repo.delete_all()
+
+    deleted = Enum.map(deleted, &typecast_config_string_map_to_atom_map/1)
+    Enum.each(deleted, &after_backend_deleted/1)
+    {count, deleted}
+  end
+
+  @spec after_backend_deleted(Backend.t()) :: :ok
+  defp after_backend_deleted(deleted) do
+    QueryContext.invalidate_backend(deleted)
+    if deleted.default_ingest?, do: default_ingest_flag_changed(deleted)
+
+    maybe_stop_consolidated_pipeline(deleted)
+    Adaptor.on_backend_deleted(deleted)
   end
 
   @doc """
