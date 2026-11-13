@@ -117,12 +117,35 @@ defmodule Logflare.Rules do
 
     with {:ok, lql_filters} <- Lql.Parser.parse(lql_string, bq_schema),
          params = Map.put(params, "lql_filters", lql_filters),
-         {:ok, rule} <- Rule.changeset(%Rule{source_id: source.id}, params) |> Repo.insert() do
+         {:ok, rule} <-
+           %Rule{}
+           |> Rule.changeset(params)
+           |> Ecto.Changeset.put_change(:source_id, source.id)
+           |> validate_targets_owned_by(source.user_id)
+           |> Repo.insert() do
       {:ok, rule}
     else
       {:error, %Ecto.Changeset{} = changeset} -> {:error, changeset}
       errtup -> errtup
     end
+  end
+
+  @spec validate_targets_owned_by(Ecto.Changeset.t(), pos_integer()) :: Ecto.Changeset.t()
+  defp validate_targets_owned_by(changeset, user_id) do
+    changeset
+    |> Ecto.Changeset.validate_change(:backend_id, fn :backend_id, backend_id ->
+      from(b in Backend, where: b.id == ^backend_id and b.user_id == ^user_id)
+      |> ownership_errors(:backend_id)
+    end)
+    |> Ecto.Changeset.validate_change(:sink, fn :sink, sink ->
+      from(s in Source, where: s.token == ^sink and s.user_id == ^user_id)
+      |> ownership_errors(:sink)
+    end)
+  end
+
+  @spec ownership_errors(Ecto.Query.t(), atom()) :: [{atom(), String.t()}]
+  defp ownership_errors(query, field) do
+    if Repo.exists?(query), do: [], else: [{field, "does not exist"}]
   end
 
   @doc """
