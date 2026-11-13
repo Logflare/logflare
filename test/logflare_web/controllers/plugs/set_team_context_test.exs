@@ -162,5 +162,24 @@ defmodule LogflareWeb.Plugs.SetTeamContextTest do
       assert conn.halted
       assert redirected_to(conn) == "/sources?foo=bar"
     end
+
+    test "ignores invalid team_id on non-GET requests instead of redirecting", %{
+      conn: conn,
+      user: user,
+      team: team
+    } do
+      conn =
+        conn
+        |> login_user(user)
+        |> Map.put(:method, "DELETE")
+        |> Map.put(:params, %{"t" => "invalid_id"})
+        |> Map.put(:query_params, %{"t" => "invalid_id"})
+        |> Map.put(:request_path, "/account")
+        |> SetTeamContext.call(@opts)
+
+      refute conn.halted
+      assert conn.assigns.user.id == user.id
+      assert conn.assigns.team.id == team.id
+    end
   end
 end

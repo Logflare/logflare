@@ -42,8 +42,11 @@ defmodule LogflareWeb.Plugs.SetTeamContext do
       {:error, :team_not_found} ->
         forbidden(conn, email)
 
-      {:error, :invalid_team_id} ->
+      {:error, :invalid_team_id} when conn.method == "GET" ->
         drop_team_param(conn)
+
+      {:error, :invalid_team_id} ->
+        set_team_context(conn, nil, email)
 
       {:error, :not_authorized} ->
         forbidden(conn, email)
