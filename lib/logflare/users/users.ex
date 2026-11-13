@@ -346,6 +346,7 @@ defmodule Logflare.Users do
 
   def delete_user(user) do
     Supervisor.delete_all_user_sources(user)
+    Backends.delete_user_backends(user)
 
     case Repo.delete(user) |> invalidate_query_context() do
       {:ok, _user} = response ->

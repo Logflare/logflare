@@ -722,6 +722,22 @@ defmodule LogflareWeb.SourceControllerTest do
       |> visit(~p"/dashboard")
       |> refute_has("a", href: ~p"/sources/#{s1}", text: s1.name)
     end
+
+    test "deletes a source attached to a backend", %{
+      conn: conn,
+      sources: [s1 | _],
+      users: [u1 | _]
+    } do
+      backend = insert(:backend, user: u1, sources: [s1])
+
+      assert conn
+             |> login_user(u1)
+             |> delete(~p"/sources/#{s1}/force-delete")
+             |> redirected_to(302) =~ "/dashboard"
+
+      refute Sources.get(s1.id)
+      assert Repo.reload(backend)
+    end
   end
 
   describe "update pipeline" do
