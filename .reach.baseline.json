@@ -653,18 +653,10 @@
     {
       "source": "smells",
       "kind": "redundant_computation",
-      "fingerprint": "sha256:572d5860a31804e4f3f9db802760eeacf6f960b9562bfa3e00e5d1a5fae43592",
-      "message": "NimbleParsec.string called twice with same args (line 467 and 472)",
+      "fingerprint": "sha256:bf4838c773dbf8473203190a58d2153e39169d01cce84382649f7c57edfb43f7",
+      "message": "NimbleParsec.string called twice with same args (line 485 and 490)",
       "file": "lib/logflare/lql/parser/combinators.ex",
-      "line": 472
-    },
-    {
-      "source": "smells",
-      "kind": "redundant_computation",
-      "fingerprint": "sha256:94b31d1fd8656b77b2aa288c6605f80d2c9ae2328a4c801a66cecb515eedda98",
-      "message": "integer_with_range called twice with same args (line 469 and 474)",
-      "file": "lib/logflare/lql/parser/combinators.ex",
-      "line": 474
+      "line": 490
     },
     {
       "source": "smells",
@@ -677,18 +669,26 @@
     {
       "source": "smells",
       "kind": "redundant_computation",
-      "fingerprint": "sha256:79b3f122394f6e7ea069d7bce9ba5d7e589445df4abec4fe3143b7266f60ae17",
-      "message": "NimbleParsec.string called twice with same args (line 490 and 495)",
+      "fingerprint": "sha256:dfe653e885973ff679f3eb6d9e538c249f381c582ed8172e896c67d2cd56956a",
+      "message": "integer_with_range called twice with same args (line 505 and 510)",
       "file": "lib/logflare/lql/parser/combinators.ex",
-      "line": 495
+      "line": 510
     },
     {
       "source": "smells",
       "kind": "redundant_computation",
-      "fingerprint": "sha256:6a3ecdb7580f4f266612094d88707962286413fff29972c3030c8d0a408a7bbf",
-      "message": "integer_with_range called twice with same args (line 492 and 497)",
+      "fingerprint": "sha256:12a6c966a746d7bf2171c75019a3f3b81f4865701cac4c7e3466c4520e26bd0c",
+      "message": "NimbleParsec.string called twice with same args (line 508 and 513)",
       "file": "lib/logflare/lql/parser/combinators.ex",
-      "line": 497
+      "line": 513
+    },
+    {
+      "source": "smells",
+      "kind": "redundant_computation",
+      "fingerprint": "sha256:b7eef44d1d9d3f5993f515dd0f30ba80a785bf7875e2f5d4bcf329bfd8c16f15",
+      "message": "integer_with_range called twice with same args (line 510 and 515)",
+      "file": "lib/logflare/lql/parser/combinators.ex",
+      "line": 515
     },
     {
       "source": "smells",

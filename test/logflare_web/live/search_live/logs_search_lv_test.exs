@@ -1166,6 +1166,29 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert html =~ "some event message"
     end
 
+    @tag source_schema: TestUtils.build_bq_schema(%{"metadata" => %{"latency" => 42}})
+    test "chart controls preserve multiple aggregates and share the chart period", %{
+      conn: conn,
+      source: source
+    } do
+      query = "c:sum(m.latency) c:avg(m.latency) c:group_by(t::minute)"
+
+      {:ok, view, _html} =
+        live_with_redirect(
+          conn,
+          Routes.live_path(conn, SearchLV, source.id, querystring: query, tailing?: false)
+        )
+
+      render_change(view, :chart_controls_update, %{
+        "chart_period" => "hour"
+      })
+
+      assert find_querystring(render(view)) ==
+               "c:{sum,avg}(m.latency) c:group_by(t::hour)"
+
+      refute has_element?(view, "#search_chart_aggregate")
+    end
+
     @tag source_schema:
            TestUtils.build_bq_schema(%{
              "metadata" => %{"method" => "GET", "response_bytes" => 42}
@@ -1194,29 +1217,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
         refute render(view) =~ "Backend error!"
       end
-    end
-
-    @tag source_schema: TestUtils.build_bq_schema(%{"metadata" => %{"latency" => 42}})
-    test "chart controls preserve multiple aggregates and share the chart period", %{
-      conn: conn,
-      source: source
-    } do
-      query = "c:sum(m.latency) c:avg(m.latency) c:group_by(t::minute)"
-
-      {:ok, view, _html} =
-        live_with_redirect(
-          conn,
-          Routes.live_path(conn, SearchLV, source.id, querystring: query, tailing?: false)
-        )
-
-      render_change(view, :chart_controls_update, %{
-        "chart_period" => "hour"
-      })
-
-      assert find_querystring(render(view)) ==
-               "c:sum(m.latency) c:avg(m.latency) c:group_by(t::hour)"
-
-      refute has_element?(view, "#search_chart_aggregate")
     end
 
     test "date picker adjusts chart display interval", %{conn: conn, source: source} do
