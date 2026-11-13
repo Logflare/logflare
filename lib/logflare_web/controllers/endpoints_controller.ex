@@ -87,8 +87,11 @@ defmodule LogflareWeb.EndpointsController do
     parsed_labels = Endpoints.parse_labels(endpoint_query.labels, header_str, params)
     override = get_req_header(conn, "lf-endpoint-redact-pii") |> List.first()
 
+    # the header can only turn redaction on, it cannot turn off
+    # what the endpoint owner configured
     redact_pii =
-      if override, do: String.downcase(override) == "true", else: endpoint_query.redact_pii
+      endpoint_query.redact_pii ||
+        (override != nil and String.downcase(override) == "true")
 
     reservation =
       if endpoint_query.enable_dynamic_reservation do
