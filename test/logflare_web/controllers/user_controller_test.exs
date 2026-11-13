@@ -171,6 +171,65 @@ defmodule LogflareWeb.UserControllerTest do
       conn = delete(conn, ~p"/account")
       assert redirected_to(conn, 302) =~ ~p"/auth/login?user_deleted=true"
     end
+
+    test "deletes the stripe customer of a billing account", %{conn: conn, user: user} do
+      insert(:billing_account, user: user, stripe_customer: "cus_123")
+      stub_iam_policy()
+
+      expect(Stripe.Customer, :delete, fn "cus_123" ->
+        {:ok, %{id: "cus_123", deleted: true}}
+      end)
+
+      conn = delete(conn, ~p"/account")
+
+      assert redirected_to(conn, 302) =~ ~p"/auth/login?user_deleted=true"
+      assert Users.get(user.id) == nil
+    end
+
+    test "succeeds when the stripe customer no longer exists", %{conn: conn, user: user} do
+      insert(:billing_account, user: user, stripe_customer: "cus_gone")
+      stub_iam_policy()
+
+      expect(Stripe.Customer, :delete, fn "cus_gone" ->
+        {:error,
+         %Stripe.Error{
+           source: :stripe,
+           code: :invalid_request_error,
+           message: "No such customer: 'cus_gone'",
+           extra: %{http_status: 404, raw_error: %{"code" => "resource_missing"}}
+         }}
+      end)
+
+      conn = delete(conn, ~p"/account")
+
+      assert redirected_to(conn, 302) =~ ~p"/auth/login?user_deleted=true"
+      assert Users.get(user.id) == nil
+    end
+
+    test "keeps the account when the stripe customer cannot be deleted", %{
+      conn: conn,
+      user: user
+    } do
+      insert(:billing_account, user: user, stripe_customer: "cus_123")
+
+      expect(Stripe.Customer, :delete, fn "cus_123" ->
+        {:error, %Stripe.Error{message: "api error", source: :network, code: :api_error}}
+      end)
+
+      conn = delete(conn, ~p"/account")
+
+      assert redirected_to(conn, 302) =~ ~p"/account/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "Something went wrong"
+      assert Users.get(user.id)
+    end
+  end
+
+  defp stub_iam_policy do
+    stub(
+      GoogleApi.CloudResourceManager.V1.Api.Projects,
+      :cloudresourcemanager_projects_set_iam_policy,
+      fn _, _project_number, [body: _body] -> {:ok, ""} end
+    )
   end
 
   describe "UserController change_owner" do

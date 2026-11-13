@@ -135,20 +135,16 @@ defmodule LogflareWeb.UserController do
     end
   end
 
-  def delete(
-        %{assigns: %{user: %User{billing_account: %{stripe_customer: stripe_customer}} = user}} =
-          conn,
-        _params
-      ) do
+  def delete(%{assigns: %{user: user}} = conn, _params) do
     Logger.info("user audit: user account deletion requested",
       action: "user.delete",
       user_id: user.id,
       user_email: user.email,
-      has_stripe_customer: true
+      has_stripe_customer: stripe_customer(user) != nil
     )
 
-    with {:ok, _user} <- Users.delete_user(user),
-         {:ok, _response} <- Stripe.delete_customer(stripe_customer) do
+    with :ok <- delete_stripe_customer(user),
+         {:ok, _user} <- Users.delete_user(user) do
       Logger.info("user audit: user account deleted",
         action: "user.deleted",
         user_id: user.id,
@@ -171,43 +167,7 @@ defmodule LogflareWeb.UserController do
           :error,
           "Something went wrong! Please try again and contact support if this continues."
         )
-        |> render("edit.html")
-    end
-  end
-
-  def delete(%{assigns: %{user: user}} = conn, _params) do
-    Logger.info("user audit: user account deletion requested",
-      action: "user.delete",
-      user_id: user.id,
-      user_email: user.email,
-      has_stripe_customer: false
-    )
-
-    case Users.delete_user(user) do
-      {:ok, _user} ->
-        Logger.info("user audit: user account deleted",
-          action: "user.deleted",
-          user_id: user.id,
-          user_email: user.email
-        )
-
-        conn
-        |> configure_session(drop: true)
-        |> redirect(to: ~p"/auth/login?#{%{user_deleted: true}}")
-
-      _err ->
-        Logger.error("user audit: user account deletion failed",
-          action: "user.delete_failed",
-          user_id: user.id,
-          user_email: user.email
-        )
-
-        conn
-        |> put_flash(
-          :error,
-          "Something went wrong! Please try again and contact support if this continues."
-        )
-        |> render("edit.html")
+        |> redirect(to: ~p"/account/edit")
     end
   end
 
@@ -357,4 +317,23 @@ defmodule LogflareWeb.UserController do
       end
     end)
   end
+
+  @spec stripe_customer(User.t()) :: String.t() | nil
+  defp stripe_customer(%User{billing_account: %{stripe_customer: customer_id}})
+       when is_binary(customer_id),
+       do: customer_id
+
+  defp stripe_customer(_user), do: nil
+
+  @spec delete_stripe_customer(User.t()) :: :ok | {:error, term()}
+  defp delete_stripe_customer(user) do
+    case stripe_customer(user) do
+      nil -> :ok
+      customer_id -> customer_id |> Stripe.delete_customer() |> handle_stripe_delete()
+    end
+  end
+
+  defp handle_stripe_delete({:ok, _customer}), do: :ok
+  defp handle_stripe_delete({:error, %{extra: %{http_status: 404}}}), do: :ok
+  defp handle_stripe_delete({:error, _reason} = error), do: error
 end
