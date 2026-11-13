@@ -33,13 +33,18 @@ defmodule LogflareWeb.IntegrationSigninTest do
       conn: conn,
       user: user
     } do
+      conn = previous_session(conn, @previous_session, user)
+
+      expected_team_id =
+        if @previous_session == :same_user, do: get_session(conn, :last_switched_team_id)
+
       conn =
         conn
-        |> previous_session(@previous_session, user)
         |> pending_integration(@integration)
         |> google_callback(user)
 
       assert get_session(conn, :current_email) == user.email
+      assert get_session(conn, :last_switched_team_id) == expected_team_id
       refute get_session(conn, :oauth_params)
       refute get_session(conn, :vercel_setup)
 
@@ -124,8 +129,19 @@ defmodule LogflareWeb.IntegrationSigninTest do
   end
 
   defp previous_session(conn, :none, _user), do: conn
-  defp previous_session(conn, :same_user, user), do: login_user(conn, user)
-  defp previous_session(conn, :other_user, _user), do: login_user(conn, insert(:user))
+
+  defp previous_session(conn, :same_user, user) do
+    team = insert(:team, user: user)
+
+    conn
+    |> login_user(user)
+    |> put_session(:last_switched_team_id, team.id)
+  end
+
+  defp previous_session(conn, :other_user, _user) do
+    previous_user = insert(:user)
+    previous_session(conn, :same_user, previous_user)
+  end
 
   defp pending_integration(conn, :oauth), do: put_session(conn, :oauth_params, oauth_params())
 

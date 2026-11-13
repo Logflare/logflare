@@ -261,7 +261,13 @@ defmodule LogflareWeb.AuthController do
   end
 
   defp put_user_session(conn, user) do
-    conn
-    |> put_session(:current_email, user.email)
+    conn =
+      if get_session(conn, :current_email) == user.email do
+        conn
+      else
+        delete_session(conn, :last_switched_team_id)
+      end
+
+    put_session(conn, :current_email, user.email)
   end
 end
