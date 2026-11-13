@@ -1,18 +1,22 @@
 defmodule Logflare.Google.CloudResourceManager do
   @moduledoc false
 
-  alias GoogleApi.CloudResourceManager.V1.Api
-  alias GoogleApi.CloudResourceManager.V1.Model
-  alias Logflare.Google.BigQuery.GCPConfig
-  alias Logflare.Google.BigQuery.GenUtils
-  alias Logflare.Users
-  alias Logflare.User
-  alias Logflare.TeamUsers
-  alias Logflare.Utils.Tasks
-  alias Logflare.Backends.Adaptor.BigQueryAdaptor
-  alias Logflare.Utils
+  import Ecto.Query
 
   require Logger
+
+  alias GoogleApi.CloudResourceManager.V1.Api
+  alias GoogleApi.CloudResourceManager.V1.Model
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Google.BigQuery.GCPConfig
+  alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.Repo
+  alias Logflare.TeamUsers.TeamUser
+  alias Logflare.User
+  alias Logflare.Users
+  alias Logflare.Utils.Tasks
+
+  @user_role "roles/bigquery.jobUser"
 
   def list_projects do
     conn = GenUtils.get_conn()
@@ -22,7 +26,9 @@ defmodule Logflare.Google.CloudResourceManager do
   def get_iam_policy do
     conn = GenUtils.get_conn()
 
-    body = %Model.GetIamPolicyRequest{}
+    body = %Model.GetIamPolicyRequest{
+      options: %Model.GetPolicyOptions{requestedPolicyVersion: 3}
+    }
 
     Api.Projects.cloudresourcemanager_projects_get_iam_policy(
       conn,
@@ -158,6 +164,7 @@ defmodule Logflare.Google.CloudResourceManager do
     end
   end
 
+  @spec set_iam_policy(keyword()) :: :ok | {:error, term()} | term()
   def set_iam_policy(opts \\ [async: true])
 
   def set_iam_policy(async: true) do
@@ -165,74 +172,153 @@ defmodule Logflare.Google.CloudResourceManager do
   end
 
   def set_iam_policy(async: false) do
-    conn = GenUtils.get_conn()
-    members = build_members()
+    project = env_project_number()
 
-    bindings =
-      [%Model.Binding{members: members, role: "roles/bigquery.jobUser"}] ++
-        get_service_accounts() ++
-        build_project_viewer_bindings()
+    with {:ok, policy} <- get_iam_policy(),
+         {:ok, policy} <-
+           append_bindings(
+             project,
+             policy,
+             get_service_accounts() ++ build_project_viewer_bindings()
+           ) do
+      {added, failed} = append_user_members(project, policy, build_members())
 
-    policy = %Model.Policy{bindings: bindings}
-    body = %Model.SetIamPolicyRequest{policy: policy}
-
-    case Api.Projects.cloudresourcemanager_projects_set_iam_policy(conn, env_project_number(),
-           body: body
-         ) do
-      {:ok, _response} ->
-        :telemetry.execute(
-          [:logflare, :google, :set_iam_policy],
-          %{members: Enum.uniq(members) |> Enum.count()},
-          %{}
-        )
-
-        Logger.info("Set IAM policy successful")
-
-      {:error, _err} = err ->
-        handle_errors(err)
-    end
-  end
-
-  defp handle_errors({:error, %Tesla.Env{} = response}) do
-    message = GenUtils.get_tesla_error_message(response)
-    user_exists_regexp = ~r/User (\S+?@\S+) does not exist/
-
-    if message =~ user_exists_regexp do
-      [captured] = Regex.run(user_exists_regexp, message, capture: :all_but_first)
-      # set user as invalid google account
-      result =
-        cond do
-          user = Users.get_by(email: captured) ->
-            user
-            |> Users.update_user_all_fields(%{valid_google_account: false})
-
-          team_user = TeamUsers.get_team_user_by(email: captured) ->
-            team_user
-            |> TeamUsers.update_team_user(%{valid_google_account: false})
-
-          true ->
-            :noop
-        end
-
-      if result == :noop do
-        Logger.error(
-          "Could find user #{captured} in the database. Set IAM policy error: #{message}",
-          error_string: Jason.decode!(response.body) |> Utils.stringify()
-        )
-      else
-        Logger.info(
-          "Google account #{captured} was marked as invalid and excluded from IAM policy",
-          error_string: Jason.decode!(response.body) |> Utils.stringify()
-        )
-      end
-    else
-      Logger.error("Set IAM policy unknown API error: #{message}",
-        error_string: Jason.decode!(response.body) |> Utils.stringify()
+      :telemetry.execute(
+        [:logflare, :google, :set_iam_policy],
+        %{added: added, failed: failed},
+        %{}
       )
 
-      :noop
+      if failed == 0 do
+        Logger.info("Appended IAM policy for #{project} successful, added #{added} user members")
+      else
+        Logger.error(
+          "Appended IAM policy for #{project} with #{failed} failed user members, added #{added}"
+        )
+      end
+
+      :ok
+    else
+      {:error, err} = error ->
+        Logger.error("Append IAM policy for #{project} failed: #{format_error(err)}")
+        error
     end
   end
+
+  @spec append_bindings(String.t() | integer(), Model.Policy.t(), [Model.Binding.t()]) ::
+          {:ok, Model.Policy.t()} | {:error, term()}
+  defp append_bindings(project, %Model.Policy{} = policy, bindings) do
+    merged = merge_bindings(policy, bindings)
+
+    if merged == policy do
+      {:ok, policy}
+    else
+      write_policy(project, merged)
+    end
+  end
+
+  @spec merge_bindings(Model.Policy.t(), [Model.Binding.t()]) :: Model.Policy.t()
+  defp merge_bindings(%Model.Policy{} = policy, new_bindings) do
+    Enum.reduce(new_bindings, policy, fn %Model.Binding{role: role, members: members}, acc ->
+      existing = acc.bindings || []
+      idx = Enum.find_index(existing, &(&1.role == role and is_nil(&1.condition)))
+      %{acc | bindings: merge_binding(existing, idx, role, members)}
+    end)
+  end
+
+  defp merge_binding(existing, nil, role, members),
+    do: existing ++ [%Model.Binding{role: role, members: members}]
+
+  defp merge_binding(existing, idx, _role, members) do
+    List.update_at(existing, idx, fn binding ->
+      current = binding.members || []
+      %{binding | members: current ++ Enum.reject(members, &(&1 in current))}
+    end)
+  end
+
+  @spec append_user_members(String.t() | integer(), Model.Policy.t(), [String.t()]) ::
+          {non_neg_integer(), non_neg_integer()}
+  defp append_user_members(project, policy, members) do
+    current =
+      policy.bindings
+      |> List.wrap()
+      |> Enum.filter(&(&1.role == @user_role and is_nil(&1.condition)))
+      |> Enum.flat_map(&(&1.members || []))
+
+    {_policy, added, failed} =
+      members
+      |> Enum.reject(&(&1 in current))
+      |> Enum.reduce({policy, 0, 0}, fn member, {acc, added, failed} ->
+        binding = %Model.Binding{role: @user_role, members: [member]}
+
+        case write_policy(project, merge_bindings(acc, [binding])) do
+          {:ok, new_policy} ->
+            {new_policy, added + 1, failed}
+
+          {:error, err} ->
+            handle_member_error(member, err)
+            {refresh_policy(acc), added, failed + 1}
+        end
+      end)
+
+    {added, failed}
+  end
+
+  defp refresh_policy(fallback) do
+    case get_iam_policy() do
+      {:ok, policy} -> policy
+      {:error, _} -> fallback
+    end
+  end
+
+  defp write_policy(project, %Model.Policy{} = policy) do
+    body = %Model.SetIamPolicyRequest{policy: %{policy | version: 3}}
+    conn = GenUtils.get_conn()
+
+    case Api.Projects.cloudresourcemanager_projects_set_iam_policy(conn, project, body: body) do
+      {:ok, %Model.Policy{} = new_policy} -> {:ok, new_policy}
+      {:ok, _} -> {:ok, policy}
+      {:error, _} = err -> err
+    end
+  end
+
+  @spec handle_member_error(String.t(), term()) :: :ok
+  defp handle_member_error("user:" <> email = member, %Tesla.Env{} = response) do
+    message = GenUtils.get_tesla_error_message(response)
+
+    if message =~ ~r/User \S+ does not exist/ or message =~ ~r/is of type "\w+"/ do
+      count = invalidate_google_account(email)
+
+      Logger.warning(
+        "IAM member #{member} rejected, marked #{count} account(s) as invalid google account: #{message}"
+      )
+    else
+      Logger.error("Adding IAM member #{member} failed: #{message}")
+    end
+
+    :ok
+  end
+
+  defp handle_member_error(member, err) do
+    Logger.error("Adding IAM member #{member} failed: #{format_error(err)}")
+    :ok
+  end
+
+  @spec invalidate_google_account(String.t()) :: non_neg_integer()
+  defp invalidate_google_account(email) do
+    {users, _} =
+      from(u in User, where: u.email == ^email)
+      |> Repo.update_all(set: [valid_google_account: false])
+
+    {team_users, _} =
+      from(tu in TeamUser, where: tu.email == ^email)
+      |> Repo.update_all(set: [valid_google_account: false])
+
+    users + team_users
+  end
+
+  defp format_error(%Tesla.Env{} = response), do: GenUtils.get_tesla_error_message(response)
+  defp format_error(err), do: inspect(err)
 
   defp get_service_accounts do
     managed_service_accounts =
@@ -311,6 +397,7 @@ defmodule Logflare.Google.CloudResourceManager do
     end
 
     emails
+    |> Enum.uniq()
     |> Enum.take(1400)
     |> Enum.map(&("user:" <> &1))
   end

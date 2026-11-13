@@ -97,6 +97,12 @@ defmodule LogflareWeb.TeamUserControllerTest do
     team = insert(:team, user: owner)
     team_user = insert(:team_user, team: team)
 
+    stub(
+      GoogleApi.CloudResourceManager.V1.Api.Projects,
+      :cloudresourcemanager_projects_get_iam_policy,
+      fn _, _, _ -> {:ok, %GoogleApi.CloudResourceManager.V1.Model.Policy{bindings: []}} end
+    )
+
     expect(
       GoogleApi.CloudResourceManager.V1.Api.Projects,
       :cloudresourcemanager_projects_set_iam_policy,
@@ -118,6 +124,12 @@ defmodule LogflareWeb.TeamUserControllerTest do
     team = insert(:team, user: owner)
     member_user = insert(:user)
     member_team_user = insert(:team_user, team: team, email: member_user.email)
+
+    stub(
+      GoogleApi.CloudResourceManager.V1.Api.Projects,
+      :cloudresourcemanager_projects_get_iam_policy,
+      fn _, _, _ -> {:ok, %GoogleApi.CloudResourceManager.V1.Model.Policy{bindings: []}} end
+    )
 
     expect(
       GoogleApi.CloudResourceManager.V1.Api.Projects,
