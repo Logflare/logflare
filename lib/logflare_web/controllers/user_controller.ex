@@ -147,8 +147,8 @@ defmodule LogflareWeb.UserController do
       has_stripe_customer: true
     )
 
-    with {:ok, _user} <- Users.delete_user(user),
-         {:ok, _response} <- Stripe.delete_customer(stripe_customer) do
+    with {:ok, _response} <- Stripe.delete_customer(stripe_customer),
+         {:ok, _user} <- Users.delete_user(user) do
       Logger.info("user audit: user account deleted",
         action: "user.deleted",
         user_id: user.id,
@@ -171,7 +171,7 @@ defmodule LogflareWeb.UserController do
           :error,
           "Something went wrong! Please try again and contact support if this continues."
         )
-        |> render("edit.html")
+        |> redirect(to: ~p"/account/edit")
     end
   end
 
@@ -207,7 +207,7 @@ defmodule LogflareWeb.UserController do
           :error,
           "Something went wrong! Please try again and contact support if this continues."
         )
-        |> render("edit.html")
+        |> redirect(to: ~p"/account/edit")
     end
   end
 
