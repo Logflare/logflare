@@ -8,6 +8,7 @@ defmodule LogflareWeb.BackendsLive do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.HttpBased.Headers
+  alias Logflare.Backends.Adaptor.VictoriaMetricsAdaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Backend
   alias Logflare.Rules
@@ -78,7 +79,8 @@ defmodule LogflareWeb.BackendsLive do
         %{"backend" => params},
         %{assigns: %{live_action: :edit}} = socket
       ) do
-    with {:ok, params} <- transform_params(params, existing_headers(socket.assigns.backend)) do
+    with {:ok, params} <-
+           transform_params(params, existing_headers(socket.assigns.backend, params)) do
       socket =
         case Backends.update_backend(socket.assigns.backend, params) do
           {:ok, backend} ->
@@ -488,12 +490,25 @@ defmodule LogflareWeb.BackendsLive do
     |> assemble_read_clusters()
   end
 
-  @spec existing_headers(Backend.t() | nil) :: map()
-  defp existing_headers(%Backend{config: config}) when is_map(config) do
+  @spec existing_headers(Backend.t() | nil, map()) :: map()
+  defp existing_headers(
+         %Backend{type: :victoria_metrics, config: config},
+         %{"config" => submitted_config}
+       )
+       when is_map(config) and is_map(submitted_config) do
+    headers =
+      submitted_config
+      |> VictoriaMetricsAdaptor.cast_config(config)
+      |> Ecto.Changeset.get_field(:headers)
+
+    Headers.normalize_keys(headers || %{})
+  end
+
+  defp existing_headers(%Backend{config: config}, _params) when is_map(config) do
     Headers.normalize_keys(Map.get(config, :headers) || %{})
   end
 
-  defp existing_headers(_backend), do: %{}
+  defp existing_headers(_backend, _params), do: %{}
 
   @spec header_form_keys(map()) :: [String.t()]
   defp header_form_keys(config) when is_map(config) do

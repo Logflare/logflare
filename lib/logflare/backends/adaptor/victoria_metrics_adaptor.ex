@@ -90,7 +90,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     report_drops(drops, length(log_events), Map.get(config, :backend_id))
 
     series
-    |> Enum.map(fn {labels, samples} -> {labels, Enum.sort_by(samples, &elem(&1, 1))} end)
+    |> Enum.map(fn {labels, samples} -> {labels, List.keysort(samples, 1)} end)
     |> encode_write_request()
   end
 
@@ -177,23 +177,42 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
   # Stored credentials only ever go to the destination they were entered for. When the
   # URL moves to another origin, the password and credential headers must be entered
   # again rather than restored from the redacted form or kept from storage.
+  @spec require_new_credentials(Ecto.Changeset.t(), map()) :: Ecto.Changeset.t()
   defp require_new_credentials(changeset, existing_config) do
-    changeset =
-      if Ecto.Changeset.get_change(changeset, :password) in [nil, @redacted_value],
-        do: Ecto.Changeset.put_change(changeset, :password, nil),
-        else: changeset
+    headers =
+      case Map.fetch(changeset.params, "headers") do
+        {:ok, submitted} when is_map(submitted) ->
+          for {key, value} <- submitted,
+              value != @redacted_value,
+              into: %{},
+              do: {Headers.normalize_key(key), value}
 
-    case Ecto.Changeset.get_change(changeset, :headers) do
-      nil ->
-        stored = Map.get(existing_config, :headers) || Map.get(existing_config, "headers") || %{}
+        {:ok, nil} ->
+          nil
 
-        kept =
-          for {key, value} <- stored, not Headers.sensitive?(key), into: %{}, do: {key, value}
+        _ ->
+          stored =
+            Map.get(existing_config, :headers) || Map.get(existing_config, "headers") || %{}
 
-        Ecto.Changeset.put_change(changeset, :headers, kept)
+          for {key, value} <- stored,
+              not Headers.sensitive?(key),
+              into: %{},
+              do: {Headers.normalize_key(key), value}
+      end
 
-      _submitted ->
-        changeset
+    changeset
+    |> require_new_password()
+    |> Ecto.Changeset.put_change(:headers, headers)
+  end
+
+  @spec require_new_password(Ecto.Changeset.t()) :: Ecto.Changeset.t()
+  defp require_new_password(changeset) do
+    case changeset.params["password"] do
+      password when is_binary(password) and password not in ["", @redacted_value] ->
+        Ecto.Changeset.put_change(changeset, :password, password)
+
+      _ ->
+        Ecto.Changeset.put_change(changeset, :password, nil)
     end
   end
 
@@ -206,9 +225,13 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     end
   end
 
+  @spec origin(String.t()) ::
+          {String.t() | nil, String.t() | nil, non_neg_integer() | nil} | :invalid
   defp origin(url) do
-    uri = URI.parse(url)
-    {uri.scheme, uri.host && String.downcase(uri.host), uri.port}
+    case URI.new(url) do
+      {:ok, uri} -> {uri.scheme, uri.host && String.downcase(uri.host), uri.port}
+      {:error, _reason} -> :invalid
+    end
   end
 
   defp encode_write_request(series) do
@@ -275,8 +298,10 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     bounds = Map.get(body, "explicit_bounds", [])
 
     with true <- valid_buckets?(counts, bounds),
-         count = Map.get(body, "count", Enum.sum(counts)),
+         bucket_total = Enum.sum(counts),
+         count = Map.get(body, "count", bucket_total),
          true <- is_integer(count) and count >= 0,
+         true <- counts == [] or count == bucket_total,
          {:ok, sum} <- optional_sample_value(body["sum"]) do
       {:ok, {:histogram, count, sum, cumulative_buckets(counts, bounds)}}
     else
@@ -286,7 +311,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
 
   # OTLP requires one more count than bounds (the overflow bucket), or no buckets.
   defp valid_buckets?(counts, bounds) when is_list(counts) and is_list(bounds) do
-    (counts == [] or length(counts) == length(bounds) + 1) and
+    ((counts == [] and bounds == []) or length(counts) == length(bounds) + 1) and
       Enum.all?(counts, &(is_integer(&1) and &1 >= 0)) and
       strictly_increasing?(bounds)
   end
@@ -316,37 +341,30 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     buckets
   end
 
-  # `labels` is sorted by name and never holds `__name__` or `le`, so inserting them
-  # keeps every series' label list in the order remote write requires.
   defp samples({:value, value}, name, labels, ts_ms) do
-    [{insert_label(labels, "__name__", name), {value, ts_ms}}]
+    [{[{"__name__", name} | labels], {value, ts_ms}}]
   end
 
   defp samples({:histogram, count, sum, buckets}, name, labels, ts_ms) do
-    bucket_labels = insert_label(labels, "__name__", name <> "_bucket")
+    bucket_labels = [{"__name__", name <> "_bucket"} | labels]
     count_value = integer_value(count)
 
     bucket_samples =
       for {le, cumulative} <- buckets do
-        {insert_label(bucket_labels, "le", le), {integer_value(cumulative), ts_ms}}
+        {[{"le", le} | bucket_labels], {integer_value(cumulative), ts_ms}}
       end
 
     sum_samples =
       if sum == nil,
         do: [],
-        else: [{insert_label(labels, "__name__", name <> "_sum"), {sum, ts_ms}}]
+        else: [{[{"__name__", name <> "_sum"} | labels], {sum, ts_ms}}]
 
     [
-      {insert_label(labels, "__name__", name <> "_count"), {count_value, ts_ms}},
-      {insert_label(bucket_labels, "le", "+Inf"), {count_value, ts_ms}}
+      {[{"__name__", name <> "_count"} | labels], {count_value, ts_ms}},
+      {[{"le", "+Inf"} | bucket_labels], {count_value, ts_ms}}
       | sum_samples ++ bucket_samples
     ]
   end
-
-  defp insert_label([{key, _value} = label | rest], name, value) when key < name,
-    do: [label | insert_label(rest, name, value)]
-
-  defp insert_label(labels, name, value), do: [{name, value} | labels]
 
   # protobuf decodes IEEE special values to atoms, which RemoteWrite encodes back.
   defp sample_value(value) when is_float(value), do: {:ok, value}
@@ -372,7 +390,7 @@ defmodule Logflare.Backends.Adaptor.VictoriaMetricsAdaptor do
     |> Map.merge(context.static_labels)
     |> export_reserved()
     |> Map.merge(adaptor_labels)
-    |> Enum.sort()
+    |> Map.to_list()
   end
 
   # LogEvent.make/2 stores keys in BigQuery column form, so `service.name` arrives as

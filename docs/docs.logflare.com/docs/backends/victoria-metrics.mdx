@@ -17,7 +17,7 @@ The backend can be configured with the following options:
 - `headers` (`map`, optional) - Extra headers attached to each request. Credential headers such as `authorization` are redacted when the backend is read back.
 - `labels` (`map`, optional) - Static labels added to every time series. These take precedence over event attributes with the same name. Labels can be set through the management API.
 
-Stored credentials are only sent to the host they were entered for. Changing the URL to another host clears the password and credential headers, so they need to be entered again.
+Changing the scheme, host, or port of the URL clears the password and credential headers, so they need to be entered again. Changing only a URL's path preserves credentials.
 
 ### Implementation Details
 
