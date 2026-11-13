@@ -106,6 +106,24 @@ defmodule Logflare.UsersTest do
     refute Repo.reload(user)
   end
 
+  test "delete_user/1 deletes backends attached to sources" do
+    user = insert(:user)
+    source = insert(:source, user: user)
+    backend = insert(:backend, user: user, sources: [source])
+
+    stub(
+      GoogleApi.CloudResourceManager.V1.Api.Projects,
+      :cloudresourcemanager_projects_set_iam_policy,
+      fn _, _project_number, [body: _body] -> {:ok, %Tesla.Env{status: 200, body: ""}} end
+    )
+
+    assert {:ok, _} = Users.delete_user(user)
+
+    refute Repo.reload(backend)
+    refute Repo.reload(source)
+    refute Repo.reload(user)
+  end
+
   test "users_count/0 returns user count" do
     assert Users.count_users() == 1
     insert(:user)
