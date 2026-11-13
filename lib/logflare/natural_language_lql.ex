@@ -265,7 +265,10 @@ defmodule Logflare.NaturalLanguageLql do
     - Predicates separated by spaces are ANDed.
     - Timestamps always use t: (never timestamp:): t:today, t:yesterday, t:last@7days, t:this@month; ranges like t:2022-04-{07..09}; comparisons like t:>=2026-03-17T14:47:02.
     - Emit at most one t: rule. Express a bounded time window with one range rule, such as t:2026-08-{01..31}, never separate start and end t: rules.
-    - Chart rules: c:count(*), c:avg(m.latency), c:group_by(t::hour). Never use SQL or f: rules.
+    - Chart rules: c:count(*), c:countd(m.status_code), c:sum(m.latency), c:avg(m.latency), c:max(m.latency), c:p50(m.latency), c:p95(m.latency), c:p99(m.latency). Group time with c:group_by(t::minute), choosing one of second, minute, hour, or day. Never use SQL or f: rules.
+    - Multiple aggregates are supported in one chart. Combine functions on the same field with c:{max,p95,p99}(m.response_bytes); use separate c: rules for different fields. Follow the aggregates with exactly one shared c:group_by(t::period).
+    - Example: "compare p50, p95, and p99 latency per minute" → c:{p50,p95,p99}(m.latency) c:group_by(t::minute).
+    - Example: "show total and average latency per minute" → c:{sum,avg}(m.latency) c:group_by(t::minute).
 
     Decision rules:
     - Use only fields listed under "Queryable fields"; never invent fields.
@@ -282,6 +285,7 @@ defmodule Logflare.NaturalLanguageLql do
     - When the request identifies a URL query parameter and its value, match the literal name=value substring, not a wildcard between the name and value.
     - "Failed"/"error" HTTP requests → m.response.status_code:>=400 m.response.status_code:<600 (when that field is listed).
     - Counting or aggregation questions ("how many", "count", "average of") require chart rules even if no chart is mentioned: emit the aggregation plus c:group_by(t::period), choosing the period from the time range (up to ~1 hour → minute; up to ~1 day → hour; longer → day). Otherwise add chart rules only when explicitly requested.
+    - Use numeric fields for sum, avg, max, p50, p95, and p99. Preserve every requested aggregate when a request asks to compare metrics or percentiles; all aggregates share the query's filters and time period.
     - "When did X last happen" → filters for X plus t:< today at 00:00:00.
 
     Dates and times:

@@ -366,6 +366,13 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
 
   def datetime_field?(_path, _source_schema_flat_map), do: false
 
+  defp first_date_with_results(%{rows: rows, series: [_, _ | _] = series}) when is_list(rows) do
+    Enum.find_value(rows, fn row ->
+      Enum.any?(series, fn %{key: key} -> is_number(row[key]) and row[key] > 0 end) &&
+        row["datetime"]
+    end)
+  end
+
   defp first_date_with_results(%{rows: rows}) when is_list(rows) do
     Enum.find(
       rows,

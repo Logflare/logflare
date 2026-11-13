@@ -13,6 +13,26 @@ vi.mock("../vendor/idle", () => ({ default: vi.fn() }));
 const { scrollToPageBottom } = await import("../utils");
 const { default: hooks } = await import("../source_lv_hooks.js");
 
+describe("SourceLogsSearch chart controls", () => {
+  it.each([true, false])("sends period changes when aggregate control is present: %s", (showAggregate) => {
+    const el = document.createElement("div");
+    el.innerHTML = `
+      <select id="search_chart_period"><option value="hour" selected>hour</option></select>
+      ${showAggregate ? '<select id="search_chart_aggregate"><option value="sum" selected>sum</option></select>' : ""}
+    `;
+    const events = [];
+
+    hooks.SourceLogsSearch.pushChartControlsUpdate.call({
+      el,
+      pushEvent: (event, payload) => events.push([event, JSON.parse(JSON.stringify(payload))]),
+    });
+
+    expect(events).toEqual([
+      ["chart_controls_update", showAggregate ? { chart_period: "hour", chart_aggregate: "sum" } : { chart_period: "hour" }],
+    ]);
+  });
+});
+
 const mountSearchList = () => {
   const hook = Object.create(hooks.SourceLogsSearchList);
   const handlers = {};

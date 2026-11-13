@@ -9,7 +9,6 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
-  alias Logflare.DateTimeUtils
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Logs.EventPage
@@ -26,7 +25,6 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.Sources
   alias Logflare.Utils.Chart, as: ChartUtils
   alias Logflare.Utils.LoggerMetadata
-  alias Logflare.Utils.List, as: ListUtils
 
   @type chart_period :: :day | :hour | :minute | :second
   @type dt_or_ndt :: DateTime.t() | NaiveDateTime.t()
@@ -269,9 +267,6 @@ defmodule Logflare.Logs.SearchOperations do
     cond do
       so.tailing? and not Enum.empty?(so.lql_ts_filters) ->
         SearchUtils.halt(so, @timestamp_filter_with_tailing)
-
-      ListUtils.at_least?(so.chart_rules, 2) ->
-        SearchUtils.halt(so, "Only one chart rule can be used in a query")
 
       Timex.diff(max_ts, min_ts, chart_period) == 0 and chart_period != :second ->
         msg =
@@ -745,40 +740,64 @@ defmodule Logflare.Logs.SearchOperations do
     %{so | lql_ts_filters: lql_ts_filters}
   end
 
-  def apply_numeric_aggs(%SO{query: query, lql_meta_and_msg_filters: filter_rules} = so) do
+  @spec apply_numeric_aggs(SO.t(), [atom()] | nil) :: SO.t()
+  def apply_numeric_aggs(
+        %SO{query: query, lql_meta_and_msg_filters: filter_rules} = so,
+        keys \\ nil
+      ) do
     chart_rule = hd(so.chart_rules)
 
     non_chart_filters = reject_chart_filters(filter_rules, chart_rule)
 
     case so.backend_type do
       :postgres ->
+        query = Lql.apply_filter_rules(query, non_chart_filters, dialect: so.backend_type)
+
         query =
-          query
-          |> Lql.apply_filter_rules(non_chart_filters, dialect: so.backend_type)
-          |> PostgresTransformer.transform_chart_rule(
-            chart_rule.aggregate,
-            chart_rule.path,
-            chart_rule.period,
-            "timestamp"
-          )
+          case keys do
+            nil ->
+              PostgresTransformer.transform_chart_rule(
+                query,
+                chart_rule.aggregate,
+                chart_rule.path,
+                chart_rule.period,
+                "timestamp"
+              )
+
+            keys ->
+              PostgresTransformer.transform_chart_rules(
+                query,
+                Enum.zip(so.chart_rules, keys),
+                "timestamp"
+              )
+          end
 
         %{so | query: query}
 
       :bigquery ->
-        apply_bq_numeric_aggs(so, query, chart_rule, non_chart_filters, filter_rules)
+        apply_bq_numeric_aggs(so, non_chart_filters, keys)
     end
   end
 
-  defp apply_bq_numeric_aggs(so, query, chart_rule, non_chart_filters, filter_rules) do
-    chart_period = chart_rule.period
+  defp apply_bq_numeric_aggs(so, non_chart_filters, keys) do
+    chart_period = chart_period(so)
 
     query =
-      query
+      so.query
       |> Lql.apply_filter_rules(non_chart_filters)
       |> order_by([t, ...], desc: 1)
 
     query = select_timestamp(query, chart_period)
-    query = apply_bq_chart_select(query, chart_rule, so.chart_data_shape_id, filter_rules)
+
+    query =
+      apply_bq_chart_select(
+        query,
+        so.chart_rules,
+        so.chart_data_shape_id,
+        so.lql_meta_and_msg_filters,
+        keys
+      )
+
     query = group_by(query, 1)
 
     %{so | query: query}
@@ -786,9 +805,10 @@ defmodule Logflare.Logs.SearchOperations do
 
   defp apply_bq_chart_select(
          query,
-         %ChartRule{path: "timestamp", aggregate: :count, value_type: :datetime},
+         [%ChartRule{path: "timestamp", aggregate: :count, value_type: :datetime}],
          chart_data_shape_id,
-         _filter_rules
+         _filter_rules,
+         nil
        ) do
     case chart_data_shape_id do
       :elixir_logger_levels -> select_count_log_level(query)
@@ -801,25 +821,29 @@ defmodule Logflare.Logs.SearchOperations do
 
   defp apply_bq_chart_select(
          query,
-         %ChartRule{path: p, aggregate: agg},
+         [%ChartRule{path: p} | _] = chart_rules,
          _chart_data_shape_id,
-         filter_rules
+         filter_rules,
+         keys
        ) do
     last_chart_field =
       p
       |> String.split(".")
       |> List.last()
-      |> String.to_existing_atom()
+
+    {query, table_type} =
+      if String.contains?(p, ".") do
+        {Lql.handle_nested_field_access(query, p), :joined_table}
+      else
+        {query, :base_table}
+      end
 
     q =
-      if String.contains?(p, ".") do
-        query
-        |> Lql.handle_nested_field_access(p)
-        |> select_merge_agg_value(agg, last_chart_field, :joined_table)
-      else
-        query
-        |> select_merge_agg_value(agg, last_chart_field, :base_table)
-      end
+      chart_rules
+      |> Enum.zip(keys || [:value])
+      |> Enum.reduce(query, fn {%ChartRule{aggregate: aggregate}, key}, query ->
+        select_merge_agg_value(query, aggregate, last_chart_field, table_type, key)
+      end)
 
     Enum.reduce(filter_rules, q, fn
       %FilterRule{path: ^p, operator: operator, value: value, modifiers: modifiers}, acc ->
@@ -898,6 +922,8 @@ defmodule Logflare.Logs.SearchOperations do
     Enum.reject(filter_rules, fn %FilterRule{path: path} -> path == chart_path end)
   end
 
+  def add_missing_agg_timestamps(%SO{series: [_, _ | _]} = so), do: so
+
   def add_missing_agg_timestamps(%SO{} = so) do
     chart_period = chart_period(so)
 
@@ -917,8 +943,9 @@ defmodule Logflare.Logs.SearchOperations do
           list(map)
   def intersperse_missing_range_timestamps(aggs, min, max, chart_period) do
     step_period = String.to_existing_atom("#{chart_period}s")
-    from = DateTimeUtils.truncate(min, chart_period)
-    until = DateTimeUtils.truncate(max, chart_period)
+
+    %{min: from, max: until} =
+      SearchOperationHelpers.aggregate_bucket_bounds(min, max, chart_period)
 
     [aggs | empty_range_aggs(from, until, step_period)]
     |> List.flatten()
@@ -928,13 +955,6 @@ defmodule Logflare.Logs.SearchOperations do
 
   @spec empty_range_aggs(dt_or_ndt, dt_or_ndt, atom()) :: list(map)
   defp empty_range_aggs(from, until, step_period) do
-    until =
-      if from == until and step_period == :seconds do
-        Timex.shift(until, seconds: 1)
-      else
-        until
-      end
-
     case Timex.Interval.new(
            from: from,
            until: until,

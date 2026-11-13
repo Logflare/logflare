@@ -93,7 +93,7 @@ describe("getLqlCompletionItems", () => {
     expect(labels).toContain("t:");
     expect(labels).toContain("m.");
     expect(labels).toContain("s:");
-    expect(labels).toContain("c:group_by");
+    expect(labels).toContain("c:group_by()");
   });
 
   it("suggests timestamp values after the shorthand prefix", () => {
@@ -117,6 +117,50 @@ describe("getLqlCompletionItems", () => {
       "t::hour",
       "t::day",
     ]);
+  });
+
+  it.each(["foo c:", "foo "])(
+    "offers two aggregate choices with a placeholder label for %j",
+    (line) => {
+      expect(getSuggestions(line)).toContainEqual(
+        expect.objectContaining({
+          label: {
+            label: "c:",
+            detail: "{agg1,agg2,…}()",
+            description: "chart multiple aggregates",
+          },
+          filterText: "c:{agg1,agg2,…}()",
+          insertText:
+            "c:{${1|count,countd,avg,sum,max,p50,p95,p99|}," +
+            "${2|count,countd,avg,sum,max,p50,p95,p99|}}($0)",
+          insertTextRules: SNIPPET_INSERT_TEXT_RULE,
+        }),
+      );
+    },
+  );
+
+  it("completes function names inside grouped charts without replacing other functions", () => {
+    expect(getSuggestions("c:{").map((item) => item.label)).toEqual([
+      "count",
+      "countd",
+      "avg",
+      "sum",
+      "max",
+      "p50",
+      "p95",
+      "p99",
+    ]);
+
+    const line = "foo chart:{max , p9}(m.bytes)";
+    const suggestions = getSuggestions(line, {}, line.indexOf("}") + 1);
+    expect(suggestions.map((item) => item.label)).toEqual(["p95", "p99"]);
+
+    const suggestion = suggestions.find((item) => item.label === "p99");
+    expect(
+      line.slice(0, suggestion.range.startColumn - 1) +
+        suggestion.insertText +
+        line.slice(suggestion.range.endColumn - 1),
+    ).toBe("foo chart:{max , p99}(m.bytes)");
   });
 
   it("suggests filter operators after a field name and colon", () => {
@@ -159,7 +203,7 @@ describe("getLqlCompletionItems", () => {
     const labels = suggestions.map((suggestion) => suggestion.label);
     expect(labels).toContain("c:count()");
     expect(labels).toContain("c:countd()");
-    expect(labels).not.toContain("c:group_by");
+    expect(labels).not.toContain("c:group_by()");
   });
 
   it("excludes saved search when it is the only match and exactly equals input", () => {
@@ -219,9 +263,10 @@ describe("getLqlCompletionItems", () => {
   it("sets re-suggest command on c:group_by", () => {
     const suggestions = getSuggestions("foo c:g");
     const groupBySuggestion = suggestions.find(
-      (suggestion) => suggestion.label === "c:group_by",
+      (suggestion) => suggestion.label === "c:group_by()",
     );
 
+    expect(groupBySuggestion.insertText).toBe("c:group_by($0)");
     expect(groupBySuggestion.command).toEqual({
       id: "editor.action.triggerSuggest",
       title: "Trigger suggest",
@@ -262,6 +307,10 @@ describe("getLqlCompletionItems", () => {
         label: "method",
       }),
     ]);
+
+    expect(
+      getSuggestions("c:{max,p95}(m.request.", { fields }).map((item) => item.label),
+    ).toEqual(["id", "method"]);
   });
 
   it("returns no suggestions for an exact single keyword match", () => {

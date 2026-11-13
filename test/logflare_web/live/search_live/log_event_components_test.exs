@@ -5,6 +5,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
   import Phoenix.Component
 
   alias Logflare.Lql
+  alias Logflare.Lql.Rules
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.SelectRule
   alias Logflare.LogEvent
@@ -129,6 +130,110 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
         })
 
       assert html =~ ~r|id="logs-list".*class="(.*)blurred"|
+    end
+
+    test "extends an empty search to the first positive aggregate bucket and preserves all rules",
+         %{
+           source: source
+         } do
+      {:ok, lql_rules} =
+        Lql.decode(
+          "c:count(*) c:countd(*) c:group_by(t::hour)",
+          SchemaBuilder.initial_table_schema()
+        )
+
+      search_op = search_operation(source, lql_rules, [])
+
+      aggregates = %{
+        search_op
+        | series: [
+            %{key: "aggregate_0", label: "count(*)"},
+            %{key: "aggregate_1", label: "countd(*)"}
+          ],
+          rows: [
+            %{
+              "datetime" => ~U[2026-01-01 00:00:00Z],
+              "aggregate_0" => nil,
+              "aggregate_1" => 0,
+              "unrelated" => 99
+            },
+            %{
+              "datetime" => ~U[2026-01-02 00:00:00Z],
+              "aggregate_0" => 0,
+              "aggregate_1" => 5
+            }
+          ]
+      }
+
+      html =
+        render_component(
+          &LogEventComponents.results_list/1,
+          Map.merge(@default_attrs, %{
+            search_op_log_events: search_op,
+            search_op_log_aggregates: aggregates
+          })
+        )
+
+      assert [link] = html |> Floki.parse_fragment!() |> Floki.find("#empty-search-results a")
+      assert Floki.text(link) =~ "Extend search"
+
+      uri = link |> Floki.attribute("href") |> hd() |> URI.parse()
+      assert uri.path == "/sources/#{source.id}/search"
+      params = URI.decode_query(uri.query)
+      assert params["tailing?"] == "false"
+
+      {:ok, extended_rules} =
+        Lql.decode(params["querystring"], SchemaBuilder.initial_table_schema())
+
+      assert Rules.get_chart_rules(extended_rules) == Rules.get_chart_rules(lql_rules)
+
+      assert [%FilterRule{path: "timestamp", operator: :>=, value: ~N[2026-01-02 00:00:00]}] =
+               Rules.get_filter_rules(extended_rules)
+
+      html =
+        render_component(
+          &LogEventComponents.results_list/1,
+          Map.merge(@default_attrs, %{
+            search_op_log_events: search_op,
+            search_op_log_aggregates: %{aggregates | rows: Enum.take(aggregates.rows, 1)}
+          })
+        )
+
+      assert html |> Floki.parse_fragment!() |> Floki.find("#empty-search-results a") == []
+    end
+
+    test "single-aggregate labels preserve search extension for category totals", %{
+      source: source,
+      lql_rules: lql_rules
+    } do
+      search_op = search_operation(source, lql_rules, [])
+
+      aggregates = %{
+        search_op
+        | series: [%{key: "value", label: "count(*)"}],
+          rows: [
+            %{"datetime" => ~U[2026-01-01 00:00:00Z], "total" => 0},
+            %{"datetime" => ~U[2026-01-02 00:00:00Z], "total" => 2}
+          ]
+      }
+
+      html =
+        render_component(
+          &LogEventComponents.results_list/1,
+          Map.merge(@default_attrs, %{
+            search_op_log_events: search_op,
+            search_op_log_aggregates: aggregates
+          })
+        )
+
+      assert [link] = html |> Floki.parse_fragment!() |> Floki.find("#empty-search-results a")
+      params = link |> Floki.attribute("href") |> hd() |> URI.parse() |> Map.fetch!(:query)
+
+      {:ok, extended_rules} =
+        Lql.decode(URI.decode_query(params)["querystring"], SchemaBuilder.initial_table_schema())
+
+      assert [%FilterRule{path: "timestamp", operator: :>=, value: ~N[2026-01-02 00:00:00]}] =
+               Rules.get_filter_rules(extended_rules)
     end
 
     test "renders the previous-page pagination button", %{

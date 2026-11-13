@@ -14,6 +14,41 @@ defmodule Logflare.Lql.ParserTest do
   @default_schema SchemaBuilder.initial_table_schema()
 
   describe "parse/1" do
+    test "preserves distinct chart aggregates and shares the last chart period" do
+      query = "c:sum(m.latency) c:group_by(t::second) c:avg(m.latency) c:group_by(t::hour)"
+
+      assert {:ok,
+              [
+                %ChartRule{aggregate: :sum, path: "metadata.latency", period: :hour} = sum,
+                %ChartRule{aggregate: :avg, path: "metadata.latency", period: :hour} = avg
+              ]} = Parser.parse(query)
+
+      assert Lql.encode!([sum, avg]) ==
+               "c:{sum,avg}(m.latency) c:group_by(t::hour)"
+
+      assert {:ok, [^sum, ^avg]} = Parser.parse(Lql.encode!([sum, avg]))
+
+      assert {:ok, [%ChartRule{aggregate: :count, path: "timestamp", period: :hour}]} =
+               Parser.parse("c:group_by(t::hour)")
+    end
+
+    test "deduplicates repeated aggregates without dropping other fields" do
+      assert {:ok,
+              [
+                %ChartRule{aggregate: :sum, path: "metadata.latency", period: :minute},
+                %ChartRule{aggregate: :sum, path: "metadata.bytes", period: :minute}
+              ]} =
+               Parser.parse("c:sum(m.latency) c:sum(m.bytes) c:sum(m.latency)")
+
+      assert {:ok,
+              [
+                %ChartRule{aggregate: :max, path: "metadata.latency", period: :minute},
+                %ChartRule{aggregate: :p95, path: "metadata.latency", period: :minute},
+                %ChartRule{aggregate: :sum, path: "metadata.bytes", period: :minute}
+              ]} =
+               Parser.parse("c:max(m.latency) c:{p95, max}(m.latency) c:sum(m.bytes)")
+    end
+
     test "parse empty string" do
       assert {:ok, []} == Parser.parse("")
     end
@@ -120,6 +155,54 @@ defmodule Logflare.Lql.ParserTest do
   setup :verify_on_exit!
 
   describe "LQL parsing" do
+    test "expands grouped chart aggregates with whitespace around commas" do
+      schema = build_schema(%{"metadata" => %{"response_bytes" => 42}})
+
+      rules =
+        for aggregate <- [:max, :p95, :p99] do
+          %ChartRule{aggregate: aggregate, path: "metadata.response_bytes", period: :hour}
+        end
+
+      encoded =
+        "c:{max,p95,p99}(m.response_bytes) " <>
+          "c:group_by(t::hour)"
+
+      for prefix <- ["c", "chart"],
+          aggregates <- ["max,p95,p99", "max ,p95 , p99", " max, p95 , p99 "] do
+        query = "#{prefix}:{#{aggregates}}(m.response_bytes) c:group_by(t::hour)"
+
+        assert {:ok, ^rules} = Parser.parse(query)
+        assert {:ok, typed_rules} = Parser.parse(query, schema)
+        assert typed_rules == Enum.map(rules, &%{&1 | value_type: :integer})
+        assert Lql.encode!(typed_rules) == encoded
+      end
+    end
+
+    test "validates the field type of every chart aggregate" do
+      schema = build_schema(%{"metadata" => %{"latency" => 10.0, "bytes" => 42}})
+
+      assert {:ok,
+              [
+                %ChartRule{
+                  aggregate: :p50,
+                  path: "metadata.latency",
+                  value_type: :float,
+                  period: :hour
+                },
+                %ChartRule{
+                  aggregate: :sum,
+                  path: "metadata.bytes",
+                  value_type: :integer,
+                  period: :hour
+                }
+              ]} =
+               Parser.parse("c:p50(m.latency) c:sum(m.bytes) c:group_by(t::hour)", schema)
+
+      for query <- ["c:sum(m.bytes) c:avg(m.missing)", "c:avg(m.missing) c:sum(m.bytes)"] do
+        assert {:error, :field_not_found, _, _} = Parser.parse(query, schema)
+      end
+    end
+
     test "other top-level fields" do
       schema = build_schema(%{"a" => "t", "b" => %{"c" => %{"d" => "test"}}})
       qs = ~S|a:testing b.c.d:"nested"|
