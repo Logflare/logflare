@@ -145,6 +145,7 @@ defmodule Logflare.Mixfile do
       {:inet_cidr, "~> 1.0"},
       {:castore, "~> 1.0"},
       {:finch, "~> 0.20.0"},
+      {:req, "~> 0.5.17"},
       {:mint, "~> 1.0"},
       {:httpoison, "~> 1.4"},
       {:poison, "~> 5.0.0", override: true},
