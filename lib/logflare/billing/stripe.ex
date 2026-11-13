@@ -180,7 +180,10 @@ defmodule Logflare.Billing.Stripe do
   end
 
   def delete_customer(id) do
-    Stripe.Customer.delete(id)
+    case Stripe.Customer.delete(id) do
+      {:error, %Stripe.Error{extra: %{http_status: 404}}} -> {:ok, :already_deleted}
+      result -> result
+    end
   end
 
   def retrieve_customer(id) do
