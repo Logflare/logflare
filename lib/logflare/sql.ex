@@ -973,7 +973,36 @@ defmodule Logflare.Sql do
   end
 
   defp replace_names(ast, data) do
+    data = Map.put_new(data, :cte_names, [])
     AstUtils.transform_recursive(ast, data, &do_replace_names/2)
+  end
+
+  defp do_replace_names(
+         %{"with" => %{"cte_tables" => ctes, "recursive" => recursive?} = with_clause} = query,
+         data
+       ) do
+    data =
+      if recursive? do
+        names = Enum.map(ctes, &get_in(&1, ["alias", "name", "value"]))
+        %{data | cte_names: names ++ data.cte_names}
+      else
+        data
+      end
+
+    {ctes, data} =
+      Enum.map_reduce(ctes, data, fn cte, data ->
+        name = get_in(cte, ["alias", "name", "value"])
+        cte = replace_names(cte, data)
+        {cte, %{data | cte_names: Enum.uniq([name | data.cte_names])}}
+      end)
+
+    query = query |> Map.put("with", nil) |> replace_names(data)
+    %{query | "with" => %{with_clause | "cte_tables" => ctes}}
+  end
+
+  defp do_replace_names(%{"body" => %{"Select" => %{"from" => from}}} = query, data) do
+    data = bind_source_qualifiers(from, data)
+    Map.new(query, fn {key, value} -> {key, replace_names(value, data)} end)
   end
 
   defp do_replace_names({"Table" = k, %{"name" => names} = v}, data) do
@@ -983,7 +1012,7 @@ defmodule Logflare.Sql do
     qualified_name = names |> AstUtils.object_name_values() |> Enum.join(".")
 
     new_name_list =
-      if qualified_name in data.source_names do
+      if Map.has_key?(data.source_mapping, qualified_name) and not cte_relation?(names, data) do
         transformed_name = transformer.transform_source_name(qualified_name, data)
 
         [AstUtils.build_object_name_part(transformed_name, dialect_quote_style)]
@@ -1015,6 +1044,47 @@ defmodule Logflare.Sql do
   end
 
   defp do_replace_names(ast_node, _data), do: {:recurse, ast_node}
+
+  @spec bind_source_qualifiers(list() | map(), map()) :: map()
+  defp bind_source_qualifiers(from, data) when is_list(from) do
+    Enum.reduce(from, data, &bind_source_qualifiers/2)
+  end
+
+  defp bind_source_qualifiers(%{"relation" => relation, "joins" => joins}, data) do
+    Enum.reduce(joins, bind_source_qualifiers(relation, data), fn join, data ->
+      bind_source_qualifiers(join["relation"], data)
+    end)
+  end
+
+  defp bind_source_qualifiers(%{"Table" => %{"name" => names, "alias" => nil}}, data) do
+    name = names |> AstUtils.object_name_values() |> Enum.join(".")
+
+    source_names =
+      cond do
+        cte_relation?(names, data) -> List.delete(data.source_names, name)
+        Map.has_key?(data.source_mapping, name) -> Enum.uniq([name | data.source_names])
+        true -> data.source_names
+      end
+
+    %{data | source_names: source_names}
+  end
+
+  defp bind_source_qualifiers(
+         %{"NestedJoin" => %{"table_with_joins" => table, "alias" => nil}},
+         data
+       ) do
+    bind_source_qualifiers(table, data)
+  end
+
+  defp bind_source_qualifiers(relation, data) do
+    for {_kind, %{"alias" => %{"name" => %{"value" => name}}}} <- relation, reduce: data do
+      data -> %{data | source_names: List.delete(data.source_names, name)}
+    end
+  end
+
+  @spec cte_relation?(list(), map()) :: boolean()
+  defp cte_relation?([name], data), do: AstUtils.object_name_part_value(name) in data.cte_names
+  defp cte_relation?(_names, _data), do: false
 
   defp replace_sandboxed_query(ast, data) do
     AstUtils.transform_recursive(ast, data, &do_replace_sandboxed_query/2)

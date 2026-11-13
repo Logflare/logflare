@@ -147,6 +147,8 @@ defmodule Logflare.SqlTest do
             #  source names with dots
             {"select val from `my.table.name` where `my.table.name`.val > 5",
              "select val from #{table_dots} where #{table_dots}.val > 5"},
+            {"with `my.table.name` as (select 1 as n) select n from my.table.name",
+             "with `my.table.name` as (select 1 as n) select n from #{table_dots}"},
             # joins
             {"select a from my_table join other_table as f on a = 123",
              "select a from #{table} join #{table_other} as f on a = 123"},
@@ -1052,6 +1054,65 @@ defmodule Logflare.SqlTest do
 
       assert {:ok, transformed} = Sql.transform(:pg_sql, input, user)
       assert transformed =~ ~s("#{PostgresAdaptor.table_name(source)}")
+    end
+
+    test "scopes CTE names without hiding their source inputs", %{source: source, user: user} do
+      table = ~s("#{PostgresAdaptor.table_name(source)}")
+      insert(:source, user: user, name: "earlier")
+
+      recursive =
+        "WITH RECURSIVE source_a AS (SELECT 1 AS n UNION ALL SELECT n + 1 FROM source_a WHERE n < 2) SELECT source_a.n FROM source_a"
+
+      for {input, expected} <- [
+            {recursive, recursive},
+            {
+              "SELECT event_message FROM (WITH source_a AS (SELECT event_message FROM source_a) SELECT source_a.event_message FROM source_a ORDER BY source_a.event_message) AS nested UNION ALL SELECT event_message FROM source_a",
+              "SELECT event_message FROM (WITH source_a AS (SELECT event_message FROM #{table}) SELECT source_a.event_message FROM source_a ORDER BY source_a.event_message) AS nested UNION ALL SELECT event_message FROM #{table}"
+            },
+            {
+              "WITH earlier AS (SELECT event_message FROM source_a), source_a AS (SELECT event_message FROM earlier) SELECT source_a.event_message FROM source_a",
+              "WITH earlier AS (SELECT event_message FROM #{table}), source_a AS (SELECT event_message FROM earlier) SELECT source_a.event_message FROM source_a"
+            }
+          ] do
+        assert {:ok, transformed} = Sql.transform(:pg_sql, input, user)
+        assert_semantically_equal(transformed, expected)
+      end
+    end
+
+    test "preserves outer source correlations when a nested CTE has the same name", %{
+      source: source,
+      user: user
+    } do
+      table = ~s("#{PostgresAdaptor.table_name(source)}")
+
+      for from <- ["", " FROM source_a AS c"] do
+        input =
+          "SELECT (WITH source_a AS (SELECT 1 AS n) SELECT source_a.event_message#{from}) AS message FROM source_a"
+
+        expected =
+          "SELECT (WITH source_a AS (SELECT 1 AS n) SELECT #{table}.event_message#{from}) AS message FROM #{table}"
+
+        assert {:ok, transformed} = Sql.transform(:pg_sql, input, user)
+        assert_semantically_equal(transformed, expected)
+      end
+    end
+
+    test "distinguishes a quoted CTE alias from a multipart source name", %{user: user} do
+      source = insert(:source, user: user, name: "review.source_a")
+      table = ~s("#{PostgresAdaptor.table_name(source)}")
+
+      for {relation, expected_relation} <- [
+            {"review.source_a", table},
+            {~s("review.source_a"), ~s("review.source_a")}
+          ] do
+        input = ~s|WITH "review.source_a" AS (SELECT 1 AS n) SELECT n FROM #{relation}|
+
+        expected =
+          ~s|WITH "review.source_a" AS (SELECT 1 AS n) SELECT n FROM #{expected_relation}|
+
+        assert {:ok, transformed} = Sql.transform(:pg_sql, input, user)
+        assert_semantically_equal(transformed, expected)
+      end
     end
 
     test "rejects DML UPDATE statements", %{source: %{name: name}, user: user} do
