@@ -103,7 +103,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
 
   @impl NimblePool
   def handle_checkin(:keep, _from, conn, backend_id) do
-    # Tests use this signal to wait for checkin; omit it from other builds.
+    # Tests use this signal to wait for checkin
     if unquote(Mix.env() == :test) do
       :telemetry.execute([:logflare, :backends, :syslog, :checkin], %{}, %{backend_id: backend_id})
     end

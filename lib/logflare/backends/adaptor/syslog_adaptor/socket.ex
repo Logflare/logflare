@@ -6,7 +6,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Socket do
   @type socket :: :gen_tcp.socket() | :ssl.sslsocket()
 
   # see https://www.erlang.org/doc/apps/kernel/inet#setopts/2 for details
-  # Request a small receive buffer because Syslog does not expect response data.
+  # We request a small receive buffer because Syslog does not expect response data.
   @default_transport_opts mode: :binary,
                           packet: :raw,
                           active: true,
