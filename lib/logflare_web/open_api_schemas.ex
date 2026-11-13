@@ -531,6 +531,15 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: [:region, :username, :password]
   end
 
+  defmodule DynatraceConfigSchema do
+    @properties %{
+      url: %Schema{type: :string},
+      api_token: %Schema{type: :string}
+    }
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:url, :api_token]
+  end
+
   defmodule SplunkConfigSchema do
     @properties %{
       url: %Schema{type: :string},
@@ -608,6 +617,7 @@ defmodule LogflareWeb.OpenApiSchemas do
           LogflareWeb.OpenApiSchemas.SigNozConfigSchema,
           LogflareWeb.OpenApiSchemas.SyslogConfigSchema,
           LogflareWeb.OpenApiSchemas.SplunkConfigSchema,
+          LogflareWeb.OpenApiSchemas.DynatraceConfigSchema,
           LogflareWeb.OpenApiSchemas.GoogleSecOpsConfigSchema
         ]
       },

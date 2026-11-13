@@ -612,6 +612,32 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert backend.config.ingestion_key == "some-key"
     end
 
+    test "can create dynatrace backend", %{conn: conn, user: user} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
+
+      assert view
+             |> element("select#type")
+             |> render_change(%{backend: %{type: "dynatrace"}}) =~ "Environment URL"
+
+      html =
+        view
+        |> form("form", %{
+          backend: %{
+            name: "my dynatrace",
+            type: "dynatrace",
+            config: %{url: "https://172.32.0.1", api_token: "dt0c01.some-token"}
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Successfully created backend"
+      assert html =~ "my dynatrace"
+
+      [backend] = Backends.list_backends_by_user_access(user, type: :dynatrace)
+      assert backend.config.url == "https://172.32.0.1"
+      assert backend.config.api_token == "dt0c01.some-token"
+    end
+
     test "can create a clickhouse backend with a read cluster URL", %{conn: conn, user: user} do
       {:ok, view, _html} = live_with_redirect(conn, ~p"/backends/new")
 
