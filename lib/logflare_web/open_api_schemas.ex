@@ -553,6 +553,16 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: [:endpoint]
   end
 
+  defmodule Dash0ConfigSchema do
+    @properties %{
+      endpoint: %Schema{type: :string},
+      auth_token: %Schema{type: :string},
+      dataset: %Schema{type: :string, nullable: true}
+    }
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:endpoint, :auth_token]
+  end
+
   defmodule GoogleSecOpsConfigSchema do
     @properties %{
       region: %Schema{type: :string},
@@ -606,6 +616,7 @@ defmodule LogflareWeb.OpenApiSchemas do
           LogflareWeb.OpenApiSchemas.OtlpConfigSchema,
           LogflareWeb.OpenApiSchemas.Last9ConfigSchema,
           LogflareWeb.OpenApiSchemas.SigNozConfigSchema,
+          LogflareWeb.OpenApiSchemas.Dash0ConfigSchema,
           LogflareWeb.OpenApiSchemas.SyslogConfigSchema,
           LogflareWeb.OpenApiSchemas.SplunkConfigSchema,
           LogflareWeb.OpenApiSchemas.GoogleSecOpsConfigSchema

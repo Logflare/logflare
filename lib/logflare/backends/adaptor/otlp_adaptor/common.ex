@@ -1,8 +1,26 @@
 defmodule Logflare.Backends.Adaptor.OtlpAdaptor.Common do
   alias Logflare.Backends.Backend
   alias Logflare.Backends.Adaptor.HttpBased
+  alias Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter
 
   require Logger
+
+  @logs_path "/v1/logs"
+
+  @doc """
+  HTTP client options shared by OTLP based adaptors that send flattened log records,
+  gzipped, to `<endpoint>/v1/logs`.
+  """
+  @spec flattened_logs_client_opts(String.t(), %{String.t() => String.t()}) :: keyword()
+  def flattened_logs_client_opts(endpoint, headers) do
+    [
+      url: Path.join(endpoint, @logs_path),
+      formatter: {ProtobufFormatter, %{flatten_to_attributes: true}},
+      headers: headers,
+      gzip: true,
+      json: false
+    ]
+  end
 
   @doc """
   A code for testing connection meant to be shared by all OTLP based adaptors.
