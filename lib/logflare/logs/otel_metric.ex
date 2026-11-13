@@ -29,10 +29,7 @@ defmodule Logflare.Logs.OtelMetric do
     resource = Otel.handle_resource(resource)
 
     Enum.flat_map(scope_metrics, fn scope_metric ->
-      scope =
-        scope_metric.scope
-        |> Otel.handle_scope()
-        |> Map.put("schema_url", scope_metric.schema_url)
+      scope = Otel.handle_scope(scope_metric.scope)
 
       Enum.flat_map(scope_metric.metrics, fn metric ->
         handle_metric(metric, resource, scope)
