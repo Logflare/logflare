@@ -20,6 +20,7 @@ defmodule Logflare.Backends.Backend do
     sentry: Adaptor.SentryAdaptor,
     postgres: Adaptor.PostgresAdaptor,
     bigquery: Adaptor.BigQueryAdaptor,
+    bigquery_v2: Adaptor.BigQueryV2Adaptor,
     loki: Adaptor.LokiAdaptor,
     clickhouse: Adaptor.ClickHouseAdaptor,
     incidentio: Adaptor.IncidentioAdaptor,
@@ -36,6 +37,7 @@ defmodule Logflare.Backends.Backend do
   @type_labels %{
     axiom: "Axiom",
     bigquery: "BigQuery",
+    bigquery_v2: "BigQuery v2 (prototype)",
     clickhouse: "ClickHouse",
     datadog: "Datadog",
     elastic: "Elastic",
