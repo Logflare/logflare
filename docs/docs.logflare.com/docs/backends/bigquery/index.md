@@ -19,6 +19,16 @@ Ingested events are [streamed](https://cloud.google.com/bigquery/docs/streaming-
 Due to this streaming requirement, BYOB GCP projects **must have billing enabled**.
 :::
 
+### Testing the Connection
+
+Click **Test connection** on the backend page to insert a test event into the existing table of a source configured to send events to this backend. The test uses the backend's configured project and dataset. The source must belong to the same account as the backend.
+
+Logflare first chooses a source that has this backend attached. If there are none, it chooses a source with a [drain rule](/concepts/rules#drain-rules) targeting this backend. The test requires the table to exist and does not create datasets or tables.
+
+The event's `event_message` is `Logflare BigQuery connection test. No action required.` It remains in the table under the normal retention policy.
+
+The test uses REST streaming inserts, including for sources configured to use the Storage Write API. Success confirms that BigQuery accepted this REST insert; it does not validate the full ingestion pipeline, querying, or resource provisioning.
+
 ### Partitioning and Retention
 
 All tables are partitioned by the **timestamp** field, and are partitioned by **day**. This means that all queries across the BigQuery table must have a filter over the timestamp field.
