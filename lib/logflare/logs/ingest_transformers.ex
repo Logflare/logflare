@@ -51,57 +51,81 @@ defmodule Logflare.Logs.IngestTransformers do
       {body, Size.body_byte_size(body)}
   end
 
-  defp clean_and_to_bigquery_column_spec(data) when is_map(data) do
-    :maps.fold(
-      fn
-        _k, v, acc when is_nil_or_empty(v) ->
-          acc
-
-        k, v, {body, bytes} when is_map(v) or is_list(v) ->
-          {cleaned, value_bytes} = clean_and_to_bigquery_column_spec(v)
-
-          if is_nil_or_empty(cleaned) do
-            {body, bytes}
-          else
-            {put_bigquery_column(body, k, cleaned), bytes + value_bytes}
-          end
-
-        k, v, {body, bytes} ->
-          {put_bigquery_column(body, k, v), bytes + Size.body_byte_size(v)}
-      end,
-      {%{}, 0},
-      data
-    )
+  defp clean_and_to_bigquery_column_spec(data) do
+    {cleaned, bytes, _changed?} = clean_bigquery_value(data)
+    {cleaned, bytes}
   end
 
-  defp clean_and_to_bigquery_column_spec(data) when is_list(data),
-    do: clean_bigquery_list(data, [], 0)
-
-  defp clean_bigquery_list([], items, bytes), do: {Enum.reverse(items), bytes}
-
-  defp clean_bigquery_list([x | rest], items, bytes) when is_nil_or_empty(x),
-    do: clean_bigquery_list(rest, items, bytes)
-
-  defp clean_bigquery_list([x | rest], items, bytes) when is_map(x) or is_list(x) do
-    {cleaned, value_bytes} = clean_and_to_bigquery_column_spec(x)
-
-    if is_nil_or_empty(cleaned),
-      do: clean_bigquery_list(rest, items, bytes),
-      else: clean_bigquery_list(rest, [cleaned | items], bytes + value_bytes)
+  @spec clean_bigquery_value(map() | list()) :: {map() | list(), non_neg_integer(), boolean()}
+  defp clean_bigquery_value(data) when is_map(data) do
+    case :maps.fold(&clean_bigquery_entry/3, {[], 0, false}, data) do
+      {_pairs, bytes, false} -> {data, bytes, false}
+      {pairs, bytes, true} -> {bigquery_columns_from_list(pairs), bytes, true}
+    end
   end
 
-  defp clean_bigquery_list([x | rest], items, bytes),
-    do: clean_bigquery_list(rest, [x | items], bytes + Size.body_byte_size(x))
+  defp clean_bigquery_value(data) when is_list(data),
+    do: clean_bigquery_list(data, data, [], 0, false)
 
-  @compile {:inline, put_bigquery_column: 3}
-  @spec put_bigquery_column(map(), term(), term()) :: map()
-  defp put_bigquery_column(acc, key, value) do
-    result = Map.put(acc, to_bigquery_column_spec(key), value)
+  @spec clean_bigquery_entry(term(), term(), {list(), non_neg_integer(), boolean()}) ::
+          {list(), non_neg_integer(), boolean()}
+  defp clean_bigquery_entry(_k, v, {pairs, bytes, _changed?}) when is_nil_or_empty(v),
+    do: {pairs, bytes, true}
 
-    if map_size(result) == map_size(acc), do: throw(:normalized_bigquery_column_collision)
+  defp clean_bigquery_entry(k, v, {pairs, bytes, changed?}) when is_map(v) or is_list(v) do
+    case clean_bigquery_value(v) do
+      {cleaned, _value_bytes, _} when is_nil_or_empty(cleaned) ->
+        {pairs, bytes, true}
+
+      {cleaned, value_bytes, value_changed?} ->
+        key = to_bigquery_column_spec(k)
+        {[{key, cleaned} | pairs], bytes + value_bytes, changed? or value_changed? or key !== k}
+    end
+  end
+
+  defp clean_bigquery_entry(k, v, {pairs, bytes, changed?}) do
+    key = to_bigquery_column_spec(k)
+    {[{key, v} | pairs], bytes + Size.body_byte_size(v), changed? or key !== k}
+  end
+
+  @spec bigquery_columns_from_list([{term(), term()}]) :: map()
+  defp bigquery_columns_from_list(pairs) do
+    result = :maps.from_list(pairs)
+
+    if map_size(result) != length(pairs), do: throw(:normalized_bigquery_column_collision)
 
     result
   end
+
+  @spec clean_bigquery_list(list(), list(), list(), non_neg_integer(), boolean()) ::
+          {list(), non_neg_integer(), boolean()}
+  defp clean_bigquery_list([], original, _items, bytes, false), do: {original, bytes, false}
+
+  defp clean_bigquery_list([], _original, items, bytes, true),
+    do: {Enum.reverse(items), bytes, true}
+
+  defp clean_bigquery_list([x | rest], original, items, bytes, _changed?) when is_nil_or_empty(x),
+    do: clean_bigquery_list(rest, original, items, bytes, true)
+
+  defp clean_bigquery_list([x | rest], original, items, bytes, changed?)
+       when is_map(x) or is_list(x) do
+    case clean_bigquery_value(x) do
+      {cleaned, _value_bytes, _} when is_nil_or_empty(cleaned) ->
+        clean_bigquery_list(rest, original, items, bytes, true)
+
+      {cleaned, value_bytes, value_changed?} ->
+        clean_bigquery_list(
+          rest,
+          original,
+          [cleaned | items],
+          bytes + value_bytes,
+          changed? or value_changed?
+        )
+    end
+  end
+
+  defp clean_bigquery_list([x | rest], original, items, bytes, changed?),
+    do: clean_bigquery_list(rest, original, [x | items], bytes + Size.body_byte_size(x), changed?)
 
   # Rewrites a map key into a valid BigQuery standard column name in a single
   # pass. Standard names allow only [A-Za-z0-9_], cannot start with a digit,
