@@ -20,7 +20,12 @@ defmodule Logflare.Mapper.ConfigStoreTest do
     end
 
     test "compiles other formats lazily and caches them" do
-      for event_type <- [:log, :metric, :trace], format <- [:ndjson, :map] do
+      for event_type <- [:log, :metric, :trace],
+          format <- [
+            :ndjson,
+            {:ndjson, column_names: :underscore, nested_arrays: :json_strings},
+            :map
+          ] do
         assert {:ok, ref, config_id} = ConfigStore.get_compiled(event_type, format)
         assert is_reference(ref)
         assert config_id == OtelDefaults.config_id(event_type)

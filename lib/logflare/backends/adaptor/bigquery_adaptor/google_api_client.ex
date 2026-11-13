@@ -36,6 +36,15 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
       Logger.warning("Storage Write ArrowIPC.get_ipc_bytes produced more than one batch message")
     end
 
+    to_arrow_data(arrow_schema, batch_msgs)
+  end
+
+  @doc """
+  Wraps an Arrow IPC schema message and record batch messages into `ArrowData` rows for
+  `append_rows/3`, one per record batch.
+  """
+  @spec to_arrow_data(binary(), [binary()]) :: [ArrowData.t()]
+  def to_arrow_data(arrow_schema, batch_msgs) do
     writer_schema = %Google.Cloud.Bigquery.Storage.V1.ArrowSchema{serialized_schema: arrow_schema}
 
     for ipc_msg <- batch_msgs do

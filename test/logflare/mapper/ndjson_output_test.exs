@@ -13,6 +13,8 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
   alias Logflare.Mapper.OutputContext
 
   @envelope_keys ~w(id source_uuid source_name mapping_config_id ingested_at)
+  @array_flat_map_fields ~w(events.attributes links.attributes exemplars.filtered_attributes)
+  @bigquery_opts [column_names: :underscore, nested_arrays: :json_strings]
   # enum8 fields: the :map output emits the integer, NDJSON the label
   @label_only_keys ~w(metric_type)
   @fixtures %{
@@ -54,6 +56,11 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
        Map.new(
          [:log, :metric, :trace],
          &{&1, Mapper.compile!(OtelDefaults.for_type(&1, :ndjson))}
+       ),
+     bigquery:
+       Map.new(
+         [:log, :metric, :trace],
+         &{&1, Mapper.compile!(OtelDefaults.for_type(&1, {:ndjson, @bigquery_opts}))}
        ),
      map:
        Map.new(
@@ -216,6 +223,101 @@ defmodule Logflare.Mapper.NdjsonOutputTest do
       end
     end
   end
+
+  describe "column_names and nested_arrays options" do
+    @nested_bodies %{
+      metric:
+        Map.put(@fixtures.metric, "exemplars", [
+          %{"filtered_attributes" => %{"k" => "v", "nested" => %{"a" => 1}}, "value" => 4.2}
+        ]),
+      trace:
+        Map.merge(@fixtures.trace, %{
+          "events" => [%{"name" => "exception", "attributes" => %{"exception.message" => "boom"}}],
+          "links" => [%{"trace_id" => "lt", "attributes" => %{"link.type" => "parent"}}]
+        })
+    }
+
+    test "default OTEL configs write the plain values under BigQuery column names",
+         %{ndjson: ndjson, bigquery: bigquery} do
+      for event_type <- [:log, :metric, :trace] do
+        event = raw_event(event_type, Map.get(@nested_bodies, event_type, @fixtures[event_type]))
+        config_id = OtelDefaults.config_id(event_type)
+        plain = map_and_decode(event, ndjson[event_type], config_id)
+        row = map_and_decode(event, bigquery[event_type], config_id)
+
+        refute Enum.any?(Map.keys(row), &String.contains?(&1, "."))
+
+        assert Map.keys(row) |> Enum.sort() ==
+                 Map.keys(plain) |> Enum.map(&underscore/1) |> Enum.sort()
+
+        for {key, value} <- plain do
+          bigquery_value = row[underscore(key)]
+
+          if key in @array_flat_map_fields do
+            assert Enum.all?(bigquery_value, &is_binary/1)
+            assert Enum.map(bigquery_value, &Jason.decode!/1) == value
+          else
+            assert bigquery_value == value
+          end
+        end
+      end
+
+      assert %{
+               "events_name" => ["exception"],
+               "events_attributes" => [~s({"exception.message":"boom"})],
+               "links_attributes" => [~s({"link.type":"parent"})]
+             } = map_and_decode(:trace, @nested_bodies.trace, bigquery)
+
+      assert %{"exemplars_filtered_attributes" => [~s({"k":"v","nested.a":"1"})]} =
+               map_and_decode(:metric, @nested_bodies.metric, bigquery)
+    end
+
+    test "nested_arrays: :json_strings only changes array_flat_map fields" do
+      config =
+        MappingConfig.new(
+          [
+            Field.array_flat_map("items.attrs", path: "$.items[*].attrs"),
+            Field.array_string("items.names", path: "$.items[*].name"),
+            Field.json("meta", path: "$.meta")
+          ],
+          output: OutputFormat.ndjson(:metric, nested_arrays: :json_strings)
+        )
+
+      body = %{"items" => [%{"name" => "a", "attrs" => %{"k" => "v"}}], "meta" => %{"x" => 1}}
+      event = raw_event(:metric, body)
+      decoded = map_and_decode(event, Mapper.compile!(config), OtelDefaults.config_id(:metric))
+
+      assert %{
+               "items.attrs" => [~s({"k":"v"})],
+               "items.names" => ["a"],
+               "meta" => %{"x" => 1}
+             } = decoded
+    end
+
+    test "renaming collisions and unknown option values are compile errors" do
+      underscore = OutputFormat.ndjson(:metric, column_names: :underscore)
+      colliding = [Field.string("a.b", path: "$.x"), Field.string("a_b", path: "$.y")]
+      plain_field = [Field.string("a", path: "$.a")]
+
+      assert {:ok, _compiled} =
+               Mapper.compile(MappingConfig.new(colliding, output: OutputFormat.ndjson(:metric)))
+
+      for {fields, output, error} <- [
+            {colliding, underscore,
+             "NDJSON column name 'a_b' is produced by more than one field"},
+            {[Field.string("source.name", path: "$.source")], underscore,
+             "field name 'source_name' is reserved for the NDJSON envelope"},
+            {plain_field, struct!(OutputFormat.ndjson(:metric), column_names: :camel),
+             "unsupported NDJSON column_names 'camel'"},
+            {plain_field, struct!(OutputFormat.ndjson(:metric), nested_arrays: :flat),
+             "unsupported NDJSON nested_arrays 'flat'"}
+          ] do
+        assert {:error, ^error} = Mapper.compile(MappingConfig.new(fields, output: output))
+      end
+    end
+  end
+
+  defp underscore(key), do: String.replace(key, ".", "_")
 
   defp encode(event_type, body, ndjson) do
     event = raw_event(event_type, body)
