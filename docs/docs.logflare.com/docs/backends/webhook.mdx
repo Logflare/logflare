@@ -21,6 +21,17 @@ Optional values:
 ### Request 
 The request made will be a `POST`.
 
+### Delivery retries
+
+HTTP 429, HTTP 5xx, and transient connection failures are retried up to three
+times after the initial attempt, using exponential backoff with jitter starting
+at 500 ms. Each attempt sends the same encoded payload. Other non-2xx responses
+are not retried. Batches that still fail after the retry limit are logged and
+dropped.
+
+A connection failure can happen after the receiver accepts a request, so retries
+can deliver duplicate events. Receivers should handle duplicates when possible.
+
 ### Payload format
 
 With `format` set to `json`, each batch is sent as a JSON array of events.

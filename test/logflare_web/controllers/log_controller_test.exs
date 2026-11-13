@@ -832,7 +832,7 @@ defmodule LogflareWeb.LogControllerTest do
       WebhookAdaptor.Client
       |> stub(:send, fn req ->
         send(this, {:webhook, req[:body]})
-        %Tesla.Env{status: 200, body: ""}
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       conn =
@@ -885,7 +885,7 @@ defmodule LogflareWeb.LogControllerTest do
       WebhookAdaptor.Client
       |> stub(:send, fn req ->
         send(this, {:webhook, req[:body]})
-        %Tesla.Env{status: 200, body: ""}
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       conn =
@@ -921,7 +921,7 @@ defmodule LogflareWeb.LogControllerTest do
       WebhookAdaptor.Client
       |> stub(:send, fn req ->
         send(this, {:webhook, req[:body]})
-        %Tesla.Env{status: 200, body: ""}
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       conn =
@@ -955,7 +955,7 @@ defmodule LogflareWeb.LogControllerTest do
       WebhookAdaptor.Client
       |> stub(:send, fn req ->
         send(this, {:webhook, req[:url], req[:body]})
-        %Tesla.Env{status: 200, body: ""}
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       body =
@@ -1118,7 +1118,7 @@ defmodule LogflareWeb.LogControllerTest do
       WebhookAdaptor.Client
       |> stub(:send, fn req ->
         send(this, {:webhook, req[:body]})
-        %Tesla.Env{status: 200, body: ""}
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       conn =
@@ -1257,7 +1257,7 @@ defmodule LogflareWeb.LogControllerTest do
     WebhookAdaptor.Client
     |> expect(:send, fn _req ->
       send(pid, ref)
-      %Tesla.Env{status: 200, body: ""}
+      {:ok, %Tesla.Env{status: 200, body: ""}}
     end)
 
     {pid, ref}
@@ -1267,7 +1267,7 @@ defmodule LogflareWeb.LogControllerTest do
     WebhookAdaptor.Client
     |> expect(:send, fn req ->
       send(pid, {ref, req[:body]})
-      %Tesla.Env{status: 200, body: ""}
+      {:ok, %Tesla.Env{status: 200, body: ""}}
     end)
 
     {pid, ref}

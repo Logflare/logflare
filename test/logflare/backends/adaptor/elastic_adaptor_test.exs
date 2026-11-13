@@ -152,7 +152,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
       @client
       |> expect(:send, fn _req ->
         send(this, ref)
-        %Tesla.Env{status: 200, body: ""}
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       le = build(:log_event, source: source)
@@ -168,7 +168,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
       @client
       |> expect(:send, fn req ->
         send(this, {ref, req[:body]})
-        %Tesla.Env{status: 200, body: ""}
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       le = build(:log_event, source: source, some: "key")
@@ -207,7 +207,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
       |> expect(:send, fn req ->
         assert "Basic" <> _ = req[:headers]["Authorization"]
         send(this, {ref, req[:body]})
-        %Tesla.Env{status: 200, body: ""}
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       le = build(:log_event, source: source, some: "key")
@@ -297,7 +297,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
       |> expect(:send, fn req ->
         assert "Basic" <> _ = req[:headers]["Authorization"]
         send(this, {ref, req[:body]})
-        %Tesla.Env{status: 200, body: ""}
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       le = build(:log_event, source: source, event_message: "hello logstash", some: "key")

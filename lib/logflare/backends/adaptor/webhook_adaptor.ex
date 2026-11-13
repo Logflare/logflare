@@ -22,6 +22,13 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   Adaptors that set `:format_batch` bypass this option.
 
+  ### Delivery retries
+
+  Requests retry HTTP 429, HTTP 5xx, and transient connection errors up to three
+  times with exponential backoff and jitter. The encoded payload is reused on
+  each attempt. Batches are acknowledged successfully only after a 2xx response;
+  permanent failures and exhausted retries are logged and dropped.
+
   ### Dynamic URL handling with URL Override
 
   This adaptor performs a merge on config that will prevent you from leveraging a dynamically generated URL configuration at runtime.
@@ -331,9 +338,25 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     alias Logflare.Backends.Adaptor.HttpBased.SSRFProtection
     use Tesla, docs: false
 
+    @retryable_transport_errors [
+      :timeout,
+      :request_timeout,
+      :pool_timeout,
+      :econnrefused,
+      :econnreset,
+      :closed,
+      :connection_closed,
+      :disconnected,
+      :read_only,
+      :nxdomain,
+      :enetunreach,
+      :ehostunreach
+    ]
+
     defguardp is_possible_pool(value)
               when not is_nil(value) and not is_boolean(value) and is_atom(value)
 
+    @spec send(keyword()) :: {:ok, Tesla.Env.t()} | {:error, term()}
     def send(opts) do
       http_opt = Keyword.get(opts, :http)
       pool_name = Keyword.get(opts, :pool_name)
@@ -360,8 +383,10 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       Tesla.client(
         [
           Tesla.Middleware.Telemetry,
-          Tesla.Middleware.JSON,
+          Tesla.Middleware.EncodeJson,
           if(opts[:gzip], do: {Tesla.Middleware.CompressRequest, format: "gzip"}),
+          {Tesla.Middleware.Retry,
+           delay: 500, max_retries: 3, max_delay: 4_000, should_retry: &retryable?/1},
           SSRFProtection,
           EgressTracer
         ]
@@ -370,6 +395,15 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       )
       |> request(opts)
     end
+
+    @spec retryable?({:ok, Tesla.Env.t()} | {:error, term()}) :: boolean()
+    defp retryable?({:ok, %Tesla.Env{status: status}}),
+      do: status == 429 or status in 500..599
+
+    defp retryable?({:error, %Finch.Error{reason: reason}}),
+      do: reason in @retryable_transport_errors
+
+    defp retryable?({:error, reason}), do: reason in @retryable_transport_errors
 
     # Header names the client's own middleware will set for this request, so they
     # must be dropped from user-supplied headers to avoid duplicates (see
@@ -475,21 +509,38 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           source_id: context.source_id,
           backend_id: context.backend_id
         )
+
+        messages
       else
         case process_data(payload, config, backend_metadata, context) do
-          {:error, {Tesla.Middleware.JSON, :encode, _reason}} ->
-            Logger.warning(
-              "Dropped #{length(messages)} log events from webhook batch: JSON encoding failed",
-              source_id: context.source_id,
-              backend_id: context.backend_id
-            )
+          {:ok, %Tesla.Env{status: status}} when status in 200..299 ->
+            messages
 
-          _ ->
-            :ok
+          {:ok, %Tesla.Env{status: status}} ->
+            fail_batch(messages, {:http, status}, context)
+
+          {:error, reason} ->
+            fail_batch(messages, reason, context)
         end
       end
+    end
 
-      messages
+    @spec fail_batch([Message.t()], term(), map()) :: [Message.t()]
+    defp fail_batch(messages, reason, context) do
+      error =
+        case reason do
+          {:http, status} -> "HTTP #{status}"
+          {Tesla.Middleware.JSON, :encode, _reason} -> "JSON encoding failed"
+          _ -> "request failed"
+        end
+
+      Logger.warning(
+        "Dropped #{length(messages)} log events from webhook batch: #{error}",
+        source_id: context.source_id,
+        backend_id: context.backend_id
+      )
+
+      Enum.map(messages, &Message.failed(&1, reason))
     end
 
     @spec empty_payload?(term()) :: boolean()
@@ -576,8 +627,6 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       end)
     end
 
-    def ack(_ack_ref, _successful, _failed) do
-      # TODO: re-queue failed
-    end
+    def ack(_ack_ref, _successful, _failed), do: :ok
   end
 end
