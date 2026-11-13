@@ -77,7 +77,7 @@ defmodule Logflare.ContextCache.Gossip.DistributedTest do
     user = unboxed_insert_then_delete_on_exit(:user)
 
     # write tombstone LOCALLY
-    ContextCache.Gossip.record_tombstones([{Users, user.id}])
+    ContextCache.Tombstones.record([{Users, user.id}])
 
     # trigger cache miss ON THE PEER
     :erpc.call(peer, Users.Cache, :get_by, [[email: user.email]])
