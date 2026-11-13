@@ -455,7 +455,7 @@ defmodule Logflare.Logs.SearchTest do
       }
 
       assert {:ok, %{aggregates: single_result}} = Search.aggs(single)
-      assert single_result.series == []
+      assert single_result.series == [%{key: "value", label: "avg(m.response_bytes)"}]
 
       assert Enum.map(single_result.rows, &{&1["timestamp"], &1["value"]}) == [
                {first_timestamp + 120_000_000, 0},

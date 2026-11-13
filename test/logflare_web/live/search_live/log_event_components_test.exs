@@ -202,6 +202,40 @@ defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
       assert html |> Floki.parse_fragment!() |> Floki.find("#empty-search-results a") == []
     end
 
+    test "single-aggregate labels preserve search extension for category totals", %{
+      source: source,
+      lql_rules: lql_rules
+    } do
+      search_op = search_operation(source, lql_rules, [])
+
+      aggregates = %{
+        search_op
+        | series: [%{key: "value", label: "count(*)"}],
+          rows: [
+            %{"datetime" => ~U[2026-01-01 00:00:00Z], "total" => 0},
+            %{"datetime" => ~U[2026-01-02 00:00:00Z], "total" => 2}
+          ]
+      }
+
+      html =
+        render_component(
+          &LogEventComponents.results_list/1,
+          Map.merge(@default_attrs, %{
+            search_op_log_events: search_op,
+            search_op_log_aggregates: aggregates
+          })
+        )
+
+      assert [link] = html |> Floki.parse_fragment!() |> Floki.find("#empty-search-results a")
+      params = link |> Floki.attribute("href") |> hd() |> URI.parse() |> Map.fetch!(:query)
+
+      {:ok, extended_rules} =
+        Lql.decode(URI.decode_query(params)["querystring"], SchemaBuilder.initial_table_schema())
+
+      assert [%FilterRule{path: "timestamp", operator: :>=, value: ~N[2026-01-02 00:00:00]}] =
+               Rules.get_filter_rules(extended_rules)
+    end
+
     test "renders the previous-page pagination button", %{
       source: source,
       search_op_log_events: search_op_log_events,

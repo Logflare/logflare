@@ -80,7 +80,9 @@ defmodule Logflare.Logs.Search do
   end
 
   @spec prepare_aggregate_query(SO.t()) :: SO.t()
-  defp prepare_aggregate_query(%SO{chart_rules: [_, _ | _] = chart_rules} = so) do
+  defp prepare_aggregate_query(%SO{chart_rules: chart_rules} = so) do
+    multiple_aggregates? = length(chart_rules) > 1
+
     series =
       chart_rules
       |> Enum.with_index()
@@ -88,9 +90,15 @@ defmodule Logflare.Logs.Search do
         field =
           if path == "timestamp", do: "*", else: String.replace_leading(path, "metadata.", "m.")
 
-        %{key: "aggregate_#{index}", label: "#{aggregate}(#{field})"}
+        key = if multiple_aggregates?, do: "aggregate_#{index}", else: "value"
+        %{key: key, label: "#{aggregate}(#{field})"}
       end)
 
+    prepare_aggregate_query(so, series)
+  end
+
+  @spec prepare_aggregate_query(SO.t(), [map()]) :: SO.t()
+  defp prepare_aggregate_query(%SO{chart_rules: [_, _ | _] = chart_rules} = so, series) do
     prepared_aggregates =
       chart_rules
       |> Enum.zip(series)
@@ -111,7 +119,10 @@ defmodule Logflare.Logs.Search do
     }
   end
 
-  defp prepare_aggregate_query(%SO{} = so), do: apply_numeric_aggs(so)
+  defp prepare_aggregate_query(%SO{} = so, series) do
+    so = apply_numeric_aggs(so)
+    %{so | series: series}
+  end
 
   @spec combined_aggregate_query(SO.t(), [SO.t()]) :: Ecto.Query.t()
   defp combined_aggregate_query(so, prepared_aggregates) do

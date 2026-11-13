@@ -130,7 +130,7 @@ describe("LogEventsChart with Recharts", () => {
     });
   };
 
-  it("renders a compact legend above unstacked lines with eight colors before repeating", async () => {
+  it("renders a compact legend below unstacked lines with eight colors before repeating", async () => {
     const series = [
       ...aggregateSeries,
       ...Array.from({ length: 5 }, (_, index) => ({
@@ -150,8 +150,11 @@ describe("LogEventsChart with Recharts", () => {
     expect([...legend.querySelectorAll("li")].map((item) => item.textContent)).toEqual(
       series.map(({ label }) => label),
     );
-    expect(legend.compareDocumentPosition(container.querySelector(".recharts-wrapper")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(legend.compareDocumentPosition(container.querySelector(".recharts-wrapper")) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
     expect(container.querySelectorAll(".recharts-bar")).toHaveLength(0);
+    const gridLines = [...container.querySelectorAll(".recharts-cartesian-grid-horizontal line")];
+    expect(gridLines.length).toBeGreaterThan(0);
+    expect(gridLines.every((line) => Number(line.getAttribute("y1")) <= chartBounds.height)).toBe(true);
     const lines = [...container.querySelectorAll(".recharts-line-curve")];
     expect(lines.map((line) => line.getAttribute("stroke"))).toEqual([
       "#5eeb8f", "#6286db", "#8e6ddf", "#f1ba58", "#dc3545",
@@ -197,9 +200,9 @@ describe("LogEventsChart with Recharts", () => {
     await hoverAt(250);
     const tooltip = container.querySelector(".recharts-tooltip-wrapper");
     expect(tooltipText()).toEqual([
-      "avg(m.latency): —", "max(m.latency): 20.50", "count(*): 0", "10:01",
+      "avg(m.latency) —", "max(m.latency) 20.50", "count(*) 0", "10:01",
     ]);
-    expect(tooltip.querySelector("strong").parentElement.style.color).toBe("rgb(98, 134, 219)");
+    expect(tooltip.querySelector('[aria-hidden="true"]').style.backgroundColor).toBe("rgb(98, 134, 219)");
 
     for (const button of buttons.slice(1)) {
       await dispatchMouseEvent(button, "click", 0);
@@ -216,17 +219,53 @@ describe("LogEventsChart with Recharts", () => {
     expect(container.querySelectorAll(".recharts-line-dots circle")).toHaveLength(2);
     await hoverAt(250);
     expect(tooltipText()).toEqual([
-      "avg(m.latency): —", "10:01",
+      "avg(m.latency) —", "10:01",
     ]);
+    expect(tooltip.querySelector('[aria-hidden="true"]')).toBeNull();
     expect(pushEvent.mock.calls).toEqual([]);
   });
 
-  it("rounds aggregate tooltip values to two decimal places without whole-number decimals or losing nulls", async () => {
+  it.each([
+    ["default", aggregateSeries, ["#5eeb8f", "#6286db", "#8e6ddf", "#f1ba58"]],
+    ["default", [], []],
+    ["cloudflare_status_codes", [], ["#9a9a9a", "#dc3545", "#f1ba58", "#6286db", "#5eeb8f", "#8e6ddf", "#9a9a9a"]],
+    ["vercel_status_codes", [], ["#9a9a9a", "#dc3545", "#f1ba58", "#6286db", "#5eeb8f", "#8e6ddf", "#9a9a9a"]],
+    ["netlify_status_codes", [], ["#9a9a9a", "#dc3545", "#f1ba58", "#6286db", "#5eeb8f", "#8e6ddf", "#9a9a9a"]],
+    ["elixir_logger_levels", [], ["#9a9a9a", "#b11226", "#bd1550", "#dc3545", "#dc3545", "#f1ba58", "#03c03c", "#5eeb8f", "#8e6ddf", "#9a9a9a"]],
+  ])("uses gray labels, white values and dots only for multiple tooltip items in %s with series %j", async (shape, series, colors) => {
+    await renderChart({ chart_data_shape_id: shape, series });
+    await hoverAt(250);
+
+    const tooltip = container.querySelector(".recharts-tooltip-wrapper");
+    const rows = [...tooltip.querySelectorAll("strong")];
+    for (const row of rows.slice(0, -1)) {
+      expect(row.children[0].style.color).toBe("rgb(154, 154, 154)");
+      expect(row.children[1].style.color).toBe("rgb(255, 255, 255)");
+      expect(row.children[1].style.textAlign).toBe("right");
+    }
+    expect(rows.at(-1).style.color).toBe("rgb(154, 154, 154)");
+    expect([...tooltip.querySelectorAll('[aria-hidden="true"]')].map((dot) => dot.style.backgroundColor)).toEqual(
+      colors.map((color) => {
+        const element = document.createElement("span");
+        element.style.backgroundColor = color;
+        return element.style.backgroundColor;
+      }),
+    );
+  });
+
+  it.each([
+    [["en-US"], "987,654,321,012.35", "-123,456,789.57"],
+    [["de-DE", "en-US"], "987.654.321.012,35", "-123.456.789,57"],
+    [["fr-FR"], "987\u202f654\u202f321\u202f012,35", "-123\u202f456\u202f789,57"],
+    [["hi-IN"], "9,87,65,43,21,012.35", "-12,34,56,789.57"],
+    [[], "987,654,321,012.35", "-123,456,789.57"],
+  ])("formats aggregate tooltip numbers for browser languages %j without losing rounding or nulls", async (languages, positive, negative) => {
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(languages);
     await renderChart({
       data: aggregateData.map((row) => ({
         ...row,
-        aggregate_0: "53512.35087719296",
-        aggregate_2: -20.56789,
+        aggregate_0: "987654321012.3509",
+        aggregate_2: -123456789.56789,
       })),
     });
     await hoverAt(250);
@@ -234,10 +273,10 @@ describe("LogEventsChart with Recharts", () => {
     const tooltip = container.querySelector(".recharts-tooltip-wrapper");
     expect(tooltip.style.visibility).toBe("visible");
     expect(tooltipText()).toEqual([
-      "sum(m.latency): 53512.35",
-      "avg(m.latency): —",
-      "max(m.latency): -20.57",
-      "count(*): 0",
+      `sum(m.latency) ${positive}`,
+      "avg(m.latency) —",
+      `max(m.latency) ${negative}`,
+      "count(*) 0",
       "10:01",
     ]);
   });
@@ -254,34 +293,38 @@ describe("LogEventsChart with Recharts", () => {
     const tooltip = container.querySelector(".recharts-tooltip-wrapper");
     expect(tooltip.style.visibility).toBe("visible");
     expect(tooltipText()).toEqual([
-      ...aggregateSeries.map(({ label }) => `${label}: —`),
+      ...aggregateSeries.map(({ label }) => `${label} —`),
       "10:01",
     ]);
   });
 
-  it.each([undefined, [], [aggregateSeries[0]]])("retains single-value bars without a multi-aggregate legend for series %j", async (series) => {
-    await renderChart({ data: chartData, series });
+  it.each([
+    [undefined, "Value"],
+    [[], "Value"],
+    [[{ key: "value", label: "max(m.response_bytes)" }], "max(m.response_bytes)"],
+  ])("retains single-value bars without a multi-aggregate legend for series %j", async (series, label) => {
+    await renderChart({ data: chartData.map((row) => ({ ...row, value: 12345.5 })), series });
     expect(container.querySelectorAll(".recharts-bar")).toHaveLength(1);
     expect(container.querySelectorAll(".recharts-line")).toHaveLength(0);
     expect(container.querySelector('[aria-label="Chart aggregates"]')).toBeNull();
     await hoverAt(250);
     expect(tooltipText()).toEqual([
-      "Value: 1",
+      `${label} 12,345.50`,
       "10:01",
     ]);
   });
 
   it.each([
     ["cloudflare_status_codes", { total: 3, status_2xx: 2, status_5xx: 1 }, 7, [
-      "Total: 3", "5xx: 1", "4xx:", "3xx:", "2xx: 2", "1xx:", "Other:", "10:01",
+      "Total 3", "5xx 1", "4xx", "3xx", "2xx 2", "1xx", "Other", "10:01",
     ]],
     ["elixir_logger_levels", { total: 3, level_info: 2, other: 1 }, 10, [
-      "Total: 3", "Emergency:", "Critical:", "Alert:", "Error:", "Warn:",
-      "Notice:", "Info: 2", "Debug:", "Other: 1", "10:01",
+      "Total 3", "Emergency", "Critical", "Alert", "Error", "Warn",
+      "Notice", "Info 2", "Debug", "Other 1", "10:01",
     ]],
   ])("retains %s bars and tooltip values followed by the timestamp", async (shape, values, barCount, expected) => {
     await renderChart({
-      series: [],
+      series: [{ key: "value", label: "count(*)" }],
       chart_data_shape_id: shape,
       data: chartData.map((row) => ({ ...row, ...values })),
     });
