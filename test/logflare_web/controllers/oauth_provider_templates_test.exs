@@ -20,6 +20,7 @@ defmodule LogflareWeb.OauthProviderTemplatesTest do
     body = html_response(conn, 200)
 
     assert body =~ "Authorized Applications"
+    assert body =~ "Application created at"
     assert body |> Floki.parse_document!() |> Floki.find("tbody tr") == []
 
     application = create_application()
