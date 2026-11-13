@@ -3,6 +3,7 @@ defmodule LogflareWeb.IntegrationSigninTest do
 
   alias ExOauth2Provider.Applications
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Users
   alias LogflareWeb.Auth.OauthController
 
   setup do
@@ -64,6 +65,63 @@ defmodule LogflareWeb.IntegrationSigninTest do
         |> Plug.Test.init_test_session(get_session(conn))
         |> get(path)
 
+      assert html_response(conn, 200)
+      assert conn.assigns.user.id == user.id
+    end
+  end
+
+  for integration <- [:oauth, :vercel] do
+    @signup_integration integration
+
+    test "Google signup resumes #{@signup_integration} after replacing another user's session", %{
+      conn: conn
+    } do
+      start_supervised!(Logflare.SystemMetrics.AllLogsLogged)
+      identity = build(:user)
+
+      conn =
+        conn
+        |> previous_session(:other_user, identity)
+        |> pending_integration(@signup_integration)
+
+      pending_session = Map.take(get_session(conn), ["oauth_params", "vercel_setup"])
+      conn = google_callback(conn, identity)
+      user = Users.get_by(provider_uid: identity.provider_uid)
+
+      assert user
+      assert get_session(conn, :current_email) == user.email
+      refute get_session(conn, :last_switched_team_id)
+      assert Map.take(get_session(conn), ["oauth_params", "vercel_setup"]) == pending_session
+      assert redirected_to(conn) == "/sources/new?signup=true"
+
+      conn =
+        build_conn()
+        |> Plug.Test.init_test_session(get_session(conn))
+        |> get(redirected_to(conn))
+
+      assert html_response(conn, 200)
+      assert conn.assigns.user.id == user.id
+
+      conn =
+        conn
+        |> recycle()
+        |> post("/sources", %{"source" => %{"name" => "Signup integration source"}})
+
+      refute get_session(conn, :oauth_params)
+      refute get_session(conn, :vercel_setup)
+
+      path =
+        case @signup_integration do
+          :oauth ->
+            assert redirected_to(conn) =~ "/oauth/authorize?"
+            redirected_to(conn)
+
+          :vercel ->
+            assert redirected_to(conn) == "http://www.example.com/integrations/vercel/edit"
+            "/integrations/vercel/edit"
+        end
+
+      conn = conn |> recycle() |> get(path)
       assert html_response(conn, 200)
       assert conn.assigns.user.id == user.id
     end
