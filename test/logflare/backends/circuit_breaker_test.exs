@@ -1,8 +1,8 @@
-defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreakerTest do
+defmodule Logflare.Backends.CircuitBreakerTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.Backends
-  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreaker
+  alias Logflare.Backends.CircuitBreaker
 
   setup do
     insert(:plan, name: "Free")
@@ -92,7 +92,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreakerTest do
 
   describe "open telemetry" do
     setup do
-      TestUtils.attach_forwarder([:logflare, :clickhouse, :circuit_breaker, :open])
+      TestUtils.attach_forwarder([:logflare, :backends, :circuit_breaker, :open])
 
       :ok
     end
@@ -105,10 +105,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreakerTest do
       record_failures(backend, 3)
       CircuitBreaker.get_state(backend)
 
-      assert_receive {:telemetry_event, [:logflare, :clickhouse, :circuit_breaker, :open],
+      assert_receive {:telemetry_event, [:logflare, :backends, :circuit_breaker, :open],
                       %{failures: 3}, metadata}
 
       assert metadata.backend_id == backend.id
+      assert metadata.backend_type == :clickhouse
       assert metadata.reason == :threshold
     end
 
@@ -117,10 +118,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreakerTest do
 
       assert :ok = CircuitBreaker.trip(backend)
 
-      assert_receive {:telemetry_event, [:logflare, :clickhouse, :circuit_breaker, :open],
+      assert_receive {:telemetry_event, [:logflare, :backends, :circuit_breaker, :open],
                       %{failures: 0}, metadata}
 
       assert metadata.backend_id == backend.id
+      assert metadata.backend_type == :clickhouse
       assert metadata.reason == :forced
     end
 
@@ -130,7 +132,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.CircuitBreakerTest do
       record_failures(backend, 2)
       CircuitBreaker.get_state(backend)
 
-      refute_received {:telemetry_event, [:logflare, :clickhouse, :circuit_breaker, :open], _, _}
+      refute_received {:telemetry_event, [:logflare, :backends, :circuit_breaker, :open], _, _}
     end
   end
 
