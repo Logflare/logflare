@@ -49,16 +49,7 @@ defmodule LogflareWeb.IntegrationSigninTest do
       refute get_session(conn, :oauth_params)
       refute get_session(conn, :vercel_setup)
 
-      path =
-        case @integration do
-          :oauth ->
-            assert redirected_to(conn) =~ "/oauth/authorize?"
-            redirected_to(conn)
-
-          :vercel ->
-            assert redirected_to(conn) == "http://www.example.com/integrations/vercel/edit"
-            "/integrations/vercel/edit"
-        end
+      path = continuation_path(conn, @integration)
 
       conn =
         build_conn()
@@ -110,16 +101,7 @@ defmodule LogflareWeb.IntegrationSigninTest do
       refute get_session(conn, :oauth_params)
       refute get_session(conn, :vercel_setup)
 
-      path =
-        case @signup_integration do
-          :oauth ->
-            assert redirected_to(conn) =~ "/oauth/authorize?"
-            redirected_to(conn)
-
-          :vercel ->
-            assert redirected_to(conn) == "http://www.example.com/integrations/vercel/edit"
-            "/integrations/vercel/edit"
-        end
+      path = continuation_path(conn, @signup_integration)
 
       conn = conn |> recycle() |> get(path)
       assert html_response(conn, 200)
@@ -184,6 +166,18 @@ defmodule LogflareWeb.IntegrationSigninTest do
       assert query["code"]
       assert Map.get(query, "state", "") == Map.get(params, "state", "")
     end
+  end
+
+  @spec continuation_path(Plug.Conn.t(), :oauth | :vercel) :: String.t()
+  defp continuation_path(conn, :oauth) do
+    path = redirected_to(conn)
+    assert path =~ "/oauth/authorize?"
+    path
+  end
+
+  defp continuation_path(conn, :vercel) do
+    assert redirected_to(conn) == "http://www.example.com/integrations/vercel/edit"
+    "/integrations/vercel/edit"
   end
 
   defp previous_session(conn, :none, _user), do: conn

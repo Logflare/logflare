@@ -203,7 +203,10 @@ defmodule LogflareWeb.OauthProviderTemplatesTest do
     assert body =~ "Client authentication failed"
   end
 
-  test "native authorization redirects to the code display page", %{conn: conn, user: user} do
+  test "an already-authorized native client redirects to the code display page", %{
+    conn: conn,
+    user: user
+  } do
     application = create_application(%{redirect_uri: "urn:ietf:wg:oauth:2.0:oob"})
     insert(:access_token, resource_owner: user, application: application, scopes: "read write")
 
