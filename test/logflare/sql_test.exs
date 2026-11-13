@@ -2001,12 +2001,30 @@ defmodule Logflare.SqlTest do
       bq_query = ~s|select `@field` as f, @p from my_source where `@field` = @p|
 
       pg_query =
-        ~s|select (body -> '@field') as f, $1::text from my_source where (body ->> '@field') = (cast($2::text as jsonb) #>> '{}')|
+        ~s|select (body -> '@field') as f, $1::text from my_source where (body ->> '@field') = $2::text|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert_semantically_equal(translated, pg_query)
       assert {:ok, ["p"]} = Sql.parameters(bq_query)
       assert {:ok, %{1 => "p", 2 => "p"}} = Sql.parameter_positions(bq_query)
+    end
+
+    test "parameters compared with Eq are not cast to jsonb" do
+      for bq_query <- [
+            "select id from my_source where project = @project",
+            "select id from my_source where @project = project"
+          ] do
+        {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+        assert translated =~ "$1::text"
+        refute String.downcase(translated) =~ "jsonb"
+      end
+    end
+
+    test "column compared with a column in a CTE is still cast to jsonb" do
+      bq_query = "with c as (select a, b from my_source) select a from c where a = b"
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert String.downcase(translated) =~ "jsonb"
     end
 
     test "malformed table name when global bq project id is not set" do
