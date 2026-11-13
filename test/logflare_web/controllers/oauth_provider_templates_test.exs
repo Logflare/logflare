@@ -141,6 +141,57 @@ defmodule LogflareWeb.OauthProviderTemplatesTest do
     end
   end
 
+  for {scenario, application_scopes, scope_params, expected_scopes} <- [
+        {"omitted", "public read write", %{}, ["public"]},
+        {"blank", "public read write", %{"scope" => ""}, ["public"]},
+        {"whitespace", "public read write", %{"scope" => "  \t"}, ["public"]},
+        {"explicit", "public read write", %{"scope" => "read"}, ["read"]},
+        {"no permitted defaults", "read write", %{}, []}
+      ] do
+    @application_scopes application_scopes
+    @scope_params scope_params
+    @expected_scopes expected_scopes
+
+    test "consent discloses and submits effective scopes for #{scenario} scope", %{
+      conn: conn,
+      user: user
+    } do
+      application = create_application(%{scopes: @application_scopes})
+
+      params =
+        application
+        |> authorization_params()
+        |> Map.delete("scope")
+        |> Map.merge(@scope_params)
+
+      conn = get(conn, "/oauth/authorize", params)
+      body = html_response(conn, 200)
+      document = Floki.parse_document!(body)
+
+      assert Floki.find(document, ".oauth-permissions li") |> Enum.map(&Floki.text/1) ==
+               @expected_scopes
+
+      for label <- ["Authorize", "Deny"] do
+        form_params = body |> consent_form(label) |> form_params()
+        assert form_params["scope"] == Enum.join(@expected_scopes, " ")
+      end
+
+      conn =
+        conn
+        |> recycle()
+        |> put_private(:plug_skip_csrf_protection, false)
+        |> post("/oauth/authorize", body |> consent_form("Authorize") |> form_params())
+
+      query = conn |> redirected_to() |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+      grant = Repo.get_by!(OauthAccessGrant, token: query["code"])
+
+      assert grant.resource_owner_id == user.id
+      assert grant.scopes == Enum.join(@expected_scopes, " ")
+      assert query["state"] == params["state"]
+      refute query["error"]
+    end
+  end
+
   test "an invalid client renders the OAuth error instead of crashing", %{conn: conn} do
     body =
       conn
