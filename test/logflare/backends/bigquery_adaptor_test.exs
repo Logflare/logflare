@@ -518,6 +518,12 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
            }}
       end)
 
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_get_iam_policy,
+        fn _, _, _ -> {:ok, %GoogleApi.CloudResourceManager.V1.Model.Policy{bindings: []}} end
+      )
+
       expect(
         GoogleApi.CloudResourceManager.V1.Api.Projects,
         :cloudresourcemanager_projects_set_iam_policy,
@@ -571,6 +577,12 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       pid = self()
       reject(&GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_list/3)
       reject(&GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_create/3)
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_get_iam_policy,
+        fn _, _, _ -> {:ok, %GoogleApi.CloudResourceManager.V1.Model.Policy{bindings: []}} end
+      )
 
       expect(
         GoogleApi.CloudResourceManager.V1.Api.Projects,
@@ -655,6 +667,12 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
         end
       )
 
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_get_iam_policy,
+        fn _, _, _ -> {:ok, %GoogleApi.CloudResourceManager.V1.Model.Policy{bindings: []}} end
+      )
+
       expect(
         GoogleApi.CloudResourceManager.V1.Api.Projects,
         :cloudresourcemanager_projects_set_iam_policy,
@@ -734,6 +752,12 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
         )
 
       pid = self()
+
+      stub(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_get_iam_policy,
+        fn _, _, _ -> {:ok, %GoogleApi.CloudResourceManager.V1.Model.Policy{bindings: []}} end
+      )
 
       expect(
         GoogleApi.CloudResourceManager.V1.Api.Projects,
