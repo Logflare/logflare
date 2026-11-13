@@ -175,7 +175,8 @@ defmodule Logflare.Sources.Source do
 
     many_to_many :backends, Logflare.Backends.Backend,
       join_through: "sources_backends",
-      on_replace: :delete
+      on_replace: :delete,
+      on_delete: :delete_all
 
     has_many :saved_searches, Logflare.SavedSearch
 
