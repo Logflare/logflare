@@ -137,7 +137,8 @@ const LQL_KEYWORDS = [
     insertText: "c:countd($0)",
   },
   {
-    label: "c:group_by",
+    label: "c:group_by()",
+    filterText: "c:group_by",
     detail: "chart group by",
     insertText: "c:group_by($0)",
   },
@@ -147,6 +148,21 @@ const LQL_KEYWORDS = [
   { label: "c:p50()", detail: "chart p50", insertText: "c:p50($0)" },
   { label: "c:p95()", detail: "chart p95", insertText: "c:p95($0)" },
   { label: "c:p99()", detail: "chart p99", insertText: "c:p99($0)" },
+  {
+    label: {
+      label: "c:",
+      detail: "{agg1,agg2,…}()",
+      description: "chart multiple aggregates",
+    },
+    filterText: "c:{agg1,agg2,…}()",
+    detail: "chart multiple aggregates",
+    insertText:
+      "c:{" +
+      [1, 2]
+        .map((index) => `\${${index}|count,countd,avg,sum,max,p50,p95,p99|}`)
+        .join(",") +
+      "}($0)",
+  },
   { label: "f:", detail: "from source", insertText: "f:" },
   { label: "from:", detail: "from source", insertText: "from:" },
 ];
@@ -192,10 +208,13 @@ function getKeywordSuggestionCommand(kw) {
 function buildKeywordSuggestions(monaco, token, range) {
   return LQL_KEYWORDS.filter(
     (kw) =>
-      kw.label.toLocaleLowerCase().startsWith(token.toLocaleLowerCase()) ||
+      (kw.filterText || kw.label)
+        .toLocaleLowerCase()
+        .startsWith(token.toLocaleLowerCase()) ||
       kw.insertText.toLocaleLowerCase().startsWith(token.toLocaleLowerCase()),
   ).map((kw, i) => ({
     label: kw.label,
+    filterText: kw.filterText,
     kind: monaco.languages.CompletionItemKind.Keyword,
     detail: kw.detail,
     insertText: kw.insertText,
@@ -211,7 +230,8 @@ function buildKeywordSuggestions(monaco, token, range) {
 function hasSingleExactKeywordSuggestion(token, suggestions) {
   return (
     suggestions.length === 1 &&
-    suggestions[0].label.toLocaleLowerCase() === token.toLocaleLowerCase()
+    (suggestions[0].filterText || suggestions[0].label).toLocaleLowerCase() ===
+      token.toLocaleLowerCase()
   );
 }
 
@@ -312,10 +332,13 @@ export function getLqlCompletionItems({
     endColumn: lineMaxColumn,
   };
   const operatorMatch = textUntilPosition.match(
-    /(?:^|\s)-?(?:(?:m|metadata)\.[\w.]+|(?:t|timestamp)|[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*):([@><~=]*)$/,
+    /(?:^|\s)-?(?!(?:c|chart):)(?:(?:m|metadata)\.[\w.]+|(?:t|timestamp)|[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*):([@><~=]*)$/,
   );
   const groupByMatch = textUntilPosition.match(
     /(?:^|\s)(?:c|chart):group_by\(([^)]*)$/,
+  );
+  const chartAggregatesMatch = textUntilPosition.match(
+    /(?:^|\s)(?:c|chart):\{(?:\s*\w+\s*,)*\s*(\w*)$/,
   );
   const timestampValueMatch = textUntilPosition.match(
     /(?:^|\s)(?:t|timestamp):([a-zA-Z@]*)$/,
@@ -348,6 +371,24 @@ export function getLqlCompletionItems({
       range,
       sortText: `0-${String(index).padStart(3, "0")}`,
     }));
+
+  if (chartAggregatesMatch) {
+    const aggregateToken = chartAggregatesMatch[1];
+
+    return LQL_KEYWORDS.filter((kw) => /^c:\w+\(\)$/.test(kw.filterText || kw.label))
+      .map((kw) => ({ ...kw, label: kw.label.slice(2, -2) }))
+      .filter((kw) => kw.label.startsWith(aggregateToken.toLocaleLowerCase()))
+      .map((kw) => ({
+        label: kw.label,
+        kind: kinds.Keyword,
+        detail: kw.detail,
+        insertText: kw.label,
+        range: {
+          ...replaceRange,
+          startColumn: position.column - aggregateToken.length,
+        },
+      }));
+  }
 
   if (timestampValueMatch) {
     const timestampToken = timestampValueMatch[1];
@@ -434,7 +475,7 @@ export function getLqlCompletionItems({
   }
 
   const metaMatch = textUntilPosition.match(
-    /(?:^|[\s:])(?:m|metadata)\.([\w.]*?)$/,
+    /(?:^|[\s:(])(?:m|metadata)\.([\w.]*?)$/,
   );
 
   if (metaMatch) {
@@ -474,6 +515,7 @@ export function getLqlCompletionItems({
 
     return LQL_KEYWORDS.map((kw, i) => ({
       label: kw.label,
+      filterText: kw.filterText,
       kind: kinds.Keyword,
       detail: kw.detail,
       insertText: kw.insertText,
@@ -507,7 +549,7 @@ export function registerLqlCompletionProvider(
   getSuggestedSearches,
 ) {
   return monaco.languages.registerCompletionItemProvider("lql", {
-    triggerCharacters: [".", ":", "@", ">", "<", "~", "("],
+    triggerCharacters: [".", ":", "@", ">", "<", "~", "(", "{", ","],
 
     provideCompletionItems(model, position) {
       const textUntilPosition = model.getValueInRange({

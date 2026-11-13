@@ -157,6 +157,21 @@ describe("editor keyboard handling", () => {
     expect(event.stopImmediatePropagation).not.toHaveBeenCalled();
   });
 
+  it("leaves Tab to Monaco during snippet navigation even when suggestions are hidden", () => {
+    const { hook } = mountHook();
+    hook._editor = {
+      getContribution: () => ({ isInSnippet: () => true }),
+    };
+    const event = {
+      key: "Tab",
+      stopImmediatePropagation: vi.fn(),
+    };
+
+    hook._handleEditorKeydown(event);
+
+    expect(event.stopImmediatePropagation).not.toHaveBeenCalled();
+  });
+
   it("leaves other keys to Monaco", () => {
     const { hook } = mountHook();
     const event = {

@@ -53,6 +53,25 @@ defmodule Logflare.Lql.EncoderTest do
       assert result == "c:sum(m.metric) c:group_by(t::minute)"
     end
 
+    test "groups chart functions by field in first-seen order" do
+      expected =
+        "c:{max,p95,p99}(m.bytes) c:{sum,avg}(m.latency) " <>
+          "c:{count,countd}(*) c:group_by(t::minute)"
+
+      for query <- [
+            "c:max(m.bytes) c:sum(m.latency) c:{p95,p99}(m.bytes) " <>
+              "c:count(*) c:avg(m.latency) c:countd(*)",
+            "c:max(m.bytes) c:sum(m.latency) c:p95(m.bytes) " <>
+              "c:count(*) c:p99(m.bytes) c:avg(m.latency) c:countd(*)"
+          ] do
+        assert {:ok, rules} = Parser.parse(query)
+        assert Encoder.to_querystring(rules) == expected
+      end
+
+      assert {:ok, rules} = Parser.parse(expected)
+      assert Encoder.to_querystring(rules) == expected
+    end
+
     test "encodes mixed filter and chart rules" do
       lql_rules = [
         %FilterRule{operator: :=, path: "m.status", value: "success"},

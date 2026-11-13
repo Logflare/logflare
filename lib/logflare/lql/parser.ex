@@ -226,11 +226,14 @@ defmodule Logflare.Lql.Parser do
         [ChartRule.build(period: period)]
 
       aggregates ->
-        aggregates
-        |> Enum.map(fn {:chart, fields} ->
-          ChartRule.build(Keyword.put(fields, :period, period))
-        end)
-        |> Enum.uniq()
+        for {:chart, fields} <- aggregates,
+            aggregate <- List.wrap(Keyword.fetch!(fields, :aggregate)),
+            uniq: true do
+          fields
+          |> Keyword.put(:aggregate, aggregate)
+          |> Keyword.put(:period, period)
+          |> ChartRule.build()
+        end
     end
   end
 

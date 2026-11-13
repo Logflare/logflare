@@ -1184,7 +1184,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       })
 
       assert find_querystring(render(view)) ==
-               "c:sum(m.latency) c:avg(m.latency) c:group_by(t::hour)"
+               "c:{sum,avg}(m.latency) c:group_by(t::hour)"
 
       refute has_element?(view, "#search_chart_aggregate")
     end

@@ -46,7 +46,7 @@ defmodule Logflare.Lql.Encoder do
               |> Enum.map_join(" ", &to_fragment/1)
 
             {:chart, chart_rules} ->
-              aggregates = Enum.map_join(chart_rules, " ", &chart_aggregate_fragment/1)
+              aggregates = chart_aggregate_fragments(chart_rules)
               aggregates <> " c:group_by(t::#{hd(chart_rules).period})"
 
             # `filter_rules` has at least 2 entries
@@ -214,11 +214,28 @@ defmodule Logflare.Lql.Encoder do
 
   defp to_fragment(%FromRule{table: table}), do: "f:#{table}"
 
-  @spec chart_aggregate_fragment(ChartRule.t()) :: String.t()
-  defp chart_aggregate_fragment(%ChartRule{path: "timestamp", aggregate: aggregate}),
+  @spec chart_aggregate_fragments([ChartRule.t()]) :: String.t()
+  defp chart_aggregate_fragments(chart_rules) do
+    aggregates_by_path = Enum.group_by(chart_rules, & &1.path, & &1.aggregate)
+
+    chart_rules
+    |> Enum.uniq_by(& &1.path)
+    |> Enum.map_join(" ", fn rule ->
+      aggregate =
+        case Enum.uniq(Map.fetch!(aggregates_by_path, rule.path)) do
+          [aggregate] -> to_string(aggregate)
+          aggregates -> "{#{Enum.join(aggregates, ",")}}"
+        end
+
+      chart_aggregate_fragment(rule.path, aggregate)
+    end)
+  end
+
+  @spec chart_aggregate_fragment(String.t(), String.t()) :: String.t()
+  defp chart_aggregate_fragment("timestamp", aggregate),
     do: "c:#{aggregate}(*)"
 
-  defp chart_aggregate_fragment(%ChartRule{path: path, aggregate: aggregate}),
+  defp chart_aggregate_fragment(path, aggregate),
     do: "c:#{aggregate}(#{String.replace_leading(path, "metadata.", "m.")})"
 
   @spec maybe_quote(term()) :: String.t()

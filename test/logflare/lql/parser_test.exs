@@ -24,7 +24,7 @@ defmodule Logflare.Lql.ParserTest do
               ]} = Parser.parse(query)
 
       assert Lql.encode!([sum, avg]) ==
-               "c:sum(m.latency) c:avg(m.latency) c:group_by(t::hour)"
+               "c:{sum,avg}(m.latency) c:group_by(t::hour)"
 
       assert {:ok, [^sum, ^avg]} = Parser.parse(Lql.encode!([sum, avg]))
 
@@ -39,6 +39,14 @@ defmodule Logflare.Lql.ParserTest do
                 %ChartRule{aggregate: :sum, path: "metadata.bytes", period: :minute}
               ]} =
                Parser.parse("c:sum(m.latency) c:sum(m.bytes) c:sum(m.latency)")
+
+      assert {:ok,
+              [
+                %ChartRule{aggregate: :max, path: "metadata.latency", period: :minute},
+                %ChartRule{aggregate: :p95, path: "metadata.latency", period: :minute},
+                %ChartRule{aggregate: :sum, path: "metadata.bytes", period: :minute}
+              ]} =
+               Parser.parse("c:max(m.latency) c:{p95, max}(m.latency) c:sum(m.bytes)")
     end
 
     test "parse empty string" do
@@ -147,6 +155,29 @@ defmodule Logflare.Lql.ParserTest do
   setup :verify_on_exit!
 
   describe "LQL parsing" do
+    test "expands grouped chart aggregates with whitespace around commas" do
+      schema = build_schema(%{"metadata" => %{"response_bytes" => 42}})
+
+      rules =
+        for aggregate <- [:max, :p95, :p99] do
+          %ChartRule{aggregate: aggregate, path: "metadata.response_bytes", period: :hour}
+        end
+
+      encoded =
+        "c:{max,p95,p99}(m.response_bytes) " <>
+          "c:group_by(t::hour)"
+
+      for prefix <- ["c", "chart"],
+          aggregates <- ["max,p95,p99", "max ,p95 , p99", " max, p95 , p99 "] do
+        query = "#{prefix}:{#{aggregates}}(m.response_bytes) c:group_by(t::hour)"
+
+        assert {:ok, ^rules} = Parser.parse(query)
+        assert {:ok, typed_rules} = Parser.parse(query, schema)
+        assert typed_rules == Enum.map(rules, &%{&1 | value_type: :integer})
+        assert Lql.encode!(typed_rules) == encoded
+      end
+    end
+
     test "validates the field type of every chart aggregate" do
       schema = build_schema(%{"metadata" => %{"latency" => 10.0, "bytes" => 42}})
 

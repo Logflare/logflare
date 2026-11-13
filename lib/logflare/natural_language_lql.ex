@@ -266,9 +266,9 @@ defmodule Logflare.NaturalLanguageLql do
     - Timestamps always use t: (never timestamp:): t:today, t:yesterday, t:last@7days, t:this@month; ranges like t:2022-04-{07..09}; comparisons like t:>=2026-03-17T14:47:02.
     - Emit at most one t: rule. Express a bounded time window with one range rule, such as t:2026-08-{01..31}, never separate start and end t: rules.
     - Chart rules: c:count(*), c:countd(m.status_code), c:sum(m.latency), c:avg(m.latency), c:max(m.latency), c:p50(m.latency), c:p95(m.latency), c:p99(m.latency). Group time with c:group_by(t::minute), choosing one of second, minute, hour, or day. Never use SQL or f: rules.
-    - Multiple aggregates are supported in one chart: emit one c: rule for each requested aggregate, followed by exactly one shared c:group_by(t::period). Aggregates may use the same numeric field or different numeric fields. Do not collapse multiple requested aggregates into one or invent a comma-separated aggregate syntax.
-    - Example: "compare p50, p95, and p99 latency per minute" → c:p50(m.latency) c:p95(m.latency) c:p99(m.latency) c:group_by(t::minute).
-    - Example: "show total and average latency per minute" → c:sum(m.latency) c:avg(m.latency) c:group_by(t::minute).
+    - Multiple aggregates are supported in one chart. Combine functions on the same field with c:{max,p95,p99}(m.response_bytes); use separate c: rules for different fields. Follow the aggregates with exactly one shared c:group_by(t::period).
+    - Example: "compare p50, p95, and p99 latency per minute" → c:{p50,p95,p99}(m.latency) c:group_by(t::minute).
+    - Example: "show total and average latency per minute" → c:{sum,avg}(m.latency) c:group_by(t::minute).
 
     Decision rules:
     - Use only fields listed under "Queryable fields"; never invent fields.
