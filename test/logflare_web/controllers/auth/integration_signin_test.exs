@@ -64,29 +64,70 @@ defmodule LogflareWeb.IntegrationSigninTest do
     end
   end
 
+  for {scenario, extra_params} <- [
+        {"with state", %{"state" => "state&with=reserved\"characters"}},
+        {"without state", %{}}
+      ] do
+    @extra_params extra_params
+
+    test "OAuth authorization survives a login detour #{scenario}", %{conn: conn, user: user} do
+      params = Map.merge(oauth_params(), @extra_params)
+      conn = get(conn, "/oauth/authorize", params)
+
+      assert redirected_to(conn) == "/auth/login"
+      assert get_session(conn, :oauth_params) == params
+
+      conn =
+        build_conn()
+        |> Plug.Test.init_test_session(get_session(conn))
+        |> google_callback(user)
+
+      path = redirected_to(conn)
+      uri = URI.parse(path)
+
+      assert uri.path == "/oauth/authorize"
+      assert URI.decode_query(uri.query) == params
+      assert get_session(conn, :current_email) == user.email
+      refute get_session(conn, :oauth_params)
+
+      conn =
+        build_conn()
+        |> Plug.Test.init_test_session(get_session(conn))
+        |> get(path)
+
+      document = conn |> html_response(200) |> Floki.parse_document!()
+
+      forms = Floki.find(document, "#authorize-container form")
+
+      for form <- forms do
+        assert Floki.attribute(form, "input[name=state]", "value") == List.wrap(params["state"])
+      end
+
+      form =
+        Enum.find(forms, fn form -> Floki.find(form, "button") |> Floki.text() == "Authorize" end)
+
+      form_params =
+        form
+        |> Floki.find("input")
+        |> Map.new(fn input ->
+          {hd(Floki.attribute(input, "name")), List.first(Floki.attribute(input, "value"), "")}
+        end)
+
+      conn = conn |> recycle() |> post("/oauth/authorize", form_params)
+      callback = conn |> redirected_to() |> URI.parse()
+      query = URI.decode_query(callback.query)
+
+      assert callback.host == "example.com"
+      assert query["code"]
+      assert Map.get(query, "state", "") == Map.get(params, "state", "")
+    end
+  end
+
   defp previous_session(conn, :none, _user), do: conn
   defp previous_session(conn, :same_user, user), do: login_user(conn, user)
   defp previous_session(conn, :other_user, _user), do: login_user(conn, insert(:user))
 
-  defp pending_integration(conn, :oauth) do
-    {:ok, application} =
-      Applications.create_application(
-        insert(:user),
-        %{
-          name: "Integration test app",
-          scopes: "read write",
-          redirect_uri: "https://example.com/callback"
-        },
-        Application.get_env(:logflare, ExOauth2Provider)
-      )
-
-    put_session(conn, :oauth_params, %{
-      "client_id" => application.uid,
-      "redirect_uri" => application.redirect_uri,
-      "scope" => "read write",
-      "response_type" => "code"
-    })
-  end
+  defp pending_integration(conn, :oauth), do: put_session(conn, :oauth_params, oauth_params())
 
   defp pending_integration(conn, :vercel) do
     put_session(conn, :vercel_setup, %{
@@ -98,6 +139,27 @@ defmodule LogflareWeb.IntegrationSigninTest do
       },
       "next" => "http://www.example.com/integrations/vercel/edit"
     })
+  end
+
+  @spec oauth_params() :: map()
+  defp oauth_params do
+    {:ok, application} =
+      Applications.create_application(
+        insert(:user),
+        %{
+          name: "Integration test app",
+          scopes: "read write",
+          redirect_uri: "https://example.com/callback"
+        },
+        Application.get_env(:logflare, ExOauth2Provider)
+      )
+
+    %{
+      "client_id" => application.uid,
+      "redirect_uri" => application.redirect_uri,
+      "scope" => "read write",
+      "response_type" => "code"
+    }
   end
 
   defp google_callback(conn, user) do
