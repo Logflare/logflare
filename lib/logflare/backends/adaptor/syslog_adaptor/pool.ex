@@ -117,9 +117,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
     {:remove, :idle_timeout}
   end
 
-  # NOTE: handle_info is called for every socket (that is not checked out) for every message received.
-  # NimblePool does not dispatch messages to checked-out sockets, so data received during
-  # checkout is ignored.
+  # NOTE: handle_info is called for every (not checked out) socket for every message received.
   # Since Syslog is typically a "write-only" protocol where we don't expect return traffic, this is probably fine.
   # The only expected messages are tcp_closed / tcp_error, which are rare.
   @impl NimblePool

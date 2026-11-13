@@ -322,9 +322,11 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
       assert {:ok, 1} =
                Logflare.Backends.ingest_logs([build(:log_event, message: "hello syslog")], source)
 
+      # Accept the pool's connection.
       {:ok, bad_socket} = :gen_tcp.accept(listener, to_timeout(second: 5))
       assert_receive {:tcp, ^bad_socket, _log_data}
 
+      # Wait for checkin.
       assert_receive {[:logflare, :backends, :syslog, :checkin], ^telemetry_ref, %{}, _metadata}
 
       log =
@@ -360,10 +362,12 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
       assert {:ok, 1} =
                Logflare.Backends.ingest_logs([build(:log_event, message: "hello syslog")], source)
 
+      # Accept the pool's connection.
       {:ok, bad_socket} = :ssl.transport_accept(listener, to_timeout(second: 5))
       {:ok, bad_socket} = :ssl.handshake(bad_socket, to_timeout(second: 5))
       assert_receive {:ssl, ^bad_socket, _log_data}
 
+      # Wait for checkin.
       assert_receive {[:logflare, :backends, :syslog, :checkin], ^telemetry_ref, %{}, _metadata}
 
       log =
