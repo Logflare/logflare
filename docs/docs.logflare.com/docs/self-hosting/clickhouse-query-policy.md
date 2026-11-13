@@ -67,7 +67,7 @@ Successful result caches remain class-agnostic: changing the class does not crea
 
 ## Policy update consistency
 
-Backend query-class policy updates are eventually consistent across Logflare instances. A successful save confirms that the configuration was persisted, but does not guarantee that every subsequent query immediately uses it. In-flight cache fills and read-replica lag can temporarily preserve the previous policy, including after limits are tightened, relaxed, or removed.
+Backend query-class policy updates are eventually consistent across Logflare instances. A successful save confirms that the configuration was persisted, but does not guarantee that every subsequent query immediately uses it. Query metadata fills read the primary database, and invalidation fences in-flight fills. Saves invalidate local query metadata after commit and multicast evictions to peer nodes; WAL delivery provides additional convergence. Multicast delivery and WAL processing are asynchronous, so other instances can temporarily use the previous policy after limits are tightened, relaxed, or removed.
 
 Do not rely on these updates for immediate emergency throttling or hard resource guarantees. Use ClickHouse query-user profile constraints for hard ceilings. During rollout or rollback, verify effective settings using `system.query_log.Settings` across the relevant workloads and read clusters. Cache expiry is not a guaranteed propagation deadline. This limitation concerns backend class-policy updates, not the endpoint-owned limit invalidation described above.
 

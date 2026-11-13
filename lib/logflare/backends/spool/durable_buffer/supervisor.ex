@@ -21,7 +21,6 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Supervisor do
   alias Logflare.Backends.Spool.ProviderConfig
 
   @name __MODULE__.Buffer
-  @default_partitions 4
   # How much accumulates before a local commit (fsync, for :wal buffer
   # mode).
   @default_max_batch_bytes 64 * 1024
@@ -53,7 +52,7 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Supervisor do
       {DurableBuffer,
        name: name(),
        backend: backend_spec(spool_config),
-       partitions: Keyword.get(spool_config, :partitions, @default_partitions),
+       partitions: Keyword.get_lazy(spool_config, :partitions, &System.schedulers_online/0),
        max_batch_bytes: Keyword.get(spool_config, :max_batch_bytes, @default_max_batch_bytes),
        flush_delay_ms: Keyword.get(spool_config, :flush_delay_ms, @default_flush_delay_ms)},
       id: __MODULE__

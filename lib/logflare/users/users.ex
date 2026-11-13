@@ -11,6 +11,7 @@ defmodule Logflare.Users do
   alias Logflare.Generators
   alias Logflare.Google.BigQuery
   alias Logflare.Mailer
+  alias Logflare.QueryContext
   alias Logflare.Repo
   alias Logflare.Sources
   alias Logflare.Sources.Source
@@ -227,6 +228,7 @@ defmodule Logflare.Users do
     user
     |> user_changeset(params)
     |> Repo.update()
+    |> invalidate_billing_plan_cache(user)
     |> update_system_sources(user.system_monitoring)
   end
 
@@ -234,8 +236,24 @@ defmodule Logflare.Users do
     user
     |> User.user_allowed_changeset(params)
     |> Repo.update()
+    |> invalidate_billing_plan_cache(user)
     |> update_system_sources(user.system_monitoring)
   end
+
+  @spec invalidate_billing_plan_cache({:ok, User.t()} | {:error, Ecto.Changeset.t()}, User.t()) ::
+          {:ok, User.t()} | {:error, Ecto.Changeset.t()}
+  defp invalidate_billing_plan_cache({:ok, user} = result, original_user) do
+    QueryContext.invalidate_user(user)
+
+    if user.billing_enabled != original_user.billing_enabled or
+         user.partner_upgraded != original_user.partner_upgraded do
+      Billing.Cache.delete_keys([{:get_plan_by_user, [user.id]}])
+    end
+
+    result
+  end
+
+  defp invalidate_billing_plan_cache(result, _original_user), do: result
 
   defp update_system_sources({:ok, user}, original_system_monitoring) do
     if user.system_monitoring != original_system_monitoring do
@@ -266,6 +284,7 @@ defmodule Logflare.Users do
     %User{}
     |> user_changeset(params)
     |> Repo.insert()
+    |> invalidate_query_context()
   end
 
   @doc "create user from team user"
@@ -328,7 +347,7 @@ defmodule Logflare.Users do
   def delete_user(user) do
     Supervisor.delete_all_user_sources(user)
 
-    case Repo.delete(user) do
+    case Repo.delete(user) |> invalidate_query_context() do
       {:ok, _user} = response ->
         BigQuery.delete_dataset(user)
         BigQueryAdaptor.update_iam_policy()
@@ -342,7 +361,7 @@ defmodule Logflare.Users do
   defp update_user_by_email(user, auth_params) do
     updated_changeset = user_changeset(user, auth_params)
 
-    case Repo.update(updated_changeset) do
+    case Repo.update(updated_changeset) |> invalidate_billing_plan_cache(user) do
       {:ok, user} ->
         {:ok_found_user, user}
 
@@ -354,7 +373,7 @@ defmodule Logflare.Users do
   defp update_user_by_provider_id(user, auth_params) do
     updated_changeset = user_changeset(user, auth_params)
 
-    case Repo.update(updated_changeset) do
+    case Repo.update(updated_changeset) |> invalidate_billing_plan_cache(user) do
       {:ok, user} ->
         {:ok_found_user, user}
 
@@ -374,7 +393,15 @@ defmodule Logflare.Users do
     |> Ecto.Changeset.cast(attrs, [])
     |> Ecto.Changeset.cast_embed(:preferences, required: true)
     |> Repo.update()
+    |> invalidate_query_context()
   end
+
+  defp invalidate_query_context({:ok, %User{} = user} = result) do
+    QueryContext.invalidate_user(user)
+    result
+  end
+
+  defp invalidate_query_context(result), do: result
 
   def change_owner(%TeamUser{} = team_user, %User{} = user) do
     new_user =

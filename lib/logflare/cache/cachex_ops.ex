@@ -14,6 +14,7 @@ defmodule Logflare.Cache.CachexOps do
   require Logger
 
   alias Logflare.ContextCache.Gossip
+  alias Logflare.Utils
 
   @stat_keys [
     :evictions,
@@ -25,7 +26,9 @@ defmodule Logflare.Cache.CachexOps do
     :miss_rate
   ]
 
-  @type warmer() :: module() | {module(), interval: pos_integer()}
+  @refresh_jitter_ratio 0.1
+
+  @type warmer() :: module() | {module(), interval: pos_integer() | nil}
   @type cache_opt() ::
           {:limit, pos_integer() | nil}
           | {:ttl, pos_integer()}
@@ -41,7 +44,10 @@ defmodule Logflare.Cache.CachexOps do
     * `:limit` (required) - maximum number of entries, `nil` for no limit
     * `:ttl` - default entry time-to-live, a timeout in ms, defaults to 20 minutes
     * `:purge_interval` - timeout in ms between purges of expired entries, defaults to 5 minutes
-    * `:warmer` - a non-required warmer module, or `{module, interval: ms}`, registered under the module name
+    * `:warmer` - a non-required warmer module, or `{module, interval: ms}`, registered under the module name.
+      Without an `:interval`, it re-runs every third of `:ttl`, with a 10% jitter picked when the cache
+      starts, so entries are refreshed before they expire. `interval: nil` runs it only on startup, as does
+      `warmer_refresh_enabled: false` in the `Logflare.Cache.CachexOps` config.
     * `:compressed` - defaults to `false`
     * `:transactions` - enables transactional locking from startup, defaults to `false`
   """
@@ -56,15 +62,17 @@ defmodule Logflare.Cache.CachexOps do
   """
   @spec cachex_opts([cache_opt()]) :: keyword()
   def cachex_opts(opts) do
+    ttl = Keyword.get(opts, :ttl, to_timeout(minute: 20))
+
     [
       hooks: limit_hooks(Keyword.fetch!(opts, :limit)),
       expiration:
         expiration(
-          default: Keyword.get(opts, :ttl, to_timeout(minute: 20)),
+          default: ttl,
           interval: Keyword.get(opts, :purge_interval, to_timeout(minute: 5)),
           lazy: true
         ),
-      warmers: warmers(opts[:warmer]),
+      warmers: warmers(opts[:warmer], ttl),
       compressed: Keyword.get(opts, :compressed, false),
       transactions: Keyword.get(opts, :transactions, false)
     ]
@@ -109,10 +117,22 @@ defmodule Logflare.Cache.CachexOps do
   `{:ok, map}` with that `:id`, or a list containing such a map. Raises `ArgumentError` for any other
   keyword.
 
+  With `[id: :not_found]`, returns only keys containing cached nil values.
+
   It scans the cache with a match spec instead of keeping a reverse index of primary keys.
   """
   @impl Logflare.ContextCache.Ops
   @spec keys_to_bust(Cachex.t(), keyword()) :: Enumerable.t()
+  def keys_to_bust(cache, id: :not_found) do
+    query =
+      Cachex.Query.build(
+        where: {:==, :value, {:const, {:cached, nil}}},
+        output: :key
+      )
+
+    Cachex.stream!(cache, query)
+  end
+
   def keys_to_bust(cache, id: pkey) do
     filter =
       {
@@ -167,32 +187,37 @@ defmodule Logflare.Cache.CachexOps do
         Gossip.multicast(cache, key, value)
         value
 
-      {:ok, {:cached, value}} ->
-        value
-
-      {:ignore, {:unavailable, reason}} ->
-        Logger.warning("#{inspect(cache)} could not load #{key_label(key)}: #{inspect(reason)}")
-
-        {:error, :database_unavailable}
-
-      {:ignore, {:error, :database_unavailable} = err} ->
-        err
-
-      {:error, %Cachex.Error{stack: stack} = error} when is_list(stack) ->
-        reraise error, stack
-
-      {:error, %Cachex.Error{} = error} ->
-        raise error
-
-      {:error, :no_cache} ->
-        raise "cache #{inspect(cache)} is not running"
-
-      {:error, reason} ->
-        exit(reason)
+      result ->
+        fetch_value(cache, key, result)
     end
   end
 
-  defp commit_or_ignore(getter) do
+  @doc false
+  @spec fetch_value(Cachex.t(), term(), term()) :: term() | {:error, :database_unavailable}
+  def fetch_value(_cache, _key, {status, {:cached, value}}) when status in [:ok, :commit],
+    do: value
+
+  def fetch_value(cache, key, {:ignore, {:unavailable, reason}}) do
+    Logger.warning("#{inspect(cache)} could not load #{key_label(key)}: #{inspect(reason)}")
+    {:error, :database_unavailable}
+  end
+
+  def fetch_value(_cache, _key, {:ignore, {:error, :database_unavailable} = error}), do: error
+
+  def fetch_value(_cache, _key, {:error, %Cachex.Error{stack: stack} = error})
+      when is_list(stack),
+      do: reraise(error, stack)
+
+  def fetch_value(_cache, _key, {:error, %Cachex.Error{} = error}), do: raise(error)
+
+  def fetch_value(cache, _key, {:error, :no_cache}),
+    do: raise("cache #{inspect(cache)} is not running")
+
+  def fetch_value(_cache, _key, {:error, reason}), do: exit(reason)
+
+  @doc false
+  @spec commit_or_ignore((-> term())) :: {:commit, {:cached, term()}} | {:ignore, term()}
+  def commit_or_ignore(getter) do
     case getter.() do
       {:error, :database_unavailable} = err -> {:ignore, err}
       value -> {:commit, {:cached, value}}
@@ -239,12 +264,24 @@ defmodule Logflare.Cache.CachexOps do
     [hook(module: Cachex.Limit.Scheduled, args: {limit, [], []})]
   end
 
-  defp warmers(nil), do: []
+  defp warmers(nil, _ttl), do: []
 
-  defp warmers({module, opts}) do
-    [interval: interval] = Keyword.validate!(opts, interval: nil)
+  defp warmers({module, opts}, ttl) do
+    [interval: interval] = Keyword.validate!(opts, interval: refresh_interval(ttl))
     [warmer(module: module, name: module, required: false, interval: interval)]
   end
 
-  defp warmers(module), do: warmers({module, []})
+  defp warmers(module, ttl), do: warmers({module, []}, ttl)
+
+  defp refresh_interval(ttl) do
+    if warmer_refresh_enabled?() do
+      ttl |> div(3) |> Utils.jitter(@refresh_jitter_ratio)
+    end
+  end
+
+  defp warmer_refresh_enabled? do
+    :logflare
+    |> Application.get_env(__MODULE__, [])
+    |> Keyword.get(:warmer_refresh_enabled, true)
+  end
 end

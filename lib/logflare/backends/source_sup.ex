@@ -2,6 +2,8 @@ defmodule Logflare.Backends.SourceSup do
   @moduledoc false
   use Supervisor
 
+  require Logger
+
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourceSupWorker
@@ -204,9 +206,22 @@ defmodule Logflare.Backends.SourceSup do
   @spec start_backend_child_by_id(non_neg_integer(), non_neg_integer()) ::
           Supervisor.on_start_child() | :noop
   def start_backend_child_by_id(backend_id, source_id) do
-    backend = Backends.Cache.get_backend(backend_id) |> Map.put(:register_for_ingest, false)
-    source = Sources.Cache.get_by_id(source_id)
-    start_backend_child(source, backend)
+    case {Backends.Cache.get_backend(backend_id), Sources.Cache.get_by_id(source_id)} do
+      {%Backend{} = backend, %Source{} = source} ->
+        start_backend_child(source, %{backend | register_for_ingest: false})
+
+      {backend, source} ->
+        missing =
+          for({name, nil} <- [backend: backend, source: source], do: name)
+          |> Enum.join(" and ")
+
+        Logger.warning("Cannot start rule backend child: #{missing} not found",
+          backend_id: backend_id,
+          source_id: source_id
+        )
+
+        :noop
+    end
   end
 
   @doc """
@@ -229,10 +244,11 @@ defmodule Logflare.Backends.SourceSup do
   Stops a given backend child on SourceSup that is associated with the given Rule.
   """
   @spec stop_rule_child(Rule.t()) :: :ok | {:error, :not_found}
-  def stop_rule_child(%Rule{backend_id: backend_id} = rule) do
-    backend = Backends.Cache.get_backend(backend_id) |> Map.put(:register_for_ingest, false)
-    source = Sources.Cache.get_by_id(rule.source_id)
-    stop_backend_child(source, backend)
+  def stop_rule_child(%Rule{backend_id: backend_id, source_id: source_id}) do
+    case Sources.Cache.get_by_id(source_id) do
+      %Source{} = source -> stop_backend_child(source, backend_id)
+      nil -> {:error, :not_found}
+    end
   end
 
   @doc """

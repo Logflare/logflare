@@ -7,6 +7,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
   alias Logflare.Backends.Spool.Encoder
   alias Logflare.Backends.Spool.MemoryMonitor
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
+  alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
   alias Logflare.TestUtils
 
@@ -123,8 +124,13 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
   # Confirms the producer registered `handle` and bumped it once per segment
   # (defaults to 1, the common single-segment case).
   defp assert_spool_ack_registered(handle, segment_count \\ 1) do
-    assert [{^handle, ^segment_count, QueueMod, "projects/p/subscriptions/s", _registered_at}] =
-             :ets.lookup(:spool_ack, handle)
+    assert {:ok,
+            %{
+              count: ^segment_count,
+              queue_mod: QueueMod,
+              queue_url: "projects/p/subscriptions/s",
+              object: {StorageMod, _bucket, _file_key}
+            }} = SpoolAck.lookup(handle)
   end
 
   # contents: %{file_key => body} | %{file_key => :raise} | %{file_key => {:error, reason}}
@@ -189,6 +195,21 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
   end
 
   describe "happy path" do
+    test "registers the spool object so SpoolAck can delete it after the final ack" do
+      stub_ack_nack(self())
+      stub_queue([queue_message("h1", "0/a.v3.etf")])
+      stub_storage(%{"0/a.v3.etf" => framed_etf_body([%{"id" => "e1"}])})
+
+      pid = start_producer()
+      GenStage.stream([{pid, max_demand: 10}]) |> Enum.take(1)
+
+      assert {:ok,
+              %{count: _count, queue_mod: QueueMod, object: {StorageMod, bucket, "0/a.v3.etf"}}} =
+               SpoolAck.lookup("h1")
+
+      assert is_binary(bucket)
+    end
+
     test "streams segments from a file, registers the handle with SpoolAck, and never acks it directly" do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :receive])
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :storage, :get])
@@ -890,7 +911,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       state =
         draining_state(%{
-          prefetch: {:ready, {:ok, "h2", [etf_body([%{"id" => "e2"}])]}}
+          prefetch: {:ready, {:ok, "h2", [etf_body([%{"id" => "e2"}])], "0/b.etf"}}
         })
 
       assert {:noreply, [], new_state} = QueueProducer.prepare_for_draining(state)
@@ -997,6 +1018,137 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       assert_receive {:nacked, "h1"}, 2000
       refute_received {:acked, "h1"}
+    end
+  end
+
+  describe "stop_receiving" do
+    defp producer_state(overrides) do
+      {:producer, state} =
+        QueueProducer.init(
+          queue_url: "q",
+          bucket: "test-bucket",
+          storage_mod: StorageMod,
+          queue_mod: QueueMod
+        )
+
+      Map.merge(state, overrides)
+    end
+
+    defp stopped_state(overrides) do
+      {:reply, :ok, [], state} =
+        QueueProducer.handle_call(:stop_receiving, {self(), make_ref()}, producer_state(%{}))
+
+      Map.merge(state, overrides)
+    end
+
+    test "nacks a landed prefetch but keeps the current file to finish emitting" do
+      stub_ack_nack(self())
+      current = %{handle: "h1", segments: [etf_body([%{"id" => "e1"}])]}
+
+      state =
+        producer_state(%{
+          current: current,
+          prefetch: {:ready, {:ok, "h2", [etf_body([%{"id" => "e2"}])], "0/b.etf"}}
+        })
+
+      assert {:reply, :ok, [], new_state} =
+               QueueProducer.handle_call(:stop_receiving, {self(), make_ref()}, state)
+
+      assert_receive {:nacked, "h2"}
+      refute_received {:nacked, "h1"}
+      assert new_state.current == current
+      assert new_state.prefetch == nil
+      assert new_state.receiving == false
+    end
+
+    test "keeps emitting the current file's segments but starts no new fetch" do
+      test_pid = self()
+
+      stub(QueueMod, :receive, fn _url, _opts ->
+        send(test_pid, :receive_called)
+        {:ok, []}
+      end)
+
+      state =
+        stopped_state(%{
+          current: %{handle: "h1", segments: [etf_body([%{"id" => "e1"}])]},
+          demand: 5
+        })
+
+      assert {:noreply, [event], new_state} = QueueProducer.handle_info(:poll, state)
+
+      assert segment_records(event) == [%{"id" => "e1"}]
+      assert new_state.prefetch == nil
+      refute_receive :receive_called, 200
+    end
+
+    test "nacks a prefetch that lands after receiving stopped instead of loading it" do
+      stub_ack_nack(self())
+
+      ok_state = stopped_state(%{prefetch: :running, demand: 5})
+
+      assert {:noreply, [], new_state} =
+               QueueProducer.handle_info(
+                 {:prefetch_result, {:ok, "h3", ["seg"], "0/c.etf"}},
+                 ok_state
+               )
+
+      assert_receive {:nacked, "h3"}
+      assert new_state.prefetch == nil
+      assert new_state.current == nil
+
+      assert {:noreply, [], error_state} =
+               QueueProducer.handle_info(
+                 {:prefetch_result, {:error, "h4", :timeout}},
+                 stopped_state(%{prefetch: :running})
+               )
+
+      assert_receive {:nacked, "h4"}
+      assert error_state.prefetch == nil
+
+      assert {:noreply, [], empty_state} =
+               QueueProducer.handle_info(
+                 {:prefetch_result, :empty},
+                 stopped_state(%{prefetch: :running})
+               )
+
+      assert empty_state.prefetch == nil
+    end
+
+    test "drained? is true only once nothing loaded or prefetched is left, a running prefetch included" do
+      from = {self(), make_ref()}
+
+      for {overrides, expected} <- [
+            {%{prefetch: :running}, false},
+            {%{current: %{handle: "h1", segments: ["seg"]}}, false},
+            {%{current: %{handle: "h1", segments: []}}, true},
+            {%{current: nil, prefetch: nil}, true}
+          ] do
+        assert {:reply, ^expected, [], _state} =
+                 QueueProducer.handle_call(:drained?, from, stopped_state(overrides))
+      end
+
+      assert {:reply, false, [], _state} =
+               QueueProducer.handle_call(:drained?, from, producer_state(%{}))
+    end
+
+    test "a running producer stops receiving from the queue once told to stop receiving" do
+      test_pid = self()
+
+      stub(QueueMod, :receive, fn _url, _opts ->
+        send(test_pid, :receive_called)
+        {:ok, []}
+      end)
+
+      pid = start_producer()
+
+      assert QueueProducer.stop_receiving(pid) == :ok
+
+      task = Task.async(fn -> GenStage.stream([{pid, max_demand: 10}]) |> Enum.take(1) end)
+
+      refute_receive :receive_called, 500
+
+      Task.shutdown(task, :brutal_kill)
     end
   end
 end

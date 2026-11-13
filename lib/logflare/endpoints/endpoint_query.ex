@@ -6,13 +6,12 @@ defmodule Logflare.Endpoints.EndpointQuery do
   import Ecto.Changeset
   import Logflare.Utils.Guards
 
-  require Logger
-
   alias Ecto.Changeset
   alias Logflare.Alerting
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Endpoints
+  alias Logflare.Endpoints.FilesystemCachePolicy
   alias Logflare.SingleTenant
   alias Logflare.Sql
   alias Logflare.User
@@ -23,6 +22,7 @@ defmodule Logflare.Endpoints.EndpointQuery do
     :description,
     :language,
     :source_mapping,
+    :filesystem_cache_policy,
     :sandboxable,
     :cache_duration_seconds,
     :proactive_requerying_seconds,
@@ -43,6 +43,7 @@ defmodule Logflare.Endpoints.EndpointQuery do
              :query,
              :language,
              :source_mapping,
+             :filesystem_cache_policy,
              :sandboxable,
              :cache_duration_seconds,
              :proactive_requerying_seconds,
@@ -65,6 +66,7 @@ defmodule Logflare.Endpoints.EndpointQuery do
     field(:proactive_requerying_seconds, :integer, default: 1_800)
     field(:max_limit, :integer, default: 1_000)
     field(:enforced_clickhouse_settings, :map, default: %{})
+    field(:filesystem_cache_policy, :map)
     field(:enable_auth, :boolean, default: true)
     field(:redact_pii, :boolean, default: false)
     field(:enable_dynamic_reservation, :boolean, default: false)
@@ -111,7 +113,7 @@ defmodule Logflare.Endpoints.EndpointQuery do
 
     snapshot
     |> from_version_snapshot()
-    |> Map.take(fields)
+    |> Map.take([:filesystem_cache_policy | fields])
   end
 
   @spec from_version_snapshot(map()) :: t()
@@ -135,12 +137,14 @@ defmodule Logflare.Endpoints.EndpointQuery do
       :enable_auth,
       :redact_pii,
       :enable_dynamic_reservation,
+      :filesystem_cache_policy,
       :language,
       :description,
       :backend_id,
       :labels
     ])
     |> infer_language_from_backend()
+    |> FilesystemCachePolicy.validate()
     |> validate_required([:name, :query, :language])
   end
 
@@ -157,6 +161,7 @@ defmodule Logflare.Endpoints.EndpointQuery do
       :enable_auth,
       :redact_pii,
       :enable_dynamic_reservation,
+      :filesystem_cache_policy,
       :language,
       :description,
       :backend_id,
@@ -164,6 +169,7 @@ defmodule Logflare.Endpoints.EndpointQuery do
     ])
     |> infer_language_from_backend()
     |> validate_query(:query)
+    |> FilesystemCachePolicy.validate()
     |> default_validations()
     |> update_source_mapping()
   end
@@ -196,15 +202,11 @@ defmodule Logflare.Endpoints.EndpointQuery do
       end
 
     validate_change(changeset, field, fn field, value ->
-      {:ok, expanded_query} =
-        Sql.expand_subqueries(
-          language,
-          value,
-          queries
-        )
-
-      case Sql.transform(language, expanded_query, user) do
-        {:ok, _} -> []
+      with {:ok, expanded_query} <- Sql.expand_subqueries(language, value, queries),
+           {:ok, _} <- Sql.transform(language, expanded_query, user) do
+        []
+      else
+        {:error, :database_unavailable} -> [{field, "source catalog is temporarily unavailable"}]
         {:error, error} -> [{field, error}]
       end
     end)
@@ -214,8 +216,14 @@ defmodule Logflare.Endpoints.EndpointQuery do
   def update_source_mapping(%Changeset{errors: [], changes: %{query: query}} = changeset)
       when is_non_empty_binary(query) do
     case Sql.sources(query, get_field(changeset, :user)) do
-      {:ok, source_mapping} -> put_change(changeset, :source_mapping, source_mapping)
-      {:error, error} -> add_error(changeset, :query, error)
+      {:ok, source_mapping} ->
+        put_change(changeset, :source_mapping, source_mapping)
+
+      {:error, :database_unavailable} ->
+        add_error(changeset, :query, "source catalog is temporarily unavailable")
+
+      {:error, error} ->
+        add_error(changeset, :query, error)
     end
   end
 
@@ -250,17 +258,17 @@ defmodule Logflare.Endpoints.EndpointQuery do
   @doc """
   Replaces a query with latest source names.
   """
-  @spec map_query_sources(__MODULE__.t()) :: __MODULE__.t()
+  @spec map_query_sources(__MODULE__.t()) ::
+          __MODULE__.t() | {:error, String.t() | :database_unavailable}
   def map_query_sources(
         %__MODULE__{query: query, source_mapping: source_mapping, user_id: user_id} = q
       ) do
-    case Sql.source_mapping(query, user_id, source_mapping) do
+    case Sql.source_mapping(query, user_id, source_mapping, dialect: Sql.to_dialect(q.language)) do
       {:ok, query} ->
         Map.put(q, :query, query)
 
-      {:error, _} = err ->
-        Logger.error("Could not map source query, #{inspect(err)}", error_string: inspect(q))
-        q
+      {:error, _} = error ->
+        error
     end
   end
 end

@@ -190,6 +190,29 @@ defmodule Logflare.LogEventTest do
       assert body["a"]["b"]["c"]["d"] == 123
     end
 
+    test "leaves body unchanged when destination path crosses a non-map", %{source: source} do
+      source =
+        %{source | transform_copy_fields: "food:dest.child"}
+        |> Source.parse_copy_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"food" => 123, "dest" => "str"}, %{source: source})
+
+      assert Map.drop(body, ["id", "timestamp"]) == %{"food" => 123, "dest" => "str"}
+    end
+
+    test "copies later rules after skipping one that crosses a non-map", %{source: source} do
+      source =
+        %{source | transform_copy_fields: "food:dest.child\nfood:other"}
+        |> Source.parse_copy_fields_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"food" => 123, "dest" => "str"}, %{source: source})
+
+      assert body["dest"] == "str"
+      assert body["other"] == 123
+    end
+
     test "copies falsey-but-present source values", %{source: source} do
       source =
         %{source | transform_copy_fields: "flag:dest"}
@@ -301,6 +324,27 @@ defmodule Logflare.LogEventTest do
       assert body["metadata"]["other"] == "kept"
     end
 
+    test "creates missing intermediate maps at destination", %{source: source} do
+      source =
+        %{source | transform_key_values: "project:a.b.c:org_id"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} = LogEvent.make(%{"project" => "123abc"}, %{source: source})
+
+      assert body["a"]["b"]["c"] == "456def"
+    end
+
+    test "leaves body unchanged when destination path crosses a non-map", %{source: source} do
+      source =
+        %{source | transform_key_values: "project:dest.child"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "123abc", "dest" => "str"}, %{source: source})
+
+      assert Map.drop(body, ["id", "timestamp"]) == %{"project" => "123abc", "dest" => "str"}
+    end
+
     test "3-part pattern with dot syntax accessor", %{source: source} do
       source =
         %{source | transform_key_values: "project:org_id:org_id"}
@@ -388,6 +432,32 @@ defmodule Logflare.LogEventTest do
                LogEvent.make(%{"count" => 42}, %{source: source})
 
       assert body["result"] == "found_it"
+    end
+
+    test "boolean field values are stringified for key lookup", %{source: source, user: user} do
+      insert(:key_value, user: user, key: "true", value: %{"result" => "bool_hit"})
+
+      source =
+        %{source | transform_key_values: "flag:result:result"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"flag" => true}, %{source: source})
+
+      assert body["result"] == "bool_hit"
+    end
+
+    test "map and list field values skip enrichment without raising", %{source: source} do
+      source =
+        %{source | transform_key_values: "project:enriched"}
+        |> Source.parse_key_values_config()
+
+      for value <- [%{"id" => "123abc"}, ["123abc"], [49, 50, 51]] do
+        assert %LogEvent{body: body} =
+                 LogEvent.make(%{"project" => value}, %{source: source})
+
+        refute Map.has_key?(body, "enriched")
+      end
     end
   end
 
