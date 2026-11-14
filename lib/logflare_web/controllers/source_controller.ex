@@ -444,8 +444,6 @@ defmodule LogflareWeb.SourceController do
   end
 
   def del_source_and_redirect(%{assigns: %{source: source}} = conn, _params) do
-    Supervisor.delete_source(source.token)
-
     case Sources.delete_source(source) do
       {:ok, _response} ->
         put_flash_and_redirect_to_dashboard(conn, :info, "Source deleted!")

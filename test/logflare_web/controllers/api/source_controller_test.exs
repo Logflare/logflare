@@ -1,10 +1,12 @@
 defmodule LogflareWeb.Api.SourceControllerTest do
   @moduledoc false
   use LogflareWeb.ConnCase
+  use Oban.Testing, repo: Logflare.Repo
 
   alias Logflare.Backends
   alias Logflare.Backends.SourceSup
   alias Logflare.Sources
+  alias Logflare.Sources.CleanupWorker
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.TestUtils
 
@@ -516,6 +518,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
       sources: [source | _]
     } do
       name = TestUtils.random_string()
+      backend = insert(:backend, user: user, sources: [source])
 
       assert conn
              |> add_access_token(user, "private")
@@ -526,6 +529,9 @@ defmodule LogflareWeb.Api.SourceControllerTest do
              |> add_access_token(user, "private")
              |> get("/api/sources/#{source.token}")
              |> response(404)
+
+      assert Backends.get_backend(backend.id)
+      assert_enqueued(worker: CleanupWorker, args: %{source_id: source.id})
     end
 
     test "returns not found if doesn't own the source", %{
@@ -538,6 +544,9 @@ defmodule LogflareWeb.Api.SourceControllerTest do
              |> add_access_token(invalid_user, "private")
              |> delete("/api/sources/#{source.token}", %{name: TestUtils.random_string()})
              |> response(404)
+
+      assert Sources.get(source.id)
+      refute_enqueued(worker: CleanupWorker)
     end
   end
 end
