@@ -28,6 +28,16 @@ defmodule Logflare.TelemetryTest do
   @drop_stale_metric_name [:logflare, :logs, :ingest_logs, :drop_stale]
   @drop_stale_metric_string "logflare.logs.ingest_logs.drop_stale"
 
+  @broadway_exporter :logflare_broadway_metrics_test
+  @broadway_batch_processor_metric_name [:broadway, :batch_processor, :stop, :duration]
+  @broadway_batch_processor_metric_string "broadway.batch_processor.stop.duration"
+  @broadway_duration_metric_names [
+    [:broadway, :batcher, :stop, :duration],
+    [:broadway, :batch_processor, :stop, :duration],
+    [:broadway, :processor, :message, :stop, :duration],
+    [:broadway, :processor, :stop, :duration]
+  ]
+
   @requeue_deduplicated_metric_name [
     :logflare,
     :ingest_event_queue,
@@ -165,6 +175,108 @@ defmodule Logflare.TelemetryTest do
             [:logflare, :backends, :spool, :queue, :nack, :count]
           ] do
         assert expected in names, "expected #{inspect(expected)} to be a defined metric"
+      end
+    end
+
+    test "tags Broadway duration metrics by explicit backend or pipeline metadata" do
+      metrics = broadway_duration_metrics()
+
+      assert Enum.map(metrics, & &1.name) |> Enum.sort() ==
+               Enum.sort(@broadway_duration_metric_names)
+
+      for metric <- metrics do
+        assert metric.tags == [:backend_type, :pipeline]
+
+        assert metric.tag_values.(%{
+                 context: %{
+                   telemetry_tags: %{backend_type: :clickhouse, source_token: "not-a-tag"}
+                 }
+               }) == %{backend_type: :clickhouse}
+
+        assert metric.tag_values.(%{
+                 context: %{telemetry_tags: %{pipeline: :spool_consumer}}
+               }) == %{pipeline: :spool_consumer}
+
+        for invalid_value <- [nil, true, false] do
+          assert metric.tag_values.(%{
+                   context: %{telemetry_tags: %{backend_type: invalid_value}}
+                 }) == %{pipeline: :unknown}
+        end
+
+        assert metric.tag_values.(%{context: %{backend: %{type: :postgres}}}) == %{
+                 pipeline: :unknown
+               }
+
+        assert metric.tag_values.(%{context: nil}) == %{pipeline: :unknown}
+      end
+    end
+
+    test "aggregates Broadway batch processor durations by backend type" do
+      metric = metric_by_name(@broadway_batch_processor_metric_name)
+
+      start_supervised!(
+        {OtelMetricExporter,
+         name: @broadway_exporter,
+         metrics: [metric],
+         export_period: :timer.minutes(5),
+         otlp_protocol: :http_protobuf,
+         otlp_endpoint: "http://localhost:4318",
+         otlp_headers: %{},
+         otlp_compression: nil}
+      )
+
+      event = [:broadway, :batch_processor, :stop]
+      duration = System.convert_time_unit(10, :millisecond, :native)
+
+      :telemetry.execute(event, %{duration: duration}, %{
+        context: %{telemetry_tags: %{backend_type: :clickhouse}}
+      })
+
+      :telemetry.execute(event, %{duration: duration}, %{
+        context: %{telemetry_tags: %{backend_type: :bigquery}}
+      })
+
+      :telemetry.execute(event, %{duration: duration}, %{
+        context: %{
+          telemetry_tags: %{pipeline: :user_monitoring}
+        }
+      })
+
+      :telemetry.execute(event, %{duration: duration}, %{context: nil})
+
+      assert %{{:distribution, @broadway_batch_processor_metric_string} => distributions} =
+               MetricStore.get_metrics(@broadway_exporter)
+
+      actual_tags = distributions |> Map.keys() |> MapSet.new()
+
+      expected_tags =
+        MapSet.new([
+          %{backend_type: :clickhouse},
+          %{backend_type: :bigquery},
+          %{pipeline: :user_monitoring},
+          %{pipeline: :unknown}
+        ])
+
+      assert MapSet.subset?(expected_tags, actual_tags)
+    end
+
+    test "tags generic pipeline batch metrics by backend or internal pipeline" do
+      metrics =
+        Enum.filter(
+          Telemetry.metrics(),
+          &(&1.name == [:logflare, :backends, :pipeline, :handle_batch, :batch_size])
+        )
+
+      assert length(metrics) == 2
+      assert Enum.all?(metrics, &(&1.tags == [:backend_type, :pipeline]))
+    end
+
+    test "tags dynamic pipeline and retry lookup-miss metrics by backend type" do
+      for name <- [
+            [:logflare, :backends, :dynamic_pipeline, :pipeline_count],
+            [:logflare, :ingest_event_queue, :requeue_lookup_miss, :count]
+          ] do
+        assert metric_by_name(name).tags == [:backend_type]
       end
     end
 
@@ -448,7 +560,7 @@ defmodule Logflare.TelemetryTest do
 
             distributions ->
               distributions
-              |> Map.fetch!(%{})
+              |> Map.fetch!(%{pipeline: :unknown})
               |> Map.values()
               |> Enum.sum_by(fn {count, _sum} -> count end)
           end
@@ -521,6 +633,53 @@ defmodule Logflare.TelemetryTest do
 
       assert [{_bucket, {1, 500}}] = distributions |> Map.fetch!(metric_tags) |> Map.to_list()
       assert [{_bucket, {1, 125}}] = distributions |> Map.fetch!(trace_tags) |> Map.to_list()
+    end
+
+    test "aggregates spool batches by explicit pipeline tags" do
+      name = [:logflare, :backends, :spool, :pipeline, :handle_batch, :batch_size]
+      metrics = Enum.filter(Telemetry.metrics(), &(&1.name == name))
+      assert length(metrics) == 2
+
+      for metric <- metrics do
+        assert metric.tags == [:pipeline, :batch_trigger]
+        assert metric.keep.(%{pipeline: :spool_producer})
+        assert metric.keep.(%{pipeline: :spool_consumer})
+        refute metric.keep.(%{backend_type: :clickhouse})
+        refute metric.keep.(%{pipeline: :user_monitoring})
+      end
+
+      exporter = :logflare_spool_pipeline_metrics_test
+
+      start_supervised!(
+        {OtelMetricExporter,
+         name: exporter,
+         metrics: metrics,
+         export_period: :timer.minutes(5),
+         otlp_protocol: :http_protobuf,
+         otlp_endpoint: "http://localhost:4318",
+         otlp_headers: %{},
+         otlp_compression: nil}
+      )
+
+      event = [:logflare, :backends, :pipeline, :handle_batch]
+      producer_tags = %{pipeline: :spool_producer, batch_trigger: nil}
+      consumer_tags = %{pipeline: :spool_consumer, batch_trigger: :timeout}
+
+      :telemetry.execute(event, %{batch_size: 3}, producer_tags)
+      :telemetry.execute(event, %{batch_size: 5}, consumer_tags)
+      :telemetry.execute(event, %{batch_size: 999}, %{backend_type: :clickhouse})
+
+      metric_name = "logflare.backends.spool.pipeline.handle_batch.batch_size"
+
+      assert %{
+               {:distribution, ^metric_name} => distributions,
+               {:sum, ^metric_name} => sums
+             } = MetricStore.get_metrics(exporter)
+
+      assert sums == %{producer_tags => 3, consumer_tags => 5}
+      assert MapSet.new(Map.keys(distributions)) == MapSet.new([producer_tags, consumer_tags])
+      assert [{_bucket, {1, 3}}] = distributions |> Map.fetch!(producer_tags) |> Map.to_list()
+      assert [{_bucket, {1, 5}}] = distributions |> Map.fetch!(consumer_tags) |> Map.to_list()
     end
 
     test "tags stale event drops by backend" do
@@ -965,6 +1124,13 @@ defmodule Logflare.TelemetryTest do
       refute_received _anything_else
     end
   end
+
+  defp broadway_duration_metrics do
+    names = MapSet.new(@broadway_duration_metric_names)
+    Enum.filter(Telemetry.metrics(), &MapSet.member?(names, &1.name))
+  end
+
+  defp metric_by_name(name), do: Enum.find(Telemetry.metrics(), &(&1.name == name))
 
   defp clickhouse_batch_metrics do
     Enum.filter(Telemetry.metrics(), &(&1.name == @clickhouse_batch_metric_name))
