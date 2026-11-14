@@ -2,6 +2,8 @@ defmodule LogflareWeb.AccessTokensLiveTest do
   @moduledoc false
   use LogflareWeb.ConnCase
 
+  alias Logflare.OauthAccessTokens.OauthAccessToken
+
   setup %{conn: conn} do
     insert(:plan)
     user = insert(:user)
@@ -32,17 +34,33 @@ defmodule LogflareWeb.AccessTokensLiveTest do
     refute has_element?(view, "form")
   end
 
-  test "legacy api key - show only when no access tokens", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/access-tokens")
-    html = render(view)
-    # able to copy, visible
-    assert view
-           |> element("button", "Copy")
-           |> has_element?()
+  test "legacy key is shown only after usage has been persisted", %{conn: conn, user: user} do
+    other_user = insert(:user)
 
-    # able to see legacy user token
-    assert html =~ "Deprecated"
-    assert html =~ "Copy"
+    Logflare.RecordUsages.persist([
+      {{Logflare.User, other_user.id}, DateTime.to_unix(~U[2026-10-08 18:24:56Z])}
+    ])
+
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+    refute has_element?(view, "#access-token-legacy")
+
+    Logflare.RecordUsages.persist([
+      {{Logflare.User, user.id}, DateTime.to_unix(~U[2026-10-09 18:24:56Z])}
+    ])
+
+    conn = put_connect_params(conn, %{"user_timezone" => "Australia/Brisbane"})
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+
+    assert has_element?(view, "#access-token-legacy", "Legacy Account API key")
+
+    assert has_element?(
+             view,
+             "#access-token-legacy",
+             "10 Oct 2026, 04:24:56 AM"
+           )
+
+    refute has_element?(view, "#access-token-legacy button", "Copy")
+    refute has_element?(view, "#access-token-legacy button", "Revoke")
   end
 
   test "deprecated: public token", %{conn: conn, user: user} do
@@ -672,6 +690,110 @@ defmodule LogflareWeb.AccessTokensLiveTest do
     html = render(view)
     refute html =~ token.token
     assert html =~ "private"
+  end
+
+  test "token table renders each token row with its columns", %{conn: conn, user: user} do
+    source = insert(:source, user: user)
+    deleted_source_id = source.id + 1_000_000
+
+    token =
+      insert(:access_token,
+        description: "my token",
+        scopes: "ingest:source:#{source.id} ingest:source:#{deleted_source_id} query",
+        inserted_at: ~N[2026-10-07 18:12:34],
+        resource_owner: user
+      )
+
+    Logflare.RecordUsages.persist([
+      {{OauthAccessToken, token.id}, DateTime.to_unix(~U[2026-10-08 18:24:56Z], :second)},
+      {{Logflare.User, user.id}, DateTime.to_unix(~U[2026-10-09 18:24:56Z], :second)}
+    ])
+
+    undescribed_tokens =
+      for description <- [nil, ""] do
+        insert(:access_token,
+          description: description,
+          scopes: "ingest",
+          inserted_at: ~N[2026-10-06 13:02:03],
+          resource_owner: user
+        )
+      end
+
+    conn = put_connect_params(conn, %{"user_timezone" => "Australia/Brisbane"})
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+
+    expected_rows =
+      [
+        {token.id,
+         [
+           "my token",
+           "ingest (#{source.name}) ingest (deleted) query (all)",
+           "08 Oct 2026, 04:12:34 AM",
+           "09 Oct 2026, 04:24:56 AM",
+           "Copy Revoke"
+         ]}
+      ] ++
+        Enum.map(undescribed_tokens, fn token ->
+          {token.id,
+           [
+             "No description",
+             "ingest (all)",
+             "06 Oct 2026, 11:02:03 PM",
+             "Unknown",
+             "Copy Revoke"
+           ]}
+        end) ++
+        [
+          {:legacy,
+           [
+             "Legacy Account API key",
+             "ingest (all) query (all)",
+             "Unknown",
+             "10 Oct 2026, 04:24:56 AM",
+             ""
+           ]}
+        ]
+
+    html = render(view) |> Floki.parse_fragment!()
+
+    for {id, expected_columns} <- expected_rows do
+      columns =
+        html
+        |> Floki.find("#access-tokens #access-token-#{id} > td")
+        |> Enum.map(fn cell ->
+          cell
+          |> Floki.filter_out("[aria-hidden='true']")
+          |> Floki.text(sep: " ")
+          |> String.split()
+          |> Enum.join(" ")
+        end)
+
+      assert columns == expected_columns
+    end
+
+    row_ids =
+      html
+      |> Floki.find("#access-tokens tr")
+      |> Floki.attribute("id")
+
+    assert List.last(row_ids) == "access-token-legacy"
+  end
+
+  test "revoking a token removes it from the table", %{conn: conn, user: user} do
+    token = insert(:access_token, scopes: "ingest", resource_owner: user)
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+
+    revoke =
+      element(
+        view,
+        "#access-token-#{token.id} button[phx-click='revoke-token'][data-confirm='Are you sure? This cannot be undone.']",
+        "Revoke"
+      )
+
+    render_click(revoke)
+
+    refute has_element?(view, "#access-tokens")
+    assert Logflare.Auth.list_valid_access_tokens(user) == []
   end
 
   # returns the rendered table html

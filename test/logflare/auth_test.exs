@@ -30,6 +30,19 @@ defmodule Logflare.AuthTest do
       assert Auth.list_valid_access_tokens(partner) |> length() == 2
     end
 
+    test "new tokens have unknown usage and ignore caller-supplied usage", context do
+      for owner <- [context.user, context.team] do
+        assert {:ok, token} =
+                 Auth.create_access_token(owner, %{
+                   last_used_at: ~U[2000-01-01 00:00:00.000000Z]
+                 })
+
+        token = Repo.reload!(token)
+        refute Ecto.assoc_loaded?(token.usage)
+        assert Repo.preload(token, :usage).usage == nil
+      end
+    end
+
     test "user token attrs rejects partner scope via changeset error", %{user: user} do
       assert_scope_error(Auth.create_access_token(user, %{"scopes" => "partner"}))
       assert_scope_error(Auth.create_access_token(user, %{scopes: "partner"}))

@@ -80,8 +80,10 @@ defmodule Logflare.Auth do
   def list_valid_access_tokens(%User{id: user_id}) do
     Repo.all(
       from(t in OauthAccessToken,
+        left_join: usage in assoc(t, :usage),
         where: t.resource_owner_id == ^user_id and is_nil(t.revoked_at),
-        where: not ilike(t.scopes, "%partner%")
+        where: not ilike(t.scopes, "%partner%"),
+        preload: [usage: usage]
       )
     )
   end
