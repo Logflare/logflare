@@ -217,6 +217,30 @@ defmodule Logflare.SourcesTest do
     end
   end
 
+  describe "delete_source/1" do
+    setup do
+      user = insert(:user)
+      %{user: user}
+    end
+
+    test "deletes a source that has attached backends", %{user: user} do
+      backend = insert(:backend, user: user)
+      source = insert(:source, user: user, backends: [backend])
+
+      assert {:ok, %Source{}} = Sources.delete_source(source)
+      refute Sources.get(source.id)
+      # the backend itself is untouched
+      assert Backends.get_backend(backend.id)
+    end
+
+    test "deletes a source with no backends", %{user: user} do
+      source = insert(:source, user: user)
+
+      assert {:ok, %Source{}} = Sources.delete_source(source)
+      refute Sources.get(source.id)
+    end
+  end
+
   describe "update_source/2 with different retention_days" do
     setup do
       user = insert(:user)
