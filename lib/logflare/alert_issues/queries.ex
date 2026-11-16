@@ -16,6 +16,7 @@ defmodule Logflare.AlertIssues.Queries do
 
   @retention_days 30
   @max_limit 500
+  @operator_limit 50
   @filter_key ~r/^[a-z0-9_]{1,64}$/
 
   @type opt ::
@@ -139,21 +140,60 @@ defmodule Logflare.AlertIssues.Queries do
     end
   end
 
+  @doc """
+  Operator view: the latest version of each alert issue for one rule, across all
+  identifiers, with the `silenced` flag. Newest first, at most #{@operator_limit}.
+  """
+  @spec list_for_rule(User.t(), String.t()) :: {:ok, [map()]} | {:error, term()}
+  def list_for_rule(%User{} = user, rule_key) when is_binary(rule_key) do
+    with {:ok, rows} <- latest(user, [], [{"rule_key", rule_key}], nil, @operator_limit) do
+      {:ok, put_silenced(rows, Silences.list(user), true)}
+    end
+  end
+
+  @doc """
+  Operator view: unresolved alert issues per rule key, across all identifiers.
+  """
+  @spec open_counts(User.t()) :: {:ok, %{String.t() => pos_integer()}} | {:error, term()}
+  def open_counts(%User{} = user) do
+    with {:ok, rows} <- latest(user, [], [], nil, @max_limit) do
+      {:ok,
+       rows
+       |> Enum.reject(&(&1["status"] == "resolved"))
+       |> Enum.frequencies_by(& &1["rule_key"])}
+    end
+  end
+
   defp run(user, opts, alert_issue_id) do
-    with {:ok, filters} <- validate_filters(Keyword.get(opts, :filters, %{})),
-         {:ok, source, backend} <- alert_issues_storage(user) do
-      since = clamp_since(Keyword.get(opts, :since))
+    fields = if alert_issue_id, do: [{"alert_issue_id", alert_issue_id}], else: []
+
+    with {:ok, filters} <- validate_filters(Keyword.get(opts, :filters, %{})) do
       limit = opts |> Keyword.get(:limit, @max_limit) |> min(@max_limit)
+      latest(user, filters, fields, Keyword.get(opts, :since), limit)
+    end
+  end
 
-      {sql, params} =
-        latest_sql(PostgresAdaptor.table_name(source), filters, since, alert_issue_id, limit)
+  defp latest(user, filters, fields, since, limit) do
+    case alert_issues_storage(user) do
+      {:ok, source, backend} ->
+        {sql, params} =
+          latest_sql(
+            PostgresAdaptor.table_name(source),
+            filters,
+            fields,
+            clamp_since(since),
+            limit
+          )
 
-      backend
-      |> PostgresAdaptor.execute_query({sql, params}, [])
-      |> decode_bodies([], &Function.identity/1)
-    else
-      {:error, :no_alert_issues} -> {:ok, []}
-      {:error, _} = error -> error
+        backend
+        |> PostgresAdaptor.execute_query({sql, params}, [])
+        |> decode_bodies([], &Function.identity/1)
+
+      {:error, :no_alert_issues} ->
+        {:ok, []}
+
+      {:error, _} = error ->
+        error
     end
   end
 
@@ -217,30 +257,27 @@ defmodule Logflare.AlertIssues.Queries do
 
   defp retention_floor, do: DateTime.add(DateTime.utc_now(), -@retention_days, :day)
 
-  defp latest_sql(table, filters, since, alert_issue_id, limit) do
-    params = [since]
-
+  defp latest_sql(table, filters, fields, since, limit) do
     {filter_sql, params} =
       filters
       |> Enum.sort()
-      |> Enum.map_reduce(params, fn {key, value}, acc ->
+      |> Enum.map_reduce([since], fn {key, value}, acc ->
         n = length(acc)
         {"and body -> 'identifiers' ->> $#{n + 1} = $#{n + 2}", acc ++ [key, value]}
       end)
 
-    {id_sql, params} =
-      case alert_issue_id do
-        nil -> {"", params}
-        id -> {"and body ->> 'alert_issue_id' = $#{length(params) + 1}", params ++ [id]}
-      end
+    {field_sql, params} =
+      Enum.map_reduce(fields, params, fn {key, value}, acc ->
+        n = length(acc)
+        {"and body ->> $#{n + 1} = $#{n + 2}", acc ++ [key, value]}
+      end)
 
     sql = """
     select body::text as body_json from (
       select distinct on (body ->> 'alert_issue_id') body
       from #{table}
       where timestamp >= $1
-        #{Enum.join(filter_sql, "\n    ")}
-        #{id_sql}
+        #{Enum.join(filter_sql ++ field_sql, "\n    ")}
       order by body ->> 'alert_issue_id', cast(body ->> 'version' as bigint) desc
     ) latest
     order by body ->> 'last_seen_at' desc

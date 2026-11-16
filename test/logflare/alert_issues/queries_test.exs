@@ -314,6 +314,65 @@ defmodule Logflare.AlertIssues.QueriesTest do
     end
   end
 
+  describe "operator views" do
+    test "list_for_rule/2 lists one rule's alert issues across all identifiers", ctx do
+      insert_snapshot(ctx, %{"alert_issue_id" => "a", "rule_key" => "r1"}, ago(ctx.now, 60))
+
+      insert_snapshot(
+        ctx,
+        %{"alert_issue_id" => "a", "rule_key" => "r1", "status" => "resolved"},
+        ago(ctx.now, 30)
+      )
+
+      insert_snapshot(
+        ctx,
+        %{
+          "alert_issue_id" => "b",
+          "rule_key" => "r1",
+          "identifiers" => %{"project" => "other"}
+        },
+        ago(ctx.now, 10)
+      )
+
+      insert_snapshot(ctx, %{"alert_issue_id" => "c", "rule_key" => "r2"}, ago(ctx.now, 10))
+
+      {:ok, _} =
+        Silences.create(ctx.user, %{"rule_key" => "r1", "matchers" => %{"project" => "other"}})
+
+      assert {:ok, issues} = Queries.list_for_rule(ctx.user, "r1")
+
+      assert Enum.map(issues, &{&1["alert_issue_id"], &1["status"], &1["silenced"]}) == [
+               {"b", "open", true},
+               {"a", "resolved", false}
+             ]
+    end
+
+    test "open_counts/1 counts unresolved alert issues per rule", ctx do
+      insert_snapshot(ctx, %{"alert_issue_id" => "a", "rule_key" => "r1"}, ago(ctx.now, 60))
+
+      insert_snapshot(
+        ctx,
+        %{"alert_issue_id" => "b", "rule_key" => "r1", "identifiers" => %{"project" => "x"}},
+        ago(ctx.now, 60)
+      )
+
+      insert_snapshot(
+        ctx,
+        %{"alert_issue_id" => "c", "rule_key" => "r2", "status" => "resolved"},
+        ago(ctx.now, 60)
+      )
+
+      assert {:ok, %{"r1" => 2}} == Queries.open_counts(ctx.user)
+    end
+
+    test "operator views are empty before the alert issues table exists", ctx do
+      drop!(ctx, ctx.source)
+
+      assert {:ok, []} == Queries.list_for_rule(ctx.user, "r1")
+      assert {:ok, %{}} == Queries.open_counts(ctx.user)
+    end
+  end
+
   describe "comments/3" do
     defp insert_comment(%{comments_source: source, backend: backend}, attrs, at) do
       body =
