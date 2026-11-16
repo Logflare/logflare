@@ -198,6 +198,31 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
       refute has_element?(view, "#endpoint-version-snapshot-modal")
     end
 
+    test "snapshot mapping failures display an error instead of unresolved SQL", %{
+      conn: conn,
+      endpoint: endpoint,
+      team: team,
+      user: user
+    } do
+      insert(:source, user: user, name: "reused_source")
+
+      version =
+        insert(:endpoint_version,
+          endpoint: endpoint,
+          version_number: 1,
+          snapshot_overrides: %{
+            "query" => "SELECT id FROM reused_source",
+            "source_mapping" => %{"reused_source" => Ecto.UUID.generate()}
+          }
+        )
+
+      {:ok, view, _html} = live(conn, ~p"/endpoints/#{endpoint.id}/versions?t=#{team}")
+      view |> element(endpoint_version_row_button(version)) |> render_click()
+
+      assert render(view) =~ "can&#39;t find source reused_source"
+      refute has_element?(view, "#endpoint-version-snapshot-modal")
+    end
+
     test "loads additional versions", %{
       conn: conn,
       endpoint: endpoint,
@@ -302,6 +327,57 @@ defmodule LogflareWeb.EndpointsVersionsLiveTest do
       assert latest_version_html =~ "current"
       assert latest_version_html =~ "first description"
       refute has_element?(view, version_restore_button(latest_version), "Restore")
+    end
+
+    test "a committed restore refreshes from primary when cache invalidation fails", %{
+      conn: conn,
+      endpoint: endpoint,
+      team: team
+    } do
+      for version_number <- 1..2 do
+        insert(:endpoint_version,
+          endpoint: endpoint,
+          version_number: version_number,
+          snapshot_overrides: %{"query" => "select #{version_number} as restored_version"}
+        )
+      end
+
+      {:ok, view, _html} = live(conn, ~p"/endpoints/#{endpoint.id}/versions?t=#{team}")
+
+      expect(Endpoints, :restore_query_version, fn user, query, version_number, origin ->
+        {:ok, restored, _version} =
+          Mimic.call_original(Endpoints, :restore_query_version, [
+            user,
+            query,
+            version_number,
+            origin
+          ])
+
+        {:error, {:saved, restored, :cache_invalidation_failed}}
+      end)
+
+      observer = self()
+      liveview_pid = view.pid
+      telemetry_ref = make_ref()
+
+      :telemetry.attach(
+        telemetry_ref,
+        [:logflare, :repo, :replica_route],
+        fn _event, _measurements, _metadata, _config ->
+          send(observer, {:replica_read, self()})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(telemetry_ref) end)
+      render_click(view, "restore-version", %{"version-number" => "1"})
+
+      assert render_async(view, 5_000) =~
+               "Version restored, but cached results could not be invalidated."
+
+      assert Endpoints.get_endpoint_query(endpoint.id).query == "select 1 as restored_version"
+      assert has_element?(view, "button[phx-click='show-version'][phx-value-version-number='3']")
+      refute_received {:replica_read, ^liveview_pid}
     end
 
     test "restore errors are displayed", %{conn: conn, endpoint: endpoint, team: team} do

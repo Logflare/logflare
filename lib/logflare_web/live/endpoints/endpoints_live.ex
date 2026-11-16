@@ -404,6 +404,7 @@ defmodule LogflareWeb.EndpointsLive do
            params: query_params,
            parsed_labels: parsed_labels,
            endpoint_id: socket.assigns.endpoint_changeset.data.id,
+           max_limit: Ecto.Changeset.get_field(socket.assigns.endpoint_changeset, :max_limit),
            use_query_cache: false,
            filesystem_cache_policy:
              Ecto.Changeset.get_field(socket.assigns.endpoint_changeset, :filesystem_cache_policy),

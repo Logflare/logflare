@@ -4,6 +4,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   import Kernel, except: [send: 2]
   alias Logflare.Backends.Cache, as: BackendsCache
   alias Logflare.Backends.Adaptor.SyslogAdaptor.Socket
+  require Logger
 
   @behaviour NimblePool
 
@@ -58,10 +59,10 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
     with {:ok, socket} <- Socket.connect(config, @connect_timeout) do
       :ok = NimblePool.update(from, {:connected, socket, config})
 
-      case Socket.controlling_process(socket, owner) do
-        :ok ->
-          {:ok, socket}
-
+      with :ok <- Socket.controlling_process(socket, owner),
+           :ok <- Socket.setopts(socket, active: :once) do
+        {:ok, socket}
+      else
         {:error, _reason} = error ->
           Socket.close(socket)
           error
@@ -102,8 +103,19 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   end
 
   @impl NimblePool
-  def handle_checkin(:keep, _from, conn, backend_id) do
-    {:ok, conn, backend_id}
+  def handle_checkin(:keep, _from, {:connected, socket, _config} = conn, backend_id) do
+    # Check for missed messages or a closed socket before returning it to the pool.
+    case Socket.getopts(socket, [:active]) do
+      {:ok, [active: :once]} ->
+        {:ok, conn, backend_id}
+
+      {:ok, [active: false]} ->
+        Logger.error("Syslog socket received an unexpected message while checked out")
+        {:remove, :inactive, backend_id}
+
+      {:error, reason} ->
+        {:remove, reason, backend_id}
+    end
   end
 
   def handle_checkin({:remove, reason}, _from, _conn, backend_id) do
@@ -115,7 +127,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
     {:remove, :idle_timeout}
   end
 
-  # NOTE: handle_info is called for every socket in the pool for every message received.
+  # NOTE: handle_info is called for every (not checked out) socket for every message received.
+  # Checked-out sockets are checked for unexpected messages when they return to the pool.
   # Since Syslog is typically a "write-only" protocol where we don't expect return traffic, this is probably fine.
   # The only expected messages are tcp_closed / tcp_error, which are rare.
   @impl NimblePool

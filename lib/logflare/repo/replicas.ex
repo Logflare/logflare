@@ -131,16 +131,16 @@ defmodule Logflare.Repo.Replicas do
 
   @doc """
   Same as `parse/1`, but raises `ArgumentError` with a credential-redacted
-  message on failure.
+  message on failure. `label` names the entry in the message.
   """
-  @spec parse!(String.t()) :: {String.t(), keyword()}
-  def parse!(entry) do
+  @spec parse!(String.t(), String.t()) :: {String.t(), keyword()}
+  def parse!(entry, label \\ "read replica") do
     case parse(entry) do
       {:ok, result} ->
         result
 
       {:error, reason} ->
-        raise ArgumentError, "invalid read replica #{inspect(redact(entry))}: #{reason}"
+        raise ArgumentError, "invalid #{label} #{inspect(redact(entry))}: #{reason}"
     end
   end
 

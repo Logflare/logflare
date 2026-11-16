@@ -115,7 +115,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       demand: 0,
       current: nil,
       # nil | :running | {:ready, fetch_result}
-      # fetch_result = {:ok, handle, segments} | :empty | {:error, handle, reason}
+      # fetch_result = {:ok, handle, segments, file_key} | :empty | {:error, handle, reason}
       prefetch: nil,
       poll_timer: nil,
       poll_backoff_ms: @min_backoff,
@@ -152,7 +152,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   defp current_handle(%{handle: handle}), do: handle
   defp current_handle(nil), do: nil
 
-  defp prefetch_handle({:ready, {:ok, handle, _segments}}), do: handle
+  defp prefetch_handle({:ready, {:ok, handle, _segments, _file_key}}), do: handle
   defp prefetch_handle({:ready, {:error, handle, _reason}}), do: handle
   defp prefetch_handle(_), do: nil
 
@@ -287,8 +287,16 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   defp maybe_clear_exhausted(state), do: state
 
-  defp maybe_load_next(%{current: nil, prefetch: {:ready, {:ok, handle, segments}}} = state) do
-    SpoolAck.register(handle, state.queue_mod, state.queue_url)
+  defp maybe_load_next(
+         %{current: nil, prefetch: {:ready, {:ok, handle, segments, file_key}}} = state
+       ) do
+    SpoolAck.register(
+      handle,
+      state.queue_mod,
+      state.queue_url,
+      {state.storage_mod, state.bucket, file_key}
+    )
+
     SpoolAck.bump(handle, length(segments))
     %{state | current: %{handle: handle, segments: segments}, prefetch: nil}
   end
@@ -315,7 +323,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
 
   defp maybe_load_next(state), do: state
 
-  defp nack_predraining_result({:ok, handle, _segments}, state, reason),
+  defp nack_predraining_result({:ok, handle, _segments, _file_key}, state, reason),
     do: nack_and_notify(state.queue_mod, state.queue_url, handle, reason)
 
   defp nack_predraining_result({:error, handle, _reason}, state, reason) when not is_nil(handle),
@@ -370,7 +378,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     deliver_or_settle(result, parent, parent_ref, queue_mod, queue_url)
   end
 
-  defp prefetch_result_tag({:ok, _handle, _segments}), do: :ok
+  defp prefetch_result_tag({:ok, _handle, _segments, _file_key}), do: :ok
   defp prefetch_result_tag(:empty), do: :empty
   defp prefetch_result_tag({:error, _handle, _reason}), do: :error
 
@@ -389,7 +397,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
     end
   end
 
-  defp settle_orphaned_result({:ok, handle, _segments}, queue_mod, queue_url),
+  defp settle_orphaned_result({:ok, handle, _segments, _file_key}, queue_mod, queue_url),
     do: nack_and_notify(queue_mod, queue_url, handle, :producer_gone)
 
   defp settle_orphaned_result({:error, handle, _reason}, queue_mod, queue_url)
@@ -512,7 +520,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       {:ok, %{"file_key" => file_key}} when is_binary(file_key) ->
         case download_and_parse(bucket, file_key, storage_mod) do
           {:ok, segments} ->
-            {:ok, handle, segments}
+            {:ok, handle, segments, file_key}
 
           {:error, :not_found} ->
             Logger.debug(

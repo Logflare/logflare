@@ -67,6 +67,24 @@ defmodule Logflare.Cache.CachexOpsTest do
       end
     end
 
+    test "re-runs a warmer without an interval every third of the ttl" do
+      original = Application.get_env(:logflare, CachexOps)
+      on_exit(fn -> Application.put_env(:logflare, CachexOps, original) end)
+      Application.delete_env(:logflare, CachexOps)
+      base = div(:timer.minutes(60), 3)
+
+      for _ <- 1..50 do
+        opts =
+          CachexOps.cachex_opts(limit: nil, ttl: :timer.minutes(60), warmer: __MODULE__.Warmer)
+
+        assert [warmer(interval: interval)] = opts[:warmers]
+        assert interval >= base * 0.9 and interval <= base * 1.1
+      end
+
+      opts = CachexOps.cachex_opts(limit: nil, warmer: {__MODULE__.Warmer, interval: nil})
+      assert [warmer(interval: nil)] = opts[:warmers]
+    end
+
     test "missing limit" do
       assert_raise KeyError, fn -> CachexOps.cachex_opts(compressed: true) end
     end
@@ -166,6 +184,20 @@ defmodule Logflare.Cache.CachexOpsTest do
       end
     end
 
+    test "not-found invalidation selects only cached nil values" do
+      Cachex.put_many!(@cache,
+        missing: {:cached, nil},
+        positive: {:cached, %{id: 1}},
+        empty_catalog: {:cached, []}
+      )
+
+      keys = Enum.to_list(CachexOps.keys_to_bust(@cache, id: :not_found))
+      assert keys == [:missing]
+      assert {:ok, 1} = CachexOps.delete_keys(@cache, keys)
+      assert Cachex.get!(@cache, :positive) == {:cached, %{id: 1}}
+      assert Cachex.get!(@cache, :empty_catalog) == {:cached, []}
+    end
+
     test "keyword other than id" do
       assert_raise ArgumentError, fn -> CachexOps.keys_to_bust(@cache, source_id: 1) end
     end
@@ -175,6 +207,22 @@ defmodule Logflare.Cache.CachexOpsTest do
     setup do
       start_cache(limit: nil)
       :ok
+    end
+
+    test "typed database failures are not cached and the next fetch retries" do
+      assert {:error, :database_unavailable} =
+               CachexOps.fetch(@cache, :key, fn -> {:error, :database_unavailable} end)
+
+      assert {:ok, false} = Cachex.exists?(@cache, :key)
+      assert :recovered = CachexOps.fetch(@cache, :key, fn -> :recovered end)
+    end
+
+    test "unexpected getter failures are re-raised" do
+      assert_raise Cachex.Error, ~r/getter bug/, fn ->
+        CachexOps.fetch(@cache, :key, fn -> raise ArgumentError, "getter bug" end)
+      end
+
+      assert {:ok, false} = Cachex.exists?(@cache, :key)
     end
 
     for value <- [:value, nil] do

@@ -1161,6 +1161,36 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert html =~ "some event message"
     end
 
+    @tag source_schema:
+           TestUtils.build_bq_schema(%{
+             "metadata" => %{"method" => "GET", "response_bytes" => 42}
+           })
+    test "shows aggregate and field-specific errors before running incompatible chart queries", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} =
+        live_with_redirect(conn, Routes.live_path(conn, SearchLV, source.id, tailing?: false))
+
+      for aggregates <- [
+            "c:sum(m.method)",
+            "c:avg(m.response_bytes) c:sum(m.method)"
+          ] do
+        render_change(view, :start_search, %{
+          "querystring" =>
+            "t:2026-11-04T04:40:00..2026-11-04T04:50:00 #{aggregates} c:group_by(t::minute)"
+        })
+
+        assert has_element?(
+                 view,
+                 ".message [role='alert']",
+                 "Chart aggregate 'sum' requires a numeric field, but path 'metadata.method' has type ':string'."
+               )
+
+        refute render(view) =~ "Backend error!"
+      end
+    end
+
     test "date picker adjusts chart display interval", %{conn: conn, source: source} do
       query = "t:2025-08-01T00:00:00..2025-08-02T00:00:00"
 
@@ -1573,16 +1603,22 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     test "shows flash error for malformed query", %{conn: conn, source: source} do
-      assert {:ok, view, _html} =
-               live_with_redirect(
-                 conn,
-                 Routes.live_path(conn, SearchLV, source, querystring: "t:20022")
-               )
+      for {query, expected_error} <- [
+            {"t:20022", "Error while parsing timestamp filter"},
+            {"t:2026-11-04T04:50:00..2026-11-04T04:40:00",
+             "Timestamp range start must be before or equal to its end"}
+          ] do
+        assert {:ok, view, _html} =
+                 live_with_redirect(
+                   conn,
+                   Routes.live_path(conn, SearchLV, source,
+                     querystring: query,
+                     tailing?: false
+                   )
+                 )
 
-      %{executor_pid: search_executor_pid} = get_view_assigns(view)
-      allow_sandbox(search_executor_pid)
-
-      assert render(view) =~ "Error while parsing timestamp filter"
+        assert has_element?(view, ".message [role='alert']", expected_error)
+      end
     end
 
     test "shows flash error for query exceeding processed bytes limit", %{

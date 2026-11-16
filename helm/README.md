@@ -219,6 +219,22 @@ ingress:
           servicePortName: grpc
 ```
 
+Leave `host` empty or unset and the rule matches any host. A `tls` entry may omit `secretName` for
+controllers that terminate TLS themselves and only read its hosts. The AWS Load Balancer Controller,
+for one, finds its ACM certificates by those hosts:
+
+```yaml
+ingress:
+  enabled: true
+  tls:
+    - hosts:
+        - logflare.example.com
+  hosts:
+    - paths:
+        - path: /logs
+          pathType: Prefix
+```
+
 `extraIngresses` renders further Ingress objects, each taking the same shape as `ingress` plus a
 required `nameSuffix`. Reach for it when a release's routes cannot share one object, either because
 they belong on different ingress classes or because an annotation applies per Ingress rather than
