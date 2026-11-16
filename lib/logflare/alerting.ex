@@ -54,7 +54,7 @@ defmodule Logflare.Alerting do
   """
   @spec list_all_alert_queries() :: [AlertQuery.t()]
   def list_all_alert_queries do
-    from(q in AlertQuery, where: q.enabled == true)
+    from(q in AlertQuery, where: q.enabled == true and q.kind == :scheduled)
     |> Repo.all()
   end
 
@@ -245,6 +245,8 @@ defmodule Logflare.Alerting do
   Inserts AlertWorker jobs into Oban.
   """
   @spec schedule_alert(AlertQuery.t()) :: :ok
+  def schedule_alert(%AlertQuery{kind: :on_match}), do: :ok
+
   def schedule_alert(%AlertQuery{} = alert_query) do
     case CronParser.parse(alert_query.cron) do
       {:ok, cron_expr} ->

@@ -23,6 +23,121 @@ defmodule Logflare.AlertingTest do
     {:ok, user: insert(:user)}
   end
 
+  describe "alert issue type fields" do
+    @issue_attrs %{
+      name: "Edge function errors",
+      cron: "*/5 * * * *",
+      query: "select project, function_id from `some-source`",
+      language: :bq_sql
+    }
+
+    test "defaults to a legacy alert without issue fields", %{user: user} do
+      assert {:ok, alert} = Alerting.create_alert_query(user, @issue_attrs)
+
+      assert alert.rule_key == nil
+      assert alert.kind == :scheduled
+      assert alert.managed == false
+      assert alert.severity == :warning
+      assert alert.category == :health
+      assert alert.signal_mapping == %{}
+      assert alert.scope == %{}
+      assert alert.group_by == []
+      assert alert.resolve_after_runs == 2
+    end
+
+    test "persists issue type fields", %{user: user} do
+      attrs =
+        Map.merge(@issue_attrs, %{
+          rule_key: "logflare.edge-fn-5xx",
+          managed: true,
+          severity: "critical",
+          category: "performance",
+          signal_mapping: %{"identifiers" => %{"project" => "project"}},
+          scope: %{"project" => "default"},
+          group_by: ["project", "function_id"],
+          resolve_after_runs: 3
+        })
+
+      assert {:ok, alert} = Alerting.create_alert_query(user, attrs)
+
+      assert alert.rule_key == "logflare.edge-fn-5xx"
+      assert alert.managed == true
+      assert alert.severity == :critical
+      assert alert.category == :performance
+      assert alert.signal_mapping == %{"identifiers" => %{"project" => "project"}}
+      assert alert.scope == %{"project" => "default"}
+      assert alert.group_by == ["project", "function_id"]
+      assert alert.resolve_after_runs == 3
+    end
+
+    test "rejects invalid rule keys", %{user: user} do
+      for rule_key <- ["Has Spaces", "UPPER", "semi;colon", String.duplicate("a", 129)] do
+        assert {:error, changeset} =
+                 Alerting.create_alert_query(user, Map.put(@issue_attrs, :rule_key, rule_key))
+
+        assert %{rule_key: [_ | _]} = errors_on(changeset)
+      end
+    end
+
+    test "rule keys are unique per user", %{user: user} do
+      attrs = Map.put(@issue_attrs, :rule_key, "logflare.dup")
+      assert {:ok, _} = Alerting.create_alert_query(user, attrs)
+      assert {:error, changeset} = Alerting.create_alert_query(user, attrs)
+      assert %{rule_key: ["has already been taken"]} = errors_on(changeset)
+
+      assert {:ok, _} = Alerting.create_alert_query(insert(:user), attrs)
+    end
+
+    test "resolve_after_runs must be at least 1", %{user: user} do
+      assert {:error, changeset} =
+               Alerting.create_alert_query(user, Map.put(@issue_attrs, :resolve_after_runs, 0))
+
+      assert %{resolve_after_runs: [_]} = errors_on(changeset)
+    end
+
+    test "on_match alerts do not require a cron", %{user: user} do
+      attrs =
+        @issue_attrs
+        |> Map.drop([:cron])
+        |> Map.merge(%{kind: "on_match", language: :lql, query: "m.status:>=500"})
+
+      assert {:ok, alert} = Alerting.create_alert_query(user, attrs)
+      assert alert.kind == :on_match
+      assert alert.cron == nil
+
+      assert {:error, changeset} =
+               Alerting.create_alert_query(user, Map.drop(@issue_attrs, [:cron]))
+
+      assert %{cron: ["can't be blank"]} = errors_on(changeset)
+    end
+
+    test "on_match alerts are never scheduled", %{user: user} do
+      {:ok, alert} =
+        Alerting.create_alert_query(
+          user,
+          @issue_attrs
+          |> Map.drop([:cron])
+          |> Map.merge(%{kind: "on_match", language: :lql, query: "m.status:>=500"})
+        )
+
+      refute alert.id in Enum.map(Alerting.list_all_alert_queries(), & &1.id)
+      assert :ok = Alerting.schedule_alert(alert)
+      assert Alerting.list_future_jobs(alert.id) == []
+    end
+
+    test "JSON encoding includes issue type fields", %{user: user} do
+      {:ok, alert} =
+        Alerting.create_alert_query(user, Map.put(@issue_attrs, :rule_key, "logflare.json"))
+
+      encoded = alert |> Repo.preload(:backends) |> Jason.encode!() |> Jason.decode!()
+
+      for key <-
+            ~w(rule_key kind managed severity category signal_mapping scope group_by resolve_after_runs) do
+        assert Map.has_key?(encoded, key)
+      end
+    end
+  end
+
   describe "alert_queries" do
     alias Logflare.Alerting.AlertQuery
 
