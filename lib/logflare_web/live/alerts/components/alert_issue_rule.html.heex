@@ -1,0 +1,126 @@
+<div id="alert-issue-rule" class="tw-flex tw-flex-col tw-gap-4">
+  <div class="alert alert-info tw-mb-0 tw-flex tw-items-start tw-justify-between tw-gap-4" role="note">
+    <div>
+      <strong class="tw-block">Managed by Terraform</strong>
+      <span class="tw-text-sm">
+        This alert issue rule is read-only here. Change it in the <code>logflare_alert</code> resource in your Terraform configuration.
+      </span>
+    </div>
+    <button phx-click="toggle-terraform" class="btn btn-sm btn-outline-dark tw-whitespace-nowrap">
+      {if @show_terraform, do: "Hide Terraform", else: "View as Terraform"}
+    </button>
+  </div>
+
+  <div :if={@show_terraform} class="tw-bg-zinc-900 tw-rounded-lg tw-p-4">
+    <div class="tw-flex tw-justify-between tw-items-center tw-mb-2">
+      <span class="tw-text-sm text-muted">logflare_alert.{Terraform.label(@alert)}</span>
+      <button class="btn btn-sm btn-outline-secondary" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: Terraform.to_hcl(@alert)})}>
+        <i class="fa fa-copy"></i> Copy
+      </button>
+    </div>
+    <pre id="terraform-hcl" class="tw-text-xs tw-text-white tw-mb-0"><code>{Terraform.to_hcl(@alert)}</code></pre>
+  </div>
+
+  <div id="alert-issue-rule-config">
+    <h3>Alert issue rule</h3>
+    <ul class="list-group tw-text-sm">
+      <li class="list-group-item tw-flex tw-flex-wrap tw-gap-2 tw-items-center">
+        <code>{@alert.rule_key}</code>
+        <span class={if @alert.managed, do: "badge badge-primary", else: "badge badge-light"}>
+          {if @alert.managed, do: "Managed", else: "Custom"}
+        </span>
+        <span class={"badge badge-#{severity_badge_class(@alert.severity)}"}>{@alert.severity}</span>
+        <span class="badge badge-secondary">{@alert.category}</span>
+      </li>
+      <li class="list-group-item"><strong>schedule:</strong> {@alert.cron}</li>
+      <li :if={@alert.group_by != []} class="list-group-item">
+        <strong>group by:</strong> {Enum.join(@alert.group_by, ", ")}
+      </li>
+      <li :if={@alert.scope != %{}} class="list-group-item">
+        <strong>scope:</strong> {format_pairs(@alert.scope)}
+      </li>
+      <li class="list-group-item">
+        <strong>resolve after:</strong> {@alert.resolve_after_runs} clean runs
+      </li>
+      <li :for={{key, label} <- [{"title_column", "title column"}, {"description_column", "description column"}, {"severity_column", "severity column"}, {"category_column", "category column"}, {"window_seconds", "window (seconds)"}]} :if={@alert.signal_mapping[key]} class="list-group-item">
+        <strong>{label}:</strong> {@alert.signal_mapping[key]}
+      </li>
+      <li :if={@alert.signal_mapping["metadata_columns"] not in [nil, []]} class="list-group-item">
+        <strong>metadata columns:</strong> {Enum.join(@alert.signal_mapping["metadata_columns"], ", ")}
+      </li>
+      <li :if={@alert.signal_mapping["identifiers"] not in [nil, %{}]} class="list-group-item">
+        <strong>identifiers:</strong> {format_pairs(@alert.signal_mapping["identifiers"])}
+      </li>
+      <li :if={get_in(@alert.signal_mapping, ["preview", "lql"])} class="list-group-item">
+        <strong>log preview:</strong> <code class="tw-text-xs">{get_in(@alert.signal_mapping, ["preview", "lql"])}</code>
+      </li>
+    </ul>
+
+    <div :if={@alert.signal_mapping["notebook"] not in [nil, []]} class="tw-mt-3">
+      <h5>Notebook SQL templates</h5>
+      <div :for={cell <- @alert.signal_mapping["notebook"]} class="tw-bg-zinc-800 tw-p-3 tw-rounded-lg tw-mb-2">
+        <span class="tw-block tw-text-sm">
+          {cell["title"]} <span class="badge badge-secondary tw-ml-1">{cell["source"]}</span>
+        </span>
+        <code class="tw-whitespace-pre-wrap tw-text-xs tw-text-white">{cell["sql"]}</code>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <h3>Recent alert issues</h3>
+    <p :if={@alert_issues == []} class="text-muted tw-text-sm">No alert issues in the last 30 days.</p>
+    <table :if={@alert_issues != []} id="alert-issues-table" class="table table-sm tw-text-white tw-text-sm">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Alert issue</th>
+          <th>Identifiers</th>
+          <th>Signals</th>
+          <th>First seen</th>
+          <th>Last seen</th>
+          <th>Latest change</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr :for={issue <- @alert_issues}>
+          <td>
+            <span class={"badge badge-#{alert_issue_status_badge_class(issue["status"])}"}>{issue["status"]}</span>
+            <span :if={issue["silenced"]} data-silenced class="badge badge-dark tw-ml-1">silenced</span>
+          </td>
+          <td>{issue["title"]}</td>
+          <td><code class="tw-text-xs">{format_pairs(issue["identifiers"])}</code></td>
+          <td>{issue["signal_count"]}</td>
+          <td>{issue["first_seen_at"]}</td>
+          <td>{issue["last_seen_at"]}</td>
+          <td>{issue["change"]}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div id="alert-issue-silences">
+    <h3>Silences</h3>
+    <p :if={@silences == []} class="text-muted tw-text-sm">No silences for this rule.</p>
+    <table :if={@silences != []} class="table table-sm tw-text-white tw-text-sm">
+      <thead>
+        <tr>
+          <th>Matchers</th>
+          <th>Rule</th>
+          <th>Comment</th>
+          <th>Created by</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr :for={silence <- @silences}>
+          <td><code class="tw-text-xs">{format_pairs(silence.matchers)}</code></td>
+          <td>{silence.rule_key || "any rule"}</td>
+          <td>{silence.comment}</td>
+          <td>{silence.created_by}</td>
+          <td>{time_ago(silence.inserted_at)}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>

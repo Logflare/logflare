@@ -2,7 +2,7 @@
   <:path>
     ~/<.subheader_path_link live_patch to={~p"/alerts"} team={@team}>alerts</.subheader_path_link>/{@alert.name}
   </:path>
-  <.subheader_link team={@team} live_patch to={~p"/alerts/#{@alert.id}/edit"} text="edit" fa_icon="edit" />
+  <.subheader_link :if={is_nil(@alert.rule_key)} team={@team} live_patch to={~p"/alerts/#{@alert.id}/edit"} text="edit" fa_icon="edit" />
 </.subheader>
 <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
   <div class="tw-flex tw-items-center tw-gap-2">
@@ -19,6 +19,8 @@
 
   <p class="text-muted tw-whitespace-pre-wrap tw-text-sm">{@alert.description}</p>
 
+  <.alert_issue_rule :if={@alert.rule_key} {assigns} />
+
   <div class="tw-w-full tw-bg-zinc-800 tw-p-4 tw-rounded-lg tw-min-h-[100px]">
     <span class="tw-block">
       {case @alert.language do
@@ -30,7 +32,7 @@
     <code class="tw-whitespace-pre-wrap tw-text-sm tw-text-white">{@alert.query}</code>
   </div>
 
-  <div>
+  <div :if={is_nil(@alert.rule_key)}>
     <button class="btn btn-secondary" phx-click="run-query">Run query</button>
     <button class="btn btn-primary" phx-click="trigger-now" disabled={@triggering_alert}>
       <i :if={@triggering_alert} class="fa fa-refresh fa-spin"></i>
@@ -38,7 +40,7 @@
     </button>
   </div>
 
-  <div>
+  <div :if={is_nil(@alert.rule_key)}>
     <ul class="list-group tw-text-sm">
       <li class="list-group-item">
         <span><strong>cron:</strong> {@alert.cron}</span>

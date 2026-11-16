@@ -1,6 +1,8 @@
 defmodule LogflareWeb.AlertsLiveTest do
   use LogflareWeb.ConnCase
 
+  alias Logflare.AlertIssues.Queries
+  alias Logflare.AlertIssues.Silences
   alias Logflare.Alerting
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Adaptor.SlackAdaptor
@@ -1013,6 +1015,163 @@ defmodule LogflareWeb.AlertsLiveTest do
       for {_bytes, label} <- sizes do
         assert html =~ label
       end
+    end
+  end
+
+  describe "alert issue rules" do
+    setup %{user: user} do
+      rule =
+        insert(:alert,
+          user: user,
+          name: "Edge Function errors",
+          description: "An Edge Function returned 5xx responses.",
+          language: :pg_sql,
+          query: "select function_id, count(*) as errors from function_edge_logs group by 1",
+          cron: "*/5 * * * *",
+          rule_key: "supabase.edge-function-5xx",
+          managed: true,
+          severity: :major,
+          category: :health,
+          group_by: ["function_id"],
+          scope: %{"project" => "default"},
+          signal_mapping: %{
+            "preview" => %{"lql" => "f:function_edge_logs m.function_id:{{function_id}}"},
+            "notebook" => [
+              %{"title" => "Errors by function", "source" => "database", "sql" => "select 1"}
+            ]
+          }
+        )
+
+      plain = insert(:alert, user: user, name: "Plain alert")
+
+      Queries
+      |> stub(:open_counts, fn _user -> {:ok, %{"supabase.edge-function-5xx" => 3}} end)
+      |> stub(:list_for_rule, fn _user, "supabase.edge-function-5xx" ->
+        {:ok,
+         [
+           %{
+             "alert_issue_id" => "a1",
+             "title" => "Edge Function errors: stripe-webhook",
+             "status" => "acknowledged",
+             "change" => "acknowledged",
+             "identifiers" => %{"project" => "default", "function_id" => "stripe-webhook"},
+             "signal_count" => 12,
+             "first_seen_at" => "2026-11-16T10:00:00Z",
+             "last_seen_at" => "2026-11-16T10:10:00Z",
+             "silenced" => true
+           }
+         ]}
+      end)
+
+      [rule: rule, plain: plain]
+    end
+
+    test "index shows rule details and can list only alert issue rules", %{conn: conn} do
+      {:ok, view, html} = live_with_redirect(conn, ~p"/alerts")
+
+      assert html =~ "supabase.edge-function-5xx"
+      assert has_element?(view, "[data-rule-badge]", "Managed")
+      assert has_element?(view, "[data-open-alert-issues]", "3 open")
+      assert html =~ "Plain alert"
+
+      html = view |> element("button", "Alert issue rules only") |> render_click()
+
+      assert html =~ "Edge Function errors"
+      refute html =~ "Plain alert"
+    end
+
+    test "index marks custom rules", %{conn: conn, user: user} do
+      insert(:alert, user: user, name: "My rule", rule_key: "custom.my-rule", managed: false)
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts")
+
+      assert has_element?(view, "[data-rule-badge]", "Custom")
+    end
+
+    test "show is read-only and points to Terraform", %{conn: conn, rule: rule} do
+      {:ok, view, html} = live_with_redirect(conn, ~p"/alerts/#{rule.id}")
+
+      assert html =~ "Managed by Terraform"
+      refute has_element?(view, "a", "edit")
+      refute has_element?(view, "button", "Run query")
+      refute has_element?(view, "button", "Trigger now")
+      refute has_element?(view, "button", "Add Backend")
+      refute has_element?(view, "button", "Remove Slack")
+    end
+
+    test "show lists the rule config, alert issues and silences", %{
+      conn: conn,
+      rule: rule,
+      user: user
+    } do
+      {:ok, _} =
+        Silences.create(user, %{
+          "rule_key" => rule.rule_key,
+          "matchers" => %{"project" => "default"},
+          "comment" => "Known flaky webhook"
+        })
+
+      {:ok, view, html} = live_with_redirect(conn, ~p"/alerts/#{rule.id}")
+
+      assert has_element?(view, "#alert-issue-rule-config", "function_id")
+      assert html =~ "f:function_edge_logs m.function_id:{{function_id}}"
+      assert html =~ "Errors by function"
+
+      assert has_element?(
+               view,
+               "#alert-issues-table tr",
+               "Edge Function errors: stripe-webhook"
+             )
+
+      assert has_element?(view, "#alert-issues-table", "function_id=stripe-webhook")
+      assert has_element?(view, "#alert-issues-table [data-silenced]")
+      assert has_element?(view, "#alert-issue-silences", "Known flaky webhook")
+      assert has_element?(view, "#alert-issue-silences", "project=default")
+    end
+
+    test "show reveals the Terraform resource", %{conn: conn, rule: rule} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{rule.id}")
+
+      refute has_element?(view, "#terraform-hcl")
+
+      html = view |> element("button", "View as Terraform") |> render_click()
+
+      assert has_element?(view, "#terraform-hcl")
+      assert html =~ "resource &quot;logflare_alert&quot; &quot;supabase_edge_function_5xx&quot;"
+    end
+
+    test "edit redirects to the read-only show page", %{conn: conn, rule: rule, team: team} do
+      assert {:error, {:live_redirect, %{to: to, flash: %{"info" => "Alert issue rules" <> _}}}} =
+               live(conn, ~p"/alerts/#{rule.id}/edit?t=#{team.id}")
+
+      assert to == "/alerts/#{rule.id}?t=#{team.id}"
+    end
+
+    test "blocks changes to the rule server-side", %{conn: conn, rule: rule} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts/#{rule.id}")
+
+      for {event, params} <- [
+            {"trigger-now", %{}},
+            {"run-query", %{}},
+            {"remove-slack", %{}},
+            {"save", %{"alert" => %{"name" => "renamed"}}},
+            {"delete", %{"alert_id" => to_string(rule.id)}}
+          ] do
+        assert render_hook(view, event, params) =~ "managed by Terraform"
+      end
+
+      reloaded = Alerting.get_alert_query!(rule.id)
+      assert reloaded.name == "Edge Function errors"
+      assert reloaded.slack_hook_url == rule.slack_hook_url
+      assert Alerting.list_future_jobs(rule.id) == []
+    end
+
+    test "blocks deleting a rule from another page", %{conn: conn, rule: rule} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts")
+
+      assert render_hook(view, "delete", %{"alert_id" => to_string(rule.id)}) =~
+               "managed by Terraform"
+
+      assert Alerting.get_alert_query!(rule.id)
     end
   end
 end

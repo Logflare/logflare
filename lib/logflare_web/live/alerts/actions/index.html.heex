@@ -23,11 +23,31 @@
 </div>
 
 <section class="mx-auto container">
-  <ul :for={alert <- Enum.sort_by(@alerts, & &1.name)} class="list-group">
+  <div :if={Enum.any?(@alerts, &is_binary(&1.rule_key))} class="tw-flex tw-justify-end tw-mb-2">
+    <button phx-click="toggle-rules-only" class={if @rules_only, do: "btn btn-sm btn-primary", else: "btn btn-sm btn-outline-secondary"}>
+      Alert issue rules only
+    </button>
+  </div>
+  <ul :for={alert <- visible_alerts(@alerts, @rules_only)} class="list-group">
     <li class="list-group-item">
       <.team_link team={@team} patch={~p"/alerts/#{alert.id}"} class="tw-text-white">{alert.name}</.team_link>
       <span :if={!alert.enabled} class="badge badge-secondary tw-ml-2">Disabled</span>
-      <span class="tw-block tw-text-sm">uuid: {alert.token}</span>
+      <%= if alert.rule_key do %>
+        <span data-rule-badge class={if alert.managed, do: "badge badge-primary tw-ml-2", else: "badge badge-light tw-ml-2"}>
+          {if alert.managed, do: "Managed", else: "Custom"}
+        </span>
+        <span class={"badge badge-#{severity_badge_class(alert.severity)} tw-ml-1"}>{alert.severity}</span>
+        <span class="badge badge-secondary tw-ml-1">{alert.category}</span>
+        <span data-open-alert-issues class="tw-ml-2 tw-text-sm">
+          {Map.get(@open_counts, alert.rule_key, 0)} open
+        </span>
+        <span class="tw-block tw-text-sm tw-mt-1">
+          <code class="tw-text-xs">{alert.rule_key}</code>
+          <span class="text-muted tw-ml-2">schedule: {alert.cron}</span>
+        </span>
+      <% else %>
+        <span class="tw-block tw-text-sm">uuid: {alert.token}</span>
+      <% end %>
       <p :if={alert.description} class="tw-pb-0 tw-mb-0 tw-text-sm text-muted">
         {alert.description}
       </p>

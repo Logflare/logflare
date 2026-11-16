@@ -7,8 +7,11 @@ defmodule LogflareWeb.AlertsLive do
   import Ecto.Query
   import LogflareWeb.Utils, only: [stringify_changeset_errors: 2, time_ago: 1]
 
+  alias Logflare.AlertIssues.Queries
+  alias Logflare.AlertIssues.Silences
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
+  alias Logflare.Alerting.Terraform
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
@@ -24,6 +27,8 @@ defmodule LogflareWeb.AlertsLive do
   @past_jobs_page_size 15
   @poll_interval 500
   @poll_max_attempts 60
+  @terraform_managed_events ~w(save delete remove-slack run-query trigger-now add-backend remove-backend toggle-add-backend)
+  @terraform_managed_message "Alert issue rules are managed by Terraform. Change them in your Terraform configuration."
 
   embed_templates("actions/*", suffix: "_action")
   embed_templates("components/*")
@@ -46,6 +51,10 @@ defmodule LogflareWeb.AlertsLive do
     socket =
       socket
       |> assign(:user_id, user.id)
+      |> assign(:rules_only, false)
+      |> assign(:alert_issues, [])
+      |> assign(:silences, [])
+      |> assign(:show_terraform, false)
       #  must be below user_id assign
       |> refresh()
       |> assign(:query_result_rows, nil)
@@ -98,6 +107,8 @@ defmodule LogflareWeb.AlertsLive do
         |> assign(:future_jobs, Alerting.list_future_jobs(alert.id))
         |> assign(:past_jobs_page, paginate_past_jobs(alert.id, page_num))
         |> assign(:changeset, Alerting.change_alert_query(alert))
+        |> assign_alert_issue_rule(alert)
+        |> redirect_terraform_managed_edit()
       else
         nil ->
           socket
@@ -119,6 +130,11 @@ defmodule LogflareWeb.AlertsLive do
   end
 
   defp verify_resource_access(_socket), do: :ok
+
+  def handle_event(event, _params, %{assigns: %{alert: %AlertQuery{rule_key: rule_key}}} = socket)
+      when event in @terraform_managed_events and is_binary(rule_key) do
+    {:noreply, put_flash(socket, :error, @terraform_managed_message)}
+  end
 
   def handle_event(
         "save",
@@ -161,6 +177,9 @@ defmodule LogflareWeb.AlertsLive do
     case Alerting.get_alert_query_by_user_access(user, id) do
       nil ->
         {:noreply, put_flash(socket, :error, "You do not have access to that alert.")}
+
+      %AlertQuery{rule_key: rule_key} when is_binary(rule_key) ->
+        {:noreply, put_flash(socket, :error, @terraform_managed_message)}
 
       alert ->
         {:ok, _} = Alerting.delete_alert_query(alert)
@@ -367,6 +386,14 @@ defmodule LogflareWeb.AlertsLive do
     {:noreply, assign(socket, :show_add_backend_form, !socket.assigns.show_add_backend_form)}
   end
 
+  def handle_event("toggle-rules-only", _params, socket) do
+    {:noreply, assign(socket, :rules_only, !socket.assigns.rules_only)}
+  end
+
+  def handle_event("toggle-terraform", _params, socket) do
+    {:noreply, assign(socket, :show_terraform, !socket.assigns.show_terraform)}
+  end
+
   def handle_event("toggle-execution-history", _params, socket) do
     {:noreply, assign(socket, :show_execution_history, !socket.assigns.show_execution_history)}
   end
@@ -460,8 +487,80 @@ defmodule LogflareWeb.AlertsLive do
   defp refresh(%{assigns: assigns} = socket) do
     alerts = Alerting.list_alert_queries(assigns.user)
 
-    assign(socket, :alerts, alerts)
+    socket
+    |> assign(:alerts, alerts)
+    |> assign(:open_counts, open_counts(assigns.user, alerts))
   end
+
+  defp open_counts(user, alerts) do
+    with true <- Enum.any?(alerts, &is_binary(&1.rule_key)),
+         {:ok, counts} <- Queries.open_counts(user) do
+      counts
+    else
+      _ -> %{}
+    end
+  end
+
+  defp assign_alert_issue_rule(socket, %AlertQuery{rule_key: rule_key, user: user})
+       when is_binary(rule_key) do
+    alert_issues =
+      case Queries.list_for_rule(user, rule_key) do
+        {:ok, alert_issues} -> alert_issues
+        {:error, _} -> []
+      end
+
+    silences = Enum.filter(Silences.list(user), &(&1.rule_key in [rule_key, nil]))
+
+    socket
+    |> assign(:alert_issues, alert_issues)
+    |> assign(:silences, silences)
+  end
+
+  defp assign_alert_issue_rule(socket, _alert), do: socket
+
+  defp redirect_terraform_managed_edit(
+         %{assigns: %{live_action: :edit, alert: %AlertQuery{rule_key: rule_key} = alert}} =
+           socket
+       )
+       when is_binary(rule_key) do
+    socket
+    |> put_flash(:info, @terraform_managed_message)
+    |> push_navigate(to: ~p"/alerts/#{alert.id}" |> Utils.with_team_param(socket.assigns.team))
+  end
+
+  defp redirect_terraform_managed_edit(socket), do: socket
+
+  defp visible_alerts(alerts, rules_only) do
+    alerts
+    |> Enum.filter(&(not rules_only or is_binary(&1.rule_key)))
+    |> Enum.sort_by(& &1.name)
+  end
+
+  defp severity_badge_class(severity) do
+    case severity do
+      :critical -> "danger"
+      :major -> "warning"
+      :warning -> "info"
+      _ -> "secondary"
+    end
+  end
+
+  defp alert_issue_status_badge_class(status) do
+    case status do
+      "open" -> "danger"
+      "acknowledged" -> "warning"
+      "resolved" -> "success"
+      _ -> "secondary"
+    end
+  end
+
+  defp format_pairs(map) when is_map(map) do
+    map
+    |> Enum.sort()
+    |> Enum.map_join(", ", fn {key, value} -> "#{key}=#{value}" end)
+  end
+
+  defp format_pairs(_map), do: ""
 
   defp assign_endpoints_and_sources(socket) do
     %{user_id: user_id} = socket.assigns
