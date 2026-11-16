@@ -1,0 +1,79 @@
+defmodule LogflareWeb.SourceEnrichmentRulesLiveTest do
+  use LogflareWeb.ConnCase
+
+  import Phoenix.LiveViewTest
+
+  alias Logflare.EnrichmentRules
+  alias LogflareWeb.SourceEnrichmentRulesLive
+
+  setup do
+    insert(:plan)
+    user = insert(:user)
+    source = insert(:source, user_id: user.id)
+
+    [source: source, user: user]
+  end
+
+  defp render_view(conn, source) do
+    {:ok, view, html} =
+      live_isolated(conn, SourceEnrichmentRulesLive, session: %{"source_id" => source.id})
+
+    {view, html}
+  end
+
+  test "creates a rule with typed field values", %{conn: conn, source: source} do
+    {view, html} = render_view(conn, source)
+    assert html =~ "No enrichment rules yet."
+
+    html =
+      view
+      |> element("#enrichment-rule-form")
+      |> render_submit(%{
+        rule: %{
+          lql_string: "m.level:error",
+          set_fields: "alert=true\nm.retries=3\nteam=core"
+        }
+      })
+
+    assert html =~ "Enrichment rule created."
+    assert html =~ "m.level:error"
+
+    assert [rule] = EnrichmentRules.list_by_source_id(source.id)
+    assert rule.set_fields == %{"alert" => true, "m.retries" => 3, "team" => "core"}
+  end
+
+  test "shows errors for malformed set fields and invalid rules", %{conn: conn, source: source} do
+    {view, _html} = render_view(conn, source)
+
+    assert view
+           |> element("#enrichment-rule-form")
+           |> render_submit(%{rule: %{lql_string: "m.level:error", set_fields: "no-equals-sign"}}) =~
+             "one field=value per line"
+
+    assert view
+           |> element("#enrichment-rule-form")
+           |> render_submit(%{rule: %{lql_string: "m.level:error", set_fields: "timestamp=1"}}) =~
+             "cannot set reserved field"
+
+    assert EnrichmentRules.list_by_source_id(source.id) == []
+  end
+
+  test "deletes a rule of its own source only", %{conn: conn, source: source, user: user} do
+    rule = insert(:enrichment_rule, source: source)
+    other_rule = insert(:enrichment_rule, source: insert(:source, user: user))
+    {view, html} = render_view(conn, source)
+    assert html =~ "enrichment-rule-#{rule.id}"
+
+    assert render_click(view, "delete", %{"id" => to_string(other_rule.id)}) =~
+             "Enrichment rule not found on this source."
+
+    assert EnrichmentRules.get(other_rule.id)
+
+    view
+    |> element("#enrichment-rule-#{rule.id} button")
+    |> render_click()
+
+    assert EnrichmentRules.get(rule.id) == nil
+    refute render(view) =~ "enrichment-rule-#{rule.id}"
+  end
+end

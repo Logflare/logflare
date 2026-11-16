@@ -12,6 +12,7 @@ defmodule Logflare.ContextCache.CacheBusterTest do
   alias Logflare.ContextCache.CacheBuster
   alias Logflare.ContextCache.Tombstones
   alias Logflare.Endpoints
+  alias Logflare.EnrichmentRules
   alias Logflare.KeyValues
   alias Logflare.QueryContext
   alias Logflare.Sources
@@ -157,6 +158,41 @@ defmodule Logflare.ContextCache.CacheBusterTest do
              Repo.query!(
                "SELECT relreplident::text FROM pg_class WHERE oid = 'key_values'::regclass"
              )
+  end
+
+  test "enrichment_rules replication includes old source_id for targeted WAL deletes" do
+    assert %{rows: [["f"]]} =
+             Repo.query!(
+               "SELECT relreplident::text FROM pg_class WHERE oid = 'enrichment_rules'::regclass"
+             )
+  end
+
+  test "enrichment_rules WAL changes bust the source's compiled rules", %{source: source} do
+    first = insert(:enrichment_rule, source: source)
+    assert %{set_fields: compiled} = EnrichmentRules.Cache.compiled_by_source_id(source.id)
+    assert Map.keys(compiled) == [first.id]
+
+    second = insert(:enrichment_rule, source: source)
+
+    records =
+      bust_records(%NewRecord{
+        relation: {"public", "enrichment_rules"},
+        record: %{"id" => to_string(second.id), "source_id" => to_string(source.id)}
+      })
+
+    assert {EnrichmentRules, [source_id: source.id]} in records
+    assert %{set_fields: compiled} = EnrichmentRules.Cache.compiled_by_source_id(source.id)
+    assert Enum.sort(Map.keys(compiled)) == [first.id, second.id]
+
+    Repo.delete!(first)
+    Repo.delete!(second)
+
+    bust_records(%DeletedRecord{
+      relation: {"public", "enrichment_rules"},
+      old_record: %{"id" => to_string(second.id), "source_id" => to_string(source.id)}
+    })
+
+    assert EnrichmentRules.Cache.compiled_by_source_id(source.id) == nil
   end
 
   test "key_values WAL deletes bust every cached lookup for the key", %{user: user} do

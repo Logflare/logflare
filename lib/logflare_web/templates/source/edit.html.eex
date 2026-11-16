@@ -289,6 +289,12 @@
     <%= submit "Update key-value enrichment rules", class: "btn btn-primary form-button" %>
   <% end %>
 
+  <%= section_header("Enrichment Rules") %>
+  <p>
+    Set fields on events that match an LQL filter. Rules run after ingestion, before routing, so they can match fields added by key-value enrichment. Events routed into this source by a routing rule are not enriched again.
+  </p>
+  <%= live_render(@conn, LogflareWeb.SourceEnrichmentRulesLive, session: %{"source_id" => @source.id}, id: "source-enrichment-rules") %>
+
   <%= section_header("Drop fields") %>
   <p>
     Drop specific fields from the event body at ingestion. Useful for removing keys that were only needed upstream (e.g. for routing) before they are persisted. Runs after field copying and key-value enrichment, so values can be copied or used for enrichment first and then dropped.
