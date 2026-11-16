@@ -167,6 +167,51 @@ defmodule LogflareWeb.Api.AlertIssueControllerTest do
     end
   end
 
+  describe "reads" do
+    test "GET passes the reader through to list", %{conn: conn} do
+      expect(Queries, :list, fn _user, opts ->
+        assert opts[:reader] == "user_1"
+        {:ok, [Map.put(@issue, "unread", true)]}
+      end)
+
+      assert [%{"unread" => true}] =
+               conn
+               |> get(
+                 ~p"/api/alerts/issues?#{%{"filters" => %{"identifiers.project" => "p1"}, "reader" => "user_1"}}"
+               )
+               |> json_response(200)
+    end
+
+    test "POST /api/alerts/issues/reads marks alert issues read", %{conn: conn} do
+      expect(AlertIssues, :mark_read, fn _user, ["a1", "a2"], "user_1", true, opts ->
+        assert opts[:filters] == %{"project" => "p1"}
+        {:ok, 2}
+      end)
+
+      assert %{"count" => 2} =
+               conn
+               |> post(~p"/api/alerts/issues/reads", %{
+                 "filters" => %{"identifiers.project" => "p1"},
+                 "alert_issue_ids" => ["a1", "a2"],
+                 "reader" => "user_1",
+                 "read" => true
+               })
+               |> json_response(200)
+    end
+
+    test "POST /api/alerts/issues/reads validates the body", %{conn: conn} do
+      reject(AlertIssues, :mark_read, 5)
+
+      assert conn
+             |> post(~p"/api/alerts/issues/reads", %{
+               "filters" => %{"identifiers.project" => "p1"},
+               "alert_issue_ids" => [],
+               "reader" => "user_1"
+             })
+             |> json_response(400)
+    end
+  end
+
   test "existing alert routes still resolve by token", %{conn: conn, user: user} do
     alert = insert(:alert, user: user)
     assert %{"id" => id} = conn |> get(~p"/api/alerts/#{alert.token}") |> json_response(200)

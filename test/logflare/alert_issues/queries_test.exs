@@ -12,19 +12,28 @@ defmodule Logflare.AlertIssues.QueriesTest do
     user = insert(:user)
     sources = Sources.create_alert_issue_system_sources(user.id)
     source = Enum.find(sources, &(&1.system_source_type == :alert_issues))
+    reads_source = Enum.find(sources, &(&1.system_source_type == :alert_issue_reads))
 
     cfg = Application.get_env(:logflare, Logflare.Repo)
     url = "postgresql://#{cfg[:username]}:#{cfg[:password]}@#{cfg[:hostname]}/#{cfg[:database]}"
 
     backend =
-      insert(:backend, type: :postgres, config: %{url: url}, sources: [source], user: user)
+      insert(:backend,
+        type: :postgres,
+        config: %{url: url},
+        sources: [source, reads_source],
+        user: user
+      )
 
     PostgresAdaptor.create_repo(backend)
-    PostgresAdaptor.create_events_table({source, backend})
-    on_exit(fn -> PostgresAdaptor.destroy_instance({source, backend}) end)
+
+    for s <- [source, reads_source] do
+      PostgresAdaptor.create_events_table({s, backend})
+      on_exit(fn -> PostgresAdaptor.destroy_instance({s, backend}) end)
+    end
 
     now = DateTime.utc_now()
-    %{user: user, source: source, backend: backend, now: now}
+    %{user: user, source: source, reads_source: reads_source, backend: backend, now: now}
   end
 
   defp insert_snapshot(%{source: source, backend: backend}, attrs, at) do
@@ -54,6 +63,30 @@ defmodule Logflare.AlertIssues.QueriesTest do
   end
 
   defp ago(now, seconds), do: DateTime.add(now, -seconds, :second)
+
+  defp insert_read(%{reads_source: source, backend: backend}, alert_issue_id, read, at) do
+    body = %{
+      "alert_issue_id" => alert_issue_id,
+      "reader" => "user_1",
+      "read" => read,
+      "version" => DateTime.to_unix(at, :microsecond)
+    }
+
+    {:ok, _} =
+      PostgresAdaptor.execute_query(
+        backend,
+        {"insert into #{PostgresAdaptor.table_name(source)} (id, body, event_message, timestamp) values ($1, $2, $3, $4) returning id",
+         [Ecto.UUID.generate(), body, "read", at]},
+        []
+      )
+  end
+
+  defp unread_by_id(ctx) do
+    {:ok, issues} =
+      Queries.list(ctx.user, filters: %{"project" => "default"}, reader: "user_1")
+
+    Map.new(issues, &{&1["alert_issue_id"], &1["unread"]})
+  end
 
   test "returns the latest version of each alert issue matching the filters", ctx do
     insert_snapshot(ctx, %{"alert_issue_id" => "a", "status" => "open"}, ago(ctx.now, 300))
@@ -161,5 +194,64 @@ defmodule Logflare.AlertIssues.QueriesTest do
       assert issue["alert_issue_id"] == snapshot["alert_issue_id"]
       assert issue["title"] == "Postgres deadlocks"
     end)
+  end
+
+  describe "unread state" do
+    test "alert issues without a read are unread", ctx do
+      insert_snapshot(
+        ctx,
+        %{"alert_issue_id" => "a", "attention_at" => DateTime.to_iso8601(ago(ctx.now, 300))},
+        ago(ctx.now, 300)
+      )
+
+      assert unread_by_id(ctx) == %{"a" => true}
+    end
+
+    test "a read after attention_at marks the alert issue read", ctx do
+      insert_snapshot(
+        ctx,
+        %{"alert_issue_id" => "a", "attention_at" => DateTime.to_iso8601(ago(ctx.now, 300))},
+        ago(ctx.now, 300)
+      )
+
+      insert_read(ctx, "a", true, ago(ctx.now, 200))
+      assert unread_by_id(ctx) == %{"a" => false}
+    end
+
+    test "attention moving past the last read makes it unread again", ctx do
+      insert_snapshot(
+        ctx,
+        %{"alert_issue_id" => "a", "attention_at" => DateTime.to_iso8601(ago(ctx.now, 300))},
+        ago(ctx.now, 300)
+      )
+
+      insert_read(ctx, "a", true, ago(ctx.now, 200))
+
+      insert_snapshot(
+        ctx,
+        %{"alert_issue_id" => "a", "attention_at" => DateTime.to_iso8601(ago(ctx.now, 100))},
+        ago(ctx.now, 100)
+      )
+
+      assert unread_by_id(ctx) == %{"a" => true}
+    end
+
+    test "an explicit unread wins over an earlier read", ctx do
+      insert_snapshot(
+        ctx,
+        %{"alert_issue_id" => "a", "attention_at" => DateTime.to_iso8601(ago(ctx.now, 300))},
+        ago(ctx.now, 300)
+      )
+
+      insert_read(ctx, "a", true, ago(ctx.now, 200))
+      insert_read(ctx, "a", false, ago(ctx.now, 100))
+      assert unread_by_id(ctx) == %{"a" => true}
+    end
+
+    test "lists without a reader carry no unread flag", ctx do
+      insert_snapshot(ctx, %{"alert_issue_id" => "a"}, ago(ctx.now, 300))
+      assert {:ok, [issue]} = Queries.list(ctx.user, filters: %{"project" => "default"})
+      refute Map.has_key?(issue, "unread")
+    end
   end
 end

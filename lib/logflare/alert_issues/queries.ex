@@ -21,12 +21,69 @@ defmodule Logflare.AlertIssues.Queries do
           | {:statuses, [String.t()]}
           | {:since, DateTime.t()}
           | {:limit, pos_integer()}
+          | {:reader, String.t()}
 
   @spec list(User.t(), [opt()]) :: {:ok, [map()]} | {:error, term()}
   def list(%User{} = user, opts) do
     with {:ok, rows} <- run(user, opts, nil) do
       statuses = Keyword.get(opts, :statuses)
-      {:ok, Enum.filter(rows, &(is_nil(statuses) or &1["status"] in statuses))}
+      rows = Enum.filter(rows, &(is_nil(statuses) or &1["status"] in statuses))
+      put_unread(user, rows, Keyword.get(opts, :reader))
+    end
+  end
+
+  defp put_unread(_user, rows, nil), do: {:ok, rows}
+  defp put_unread(_user, [], _reader), do: {:ok, []}
+
+  defp put_unread(user, rows, reader) do
+    with {:ok, reads} <- latest_reads(user, reader, Enum.map(rows, & &1["alert_issue_id"])) do
+      {:ok,
+       Enum.map(rows, &Map.put(&1, "unread", unread?(&1, Map.get(reads, &1["alert_issue_id"]))))}
+    end
+  end
+
+  defp unread?(_issue, nil), do: true
+  defp unread?(_issue, %{"read" => false}), do: true
+
+  defp unread?(%{"attention_at" => attention_at}, %{"read" => true, "version" => version})
+       when is_binary(attention_at) do
+    {:ok, attention, _offset} = DateTime.from_iso8601(attention_at)
+    version < DateTime.to_unix(attention, :microsecond)
+  end
+
+  defp unread?(_issue, %{"read" => true}), do: false
+
+  defp latest_reads(user, reader, alert_issue_ids) do
+    with %_{} = source <-
+           Sources.Cache.get_by(user_id: user.id, system_source_type: :alert_issue_reads) ||
+             {:error, :no_alert_issues},
+         {:ok, backend} <- postgres_backend(user, source) do
+      sql = """
+      select distinct on (body ->> 'alert_issue_id') body::text as body_json
+      from #{PostgresAdaptor.table_name(source)}
+      where body ->> 'reader' = $1
+        and body ->> 'alert_issue_id' = any($2)
+        and timestamp >= $3
+      order by body ->> 'alert_issue_id', cast(body ->> 'version' as bigint) desc
+      """
+
+      case PostgresAdaptor.execute_query(
+             backend,
+             {sql, [reader, alert_issue_ids, retention_floor()]},
+             []
+           ) do
+        {:ok, %{rows: rows}} ->
+          {:ok,
+           Map.new(rows, fn row ->
+             row["body_json"] |> Jason.decode!() |> then(&{&1["alert_issue_id"], &1})
+           end)}
+
+        {:error, _} = error ->
+          error
+      end
+    else
+      {:error, :no_alert_issues} -> {:ok, %{}}
+      {:error, _} = error -> error
     end
   end
 

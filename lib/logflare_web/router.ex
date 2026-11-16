@@ -491,6 +491,7 @@ defmodule LogflareWeb.Router do
     )
 
     get("/alerts/issues", Api.AlertIssueController, :index)
+    post("/alerts/issues/reads", Api.AlertIssueController, :reads)
     get("/alerts/issues/:alert_issue_id", Api.AlertIssueController, :show)
     post("/alerts/issues/:alert_issue_id/actions", Api.AlertIssueController, :apply_action)
 

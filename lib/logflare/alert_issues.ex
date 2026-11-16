@@ -80,6 +80,37 @@ defmodule Logflare.AlertIssues do
     end
   end
 
+  @doc """
+  Marks alert issues read or unread for a reader by appending one event per alert
+  issue to `system.alert_issue_reads`. Every id must exist within `opts[:filters]`.
+  """
+  @spec mark_read(User.t(), [String.t()], String.t(), boolean(), keyword()) ::
+          {:ok, non_neg_integer()} | {:error, term()}
+  def mark_read(%User{} = user, alert_issue_ids, reader, read, opts)
+      when is_list(alert_issue_ids) and is_binary(reader) and is_boolean(read) do
+    filters = Keyword.take(opts, [:filters])
+
+    if Enum.all?(alert_issue_ids, &match?({:ok, _}, Queries.get(user, &1, filters))) do
+      version = System.os_time(:microsecond)
+
+      events =
+        Enum.map(alert_issue_ids, fn id ->
+          %{
+            "alert_issue_id" => id,
+            "reader" => reader,
+            "read" => read,
+            "version" => version,
+            "timestamp" => version,
+            "event_message" => if(read, do: "read", else: "unread")
+          }
+        end)
+
+      Backends.ingest_logs(events, system_source(user.id, :alert_issue_reads))
+    else
+      {:error, :not_found}
+    end
+  end
+
   defp action_transition(:acknowledge, %{"status" => "open"}, _opts),
     do: {:ok, %{"status" => "acknowledged"}, "acknowledged"}
 
@@ -220,15 +251,15 @@ defmodule Logflare.AlertIssues do
   end
 
   defp write(user_id, snapshot) do
-    Backends.ingest_logs([snapshot], alert_issues_source(user_id))
+    Backends.ingest_logs([snapshot], system_source(user_id, :alert_issues))
   end
 
-  defp alert_issues_source(user_id) do
-    case Sources.Cache.get_by(user_id: user_id, system_source_type: :alert_issues) do
+  defp system_source(user_id, type) do
+    case Sources.Cache.get_by(user_id: user_id, system_source_type: type) do
       nil ->
         user_id
         |> Sources.create_alert_issue_system_sources()
-        |> Enum.find(&(&1.system_source_type == :alert_issues))
+        |> Enum.find(&(&1.system_source_type == type))
 
       source ->
         source

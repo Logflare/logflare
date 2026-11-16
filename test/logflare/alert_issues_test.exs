@@ -310,4 +310,51 @@ defmodule Logflare.AlertIssuesTest do
       assert {:error, :not_found} = act(user, "missing", :acknowledge)
     end
   end
+
+  describe "mark_read/5" do
+    setup %{user: user} do
+      stub(Queries, :get, fn _user, id, opts ->
+        assert opts[:filters] == %{"project" => "default"}
+        if id in ["a", "b"], do: {:ok, %{"alert_issue_id" => id}}, else: {:error, :not_found}
+      end)
+
+      %{user: user}
+    end
+
+    test "appends one read event per alert issue to system.alert_issue_reads", %{user: user} do
+      assert {:ok, 2} =
+               AlertIssues.mark_read(user, ["a", "b"], "user_1", true,
+                 filters: %{"project" => "default"}
+               )
+
+      assert_receive {:ingested, source, events}
+      assert source.system_source_type == :alert_issue_reads
+
+      assert [
+               %{"alert_issue_id" => "a", "reader" => "user_1", "read" => true},
+               %{"alert_issue_id" => "b"}
+             ] =
+               Enum.sort_by(events, & &1["alert_issue_id"])
+
+      assert Enum.all?(events, &is_integer(&1["version"]))
+    end
+
+    test "marks unread", %{user: user} do
+      assert {:ok, 1} =
+               AlertIssues.mark_read(user, ["a"], "user_1", false,
+                 filters: %{"project" => "default"}
+               )
+
+      assert_receive {:ingested, _source, [%{"read" => false}]}
+    end
+
+    test "rejects alert issues outside the filters", %{user: user} do
+      assert {:error, :not_found} =
+               AlertIssues.mark_read(user, ["a", "zzz"], "user_1", true,
+                 filters: %{"project" => "default"}
+               )
+
+      refute_receive {:ingested, _, _}
+    end
+  end
 end

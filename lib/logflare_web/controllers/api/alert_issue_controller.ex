@@ -30,7 +30,8 @@ defmodule LogflareWeb.Api.AlertIssueController do
       required: true
     ],
     status: [in: :query, description: "Comma-separated statuses", type: :string],
-    since: [in: :query, description: "ISO 8601 lower bound, at most 30 days back", type: :string]
+    since: [in: :query, description: "ISO 8601 lower bound, at most 30 days back", type: :string],
+    reader: [in: :query, description: "Adds an unread flag for this reader", type: :string]
   ]
 
   operation(:index,
@@ -116,6 +117,57 @@ defmodule LogflareWeb.Api.AlertIssueController do
     end
   end
 
+  operation(:reads,
+    summary: "Mark alert issues read or unread",
+    request_body:
+      {"Reads", "application/json",
+       %OpenApiSpex.Schema{
+         type: :object,
+         required: [:alert_issue_ids, :reader, :filters],
+         properties: %{
+           alert_issue_ids: %OpenApiSpex.Schema{
+             type: :array,
+             items: %OpenApiSpex.Schema{type: :string}
+           },
+           reader: %OpenApiSpex.Schema{type: :string},
+           read: %OpenApiSpex.Schema{type: :boolean, default: true},
+           filters: %OpenApiSpex.Schema{type: :object}
+         }
+       }},
+    responses: %{
+      200 =>
+        {"Count", "application/json",
+         %OpenApiSpex.Schema{
+           type: :object,
+           properties: %{count: %OpenApiSpex.Schema{type: :integer}}
+         }},
+      400 => BadRequest.response(),
+      404 => NotFound.response()
+    }
+  )
+
+  def reads(%{assigns: %{user: user}} = conn, params) do
+    with {:ok, filters} <- parse_filters(Map.get(params, "filters")),
+         {:ok, ids, reader, read} <- parse_reads(params) do
+      case AlertIssues.mark_read(user, ids, reader, read, filters: filters) do
+        {:ok, count} -> json(conn, %{count: count})
+        {:error, :not_found} -> {:error, :not_found}
+        {:error, reason} -> bad_request(conn, inspect(reason))
+      end
+    else
+      {:error, message} -> bad_request(conn, message)
+    end
+  end
+
+  defp parse_reads(%{"alert_issue_ids" => [_ | _] = ids, "reader" => reader} = params)
+       when is_binary(reader) do
+    if Enum.all?(ids, &is_binary/1),
+      do: {:ok, ids, reader, Map.get(params, "read", true) in [true, "true"]},
+      else: {:error, "alert_issue_ids must be strings"}
+  end
+
+  defp parse_reads(_params), do: {:error, "alert_issue_ids and reader are required"}
+
   defp parse_action(action) do
     case Map.fetch(@actions, action) do
       {:ok, action} -> {:ok, action}
@@ -127,7 +179,12 @@ defmodule LogflareWeb.Api.AlertIssueController do
     with {:ok, filters} <- parse_filters(Map.get(params, "filters")),
          {:ok, since} <- parse_since(Map.get(params, "since")) do
       opts =
-        [filters: filters, statuses: parse_statuses(Map.get(params, "status")), since: since]
+        [
+          filters: filters,
+          statuses: parse_statuses(Map.get(params, "status")),
+          since: since,
+          reader: Map.get(params, "reader")
+        ]
         |> Enum.reject(fn {_key, value} -> is_nil(value) end)
 
       {:ok, opts}
