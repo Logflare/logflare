@@ -7,6 +7,7 @@ defmodule Logflare.AlertIssues.Queries do
   `#{inspect(~r/^[a-z0-9_]{1,64}$/)}` and keys and values are bound as parameters.
   """
 
+  alias Logflare.AlertIssues.Silences
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.QueryError
@@ -23,14 +24,28 @@ defmodule Logflare.AlertIssues.Queries do
           | {:since, DateTime.t()}
           | {:limit, pos_integer()}
           | {:reader, String.t()}
+          | {:include_silenced, boolean()}
 
   @spec list(User.t(), [opt()]) :: {:ok, [map()]} | {:error, term()}
   def list(%User{} = user, opts) do
     with {:ok, rows} <- run(user, opts, nil) do
       statuses = Keyword.get(opts, :statuses)
-      rows = Enum.filter(rows, &(is_nil(statuses) or &1["status"] in statuses))
+
+      rows =
+        rows
+        |> Enum.filter(&(is_nil(statuses) or &1["status"] in statuses))
+        |> put_silenced(Silences.list(user), Keyword.get(opts, :include_silenced, false))
+
       put_unread(user, rows, Keyword.get(opts, :reader))
     end
+  end
+
+  defp put_silenced(rows, silences, include_silenced?) do
+    rows
+    |> Enum.map(
+      &Map.put(&1, "silenced", Silences.silenced?(silences, &1["rule_key"], &1["identifiers"]))
+    )
+    |> Enum.filter(&(include_silenced? or not &1["silenced"]))
   end
 
   defp put_unread(_user, rows, nil), do: {:ok, rows}

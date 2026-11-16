@@ -3,6 +3,7 @@ defmodule Logflare.AlertIssues.QueriesTest do
 
   alias Logflare.AlertIssues
   alias Logflare.AlertIssues.Queries
+  alias Logflare.AlertIssues.Silences
   alias Logflare.Alerting
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Sources
@@ -288,6 +289,28 @@ defmodule Logflare.AlertIssues.QueriesTest do
 
       assert {:ok, []} = Queries.list(ctx.user, filters: %{"project" => "default"})
       assert {:error, :not_found} = Queries.get(ctx.user, "a", filters: %{"project" => "default"})
+    end
+  end
+
+  describe "silences" do
+    test "hides silenced alert issues unless include_silenced is set", ctx do
+      insert_snapshot(ctx, %{"alert_issue_id" => "a", "rule_key" => "r1"}, ctx.now)
+      insert_snapshot(ctx, %{"alert_issue_id" => "b", "rule_key" => "r2"}, ctx.now)
+
+      {:ok, _} =
+        Silences.create(ctx.user, %{
+          "rule_key" => "r1",
+          "matchers" => %{"project" => "default"}
+        })
+
+      assert {:ok, [%{"alert_issue_id" => "b", "silenced" => false}]} =
+               Queries.list(ctx.user, filters: %{"project" => "default"})
+
+      assert {:ok, issues} =
+               Queries.list(ctx.user, filters: %{"project" => "default"}, include_silenced: true)
+
+      assert %{"a" => true, "b" => false} ==
+               Map.new(issues, &{&1["alert_issue_id"], &1["silenced"]})
     end
   end
 

@@ -9,6 +9,7 @@ defmodule Logflare.AlertIssues do
   alias Logflare.AlertIssues.ActiveCache
   alias Logflare.AlertIssues.Queries
   alias Logflare.AlertIssues.Signals
+  alias Logflare.AlertIssues.Silences
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends
   alias Logflare.Sources
@@ -49,6 +50,17 @@ defmodule Logflare.AlertIssues do
         {:ok, %{transition: :noop, snapshot: nil}}
 
       {transition, snapshot} ->
+        snapshot =
+          Map.put(
+            snapshot,
+            "silenced",
+            Silences.silenced?(
+              Silences.list(alert.user_id),
+              alert.rule_key,
+              snapshot["identifiers"]
+            )
+          )
+
         with {:ok, _count} <- write(alert.user_id, snapshot) do
           ActiveCache.put(alert.user_id, fingerprint, snapshot)
           {:ok, %{transition: transition, snapshot: snapshot}}

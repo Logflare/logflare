@@ -3,6 +3,7 @@ defmodule Logflare.AlertIssuesTest do
 
   alias Logflare.AlertIssues
   alias Logflare.AlertIssues.Queries
+  alias Logflare.AlertIssues.Silences
   alias Logflare.Alerting
   alias Logflare.Backends
   alias Logflare.Sources
@@ -198,6 +199,22 @@ defmodule Logflare.AlertIssuesTest do
 
     assert snapshot["severity"] == "warning"
     assert snapshot["category"] == "security"
+  end
+
+  test "stamps silenced on alert issues matched by a silence", %{alert: alert, user: user} do
+    {:ok, %{snapshot: snapshot}} = AlertIssues.apply_signal(alert, signal())
+    assert snapshot["silenced"] == false
+
+    {:ok, _} =
+      Silences.create(user, %{
+        "rule_key" => alert.rule_key,
+        "matchers" => %{"project" => "default"}
+      })
+
+    {:ok, %{snapshot: snapshot}} =
+      AlertIssues.apply_signal(alert, signal(%{observed_at: later(60)}))
+
+    assert snapshot["silenced"] == true
   end
 
   describe "process_run/2" do
