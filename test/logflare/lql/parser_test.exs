@@ -120,6 +120,38 @@ defmodule Logflare.Lql.ParserTest do
   setup :verify_on_exit!
 
   describe "LQL parsing" do
+    test "rejects numeric aggregates on string fields" do
+      schema = build_schema(%{"metadata" => %{"method" => "GET"}})
+
+      for aggregate <- [:sum, :avg] do
+        assert Parser.parse("c:#{aggregate}(m.method)", schema) ==
+                 {:error,
+                  "Chart aggregate '#{aggregate}' requires a numeric field, but path 'metadata.method' has type ':string'."}
+      end
+    end
+
+    test "rejects numeric aggregates on timestamp and array fields" do
+      schema = %{
+        "timestamp" => :datetime,
+        "metadata.bytes" => {:list, :integer}
+      }
+
+      for path <- Map.keys(schema) do
+        assert {:error, error} = Parser.parse("c:sum(#{path})", schema)
+        assert error =~ "Chart aggregate 'sum' requires a numeric field"
+        assert error =~ "path '#{path}'"
+      end
+    end
+
+    test "preserves non-numeric count, distinct count, max, and BigQuery percentile inputs" do
+      schema = build_schema(%{"metadata" => %{"method" => "GET"}})
+
+      for aggregate <- [:count, :countd, :max, :p50] do
+        assert {:ok, [%ChartRule{aggregate: ^aggregate, value_type: :string}]} =
+                 Parser.parse("c:#{aggregate}(m.method)", schema)
+      end
+    end
+
     test "other top-level fields" do
       schema = build_schema(%{"a" => "t", "b" => %{"c" => %{"d" => "test"}}})
       qs = ~S|a:testing b.c.d:"nested"|
