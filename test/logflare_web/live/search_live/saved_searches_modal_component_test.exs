@@ -81,6 +81,49 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponentTest do
     refute has_element?(view, "#saved-searches-list form")
   end
 
+  test "metadata updates ignore forged query fields for a source-authorized member", %{
+    conn: conn,
+    user: user,
+    source: source
+  } do
+    member = insert(:team_user, team: insert(:team, user: user))
+    search = insert(:saved_search, source: source, name: "Original search", tailing: false)
+
+    %{querystring: querystring, lql_filters: lql_filters, lql_charts: lql_charts} =
+      SavedSearches.get(search.id)
+
+    view = open_modal(conn, member, source)
+
+    view
+    |> with_target("#saved-searches-modal")
+    |> render_click("update_saved_search", %{
+      "id" => to_string(search.id),
+      "saved_search" => %{
+        "name" => "Production errors",
+        "description" => "Updated context",
+        "favorite" => true,
+        "querystring" => "attacker-selected query",
+        "lql_filters" => [%{"tampered" => true}],
+        "lql_charts" => [%{"tampered" => true}],
+        "tailing" => true
+      }
+    })
+
+    assert %{
+             name: "Production errors",
+             description: "Updated context",
+             favorite: true,
+             querystring: ^querystring,
+             lql_filters: ^lql_filters,
+             lql_charts: ^lql_charts,
+             tailing: false
+           } = SavedSearches.get(search.id)
+
+    view |> element("#delete-saved-search-#{search.id}") |> render_click()
+
+    refute SavedSearches.get(search.id).saved_by_user
+  end
+
   test "untitled searches cannot be starred until a title is added", %{
     conn: conn,
     user: user,

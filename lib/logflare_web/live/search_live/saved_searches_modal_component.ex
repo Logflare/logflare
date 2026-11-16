@@ -55,6 +55,7 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
         socket
       ) do
     %{user: user, source_id: source_id} = socket.assigns
+    params = Map.take(params, ["name", "description", "favorite", "saved_by_user"])
 
     socket =
       with %SavedSearch{source_id: ^source_id} = saved_search <-
