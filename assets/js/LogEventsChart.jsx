@@ -549,23 +549,13 @@ const LogEventsChart = ({
       {multipleAggregates && !loading && (
         <ul
           aria-label="Chart aggregates"
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "4px 16px",
-            alignSelf: "flex-start",
-            listStyle: "none",
-            margin: "9.6px 0",
-            padding: 0,
-            fontSize: 12,
-            lineHeight: "16px",
-          }}
+          className="tw-my-[9.6px] tw-mx-0 tw-flex tw-list-none tw-flex-wrap tw-self-start tw-gap-x-4 tw-gap-y-1 tw-p-0 tw-text-xs"
         >
           {series.map(({ key, label }, index) => (
-            <li key={key} style={{ display: "flex" }}>
+            <li key={key} className="tw-flex">
               <button
                 type="button"
-                className="tw-text-xs"
+                className="tw-flex tw-cursor-pointer tw-items-center tw-gap-1.5 tw-border-0 tw-bg-transparent tw-bg-none tw-p-0 tw-text-xs [font:inherit]"
                 aria-pressed={!hiddenAggregates.includes(label)}
                 onClick={() =>
                   setHiddenAggregates((hidden) =>
@@ -574,29 +564,17 @@ const LogEventsChart = ({
                       : [...hidden, label],
                   )
                 }
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  border: 0,
-                  padding: 0,
-                  background: "none",
-                  font: "inherit",
-                  cursor: "pointer",
-                }}
               >
                 <span
                   aria-hidden="true"
+                  className="tw-h-2 tw-w-2 tw-rounded-full"
                   style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
                     backgroundColor: hiddenAggregates.includes(label)
                       ? chartGridLineColor
                       : aggregateColors[index % aggregateColors.length],
                   }}
                 />
-                <span style={{ color: brandGray }}>{label}</span>
+                <span className="tw-text-brand-gray">{label}</span>
               </button>
             </li>
           ))}
