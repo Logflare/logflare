@@ -4,10 +4,11 @@ defmodule Logflare.AlertIssues.LogEvents do
 
   The LQL must name its source with `f:<source_name>`. Filter rules compile to SQL
   over the `body` jsonb column with every path and value bound as a parameter.
-  Used for alert issue log previews.
+  Used for alert issue log previews and for scheduled LQL alert rules.
   """
 
   alias Logflare.AlertIssues.Queries
+  alias Logflare.Alerting
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Lql.Parser
   alias Logflare.Lql.Rules
@@ -22,6 +23,7 @@ defmodule Logflare.AlertIssues.LogEvents do
   @minute_bucket_max_seconds 3 * 60 * 60
   @top_level ~w(id timestamp event_message)
   @placeholder ~r/\{\{\s*([a-z0-9_]+)\s*\}\}/
+  @sample_messages 3
 
   @type event :: %{
           id: String.t(),
@@ -62,6 +64,81 @@ defmodule Logflare.AlertIssues.LogEvents do
          events: Enum.map(events, &to_event/1)
        }}
     end
+  end
+
+  @doc """
+  Previews the log events behind an alert issue visible within `opts[:filters]`,
+  using its rule's `signal_mapping["preview"]["lql"]` (or the query of an LQL rule)
+  filled with the alert issue's identifiers.
+  """
+  @spec for_alert_issue(User.t(), String.t(), keyword()) :: {:ok, preview()} | {:error, term()}
+  def for_alert_issue(%User{} = user, alert_issue_id, opts) do
+    with {:ok, issue} <- Queries.get(user, alert_issue_id, Keyword.take(opts, [:filters])),
+         {:ok, template} <- preview_lql(user, issue["rule_key"]),
+         {:ok, lql} <- fill_template(template, issue["identifiers"] || %{}) do
+      preview(user, lql, Keyword.take(opts, [:from, :to]))
+    end
+  end
+
+  defp preview_lql(_user, nil), do: {:error, :no_preview}
+
+  defp preview_lql(user, rule_key) do
+    case Alerting.get_alert_query_by(user_id: user.id, rule_key: rule_key) do
+      %{signal_mapping: %{"preview" => %{"lql" => lql}}} when is_binary(lql) -> {:ok, lql}
+      %{language: :lql, query: lql} -> {:ok, lql}
+      _ -> {:error, :no_preview}
+    end
+  end
+
+  @doc """
+  Aggregates matching events since `since`, one row per distinct `group_by` value set.
+  Each row has the group paths as keys plus `count`, `first_seen`, `last_seen` and
+  `sample_messages`. Returns no rows when nothing matched.
+  """
+  @spec aggregate(User.t(), String.t(), [String.t()], DateTime.t()) ::
+          {:ok, [map()]} | {:error, term()}
+  def aggregate(%User{} = user, lql, group_by, %DateTime{} = since) do
+    with {:ok, compiled} <- compile(user, lql) do
+      {where_sql, params} = range_where(compiled, since, DateTime.utc_now())
+
+      {group_selects, params} =
+        group_by
+        |> Enum.with_index()
+        |> Enum.map_reduce(params, fn {path, i}, acc ->
+          {expr, acc} = path_expr(path, acc)
+          {"#{expr} as g#{i}", acc}
+        end)
+
+      group_cols = Enum.map(Enum.with_index(group_by), fn {_path, i} -> "g#{i}" end)
+
+      sql = """
+      select #{Enum.join(group_selects ++ ["count(*) as count", "min(timestamp) as first_seen", "max(timestamp) as last_seen", "(array_agg(event_message order by timestamp desc))[1:#{@sample_messages}] as sample_messages"], ", ")}
+      from #{compiled.table}
+      where #{where_sql}
+      #{if group_cols == [], do: "", else: "group by " <> Enum.join(group_cols, ", ")}
+      """
+
+      with {:ok, rows} <- query(compiled, sql, params) do
+        {:ok,
+         rows
+         |> Enum.filter(&(&1["count"] > 0))
+         |> Enum.map(&aggregate_row(&1, group_by))}
+      end
+    end
+  end
+
+  defp aggregate_row(row, group_by) do
+    group_values =
+      group_by
+      |> Enum.with_index()
+      |> Map.new(fn {path, i} -> {path, row["g#{i}"]} end)
+
+    Map.merge(group_values, %{
+      "count" => row["count"],
+      "first_seen" => row["first_seen"] |> to_datetime() |> DateTime.to_iso8601(),
+      "last_seen" => row["last_seen"] |> to_datetime() |> DateTime.to_iso8601(),
+      "sample_messages" => List.wrap(row["sample_messages"])
+    })
   end
 
   @doc """

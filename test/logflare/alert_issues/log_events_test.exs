@@ -2,6 +2,8 @@ defmodule Logflare.AlertIssues.LogEventsTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.AlertIssues.LogEvents
+  alias Logflare.AlertIssues.Queries
+  alias Logflare.Alerting
   alias Logflare.Backends.Adaptor.PostgresAdaptor
 
   setup do
@@ -157,6 +159,101 @@ defmodule Logflare.AlertIssues.LogEventsTest do
 
       {from, to} = LogEvents.clamp_range(DateTime.add(now, -20, :day), now)
       assert DateTime.diff(to, from, :day) == 7
+    end
+  end
+
+  describe "aggregate/4" do
+    test "returns one row per group with counts and samples", %{user: user, now: now} do
+      assert {:ok, rows} =
+               LogEvents.aggregate(
+                 user,
+                 "f:edge_logs_demo m.status:>=500",
+                 ["metadata.function_id"],
+                 DateTime.add(now, -1, :hour)
+               )
+
+      by_function = Map.new(rows, &{&1["metadata.function_id"], &1})
+      assert Map.keys(by_function) |> Enum.sort() == ["send-email", "stripe-webhook"]
+      assert by_function["stripe-webhook"]["count"] == 3
+      assert length(by_function["stripe-webhook"]["sample_messages"]) == 3
+      assert is_binary(by_function["stripe-webhook"]["last_seen"])
+    end
+
+    test "without group_by returns one row only when events matched", %{user: user, now: now} do
+      since = DateTime.add(now, -1, :hour)
+
+      assert {:ok, [%{"count" => 4}]} =
+               LogEvents.aggregate(user, "f:edge_logs_demo m.status:>=500", [], since)
+
+      assert {:ok, []} = LogEvents.aggregate(user, "f:edge_logs_demo m.status:>=600", [], since)
+    end
+  end
+
+  describe "for_alert_issue/3" do
+    defp create_alert(user, attrs) do
+      {:ok, alert} =
+        Alerting.create_alert_query(
+          user,
+          Map.merge(
+            %{
+              name: "Edge function errors",
+              cron: "*/5 * * * *",
+              query: "select 1",
+              language: :pg_sql,
+              rule_key: "logflare.edge-fn-5xx"
+            },
+            attrs
+          )
+        )
+
+      alert
+    end
+
+    defp stub_issue(identifiers) do
+      stub(Queries, :get, fn _user, "a1", opts ->
+        assert opts[:filters] == %{"project" => "default"}
+
+        {:ok,
+         %{
+           "alert_issue_id" => "a1",
+           "rule_key" => "logflare.edge-fn-5xx",
+           "identifiers" => identifiers
+         }}
+      end)
+    end
+
+    test "fills the rule's preview LQL with the alert issue identifiers", %{
+      user: user,
+      range: range
+    } do
+      create_alert(user, %{
+        signal_mapping: %{
+          "preview" => %{"lql" => "f:edge_logs_demo m.function_id:{{function_id}} m.status:>=500"}
+        }
+      })
+
+      stub_issue(%{"project" => "default", "function_id" => "stripe-webhook"})
+
+      assert {:ok, %{total: 3, lql: lql}} =
+               LogEvents.for_alert_issue(
+                 user,
+                 "a1",
+                 [filters: %{"project" => "default"}] ++ range
+               )
+
+      assert lql =~ ~s(m.function_id:"stripe-webhook")
+    end
+
+    test "returns no_preview when the rule has no preview", %{user: user, range: range} do
+      create_alert(user, %{})
+      stub_issue(%{"project" => "default"})
+
+      assert {:error, :no_preview} =
+               LogEvents.for_alert_issue(
+                 user,
+                 "a1",
+                 [filters: %{"project" => "default"}] ++ range
+               )
     end
   end
 end
