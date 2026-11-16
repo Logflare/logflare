@@ -77,6 +77,7 @@ defmodule Logflare.Application do
         SpoolAck,
         ObjectDeleter,
         Logs.LogEvents.Cache,
+        Logflare.AlertIssues.ActiveCache,
         {Phoenix.PubSub, name: Logflare.PubSub},
         PubSubRates,
         Logs.RejectedLogEvents,
@@ -115,6 +116,7 @@ defmodule Logflare.Application do
         ContextCache.Supervisor,
         Logflare.LogEvent.DayBucket,
         Logs.LogEvents.Cache,
+        Logflare.AlertIssues.ActiveCache,
         PubSubRates,
         Logs.RejectedLogEvents,
         # init Counters before Supervisof as Supervisor calls Counters through table create
