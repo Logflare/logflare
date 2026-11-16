@@ -2,6 +2,7 @@ defmodule Logflare.AlertIssuesTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.AlertIssues
+  alias Logflare.AlertIssues.Queries
   alias Logflare.Alerting
   alias Logflare.Backends
   alias Logflare.Sources
@@ -227,6 +228,86 @@ defmodule Logflare.AlertIssuesTest do
       {:ok, []} = AlertIssues.process_run(alert, [])
       {:ok, [%{transition: :signal}]} = AlertIssues.process_run(alert, [%{"function_id" => "f1"}])
       assert {:ok, []} = AlertIssues.process_run(alert, [])
+    end
+  end
+
+  describe "act/4" do
+    setup %{alert: alert, user: user} do
+      {:ok, %{snapshot: opened}} = AlertIssues.apply_signal(alert, signal())
+      _ = assert_ingested()
+
+      stub(Queries, :get, fn %{id: id}, alert_issue_id, opts ->
+        assert id == user.id
+        assert opts[:filters] == %{"project" => "default"}
+
+        if alert_issue_id == opened["alert_issue_id"],
+          do: {:ok, AlertIssues.ActiveCache.get(user.id, "fp-1")},
+          else: {:error, :not_found}
+      end)
+
+      %{opened: opened}
+    end
+
+    defp act(user, id, action, extra \\ []) do
+      AlertIssues.act(
+        user,
+        id,
+        action,
+        Keyword.merge([filters: %{"project" => "default"}, actor: "dev@example.com"], extra)
+      )
+    end
+
+    test "acknowledges an open alert issue", %{user: user, opened: opened} do
+      assert {:ok, acked} = act(user, opened["alert_issue_id"], :acknowledge)
+      {_source, event} = assert_ingested()
+
+      assert event == acked
+      assert acked["status"] == "acknowledged"
+      assert acked["change"] == "acknowledged"
+      assert acked["actor"] == "dev@example.com"
+      assert acked["version"] > opened["version"]
+      assert acked["attention_at"] == opened["attention_at"]
+    end
+
+    test "rejects invalid transitions", %{user: user, opened: opened} do
+      {:ok, _} = act(user, opened["alert_issue_id"], :acknowledge)
+      assert {:error, :invalid_transition} = act(user, opened["alert_issue_id"], :acknowledge)
+      assert {:error, :invalid_transition} = act(user, opened["alert_issue_id"], :reopen)
+    end
+
+    test "snoozes until a time", %{user: user, opened: opened} do
+      until = ~U[2026-11-16 13:00:00Z]
+
+      assert {:ok, snoozed} = act(user, opened["alert_issue_id"], :snooze, until: until)
+      assert snoozed["status"] == "snoozed"
+      assert snoozed["snoozed_until"] == DateTime.to_iso8601(until)
+
+      assert {:error, :until_required} = act(user, opened["alert_issue_id"], :snooze)
+    end
+
+    test "resolves and reopens", %{user: user, opened: opened} do
+      assert {:ok, resolved} = act(user, opened["alert_issue_id"], :resolve)
+      assert resolved["status"] == "resolved"
+
+      assert {:ok, reopened} = act(user, opened["alert_issue_id"], :reopen)
+      assert reopened["status"] == "open"
+      assert reopened["change"] == "reopened"
+      assert reopened["attention_at"] > opened["attention_at"]
+    end
+
+    test "a manually resolved alert issue reopens on the next firing signal", %{
+      user: user,
+      alert: alert,
+      opened: opened
+    } do
+      {:ok, _} = act(user, opened["alert_issue_id"], :resolve)
+
+      assert {:ok, %{transition: :reopened}} =
+               AlertIssues.apply_signal(alert, signal(%{observed_at: later(60)}))
+    end
+
+    test "returns not found outside the filters", %{user: user} do
+      assert {:error, :not_found} = act(user, "missing", :acknowledge)
     end
   end
 end

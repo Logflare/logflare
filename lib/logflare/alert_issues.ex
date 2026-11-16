@@ -7,10 +7,12 @@ defmodule Logflare.AlertIssues do
   """
 
   alias Logflare.AlertIssues.ActiveCache
+  alias Logflare.AlertIssues.Queries
   alias Logflare.AlertIssues.Signals
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends
   alias Logflare.Sources
+  alias Logflare.User
 
   @reopen_window_us 24 * 60 * 60 * 1_000_000
 
@@ -25,6 +27,7 @@ defmodule Logflare.AlertIssues do
         }
 
   @type transition :: :opened | :signal | :resolved | :reopened | :noop
+  @type action :: :acknowledge | :snooze | :resolve | :reopen
 
   @spec apply_signal(AlertQuery.t(), signal()) ::
           {:ok, %{transition: transition(), snapshot: map() | nil}} | {:error, term()}
@@ -48,6 +51,60 @@ defmodule Logflare.AlertIssues do
         end
     end
   end
+
+  @doc """
+  Applies a user action to an alert issue found within `opts[:filters]` and appends
+  the new version. Options: `:filters` (required), `:actor`, `:until` (snooze).
+  """
+  @spec act(User.t(), String.t(), action(), keyword()) :: {:ok, map()} | {:error, term()}
+  def act(%User{} = user, alert_issue_id, action, opts) do
+    with {:ok, current} <- Queries.get(user, alert_issue_id, Keyword.take(opts, [:filters])),
+         version = max(System.os_time(:microsecond), current["version"] + 1),
+         {:ok, attrs, change} <-
+           action_transition(action, current, Keyword.put(opts, :version, version)) do
+      snapshot =
+        current
+        |> Map.merge(attrs)
+        |> Map.merge(%{
+          "version" => version,
+          "timestamp" => version,
+          "change" => change,
+          "actor" => Keyword.get(opts, :actor, "api"),
+          "event_message" => "#{current["title"]} #{change}"
+        })
+
+      with {:ok, _count} <- write(user.id, snapshot) do
+        ActiveCache.put(user.id, snapshot["fingerprint"], snapshot)
+        {:ok, snapshot}
+      end
+    end
+  end
+
+  defp action_transition(:acknowledge, %{"status" => "open"}, _opts),
+    do: {:ok, %{"status" => "acknowledged"}, "acknowledged"}
+
+  defp action_transition(:snooze, current, opts) do
+    case {Keyword.get(opts, :until), current["status"]} do
+      {nil, _status} ->
+        {:error, :until_required}
+
+      {%DateTime{} = until, status} when status in ["open", "acknowledged"] ->
+        {:ok, %{"status" => "snoozed", "snoozed_until" => DateTime.to_iso8601(until)}, "snoozed"}
+
+      _ ->
+        {:error, :invalid_transition}
+    end
+  end
+
+  defp action_transition(:resolve, %{"status" => status}, _opts) when status != "resolved",
+    do: {:ok, %{"status" => "resolved"}, "resolved"}
+
+  defp action_transition(:reopen, %{"status" => "resolved"}, opts) do
+    {:ok, %{"status" => "open", "attention_at" => iso(Keyword.fetch!(opts, :version))},
+     "reopened"}
+  end
+
+  defp action_transition(_action, _current, _opts), do: {:error, :invalid_transition}
 
   @doc """
   Applies one scheduled run of an alert: every result group fires, and active alert

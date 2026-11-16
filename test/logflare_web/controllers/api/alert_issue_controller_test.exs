@@ -1,6 +1,7 @@
 defmodule LogflareWeb.Api.AlertIssueControllerTest do
   use LogflareWeb.ConnCase
 
+  alias Logflare.AlertIssues
   alias Logflare.AlertIssues.Queries
 
   @issue %{"alert_issue_id" => "a1", "status" => "open", "identifiers" => %{"project" => "p1"}}
@@ -87,6 +88,82 @@ defmodule LogflareWeb.Api.AlertIssueControllerTest do
       assert conn
              |> get(~p"/api/alerts/issues/a1?#{%{"filters" => %{"identifiers.project" => "p2"}}}")
              |> json_response(404)
+    end
+  end
+
+  describe "POST /api/alerts/issues/:alert_issue_id/actions" do
+    @filters %{"identifiers.project" => "p1"}
+
+    test "applies an action as the given actor", %{conn: conn, user: user} do
+      user_id = user.id
+
+      expect(AlertIssues, :act, fn %{id: ^user_id}, "a1", :snooze, opts ->
+        assert opts[:filters] == %{"project" => "p1"}
+        assert opts[:actor] == "dev@example.com"
+        assert opts[:until] == ~U[2026-11-16 13:00:00Z]
+        {:ok, %{@issue | "status" => "snoozed"}}
+      end)
+
+      assert %{"status" => "snoozed"} =
+               conn
+               |> post(~p"/api/alerts/issues/a1/actions", %{
+                 "filters" => @filters,
+                 "action" => "snooze",
+                 "actor" => "dev@example.com",
+                 "until" => "2026-11-16T13:00:00Z"
+               })
+               |> json_response(200)
+    end
+
+    test "defaults the actor to the API user", %{conn: conn, user: user} do
+      expect(AlertIssues, :act, fn _user, "a1", :acknowledge, opts ->
+        assert opts[:actor] == user.email
+        {:ok, @issue}
+      end)
+
+      conn
+      |> post(~p"/api/alerts/issues/a1/actions", %{
+        "filters" => @filters,
+        "action" => "acknowledge"
+      })
+      |> json_response(200)
+    end
+
+    test "rejects unknown actions", %{conn: conn} do
+      reject(AlertIssues, :act, 4)
+
+      assert %{"error" => _} =
+               conn
+               |> post(~p"/api/alerts/issues/a1/actions", %{
+                 "filters" => @filters,
+                 "action" => "delete"
+               })
+               |> json_response(400)
+    end
+
+    test "maps errors to status codes", %{conn: conn} do
+      for {error, status} <- [
+            {:invalid_transition, 409},
+            {:until_required, 400},
+            {:not_found, 404}
+          ] do
+        stub(AlertIssues, :act, fn _user, _id, _action, _opts -> {:error, error} end)
+
+        assert conn
+               |> post(~p"/api/alerts/issues/a1/actions", %{
+                 "filters" => @filters,
+                 "action" => "resolve"
+               })
+               |> json_response(status)
+      end
+    end
+
+    test "requires identifier filters", %{conn: conn} do
+      reject(AlertIssues, :act, 4)
+
+      assert conn
+             |> post(~p"/api/alerts/issues/a1/actions", %{"action" => "resolve"})
+             |> json_response(400)
     end
   end
 

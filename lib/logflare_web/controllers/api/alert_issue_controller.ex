@@ -2,6 +2,7 @@ defmodule LogflareWeb.Api.AlertIssueController do
   use LogflareWeb, :controller
   use OpenApiSpex.ControllerSpecs
 
+  alias Logflare.AlertIssues
   alias Logflare.AlertIssues.Queries
   alias LogflareWeb.OpenApi.BadRequest
   alias LogflareWeb.OpenApi.List
@@ -9,6 +10,12 @@ defmodule LogflareWeb.Api.AlertIssueController do
   alias LogflareWeb.OpenApiSchemas.AlertIssueApiSchema
 
   @identifier_prefix "identifiers."
+  @actions %{
+    "acknowledge" => :acknowledge,
+    "snooze" => :snooze,
+    "resolve" => :resolve,
+    "reopen" => :reopen
+  }
 
   action_fallback(LogflareWeb.Api.FallbackController)
 
@@ -63,6 +70,59 @@ defmodule LogflareWeb.Api.AlertIssueController do
     end
   end
 
+  operation(:apply_action,
+    summary: "Apply an action to an alert issue",
+    parameters: [alert_issue_id: [in: :path, description: "Alert issue ID", type: :string]],
+    request_body:
+      {"Action", "application/json",
+       %OpenApiSpex.Schema{
+         type: :object,
+         required: [:action, :filters],
+         properties: %{
+           action: %OpenApiSpex.Schema{type: :string, enum: Map.keys(@actions)},
+           filters: %OpenApiSpex.Schema{type: :object},
+           actor: %OpenApiSpex.Schema{type: :string},
+           until: %OpenApiSpex.Schema{type: :string, format: :"date-time"}
+         }
+       }},
+    responses: %{
+      200 => AlertIssueApiSchema.response(),
+      400 => BadRequest.response(),
+      404 => NotFound.response(),
+      409 => {"Invalid transition", "application/json", BadRequest.schema()}
+    }
+  )
+
+  def apply_action(
+        %{assigns: %{user: user}} = conn,
+        %{"alert_issue_id" => alert_issue_id} = params
+      ) do
+    with {:ok, action} <- parse_action(Map.get(params, "action")),
+         {:ok, filters} <- parse_filters(Map.get(params, "filters")),
+         {:ok, until} <- parse_since(Map.get(params, "until")) do
+      opts =
+        [filters: filters, actor: Map.get(params, "actor") || user.email, until: until]
+        |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+
+      case AlertIssues.act(user, alert_issue_id, action, opts) do
+        {:ok, issue} -> json(conn, issue)
+        {:error, :not_found} -> {:error, :not_found}
+        {:error, :invalid_transition} -> error(conn, 409, "invalid transition for #{action}")
+        {:error, :until_required} -> bad_request(conn, "until is required to snooze")
+        {:error, reason} -> bad_request(conn, inspect(reason))
+      end
+    else
+      {:error, message} -> bad_request(conn, message)
+    end
+  end
+
+  defp parse_action(action) do
+    case Map.fetch(@actions, action) do
+      {:ok, action} -> {:ok, action}
+      :error -> {:error, "action must be one of #{Enum.join(Map.keys(@actions), ", ")}"}
+    end
+  end
+
   defp query_opts(params) do
     with {:ok, filters} <- parse_filters(Map.get(params, "filters")),
          {:ok, since} <- parse_since(Map.get(params, "since")) do
@@ -104,9 +164,11 @@ defmodule LogflareWeb.Api.AlertIssueController do
   defp map_error({:error, {:invalid_filter_key, key}}), do: {:error, "invalid filter key: #{key}"}
   defp map_error(result), do: result
 
-  defp bad_request(conn, message) do
+  defp bad_request(conn, message), do: error(conn, 400, message)
+
+  defp error(conn, status, message) do
     conn
-    |> put_status(400)
+    |> put_status(status)
     |> json(%{error: message})
   end
 end
