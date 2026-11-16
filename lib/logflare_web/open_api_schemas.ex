@@ -310,6 +310,31 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: [:name, :query, :cron, :language]
   end
 
+  defmodule AlertIssueApiSchema do
+    @properties %{
+      alert_issue_id: %Schema{type: :string},
+      version: %Schema{type: :integer},
+      rule_key: %Schema{type: :string, nullable: true},
+      alert_token: %Schema{type: :string},
+      fingerprint: %Schema{type: :string},
+      status: %Schema{type: :string, enum: ["open", "acknowledged", "snoozed", "resolved"]},
+      change: %Schema{type: :string},
+      severity: %Schema{type: :string},
+      category: %Schema{type: :string},
+      title: %Schema{type: :string},
+      description: %Schema{type: :string, nullable: true},
+      identifiers: %Schema{type: :object, additionalProperties: %Schema{type: :string}},
+      metadata: %Schema{type: :object},
+      signal_count: %Schema{type: :integer},
+      first_seen_at: %Schema{type: :string, format: :"date-time"},
+      last_seen_at: %Schema{type: :string, format: :"date-time"},
+      attention_at: %Schema{type: :string, format: :"date-time"},
+      actor: %Schema{type: :string}
+    }
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:alert_issue_id, :status]
+  end
+
   defmodule KeyValueApiSchema do
     @properties %{
       id: %Schema{type: :integer},

@@ -490,6 +490,9 @@ defmodule LogflareWeb.Router do
       only: [:index, :show, :create, :update, :delete]
     )
 
+    get("/alerts/issues", Api.AlertIssueController, :index)
+    get("/alerts/issues/:alert_issue_id", Api.AlertIssueController, :show)
+
     resources("/alerts", Api.AlertController,
       param: "token",
       only: [:index, :show, :create, :update, :delete]
