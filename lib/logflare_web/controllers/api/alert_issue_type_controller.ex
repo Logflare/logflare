@@ -65,6 +65,19 @@ defmodule LogflareWeb.Api.AlertIssueTypeController do
            identifiers: %OpenApiSpex.Schema{
              type: :object,
              additionalProperties: %OpenApiSpex.Schema{type: :string}
+           },
+           notebook: %OpenApiSpex.Schema{
+             type: :array,
+             maxItems: 10,
+             items: %OpenApiSpex.Schema{
+               type: :object,
+               required: [:title, :source, :sql],
+               properties: %{
+                 title: %OpenApiSpex.Schema{type: :string},
+                 source: %OpenApiSpex.Schema{type: :string, enum: ["database", "logs"]},
+                 sql: %OpenApiSpex.Schema{type: :string}
+               }
+             }
            }
          }
        }},

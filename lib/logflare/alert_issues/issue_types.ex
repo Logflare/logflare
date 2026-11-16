@@ -85,7 +85,9 @@ defmodule Logflare.AlertIssues.IssueTypes do
       "group_by" => group_by,
       "scope" => identifiers,
       "rule_key" => unique_rule_key(user, Map.get(params, "name")),
-      "signal_mapping" => %{"preview" => %{"lql" => preview_lql(lql, group_by)}}
+      "signal_mapping" =>
+        %{"preview" => %{"lql" => preview_lql(lql, group_by)}}
+        |> put_notebook(Map.get(params, "notebook"))
     }
 
     changeset =
@@ -101,6 +103,9 @@ defmodule Logflare.AlertIssues.IssueTypes do
       {:ok, to_issue_type(alert, [], identifiers)}
     end
   end
+
+  defp put_notebook(signal_mapping, nil), do: signal_mapping
+  defp put_notebook(signal_mapping, notebook), do: Map.put(signal_mapping, "notebook", notebook)
 
   @spec delete_custom(User.t(), String.t()) :: :ok | {:error, :not_found | :managed}
   def delete_custom(%User{id: user_id}, rule_key) when is_binary(rule_key) do

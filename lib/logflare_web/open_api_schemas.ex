@@ -329,7 +329,20 @@ defmodule LogflareWeb.OpenApiSchemas do
       first_seen_at: %Schema{type: :string, format: :"date-time"},
       last_seen_at: %Schema{type: :string, format: :"date-time"},
       attention_at: %Schema{type: :string, format: :"date-time"},
-      actor: %Schema{type: :string}
+      actor: %Schema{type: :string},
+      silenced: %Schema{type: :boolean},
+      notebook: %Schema{
+        type: :array,
+        description: "SQL templates; {{identifier}} placeholders are left for clients to fill",
+        items: %Schema{
+          type: :object,
+          properties: %{
+            title: %Schema{type: :string},
+            source: %Schema{type: :string, enum: ["database", "logs"]},
+            sql: %Schema{type: :string}
+          }
+        }
+      }
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:alert_issue_id, :status]

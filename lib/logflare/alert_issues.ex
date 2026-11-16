@@ -279,6 +279,7 @@ defmodule Logflare.AlertIssues do
       "description" => Map.get(signal, :description) || alert.description,
       "identifiers" => Map.get(signal, :identifiers, %{}),
       "metadata" => Map.get(signal, :metadata, %{}),
+      "notebook" => notebook(alert),
       "signal_count" => 1,
       "first_seen_at" => iso(us),
       "last_seen_at" => iso(us),
@@ -304,6 +305,7 @@ defmodule Logflare.AlertIssues do
       "category" => enum_string(Map.get(signal, :category)) || current["category"],
       "identifiers" => Map.get(signal, :identifiers, current["identifiers"]),
       "metadata" => Map.get(signal, :metadata, current["metadata"]),
+      "notebook" => notebook(alert),
       "actor" => "system",
       "event_message" => "#{title} #{change}"
     })
@@ -330,6 +332,11 @@ defmodule Logflare.AlertIssues do
     |> Base.encode16(case: :lower)
     |> binary_part(0, 32)
   end
+
+  defp notebook(%AlertQuery{signal_mapping: %{"notebook" => notebook}}) when is_list(notebook),
+    do: notebook
+
+  defp notebook(_alert), do: []
 
   defp enum_string(nil), do: nil
   defp enum_string(value), do: Atom.to_string(value)

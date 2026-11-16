@@ -187,6 +187,19 @@ defmodule Logflare.AlertIssuesTest do
     assert snapshot["description"] == "18% of requests failed"
   end
 
+  test "copies the rule's notebook templates onto every snapshot", %{alert: alert} do
+    {:ok, %{snapshot: snapshot}} = AlertIssues.apply_signal(alert, signal())
+    assert snapshot["notebook"] == []
+
+    notebook = [%{"title" => "Errors", "source" => "logs", "sql" => "select '{{function_id}}'"}]
+    alert = %{alert | signal_mapping: %{"notebook" => notebook}}
+
+    {:ok, %{snapshot: snapshot}} =
+      AlertIssues.apply_signal(alert, signal(%{observed_at: later(60)}))
+
+    assert snapshot["notebook"] == notebook
+  end
+
   test "signal severity and category override the alert defaults", %{alert: alert} do
     {:ok, %{snapshot: snapshot}} =
       AlertIssues.apply_signal(alert, signal(%{severity: :critical, category: :security}))

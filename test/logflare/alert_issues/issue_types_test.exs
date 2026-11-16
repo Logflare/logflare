@@ -124,6 +124,22 @@ defmodule Logflare.AlertIssues.IssueTypesTest do
       end
     end
 
+    test "stores notebook templates on custom rules", %{user: user} do
+      notebook = [%{"title" => "Errors", "source" => "logs", "sql" => "select 1"}]
+
+      {:ok, %{rule_key: rule_key}} =
+        IssueTypes.create_custom(user, Map.put(@custom, "notebook", notebook))
+
+      assert Alerting.get_alert_query_by(user_id: user.id, rule_key: rule_key).signal_mapping[
+               "notebook"
+             ] == notebook
+
+      assert {:error, changeset} =
+               IssueTypes.create_custom(user, Map.put(@custom, "notebook", [%{"title" => "x"}]))
+
+      assert %{signal_mapping: [_]} = errors_on(changeset)
+    end
+
     test "deletes custom rules but not managed ones", %{user: user} do
       {:ok, %{rule_key: rule_key}} = IssueTypes.create_custom(user, @custom)
 

@@ -62,6 +62,8 @@ defmodule Logflare.Alerting.AlertQuery do
   end
 
   @rule_key_format ~r/^[a-z0-9][a-z0-9_.\-]*$/
+  @max_notebook_cells 10
+  @notebook_sources ~w(database logs)
 
   @doc false
   def changeset(alert_query, attrs) do
@@ -95,6 +97,7 @@ defmodule Logflare.Alerting.AlertQuery do
       error_key: :rule_key
     )
     |> validate_cron_interval()
+    |> validate_change(:signal_mapping, &validate_notebook/2)
 
     # this source mapping logic is for any generic changeset
     # we implement the same columns for now,
@@ -109,6 +112,24 @@ defmodule Logflare.Alerting.AlertQuery do
       _ -> EndpointQuery.update_source_mapping(changeset)
     end
   end
+
+  defp validate_notebook(:signal_mapping, %{"notebook" => notebook}) do
+    if is_list(notebook) and length(notebook) <= @max_notebook_cells and
+         Enum.all?(notebook, &notebook_cell?/1),
+       do: [],
+       else: [
+         signal_mapping:
+           "notebook must be up to #{@max_notebook_cells} cells with a title, a source (database or logs) and sql"
+       ]
+  end
+
+  defp validate_notebook(:signal_mapping, _signal_mapping), do: []
+
+  defp notebook_cell?(%{"title" => title, "source" => source, "sql" => sql})
+       when is_binary(title) and is_binary(sql) and title != "" and sql != "",
+       do: source in @notebook_sources
+
+  defp notebook_cell?(_cell), do: false
 
   defp validate_cron_interval(changeset) do
     min_minutes = if get_field(changeset, :rule_key), do: 1, else: 5

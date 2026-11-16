@@ -139,6 +139,37 @@ defmodule Logflare.AlertingTest do
     end
   end
 
+  describe "notebook templates" do
+    @notebook [
+      %{
+        "title" => "Recent errors",
+        "source" => "logs",
+        "sql" => "select * from function_edge_logs where function_id = '{{function_id}}'"
+      },
+      %{"title" => "Table size", "source" => "database", "sql" => "select 1"}
+    ]
+
+    test "accepts up to 10 notebook SQL templates", %{user: user} do
+      attrs = Map.put(@issue_attrs, :signal_mapping, %{"notebook" => @notebook})
+      assert {:ok, alert} = Alerting.create_alert_query(user, attrs)
+      assert alert.signal_mapping["notebook"] == @notebook
+    end
+
+    test "rejects malformed notebook templates", %{user: user} do
+      for notebook <- [
+            "select 1",
+            [%{"title" => "x", "source" => "bigquery", "sql" => "select 1"}],
+            [%{"title" => "", "source" => "logs", "sql" => "select 1"}],
+            [%{"title" => "x", "source" => "logs"}],
+            List.duplicate(hd(@notebook), 11)
+          ] do
+        attrs = Map.put(@issue_attrs, :signal_mapping, %{"notebook" => notebook})
+        assert {:error, changeset} = Alerting.create_alert_query(user, attrs)
+        assert %{signal_mapping: [_]} = errors_on(changeset)
+      end
+    end
+  end
+
   describe "alert_queries" do
     alias Logflare.Alerting.AlertQuery
 
