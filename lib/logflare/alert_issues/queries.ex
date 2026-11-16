@@ -13,6 +13,7 @@ defmodule Logflare.AlertIssues.Queries do
   alias Logflare.Backends.QueryError
   alias Logflare.Sources
   alias Logflare.User
+  alias Logflare.Users
 
   @retention_days 30
   @max_limit 500
@@ -136,6 +137,22 @@ defmodule Logflare.AlertIssues.Queries do
     case run(user, opts, alert_issue_id) do
       {:ok, [issue | _]} -> {:ok, issue}
       {:ok, []} -> {:error, :not_found}
+      {:error, _} = error -> error
+    end
+  end
+
+  @doc """
+  Internal lookup: the newest stored version of the alert issue for a user and
+  fingerprint, used when the node-local active cache has no entry for it.
+  """
+  @spec latest_by_fingerprint(pos_integer(), String.t()) :: {:ok, map() | nil} | {:error, term()}
+  def latest_by_fingerprint(user_id, fingerprint) when is_binary(fingerprint) do
+    with %User{} = user <- Users.Cache.get(user_id),
+         {:ok, rows} <- latest(user, [], [{"fingerprint", fingerprint}], nil, 1) do
+      {:ok, List.first(rows)}
+    else
+      nil -> {:ok, nil}
+      {:error, :unsupported_backend} -> {:ok, nil}
       {:error, _} = error -> error
     end
   end

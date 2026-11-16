@@ -314,6 +314,41 @@ defmodule Logflare.AlertIssues.QueriesTest do
     end
   end
 
+  describe "latest_by_fingerprint/2" do
+    test "returns the newest version of one fingerprint", ctx do
+      insert_snapshot(ctx, %{"alert_issue_id" => "a", "fingerprint" => "fp-1"}, ago(ctx.now, 60))
+
+      insert_snapshot(
+        ctx,
+        %{"alert_issue_id" => "a", "fingerprint" => "fp-1", "status" => "resolved"},
+        ago(ctx.now, 30)
+      )
+
+      insert_snapshot(ctx, %{"alert_issue_id" => "b", "fingerprint" => "fp-2"}, ago(ctx.now, 10))
+
+      assert {:ok, %{"alert_issue_id" => "a", "status" => "resolved"}} =
+               Queries.latest_by_fingerprint(ctx.user.id, "fp-1")
+    end
+
+    test "returns nil when the fingerprint has no stored alert issue", ctx do
+      insert_snapshot(ctx, %{"alert_issue_id" => "b", "fingerprint" => "fp-2"}, ctx.now)
+
+      assert {:ok, nil} = Queries.latest_by_fingerprint(ctx.user.id, "fp-1")
+    end
+
+    test "returns nil before the alert issues table exists", ctx do
+      {:ok, _} =
+        PostgresAdaptor.SharedRepo.with_repo(ctx.backend, fn ->
+          PostgresAdaptor.SharedRepo.query(
+            "drop table if exists #{PostgresAdaptor.table_name(ctx.source)}",
+            []
+          )
+        end)
+
+      assert {:ok, nil} = Queries.latest_by_fingerprint(ctx.user.id, "fp-1")
+    end
+  end
+
   describe "operator views" do
     test "list_for_rule/2 lists one rule's alert issues across all identifiers", ctx do
       insert_snapshot(ctx, %{"alert_issue_id" => "a", "rule_key" => "r1"}, ago(ctx.now, 60))

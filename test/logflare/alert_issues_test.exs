@@ -149,6 +149,51 @@ defmodule Logflare.AlertIssuesTest do
     assert fresh["signal_count"] == 1
   end
 
+  describe "after the active cache loses an alert issue" do
+    defp forget(user_id, fingerprint),
+      do: :ets.delete(Logflare.AlertIssues.ActiveCache, {user_id, fingerprint})
+
+    defp stored(snapshot, user_id) do
+      forget(user_id, snapshot["fingerprint"])
+      stored = Map.put(snapshot, "id", "stored-event-id")
+      stub(Queries, :latest_by_fingerprint, fn ^user_id, "fp-1" -> {:ok, stored} end)
+    end
+
+    test "a firing signal rolls up into the stored alert issue", %{alert: alert, user: user} do
+      {:ok, %{snapshot: opened}} = AlertIssues.apply_signal(alert, signal())
+      assert_ingested()
+      stored(opened, user.id)
+
+      assert {:ok, %{transition: :signal, snapshot: snapshot}} =
+               AlertIssues.apply_signal(alert, signal(%{observed_at: later(60)}))
+
+      assert snapshot["alert_issue_id"] == opened["alert_issue_id"]
+      assert snapshot["signal_count"] == 2
+      {_source, event} = assert_ingested()
+      refute event["id"] == "stored-event-id"
+    end
+
+    test "firing within 24h of a stored resolve reopens it", %{alert: alert, user: user} do
+      {:ok, %{snapshot: opened}} = AlertIssues.apply_signal(alert, signal())
+
+      {:ok, %{snapshot: resolved}} =
+        AlertIssues.apply_signal(alert, signal(%{status: :resolved, observed_at: later(60)}))
+
+      stored(resolved, user.id)
+
+      assert {:ok, %{transition: :reopened, snapshot: reopened}} =
+               AlertIssues.apply_signal(alert, signal(%{observed_at: later(3_600)}))
+
+      assert reopened["alert_issue_id"] == opened["alert_issue_id"]
+    end
+
+    test "opens a new alert issue when nothing is stored", %{alert: alert} do
+      stub(Queries, :latest_by_fingerprint, fn _user_id, _fingerprint -> {:ok, nil} end)
+
+      assert {:ok, %{transition: :opened}} = AlertIssues.apply_signal(alert, signal())
+    end
+  end
+
   test "different fingerprints and users get separate alert issues", %{alert: alert} do
     {:ok, %{snapshot: a}} = AlertIssues.apply_signal(alert, signal())
     {:ok, %{snapshot: b}} = AlertIssues.apply_signal(alert, signal(%{fingerprint: "fp-2"}))

@@ -43,8 +43,12 @@ defmodule Logflare.AlertIssues do
       |> Map.get(:observed_at, DateTime.utc_now())
       |> DateTime.to_unix(:microsecond)
 
-    current = ActiveCache.get(alert.user_id, fingerprint)
+    with {:ok, current} <- current_snapshot(alert.user_id, fingerprint) do
+      apply_transition(alert, signal, current, observed_us)
+    end
+  end
 
+  defp apply_transition(alert, signal, current, observed_us) do
     case next_snapshot(alert, signal, current, observed_us) do
       :noop ->
         {:ok, %{transition: :noop, snapshot: nil}}
@@ -62,9 +66,24 @@ defmodule Logflare.AlertIssues do
           )
 
         with {:ok, _count} <- write(alert.user_id, snapshot) do
-          ActiveCache.put(alert.user_id, fingerprint, snapshot)
+          ActiveCache.put(alert.user_id, signal.fingerprint, snapshot)
           {:ok, %{transition: transition, snapshot: snapshot}}
         end
+    end
+  end
+
+  defp current_snapshot(user_id, fingerprint) do
+    case ActiveCache.get(user_id, fingerprint) do
+      nil -> load_snapshot(user_id, fingerprint)
+      snapshot -> {:ok, snapshot}
+    end
+  end
+
+  defp load_snapshot(user_id, fingerprint) do
+    with {:ok, %{} = stored} <- Queries.latest_by_fingerprint(user_id, fingerprint) do
+      snapshot = Map.drop(stored, @storage_fields)
+      ActiveCache.put(user_id, fingerprint, snapshot)
+      {:ok, snapshot}
     end
   end
 
