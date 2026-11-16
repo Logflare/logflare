@@ -7,6 +7,7 @@ defmodule Logflare.AlertingTest do
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Alerting.AlertWorker
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
   alias Logflare.Utils.Tasks
@@ -815,6 +816,38 @@ defmodule Logflare.AlertingTest do
       assert executing_job in result.future
       assert completed_job in result.past
       assert discarded_job in result.past
+    end
+  end
+
+  describe "pg_sql alerts on postgres backends" do
+    setup %{user: user} do
+      cfg = Application.get_env(:logflare, Logflare.Repo)
+      url = "postgresql://#{cfg[:username]}:#{cfg[:password]}@#{cfg[:hostname]}/#{cfg[:database]}"
+      source = insert(:source, user: user, name: "pg_alert_source")
+
+      backend =
+        insert(:backend, type: :postgres, config: %{url: url}, sources: [source], user: user)
+
+      PostgresAdaptor.create_repo(backend)
+      PostgresAdaptor.create_events_table({source, backend})
+      on_exit(fn -> PostgresAdaptor.destroy_instance({source, backend}) end)
+
+      %{source: source}
+    end
+
+    test "execute on the postgres backend instead of BigQuery", %{user: user, source: source} do
+      GoogleApi.BigQuery.V2.Api.Jobs |> reject(:bigquery_jobs_query, 3)
+
+      alert_query =
+        insert(:alert,
+          user: user,
+          language: :pg_sql,
+          query: "select count(*) as n from #{source.name}",
+          webhook_notification_url: nil,
+          slack_hook_url: nil
+        )
+
+      assert {:ok, %{fired: true, rows: [%{"n" => 0}]}} = Alerting.run_alert(alert_query)
     end
   end
 end

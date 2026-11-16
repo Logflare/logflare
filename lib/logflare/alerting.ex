@@ -485,7 +485,21 @@ defmodule Logflare.Alerting do
   """
   @spec execute_alert_query(AlertQuery.t(), use_query_cache: boolean) ::
           {:ok, QueryResult.t()} | {:error, any()}
-  def execute_alert_query(%AlertQuery{user: %User{}} = alert_query, opts \\ []) do
+  def execute_alert_query(alert_query, opts \\ [])
+
+  def execute_alert_query(
+        %AlertQuery{language: :pg_sql, user: %User{} = user} = alert_query,
+        _opts
+      ) do
+    LoggerMetadata.with_metadata(alert_query_logger_metadata(alert_query), fn ->
+      case Endpoints.run_query_string(user, {:pg_sql, alert_query.query}, max_limit: 1000) do
+        {:ok, %{rows: rows}} -> {:ok, QueryResult.new(rows)}
+        {:error, _reason} = error -> error
+      end
+    end)
+  end
+
+  def execute_alert_query(%AlertQuery{user: %User{}} = alert_query, opts) do
     LoggerMetadata.with_metadata(alert_query_logger_metadata(alert_query), fn ->
       Logger.debug("Executing AlertQuery | #{alert_query.name} | #{alert_query.id}")
 
