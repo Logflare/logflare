@@ -24,7 +24,7 @@ A backend can be any one of the following types:
 
 Backends with a consolidated ingest pipeline (_currently ClickHouse_) can be marked as the account's **default ingest** backend, one per backend type. Every source in the account that has *default ingest* enabled sends its events to that backend, without attaching the backend to each source.
 
-Sources are not opted in by default. Opt a source in from its edit page, with the `default_ingest_backend_enabled?` field in the API, or in bulk with **Opt in all sources** on the default backend's page. System sources (`system.logs` and `system.metrics`) are skipped by the bulk action.
+New sources are opted in by default. To create a source opted out, untick the default ingest checkbox on the new source form, or set `default_ingest_backend_enabled?` to `false` in the API. Change an existing source from its edit page, with the same API field, or in bulk with **Opt in all sources** on the default backend's page. System sources (`system.logs` and `system.metrics`) are created opted out and are skipped by the bulk action.
 
 On the page of a backend that can be a default, an **Enable default ingest** or **Disable default ingest** button is shown. Once it is the default, the page also shows how many sources are opted in. **Opt in all sources** and **Opt out all sources** appear only when they would change at least one source.
 

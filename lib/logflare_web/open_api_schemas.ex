@@ -153,7 +153,7 @@ defmodule LogflareWeb.OpenApiSchemas do
       default_ingest_backend_enabled?: %Schema{
         type: :boolean,
         description:
-          "Whether this source sends events to the account's default ingest backends. Defaults to false."
+          "Whether this source sends events to the account's default ingest backends. Defaults to true."
       },
       notifications_every: %Schema{type: :integer},
       lock_schema: %Schema{type: :boolean},
@@ -188,7 +188,7 @@ defmodule LogflareWeb.OpenApiSchemas do
       default_ingest_backend_enabled?: %Schema{
         type: :boolean,
         description:
-          "Whether this source sends events to the account's default ingest backends. Defaults to false."
+          "Whether this source sends events to the account's default ingest backends. Defaults to true."
       },
       notifications_every: %Schema{type: :integer},
       lock_schema: %Schema{type: :boolean},
