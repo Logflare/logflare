@@ -281,6 +281,30 @@ defmodule LogflareWeb.OpenApiSchemas do
       }
     }
 
+    @writable %{
+      name: %Schema{type: :string},
+      description: %Schema{type: :string, nullable: true},
+      query: %Schema{type: :string},
+      cron: %Schema{type: :string},
+      slack_hook_url: %Schema{type: :string, nullable: true},
+      webhook_notification_url: %Schema{type: :string, nullable: true},
+      enabled: %Schema{type: :boolean}
+    }
+
+    @spec notebook_cell() :: Schema.t()
+    def notebook_cell, do: @notebook_cell
+
+    @spec writable() :: %{atom() => Schema.t()}
+    def writable do
+      @writable
+      |> Map.merge(properties())
+      |> Map.put(:backend_ids, %Schema{
+        type: :array,
+        items: %Schema{type: :integer, minimum: 1},
+        description: "Complete replacement set of attached backend IDs"
+      })
+    end
+
     @spec properties() :: %{atom() => Schema.t()}
     def properties do
       %{
@@ -299,49 +323,13 @@ defmodule LogflareWeb.OpenApiSchemas do
   end
 
   defmodule AlertApiCreateParams do
-    @base_properties %{
-      name: %Schema{type: :string},
-      description: %Schema{type: :string, nullable: true},
-      query: %Schema{type: :string},
-      cron: %Schema{type: :string},
-      slack_hook_url: %Schema{type: :string, nullable: true},
-      webhook_notification_url: %Schema{type: :string, nullable: true},
-      enabled: %Schema{type: :boolean},
-      backend_ids: %Schema{
-        type: :array,
-        items: %Schema{type: :integer, minimum: 1},
-        description: "Complete replacement set of attached backend IDs"
-      }
-    }
-
-    @properties Map.merge(
-                  @base_properties,
-                  LogflareWeb.OpenApiSchemas.AlertRuleProperties.properties()
-                )
+    @properties LogflareWeb.OpenApiSchemas.AlertRuleProperties.writable()
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:name, :query, :cron]
   end
 
   defmodule AlertApiUpdateParams do
-    @base_properties %{
-      name: %Schema{type: :string},
-      description: %Schema{type: :string, nullable: true},
-      query: %Schema{type: :string},
-      cron: %Schema{type: :string},
-      slack_hook_url: %Schema{type: :string, nullable: true},
-      webhook_notification_url: %Schema{type: :string, nullable: true},
-      enabled: %Schema{type: :boolean},
-      backend_ids: %Schema{
-        type: :array,
-        items: %Schema{type: :integer, minimum: 1},
-        description: "Complete replacement set of attached backend IDs"
-      }
-    }
-
-    @properties Map.merge(
-                  @base_properties,
-                  LogflareWeb.OpenApiSchemas.AlertRuleProperties.properties()
-                )
+    @properties LogflareWeb.OpenApiSchemas.AlertRuleProperties.writable()
 
     use LogflareWeb.OpenApi, properties: @properties, required: []
   end
@@ -395,14 +383,7 @@ defmodule LogflareWeb.OpenApiSchemas do
       notebook: %Schema{
         type: :array,
         description: "SQL templates; {{identifier}} placeholders are left for clients to fill",
-        items: %Schema{
-          type: :object,
-          properties: %{
-            title: %Schema{type: :string},
-            source: %Schema{type: :string, enum: ["database", "logs"]},
-            sql: %Schema{type: :string}
-          }
-        }
+        items: LogflareWeb.OpenApiSchemas.AlertRuleProperties.notebook_cell()
       }
     }
 
