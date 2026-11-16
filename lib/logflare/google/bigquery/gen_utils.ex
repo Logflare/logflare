@@ -3,15 +3,14 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   Generic utils for BigQuery.
   """
 
-  import Ecto.Query
   import Logflare.Utils.Guards
 
   alias GoogleApi.BigQuery.V2.Connection
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.JSON
-  alias Logflare.Repo
   alias Logflare.Sources
+  alias Logflare.Sources.Catalog.Cache, as: SourceCatalog
   alias Logflare.Sources.Source
   alias Logflare.User
   alias Logflare.Users
@@ -32,18 +31,25 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     @table_ttl / :timer.hours(24)
   end
 
-  @spec get_project_id(source_id :: atom()) :: String.t()
+  @spec get_project_id(source :: atom() | Source.t()) :: String.t()
   def get_project_id(source_id) when is_atom_value(source_id) do
-    %Source{user_id: user_id} = Sources.Cache.get_by(token: source_id)
+    %Source{} = source = Sources.Cache.get_by(token: source_id)
+    get_project_id(source)
+  end
+
+  def get_project_id(%Source{user_id: user_id}) do
     %User{bigquery_project_id: project_id} = Users.Cache.get(user_id)
 
     project_id || GCPConfig.default_project_id()
   end
 
-  @spec get_bq_user_info(source_id :: atom()) :: map()
+  @spec get_bq_user_info(source :: atom() | Source.t()) :: map()
   def get_bq_user_info(source_id) when is_atom_value(source_id) do
-    %Source{user_id: user_id, bigquery_table_ttl: ttl} = Sources.Cache.get_by(token: source_id)
+    %Source{} = source = Sources.Cache.get_by(token: source_id)
+    get_bq_user_info(source)
+  end
 
+  def get_bq_user_info(%Source{user_id: user_id, bigquery_table_ttl: ttl}) do
     %User{
       id: user_id,
       sources: _sources,
@@ -294,14 +300,9 @@ defmodule Logflare.Google.BigQuery.GenUtils do
       %{"uuid" => uuid} ->
         uuid = String.replace(uuid, "_", "-")
 
-        query =
-          from(s in Source,
-            where: s.token == ^uuid and s.user_id == ^user_id,
-            select: s.name
-          )
-
-        case Repo.one(query) do
+        case SourceCatalog.source_name_by_token(user_id, uuid) do
           nil -> message
+          {:error, :database_unavailable} -> message
           source_name -> String.replace(message, regex, source_name)
         end
 

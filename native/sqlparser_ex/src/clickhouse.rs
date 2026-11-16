@@ -1,12 +1,13 @@
+use crate::limits;
 use sqlparser::ast::Statement;
 use sqlparser::dialect::ClickHouseDialect;
 use sqlparser::keywords::Keyword;
 use sqlparser::parser::{Parser, ParserError};
-use sqlparser::tokenizer::{Token, Tokenizer, Word};
+use sqlparser::tokenizer::{Token, Word};
 
 pub fn parse(query: &str) -> Result<Vec<Statement>, ParserError> {
     let dialect = ClickHouseDialect {};
-    let mut tokens = Tokenizer::new(&dialect, query).tokenize_with_location()?;
+    let mut tokens = limits::tokenize(&dialect, query)?;
     let significant: Vec<usize> = tokens
         .iter()
         .enumerate()

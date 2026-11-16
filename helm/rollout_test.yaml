@@ -229,3 +229,24 @@ tests:
           path: spec.template.spec.terminationGracePeriodSeconds
           value: 60
         template: rollout.yaml
+
+  - it: should pass dnsConfig through to the Rollout pod
+    set:
+      rollout:
+        enabled: true
+        strategy:
+          blueGreen:
+            activeService: RELEASE-NAME-logflare
+            previewService: RELEASE-NAME-logflare-preview
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "2"
+    asserts:
+      - equal:
+          path: spec.template.spec.dnsConfig
+          value:
+            options:
+              - name: ndots
+                value: "2"
+        template: rollout.yaml

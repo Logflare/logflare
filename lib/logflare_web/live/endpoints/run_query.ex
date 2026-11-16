@@ -2,6 +2,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
   use LogflareWeb, :html
   use Phoenix.Component
 
+  alias Logflare.Endpoints.FilesystemCachePolicy
   alias LogflareWeb.QueryComponents
 
   attr :form, :map, required: true
@@ -10,18 +11,19 @@ defmodule LogflareWeb.Endpoints.RunQuery do
 
   def query_form(assigns) do
     ~H"""
-    <.form :let={f} for={@form} phx-submit="run-query" class="tw-min-h-[80px]">
+    <.form :let={f} for={@form} phx-change="validate" phx-submit="run-query" class="tw-min-h-[80px]">
       {hidden_input(f, :query)}
 
       <.inputs_for :let={params_f} field={f[:params]}>
         <div :for={key <- @declared_params}>
           {label(params_f, key, key)}
-          {text_input(params_f, key)}
+          {text_input(params_f, key, phx_debounce: "300")}
         </div>
       </.inputs_for>
 
       <.dynamic_reservation_field :if={Ecto.Changeset.get_field(@endpoint_changeset, :enable_dynamic_reservation)} form={f} class="form-group tw-mt-2" />
 
+      <.filesystem_cache_preview policy={Ecto.Changeset.get_field(@endpoint_changeset, :filesystem_cache_policy)} params={f[:params].value || %{}} />
       {submit("Test query", class: "btn btn-secondary")}
     </.form>
     """
@@ -93,10 +95,42 @@ defmodule LogflareWeb.Endpoints.RunQuery do
 
       <.parameter_fields form={f} declared_params={@declared_params} dynamic_reservation?={@endpoint.enable_dynamic_reservation} />
       <.sandbox_query_fields :if={@endpoint.sandboxable} form={f} />
+      <.filesystem_cache_preview policy={@endpoint.filesystem_cache_policy} params={f[:params].value || %{}} />
 
       {submit("Test endpoint", class: "btn btn-secondary")}
     </.form>
     """
+  end
+
+  attr :policy, :map, default: nil
+  attr :params, :map, required: true
+
+  @spec filesystem_cache_preview(map()) :: Phoenix.LiveView.Rendered.t()
+  def filesystem_cache_preview(assigns) do
+    assigns =
+      assign(assigns, :decision, FilesystemCachePolicy.resolve(assigns.policy, assigns.params))
+
+    ~H"""
+    <p :if={@policy} id="filesystem-cache-preview" class="tw-my-3 tw-text-sm tw-text-zinc-400">
+      <%= case @decision do %>
+        <% {:ok, %{window_seconds: nil}} -> %>
+          No derived cache hint: provide both time boundaries to calculate a window.
+        <% {:ok, decision} -> %>
+          Derived behavior · Requested window: {format_window(decision.window_seconds)} seconds · {if decision.settings == %{}, do: "Normal filesystem-cache behavior", else: "Existing cache entries only (no cache population)"}
+          <span>Fixed backend/endpoint settings take precedence.</span>
+        <% {:error, {_kind, message}} -> %>
+          {message}
+      <% end %>
+    </p>
+    """
+  end
+
+  @spec format_window(float()) :: String.t()
+  defp format_window(seconds) do
+    seconds
+    |> :erlang.float_to_binary(decimals: 6)
+    |> String.trim_trailing("0")
+    |> String.trim_trailing(".")
   end
 
   attr :form, :map, required: true
@@ -113,7 +147,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
       <.inputs_for :let={params_f} field={@form[:params]}>
         <div :for={key <- @declared_params} class="tw-mb-3">
           {label(params_f, key, key, class: "tw-mb-1 tw-block tw-text-sm tw-text-white")}
-          {text_input(params_f, key, class: "form-control tw-w-full")}
+          {text_input(params_f, key, class: "form-control tw-w-full", phx_debounce: "300")}
         </div>
       </.inputs_for>
 
@@ -147,6 +181,7 @@ defmodule LogflareWeb.Endpoints.RunQuery do
       {textarea(@form, :sandbox_query,
         placeholder: "SELECT * FROM cte_name WHERE condition...",
         rows: 6,
+        phx_debounce: "300",
         class: "form-control tw-w-full tw-rounded tw-border-zinc-700 tw-bg-zinc-900 tw-p-2 tw-font-mono tw-text-sm tw-text-white"
       )}
 

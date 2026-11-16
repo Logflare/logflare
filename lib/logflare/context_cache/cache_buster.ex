@@ -4,26 +4,30 @@ defmodule Logflare.ContextCache.CacheBuster do
   """
   use GenServer
 
-  alias Logflare.ContextCache.CacheBusterWorker
   alias Cainophile.Changes.DeletedRecord
   alias Cainophile.Changes.NewRecord
   alias Cainophile.Changes.Transaction
   alias Cainophile.Changes.UpdatedRecord
+  alias Logflare.Alerting
   alias Logflare.Auth
   alias Logflare.Backends
   alias Logflare.Billing
+  alias Logflare.ContextCache.CacheBusterWorker
   alias Logflare.Endpoints
   alias Logflare.KeyValues
   alias Logflare.PubSub
+  alias Logflare.QueryContext
   alias Logflare.Rules
   alias Logflare.SavedSearches
   alias Logflare.SourceSchemas
   alias Logflare.Sources
+  alias Logflare.Sources.Catalog
   alias Logflare.TeamUsers
   alias Logflare.Users
-  alias Logflare.ContextCache.CacheBusterWorker
 
   require Logger
+
+  @source_catalog_fields ~w(name token user_id)
 
   def start_link(init_args) do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
@@ -61,9 +65,9 @@ defmodule Logflare.ContextCache.CacheBuster do
     Logger.debug("WAL record received from pubsub: #{inspect(transaction)}")
 
     for record <- changes,
-        record = handle_record(record),
-        record != :noop do
-      record
+        bust <- query_context_records(record) ++ List.wrap(handle_record(record)),
+        bust != :noop do
+      bust
     end
     |> tap(fn
       [] ->
@@ -77,6 +81,48 @@ defmodule Logflare.ContextCache.CacheBuster do
 
     {:noreply, state}
   end
+
+  @spec query_context_records(struct()) :: [{module(), keyword()}]
+  defp query_context_records(record) do
+    case query_context_fields(record) do
+      [] -> []
+      fields -> [{QueryContext, fields}]
+    end
+  end
+
+  defp query_context_fields(%DeletedRecord{relation: relation, old_record: record}) do
+    query_context_fields(%{relation: relation, record: record})
+  end
+
+  defp query_context_fields(%UpdatedRecord{
+         relation: {_schema, "backends"},
+         record: %{"id" => id, "user_id" => owner_id},
+         old_record: %{"user_id" => old_owner_id}
+       })
+       when is_binary(id) and is_binary(owner_id) and is_binary(old_owner_id) do
+    [
+      backend_id: String.to_integer(id),
+      owner_id: String.to_integer(owner_id),
+      owner_id: String.to_integer(old_owner_id)
+    ]
+  end
+
+  defp query_context_fields(%{relation: {_schema, "users"}, record: %{"id" => id}})
+       when is_binary(id),
+       do: [user_id: String.to_integer(id)]
+
+  defp query_context_fields(%{
+         relation: {_schema, "backends"},
+         record: %{"id" => id, "user_id" => owner_id}
+       })
+       when is_binary(id) and is_binary(owner_id),
+       do: [backend_id: String.to_integer(id), owner_id: String.to_integer(owner_id)]
+
+  defp query_context_fields(%{relation: {_schema, "backends"}, record: %{"id" => id}})
+       when is_binary(id),
+       do: [backend_id: String.to_integer(id)]
+
+  defp query_context_fields(_change), do: []
 
   defp backend_owner_ids(changes) do
     for change <- changes,
@@ -104,6 +150,20 @@ defmodule Logflare.ContextCache.CacheBuster do
 
   defp handle_record(%UpdatedRecord{
          relation: {_schema, "sources"},
+         record: %{"id" => id, "user_id" => user_id} = record,
+         old_record: old_record
+       })
+       when is_binary(id) and is_binary(user_id) do
+    catalogs =
+      if source_catalog_changed?(record, old_record),
+        do: catalog_owners(Catalog, [record, old_record]),
+        else: []
+
+    [{Sources, String.to_integer(id)} | catalogs]
+  end
+
+  defp handle_record(%UpdatedRecord{
+         relation: {_schema, "sources"},
          record: %{"id" => id}
        })
        when is_binary(id) do
@@ -123,15 +183,16 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"id" => id}
        })
        when is_binary(id) do
-    {Users, String.to_integer(id)}
+    user_id = String.to_integer(id)
+    [{Users, user_id}, {Billing, [user_id: user_id]}]
   end
 
   defp handle_record(%UpdatedRecord{
          relation: {_schema, "billing_accounts"},
-         record: %{"id" => id}
+         record: %{"id" => id, "user_id" => user_id}
        })
-       when is_binary(id) do
-    {Billing, String.to_integer(id)}
+       when is_binary(id) and is_binary(user_id) do
+    {Billing, [id: String.to_integer(id), user_id: String.to_integer(user_id)]}
   end
 
   defp handle_record(%UpdatedRecord{
@@ -176,10 +237,20 @@ defmodule Logflare.ContextCache.CacheBuster do
 
   defp handle_record(%UpdatedRecord{
          relation: {_schema, "endpoint_queries"},
-         record: %{"id" => id}
+         record: %{"id" => id} = record,
+         old_record: old_record
        })
        when is_binary(id) do
-    {Endpoints, String.to_integer(id)}
+    [{Endpoints, String.to_integer(id)} | catalog_owners(Endpoints, [record, old_record])]
+  end
+
+  defp handle_record(%UpdatedRecord{
+         relation: {_schema, "alert_queries"},
+         record: %{"id" => id} = record,
+         old_record: old_record
+       })
+       when is_binary(id) do
+    [{Alerting, String.to_integer(id)} | catalog_owners(Alerting, [record, old_record])]
   end
 
   defp handle_record(%UpdatedRecord{
@@ -191,10 +262,24 @@ defmodule Logflare.ContextCache.CacheBuster do
 
   defp handle_record(%NewRecord{
          relation: {_schema, "billing_accounts"},
-         record: %{"id" => _id}
-       }) do
-    # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
-    {Billing, :not_found}
+         record: %{"user_id" => user_id}
+       })
+       when is_binary(user_id) do
+    [
+      {Billing, :not_found},
+      {Billing, [user_id: String.to_integer(user_id)]}
+    ]
+  end
+
+  defp handle_record(%NewRecord{
+         relation: {_schema, "endpoint_queries"},
+         record: %{"id" => _id, "user_id" => user_id}
+       })
+       when is_binary(user_id) do
+    [
+      {Endpoints, :not_found},
+      {Endpoints, [user_id: String.to_integer(user_id)]}
+    ]
   end
 
   defp handle_record(%NewRecord{
@@ -214,6 +299,14 @@ defmodule Logflare.ContextCache.CacheBuster do
   end
 
   defp handle_record(%NewRecord{
+         relation: {_schema, "alert_queries"},
+         record: %{"user_id" => user_id}
+       })
+       when is_binary(user_id) do
+    {Alerting, [user_id: String.to_integer(user_id)]}
+  end
+
+  defp handle_record(%NewRecord{
          relation: {_schema, "source_schemas"},
          record: %{"id" => _id}
        }) do
@@ -226,9 +319,11 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"id" => _id, "user_id" => user_id}
        })
        when is_binary(user_id) do
-    # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
-    {Sources, :not_found}
-    # {Users, String.to_integer(user_id)}
+    # Bust both negative source lookups and the owner's cached catalog.
+    [
+      {Sources, :not_found},
+      {Catalog, [user_id: String.to_integer(user_id)]}
+    ]
   end
 
   defp handle_record(%NewRecord{
@@ -282,7 +377,26 @@ defmodule Logflare.ContextCache.CacheBuster do
          old_record: %{"id" => id}
        })
        when is_binary(id) do
+    {Billing, [id: String.to_integer(id), billing_accounts: :changed]}
+  end
+
+  defp handle_record(%DeletedRecord{
+         relation: {_schema, "plans"},
+         old_record: %{"id" => id}
+       })
+       when is_binary(id) do
     {Billing, String.to_integer(id)}
+  end
+
+  defp handle_record(%DeletedRecord{
+         relation: {_schema, "sources"},
+         old_record: %{"id" => id, "user_id" => user_id}
+       })
+       when is_binary(id) and is_binary(user_id) do
+    [
+      {Sources, String.to_integer(id)},
+      {Catalog, [user_id: String.to_integer(user_id)]}
+    ]
   end
 
   defp handle_record(%DeletedRecord{
@@ -295,10 +409,18 @@ defmodule Logflare.ContextCache.CacheBuster do
 
   defp handle_record(%DeletedRecord{
          relation: {_schema, "endpoint_queries"},
-         old_record: %{"id" => id}
+         old_record: %{"id" => id} = record
        })
        when is_binary(id) do
-    {Endpoints, String.to_integer(id)}
+    [{Endpoints, String.to_integer(id)} | catalog_owners(Endpoints, [record])]
+  end
+
+  defp handle_record(%DeletedRecord{
+         relation: {_schema, "alert_queries"},
+         old_record: %{"id" => id} = record
+       })
+       when is_binary(id) do
+    [{Alerting, String.to_integer(id)} | catalog_owners(Alerting, [record])]
   end
 
   defp handle_record(%DeletedRecord{
@@ -314,7 +436,8 @@ defmodule Logflare.ContextCache.CacheBuster do
          old_record: %{"id" => id}
        })
        when is_binary(id) do
-    {Users, String.to_integer(id)}
+    user_id = String.to_integer(id)
+    [{Users, user_id}, {Billing, [user_id: user_id]}]
   end
 
   defp handle_record(%DeletedRecord{
@@ -384,6 +507,26 @@ defmodule Logflare.ContextCache.CacheBuster do
 
   defp handle_record(_record) do
     :noop
+  end
+
+  @spec source_catalog_changed?(map(), term()) :: boolean()
+  defp source_catalog_changed?(record, old_record) when is_map(old_record) do
+    Enum.any?(@source_catalog_fields, fn field ->
+      not Map.has_key?(record, field) or not Map.has_key?(old_record, field) or
+        record[field] != old_record[field]
+    end)
+  end
+
+  defp source_catalog_changed?(_record, _old_record), do: true
+
+  defp catalog_owners(context, records) do
+    records
+    |> Enum.flat_map(fn
+      %{"user_id" => user_id} when is_binary(user_id) -> [String.to_integer(user_id)]
+      _record -> []
+    end)
+    |> Enum.uniq()
+    |> Enum.map(&{context, [user_id: &1]})
   end
 
   def handle_rule_record(%{

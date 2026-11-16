@@ -7,12 +7,12 @@
     "watch": "node ./build.mjs watch"
   },
   "dependencies": {
-    "@base-ui/react": "1.0.0",
+    "@base-ui/react": "1.8.0",
     "@fortawesome/fontawesome-free": "^5.8.2",
     "bootstrap": "^4.6.0",
     "bootstrap-select": "^1.13.12",
     "clipboard": "^2.0.4",
-    "date-fns": "^2.29.3",
+    "date-fns": "4.4.0",
     "jquery": "^3.7.1",
     "json-formatter-js": "^2.3.4",
     "localforage": "^1.7.3",
@@ -36,7 +36,7 @@
     "esbuild-sass-plugin": "^3.3.1",
     "glob": "^10.5.0",
     "jsdom": "^26.1.0",
-    "playwright": "^1.60.0",
+    "playwright": "^1.64.1",
     "postcss": "^8.4.31",
     "react-test-renderer": "^18.3.1",
     "sass": "^1.58.3",

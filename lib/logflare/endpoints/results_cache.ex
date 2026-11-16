@@ -319,7 +319,7 @@ defmodule Logflare.Endpoints.ResultsCache do
 
   defp version_cache_key(_version_number), do: {:version, @latest_version}
 
-  @spec endpoint_query(t()) :: EndpointQuery.t() | {:error, atom()} | nil
+  @spec endpoint_query(t()) :: EndpointQuery.t() | {:error, atom() | String.t()} | nil
   defp endpoint_query(%__MODULE__{endpoint_version_number: version_number} = state)
        when is_integer(version_number) do
     with %EndpointQuery{} = current <- Endpoints.Cache.get_endpoint_query(state.endpoint_query_id),

@@ -387,27 +387,36 @@ defmodule Logflare.Alerting do
   """
   @spec list_execution_history(integer()) :: [Oban.Job.t()]
   def list_execution_history(alert_query_id) do
-    from(j in Oban.Job,
-      where: j.worker == "Logflare.Alerting.AlertWorker",
-      where: fragment("?->>'alert_query_id' = ?", j.args, ^to_string(alert_query_id)),
-      order_by: [desc: j.scheduled_at],
-      limit: 50
-    )
-    |> Repo.all()
+    Repo.with_replica(fn ->
+      from(j in Oban.Job,
+        where: j.worker == "Logflare.Alerting.AlertWorker",
+        where: fragment("?->>'alert_query_id' = ?", j.args, ^to_string(alert_query_id)),
+        order_by: [desc: j.scheduled_at],
+        limit: 50
+      )
+      |> Repo.all()
+    end)
   end
 
   @doc """
   Lists future (upcoming) jobs for an alert query.
+
+  Reads from primary by default so schedule changes are immediately visible.
+  Pass `replica?: true` to opt into stale-tolerant reads.
   """
-  @spec list_future_jobs(integer()) :: [Oban.Job.t()]
-  def list_future_jobs(alert_query_id) do
-    from(j in Oban.Job,
-      where: j.worker == "Logflare.Alerting.AlertWorker",
-      where: fragment("?->>'alert_query_id' = ?", j.args, ^to_string(alert_query_id)),
-      where: j.state in @future_job_states,
-      order_by: [asc: j.scheduled_at]
-    )
-    |> Repo.all()
+  @spec list_future_jobs(integer(), keyword()) :: [Oban.Job.t()]
+  def list_future_jobs(alert_query_id, opts \\ []) do
+    read = fn ->
+      from(j in Oban.Job,
+        where: j.worker == "Logflare.Alerting.AlertWorker",
+        where: fragment("?->>'alert_query_id' = ?", j.args, ^to_string(alert_query_id)),
+        where: j.state in @future_job_states,
+        order_by: [asc: j.scheduled_at]
+      )
+      |> Repo.all()
+    end
+
+    Repo.with_read(read, Keyword.get(opts, :replica?, false))
   end
 
   @doc """
@@ -454,19 +463,9 @@ defmodule Logflare.Alerting do
     LoggerMetadata.with_metadata(alert_query_logger_metadata(alert_query), fn ->
       Logger.debug("Executing AlertQuery | #{alert_query.name} | #{alert_query.id}")
 
-      endpoints = Endpoints.list_endpoints_by(user_id: alert_query.user_id)
       use_query_cache = Keyword.get(opts, :use_query_cache, true)
 
-      alerts =
-        list_alert_queries_by_user_id(alert_query.user_id)
-        |> Enum.filter(&(&1.id != alert_query.id))
-
-      with {:ok, expanded_query} <-
-             Logflare.Sql.expand_subqueries(
-               alert_query.language,
-               alert_query.query,
-               endpoints ++ alerts
-             ),
+      with {:ok, expanded_query} <- Endpoints.expand_query_subqueries(alert_query),
            {:ok, transformed_query} <-
              Logflare.Sql.transform(alert_query.language, expanded_query, alert_query.user_id),
            {:ok, result} <-
