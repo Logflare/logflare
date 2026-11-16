@@ -254,4 +254,31 @@ defmodule Logflare.AlertIssues.QueriesTest do
       refute Map.has_key?(issue, "unread")
     end
   end
+
+  describe "before the system source tables exist" do
+    defp drop!(%{backend: backend}, source) do
+      {:ok, _} =
+        PostgresAdaptor.SharedRepo.with_repo(backend, fn ->
+          PostgresAdaptor.SharedRepo.query(
+            "drop table if exists #{PostgresAdaptor.table_name(source)}",
+            []
+          )
+        end)
+    end
+
+    test "treats a missing reads table as no reads", ctx do
+      insert_snapshot(ctx, %{"alert_issue_id" => "a"}, ago(ctx.now, 60))
+      drop!(ctx, ctx.reads_source)
+
+      assert {:ok, [%{"alert_issue_id" => "a", "unread" => true}]} =
+               Queries.list(ctx.user, filters: %{"project" => "default"}, reader: "user_1")
+    end
+
+    test "returns no alert issues when the alert issues table does not exist yet", ctx do
+      drop!(ctx, ctx.source)
+
+      assert {:ok, []} = Queries.list(ctx.user, filters: %{"project" => "default"})
+      assert {:error, :not_found} = Queries.get(ctx.user, "a", filters: %{"project" => "default"})
+    end
+  end
 end

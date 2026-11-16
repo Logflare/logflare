@@ -60,6 +60,23 @@ defmodule LogflareWeb.Api.AlertIssueControllerTest do
                |> json_response(400)
     end
 
+    test "returns backend query errors as 500 with a message", %{conn: conn} do
+      stub(Queries, :list, fn _user, _opts ->
+        {:error,
+         %Logflare.Backends.QueryError{
+           kind: :backend_error,
+           raw_error: :boom,
+           backend: __MODULE__,
+           description: "relation does not exist"
+         }}
+      end)
+
+      assert %{"error" => "relation does not exist"} =
+               conn
+               |> get(~p"/api/alerts/issues?#{%{"filters" => %{"identifiers.project" => "p1"}}}")
+               |> json_response(500)
+    end
+
     test "maps an invalid filter key to 400", %{conn: conn} do
       stub(Queries, :list, fn _user, _opts -> {:error, {:invalid_filter_key, "Bad"}} end)
 

@@ -4,12 +4,14 @@ defmodule LogflareWeb.Api.AlertIssueController do
 
   alias Logflare.AlertIssues
   alias Logflare.AlertIssues.Queries
+  alias Logflare.Backends.QueryError
   alias LogflareWeb.OpenApi.BadRequest
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.NotFound
   alias LogflareWeb.OpenApiSchemas.AlertIssueApiSchema
 
   @identifier_prefix "identifiers."
+  @backend_error {"Backend query error", "application/json", BadRequest.schema()}
   @actions %{
     "acknowledge" => :acknowledge,
     "snooze" => :snooze,
@@ -37,7 +39,11 @@ defmodule LogflareWeb.Api.AlertIssueController do
   operation(:index,
     summary: "List alert issues",
     parameters: @filter_params,
-    responses: %{200 => List.response(AlertIssueApiSchema), 400 => BadRequest.response()}
+    responses: %{
+      200 => List.response(AlertIssueApiSchema),
+      400 => BadRequest.response(),
+      500 => @backend_error
+    }
   )
 
   def index(%{assigns: %{user: user}} = conn, params) do
@@ -45,6 +51,7 @@ defmodule LogflareWeb.Api.AlertIssueController do
          {:ok, issues} <- Queries.list(user, opts) |> map_error() do
       json(conn, issues)
     else
+      {:error, %QueryError{} = error} -> backend_error(conn, error)
       {:error, message} -> bad_request(conn, message)
     end
   end
@@ -57,7 +64,8 @@ defmodule LogflareWeb.Api.AlertIssueController do
     responses: %{
       200 => AlertIssueApiSchema.response(),
       400 => BadRequest.response(),
-      404 => NotFound.response()
+      404 => NotFound.response(),
+      500 => @backend_error
     }
   )
 
@@ -67,6 +75,7 @@ defmodule LogflareWeb.Api.AlertIssueController do
       json(conn, issue)
     else
       {:error, :not_found} -> {:error, :not_found}
+      {:error, %QueryError{} = error} -> backend_error(conn, error)
       {:error, message} -> bad_request(conn, message)
     end
   end
@@ -90,7 +99,8 @@ defmodule LogflareWeb.Api.AlertIssueController do
       200 => AlertIssueApiSchema.response(),
       400 => BadRequest.response(),
       404 => NotFound.response(),
-      409 => {"Invalid transition", "application/json", BadRequest.schema()}
+      409 => {"Invalid transition", "application/json", BadRequest.schema()},
+      500 => @backend_error
     }
   )
 
@@ -110,6 +120,7 @@ defmodule LogflareWeb.Api.AlertIssueController do
         {:error, :not_found} -> {:error, :not_found}
         {:error, :invalid_transition} -> error(conn, 409, "invalid transition for #{action}")
         {:error, :until_required} -> bad_request(conn, "until is required to snooze")
+        {:error, %QueryError{} = error} -> backend_error(conn, error)
         {:error, reason} -> bad_request(conn, inspect(reason))
       end
     else
@@ -142,7 +153,8 @@ defmodule LogflareWeb.Api.AlertIssueController do
            properties: %{count: %OpenApiSpex.Schema{type: :integer}}
          }},
       400 => BadRequest.response(),
-      404 => NotFound.response()
+      404 => NotFound.response(),
+      500 => @backend_error
     }
   )
 
@@ -152,6 +164,7 @@ defmodule LogflareWeb.Api.AlertIssueController do
       case AlertIssues.mark_read(user, ids, reader, read, filters: filters) do
         {:ok, count} -> json(conn, %{count: count})
         {:error, :not_found} -> {:error, :not_found}
+        {:error, %QueryError{} = error} -> backend_error(conn, error)
         {:error, reason} -> bad_request(conn, inspect(reason))
       end
     else
@@ -222,6 +235,9 @@ defmodule LogflareWeb.Api.AlertIssueController do
   defp map_error(result), do: result
 
   defp bad_request(conn, message), do: error(conn, 400, message)
+
+  defp backend_error(conn, %QueryError{description: description, kind: kind}),
+    do: error(conn, 500, description || "backend query failed: #{kind}")
 
   defp error(conn, status, message) do
     conn

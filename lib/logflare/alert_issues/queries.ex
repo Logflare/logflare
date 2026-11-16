@@ -9,6 +9,7 @@ defmodule Logflare.AlertIssues.Queries do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.PostgresAdaptor
+  alias Logflare.Backends.QueryError
   alias Logflare.Sources
   alias Logflare.User
 
@@ -67,20 +68,9 @@ defmodule Logflare.AlertIssues.Queries do
       order by body ->> 'alert_issue_id', cast(body ->> 'version' as bigint) desc
       """
 
-      case PostgresAdaptor.execute_query(
-             backend,
-             {sql, [reader, alert_issue_ids, retention_floor()]},
-             []
-           ) do
-        {:ok, %{rows: rows}} ->
-          {:ok,
-           Map.new(rows, fn row ->
-             row["body_json"] |> Jason.decode!() |> then(&{&1["alert_issue_id"], &1})
-           end)}
-
-        {:error, _} = error ->
-          error
-      end
+      backend
+      |> PostgresAdaptor.execute_query({sql, [reader, alert_issue_ids, retention_floor()]}, [])
+      |> decode_bodies(%{}, &Map.new(&1, fn read -> {read["alert_issue_id"], read} end))
     else
       {:error, :no_alert_issues} -> {:ok, %{}}
       {:error, _} = error -> error
@@ -105,10 +95,9 @@ defmodule Logflare.AlertIssues.Queries do
       {sql, params} =
         latest_sql(PostgresAdaptor.table_name(source), filters, since, alert_issue_id, limit)
 
-      case PostgresAdaptor.execute_query(backend, {sql, params}, []) do
-        {:ok, %{rows: rows}} -> {:ok, Enum.map(rows, &Jason.decode!(&1["body_json"]))}
-        {:error, _} = error -> error
-      end
+      backend
+      |> PostgresAdaptor.execute_query({sql, params}, [])
+      |> decode_bodies([], &Function.identity/1)
     else
       {:error, :no_alert_issues} -> {:ok, []}
       {:error, _} = error -> error
@@ -136,6 +125,20 @@ defmodule Logflare.AlertIssues.Queries do
         end
     end
   end
+
+  defp decode_bodies({:ok, %{rows: rows}}, _empty, collect),
+    do: {:ok, rows |> Enum.map(&Jason.decode!(&1["body_json"])) |> collect.()}
+
+  defp decode_bodies({:error, error}, empty, _collect) do
+    if missing_table?(error), do: {:ok, empty}, else: {:error, error}
+  end
+
+  defp missing_table?(%QueryError{
+         raw_error: %Postgrex.Error{postgres: %{code: :undefined_table}}
+       }),
+       do: true
+
+  defp missing_table?(_error), do: false
 
   defp validate_filters(filters) when map_size(filters) == 0, do: {:error, :filters_required}
 
