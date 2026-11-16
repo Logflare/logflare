@@ -269,6 +269,21 @@ defmodule Logflare.AlertIssuesTest do
       assert acked["attention_at"] == opened["attention_at"]
     end
 
+    test "appends a new event rather than reusing the stored event id", %{
+      user: user,
+      opened: opened
+    } do
+      stored = Map.merge(opened, %{"id" => "stored-event-id", "event_message" => "stored"})
+      stub(Queries, :get, fn _user, _id, _opts -> {:ok, stored} end)
+
+      assert {:ok, acked} = act(user, opened["alert_issue_id"], :acknowledge)
+      {_source, event} = assert_ingested()
+
+      refute Map.has_key?(event, "id")
+      refute Map.has_key?(acked, "id")
+      assert event["event_message"] == "Edge function errors acknowledged"
+    end
+
     test "rejects invalid transitions", %{user: user, opened: opened} do
       {:ok, _} = act(user, opened["alert_issue_id"], :acknowledge)
       assert {:error, :invalid_transition} = act(user, opened["alert_issue_id"], :acknowledge)

@@ -15,6 +15,7 @@ defmodule Logflare.AlertIssues do
   alias Logflare.User
 
   @reopen_window_us 24 * 60 * 60 * 1_000_000
+  @storage_fields ["id"]
 
   @type signal :: %{
           required(:fingerprint) => String.t(),
@@ -58,7 +59,8 @@ defmodule Logflare.AlertIssues do
   """
   @spec act(User.t(), String.t(), action(), keyword()) :: {:ok, map()} | {:error, term()}
   def act(%User{} = user, alert_issue_id, action, opts) do
-    with {:ok, current} <- Queries.get(user, alert_issue_id, Keyword.take(opts, [:filters])),
+    with {:ok, stored} <- Queries.get(user, alert_issue_id, Keyword.take(opts, [:filters])),
+         current = Map.drop(stored, @storage_fields),
          version = max(System.os_time(:microsecond), current["version"] + 1),
          {:ok, attrs, change} <-
            action_transition(action, current, Keyword.put(opts, :version, version)) do
