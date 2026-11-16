@@ -385,6 +385,40 @@ defmodule LogflareWeb.OpenApiSchemas do
       required: [:lql, :source, :from, :to, :total, :buckets, :events]
   end
 
+  defmodule AlertIssueTypeApiSchema do
+    @properties %{
+      rule_key: %Schema{type: :string},
+      name: %Schema{type: :string},
+      description: %Schema{type: :string, nullable: true},
+      category: %Schema{type: :string, enum: ["security", "performance", "health"]},
+      severity: %Schema{type: :string, enum: ["critical", "major", "warning", "info"]},
+      managed: %Schema{type: :boolean},
+      language: %Schema{type: :string},
+      lql: %Schema{type: :string, nullable: true},
+      group_by: %Schema{type: :array, items: %Schema{type: :string}},
+      silenced: %Schema{type: :boolean},
+      silence_id: %Schema{type: :integer, nullable: true}
+    }
+
+    use LogflareWeb.OpenApi,
+      properties: @properties,
+      required: [:rule_key, :name, :category, :severity, :managed, :silenced]
+  end
+
+  defmodule AlertIssueSilenceApiSchema do
+    @properties %{
+      id: %Schema{type: :integer},
+      rule_key: %Schema{type: :string, nullable: true},
+      matchers: %Schema{type: :object, additionalProperties: %Schema{type: :string}},
+      comment: %Schema{type: :string, nullable: true},
+      created_by: %Schema{type: :string, nullable: true},
+      inserted_at: %Schema{type: :string, format: :"date-time"},
+      updated_at: %Schema{type: :string, format: :"date-time"}
+    }
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:id, :matchers]
+  end
+
   defmodule KeyValueApiSchema do
     @properties %{
       id: %Schema{type: :integer},

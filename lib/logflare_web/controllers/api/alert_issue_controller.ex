@@ -6,6 +6,7 @@ defmodule LogflareWeb.Api.AlertIssueController do
   alias Logflare.AlertIssues.LogEvents
   alias Logflare.AlertIssues.Queries
   alias Logflare.Backends.QueryError
+  alias LogflareWeb.Api.AlertIssueFilters
   alias LogflareWeb.OpenApi.BadRequest
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.List
@@ -14,7 +15,6 @@ defmodule LogflareWeb.Api.AlertIssueController do
   alias LogflareWeb.OpenApiSchemas.AlertIssueCommentApiSchema
   alias LogflareWeb.OpenApiSchemas.AlertLogEventsApiSchema
 
-  @identifier_prefix "identifiers."
   @backend_error {"Backend query error", "application/json", BadRequest.schema()}
   @actions %{
     "acknowledge" => :acknowledge,
@@ -37,7 +37,12 @@ defmodule LogflareWeb.Api.AlertIssueController do
     ],
     status: [in: :query, description: "Comma-separated statuses", type: :string],
     since: [in: :query, description: "ISO 8601 lower bound, at most 30 days back", type: :string],
-    reader: [in: :query, description: "Adds an unread flag for this reader", type: :string]
+    reader: [in: :query, description: "Adds an unread flag for this reader", type: :string],
+    include_silenced: [
+      in: :query,
+      description: "Include alert issues hidden by a silence",
+      type: :boolean
+    ]
   ]
 
   operation(:index,
@@ -113,7 +118,7 @@ defmodule LogflareWeb.Api.AlertIssueController do
         %{"alert_issue_id" => alert_issue_id} = params
       ) do
     with {:ok, action} <- parse_action(Map.get(params, "action")),
-         {:ok, filters} <- parse_filters(Map.get(params, "filters")),
+         {:ok, filters} <- AlertIssueFilters.parse(Map.get(params, "filters")),
          {:ok, until} <- parse_since(Map.get(params, "until")) do
       opts =
         [filters: filters, actor: Map.get(params, "actor") || user.email, until: until]
@@ -163,7 +168,7 @@ defmodule LogflareWeb.Api.AlertIssueController do
   )
 
   def reads(%{assigns: %{user: user}} = conn, params) do
-    with {:ok, filters} <- parse_filters(Map.get(params, "filters")),
+    with {:ok, filters} <- AlertIssueFilters.parse(Map.get(params, "filters")),
          {:ok, ids, reader, read} <- parse_reads(params) do
       case AlertIssues.mark_read(user, ids, reader, read, filters: filters) do
         {:ok, count} -> json(conn, %{count: count})
@@ -190,7 +195,7 @@ defmodule LogflareWeb.Api.AlertIssueController do
   )
 
   def comments(%{assigns: %{user: user}} = conn, %{"alert_issue_id" => alert_issue_id} = params) do
-    with {:ok, filters} <- parse_filters(Map.get(params, "filters")) do
+    with {:ok, filters} <- AlertIssueFilters.parse(Map.get(params, "filters")) do
       case Queries.comments(user, alert_issue_id, filters: filters) do
         {:ok, comments} -> json(conn, comments)
         {:error, :not_found} -> {:error, :not_found}
@@ -230,7 +235,7 @@ defmodule LogflareWeb.Api.AlertIssueController do
         %{assigns: %{user: user}} = conn,
         %{"alert_issue_id" => alert_issue_id} = params
       ) do
-    with {:ok, filters} <- parse_filters(Map.get(params, "filters")) do
+    with {:ok, filters} <- AlertIssueFilters.parse(Map.get(params, "filters")) do
       author = Map.get(params, "author") || user.email
 
       case AlertIssues.comment(user, alert_issue_id, to_string(Map.get(params, "body", "")),
@@ -273,7 +278,7 @@ defmodule LogflareWeb.Api.AlertIssueController do
   )
 
   def events(%{assigns: %{user: user}} = conn, %{"alert_issue_id" => alert_issue_id} = params) do
-    with {:ok, filters} <- parse_filters(Map.get(params, "filters")),
+    with {:ok, filters} <- AlertIssueFilters.parse(Map.get(params, "filters")),
          {:ok, range} <- parse_range(params) do
       user
       |> LogEvents.for_alert_issue(alert_issue_id, [filters: filters] ++ range)
@@ -364,32 +369,21 @@ defmodule LogflareWeb.Api.AlertIssueController do
   end
 
   defp query_opts(params) do
-    with {:ok, filters} <- parse_filters(Map.get(params, "filters")),
+    with {:ok, filters} <- AlertIssueFilters.parse(Map.get(params, "filters")),
          {:ok, since} <- parse_since(Map.get(params, "since")) do
       opts =
         [
           filters: filters,
           statuses: parse_statuses(Map.get(params, "status")),
           since: since,
-          reader: Map.get(params, "reader")
+          reader: Map.get(params, "reader"),
+          include_silenced: Map.get(params, "include_silenced") in [true, "true"]
         ]
         |> Enum.reject(fn {_key, value} -> is_nil(value) end)
 
       {:ok, opts}
     end
   end
-
-  defp parse_filters(filters) when is_map(filters) and map_size(filters) > 0 do
-    Enum.reduce_while(filters, {:ok, %{}}, fn
-      {@identifier_prefix <> key, value}, {:ok, acc} when is_binary(value) ->
-        {:cont, {:ok, Map.put(acc, key, value)}}
-
-      {key, _value}, _acc ->
-        {:halt, {:error, "unsupported filter: #{key}"}}
-    end)
-  end
-
-  defp parse_filters(_filters), do: {:error, "filters[identifiers.<key>] is required"}
 
   defp parse_since(nil), do: {:ok, nil}
 

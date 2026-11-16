@@ -490,6 +490,10 @@ defmodule LogflareWeb.Router do
       only: [:index, :show, :create, :update, :delete]
     )
 
+    get("/alerts/issue_types", Api.AlertIssueTypeController, :index)
+    get("/alerts/silences", Api.AlertSilenceController, :index)
+    post("/alerts/silences", Api.AlertSilenceController, :create)
+    delete("/alerts/silences/:id", Api.AlertSilenceController, :delete)
     get("/alerts/issues", Api.AlertIssueController, :index)
     post("/alerts/issues/reads", Api.AlertIssueController, :reads)
     get("/alerts/issues/:alert_issue_id", Api.AlertIssueController, :show)
