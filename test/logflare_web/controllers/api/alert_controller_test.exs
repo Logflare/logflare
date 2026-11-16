@@ -65,6 +65,75 @@ defmodule LogflareWeb.Api.AlertControllerTest do
     assert %{backends: %Schema{type: :array}} = AlertApiSchema.schema().properties
   end
 
+  test "documents alert issue rule fields" do
+    rule_fields =
+      ~w(rule_key kind managed severity category group_by scope signal_mapping resolve_after_runs)a
+
+    for schema <- [AlertApiCreateParams, AlertApiUpdateParams, AlertApiSchema] do
+      properties = schema.schema().properties
+      assert Enum.all?(rule_fields, &Map.has_key?(properties, &1))
+      assert %Schema{enum: ["bq_sql", "pg_sql", "lql"]} = properties.language
+    end
+  end
+
+  describe "alert issue rules" do
+    @rule %{
+      name: "Edge Function errors",
+      query: "select current_date() as date",
+      cron: "*/5 * * * *",
+      language: "bq_sql",
+      rule_key: "supabase.edge-function-5xx",
+      managed: true,
+      severity: "major",
+      category: "performance",
+      group_by: ["function_id"],
+      scope: %{"project" => "default"},
+      resolve_after_runs: 3,
+      signal_mapping: %{
+        "title_column" => "title",
+        "preview" => %{"lql" => "f:edge m.function_id:{{function_id}}"}
+      }
+    }
+
+    test "create and read back the rule fields", %{conn: conn} do
+      %{"token" => token} = conn |> post(~p"/api/alerts", @rule) |> json_response(201)
+
+      assert %{
+               "rule_key" => "supabase.edge-function-5xx",
+               "kind" => "scheduled",
+               "managed" => true,
+               "severity" => "major",
+               "category" => "performance",
+               "group_by" => ["function_id"],
+               "scope" => %{"project" => "default"},
+               "resolve_after_runs" => 3,
+               "enabled" => true,
+               "signal_mapping" => %{
+                 "title_column" => "title",
+                 "preview" => %{"lql" => "f:edge m.function_id:{{function_id}}"}
+               }
+             } = conn |> get(~p"/api/alerts/#{token}") |> json_response(200)
+    end
+
+    test "update the rule fields", %{conn: conn} do
+      %{"token" => token} = conn |> post(~p"/api/alerts", @rule) |> json_response(201)
+
+      notebook = [%{"title" => "Errors", "source" => "database", "sql" => "select 1"}]
+
+      assert %{"severity" => "critical", "signal_mapping" => %{"notebook" => ^notebook}} =
+               conn
+               |> put(~p"/api/alerts/#{token}", %{
+                 severity: "critical",
+                 enabled: false,
+                 signal_mapping: %{"notebook" => notebook}
+               })
+               |> json_response(200)
+
+      assert %{"enabled" => false, "managed" => true} =
+               conn |> get(~p"/api/alerts/#{token}") |> json_response(200)
+    end
+  end
+
   describe "with alerts" do
     test "create alert", %{conn: conn} do
       response =

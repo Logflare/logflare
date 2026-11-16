@@ -252,11 +252,56 @@ defmodule LogflareWeb.OpenApiSchemas do
     def response, do: {"Rule create response", "application/json", __MODULE__}
   end
 
+  defmodule AlertRuleProperties do
+    @moduledoc false
+
+    @notebook_cell %Schema{
+      type: :object,
+      properties: %{
+        title: %Schema{type: :string},
+        source: %Schema{type: :string, enum: ["database", "logs"]},
+        sql: %Schema{type: :string}
+      },
+      required: [:title, :source, :sql]
+    }
+
+    @signal_mapping %Schema{
+      type: :object,
+      description: "How alert rows become alert issue signals",
+      properties: %{
+        identifiers: %Schema{type: :object, additionalProperties: %Schema{type: :string}},
+        title_column: %Schema{type: :string},
+        description_column: %Schema{type: :string},
+        severity_column: %Schema{type: :string},
+        category_column: %Schema{type: :string},
+        metadata_columns: %Schema{type: :array, items: %Schema{type: :string}},
+        window_seconds: %Schema{type: :integer, minimum: 1},
+        preview: %Schema{type: :object, properties: %{lql: %Schema{type: :string}}},
+        notebook: %Schema{type: :array, items: @notebook_cell, maxItems: 10}
+      }
+    }
+
+    @spec properties() :: %{atom() => Schema.t()}
+    def properties do
+      %{
+        language: %Schema{type: :string, enum: ["bq_sql", "pg_sql", "lql"]},
+        rule_key: %Schema{type: :string, nullable: true, maxLength: 128},
+        kind: %Schema{type: :string, enum: ["scheduled", "on_match"]},
+        managed: %Schema{type: :boolean},
+        severity: %Schema{type: :string, enum: ["critical", "major", "warning", "info"]},
+        category: %Schema{type: :string, enum: ["security", "performance", "health"]},
+        group_by: %Schema{type: :array, items: %Schema{type: :string}},
+        scope: %Schema{type: :object, additionalProperties: %Schema{type: :string}},
+        signal_mapping: @signal_mapping,
+        resolve_after_runs: %Schema{type: :integer, minimum: 1}
+      }
+    end
+  end
+
   defmodule AlertApiCreateParams do
-    @properties %{
+    @base_properties %{
       name: %Schema{type: :string},
       description: %Schema{type: :string, nullable: true},
-      language: %Schema{type: :string},
       query: %Schema{type: :string},
       cron: %Schema{type: :string},
       slack_hook_url: %Schema{type: :string, nullable: true},
@@ -268,15 +313,19 @@ defmodule LogflareWeb.OpenApiSchemas do
         description: "Complete replacement set of attached backend IDs"
       }
     }
+
+    @properties Map.merge(
+                  @base_properties,
+                  LogflareWeb.OpenApiSchemas.AlertRuleProperties.properties()
+                )
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:name, :query, :cron]
   end
 
   defmodule AlertApiUpdateParams do
-    @properties %{
+    @base_properties %{
       name: %Schema{type: :string},
       description: %Schema{type: :string, nullable: true},
-      language: %Schema{type: :string},
       query: %Schema{type: :string},
       cron: %Schema{type: :string},
       slack_hook_url: %Schema{type: :string, nullable: true},
@@ -289,23 +338,35 @@ defmodule LogflareWeb.OpenApiSchemas do
       }
     }
 
+    @properties Map.merge(
+                  @base_properties,
+                  LogflareWeb.OpenApiSchemas.AlertRuleProperties.properties()
+                )
+
     use LogflareWeb.OpenApi, properties: @properties, required: []
   end
 
   defmodule AlertApiSchema do
-    @properties %{
+    @base_properties %{
       id: %Schema{type: :integer},
       token: %Schema{type: :string},
       name: %Schema{type: :string},
       description: %Schema{type: :string, nullable: true},
-      language: %Schema{type: :string},
       query: %Schema{type: :string},
       cron: %Schema{type: :string},
       slack_hook_url: %Schema{type: :string, nullable: true},
       webhook_notification_url: %Schema{type: :string, nullable: true},
       enabled: %Schema{type: :boolean},
-      backends: %Schema{type: :array, items: LogflareWeb.OpenApiSchemas.BackendApiSchema}
+      backends: %Schema{
+        type: :array,
+        items: LogflareWeb.OpenApiSchemas.BackendApiSchema
+      }
     }
+
+    @properties Map.merge(
+                  @base_properties,
+                  LogflareWeb.OpenApiSchemas.AlertRuleProperties.properties()
+                )
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:name, :query, :cron, :language]
   end
