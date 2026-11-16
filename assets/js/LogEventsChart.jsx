@@ -479,6 +479,7 @@ const LogEventsChart = ({
       ) : (
         <ResponsiveContainer width="100%" height={100}>
           <Chart
+            id="log-events-chart-plot"
             data={chartData}
             margin={{ top: 20, right: 0, bottom: multipleAggregates ? 3 : 0, left: 0 }}
             className={multipleAggregates ? "[&_.recharts-surface]:tw-overflow-visible" : undefined}
@@ -520,6 +521,7 @@ const LogEventsChart = ({
               ? series.map(({ key, label }, index) => (
                   <Line
                     key={key}
+                    id={`log-events-chart-series-${key}`}
                     dataKey={key}
                     name={label}
                     type="linear"
@@ -548,6 +550,7 @@ const LogEventsChart = ({
       )}
       {multipleAggregates && !loading && (
         <ul
+          id="log-events-chart-legend"
           aria-label="Chart aggregates"
           className="tw-my-[9.6px] tw-mx-0 tw-flex tw-list-none tw-flex-wrap tw-self-start tw-gap-x-4 tw-gap-y-1 tw-p-0 tw-text-xs"
         >

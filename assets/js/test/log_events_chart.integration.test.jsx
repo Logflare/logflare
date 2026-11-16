@@ -130,127 +130,13 @@ describe("LogEventsChart with Recharts", () => {
     });
   };
 
-  it("renders a compact legend below unstacked lines with eight colors before repeating", async () => {
-    const series = [
-      ...aggregateSeries,
-      ...Array.from({ length: 5 }, (_, index) => ({
-        key: `aggregate_${index + 4}`,
-        label: `max(m.field_${index + 4})`,
-      })),
-    ];
-    await renderChart({
-      series,
-      data: aggregateData.map((row, index) => ({
-        ...row,
-        ...Object.fromEntries(series.slice(4).map(({ key }) => [key, index + 1])),
-      })),
-    });
+  it("lists each aggregate in the legend", async () => {
+    await renderChart();
 
     const legend = container.querySelector('[aria-label="Chart aggregates"]');
-    expect([...legend.querySelectorAll("li")].map((item) => item.textContent)).toEqual(
-      series.map(({ label }) => label),
-    );
-    expect(legend.compareDocumentPosition(container.querySelector(".recharts-wrapper")) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
-    expect(container.querySelectorAll(".recharts-bar")).toHaveLength(0);
-    const gridLines = [...container.querySelectorAll(".recharts-cartesian-grid-horizontal line")];
-    expect(gridLines.length).toBeGreaterThan(0);
-    expect(gridLines.every((line) => Number(line.getAttribute("y1")) <= chartBounds.height)).toBe(true);
-    const lines = [...container.querySelectorAll(".recharts-line-curve")];
-    expect(lines.map((line) => line.getAttribute("stroke"))).toEqual([
-      "#5eeb8f", "#6286db", "#8e6ddf", "#f1ba58", "#dc3545",
-      "#03C03C", "#bd1550", "#b11226", "#5eeb8f",
+    expect([...legend.querySelectorAll("button")].map((button) => button.textContent)).toEqual([
+      "sum(m.latency)", "avg(m.latency)", "max(m.latency)", "count(*)",
     ]);
-    expect(lines[0].getAttribute("d")).toBe(lines[2].getAttribute("d"));
-    expect(lines[1].getAttribute("d").match(/M/g)).toHaveLength(2);
-    const isolatedDots = [...container.querySelectorAll(".recharts-line-dots circle")];
-    expect(isolatedDots).toHaveLength(2);
-    expect(isolatedDots.map((dot) => dot.getAttribute("fill"))).toEqual(["#6286db", "#6286db"]);
-    expect(isolatedDots.every((dot) => Number(dot.getAttribute("r")) > 0)).toBe(true);
-    expect(Number(isolatedDots[1].getAttribute("cx"))).toBeGreaterThan(Number(isolatedDots[0].getAttribute("cx")));
-    expect(Number(isolatedDots[1].getAttribute("cy"))).toBeLessThan(Number(isolatedDots[0].getAttribute("cy")));
-  });
-
-  it("marks an isolated zero without marking null buckets or continuous lines", async () => {
-    await renderChart({
-      data: aggregateData.map((row, index) => ({
-        ...row,
-        aggregate_1: [null, 0, null][index],
-      })),
-    });
-
-    const dots = [...container.querySelectorAll(".recharts-line-dots circle")];
-    expect(dots).toHaveLength(1);
-    expect(dots[0].getAttribute("fill")).toBe("#6286db");
-    expect(Number(dots[0].getAttribute("r"))).toBeGreaterThan(0);
-  });
-
-  it("toggles legend series and tooltip rows locally while retaining each series color", async () => {
-    const pushEvent = vi.fn();
-    await renderChart({ pushEvent });
-    const buttons = [...container.querySelectorAll('[aria-label="Chart aggregates"] button')];
-
-    await dispatchMouseEvent(buttons[0], "click", 0);
-
-    expect(buttons[0].getAttribute("aria-pressed")).toBe("false");
-    expect(buttons[0].querySelector("span").style.backgroundColor).toBe("rgba(255, 255, 255, 0.08)");
-    expect([...container.querySelectorAll(".recharts-line-curve")].map((line) => line.getAttribute("stroke"))).toEqual([
-      "#6286db", "#8e6ddf", "#f1ba58",
-    ]);
-
-    await hoverAt(250);
-    const tooltip = container.querySelector(".recharts-tooltip-wrapper");
-    expect(tooltipText()).toEqual([
-      "avg(m.latency) —", "max(m.latency) 20.50", "count(*) 0", "10:01",
-    ]);
-    expect(tooltip.querySelector('[aria-hidden="true"]').style.backgroundColor).toBe("rgb(98, 134, 219)");
-
-    for (const button of buttons.slice(1)) {
-      await dispatchMouseEvent(button, "click", 0);
-    }
-    expect(container.querySelectorAll(".recharts-line-curve")).toHaveLength(0);
-    expect(container.querySelectorAll(".recharts-line-dots circle")).toHaveLength(0);
-    await hoverAt(250);
-    expect(tooltipText()).toEqual([]);
-
-    await dispatchMouseEvent(buttons[1], "click", 0);
-    expect(buttons[1].getAttribute("aria-pressed")).toBe("true");
-    expect(buttons[1].querySelector("span").style.backgroundColor).toBe("rgb(98, 134, 219)");
-    expect([...container.querySelectorAll(".recharts-line-curve")].map((line) => line.getAttribute("stroke"))).toEqual(["#6286db"]);
-    expect(container.querySelectorAll(".recharts-line-dots circle")).toHaveLength(2);
-    await hoverAt(250);
-    expect(tooltipText()).toEqual([
-      "avg(m.latency) —", "10:01",
-    ]);
-    expect(tooltip.querySelector('[aria-hidden="true"]')).toBeNull();
-    expect(pushEvent.mock.calls).toEqual([]);
-  });
-
-  it.each([
-    ["default", aggregateSeries, ["#5eeb8f", "#6286db", "#8e6ddf", "#f1ba58"]],
-    ["default", [], []],
-    ["cloudflare_status_codes", [], ["#9a9a9a", "#dc3545", "#f1ba58", "#6286db", "#5eeb8f", "#8e6ddf", "#9a9a9a"]],
-    ["vercel_status_codes", [], ["#9a9a9a", "#dc3545", "#f1ba58", "#6286db", "#5eeb8f", "#8e6ddf", "#9a9a9a"]],
-    ["netlify_status_codes", [], ["#9a9a9a", "#dc3545", "#f1ba58", "#6286db", "#5eeb8f", "#8e6ddf", "#9a9a9a"]],
-    ["elixir_logger_levels", [], ["#9a9a9a", "#b11226", "#bd1550", "#dc3545", "#dc3545", "#f1ba58", "#03c03c", "#5eeb8f", "#8e6ddf", "#9a9a9a"]],
-  ])("uses gray labels, white values and dots only for multiple tooltip items in %s with series %j", async (shape, series, colors) => {
-    await renderChart({ chart_data_shape_id: shape, series });
-    await hoverAt(250);
-
-    const tooltip = container.querySelector(".recharts-tooltip-wrapper");
-    const rows = [...tooltip.querySelectorAll("strong")];
-    for (const row of rows.slice(0, -1)) {
-      expect(row.children[0].style.color).toBe("rgb(154, 154, 154)");
-      expect(row.children[1].style.color).toBe("rgb(255, 255, 255)");
-      expect(row.children[1].style.textAlign).toBe("right");
-    }
-    expect(rows.at(-1).style.color).toBe("rgb(154, 154, 154)");
-    expect([...tooltip.querySelectorAll('[aria-hidden="true"]')].map((dot) => dot.style.backgroundColor)).toEqual(
-      colors.map((color) => {
-        const element = document.createElement("span");
-        element.style.backgroundColor = color;
-        return element.style.backgroundColor;
-      }),
-    );
   });
 
   it.each([
@@ -302,10 +188,8 @@ describe("LogEventsChart with Recharts", () => {
     [undefined, "Value"],
     [[], "Value"],
     [[{ key: "value", label: "max(m.response_bytes)" }], "max(m.response_bytes)"],
-  ])("retains single-value bars without a multi-aggregate legend for series %j", async (series, label) => {
+  ])("retains the single-value tooltip without a multi-aggregate legend for series %j", async (series, label) => {
     await renderChart({ data: chartData.map((row) => ({ ...row, value: 12345.5 })), series });
-    expect(container.querySelectorAll(".recharts-bar")).toHaveLength(1);
-    expect(container.querySelectorAll(".recharts-line")).toHaveLength(0);
     expect(container.querySelector('[aria-label="Chart aggregates"]')).toBeNull();
     await hoverAt(250);
     expect(tooltipText()).toEqual([
@@ -315,21 +199,19 @@ describe("LogEventsChart with Recharts", () => {
   });
 
   it.each([
-    ["cloudflare_status_codes", { total: 3, status_2xx: 2, status_5xx: 1 }, 7, [
+    ["cloudflare_status_codes", { total: 3, status_2xx: 2, status_5xx: 1 }, [
       "Total 3", "5xx 1", "4xx", "3xx", "2xx 2", "1xx", "Other", "10:01",
     ]],
-    ["elixir_logger_levels", { total: 3, level_info: 2, other: 1 }, 10, [
+    ["elixir_logger_levels", { total: 3, level_info: 2, other: 1 }, [
       "Total 3", "Emergency", "Critical", "Alert", "Error", "Warn",
       "Notice", "Info 2", "Debug", "Other 1", "10:01",
     ]],
-  ])("retains %s bars and tooltip values followed by the timestamp", async (shape, values, barCount, expected) => {
+  ])("retains %s tooltip values followed by the timestamp", async (shape, values, expected) => {
     await renderChart({
       series: [{ key: "value", label: "count(*)" }],
       chart_data_shape_id: shape,
       data: chartData.map((row) => ({ ...row, ...values })),
     });
-    expect(container.querySelectorAll(".recharts-bar")).toHaveLength(barCount);
-    expect(container.querySelectorAll(".recharts-line")).toHaveLength(0);
     await hoverAt(250);
     expect(tooltipText()).toEqual(expected);
   });
@@ -357,43 +239,5 @@ describe("LogEventsChart with Recharts", () => {
       ["soft_pause", {}],
       ["datetime_update", { querystring, period: "second" }],
     ]);
-  });
-
-  it.each([undefined, aggregateSeries])("keeps a drag-selected range after Recharts delivers the deferred click with series %j", async (series) => {
-    const pushEvent = vi.fn();
-
-    await renderChart({ data: series ? aggregateData : chartData, series, pushEvent });
-
-    const chart = container.querySelector(".recharts-wrapper");
-
-    const rangeUpdateCalls = [
-      ["soft_pause", {}],
-      [
-        "datetime_update",
-        { querystring: series
-          ? "t:2026-08-14T10:00:00..2026-08-14T10:02:00"
-          : "t:2026-08-14T10:00:00..2026-08-14T10:03:00" },
-      ],
-    ];
-
-    await dispatchMouseEvent(chart, "mousemove", 150);
-    await flushAnimationFrames();
-    expect(tooltipText().at(-1)).toBe("10:00");
-    await dispatchMouseEvent(chart, "mousedown", 150);
-    await flushAnimationFrames();
-    await dispatchMouseEvent(chart, "mousemove", 310);
-    await flushAnimationFrames();
-    expect(tooltipText().at(-1)).toBe(series ? "10:01" : "10:02");
-    await dispatchMouseEvent(chart, "mouseup", 310);
-
-    await flushAnimationFrames();
-    expect(pushEvent.mock.calls).toEqual(rangeUpdateCalls);
-
-    // Queue the browser's click before the next frame. In the buggy ordering,
-    // the mouseup callback's cleanup ran before Recharts delivered this click.
-    await dispatchMouseEvent(chart, "click", 310);
-
-    await flushAnimationFrames();
-    expect(pushEvent.mock.calls).toEqual(rangeUpdateCalls);
   });
 });

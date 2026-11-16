@@ -3,10 +3,12 @@ defmodule E2e.Features.LogsSearchTest do
 
   alias Ecto.Changeset
   alias Logflare.Backends
+  alias Logflare.Lql
   alias Logflare.NaturalLanguageLql.AnthropicClient
   alias Logflare.Repo
   alias Logflare.SingleTenant
   alias PlaywrightEx.Frame
+  alias PlaywrightEx.Page
 
   setup do
     start_supervised!(Logflare.SystemMetrics.AllLogsLogged)
@@ -398,6 +400,179 @@ defmodule E2e.Features.LogsSearchTest do
 
       assert querystring =~ ~r/t:\S+\.\.\S+/
     end
+  end
+
+  describe "chart interactions" do
+    TestUtils.setup_single_tenant(seed_user: true, backend_type: :postgres)
+
+    setup do
+      user = SingleTenant.get_default_user()
+      source = insert(:source, user: user)
+      message = "chartinteraction#{System.unique_integer([:positive])}"
+      schema = TestUtils.default_bq_schema()
+      insert(:source_schema, source: source, bigquery_schema: schema)
+
+      start =
+        DateTime.utc_now()
+        |> DateTime.truncate(:second)
+        |> Map.put(:second, 0)
+        |> DateTime.add(-300, :second)
+
+      events =
+        Enum.flat_map(0..3, fn minute ->
+          build_list(minute + 1, :log_event,
+            source: source,
+            message: message,
+            timestamp: start |> DateTime.add(minute * 60 + 15, :second) |> DateTime.to_iso8601()
+          )
+        end)
+
+      :ok = Backends.ensure_source_sup_started(source)
+      assert {:ok, 10} = Backends.ingest_logs(events, source)
+      assert :ok = TestUtils.wait_for_postgres_events(source, user, message, 10)
+
+      first_bucket = start |> DateTime.to_naive() |> NaiveDateTime.to_iso8601()
+
+      second_bucket =
+        start |> DateTime.add(60, :second) |> DateTime.to_naive() |> NaiveDateTime.to_iso8601()
+
+      last_second =
+        start |> DateTime.add(239, :second) |> DateTime.to_naive() |> NaiveDateTime.to_iso8601()
+
+      range_end =
+        start |> DateTime.add(180, :second) |> DateTime.to_naive() |> NaiveDateTime.to_iso8601()
+
+      %{
+        source: source,
+        query: "event_message:#{message} t:#{first_bucket}..#{last_second} c:group_by(t::minute)",
+        bar_selected_range:
+          "t:#{first_bucket}..#{range_end}" |> Lql.decode!(schema) |> Lql.encode!(),
+        aggregate_selected_range:
+          "t:#{second_bucket}..#{range_end}" |> Lql.decode!(schema) |> Lql.encode!()
+      }
+    end
+
+    test "dragging triggers a time range search for bars", %{
+      conn: conn,
+      source: source,
+      query: query,
+      bar_selected_range: selected_range
+    } do
+      conn
+      |> visit_chart_search(source, "#{query} c:count(*)")
+      |> drag_chart()
+      |> assert_time_range_search(selected_range, 6)
+    end
+
+    test "dragging triggers a time range search for multiple aggregates", %{
+      conn: conn,
+      source: source,
+      query: query,
+      aggregate_selected_range: selected_range
+    } do
+      conn
+      |> visit_chart_search(source, "#{query} c:count(*) c:countd(id)")
+      |> drag_chart()
+      |> assert_time_range_search(selected_range, 5)
+    end
+
+    test "the legend toggles aggregates without changing the search", %{
+      conn: conn,
+      source: source,
+      query: query
+    } do
+      query = "#{query} c:count(*) c:countd(id)"
+
+      conn =
+        conn
+        |> visit_chart_search(source, query)
+        |> assert_visible_aggregates(["count(*)", "countd(id)"])
+
+      original_query = wait_for_editor_querystring(conn, "c:")
+
+      conn =
+        conn
+        |> toggle_aggregate("count(*)")
+        |> assert_visible_aggregates(["countd(id)"])
+        |> toggle_aggregate("countd(id)")
+        |> assert_visible_aggregates([])
+        |> toggle_aggregate("count(*)")
+        |> assert_visible_aggregates(["count(*)"])
+
+      assert wait_for_editor_querystring(conn, "c:") == original_query
+    end
+  end
+
+  @spec visit_chart_search(map(), Logflare.Sources.Source.t(), String.t()) :: map()
+  defp visit_chart_search(conn, source, query) do
+    conn
+    |> visit(~p"/auth/login/single_tenant")
+    |> visit(
+      ~p"/sources/#{source.id}/search?#{%{querystring: query, tz: "Etc/UTC", tailing?: false}}"
+    )
+    |> assert_has("#logs-list li[data-event-id]", count: 10)
+    |> wait_for_selector("#log-events-chart-plot")
+  end
+
+  @spec drag_chart(map()) :: map()
+  defp drag_chart(conn) do
+    unwrap(conn, fn %{frame_id: frame_id, page_id: page_id} ->
+      {:ok, _} =
+        Frame.hover(frame_id,
+          selector: "#log-events-chart-plot",
+          timeout: 5_000
+        )
+
+      {:ok, %{"x" => x, "y" => y, "width" => width}} =
+        Frame.evaluate(frame_id,
+          expression: """
+          () => {
+            const bounds = document.querySelector("#log-events-chart-plot").getBoundingClientRect()
+            return { x: bounds.x, y: bounds.y + bounds.height / 2, width: bounds.width }
+          }
+          """,
+          is_function: true,
+          timeout: 5_000
+        )
+
+      {:ok, _} = Page.mouse_move(page_id, x: x + width * 0.2, y: y, timeout: 5_000)
+      {:ok, _} = Page.mouse_down(page_id, timeout: 5_000)
+      {:ok, _} = Page.mouse_move(page_id, x: x + width * 0.7, y: y, steps: 10, timeout: 5_000)
+      {:ok, _} = Page.mouse_up(page_id, timeout: 5_000)
+
+      {:ok, _} =
+        Frame.evaluate(frame_id,
+          expression:
+            "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
+          timeout: 5_000
+        )
+    end)
+  end
+
+  @spec assert_time_range_search(map(), String.t(), pos_integer()) :: map()
+  defp assert_time_range_search(conn, selected_range, expected_count) do
+    querystring = wait_for_editor_querystring(conn, selected_range)
+    assert querystring =~ selected_range
+    assert querystring =~ "c:group_by(t::second)"
+    assert_has(conn, "#logs-list li[data-event-id]", count: expected_count)
+  end
+
+  @spec toggle_aggregate(map(), String.t()) :: map()
+  defp toggle_aggregate(conn, label) do
+    click_button(conn, "#log-events-chart-legend button", label)
+  end
+
+  @spec assert_visible_aggregates(map(), [String.t()]) :: map()
+  defp assert_visible_aggregates(conn, labels) do
+    Enum.reduce(Enum.with_index(["count(*)", "countd(id)"]), conn, fn {label, index}, conn ->
+      selector = "#log-events-chart-series-aggregate_#{index}"
+
+      if label in labels do
+        assert_has(conn, selector)
+      else
+        refute_has(conn, selector)
+      end
+    end)
   end
 
   @spec assert_search_timezone(map(), String.t()) :: map()
