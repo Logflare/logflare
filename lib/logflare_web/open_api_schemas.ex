@@ -349,6 +349,42 @@ defmodule LogflareWeb.OpenApiSchemas do
       required: [:comment_id, :alert_issue_id, :body, :created_at]
   end
 
+  defmodule AlertLogEventsApiSchema do
+    @properties %{
+      lql: %Schema{type: :string},
+      source: %Schema{type: :string},
+      from: %Schema{type: :string, format: :"date-time"},
+      to: %Schema{type: :string, format: :"date-time"},
+      total: %Schema{type: :integer},
+      buckets: %Schema{
+        type: :array,
+        items: %Schema{
+          type: :object,
+          properties: %{
+            timestamp: %Schema{type: :string, format: :"date-time"},
+            count: %Schema{type: :integer}
+          }
+        }
+      },
+      events: %Schema{
+        type: :array,
+        items: %Schema{
+          type: :object,
+          properties: %{
+            id: %Schema{type: :string},
+            timestamp: %Schema{type: :string, format: :"date-time"},
+            event_message: %Schema{type: :string, nullable: true},
+            body: %Schema{type: :object}
+          }
+        }
+      }
+    }
+
+    use LogflareWeb.OpenApi,
+      properties: @properties,
+      required: [:lql, :source, :from, :to, :total, :buckets, :events]
+  end
+
   defmodule KeyValueApiSchema do
     @properties %{
       id: %Schema{type: :integer},

@@ -3,6 +3,7 @@ defmodule LogflareWeb.Api.AlertIssueController do
   use OpenApiSpex.ControllerSpecs
 
   alias Logflare.AlertIssues
+  alias Logflare.AlertIssues.LogEvents
   alias Logflare.AlertIssues.Queries
   alias Logflare.Backends.QueryError
   alias LogflareWeb.OpenApi.BadRequest
@@ -11,6 +12,7 @@ defmodule LogflareWeb.Api.AlertIssueController do
   alias LogflareWeb.OpenApi.NotFound
   alias LogflareWeb.OpenApiSchemas.AlertIssueApiSchema
   alias LogflareWeb.OpenApiSchemas.AlertIssueCommentApiSchema
+  alias LogflareWeb.OpenApiSchemas.AlertLogEventsApiSchema
 
   @identifier_prefix "identifiers."
   @backend_error {"Backend query error", "application/json", BadRequest.schema()}
@@ -243,6 +245,105 @@ defmodule LogflareWeb.Api.AlertIssueController do
       end
     else
       {:error, message} -> bad_request(conn, message)
+    end
+  end
+
+  @range_params [
+    from: [
+      in: :query,
+      description: "ISO 8601 start, defaults to 24 hours before to",
+      type: :string
+    ],
+    to: [in: :query, description: "ISO 8601 end, defaults to now", type: :string]
+  ]
+  @preview_error {"No log preview", "application/json", BadRequest.schema()}
+
+  operation(:events,
+    summary: "Preview the log events behind an alert issue",
+    parameters:
+      [alert_issue_id: [in: :path, description: "Alert issue ID", type: :string]] ++
+        Keyword.take(@filter_params, [:filters]) ++ @range_params,
+    responses: %{
+      200 => AlertLogEventsApiSchema.response(),
+      400 => BadRequest.response(),
+      404 => NotFound.response(),
+      422 => @preview_error,
+      500 => @backend_error
+    }
+  )
+
+  def events(%{assigns: %{user: user}} = conn, %{"alert_issue_id" => alert_issue_id} = params) do
+    with {:ok, filters} <- parse_filters(Map.get(params, "filters")),
+         {:ok, range} <- parse_range(params) do
+      user
+      |> LogEvents.for_alert_issue(alert_issue_id, [filters: filters] ++ range)
+      |> preview_response(conn)
+    else
+      {:error, message} -> bad_request(conn, message)
+    end
+  end
+
+  operation(:preview,
+    summary: "Preview the log events matching an LQL filter",
+    request_body:
+      {"Preview", "application/json",
+       %OpenApiSpex.Schema{
+         type: :object,
+         required: [:lql],
+         properties: %{
+           lql: %OpenApiSpex.Schema{type: :string},
+           from: %OpenApiSpex.Schema{type: :string, format: :"date-time"},
+           to: %OpenApiSpex.Schema{type: :string, format: :"date-time"}
+         }
+       }},
+    responses: %{
+      200 => AlertLogEventsApiSchema.response(),
+      400 => BadRequest.response(),
+      422 => @preview_error,
+      500 => @backend_error
+    }
+  )
+
+  def preview(%{assigns: %{user: user}} = conn, %{"lql" => lql} = params) when is_binary(lql) do
+    case parse_range(params) do
+      {:ok, range} -> user |> LogEvents.preview(lql, range) |> preview_response(conn)
+      {:error, message} -> bad_request(conn, message)
+    end
+  end
+
+  def preview(conn, _params), do: bad_request(conn, "lql is required")
+
+  defp preview_response({:ok, result}, conn), do: json(conn, result)
+  defp preview_response({:error, :not_found}, _conn), do: {:error, :not_found}
+
+  defp preview_response({:error, %QueryError{} = error}, conn), do: backend_error(conn, error)
+
+  defp preview_response({:error, reason}, conn),
+    do: error(conn, 422, preview_error_message(reason))
+
+  defp preview_error_message(:no_preview), do: "this alert issue type has no log preview"
+  defp preview_error_message(:source_required), do: "lql must name a source with f:<source>"
+  defp preview_error_message({:unknown_source, name}), do: "unknown source: #{name}"
+  defp preview_error_message({:missing_identifier, key}), do: "missing identifier: #{key}"
+  defp preview_error_message({:invalid_identifier, key}), do: "invalid identifier: #{key}"
+  defp preview_error_message({:invalid_lql, _reason}), do: "invalid lql"
+  defp preview_error_message({:unsupported_operator, op}), do: "unsupported lql operator: #{op}"
+  defp preview_error_message(:unsupported_backend), do: "source is not on a postgres backend"
+  defp preview_error_message(reason), do: inspect(reason)
+
+  defp parse_range(params) do
+    with {:ok, from} <- parse_time(Map.get(params, "from"), "from"),
+         {:ok, to} <- parse_time(Map.get(params, "to"), "to") do
+      {:ok, [from: from, to: to]}
+    end
+  end
+
+  defp parse_time(nil, _name), do: {:ok, nil}
+
+  defp parse_time(value, name) do
+    case DateTime.from_iso8601(value) do
+      {:ok, time, _offset} -> {:ok, time}
+      {:error, _} -> {:error, "#{name} must be an ISO 8601 timestamp"}
     end
   end
 

@@ -2,6 +2,7 @@ defmodule LogflareWeb.Api.AlertIssueControllerTest do
   use LogflareWeb.ConnCase
 
   alias Logflare.AlertIssues
+  alias Logflare.AlertIssues.LogEvents
   alias Logflare.AlertIssues.Queries
 
   @issue %{"alert_issue_id" => "a1", "status" => "open", "identifiers" => %{"project" => "p1"}}
@@ -296,6 +297,80 @@ defmodule LogflareWeb.Api.AlertIssueControllerTest do
       conn
       |> post(~p"/api/alerts/issues/a1/comments", %{"body" => "hi"})
       |> json_response(400)
+    end
+  end
+
+  describe "log previews" do
+    @preview %{
+      lql: ~s(f:edge_logs_demo m.function_id:"f1"),
+      source: "edge_logs_demo",
+      from: ~U[2026-11-16 11:00:00Z],
+      to: ~U[2026-11-16 12:00:00Z],
+      total: 1,
+      buckets: [%{timestamp: ~U[2026-11-16 11:30:00Z], count: 1}],
+      events: [
+        %{
+          id: "e1",
+          timestamp: ~U[2026-11-16 11:30:00Z],
+          event_message: "boom",
+          body: %{"metadata" => %{"function_id" => "f1"}}
+        }
+      ]
+    }
+
+    test "GET events previews the alert issue's log events", %{conn: conn} do
+      expect(LogEvents, :for_alert_issue, fn _user, "a1", opts ->
+        assert opts[:filters] == %{"project" => "p1"}
+        assert opts[:from] == ~U[2026-11-16 11:00:00Z]
+        assert opts[:to] == nil
+        {:ok, @preview}
+      end)
+
+      assert %{"total" => 1, "events" => [%{"id" => "e1"}], "buckets" => [%{"count" => 1}]} =
+               conn
+               |> get(
+                 ~p"/api/alerts/issues/a1/events?#{%{"filters" => %{"identifiers.project" => "p1"}, "from" => "2026-11-16T11:00:00Z"}}"
+               )
+               |> json_response(200)
+    end
+
+    test "GET events returns 422 when the rule has no preview", %{conn: conn} do
+      stub(LogEvents, :for_alert_issue, fn _user, _id, _opts -> {:error, :no_preview} end)
+
+      assert %{"error" => "this alert issue type has no log preview"} =
+               conn
+               |> get(
+                 ~p"/api/alerts/issues/a1/events?#{%{"filters" => %{"identifiers.project" => "p1"}}}"
+               )
+               |> json_response(422)
+    end
+
+    test "GET events returns 404 outside the filters", %{conn: conn} do
+      stub(LogEvents, :for_alert_issue, fn _user, _id, _opts -> {:error, :not_found} end)
+
+      conn
+      |> get(~p"/api/alerts/issues/a1/events?#{%{"filters" => %{"identifiers.project" => "p1"}}}")
+      |> json_response(404)
+    end
+
+    test "POST preview runs an LQL filter", %{conn: conn} do
+      expect(LogEvents, :preview, fn _user, "f:edge_logs_demo error", _range ->
+        {:ok, @preview}
+      end)
+
+      assert %{"source" => "edge_logs_demo"} =
+               conn
+               |> post(~p"/api/alerts/preview", %{"lql" => "f:edge_logs_demo error"})
+               |> json_response(200)
+    end
+
+    test "POST preview returns 422 for LQL without a source", %{conn: conn} do
+      stub(LogEvents, :preview, fn _user, _lql, _range -> {:error, :source_required} end)
+
+      assert %{"error" => "lql must name a source with f:<source>"} =
+               conn
+               |> post(~p"/api/alerts/preview", %{"lql" => "error"})
+               |> json_response(422)
     end
   end
 end
