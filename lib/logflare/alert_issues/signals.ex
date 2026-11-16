@@ -38,8 +38,10 @@ defmodule Logflare.AlertIssues.Signals do
   end
 
   defp group_values(row, group_by) do
-    Map.new(group_by, fn column -> {column, stringify(Map.get(row, column))} end)
+    Map.new(group_by, fn column -> {identifier_key(column), stringify(Map.get(row, column))} end)
   end
+
+  defp identifier_key(column), do: column |> String.split(".") |> List.last()
 
   defp to_signal(alert, values, group_rows) do
     row = hd(group_rows)
@@ -82,7 +84,7 @@ defmodule Logflare.AlertIssues.Signals do
   defp title(name, [], _values), do: name
 
   defp title(name, group_by, values),
-    do: "#{name}: " <> Enum.map_join(group_by, ", ", &Map.get(values, &1))
+    do: "#{name}: " <> Enum.map_join(group_by, ", ", &Map.get(values, identifier_key(&1)))
 
   defp identifiers(alert, values, row) do
     mapped =

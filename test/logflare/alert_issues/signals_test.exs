@@ -129,4 +129,17 @@ defmodule Logflare.AlertIssues.SignalsTest do
     refute Map.has_key?(signal, :category)
     refute Map.has_key?(signal, :description)
   end
+
+  test "dotted group_by paths become identifiers named after their last segment" do
+    [signal] =
+      Signals.from_rows(alert(%{group_by: ["metadata.function_id"]}), [
+        %{"metadata.function_id" => "f1", "count" => 2}
+      ])
+
+    assert signal.identifiers == %{"function_id" => "f1"}
+    assert signal.title == "Edge function errors: f1"
+
+    assert signal.fingerprint ==
+             Signals.fingerprint("logflare.edge-fn-5xx", %{"function_id" => "f1"})
+  end
 end

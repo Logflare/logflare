@@ -850,4 +850,79 @@ defmodule Logflare.AlertingTest do
       assert {:ok, %{fired: true, rows: [%{"n" => 0}]}} = Alerting.run_alert(alert_query)
     end
   end
+
+  describe "lql alerts on postgres backends" do
+    setup %{user: user} do
+      cfg = Application.get_env(:logflare, Logflare.Repo)
+      url = "postgresql://#{cfg[:username]}:#{cfg[:password]}@#{cfg[:hostname]}/#{cfg[:database]}"
+      source = insert(:source, user: user, name: "lql_alert_source")
+
+      backend =
+        insert(:backend, type: :postgres, config: %{url: url}, sources: [source], user: user)
+
+      PostgresAdaptor.create_repo(backend)
+      PostgresAdaptor.create_events_table({source, backend})
+      on_exit(fn -> PostgresAdaptor.destroy_instance({source, backend}) end)
+
+      for {function_id, at} <- [{"f1", -30}, {"f1", -60}, {"f2", -90}, {"f1", -900}] do
+        {:ok, _} =
+          PostgresAdaptor.execute_query(
+            backend,
+            {"insert into #{PostgresAdaptor.table_name(source)} (id, body, event_message, timestamp) values ($1, $2, $3, $4) returning id",
+             [
+               Ecto.UUID.generate(),
+               %{"metadata" => %{"function_id" => function_id, "status" => 500}},
+               "#{function_id} failed",
+               DateTime.add(DateTime.utc_now(), at, :second)
+             ]},
+            []
+          )
+      end
+
+      %{source: source}
+    end
+
+    test "issue type rules accept LQL and a one-minute schedule", %{user: user, source: source} do
+      assert {:ok, alert} =
+               Alerting.create_alert_query(user, %{
+                 name: "Function failures",
+                 language: :lql,
+                 query: "f:#{source.name} m.status:>=500",
+                 cron: "* * * * *",
+                 rule_key: "custom.function-failures"
+               })
+
+      assert alert.source_mapping in [nil, %{}]
+
+      assert {:error, changeset} =
+               Alerting.create_alert_query(user, %{
+                 name: "Legacy",
+                 language: :lql,
+                 query: "f:#{source.name} m.status:>=500",
+                 cron: "* * * * *"
+               })
+
+      assert %{cron: [_]} = errors_on(changeset)
+    end
+
+    test "execute matching events in the window, grouped by body paths", %{
+      user: user,
+      source: source
+    } do
+      alert_query =
+        insert(:alert,
+          user: user,
+          language: :lql,
+          query: "f:#{source.name} m.status:>=500",
+          group_by: ["metadata.function_id"],
+          signal_mapping: %{"window_seconds" => 300}
+        )
+        |> Repo.preload(:user)
+
+      assert {:ok, %QueryResult{rows: rows}} = Alerting.execute_alert_query(alert_query)
+
+      assert %{"f1" => 2, "f2" => 1} ==
+               Map.new(rows, &{&1["metadata.function_id"], &1["count"]})
+    end
+  end
 end

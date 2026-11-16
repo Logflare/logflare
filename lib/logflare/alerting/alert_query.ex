@@ -94,17 +94,7 @@ defmodule Logflare.Alerting.AlertQuery do
       name: :alert_queries_user_id_rule_key_index,
       error_key: :rule_key
     )
-    |> validate_change(:cron, fn :cron, cron ->
-      with {:ok, expr} <- CronParser.parse(cron),
-           [first, second] <- Scheduler.get_next_run_dates(expr) |> Enum.take(2),
-           true <- NaiveDateTime.diff(first, second, :minute) <= -5 do
-        []
-      else
-        [] -> [cron: "not enough run dates"]
-        false -> [cron: "can only trigger up to 5 minute intervals"]
-        {:error, msg} -> [cron: msg]
-      end
-    end)
+    |> validate_cron_interval()
 
     # this source mapping logic is for any generic changeset
     # we implement the same columns for now,
@@ -113,10 +103,27 @@ defmodule Logflare.Alerting.AlertQuery do
   end
 
   defp maybe_update_source_mapping(changeset) do
-    case get_field(changeset, :kind) do
-      :on_match -> changeset
+    case {get_field(changeset, :kind), get_field(changeset, :language)} do
+      {:on_match, _language} -> changeset
+      {_kind, :lql} -> changeset
       _ -> EndpointQuery.update_source_mapping(changeset)
     end
+  end
+
+  defp validate_cron_interval(changeset) do
+    min_minutes = if get_field(changeset, :rule_key), do: 1, else: 5
+
+    validate_change(changeset, :cron, fn :cron, cron ->
+      with {:ok, expr} <- CronParser.parse(cron),
+           [first, second] <- Scheduler.get_next_run_dates(expr) |> Enum.take(2),
+           true <- NaiveDateTime.diff(first, second, :minute) <= -min_minutes do
+        []
+      else
+        [] -> [cron: "not enough run dates"]
+        false -> [cron: "can only trigger up to #{min_minutes} minute intervals"]
+        {:error, msg} -> [cron: msg]
+      end
+    end)
   end
 
   defp validate_cron_required(changeset) do

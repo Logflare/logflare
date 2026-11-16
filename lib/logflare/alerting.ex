@@ -8,6 +8,7 @@ defmodule Logflare.Alerting do
   alias Crontab.CronExpression.Parser, as: CronParser
   alias Crontab.Scheduler, as: CronScheduler
   alias Logflare.AlertIssues
+  alias Logflare.AlertIssues.LogEvents
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Alerting.AlertWorker
   alias Logflare.Backends
@@ -29,6 +30,7 @@ defmodule Logflare.Alerting do
   require OpenTelemetry.Tracer
 
   @future_job_states ~w(available scheduled executing)
+  @lql_window_seconds 300
 
   @doc """
   Returns the list of alert_queries.
@@ -494,6 +496,21 @@ defmodule Logflare.Alerting do
     LoggerMetadata.with_metadata(alert_query_logger_metadata(alert_query), fn ->
       case Endpoints.run_query_string(user, {:pg_sql, alert_query.query}, max_limit: 1000) do
         {:ok, %{rows: rows}} -> {:ok, QueryResult.new(rows)}
+        {:error, _reason} = error -> error
+      end
+    end)
+  end
+
+  def execute_alert_query(
+        %AlertQuery{language: :lql, user: %User{} = user} = alert_query,
+        _opts
+      ) do
+    window = Map.get(alert_query.signal_mapping || %{}, "window_seconds", @lql_window_seconds)
+    since = DateTime.add(DateTime.utc_now(), -window, :second)
+
+    LoggerMetadata.with_metadata(alert_query_logger_metadata(alert_query), fn ->
+      case LogEvents.aggregate(user, alert_query.query, alert_query.group_by || [], since) do
+        {:ok, rows} -> {:ok, QueryResult.new(rows)}
         {:error, _reason} = error -> error
       end
     end)
