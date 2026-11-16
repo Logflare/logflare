@@ -151,7 +151,10 @@ defmodule Logflare.AlertIssues.Queries do
     end
   end
 
-  defp postgres_backend(user, source) do
+  @doc false
+  @spec postgres_backend(User.t(), Logflare.Sources.Source.t()) ::
+          {:ok, Logflare.Backends.Backend.t()} | {:error, :unsupported_backend}
+  def postgres_backend(user, source) do
     case Backends.list_backends(source_id: source.id, type: :postgres) do
       [backend | _] ->
         {:ok, backend}
