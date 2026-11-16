@@ -72,6 +72,13 @@ defmodule Logflare.SqlTest do
       refute "cte" in names
     end
 
+    test "optionally includes CTE aliases for conservative named-query expansion" do
+      query = "WITH cte AS (SELECT * FROM source_table) SELECT * FROM cte"
+
+      assert {:ok, names} = Sql.extract_table_names(query, include_cte_aliases: true)
+      assert Enum.sort(names) == ["cte", "source_table"]
+    end
+
     test "returns error for invalid SQL" do
       assert {:error, _} = Sql.extract_table_names("INVALID SQL QUERY!!!")
     end
@@ -1697,6 +1704,45 @@ defmodule Logflare.SqlTest do
       assert translated =~ ~s("c.d.e")
     end
 
+    test "IFNULL with a string fallback is translated and runs", %{backend: backend, user: user} do
+      bq_query = """
+      select ifnull(m.nested, '') as nested, ifnull(m.missing, '') as missing
+      from `c.d.e` t
+      cross join unnest(t.metadata) as m
+      """
+
+      pg_query = ~s"""
+      select coalesce((body #>> '{metadata,nested}'), '') as nested,
+        coalesce((body #>> '{metadata,missing}'), '') as missing
+      from "c.d.e" t
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert_semantically_equal(translated, pg_query)
+
+      assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
+
+      assert {:ok, %QueryResult{rows: [%{"nested" => "value", "missing" => ""}]}} =
+               PostgresAdaptor.execute_query(backend, transformed, [])
+    end
+
+    test "IFNULL with a numeric fallback is translated and runs", %{backend: backend, user: user} do
+      bq_query = """
+      select ifnull(safe_cast(m.num as int64), 0) as num,
+        ifnull(safe_cast(m.missing as int64), 0) as missing
+      from `c.d.e` t
+      cross join unnest(t.metadata) as m
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      refute translated =~ ~r/ifnull/i
+
+      assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
+
+      assert {:ok, %QueryResult{rows: [%{"num" => 123, "missing" => 0}]}} =
+               PostgresAdaptor.execute_query(backend, transformed, [])
+    end
+
     test "countif into count-filter" do
       bq_query = "select countif(test = '1') from my_table"
       pg_query = ~s|select count(*) filter (where (body ->> 'test') = '1') from my_table|
@@ -1955,12 +2001,30 @@ defmodule Logflare.SqlTest do
       bq_query = ~s|select `@field` as f, @p from my_source where `@field` = @p|
 
       pg_query =
-        ~s|select (body -> '@field') as f, $1::text from my_source where (body ->> '@field') = (cast($2::text as jsonb) #>> '{}')|
+        ~s|select (body -> '@field') as f, $1::text from my_source where (body ->> '@field') = $2::text|
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert_semantically_equal(translated, pg_query)
       assert {:ok, ["p"]} = Sql.parameters(bq_query)
       assert {:ok, %{1 => "p", 2 => "p"}} = Sql.parameter_positions(bq_query)
+    end
+
+    test "parameters compared with Eq are not cast to jsonb" do
+      for bq_query <- [
+            "select id from my_source where project = @project",
+            "select id from my_source where @project = project"
+          ] do
+        {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+        assert translated =~ "$1::text"
+        refute String.downcase(translated) =~ "jsonb"
+      end
+    end
+
+    test "column compared with a column in a CTE is still cast to jsonb" do
+      bq_query = "with c as (select a, b from my_source) select a from c where a = b"
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert String.downcase(translated) =~ "jsonb"
     end
 
     test "malformed table name when global bq project id is not set" do

@@ -482,6 +482,37 @@ defmodule Logflare.AlertingTest do
     end
   end
 
+  test "upcoming jobs default to primary while history and explicit opt-in use replicas", %{
+    user: user
+  } do
+    alert = insert(:alert, user: user)
+    observer = self()
+    telemetry_ref = make_ref()
+
+    :ok =
+      :telemetry.attach(
+        telemetry_ref,
+        [:logflare, :repo, :replica_route],
+        fn _event, _measurements, _metadata, _config ->
+          send(observer, {telemetry_ref, self()})
+        end,
+        nil
+      )
+
+    on_exit(fn -> :telemetry.detach(telemetry_ref) end)
+
+    assert [] = Alerting.list_future_jobs(alert.id)
+    assert [] = Alerting.list_future_jobs(alert.id, replica?: false)
+    refute_received {^telemetry_ref, ^observer}
+
+    assert [] = Alerting.list_future_jobs(alert.id, replica?: true)
+    assert_received {^telemetry_ref, ^observer}
+
+    assert [] = Alerting.list_execution_history(alert.id)
+    assert_received {^telemetry_ref, ^observer}
+    refute_received {^telemetry_ref, ^observer}
+  end
+
   describe "list_execution_history/1" do
     test "returns empty list when no jobs exist", %{user: user} do
       alert = insert(:alert, user: user)

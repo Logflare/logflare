@@ -26,12 +26,17 @@ spec:
         {{- range .hosts }}
         - {{ . | quote }}
         {{- end }}
-      secretName: {{ .secretName }}
+      {{- with .secretName }}
+      secretName: {{ . }}
+      {{- end }}
     {{- end }}
   {{- end }}
   rules:
     {{- range $ingress.hosts }}
-    - host: {{ .host | quote }}
+    {{- /* A rule without a host matches any host. */}}
+    - {{- with .host }}
+      host: {{ . | quote }}
+      {{- end }}
       http:
         paths:
           {{- range .paths }}

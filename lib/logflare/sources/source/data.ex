@@ -5,12 +5,13 @@ defmodule Logflare.Sources.Source.Data do
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.SourceSchemas
   alias Logflare.Sources.Counters
+  alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Sources.Source.RateCounterServer
 
-  @spec get_log_count(atom, String.t()) :: non_neg_integer()
-  def get_log_count(token, _bigquery_project_id) do
-    case BigQuery.get_table(token) do
+  @spec get_log_count(Source.t(), String.t()) :: non_neg_integer()
+  def get_log_count(%Source{} = source, _bigquery_project_id) do
+    case BigQuery.get_table(source) do
       {:ok, table_info} ->
         table_rows = String.to_integer(table_info.numRows)
         buffer_rows = get_streaming_buffer_rows(table_info.streamingBuffer)

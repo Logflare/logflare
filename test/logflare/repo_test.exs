@@ -1,9 +1,13 @@
 defmodule Logflare.RepoTest do
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   alias Ecto.Adapters.SQL.Sandbox
+  alias Logflare.QueryContext
   alias Logflare.Repo
   alias Logflare.Repo.Replicas
+  alias Logflare.Telemetry
 
   defp start_read_replicas(raw_entries, entry_overrides \\ []) do
     primary_hostname = Keyword.fetch!(Repo.config(), :hostname)
@@ -47,6 +51,208 @@ defmodule Logflare.RepoTest do
     end
 
     start_result
+  end
+
+  describe "after_commit/1" do
+    setup do
+      owner = Sandbox.start_owner!(Repo, shared: true)
+      on_exit(fn -> Sandbox.stop_owner(owner) end)
+      :ok
+    end
+
+    test "runs immediately outside a transaction and in order after nested commits" do
+      Repo.after_commit(fn -> send(self(), :immediate) end)
+      assert_received :immediate
+
+      assert {:ok, :done} =
+               Repo.transaction(fn ->
+                 Repo.after_commit(fn -> send(self(), {:committed, :first}) end)
+
+                 assert {:ok, :ok} =
+                          Repo.transact(fn ->
+                            Repo.after_commit(fn -> send(self(), {:committed, :second}) end)
+                            {:ok, :ok}
+                          end)
+
+                 refute_received {:committed, _}
+                 :done
+               end)
+
+      assert_receive {:committed, first}
+      assert first == :first
+      assert_receive {:committed, second}
+      assert second == :second
+    end
+
+    test "callback failures preserve the commit result and do not skip later callbacks" do
+      log =
+        capture_log(fn ->
+          assert {:ok, :committed} =
+                   Repo.transact(fn ->
+                     Repo.after_commit(fn -> raise "cache restarting" end)
+                     Repo.after_commit(fn -> exit(:cache_restarting) end)
+                     Repo.after_commit(fn -> throw(:cache_restarting) end)
+                     Repo.after_commit(fn -> send(self(), :still_committed) end)
+                     {:ok, :committed}
+                   end)
+        end)
+
+      assert_received :still_committed
+      assert log =~ "After-commit callback failed"
+      assert log =~ "cache restarting"
+      assert log =~ "cache_restarting"
+      assert {:ok, :next} = Repo.transact(fn -> {:ok, :next} end)
+    end
+
+    test "immediate callbacks isolate failures without hiding the successful write" do
+      log =
+        capture_log(fn ->
+          assert :ok = Repo.after_commit(fn -> raise "cache restarting" end)
+          assert :ok = Repo.after_commit(fn -> send(self(), :next_callback) end)
+        end)
+
+      assert_received :next_callback
+      assert log =~ "After-commit callback failed"
+    end
+
+    test "rollback and exceptions discard callbacks without leaking into later transactions" do
+      assert {:error, :cancelled} =
+               Repo.transaction(fn ->
+                 Repo.after_commit(fn -> send(self(), :stale) end)
+                 Repo.rollback(:cancelled)
+               end)
+
+      assert_raise ArgumentError, "cancelled", fn ->
+        Repo.transact(fn ->
+          Repo.after_commit(fn -> send(self(), :stale) end)
+          raise ArgumentError, "cancelled"
+        end)
+      end
+
+      assert {:ok, :ok} = Repo.transact(fn -> {:ok, :ok} end)
+      refute_received :stale
+    end
+
+    test "Ecto.Multi callbacks run only after a successful commit" do
+      multi =
+        Ecto.Multi.new()
+        |> Ecto.Multi.run(:change, fn _, _ ->
+          Repo.after_commit(fn -> send(self(), :multi_committed) end)
+          refute_received :multi_committed
+          {:ok, :done}
+        end)
+
+      assert {:ok, %{change: :done}} = Repo.transact(multi)
+      assert_receive :multi_committed
+
+      failed =
+        Ecto.Multi.new()
+        |> Ecto.Multi.run(:change, fn _, _ ->
+          Repo.after_commit(fn -> send(self(), :multi_rolled_back) end)
+          {:error, :cancelled}
+        end)
+
+      assert {:error, :change, :cancelled, %{}} = Repo.transact(failed)
+      refute_received :multi_rolled_back
+    end
+  end
+
+  test "query-context cache fills read primary even inside a replica scope" do
+    start_read_replicas(["127.0.0.1"], pool: DBConnection.ConnectionPool, pool_size: 1)
+    owner = Sandbox.start_owner!(Repo, shared: true)
+    on_exit(fn -> Sandbox.stop_owner(owner) end)
+    Cachex.clear!(QueryContext.Cache)
+    on_exit(fn -> Cachex.clear!(QueryContext.Cache) end)
+    user = Logflare.Factory.insert(:user)
+    backend = Logflare.Factory.insert(:backend, user: user)
+
+    Repo.with_replica(fn ->
+      replica = Repo.get_dynamic_repo()
+      assert Repo.query!("SELECT id FROM backends WHERE id = $1", [backend.id]).rows == []
+      assert QueryContext.get_user(user.id).id == user.id
+      assert QueryContext.get_backend(backend.id).id == backend.id
+      assert [cached] = QueryContext.list_backends(user.id)
+      assert cached.id == backend.id
+      assert Repo.get_dynamic_repo() == replica
+    end)
+  end
+
+  test "query metrics distinguish primary and replica pools using the same repo module" do
+    start_read_replicas(["127.0.0.1"], pool: DBConnection.ConnectionPool, pool_size: 1)
+    owner = Sandbox.start_owner!(Repo, shared: true)
+    on_exit(fn -> Sandbox.stop_owner(owner) end)
+
+    metrics =
+      Enum.filter(Telemetry.metrics(), &(&1.event_name == [:logflare, :repo, :query]))
+
+    assert length(metrics) == 4
+    test_pid = self()
+    handler_id = {__MODULE__, make_ref()}
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:logflare, :repo, :query],
+        fn _, _, metadata, _ ->
+          if metadata.query == "SELECT 1" do
+            for metric <- metrics do
+              send(test_pid, {:query_role, metric.name, metric.tag_values.(metadata)})
+            end
+          end
+        end,
+        nil
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    for role <- [:primary, :replica] do
+      case role do
+        :primary -> Repo.query!("SELECT 1", [])
+        :replica -> Repo.with_replica(fn -> Repo.query!("SELECT 1", []) end)
+      end
+
+      for metric <- metrics do
+        assert metric.tags == [:role]
+        name = metric.name
+        assert_receive {:query_role, ^name, %{role: ^role}}
+      end
+    end
+  end
+
+  test "parallel preloads retain the query role selected by their caller" do
+    start_read_replicas(["127.0.0.1"], pool: DBConnection.ConnectionPool, pool_size: 2)
+    owner = Sandbox.start_owner!(Repo, shared: true)
+    on_exit(fn -> Sandbox.stop_owner(owner) end)
+    user = %Logflare.User{id: -1}
+    test_pid = self()
+    handler_id = {__MODULE__, make_ref()}
+    metric = Enum.find(Telemetry.metrics(), &(&1.event_name == [:logflare, :repo, :query]))
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:logflare, :repo, :query],
+        fn _, _, metadata, _ ->
+          if metadata.source in ["sources", "backends"] do
+            send(test_pid, {:preload_role, metadata.source, self(), metric.tag_values.(metadata)})
+          end
+        end,
+        nil
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    for role <- [:primary, :replica] do
+      case role do
+        :primary -> Repo.preload(user, [:sources, :backends])
+        :replica -> Repo.with_replica(fn -> Repo.preload(user, [:sources, :backends]) end)
+      end
+
+      for source <- ["sources", "backends"] do
+        assert_receive {:preload_role, ^source, worker, %{role: ^role}}
+        refute worker == self()
+      end
+    end
   end
 
   describe "with_replica/1" do
@@ -115,6 +321,95 @@ defmodule Logflare.RepoTest do
       end)
 
       assert Repo.get_dynamic_repo() == Repo
+    end
+
+    test "preserves an existing primary transaction" do
+      owner = Sandbox.start_owner!(Repo, shared: true)
+      on_exit(fn -> Sandbox.stop_owner(owner) end)
+
+      assert {:ok, true} = Repo.transaction(fn -> Repo.with_primary(&Repo.in_transaction?/0) end)
+    end
+  end
+
+  describe "with_read/2" do
+    test "false selects primary even when replicas are configured" do
+      start_read_replicas(["127.0.0.1"])
+
+      assert Repo.with_read(fn -> {:primary, Repo.get_dynamic_repo()} end, false) ==
+               {:primary, Repo}
+
+      assert Repo.get_dynamic_repo() == Repo
+    end
+
+    test "true selects a replica and restores the caller's repo" do
+      start_read_replicas(["127.0.0.1"])
+
+      refute Repo.with_read(&Repo.get_dynamic_repo/0, true) == Repo
+      assert Repo.get_dynamic_repo() == Repo
+    end
+
+    test "true falls back to primary when no replicas are configured" do
+      start_read_replicas([])
+
+      assert Repo.with_read(&Repo.get_dynamic_repo/0, true) == Repo
+      assert Repo.get_dynamic_repo() == Repo
+    end
+
+    test "nested reads retain the replica while false forces primary and restores scope" do
+      start_read_replicas(["127.0.0.1"])
+
+      Repo.with_read(
+        fn ->
+          replica = Repo.get_dynamic_repo()
+          refute replica == Repo
+          assert Repo.with_read(&Repo.get_dynamic_repo/0, true) == replica
+          assert Repo.with_read(&Repo.get_dynamic_repo/0, false) == Repo
+          assert Repo.get_dynamic_repo() == replica
+
+          assert_raise ArithmeticError, fn ->
+            Repo.with_read(fn -> raise ArithmeticError end, false)
+          end
+
+          assert Repo.get_dynamic_repo() == replica
+        end,
+        true
+      )
+
+      assert Repo.get_dynamic_repo() == Repo
+    end
+
+    test "true restores the caller's repo when the read raises" do
+      start_read_replicas(["127.0.0.1"])
+
+      assert_raise ArithmeticError, fn ->
+        Repo.with_read(fn -> raise ArithmeticError end, true)
+      end
+
+      assert Repo.get_dynamic_repo() == Repo
+    end
+
+    for replica? <- [true, false] do
+      @use_replica replica?
+
+      test "#{replica?} preserves an existing primary transaction" do
+        start_read_replicas(["127.0.0.1"])
+        owner = Sandbox.start_owner!(Repo, shared: true)
+        on_exit(fn -> Sandbox.stop_owner(owner) end)
+
+        assert {:ok, {Repo, true}} =
+                 Repo.transaction(fn ->
+                   Repo.with_read(
+                     fn -> {Repo.get_dynamic_repo(), Repo.in_transaction?()} end,
+                     @use_replica
+                   )
+                 end)
+      end
+    end
+
+    test "requires an explicit boolean policy" do
+      for policy <- [nil, :replica, "true"] do
+        assert_raise FunctionClauseError, fn -> Repo.with_read(fn -> :ok end, policy) end
+      end
     end
   end
 

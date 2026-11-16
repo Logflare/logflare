@@ -64,7 +64,7 @@ defmodule Logflare.Sql.DialectTranslation do
     |> Map.to_list()
     |> Enum.sort_by(fn {i, _v} -> i end, :asc)
     |> Enum.reduce(string, fn {index, param}, acc ->
-      Regex.replace(~r/@#{param}(?!:\s|$)/, acc, "$#{index}::text", global: false)
+      Regex.replace(~r/@#{param}(?!:\s)/, acc, "$#{index}::text", global: false)
     end)
   end
 
@@ -224,6 +224,9 @@ defmodule Logflare.Sql.DialectTranslation do
              "name" => [AstUtils.build_object_name_part("date_trunc")]
          }}
 
+      "ifnull" ->
+        {:recurse, {k, %{v | "name" => [AstUtils.build_object_name_part("coalesce")]}}}
+
       _ ->
         kv
     end
@@ -334,6 +337,26 @@ defmodule Logflare.Sql.DialectTranslation do
     {k, processed_args}
   end
 
+  defp pg_traverse_final_pass(
+         {"Function" = k,
+          %{
+            "name" => [%{"Identifier" => %{"value" => function_name}}],
+            "args" => %{"List" => %{"args" => args} = list_args} = args_wrapper
+          } = v}
+       )
+       when function_name in ["COALESCE", "coalesce"] do
+    processed_args = pg_traverse_final_pass(args)
+
+    converted_args =
+      if Enum.any?(processed_args, &string_literal_arg?/1) do
+        Enum.map(processed_args, &json_access_arg_to_text/1)
+      else
+        processed_args
+      end
+
+    {k, %{v | "args" => %{args_wrapper | "List" => %{list_args | "args" => converted_args}}}}
+  end
+
   # between operator should have values cast to numeric
   defp pg_traverse_final_pass({"Between" = k, %{"expr" => expr} = v}) do
     processed_expr =
@@ -395,7 +418,7 @@ defmodule Logflare.Sql.DialectTranslation do
         timestamp_identifier?(left) ->
           at_time_zone(left, :cast)
 
-        identifier?(left) and operator == "Eq" ->
+        identifier?(left) and not placeholder?(left) and operator == "Eq" ->
           left
           |> choose_cast_style()
           |> jsonb_to_text()
@@ -419,7 +442,7 @@ defmodule Logflare.Sql.DialectTranslation do
         timestamp_identifier?(right) ->
           at_time_zone(right, :cast)
 
-        identifier?(right) and operator == "Eq" ->
+        identifier?(right) and not placeholder?(right) and operator == "Eq" ->
           right
           |> choose_cast_style()
           |> jsonb_to_text()
@@ -508,6 +531,29 @@ defmodule Logflare.Sql.DialectTranslation do
   defp dropped_join?(%{"join_operator" => %{"CrossJoin" => _constraint}}), do: true
   defp dropped_join?(%{"relation" => %{"UNNEST" => _unnest}}), do: true
   defp dropped_join?(_join), do: false
+
+  defp string_literal_arg?(%{
+         "Unnamed" => %{"Expr" => %{"Value" => %{"value" => %{"SingleQuotedString" => _}}}}
+       }),
+       do: true
+
+  defp string_literal_arg?(_arg), do: false
+
+  defp json_access_arg_to_text(%{
+         "Unnamed" => %{"Expr" => %{"Nested" => %{"BinaryOp" => %{"op" => op} = bin_op}}}
+       })
+       when op in ["Arrow", "HashArrow"] do
+    %{
+      "Unnamed" => %{
+        "Expr" => %{"Nested" => %{"BinaryOp" => %{bin_op | "op" => json_text_operator(op)}}}
+      }
+    }
+  end
+
+  defp json_access_arg_to_text(arg), do: arg
+
+  defp json_text_operator("Arrow"), do: "LongArrow"
+  defp json_text_operator("HashArrow"), do: "HashLongArrow"
 
   @spec bq_to_pg_field_references(ast :: any()) :: any()
   defp bq_to_pg_field_references(ast) do
@@ -1255,6 +1301,9 @@ defmodule Logflare.Sql.DialectTranslation do
 
   defp identifier?(identifier),
     do: is_map_key(identifier, "CompoundIdentifier") or is_map_key(identifier, "Identifier")
+
+  defp placeholder?(%{"Identifier" => %{"value" => "@" <> _, "quote_style" => nil}}), do: true
+  defp placeholder?(_), do: false
 
   defp numeric_value?(%{"Value" => %{"value" => %{"Number" => _}}}), do: true
   defp numeric_value?(_), do: false

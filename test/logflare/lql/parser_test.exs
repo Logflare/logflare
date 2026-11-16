@@ -120,6 +120,38 @@ defmodule Logflare.Lql.ParserTest do
   setup :verify_on_exit!
 
   describe "LQL parsing" do
+    test "rejects numeric aggregates on string fields" do
+      schema = build_schema(%{"metadata" => %{"method" => "GET"}})
+
+      for aggregate <- [:sum, :avg] do
+        assert Parser.parse("c:#{aggregate}(m.method)", schema) ==
+                 {:error,
+                  "Chart aggregate '#{aggregate}' requires a numeric field, but path 'metadata.method' has type ':string'."}
+      end
+    end
+
+    test "rejects numeric aggregates on timestamp and array fields" do
+      schema = %{
+        "timestamp" => :datetime,
+        "metadata.bytes" => {:list, :integer}
+      }
+
+      for path <- Map.keys(schema) do
+        assert {:error, error} = Parser.parse("c:sum(#{path})", schema)
+        assert error =~ "Chart aggregate 'sum' requires a numeric field"
+        assert error =~ "path '#{path}'"
+      end
+    end
+
+    test "preserves non-numeric count, distinct count, max, and BigQuery percentile inputs" do
+      schema = build_schema(%{"metadata" => %{"method" => "GET"}})
+
+      for aggregate <- [:count, :countd, :max, :p50] do
+        assert {:ok, [%ChartRule{aggregate: ^aggregate, value_type: :string}]} =
+                 Parser.parse("c:#{aggregate}(m.method)", schema)
+      end
+    end
+
     test "other top-level fields" do
       schema = build_schema(%{"a" => "t", "b" => %{"c" => %{"d" => "test"}}})
       qs = ~S|a:testing b.c.d:"nested"|
@@ -390,6 +422,35 @@ defmodule Logflare.Lql.ParserTest do
                  modifiers: %{timestamp_origin: :local}
                }
              ] = rules
+    end
+
+    test "timestamp filters reject reversed bounds in both parser entry points" do
+      for query <- [
+            "t:2026-{11..10}-{04..31}",
+            "t:1710683822..1710683222",
+            "t:2026-11-04T04:40:00Z..2026-11-04T05:00:00+01:00",
+            "t:2026-11-04T04:40:00.000002..2026-11-04T04:40:00.000001"
+          ] do
+        assert {:error, "Timestamp range start must be before or equal to its end"} =
+                 Parser.parse(query)
+
+        assert {:error, "Timestamp range start must be before or equal to its end"} =
+                 Parser.parse(query, @default_schema)
+      end
+    end
+
+    test "timestamp ranges preserve forward and equal bounds after offset normalization" do
+      for {query, expected} <- [
+            {"t:2026-11-04T05:00:00+01:00..2026-11-04T04:40:00Z",
+             [~N[2026-11-04 04:00:00], ~N[2026-11-04 04:40:00]]},
+            {"t:2026-11-04T05:40:00+01:00..2026-11-04T04:40:00Z",
+             [~N[2026-11-04 04:40:00], ~N[2026-11-04 04:40:00]]}
+          ] do
+        assert {:ok, [%FilterRule{operator: :range, values: ^expected}]} = Parser.parse(query)
+
+        assert {:ok, [%FilterRule{operator: :range, values: ^expected}]} =
+                 Parser.parse(query, @default_schema)
+      end
     end
 
     test "timestamp filters reject range with mixed timestamp origin" do

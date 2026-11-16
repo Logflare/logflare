@@ -4,6 +4,7 @@ defmodule Logflare.Sources.Cache do
   use Logflare.ContextCache
 
   alias Logflare.Cache.CachexOps
+  alias Logflare.Repo
   alias Logflare.Sources
   alias Logflare.Sources.Source
 
@@ -55,6 +56,24 @@ defmodule Logflare.Sources.Cache do
   end
 
   @doc """
+  Returns the source for the token. Reads the primary database when the cache holds `nil`.
+
+  When the primary has the source and the entry still exists, this function also replaces the
+  entry, so later cache reads get the source. The cache buster can remove the entry first, so
+  callers must use the returned source and not read the cache again.
+
+  Returns `{:error, :database_unavailable}` when the primary cannot be reached.
+  """
+  @spec get_by_token_or_primary(atom()) :: Source.t() | nil | {:error, :database_unavailable}
+  def get_by_token_or_primary(token) when is_atom(token) do
+    with nil <- get_by(token: token),
+         %Source{} = source <- get_primary_by_token(token) do
+      Logflare.ContextCache.update(Sources, :get_by, [[token: token]], source)
+      source
+    end
+  end
+
+  @doc """
   Replaces the cached `get_by(id: id)` entry of the source with the given struct.
 
   The entry must exist. A cached `nil` counts as an entry.
@@ -66,6 +85,16 @@ defmodule Logflare.Sources.Cache do
   def get_by_id(arg) when is_integer(arg), do: get_by(id: arg)
   def get_by_id(arg) when is_atom(arg), do: get_by(token: arg)
   def get_source_by_token(arg) when is_atom(arg), do: get_by(token: arg)
+
+  @spec get_primary_by_token(atom()) :: Source.t() | nil | {:error, :database_unavailable}
+  defp get_primary_by_token(token) do
+    result =
+      CachexOps.commit_or_ignore(fn ->
+        Repo.with_primary(fn -> Sources.get_by(token: token) end)
+      end)
+
+    CachexOps.fetch_value(__MODULE__, {:get_by, [[token: token]]}, result)
+  end
 
   defp apply_repo_fun(arg1, arg2) do
     Logflare.ContextCache.apply_fun(Sources, arg1, arg2)
