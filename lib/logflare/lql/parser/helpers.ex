@@ -379,6 +379,17 @@ defmodule Logflare.Lql.Parser.Helpers do
   end
 
   def check_for_no_invalid_metadata_field_values(
+        %{operator: :range, values: [start, finish]} = rule,
+        :timestamp
+      ) do
+    if Timex.compare(start, finish) == 1 do
+      throw("Timestamp range start must be before or equal to its end")
+    end
+
+    rule
+  end
+
+  def check_for_no_invalid_metadata_field_values(
         %{path: p, value: {:invalid_metadata_field_value, v}},
         :metadata
       ) do

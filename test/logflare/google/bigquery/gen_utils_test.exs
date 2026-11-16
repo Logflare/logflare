@@ -2,6 +2,7 @@ defmodule Logflare.Google.BigQuery.GenUtilsTest do
   use Logflare.DataCase, async: true
 
   alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.Sources
 
   doctest GenUtils
 
@@ -70,6 +71,21 @@ defmodule Logflare.Google.BigQuery.GenUtilsTest do
       result = GenUtils.process_bq_errors(error, 123)
       assert result["message"] == "Main error"
       assert length(result["errors"]) == 2
+    end
+
+    test "preserves the BigQuery error when source-name expansion is unavailable", %{
+      user: user,
+      project_id: project_id,
+      env: env
+    } do
+      token = Ecto.UUID.generate() |> String.replace("-", "_")
+      error = %{"message" => "Table #{project_id}.#{user.id}_#{env}.#{token} not found"}
+
+      stub(Sources, :list_source_catalog_by_user, fn _ ->
+        raise DBConnection.ConnectionError, message: "primary unavailable"
+      end)
+
+      assert GenUtils.process_bq_errors(error, user.id) == error
     end
 
     test "replaces technical table names with source names", %{

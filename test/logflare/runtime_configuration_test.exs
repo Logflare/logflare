@@ -45,4 +45,35 @@ defmodule Logflare.RuntimeConfigurationTest do
     assert Env.aws_region(%{}) == nil
     assert Env.aws_region(%{"AWS_REGION" => "", "AWS_DEFAULT_REGION" => ""}) == nil
   end
+
+  test "get_integer/2 with an integer env value" do
+    for {value, expected} <- [{"42", 42}, {"-7", -7}, {"0", 0}] do
+      env = put_env(value)
+
+      assert Env.get_integer(env) == expected
+      assert Env.get_integer(env, 10) == expected
+    end
+  end
+
+  test "get_integer/2 with an unset or empty env value" do
+    for env <- ["LOGFLARE_TEST_GET_INTEGER_UNSET", put_env("")] do
+      assert Env.get_integer(env) == nil
+      assert Env.get_integer(env, 10) == 10
+    end
+  end
+
+  test "get_integer/2 with a non-integer env value" do
+    for value <- ["abc", "12abc", "1.5", " 42"] do
+      env = put_env(value)
+
+      assert_raise ArgumentError, ~r/#{env}/, fn -> Env.get_integer(env) end
+    end
+  end
+
+  defp put_env(value) do
+    env = "LOGFLARE_TEST_GET_INTEGER_#{System.unique_integer([:positive])}"
+    System.put_env(env, value)
+    on_exit(fn -> System.delete_env(env) end)
+    env
+  end
 end

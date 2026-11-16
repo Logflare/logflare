@@ -52,6 +52,24 @@ defmodule Logflare.UtilsTest do
       assert_raise RuntimeError, fn -> Logflare.Utils.parse_float!(nil) end
     end
   end
+
+  describe "jitter/2" do
+    test "stays within the ratio of the value" do
+      for _ <- 1..100 do
+        assert Logflare.Utils.jitter(1_000, 0.1) in 900..1_100
+      end
+    end
+
+    test "accepts the maximum ratio" do
+      for _ <- 1..100 do
+        assert Logflare.Utils.jitter(1_000, 0.5) in 500..1_500
+      end
+    end
+
+    test "rejects negative ratios" do
+      assert_raise ArgumentError, fn -> Logflare.Utils.jitter(1_000, -0.1) end
+    end
+  end
 end
 
 defmodule Logflare.Utils.FlagTest do

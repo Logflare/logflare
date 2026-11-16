@@ -10,6 +10,28 @@ defmodule Env do
     if value, do: value |> String.downcase() |> String.to_existing_atom(), else: default
   end
 
+  @doc """
+  Returns the integer value of an env var, or `default` when it is unset or empty.
+
+  Raises `ArgumentError` naming the env var when its value is not an integer.
+  """
+  @spec get_integer(String.t(), integer() | nil) :: integer() | nil
+  def get_integer(env, default \\ nil) when is_integer(default) or is_nil(default) do
+    case System.get_env(env) do
+      value when value in [nil, ""] ->
+        default
+
+      value ->
+        case Integer.parse(value) do
+          {integer, ""} ->
+            integer
+
+          _ ->
+            raise ArgumentError, "Invalid #{env}=#{inspect(value)}. Must be an integer."
+        end
+    end
+  end
+
   @spec parse_broadway_message_sample_denominator(String.t() | nil) ::
           :default | :disabled | pos_integer()
   def parse_broadway_message_sample_denominator(nil), do: :default
@@ -107,11 +129,7 @@ db_schema = System.get_env("DB_SCHEMA")
 config :logflare,
        Logflare.PubSub,
        [
-         pool_size:
-           if(System.get_env("LOGFLARE_PUBSUB_POOL_SIZE") != nil,
-             do: String.to_integer(System.get_env("LOGFLARE_PUBSUB_POOL_SIZE")),
-             else: 56
-           )
+         pool_size: Env.get_integer("LOGFLARE_PUBSUB_POOL_SIZE", 56)
        ]
        |> filter_nil_kv_pairs.()
 
@@ -147,8 +165,7 @@ config :logflare,
          metadata: logflare_metadata,
          health: logflare_health,
          http_connection_pools: http_connection_pools,
-         bq_write_api_pool_size:
-           System.get_env("LOGFLARE_BQ_WRITE_API_POOL_SIZE", "10") |> String.to_integer()
+         bq_write_api_pool_size: Env.get_integer("LOGFLARE_BQ_WRITE_API_POOL_SIZE", 10)
        ]
        |> filter_nil_kv_pairs.()
 
@@ -161,8 +178,7 @@ config :logflare,
        :bigquery_backend_adaptor,
        [
          managed_service_account_pool_size:
-           System.get_env("LOGFLARE_BIGQUERY_MANAGED_SA_POOL", "0")
-           |> String.to_integer()
+           Env.get_integer("LOGFLARE_BIGQUERY_MANAGED_SA_POOL", 0)
        ]
        |> filter_nil_kv_pairs.()
 
@@ -224,11 +240,7 @@ config :logflare,
        Logflare.Repo,
        Keyword.merge(
          filter_nil_kv_pairs.(
-           pool_size:
-             if(System.get_env("DB_POOL_SIZE") != nil,
-               do: String.to_integer(System.get_env("DB_POOL_SIZE")),
-               else: nil
-             ),
+           pool_size: Env.get_integer("DB_POOL_SIZE"),
            database: System.get_env("DB_DATABASE"),
            url: System.get_env("DB_URL"),
            hostname: System.get_env("DB_HOSTNAME"),
@@ -246,19 +258,13 @@ config :logflare,
                do: {Postgrex, :query!, ["set search_path=#{db_schema}", []]},
                else: nil
              ),
-           port:
-             if(System.get_env("DB_PORT") != nil,
-               do: String.to_integer(System.get_env("DB_PORT")),
-               else: nil
-             )
+           port: Env.get_integer("DB_PORT")
          ),
          filter_nil_kv_pairs.(db_auth_options)
        )
 
-if System.get_env("LOGFLARE_MIN_CLUSTER_SIZE") do
-  config :logflare,
-         Logflare.Cluster.Utils,
-         min_cluster_size: System.get_env("LOGFLARE_MIN_CLUSTER_SIZE") |> String.to_integer()
+if min_cluster_size = Env.get_integer("LOGFLARE_MIN_CLUSTER_SIZE") do
+  config :logflare, Logflare.Cluster.Utils, min_cluster_size: min_cluster_size
 end
 
 config :logflare_logger_backend,
@@ -369,7 +375,7 @@ if config_env() != :test do
 end
 
 if config_env() != :test do
-  config :grpc, port: System.get_env("LOGFLARE_GRPC_PORT", "50051") |> String.to_integer()
+  config :grpc, port: Env.get_integer("LOGFLARE_GRPC_PORT", 50_051)
 end
 
 socket_options_for_url = fn
@@ -584,7 +590,8 @@ config :logflare, Oban,
     {Oban.Plugins.Cron,
      crontab: [
        {"* * * * *", Logflare.Alerting.AlertSchedulerWorker},
-       {"*/15 * * * *", Logflare.Sources.RecentEventsTouchWorker}
+       {"*/15 * * * *", Logflare.Sources.RecentEventsTouchWorker},
+       {"*/15 * * * *", Logflare.KeyValues.UsageTouchWorker}
      ]}
   ]
 
@@ -610,8 +617,7 @@ cache_gossip_ratio =
   end
 
 # LOGFLARE_CACHE_GOSSIP_MAX_NODES: Maximum number of nodes to gossip cache updates to
-cache_gossip_max_nodes =
-  "LOGFLARE_CACHE_GOSSIP_MAX_NODES" |> System.get_env("3") |> String.to_integer()
+cache_gossip_max_nodes = Env.get_integer("LOGFLARE_CACHE_GOSSIP_MAX_NODES", 3)
 
 if cache_gossip_max_nodes <= 0 do
   raise ArgumentError,
@@ -638,6 +644,14 @@ read_replicas =
   |> Enum.map(&Logflare.Repo.Replicas.parse!/1)
 
 config :logflare, :read_replicas, read_replicas
+
+cache_buster_db_url_options =
+  case "LOGFLARE_CACHE_BUSTER_DB_URL" |> System.get_env("") |> String.trim() do
+    "" -> nil
+    url -> Logflare.Repo.ConnectionOptions.parse_replication_url!(url)
+  end
+
+config :logflare, Logflare.ContextCache.CacheBuster, db_url_options: cache_buster_db_url_options
 
 # LOGFLARE_PGLOGICAL_REPLICATE_DDL_COMMANDS_SETS: Comma-separated list of pglogical
 # replication set names. When set to a non-empty value, Ecto migrations are routed
@@ -742,25 +756,53 @@ spool_force_spooling_override =
     v -> [force_spooling: v == "true"]
   end
 
+# Deletes each spool object from storage once its queue message is acked.
+# On by default; set to "false" to leave cleanup to the bucket lifecycle rule.
+spool_delete_on_ack_override =
+  case System.get_env("SPOOL_DELETE_ON_ACK") do
+    v when v in [nil, ""] ->
+      []
+
+    v when v in ["true", "false"] ->
+      [delete_on_ack: v == "true"]
+
+    other ->
+      raise ArgumentError, "Invalid SPOOL_DELETE_ON_ACK=#{other}. Must be true or false."
+  end
+
+# Bounds for the background spool object deleter (see
+# Logflare.Backends.Spool.ObjectDeleter): how many pending deletes are buffered
+# before new ones are dropped, how many storage requests run at once, and how
+# long each may take. Dropped deletes are left to the bucket lifecycle rule.
+spool_delete_tuning_overrides =
+  for {env, key} <- [
+        {"SPOOL_DELETE_BUFFER_MAX", :delete_buffer_max},
+        {"SPOOL_DELETE_CONCURRENCY", :delete_concurrency},
+        {"SPOOL_DELETE_TIMEOUT_MS", :delete_timeout_ms}
+      ],
+      value = Env.get_integer(env),
+      value != nil do
+    if value <= 0,
+      do: raise(ArgumentError, "Invalid #{env}=#{value}. Must be a positive integer.")
+
+    {key, value}
+  end
+
 # How much accumulates before the spool's local commit tier flushes (see
 # Logflare.Backends.Spool.DurableBuffer.Supervisor's max_batch_bytes,
 # default 64KiB) — applies in both :wal and :mem buffer mode, since it
 # governs DurableBuffer.Partition's own group-commit trigger rather than
 # anything backend-specific.
 spool_max_batch_bytes_override =
-  case System.get_env("SPOOL_MAX_BATCH_BYTES") do
-    v when v in [nil, ""] ->
+  case Env.get_integer("SPOOL_MAX_BATCH_BYTES") do
+    nil ->
       []
 
-    v ->
-      case Integer.parse(v) do
-        {bytes, ""} when bytes > 0 ->
-          [max_batch_bytes: bytes]
+    bytes when bytes > 0 ->
+      [max_batch_bytes: bytes]
 
-        _ ->
-          raise ArgumentError,
-                "Invalid SPOOL_MAX_BATCH_BYTES=#{v}. Must be a positive integer."
-      end
+    bytes ->
+      raise ArgumentError, "Invalid SPOOL_MAX_BATCH_BYTES=#{bytes}. Must be a positive integer."
   end
 
 # Local disk directory for the producer's durable WAL segments (see
@@ -776,6 +818,8 @@ spool_overrides =
     spool_buffer_override ++
     spool_blocking_override ++
     spool_force_spooling_override ++
+    spool_delete_on_ack_override ++
+    spool_delete_tuning_overrides ++
     spool_max_batch_bytes_override ++
     if((q = System.get_env("SPOOL_QUEUE_NAME")) && q != "", do: [queue_name: q], else: []) ++
     if((t = System.get_env("SPOOL_PUBSUB_TOPIC")) && t != "", do: [pubsub_topic: t], else: []) ++
@@ -786,6 +830,14 @@ if spool_overrides != [] do
   config :logflare,
          :spool,
          Keyword.merge(Application.get_env(:logflare, :spool, []), spool_overrides)
+end
+
+case System.get_env("LOGFLARE_SHUTDOWN_DRAIN_TIMEOUT_MS") do
+  v when v in [nil, ""] ->
+    :ok
+
+  v ->
+    config :logflare, shutdown_drain_timeout_ms: Utils.parse_non_neg_integer!(v)
 end
 
 spool_ack_stale? =

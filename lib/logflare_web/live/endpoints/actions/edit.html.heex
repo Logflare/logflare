@@ -25,7 +25,7 @@
     <.form :let={f} for={@enforced_settings_form} id="enforced-settings-form" phx-submit="save-enforced-settings">
       <div :for={{key, text} <- @resource_settings} :if={@show_endpoint.language == :ch_sql} class="form-group">
         {label(f, Atom.to_string(key), text)}
-        {number_input(f, Atom.to_string(key), min: 1, step: 1, class: "form-control")}
+        {number_input(f, Atom.to_string(key), min: if(key == :max_execution_time, do: 0, else: 1), step: if(key == :max_execution_time, do: "any", else: 1), class: "form-control")}
       </div>
       <dl :if={@show_endpoint.language != :ch_sql}>
         <div :for={{key, text} <- @resource_settings} :if={Map.has_key?(@show_endpoint.enforced_clickhouse_settings, Atom.to_string(key))}>

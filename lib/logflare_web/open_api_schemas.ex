@@ -58,6 +58,7 @@ defmodule LogflareWeb.OpenApiSchemas do
       query: %Schema{type: :string},
       language: %Schema{type: :string},
       source_mapping: %Schema{type: :object, nullable: true},
+      filesystem_cache_policy: %Schema{type: :object, nullable: true, additionalProperties: true},
       sandboxable: %Schema{type: :boolean, nullable: true},
       cache_duration_seconds: %Schema{type: :integer},
       proactive_requerying_seconds: %Schema{type: :integer},
@@ -73,6 +74,7 @@ defmodule LogflareWeb.OpenApiSchemas do
 
   defmodule EndpointApiParams do
     @properties %{
+      filesystem_cache_policy: %Schema{type: :object, nullable: true, additionalProperties: true},
       description: %Schema{type: :string, nullable: true},
       name: %Schema{type: :string},
       query: %Schema{type: :string},
@@ -148,7 +150,11 @@ defmodule LogflareWeb.OpenApiSchemas do
       transform_key_values: %Schema{type: :string, nullable: true},
       transform_drop_fields: %Schema{type: :string, nullable: true},
       bigquery_clustering_fields: %Schema{type: :string, nullable: true},
-      default_ingest_backend_enabled?: %Schema{type: :boolean},
+      default_ingest_backend_enabled?: %Schema{
+        type: :boolean,
+        description:
+          "Whether this source sends events to the account's default ingest backends. Defaults to false."
+      },
       notifications_every: %Schema{type: :integer},
       lock_schema: %Schema{type: :boolean},
       validate_schema: %Schema{type: :boolean},
@@ -179,7 +185,11 @@ defmodule LogflareWeb.OpenApiSchemas do
       transform_key_values: %Schema{type: :string, nullable: true},
       transform_drop_fields: %Schema{type: :string, nullable: true},
       bigquery_clustering_fields: %Schema{type: :string, nullable: true},
-      default_ingest_backend_enabled?: %Schema{type: :boolean},
+      default_ingest_backend_enabled?: %Schema{
+        type: :boolean,
+        description:
+          "Whether this source sends events to the account's default ingest backends. Defaults to false."
+      },
       notifications_every: %Schema{type: :integer},
       lock_schema: %Schema{type: :boolean},
       validate_schema: %Schema{type: :boolean},
@@ -602,7 +612,11 @@ defmodule LogflareWeb.OpenApiSchemas do
         ]
       },
       metadata: %Schema{type: :object, nullable: true},
-      default_ingest?: %Schema{type: :boolean},
+      default_ingest?: %Schema{
+        type: :boolean,
+        description:
+          "When true, every source in the account with default ingest enabled sends events to this backend. Only backends with a consolidated ingest pipeline can be the default, one per backend type per account."
+      },
       inserted_at: %Schema{type: :string},
       updated_at: %Schema{type: :string}
     }
@@ -617,7 +631,11 @@ defmodule LogflareWeb.OpenApiSchemas do
       description: %Schema{type: :string, nullable: true},
       config: BackendApiSchema.schema().properties.config,
       metadata: %Schema{type: :object, nullable: true},
-      default_ingest?: %Schema{type: :boolean}
+      default_ingest?: %Schema{
+        type: :boolean,
+        description:
+          "When true, every source in the account with default ingest enabled sends events to this backend. Only backends with a consolidated ingest pipeline can be the default, one per backend type per account."
+      }
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:name, :type, :config]

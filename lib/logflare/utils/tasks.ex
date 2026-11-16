@@ -43,6 +43,25 @@ defmodule Logflare.Utils.Tasks do
   end
 
   @doc """
+  Not linked to caller. Returns `{:ok, result}`, `:timeout` if `func` is still running
+  after `timeout_ms` (it is killed), or `:error` if it crashed.
+  """
+  @spec run_within((-> any()), timeout()) :: {:ok, any()} | :timeout | :error
+  def run_within(func, timeout_ms) do
+    task =
+      Task.Supervisor.async_nolink(
+        {:via, PartitionSupervisor, {Logflare.TaskSupervisors, self()}},
+        func
+      )
+
+    case Task.yield(task, timeout_ms) || Task.shutdown(task, :brutal_kill) do
+      {:ok, result} -> {:ok, result}
+      {:exit, _reason} -> :error
+      nil -> :timeout
+    end
+  end
+
+  @doc """
   Kills all tasks under the supervisor.
   Used for test teardown, to prevent ecto sandbox checkout errors.
   """

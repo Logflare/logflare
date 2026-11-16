@@ -27,7 +27,7 @@ defmodule Logflare.Endpoints.EndpointPolicyTest do
           {%{"max_rows_to_read" => 10}, %{}},
           {%{"max_execution_time" => 7},
            %{"max_rows_to_read" => 10, "read_overflow_mode" => "throw"}},
-          {%{}, %{"max_execution_time" => 7}}
+          {%{}, %{"max_execution_time" => 7, "timeout_overflow_mode" => "throw"}}
         ] do
       assert {:ok, current} =
                Endpoints.configure_enforced_clickhouse_settings(
@@ -56,6 +56,70 @@ defmodule Logflare.Endpoints.EndpointPolicyTest do
                "settings" => current.enforced_clickhouse_settings
              }
     end
+  end
+
+  test "scoped replacements preserve authoritative settings and audit the merged policy",
+       context do
+    previous = %{"priority" => 9, "max_threads" => 1, "max_memory_usage" => 1000}
+
+    assert {:ok, _} =
+             Endpoints.configure_enforced_clickhouse_settings(
+               context.admin,
+               context.endpoint,
+               previous
+             )
+
+    assert {:ok, updated} =
+             Endpoints.configure_enforced_clickhouse_settings(
+               context.admin,
+               context.endpoint,
+               %{"max_memory_usage" => 500},
+               replace_keys: ["max_memory_usage"]
+             )
+
+    assert updated.enforced_clickhouse_settings == Map.put(previous, "max_memory_usage", 500)
+
+    audit =
+      Version
+      |> where([v], v.item_type == "EndpointQuery" and v.item_id == ^updated.id)
+      |> order_by([v], desc: v.id)
+      |> limit(1)
+      |> Repo.one!()
+
+    assert audit.meta["previous_settings"] == previous
+    assert audit.meta["settings"] == updated.enforced_clickhouse_settings
+
+    assert {:ok, cleared} =
+             Endpoints.configure_enforced_clickhouse_settings(context.admin, updated, %{})
+
+    assert cleared.enforced_clickhouse_settings == %{}
+  end
+
+  test "scoped replacements still require persisted admin access and valid settings", context do
+    settings = %{"priority" => 3, "max_threads" => 2}
+
+    assert {:ok, endpoint} =
+             Endpoints.configure_enforced_clickhouse_settings(
+               context.admin,
+               context.endpoint,
+               settings
+             )
+
+    opts = [replace_keys: ["max_memory_usage"]]
+
+    assert {:error, :forbidden} =
+             Endpoints.configure_enforced_clickhouse_settings(context.owner, endpoint, %{}, opts)
+
+    assert {:error, _} =
+             Endpoints.configure_enforced_clickhouse_settings(
+               context.admin,
+               endpoint,
+               %{"max_memory_usage" => 0.5},
+               opts
+             )
+
+    assert Endpoints.get_endpoint_query(endpoint.id).enforced_clickhouse_settings == settings
+    assert Repo.aggregate(Version, :count) == 1
   end
 
   test "policy audits neither advance SQL versions nor make the current SQL restorable",
@@ -95,7 +159,12 @@ defmodule Logflare.Endpoints.EndpointPolicyTest do
              Endpoints.restore_query_version(context.owner, second, 1, context.owner)
 
     assert restored.description == "first"
-    assert restored.enforced_clickhouse_settings == %{"max_execution_time" => 3}
+
+    assert restored.enforced_clickhouse_settings == %{
+             "max_execution_time" => 3,
+             "timeout_overflow_mode" => "throw"
+           }
+
     assert Endpoints.get_endpoint_query_version(restored.id, 3)
     assert Endpoints.get_endpoint_query_version(restored.id, 4) == nil
   end
@@ -118,7 +187,12 @@ defmodule Logflare.Endpoints.EndpointPolicyTest do
              )
 
     assert dormant.language == :pg_sql
-    assert dormant.enforced_clickhouse_settings == %{"max_execution_time" => 7}
+
+    assert dormant.enforced_clickhouse_settings == %{
+             "max_execution_time" => 7,
+             "timeout_overflow_mode" => "throw"
+           }
+
     assert {:ok, sql} = Endpoints.get_transformed_query(dormant)
     refute sql =~ "max_execution_time"
 
@@ -216,7 +290,11 @@ defmodule Logflare.Endpoints.EndpointPolicyTest do
     assert {:error, :forbidden} =
              Endpoints.configure_enforced_clickhouse_settings(context.admin, updated, %{})
 
-    assert Repo.reload!(updated).enforced_clickhouse_settings == %{"max_execution_time" => 7}
+    assert Repo.reload!(updated).enforced_clickhouse_settings == %{
+             "max_execution_time" => 7,
+             "timeout_overflow_mode" => "throw"
+           }
+
     assert Repo.aggregate(Version, :count) == 1
   end
 

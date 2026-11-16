@@ -200,7 +200,12 @@ defmodule LogflareWeb.EndpointsLive do
 
     actor = socket.assigns.team_user || user
 
-    case Endpoints.configure_enforced_clickhouse_settings(actor, endpoint, settings) do
+    case Endpoints.configure_enforced_clickhouse_settings(
+           actor,
+           endpoint,
+           settings,
+           enforced_settings_save_opts(endpoint)
+         ) do
       {:ok, updated} ->
         {:noreply,
          socket
@@ -294,6 +299,7 @@ defmodule LogflareWeb.EndpointsLive do
   end
 
   def handle_event("validate", %{"endpoint" => endpoint_params}, socket) do
+    endpoint_params = drop_unused_policy_inputs(endpoint_params)
     origin = socket.assigns[:team_user] || socket.assigns.user
 
     with :ok <- authorize_backend_id(origin, endpoint_params) do
@@ -398,7 +404,10 @@ defmodule LogflareWeb.EndpointsLive do
            params: query_params,
            parsed_labels: parsed_labels,
            endpoint_id: socket.assigns.endpoint_changeset.data.id,
+           max_limit: Ecto.Changeset.get_field(socket.assigns.endpoint_changeset, :max_limit),
            use_query_cache: false,
+           filesystem_cache_policy:
+             Ecto.Changeset.get_field(socket.assigns.endpoint_changeset, :filesystem_cache_policy),
            redact_pii: redact_pii,
            backend_id: backend_id,
            reservation: reservation
@@ -409,21 +418,29 @@ defmodule LogflareWeb.EndpointsLive do
         |> assign(:test_result, successful_test_result(:endpoint, result, nil))
 
       {:error, error} ->
-        message = endpoint_query_error_message(error)
+        message = query_error_message(error, :endpoint)
         assign(socket, :test_result, %{kind: :endpoint, status: :error, error: message})
     end
   end
 
-  @spec endpoint_query_error_message(term()) :: String.t()
-  defp endpoint_query_error_message(error)
+  @spec query_error_message(term(), :endpoint | :sandbox) :: String.t()
+  defp query_error_message({kind, message}, _context)
+       when kind in [:invalid_filesystem_cache_window, :invalid_filesystem_cache_policy],
+       do: message
+
+  defp query_error_message(error, :endpoint)
        when error in [:database_unavailable, :policy_unavailable],
        do: "Endpoint policy is temporarily unavailable. Retry the query."
 
-  defp endpoint_query_error_message(%QueryError{} = error),
+  defp query_error_message(%QueryError{} = error, :endpoint),
     do: QueryErrorHelpers.query_error_message(error)
 
-  defp endpoint_query_error_message(message) when is_binary(message), do: message
-  defp endpoint_query_error_message(_error), do: QueryErrorHelpers.generic_query_error_message()
+  defp query_error_message(message, :endpoint) when is_binary(message), do: message
+
+  defp query_error_message(_error, :endpoint),
+    do: QueryErrorHelpers.generic_query_error_message()
+
+  defp query_error_message(_error, :sandbox), do: "Please verify your query syntax."
 
   defp run_sandbox_query(%{assigns: %{show_endpoint: endpoint}} = socket, payload) do
     show_transformed? = Map.get(payload, "show_transformed") == "true"
@@ -467,7 +484,7 @@ defmodule LogflareWeb.EndpointsLive do
         |> assign(:test_result, %{
           kind: :sandboxed_endpoint,
           status: :error,
-          error: "Please verify your query syntax."
+          error: query_error_message(error, :sandbox)
         })
     end
   end
@@ -596,6 +613,14 @@ defmodule LogflareWeb.EndpointsLive do
     to_form(values, as: :settings)
   end
 
+  @spec enforced_settings_save_opts(EndpointQuery.t()) :: keyword()
+  defp enforced_settings_save_opts(%EndpointQuery{language: :ch_sql}) do
+    keys = Enum.map(@resource_settings, fn {key, _label} -> Atom.to_string(key) end)
+    [replace_keys: keys ++ ~w(read_overflow_mode timeout_overflow_mode)]
+  end
+
+  defp enforced_settings_save_opts(_endpoint), do: []
+
   @spec parse_enforced_settings(map()) :: map()
   defp parse_enforced_settings(params) do
     @resource_settings
@@ -603,23 +628,49 @@ defmodule LogflareWeb.EndpointsLive do
       name = Atom.to_string(key)
 
       value = Map.get(params, name)
-      if value in [nil, ""], do: settings, else: Map.put(settings, name, parse_limit(value))
+      if value in [nil, ""], do: settings, else: Map.put(settings, name, parse_limit(key, value))
     end)
   end
 
-  @spec parse_limit(term()) :: term()
-  defp parse_limit(value) when is_binary(value) do
-    case Integer.parse(String.trim(value)) do
+  @spec parse_limit(atom(), term()) :: term()
+  defp parse_limit(key, value) when is_binary(value) do
+    value = String.trim(value)
+
+    case Integer.parse(value) do
+      {number, ""} -> number
+      _ -> parse_fractional_limit(key, value)
+    end
+  end
+
+  defp parse_limit(_key, value), do: value
+
+  @spec parse_fractional_limit(atom(), String.t()) :: number() | String.t()
+  defp parse_fractional_limit(:max_execution_time, value) do
+    case Float.parse(value) do
       {number, ""} -> number
       _ -> value
     end
   end
 
-  defp parse_limit(value), do: value
+  defp parse_fractional_limit(_key, value), do: value
 
   @spec settings_error(term()) :: String.t()
   defp settings_error(reason) when is_binary(reason), do: reason
   defp settings_error(_reason), do: "Unable to configure ClickHouse settings"
+
+  @spec drop_unused_policy_inputs(map()) :: map()
+  defp drop_unused_policy_inputs(%{"filesystem_cache_policy" => policy} = params)
+       when is_map(policy) do
+    policy =
+      Map.reject(policy, fn
+        {"_unused_" <> _field, _value} -> true
+        _ -> false
+      end)
+
+    Map.put(params, "filesystem_cache_policy", policy)
+  end
+
+  defp drop_unused_policy_inputs(params), do: params
 
   defp upsert_query(show_endpoint, user, origin, params) do
     case show_endpoint do

@@ -23,4 +23,6 @@ fi
 echo "LOGFLARE_NODE_HOST is: $LOGFLARE_NODE_HOST"
 
 ./logflare eval Logflare.Release.migrate
-./logflare start --sname logflare
+# exec so the release replaces this shell: Docker and Kubernetes only signal the
+# container's main process, and a shell left in between never passes SIGTERM on.
+exec ./logflare start --sname logflare

@@ -518,8 +518,18 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       assert resp == %{"errors" => %{"name" => ["is invalid"]}}
     end
 
-    test "updates `default_ingest?` field", %{conn: conn, user: user} do
-      backend = insert(:backend, user: user, type: :bigquery, default_ingest?: false)
+    test "enabling `default_ingest?` sets the flag without linking any source", %{
+      conn: conn,
+      user: user
+    } do
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://localhost:8123", database: "default", port: 8123},
+          default_ingest?: false
+        )
+
       source = insert(:source, user: user, default_ingest_backend_enabled?: true)
 
       conn
@@ -527,19 +537,28 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       |> patch("/api/backends/#{backend.token}", %{default_ingest?: true, source_id: source.id})
       |> response(204)
 
-      response =
-        conn
-        |> add_access_token(user, "private")
-        |> get("/api/backends/#{backend.token}")
-        |> json_response(200)
-
-      assert response["default_ingest?"] == true
-
-      updated_source = Logflare.Sources.get(source.id) |> Logflare.Sources.preload_backends()
-      assert Enum.any?(updated_source.backends, &(&1.id == backend.id))
+      assert %{default_ingest?: true} = Logflare.Backends.get_backend(backend.id)
+      assert [] = Logflare.Sources.list_sources(backend_id: backend.id)
     end
 
-    test "returns error when enabling default_ingest? without source_id", %{
+    test "enabling `default_ingest?` without source_id succeeds", %{conn: conn, user: user} do
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://localhost:8123", database: "default", port: 8123},
+          default_ingest?: false
+        )
+
+      conn
+      |> add_access_token(user, "private")
+      |> patch("/api/backends/#{backend.token}", %{default_ingest?: true})
+      |> response(204)
+
+      assert %{default_ingest?: true} = Logflare.Backends.get_backend(backend.id)
+    end
+
+    test "enabling `default_ingest?` on a backend without a consolidated pipeline returns 422", %{
       conn: conn,
       user: user
     } do
@@ -553,7 +572,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       assert response == %{
                "errors" => %{
-                 "default_ingest?" => ["Please select a source when enabling default ingest"]
+                 "default_ingest?" => ["Backend type bigquery does not support default ingest"]
                }
              }
     end
@@ -620,6 +639,40 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       response = conn |> get(path) |> json_response(200)
       assert response["config"]["async_insert_busy_timeout_max_ms"] == nil
       assert response["config"]["async_insert_max_data_size"] == nil
+    end
+
+    test "returns error when another backend of the same type is already the account default", %{
+      conn: conn,
+      user: user
+    } do
+      insert(:backend,
+        user: user,
+        type: :clickhouse,
+        config: %{url: "http://localhost:8123", database: "default", port: 8123},
+        default_ingest?: true
+      )
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://localhost:8123", database: "default", port: 8123},
+          default_ingest?: false
+        )
+
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> patch("/api/backends/#{backend.token}", %{default_ingest?: true})
+        |> json_response(422)
+
+      assert response == %{
+               "errors" => %{
+                 "default_ingest?" => [
+                   "another backend of this type is already the default ingest backend for this account"
+                 ]
+               }
+             }
     end
 
     test "partial config update preserves existing fields", %{conn: conn, user: user} do

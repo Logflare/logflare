@@ -62,6 +62,51 @@ defmodule Logflare.Sources.SourceTest do
     end
   end
 
+  describe "transform rule validation" do
+    for {field, label, input} <- [
+          {"transform_copy_fields", "a rule without a colon", "food"},
+          {"transform_copy_fields", "an empty destination", "food:"},
+          {"transform_copy_fields", "an empty path segment", "food:a..b"},
+          {"transform_copy_fields", "identical source and destination", "m.food:metadata.food"},
+          {"transform_copy_fields", "a bad rule among valid ones", "a:b\nbad\nc:d"},
+          {"transform_key_values", "a rule without a colon", "project"},
+          {"transform_key_values", "an empty destination", "project:"},
+          {"transform_key_values", "an empty accessor", "project:dest:  "},
+          {"transform_key_values", "identical lookup and destination", "project:project"},
+          {"transform_key_values", "a destination nested under the lookup", "project:project.id"}
+        ] do
+      test "#{field} rejects #{label}" do
+        changeset =
+          Source.update_by_user_changeset(%Source{name: "Test Source"}, %{
+            unquote(field) => unquote(input)
+          })
+
+        refute changeset.valid?
+        assert changeset.errors[String.to_existing_atom(unquote(field))]
+      end
+    end
+
+    test "accepts well-formed rules, blank lines, and clearing" do
+      attrs = %{
+        "transform_copy_fields" => "food:m.a.b\n\n  \nm.x:y",
+        "transform_key_values" => "project:m.org:org.id\nproject:enriched"
+      }
+
+      assert Source.update_by_user_changeset(%Source{name: "Test Source"}, attrs).valid?
+
+      cleared = %{"transform_copy_fields" => "", "transform_key_values" => ""}
+
+      assert Source.update_by_user_changeset(
+               %Source{
+                 name: "Test Source",
+                 transform_copy_fields: "a:b",
+                 transform_key_values: "a:b"
+               },
+               cleared
+             ).valid?
+    end
+  end
+
   describe "Source" do
     test "generate_bq_table_id/1" do
       u = insert(:user)

@@ -4,11 +4,21 @@ defmodule Logflare.Backends.Spool.SpoolAck do
   PubSub ack id), how many pipeline completions are still outstanding
   before that message can be acked.
 
-  `register/3` creates the row at count 0. `bump/2` and `ack/2` are plain
+  `register/4` creates the row at count 0. `bump/2` and `ack/2` are plain
   ETS counter updates, safe to call from any process, any number of times,
   in any order. A `nil` handle is a no-op for both. Once a decrement
   brings the count to zero or below, the real queue ack (`queue_mod.ack/2`)
-  is performed asynchronously and the row removed.
+  is performed asynchronously and the row removed. When the row carries a
+  spool object (`{storage_mod, bucket, key}`) and `delete_on_ack` is enabled
+  (default; `SPOOL_DELETE_ON_ACK=false` or
+  `config :logflare, :spool, delete_on_ack: false` to disable), that object is
+  handed to `ObjectDeleter` after the queue ack succeeds, so a slow or hanging
+  storage request never delays acks. Nacked and swept rows never delete, so
+  the object survives for the redelivery.
+
+  Deleting assumes each spool object has exactly one consuming group. Where
+  several groups read the same objects, disable `delete_on_ack` on all of them,
+  or the first to ack removes the object for the rest.
 
   Some terminal outcomes (e.g. a pointer whose generation was rotated out
   before a retry could resolve it) are intentionally never acked here —
@@ -26,9 +36,23 @@ defmodule Logflare.Backends.Spool.SpoolAck do
 
   require Ex2ms
 
+  alias Logflare.Backends.Spool.ObjectDeleter
+  alias Logflare.Backends.Spool.Storage
+  alias Logflare.Utils.Tasks
+
   @table :spool_ack
   @sweep_interval_ms :timer.minutes(1)
   @stale_after_ms :timer.minutes(10)
+  @nack_concurrency 16
+  @nack_timeout_ms 5_000
+
+  @type entry :: %{
+          count: integer(),
+          queue_mod: module(),
+          queue_url: String.t(),
+          registered_at: integer(),
+          object: Storage.object() | nil
+        }
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
@@ -47,9 +71,13 @@ defmodule Logflare.Backends.Spool.SpoolAck do
   once, when `handle` is first obtained — before anything can legitimately
   call `bump/2` or `ack/2` for it.
   """
-  @spec register(term(), module(), String.t()) :: :ok
-  def register(handle, queue_mod, queue_url) when not is_nil(handle) do
-    :ets.insert(@table, {handle, 0, queue_mod, queue_url, System.monotonic_time(:millisecond)})
+  @spec register(term(), module(), String.t(), Storage.object() | nil) :: :ok
+  def register(handle, queue_mod, queue_url, object \\ nil) when not is_nil(handle) do
+    :ets.insert(
+      @table,
+      {handle, 0, queue_mod, queue_url, System.monotonic_time(:millisecond), object}
+    )
+
     :ok
   end
 
@@ -84,14 +112,93 @@ defmodule Logflare.Backends.Spool.SpoolAck do
       :ok
   end
 
+  @doc "Returns what is tracked for `handle`, or `:error` once it is acked, nacked or swept."
+  @spec lookup(term()) :: {:ok, entry()} | :error
+  def lookup(handle) do
+    case :ets.lookup(@table, handle) do
+      [{^handle, count, queue_mod, queue_url, registered_at, object}] ->
+        {:ok,
+         %{
+           count: count,
+           queue_mod: queue_mod,
+           queue_url: queue_url,
+           registered_at: registered_at,
+           object: object
+         }}
+
+      [] ->
+        :error
+    end
+  end
+
+  @doc "Number of handles still waiting on outstanding work."
+  @spec pending_count() :: non_neg_integer()
+  def pending_count, do: :ets.info(@table, :size)
+
+  @doc """
+  Nacks every pending handle so its message redelivers immediately instead of
+  after the queue's visibility timeout, and forgets it. Nacks run concurrently,
+  each is killed if it takes longer than `:nack_timeout_ms` (default 5s), and
+  any still running after `timeout_ms` are abandoned.
+  """
+  @spec nack_pending(timeout(), keyword()) :: :ok | :timeout
+  def nack_pending(timeout_ms, opts \\ []) do
+    nack_timeout_ms = Keyword.get(opts, :nack_timeout_ms, @nack_timeout_ms)
+
+    ms =
+      Ex2ms.fun do
+        {handle, _count, _queue_mod, _queue_url, _registered_at, _object} -> handle
+      end
+
+    handles = :ets.select(@table, ms)
+
+    nack_all = fn ->
+      handles
+      |> Task.async_stream(&nack_taken/1,
+        max_concurrency: @nack_concurrency,
+        timeout: nack_timeout_ms,
+        on_timeout: :kill_task,
+        ordered: false
+      )
+      |> Stream.run()
+    end
+
+    case Tasks.run_within(nack_all, timeout_ms) do
+      {:ok, :ok} -> :ok
+      _ -> :timeout
+    end
+  end
+
+  defp nack_taken(handle) do
+    case :ets.take(@table, handle) do
+      [{^handle, _count, queue_mod, queue_url, _registered_at, _object}] ->
+        queue_mod.nack(queue_url, handle)
+        true
+
+      [] ->
+        false
+    end
+  end
+
+  @doc """
+  Returns once every queue ack already handed to this process has been sent,
+  or `:timeout` if that takes longer than `timeout_ms`.
+  """
+  @spec flush(timeout()) :: :ok | :timeout
+  def flush(timeout_ms) do
+    GenServer.call(__MODULE__, :flush, timeout_ms)
+  catch
+    :exit, {:timeout, _call} -> :timeout
+  end
+
   defp emit_missing_handle_telemetry(op) do
     :telemetry.execute([:logflare, :backends, :spool, :ack, :missing_handle], %{}, %{op: op})
   end
 
   defp perform_ack(handle) do
     case :ets.take(@table, handle) do
-      [{^handle, _count, queue_mod, queue_url, _registered_at}] ->
-        GenServer.cast(__MODULE__, {:perform_ack, queue_mod, queue_url, handle})
+      [{^handle, _count, queue_mod, queue_url, _registered_at, object}] ->
+        GenServer.cast(__MODULE__, {:perform_ack, queue_mod, queue_url, handle, object})
 
       [] ->
         :ok
@@ -99,13 +206,18 @@ defmodule Logflare.Backends.Spool.SpoolAck do
   end
 
   @impl GenServer
-  def handle_cast({:perform_ack, queue_mod, queue_url, handle}, state) do
+  def handle_call(:flush, _from, state), do: {:reply, :ok, state}
+
+  @impl GenServer
+  def handle_cast({:perform_ack, queue_mod, queue_url, handle, object}, state) do
     result = queue_mod.ack(queue_url, handle)
 
     :telemetry.execute([:logflare, :backends, :spool, :queue, :ack], %{}, %{
       reason: :events_processed,
       result: if(result == :ok, do: :ok, else: :error)
     })
+
+    if result == :ok, do: delete_object(object)
 
     {:noreply, state}
   end
@@ -126,7 +238,7 @@ defmodule Logflare.Backends.Spool.SpoolAck do
 
     match_spec =
       Ex2ms.fun do
-        {handle, _count, _queue_mod, _queue_url, registered_at}
+        {handle, _count, _queue_mod, _queue_url, registered_at, _object}
         when registered_at < ^cutoff ->
           handle
       end
@@ -149,15 +261,26 @@ defmodule Logflare.Backends.Spool.SpoolAck do
 
   defp reclaim_stale(handle) do
     case :ets.take(@table, handle) do
-      [{^handle, _count, queue_mod, queue_url, _registered_at}] ->
+      [{^handle, _count, queue_mod, queue_url, _registered_at, _object}] ->
         if ack_stale?(),
-          do: GenServer.cast(__MODULE__, {:perform_ack, queue_mod, queue_url, handle})
+          do: GenServer.cast(__MODULE__, {:perform_ack, queue_mod, queue_url, handle, nil})
 
         true
 
       [] ->
         false
     end
+  end
+
+  defp delete_object(nil), do: :ok
+
+  defp delete_object({_storage_mod, _bucket, _key} = object) do
+    if delete_on_ack?(), do: ObjectDeleter.enqueue(object)
+    :ok
+  end
+
+  defp delete_on_ack? do
+    Application.get_env(:logflare, :spool, [])[:delete_on_ack] != false
   end
 
   defp ack_stale? do

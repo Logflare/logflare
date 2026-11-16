@@ -49,23 +49,24 @@ defmodule Logflare.Backends.SpoolGcpAdaptersTest do
       GCS.put("b", "k", "data", [])
     end
 
-    test "forwards content-encoding when provided" do
+    test "never sends content-encoding, since GCS rejects zstd uploads with a 415" do
+      test_pid = self()
+
       stub(Tesla, :request, fn _conn, opts ->
-        assert {"Content-Type", "application/octet-stream"} in opts[:headers]
-        assert {"Content-Encoding", "zstd"} in opts[:headers]
+        send(test_pid, {:request_headers, opts[:headers]})
         {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
-      GCS.put("b", "k", "data", headers: %{"content-encoding" => "zstd"})
-    end
+      assert {:ok, "k"} =
+               GCS.put("b", "k", "data",
+                 headers: %{
+                   "content-type" => "application/octet-stream",
+                   "content-encoding" => "zstd"
+                 }
+               )
 
-    test "omits content-encoding when not provided" do
-      stub(Tesla, :request, fn _conn, opts ->
-        refute Enum.any?(opts[:headers], fn {name, _} -> name == "Content-Encoding" end)
-        {:ok, %Tesla.Env{status: 200, body: ""}}
-      end)
-
-      GCS.put("b", "k", "data", [])
+      assert_received {:request_headers, headers}
+      assert headers == [{"Content-Type", "application/octet-stream"}]
     end
 
     test "returns {:error, {status, body}} on non-2xx response" do
@@ -102,6 +103,32 @@ defmodule Logflare.Backends.SpoolGcpAdaptersTest do
       end)
 
       assert {:error, _} = GCS.get("b", "missing-key")
+    end
+  end
+
+  describe "Storage.GCS.delete/2" do
+    test "returns :ok on success" do
+      stub(Objects, :storage_objects_delete, fn _conn, "test-bucket", "0/abc.etf" ->
+        {:ok, %Tesla.Env{status: 204}}
+      end)
+
+      assert :ok = GCS.delete("test-bucket", "0/abc.etf")
+    end
+
+    test "treats a missing object (404) as success" do
+      stub(Objects, :storage_objects_delete, fn _conn, _bucket, _key ->
+        {:error, %Tesla.Env{status: 404}}
+      end)
+
+      assert :ok = GCS.delete("b", "missing-key")
+    end
+
+    test "returns {:error, reason} on other failures" do
+      stub(Objects, :storage_objects_delete, fn _conn, _bucket, _key ->
+        {:error, %Tesla.Env{status: 403}}
+      end)
+
+      assert {:error, %Tesla.Env{status: 403}} = GCS.delete("b", "key")
     end
   end
 
