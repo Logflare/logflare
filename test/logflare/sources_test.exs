@@ -850,6 +850,94 @@ defmodule Logflare.SourcesTest do
         assert String.starts_with?(source.name, "system.")
       end
     end
+
+    test "returns only monitoring system sources when alert issue sources exist", %{user: user} do
+      Sources.create_alert_issue_system_sources(user.id)
+
+      sources = Sources.create_user_system_sources(user.id)
+
+      assert Enum.sort(Enum.map(sources, & &1.system_source_type)) ==
+               Enum.sort(Source.system_source_types())
+    end
+  end
+
+  describe "create_alert_issue_system_sources/1" do
+    setup do
+      insert(:plan, limit_source_ttl: :timer.hours(24 * 90))
+      user = insert(:user)
+      %{user: user}
+    end
+
+    test "creates one system source per alert issue type", %{user: user} do
+      sources = Sources.create_alert_issue_system_sources(user.id)
+
+      assert sources |> Enum.map(& &1.name) |> Enum.sort() == [
+               "system.alert_issue_comments",
+               "system.alert_issue_reads",
+               "system.alert_issues"
+             ]
+
+      for source <- sources do
+        assert source.system_source == true
+        assert source.system_source_type in Source.alert_issue_system_source_types()
+        assert source.bq_table_partition_type == :timestamp
+        assert source.retention_days == 30
+        assert source.user_id == user.id
+      end
+    end
+
+    test "is idempotent", %{user: user} do
+      first = Sources.create_alert_issue_system_sources(user.id)
+      second = Sources.create_alert_issue_system_sources(user.id)
+
+      assert Enum.sort(Enum.map(first, & &1.id)) == Enum.sort(Enum.map(second, & &1.id))
+    end
+
+    test "does not create monitoring system sources", %{user: user} do
+      Sources.create_alert_issue_system_sources(user.id)
+
+      types =
+        user.id
+        |> Sources.list_system_sources_by_user()
+        |> Enum.map(& &1.system_source_type)
+
+      refute :logs in types
+      refute :metrics in types
+    end
+  end
+
+  describe "create_alert_issue_system_sources/1 on a short-retention plan" do
+    setup do
+      insert(:plan, limit_source_ttl: :timer.hours(24 * 7))
+      %{user: insert(:user)}
+    end
+
+    test "caps retention at the plan limit", %{user: user} do
+      sources = Sources.create_alert_issue_system_sources(user.id)
+
+      assert length(sources) == 3
+      assert Enum.all?(sources, &(&1.retention_days == 7))
+    end
+  end
+
+  describe "list_sources/1 with system_source_type" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      Sources.create_user_system_sources(user.id)
+      Sources.create_alert_issue_system_sources(user.id)
+      %{user: user}
+    end
+
+    test "filters by a list of system source types", %{user: user} do
+      types =
+        [user_id: user.id, system_source_type: Source.system_source_types()]
+        |> Sources.list_sources()
+        |> Enum.map(& &1.system_source_type)
+        |> Enum.sort()
+
+      assert types == Enum.sort(Source.system_source_types())
+    end
   end
 
   describe "labels validation and normalization" do

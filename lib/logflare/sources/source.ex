@@ -120,6 +120,7 @@ defmodule Logflare.Sources.Source do
   end
 
   @system_source_types [:metrics, :logs]
+  @alert_issue_system_source_types [:alert_issues, :alert_issue_reads, :alert_issue_comments]
   @reserved_drop_field_heads ~w(id event_message timestamp)
 
   typed_schema "sources" do
@@ -159,7 +160,10 @@ defmodule Logflare.Sources.Source do
     field :transform_drop_fields_parsed, {:array, {:array, :string}}, virtual: true
     field :bigquery_clustering_fields, :string
     field :system_source, :boolean, default: false
-    field :system_source_type, Ecto.Enum, values: @system_source_types
+
+    field :system_source_type, Ecto.Enum,
+      values: @system_source_types ++ @alert_issue_system_source_types
+
     field :labels, :string
 
     field :default_ingest_backend_enabled?, :boolean,
@@ -593,6 +597,9 @@ defmodule Logflare.Sources.Source do
   end
 
   def system_source_types, do: @system_source_types
+
+  @spec alert_issue_system_source_types() :: [atom()]
+  def alert_issue_system_source_types, do: @alert_issue_system_source_types
 
   @doc """
   Returns a combined list of BigQuery clustering fields

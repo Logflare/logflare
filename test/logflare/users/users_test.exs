@@ -204,6 +204,33 @@ defmodule Logflare.UsersTest do
 
       refute Users.Cache.get(user.id).system_monitoring
     end
+
+    test "disabling system monitoring does not stop alert issue system sources", %{user: user} do
+      {:ok, user} = Users.update_user_allowed(user, %{"system_monitoring" => true})
+
+      alert_tokens =
+        user.id |> Sources.create_alert_issue_system_sources() |> MapSet.new(& &1.token)
+
+      test_pid = self()
+
+      Logflare.Sources.Source.Supervisor
+      |> stub(:stop_source, fn token -> send(test_pid, {:stopped, token}) end)
+
+      Users.update_user_allowed(user, %{"system_monitoring" => false})
+
+      stopped = collect_stopped([])
+
+      assert length(stopped) == length(Sources.Source.system_source_types())
+      assert Enum.all?(stopped, &(not MapSet.member?(alert_tokens, &1)))
+    end
+  end
+
+  defp collect_stopped(acc) do
+    receive do
+      {:stopped, token} -> collect_stopped([token | acc])
+    after
+      100 -> acc
+    end
   end
 
   describe "insert_user/1" do

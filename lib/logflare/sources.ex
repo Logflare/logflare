@@ -31,6 +31,7 @@ defmodule Logflare.Sources do
   require Logger
 
   @default_bucket_width 60
+  @alert_issue_retention_days 30
 
   @spec count_sources_by_user(User.t() | pos_integer()) :: non_neg_integer()
   def count_sources_by_user(%User{id: user_id}), do: count_sources_by_user(user_id)
@@ -119,6 +120,9 @@ defmodule Logflare.Sources do
         {:system_source, value}, q when is_boolean(value) ->
           where(q, [s], s.system_source == ^value)
 
+        {:system_source_type, types}, q when is_list(types) ->
+          where(q, [s], s.system_source_type in ^types)
+
         _, q ->
           q
       end)
@@ -176,15 +180,44 @@ defmodule Logflare.Sources do
   Create system sources for the user, if they don't exist yet
   "
   def create_user_system_sources(user_id) do
+    insert_system_sources(user_id, Source.system_source_types(), %{favorite: true})
+  end
+
+  @doc """
+  Creates the `system.alert_issue*` sources that store alert issues, reads and comments.
+
+  Independent of system monitoring, so toggling monitoring does not affect them.
+  """
+  @spec create_alert_issue_system_sources(integer()) :: [Source.t()]
+  def create_alert_issue_system_sources(user_id) do
+    insert_system_sources(user_id, Source.alert_issue_system_source_types(), %{
+      bq_table_partition_type: :timestamp,
+      retention_days: alert_issue_retention_days(user_id)
+    })
+  end
+
+  @spec alert_issue_retention_days(integer()) :: pos_integer()
+  defp alert_issue_retention_days(user_id) do
+    plan_days =
+      user_id
+      |> Users.get()
+      |> Billing.get_plan_by_user()
+      |> Map.fetch!(:limit_source_ttl)
+      |> div(:timer.hours(24))
+
+    min(@alert_issue_retention_days, max(plan_days, 1))
+  end
+
+  @spec insert_system_sources(integer(), [atom()], map()) :: [Source.t()]
+  defp insert_system_sources(user_id, types, extra_attrs) do
     user = Users.get(user_id)
 
-    for type <- Source.system_source_types() do
-      attrs = %{
-        name: "system.#{type}",
-        system_source: true,
-        system_source_type: type,
-        favorite: true
-      }
+    for type <- types do
+      attrs =
+        Map.merge(
+          %{name: "system.#{type}", system_source: true, system_source_type: type},
+          extra_attrs
+        )
 
       user
       |> Ecto.build_assoc(:sources, default_ingest_backend_enabled?: false)
@@ -192,14 +225,16 @@ defmodule Logflare.Sources do
       |> Repo.insert(on_conflict: :nothing, conflict_target: [:user_id, :system_source_type])
     end
 
-    list_system_sources_by_user(user_id)
-    |> warn_missing_system_sources(user_id)
+    user_id
+    |> list_system_sources_by_user()
+    |> Enum.filter(&(&1.system_source_type in types))
+    |> warn_missing_system_sources(user_id, types)
   end
 
-  defp warn_missing_system_sources(sources, user_id) do
+  defp warn_missing_system_sources(sources, user_id, types) do
     created_sources_types = Enum.map(sources, & &1.system_source_type)
 
-    Source.system_source_types()
+    types
     |> Enum.each(fn type ->
       if type not in created_sources_types do
         Logger.warning("System source `#{type}` for user #{user_id} was not created")
