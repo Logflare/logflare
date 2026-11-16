@@ -142,6 +142,15 @@ defmodule Logflare.AlertIssues.LogEvents do
   end
 
   @doc """
+  Checks that the LQL parses, names a source the user owns on a Postgres backend
+  and only uses supported filters.
+  """
+  @spec validate(User.t(), String.t()) :: :ok | {:error, term()}
+  def validate(%User{} = user, lql) when is_binary(lql) do
+    with {:ok, _compiled} <- compile(user, lql), do: :ok
+  end
+
+  @doc """
   Fills `{{identifier}}` placeholders with quoted identifier values.
   """
   @spec fill_template(String.t(), map()) :: {:ok, String.t()} | {:error, term()}

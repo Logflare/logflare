@@ -1,6 +1,7 @@
 defmodule LogflareWeb.Api.AlertIssueTypeControllerTest do
   use LogflareWeb.ConnCase
 
+  alias Logflare.AlertIssues.IssueTypes
   alias Logflare.AlertIssues.Silences
   alias Logflare.Alerting
 
@@ -42,6 +43,59 @@ defmodule LogflareWeb.Api.AlertIssueTypeControllerTest do
                }
              ] =
                conn |> get(~p"/api/alerts/issue_types?#{@filters}") |> json_response(200)
+    end
+
+    test "POST creates a custom LQL alert issue type", %{conn: conn} do
+      params = %{
+        "name" => "Timeouts",
+        "lql" => "f:edge m.status:>=500",
+        "identifiers" => %{"project" => "p1"}
+      }
+
+      expect(IssueTypes, :create_custom, fn _user, ^params ->
+        {:ok,
+         %{
+           rule_key: "custom.timeouts",
+           name: "Timeouts",
+           description: nil,
+           category: :health,
+           severity: :warning,
+           managed: false,
+           language: :lql,
+           lql: "f:edge m.status:>=500",
+           group_by: [],
+           silenced: false,
+           silence_id: nil
+         }}
+      end)
+
+      assert %{"rule_key" => "custom.timeouts", "lql" => "f:edge m.status:>=500"} =
+               conn |> post(~p"/api/alerts/issue_types", params) |> json_response(201)
+    end
+
+    test "POST returns 422 with validation errors", %{conn: conn} do
+      assert %{"errors" => %{"lql" => [_]}} =
+               conn
+               |> post(~p"/api/alerts/issue_types", %{
+                 "name" => "Bad",
+                 "lql" => "m.status:500",
+                 "identifiers" => %{"project" => "p1"}
+               })
+               |> json_response(422)
+    end
+
+    test "DELETE removes custom types and refuses managed ones", %{conn: conn} do
+      stub(IssueTypes, :delete_custom, fn
+        _user, "custom.timeouts" -> :ok
+        _user, "logflare.edge-fn-5xx" -> {:error, :managed}
+      end)
+
+      assert conn |> delete(~p"/api/alerts/issue_types/custom.timeouts") |> response(204)
+
+      assert %{"error" => _} =
+               conn
+               |> delete(~p"/api/alerts/issue_types/logflare.edge-fn-5xx")
+               |> json_response(422)
     end
 
     test "GET requires filters", %{conn: conn} do
