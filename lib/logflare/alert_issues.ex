@@ -7,6 +7,7 @@ defmodule Logflare.AlertIssues do
   """
 
   alias Logflare.AlertIssues.ActiveCache
+  alias Logflare.AlertIssues.Signals
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends
   alias Logflare.Sources
@@ -45,6 +46,44 @@ defmodule Logflare.AlertIssues do
           ActiveCache.put(alert.user_id, fingerprint, snapshot)
           {:ok, %{transition: transition, snapshot: snapshot}}
         end
+    end
+  end
+
+  @doc """
+  Applies one scheduled run of an alert: every result group fires, and active alert
+  issues missing from the run are resolved after `resolve_after_runs` clean runs.
+  """
+  @spec process_run(AlertQuery.t(), [map()]) ::
+          {:ok, [%{transition: transition(), snapshot: map() | nil}]} | {:error, term()}
+  def process_run(%AlertQuery{} = alert, rows) when is_list(rows) do
+    signals = Signals.from_rows(alert, rows)
+    firing = MapSet.new(signals, & &1.fingerprint)
+
+    resolutions =
+      alert.user_id
+      |> ActiveCache.active_fingerprints(to_string(alert.token))
+      |> Enum.reject(&MapSet.member?(firing, &1))
+      |> Enum.filter(&clean_run_reached?(alert, &1))
+      |> Enum.map(&%{fingerprint: &1, status: :resolved})
+
+    Enum.each(firing, &ActiveCache.reset_clean_runs(alert.user_id, &1))
+
+    (signals ++ resolutions)
+    |> Enum.reduce_while({:ok, []}, fn signal, {:ok, acc} ->
+      case apply_signal(alert, signal) do
+        {:ok, %{transition: :noop}} -> {:cont, {:ok, acc}}
+        {:ok, result} -> {:cont, {:ok, [result | acc]}}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp clean_run_reached?(alert, fingerprint) do
+    if ActiveCache.increment_clean_runs(alert.user_id, fingerprint) >= alert.resolve_after_runs do
+      ActiveCache.reset_clean_runs(alert.user_id, fingerprint)
+      true
+    else
+      false
     end
   end
 

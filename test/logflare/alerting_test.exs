@@ -513,6 +513,73 @@ defmodule Logflare.AlertingTest do
               }} = Alerting.run_alert(alert_query)
     end
 
+    test "run_alert/1 turns result rows into alert issues for alerts with a rule_key", %{
+      user: user
+    } do
+      alert_query =
+        insert(:alert,
+          user: user,
+          rule_key: "logflare.test",
+          group_by: ["project"],
+          webhook_notification_url: nil,
+          slack_hook_url: nil
+        )
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"project" => "default", "n" => "3"}])}
+      end)
+
+      test_pid = self()
+
+      Logflare.Backends
+      |> stub(:ingest_logs, fn events, source ->
+        send(test_pid, {:ingested, source.system_source_type, events})
+        {:ok, length(events)}
+      end)
+
+      assert {:ok, %{fired: true}} = Alerting.run_alert(alert_query)
+
+      assert_receive {:ingested, :alert_issues,
+                      [%{"change" => "opened", "identifiers" => %{"project" => "default"}}]}
+    end
+
+    test "run_alert/1 counts empty runs toward resolving alert issues", %{user: user} do
+      alert_query =
+        insert(:alert,
+          user: user,
+          rule_key: "logflare.test-empty",
+          webhook_notification_url: nil,
+          slack_hook_url: nil
+        )
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([])}
+      end)
+
+      Logflare.AlertIssues
+      |> expect(:process_run, fn %{id: id}, [] ->
+        assert id == alert_query.id
+        {:ok, []}
+      end)
+
+      assert {:ok, %{fired: false}} = Alerting.run_alert(alert_query)
+    end
+
+    test "run_alert/1 leaves legacy alerts without a rule_key unchanged", %{user: user} do
+      alert_query = insert(:alert, user: user, webhook_notification_url: nil, slack_hook_url: nil)
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      Logflare.AlertIssues |> reject(:process_run, 2)
+
+      assert {:ok, %{fired: true}} = Alerting.run_alert(alert_query)
+    end
+
     test "run_alert_query/1 does not send notifications if no results", %{user: user} do
       alert_query = insert(:alert, user: user)
 

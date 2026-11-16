@@ -26,6 +26,28 @@ defmodule Logflare.AlertIssues.ActiveCache do
     :ok
   end
 
+  @spec active_fingerprints(pos_integer(), String.t()) :: [String.t()]
+  def active_fingerprints(user_id, alert_token) do
+    :ets.select(@table, [
+      {{{user_id, :"$1"}, %{"alert_token" => alert_token, "status" => :"$2"}},
+       [{:"/=", :"$2", "resolved"}], [:"$1"]}
+    ])
+  end
+
+  @spec increment_clean_runs(pos_integer(), String.t()) :: pos_integer()
+  def increment_clean_runs(user_id, fingerprint) do
+    :ets.update_counter(@table, {:clean_runs, user_id, fingerprint}, 1, {
+      {:clean_runs, user_id, fingerprint},
+      0
+    })
+  end
+
+  @spec reset_clean_runs(pos_integer(), String.t()) :: :ok
+  def reset_clean_runs(user_id, fingerprint) do
+    :ets.delete(@table, {:clean_runs, user_id, fingerprint})
+    :ok
+  end
+
   @impl GenServer
   def init(:ok) do
     :ets.new(@table, [:named_table, :public, :set, read_concurrency: true])

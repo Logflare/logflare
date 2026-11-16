@@ -7,6 +7,7 @@ defmodule Logflare.Alerting do
 
   alias Crontab.CronExpression.Parser, as: CronParser
   alias Crontab.Scheduler, as: CronScheduler
+  alias Logflare.AlertIssues
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Alerting.AlertWorker
   alias Logflare.Backends
@@ -316,7 +317,30 @@ defmodule Logflare.Alerting do
   def run_alert(%AlertQuery{} = alert_query) do
     alert_query = alert_query |> preload_alert_query()
 
-    case execute_alert_query(alert_query) do
+    alert_query
+    |> execute_alert_query()
+    |> tap(&maybe_process_alert_issues(alert_query, &1))
+    |> handle_alert_result(alert_query)
+  end
+
+  defp maybe_process_alert_issues(%AlertQuery{rule_key: nil}, _result), do: :ok
+
+  defp maybe_process_alert_issues(%AlertQuery{} = alert_query, {:ok, %QueryResult{rows: rows}}) do
+    case AlertIssues.process_run(alert_query, rows || []) do
+      {:ok, _results} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning(
+          "AlertIssues.process_run failed for alert #{alert_query.id}: #{inspect(reason)}"
+        )
+    end
+  end
+
+  defp maybe_process_alert_issues(_alert_query, _result), do: :ok
+
+  defp handle_alert_result(result, alert_query) do
+    case result do
       {:ok, %QueryResult{rows: [_ | _] = results} = result} ->
         if alert_query.webhook_notification_url do
           send_webhook_notification(alert_query, results)

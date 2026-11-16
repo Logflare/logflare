@@ -184,4 +184,49 @@ defmodule Logflare.AlertIssuesTest do
     assert snapshot["title"] == "stripe-webhook 5xx"
     assert snapshot["description"] == "18% of requests failed"
   end
+
+  describe "process_run/2" do
+    setup %{alert: alert} do
+      {:ok, alert} =
+        Alerting.update_alert_query(alert, %{group_by: ["function_id"], resolve_after_runs: 2})
+
+      %{alert: alert}
+    end
+
+    defp transitions(results), do: results |> Enum.map(& &1.transition) |> Enum.sort()
+
+    test "opens one alert issue per group", %{alert: alert} do
+      rows = [%{"function_id" => "f1"}, %{"function_id" => "f2"}]
+      assert {:ok, results} = AlertIssues.process_run(alert, rows)
+      assert transitions(results) == [:opened, :opened]
+    end
+
+    test "resolves after resolve_after_runs clean runs", %{alert: alert} do
+      {:ok, _} = AlertIssues.process_run(alert, [%{"function_id" => "f1"}])
+
+      assert {:ok, []} = AlertIssues.process_run(alert, [])
+      assert {:ok, [%{transition: :resolved}]} = AlertIssues.process_run(alert, [])
+      assert {:ok, []} = AlertIssues.process_run(alert, [])
+    end
+
+    test "a group missing from a run counts a clean run while others keep firing", %{
+      alert: alert
+    } do
+      {:ok, _} =
+        AlertIssues.process_run(alert, [%{"function_id" => "f1"}, %{"function_id" => "f2"}])
+
+      {:ok, first} = AlertIssues.process_run(alert, [%{"function_id" => "f2"}])
+      assert transitions(first) == [:signal]
+
+      {:ok, second} = AlertIssues.process_run(alert, [%{"function_id" => "f2"}])
+      assert transitions(second) == [:resolved, :signal]
+    end
+
+    test "firing again resets the clean run count", %{alert: alert} do
+      {:ok, _} = AlertIssues.process_run(alert, [%{"function_id" => "f1"}])
+      {:ok, []} = AlertIssues.process_run(alert, [])
+      {:ok, [%{transition: :signal}]} = AlertIssues.process_run(alert, [%{"function_id" => "f1"}])
+      assert {:ok, []} = AlertIssues.process_run(alert, [])
+    end
+  end
 end
