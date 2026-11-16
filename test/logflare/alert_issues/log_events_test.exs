@@ -80,9 +80,13 @@ defmodule Logflare.AlertIssues.LogEventsTest do
       assert result.source == "edge_logs_demo"
       assert result.total == 3
       assert length(result.events) == 3
-      assert Enum.all?(result.events, &(&1.body["metadata"]["function_id"] == "stripe-webhook"))
 
-      timestamps = Enum.map(result.events, & &1.timestamp)
+      assert Enum.all?(
+               result.events,
+               &(&1["body"]["metadata"]["function_id"] == "stripe-webhook")
+             )
+
+      timestamps = Enum.map(result.events, &DateTime.to_unix(&1["timestamp"], :microsecond))
       assert timestamps == Enum.sort(timestamps, :desc)
       assert Enum.sum(Enum.map(result.buckets, & &1.count)) == 3
     end

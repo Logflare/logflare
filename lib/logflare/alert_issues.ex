@@ -243,11 +243,13 @@ defmodule Logflare.AlertIssues do
 
   defp next_snapshot(alert, signal, %{"status" => "resolved", "version" => version} = current, us)
        when us - version <= @reopen_window_us do
+    at = iso(us)
+
     attrs = %{
       "status" => "open",
-      "attention_at" => iso(us),
+      "attention_at" => at,
       "signal_count" => current["signal_count"] + 1,
-      "last_seen_at" => iso(us)
+      "last_seen_at" => at
     }
 
     {:reopened, advance(alert, signal, current, us, attrs, "reopened")}
@@ -263,6 +265,7 @@ defmodule Logflare.AlertIssues do
 
   defp new_snapshot(alert, signal, us) do
     title = Map.get(signal, :title) || alert.name
+    at = iso(us)
 
     %{
       "alert_issue_id" => alert_issue_id(alert.user_id, signal.fingerprint, us),
@@ -281,9 +284,9 @@ defmodule Logflare.AlertIssues do
       "metadata" => Map.get(signal, :metadata, %{}),
       "notebook" => notebook(alert),
       "signal_count" => 1,
-      "first_seen_at" => iso(us),
-      "last_seen_at" => iso(us),
-      "attention_at" => iso(us),
+      "first_seen_at" => at,
+      "last_seen_at" => at,
+      "attention_at" => at,
       "actor" => "system",
       "event_message" => "#{title} opened"
     }

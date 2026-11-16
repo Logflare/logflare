@@ -491,9 +491,9 @@ defmodule LogflareWeb.Router do
     )
 
     get("/alerts/issue_types", Api.AlertIssueTypeController, :index)
-    post("/alerts/issue_types", Api.AlertIssueTypeController, :create)
-    delete("/alerts/issue_types/:rule_key", Api.AlertIssueTypeController, :delete)
-    get("/alerts/silences", Api.AlertSilenceController, :index)
+    post("/alerts/issue_types", Api.AlertIssueTypeController, :create_custom)
+    delete("/alerts/issue_types/:rule_key", Api.AlertIssueTypeController, :delete_custom)
+    get("/alerts/silences", Api.AlertSilenceController, :list)
     post("/alerts/silences", Api.AlertSilenceController, :create)
     delete("/alerts/silences/:id", Api.AlertSilenceController, :delete)
     get("/alerts/issues", Api.AlertIssueController, :index)

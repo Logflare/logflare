@@ -39,7 +39,7 @@ defmodule LogflareWeb.Api.AlertIssueTypeController do
     end
   end
 
-  operation(:create,
+  operation(:create_custom,
     summary: "Create a custom LQL alert issue type",
     request_body:
       {"Custom alert issue type", "application/json",
@@ -87,13 +87,13 @@ defmodule LogflareWeb.Api.AlertIssueTypeController do
     }
   )
 
-  def create(%{assigns: %{user: user}} = conn, params) do
+  def create_custom(%{assigns: %{user: user}} = conn, params) do
     with {:ok, issue_type} <- IssueTypes.create_custom(user, params) do
       conn |> put_status(201) |> json(issue_type)
     end
   end
 
-  operation(:delete,
+  operation(:delete_custom,
     summary: "Delete a custom alert issue type",
     parameters: [rule_key: [in: :path, description: "Rule key", type: :string]],
     responses: %{
@@ -103,7 +103,7 @@ defmodule LogflareWeb.Api.AlertIssueTypeController do
     }
   )
 
-  def delete(%{assigns: %{user: user}} = conn, %{"rule_key" => rule_key}) do
+  def delete_custom(%{assigns: %{user: user}} = conn, %{"rule_key" => rule_key}) do
     case IssueTypes.delete_custom(user, rule_key) do
       :ok ->
         send_resp(conn, 204, "")

@@ -15,7 +15,7 @@ defmodule LogflareWeb.Api.AlertSilenceController do
 
   tags(["management"])
 
-  operation(:index,
+  operation(:list,
     summary: "List alert issue silences",
     parameters: [
       filters: [
@@ -29,7 +29,7 @@ defmodule LogflareWeb.Api.AlertSilenceController do
     responses: %{200 => List.response(AlertIssueSilenceApiSchema), 400 => BadRequest.response()}
   )
 
-  def index(%{assigns: %{user: user}} = conn, params) do
+  def list(%{assigns: %{user: user}} = conn, params) do
     case AlertIssueFilters.parse(Map.get(params, "filters")) do
       {:ok, identifiers} -> json(conn, Silences.list_matching(user, identifiers))
       {:error, message} -> conn |> put_status(400) |> json(%{error: message})

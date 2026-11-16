@@ -25,12 +25,7 @@ defmodule Logflare.AlertIssues.LogEvents do
   @placeholder ~r/\{\{\s*([a-z0-9_]+)\s*\}\}/
   @sample_messages 3
 
-  @type event :: %{
-          id: String.t(),
-          timestamp: DateTime.t(),
-          event_message: String.t(),
-          body: map()
-        }
+  @type event :: %{String.t() => term()}
   @type bucket :: %{timestamp: DateTime.t(), count: non_neg_integer()}
   @type preview :: %{
           lql: String.t(),
@@ -374,13 +369,10 @@ defmodule Logflare.AlertIssues.LogEvents do
     end
   end
 
-  defp to_event(row) do
-    %{
-      id: row["id"],
-      timestamp: to_datetime(row["timestamp"]),
-      event_message: row["event_message"],
-      body: Jason.decode!(row["body_json"])
-    }
+  defp to_event(%{"body_json" => body_json, "timestamp" => timestamp} = row) do
+    row
+    |> Map.delete("body_json")
+    |> Map.merge(%{"timestamp" => to_datetime(timestamp), "body" => Jason.decode!(body_json)})
   end
 
   defp to_datetime(value) when is_integer(value), do: DateTime.from_unix!(value, :microsecond)
