@@ -24,6 +24,8 @@ defmodule Logflare.AlertIssues do
           optional(:title) => String.t(),
           optional(:description) => String.t(),
           optional(:metadata) => map(),
+          optional(:severity) => :critical | :major | :warning | :info,
+          optional(:category) => :security | :performance | :health,
           optional(:observed_at) => DateTime.t()
         }
 
@@ -218,8 +220,8 @@ defmodule Logflare.AlertIssues do
       "fingerprint" => signal.fingerprint,
       "status" => "open",
       "change" => "opened",
-      "severity" => Atom.to_string(alert.severity),
-      "category" => Atom.to_string(alert.category),
+      "severity" => Atom.to_string(Map.get(signal, :severity) || alert.severity),
+      "category" => Atom.to_string(Map.get(signal, :category) || alert.category),
       "title" => title,
       "description" => Map.get(signal, :description) || alert.description,
       "identifiers" => Map.get(signal, :identifiers, %{}),
@@ -245,6 +247,8 @@ defmodule Logflare.AlertIssues do
       "change" => change,
       "title" => title,
       "description" => Map.get(signal, :description) || current["description"],
+      "severity" => enum_string(Map.get(signal, :severity)) || current["severity"],
+      "category" => enum_string(Map.get(signal, :category)) || current["category"],
       "identifiers" => Map.get(signal, :identifiers, current["identifiers"]),
       "metadata" => Map.get(signal, :metadata, current["metadata"]),
       "actor" => "system",
@@ -273,6 +277,9 @@ defmodule Logflare.AlertIssues do
     |> Base.encode16(case: :lower)
     |> binary_part(0, 32)
   end
+
+  defp enum_string(nil), do: nil
+  defp enum_string(value), do: Atom.to_string(value)
 
   defp iso(us), do: us |> DateTime.from_unix!(:microsecond) |> DateTime.to_iso8601()
 end

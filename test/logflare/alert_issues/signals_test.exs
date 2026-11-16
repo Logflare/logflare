@@ -77,4 +77,56 @@ defmodule Logflare.AlertIssues.SignalsTest do
 
     assert signal.identifiers == %{"status" => "500"}
   end
+
+  test "signal_mapping columns set the title, description, severity, category and metadata" do
+    alert =
+      alert(%{
+        group_by: ["lint_name", "entity"],
+        signal_mapping: %{
+          "title_column" => "title",
+          "description_column" => "detail",
+          "severity_column" => "severity",
+          "category_column" => "category",
+          "metadata_columns" => ["remediation", "lint_name"]
+        }
+      })
+
+    row = %{
+      "lint_name" => "rls_disabled_in_public",
+      "entity" => "public.orders",
+      "title" => "RLS Disabled in Public: public.orders",
+      "detail" => "Table public.orders is public, but RLS has not been enabled.",
+      "severity" => "critical",
+      "category" => "security",
+      "remediation" => "https://supabase.com/docs/guides/database/database-linter?lint=0013"
+    }
+
+    [signal] = Signals.from_rows(alert, [row])
+
+    assert signal.title == "RLS Disabled in Public: public.orders"
+    assert signal.description == row["detail"]
+    assert signal.severity == :critical
+    assert signal.category == :security
+    assert signal.metadata["remediation"] == row["remediation"]
+    assert signal.metadata["lint_name"] == "rls_disabled_in_public"
+    assert signal.metadata["row_count"] == 1
+  end
+
+  test "invalid or missing mapped values fall back to the alert defaults" do
+    alert =
+      alert(%{
+        signal_mapping: %{
+          "title_column" => "title",
+          "severity_column" => "severity",
+          "category_column" => "category"
+        }
+      })
+
+    [signal] = Signals.from_rows(alert, [%{"severity" => "ERROR", "category" => "nope"}])
+
+    assert signal.title == "Edge function errors"
+    refute Map.has_key?(signal, :severity)
+    refute Map.has_key?(signal, :category)
+    refute Map.has_key?(signal, :description)
+  end
 end

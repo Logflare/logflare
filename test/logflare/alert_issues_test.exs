@@ -186,6 +186,20 @@ defmodule Logflare.AlertIssuesTest do
     assert snapshot["description"] == "18% of requests failed"
   end
 
+  test "signal severity and category override the alert defaults", %{alert: alert} do
+    {:ok, %{snapshot: snapshot}} =
+      AlertIssues.apply_signal(alert, signal(%{severity: :critical, category: :security}))
+
+    assert snapshot["severity"] == "critical"
+    assert snapshot["category"] == "security"
+
+    {:ok, %{snapshot: snapshot}} =
+      AlertIssues.apply_signal(alert, signal(%{severity: :warning, observed_at: later(60)}))
+
+    assert snapshot["severity"] == "warning"
+    assert snapshot["category"] == "security"
+  end
+
   describe "process_run/2" do
     setup %{alert: alert} do
       {:ok, alert} =
