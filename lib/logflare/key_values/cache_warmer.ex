@@ -64,8 +64,8 @@ defmodule Logflare.KeyValues.CacheWarmer do
     if entries != [], do: Cachex.put_many(Cache, entries)
   end
 
-  defp to_cache_entry(%KeyValue{} = kv) do
-    {{:lookup, [kv.user_id, kv.key, nil]}, {:cached, kv.value}}
+  defp to_cache_entry(%KeyValue{user_id: user_id, key: key, value: value}) do
+    {{:lookup, [user_id, key]}, {:cached, value}}
   end
 
   @doc """

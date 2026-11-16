@@ -1,5 +1,4 @@
 defmodule Logflare.KeyValues.CacheWarmerTest do
-  @moduledoc false
   use Logflare.DataCase, async: false
 
   import ExUnit.CaptureLog
@@ -22,8 +21,8 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
 
       CacheWarmer.execute(nil)
 
-      assert {:cached, kv1.value} == Cachex.get!(Cache, {:lookup, [user.id, "k1", nil]})
-      assert {:cached, kv2.value} == Cachex.get!(Cache, {:lookup, [user.id, "k2", nil]})
+      assert {:cached, kv1.value} == Cachex.get!(Cache, {:lookup, [user.id, "k1"]})
+      assert {:cached, kv2.value} == Cachex.get!(Cache, {:lookup, [user.id, "k2"]})
     end
 
     test "warms only the top-N rows ordered by recency of use", %{user: user} do
@@ -38,8 +37,8 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
 
       CacheWarmer.execute(nil)
 
-      assert {:cached, kv_used.value} == Cachex.get!(Cache, {:lookup, [user.id, "used", nil]})
-      assert is_nil(Cachex.get!(Cache, {:lookup, [user.id, "unused", nil]}))
+      assert {:cached, kv_used.value} == Cachex.get!(Cache, {:lookup, [user.id, "used"]})
+      assert is_nil(Cachex.get!(Cache, {:lookup, [user.id, "unused"]}))
     end
 
     test "falls back to updated_at recency when no usage rows exist", %{user: user} do
@@ -61,8 +60,8 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
 
       CacheWarmer.execute(nil)
 
-      assert {:cached, kv_new.value} == Cachex.get!(Cache, {:lookup, [user.id, "new", nil]})
-      assert is_nil(Cachex.get!(Cache, {:lookup, [user.id, "old", nil]}))
+      assert {:cached, kv_new.value} == Cachex.get!(Cache, {:lookup, [user.id, "new"]})
+      assert is_nil(Cachex.get!(Cache, {:lookup, [user.id, "old"]}))
     end
 
     test "marks itself as initialized after first run" do
@@ -118,9 +117,9 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
       CacheWarmer.execute(nil)
 
       assert {:cached, %{"v" => "new"}} ==
-               Cachex.get!(Cache, {:lookup, [user.id, "new_key", nil]})
+               Cachex.get!(Cache, {:lookup, [user.id, "new_key"]})
 
-      assert is_nil(Cachex.get!(Cache, {:lookup, [user.id, "old_key", nil]}))
+      assert is_nil(Cachex.get!(Cache, {:lookup, [user.id, "old_key"]}))
     end
 
     test "no-ops when no recent records exist" do
