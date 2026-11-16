@@ -6,9 +6,11 @@ defmodule LogflareWeb.Api.AlertIssueController do
   alias Logflare.AlertIssues.Queries
   alias Logflare.Backends.QueryError
   alias LogflareWeb.OpenApi.BadRequest
+  alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.NotFound
   alias LogflareWeb.OpenApiSchemas.AlertIssueApiSchema
+  alias LogflareWeb.OpenApiSchemas.AlertIssueCommentApiSchema
 
   @identifier_prefix "identifiers."
   @backend_error {"Backend query error", "application/json", BadRequest.schema()}
@@ -164,6 +166,78 @@ defmodule LogflareWeb.Api.AlertIssueController do
       case AlertIssues.mark_read(user, ids, reader, read, filters: filters) do
         {:ok, count} -> json(conn, %{count: count})
         {:error, :not_found} -> {:error, :not_found}
+        {:error, %QueryError{} = error} -> backend_error(conn, error)
+        {:error, reason} -> bad_request(conn, inspect(reason))
+      end
+    else
+      {:error, message} -> bad_request(conn, message)
+    end
+  end
+
+  operation(:comments,
+    summary: "List alert issue comments",
+    parameters:
+      [alert_issue_id: [in: :path, description: "Alert issue ID", type: :string]] ++
+        Keyword.take(@filter_params, [:filters]),
+    responses: %{
+      200 => List.response(AlertIssueCommentApiSchema),
+      400 => BadRequest.response(),
+      404 => NotFound.response(),
+      500 => @backend_error
+    }
+  )
+
+  def comments(%{assigns: %{user: user}} = conn, %{"alert_issue_id" => alert_issue_id} = params) do
+    with {:ok, filters} <- parse_filters(Map.get(params, "filters")) do
+      case Queries.comments(user, alert_issue_id, filters: filters) do
+        {:ok, comments} -> json(conn, comments)
+        {:error, :not_found} -> {:error, :not_found}
+        {:error, %QueryError{} = error} -> backend_error(conn, error)
+        {:error, reason} -> bad_request(conn, inspect(reason))
+      end
+    else
+      {:error, message} -> bad_request(conn, message)
+    end
+  end
+
+  operation(:create_comment,
+    summary: "Comment on an alert issue",
+    parameters:
+      [alert_issue_id: [in: :path, description: "Alert issue ID", type: :string]] ++
+        Keyword.take(@filter_params, [:filters]),
+    request_body:
+      {"Comment", "application/json",
+       %OpenApiSpex.Schema{
+         type: :object,
+         required: [:body],
+         properties: %{
+           body: %OpenApiSpex.Schema{type: :string, maxLength: 5000},
+           author: %OpenApiSpex.Schema{type: :string}
+         }
+       }},
+    responses: %{
+      201 => Created.response(AlertIssueCommentApiSchema),
+      400 => BadRequest.response(),
+      404 => NotFound.response(),
+      422 => {"Invalid comment", "application/json", BadRequest.schema()},
+      500 => @backend_error
+    }
+  )
+
+  def create_comment(
+        %{assigns: %{user: user}} = conn,
+        %{"alert_issue_id" => alert_issue_id} = params
+      ) do
+    with {:ok, filters} <- parse_filters(Map.get(params, "filters")) do
+      author = Map.get(params, "author") || user.email
+
+      case AlertIssues.comment(user, alert_issue_id, to_string(Map.get(params, "body", "")),
+             author: author,
+             filters: filters
+           ) do
+        {:ok, comment} -> conn |> put_status(201) |> json(comment)
+        {:error, :not_found} -> {:error, :not_found}
+        {:error, :invalid_body} -> error(conn, 422, "body must be 1 to 5000 characters")
         {:error, %QueryError{} = error} -> backend_error(conn, error)
         {:error, reason} -> bad_request(conn, inspect(reason))
       end

@@ -234,4 +234,68 @@ defmodule LogflareWeb.Api.AlertIssueControllerTest do
     assert %{"id" => id} = conn |> get(~p"/api/alerts/#{alert.token}") |> json_response(200)
     assert id == alert.id
   end
+
+  describe "alert issue comments" do
+    @filters %{"filters" => %{"identifiers.project" => "p1"}}
+    @comment %{
+      "comment_id" => "c1",
+      "alert_issue_id" => "a1",
+      "author" => "ops",
+      "body" => "Looking into it",
+      "created_at" => "2026-11-16T12:00:00Z"
+    }
+
+    test "GET lists comments within the filters", %{conn: conn} do
+      expect(Queries, :comments, fn _user, "a1", opts ->
+        assert opts[:filters] == %{"project" => "p1"}
+        {:ok, [@comment]}
+      end)
+
+      assert [@comment] ==
+               conn
+               |> get(~p"/api/alerts/issues/a1/comments?#{@filters}")
+               |> json_response(200)
+    end
+
+    test "GET returns 404 for an alert issue outside the filters", %{conn: conn} do
+      stub(Queries, :comments, fn _user, _id, _opts -> {:error, :not_found} end)
+
+      conn
+      |> get(~p"/api/alerts/issues/zzz/comments?#{@filters}")
+      |> json_response(404)
+    end
+
+    test "POST creates a comment", %{conn: conn} do
+      expect(AlertIssues, :comment, fn _user, "a1", "Looking into it", opts ->
+        assert opts[:filters] == %{"project" => "p1"}
+        assert opts[:author] == "ops"
+        {:ok, @comment}
+      end)
+
+      assert @comment ==
+               conn
+               |> post(
+                 ~p"/api/alerts/issues/a1/comments?#{@filters}",
+                 %{"body" => "Looking into it", "author" => "ops"}
+               )
+               |> json_response(201)
+    end
+
+    test "POST rejects an invalid body with 422", %{conn: conn} do
+      stub(AlertIssues, :comment, fn _user, _id, _body, _opts -> {:error, :invalid_body} end)
+
+      assert %{"error" => _} =
+               conn
+               |> post(~p"/api/alerts/issues/a1/comments?#{@filters}", %{"body" => " "})
+               |> json_response(422)
+    end
+
+    test "POST requires filters", %{conn: conn} do
+      reject(AlertIssues, :comment, 4)
+
+      conn
+      |> post(~p"/api/alerts/issues/a1/comments", %{"body" => "hi"})
+      |> json_response(400)
+    end
+  end
 end

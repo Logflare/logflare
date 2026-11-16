@@ -16,6 +16,7 @@ defmodule Logflare.AlertIssues do
 
   @reopen_window_us 24 * 60 * 60 * 1_000_000
   @storage_fields ["id"]
+  @max_comment_length 5000
 
   @type signal :: %{
           required(:fingerprint) => String.t(),
@@ -113,6 +114,46 @@ defmodule Logflare.AlertIssues do
     else
       {:error, :not_found}
     end
+  end
+
+  @doc """
+  Appends a comment to an alert issue visible within `opts[:filters]` in
+  `system.alert_issue_comments`. Options: `:filters` (required), `:author`.
+  """
+  @spec comment(User.t(), String.t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def comment(%User{} = user, alert_issue_id, body, opts) when is_binary(body) do
+    with :ok <- validate_comment_body(body),
+         {:ok, _issue} <- Queries.get(user, alert_issue_id, Keyword.take(opts, [:filters])) do
+      version = System.os_time(:microsecond)
+
+      comment = %{
+        "comment_id" => Ecto.UUID.generate(),
+        "alert_issue_id" => alert_issue_id,
+        "author" => Keyword.get(opts, :author, "api"),
+        "body" => String.trim(body),
+        "created_at" => iso(version)
+      }
+
+      event =
+        Map.merge(comment, %{
+          "version" => version,
+          "timestamp" => version,
+          "event_message" => comment["body"]
+        })
+
+      with {:ok, _count} <-
+             Backends.ingest_logs([event], system_source(user.id, :alert_issue_comments)) do
+        {:ok, comment}
+      end
+    end
+  end
+
+  defp validate_comment_body(body) do
+    trimmed = String.trim(body)
+
+    if trimmed != "" and String.length(trimmed) <= @max_comment_length,
+      do: :ok,
+      else: {:error, :invalid_body}
   end
 
   defp action_transition(:acknowledge, %{"status" => "open"}, _opts),

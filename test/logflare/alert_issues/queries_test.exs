@@ -13,6 +13,7 @@ defmodule Logflare.AlertIssues.QueriesTest do
     sources = Sources.create_alert_issue_system_sources(user.id)
     source = Enum.find(sources, &(&1.system_source_type == :alert_issues))
     reads_source = Enum.find(sources, &(&1.system_source_type == :alert_issue_reads))
+    comments_source = Enum.find(sources, &(&1.system_source_type == :alert_issue_comments))
 
     cfg = Application.get_env(:logflare, Logflare.Repo)
     url = "postgresql://#{cfg[:username]}:#{cfg[:password]}@#{cfg[:hostname]}/#{cfg[:database]}"
@@ -21,19 +22,27 @@ defmodule Logflare.AlertIssues.QueriesTest do
       insert(:backend,
         type: :postgres,
         config: %{url: url},
-        sources: [source, reads_source],
+        sources: [source, reads_source, comments_source],
         user: user
       )
 
     PostgresAdaptor.create_repo(backend)
 
-    for s <- [source, reads_source] do
+    for s <- [source, reads_source, comments_source] do
       PostgresAdaptor.create_events_table({s, backend})
       on_exit(fn -> PostgresAdaptor.destroy_instance({s, backend}) end)
     end
 
     now = DateTime.utc_now()
-    %{user: user, source: source, reads_source: reads_source, backend: backend, now: now}
+
+    %{
+      user: user,
+      source: source,
+      reads_source: reads_source,
+      comments_source: comments_source,
+      backend: backend,
+      now: now
+    }
   end
 
   defp insert_snapshot(%{source: source, backend: backend}, attrs, at) do
@@ -279,6 +288,69 @@ defmodule Logflare.AlertIssues.QueriesTest do
 
       assert {:ok, []} = Queries.list(ctx.user, filters: %{"project" => "default"})
       assert {:error, :not_found} = Queries.get(ctx.user, "a", filters: %{"project" => "default"})
+    end
+  end
+
+  describe "comments/3" do
+    defp insert_comment(%{comments_source: source, backend: backend}, attrs, at) do
+      body =
+        Map.merge(
+          %{
+            "alert_issue_id" => "a",
+            "author" => "ops",
+            "version" => DateTime.to_unix(at, :microsecond),
+            "created_at" => DateTime.to_iso8601(at)
+          },
+          attrs
+        )
+
+      {:ok, _} =
+        PostgresAdaptor.execute_query(
+          backend,
+          {"insert into #{PostgresAdaptor.table_name(source)} (id, body, event_message, timestamp) values ($1, $2, $3, $4) returning id",
+           [Ecto.UUID.generate(), body, "comment", at]},
+          []
+        )
+    end
+
+    test "returns the latest version of each comment, oldest first", ctx do
+      insert_snapshot(ctx, %{"alert_issue_id" => "a"}, ctx.now)
+      insert_comment(ctx, %{"comment_id" => "c2", "body" => "second"}, ago(ctx.now, 10))
+      insert_comment(ctx, %{"comment_id" => "c1", "body" => "first"}, ago(ctx.now, 60))
+
+      insert_comment(
+        ctx,
+        %{
+          "comment_id" => "c1",
+          "body" => "first, edited",
+          "created_at" => DateTime.to_iso8601(ago(ctx.now, 60))
+        },
+        ago(ctx.now, 5)
+      )
+
+      insert_comment(ctx, %{"alert_issue_id" => "b", "comment_id" => "c3"}, ago(ctx.now, 5))
+
+      assert {:ok, [%{"comment_id" => "c1", "body" => "first, edited"}, %{"comment_id" => "c2"}]} =
+               Queries.comments(ctx.user, "a", filters: %{"project" => "default"})
+    end
+
+    test "returns not found when the alert issue is outside the filters", ctx do
+      insert_snapshot(ctx, %{"alert_issue_id" => "a"}, ctx.now)
+
+      assert {:error, :not_found} =
+               Queries.comments(ctx.user, "a", filters: %{"project" => "other"})
+    end
+
+    test "treats a missing comments table as no comments", ctx do
+      insert_snapshot(ctx, %{"alert_issue_id" => "a"}, ctx.now)
+
+      PostgresAdaptor.SharedRepo.with_repo(ctx.backend, fn ->
+        PostgresAdaptor.SharedRepo.query(
+          "drop table #{PostgresAdaptor.table_name(ctx.comments_source)}"
+        )
+      end)
+
+      assert {:ok, []} = Queries.comments(ctx.user, "a", filters: %{"project" => "default"})
     end
   end
 end

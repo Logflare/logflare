@@ -77,6 +77,44 @@ defmodule Logflare.AlertIssues.Queries do
     end
   end
 
+  @doc """
+  Lists the latest version of each comment on an alert issue visible within
+  `opts[:filters]`, oldest first.
+  """
+  @spec comments(User.t(), String.t(), [opt()]) :: {:ok, [map()]} | {:error, term()}
+  def comments(%User{} = user, alert_issue_id, opts) when is_binary(alert_issue_id) do
+    with {:ok, _issue} <- get(user, alert_issue_id, Keyword.take(opts, [:filters])) do
+      sql = """
+      select body_json from (
+        select distinct on (body ->> 'comment_id') body::text as body_json, body ->> 'created_at' as created_at
+        from %{table}
+        where body ->> 'alert_issue_id' = $1
+          and timestamp >= $2
+        order by body ->> 'comment_id', cast(body ->> 'version' as bigint) desc
+      ) latest
+      order by created_at
+      """
+
+      system_query(user, :alert_issue_comments, sql, [alert_issue_id, retention_floor()], [])
+    end
+  end
+
+  defp system_query(user, type, sql, params, empty) do
+    with %_{} = source <-
+           Sources.Cache.get_by(user_id: user.id, system_source_type: type) ||
+             {:error, :no_source},
+         {:ok, backend} <- postgres_backend(user, source) do
+      sql = String.replace(sql, "%{table}", PostgresAdaptor.table_name(source))
+
+      backend
+      |> PostgresAdaptor.execute_query({sql, params}, [])
+      |> decode_bodies(empty, &Function.identity/1)
+    else
+      {:error, :no_source} -> {:ok, empty}
+      {:error, _} = error -> error
+    end
+  end
+
   @spec get(User.t(), String.t(), [opt()]) :: {:ok, map()} | {:error, term()}
   def get(%User{} = user, alert_issue_id, opts) when is_binary(alert_issue_id) do
     case run(user, opts, alert_issue_id) do

@@ -386,4 +386,58 @@ defmodule Logflare.AlertIssuesTest do
       refute_receive {:ingested, _, _}
     end
   end
+
+  describe "comment/4" do
+    setup %{user: user} do
+      stub(Queries, :get, fn _user, id, opts ->
+        assert opts[:filters] == %{"project" => "default"}
+        if id == "a", do: {:ok, %{"alert_issue_id" => id}}, else: {:error, :not_found}
+      end)
+
+      %{user: user}
+    end
+
+    test "appends a comment event to system.alert_issue_comments", %{user: user} do
+      assert {:ok, comment} =
+               AlertIssues.comment(user, "a", "Looking into it",
+                 author: "ops@example.com",
+                 filters: %{"project" => "default"}
+               )
+
+      assert %{
+               "alert_issue_id" => "a",
+               "author" => "ops@example.com",
+               "body" => "Looking into it",
+               "comment_id" => comment_id,
+               "created_at" => created_at
+             } = comment
+
+      assert is_binary(comment_id) and is_binary(created_at)
+
+      assert_receive {:ingested, source, [event]}
+      assert source.system_source_type == :alert_issue_comments
+      assert event["comment_id"] == comment_id
+      assert is_integer(event["version"])
+    end
+
+    test "rejects blank and oversized comments", %{user: user} do
+      opts = [author: "a", filters: %{"project" => "default"}]
+      assert {:error, :invalid_body} = AlertIssues.comment(user, "a", "   ", opts)
+
+      assert {:error, :invalid_body} =
+               AlertIssues.comment(user, "a", String.duplicate("x", 5001), opts)
+
+      refute_receive {:ingested, _, _}
+    end
+
+    test "rejects alert issues outside the filters", %{user: user} do
+      assert {:error, :not_found} =
+               AlertIssues.comment(user, "zzz", "hi",
+                 author: "a",
+                 filters: %{"project" => "default"}
+               )
+
+      refute_receive {:ingested, _, _}
+    end
+  end
 end

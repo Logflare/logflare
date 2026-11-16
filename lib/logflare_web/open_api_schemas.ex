@@ -335,6 +335,20 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: [:alert_issue_id, :status]
   end
 
+  defmodule AlertIssueCommentApiSchema do
+    @properties %{
+      comment_id: %Schema{type: :string},
+      alert_issue_id: %Schema{type: :string},
+      author: %Schema{type: :string},
+      body: %Schema{type: :string},
+      created_at: %Schema{type: :string, format: :"date-time"}
+    }
+
+    use LogflareWeb.OpenApi,
+      properties: @properties,
+      required: [:comment_id, :alert_issue_id, :body, :created_at]
+  end
+
   defmodule KeyValueApiSchema do
     @properties %{
       id: %Schema{type: :integer},
