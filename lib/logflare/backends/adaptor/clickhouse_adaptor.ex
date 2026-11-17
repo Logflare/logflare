@@ -114,12 +114,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   def replace_pipelines(%Backend{id: backend_id} = backend) do
     name = Backends.via_backend(backend, Pipeline)
 
-    with pid when is_pid(pid) <- GenServer.whereis(name),
-         %{pipeline_args: running_args} <- DynamicPipeline.get_state(name),
-         false <- Pipeline.batch_opts(running_args[:backend]) == Pipeline.batch_opts(backend) do
-      DynamicPipeline.replace_pipelines(name, fn -> latest_pipeline_args(backend_id) end)
-    else
-      _unchanged_or_stopped -> :ok
+    case GenServer.whereis(name) do
+      pid when is_pid(pid) ->
+        DynamicPipeline.replace_pipelines(name, fn -> changed_pipeline_args(name, backend_id) end)
+
+      nil ->
+        :ok
     end
   end
 
@@ -147,11 +147,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   defp provisioning_config(%Backend{config: config}),
     do: Map.take(config, @provisioning_config_keys)
 
-  @spec latest_pipeline_args(pos_integer()) :: keyword() | nil
-  defp latest_pipeline_args(backend_id) do
-    case Backends.get_backend(backend_id) do
-      nil -> nil
-      backend -> [backend: backend]
+  @spec changed_pipeline_args(GenServer.name(), pos_integer()) :: keyword() | nil
+  defp changed_pipeline_args(name, backend_id) do
+    with %Backend{} = backend <- Backends.get_backend(backend_id),
+         %{pipeline_args: running_args} <- DynamicPipeline.get_state(name),
+         false <- Pipeline.batch_opts(running_args[:backend]) == Pipeline.batch_opts(backend) do
+      [backend: backend]
+    else
+      _deleted_or_unchanged -> nil
     end
   end
 

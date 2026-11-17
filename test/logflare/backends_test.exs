@@ -241,6 +241,31 @@ defmodule Logflare.BackendsTest do
       Backends.ConsolidatedSup.stop_pipeline(backend)
     end
 
+    test "concurrent swaps to the same saved limits", %{user: user} do
+      assert {:ok, backend} = Backends.create_backend(user, clickhouse_backend_attrs())
+      on_exit(fn -> Backends.ConsolidatedSup.stop_pipeline(backend) end)
+      pipeline_sup = Backends.via_backend(backend, ClickHousePipeline)
+      coordinator = DynamicPipeline.find_coordinator_name(pipeline_sup)
+      save_backend_config!(backend, %{batch_size: 2_500})
+      ref = :telemetry_test.attach_event_handlers(self(), [[:broadway, :topology, :init]])
+      on_exit(fn -> :telemetry.detach(ref) end)
+      :ok = :sys.suspend(coordinator)
+
+      swaps =
+        for _ <- 1..2,
+            do: Task.async(fn -> Backends.replace_pipelines_with_latest(backend.id) end)
+
+      TestUtils.retry_assert(fn ->
+        {:messages, messages} = Process.info(coordinator, :messages)
+        assert 2 == Enum.count(messages, &match?({:"$gen_call", _, {:replace_pipelines, _}}, &1))
+      end)
+
+      :ok = :sys.resume(coordinator)
+      assert [:ok, :ok] = Task.await_many(swaps, 30_000)
+
+      assert [_replacement] = started_pipelines(ref, backend)
+    end
+
     test "replace_pipelines_with_latest/1 is a no-op for a deleted backend" do
       assert :ok = Backends.replace_pipelines_with_latest(-1)
     end
@@ -3577,6 +3602,21 @@ defmodule Logflare.BackendsTest do
 
   defp fun_name({name, _arity}), do: name
   defp fun_name(name), do: name
+
+  defp started_pipelines(ref, %Backend{id: backend_id} = backend) do
+    receive do
+      {[:broadway, :topology, :init], ^ref, _measurements, %{config: config}} ->
+        case config[:name] do
+          {:via, _, {_, {DynamicPipeline, {ClickHousePipeline, ^backend_id}, _}}} = name ->
+            [name | started_pipelines(ref, backend)]
+
+          _other ->
+            started_pipelines(ref, backend)
+        end
+    after
+      0 -> []
+    end
+  end
 
   defp source_sup_pid(source) do
     TestUtils.retry_assert(fn ->
