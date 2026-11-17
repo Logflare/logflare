@@ -144,37 +144,41 @@ defmodule LogflareWeb.AdminController do
     |> json(%{"message" => "Error, valid shutdown code required!"})
   end
 
-  defp paginate_accounts(%{"page" => page, "sort_by" => ""}) do
+  defp paginate_accounts(params) do
+    Repo.with_replica(fn -> do_paginate_accounts(params) end)
+  end
+
+  defp do_paginate_accounts(%{"page" => page, "sort_by" => ""}) do
     query_accounts()
     |> Repo.all()
     |> Repo.paginate(%{page_size: @page_size, page: page})
   end
 
-  defp paginate_accounts(%{"page" => page, "sort_by" => sort_by}) do
+  defp do_paginate_accounts(%{"page" => page, "sort_by" => sort_by}) do
     query_accounts(sort_by)
     |> Repo.all()
     |> Repo.paginate(%{page_size: @page_size, page: page})
   end
 
-  defp paginate_accounts(%{"page" => page}) do
+  defp do_paginate_accounts(%{"page" => page}) do
     query_accounts()
     |> Repo.all()
     |> Repo.paginate(%{page_size: @page_size, page: page})
   end
 
-  defp paginate_accounts(%{"sort_by" => sort_by}) do
+  defp do_paginate_accounts(%{"sort_by" => sort_by}) do
     query_accounts(sort_by)
     |> Repo.all()
     |> Repo.paginate(%{page_size: @page_size, page: 1})
   end
 
-  defp paginate_accounts(%{"email" => email}) do
+  defp do_paginate_accounts(%{"email" => email}) do
     query_accounts(email, "inserted_at")
     |> Repo.all()
     |> Repo.paginate(%{page_size: @page_size, page: 1})
   end
 
-  defp paginate_accounts(_params) do
+  defp do_paginate_accounts(_params) do
     query_accounts()
     |> Repo.all()
     |> Repo.paginate(%{page_size: @page_size, page: 1})

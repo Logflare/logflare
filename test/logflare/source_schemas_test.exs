@@ -20,9 +20,9 @@ defmodule Logflare.SourceSchemasTest do
                         string(:utf8),
                         one_of([boolean(), integer(), float(), string(:utf8)])
                       )
-                    ])
-                  ),
-                schema != %{} do
+                    ]),
+                    min_length: 1
+                  ) do
         user = insert(:user)
         source = insert(:source, user: user)
 

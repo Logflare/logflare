@@ -235,9 +235,14 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.CloudTest do
     end
 
     test "a :DOWN from the task being killed outright still resolves the tag, instead of wedging every later commit on the partition behind it" do
+      test_pid = self()
+
       stub(StorageMod, :put, fn _b, _k, _body, _opts ->
-        # Never actually reached — the task is killed before this runs.
-        {:ok, %{}}
+        send(test_pid, {:upload_started, self()})
+
+        receive do
+          :finish_upload -> {:ok, %{}}
+        end
       end)
 
       config = config(%{max_commit_attempts: 1})
@@ -246,12 +251,18 @@ defmodule Logflare.Backends.Spool.DurableBuffer.Backends.CloudTest do
 
       assert {:pending, state} = Backend.commit_async(state, batch(["one"]), 0, {0, 1}, tag)
       assert [ref] = Map.keys(state.inflight)
+      assert_receive {:upload_started, upload_pid}, 1_000
+      on_exit(fn -> Process.exit(upload_pid, :kill) end)
+
+      Process.exit(upload_pid, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^upload_pid, :killed} = down, 1_000
 
       assert {[{^tag, {:error, {:task_down, :killed}}}], new_state} =
-               Backend.handle_message({:DOWN, ref, :process, self(), :killed}, state)
+               Backend.handle_message(down, state)
 
       assert new_state.inflight == %{}
       assert Health.healthy?(:upload) == false
+      refute_received {:backend, {^tag, _result}}
     end
 
     test "a :DOWN for a tag already resolved by its own completion message is a no-op" do

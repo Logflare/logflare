@@ -7,6 +7,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
   alias Logflare.Backends.Spool.Encoder
   alias Logflare.Backends.Spool.MemoryMonitor
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
+  alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
   alias Logflare.TestUtils
 
@@ -123,8 +124,13 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
   # Confirms the producer registered `handle` and bumped it once per segment
   # (defaults to 1, the common single-segment case).
   defp assert_spool_ack_registered(handle, segment_count \\ 1) do
-    assert [{^handle, ^segment_count, QueueMod, "projects/p/subscriptions/s", _registered_at}] =
-             :ets.lookup(:spool_ack, handle)
+    assert {:ok,
+            %{
+              count: ^segment_count,
+              queue_mod: QueueMod,
+              queue_url: "projects/p/subscriptions/s",
+              object: {StorageMod, _bucket, _file_key}
+            }} = SpoolAck.lookup(handle)
   end
 
   # contents: %{file_key => body} | %{file_key => :raise} | %{file_key => {:error, reason}}
@@ -189,6 +195,21 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
   end
 
   describe "happy path" do
+    test "registers the spool object so SpoolAck can delete it after the final ack" do
+      stub_ack_nack(self())
+      stub_queue([queue_message("h1", "0/a.v3.etf")])
+      stub_storage(%{"0/a.v3.etf" => framed_etf_body([%{"id" => "e1"}])})
+
+      pid = start_producer()
+      GenStage.stream([{pid, max_demand: 10}]) |> Enum.take(1)
+
+      assert {:ok,
+              %{count: _count, queue_mod: QueueMod, object: {StorageMod, bucket, "0/a.v3.etf"}}} =
+               SpoolAck.lookup("h1")
+
+      assert is_binary(bucket)
+    end
+
     test "streams segments from a file, registers the handle with SpoolAck, and never acks it directly" do
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :queue, :receive])
       TestUtils.attach_forwarder([:logflare, :backends, :spool, :storage, :get])
@@ -890,7 +911,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
 
       state =
         draining_state(%{
-          prefetch: {:ready, {:ok, "h2", [etf_body([%{"id" => "e2"}])]}}
+          prefetch: {:ready, {:ok, "h2", [etf_body([%{"id" => "e2"}])], "0/b.etf"}}
         })
 
       assert {:noreply, [], new_state} = QueueProducer.prepare_for_draining(state)
@@ -1027,7 +1048,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       state =
         producer_state(%{
           current: current,
-          prefetch: {:ready, {:ok, "h2", [etf_body([%{"id" => "e2"}])]}}
+          prefetch: {:ready, {:ok, "h2", [etf_body([%{"id" => "e2"}])], "0/b.etf"}}
         })
 
       assert {:reply, :ok, [], new_state} =
@@ -1067,7 +1088,10 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       ok_state = stopped_state(%{prefetch: :running, demand: 5})
 
       assert {:noreply, [], new_state} =
-               QueueProducer.handle_info({:prefetch_result, {:ok, "h3", ["seg"]}}, ok_state)
+               QueueProducer.handle_info(
+                 {:prefetch_result, {:ok, "h3", ["seg"], "0/c.etf"}},
+                 ok_state
+               )
 
       assert_receive {:nacked, "h3"}
       assert new_state.prefetch == nil

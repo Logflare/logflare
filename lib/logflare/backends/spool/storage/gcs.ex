@@ -1,5 +1,17 @@
 defmodule Logflare.Backends.Spool.Storage.GCS do
-  @moduledoc false
+  @moduledoc """
+  Google Cloud Storage adapter for spool objects.
+
+  Uploads never send a `Content-Encoding` header, even when the caller passes
+  `"content-encoding"` in `:headers` (the spool does so for zstd-compressed objects).
+  GCS answers `415 Unsupported Media Type` to a `Content-Encoding: zstd` upload, and its
+  only supported upload encoding is gzip (decompressive transcoding), so a zstd label would
+  be wrong metadata anyway. The object is stored as opaque `application/octet-stream` bytes
+  and the consumer decompresses by the `.zst` key extension, not by this header.
+
+  Do not forward `content-encoding` here. It was added in #4082 and broke every compressed
+  GCS upload. The S3 adapter does forward it, because S3 accepts arbitrary values.
+  """
 
   @behaviour Logflare.Backends.Spool.Storage
 
@@ -30,7 +42,7 @@ defmodule Logflare.Backends.Spool.Storage.GCS do
              method: :post,
              url: url,
              query: [uploadType: "media", name: key],
-             headers: request_headers(content_type, headers),
+             headers: [{"Content-Type", content_type}],
              body: body
            ) do
         {:ok, %Tesla.Env{status: status}} when status in 200..299 -> {:ok, key}
@@ -51,13 +63,14 @@ defmodule Logflare.Backends.Spool.Storage.GCS do
     end
   end
 
-  @spec request_headers(String.t(), map()) :: [{String.t(), String.t()}]
-  defp request_headers(content_type, headers) do
-    base = [{"Content-Type", content_type}]
-
-    case Map.get(headers, "content-encoding") do
-      nil -> base
-      encoding -> [{"Content-Encoding", encoding} | base]
+  @impl Logflare.Backends.Spool.Storage
+  def delete(bucket, key) do
+    with {:ok, conn} <- build_conn() do
+      case Objects.storage_objects_delete(conn, bucket, key) do
+        {:ok, _} -> :ok
+        {:error, %Tesla.Env{status: 404}} -> :ok
+        {:error, reason} -> {:error, reason}
+      end
     end
   end
 

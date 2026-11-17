@@ -3,6 +3,9 @@ defmodule Logflare.Backends.QueryClassSettingsTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.Backend
+  alias Logflare.Cluster.Utils, as: ClusterUtils
+  alias Logflare.ContextCache
+  alias Logflare.QueryContext
   alias Logflare.Repo
 
   @policy %{
@@ -24,6 +27,46 @@ defmodule Logflare.Backends.QueryClassSettingsTest do
       |> then(&Backends.get_backend(&1.id))
 
     %{owner: owner, admin: admin, backend: backend}
+  end
+
+  test "policy updates multicast fenced query-context evictions", context do
+    %{admin: admin, backend: backend, owner: owner} = context
+    refute Map.has_key?(QueryContext.get_backend(backend.id).config, :query_class_settings)
+    assert [_] = QueryContext.list_backends(owner.id)
+
+    test_pid = self()
+
+    expect(ClusterUtils, :rpc_multicast, fn ContextCache, :bust_keys, [keys] ->
+      send(test_pid, {:policy_evictions, keys})
+      ContextCache.bust_keys(keys)
+    end)
+
+    assert {:ok, _} =
+             Repo.transact(fn ->
+               result = Backends.configure_query_class_settings(admin, backend, @policy)
+               refute_received {:policy_evictions, _}
+               result
+             end)
+
+    assert_received {:policy_evictions, keys}
+    assert {QueryContext, [backend_id: backend.id, owner_id: owner.id]} in keys
+    assert QueryContext.get_backend(backend.id).config.query_class_settings == @policy
+    assert [cached] = QueryContext.list_backends(owner.id)
+    assert cached.config.query_class_settings == @policy
+  end
+
+  test "rolled-back policy updates do not multicast uncommitted evictions", context do
+    %{admin: admin, backend: backend} = context
+    reject(&ClusterUtils.rpc_multicast/3)
+    snapshot = QueryContext.get_backend(backend.id)
+
+    assert {:error, :cancelled} =
+             Repo.transact(fn ->
+               assert {:ok, _} = Backends.configure_query_class_settings(admin, backend, @policy)
+               Repo.rollback(:cancelled)
+             end)
+
+    assert QueryContext.get_backend(backend.id) == snapshot
   end
 
   test "operator policy is validated, persisted and protected from customer changes", context do

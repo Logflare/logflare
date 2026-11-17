@@ -10,14 +10,19 @@ defmodule Logflare.Sql do
   require Logger
 
   alias Logflare.Alerting.AlertQuery
+  alias Logflare.Cache.CachexOps
   alias Logflare.Endpoints
+  alias Logflare.QueryContext
+  alias Logflare.Repo
   alias Logflare.SingleTenant
-  alias Logflare.Sources
+  alias Logflare.Sources.Catalog
+  alias Logflare.Sources.Catalog.Cache, as: SourceCatalog
   alias Logflare.Sql.AstUtils
   alias Logflare.Sql.DialectTransformer
   alias Logflare.Sql.DialectTranslation
   alias Logflare.Sql.Parser
   alias Logflare.User
+  alias Logflare.Users
 
   @valid_query_languages ~w(bq_sql ch_sql pg_sql)a
 
@@ -220,6 +225,10 @@ defmodule Logflare.Sql do
   The query is parsed, validated, and transformed to include fully-qualified table names
   appropriate for the target backend.
 
+  Integer user IDs use uncached settings by default. Endpoint execution opts into
+  `consistency: :cached`; these primary-backed snapshots are invalidated after
+  application commits and by WAL, and are always bypassed inside transactions.
+
   ## Validation Rules
 
   All queries are validated to ensure:
@@ -262,16 +271,22 @@ defmodule Logflare.Sql do
   @spec transform(
           language :: query_language(),
           query :: input(),
-          user_or_user_id :: User.t() | pos_integer() | nil
+          user_or_user_id :: User.t() | pos_integer() | nil,
+          opts :: [consistency: :fresh | :cached]
         ) ::
-          {:ok, String.t()} | {:error, String.t()}
-  def transform(lang, input, user_id) when is_integer(user_id) do
-    user = Logflare.Users.get(user_id)
-    transform(lang, input, user)
+          {:ok, String.t()} | {:error, String.t() | :database_unavailable}
+  def transform(lang, input, user_or_user_id, opts \\ [])
+
+  def transform(lang, input, user_id, opts) when is_integer(user_id) do
+    case transformation_user(user_id, Keyword.get(opts, :consistency, :fresh)) do
+      %User{} = user -> transform(lang, input, user, opts)
+      nil -> {:error, "User not found"}
+      {:error, :database_unavailable} = error -> error
+    end
   end
 
   # clickhouse with sandboxed query support
-  def transform(:ch_sql = language, input, %User{} = user) do
+  def transform(:ch_sql = language, input, %User{} = user, _opts) do
     {query, sandboxed_query} =
       case input do
         q when is_non_empty_binary(q) -> {q, nil}
@@ -279,12 +294,11 @@ defmodule Logflare.Sql do
       end
 
     sql_dialect = to_dialect(language)
-    sources = Sources.list_sources_by_user(user)
-    source_mapping = source_mapping(sources)
-
     Logger.metadata(query_string: query, user_id: user.id)
 
-    with {:ok, statements} <- Parser.parse(sql_dialect, query),
+    with sources when is_list(sources) <- SourceCatalog.list_by_user(user),
+         source_mapping = source_mapping(sources),
+         {:ok, statements} <- Parser.parse(sql_dialect, query),
          {:ok, sandboxed_query_ast} <- sandboxed_ast(sandboxed_query, sql_dialect),
          base_data = %{
            sources: sources,
@@ -307,14 +321,13 @@ defmodule Logflare.Sql do
   end
 
   # postgres (no sandboxed query support)
-  def transform(:pg_sql = language, query, %User{} = user) do
+  def transform(:pg_sql = language, query, %User{} = user, _opts) do
     sql_dialect = to_dialect(language)
-    sources = Sources.list_sources_by_user(user)
-    source_mapping = source_mapping(sources)
-
     Logger.metadata(query_string: query, user_id: user.id)
 
-    with {:ok, statements} <- Parser.parse(sql_dialect, query),
+    with sources when is_list(sources) <- SourceCatalog.list_by_user(user),
+         source_mapping = source_mapping(sources),
+         {:ok, statements} <- Parser.parse(sql_dialect, query),
          data = %{
            sources: sources,
            source_mapping: source_mapping,
@@ -333,19 +346,18 @@ defmodule Logflare.Sql do
   end
 
   # default to bq_sql
-  def transform(lang, input, %User{} = user) when lang in [:bq_sql, nil] do
+  def transform(lang, input, %User{} = user, _opts) when lang in [:bq_sql, nil] do
     {query, sandboxed_query} =
       case input do
         q when is_non_empty_binary(q) -> {q, nil}
         other when is_tuple(other) -> other
       end
 
-    sources = Sources.list_sources_by_user(user)
-    source_mapping = source_mapping(sources)
-
     Logger.metadata(query_string: query, user_id: user.id)
 
-    with {:ok, statements} <- Parser.parse("bigquery", query),
+    with sources when is_list(sources) <- SourceCatalog.list_by_user(user),
+         source_mapping = source_mapping(sources),
+         {:ok, statements} <- Parser.parse("bigquery", query),
          {:ok, sandboxed_query_ast} <- sandboxed_ast(sandboxed_query, "bigquery"),
          base_data = %{
            sources: sources,
@@ -368,9 +380,12 @@ defmodule Logflare.Sql do
   end
 
   # Handle nil user case (e.g., during form validation)
-  def transform(language, query, nil) when language in [:ch_sql, :pg_sql, :bq_sql, nil] do
+  def transform(language, query, nil, _opts) when language in [:ch_sql, :pg_sql, :bq_sql, nil] do
     {:ok, query}
   end
+
+  defp transformation_user(user_id, :fresh), do: Users.get(user_id)
+  defp transformation_user(user_id, :cached), do: QueryContext.get_user(user_id)
 
   @doc """
   Translates BigQuery SQL to PostgreSQL SQL.
@@ -396,22 +411,20 @@ defmodule Logflare.Sql do
     {:ok, %{"my_table" => "abced-weqqwe-..."}}
   """
   @spec sources(query :: String.t(), user :: User.t(), opts :: Keyword.t()) ::
-          {:ok, %{String.t() => String.t()}} | {:error, String.t()}
+          {:ok, %{String.t() => String.t()}} | {:error, String.t() | :database_unavailable}
   def sources(query, user, opts \\ []) when is_list(opts) do
     dialect = Keyword.get(opts, :dialect, "bigquery")
-    sources = Sources.list_sources_by_user(user)
-    source_names = for s <- sources, do: s.name
 
-    source_mapping =
-      for source <- sources, into: %{} do
-        {source.name, source}
-      end
+    with sources when is_list(sources) <- SourceCatalog.list_by_user(user),
+         {:ok, ast} <- Parser.parse(dialect, query) do
+      source_names = for s <- sources, do: s.name
+      source_mapping = Map.new(sources, &{&1.name, &1})
 
-    with {:ok, ast} <- Parser.parse(dialect, query),
-         names <-
-           ast
-           |> find_all_source_names()
-           |> Enum.filter(fn name -> name in source_names end) do
+      names =
+        ast
+        |> find_all_source_names()
+        |> Enum.filter(fn name -> name in source_names end)
+
       {:ok, build_source_token_map(names, source_mapping)}
     end
   end
@@ -435,6 +448,7 @@ defmodule Logflare.Sql do
   Extracts the raw table names found in a SQL query.
 
   Useful for determining which sources are referenced before having a full source mapping.
+  Set `:include_cte_aliases` to include CTE relation names when checking for named-query expansion.
 
   ### Example
 
@@ -446,7 +460,7 @@ defmodule Logflare.Sql do
     dialect = Keyword.get(opts, :dialect, "bigquery")
 
     with {:ok, ast} <- Parser.parse(dialect, query) do
-      {:ok, find_all_source_names(ast)}
+      {:ok, find_all_source_names(ast, opts)}
     end
   end
 
@@ -531,21 +545,26 @@ defmodule Logflare.Sql do
   @spec source_mapping(
           query :: String.t(),
           user :: User.t() | pos_integer(),
-          mapping :: map(),
+          mapping :: map() | nil,
           opts :: Keyword.t()
         ) ::
-          {:ok, String.t()} | {:error, String.t()}
+          {:ok, String.t()} | {:error, String.t() | :database_unavailable}
   def source_mapping(query, user, mapping, opts \\ [])
 
   def source_mapping(query, %User{id: user_id}, mapping, opts) do
     source_mapping(query, user_id, mapping, opts)
   end
 
+  def source_mapping(query, user_id, nil, opts) when is_list(opts) and is_integer(user_id) do
+    source_mapping(query, user_id, %{}, opts)
+  end
+
   def source_mapping(query, user_id, mapping, opts) when is_list(opts) and is_integer(user_id) do
     dialect = Keyword.get(opts, :dialect, "bigquery")
-    sources = Sources.list_sources_by_user(user_id)
 
-    with {:ok, ast} <- Parser.parse(dialect, query) do
+    with {:ok, ast} <- Parser.parse(dialect, query),
+         referenced_mapping = Map.take(mapping, find_all_source_names(ast)),
+         {:ok, sources} <- sources_for_mapping(user_id, referenced_mapping) do
       ast
       |> replace_old_source_names(%{
         sources: sources,
@@ -553,6 +572,38 @@ defmodule Logflare.Sql do
       })
       |> Parser.to_string()
     end
+  end
+
+  defp sources_for_mapping(user_id, mapping) do
+    with sources when is_list(sources) <- SourceCatalog.list_by_user(user_id) do
+      if missing_mapped_source(mapping, sources) do
+        fresh_sources_for_mapping(user_id, mapping)
+      else
+        {:ok, sources}
+      end
+    end
+  end
+
+  @spec fresh_sources_for_mapping(pos_integer(), map()) ::
+          {:ok, [Logflare.Sources.Source.t()]} | {:error, String.t() | :database_unavailable}
+  defp fresh_sources_for_mapping(user_id, mapping) do
+    result =
+      CachexOps.commit_or_ignore(fn ->
+        Repo.with_primary(fn -> Catalog.list_by_user(user_id) end)
+      end)
+
+    with sources when is_list(sources) <-
+           CachexOps.fetch_value(SourceCatalog, {:list_by_user, [user_id]}, result) do
+      case missing_mapped_source(mapping, sources) do
+        nil -> {:ok, sources}
+        {name, _token} -> {:error, "can't find source #{name}"}
+      end
+    end
+  end
+
+  defp missing_mapped_source(mapping, sources) do
+    tokens = MapSet.new(sources, &to_string(&1.token))
+    Enum.find(mapping, fn {_name, token} -> not MapSet.member?(tokens, token) end)
   end
 
   defp replace_names_with_subqueries(ast, data) do
@@ -1015,14 +1066,13 @@ defmodule Logflare.Sql do
 
   defp do_replace_sandboxed_query(ast_node, _data), do: {:recurse, ast_node}
 
-  defp find_all_source_names(ast),
-    do: find_all_source_names(ast, [], %{ast: ast})
+  defp find_all_source_names(ast, opts \\ []),
+    do:
+      find_all_source_names(ast, [], %{ast: ast, include_cte_aliases: opts[:include_cte_aliases]})
 
-  defp find_all_source_names({"Table", %{"name" => name}}, prev, %{
-         ast: ast
-       })
+  defp find_all_source_names({"Table", %{"name" => name}}, prev, %{ast: ast} = data)
        when is_list(name) do
-    cte_names = do_extract_cte_aliases(ast)
+    cte_names = if data.include_cte_aliases, do: [], else: do_extract_cte_aliases(ast)
 
     qualified_name = name |> AstUtils.object_name_values() |> Enum.join(".")
 

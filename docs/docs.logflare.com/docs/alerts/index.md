@@ -30,6 +30,8 @@ The supported integrations are:
 
 Query Alerts allows for cron-based scheduling, with a minimum interval of 5 minutes. It is advised to keep the queried time range to the bare minimum required so as to reduce query execution time, as queries that cover large time ranges may scan a lot of data and result in a slow query.
 
+The Upcoming Jobs list reflects the saved schedule immediately after changing the cron expression or enabling or disabling an alert. Past execution history may appear after a short replication delay.
+
 ### Testing
 
 To test if your Query Alert is working, you can use the **Manual Trigger** button, which will execute the query and dispatch the results to the connected integrations.

@@ -1,5 +1,7 @@
 defmodule Logflare.Rules.CacheWarmer do
+  alias Logflare.ContextCache.Warmer
   alias Logflare.Repo
+  alias Logflare.Rules.Cache
   alias Logflare.Sources.Source
 
   import Ecto.Query
@@ -7,8 +9,9 @@ defmodule Logflare.Rules.CacheWarmer do
   use Cachex.Warmer
 
   @impl true
-  def execute(_state), do: Repo.with_replica(&warm/0)
+  def execute(_state), do: Warmer.warm(Cache, &warm/0)
 
+  @spec warm() :: Warmer.pairs()
   defp warm do
     sources =
       from(s in Source,
@@ -19,11 +22,8 @@ defmodule Logflare.Rules.CacheWarmer do
       )
       |> Repo.all()
 
-    entries =
-      for s <- sources do
-        {{:list_by_source_id, [s.id]}, {:cached, s.rules}}
-      end
-
-    {:ok, entries}
+    for s <- sources do
+      {{:list_by_source_id, [s.id]}, {:cached, s.rules}}
+    end
   end
 end

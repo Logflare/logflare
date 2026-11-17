@@ -6,6 +6,8 @@ defmodule Logflare.Endpoints.Cache do
   use Logflare.ContextCache
 
   alias Logflare.Cache.CachexOps
+  alias Logflare.ContextCache
+  alias Logflare.ContextCache.CatalogCache
   alias Logflare.Endpoints
   alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Repo
@@ -151,9 +153,80 @@ defmodule Logflare.Endpoints.Cache do
     do: apply_repo_fun(:get_endpoint_query_at_version, [query_id, version_number])
 
   def get_by(kw), do: apply_repo_fun(:get_by, [kw])
-  def get_mapped_query_by_token(token), do: apply_repo_fun(:get_mapped_query_by_token, [token])
+
+  @spec get_mapped_query_by_token(String.t()) ::
+          EndpointQuery.t() | nil | {:error, String.t() | :database_unavailable}
+  def get_mapped_query_by_token(token) do
+    with %EndpointQuery{} = query <- apply_repo_fun(:get_query_with_user_by_token, [token]) do
+      Endpoints.map_query_sources(query)
+    end
+  end
+
+  @spec list_by_user_id(pos_integer()) :: [Endpoints.EndpointQuery.t()] | CatalogCache.error()
+  def list_by_user_id(user_id) when is_integer(user_id) do
+    if Repo.in_transaction?() do
+      Endpoints.list_endpoints_by(user_id: user_id)
+    else
+      fetch_list_by_user_id(user_id)
+    end
+  end
+
+  @spec list_query_names(pos_integer()) :: [map()] | CatalogCache.error()
+  def list_query_names(user_id) when is_integer(user_id) do
+    if Repo.in_transaction?() do
+      Endpoints.list_query_names(user_id)
+    else
+      CatalogCache.fetch(__MODULE__, {:list_query_names, [user_id]}, fn ->
+        Endpoints.list_query_names(user_id)
+      end)
+    end
+  end
+
+  @spec invalidate_query_names(keyword()) :: :ok
+  def invalidate_query_names(kw) do
+    keys =
+      if Keyword.has_key?(kw, :user_id) do
+        entries =
+          for user_id <- Keyword.get_values(kw, :user_id), do: {:list_query_names, [user_id]}
+
+        CatalogCache.keys_to_bust(__MODULE__, entries)
+      else
+        __MODULE__
+        |> CachexOps.keys_to_bust(kw)
+        |> Enum.filter(&match?({:catalog, {:list_query_names, _}, _}, &1))
+      end
+
+    {:ok, _} = delete_keys(keys)
+    :ok
+  end
+
+  @impl ContextCache
+  @spec keys_to_bust(keyword()) :: Enumerable.t()
+  def keys_to_bust(kw) do
+    if Keyword.has_key?(kw, :user_id) do
+      entries =
+        kw
+        |> Keyword.get_values(:user_id)
+        |> Enum.flat_map(fn user_id ->
+          [
+            {:list_endpoints_by, [[user_id: user_id]]},
+            {:list_query_names, [user_id]}
+          ]
+        end)
+
+      CatalogCache.keys_to_bust(__MODULE__, entries)
+    else
+      CachexOps.keys_to_bust(__MODULE__, kw)
+    end
+  end
+
+  defp fetch_list_by_user_id(user_id) do
+    CatalogCache.fetch(__MODULE__, {:list_endpoints_by, [[user_id: user_id]]}, fn ->
+      Endpoints.list_endpoints_by(user_id: user_id)
+    end)
+  end
 
   defp apply_repo_fun(arg1, arg2) do
-    Logflare.ContextCache.apply_fun(Endpoints, arg1, arg2)
+    ContextCache.apply_fun(Endpoints, arg1, arg2)
   end
 end
