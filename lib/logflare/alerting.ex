@@ -9,6 +9,7 @@ defmodule Logflare.Alerting do
   alias Crontab.Scheduler, as: CronScheduler
   alias Logflare.AlertIssues
   alias Logflare.AlertIssues.LogEvents
+  alias Logflare.AlertIssues.Notifier
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Alerting.AlertWorker
   alias Logflare.Backends
@@ -343,30 +344,13 @@ defmodule Logflare.Alerting do
 
   defp handle_alert_result(result, alert_query) do
     case result do
-      {:ok, %QueryResult{rows: [_ | _] = results} = result} ->
-        if alert_query.webhook_notification_url do
-          send_webhook_notification(alert_query, results)
-        end
+      {:ok, %QueryResult{rows: [_ | _]} = result} when is_binary(alert_query.rule_key) ->
+        if Notifier.enabled?(),
+          do: {:ok, result |> Map.from_struct() |> Map.put(:fired, true)},
+          else: send_notifications(result, alert_query)
 
-        if alert_query.slack_hook_url do
-          send_slack_notification!(alert_query, results)
-        end
-
-        # iterate over backends and fire for each
-        for backend <- alert_query.backends do
-          adaptor_mod = Adaptor.get_adaptor(backend)
-          adaptor_mod.send_alert(backend, alert_query, results)
-
-          OpenTelemetry.Tracer.add_event(
-            "alerting.run_alert.#{backend.type}.notification_sent",
-            %{
-              "alert.backend.id" => backend.id,
-              "alert.backend.type" => backend.type
-            }
-          )
-        end
-
-        {:ok, result |> Map.from_struct() |> Map.put(:fired, true)}
+      {:ok, %QueryResult{rows: [_ | _]} = result} ->
+        send_notifications(result, alert_query)
 
       {:ok, %QueryResult{rows: rows} = result} when rows == [] or rows == nil ->
         {:ok, result |> Map.from_struct() |> Map.put(:fired, false)}
@@ -374,6 +358,31 @@ defmodule Logflare.Alerting do
       other ->
         other
     end
+  end
+
+  defp send_notifications(%QueryResult{rows: results} = result, alert_query) do
+    if alert_query.webhook_notification_url do
+      send_webhook_notification(alert_query, results)
+    end
+
+    if alert_query.slack_hook_url do
+      send_slack_notification!(alert_query, results)
+    end
+
+    for backend <- alert_query.backends do
+      adaptor_mod = Adaptor.get_adaptor(backend)
+      adaptor_mod.send_alert(backend, alert_query, results)
+
+      OpenTelemetry.Tracer.add_event(
+        "alerting.run_alert.#{backend.type}.notification_sent",
+        %{
+          "alert.backend.id" => backend.id,
+          "alert.backend.type" => backend.type
+        }
+      )
+    end
+
+    {:ok, result |> Map.from_struct() |> Map.put(:fired, true)}
   end
 
   defp send_webhook_notification(alert_query, results) do

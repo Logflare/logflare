@@ -7,6 +7,7 @@ defmodule Logflare.AlertIssues do
   """
 
   alias Logflare.AlertIssues.ActiveCache
+  alias Logflare.AlertIssues.Notifications
   alias Logflare.AlertIssues.Queries
   alias Logflare.AlertIssues.Signals
   alias Logflare.AlertIssues.Silences
@@ -67,6 +68,7 @@ defmodule Logflare.AlertIssues do
 
         with {:ok, _count} <- write(alert.user_id, snapshot) do
           ActiveCache.put(alert.user_id, signal.fingerprint, snapshot)
+          notify_change(alert.user_id, Atom.to_string(transition), snapshot)
           {:ok, %{transition: transition, snapshot: snapshot}}
         end
     end
@@ -111,6 +113,7 @@ defmodule Logflare.AlertIssues do
 
       with {:ok, _count} <- write(user.id, snapshot) do
         ActiveCache.put(user.id, snapshot["fingerprint"], snapshot)
+        notify_change(user.id, change, snapshot)
         {:ok, snapshot}
       end
     end
@@ -332,6 +335,11 @@ defmodule Logflare.AlertIssues do
       "event_message" => "#{title} #{change}"
     })
   end
+
+  defp notify_change(user_id, change, snapshot) when change in ~w(opened reopened resolved),
+    do: Notifications.notify(user_id, change, snapshot)
+
+  defp notify_change(_user_id, _change, _snapshot), do: :ok
 
   defp write(user_id, snapshot) do
     Backends.ingest_logs([snapshot], system_source(user_id, :alert_issues))

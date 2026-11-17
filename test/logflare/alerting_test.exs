@@ -612,6 +612,75 @@ defmodule Logflare.AlertingTest do
       assert {:ok, %{fired: true}} = Alerting.run_alert(alert_query)
     end
 
+    test "run_alert/1 replaces per-run sends with notification policies for alert issue rules",
+         %{user: user} do
+      with_notifier("http://control-plane.test/hook")
+
+      alert_query =
+        insert(:alert,
+          user: user,
+          rule_key: "logflare.test-policies",
+          webhook_notification_url: "http://example.test/legacy"
+        )
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"n" => "1"}])}
+      end)
+
+      stub(Logflare.AlertIssues, :process_run, fn _alert, _rows -> {:ok, []} end)
+      reject(&Logflare.Backends.Adaptor.WebhookAdaptor.Client.send/1)
+      reject(&Logflare.Backends.Adaptor.SlackAdaptor.Client.send/2)
+
+      assert {:ok, %{fired: true}} = Alerting.run_alert(alert_query)
+    end
+
+    test "run_alert/1 keeps per-run sends for alert issue rules without a notifier",
+         %{user: user} do
+      with_notifier(nil)
+
+      alert_query =
+        insert(:alert,
+          user: user,
+          rule_key: "logflare.test-legacy",
+          webhook_notification_url: "http://example.test/legacy",
+          slack_hook_url: nil
+        )
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"n" => "1"}])}
+      end)
+
+      stub(Logflare.AlertIssues, :process_run, fn _alert, _rows -> {:ok, []} end)
+
+      Logflare.Backends.Adaptor.WebhookAdaptor.Client
+      |> expect(:send, fn _opts -> {:ok, %Tesla.Env{}} end)
+
+      assert {:ok, %{fired: true}} = Alerting.run_alert(alert_query)
+    end
+
+    test "run_alert/1 keeps per-run sends for plain alerts with a notifier", %{user: user} do
+      with_notifier("http://control-plane.test/hook")
+
+      alert_query =
+        insert(:alert,
+          user: user,
+          webhook_notification_url: "http://example.test/legacy",
+          slack_hook_url: nil
+        )
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"n" => "1"}])}
+      end)
+
+      Logflare.Backends.Adaptor.WebhookAdaptor.Client
+      |> expect(:send, fn _opts -> {:ok, %Tesla.Env{}} end)
+
+      assert {:ok, %{fired: true}} = Alerting.run_alert(alert_query)
+    end
+
     test "run_alert_query/1 does not send notifications if no results", %{user: user} do
       alert_query = insert(:alert, user: user)
 
@@ -955,5 +1024,11 @@ defmodule Logflare.AlertingTest do
       assert %{"f1" => 2, "f2" => 1} ==
                Map.new(rows, &{&1["metadata.function_id"], &1["count"]})
     end
+  end
+
+  defp with_notifier(url) do
+    previous = Application.get_env(:logflare, Logflare.AlertIssues.Notifier)
+    Application.put_env(:logflare, Logflare.AlertIssues.Notifier, url: url, secret: "s")
+    on_exit(fn -> Application.put_env(:logflare, Logflare.AlertIssues.Notifier, previous) end)
   end
 end
