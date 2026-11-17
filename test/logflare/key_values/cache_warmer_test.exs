@@ -33,10 +33,9 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
           {"empty usage table", [{"old", nil}, {"new", nil}], 1, ["new"]}
         ] do
       test context, %{user: user} do
-        put_warm_limit(unquote(limit))
         insert_keys(user, unquote(keys))
 
-        CacheWarmer.execute(nil)
+        assert {:ok, :ok} = CacheWarmer.warm_top_n(unquote(limit))
 
         assert cached_keys(user, unquote(keys)) == unquote(warmed)
       end
@@ -120,11 +119,5 @@ defmodule Logflare.KeyValues.CacheWarmerTest do
 
   defp cached_keys(user, keys) do
     for {key, _} <- keys, Cachex.get!(Cache, {:lookup, [user.id, key, nil]}), do: key
-  end
-
-  defp put_warm_limit(limit) do
-    prev = Application.get_env(:logflare, CacheWarmer, [])
-    Application.put_env(:logflare, CacheWarmer, Keyword.put(prev, :warm_limit, limit))
-    on_exit(fn -> Application.put_env(:logflare, CacheWarmer, prev) end)
   end
 end

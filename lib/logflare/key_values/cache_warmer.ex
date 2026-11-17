@@ -13,6 +13,7 @@ defmodule Logflare.KeyValues.CacheWarmer do
 
   @pt_key {__MODULE__, :initialized}
   @pt_warmed_at {__MODULE__, :warmed_at}
+  @warm_limit Application.compile_env!(:logflare, [__MODULE__, :warm_limit])
 
   @impl true
   def execute(_state) do
@@ -33,18 +34,15 @@ defmodule Logflare.KeyValues.CacheWarmer do
   end
 
   @doc """
-  Warms up to `warm_limit` entries: keys with recorded usage, most recently used
+  Warms up to `limit` entries: keys with recorded usage, most recently used
   first, then keys never used, most recently inserted first.
   """
-  @spec warm_top_n() :: {:ok, :ok} | {:error, term()}
-  def warm_top_n do
-    limit =
-      Application.get_env(:logflare, __MODULE__, [])
-      |> Keyword.get(:warm_limit, 500_000)
-
+  @spec warm_top_n(pos_integer()) :: {:ok, :ok} | {:error, term()}
+  def warm_top_n(limit \\ @warm_limit) do
     Repo.transaction(fn ->
       warmed = limit |> recently_used_query() |> put_all()
-      if warmed < limit, do: (limit - warmed) |> never_used_query() |> put_all()
+      remaining = limit - warmed
+      if remaining > 0, do: remaining |> never_used_query() |> put_all()
       :ok
     end)
   end
