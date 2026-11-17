@@ -42,6 +42,8 @@ config :logflare, :postgres_backend_adapter, pool_size: 1
 
 config :logflare, Logflare.Repo.Migrator, replication_sets: []
 
+config :logflare, Logflare.ContextCache.CacheBuster, flush_confirmation_interval: 500
+
 config :logflare, Logflare.PubSub, pool_size: 10
 
 config :logflare, :stripe_webhook_secret, "whsec_test_only_secret_for_testing"

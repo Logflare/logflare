@@ -5,11 +5,11 @@ defmodule Logflare.ContextCache.ReplicationSlotTest do
   alias Cainophile.Changes.NewRecord
   alias Cainophile.Changes.Transaction
   alias Ecto.Adapters.SQL
-  alias Logflare.ContextCache.CacheBuster
-  alias Logflare.Repo.ConnectionOptions
+  alias Logflare.ContextCache
+  alias Logflare.GenSingleton
   alias Logflare.TestUtils
 
-  @flush_confirmation_duration 45_000
+  @flush_confirmation_duration 10_000
 
   setup do
     existing_slots = slot_names()
@@ -48,19 +48,38 @@ defmodule Logflare.ContextCache.ReplicationSlotTest do
     TestUtils.retry_assert(fn -> assert confirmed_past?(slot, wal_position) end)
   end
 
-  defp publisher_options do
-    config = Application.get_env(:logflare, CacheBuster, [])
+  test "stops confirming and drops the slot when the publisher stops", %{
+    publisher: publisher,
+    slot: slot
+  } do
+    {:ok, test_supervisor} = ExUnit.fetch_test_supervisor()
+    %{connection: connection} = :sys.get_state(publisher)
+    {:links, links} = Process.info(publisher, :links)
+    assert [confirmer] = links -- [test_supervisor, connection]
+    confirmer_ref = Process.monitor(confirmer)
 
-    [
-      epgsql:
-        ConnectionOptions.prepare_replication_epgsql(
-          Application.get_env(:logflare, Repo, []),
-          config[:db_url_options]
-        ),
-      slot: config[:replication_slot],
-      wal_position: {"0", "0"},
-      publications: config[:publications]
-    ]
+    :ok = stop_supervised(Postgres)
+
+    assert_receive {:DOWN, ^confirmer_ref, :process, ^confirmer, _reason}, 5_000
+    TestUtils.retry_assert(fn -> refute slot_exists?(slot) end)
+  end
+
+  defp publisher_options do
+    {:ok, {_flags, children}} = ContextCache.Supervisor.init([])
+
+    children
+    |> Enum.find_value(fn
+      %{
+        start:
+          {GenSingleton, :start_link,
+           [[child_spec: %{start: {Postgres, :start_link, [options]}}]]}
+      } ->
+        options
+
+      _child ->
+        nil
+    end)
+    |> Keyword.delete(:register)
   end
 
   defp slot_names do
@@ -72,6 +91,13 @@ defmodule Logflare.ContextCache.ReplicationSlotTest do
       """)
 
     List.flatten(rows)
+  end
+
+  defp slot_exists?(slot) do
+    %{rows: [[exists?]]} =
+      Repo.query!("SELECT count(*) > 0 FROM pg_replication_slots WHERE slot_name = $1", [slot])
+
+    exists?
   end
 
   defp commit_unpublished_write do
