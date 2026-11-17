@@ -1060,7 +1060,8 @@ defmodule Logflare.EndpointsTest do
     end
 
     test "run_query_string/3" do
-      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        assert opts[:body].maxResults == 1_000
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 

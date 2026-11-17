@@ -12,6 +12,7 @@ defmodule Logflare.Sources.Source.RateCounterServer do
   alias Logflare.Source.Data
   alias Logflare.Sources
   alias Logflare.Sources.Counters
+  alias Logflare.Sources.Source
   alias Logflare.Sources.Source.Data
   alias Logflare.Sources.Source.RateCounterServer
 
@@ -57,18 +58,18 @@ defmodule Logflare.Sources.Source.RateCounterServer do
     source = Keyword.get(args, :source)
 
     setup_ets_table(source.token)
-    {:ok, source.token, {:continue, :boot}}
+    {:ok, source.token, {:continue, {:boot, source}}}
   end
 
-  def handle_continue(:boot, source_token) do
+  def handle_continue({:boot, source}, source_token) do
     put_current_rate()
 
     bigquery_project_id =
       if !SingleTenant.postgres_backend?() do
-        GenUtils.get_project_id(source_token)
+        GenUtils.get_project_id(source)
       end
 
-    init_counters(source_token, bigquery_project_id)
+    init_counters(source, bigquery_project_id)
 
     RateCounterServer.get_data_from_ets(source_token)
     |> RateCounterServer.broadcast()
@@ -287,10 +288,10 @@ defmodule Logflare.Sources.Source.RateCounterServer do
     }
   end
 
-  defp init_counters(source_id, bigquery_project_id) when is_atom(source_id) do
+  defp init_counters(%Source{token: source_id} = source, bigquery_project_id) do
     log_count =
       if bigquery_project_id do
-        Data.get_log_count(source_id, bigquery_project_id)
+        Data.get_log_count(source, bigquery_project_id)
       else
         # TODO: pull total count from PG table
         0

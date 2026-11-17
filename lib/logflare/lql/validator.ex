@@ -40,6 +40,8 @@ defmodule Logflare.Lql.Validator do
     %{min: min_ts, max: max_ts} =
       SearchOperationHelpers.get_min_max_filter_timestamps(lql_ts_filters, chart_period)
 
+    invalid_chart = Enum.find_value(chart_rules, &validate_chart_rule/1)
+
     cond do
       tailing? and not Enum.empty?(lql_ts_filters) ->
         @timestamp_filter_with_tailing
@@ -47,12 +49,8 @@ defmodule Logflare.Lql.Validator do
       ListUtils.at_least?(chart_rules, 2) ->
         "Only one chart rule can be used in a LQL query"
 
-      ListUtils.exactly?(chart_rules, 1) and
-        hd(chart_rules).value_type not in ~w[integer float]a and
-          hd(chart_rules).path != "timestamp" ->
-        chart_rule = hd(chart_rules)
-
-        "Can't aggregate on a non-numeric field type '#{chart_rule.value_type}' for path #{chart_rule.path}. Check the source schema for the field used with chart operator."
+      invalid_chart ->
+        invalid_chart
 
       Timex.diff(max_ts, min_ts, chart_period) == 0 ->
         "Selected chart period #{chart_period} is longer than the timestamp filter interval. Please select a shorter chart period."
@@ -67,4 +65,12 @@ defmodule Logflare.Lql.Validator do
         nil
     end
   end
+
+  @spec validate_chart_rule(ChartRule.t()) :: String.t() | nil
+  def validate_chart_rule(%ChartRule{aggregate: aggregate, value_type: type, path: path})
+      when aggregate in [:sum, :avg] and type not in [nil, :integer, :float] do
+    "Chart aggregate '#{aggregate}' requires a numeric field, but path '#{path}' has type '#{inspect(type)}'."
+  end
+
+  def validate_chart_rule(%ChartRule{}), do: nil
 end

@@ -31,18 +31,25 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     @table_ttl / :timer.hours(24)
   end
 
-  @spec get_project_id(source_id :: atom()) :: String.t()
+  @spec get_project_id(source :: atom() | Source.t()) :: String.t()
   def get_project_id(source_id) when is_atom_value(source_id) do
-    %Source{user_id: user_id} = Sources.Cache.get_by(token: source_id)
+    %Source{} = source = Sources.Cache.get_by(token: source_id)
+    get_project_id(source)
+  end
+
+  def get_project_id(%Source{user_id: user_id}) do
     %User{bigquery_project_id: project_id} = Users.Cache.get(user_id)
 
     project_id || GCPConfig.default_project_id()
   end
 
-  @spec get_bq_user_info(source_id :: atom()) :: map()
+  @spec get_bq_user_info(source :: atom() | Source.t()) :: map()
   def get_bq_user_info(source_id) when is_atom_value(source_id) do
-    %Source{user_id: user_id, bigquery_table_ttl: ttl} = Sources.Cache.get_by(token: source_id)
+    %Source{} = source = Sources.Cache.get_by(token: source_id)
+    get_bq_user_info(source)
+  end
 
+  def get_bq_user_info(%Source{user_id: user_id, bigquery_table_ttl: ttl}) do
     %User{
       id: user_id,
       sources: _sources,

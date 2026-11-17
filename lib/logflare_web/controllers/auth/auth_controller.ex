@@ -172,13 +172,14 @@ defmodule LogflareWeb.AuthController do
       {:ok, user} ->
         conn
         |> put_flash(:info, "Thanks for signing up! Now create a source!")
-        |> put_session(:current_email, user.email)
+        |> put_user_session(user)
         |> redirect(to: Routes.source_path(conn, :new, signup: true))
 
       {:ok_found_user, user} ->
         BigQueryAdaptor.update_iam_policy(user)
         BigQueryAdaptor.patch_dataset_access(user)
 
+        conn = put_user_session(conn, user)
         oauth_params = get_session(conn, :oauth_params)
         vercel_setup_params = get_session(conn, :vercel_setup)
 
@@ -192,7 +193,6 @@ defmodule LogflareWeb.AuthController do
           true ->
             conn
             |> put_flash(:info, "Welcome back!")
-            |> put_session(:current_email, user.email)
             |> redirect(to: ~p"/dashboard")
         end
 
@@ -220,20 +220,15 @@ defmodule LogflareWeb.AuthController do
   end
 
   def redirect_for_oauth(conn, user) do
-    oauth_params = get_session(conn, :oauth_params)
+    oauth_params =
+      conn
+      |> get_session(:oauth_params)
+      |> Map.take(~w(client_id redirect_uri response_type scope state))
 
     conn
     |> put_session(:user_id, user.id)
     |> put_session(:oauth_params, nil)
-    |> redirect(
-      to:
-        Routes.oauth_authorization_path(conn, :new,
-          client_id: oauth_params["client_id"],
-          redirect_uri: oauth_params["redirect_uri"],
-          response_type: oauth_params["response_type"],
-          scope: oauth_params["scope"]
-        )
-    )
+    |> redirect(to: Routes.oauth_authorization_path(conn, :new, oauth_params))
   end
 
   defp maybe_flash_account_deleted(conn) do
@@ -266,7 +261,13 @@ defmodule LogflareWeb.AuthController do
   end
 
   defp put_user_session(conn, user) do
-    conn
-    |> put_session(:current_email, user.email)
+    conn =
+      if get_session(conn, :current_email) == user.email do
+        conn
+      else
+        delete_session(conn, :last_switched_team_id)
+      end
+
+    put_session(conn, :current_email, user.email)
   end
 end

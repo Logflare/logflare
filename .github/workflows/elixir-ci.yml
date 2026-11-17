@@ -90,7 +90,7 @@ jobs:
                 assets/*)
                   frontend=true
                   ;;
-                .tool-versions|Cargo.toml|Cargo.lock|native/mapper_ex/*)
+                .tool-versions|Cargo.toml|Cargo.lock|native/mapper_ex/*|native/sqlparser_ex/*)
                   backend=true
                   rust=true
                   ;;
@@ -420,13 +420,13 @@ jobs:
           path: |
             ~/.cargo
             target
-          key: cargo-v2-${{ runner.os }}-${{ needs.versions.outputs.rust }}-rust-unit-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('Cargo.toml', 'native/mapper_ex/**') }}
+          key: cargo-v2-${{ runner.os }}-${{ needs.versions.outputs.rust }}-rust-unit-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('Cargo.toml', 'native/mapper_ex/**', 'native/sqlparser_ex/**') }}
           restore-keys: |
             cargo-v2-${{ runner.os }}-${{ needs.versions.outputs.rust }}-rust-unit-${{ hashFiles('**/Cargo.lock') }}-
             cargo-v2-${{ runner.os }}-${{ needs.versions.outputs.rust }}-rust-unit-
 
-      - name: Run mapper Rust unit tests
-        run: cargo test -p mapper_ex
+      - name: Run mapper and SQL parser Rust unit tests
+        run: cargo test -p mapper_ex -p sqlparser_ex
 
   frontend:
     name: Frontend JavaScript Unit Tests (assets)

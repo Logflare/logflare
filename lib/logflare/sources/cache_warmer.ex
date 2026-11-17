@@ -7,6 +7,7 @@ defmodule Logflare.Sources.CacheWarmer do
 
   alias Logflare.Billing
   alias Logflare.ContextCache.PeerWarmer
+  alias Logflare.ContextCache.Warmer
   alias Logflare.Repo
   alias Logflare.Sources
   alias Logflare.Sources.Cache
@@ -14,6 +15,13 @@ defmodule Logflare.Sources.CacheWarmer do
   alias Logflare.User
   @impl true
   def execute(_state) do
+    case PeerWarmer.status(Cache) do
+      %{state: :ready} -> warm_from_db()
+      _not_warmed -> initial_warm()
+    end
+  end
+
+  defp initial_warm do
     PeerWarmer.mark_warming(Cache)
 
     case PeerWarmer.copy_from_peer(Cache) do
@@ -22,14 +30,21 @@ defmodule Logflare.Sources.CacheWarmer do
         :ignore
 
       :fallback ->
-        warmed_at = DateTime.utc_now()
-        pairs = Repo.with_replica(&warm_from_db/0)
-        PeerWarmer.mark_ready(Cache, warmed_at)
-        {:ok, pairs}
+        warm_from_db()
     end
   end
 
   defp warm_from_db do
+    warmed_at = DateTime.utc_now()
+
+    with {:ok, _pairs} = result <- Warmer.warm(Cache, &warm/0) do
+      PeerWarmer.mark_ready(Cache, warmed_at)
+      result
+    end
+  end
+
+  @spec warm() :: Warmer.pairs()
+  defp warm do
     # Get sources that have been active in the last day, similar to ingesting users pattern
     sources =
       from(s in Source,

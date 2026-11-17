@@ -274,7 +274,7 @@ defmodule Logflare.LogEvent do
       Enum.reduce(parsed, le.body, fn %{from_path: from_path, to_path: to_path}, acc ->
         case get_in(acc, from_path) do
           nil -> acc
-          value -> put_at_path(acc, to_path, value)
+          value -> put_at_path(acc, to_path, value) |> unwrap_put(acc)
         end
       end)
 
@@ -314,24 +314,31 @@ defmodule Logflare.LogEvent do
        ) do
     accessor_path = Map.get(instruction, :accessor_path)
 
-    with raw when not is_nil(raw) <- get_in(body, from_path),
-         raw_string <- to_string(raw),
+    with raw when is_binary(raw) or is_number(raw) or is_boolean(raw) <- get_in(body, from_path),
+         raw_string = to_string(raw),
          true <- Utils.flag("key_values", raw_string),
          value when not is_nil(value) <-
            KeyValues.Cache.lookup(user_id, raw_string, accessor_path) do
-      put_at_path(body, to_path, value)
+      put_at_path(body, to_path, value) |> unwrap_put(body)
     else
       _ -> body
     end
   end
 
-  @spec put_at_path(map(), [String.t()], term()) :: map()
-  defp put_at_path(map, [leaf], value) when is_map(map), do: Map.put(map, leaf, value)
+  @spec unwrap_put({:ok, map()} | :error, map()) :: map()
+  defp unwrap_put({:ok, new_body}, _body), do: new_body
+  defp unwrap_put(:error, body), do: body
+
+  @spec put_at_path(term(), [String.t()], term()) :: {:ok, map()} | :error
+  defp put_at_path(map, [leaf], value) when is_map(map), do: {:ok, Map.put(map, leaf, value)}
 
   defp put_at_path(map, [head | rest], value) when is_map(map) do
-    child = Map.get(map, head, %{})
-    Map.put(map, head, put_at_path(child, rest, value))
+    with {:ok, child} <- put_at_path(Map.get(map, head, %{}), rest, value) do
+      {:ok, Map.put(map, head, child)}
+    end
   end
+
+  defp put_at_path(_non_map, _path, _value), do: :error
 
   @spec drop_fields(LE.t(), Source.t()) :: {:ok, LE.t()}
   defp drop_fields(%LE{} = le, %Source{
