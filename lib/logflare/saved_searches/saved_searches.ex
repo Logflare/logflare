@@ -26,14 +26,11 @@ defmodule Logflare.SavedSearches do
   @spec get_by_user_access(User.t() | TeamUser.t(), integer() | String.t()) ::
           SavedSearch.t() | nil
   def get_by_user_access(user, id) do
-    sources =
-      Source
-      |> Teams.filter_by_user_access(user)
-      |> select([source], source.id)
-
-    SavedSearch
-    |> where([search], search.id == ^id and search.saved_by_user == true)
-    |> where([search], search.source_id in subquery(sources))
+    Source
+    |> join(:inner, [source], search in assoc(source, :saved_searches))
+    |> where([_source, search], search.id == ^id and search.saved_by_user == true)
+    |> Teams.filter_by_user_access(user)
+    |> select([_source, search], search)
     |> Repo.one()
   end
 
