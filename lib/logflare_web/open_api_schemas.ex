@@ -478,6 +478,43 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: [:id, :matchers]
   end
 
+  defmodule AlertNotificationPolicyApiSchema do
+    @severity %Schema{type: :string, enum: ["critical", "major", "warning", "info"]}
+    @string_list %Schema{type: :array, items: %Schema{type: :string}}
+    @properties %{
+      id: %Schema{type: :integer},
+      name: %Schema{type: :string},
+      enabled: %Schema{type: :boolean},
+      rule_keys: %Schema{@string_list | description: "Rule key globs; empty matches every rule"},
+      min_severity: %Schema{@severity | nullable: true},
+      categories: %Schema{
+        type: :array,
+        items: %Schema{type: :string, enum: ["security", "performance", "health"]}
+      },
+      identifiers: %Schema{type: :object, additionalProperties: %Schema{type: :string}},
+      events: %Schema{
+        type: :array,
+        items: %Schema{type: :string, enum: ["opened", "reopened", "repeat", "resolved"]}
+      },
+      repeat_interval_seconds: %Schema{type: :integer, minimum: 300, nullable: true},
+      receivers: %Schema{
+        @string_list
+        | description: "Receiver names the control plane maps to destinations"
+      },
+      inserted_at: %Schema{type: :string, format: :"date-time"},
+      updated_at: %Schema{type: :string, format: :"date-time"}
+    }
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:id, :name, :receivers]
+  end
+
+  defmodule AlertNotificationPolicyApiParams do
+    @properties AlertNotificationPolicyApiSchema.schema().properties
+                |> Map.drop([:id, :inserted_at, :updated_at])
+
+    use LogflareWeb.OpenApi, properties: @properties, required: []
+  end
+
   defmodule KeyValueApiSchema do
     @properties %{
       id: %Schema{type: :integer},
