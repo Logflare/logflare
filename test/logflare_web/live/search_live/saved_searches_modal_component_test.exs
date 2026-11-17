@@ -9,10 +9,21 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponentTest do
     [user: user, source: insert(:source, user: user)]
   end
 
-  test "shows the empty state and favoriting guidance", %{conn: conn, user: user, source: source} do
+  test "shows the empty state with query saving documentation and favoriting guidance", %{
+    conn: conn,
+    user: user,
+    source: source
+  } do
     view = open_modal(conn, user, source)
 
-    assert has_element?(view, "#saved-searches-empty", "no saved searches")
+    assert has_element?(view, "#saved-searches-empty", "No saved searches yet.")
+
+    assert has_element?(
+             view,
+             "#saved-searches-empty a[href='https://docs.logflare.app/concepts/ingestion/#query-saving']",
+             "Query saving documentation"
+           )
+
     assert has_element?(view, "#saved-searches-modal", "Star a saved search")
   end
 

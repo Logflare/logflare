@@ -145,8 +145,12 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
     ~H"""
     <ItemListComponents.item_list id="saved-searches-list" items={@saved_searches} class="tw-max-h-[70vh] tw-overflow-y-auto" row_class="tw-group/saved-search tw-relative tw-py-3 hover:tw-bg-[#303030]" row_id={&"saved-search-#{&1.id}"}>
       <:empty>
-        <div id="saved-searches-empty" class="tw-flex tw-items-center tw-justify-center tw-min-h-[320px] tw-w-full tw-text-center tw-text-gray-500 tw-text-sm">
-          no saved searches
+        <div id="saved-searches-empty" class="tw-flex tw-flex-col tw-items-center tw-justify-center tw-gap-2 tw-min-h-[320px] tw-w-full tw-px-4 tw-text-center tw-text-gray-400 tw-text-sm">
+          <p class="tw-m-0">No saved searches yet.</p>
+          <p class="tw-m-0">Save a query from the Search page to find it here.</p>
+          <.link href="https://docs.logflare.app/concepts/ingestion/#query-saving" target="_blank" rel="noopener noreferrer">
+            Query saving documentation
+          </.link>
         </div>
       </:empty>
       <:item :let={saved_search}>
