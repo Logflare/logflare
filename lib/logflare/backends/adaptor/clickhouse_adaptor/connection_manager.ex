@@ -430,7 +430,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
 
   @spec clear_pool(__MODULE__.t()) :: __MODULE__.t()
   defp clear_pool(%__MODULE__{} = state),
-    do: %__MODULE__{state | pool_pid: nil, next_recycle_at: nil}
+    do: %__MODULE__{state | pool_pid: nil, pool_opts_hash: nil, next_recycle_at: nil}
 
   @spec pool_opts_current?(__MODULE__.t(), Backend.t()) :: boolean()
   defp pool_opts_current?(%__MODULE__{label: label} = state, %Backend{} = backend) do
