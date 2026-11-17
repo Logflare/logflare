@@ -649,8 +649,8 @@ defmodule Logflare.Backends do
     `pipeline_swap_delay_ms/0`, its running pipelines replaced through
     `Adaptor.replace_pipelines/1`. A default ingest backend with no running pipeline
     has one started.
-  - Any other backend has the `SourceSup` of each linked source restarted, unless it
-    already runs the backend with its saved type and config.
+  - Any other backend has the `SourceSup` of each linked source restarted if it runs on
+    this node, unless it already runs the backend with its saved type and config.
   - A deleted backend has its consolidated pipeline stopped and every adaptor notified.
   """
   @spec apply_backend_change_local(pos_integer()) :: :ok
@@ -683,14 +683,12 @@ defmodule Logflare.Backends do
   @spec apply_backend_config_local(Backend.t()) :: :ok
   defp apply_backend_config_local(%Backend{} = backend) do
     __MODULE__.Cache.put({:get_backend, [backend.id]}, backend)
-    sources = Sources.list_sources(backend_id: backend.id)
-    Enum.each(sources, &clear_list_backends_cache(&1.id))
     Adaptor.on_backend_config_changed(backend)
-    apply_ingest_change_local(backend, sources)
+    apply_ingest_change_local(backend)
   end
 
-  @spec apply_ingest_change_local(Backend.t(), [Source.t()]) :: :ok
-  defp apply_ingest_change_local(%Backend{consolidated_ingest?: true} = backend, _sources) do
+  @spec apply_ingest_change_local(Backend.t()) :: :ok
+  defp apply_ingest_change_local(%Backend{consolidated_ingest?: true} = backend) do
     cond do
       ConsolidatedSup.pipeline_running?(backend) ->
         _ = replace_pipelines_after_delay(backend.id)
@@ -704,12 +702,15 @@ defmodule Logflare.Backends do
     end
   end
 
-  defp apply_ingest_change_local(%Backend{} = backend, sources) do
-    sources
+  defp apply_ingest_change_local(%Backend{} = backend) do
+    [backend_id: backend.id]
+    |> Sources.list_sources()
     |> Enum.reject(&SourceSup.backend_child_current?(&1, backend))
     |> Enum.each(fn source ->
-      cache_source_backends(source)
-      restart_source_sup(source)
+      with :ok <- stop_source_sup(source) do
+        cache_source_backends(source)
+        start_source_sup(source)
+      end
     end)
   end
 

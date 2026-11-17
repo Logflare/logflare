@@ -281,6 +281,18 @@ defmodule Logflare.BackendsTest do
       [backend: backend]
     end
 
+    test "backend linked to a source", %{backend: backend} do
+      source = insert(:source, user_id: backend.user_id)
+      {:ok, _source} = Backends.update_source_backends(source, [backend])
+      assert [_backend] = Backends.Cache.list_backends(source_id: source.id)
+      reject(&Sources.list_sources/1)
+
+      assert :ok = Backends.apply_backend_change_local(backend.id)
+
+      assert {:ok, false} =
+               Cachex.exists?(Backends.Cache, {:list_backends, [[source_id: source.id]]})
+    end
+
     test "backend with new batch limits", %{backend: backend} do
       config_changes = %{batch_size: 2_000, batch_timeout: 1_500}
       adaptor_sup = TestUtils.consolidated_sup_pid(backend)
@@ -456,6 +468,18 @@ defmodule Logflare.BackendsTest do
 
       refute source_sup_pid(source) == source_sup
       assert {_pid, %Backend{config: %{url: "http://test.com"}}} = webhook_child(source)
+    end
+
+    test "linked source without a running source sup", %{user: user} do
+      idle_source = insert(:source, user: user)
+      backend = insert_webhook_backend(user, idle_source)
+
+      assert :ok = Backends.apply_backend_change_local(backend.id)
+
+      assert [] = Registry.lookup(SourceRegistry, {idle_source.id, SourceSup})
+
+      assert {:ok, false} =
+               Cachex.exists?(Backends.Cache, {:list_backends, [[source_id: idle_source.id]]})
     end
 
     test "linked backend whose config changed", %{user: user, source: source} do
