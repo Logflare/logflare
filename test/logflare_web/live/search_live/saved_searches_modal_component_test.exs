@@ -29,6 +29,7 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponentTest do
       )
 
     unnamed = insert(:saved_search, source: source)
+    empty_description = insert(:saved_search, source: source, description: "")
 
     view = open_modal(conn, user, source)
 
@@ -40,10 +41,15 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponentTest do
              "Investigate server errors"
            )
 
-    assert has_element?(view, "#run-saved-search-#{named.id} code", named.querystring)
+    assert has_element?(view, "#run-saved-search-#{named.id} p + code", named.querystring)
     assert has_element?(view, "#copy-saved-search-#{named.id}")
     assert has_element?(view, "#run-saved-search-#{unnamed.id}", "untitled")
     assert has_element?(view, "#run-saved-search-#{unnamed.id} code", unnamed.querystring)
+
+    for search <- [unnamed, empty_description] do
+      refute has_element?(view, "#saved-search-description-#{search.id}")
+      assert has_element?(view, "#run-saved-search-#{search.id} span + code", search.querystring)
+    end
   end
 
   test "rejects a forged source ID even when its saved searches are cached", %{
@@ -118,10 +124,36 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponentTest do
              lql_charts: ^lql_charts,
              tailing: false
            } = SavedSearches.get(search.id)
+  end
+
+  test "source-authorized members can delete a saved search from its edit form", %{
+    conn: conn,
+    user: user,
+    source: source
+  } do
+    member = insert(:team_user, team: insert(:team, user: user))
+    search = insert(:saved_search, source: source, name: "Production errors")
+
+    view = open_modal(conn, member, source)
+
+    view |> element("#edit-saved-search-name-#{search.id}") |> render_click()
+
+    assert has_element?(
+             view,
+             "#rename-saved-search-#{search.id} #delete-saved-search-#{search.id}[data-confirm]",
+             "Delete"
+           )
+
+    assert has_element?(
+             view,
+             "#rename-saved-search-#{search.id} textarea ~ code",
+             search.querystring
+           )
 
     view |> element("#delete-saved-search-#{search.id}") |> render_click()
 
     refute SavedSearches.get(search.id).saved_by_user
+    refute has_element?(view, "#saved-search-#{search.id}")
   end
 
   test "untitled searches cannot be starred until a title is added", %{

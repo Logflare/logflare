@@ -193,6 +193,7 @@ defmodule LogflareWeb.DashboardLiveTest do
       end)
 
       deleted = List.last(searches)
+      view |> element("#edit-saved-search-name-#{deleted.id}") |> render_click()
       view |> element("#delete-saved-search-#{deleted.id}") |> render_click()
 
       TestUtils.retry_assert(fn ->

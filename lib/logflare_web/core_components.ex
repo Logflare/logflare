@@ -150,7 +150,18 @@ defmodule LogflareWeb.CoreComponents do
 
   @doc "button"
   attr :variant, :string,
-    values: ["primary", "secondary", "success", "danger", "warning", "info", "light", "dark"]
+    values: [
+      "primary",
+      "secondary",
+      "success",
+      "danger",
+      "warning",
+      "info",
+      "light",
+      "dark",
+      "outline-secondary",
+      "outline-danger"
+    ]
 
   attr :class, :string, default: ""
   attr :disabled, :boolean, default: false

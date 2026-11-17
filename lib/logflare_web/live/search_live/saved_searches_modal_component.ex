@@ -181,25 +181,21 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
               class="tw-relative tw-z-20 tw-col-start-2 tw-flex tw-flex-wrap tw-gap-4 tw-mt-3 sm:tw-col-start-auto sm:tw-flex-col sm:tw-gap-2.5 sm:tw-mt-0 sm:tw-ml-3 sm:[@media(hover:hover)_and_(pointer:fine)]:tw-opacity-0 group-hover/saved-search:tw-opacity-100 group-focus-within/saved-search:tw-opacity-100"
             >
               <.clipboard_button id={"copy-saved-search-#{saved_search.id}"} phx-hook="Tooltip" text={saved_search.querystring} label="Copy" title="Copy query" aria-label="Copy search query" placement="left" class={@action_button_class} />
-              <button id={"edit-saved-search-name-#{saved_search.id}"} phx-hook="Tooltip" type="button" phx-click="edit_name" phx-target={@myself} phx-value-id={saved_search.id} aria-label="Edit saved search" data-toggle="tooltip" data-original-title="Edit saved search" data-placement="left" class={@action_button_class}>
-                <i class="fa fa-pencil-alt" aria-hidden="true"></i>
-                <span>Edit</span>
-              </button>
               <button
-                id={"delete-saved-search-#{saved_search.id}"}
+                id={"edit-saved-search-name-#{saved_search.id}"}
                 phx-hook="Tooltip"
                 type="button"
-                phx-click={JS.add_class("tw-hidden", to: "#saved-search-#{saved_search.id}") |> JS.push("update_saved_search", target: @myself, value: %{saved_search: %{saved_by_user: false}})}
+                phx-click="edit_name"
+                phx-target={@myself}
                 phx-value-id={saved_search.id}
-                data-confirm="Delete saved search?"
-                aria-label="Delete saved search"
+                aria-label="Edit saved search"
                 data-toggle="tooltip"
-                data-original-title="Delete saved search"
+                data-original-title="Edit saved search"
                 data-placement="left"
                 class={@action_button_class}
               >
-                <i class="fa fa-trash" aria-hidden="true"></i>
-                <span>Delete</span>
+                <i class="fa fa-pencil-alt" aria-hidden="true"></i>
+                <span>Edit</span>
               </button>
             </div>
           </div>
@@ -228,7 +224,6 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
           "phx-mounted": JS.focus()
         )}
         {error_tag(@name_form, :name)}
-        <.saved_search_query querystring={@saved_search.querystring} />
         <label for={"saved-search-description-#{@saved_search.id}"} class="tw-text-sm tw-mt-2 tw-mb-1">Description</label>
         {textarea(@name_form, :description,
           id: "saved-search-description-#{@saved_search.id}",
@@ -236,9 +231,21 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
           rows: 2
         )}
         {error_tag(@name_form, :description)}
-        <div class="tw-flex tw-justify-end tw-gap-2 tw-mt-2">
-          <button type="submit" id={"save-saved-search-name-#{@saved_search.id}"} class="btn btn-primary btn-sm tw-mr-0" phx-disable-with="Saving…">Save</button>
-          <button type="button" id={"cancel-saved-search-name-#{@saved_search.id}"} phx-click="cancel_rename" phx-target={@myself} class="btn btn-outline-secondary btn-sm tw-mr-0">Cancel</button>
+        <.saved_search_query querystring={@saved_search.querystring} />
+        <div class="tw-flex tw-gap-2 tw-mt-2">
+          <.button variant="primary" type="submit" id={"save-saved-search-name-#{@saved_search.id}"} class="btn-sm tw-mr-0" phx-disable-with="Saving…">Save</.button>
+          <.button variant="outline-secondary" id={"cancel-saved-search-name-#{@saved_search.id}"} phx-click="cancel_rename" phx-target={@myself} class="btn-sm tw-mr-0">Cancel</.button>
+          <.button
+            variant="outline-danger"
+            id={"delete-saved-search-#{@saved_search.id}"}
+            phx-click={JS.add_class("tw-hidden", to: "#saved-search-#{@saved_search.id}") |> JS.push("update_saved_search", target: @myself, value: %{saved_search: %{saved_by_user: false}})}
+            phx-value-id={@saved_search.id}
+            data-confirm="Delete saved search?"
+            aria-label="Delete saved search"
+            class="btn-sm tw-ml-auto tw-mr-0"
+          >
+            Delete
+          </.button>
         </div>
       </.form>
     </div>
@@ -259,8 +266,8 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
         class="stretched-link tw-block tw-cursor-pointer tw-text-white tw-text-sm hover:tw-no-underline focus-visible:tw-outline focus-visible:tw-outline-2 focus-visible:tw-outline-offset-2"
       >
         <span class="tw-block tw-truncate tw-text-base">{display_name(@saved_search)}</span>
+        <p :if={@saved_search.description not in [nil, ""]} id={"saved-search-description-#{@saved_search.id}"} class="tw-text-sm tw-truncate tw-mt-2 tw-mb-0">{@saved_search.description}</p>
         <.saved_search_query querystring={@saved_search.querystring} />
-        <p id={"saved-search-description-#{@saved_search.id}"} class="tw-h-5 tw-text-sm tw-truncate tw-mt-2 tw-mb-0">{@saved_search.description}</p>
       </.link>
     </div>
     """
