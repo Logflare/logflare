@@ -185,7 +185,7 @@ defmodule Logflare.RepoTest do
     metrics =
       Enum.filter(Telemetry.metrics(), &(&1.event_name == [:logflare, :repo, :query]))
 
-    assert length(metrics) == 4
+    assert length(metrics) == 5
     test_pid = self()
     handler_id = {__MODULE__, make_ref()}
 
@@ -212,7 +212,7 @@ defmodule Logflare.RepoTest do
       end
 
       for metric <- metrics do
-        assert metric.tags == [:role]
+        assert :role in metric.tags
         name = metric.name
         assert_receive {:query_role, ^name, %{role: ^role}}
       end
