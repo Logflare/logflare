@@ -41,6 +41,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   # knob — see BufferProducer's capped_fetch_amount/2. Should never engage during
   # healthy operation; only caps genuinely runaway backlog.
   @max_in_flight 4 * @max_batch_size * @batcher_concurrency
+  @exclude_bytes_label "__LF_MONITORING_EXCLUDE_BYTES"
 
   def start_link(args, opts \\ []) do
     {name, args} = Keyword.pop(args, :name)
@@ -690,7 +691,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   end
 
   defp emit_event_telemetry({sid, bid, _}, source, event_labels, size, backend_metadata) do
-    metrics = %{ingested_bytes: size}
+    {excluded, event_labels} = Map.pop(event_labels, @exclude_bytes_label)
 
     metadata =
       %{
@@ -703,6 +704,17 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       |> Map.merge(event_labels)
       |> Map.merge(backend_metadata)
 
-    :telemetry.execute([:logflare, :backends, :ingest], metrics, metadata)
+    :telemetry.execute(
+      [:logflare, :backends, :ingest],
+      byte_measurements(excluded, size),
+      metadata
+    )
   end
+
+  @spec byte_measurements(term(), non_neg_integer()) :: %{
+          ingested_bytes: non_neg_integer(),
+          excluded_bytes: non_neg_integer()
+        }
+  defp byte_measurements(true, size), do: %{ingested_bytes: 0, excluded_bytes: size}
+  defp byte_measurements(_excluded, size), do: %{ingested_bytes: size, excluded_bytes: 0}
 end

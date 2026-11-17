@@ -452,6 +452,92 @@ defmodule Logflare.BigQuery.PipelineTest do
       assert bytes < hd(messages).data.size
     end
 
+    test "handle_batch counts events flagged by the exclude bytes directive as excluded_bytes", %{
+      source: source
+    } do
+      source =
+        insert(:source,
+          user_id: source.user_id,
+          labels: "__LF_MONITORING_EXCLUDE_BYTES=excluded_by_user_config,lvl=m.level"
+        )
+
+      context = bq_context(source)
+      batch_info = %Broadway.BatchInfo{batcher: :bq, batch_key: :bq, size: 3, trigger: :flush}
+
+      stub(Logflare.Google.BigQuery, :stream_batch!, fn _ctx, _rows ->
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      flagged =
+        build(:log_event,
+          source: source,
+          message: "flagged",
+          excluded_by_user_config: true,
+          metadata: %{"level" => "info"}
+        )
+
+      unflagged =
+        build(:log_event, source: source, message: "unflagged", metadata: %{"level" => "info"})
+
+      string_flag =
+        build(:log_event,
+          source: source,
+          message: "string flag",
+          excluded_by_user_config: "true",
+          metadata: %{"level" => "info"}
+        )
+
+      events = Enum.map([flagged, unflagged, string_flag], &LogEvent.cache_sizes/1)
+      {messages, _tid} = setup_queue(source, events)
+      attach_ingest_handler()
+
+      Pipeline.handle_batch(:bq, messages, batch_info, context)
+
+      [flagged_bytes, unflagged_bytes, string_bytes] =
+        Enum.map(events, &LogEvent.accounted_byte_size/1)
+
+      received =
+        for _ <- events do
+          assert_receive {:ingest, measurements, metadata}
+          {measurements, metadata}
+        end
+
+      assert Enum.sort(Enum.map(received, &elem(&1, 0))) ==
+               Enum.sort([
+                 %{ingested_bytes: 0, excluded_bytes: flagged_bytes},
+                 %{ingested_bytes: unflagged_bytes, excluded_bytes: 0},
+                 %{ingested_bytes: string_bytes, excluded_bytes: 0}
+               ])
+
+      assert [metadata] = received |> Enum.map(&elem(&1, 1)) |> Enum.uniq()
+      assert metadata["lvl"] == "info"
+      refute Map.has_key?(metadata, "__LF_MONITORING_EXCLUDE_BYTES")
+    end
+
+    test "handle_batch counts every event as ingested_bytes without the exclude bytes directive",
+         %{source: source} do
+      source = insert(:source, user_id: source.user_id, labels: "flag=excluded_by_user_config")
+      context = bq_context(source)
+      batch_info = %Broadway.BatchInfo{batcher: :bq, batch_key: :bq, size: 1, trigger: :flush}
+
+      stub(Logflare.Google.BigQuery, :stream_batch!, fn _ctx, _rows ->
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      le =
+        build(:log_event, source: source, excluded_by_user_config: true)
+        |> LogEvent.cache_sizes()
+
+      {messages, _tid} = setup_queue(source, [le])
+      attach_ingest_handler()
+
+      Pipeline.handle_batch(:bq, messages, batch_info, context)
+
+      bytes = LogEvent.accounted_byte_size(le)
+      assert_receive {:ingest, %{ingested_bytes: ^bytes, excluded_bytes: 0}, metadata}
+      assert metadata["flag"] == true
+    end
+
     test "le_to_bq_row/1 generates TableDataInsertAllRequestRows struct correctly", %{
       source: source
     } do
@@ -792,6 +878,22 @@ defmodule Logflare.BigQuery.PipelineTest do
         end)
 
       {messages, tid}
+    end
+
+    defp attach_ingest_handler do
+      test_pid = self()
+      handler = "test-ingest-#{inspect(make_ref())}"
+
+      :telemetry.attach(
+        handler,
+        [:logflare, :backends, :ingest],
+        fn _event, measurements, metadata, _ ->
+          send(test_pid, {:ingest, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
     end
 
     defp bq_context(source) do

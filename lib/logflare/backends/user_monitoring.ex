@@ -20,6 +20,7 @@ defmodule Logflare.Backends.UserMonitoring do
     [
       sum("logflare.backends.ingest.ingested_bytes",
         keep: &keep_metric_function/1,
+        reporter_options: [secondary_measurement: :excluded_bytes],
         description: "Amount of bytes ingested by backend for a source"
       ),
       sum("logflare.endpoints.query.total_bytes_processed",
