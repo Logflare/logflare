@@ -181,5 +181,45 @@ defmodule LogflareWeb.Plugs.SetTeamContextTest do
       assert conn.assigns.user.id == user.id
       assert conn.assigns.team.id == team.id
     end
+
+    test "falls back to the session team on non-GET requests with an invalid team_id", %{
+      conn: conn,
+      user: user
+    } do
+      other_team = insert(:team)
+      insert(:team_user, team: other_team, email: user.email, provider_uid: user.provider_uid)
+
+      conn =
+        conn
+        |> login_user(user)
+        |> Plug.Conn.put_session(:last_switched_team_id, other_team.id)
+        |> Map.put(:method, "DELETE")
+        |> Map.put(:params, %{"t" => "invalid_id"})
+        |> Map.put(:query_params, %{"t" => "invalid_id"})
+        |> Map.put(:request_path, "/account")
+        |> SetTeamContext.call(@opts)
+
+      refute conn.halted
+      assert conn.assigns.team.id == other_team.id
+    end
+
+    test "falls back to the home team when the session team_id is also invalid", %{
+      conn: conn,
+      user: user,
+      team: team
+    } do
+      conn =
+        conn
+        |> login_user(user)
+        |> Plug.Conn.put_session(:last_switched_team_id, "also_invalid")
+        |> Map.put(:method, "DELETE")
+        |> Map.put(:params, %{"t" => "invalid_id"})
+        |> Map.put(:query_params, %{"t" => "invalid_id"})
+        |> Map.put(:request_path, "/account")
+        |> SetTeamContext.call(@opts)
+
+      refute conn.halted
+      assert conn.assigns.team.id == team.id
+    end
   end
 end

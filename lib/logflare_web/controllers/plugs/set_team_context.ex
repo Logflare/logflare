@@ -46,10 +46,17 @@ defmodule LogflareWeb.Plugs.SetTeamContext do
         drop_team_param(conn)
 
       {:error, :invalid_team_id} ->
-        set_team_context(conn, nil, email)
+        set_team_context(conn, fallback_team_id(conn, team_id), email)
 
       {:error, :not_authorized} ->
         forbidden(conn, email)
+    end
+  end
+
+  defp fallback_team_id(conn, invalid_team_id) do
+    case get_session(conn, :last_switched_team_id) do
+      ^invalid_team_id -> nil
+      session_team_id -> session_team_id
     end
   end
 
