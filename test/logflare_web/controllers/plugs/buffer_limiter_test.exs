@@ -201,6 +201,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       conn: conn,
       source: source
     } do
+      stub(IngestEventQueue, :max_consolidated_queue_size, fn -> 50 end)
       backend = Backends.get_default_backend(%Logflare.User{id: source.user_id})
 
       over_limit = Backends.max_buffer_queue_len() + 1
@@ -215,9 +216,16 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       assert Backends.system_default_ingest_queue_key(source) == {:consolidated, backend.id}
 
       Logflare.PubSubRates.Cache.cache_buffers(:consolidated, backend.id, %{
+        Node.self() => %{len: 50, queues: [{{:consolidated, backend.id, self()}, 50}]}
+      })
+
+      conn = conn |> recycle() |> assign(:source, source) |> BufferLimiter.call(%{})
+      refute conn.halted
+
+      Logflare.PubSubRates.Cache.cache_buffers(:consolidated, backend.id, %{
         Node.self() => %{
-          len: over_limit,
-          queues: [{{:consolidated, backend.id, self()}, over_limit}]
+          len: 51,
+          queues: [{{:consolidated, backend.id, self()}, 51}]
         }
       })
 
