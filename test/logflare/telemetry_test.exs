@@ -38,6 +38,7 @@ defmodule Logflare.TelemetryTest do
   @ch_read_pool_checkout_event [:logflare, :clickhouse, :read_pool, :checkout]
   @ch_read_pool_status_event [:logflare, :clickhouse, :read_pool, :pool_status]
   @ch_read_pool_poll_failure_event [:logflare, :clickhouse, :read_pool, :poll_failure]
+  @repo_pool_status_event [:logflare, :repo, :pool, :pool_status]
   @ch_read_pool_wait_buckets_us [
     50,
     100,
@@ -367,6 +368,56 @@ defmodule Logflare.TelemetryTest do
       assert pool_size.measurement == :pool_size
     end
 
+    test "counts Repo queries tagged by role and result" do
+      metric = read_pool_metric([:logflare, :repo, :query, :count])
+
+      assert to_string(metric.__struct__) == "Elixir.Telemetry.Metrics.Counter"
+      assert metric.event_name == [:logflare, :repo, :query]
+      assert metric.tags == [:role, :result]
+
+      assert %{role: :primary, result: :ok} =
+               metric.tag_values.(%{repo: Logflare.Repo, result: {:ok, %{}}, options: []})
+
+      assert %{role: :replica, result: :error} =
+               metric.tag_values.(%{
+                 repo: Logflare.Repo,
+                 result: {:error, %RuntimeError{}},
+                 options: [role: :replica]
+               })
+    end
+
+    test "counts Logflare.Repo checkout failures tagged by reason, ignoring other pools" do
+      metric = read_pool_metric([:logflare, :repo, :checkout_error])
+      error = %DBConnection.ConnectionError{message: "dropped", reason: :queue_timeout}
+
+      assert to_string(metric.__struct__) == "Elixir.Telemetry.Metrics.Sum"
+      assert metric.event_name == [:db_connection, :connection_error]
+      assert metric.measurement == :count
+      assert metric.tags == [:reason]
+
+      repo_metadata = %{error: error, opts: [repo: Logflare.Repo]}
+
+      assert metric.keep.(repo_metadata)
+      assert %{reason: :queue_timeout} = metric.tag_values.(repo_metadata)
+      refute metric.keep.(%{error: error, opts: [backend_id: 1]})
+    end
+
+    test "defines Repo pool status gauges polled from DBConnection" do
+      ready = read_pool_metric([:logflare, :repo, :pool, :ready_conn_count])
+      queued = read_pool_metric([:logflare, :repo, :pool, :checkout_queue_length])
+      pool_size = read_pool_metric([:logflare, :repo, :pool, :pool_size])
+
+      for metric <- [ready, queued, pool_size] do
+        assert to_string(metric.__struct__) == "Elixir.Telemetry.Metrics.LastValue"
+        assert metric.event_name == @repo_pool_status_event
+        assert metric.tags == []
+      end
+
+      assert ready.measurement == :ready_conn_count
+      assert queued.measurement == :checkout_queue_length
+      assert pool_size.measurement == :pool_size
+    end
+
     test "defines a ClickHouse read pool poll failure counter tagged by reason" do
       metric = read_pool_metric(@ch_read_pool_poll_failure_event)
 
@@ -585,6 +636,36 @@ defmodule Logflare.TelemetryTest do
     test "omits commit when the SHA is empty or whitespace-only" do
       refute Map.has_key?(Telemetry.service_attributes(""), :commit)
       refute Map.has_key?(Telemetry.service_attributes("   "), :commit)
+    end
+  end
+
+  describe "repo_pool_metrics/1" do
+    setup do
+      TestUtils.attach_forwarder(@repo_pool_status_event)
+      :ok
+    end
+
+    test "emits ready and queued counts with the configured pool size for the Repo pool" do
+      Telemetry.repo_pool_metrics()
+
+      pool_size = Logflare.Repo.config()[:pool_size]
+
+      assert_receive {:telemetry_event, @repo_pool_status_event,
+                      %{
+                        ready_conn_count: ready,
+                        checkout_queue_length: queued,
+                        pool_size: ^pool_size
+                      }, %{}}
+
+      assert is_integer(ready) and ready >= 0
+      assert is_integer(queued) and queued >= 0
+      refute_received {:telemetry_event, @repo_pool_status_event, _, _}
+    end
+
+    test "emits nothing for a repo that is not running" do
+      Telemetry.repo_pool_metrics(Logflare.NotStartedRepo)
+
+      refute_received {:telemetry_event, @repo_pool_status_event, _, _}
     end
   end
 
