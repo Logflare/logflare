@@ -873,6 +873,7 @@ defmodule Logflare.SourcesTest do
 
       assert sources |> Enum.map(& &1.name) |> Enum.sort() == [
                "system.alert_issue_comments",
+               "system.alert_issue_notifications",
                "system.alert_issue_reads",
                "system.alert_issues"
              ]
@@ -915,7 +916,7 @@ defmodule Logflare.SourcesTest do
     test "caps retention at the plan limit", %{user: user} do
       sources = Sources.create_alert_issue_system_sources(user.id)
 
-      assert length(sources) == 3
+      assert length(sources) == length(Source.alert_issue_system_source_types())
       assert Enum.all?(sources, &(&1.retention_days == 7))
     end
   end

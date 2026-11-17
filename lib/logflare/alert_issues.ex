@@ -337,7 +337,12 @@ defmodule Logflare.AlertIssues do
     Backends.ingest_logs([snapshot], system_source(user_id, :alert_issues))
   end
 
-  defp system_source(user_id, type) do
+  @doc """
+  The user's alert issue system source of `type`, creating the alert issue system
+  sources on first use.
+  """
+  @spec system_source(pos_integer(), atom()) :: Logflare.Sources.Source.t()
+  def system_source(user_id, type) do
     case Sources.Cache.get_by(user_id: user_id, system_source_type: type) do
       nil ->
         user_id

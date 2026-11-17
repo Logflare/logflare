@@ -597,6 +597,13 @@ config :logflare, Oban,
 
 config :logflare, Logflare.Alerting, enabled: enable_alerting?
 
+# Control plane endpoint that fans alert issue notifications out to receivers: the
+# platform component on the hosted platform, or Studio's API route when self-hosted.
+# Unset disables alert issue notification events.
+config :logflare, Logflare.AlertIssues.Notifier,
+  url: System.get_env("LOGFLARE_ALERT_ISSUE_NOTIFIER_URL"),
+  secret: System.get_env("LOGFLARE_ALERT_ISSUE_NOTIFIER_SECRET")
+
 # LOGFLARE_CACHE_GOSSIP_ENABLED: Enable or disable cache gossip
 default_cache_gossip_enabled = if config_env() == :test, do: "true", else: "false"
 
