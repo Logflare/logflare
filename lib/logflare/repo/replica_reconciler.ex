@@ -10,9 +10,10 @@ defmodule Logflare.Repo.ReplicaReconciler do
 
   use GenServer
 
+  import Ecto.Query, only: [from: 2, union_all: 2]
+
   require Logger
 
-  alias Ecto.Adapters.SQL
   alias Logflare.Repo
   alias Logflare.Repo.Replicas
 
@@ -21,7 +22,7 @@ defmodule Logflare.Repo.ReplicaReconciler do
   @interval :timer.minutes(30)
   @jitter :timer.minutes(5)
   @initial_delay :timer.minutes(1)
-  @lag_seconds 60
+  @max_lag_seconds 60
 
   @type replica_key :: String.t() | module()
   @type stats :: {non_neg_integer(), NaiveDateTime.t() | nil}
@@ -61,7 +62,7 @@ defmodule Logflare.Repo.ReplicaReconciler do
   """
   @spec compare(Ecto.Repo.t() | pid()) :: check_result()
   def compare(replica_repo) do
-    cutoff = NaiveDateTime.add(NaiveDateTime.utc_now(), -@lag_seconds)
+    cutoff = NaiveDateTime.add(NaiveDateTime.utc_now(), -@max_lag_seconds)
 
     with {:ok, primary} <- table_stats(Repo, cutoff),
          {:ok, replica} <- table_stats(replica_repo, cutoff) do
@@ -91,14 +92,36 @@ defmodule Logflare.Repo.ReplicaReconciler do
   defp schedule(delay), do: Process.send_after(self(), :reconcile, delay + :rand.uniform(@jitter))
 
   defp table_stats(repo, cutoff) do
-    sql =
-      Enum.map_join(@tables, " UNION ALL ", fn table ->
-        "SELECT '#{table}', count(*), max(updated_at) FROM #{table} WHERE updated_at <= $1"
-      end)
+    query = stats_query(cutoff)
 
-    with {:ok, %{rows: rows}} <- SQL.query(repo, sql, [cutoff]) do
-      {:ok,
-       Map.new(rows, fn [table, count, max_updated_at] -> {table, {count, max_updated_at}} end)}
+    rows = with_dynamic_repo(repo, fn -> Repo.all(query) end)
+
+    {:ok,
+     Map.new(rows, fn {table, count, max_updated_at} -> {table, {count, max_updated_at}} end)}
+  rescue
+    error -> {:error, error}
+  end
+
+  defp stats_query(cutoff) do
+    [first | rest] = Enum.map(@tables, &table_stats_query(&1, cutoff))
+    Enum.reduce(rest, first, &union_all(&2, ^&1))
+  end
+
+  defp table_stats_query(table, cutoff) do
+    from(t in table,
+      where: t.updated_at <= ^cutoff,
+      select: {type(^table, :string), count(), max(t.updated_at)}
+    )
+  end
+
+  defp with_dynamic_repo(repo, fun) do
+    previous = Repo.get_dynamic_repo()
+    Repo.put_dynamic_repo(repo)
+
+    try do
+      fun.()
+    after
+      Repo.put_dynamic_repo(previous)
     end
   end
 
