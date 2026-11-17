@@ -380,6 +380,13 @@ defmodule Logflare.Sources do
     |> put_retention_days()
   end
 
+  @spec exists?(Keyword.t()) :: boolean()
+  def exists?(filters) do
+    Source
+    |> where(^filters)
+    |> Repo.exists?()
+  end
+
   @spec get_by_and_preload(Keyword.t()) :: Source.t() | nil
   def get_by_and_preload(kw) do
     Source

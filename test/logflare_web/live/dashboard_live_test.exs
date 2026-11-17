@@ -74,12 +74,13 @@ defmodule LogflareWeb.DashboardLiveTest do
       assert view |> has_element?(".modal-title", "Saved Searches")
     end
 
-    test "authorizes saved searches as the signed-in member, not the team owner", %{
-      conn: conn,
-      user: user,
-      team: team,
-      source: source
-    } do
+    test "limits saved searches to the resolved team owner even when the owner belongs to other teams",
+         %{
+           conn: conn,
+           user: user,
+           team: team,
+           source: source
+         } do
       member = insert(:team_user, team: team)
       own_search = insert(:saved_search, source: source, name: "Team search")
       other_team = insert(:team)

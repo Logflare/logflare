@@ -6,15 +6,15 @@ defmodule LogflareWeb.SavedSearchesModalLive do
 
   @impl true
   @spec mount(map(), map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
-  def mount(_params, %{"user" => user, "params" => params}, socket) do
-    {:ok, assign(socket, user: user, params: params)}
+  def mount(_params, %{"user" => user, "params" => params} = session, socket) do
+    {:ok, assign(socket, user: user, team_user: session["team_user"], params: params)}
   end
 
   @impl true
   @spec render(map()) :: Phoenix.LiveView.Rendered.t()
   def render(assigns) do
     ~H"""
-    <.live_component module={SavedSearchesModalComponent} id="saved-searches-modal" user={@user} params={@params} />
+    <.live_component module={SavedSearchesModalComponent} id="saved-searches-modal" user={@user} team_user={@team_user} params={@params} />
     """
   end
 

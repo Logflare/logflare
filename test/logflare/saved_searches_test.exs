@@ -68,29 +68,25 @@ defmodule Logflare.SavedSearchesTest do
     assert Enum.map(searches, & &1.id) == [first.id, second.id, other.id]
   end
 
-  test "get_by_user_access/2 returns only saved searches on accessible sources", %{
+  test "get_by_user/2 returns only the owner's saved searches, not searches from other teams", %{
     user: owner,
     source: source
   } do
-    team = insert(:team, user: owner)
-    team_user = insert(:team_user, team: team)
-    member = insert(:user, email: team_user.email)
+    other_owner = insert(:user)
+    other_team = insert(:team, user: other_owner)
+    insert(:team_user, team: other_team, email: owner.email)
     %{id: id} = saved_search = insert(:saved_search, source: source)
     unsaved_search = insert(:saved_search, source: source, saved_by_user: false)
-    other_search = insert(:saved_search)
+    other_search = insert(:saved_search, source: insert(:source, user: other_owner))
 
-    for actor <- [owner, member, team_user] do
-      assert %SavedSearch{id: ^id} = SavedSearches.get_by_user_access(actor, id)
-      assert %SavedSearch{id: ^id} = SavedSearches.get_by_user_access(actor, to_string(id))
-      assert SavedSearches.get_by_user_access(actor, unsaved_search.id) == nil
-      assert SavedSearches.get_by_user_access(actor, other_search.id) == nil
-    end
+    assert %SavedSearch{id: ^id} = SavedSearches.get_by_user(owner, id)
+    assert %SavedSearch{id: ^id} = SavedSearches.get_by_user(owner, to_string(id))
+    assert SavedSearches.get_by_user(owner, unsaved_search.id) == nil
+    assert SavedSearches.get_by_user(owner, other_search.id) == nil
 
     Repo.delete!(saved_search)
 
-    for actor <- [owner, member, team_user] do
-      assert SavedSearches.get_by_user_access(actor, id) == nil
-    end
+    assert SavedSearches.get_by_user(owner, id) == nil
   end
 
   test "save_by_user/4 and update/2 mark search as saved & unsaved", %{source: source} do

@@ -109,7 +109,7 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponentTest do
     %{querystring: querystring, lql_filters: lql_filters, lql_charts: lql_charts} =
       SavedSearches.get(search.id)
 
-    view = open_modal(conn, member, source)
+    view = open_modal(conn, user, source, %{}, member)
 
     view
     |> with_target("#saved-searches-modal")
@@ -145,7 +145,7 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponentTest do
     member = insert(:team_user, team: insert(:team, user: user))
     search = insert(:saved_search, source: source, name: "Production errors")
 
-    view = open_modal(conn, member, source)
+    view = open_modal(conn, user, source, %{}, member)
 
     view |> element("#edit-saved-search-name-#{search.id}") |> render_click()
 
@@ -339,12 +339,15 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponentTest do
     assert updated.querystring == search.querystring
   end
 
-  @spec open_modal(Plug.Conn.t(), map(), map(), map()) :: Phoenix.LiveViewTest.View.t()
-  defp open_modal(conn, user, source, params \\ %{}) do
+  @spec open_modal(Plug.Conn.t(), map(), map(), map(), map() | nil) ::
+          Phoenix.LiveViewTest.View.t()
+  defp open_modal(conn, user, source, params \\ %{}, team_user \\ nil) do
     params = Map.put(params, "source-id", to_string(source.id))
 
     {:ok, view, _html} =
-      live_isolated(conn, SavedSearchesModalLive, session: %{"user" => user, "params" => params})
+      live_isolated(conn, SavedSearchesModalLive,
+        session: %{"user" => user, "team_user" => team_user, "params" => params}
+      )
 
     render_async(view)
     view

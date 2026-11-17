@@ -15,9 +15,8 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
   alias Phoenix.LiveView.JS
 
   @spec update(map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
-  def update(assigns, socket) do
+  def update(%{user: user} = assigns, socket) do
     source_id = assigns.params["source-id"] |> String.to_integer()
-    user = assigns[:team_user] || assigns.user
     initial_edit_id = assigns.params["edit-search-id"]
     context = {source_id, user, initial_edit_id}
 
@@ -59,7 +58,7 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
 
     socket =
       with %SavedSearch{source_id: ^source_id} = saved_search <-
-             SavedSearches.get_by_user_access(user, saved_search_id),
+             SavedSearches.get_by_user(user, saved_search_id),
            {:ok, updated} <- SavedSearches.update(saved_search, params) do
         saved_searches = SavedSearches.list_by_sources([source_id])
         send(self(), {:saved_searches_updated, source_id, saved_searches})
@@ -303,14 +302,16 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
 
   @spec assign_saved_searches(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
   defp assign_saved_searches(socket) do
-    %{user: user, source_id: source_id, initial_edit_id: initial_edit_id} = socket.assigns
+    %{user: %{id: user_id}, source_id: source_id, initial_edit_id: initial_edit_id} =
+      socket.assigns
+
     context = if initial_edit_id, do: SavedSearches, else: SavedSearches.Cache
 
     assign_async(
       socket,
       :saved_searches,
       fn ->
-        if Sources.get_by_user_access(user, source_id) do
+        if Sources.exists?(id: source_id, user_id: user_id) do
           saved_searches = context.list_by_sources([source_id])
           {:ok, %{saved_searches: saved_searches}}
         else
