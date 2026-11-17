@@ -67,7 +67,7 @@ defmodule LogflareWeb.Api.AlertControllerTest do
 
   test "documents alert issue rule fields" do
     rule_fields =
-      ~w(rule_key kind managed severity category group_by scope signal_mapping resolve_after_runs)a
+      ~w(rule_key kind managed severity category group_by scope signal_mapping resolve_after_runs investigate)a
 
     for schema <- [AlertApiCreateParams, AlertApiUpdateParams, AlertApiSchema] do
       properties = schema.schema().properties
@@ -108,6 +108,7 @@ defmodule LogflareWeb.Api.AlertControllerTest do
                "scope" => %{"project" => "default"},
                "resolve_after_runs" => 3,
                "enabled" => true,
+               "investigate" => false,
                "signal_mapping" => %{
                  "title_column" => "title",
                  "preview" => %{"lql" => "f:edge m.function_id:{{function_id}}"}
@@ -125,11 +126,12 @@ defmodule LogflareWeb.Api.AlertControllerTest do
                |> put(~p"/api/alerts/#{token}", %{
                  severity: "critical",
                  enabled: false,
+                 investigate: true,
                  signal_mapping: %{"notebook" => notebook}
                })
                |> json_response(200)
 
-      assert %{"enabled" => false, "managed" => true} =
+      assert %{"enabled" => false, "managed" => true, "investigate" => true} =
                conn |> get(~p"/api/alerts/#{token}") |> json_response(200)
     end
   end

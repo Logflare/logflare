@@ -29,7 +29,8 @@ defmodule Logflare.Alerting.AlertQuery do
              :signal_mapping,
              :scope,
              :group_by,
-             :resolve_after_runs
+             :resolve_after_runs,
+             :investigate
            ]}
   typed_schema "alert_queries" do
     field :name, :string
@@ -51,6 +52,7 @@ defmodule Logflare.Alerting.AlertQuery do
     field :scope, :map, default: %{}
     field :group_by, {:array, :string}, default: []
     field :resolve_after_runs, :integer, default: 2
+    field :investigate, :boolean, default: false
 
     belongs_to :user, Logflare.User
 
@@ -85,7 +87,8 @@ defmodule Logflare.Alerting.AlertQuery do
       :signal_mapping,
       :scope,
       :group_by,
-      :resolve_after_runs
+      :resolve_after_runs,
+      :investigate
     ])
     |> validate_required([:name, :query, :language])
     |> validate_cron_required()

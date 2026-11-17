@@ -317,7 +317,11 @@ defmodule LogflareWeb.OpenApiSchemas do
         group_by: %Schema{type: :array, items: %Schema{type: :string}},
         scope: %Schema{type: :object, additionalProperties: %Schema{type: :string}},
         signal_mapping: @signal_mapping,
-        resolve_after_runs: %Schema{type: :integer, minimum: 1}
+        resolve_after_runs: %Schema{type: :integer, minimum: 1},
+        investigate: %Schema{
+          type: :boolean,
+          description: "Run an initial agentic investigation when an alert issue opens or reopens"
+        }
       }
     end
   end
