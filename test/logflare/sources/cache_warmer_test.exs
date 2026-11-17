@@ -4,6 +4,7 @@ defmodule Logflare.Sources.CacheWarmerTest do
   import ExUnit.CaptureLog
 
   alias Logflare.Billing
+  alias Logflare.ContextCache.Gossip
   alias Logflare.ContextCache.PeerWarmer
   alias Logflare.Sources
   alias Logflare.Sources.Cache
@@ -49,6 +50,36 @@ defmodule Logflare.Sources.CacheWarmerTest do
 
       assert %{state: :ready, warmed_at: warmed_at} = PeerWarmer.status(Cache)
       assert DateTime.compare(warmed_at, started_at) != :lt
+    end
+
+    test "copies from a peer only on the first run, later runs refresh from the database", %{
+      source: source
+    } do
+      stub(PeerWarmer, :copy_from_peer, fn Cache ->
+        {:ok, %{node: :peer@host, warmed_at: DateTime.utc_now(), count: 3}}
+      end)
+
+      assert :ignore = CacheWarmer.execute(nil)
+
+      reject(PeerWarmer, :copy_from_peer, 1)
+
+      assert {:ok, pairs} = CacheWarmer.execute(nil)
+      assert Enum.any?(pairs, &match?({{:get_by, [[id: id]]}, _value} when id == source.id, &1))
+    end
+
+    test "tries a peer again when the first run could not warm the cache" do
+      stub(PeerWarmer, :copy_from_peer, fn Cache -> :fallback end)
+      stub(Billing, :get_plans_by_users, fn _users -> raise "boom" end)
+
+      capture_log(fn -> assert :ignore = CacheWarmer.execute(nil) end)
+      assert %{state: :warming} = PeerWarmer.status(Cache)
+
+      stub(PeerWarmer, :copy_from_peer, fn Cache ->
+        {:ok, %{node: :peer@host, warmed_at: DateTime.utc_now(), count: 3}}
+      end)
+
+      assert :ignore = CacheWarmer.execute(nil)
+      assert %{state: :ready} = PeerWarmer.status(Cache)
     end
   end
 
@@ -145,6 +176,26 @@ defmodule Logflare.Sources.CacheWarmerTest do
     |> reject(:get_plans_by_users, 1)
 
     assert {:ok, []} = CacheWarmer.execute(nil)
+  end
+
+  test "skips sources invalidated while warming", %{source: source} do
+    stub(Billing, :get_plans_by_users, fn users ->
+      Gossip.record_tombstones([{Sources, source.id}])
+      call_original(Billing, :get_plans_by_users, [users])
+    end)
+
+    assert {:ok, []} = CacheWarmer.execute(nil)
+  end
+
+  test "logs errors and keeps running on the next interval" do
+    stub(Billing, :get_plans_by_users, fn _users -> raise "db down" end)
+
+    log =
+      capture_log(fn ->
+        assert :ignore = CacheWarmer.execute(nil)
+      end)
+
+    assert log =~ "Error warming Logflare.Sources.Cache: db down"
   end
 
   test "skips sources whose users cannot be resolved" do

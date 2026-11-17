@@ -12,6 +12,7 @@ defmodule Logflare.ContextCache.CacheBusterTest do
   alias Logflare.ContextCache.CacheBuster
   alias Logflare.ContextCache.Tombstones
   alias Logflare.Endpoints
+  alias Logflare.KeyValues
   alias Logflare.QueryContext
   alias Logflare.Sources
   alias Logflare.Sources.Catalog
@@ -149,6 +150,38 @@ defmodule Logflare.ContextCache.CacheBusterTest do
              Repo.query!(
                "SELECT relreplident::text FROM pg_class WHERE oid = 'backends'::regclass"
              )
+  end
+
+  test "key_values replication includes old user_id and key for targeted WAL deletes" do
+    assert %{rows: [["f"]]} =
+             Repo.query!(
+               "SELECT relreplident::text FROM pg_class WHERE oid = 'key_values'::regclass"
+             )
+  end
+
+  test "key_values WAL deletes bust every cached lookup for the key", %{user: user} do
+    kv = insert(:key_value, user: user, key: "proj", value: %{"org" => "a"})
+    other = insert(:key_value, user: user, key: "other", value: %{"org" => "b"})
+
+    assert KeyValues.Cache.lookup(user.id, "proj") == %{"org" => "a"}
+    assert KeyValues.Cache.lookup(user.id, "proj", "org") == "a"
+    assert KeyValues.Cache.lookup(user.id, "other") == %{"org" => "b"}
+    Repo.delete!(kv)
+
+    bust_records(%DeletedRecord{
+      relation: {"public", "key_values"},
+      old_record: %{
+        "id" => Integer.to_string(kv.id),
+        "user_id" => Integer.to_string(user.id),
+        "key" => "proj"
+      }
+    })
+
+    assert KeyValues.Cache.lookup(user.id, "proj") == nil
+    assert KeyValues.Cache.lookup(user.id, "proj", "org") == nil
+
+    assert Cachex.get!(KeyValues.Cache, {:lookup, [user.id, "other", nil]}) ==
+             {:cached, other.value}
   end
 
   test "query-context invalidation runs in a worker without blocking WAL intake", %{user: user} do

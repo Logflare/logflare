@@ -17,6 +17,7 @@ defmodule Logflare.Google.BigQuery do
   alias Logflare.Billing
   alias Logflare.Billing.Plan
   alias Logflare.TeamUsers
+  alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Utils.Tasks
 
@@ -176,15 +177,22 @@ defmodule Logflare.Google.BigQuery do
     |> GenUtils.maybe_parse_google_api_result()
   end
 
-  @spec get_table(atom) :: {:error, Tesla.Env.t()} | {:ok, term}
+  @spec get_table(atom | Source.t()) :: {:error, Tesla.Env.t()} | {:ok, term}
+  def get_table(%Source{token: source_id} = source) do
+    do_get_table(source_id, GenUtils.get_bq_user_info(source))
+  end
+
   def get_table(source_id) do
+    do_get_table(source_id, GenUtils.get_bq_user_info(source_id))
+  end
+
+  @spec do_get_table(atom, map) :: {:error, Tesla.Env.t()} | {:ok, term}
+  defp do_get_table(source_id, %{
+         bigquery_project_id: project_id,
+         bigquery_dataset_id: dataset_id
+       }) do
     conn = GenUtils.get_conn()
     table_name = GenUtils.format_table_name(source_id)
-
-    %{
-      bigquery_project_id: project_id,
-      bigquery_dataset_id: dataset_id
-    } = GenUtils.get_bq_user_info(source_id)
 
     dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> GCPConfig.dataset_id_append()
 
