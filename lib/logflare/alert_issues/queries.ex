@@ -173,11 +173,47 @@ defmodule Logflare.AlertIssues.Queries do
   """
   @spec open_counts(User.t()) :: {:ok, %{String.t() => pos_integer()}} | {:error, term()}
   def open_counts(%User{} = user) do
+    with {:ok, rows} <- list_active(user) do
+      {:ok, Enum.frequencies_by(rows, & &1["rule_key"])}
+    end
+  end
+
+  @doc """
+  Internal: the latest version of every unresolved alert issue, across identifiers.
+  """
+  @spec list_active(User.t()) :: {:ok, [map()]} | {:error, term()}
+  def list_active(%User{} = user) do
     with {:ok, rows} <- latest(user, [], [], nil, @max_limit) do
-      {:ok,
-       rows
-       |> Enum.reject(&(&1["status"] == "resolved"))
-       |> Enum.frequencies_by(& &1["rule_key"])}
+      {:ok, Enum.reject(rows, &(&1["status"] == "resolved"))}
+    end
+  end
+
+  @doc """
+  Internal: the `version` (µs) of the latest notification delivery logged for each
+  `{alert_issue_id, policy_name}` among `alert_issue_ids`.
+  """
+  @spec last_notifications(User.t(), [String.t()]) ::
+          {:ok, %{{String.t(), String.t()} => integer()}} | {:error, term()}
+  def last_notifications(%User{}, []), do: {:ok, %{}}
+
+  def last_notifications(%User{} = user, alert_issue_ids) do
+    sql = """
+    select distinct on (body ->> 'alert_issue_id', body ->> 'policy_name') body::text as body_json
+    from %{table}
+    where body ->> 'alert_issue_id' = any($1)
+      and timestamp >= $2
+    order by body ->> 'alert_issue_id', body ->> 'policy_name', cast(body ->> 'version' as bigint) desc
+    """
+
+    with {:ok, rows} <-
+           system_query(
+             user,
+             :alert_issue_notifications,
+             sql,
+             [alert_issue_ids, retention_floor()],
+             []
+           ) do
+      {:ok, Map.new(rows, &{{&1["alert_issue_id"], &1["policy_name"]}, &1["version"]})}
     end
   end
 

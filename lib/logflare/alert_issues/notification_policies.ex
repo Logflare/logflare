@@ -26,6 +26,18 @@ defmodule Logflare.AlertIssues.NotificationPolicies do
     |> Repo.all()
   end
 
+  @doc """
+  Enabled policies, for every user, that send repeats.
+  """
+  @spec list_repeating() :: [NotificationPolicy.t()]
+  def list_repeating do
+    NotificationPolicy
+    |> where([p], p.enabled and not is_nil(p.repeat_interval_seconds))
+    |> where([p], "repeat" in p.events)
+    |> order_by([p], asc: p.user_id, asc: p.name)
+    |> Repo.all()
+  end
+
   @spec get(User.t(), integer() | String.t()) ::
           {:ok, NotificationPolicy.t()} | {:error, :not_found}
   def get(%User{id: user_id}, id) do

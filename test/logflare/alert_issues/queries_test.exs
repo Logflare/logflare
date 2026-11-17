@@ -16,6 +16,9 @@ defmodule Logflare.AlertIssues.QueriesTest do
     reads_source = Enum.find(sources, &(&1.system_source_type == :alert_issue_reads))
     comments_source = Enum.find(sources, &(&1.system_source_type == :alert_issue_comments))
 
+    notifications_source =
+      Enum.find(sources, &(&1.system_source_type == :alert_issue_notifications))
+
     cfg = Application.get_env(:logflare, Logflare.Repo)
     url = "postgresql://#{cfg[:username]}:#{cfg[:password]}@#{cfg[:hostname]}/#{cfg[:database]}"
 
@@ -23,13 +26,13 @@ defmodule Logflare.AlertIssues.QueriesTest do
       insert(:backend,
         type: :postgres,
         config: %{url: url},
-        sources: [source, reads_source, comments_source],
+        sources: [source, reads_source, comments_source, notifications_source],
         user: user
       )
 
     PostgresAdaptor.create_repo(backend)
 
-    for s <- [source, reads_source, comments_source] do
+    for s <- [source, reads_source, comments_source, notifications_source] do
       PostgresAdaptor.create_events_table({s, backend})
       on_exit(fn -> PostgresAdaptor.destroy_instance({s, backend}) end)
     end
@@ -41,6 +44,7 @@ defmodule Logflare.AlertIssues.QueriesTest do
       source: source,
       reads_source: reads_source,
       comments_source: comments_source,
+      notifications_source: notifications_source,
       backend: backend,
       now: now
     }
@@ -61,15 +65,18 @@ defmodule Logflare.AlertIssues.QueriesTest do
         attrs
       )
 
+    insert_row(backend, source, body, "snapshot", at)
+    body
+  end
+
+  defp insert_row(backend, source, body, message, at) do
     {:ok, _} =
       PostgresAdaptor.execute_query(
         backend,
         {"insert into #{PostgresAdaptor.table_name(source)} (id, body, event_message, timestamp) values ($1, $2, $3, $4) returning id",
-         [Ecto.UUID.generate(), body, "snapshot", at]},
+         [Ecto.UUID.generate(), body, message, at]},
         []
       )
-
-    body
   end
 
   defp ago(now, seconds), do: DateTime.add(now, -seconds, :second)
@@ -468,6 +475,54 @@ defmodule Logflare.AlertIssues.QueriesTest do
       end)
 
       assert {:ok, []} = Queries.comments(ctx.user, "a", filters: %{"project" => "default"})
+    end
+  end
+
+  describe "notification deliveries" do
+    defp insert_delivery(%{notifications_source: source, backend: backend}, attrs, at) do
+      us = DateTime.to_unix(at, :microsecond)
+
+      insert_row(
+        backend,
+        source,
+        Map.merge(%{"version" => us, "status" => "sent"}, attrs),
+        "delivery",
+        at
+      )
+
+      us
+    end
+
+    test "returns the latest delivery per alert issue and policy",
+         %{user: user, now: now} = ctx do
+      insert_delivery(ctx, %{"alert_issue_id" => "a1", "policy_name" => "ops"}, ago(now, 600))
+
+      latest =
+        insert_delivery(ctx, %{"alert_issue_id" => "a1", "policy_name" => "ops"}, ago(now, 60))
+
+      other =
+        insert_delivery(ctx, %{"alert_issue_id" => "a1", "policy_name" => "pager"}, ago(now, 30))
+
+      insert_delivery(ctx, %{"alert_issue_id" => "a2", "policy_name" => "ops"}, ago(now, 30))
+
+      assert {:ok, deliveries} = Queries.last_notifications(user, ["a1"])
+      assert deliveries == %{{"a1", "ops"} => latest, {"a1", "pager"} => other}
+      assert {:ok, %{}} = Queries.last_notifications(user, [])
+    end
+
+    test "lists unresolved alert issues across identifiers", %{user: user, now: now} = ctx do
+      insert_snapshot(ctx, %{"alert_issue_id" => "open", "status" => "open"}, ago(now, 60))
+
+      insert_snapshot(
+        ctx,
+        %{"alert_issue_id" => "acked", "status" => "acknowledged"},
+        ago(now, 60)
+      )
+
+      insert_snapshot(ctx, %{"alert_issue_id" => "done", "status" => "resolved"}, ago(now, 60))
+
+      assert {:ok, rows} = Queries.list_active(user)
+      assert rows |> Enum.map(& &1["alert_issue_id"]) |> Enum.sort() == ["acked", "open"]
     end
   end
 end
