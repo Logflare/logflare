@@ -5,6 +5,7 @@ defmodule Logflare.UsersTest do
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Mailer
   alias Logflare.Sources
+  alias Logflare.Sources.Source
   alias Logflare.User
   alias Logflare.Users
 
@@ -122,6 +123,26 @@ defmodule Logflare.UsersTest do
     refute Repo.reload(backend)
     refute Repo.reload(source)
     refute Repo.reload(user)
+  end
+
+  test "delete_user/1 keeps backends when the user cannot be deleted" do
+    user = insert(:user)
+    source = insert(:source, user: user)
+    backend = insert(:backend, user: user, sources: [source])
+    changeset = Ecto.Changeset.change(user)
+
+    stub(Logflare.Repo, :delete, fn %User{} -> {:error, changeset} end)
+    reject(&BigQueryAdaptor.update_iam_policy/0)
+
+    assert {:error, ^changeset} = Users.delete_user(user)
+
+    assert Repo.reload(backend)
+    assert Repo.reload(user)
+
+    assert %Source{backends: [%{id: backend_id}]} =
+             source |> Repo.reload() |> Repo.preload(:backends)
+
+    assert backend_id == backend.id
   end
 
   test "delete_user/1 deletes an account with every kind of resource" do

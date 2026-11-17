@@ -346,9 +346,8 @@ defmodule Logflare.Users do
 
   def delete_user(user) do
     Supervisor.delete_all_user_sources(user)
-    Backends.delete_user_backends(user)
 
-    case Repo.delete(user) |> invalidate_query_context() do
+    case user |> delete_user_and_backends() |> invalidate_query_context() do
       {:ok, _user} = response ->
         BigQuery.delete_dataset(user)
         BigQueryAdaptor.update_iam_policy()
@@ -357,6 +356,17 @@ defmodule Logflare.Users do
       {:error, _reason} = response ->
         response
     end
+  end
+
+  defp delete_user_and_backends(user) do
+    Repo.transaction(fn ->
+      Backends.delete_user_backends(user)
+
+      case Repo.delete(user) do
+        {:ok, deleted} -> deleted
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
   end
 
   defp update_user_by_email(user, auth_params) do
