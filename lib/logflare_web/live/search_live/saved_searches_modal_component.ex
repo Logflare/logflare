@@ -154,6 +154,7 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
           <div class="container tw-grid tw-grid-cols-[auto_minmax(0,1fr)] sm:tw-grid-cols-[auto_minmax(0,1fr)_auto] tw-items-start">
             <span
               id={"favorite-saved-search-tooltip-#{saved_search.id}"}
+              phx-hook="Tooltip"
               data-toggle={if !named?(saved_search), do: "tooltip"}
               data-original-title={if !named?(saved_search), do: "Add a title before favouriting this search."}
               data-placement="top"
@@ -179,13 +180,14 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
               id={"saved-search-actions-#{saved_search.id}"}
               class="tw-relative tw-z-20 tw-col-start-2 tw-flex tw-flex-wrap tw-gap-4 tw-mt-3 sm:tw-col-start-auto sm:tw-flex-col sm:tw-gap-2.5 sm:tw-mt-0 sm:tw-ml-3 sm:[@media(hover:hover)_and_(pointer:fine)]:tw-opacity-0 group-hover/saved-search:tw-opacity-100 group-focus-within/saved-search:tw-opacity-100"
             >
-              <.clipboard_button id={"copy-saved-search-#{saved_search.id}"} text={saved_search.querystring} label="Copy" title="Copy query" aria-label="Copy search query" placement="left" class={@action_button_class} />
-              <button id={"edit-saved-search-name-#{saved_search.id}"} type="button" phx-click="edit_name" phx-target={@myself} phx-value-id={saved_search.id} aria-label="Edit saved search" data-toggle="tooltip" data-original-title="Edit saved search" data-placement="left" class={@action_button_class}>
+              <.clipboard_button id={"copy-saved-search-#{saved_search.id}"} phx-hook="Tooltip" text={saved_search.querystring} label="Copy" title="Copy query" aria-label="Copy search query" placement="left" class={@action_button_class} />
+              <button id={"edit-saved-search-name-#{saved_search.id}"} phx-hook="Tooltip" type="button" phx-click="edit_name" phx-target={@myself} phx-value-id={saved_search.id} aria-label="Edit saved search" data-toggle="tooltip" data-original-title="Edit saved search" data-placement="left" class={@action_button_class}>
                 <i class="fa fa-pencil-alt" aria-hidden="true"></i>
                 <span>Edit</span>
               </button>
               <button
                 id={"delete-saved-search-#{saved_search.id}"}
+                phx-hook="Tooltip"
                 type="button"
                 phx-click={JS.add_class("tw-hidden", to: "#saved-search-#{saved_search.id}") |> JS.push("update_saved_search", target: @myself, value: %{saved_search: %{saved_by_user: false}})}
                 phx-value-id={saved_search.id}

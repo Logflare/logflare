@@ -2,6 +2,11 @@ import $ from "jquery"
 import { activateDelegatedTooltips } from "./utils"
 
 export default {
+  Tooltip: {
+    destroyed() {
+      $(this.el).tooltip("dispose")
+    },
+  },
   LiveModal: {
     updated() {
       // Dispose tooltips whose trigger elements were removed by this update.
