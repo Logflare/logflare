@@ -1019,6 +1019,16 @@ defmodule Logflare.BackendsTest do
       assert [] = Backends.Cache.list_default_ingest_backends(user.id)
     end
 
+    test "default flag change in a rolled-back transaction", %{backend: backend} do
+      reject(&ClusterUtils.rpc_multicast/3)
+
+      assert {:error, :cancelled} =
+               Repo.transact(fn ->
+                 assert {:ok, _} = Backends.update_backend(backend, %{default_ingest?: true})
+                 Repo.rollback(:cancelled)
+               end)
+    end
+
     test "a consolidated default flag change refreshes the account lookup without per-source work",
          %{user: user, backend: backend} do
       source = insert(:source, user: user, default_ingest_backend_enabled?: true)

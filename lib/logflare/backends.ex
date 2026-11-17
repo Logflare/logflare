@@ -482,7 +482,9 @@ defmodule Logflare.Backends do
 
   @spec default_ingest_flag_changed(Backend.t()) :: :ok
   defp default_ingest_flag_changed(%Backend{user_id: user_id}) do
-    Cluster.Utils.rpc_multicast(__MODULE__, :refresh_default_ingest_backends_cache, [user_id])
+    Repo.after_commit(fn ->
+      Cluster.Utils.rpc_multicast(__MODULE__, :refresh_default_ingest_backends_cache, [user_id])
+    end)
   end
 
   @doc """
