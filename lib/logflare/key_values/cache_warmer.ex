@@ -35,7 +35,7 @@ defmodule Logflare.KeyValues.CacheWarmer do
 
   @doc """
   Warms up to `limit` entries: keys with recorded usage, most recently used
-  first, then keys never used, most recently inserted first.
+  first, then keys never used, most recently updated first.
   """
   @spec warm_top_n(pos_integer()) :: {:ok, :ok} | {:error, term()}
   def warm_top_n(limit \\ @warm_limit) do
@@ -60,7 +60,7 @@ defmodule Logflare.KeyValues.CacheWarmer do
 
     from(kv in KeyValue, as: :kv)
     |> where(not exists(used))
-    |> order_by(desc: :id)
+    |> order_by(desc: :updated_at)
     |> limit(^limit)
   end
 
