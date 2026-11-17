@@ -1542,32 +1542,28 @@ defmodule Logflare.Backends do
   For other sources, only the system default backend buffer is checked.
   """
   @spec cached_local_pending_buffer_full?(Source.t()) :: boolean()
-  def cached_local_pending_buffer_full?(
-        %Source{id: source_id, default_ingest_backend_enabled?: true} = source
-      ) do
-    buffer_full_for_backend?(source_id, SingleTenant.lookup_system_default_backend(source)) or
+  def cached_local_pending_buffer_full?(%Source{default_ingest_backend_enabled?: true} = source) do
+    buffer_full_for_queue?(system_default_ingest_queue_key(source)) or
       source
       |> list_dispatch_backends()
       |> Enum.filter(& &1.default_ingest?)
-      |> Enum.any?(&buffer_full_for_backend?(source_id, &1))
+      |> Enum.any?(&buffer_full_for_queue?(ingest_queue_key(source, &1)))
   end
 
-  def cached_local_pending_buffer_full?(%Source{id: source_id} = source) do
-    buffer_full_for_backend?(source_id, SingleTenant.lookup_system_default_backend(source))
+  def cached_local_pending_buffer_full?(%Source{} = source) do
+    source
+    |> system_default_ingest_queue_key()
+    |> buffer_full_for_queue?()
   end
 
-  @spec buffer_full_for_backend?(non_neg_integer(), Backend.t() | pos_integer() | nil) ::
-          boolean()
-  defp buffer_full_for_backend?(_source_id, %Backend{consolidated_ingest?: true, id: backend_id}) do
+  @spec buffer_full_for_queue?(ingest_queue_key()) :: boolean()
+  defp buffer_full_for_queue?({:consolidated, backend_id}) do
     :consolidated
     |> PubSubRates.Cache.get_local_buffer(backend_id)
     |> all_queues_over?(IngestEventQueue.max_consolidated_queue_size())
   end
 
-  defp buffer_full_for_backend?(source_id, %Backend{id: backend_id}),
-    do: buffer_full_for_backend?(source_id, backend_id)
-
-  defp buffer_full_for_backend?(source_id, backend_id) do
+  defp buffer_full_for_queue?({source_id, backend_id}) do
     source_id
     |> PubSubRates.Cache.get_local_buffer(backend_id)
     |> all_queues_over?(@max_pending_buffer_len_per_queue)
@@ -1594,29 +1590,34 @@ defmodule Logflare.Backends do
   @spec any_ingest_queue_over_limit?(pos_integer()) :: boolean()
   def any_ingest_queue_over_limit?(source_id) when is_pos_integer(source_id) do
     source = Sources.Cache.get_by_id(source_id)
-    system_backend = if source, do: SingleTenant.lookup_system_default_backend(source)
 
-    queue_over_limit_for_backend?(source_id, system_backend) or
-      source_id
-      |> backends_for_queue_limit()
-      |> Enum.any?(&queue_over_limit_for_backend?(source_id, &1))
+    queue_keys =
+      case source do
+        %Source{} ->
+          backend_queue_keys =
+            list_dispatch_backends(source)
+            |> Enum.map(&ingest_queue_key(source, &1))
+
+          [system_default_ingest_queue_key(source) | backend_queue_keys]
+
+        nil ->
+          backend_queue_keys =
+            __MODULE__.Cache.list_backends(source_id: source_id)
+            |> Enum.map(&ingest_queue_key(%Source{id: source_id}, &1))
+
+          system_queue_keys =
+            if SingleTenant.clickhouse_backend?(), do: [], else: [{source_id, nil}]
+
+          system_queue_keys ++ backend_queue_keys
+      end
+
+    Enum.any?(queue_keys, &any_queue_over_limit?/1)
   end
 
-  defp backends_for_queue_limit(source_id) do
-    case Sources.Cache.get_by_id(source_id) do
-      %Source{} = source -> list_dispatch_backends(source)
-      nil -> __MODULE__.Cache.list_backends(source_id: source_id)
-    end
-  end
+  defp any_queue_over_limit?({:consolidated, _backend_id} = queue_key),
+    do: any_queue_over?(queue_key, IngestEventQueue.max_consolidated_queue_size())
 
-  defp queue_over_limit_for_backend?(_source_id, %Backend{consolidated_ingest?: true, id: bid}),
-    do: any_queue_over?({:consolidated, bid}, IngestEventQueue.max_consolidated_queue_size())
-
-  defp queue_over_limit_for_backend?(source_id, %Backend{id: backend_id}),
-    do: queue_over_limit_for_backend?(source_id, backend_id)
-
-  defp queue_over_limit_for_backend?(source_id, backend_id),
-    do: any_queue_over?({source_id, backend_id}, max_buffer_queue_len())
+  defp any_queue_over_limit?(queue_key), do: any_queue_over?(queue_key, max_buffer_queue_len())
 
   defp any_queue_over?(queues_key, limit) do
     queues_key
