@@ -2043,6 +2043,7 @@ defmodule Logflare.BackendsTest do
       backend: backend,
       source: source
     } do
+      stub(IngestEventQueue, :max_consolidated_queue_size, fn -> 50 end)
       legacy_table_key = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(legacy_table_key)
       fill_queue_over_limit(legacy_table_key)
@@ -2051,7 +2052,11 @@ defmodule Logflare.BackendsTest do
 
       consolidated_table_key = {:consolidated, backend.id, self()}
       IngestEventQueue.upsert_tid(consolidated_table_key)
-      fill_queue_over_limit(consolidated_table_key)
+      IngestEventQueue.add_to_table(consolidated_table_key, build_queue_saturation_events(50))
+
+      refute Backends.any_ingest_queue_over_limit?(source.id)
+
+      IngestEventQueue.add_to_table(consolidated_table_key, build_queue_saturation_events(1))
 
       assert Backends.any_ingest_queue_over_limit?(source.id)
     end
