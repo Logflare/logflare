@@ -23,7 +23,7 @@ defmodule Logflare.SavedSearchesTest do
     assert nil == SavedSearches.get(saved_search.id)
   end
 
-  test "list_by_sources/1 returns saved searches for each source in favorite and name order", %{
+  test "list_by_sources/1 orders each source by favorite and name, with unnamed searches last", %{
     source: source
   } do
     other_source = insert(:source, user_id: source.user_id)
@@ -42,7 +42,7 @@ defmodule Logflare.SavedSearchesTest do
     searches = SavedSearches.list_by_sources([other_source.id, empty_source.id, source.id])
 
     assert Enum.map(searches, & &1.id) ==
-             [favorite.id, alpha.id, unnamed.id, empty_name.id, victor.id, other.id]
+             [favorite.id, alpha.id, victor.id, unnamed.id, empty_name.id, other.id]
   end
 
   test "Cache.list_by_sources/1 merges cached and uncached sources without duplicates", %{

@@ -132,7 +132,7 @@ defmodule Logflare.SavedSearches do
     |> order_by([s],
       asc: s.source_id,
       desc: s.favorite,
-      asc: fragment("lower(coalesce(nullif(?, ''), 'untitled'))", s.name),
+      asc: fragment("lower(nullif(?, ''))", s.name),
       asc: s.id
     )
     |> Repo.all()
