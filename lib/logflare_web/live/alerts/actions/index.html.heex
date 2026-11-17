@@ -54,3 +54,28 @@
     </li>
   </ul>
 </section>
+
+<section :if={@notification_policies != []} id="notification-policies" class="mx-auto container tw-mt-8">
+  <h3 class="tw-text-white">Notification policies</h3>
+  <div class="alert alert-info">
+    <strong>Managed by Terraform.</strong> Notification policies decide which alert issue changes are sent to the control plane, which fans them out to receivers. Change them in the <code>logflare_alert_notification_policy</code> resource.
+  </div>
+  <ul class="list-group">
+    <li :for={policy <- @notification_policies} data-notification-policy class="list-group-item">
+      <span class="tw-text-white">{policy.name}</span>
+      <span :if={!policy.enabled} class="badge badge-secondary tw-ml-2">Disabled</span>
+      <span class="tw-block tw-text-sm tw-mt-1">
+        <span class="text-muted">rules:</span> <code class="tw-text-xs">{policy_list(policy.rule_keys, "any rule")}</code>
+        <span class="text-muted tw-ml-2">severity:</span> {policy_severity(policy.min_severity)}
+        <span class="text-muted tw-ml-2">categories:</span> {policy_list(policy.categories, "any")}
+        <span class="text-muted tw-ml-2">identifiers:</span>
+        <code class="tw-text-xs">{policy_list(Enum.map(policy.identifiers, fn {k, v} -> "#{k}=#{v}" end), "any")}</code>
+      </span>
+      <span class="tw-block tw-text-sm">
+        <span class="text-muted">events:</span> {policy_list(policy.events, "none")}
+        <span class="text-muted tw-ml-2">repeat:</span> {policy_repeat(policy.repeat_interval_seconds)}
+        <span class="text-muted tw-ml-2">receivers:</span> <code class="tw-text-xs">{policy_list(policy.receivers, "none")}</code>
+      </span>
+    </li>
+  </ul>
+</section>

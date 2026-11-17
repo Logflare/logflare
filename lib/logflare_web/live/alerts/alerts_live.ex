@@ -7,6 +7,7 @@ defmodule LogflareWeb.AlertsLive do
   import Ecto.Query
   import LogflareWeb.Utils, only: [stringify_changeset_errors: 2, time_ago: 1]
 
+  alias Logflare.AlertIssues.NotificationPolicies
   alias Logflare.AlertIssues.Queries
   alias Logflare.AlertIssues.Silences
   alias Logflare.Alerting
@@ -490,7 +491,20 @@ defmodule LogflareWeb.AlertsLive do
     socket
     |> assign(:alerts, alerts)
     |> assign(:open_counts, open_counts(assigns.user, alerts))
+    |> assign(:notification_policies, NotificationPolicies.list(assigns.user))
   end
+
+  @spec policy_severity(atom() | nil) :: String.t()
+  defp policy_severity(nil), do: "any severity"
+  defp policy_severity(severity), do: "#{severity} and above"
+
+  @spec policy_repeat(pos_integer() | nil) :: String.t()
+  defp policy_repeat(nil), do: "no repeats"
+  defp policy_repeat(seconds), do: "every #{div(seconds, 60)} min"
+
+  @spec policy_list([String.t()], String.t()) :: String.t()
+  defp policy_list([], empty), do: empty
+  defp policy_list(values, _empty), do: Enum.join(values, ", ")
 
   defp open_counts(user, alerts) do
     with true <- Enum.any?(alerts, &is_binary(&1.rule_key)),

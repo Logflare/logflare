@@ -1,6 +1,7 @@
 defmodule LogflareWeb.AlertsLiveTest do
   use LogflareWeb.ConnCase
 
+  alias Logflare.AlertIssues.NotificationPolicies
   alias Logflare.AlertIssues.Queries
   alias Logflare.AlertIssues.Silences
   alias Logflare.Alerting
@@ -1078,6 +1079,37 @@ defmodule LogflareWeb.AlertsLiveTest do
 
       assert html =~ "Edge Function errors"
       refute html =~ "Plain alert"
+    end
+
+    test "index lists notification policies read-only", %{conn: conn, user: user} do
+      {:ok, _} =
+        NotificationPolicies.create(user, %{
+          "name" => "advisor-pages",
+          "rule_keys" => ["supabase.advisor.*"],
+          "min_severity" => "major",
+          "categories" => ["security"],
+          "identifiers" => %{"project" => "default"},
+          "events" => ["opened", "repeat"],
+          "repeat_interval_seconds" => 3600,
+          "receivers" => ["ops-webhook"]
+        })
+
+      {:ok, view, html} = live_with_redirect(conn, ~p"/alerts")
+
+      assert has_element?(view, "#notification-policies h3", "Notification policies")
+      assert has_element?(view, "#notification-policies", "Managed by Terraform")
+      assert has_element?(view, "[data-notification-policy]", "advisor-pages")
+      assert html =~ "supabase.advisor.*"
+      assert html =~ "major and above"
+      assert html =~ "project=default"
+      assert html =~ "opened, repeat"
+      assert html =~ "every 60 min"
+      assert html =~ "ops-webhook"
+    end
+
+    test "index hides the notification policies section when there are none", %{conn: conn} do
+      {:ok, view, _html} = live_with_redirect(conn, ~p"/alerts")
+      refute has_element?(view, "#notification-policies")
     end
 
     test "index marks custom rules", %{conn: conn, user: user} do
