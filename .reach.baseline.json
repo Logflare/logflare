@@ -1037,8 +1037,8 @@
     {
       "source": "smells",
       "kind": "behaviour_candidate",
-      "fingerprint": "sha256:43d5d7cea65a0acc84a9477a203efbc0e5a491f977a6216ac04e0a22525f95c5",
-      "message": "4 modules expose the same 5 public callbacks; consider extracting a behaviour if these modules are interchangeable implementations",
+      "fingerprint": "sha256:1b8ea4e28a80c16b26c593f691f92417295e37490470bab52867a862e2de2ece",
+      "message": "5 modules expose the same 5 public callbacks; consider extracting a behaviour if these modules are interchangeable implementations",
       "file": "lib/logflare_web/controllers/api/alert_controller.ex",
       "line": 1
     },
