@@ -3,14 +3,12 @@ defmodule Logflare.Backends.Adaptor.SplunkAdaptorTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
-  alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.Adaptor.SplunkAdaptor.HecFormatter
   alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Tesla.MockAdapter
 
   @subject Adaptor.SplunkAdaptor
-  @tesla_adapter Tesla.Adapter.Finch
 
   # A literal public IP keeps the SSRF middleware happy without a DNS lookup
   @url "https://172.32.0.1:8088/services/collector/event"
@@ -90,7 +88,7 @@ defmodule Logflare.Backends.Adaptor.SplunkAdaptorTest do
     setup :backend_data
 
     test "succeeds on the HEC `no data` response", ctx do
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         assert env.method == :post
         assert Tesla.build_url(env) == @url
         assert Tesla.get_header(env, "authorization") == "Splunk test-token"
@@ -102,19 +100,25 @@ defmodule Logflare.Backends.Adaptor.SplunkAdaptorTest do
     end
 
     test "succeeds on 200 response", ctx do
-      mock_adapter(fn _env -> hec_response(200, ~s({"text":"Success","code":0})) end)
+      TestUtils.mock_http_based_client(fn _env ->
+        hec_response(200, ~s({"text":"Success","code":0}))
+      end)
 
       assert :ok = @subject.test_connection(ctx.backend)
     end
 
     test "returns error on invalid token", ctx do
-      mock_adapter(fn _env -> hec_response(403, ~s({"text":"Invalid token","code":4})) end)
+      TestUtils.mock_http_based_client(fn _env ->
+        hec_response(403, ~s({"text":"Invalid token","code":4}))
+      end)
 
       assert {:error, :invalid_token} = @subject.test_connection(ctx.backend)
     end
 
     test "returns error on incorrect index", ctx do
-      mock_adapter(fn _env -> hec_response(400, ~s({"text":"Incorrect index","code":7})) end)
+      TestUtils.mock_http_based_client(fn _env ->
+        hec_response(400, ~s({"text":"Incorrect index","code":7}))
+      end)
 
       assert {:error, :http_client_error} = @subject.test_connection(ctx.backend)
     end
@@ -126,7 +130,7 @@ defmodule Logflare.Backends.Adaptor.SplunkAdaptorTest do
       ]
 
       for {response, reason} <- error_responses do
-        mock_adapter(fn _env -> response end)
+        TestUtils.mock_http_based_client(fn _env -> response end)
         assert {:error, ^reason} = @subject.test_connection(ctx.backend)
       end
     end
@@ -146,7 +150,7 @@ defmodule Logflare.Backends.Adaptor.SplunkAdaptorTest do
       this = self()
       ref = make_ref()
 
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         assert env.method == :post
         assert Tesla.build_url(env) == @url
         assert Tesla.get_header(env, "authorization") == "Splunk test-token"
@@ -238,16 +242,5 @@ defmodule Logflare.Backends.Adaptor.SplunkAdaptorTest do
        body: body,
        headers: [{"content-type", "application/json"}]
      }}
-  end
-
-  defp mock_adapter(calls_num \\ 1, function) do
-    stub(@tesla_adapter)
-
-    HttpBased.Client
-    |> expect(:new, calls_num, fn opts ->
-      HttpBased.Client
-      |> Mimic.call_original(:new, [opts])
-      |> MockAdapter.replace(function)
-    end)
   end
 end

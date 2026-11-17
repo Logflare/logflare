@@ -3,14 +3,11 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
-  alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.Adaptor.SentryAdaptor
   alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
-  alias Logflare.Tesla.MockAdapter
 
   @subject SentryAdaptor
-  @tesla_adapter Tesla.Adapter.Finch
 
   doctest @subject
 
@@ -50,7 +47,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
     end
 
     test "succeeds on 200 response", ctx do
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         assert env.method == :post
         assert Tesla.build_url(env) == "https://o123456.ingest.sentry.io/api/123456/envelope/"
         assert Tesla.get_header(env, "content-type") == "application/x-sentry-envelope"
@@ -73,7 +70,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       ]
 
       for {response, expected_reason} <- error_responses do
-        mock_adapter(fn _env -> response end)
+        TestUtils.mock_http_based_client(fn _env -> response end)
 
         assert {:error, ^expected_reason} = @subject.test_connection(ctx.backend)
       end
@@ -100,7 +97,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       this = self()
       ref = make_ref()
 
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         assert env.method == :post
         assert Tesla.build_url(env) == "https://o123456.ingest.sentry.io/api/123456/envelope/"
         assert Tesla.get_header(env, "content-type") == "application/x-sentry-envelope"
@@ -162,7 +159,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       this = self()
       ref = make_ref()
 
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         send(this, {ref, env.body})
         {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
@@ -215,7 +212,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       this = self()
       ref = make_ref()
 
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         send(this, {ref, env.body})
         {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
@@ -261,7 +258,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       this = self()
       ref = make_ref()
 
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         send(this, {ref, env.body})
         {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
@@ -324,7 +321,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       this = self()
       ref = make_ref()
 
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         send(this, {ref, env.body})
         {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
@@ -364,7 +361,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       this = self()
       ref = make_ref()
 
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         send(this, {ref, env.body})
         {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
@@ -415,16 +412,5 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       assert %{dsn: "https://abc123@o123456.ingest.sentry.io/123456"} =
                @subject.redact_config(config)
     end
-  end
-
-  defp mock_adapter(function) do
-    stub(@tesla_adapter)
-
-    HttpBased.Client
-    |> expect(:new, fn opts ->
-      HttpBased.Client
-      |> Mimic.call_original(:new, [opts])
-      |> MockAdapter.replace(function)
-    end)
   end
 end

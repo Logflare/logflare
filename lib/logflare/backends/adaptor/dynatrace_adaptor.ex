@@ -54,6 +54,8 @@ defmodule Logflare.Backends.Adaptor.DynatraceAdaptor do
     changeset
     |> Changeset.validate_required([:url, :api_token])
     |> Changeset.validate_format(:url, ~r/^https:\/\/.+/)
+    |> Changeset.validate_format(:url, ~r/[^\/]$/, message: "must not end with a slash")
+    |> Changeset.validate_change(:url, &validate_environment_url/2)
     |> SSRF.validate_url_host(:url)
   end
 
@@ -104,11 +106,17 @@ defmodule Logflare.Backends.Adaptor.DynatraceAdaptor do
   end
 
   @spec ingest_url(String.t()) :: String.t()
-  def ingest_url(url) do
-    url
-    |> String.trim_trailing("/")
-    |> String.replace_suffix(@ingest_path, "")
-    |> Kernel.<>(@ingest_path)
+  def ingest_url(url), do: url <> @ingest_path
+
+  @spec validate_environment_url(:url, String.t()) :: [url: String.t()]
+  defp validate_environment_url(:url, url) do
+    case String.split(url, "/api/", parts: 2) do
+      [_environment_url] ->
+        []
+
+      [_environment_url, _api_path] ->
+        [url: "must be the environment URL, without the #{@ingest_path} path"]
+    end
   end
 
   @spec log_failure(Tesla.Env.result(), Backend.t()) :: :ok

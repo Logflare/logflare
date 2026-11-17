@@ -12,7 +12,7 @@ The Dynatrace backend is **ingest-only**, and sends logs to [Dynatrace](https://
 
 The backend can be configured with the following options:
 
-- `:url` (string, required) - The Dynatrace environment URL. Logs are sent to `/api/v2/logs/ingest` under this URL.
+- `:url` (string, required) - The Dynatrace environment URL. Logs are sent to `/api/v2/logs/ingest` under this URL, so URLs that already include an `/api/` path or end with a slash are rejected.
 - `:api_token` (string, required) - An access token with the `logs.ingest` scope.
 
 ### Obtaining the configuration values
@@ -23,7 +23,7 @@ The backend can be configured with the following options:
 
 ### Implementation Details
 
-- Log events are sent as a JSON array of log records. Each record holds the log event body as attributes, with the log event message under `content`, the log event timestamp as an ISO 8601 string under `timestamp`, and the Logflare source name under `log.source`.
+- Log events are sent as a JSON array of log records. Each record holds the log event body as attributes, with the log event message moved from `event_message` to `content`, the log event timestamp as an ISO 8601 string under `timestamp`, and the Logflare source name under `log.source`.
 - Dynatrace detects the log level from top-level attributes such as `level` or `severity`.
 - How nested objects are stored depends on the data model of your Dynatrace environment.
 - Authentication uses the `Authorization: Api-Token <token>` header.

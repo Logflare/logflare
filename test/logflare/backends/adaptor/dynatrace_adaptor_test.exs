@@ -4,14 +4,12 @@ defmodule Logflare.Backends.Adaptor.DynatraceAdaptorTest do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.DynatraceAdaptor.LogRecordFormatter
-  alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.SourceSup
   alias Logflare.LogEvent
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Tesla.MockAdapter
 
   @subject Adaptor.DynatraceAdaptor
-  @tesla_adapter Tesla.Adapter.Finch
 
   @url "https://172.32.0.1"
   @ingest_url "https://172.32.0.1/api/v2/logs/ingest"
@@ -50,7 +48,7 @@ defmodule Logflare.Backends.Adaptor.DynatraceAdaptorTest do
     end
 
     test "rejects urls targeting private or reserved addresses" do
-      for url <- ["https://127.0.0.1:9999/e/abc12345", "https://169.254.169.254/"] do
+      for url <- ["https://127.0.0.1:9999/e/abc12345", "https://169.254.169.254"] do
         changeset =
           Adaptor.cast_and_validate_config(@subject, %{@valid_config_input | "url" => url})
 
@@ -59,9 +57,42 @@ defmodule Logflare.Backends.Adaptor.DynatraceAdaptorTest do
       end
     end
 
-    test "accepts valid config" do
-      changeset = Adaptor.cast_and_validate_config(@subject, @valid_config_input)
-      assert changeset.valid?
+    test "rejects urls with an API path" do
+      for path <- [
+            "/api/v2/logs/ingest",
+            "/api/v2",
+            "/e/abc12345/api/v2/logs"
+          ] do
+        changeset =
+          Adaptor.cast_and_validate_config(@subject, %{
+            @valid_config_input
+            | "url" => @url <> path
+          })
+
+        refute changeset.valid?, "expected rejection for #{path}"
+
+        assert errors_on(changeset).url == [
+                 "must be the environment URL, without the /api/v2/logs/ingest path"
+               ]
+      end
+    end
+
+    test "rejects urls with a trailing slash" do
+      for url <- [@url <> "/", "https://172.32.0.1:9999/e/abc12345/"] do
+        changeset =
+          Adaptor.cast_and_validate_config(@subject, %{@valid_config_input | "url" => url})
+
+        assert errors_on(changeset).url == ["must not end with a slash"]
+      end
+    end
+
+    test "accepts SaaS and ActiveGate environment urls" do
+      for url <- [@url, "https://172.32.0.1:9999/e/abc12345"] do
+        changeset =
+          Adaptor.cast_and_validate_config(@subject, %{@valid_config_input | "url" => url})
+
+        assert changeset.valid?, "expected #{url} to be accepted"
+      end
     end
   end
 
@@ -80,13 +111,8 @@ defmodule Logflare.Backends.Adaptor.DynatraceAdaptorTest do
       assert @subject.ingest_url("https://abc12345.live.dynatrace.com") ==
                "https://abc12345.live.dynatrace.com/api/v2/logs/ingest"
 
-      assert @subject.ingest_url("https://activegate.example.com:9999/e/abc12345/") ==
+      assert @subject.ingest_url("https://activegate.example.com:9999/e/abc12345") ==
                "https://activegate.example.com:9999/e/abc12345/api/v2/logs/ingest"
-    end
-
-    test "keeps a url that already points at the ingest endpoint" do
-      assert @subject.ingest_url(@ingest_url) == @ingest_url
-      assert @subject.ingest_url(@ingest_url <> "/") == @ingest_url
     end
   end
 
@@ -94,7 +120,7 @@ defmodule Logflare.Backends.Adaptor.DynatraceAdaptorTest do
     setup :backend_data
 
     test "succeeds when the empty batch is accepted", ctx do
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         assert env.method == :post
         assert Tesla.build_url(env) == @ingest_url
         assert Tesla.get_header(env, "authorization") == "Api-Token dt0c01.test-token"
@@ -107,13 +133,15 @@ defmodule Logflare.Backends.Adaptor.DynatraceAdaptorTest do
     end
 
     test "succeeds when the empty batch is rejected as invalid input", ctx do
-      mock_adapter(fn _env -> dynatrace_error(400, "Incorrect JSON format.") end)
+      TestUtils.mock_http_based_client(fn _env ->
+        dynatrace_error(400, "Incorrect JSON format.")
+      end)
 
       assert :ok = @subject.test_connection(ctx.backend)
     end
 
     test "returns error on a 400 not coming from the ingest API", ctx do
-      mock_adapter(fn _env ->
+      TestUtils.mock_http_based_client(fn _env ->
         {:ok,
          %Tesla.Env{
            status: 400,
@@ -127,7 +155,9 @@ defmodule Logflare.Backends.Adaptor.DynatraceAdaptorTest do
 
     test "returns error on invalid token", ctx do
       for status <- [401, 403] do
-        mock_adapter(fn _env -> dynatrace_error(status, "Token is missing required scope") end)
+        TestUtils.mock_http_based_client(fn _env ->
+          dynatrace_error(status, "Token is missing required scope")
+        end)
 
         assert {:error, :invalid_token} = @subject.test_connection(ctx.backend)
       end
@@ -142,7 +172,7 @@ defmodule Logflare.Backends.Adaptor.DynatraceAdaptorTest do
       ]
 
       for {response, reason} <- error_responses do
-        mock_adapter(fn _env -> response end)
+        TestUtils.mock_http_based_client(fn _env -> response end)
         assert {:error, ^reason} = @subject.test_connection(ctx.backend)
       end
     end
@@ -161,7 +191,7 @@ defmodule Logflare.Backends.Adaptor.DynatraceAdaptorTest do
       this = self()
       ref = make_ref()
 
-      mock_adapter(fn env ->
+      TestUtils.mock_http_based_client(fn env ->
         assert env.method == :post
         assert Tesla.build_url(env) == @ingest_url
         assert Tesla.get_header(env, "authorization") == "Api-Token dt0c01.test-token"
@@ -212,7 +242,6 @@ defmodule Logflare.Backends.Adaptor.DynatraceAdaptorTest do
 
       assert %{
                "content" => "some msg",
-               "event_message" => "some msg",
                "timestamp" => ^expected_timestamp,
                "level" => "error",
                "metadata" => %{"user_id" => 1},
@@ -220,6 +249,7 @@ defmodule Logflare.Backends.Adaptor.DynatraceAdaptorTest do
              } = record
 
       assert source_name == source.name
+      refute Map.has_key?(record, "event_message")
     end
 
     test "falls back to an empty content", %{source: source} do
@@ -275,16 +305,5 @@ defmodule Logflare.Backends.Adaptor.DynatraceAdaptorTest do
        body: %{"error" => %{"code" => status, "message" => message}},
        headers: [{"content-type", "application/json"}]
      }}
-  end
-
-  defp mock_adapter(function) do
-    stub(@tesla_adapter)
-
-    HttpBased.Client
-    |> expect(:new, fn opts ->
-      HttpBased.Client
-      |> Mimic.call_original(:new, [opts])
-      |> MockAdapter.replace(function)
-    end)
   end
 end

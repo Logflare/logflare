@@ -10,9 +10,11 @@ defmodule Logflare.TestUtils do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline, as: ClickHousePipeline
+  alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.SingleTenant
+  alias Logflare.Tesla.MockAdapter
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.User
@@ -682,5 +684,20 @@ defmodule Logflare.TestUtils do
   @spec reset_associations(Ecto.Schema.t()) :: Ecto.Schema.t()
   def reset_associations(%schema{} = struct) do
     Ecto.reset_fields(struct, schema.__schema__(:associations))
+  end
+
+  @doc """
+  Replaces the adapter of the next `calls_num` clients built by `HttpBased.Client.new/1`
+  with `function`, which receives each `Tesla.Env` and returns a `Tesla.Env.result()`.
+  """
+  @spec mock_http_based_client(pos_integer(), (Tesla.Env.t() -> Tesla.Env.result())) :: module()
+  def mock_http_based_client(calls_num \\ 1, function) do
+    Mimic.stub(Tesla.Adapter.Finch)
+
+    Mimic.expect(HttpBased.Client, :new, calls_num, fn opts ->
+      HttpBased.Client
+      |> Mimic.call_original(:new, [opts])
+      |> MockAdapter.replace(function)
+    end)
   end
 end
