@@ -21,16 +21,17 @@ jobs:
       - uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
-          key: pw-exp-${{ runner.os }}-${{ steps.v.outputs.pw }}-chromium
-      - run: npx --prefix assets playwright install chromium
+          key: pw-exp2-${{ runner.os }}-${{ steps.v.outputs.pw }}-chromium
+      - run: npx --prefix assets playwright install --with-deps chromium
 
   install:
     needs: prime-cache
+    if: always()
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        variant: [all, chromium, chromium-cached]
+        variant: [all, chromium, headless-shell, chromium-cached]
         rep: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v6
@@ -43,42 +44,14 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.cache/ms-playwright
-          key: pw-exp-${{ runner.os }}-${{ steps.v.outputs.pw }}-chromium
-      - name: install-deps
+          key: pw-exp2-${{ runner.os }}-${{ steps.v.outputs.pw }}-chromium
+      - name: playwright-install
         run: |
           case "${{ matrix.variant }}" in
             all) args="" ;;
-            chromium) args="chromium" ;;
+            headless-shell) args="chromium-headless-shell" ;;
             *) args="chromium" ;;
           esac
-          start=$(date +%s)
-          npx --prefix assets playwright install-deps $args 2>&1 | tee apt.log | grep -E "Need to get|newly installed" || true
-          echo "APT_SECONDS=$(( $(date +%s) - start ))"
-      - name: install-browsers
-        run: |
-          case "${{ matrix.variant }}" in
-            all) args="" ;;
-            chromium) args="chromium" ;;
-            *) args="chromium" ;;
-          esac
-          start=$(date +%s)
-          npx --prefix assets playwright install $args
-          echo "BROWSER_SECONDS=$(( $(date +%s) - start ))"
-          du -sh ~/.cache/ms-playwright
-
-  container:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        rep: [1, 2, 3, 4, 5, 6]
-    container:
-      image: mcr.microsoft.com/playwright:v1.60.0-noble
-    steps:
-      - uses: actions/checkout@v6
-      - run: npm ci --prefix assets
-      - name: install-browsers
-        run: |
-          start=$(date +%s)
-          npx --prefix assets playwright install chromium
-          echo "BROWSER_SECONDS=$(( $(date +%s) - start ))"
+          npx --prefix assets playwright install --with-deps $args 2>&1 | tee pw.log
+          grep -E "Need to get|newly installed|downloaded to" pw.log || true
+          du -sh ~/.cache/ms-playwright/* || true
