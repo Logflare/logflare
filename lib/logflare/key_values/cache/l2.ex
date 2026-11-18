@@ -26,7 +26,10 @@ defmodule Logflare.KeyValues.Cache.L2 do
     * `hash_ring` - `ExHashRing` defaults (512 vnodes per node)
 
   Lookups and busts run each L2 call in a separate task bounded by `:l2_timeout`, so a failing
-  or restarting L2 counts as unavailable instead of crashing the caller.
+  or restarting L2 counts as unavailable instead of crashing the caller. A key whose delete
+  failed is not read from L2 on this node until a fill rewrites it or `:l2_ttl` has passed. A
+  node started after the failure has no such mark and can still read the busted value until a
+  fill rewrites it.
   """
 
   use Nebulex.Cache,
@@ -40,7 +43,7 @@ defmodule Logflare.KeyValues.Cache.L2 do
   @fill_event [:logflare, :key_values, :cache, :l2_fill]
   @task_margin 10
 
-  @type result() :: {:ok, term()} | :miss | :l2_error | :l2_skipped
+  @type result() :: {:ok, term()} | :miss | :l2_unevicted | :l2_error | :l2_skipped
 
   @spec enabled?() :: boolean()
   def enabled?, do: Keyword.get(settings(), :l2_enabled, false)
@@ -54,11 +57,16 @@ defmodule Logflare.KeyValues.Cache.L2 do
   @doc """
   Fetches a value from its owner's share, or returns why it could not.
 
-  `:l2_error` covers an error, crash or timeout of the call, and `:l2_skipped` a disabled level.
+  `:l2_unevicted` covers a key whose delete failed on this node, `:l2_error` an error, crash or
+  timeout of the call, and `:l2_skipped` a disabled level.
   """
   @spec lookup(term()) :: result()
   def lookup(cache_key) do
-    if enabled?(), do: fetch_isolated(cache_key), else: :l2_skipped
+    cond do
+      not enabled?() -> :l2_skipped
+      unevicted?(cache_key) -> :l2_unevicted
+      true -> fetch_isolated(cache_key)
+    end
   end
 
   defp fetch_isolated(cache_key) do
@@ -102,14 +110,21 @@ defmodule Logflare.KeyValues.Cache.L2 do
          :ok <- __MODULE__.delete(cache_key, timeout: timeout()) do
       :dropped_stale
     else
-      false -> :put
-      {:error, _reason} -> :error
+      false ->
+        Tombstones.Cache.delete_tombstone(__MODULE__, cache_key)
+        :put
+
+      {:error, _reason} ->
+        mark_unevicted([cache_key])
+        :error
     end
   end
 
   @doc """
   Deletes keys from their owners' shares, one call per owner node, and returns the number of
   entries deleted.
+
+  A failed delete returns 0 and marks the keys as unevicted on this node, see `lookup/1`.
   """
   @spec evict([term()]) :: non_neg_integer()
   def evict(cache_keys) do
@@ -119,9 +134,20 @@ defmodule Logflare.KeyValues.Cache.L2 do
          {:ok, {:ok, count}} <- Tasks.run_within(delete, timeout() + @task_margin) do
       count
     else
-      _disabled_or_failed -> 0
+      false ->
+        0
+
+      _failed ->
+        mark_unevicted(cache_keys)
+        0
     end
   end
+
+  defp mark_unevicted(cache_keys) do
+    Enum.each(cache_keys, &Tombstones.Cache.put_tombstone(__MODULE__, &1, ttl()))
+  end
+
+  defp unevicted?(cache_key), do: Tombstones.Cache.tombstoned?(__MODULE__, cache_key)
 
   @doc """
   Deletes every entry on every node.

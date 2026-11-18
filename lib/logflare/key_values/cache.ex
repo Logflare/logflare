@@ -28,8 +28,8 @@ defmodule Logflare.KeyValues.Cache do
     * `[:logflare, :key_values, :cache, :l2_fill, :start | :stop | :exception]` - a value
       written to L2, with `:result` `:put`, `:dropped_stale` or `:error`
     * `[:logflare, :key_values, :cache, :db_fallback]` - a lookup read from the database, with
-      `:reason` `:miss` (L2 missed), `:l2_error` (L2 failed or timed out) or `:l2_skipped`
-      (L2 disabled)
+      `:reason` `:miss` (L2 missed), `:l2_unevicted` (its delete from L2 failed on this node),
+      `:l2_error` (L2 failed or timed out) or `:l2_skipped` (L2 disabled)
   """
 
   use Logflare.ContextCache
@@ -151,8 +151,8 @@ defmodule Logflare.KeyValues.Cache do
       {:ok, full_value} ->
         extract_value(full_value, accessor_path)
 
-      :miss ->
-        full_value = from_db(:miss, [user_id, key, nil])
+      l2_miss when l2_miss in [:miss, :l2_unevicted] ->
+        full_value = from_db(l2_miss, [user_id, key, nil])
         if not tombstoned_before_read?, do: L2.fill(full_key, full_value)
         extract_value(full_value, accessor_path)
 

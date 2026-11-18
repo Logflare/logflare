@@ -909,7 +909,7 @@ defmodule Logflare.Telemetry do
         event_name: "logflare.key_values.cache.db_fallback",
         tags: [:reason],
         description:
-          "KeyValues.Cache lookups served by the database, by reason (miss, l2_error, l2_skipped)"
+          "KeyValues.Cache lookups served by the database, by reason (miss, l2_unevicted, l2_error, l2_skipped)"
       ),
       counter("logflare.key_values.cache.l2.ring_monitor.nodes_added.count",
         event_name: "logflare.key_values.cache.l2.ring_monitor.nodes_added",

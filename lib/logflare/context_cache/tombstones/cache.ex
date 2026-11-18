@@ -20,6 +20,11 @@ defmodule Logflare.ContextCache.Tombstones.Cache do
     Cachex.put(@name, {cache, tombstone}, true, expire: ttl)
   end
 
+  @spec delete_tombstone(atom(), term()) :: {:ok, boolean()}
+  def delete_tombstone(cache, tombstone) do
+    Cachex.del(@name, {cache, tombstone})
+  end
+
   def tombstoned?(cache, tombstone) do
     Cachex.exists?(@name, {cache, tombstone}) == {:ok, true}
   end

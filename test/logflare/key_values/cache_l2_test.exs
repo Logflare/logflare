@@ -75,6 +75,23 @@ defmodule Logflare.KeyValues.CacheL2Test do
     end
   end
 
+  test "fill read before a busted change while deleting from L2 fails once", %{user: user} do
+    ref = attach_l2_fill()
+    expect(L2, :delete, fn _cache_key, _opts -> fail(:timeout) end)
+    stub(KeyValues, :lookup, &Mimic.call_original(KeyValues, :lookup, [&1, &2, &3]))
+
+    expect(KeyValues, :lookup, fn _user_id, "proj1", _accessor_path ->
+      bust(user.id, "proj1")
+      %{"v" => "old"}
+    end)
+
+    assert %{"v" => "old"} = KeyValues.Cache.lookup(user.id, "proj1")
+    assert_receive {_event, ^ref, _measurements, %{result: :error}}
+    assert {:ok, %{"v" => "old"}} = L2.fetch(lookup_key(user.id, "proj1"))
+
+    assert KeyValues.Cache.lookup(user.id, "proj1") == nil
+  end
+
   test "busting key-values cached in L2 only and in both levels", %{user: user} do
     keys = ["l2_only", "both_levels"]
 
@@ -109,16 +126,19 @@ defmodule Logflare.KeyValues.CacheL2Test do
 
   @tag :capture_log
   test "busting while L2 fails", %{user: user} do
-    insert(:key_value, user: user, key: "proj1", value: @value)
-    assert @value = KeyValues.Cache.lookup(user.id, "proj1")
+    ref = attach_l2_fill()
 
-    for failure <- [:raise, :exit] do
-      stub(L2, :delete_all, fn _query, _opts -> fail(failure) end)
+    for failure <- [:timeout, :raise, :exit] do
+      key = "proj:#{failure}"
+      insert(:key_value, user: user, key: key, value: @value)
+      :ok = L2.put(lookup_key(user.id, key), %{"stale" => true})
+      expect(L2, :delete_all, fn _query, _opts -> fail(failure) end)
 
-      assert {:ok, _busted} =
-               ContextCache.bust_keys([{KeyValues, user_id: user.id, key: "proj1"}])
+      assert {:ok, _busted} = ContextCache.bust_keys([{KeyValues, user_id: user.id, key: key}])
 
-      assert {:ok, nil} = Cachex.get(KeyValues.Cache, lookup_key(user.id, "proj1"))
+      assert @value = KeyValues.Cache.lookup(user.id, key)
+      assert_receive {_event, ^ref, _measurements, %{result: :put}}
+      assert {:ok, @value} = L2.fetch(lookup_key(user.id, key))
     end
   end
 
