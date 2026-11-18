@@ -38,6 +38,7 @@ defmodule Logflare.KeyValues.Cache.L2 do
   alias Logflare.Utils.Tasks
 
   @fill_event [:logflare, :key_values, :cache, :l2_fill]
+  @task_margin 10
 
   @type result() :: {:ok, term()} | :miss | :l2_error | :l2_skipped
 
@@ -63,7 +64,7 @@ defmodule Logflare.KeyValues.Cache.L2 do
   defp fetch_isolated(cache_key) do
     fetch = fn -> __MODULE__.fetch(cache_key, timeout: timeout()) end
 
-    case Tasks.run_within(fetch, timeout()) do
+    case Tasks.run_within(fetch, timeout() + @task_margin) do
       {:ok, {:ok, _value} = hit} -> hit
       {:ok, {:error, %Nebulex.KeyError{}}} -> :miss
       _failed -> :l2_error
@@ -115,7 +116,7 @@ defmodule Logflare.KeyValues.Cache.L2 do
     delete = fn -> __MODULE__.delete_all([in: cache_keys], timeout: timeout()) end
 
     with true <- enabled?(),
-         {:ok, {:ok, count}} <- Tasks.run_within(delete, timeout()) do
+         {:ok, {:ok, count}} <- Tasks.run_within(delete, timeout() + @task_margin) do
       count
     else
       _disabled_or_failed -> 0

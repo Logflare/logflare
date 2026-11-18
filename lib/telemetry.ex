@@ -892,7 +892,7 @@ defmodule Logflare.Telemetry do
         event_name: "logflare.key_values.cache.l2_fill.stop",
         tags: [:result],
         description:
-          "Database fills written to KeyValues.Cache L2, by result (put, dropped_stale, timeout, error)"
+          "Database fills written to KeyValues.Cache L2, by result (put, dropped_stale, error)"
       ),
       distribution("logflare.key_values.cache.l2_fill.stop.duration",
         tags: [:result],
