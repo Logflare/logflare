@@ -4,6 +4,8 @@ defmodule LogflareWeb.Backends.QueryClassSettingsLiveTest do
   alias Logflare.Backends
   alias Logflare.Repo
 
+  @cache_key "read_from_filesystem_cache_if_exists_otherwise_bypass_cache"
+
   setup %{conn: conn} do
     insert(:plan)
     owner = insert(:user, admin: false)
@@ -122,27 +124,102 @@ defmodule LogflareWeb.Backends.QueryClassSettingsLiveTest do
     assert Repo.reload!(endpoint).enforced_clickhouse_settings == %{"max_threads" => 2}
   end
 
-  test "existing non-form policy fields survive a structured edit", context do
-    {:ok, _backend} =
-      Backends.configure_query_class_settings(context.owner, context.backend, %{
-        "default" => %{
-          "priority" => 5,
-          "read_from_filesystem_cache_if_exists_otherwise_bypass_cache" => 1
-        }
-      })
+  test "a stale tab cannot restore an older limit or discard the draft", context do
+    path = ~p"/backends/#{context.backend.id}/edit"
 
-    {:ok, view, _html} =
-      live_with_redirect(context.conn, ~p"/backends/#{context.backend.id}/edit")
+    assert {:ok, _} =
+             Backends.configure_query_class_settings(context.owner, context.backend, %{
+               "default" => %{"priority" => 5, "max_threads" => 12}
+             })
 
-    view
+    {:ok, first, _html} = live_with_redirect(context.conn, path)
+    {:ok, second, _html} = live_with_redirect(context.conn, path)
+
+    first
+    |> form("#query-class-settings-form",
+      query_class_settings: %{"default" => %{"max_threads" => "4"}}
+    )
+    |> render_submit()
+
+    assert has_element?(first, "[role=status]", "Query-class settings saved")
+
+    second
     |> form("#query-class-settings-form",
       query_class_settings: %{"default" => %{"priority" => "6"}}
     )
     |> render_submit()
 
-    assert Backends.get_backend(context.backend.id).config.query_class_settings["default"] == %{
-             "priority" => 6,
-             "read_from_filesystem_cache_if_exists_otherwise_bypass_cache" => 1
+    assert has_element?(second, "#query-class-settings-error", "policy changed")
+    assert has_element?(second, "#query-class-default_priority[value='6']")
+
+    assert Backends.get_backend(context.backend.id).config.query_class_settings == %{
+             "default" => %{"priority" => 5, "max_threads" => 4}
+           }
+  end
+
+  test "a stale tab cannot disable a newly configured policy", context do
+    {:ok, view, _html} =
+      live_with_redirect(context.conn, ~p"/backends/#{context.backend.id}/edit")
+
+    policy = %{"default" => %{"priority" => 5}}
+
+    assert {:ok, _} =
+             Backends.configure_query_class_settings(context.owner, context.backend, policy)
+
+    view |> element("button", "Disable query-class policy") |> render_click()
+
+    assert has_element?(view, "#query-class-settings-error", "policy changed")
+    assert Backends.get_backend(context.backend.id).config.query_class_settings == policy
+  end
+
+  test "ordinary edits preserve cache overrides and resetting a class removes only its overrides",
+       context do
+    policy = %{
+      "default" => %{"priority" => 5, @cache_key => 0},
+      "api_paid" => %{"max_threads" => 4, @cache_key => 1},
+      "mcp" => %{"max_threads" => 2}
+    }
+
+    assert {:ok, _} =
+             Backends.configure_query_class_settings(context.owner, context.backend, policy)
+
+    {:ok, view, _html} =
+      live_with_redirect(context.conn, ~p"/backends/#{context.backend.id}/edit")
+
+    assert has_element?(view, "#query-class-api_paid-cache-override")
+    refute has_element?(view, "input[name*='#{@cache_key}']")
+    assert {:ok, _} = Backends.update_backend(context.backend, %{description: "Connection edit"})
+
+    view
+    |> form("#query-class-settings-form",
+      query_class_settings: %{"api_paid" => %{"max_threads" => ""}}
+    )
+    |> render_submit()
+
+    assert has_element?(view, "[role=status]", "Query-class settings saved")
+    assert has_element?(view, "#query-class-api_paid-cache-override")
+    saved = put_in(policy["api_paid"], %{@cache_key => 1})
+    assert Backends.get_backend(context.backend.id).config.query_class_settings == saved
+
+    view
+    |> form("#query-class-settings-form",
+      query_class_settings: %{"default" => %{"priority" => "6"}}
+    )
+    |> put_submitter("#query-class-api_paid button[name=reset_class]")
+    |> render_submit()
+
+    refute has_element?(view, "#query-class-api_paid-cache-override")
+    assert has_element?(view, "#query-class-default_priority[value='6']")
+    assert Backends.get_backend(context.backend.id).config.query_class_settings == saved
+
+    view |> form("#query-class-settings-form") |> render_submit()
+
+    updated = Backends.get_backend(context.backend.id)
+    assert updated.description == "Connection edit"
+
+    assert updated.config.query_class_settings == %{
+             "default" => %{"priority" => 6, @cache_key => 0},
+             "mcp" => %{"max_threads" => 2}
            }
   end
 

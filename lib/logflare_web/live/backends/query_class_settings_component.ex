@@ -12,18 +12,23 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
     {"max_rows_to_read", "Max rows to read"},
     {"max_bytes_to_read", "Max bytes to read"}
   ]
-  @numeric_keys Enum.map(@fields, &elem(&1, 0)) ++
-                  ["read_from_filesystem_cache_if_exists_otherwise_bypass_cache"]
+  @numeric_keys Enum.map(@fields, &elem(&1, 0))
+  @override_classes QueryClassSettings.classes()
+  @cache_key "read_from_filesystem_cache_if_exists_otherwise_bypass_cache"
 
   @impl true
   def update(assigns, socket) do
     {:ok,
      socket
      |> assign(assigns)
+     |> assign_new(:original_policy, fn ->
+       assigns.backend.config[:query_class_settings] || %{}
+     end)
      |> assign_new(:params, fn -> assigns.backend.config[:query_class_settings] || %{} end)
      |> assign_new(:error, fn -> nil end)
      |> assign_new(:message, fn -> nil end)
-     |> assign(:classes, ["default" | QueryClassSettings.classes()])
+     |> assign_new(:reset_classes, &MapSet.new/0)
+     |> assign(:classes, ["default" | @override_classes])
      |> assign(:fields, @fields)}
   end
 
@@ -35,10 +40,32 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
     end
   end
 
-  def handle_event("save", %{"query_class_settings" => params}, socket) when is_map(params) do
+  def handle_event("save", %{"reset_class" => class, "query_class_settings" => params}, socket)
+      when class in @override_classes and is_map(params) do
     case parse_settings(params) do
-      {:ok, settings} -> save_settings(settings, assign(socket, :params, params))
-      {:error, reason} -> {:noreply, assign(socket, :error, reason)}
+      {:ok, _settings} ->
+        {:noreply,
+         assign(socket,
+           params: Map.delete(params, class),
+           reset_classes: MapSet.put(socket.assigns.reset_classes, class),
+           error: nil,
+           message: "Class reset in this draft. Save query-class settings to apply it."
+         )}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :error, reason)}
+    end
+  end
+
+  def handle_event("save", %{"query_class_settings" => params} = payload, socket)
+      when is_map(params) and not is_map_key(payload, "reset_class") do
+    case parse_settings(params) do
+      {:ok, settings} ->
+        settings = restore_cache_overrides(settings, socket.assigns)
+        save_settings(settings, assign(socket, :params, params))
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :error, reason)}
     end
   end
 
@@ -56,9 +83,12 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
     case Backends.configure_query_class_settings(
            socket.assigns.actor,
            socket.assigns.backend,
-           settings
+           settings,
+           expected_policy: socket.assigns.original_policy
          ) do
       {:ok, backend} ->
+        policy = backend.config.query_class_settings
+
         message =
           if settings == %{},
             do: "Query-class policy disabled",
@@ -67,7 +97,9 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
         {:noreply,
          assign(socket,
            backend: backend,
-           params: backend.config.query_class_settings,
+           original_policy: policy,
+           params: policy,
+           reset_classes: MapSet.new(),
            error: nil,
            message: message
          )}
@@ -75,6 +107,14 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply,
          assign(socket, :error, LogflareWeb.Utils.stringify_changeset_errors(changeset))}
+
+      {:error, :stale_policy} ->
+        {:noreply,
+         assign(
+           socket,
+           :error,
+           "The query-class policy changed. Reload and reapply your changes."
+         )}
 
       {:error, :forbidden} ->
         {:noreply, assign(socket, :error, "You no longer have permission to edit this backend.")}
@@ -91,6 +131,7 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
       {class, values}, {:ok, settings} when is_map(values) ->
         policy =
           values
+          |> Map.take(@numeric_keys)
           |> Enum.reject(fn {_key, value} -> value in ["", nil] end)
           |> Map.new(fn {key, value} -> {key, parse_value(key, value)} end)
 
@@ -127,10 +168,21 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
     )
   end
 
-  @spec retained_settings(map(), String.t()) :: map()
-  defp retained_settings(params, class) do
-    Map.take(Map.get(params, class, %{}), [
-      "read_from_filesystem_cache_if_exists_otherwise_bypass_cache"
-    ])
+  @spec restore_cache_overrides(map(), map()) :: map()
+  defp restore_cache_overrides(settings, %{
+         original_policy: original,
+         reset_classes: reset_classes
+       }) do
+    Enum.reduce(Map.keys(original), settings, fn class, acc ->
+      case cache_override(original, reset_classes, class) do
+        nil -> acc
+        value -> Map.update(acc, class, %{@cache_key => value}, &Map.put(&1, @cache_key, value))
+      end
+    end)
+  end
+
+  @spec cache_override(map(), MapSet.t(String.t()), String.t()) :: 0 | 1 | nil
+  defp cache_override(original, reset_classes, class) do
+    unless MapSet.member?(reset_classes, class), do: get_in(original, [class, @cache_key])
   end
 end

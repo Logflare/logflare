@@ -14,6 +14,7 @@
   </p>
 
   <.form for={to_form(%{}, as: :query_class_settings)} id="query-class-settings-form" phx-target={@myself} phx-change="change" phx-submit="save">
+    <button type="submit" hidden tabindex="-1" aria-hidden="true">Save</button>
     <div :for={class <- @classes} id={"query-class-#{class}"} class="tw-border tw-border-zinc-700 tw-rounded tw-p-4 tw-mb-3">
       <button
         type="button"
@@ -29,7 +30,7 @@
         <p class="form-text text-muted">
           {if class == "default",
             do: "Fallback for missing, unknown, or unconfigured query-class labels.",
-            else: "Optional overrides for #{class}. Leave all fields blank to use the default policy."}
+            else: "Optional overrides for #{class}. Blank numeric fields inherit defaults."}
         </p>
         <% f = class_form(@params, class) %>
         <div class="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-x-6">
@@ -44,7 +45,12 @@
             )}
           </div>
         </div>
-        <input :for={{key, value} <- retained_settings(@params, class)} type="hidden" name={"query_class_settings[#{class}][#{key}]"} value={value} />
+        <p :if={not is_nil(cache_override(@original_policy, @reset_classes, class))} id={"query-class-#{class}-cache-override"} class="form-text text-muted">
+          This policy has a filesystem-cache override set through internal configuration.
+        </p>
+        <button :if={class != "default"} type="submit" name="reset_class" value={class} formnovalidate class="btn btn-outline-secondary">
+          Reset class to defaults
+        </button>
       </div>
     </div>
     <p :if={@error} id="query-class-settings-error" class="text-danger" role="alert">{@error}</p>
