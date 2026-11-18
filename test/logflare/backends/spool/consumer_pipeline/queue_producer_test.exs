@@ -1129,6 +1129,39 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       assert empty_state.prefetch == nil
     end
 
+    test "teardown accepts a nack result or worker exit after draining starts" do
+      stub(QueueMod, :nack, fn _url, _handle ->
+        receive do
+          :release_nack -> :ok
+        end
+      end)
+
+      for action <- [:release_nack, :kill_worker] do
+        state = stopped_state(%{prefetch: :running})
+        result = {:ok, "h1", ["seg"], "0/a.etf"}
+
+        assert {:noreply, [], settling} =
+                 QueueProducer.handle_info({:prefetch_result, result}, state)
+
+        assert {:settling, worker, ref} = settling.prefetch
+        assert {:noreply, [], draining} = QueueProducer.prepare_for_draining(settling)
+        assert draining.prefetch == settling.prefetch
+
+        case action do
+          :release_nack ->
+            send(worker, :release_nack)
+            assert settle(draining).prefetch == nil
+
+          :kill_worker ->
+            Process.exit(worker, :kill)
+            assert_receive {:DOWN, ^ref, :process, ^worker, :killed} = message
+
+            assert {:noreply, [], %{prefetch: :settlement_failed}} =
+                     QueueProducer.handle_info(message, draining)
+        end
+      end
+    end
+
     defp settle(%{prefetch: {:settling, pid, _ref}} = state) do
       assert_receive {:prefetch_settled, ^pid, _result} = message
       assert {:noreply, [], settled} = QueueProducer.handle_info(message, state)

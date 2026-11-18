@@ -146,7 +146,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       nack_and_notify(state.queue_mod, state.queue_url, handle, :draining)
     end
 
-    {:noreply, [], %{state | draining: true, demand: 0, current: nil, prefetch: nil}}
+    prefetch = if match?({:settling, _, _}, state.prefetch), do: state.prefetch
+    {:noreply, [], %{state | draining: true, demand: 0, current: nil, prefetch: prefetch}}
   end
 
   defp current_handle(%{segments: [], handle: _}), do: nil
@@ -255,6 +256,9 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       ) do
     {:noreply, [], %{state | prefetch: :settlement_failed}}
   end
+
+  def handle_info({:prefetch_settled, _pid, _result}, state), do: {:noreply, [], state}
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, state), do: {:noreply, [], state}
 
   def handle_info({:prefetch_result, result}, state) do
     {poll_backoff_ms, delay} =
