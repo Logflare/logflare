@@ -209,12 +209,11 @@ defmodule Logflare.Sql do
       when language in @valid_query_languages and is_non_empty_binary(input) and is_list(queries) do
     with parser_dialect <- to_dialect(language),
          {:ok, statements} <- Parser.parse(parser_dialect, input),
-         eligible_queries <- Enum.filter(queries, &(&1.language == language)) do
+         eligible_queries = Enum.filter(queries, &(&1.language == language)),
+         {:ok, subqueries} <-
+           parse_referenced_subqueries(statements, eligible_queries, parser_dialect) do
       statements
-      |> replace_names_with_subqueries(%{
-        language: language,
-        queries: eligible_queries
-      })
+      |> AstUtils.transform_recursive(subqueries, &replace_subquery_reference/2)
       |> Parser.to_string()
     end
   end
@@ -609,42 +608,56 @@ defmodule Logflare.Sql do
     Enum.find(mapping, fn {_name, token} -> not MapSet.member?(tokens, token) end)
   end
 
-  defp replace_names_with_subqueries(ast, data) do
-    AstUtils.transform_recursive(ast, data, &do_replace_names_with_subqueries/2)
+  @spec parse_referenced_subqueries(
+          [map()],
+          [AlertQuery.t() | Endpoints.EndpointQuery.t()],
+          String.t()
+        ) ::
+          {:ok, map()} | {:error, String.t()}
+  defp parse_referenced_subqueries(ast, queries, dialect) do
+    ast
+    |> AstUtils.collect_from_ast(&collect_subquery_reference/1)
+    |> Enum.uniq()
+    |> Stream.map(fn name -> Enum.find(queries, &(&1.name == name)) end)
+    |> Enum.reduce_while({:ok, %{}}, fn
+      nil, acc ->
+        {:cont, acc}
+
+      query, {:ok, bodies} ->
+        case Parser.parse(dialect, query.query) do
+          {:ok, [%{"Query" => body}]} -> {:cont, {:ok, Map.put(bodies, query.name, body)}}
+          {:ok, _} -> {:halt, {:error, "Only SELECT queries can be used as subqueries"}}
+          {:error, _} = error -> {:halt, error}
+        end
+    end)
   end
 
-  defp do_replace_names_with_subqueries(
-         {"relation" = k,
-          %{"Table" => %{"alias" => table_alias, "name" => table_name_values}} = v},
-         data
-       )
-       when is_list(table_name_values) and is_map(data) do
-    table_name =
-      case table_name_values do
-        [_ | _] -> table_name_values |> AstUtils.object_name_values() |> Enum.join(".")
-        _ -> raise "Invalid table name"
-      end
+  @spec collect_subquery_reference(term()) :: {:collect, String.t()} | :skip
+  defp collect_subquery_reference({"relation", %{"Table" => %{"name" => [_ | _] = parts}}}),
+    do: {:collect, subquery_reference_name(parts)}
 
-    query = Enum.find(data.queries, &(&1.name == table_name))
+  defp collect_subquery_reference(_node), do: :skip
 
-    if query do
-      parser_dialect = to_dialect(data.language)
-      {:ok, [%{"Query" => body}]} = Parser.parse(parser_dialect, query.query)
+  @spec subquery_reference_name([map()]) :: String.t()
+  defp subquery_reference_name(parts),
+    do: parts |> AstUtils.object_name_values() |> Enum.join(".")
 
-      {k,
-       %{
-         "Derived" => %{
-           "alias" => table_alias,
-           "lateral" => false,
-           "subquery" => body
-         }
-       }}
-    else
-      {k, v}
+  @spec replace_subquery_reference(term(), map()) :: term()
+  defp replace_subquery_reference(
+         {"relation", %{"Table" => %{"alias" => table_alias, "name" => [_ | _] = parts}}} = node,
+         subqueries
+       ) do
+    case Map.fetch(subqueries, subquery_reference_name(parts)) do
+      {:ok, body} ->
+        {"relation",
+         %{"Derived" => %{"alias" => table_alias, "lateral" => false, "subquery" => body}}}
+
+      :error ->
+        node
     end
   end
 
-  defp do_replace_names_with_subqueries(ast_node, _data), do: {:recurse, ast_node}
+  defp replace_subquery_reference(node, _subqueries), do: {:recurse, node}
 
   defp sandboxed_ast(query, dialect) when is_non_empty_binary(query),
     do: Parser.parse(dialect, query)

@@ -71,6 +71,20 @@ defmodule Logflare.Sql.ClickHouseSqlSettingsTest do
     assert reason =~ "only allowed in the outer SETTINGS clause"
   end
 
+  test "EXPLAIN endpoint references return an error, but unused endpoints do not block expansion" do
+    endpoint = %EndpointQuery{
+      name: "limited_plan",
+      language: :ch_sql,
+      query: "EXPLAIN SELECT 1 AS a SETTINGS max_threads = 1"
+    }
+
+    assert {:error, "Only SELECT queries can be used as subqueries"} =
+             Sql.expand_subqueries(:ch_sql, "SELECT a FROM limited_plan", [endpoint])
+
+    assert {:ok, "SELECT 1 AS a"} =
+             Sql.expand_subqueries(:ch_sql, "SELECT 1 AS a", [endpoint])
+  end
+
   test "sandbox assembly rejects requests on either side rather than dropping or nesting them", %{
     user: user
   } do
