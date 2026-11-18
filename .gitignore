@@ -17,10 +17,6 @@ npm-debug.log
 /assets/node_modules
 /assets/yarn.lock
 
-# Query-class Playwright artifacts
-/screenshots/query-class-*.png
-/screenshots/query-class-videos/
-
 # Since we are building assets from assets/,
 # we ignore priv/static. You may want to comment
 # this depending on your deployment strategy.
