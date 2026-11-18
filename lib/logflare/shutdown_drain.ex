@@ -2,6 +2,7 @@ defmodule Logflare.ShutdownDrain do
   @moduledoc """
   Stops spool intake and drains queued events, spool uploads, and acknowledgments.
   Incomplete spool work is nacked for redelivery when the cleanup budget allows.
+  An empty ingestion queue doesn't confirm delivery of claimed direct-backend events.
   """
 
   require Logger
@@ -67,7 +68,7 @@ defmodule Logflare.ShutdownDrain do
     Logger.warning(
       "shutdown_drain: finished result=#{result} spool_pending=#{spool_pending} " <>
         "queued_events=#{queued_events} duration_ms=#{System.monotonic_time(:millisecond) - started_at} " <>
-        "spool_buffer=#{spool} object_deletes=#{object_deletes}"
+        "spool_buffer=#{spool} object_deletes=#{object_deletes} direct_backend_delivery=unverified"
     )
 
     result
