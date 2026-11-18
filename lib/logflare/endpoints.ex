@@ -933,9 +933,20 @@ defmodule Logflare.Endpoints do
         query_results_cache(query, params, opts, 0, resolver_node)
 
       pid when is_pid(pid) ->
+        requested_class = Keyword.get(opts, :read_cluster)
+
         case ResultsCache.query(pid) do
           {:error, :stale_cache} ->
             query_results_cache(query, params, opts, attempts - 1, node(pid))
+
+          {:error,
+           %QueryError{
+             kind: :invalid_query,
+             backend: ClickHouseAdaptor,
+             raw_error: {:missing_clickhouse_sql_baseline, executed_class}
+           }}
+          when requested_class != executed_class ->
+            run_query(query, params, opts)
 
           response ->
             response

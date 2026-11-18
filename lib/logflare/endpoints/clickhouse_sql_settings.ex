@@ -14,6 +14,8 @@ defmodule Logflare.Endpoints.ClickHouseSqlSettings do
   @microseconds_per_second 1_000_000.0
   @exclusive_timeout_microseconds 9_223_372_036_854_775_808
 
+  @type missing_baseline_error :: {:missing_clickhouse_sql_baseline, String.t()}
+
   @spec setting?(String.t()) :: boolean()
   defp setting?(key), do: key in @keys
 
@@ -34,7 +36,8 @@ defmodule Logflare.Endpoints.ClickHouseSqlSettings do
     end
   end
 
-  @spec enforce(String.t(), map(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
+  @spec enforce(String.t(), map(), keyword()) ::
+          {:ok, String.t()} | {:error, String.t() | missing_baseline_error()}
   def enforce(query, inherited, opts \\ []) do
     if Regex.match?(~r/\bsettings\b/i, query) do
       with {:ok, [statement]} <- Parser.parse_clickhouse_converted(query),
@@ -50,7 +53,7 @@ defmodule Logflare.Endpoints.ClickHouseSqlSettings do
   end
 
   @spec enforce_requests(String.t(), map(), map(), map(), keyword()) ::
-          {:ok, String.t()} | {:error, String.t()}
+          {:ok, String.t()} | {:error, String.t() | missing_baseline_error()}
   defp enforce_requests(query, _statement, inherited, requests, opts) when requests == %{},
     do: enforce_policy(query, inherited, opts)
 
@@ -76,11 +79,16 @@ defmodule Logflare.Endpoints.ClickHouseSqlSettings do
       else: ClickHouseSettings.enforce(query, settings)
   end
 
-  @spec require_baselines(map(), map()) :: :ok | {:error, String.t()}
+  @spec require_baselines(map(), map()) :: :ok | {:error, missing_baseline_error()}
   defp require_baselines(inherited, requests) do
     case Enum.find(Map.keys(requests), &(not Map.has_key?(inherited, &1))) do
-      nil -> :ok
-      key -> {:error, "ClickHouse setting #{key} requires an explicit inherited policy limit"}
+      nil ->
+        :ok
+
+      key ->
+        {:error,
+         {:missing_clickhouse_sql_baseline,
+          "ClickHouse setting #{key} requires an explicit inherited policy limit"}}
     end
   end
 

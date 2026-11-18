@@ -257,6 +257,48 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
     TestUtils.retry_assert(fn -> assert :sys.get_state(pid).query_tasks == [] end)
   end
 
+  test "a caller can recover from a cold cache whose class lacks its baseline", %{
+    backend: backend
+  } do
+    endpoint =
+      insert(:endpoint,
+        user: Logflare.Users.get(backend.user_id),
+        backend: backend,
+        language: :ch_sql,
+        query: "SELECT toUInt64(getSetting('max_threads')) AS threads SETTINGS max_threads = 3",
+        cache_duration_seconds: 60,
+        proactive_requerying_seconds: 60
+      )
+
+    TestUtils.attach_forwarder([:logflare, :clickhouse, :read_pool, :query_error])
+
+    for label <- ["dashboard_logs_paid", "api_paid"] do
+      pid =
+        start_supervised!(
+          {Endpoints.ResultsCache, {endpoint, %{}, [read_cluster: "dashboard_logs_paid"]}},
+          id: label
+        )
+
+      ref = Process.monitor(pid)
+      result = Endpoints.run_cached_query(endpoint, %{}, read_cluster: label)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+
+      assert_receive {:telemetry_event, [:logflare, :clickhouse, :read_pool, :query_error],
+                      %{count: 1}, %{error_kind: :policy_rejection}}
+
+      if label == "api_paid" do
+        assert {:ok, %{rows: [%{"threads" => 3}]}} = result
+      else
+        assert {:error, %QueryError{description: reason}} = result
+
+        assert reason ==
+                 "ClickHouse setting max_threads requires an explicit inherited policy limit"
+      end
+
+      refute_received {:telemetry_event, [:logflare, :clickhouse, :read_pool, :query_error], _, _}
+    end
+  end
+
   test "endpoint previews and execution merge class policy with endpoint policy",
        context do
     backend = context.backend

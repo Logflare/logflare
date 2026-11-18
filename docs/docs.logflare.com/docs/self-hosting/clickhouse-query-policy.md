@@ -8,7 +8,7 @@ Operators can configure scheduling and resource limits independently of ClickHou
 
 ## Operator configuration
 
-Use the internal operator function with a persisted admin user. The admin flag is provisioned out of band and rechecked on every save. Customer backend changesets, the backend API, and customer forms cannot introduce, change, or clear this configuration. Public backend JSON omits it. An operator must clear this policy before changing backend type. Ordinary saves merge under a row lock so stale customer snapshots cannot erase newer operator policy. No new customer-supplied ClickHouse settings are enabled.
+Use the internal operator function with a persisted admin user. The admin flag is provisioned out of band and rechecked on every save. Customer backend changesets, the backend API, and customer forms cannot introduce, change, or clear this configuration. Public backend JSON omits it. An operator must clear this policy before changing backend type. Ordinary saves merge under a row lock so stale customer snapshots cannot erase newer operator policy. These restrictions apply to backend configuration; lower-only requests in endpoint SQL are described below.
 
 Endpoint-owned policy also requires a persisted admin `User`. Use the administrator's own account context, not a team-member context: matching email addresses or an admin team owner grant no operator privileges. Team profile edits can change display/contact preferences, not authentication identity.
 
@@ -89,7 +89,7 @@ Requests above resource ceilings, or requesting higher urgency, are clamped rath
 
 Only outer-query requests are supported, including on `EXPLAIN SELECT`. Requests in CTEs or subqueries are rejected. Referencing an endpoint that contains these settings as a subquery is also rejected. Sandboxed SQL cannot contain these requests on either side of its base/consumer query pair; Logflare rejects them rather than losing or changing their scope during assembly. Ordinary sandboxed queries and optimizer settings are unaffected.
 
-These requests are part of saved SQL and its versions. Restoring an older SQL version restores its requested values, while current administrator-enforced policy still applies. Result-cache hits do not execute SQL; misses and refreshes use the existing class/cache behavior above. Debug logs record requested/effective SQL settings; `system.query_log.Settings` can verify actual server settings when query-setting logging is enabled. Copying the SQL directly to ClickHouse does not apply Logflare's lower-only merge.
+These requests are part of saved SQL and its versions. Restoring an older SQL version restores its requested values, while current administrator-enforced policy still applies. Result-cache hits do not execute SQL. If a cold-cache execution rejects a lower-only request because its class lacks a baseline, callers waiting under a different class retry once under their own class. Background refreshes still use the cache's original class. Debug logs record requested/effective SQL settings; `system.query_log.Settings` can verify actual server settings when query-setting logging is enabled. Copying the SQL directly to ClickHouse does not apply Logflare's lower-only merge.
 
 Deploy support to every Logflare instance before enabling these SQL requests. No public policy fields, migrations, or new editor controls are introduced.
 

@@ -796,7 +796,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   def execute_ch_query(%Backend{} = backend, statement, params, opts)
       when is_list_or_map(params) and is_list(opts) do
-    with {:ok, statement} <- prepare_query(backend, statement, opts) do
+    with {:ok, statement} <- prepare_query_result(backend, statement, opts) do
       requested = Keyword.get(opts, :read_cluster)
       label = resolve_read_cluster_label(backend, requested)
 
@@ -833,9 +833,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
           }
         )
 
-        {:error, %{query_error(:invalid_query, reason) | description: reason}}
+        {:error, query_policy_error(reason, Keyword.get(opts, :read_cluster))}
     end
   end
+
+  @spec query_policy_error(String.t() | ClickHouseSqlSettings.missing_baseline_error(), term()) ::
+          QueryError.t()
+  defp query_policy_error({:missing_clickhouse_sql_baseline, message}, requested_class) do
+    %{
+      query_error(:invalid_query, {:missing_clickhouse_sql_baseline, requested_class})
+      | description: message
+    }
+  end
+
+  defp query_policy_error(reason, _requested_class),
+    do: %{query_error(:invalid_query, reason) | description: reason}
 
   @doc """
   Applies policy to reads. Recognized raw maintenance statements pass through
@@ -843,7 +855,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   """
   @spec prepare_query(Backend.t(), iodata(), Keyword.t()) ::
           {:ok, String.t()} | {:error, String.t()}
-  def prepare_query(%Backend{config: config}, statement, opts \\ []) do
+  def prepare_query(%Backend{} = backend, statement, opts \\ []) do
+    case prepare_query_result(backend, statement, opts) do
+      {:error, {:missing_clickhouse_sql_baseline, message}} -> {:error, message}
+      result -> result
+    end
+  end
+
+  @spec prepare_query_result(Backend.t(), iodata(), keyword()) ::
+          {:ok, String.t()}
+          | {:error, String.t() | ClickHouseSqlSettings.missing_baseline_error()}
+  defp prepare_query_result(%Backend{config: config}, statement, opts) do
     statement = IO.iodata_to_binary(statement)
 
     if raw_maintenance_query?(statement, opts) do
@@ -854,7 +876,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @spec prepare_read_query(map(), String.t(), keyword()) ::
-          {:ok, String.t()} | {:error, String.t()}
+          {:ok, String.t()}
+          | {:error, String.t() | ClickHouseSqlSettings.missing_baseline_error()}
   defp prepare_read_query(config, statement, opts) do
     classes = Map.get(config, :query_class_settings) || %{}
     endpoint_settings = Keyword.get(opts, :enforced_clickhouse_settings, %{})

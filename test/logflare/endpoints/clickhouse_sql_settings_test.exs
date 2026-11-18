@@ -48,7 +48,7 @@ defmodule Logflare.Endpoints.ClickHouseSqlSettingsTest do
     for key <- Map.keys(@limits), policy <- [%{}, Map.delete(@limits, key)] do
       expected = "ClickHouse setting #{key} requires an explicit inherited policy limit"
 
-      assert {:error, ^expected} =
+      assert {:error, {:missing_clickhouse_sql_baseline, ^expected}} =
                ClickHouseSqlSettings.enforce("SELECT 1 AS a SETTINGS #{key} = 1", policy)
     end
   end
