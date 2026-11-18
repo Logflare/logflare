@@ -1,0 +1,84 @@
+name: pw-install-experiment
+
+on:
+  push:
+    branches: [zn/vibrant-franklin-l5na4e]
+    paths: [".github/workflows/pw-install-experiment.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  prime-cache:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with: { node-version: lts/*, cache: npm, cache-dependency-path: assets/package-lock.json }
+      - run: npm ci --prefix assets
+      - id: v
+        run: echo "pw=$(node -p "require('./assets/node_modules/playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-exp-${{ runner.os }}-${{ steps.v.outputs.pw }}-shell
+      - run: npx --prefix assets playwright install --only-shell chromium
+
+  install:
+    needs: prime-cache
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [all, chromium, shell, shell-cached]
+        rep: [1, 2, 3, 4, 5, 6]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with: { node-version: lts/*, cache: npm, cache-dependency-path: assets/package-lock.json }
+      - run: npm ci --prefix assets
+      - id: v
+        run: echo "pw=$(node -p "require('./assets/node_modules/playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+      - if: matrix.variant == 'shell-cached'
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-exp-${{ runner.os }}-${{ steps.v.outputs.pw }}-shell
+      - name: install-deps
+        run: |
+          case "${{ matrix.variant }}" in
+            all) args="" ;;
+            chromium) args="chromium" ;;
+            *) args="--only-shell chromium" ;;
+          esac
+          start=$(date +%s)
+          npx --prefix assets playwright install-deps $args 2>&1 | tee apt.log | grep -E "Need to get|newly installed" || true
+          echo "APT_SECONDS=$(( $(date +%s) - start ))"
+      - name: install-browsers
+        run: |
+          case "${{ matrix.variant }}" in
+            all) args="" ;;
+            chromium) args="chromium" ;;
+            *) args="--only-shell chromium" ;;
+          esac
+          start=$(date +%s)
+          npx --prefix assets playwright install $args
+          echo "BROWSER_SECONDS=$(( $(date +%s) - start ))"
+          du -sh ~/.cache/ms-playwright
+
+  container:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rep: [1, 2, 3, 4, 5, 6]
+    container:
+      image: mcr.microsoft.com/playwright:v1.60.0-noble
+    steps:
+      - uses: actions/checkout@v6
+      - run: npm ci --prefix assets
+      - name: install-browsers
+        run: |
+          start=$(date +%s)
+          npx --prefix assets playwright install --only-shell chromium
+          echo "BROWSER_SECONDS=$(( $(date +%s) - start ))"
