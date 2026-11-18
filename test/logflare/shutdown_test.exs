@@ -103,6 +103,17 @@ defmodule Logflare.ShutdownTest do
     assert_receive {:phase, {:flush, _}}
   end
 
+  test "preserves a final spool sync error when ingress drained" do
+    stub(ShutdownDrain, :run, fn _budget, _intake_result, _buffer -> :error end)
+
+    assert Shutdown.run(
+             deadline_ms: System.monotonic_time(:millisecond) + 1_000,
+             withdrawal_ms: 0,
+             request_timeout_ms: 10,
+             drain_timeout_ms: 500
+           ) == :error
+  end
+
   test "without spool drain configuration, still quiesces ingress before stopping" do
     assert Shutdown.run(
              deadline_ms: System.monotonic_time(:millisecond) + 1_000,

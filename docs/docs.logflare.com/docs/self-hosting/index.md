@@ -104,7 +104,7 @@ Set Kubernetes `terminationGracePeriodSeconds` above the drainer timeout **plus*
 
 An empty ingestion queue is not proof of direct backend delivery. A backend may already have claimed a batch that is still being inserted or retried. The drainer does not verify completion of those direct deliveries; backend pipelines continue their own OTP shutdown.
 
-In WAL mode, shutdown sync confirms only the local WAL commit, not upload or queue publication. Undelivered WAL files are recoverable only if the WAL volume survives termination; a Kubernetes `emptyDir` does not survive pod deletion.
+Shutdown reports failed spool partition commits separately from sync timeouts. In WAL mode, a successful shutdown sync confirms only the local WAL commit, not upload or queue publication. Undelivered WAL files are recoverable only if the WAL volume survives termination; a Kubernetes `emptyDir` does not survive pod deletion.
 
 These controls improve termination safety; they do not make Argo blue/green ALB target replacement atomic.
 

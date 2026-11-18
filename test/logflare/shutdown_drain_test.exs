@@ -395,6 +395,21 @@ defmodule Logflare.ShutdownDrainTest do
       assert_received {:uploaded, _body}
     end
 
+    test "reports a failed async spool commit as an error and still cleans up" do
+      stub(StorageMod, :put, fn _bucket, _key, _body, _opts -> {:error, :write_failed} end)
+      expect(SpoolAck, :flush, fn _remaining -> :ok end)
+      buffer = start_spool_buffer!()
+      :ok = DurableBuffer.append_async(buffer, :key, <<1::32-big, "event">>)
+
+      log =
+        capture_log([level: :warning], fn ->
+          assert run(producers: [], spool_buffer: buffer) == :error
+        end)
+
+      assert log =~ "failed_partitions=[0]"
+      assert log =~ "spool_buffer=error"
+    end
+
     @tag :tmp_dir
     test "reports local WAL sync without claiming the blocked upload completed", %{tmp_dir: dir} do
       block_uploads()

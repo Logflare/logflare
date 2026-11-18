@@ -16,12 +16,13 @@ defmodule Logflare.ShutdownDrain do
   alias Logflare.Backends.Spool.ObjectDeleter
   alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.Shutdown.Budget
-  alias Logflare.Utils.Tasks
 
   @default_poll_interval_ms 100
 
-  @type result :: :drained | :timeout
+  @type result :: :drained | :timeout | :error
   @type intake_result :: :ok | :timeout
+  @type spool_sync_result ::
+          :none | :synced | :local_wal_synced_cloud_delivery_unverified | :timeout | :error
 
   @doc """
   Requests prefetch settlement on current producers after readiness enters draining.
@@ -68,9 +69,11 @@ defmodule Logflare.ShutdownDrain do
     {acks, object_deletes} = cleanup(queues, budget.cleanup)
 
     result =
-      if queues == :drained and spool != :timeout and acks == :ok and object_deletes == :ok,
-        do: :drained,
-        else: :timeout
+      cond do
+        spool == :error -> :error
+        :timeout in [queues, spool, acks, object_deletes] -> :timeout
+        true -> :drained
+      end
 
     Logger.warning(
       "shutdown_drain: finished result=#{result} spool_pending=#{spool_pending} " <>
@@ -82,7 +85,7 @@ defmodule Logflare.ShutdownDrain do
   end
 
   @doc "Settles remaining spool receipts and attempts outstanding acknowledgments and deletes."
-  @spec cleanup(result(), Budget.limit()) :: {:ok | :timeout, :ok | :timeout}
+  @spec cleanup(:drained | :timeout, Budget.limit()) :: {:ok | :timeout, :ok | :timeout}
   def cleanup(queue_result, limit) do
     deadline = Budget.deadline(limit)
     if queue_result == :timeout, do: within(deadline, &SpoolAck.nack_pending/1)
@@ -93,26 +96,43 @@ defmodule Logflare.ShutdownDrain do
 
   defp within(deadline, operation), do: operation.(Budget.remaining(deadline))
 
-  @spec sync_spool_buffer(Budget.limit() | nil, atom() | nil) ::
-          :none | :synced | :local_wal_synced_cloud_delivery_unverified | :timeout
+  @spec sync_spool_buffer(Budget.limit() | nil, atom() | nil) :: spool_sync_result()
   def sync_spool_buffer(nil, _buffer), do: :none
   def sync_spool_buffer(_limit, nil), do: :none
 
   def sync_spool_buffer(limit, buffer) do
-    timeout = limit |> Budget.deadline() |> Budget.remaining()
-    Logger.warning("shutdown_drain: syncing the spool buffer for up to #{timeout}ms")
+    deadline = Budget.deadline(limit)
 
-    case Tasks.run_within(fn -> sync_buffer(buffer) end, timeout) do
-      {:ok, result} -> result
-      _ -> :timeout
-    end
+    Logger.warning(
+      "shutdown_drain: syncing the spool buffer for up to #{Budget.remaining(deadline)}ms"
+    )
+
+    sync_buffer(buffer, deadline)
   end
 
-  defp sync_buffer(buffer) do
+  defp sync_buffer(buffer, deadline) do
     %{backend: {backend, _}} = DurableBuffer.config(buffer)
-    :ok = DurableBuffer.sync_all(buffer)
 
-    if backend == RotatingWal, do: :local_wal_synced_cloud_delivery_unverified, else: :synced
+    case DurableBuffer.sync_all(buffer, Budget.remaining(deadline)) do
+      :ok when backend == RotatingWal -> :local_wal_synced_cloud_delivery_unverified
+      :ok -> :synced
+      {:error, failures} -> report_sync_failures(failures)
+    end
+  rescue
+    ArgumentError ->
+      Logger.warning("shutdown_drain: spool buffer unavailable during sync")
+      :error
+  end
+
+  defp report_sync_failures(failures) do
+    {timed_out, failed} = Enum.split_with(failures, fn {_index, reason} -> reason == :timeout end)
+
+    Logger.warning(
+      "shutdown_drain: spool sync incomplete failed_partitions=#{inspect(Enum.map(failed, &elem(&1, 0)))} " <>
+        "timed_out_partitions=#{inspect(Enum.map(timed_out, &elem(&1, 0)))}"
+    )
+
+    if failed == [], do: :timeout, else: :error
   end
 
   defp spool_producers do

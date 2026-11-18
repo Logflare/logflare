@@ -98,7 +98,7 @@ defmodule Logflare.Shutdown do
   defp finish(ingress_result, drain_result, deadline) do
     cond do
       :timeout in [ingress_result, drain_result] or Budget.remaining(deadline) == 0 -> :timeout
-      ingress_result == :error -> :error
+      :error in [ingress_result, drain_result] -> :error
       true -> :drained
     end
   end
