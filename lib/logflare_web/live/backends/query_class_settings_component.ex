@@ -15,6 +15,10 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
   @numeric_keys Enum.map(@fields, &elem(&1, 0))
   @override_classes QueryClassSettings.classes()
   @cache_key "read_from_filesystem_cache_if_exists_otherwise_bypass_cache"
+  @overflow_mode_limits [
+    {"read_overflow_mode", ~w(max_rows_to_read max_bytes_to_read)},
+    {"timeout_overflow_mode", ~w(max_execution_time)}
+  ]
 
   @impl true
   def update(assigns, socket) do
@@ -61,7 +65,7 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
       when is_map(params) and not is_map_key(payload, "reset_class") do
     case parse_settings(params) do
       {:ok, settings} ->
-        settings = restore_cache_overrides(settings, socket.assigns)
+        settings = restore_hidden_overrides(settings, socket.assigns)
         save_settings(settings, assign(socket, :params, params))
 
       {:error, reason} ->
@@ -168,17 +172,28 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
     )
   end
 
-  @spec restore_cache_overrides(map(), map()) :: map()
-  defp restore_cache_overrides(settings, %{
+  @spec restore_hidden_overrides(map(), map()) :: map()
+  defp restore_hidden_overrides(settings, %{
          original_policy: original,
          reset_classes: reset_classes
        }) do
-    Enum.reduce(Map.keys(original), settings, fn class, acc ->
-      case cache_override(original, reset_classes, class) do
-        nil -> acc
-        value -> Map.update(acc, class, %{@cache_key => value}, &Map.put(&1, @cache_key, value))
+    Enum.reduce(Map.drop(original, MapSet.to_list(reset_classes)), settings, fn {class, policy},
+                                                                                acc ->
+      case hidden_overrides(policy) do
+        overrides when overrides == %{} -> acc
+        overrides -> Map.update(acc, class, overrides, &Map.merge(&1, overrides))
       end
     end)
+  end
+
+  @spec hidden_overrides(map()) :: map()
+  defp hidden_overrides(policy) do
+    standalone_modes =
+      for {mode, limits} <- @overflow_mode_limits,
+          not Enum.any?(limits, &Map.has_key?(policy, &1)),
+          do: mode
+
+    Map.take(policy, [@cache_key | standalone_modes])
   end
 
   @spec cache_override(map(), MapSet.t(String.t()), String.t()) :: 0 | 1 | nil

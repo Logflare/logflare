@@ -223,6 +223,52 @@ defmodule LogflareWeb.Backends.QueryClassSettingsLiveTest do
            }
   end
 
+  test "ordinary edits preserve standalone overflow modes but not modes derived from cleared limits",
+       context do
+    policy = %{
+      "default" => %{"priority" => 5, "read_overflow_mode" => "throw"},
+      "api_paid" => %{"max_rows_to_read" => 10, "timeout_overflow_mode" => "throw"},
+      "mcp" => %{"max_execution_time" => 2.5}
+    }
+
+    assert {:ok, _} =
+             Backends.configure_query_class_settings(context.owner, context.backend, policy)
+
+    {:ok, view, _html} =
+      live_with_redirect(context.conn, ~p"/backends/#{context.backend.id}/edit")
+
+    view
+    |> form("#query-class-settings-form",
+      query_class_settings: %{
+        "default" => %{"priority" => "6"},
+        "api_paid" => %{"max_rows_to_read" => ""},
+        "mcp" => %{"max_execution_time" => ""}
+      }
+    )
+    |> render_submit()
+
+    defaults = %{"priority" => 6, "read_overflow_mode" => "throw"}
+
+    assert Backends.get_backend(context.backend.id).config.query_class_settings == %{
+             "default" => defaults,
+             "api_paid" => %{"timeout_overflow_mode" => "throw"}
+           }
+
+    view
+    |> form("#query-class-settings-form")
+    |> put_submitter("#query-class-api_paid button[name=reset_class]")
+    |> render_submit()
+
+    view |> form("#query-class-settings-form") |> render_submit()
+
+    assert Backends.get_backend(context.backend.id).config.query_class_settings == %{
+             "default" => defaults
+           }
+
+    view |> element("button", "Disable query-class policy") |> render_click()
+    assert Backends.get_backend(context.backend.id).config.query_class_settings == %{}
+  end
+
   test "team members can edit, but revoked membership cannot save through an open view",
        context do
     member = insert(:team_user, team: context.team)
