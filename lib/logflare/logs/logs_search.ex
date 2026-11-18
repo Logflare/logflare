@@ -77,8 +77,9 @@ defmodule Logflare.Logs.Search do
   @doc """
   Search for events before and after a selected event.
   """
-  @spec search_event_context(SO.t(), String.t(), DateTime.t()) :: {:ok, SO.t()} | {:error, SO.t()}
-  def search_event_context(%SO{} = so, log_event_id, %DateTime{} = timestamp) do
+  @spec search_event_context(SO.t(), String.t(), DateTime.t(), Range.t()) ::
+          {:ok, SO.t()} | {:error, SO.t()}
+  def search_event_context(%SO{} = so, log_event_id, %DateTime{} = timestamp, ranks \\ -50..50) do
     so =
       so
       |> get_and_put_partition_by()
@@ -110,7 +111,8 @@ defmodule Logflare.Logs.Search do
       |> join(:cross, subquery(target_position))
       |> where(
         [nr, tp],
-        nr.row_num >= tp.target_row_num - 50 and nr.row_num <= tp.target_row_num + 50
+        nr.row_num >= tp.target_row_num + ^ranks.first and
+          nr.row_num <= tp.target_row_num + ^ranks.last
       )
       |> order_by([nr, _], asc: nr.timestamp, asc: nr.id)
       |> select([nr, tp], %{

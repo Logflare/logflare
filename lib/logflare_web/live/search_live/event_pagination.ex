@@ -89,6 +89,12 @@ defmodule LogflareWeb.SearchLive.EventPagination do
     }
   end
 
+  @spec button_state(boolean(), boolean(), boolean()) :: button_state()
+  def button_state(false, _busy?, _loading?), do: :hidden
+  def button_state(true, _busy?, true), do: :loading
+  def button_state(true, true, false), do: :disabled
+  def button_state(true, false, false), do: :ready
+
   @doc """
   Label for a pagination button, naming the window one click moves by.
 
@@ -125,9 +131,11 @@ defmodule LogflareWeb.SearchLive.EventPagination do
 
   defp button(pagination, intent, cursor, tailing?, busy?, now) do
     state =
-      cursor
-      |> button_state(tailing?, busy?)
-      |> apply_loading(pagination.loading_intent == intent)
+      button_state(
+        not tailing? and not is_nil(cursor),
+        busy?,
+        pagination.loading_intent == intent
+      )
 
     span = span_seconds(pagination.window_seconds, intent, cursor, now)
 
@@ -142,13 +150,4 @@ defmodule LogflareWeb.SearchLive.EventPagination do
 
   defp sign(:previous), do: "-"
   defp sign(:next), do: "+"
-
-  defp apply_loading(:hidden, _loading?), do: :hidden
-  defp apply_loading(_state, true), do: :loading
-  defp apply_loading(state, _loading?), do: state
-
-  defp button_state(_cursor, true, _busy?), do: :hidden
-  defp button_state(nil, _tailing?, _busy?), do: :hidden
-  defp button_state(_cursor, _tailing?, true), do: :disabled
-  defp button_state(_cursor, _tailing?, _busy?), do: :ready
 end

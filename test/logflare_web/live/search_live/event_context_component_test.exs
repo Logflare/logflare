@@ -4,6 +4,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.BqRepo
+  alias Logflare.Logs.SearchOperation
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
@@ -24,7 +25,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
   defp setup_mocks(context) do
     stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
       if opts[:body].query =~ "rank" do
-        context[:bq_response]
+        context_response(context, opts[:body].queryParameters)
       else
         {:ok, TestUtils.gen_bq_response()}
       end
@@ -36,6 +37,24 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
 
     :ok
   end
+
+  @spec context_response(map(), [map()]) :: {:ok, struct()} | {:error, term()}
+  defp context_response(%{context_ranks: ranks}, params) do
+    [first, last] = params |> Enum.take(-2) |> Enum.map(& &1.parameterValue.value)
+
+    rows =
+      for rank <- ranks, rank in first..last do
+        %{"event_message" => "context event #{rank}", "rank" => to_string(rank)}
+      end
+
+    {:ok,
+     TestUtils.gen_bq_response(
+       rows,
+       SchemaBuilder.build_table_schema(%{"rank" => 1}, @default_schema)
+     )}
+  end
+
+  defp context_response(context, _params), do: context.bq_response
 
   defp handle_bigquery_execute_query({project_id, dataset_id, user_id}, query, opts) do
     user = Users.get(user_id)
@@ -204,7 +223,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
       ref = make_ref()
 
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
-        send(pid, {ref, opts[:body].query})
+        send(pid, {ref, opts[:body]})
 
         {:ok, TestUtils.gen_bq_response()}
       end)
@@ -224,7 +243,12 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
           lql_rules
         )
 
-        assert_receive {^ref, query}
+        assert_receive {^ref, request}
+
+        query = request.query
+
+        assert request.queryParameters |> Enum.take(-2) |> Enum.map(& &1.parameterValue.value) ==
+                 [-50, 50]
 
         case partition_type do
           :pseudo ->
@@ -248,10 +272,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
 
     setup {TestUtils, :attach_wait_for_render}
 
-    @tag bq_response:
-           {:ok,
-            Enum.map(1..10, &%{"event_message" => "event message #{&1}"})
-            |> TestUtils.gen_bq_response()}
+    @tag context_ranks: -75..75
     test "viewing event context", %{conn: conn, source: source} do
       {:ok, view, _html} =
         live_with_redirect(conn, ~p"/sources/#{source.id}/search?tailing=false")
@@ -262,13 +283,68 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
         |> element("#logs-list li[data-event-id] a", "context")
         |> render_click()
 
-      # Verify the context modal opens
       assert html =~ "View Event Context"
 
       view |> TestUtils.wait_for_render("#context_log_events #log-events li:first-of-type")
 
-      assert view |> has_element?("#context_log_events #log-events li", "event message 1")
-      assert view |> has_element?("#context_log_events #log-events li", "event message 10")
+      assert has_element?(
+               view,
+               "#context_log_events #log-events li:first-child",
+               "context event -50"
+             )
+
+      assert has_element?(
+               view,
+               "#context_log_events #log-events li:last-child",
+               "context event 50"
+             )
+
+      assert has_element?(view, "#context-load-more-before:not([disabled])", "Load 50 more")
+      assert has_element?(view, "#context-load-more-after:not([disabled])", "Load 50 more")
+      assert has_element?(view, "#log-events > li:nth-child(101)")
+      refute has_element?(view, "#context_log_events #log-events li:nth-child(102)")
+
+      expect(BigQueryAdaptor, :execute_query, fn _, _, _ -> {:error, "query failed"} end)
+      view |> element("#context-load-more-before") |> render_click()
+      render_async(view)
+
+      assert has_element?(
+               view,
+               "#context_load_more_error[role=alert]",
+               "Unable to load more events"
+             )
+
+      refute has_element?(view, "#context_log_events #context_load_more_error")
+      assert has_element?(view, "#context_log_events #log-events li:nth-child(101)")
+      assert has_element?(view, "#context-load-more-before:not([disabled])")
+
+      view |> element("#context-load-more-before") |> render_click()
+      render_async(view)
+
+      assert has_element?(view, "#log-events > li:first-child", "context event -75")
+      assert has_element?(view, "#log-events > li:nth-child(126)", "context event 50")
+      assert has_element?(view, "div.tw-hidden > #context-load-more-before[disabled]")
+      assert has_element?(view, "#context-load-more-after:not([disabled])")
+      refute has_element?(view, "#context_load_more_error")
+
+      aggregates =
+        struct!(SearchOperation, :sys.get_state(view.pid).socket.assigns.search_op_log_aggregates)
+
+      send(view.pid, {:search_result, %{aggregates: %{aggregates | rows: []}}})
+      render_async(view)
+
+      assert has_element?(view, "#log-events > li:first-child", "context event -75")
+      assert has_element?(view, "#log-events > li:nth-child(126)", "context event 50")
+
+      view |> element("#context-load-more-after") |> render_click()
+      render_async(view)
+
+      assert has_element?(view, "#log-events > li:first-child", "context event -75")
+      assert has_element?(view, "#log-events > li:nth-child(151)", "context event 75")
+      refute has_element?(view, "#log-events > li:nth-child(152)")
+      assert has_element?(view, "#log-events > li", "context event 0")
+      assert has_element?(view, "div.tw-hidden > #context-load-more-before[disabled]")
+      assert has_element?(view, "div.tw-hidden > #context-load-more-after[disabled]")
     end
 
     @tag bq_response: {:error, TestUtils.gen_bq_error("bad query")}
