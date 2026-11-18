@@ -37,13 +37,6 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
   end
 
   @impl true
-  def handle_event("change", %{"query_class_settings" => params}, socket) when is_map(params) do
-    case parse_settings(params) do
-      {:ok, _settings} -> {:noreply, assign(socket, params: params, error: nil, message: nil)}
-      {:error, reason} -> {:noreply, assign(socket, :error, reason)}
-    end
-  end
-
   def handle_event("save", %{"reset_class" => class, "query_class_settings" => params}, socket)
       when class in @override_classes and is_map(params) do
     case parse_settings(params) do
@@ -75,7 +68,7 @@ defmodule LogflareWeb.Backends.QueryClassSettingsComponent do
 
   def handle_event("clear", _params, socket), do: save_settings(%{}, socket)
 
-  def handle_event(event, _params, socket) when event in ["change", "save"] do
+  def handle_event("save", _params, socket) do
     {:noreply, assign(socket, :error, "Invalid query-class form. Reload and try again.")}
   end
 
