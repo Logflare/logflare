@@ -115,6 +115,7 @@ defmodule Logflare.Application do
         {Phoenix.PubSub, name: Logflare.PubSub, pool_size: pool_size},
         ContextCache.Supervisor,
         Logflare.RecordUsages.ShutdownWorker,
+        Logflare.RecordUsages.SyncWorker,
         Logflare.LogEvent.DayBucket,
         Logs.LogEvents.Cache,
         PubSubRates,
