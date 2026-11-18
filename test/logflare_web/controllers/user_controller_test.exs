@@ -216,11 +216,14 @@ defmodule LogflareWeb.UserControllerTest do
         {:error, %Stripe.Error{message: "api error", source: :network, code: :api_error}}
       end)
 
-      conn = delete(conn, ~p"/account")
+      {conn, log} =
+        with_log([metadata: [:error]], fn -> delete(conn, ~p"/account") end)
 
       assert redirected_to(conn, 302) =~ ~p"/account/edit"
       assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "Something went wrong"
       assert Users.get(user.id)
+      assert log =~ "user audit: user account deletion failed"
+      assert log =~ "api error"
     end
   end
 

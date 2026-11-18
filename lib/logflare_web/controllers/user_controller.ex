@@ -159,19 +159,8 @@ defmodule LogflareWeb.UserController do
       |> configure_session(drop: true)
       |> redirect(to: ~p"/auth/login?#{%{user_deleted: true}}")
     else
-      _err ->
-        Logger.error("user audit: user account deletion failed",
-          action: "user.delete_failed",
-          user_id: user.id,
-          user_email: user.email
-        )
-
-        conn
-        |> put_flash(
-          :error,
-          "Something went wrong! Please try again and contact support if this continues."
-        )
-        |> redirect(to: ~p"/account/edit")
+      err ->
+        delete_failed(conn, user, err)
     end
   end
 
@@ -195,19 +184,8 @@ defmodule LogflareWeb.UserController do
         |> configure_session(drop: true)
         |> redirect(to: ~p"/auth/login?#{%{user_deleted: true}}")
 
-      _err ->
-        Logger.error("user audit: user account deletion failed",
-          action: "user.delete_failed",
-          user_id: user.id,
-          user_email: user.email
-        )
-
-        conn
-        |> put_flash(
-          :error,
-          "Something went wrong! Please try again and contact support if this continues."
-        )
-        |> redirect(to: ~p"/account/edit")
+      err ->
+        delete_failed(conn, user, err)
     end
   end
 
@@ -356,5 +334,22 @@ defmodule LogflareWeb.UserController do
         acc
       end
     end)
+  end
+
+  @spec delete_failed(Plug.Conn.t(), User.t(), term()) :: Plug.Conn.t()
+  defp delete_failed(conn, user, err) do
+    Logger.error("user audit: user account deletion failed",
+      action: "user.delete_failed",
+      user_id: user.id,
+      user_email: user.email,
+      error: inspect(err)
+    )
+
+    conn
+    |> put_flash(
+      :error,
+      "Something went wrong! Please try again and contact support if this continues."
+    )
+    |> redirect(to: ~p"/account/edit")
   end
 end
