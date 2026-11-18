@@ -3,6 +3,8 @@ defmodule Logflare.Endpoints.ResultsCache do
   Handles the Endpoint query results caching logic.
   """
 
+  import Logflare.Utils.Guards, only: [is_pos_integer: 1]
+
   require Logger
 
   alias Logflare.Endpoints
@@ -124,7 +126,9 @@ defmodule Logflare.Endpoints.ResultsCache do
     :syn.join(:core, {__MODULE__, query_id, :all_versions}, self())
 
     timer = query |> cache_duration_ms() |> shutdown()
-    refresh_timer = if disable_cache?(query), do: nil, else: refresh(proactive_querying_ms(query))
+
+    refresh_timer =
+      if disable_cache?(query), do: nil, else: refresh(query.proactive_requerying_seconds)
 
     state =
       %__MODULE__{
@@ -205,7 +209,7 @@ defmodule Logflare.Endpoints.ResultsCache do
     if state.draining? or disable_cache?(query) or is_nil(state.shutdown_timer) do
       {:stop, :normal, state}
     else
-      timer = refresh(proactive_querying_ms(query))
+      timer = refresh(query.proactive_requerying_seconds)
       {:noreply, %{state | cached_result: results, refresh_timer: timer}}
     end
   end
@@ -337,19 +341,15 @@ defmodule Logflare.Endpoints.ResultsCache do
     Endpoints.Cache.get_mapped_query_by_token(state.endpoint_query_token)
   end
 
-  @spec refresh(integer()) :: reference() | nil
-  defp refresh(every) when every <= 0, do: nil
-
-  defp refresh(every) do
-    Process.send_after(self(), :refresh, every)
+  @spec refresh(integer() | nil) :: reference() | nil
+  defp refresh(seconds) when is_pos_integer(seconds) do
+    Process.send_after(self(), :refresh, seconds * 1_000)
   end
+
+  defp refresh(_seconds), do: nil
 
   defp shutdown(every) do
     Process.send_after(self(), :shutdown, every)
-  end
-
-  defp proactive_querying_ms(query) do
-    query.proactive_requerying_seconds * 1_000
   end
 
   defp cache_duration_ms(query) do

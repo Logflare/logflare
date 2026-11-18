@@ -893,7 +893,7 @@ defmodule Logflare.Endpoints do
   def run_cached_query(%EndpointQuery{} = query, params \\ %{}, opts \\ [])
       when is_map(params) and is_list(opts) do
     with :ok <- validate_query_override(query, params),
-         true <- query.cache_duration_seconds > 0 do
+         true <- is_pos_integer(query.cache_duration_seconds) do
       query_results_cache(query, params, opts, 3, node())
     else
       false ->

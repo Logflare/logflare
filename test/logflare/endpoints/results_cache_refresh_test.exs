@@ -11,10 +11,10 @@ defmodule Logflare.Endpoints.ResultsCacheRefreshTest do
     %{user: user, backend: backend}
   end
 
-  for interval <- [0, -1] do
+  for interval <- [0, -1, nil] do
     @tag interval: interval
     @tag real_expiry?: interval == 0
-    test "interval #{interval} executes once per cache lifetime without background refresh",
+    test "interval #{inspect(interval)} executes once per cache lifetime without background refresh",
          context do
       endpoint =
         insert(:endpoint,
@@ -22,9 +22,10 @@ defmodule Logflare.Endpoints.ResultsCacheRefreshTest do
           backend: context.backend,
           language: :ch_sql,
           query: "SELECT 1 AS n",
-          cache_duration_seconds: if(context.real_expiry?, do: 1, else: 60),
-          proactive_requerying_seconds: context.interval
+          cache_duration_seconds: if(context.real_expiry?, do: 1, else: 60)
         )
+        |> change(proactive_requerying_seconds: context.interval)
+        |> Repo.update!()
 
       expect(ClickHouseAdaptor, :execute_query, 2, fn _, _, _ ->
         {:ok, QueryResult.new([%{"n" => 1}], %{total_bytes_processed: 0})}
