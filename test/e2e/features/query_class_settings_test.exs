@@ -8,6 +8,7 @@ defmodule E2e.Features.QueryClassSettingsTest do
   alias Logflare.Backends
   alias Logflare.Repo
   alias Logflare.SingleTenant
+  alias PhoenixTest.Playwright
   alias PlaywrightEx.BrowserContext
   alias PlaywrightEx.Frame
 
@@ -26,6 +27,8 @@ defmodule E2e.Features.QueryClassSettingsTest do
       ]
     ]
   end
+
+  defp configure_recording(_context), do: []
 
   setup do
     start_supervised!(Logflare.SystemMetricsSup)
@@ -154,6 +157,61 @@ defmodule E2e.Features.QueryClassSettingsTest do
 
     assert Backends.get_backend(backend.id).config.query_class_settings == %{}
     finish_recording(session, directory)
+  end
+
+  test "reconnecting discards a draft based on an older policy", %{
+    conn: conn,
+    backend: backend,
+    owner: owner
+  } do
+    path = ~p"/backends/#{backend.id}/edit"
+
+    assert {:ok, _} =
+             Backends.configure_query_class_settings(owner, backend, %{
+               "default" => %{"priority" => 5, "max_threads" => 12}
+             })
+
+    draft =
+      conn
+      |> visit(path)
+      |> assert_has(".phx-connected #query-class-default_max_threads[value='12']")
+      |> fill_in("#query-class-default_priority", "Priority", with: "6")
+      |> evaluate("new Promise(resolve => window.liveSocket.disconnect(() => resolve(true)))")
+
+    unwrap(draft, fn %{context_id: context_id} ->
+      assert {:ok, page} = BrowserContext.new_page(context_id, timeout: 5_000)
+
+      Playwright.build(%{
+        context_id: context_id,
+        page_id: page.guid,
+        frame_id: page.main_frame.guid,
+        tracing_id: nil,
+        config: []
+      })
+      |> visit(path)
+      |> assert_has(".phx-connected #query-class-settings-form")
+      |> fill_in("#query-class-default_max_threads", "Max threads", with: "4")
+      |> click_button("Save query-class settings")
+      |> assert_has("[role=status]", text: "Query-class settings saved")
+    end)
+
+    draft
+    |> evaluate("window.liveSocket.connect()")
+    |> assert_has(".phx-connected #query-class-default_max_threads[value='4']")
+    |> assert_has("#query-class-default_priority[value='5']")
+    |> click_button("Save query-class settings")
+    |> assert_has("[role=status]", text: "Query-class settings saved")
+
+    assert Backends.get_backend(backend.id).config.query_class_settings == %{
+             "default" => %{"priority" => 5, "max_threads" => 4}
+           }
+  end
+
+  @spec evaluate(PhoenixTest.Playwright.t(), String.t()) :: PhoenixTest.Playwright.t()
+  defp evaluate(session, expression) do
+    unwrap(session, fn %{frame_id: frame_id} ->
+      assert {:ok, _} = Frame.evaluate(frame_id, expression: expression, timeout: 5_000)
+    end)
   end
 
   @spec focus_editor(PhoenixTest.Playwright.t()) :: PhoenixTest.Playwright.t()
