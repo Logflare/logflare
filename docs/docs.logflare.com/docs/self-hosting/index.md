@@ -89,12 +89,12 @@ Environment variables that influence the logic are prefixed with `LOGFLARE_HEALT
 
 #### Graceful shutdown
 
-On SIGTERM or SIGQUIT, Logflare immediately fails readiness and asks OTP to stop. A supervised drainer shuts down before the endpoints and ingestion workers. It stops fetching new spool messages but continues serving during the withdrawal window so load balancers can remove the instance. It then closes application admission (including requests on existing HTTP/2 connections, RPCs, and websocket ingestion batches), suspends TCP listeners, waits for admitted work, and performs the final ingestion/spool flush. Liveness remains independent of readiness while the endpoints are still running.
+On SIGTERM or SIGQUIT, Logflare immediately fails readiness and asks OTP to stop. A supervised drainer shuts down before the endpoints and ingestion workers. It stops fetching new spool messages but continues serving during the withdrawal window so load balancers can remove the instance. It then closes application admission (including requests on existing HTTP/2 connections, RPCs, and websocket ingestion batches), suspends TCP listeners, waits for admitted work, seals ingestion writes, and performs the final ingestion/spool flush. Requests that haven't handed off ingestion when writes are sealed receive a retryable error. If an in-progress handoff does not finish in time, Logflare records a timeout instead of flushing concurrently with it. Liveness remains independent of readiness while the endpoints are still running.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `LOGFLARE_SHUTDOWN_WITHDRAWAL_TIMEOUT_MS` | `15000` | Minimum traffic withdrawal window, bounded by the overall deadline. |
-| `LOGFLARE_SHUTDOWN_REQUEST_TIMEOUT_MS` | `30000` | Maximum wait for admitted requests/RPC callbacks after closing admission. |
+| `LOGFLARE_SHUTDOWN_REQUEST_TIMEOUT_MS` | `30000` | Maximum wait for admitted requests/RPC callbacks after closing admission. When the final drain is enabled, up to half of the overall budget is reserved for spool sync and cleanup; this can shorten the withdrawal and request waits. |
 | `LOGFLARE_SHUTDOWN_DRAIN_TIMEOUT_MS` | Unset | Enables final queue/spool draining and caps its queue-wait phase. |
 | `LOGFLARE_SHUTDOWN_TIMEOUT_MS` | Larger of withdrawal and configured drain timeout, plus `20000` | Maximum shutdown time for the drainer, shared by withdrawal, request draining, spool synchronization, and cleanup. |
 

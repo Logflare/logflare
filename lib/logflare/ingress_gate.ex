@@ -4,6 +4,7 @@ defmodule Logflare.IngressGate do
 
   Bandit leases last until its request stop/exception event, after response completion.
   RPC leases cover the server callback; Cowboy handles the remaining wire-level shutdown.
+  Write leases cover the ingestion handoff and can outlive the request wait.
   """
 
   @http_key {__MODULE__, :http_request}
@@ -32,15 +33,37 @@ defmodule Logflare.IngressGate do
   end
 
   @spec enter() :: {:ok, reference()} | :closed
-  def enter do
-    token = make_ref()
-    :ets.insert(__MODULE__, {token, self()})
+  def enter, do: acquire(:request)
 
-    if open?() do
-      {:ok, token}
-    else
-      leave(token)
-      :closed
+  @spec with_write((-> result)) :: result | {:error, :source_unavailable} when result: var
+  def with_write(fun) do
+    case acquire(:write) do
+      {:ok, token} ->
+        try do
+          fun.()
+        after
+          leave(token)
+        end
+
+      :closed ->
+        {:error, :source_unavailable}
+    end
+  end
+
+  defp acquire(kind) do
+    token = make_ref()
+    :ets.insert(__MODULE__, {token, kind, self()})
+
+    case state() do
+      :open ->
+        {:ok, token}
+
+      :quiescing when kind == :write ->
+        {:ok, token}
+
+      _ ->
+        leave(token)
+        :closed
     end
   end
 
@@ -51,13 +74,21 @@ defmodule Logflare.IngressGate do
   end
 
   @spec open?() :: boolean()
-  def open?, do: :ets.lookup(__MODULE__, :admission) == [{:admission, :open}]
+  def open?, do: state() == :open
 
-  @spec close() :: :ok
-  def close do
-    :ets.insert(__MODULE__, {:admission, :closed})
+  @spec quiesce() :: :ok
+  def quiesce do
+    :ets.select_replace(__MODULE__, [{{:admission, :open}, [], [{{:admission, :quiescing}}]}])
     :ok
   end
+
+  @spec seal() :: :ok
+  def seal do
+    :ets.insert(__MODULE__, {:admission, :sealed})
+    :ok
+  end
+
+  defp state, do: :ets.lookup_element(__MODULE__, :admission, 2, :sealed)
 
   @spec http_admitted?() :: boolean()
   def http_admitted? do
@@ -69,10 +100,12 @@ defmodule Logflare.IngressGate do
   end
 
   @spec active_count() :: non_neg_integer()
-  def active_count do
+  def active_count, do: active_count(:request)
+
+  defp active_count(kind) do
     :ets.foldl(
       fn
-        {token, pid}, count when is_reference(token) ->
+        {token, ^kind, pid}, count ->
           if Process.alive?(pid) do
             count + 1
           else
@@ -80,7 +113,7 @@ defmodule Logflare.IngressGate do
             count
           end
 
-        {:admission, _state}, count ->
+        _entry, count ->
           count
       end,
       0,
@@ -89,9 +122,14 @@ defmodule Logflare.IngressGate do
   end
 
   @spec await_empty(integer()) :: :drained | :timeout
-  def await_empty(deadline) do
+  def await_empty(deadline), do: await_empty(:request, deadline)
+
+  @spec await_writes(integer()) :: :drained | :timeout
+  def await_writes(deadline), do: await_empty(:write, deadline)
+
+  defp await_empty(kind, deadline) do
     cond do
-      active_count() == 0 ->
+      active_count(kind) == 0 ->
         :drained
 
       System.monotonic_time(:millisecond) >= deadline ->
@@ -99,7 +137,7 @@ defmodule Logflare.IngressGate do
 
       true ->
         Process.sleep(min(10, max(deadline - System.monotonic_time(:millisecond), 0)))
-        await_empty(deadline)
+        await_empty(kind, deadline)
     end
   end
 

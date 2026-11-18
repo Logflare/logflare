@@ -82,8 +82,8 @@ defmodule Logflare.ShutdownDrain do
         started_at + timeout_ms + spool_sync_timeout_ms + cleanup_timeout_ms
       )
 
-    wait_deadline =
-      min(started_at + timeout_ms, deadline - spool_sync_timeout_ms - cleanup_timeout_ms)
+    sync_reserve = if spool_buffer, do: spool_sync_timeout_ms, else: 0
+    wait_deadline = min(started_at + timeout_ms, deadline - sync_reserve - cleanup_timeout_ms)
 
     wait_result =
       await_drained(
@@ -129,6 +129,11 @@ defmodule Logflare.ShutdownDrain do
   @spec stop_receiving() :: :ok
   def stop_receiving do
     Enum.each(spool_producers(), &stop_receiving/1)
+  end
+
+  @spec flush_reserve_ms() :: non_neg_integer()
+  def flush_reserve_ms do
+    @default_cleanup_timeout_ms + if(spool_buffer(), do: @default_spool_sync_timeout_ms, else: 0)
   end
 
   defp remaining(deadline, budget),

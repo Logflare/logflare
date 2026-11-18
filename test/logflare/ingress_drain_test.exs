@@ -110,8 +110,21 @@ defmodule Logflare.IngressDrainTest do
     Mint.HTTP.close(conn)
   end
 
+  test "a vanished listener does not skip suspension of the other listener" do
+    {server, port} = http_server()
+    {stale, ref} = spawn_monitor(fn -> :ok end)
+    assert_receive {:DOWN, ^ref, :process, ^stale, :normal}
+
+    assert IngressDrain.run(deadline(), http_listeners: [stale, server], grpc_listener: nil) ==
+             :error
+
+    refute IngressGate.open?()
+    assert ThousandIsland.status(server) == :suspended
+    assert {:error, :econnrefused} = tcp_connect(port)
+  end
+
   test "endpoint wrapper rejects normal routes and socket upgrades but preserves health endpoints" do
-    IngressGate.close()
+    IngressGate.quiesce()
 
     for path <- ["/", "/logs/websocket", "/live/websocket"] do
       conn = Plug.Test.conn(:get, path) |> LogflareWeb.Endpoint.call([])
@@ -124,7 +137,7 @@ defmodule Logflare.IngressDrainTest do
   end
 
   test "already-connected websocket clients cannot ingest another batch after gate closure" do
-    IngressGate.close()
+    IngressGate.quiesce()
 
     socket = %Phoenix.Socket{
       transport_pid: self(),

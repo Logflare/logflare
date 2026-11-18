@@ -22,6 +22,7 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.Spool.Health, as: SpoolHealth
   alias Logflare.ContextCache
   alias Logflare.Cluster
+  alias Logflare.IngressGate
   alias Logflare.LogEvent
   alias Logflare.PubSubRates
   alias Logflare.QueryContext
@@ -727,9 +728,13 @@ defmodule Logflare.Backends do
   defp do_ingest_logs(event_params, source, backend, allow_spooling) do
     {log_events, errors} = split_valid_events(source, event_params)
     count = Enum.count(log_events)
-    increment_counters(source, count)
 
-    with :ok <- dispatch_logs(source, backend, log_events, allow_spooling) do
+    handoff = fn ->
+      increment_counters(source, count)
+      dispatch_logs(source, backend, log_events, allow_spooling)
+    end
+
+    with :ok <- if(allow_spooling, do: IngressGate.with_write(handoff), else: handoff.()) do
       if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
     end
   end

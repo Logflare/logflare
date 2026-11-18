@@ -4,12 +4,17 @@ defmodule Logflare.ShutdownTest do
   import Mimic
 
   alias Logflare.IngressDrain
+  alias Logflare.IngressGate
   alias Logflare.Shutdown
   alias Logflare.ShutdownDrain
+  alias Logflare.TestUtils
 
   setup :set_mimic_global
 
   setup do
+    :ets.insert(IngressGate, {:admission, :open})
+    on_exit(fn -> :ets.insert(IngressGate, {:admission, :open}) end)
+
     parent = self()
 
     stub(ShutdownDrain, :stop_receiving, fn ->
@@ -103,14 +108,75 @@ defmodule Logflare.ShutdownTest do
     started = System.monotonic_time(:millisecond)
 
     Shutdown.run(
-      deadline_ms: started + 20,
+      deadline_ms: started + 500,
       withdrawal_ms: 10_000,
       request_timeout_ms: 100,
       drain_timeout_ms: 500
     )
 
-    assert System.monotonic_time(:millisecond) - started < 500
+    assert System.monotonic_time(:millisecond) - started < 1_000
     assert_receive {:flush, opts}
-    assert opts[:timeout_ms] == 0
+    assert opts[:timeout_ms] >= 100
+  end
+
+  test "reserves flush time even when the request wait runs to its deadline" do
+    deadline = System.monotonic_time(:millisecond) + 1_000
+    parent = self()
+
+    stub(IngressDrain, :run, fn request_deadline ->
+      send(parent, {:quiesce, request_deadline})
+      Process.sleep(max(request_deadline - System.monotonic_time(:millisecond), 0))
+      :timeout
+    end)
+
+    assert Shutdown.run(
+             deadline_ms: deadline,
+             withdrawal_ms: 0,
+             request_timeout_ms: 5_000,
+             drain_timeout_ms: 1_000
+           ) == :timeout
+
+    assert_receive {:quiesce, cutoff}
+    assert cutoff <= deadline - 400
+    assert_receive {:flush, opts}
+    assert opts[:timeout_ms] >= 400
+  end
+
+  test "waits for a write in progress before flushing after an ingress error" do
+    parent = self()
+    stub(IngressDrain, :run, fn _deadline -> :error end)
+
+    writer =
+      Task.async(fn ->
+        IngressGate.with_write(fn ->
+          send(parent, :writing)
+
+          receive do
+            :finish_write -> :ok
+          end
+        end)
+      end)
+
+    assert_receive :writing
+
+    drainer =
+      Task.async(fn ->
+        Shutdown.run(
+          deadline_ms: System.monotonic_time(:millisecond) + 4_000,
+          withdrawal_ms: 0,
+          request_timeout_ms: 0,
+          drain_timeout_ms: 500
+        )
+      end)
+
+    TestUtils.retry_assert(fn ->
+      assert IngressGate.with_write(fn -> :ok end) == {:error, :source_unavailable}
+    end)
+
+    refute_receive {:flush, _}
+    send(writer.pid, :finish_write)
+    assert Task.await(writer) == :ok
+    assert Task.await(drainer) == :error
+    assert_receive {:flush, _}
   end
 end

@@ -15,7 +15,7 @@ defmodule Logflare.IngressGateTest do
 
   test "closing rejects new work while preserving already admitted leases" do
     assert {:ok, token} = IngressGate.enter()
-    assert :ok = IngressGate.close()
+    assert :ok = IngressGate.quiesce()
     assert :closed = IngressGate.enter()
     assert IngressGate.active_count() == 1
     assert :timeout = IngressGate.await_empty(System.monotonic_time(:millisecond))
@@ -40,12 +40,12 @@ defmodule Logflare.IngressGateTest do
     monitor = Process.monitor(pid)
     send(pid, :exit)
     assert_receive {:DOWN, ^monitor, :process, ^pid, :normal}
-    IngressGate.close()
+    IngressGate.quiesce()
     assert IngressGate.active_count() == 0
   end
 
   test "admission stays closed under concurrent arrivals" do
-    IngressGate.close()
+    IngressGate.quiesce()
     tasks = for _ <- 1..100, do: Task.async(fn -> IngressGate.enter() end)
     assert Enum.all?(Task.await_many(tasks), &(&1 == :closed))
     assert IngressGate.active_count() == 0
@@ -55,7 +55,7 @@ defmodule Logflare.IngressGateTest do
     span = make_ref()
     metadata = %{telemetry_span_context: span}
     IngressGate.handle_event([:bandit, :request, :start], %{}, metadata, nil)
-    IngressGate.close()
+    IngressGate.quiesce()
     assert IngressGate.http_admitted?()
     assert IngressGate.active_count() == 1
     IngressGate.handle_event([:bandit, :request, :stop], %{}, metadata, nil)

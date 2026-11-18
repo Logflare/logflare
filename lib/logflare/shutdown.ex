@@ -13,6 +13,8 @@ defmodule Logflare.Shutdown do
   alias Logflare.IngressGate
   alias Logflare.ShutdownDrain
 
+  @write_wait_reserve_ms 1_000
+
   @spec child_spec(keyword()) :: Supervisor.child_spec()
   def child_spec([]) do
     timeout = timeout_ms()
@@ -43,7 +45,7 @@ defmodule Logflare.Shutdown do
 
     Logger.warning("shutdown: supervised drain finished result=#{result}")
   after
-    IngressGate.close()
+    IngressGate.seal()
   end
 
   def terminate(_reason, _timeout), do: :ok
@@ -55,20 +57,54 @@ defmodule Logflare.Shutdown do
     Application.get_env(:logflare, :shutdown_timeout_ms, max(withdrawal, drain || 0) + 20_000)
   end
 
-  @spec run(keyword()) :: :drained | :timeout
+  @spec run(keyword()) :: :drained | :timeout | :error
   def run(opts) do
     deadline = Keyword.fetch!(opts, :deadline_ms)
     withdrawal_ms = Keyword.fetch!(opts, :withdrawal_ms)
     request_timeout_ms = Keyword.fetch!(opts, :request_timeout_ms)
     drain_timeout_ms = Keyword.fetch!(opts, :drain_timeout_ms)
 
-    ShutdownDrain.stop_receiving()
-    Logger.warning("shutdown: withdrawing from traffic for #{withdrawal_ms}ms")
-    Process.sleep(min(withdrawal_ms, remaining(deadline)))
+    {request_cutoff, write_cutoff} = ingress_cutoffs(deadline, withdrawal_ms, drain_timeout_ms)
 
-    ingress_deadline = min(deadline, System.monotonic_time(:millisecond) + request_timeout_ms)
+    ShutdownDrain.stop_receiving()
+    withdrawal_ms = min(withdrawal_ms, remaining(request_cutoff))
+    Logger.warning("shutdown: withdrawing from traffic for #{withdrawal_ms}ms")
+    Process.sleep(withdrawal_ms)
+
+    ingress_deadline =
+      min(request_cutoff, System.monotonic_time(:millisecond) + request_timeout_ms)
+
     ingress_result = IngressDrain.run(ingress_deadline)
 
+    IngressGate.seal()
+
+    write_deadline =
+      min(write_cutoff, System.monotonic_time(:millisecond) + @write_wait_reserve_ms)
+
+    case IngressGate.await_writes(write_deadline) do
+      :drained ->
+        finish(ingress_result, drain_timeout_ms, deadline)
+
+      :timeout ->
+        Logger.warning("shutdown: ingestion handoffs still active; skipping final drain")
+        :timeout
+    end
+  end
+
+  defp ingress_cutoffs(deadline, _withdrawal_ms, nil), do: {deadline, deadline}
+
+  defp ingress_cutoffs(deadline, withdrawal_ms, _drain_timeout_ms) do
+    budget = remaining(deadline)
+    flush_reserve = min(ShutdownDrain.flush_reserve_ms(), div(budget, 2))
+    write_cutoff = deadline - flush_reserve
+
+    write_reserve =
+      min(@write_wait_reserve_ms, div(max(budget - flush_reserve - withdrawal_ms, 0), 2))
+
+    {write_cutoff - write_reserve, write_cutoff}
+  end
+
+  defp finish(ingress_result, drain_timeout_ms, deadline) do
     drain_result =
       if drain_timeout_ms do
         ShutdownDrain.run(
@@ -79,10 +115,11 @@ defmodule Logflare.Shutdown do
         :drained
       end
 
-    if ingress_result == :drained and drain_result == :drained and
-         System.monotonic_time(:millisecond) <= deadline,
-       do: :drained,
-       else: :timeout
+    cond do
+      :timeout in [ingress_result, drain_result] or remaining(deadline) == 0 -> :timeout
+      ingress_result == :error -> :error
+      true -> :drained
+    end
   end
 
   defp remaining(deadline), do: max(deadline - System.monotonic_time(:millisecond), 0)

@@ -50,6 +50,29 @@ defmodule Logflare.ShutdownSignalIntegrationTest do
     Mint.HTTP.close(conn)
   end
 
+  test "an admitted write that misses the final spool sync receives a retryable response", %{
+    tmp_dir: tmp_dir
+  } do
+    spool_path = Path.join(tmp_dir, "late-event")
+    {port, os_pid, conn} = start_probe("late_request", spool_path)
+    {:ok, conn, ref} = Mint.HTTP.request(conn, "GET", "/hold", [], nil)
+    await_line(port, "SHUTDOWN_PROBE_HELD", 5_000)
+
+    assert {_output, 0} = System.cmd("kill", ["-TERM", os_pid])
+    await_line(port, "ingress result=timeout", 5_000)
+    await_line(port, "SHUTDOWN_PROBE_SYNC_FINISHED", 5_000)
+    Port.command(port, "release\n")
+
+    {conn, responses} = response(conn, ref)
+    assert {:status, ref, 503} in responses
+
+    Port.command(port, "finish_cleanup\n")
+    await_line(port, "shutdown: supervised drain finished result=timeout", 5_000)
+    assert_receive {^port, {:exit_status, 0}}, 5_000
+    refute File.exists?(spool_path)
+    Mint.HTTP.close(conn)
+  end
+
   test "the supervisor kills a drain blocked in the final flush after SIGQUIT", %{
     tmp_dir: tmp_dir
   } do
