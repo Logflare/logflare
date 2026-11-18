@@ -8,6 +8,7 @@ defmodule Logflare.ShutdownDrain do
 
   require Logger
 
+  alias Logflare.Backends
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.Spool.ConsumerPipeline
   alias Logflare.Backends.Spool.ConsumerPipeline.QueueProducer
@@ -44,9 +45,9 @@ defmodule Logflare.ShutdownDrain do
     end)
   end
 
-  @spec spool_buffer() :: atom() | nil
-  def spool_buffer do
-    if SpoolDurableBufferSup.partitions() != [], do: SpoolDurableBufferSup.name()
+  @spec configured_spool_buffer() :: atom() | nil
+  def configured_spool_buffer do
+    if Backends.spool_producer_mode?(), do: SpoolDurableBufferSup.name()
   end
 
   @spec run(Budget.flush() | nil, intake_result(), atom() | nil, keyword()) :: result()

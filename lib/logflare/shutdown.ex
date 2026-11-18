@@ -59,7 +59,7 @@ defmodule Logflare.Shutdown do
   @spec run(keyword()) :: :drained | :timeout | :error
   def run(opts) do
     deadline = Keyword.fetch!(opts, :deadline_ms)
-    buffer = ShutdownDrain.spool_buffer()
+    buffer = ShutdownDrain.configured_spool_buffer()
 
     budget =
       Budget.plan(System.monotonic_time(:millisecond), Keyword.put(opts, :spool_buffer, buffer))

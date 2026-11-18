@@ -14,6 +14,7 @@ Application.put_env(
 
 Application.put_env(:logflare, :shutdown_request_timeout_ms, 2_000)
 Application.put_env(:logflare, :shutdown_drain_timeout_ms, 500)
+Application.put_env(:logflare, :spool, mode: :producer)
 
 if mode in ["blocked_flush", "late_request"] do
   {:ok, _apps} = Application.ensure_all_started(:ex_unit)

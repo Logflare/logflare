@@ -3,7 +3,10 @@ defmodule Logflare.ShutdownTest do
 
   import Mimic
 
+  alias Logflare.Backends.Spool.DurableBuffer.Backends.Cloud
+  alias Logflare.Backends.Spool.DurableBuffer.Supervisor, as: SpoolBuffer
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
+  alias Logflare.Backends.Spool.Storage.GCS
   alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.IngressDrain
   alias Logflare.IngressGate
@@ -114,6 +117,54 @@ defmodule Logflare.ShutdownTest do
            ) == :error
   end
 
+  test "reserves sync and flushes a configured spool that starts before admission seals" do
+    name = SpoolBuffer.name()
+    previous = Application.get_env(:logflare, :spool, [])
+    Application.put_env(:logflare, :spool, Keyword.put(previous, :mode, :producer))
+
+    on_exit(fn ->
+      Application.put_env(:logflare, :spool, previous)
+      :persistent_term.erase({DurableBuffer, name})
+    end)
+
+    assert SpoolBuffer.partitions() == []
+
+    stub(IngressDrain, :run, fn _deadline, _opts ->
+      start_supervised!(
+        {DurableBuffer,
+         name: name,
+         partitions: 1,
+         backend: {Cloud, bucket: "test", storage_mod: GCS, queue_mod: nil, queue_ref: nil}}
+      )
+
+      :ok = DurableBuffer.append_async(name, :key, <<1::32-big, "event">>)
+      :drained
+    end)
+
+    expect(GCS, :put, fn "test", _key, _body, _headers -> {:ok, %{}} end)
+
+    stub(ShutdownDrain, :run, fn flush, :ok, buffer ->
+      assert {_, 10_000} = flush.sync
+      assert buffer == name
+      assert ShutdownDrain.sync_spool_buffer(flush.sync, buffer) == :synced
+      :drained
+    end)
+
+    assert Shutdown.run(
+             deadline_ms: System.monotonic_time(:millisecond) + 4_000,
+             withdrawal_ms: 0,
+             request_timeout_ms: 100,
+             drain_timeout_ms: 500
+           ) == :drained
+  end
+
+  test "a configured buffer that never starts is not reported as disabled" do
+    assert ShutdownDrain.sync_spool_buffer(
+             {System.monotonic_time(:millisecond) + 1_000, 1_000},
+             :missing_shutdown_spool
+           ) == :error
+  end
+
   test "without spool drain configuration, still quiesces ingress before stopping" do
     assert Shutdown.run(
              deadline_ms: System.monotonic_time(:millisecond) + 1_000,
@@ -176,7 +227,7 @@ defmodule Logflare.ShutdownTest do
       :ok
     end)
 
-    stub(ShutdownDrain, :spool_buffer, fn -> :probe_buffer end)
+    stub(ShutdownDrain, :configured_spool_buffer, fn -> :probe_buffer end)
 
     stub(ShutdownDrain, :sync_spool_buffer, fn limit, :probe_buffer ->
       send(parent, {:sync, Budget.remaining(Budget.deadline(limit))})
