@@ -13,9 +13,9 @@
     Updates propagate eventually across instances, not immediately. Use ClickHouse profile constraints for hard ceilings.
   </p>
 
-  <.form for={to_form(%{}, as: :query_class_settings)} id="query-class-settings-form" phx-target={@myself} phx-change="change" phx-auto-recover="ignore" phx-submit="save">
+  <.form for={to_form(%{}, as: :query_class_settings)} id="query-class-settings-form" phx-hook="QueryClassSettings" phx-target={@myself} phx-change="change" phx-auto-recover="ignore" phx-submit="save">
     <button type="submit" hidden tabindex="-1" aria-hidden="true">Save</button>
-    <div :for={class <- @classes} id={"query-class-#{class}"} class="tw-border tw-border-zinc-700 tw-rounded tw-p-4 tw-mb-3">
+    <div :for={class <- @classes} id={"query-class-#{class}"} data-query-class class="tw-border tw-border-zinc-700 tw-rounded tw-p-4 tw-mb-3">
       <button
         type="button"
         id={"query-class-#{class}-toggle"}

@@ -207,6 +207,28 @@ defmodule E2e.Features.QueryClassSettingsTest do
            }
   end
 
+  test "saving reveals and focuses an invalid input in a collapsed class", %{
+    conn: conn,
+    backend: backend,
+    owner: owner
+  } do
+    policy = %{"default" => %{"priority" => 5}, "api_paid" => %{"max_threads" => 4}}
+    assert {:ok, _} = Backends.configure_query_class_settings(owner, backend, policy)
+
+    conn
+    |> visit(~p"/backends/#{backend.id}/edit")
+    |> assert_has(".phx-connected #query-class-settings-form")
+    |> click("#query-class-api_paid-toggle")
+    |> fill_in("#query-class-api_paid_max_threads", "Max threads", with: "0")
+    |> click("#query-class-api_paid-toggle")
+    |> assert_has("#query-class-api_paid-toggle[aria-expanded='false']")
+    |> click_button("Save query-class settings")
+    |> assert_has("#query-class-api_paid-toggle[aria-expanded='true']", timeout: 2_000)
+    |> assert_has("#query-class-api_paid_max_threads:invalid:focus")
+
+    assert Backends.get_backend(backend.id).config.query_class_settings == policy
+  end
+
   @spec evaluate(PhoenixTest.Playwright.t(), String.t()) :: PhoenixTest.Playwright.t()
   defp evaluate(session, expression) do
     unwrap(session, fn %{frame_id: frame_id} ->
