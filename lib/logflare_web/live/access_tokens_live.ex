@@ -66,7 +66,7 @@ defmodule LogflareWeb.AccessTokensLive do
           <.formatted_timestamp :if={token.inserted_at} value={token.inserted_at} timezone={@user_timezone} format={@timestamp_format} class="tw-text-sm" />
           <span :if={is_nil(token.inserted_at)} class="tw-text-sm tw-italic">Unknown</span>
         </:col>
-        <:col :let={token} label="Last used">
+        <:col :let={token} label="Last authenticated">
           <.formatted_timestamp :if={token.usage} value={token.usage.last_used_at} timezone={@user_timezone} format={@timestamp_format} class="tw-text-sm" />
           <span :if={is_nil(token.usage)} class="tw-text-sm tw-italic">Unknown</span>
         </:col>
