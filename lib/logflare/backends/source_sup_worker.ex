@@ -49,7 +49,8 @@ defmodule Logflare.Backends.SourceSupWorker do
     via = Backends.via_source(source, Backends.SourceSup)
 
     # stop stale rule source-backends
-    attached_backend_ids = MapSet.new(backends, fn backend -> backend.id end)
+    attached_backend_ids =
+      for %{consolidated_ingest?: false} = backend <- backends, into: MapSet.new(), do: backend.id
 
     backend_ids = MapSet.union(rules_backend_ids, attached_backend_ids)
 

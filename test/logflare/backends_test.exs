@@ -1738,6 +1738,28 @@ defmodule Logflare.BackendsTest do
       end)
     end
 
+    test "attached backend switched to a consolidated type", %{source: source} do
+      [switched, kept] = insert_pair(:backend, sources: [source])
+      start_supervised!({SourceSup, source})
+      via = Backends.via_source(source, SourceSup)
+      assert MapSet.new(backend_child_ids(via)) == MapSet.new([switched.id, kept.id])
+
+      switched
+      |> Ecto.Changeset.change(
+        type: :clickhouse,
+        config_encrypted: clickhouse_backend_attrs().config
+      )
+      |> Repo.update!()
+
+      Backends.clear_list_backends_cache(source.id)
+      start_supervised!({SourceSupWorker, [source: source, interval: 100]})
+      kept_id = kept.id
+
+      TestUtils.retry_assert(fn ->
+        assert [^kept_id] = backend_child_ids(via)
+      end)
+    end
+
     test "source_sup_started?/1, lookup/2", %{source: source} do
       assert false == Backends.source_sup_started?(source)
       start_supervised!({SourceSup, source})
@@ -3661,6 +3683,13 @@ defmodule Logflare.BackendsTest do
       :supervisor.get_childspec(source_sup, child_id)
 
     {pid, backend}
+  end
+
+  defp backend_child_ids(source_sup) do
+    for {{_mod, _source_id, backend_id}, _pid, _type, _mods} <-
+          Supervisor.which_children(source_sup),
+        is_integer(backend_id),
+        do: backend_id
   end
 
   defp clickhouse_backend_attrs do
