@@ -813,6 +813,33 @@ defmodule LogflareWeb.EndpointsControllerTest do
       refute json_response(conn, 200)["result"]
     end
 
+    test "unsupported ClickHouse settings return the sandbox validation message", %{
+      conn: conn,
+      user: user
+    } do
+      reject(&ClickHouseAdaptor.execute_query/3)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          backend: insert(:backend, type: :clickhouse, user: user),
+          language: :ch_sql,
+          enable_auth: true,
+          sandboxable: true,
+          query: "WITH a AS (SELECT 1 AS b) SELECT b FROM a"
+        )
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get(~p"/api/endpoints/query/#{endpoint.name}", %{
+          sql: "SELECT b FROM a SETTINGS max_threads = 1"
+        })
+
+      assert %{"error" => "ClickHouse setting max_threads is not supported in sandboxed SQL"} =
+               json_response(conn, 200)
+    end
+
     test "sql that fails to parse returns the parser error", %{conn: conn, user: user} do
       reject(&ClickHouseAdaptor.execute_query/3)
 

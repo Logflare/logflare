@@ -91,6 +91,11 @@ defmodule LogflareWeb.QueryErrorHelpers do
     rest |> String.trim_trailing(")") |> unknown_table_message()
   end
 
+  defp classified_sandbox_error_message("ClickHouse setting " <> rest = message) do
+    if String.ends_with?(rest, " is not supported in sandboxed SQL"),
+      do: String.replace_invalid(message)
+  end
+
   defp classified_sandbox_error_message(message) do
     if String.starts_with?(message, @user_facing_sandbox_error_prefixes),
       do: String.replace_invalid(message)
