@@ -2,8 +2,8 @@ defmodule Logflare.RecordUsages do
   @moduledoc """
   Tracks recent usage separately from resource records without invalidating their caches.
 
-  Usage is buffered locally. `Logflare.RecordUsages.SyncWorker` schedules nodes
-  to periodically flush their usage to the database.
+  Usage is buffered locally. Each node's `Logflare.RecordUsages.SyncWorker`
+  periodically flushes its usage to the database on a jittered timer.
   `Logflare.RecordUsages.ShutdownWorker` handles best-effort final flush during
   graceful shutdown. Recording is asynchronous and best effort. Unflushed usage
   may still be lost on node or cache failure, failed background writes, or if the

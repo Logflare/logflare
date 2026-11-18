@@ -1,47 +1,39 @@
 defmodule Logflare.RecordUsages.SyncWorker do
   @moduledoc """
-  Parent job schedules one child job per node to write cached usage to the database.
-  It spaces the scheduled start times across the next five minutes.
-
-  Keep `@sync_interval_ms` no greater than the cron interval in `config/runtime.exs`.
-  Cron parents have up to three attempts. Child jobs have one attempt.
-  A retry can create duplicate child jobs if the database accepted the previous insert
-  but did not confirm it.
-
-  The RPC timeout ends the child's wait. It does not stop the node's flush.
-  The node can still write and acknowledge usage after Oban discards the child job.
+  Flushes th node's usage on a jittered timer. A failed flush restarts the worker and leaves the buffer intact.
   """
 
-  use Oban.Worker, queue: :default, max_attempts: 1, unique: [period: 60]
+  use GenServer
 
-  alias Logflare.Cluster.Utils
   alias Logflare.RecordUsages
+  alias Logflare.Utils
 
   @sync_interval_ms 300_000
-  @rpc_timeout_ms 60_000
 
-  @impl Oban.Worker
-  @spec perform(Oban.Job.t()) :: :ok | {:cancel, :node_unavailable}
-  def perform(%Oban.Job{args: %{"node" => name}}) do
-    case Enum.find(Utils.node_list_all(), &(Atom.to_string(&1) == name)) do
-      nil -> {:cancel, :node_unavailable}
-      node -> Utils.rpc_call(node, &RecordUsages.flush/0, @rpc_timeout_ms)
-    end
+  @spec start_link(keyword()) :: GenServer.on_start()
+  def start_link(opts) do
+    GenServer.start_link(__MODULE__, Keyword.get(opts, :interval, @sync_interval_ms),
+      name: __MODULE__
+    )
   end
 
-  def perform(%Oban.Job{}) do
-    now = DateTime.utc_now()
-    nodes = Enum.sort(Utils.node_list_all())
-    node_count = length(nodes)
+  @impl GenServer
+  @spec init(pos_integer()) :: {:ok, pos_integer()}
+  def init(interval) do
+    Process.send_after(self(), :flush, Enum.random(1..interval))
+    {:ok, interval}
+  end
 
-    nodes
-    |> Enum.with_index()
-    |> Enum.map(fn {node, index} ->
-      scheduled_at = DateTime.add(now, div(index * @sync_interval_ms, node_count), :millisecond)
-      new(%{"node" => Atom.to_string(node)}, scheduled_at: scheduled_at)
-    end)
-    |> Oban.insert_all()
+  @impl GenServer
+  @spec handle_info(:flush, pos_integer()) :: {:noreply, pos_integer()}
+  def handle_info(:flush, interval) do
+    RecordUsages.flush(drain: false)
+    schedule_flush(interval)
+    {:noreply, interval}
+  end
 
-    :ok
+  @spec schedule_flush(pos_integer()) :: reference()
+  defp schedule_flush(interval) do
+    Process.send_after(self(), :flush, Utils.jitter(interval, 0.1))
   end
 end
