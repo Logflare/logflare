@@ -59,6 +59,7 @@ defmodule Logflare.ContextCache.Supervisor do
       end
 
     caches ++
+      [RecordUsages.Cache, RecordUsages.Writer] ++
       List.wrap(maybe_transaction_broadcaster) ++
       List.wrap(maybe_cainophile) ++
       List.wrap(maybe_busters)
@@ -85,7 +86,6 @@ defmodule Logflare.ContextCache.Supervisor do
       {Billing.Cache, :billing},
       {SourceSchemas.Cache, :source_schemas},
       {Auth.Cache, :auth},
-      {RecordUsages.Cache, :record_usages},
       {Endpoints.Cache, :endpoints},
       {Rules.Cache, :rules},
       {KeyValues.Cache, :key_values},

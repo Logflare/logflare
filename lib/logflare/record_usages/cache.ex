@@ -1,8 +1,11 @@
 defmodule Logflare.RecordUsages.Cache do
   @moduledoc """
-  Node-local cache to buffer record usage.
-  Timestamps are UTC Unix seconds.
-  Entries are retained until persisted (see `Logflare.RecordUsages.SyncWorker` and `Logflare.RecordUsages.ShutdownWorker`).
+  Buffers usage timestamps in Cachex on this node. Timestamps are UTC Unix seconds.
+
+  A writer queues up timestamps and periodically writes to Cachex.
+  Restarting the node loses pending samples. Values already in Cachex remain.
+
+  Cachex timestamps are periodically persited to the database.
   """
 
   use Logflare.Cache
@@ -10,6 +13,7 @@ defmodule Logflare.RecordUsages.Cache do
   import Cachex.Spec, only: [hook: 1]
 
   alias Logflare.Cache.CachexOps
+  alias Logflare.RecordUsages.Writer
 
   @type key :: {module(), pos_integer()}
   @type snapshot :: [{key(), integer()}]
@@ -23,16 +27,26 @@ defmodule Logflare.RecordUsages.Cache do
 
   @spec record(key(), integer()) :: :ok
   def record(key, timestamp) do
-    Cachex.get_and_update!(__MODULE__, key, fn
-      nil -> {:commit, timestamp}
-      previous -> {:commit, max(previous, timestamp)}
-    end)
+    case Cachex.get(__MODULE__, key) do
+      {:ok, previous} when is_integer(previous) and previous >= timestamp ->
+        :ok
+
+      {:ok, _} ->
+        Writer.record(key, timestamp)
+
+      {:error, _reason} ->
+        :ok
+    end
 
     :ok
+  rescue
+    ArgumentError -> :ok
   end
 
-  @spec snapshot() :: snapshot()
-  def snapshot do
+  @spec snapshot(drain: boolean()) :: snapshot()
+  def snapshot(opts \\ []) do
+    if Keyword.get(opts, :drain, true), do: Writer.drain()
+
     __MODULE__
     |> Cachex.stream!(Cachex.Query.build(output: {:key, :value}))
     |> Enum.to_list()
@@ -41,6 +55,13 @@ defmodule Logflare.RecordUsages.Cache do
   @spec acknowledge(snapshot()) :: :ok
   def acknowledge(entries) do
     Enum.each(entries, &acknowledge_entry/1)
+  end
+
+  @impl Logflare.Cache
+  @spec reset() :: :ok
+  def reset do
+    Writer.drain()
+    CachexOps.reset(__MODULE__)
   end
 
   @spec acknowledge_entry({key(), integer()}) :: :ok

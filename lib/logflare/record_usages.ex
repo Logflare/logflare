@@ -5,9 +5,9 @@ defmodule Logflare.RecordUsages do
   Usage is buffered locally. `Logflare.RecordUsages.SyncWorker` schedules nodes
   to periodically flush their usage to the database.
   `Logflare.RecordUsages.ShutdownWorker` handles best-effort final flush during
-  graceful shutdown. Unflushed usage may still be lost on node failure or if the
-  shutdown flush fails or times out. Missing usage means unknown, not never
-  used.
+  graceful shutdown. Recording is asynchronous and best effort. Unflushed usage
+  may still be lost on node or cache failure, failed background writes, or if the
+  shutdown drain and flush fail or time out. Missing usage means unknown, not never used.
 
   Legacy API key usage is tracked by user, across key rotations and restorations.
   Partner access tokens are not tracked.
@@ -37,9 +37,9 @@ defmodule Logflare.RecordUsages do
     Cache.record({resource_type, id}, System.system_time(:second))
   end
 
-  @spec flush() :: :ok
-  def flush do
-    snapshot = Cache.snapshot()
+  @spec flush(drain: boolean()) :: :ok
+  def flush(opts \\ []) do
+    snapshot = Cache.snapshot(opts)
 
     snapshot
     |> Enum.chunk_every(1_000)
