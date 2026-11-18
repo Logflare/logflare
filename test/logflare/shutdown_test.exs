@@ -6,6 +6,7 @@ defmodule Logflare.ShutdownTest do
   alias Logflare.IngressDrain
   alias Logflare.IngressGate
   alias Logflare.Shutdown
+  alias Logflare.Shutdown.Budget
   alias Logflare.ShutdownDrain
   alias Logflare.TestUtils
 
@@ -17,19 +18,23 @@ defmodule Logflare.ShutdownTest do
 
     parent = self()
 
-    stub(ShutdownDrain, :stop_receiving, fn ->
-      send(parent, :stop_receiving)
-      :ok
+    stub(ShutdownDrain, :stop_receiving, fn _deadline ->
+      send(parent, {:phase, :stop_receiving})
+      %{result: :ok}
     end)
 
     stub(IngressDrain, :run, fn deadline ->
-      send(parent, {:quiesce, deadline})
+      send(parent, {:phase, {:quiesce, deadline}})
       :drained
     end)
 
-    stub(ShutdownDrain, :run, fn opts ->
-      send(parent, {:flush, opts})
-      :drained
+    stub(ShutdownDrain, :run, fn
+      nil, _, _ ->
+        :drained
+
+      flush, _, _ ->
+        send(parent, {:phase, {:flush, flush}})
+        :drained
     end)
 
     :ok
@@ -45,12 +50,13 @@ defmodule Logflare.ShutdownTest do
              drain_timeout_ms: 500
            ) == :drained
 
-    assert_receive :stop_receiving
-    assert_receive {:quiesce, ingress_deadline}
+    assert_receive {:phase, first}
+    assert_receive {:phase, second}
+    assert_receive {:phase, third}
+    assert first == :stop_receiving
+    assert {:quiesce, ingress_deadline} = second
     assert ingress_deadline <= deadline
-    assert_receive {:flush, opts}
-    assert opts[:deadline_ms] == deadline
-    assert opts[:timeout_ms] <= 500
+    assert {:flush, %{cleanup: {^deadline, _}, queues: {_, 500}}} = third
   end
 
   test "does not flush while an admitted request is still being awaited" do
@@ -75,10 +81,10 @@ defmodule Logflare.ShutdownTest do
       end)
 
     assert_receive {:waiting, worker}
-    refute_receive {:flush, _}
+    refute_receive {:phase, {:flush, _}}
     send(worker, :release)
     assert Task.await(task) == :drained
-    assert_receive {:flush, _}
+    assert_receive {:phase, {:flush, _}}
   end
 
   test "an ingress timeout is never reported as a successful drain" do
@@ -100,8 +106,8 @@ defmodule Logflare.ShutdownTest do
              drain_timeout_ms: nil
            ) == :drained
 
-    assert_receive {:quiesce, _}
-    refute_receive {:flush, _}
+    assert_receive {:phase, {:quiesce, _}}
+    refute_receive {:phase, {:flush, _}}
   end
 
   test "withdrawal is bounded by the shared deadline" do
@@ -115,8 +121,8 @@ defmodule Logflare.ShutdownTest do
     )
 
     assert System.monotonic_time(:millisecond) - started < 1_000
-    assert_receive {:flush, opts}
-    assert opts[:timeout_ms] >= 100
+    assert_receive {:phase, {:flush, budget}}
+    assert Budget.remaining(Budget.deadline(budget.cleanup)) >= 100
   end
 
   test "reserves flush time even when the request wait runs to its deadline" do
@@ -138,8 +144,8 @@ defmodule Logflare.ShutdownTest do
 
     assert_receive {:quiesce, cutoff}
     assert cutoff <= deadline - 400
-    assert_receive {:flush, opts}
-    assert opts[:timeout_ms] >= 400
+    assert_receive {:phase, {:flush, budget}}
+    assert Budget.remaining(Budget.deadline(budget.cleanup)) >= 400
   end
 
   test "waits for a write in progress before flushing after an ingress error" do
@@ -173,10 +179,10 @@ defmodule Logflare.ShutdownTest do
       assert IngressGate.with_write(fn -> :ok end) == {:error, :source_unavailable}
     end)
 
-    refute_receive {:flush, _}
+    refute_receive {:phase, {:flush, _}}
     send(writer.pid, :finish_write)
     assert Task.await(writer) == :ok
     assert Task.await(drainer) == :error
-    assert_receive {:flush, _}
+    assert_receive {:phase, {:flush, _}}
   end
 end

@@ -13,6 +13,7 @@ defmodule Logflare.ShutdownDrainTest do
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
+  alias Logflare.Shutdown.Budget
   alias Logflare.ShutdownDrain
 
   setup :set_mimic_global
@@ -39,20 +40,37 @@ defmodule Logflare.ShutdownDrainTest do
   end
 
   defp run(opts) do
-    ShutdownDrain.run(
-      Keyword.merge([timeout_ms: 1_000, min_wait_ms: 0, poll_interval_ms: 10], opts)
-    )
+    now = System.monotonic_time(:millisecond)
+    queue_ms = Keyword.get(opts, :timeout_ms, 1_000)
+    sync_ms = Keyword.get(opts, :spool_sync_timeout_ms, 10_000)
+    cleanup_ms = Keyword.get(opts, :cleanup_timeout_ms, 10_000)
+    queues_end = min(Keyword.get(opts, :deadline_ms, now + queue_ms), now + queue_ms)
+
+    budget = %{
+      queues: {queues_end, queue_ms},
+      sync: {queues_end + sync_ms, sync_ms},
+      cleanup: {queues_end + sync_ms + cleanup_ms, cleanup_ms}
+    }
+
+    producers = Keyword.get(opts, :producers, [])
+
+    intake =
+      Keyword.get_lazy(opts, :intake, fn ->
+        ShutdownDrain.stop_receiving(Budget.deadline(budget.queues), fn -> producers end)
+      end)
+
+    ShutdownDrain.run(budget, intake, opts[:spool_buffer], poll_interval_ms: 10)
   end
 
   defp stub_producers do
     test_pid = self()
 
-    stub(QueueProducer, :stop_receiving, fn producer ->
+    stub(QueueProducer, :stop_receiving, fn producer, _timeout ->
       send(test_pid, {:stop_receiving, producer})
       :ok
     end)
 
-    stub(QueueProducer, :drained?, fn _producer -> true end)
+    stub(QueueProducer, :drained?, fn _producer, _timeout -> true end)
   end
 
   defp stub_queued_events(initial) do
@@ -100,12 +118,38 @@ defmodule Logflare.ShutdownDrainTest do
     assert Task.await(task) == :drained
   end
 
-  test "never finishes before the minimum wait, so HTTP clients can stop sending first" do
-    started = System.monotonic_time(:millisecond)
+  test "does not resend stop requests to producers that already received them" do
+    stub_producers()
 
-    assert run(producers: [], min_wait_ms: 200) == :drained
+    assert run(producers: [:p0, :p1]) == :drained
+    assert_received {:stop_receiving, :p0}
+    assert_received {:stop_receiving, :p1}
+    refute_received {:stop_receiving, _}
+  end
 
-    assert System.monotonic_time(:millisecond) - started >= 200
+  test "requests a stop from a replacement producer before declaring the drain complete" do
+    stub_producers()
+    {:ok, producers} = Agent.start_link(fn -> [:original] end)
+
+    intake =
+      ShutdownDrain.stop_receiving(System.monotonic_time(:millisecond) + 1_000, fn ->
+        Agent.get(producers, & &1)
+      end)
+
+    Agent.update(producers, fn _ -> [:replacement] end)
+    assert run(intake: intake) == :drained
+    assert_received {:stop_receiving, :original}
+    assert_received {:stop_receiving, :replacement}
+    refute_received {:stop_receiving, _}
+  end
+
+  test "a live but unresponsive producer is not treated as drained" do
+    {:ok, producer} = Agent.start_link(fn -> nil end)
+    :ok = :sys.suspend(producer)
+
+    assert run(producers: [producer], timeout_ms: 50) == :timeout
+    assert Process.alive?(producer)
+    :sys.resume(producer)
   end
 
   test "nacks spool files still pending at the deadline so they redeliver immediately" do
@@ -157,7 +201,8 @@ defmodule Logflare.ShutdownDrainTest do
   end
 
   test "drains straight away when no spool consumer pipeline is running" do
-    assert ShutdownDrain.run(timeout_ms: 100, min_wait_ms: 0) == :drained
+    intake = ShutdownDrain.stop_receiving(System.monotonic_time(:millisecond) + 100)
+    assert run(intake: intake, timeout_ms: 100) == :drained
   end
 
   test "a blocked nack at the deadline cannot hold the drain past its cleanup budget" do
@@ -350,7 +395,7 @@ defmodule Logflare.ShutdownDrainTest do
       send(uploader, :release)
     end
 
-    test "syncs the spool buffer for up to 10s by default" do
+    test "logs the effective spool sync limit" do
       stub(StorageMod, :put, fn _bucket, _key, _body, _opts -> {:ok, %{}} end)
       buffer = start_spool_buffer!()
       :ok = DurableBuffer.append_async(buffer, :key, <<1::32-big, "event">>)
@@ -360,7 +405,7 @@ defmodule Logflare.ShutdownDrainTest do
           assert run(producers: [], spool_buffer: buffer) == :drained
         end)
 
-      assert log =~ "shutdown_drain: syncing the spool buffer for up to 10000ms"
+      assert log =~ ~r/shutdown_drain: syncing the spool buffer for up to (999\d|10000)ms/
     end
   end
 
@@ -368,10 +413,9 @@ defmodule Logflare.ShutdownDrainTest do
     test "logs when the drain starts and how many spool producers stopped receiving" do
       stub_producers()
 
-      log = capture_log([level: :warning], fn -> run(producers: [:p0, :p1], min_wait_ms: 10) end)
+      log = capture_log([level: :warning], fn -> run(producers: [:p0, :p1]) end)
 
-      assert log =~ "shutdown_drain: started, stopped receiving on 2 spool producer(s)"
-      assert log =~ "waiting at least 10ms and up to 1000ms"
+      assert log =~ "shutdown_drain: started, requested intake stop on 2 spool producer(s)"
     end
 
     test "logs a drained result with nothing left pending" do
