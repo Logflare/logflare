@@ -53,7 +53,7 @@ defmodule Logflare.KeyValues.CacheClusterTest do
     assert %{"v" => "new"} = lookup(b, user.id, key)
   end
 
-  test "fill racing a change busted on every node", %{peers: [a, b] = peers, user: user} do
+  test "lookup right after a change busted on every node", %{peers: [a, b] = peers, user: user} do
     ref = attach_l2_fill(a)
 
     for {stale, fresh} <- [{%{"v" => "old"}, %{"v" => "new"}}, {nil, %{"v" => "inserted"}}] do
@@ -62,7 +62,7 @@ defmodule Logflare.KeyValues.CacheClusterTest do
 
       bust_everywhere(peers, user.id, key)
       assert lookup(a, user.id, key) == stale
-      assert_receive {_event, ^ref, _measurements, %{result: :dropped_stale}}
+      refute_receive {_event, ^ref, _measurements, _metadata}
       put_value(kv || %KeyValue{user_id: user.id, key: key}, fresh)
 
       assert lookup(b, user.id, key) == fresh
