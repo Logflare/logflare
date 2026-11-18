@@ -7,6 +7,7 @@ defmodule Logflare.ShutdownDrainTest do
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.Spool.ConsumerPipeline.QueueProducer
   alias Logflare.Backends.Spool.DurableBuffer.Backends.Cloud
+  alias Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal
   alias Logflare.Backends.Spool.Health
   alias Logflare.Backends.Spool.MemoryMonitor
   alias Logflare.Backends.Spool.ObjectDeleter
@@ -323,24 +324,28 @@ defmodule Logflare.ShutdownDrainTest do
       on_exit(fn -> Health.report_recovery!(:upload) end)
     end
 
-    defp start_spool_buffer! do
+    defp start_spool_buffer!(wal_dir \\ nil) do
       name = :"shutdown_drain_buffer_#{System.unique_integer([:positive])}"
 
-      start_supervised!(
-        {DurableBuffer,
-         name: name,
-         partitions: 1,
-         backend:
-           {Cloud,
-            bucket: "test-bucket",
-            storage_mod: StorageMod,
-            queue_mod: QueueMod,
-            queue_ref: nil,
-            compress: false,
-            max_commit_attempts: 3,
-            retry_delay_ms: 1}}
-      )
+      cloud =
+        {Cloud,
+         bucket: "test-bucket",
+         storage_mod: StorageMod,
+         queue_mod: QueueMod,
+         queue_ref: nil,
+         compress: false,
+         max_commit_attempts: 3,
+         retry_delay_ms: 1}
 
+      backend =
+        if wal_dir do
+          {RotatingWal,
+           wal_dir: wal_dir, inner_backend: cloud, worker_count: 1, max_batch_bytes: 1}
+        else
+          cloud
+        end
+
+      start_supervised!({DurableBuffer, name: name, partitions: 1, backend: backend})
       name
     end
 
@@ -377,6 +382,27 @@ defmodule Logflare.ShutdownDrainTest do
 
       assert Task.await(task) == :drained
       assert_received {:uploaded, _body}
+    end
+
+    @tag :tmp_dir
+    test "reports local WAL sync without claiming the blocked upload completed", %{tmp_dir: dir} do
+      block_uploads()
+      buffer = start_spool_buffer!(dir)
+      uploader = append_event!(buffer)
+
+      try do
+        log =
+          capture_log([level: :warning], fn ->
+            assert run(producers: [], spool_buffer: buffer) == :drained
+          end)
+
+        assert log =~ "spool_buffer=local_wal_synced_cloud_delivery_unverified"
+        refute_received {:uploaded, _}
+      after
+        send(uploader, :release)
+      end
+
+      assert_receive {:uploaded, _}
     end
 
     test "gives up on the spool buffer once its sync timeout passes" do

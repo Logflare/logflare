@@ -82,7 +82,14 @@ defmodule Logflare.Shutdown do
         finish(ingress_result, result, deadline)
 
       :timeout ->
-        Logger.warning("shutdown: ingestion handoffs still active; skipping final drain")
+        Logger.warning("shutdown: ingestion handoffs still active; skipping queue drain")
+
+        spool = ShutdownDrain.sync_spool_buffer(budget.flush, buffer)
+
+        Logger.warning(
+          "shutdown: best-effort spool sync with outstanding handoffs spool_buffer=#{spool}"
+        )
+
         :timeout
     end
   end

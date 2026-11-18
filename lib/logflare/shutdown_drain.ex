@@ -1,8 +1,9 @@
 defmodule Logflare.ShutdownDrain do
   @moduledoc """
-  Stops spool intake and drains queued events, spool uploads, and acknowledgments.
+  Stops spool intake and drains queued events, spool commits, and acknowledgments.
   Incomplete spool work is nacked for redelivery when the cleanup budget allows.
   An empty ingestion queue doesn't confirm delivery of claimed direct-backend events.
+  A local WAL commit doesn't confirm upload and queue publication.
   """
 
   require Logger
@@ -10,6 +11,7 @@ defmodule Logflare.ShutdownDrain do
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.Spool.ConsumerPipeline
   alias Logflare.Backends.Spool.ConsumerPipeline.QueueProducer
+  alias Logflare.Backends.Spool.DurableBuffer.Backends.RotatingWal
   alias Logflare.Backends.Spool.DurableBuffer.Supervisor, as: SpoolDurableBufferSup
   alias Logflare.Backends.Spool.ObjectDeleter
   alias Logflare.Backends.Spool.SpoolAck
@@ -55,7 +57,7 @@ defmodule Logflare.ShutdownDrain do
     )
 
     queues = await_drained(intake, queue_deadline, poll_interval_ms)
-    spool = sync_spool_buffer(buffer, Budget.deadline(budget.sync))
+    spool = sync_spool_buffer(budget, buffer)
     spool_pending = SpoolAck.pending_count()
     queued_events = IngestEventQueue.total_size()
     {acks, object_deletes} = cleanup(queues, Budget.deadline(budget.cleanup))
@@ -83,16 +85,26 @@ defmodule Logflare.ShutdownDrain do
 
   defp within(deadline, operation), do: operation.(Budget.remaining(deadline))
 
-  defp sync_spool_buffer(nil, _deadline), do: :none
+  @spec sync_spool_buffer(Budget.flush() | nil, atom() | nil) ::
+          :none | :synced | :local_wal_synced_cloud_delivery_unverified | :timeout
+  def sync_spool_buffer(nil, _buffer), do: :none
+  def sync_spool_buffer(_budget, nil), do: :none
 
-  defp sync_spool_buffer(buffer, deadline) do
-    timeout = Budget.remaining(deadline)
+  def sync_spool_buffer(budget, buffer) do
+    timeout = budget.sync |> Budget.deadline() |> Budget.remaining()
     Logger.warning("shutdown_drain: syncing the spool buffer for up to #{timeout}ms")
 
-    case Tasks.run_within(fn -> DurableBuffer.sync_all(buffer) end, timeout) do
-      {:ok, :ok} -> :synced
+    case Tasks.run_within(fn -> sync_buffer(buffer) end, timeout) do
+      {:ok, result} -> result
       _ -> :timeout
     end
+  end
+
+  defp sync_buffer(buffer) do
+    %{backend: {backend, _}} = DurableBuffer.config(buffer)
+    :ok = DurableBuffer.sync_all(buffer)
+
+    if backend == RotatingWal, do: :local_wal_synced_cloud_delivery_unverified, else: :synced
   end
 
   defp spool_producers do

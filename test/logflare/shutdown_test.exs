@@ -151,6 +151,45 @@ defmodule Logflare.ShutdownTest do
     assert Budget.remaining(Budget.deadline(budget.cleanup)) >= 400
   end
 
+  test "a stalled write still permits best-effort spool sync without draining the queues" do
+    parent = self()
+    stub(ShutdownDrain, :spool_buffer, fn -> :probe_buffer end)
+
+    stub(ShutdownDrain, :sync_spool_buffer, fn budget, :probe_buffer ->
+      send(parent, {:sync, Budget.remaining(Budget.deadline(budget.sync))})
+      :synced
+    end)
+
+    writer =
+      Task.async(fn ->
+        IngressGate.with_write(fn ->
+          send(parent, :writing)
+
+          receive do
+            :finish_write -> :ok
+          end
+        end)
+      end)
+
+    try do
+      assert_receive :writing
+
+      assert Shutdown.run(
+               deadline_ms: System.monotonic_time(:millisecond) + 600,
+               withdrawal_ms: 0,
+               request_timeout_ms: 0,
+               drain_timeout_ms: 500
+             ) == :timeout
+
+      assert_received {:sync, remaining}
+      assert remaining > 0
+      refute_received {:phase, {:flush, _}}
+    after
+      send(writer.pid, :finish_write)
+      Task.await(writer)
+    end
+  end
+
   test "waits for a write in progress before flushing after an ingress error" do
     parent = self()
     stub(IngressDrain, :run, fn _deadline, _opts -> :error end)
