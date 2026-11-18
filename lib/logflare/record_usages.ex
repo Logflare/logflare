@@ -71,6 +71,7 @@ defmodule Logflare.RecordUsages do
       from(usage in values(rows, RecordUsage),
         join: resource in ^schema,
         on: resource.id == field(usage, ^foreign_key),
+        lock: fragment("FOR KEY SHARE OF ?", resource),
         select: map(usage, ^[foreign_key, :last_used_at])
       )
 

@@ -2,9 +2,14 @@ defmodule Logflare.RecordUsagesTest do
   use ExUnit.Case, async: false
 
   import Cachex.Spec, only: [name: 2]
+  import Ecto.Query
+  import Logflare.Factory
 
+  alias Ecto.Adapters.SQL.Sandbox
+  alias Logflare.RecordUsages
   alias Logflare.RecordUsages.Cache
   alias Logflare.RecordUsages.Writer
+  alias Logflare.Repo
   alias Logflare.TestUtils
   alias Logflare.User
 
@@ -185,6 +190,80 @@ defmodule Logflare.RecordUsagesTest do
     :sys.resume(queue)
     Cache.record({User, 2}, 19)
     assert Map.new(Cache.snapshot()) == %{{User, 1} => 101, {User, 2} => 19}
+  end
+
+  for finish <- [:commit, :rollback] do
+    test "flush survives #{finish} of an in-progress user deletion" do
+      Cache.reset()
+
+      Sandbox.unboxed_run(Repo, fn ->
+        [survivor, deleted] = insert_list(2, :user)
+
+        on_exit(fn ->
+          Sandbox.unboxed_run(Repo, fn ->
+            user_ids = [survivor.id, deleted.id]
+            Repo.delete_all(from(u in User, where: u.id in ^user_ids))
+          end)
+        end)
+
+        Cache.record({User, survivor.id}, 1_767_225_600)
+        Cache.record({User, deleted.id}, 1_767_225_619)
+        parent = self()
+
+        flush =
+          Task.async(fn ->
+            Sandbox.unboxed_run(Repo, fn ->
+              %{rows: [[pid]]} = Repo.query!("SELECT pg_backend_pid()")
+              send(parent, {:flushing, pid})
+
+              receive do
+                :flush ->
+                  try do
+                    RecordUsages.flush()
+                  rescue
+                    error in Postgrex.Error -> {:error, error.postgres.code}
+                  end
+              end
+            end)
+          end)
+
+        try do
+          assert_receive {:flushing, flush_pid}, 1_000
+
+          Repo.transaction(fn ->
+            Repo.delete!(deleted)
+            send(flush.pid, :flush)
+
+            TestUtils.retry_assert(fn ->
+              assert %{rows: [[true]]} =
+                       Repo.query!(
+                         "SELECT pg_backend_pid() = ANY(pg_blocking_pids($1::integer))",
+                         [flush_pid]
+                       )
+            end)
+
+            if unquote(finish) == :rollback, do: Repo.rollback(:control)
+          end)
+
+          assert Task.await(flush) == :ok
+          assert Cache.snapshot() == []
+
+          assert RecordUsages.get(User, survivor.id).last_used_at ==
+                   ~U[2026-01-01 00:00:00Z]
+
+          case unquote(finish) do
+            :commit ->
+              assert RecordUsages.get(User, deleted.id) == nil
+
+            :rollback ->
+              assert RecordUsages.get(User, deleted.id).last_used_at ==
+                       ~U[2026-01-01 00:00:19Z]
+          end
+        after
+          Task.shutdown(flush, :brutal_kill)
+        end
+      end)
+    end
   end
 
   @spec queue_gate(pid()) :: {reference(), Task.t()}
