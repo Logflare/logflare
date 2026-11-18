@@ -22,6 +22,7 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.Spool.Health, as: SpoolHealth
   alias Logflare.ContextCache
   alias Logflare.Cluster
+  alias Logflare.IngressGate
   alias Logflare.LogEvent
   alias Logflare.PubSubRates
   alias Logflare.QueryContext
@@ -684,29 +685,35 @@ defmodule Logflare.Backends do
   Adds log events to the source event buffer.
   The ingestion pipeline then pulls from the buffer and dispatches log events to the correct backends.
 
-  Events are conditionally dispatched to backends based on whether they are registered. If they register for ingestion dispatching, events will get sent to the registered backend.
-
-  For a spoolable event (gated by `allow_spooling` and the global spool
-  mode — plus `source.enable_spooling` when the mode is `:both` — see
-  `spoolable?/3`), this blocks the
-  caller until the event's segment is durable in the buffer, or — in
-  blocking mode (`spool_blocking_mode?/0`) — until its batch is actually
-  committed. If spool dispatch fails, `:both` mode falls back to normal
-  (non-spool) dispatch; `:producer`-only mode has no backend adaptors to
-  fall back to, so it fails the request with `{:error, :spool_unavailable}`
-  instead.
+  Routes internally generated events directly to the registered backend queues,
+  without spooling or acquiring another client write lease.
   """
   @type log_param :: map()
   @spec ingest_logs([log_param()], Source.t()) ::
           {:ok, count :: pos_integer()} | {:error, term()}
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) ::
           {:ok, count :: pos_integer()} | {:error, term()}
-  @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil, boolean()) ::
-          {:ok, count :: pos_integer()} | {:error, term()}
-  def ingest_logs(event_params, source, backend \\ nil, allow_spooling \\ false) do
-    with :ok <- start_for_ingest(source) do
-      do_ingest_logs(event_params, source, backend, allow_spooling)
-    end
+  def ingest_logs(event_params, source, backend \\ nil) do
+    ingest(event_params, source, fn events, count ->
+      increment_counters(source, count)
+      dispatch_to_backend_path(source, backend, events)
+    end)
+  end
+
+  @doc """
+  Hands off client-submitted events under the shutdown write lease.
+  Spooling follows the node and source settings. In `:both` mode, a spool
+  failure falls back to direct delivery; in `:producer` mode it is returned.
+  """
+  @spec ingest_client_logs([log_param()], Source.t()) ::
+          {:ok, non_neg_integer()} | {:error, term()}
+  def ingest_client_logs(event_params, source) do
+    ingest(event_params, source, fn events, count ->
+      IngressGate.with_write(fn ->
+        increment_counters(source, count)
+        dispatch_client_logs(source, events)
+      end)
+    end)
   end
 
   @doc """
@@ -724,32 +731,34 @@ defmodule Logflare.Backends do
     end
   end
 
-  defp do_ingest_logs(event_params, source, backend, allow_spooling) do
-    {log_events, errors} = split_valid_events(source, event_params)
-    count = Enum.count(log_events)
-    increment_counters(source, count)
-
-    with :ok <- dispatch_logs(source, backend, log_events, allow_spooling) do
-      if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
+  defp ingest(event_params, source, handoff) do
+    with :ok <- start_for_ingest(source),
+         {events, errors} = split_valid_events(source, event_params),
+         count = length(events),
+         :ok <- handoff.(events, count) do
+      case errors do
+        [] -> {:ok, count}
+        errors -> {:error, errors}
+      end
     end
   end
 
-  defp dispatch_logs(source, backend, log_events, allow_spooling) do
-    if spoolable?(log_events, source, allow_spooling) do
+  defp dispatch_client_logs(source, log_events) do
+    if spoolable?(log_events, source) do
       case dispatch_to_spool_producer(log_events) do
         :ok -> :ok
-        {:error, reason} -> handle_spool_dispatch_error(source, backend, log_events, reason)
+        {:error, reason} -> handle_spool_dispatch_error(source, log_events, reason)
       end
     else
-      dispatch_to_backend_path(source, backend, log_events)
+      dispatch_to_backend_path(source, nil, log_events)
     end
   end
 
-  defp handle_spool_dispatch_error(source, backend, log_events, reason) do
+  defp handle_spool_dispatch_error(source, log_events, reason) do
     Logger.error("backends: spool dispatch failed for source #{source.token}: #{inspect(reason)}")
 
     if spool_mode() == :both do
-      dispatch_to_backend_path(source, backend, log_events)
+      dispatch_to_backend_path(source, nil, log_events)
     else
       {:error, :spool_unavailable}
     end
@@ -806,20 +815,19 @@ defmodule Logflare.Backends do
     :exit, _reason -> {:error, :no_spool_partition_available}
   end
 
-  @spec spoolable?([LogEvent.t()], Source.t(), boolean()) :: boolean()
-  defp spoolable?(log_events, source, allow_spooling) do
-    allow_spooling and
-      case spool_mode() do
-        :producer ->
-          true
+  @spec spoolable?([LogEvent.t()], Source.t()) :: boolean()
+  defp spoolable?(log_events, source) do
+    case spool_mode() do
+      :producer ->
+        true
 
-        :both ->
-          spool_write_healthy?() and (force_spooling?() or source.enable_spooling) and
-            Enum.all?(log_events, &(&1.via_rule_id == nil))
+      :both ->
+        spool_write_healthy?() and (force_spooling?() or source.enable_spooling) and
+          Enum.all?(log_events, &(&1.via_rule_id == nil))
 
-        _ ->
-          false
-      end
+      _ ->
+        false
+    end
   end
 
   @doc """

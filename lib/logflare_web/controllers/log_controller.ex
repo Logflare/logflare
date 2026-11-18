@@ -5,6 +5,7 @@ defmodule LogflareWeb.LogController do
   require Logger
 
   alias Logflare.Backends
+  alias Logflare.IngressGate
   alias Logflare.Logs
   alias Logflare.Logs.Processor
   alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest
@@ -113,10 +114,14 @@ defmodule LogflareWeb.LogController do
 
   defp ingest_grouped(grouped, processor) do
     with :ok <- start_sources(grouped) do
-      grouped
-      |> Enum.map(fn {source, batch} -> Processor.ingest(batch, processor, source) end)
-      |> aggregate_results()
+      IngressGate.with_write(fn -> dispatch_groups(grouped, processor) end)
     end
+  end
+
+  defp dispatch_groups(grouped, processor) do
+    grouped
+    |> Enum.map(fn {source, batch} -> Processor.ingest(batch, processor, source) end)
+    |> aggregate_results()
   end
 
   defp start_sources(grouped) do

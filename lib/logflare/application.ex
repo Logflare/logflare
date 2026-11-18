@@ -12,8 +12,11 @@ defmodule Logflare.Application do
   alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.Backends.UserMonitoring
   alias Logflare.ContextCache
+  alias Logflare.IngressGate
+  alias Logflare.IngressGate.Sweeper
   alias Logflare.Logs
   alias Logflare.NaturalLanguageLql.AnthropicClient
+  alias Logflare.Shutdown
   alias Logflare.SingleTenant
   alias Logflare.SystemMetricsSup
   alias Logflare.Sources.Counters
@@ -24,6 +27,7 @@ defmodule Logflare.Application do
 
   def start(_type, _args) do
     Logflare.Readiness.initialize()
+    Logflare.IngressGate.initialize()
     SpoolHealth.initialize()
 
     # set inspect function to redact sensitive information
@@ -47,7 +51,7 @@ defmodule Logflare.Application do
 
     # Routes user-specific logs to their respective system source, when appliable
 
-    children = get_children(env)
+    children = get_children(env) ++ [Sweeper, Shutdown]
 
     if Application.get_env(:logflare, :opentelemetry_enabled?) do
       OpentelemetryBandit.setup()
@@ -132,7 +136,7 @@ defmodule Logflare.Application do
          endpoint: LogflareGrpc.Endpoint,
          port: grpc_port,
          start_server: true,
-         adapter_opts: [cred: grpc_creds],
+         adapter_opts: [cred: grpc_creds] ++ LogflareGrpc.Shutdown.protocol_options(),
          exception_log_filter: {LogflareGrpc.ExceptionLogFilter, :emit_log?}},
         # Monitor system level metrics
         SystemMetricsSup,
@@ -145,7 +149,8 @@ defmodule Logflare.Application do
         {Task, fn -> startup_tasks() end},
         # active users tracking for UserMetricsPoller
         {Logflare.ActiveUserTracker,
-         [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]}
+         [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]},
+        {LogflareGrpc.Shutdown, wait?: Shutdown.timeout_ms() > 0}
       ]
   end
 
@@ -226,6 +231,7 @@ defmodule Logflare.Application do
 
   def prep_stop(state) do
     Logflare.Readiness.begin_draining()
+    if Shutdown.timeout_ms() == 0, do: IngressGate.seal()
     state
   end
 

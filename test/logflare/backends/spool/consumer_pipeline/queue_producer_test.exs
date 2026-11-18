@@ -9,6 +9,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
+  alias Logflare.Readiness
   alias Logflare.TestUtils
 
   setup :set_mimic_global
@@ -1022,6 +1023,29 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
   end
 
   describe "stop_receiving" do
+    test "a replacement producer does not fetch even when there is demand during shutdown" do
+      parent = self()
+
+      stub(QueueMod, :receive, fn _url, _opts ->
+        send(parent, :receive_called)
+        {:ok, []}
+      end)
+
+      Readiness.begin_draining()
+
+      on_exit(fn ->
+        Readiness.initialize()
+        Readiness.mark_ready()
+      end)
+
+      replacement = start_producer()
+      :sys.replace_state(replacement, fn stage -> put_in(stage.state.demand, 1) end)
+      send(replacement, :poll)
+
+      assert QueueProducer.drained?(replacement)
+      refute_receive :receive_called
+    end
+
     defp producer_state(overrides) do
       {:producer, state} =
         QueueProducer.init(
@@ -1041,8 +1065,17 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       Map.merge(state, overrides)
     end
 
-    test "nacks a landed prefetch but keeps the current file to finish emitting" do
-      stub_ack_nack(self())
+    test "stops intake without waiting for the prefetch nack, keeping the current file" do
+      test_pid = self()
+
+      stub(QueueMod, :nack, fn "q", "h2" ->
+        send(test_pid, {:nack_started, self()})
+
+        receive do
+          :release_nack -> :ok
+        end
+      end)
+
       current = %{handle: "h1", segments: [etf_body([%{"id" => "e1"}])]}
 
       state =
@@ -1054,11 +1087,16 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       assert {:reply, :ok, [], new_state} =
                QueueProducer.handle_call(:stop_receiving, {self(), make_ref()}, state)
 
-      assert_receive {:nacked, "h2"}
-      refute_received {:nacked, "h1"}
+      assert_receive {:nack_started, worker}
+      assert {:settling, ^worker, _ref} = new_state.prefetch
       assert new_state.current == current
-      assert new_state.prefetch == nil
-      assert new_state.receiving == false
+      refute new_state.receiving
+
+      assert {:reply, false, [], _} =
+               QueueProducer.handle_call(:drained?, self(), %{new_state | current: nil})
+
+      send(worker, :release_nack)
+      assert settle(new_state).prefetch == nil
     end
 
     test "keeps emitting the current file's segments but starts no new fetch" do
@@ -1094,7 +1132,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
                )
 
       assert_receive {:nacked, "h3"}
-      assert new_state.prefetch == nil
+      assert settle(new_state).prefetch == nil
       assert new_state.current == nil
 
       assert {:noreply, [], error_state} =
@@ -1104,7 +1142,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
                )
 
       assert_receive {:nacked, "h4"}
-      assert error_state.prefetch == nil
+      assert settle(error_state).prefetch == nil
 
       assert {:noreply, [], empty_state} =
                QueueProducer.handle_info(
@@ -1115,11 +1153,51 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       assert empty_state.prefetch == nil
     end
 
+    test "teardown accepts a nack result or worker exit after draining starts" do
+      stub(QueueMod, :nack, fn _url, _handle ->
+        receive do
+          :release_nack -> :ok
+        end
+      end)
+
+      for action <- [:release_nack, :kill_worker] do
+        state = stopped_state(%{prefetch: :running})
+        result = {:ok, "h1", ["seg"], "0/a.etf"}
+
+        assert {:noreply, [], settling} =
+                 QueueProducer.handle_info({:prefetch_result, result}, state)
+
+        assert {:settling, worker, ref} = settling.prefetch
+        assert {:noreply, [], draining} = QueueProducer.prepare_for_draining(settling)
+        assert draining.prefetch == settling.prefetch
+
+        case action do
+          :release_nack ->
+            send(worker, :release_nack)
+            assert settle(draining).prefetch == nil
+
+          :kill_worker ->
+            Process.exit(worker, :kill)
+            assert_receive {:DOWN, ^ref, :process, ^worker, :killed} = message
+
+            assert {:noreply, [], %{prefetch: :settlement_failed}} =
+                     QueueProducer.handle_info(message, draining)
+        end
+      end
+    end
+
+    defp settle(%{prefetch: {:settling, pid, _ref}} = state) do
+      assert_receive {:prefetch_settled, ^pid, _result} = message
+      assert {:noreply, [], settled} = QueueProducer.handle_info(message, state)
+      settled
+    end
+
     test "drained? is true only once nothing loaded or prefetched is left, a running prefetch included" do
       from = {self(), make_ref()}
 
       for {overrides, expected} <- [
             {%{prefetch: :running}, false},
+            {%{prefetch: :settlement_failed}, false},
             {%{current: %{handle: "h1", segments: ["seg"]}}, false},
             {%{current: %{handle: "h1", segments: []}}, true},
             {%{current: nil, prefetch: nil}, true}

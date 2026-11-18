@@ -23,7 +23,7 @@ Mimic.stub(Logflare.Sources.Source.Data, :get_log_count, fn _, _ ->
   0
 end)
 
-Mimic.stub(Logflare.Backends, :ingest_logs, fn events, _source, _backend, _allow_spooling ->
+Mimic.stub(Logflare.Backends, :ingest_client_logs, fn events, _source ->
   {:ok, length(events)}
 end)
 
