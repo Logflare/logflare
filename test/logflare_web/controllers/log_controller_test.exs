@@ -138,10 +138,7 @@ defmodule LogflareWeb.LogControllerTest do
         source: source,
         user: user
       } do
-        Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch,
-                                                       _source,
-                                                       _backend,
-                                                       _allow_spooling ->
+        Mimic.stub(Logflare.Backends, :ingest_client_logs, fn _batch, _source ->
           {:error, ["Type error! Field `value` has an unexpected type."]}
         end)
 
@@ -204,7 +201,7 @@ defmodule LogflareWeb.LogControllerTest do
       source: source,
       user: user
     } do
-      Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch, _source, _backend, _allow_spooling ->
+      Mimic.stub(Logflare.Backends, :ingest_client_logs, fn _batch, _source ->
         {:error, ["invalid event"]}
       end)
 
@@ -221,7 +218,7 @@ defmodule LogflareWeb.LogControllerTest do
       source: source,
       user: user
     } do
-      Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch, _source, _backend, _allow_spooling ->
+      Mimic.stub(Logflare.Backends, :ingest_client_logs, fn _batch, _source ->
         {:error, :spool_unavailable}
       end)
 
@@ -243,10 +240,7 @@ defmodule LogflareWeb.LogControllerTest do
         source: source,
         user: user
       } do
-        Mimic.stub(Logflare.Backends, :ingest_logs, fn _batch,
-                                                       _source,
-                                                       _backend,
-                                                       _allow_spooling ->
+        Mimic.stub(Logflare.Backends, :ingest_client_logs, fn _batch, _source ->
           {:error, :spool_unavailable}
         end)
 
@@ -278,7 +272,7 @@ defmodule LogflareWeb.LogControllerTest do
         {:error, :source_unavailable}
       end)
 
-      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+      Mimic.reject(Logflare.Backends, :ingest_client_logs, 2)
 
       conn =
         conn
@@ -300,7 +294,7 @@ defmodule LogflareWeb.LogControllerTest do
         {:error, :source_unavailable}
       end)
 
-      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+      Mimic.reject(Logflare.Backends, :ingest_client_logs, 2)
       body = TestUtilsGrpc.random_otel_logs_request() |> ExportLogsServiceRequest.encode()
 
       conn =
@@ -323,7 +317,7 @@ defmodule LogflareWeb.LogControllerTest do
         {:error, :source_not_found}
       end)
 
-      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+      Mimic.reject(Logflare.Backends, :ingest_client_logs, 2)
 
       conn =
         conn
@@ -342,7 +336,7 @@ defmodule LogflareWeb.LogControllerTest do
         {:error, :source_not_found}
       end)
 
-      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+      Mimic.reject(Logflare.Backends, :ingest_client_logs, 2)
       body = TestUtilsGrpc.random_otel_logs_request() |> ExportLogsServiceRequest.encode()
 
       conn =
@@ -992,7 +986,7 @@ defmodule LogflareWeb.LogControllerTest do
 
     test "multi-source batch with a non-object entry returns 400 without ingesting",
          %{conn: conn, source_a: source_a} do
-      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+      Mimic.reject(Logflare.Backends, :ingest_client_logs, 2)
 
       conn =
         conn
@@ -1018,7 +1012,7 @@ defmodule LogflareWeb.LogControllerTest do
         _source -> :ok
       end)
 
-      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+      Mimic.reject(Logflare.Backends, :ingest_client_logs, 2)
 
       conn =
         post(conn, Routes.log_path(conn, :create), %{
@@ -1078,7 +1072,7 @@ defmodule LogflareWeb.LogControllerTest do
 
     test "batch with __LF_SOURCE on first event but later events lack it returns 400 without ingesting",
          %{conn: conn, source_a: source_a} do
-      Mimic.reject(Logflare.Backends, :ingest_logs, 4)
+      Mimic.reject(Logflare.Backends, :ingest_client_logs, 2)
 
       conn =
         conn

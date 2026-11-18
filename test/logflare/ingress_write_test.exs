@@ -14,10 +14,10 @@ defmodule Logflare.IngressWriteTest do
 
     IngressGate.quiesce()
     on_exit(fn -> :ets.insert(IngressGate, {:admission, :open}) end)
-    assert {:ok, 1} = Backends.ingest_logs([event], source, nil, true)
+    assert {:ok, 1} = Backends.ingest_client_logs([event], source)
 
     IngressGate.seal()
-    assert {:error, :source_unavailable} = Backends.ingest_logs([event], source, nil, true)
+    assert {:error, :source_unavailable} = Backends.ingest_client_logs([event], source)
     assert {:ok, 1} = Backends.ingest_logs([event], source)
   end
 end

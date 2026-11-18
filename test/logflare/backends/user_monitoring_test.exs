@@ -216,7 +216,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
       calls = :counters.new(1, [])
       user_id = user.id
 
-      stub(Backends, :ingest_logs, fn _batch, _source, _backend, _allow_spooling ->
+      stub(Backends, :ingest_client_logs, fn _batch, _source ->
         :counters.add(calls, 1, 1)
 
         if :counters.get(calls, 1) < 10 do
@@ -235,7 +235,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
       :ok = Backends.ensure_source_sup_started(system_source)
       test_pid = self()
 
-      stub(Backends, :ingest_logs, fn _batch, _source, _backend, _allow_spooling ->
+      stub(Backends, :ingest_client_logs, fn _batch, _source ->
         send(test_pid, :ingested)
         :ok
       end)

@@ -109,7 +109,7 @@ defmodule LogflareWeb.LogChannel do
   end
 
   defp ingest_batch(batch, source, socket) do
-    case Backends.ingest_logs(batch, source, nil, true) do
+    case Backends.ingest_client_logs(batch, source) do
       {:ok, _count} ->
         push(socket, "batch", %{message: "Handled batch"})
         {:noreply, socket}
