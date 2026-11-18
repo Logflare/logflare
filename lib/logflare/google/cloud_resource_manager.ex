@@ -174,7 +174,7 @@ defmodule Logflare.Google.CloudResourceManager do
   def set_iam_policy(async: false) do
     project = env_project_number()
 
-    with {:ok, policy} <- get_iam_policy(),
+    with {:ok, policy} <- fetch_policy(),
          {:ok, policy} <-
            append_bindings(
              project,
@@ -205,9 +205,7 @@ defmodule Logflare.Google.CloudResourceManager do
     end
   end
 
-  @spec append_bindings(String.t() | integer(), Model.Policy.t(), [Model.Binding.t()]) ::
-          {:ok, Model.Policy.t()} | {:error, term()}
-  defp append_bindings(project, %Model.Policy{} = policy, bindings) do
+  defp append_bindings(project, policy, bindings) do
     merged = merge_bindings(policy, bindings)
 
     if merged == policy do
@@ -217,12 +215,11 @@ defmodule Logflare.Google.CloudResourceManager do
     end
   end
 
-  @spec merge_bindings(Model.Policy.t(), [Model.Binding.t()]) :: Model.Policy.t()
-  defp merge_bindings(%Model.Policy{} = policy, new_bindings) do
+  defp merge_bindings(policy, new_bindings) do
     Enum.reduce(new_bindings, policy, fn %Model.Binding{role: role, members: members}, acc ->
-      existing = acc.bindings || []
+      existing = policy_bindings(acc)
       idx = Enum.find_index(existing, &(&1.role == role and is_nil(&1.condition)))
-      %{acc | bindings: merge_binding(existing, idx, role, members)}
+      Map.put(acc, :bindings, merge_binding(existing, idx, role, members))
     end)
   end
 
@@ -236,12 +233,10 @@ defmodule Logflare.Google.CloudResourceManager do
     end)
   end
 
-  @spec append_user_members(String.t() | integer(), Model.Policy.t(), [String.t()]) ::
-          {non_neg_integer(), non_neg_integer()}
   defp append_user_members(project, policy, members) do
     current =
-      policy.bindings
-      |> List.wrap()
+      policy
+      |> policy_bindings()
       |> Enum.filter(&(&1.role == @user_role and is_nil(&1.condition)))
       |> Enum.flat_map(&(&1.members || []))
 
@@ -265,18 +260,44 @@ defmodule Logflare.Google.CloudResourceManager do
   end
 
   defp refresh_policy(fallback) do
-    case get_iam_policy() do
+    case fetch_policy() do
       {:ok, policy} -> policy
       {:error, _} -> fallback
     end
   end
 
-  defp write_policy(project, %Model.Policy{} = policy) do
-    body = %Model.SetIamPolicyRequest{policy: %{policy | version: 3}}
-    conn = GenUtils.get_conn()
+  defp fetch_policy do
+    body = %Model.GetIamPolicyRequest{
+      options: %Model.GetPolicyOptions{requestedPolicyVersion: 3}
+    }
 
-    case Api.Projects.cloudresourcemanager_projects_set_iam_policy(conn, project, body: body) do
-      {:ok, %Model.Policy{} = new_policy} -> {:ok, new_policy}
+    case call_projects_api(:cloudresourcemanager_projects_get_iam_policy, body) do
+      {:ok, nil} -> {:error, :empty_policy_response}
+      {:ok, response} -> {:ok, to_policy(response)}
+      {:error, _} = err -> err
+    end
+  end
+
+  defp to_policy(response) do
+    %Model.Policy{
+      bindings: Map.get(response, :bindings) || [],
+      etag: Map.get(response, :etag),
+      version: Map.get(response, :version)
+    }
+  end
+
+  @spec call_projects_api(atom(), struct(), String.t() | nil) :: {:ok, term()} | {:error, term()}
+  defp call_projects_api(fun, body, project \\ env_project_number()) do
+    apply(Api.Projects, fun, [GenUtils.get_conn(), project, [body: body]])
+  end
+
+  defp policy_bindings(policy), do: Map.get(policy, :bindings) || []
+
+  defp write_policy(project, policy) do
+    body = %Model.SetIamPolicyRequest{policy: Map.put(policy, :version, 3)}
+
+    case call_projects_api(:cloudresourcemanager_projects_set_iam_policy, body, project) do
+      {:ok, %{bindings: _} = response} -> {:ok, to_policy(response)}
       {:ok, _} -> {:ok, policy}
       {:error, _} = err -> err
     end
