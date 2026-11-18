@@ -17,7 +17,7 @@ defmodule E2e.Features.LogsSearchTest do
   describe "logs search" do
     TestUtils.setup_single_tenant(seed_user: true, backend_type: :postgres)
 
-    setup do
+    setup %{conn: conn} do
       user = SingleTenant.get_default_user()
       source = insert(:source, user: user)
 
@@ -50,6 +50,7 @@ defmodule E2e.Features.LogsSearchTest do
         |> Backends.ingest_logs(source)
 
       %{
+        conn: login_single_tenant(conn),
         source: source,
         user: user,
         matching_message: matching_message,
@@ -64,8 +65,6 @@ defmodule E2e.Features.LogsSearchTest do
       non_matching_message: non_matching_message
     } do
       conn
-      |> visit(~p"/auth/login/single_tenant")
-      |> assert_path(~p"/dashboard")
       |> visit(
         ~p"/sources/#{source.id}/search?#{%{querystring: "event_message:#{matching_message}"}}"
       )
@@ -79,7 +78,6 @@ defmodule E2e.Features.LogsSearchTest do
       user: user
     } do
       conn
-      |> visit(~p"/auth/login/single_tenant")
       |> visit(~p"/sources/#{source.id}/search?#{%{tz: "Etc/UTC"}}")
       |> assert_has("#results-actions_search_timezone-combobox input",
         label: "Display timezone",
@@ -134,8 +132,6 @@ defmodule E2e.Features.LogsSearchTest do
 
       conn =
         conn
-        |> visit(~p"/auth/login/single_tenant")
-        |> assert_path(~p"/dashboard")
         |> visit(~p"/sources/#{source.id}/search?#{%{querystring: "warning"}}")
         |> assert_has("#ai-search-button")
         |> fill_in("metadata.level", with: " error ")
@@ -162,8 +158,6 @@ defmodule E2e.Features.LogsSearchTest do
 
       conn =
         conn
-        |> visit(~p"/auth/login/single_tenant")
-        |> assert_path(~p"/dashboard")
         |> visit(~p"/sources/#{source.id}/search?#{%{querystring: "warning"}}")
         |> wait_for_selector(".monaco-editor textarea.inputarea")
         |> fill_editor("event_message:#{non_matching_message}")
@@ -185,8 +179,6 @@ defmodule E2e.Features.LogsSearchTest do
       end)
 
       conn
-      |> visit(~p"/auth/login/single_tenant")
-      |> assert_path(~p"/dashboard")
       |> visit(~p"/sources/#{source.id}/search?#{%{querystring: "warning"}}")
       |> wait_for_selector(".monaco-editor textarea.inputarea")
       |> press(".monaco-editor textarea.inputarea", "Tab")
@@ -214,8 +206,6 @@ defmodule E2e.Features.LogsSearchTest do
       assert :ok = TestUtils.wait_for_postgres_events(source, user, pagination_message, 105)
 
       conn
-      |> visit(~p"/auth/login/single_tenant")
-      |> assert_path(~p"/dashboard")
       |> visit(
         ~p"/sources/#{source.id}/search?#{%{querystring: ~s|event_message:~\"^#{pagination_message}-\"|, tailing?: false}}"
       )
@@ -247,8 +237,6 @@ defmodule E2e.Features.LogsSearchTest do
 
       conn =
         conn
-        |> visit(~p"/auth/login/single_tenant")
-        |> assert_path(~p"/dashboard")
         |> visit(
           ~p"/sources/#{source.id}/search?#{%{querystring: ~s|event_message:~\"^#{prefix}-\"|, tailing?: false}}"
         )
@@ -275,10 +263,67 @@ defmodule E2e.Features.LogsSearchTest do
              "the reader's row moved #{drift}px. An older page must not move the viewport."
     end
 
+    @tag browser_context_opts: [viewport: %{width: 390, height: 844}]
+    test "event context opens on the selected event and preserves position when loading more", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      timestamp = DateTime.add(DateTime.utc_now(), -60, :second)
+
+      events =
+        for offset <- -60..0 do
+          build(:log_event,
+            source: source,
+            timestamp: DateTime.add(timestamp, offset, :second) |> DateTime.to_iso8601(),
+            message: "viewport event #{offset}"
+          )
+        end
+
+      {:ok, 61} = Backends.ingest_logs(events, source)
+      :ok = TestUtils.wait_for_postgres_events(source, user, "viewport event", 61)
+      target_id = List.last(events).id
+      anchor_id = "log_events-#{Enum.at(events, -51).id}"
+
+      conn =
+        conn
+        |> visit(~p"/sources/#{source.id}/search?#{%{querystring: "viewport", tailing?: false}}")
+        |> click("#logs-list li[data-event-id='#{target_id}'] a", "context")
+        |> unwrap(fn %{frame_id: frame_id} ->
+          assert {:ok, true} =
+                   Frame.expect(frame_id,
+                     expression: "to.be.in.viewport",
+                     selector: "#context_log_events #log_events-#{target_id}",
+                     timeout: 5_000
+                   )
+
+          {:ok, _} =
+            Frame.evaluate(frame_id,
+              expression:
+                "document.querySelector('#context-load-more-before').scrollIntoView({block: 'nearest'})",
+              timeout: 5_000
+            )
+
+          assert {:ok, true} =
+                   Frame.expect(frame_id,
+                     expression: "to.be.in.viewport",
+                     selector: "#context_log_events ##{anchor_id}",
+                     timeout: 5_000
+                   )
+        end)
+
+      %{present: true, top: top} = read_anchor(conn, anchor_id)
+
+      conn
+      |> click("#context-load-more-before")
+      |> assert_has("#log_events-#{hd(events).id}")
+
+      %{present: true, top: after_click} = read_anchor(conn, anchor_id)
+      assert_in_delta after_click, top, 4
+    end
+
     test "shows a missing field error from the search page", %{conn: conn, source: source} do
       conn
-      |> visit(~p"/auth/login/single_tenant")
-      |> assert_path(~p"/dashboard")
       |> visit(~p"/sources/#{source.id}/search?#{%{querystring: "s:nonexistent"}}")
       |> wait_for_selector(".message .alert", state: "attached")
       |> assert_has(".message .alert p", text: "nonexistent")
@@ -290,8 +335,6 @@ defmodule E2e.Features.LogsSearchTest do
       source: source
     } do
       conn
-      |> visit(~p"/auth/login/single_tenant")
-      |> assert_path(~p"/dashboard")
       |> visit(~p"/sources/#{source.id}/search")
       |> assert_has(".live-pause", text: "Pause")
       |> click("#daterangepicker")
@@ -306,8 +349,6 @@ defmodule E2e.Features.LogsSearchTest do
     } do
       conn =
         conn
-        |> visit(~p"/auth/login/single_tenant")
-        |> assert_path(~p"/dashboard")
         |> visit(~p"/sources/#{source.id}/search")
         |> click("span", "DateTime")
         |> click_date_range_preset("Last 15 Minutes")
@@ -325,8 +366,6 @@ defmodule E2e.Features.LogsSearchTest do
     } do
       conn =
         conn
-        |> visit(~p"/auth/login/single_tenant")
-        |> assert_path(~p"/dashboard")
         |> visit(~p"/sources/#{source.id}/search")
         |> wait_for_selector("#source-logs-search-list")
 
@@ -361,8 +400,6 @@ defmodule E2e.Features.LogsSearchTest do
 
       conn =
         conn
-        |> visit(~p"/auth/login/single_tenant")
-        |> assert_path(~p"/dashboard")
         |> visit(~p"/sources/#{source.id}/search")
         |> wait_for_selector(bar_selector)
 
@@ -398,6 +435,13 @@ defmodule E2e.Features.LogsSearchTest do
 
       assert querystring =~ ~r/t:\S+\.\.\S+/
     end
+  end
+
+  @spec login_single_tenant(map()) :: map()
+  defp login_single_tenant(conn) do
+    conn
+    |> visit(~p"/auth/login/single_tenant")
+    |> assert_path(~p"/dashboard")
   end
 
   @spec assert_search_timezone(map(), String.t()) :: map()

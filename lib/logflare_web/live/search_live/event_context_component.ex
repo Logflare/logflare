@@ -2,6 +2,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
   use LogflareWeb, :live_component
 
   alias Logflare.JSON
+  alias Logflare.Logs.EventPage
   alias Logflare.Lql.Rules, as: LqlRules
   alias Logflare.Lql.Rules.FilterRule
   alias Phoenix.LiveView.{AsyncResult, JS}
@@ -9,6 +10,8 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias LogflareWeb.SearchLive.EventPagination
   import LogflareWeb.SearchLive.LogEventComponents, only: [log_event: 1, load_more_button: 1]
+
+  @page_size Logs.Search.context_page_size()
 
   @impl true
   def update(assigns, socket) do
@@ -36,7 +39,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
        socket
        |> assign(context_key: context_key, lql_rules: lql_rules, target_event_id: log_event_id)
        |> assign(is_truncated_before: false, is_truncated_after: false)
-       |> assign(event_timestamp: event_timestamp, ranks: -50..50, requested_ranks: -50..50)
+       |> assign(event_timestamp: event_timestamp, cursors: %{previous: nil, next: nil})
        |> assign(loading_direction: :initial, load_error: nil)
        |> assign(:logs, AsyncResult.loading())
        |> start_async(:logs, fn ->
@@ -78,18 +81,28 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
 
   @impl true
   def handle_async(:logs, {:ok, %{rows: rows, source: source}}, socket) do
-    %{requested_ranks: first..last//1, loading_direction: direction, ranks: ranks} =
-      socket.assigns
+    %{loading_direction: direction, cursors: cursors} = socket.assigns
 
     before_truncated =
-      if direction in [:initial, :previous],
-        do: match?(%{"rank" => ^first}, List.first(rows)),
-        else: socket.assigns.is_truncated_before
+      case direction do
+        :initial -> match?(%{"rank" => rank} when rank < -@page_size, List.first(rows))
+        :previous -> length(rows) > @page_size
+        :next -> socket.assigns.is_truncated_before
+      end
 
     after_truncated =
-      if direction in [:initial, :next],
-        do: match?(%{"rank" => ^last}, List.last(rows)),
-        else: socket.assigns.is_truncated_after
+      case direction do
+        :initial -> match?(%{"rank" => rank} when rank > @page_size, List.last(rows))
+        :next -> length(rows) > @page_size
+        :previous -> socket.assigns.is_truncated_after
+      end
+
+    rows =
+      case direction do
+        :initial -> Enum.filter(rows, &(&1["rank"] in -@page_size..@page_size))
+        :previous -> Enum.take(rows, -@page_size)
+        :next -> Enum.take(rows, @page_size)
+      end
 
     events =
       rows
@@ -99,6 +112,21 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
         |> Logflare.LogEvent.make_from_db(%{source: source})
       end)
 
+    cursors =
+      case {direction, events} do
+        {_, []} ->
+          cursors
+
+        {:initial, _} ->
+          %{previous: event_cursor(hd(events)), next: event_cursor(List.last(events))}
+
+        {:previous, _} ->
+          %{cursors | previous: event_cursor(hd(events))}
+
+        {:next, _} ->
+          %{cursors | next: event_cursor(List.last(events))}
+      end
+
     events = if direction == :previous, do: Enum.reverse(events), else: events
 
     {:noreply,
@@ -106,7 +134,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
      |> assign(:logs, AsyncResult.ok(socket.assigns.logs, :ok))
      |> assign(:is_truncated_before, before_truncated)
      |> assign(:is_truncated_after, after_truncated)
-     |> assign(ranks: min(first, ranks.first)..max(last, ranks.last), loading_direction: nil)
+     |> assign(cursors: cursors, loading_direction: nil)
      |> stream(:log_events, events,
        at: if(direction == :previous, do: 0, else: -1),
        reset: direction == :initial
@@ -138,27 +166,40 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
   def handle_event("load_events", %{"intent" => intent}, socket)
       when intent in ["previous", "next"] do
     %{
-      ranks: ranks,
+      cursors: cursors,
       target_event_id: id,
       event_timestamp: timestamp,
       source: source,
       lql_rules: rules
     } = socket.assigns
 
-    {direction, requested_ranks} =
+    direction =
       case intent do
-        "previous" -> {:previous, (ranks.first - 50)..(ranks.first - 1)}
-        "next" -> {:next, (ranks.last + 1)..(ranks.last + 50)}
+        "previous" -> :previous
+        "next" -> :next
       end
 
-    {:noreply,
-     socket
-     |> assign(loading_direction: direction, requested_ranks: requested_ranks, load_error: nil)
-     |> start_async(:logs, fn -> search_logs(id, timestamp, source.id, rules, requested_ranks) end)}
+    cursor = Map.fetch!(cursors, direction)
+
+    if EventPage.valid_cursor?(cursor) do
+      request = %{intent: direction, cursor: cursor}
+
+      {:noreply,
+       socket
+       |> assign(loading_direction: direction, load_error: nil)
+       |> start_async(:logs, fn -> search_logs(id, timestamp, source.id, rules, request) end)}
+    else
+      {:noreply, socket}
+    end
   end
+
+  @spec event_cursor(Logflare.LogEvent.t()) :: EventPage.cursor()
+  defp event_cursor(event), do: %{id: event.id, timestamp: event.body["timestamp"]}
 
   @impl true
   def render(assigns) do
+    assigns = assign(assigns, :page_size, @page_size)
+
     ~H"""
     <div class="list-unstyled console-text-list -tw-mx-6 tw-relative">
       <div class="tw-flex tw-px-2 tw-py-4 tw-mb-4 tw-bg-gray-800 tw-items-baseline tw-sticky tw-w-full">
@@ -174,7 +215,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
             <div id="context_log_events_error">An error occurred.</div>
           </:failed>
 
-          <.load_more_button id="context-load-more-before" intent="previous" target={@myself} state={EventPagination.button_state(@is_truncated_before, not is_nil(@loading_direction), @loading_direction == :previous)} label="Load 50 more" />
+          <.load_more_button id="context-load-more-before" intent="previous" target={@myself} state={EventPagination.button_state(@is_truncated_before, not is_nil(@loading_direction), @loading_direction == :previous)} label={"Load #{@page_size} more"} />
           <ul class="list-unstyled console-text" id="log-events" phx-update="stream">
             <.log_event
               :for={{id, log_event} <- @streams.log_events}
@@ -206,7 +247,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
               </:actions>
             </.log_event>
           </ul>
-          <.load_more_button id="context-load-more-after" intent="next" target={@myself} state={EventPagination.button_state(@is_truncated_after, not is_nil(@loading_direction), @loading_direction == :next)} label="Load 50 more" />
+          <.load_more_button id="context-load-more-after" intent="next" target={@myself} state={EventPagination.button_state(@is_truncated_after, not is_nil(@loading_direction), @loading_direction == :next)} label={"Load #{@page_size} more"} />
         </.async_result>
       </div>
     </div>
@@ -222,10 +263,16 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
           DateTime.t(),
           binary() | integer(),
           Lql.Rules.lql_rules(),
-          Range.t()
+          Logs.Search.context_page()
         ) ::
           map()
-  def search_logs(log_event_id, ts, source_id, lql_rules, ranks \\ -50..50) do
+  def search_logs(
+        log_event_id,
+        ts,
+        source_id,
+        lql_rules,
+        page \\ (-@page_size - 1)..(@page_size + 1)
+      ) do
     source = Sources.get_source_for_lv_param(source_id)
 
     so =
@@ -236,7 +283,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
       }
       |> Logs.SearchOperation.new()
 
-    case Logs.Search.search_event_context(so, log_event_id, ts, ranks) do
+    case Logs.Search.search_event_context(so, log_event_id, ts, page) do
       {:ok, %{rows: rows}} ->
         %{rows: rows, source: source}
 

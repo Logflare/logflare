@@ -1,12 +1,21 @@
 defmodule Logflare.Logs.Search do
   @moduledoc false
 
+  alias Logflare.Logs.EventPage
   alias Logflare.Logs.LogEvents
   alias Logflare.Logs.SearchOperation, as: SO
   alias Logflare.Lql.Rules, as: LqlRules
   alias Logflare.Sources
   import Ecto.Query
   import Logflare.Logs.SearchOperations
+
+  @context_page_size 50
+
+  @type context_page ::
+          Range.t() | %{intent: EventPage.direction(), cursor: EventPage.cursor()}
+
+  @spec context_page_size() :: pos_integer()
+  def context_page_size, do: @context_page_size
 
   @spec search(Logflare.Logs.SearchOperation.t()) :: {:error, any} | {:ok, %{events: any}}
   def search(%SO{} = so) do
@@ -77,11 +86,16 @@ defmodule Logflare.Logs.Search do
   @doc """
   Search for events before and after a selected event.
   """
-  @spec search_event_context(SO.t(), String.t(), DateTime.t(), Range.t()) ::
+  @spec search_event_context(SO.t(), String.t(), DateTime.t(), context_page()) ::
           {:ok, SO.t()} | {:error, SO.t()}
-  def search_event_context(%SO{} = so, log_event_id, %DateTime{} = timestamp, ranks \\ -50..50) do
+  def search_event_context(
+        %SO{} = so,
+        log_event_id,
+        %DateTime{} = timestamp,
+        page \\ -@context_page_size..@context_page_size
+      ) do
     so =
-      so
+      %{so | type: :events}
       |> get_and_put_partition_by()
 
     %{values: [min, max]} =
@@ -89,14 +103,77 @@ defmodule Logflare.Logs.Search do
       |> LqlRules.get_timestamp_filters()
       |> Enum.find(fn rule -> rule.operator == :range end)
 
-    fields = [:id, :timestamp, :event_message, :metadata]
-
-    numbered_rows =
-      from(so.source.bq_table_id)
-      |> LogEvents.partition_query([min, max], so.partition_by)
-      |> Logflare.Lql.apply_filter_rules(so.lql_rules)
+    query =
+      so
+      |> table_name()
+      |> from()
       |> where([t], t.timestamp >= ^min and t.timestamp <= ^max)
-      |> select([t], map(t, ^fields))
+      |> select([t], map(t, [:id, :timestamp, :event_message]))
+      |> partition_query(so, [min, max])
+
+    query =
+      case so.backend_type do
+        :postgres ->
+          select_merge(query, [t], %{metadata: fragment("?->'metadata'", t.body)})
+
+        :bigquery ->
+          select_merge(query, [t], %{metadata: t.metadata})
+      end
+
+    query =
+      query
+      |> Logflare.Lql.apply_filter_rules(so.lql_meta_and_msg_filters, dialect: so.backend_type)
+      |> context_query(so, log_event_id, timestamp, page)
+
+    with so <- %{so | query: query},
+         %{error: nil} = so <- do_query(so) do
+      {:ok, so}
+    else
+      so -> {:error, so}
+    end
+  end
+
+  @spec partition_query(Ecto.Query.t(), SO.t(), [DateTime.t()]) :: Ecto.Query.t()
+  defp partition_query(query, %SO{backend_type: :bigquery, partition_by: :pseudo}, range) do
+    LogEvents.partition_query(query, range, :pseudo)
+  end
+
+  defp partition_query(query, _so, _range), do: query
+
+  @spec context_query(
+          Ecto.Query.t(),
+          SO.t(),
+          String.t(),
+          DateTime.t(),
+          context_page()
+        ) ::
+          Ecto.Query.t()
+  defp context_query(
+         query,
+         so,
+         _id,
+         _timestamp,
+         %{intent: intent, cursor: %{timestamp: _, id: _}} = request
+       )
+       when intent in [:previous, :next] do
+    %{query: query} = apply_cursor(%{so | query: query, event_page_request: request})
+
+    query =
+      case intent do
+        :previous -> order_by(query, [t], desc: t.timestamp, desc: t.id)
+        :next -> order_by(query, [t], asc: t.timestamp, asc: t.id)
+      end
+
+    query
+    |> limit(^(@context_page_size + 1))
+    |> subquery()
+    |> order_by([t], asc: t.timestamp, asc: t.id)
+    |> select([t], t)
+  end
+
+  defp context_query(query, _so, log_event_id, timestamp, %Range{} = ranks) do
+    numbered_rows =
+      query
       |> select_merge([t], %{
         row_num: fragment("ROW_NUMBER() OVER (ORDER BY ? ASC, ? ASC)", t.timestamp, t.id)
       })
@@ -106,29 +183,21 @@ defmodule Logflare.Logs.Search do
       |> where([nr], nr.id == ^log_event_id and nr.timestamp == ^timestamp)
       |> select([nr], %{target_row_num: nr.row_num})
 
-    query =
-      from(subquery(numbered_rows))
-      |> join(:cross, subquery(target_position))
-      |> where(
-        [nr, tp],
-        nr.row_num >= tp.target_row_num + ^ranks.first and
-          nr.row_num <= tp.target_row_num + ^ranks.last
-      )
-      |> order_by([nr, _], asc: nr.timestamp, asc: nr.id)
-      |> select([nr, tp], %{
-        id: nr.id,
-        timestamp: nr.timestamp,
-        event_message: nr.event_message,
-        metadata: nr.metadata,
-        rank: fragment("? - ?", nr.row_num, tp.target_row_num) |> selected_as(:rank)
-      })
-
-    with so <- %{so | query: query},
-         %{error: nil} = so <- do_query(so) do
-      {:ok, so}
-    else
-      so -> {:error, so}
-    end
+    from(subquery(numbered_rows))
+    |> join(:cross, subquery(target_position))
+    |> where(
+      [nr, tp],
+      nr.row_num >= tp.target_row_num + ^ranks.first and
+        nr.row_num <= tp.target_row_num + ^ranks.last
+    )
+    |> order_by([nr, _], asc: nr.timestamp, asc: nr.id)
+    |> select([nr, tp], %{
+      id: nr.id,
+      timestamp: nr.timestamp,
+      event_message: nr.event_message,
+      metadata: nr.metadata,
+      rank: fragment("? - ?", nr.row_num, tp.target_row_num) |> selected_as(:rank)
+    })
   end
 
   def get_and_put_partition_by(%SO{} = so) do

@@ -42,8 +42,12 @@ defmodule LogflareWeb.Hooks.AllowTestSandbox do
         if connected?(socket), do: get_connect_info(socket, :user_agent)
       end)
 
-    metadata = socket.assigns.phoenix_ecto_sandbox
-    Phoenix.Ecto.SQL.Sandbox.allow(metadata, Ecto.Adapters.SQL.Sandbox)
+    socket.assigns.phoenix_ecto_sandbox
+    |> Phoenix.Ecto.SQL.Sandbox.decode_metadata()
+    # prevent async-exits arriving as unhandled LiveView messages
+    |> Map.put(:trap_exit, false)
+    |> Phoenix.Ecto.SQL.Sandbox.allow(Ecto.Adapters.SQL.Sandbox)
+
     {:cont, socket}
   end
 end

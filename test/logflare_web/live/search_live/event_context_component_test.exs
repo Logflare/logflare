@@ -1,366 +1,246 @@
 defmodule LogflareWeb.SearchLive.EventContextComponentTest do
   use LogflareWeb.ConnCase, async: false
 
-  alias Logflare.Backends.Adaptor.BigQueryAdaptor
-  alias Logflare.Backends.Adaptor.QueryResult
-  alias Logflare.BqRepo
+  alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
   alias Logflare.Logs.SearchOperation
   alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.SingleTenant
   alias Logflare.Sources.Source
-  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Utils.Tasks
   alias LogflareWeb.SearchLive.EventContextComponent
-  alias Logflare.Users
 
-  @default_schema Source.BigQuery.SchemaBuilder.initial_table_schema()
+  test "prepare_lql_rules/3 retains recommended filters and a day on either side of the event" do
+    source = insert(:source, user: insert(:user), suggested_keys: nil)
+    schema = TestUtils.build_bq_schema(%{"user_id" => 1, "metadata" => %{"level" => "info"}})
+    insert(:source_schema, source: source, bigquery_schema: schema)
 
-  def setup_user(_) do
-    plan = insert(:plan)
+    timestamp = ~U[2025-08-20 02:33:51Z]
+    query = "c:count(*) c:group_by(t::minute) m.level:debug event_message:sign_in user_id:1"
+
+    assert [
+             %FilterRule{
+               path: "timestamp",
+               operator: :range,
+               values: [~U[2025-08-19 02:33:51Z], ~U[2025-08-21 02:33:51Z]]
+             } = time_window
+           ] = EventContextComponent.prepare_lql_rules(source, query, timestamp)
+
+    for field <- ["event_message", "event_message!"] do
+      suggested = %{source | suggested_keys: field}
+
+      assert [%FilterRule{path: "event_message", operator: :=, value: "sign_in"}, ^time_window] =
+               EventContextComponent.prepare_lql_rules(suggested, query, timestamp)
+    end
+
+    clustered = %{source | bigquery_clustering_fields: "user_id"}
+
+    assert [%FilterRule{path: "user_id", operator: :=, value: 1}, ^time_window] =
+             EventContextComponent.prepare_lql_rules(clustered, query, timestamp)
+  end
+
+  test "search_logs/4 restricts legacy BigQuery partitions" do
+    insert(:plan)
     user = insert(:user)
-    team = insert(:team, user: user)
-    _billing_account = insert(:billing_account, user: user, stripe_plan_id: plan.stripe_id)
-    [user: user, team: team, plan: plan]
-  end
+    timestamp = ~U[2023-01-01 00:00:00Z]
+    parent = self()
 
-  defp setup_mocks(context) do
-    stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
-      if opts[:body].query =~ "rank" do
-        context_response(context, opts[:body].queryParameters)
-      else
-        {:ok, TestUtils.gen_bq_response()}
-      end
-    end)
+    for partition_type <- [:pseudo, :timestamp] do
+      source = insert(:source, user: user, bq_table_partition_type: partition_type)
+      rules = EventContextComponent.prepare_lql_rules(source, "", timestamp)
 
-    stub(BigQueryAdaptor, :execute_query, fn identifier, query, opts ->
-      handle_bigquery_execute_query(identifier, query, opts)
-    end)
-
-    :ok
-  end
-
-  @spec context_response(map(), [map()]) :: {:ok, struct()} | {:error, term()}
-  defp context_response(%{context_ranks: ranks}, params) do
-    [first, last] = params |> Enum.take(-2) |> Enum.map(& &1.parameterValue.value)
-
-    rows =
-      for rank <- ranks, rank in first..last do
-        %{"event_message" => "context event #{rank}", "rank" => to_string(rank)}
-      end
-
-    {:ok,
-     TestUtils.gen_bq_response(
-       rows,
-       SchemaBuilder.build_table_schema(%{"rank" => 1}, @default_schema)
-     )}
-  end
-
-  defp context_response(context, _params), do: context.bq_response
-
-  defp handle_bigquery_execute_query({project_id, dataset_id, user_id}, query, opts) do
-    user = Users.get(user_id)
-
-    with {:ok, {bq_sql, bq_params}} <- BigQueryAdaptor.ecto_to_sql(query, opts) do
-      bq_sql = String.replace(bq_sql, "$$__DEFAULT_DATASET__$$", dataset_id)
-
-      # Call BqRepo with our converted query - this will hit our GoogleApi mock
-      case BqRepo.query_with_sql_and_params(
-             user,
-             project_id,
-             bq_sql,
-             bq_params,
-             [dataset_id: dataset_id] ++ opts
-           ) do
-        {:ok, result} ->
-          {:ok,
-           QueryResult.new(result.rows, %{
-             total_bytes_processed: result.total_bytes_processed,
-             total_rows: result.total_rows,
-             query_string: bq_sql,
-             bq_params: bq_params
-           })}
-
-        error ->
-          error
-      end
-    end
-  end
-
-  defp on_exit_kill_tasks(_ctx) do
-    on_exit(fn ->
-      # Kill all tasks first
-      Tasks.kill_all_tasks()
-
-      # Give processes time to clean up
-      Process.sleep(10)
-
-      :ok
-    end)
-
-    :ok
-  end
-
-  defp setup_user_session(%{conn: conn, user: user}) do
-    [conn: login_user(conn, user)]
-  end
-
-  describe "construct context query" do
-    setup [:setup_user]
-
-    setup %{user: user} do
-      schema =
-        %{"user_id" => 1, "metadata" => %{"level" => "info"}}
-        |> SchemaBuilder.build_table_schema(@default_schema)
-
-      source = insert(:source, user: user, suggested_keys: "event_message")
-      insert(:source_schema, source: source, bigquery_schema: schema)
-
-      [
-        source: source,
-        schema: schema,
-        timestamp: ~U[2025-08-20T02:33:51Z]
-      ]
-    end
-
-    test "prepare_lql_rules/1", %{source: source, timestamp: timestamp} do
-      query_string = "c:count(*) c:group_by(t::minute)"
-
-      assert [
-               %FilterRule{
-                 path: "timestamp",
-                 operator: :range,
-                 values: [~U[2025-08-19 02:33:51Z], ~U[2025-08-21 02:33:51Z]]
-               }
-             ] = EventContextComponent.prepare_lql_rules(source, query_string, timestamp)
-
-      refute EventContextComponent.prepare_lql_rules(
-               source,
-               query_string <> " m.level:debug",
-               timestamp
-             )
-             |> Enum.find(&(&1.path =~ "level"))
-    end
-
-    test "prepare_lql_rules/1 includes suggested_keys", %{source: source, timestamp: timestamp} do
-      assert [
-               %Logflare.Lql.Rules.FilterRule{
-                 path: "event_message",
-                 operator: :=,
-                 value: "sign_in"
-               },
-               %Logflare.Lql.Rules.FilterRule{
-                 path: "timestamp",
-                 operator: :range,
-                 values: [~U[2025-08-19 02:33:51Z], ~U[2025-08-21 02:33:51Z]]
-               }
-             ] =
-               EventContextComponent.prepare_lql_rules(source, "event_message:sign_in", timestamp)
-    end
-
-    test "prepare_lql_rules/1 handles required marker in suggested_keys", %{
-      user: user,
-      schema: schema,
-      timestamp: timestamp
-    } do
-      source = insert(:source, user: user, suggested_keys: "event_message!")
-      insert(:source_schema, source: source, bigquery_schema: schema)
-
-      assert [
-               %Logflare.Lql.Rules.FilterRule{
-                 path: "event_message",
-                 operator: :=,
-                 value: "sign_in"
-               },
-               %Logflare.Lql.Rules.FilterRule{
-                 path: "timestamp",
-                 operator: :range,
-                 values: [~U[2025-08-19 02:33:51Z], ~U[2025-08-21 02:33:51Z]]
-               }
-             ] =
-               EventContextComponent.prepare_lql_rules(source, "event_message:sign_in", timestamp)
-    end
-
-    test "prepare_lql_rules/1 includes clustering_fields", %{
-      user: user,
-      schema: schema,
-      timestamp: timestamp
-    } do
-      source = insert(:source, user: user, bigquery_clustering_fields: "user_id")
-      insert(:source_schema, source: source, bigquery_schema: schema)
-
-      assert [
-               %Logflare.Lql.Rules.FilterRule{path: "user_id", operator: :=, value: 1},
-               %Logflare.Lql.Rules.FilterRule{
-                 path: "timestamp",
-                 operator: :range,
-                 values: [~U[2025-08-19 02:33:51Z], ~U[2025-08-21 02:33:51Z]]
-               }
-             ] = EventContextComponent.prepare_lql_rules(source, "user_id:1", timestamp)
-    end
-
-    test "prepare_lql_rules/1 handles nil suggested_keys", %{
-      user: user,
-      schema: schema,
-      timestamp: timestamp
-    } do
-      source = insert(:source, user: user, suggested_keys: nil)
-      insert(:source_schema, source: source, bigquery_schema: schema)
-
-      assert [
-               %Logflare.Lql.Rules.FilterRule{
-                 path: "timestamp",
-                 operator: :range,
-                 values: [~U[2025-08-19 02:33:51Z], ~U[2025-08-21 02:33:51Z]]
-               }
-             ] = EventContextComponent.prepare_lql_rules(source, "", timestamp)
-    end
-  end
-
-  describe "supports legacy  partition types" do
-    setup [:setup_user]
-
-    test "search_logs/4 supports legacy table partitions", %{user: user} do
-      pid = self()
-      ref = make_ref()
-
-      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
-        send(pid, {ref, opts[:body]})
-
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _project, opts ->
+        send(parent, {:context_query, partition_type, opts[:body].query})
         {:ok, TestUtils.gen_bq_response()}
       end)
 
-      [:pseudo, :timestamp]
-      |> Enum.each(fn partition_type ->
-        legacy_source = insert(:source, user: user, bq_table_partition_type: partition_type)
-        insert(:source_schema, source: legacy_source, bigquery_schema: @default_schema)
+      assert %{rows: [_]} =
+               EventContextComponent.search_logs(
+                 Ecto.UUID.generate(),
+                 timestamp,
+                 source.id,
+                 rules
+               )
 
-        timestamp = ~U[2023-01-01 00:00:00Z]
-        lql_rules = EventContextComponent.prepare_lql_rules(legacy_source, "", timestamp)
-
-        EventContextComponent.search_logs(
-          Ecto.UUID.generate(),
-          timestamp,
-          legacy_source.id,
-          lql_rules
-        )
-
-        assert_receive {^ref, request}
-
-        query = request.query
-
-        assert request.queryParameters |> Enum.take(-2) |> Enum.map(& &1.parameterValue.value) ==
-                 [-50, 50]
-
-        case partition_type do
-          :pseudo ->
-            assert query =~ "_PARTITIONTIME"
-            assert query =~ "_PARTITIONDATE IS NULL"
-
-          :timestamp ->
-            refute query =~ "_PARTITIONTIME"
-            refute query =~ "_PARTITIONDATE IS NULL"
-        end
-      end)
+      assert_receive {:context_query, ^partition_type, query}
+      assert String.contains?(query, "_PARTITIONTIME") == (partition_type == :pseudo)
+      assert String.contains?(query, "_PARTITIONDATE IS NULL") == (partition_type == :pseudo)
     end
   end
 
   describe "event context modal" do
-    setup [:setup_user, :setup_mocks, :on_exit_kill_tasks, :setup_user_session]
-
-    setup %{user: user} do
-      [source: insert(:source, user: user)]
-    end
+    TestUtils.setup_single_tenant(seed_user: true, backend_type: :postgres)
 
     setup {TestUtils, :attach_wait_for_render}
 
-    @tag context_ranks: -75..75
-    test "viewing event context", %{conn: conn, source: source} do
+    setup %{conn: conn} = context do
+      start_supervised!(Logflare.SystemMetricsSup)
+      on_exit(&Tasks.kill_all_tasks/0)
+
+      user = SingleTenant.get_default_user()
+      source = insert(:source, user: user)
+      target_id = Ecto.UUID.generate()
+      timestamp = DateTime.add(DateTime.utc_now(), -3, :minute) |> DateTime.to_unix(:microsecond)
+
+      events =
+        for rank <- Map.get(context, :context_ranks, 0..0) do
+          %{
+            "id" => if(rank == 0, do: target_id, else: Ecto.UUID.generate()),
+            "timestamp" => timestamp + rank * 1_000_000,
+            "event_message" => "context event #{rank}",
+            "metadata" => %{"position" => rank}
+          }
+        end
+
+      insert(:source_schema,
+        source: source,
+        bigquery_schema: TestUtils.build_bq_schema(hd(events))
+      )
+
+      :ok = Backends.ensure_source_sup_started(source)
+      {:ok, _} = Backends.ingest_logs(events, source)
+      TestUtils.wait_for_postgres_events(source, user, "context event", length(events))
+
+      params = %{querystring: ~s(event_message:"context event 0"), tailing?: false}
+
       {:ok, view, _html} =
-        live_with_redirect(conn, ~p"/sources/#{source.id}/search?tailing=false")
+        live_with_redirect(login_user(conn, user), ~p"/sources/#{source.id}/search?#{params}")
 
-      html =
-        view
-        |> TestUtils.wait_for_render("#logs-list li[data-event-id] a")
-        |> element("#logs-list li[data-event-id] a", "context")
-        |> render_click()
+      selector = "#logs-list li[data-event-id='#{target_id}'] a"
+      TestUtils.wait_for_render(view, selector)
 
-      assert html =~ "View Event Context"
+      [
+        view: view,
+        link: element(view, selector, "context"),
+        target_id: target_id,
+        source: source,
+        timestamp: timestamp
+      ]
+    end
 
-      view |> TestUtils.wait_for_render("#context_log_events #log-events li:first-of-type")
+    @tag context_ranks: -125..125
+    test "keeps ordered context across pages, new arrivals and parent updates",
+         %{view: view, source: source} = context do
+      open_context(context)
+      assert_context_events(view, -50..50)
 
-      assert has_element?(
-               view,
-               "#context_log_events #log-events li:first-child",
-               "context event -50"
-             )
+      late_events =
+        for offset <- [-49_500_000, 49_500_000] do
+          %{"timestamp" => context.timestamp + offset, "event_message" => "late event #{offset}"}
+        end
 
-      assert has_element?(
-               view,
-               "#context_log_events #log-events li:last-child",
-               "context event 50"
-             )
+      {:ok, 2} = Backends.ingest_logs(late_events, source)
+      TestUtils.wait_for_postgres_events(source, source.user, "late event", 2)
 
-      assert has_element?(view, "#context-load-more-before:not([disabled])", "Load 50 more")
-      assert has_element?(view, "#context-load-more-after:not([disabled])", "Load 50 more")
-      assert has_element?(view, "#log-events > li:nth-child(101)")
-      refute has_element?(view, "#context_log_events #log-events li:nth-child(102)")
+      for {direction, ranks} <- [
+            before: -100..50,
+            after: -100..100,
+            before: -125..100,
+            after: -125..125
+          ] do
+        load_more(view, direction)
+        assert_context_events(view, ranks)
+      end
 
-      expect(BigQueryAdaptor, :execute_query, fn _, _, _ -> {:error, "query failed"} end)
-      view |> element("#context-load-more-before") |> render_click()
-      render_async(view)
+      aggregates = SearchOperation.new(%{source: source, lql_rules: [], type: :aggregates})
+      send(view.pid, {:search_result, %{aggregates: aggregates}})
+      render_async(view, 5_000)
 
-      assert has_element?(
-               view,
-               "#context_load_more_error[role=alert]",
-               "Unable to load more events"
-             )
+      assert_context_events(view, -125..125)
+      assert has_element?(view, ".tw-hidden > #context-load-more-before[disabled]")
+      assert has_element?(view, ".tw-hidden > #context-load-more-after[disabled]")
+      assert has_element?(view, "#metadata-#{context.target_id}", ~s("position": 0))
+    end
 
-      refute has_element?(view, "#context_log_events #context_load_more_error")
-      assert has_element?(view, "#context_log_events #log-events li:nth-child(101)")
-      assert has_element?(view, "#context-load-more-before:not([disabled])")
+    test "shows empty context when the selected event is missing", %{view: view} = context do
+      open_context(context, %{"log-event-id" => Ecto.UUID.generate()})
+      assert_context_events(view, [])
+      refute has_element?(view, "#context_log_events button:not([disabled])")
+    end
 
-      view |> element("#context-load-more-before") |> render_click()
-      render_async(view)
+    @tag :capture_log
+    @tag context_ranks: -100..50
+    test "preserves context on a page error and retries from the same cursor",
+         %{view: view, source: source} = context do
+      open_context(context)
+      assert has_element?(view, ".tw-hidden > #context-load-more-after[disabled]")
 
-      assert has_element?(view, "#log-events > li:first-child", "context event -75")
-      assert has_element?(view, "#log-events > li:nth-child(126)", "context event 50")
-      assert has_element?(view, "div.tw-hidden > #context-load-more-before[disabled]")
-      assert has_element?(view, "#context-load-more-after:not([disabled])")
+      assert :ok =
+               with_unavailable_events_table(source, fn ->
+                 load_more(view, :before)
+
+                 assert has_element?(
+                          view,
+                          "#context_load_more_error[role=alert]",
+                          "Unable to load more events"
+                        )
+
+                 refute has_element?(view, "#context_log_events #context_load_more_error")
+                 assert_context_events(view, -50..50)
+                 assert has_element?(view, "#context-load-more-before:not([disabled])")
+               end)
+
+      load_more(view, :before)
+      assert_context_events(view, -100..50)
       refute has_element?(view, "#context_load_more_error")
-
-      aggregates =
-        struct!(SearchOperation, :sys.get_state(view.pid).socket.assigns.search_op_log_aggregates)
-
-      send(view.pid, {:search_result, %{aggregates: %{aggregates | rows: []}}})
-      render_async(view)
-
-      assert has_element?(view, "#log-events > li:first-child", "context event -75")
-      assert has_element?(view, "#log-events > li:nth-child(126)", "context event 50")
-
-      view |> element("#context-load-more-after") |> render_click()
-      render_async(view)
-
-      assert has_element?(view, "#log-events > li:first-child", "context event -75")
-      assert has_element?(view, "#log-events > li:nth-child(151)", "context event 75")
-      refute has_element?(view, "#log-events > li:nth-child(152)")
-      assert has_element?(view, "#log-events > li", "context event 0")
-      assert has_element?(view, "div.tw-hidden > #context-load-more-before[disabled]")
-      assert has_element?(view, "div.tw-hidden > #context-load-more-after[disabled]")
+      assert has_element?(view, ".tw-hidden > #context-load-more-before[disabled]")
     end
 
-    @tag bq_response: {:error, TestUtils.gen_bq_error("bad query")}
-    test "renders the error message", %{conn: conn, source: source} do
-      {:ok, view, _html} =
-        live_with_redirect(conn, ~p"/sources/#{source.id}/search?tailing=false")
-
-      view
-      |> TestUtils.wait_for_render("#logs-list li[data-event-id] a")
-      |> element("#logs-list li[data-event-id] a", "context")
-      |> render_click()
-
-      view
-      |> TestUtils.wait_for_render("#context_log_events_error")
-
-      assert view |> has_element?("#context_log_events", "An error occurred")
+    @tag :capture_log
+    test "shows an error when the initial context query fails",
+         %{view: view, source: source} = context do
+      assert :ok =
+               with_unavailable_events_table(source, fn ->
+                 open_context(context)
+                 assert has_element?(view, "#context_log_events_error", "An error occurred")
+               end)
     end
+  end
+
+  @spec with_unavailable_events_table(Source.t(), (-> term())) ::
+          :ok | {:error, :cannot_connect}
+  defp with_unavailable_events_table(source, fun) do
+    backend = SingleTenant.get_default_backend()
+    table = PostgresAdaptor.table_name(source)
+
+    SharedRepo.with_repo(backend, fn ->
+      SharedRepo.query!("ALTER TABLE #{table} RENAME TO #{table}_unavailable")
+
+      try do
+        fun.()
+        :ok
+      after
+        SharedRepo.query!("ALTER TABLE #{table}_unavailable RENAME TO #{table}")
+      end
+    end)
+  end
+
+  @spec open_context(map(), map()) :: String.t()
+  defp open_context(%{view: view, link: link}, params \\ %{}) do
+    render_click(link, params)
+    render_async(view, 5_000)
+  end
+
+  @spec load_more(map(), :before | :after) :: String.t()
+  defp load_more(view, direction) do
+    view
+    |> element("#context-load-more-#{direction}:not([disabled])", "Load 50 more")
+    |> render_click()
+
+    render_async(view, 5_000)
+  end
+
+  @spec assert_context_events(map(), Range.t() | [integer()]) :: true
+  defp assert_context_events(view, ranks) do
+    messages =
+      view
+      |> element("#context_log_events #log-events")
+      |> render()
+      |> Floki.parse_fragment!()
+      |> Floki.find("li > span.tw-truncate")
+      |> Enum.map(fn message -> message |> Floki.text() |> String.trim() end)
+
+    assert messages == Enum.map(ranks, &"context event #{&1}")
   end
 end
