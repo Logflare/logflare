@@ -1,12 +1,15 @@
 defmodule Logflare.Shutdown.Budget do
   @moduledoc """
   Calculates the latest end of each shutdown phase. A phase can finish early,
-  but cannot borrow the reserved time of a later phase.
+  but cannot borrow the reserved time of a later phase. Up to half of the
+  time before spool sync and cleanup is reserved for the four phases
+  between withdrawal and sync, with a cap per phase.
   """
 
   @stop_intake_ms 1_000
   @listener_stop_ms 1_000
   @writes_ms 1_000
+  @phase_reserve_ms 1_000
   @sync_ms 10_000
   @cleanup_ms 10_000
 
@@ -29,19 +32,19 @@ defmodule Logflare.Shutdown.Budget do
     drain_ms = Keyword.fetch!(opts, :drain_timeout_ms)
     spool_buffer = Keyword.get(opts, :spool_buffer)
 
-    {flush_start, flush} = flush_plan(now, overall, drain_ms, spool_buffer)
-    ingress_reserve = min(@listener_stop_ms, div(max(overall - now, 0), 2))
-    withdrawal_end = min(flush_start, overall - ingress_reserve)
-    withdrawal = min(now + withdrawal_ms, withdrawal_end)
-    writes_ms = min(@writes_ms, div(max(flush_start - withdrawal, 0), 2))
-    requests_end = flush_start - writes_ms
+    {queues_end, flush} = flush_plan(now, overall, drain_ms, spool_buffer)
+    phase_reserve = min(@phase_reserve_ms, div(max(queues_end - now, 0), 8))
+    writes_end = queues_end - min(drain_ms || 0, phase_reserve)
+    requests_end = writes_end - phase_reserve
+    listeners_end = requests_end - min(request_ms, phase_reserve)
+    withdrawal_end = listeners_end - phase_reserve
 
     %{
-      intake: {min(requests_end, withdrawal_end), @stop_intake_ms},
-      withdrawal: withdrawal,
-      listeners: {requests_end, @listener_stop_ms},
+      intake: {withdrawal_end, @stop_intake_ms},
+      withdrawal: min(now + withdrawal_ms, withdrawal_end),
+      listeners: {listeners_end, @listener_stop_ms},
       requests: {requests_end, request_ms},
-      writes: {flush_start, @writes_ms},
+      writes: {writes_end, @writes_ms},
       flush: flush
     }
   end
