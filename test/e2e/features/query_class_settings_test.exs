@@ -1,4 +1,8 @@
 defmodule E2e.Features.QueryClassSettingsTest do
+  use ExUnit.Case, async: false
+
+  setup :configure_recording
+
   use Logflare.FeatureCase, async: false
 
   alias Logflare.Backends
@@ -8,6 +12,20 @@ defmodule E2e.Features.QueryClassSettingsTest do
   alias PlaywrightEx.Frame
 
   @viewport %{width: 1280, height: 1900}
+  @cache_key "read_from_filesystem_cache_if_exists_otherwise_bypass_cache"
+
+  @spec configure_recording(map()) :: keyword()
+  defp configure_recording(%{recording: recording}) do
+    directory = Path.join(["screenshots", "query-class-videos", recording, Ecto.UUID.generate()])
+
+    [
+      recording_dir: directory,
+      browser_context_opts: [
+        viewport: @viewport,
+        record_video: %{dir: directory, size: @viewport}
+      ]
+    ]
+  end
 
   setup do
     start_supervised!(Logflare.SystemMetricsSup)
@@ -30,18 +48,16 @@ defmodule E2e.Features.QueryClassSettingsTest do
     %{backend: backend, owner: owner}
   end
 
-  @tag browser_context_opts: [
-         viewport: @viewport,
-         record_video: %{dir: "screenshots/query-class-videos/save", size: @viewport}
-       ]
+  @tag recording: "save"
   test "backend editor validates, saves and reloads query-class policy", %{
     conn: conn,
-    backend: backend
+    backend: backend,
+    recording_dir: directory
   } do
     session =
       conn
       |> visit(~p"/backends/#{backend.id}/edit")
-      |> assert_has("#query-class-settings-form")
+      |> assert_has(".phx-connected #query-class-settings-form")
       |> focus_editor()
       |> click("#query-class-api_paid-toggle")
       |> fill_in("#query-class-api_paid_max_threads", "Max threads", with: "4")
@@ -78,47 +94,56 @@ defmodule E2e.Features.QueryClassSettingsTest do
     session =
       session
       |> visit(~p"/backends/#{backend.id}/edit")
-      |> assert_has("#query-class-default_priority[value='5']")
+      |> assert_has(".phx-connected #query-class-default_priority[value='5']")
       |> focus_editor()
       |> click("#query-class-api_paid-toggle")
       |> assert_has("#query-class-api_paid_max_threads[value='4']")
       |> focus_editor()
       |> screenshot("query-class-03-reloaded.png", full_page: false)
 
-    finish_recording(session, "screenshots/query-class-videos/save")
+    finish_recording(session, directory)
   end
 
-  @tag accept_dialogs: true,
-       browser_context_opts: [
-         viewport: @viewport,
-         record_video: %{dir: "screenshots/query-class-videos/inheritance", size: @viewport}
-       ]
-  test "backend editor inherits defaults and disables query-class policy", %{
+  @tag accept_dialogs: true, recording: "inheritance"
+  test "backend editor resets a class to defaults and disables query-class policy", %{
     conn: conn,
     backend: backend,
-    owner: owner
+    owner: owner,
+    recording_dir: directory
   } do
     assert {:ok, _backend} =
              Backends.configure_query_class_settings(owner, backend, %{
                "default" => %{"priority" => 5, "max_execution_time" => 2.5},
-               "api_paid" => %{"priority" => 10, "max_threads" => 4}
+               "api_paid" => %{"priority" => 10, "max_threads" => 4, @cache_key => 1}
              })
 
     session =
       conn
       |> visit(~p"/backends/#{backend.id}/edit")
-      |> assert_has("#query-class-default_priority[value='5']")
+      |> assert_has(".phx-connected #query-class-default_priority[value='5']")
       |> focus_editor()
       |> click("#query-class-api_paid-toggle")
       |> assert_has("#query-class-api_paid_max_threads[value='4']")
-      |> fill_in("#query-class-api_paid_priority", "Priority", with: "")
-      |> fill_in("#query-class-api_paid_max_threads", "Max threads", with: "")
+      |> assert_has("#query-class-api_paid-cache-override")
+      |> fill_in("#query-class-default_priority", "Priority", with: "6")
+      |> click_button("#query-class-api_paid button[name=reset_class]", "Reset class to defaults")
+      |> assert_has("[role=status]", text: "Class reset in this draft")
+      |> assert_has("#query-class-default_priority[value='6']")
+      |> refute_has("#query-class-api_paid-cache-override")
+
+    assert Backends.get_backend(backend.id).config.query_class_settings["api_paid"][@cache_key] ==
+             1
+
+    session =
+      session
       |> click_button("Save query-class settings")
       |> assert_has("[role=status]", text: "Query-class settings saved")
       |> focus_editor()
       |> screenshot("query-class-04-inherited.png", full_page: false)
 
-    refute Map.has_key?(Backends.get_backend(backend.id).config.query_class_settings, "api_paid")
+    policy = Backends.get_backend(backend.id).config.query_class_settings
+    refute Map.has_key?(policy, "api_paid")
+    assert policy["default"]["priority"] == 6
 
     session =
       session
@@ -128,7 +153,7 @@ defmodule E2e.Features.QueryClassSettingsTest do
       |> screenshot("query-class-05-disabled.png", full_page: false)
 
     assert Backends.get_backend(backend.id).config.query_class_settings == %{}
-    finish_recording(session, "screenshots/query-class-videos/inheritance")
+    finish_recording(session, directory)
   end
 
   @spec focus_editor(PhoenixTest.Playwright.t()) :: PhoenixTest.Playwright.t()
