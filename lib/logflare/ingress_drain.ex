@@ -101,7 +101,10 @@ defmodule Logflare.IngressDrain do
 
   defp grpc_listener do
     ref = inspect(LogflareGrpc.Endpoint)
-    if Map.has_key?(:ranch.info(), ref), do: ref
+    _ = :ranch.get_addr(ref)
+    ref
+  rescue
+    ArgumentError -> nil
   end
 
   defp suspend_grpc(nil), do: :ok

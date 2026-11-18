@@ -8,6 +8,7 @@ defmodule Logflare.IngressDrainTest do
   alias Logflare.Test.ShutdownProbeGrpc
   alias Logflare.Test.ShutdownProbePlug
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceRequest
+  alias LogflareGrpc.Endpoint, as: GrpcEndpoint
   alias LogflareWeb.Plugs.Shutdown
 
   setup do
@@ -186,6 +187,32 @@ defmodule Logflare.IngressDrainTest do
     end
   end
 
+  test "discovering the gRPC listener does not query unrelated Ranch connections" do
+    {_grpc, ref} = grpc_server(GrpcEndpoint)
+    unrelated_ref = make_ref()
+
+    assert {:ok, _} =
+             :cowboy.start_clear(
+               unrelated_ref,
+               %{num_acceptors: 1, num_conns_sups: 1, socket_opts: [port: 0, ip: {127, 0, 0, 1}]},
+               %{}
+             )
+
+    on_exit(fn -> :cowboy.stop_listener(unrelated_ref) end)
+    [{_, conns_sup}] = :ranch_server.get_connections_sups(unrelated_ref)
+    :ok = :sys.suspend(conns_sup)
+
+    try do
+      cutoff = System.monotonic_time(:millisecond) + 1_000
+
+      assert IngressDrain.run(cutoff, http_listeners: []) == :drained
+      assert :ranch.get_status(ref) == :suspended
+      assert :ranch.get_transport_options(ref).shutdown == 6_000
+    after
+      :ok = :sys.resume(conns_sup)
+    end
+  end
+
   test "endpoint wrapper rejects normal routes and socket upgrades but preserves health endpoints" do
     IngressGate.quiesce()
 
@@ -227,17 +254,17 @@ defmodule Logflare.IngressDrainTest do
     {server, port}
   end
 
-  defp grpc_server do
+  defp grpc_server(endpoint \\ ShutdownProbeEndpoint) do
     server =
       start_supervised!(
         {GRPC.Server.Supervisor,
-         endpoint: ShutdownProbeEndpoint,
+         endpoint: endpoint,
          port: 0,
          start_server: true,
          adapter_opts: [ip: {127, 0, 0, 1}] ++ IngressDrain.grpc_protocol_options()}
       )
 
-    {server, inspect(ShutdownProbeEndpoint)}
+    {server, inspect(endpoint)}
   end
 
   defp h2(port) do
