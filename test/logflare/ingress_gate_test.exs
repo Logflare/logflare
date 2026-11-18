@@ -23,6 +23,20 @@ defmodule Logflare.IngressGateTest do
     assert :drained = IngressGate.await_empty(System.monotonic_time(:millisecond))
   end
 
+  test "a request callback holds its lease until it raises" do
+    assert_raise RuntimeError, "callback failed", fn ->
+      IngressGate.with_request(
+        fn ->
+          assert IngressGate.active_count() == 1
+          raise "callback failed"
+        end,
+        fn -> flunk("the open gate should admit the callback") end
+      )
+    end
+
+    assert IngressGate.active_count() == 0
+  end
+
   test "dead request processes cannot strand the drain" do
     parent = self()
 

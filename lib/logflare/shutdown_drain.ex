@@ -21,19 +21,26 @@ defmodule Logflare.ShutdownDrain do
   @default_poll_interval_ms 100
 
   @type result :: :drained | :timeout
-  @type intake :: %{
-          producers: (-> [GenServer.server()]),
-          requested: MapSet.t(GenServer.server()),
-          result: :ok | :timeout
-        }
+  @type intake_result :: :ok | :timeout
 
-  @spec stop_receiving(integer(), (-> [GenServer.server()])) :: intake()
-  def stop_receiving(deadline, producers \\ &spool_producers/0) do
-    request_stops(
-      producers.(),
-      %{producers: producers, requested: MapSet.new(), result: :ok},
-      deadline
+  @doc """
+  Requests prefetch settlement on current producers after readiness enters draining.
+  Replacement producers start with intake closed and do not need a stop request.
+  """
+  @spec stop_receiving(integer(), [GenServer.server()]) :: intake_result()
+  def stop_receiving(deadline, producers \\ spool_producers()) do
+    Logger.warning(
+      "shutdown_drain: requesting intake stop on #{length(producers)} spool producer(s)"
     )
+
+    Enum.reduce(producers, :ok, fn producer, status ->
+      result =
+        producer_call(fn ->
+          QueueProducer.stop_receiving(producer, Budget.remaining(deadline))
+        end)
+
+      if result == :timeout, do: :timeout, else: status
+    end)
   end
 
   @spec spool_buffer() :: atom() | nil
@@ -41,23 +48,21 @@ defmodule Logflare.ShutdownDrain do
     if SpoolDurableBufferSup.partitions() != [], do: SpoolDurableBufferSup.name()
   end
 
-  @spec run(Budget.flush() | nil, intake(), atom() | nil, keyword()) :: result()
-  def run(budget, intake, buffer, opts \\ [])
+  @spec run(Budget.flush() | nil, intake_result(), atom() | nil, keyword()) :: result()
+  def run(budget, intake_result, buffer, opts \\ [])
 
-  def run(nil, %{result: :ok}, _buffer, _opts), do: :drained
-  def run(nil, %{result: :timeout}, _buffer, _opts), do: :timeout
+  def run(nil, :ok, _buffer, _opts), do: :drained
+  def run(nil, :timeout, _buffer, _opts), do: :timeout
 
-  def run(budget, intake, buffer, opts) do
+  def run(budget, _intake_result, buffer, opts) do
     started_at = System.monotonic_time(:millisecond)
     queue_deadline = Budget.deadline(budget.queues)
     poll_interval_ms = Keyword.get(opts, :poll_interval_ms, @default_poll_interval_ms)
+    producers = Keyword.get(opts, :producers, &spool_producers/0)
 
-    Logger.warning(
-      "shutdown_drain: started, requested intake stop on #{MapSet.size(intake.requested)} spool producer(s)"
-    )
-
-    queues = await_drained(intake, queue_deadline, poll_interval_ms)
-    spool = sync_spool_buffer(budget, buffer)
+    Logger.warning("shutdown_drain: started")
+    queues = await_drained(producers, queue_deadline, poll_interval_ms)
+    spool = sync_spool_buffer(budget.sync, buffer)
     spool_pending = SpoolAck.pending_count()
     queued_events = IngestEventQueue.total_size()
     {acks, object_deletes} = cleanup(queues, Budget.deadline(budget.cleanup))
@@ -85,13 +90,13 @@ defmodule Logflare.ShutdownDrain do
 
   defp within(deadline, operation), do: operation.(Budget.remaining(deadline))
 
-  @spec sync_spool_buffer(Budget.flush() | nil, atom() | nil) ::
+  @spec sync_spool_buffer(Budget.limit() | nil, atom() | nil) ::
           :none | :synced | :local_wal_synced_cloud_delivery_unverified | :timeout
   def sync_spool_buffer(nil, _buffer), do: :none
-  def sync_spool_buffer(_budget, nil), do: :none
+  def sync_spool_buffer(_limit, nil), do: :none
 
-  def sync_spool_buffer(budget, buffer) do
-    timeout = budget.sync |> Budget.deadline() |> Budget.remaining()
+  def sync_spool_buffer(limit, buffer) do
+    timeout = limit |> Budget.deadline() |> Budget.remaining()
     Logger.warning("shutdown_drain: syncing the spool buffer for up to #{timeout}ms")
 
     case Tasks.run_within(fn -> sync_buffer(buffer) end, timeout) do
@@ -119,33 +124,9 @@ defmodule Logflare.ShutdownDrain do
     :exit, {:noproc, {Broadway.Topology, :config, _}} -> []
   end
 
-  defp request_stops(producers, intake, deadline) do
-    Enum.reduce(producers, intake, fn producer, intake ->
-      if MapSet.member?(intake.requested, producer) do
-        intake
-      else
-        request_stop(producer, intake, deadline)
-      end
-    end)
-  end
-
-  defp request_stop(producer, intake, deadline) do
-    result =
-      producer_call(fn -> QueueProducer.stop_receiving(producer, Budget.remaining(deadline)) end)
-
-    %{
-      intake
-      | requested: MapSet.put(intake.requested, producer),
-        result: if(result == :timeout, do: :timeout, else: intake.result)
-    }
-  end
-
-  defp await_drained(intake, deadline, poll_interval_ms) do
-    producers = intake.producers.()
-    intake = request_stops(producers, intake, deadline)
-
+  defp await_drained(producers, deadline, poll_interval_ms) do
     cond do
-      drained?(producers, deadline) and MapSet.new(intake.producers.()) == MapSet.new(producers) ->
+      drained?(producers.(), deadline) ->
         :drained
 
       Budget.remaining(deadline) == 0 ->
@@ -153,7 +134,7 @@ defmodule Logflare.ShutdownDrain do
 
       true ->
         Process.sleep(min(poll_interval_ms, Budget.remaining(deadline)))
-        await_drained(intake, deadline, poll_interval_ms)
+        await_drained(producers, deadline, poll_interval_ms)
     end
   end
 

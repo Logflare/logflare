@@ -20,7 +20,7 @@ defmodule Logflare.ShutdownTest do
 
     stub(ShutdownDrain, :stop_receiving, fn _deadline ->
       send(parent, {:phase, :stop_receiving})
-      %{result: :ok}
+      :ok
     end)
 
     stub(IngressDrain, :run, fn deadline, opts ->
@@ -155,8 +155,8 @@ defmodule Logflare.ShutdownTest do
     parent = self()
     stub(ShutdownDrain, :spool_buffer, fn -> :probe_buffer end)
 
-    stub(ShutdownDrain, :sync_spool_buffer, fn budget, :probe_buffer ->
-      send(parent, {:sync, Budget.remaining(Budget.deadline(budget.sync))})
+    stub(ShutdownDrain, :sync_spool_buffer, fn limit, :probe_buffer ->
+      send(parent, {:sync, Budget.remaining(Budget.deadline(limit))})
       :synced
     end)
 

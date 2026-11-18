@@ -1023,7 +1023,14 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
   end
 
   describe "stop_receiving" do
-    test "a replacement producer starts with intake closed during application shutdown" do
+    test "a replacement producer does not fetch even when there is demand during shutdown" do
+      parent = self()
+
+      stub(QueueMod, :receive, fn _url, _opts ->
+        send(parent, :receive_called)
+        {:ok, []}
+      end)
+
       Readiness.begin_draining()
 
       on_exit(fn ->
@@ -1032,7 +1039,11 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
       end)
 
       replacement = start_producer()
+      :sys.replace_state(replacement, fn stage -> put_in(stage.state.demand, 1) end)
+      send(replacement, :poll)
+
       assert QueueProducer.drained?(replacement)
+      refute_receive :receive_called
     end
 
     defp producer_state(overrides) do

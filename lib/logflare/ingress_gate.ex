@@ -37,6 +37,23 @@ defmodule Logflare.IngressGate do
   @spec enter() :: {:ok, reference()} | :closed
   def enter, do: acquire(:request)
 
+  @doc "Holds a request lease for a synchronous callback, not for writing its response to the wire."
+  @spec with_request((-> result), (-> closed_result)) :: result | closed_result
+        when result: var, closed_result: var
+  def with_request(fun, on_closed) do
+    case enter() do
+      {:ok, token} ->
+        try do
+          fun.()
+        after
+          leave(token)
+        end
+
+      :closed ->
+        on_closed.()
+    end
+  end
+
   @doc "Runs a synchronous handoff, reusing its enclosing write lease in the same process."
   @spec with_write((-> result)) :: result | {:error, :source_unavailable} when result: var
   def with_write(fun) do

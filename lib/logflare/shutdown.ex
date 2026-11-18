@@ -64,7 +64,7 @@ defmodule Logflare.Shutdown do
     budget =
       Budget.plan(System.monotonic_time(:millisecond), Keyword.put(opts, :spool_buffer, buffer))
 
-    intake = ShutdownDrain.stop_receiving(Budget.deadline(budget.intake))
+    intake_result = ShutdownDrain.stop_receiving(Budget.deadline(budget.intake))
     withdrawal_ms = Budget.remaining(budget.withdrawal)
     Logger.warning("shutdown: withdrawing from traffic for #{withdrawal_ms}ms")
     Process.sleep(withdrawal_ms)
@@ -78,13 +78,13 @@ defmodule Logflare.Shutdown do
 
     case IngressGate.await_writes(Budget.deadline(budget.writes)) do
       :drained ->
-        result = ShutdownDrain.run(budget.flush, intake, buffer)
+        result = ShutdownDrain.run(budget.flush, intake_result, buffer)
         finish(ingress_result, result, deadline)
 
       :timeout ->
         Logger.warning("shutdown: ingestion handoffs still active; skipping queue drain")
 
-        spool = ShutdownDrain.sync_spool_buffer(budget.flush, buffer)
+        spool = ShutdownDrain.sync_spool_buffer(get_in(budget, [:flush, :sync]), buffer)
 
         Logger.warning(
           "shutdown: best-effort spool sync with outstanding handoffs spool_buffer=#{spool}"

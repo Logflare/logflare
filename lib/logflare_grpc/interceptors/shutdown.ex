@@ -9,16 +9,8 @@ defmodule LogflareGrpc.Interceptors.Shutdown do
 
   @impl true
   def call(request, stream, next, _opts) do
-    case IngressGate.enter() do
-      {:ok, token} ->
-        try do
-          next.(request, stream)
-        after
-          IngressGate.leave(token)
-        end
-
-      :closed ->
-        {:error, GRPC.RPCError.exception(status: :unavailable, message: "Server shutting down")}
-    end
+    IngressGate.with_request(fn -> next.(request, stream) end, fn ->
+      {:error, GRPC.RPCError.exception(status: :unavailable, message: "Server shutting down")}
+    end)
   end
 end

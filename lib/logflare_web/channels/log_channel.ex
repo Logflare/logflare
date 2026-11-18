@@ -66,23 +66,18 @@ defmodule LogflareWeb.LogChannel do
   end
 
   def handle_in("batch", %{"batch" => batch}, socket) when is_list(batch) do
-    case IngressGate.enter() do
-      {:ok, token} ->
-        try do
-          source = socket.assigns.source |> Sources.refresh_source_metrics_for_ingest()
+    IngressGate.with_request(
+      fn ->
+        source = socket.assigns.source |> Sources.refresh_source_metrics_for_ingest()
 
-          with :ok <- Backends.start_for_ingest(source) do
-            ingest_batch(batch, source, socket)
-          else
-            {:error, reason} -> reply_start_error(socket, reason)
-          end
-        after
-          IngressGate.leave(token)
+        with :ok <- Backends.start_for_ingest(source) do
+          ingest_batch(batch, source, socket)
+        else
+          {:error, reason} -> reply_start_error(socket, reason)
         end
-
-      :closed ->
-        reply_start_error(socket, :source_unavailable)
-    end
+      end,
+      fn -> reply_start_error(socket, :source_unavailable) end
+    )
   end
 
   def handle_in("ping", _payload, socket) do

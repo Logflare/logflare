@@ -55,12 +55,15 @@ defmodule Logflare.ShutdownDrainTest do
 
     producers = Keyword.get(opts, :producers, [])
 
-    intake =
-      Keyword.get_lazy(opts, :intake, fn ->
-        ShutdownDrain.stop_receiving(Budget.deadline(budget.queues), fn -> producers end)
+    intake_result =
+      Keyword.get_lazy(opts, :intake_result, fn ->
+        ShutdownDrain.stop_receiving(Budget.deadline(budget.queues), producers)
       end)
 
-    ShutdownDrain.run(budget, intake, opts[:spool_buffer], poll_interval_ms: 10)
+    ShutdownDrain.run(budget, intake_result, opts[:spool_buffer],
+      poll_interval_ms: 10,
+      producers: Keyword.get(opts, :live_producers, fn -> producers end)
+    )
   end
 
   defp stub_producers do
@@ -128,20 +131,23 @@ defmodule Logflare.ShutdownDrainTest do
     refute_received {:stop_receiving, _}
   end
 
-  test "requests a stop from a replacement producer before declaring the drain complete" do
+  test "checks a replacement producer without sending another stop request" do
     stub_producers()
-    {:ok, producers} = Agent.start_link(fn -> [:original] end)
+    parent = self()
 
-    intake =
-      ShutdownDrain.stop_receiving(System.monotonic_time(:millisecond) + 1_000, fn ->
-        Agent.get(producers, & &1)
-      end)
+    stub(QueueProducer, :drained?, fn producer, _timeout ->
+      send(parent, {:checked, producer})
+      true
+    end)
 
-    Agent.update(producers, fn _ -> [:replacement] end)
-    assert run(intake: intake) == :drained
+    intake_result =
+      ShutdownDrain.stop_receiving(System.monotonic_time(:millisecond) + 1_000, [:original])
+
+    assert run(intake_result: intake_result, live_producers: fn -> [:replacement] end) == :drained
     assert_received {:stop_receiving, :original}
-    assert_received {:stop_receiving, :replacement}
+    assert_received {:checked, :replacement}
     refute_received {:stop_receiving, _}
+    refute_received {:checked, :original}
   end
 
   test "a live but unresponsive producer is not treated as drained" do
@@ -202,8 +208,13 @@ defmodule Logflare.ShutdownDrainTest do
   end
 
   test "drains straight away when no spool consumer pipeline is running" do
-    intake = ShutdownDrain.stop_receiving(System.monotonic_time(:millisecond) + 100)
-    assert run(intake: intake, timeout_ms: 100) == :drained
+    intake_result = ShutdownDrain.stop_receiving(System.monotonic_time(:millisecond) + 100)
+    assert intake_result == :ok
+    assert run(intake_result: intake_result, timeout_ms: 100) == :drained
+  end
+
+  test "preserves the intake timeout when no final drain is configured" do
+    assert ShutdownDrain.run(nil, :timeout, nil) == :timeout
   end
 
   test "a blocked nack at the deadline cannot hold the drain past its cleanup budget" do
@@ -436,12 +447,12 @@ defmodule Logflare.ShutdownDrainTest do
   end
 
   describe "verification logging" do
-    test "logs when the drain starts and how many spool producers stopped receiving" do
+    test "logs how many spool producers are asked to stop receiving" do
       stub_producers()
 
       log = capture_log([level: :warning], fn -> run(producers: [:p0, :p1]) end)
 
-      assert log =~ "shutdown_drain: started, requested intake stop on 2 spool producer(s)"
+      assert log =~ "shutdown_drain: requesting intake stop on 2 spool producer(s)"
     end
 
     test "logs a drained result with nothing left pending" do
