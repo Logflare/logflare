@@ -36,6 +36,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.QueryError
   alias Logflare.Endpoints.ClickHouseSettings
+  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.LogEvent
   alias Logflare.LogEvent.TypeDetection
   alias Logflare.Sources.Source
@@ -248,6 +249,35 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         {ch_sql, ch_params},
         Keyword.put(opts, :validated_clickhouse_sql, true)
       )
+    end
+  end
+
+  @impl Logflare.Backends.Adaptor
+  @spec explain_query(
+          Backend.t(),
+          {String.t(), [String.t()], map(), EndpointQuery.t()},
+          Keyword.t()
+        ) :: {:ok, String.t()} | {:error, QueryError.t()}
+  def explain_query(
+        %Backend{} = backend,
+        {query_string, declared_params, input_params, endpoint_query},
+        opts
+      )
+      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) and
+             is_list(opts) do
+    with {:ok, {limited_query, _max_rows}} <- limit_endpoint_query(query_string, endpoint_query),
+         {:ok, %QueryResult{rows: rows}} <-
+           execute_query_with_params(
+             backend,
+             "EXPLAIN PLAN indexes = 1 " <> limited_query,
+             declared_params,
+             input_params,
+             opts
+           ) do
+      {:ok, Enum.map_join(rows, "\n", fn %{"explain" => line} -> line end)}
+    else
+      {:error, %QueryError{} = error} -> {:error, error}
+      {:error, reason} -> {:error, query_error(:invalid_query, reason)}
     end
   end
 
