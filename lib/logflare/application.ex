@@ -13,6 +13,7 @@ defmodule Logflare.Application do
   alias Logflare.Backends.UserMonitoring
   alias Logflare.ContextCache
   alias Logflare.IngressDrain
+  alias Logflare.IngressGate
   alias Logflare.IngressGate.Sweeper
   alias Logflare.Logs
   alias Logflare.NaturalLanguageLql.AnthropicClient
@@ -230,6 +231,7 @@ defmodule Logflare.Application do
 
   def prep_stop(state) do
     Logflare.Readiness.begin_draining()
+    if Shutdown.timeout_ms() == 0, do: IngressGate.seal()
     state
   end
 

@@ -9,6 +9,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
   alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
   alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.Backends.Spool.Storage.GCS, as: StorageMod
+  alias Logflare.Readiness
   alias Logflare.TestUtils
 
   setup :set_mimic_global
@@ -1022,6 +1023,18 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducerTest do
   end
 
   describe "stop_receiving" do
+    test "a replacement producer starts with intake closed during application shutdown" do
+      Readiness.begin_draining()
+
+      on_exit(fn ->
+        Readiness.initialize()
+        Readiness.mark_ready()
+      end)
+
+      replacement = start_producer()
+      assert QueueProducer.drained?(replacement)
+    end
+
     defp producer_state(overrides) do
       {:producer, state} =
         QueueProducer.init(

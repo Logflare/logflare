@@ -48,6 +48,14 @@ defmodule Logflare.Shutdown.BudgetTest do
     assert budget.flush.cleanup == {@now + 200, 10_000}
   end
 
+  test "limits withdrawal and intake to leave time to close admission without a final flush" do
+    budget = plan(deadline_ms: @now + 200, drain_timeout_ms: nil)
+
+    assert budget.withdrawal == @now + 100
+    assert budget.intake == {@now + 100, 1_000}
+    assert budget.listeners == {@now + 150, 1_000}
+  end
+
   test "does not reserve time for a disabled final flush" do
     budget = plan(drain_timeout_ms: nil)
     assert budget.requests == {@now + 79_000, 30_000}

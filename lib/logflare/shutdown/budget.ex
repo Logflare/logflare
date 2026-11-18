@@ -30,12 +30,14 @@ defmodule Logflare.Shutdown.Budget do
     spool_buffer = Keyword.get(opts, :spool_buffer)
 
     {flush_start, flush} = flush_plan(now, overall, drain_ms, spool_buffer)
-    withdrawal = min(now + withdrawal_ms, flush_start)
+    ingress_reserve = min(@listener_stop_ms, div(max(overall - now, 0), 2))
+    withdrawal_end = min(flush_start, overall - ingress_reserve)
+    withdrawal = min(now + withdrawal_ms, withdrawal_end)
     writes_ms = min(@writes_ms, div(max(flush_start - withdrawal, 0), 2))
     requests_end = flush_start - writes_ms
 
     %{
-      intake: {requests_end, @stop_intake_ms},
+      intake: {min(requests_end, withdrawal_end), @stop_intake_ms},
       withdrawal: withdrawal,
       listeners: {requests_end, @listener_stop_ms},
       requests: {requests_end, request_ms},

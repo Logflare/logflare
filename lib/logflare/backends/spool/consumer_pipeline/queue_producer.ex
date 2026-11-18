@@ -74,6 +74,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   alias Logflare.Backends.Spool.Encoder
   alias Logflare.Backends.Spool.MemoryMonitor
   alias Logflare.Backends.Spool.SpoolAck
+  alias Logflare.Readiness
 
   @throttle_interval 100
   @min_backoff 100
@@ -126,9 +127,8 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
       # Set by prepare_for_draining/1 — stops new fetches while letting
       # anything already in flight drain out and ack normally.
       draining: false,
-      # Set to false by stop_receiving/1 on graceful shutdown — no new queue receives, but the current
-      # file keeps emitting.
-      receiving: true
+      # stop_receiving/2 clears this on graceful shutdown but lets the current file keep emitting.
+      receiving: not Readiness.draining?()
     }
 
     Process.put(@in_flight_key, in_flight_ref)
@@ -367,7 +367,7 @@ defmodule Logflare.Backends.Spool.ConsumerPipeline.QueueProducer do
   # The only place safe_fetch_next runs — always in a background Task,
   # never inline in this process.
   defp maybe_start_prefetch(%{prefetch: nil, receiving: true} = state) do
-    if over_limit?() do
+    if Readiness.draining?() or over_limit?() do
       state
     else
       parent = self()
