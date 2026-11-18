@@ -90,6 +90,7 @@ defmodule Logflare.Shutdown do
           "shutdown: best-effort spool sync with outstanding handoffs spool_buffer=#{spool}"
         )
 
+        if budget.flush, do: ShutdownDrain.cleanup(:timeout, budget.flush.cleanup)
         :timeout
     end
   end

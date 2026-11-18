@@ -65,7 +65,7 @@ defmodule Logflare.ShutdownDrain do
     spool = sync_spool_buffer(budget.sync, buffer)
     spool_pending = SpoolAck.pending_count()
     queued_events = IngestEventQueue.total_size()
-    {acks, object_deletes} = cleanup(queues, Budget.deadline(budget.cleanup))
+    {acks, object_deletes} = cleanup(queues, budget.cleanup)
 
     result =
       if queues == :drained and spool != :timeout and acks == :ok and object_deletes == :ok,
@@ -81,7 +81,10 @@ defmodule Logflare.ShutdownDrain do
     result
   end
 
-  defp cleanup(queue_result, deadline) do
+  @doc "Settles remaining spool receipts and attempts outstanding acknowledgments and deletes."
+  @spec cleanup(result(), Budget.limit()) :: {:ok | :timeout, :ok | :timeout}
+  def cleanup(queue_result, limit) do
+    deadline = Budget.deadline(limit)
     if queue_result == :timeout, do: within(deadline, &SpoolAck.nack_pending/1)
 
     acks = within(deadline, &SpoolAck.flush/1)

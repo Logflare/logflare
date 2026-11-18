@@ -3,6 +3,8 @@ defmodule Logflare.ShutdownTest do
 
   import Mimic
 
+  alias Logflare.Backends.Spool.Queue.PubSub, as: QueueMod
+  alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.IngressDrain
   alias Logflare.IngressGate
   alias Logflare.Shutdown
@@ -151,8 +153,18 @@ defmodule Logflare.ShutdownTest do
     assert Budget.remaining(Budget.deadline(budget.cleanup)) >= 400
   end
 
-  test "a stalled write still permits best-effort spool sync without draining the queues" do
+  test "a stalled write permits spool sync and receipt cleanup without draining the queues" do
     parent = self()
+    receipt = "stalled-write-spool-receipt"
+    :ok = SpoolAck.register(receipt, QueueMod, "queue-url")
+    SpoolAck.bump(receipt, 1)
+    on_exit(fn -> :ets.delete(:spool_ack, receipt) end)
+
+    stub(QueueMod, :nack, fn _url, handle ->
+      send(parent, {:nacked, handle})
+      :ok
+    end)
+
     stub(ShutdownDrain, :spool_buffer, fn -> :probe_buffer end)
 
     stub(ShutdownDrain, :sync_spool_buffer, fn limit, :probe_buffer ->
@@ -183,6 +195,7 @@ defmodule Logflare.ShutdownTest do
 
       assert_received {:sync, remaining}
       assert remaining > 0
+      assert_received {:nacked, ^receipt}
       refute_received {:phase, {:flush, _}}
     after
       send(writer.pid, :finish_write)
