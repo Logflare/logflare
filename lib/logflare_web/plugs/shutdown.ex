@@ -1,6 +1,8 @@
 defmodule LogflareWeb.Plugs.Shutdown do
   @moduledoc """
-  Wraps endpoint dispatch, including socket upgrades, before application work can begin.
+  Wraps endpoint dispatch before application work can begin. Phoenix inserts
+  socket dispatch ahead of the endpoint's regular plugs, so the gate wraps
+  the compiled endpoint instead of running as a regular endpoint plug.
   """
   @behaviour Plug
 

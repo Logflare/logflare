@@ -12,6 +12,7 @@ defmodule Logflare.Application do
   alias Logflare.Backends.Spool.SpoolAck
   alias Logflare.Backends.UserMonitoring
   alias Logflare.ContextCache
+  alias Logflare.IngressDrain
   alias Logflare.Logs
   alias Logflare.NaturalLanguageLql.AnthropicClient
   alias Logflare.Shutdown
@@ -134,12 +135,7 @@ defmodule Logflare.Application do
          endpoint: LogflareGrpc.Endpoint,
          port: grpc_port,
          start_server: true,
-         adapter_opts: [
-           cred: grpc_creds,
-           goaway_initial_timeout: 0,
-           goaway_complete_timeout: Shutdown.timeout_ms(),
-           shutdown_timeout: Shutdown.timeout_ms()
-         ],
+         adapter_opts: [cred: grpc_creds] ++ IngressDrain.grpc_protocol_options(),
          exception_log_filter: {LogflareGrpc.ExceptionLogFilter, :emit_log?}},
         # Monitor system level metrics
         SystemMetricsSup,

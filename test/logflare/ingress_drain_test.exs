@@ -72,11 +72,7 @@ defmodule Logflare.IngressDrainTest do
          endpoint: ShutdownProbeEndpoint,
          port: 0,
          start_server: true,
-         adapter_opts: [
-           ip: {127, 0, 0, 1},
-           goaway_initial_timeout: 0,
-           goaway_complete_timeout: 5_000
-         ]}
+         adapter_opts: [ip: {127, 0, 0, 1}] ++ IngressDrain.grpc_protocol_options()}
       )
 
     ref = inspect(ShutdownProbeEndpoint)
@@ -108,6 +104,52 @@ defmodule Logflare.IngressDrainTest do
     assert :ranch.get_status(ref) == :suspended
     assert :ranch.get_transport_options(ref).shutdown > 0
     Mint.HTTP.close(conn)
+  end
+
+  test "gRPC: a zero callback wait preserves a response queued for the wire during teardown" do
+    :persistent_term.put({ShutdownProbeGrpc, :test_pid}, self())
+    on_exit(fn -> :persistent_term.erase({ShutdownProbeGrpc, :test_pid}) end)
+
+    server =
+      start_supervised!(
+        {GRPC.Server.Supervisor,
+         endpoint: ShutdownProbeEndpoint,
+         port: 0,
+         start_server: true,
+         adapter_opts: [ip: {127, 0, 0, 1}] ++ IngressDrain.grpc_protocol_options()}
+      )
+
+    ref = inspect(ShutdownProbeEndpoint)
+
+    {:ok, conn} =
+      Mint.HTTP.connect(:http, "127.0.0.1", :ranch.get_port(ref),
+        protocols: [:http2],
+        mode: :passive,
+        client_settings: [initial_window_size: 0]
+      )
+
+    encoded = ExportLogsServiceRequest.encode(%ExportLogsServiceRequest{})
+    body = <<0, byte_size(encoded)::32, encoded::binary>>
+    headers = [{"content-type", "application/grpc"}, {"te", "trailers"}]
+    path = "/opentelemetry.proto.collector.logs.v1.LogsService/Export"
+    {:ok, conn, rpc} = Mint.HTTP.request(conn, "POST", path, headers, body)
+    assert_receive {:held_rpc, handler}, 2_000
+    send(handler, :release)
+    {conn, responses} = until_headers(conn, rpc)
+
+    assert IngressDrain.run(System.monotonic_time(:millisecond),
+             http_listeners: [],
+             grpc_listener: ref
+           ) == :drained
+
+    shutdown = Task.async(fn -> Supervisor.stop(server) end)
+
+    {conn, responses} = until_goaway(conn, responses)
+    {:ok, conn} = Mint.HTTP2.put_settings(conn, initial_window_size: 65_535)
+    {conn, responses} = until_done(conn, rpc, responses)
+    assert grpc_status(responses, rpc) == "0"
+    Mint.HTTP.close(conn)
+    assert Task.await(shutdown) == :ok
   end
 
   test "a vanished listener does not skip suspension of the other listener" do
@@ -176,6 +218,24 @@ defmodule Logflare.IngressDrainTest do
       assert attempts > 0, "response did not complete: #{inspect(responses)}"
       {:ok, conn, next} = Mint.HTTP.recv(conn, 0, 2_000)
       until_done(conn, ref, responses ++ next, attempts - 1)
+    end
+  end
+
+  defp until_headers(conn, ref, responses \\ []) do
+    if Enum.any?(responses, &match?({:headers, ^ref, _}, &1)) do
+      {conn, responses}
+    else
+      {:ok, conn, next} = Mint.HTTP.recv(conn, 0, 2_000)
+      until_headers(conn, ref, responses ++ next)
+    end
+  end
+
+  defp until_goaway(conn, responses) do
+    if Mint.HTTP.open?(conn, :write) do
+      {:ok, conn, next} = Mint.HTTP.recv(conn, 0, 2_000)
+      until_goaway(conn, responses ++ next)
+    else
+      {conn, responses}
     end
   end
 
