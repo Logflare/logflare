@@ -21,8 +21,8 @@ jobs:
       - uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
-          key: pw-exp-${{ runner.os }}-${{ steps.v.outputs.pw }}-shell
-      - run: npx --prefix assets playwright install --only-shell chromium
+          key: pw-exp-${{ runner.os }}-${{ steps.v.outputs.pw }}-chromium
+      - run: npx --prefix assets playwright install chromium
 
   install:
     needs: prime-cache
@@ -30,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [all, chromium, shell, shell-cached]
+        variant: [all, chromium, chromium-cached]
         rep: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v6
@@ -39,17 +39,17 @@ jobs:
       - run: npm ci --prefix assets
       - id: v
         run: echo "pw=$(node -p "require('./assets/node_modules/playwright/package.json').version")" >> "$GITHUB_OUTPUT"
-      - if: matrix.variant == 'shell-cached'
+      - if: matrix.variant == 'chromium-cached'
         uses: actions/cache/restore@v5
         with:
           path: ~/.cache/ms-playwright
-          key: pw-exp-${{ runner.os }}-${{ steps.v.outputs.pw }}-shell
+          key: pw-exp-${{ runner.os }}-${{ steps.v.outputs.pw }}-chromium
       - name: install-deps
         run: |
           case "${{ matrix.variant }}" in
             all) args="" ;;
             chromium) args="chromium" ;;
-            *) args="--only-shell chromium" ;;
+            *) args="chromium" ;;
           esac
           start=$(date +%s)
           npx --prefix assets playwright install-deps $args 2>&1 | tee apt.log | grep -E "Need to get|newly installed" || true
@@ -59,7 +59,7 @@ jobs:
           case "${{ matrix.variant }}" in
             all) args="" ;;
             chromium) args="chromium" ;;
-            *) args="--only-shell chromium" ;;
+            *) args="chromium" ;;
           esac
           start=$(date +%s)
           npx --prefix assets playwright install $args
@@ -80,5 +80,5 @@ jobs:
       - name: install-browsers
         run: |
           start=$(date +%s)
-          npx --prefix assets playwright install --only-shell chromium
+          npx --prefix assets playwright install chromium
           echo "BROWSER_SECONDS=$(( $(date +%s) - start ))"
