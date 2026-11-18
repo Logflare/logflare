@@ -13,6 +13,24 @@ defmodule LogflareWeb.LogSocketTest do
     :ok
   end
 
+  test "usage buffer outages do not change socket authentication" do
+    user = insert(:user)
+    token = insert(:access_token, resource_owner: user)
+    assert :ok = Supervisor.terminate_child(Logflare.ContextCache.Supervisor, Cache)
+
+    on_exit(fn ->
+      {:ok, _} = Supervisor.restart_child(Logflare.ContextCache.Supervisor, Cache)
+    end)
+
+    for params <- [%{"access_token" => token.token}, %{"api_key" => user.api_key}] do
+      assert {:ok, socket} = Phoenix.ChannelTest.connect(LogSocket, params)
+      assert socket.assigns.user.id == user.id
+    end
+
+    assert :error = Phoenix.ChannelTest.connect(LogSocket, %{"access_token" => "invalid"})
+    assert :error = Phoenix.ChannelTest.connect(LogSocket, %{"api_key" => "invalid"})
+  end
+
   describe "access token authentication" do
     test "access token owner can connect and ingest into their own source" do
       user = insert(:user)

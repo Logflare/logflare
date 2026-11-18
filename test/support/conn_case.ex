@@ -80,6 +80,7 @@ defmodule LogflareWeb.ConnCase do
 
         caches = Logflare.ContextCache.Supervisor.list_caches()
         Enum.each(caches, & &1.reset())
+        Logflare.RecordUsages.Cache.reset()
 
         on_exit(fn ->
           IngestEventQueue.delete_all_mappings()

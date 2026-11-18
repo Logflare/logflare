@@ -27,6 +27,65 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
   end
 
   describe "access token usage" do
+    test "usage cache and writer outages do not change authentication", %{
+      access_token: token,
+      user: user
+    } do
+      for child <- [RecordUsages.Cache, RecordUsages.Writer] do
+        assert :ok = Supervisor.terminate_child(Logflare.ContextCache.Supervisor, child)
+
+        on_exit(fn ->
+          Supervisor.restart_child(Logflare.ContextCache.Supervisor, child)
+        end)
+
+        for credential <- [token.token, user.api_key] do
+          build_conn(:post, "/logs")
+          |> put_req_header("x-api-key", credential)
+          |> VerifyApiAccess.call(%{})
+          |> assert_authorized(user)
+        end
+
+        build_conn(:post, "/logs")
+        |> put_req_header("x-api-key", "invalid-token")
+        |> VerifyApiAccess.call(%{})
+        |> assert_unauthorized()
+
+        {:ok, _} = Supervisor.restart_child(Logflare.ContextCache.Supervisor, child)
+      end
+    end
+
+    test "a suspended usage writer does not delay authentication", %{
+      access_token: token,
+      user: user
+    } do
+      RecordUsages.Cache.record({OauthAccessToken, token.id}, 1)
+      RecordUsages.Cache.snapshot()
+      writer = Process.whereis(RecordUsages.Writer)
+
+      on_exit(fn ->
+        if Process.alive?(writer), do: :sys.resume(writer)
+      end)
+
+      :sys.suspend(writer)
+      before_request = System.system_time(:second)
+
+      for credential <- [token.token, user.api_key] do
+        request =
+          Task.async(fn ->
+            build_conn(:post, "/logs")
+            |> put_req_header("x-api-key", credential)
+            |> VerifyApiAccess.call(%{})
+          end)
+
+        request |> Task.await(1_000) |> assert_authorized(user)
+      end
+
+      :sys.resume(writer)
+      snapshot = Map.new(RecordUsages.Cache.snapshot())
+      assert Map.fetch!(snapshot, {OauthAccessToken, token.id}) >= before_request
+      assert Map.fetch!(snapshot, {User, user.id}) >= before_request
+    end
+
     test "records requests on both cache misses and hits", %{access_token: token, user: user} do
       before_request = System.system_time(:second)
 
