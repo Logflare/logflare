@@ -24,6 +24,7 @@ defmodule Logflare.Shutdown.BudgetTest do
   test "reserves separate sync and cleanup windows after the latest queue cutoff" do
     budget = plan([])
     assert budget.withdrawal == @now + 15_000
+    assert budget.listeners == {@now + 59_000, 1_000}
     assert budget.requests == {@now + 59_000, 30_000}
     assert budget.writes == {@now + 60_000, 1_000}
     assert budget.flush.queues == {@now + 60_000, 60_000}
@@ -41,6 +42,7 @@ defmodule Logflare.Shutdown.BudgetTest do
   test "clips withdrawal and leaves both sync and cleanup time on a short budget" do
     budget = plan(deadline_ms: @now + 200)
     assert budget.withdrawal == @now + 100
+    assert budget.listeners == {@now + 100, 1_000}
     assert budget.flush.queues == {@now + 100, 60_000}
     assert budget.flush.sync == {@now + 150, 10_000}
     assert budget.flush.cleanup == {@now + 200, 10_000}

@@ -3,6 +3,7 @@ defmodule Logflare.IngressDrainTest do
 
   alias Logflare.IngressDrain
   alias Logflare.IngressGate
+  alias Logflare.IngressGate.Sweeper
   alias Logflare.Test.ShutdownProbeEndpoint
   alias Logflare.Test.ShutdownProbeGrpc
   alias Logflare.Test.ShutdownProbePlug
@@ -49,6 +50,22 @@ defmodule Logflare.IngressDrainTest do
     Mint.HTTP.close(conn)
   end
 
+  test "a normal HTTP/2 disconnect reaps the lease without starting the drain" do
+    {_server, port} = http_server()
+    _sweeper = start_supervised!({Sweeper, interval_ms: 10})
+    conn = h2(port)
+    {:ok, conn, _ref} = Mint.HTTP.request(conn, "GET", "/hold", [], nil)
+    assert_receive {:held_http, handler}, 2_000
+    assert [{token, :request, ^handler}] = :ets.match_object(IngressGate, {:_, :request, handler})
+
+    monitor = Process.monitor(handler)
+    Mint.HTTP.close(conn)
+    assert_receive {:DOWN, ^monitor, :process, ^handler, _reason}, 2_000
+
+    await(fn -> not :ets.member(IngressGate, token) end, deadline())
+    assert IngressGate.open?()
+  end
+
   test "HTTP/1: an idle keep-alive connection cannot bypass the closed gate" do
     {server, port} = http_server()
     {:ok, conn} = Mint.HTTP.connect(:http, "127.0.0.1", port, protocols: [:http1], mode: :passive)
@@ -66,16 +83,7 @@ defmodule Logflare.IngressDrainTest do
     :persistent_term.put({ShutdownProbeGrpc, :test_pid}, self())
     on_exit(fn -> :persistent_term.erase({ShutdownProbeGrpc, :test_pid}) end)
 
-    supervisor =
-      start_supervised!(
-        {GRPC.Server.Supervisor,
-         endpoint: ShutdownProbeEndpoint,
-         port: 0,
-         start_server: true,
-         adapter_opts: [ip: {127, 0, 0, 1}] ++ IngressDrain.grpc_protocol_options()}
-      )
-
-    ref = inspect(ShutdownProbeEndpoint)
+    {supervisor, ref} = grpc_server()
     port = :ranch.get_port(ref)
     conn = h2(port)
     path = "/opentelemetry.proto.collector.logs.v1.LogsService/Export"
@@ -110,16 +118,7 @@ defmodule Logflare.IngressDrainTest do
     :persistent_term.put({ShutdownProbeGrpc, :test_pid}, self())
     on_exit(fn -> :persistent_term.erase({ShutdownProbeGrpc, :test_pid}) end)
 
-    server =
-      start_supervised!(
-        {GRPC.Server.Supervisor,
-         endpoint: ShutdownProbeEndpoint,
-         port: 0,
-         start_server: true,
-         adapter_opts: [ip: {127, 0, 0, 1}] ++ IngressDrain.grpc_protocol_options()}
-      )
-
-    ref = inspect(ShutdownProbeEndpoint)
+    {server, ref} = grpc_server()
 
     {:ok, conn} =
       Mint.HTTP.connect(:http, "127.0.0.1", :ranch.get_port(ref),
@@ -139,7 +138,8 @@ defmodule Logflare.IngressDrainTest do
 
     assert IngressDrain.run(System.monotonic_time(:millisecond),
              http_listeners: [],
-             grpc_listener: ref
+             grpc_listener: ref,
+             listener_deadline: deadline()
            ) == :drained
 
     shutdown = Task.async(fn -> Supervisor.stop(server) end)
@@ -163,6 +163,27 @@ defmodule Logflare.IngressDrainTest do
     refute IngressGate.open?()
     assert ThousandIsland.status(server) == :suspended
     assert {:error, :econnrefused} = tcp_connect(port)
+  end
+
+  test "a stalled HTTP listener does not block gRPC suspension or the ingress deadline" do
+    {http, _port} = http_server()
+    {_grpc, ref} = grpc_server()
+    :ok = :sys.suspend(http)
+
+    try do
+      cutoff = System.monotonic_time(:millisecond) + 250
+
+      task =
+        Task.async(fn ->
+          IngressDrain.run(cutoff, http_listeners: [http], grpc_listener: ref)
+        end)
+
+      assert Task.await(task, 2_000) == :timeout
+      refute IngressGate.open?()
+      assert :ranch.get_status(ref) == :suspended
+    after
+      :ok = :sys.resume(http)
+    end
   end
 
   test "endpoint wrapper rejects normal routes and socket upgrades but preserves health endpoints" do
@@ -204,6 +225,19 @@ defmodule Logflare.IngressDrainTest do
 
     {:ok, {_address, port}} = ThousandIsland.listener_info(server)
     {server, port}
+  end
+
+  defp grpc_server do
+    server =
+      start_supervised!(
+        {GRPC.Server.Supervisor,
+         endpoint: ShutdownProbeEndpoint,
+         port: 0,
+         start_server: true,
+         adapter_opts: [ip: {127, 0, 0, 1}] ++ IngressDrain.grpc_protocol_options()}
+      )
+
+    {server, inspect(ShutdownProbeEndpoint)}
   end
 
   defp h2(port) do

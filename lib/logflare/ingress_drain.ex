@@ -4,6 +4,8 @@ defmodule Logflare.IngressDrain do
   require Logger
 
   alias Logflare.IngressGate
+  alias Logflare.Shutdown.Budget
+  alias Logflare.Utils.Tasks
 
   @grpc_goaway_ms 5_000
   @grpc_wire_timeout_ms 6_000
@@ -21,20 +23,15 @@ defmodule Logflare.IngressDrain do
   def run(deadline, opts \\ []) do
     IngressGate.quiesce()
 
-    http = suspend(:http, fn -> suspend_http(opts) end)
-
-    grpc =
-      suspend(:grpc, fn ->
-        suspend_grpc(Keyword.get_lazy(opts, :grpc_listener, &grpc_listener/0))
-      end)
-
+    listener_deadline = Keyword.get(opts, :listener_deadline, deadline)
+    listeners = suspend_listeners(listener_deadline, opts)
     wait = IngressGate.await_empty(deadline)
 
     result =
-      case {wait, http, grpc} do
-        {:timeout, _, _} -> :timeout
-        {:drained, :ok, :ok} -> :drained
-        _ -> :error
+      cond do
+        :timeout in [wait | listeners] -> :timeout
+        :error in listeners -> :error
+        true -> :drained
       end
 
     Logger.warning(
@@ -42,6 +39,29 @@ defmodule Logflare.IngressDrain do
     )
 
     result
+  end
+
+  defp suspend_listeners(deadline, opts) do
+    actions = [
+      http: fn -> suspend_http(opts) end,
+      grpc: fn -> suspend_grpc(Keyword.get_lazy(opts, :grpc_listener, &grpc_listener/0)) end
+    ]
+
+    tasks =
+      Enum.map(actions, fn {name, fun} -> Tasks.async_nolink(fn -> suspend(name, fun) end) end)
+
+    results = Task.yield_many(tasks, timeout: Budget.remaining(deadline), on_timeout: :kill_task)
+
+    Enum.zip_with(Keyword.keys(actions), results, &suspension_result/2)
+  end
+
+  defp suspension_result(_name, {_task, {:ok, result}}), do: result
+
+  defp suspension_result(name, {_task, {:exit, reason}}), do: log_suspend_error(name, reason)
+
+  defp suspension_result(name, {_task, nil}) do
+    log_suspend_error(name, :timeout)
+    :timeout
   end
 
   defp suspend_http(opts) do

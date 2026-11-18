@@ -69,7 +69,11 @@ defmodule Logflare.Shutdown do
     Logger.warning("shutdown: withdrawing from traffic for #{withdrawal_ms}ms")
     Process.sleep(withdrawal_ms)
 
-    ingress_result = IngressDrain.run(Budget.deadline(budget.requests))
+    ingress_result =
+      IngressDrain.run(Budget.deadline(budget.requests),
+        listener_deadline: Budget.deadline(budget.listeners)
+      )
+
     IngressGate.seal()
 
     case IngressGate.await_writes(Budget.deadline(budget.writes)) do

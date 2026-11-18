@@ -5,6 +5,7 @@ defmodule Logflare.Shutdown.Budget do
   """
 
   @stop_intake_ms 1_000
+  @listener_stop_ms 1_000
   @writes_ms 1_000
   @sync_ms 10_000
   @cleanup_ms 10_000
@@ -14,6 +15,7 @@ defmodule Logflare.Shutdown.Budget do
   @type t :: %{
           intake: limit(),
           withdrawal: integer(),
+          listeners: limit(),
           requests: limit(),
           writes: limit(),
           flush: flush() | nil
@@ -35,6 +37,7 @@ defmodule Logflare.Shutdown.Budget do
     %{
       intake: {requests_end, @stop_intake_ms},
       withdrawal: withdrawal,
+      listeners: {requests_end, @listener_stop_ms},
       requests: {requests_end, request_ms},
       writes: {flush_start, @writes_ms},
       flush: flush

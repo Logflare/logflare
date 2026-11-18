@@ -13,6 +13,7 @@ defmodule Logflare.Application do
   alias Logflare.Backends.UserMonitoring
   alias Logflare.ContextCache
   alias Logflare.IngressDrain
+  alias Logflare.IngressGate.Sweeper
   alias Logflare.Logs
   alias Logflare.NaturalLanguageLql.AnthropicClient
   alias Logflare.Shutdown
@@ -50,7 +51,7 @@ defmodule Logflare.Application do
 
     # Routes user-specific logs to their respective system source, when appliable
 
-    children = get_children(env) ++ [Shutdown]
+    children = get_children(env) ++ [Sweeper, Shutdown]
 
     if Application.get_env(:logflare, :opentelemetry_enabled?) do
       OpentelemetryBandit.setup()

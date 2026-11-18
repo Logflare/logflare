@@ -8,6 +8,8 @@ defmodule Logflare.IngressGate do
   """
 
   @http_key {__MODULE__, :http_request}
+  @write_key {__MODULE__, :write_lease}
+  @sweep_batch_size 256
   @events [
     [:bandit, :request, :start],
     [:bandit, :request, :stop],
@@ -35,13 +37,21 @@ defmodule Logflare.IngressGate do
   @spec enter() :: {:ok, reference()} | :closed
   def enter, do: acquire(:request)
 
+  @doc "Runs a synchronous handoff, reusing its enclosing write lease in the same process."
   @spec with_write((-> result)) :: result | {:error, :source_unavailable} when result: var
   def with_write(fun) do
+    if Process.get(@write_key), do: fun.(), else: with_new_write(fun)
+  end
+
+  defp with_new_write(fun) do
     case acquire(:write) do
       {:ok, token} ->
+        Process.put(@write_key, token)
+
         try do
           fun.()
         after
+          Process.delete(@write_key)
           leave(token)
         end
 
@@ -97,6 +107,30 @@ defmodule Logflare.IngressGate do
       {_span, :closed} -> false
       nil -> open?()
     end
+  end
+
+  @doc false
+  @spec sweep_dead_leases() :: :ok
+  def sweep_dead_leases do
+    :ets.safe_fixtable(__MODULE__, true)
+
+    try do
+      __MODULE__
+      |> :ets.select([{{:"$1", :_, :"$2"}, [], [{{:"$1", :"$2"}}]}], @sweep_batch_size)
+      |> sweep_batch()
+    after
+      :ets.safe_fixtable(__MODULE__, false)
+    end
+  end
+
+  defp sweep_batch(:"$end_of_table"), do: :ok
+
+  defp sweep_batch({leases, continuation}) do
+    Enum.each(leases, fn {token, pid} ->
+      unless Process.alive?(pid), do: leave(token)
+    end)
+
+    continuation |> :ets.select() |> sweep_batch()
   end
 
   @spec active_count() :: non_neg_integer()

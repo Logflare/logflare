@@ -23,7 +23,8 @@ defmodule Logflare.ShutdownTest do
       %{result: :ok}
     end)
 
-    stub(IngressDrain, :run, fn deadline ->
+    stub(IngressDrain, :run, fn deadline, opts ->
+      assert opts[:listener_deadline] != nil
       send(parent, {:phase, {:quiesce, deadline}})
       :drained
     end)
@@ -62,7 +63,7 @@ defmodule Logflare.ShutdownTest do
   test "does not flush while an admitted request is still being awaited" do
     parent = self()
 
-    stub(IngressDrain, :run, fn _deadline ->
+    stub(IngressDrain, :run, fn _deadline, _opts ->
       send(parent, {:waiting, self()})
 
       receive do
@@ -88,7 +89,7 @@ defmodule Logflare.ShutdownTest do
   end
 
   test "an ingress timeout is never reported as a successful drain" do
-    stub(IngressDrain, :run, fn _deadline -> :timeout end)
+    stub(IngressDrain, :run, fn _deadline, _opts -> :timeout end)
 
     assert Shutdown.run(
              deadline_ms: System.monotonic_time(:millisecond) + 1_000,
@@ -96,6 +97,8 @@ defmodule Logflare.ShutdownTest do
              request_timeout_ms: 10,
              drain_timeout_ms: 500
            ) == :timeout
+
+    assert_receive {:phase, {:flush, _}}
   end
 
   test "without spool drain configuration, still quiesces ingress before stopping" do
@@ -129,7 +132,7 @@ defmodule Logflare.ShutdownTest do
     deadline = System.monotonic_time(:millisecond) + 1_000
     parent = self()
 
-    stub(IngressDrain, :run, fn request_deadline ->
+    stub(IngressDrain, :run, fn request_deadline, _opts ->
       send(parent, {:quiesce, request_deadline})
       Process.sleep(max(request_deadline - System.monotonic_time(:millisecond), 0))
       :timeout
@@ -150,7 +153,7 @@ defmodule Logflare.ShutdownTest do
 
   test "waits for a write in progress before flushing after an ingress error" do
     parent = self()
-    stub(IngressDrain, :run, fn _deadline -> :error end)
+    stub(IngressDrain, :run, fn _deadline, _opts -> :error end)
 
     writer =
       Task.async(fn ->
