@@ -11,6 +11,8 @@ defmodule Logflare.Endpoints.ClickHouseSqlSettings do
   alias Logflare.Sql.Parser
 
   @keys ~w(max_execution_time max_memory_usage max_rows_to_read max_bytes_to_read max_threads priority)
+  @microseconds_per_second 1_000_000.0
+  @exclusive_timeout_microseconds 9_223_372_036_854_775_808
 
   @spec setting?(String.t()) :: boolean()
   defp setting?(key), do: key in @keys
@@ -55,6 +57,7 @@ defmodule Logflare.Endpoints.ClickHouseSqlSettings do
   defp enforce_requests(_query, statement, inherited, requests, opts) do
     with :ok <- require_baselines(inherited, requests),
          {:ok, effective} <- ClickHouseSettings.normalize(merge_requests(inherited, requests)),
+         :ok <- validate_timeout(effective),
          {:ok, query} <- Parser.to_string([statement]),
          {:ok, query} <- enforce_policy(query, effective, opts) do
       Logger.debug("Applied lower-only ClickHouse SQL settings",
@@ -121,7 +124,9 @@ defmodule Logflare.Endpoints.ClickHouseSqlSettings do
 
       with false <- Map.has_key?(requests, key),
            {:ok, value} <- numeric_literal(key, node["value"]),
-           {:ok, _normalized} <- ClickHouseSettings.normalize(%{key => value}) do
+           request = %{key => value},
+           {:ok, _normalized} <- ClickHouseSettings.normalize(request),
+           :ok <- validate_timeout(request) do
         {:cont, {:ok, Map.put(requests, key, value)}}
       else
         true -> {:halt, {:error, "Duplicate ClickHouse setting #{key}"}}
@@ -129,6 +134,20 @@ defmodule Logflare.Endpoints.ClickHouseSqlSettings do
       end
     end)
   end
+
+  @spec validate_timeout(map()) :: :ok | {:error, String.t()}
+  defp validate_timeout(%{"max_execution_time" => seconds}) do
+    microseconds = seconds * @microseconds_per_second
+
+    if microseconds >= 1 and microseconds < @exclusive_timeout_microseconds do
+      :ok
+    else
+      {:error,
+       "ClickHouse setting max_execution_time must fit in a positive signed 64-bit microsecond duration"}
+    end
+  end
+
+  defp validate_timeout(_settings), do: :ok
 
   @spec numeric_literal(String.t(), term()) :: {:ok, number()} | {:error, String.t()}
   defp numeric_literal(key, %{"Value" => %{"value" => %{"Number" => [value, false]}}}) do

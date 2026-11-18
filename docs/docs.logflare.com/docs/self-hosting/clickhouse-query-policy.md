@@ -75,7 +75,7 @@ FROM my_source
 SETTINGS max_execution_time = 2.5, max_threads = 2, priority = 10
 ```
 
-The supported keys are `max_execution_time`, `max_memory_usage`, `max_rows_to_read`, `max_bytes_to_read`, `max_threads`, and `priority`. Requests must be positive numeric literals; only execution time accepts fractions. Zero, negative values, strings, parameter placeholders, expressions, and case-insensitive duplicate request keys are rejected. Existing allowlisted optimizer settings can remain in the same clause.
+The supported keys are `max_execution_time`, `max_memory_usage`, `max_rows_to_read`, `max_bytes_to_read`, `max_threads`, and `priority`. Requests must be positive numeric literals; only execution time accepts fractions. The execution time must be at least one microsecond and fit in ClickHouse's signed 64-bit microsecond range. Zero, negative values, strings, parameter placeholders, expressions, and case-insensitive duplicate request keys are rejected. Existing allowlisted optimizer settings can remain in the same clause.
 
 At execution time, Logflare first resolves the backend default, original requested class, and administrator-enforced endpoint policy. SQL requests are applied last:
 

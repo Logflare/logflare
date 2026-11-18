@@ -54,7 +54,7 @@ defmodule Logflare.Endpoints.ClickHouseSqlSettingsTest do
   end
 
   test "supports fractional timeouts, exact integer bounds and derived overflow modes" do
-    for value <- ["0.25", "1e-6", "9223372036854775807"] do
+    for value <- ["0.25", "1e-6", "9223372036854"] do
       assert {:ok, sql} =
                ClickHouseSqlSettings.enforce(
                  "SELECT 1 AS a SETTINGS max_execution_time = #{value}",
@@ -73,6 +73,26 @@ defmodule Logflare.Endpoints.ClickHouseSqlSettingsTest do
              })
 
     assert sql =~ "read_overflow_mode = 'throw'"
+  end
+
+  test "rejects requested or effective timeouts outside ClickHouse's microsecond range" do
+    error =
+      {:error,
+       "ClickHouse setting max_execution_time must fit in a positive signed 64-bit microsecond duration"}
+
+    for value <- ["9e-7", "9223372036854.776"] do
+      assert ^error =
+               ClickHouseSqlSettings.enforce(
+                 "SELECT 1 AS a SETTINGS max_execution_time = #{value}",
+                 @limits
+               )
+    end
+
+    assert ^error =
+             ClickHouseSqlSettings.enforce(
+               "SELECT 1 AS a SETTINGS max_execution_time = 1",
+               %{@limits | "max_execution_time" => 9.0e-7}
+             )
   end
 
   test "rejects unlimited values, wrong types, expressions and numeric overflow" do

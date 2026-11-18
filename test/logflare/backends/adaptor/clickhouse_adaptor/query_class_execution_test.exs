@@ -304,6 +304,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryClassExecutionTest do
     assert reason =~ "priority is enforced"
   end
 
+  test "endpoint timeouts reject unrepresentable requests and reach ClickHouse at supported precision",
+       %{backend: backend} do
+    endpoint =
+      insert(:endpoint,
+        user: Logflare.Users.get(backend.user_id),
+        backend: backend,
+        language: :ch_sql,
+        query:
+          "SELECT toFloat64(getSetting('max_execution_time')) AS timeout SETTINGS max_execution_time = 0.25",
+        enforced_clickhouse_settings: %{"max_execution_time" => 2}
+      )
+
+    assert {:ok, %{rows: [%{"timeout" => 0.25}]}} = Endpoints.run_query(endpoint)
+
+    query = String.replace(endpoint.query, "0.25", "9e-7")
+
+    assert {:error, message} = Endpoints.run_query(%{endpoint | query: query})
+    assert message =~ "positive signed 64-bit microsecond duration"
+  end
+
   test "effective API settings are recorded in system.query_log.Settings", context do
     id = Ecto.UUID.generate()
 
