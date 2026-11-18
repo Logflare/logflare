@@ -9,50 +9,32 @@ permissions:
   contents: read
 
 jobs:
-  prime-cache:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v4
-        with: { node-version: lts/*, cache: npm, cache-dependency-path: assets/package-lock.json }
-      - run: npm ci --prefix assets
-      - id: v
-        run: echo "pw=$(node -p "require('./assets/node_modules/playwright/package.json').version")" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v5
-        with:
-          path: ~/.cache/ms-playwright
-          key: pw-exp3-${{ runner.os }}-${{ steps.v.outputs.pw }}-chromium
-      - run: npx --prefix assets playwright install --with-deps chromium
-
   install:
-    needs: prime-cache
-    if: always()
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        variant: [all, chromium, only-shell, chromium-cached]
-        rep: [1, 2, 3, 4, 5, 6]
+        variant: [control, pin-azure, pin-archive]
+        rep: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v4
         with: { node-version: lts/*, cache: npm, cache-dependency-path: assets/package-lock.json }
       - run: npm ci --prefix assets
-      - id: v
-        run: echo "pw=$(node -p "require('./assets/node_modules/playwright/package.json').version")" >> "$GITHUB_OUTPUT"
-      - if: matrix.variant == 'chromium-cached'
-        uses: actions/cache/restore@v5
-        with:
-          path: ~/.cache/ms-playwright
-          key: pw-exp3-${{ runner.os }}-${{ steps.v.outputs.pw }}-chromium
-      - name: playwright-install
+      - name: mirror-info
+        run: |
+          echo "--- apt-mirrors.txt"; cat /etc/apt/apt-mirrors.txt || true
+          grep -rh "^URIs" /etc/apt/sources.list.d/ || true
+      - name: pin-mirror
+        if: matrix.variant != 'control'
         run: |
           case "${{ matrix.variant }}" in
-            all) args="" ;;
-            only-shell) args="--only-shell chromium" ;;
-            *) args="chromium" ;;
+            pin-azure) m="http://azure.archive.ubuntu.com/ubuntu/" ;;
+            pin-archive) m="http://archive.ubuntu.com/ubuntu/" ;;
           esac
+          echo "$m" | sudo tee /etc/apt/apt-mirrors.txt
+      - name: playwright-install
+        run: |
           set -o pipefail
-          npx --prefix assets playwright install --with-deps $args 2>&1 | tee pw.log
-          grep -E "Need to get|newly installed|downloaded to" pw.log || true
-          du -sh ~/.cache/ms-playwright/* || true
+          npx --prefix assets playwright install --with-deps --only-shell chromium 2>&1 | tee pw.log
+          grep -oE "http://[a-z0-9.-]+archive.ubuntu.com" pw.log | sort | uniq -c
