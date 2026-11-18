@@ -21,7 +21,7 @@ jobs:
       - uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
-          key: pw-exp2-${{ runner.os }}-${{ steps.v.outputs.pw }}-chromium
+          key: pw-exp3-${{ runner.os }}-${{ steps.v.outputs.pw }}-chromium
       - run: npx --prefix assets playwright install --with-deps chromium
 
   install:
@@ -31,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [all, chromium, headless-shell, chromium-cached]
+        variant: [all, chromium, only-shell, chromium-cached]
         rep: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v6
@@ -44,14 +44,15 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.cache/ms-playwright
-          key: pw-exp2-${{ runner.os }}-${{ steps.v.outputs.pw }}-chromium
+          key: pw-exp3-${{ runner.os }}-${{ steps.v.outputs.pw }}-chromium
       - name: playwright-install
         run: |
           case "${{ matrix.variant }}" in
             all) args="" ;;
-            headless-shell) args="chromium-headless-shell" ;;
+            only-shell) args="--only-shell chromium" ;;
             *) args="chromium" ;;
           esac
+          set -o pipefail
           npx --prefix assets playwright install --with-deps $args 2>&1 | tee pw.log
           grep -E "Need to get|newly installed|downloaded to" pw.log || true
           du -sh ~/.cache/ms-playwright/* || true
