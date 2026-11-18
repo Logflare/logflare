@@ -15,7 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         variant: [control, pin-azure, pin-archive]
-        rep: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        rep: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v4
@@ -37,4 +37,4 @@ jobs:
         run: |
           set -o pipefail
           npx --prefix assets playwright install --with-deps --only-shell chromium 2>&1 | tee pw.log
-          grep -oE "http://[a-z0-9.-]+archive.ubuntu.com" pw.log | sort | uniq -c
+          grep -oE "http://[a-z0-9.-]*archive.ubuntu.com" pw.log | sort | uniq -c || true
