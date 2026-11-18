@@ -300,6 +300,27 @@ defmodule LogflareWeb.EndpointsControllerTest do
       end
     end
 
+    test "GET query explains unsupported sandboxed LQL aggregates", %{conn: conn, user: user} do
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          enable_auth: false,
+          sandboxable: true,
+          query:
+            "WITH sample AS (SELECT CURRENT_TIMESTAMP() AS timestamp, 1 AS latency) SELECT latency FROM sample"
+        )
+
+      response =
+        conn
+        |> get(~p"/endpoints/query/#{endpoint.token}", %{
+          "lql" => "c:count(*) c:avg(latency) c:group_by(t::minute)"
+        })
+        |> json_response(200)
+
+      assert response["error"] == "Sandboxed SQL supports at most one chart rule"
+      refute response["result"]
+    end
+
     test "GET query with lql and multiple CTEs requires `FromRule`", %{
       conn: init_conn,
       user: user

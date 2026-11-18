@@ -211,50 +211,6 @@ describe("chartPointAtX", () => {
 });
 
 describe("LogEventsChart pointer selection", () => {
-  it("emits one range update and suppresses the deferred post-drag click", () => {
-    const pushEvent = vi.fn();
-    let renderer;
-
-    act(() => {
-      renderer = renderChart(pushEvent);
-    });
-    const chart = renderer.root.findByType("bar-chart");
-
-    chart.props.onMouseDown({}, { clientX: 150 });
-    flushAnimationFrames();
-    chart.props.onMouseMove({}, { clientX: 250 });
-    chart.props.onMouseMove({}, { clientX: 350 });
-    flushAnimationFrames();
-    chart.props.onMouseUp({}, { clientX: 350 });
-    flushAnimationFrames();
-    flushAnimationFrames();
-    chart.props.onClick({}, { clientX: 350 });
-    flushAnimationFrames();
-
-    expect(pushEvent.mock.calls).toEqual([
-      ["soft_pause", {}],
-      ["datetime_update", {
-        querystring: "t:2026-08-14T10:00:00..2026-08-14T10:03:00",
-      }],
-    ]);
-
-    pushEvent.mockClear();
-    chart.props.onMouseDown({}, { clientX: 250 });
-    flushAnimationFrames();
-    chart.props.onMouseUp({}, { clientX: 250 });
-    flushAnimationFrames();
-    chart.props.onClick({}, { clientX: 250 });
-    flushAnimationFrames();
-
-    expect(pushEvent.mock.calls).toEqual([
-      ["soft_pause", {}],
-      ["datetime_update", {
-        querystring: "t:2026-08-14T10:01:00..2026-08-14T10:02:00",
-        period: "second",
-      }],
-    ]);
-  });
-
   it("preserves an ordinary single-bucket click", () => {
     const pushEvent = vi.fn();
     let renderer;

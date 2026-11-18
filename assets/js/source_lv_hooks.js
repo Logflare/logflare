@@ -206,7 +206,7 @@ hooks.SourceLogsSearch = {
     const chartPeriod = this.el.querySelector("#search_chart_period")?.value
     const chartAggregate = this.el.querySelector("#search_chart_aggregate")?.value
 
-    if (!chartPeriod || !chartAggregate) {
+    if (!chartPeriod) {
       return
     }
 

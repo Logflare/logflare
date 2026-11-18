@@ -247,6 +247,15 @@ defmodule Logflare.Lql.RulesTest do
   end
 
   describe "put_chart_period/2" do
+    test "updates every aggregate without changing filters or aggregate selection" do
+      first = %ChartRule{aggregate: :sum, path: "metadata.latency", period: :minute}
+      second = %ChartRule{aggregate: :avg, path: "metadata.bytes", period: :minute}
+      filter = %FilterRule{path: "event_message", operator: :=, value: "error"}
+
+      assert Rules.put_chart_period([first, filter, second], :hour) ==
+               [%{first | period: :hour}, filter, %{second | period: :hour}]
+    end
+
     test "updates period of existing ChartRule" do
       chart_rule = %ChartRule{aggregate: :count, path: "timestamp", period: :minute}
       filter_rule = %FilterRule{path: "message", operator: :=, value: "error"}

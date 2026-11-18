@@ -4,9 +4,11 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
 
   import Ecto.Query
 
+  alias Ecto.Adapters.SQL
   alias Ecto.Query
   alias Ecto.Query.BooleanExpr
   alias Logflare.Lql.BackendTransformer.Postgres
+  alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.SelectRule
 
@@ -446,6 +448,50 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
         assert result.order_bys != []
         assert result.select != nil
         assert_select_keys(result, [:timestamp, :count])
+      end
+    end
+  end
+
+  describe "transform_chart_rules/3" do
+    test "executes distinct percentiles with nulls and timestamp truncation for every period" do
+      input =
+        from(
+          t in fragment("""
+          (SELECT TIMESTAMP '2026-11-04 04:18:37.123456' AS timestamp, latency
+           FROM unnest(ARRAY[10, 20, 90, NULL]::float8[]) AS latency
+           UNION ALL SELECT TIMESTAMP '2026-11-05 04:18:37.123456', NULL::float8)
+          """)
+        )
+
+      for {period, expected_timestamp, expected_null_timestamp} <- [
+            {:second, ~N[2026-11-04 04:18:37.000000], ~N[2026-11-05 04:18:37.000000]},
+            {:minute, ~N[2026-11-04 04:18:00.000000], ~N[2026-11-05 04:18:00.000000]},
+            {:hour, ~N[2026-11-04 04:00:00.000000], ~N[2026-11-05 04:00:00.000000]},
+            {:day, ~N[2026-11-04 00:00:00.000000], ~N[2026-11-05 00:00:00.000000]}
+          ] do
+        rules =
+          for aggregate <- [:p50, :p95, :p99] do
+            {%ChartRule{path: "latency", aggregate: aggregate, period: period}, aggregate}
+          end
+
+        query = Postgres.transform_chart_rules(input, rules, "timestamp")
+        query = from(t in subquery(query), select: t)
+        {sql, params} = SQL.to_sql(:all, Repo, query)
+        result = SQL.query!(Repo, sql, params)
+        [values, nulls] = Enum.map(result.rows, &Map.new(Enum.zip(result.columns, &1)))
+
+        assert values["timestamp"] == expected_timestamp
+        assert nulls["timestamp"] == expected_null_timestamp
+
+        assert values["p50"] == 20.0
+        assert_in_delta values["p95"], 83.0, 1.0e-10
+        assert_in_delta values["p99"], 88.6, 1.0e-10
+
+        assert Map.take(nulls, ~w(p50 p95 p99)) == %{
+                 "p50" => nil,
+                 "p95" => nil,
+                 "p99" => nil
+               }
       end
     end
   end

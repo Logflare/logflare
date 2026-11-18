@@ -62,9 +62,12 @@ const LqlEditorWrapper = {
       const suggestionsVisible = this._editorDomNode?.querySelector(
         ".suggest-widget.visible"
       );
+      const inSnippet = this._editor
+        ?.getContribution("snippetController2")
+        ?.isInSnippet();
 
-      // allow tab out of Monaco when no suggestions are visible
-      if (!suggestionsVisible) {
+      // allow tab out of Monaco outside autocomplete and snippet navigation
+      if (!suggestionsVisible && !inSnippet) {
         event.stopImmediatePropagation();
       }
     };
